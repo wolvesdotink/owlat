@@ -24,14 +24,14 @@ jobs:
         with:
           egress-policy: audit
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.3.11"
 
       - name: Cache bun dependencies
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
@@ -92,7 +92,7 @@ jobs:
     container:
       image: semgrep/semgrep
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       # Bundled rulesets cover the OWASP top 10 classes most relevant to
       # this stack (XSS, SSRF, prototype-pollution, hardcoded-secrets).
@@ -119,7 +119,7 @@ jobs:
         with:
           egress-policy: audit
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           # Full history: gitleaks detect scans every commit, which is the
           # pre-publication guarantee we want for an OSS repo.
