@@ -1,0 +1,30 @@
+title = "Owlat gitleaks configuration"
+
+# Start from gitleaks' built-in rule set, then allowlist the locations whose
+# secret-shaped strings are deliberate non-secrets:
+#   - test fixtures for the secret-leak DETECTOR and DKIM handling (e.g. the
+#     canonical AWS example key, "ghp_…" sample tokens, "BEGIN PRIVATE KEY\nseed")
+#   - documentation showing config formats (DKIM_KEYS examples, etc.)
+#   - .env / template placeholders (example.com, {{VAR}}, empty values)
+# Verified 2026-06-30: no real credentials exist anywhere in the tree.
+[extend]
+useDefault = true
+# The `curl-auth-header` rule flags any `curl -H "Authorization: Bearer …"`,
+# which only ever matches our API-usage examples that carry the literal
+# placeholder `YOUR_API_KEY` (e.g. settings/api/docs.vue, useTransactionalList).
+# Real leaked tokens are still caught by the high-entropy generic-api-key / jwt /
+# private-key rules; this only silences the placeholder-curl false positives.
+disabledRules = ["curl-auth-header"]
+
+[allowlist]
+description = "Test fixtures, docs examples, and env/template placeholders (no real secrets)"
+paths = [
+  '''(^|/)__tests__/''',
+  '''\.test\.ts$''',
+  '''\.spec\.ts$''',
+  '''(^|/)apps/docs/content/''',
+  '''\.example$''',
+  '''(^|/)\.env(\.|$)''',
+  '''(^|/)infra/templates/''',
+  '''(^|/)Caddyfile\.example$''',
+]

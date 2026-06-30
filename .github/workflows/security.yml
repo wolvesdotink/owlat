@@ -61,23 +61,57 @@ jobs:
               console.error('bun audit produced no output — failing closed.');
               process.exit(1);
             }
+            // Acknowledged High/Critical advisories whose vulnerable code path is
+            // unreachable here, and whose fix we have not taken because it is a
+            // major upgrade or it regresses the build. Keyed by GHSA id (stable),
+            // so a NEW advisory for the same package still blocks. Anything with a
+            // safe drop-in fix must be upgraded (e.g. linkify-it is pinned to 5.0.1
+            // in package.json overrides), not listed here. Revisit each on the next
+            // safe upgrade.
+            const ACKNOWLEDGED = {
+              // nodemailer <=9.0.0: the raw-message option can bypass
+              // disableFileAccess/disableUrlAccess when raw is {path}/{href}. owlat
+              // passes raw only as an already-composed MIME Buffer
+              // (apps/mail-sync/src/send.ts), never an object, so the bypass is
+              // unreachable. Fix is 9.0.1 — a major bump from ^8.0.6, still pending.
+              'GHSA-p6gq-j5cr-w38f': 'nodemailer raw bypass: raw is a Buffer-only path here; fix 9.0.1 is a pending major bump',
+              // vite <=7.3.4 / <=8.0.15: server.fs.deny bypass, Windows-only and
+              // requires a network-exposed dev server. Production ships built Nitro
+              // artifacts on Linux; the vite dev server is never a runtime path.
+              'GHSA-fx2h-pf6j-xcff': 'vite server.fs.deny bypass: dev-server only + Windows only, not a production runtime path',
+              // nuxt <4.4.7: routeRules middleware bypass via case-sensitivity. owlat
+              // defines NO routeRules (web nuxt.config has routeRules:{}, docs/marketing
+              // none), so there is no rule to bypass. The fix (4.4.7+) breaks
+              // @nuxtjs/og-image prerendering in the docs + marketing builds, so we
+              // hold on it; revisit when og-image is compatible with Nuxt 4.4.7+.
+              'GHSA-mm7m-92g8-7m47': 'nuxt routeRules bypass: owlat defines no routeRules; 4.4.7+ fix regresses og-image builds',
+            };
             // bun emits the npm bulk-advisory shape: { pkgName: Advisory[] }
             const data = JSON.parse(raw);
             const blocking = [];
+            const acknowledged = [];
             for (const [pkg, advisories] of Object.entries(data)) {
               for (const a of advisories || []) {
                 if (a && (a.severity === 'high' || a.severity === 'critical')) {
-                  blocking.push({ pkg, severity: a.severity, title: a.title, url: a.url });
+                  const ghsa = String(a.url || '').split('/').pop();
+                  const row = { pkg, severity: a.severity, title: a.title, url: a.url, ghsa };
+                  (ACKNOWLEDGED[ghsa] ? acknowledged : blocking).push(row);
                 }
               }
             }
+            if (acknowledged.length) {
+              console.log('Acknowledged (no upstream fix / not exploitable here):');
+              for (const a of acknowledged) {
+                console.log(' - [' + a.severity + '] ' + a.pkg + ' ' + a.ghsa + ': ' + ACKNOWLEDGED[a.ghsa]);
+              }
+            }
             if (blocking.length === 0) {
-              console.log('No high/critical vulnerabilities.');
+              console.log('No blocking high/critical vulnerabilities.');
               process.exit(0);
             }
             console.error('Blocking vulnerabilities found:');
             for (const b of blocking) {
-              console.error(' - [' + b.severity + '] ' + b.pkg + ': ' + b.title + ' (' + b.url + ')');
+              console.error(' - [' + b.severity + '] ' + b.pkg + ' ' + b.ghsa + ': ' + b.title + ' (' + b.url + ')');
             }
             process.exit(1);
           "
@@ -98,14 +132,17 @@ jobs:
       # this stack (XSS, SSRF, prototype-pollution, hardcoded-secrets).
       # The local rules in .semgrep.yml add Owlat-specific patterns —
       # e.g. flagging `v.string()`-typed userId args without a session
-      # check.
+      # check. `p/nodejsscan` (njsscan) is intentionally NOT included: it is
+      # high-noise on a TypeScript codebase (flags every Math.random(), every
+      # `secret`/`apiKey` identifier, every non-trivial regex) and its real
+      # signal is already covered by p/javascript + p/security-audit + p/secrets.
+      # Test fixtures, docs examples, and templates are excluded via .semgrepignore.
       - name: Semgrep scan
         run: >-
           semgrep scan --error
           --config p/javascript
           --config p/typescript
           --config p/nodejs
-          --config p/nodejsscan
           --config p/xss
           --config p/security-audit
           --config p/secrets
@@ -128,5 +165,5 @@ jobs:
       - name: Run gitleaks over the full history
         run: >-
           docker run --rm -v "$PWD:/repo"
-          ghcr.io/gitleaks/gitleaks:v8.24.3
+          ghcr.io/gitleaks/gitleaks:v8.30.1
           detect --source /repo --no-banner --redact --exit-code 1
