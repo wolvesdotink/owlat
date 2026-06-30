@@ -72,6 +72,7 @@ export async function getStsTlsOptions(
 
 		if (policy.mode === 'testing') {
 			// Testing mode: don't enforce, but log for monitoring
+			// nosemgrep -- MTA-STS testing mode is non-enforcing by spec (RFC 8461): monitor, never fail delivery.
 			return {
 				requireTLS: false,
 				rejectUnauthorized: false,
@@ -84,6 +85,7 @@ export async function getStsTlsOptions(
 		logger.debug({ domain, err }, 'MTA-STS lookup failed, using opportunistic TLS');
 	}
 
+	// nosemgrep -- no MTA-STS policy: opportunistic TLS (RFC 7435) — encrypt if offered, never fail delivery on an unverified cert.
 	return {
 		requireTLS: false,
 		rejectUnauthorized: false,
