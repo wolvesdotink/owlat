@@ -69,6 +69,12 @@ function updateCondition(patch: Partial<BlockCondition>) {
 // Repeat editor -------------------------------------------------------------
 const repeat = computed(() => (props.value as Partial<BlockRepeat> | undefined) ?? {});
 
+// Literal placeholder example shown in the help text, e.g. `{{item.key}}`.
+// Built here in script rather than inline in the template: an interpolation
+// like `{{ '{{' + alias + '.key}}' }}` makes the SFC compiler mis-read the
+// inner `}}` as the end of the interpolation and fails the build.
+const itemRefExample = computed(() => `{{${repeat.value.itemAlias || DEFAULT_ITEM_ALIAS}.key}}`);
+
 function updateRepeat(patch: Partial<BlockRepeat>) {
 	// Always write a COMPLETE repeat so the renderer can build `{{itemAlias.key}}`
 	// placeholders. Without a non-empty itemAlias the loop emits un-substituted content.
@@ -306,7 +312,7 @@ const fontFamilyOptions = [
 					@update="(v) => updateRepeat({ itemAlias: v })"
 				/>
 				<p class="text-[11px] leading-[1.4] text-text-tertiary m-0">
-					Reference each item with <code>{{ '{{' + (repeat.itemAlias || DEFAULT_ITEM_ALIAS) + '.key}}' }}</code>.
+					Reference each item with <code>{{ itemRefExample }}</code>.
 				</p>
 			</div>
 			<div class="flex flex-col gap-[5px]">
