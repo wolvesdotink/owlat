@@ -1,0 +1,24 @@
+# Dependencies, build output, and generated artifacts (a custom .semgrepignore
+# replaces semgrep's built-in defaults, so these must be listed explicitly).
+node_modules/
+.git/
+.nuxt/
+.output/
+.turbo/
+dist/
+coverage/
+*.min.js
+*.lock
+bun.lock
+
+# Test fixtures, documentation examples, and env/templates carry secret-shaped
+# and pattern-shaped strings that are deliberate non-secrets / illustrative
+# examples — they are the bulk of the false positives. Same locations the
+# gitleaks allowlist (.gitleaks.toml) excludes.
+**/__tests__/
+*.test.ts
+*.spec.ts
+apps/docs/content/
+*.example
+.env*
+infra/templates/
