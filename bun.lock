@@ -106,6 +106,7 @@
       "name": "@owlat/imap",
       "version": "0.1.0",
       "dependencies": {
+        "@owlat/shared": "workspace:*",
         "convex": "catalog:convex",
         "ioredis": "^5.6.0",
         "pino": "^10.3.1",
@@ -403,6 +404,7 @@
     "devalue": "^5.8.1",
     "fast-xml-builder": "^1.2.0",
     "js-cookie": "^3.0.8",
+    "linkify-it": "^5.0.1",
     "protobufjs": "^7.6.3",
     "shell-quote": "^1.8.4",
     "tmp": "^0.2.7",
@@ -2632,7 +2634,7 @@
 
     "lines-and-columns": ["lines-and-columns@1.2.4", "", {}, "sha512-7ylylesZQ/PV29jhEDl3Ufjo6ZX7gCqJr5F7PKrqc93v7fzSymt1BpwEU8nAUXs8qzzvqhbjhK5QZg6Mt/HkBg=="],
 
-    "linkify-it": ["linkify-it@5.0.0", "", { "dependencies": { "uc.micro": "^2.0.0" } }, "sha512-5aHCbzQRADcdP+ATqnDuhhJ/MRIqDkZX5pyjFHRRysS8vZ5AbqGEoFIb6pYHPZ+L/OC2Lc+xT8uHVVR5CAK/wQ=="],
+    "linkify-it": ["linkify-it@5.0.1", "", { "dependencies": { "uc.micro": "^2.0.0" } }, "sha512-wVoTjP4Q6R0NW5hiZkVJaFZPWgtXfoGF+6LucL3/FtiNjmcHhYjEr5f1Kqjirc1nBW07J/ZuRFumqr2oqccEWg=="],
 
     "linkifyjs": ["linkifyjs@4.3.2", "", {}, "sha512-NT1CJtq3hHIreOianA8aSXn6Cw0JzYOuDQbOrSPe7gqFnCpKP++MQe3ODgO3oh2GJFORkAAdqredOa60z63GbA=="],
 
