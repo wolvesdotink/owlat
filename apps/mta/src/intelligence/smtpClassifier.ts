@@ -1,0 +1,180 @@
+/**
+ * Enhanced SMTP Response Classifier
+ *
+ * Classifies outbound SMTP error responses using pattern matching
+ * to distinguish between different failure types (greylisting, rate limiting,
+ * content rejection, etc.) and determine optimal retry strategies.
+ *
+ * Used by the handler to make smarter retry decisions:
+ * - Greylisted: retry sooner (2-5 minutes)
+ * - Rate limited: back off more (15-30 minutes)
+ * - Content rejected: don't retry (permanent)
+ * - Policy rejection: don't retry (permanent)
+ * - Authentication required: defer with longer delay
+ */
+
+export type SmtpFailureCategory =
+	| 'greylisted'       // Temporary — try again in a few minutes
+	| 'rate_limited'     // Too many connections/messages — back off
+	| 'content_rejected' // Message content blocked (spam/virus) — no retry
+	| 'policy_rejected'  // Sender policy violation (DMARC/SPF fail) — no retry
+	| 'mailbox_full'     // Recipient mailbox full — soft, retry later
+	| 'auth_required'    // Authentication issue — defer
+	| 'network_error'    // DNS/connection issue — retry after backoff
+	| 'unknown';         // Unclassified — use default behavior
+
+export interface SmtpClassification {
+	/** Failure category */
+	category: SmtpFailureCategory;
+	/** Whether this failure should be retried */
+	retryable: boolean;
+	/** Suggested delay in milliseconds before retrying */
+	suggestedDelayMs: number;
+	/** Whether to count this as a bounce for circuit breaker purposes */
+	countAsBounce: boolean;
+}
+
+// Greylisting patterns — ISPs asking us to try again later
+const GREYLIST_PATTERNS =
+	/greylist|graylist|try again later|please try again|try again in \d+ (second|minute)|temporarily deferred|temporarily rejected|not yet authorized|come back later/i;
+
+// Rate limiting patterns — too many connections or messages
+const RATE_LIMIT_PATTERNS =
+	/too many connections|too many (simultaneous|concurrent)|rate limit|too many (messages|recipients|emails)|connection rate|throttl|too fast|slow down|exceeded.*limit|limit exceeded|too many session|message rate|sending rate|over quota.*connection/i;
+
+// Content rejection patterns — message flagged as spam/phishing
+const CONTENT_REJECT_PATTERNS =
+	/spam|phishing|malware|virus|blocked.*content|content.*rejected|message.*rejected.*policy|banned.*content|url.*blacklist|url.*blocklist|dnsbl.*listed|rbl.*listed|spamhaus|barracuda/i;
+
+// Policy rejection patterns — sender not authorized (SPF/DMARC/DKIM fail)
+const POLICY_REJECT_PATTERNS =
+	/spf.*fail|dmarc.*fail|dkim.*fail|not authorized|authentication.*required|sender.*verify|sender.*rejected|domain.*not.*allowed|from.*not.*permitted|reverse dns|rdns|ptr.*record|no ptr|helo.*rejected|ehlo.*rejected/i;
+
+// Authentication patterns
+const AUTH_PATTERNS =
+	/authentication required|auth.*required|credentials.*required|starttls.*required|must.*authenticate|tls.*required/i;
+
+// Mailbox full patterns (some ISPs return 4xx for this)
+const MAILBOX_FULL_PATTERNS =
+	/mailbox.*full|over.*quota|quota.*exceeded|insufficient.*storage|disk.*full|storage.*limit|no space/i;
+
+/**
+ * Classify an SMTP error response for optimal retry behavior
+ *
+ * @param smtpCode - SMTP response code (4xx or 5xx)
+ * @param response - Full SMTP response string
+ * @param enhancedCode - Optional RFC 3464 enhanced status code (e.g., "4.7.1")
+ */
+export function classifySmtpResponse(
+	smtpCode: number | undefined,
+	response: string,
+	enhancedCode?: string
+): SmtpClassification {
+	const text = response.toLowerCase();
+
+	// Check mailbox full first (can appear as 4xx or 5xx)
+	if (MAILBOX_FULL_PATTERNS.test(text) || enhancedCode === '5.2.2' || enhancedCode === '4.2.2') {
+		return {
+			category: 'mailbox_full',
+			retryable: true,
+			suggestedDelayMs: 3600_000, // 1 hour
+			countAsBounce: false,
+		};
+	}
+
+	// Greylisting: retry sooner
+	if (GREYLIST_PATTERNS.test(text)) {
+		return {
+			category: 'greylisted',
+			retryable: true,
+			suggestedDelayMs: extractGreylistDelay(text),
+			countAsBounce: false,
+		};
+	}
+
+	// Rate limiting: back off significantly
+	if (RATE_LIMIT_PATTERNS.test(text)) {
+		return {
+			category: 'rate_limited',
+			retryable: true,
+			suggestedDelayMs: 900_000, // 15 minutes
+			countAsBounce: false,
+		};
+	}
+
+	// Authentication required (check BEFORE policy rejection, since both share "authentication" keyword)
+	if (AUTH_PATTERNS.test(text)) {
+		return {
+			category: 'auth_required',
+			retryable: true,
+			suggestedDelayMs: 600_000, // 10 minutes
+			countAsBounce: false,
+		};
+	}
+
+	// Content rejection: permanent for this message
+	if (CONTENT_REJECT_PATTERNS.test(text)) {
+		return {
+			category: 'content_rejected',
+			retryable: false,
+			suggestedDelayMs: 0,
+			countAsBounce: true,
+		};
+	}
+
+	// Policy rejection (SPF/DKIM/DMARC): permanent
+	if (POLICY_REJECT_PATTERNS.test(text)) {
+		return {
+			category: 'policy_rejected',
+			retryable: false,
+			suggestedDelayMs: 0,
+			countAsBounce: true,
+		};
+	}
+
+	// Fallback: use SMTP code class
+	if (smtpCode && smtpCode >= 500) {
+		return {
+			category: 'unknown',
+			retryable: false,
+			suggestedDelayMs: 0,
+			countAsBounce: true,
+		};
+	}
+
+	if (smtpCode && smtpCode >= 400) {
+		return {
+			category: 'unknown',
+			retryable: true,
+			suggestedDelayMs: 30_000, // 30 seconds (default)
+			countAsBounce: false,
+		};
+	}
+
+	// Connection-level error (no SMTP code)
+	return {
+		category: 'network_error',
+		retryable: true,
+		suggestedDelayMs: 60_000, // 1 minute
+		countAsBounce: false,
+	};
+}
+
+/**
+ * Extract delay from greylisting messages that specify a wait time
+ * e.g., "try again in 120 seconds" → 120000ms
+ * Falls back to 2 minutes if no specific time found
+ */
+function extractGreylistDelay(text: string): number {
+	const secondsMatch = text.match(/try again in (\d+) second/i);
+	if (secondsMatch?.[1]) {
+		return Math.max(parseInt(secondsMatch[1], 10) * 1000, 30_000); // At least 30s
+	}
+
+	const minutesMatch = text.match(/try again in (\d+) minute/i);
+	if (minutesMatch?.[1]) {
+		return Math.max(parseInt(minutesMatch[1], 10) * 60 * 1000, 30_000);
+	}
+
+	return 120_000; // Default 2 minutes for greylisting
+}

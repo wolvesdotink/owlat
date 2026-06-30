@@ -1,0 +1,27 @@
+{
+	"name": "@owlat/ui",
+	"private": true,
+	"license": "MIT",
+	"homepage": "https://owlat.app",
+	"type": "module",
+	"scripts": {
+		"postinstall": "nuxi prepare",
+		"lint": "oxlint --config ../../oxlintrc.json .",
+		"lint:fix": "oxlint --config ../../oxlintrc.json . --fix",
+		"typecheck": "nuxi typecheck",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"test:coverage": "vitest run --coverage"
+	},
+	"devDependencies": {
+		"@nuxtjs/color-mode": "catalog:vue",
+		"@owlat/shared": "workspace:*",
+		"@vitest/coverage-v8": "catalog:",
+		"nuxt": "catalog:vue",
+		"typescript": "catalog:",
+		"vitest": "catalog:",
+		"vue-tsc": "catalog:",
+		"happy-dom": "^20.0.11",
+		"vue": "catalog:vue"
+	}
+}

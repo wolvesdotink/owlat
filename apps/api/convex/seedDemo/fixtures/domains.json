@@ -1,0 +1,9 @@
+[
+	{
+		"slug": "demo-localhost",
+		"domain": "demo.localhost",
+		"status": "verified",
+		"providerType": "mta",
+		"dkimSelector": "s1demo"
+	}
+]

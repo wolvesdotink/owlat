@@ -1,0 +1,38 @@
+/*
+ * Desktop native chrome — vibrancy / Mica surfaces.
+ *
+ * The Tauri window is transparent (tauri.conf.json) so the OS material
+ * (NSVisualEffectView on macOS, Mica on Windows 11) can show through. We keep the
+ * whole app opaque and only "knock a hole" behind the left sidebar (and the macOS
+ * titlebar) so the material shows there — everywhere else paints the solid
+ * warm-dark theme.
+ *
+ * Gating comes from classes on <html>: `.is-desktop` / `.is-mac` / `.is-win` (set
+ * by the boot plugin) and `.vibrancy-on` (added by dashboard.vue ONLY after
+ * setEffects succeeds). That last gate means an unsupported setup — Windows 10, a
+ * failed effect, or plain web — never turns the sidebar translucent and so can
+ * never reveal the desktop wallpaper. Web builds get none of these classes, so
+ * this file is inert there.
+ */
+
+/* Opaque base: the transparent window must never reveal the desktop wallpaper. */
+html.is-desktop,
+html.is-desktop body {
+	background-color: var(--color-bg-base);
+}
+
+/*
+ * Vibrancy on → let the OS material show behind the sidebar, with a warm tint so
+ * owlat identity stays present and text remains legible over bright wallpapers.
+ * The high-specificity selector intentionally overrides the `bg-bg-elevated`
+ * utility on the sidebar without needing !important.
+ */
+html.vibrancy-on.is-mac .has-desktop-chrome aside,
+html.vibrancy-on.is-win .has-desktop-chrome aside {
+	background-color: color-mix(in srgb, var(--color-bg-elevated) 55%, transparent);
+}
+
+/* macOS: run the material up into the titlebar (the traffic-light side). */
+html.vibrancy-on.is-mac .desktop-titlebar {
+	background-color: color-mix(in srgb, var(--color-bg-elevated) 55%, transparent);
+}

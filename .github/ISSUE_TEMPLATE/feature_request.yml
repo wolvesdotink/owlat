@@ -1,0 +1,27 @@
+name: Feature request
+description: Suggest an idea or improvement for Owlat
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have an idea? Please search existing issues and [Discussions](https://github.com/wolvesdotink/owlat/discussions) first.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the use case or pain point. "I'm always frustrated when …"
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: What you'd like to happen. Include which feature area it touches if you know.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any workarounds or other approaches you've thought about.

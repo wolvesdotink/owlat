@@ -1,0 +1,18 @@
+{
+	"compilerOptions": {
+		"target": "ES2022",
+		"module": "ES2022",
+		"moduleResolution": "bundler",
+		"outDir": "dist",
+		"rootDir": "src",
+		"types": ["node"],
+		"lib": ["ES2022"],
+		"strict": true,
+		"noUncheckedIndexedAccess": true,
+		"noPropertyAccessFromIndexSignature": true,
+		"useUnknownInCatchVariables": true,
+		"esModuleInterop": true,
+		"skipLibCheck": true
+	},
+	"include": ["src"]
+}

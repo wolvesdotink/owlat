@@ -1,0 +1,20 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"target": "ES2022",
+		"lib": ["ES2022"],
+		"types": ["node"],
+		"declaration": true,
+		"declarationMap": true,
+		"resolveJsonModule": true,
+		"noEmit": true,
+		"outDir": "./dist",
+		"rootDir": "./src",
+		// tsup's DTS pipeline (node_modules/tsup/dist/rollup.js) injects
+		// `baseUrl: '.'`, which TS 6.x rejects as a hard error. Suppress
+		// the deprecation warning so DTS generation can complete.
+		"ignoreDeprecations": "6.0"
+	},
+	"include": ["src/**/*"],
+	"exclude": ["node_modules", "dist", "test"]
+}

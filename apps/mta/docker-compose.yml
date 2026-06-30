@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  mta:
+    build: .
+    ports:
+      - '3100:3100'
+      - '25:25'
+    environment:
+      PORT: 3100
+      BOUNCE_PORT: 25
+      REDIS_URL: redis://redis:6379
+      MTA_API_KEY: dev-api-key
+      EHLO_HOSTNAME: localhost
+      RETURN_PATH_DOMAIN: bounces.localhost
+      CONVEX_SITE_URL: http://host.docker.internal:3001
+      MTA_WEBHOOK_SECRET: dev-webhook-secret
+      IP_POOLS_TRANSACTIONAL: '127.0.0.1'
+      IP_POOLS_CAMPAIGN: '127.0.0.1'
+      DKIM_KEYS: '{}'
+      WORKER_CONCURRENCY: 10
+      LOG_LEVEL: debug
+      NODE_ENV: development
+      CLAMAV_HOST: clamav
+      CLAMAV_PORT: 3310
+    depends_on:
+      redis:
+        condition: service_started
+      clamav:
+        condition: service_healthy
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis-data:/data
+
+  clamav:
+    image: clamav/clamav:1.3
+    ports:
+      - '3310:3310'
+    volumes:
+      - clamav-data:/var/lib/clamav
+    healthcheck:
+      test: ["CMD", "clamdcheck"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    environment:
+      # Reduce memory usage in development
+      CLAMAV_NO_FRESHCLAMD: "false"
+
+volumes:
+  redis-data:
+  clamav-data:

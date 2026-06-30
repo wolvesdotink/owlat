@@ -1,0 +1,17 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"jsx": "preserve",
+		"lib": ["ESNext", "DOM"],
+		"types": ["node"],
+		"declaration": true,
+		"declarationMap": true,
+		"resolveJsonModule": true,
+		"noEmit": true,
+		"paths": {
+			"@/*": ["./src/*"]
+		}
+	},
+	"include": ["src/**/*.ts", "src/**/*.vue"],
+	"exclude": ["node_modules"]
+}

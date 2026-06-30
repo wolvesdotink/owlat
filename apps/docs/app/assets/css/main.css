@@ -1,0 +1,182 @@
+@import 'tailwindcss';
+@import '../../../../../packages/ui/assets/css/index.css';
+
+@source "../../../../../packages/ui/components/**/*.vue";
+@source "../../../../../packages/ui/composables/**/*.ts";
+
+/* ═══════════════ BASE ═══════════════ */
+
+@layer base {
+	html {
+		scroll-behavior: smooth;
+	}
+
+	/* Film grain overlay */
+	body::after {
+		content: '';
+		position: fixed;
+		inset: 0;
+		z-index: 9999;
+		pointer-events: none;
+		opacity: 0.015;
+		background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+		background-repeat: repeat;
+		background-size: 128px 128px;
+	}
+
+	/* Scrollbar */
+	::-webkit-scrollbar {
+		width: 5px;
+	}
+
+	::-webkit-scrollbar-track {
+		background: transparent;
+	}
+
+	::-webkit-scrollbar-thumb {
+		background-color: var(--color-border-default);
+		border-radius: 999px;
+	}
+}
+
+/* ═══════════════ KEYFRAMES ═══════════════ */
+
+@keyframes fade-up {
+	from {
+		opacity: 0;
+		transform: translateY(12px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+@keyframes glow-pulse {
+	0%,
+	100% {
+		opacity: 0.4;
+	}
+	50% {
+		opacity: 1;
+	}
+}
+
+@keyframes shimmer {
+	0% {
+		background-position: -200% 0;
+	}
+	100% {
+		background-position: 200% 0;
+	}
+}
+
+/* Floating drift — used for background orbs */
+@keyframes drift {
+	0% {
+		transform: translate(0, 0) scale(1);
+	}
+	33% {
+		transform: translate(25px, -18px) scale(1.03);
+	}
+	66% {
+		transform: translate(-18px, 12px) scale(0.97);
+	}
+	100% {
+		transform: translate(0, 0) scale(1);
+	}
+}
+
+@keyframes drift-reverse {
+	0% {
+		transform: translate(0, 0) scale(1);
+	}
+	33% {
+		transform: translate(-20px, 15px) scale(0.97);
+	}
+	66% {
+		transform: translate(22px, -10px) scale(1.04);
+	}
+	100% {
+		transform: translate(0, 0) scale(1);
+	}
+}
+
+/* ═══════════════ READING PROGRESS BAR ═══════════════ */
+
+.reading-progress {
+	position: fixed;
+	top: calc(60px + env(safe-area-inset-top, 0px));
+	left: 0;
+	width: 100%;
+	height: 2px;
+	z-index: 39;
+	pointer-events: none;
+	background: transparent;
+}
+
+.reading-progress-bar {
+	height: 100%;
+	background: linear-gradient(90deg, var(--color-brand), var(--color-accent));
+	transform-origin: left;
+	transition: transform 0.1s linear;
+	will-change: transform;
+	border-radius: 0 1px 1px 0;
+	box-shadow: 0 0 8px rgba(196, 120, 90, 0.3);
+}
+
+/* ═══════════════ PAGE TRANSITIONS ═══════════════ */
+
+.page-enter-active,
+.page-leave-active {
+	transition: opacity 0.2s var(--ease-out-expo),
+		transform 0.2s var(--ease-out-expo);
+}
+
+.page-enter-from {
+	opacity: 0;
+	transform: translateY(8px);
+}
+
+.page-leave-to {
+	opacity: 0;
+	transform: translateY(-4px);
+}
+
+/* ═══════════════ SPOTLIGHT CARD ═══════════════ */
+
+.spotlight-card {
+	position: relative;
+	overflow: hidden;
+}
+
+.spotlight-card::before {
+	content: '';
+	position: absolute;
+	inset: 0;
+	opacity: 0;
+	background: radial-gradient(
+		400px circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
+		rgba(196, 120, 90, 0.07) 0%,
+		transparent 70%
+	);
+	transition: opacity 0.35s ease;
+	pointer-events: none;
+	z-index: 1;
+}
+
+.spotlight-card:hover::before {
+	opacity: 1;
+}
+
+/* ═══════════════ UTILITIES ═══════════════ */
+
+@layer utilities {
+	.btn-press {
+		transition: transform 0.1s var(--ease-smooth);
+	}
+
+	.btn-press:active {
+		transform: scale(0.97);
+	}
+}

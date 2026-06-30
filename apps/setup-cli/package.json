@@ -1,0 +1,34 @@
+{
+	"name": "@owlat/setup-cli",
+	"version": "0.1.0",
+	"private": true,
+	"license": "MIT",
+	"homepage": "https://owlat.app",
+	"type": "module",
+	"bin": {
+		"owlat-setup": "./src/index.ts"
+	},
+	"scripts": {
+		"start": "bun run src/index.ts",
+		"setup": "bun run src/index.ts setup",
+		"build": "bun build src/index.ts --target=bun --outfile=dist/owlat-setup.js",
+		"typecheck": "tsc --noEmit",
+		"test": "vitest run",
+		"test:coverage": "vitest run --coverage",
+		"lint": "oxlint --config ../../oxlintrc.json src && bash scripts/check-env-keys-sync.sh"
+	},
+	"dependencies": {
+		"@clack/prompts": "^0.7.0",
+		"@owlat/shared": "workspace:*",
+		"picocolors": "^1.1.1",
+		"yaml": "^2.6.1"
+	},
+	"devDependencies": {
+		"@better-auth/utils": "*",
+		"@types/node": "catalog:",
+		"@types/bun": "^1.1.0",
+		"@vitest/coverage-v8": "catalog:",
+		"typescript": "catalog:",
+		"vitest": "catalog:"
+	}
+}

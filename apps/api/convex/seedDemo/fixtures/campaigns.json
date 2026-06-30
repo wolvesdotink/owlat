@@ -1,0 +1,30 @@
+[
+	{
+		"slug": "spring-sale",
+		"name": "Spring Sale 2026",
+		"template": "welcome-marketing",
+		"topic": "promotions",
+		"status": "sent",
+		"subject": "Spring Sale — 20% off this week only",
+		"fromName": "Owlat Demo",
+		"fromEmail": "hello@demo.localhost",
+		"sentDaysAgo": 6,
+		"stats": {
+			"sent": 5,
+			"delivered": 5,
+			"opened": 3,
+			"clicked": 1,
+			"bounced": 0
+		}
+	},
+	{
+		"slug": "june-announcements",
+		"name": "June Announcements (draft)",
+		"template": "monthly-newsletter",
+		"topic": "announcements",
+		"status": "draft",
+		"subject": "What's new in June",
+		"fromName": "Owlat Demo",
+		"fromEmail": "hello@demo.localhost"
+	}
+]

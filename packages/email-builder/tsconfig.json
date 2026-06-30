@@ -1,0 +1,16 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"jsx": "preserve",
+		"importHelpers": true,
+		"types": ["node"],
+		"paths": {
+			"@/*": ["./src/*"]
+		},
+		"lib": ["ESNext", "DOM"],
+		"declaration": true,
+		"declarationMap": true
+	},
+	"include": ["src/**/*.ts", "src/**/*.vue"],
+	"exclude": ["node_modules", "dist", "src/**/__tests__"]
+}

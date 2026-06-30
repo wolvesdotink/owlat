@@ -1,0 +1,35 @@
+{
+	"name": "@owlat/docs",
+	"version": "0.1.0",
+	"private": true,
+	"license": "MIT",
+	"homepage": "https://owlat.app",
+	"description": "Owlat Documentation",
+	"type": "module",
+	"scripts": {
+		"dev": "nuxt dev --port 3003",
+		"build": "nuxt generate",
+		"preview": "nuxt preview",
+		"typecheck": "nuxt typecheck",
+		"lint": "oxlint --config ../../oxlintrc.json .",
+		"lint:fix": "oxlint --config ../../oxlintrc.json . --fix",
+		"test": "vitest run",
+		"test:watch": "vitest"
+	},
+	"dependencies": {
+		"@takumi-rs/core": "^1.1.2",
+		"nuxt": "catalog:vue",
+		"vue": "catalog:vue"
+	},
+	"devDependencies": {
+		"@nuxt/content": "^3.12.0",
+		"@nuxt/fonts": "catalog:vue",
+		"@nuxtjs/color-mode": "catalog:vue",
+		"@nuxtjs/seo": "^5.1.0",
+		"@tailwindcss/vite": "catalog:vue",
+		"@vue/server-renderer": "^3.5.30",
+		"better-sqlite3": "^12.8.0",
+		"tailwindcss": "catalog:vue",
+		"vitest": "catalog:"
+	}
+}

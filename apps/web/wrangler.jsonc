@@ -1,0 +1,12 @@
+{
+  "name": "owlat",
+  "compatibility_date": "2026-03-18",
+  "vars": {
+    "NUXT_PUBLIC_CONVEX_URL": "https://majestic-narwhal-391.convex.cloud",
+    "NUXT_PUBLIC_CONVEX_SITE_URL": "https://majestic-narwhal-391.convex.site",
+    "NUXT_PUBLIC_SITE_URL": "https://app.owlat.app",
+    "NUXT_PUBLIC_POSTHOG_API_KEY": "",
+    "NUXT_PUBLIC_POSTHOG_HOST": "https://eu.i.posthog.com",
+    "NUXT_PUBLIC_WAITLIST_ENABLED": "true"
+  }
+}

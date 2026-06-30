@@ -1,0 +1,138 @@
+rules:
+  # ────────────────────────────────────────────────────────────────────
+  # Owlat-specific: Convex mutation/query that accepts a user-controlled
+  # userId via v.string() without calling getMutationContext /
+  # getUserIdFromSession / getBetterAuthSessionWithRole in its body.
+  # The C1 incident (adaptiveDashboard.ts IDOR across 5 endpoints)
+  # happened because nothing structurally prevented this shape from
+  # shipping.
+  # ────────────────────────────────────────────────────────────────────
+  - id: convex-userid-without-session-check
+    severity: ERROR
+    languages: [typescript]
+    message: |
+      This Convex query/mutation accepts a caller-supplied `userId` via
+      `v.string()`. Use the session helper instead (`getUserIdFromSession`,
+      `getMutationContext`, or `getBetterAuthSessionWithRole`) so a caller
+      cannot read/write another user's data. If the caller-supplied id is
+      intentional (e.g. an admin-only endpoint operating on a target user),
+      gate it with `requireAdminContext` first and add a `// PUBLIC` marker
+      explaining why.
+    patterns:
+      - pattern-either:
+          - pattern: |
+              $X = mutation({
+                args: { ..., userId: v.string(), ... },
+                handler: async (...) => { ... },
+              })
+          - pattern: |
+              $X = query({
+                args: { ..., userId: v.string(), ... },
+                handler: async (...) => { ... },
+              })
+      - pattern-not-inside: |
+          $X = $FN({
+            args: { ..., userId: v.string(), ... },
+            handler: async ($CTX, $ARGS) => {
+              ...
+              $SESSION = await getMutationContext(...)
+              ...
+            },
+          })
+      - pattern-not-inside: |
+          $X = $FN({
+            args: { ..., userId: v.string(), ... },
+            handler: async ($CTX, $ARGS) => {
+              ...
+              $SESSION = await getUserIdFromSession(...)
+              ...
+            },
+          })
+      - pattern-not-inside: |
+          $X = $FN({
+            args: { ..., userId: v.string(), ... },
+            handler: async ($CTX, $ARGS) => {
+              ...
+              $SESSION = await getBetterAuthSessionWithRole(...)
+              ...
+            },
+          })
+      - pattern-not-inside: |
+          $X = $FN({
+            args: { ..., userId: v.string(), ... },
+            handler: async ($CTX, $ARGS) => {
+              ...
+              $SESSION = await requireAdminContext(...)
+              ...
+            },
+          })
+    paths:
+      include:
+        - "apps/api/convex/**/*.ts"
+      exclude:
+        - "apps/api/convex/_generated/**"
+        - "apps/api/convex/**/*test*.ts"
+        - "apps/api/convex/**/__tests__/**"
+
+  # ────────────────────────────────────────────────────────────────────
+  # navigateTo / window.location.href with a route-query value that
+  # wasn't passed through safeRedirect. Catches future regressions of
+  # the C3 open-redirect class.
+  # ────────────────────────────────────────────────────────────────────
+  - id: nuxt-unguarded-redirect-from-query
+    severity: WARNING
+    languages: [vue, typescript]
+    message: |
+      Avoid handing a `route.query.*` value directly to `navigateTo()` or
+      `window.location.href`. Pass it through `safeRedirect(value, fallback)`
+      (in `apps/web/app/utils/safeRedirect.ts`) so an attacker can't craft
+      `?redirect=https://evil.com` to bounce authenticated users off-site.
+    patterns:
+      - pattern-either:
+          - pattern: navigateTo($ROUTE.query.$KEY)
+          - pattern: navigateTo($ROUTE.query.$KEY ?? $FALLBACK)
+          - pattern: navigateTo($ROUTE.query.$KEY || $FALLBACK)
+          - pattern: window.location.href = $ROUTE.query.$KEY
+          - pattern: window.location.href = $ROUTE.query.$KEY ?? $FALLBACK
+          - pattern: window.location.href = $ROUTE.query.$KEY || $FALLBACK
+      - pattern-not: safeRedirect($X, $Y)
+
+  # ────────────────────────────────────────────────────────────────────
+  # Webhook handlers that read a signature header but never call a known
+  # verification function (HMAC compare). Catches future regressions of
+  # the C2 unverified-signature class.
+  # ────────────────────────────────────────────────────────────────────
+  - id: webhook-signature-presence-only
+    severity: ERROR
+    languages: [typescript]
+    message: |
+      This handler reads a signature header but appears to only check it
+      exists, never compares it. Use one of the existing verification
+      helpers (resendWebhook.verifySvixSignature, channelWebhooks
+      verifyTwilioSignature / verifyMetaSignature, or mailAuthHttp
+      constant-time HMAC compare) to actually validate the signature.
+    patterns:
+      - pattern-either:
+          - pattern: |
+              $SIG = $REQ.headers.get('x-twilio-signature')
+              ...
+              if (!$SIG) { ... }
+          - pattern: |
+              $SIG = $REQ.headers.get('x-hub-signature-256')
+              ...
+              if (!$SIG) { ... }
+      - pattern-not-inside: |
+          $X = $FN(...) {
+            ...
+            crypto.subtle.sign(...)
+            ...
+          }
+      - pattern-not-inside: |
+          $X = $FN(...) {
+            ...
+            constantTimeEqual(...)
+            ...
+          }
+    paths:
+      include:
+        - "apps/api/convex/**/*.ts"

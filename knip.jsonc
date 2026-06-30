@@ -1,0 +1,133 @@
+{
+	"$schema": "https://unpkg.com/knip@5/schema.json",
+	// Dead-code gate for the owlat monorepo. The goal is a MEANINGFUL but
+	// LOW-NOISE signal: every framework entrypoint (Nuxt app dirs, Convex
+	// function files, generated code, CLI bins) is declared as `entry` or
+	// ignored so it is never mis-reported as dead. What remains — genuinely
+	// orphaned exports/files/deps — is frozen into scripts/dead-code-baseline.txt
+	// and ratcheted by scripts/check-dead-code.sh. Be GENEROUS here: a config
+	// that flags a real entrypoint is worse than one that misses some dead code.
+	"workspaces": {
+		// ---- Convex backend ----------------------------------------------
+		// Every file under convex/ is reachable by the Convex runtime (queries,
+		// mutations, actions, http routes, crons, schema, the generated API).
+		// Treat the whole tree as entry so nothing here is reported as unused,
+		// and never descend into _generated (it is machine-written).
+		"apps/api": {
+			"entry": ["convex/**/*.ts"],
+			"project": ["convex/**/*.ts"],
+			"ignore": ["convex/_generated/**"]
+		},
+
+		// ---- Nuxt apps ---------------------------------------------------
+		// The nuxt plugin understands srcDir (app/), pages, layouts, middleware,
+		// plugins, components and server/. We additionally mark the WHOLE app/
+		// tree (composables, utils, constants, data, lib, types — all
+		// auto-imported by convention) and server/ + e2e specs as entry, so
+		// convention-loaded modules are never reported as unused.
+		"apps/web": {
+			"entry": ["app/**/*.{vue,ts}", "server/**/*.ts", "e2e/**/*.ts", "scripts/**"],
+			"playwright": { "config": ["e2e/playwright.config.ts"] }
+		},
+		"apps/docs": {
+			"entry": ["content.config.ts", "app/**/*.{vue,ts}"]
+		},
+		"apps/marketing": {
+			"entry": ["app/**/*.{vue,ts}"]
+		},
+
+		// ---- Node/TS service apps ---------------------------------------
+		"apps/code-worker": { "entry": ["src/**/*.ts"] },
+		"apps/imap": { "entry": ["src/**/*.ts"] },
+		"apps/mail-sync": { "entry": ["src/**/*.ts"] },
+		"apps/mta": { "entry": ["src/**/*.ts"] },
+		"apps/updater": { "entry": ["src/**/*.ts"] },
+		"apps/setup-cli": {
+			"entry": ["src/**/*.ts", "scripts/**"]
+		},
+		"apps/desktop": {
+			"entry": ["src/**/*.ts", "scripts/**"],
+			"ignore": ["src-tauri/**"]
+		},
+
+		// ---- Library packages -------------------------------------------
+		// The `entry` for each library is its PUBLIC SURFACE only — the
+		// package.json `exports` barrels (e.g. src/index.ts and the subpath
+		// entrypoints) plus its test files — NOT the whole src/ tree. This is
+		// deliberate: a blanket `src/**` entry made every module its own
+		// entrypoint, so a zero-importer TS module / unused export under src/
+		// was never reported. That is the EXACT documented failure mode this
+		// gate exists to catch (speculative seams, zero-caller modules:
+		// authProviders/, repositories/, dead providers). With the surface
+		// pinned to the published barrels, anything under src/ that nothing
+		// downstream (or another src module) reaches is now flagged. Keep these
+		// lists in sync with each package's package.json `exports`. (Test files
+		// are entry so test-only helpers aren't mis-reported; knip's vitest
+		// plugin also discovers __tests__ specs, but listing them is explicit.)
+		"packages/shared": {
+			"entry": [
+				"src/index.ts",
+				"src/utils/index.ts",
+				"src/types/index.ts",
+				"src/registry/index.ts",
+				"src/featureFlags.ts",
+				"src/setupProgress.ts",
+				"src/setupValidators.ts",
+				"src/setupEnv.ts",
+				"src/convexRuntimeEnv.ts",
+				"src/setupSecrets.ts",
+				"src/passwordHash.ts",
+				"src/operationError.ts",
+				"src/postboxSanitize.ts",
+				"src/mailMime.ts",
+				"src/ical.ts",
+				"src/html.ts",
+				"src/attachments.ts",
+				"src/bounceClassification.ts",
+				"src/emailLimits.ts",
+				"src/reputation.ts",
+				"src/warming.ts",
+				"src/secureMessage.ts",
+				"src/spfAlignment.ts",
+				"src/**/__tests__/**/*.ts"
+			]
+		},
+		"packages/channels": { "entry": ["src/index.ts", "src/**/__tests__/**/*.ts"] },
+		"packages/email-builder": { "entry": ["src/index.ts", "src/**/__tests__/**/*.ts"] },
+		"packages/email-renderer": { "entry": ["src/index.ts", "src/**/__tests__/**/*.ts"] },
+		"packages/email-previewer": { "entry": ["src/index.ts", "src/**/__tests__/**/*.ts"] },
+		"packages/email-scanner": {
+			"entry": [
+				"src/index.ts",
+				"src/content/index.ts",
+				"src/files/index.ts",
+				"src/clamav/index.ts",
+				"src/urls/index.ts",
+				"src/**/__tests__/**/*.ts"
+			]
+		},
+		"packages/sdk-js": { "entry": ["src/index.ts", "test/**/*.ts"] },
+		// packages/ui is a Nuxt layer — every composable/component is reachable
+		// by auto-import convention (path prefix), so the whole tree stays entry.
+		"packages/ui": { "entry": ["**/*.{vue,ts}"] }
+	},
+
+	// Global ignores: generated code, build output, vendored SDKs, the non-JS
+	// workspace, and CSS. CSS is ignored because knip does not trace the Nuxt
+	// `css:` array or `@import` chains (e.g. packages/ui/assets/css/index.css
+	// barrel-imports tokens/dark/light/...), so every stylesheet is a false
+	// positive. The gate targets orphaned TypeScript/Vue code — the documented
+	// failure mode (speculative seams, zero-caller modules), not stylesheets.
+	"ignore": [
+		"**/_generated/**",
+		"**/.nuxt/**",
+		"**/.output/**",
+		"**/dist/**",
+		"**/src-tauri/**",
+		"**/*.css",
+		"packages/sdk-java/**"
+	],
+	"ignoreBinaries": ["convex", "tauri", "playwright", "docker", "cargo"],
+	"ignoreWorkspaces": ["packages/sdk-java"],
+	"ignoreExportsUsedInFile": true
+}

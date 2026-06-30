@@ -1,0 +1,9 @@
+/* Owlat Design System — Barrel Import
+ *
+ * Import this single file in each app's main.css after @import 'tailwindcss'.
+ */
+@import './tokens.css';
+@import './dark.css';
+@import './light.css';
+@import './components.css';
+@import './base.css';

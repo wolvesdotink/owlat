@@ -1,0 +1,58 @@
+name: Bug report
+description: Report a problem with Owlat
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug. Please search existing issues first to avoid duplicates.
+        For security vulnerabilities, **do not open an issue** — see [SECURITY.md](../blob/main/SECURITY.md).
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug, including what you expected to happen instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Minimal, ordered steps that reliably trigger the bug.
+      placeholder: |
+        1. Go to …
+        2. Click …
+        3. See error
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Which area?
+      options:
+        - Web dashboard
+        - Setup / install (owlat quickstart)
+        - Sending (campaigns / transactional / MTA)
+        - Receiving (inbox / postbox / IMAP)
+        - AI agent / knowledge graph
+        - API / SDK
+        - Other / not sure
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Owlat version (`owlat version`), OS, deployment (self-host VPS / local dev / desktop), browser if relevant.
+      placeholder: |
+        - Owlat version:
+        - OS:
+        - Deployment:
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Paste any relevant log output (`owlat logs`). This is automatically formatted as code.
+      render: shell

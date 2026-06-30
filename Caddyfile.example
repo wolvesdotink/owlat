@@ -1,0 +1,121 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Owlat — Caddy reverse proxy config (production)
+#
+# Usage:
+#   1. Copy to Caddyfile:          cp Caddyfile.example Caddyfile
+#   2. Replace example.com with your actual domain
+#   3. Update public URLs in .env to match (NUXT_PUBLIC_*)
+#   4. Bring it up:                docker compose --profile tls up -d
+#
+# Caddy automatically provisions and renews Let's Encrypt certificates for
+# every domain it serves. Make sure:
+#   - Ports 80 and 443 are open on your VPS
+#   - Each subdomain has an A record pointing at this server
+#   - You've agreed to the Let's Encrypt Subscriber Agreement (Caddy does this
+#     for you on first boot — see https://letsencrypt.org/repository/)
+#
+# To use a staging CA for testing (avoids hitting rate limits):
+#   acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
+#
+# To use a non-Let's-Encrypt CA (e.g. ZeroSSL), edit the `email` line in the
+# global options block below and add `tls { issuer acme { ... } }` to each site.
+# (There is no CADDY_EMAIL knob — the caddy service does not wire one; the
+# registration email lives in this file.)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ── Global options ────────────────────────────────────────────────────────────
+{
+	# Email for Let's Encrypt registration + expiry warnings.
+	# Edit before first boot.
+	email admin@example.com
+
+	# Uncomment in development/staging:
+	# acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
+
+	# Compression
+	servers {
+		protocols h1 h2 h3
+	}
+}
+
+# ── Web UI (the main Owlat dashboard) ────────────────────────────────────────
+owlat.example.com {
+	reverse_proxy web:3000
+
+	# Security headers — also set by Nuxt nuxt-security; Caddy adds belt-and-suspenders.
+	header {
+		# HSTS — strict-transport-security
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		# Clickjacking
+		X-Frame-Options "SAMEORIGIN"
+		# MIME sniffing
+		X-Content-Type-Options "nosniff"
+		# Referrer policy
+		Referrer-Policy "strict-origin-when-cross-origin"
+		# Remove Server header leak
+		-Server
+	}
+
+	encode gzip zstd
+	log {
+		output stdout
+		format console
+	}
+}
+
+# ── Convex backend (browser-facing WebSocket + HTTP) ─────────────────────────
+api.example.com {
+	reverse_proxy convex:3210
+
+	# Convex WebSocket needs longer timeouts
+	reverse_proxy /api/* convex:3210 {
+		transport http {
+			read_timeout 600s
+			write_timeout 600s
+		}
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		-Server
+	}
+
+	encode gzip zstd
+}
+
+# ── Convex site routes (HTTP actions — e.g. BetterAuth, webhooks) ────────────
+rest.api.example.com {
+	reverse_proxy convex:3211
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		-Server
+	}
+
+	encode gzip zstd
+}
+
+# ── MTA HTTP API (internal — only if you expose send-events externally) ──────
+# Remove or firewall this block unless you need public access to MTA's HTTP API.
+# The typical setup keeps the MTA reachable only from the web container via Docker network.
+# mta.example.com {
+# 	reverse_proxy mta:3100
+#
+# 	header {
+# 		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+# 		X-Content-Type-Options "nosniff"
+# 		-Server
+# 	}
+# }
+
+# ── Optional: Convex dashboard ───────────────────────────────────────────────
+# IMPORTANT: Convex dashboard has NO built-in auth. Do not expose it publicly
+# without putting it behind basic auth or an IP allowlist. Example:
+#
+# convex-dashboard.example.com {
+# 	@notallowed not remote_ip 203.0.113.0/24
+# 	respond @notallowed 403
+# 	reverse_proxy convex-dashboard:6791
+# }

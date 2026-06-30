@@ -1,0 +1,411 @@
+# Owlat Per-Instance Stack — production-grade template with all feature-flag profiles.
+#
+# This template describes a single Owlat instance. It is used by:
+#   • Self-hosters who want the production-grade per-profile setup (richer than
+#     the root docker-compose.yml).
+#   • External provisioning systems that automate Owlat instance creation.
+#
+# Image pinning policy:
+#   • Every Owlat image MUST be pinned to a concrete OWLAT_VERSION (fail-
+#     closed — if unset, compose refuses to start, rather than silently
+#     pulling :latest).
+#   • Third-party images are pinned to a specific minor version tag. In
+#     production, the release pipeline rewrites these to :tag@sha256:<digest>
+#     via scripts/gen-release-compose.sh so tenants pull immutable artifacts.
+#   • CONVEX_BACKEND_VERSION / CONVEX_DASHBOARD_VERSION let operators pin
+#     upstream Convex images without editing the template.
+#
+# Feature-flag profile mapping (packages/shared/src/featureFlags.ts):
+#   Profile name           Feature flag             Service(s) it activates
+#   ─────────────────────  ───────────────────────  ─────────────────────────
+#   ai                     ai                        ollama (optional local LLM)
+#   clamav                 scan.attachments          clamav
+#   inbox-codetasks        inbox.codeTasks           code-worker
+#   personal-mail          postbox                   imap
+#   external-mail          mail.external             mail-sync
+#   deploy / tls           (existing — unchanged)
+#
+# automations / webhooks / the AI pipeline run INSIDE the Convex backend
+# (crons + actions); they are not separate services and need no profile.
+#
+# The setup CLI writes docker-compose.override.yml selecting the active profiles
+# based on instanceSettings.featureFlags. Services without `profiles:` always run.
+
+services:
+  # ── Convex Backend (database + serverless functions) ──
+  convex:
+    image: ghcr.io/get-convex/convex-backend:${CONVEX_BACKEND_VERSION:?CONVEX_BACKEND_VERSION must be set}
+    ports:
+      - "127.0.0.1:3210:3210"
+      - "127.0.0.1:3211:3211"
+    volumes:
+      - convex-data:/convex/data
+    environment:
+      PORT: "3210"
+      SITE_PROXY_PORT: "3211"
+      INSTANCE_SECRET: ${INSTANCE_SECRET}
+      CONTROL_PLANE_URL: ${CONTROL_PLANE_URL:-}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3210/version"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 45s
+    restart: unless-stopped
+
+  # ── Web UI (Nuxt SPA) ──
+  web:
+    image: ghcr.io/wolvesdotink/web:${OWLAT_VERSION:?OWLAT_VERSION must be set}
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "3000"
+      INSTANCE_SECRET: ${INSTANCE_SECRET}
+      NUXT_PUBLIC_CONVEX_URL: ${NUXT_PUBLIC_CONVEX_URL:-http://localhost:3210}
+      NUXT_PUBLIC_CONVEX_SITE_URL: ${NUXT_PUBLIC_CONVEX_SITE_URL:-http://localhost:3211}
+      NUXT_PUBLIC_SITE_URL: ${NUXT_PUBLIC_SITE_URL:-http://localhost:3000}
+      # First-run web setup wizard. OFF by default — the wizard is normally driven
+      # from the `owlat setup` CLI. To let THIS container serve /setup, set
+      # OWLAT_SETUP_MODE=true AND uncomment the writable /opt/owlat mount below (so
+      # /api/setup/apply can write .env), then remove both once setup is finished.
+      # CONVEX_SITE_URL is the in-network URL the apply handler uses to reach the
+      # backend's HTTP routes (/seed/admin).
+      OWLAT_SETUP_MODE: ${OWLAT_SETUP_MODE:-false}
+      OWLAT_DIR: /opt/owlat
+      CONVEX_SITE_URL: ${CONVEX_SITE_URL:-http://convex:3211}
+    depends_on:
+      convex:
+        condition: service_healthy
+    # Uncomment ONLY while running the first-run web setup wizard (with
+    # OWLAT_SETUP_MODE=true). It grants the public web tier write access to the
+    # secrets dir, so remove it again once setup completes.
+    # volumes:
+    #   - /opt/owlat:/opt/owlat
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+    stop_grace_period: 45s
+    restart: unless-stopped
+
+  # ── ACME sidecar (TLS certs for IMAP/SMTP) ──
+  # Issues + renews mail.<slug>.owlat.app via DNS-01 and publishes
+  # default.{crt,key} into the mail-certs volume.
+  acme:
+    image: goacme/lego:v4.27
+    entrypoint: /opt/owlat/acme-entrypoint.sh
+    volumes:
+      - mail-certs:/opt/owlat/certs
+      - acme-data:/data/lego
+      - ./acme-entrypoint.sh:/opt/owlat/acme-entrypoint.sh:ro
+    environment:
+      ACME_DOMAIN: ${ACME_DOMAIN:-mail.localhost}
+      ACME_CONTACT_EMAIL: ${ACME_CONTACT_EMAIL:-admin@localhost}
+      LEGO_PROVIDER: ${LEGO_PROVIDER:-hetzner}
+      HETZNER_API_TOKEN: ${HETZNER_API_TOKEN:-}
+      ACME_STAGING: ${ACME_STAGING:-0}
+      TLS_CERT_DIR: /opt/owlat/certs
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    profiles:
+      - personal-mail
+    restart: unless-stopped
+
+  # ── IMAP server (Postbox personal mailboxes — port 993) ──
+  # Activated by feature-flag profile "personal-mail".
+  imap:
+    image: ghcr.io/wolvesdotink/imap:${OWLAT_VERSION:?OWLAT_VERSION must be set}
+    ports:
+      - "0.0.0.0:993:993"
+    environment:
+      IMAP_PORT: "993"
+      IMAP_GREETING_HOST: ${EHLO_HOSTNAME:-mail.localhost}
+      CONVEX_URL: http://convex:3210
+      CONVEX_ADMIN_KEY: ${CONVEX_ADMIN_KEY}
+      TLS_CERT_DIR: /opt/owlat/certs
+      LOG_LEVEL: ${IMAP_LOG_LEVEL:-info}
+      NODE_ENV: production
+    volumes:
+      - mail-certs:/opt/owlat/certs:ro
+    depends_on:
+      convex:
+        condition: service_healthy
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    security_opt:
+      - no-new-privileges:true
+    profiles:
+      - personal-mail
+    stop_grace_period: 30s
+    restart: unless-stopped
+
+  # ── Mail Sync worker (external IMAP/SMTP accounts) ──
+  # Activated by feature-flag profile "external-mail" (mail.external flag).
+  # Connects OUT to users' own mailboxes (IMAP IDLE sync + SMTP relay); exposes
+  # only an internal /send + /test API to Convex on 3200 — no public ports.
+  # Convex reaches it via the MAIL_SYNC_API_URL / MAIL_SYNC_API_KEY deployment
+  # env vars (set alongside MTA_API_URL, like the other send providers).
+  mail-sync:
+    image: ghcr.io/wolvesdotink/mail-sync:${OWLAT_VERSION:?OWLAT_VERSION must be set}
+    environment:
+      MAIL_SYNC_PORT: "3200"
+      CONVEX_URL: http://convex:3210
+      CONVEX_ADMIN_KEY: ${CONVEX_ADMIN_KEY}
+      # Storage URLs are minted on the PUBLIC convex origin; allow fetching there.
+      MAIL_SYNC_FETCH_ORIGINS: ${NUXT_PUBLIC_CONVEX_URL:-http://localhost:3210}
+      MAIL_SYNC_API_KEY: ${MAIL_SYNC_API_KEY}
+      LOG_LEVEL: ${MAIL_SYNC_LOG_LEVEL:-info}
+      NODE_ENV: production
+    depends_on:
+      convex:
+        condition: service_healthy
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    profiles:
+      - external-mail
+    stop_grace_period: 30s
+    restart: unless-stopped
+
+  # ── MTA (Mail Transfer Agent) ──
+  mta:
+    image: ghcr.io/wolvesdotink/mta:${OWLAT_VERSION:?OWLAT_VERSION must be set}
+    ports:
+      - "127.0.0.1:3100:3100"
+      - "0.0.0.0:25:25"
+    environment:
+      PORT: "3100"
+      BOUNCE_PORT: "25"
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      MTA_API_KEY: ${MTA_API_KEY}
+      EHLO_HOSTNAME: ${EHLO_HOSTNAME:-mail.localhost}
+      RETURN_PATH_DOMAIN: ${RETURN_PATH_DOMAIN:-bounces.localhost}
+      BOUNCE_VERP_KEY: ${BOUNCE_VERP_KEY:-}
+      CONVEX_SITE_URL: http://convex:3211
+      MTA_WEBHOOK_SECRET: ${MTA_WEBHOOK_SECRET}
+      IP_POOLS_TRANSACTIONAL: ${IP_POOLS_TRANSACTIONAL:-0.0.0.0}
+      IP_POOLS_CAMPAIGN: ${IP_POOLS_CAMPAIGN:-0.0.0.0}
+      DKIM_KEYS: ${DKIM_KEYS:-{}}
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-50}
+      LOG_LEVEL: ${MTA_LOG_LEVEL:-info}
+      NODE_ENV: production
+      CLAMAV_HOST: clamav
+      CLAMAV_PORT: "3310"
+    depends_on:
+      redis:
+        condition: service_healthy
+      clamav:
+        # required:false — ClamAV is profile-gated (scan.attachments flag);
+        # the MTA must start without it. service_started, NOT
+        # service_healthy: attachment scanning is fail-open by design — the
+        # MTA must come up while ClamAV is still downloading/loading its
+        # signature DB (minutes on first boot).
+        required: false
+        condition: service_started
+      convex:
+        condition: service_healthy
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 45s
+    # The MTA is now an opt-in service. The `mta` profile activates when the MTA
+    # is the delivery provider (EMAIL_PROVIDER=mta) or when postbox/inbox need it
+    # for inbound / hosted send — computed by getActiveProfiles() and surfaced via
+    # COMPOSE_PROFILES. A Resend/SES, receive-only, or IMAP-only deployment does
+    # not run it. Nothing in this template depends_on the MTA, so gating is safe.
+    profiles:
+      - mta
+    restart: unless-stopped
+
+  # ── Redis (MTA job queue) ──
+  # Pinned minor version (upgrades from 7.x to 8.x require manual approval).
+  # Production releases further pin to @sha256 via gen-release-compose.sh.
+  redis:
+    image: redis:7.4-alpine
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "--no-auth-warning", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+  # ── ClamAV (antivirus scanning) ──
+  # `stable` tracks the current supported release — ClamAV deletes old minor
+  # tags from Docker Hub, so a numeric pin rots into a 404. Production
+  # releases further pin to @sha256.
+  clamav:
+    image: clamav/clamav:stable
+    volumes:
+      - clamav-data:/var/lib/clamav
+    healthcheck:
+      test: ["CMD", "clamdcheck"]
+      interval: 60s
+      timeout: 10s
+      retries: 5
+      # First boot downloads the full signature DB (~300 MB) and loads it into
+      # RAM before clamd answers — easily several minutes on a small VPS.
+      start_period: 600s
+    environment:
+      CLAMAV_NO_FRESHCLAMD: "false"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    profiles:
+      - clamav
+    restart: unless-stopped
+
+  # ── Docker Socket Proxy (restricts Docker API access for updater) ──
+  # Pinned minor version — upstream rarely changes defaults, but any new
+  # release is still reviewed before bumping the tag here.
+  docker-socket-proxy:
+    image: tecnativa/docker-socket-proxy:0.3
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      # S15 / Phase 4.4: least-privilege — only the ops the updater actually
+      # invokes. `docker compose pull`/`up -d` uses CONTAINERS + IMAGES;
+      # `docker compose ps --format json` uses CONTAINERS. We do NOT need
+      # SERVICES/TASKS (those are Swarm-only resources, unused here).
+      CONTAINERS: 1
+      IMAGES: 1
+      INFO: 1
+      POST: 1
+      # Block everything dangerous
+      BUILD: 0
+      COMMIT: 0
+      CONFIGS: 0
+      DISTRIBUTION: 0
+      EXEC: 0
+      NETWORKS: 0
+      NODES: 0
+      PLUGINS: 0
+      SECRETS: 0
+      SERVICES: 0
+      SWARM: 0
+      SYSTEM: 0
+      TASKS: 0
+      VOLUMES: 0
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+  # ── Updater Sidecar (VPS self-update agent) ──
+  updater:
+    image: ghcr.io/wolvesdotink/updater:${OWLAT_VERSION:?OWLAT_VERSION must be set}
+    ports:
+      - "127.0.0.1:3200:3200"
+    environment:
+      PORT: "3200"
+      INSTANCE_SECRET: ${INSTANCE_SECRET}
+      OWLAT_DIR: /opt/owlat
+      DOCKER_HOST: tcp://docker-socket-proxy:2375
+    volumes:
+      - /opt/owlat:/opt/owlat
+    depends_on:
+      - docker-socket-proxy
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+  # ── Convex Deploy (one-shot: pushes functions to backend) ──
+  convex-deploy:
+    image: ghcr.io/wolvesdotink/convex-deploy:${OWLAT_VERSION:?OWLAT_VERSION must be set}
+    environment:
+      CONVEX_SELF_HOSTED_URL: http://convex:3210
+      CONVEX_SELF_HOSTED_ADMIN_KEY: ${CONVEX_ADMIN_KEY}
+    depends_on:
+      convex:
+        condition: service_healthy
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    profiles:
+      - deploy
+
+  # ── Code Worker (AI coding agent sidecar) ──
+  # Gated by featureFlags['inbox.codeTasks'] — enabled via profile "inbox-codetasks".
+  code-worker:
+    image: ghcr.io/wolvesdotink/code-worker:${OWLAT_VERSION:?OWLAT_VERSION must be set}
+    volumes:
+      - code-workspace:/workspace
+    environment:
+      CONVEX_URL: http://convex:3210
+      LLM_PROVIDER: ${LLM_PROVIDER:-openai}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-gpt-4o}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      GITHUB_OWNER: ${GITHUB_OWNER:-}
+      GITHUB_REPO: ${GITHUB_REPO:-}
+      GIT_REPO_URL: ${GIT_REPO_URL:-}
+      GIT_BASE_BRANCH: ${GIT_BASE_BRANCH:-main}
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      convex:
+        condition: service_healthy
+    profiles:
+      - inbox-codetasks
+      - dev
+    restart: unless-stopped
+
+  # ── Ollama (optional local LLM for the agent pipeline / knowledge / search) ──
+  # Gated by featureFlags['ai'] — profile "ai", so it comes up only when AI
+  # features are turned on. Run inference
+  # on your own hardware: set the Convex function env vars LLM_PROVIDER=ollama and
+  # LLM_BASE_URL=http://ollama:11434/v1. No published port — reachable only via the
+  # internal Docker network as ollama:11434; the host must never expose 11434.
+  ollama:
+    image: ollama/ollama:${OLLAMA_VERSION:-latest}
+    volumes:
+      - ollama-data:/root/.ollama
+    environment:
+      OLLAMA_HOST: "0.0.0.0:11434"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    profiles:
+      - ai
+    restart: unless-stopped
+
+volumes:
+  convex-data:
+  redis-data:
+  clamav-data:
+  code-workspace:
+  # Shared TLS cert directory for mail.<domain> — written by the ACME
+  # sidecar and mounted read-only into the IMAP server.
+  mail-certs:
+  # ACME state (Let's Encrypt account, issued certs, renewal metadata).
+  acme-data:
+  # Ollama model store (pulled models persist across restarts).
+  ollama-data:

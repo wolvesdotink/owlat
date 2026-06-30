@@ -1,0 +1,55 @@
+[package]
+name = "owlat-desktop"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+homepage = "https://owlat.app"
+repository = "https://github.com/wolvesdotink/owlat"
+
+[dependencies]
+# `macos-private-api` is required for transparent windows on macOS (used for the
+# sidebar vibrancy material); it pairs with `macOSPrivateApi: true` in tauri.conf.json.
+tauri = { version = "2", features = ["tray-icon", "macos-private-api"] }
+tauri-plugin-notification = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-deep-link = "2"
+tauri-plugin-updater = "2"
+tauri-plugin-shell = "2"
+tauri-plugin-store = "2"
+tauri-plugin-window-state = "2"
+tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
+tauri-plugin-autostart = "2"
+tauri-plugin-global-shortcut = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# OS keychain for per-workspace session tokens (macOS Keychain / Windows
+# Credential Manager / Linux Secret Service).
+keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
+# SSH transport for the desktop "set up a new server" flow (drive the installer
+# on a bare VPS over SSH). Vendored libssh2 + OpenSSL so the release matrix
+# (macOS universal / Ubuntu / Windows) builds without system SSH/TLS libs.
+ssh2 = { version = "0.9", features = ["vendored-openssl"] }
+# Local-source dev installs: pack the working tree into a tar.gz and stream it
+# over the SSH session instead of git-cloning the published repo. `ignore` is
+# ripgrep's walker, so .gitignore (node_modules, build output) is honoured.
+tar = "0.4"
+flate2 = "1"
+ignore = "0.4"
+
+# Desktop notification ACTIONS. The notification plugin only renders action
+# buttons / emits action events on mobile, so we drive them through the
+# underlying native crates directly per-OS. Both are already transitive deps of
+# tauri-plugin-notification, so this adds no new build cost; Windows has no
+# equivalent here and falls back to a plain notification.
+[target.'cfg(target_os = "macos")'.dependencies]
+mac-notification-sys = "0.6"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+notify-rust = "4"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]

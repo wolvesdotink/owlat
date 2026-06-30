@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions & ideas
+    url: https://github.com/wolvesdotink/owlat/discussions
+    about: Ask a question or discuss an idea with the community.
+  - name: Documentation
+    url: https://docs.owlat.app
+    about: Setup, self-hosting, and feature guides.
+  - name: Report a security vulnerability
+    url: https://github.com/wolvesdotink/owlat/blob/main/SECURITY.md
+    about: Please report vulnerabilities privately — do not open a public issue.

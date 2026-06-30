@@ -1,0 +1,31 @@
+{
+	"name": "@owlat/imap",
+	"version": "0.1.0",
+	"private": true,
+	"license": "MIT",
+	"homepage": "https://owlat.app",
+	"description": "Owlat IMAP server (port 993). Translates IMAP4rev1 commands into Convex queries against per-user mailboxes.",
+	"type": "module",
+	"scripts": {
+		"dev": "tsx watch src/index.ts",
+		"build": "tsc",
+		"start": "node dist/index.js",
+		"typecheck": "tsc --noEmit",
+		"lint": "oxlint --config ../../oxlintrc.json --ignore-pattern '**/__tests__/**' src",
+		"lint:fix": "oxlint --config ../../oxlintrc.json --ignore-pattern '**/__tests__/**' src --fix",
+		"test": "vitest run",
+		"test:coverage": "vitest run --coverage"
+	},
+	"dependencies": {
+		"convex": "catalog:convex",
+		"ioredis": "^5.6.0",
+		"pino": "^10.3.1"
+	},
+	"devDependencies": {
+		"@types/node": "catalog:",
+		"@vitest/coverage-v8": "catalog:",
+		"typescript": "catalog:",
+		"tsx": "^4.19.0",
+		"vitest": "catalog:"
+	}
+}

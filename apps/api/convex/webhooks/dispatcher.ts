@@ -1,0 +1,315 @@
+/**
+ * Webhook dispatcher — the shared switch that routes an Inbound delivery
+ * event to its downstream domain mutation. See CONTEXT.md "Webhook
+ * dispatcher".
+ *
+ * Typed dispatch table `{ [K in InboundEvent['kind']]: Handler<K> }`
+ * — adding a new kind to the union without registering a handler is a
+ * compile error. Postbox routing (the `pb-` prefix convention) is handled
+ * inline via `isPostboxMessageId` so adapters never need to care.
+ *
+ * Negative-feedback events (`email.bounced` / `email.complained`) whose
+ * `providerMessageId` resolves to no Send row now emit an `unresolved_bounce`
+ * signal via `recordUnresolvedBounce` instead of acking silently — see that
+ * function for the rationale (M3AAWG measure-unattributable-feedback).
+ */
+
+import { internal } from '../_generated/api';
+import type { ActionCtx } from '../_generated/server';
+import { isPostboxMessageId } from '../delivery/messageIdRouting';
+import type { TransitionOutcome } from '../delivery/sendLifecycle';
+import { logError, logWarn } from '../lib/runtimeLog';
+import type {
+	InboundEvent,
+	InboundEventKind,
+	InboundEventOf,
+} from './types';
+
+/**
+ * Unresolved-bounce observability (M3AAWG "measure unattributable feedback").
+ *
+ * `transitionByProviderMessageId` returns `{ ok: false, reason:
+ * 'send_not_found' }` when a provider message id resolves to no Send row, and
+ * the webhook path otherwise acks silently. For a negative-signal event
+ * (`email.bounced` / `email.complained`) that silence hides a real failure
+ * class: a bounce the MTA attributed (so the worker-side unattributed-bounce
+ * counter never fires) but which is lost at the Convex resolve step — e.g. the
+ * VERP-token-vs-stored-providerMessageId mismatch (PR-01). Without a signal
+ * here those bounces are invisible end-to-end.
+ *
+ * So: when a negative-signal transition resolves to `send_not_found`, emit a
+ * structured `unresolved_bounce` warning carrying the event kind and provider
+ * message id. The literal token makes the mismatch observable to log-based
+ * metrics/alerts rather than a no-op.
+ */
+function recordUnresolvedBounce(
+	signal: 'email.bounced' | 'email.complained',
+	providerMessageId: string,
+	at: number,
+	outcome: TransitionOutcome | undefined
+): void {
+	// Only the specific no-row outcome is a signal; any other shape (success,
+	// a different failure reason, or an absent return) is a quiet no-op.
+	if (!outcome || outcome.ok || outcome.reason !== 'send_not_found') return;
+	logWarn(
+		`[Webhook Dispatcher] unresolved_bounce: ${signal} for providerMessageId ` +
+			`${providerMessageId} resolved to no Send row (at=${at}). The bounce was ` +
+			`attributed at the MTA but lost at Convex resolve — measure-unattributable-feedback.`
+	);
+}
+
+type Handler<K extends InboundEventKind> = (
+	ctx: ActionCtx,
+	event: InboundEventOf<K>
+) => Promise<unknown>;
+
+type DispatchTable = { [K in InboundEventKind]: Handler<K> };
+
+const DISPATCH: DispatchTable = {
+	'email.sent': async (ctx, e) => {
+		if (isPostboxMessageId(e.providerMessageId)) {
+			await ctx.runMutation(
+				internal.mail.postboxOutboundLifecycle.transitionByMtaMessageId,
+				{
+					rawProviderMessageId: e.providerMessageId,
+					input: { to: 'sent', at: e.at },
+				}
+			);
+			return;
+		}
+		await ctx.runMutation(
+			internal.delivery.sendLifecycle.transitionByProviderMessageId,
+			{
+				providerMessageId: e.providerMessageId,
+				transition: {
+					to: 'sent',
+					at: e.at,
+					providerMessageId: e.providerMessageId,
+					...(e.providerType ? { providerType: e.providerType } : {}),
+				},
+			}
+		);
+	},
+	'email.delivered': async (ctx, e) => {
+		// Postbox dispatches have no separate delivered confirmation today.
+		if (isPostboxMessageId(e.providerMessageId)) return;
+		await ctx.runMutation(
+			internal.delivery.sendLifecycle.transitionByProviderMessageId,
+			{
+				providerMessageId: e.providerMessageId,
+				transition: { to: 'delivered', at: e.at },
+			}
+		);
+	},
+	'email.bounced': async (ctx, e) => {
+		if (isPostboxMessageId(e.providerMessageId)) {
+			// Postbox does not distinguish hard/soft at the per-recipient level —
+			// the Send lifecycle's `bounceType` is a campaign-side concern (drives
+			// blocklist insert + reputation). Personal mail discards the
+			// classification per ADR-0012.
+			await ctx.runMutation(
+				internal.mail.postboxOutboundLifecycle.transitionByMtaMessageId,
+				{
+					rawProviderMessageId: e.providerMessageId,
+					input: {
+						to: 'bounced',
+						at: e.at,
+						...(e.bounceMessage ? { bounceMessage: e.bounceMessage } : {}),
+					},
+				}
+			);
+			return;
+		}
+		const outcome = (await ctx.runMutation(
+			internal.delivery.sendLifecycle.transitionByProviderMessageId,
+			{
+				providerMessageId: e.providerMessageId,
+				transition: {
+					to: 'bounced',
+					at: e.at,
+					bounceType: e.bounceType,
+					...(e.bounceMessage ? { bounceMessage: e.bounceMessage } : {}),
+				},
+			}
+		)) as TransitionOutcome;
+		recordUnresolvedBounce('email.bounced', e.providerMessageId, e.at, outcome);
+	},
+	'email.complained': async (ctx, e) => {
+		// Recipient-only complaint (RFC 5965 §3.2): the FBL redacted the
+		// original Message-ID (e.g. Gmail), so there's no send to transition.
+		// Suppress the complainer directly by email — a complaint must always
+		// reach the blocklist, never evaporate into a metric.
+		if (!e.providerMessageId) {
+			if (!e.recipient) return;
+			await ctx.runMutation(internal.blockedEmails.addFromEvent, {
+				email: e.recipient,
+				reason: 'complained',
+			});
+			return;
+		}
+		if (isPostboxMessageId(e.providerMessageId)) return;
+		const outcome = (await ctx.runMutation(
+			internal.delivery.sendLifecycle.transitionByProviderMessageId,
+			{
+				providerMessageId: e.providerMessageId,
+				transition: { to: 'complained', at: e.at },
+			}
+		)) as TransitionOutcome;
+		recordUnresolvedBounce(
+			'email.complained',
+			e.providerMessageId,
+			e.at,
+			outcome
+		);
+	},
+	'email.opened': async (ctx, e) => {
+		if (isPostboxMessageId(e.providerMessageId)) return;
+		await ctx.runMutation(
+			internal.delivery.sendLifecycle.transitionByProviderMessageId,
+			{
+				providerMessageId: e.providerMessageId,
+				transition: { to: 'opened', at: e.at },
+			}
+		);
+	},
+	'email.clicked': async (ctx, e) => {
+		if (isPostboxMessageId(e.providerMessageId)) return;
+		await ctx.runMutation(
+			internal.delivery.sendLifecycle.transitionByProviderMessageId,
+			{
+				providerMessageId: e.providerMessageId,
+				transition: { to: 'clicked', at: e.at, url: e.url },
+			}
+		);
+	},
+	'inbound.received': async (ctx, e) => {
+		const m = e.mail;
+		await ctx.runMutation(internal.inbox.messages.receiveMessage, {
+			from: m.from,
+			to: m.to,
+			subject: m.subject,
+			textBody: m.textBody,
+			htmlBody: m.htmlBody,
+			headers: JSON.stringify(m.headers),
+			messageId: m.messageId,
+			inReplyTo: m.inReplyTo,
+			references: m.references,
+			attachmentMeta:
+				m.attachments.length > 0 ? JSON.stringify(m.attachments) : undefined,
+			timestamp: m.timestamp,
+		});
+	},
+	'channel.received': async (ctx, e) => {
+		await ctx.runMutation(internal.webhooks.channels.processInboundChannel, {
+			channel: e.channel,
+			from: e.from,
+			content: JSON.stringify(e.content),
+			externalMessageId: e.externalMessageId,
+			metadata: e.metadata ? JSON.stringify(e.metadata) : undefined,
+		});
+	},
+	'internal.circuit_breaker_tripped': async (ctx, e) => {
+		// eslint-disable-next-line no-console
+		console.warn(`[Webhook Dispatcher] Circuit breaker tripped: ${e.message}`);
+		try {
+			// Per ADR-0011 the legacy `throttled` literal was dropped; the
+			// circuit-breaker signal re-targets to `warned` (no operational
+			// behavior change — `throttled` never gated sends in the Abuse
+			// gate; both `warned` and the old `throttled` are advisory).
+			await ctx.runMutation(
+				internal.organizations.abuseStatus.transition,
+				{
+					input: {
+						to: 'warned',
+						at: Date.now(),
+						reason: `MTA circuit breaker: ${e.message}${
+							e.bounceRate ? ` (bounce rate: ${e.bounceRate}%)` : ''
+						}`,
+						changedBy: 'mta_circuit_breaker',
+					},
+				}
+			);
+		} catch (err) {
+			logError(
+				'[Webhook Dispatcher] Failed to set abuse status for circuit breaker:',
+				err
+			);
+		}
+	},
+	'internal.dkim_rotated': async (ctx, e) => {
+		const outcome = await ctx.runMutation(
+			internal.domains.lifecycle.recordDkimRotation,
+			{
+				domain: e.domain,
+				selector: e.selector,
+				dnsRecord: e.dnsRecord,
+				phase: e.phase,
+				userId: 'system:dkim_rotation',
+			}
+		);
+		if (outcome && !outcome.ok) {
+			logError(
+				`[Webhook Dispatcher] DKIM rotation for ${e.domain} (${e.selector}) not propagated: ${outcome.reason}`
+			);
+		}
+	},
+	'internal.campaign_complaint_rate': async (ctx, e) => {
+		// A single campaign crossing Gmail's 0.3% spam ceiling is an
+		// operator-actionable abuse signal. Mirror the circuit-breaker handler:
+		// flip the instance abuse status to `warned` (advisory, never auto-pauses
+		// sends) with a campaign-specific reason + audit entry so the alert is
+		// persisted and operator-visible instead of being a dead drop.
+		// eslint-disable-next-line no-console
+		console.warn(
+			`[Webhook Dispatcher] Campaign complaint rate alert: ${e.message}`
+		);
+		const ratePct =
+			e.complaintRate !== undefined
+				? ` (${(e.complaintRate * 100).toFixed(2)}%)`
+				: '';
+		const campaignSuffix = e.campaignId ? ` [campaign ${e.campaignId}]` : '';
+		try {
+			await ctx.runMutation(internal.organizations.abuseStatus.transition, {
+				input: {
+					to: 'warned',
+					at: Date.now(),
+					reason: `MTA campaign complaint rate: ${e.message}${ratePct}${campaignSuffix}`,
+					changedBy: 'mta_campaign_complaint_rate',
+				},
+			});
+		} catch (err) {
+			logError(
+				'[Webhook Dispatcher] Failed to set abuse status for campaign complaint rate:',
+				err
+			);
+		}
+	},
+	'internal.ip_event': async (ctx, e) => {
+		const level = e.severity === 'critical' ? 'error' : 'warn';
+		console[level](`[Webhook Dispatcher] ${e.subkind}: ${e.message ?? ''}`);
+		if (
+			e.subkind === 'warming_complete' ||
+			e.subkind === 'blocklisted' ||
+			e.subkind === 'delisted'
+		) {
+			try {
+				await ctx.scheduler.runAfter(
+					0,
+					internal.delivery.warmingSync.syncWarmingState,
+					{}
+				);
+			} catch (err) {
+				// eslint-disable-next-line no-console
+				console.error('[Webhook Dispatcher] Failed to trigger warming sync:', err);
+			}
+		}
+	},
+};
+
+export async function dispatchInboundEvent(
+	ctx: ActionCtx,
+	event: InboundEvent
+): Promise<void> {
+	const handler = DISPATCH[event.kind] as Handler<InboundEventKind>;
+	await handler(ctx, event as InboundEventOf<InboundEventKind>);
+}

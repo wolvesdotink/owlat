@@ -1,0 +1,63 @@
+{
+	"name": "@owlat/sdk-js",
+	"version": "0.1.0",
+	"description": "Official Owlat SDK for JavaScript and TypeScript",
+	"keywords": [
+		"owlat",
+		"email",
+		"marketing",
+		"api",
+		"sdk",
+		"transactional",
+		"email-marketing"
+	],
+	"license": "MIT",
+	"homepage": "https://owlat.app",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/wolvesdotink/owlat.git",
+		"directory": "packages/sdk-js"
+	},
+	"bugs": {
+		"url": "https://github.com/wolvesdotink/owlat/issues"
+	},
+	"author": "wolves <npm@wolves.ink>",
+	"type": "module",
+	"main": "./dist/index.cjs",
+	"module": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js",
+			"require": "./dist/index.cjs"
+		}
+	},
+	"files": [
+		"dist",
+		"README.md"
+	],
+	"scripts": {
+		"build": "tsup",
+		"dev": "tsup --watch",
+		"typecheck": "tsc --noEmit",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"test:coverage": "vitest run --coverage",
+		"lint": "oxlint --config ../../oxlintrc.json src",
+		"lint:fix": "oxlint --config ../../oxlintrc.json src --fix"
+	},
+	"devDependencies": {
+		"@types/node": "catalog:",
+		"@vitest/coverage-v8": "catalog:",
+		"tsup": "^8.5.1",
+		"typescript": "catalog:",
+		"vitest": "catalog:"
+	},
+	"engines": {
+		"node": ">=18.0.0"
+	},
+	"publishConfig": {
+		"access": "public"
+	}
+}

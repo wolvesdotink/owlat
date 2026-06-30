@@ -1,0 +1,58 @@
+/**
+ * Throwaway self-signed cert/key used ONLY by the loopback STARTTLS SMTP servers
+ * in the outbound-TLS integration tests. The cert carries CN=mx.test and
+ * subjectAltName DNS:mx.test, so a client that offers SNI/servername 'mx.test'
+ * gets a NAME match — leaving the self-signed-ness as the only verification
+ * failure. Opportunistic (rejectUnauthorized:false) clients accept it outright.
+ *
+ * Shared so every outbound-TLS integration test uses the same fixture instead of
+ * each pasting its own PEM block.
+ */
+export const MX_CERT = `-----BEGIN CERTIFICATE-----
+MIIDGzCCAgOgAwIBAgIUU8wA0vZJyVLEAPBXwhc4Ynmfm9wwDQYJKoZIhvcNAQEL
+BQAwEjEQMA4GA1UEAwwHbXgudGVzdDAgFw0yNjA2MjEyMjE4MTZaGA8yMTI2MDUy
+ODIyMTgxNlowEjEQMA4GA1UEAwwHbXgudGVzdDCCASIwDQYJKoZIhvcNAQEBBQAD
+ggEPADCCAQoCggEBAMuPIa32AonH2RDNH3wza2U+7djkJ7oy4IYuIW0hdCtv73RS
+BF4SK/3ItjFutEuEKiWkS0LQzcQgqDmc1C+sqzaEsrCBva7M1Ldn+Z/12vVxpxqd
+fDjcVhAaTdUp8MyNnXxehbqN6F3n62jE1GbS95KMPff2vIKagRtQmczFKGjfXAvl
+Q0RCsi8fLAnuvIlWKc6kiMcrlVsJg2tNBG32OfQ+Xqu3/sOb2Fny58M+7Bi0wI1M
+4MzF9HzQnhCBrD9l3ffP2QhKGqfX8jEjj31O2NF8VvtN8Jmxulfg8WYdAm2Udwba
+7fz1J/47pmDVH7G7zujR+bT85dGppprT0GEQUv0CAwEAAaNnMGUwHQYDVR0OBBYE
+FDMELoIfPTcqugnVeJi2YPM2biM2MB8GA1UdIwQYMBaAFDMELoIfPTcqugnVeJi2
+YPM2biM2MA8GA1UdEwEB/wQFMAMBAf8wEgYDVR0RBAswCYIHbXgudGVzdDANBgkq
+hkiG9w0BAQsFAAOCAQEAtJ0a4ri47YY+7ICDbFNvi+UzAbr68jqxbciyyyr3Wqf5
+TS2vt8X4HEKibvOrBqKeJ45Pgi1MFet5dZJ7hnthYDdVgBda1bya0XWADqx/Rd1T
+/dOOLw4811Gv7ghq6bByZmJ6u03rGmdKYeux9tdykp3sU0nbGV6jD92ZwTXtTDyY
+BX12lAx1878oNY2IFwe+fnEEkZ2nn7oBO8PHR7ikDi76jOYNpWup1sI1xLZBC7/Q
+pVQBsZMgPVS9KbTucsDVoVC80/qXOijWzSBhpaNs6KNpZwV9Dv8Ygkt2/B4AMVRx
+iFesNOfoRng4W1hZ5KgWbWodnzs48/hMrvH7wz80PA==
+-----END CERTIFICATE-----`;
+
+export const MX_KEY = `-----BEGIN PRIVATE KEY-----
+MIIEuwIBADANBgkqhkiG9w0BAQEFAASCBKUwggShAgEAAoIBAQDLjyGt9gKJx9kQ
+zR98M2tlPu3Y5Ce6MuCGLiFtIXQrb+90UgReEiv9yLYxbrRLhColpEtC0M3EIKg5
+nNQvrKs2hLKwgb2uzNS3Z/mf9dr1cacanXw43FYQGk3VKfDMjZ18XoW6jehd5+to
+xNRm0veSjD339ryCmoEbUJnMxSho31wL5UNEQrIvHywJ7ryJVinOpIjHK5VbCYNr
+TQRt9jn0Pl6rt/7Dm9hZ8ufDPuwYtMCNTODMxfR80J4Qgaw/Zd33z9kIShqn1/Ix
+I499TtjRfFb7TfCZsbpX4PFmHQJtlHcG2u389Sf+O6Zg1R+xu87o0fm0/OXRqaaa
+09BhEFL9AgMBAAECgf8PXT/UCZQ7Qe1Fy/iimuO+qqdetPhppZUEi7RY1joOwK6S
+wiNo8to2vCagfbzDsZKWNNWO7FtPcYqJu1TMVZx3tJqTPIdN4IQUyGrNm5WFv6LD
+4JZXRjdIPWRtn4oDPCAHTQPkXkjZfTVfoByRXSCSvu+/IstkUFPA+EcdvbppxSr+
+N2Oc1gjC/bRSBvavaOeZeQVswMFQKYEzA06TC0dLD9B70vnVeMYu207wE+qcKM2z
++z6m84QIdj5Ot+Y+zbbiMukSCzoxun0dPEUaaVrmpN24xSagbhFSxsEVrtpo5bCw
+2P0hSdfJKqjFu9LyMneyYHIdKhzEwzE8m49JV6ECgYEA93D6SO4YtydH+3elRdyI
+nvBxoPDqoEnNe3V0gKgkWNMMOrPO7KWeDrLKkYFfr7dCKTavLsWd3DDCzX0ZyeqA
+5VGzuweSrs7OveSOEyljJUyqMnc3RrL9CCP6CyDgPsIL4Mv0wt3jFh1sPoASDZqs
+c+RB6/cYA0iod9HLYs5dwzkCgYEA0pmW4/mfwGjx5ya10DCYdYwLYBNzgEszJ9LB
+CpwYf74Tonm0bAp6OAmc+9a1NmK20LGkIcjuHVZNqjFh78tTMM77mRZMHSRwC7h4
+A60zDR8S/yNwWVDh30QKY5RkQ8m9Gnl38Lj6lKV0S2euGTo0wsh6qNpIIqL0puyj
+NL+BOeUCgYEAqZDbg4TenQynMHWiZcimOz0MsTzHnIZW8SbhapVPKyudstCrmdI5
+CVuOo73jw7ey+ClITaYQ8ubbaBQ1ywAPypZ9s0qSQ4bneIwarJjtH491BtZZo/Je
+oeh9noiuA3PYzfkWxz9lMi+BkScUuAvp6BVg84JGC2IMSOgVF6XR7UkCgYAr9cN5
+cvHVyBI2ne31ty8b2k/FjkndzdSvy15gSJUUlSikEaOHqeg5KkiKiRbqc1CV337T
+To3lsc4kaIp484g59/qsyeq5apG44Jisq8qsQoBEobEh87AyWpGQl7kWLVY74H8Y
+0IP940uTMeE1guDgh9iSxn2oPTu0XFD1AcSHwQKBgCKp+CpI0wA36qIQrhyYL9l1
+Z+mruPHBvDhG+kAGMaBCC83TQ9Gt1YWhaCv3H2KNq26QHg0sPfFHKcaKnErSMzMb
+M6iFal+sbulchur4IxvobLduAEHo2Sd36UveCixHiNLbHiFQShbGM9j8rT3pYKpl
+EoNeDEIMSzI0wJJDHI2u
+-----END PRIVATE KEY-----`;
