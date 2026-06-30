@@ -1,0 +1,109 @@
+/**
+ * Email Previewer CSS Variables
+ *
+ * These variables follow the Warm Minimal design system and can be
+ * overridden by the consuming application to match their theme.
+ *
+ * The --ep-* prefix is used to avoid conflicts with other packages.
+ */
+
+:root {
+	/* Backgrounds - Warm dark neutrals */
+	--ep-bg-deep: #0c0b09;
+	--ep-bg-base: #12110e;
+	--ep-bg-elevated: #1a1816;
+	--ep-bg-surface: #221f1c;
+	--ep-bg-surface-hover: #2a2724;
+	--ep-bg-overlay: #32302c;
+
+	/* Text - Warm off-whites */
+	--ep-text-primary: #f5f2ef;
+	--ep-text-secondary: #a09890;
+	--ep-text-tertiary: #6b635a;
+	--ep-text-disabled: #4a453e;
+	--ep-text-inverse: #12110e;
+
+	/* Borders - Subtle warm tones */
+	--ep-border-subtle: #252220;
+	--ep-border-default: #302c28;
+	--ep-border-strong: #3d3832;
+
+	/* Brand - Terracotta */
+	--ep-brand: #c4785a;
+	--ep-brand-hover: #d4896a;
+	--ep-brand-muted: #a8674d;
+	--ep-brand-dim: #8c5640;
+	--ep-brand-subtle: #1e1714;
+
+	/* Semantic Colors */
+	--ep-success: #7a9b6e;
+	--ep-success-subtle: #1a1d18;
+	--ep-warning: #c9a55a;
+	--ep-warning-subtle: #1e1b14;
+	--ep-error: #c46b5a;
+	--ep-error-subtle: #1e1514;
+
+	/* Typography */
+	--ep-font-display: 'Instrument Serif', Georgia, serif;
+	--ep-font-sans: 'Geist', -apple-system, BlinkMacSystemFont, sans-serif;
+	--ep-font-mono: 'Geist Mono', 'SF Mono', ui-monospace, monospace;
+
+	/* Shadows */
+	--ep-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
+	--ep-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.15);
+	--ep-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.2);
+
+	/* Transitions */
+	--ep-transition-fast: 0.1s ease;
+	--ep-transition-base: 0.15s ease;
+	--ep-transition-slow: 0.3s ease;
+
+	/* Spacing */
+	--ep-radius-sm: 4px;
+	--ep-radius-md: 8px;
+	--ep-radius-lg: 12px;
+	--ep-radius-xl: 16px;
+}
+
+/* Light mode overrides */
+:root.light {
+	/* Backgrounds */
+	--ep-bg-deep: #faf8f6;
+	--ep-bg-base: #fffdfb;
+	--ep-bg-elevated: #ffffff;
+	--ep-bg-surface: #f5f2ef;
+	--ep-bg-surface-hover: #ebe8e4;
+	--ep-bg-overlay: #e0dcd8;
+
+	/* Text */
+	--ep-text-primary: #1a1714;
+	--ep-text-secondary: #5a524a;
+	--ep-text-tertiary: #8a8078;
+	--ep-text-disabled: #b8b0a8;
+	--ep-text-inverse: #f5f2ef;
+
+	/* Borders */
+	--ep-border-subtle: #e8e4e0;
+	--ep-border-default: #d8d4d0;
+	--ep-border-strong: #b8b4b0;
+
+	/* Brand - Adjusted for light mode */
+	--ep-brand: #b86b4d;
+	--ep-brand-hover: #a85d40;
+	--ep-brand-muted: #c8806a;
+	--ep-brand-dim: #d4a090;
+	--ep-brand-subtle: #faf4f0;
+
+	/* Semantic Colors */
+	--ep-success: #5a8a4e;
+	--ep-success-subtle: #f0f5ee;
+	--ep-warning: #a88840;
+	--ep-warning-subtle: #faf6ee;
+	--ep-error: #b85a4a;
+	--ep-error-subtle: #faf0ee;
+
+	/* Shadows - Lighter for light mode */
+	--ep-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+	--ep-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+	--ep-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.1);
+}

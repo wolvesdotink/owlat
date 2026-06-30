@@ -1,0 +1,15 @@
+[
+	{
+		"slug": "welcome-on-signup",
+		"name": "Welcome on signup",
+		"description": "Sends the welcome email when a new contact is created.",
+		"triggerType": "contact_created",
+		"status": "active",
+		"steps": [
+			{
+				"stepType": "email",
+				"template": "welcome-marketing"
+			}
+		]
+	}
+]

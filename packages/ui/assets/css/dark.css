@@ -1,0 +1,49 @@
+/* Dark Mode (default) */
+:root,
+:root.dark {
+	--color-bg-deep: #070605;
+	--color-bg-base: #0c0b09;
+	--color-bg-elevated: #141210;
+	--color-bg-surface: #1c1916;
+	--color-bg-surface-hover: #24211d;
+	--color-bg-overlay: #2c2925;
+	--color-bg-soft: #181614;
+
+	--color-brand: #c4785a;
+	--color-brand-hover: #d4896a;
+	--color-brand-muted: #a8674d;
+	--color-brand-dim: #8c5640;
+	--color-brand-subtle: #1a1410;
+	--color-brand-glow: #e89878;
+
+	--color-accent: #d4a574;
+	--color-accent-muted: #b8936a;
+
+	--color-text-primary: #f0ece6;
+	--color-text-secondary: #968e84;
+	/* WCAG AA: >=4.5:1 on bg-base/elevated/surface (worst case #1c1916 -> 4.53:1) */
+	--color-text-tertiary: #948a82; /* >=4.5:1 incl. bg-surface-hover (was 4.15:1 there) */
+	--color-text-disabled: #3a3632;
+	--color-text-inverse: #0c0b09;
+
+	--color-border-subtle: #1a1816;
+	--color-border-default: #262320;
+	--color-border-strong: #35312c;
+
+	--color-success: #7a9b6e;
+	--color-success-subtle: #141a12;
+	--color-warning: #c9a55a;
+	--color-warning-subtle: #1a1710;
+	--color-error: #c46b5a;
+	--color-error-subtle: #1a1210;
+	--color-info: #6b8fa8;
+	--color-info-subtle: #101a20;
+
+	--shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.35);
+	--shadow-md: 0 4px 16px rgba(0, 0, 0, 0.25);
+	--shadow-lg: 0 12px 48px rgba(0, 0, 0, 0.3);
+
+	--owlat-code-bg: #0e0d0b;
+	--owlat-bg-soft: #141210;
+	--owlat-divider: #1e1b18;
+}

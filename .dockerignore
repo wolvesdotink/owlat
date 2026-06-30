@@ -1,0 +1,48 @@
+node_modules/
+.git/
+.gitignore
+
+# Build artifacts
+.output/
+.nuxt/
+.turbo/
+dist/
+coverage/
+.nyc_output/
+
+# Environment — `**/` so app/package-level env files are excluded too, not
+# just the repo root. apps/api/.env.local baked into an image both leaks dev
+# config and breaks the self-hosted convex CLI (CONVEX_DEPLOYMENT conflict).
+**/.env
+**/.env.*
+!**/.env.example
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+playwright-report/
+test-results/
+.auth/
+
+# Build caches
+.vitepress/cache/
+packages/sdk-js/dist/
+packages/sdk-java/target/
+
+# Docs & tooling
+.claude/
+.planning/
+.margay/
+.changeset/
+scripts/ralph/
+
+# Rust build artifacts (desktop app) — multi-GB, never needed in images
+apps/desktop/src-tauri/target/

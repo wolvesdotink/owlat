@@ -1,0 +1,31 @@
+[
+	{
+		"slug": "welcome-marketing",
+		"name": "Welcome to Owlat",
+		"type": "marketing",
+		"subject": "Welcome aboard — here's what's next",
+		"previewText": "A quick tour of what you can do with your new account.",
+		"status": "published",
+		"content": "[{\"id\":\"t-1\",\"type\":\"text\",\"content\":{\"text\":\"<h2>Welcome!</h2><p>Thanks for joining. Here are three things to try first.</p>\"}}]",
+		"htmlContent": "<html><body><h2>Welcome!</h2><p>Thanks for joining. Here are three things to try first.</p></body></html>"
+	},
+	{
+		"slug": "order-confirmation",
+		"name": "Order confirmation",
+		"type": "marketing",
+		"subject": "Your order #{{order_number}} is confirmed",
+		"previewText": "We're getting your order ready to ship.",
+		"status": "published",
+		"content": "[{\"id\":\"t-2\",\"type\":\"text\",\"content\":{\"text\":\"<p>Thanks for your order, {{first_name}}! Order #{{order_number}} is being processed.</p>\"}}]",
+		"htmlContent": "<html><body><p>Thanks for your order! Your order is being processed.</p></body></html>"
+	},
+	{
+		"slug": "monthly-newsletter",
+		"name": "Monthly Newsletter",
+		"type": "marketing",
+		"subject": "This month at Owlat",
+		"previewText": "What we shipped, what's next.",
+		"status": "draft",
+		"content": "[{\"id\":\"t-3\",\"type\":\"text\",\"content\":{\"text\":\"<h2>Monthly recap</h2><p>Highlights from the month.</p>\"}}]"
+	}
+]

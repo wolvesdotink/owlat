@@ -1,0 +1,26 @@
+[
+	{
+		"slug": "product-updates",
+		"name": "Product Updates",
+		"description": "Release notes, new features, changelog highlights.",
+		"requireDoubleOptIn": true,
+		"displayOrder": 1,
+		"isDefault": true
+	},
+	{
+		"slug": "promotions",
+		"name": "Promotions",
+		"description": "Special offers, discount codes, limited-time sales.",
+		"requireDoubleOptIn": false,
+		"displayOrder": 2,
+		"isDefault": false
+	},
+	{
+		"slug": "announcements",
+		"name": "Announcements",
+		"description": "Company news and major announcements.",
+		"requireDoubleOptIn": false,
+		"displayOrder": 3,
+		"isDefault": false
+	}
+]

@@ -1,0 +1,45 @@
+{
+	"name": "@owlat/mta",
+	"version": "0.1.0",
+	"private": true,
+	"license": "MIT",
+	"homepage": "https://owlat.app",
+	"description": "Owlat custom MTA - direct SMTP delivery with intelligent rate control",
+	"type": "module",
+	"scripts": {
+		"dev": "tsx watch src/index.ts",
+		"build": "tsc",
+		"start": "node dist/index.js",
+		"typecheck": "tsc --noEmit",
+		"lint": "oxlint --config ../../oxlintrc.json --ignore-pattern '**/__tests__/**' src",
+		"lint:fix": "oxlint --config ../../oxlintrc.json --ignore-pattern '**/__tests__/**' src --fix",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"test:coverage": "vitest run --coverage"
+	},
+	"dependencies": {
+		"@hono/node-server": "^2.0.0",
+		"@owlat/email-scanner": "workspace:*",
+		"@owlat/shared": "workspace:*",
+		"groupmq": "^1.1.0",
+		"hono": "^4.12.25",
+		"ioredis": "^5.6.0",
+		"mailauth": "^4.13.3",
+		"mailparser": "^3.7.0",
+		"nodemailer": "^8.0.6",
+		"pino": "^10.3.1",
+		"prom-client": "^15.1.0",
+		"smtp-server": "^3.13.0"
+	},
+	"devDependencies": {
+		"@types/node": "catalog:",
+		"@types/nodemailer": "^8.0.0",
+		"@types/smtp-server": "^3.5.10",
+		"@types/mailparser": "^3.4.5",
+		"typescript": "catalog:",
+		"tsx": "^4.19.0",
+		"vitest": "catalog:",
+		"ioredis-mock": "^8.9.0",
+		"mailauth": "^4.13.3"
+	}
+}

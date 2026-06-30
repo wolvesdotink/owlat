@@ -1,0 +1,70 @@
+name: E2E
+
+# Playwright e2e runs nightly + on manual dispatch, NOT on every PR: it needs the
+# CONVEX_TEST_URL secrets and a full browser install, so it executes out-of-band
+# where a failure (or unset secret) can't block PR merges. The job skips cleanly
+# when the test-deployment secret isn't configured.
+
+on:
+  schedule:
+    - cron: "0 4 * * *" # nightly 04:00 UTC
+  workflow_dispatch: {}
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.1"
+
+      - name: Check test deployment is configured
+        id: secrets
+        env:
+          CONVEX_TEST_URL: ${{ secrets.CONVEX_TEST_URL }}
+        run: |
+          if [ -n "$CONVEX_TEST_URL" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::CONVEX_TEST_URL secret not set — skipping the e2e run."
+          fi
+
+      - name: Cache bun dependencies
+        if: steps.secrets.outputs.configured == 'true'
+        uses: actions/cache@v5
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+
+      - name: Install dependencies
+        if: steps.secrets.outputs.configured == 'true'
+        run: bun install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        if: steps.secrets.outputs.configured == 'true'
+        run: cd apps/web && bunx playwright install chromium --with-deps
+
+      - name: Run E2E tests
+        if: steps.secrets.outputs.configured == 'true'
+        run: bun run --cwd apps/web test:e2e
+        env:
+          NUXT_PUBLIC_CONVEX_URL: ${{ secrets.CONVEX_TEST_URL }}
+          NUXT_PUBLIC_CONVEX_SITE_URL: ${{ secrets.CONVEX_TEST_SITE_URL }}
+          NUXT_PUBLIC_SITE_URL: http://localhost:3000
+
+      - name: Upload Playwright report
+        if: always() && steps.secrets.outputs.configured == 'true'
+        uses: actions/upload-artifact@v5
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report/
+          retention-days: 7

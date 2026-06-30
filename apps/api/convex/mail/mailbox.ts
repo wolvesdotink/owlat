@@ -1,0 +1,670 @@
+/**
+ * Mailbox identity management — per-user personal mailboxes (Postbox).
+ *
+ * - Admin CRUD (org-scoped via getMutationContext)
+ * - Provisioned mailboxes are pushed to the MTA's Redis cache
+ *   (`mailboxActions.pushMailboxToCache`) so `findMailboxRoute()` resolves
+ *   inbound recipients without a Convex round-trip per RCPT TO.
+ *
+ * Distinct from CRM `contacts` and from the AI-shared `inboundMessages`
+ * pipeline. See packages/shared/src/featureFlags.ts (`postbox` flag).
+ */
+
+import { v } from 'convex/values';
+import type { MutationCtx, QueryCtx } from '../_generated/server';
+import { authedMutation, publicQuery } from '../lib/authedFunctions';
+import type { Id, Doc } from '../_generated/dataModel';
+import { internal } from '../_generated/api';
+import {
+	requireAdminContext,
+	getBetterAuthSessionWithRole,
+} from '../lib/sessionOrganization';
+import {
+	throwForbidden,
+	throwInvalidInput,
+	throwAlreadyExists,
+	throwNotFound,
+} from '../_utils/errors';
+import { loadOwnedMailbox, loadReadableMailbox } from './permissions';
+import { isMessageSnoozed } from '../lib/mailSnooze';
+import { normalizeEmail, parseAddress } from '@owlat/shared';
+
+const SYSTEM_FOLDER_ROLES = ['inbox', 'sent', 'drafts', 'trash', 'spam', 'archive'] as const;
+type FolderRole = (typeof SYSTEM_FOLDER_ROLES)[number];
+
+const SYSTEM_FOLDER_NAMES: Record<FolderRole, string> = {
+	inbox: 'INBOX',
+	sent: 'Sent',
+	drafts: 'Drafts',
+	trash: 'Trash',
+	spam: 'Spam',
+	archive: 'Archive',
+};
+
+/**
+ * Strip "Name <addr>" framing and lowercase, via the shared `parseAddress` so
+ * mailbox keys agree with every other address derivation. Falls back to a
+ * lowercased trim when no address is present (preserving the prior behavior of
+ * returning the input for non-address strings).
+ */
+export function canonicalAddress(raw: string): string {
+	return parseAddress(raw)?.address ?? normalizeEmail(raw);
+}
+
+/**
+ * Insert a `mailboxes` row, provision the six system folders, and schedule
+ * the MTA cache push. Caller is responsible for the dup-check and any
+ * permission gating. Returns the new mailbox id.
+ *
+ * Shared by `create` (admin path) and `pendingMailbox.claimForInvitation`
+ * (post-accept path) so the two stay in sync.
+ */
+export async function provisionMailbox(
+	ctx: MutationCtx,
+	args: {
+		userId: string;
+		organizationId: string;
+		address: string;
+		domain: string;
+		displayName?: string;
+		quotaBytes?: number;
+		/** undefined ⇒ 'hosted'. 'external' skips the MTA cache push (see below). */
+		kind?: 'hosted' | 'external';
+		externalAccountId?: Id<'externalMailAccounts'>;
+	}
+): Promise<Id<'mailboxes'>> {
+	const now = Date.now();
+	const kind = args.kind ?? 'hosted';
+	const mailboxId = await ctx.db.insert('mailboxes', {
+		userId: args.userId,
+		organizationId: args.organizationId,
+		address: args.address,
+		domain: args.domain,
+		displayName: args.displayName,
+		kind,
+		externalAccountId: args.externalAccountId,
+		status: 'active',
+		quotaBytes: args.quotaBytes,
+		usedBytes: 0,
+		uidValidity: now,
+		createdAt: now,
+		updatedAt: now,
+	});
+
+	for (const role of SYSTEM_FOLDER_ROLES) {
+		await ctx.db.insert('mailFolders', {
+			mailboxId,
+			name: SYSTEM_FOLDER_NAMES[role],
+			role,
+			uidValidity: now,
+			uidNext: 1,
+			highestModseq: 1,
+			totalCount: 0,
+			unseenCount: 0,
+			subscribed: true,
+			createdAt: now,
+			updatedAt: now,
+		});
+	}
+
+	// External mailboxes are NOT authoritative on the local MTA — mail for an
+	// external address is delivered by the user's own provider and synced in by
+	// apps/mail-sync. Pushing them to the MTA mailbox cache would make the local
+	// MTA wrongly claim the address. Hosted mailboxes still push.
+	if (kind !== 'external') {
+		await ctx.scheduler.runAfter(0, internal.mail.mailboxActions.pushMailboxToCache, {
+			mailboxId,
+		});
+	}
+
+	return mailboxId;
+}
+
+export const create = authedMutation({
+	args: {
+		userId: v.string(),
+		address: v.string(),
+		displayName: v.optional(v.string()),
+		quotaBytes: v.optional(v.number()),
+	},
+	handler: async (ctx, args) => {
+		await requireAdminContext(ctx);
+		const sessionWithOrg = await getBetterAuthSessionWithRole(ctx);
+		if (!sessionWithOrg?.activeOrganizationId) {
+			throwForbidden('No active organization');
+		}
+		const address = canonicalAddress(args.address);
+		const [, domain] = address.split('@');
+		if (!domain) {
+			throwInvalidInput('Invalid email address');
+		}
+
+		const existing = await ctx.db
+			.query('mailboxes')
+			.withIndex('by_address', (q) => q.eq('address', address))
+			.first();
+		if (existing) {
+			throwAlreadyExists(`Mailbox ${address} already exists`);
+		}
+
+		return provisionMailbox(ctx, {
+			userId: args.userId,
+			organizationId: sessionWithOrg.activeOrganizationId,
+			address,
+			domain,
+			displayName: args.displayName,
+			quotaBytes: args.quotaBytes,
+		});
+	},
+});
+
+async function readSession(ctx: Parameters<typeof getBetterAuthSessionWithRole>[0]) {
+	const s = await getBetterAuthSessionWithRole(ctx);
+	if (!s || !s.activeOrganizationId || !s.role) return null;
+	return { userId: s.userId, role: s.role };
+}
+
+// public: soft-auth — returns empty for anonymous; mailbox ownership is still enforced in-handler
+export const list = publicQuery({
+	args: {},
+	handler: async (ctx) => {
+		const session = await readSession(ctx);
+		if (!session) return [];
+		// Use `by_status` to skip deleted rows at the DB layer. Two index
+		// reads (active + suspended) is still cheaper than a full scan
+		// followed by an in-memory filter.
+		const [active, suspended] = await Promise.all([
+			ctx.db
+				.query('mailboxes')
+				.withIndex('by_status', (q) => q.eq('status', 'active'))
+				.collect(),
+			ctx.db
+				.query('mailboxes')
+				.withIndex('by_status', (q) => q.eq('status', 'suspended'))
+				.collect(),
+		]);
+		const visible = [...active, ...suspended];
+		if (session.role === 'owner' || session.role === 'admin') {
+			return visible;
+		}
+		return visible.filter((m) => m.userId === session.userId);
+	},
+});
+
+// public: soft-auth — returns empty for anonymous; mailbox ownership is still enforced in-handler
+export const get = publicQuery({
+	args: { mailboxId: v.id('mailboxes') },
+	handler: async (ctx, args) => {
+		return loadReadableMailbox(ctx, args.mailboxId);
+	},
+});
+
+export const remove = authedMutation({
+	args: { mailboxId: v.id('mailboxes') },
+	handler: async (ctx, args) => {
+		await requireAdminContext(ctx);
+		const mailbox = await ctx.db.get(args.mailboxId);
+		await ctx.db.patch(args.mailboxId, {
+			status: 'deleted',
+			updatedAt: Date.now(),
+		});
+		if (mailbox) {
+			await ctx.scheduler.runAfter(0, internal.mail.mailboxActions.removeFromCache, {
+				address: mailbox.address,
+			});
+		}
+		return { success: true };
+	},
+});
+
+/**
+ * Edit a provisioned mailbox's display name after creation. Ownership-scoped
+ * via `loadOwnedMailbox` (owner/admin, or the mailbox owner) — mirrors
+ * `labels.update`. The address is immutable (it's the routing key pushed to the
+ * MTA cache); only the human-facing `displayName` can change. An empty/blank
+ * value clears it back to "(no display name)".
+ */
+export const setDisplayName = authedMutation({
+	args: {
+		mailboxId: v.id('mailboxes'),
+		displayName: v.string(),
+	},
+	handler: async (ctx, args) => {
+		const owned = await loadOwnedMailbox(ctx, args.mailboxId);
+		if (!owned.ok) {
+			if (owned.reason === 'mailbox_missing') throwNotFound('Mailbox');
+			throwForbidden('Mailbox not accessible');
+		}
+		const trimmed = args.displayName.trim();
+		await ctx.db.patch(args.mailboxId, {
+			displayName: trimmed || undefined,
+			updatedAt: Date.now(),
+		});
+		return { success: true };
+	},
+});
+
+
+/** List messages in a mailbox (most-recent first), for the webmail UI. */
+// public: soft-auth — returns empty for anonymous; mailbox ownership is still enforced in-handler
+export const listMessages = publicQuery({
+	args: {
+		mailboxId: v.id('mailboxes'),
+		folderRole: v.optional(v.string()),
+		folderId: v.optional(v.id('mailFolders')),
+		limit: v.optional(v.number()),
+	},
+	handler: async (ctx, args) => {
+		const empty = { messages: [] as Doc<'mailMessages'>[], hasMore: false };
+		const mailbox = await loadReadableMailbox(ctx, args.mailboxId);
+		if (!mailbox) return empty;
+
+		const now = Date.now();
+		const limit = Math.min(args.limit ?? 50, 500);
+		// A message is hidden from its origin folder while snoozedUntil is in the
+		// future; the wakeup cron clears the flag to float it back.
+		const isSnoozed = (m: { snoozedUntil?: number }) => isMessageSnoozed(m, now);
+
+		// Virtual "Snoozed" view — mailbox-scoped, range-scanned on snoozedUntil so
+		// older snoozed mail stays reachable (no fixed recent-window cap).
+		if (args.folderRole === 'snoozed') {
+			const raw = await ctx.db
+				.query('mailMessages')
+				.withIndex('by_mailbox_and_snoozed', (q) =>
+					q.eq('mailboxId', args.mailboxId).gt('snoozedUntil', now)
+				)
+				.take(limit + 1);
+			const hasMore = raw.length > limit;
+			const messages = raw.slice(0, limit).sort((a, b) => b.receivedAt - a.receivedAt);
+			return { messages, hasMore };
+		}
+
+		// Custom-folder view, addressed directly by id — custom IMAP folders carry
+		// no role, so the sidebar links them here (the by_folder index, like the
+		// role path below, just keyed on the folder id). Ownership re-checked.
+		if (args.folderId) {
+			const folder = await ctx.db.get(args.folderId);
+			if (!folder || folder.mailboxId !== args.mailboxId) return empty;
+			const raw = await ctx.db
+				.query('mailMessages')
+				.withIndex('by_folder_and_received', (q) => q.eq('folderId', folder._id))
+				.order('desc')
+				.take(limit + 1);
+			return {
+				messages: raw.slice(0, limit).filter((m) => !isSnoozed(m)),
+				hasMore: raw.length > limit,
+			};
+		}
+
+		// Folder-scoped view, indexed by arrival (no mailbox-wide overfetch). The
+		// extra row drives a reliable hasMore even after the snooze filter.
+		if (args.folderRole) {
+			const folder = await ctx.db
+				.query('mailFolders')
+				.withIndex('by_mailbox_and_role', (q) =>
+					q.eq('mailboxId', args.mailboxId).eq('role', args.folderRole as FolderRole)
+				)
+				.first();
+			if (!folder) return empty;
+			const raw = await ctx.db
+				.query('mailMessages')
+				.withIndex('by_folder_and_received', (q) => q.eq('folderId', folder._id))
+				.order('desc')
+				.take(limit + 1);
+			return {
+				messages: raw.slice(0, limit).filter((m) => !isSnoozed(m)),
+				hasMore: raw.length > limit,
+			};
+		}
+
+		// No folder (label view): whole mailbox by arrival.
+		const raw = await ctx.db
+			.query('mailMessages')
+			.withIndex('by_mailbox_and_received', (q) => q.eq('mailboxId', args.mailboxId))
+			.order('desc')
+			.take(limit + 1);
+		return {
+			messages: raw.slice(0, limit).filter((m) => !isSnoozed(m)),
+			hasMore: raw.length > limit,
+		};
+	},
+});
+
+/**
+ * Conversation list — one row per thread that has a message in the folder,
+ * newest first. Snoozed threads (newest message snoozed) are hidden. Threads
+ * aren't folder-indexed, so this overfetches the recent set then filters; it's
+ * used for the inbox view (where most threads live), with the flat
+ * `listMessages` serving other folders.
+ */
+// public: soft-auth — returns empty for anonymous; mailbox ownership is still enforced in-handler
+export const listThreads = publicQuery({
+	args: {
+		mailboxId: v.id('mailboxes'),
+		folderRole: v.string(),
+		limit: v.optional(v.number()),
+	},
+	handler: async (ctx, args) => {
+		const empty = { threads: [] as Doc<'mailThreads'>[], hasMore: false };
+		const mailbox = await loadReadableMailbox(ctx, args.mailboxId);
+		if (!mailbox) return empty;
+
+		const now = Date.now();
+		const limit = Math.min(args.limit ?? 50, 500);
+		const candidates = await ctx.db
+			.query('mailThreads')
+			.withIndex('by_mailbox_and_last_message', (q) => q.eq('mailboxId', args.mailboxId))
+			.order('desc')
+			.take((limit + 1) * 3);
+
+		const threads: Doc<'mailThreads'>[] = [];
+		for (const t of candidates) {
+			if (!t.folderRoles.includes(args.folderRole)) continue;
+			if (t.latestMessageId) {
+				const latest = await ctx.db.get(t.latestMessageId);
+				if (latest && isMessageSnoozed(latest, now)) continue;
+			}
+			threads.push(t);
+			if (threads.length > limit) break;
+		}
+		return { threads: threads.slice(0, limit), hasMore: threads.length > limit };
+	},
+});
+
+/** List folders for a mailbox (for sidebar with unread counts). */
+// public: soft-auth — returns empty for anonymous; mailbox ownership is still enforced in-handler
+export const listFolders = publicQuery({
+	args: { mailboxId: v.id('mailboxes') },
+	handler: async (ctx, args) => {
+		const mailbox = await loadReadableMailbox(ctx, args.mailboxId);
+		if (!mailbox) return [];
+		return ctx.db
+			.query('mailFolders')
+			.withIndex('by_mailbox', (q) => q.eq('mailboxId', args.mailboxId))
+			.collect();
+	},
+});
+
+/**
+ * Total unread mail in the caller's own Postbox inbox(es) — the count behind
+ * the desktop dock/taskbar badge and new-mail notifications. Scoped to the
+ * caller's mailboxes even for admins (this is a personal badge, not an org
+ * aggregate). Reads the denormalized `mailFolders.unseenCount`, so it stays
+ * O(mailboxes-per-user) regardless of message volume.
+ */
+/**
+ * The single newest unread, not-snoozed inbox message across the user's
+ * mailboxes — for a desktop "new mail" notification that can deep-link/triage.
+ * Minimal fields only.
+ */
+// public: soft-auth — returns null for anonymous; ownership via by_user
+export const latestInboxUnread = publicQuery({
+	args: {},
+	handler: async (ctx) => {
+		const session = await readSession(ctx);
+		if (!session) return null;
+		const now = Date.now();
+		const mailboxes = await ctx.db
+			.query('mailboxes')
+			.withIndex('by_user', (q) => q.eq('userId', session.userId))
+			.collect(); // bounded: one user's mailboxes (typically 1)
+		let best: {
+			messageId: Id<'mailMessages'>;
+			fromName?: string;
+			fromAddress: string;
+			subject: string;
+			receivedAt: number;
+		} | null = null;
+		for (const mb of mailboxes) {
+			if (mb.status !== 'active') continue;
+			const inbox = await ctx.db
+				.query('mailFolders')
+				.withIndex('by_mailbox_and_role', (q) =>
+					q.eq('mailboxId', mb._id).eq('role', 'inbox')
+				)
+				.first();
+			if (!inbox) continue;
+			const recent = await ctx.db
+				.query('mailMessages')
+				.withIndex('by_folder_and_received', (q) => q.eq('folderId', inbox._id))
+				.order('desc')
+				.take(20); // bounded: scan the 20 newest for the latest visible unread
+			const hit = recent.find((m) => !m.flagSeen && !isMessageSnoozed(m, now));
+			if (hit && (!best || hit.receivedAt > best.receivedAt)) {
+				best = {
+					messageId: hit._id,
+					fromName: hit.fromName,
+					fromAddress: hit.fromAddress,
+					subject: hit.subject,
+					receivedAt: hit.receivedAt,
+				};
+			}
+		}
+		return best;
+	},
+});
+
+// public: soft-auth — returns 0 for anonymous; only sums the caller's own mailboxes
+export const inboxUnreadCount = publicQuery({
+	args: {},
+	handler: async (ctx) => {
+		const session = await readSession(ctx);
+		if (!session) return 0;
+		const mailboxes = await ctx.db
+			.query('mailboxes')
+			.withIndex('by_user', (q) => q.eq('userId', session.userId))
+			.collect(); // bounded: one user's mailboxes (typically 1)
+		let unread = 0;
+		for (const mb of mailboxes) {
+			if (mb.status !== 'active') continue;
+			const inbox = await ctx.db
+				.query('mailFolders')
+				.withIndex('by_mailbox_and_role', (q) =>
+					q.eq('mailboxId', mb._id).eq('role', 'inbox')
+				)
+				.first();
+			if (inbox) unread += inbox.unseenCount;
+		}
+		return unread;
+	},
+});
+
+/**
+ * Load a message the caller is allowed to READ (owner/admin, or the mailbox
+ * owner) on an active mailbox, else null. Single read-authz predicate shared by
+ * the by-id message queries; mailbox ownership + `status === 'active'` flow
+ * through the canonical {@link loadReadableMailbox} so a suspended/deleted
+ * mailbox can't be read by id.
+ */
+async function loadReadableMessage(
+	ctx: QueryCtx,
+	messageId: Id<'mailMessages'>
+): Promise<Doc<'mailMessages'> | null> {
+	const message = await ctx.db.get(messageId);
+	if (!message) return null;
+	const mailbox = await loadReadableMailbox(ctx, message.mailboxId);
+	if (!mailbox) return null;
+	return message;
+}
+
+/**
+ * Single message by id (ownership-checked). Backs the reader's deep-link
+ * fallback: opening a bookmark/notification/search link to a message that
+ * isn't in the currently-loaded list page would otherwise render blank.
+ */
+// public: soft-auth — returns null for anonymous; mailbox ownership is still enforced in-handler
+export const getMessage = publicQuery({
+	args: { messageId: v.id('mailMessages') },
+	handler: async (ctx, args) => {
+		return loadReadableMessage(ctx, args.messageId);
+	},
+});
+
+/** Fetch all messages in a thread (oldest first). Used by the conversation view. */
+// public: soft-auth — returns empty for anonymous; mailbox ownership is still enforced in-handler
+export const listThreadMessages = publicQuery({
+	args: { messageId: v.id('mailMessages') },
+	handler: async (ctx, args) => {
+		const seed = await ctx.db.get(args.messageId);
+		if (!seed) return null;
+		const mailbox = await loadReadableMailbox(ctx, seed.mailboxId);
+		if (!mailbox) return null;
+		const siblings = await ctx.db
+			.query('mailMessages')
+			.withIndex('by_thread', (q) => q.eq('threadId', seed.threadId))
+			.collect();
+		siblings.sort((a, b) => a.receivedAt - b.receivedAt);
+		const labels = await ctx.db
+			.query('mailLabels')
+			.withIndex('by_mailbox', (q) => q.eq('mailboxId', seed.mailboxId))
+			.collect();
+		const labelMap = new Map(labels.map((l) => [l._id, l]));
+		const thread = await ctx.db.get(seed.threadId);
+		return {
+			thread,
+			messages: siblings,
+			labels: Array.from(labelMap.values()),
+		};
+	},
+});
+
+/**
+ * Resolve a single message's body for the reader. Small bodies are stored
+ * inline on the row; bodies over the inline threshold (newsletters, long
+ * threads) live in storage blobs (`htmlBodyStorageId` / `textBodyStorageId`)
+ * and are fetched lazily via the returned signed URLs — previously they had no
+ * inline value and rendered blank.
+ */
+// public: soft-auth — returns null for anonymous; mailbox ownership is still enforced in-handler
+export const getMessageBody = publicQuery({
+	args: { messageId: v.id('mailMessages') },
+	handler: async (ctx, args) => {
+		const message = await loadReadableMessage(ctx, args.messageId);
+		if (!message) return null;
+		return {
+			htmlInline: message.htmlBodyInline ?? null,
+			textInline: message.textBodyInline ?? null,
+			htmlUrl: message.htmlBodyStorageId
+				? await ctx.storage.getUrl(message.htmlBodyStorageId)
+				: null,
+			textUrl: message.textBodyStorageId
+				? await ctx.storage.getUrl(message.textBodyStorageId)
+				: null,
+		};
+	},
+});
+
+/**
+ * Signed URL for a message's raw .eml. The reader fetches it to extract an
+ * attachment client-side (the attachment bytes live in the raw MIME) and for
+ * "download original". Ownership-checked.
+ */
+// public: soft-auth — returns null for anonymous; mailbox ownership is still enforced in-handler
+export const getMessageRawUrl = publicQuery({
+	args: { messageId: v.id('mailMessages') },
+	handler: async (ctx, args) => {
+		const message = await loadReadableMessage(ctx, args.messageId);
+		if (!message) return null;
+		return await ctx.storage.getUrl(message.rawStorageId);
+	},
+});
+
+/** Free-text + structured search across messages in a mailbox. */
+// public: soft-auth — returns empty for anonymous; mailbox ownership is still enforced in-handler
+export const search = publicQuery({
+	args: {
+		mailboxId: v.id('mailboxes'),
+		// Pre-parsed query payload; the web side calls
+		// `parseSearchQuery(rawText)` before calling us so the parser
+		// stays close to the UI.
+		text: v.string(),
+		from: v.optional(v.string()),
+		to: v.optional(v.string()),
+		subject: v.optional(v.string()),
+		hasAttachment: v.optional(v.boolean()),
+		flagSeen: v.optional(v.boolean()),
+		flagFlagged: v.optional(v.boolean()),
+		folderRole: v.optional(v.string()),
+		labelName: v.optional(v.string()),
+		beforeMs: v.optional(v.number()),
+		afterMs: v.optional(v.number()),
+		limit: v.optional(v.number()),
+	},
+	handler: async (ctx, args) => {
+		const mailbox = await loadReadableMailbox(ctx, args.mailboxId);
+		if (!mailbox) return [];
+
+		// Resolve folder if `in:role` was specified
+		let folderId: import('../_generated/dataModel').Id<'mailFolders'> | undefined;
+		if (args.folderRole) {
+			const folder = await ctx.db
+				.query('mailFolders')
+				.withIndex('by_mailbox_and_role', (q) =>
+					q
+						.eq('mailboxId', args.mailboxId)
+						.eq('role', args.folderRole as 'inbox' | 'sent' | 'drafts' | 'trash' | 'spam' | 'archive')
+				)
+				.first();
+			folderId = folder?._id;
+			if (!folderId) return [];
+		}
+
+		// Resolve label by name
+		let labelId: import('../_generated/dataModel').Id<'mailLabels'> | undefined;
+		if (args.labelName) {
+			const label = await ctx.db
+				.query('mailLabels')
+				.withIndex('by_mailbox_and_name', (q) =>
+					q.eq('mailboxId', args.mailboxId).eq('name', args.labelName as string)
+				)
+				.first();
+			labelId = label?._id;
+			if (!labelId) return [];
+		}
+
+		const limit = Math.min(args.limit ?? 50, 200);
+		let messages;
+
+		if (args.text) {
+			// Full-text via Convex search index
+			messages = await ctx.db
+				.query('mailMessages')
+				.withSearchIndex('search_messages', (q) => {
+					let filtered = q.search('snippet', args.text).eq('mailboxId', args.mailboxId);
+					if (folderId) filtered = filtered.eq('folderId', folderId);
+					// `from` is a partial token (e.g. "sara"), not a full address, so it
+						// can't use the search index's exact .eq('fromAddress') — the substring
+						// post-filter below handles it for both the text and no-text branches.
+					if (args.flagSeen !== undefined) filtered = filtered.eq('flagSeen', args.flagSeen);
+					if (args.flagFlagged !== undefined)
+						filtered = filtered.eq('flagFlagged', args.flagFlagged);
+					return filtered;
+				})
+				.take(limit * 2);
+		} else {
+			// No text → fall back to time-ordered scan over the mailbox
+			messages = await ctx.db
+				.query('mailMessages')
+				.withIndex('by_mailbox_and_received', (q) => q.eq('mailboxId', args.mailboxId))
+				.order('desc')
+				.take(limit * 4);
+		}
+
+		// Final filters that the search index couldn't express
+		const filtered = messages.filter((m) => {
+			if (folderId && m.folderId !== folderId) return false;
+			if (args.from && !m.fromAddress.includes(args.from)) return false;
+			if (args.to && !m.toAddresses.some((a) => a.includes(args.to as string))) return false;
+			if (args.subject && !m.subject.toLowerCase().includes(args.subject)) return false;
+			if (args.hasAttachment !== undefined && m.hasAttachments !== args.hasAttachment) return false;
+			if (args.flagSeen !== undefined && m.flagSeen !== args.flagSeen) return false;
+			if (args.flagFlagged !== undefined && m.flagFlagged !== args.flagFlagged) return false;
+			if (labelId && !m.labelIds.includes(labelId)) return false;
+			if (args.beforeMs !== undefined && m.receivedAt >= args.beforeMs) return false;
+			if (args.afterMs !== undefined && m.receivedAt <= args.afterMs) return false;
+			return true;
+		});
+
+		return filtered.slice(0, limit);
+	},
+});

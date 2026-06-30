@@ -1,0 +1,71 @@
+/* Owlat Design System — Unified Tokens (Single Source of Truth)
+ *
+ * Warm palette (Nocturne base) + Geist font stack.
+ * All apps import this via index.css.
+ */
+@theme {
+	/* === BACKGROUNDS (Warm darks) === */
+	--color-bg-deep: #070605;
+	--color-bg-base: #0c0b09;
+	--color-bg-elevated: #141210;
+	--color-bg-surface: #1c1916;
+	--color-bg-surface-hover: #24211d;
+	--color-bg-overlay: #2c2925;
+	--color-bg-soft: #181614;
+
+	/* === PRIMARY: TERRACOTTA === */
+	--color-brand: #c4785a;
+	--color-brand-hover: #d4896a;
+	--color-brand-muted: #a8674d;
+	--color-brand-dim: #8c5640;
+	--color-brand-subtle: #1a1410;
+	--color-brand-glow: #e89878;
+	--color-brand-soft: rgba(196, 120, 90, 0.08);
+	--color-brand-border: rgba(196, 120, 90, 0.18);
+
+	/* === ACCENT: WARM GOLD === */
+	--color-accent: #d4a574;
+	--color-accent-muted: #b8936a;
+
+	/* === TEXT === */
+	--color-text-primary: #f0ece6;
+	--color-text-secondary: #968e84;
+	--color-text-tertiary: #5c564e;
+	--color-text-disabled: #3a3632;
+	--color-text-inverse: #0c0b09;
+
+	/* === BORDERS === */
+	--color-border-subtle: #1a1816;
+	--color-border-default: #262320;
+	--color-border-strong: #35312c;
+
+	/* === SEMANTIC === */
+	--color-success: #7a9b6e;
+	--color-success-subtle: #141a12;
+	--color-warning: #c9a55a;
+	--color-warning-subtle: #1a1710;
+	--color-error: #c46b5a;
+	--color-error-subtle: #1a1210;
+	--color-info: #6b8fa8;
+	--color-info-subtle: #101a20;
+
+	/* === FONTS === */
+	--font-display: 'Instrument Serif', Georgia, serif;
+	--font-sans: 'Instrument Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+	--font-mono: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
+
+	/* === SHADOWS === */
+	--shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.35);
+	--shadow-md: 0 4px 16px rgba(0, 0, 0, 0.25);
+	--shadow-lg: 0 12px 48px rgba(0, 0, 0, 0.3);
+	--shadow-glow: 0 0 80px rgba(196, 120, 90, 0.12);
+	--shadow-brand-hover: 0 4px 24px rgba(196, 120, 90, 0.2);
+	--shadow-card: 0 1px 3px rgba(0, 0, 0, 0.12), 0 8px 40px rgba(0, 0, 0, 0.15);
+	--shadow-card-hover: 0 16px 48px rgba(196, 120, 90, 0.08), 0 4px 12px rgba(196, 120, 90, 0.04);
+
+	/* === MOTION / LAYOUT === */
+	--ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+	--ease-smooth: cubic-bezier(0.25, 0.1, 0.25, 1);
+	--radius-card: 16px;
+	--owlat-shadow-tint: 196, 120, 90;
+}

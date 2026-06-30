@@ -1,0 +1,34 @@
+# Changelog
+
+All notable changes to Owlat are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+Entries are authored by hand (or via `@changesets/cli`, which is configured) and curated at release time — there is no automated changelog generation in CI.
+
+## [Unreleased]
+
+### Changed
+- **Self-hosted-first positioning.** The landing page, docs, and compose stack now treat self-hosting as the primary deployment mode. Hosted cloud is moved to a waitlist (`/waitlist`) and is coming later.
+- `docker-compose.yml` now references `ghcr.io/wolvesdotink/*` images with a `${OWLAT_VERSION:-latest}` tag, falling back to local `build:` for dev. The hosted-cloud control plane has moved to a separate private repository — this repo is OSS-only.
+- `docker-compose.yml` adds a new `caddy` service under `--profile tls` that fronts `web`, `convex`, and `mta` with automatic HTTPS.
+
+### Added
+- **One-liner installer.** `curl -fsSL https://get.owlat.app | bash` clones the repo, verifies prerequisites, installs the `owlat` CLI, and launches the setup wizard. Supports `OWLAT_ASSUME_YES=1` and `OWLAT_CONFIG_FILE` for non-interactive / CI use.
+- **`owlat` CLI wrapper** (`/usr/local/bin/owlat`). Hides `docker compose` ceremony: `owlat start|stop|status|logs|doctor|backup|restore|upgrade|version`.
+- **In-app updates.** Platform admins see **Settings → System &amp; Updates** with current version, container health, an "Update available" card, and per-run history. Backed by a new `systemUpdates` Convex table and `POST /api/system/update` Nitro route that drives the existing updater sidecar with a pinned compose template.
+- **Updater sidecar wired into `docker-compose.yml`.** Mounts the host docker socket and the install dir; exposes `/update` and `/health` authenticated by `INSTANCE_SECRET`.
+- **`scripts/setup.sh doctor`** subcommand diagnoses the most common self-host failure modes: Docker presence, SMTP port 25 egress, DKIM key format, secret generation, container state, EHLO DNS.
+- **`scripts/backup.sh` + `scripts/restore.sh`**: volume-level backup/restore via short-lived busybox containers. Archives `convex-data`, `redis-data`, `clamav-data`, and `.env`. SHA256-checksummed.
+- **Release pipeline** (`.github/workflows/release.yml`): tag-triggered build/push of every service image to GHCR (`:<semver>` + `:latest`), auto-generates `docker-compose-<version>.yml` via `scripts/gen-release-compose.sh`, and creates a GitHub Release with the compose file attached.
+- All Dockerfiles now accept `OWLAT_VERSION` / `OWLAT_GIT_SHA` / `OWLAT_BUILD_DATE` build args, set them as `ENV`, and apply OCI image labels (`org.opencontainers.image.*`).
+- **Self-host onboarding banner** (`apps/web/app/components/dashboard/SelfHostOnboardingBanner.vue`): surfaces three next steps (verify domain, open Convex dashboard, read docs) on first login, auto-hides once a domain is verified, dismissible per-user via localStorage.
+- **Hosted-cloud waitlist** (`apps/marketing/app/pages/waitlist.vue`): minimal email-capture form submitting to `NUXT_PUBLIC_WAITLIST_ENDPOINT`.
+- New Caddy example config (`Caddyfile.example`) that terminates TLS and fronts web/convex/mta subdomains.
+
+### Documentation
+- `apps/docs/content/1.guide/1.getting-started.md`: prepended "Deploy Owlat" section with the one-liner install.
+- `apps/docs/content/3.developer/30.self-hosting.md`: added "Fastest path" callout and clarified which control-plane features are self-hosted vs hosted-only.
+- `apps/docs/content/3.developer/8.environment-variables.md`: split into "Self-hosted configuration" (primary) and "Hosted-cloud operators" (callout-gated) sections.
+- `apps/docs/content/3.developer/34.self-hosting-maintenance.md`: documented the three update paths (in-app / CLI / manual) and added a "Recovering from a failed update" section with diagnosis steps and rollback instructions.
+- `README.md`: rewritten with self-host-first framing, one-liner install, and resource requirements.
+
+<!-- Add released versions below this line, newest first. -->

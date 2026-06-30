@@ -1,0 +1,132 @@
+name: Security
+
+# Dependency audit + SAST. Runs on PRs and on push to main/stage.
+
+on:
+  pull_request:
+    branches: [main, stage, pro]
+  push:
+    branches: [main, stage, pro]
+  schedule:
+    # Run nightly so a published CVE doesn't wait for the next PR.
+    - cron: '0 4 * * *'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@v5
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.11"
+
+      - name: Cache bun dependencies
+        uses: actions/cache@v5
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # Fail the build on High/Critical vulnerabilities; report-but-pass
+      # everything else. `bun audit` exits non-zero on any finding, so the
+      # blocking step re-runs with --json and filters by severity.
+      - name: Audit (informational)
+        run: bun audit || true
+
+      - name: Audit (fail on High/Critical)
+        run: |
+          set -euo pipefail
+          # No empty-output escape hatch: if the audit command fails or prints
+          # nothing, this step must FAIL — a broken audit that exits 0 silently
+          # disables the gate (which is exactly what happened with the previous
+          # `bun pm audit` + npm-quick-audit-shape parser).
+          bun audit --json > audit.json || true
+          node -e "
+            const fs = require('fs');
+            const raw = fs.readFileSync('audit.json', 'utf8').trim();
+            if (!raw) {
+              console.error('bun audit produced no output — failing closed.');
+              process.exit(1);
+            }
+            // bun emits the npm bulk-advisory shape: { pkgName: Advisory[] }
+            const data = JSON.parse(raw);
+            const blocking = [];
+            for (const [pkg, advisories] of Object.entries(data)) {
+              for (const a of advisories || []) {
+                if (a && (a.severity === 'high' || a.severity === 'critical')) {
+                  blocking.push({ pkg, severity: a.severity, title: a.title, url: a.url });
+                }
+              }
+            }
+            if (blocking.length === 0) {
+              console.log('No high/critical vulnerabilities.');
+              process.exit(0);
+            }
+            console.error('Blocking vulnerabilities found:');
+            for (const b of blocking) {
+              console.error(' - [' + b.severity + '] ' + b.pkg + ': ' + b.title + ' (' + b.url + ')');
+            }
+            process.exit(1);
+          "
+
+  semgrep:
+    name: SAST (Semgrep)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    # The returntocorp/semgrep-action is archived upstream; run the official
+    # container image directly instead. `--error` makes findings fail the job.
+    container:
+      image: semgrep/semgrep
+    steps:
+      - uses: actions/checkout@v5
+
+      # Bundled rulesets cover the OWASP top 10 classes most relevant to
+      # this stack (XSS, SSRF, prototype-pollution, hardcoded-secrets).
+      # The local rules in .semgrep.yml add Owlat-specific patterns —
+      # e.g. flagging `v.string()`-typed userId args without a session
+      # check.
+      - name: Semgrep scan
+        run: >-
+          semgrep scan --error
+          --config p/javascript
+          --config p/typescript
+          --config p/nodejs
+          --config p/nodejsscan
+          --config p/xss
+          --config p/security-audit
+          --config p/secrets
+          --config .semgrep.yml
+
+  secrets:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@v5
+        with:
+          # Full history: gitleaks detect scans every commit, which is the
+          # pre-publication guarantee we want for an OSS repo.
+          fetch-depth: 0
+
+      - name: Run gitleaks over the full history
+        run: >-
+          docker run --rm -v "$PWD:/repo"
+          ghcr.io/gitleaks/gitleaks:v8.24.3
+          detect --source /repo --no-banner --redact --exit-code 1

@@ -1,0 +1,130 @@
+{
+	"name": "@owlat/shared",
+	"version": "0.1.0",
+	"private": true,
+	"license": "MIT",
+	"homepage": "https://owlat.app",
+	"type": "module",
+	"main": "./src/index.ts",
+	"module": "./src/index.ts",
+	"types": "./src/index.ts",
+	"exports": {
+		".": {
+			"types": "./src/index.ts",
+			"import": "./src/index.ts"
+		},
+		"./utils": {
+			"types": "./src/utils/index.ts",
+			"import": "./src/utils/index.ts"
+		},
+		"./types": {
+			"types": "./src/types/index.ts",
+			"import": "./src/types/index.ts"
+		},
+		"./registry": {
+			"types": "./src/registry/index.ts",
+			"import": "./src/registry/index.ts"
+		},
+		"./featureFlags": {
+			"types": "./src/featureFlags.ts",
+			"import": "./src/featureFlags.ts"
+		},
+		"./operatingModes": {
+			"types": "./src/operatingModes.ts",
+			"import": "./src/operatingModes.ts"
+		},
+		"./setupProgress": {
+			"types": "./src/setupProgress.ts",
+			"import": "./src/setupProgress.ts"
+		},
+		"./setupValidators": {
+			"types": "./src/setupValidators.ts",
+			"import": "./src/setupValidators.ts"
+		},
+		"./setupEnv": {
+			"types": "./src/setupEnv.ts",
+			"import": "./src/setupEnv.ts"
+		},
+		"./convexRuntimeEnv": {
+			"types": "./src/convexRuntimeEnv.ts",
+			"import": "./src/convexRuntimeEnv.ts"
+		},
+		"./setupSecrets": {
+			"types": "./src/setupSecrets.ts",
+			"import": "./src/setupSecrets.ts"
+		},
+		"./passwordHash": {
+			"types": "./src/passwordHash.ts",
+			"import": "./src/passwordHash.ts"
+		},
+		"./operationError": {
+			"types": "./src/operationError.ts",
+			"import": "./src/operationError.ts"
+		},
+		"./postboxSanitize": {
+			"types": "./src/postboxSanitize.ts",
+			"import": "./src/postboxSanitize.ts"
+		},
+		"./mailMime": {
+			"types": "./src/mailMime.ts",
+			"import": "./src/mailMime.ts"
+		},
+		"./ical": {
+			"types": "./src/ical.ts",
+			"import": "./src/ical.ts"
+		},
+		"./html": {
+			"types": "./src/html.ts",
+			"import": "./src/html.ts"
+		},
+		"./attachments": {
+			"types": "./src/attachments.ts",
+			"import": "./src/attachments.ts"
+		},
+		"./bounceClassification": {
+			"types": "./src/bounceClassification.ts",
+			"import": "./src/bounceClassification.ts"
+		},
+		"./emailLimits": {
+			"types": "./src/emailLimits.ts",
+			"import": "./src/emailLimits.ts"
+		},
+		"./reputation": {
+			"types": "./src/reputation.ts",
+			"import": "./src/reputation.ts"
+		},
+		"./warming": {
+			"types": "./src/warming.ts",
+			"import": "./src/warming.ts"
+		},
+		"./secureMessage": {
+			"types": "./src/secureMessage.ts",
+			"import": "./src/secureMessage.ts"
+		},
+		"./spfAlignment": {
+			"types": "./src/spfAlignment.ts",
+			"import": "./src/spfAlignment.ts"
+		}
+	},
+	"peerDependencies": {
+		"sanitize-html": "^2.13.0"
+	},
+	"peerDependenciesMeta": {
+		"sanitize-html": { "optional": true }
+	},
+	"scripts": {
+		"test": "vitest run",
+		"test:watch": "vitest watch",
+		"test:coverage": "vitest run --coverage",
+		"lint": "oxlint --config ../../oxlintrc.json src",
+		"lint:fix": "oxlint --config ../../oxlintrc.json src --fix",
+		"typecheck": "tsc --noEmit",
+		"update-caniemail": "bun run scripts/update-caniemail-data.ts"
+	},
+	"devDependencies": {
+		"@types/node": "catalog:",
+		"@vitest/coverage-v8": "catalog:",
+		"typescript": "catalog:",
+		"vitest": "catalog:"
+	}
+}

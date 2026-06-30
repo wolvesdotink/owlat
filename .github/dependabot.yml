@@ -1,0 +1,71 @@
+# Dependabot configuration — S11 / Phase 4.2.
+#
+# Automates security-patch delivery for:
+#   • npm packages (bun workspaces — monorepo root + all apps/packages)
+#   • GitHub Actions (third-party actions used in .github/workflows)
+#   • Docker base images (Dockerfiles under apps/ + docker/)
+#
+# Groups related updates into single PRs to cut review load. Security-
+# only bumps bypass the grouping so they land fast.
+
+version: 2
+
+updates:
+  # ── npm / bun (monorepo root; workspaces propagate) ─────────────────────
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: "Europe/Berlin"
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - npm
+    groups:
+      # Non-security minor/patch bumps grouped for easy review.
+      npm-minor-and-patch:
+        update-types:
+          - minor
+          - patch
+    # Ignore convex itself — pinned in docker/convex-deploy.Dockerfile
+    # (see P1.4). A mismatched CLI between the monorepo and the deploy
+    # container image causes schema-diff surprises.
+    ignore:
+      - dependency-name: convex
+        update-types: [version-update:semver-major]
+
+  # ── GitHub Actions (third-party actions in .github/workflows) ──────────
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - ci
+    groups:
+      actions-all:
+        patterns:
+          - "*"
+
+  # ── Docker base images (every directory containing a Dockerfile) ───────
+  - package-ecosystem: docker
+    directories:
+      - "/apps/code-worker"
+      - "/apps/docs"
+      - "/apps/imap"
+      - "/apps/mail-sync"
+      - "/apps/marketing"
+      - "/apps/mta"
+      - "/apps/setup-cli"
+      - "/apps/updater"
+      - "/apps/web"
+      - "/docker"
+    schedule:
+      interval: weekly
+    labels:
+      - dependencies
+      - docker

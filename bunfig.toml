@@ -1,0 +1,5 @@
+[install]
+# Use hoisted linker to ensure transitive dependencies (vue, @nuxt/kit, etc.)
+# are resolvable from all workspace packages. The default isolated linker in
+# bun 1.3+ breaks Nuxt layers and nuxi prepare in CI/Docker.
+linker = "hoisted"

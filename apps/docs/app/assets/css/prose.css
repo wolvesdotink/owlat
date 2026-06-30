@@ -1,0 +1,268 @@
+/* Owlat Docs — Prose styles for Nuxt Content rendered markdown */
+
+.prose {
+	line-height: 1.75;
+	font-family: var(--font-sans);
+	color: var(--color-text-primary);
+	max-width: none;
+}
+
+/* ============================================================
+   Headings
+   ============================================================ */
+.prose h1,
+.prose h2,
+.prose h3,
+.prose h4 {
+	color: var(--color-text-primary);
+}
+
+.prose h1 {
+	font-family: var(--font-display);
+	font-size: 2.75rem;
+	font-weight: 400;
+	letter-spacing: -0.01em;
+	line-height: 1.15;
+	margin-bottom: 1.25rem;
+}
+
+.prose h2 {
+	font-family: var(--font-display);
+	font-size: 1.5rem;
+	font-weight: 400;
+	line-height: 1.3;
+	padding-bottom: 0.6rem;
+	border-bottom: 1px solid var(--color-border-subtle);
+	margin-top: 2.5rem;
+	margin-bottom: 1rem;
+}
+
+.prose h3 {
+	font-size: 1.125rem;
+	font-weight: 600;
+	letter-spacing: -0.01em;
+	margin-top: 2rem;
+	margin-bottom: 0.5rem;
+}
+
+.prose h4 {
+	font-size: 1rem;
+	font-weight: 600;
+	margin-top: 1.5rem;
+	margin-bottom: 0.5rem;
+}
+
+/* Heading anchor links — Nuxt Content wraps the full text in <a> */
+.prose h2,
+.prose h3 {
+	position: relative;
+}
+
+.prose h1 > a,
+.prose h2 > a,
+.prose h3 > a,
+.prose h4 > a {
+	color: inherit;
+	text-decoration: none;
+	border-bottom: none;
+}
+
+.prose h1 > a:hover,
+.prose h2 > a:hover,
+.prose h3 > a:hover,
+.prose h4 > a:hover {
+	color: inherit;
+	border-bottom: none;
+}
+
+/* Hover-reveal anchor # icon */
+.prose h2 > a::before,
+.prose h3 > a::before {
+	content: '#';
+	position: absolute;
+	right: 100%;
+	padding-right: 6px;
+	color: var(--color-brand);
+	font-family: var(--font-mono);
+	font-weight: 400;
+	font-size: 0.85em;
+	opacity: 0;
+	transform: translateX(4px);
+	transition: opacity 0.2s ease, transform 0.2s var(--ease-out-expo);
+}
+
+.prose h2:hover > a::before,
+.prose h3:hover > a::before {
+	opacity: 0.6;
+	transform: translateX(0);
+}
+
+/* ============================================================
+   Body text
+   ============================================================ */
+.prose p {
+	line-height: 1.75;
+	margin: 1rem 0;
+}
+
+.prose a {
+	color: var(--color-brand);
+	text-decoration: none;
+	border-bottom: 1px solid transparent;
+	transition: border-color 0.2s;
+}
+
+.prose a:hover {
+	border-bottom-color: var(--color-brand);
+}
+
+.prose strong {
+	color: var(--color-text-primary);
+	font-weight: 600;
+}
+
+/* ============================================================
+   Lists
+   ============================================================ */
+.prose ul > li::marker {
+	color: var(--color-brand);
+}
+
+.prose ol > li::marker {
+	color: var(--color-brand);
+	font-weight: 600;
+}
+
+.prose li + li {
+	margin-top: 6px;
+}
+
+/* ============================================================
+   Horizontal rule
+   ============================================================ */
+.prose hr {
+	border-color: var(--color-border-subtle);
+	margin: 2rem 0;
+}
+
+/* ============================================================
+   Images
+   ============================================================ */
+.prose img {
+	border-radius: 10px;
+	border: 1px solid var(--color-border-default);
+}
+
+/* ============================================================
+   Tables
+   ============================================================ */
+.prose table {
+	border-collapse: separate;
+	border-spacing: 0;
+	border: 1px solid var(--color-border-default);
+	border-radius: 10px;
+	overflow: hidden;
+}
+
+.prose th {
+	background: var(--color-bg-soft);
+	font-size: 0.8125rem;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	color: var(--color-text-tertiary);
+	padding: 10px 16px;
+	border-bottom: 1px solid var(--color-border-default);
+}
+
+.prose td {
+	padding: 10px 16px;
+	border-bottom: 1px solid var(--color-border-subtle);
+	font-size: 0.875rem;
+}
+
+.prose tr:last-child td {
+	border-bottom: none;
+}
+
+.prose tr:hover td {
+	background: var(--color-bg-soft);
+}
+
+/* ============================================================
+   Code blocks
+   ============================================================ */
+.prose pre {
+	background: var(--color-bg-deep);
+	border: 1px solid var(--color-border-default);
+	border-radius: 10px;
+	padding: 1rem 1.25rem;
+	overflow-x: auto;
+	font-size: 0.8125rem;
+	line-height: 1.7;
+}
+
+.prose pre code {
+	font-family: var(--font-mono);
+	background: none;
+	padding: 0;
+	border: none;
+	color: inherit;
+}
+
+/* Inline code */
+.prose :not(pre) > code {
+	font-size: 0.825em;
+	padding: 2px 7px;
+	border-radius: 5px;
+	background: var(--color-brand-soft);
+	color: var(--color-brand);
+	border: 1px solid var(--color-brand-border);
+	font-family: var(--font-mono);
+}
+
+/* ============================================================
+   Blockquotes
+   ============================================================ */
+.prose blockquote {
+	border-left: 3px solid var(--color-brand);
+	padding: 0.5rem 1rem;
+	color: var(--color-text-secondary);
+	font-style: italic;
+	background: var(--color-bg-soft);
+	border-radius: 0 10px 10px 0;
+}
+
+/* ============================================================
+   Keyboard keys
+   ============================================================ */
+.prose kbd {
+	display: inline-block;
+	padding: 2px 6px;
+	font-size: 0.8125rem;
+	font-family: var(--font-mono);
+	background: var(--color-bg-soft);
+	border: 1px solid var(--color-border-default);
+	border-bottom-width: 2px;
+	border-radius: 4px;
+	color: var(--color-text-secondary);
+}
+
+/* ============================================================
+   Responsive
+   ============================================================ */
+@media (max-width: 960px) {
+	.prose h1 {
+		font-size: 2rem;
+	}
+}
+
+@media (max-width: 640px) {
+	.prose h1 {
+		font-size: 1.5rem;
+	}
+
+	.prose h2 {
+		font-size: 1.25rem;
+	}
+}

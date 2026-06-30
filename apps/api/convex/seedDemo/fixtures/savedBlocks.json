@@ -1,0 +1,20 @@
+[
+	{
+		"slug": "header-default",
+		"name": "Brand Header",
+		"description": "Top-of-email brand banner with logo placeholder.",
+		"content": "[{\"id\":\"hdr-1\",\"type\":\"container\",\"content\":{\"backgroundColor\":\"#1f2937\",\"padding\":{\"top\":24,\"right\":24,\"bottom\":24,\"left\":24}},\"children\":[{\"id\":\"hdr-2\",\"type\":\"text\",\"content\":{\"text\":\"<h1 style=\\\"color:#fff;margin:0\\\">Owlat Demo</h1>\"}}]}]"
+	},
+	{
+		"slug": "footer-default",
+		"name": "Standard Footer",
+		"description": "Address + unsubscribe link block.",
+		"content": "[{\"id\":\"ftr-1\",\"type\":\"text\",\"content\":{\"text\":\"<p style=\\\"color:#6b7280;font-size:12px;text-align:center\\\">Owlat Demo Co · 123 Demo Street · {{unsubscribe_link}}</p>\"}}]"
+	},
+	{
+		"slug": "cta-button",
+		"name": "Primary CTA Button",
+		"description": "Reusable call-to-action button.",
+		"content": "[{\"id\":\"cta-1\",\"type\":\"button\",\"content\":{\"text\":\"Read more\",\"href\":\"https://example.com\",\"backgroundColor\":\"#2563eb\",\"textColor\":\"#ffffff\",\"borderRadius\":6,\"padding\":{\"top\":12,\"right\":24,\"bottom\":12,\"left\":24}}}]"
+	}
+]

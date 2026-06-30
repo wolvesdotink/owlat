@@ -1,0 +1,98 @@
+<script setup lang="ts">
+type CardPadding = 'none' | 'sm' | 'md' | 'lg';
+type CardVariant = 'default' | 'info' | 'warning' | 'error';
+type CardOverflow = 'visible' | 'hidden';
+
+interface Props {
+	padding?: CardPadding;
+	variant?: CardVariant;
+	hoverable?: boolean;
+	clickable?: boolean;
+	overflow?: CardOverflow;
+}
+
+const props = withDefaults(defineProps<Props>(), {
+	padding: 'md',
+	variant: 'default',
+	hoverable: false,
+	clickable: false,
+	overflow: 'visible',
+});
+
+const emit = defineEmits<{
+	click: [event: MouseEvent];
+}>();
+
+const handleClick = (event: MouseEvent) => {
+	if (props.clickable) {
+		emit('click', event);
+	}
+};
+
+const paddingClasses: Record<CardPadding, string> = {
+	none: 'p-0',
+	sm: 'p-4',
+	md: 'p-6', // Default from .card class
+	lg: 'p-8',
+};
+
+const variantClasses: Record<CardVariant, string> = {
+	default: 'bg-bg-elevated border-border-subtle',
+	info: 'bg-brand/5 border-brand/20',
+	warning: 'bg-warning/5 border-warning/20',
+	error: 'bg-error/5 border-error/20',
+};
+
+const cardClasses = computed(() => {
+	const classes = [
+		'border rounded-xl transition-colors duration-150',
+		variantClasses[props.variant],
+	];
+
+	// Only add padding class, not the default p-6 from .card since we override it
+	classes.push(paddingClasses[props.padding]);
+
+	// Overflow
+	if (props.overflow === 'hidden') {
+		classes.push('overflow-hidden');
+	}
+
+	// Hover/clickable states
+	if (props.hoverable || props.clickable) {
+		classes.push('hover:border-brand');
+	}
+
+	if (props.clickable) {
+		classes.push('cursor-pointer');
+	}
+
+	return classes.join(' ');
+});
+
+const slots = useSlots();
+</script>
+
+<template>
+	<div :class="cardClasses" @click="handleClick">
+		<!-- Header slot with automatic border -->
+		<div
+			v-if="slots['header']"
+			class="border-b border-border-subtle"
+			:class="{ 'p-6': padding === 'none' }"
+		>
+			<slot name="header" />
+		</div>
+
+		<!-- Main content -->
+		<slot />
+
+		<!-- Footer slot with automatic border -->
+		<div
+			v-if="slots['footer']"
+			class="border-t border-border-subtle mt-auto"
+			:class="{ 'p-6': padding === 'none' }"
+		>
+			<slot name="footer" />
+		</div>
+	</div>
+</template>

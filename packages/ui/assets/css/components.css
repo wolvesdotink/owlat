@@ -1,0 +1,85 @@
+/* Shared UI Component Styles
+ *
+ * Form Element Sizing Conventions:
+ * - All form elements (input, select, textarea, button) use py-3 (12px vertical padding)
+ * - This ensures consistent height for inline layouts (e.g., search bar + button)
+ * - Calculated height: py-3 (24px) + text (~20px) + border (2px) ≈ 46px
+ * - Small variants use py-2 (8px vertical padding) for compact layouts
+ * - Large variants use h-12 (48px fixed height) for emphasis
+ */
+@layer components {
+	/* Single source of the button design system — UiButton composes these
+	   classes; raw markup uses them directly. Keep variants HERE, not in
+	   UiButton's script (the two had already drifted once). */
+	.btn {
+		@apply inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-bg-base disabled:pointer-events-none disabled:opacity-50;
+	}
+
+	.btn-sm {
+		@apply px-3 py-2 text-sm;
+	}
+
+	.btn-lg {
+		@apply h-12 px-6;
+	}
+
+	.btn-primary {
+		@apply bg-brand text-text-inverse hover:bg-brand-hover;
+	}
+
+	.btn-secondary {
+		@apply bg-bg-surface text-text-primary border border-border-default hover:bg-bg-surface-hover hover:border-border-strong;
+	}
+
+	.btn-ghost {
+		@apply bg-transparent text-text-secondary hover:text-text-primary hover:bg-bg-surface;
+	}
+
+	.btn-outline {
+		@apply bg-transparent text-text-secondary border border-border-default hover:text-text-primary hover:border-border-strong;
+	}
+
+	.btn-danger {
+		@apply bg-error text-white hover:bg-error/90;
+	}
+
+	.btn-danger-ghost {
+		@apply bg-transparent text-error hover:bg-error/10 hover:text-error;
+	}
+
+	.btn-danger-outline {
+		@apply bg-error/10 text-error border border-error/20 hover:bg-error/20;
+	}
+
+	.input {
+		@apply w-full px-4 py-3 bg-bg-surface border border-border-default rounded-lg text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand transition-colors duration-150;
+	}
+
+	.input-sm {
+		@apply px-3 py-2 text-sm;
+	}
+
+	.input-error {
+		@apply border-error focus:border-error focus:ring-error;
+	}
+
+	.label {
+		@apply block text-sm font-medium text-text-secondary mb-2;
+	}
+
+	.card {
+		@apply bg-bg-elevated border border-border-subtle rounded-xl p-6;
+	}
+
+	.link {
+		@apply text-brand hover:text-brand-hover transition-colors duration-150 underline-offset-2 hover:underline;
+	}
+
+	.error-message {
+		@apply text-sm text-error mt-1;
+	}
+
+	.font-display {
+		font-family: var(--font-display);
+	}
+}

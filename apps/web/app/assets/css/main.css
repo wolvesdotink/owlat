@@ -1,0 +1,58 @@
+@import 'tailwindcss';
+@import '../../../../../packages/ui/assets/css/index.css';
+@import './desktop.css';
+
+@source "../../../../../packages/email-builder/src/**/*.vue";
+@source "../../../../../packages/email-builder/src/**/*.ts";
+@source "../../../../../packages/email-previewer/src/**/*.vue";
+@source "../../../../../packages/email-previewer/src/**/*.ts";
+@source "../../../../../packages/ui/components/**/*.vue";
+@source "../../../../../packages/ui/composables/**/*.ts";
+
+/* Email Previewer aliases (web-only — maps design tokens to --ep-* namespace) */
+:root {
+	/* Background Colors */
+	--ep-bg-deep: var(--color-bg-deep);
+	--ep-bg-base: var(--color-bg-base);
+	--ep-bg-elevated: var(--color-bg-elevated);
+	--ep-bg-surface: var(--color-bg-surface);
+	--ep-bg-surface-hover: var(--color-bg-surface-hover);
+	--ep-bg-overlay: var(--color-bg-overlay);
+
+	/* Text Colors */
+	--ep-text-primary: var(--color-text-primary);
+	--ep-text-secondary: var(--color-text-secondary);
+	--ep-text-tertiary: var(--color-text-tertiary);
+	--ep-text-disabled: var(--color-text-disabled);
+	--ep-text-inverse: var(--color-text-inverse);
+
+	/* Border Colors */
+	--ep-border-subtle: var(--color-border-subtle);
+	--ep-border-default: var(--color-border-default);
+	--ep-border-strong: var(--color-border-strong);
+
+	/* Brand Colors */
+	--ep-brand: var(--color-brand);
+	--ep-brand-hover: var(--color-brand-hover);
+	--ep-brand-muted: var(--color-brand-muted);
+	--ep-brand-dim: var(--color-brand-dim);
+	--ep-brand-subtle: var(--color-brand-subtle);
+
+	/* Status Colors */
+	--ep-success: var(--color-success);
+	--ep-success-subtle: var(--color-success-subtle);
+	--ep-warning: var(--color-warning);
+	--ep-warning-subtle: var(--color-warning-subtle);
+	--ep-error: var(--color-error);
+	--ep-error-subtle: var(--color-error-subtle);
+
+	/* Fonts */
+	--ep-font-display: var(--font-display);
+	--ep-font-sans: var(--font-sans);
+	--ep-font-mono: var(--font-mono);
+
+	/* Shadows */
+	--ep-shadow-sm: var(--shadow-sm);
+	--ep-shadow-md: var(--shadow-md);
+	--ep-shadow-lg: var(--shadow-lg);
+}

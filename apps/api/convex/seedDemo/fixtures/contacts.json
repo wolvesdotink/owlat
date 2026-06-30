@@ -1,0 +1,17 @@
+[
+	{ "slug": "ada",     "email": "ada.lovelace@example.com",     "firstName": "Ada",     "lastName": "Lovelace",   "source": "form",          "doiStatus": "confirmed" },
+	{ "slug": "alan",    "email": "alan.turing@example.com",      "firstName": "Alan",    "lastName": "Turing",     "source": "form",          "doiStatus": "confirmed" },
+	{ "slug": "grace",   "email": "grace.hopper@example.com",     "firstName": "Grace",   "lastName": "Hopper",     "source": "import",        "doiStatus": "confirmed" },
+	{ "slug": "linus",   "email": "linus.torvalds@example.com",   "firstName": "Linus",   "lastName": "Torvalds",   "source": "api",           "doiStatus": "confirmed" },
+	{ "slug": "katherine", "email": "katherine.johnson@example.com", "firstName": "Katherine", "lastName": "Johnson", "source": "import",     "doiStatus": "confirmed" },
+	{ "slug": "barbara", "email": "barbara.liskov@example.com",   "firstName": "Barbara", "lastName": "Liskov",     "source": "form",          "doiStatus": "pending" },
+	{ "slug": "tim",     "email": "tim.berners-lee@example.com",  "firstName": "Tim",     "lastName": "Berners-Lee","source": "form",          "doiStatus": "pending" },
+	{ "slug": "donald",  "email": "donald.knuth@example.com",     "firstName": "Donald",  "lastName": "Knuth",      "source": "import",        "doiStatus": "confirmed" },
+	{ "slug": "margaret", "email": "margaret.hamilton@example.com", "firstName": "Margaret", "lastName": "Hamilton", "source": "form",         "doiStatus": "confirmed" },
+	{ "slug": "edsger",  "email": "edsger.dijkstra@example.com",  "firstName": "Edsger",  "lastName": "Dijkstra",   "source": "api",           "doiStatus": "confirmed" },
+	{ "slug": "radia",   "email": "radia.perlman@example.com",    "firstName": "Radia",   "lastName": "Perlman",    "source": "import",        "doiStatus": "confirmed" },
+	{ "slug": "vint",    "email": "vint.cerf@example.com",        "firstName": "Vint",    "lastName": "Cerf",       "source": "form",          "doiStatus": "pending" },
+	{ "slug": "hedy",    "email": "hedy.lamarr@example.com",      "firstName": "Hedy",    "lastName": "Lamarr",     "source": "form",          "doiStatus": "confirmed" },
+	{ "slug": "claude",  "email": "claude.shannon@example.com",   "firstName": "Claude",  "lastName": "Shannon",    "source": "import",        "doiStatus": "confirmed" },
+	{ "slug": "guido",   "email": "guido.van-rossum@example.com", "firstName": "Guido",   "lastName": "van Rossum", "source": "api",           "doiStatus": "confirmed" }
+]

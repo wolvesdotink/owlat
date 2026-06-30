@@ -1,0 +1,28 @@
+/* Shared base styles */
+@layer base {
+	body {
+		@apply antialiased bg-bg-base text-text-primary font-sans;
+	}
+
+	::selection {
+		background-color: rgba(196, 120, 90, 0.25);
+		color: var(--color-text-primary);
+	}
+
+	/*
+	 * Keyboard focus ring for bespoke interactive elements (icon buttons, links,
+	 * custom widgets) that don't carry their own `focus:` styling. Uses
+	 * `:focus-visible` so it only shows for keyboard/AT users, and an outline
+	 * (not a ring/box-shadow) so it never shifts layout. Components with their
+	 * own focus treatment (`.btn`, `.input`) still override via specificity.
+	 */
+	button:focus-visible,
+	a:focus-visible,
+	summary:focus-visible,
+	[role='button']:focus-visible,
+	[tabindex]:focus-visible {
+		outline: 2px solid var(--color-brand);
+		outline-offset: 2px;
+		border-radius: 3px;
+	}
+}

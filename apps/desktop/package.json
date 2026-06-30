@@ -1,0 +1,36 @@
+{
+	"name": "@owlat/desktop",
+	"version": "0.1.0",
+	"private": true,
+	"license": "MIT",
+	"homepage": "https://owlat.app",
+	"type": "module",
+	"scripts": {
+		"dev": "tauri dev",
+		"build": "tauri build",
+		"typecheck": "tsc --noEmit",
+		"lint": "oxlint --config ../../oxlintrc.json src",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"test:coverage": "vitest run --coverage",
+		"tauri": "tauri",
+		"auth-spike": "bun scripts/auth-spike.mjs"
+	},
+	"dependencies": {
+		"@tauri-apps/api": "^2.0.0",
+		"@tauri-apps/plugin-autostart": "^2.0.0",
+		"@tauri-apps/plugin-deep-link": "^2.0.0",
+		"@tauri-apps/plugin-dialog": "^2.7.1",
+		"@tauri-apps/plugin-notification": "^2.0.0",
+		"@tauri-apps/plugin-shell": "^2.0.0",
+		"@tauri-apps/plugin-store": "^2.0.0",
+		"@tauri-apps/plugin-updater": "^2.0.0",
+		"@tauri-apps/plugin-window-state": "^2.0.0"
+	},
+	"devDependencies": {
+		"@tauri-apps/cli": "^2.0.0",
+		"@vitest/coverage-v8": "catalog:",
+		"typescript": "^5.9.0",
+		"vitest": "catalog:"
+	}
+}

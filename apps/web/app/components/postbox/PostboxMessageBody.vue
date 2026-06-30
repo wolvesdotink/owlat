@@ -1,0 +1,206 @@
+<script setup lang="ts">
+/**
+ * Sandboxed iframe renderer for arbitrary HTML email bodies.
+ *
+ * Defense in depth:
+ *   1. sandbox="" — no scripts, no same-origin
+ *   2. Inline meta-CSP that blocks everything except styles + (gated) images
+ *   3. Parser-based sanitize-html allowlist (drops <script>/<style>/<base>/
+ *      <meta refresh>/etc.; whitelisted CSS properties; blocks javascript: in
+ *      every URL attribute). Replaces a regex-based stripper that left several
+ *      privacy/exfiltration holes (style-tag CSS exfil, meta refresh, srcset
+ *      bypass) under a sandboxed-but-not-script-free iframe.
+ *   4. External images are gated behind a "Show images" button
+ *   5. All <a> rewritten to target=_blank rel=noreferrer noopener
+ */
+
+import sanitizeHtml from 'sanitize-html';
+import { POSTBOX_SANITIZE_CONFIG } from '@owlat/shared/postboxSanitize';
+import { api } from '@owlat/api';
+import type { Id } from '@owlat/api/dataModel';
+
+const props = defineProps<{
+	message: {
+		_id?: string;
+		htmlBodyInline?: string;
+		textBodyInline?: string;
+		htmlBodyStorageId?: string;
+		textBodyStorageId?: string;
+	};
+}>();
+
+const showImages = ref(false);
+const showQuoted = ref(false);
+const iframeRef = ref<HTMLIFrameElement | null>(null);
+
+// Bodies over the inline threshold are stored as blobs, not on the row. When
+// no inline body is present but a storage id is, fetch the body lazily so
+// large mail (newsletters, long threads) no longer renders blank.
+const fetchedHtml = ref<string | null>(null);
+const fetchedText = ref<string | null>(null);
+
+const needsBodyFetch = computed(
+	() =>
+		!props.message.htmlBodyInline &&
+		!props.message.textBodyInline &&
+		!!(props.message.htmlBodyStorageId || props.message.textBodyStorageId)
+);
+
+const { data: bodyData } = useConvexQuery(api.mail.mailbox.getMessageBody, () =>
+	needsBodyFetch.value && props.message._id
+		? { messageId: props.message._id as Id<'mailMessages'> }
+		: 'skip'
+);
+
+watch(
+	() => bodyData.value,
+	async (data) => {
+		if (!data) return;
+		const d = data as {
+			htmlInline: string | null;
+			textInline: string | null;
+			htmlUrl: string | null;
+			textUrl: string | null;
+		};
+		if (d.htmlInline) {
+			fetchedHtml.value = d.htmlInline;
+			return;
+		}
+		if (d.textInline) {
+			fetchedText.value = d.textInline;
+			return;
+		}
+		try {
+			if (d.htmlUrl) fetchedHtml.value = await (await fetch(d.htmlUrl)).text();
+			else if (d.textUrl) fetchedText.value = await (await fetch(d.textUrl)).text();
+		} catch {
+			// Leave empty — the reader shows "(empty message)".
+		}
+	},
+	{ immediate: true }
+);
+
+const effectiveHtml = computed(() => props.message.htmlBodyInline ?? fetchedHtml.value ?? undefined);
+const effectiveText = computed(() => props.message.textBodyInline ?? fetchedText.value ?? '');
+
+function sanitize(html: string): string {
+	return sanitizeHtml(html, POSTBOX_SANITIZE_CONFIG);
+}
+
+function gateImages(html: string, allow: boolean): string {
+	if (allow) return html;
+	return html.replace(
+		/<img\s+([^>]*)>/gi,
+		(match, attrs: string) => {
+			const srcMatch = attrs.match(/src=(["'])(?<url>[^"']+)\1/);
+			const url = srcMatch?.groups?.['url'];
+			if (!url || url.startsWith('data:') || url.startsWith('cid:')) return match;
+			return `<span data-blocked-img="${url}" style="display:inline-block;padding:4px 8px;background:#eee;color:#666;font-size:11px;border-radius:3px;">[image]</span>`;
+		}
+	);
+}
+
+function rewriteLinks(html: string): string {
+	return html.replace(/<a\s+([^>]*)>/gi, (_match, attrs: string) => {
+		// Strip target/rel attrs and rewrite uniformly
+		const cleaned = attrs
+			.replace(/\s+target\s*=\s*"[^"]*"/gi, '')
+			.replace(/\s+rel\s*=\s*"[^"]*"/gi, '');
+		return `<a ${cleaned} target="_blank" rel="noreferrer noopener">`;
+	});
+}
+
+const META_CSP = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https: data:; style-src 'unsafe-inline'; font-src https: data:;">`;
+const BASE_STYLE = `<style>html,body{font-family:-apple-system,Segoe UI,sans-serif;color:#1a1a1a;font-size:14px;line-height:1.55;margin:0;padding:0;}img{max-width:100%;height:auto;}a{color:#0a6cdd;}</style>`;
+
+const quotedSplit = computed(() => {
+	const html = effectiveHtml.value;
+	if (html) return splitQuotedHtml(html);
+	const text = effectiveText.value;
+	const split = splitQuotedText(text);
+	// Convert to HTML-shape so the rest of the pipeline matches
+	const escape = (s: string) =>
+		s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+	return {
+		fresh: `<pre style="white-space:pre-wrap;font-family:inherit;margin:0;">${escape(split.fresh)}</pre>`,
+		quoted: split.quoted
+			? `<pre style="white-space:pre-wrap;font-family:inherit;margin:0;color:#666;">${escape(split.quoted)}</pre>`
+			: '',
+		hasQuote: split.hasQuote,
+	};
+});
+
+const srcdoc = computed(() => {
+	const split = quotedSplit.value;
+	const fresh = sanitize(split.fresh);
+	const quoted = showQuoted.value ? sanitize(split.quoted) : '';
+	const combined = quoted ? `${fresh}<hr style="margin:1em 0;border:0;border-top:1px solid #eee">${quoted}` : fresh;
+	const gated = gateImages(combined, showImages.value);
+	const linked = rewriteLinks(gated);
+	return `<!doctype html><html><head>${META_CSP}${BASE_STYLE}</head><body>${linked || '(empty message)'}</body></html>`;
+});
+
+const hasBlockedImages = computed(
+	() => !showImages.value && /<img\s/i.test(effectiveHtml.value ?? '')
+);
+const hasQuotedContent = computed(() => quotedSplit.value.hasQuote);
+
+// Auto-resize iframe to content height
+function resizeIframe() {
+	const iframe = iframeRef.value;
+	if (!iframe?.contentDocument) return;
+	const h = iframe.contentDocument.documentElement.scrollHeight;
+	iframe.style.height = `${Math.max(120, h)}px`;
+}
+
+onMounted(() => {
+	if (iframeRef.value) {
+		iframeRef.value.addEventListener('load', resizeIframe);
+	}
+});
+
+// Re-fit when the user toggles "Show quoted text" or shows images.
+watch([showQuoted, showImages], () => {
+	nextTick(resizeIframe);
+});
+</script>
+
+<template>
+	<div class="mt-4">
+		<div
+			v-if="hasBlockedImages"
+			class="mb-2 px-3 py-2 rounded bg-bg-surface text-xs flex items-center justify-between"
+		>
+			<span class="text-text-secondary">
+				Images blocked to protect your privacy.
+			</span>
+			<button
+				type="button"
+				class="text-brand font-medium hover:underline"
+				@click="showImages = true"
+			>
+				Show images
+			</button>
+		</div>
+		<iframe
+			ref="iframeRef"
+			:srcdoc="srcdoc"
+			sandbox=""
+			class="w-full bg-white rounded border border-border-subtle"
+			style="min-height: 200px;"
+			referrerpolicy="no-referrer"
+		/>
+		<button
+			v-if="hasQuotedContent"
+			type="button"
+			class="mt-2 inline-flex items-center gap-1 px-2 py-1 rounded text-xs text-text-secondary hover:text-text-primary hover:bg-bg-surface"
+			@click="showQuoted = !showQuoted"
+		>
+			<Icon
+				:name="showQuoted ? 'lucide:chevron-up' : 'lucide:chevron-down'"
+				class="w-3.5 h-3.5"
+			/>
+			{{ showQuoted ? 'Hide quoted text' : 'Show quoted text' }}
+		</button>
+	</div>
+</template>

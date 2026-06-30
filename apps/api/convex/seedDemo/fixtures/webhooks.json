@@ -1,0 +1,9 @@
+[
+	{
+		"slug": "local-loopback",
+		"name": "Local loopback webhook",
+		"url": "https://localhost.local/webhook",
+		"events": ["contact.created", "email.sent"],
+		"isActive": true
+	}
+]

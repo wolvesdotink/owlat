@@ -1,0 +1,2 @@
+# Maven build output (compiled classes, packaged jars, generated sources)
+/target/

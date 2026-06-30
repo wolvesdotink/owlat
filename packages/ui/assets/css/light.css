@@ -1,0 +1,50 @@
+/* Light Mode Overrides */
+:root.light,
+.light {
+	--color-bg-deep: #f7f4f0;
+	--color-bg-base: #fdfbf8;
+	--color-bg-elevated: #fdfbf8;
+	--color-bg-surface: #f0ece6;
+	--color-bg-surface-hover: #e6e1db;
+	--color-bg-overlay: #ddd8d2;
+	--color-bg-soft: #f3efe9;
+
+	--color-brand: #b86b4d;
+	--color-brand-hover: #a85e42;
+	--color-brand-muted: #9a5239;
+	--color-brand-dim: #8a4630;
+	--color-brand-subtle: #f3ebe5;
+	--color-brand-glow: #c4785a;
+
+	--color-accent: #b8936a;
+	--color-accent-muted: #a08058;
+
+	--color-text-primary: #181410;
+	--color-text-secondary: #5a524a;
+	/* WCAG AA: >=4.5:1 on every surface (was #7a726a — 4.02:1 on bg-surface,
+	   3.64:1 on bg-surface-hover, the exact combo form placeholders sit on) */
+	--color-text-tertiary: #6b635c;
+	--color-text-disabled: #a8a098;
+	--color-text-inverse: #f0ece6;
+
+	--color-border-subtle: #e6e1db;
+	--color-border-default: #d4cfc8;
+	--color-border-strong: #b5b0a8;
+
+	--color-success: #5a7a50;
+	--color-success-subtle: #eef3ec;
+	--color-warning: #a8853a;
+	--color-warning-subtle: #f8f3e8;
+	--color-error: #a85545;
+	--color-error-subtle: #f8eeec;
+	--color-info: #4a7a9a;
+	--color-info-subtle: #eef4f8;
+
+	--shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
+	--shadow-md: 0 4px 16px rgba(0, 0, 0, 0.08);
+	--shadow-lg: 0 12px 48px rgba(0, 0, 0, 0.1);
+
+	--owlat-code-bg: #f0ece6;
+	--owlat-bg-soft: #f3efe9;
+	--owlat-divider: #e0dbd4;
+}

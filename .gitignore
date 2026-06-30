@@ -1,0 +1,74 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build
+.next/
+out/
+build/
+dist/
+.nuxt/
+.output/
+.turbo/
+# Symlinks to build output (-> .output/public); the `dist/` pattern above only
+# matches directories, not these symlinks.
+/apps/web/dist
+/apps/docs/dist
+/apps/marketing/dist
+
+# Environment
+.env
+.env.local
+.env.selfhost
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Secrets / keys (must never be committed)
+*.key
+*.pem
+
+# Debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+coverage/
+.nyc_output/
+.auth/
+playwright-report/
+test-results/
+
+# Prisma
+prisma/*.db
+
+# Ralph
+scripts/ralph/.last-branch
+scripts/ralph/archive/
+
+# Convex (keep _generated/ tracked so Docker builds work without Convex credentials)
+# convex/_generated/
+
+.data/
+
+# Email preview output
+previews/
+
+# Review reports & internal working notes — kept uncommitted by convention
+/*_REVIEW_*.md
+/*_AUDIT_*.md
+
+.planning/
+.claude/

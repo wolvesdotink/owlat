@@ -1,0 +1,46 @@
+{
+	"$schema": "./node_modules/oxlint/configuration_schema.json",
+	"plugins": ["import", "typescript", "unicorn"],
+	"env": {
+		"browser": true,
+		"node": true,
+		"es2024": true
+	},
+	"globals": {
+		"defineNuxtConfig": "readonly",
+		"defineNuxtPlugin": "readonly",
+		"defineNuxtRouteMiddleware": "readonly",
+		"definePageMeta": "readonly",
+		"defineEventHandler": "readonly",
+		"useRuntimeConfig": "readonly",
+		"useNuxtApp": "readonly",
+		"useFetch": "readonly",
+		"useAsyncData": "readonly",
+		"useState": "readonly",
+		"useRoute": "readonly",
+		"useRouter": "readonly",
+		"navigateTo": "readonly",
+		"createError": "readonly"
+	},
+	"rules": {
+		"eqeqeq": ["error", "always", { "null": "ignore" }],
+		"no-unused-vars": "error",
+		"no-console": ["warn", { "allow": ["info", "warn", "error"] }],
+		"@typescript-eslint/no-explicit-any": "error"
+	},
+	"overrides": [
+		{
+			"files": [
+				"**/__tests__/**",
+				"**/*.test.ts",
+				"**/*.spec.ts",
+				"**/_generated/**"
+			],
+			"rules": {
+				"@typescript-eslint/no-explicit-any": "off",
+				"no-unused-vars": "off"
+			}
+		}
+	],
+	"ignorePatterns": ["node_modules", ".nuxt", ".output", "dist", "*.min.js"]
+}
