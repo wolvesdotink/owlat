@@ -56,10 +56,7 @@ const handleSubmit = async () => {
 									class="w-full text-left px-2 py-1.5 text-sm rounded hover:bg-bg-elevated text-text-primary flex items-center gap-2"
 									@click="addMember(candidate)"
 								>
-									<div class="w-6 h-6 rounded-full bg-bg-elevated border border-border-subtle flex items-center justify-center text-[10px] font-medium text-text-tertiary overflow-hidden">
-										<img v-if="candidate.image" :src="candidate.image" class="w-full h-full object-cover" :alt="candidate.name ?? ''" />
-										<span v-else>{{ (candidate.name ?? candidate.email ?? '?').slice(0, 2).toUpperCase() }}</span>
-									</div>
+									<UiAvatar :name="candidate.name" :email="candidate.email" :image="candidate.image" size="sm" bg="elevated" />
 									<span>{{ candidate.name ?? candidate.email ?? candidate.memberId }}</span>
 								</button>
 							</div>

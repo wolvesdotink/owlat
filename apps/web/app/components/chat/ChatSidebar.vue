@@ -219,11 +219,7 @@ const matchesQuery = (name: string) => {
 						"
 						@click="emit('select', dm._id)"
 					>
-						<div
-							class="w-5 h-5 rounded-full bg-bg-surface border border-border-subtle flex items-center justify-center text-[10px] font-medium text-text-tertiary flex-shrink-0"
-						>
-							{{ dm.avatarSeed.slice(0, 2).toUpperCase() }}
-						</div>
+						<UiAvatar :name="dm.avatarSeed" size="xs" class="flex-shrink-0" />
 						<span class="flex-1 truncate text-sm">
 							{{ dm.displayName }}
 						</span>
