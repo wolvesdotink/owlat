@@ -7,7 +7,8 @@
  *   setup    Run the first-run wizard (interactive TUI or launches the web UI).
  *   config   Re-open the wizard for an existing install (skips already-set fields).
  *   feature  Toggle a single feature flag (e.g., `owlat-setup feature ai on`).
- *   env      Set a single env var (e.g., `owlat-setup env LLM_API_KEY sk-...`).
+ *   env      Set a single env var (e.g., `owlat-setup env LLM_API_KEY sk-...`),
+ *            or `owlat-setup env --show` to list the vars the current flags need.
  *   doctor   Diagnose a broken install (port checks, .env sanity, container health).
  */
 
@@ -45,6 +46,7 @@ Commands:
                      Toggle every flag in a feature pack
                      (emailClient | marketing | ai).
   env <KEY> <VALUE>  Set a single environment variable.
+  env --show         List the env vars the current flag state needs (secrets masked).
   doctor             Diagnose a broken install.
 
 Options:
