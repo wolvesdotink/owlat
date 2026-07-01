@@ -66,6 +66,7 @@
 		"@types/node": "catalog:",
 		"@types/papaparse": "^5.5.2",
 		"@types/sanitize-html": "^2.13.0",
+		"@vitejs/plugin-vue": "^6.0.6",
 		"@vitest/coverage-v8": "catalog:",
 		"@vue/test-utils": "^2.4.6",
 		"autoprefixer": "^10.4.27",

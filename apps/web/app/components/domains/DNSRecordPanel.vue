@@ -10,6 +10,10 @@ interface DNSRecord {
 interface VerificationResult {
 	verified: boolean;
 	message?: string;
+	/** Human-readable reason the record did not verify (e.g. "No matching TXT record found"). */
+	error?: string;
+	/** The value actually found in DNS, so the user can compare found-vs-expected at a glance. */
+	foundValue?: string;
 }
 
 interface Props {
@@ -47,6 +51,22 @@ const handleCopyHost = () => {
 const handleCopyValue = () => {
 	copy(props.record.value, `${props.label}-value`);
 };
+
+const handleCopyFound = () => {
+	if (props.verification?.foundValue) {
+		copy(props.verification.foundValue, `${props.label}-found`);
+	}
+};
+
+/**
+ * Show the found-vs-expected diagnostic only when we have a completed check
+ * that did NOT verify and carries a reason. The happy path stays untouched.
+ */
+const diagnostic = computed(() => {
+	const v = props.verification;
+	if (!v || v.verified || !v.error) return null;
+	return { error: v.error, foundValue: v.foundValue };
+});
 </script>
 
 <template>
@@ -100,6 +120,37 @@ const handleCopyValue = () => {
 						<Icon v-if="isCopied(`${label}-value`)" name="lucide:check" class="w-4 h-4 text-success" />
 						<Icon v-else name="lucide:copy" class="w-4 h-4" />
 					</button>
+				</div>
+			</div>
+
+			<!-- Verification diagnostic: the check ran but the record did not
+			     verify. Surface the reason (and, when available, the value we
+			     actually found) so the user can compare found-vs-expected
+			     instead of just seeing a red "Not verified" pill. -->
+			<div
+				v-if="diagnostic"
+				class="mt-3 rounded-lg border border-error/30 bg-error/10 p-3"
+				data-testid="dns-diagnostic"
+			>
+				<p class="flex items-start gap-2 text-xs font-medium text-error">
+					<Icon name="lucide:alert-circle" class="mt-0.5 w-3.5 h-3.5 shrink-0" />
+					<span data-testid="dns-diagnostic-error">{{ diagnostic.error }}</span>
+				</p>
+				<div v-if="diagnostic.foundValue" class="mt-2">
+					<p class="text-xs text-text-tertiary mb-1">Found</p>
+					<div class="flex items-center gap-2">
+						<code
+							class="flex-1 bg-bg-deep px-3 py-2 rounded-lg text-xs text-text-tertiary font-mono break-all line-clamp-2"
+							:title="diagnostic.foundValue"
+							data-testid="dns-diagnostic-found"
+						>
+							{{ diagnostic.foundValue }}
+						</code>
+						<button class="btn btn-ghost p-2" title="Copy found value" @click="handleCopyFound">
+							<Icon v-if="isCopied(`${label}-found`)" name="lucide:check" class="w-4 h-4 text-success" />
+							<Icon v-else name="lucide:copy" class="w-4 h-4" />
+						</button>
+					</div>
 				</div>
 			</div>
 
