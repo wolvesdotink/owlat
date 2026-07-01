@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
-import { presetForEmail, resolveMailPreset } from '~/utils/mailAutodiscover';
+import { appPasswordHelpForEmail, presetForEmail, resolveMailPreset } from '~/utils/mailAutodiscover';
 
 useHead({ title: 'Connect external mailbox — Owlat' });
 
@@ -238,6 +238,31 @@ const statusClass = computed(() => {
 });
 
 const showForm = computed(() => !isConnected.value || editing.value);
+
+// App-password deep-link guidance. The big consumer providers reject a plain
+// account password over IMAP/SMTP once 2FA is on and require a provider-minted
+// "app password" — by far the most common cause of an auth error here. We show
+// an actionable callout (deep link + one line of steps) when either the backend
+// reports an auth error, a connection test failed on credentials, OR the email
+// domain is a provider we know requires an app password. Pure/offline lookup.
+const detectedEmail = computed(() => form.emailAddress || account.value?.emailAddress || '');
+const appPasswordProvider = computed(() => appPasswordHelpForEmail(detectedEmail.value));
+
+function looksLikeAuthError(error?: string): boolean {
+	return !!error && /auth|password|credential|login|denied|invalid/i.test(error);
+}
+const hasAuthError = computed(() => {
+	if (account.value?.status === 'auth_error') return true;
+	const r = testResult.value;
+	if (!r) return false;
+	return (!r.imap.ok && looksLikeAuthError(r.imap.error)) || (!r.smtp.ok && looksLikeAuthError(r.smtp.error));
+});
+
+// Show whenever we can point at a real app-password page (the deep link needs a
+// known provider); the auth-error signal only sharpens the wording.
+const showAppPasswordCallout = computed(
+	() => appPasswordProvider.value !== null && (hasAuthError.value || appPasswordProvider.value !== null),
+);
 </script>
 
 <template>
@@ -280,6 +305,26 @@ const showForm = computed(() => !isConnected.value || editing.value);
 				Re-enter your password below to reconnect. For Gmail / Outlook you may need an
 				<strong>app password</strong> (with 2-factor enabled).
 			</p>
+
+			<div
+				v-if="showAppPasswordCallout && appPasswordProvider"
+				class="rounded-lg border border-border-subtle bg-bg-surface p-4 text-sm space-y-1"
+			>
+				<p class="font-medium flex items-center gap-1.5">
+					<Icon name="lucide:key-round" class="w-3.5 h-3.5 text-info" />
+					{{ appPasswordProvider.provider }} needs an app password
+				</p>
+				<p class="text-text-secondary">{{ appPasswordProvider.steps }}</p>
+				<a
+					:href="appPasswordProvider.url"
+					target="_blank"
+					rel="noopener noreferrer"
+					class="text-info underline inline-flex items-center gap-1"
+				>
+					Open {{ appPasswordProvider.provider }} app-password page
+					<Icon name="lucide:external-link" class="w-3 h-3" />
+				</a>
+			</div>
 
 			<div class="flex flex-wrap items-center gap-3 pt-2">
 				<button type="button" class="btn btn-secondary" @click="editing = true">
@@ -407,6 +452,26 @@ const showForm = computed(() => !isConnected.value || editing.value);
 				<p class="text-xs text-text-tertiary mt-1">
 					Stored encrypted. Gmail / Outlook require an app password (2-factor enabled).
 				</p>
+			</div>
+
+			<div
+				v-if="showAppPasswordCallout && appPasswordProvider"
+				class="rounded-lg border border-border-subtle bg-bg-surface p-4 text-sm space-y-1"
+			>
+				<p class="font-medium flex items-center gap-1.5">
+					<Icon name="lucide:key-round" class="w-3.5 h-3.5 text-info" />
+					{{ appPasswordProvider.provider }} needs an app password, not your account password
+				</p>
+				<p class="text-text-secondary">{{ appPasswordProvider.steps }}</p>
+				<a
+					:href="appPasswordProvider.url"
+					target="_blank"
+					rel="noopener noreferrer"
+					class="text-info underline inline-flex items-center gap-1"
+				>
+					Open {{ appPasswordProvider.provider }} app-password page
+					<Icon name="lucide:external-link" class="w-3 h-3" />
+				</a>
 			</div>
 
 			<div v-if="testResult" class="text-sm space-y-1">
