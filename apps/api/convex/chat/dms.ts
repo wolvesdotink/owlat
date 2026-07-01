@@ -10,10 +10,8 @@
 import { v } from 'convex/values';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import {
-	getMutationContext,
 	getUserIdFromSession,
-	requirePermission,
-	hasPermission,
+	requireOrgPermission,
 } from '../lib/sessionOrganization';
 import { assertFeatureEnabled } from '../lib/featureFlags';
 import { throwInvalidInput } from '../_utils/errors';
@@ -34,8 +32,7 @@ export const findOrCreateDm = authedMutation({
 	args: { otherMemberIds: v.array(v.string()) },
 	handler: async (ctx, args) => {
 		await assertFeatureEnabled(ctx, 'chat');
-		const { userId, role } = await getMutationContext(ctx);
-		requirePermission(hasPermission(role, 'chat:participate'), 'Chat is not available');
+		const { userId } = await requireOrgPermission(ctx, 'chat:participate', 'Chat is not available');
 
 		if (args.otherMemberIds.length === 0) {
 			throwInvalidInput('Pick at least one other person for a DM');

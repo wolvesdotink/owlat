@@ -2,11 +2,7 @@ import { v } from 'convex/values';
 import { authedQuery, authedMutation } from './lib/authedFunctions';
 import { nanoid } from 'nanoid';
 import { getOptional } from './lib/env';
-import {
-	getMutationContext,
-	requirePermission,
-	hasPermission,
-} from './lib/sessionOrganization';
+import { requireOrgPermission } from './lib/sessionOrganization';
 import { throwNotFound, throwInvalidInput, throwInvalidState } from './_utils/errors';
 
 const FORTY_EIGHT_HOURS_MS = 48 * 60 * 60 * 1000;
@@ -21,8 +17,7 @@ export const createShareLink = authedMutation({
 		transactionalEmailId: v.optional(v.id('transactionalEmails')),
 	},
 	handler: async (ctx, args) => {
-		const session = await getMutationContext(ctx);
-		requirePermission(hasPermission(session.role, 'shareLinks:manage'), 'Only owners and admins can create share links');
+		const session = await requireOrgPermission(ctx, 'shareLinks:manage', 'Only owners and admins can create share links');
 
 		// Exactly one must be set
 		if (!args.emailTemplateId && !args.transactionalEmailId) {
@@ -89,8 +84,7 @@ export const revokeShareLink = authedMutation({
 		shareLinkId: v.id('shareLinks'),
 	},
 	handler: async (ctx, args) => {
-		const session = await getMutationContext(ctx);
-		requirePermission(hasPermission(session.role, 'shareLinks:manage'), 'Only owners and admins can revoke share links');
+		await requireOrgPermission(ctx, 'shareLinks:manage', 'Only owners and admins can revoke share links');
 		const shareLink = await ctx.db.get(args.shareLinkId);
 		if (!shareLink) { throwNotFound('Share link'); }
 

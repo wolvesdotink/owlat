@@ -29,6 +29,19 @@ vi.mock('../lib/sessionOrganization', async () => {
 		isActiveOrgMember: vi.fn(async () => true),
 		getUserIdFromSession: vi.fn(async () => sess.user.userId),
 		getMutationContext: vi.fn(async () => sess.user),
+		requireOrgPermission: vi.fn().mockImplementation(
+			async (_ctx: unknown, permission: string, message?: string) => {
+				const mod: typeof import('../lib/sessionOrganization') = actual;
+				mod.requirePermission(
+					mod.hasPermission(
+						sess.user.role as Parameters<typeof mod.hasPermission>[0],
+						permission as Parameters<typeof mod.hasPermission>[1],
+					),
+					message,
+				);
+				return sess.user;
+			},
+		),
 	};
 });
 

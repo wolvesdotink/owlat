@@ -47,6 +47,23 @@ vi.mock('../../lib/sessionOrganization', async () => {
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
 		getUserIdFromSession: vi.fn().mockResolvedValue('test-user'),
 		getMutationContext: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
+		// Migrated walker handlers gate via requireOrgPermission; run the real
+		// role→permission map against the mocked owner role so the check passes
+		// without a BetterAuth session.
+		requireOrgPermission: vi.fn().mockImplementation(
+			async (_ctx: unknown, permission: string, message?: string) => {
+				const mod: typeof import('../../lib/sessionOrganization') =
+					actual as typeof import('../../lib/sessionOrganization');
+				mod.requirePermission(
+					mod.hasPermission(
+						'owner' as Parameters<typeof mod.hasPermission>[0],
+						permission as Parameters<typeof mod.hasPermission>[1],
+					),
+					message,
+				);
+				return { userId: 'test-user', role: 'owner' as const };
+			},
+		),
 	};
 });
 

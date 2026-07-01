@@ -4,11 +4,7 @@ import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { paginationOptsValidator } from 'convex/server';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import {
-	getMutationContext,
-	requirePermission,
-	hasPermission,
-} from '../lib/sessionOrganization';
+import { requireOrgPermission } from '../lib/sessionOrganization';
 import { buildSearchableText } from '../lib/queryHelpers';
 import { listResources } from '../lib/listing';
 import { emailTemplateListing } from './listing';
@@ -47,8 +43,7 @@ export const update = authedMutation({
 		forceWhilePublished: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
-		const session = await getMutationContext(ctx);
-		requirePermission(hasPermission(session.role, 'templates:manage'), 'Only owners and admins can update email templates');
+		const session = await requireOrgPermission(ctx, 'templates:manage', 'Only owners and admins can update email templates');
 
 		const template = await ctx.db.get(args.templateId);
 		if (!template) {
@@ -150,8 +145,7 @@ export const publish = authedMutation({
 		htmlTranslations: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		const session = await getMutationContext(ctx);
-		requirePermission(hasPermission(session.role, 'templates:manage'), 'Only owners and admins can publish email templates');
+		const session = await requireOrgPermission(ctx, 'templates:manage', 'Only owners and admins can publish email templates');
 
 		const outcome = await ctx.runMutation(internal.emailTemplates.lifecycle.transition, {
 			templateId: args.templateId,
@@ -179,8 +173,7 @@ export const publish = authedMutation({
 export const unpublish = authedMutation({
 	args: { templateId: v.id('emailTemplates') },
 	handler: async (ctx, args) => {
-		const session = await getMutationContext(ctx);
-		requirePermission(hasPermission(session.role, 'templates:manage'), 'Only owners and admins can unpublish email templates');
+		const session = await requireOrgPermission(ctx, 'templates:manage', 'Only owners and admins can unpublish email templates');
 
 		const outcome = await ctx.runMutation(internal.emailTemplates.lifecycle.transition, {
 			templateId: args.templateId,
@@ -203,8 +196,7 @@ export const unpublish = authedMutation({
 export const duplicate = authedMutation({
 	args: { templateId: v.id('emailTemplates') },
 	handler: async (ctx, args): Promise<Id<'emailTemplates'>> => {
-		const session = await getMutationContext(ctx);
-		requirePermission(hasPermission(session.role, 'templates:manage'), 'Only owners and admins can duplicate email templates');
+		const session = await requireOrgPermission(ctx, 'templates:manage', 'Only owners and admins can duplicate email templates');
 
 		const outcome = await ctx.runMutation(internal.emailTemplates.lifecycle.duplicate, {
 			templateId: args.templateId,
@@ -223,8 +215,7 @@ export const duplicate = authedMutation({
 export const remove = authedMutation({
 	args: { templateId: v.id('emailTemplates') },
 	handler: async (ctx, args) => {
-		const session = await getMutationContext(ctx);
-		requirePermission(hasPermission(session.role, 'templates:manage'), 'Only owners and admins can delete email templates');
+		const session = await requireOrgPermission(ctx, 'templates:manage', 'Only owners and admins can delete email templates');
 
 		const outcome = await ctx.runMutation(internal.emailTemplates.lifecycle.remove, {
 			templateId: args.templateId,
@@ -245,8 +236,7 @@ export const changeType = authedMutation({
 		forceWhilePublished: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
-		const session = await getMutationContext(ctx);
-		requirePermission(hasPermission(session.role, 'templates:manage'), 'Only owners and admins can change template type');
+		const session = await requireOrgPermission(ctx, 'templates:manage', 'Only owners and admins can change template type');
 
 		const template = await ctx.db.get(args.templateId);
 		if (!template) {
@@ -310,8 +300,7 @@ export const create = authedMutation({
 		content: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<Id<'emailTemplates'>> => {
-		const session = await getMutationContext(ctx);
-		requirePermission(hasPermission(session.role, 'templates:manage'), 'Only owners and admins can create email templates');
+		const session = await requireOrgPermission(ctx, 'templates:manage', 'Only owners and admins can create email templates');
 
 		const outcome = await ctx.runMutation(internal.emailTemplates.lifecycle.create, {
 			name: args.name,

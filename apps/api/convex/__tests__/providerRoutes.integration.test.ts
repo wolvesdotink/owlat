@@ -27,6 +27,9 @@ vi.mock('../lib/sessionOrganization', async () => {
 		getMutationContext: vi
 			.fn()
 			.mockResolvedValue({ userId: 'test-user', role: 'owner' }),
+		requireOrgPermission: vi
+			.fn()
+			.mockResolvedValue({ userId: 'test-user', role: 'owner' }),
 	};
 });
 

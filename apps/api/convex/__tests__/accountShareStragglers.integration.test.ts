@@ -54,10 +54,19 @@ vi.mock('../lib/sessionOrganization', async () => {
 			userId: sessionMock.userId,
 			role: sessionMock.role,
 		})),
-		requireOrgPermission: vi.fn().mockImplementation(async () => ({
-			userId: sessionMock.userId,
-			role: sessionMock.role,
-		})),
+		requireOrgPermission: vi.fn().mockImplementation(
+			async (_ctx: unknown, permission: string, message?: string) => {
+				const mod: typeof import('../lib/sessionOrganization') = actual as typeof import('../lib/sessionOrganization');
+				mod.requirePermission(
+					mod.hasPermission(
+						sessionMock.role as Parameters<typeof mod.hasPermission>[0],
+						permission as Parameters<typeof mod.hasPermission>[1],
+					),
+					message,
+				);
+				return { userId: sessionMock.userId, role: sessionMock.role };
+			},
+		),
 		// requirePlatformAdmin / checkForUpdates resolve the caller through this.
 		requireAuthenticatedIdentity: vi.fn().mockImplementation(async () => ({
 			subject: sessionMock.subject,

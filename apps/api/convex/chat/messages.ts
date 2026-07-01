@@ -10,7 +10,7 @@ import { internal } from '../_generated/api';
 import {
 	getMutationContext,
 	getUserIdFromSession,
-	requirePermission,
+	requireOrgPermission,
 	hasPermission,
 } from '../lib/sessionOrganization';
 import { assertFeatureEnabled, isFeatureEnabled } from '../lib/featureFlags';
@@ -123,8 +123,7 @@ export const sendMessage = authedMutation({
 	},
 	handler: async (ctx, args) => {
 		await assertFeatureEnabled(ctx, 'chat');
-		const { userId, role } = await getMutationContext(ctx);
-		requirePermission(hasPermission(role, 'chat:participate'), 'Chat is not available');
+		const { userId } = await requireOrgPermission(ctx, 'chat:participate', 'Chat is not available');
 
 		const room = await getRoomOrThrow(ctx, args.roomId);
 		if (room.archivedAt) {

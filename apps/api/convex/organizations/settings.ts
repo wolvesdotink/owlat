@@ -28,7 +28,7 @@ import {
 	getUserIdFromSession,
 	getMutationContext,
 	requirePermission,
-	hasPermission,
+	requireOrgPermission,
 } from '../lib/sessionOrganization';
 
 export const get = authedQuery({
@@ -54,11 +54,7 @@ export const update = authedMutation({
 		),
 	},
 	handler: async (ctx, args) => {
-		const session = await getMutationContext(ctx);
-		requirePermission(
-			hasPermission(session.role, 'settings:manage'),
-			'Only owners and admins can update organization settings'
-		);
+		await requireOrgPermission(ctx, 'settings:manage', 'Only owners and admins can update organization settings');
 		const now = Date.now();
 		const existing = await ctx.db.query('instanceSettings').first();
 		if (existing) {

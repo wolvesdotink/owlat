@@ -2,11 +2,7 @@ import { v } from 'convex/values';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { paginationOptsValidator } from 'convex/server';
 import { internal } from '../_generated/api';
-import {
-	getMutationContext,
-	requirePermission,
-	hasPermission,
-} from '../lib/sessionOrganization';
+import { requireOrgPermission } from '../lib/sessionOrganization';
 import { assertFeatureEnabled } from '../lib/featureFlags';
 import { listResources } from '../lib/listing';
 import { campaignListing } from './listing';
@@ -192,8 +188,7 @@ export const updateContent = authedMutation({
 export const duplicate = authedMutation({
 	args: { campaignId: v.id('campaigns') },
 	handler: async (ctx, args) => {
-		const session = await getMutationContext(ctx);
-		requirePermission(hasPermission(session.role, 'campaigns:manage'), 'Only owners and admins can duplicate campaigns');
+		await requireOrgPermission(ctx, 'campaigns:manage', 'Only owners and admins can duplicate campaigns');
 
 		const campaign = await ctx.db.get(args.campaignId);
 		if (!campaign) {
@@ -226,8 +221,7 @@ export const duplicate = authedMutation({
 export const remove = authedMutation({
 	args: { campaignId: v.id('campaigns') },
 	handler: async (ctx, args) => {
-		const session = await getMutationContext(ctx);
-		requirePermission(hasPermission(session.role, 'campaigns:manage'), 'Only owners and admins can delete campaigns');
+		const session = await requireOrgPermission(ctx, 'campaigns:manage', 'Only owners and admins can delete campaigns');
 
 		const campaign = await ctx.db.get(args.campaignId);
 		if (!campaign) {
@@ -288,8 +282,7 @@ export const create = authedMutation({
 		validateStringLength(args.name, STRING_LIMITS.NAME, 'Name');
 
 		// Get full mutation context (userId, role)
-		const session = await getMutationContext(ctx);
-		requirePermission(hasPermission(session.role, 'campaigns:manage'), 'Only owners and admins can create campaigns');
+		const session = await requireOrgPermission(ctx, 'campaigns:manage', 'Only owners and admins can create campaigns');
 
 		const now = Date.now();
 		const name = args.name.trim();
@@ -329,11 +322,7 @@ export const sendNow = authedMutation({
 		campaignId: v.id('campaigns'),
 	},
 	handler: async (ctx, args) => {
-		const session = await getMutationContext(ctx);
-		requirePermission(
-			hasPermission(session.role, 'campaigns:send'),
-			'Only owners and admins can send campaigns',
-		);
+		const session = await requireOrgPermission(ctx, 'campaigns:send', 'Only owners and admins can send campaigns');
 
 		const campaign = await ctx.db.get(args.campaignId);
 		if (!campaign) {

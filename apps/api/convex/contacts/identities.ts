@@ -9,7 +9,7 @@
 import { v } from 'convex/values';
 import { internalMutation, type MutationCtx } from '../_generated/server';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
-import { getMutationContext, hasPermission, requirePermission } from '../lib/sessionOrganization';
+import { requireOrgPermission } from '../lib/sessionOrganization';
 import type { Doc } from '../_generated/dataModel';
 import { throwAlreadyExists, throwNotFound } from '../_utils/errors';
 import { logInfo } from '../lib/runtimeLog';
@@ -136,8 +136,7 @@ export const addIdentity = authedMutation({
 		isPrimary: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
-		const { role } = await getMutationContext(ctx);
-		requirePermission(hasPermission(role, 'contacts:manage'), 'Only owners and admins can manage contacts');
+		await requireOrgPermission(ctx, 'contacts:manage', 'Only owners and admins can manage contacts');
 
 		// Check for existing identity with same channel+identifier
 		const existing = await ctx.db
@@ -186,8 +185,7 @@ export const addIdentity = authedMutation({
 export const removeIdentity = authedMutation({
 	args: { identityId: v.id('contactIdentities') },
 	handler: async (ctx, args) => {
-		const { role } = await getMutationContext(ctx);
-		requirePermission(hasPermission(role, 'contacts:manage'), 'Only owners and admins can manage contacts');
+		await requireOrgPermission(ctx, 'contacts:manage', 'Only owners and admins can manage contacts');
 
 		await ctx.db.delete(args.identityId);
 	},
@@ -199,8 +197,7 @@ export const removeIdentity = authedMutation({
 export const verifyIdentity = authedMutation({
 	args: { identityId: v.id('contactIdentities') },
 	handler: async (ctx, args) => {
-		const { role } = await getMutationContext(ctx);
-		requirePermission(hasPermission(role, 'contacts:manage'), 'Only owners and admins can manage contacts');
+		await requireOrgPermission(ctx, 'contacts:manage', 'Only owners and admins can manage contacts');
 
 		await ctx.db.patch(args.identityId, { verifiedAt: Date.now() });
 	},
@@ -216,8 +213,7 @@ export const mergeContacts = authedMutation({
 		sourceContactId: v.id('contacts'),
 	},
 	handler: async (ctx, args) => {
-		const { userId, role } = await getMutationContext(ctx);
-		requirePermission(hasPermission(role, 'contacts:manage'), 'Only owners and admins can manage contacts');
+		const { userId } = await requireOrgPermission(ctx, 'contacts:manage', 'Only owners and admins can manage contacts');
 
 		const target = await ctx.db.get(args.targetContactId);
 		const source = await ctx.db.get(args.sourceContactId);

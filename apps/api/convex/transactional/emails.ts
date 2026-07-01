@@ -2,7 +2,7 @@ import { v } from 'convex/values';
 import { authedMutation, authedQuery } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import { getMutationContext, requirePermission, hasPermission } from '../lib/sessionOrganization';
+import { requireOrgPermission } from '../lib/sessionOrganization';
 import { buildSearchableText } from '../lib/queryHelpers';
 import {
 	getOrThrow,
@@ -135,8 +135,7 @@ export const create = authedMutation({
 		defaultLanguage: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<Id<'transactionalEmails'>> => {
-		const { role } = await getMutationContext(ctx);
-		requirePermission(hasPermission(role, 'templates:manage'), 'Only owners and admins can create transactional emails');
+		await requireOrgPermission(ctx, 'templates:manage', 'Only owners and admins can create transactional emails');
 		const outcome = await ctx.runMutation(internal.transactional.lifecycle.create, {
 			name: args.name,
 			slug: args.slug,
@@ -193,8 +192,7 @@ export const update = authedMutation({
 	},
 	handler: async (ctx, args) => {
 		await assertFeatureEnabled(ctx, 'transactional');
-		const { role } = await getMutationContext(ctx);
-		requirePermission(hasPermission(role, 'templates:manage'), 'Only owners and admins can update transactional emails');
+		await requireOrgPermission(ctx, 'templates:manage', 'Only owners and admins can update transactional emails');
 		const email = await getOrThrow(ctx, args.id, 'Transactional email');
 
 		assertEditableForPublishableChange(email, args.forceWhilePublished);
@@ -288,8 +286,7 @@ export const publish = authedMutation({
 	},
 	handler: async (ctx, args) => {
 		await assertFeatureEnabled(ctx, 'transactional');
-		const { role } = await getMutationContext(ctx);
-		requirePermission(hasPermission(role, 'templates:manage'), 'Only owners and admins can publish transactional emails');
+		await requireOrgPermission(ctx, 'templates:manage', 'Only owners and admins can publish transactional emails');
 		const email = await getOrThrow(ctx, args.id, 'Transactional email');
 
 		if (email.status === 'published') {
@@ -325,8 +322,7 @@ export const unpublish = authedMutation({
 	args: { id: v.id('transactionalEmails') },
 	handler: async (ctx, args) => {
 		await assertFeatureEnabled(ctx, 'transactional');
-		const { role } = await getMutationContext(ctx);
-		requirePermission(hasPermission(role, 'templates:manage'), 'Only owners and admins can unpublish transactional emails');
+		await requireOrgPermission(ctx, 'templates:manage', 'Only owners and admins can unpublish transactional emails');
 		const email = await getOrThrow(ctx, args.id, 'Transactional email');
 
 		if (email.status === 'draft') {
@@ -357,8 +353,7 @@ export const duplicate = authedMutation({
 	args: { id: v.id('transactionalEmails') },
 	handler: async (ctx, args): Promise<Id<'transactionalEmails'>> => {
 		await assertFeatureEnabled(ctx, 'transactional');
-		const { role } = await getMutationContext(ctx);
-		requirePermission(hasPermission(role, 'templates:manage'), 'Only owners and admins can duplicate transactional emails');
+		await requireOrgPermission(ctx, 'templates:manage', 'Only owners and admins can duplicate transactional emails');
 		const outcome = await ctx.runMutation(internal.transactional.lifecycle.duplicate, {
 			emailId: args.id,
 			userId: 'system:transactional_api',
@@ -382,8 +377,7 @@ export const remove = authedMutation({
 	args: { id: v.id('transactionalEmails') },
 	handler: async (ctx, args) => {
 		await assertFeatureEnabled(ctx, 'transactional');
-		const { role } = await getMutationContext(ctx);
-		requirePermission(hasPermission(role, 'templates:manage'), 'Only owners and admins can delete transactional emails');
+		await requireOrgPermission(ctx, 'templates:manage', 'Only owners and admins can delete transactional emails');
 		const outcome = await ctx.runMutation(internal.transactional.lifecycle.remove, {
 			emailId: args.id,
 			userId: 'system:transactional_api',
@@ -407,8 +401,7 @@ export const updateSchema = authedMutation({
 	},
 	handler: async (ctx, args) => {
 		await assertFeatureEnabled(ctx, 'transactional');
-		const { role } = await getMutationContext(ctx);
-		requirePermission(hasPermission(role, 'templates:manage'), 'Only owners and admins can update transactional email schema');
+		await requireOrgPermission(ctx, 'templates:manage', 'Only owners and admins can update transactional email schema');
 		const email = await getOrThrow(ctx, args.id, 'Transactional email');
 
 		assertEditableForPublishableChange(email, args.forceWhilePublished);

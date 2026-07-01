@@ -15,9 +15,7 @@
 import type { MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import {
-	getMutationContext,
-	requirePermission,
-	hasPermission,
+	requireOrgPermission,
 	type MutationSessionContext,
 } from '../lib/sessionOrganization';
 import { throwNotFound, throwInvalidState } from '../_utils/errors';
@@ -33,12 +31,7 @@ export async function requireAutomationManage(
 	ctx: MutationCtx,
 	action: string,
 ): Promise<MutationSessionContext> {
-	const session = await getMutationContext(ctx);
-	requirePermission(
-		hasPermission(session.role, 'automations:manage'),
-		`Only owners and admins can ${action}`,
-	);
-	return session;
+	return await requireOrgPermission(ctx, 'automations:manage', `Only owners and admins can ${action}`);
 }
 
 /**

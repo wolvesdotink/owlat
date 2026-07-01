@@ -2,7 +2,7 @@ import { v } from 'convex/values';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import type { QueryCtx, MutationCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
-import { getUserIdFromSession, getMutationContext, requirePermission, hasPermission } from '../lib/sessionOrganization';
+import { getUserIdFromSession, requireOrgPermission } from '../lib/sessionOrganization';
 import { validateStringLength, STRING_LIMITS } from '../lib/inputGuards';
 import { throwNotFound, throwInvalidInput } from '../_utils/errors';
 
@@ -61,8 +61,7 @@ export const set = authedMutation({
 		value: v.string(),
 	},
 	handler: async (ctx, args) => {
-		const session = await getMutationContext(ctx);
-		requirePermission(hasPermission(session.role, 'contacts:manage'), 'Only owners and admins can modify contact properties');
+		await requireOrgPermission(ctx, 'contacts:manage', 'Only owners and admins can modify contact properties');
 
 		// Validate input length
 		validateStringLength(args.value, STRING_LIMITS.FORM_FIELD_VALUE, 'Property value');
@@ -113,8 +112,7 @@ export const remove = authedMutation({
 		propertyId: v.id('contactProperties'),
 	},
 	handler: async (ctx, args) => {
-		const session = await getMutationContext(ctx);
-		requirePermission(hasPermission(session.role, 'contacts:manage'), 'Only owners and admins can modify contact properties');
+		await requireOrgPermission(ctx, 'contacts:manage', 'Only owners and admins can modify contact properties');
 
 		// Verify contact exists
 		await verifyContactExists(ctx, args.contactId);
@@ -170,8 +168,7 @@ export const bulkSet = authedMutation({
 		),
 	},
 	handler: async (ctx, args) => {
-		const session = await getMutationContext(ctx);
-		requirePermission(hasPermission(session.role, 'contacts:manage'), 'Only owners and admins can modify contact properties');
+		await requireOrgPermission(ctx, 'contacts:manage', 'Only owners and admins can modify contact properties');
 
 		// Enforce array size limit
 		if (args.values.length > 50) {
