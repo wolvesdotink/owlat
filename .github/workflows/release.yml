@@ -62,7 +62,7 @@ jobs:
         with:
           egress-policy: audit
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -117,15 +117,15 @@ jobs:
         with:
           egress-policy: audit
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -133,7 +133,7 @@ jobs:
 
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.IMAGE_PREFIX }}/${{ matrix.name }}
           tags: |
@@ -143,7 +143,7 @@ jobs:
 
       - name: Build and push
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
@@ -181,7 +181,7 @@ jobs:
       # Publish an SLSA provenance attestation pinned to the image digest.
       # Consumers verify with `gh attestation verify --repo wolvesdotink/owlat`.
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-name: ${{ env.IMAGE_PREFIX }}/${{ matrix.name }}
           subject-digest: ${{ steps.build.outputs.digest }}
@@ -197,7 +197,7 @@ jobs:
         with:
           egress-policy: audit
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -231,14 +231,14 @@ jobs:
       # Attest the compose file itself so consumers can verify it via
       # `gh attestation verify docker-compose-<v>.yml --repo wolvesdotink/owlat`.
       - name: Attest compose artifact provenance
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: |
             docker-compose-${{ needs.resolve.outputs.version }}.yml
             docker-compose-${{ needs.resolve.outputs.version }}.yml.sha256
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           name: "v${{ needs.resolve.outputs.version }}"
           tag_name: ${{ github.ref_name }}
