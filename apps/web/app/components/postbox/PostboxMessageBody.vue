@@ -46,11 +46,17 @@ const needsBodyFetch = computed(
 		!!(props.message.htmlBodyStorageId || props.message.textBodyStorageId)
 );
 
-const { data: bodyData } = useConvexQuery(api.mail.mailbox.getMessageBody, () =>
-	needsBodyFetch.value && props.message._id
-		? { messageId: props.message._id as Id<'mailMessages'> }
-		: 'skip'
+const { data: bodyData, error: bodyError } = useConvexQuery(
+	api.mail.mailbox.getMessageBody,
+	() =>
+		needsBodyFetch.value && props.message._id
+			? { messageId: props.message._id as Id<'mailMessages'> }
+			: 'skip'
 );
+
+// Flips once the lazy body fetch has resolved (with content, empty, or a
+// failed blob download) so the loading skeleton can't outlive the fetch.
+const bodyFetchSettled = ref(false);
 
 watch(
 	() => bodyData.value,
@@ -62,22 +68,24 @@ watch(
 			htmlUrl: string | null;
 			textUrl: string | null;
 		};
-		if (d.htmlInline) {
-			fetchedHtml.value = d.htmlInline;
-			return;
-		}
-		if (d.textInline) {
-			fetchedText.value = d.textInline;
-			return;
-		}
 		try {
-			if (d.htmlUrl) fetchedHtml.value = await (await fetch(d.htmlUrl)).text();
+			if (d.htmlInline) fetchedHtml.value = d.htmlInline;
+			else if (d.textInline) fetchedText.value = d.textInline;
+			else if (d.htmlUrl) fetchedHtml.value = await (await fetch(d.htmlUrl)).text();
 			else if (d.textUrl) fetchedText.value = await (await fetch(d.textUrl)).text();
 		} catch {
 			// Leave empty — the reader shows "(empty message)".
+		} finally {
+			bodyFetchSettled.value = true;
 		}
 	},
 	{ immediate: true }
+);
+
+// Paragraph-bar skeleton while a blob-stored body loads. Degrades to the
+// normal "(empty message)" iframe if the query errors or the download fails.
+const bodyLoading = computed(
+	() => needsBodyFetch.value && !bodyFetchSettled.value && !bodyError.value
 );
 
 const effectiveHtml = computed(() => props.message.htmlBodyInline ?? fetchedHtml.value ?? undefined);
@@ -153,10 +161,10 @@ function resizeIframe() {
 	iframe.style.height = `${Math.max(120, h)}px`;
 }
 
-onMounted(() => {
-	if (iframeRef.value) {
-		iframeRef.value.addEventListener('load', resizeIframe);
-	}
+// The iframe mounts late when the body-loading skeleton renders first, so
+// attach the resize listener whenever the template ref binds (not onMounted).
+watch(iframeRef, (iframe) => {
+	iframe?.addEventListener('load', resizeIframe);
 });
 
 // Re-fit when the user toggles "Show quoted text" or shows images.
@@ -166,7 +174,10 @@ watch([showQuoted, showImages], () => {
 </script>
 
 <template>
-	<div class="mt-4">
+	<div v-if="bodyLoading" class="mt-4">
+		<PostboxReaderSkeleton :with-header="false" />
+	</div>
+	<div v-else class="mt-4">
 		<div
 			v-if="hasBlockedImages"
 			class="mb-2 px-3 py-2 rounded bg-bg-surface text-xs flex items-center justify-between"
