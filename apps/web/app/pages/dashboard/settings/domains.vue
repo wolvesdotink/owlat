@@ -4,6 +4,7 @@ import type { Id } from '@owlat/api/dataModel';
 import { formatDateTime } from '~/utils/formatters';
 import { hasInboundFeature } from '~/utils/inboundDns';
 import { computeSpfSuggestion, type SpfCoexistenceSuggestion } from '~/utils/spfCoexistence';
+import { summarizeDomainReadiness, domainReadinessMessage } from '~/utils/domainReadiness';
 import { rules } from '~/composables/useFormValidation';
 
 useHead({ title: 'Sending Domains — Owlat' });
@@ -307,6 +308,15 @@ const hasDnsRecords = (dnsRecords: DomainDnsRecords | null | undefined): dnsReco
 			dnsRecords.mailFrom?.length
 	);
 };
+
+// One-line readiness summary for the expanded DNS panel — pure composition of
+// the verification data already on the domain (no extra query / lookup).
+type DomainWithVerification = {
+	dnsRecords?: DomainDnsRecords | null;
+	verificationResults?: Parameters<typeof summarizeDomainReadiness>[0];
+};
+const readinessSummary = (domain: DomainWithVerification) =>
+	summarizeDomainReadiness(domain.verificationResults, domain.dnsRecords);
 </script>
 
 <template>
@@ -560,6 +570,41 @@ const hasDnsRecords = (dnsRecords: DomainDnsRecords | null | undefined): dnsReco
 									<h4 class="text-sm font-medium text-text-primary mb-4">
 										Configure these DNS records with your domain provider:
 									</h4>
+
+									<!-- One-line domain readiness summary derived purely from the
+									     verification data already on the domain. -->
+									<div
+										v-if="readinessSummary(domain).total > 0"
+										class="flex flex-wrap items-center gap-x-3 gap-y-2 mb-4 text-sm"
+									>
+										<div class="flex flex-wrap items-center gap-1.5">
+											<span
+												v-for="chip in readinessSummary(domain).chips"
+												:key="chip.label"
+												class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-xs font-medium"
+												:class="
+													chip.verified
+														? 'bg-success/20 text-success border-success/30'
+														: 'bg-error/20 text-error border-error/30'
+												"
+											>
+												<Icon
+													:name="chip.verified ? 'lucide:check-circle-2' : 'lucide:x-circle'"
+													class="w-3 h-3"
+												/>
+												{{ chip.label }}
+											</span>
+										</div>
+										<span
+											:class="
+												readinessSummary(domain).allVerified
+													? 'text-success'
+													: 'text-text-secondary'
+											"
+										>
+											{{ domainReadinessMessage(readinessSummary(domain)) }}
+										</span>
+									</div>
 
 									<div class="space-y-4">
 										<DomainsDNSRecordPanel
