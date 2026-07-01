@@ -95,10 +95,7 @@ const confirmRemove = async () => {
 					class="w-full text-left flex items-center gap-2 px-2 py-1.5 rounded hover:bg-bg-surface text-sm"
 					@click="handleAdd(candidate.memberId)"
 				>
-					<div class="w-6 h-6 rounded-full bg-bg-surface border border-border-subtle flex items-center justify-center text-[10px] font-medium text-text-tertiary overflow-hidden">
-						<img v-if="candidate.image" :src="candidate.image" class="w-full h-full object-cover" :alt="candidate.name ?? ''" />
-						<span v-else>{{ (candidate.name ?? candidate.email ?? '?').slice(0, 2).toUpperCase() }}</span>
-					</div>
+					<UiAvatar :name="candidate.name" :email="candidate.email" :image="candidate.image" size="sm" />
 					<span class="flex-1 truncate text-text-primary">
 						{{ candidate.name ?? candidate.email ?? candidate.memberId }}
 					</span>
@@ -113,10 +110,7 @@ const confirmRemove = async () => {
 				:key="member._id"
 				class="group flex items-center gap-3 px-3 py-1.5 hover:bg-bg-surface transition-colors"
 			>
-				<div class="w-7 h-7 rounded-full bg-bg-surface border border-border-subtle flex items-center justify-center text-[10px] font-medium text-text-tertiary overflow-hidden flex-shrink-0">
-					<img v-if="member.image" :src="member.image" class="w-full h-full object-cover" :alt="member.name ?? ''" />
-					<span v-else>{{ (member.name ?? member.email ?? '?').slice(0, 2).toUpperCase() }}</span>
-				</div>
+				<UiAvatar :name="member.name" :email="member.email" :image="member.image" size="md" class="flex-shrink-0" />
 				<div class="flex-1 min-w-0">
 					<div class="text-sm text-text-primary truncate">
 						{{ member.name ?? member.email ?? member.memberId }}
