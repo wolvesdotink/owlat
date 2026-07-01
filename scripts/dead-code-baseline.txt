@@ -1,6 +1,7 @@
 export:packages/email-builder/src/composables/useBackgroundColorControl.ts:useBackgroundColorControl
 export:packages/email-builder/src/composables/useBlockRenderer.ts:clearAllBlockCaches
 export:packages/email-builder/src/composables/useBlockRenderer.ts:clearBlockCache
+export:packages/email-builder/src/composables/useBlockRenderer.ts:useBlockRenderer
 export:packages/email-builder/src/composables/useDevicePreview.ts:useDevicePreview
 export:packages/email-builder/src/composables/useKeyboardHandlers.ts:useKeyboardHandlers
 export:packages/email-builder/src/composables/useLinkedBlockDrag.ts:useLinkedBlockDrag
@@ -16,6 +17,7 @@ export:packages/email-builder/src/schema/definitions/_shared.ts:advancedGroupNoF
 export:packages/email-builder/src/schema/definitions/_shared.ts:sharedGroupsNoFullWidth
 export:packages/email-builder/src/utils/blocks.ts:hasBlockBorder
 export:packages/email-builder/src/utils/blocks.ts:updateBlockBorder
+export:packages/email-builder/src/utils/gradient.ts:gradientCss
 export:packages/email-builder/src/utils/variables.ts:containsVariable
 export:packages/email-builder/src/utils/variables.ts:extractVariableName
 export:packages/email-builder/src/utils/variables.ts:extractVariableNames
@@ -24,9 +26,6 @@ export:packages/email-renderer/src/helpers/inline-styles.ts:buildInlineStyleFrom
 export:packages/email-renderer/src/helpers/table.ts:wrapColumnCell
 export:packages/email-renderer/src/outlook.ts:msoConditional
 export:packages/email-renderer/src/outlook.ts:notMsoConditional
-export:packages/email-scanner/src/clamav/pool.ts:ClamPool.isHealthy
-export:packages/email-scanner/src/urls/cache.ts:InMemoryUrlCache.clear
-export:packages/email-scanner/src/urls/cache.ts:InMemoryUrlCache.size
 file:packages/email-builder/src/components/canvas/ToolbarSettingsPopover.vue
 file:packages/email-builder/src/components/panel/fields/index.ts
 file:packages/email-builder/src/components/ui/InlineNumberInput.vue
