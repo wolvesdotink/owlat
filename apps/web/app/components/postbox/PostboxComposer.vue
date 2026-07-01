@@ -2,6 +2,7 @@
 import type { Id } from '@owlat/api/dataModel';
 import type { BlockType } from '@owlat/email-builder';
 import type { ComposerMode } from '~/composables/postbox/usePostboxCompose';
+import { resolveComposerKeyAction } from '~/utils/postboxComposerKeys';
 
 const EmailBuilder = defineAsyncComponent(() =>
 	import('@owlat/email-builder').then((m) => m.EmailBuilder)
@@ -208,15 +209,63 @@ function onPaste(event: ClipboardEvent) {
 	}
 }
 
+// --- Keyboard shortcuts (Cmd/Ctrl+Enter send, +Shift schedule, Esc minimize).
+// Bound on the composer root (capture) — NOT globally — so each stacked popup
+// composer only handles its own keys.
+const rootEl = ref<HTMLElement | null>(null);
+
+const isMac = computed(
+	() => import.meta.client && /Mac|iP(hone|ad|od)/.test(navigator.platform),
+);
+const sendShortcutHint = computed(() =>
+	isMac.value ? 'Send (⌘↵)' : 'Send (Ctrl+Enter)',
+);
+const scheduleShortcutHint = computed(() =>
+	isMac.value ? 'Schedule send (⌘⇧↵)' : 'Schedule send (Ctrl+Shift+Enter)',
+);
+
+/**
+ * Esc must close an open inner dialog/dropdown instead of minimizing:
+ * - the schedule dialog (tracked state),
+ * - the recipient autocomplete (marked with data-postbox-overlay-open),
+ * - a focused native <select> (signature / From picker) whose dropdown state
+ *   the DOM cannot expose — treat a focused select as "overlay open".
+ */
+function hasOpenInnerOverlay(event: KeyboardEvent): boolean {
+	if (scheduleOpen.value) return true;
+	if (event.target instanceof HTMLSelectElement) return true;
+	return !!rootEl.value?.querySelector('[data-postbox-overlay-open]');
+}
+
+function onComposerKeydown(event: KeyboardEvent) {
+	if (event.isComposing) return;
+	const action = resolveComposerKeyAction(event, {
+		canSend: canSend.value && !sending.value && !isScheduled.value,
+		overlayOpen: hasOpenInnerOverlay(event),
+	});
+	if (!action) return;
+	event.preventDefault();
+	event.stopPropagation();
+	if (action === 'send') {
+		void handleSend();
+	} else if (action === 'schedule') {
+		scheduleOpen.value = true;
+	} else {
+		emit('minimize');
+	}
+}
+
 </script>
 
 <template>
 	<div
+		ref="rootEl"
 		class="relative flex flex-col h-full bg-bg-elevated"
 		@dragover="onDragOver"
 		@dragleave="onDragLeave"
 		@drop="onDrop"
 		@paste="onPaste"
+		@keydown.capture="onComposerKeydown"
 	>
 		<div
 			v-if="dragActive"
@@ -385,6 +434,7 @@ function onPaste(event: ClipboardEvent) {
 				<button
 					type="button"
 					class="btn btn-primary"
+					:title="sendShortcutHint"
 					:disabled="!canSend || sending || isScheduled"
 					@click="handleSend()"
 				>
@@ -399,7 +449,7 @@ function onPaste(event: ClipboardEvent) {
 				<button
 					type="button"
 					class="btn btn-ghost"
-					title="Schedule send"
+					:title="scheduleShortcutHint"
 					:disabled="!canSend || sending || isScheduled"
 					@click="scheduleOpen = true"
 				>

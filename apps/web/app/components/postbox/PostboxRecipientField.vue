@@ -149,6 +149,7 @@ function onBlur() {
 		</div>
 		<div
 			v-if="showSuggestions && suggestions.length > 0"
+			data-postbox-overlay-open
 			class="absolute top-full left-12 mt-1 bg-bg-elevated border border-border-subtle rounded shadow-lg w-80 max-w-[90%] z-20"
 		>
 			<button
