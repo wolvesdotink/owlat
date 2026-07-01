@@ -13,7 +13,7 @@ import { internal } from '../_generated/api';
 import { getMutationContext } from '../lib/sessionOrganization';
 import { recordAuditLog } from '../lib/auditLog';
 import { transition as threadTransition } from './threads/module';
-import { throwNotFound, throwInvalidState } from '../_utils/errors';
+import { getOrThrow, throwNotFound, throwInvalidState } from '../_utils/errors';
 import { extractEmail } from '../lib/emailAddress';
 
 /**
@@ -53,8 +53,7 @@ export const approveDraft = adminMutation({
 	handler: async (ctx, args) => {
 		const { userId } = await getMutationContext(ctx);
 
-		const message = await ctx.db.get(args.inboundMessageId);
-		if (!message) throwNotFound('Message');
+		const message = await getOrThrow(ctx, args.inboundMessageId, 'Message');
 		if (!message.draftResponse) throwInvalidState('No draft to approve');
 
 		await ctx.runMutation(internal.inbox.processingLifecycle.transition, {
@@ -96,8 +95,7 @@ export const rejectDraft = adminMutation({
 	handler: async (ctx, args) => {
 		const { userId } = await getMutationContext(ctx);
 
-		const message = await ctx.db.get(args.inboundMessageId);
-		if (!message) throwNotFound('Message');
+		const message = await getOrThrow(ctx, args.inboundMessageId, 'Message');
 
 		await ctx.runMutation(internal.inbox.processingLifecycle.transition, {
 			inboundMessageId: args.inboundMessageId,
@@ -136,8 +134,7 @@ export const editDraft = adminMutation({
 	handler: async (ctx, args) => {
 		const { userId } = await getMutationContext(ctx);
 
-		const message = await ctx.db.get(args.inboundMessageId);
-		if (!message) throwNotFound('Message');
+		const message = await getOrThrow(ctx, args.inboundMessageId, 'Message');
 
 		const patches: Partial<Doc<'inboundMessages'>> = {
 			draftResponse: args.draftResponse,
@@ -241,8 +238,7 @@ export const releaseFromQuarantine = adminMutation({
 	handler: async (ctx, args) => {
 		const { userId } = await getMutationContext(ctx);
 
-		const message = await ctx.db.get(args.inboundMessageId);
-		if (!message) throwNotFound('Message');
+		const message = await getOrThrow(ctx, args.inboundMessageId, 'Message');
 		if (message.processingStatus !== 'quarantined') {
 			throwInvalidState('Message is not quarantined');
 		}
@@ -294,8 +290,7 @@ export const retryFailedMessage = adminMutation({
 	handler: async (ctx, args) => {
 		const { userId } = await getMutationContext(ctx);
 
-		const message = await ctx.db.get(args.inboundMessageId);
-		if (!message) throwNotFound('Message');
+		const message = await getOrThrow(ctx, args.inboundMessageId, 'Message');
 		if (message.processingStatus !== 'failed') {
 			throwInvalidState('Message has not failed');
 		}
@@ -346,8 +341,7 @@ export const blockSender = adminMutation({
 	handler: async (ctx, args) => {
 		const { userId } = await getMutationContext(ctx);
 
-		const message = await ctx.db.get(args.inboundMessageId);
-		if (!message) throwNotFound('Message');
+		const message = await getOrThrow(ctx, args.inboundMessageId, 'Message');
 
 		// Extract email from the from field
 		const email = extractEmail(message.from);

@@ -196,6 +196,13 @@ This codebase tracks the official Convex AI/cursor rules
 - **Use `console.info`/`warn`/`error`, never `console.log`.** Convex's stdout
   pipe to log sinks treats all four equivalently, but the typed level
   signals intent and dodges the `no-console` ratchet.
+- **Load-or-404 with `getOrThrow`.** For the ubiquitous
+  `const x = await ctx.db.get(id); if (!x) throwNotFound('Label')` pattern, call
+  `getOrThrow(ctx, id, 'Label')` from `_utils/errors.ts` instead — it returns
+  the non-null `Doc<T>` or throws the same `not_found` `ConvexError`. It is
+  structurally typed on `db.get`, so both `QueryCtx` and `MutationCtx` satisfy
+  it. Keep hand-rolling `throwNotFound` only where the guard is not a plain
+  `get(id)` null check (e.g. `query().unique()` or outcome-based results).
 
 The `bun run lint:patterns` script (also wired into `bun run lint`) tracks
 all four of these against a checked-in baseline.
