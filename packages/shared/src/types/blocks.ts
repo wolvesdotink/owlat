@@ -479,6 +479,37 @@ export type SocialPlatform =
 	| 'snapchat';
 
 /**
+ * Exhaustive metadata for every {@link SocialPlatform}.
+ *
+ * Keying this `Record` on the `SocialPlatform` union makes a newly-added
+ * platform a compile error here (and on every surface that derives its labels
+ * from this map), so display names can never silently fall out of sync.
+ *
+ * - `label` — the canonical display/rendering name (e.g. Twitter renders as 'X').
+ * - `editorLabel` — optional override for the block-editor platform picker
+ *   (e.g. Twitter shows 'Twitter / X' so authors recognise the legacy name).
+ */
+export const SOCIAL_PLATFORMS: Record<SocialPlatform, { label: string; editorLabel?: string }> = {
+	twitter: { label: 'X', editorLabel: 'Twitter / X' },
+	facebook: { label: 'Facebook' },
+	instagram: { label: 'Instagram' },
+	linkedin: { label: 'LinkedIn' },
+	youtube: { label: 'YouTube' },
+	tiktok: { label: 'TikTok' },
+	github: { label: 'GitHub' },
+	whatsapp: { label: 'WhatsApp' },
+	telegram: { label: 'Telegram' },
+	threads: { label: 'Threads' },
+	pinterest: { label: 'Pinterest' },
+	discord: { label: 'Discord' },
+	mastodon: { label: 'Mastodon' },
+	bluesky: { label: 'Bluesky' },
+	vimeo: { label: 'Vimeo' },
+	medium: { label: 'Medium' },
+	snapchat: { label: 'Snapchat' },
+};
+
+/**
  * Social link
  */
 export interface SocialLink {
