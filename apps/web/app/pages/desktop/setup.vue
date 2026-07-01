@@ -40,6 +40,7 @@ const {
 	busy,
 	progress,
 	siteUrl,
+	publicIp: detectedPublicIp,
 	canOpenWorkspace,
 	connect,
 	acceptHostKey,
@@ -190,9 +191,16 @@ const adminPasswordError = computed(() => {
 // One apex domain (e.g. wolves.ink) populates every hostname; the per-host
 // overrides below are blank unless the user customises them.
 const domain = ref('');
-// When connected by hostname we don't know the server's public IP — let the
-// user supply it so the DNS A-records show a real, copyable address.
+// When connected by hostname we don't know the server's public IP — the wizard
+// auto-detects it over the live SSH session (see `detectedPublicIp`), but the
+// operator can still override it here if detection failed or was wrong.
 const publicIp = ref('');
+// Prefill the manual-paste field with the value auto-detected over SSH, unless
+// the operator has already typed one (never clobber their input, and fail-soft:
+// an empty detection leaves the field blank for manual entry).
+watch(detectedPublicIp, (detected) => {
+	if (detected && !publicIp.value) publicIp.value = detected;
+});
 const customizeHosts = ref(false);
 const hostOverrides = reactive<InstanceHostnames>({ site: '', convex: '', convexSite: '', mail: '', bounce: '' });
 const seedDemo = ref(false);
@@ -807,14 +815,16 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 								Without a domain this install is only reachable on the server itself.
 							</p>
 
-							<!-- Connected by hostname → we don't know the server's IP. Let the user
-							     supply it so the A records below show a real, copyable address. -->
+							<!-- Connected by hostname → the SSH address is not an IP. The wizard
+							     auto-detects the public IP over the SSH session; this field lets
+							     the operator override it if detection failed or was wrong. -->
 							<div v-if="derivedHosts && !hostIsIp" class="mt-3">
 								<label :class="labelClass">Server's public IP (for the A records)</label>
 								<input v-model="publicIp" :class="[inputClass, 'font-mono text-xs']" placeholder="203.0.113.5" inputmode="decimal" />
 								<p class="mt-1 text-xs text-text-secondary">
-									You connected by hostname, so we can't read the server's IP. Paste it from your host's
-									dashboard to fill the A records — otherwise they show a placeholder you'll need to replace.
+									You connected by hostname. We try to read the server's public IP over the SSH session and
+									fill it in here; if that's blank or wrong, paste it from your host's dashboard so the A
+									records show a real, copyable address.
 								</p>
 							</div>
 

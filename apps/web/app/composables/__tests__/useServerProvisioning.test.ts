@@ -14,6 +14,8 @@ interface FakeOpts {
 	cleanupExit?: number;
 	authError?: string;
 	uploadError?: string;
+	// stdout emitted by the public-IP probe; undefined = no output (detection fails).
+	publicIpLine?: string;
 }
 
 class FakeTransport implements ProvisionTransport {
@@ -43,6 +45,10 @@ class FakeTransport implements ProvisionTransport {
 			for (const l of this.opts.installerLines ?? []) out(l);
 			for (const l of this.opts.installerStderr ?? []) err(l);
 			return this.opts.installerExit ?? 0;
+		}
+		if (command.includes('api.ipify.org')) {
+			if (this.opts.publicIpLine !== undefined) out(this.opts.publicIpLine);
+			return 0;
 		}
 		if (command.startsWith('rm -f')) {
 			return this.opts.cleanupExit ?? 0;
@@ -146,6 +152,30 @@ describe('useServerProvisioning — connect + host key', () => {
 		expect(p.stage.value).toBe('error');
 		expect(p.error.value).toContain('bad password');
 		expect(p.steps.find((s) => s.id === 'authenticate')?.state).toBe('failed');
+	});
+});
+
+describe('useServerProvisioning — public-IP auto-detect over SSH', () => {
+	const hostnameCreds: ServerCredentials = { ...creds, host: 'vps.example.com' };
+
+	it('detects the public IP over the SSH session and exposes it as the A-record target', async () => {
+		const t = new FakeTransport({ knownHostStatus: 'match', publicIpLine: '203.0.113.9' });
+		const p = useServerProvisioning(t);
+		await p.connect(hostnameCreds);
+		expect(p.stage.value).toBe('configure');
+		expect(t.commands.some((c) => c.includes('api.ipify.org'))).toBe(true);
+		expect(p.publicIp.value).toBe('203.0.113.9');
+		// serverIp is what buildDnsRecords consumes — it must be the detected IP.
+		expect(p.serverIp.value).toBe('203.0.113.9');
+	});
+
+	it('is fail-soft: empty probe output leaves the IP blank without failing the flow', async () => {
+		const t = new FakeTransport({ knownHostStatus: 'match' }); // publicIpLine undefined
+		const p = useServerProvisioning(t);
+		await p.connect(hostnameCreds);
+		expect(p.stage.value).toBe('configure');
+		expect(p.publicIp.value).toBe('');
+		expect(p.serverIp.value).toBeNull();
 	});
 });
 

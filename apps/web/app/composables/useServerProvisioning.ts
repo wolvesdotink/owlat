@@ -37,7 +37,13 @@ import {
 	type SetupConfigInput,
 	type TimelineStep,
 } from '~/lib/desktop/provisioning';
-import { removeSetupConfigCommand, stderrTail } from '~/lib/desktop/provisioningForm';
+import {
+	removeSetupConfigCommand,
+	stderrTail,
+	detectPublicIpCommand,
+	parsePublicIp,
+	resolveServerIp,
+} from '~/lib/desktop/provisioningForm';
 
 export type ProvisionStage =
 	| 'idle'
@@ -87,6 +93,11 @@ export function useServerProvisioning(injectedTransport?: ProvisionTransport) {
 	// Whether the provisioned site URL has been confirmed reachable from this
 	// machine (DNS resolved + TLS issued). Gates the "open workspace" success.
 	const siteReachable = ref(false);
+	// The server's public IP, auto-detected over the SSH session once
+	// authenticated. Only meaningful when the operator connected by hostname
+	// (an IP SSH address is already the answer); empty when detection failed,
+	// in which case the DNS table falls back to its manual-paste placeholder.
+	const publicIp = ref('');
 
 	let transport: ProvisionTransport | null = injectedTransport ?? null;
 	let creds: ServerCredentials | null = null;
@@ -178,8 +189,32 @@ export function useServerProvisioning(injectedTransport?: ProvisionTransport) {
 			await t.authenticate(connectInfo.value.sessionId, creds.username, creds.auth);
 			setStepState(steps, 'authenticate', 'ok', creds.username);
 			stage.value = 'configure';
+			// Best-effort: pre-fill the DNS A-record target so the operator does
+			// not have to paste it manually (only matters when they connected by
+			// hostname). Never blocks reaching the configure stage.
+			await detectPublicIp(connectInfo.value.sessionId);
 		} catch (e) {
 			fail(messageOf(e));
+		}
+	}
+
+	/**
+	 * Read the server's public IP over the live SSH session and, if it parses to
+	 * a valid address, stash it for the DNS record table. Fail-soft: any transport
+	 * error or unparseable output leaves {@link publicIp} empty and the wizard
+	 * falls back to the manual-paste placeholder — it must never fail the flow.
+	 */
+	async function detectPublicIp(sessionId: string): Promise<void> {
+		try {
+			const t = await getTransport();
+			let out = '';
+			await t.execStream(sessionId, detectPublicIpCommand(), (e: ExecEvent) => {
+				if (e.kind === 'stdout') out += `${e.line}\n`;
+			});
+			const ip = parsePublicIp(out);
+			if (ip) publicIp.value = ip;
+		} catch {
+			// best-effort — leave publicIp empty on any failure
 		}
 	}
 
@@ -340,6 +375,13 @@ export function useServerProvisioning(injectedTransport?: ProvisionTransport) {
 		}
 	}
 
+	/**
+	 * The IP to render in the DNS A records: the SSH address when it is already
+	 * an IP, else the auto-detected public IP, else null (the table then shows a
+	 * flagged manual-paste placeholder). Recomputes when detection lands a value.
+	 */
+	const serverIp = computed(() => resolveServerIp(creds?.host ?? '', publicIp.value));
+
 	/** The provisioned instance's public URL, if the installer reported one. */
 	const siteUrl = computed(() => (summary.value?.['siteUrl'] as string | undefined) ?? null);
 
@@ -429,6 +471,8 @@ export function useServerProvisioning(injectedTransport?: ProvisionTransport) {
 		progress,
 		siteUrl,
 		siteReachable: readonly(siteReachable),
+		publicIp: readonly(publicIp),
+		serverIp,
 		canOpenWorkspace,
 		connect,
 		acceptHostKey,
