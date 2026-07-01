@@ -421,6 +421,7 @@ import type * as platformAdmin_queries from "../platformAdmin/queries.js";
 import type * as providerRoutes from "../providerRoutes.js";
 import type * as publicRateLimit from "../publicRateLimit.js";
 import type * as quickQuery from "../quickQuery.js";
+import type * as quickQueryGate from "../quickQueryGate.js";
 import type * as rateLimiter from "../rateLimiter.js";
 import type * as resendWebhook from "../resendWebhook.js";
 import type * as schema_assistant from "../schema/assistant.js";
@@ -930,6 +931,7 @@ declare const fullApi: ApiFromModules<{
   providerRoutes: typeof providerRoutes;
   publicRateLimit: typeof publicRateLimit;
   quickQuery: typeof quickQuery;
+  quickQueryGate: typeof quickQueryGate;
   rateLimiter: typeof rateLimiter;
   resendWebhook: typeof resendWebhook;
   "schema/assistant": typeof schema_assistant;
