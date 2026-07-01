@@ -119,15 +119,17 @@ describe('addLanguage', () => {
 		const patch = addLanguage(templateEntity(), 'de', TEMPLATE_TRANSLATABLE_FIELDS);
 		expect(patch.supportedLanguages).toEqual(['en', 'de']);
 		const overlay = parseTranslations(patch.translations)['de'];
-		expect(overlay.subject).toBe('Welcome');
-		expect(overlay.previewText).toBe('Preview');
-		expect(overlay.blocks).toEqual({ b1: { html: '<p>Hello</p>' }, b2: { buttonText: 'Click' } });
+		expect(overlay).toBeDefined();
+		expect(overlay!.subject).toBe('Welcome');
+		expect(overlay!.previewText).toBe('Preview');
+		expect(overlay!.blocks).toEqual({ b1: { html: '<p>Hello</p>' }, b2: { buttonText: 'Click' } });
 	});
 
 	it('does not seed previewText for entities without that field', () => {
 		const patch = addLanguage(templateEntity(), 'de', TRANSACTIONAL_TRANSLATABLE_FIELDS);
 		const overlay = parseTranslations(patch.translations)['de'];
-		expect('previewText' in overlay).toBe(false);
+		expect(overlay).toBeDefined();
+		expect('previewText' in overlay!).toBe(false);
 	});
 
 	it('rejects a language that already has an overlay (already_exists)', () => {
