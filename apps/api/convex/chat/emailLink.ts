@@ -11,14 +11,14 @@
  */
 
 import { v } from 'convex/values';
-import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import {
 	getMutationContext,
 	getUserIdFromSession,
 } from '../lib/sessionOrganization';
-import { assertFeatureEnabled } from '../lib/featureFlags';
 import { throwInvalidInput, throwNotFound } from '../_utils/errors';
 import {
+	chatQuery,
+	chatMutation,
 	assertCanAdministerRoom,
 	assertCanReadRoom,
 	getRoomOrThrow,
@@ -28,13 +28,12 @@ import {
  * Attach an inbox thread to a channel. Per-room admin required (or org
  * chat:manage). Replaces any previous link.
  */
-export const linkChannelToInboxThread = authedMutation({
+export const linkChannelToInboxThread = chatMutation({
 	args: {
 		roomId: v.id('chatRooms'),
 		inboxThreadId: v.id('conversationThreads'),
 	},
 	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'chat');
 		const { userId, role } = await getMutationContext(ctx);
 		const room = await getRoomOrThrow(ctx, args.roomId);
 		if (room.kind !== 'channel') {
@@ -64,10 +63,9 @@ export const linkChannelToInboxThread = authedMutation({
 /**
  * Detach the inbox thread from a channel.
  */
-export const unlinkChannel = authedMutation({
+export const unlinkChannel = chatMutation({
 	args: { roomId: v.id('chatRooms') },
 	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'chat');
 		const { userId, role } = await getMutationContext(ctx);
 		const room = await getRoomOrThrow(ctx, args.roomId);
 		await assertCanAdministerRoom(ctx, room, userId, role);
@@ -88,10 +86,9 @@ export const unlinkChannel = authedMutation({
  * Caller must be able to read the chat room. Returns null if the room has no
  * linked thread.
  */
-export const getLinkedThreadView = authedQuery({
+export const getLinkedThreadView = chatQuery({
 	args: { roomId: v.id('chatRooms') },
 	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'chat');
 		const userId = await getUserIdFromSession(ctx);
 		const room = await getRoomOrThrow(ctx, args.roomId);
 		await assertCanReadRoom(ctx, room, userId);
@@ -139,10 +136,9 @@ export const getLinkedThreadView = authedQuery({
  * Used by the inbox thread detail page to render a "Discussed in #channel"
  * indicator + jump link.
  */
-export const findChannelsForInboxThread = authedQuery({
+export const findChannelsForInboxThread = chatQuery({
 	args: { inboxThreadId: v.id('conversationThreads') },
 	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'chat');
 		const userId = await getUserIdFromSession(ctx);
 
 		const channels = await ctx.db
