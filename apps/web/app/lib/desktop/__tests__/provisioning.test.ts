@@ -12,6 +12,7 @@ import {
 	buildSetupImageCommand,
 	installerCommand,
 	installSource,
+	detectPublicIpCommand,
 	dockerPlatform,
 	setupConfigPath,
 	deriveNetworkUrls,
@@ -28,6 +29,8 @@ import {
 	assessPassword,
 	validateAdminPassword,
 	isIpv4,
+	isIpv6,
+	parsePublicIp,
 	resolveServerIp,
 	buildDnsRecords,
 	removeSetupConfigCommand,
@@ -339,8 +342,43 @@ describe('server-IP resolution + DNS records', () => {
 		expect(isIpv4('203.0.113')).toBe(false);
 	});
 
+	it('recognises IPv6 and rejects junk', () => {
+		expect(isIpv6('2001:db8::1')).toBe(true);
+		expect(isIpv6('2001:0db8:0000:0000:0000:0000:0000:0001')).toBe(true);
+		expect(isIpv6('::1')).toBe(true);
+		expect(isIpv6('203.0.113.5')).toBe(false);
+		expect(isIpv6('2001:db8::1::2')).toBe(false);
+		expect(isIpv6('gggg::1')).toBe(false);
+		expect(isIpv6('not-an-ip')).toBe(false);
+	});
+
+	it('parses the first valid IP line from remote probe output (v4 + v6)', () => {
+		expect(parsePublicIp('203.0.113.5\n')).toBe('203.0.113.5');
+		expect(parsePublicIp('  2001:db8::1  ')).toBe('2001:db8::1');
+		expect(parsePublicIp('curl: (6) Could not resolve host\n203.0.113.5')).toBe('203.0.113.5');
+	});
+
+	it('returns null for empty or unparseable probe output (fail-soft)', () => {
+		expect(parsePublicIp('')).toBeNull();
+		expect(parsePublicIp('\n\n')).toBeNull();
+		expect(parsePublicIp('command not found: curl')).toBeNull();
+	});
+
+	it('builds an injection-safe fixed public-IP probe command with a fallback', () => {
+		const cmd = detectPublicIpCommand();
+		expect(cmd).toContain('api.ipify.org');
+		expect(cmd).toContain('ip route get 1.1.1.1');
+		// Fixed string, no interpolation seams a caller could smuggle input through.
+		expect(cmd).not.toContain('${');
+		expect(cmd).not.toContain('`');
+	});
+
 	it('uses the SSH address when it is already an IP', () => {
 		expect(resolveServerIp('203.0.113.5')).toBe('203.0.113.5');
+	});
+
+	it('accepts a detected IPv6 as the DNS target when connected by hostname', () => {
+		expect(resolveServerIp('vps.example.com', '2001:db8::1')).toBe('2001:db8::1');
 	});
 
 	it('falls back to a supplied public IP when connected by hostname', () => {
