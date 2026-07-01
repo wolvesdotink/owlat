@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { formatNumber } from '~/utils/formatters';
+
 const props = defineProps<{
 	warming: {
 		phase: string;
@@ -145,7 +147,7 @@ const lastSyncedLabel = computed(() => {
 					<div class="flex items-center justify-between mb-2">
 						<p class="text-sm text-text-secondary">Today's sending capacity</p>
 						<p class="text-sm font-medium text-text-primary">
-							{{ warming.totalSentToday.toLocaleString() }} / {{ warming.totalDailyCap.toLocaleString() }} emails
+							{{ formatNumber(warming.totalSentToday) }} / {{ formatNumber(warming.totalDailyCap) }} emails
 						</p>
 					</div>
 					<UiProgressBar :value="capacityPercent" :variant="capacityVariant" aria-label="Daily capacity used" />
