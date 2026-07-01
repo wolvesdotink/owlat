@@ -107,6 +107,17 @@ describe('schema registry', () => {
 			expect(urlField!.type).toBe('url');
 		});
 
+		it('social platform options are derived from SOCIAL_PLATFORMS (17 entries, twitter editor label)', () => {
+			const schema = getSchema('social')!;
+			const allFields = schema.groups.flatMap((g) => g.fields);
+			const platformField = allFields.find((f) => f.key === 'platform')!;
+			expect(platformField.options).toHaveLength(17);
+			const twitter = platformField.options!.find((o) => o.value === 'twitter');
+			expect(twitter!.label).toBe('Twitter / X');
+			const facebook = platformField.options!.find((o) => o.value === 'facebook');
+			expect(facebook!.label).toBe('Facebook');
+		});
+
 		it('number fields have min/max constraints', () => {
 			const schema = getSchema('text')!;
 			const allFields = schema.groups.flatMap((g) => g.fields);
