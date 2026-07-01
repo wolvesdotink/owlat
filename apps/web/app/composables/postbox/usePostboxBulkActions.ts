@@ -39,6 +39,12 @@ export function usePostboxBulkActions(mailboxId: Ref<Id<'mailboxes'> | null>) {
 	const count = computed(() => selected.value.size);
 	const ids = computed(() => Array.from(selected.value));
 
+	// Successful triage actions register their inverse for the "Undo" toast
+	// (move each message back to its source folder; spam is un-verdicted too).
+	const triageUndo = usePostboxTriageUndo();
+	const undoLabel = (base: string, n: number) =>
+		n > 1 ? `${base} ${n} messages` : base;
+
 	const setFlags = useBackendOperation(api.mail.messageActions.setFlags, {
 		label: 'Update messages',
 	});
@@ -75,6 +81,13 @@ export function usePostboxBulkActions(mailboxId: Ref<Id<'mailboxes'> | null>) {
 		if (ids.value.length === 0) return;
 		const result = await archive.run({ messageIds: ids.value });
 		if (result === undefined) return;
+		if (result?.moved) {
+			triageUndo.registerMoveBack({
+				label: undoLabel('Archived', result.moved.length),
+				moved: result.moved,
+				runMove: (a) => move.run(a),
+			});
+		}
 		clear();
 	}
 
@@ -82,6 +95,13 @@ export function usePostboxBulkActions(mailboxId: Ref<Id<'mailboxes'> | null>) {
 		if (ids.value.length === 0) return;
 		const result = await trash.run({ messageIds: ids.value });
 		if (result === undefined) return;
+		if (result?.moved) {
+			triageUndo.registerMoveBack({
+				label: undoLabel('Moved to Trash', result.moved.length),
+				moved: result.moved,
+				runMove: (a) => move.run(a),
+			});
+		}
 		clear();
 	}
 
@@ -96,13 +116,31 @@ export function usePostboxBulkActions(mailboxId: Ref<Id<'mailboxes'> | null>) {
 		if (ids.value.length === 0) return;
 		const result = await move.run({ messageIds: ids.value, targetFolderId });
 		if (result === undefined) return;
+		if (result.moved) {
+			triageUndo.registerMoveBack({
+				label: undoLabel('Moved', result.moved.length),
+				moved: result.moved,
+				runMove: (a) => move.run(a),
+			});
+		}
 		clear();
 	}
 
 	async function reportSpamSelected() {
 		if (ids.value.length === 0) return;
-		const result = await reportSpamOp.run({ messageIds: ids.value });
+		const messageIds = ids.value;
+		const result = await reportSpamOp.run({ messageIds });
 		if (result === undefined) return;
+		if (result.moved) {
+			// notSpam clears the verdict (and parks in Inbox); the follow-up
+			// move restores the true source folder when it wasn't the Inbox.
+			triageUndo.registerMoveBack({
+				label: undoLabel('Marked as spam', result.moved.length),
+				moved: result.moved,
+				before: () => notSpamOp.run({ messageIds }),
+				runMove: (a) => move.run(a),
+			});
+		}
 		clear();
 	}
 

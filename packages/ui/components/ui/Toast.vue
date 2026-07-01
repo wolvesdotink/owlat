@@ -40,6 +40,21 @@ const { toasts, removeToast } = useToast();
 						{{ toast.message }}
 					</p>
 
+					<!-- Optional inline action (e.g. "Undo") — clicking it dismisses the toast -->
+					<button
+						v-if="toast.action"
+						type="button"
+						:class="[
+							'text-sm font-semibold flex-shrink-0 px-2 py-1 rounded-lg transition-colors hover:underline',
+							toast.type === 'success'
+								? 'text-success hover:bg-success/20'
+								: 'text-error hover:bg-error/20',
+						]"
+						@click="toast.action.onAction(); removeToast(toast.id)"
+					>
+						{{ toast.action.label }}
+					</button>
+
 					<!-- Close button (optional - auto-dismisses but allows manual close) -->
 					<button
 						:class="[

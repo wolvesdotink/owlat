@@ -60,14 +60,42 @@ const { visible: visibleMessages, hide: hideRow, unhide: unhideRow } =
 const visibleIds = computed(() => visibleMessages.value.map((m) => m._id));
 defineExpose({ visibleIds });
 
+// Successful triage registers its inverse for the "Undo — Cmd+Z" toast;
+// undoing also un-hides the optimistically hidden row.
+const triageUndo = usePostboxTriageUndo();
+
 async function archiveMsg(id: string) {
 	hideRow(id);
-	// archive/trash return { ok } — restore the row if the mutation failed.
-	if (!(await archiveOp.run({ messageIds: [mid(id)] }))) unhideRow(id);
+	// archive/trash return { ok, moved } — restore the row if the mutation failed.
+	const result = await archiveOp.run({ messageIds: [mid(id)] });
+	if (!result) {
+		unhideRow(id);
+		return;
+	}
+	if (result.moved.length > 0) {
+		triageUndo.registerMoveBack({
+			label: 'Archived',
+			moved: result.moved,
+			runMove: (a) => moveOp.run(a),
+			after: () => unhideRow(id),
+		});
+	}
 }
 async function trashMsg(id: string) {
 	hideRow(id);
-	if (!(await trashOp.run({ messageIds: [mid(id)] }))) unhideRow(id);
+	const result = await trashOp.run({ messageIds: [mid(id)] });
+	if (!result) {
+		unhideRow(id);
+		return;
+	}
+	if (result.moved.length > 0) {
+		triageUndo.registerMoveBack({
+			label: 'Moved to Trash',
+			moved: result.moved,
+			runMove: (a) => moveOp.run(a),
+			after: () => unhideRow(id),
+		});
+	}
 }
 function toggleStar(id: string, starred: boolean) {
 	void setStarOp.run({ messageId: mid(id), starred });
@@ -142,7 +170,19 @@ async function moveFocusedTo(targetFolderId: Id<'mailFolders'>) {
 	moveTargetId.value = null;
 	if (!id) return;
 	hideRow(id);
-	if ((await moveOp.run({ messageIds: [mid(id)], targetFolderId })) === undefined) unhideRow(id);
+	const result = await moveOp.run({ messageIds: [mid(id)], targetFolderId });
+	if (result === undefined) {
+		unhideRow(id);
+		return;
+	}
+	if (result.moved.length > 0) {
+		triageUndo.registerMoveBack({
+			label: 'Moved',
+			moved: result.moved,
+			runMove: (a) => moveOp.run(a),
+			after: () => unhideRow(id),
+		});
+	}
 }
 
 // Keyboard triage (Gmail/Superhuman-style): j/k move, Enter opens; single-key

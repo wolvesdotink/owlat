@@ -20,6 +20,12 @@ const { messages, isLoading, hasMore, loadMore } = usePostboxThreads({
 	folderId: folderIdRef,
 });
 
+// Cmd/Ctrl+Z re-triages the last archive/trash/move/spam action while the
+// undo toast is visible (inert in inputs/contenteditable — see composable).
+const triageUndo = usePostboxTriageUndo();
+onMounted(() => window.addEventListener('keydown', triageUndo.onWindowKeydown));
+onBeforeUnmount(() => window.removeEventListener('keydown', triageUndo.onWindowKeydown));
+
 // Folder name shown in the list header (custom folders carry no role).
 const currentFolderName = computed(() =>
 	props.folderId
