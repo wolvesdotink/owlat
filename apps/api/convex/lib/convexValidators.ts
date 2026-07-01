@@ -263,6 +263,14 @@ export const spamVerdictValidator = v.union(
 	v.literal('quarantine'),
 );
 
+// Postbox reader auto-advance preference (mailUserSettings.autoAdvance and
+// mail/settings update args) — single source so schema and args can't drift.
+export const mailAutoAdvanceValidator = v.union(
+	v.literal('next'),
+	v.literal('previous'),
+	v.literal('back-to-list'),
+);
+
 // Email template kind (emailTemplates.type and its CRUD args)
 export const emailTemplateTypeValidator = v.union(
 	v.literal('marketing'),

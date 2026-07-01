@@ -348,6 +348,7 @@ import type * as mail_pendingMailbox from "../mail/pendingMailbox.js";
 import type * as mail_permissions from "../mail/permissions.js";
 import type * as mail_postboxOutboundLifecycle from "../mail/postboxOutboundLifecycle.js";
 import type * as mail_rfc822 from "../mail/rfc822.js";
+import type * as mail_settings from "../mail/settings.js";
 import type * as mail_signatures from "../mail/signatures.js";
 import type * as mail_snooze from "../mail/snooze.js";
 import type * as mail_vacation from "../mail/vacation.js";
@@ -859,6 +860,7 @@ declare const fullApi: ApiFromModules<{
   "mail/permissions": typeof mail_permissions;
   "mail/postboxOutboundLifecycle": typeof mail_postboxOutboundLifecycle;
   "mail/rfc822": typeof mail_rfc822;
+  "mail/settings": typeof mail_settings;
   "mail/signatures": typeof mail_signatures;
   "mail/snooze": typeof mail_snooze;
   "mail/vacation": typeof mail_vacation;

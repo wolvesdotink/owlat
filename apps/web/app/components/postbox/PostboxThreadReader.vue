@@ -36,6 +36,12 @@ const props = defineProps<{
 		dmarcResult?: string;
 		flagSeen?: boolean;
 	};
+	// Auto-advance context (folder view only; the search preview passes
+	// neither and keeps its stay-put behavior). `advanceIds` is the list's
+	// current visual order (optimistic-hide filtered), `folderRole` the
+	// route segment used to build /dashboard/postbox/<folder>/<id> links.
+	advanceIds?: string[];
+	folderRole?: string;
 }>();
 
 const stack = usePostboxComposerStack();
@@ -310,6 +316,33 @@ const markReadOp = useBackendOperation(api.mail.messageActions.markRead, { label
 const snoozeOp = useBackendOperation(api.mail.snooze.snooze, { label: 'Snooze' });
 const moveOp = useBackendOperation(api.mail.messageActions.move, { label: 'Move message' });
 
+// Auto-advance after triaging the open message away (archive / trash /
+// snooze / spam): open the adjacent conversation in list order per the
+// user's preference, falling back to the list at the ends. Active only in
+// the folder view (advance props present); the search preview stays put.
+const { autoAdvance } = usePostboxSettings();
+
+async function runAndAdvance(run: () => Promise<unknown>) {
+	// Capture the target before the mutation — the live list drops the
+	// triaged row once the server confirms, shifting the indices.
+	const target = props.folderRole
+		? pickAdjacentMessageId(props.advanceIds ?? [], props.message._id, autoAdvance.value)
+		: null;
+	const result = await run();
+	// Stay put only on THROWN errors — useBackendOperation's catch path maps
+	// those to `undefined`. Anything the server returns (incl. a handler
+	// `return undefined`, which Convex serializes to `null` on the client —
+	// e.g. archive/trash's row-already-gone soft-fail, or snooze's void
+	// success) still advances; that's fine because the row is gone either way.
+	if (result === undefined) return;
+	if (!props.folderRole) return;
+	void navigateTo(
+		target
+			? `/dashboard/postbox/${props.folderRole}/${target}`
+			: `/dashboard/postbox/${props.folderRole}`
+	);
+}
+
 // Live flags of the open message (the prop can be a stale list row).
 const openMessageFlags = computed(() => {
 	const live = allMessages.value.find((m) => m._id === props.message._id) as
@@ -326,7 +359,7 @@ const labelDialogOpen = ref(false);
 const moveDialogOpen = ref(false);
 
 function snoozeOpenMessage(until: number) {
-	void snoozeOp.run({ messageId: messageId.value, until });
+	void runAndAdvance(() => snoozeOp.run({ messageId: messageId.value, until }));
 }
 async function applyLabelToOpenMessage(labelId: Id<'mailLabels'>) {
 	labelDialogOpen.value = false;
@@ -351,10 +384,10 @@ function onReaderShortcut(event: KeyboardEvent) {
 	event.preventDefault();
 	switch (action) {
 		case 'archive':
-			void archiveOp.run({ messageIds: [messageId.value] });
+			void runAndAdvance(() => archiveOp.run({ messageIds: [messageId.value] }));
 			break;
 		case 'trash':
-			void trashOp.run({ messageIds: [messageId.value] });
+			void runAndAdvance(() => trashOp.run({ messageIds: [messageId.value] }));
 			break;
 		case 'star':
 			void setStarOp.run({ messageId: messageId.value, starred: !openMessageFlags.value.flagged });
@@ -400,7 +433,11 @@ const blockSenderOp = useBackendOperation(api.mail.messageActions.blockSender, {
 });
 
 function reportSpamMessage(msgId: string) {
-	void reportSpamOp.run({ messageIds: [msgId as Id<'mailMessages'>] });
+	const run = () => reportSpamOp.run({ messageIds: [msgId as Id<'mailMessages'>] });
+	// Only the OPEN message's spam report ejects the reader; reporting an
+	// older message inside the thread keeps the conversation open.
+	if (msgId === props.message._id) void runAndAdvance(run);
+	else void run();
 }
 
 function blockSenderOf(msgId: string) {

@@ -91,6 +91,7 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'mailLabels',
 	'mailFilters',
 	'mailSignatures',
+	'mailUserSettings',
 	'mailAppPasswords',
 	'mailboxes',
 
@@ -215,6 +216,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	mailLabels: makeSweepStep('mailLabels'),
 	mailFilters: makeSweepStep('mailFilters'),
 	mailSignatures: makeSweepStep('mailSignatures'),
+	mailUserSettings: makeSweepStep('mailUserSettings'),
 	mailAppPasswords: makeSweepStep('mailAppPasswords'),
 	mailboxes: makeSweepStep('mailboxes'),
 	webhookDeliveryLogs: makeSweepStep('webhookDeliveryLogs'),
