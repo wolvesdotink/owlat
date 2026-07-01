@@ -190,6 +190,7 @@ import type * as domains_dmarc from "../domains/dmarc.js";
 import type * as domains_dnsMatch from "../domains/dnsMatch.js";
 import type * as domains_dnsVerification from "../domains/dnsVerification.js";
 import type * as domains_domains from "../domains/domains.js";
+import type * as domains_reverseDns from "../domains/reverseDns.js";
 import type * as domains_lifecycle from "../domains/lifecycle.js";
 import type * as domains_providers_index from "../domains/providers/index.js";
 import type * as domains_providers_mta_index from "../domains/providers/mta/index.js";
@@ -708,6 +709,7 @@ declare const fullApi: ApiFromModules<{
   "domains/providers/ses/index": typeof domains_providers_ses_index;
   "domains/providers/types": typeof domains_providers_types;
   "domains/queries": typeof domains_queries;
+  "domains/reverseDns": typeof domains_reverseDns;
   "domains/spf": typeof domains_spf;
   "domains/trackingDomains": typeof domains_trackingDomains;
   "emailBlocks/blocks": typeof emailBlocks_blocks;
