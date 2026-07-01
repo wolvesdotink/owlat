@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import { presetForEmail, resolveMailPreset } from '~/utils/mailAutodiscover';
 
 useHead({ title: 'Connect external mailbox — Owlat' });
 
@@ -31,6 +32,9 @@ const form = reactive({
 });
 const formError = ref<string | null>(null);
 const editing = ref(false);
+// Autodiscover backs off once the user (or a preset button / existing-account
+// pre-fill) has set the server fields, so we never overwrite their choices.
+const serverFieldsTouched = ref(false);
 const showDisconnect = ref(false);
 const showPurge = ref(false);
 type TestResult = { imap: { ok: boolean; error?: string }; smtp: { ok: boolean; error?: string } };
@@ -48,6 +52,8 @@ watchEffect(() => {
 		form.smtpPort = a.smtpPort;
 		form.isSmtpSecure = a.isSmtpSecure;
 		form.username = a.imapUsername;
+		// These are the account's real settings — don't let autodiscover clobber them.
+		serverFieldsTouched.value = true;
 	}
 });
 
@@ -59,7 +65,62 @@ const PRESETS: Record<string, Partial<typeof form>> = {
 };
 function applyPreset(name: keyof typeof PRESETS) {
 	Object.assign(form, PRESETS[name]);
+	serverFieldsTouched.value = true;
 }
+
+// Autodiscover: as the user types their email address, pre-fill the server
+// fields from its domain (curated preset, then a fail-soft Thunderbird
+// autoconfig lookup). We only ever fill fields the user hasn't touched — once
+// they edit a host/port/SSL box (or click a preset button) autofill backs off.
+function markServerFieldsTouched() {
+	serverFieldsTouched.value = true;
+}
+
+function applyAutodiscoveredPreset(preset: {
+	imapHost: string;
+	imapPort: number;
+	isImapSecure: boolean;
+	smtpHost: string;
+	smtpPort: number;
+	isSmtpSecure: boolean;
+}) {
+	// Guard again — the reply may land after the user started editing.
+	if (serverFieldsTouched.value) return;
+	form.imapHost = preset.imapHost;
+	form.imapPort = preset.imapPort;
+	form.isImapSecure = preset.isImapSecure;
+	form.smtpHost = preset.smtpHost;
+	form.smtpPort = preset.smtpPort;
+	form.isSmtpSecure = preset.isSmtpSecure;
+}
+
+let autodiscoverTimer: ReturnType<typeof setTimeout> | undefined;
+let autodiscoverSeq = 0;
+watch(
+	() => form.emailAddress,
+	(email) => {
+		if (autodiscoverTimer) clearTimeout(autodiscoverTimer);
+		if (serverFieldsTouched.value) return;
+		// Instant, offline match first so the common providers fill with no wait.
+		const known = presetForEmail(email);
+		if (known) {
+			applyAutodiscoveredPreset(known);
+			return;
+		}
+		// Debounce the network fallback so we don't fire on every keystroke.
+		const seq = ++autodiscoverSeq;
+		autodiscoverTimer = setTimeout(() => {
+			void resolveMailPreset(email).then((preset) => {
+				// Ignore stale replies and anyone who started editing meanwhile.
+				if (seq !== autodiscoverSeq || serverFieldsTouched.value || !preset) return;
+				applyAutodiscoveredPreset(preset);
+			});
+		}, 500);
+	},
+);
+onBeforeUnmount(() => {
+	if (autodiscoverTimer) clearTimeout(autodiscoverTimer);
+});
 
 const testOp = useBackendOperation(api.mail.externalAccountsActions.testConnection, {
 	type: 'action',
@@ -304,15 +365,15 @@ const showForm = computed(() => !isConnected.value || editing.value);
 			<div class="grid grid-cols-2 gap-4">
 				<div>
 					<label for="form-imaphost" class="text-sm font-medium block mb-1">IMAP host</label>
-					<input id="form-imaphost" v-model="form.imapHost" type="text" placeholder="imap.example.com" class="input w-full" />
+					<input id="form-imaphost" v-model="form.imapHost" type="text" placeholder="imap.example.com" class="input w-full" @input="markServerFieldsTouched" />
 				</div>
 				<div class="flex gap-2">
 					<div class="flex-1">
 						<label for="form-imapport" class="text-sm font-medium block mb-1">IMAP port</label>
-						<input id="form-imapport" v-model.number="form.imapPort" type="number" class="input w-full" />
+						<input id="form-imapport" v-model.number="form.imapPort" type="number" class="input w-full" @input="markServerFieldsTouched" />
 					</div>
 					<label class="flex items-center gap-1.5 text-sm self-end pb-2">
-						<input v-model="form.isImapSecure" type="checkbox" />
+						<input v-model="form.isImapSecure" type="checkbox" @change="markServerFieldsTouched" />
 						SSL
 					</label>
 				</div>
@@ -321,15 +382,15 @@ const showForm = computed(() => !isConnected.value || editing.value);
 			<div class="grid grid-cols-2 gap-4">
 				<div>
 					<label for="form-smtphost" class="text-sm font-medium block mb-1">SMTP host</label>
-					<input id="form-smtphost" v-model="form.smtpHost" type="text" placeholder="smtp.example.com" class="input w-full" />
+					<input id="form-smtphost" v-model="form.smtpHost" type="text" placeholder="smtp.example.com" class="input w-full" @input="markServerFieldsTouched" />
 				</div>
 				<div class="flex gap-2">
 					<div class="flex-1">
 						<label for="form-smtpport" class="text-sm font-medium block mb-1">SMTP port</label>
-						<input id="form-smtpport" v-model.number="form.smtpPort" type="number" class="input w-full" />
+						<input id="form-smtpport" v-model.number="form.smtpPort" type="number" class="input w-full" @input="markServerFieldsTouched" />
 					</div>
 					<label class="flex items-center gap-1.5 text-sm self-end pb-2">
-						<input v-model="form.isSmtpSecure" type="checkbox" />
+						<input v-model="form.isSmtpSecure" type="checkbox" @change="markServerFieldsTouched" />
 						SSL
 					</label>
 				</div>
