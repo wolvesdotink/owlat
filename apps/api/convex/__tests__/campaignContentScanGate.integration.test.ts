@@ -140,7 +140,7 @@ async function latestAudit(t: TestConvex<typeof schema>, campaignId: Id<'campaig
 			.query('auditLogs')
 			.collect()
 			.then((all) => all.filter((l) => l.resourceId === String(campaignId)));
-		return logs.at(-1);
+		return logs[logs.length - 1];
 	});
 }
 
