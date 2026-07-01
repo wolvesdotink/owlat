@@ -5,12 +5,7 @@ import { paginationOptsValidator } from 'convex/server';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { nanoid } from 'nanoid';
-import {
-	getMutationContext,
-	requirePermission,
-	requireOrgPermission,
-	hasPermission,
-} from '../lib/sessionOrganization';
+import { requireOrgPermission } from '../lib/sessionOrganization';
 import { countWithPagination } from '../lib/pagination';
 import { getOptional } from '../lib/env';
 import { listResources } from '../lib/listing';
@@ -569,11 +564,7 @@ export const create = authedMutation({
 		validateStringLength(args.name, STRING_LIMITS.NAME, 'Name');
 		if (args.description) validateStringLength(args.description, STRING_LIMITS.DESCRIPTION, 'Description');
 
-		// Get full mutation context (userId, role)
-		const session = await getMutationContext(ctx);
-
-		// Check permission (owner/admin only for managing topics)
-		requirePermission(hasPermission(session.role, 'topics:manage'), 'Only owners and admins can create topics');
+		const session = await requireOrgPermission(ctx, 'topics:manage', 'Only owners and admins can create topics');
 
 		const topicId = await ctx.db.insert('topics', {
 			name: args.name,
@@ -599,8 +590,7 @@ export const reorder = authedMutation({
 		topicIds: v.array(v.id('topics')),
 	},
 	handler: async (ctx, args) => {
-		const session = await getMutationContext(ctx);
-		requirePermission(hasPermission(session.role, 'topics:manage'), 'Only owners and admins can reorder topics');
+		await requireOrgPermission(ctx, 'topics:manage', 'Only owners and admins can reorder topics');
 
 		for (let i = 0; i < args.topicIds.length; i++) {
 			const topicId = args.topicIds[i]!;

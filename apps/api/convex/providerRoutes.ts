@@ -5,7 +5,7 @@ import {
 	type QueryCtx,
 } from './_generated/server';
 import { authedQuery, authedMutation } from './lib/authedFunctions';
-import { getMutationContext, hasPermission, requirePermission } from './lib/sessionOrganization';
+import { requireOrgPermission } from './lib/sessionOrganization';
 import { messageTypeValidator } from './lib/sendProviders/route';
 import { MTA_IP_POOL_NAMES } from './lib/sendProviders/types';
 
@@ -126,11 +126,7 @@ export const setRoute = authedMutation({
 		ipPool: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		const { role } = await getMutationContext(ctx);
-		requirePermission(
-			hasPermission(role, 'organization:manage'),
-			'Only owners and admins can change provider routing',
-		);
+		await requireOrgPermission(ctx, 'organization:manage', 'Only owners and admins can change provider routing');
 
 		return await upsertRoute(ctx, args.messageType, {
 			strategy: args.strategy,
@@ -148,11 +144,7 @@ export const removeRoute = authedMutation({
 		messageType: messageTypeValidator,
 	},
 	handler: async (ctx, args) => {
-		const { role } = await getMutationContext(ctx);
-		requirePermission(
-			hasPermission(role, 'organization:manage'),
-			'Only owners and admins can change provider routing',
-		);
+		await requireOrgPermission(ctx, 'organization:manage', 'Only owners and admins can change provider routing');
 		const existing = await getRouteByType(ctx, args.messageType);
 
 		if (existing) {
