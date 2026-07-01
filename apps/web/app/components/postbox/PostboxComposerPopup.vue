@@ -20,8 +20,14 @@ function onSent(composerId: string, undoToken: string, sendAt: number, mailboxId
 </script>
 
 <template>
+	<!-- role="dialog" both for a11y and so the reader's single-key shortcut
+	     handler defers to the composer (its [role="dialog"] guard): focus on a
+	     non-editable control here (Send, remove-attachment) must never let
+	     e/# archive/trash the message being replied to. -->
 	<div
 		v-if="!composer.minimized"
+		role="dialog"
+		aria-label="Compose message"
 		class="fixed bottom-0 w-[380px] h-[440px] bg-bg-elevated border border-border-subtle rounded-t-md shadow-lg flex flex-col z-40"
 		:style="{ right: `${24 + index * 396}px` }"
 	>
