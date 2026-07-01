@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { formatDateTime } from '~/utils/formatters';
 
 useHead({ title: 'Quarantine — Owlat' });
 
@@ -64,9 +65,6 @@ const getInjectionTypeLabel = (type: string) => {
 	return labels[type] || type;
 };
 
-const formatTimestamp = (timestamp: number) => {
-	return new Date(timestamp).toLocaleString();
-};
 </script>
 
 <template>
@@ -133,7 +131,7 @@ const formatTimestamp = (timestamp: number) => {
 						<div>
 							<p class="text-text-primary font-medium text-sm">{{ message.from }}</p>
 							<p class="text-xs text-text-tertiary">
-								{{ formatTimestamp(message._creationTime) }}
+								{{ formatDateTime(message._creationTime) }}
 							</p>
 						</div>
 					</div>
