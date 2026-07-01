@@ -329,7 +329,12 @@ async function runAndAdvance(run: () => Promise<unknown>) {
 		? pickAdjacentMessageId(props.advanceIds ?? [], props.message._id, autoAdvance.value)
 		: null;
 	const result = await run();
-	if (result === undefined) return; // action failed — stay put
+	// Stay put only on THROWN errors — useBackendOperation's catch path maps
+	// those to `undefined`. Anything the server returns (incl. a handler
+	// `return undefined`, which Convex serializes to `null` on the client —
+	// e.g. archive/trash's row-already-gone soft-fail, or snooze's void
+	// success) still advances; that's fine because the row is gone either way.
+	if (result === undefined) return;
 	if (!props.folderRole) return;
 	void navigateTo(
 		target

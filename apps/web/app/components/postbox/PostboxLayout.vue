@@ -94,7 +94,11 @@ const threadListRef = ref<{ visibleIds: string[] } | null>(null);
 const advanceIds = computed(() =>
 	threadGroupsEnabled.value
 		? []
-		: threadListRef.value?.visibleIds ?? messages.value.map((m) => m._id)
+		: // The raw-messages fallback only applies while the list component is
+			// unmounted (e.g. the search overlay covers it); it skips the
+			// optimistic-hide filter, but any hidden row is mid-mutation and about
+			// to leave `messages` anyway, so the order is at worst one row stale.
+			threadListRef.value?.visibleIds ?? messages.value.map((m) => m._id)
 );
 
 const labelManagerOpen = ref(false);

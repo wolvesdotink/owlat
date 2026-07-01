@@ -16,23 +16,10 @@ export const POSTBOX_AUTO_ADVANCE_DEFAULT: PostboxAutoAdvanceMode = 'next';
 export const POSTBOX_AUTO_ADVANCE_OPTIONS: Array<{
 	value: PostboxAutoAdvanceMode;
 	label: string;
-	description: string;
 }> = [
-	{
-		value: 'next',
-		label: 'Open the next conversation',
-		description: 'Move down the list (newer → older)',
-	},
-	{
-		value: 'previous',
-		label: 'Open the previous conversation',
-		description: 'Move up the list',
-	},
-	{
-		value: 'back-to-list',
-		label: 'Go back to the list',
-		description: 'Close the reader after triaging',
-	},
+	{ value: 'next', label: 'Open the next conversation' },
+	{ value: 'previous', label: 'Open the previous conversation' },
+	{ value: 'back-to-list', label: 'Go back to the list' },
 ];
 
 /**
