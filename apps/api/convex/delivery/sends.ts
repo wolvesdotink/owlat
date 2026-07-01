@@ -4,9 +4,7 @@ import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import type { Doc, Id } from '../_generated/dataModel';
 import {
 	getUserIdFromSession,
-	getMutationContext,
-	hasPermission,
-	requirePermission,
+	requireOrgPermission,
 } from '../lib/sessionOrganization';
 import { getOrThrow, throwInvalidInput } from '../_utils/errors';
 import { batchGet } from '../_utils/batchLoader';
@@ -246,8 +244,7 @@ export const create = authedMutation({
 		personalizedSubject: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		const { role } = await getMutationContext(ctx);
-		requirePermission(hasPermission(role, 'campaigns:send'), 'Only owners and admins can create email sends');
+		await requireOrgPermission(ctx, 'campaigns:send', 'Only owners and admins can create email sends');
 		await getOrThrow(ctx, args.campaignId, 'Campaign');
 
 		const now = Date.now();

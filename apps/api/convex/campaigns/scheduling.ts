@@ -2,11 +2,7 @@ import { v } from 'convex/values';
 import { internalQuery } from '../_generated/server';
 import { authedMutation } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
-import {
-	getMutationContext,
-	requirePermission,
-	hasPermission,
-} from '../lib/sessionOrganization';
+import { requireOrgPermission } from '../lib/sessionOrganization';
 import { throwInvalidState, throwNotFound } from '../_utils/errors';
 import { validateReadyToSend } from './preflight';
 import { assertTransitioned } from './lifecycle';
@@ -18,11 +14,7 @@ export const cancel = authedMutation({
 		campaignId: v.id('campaigns'),
 	},
 	handler: async (ctx, args) => {
-		const session = await getMutationContext(ctx);
-		requirePermission(
-			hasPermission(session.role, 'campaigns:schedule'),
-			'Only owners and admins can cancel campaigns',
-		);
+		const session = await requireOrgPermission(ctx, 'campaigns:schedule', 'Only owners and admins can cancel campaigns');
 
 		const campaign = await ctx.db.get(args.campaignId);
 		if (!campaign) {
@@ -59,11 +51,7 @@ export const reschedule = authedMutation({
 		scheduledMinute: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		const session = await getMutationContext(ctx);
-		requirePermission(
-			hasPermission(session.role, 'campaigns:schedule'),
-			'Only owners and admins can reschedule campaigns',
-		);
+		const session = await requireOrgPermission(ctx, 'campaigns:schedule', 'Only owners and admins can reschedule campaigns');
 
 		const campaign = await ctx.db.get(args.campaignId);
 		if (!campaign) {
@@ -123,11 +111,7 @@ export const unschedule = authedMutation({
 		campaignId: v.id('campaigns'),
 	},
 	handler: async (ctx, args) => {
-		const session = await getMutationContext(ctx);
-		requirePermission(
-			hasPermission(session.role, 'campaigns:schedule'),
-			'Only owners and admins can unschedule campaigns',
-		);
+		const session = await requireOrgPermission(ctx, 'campaigns:schedule', 'Only owners and admins can unschedule campaigns');
 
 		const campaign = await ctx.db.get(args.campaignId);
 		if (!campaign) {
@@ -163,11 +147,7 @@ export const schedule = authedMutation({
 		// Deliberately NOT requireDraftCampaign: scheduling is gated on the
 		// distinct campaigns:schedule permission, while the guard hard-codes
 		// campaigns:manage. Same shape, different authz decision.
-		const session = await getMutationContext(ctx);
-		requirePermission(
-			hasPermission(session.role, 'campaigns:schedule'),
-			'Only owners and admins can schedule campaigns',
-		);
+		const session = await requireOrgPermission(ctx, 'campaigns:schedule', 'Only owners and admins can schedule campaigns');
 
 		const campaign = await ctx.db.get(args.campaignId);
 		if (!campaign) {
