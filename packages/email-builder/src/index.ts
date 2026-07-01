@@ -101,7 +101,6 @@ export {
 	defaultBackgroundColor,
 	defaultBorderRadius,
 	defaultTheme,
-	allBlockTypes,
 } from './defaults';
 
 // Registry — legacy BlockDefinition API plus the new typed Editor module API.
