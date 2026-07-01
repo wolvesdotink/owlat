@@ -143,22 +143,18 @@ export const reconcileTransactionalSendCount = internalMutation({
 		const cachedCount = settings.transactionalSendCount ?? 0;
 		const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
 
-		// Bounded by recent activity; pagination keeps this safe even if a
-		// burst happened.
+		// Count recent sends by streaming (async iteration, no `.paginate()`):
+		// Convex allows a single `.paginate()` per function execution, so the old
+		// page-loop threw once a 30-day window held more than one page. A safety
+		// cap bounds the scan (was MAX_PAGES * PAGE_SIZE) even if a burst happened.
+		const MAX_RECENT = 10_000;
 		let recentCount = 0;
-		let cursor: string | null = null;
-		const MAX_PAGES = 50;
-		const PAGE_SIZE = 200;
-		for (let i = 0; i < MAX_PAGES; i++) {
-			const page = await ctx.db
-				.query('transactionalSends')
-				.withIndex('by_creation_time', (q) =>
-					q.gte('_creationTime', thirtyDaysAgo),
-				)
-				.paginate({ cursor, numItems: PAGE_SIZE });
-			recentCount += page.page.length;
-			if (page.isDone) break;
-			cursor = page.continueCursor;
+		for await (const row of ctx.db
+			.query('transactionalSends')
+			.withIndex('by_creation_time', (q) => q.gte('_creationTime', thirtyDaysAgo))) {
+			void row;
+			recentCount += 1;
+			if (recentCount >= MAX_RECENT) break;
 		}
 
 		if (recentCount > cachedCount) {

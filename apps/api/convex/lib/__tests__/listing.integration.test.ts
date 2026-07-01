@@ -39,20 +39,22 @@ describe('listResources — cursor regression (the headline ADR-0037 fix)', () =
 			}
 		});
 
-		const seen = await t.run(async (ctx) => {
+		const seen = await (async () => {
 			const ids = new Set<string>();
 			let cursor: string | null = null;
 			let pages = 0;
 			let done = false;
-			// Walk every page via the returned cursor. The pre-ADR bug returned the
-			// literal 'search' sentinel and re-served page 1 forever, so this loop
-			// would never terminate / never grow the set.
+			// Walk every page via the returned cursor. Each page is its OWN
+			// execution (`t.run` per page) — Convex allows one `.paginate()` per
+			// execution, and this also mirrors production, where every page is a
+			// separate query call. The pre-ADR bug returned the literal 'search'
+			// sentinel and re-served page 1 forever, so this loop would never
+			// terminate / never grow the set.
 			while (!done) {
 				const opts: { numItems: number; cursor: string | null } = { numItems: 2, cursor };
-				const result = await listResources(ctx.db, contactListing, {
-					search: 'findme',
-					paginationOpts: opts,
-				});
+				const result = await t.run(async (ctx) =>
+					listResources(ctx.db, contactListing, { search: 'findme', paginationOpts: opts }),
+				);
 				expect(result.page.length).toBeLessThanOrEqual(2);
 				for (const row of result.page) ids.add(row._id);
 				pages++;
@@ -62,7 +64,7 @@ describe('listResources — cursor regression (the headline ADR-0037 fix)', () =
 				if (pages > 10) throw new Error('cursor did not advance — single-page bug');
 			}
 			return { count: ids.size, pages };
-		});
+		})();
 
 		// All 5 distinct rows, across more than one page.
 		expect(seen.count).toBe(5);
@@ -256,17 +258,18 @@ describe('countFacet — the count zoo collapses', () => {
 describe('descriptors — smoke', () => {
 	it('every descriptor lists without error against an empty deployment', async () => {
 		const t = convexTest(schema, modules);
-		await t.run(async (ctx) => {
-			const empty = <T extends { page: unknown[]; isDone: boolean }>(result: T) => {
-				expect(result.page).toEqual([]);
-				expect(result.isDone).toBe(true);
-			};
-			empty(await listResources(ctx.db, contactListing, { paginationOpts: PAGE }));
-			empty(await listResources(ctx.db, campaignListing, { paginationOpts: PAGE }));
-			empty(await listResources(ctx.db, emailTemplateListing, { paginationOpts: PAGE }));
-			empty(await listResources(ctx.db, topicListing, { paginationOpts: PAGE }));
-			empty(await listResources(ctx.db, segmentListing, { paginationOpts: PAGE }));
-			empty(await listResources(ctx.db, automationListing, { paginationOpts: PAGE }));
-		});
+		const empty = <T extends { page: unknown[]; isDone: boolean }>(result: T) => {
+			expect(result.page).toEqual([]);
+			expect(result.isDone).toBe(true);
+		};
+		// One `t.run` per descriptor: Convex allows a single `.paginate()` per
+		// function execution, so each list must run in its own execution — exactly
+		// as it does in production, where every list is a separate query call.
+		await t.run(async (ctx) => empty(await listResources(ctx.db, contactListing, { paginationOpts: PAGE })));
+		await t.run(async (ctx) => empty(await listResources(ctx.db, campaignListing, { paginationOpts: PAGE })));
+		await t.run(async (ctx) => empty(await listResources(ctx.db, emailTemplateListing, { paginationOpts: PAGE })));
+		await t.run(async (ctx) => empty(await listResources(ctx.db, topicListing, { paginationOpts: PAGE })));
+		await t.run(async (ctx) => empty(await listResources(ctx.db, segmentListing, { paginationOpts: PAGE })));
+		await t.run(async (ctx) => empty(await listResources(ctx.db, automationListing, { paginationOpts: PAGE })));
 	});
 });

@@ -4,14 +4,17 @@
  * docs/adr/0033-audience-resolution-module.md.
  *
  * One pure per-Contact eligibility predicate (`selectRecipient`) is the shared
- * core; one async per-page resolver (`resolveRecipientPageImpl`) is the single
- * walk primitive. Three entries route through it so the wizard count, the
- * in-memory resolve, and the checkpointed walker can never disagree:
+ * core. The checkpointed send walker takes ONE page per scheduled hop via
+ * `resolveRecipientPageImpl` (one `.paginate()` per execution); the count and
+ * materialize entries instead STREAM candidates via `streamAudienceCandidates`
+ * (async iteration, no `.paginate()`) because Convex allows a single `.paginate()`
+ * per function execution. All three apply the identical eligibility, so the wizard
+ * count, the in-memory resolve, and the walker can never disagree:
  *   - `resolveRecipientPage` — internalQuery, ONE page (the walker's hop).
- *   - `resolveRecipients`    — internalQuery, materializes all rows (loops the
- *                              page resolver). Still used by the A/B path.
- *   - `countRecipients`      — public query, accumulates integers (loops the
- *                              page resolver), capped at COUNT_CEILING.
+ *   - `resolveRecipients`    — internalQuery, materializes candidates by streaming
+ *                              (test/asserts only), bounded by COUNT_CEILING.
+ *   - `countRecipients`      — public query, accumulates integers by streaming,
+ *                              capped at COUNT_CEILING.
  */
 
 import { v } from 'convex/values';
@@ -108,11 +111,20 @@ type SegmentFilters = Infer<typeof segmentFiltersValidator>;
 const PAGE_SIZE = 500;
 
 /**
- * Ceiling for `countRecipients`. The wizard readout streams until it has
- * either exhausted the audience or examined this many candidates, then stops
- * and returns `capped: true`. This bounds the wizard's reactive query to a
- * fixed number of pages — a multi-million-member audience no longer streams
- * the whole table on every keystroke; the UI renders `25,000+`.
+ * Ceiling for `countRecipients`. The wizard readout streams until it has either
+ * exhausted the audience or accumulated this many CANDIDATES (topic memberships,
+ * or segment MATCHES), then stops and returns `capped: true` (the UI renders
+ * `25,000+`).
+ *
+ * NOTE — this caps candidates, NOT rows examined. For a topic it also bounds the
+ * scan (memberships ARE the population). For a SEGMENT it does not: a narrow
+ * segment over a large contacts table streams every live contact before it ever
+ * reaches the ceiling, so the reactive count is O(live contacts) up to the Convex
+ * per-execution read limit (beyond which it errors). This is still a large
+ * improvement over the previous page-loop, which threw on its 2nd `.paginate()`
+ * once a segment had >500 live contacts. Exact counts for narrow segments over
+ * very large tables ultimately want a denormalized/aggregate counter rather than
+ * a live scan — tracked as a follow-up.
  */
 export const COUNT_CEILING = 25_000;
 
@@ -233,6 +245,68 @@ async function resolveRecipientPageImpl(
 	};
 }
 
+/**
+ * Async-stream every CANDIDATE of an Audience — one yield per raw candidate the
+ * page walk would examine (the `pageCandidates` unit), carrying the eligible
+ * `recipient` or `null` — WITHOUT `.paginate()`. Convex permits a single
+ * `.paginate()` per function execution, so the count/materialize entries below
+ * cannot loop pages; they iterate this stream and stop at COUNT_CEILING. The
+ * per-row eligibility (suppression, DOI gate, segment predicate) is IDENTICAL to
+ * `resolveRecipientPageImpl` — only the fetch strategy differs (row stream vs one
+ * paginated page per scheduled hop).
+ */
+async function* streamAudienceCandidates(
+	ctx: QueryCtx,
+	audience: StoredAudience,
+): AsyncGenerator<{ recipient: CampaignRecipient | null }> {
+	const blockedEmails = await loadSuppressionSet(ctx);
+
+	if (audience.kind === 'topic') {
+		const topic = await ctx.db.get(audience.topicId);
+		const gate = { requiresDoi: topic?.requireDoubleOptIn === true, blockedEmails };
+		for await (const membership of ctx.db
+			.query('contactTopics')
+			.withIndex('by_topic', (q) => q.eq('topicId', audience.topicId))) {
+			const contact = await ctx.db.get(membership.contactId);
+			// Every membership is a candidate (mirrors `pageCandidates: page.length`);
+			// an orphan membership (contact hard-deleted) is still a candidate but
+			// yields no recipient.
+			yield { recipient: contact ? selectRecipient(contact, gate) : null };
+		}
+		return;
+	}
+
+	// segment — DOI never gates (named asymmetry).
+	const gate = { requiresDoi: false, blockedEmails };
+	let filters: SegmentFilters | null = audience.frozenFilters ?? null;
+	if (!filters) {
+		const segment = await ctx.db.get(audience.segmentId);
+		filters = segment ? (segment.filters as SegmentFilters) : null;
+	}
+	if (!filters) return;
+
+	let parsedFilters: ParsedSegmentFilters;
+	try {
+		parsedFilters = parseSegmentFilters(filters);
+	} catch (err) {
+		logWarn('audienceResolution: segment filters failed to parse; resolving zero recipients', err);
+		return;
+	}
+
+	const lookup = await preloadConditionsLookup(ctx, parsedFilters.conditions);
+	const matches = makeSegmentPredicate(parsedFilters, lookup);
+
+	// Live Contacts over `by_deleted_at` pinned to `deletedAt === undefined`:
+	// soft-deleted rows never enter the stream (the index range is exactly the
+	// live population). Only segment-matches are candidates.
+	for await (const contact of ctx.db
+		.query('contacts')
+		.withIndex('by_deleted_at', (q) => q.eq('deletedAt', undefined))) {
+		if (!matches(contact)) continue;
+		yield { recipient: selectRecipient(contact, gate) };
+	}
+}
+
 // ── Entry 0: ONE page. The checkpointed walker's hop. ────────────────────
 // The walker (`emails.resolveCampaignPage`) calls this once per scheduled
 // hop at `job.cursor`, enqueues the returned `recipients`, then patches the
@@ -252,23 +326,21 @@ export const resolveRecipientPage = internalQuery({
 	},
 });
 
-// ── Entry 1: materialize rows. Still used by the A/B fanout path. The
-// non-A/B send goes through the checkpointed walker instead. Loops the page
-// resolver so it shares the exact eligibility walk. ──
+// ── Entry 1: materialize rows in ONE bounded page. Used only by tests/asserts
+// (`countRecipients(a).eligible === resolveRecipients(a).length`) — no production
+// path calls this; the send paths stream via the checkpointed walker
+// (`resolveRecipientPage`, one page per scheduled hop). Convex allows a single
+// `.paginate()` per function execution, so this cannot loop pages; it resolves a
+// single page bounded by COUNT_CEILING, which is more than any test seeds. ──
 export const resolveRecipients = internalQuery({
 	args: { audience: audienceValidator },
 	handler: async (ctx, { audience }): Promise<CampaignRecipient[]> => {
 		const recipients: CampaignRecipient[] = [];
-		let cursor = '';
-		for (;;) {
-			const page = await resolveRecipientPageImpl(ctx, {
-				audience,
-				cursor,
-				numItems: PAGE_SIZE,
-			});
-			recipients.push(...page.recipients);
-			if (page.nextCursor === null) break;
-			cursor = page.nextCursor;
+		let candidates = 0;
+		for await (const { recipient } of streamAudienceCandidates(ctx, audience)) {
+			candidates += 1;
+			if (recipient) recipients.push(recipient);
+			if (candidates >= COUNT_CEILING) break;
 		}
 		return recipients;
 	},
@@ -288,22 +360,14 @@ export const countRecipients = authedQuery({
 		if (!audience) return { total: 0, eligible: 0, capped: false };
 		let total = 0;
 		let eligible = 0;
-		let cursor = '';
-		for (;;) {
-			const page = await resolveRecipientPageImpl(ctx, {
-				audience,
-				cursor,
-				numItems: PAGE_SIZE,
-			});
-			total += page.pageCandidates;
-			eligible += page.recipients.length;
+		for await (const { recipient } of streamAudienceCandidates(ctx, audience)) {
+			total += 1;
+			if (recipient) eligible += 1;
 			if (total >= COUNT_CEILING) {
-				// Cap reached — clamp to the ceiling and stop streaming. Whether
-				// `nextCursor` is null or not, the readout is "at least CEILING".
+				// Cap reached — clamp to the ceiling and stop streaming. There may be
+				// more candidates, so the readout is "at least CEILING".
 				return { total: COUNT_CEILING, eligible: Math.min(eligible, COUNT_CEILING), capped: true };
 			}
-			if (page.nextCursor === null) break;
-			cursor = page.nextCursor;
 		}
 		return { total, eligible, capped: false };
 	},

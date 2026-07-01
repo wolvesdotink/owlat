@@ -196,7 +196,8 @@ export const getEmailTemplateForLanguage = internalQuery({
 // Campaign recipient resolution moved to the Audience resolution (module) at
 // `campaigns/audienceResolution.ts` (ADR-0033) — it owns the single
 // eligibility predicate (`selectRecipient`) and the `CampaignRecipient` type,
-// shared by `resolveRecipients` (send) and `countRecipients` (wizard count).
+// shared by the checkpointed send walker (`resolveRecipientPage`) and the wizard
+// count (`countRecipients`).
 
 /**
  * Freeze a segment Audience's filters at send time (ADR-0033). This is the
