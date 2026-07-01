@@ -1,0 +1,175 @@
+/**
+ * Autodiscover IMAP/SMTP server settings from an email address
+ * (Settings → Connect external mailbox).
+ *
+ * The external-account form already ships a handful of provider presets, but
+ * the user has to know which button to click. This module derives the same
+ * preset shape straight from the email DOMAIN so the server fields can be
+ * pre-filled as the address is typed:
+ *
+ *  - `presetForEmail` matches the domain against a small, curated table of the
+ *    big consumer providers (Gmail, Outlook.com, iCloud, Fastmail) — instant,
+ *    offline, no network.
+ *  - `autodiscover` is an optional FAIL-SOFT fallback for unknown domains: it
+ *    queries the Thunderbird autoconfig service (used by every mainstream mail
+ *    client) over HTTPS and parses the returned IMAP/SMTP host/port/socketType.
+ *
+ * Fail-soft by design, modelled on `spfCoexistence.ts`: any network / parse /
+ * timeout error resolves to `null` (the user just fills the fields manually) —
+ * a lookup hiccup must never throw into the settings UI. Request hosts are
+ * fixed; the domain is only ever interpolated as an encoded path/query value.
+ */
+
+/** The subset of the external-account form a preset fills. Mirrors PRESETS there. */
+export type MailPreset = {
+	imapHost: string;
+	imapPort: number;
+	isImapSecure: boolean;
+	smtpHost: string;
+	smtpPort: number;
+	isSmtpSecure: boolean;
+};
+
+/**
+ * Curated domain → preset table for the big consumer providers. Values match
+ * the manual PRESETS in external-account.vue so autofill and the buttons agree.
+ */
+const DOMAIN_PRESETS: Record<string, MailPreset> = {
+	// Gmail / Google Workspace consumer domains.
+	'gmail.com': { imapHost: 'imap.gmail.com', imapPort: 993, isImapSecure: true, smtpHost: 'smtp.gmail.com', smtpPort: 465, isSmtpSecure: true },
+	'googlemail.com': { imapHost: 'imap.gmail.com', imapPort: 993, isImapSecure: true, smtpHost: 'smtp.gmail.com', smtpPort: 465, isSmtpSecure: true },
+	// Microsoft consumer domains.
+	'outlook.com': { imapHost: 'outlook.office365.com', imapPort: 993, isImapSecure: true, smtpHost: 'smtp-mail.outlook.com', smtpPort: 587, isSmtpSecure: false },
+	'hotmail.com': { imapHost: 'outlook.office365.com', imapPort: 993, isImapSecure: true, smtpHost: 'smtp-mail.outlook.com', smtpPort: 587, isSmtpSecure: false },
+	'live.com': { imapHost: 'outlook.office365.com', imapPort: 993, isImapSecure: true, smtpHost: 'smtp-mail.outlook.com', smtpPort: 587, isSmtpSecure: false },
+	// Apple iCloud domains.
+	'icloud.com': { imapHost: 'imap.mail.me.com', imapPort: 993, isImapSecure: true, smtpHost: 'smtp.mail.me.com', smtpPort: 587, isSmtpSecure: false },
+	'me.com': { imapHost: 'imap.mail.me.com', imapPort: 993, isImapSecure: true, smtpHost: 'smtp.mail.me.com', smtpPort: 587, isSmtpSecure: false },
+	'mac.com': { imapHost: 'imap.mail.me.com', imapPort: 993, isImapSecure: true, smtpHost: 'smtp.mail.me.com', smtpPort: 587, isSmtpSecure: false },
+	// Fastmail (and its common aliases).
+	'fastmail.com': { imapHost: 'imap.fastmail.com', imapPort: 993, isImapSecure: true, smtpHost: 'smtp.fastmail.com', smtpPort: 465, isSmtpSecure: true },
+	'fastmail.fm': { imapHost: 'imap.fastmail.com', imapPort: 993, isImapSecure: true, smtpHost: 'smtp.fastmail.com', smtpPort: 465, isSmtpSecure: true },
+};
+
+/** Extract the lower-cased domain part of an email address, or `null`. */
+export function domainOfEmail(email: string): string | null {
+	const at = email.lastIndexOf('@');
+	if (at <= 0 || at === email.length - 1) return null;
+	const domain = email.slice(at + 1).trim().toLowerCase();
+	// Reject anything that isn't a plausible dotted hostname.
+	if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(domain)) return null;
+	return domain;
+}
+
+/**
+ * Return the curated preset for the email's domain, or `null` when the domain
+ * is unknown / the address is malformed. Pure and synchronous — no network.
+ */
+export function presetForEmail(email: string): MailPreset | null {
+	const domain = domainOfEmail(email);
+	if (!domain) return null;
+	return DOMAIN_PRESETS[domain] ?? null;
+}
+
+/** Autoconfig `socketType` values that mean "implicit TLS". */
+function isSecureSocket(socketType: string | null): boolean {
+	return socketType?.toUpperCase() === 'SSL';
+}
+
+/**
+ * Parse the `<incomingServer type="imap">` / `<outgoingServer type="smtp">`
+ * blocks of a Thunderbird autoconfig XML document into a `MailPreset`. Returns
+ * `null` when either server block or a required field is missing.
+ */
+function parseAutoconfigXml(xml: string): MailPreset | null {
+	try {
+		const doc = new DOMParser().parseFromString(xml, 'application/xml');
+		if (doc.querySelector('parsererror')) return null;
+
+		const incoming = Array.from(doc.querySelectorAll('incomingServer')).find(
+			(el) => el.getAttribute('type')?.toLowerCase() === 'imap',
+		);
+		const outgoing = doc.querySelector('outgoingServer[type="smtp"]');
+		if (!incoming || !outgoing) return null;
+
+		const text = (parent: Element, tag: string): string | null =>
+			parent.querySelector(tag)?.textContent?.trim() ?? null;
+
+		const imapHost = text(incoming, 'hostname');
+		const imapPort = Number(text(incoming, 'port'));
+		const smtpHost = text(outgoing, 'hostname');
+		const smtpPort = Number(text(outgoing, 'port'));
+		if (!imapHost || !smtpHost || !Number.isFinite(imapPort) || !Number.isFinite(smtpPort)) {
+			return null;
+		}
+
+		return {
+			imapHost,
+			imapPort,
+			isImapSecure: isSecureSocket(text(incoming, 'socketType')),
+			smtpHost,
+			smtpPort,
+			isSmtpSecure: isSecureSocket(text(outgoing, 'socketType')),
+		};
+	} catch {
+		return null;
+	}
+}
+
+/** Fetch a URL and return its text body, or `null` on any error / non-2xx / timeout. */
+async function fetchTextSoft(url: string, timeoutMs: number): Promise<string | null> {
+	try {
+		const controller = new AbortController();
+		const timer = setTimeout(() => controller.abort(), timeoutMs);
+		try {
+			const response = await fetch(url, { signal: controller.signal });
+			if (!response.ok) return null;
+			return await response.text();
+		} finally {
+			clearTimeout(timer);
+		}
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * FAIL-SOFT autodiscover for domains not in the curated table. Tries the
+ * Thunderbird autoconfig service, then the domain's own well-known autoconfig
+ * endpoint, and parses the first valid response. Returns `null` on ANY error
+ * (network, timeout, malformed XML, missing fields) — callers treat that as
+ * "no suggestion, fill it in manually".
+ *
+ * @param email      the address whose domain to look up
+ * @param timeoutMs  per-request timeout (default 3s)
+ */
+export async function autodiscover(email: string, timeoutMs = 3000): Promise<MailPreset | null> {
+	const domain = domainOfEmail(email);
+	if (!domain) return null;
+
+	const encoded = encodeURIComponent(domain);
+	const endpoints = [
+		`https://autoconfig.thunderbird.net/v1.1/${encoded}`,
+		`https://autoconfig.${domain}/mail/config-v1.1.xml?emailaddress=${encodeURIComponent(email)}`,
+	];
+
+	for (const url of endpoints) {
+		const xml = await fetchTextSoft(url, timeoutMs);
+		if (!xml) continue;
+		const preset = parseAutoconfigXml(xml);
+		if (preset) return preset;
+	}
+	return null;
+}
+
+/**
+ * Resolve a preset for an email address: the curated table first (instant),
+ * falling back to fail-soft {@link autodiscover} for unknown domains. Always
+ * resolves — `null` when nothing could be determined.
+ */
+export async function resolveMailPreset(
+	email: string,
+	timeoutMs = 3000,
+): Promise<MailPreset | null> {
+	return presetForEmail(email) ?? (await autodiscover(email, timeoutMs));
+}
