@@ -263,8 +263,10 @@ const stopAutoRecheck = () => {
 };
 
 const startAutoRecheck = (domainId: Id<'domains'>) => {
-	// Already polling this exact domain — leave the existing poller running.
-	if (recheckPoller && recheckDomainId === domainId) return;
+	// Already polling this exact domain — leave the existing poller running. A
+	// poller that has self-stopped (verified / cap reached) reports isRunning()
+	// false, so it is not mistaken for a live one and auto-recheck can restart.
+	if (recheckPoller && recheckDomainId === domainId && recheckPoller.isRunning()) return;
 	stopAutoRecheck();
 	recheckDomainId = domainId;
 	autoRecheckActive.value = true;
@@ -275,6 +277,17 @@ const startAutoRecheck = (domainId: Id<'domains'>) => {
 			const result = await verifyDomain({ domainId });
 			// run() already surfaced any failure; treat undefined as "keep trying".
 			return result?.allVerified === true;
+		},
+		onStopped: () => {
+			// The poller stopped itself (domain verified, or the ~5-min cap was
+			// reached). Reconcile the component's mirror state so the subtle
+			// "Checking DNS…" indicator stops instead of spinning forever, and a
+			// later domainsData tick can start a fresh poller.
+			if (recheckDomainId === domainId) {
+				recheckPoller = null;
+				recheckDomainId = null;
+				autoRecheckActive.value = false;
+			}
 		},
 	});
 	recheckPoller.start();

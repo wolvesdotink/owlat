@@ -21,6 +21,11 @@ export interface AutoRecheckPollerParams {
 	maxAttempts?: number;
 	// Fail-soft error sink. Called if onTick rejects; never rethrows.
 	onError?: (error: unknown) => void;
+	// Called exactly once when the poller stops *itself* — i.e. onTick reported
+	// done (verified) or the attempt cap was reached. NOT called for an external
+	// stop() (the caller already knows in that case). Lets the owner reconcile
+	// any duplicated "is polling?" state instead of it going stale.
+	onStopped?: () => void;
 }
 
 export interface AutoRecheckPoller {
@@ -49,6 +54,15 @@ export function createAutoRecheckPoller(params: AutoRecheckPollerParams): AutoRe
 		inFlight = false;
 	};
 
+	// Stop that also notifies the owner (once). Used for the poller's own
+	// terminal transitions (verified / cap) so the caller can drop its handle
+	// and clear any "polling" indicator; a plain external stop() stays silent.
+	const selfStop = (): void => {
+		const wasRunning = timer !== null;
+		stop();
+		if (wasRunning) params.onStopped?.();
+	};
+
 	const tick = (): void => {
 		// At most one verify in flight at a time — skip this beat if the previous
 		// attempt (or a manual verify the caller routed through the same guard)
@@ -61,7 +75,7 @@ export function createAutoRecheckPoller(params: AutoRecheckPollerParams): AutoRe
 			.onTick()
 			.then((done) => {
 				if (done) {
-					stop();
+					selfStop();
 				}
 			})
 			.catch((error) => {
@@ -74,7 +88,7 @@ export function createAutoRecheckPoller(params: AutoRecheckPollerParams): AutoRe
 				// Enforce the safety cap after the attempt settles so we always make
 				// exactly `maxAttempts` attempts, no more.
 				if (attempts >= maxAttempts) {
-					stop();
+					selfStop();
 				}
 			});
 	};
