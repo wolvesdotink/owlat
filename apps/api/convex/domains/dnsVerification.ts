@@ -17,7 +17,7 @@
  */
 
 import { v } from 'convex/values';
-import { internal } from '../_generated/api';
+import { api, internal } from '../_generated/api';
 import { authedAction } from '../lib/authedFunctions';
 import dns from 'node:dns/promises';
 import { logError } from '../lib/runtimeLog';
@@ -26,6 +26,8 @@ import type { ProviderCheckResult } from './providers';
 import { detectMultipleSpf, isSpfRecord, mergeSpfRecords } from './spf';
 import { throwNotFound, throwInvalidState, throwInternal } from '../_utils/errors';
 import { txtRecordMatches } from './dnsMatch';
+import { checkReverseDns } from './reverseDns';
+import type { ReverseDnsResult } from './reverseDns';
 
 type DnsRecord = {
 	type?: 'TXT' | 'CNAME' | 'MX' | 'TLSA';
@@ -431,5 +433,28 @@ export const verifyDomain = authedAction({
 			allVerified: outcome.to === 'verified',
 			results,
 		};
+	},
+});
+
+// ─── Receiving reverse-DNS (PTR) preflight ──────────────────────────────────
+//
+// Live FCrDNS check for the deployment's own EHLO/MX host, backing the Settings
+// → Domains "Receiving" panel. Reads the mail host authoritatively from the
+// server env (via the already admin-gated `getInboundMailConfig`, never a
+// client-supplied host), resolves it to its IP(s), and reverse-resolves those to
+// PTR name(s) with `node:dns/promises`. Returns a structured verdict — `null`
+// when EHLO_HOSTNAME is unset (send-only install, nothing to check). NEVER
+// throws: the pure `checkReverseDns` helper swallows every lookup error, so a
+// DNS hiccup degrades to "not confirmed" rather than breaking the setup UI.
+//
+// authz: admin gate lives in the `getInboundMailConfig` query it delegates to
+// (organization:manage) — parity with the rest of the domain-management surface,
+// since checking inbound DNS is an operator task.
+export const checkReceivingReverseDns = authedAction({
+	args: {},
+	handler: async (ctx): Promise<ReverseDnsResult | null> => {
+		const { mailHost } = await ctx.runQuery(api.domains.domains.getInboundMailConfig, {});
+		if (!mailHost) return null;
+		return checkReverseDns(mailHost, { resolve4: dns.resolve4, reverse: dns.reverse });
 	},
 });
