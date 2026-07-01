@@ -62,26 +62,3 @@ export const defaultTheme: Required<EmailTheme> = {
 	darkModeLinkColor: '#93c5fd',
 	baseWidth: 600,
 };
-
-/**
- * All block types available in the editor
- */
-export const allBlockTypes = [
-	'text',
-	'image',
-	'button',
-	'divider',
-	'spacer',
-	'columns',
-	'social',
-	'container',
-	'hero',
-	'table',
-	'rawHtml',
-	'video',
-	'accordion',
-	'menu',
-	'carousel',
-	'list',
-	'progressBar',
-] as const;
