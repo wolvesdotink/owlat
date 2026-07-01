@@ -24,6 +24,7 @@ import { logError, logInfo } from '../lib/runtimeLog';
 import { rateLimiter } from '../rateLimiter';
 import { extractEmail, normalizeSubject } from '../lib/emailAddress';
 import { isAutomatedMail } from '../lib/inboundClassification';
+import { isSuppressed } from '../lib/suppression';
 
 // Re-exported for existing importers of this module.
 export { extractEmail, normalizeSubject };
@@ -138,6 +139,32 @@ export const receiveMessage = internalMutation({
 			},
 			occurredAt: now,
 		});
+
+		// ── Blocklist / suppression auto-archive ──
+		// A sender on the CAN-SPAM / honor-suppression blocklist (`blockedEmails`)
+		// has been hard-blocked (spam complaint, hard bounce, or a manual
+		// `blockSender` on a prior message). We must NOT drop the mail — the
+		// inbound path has a hard never-drop invariant (SMTP 5xx rejection is not
+		// an option here) — so store-but-skip: the message is already persisted
+		// above, and we archive it via the same lifecycle edge `blockSender` uses
+		// (`received → archived`, reason `sender_blocked`) and skip the entire AI
+		// classify/route pipeline. This mirrors the store-but-skip shape of the
+		// auto-responder and rate-cap branches below.
+		if (await isSuppressed(ctx, senderEmail)) {
+			await ctx.runMutation(internal.inbox.processingLifecycle.transition, {
+				inboundMessageId,
+				input: {
+					to: 'archived',
+					at: now,
+					reason: 'sender_blocked',
+				},
+			});
+			logInfo(
+				'[Inbound Email] blocklisted sender mail stored and archived without AI processing',
+				{ contactId, threadId, from: args.from },
+			);
+			return { inboundMessageId, threadId, contactId };
+		}
 
 		// ── Mail-loop / auto-responder suppression ──
 		// The AI inbox address is public, so vacation autoresponders, mailing-list
