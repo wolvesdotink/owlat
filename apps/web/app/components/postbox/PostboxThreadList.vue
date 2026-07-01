@@ -77,8 +77,72 @@ function rowAction(event: MouseEvent, fn: () => void) {
 	fn();
 }
 
-// Keyboard triage (Gmail/Superhuman-style): j/k move, Enter opens, e archive,
-// # delete, s star, u toggle read. Focus survives live updates (see composable).
+// Pending compose intent for r/a/f from the list: opening the composer needs
+// the reader's quoting/recipient logic, so we open the message first and let
+// PostboxThreadReader consume the intent once it renders that message.
+const pendingCompose = useState<{
+	messageId: string;
+	mode: 'reply' | 'replyAll' | 'forward';
+} | null>('postbox:pending-compose', () => null);
+
+function openMessageWithCompose(id: string, mode: 'reply' | 'replyAll' | 'forward') {
+	pendingCompose.value = { messageId: id, mode };
+	if (props.selectable) emit('select', id);
+	else void navigateTo(`/dashboard/postbox/${props.folderRole}/${id}`);
+}
+
+// h/l/v open a picker for the focused row; the target id is captured so a
+// focus change while the dialog is open can't retarget the action.
+const snoozeOpen = ref(false);
+const snoozeTargetId = ref<string | null>(null);
+const labelOpen = ref(false);
+const labelTargetId = ref<string | null>(null);
+const moveOpen = ref(false);
+const moveTargetId = ref<string | null>(null);
+
+const { labels, setOnMessage } = usePostboxLabels(mailboxIdRef);
+const { folders } = usePostboxFolders(mailboxIdRef);
+// Same destination filter as PostboxQuickActionsBar: moving a received
+// message into Sent/Drafts mis-frames it, and the current folder is a no-op.
+const movableFolders = computed(() =>
+	folders.value.filter((f) => {
+		if (f.role === 'sent' || f.role === 'drafts') return false;
+		if (f.role === props.folderRole) return false;
+		return true;
+	})
+);
+
+const snoozeOp = useBackendOperation(api.mail.snooze.snooze, { label: 'Snooze' });
+const moveOp = useBackendOperation(api.mail.messageActions.move, { label: 'Move message' });
+
+async function snoozeFocused(until: number) {
+	const id = snoozeTargetId.value;
+	snoozeTargetId.value = null;
+	if (!id) return;
+	hideRow(id);
+	if ((await snoozeOp.run({ messageId: mid(id), until })) === undefined) unhideRow(id);
+}
+
+async function applyLabelToFocused(labelId: Id<'mailLabels'>) {
+	const id = labelTargetId.value;
+	labelOpen.value = false;
+	labelTargetId.value = null;
+	if (id) await setOnMessage(mid(id), labelId, true);
+}
+
+async function moveFocusedTo(targetFolderId: Id<'mailFolders'>) {
+	const id = moveTargetId.value;
+	moveOpen.value = false;
+	moveTargetId.value = null;
+	if (!id) return;
+	hideRow(id);
+	if ((await moveOp.run({ messageIds: [mid(id)], targetFolderId })) === undefined) unhideRow(id);
+}
+
+// Keyboard triage (Gmail/Superhuman-style): j/k move, Enter opens; single-key
+// actions resolve via utils/postboxShortcuts.ts (e archive, # delete, s star,
+// u toggle read, Shift+U unread, x select, r/a/f compose, h/l/v pickers).
+// Focus survives live updates (see composable).
 const {
 	focusedIndex,
 	activeId: activeRowId,
@@ -92,21 +156,47 @@ const {
 			? emit('select', m._id)
 			: void navigateTo(`/dashboard/postbox/${props.folderRole}/${m._id}`),
 	onAction: (key, m) => {
-		switch (key) {
-			case 'e':
+		switch (resolvePostboxShortcut(key)) {
+			case 'archive':
 				void archiveMsg(m._id);
 				break;
-			case '#':
-			case 'Delete':
-			case 'Backspace':
+			case 'trash':
 				void trashMsg(m._id);
 				break;
-			case 's':
+			case 'star':
 				toggleStar(m._id, !m.flagFlagged);
 				break;
-			case 'u':
+			case 'toggleRead':
 				toggleRead(m._id, !m.flagSeen);
 				break;
+			case 'markUnread':
+				toggleRead(m._id, false);
+				break;
+			case 'toggleSelect':
+				bulk.toggle(mid(m._id));
+				break;
+			case 'reply':
+				openMessageWithCompose(m._id, 'reply');
+				break;
+			case 'replyAll':
+				openMessageWithCompose(m._id, 'replyAll');
+				break;
+			case 'forward':
+				openMessageWithCompose(m._id, 'forward');
+				break;
+			case 'snooze':
+				snoozeTargetId.value = m._id;
+				snoozeOpen.value = true;
+				break;
+			case 'label':
+				labelTargetId.value = m._id;
+				labelOpen.value = true;
+				break;
+			case 'move':
+				moveTargetId.value = m._id;
+				moveOpen.value = true;
+				break;
+			// 'help' is handled by the window-level PostboxShortcutHelp listener.
 		}
 	},
 });
@@ -262,4 +352,22 @@ const {
 			Load more
 		</button>
 	</div>
+	<!-- Keyboard-flow pickers for the focused row (h / l / v). -->
+	<PostboxSnoozeDialog
+		:open="snoozeOpen"
+		@update:open="snoozeOpen = $event"
+		@confirm="snoozeFocused"
+	/>
+	<PostboxLabelPickerDialog
+		:open="labelOpen"
+		:labels="labels"
+		@update:open="labelOpen = $event"
+		@pick="applyLabelToFocused"
+	/>
+	<PostboxMovePickerDialog
+		:open="moveOpen"
+		:folders="movableFolders"
+		@update:open="moveOpen = $event"
+		@pick="moveFocusedTo"
+	/>
 </template>
