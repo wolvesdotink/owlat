@@ -1,6 +1,6 @@
 import { v } from 'convex/values';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
-import { getMutationContext, requirePermission, hasPermission } from '../lib/sessionOrganization';
+import { requireOrgPermission } from '../lib/sessionOrganization';
 import { throwNotFound, throwAlreadyExists, throwInvalidState } from '../_utils/errors';
 import { assertEditableForPublishableChange } from './lifecycle';
 import { mergeTranslationIntoItem, type TranslatableBlockContent } from './translationMerge';
@@ -165,8 +165,7 @@ export const addTranslation = authedMutation({
 		forceWhilePublished: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
-		const { role } = await getMutationContext(ctx);
-		requirePermission(hasPermission(role, 'templates:manage'), 'Only owners and admins can manage template translations');
+		await requireOrgPermission(ctx, 'templates:manage', 'Only owners and admins can manage template translations');
 		const template = await ctx.db.get(args.templateId);
 		if (!template) {
 			throwNotFound('Email template');
@@ -225,8 +224,7 @@ export const updateTranslation = authedMutation({
 		forceWhilePublished: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
-		const { role } = await getMutationContext(ctx);
-		requirePermission(hasPermission(role, 'templates:manage'), 'Only owners and admins can manage template translations');
+		await requireOrgPermission(ctx, 'templates:manage', 'Only owners and admins can manage template translations');
 		const template = await ctx.db.get(args.templateId);
 		if (!template) {
 			throwNotFound('Email template');
@@ -295,8 +293,7 @@ export const removeTranslation = authedMutation({
 		forceWhilePublished: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
-		const { role } = await getMutationContext(ctx);
-		requirePermission(hasPermission(role, 'templates:manage'), 'Only owners and admins can manage template translations');
+		await requireOrgPermission(ctx, 'templates:manage', 'Only owners and admins can manage template translations');
 		const template = await ctx.db.get(args.templateId);
 		if (!template) {
 			throwNotFound('Email template');
@@ -348,8 +345,7 @@ export const setDefaultLanguage = authedMutation({
 		forceWhilePublished: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
-		const { role } = await getMutationContext(ctx);
-		requirePermission(hasPermission(role, 'templates:manage'), 'Only owners and admins can manage template translations');
+		await requireOrgPermission(ctx, 'templates:manage', 'Only owners and admins can manage template translations');
 		const template = await ctx.db.get(args.templateId);
 		if (!template) {
 			throwNotFound('Email template');

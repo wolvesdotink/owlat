@@ -13,10 +13,8 @@
 import { v } from 'convex/values';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import {
-	getMutationContext,
 	getUserIdFromSession,
-	requirePermission,
-	hasPermission,
+	requireOrgPermission,
 } from '../lib/sessionOrganization';
 import { assertFeatureEnabled } from '../lib/featureFlags';
 import { throwInvalidInput } from '../_utils/errors';
@@ -31,8 +29,7 @@ export const generateUploadUrl = authedMutation({
 	args: {},
 	handler: async (ctx) => {
 		await assertFeatureEnabled(ctx, 'chat');
-		const { role } = await getMutationContext(ctx);
-		requirePermission(hasPermission(role, 'chat:participate'), 'Chat is not available');
+		await requireOrgPermission(ctx, 'chat:participate', 'Chat is not available');
 		return await ctx.storage.generateUploadUrl();
 	},
 });
@@ -52,8 +49,7 @@ export const registerAttachment = authedMutation({
 	},
 	handler: async (ctx, args) => {
 		await assertFeatureEnabled(ctx, 'chat');
-		const { userId, role } = await getMutationContext(ctx);
-		requirePermission(hasPermission(role, 'chat:participate'), 'Chat is not available');
+		const { userId } = await requireOrgPermission(ctx, 'chat:participate', 'Chat is not available');
 
 		if (!args.filename.trim()) throwInvalidInput('Filename cannot be empty');
 		if (!args.mimeType.trim()) throwInvalidInput('MIME type cannot be empty');

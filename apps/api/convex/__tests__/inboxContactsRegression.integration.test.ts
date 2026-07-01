@@ -48,6 +48,21 @@ vi.mock('../lib/sessionOrganization', async () => {
 			userId: sessionMock.user.id,
 			role: sessionMock.user.role,
 		})),
+		// authedMutation handlers gate on requireOrgPermission; run the real
+		// role→permission map so an editor is rejected by the genuine check.
+		requireOrgPermission: vi.fn().mockImplementation(
+			async (_ctx: unknown, permission: string, message?: string) => {
+				const mod: typeof import('../lib/sessionOrganization') = actual;
+				mod.requirePermission(
+					mod.hasPermission(
+						sessionMock.user.role as Parameters<typeof mod.hasPermission>[0],
+						permission as Parameters<typeof mod.hasPermission>[1],
+					),
+					message,
+				);
+				return { userId: sessionMock.user.id, role: sessionMock.user.role };
+			},
+		),
 		// adminMutation's wrapper calls requireAdminContext; reject editors so the
 		// role gate is exercised end-to-end.
 		requireAdminContext: vi.fn().mockImplementation(async () => {

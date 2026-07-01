@@ -14,9 +14,7 @@
 import type { MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import {
-	getMutationContext,
-	requirePermission,
-	hasPermission,
+	requireOrgPermission,
 	type MutationSessionContext,
 } from '../lib/sessionOrganization';
 import { throwNotFound, throwInvalidState } from '../_utils/errors';
@@ -38,11 +36,7 @@ export async function requireDraftCampaign(
 	action: string,
 	notDraftMessage = 'Cannot modify a campaign that is not in draft status',
 ): Promise<{ session: MutationSessionContext; campaign: Doc<'campaigns'> }> {
-	const session = await getMutationContext(ctx);
-	requirePermission(
-		hasPermission(session.role, 'campaigns:manage'),
-		`Only owners and admins can ${action}`,
-	);
+	const session = await requireOrgPermission(ctx, 'campaigns:manage', `Only owners and admins can ${action}`);
 
 	const campaign = await ctx.db.get(campaignId);
 	if (!campaign) {

@@ -3,7 +3,7 @@ import { paginationOptsValidator } from 'convex/server';
 import { internalMutation, internalQuery } from './_generated/server';
 import { authedQuery, authedMutation, authedAction } from './lib/authedFunctions';
 import { internal } from './_generated/api';
-import { getMutationContext, requirePermission, hasPermission } from './lib/sessionOrganization';
+import { requireOrgPermission } from './lib/sessionOrganization';
 import { throwNotFound } from './_utils/errors';
 import {
 	evaluateSegmentCount,
@@ -193,8 +193,7 @@ export const update = authedMutation({
 		if (args.name) validateStringLength(args.name, STRING_LIMITS.NAME, 'Name');
 		if (args.description) validateStringLength(args.description, STRING_LIMITS.DESCRIPTION, 'Description');
 
-		const session = await getMutationContext(ctx);
-		requirePermission(hasPermission(session.role, 'segments:manage'), 'Only owners and admins can update segments');
+		const session = await requireOrgPermission(ctx, 'segments:manage', 'Only owners and admins can update segments');
 
 		const existing = await ctx.db.get(args.id);
 		if (!existing) { throwNotFound('Segment'); }
@@ -227,8 +226,7 @@ export const update = authedMutation({
 export const remove = authedMutation({
 	args: { id: v.id('segments') },
 	handler: async (ctx, args) => {
-		const session = await getMutationContext(ctx);
-		requirePermission(hasPermission(session.role, 'segments:manage'), 'Only owners and admins can delete segments');
+		const session = await requireOrgPermission(ctx, 'segments:manage', 'Only owners and admins can delete segments');
 
 		const existing = await ctx.db.get(args.id);
 		if (!existing) { throwNotFound('Segment'); }
@@ -277,8 +275,7 @@ export const create = authedMutation({
 		validateStringLength(args.name, STRING_LIMITS.NAME, 'Name');
 		if (args.description) validateStringLength(args.description, STRING_LIMITS.DESCRIPTION, 'Description');
 
-		const session = await getMutationContext(ctx);
-		requirePermission(hasPermission(session.role, 'segments:manage'), 'Only owners and admins can create segments');
+		const session = await requireOrgPermission(ctx, 'segments:manage', 'Only owners and admins can create segments');
 
 		const now = Date.now();
 

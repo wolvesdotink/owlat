@@ -1,7 +1,7 @@
 import { v } from 'convex/values';
 import { authedMutation } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
-import { getMutationContext, hasPermission, requirePermission } from '../lib/sessionOrganization';
+import { requireOrgPermission } from '../lib/sessionOrganization';
 
 /**
  * Bulk-add contacts to a Topic. Thin auth-bearing shell — the Topic
@@ -19,8 +19,7 @@ export const addContacts = authedMutation({
 		siteUrl: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<string[]> => {
-		const { role } = await getMutationContext(ctx);
-		requirePermission(hasPermission(role, 'topics:manage'), 'Only owners and admins can bulk-edit topic membership');
+		await requireOrgPermission(ctx, 'topics:manage', 'Only owners and admins can bulk-edit topic membership');
 
 		const { outcomes } = await ctx.runMutation(
 			internal.topics.subscription.subscribeMany,
@@ -61,8 +60,7 @@ export const removeContacts = authedMutation({
 		contactIds: v.array(v.id('contacts')),
 	},
 	handler: async (ctx, args): Promise<void> => {
-		const { role } = await getMutationContext(ctx);
-		requirePermission(hasPermission(role, 'topics:manage'), 'Only owners and admins can bulk-edit topic membership');
+		await requireOrgPermission(ctx, 'topics:manage', 'Only owners and admins can bulk-edit topic membership');
 		await ctx.runMutation(internal.topics.subscription.unsubscribeMany, {
 			topicId: args.topicId,
 			contactIds: args.contactIds,

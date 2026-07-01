@@ -4,7 +4,7 @@ import { internal } from './_generated/api';
 import { v } from 'convex/values';
 import { paginationOptsValidator, type PaginationResult } from 'convex/server';
 import type { Doc } from './_generated/dataModel';
-import { getMutationContext, requirePermission, hasPermission } from './lib/sessionOrganization';
+import { requireOrgPermission } from './lib/sessionOrganization';
 import { throwNotFound, throwInvalidState, throwInvalidInput } from './_utils/errors';
 import { logError } from './lib/runtimeLog';
 import { isExtensionAllowed, isMimeTypeAllowed, isExecutableExtension, detectDoubleExtension, mergePolicy, DEFAULT_FILE_POLICY } from '@owlat/email-scanner';
@@ -194,8 +194,7 @@ export const create = authedMutation({
 		tags: v.optional(v.array(v.string())),
 	},
 	handler: async (ctx, args) => {
-		const session = await getMutationContext(ctx);
-		requirePermission(hasPermission(session.role, 'media:manage'), 'Only owners and admins can create media assets');
+		const session = await requireOrgPermission(ctx, 'media:manage', 'Only owners and admins can create media assets');
 
 		// Security: Validate file type before creating asset record
 		const doubleExt = detectDoubleExtension(args.filename);
@@ -394,8 +393,7 @@ export const update = authedMutation({
 		tags: v.optional(v.array(v.string())),
 	},
 	handler: async (ctx, args) => {
-		const session = await getMutationContext(ctx);
-		requirePermission(hasPermission(session.role, 'media:manage'), 'Only owners and admins can update media assets');
+		await requireOrgPermission(ctx, 'media:manage', 'Only owners and admins can update media assets');
 		const asset = await ctx.db.get(args.assetId);
 		if (!asset) { throwNotFound('Media asset'); }
 
@@ -418,8 +416,7 @@ export const update = authedMutation({
 export const remove = authedMutation({
 	args: { assetId: v.id('mediaAssets') },
 	handler: async (ctx, args) => {
-		const session = await getMutationContext(ctx);
-		requirePermission(hasPermission(session.role, 'media:manage'), 'Only owners and admins can delete media assets');
+		await requireOrgPermission(ctx, 'media:manage', 'Only owners and admins can delete media assets');
 		const asset = await ctx.db.get(args.assetId);
 		if (!asset) { throwNotFound('Media asset'); }
 
@@ -434,8 +431,7 @@ export const remove = authedMutation({
 export const bulkDelete = authedMutation({
 	args: { assetIds: v.array(v.id('mediaAssets')) },
 	handler: async (ctx, args) => {
-		const session = await getMutationContext(ctx);
-		requirePermission(hasPermission(session.role, 'media:manage'), 'Only owners and admins can bulk-delete media assets');
+		await requireOrgPermission(ctx, 'media:manage', 'Only owners and admins can bulk-delete media assets');
 
 		for (const assetId of args.assetIds) {
 			const asset = await ctx.db.get(assetId);

@@ -31,11 +31,7 @@ import {
 } from '../_generated/server';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
-import {
-	getMutationContext,
-	hasPermission,
-	requirePermission,
-} from '../lib/sessionOrganization';
+import { requireOrgPermission } from '../lib/sessionOrganization';
 import { assertFeatureEnabled } from '../lib/featureFlags';
 import {
 	throwInvalidInput,
@@ -86,11 +82,7 @@ export const startIntegrationImport = authedMutation({
 		topicId: v.optional(v.id('topics')),
 	},
 	handler: async (ctx, args) => {
-		const session = await getMutationContext(ctx);
-		requirePermission(
-			hasPermission(session.role, 'imports:manage'),
-			'Only owners and admins can start imports',
-		);
+		await requireOrgPermission(ctx, 'imports:manage', 'Only owners and admins can start imports');
 
 		// Per-provider feature flags — the Settings toggles must actually gate
 		// the import, not just exist.
@@ -156,11 +148,7 @@ export const cancelImport = authedMutation({
 		importId: v.id('integrationImports'),
 	},
 	handler: async (ctx, args) => {
-		const session = await getMutationContext(ctx);
-		requirePermission(
-			hasPermission(session.role, 'imports:manage'),
-			'Only owners and admins can cancel imports',
-		);
+		await requireOrgPermission(ctx, 'imports:manage', 'Only owners and admins can cancel imports');
 		const importRecord = await ctx.db.get(args.importId);
 
 		if (!importRecord) {

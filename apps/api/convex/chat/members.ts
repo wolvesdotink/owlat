@@ -7,8 +7,7 @@ import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import {
 	getMutationContext,
 	getUserIdFromSession,
-	requirePermission,
-	hasPermission,
+	requireOrgPermission,
 } from '../lib/sessionOrganization';
 import { assertFeatureEnabled } from '../lib/featureFlags';
 import { throwForbidden, throwInvalidInput, throwInvalidState } from '../_utils/errors';
@@ -29,8 +28,7 @@ export const joinChannel = authedMutation({
 	args: { roomId: v.id('chatRooms') },
 	handler: async (ctx, args) => {
 		await assertFeatureEnabled(ctx, 'chat');
-		const { userId, role } = await getMutationContext(ctx);
-		requirePermission(hasPermission(role, 'chat:participate'), 'Chat is not available');
+		const { userId } = await requireOrgPermission(ctx, 'chat:participate', 'Chat is not available');
 
 		const room = await getRoomOrThrow(ctx, args.roomId);
 		if (room.kind !== 'channel') {

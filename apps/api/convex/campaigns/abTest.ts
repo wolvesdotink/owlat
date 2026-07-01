@@ -6,9 +6,7 @@ import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import {
 	getUserIdFromSession,
-	getMutationContext,
-	requirePermission,
-	hasPermission,
+	requireOrgPermission,
 } from '../lib/sessionOrganization';
 import { requireDraftCampaign } from './guards';
 import {
@@ -217,11 +215,7 @@ export const declareABTestWinner = authedMutation({
 		winner: v.union(v.literal('A'), v.literal('B')),
 	},
 	handler: async (ctx, args) => {
-		const session = await getMutationContext(ctx);
-		requirePermission(
-			hasPermission(session.role, 'campaigns:manage'),
-			'Only owners and admins can declare A/B test winners',
-		);
+		const session = await requireOrgPermission(ctx, 'campaigns:manage', 'Only owners and admins can declare A/B test winners');
 
 		const campaign = await ctx.db.get(args.campaignId);
 		if (!campaign) {
