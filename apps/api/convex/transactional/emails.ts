@@ -5,6 +5,7 @@ import type { Id } from '../_generated/dataModel';
 import { getMutationContext, requirePermission, hasPermission } from '../lib/sessionOrganization';
 import { buildSearchableText } from '../lib/queryHelpers';
 import {
+	getOrThrow,
 	throwAlreadyExists,
 	throwInternal,
 	throwInvalidInput,
@@ -194,10 +195,7 @@ export const update = authedMutation({
 		await assertFeatureEnabled(ctx, 'transactional');
 		const { role } = await getMutationContext(ctx);
 		requirePermission(hasPermission(role, 'templates:manage'), 'Only owners and admins can update transactional emails');
-		const email = await ctx.db.get(args.id);
-		if (!email) {
-			throwNotFound('Transactional email');
-		}
+		const email = await getOrThrow(ctx, args.id, 'Transactional email');
 
 		assertEditableForPublishableChange(email, args.forceWhilePublished);
 
@@ -292,10 +290,7 @@ export const publish = authedMutation({
 		await assertFeatureEnabled(ctx, 'transactional');
 		const { role } = await getMutationContext(ctx);
 		requirePermission(hasPermission(role, 'templates:manage'), 'Only owners and admins can publish transactional emails');
-		const email = await ctx.db.get(args.id);
-		if (!email) {
-			throwNotFound('Transactional email');
-		}
+		const email = await getOrThrow(ctx, args.id, 'Transactional email');
 
 		if (email.status === 'published') {
 			throwInvalidState('Transactional email is already published');
@@ -332,10 +327,7 @@ export const unpublish = authedMutation({
 		await assertFeatureEnabled(ctx, 'transactional');
 		const { role } = await getMutationContext(ctx);
 		requirePermission(hasPermission(role, 'templates:manage'), 'Only owners and admins can unpublish transactional emails');
-		const email = await ctx.db.get(args.id);
-		if (!email) {
-			throwNotFound('Transactional email');
-		}
+		const email = await getOrThrow(ctx, args.id, 'Transactional email');
 
 		if (email.status === 'draft') {
 			throwInvalidState('Transactional email is already a draft');
@@ -417,10 +409,7 @@ export const updateSchema = authedMutation({
 		await assertFeatureEnabled(ctx, 'transactional');
 		const { role } = await getMutationContext(ctx);
 		requirePermission(hasPermission(role, 'templates:manage'), 'Only owners and admins can update transactional email schema');
-		const email = await ctx.db.get(args.id);
-		if (!email) {
-			throwNotFound('Transactional email');
-		}
+		const email = await getOrThrow(ctx, args.id, 'Transactional email');
 
 		assertEditableForPublishableChange(email, args.forceWhilePublished);
 

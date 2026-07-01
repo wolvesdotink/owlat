@@ -13,6 +13,7 @@
  */
 
 import { ConvexError, type Value } from 'convex/values';
+import type { Doc, Id, TableNames } from '../_generated/dataModel';
 import {
 	type OperationError,
 	type OperationErrorCategory,
@@ -55,6 +56,22 @@ export function throwForbidden(message: string, data?: Record<string, unknown>):
 
 export function throwNotFound(resource: string): never {
 	throwOperationError('not_found', `${resource} not found`);
+}
+
+/**
+ * Load a document by id or throw `not_found`. Collapses the ubiquitous
+ * `const x = await ctx.db.get(id); if (!x) throwNotFound('Label')` pattern into
+ * one call. The `ctx` param is structurally typed on just `db.get`, so both
+ * `QueryCtx` and `MutationCtx` (and any other reader) satisfy it.
+ */
+export async function getOrThrow<T extends TableNames>(
+	ctx: { db: { get<TN extends TableNames>(id: Id<TN>): Promise<Doc<TN> | null> } },
+	id: Id<T>,
+	label: string,
+): Promise<Doc<T>> {
+	const doc = await ctx.db.get(id);
+	if (!doc) throwNotFound(label);
+	return doc;
 }
 
 export function throwInvalidInput(message: string, data?: Record<string, unknown>): never {
