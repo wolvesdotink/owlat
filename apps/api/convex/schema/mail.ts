@@ -619,4 +619,19 @@ mailSignatures: defineTable({
 })
 	.index('by_mailbox', ['mailboxId'])
 	.index('by_mailbox_and_default', ['mailboxId', 'isDefault']),
+
+// Per-user Postbox behavior preferences (one row per BetterAuth user,
+// spanning all of the user's mailboxes). Currently: what the reader does
+// after triaging (archive/trash/snooze/spam) the open message.
+mailUserSettings: defineTable({
+	userId: v.string(),                       // BetterAuth user ID (owner)
+	autoAdvance: v.union(
+		v.literal('next'),
+		v.literal('previous'),
+		v.literal('back-to-list')
+	),
+	createdAt: v.number(),
+	updatedAt: v.number(),
+})
+	.index('by_user', ['userId']),
 };
