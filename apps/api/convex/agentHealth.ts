@@ -9,8 +9,7 @@
 import { v } from 'convex/values';
 import { internalQuery, internalMutation, internalAction, type ActionCtx } from './_generated/server';
 import type { Doc } from './_generated/dataModel';
-import { authedQuery } from './lib/authedFunctions';
-import { requireOrgPermission } from './lib/sessionOrganization';
+import { adminQuery } from './lib/authedFunctions';
 import { internal } from './_generated/api';
 import { estimateCostUsd } from './lib/llm/pricing';
 
@@ -22,12 +21,9 @@ import { estimateCostUsd } from './lib/llm/pricing';
 /**
  * Get current agent health metrics for the dashboard
  */
-export const getDashboardMetrics = authedQuery({
+export const getDashboardMetrics = adminQuery({
 	args: {},
 	handler: async (ctx) => {
-		// Admin-gated read: agent-health is operator-console telemetry whose sibling
-		// config writes are owner/admin-only, so the dashboard reads must be too.
-		await requireOrgPermission(ctx, 'organization:manage');
 		const now = Date.now();
 		const fiveMinAgo = now - 5 * 60 * 1000;
 		const _oneDayAgo = now - 24 * 60 * 60 * 1000;
@@ -83,7 +79,7 @@ export const getDashboardMetrics = authedQuery({
 /**
  * Get metric history for a specific metric type (for charts)
  */
-export const getMetricHistory = authedQuery({
+export const getMetricHistory = adminQuery({
 	args: {
 		metricType: v.union(
 			v.literal('queue_depth'),
@@ -97,8 +93,6 @@ export const getMetricHistory = authedQuery({
 		hoursBack: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		// Admin-gated read: agent-health telemetry (see getDashboardMetrics).
-		await requireOrgPermission(ctx, 'organization:manage');
 		const since = Date.now() - (args.hoursBack ?? 24) * 60 * 60 * 1000;
 
 		return await ctx.db
@@ -115,15 +109,11 @@ export const getMetricHistory = authedQuery({
  * `cost_by_step` dashboard card. Returns one row per step that incurred tokens,
  * ordered by total cost descending, plus the window's grand total.
  */
-export const getCostByStep = authedQuery({
+export const getCostByStep = adminQuery({
 	args: {
 		hoursBack: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		// Admin-gated read: LLM-spend data — same class as analytics/llmUsage.ts
-		// getSpendByFeature (already adminQuery), so this is admin-gated for a
-		// consistent spend-visibility policy.
-		await requireOrgPermission(ctx, 'organization:manage');
 		const since = Date.now() - (args.hoursBack ?? 24) * 60 * 60 * 1000;
 
 		// bounded: windowed scan capped at 2000 most-recent actions — a busy
@@ -173,13 +163,11 @@ export const getCostByStep = authedQuery({
  * recorded `agentMetrics` history, aligned by rollup window so the two series
  * share an x-axis. Powers the `accuracy_trend` dashboard card.
  */
-export const getAccuracyTrend = authedQuery({
+export const getAccuracyTrend = adminQuery({
 	args: {
 		hoursBack: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		// Admin-gated read: agent-health telemetry (see getDashboardMetrics).
-		await requireOrgPermission(ctx, 'organization:manage');
 		const since = Date.now() - (args.hoursBack ?? 24) * 60 * 60 * 1000;
 
 		// bounded: rollups land every 5 min, so a 24h window is ~288 points per
@@ -218,11 +206,9 @@ export const getAccuracyTrend = authedQuery({
 /**
  * Get circuit breaker status
  */
-export const getCircuitBreakers = authedQuery({
+export const getCircuitBreakers = adminQuery({
 	args: {},
 	handler: async (ctx) => {
-		// Admin-gated read: agent-health telemetry (see getDashboardMetrics).
-		await requireOrgPermission(ctx, 'organization:manage');
 		return await ctx.db.query('agentCircuitBreakers').collect();
 	},
 });

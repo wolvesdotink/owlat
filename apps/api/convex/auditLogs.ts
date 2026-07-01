@@ -1,6 +1,5 @@
 import { v } from 'convex/values';
-import { authedQuery } from './lib/authedFunctions';
-import { requireOrgPermission } from './lib/sessionOrganization';
+import { adminQuery } from './lib/authedFunctions';
 import type { Doc } from './_generated/dataModel';
 
 // Action types for audit logging — re-exported for compat with callers.
@@ -9,7 +8,7 @@ export type AuditAction = Doc<'auditLogs'>['action'];
 export type AuditResource = Doc<'auditLogs'>['resource'];
 
 // Query: List audit logs with pagination and filtering
-export const list = authedQuery({
+export const list = adminQuery({
 	args: {
 		action: v.optional(v.string()),
 		resource: v.optional(v.string()),
@@ -20,9 +19,6 @@ export const list = authedQuery({
 		cursor: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		// Audit entries expose who did what (admin actions, security events) —
-		// operator surface, not member surface.
-		await requireOrgPermission(ctx, 'organization:manage');
 		const limit = args.limit ?? 50;
 
 		// Use the created_at index for date range filtering and ordering
@@ -88,15 +84,13 @@ export const list = authedQuery({
 });
 
 // Query: Get a single audit log by ID
-export const get = authedQuery({
+export const get = adminQuery({
 	args: {
 		auditLogId: v.id('auditLogs'),
 	},
 	handler: async (ctx, args) => {
 		const log = await ctx.db.get(args.auditLogId);
 		if (!log) return null;
-
-		await requireOrgPermission(ctx, 'organization:manage');
 
 		// Query userProfile by authUserId
 		const userProfile = await ctx.db
@@ -112,14 +106,12 @@ export const get = authedQuery({
 });
 
 // Query: Get audit log stats (counts by action type)
-export const getStats = authedQuery({
+export const getStats = adminQuery({
 	args: {
 		startDate: v.optional(v.number()),
 		endDate: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'organization:manage');
-
 		// Default to the last 90 days when the caller didn't bound the
 		// query — `auditLogs` accumulates indefinitely, so an unbounded
 		// scan grows with deployment age.
@@ -151,10 +143,9 @@ export const getStats = authedQuery({
 });
 
 // Query: Get distinct users who have performed actions
-export const getActiveUsers = authedQuery({
+export const getActiveUsers = adminQuery({
 	args: {},
 	handler: async (ctx) => {
-		await requireOrgPermission(ctx, 'organization:manage');
 		// "Active" is bounded to the last 90 days — the filter dropdown
 		// in /dashboard/settings/audit only needs users who have been
 		// recently active; an all-time scan grows linearly with logs.
