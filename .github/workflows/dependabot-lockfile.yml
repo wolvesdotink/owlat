@@ -1,0 +1,74 @@
+# Auto-regenerate bun.lock on Dependabot npm PRs.
+#
+# WHY: Dependabot understands package.json but cannot update bun's lockfile
+# (bun.lock). Every npm bump therefore lands with a stale lockfile, and the
+# main CI's `bun install --frozen-lockfile` step fails before any test runs
+# ("lockfile had changes, but lockfile is frozen"). This job runs `bun install`
+# on the PR branch, and if bun.lock changed, commits it back so CI can pass.
+#
+# ── ONE-TIME SETUP (required, else this job no-ops with a warning) ────────────
+# Add a Personal Access Token as a **Dependabot** secret named
+# DEPENDABOT_LOCKFILE_PAT:
+#   Settings → Secrets and variables → Dependabot → New repository secret
+# It MUST be a Dependabot secret (not an Actions secret): workflows triggered by
+# Dependabot only receive Dependabot secrets. Two reasons a PAT is needed rather
+# than the built-in GITHUB_TOKEN:
+#   1. Dependabot-triggered runs get a read-only GITHUB_TOKEN (can't push).
+#   2. Pushes made with GITHUB_TOKEN do not re-trigger CI; a PAT push does, so
+#      the freshly-committed lockfile actually gets a green CI run.
+# Use a fine-grained PAT scoped to this repo with Contents: read & write.
+name: Dependabot lockfile
+
+on:
+  pull_request:
+    paths:
+      - "**/package.json"
+
+# Least privilege; the push uses the PAT below, not this token.
+permissions:
+  contents: read
+
+jobs:
+  update-bun-lockfile:
+    # Only Dependabot's own PRs edit package.json without a matching bun.lock.
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PAT is configured
+        env:
+          PAT: ${{ secrets.DEPENDABOT_LOCKFILE_PAT }}
+        run: |
+          if [ -z "$PAT" ]; then
+            echo "::warning::DEPENDABOT_LOCKFILE_PAT (a Dependabot secret) is not set — skipping bun.lock auto-update. See .github/workflows/dependabot-lockfile.yml for setup."
+            echo "skip=true" >> "$GITHUB_ENV"
+          fi
+
+      - name: Checkout PR branch
+        if: env.skip != 'true'
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          token: ${{ secrets.DEPENDABOT_LOCKFILE_PAT }}
+
+      - name: Set up bun
+        if: env.skip != 'true'
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.11"
+
+      - name: Regenerate bun.lock
+        if: env.skip != 'true'
+        run: bun install
+
+      - name: Commit & push if lockfile changed
+        if: env.skip != 'true'
+        run: |
+          if git diff --quiet -- bun.lock; then
+            echo "bun.lock already in sync — nothing to do."
+            exit 0
+          fi
+          git config user.name "dependabot[bot]"
+          git config user.email "49699333+dependabot[bot]@users.noreply.github.com"
+          git add bun.lock
+          git commit -m "chore(deps): regenerate bun.lock"
+          git push
