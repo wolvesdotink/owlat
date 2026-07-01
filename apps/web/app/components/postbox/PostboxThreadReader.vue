@@ -316,6 +316,26 @@ const markReadOp = useBackendOperation(api.mail.messageActions.markRead, { label
 const snoozeOp = useBackendOperation(api.mail.snooze.snooze, { label: 'Snooze' });
 const moveOp = useBackendOperation(api.mail.messageActions.move, { label: 'Move message' });
 
+// Successful triage registers its inverse for the "Undo — Cmd+Z" toast
+// (the move-family mutations return each message's source folder).
+const triageUndo = usePostboxTriageUndo();
+function registerTriageUndo(
+	label: string,
+	result:
+		| { moved: Array<{ messageId: Id<'mailMessages'>; sourceFolderId: Id<'mailFolders'> }> }
+		| null
+		| undefined,
+	before?: () => Promise<unknown>
+) {
+	if (!result || result.moved.length === 0) return;
+	triageUndo.registerMoveBack({
+		label,
+		moved: result.moved,
+		runMove: (a) => moveOp.run(a),
+		...(before ? { before } : {}),
+	});
+}
+
 // Auto-advance after triaging the open message away (archive / trash /
 // snooze / spam): open the adjacent conversation in list order per the
 // user's preference, falling back to the list at the ends. Active only in
@@ -365,9 +385,10 @@ async function applyLabelToOpenMessage(labelId: Id<'mailLabels'>) {
 	labelDialogOpen.value = false;
 	await setLabelOnMessage(messageId.value, labelId, true);
 }
-function moveOpenMessageTo(targetFolderId: Id<'mailFolders'>) {
+async function moveOpenMessageTo(targetFolderId: Id<'mailFolders'>) {
 	moveDialogOpen.value = false;
-	void moveOp.run({ messageIds: [messageId.value], targetFolderId });
+	const result = await moveOp.run({ messageIds: [messageId.value], targetFolderId });
+	registerTriageUndo('Moved', result);
 }
 
 function onReaderShortcut(event: KeyboardEvent) {
@@ -384,10 +405,18 @@ function onReaderShortcut(event: KeyboardEvent) {
 	event.preventDefault();
 	switch (action) {
 		case 'archive':
-			void runAndAdvance(() => archiveOp.run({ messageIds: [messageId.value] }));
+			void runAndAdvance(async () => {
+				const result = await archiveOp.run({ messageIds: [messageId.value] });
+				registerTriageUndo('Archived', result);
+				return result;
+			});
 			break;
 		case 'trash':
-			void runAndAdvance(() => trashOp.run({ messageIds: [messageId.value] }));
+			void runAndAdvance(async () => {
+				const result = await trashOp.run({ messageIds: [messageId.value] });
+				registerTriageUndo('Moved to Trash', result);
+				return result;
+			});
 			break;
 		case 'star':
 			void setStarOp.run({ messageId: messageId.value, starred: !openMessageFlags.value.flagged });
@@ -428,12 +457,22 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onReaderShortcut));
 const reportSpamOp = useBackendOperation(api.mail.messageActions.reportSpam, {
 	label: 'Report spam',
 });
+const notSpamOp = useBackendOperation(api.mail.messageActions.notSpam, {
+	label: 'Not spam',
+});
 const blockSenderOp = useBackendOperation(api.mail.messageActions.blockSender, {
 	label: 'Block sender',
 });
 
 function reportSpamMessage(msgId: string) {
-	const run = () => reportSpamOp.run({ messageIds: [msgId as Id<'mailMessages'>] });
+	const messageIds = [msgId as Id<'mailMessages'>];
+	const run = async () => {
+		const result = await reportSpamOp.run({ messageIds });
+		// Undo = notSpam (clears the verdict, parks in Inbox) + move back to
+		// the true source folder when it wasn't the Inbox.
+		registerTriageUndo('Marked as spam', result, () => notSpamOp.run({ messageIds }));
+		return result;
+	};
 	// Only the OPEN message's spam report ejects the reader; reporting an
 	// older message inside the thread keeps the conversation open.
 	if (msgId === props.message._id) void runAndAdvance(run);
