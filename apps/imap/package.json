@@ -17,6 +17,7 @@
 		"test:coverage": "vitest run --coverage"
 	},
 	"dependencies": {
+		"@owlat/shared": "workspace:*",
 		"convex": "catalog:convex",
 		"ioredis": "^5.6.0",
 		"pino": "^10.3.1"

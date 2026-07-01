@@ -4,13 +4,19 @@ FROM oven/bun:1-alpine AS builder
 
 WORKDIR /app
 
+# Copy workspace root + all package.json files for dependency resolution
 COPY package.json bun.lock ./
-COPY --parents apps/imap/package.json ./
+COPY --parents apps/*/package.json packages/*/package.json ./
 
-RUN cd apps/imap && bun install
+# Root-level filtered install (same idiom as mta/web): only this package's deps —
+# a workspace-wide install would run unrelated packages' postinstall scripts in a
+# sources-less context.
+RUN bun install --frozen-lockfile --filter @owlat/imap
 
+# Copy IMAP source + the workspace package it imports (@owlat/shared, TS source)
 COPY apps/imap/tsconfig.json apps/imap/
 COPY apps/imap/src/ apps/imap/src/
+COPY packages/shared/ packages/shared/
 
 RUN cd apps/imap && bun run build
 

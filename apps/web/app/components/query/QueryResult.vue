@@ -1,7 +1,11 @@
 <script setup lang="ts">
+type QuerySource =
+	| { kind: 'knowledge'; id: string; title: string; entryType: string }
+	| { kind: 'file'; id: string; title: string; filename: string };
+
 defineProps<{
 	answer: string;
-	sources: Array<{ id: string; title: string; entryType: string }>;
+	sources: QuerySource[];
 }>();
 </script>
 
@@ -21,9 +25,10 @@ defineProps<{
 				<QuerySourceCitation
 					v-for="source in sources"
 					:key="source.id"
-					:id="source.id"
+					:kind="source.kind"
 					:title="source.title"
-					:entry-type="source.entryType"
+					:entry-type="source.kind === 'knowledge' ? source.entryType : undefined"
+					:filename="source.kind === 'file' ? source.filename : undefined"
 				/>
 			</div>
 		</div>
