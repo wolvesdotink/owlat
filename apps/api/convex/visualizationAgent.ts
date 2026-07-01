@@ -10,8 +10,8 @@
 import { v } from 'convex/values';
 import { escapeHtml } from '@owlat/shared/html';
 import { internalAction, internalMutation, internalQuery, type ActionCtx } from './_generated/server';
-import { authedQuery, authedMutation } from './lib/authedFunctions';
-import { requireAdminContext, requireOrgPermission } from './lib/sessionOrganization';
+import { adminQuery, authedMutation } from './lib/authedFunctions';
+import { requireAdminContext } from './lib/sessionOrganization';
 import { internal } from './_generated/api';
 import { getLLMProvider } from './lib/llmProvider';
 import { logInfo, logWarn } from './lib/runtimeLog';
@@ -69,12 +69,9 @@ function isDatasetKey(value: string): value is DatasetKey {
 /**
  * Get a visualization by ID
  */
-export const get = authedQuery({
+export const get = adminQuery({
 	args: { id: v.id('visualizations') },
 	handler: async (ctx, args) => {
-		// Admin-gated read: visualizations can embed REAL account analytics (live
-		// datasets), and every write here is owner/admin-only — so reads are too.
-		await requireOrgPermission(ctx, 'organization:manage');
 		return await ctx.db.get(args.id);
 	},
 });
@@ -82,11 +79,9 @@ export const get = authedQuery({
 /**
  * List visualizations (most recent first)
  */
-export const list = authedQuery({
+export const list = adminQuery({
 	args: { limit: v.optional(v.number()) },
 	handler: async (ctx, args) => {
-		// Admin-gated read: visualizations can embed real account analytics (see get).
-		await requireOrgPermission(ctx, 'organization:manage');
 		return await ctx.db
 			.query('visualizations')
 			.withIndex('by_created_at')
@@ -98,11 +93,9 @@ export const list = authedQuery({
 /**
  * Get pinned visualizations for the dashboard
  */
-export const listPinned = authedQuery({
+export const listPinned = adminQuery({
 	args: {},
 	handler: async (ctx) => {
-		// Admin-gated read: visualizations can embed real account analytics (see get).
-		await requireOrgPermission(ctx, 'organization:manage');
 		return await ctx.db
 			.query('visualizations')
 			.withIndex('by_pinned', (q) => q.eq('pinned', true))
