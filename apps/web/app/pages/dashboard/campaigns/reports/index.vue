@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { formatNumber } from '~/utils/formatters';
 
 interface CampaignReport {
 	_id: Id<'campaigns'>;
@@ -149,7 +150,7 @@ const viewReport = (campaignId: Id<'campaigns'>) => {
 					<span class="text-sm text-text-secondary">Total Campaigns</span>
 				</div>
 				<p class="text-2xl font-semibold text-text-primary">
-					{{ summaryStats.totalCampaigns.toLocaleString() }}
+					{{ formatNumber(summaryStats.totalCampaigns) }}
 				</p>
 			</div>
 

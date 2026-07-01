@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
+import { formatDateTime } from '~/utils/formatters';
 
 interface Thread {
 	_id: Id<'conversationThreads'>;
@@ -31,15 +32,6 @@ interface Props {
 defineProps<Props>();
 
 const isExpanded = ref(false);
-
-const formatTime = (timestamp: number) => {
-	return new Date(timestamp).toLocaleString(undefined, {
-		month: 'short',
-		day: 'numeric',
-		hour: '2-digit',
-		minute: '2-digit',
-	});
-};
 
 const statusClass = (status: Thread['status']) => {
 	switch (status) {
@@ -104,7 +96,7 @@ const statusClass = (status: Thread['status']) => {
 			>
 				<div class="flex items-center justify-between mb-1">
 					<span class="font-medium text-text-primary truncate">{{ message.from }}</span>
-					<span class="text-text-tertiary flex-shrink-0">{{ formatTime(message.receivedAt) }}</span>
+					<span class="text-text-tertiary flex-shrink-0">{{ formatDateTime(message.receivedAt) }}</span>
 				</div>
 				<p v-if="message.textBody" class="text-text-secondary whitespace-pre-wrap line-clamp-3">
 					{{ message.textBody }}

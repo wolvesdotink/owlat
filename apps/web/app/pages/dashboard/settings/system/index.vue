@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import { formatDateTime } from '~/utils/formatters';
 
 useHead({ title: 'System & Updates — Owlat' });
 
@@ -149,11 +150,6 @@ function notify(kind: 'success' | 'error', message: string) {
 	}
 }
 
-function formatTimestamp(ts?: number) {
-	if (!ts) return '—';
-	return new Date(ts).toLocaleString();
-}
-
 function formatDuration(start?: number, end?: number) {
 	if (!start || !end) return '—';
 	const sec = Math.floor((end - start) / 1000);
@@ -265,7 +261,7 @@ function formatDuration(start?: number, end?: number) {
 							</span>
 						</div>
 						<p class="mt-1 text-[0.8125rem] text-text-tertiary">
-							Released {{ formatTimestamp(latestRelease.publishedAt) }}
+							Released {{ formatDateTime(latestRelease.publishedAt) }}
 						</p>
 					</template>
 
@@ -275,7 +271,7 @@ function formatDuration(start?: number, end?: number) {
 							<span class="text-text-primary font-medium">You're on the latest version.</span>
 						</div>
 						<p class="mt-1 text-[0.8125rem] text-text-tertiary">
-							Latest: v{{ latestRelease.latestVersion }} · Last checked {{ formatTimestamp(latestRelease.checkedAt) }}
+							Latest: v{{ latestRelease.latestVersion }} · Last checked {{ formatDateTime(latestRelease.checkedAt) }}
 						</p>
 					</template>
 
@@ -418,7 +414,7 @@ function formatDuration(start?: number, end?: number) {
 						<td class="py-2 font-mono text-text-primary">
 							{{ row.versionFrom || '—' }} → {{ row.versionTo || '—' }}
 						</td>
-						<td class="py-2 text-text-secondary">{{ formatTimestamp(row.startedAt) }}</td>
+						<td class="py-2 text-text-secondary">{{ formatDateTime(row.startedAt) }}</td>
 						<td class="py-2 text-text-secondary">{{ formatDuration(row.startedAt, row.finishedAt) }}</td>
 						<td class="py-2">
 							<span

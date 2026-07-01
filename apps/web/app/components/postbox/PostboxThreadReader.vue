@@ -3,6 +3,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { extractAttachmentAt } from '@owlat/shared/mailMime';
 import { escapeHtmlWithBreaks } from '@owlat/shared/html';
+import { formatDateTime } from '~/utils/formatters';
 import {
 	classifySecureMessage,
 	isEncryptedClass,
@@ -158,15 +159,6 @@ function toggleExpanded(id: string) {
 	if (next.has(id)) next.delete(id);
 	else next.add(id);
 	expanded.value = next;
-}
-
-function formatTime(ts: number) {
-	return new Date(ts).toLocaleString('en-US', {
-		month: 'short',
-		day: 'numeric',
-		hour: 'numeric',
-		minute: '2-digit',
-	});
 }
 
 type ReplyForwardSource = {
@@ -386,7 +378,7 @@ async function handleAttachment(
 						</p>
 					</div>
 					<span class="text-xs text-text-tertiary flex-shrink-0">
-						{{ formatTime(msg.receivedAt) }}
+						{{ formatDateTime(msg.receivedAt) }}
 					</span>
 				</button>
 
@@ -416,7 +408,7 @@ async function handleAttachment(
 									class="text-xs text-text-tertiary hover:text-text-primary"
 									@click="toggleExpanded(msg._id)"
 								>
-									{{ formatTime(msg.receivedAt) }}
+									{{ formatDateTime(msg.receivedAt) }}
 								</button>
 							</div>
 							<p class="text-text-secondary text-xs mt-0.5">

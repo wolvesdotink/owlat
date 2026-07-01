@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { formatDateTime } from '~/utils/formatters';
 
 useHead({ title: 'Failed Messages — Owlat' });
 
@@ -35,10 +36,6 @@ const onRetry = async (messageId: Id<'inboundMessages'>) => {
 	} finally {
 		actionInProgress.value = null;
 	}
-};
-
-const formatTimestamp = (timestamp: number) => {
-	return new Date(timestamp).toLocaleString();
 };
 </script>
 
@@ -107,7 +104,7 @@ const formatTimestamp = (timestamp: number) => {
 						<div>
 							<p class="text-text-primary font-medium text-sm">{{ message.from }}</p>
 							<p class="text-xs text-text-tertiary">
-								{{ formatTimestamp(message._creationTime) }}
+								{{ formatDateTime(message._creationTime) }}
 							</p>
 						</div>
 					</div>

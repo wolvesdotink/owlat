@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
+import { formatDateTime } from '~/utils/formatters';
 
 interface WebhookDeliveryLog {
 	_id: Id<'webhookDeliveryLogs'>;
@@ -47,10 +48,6 @@ function statusColor(status: string) {
 		case 'pending': return 'bg-brand-subtle text-brand';
 		default: return 'bg-bg-surface text-text-tertiary';
 	}
-}
-
-function formatTimestamp(ts: number) {
-	return new Date(ts).toLocaleString();
 }
 
 function formatDuration(ms: number | undefined) {
@@ -170,15 +167,15 @@ function formatJson(value: unknown) {
 				<div class="grid grid-cols-2 gap-4">
 					<div>
 						<p class="text-xs text-text-tertiary mb-1">Scheduled At</p>
-						<p class="text-sm text-text-secondary">{{ formatTimestamp(selectedLog.scheduledAt) }}</p>
+						<p class="text-sm text-text-secondary">{{ formatDateTime(selectedLog.scheduledAt) }}</p>
 					</div>
 					<div v-if="selectedLog.attemptedAt">
 						<p class="text-xs text-text-tertiary mb-1">Attempted At</p>
-						<p class="text-sm text-text-secondary">{{ formatTimestamp(selectedLog.attemptedAt) }}</p>
+						<p class="text-sm text-text-secondary">{{ formatDateTime(selectedLog.attemptedAt) }}</p>
 					</div>
 					<div v-if="selectedLog.completedAt">
 						<p class="text-xs text-text-tertiary mb-1">Completed At</p>
-						<p class="text-sm text-text-secondary">{{ formatTimestamp(selectedLog.completedAt) }}</p>
+						<p class="text-sm text-text-secondary">{{ formatDateTime(selectedLog.completedAt) }}</p>
 					</div>
 					<div v-if="selectedLog.durationMs !== undefined">
 						<p class="text-xs text-text-tertiary mb-1">Duration</p>
@@ -220,7 +217,7 @@ function formatJson(value: unknown) {
 						{{ formatDuration(log.durationMs) }}
 					</span>
 					<span class="text-xs text-text-tertiary shrink-0 ml-auto">
-						{{ formatTimestamp(log.scheduledAt) }}
+						{{ formatDateTime(log.scheduledAt) }}
 					</span>
 					<Icon name="lucide:chevron-right" class="w-4 h-4 text-text-tertiary shrink-0" />
 				</div>
