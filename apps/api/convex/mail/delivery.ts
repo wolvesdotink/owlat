@@ -272,7 +272,7 @@ export const ingestFromWebhook = internalAction({
 		// pull them here while the raw MIME is still in hand. Best-effort: a
 		// failed capture never fails delivery (the message is already stored).
 		try {
-			await captureAttachments(ctx, rawBytes, args.messageId);
+			await captureAttachments(ctx, rawBytes, args.messageId, args.from);
 		} catch (err) {
 			logError('[Mail Webhook] attachment capture failed', err);
 		}
@@ -286,8 +286,15 @@ export const ingestFromWebhook = internalAction({
  * into `semanticFiles` (source `email_attachment`). Inline parts (logos,
  * signatures) and oversized parts are skipped; the file-type allowlist is
  * enforced inside `semanticFiles.ingest`, which also drops the staged blob when
- * a part is rejected. Files land org-general (no contact link) and carry the
- * source Message-ID as provenance.
+ * a part is rejected. Each file carries the source Message-ID as provenance.
+ *
+ * Captured files are scoped to the sender contact: `fromRaw` (the inbound From
+ * header) is resolved to an EXISTING contact by email. When a contact matches,
+ * the file is linked to it (`contactIds`), so it surfaces under that contact's
+ * Files tab and is scoped to that contact in retrieval. Resolution is
+ * find-only — an unknown sender leaves the file org-general (no contact link),
+ * we never create a contact for every inbound sender. Thread-linking and
+ * agent-output capture are intentionally out of scope here.
  *
  * The number of captured parts is capped at `ATTACHMENT_COMPOSE_LIMITS.maxCount`
  * per message. The inbound webhook is attacker-reachable (anyone can email a
@@ -299,13 +306,29 @@ async function captureAttachments(
 	ctx: {
 		storage: { store: (blob: Blob) => Promise<Id<'_storage'>> };
 		runMutation: ActionCtx['runMutation'];
+		runQuery: ActionCtx['runQuery'];
 	},
 	rawBytes: Buffer,
 	messageId: string,
+	fromRaw: string,
 ): Promise<void> {
 	// The extractor wants a binary string (one char per byte) so binary parts survive.
 	const binary = rawBytes.toString('latin1');
 	const parts = extractAttachments(binary);
+
+	// Scope captured files to the sender's EXISTING contact (find-only). A
+	// missing/unresolvable sender leaves the file org-general — we do not create
+	// a contact for every inbound message. Resolved once per message, not per part.
+	const senderEmail = extractEmail(fromRaw);
+	let senderContactIds: Id<'contacts'>[] | undefined;
+	if (senderEmail) {
+		const contact = await ctx.runQuery(
+			internal.contacts.contacts.getByEmailForTeam,
+			{ email: senderEmail },
+		);
+		if (contact) senderContactIds = [contact._id];
+	}
+
 	let captured = 0;
 	for (const part of parts) {
 		// Bound the work per delivered message: each ingested part schedules
@@ -331,6 +354,7 @@ async function captureAttachments(
 			fileSize: size,
 			sourceType: 'email_attachment',
 			sourceMessageId: messageId,
+			contactIds: senderContactIds,
 		});
 		captured++;
 	}
