@@ -447,7 +447,7 @@ export const verifyDomain = authedAction({
 // throws: the pure `checkReverseDns` helper swallows every lookup error, so a
 // DNS hiccup degrades to "not confirmed" rather than breaking the setup UI.
 //
-// Admin auth is enforced by the `getInboundMailConfig` query it delegates to
+// authz: admin gate lives in the `getInboundMailConfig` query it delegates to
 // (organization:manage) — parity with the rest of the domain-management surface,
 // since checking inbound DNS is an operator task.
 export const checkReceivingReverseDns = authedAction({
