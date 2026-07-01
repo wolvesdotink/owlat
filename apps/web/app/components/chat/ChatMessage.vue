@@ -45,10 +45,9 @@ const displayName = computed(() => {
 	return 'Unknown';
 });
 
-const avatarInitials = computed(() => {
-	const seed = props.message.author.name ?? props.message.author.email ?? props.message.authorId;
-	return seed.slice(0, 2).toUpperCase();
-});
+const avatarSeed = computed(
+	() => props.message.author.name ?? props.message.author.email ?? props.message.authorId,
+);
 
 const formattedTime = computed(() => {
 	const date = new Date(props.message.createdAt);
@@ -128,18 +127,13 @@ const aiTyping = computed(
 		>
 			<Icon name="lucide:sparkles" class="w-4 h-4" />
 		</div>
-		<div
+		<UiAvatar
 			v-else
-			class="w-9 h-9 rounded-full bg-bg-surface border border-border-subtle flex-shrink-0 flex items-center justify-center text-xs font-medium text-text-secondary overflow-hidden"
-		>
-			<img
-				v-if="message.author.image"
-				:src="message.author.image"
-				:alt="displayName"
-				class="w-full h-full object-cover"
-			/>
-			<span v-else>{{ avatarInitials }}</span>
-		</div>
+			:name="avatarSeed"
+			:image="message.author.image"
+			size="lg"
+			class="flex-shrink-0"
+		/>
 
 		<div class="flex-1 min-w-0">
 			<div class="flex items-baseline gap-2">
