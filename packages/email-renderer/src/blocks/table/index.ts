@@ -90,6 +90,7 @@ export const renderTableContent = (content: TableBlockContent, ctx?: RenderConte
 			const hideClass = responsiveMode === 'hide-columns' && content.hideOnMobileColumns?.includes(colIdx) ? ' class="owlat-hide-col"' : '';
 			return `<th scope="col"${hideClass} style="${borderStyle};padding:${cellPadding}px;text-align:${colAlign};background-color:${headerBg};color:${headerColor};font-family:inherit;font-weight:700">${escapeHtml(h)}</th>`;
 		}).join('');
+	// nosemgrep -- headerCells already escapeHtml()'s each header's text; the rest is computed style markup. This module IS the HTML renderer.
 	const headerRow = content.headers.length > 0 ? `<thead><tr>${headerCells}</tr></thead>` : '';
 
 	let bodyHtml: string;
