@@ -10,7 +10,7 @@
 import { v } from 'convex/values';
 import { internalQuery, internalMutation, internalAction, type QueryCtx } from './_generated/server';
 import type { Doc } from './_generated/dataModel';
-import { authedQuery, authedMutation } from './lib/authedFunctions';
+import { adminQuery, authedMutation } from './lib/authedFunctions';
 import { requireOrgPermission } from './lib/sessionOrganization';
 import { internal } from './_generated/api';
 import { assertFeatureEnabled, isFeatureEnabled } from './lib/featureFlags';
@@ -23,12 +23,9 @@ import { assertFeatureEnabled, isFeatureEnabled } from './lib/featureFlags';
 /**
  * Get all autonomy rules
  */
-export const listRules = authedQuery({
+export const listRules = adminQuery({
 	args: {},
 	handler: async (ctx) => {
-		// Admin-gated read: autonomy rules are operator-console config whose WRITES
-		// (upsertRule/deleteRule) are owner/admin-only, so their reads must be too.
-		await requireOrgPermission(ctx, 'organization:manage');
 		await assertFeatureEnabled(ctx, 'ai.autonomy');
 		return await ctx.db.query('autonomyRules').collect();
 	},
@@ -136,14 +133,12 @@ async function loadRecentFeedback(
 /**
  * Get recent feedback for a category (for analysis)
  */
-export const getRecentFeedback = authedQuery({
+export const getRecentFeedback = adminQuery({
 	args: {
 		category: v.string(),
 		limit: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		// Admin-gated read: autonomy feedback is operator-console data (see listRules).
-		await requireOrgPermission(ctx, 'organization:manage');
 		return await loadRecentFeedback(ctx, args.category, args.limit);
 	},
 });
@@ -162,11 +157,9 @@ export const getRecentFeedbackInternal = internalQuery({
 /**
  * Get feedback summary stats
  */
-export const getFeedbackStats = authedQuery({
+export const getFeedbackStats = adminQuery({
 	args: { hoursBack: v.optional(v.number()) },
 	handler: async (ctx, args) => {
-		// Admin-gated read: autonomy feedback is operator-console data (see listRules).
-		await requireOrgPermission(ctx, 'organization:manage');
 		const since = Date.now() - (args.hoursBack ?? 24) * 60 * 60 * 1000;
 
 		const feedback = await ctx.db

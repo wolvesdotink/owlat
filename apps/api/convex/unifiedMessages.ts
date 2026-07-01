@@ -9,7 +9,7 @@
 import { v } from 'convex/values';
 import { internalQuery, internalMutation, internalAction } from './_generated/server';
 import type { MutationCtx } from './_generated/server';
-import { authedQuery, authedMutation } from './lib/authedFunctions';
+import { authedQuery, adminQuery, authedMutation } from './lib/authedFunctions';
 import { requireOrgPermission, getBetterAuthSessionWithRole, hasPermission } from './lib/sessionOrganization';
 import { internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
@@ -24,17 +24,12 @@ import { applyOpenThreadDelta } from './lib/inboxStats';
 /**
  * Get messages for a conversation thread (unified timeline)
  */
-export const getThreadTimeline = authedQuery({
+export const getThreadTimeline = adminQuery({
 	args: {
 		threadId: v.id('conversationThreads'),
 		limit: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		// Reads shared-inbox conversation content — owner/admin only, matching
-		// the shared-inbox access policy enforced in inbox/queries.ts. Without
-		// this, any logged-in member could read inbound customer messages.
-		await requireOrgPermission(ctx, 'organization:manage');
-
 		const messages = await ctx.db
 			.query('unifiedMessages')
 			.withIndex('by_thread', (q) => q.eq('threadId', args.threadId))
@@ -52,17 +47,12 @@ export const getThreadTimeline = authedQuery({
 /**
  * Get messages for a contact across all channels
  */
-export const getContactTimeline = authedQuery({
+export const getContactTimeline = adminQuery({
 	args: {
 		contactId: v.id('contacts'),
 		limit: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		// Reads shared-inbox conversation content — owner/admin only (see
-		// getThreadTimeline). The customer-facing contact timeline UI uses
-		// contacts.timeline.getTimeline, not this query.
-		await requireOrgPermission(ctx, 'organization:manage');
-
 		const messages = await ctx.db
 			.query('unifiedMessages')
 			.withIndex('by_contact', (q) => q.eq('contactId', args.contactId))
@@ -80,16 +70,12 @@ export const getContactTimeline = authedQuery({
 /**
  * Get recent messages across all channels
  */
-export const listRecent = authedQuery({
+export const listRecent = adminQuery({
 	args: {
 		channel: v.optional(unifiedMessageChannelValidator),
 		limit: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		// Reads shared-inbox conversation content across ALL threads/contacts —
-		// owner/admin only, same policy as getThreadTimeline/getContactTimeline.
-		await requireOrgPermission(ctx, 'organization:manage');
-
 		let q;
 		if (args.channel) {
 			q = ctx.db
@@ -132,14 +118,13 @@ export const getChannelConfigs = authedQuery({
 /**
  * Get a single channel config
  */
-export const getChannelConfig = authedQuery({
+export const getChannelConfig = adminQuery({
 	args: {
 		channel: unifiedMessageChannelValidator,
 	},
 	handler: async (ctx, args) => {
 		// Returns the encrypted credential envelope — same admin policy as
 		// updateChannelConfig.
-		await requireOrgPermission(ctx, 'organization:manage');
 		return await ctx.db
 			.query('channelConfigs')
 			.withIndex('by_channel', (q) => q.eq('channel', args.channel))
