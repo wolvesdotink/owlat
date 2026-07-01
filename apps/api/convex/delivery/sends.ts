@@ -8,7 +8,7 @@ import {
 	hasPermission,
 	requirePermission,
 } from '../lib/sessionOrganization';
-import { throwNotFound, throwInvalidInput } from '../_utils/errors';
+import { getOrThrow, throwNotFound, throwInvalidInput } from '../_utils/errors';
 import { batchGet } from '../_utils/batchLoader';
 
 // Status type for email sends
@@ -43,8 +43,7 @@ export const listByCampaign = authedQuery({
 	},
 	handler: async (ctx, args) => {
 		await getUserIdFromSession(ctx);
-		const campaign = await ctx.db.get(args.campaignId);
-		if (!campaign) { throwNotFound('Campaign'); }
+		const campaign = await getOrThrow(ctx, args.campaignId, 'Campaign');
 
 		const offset = args.offset || 0;
 		const limit = args.limit || 50;
@@ -94,8 +93,7 @@ export const listByContact = authedQuery({
 	},
 	handler: async (ctx, args) => {
 		await getUserIdFromSession(ctx);
-		const contact = await ctx.db.get(args.contactId);
-		if (!contact) { throwNotFound('Contact'); }
+		const contact = await getOrThrow(ctx, args.contactId, 'Contact');
 
 		const limit = args.limit || 50;
 		const sends = await ctx.db
@@ -160,8 +158,7 @@ export const getStatsByCampaign = authedQuery({
 	args: { campaignId: v.id('campaigns') },
 	handler: async (ctx, args) => {
 		await getUserIdFromSession(ctx);
-		const campaign = await ctx.db.get(args.campaignId);
-		if (!campaign) { throwNotFound('Campaign'); }
+		const campaign = await getOrThrow(ctx, args.campaignId, 'Campaign');
 
 		const sends = await ctx.db
 			.query('emailSends')
@@ -251,8 +248,7 @@ export const create = authedMutation({
 	handler: async (ctx, args) => {
 		const { role } = await getMutationContext(ctx);
 		requirePermission(hasPermission(role, 'campaigns:send'), 'Only owners and admins can create email sends');
-		const campaign = await ctx.db.get(args.campaignId);
-		if (!campaign) { throwNotFound('Campaign'); }
+		const campaign = await getOrThrow(ctx, args.campaignId, 'Campaign');
 
 		const now = Date.now();
 
@@ -402,8 +398,7 @@ export const getOpensTimeline = authedQuery({
 	args: { campaignId: v.id('campaigns') },
 	handler: async (ctx, args) => {
 		await getUserIdFromSession(ctx);
-		const campaign = await ctx.db.get(args.campaignId);
-		if (!campaign) { throwNotFound('Campaign'); }
+		const campaign = await getOrThrow(ctx, args.campaignId, 'Campaign');
 
 		const sends = await ctx.db
 			.query('emailSends')
@@ -443,8 +438,7 @@ export const getOpenedContacts = authedQuery({
 	},
 	handler: async (ctx, args) => {
 		await getUserIdFromSession(ctx);
-		const campaign = await ctx.db.get(args.campaignId);
-		if (!campaign) { throwNotFound('Campaign'); }
+		const campaign = await getOrThrow(ctx, args.campaignId, 'Campaign');
 
 		const sends = await ctx.db
 			.query('emailSends')
@@ -493,8 +487,7 @@ export const getClickedContacts = authedQuery({
 	},
 	handler: async (ctx, args) => {
 		await getUserIdFromSession(ctx);
-		const campaign = await ctx.db.get(args.campaignId);
-		if (!campaign) { throwNotFound('Campaign'); }
+		const campaign = await getOrThrow(ctx, args.campaignId, 'Campaign');
 
 		const sends = await ctx.db
 			.query('emailSends')
@@ -571,8 +564,7 @@ export const getLinkClickStats = authedQuery({
 	args: { campaignId: v.id('campaigns') },
 	handler: async (ctx, args) => {
 		await getUserIdFromSession(ctx);
-		const campaign = await ctx.db.get(args.campaignId);
-		if (!campaign) { throwNotFound('Campaign'); }
+		const campaign = await getOrThrow(ctx, args.campaignId, 'Campaign');
 
 		const sends = await ctx.db
 			.query('emailSends')
