@@ -12,6 +12,18 @@ import type { Doc, Id } from '../_generated/dataModel';
 import type { QueryCtx, MutationCtx } from '../_generated/server';
 import { throwForbidden, throwNotFound, throwInvalidInput } from '../_utils/errors';
 import { hasPermission, type OrganizationRole } from '../lib/sessionOrganization';
+import { authedQuery, authedMutation, featureGated } from '../lib/authedFunctions';
+
+/**
+ * Feature-gated function builders for the chat module. They compose the
+ * org-member auth floor (`authedQuery` / `authedMutation`) with a
+ * `assertFeatureEnabled(ctx, 'chat')` check, so every chat handler no longer
+ * repeats that call at the top. Per-room authz (`assertCanReadRoom` /
+ * `assertCanWriteRoom` / `assertCanAdministerRoom`) and the `chat:participate`
+ * / `chat:manage` role gates still live in the handler.
+ */
+export const chatQuery = featureGated(authedQuery, 'chat');
+export const chatMutation = featureGated(authedMutation, 'chat');
 
 export const CHANNEL_NAME_MAX = 80;
 export const CHANNEL_DESC_MAX = 280;

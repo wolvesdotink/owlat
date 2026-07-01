@@ -4,7 +4,6 @@
  */
 
 import { v } from 'convex/values';
-import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { internalQuery, internalMutation } from '../_generated/server';
 import { internal } from '../_generated/api';
 import {
@@ -13,9 +12,11 @@ import {
 	requireOrgPermission,
 	hasPermission,
 } from '../lib/sessionOrganization';
-import { assertFeatureEnabled, isFeatureEnabled } from '../lib/featureFlags';
+import { isFeatureEnabled } from '../lib/featureFlags';
 import { throwForbidden, throwInvalidInput, throwNotFound } from '../_utils/errors';
 import {
+	chatQuery,
+	chatMutation,
 	assertCanReadRoom,
 	assertCanWriteRoom,
 	getMembership,
@@ -44,7 +45,7 @@ const CHAT_CONTEXT_LIMIT = 30;
  * Each message is enriched with author profile info (name/image) so the UI
  * doesn't need a second query per row.
  */
-export const listMessages = authedQuery({
+export const listMessages = chatQuery({
 	args: {
 		roomId: v.id('chatRooms'),
 		limit: v.optional(v.number()),
@@ -53,7 +54,6 @@ export const listMessages = authedQuery({
 		beforeCreatedAt: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'chat');
 		const userId = await getUserIdFromSession(ctx);
 		const room = await getRoomOrThrow(ctx, args.roomId);
 		await assertCanReadRoom(ctx, room, userId);
@@ -115,14 +115,13 @@ export const listMessages = authedQuery({
  *  - Bumps chatRooms.lastMessageAt / messageCount
  *  - Updates the sender's chatRoomMembers.lastReadAt
  */
-export const sendMessage = authedMutation({
+export const sendMessage = chatMutation({
 	args: {
 		roomId: v.id('chatRooms'),
 		text: v.string(),
 		attachmentIds: v.optional(v.array(v.id('mediaAssets'))),
 	},
 	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'chat');
 		const { userId } = await requireOrgPermission(ctx, 'chat:participate', 'Chat is not available');
 
 		const room = await getRoomOrThrow(ctx, args.roomId);
@@ -218,10 +217,9 @@ export const sendMessage = authedMutation({
  * users' messages.
  */
 // authz: author-only — a member may edit only their own chat message (checked below).
-export const editMessage = authedMutation({
+export const editMessage = chatMutation({
 	args: { messageId: v.id('chatMessages'), text: v.string() },
 	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'chat');
 		const { userId } = await getMutationContext(ctx);
 		const message = await ctx.db.get(args.messageId);
 		if (!message || message.deletedAt) {
@@ -240,10 +238,9 @@ export const editMessage = authedMutation({
  * Soft-delete a message. Author OR per-room admin (or chat:manage).
  */
 // authz: author, room admin, or org chat:manage may delete (checked below).
-export const deleteMessage = authedMutation({
+export const deleteMessage = chatMutation({
 	args: { messageId: v.id('chatMessages') },
 	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'chat');
 		const { userId, role } = await getMutationContext(ctx);
 		const message = await ctx.db.get(args.messageId);
 		if (!message || message.deletedAt) {
@@ -268,10 +265,9 @@ export const deleteMessage = authedMutation({
  * Caller must be a member.
  */
 // authz: room membership — only a room member may mark it read (checked below).
-export const markRead = authedMutation({
+export const markRead = chatMutation({
 	args: { roomId: v.id('chatRooms'), at: v.optional(v.number()) },
 	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'chat');
 		const { userId } = await getMutationContext(ctx);
 		const membership = await getMembership(ctx, args.roomId, userId);
 		if (!membership) return; // tolerate; caller may have just left
@@ -302,10 +298,9 @@ export const markRead = authedMutation({
  * counted as messages with `createdAt > member.lastReadAt`. We cap per-room
  * counting at 100 to stay cheap; "100+" UI is acceptable.
  */
-export const myUnreadCounts = authedQuery({
+export const myUnreadCounts = chatQuery({
 	args: {},
 	handler: async (ctx) => {
-		await assertFeatureEnabled(ctx, 'chat');
 		const userId = await getUserIdFromSession(ctx);
 
 		const memberships = await ctx.db

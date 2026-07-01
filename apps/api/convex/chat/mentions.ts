@@ -7,12 +7,11 @@
 
 import { v } from 'convex/values';
 import type { QueryCtx, MutationCtx } from '../_generated/server';
-import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import {
 	getMutationContext,
 	getUserIdFromSession,
 } from '../lib/sessionOrganization';
-import { assertFeatureEnabled } from '../lib/featureFlags';
+import { chatQuery, chatMutation } from './_helpers';
 import { throwNotFound } from '../_utils/errors';
 
 /**
@@ -47,10 +46,9 @@ export async function resolveMentionsToMemberIds(
  * List the caller's unread mentions, newest first. Each row includes a small
  * preview of the message that triggered the mention.
  */
-export const listMyUnreadMentions = authedQuery({
+export const listMyUnreadMentions = chatQuery({
 	args: { limit: v.optional(v.number()) },
 	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'chat');
 		const userId = await getUserIdFromSession(ctx);
 		const limit = Math.max(1, Math.min(args.limit ?? 50, 200));
 
@@ -86,10 +84,9 @@ export const listMyUnreadMentions = authedQuery({
 /**
  * Compact count of unread mentions for the nav badge.
  */
-export const countMyUnreadMentions = authedQuery({
+export const countMyUnreadMentions = chatQuery({
 	args: {},
 	handler: async (ctx) => {
-		await assertFeatureEnabled(ctx, 'chat');
 		const userId = await getUserIdFromSession(ctx);
 		const mentions = await ctx.db
 			.query('chatMentions')
@@ -103,10 +100,9 @@ export const countMyUnreadMentions = authedQuery({
 
 /** Mark a single mention as read. */
 // authz: self — a member marks only their own mentions read.
-export const markMentionRead = authedMutation({
+export const markMentionRead = chatMutation({
 	args: { mentionId: v.id('chatMentions') },
 	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'chat');
 		const { userId } = await getMutationContext(ctx);
 		const mention = await ctx.db.get(args.mentionId);
 		if (!mention) {
@@ -127,10 +123,9 @@ export const markMentionRead = authedMutation({
  * Filtered by an optional `query` prefix (case-insensitive match on name or
  * email prefix). The org member table is small so a single scan suffices.
  */
-export const searchOrgMembersForMention = authedQuery({
+export const searchOrgMembersForMention = chatQuery({
 	args: { query: v.optional(v.string()) },
 	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'chat');
 		await getUserIdFromSession(ctx);
 		const q = args.query?.trim().toLowerCase() ?? '';
 

@@ -106,6 +106,28 @@ beforeEach(() => {
 	setUser('user-alice', 'owner');
 });
 
+describe('chat feature-flag floor (featureGated wrapper)', () => {
+	it('rejects a chatQuery when the chat flag is disabled', async () => {
+		const t = convexTest(schema, modules);
+		// No enableFeatures(t, ['chat']) — the flag is off by default.
+		setUser('user-alice', 'owner');
+		await expect(t.query(api.chat.rooms.listMyChannels, {})).rejects.toThrow(
+			/disabled/i,
+		);
+	});
+
+	it('rejects a chatMutation when the chat flag is disabled', async () => {
+		const t = convexTest(schema, modules);
+		setUser('user-alice', 'owner');
+		await expect(
+			t.mutation(api.chat.rooms.createChannel, {
+				name: 'general',
+				visibility: 'public',
+			}),
+		).rejects.toThrow(/disabled/i);
+	});
+});
+
 describe('chat.rooms.createChannel', () => {
 	it('creates a public channel and seeds the creator as admin', async () => {
 		const t = convexTest(schema, modules);

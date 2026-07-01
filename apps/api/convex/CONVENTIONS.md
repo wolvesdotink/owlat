@@ -139,6 +139,28 @@ API-key/no-session context must call an `internal*` sibling (see
 `scripts/check-public-functions.sh` (wired into `bun run lint`) bans the bare
 builders outside `lib/authedFunctions.ts` — a forgotten gate fails CI.
 
+### Feature-flag floors
+
+Modules behind an instance feature flag (`chat`, `ai.assistant`, …) must not let
+handlers reach the DB when the flag is off. Rather than repeating
+`await assertFeatureEnabled(ctx, '<flag>')` at the top of every handler, compose
+the flag check into the wrapper with `featureGated`:
+
+```ts
+// chat/_helpers.ts
+export const chatQuery = featureGated(authedQuery, 'chat');
+export const chatMutation = featureGated(authedMutation, 'chat');
+```
+
+`featureGated(builder, flag)` returns a builder of the same type that runs
+`assertFeatureEnabled(ctx, flag)` **after** the wrapped builder's auth floor and
+**before** the handler — the same floor-baking pattern as `adminMutation` /
+`ownerMutation`. Per-record authz (e.g. chat `assertCan*Room`, the
+`chat:participate` / `chat:manage` role gates, or owner-scoping in the assistant
+data plane) still lives in the handler. Only query/mutation builders can be
+gated this way — `assertFeatureEnabled` reads `ctx.db`, which **actions** lack,
+so feature-gated actions keep the in-handler check against a query they call.
+
 ## Permissions
 
 `authedMutation` / `authedAction` only enforce the auth *floor* (an authenticated

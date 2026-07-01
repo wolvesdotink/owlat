@@ -27,6 +27,13 @@
 # The ratchet is strict in both directions: an unlisted violation fails (new
 # query without a decision), and a stale baseline entry fails (the query was
 # fixed/removed — delete its line so the debt count only goes down).
+#
+# NOTE: `chatQuery` / `assistantQuery` (chat/_helpers.ts,
+# assistant/conversations.ts) compose `authedQuery` with a `assertFeatureEnabled`
+# FEATURE-flag floor only — a feature flag is NOT an authorization decision — so
+# they are matched by the is_export regex below and remain SUBJECT to this
+# ratchet exactly like a bare `authedQuery`. The pre-existing chat reads keep
+# their baseline entries until each is individually reviewed.
 
 cd "$(dirname "$0")/.."
 
@@ -40,7 +47,7 @@ violations=$(find convex -name "*.ts" \
 		{
 			is_comment = ($0 ~ /^[[:space:]]*\/\//)
 			is_optout  = ($0 ~ /\/\/[[:space:]]*(authz|all-members):/)
-			is_export  = ($0 ~ /^export const [A-Za-z0-9_]+ = authedQuery\(/)
+			is_export  = ($0 ~ /^export const [A-Za-z0-9_]+ = (authedQuery|chatQuery|assistantQuery)\(/)
 		}
 		is_comment && is_optout { block_optout = 1 }
 		is_export {

@@ -11,24 +11,21 @@
  */
 
 import { v } from 'convex/values';
-import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import {
 	getUserIdFromSession,
 	requireOrgPermission,
 } from '../lib/sessionOrganization';
-import { assertFeatureEnabled } from '../lib/featureFlags';
 import { throwInvalidInput } from '../_utils/errors';
-import { assertCanReadRoom, getRoomOrThrow } from './_helpers';
+import { chatQuery, chatMutation, assertCanReadRoom, getRoomOrThrow } from './_helpers';
 import { MAX_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
 
 /**
  * Generate a signed upload URL that the browser can PUT a file to. The URL
  * is short-lived (~1 hour, controlled by Convex storage policy).
  */
-export const generateUploadUrl = authedMutation({
+export const generateUploadUrl = chatMutation({
 	args: {},
 	handler: async (ctx) => {
-		await assertFeatureEnabled(ctx, 'chat');
 		await requireOrgPermission(ctx, 'chat:participate', 'Chat is not available');
 		return await ctx.storage.generateUploadUrl();
 	},
@@ -38,7 +35,7 @@ export const generateUploadUrl = authedMutation({
  * Register an uploaded blob as a media asset. Returns the mediaAssets id
  * which the frontend then passes to `chat.messages.sendMessage`.
  */
-export const registerAttachment = authedMutation({
+export const registerAttachment = chatMutation({
 	args: {
 		storageId: v.id('_storage'),
 		filename: v.string(),
@@ -48,7 +45,6 @@ export const registerAttachment = authedMutation({
 		height: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'chat');
 		const { userId } = await requireOrgPermission(ctx, 'chat:participate', 'Chat is not available');
 
 		if (!args.filename.trim()) throwInvalidInput('Filename cannot be empty');
@@ -94,10 +90,9 @@ export const registerAttachment = authedMutation({
  * — including those posted in private channels and DMs they were not part of —
  * just by passing arbitrary `mediaAssets` ids.
  */
-export const getAttachmentDetails = authedQuery({
+export const getAttachmentDetails = chatQuery({
 	args: { messageId: v.id('chatMessages') },
 	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'chat');
 		const userId = await getUserIdFromSession(ctx);
 
 		const message = await ctx.db.get(args.messageId);

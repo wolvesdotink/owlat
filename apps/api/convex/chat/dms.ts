@@ -8,14 +8,12 @@
  */
 
 import { v } from 'convex/values';
-import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import {
 	getUserIdFromSession,
 	requireOrgPermission,
 } from '../lib/sessionOrganization';
-import { assertFeatureEnabled } from '../lib/featureFlags';
 import { throwInvalidInput } from '../_utils/errors';
-import { assertChatTargetsAreOrgMembers, loadProfileSummary, normalizeDmKey } from './_helpers';
+import { chatQuery, chatMutation, assertChatTargetsAreOrgMembers, loadProfileSummary, normalizeDmKey } from './_helpers';
 
 /**
  * Find or create a DM between the caller and `otherMemberIds`. Idempotent —
@@ -28,10 +26,9 @@ import { assertChatTargetsAreOrgMembers, loadProfileSummary, normalizeDmKey } fr
  *   DMs, "Alice, Bob, Carol" up to 3 names + a "+N more" suffix. This is
  *   denormalized and refreshed by the frontend if displayed.
  */
-export const findOrCreateDm = authedMutation({
+export const findOrCreateDm = chatMutation({
 	args: { otherMemberIds: v.array(v.string()) },
 	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'chat');
 		const { userId } = await requireOrgPermission(ctx, 'chat:participate', 'Chat is not available');
 
 		if (args.otherMemberIds.length === 0) {
@@ -97,10 +94,9 @@ export const findOrCreateDm = authedMutation({
  * List DMs the caller participates in, most recently active first.
  * Each row includes the other participants' names for the sidebar label.
  */
-export const listMyDms = authedQuery({
+export const listMyDms = chatQuery({
 	args: { limit: v.optional(v.number()) },
 	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'chat');
 		const userId = await getUserIdFromSession(ctx);
 		const limit = Math.max(1, Math.min(args.limit ?? 100, 500));
 
