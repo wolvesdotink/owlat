@@ -86,6 +86,17 @@ const { data: fetchedActive } = useConvexQuery(api.mail.mailbox.getMessage, () =
 );
 const activeMessage = computed(() => listActive.value ?? fetchedActive.value ?? undefined);
 
+// Auto-advance context for the reader: the flat list's visual row order
+// (optimistic-hide filtered, via the template ref below). In the
+// thread-grouped view the flat order doesn't match what's on screen, so an
+// empty list makes every triage fall back to back-to-list there.
+const threadListRef = ref<{ visibleIds: string[] } | null>(null);
+const advanceIds = computed(() =>
+	threadGroupsEnabled.value
+		? []
+		: threadListRef.value?.visibleIds ?? messages.value.map((m) => m._id)
+);
+
 const labelManagerOpen = ref(false);
 
 // Search entry point: a box in the folder rail + a "/" shortcut to focus it.
@@ -292,6 +303,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 					/>
 					<PostboxThreadList
 						v-else
+						ref="threadListRef"
 						:mailbox-id="mailboxId"
 						:messages="messages"
 						:loading="isLoading"
@@ -306,7 +318,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 
 		<!-- Pane 3: reader -->
 		<section class="flex-1 overflow-auto bg-bg-base">
-			<PostboxThreadReader v-if="activeMessage" :message="activeMessage" />
+			<PostboxThreadReader
+				v-if="activeMessage"
+				:message="activeMessage"
+				:advance-ids="advanceIds"
+				:folder-role="folderId ? String(folderId) : folderRole"
+			/>
 			<div v-else class="h-full flex items-center justify-center">
 				<div class="text-center">
 					<Icon name="lucide:mail-open" class="w-12 h-12 mx-auto text-text-tertiary" />

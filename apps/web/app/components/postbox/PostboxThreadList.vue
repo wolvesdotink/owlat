@@ -55,6 +55,11 @@ const messagesRef = computed(() => props.messages);
 const { visible: visibleMessages, hide: hideRow, unhide: unhideRow } =
 	usePostboxOptimisticHide(messagesRef);
 
+// Visual row order for the reader's auto-advance (PostboxLayout reads this
+// via a template ref): the optimistic-hide-filtered list as rendered.
+const visibleIds = computed(() => visibleMessages.value.map((m) => m._id));
+defineExpose({ visibleIds });
+
 async function archiveMsg(id: string) {
 	hideRow(id);
 	// archive/trash return { ok } — restore the row if the mutation failed.
