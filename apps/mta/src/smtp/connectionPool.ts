@@ -217,6 +217,7 @@ export class SmtpConnectionPool {
 			// shift) and could silently negotiate down to TLS 1.0/1.1. RFC 8996
 			// deprecates those; RFC 9325 mandates TLS 1.2+. The caller may raise the
 			// floor to TLSv1.3 but cannot lower it below 1.2.
+			// nosemgrep -- opportunistic TLS default for SMTP delivery (RFC 7435); callers (MTA-STS enforce) override via options.tls.
 			tls: { rejectUnauthorized: false, ...options.tls, minVersion: options.tls?.minVersion ?? 'TLSv1.2' },
 			name: options.name,
 			localAddress: bindIp,

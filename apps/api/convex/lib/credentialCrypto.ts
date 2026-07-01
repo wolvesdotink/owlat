@@ -26,6 +26,7 @@ import { CURRENT_EXTERNAL_MAIL_CRED_VERSION } from './constants';
 const ALGORITHM = 'aes-256-gcm';
 const KEY_BYTES = 32;
 const IV_BYTES = 12; // GCM standard 96-bit nonce
+const AUTH_TAG_BYTES = 16; // GCM standard 128-bit auth tag (passed explicitly)
 
 // Fixed HKDF salt + info — the version-pinned context that domain-separates
 // this key. Changing either is a KDF change: bump
@@ -61,7 +62,7 @@ export function deriveKey(): Buffer {
 export function encryptSecret(plaintext: string): EncryptedEnvelope {
 	const key = deriveKey();
 	const iv = randomBytes(IV_BYTES);
-	const cipher = createCipheriv(ALGORITHM, key, iv);
+	const cipher = createCipheriv(ALGORITHM, key, iv, { authTagLength: AUTH_TAG_BYTES });
 	const ciphertext = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
 	const authTag = cipher.getAuthTag();
 	return {
@@ -76,7 +77,7 @@ export function encryptSecret(plaintext: string): EncryptedEnvelope {
 export function decryptSecret(envelope: EncryptedEnvelope): string {
 	const key = deriveKey();
 	const iv = Buffer.from(envelope.iv, 'base64');
-	const decipher = createDecipheriv(ALGORITHM, key, iv);
+	const decipher = createDecipheriv(ALGORITHM, key, iv, { authTagLength: AUTH_TAG_BYTES });
 	decipher.setAuthTag(Buffer.from(envelope.authTag, 'base64'));
 	const plaintext = Buffer.concat([
 		decipher.update(Buffer.from(envelope.ciphertext, 'base64')),

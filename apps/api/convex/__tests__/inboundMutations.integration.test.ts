@@ -1,5 +1,6 @@
 import { convexTest } from 'convex-test';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
@@ -986,6 +987,107 @@ describe('agentPipeline.sendApprovedReply', () => {
 		expect(enqueueActionMock).not.toHaveBeenCalled();
 		const msg = await t.run(async (ctx) => ctx.db.get(messageId));
 		expect(msg!.processingStatus).toBe('failed');
+	});
+});
+
+// ============ receiveMessage blocklist auto-archive ============
+//
+// Inbound mail from a sender on the `blockedEmails` suppression list must be
+// STORE-BUT-SKIP: the inbound path has a hard never-drop invariant (no SMTP 5xx
+// rejection), so the message is still persisted, but it is archived on receipt
+// via the same lifecycle edge `blockSender` uses and never enters the AI
+// classify/route pipeline.
+
+describe('inbound.receiveMessage blocklist auto-archive', () => {
+	async function enableAgent(t: ReturnType<typeof convexTest>) {
+		await t.run(async (ctx) => {
+			await ctx.db.insert('instanceSettings', {
+				featureFlags: { ai: true, 'ai.agent': true, inbox: true },
+				createdAt: Date.now(),
+			});
+		});
+	}
+
+	/** Count scheduled agent-pipeline starts (the only walker.* job receive queues). */
+	async function scheduledWalkerStarts(t: ReturnType<typeof convexTest>): Promise<number> {
+		return await t.run(async (ctx) => {
+			const jobs = await ctx.db.system.query('_scheduled_functions').collect();
+			return jobs.filter((j) => (j.name ?? '').includes('walker')).length;
+		});
+	}
+
+	it('stores and archives inbound mail from a blocklisted sender, skipping AI processing', async () => {
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		await enableAgent(t);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('blockedEmails', {
+				email: 'blocked@evil.com',
+				reason: 'manual',
+				createdAt: Date.now(),
+			});
+		});
+
+		const r = await t.mutation(internal.inbox.messages.receiveMessage, {
+			from: 'Blocked Sender <blocked@evil.com>',
+			to: 'inbox@myapp.com',
+			subject: 'Buy now',
+			textBody: 'spammy content',
+			messageId: '<blocked-001@evil.com>',
+			timestamp: Date.now(),
+		});
+
+		// Nothing dropped: the message is persisted...
+		const msg = await t.run(async (ctx) => ctx.db.get(r.inboundMessageId));
+		expect(msg).not.toBeNull();
+		// ...and archived via the lifecycle...
+		expect(msg!.processingStatus).toBe('archived');
+		// ...and the AI classify/route pipeline is never scheduled.
+		expect(await scheduledWalkerStarts(t)).toBe(0);
+	});
+
+	it('normalizes the sender address before the blocklist lookup (case-insensitive)', async () => {
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		await enableAgent(t);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('blockedEmails', {
+				email: 'blocked@evil.com',
+				reason: 'manual',
+				createdAt: Date.now(),
+			});
+		});
+
+		const r = await t.mutation(internal.inbox.messages.receiveMessage, {
+			from: 'Blocked <BLOCKED@Evil.com>',
+			to: 'inbox@myapp.com',
+			subject: 'again',
+			messageId: '<blocked-002@evil.com>',
+			timestamp: Date.now(),
+		});
+
+		const msg = await t.run(async (ctx) => ctx.db.get(r.inboundMessageId));
+		expect(msg!.processingStatus).toBe('archived');
+		expect(await scheduledWalkerStarts(t)).toBe(0);
+	});
+
+	it('leaves ordinary (non-blocklisted) inbound mail untouched — received and AI-processed', async () => {
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		await enableAgent(t);
+
+		const r = await t.mutation(internal.inbox.messages.receiveMessage, {
+			from: 'Real Person <real@example.com>',
+			to: 'inbox@myapp.com',
+			subject: 'A real question',
+			textBody: 'Can you help?',
+			messageId: '<real-001@example.com>',
+			timestamp: Date.now(),
+		});
+
+		const msg = await t.run(async (ctx) => ctx.db.get(r.inboundMessageId));
+		expect(msg!.processingStatus).toBe('received');
+		expect(await scheduledWalkerStarts(t)).toBe(1);
 	});
 });
 
