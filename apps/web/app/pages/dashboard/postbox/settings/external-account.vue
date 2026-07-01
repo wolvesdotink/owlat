@@ -242,12 +242,14 @@ const showForm = computed(() => !isConnected.value || editing.value);
 // App-password deep-link guidance. The big consumer providers reject a plain
 // account password over IMAP/SMTP once 2FA is on and require a provider-minted
 // "app password" — by far the most common cause of an auth error here. We show
-// an actionable callout (deep link + one line of steps) when either the backend
-// reports an auth error, a connection test failed on credentials, OR the email
+// an actionable callout (deep link + one line of steps) whenever the email
 // domain is a provider we know requires an app password. Pure/offline lookup.
 const detectedEmail = computed(() => form.emailAddress || account.value?.emailAddress || '');
 const appPasswordProvider = computed(() => appPasswordHelpForEmail(detectedEmail.value));
 
+// Whether the mailbox is actively failing on credentials (backend status or a
+// failed connection test). Sharpens the callout wording via the `auth-error`
+// prop — a proactive hint when false, a "this is why it failed" fix when true.
 function looksLikeAuthError(error?: string): boolean {
 	return !!error && /auth|password|credential|login|denied|invalid/i.test(error);
 }
@@ -257,12 +259,6 @@ const hasAuthError = computed(() => {
 	if (!r) return false;
 	return (!r.imap.ok && looksLikeAuthError(r.imap.error)) || (!r.smtp.ok && looksLikeAuthError(r.smtp.error));
 });
-
-// Show whenever we can point at a real app-password page (the deep link needs a
-// known provider); the auth-error signal only sharpens the wording.
-const showAppPasswordCallout = computed(
-	() => appPasswordProvider.value !== null && (hasAuthError.value || appPasswordProvider.value !== null),
-);
 </script>
 
 <template>
@@ -306,25 +302,11 @@ const showAppPasswordCallout = computed(
 				<strong>app password</strong> (with 2-factor enabled).
 			</p>
 
-			<div
-				v-if="showAppPasswordCallout && appPasswordProvider"
-				class="rounded-lg border border-border-subtle bg-bg-surface p-4 text-sm space-y-1"
-			>
-				<p class="font-medium flex items-center gap-1.5">
-					<Icon name="lucide:key-round" class="w-3.5 h-3.5 text-info" />
-					{{ appPasswordProvider.provider }} needs an app password
-				</p>
-				<p class="text-text-secondary">{{ appPasswordProvider.steps }}</p>
-				<a
-					:href="appPasswordProvider.url"
-					target="_blank"
-					rel="noopener noreferrer"
-					class="text-info underline inline-flex items-center gap-1"
-				>
-					Open {{ appPasswordProvider.provider }} app-password page
-					<Icon name="lucide:external-link" class="w-3 h-3" />
-				</a>
-			</div>
+			<PostboxAppPasswordCallout
+				v-if="appPasswordProvider"
+				:help="appPasswordProvider"
+				:auth-error="hasAuthError"
+			/>
 
 			<div class="flex flex-wrap items-center gap-3 pt-2">
 				<button type="button" class="btn btn-secondary" @click="editing = true">
@@ -454,25 +436,11 @@ const showAppPasswordCallout = computed(
 				</p>
 			</div>
 
-			<div
-				v-if="showAppPasswordCallout && appPasswordProvider"
-				class="rounded-lg border border-border-subtle bg-bg-surface p-4 text-sm space-y-1"
-			>
-				<p class="font-medium flex items-center gap-1.5">
-					<Icon name="lucide:key-round" class="w-3.5 h-3.5 text-info" />
-					{{ appPasswordProvider.provider }} needs an app password, not your account password
-				</p>
-				<p class="text-text-secondary">{{ appPasswordProvider.steps }}</p>
-				<a
-					:href="appPasswordProvider.url"
-					target="_blank"
-					rel="noopener noreferrer"
-					class="text-info underline inline-flex items-center gap-1"
-				>
-					Open {{ appPasswordProvider.provider }} app-password page
-					<Icon name="lucide:external-link" class="w-3 h-3" />
-				</a>
-			</div>
+			<PostboxAppPasswordCallout
+				v-if="appPasswordProvider"
+				:help="appPasswordProvider"
+				:auth-error="hasAuthError"
+			/>
 
 			<div v-if="testResult" class="text-sm space-y-1">
 				<p :class="testResult.imap.ok ? 'text-success' : 'text-error'">
