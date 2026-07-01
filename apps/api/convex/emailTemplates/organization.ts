@@ -3,7 +3,7 @@ import { emailTemplateTypeValidator } from '../lib/convexValidators';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import { getMutationContext, requirePermission, hasPermission } from '../lib/sessionOrganization';
+import { requireOrgPermission } from '../lib/sessionOrganization';
 import { validateStringLength, STRING_LIMITS } from '../lib/inputGuards';
 import { listResources, countFacet } from '../lib/listing';
 import { emailTemplateListing } from './listing';
@@ -45,8 +45,7 @@ export const createForOrganization = authedMutation({
 		defaultLanguage: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<Id<'emailTemplates'>> => {
-		const { userId, role } = await getMutationContext(ctx);
-		requirePermission(hasPermission(role, 'templates:manage'), 'Only owners and admins can create email templates');
+		const { userId } = await requireOrgPermission(ctx, 'templates:manage', 'Only owners and admins can create email templates');
 		// Validate input lengths
 		validateStringLength(args.name, STRING_LIMITS.NAME, 'Name');
 		if (args.subject) validateStringLength(args.subject, STRING_LIMITS.SUBJECT, 'Subject');
@@ -76,8 +75,7 @@ export const createFromPreset = authedMutation({
 		defaultLanguage: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<Id<'emailTemplates'>> => {
-		const { userId, role } = await getMutationContext(ctx);
-		requirePermission(hasPermission(role, 'templates:manage'), 'Only owners and admins can create email templates');
+		const { userId } = await requireOrgPermission(ctx, 'templates:manage', 'Only owners and admins can create email templates');
 		// Validate input lengths
 		validateStringLength(args.name, STRING_LIMITS.NAME, 'Name');
 		validateStringLength(args.subject, STRING_LIMITS.SUBJECT, 'Subject');
