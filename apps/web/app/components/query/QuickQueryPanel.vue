@@ -9,12 +9,17 @@ const emit = defineEmits<{
 	close: [];
 }>();
 
+type QuerySource =
+	| { kind: 'knowledge'; id: string; title: string; entryType: string }
+	| { kind: 'file'; id: string; title: string; filename: string };
+
 const question = ref('');
 const inputRef = ref<HTMLInputElement | null>(null);
-const result = ref<{ answer: string; sources: Array<{ id: string; title: string; entryType: string }> } | null>(null);
+const result = ref<{ answer: string; sources: QuerySource[] } | null>(null);
 
 const { run: askMutation, isLoading } = useBackendOperation(api.quickQuery.ask, {
 	label: 'Run query',
+	type: 'action',
 });
 
 // Reset state when panel opens
@@ -86,7 +91,7 @@ const handleKeydown = (e: KeyboardEvent) => {
 						ref="inputRef"
 						v-model="question"
 						type="text"
-						placeholder="Search your knowledge entries..."
+						placeholder="Ask anything about your knowledge and files..."
 						class="flex-1 bg-transparent text-text-primary placeholder-text-tertiary outline-none text-base"
 						@keydown.enter="handleSubmit"
 					/>
@@ -107,7 +112,7 @@ const handleKeydown = (e: KeyboardEvent) => {
 					<!-- Loading -->
 					<div v-if="isLoading" class="px-4 py-8 text-center text-text-tertiary">
 						<Icon name="lucide:loader-2" class="w-6 h-6 animate-spin mx-auto mb-2 text-brand" />
-						<p class="text-sm">Searching your knowledge entries...</p>
+						<p class="text-sm">Searching your knowledge and files...</p>
 					</div>
 
 					<!-- Result -->
@@ -121,8 +126,8 @@ const handleKeydown = (e: KeyboardEvent) => {
 					<!-- Empty state -->
 					<div v-else class="px-4 py-8 text-center text-text-tertiary">
 						<Icon name="lucide:message-circle-question" class="w-8 h-8 mx-auto mb-2 opacity-50" />
-						<p class="text-sm">Search your knowledge entries by keyword</p>
-						<p class="text-xs mt-1">Press Enter to search</p>
+						<p class="text-sm">Ask a question across your knowledge and files</p>
+						<p class="text-xs mt-1">Press Enter for a synthesized, cited answer</p>
 					</div>
 				</div>
 
