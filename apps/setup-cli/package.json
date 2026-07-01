@@ -18,7 +18,7 @@
 		"lint": "oxlint --config ../../oxlintrc.json src && bash scripts/check-env-keys-sync.sh"
 	},
 	"dependencies": {
-		"@clack/prompts": "^0.7.0",
+		"@clack/prompts": "^1.6.0",
 		"@owlat/shared": "workspace:*",
 		"picocolors": "^1.1.1",
 		"yaml": "^2.6.1"

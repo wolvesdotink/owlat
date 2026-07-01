@@ -531,7 +531,7 @@ async function askYesNo(message: string, initial: boolean, assumeYes: boolean): 
 async function promptEmail(): Promise<string | undefined> {
 	const result = await text({
 		message: 'Admin email',
-		validate: (v) => (/^.+@.+\..+$/.test(v) ? undefined : 'Enter a valid email'),
+		validate: (v) => (/^.+@.+\..+$/.test(v ?? '') ? undefined : 'Enter a valid email'),
 	});
 	if (isCancel(result)) return undefined;
 	return result;
@@ -546,7 +546,7 @@ async function promptText(message: string): Promise<string | undefined> {
 async function promptPassword(): Promise<string | undefined> {
 	const result = await passwordPrompt({
 		message: 'Admin password (min 12 chars)',
-		validate: (v) => (v.length < 12 ? 'Password must be at least 12 characters' : undefined),
+		validate: (v) => ((v ?? '').length < 12 ? 'Password must be at least 12 characters' : undefined),
 		mask: '•',
 	});
 	if (isCancel(result)) return undefined;

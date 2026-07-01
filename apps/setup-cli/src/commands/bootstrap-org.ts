@@ -127,7 +127,7 @@ async function ask(message: string, validate: Validator, defaultValue?: string):
 		}
 		return defaultValue;
 	}
-	const result = await text({ message, validate });
+	const result = await text({ message, validate: (v) => validate(v ?? '') });
 	if (isCancel(result)) return null;
 	return result;
 }
@@ -136,7 +136,7 @@ async function askPassword(defaultValue?: string): Promise<string | null> {
 	if (defaultValue !== undefined) return defaultValue;
 	const result = await passwordPrompt({
 		message: 'Admin password (min 12 chars)',
-		validate: (v) => (v.length < 12 ? 'Password must be at least 12 characters' : undefined),
+		validate: (v) => ((v ?? '').length < 12 ? 'Password must be at least 12 characters' : undefined),
 		mask: '•',
 	});
 	if (isCancel(result)) return null;

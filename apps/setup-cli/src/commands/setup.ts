@@ -417,7 +417,7 @@ async function collectPostHog(): Promise<EnvMap | null> {
 
 async function collectAdmin(): Promise<{ email: string; name: string; password: string } | null> {
 	const result = await group({
-		email: () => text({ message: 'Admin email', validate: (v) => (/^.+@.+\..+$/.test(v) ? undefined : 'Enter a valid email') }),
+		email: () => text({ message: 'Admin email', validate: (v) => (/^.+@.+\..+$/.test(v ?? '') ? undefined : 'Enter a valid email') }),
 		name: () => text({ message: 'Admin display name' }),
 		password: () => password({ message: 'Admin password (min 12 chars)', mask: '•' }),
 	});
