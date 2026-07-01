@@ -30,7 +30,11 @@
 			"playwright": { "config": ["e2e/playwright.config.ts"] }
 		},
 		"apps/docs": {
-			"entry": ["content.config.ts", "app/**/*.{vue,ts}"]
+			// __tests__ lives at the app root (not under app/), so declare it
+			// explicitly — knip 6's vitest-plugin discovery of these specs is
+			// environment-sensitive, and without this entry they are mis-reported
+			// as unused files in CI.
+			"entry": ["content.config.ts", "app/**/*.{vue,ts}", "__tests__/**/*.ts"]
 		},
 		"apps/marketing": {
 			"entry": ["app/**/*.{vue,ts}"]
