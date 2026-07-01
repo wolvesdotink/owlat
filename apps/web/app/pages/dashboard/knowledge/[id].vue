@@ -197,7 +197,7 @@ const handleRemoveRelation = async (relationId: string) => {
 
 		<!-- Loading -->
 		<div v-if="isLoading" class="flex items-center justify-center py-20">
-			<div class="w-8 h-8 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+			<UiSpinner />
 		</div>
 
 		<!-- Not Found -->

@@ -275,7 +275,7 @@ useClickOutsideSelector('[data-property-dropdown]', () => {
 		<!-- Loading State -->
 		<div v-if="isLoading && !propertiesData" class="flex items-center justify-center py-16">
 			<div class="flex flex-col items-center gap-3">
-				<div class="w-8 h-8 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+				<UiSpinner />
 				<p class="text-text-secondary text-sm">Loading properties...</p>
 			</div>
 		</div>

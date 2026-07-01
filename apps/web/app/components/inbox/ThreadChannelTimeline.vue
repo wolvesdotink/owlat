@@ -38,7 +38,7 @@ const timeline = computed(() => messagesData.value ?? []);
 
 		<!-- Loading -->
 		<div v-if="isLoading && !timeline.length" class="flex items-center justify-center py-6">
-			<div class="w-5 h-5 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+			<UiSpinner size="sm" />
 		</div>
 
 		<!-- Empty -->

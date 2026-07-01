@@ -92,7 +92,7 @@ const typeFilters = computed(() => [
 			<!-- Canvas -->
 			<div class="lg:col-span-2 space-y-3">
 				<div v-if="isLoading && graph.nodes.length === 0" class="flex items-center justify-center py-24">
-					<div class="w-8 h-8 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+					<UiSpinner />
 				</div>
 				<KnowledgeGraphCanvas
 					v-else

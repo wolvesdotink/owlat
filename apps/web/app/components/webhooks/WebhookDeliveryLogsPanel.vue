@@ -133,7 +133,7 @@ function formatJson(value: unknown) {
 		<div class="overflow-y-auto max-h-[60vh] -mx-6">
 			<!-- Loading -->
 			<div v-if="logsLoading && !logs" class="flex items-center justify-center py-16">
-				<div class="w-6 h-6 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+				<UiSpinner size="md" />
 			</div>
 
 			<!-- Selected log detail -->

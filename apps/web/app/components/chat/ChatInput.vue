@@ -189,10 +189,7 @@ const handleSend = async () => {
 				@click="fileInputRef?.click()"
 			>
 				<Icon v-if="!isUploading" name="lucide:paperclip" class="w-4 h-4" />
-				<div
-					v-else
-					class="w-4 h-4 border-2 border-brand border-t-transparent rounded-full animate-spin"
-				/>
+				<UiSpinner v-else size="xs" />
 			</button>
 			<input
 				ref="fileInputRef"

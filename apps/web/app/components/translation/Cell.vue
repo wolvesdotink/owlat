@@ -150,7 +150,7 @@ watch(editValue, () => {
 				v-if="isSaving"
 				class="absolute inset-0 flex items-center justify-center bg-bg-elevated/50 rounded-lg"
 			>
-				<div class="w-4 h-4 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+				<UiSpinner size="xs" />
 			</div>
 		</div>
 	</div>
