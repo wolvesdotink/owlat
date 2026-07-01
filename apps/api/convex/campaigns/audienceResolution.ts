@@ -111,11 +111,20 @@ type SegmentFilters = Infer<typeof segmentFiltersValidator>;
 const PAGE_SIZE = 500;
 
 /**
- * Ceiling for `countRecipients`. The wizard readout streams until it has
- * either exhausted the audience or examined this many candidates, then stops
- * and returns `capped: true`. This bounds the wizard's reactive query to a
- * fixed number of pages — a multi-million-member audience no longer streams
- * the whole table on every keystroke; the UI renders `25,000+`.
+ * Ceiling for `countRecipients`. The wizard readout streams until it has either
+ * exhausted the audience or accumulated this many CANDIDATES (topic memberships,
+ * or segment MATCHES), then stops and returns `capped: true` (the UI renders
+ * `25,000+`).
+ *
+ * NOTE — this caps candidates, NOT rows examined. For a topic it also bounds the
+ * scan (memberships ARE the population). For a SEGMENT it does not: a narrow
+ * segment over a large contacts table streams every live contact before it ever
+ * reaches the ceiling, so the reactive count is O(live contacts) up to the Convex
+ * per-execution read limit (beyond which it errors). This is still a large
+ * improvement over the previous page-loop, which threw on its 2nd `.paginate()`
+ * once a segment had >500 live contacts. Exact counts for narrow segments over
+ * very large tables ultimately want a denormalized/aggregate counter rather than
+ * a live scan — tracked as a follow-up.
  */
 export const COUNT_CEILING = 25_000;
 
