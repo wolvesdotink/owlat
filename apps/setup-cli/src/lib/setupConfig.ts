@@ -363,7 +363,7 @@ export function applySetupDefaults(
 		// runtime reads MTA_API_URL from the pushed deployment env — so it must be
 		// set for resend/ses installs too, not only EMAIL_PROVIDER=mta. Without it
 		// `selectRuntimeEnvVars` drops the empty key and the backend can send no
-		// mail (instanceMailer throws "MTA_API_URL and MTA_API_KEY are required").
+		// mail (mtaSendProvider fails with AUTH_FAILED — "MTA_API_URL … is not set").
 		// MTA_INTERNAL_URL is the in-cluster address the delivery/scan client
 		// (mail/mtaClient.ts) prefers; both point at the same docker service.
 		// Matches the legacy bash wizard (scripts/setup.sh: http://mta:3100).

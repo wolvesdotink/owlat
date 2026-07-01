@@ -6,7 +6,6 @@ import { getOptional } from './lib/env';
 import { isSendProviderKind } from './lib/sendProviders';
 import { sendProviderDispatch } from './lib/sendProviders/dispatch';
 import { providerKindConfigured } from './lib/sendProviders/capability';
-import { sendViaInstanceMta } from './lib/instanceMailer';
 
 /**
  * Single transport for every system / auth / DOI email (password reset,
@@ -15,10 +14,11 @@ import { sendViaInstanceMta } from './lib/instanceMailer';
  * Routes through the configured delivery provider so a Resend/SES deployment
  * does NOT need the built-in MTA running just to send auth mail — the
  * prerequisite that lets the MTA become an opt-in service (see the `mta`
- * docker profile). The MTA branch is byte-for-byte the previous behavior
- * (`sendViaInstanceMta`, preserving ipPool 'transactional', dkimDomain, and the
- * Auto-Submitted header), so the default self-host is unchanged; `resend`/`ses`
- * are new paths.
+ * docker profile). Every branch — mta, resend, ses — routes through the shared
+ * `sendProviderDispatch`; the MTA path passes ipPool 'transactional' and
+ * `mtaSendProvider` defaults dkimDomain to the from-domain and generates a
+ * random messageId, preserving the previous /send body byte-for-byte, so the
+ * default self-host is unchanged.
  *
  * Fail-closed: if no provider is configured the action throws — a deployment
  * that uses email-based auth must configure a transport. RFC 3834 §5: these are
@@ -47,9 +47,28 @@ export const sendSystemEmail = internalAction({
 		}
 
 		if (provider === 'mta') {
-			// Unchanged MTA path — preserves ipPool 'transactional', dkimDomain,
-			// and the Auto-Submitted header exactly as before.
-			await sendViaInstanceMta(args);
+			// Behavior-preserving MTA path — routes through the shared provider
+			// dispatch just like resend/ses. `mtaSendProvider` defaults dkimDomain
+			// to the from-domain and generates a random messageId; ipPool
+			// 'transactional' is passed explicitly, so the /send body matches the
+			// previous dedicated client byte-for-byte.
+			const dispatched = await sendProviderDispatch(
+				ctx,
+				'mta',
+				{
+					to: args.to,
+					from: args.from,
+					subject: args.subject,
+					html: args.html,
+					headers: { 'Auto-Submitted': 'auto-generated' },
+				},
+				{ ipPool: 'transactional' },
+			);
+			if (!dispatched.result.success) {
+				throw new Error(
+					`System email send failed via mta: ${dispatched.result.errorMessage}`,
+				);
+			}
 			return;
 		}
 

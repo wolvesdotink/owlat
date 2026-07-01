@@ -11,10 +11,10 @@ import Redis from 'ioredis-mock';
  * contain a bare CRLF + a smuggled `Bcc:` header, and asserts the actual RFC
  * 5322 bytes nodemailer emits contain NO injected `Bcc:` header line.
  *
- * This locks the transport-side guarantee in place. The Convex producer now
- * also strips CR/LF before the job is ever built (personalization `header`
- * escape policy + instanceMailer), so the two layers together are
- * defense-in-depth: a CRLF would have to survive BOTH to reach the wire.
+ * This locks the transport-side guarantee in place. The Convex producer also
+ * strips CR/LF before the job is ever built (personalization `header` escape
+ * policy), so the two layers together are defense-in-depth: a CRLF would have
+ * to survive BOTH to reach the wire.
  */
 
 const { mockTransport } = vi.hoisted(() => {
