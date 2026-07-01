@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import type { PostboxAutoAdvanceMode } from '~/utils/postboxAutoAdvance';
 
 useHead({ title: 'Postbox settings — Owlat' });
 
@@ -13,6 +14,18 @@ definePageMeta({
 const { mailboxes, isLoading } = usePostboxMailbox();
 const { isEnabled } = useFeatureFlag();
 const { isAdmin } = usePermissions();
+
+// ── Reading behavior (per-user, spans all mailboxes) ───────────────────
+const {
+	autoAdvance,
+	setAutoAdvance,
+	isSaving: isSavingAutoAdvance,
+} = usePostboxSettings();
+
+function onAutoAdvanceChange(event: Event) {
+	const value = (event.target as HTMLSelectElement).value as PostboxAutoAdvanceMode;
+	void setAutoAdvance(value);
+}
 
 type MailboxRow = (typeof mailboxes.value)[number];
 
@@ -154,6 +167,37 @@ async function handleDelete() {
 				</div>
 			</NuxtLink>
 		</nav>
+
+		<section class="card !p-0 mb-6">
+			<header class="px-5 py-3 border-b border-border-subtle">
+				<h2 class="font-semibold">Reading</h2>
+			</header>
+			<div class="px-5 py-4 flex items-center justify-between gap-4">
+				<div class="min-w-0">
+					<label for="postbox-auto-advance" class="font-medium text-sm block">
+						After archiving, deleting or snoozing
+					</label>
+					<p class="text-xs text-text-tertiary mt-0.5">
+						What the reader shows once the open conversation is triaged away.
+					</p>
+				</div>
+				<select
+					id="postbox-auto-advance"
+					class="input w-64 shrink-0"
+					:value="autoAdvance"
+					:disabled="isSavingAutoAdvance"
+					@change="onAutoAdvanceChange"
+				>
+					<option
+						v-for="option in POSTBOX_AUTO_ADVANCE_OPTIONS"
+						:key="option.value"
+						:value="option.value"
+					>
+						{{ option.label }}
+					</option>
+				</select>
+			</div>
+		</section>
 
 		<section class="card !p-0">
 			<header class="px-5 py-3 border-b border-border-subtle">
