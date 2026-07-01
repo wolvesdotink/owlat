@@ -561,7 +561,7 @@ const isCellSaving = (rowId: string, language: string) => {
 		<!-- Loading State -->
 		<div v-if="isLoading" class="flex-1 flex items-center justify-center">
 			<div class="flex flex-col items-center gap-3">
-				<div class="w-8 h-8 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+				<UiSpinner />
 				<p class="text-text-secondary text-sm">Loading email...</p>
 			</div>
 		</div>
@@ -633,10 +633,7 @@ const isCellSaving = (rowId: string, language: string) => {
 												>
 													<Icon name="lucide:sparkles" class="w-4 h-4" />
 												</button>
-												<div
-													v-else
-													class="w-4 h-4 border-2 border-brand border-t-transparent rounded-full animate-spin"
-												/>
+												<UiSpinner v-else size="xs" />
 												<button
 													class="p-1 rounded hover:bg-error/10 text-text-tertiary hover:text-error transition-colors"
 													title="Remove language"

@@ -262,7 +262,7 @@ const handleCreateVariable = async (variable: { key: string; type?: string }) =>
 		<!-- Loading State -->
 		<div v-if="emailLoading" class="h-full flex items-center justify-center bg-bg-deep">
 			<div class="flex flex-col items-center gap-3">
-				<div class="w-8 h-8 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+				<UiSpinner />
 				<p class="text-text-secondary text-sm">Loading email...</p>
 			</div>
 		</div>

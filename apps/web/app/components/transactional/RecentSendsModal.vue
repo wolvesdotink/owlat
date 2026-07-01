@@ -30,7 +30,7 @@ const statusStyles: Record<string, string> = {
 <template>
 	<UiModal v-model:open="isOpen" :title="`Recent sends${emailName ? ` — ${emailName}` : ''}`">
 		<div v-if="isLoading" class="py-10 flex justify-center">
-			<div class="w-6 h-6 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+			<UiSpinner size="md" />
 		</div>
 
 		<p v-else-if="sends.length === 0" class="py-10 text-center text-sm text-text-tertiary">
