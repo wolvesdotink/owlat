@@ -92,6 +92,22 @@ describe('usePostboxListKeyboard', () => {
 		expect(actions).toEqual(['r', 'a', 'f', 'h', 'l', 'v', 'x', 'U']);
 	});
 
+	it('does not delegate Alt chords (Windows menu accelerators) to onAction', () => {
+		const items = ref([{ _id: 'a' }]);
+		const actions: string[] = [];
+		const { onKeydown } = usePostboxListKeyboard({
+			items,
+			resetKey: ref('inbox'),
+			rowDomId: (m) => `row-${m._id}`,
+			onActivate: () => {},
+			onAction: (k) => actions.push(k),
+		});
+		onKeydown(key('j')); // focus 'a'
+		onKeydown(new KeyboardEvent('keydown', { key: 'e', altKey: true }));
+		onKeydown(new KeyboardEvent('keydown', { key: 'f', altKey: true }));
+		expect(actions).toEqual([]);
+	});
+
 	it('does not delegate Cmd/Ctrl chords to onAction', () => {
 		const items = ref([{ _id: 'a' }]);
 		const actions: string[] = [];
