@@ -38,11 +38,17 @@ fi
 # Run knip in a stable, deterministic reporter mode. --no-exit-code so a
 # non-empty report does not abort the pipe; we do the ratchet comparison
 # ourselves. --include limits the report to dead-code issue types.
+#
+# knip 6 note: the `classMembers` issue type was removed (knip no longer
+# reports unused class members), and `namespaceMembers` was added. The JSON
+# reporter also changed shape — there is no longer a top-level `files` array;
+# an unused whole file is now an issue whose `files` field lists it. The
+# normaliser below handles the v6 shape.
 raw=$("$knip_bin" \
 	--no-progress \
 	--no-config-hints \
 	--no-exit-code \
-	--include files,exports,nsExports,classMembers,types,nsTypes,enumMembers,duplicates \
+	--include files,exports,nsExports,types,nsTypes,enumMembers,namespaceMembers,duplicates \
 	--reporter json 2>/dev/null)
 
 if [ -z "$raw" ]; then
@@ -57,9 +63,20 @@ current=$(printf '%s' "$raw" | node -e '
 	process.stdin.on("end", () => {
 		const data = JSON.parse(input);
 		const lines = new Set();
-		for (const f of data.files || []) lines.add("file:" + f);
+		const nameOf = (e) => (typeof e === "string" ? e : e && e.name);
+		// knip 6 dropped the top-level `data.files` array; an unused whole file
+		// is now reported as an issue whose `files` field lists it (as a string
+		// or a {name} object). Older shapes are handled defensively.
+		for (const f of data.files || []) {
+			const p = nameOf(f);
+			if (p) lines.add("file:" + p);
+		}
 		for (const issue of data.issues || []) {
 			const file = issue.file;
+			for (const f of issue.files || []) {
+				const p = nameOf(f);
+				if (p) lines.add("file:" + p);
+			}
 			const named = [
 				...(issue.exports || []),
 				...(issue.nsExports || []),
@@ -68,14 +85,24 @@ current=$(printf '%s' "$raw" | node -e '
 				...(issue.duplicates || []).flat(),
 			];
 			for (const e of named) {
-				const name = typeof e === "string" ? e : e.name;
+				const name = nameOf(e);
 				if (name) lines.add("export:" + file + ":" + name);
 			}
-			for (const bag of [issue.enumMembers, issue.classMembers]) {
-				for (const owner of Object.keys(bag || {})) {
-					for (const m of bag[owner] || []) {
-						const name = typeof m === "string" ? m : m.name;
-						if (name) lines.add("export:" + file + ":" + owner + "." + name);
+			// enum/namespace members: knip 6 reports these as flat arrays of
+			// {name} (name already carries any owner prefix); knip 5 used an
+			// owner-keyed object ({ Owner: [members] }). Handle both.
+			for (const bag of [issue.enumMembers, issue.namespaceMembers]) {
+				if (Array.isArray(bag)) {
+					for (const m of bag) {
+						const name = nameOf(m);
+						if (name) lines.add("export:" + file + ":" + name);
+					}
+				} else if (bag && typeof bag === "object") {
+					for (const owner of Object.keys(bag)) {
+						for (const m of bag[owner] || []) {
+							const name = nameOf(m);
+							if (name) lines.add("export:" + file + ":" + owner + "." + name);
+						}
 					}
 				}
 			}

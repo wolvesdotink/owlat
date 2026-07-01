@@ -1,5 +1,5 @@
 {
-	"$schema": "https://unpkg.com/knip@5/schema.json",
+	"$schema": "https://unpkg.com/knip@6/schema.json",
 	// Dead-code gate for the owlat monorepo. The goal is a MEANINGFUL but
 	// LOW-NOISE signal: every framework entrypoint (Nuxt app dirs, Convex
 	// function files, generated code, CLI bins) is declared as `entry` or
