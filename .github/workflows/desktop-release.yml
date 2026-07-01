@@ -48,7 +48,7 @@ jobs:
         with:
           egress-policy: audit
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       # Linux system deps required by Tauri's webview + tray.
       - name: Install Linux dependencies
@@ -75,7 +75,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Build, sign & release desktop app
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v1
         env:
           # Updater signing (required for auto-update to verify downloads).
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
