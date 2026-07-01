@@ -92,13 +92,14 @@ cd "$(dirname "$0")/.."
 # `ctx.db.query().filter()`. The client auto-loads pages so filtering spans the
 # whole table rather than the old client-side filter over the newest 50 rows.
 # Raised 165 → 169 for the SPF helpers (PR-68, domains/spf.ts + dnsVerification.ts
-# + providers/mta/index.ts): four JS array `.filter()`s over tiny in-memory
-# sets — countSpfRecords narrows the published TXT values to SPF records,
-# insertIncludeIntoExisting strips empty tokens via `.filter(Boolean)`, the
+# + providers/mta/index.ts): JS array `.filter()`s over tiny in-memory sets —
+# countSpfRecords narrows the published TXT values to SPF records, the
 # return-path SPF generator strips blank pool IPs via `.filter(Boolean)`, and
-# the verifier filters the published TXT values down to the duplicate SPF
-# records to join them for display. None are
-# `ctx.db.query().filter()` — they operate on DNS-TXT arrays / split strings.
+# the verifier filters the published TXT values down to the SPF records to join
+# them for display (and, on a duplicate, to fold a foreign record into ours).
+# None are `ctx.db.query().filter()` — they operate on DNS-TXT arrays / split
+# strings. (The record-merge splice now lives in @owlat/shared/spf, outside the
+# convex tree, so the count sits one below this baseline.)
 # Raised 169 → 170 for inbound attachment malware scanning (PR-39, mail/delivery.ts):
 # scanInboundAttachments narrows the extracted MIME attachment leaves to the
 # non-inline, non-empty parts worth scanning — a JS array `.filter()` over the

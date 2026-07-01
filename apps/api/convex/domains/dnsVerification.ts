@@ -23,7 +23,7 @@ import dns from 'node:dns/promises';
 import { logError } from '../lib/runtimeLog';
 import { isSendingDomainProviderKind, providerFor } from './providers';
 import type { ProviderCheckResult } from './providers';
-import { detectMultipleSpf } from './spf';
+import { detectMultipleSpf, isSpfRecord, mergeSpfRecords } from './spf';
 import { throwNotFound, throwInvalidState, throwInternal } from '../_utils/errors';
 import { txtRecordMatches } from './dnsMatch';
 
@@ -91,14 +91,22 @@ async function verifyTxtRecord(hostname: string, expectedValue: string): Promise
 		// failure even if one of them matches the expected value, since the
 		// duplicate breaks SPF evaluation entirely.
 		if (expectedValue.startsWith('v=spf1') && detectMultipleSpf(txtValues)) {
+			// When a foreign SPF record is present (a domain that already sends
+			// through another provider), fold our mechanisms into it and offer the
+			// concrete single record the operator should publish instead.
+			const spfRecords = txtValues.filter((value) => isSpfRecord(value));
+			const foreign = spfRecords.find((value) => value.trim() !== expectedValue.trim());
+			const mergeHint = foreign
+				? ` Merge them into a single record: "${mergeSpfRecords(foreign, expectedValue)}".`
+				: '';
 			return {
 				verified: false,
 				lastChecked: now,
 				error:
 					'Multiple v=spf1 records found at this hostname (duplicate SPF). ' +
 					'Only one SPF record is allowed — merge them into a single record ' +
-					'(RFC 7208 §3.2 PermError).',
-				foundValue: txtValues.filter((value) => value.startsWith('v=spf1')).join(' | '),
+					`(RFC 7208 §3.2 PermError).${mergeHint}`,
+				foundValue: spfRecords.join(' | '),
 			};
 		}
 
