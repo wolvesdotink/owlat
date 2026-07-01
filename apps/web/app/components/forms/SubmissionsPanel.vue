@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { formatDateTime } from '~/utils/formatters';
 
 // Renders a form's recent submission records. Its own query so it only runs
 // when the parent form is expanded (the parent can't call useConvexQuery in a
@@ -11,10 +12,6 @@ const { data: submissions, isLoading } = useConvexQuery(
 	api.forms.endpoints.getSubmissions,
 	() => ({ formEndpointId: props.formEndpointId, limit: 50 }),
 );
-
-function formatWhen(ts: number): string {
-	return new Date(ts).toLocaleString();
-}
 
 function statusClass(status: string): string {
 	switch (status) {
@@ -48,7 +45,7 @@ function statusClass(status: string): string {
 					<span :class="['px-2 py-0.5 rounded-full text-xs font-medium', statusClass(s.status)]">
 						{{ s.status }}
 					</span>
-					<span class="text-text-tertiary text-xs">{{ formatWhen(s._creationTime) }}</span>
+					<span class="text-text-tertiary text-xs">{{ formatDateTime(s._creationTime) }}</span>
 				</div>
 				<dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
 					<template v-for="(value, key) in s.data" :key="key">
