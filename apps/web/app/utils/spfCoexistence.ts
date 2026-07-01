@@ -7,25 +7,20 @@
  * Workspace), the SPF value we ask the operator to publish must be *merged*
  * into the existing record rather than added alongside it.
  *
- * This module resolves the domain's live TXT records over DNS-over-HTTPS
- * (Cloudflare — Convex/browser can't use the Node `dns` module) and, when a
- * foreign SPF record is found, computes the single merged record to suggest.
- * The merge itself is the shared, unit-tested `@owlat/shared/spf` helper so the
- * FE hint and the backend verifier fold mechanisms identically.
+ * This module resolves the domain's live TXT records over DNS-over-HTTPS (the
+ * shared `dohQuery` helper — Convex/browser can't use the Node `dns` module)
+ * and, when a foreign SPF record is found, computes the single merged record to
+ * suggest. The merge itself is the shared, unit-tested `@owlat/shared/spf`
+ * helper so the FE hint and the backend verifier fold mechanisms identically.
  *
  * Fail-soft by design: any network / parse error resolves to `null` (publish
  * ours as-is) — a DoH hiccup must never block the DNS panel.
  */
 import { isSpfRecord, mergeSpfRecords } from '@owlat/shared/spf';
+import { dohQuery, DNS_TYPE_TXT } from './doh';
 
 /** The existing foreign SPF record and the single merged record to publish. */
 export type SpfCoexistenceSuggestion = { existing: string; merged: string };
-
-/** DoH JSON answer record type for TXT (RFC 1035). */
-const DNS_TYPE_TXT = 16;
-
-type DohAnswer = { type: number; data: string };
-type DohResponse = { Answer?: DohAnswer[] };
 
 /**
  * Unwrap a DoH TXT `data` value. Cloudflare returns the TXT payload as one or
@@ -46,17 +41,11 @@ function unwrapTxtData(data: string): string {
  * empty result as "nothing to merge".
  */
 export async function fetchSpfRecords(domain: string): Promise<string[]> {
-	try {
-		const url = `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(domain)}&type=TXT`;
-		const response = await fetch(url, { headers: { Accept: 'application/dns-json' } });
-		if (!response.ok) return [];
-		const body = (await response.json()) as DohResponse;
-		return (body.Answer ?? [])
-			.filter((answer) => answer.type === DNS_TYPE_TXT)
-			.map((answer) => unwrapTxtData(answer.data));
-	} catch {
-		return [];
-	}
+	const body = await dohQuery(domain, 'TXT');
+	if (!body) return [];
+	return (body.Answer ?? [])
+		.filter((answer) => answer.type === DNS_TYPE_TXT)
+		.map((answer) => unwrapTxtData(answer.data));
 }
 
 /**
