@@ -6,15 +6,15 @@
  */
 
 import { v } from 'convex/values';
-import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import {
 	getMutationContext,
 	getUserIdFromSession,
 	requireOrgPermission,
 } from '../lib/sessionOrganization';
-import { assertFeatureEnabled } from '../lib/featureFlags';
 import { throwAlreadyExists, throwInvalidInput } from '../_utils/errors';
 import {
+	chatQuery,
+	chatMutation,
 	CHANNEL_DESC_MAX,
 	assertCanAdministerRoom,
 	assertChatTargetsAreOrgMembers,
@@ -27,7 +27,7 @@ import {
  * Create a channel. Public channels are visible to all org members; private
  * channels are invite-only. Creator is added as the channel's first admin.
  */
-export const createChannel = authedMutation({
+export const createChannel = chatMutation({
 	args: {
 		name: v.string(),
 		description: v.optional(v.string()),
@@ -35,7 +35,6 @@ export const createChannel = authedMutation({
 		initialMemberIds: v.optional(v.array(v.string())),
 	},
 	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'chat');
 		const { userId } = await requireOrgPermission(ctx, 'chat:participate', 'Chat is not available');
 
 		const name = requireChannelName(args.name);
@@ -102,7 +101,7 @@ export const createChannel = authedMutation({
  * Rename / re-describe a channel. Per-room admin required (or org-level
  * chat:manage escape hatch).
  */
-export const updateChannel = authedMutation({
+export const updateChannel = chatMutation({
 	args: {
 		roomId: v.id('chatRooms'),
 		name: v.optional(v.string()),
@@ -110,7 +109,6 @@ export const updateChannel = authedMutation({
 		visibility: v.optional(v.union(v.literal('public'), v.literal('private'))),
 	},
 	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'chat');
 		const { userId, role } = await getMutationContext(ctx);
 		const room = await getRoomOrThrow(ctx, args.roomId);
 		if (room.kind !== 'channel') {
@@ -162,10 +160,9 @@ export const updateChannel = authedMutation({
 /**
  * Archive a channel. Soft-archive via `archivedAt`. Per-room admin required.
  */
-export const archiveChannel = authedMutation({
+export const archiveChannel = chatMutation({
 	args: { roomId: v.id('chatRooms') },
 	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'chat');
 		const { userId, role } = await getMutationContext(ctx);
 		const room = await getRoomOrThrow(ctx, args.roomId);
 		if (room.kind !== 'channel') {
@@ -179,10 +176,9 @@ export const archiveChannel = authedMutation({
 /**
  * Unarchive a channel (reverse of archiveChannel).
  */
-export const unarchiveChannel = authedMutation({
+export const unarchiveChannel = chatMutation({
 	args: { roomId: v.id('chatRooms') },
 	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'chat');
 		const { userId, role } = await getMutationContext(ctx);
 		const room = await getRoomOrThrow(ctx, args.roomId);
 		if (room.kind !== 'channel') {
@@ -200,10 +196,9 @@ export const unarchiveChannel = authedMutation({
  *
  * Archived channels are excluded unless `includeArchived` is true.
  */
-export const listMyChannels = authedQuery({
+export const listMyChannels = chatQuery({
 	args: { includeArchived: v.optional(v.boolean()) },
 	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'chat');
 		const userId = await getUserIdFromSession(ctx);
 
 		// Memberships first — used to filter private channels.
@@ -239,10 +234,9 @@ export const listMyChannels = authedQuery({
  * List PUBLIC channels in the org for a "browse channels" picker (lets the
  * user join channels they're not yet in). Includes membership info.
  */
-export const listPublicChannels = authedQuery({
+export const listPublicChannels = chatQuery({
 	args: { limit: v.optional(v.number()) },
 	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'chat');
 		const userId = await getUserIdFromSession(ctx);
 		const limit = Math.max(1, Math.min(args.limit ?? 100, 500));
 
@@ -273,10 +267,9 @@ export const listPublicChannels = authedQuery({
  * Get a single room with metadata for the caller (membership flag included).
  * Used by the [roomId].vue page to render the header.
  */
-export const getRoom = authedQuery({
+export const getRoom = chatQuery({
 	args: { roomId: v.id('chatRooms') },
 	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'chat');
 		const userId = await getUserIdFromSession(ctx);
 		const room = await ctx.db.get(args.roomId);
 		if (!room) return null;

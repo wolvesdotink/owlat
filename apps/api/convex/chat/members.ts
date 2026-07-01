@@ -3,15 +3,15 @@
  */
 
 import { v } from 'convex/values';
-import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import {
 	getMutationContext,
 	getUserIdFromSession,
 	requireOrgPermission,
 } from '../lib/sessionOrganization';
-import { assertFeatureEnabled } from '../lib/featureFlags';
 import { throwForbidden, throwInvalidInput, throwInvalidState } from '../_utils/errors';
 import {
+	chatQuery,
+	chatMutation,
 	assertCanAdministerRoom,
 	assertCanReadRoom,
 	assertChatTargetsAreOrgMembers,
@@ -24,10 +24,9 @@ import {
  * Join a public channel. Idempotent: a no-op if the caller is already a
  * member.
  */
-export const joinChannel = authedMutation({
+export const joinChannel = chatMutation({
 	args: { roomId: v.id('chatRooms') },
 	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'chat');
 		const { userId } = await requireOrgPermission(ctx, 'chat:participate', 'Chat is not available');
 
 		const room = await getRoomOrThrow(ctx, args.roomId);
@@ -60,10 +59,9 @@ export const joinChannel = authedMutation({
  * would silently delete history for the other side; archive instead.
  */
 // authz: self — a member removes only their own room membership.
-export const leaveRoom = authedMutation({
+export const leaveRoom = chatMutation({
 	args: { roomId: v.id('chatRooms') },
 	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'chat');
 		const { userId } = await getMutationContext(ctx);
 		const room = await getRoomOrThrow(ctx, args.roomId);
 		if (room.kind === 'dm') {
@@ -96,14 +94,13 @@ export const leaveRoom = authedMutation({
  * Add another org user to a channel. Per-room admin (or org chat:manage)
  * required. Idempotent — no-op if already a member.
  */
-export const addMember = authedMutation({
+export const addMember = chatMutation({
 	args: {
 		roomId: v.id('chatRooms'),
 		memberId: v.string(),
 		role: v.optional(v.union(v.literal('admin'), v.literal('member'))),
 	},
 	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'chat');
 		const { userId, role } = await getMutationContext(ctx);
 		const room = await getRoomOrThrow(ctx, args.roomId);
 		if (room.kind === 'dm') {
@@ -131,10 +128,9 @@ export const addMember = authedMutation({
 /**
  * Remove a user from a channel. Per-room admin (or chat:manage) required.
  */
-export const removeMember = authedMutation({
+export const removeMember = chatMutation({
 	args: { roomId: v.id('chatRooms'), memberId: v.string() },
 	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'chat');
 		const { userId, role } = await getMutationContext(ctx);
 		const room = await getRoomOrThrow(ctx, args.roomId);
 		if (room.kind === 'dm') {
@@ -167,14 +163,13 @@ export const removeMember = authedMutation({
  * Change a member's per-room role (admin <-> member). Per-room admin (or
  * chat:manage) required.
  */
-export const setMemberRole = authedMutation({
+export const setMemberRole = chatMutation({
 	args: {
 		roomId: v.id('chatRooms'),
 		memberId: v.string(),
 		role: v.union(v.literal('admin'), v.literal('member')),
 	},
 	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'chat');
 		const { userId, role } = await getMutationContext(ctx);
 		const room = await getRoomOrThrow(ctx, args.roomId);
 		if (room.kind === 'dm') {
@@ -210,10 +205,9 @@ export const setMemberRole = authedMutation({
  *
  * Joins user profiles by authUserId so the UI can render names/avatars.
  */
-export const listRoomMembers = authedQuery({
+export const listRoomMembers = chatQuery({
 	args: { roomId: v.id('chatRooms') },
 	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'chat');
 		const userId = await getUserIdFromSession(ctx);
 		const room = await getRoomOrThrow(ctx, args.roomId);
 		await assertCanReadRoom(ctx, room, userId);
