@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import { isValidEmail } from '~/utils/validation';
+import { buildDeliveryEnvSnippet } from '~/utils/deliveryEnvSnippet';
 
 useHead({ title: 'Delivery — Owlat' });
 
@@ -21,6 +22,25 @@ const {
 } = useOrganizationQuery(api.delivery.status.getStatus);
 
 const canSend = computed(() => status.value?.canSend === true);
+
+// Names of the required env vars the active provider is MISSING. Names only —
+// `getStatus` never returns credential values, so nothing secret reaches here.
+const missingEnvNames = computed(() =>
+	(status.value?.requiredEnv ?? []).filter((entry) => !entry.isPresent).map((entry) => entry.name),
+);
+
+// Paste-ready `.env` skeleton for the missing vars (one `NAME=` line, empty
+// values). Empty string when nothing is missing → the snippet block hides.
+const envSnippet = computed(() => buildDeliveryEnvSnippet(missingEnvNames.value));
+
+// CLI command to set the first missing var, as a concrete example the operator
+// can adapt. Falls back to the generic form when the list is empty.
+const envSetCommand = computed(() => {
+	const first = missingEnvNames.value[0];
+	return first ? `owlat-setup env ${first} <value>` : 'owlat-setup env <KEY> <value>';
+});
+
+const { copy, isCopied } = useCopyToClipboard();
 
 const lastTestLabel = computed(() => {
 	const at = status.value?.lastTestSucceededAt;
@@ -123,6 +143,68 @@ async function handleSendTest() {
 								credentials in your environment.
 							</template>
 						</p>
+
+						<!-- Actionable remedy: paste-ready .env skeleton + CLI command for the
+						     MISSING vars. Names only — no secret value is ever rendered. -->
+						<div v-if="!canSend && envSnippet" class="mt-4 space-y-4">
+							<!-- .env skeleton -->
+							<div>
+								<div class="flex items-center justify-between mb-2">
+									<p class="text-xs font-medium text-text-primary">
+										Add to your <code class="text-text-primary">.env</code>, then restart the instance
+									</p>
+									<button
+										type="button"
+										class="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-text-secondary transition-colors hover:bg-bg-surface hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+										:title="isCopied('env-snippet') ? 'Copied' : 'Copy .env snippet'"
+										@click="copy(envSnippet, 'env-snippet')"
+									>
+										<Icon
+											:name="isCopied('env-snippet') ? 'lucide:check' : 'lucide:copy'"
+											class="w-3.5 h-3.5"
+											:class="isCopied('env-snippet') ? 'text-success' : ''"
+										/>
+										{{ isCopied('env-snippet') ? 'Copied' : 'Copy' }}
+									</button>
+								</div>
+								<pre class="select-all overflow-x-auto rounded-lg bg-bg-surface px-3 py-2 font-mono text-xs text-text-primary">{{ envSnippet }}</pre>
+								<p class="text-xs text-text-tertiary mt-1.5">
+									Values are left blank — fill in your real credentials. They are never displayed here.
+								</p>
+							</div>
+
+							<!-- CLI command -->
+							<div>
+								<div class="flex items-center justify-between mb-2">
+									<p class="text-xs font-medium text-text-primary">Or set each one from the CLI</p>
+									<button
+										type="button"
+										class="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-text-secondary transition-colors hover:bg-bg-surface hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+										:title="isCopied('env-cmd') ? 'Copied' : 'Copy command'"
+										@click="copy(envSetCommand, 'env-cmd')"
+									>
+										<Icon
+											:name="isCopied('env-cmd') ? 'lucide:check' : 'lucide:copy'"
+											class="w-3.5 h-3.5"
+											:class="isCopied('env-cmd') ? 'text-success' : ''"
+										/>
+										{{ isCopied('env-cmd') ? 'Copied' : 'Copy' }}
+									</button>
+								</div>
+								<pre class="select-all overflow-x-auto rounded-lg bg-bg-surface px-3 py-2 font-mono text-xs text-text-primary">{{ envSetCommand }}</pre>
+								<p class="text-xs text-text-tertiary mt-1.5">
+									Run <code class="text-text-primary">owlat-setup env --show</code> to list every variable
+									your current configuration needs. See the
+									<a
+										href="https://docs.owlat.app/developer/environment-variables"
+										target="_blank"
+										rel="noopener"
+										class="text-brand hover:text-brand-hover underline"
+										>environment variables guide</a
+									>.
+								</p>
+							</div>
+						</div>
 					</div>
 				</div>
 			</UiCard>
