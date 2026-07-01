@@ -1,39 +1,17 @@
 import { v } from 'convex/values';
 import { authedMutation, authedQuery } from '../lib/authedFunctions';
 import { requireOrgPermission } from '../lib/sessionOrganization';
-import {
-	throwAlreadyExists,
-	throwInvalidInput,
-	throwNotFound,
-} from '../_utils/errors';
+import { throwNotFound } from '../_utils/errors';
 import { assertEditableForPublishableChange } from './lifecycle';
+import { type TranslatableBlockContent } from '../emailTemplates/translationMerge';
 import {
-	mergeTranslationIntoItem,
-	type TranslatableBlockContent,
-} from '../emailTemplates/translationMerge';
-import { extractTranslatableContent } from '../emailTemplates/i18n';
-
-// Translation structure: subject and per-block translatable text
-interface Translation {
-	subject: string;
-	blocks: Record<string, TranslatableBlockContent>;
-}
-
-
-
-// Helper to merge translation blocks with main content blocks
-function mergeTranslationWithContent(
-	contentJson: string,
-	translationBlocks: Record<string, TranslatableBlockContent>
-): string {
-	try {
-		const blocks = JSON.parse(contentJson) as Array<{ id: string; type: string; content: Record<string, unknown> }>;
-		const mergedBlocks = blocks.map((block) => mergeTranslationIntoItem(block, translationBlocks));
-		return JSON.stringify(mergedBlocks);
-	} catch {
-		return contentJson;
-	}
-}
+	addLanguage,
+	parseTranslations,
+	removeLanguage,
+	resolveForLanguage,
+	serializeTranslations,
+	TRANSACTIONAL_TRANSLATABLE_FIELDS,
+} from '../lib/emailTranslations';
 
 /**
  * Get transactional email content for a specific language
@@ -50,43 +28,9 @@ export const getForLanguage = authedQuery({
 			return null;
 		}
 
-		const defaultLanguage = email.defaultLanguage ?? 'en';
-		const requestedLanguage = args.language ?? defaultLanguage;
-
-		// If requesting default language or no specific language, return main content
-		if (requestedLanguage === defaultLanguage) {
-			return {
-				...email,
-				resolvedLanguage: defaultLanguage,
-				subject: email.subject,
-				content: email.content,
-			};
-		}
-
-		// Check if translation exists for requested language
-		const translations: Record<string, Translation> = email.translations
-			? JSON.parse(email.translations)
-			: {};
-
-		if (translations[requestedLanguage]) {
-			const translation = translations[requestedLanguage];
-			// Merge translation text with main content styling
-			const mergedContent = mergeTranslationWithContent(email.content, translation.blocks);
-
-			return {
-				...email,
-				resolvedLanguage: requestedLanguage,
-				subject: translation.subject,
-				content: mergedContent,
-			};
-		}
-
-		// Fall back to default language
 		return {
 			...email,
-			resolvedLanguage: defaultLanguage,
-			subject: email.subject,
-			content: email.content,
+			...resolveForLanguage(email, args.language, TRANSACTIONAL_TRANSLATABLE_FIELDS),
 		};
 	},
 });
@@ -110,39 +54,9 @@ export const addTranslation = authedMutation({
 
 		assertEditableForPublishableChange(email, args.forceWhilePublished);
 
-		// Parse existing translations
-		const translations: Record<string, Translation> = email.translations
-			? JSON.parse(email.translations)
-			: {};
+		const patch = addLanguage(email, args.language, TRANSACTIONAL_TRANSLATABLE_FIELDS);
 
-		// Check if translation already exists
-		if (translations[args.language]) {
-			throwAlreadyExists(`Translation for language "${args.language}" already exists`);
-		}
-
-		// Get supported languages array
-		const defaultLanguage = email.defaultLanguage ?? 'en';
-		const supportedLanguages = email.supportedLanguages ?? [defaultLanguage];
-
-		// Check if the language is already supported
-		if (supportedLanguages.includes(args.language)) {
-			throwAlreadyExists(`Language "${args.language}" is already supported`);
-		}
-
-		// Extract translatable content from blocks
-		const blocks = extractTranslatableContent(email.content);
-
-		// Create new translation with copy of default translatable content
-		translations[args.language] = {
-			subject: email.subject,
-			blocks,
-		};
-
-		await ctx.db.patch(args.id, {
-			translations: JSON.stringify(translations),
-			supportedLanguages: [...supportedLanguages, args.language],
-			updatedAt: Date.now(),
-		});
+		await ctx.db.patch(args.id, { ...patch, updatedAt: Date.now() });
 
 		return args.id;
 	},
@@ -187,9 +101,7 @@ export const updateTranslation = authedMutation({
 		}
 
 		// For non-default languages, update the translations object
-		const translations: Record<string, Translation> = email.translations
-			? JSON.parse(email.translations)
-			: {};
+		const translations = parseTranslations(email.translations);
 
 		const translation = translations[args.language];
 		if (!translation) {
@@ -206,7 +118,7 @@ export const updateTranslation = authedMutation({
 		translations[args.language] = translation;
 
 		await ctx.db.patch(args.id, {
-			translations: JSON.stringify(translations),
+			translations: serializeTranslations(translations),
 			updatedAt: Date.now(),
 		});
 
@@ -232,37 +144,9 @@ export const removeTranslation = authedMutation({
 
 		assertEditableForPublishableChange(email, args.forceWhilePublished);
 
-		const defaultLanguage = email.defaultLanguage ?? 'en';
+		const patch = removeLanguage(email, args.language);
 
-		// Cannot remove the default language
-		if (args.language === defaultLanguage) {
-			throwInvalidInput('Cannot remove the default language translation');
-		}
-
-		// Parse existing translations
-		const translations: Record<string, Translation> = email.translations
-			? JSON.parse(email.translations)
-			: {};
-
-		// Check if translation exists
-		if (!translations[args.language]) {
-			throwNotFound('Translation');
-		}
-
-		// Remove the translation by creating a new object without the key
-		// eslint-disable-next-line @typescript-eslint/no-unused-vars
-		const { [args.language]: _, ...remainingTranslations } = translations;
-
-		// Update supported languages
-		const supportedLanguages = (email.supportedLanguages ?? [defaultLanguage]).filter(
-			(lang) => lang !== args.language
-		);
-
-		await ctx.db.patch(args.id, {
-			translations: JSON.stringify(remainingTranslations),
-			supportedLanguages,
-			updatedAt: Date.now(),
-		});
+		await ctx.db.patch(args.id, { ...patch, updatedAt: Date.now() });
 
 		return args.id;
 	},

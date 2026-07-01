@@ -1,102 +1,20 @@
 import { v } from 'convex/values';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { requireOrgPermission } from '../lib/sessionOrganization';
-import { throwNotFound, throwAlreadyExists, throwInvalidState } from '../_utils/errors';
+import { throwNotFound } from '../_utils/errors';
 import { assertEditableForPublishableChange } from './lifecycle';
-import { mergeTranslationIntoItem, type TranslatableBlockContent } from './translationMerge';
-
-// Re-exported for backward compatibility with this module's prior public surface.
-export { mergeTranslationIntoItem };
-export type { TranslatableBlockContent };
-
-export interface Block {
-	id: string;
-	type: string;
-	content: {
-		html?: string;
-		text?: string; // Button text in block content
-		alt?: string;
-		columns?: Array<Array<{ id: string; type: string; content: Record<string, unknown> }>>;
-		items?: Array<{ id: string; type: string; content: Record<string, unknown> }>;
-		[key: string]: unknown;
-	};
-}
-
-// Translation structure: subject, previewText, and per-block translatable text
-export interface Translation {
-	subject: string;
-	previewText?: string;
-	blocks: Record<string, TranslatableBlockContent>;
-}
-
-// Helper to merge translation blocks with main content blocks
-// Takes the block structure/styling from main content and applies translated text
-export function mergeTranslationWithContent(
-	contentJson: string,
-	translationBlocks: Record<string, TranslatableBlockContent>
-): string {
-	try {
-		const blocks = JSON.parse(contentJson) as Block[];
-		const mergedBlocks = blocks.map((block) => mergeTranslationIntoItem(block, translationBlocks));
-		return JSON.stringify(mergedBlocks);
-	} catch {
-		return contentJson;
-	}
-}
-
-// Recursive helper to extract translatable content from any block-like item
-export function extractFromItem(
-	item: { id: string; type: string; content: Record<string, unknown> },
-	translatableContent: Record<string, TranslatableBlockContent>
-): void {
-	const content: TranslatableBlockContent = {};
-
-	if (item.type === 'text' && item.content['html']) {
-		content.html = item.content['html'] as string;
-	} else if (item.type === 'button' && item.content['text']) {
-		content.buttonText = item.content['text'] as string;
-	} else if (item.type === 'image' && item.content['alt']) {
-		content.alt = item.content['alt'] as string;
-	} else if (item.type === 'columns' && Array.isArray(item.content['columns'])) {
-		// Recursively extract from column items
-		for (const column of item.content['columns'] as Array<
-			Array<{ id: string; type: string; content: Record<string, unknown> }>
-		>) {
-			for (const columnItem of column) {
-				extractFromItem(columnItem, translatableContent);
-			}
-		}
-	} else if (item.type === 'container' && Array.isArray(item.content['items'])) {
-		// Recursively extract from container items
-		for (const containerItem of item.content['items'] as Array<{
-			id: string;
-			type: string;
-			content: Record<string, unknown>;
-		}>) {
-			extractFromItem(containerItem, translatableContent);
-		}
-	}
-
-	// Only add if there's translatable content
-	if (Object.keys(content).length > 0) {
-		translatableContent[item.id] = content;
-	}
-}
-
-export function extractTranslatableContent(blocksJson: string): Record<string, TranslatableBlockContent> {
-	try {
-		const blocks = JSON.parse(blocksJson) as Block[];
-		const translatableContent: Record<string, TranslatableBlockContent> = {};
-
-		for (const block of blocks) {
-			extractFromItem(block, translatableContent);
-		}
-
-		return translatableContent;
-	} catch {
-		return {};
-	}
-}
+import { type TranslatableBlockContent } from './translationMerge';
+import {
+	addLanguage,
+	extractTranslatableContent,
+	mergeTranslationWithContent,
+	parseTranslations,
+	removeLanguage,
+	resolveForLanguage,
+	serializeTranslations,
+	TEMPLATE_TRANSLATABLE_FIELDS,
+	type Translation,
+} from '../lib/emailTranslations';
 
 // Query to get email template content for a specific language
 // Returns the content for the requested language, falling back to default language if not available
@@ -112,46 +30,9 @@ export const getForLanguage = authedQuery({
 			return null;
 		}
 
-		const defaultLanguage = template.defaultLanguage ?? 'en';
-		const requestedLanguage = args.language ?? defaultLanguage;
-
-		// If requesting default language or no specific language, return main content
-		if (requestedLanguage === defaultLanguage) {
-			return {
-				...template,
-				resolvedLanguage: defaultLanguage,
-				subject: template.subject,
-				previewText: template.previewText,
-				content: template.content,
-			};
-		}
-
-		// Check if translation exists for requested language
-		const translations: Record<string, Translation> = template.translations
-			? JSON.parse(template.translations)
-			: {};
-
-		if (translations[requestedLanguage]) {
-			const translation = translations[requestedLanguage];
-			// Merge translation text with main content styling
-			const mergedContent = mergeTranslationWithContent(template.content, translation.blocks);
-
-			return {
-				...template,
-				resolvedLanguage: requestedLanguage,
-				subject: translation.subject,
-				previewText: translation.previewText,
-				content: mergedContent,
-			};
-		}
-
-		// Fall back to default language
 		return {
 			...template,
-			resolvedLanguage: defaultLanguage,
-			subject: template.subject,
-			previewText: template.previewText,
-			content: template.content,
+			...resolveForLanguage(template, args.language, TEMPLATE_TRANSLATABLE_FIELDS),
 		};
 	},
 });
@@ -173,39 +54,9 @@ export const addTranslation = authedMutation({
 
 		assertEditableForPublishableChange(template, args.forceWhilePublished);
 
-		// Parse existing translations
-		const translations: Record<string, Translation> = template.translations
-			? JSON.parse(template.translations)
-			: {};
+		const patch = addLanguage(template, args.language, TEMPLATE_TRANSLATABLE_FIELDS);
 
-		// Check if translation already exists
-		if (translations[args.language]) {
-			throwAlreadyExists(`Translation for language "${args.language}" already exists`);
-		}
-
-		// Get supported languages array
-		const supportedLanguages = template.supportedLanguages ?? [template.defaultLanguage ?? 'en'];
-
-		// Check if the language is already supported
-		if (supportedLanguages.includes(args.language)) {
-			throwAlreadyExists(`Language "${args.language}" is already supported`);
-		}
-
-		// Extract translatable content from blocks
-		const blocks = extractTranslatableContent(template.content);
-
-		// Create new translation with copy of default translatable content
-		translations[args.language] = {
-			subject: template.subject,
-			previewText: template.previewText,
-			blocks,
-		};
-
-		await ctx.db.patch(args.templateId, {
-			translations: JSON.stringify(translations),
-			supportedLanguages: [...supportedLanguages, args.language],
-			updatedAt: Date.now(),
-		});
+		await ctx.db.patch(args.templateId, { ...patch, updatedAt: Date.now() });
 
 		return args.templateId;
 	},
@@ -255,9 +106,7 @@ export const updateTranslation = authedMutation({
 		}
 
 		// For non-default languages, update the translations object
-		const translations: Record<string, Translation> = template.translations
-			? JSON.parse(template.translations)
-			: {};
+		const translations = parseTranslations(template.translations);
 
 		const translation = translations[args.language];
 		if (!translation) {
@@ -277,7 +126,7 @@ export const updateTranslation = authedMutation({
 		translations[args.language] = translation;
 
 		await ctx.db.patch(args.templateId, {
-			translations: JSON.stringify(translations),
+			translations: serializeTranslations(translations),
 			updatedAt: Date.now(),
 		});
 
@@ -301,37 +150,9 @@ export const removeTranslation = authedMutation({
 
 		assertEditableForPublishableChange(template, args.forceWhilePublished);
 
-		const defaultLanguage = template.defaultLanguage ?? 'en';
+		const patch = removeLanguage(template, args.language);
 
-		// Cannot remove the default language
-		if (args.language === defaultLanguage) {
-			throwInvalidState('Cannot remove the default language translation');
-		}
-
-		// Parse existing translations
-		const translations: Record<string, Translation> = template.translations
-			? JSON.parse(template.translations)
-			: {};
-
-		// Check if translation exists
-		if (!translations[args.language]) {
-			throwNotFound('Translation');
-		}
-
-		// Remove the translation by creating a new object without the key
-		// eslint-disable-next-line @typescript-eslint/no-unused-vars
-		const { [args.language]: _, ...remainingTranslations } = translations;
-
-		// Update supported languages
-		const supportedLanguages = (template.supportedLanguages ?? [defaultLanguage]).filter(
-			(lang) => lang !== args.language
-		);
-
-		await ctx.db.patch(args.templateId, {
-			translations: JSON.stringify(remainingTranslations),
-			supportedLanguages,
-			updatedAt: Date.now(),
-		});
+		await ctx.db.patch(args.templateId, { ...patch, updatedAt: Date.now() });
 
 		return args.templateId;
 	},
@@ -365,8 +186,7 @@ export const setDefaultLanguage = authedMutation({
 		// full content document. The previous implementation read a nonexistent
 		// `.content` field off the translation (always undefined) and would have
 		// wiped the template body on the swap.
-		const translations: Record<string, Translation> =
-			template.translations ? JSON.parse(template.translations) : {};
+		const translations = parseTranslations(template.translations);
 
 		// Get the new default's translation overlay
 		const newDefault = translations[args.language];
@@ -404,7 +224,7 @@ export const setDefaultLanguage = authedMutation({
 			previewText: newDefault.previewText,
 			content: newDefaultContent,
 			defaultLanguage: args.language,
-			translations: JSON.stringify(updatedTranslations),
+			translations: serializeTranslations(updatedTranslations),
 			updatedAt: Date.now(),
 		});
 
