@@ -409,10 +409,7 @@ export const updateSchema = authedMutation({
 		await assertFeatureEnabled(ctx, 'transactional');
 		const { role } = await getMutationContext(ctx);
 		requirePermission(hasPermission(role, 'templates:manage'), 'Only owners and admins can update transactional email schema');
-		const email = await ctx.db.get(args.id);
-		if (!email) {
-			throwNotFound('Transactional email');
-		}
+		const email = await getOrThrow(ctx, args.id, 'Transactional email');
 
 		assertEditableForPublishableChange(email, args.forceWhilePublished);
 
