@@ -30,6 +30,22 @@ vi.mock('../../lib/sessionOrganization', async () => {
 			userId: 'test-user',
 			role: mockRole,
 		})),
+		// settings.update now gates via requireOrgPermission; run the real
+		// role→permission map against the mocked role so the editor rejection
+		// and owner/admin acceptance gates are exercised end-to-end.
+		requireOrgPermission: vi.fn().mockImplementation(
+			async (_ctx: unknown, permission: string, message?: string) => {
+				const mod: typeof import('../../lib/sessionOrganization') = actual;
+				mod.requirePermission(
+					mod.hasPermission(
+						mockRole as Parameters<typeof mod.hasPermission>[0],
+						permission as Parameters<typeof mod.hasPermission>[1],
+					),
+					message,
+				);
+				return { userId: 'test-user', role: mockRole };
+			},
+		),
 	};
 });
 
