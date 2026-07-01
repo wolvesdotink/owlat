@@ -104,5 +104,6 @@ function removeChip(key: string) {
 		</div>
 		</PostboxMailboxGuard>
 		<PostboxComposerStack />
+		<PostboxShortcutHelp />
 	</div>
 </template>

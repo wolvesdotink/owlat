@@ -331,5 +331,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 			@update:open="labelManagerOpen = $event"
 		/>
 		<PostboxCommandPalette :mailbox-id="mailboxId" />
+		<PostboxShortcutHelp />
 	</div>
 </template>

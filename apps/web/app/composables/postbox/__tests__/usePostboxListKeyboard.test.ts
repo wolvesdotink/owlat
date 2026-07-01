@@ -75,4 +75,52 @@ describe('usePostboxListKeyboard', () => {
 		onKeydown(key('e'));
 		expect(actions).toEqual([['e', 'a']]);
 	});
+
+	it('delegates the extended vocabulary keys, including Shift+U as "U"', () => {
+		const items = ref([{ _id: 'a' }]);
+		const actions: string[] = [];
+		const { onKeydown } = usePostboxListKeyboard({
+			items,
+			resetKey: ref('inbox'),
+			rowDomId: (m) => `row-${m._id}`,
+			onActivate: () => {},
+			onAction: (k) => actions.push(k),
+		});
+		onKeydown(key('j')); // focus 'a'
+		for (const k of ['r', 'a', 'f', 'h', 'l', 'v', 'x']) onKeydown(key(k));
+		onKeydown(new KeyboardEvent('keydown', { key: 'U', shiftKey: true }));
+		expect(actions).toEqual(['r', 'a', 'f', 'h', 'l', 'v', 'x', 'U']);
+	});
+
+	it('does not delegate Alt chords (Windows menu accelerators) to onAction', () => {
+		const items = ref([{ _id: 'a' }]);
+		const actions: string[] = [];
+		const { onKeydown } = usePostboxListKeyboard({
+			items,
+			resetKey: ref('inbox'),
+			rowDomId: (m) => `row-${m._id}`,
+			onActivate: () => {},
+			onAction: (k) => actions.push(k),
+		});
+		onKeydown(key('j')); // focus 'a'
+		onKeydown(new KeyboardEvent('keydown', { key: 'e', altKey: true }));
+		onKeydown(new KeyboardEvent('keydown', { key: 'f', altKey: true }));
+		expect(actions).toEqual([]);
+	});
+
+	it('does not delegate Cmd/Ctrl chords to onAction', () => {
+		const items = ref([{ _id: 'a' }]);
+		const actions: string[] = [];
+		const { onKeydown } = usePostboxListKeyboard({
+			items,
+			resetKey: ref('inbox'),
+			rowDomId: (m) => `row-${m._id}`,
+			onActivate: () => {},
+			onAction: (k) => actions.push(k),
+		});
+		onKeydown(key('j')); // focus 'a'
+		onKeydown(new KeyboardEvent('keydown', { key: 'r', metaKey: true }));
+		onKeydown(new KeyboardEvent('keydown', { key: 'e', ctrlKey: true }));
+		expect(actions).toEqual([]);
+	});
 });

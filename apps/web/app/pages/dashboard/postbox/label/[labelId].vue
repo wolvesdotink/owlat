@@ -55,5 +55,6 @@ const labelMessages = computed(() =>
 		</div>
 		</PostboxMailboxGuard>
 		<PostboxComposerStack />
+		<PostboxShortcutHelp />
 	</div>
 </template>
