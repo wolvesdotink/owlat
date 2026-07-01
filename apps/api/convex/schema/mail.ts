@@ -3,6 +3,7 @@ import { v } from 'convex/values';
 import {
 	mailMessageAttachmentValidator,
 	mailDraftAttachmentValidator,
+	mailAutoAdvanceValidator,
 	spamVerdictValidator,
 } from '../lib/convexValidators';
 
@@ -625,11 +626,7 @@ mailSignatures: defineTable({
 // after triaging (archive/trash/snooze/spam) the open message.
 mailUserSettings: defineTable({
 	userId: v.string(),                       // BetterAuth user ID (owner)
-	autoAdvance: v.union(
-		v.literal('next'),
-		v.literal('previous'),
-		v.literal('back-to-list')
-	),
+	autoAdvance: mailAutoAdvanceValidator,
 	createdAt: v.number(),
 	updatedAt: v.number(),
 })

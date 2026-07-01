@@ -14,15 +14,9 @@
  * keyed by the session user rather than a mailbox id.
  */
 
-import { v } from 'convex/values';
 import { authedMutation, publicQuery } from '../lib/authedFunctions';
+import { mailAutoAdvanceValidator } from '../lib/convexValidators';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
-
-export const autoAdvanceValidator = v.union(
-	v.literal('next'),
-	v.literal('previous'),
-	v.literal('back-to-list')
-);
 
 // public: soft-auth — returns null for anonymous; the row is self-scoped to
 // the session user, so nothing leaks.
@@ -41,7 +35,7 @@ export const get = publicQuery({
 });
 
 export const update = authedMutation({
-	args: { autoAdvance: autoAdvanceValidator },
+	args: { autoAdvance: mailAutoAdvanceValidator },
 	// authz: self-scoped — upserts only the caller's own settings row (keyed
 	// by the session userId; no cross-user id is accepted).
 	handler: async (ctx, args) => {
