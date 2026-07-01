@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import { shouldShowSelfHostOnboarding } from '~/utils/onboarding';
+import { normalizeDashboardUrl, resolveConvexDashboardUrl } from '~/utils/convexDashboard';
 
 const props = defineProps<{
 	userId: string;
@@ -37,22 +38,54 @@ async function dismiss() {
 	await dismissOnboarding({ userId: props.userId });
 }
 
-// Convex dashboard URL — same host as web app, but port 6791.
-// If the user opened the web app via a proxy hostname, they'll have to
-// customize this. Good enough for 95% of installs.
-const convexDashboardUrl = computed(() => {
-	if (!import.meta.client) return '#';
-	try {
-		const url = new URL(window.location.href);
-		url.port = '6791';
-		url.pathname = '/';
-		url.search = '';
-		url.hash = '';
-		return url.toString();
-	} catch {
-		return 'http://localhost:6791';
+// Convex dashboard URL. The dashboard is a separate service on port 6791 that,
+// on a hardened self-host, is loopback-bound and reached over an SSH tunnel —
+// it is NOT necessarily on the same public host as this app. So we resolve it
+// in priority order: an operator-entered override (persisted locally) wins,
+// then a build-time configured value (NUXT_PUBLIC_CONVEX_DASHBOARD_URL), then a
+// best-effort port-swap guess that we clearly flag as a default. See
+// `~/utils/convexDashboard`.
+const { data: dashboardOverride, set: setDashboardOverride } = useLocalStorage<string>(
+	'owlat:convexDashboardUrl',
+	'',
+);
+const resolvedDashboard = computed(() =>
+	resolveConvexDashboardUrl({
+		override: dashboardOverride.value,
+		configured: config.public.convexDashboardUrl,
+		currentHref: import.meta.client ? window.location.href : null,
+	}),
+);
+const convexDashboardUrl = computed(() => resolvedDashboard.value.url);
+// A `derived` value is only a guess; surface the "customize" affordance so an
+// operator behind a proxy can correct it.
+const isDashboardGuess = computed(() => resolvedDashboard.value.source === 'derived');
+
+// Inline editor for the dashboard URL override.
+const isEditingDashboard = ref(false);
+const dashboardDraft = ref('');
+const dashboardDraftInvalid = computed(
+	() => dashboardDraft.value.trim().length > 0 && normalizeDashboardUrl(dashboardDraft.value) === null,
+);
+function startEditingDashboard() {
+	dashboardDraft.value = dashboardOverride.value || convexDashboardUrl.value;
+	isEditingDashboard.value = true;
+}
+function saveDashboardUrl() {
+	const normalized = normalizeDashboardUrl(dashboardDraft.value);
+	// Empty draft clears the override (falls back to configured/derived).
+	if (dashboardDraft.value.trim().length === 0) {
+		setDashboardOverride('');
+		isEditingDashboard.value = false;
+		return;
 	}
-});
+	if (normalized === null) return; // keep the editor open; field shows the error
+	setDashboardOverride(normalized);
+	isEditingDashboard.value = false;
+}
+function cancelEditingDashboard() {
+	isEditingDashboard.value = false;
+}
 
 const shouldShow = computed(() => {
 	// Wait for the instance record before deciding, so an already-dismissed or
@@ -136,21 +169,71 @@ const shouldShow = computed(() => {
 						</NuxtLink>
 
 						<!-- 3. Convex dashboard -->
-						<a
-							:href="convexDashboardUrl"
-							target="_blank"
-							rel="noopener"
-							class="group flex flex-col gap-1 rounded-lg border border-border-default bg-bg-elevated p-3 hover:border-brand/40 hover:-translate-y-px transition-all"
-						>
-							<div class="flex items-center gap-2">
-								<span class="w-5 h-5 rounded-full bg-brand/15 text-brand text-[0.6875rem] font-semibold flex items-center justify-center">3</span>
-								<span class="text-[0.8125rem] font-medium text-text-primary">Open Convex dashboard</span>
+						<div class="flex flex-col gap-1 rounded-lg border border-border-default bg-bg-elevated p-3">
+							<a
+								:href="convexDashboardUrl"
+								target="_blank"
+								rel="noopener"
+								class="group flex flex-col gap-1 hover:-translate-y-px transition-all"
+							>
+								<div class="flex items-center gap-2">
+									<span class="w-5 h-5 rounded-full bg-brand/15 text-brand text-[0.6875rem] font-semibold flex items-center justify-center">3</span>
+									<span class="text-[0.8125rem] font-medium text-text-primary">Open Convex dashboard</span>
+								</div>
+								<span class="text-[0.75rem] text-text-tertiary pl-7">Inspect your database, functions, and logs</span>
+								<span class="text-[0.75rem] text-brand font-medium group-hover:translate-x-0.5 transition-transform mt-1 pl-7">
+									Launch dashboard ↗
+								</span>
+							</a>
+
+							<!-- Customize affordance: shown when the URL is only a derived guess. -->
+							<div v-if="!isEditingDashboard" class="pl-7 mt-1">
+								<p v-if="isDashboardGuess" class="text-[0.6875rem] text-text-tertiary">
+									Default guess — the dashboard is often on a separate host or an SSH tunnel.
+								</p>
+								<button
+									type="button"
+									class="text-[0.6875rem] text-text-tertiary underline decoration-dotted hover:text-text-primary transition-colors"
+									@click="startEditingDashboard"
+								>
+									{{ isDashboardGuess ? 'Customize if you are behind a proxy' : 'Customize dashboard URL' }}
+								</button>
 							</div>
-							<span class="text-[0.75rem] text-text-tertiary pl-7">Inspect your database, functions, and logs</span>
-							<span class="text-[0.75rem] text-brand font-medium group-hover:translate-x-0.5 transition-transform mt-1 pl-7">
-								Launch dashboard ↗
-							</span>
-						</a>
+
+							<div v-else class="pl-7 mt-1 flex flex-col gap-1.5">
+								<input
+									v-model="dashboardDraft"
+									type="url"
+									inputmode="url"
+									placeholder="http://localhost:6791"
+									aria-label="Convex dashboard URL"
+									class="w-full rounded-md border bg-bg-surface px-2 py-1 text-[0.75rem] text-text-primary focus:outline-none focus:ring-1"
+									:class="dashboardDraftInvalid ? 'border-red-500 focus:ring-red-500' : 'border-border-default focus:ring-brand'"
+									@keydown.enter.prevent="saveDashboardUrl"
+									@keydown.esc.prevent="cancelEditingDashboard"
+								>
+								<p v-if="dashboardDraftInvalid" class="text-[0.6875rem] text-red-500">
+									Enter a valid http(s) URL, or leave empty to reset.
+								</p>
+								<div class="flex items-center gap-2">
+									<button
+										type="button"
+										class="text-[0.6875rem] font-medium text-brand hover:underline disabled:opacity-40 disabled:cursor-not-allowed"
+										:disabled="dashboardDraftInvalid"
+										@click="saveDashboardUrl"
+									>
+										Save
+									</button>
+									<button
+										type="button"
+										class="text-[0.6875rem] text-text-tertiary hover:text-text-primary"
+										@click="cancelEditingDashboard"
+									>
+										Cancel
+									</button>
+								</div>
+							</div>
+						</div>
 
 						<!-- 4. Docs -->
 						<a
