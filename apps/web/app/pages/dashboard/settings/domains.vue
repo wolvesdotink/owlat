@@ -4,6 +4,7 @@ import type { Id } from '@owlat/api/dataModel';
 import { formatDateTime } from '~/utils/formatters';
 import { hasInboundFeature } from '~/utils/inboundDns';
 import { computeSpfSuggestion, type SpfCoexistenceSuggestion } from '~/utils/spfCoexistence';
+import { isFreemailDomain, resolveNs } from '~/utils/domainPrecheck';
 import { summarizeDomainReadiness, domainReadinessMessage } from '~/utils/domainReadiness';
 import { createAutoRecheckPoller, type AutoRecheckPoller } from '~/utils/domainAutoRecheck';
 import { rules } from '~/composables/useFormValidation';
@@ -76,6 +77,7 @@ const addModal = useModal({
 	onClose: () => {
 		addForm.domain = '';
 		validation.reset();
+		nsUnresolved.value = false;
 	},
 });
 
@@ -95,6 +97,32 @@ const validation = useFormValidation({
 	],
 });
 
+// Add-domain pre-checks: catch two mistakes before the user configures DNS
+// records they can never publish.
+//  1. Freemail / public-mailbox domain they don't control — a *blocking* warn
+//     that steers them to the connect-an-external-mailbox path. Computed live so
+//     it updates as they type.
+//  2. A domain that doesn't resolve (NXDOMAIN) — an *advisory* warn via a
+//     fail-soft DoH lookup; submit is still allowed (DNS may be provisioning).
+const isFreemail = computed(() => isFreemailDomain(addForm.domain));
+const nsUnresolved = ref(false);
+
+// Run the fail-soft NS lookup on blur (not per-keystroke). Any lookup error
+// resolves to null and leaves nsUnresolved false — the check never blocks.
+const checkNs = async () => {
+	nsUnresolved.value = false;
+	const domain = addForm.domain.trim().toLowerCase();
+	if (!domain || isFreemailDomain(domain) || !validation.validate(addForm)) return;
+	const resolves = await resolveNs(domain);
+	// Ignore a slow response if the field changed while it was in flight.
+	if (addForm.domain.trim().toLowerCase() === domain) nsUnresolved.value = resolves === false;
+};
+
+const handleDomainBlur = () => {
+	validation.touch('domain');
+	void checkNs();
+};
+
 // Verification state
 const verifyingDomainId = ref<Id<'domains'> | null>(null);
 
@@ -105,6 +133,8 @@ const expandedDomainId = ref<Id<'domains'> | null>(null);
 const handleAddDomain = async () => {
 	if (!hasActiveOrganization.value) return;
 	if (!validation.validate(addForm)) return;
+	// Freemail domains can never be verified — block and steer to external mailbox.
+	if (isFreemail.value) return;
 
 	addModal.setLoading(true);
 	const result = await createDomain({
@@ -855,7 +885,7 @@ const readinessSummary = (domain: DomainWithVerification) =>
 							placeholder="mail.example.com"
 							:class="['input', validation.hasError('domain') && 'input-error']"
 							:disabled="addModal.isLoading.value"
-							@blur="validation.touch('domain')"
+							@blur="handleDomainBlur"
 						/>
 						<p v-if="validation.getError('domain', true)" class="mt-1 text-xs text-error">
 							{{ validation.getError('domain', true) }}
@@ -864,6 +894,38 @@ const readinessSummary = (domain: DomainWithVerification) =>
 							Enter the domain you want to use for sending emails. We recommend using a subdomain
 							like mail.example.com.
 						</p>
+
+						<!-- Blocking: freemail / public-mailbox domain the user can't publish DNS for. -->
+						<div
+							v-if="isFreemail"
+							class="mt-3 p-3 rounded-lg bg-error/5 border border-error/20 flex items-start gap-2.5"
+						>
+							<Icon name="lucide:shield-alert" class="w-4 h-4 text-error shrink-0 mt-0.5" />
+							<p class="text-xs text-text-secondary">
+								You can't publish DNS records for
+								<strong class="text-text-primary">{{ addForm.domain.trim().toLowerCase() }}</strong> —
+								it's a shared mailbox provider you don't control. Use a domain you own, or
+								<NuxtLink
+									to="/dashboard/postbox/settings/external-account"
+									class="text-brand hover:underline font-medium"
+								>connect an external mailbox</NuxtLink>
+								instead.
+							</p>
+						</div>
+
+						<!-- Advisory: the domain doesn't resolve (likely a typo). Submit still allowed. -->
+						<div
+							v-else-if="nsUnresolved"
+							class="mt-3 p-3 rounded-lg bg-warning/5 border border-warning/20 flex items-start gap-2.5"
+						>
+							<Icon name="lucide:alert-triangle" class="w-4 h-4 text-warning shrink-0 mt-0.5" />
+							<p class="text-xs text-text-secondary">
+								We couldn't find any nameservers for
+								<strong class="text-text-primary">{{ addForm.domain.trim().toLowerCase() }}</strong> —
+								double-check the spelling. You can still add it if the domain is brand new and its
+								DNS is still being set up.
+							</p>
+						</div>
 					</div>
 				</div>
 
@@ -876,7 +938,7 @@ const readinessSummary = (domain: DomainWithVerification) =>
 					>
 						Cancel
 					</button>
-					<button type="submit" class="btn btn-primary gap-2" :disabled="addModal.isLoading.value">
+					<button type="submit" class="btn btn-primary gap-2" :disabled="addModal.isLoading.value || isFreemail">
 						<Icon v-if="addModal.isLoading.value" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
 						<Icon v-else name="lucide:plus" class="w-4 h-4" />
 						{{ addModal.isLoading.value ? 'Adding...' : 'Add Domain' }}
