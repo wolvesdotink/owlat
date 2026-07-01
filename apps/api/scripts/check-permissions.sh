@@ -15,6 +15,14 @@
 #   * uses a role-bearing wrapper instead — `adminMutation` / `ownerMutation`
 #     (these don't match the bare `authedMutation(`/`authedAction(` pattern, so
 #     they're exempt: the gate lives in the wrapper);
+#
+# NOTE: `chatMutation` / `assistantMutation` (chat/_helpers.ts,
+# assistant/conversations.ts) are the exception to the exception. They compose
+# `authedMutation` with a `assertFeatureEnabled` FEATURE-flag floor only — a
+# feature flag is NOT an authorization decision — so they are matched by the
+# is_export regex below and remain SUBJECT to this gate. Each chat/assistant
+# write must still make its own in-handler authz decision (assertCanWriteRoom /
+# conversation-owner check / requireOrgPermission).
 #   * calls a recognized authorization gate inside the handler:
 #       requirePermission / requireAdminContext / requireOwnerContext /
 #       requireOrgPermission   (org-role RBAC, lib/sessionOrganization.ts)
@@ -51,7 +59,7 @@ violations=$(find convex -name "*.ts" \
 		{
 			is_comment = ($0 ~ /^[[:space:]]*\/\//)
 			is_optout  = ($0 ~ /\/\/[[:space:]]*(authz|all-members):/)
-			is_export  = ($0 ~ /^export const [A-Za-z0-9_]+ = (authedMutation|authedAction)\(/)
+			is_export  = ($0 ~ /^export const [A-Za-z0-9_]+ = (authedMutation|authedAction|chatMutation|assistantMutation)\(/)
 		}
 		is_comment && is_optout { block_optout = 1 }
 		is_export {
