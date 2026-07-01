@@ -71,6 +71,8 @@ import {
 	requireOwnerContext,
 	requireOrgPermission,
 } from './sessionOrganization';
+import { assertFeatureEnabled } from './featureFlags';
+import type { FeatureFlagKey } from '@owlat/shared/featureFlags';
 
 /**
  * The shape a Convex function builder accepts. Kept deliberately opaque
@@ -217,6 +219,41 @@ export const adminQuery = ((fn: FunctionConfig) =>
 			return (fn.handler as unknown as (c: QueryCtx, a: unknown) => unknown)(ctx, args);
 		},
 	} as Parameters<RawQuery>[0])) as unknown as RawQuery;
+
+/**
+ * Compose a **feature-flag floor** onto an existing authed query/mutation
+ * builder. Returns a new builder of the exact same type that runs
+ * `await assertFeatureEnabled(ctx, flag)` — throwing `forbidden` when the flag
+ * is off — *after* the wrapped builder's auth floor and *before* the handler.
+ *
+ * This bakes the `assertFeatureEnabled(ctx, '<flag>')` call that gated modules
+ * used to repeat at the top of every handler into the wrapper, exactly as
+ * `adminMutation` / `ownerMutation` bake in their role floor. Per-room /
+ * per-record authz (e.g. `assertCanReadRoom`, `chat:manage` role gates) still
+ * lives in the handler — this only enforces the module-level feature floor.
+ *
+ * Only `assertFeatureEnabled` reads `ctx.db`, so only query/mutation builders
+ * can be gated this way; feature-gated **actions** keep the in-handler check
+ * against a query they call.
+ *
+ * @example
+ *   const chatQuery = featureGated(authedQuery, 'chat');
+ *   const chatMutation = featureGated(authedMutation, 'chat');
+ */
+export function featureGated<Builder extends RawQuery | RawMutation>(
+	builder: Builder,
+	flag: FeatureFlagKey,
+): Builder {
+	return ((fn: FunctionConfig) =>
+		(builder as unknown as (f: FunctionConfig) => unknown)({
+			args: fn.args,
+			...(fn.returns !== undefined ? { returns: fn.returns } : {}),
+			handler: async (ctx: QueryCtx | MutationCtx, args: unknown) => {
+				await assertFeatureEnabled(ctx, flag);
+				return (fn.handler as unknown as (c: unknown, a: unknown) => unknown)(ctx, args);
+			},
+		})) as unknown as Builder;
+}
 
 /**
  * Explicit opt-out builders for endpoints that are intentionally reachable by
