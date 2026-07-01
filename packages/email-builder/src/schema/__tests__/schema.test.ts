@@ -110,7 +110,8 @@ describe('schema registry', () => {
 		it('social platform options are derived from SOCIAL_PLATFORMS (17 entries, twitter editor label)', () => {
 			const schema = getSchema('social')!;
 			const allFields = schema.groups.flatMap((g) => g.fields);
-			const platformField = allFields.find((f) => f.key === 'platform')!;
+			const linksField = allFields.find((f) => f.key === 'links')!;
+			const platformField = linksField.itemSchema!.find((f) => f.key === 'platform')!;
 			expect(platformField.options).toHaveLength(17);
 			const twitter = platformField.options!.find((o) => o.value === 'twitter');
 			expect(twitter!.label).toBe('Twitter / X');
