@@ -22,7 +22,7 @@
 		"hono": "^4.12.25",
 		"@hono/node-server": "^2.0.0",
 		"imapflow": "^1.0.171",
-		"nodemailer": "^8.0.6",
+		"nodemailer": "^9.0.3",
 		"mailparser": "^3.7.0",
 		"pino": "^10.3.1"
 	},
