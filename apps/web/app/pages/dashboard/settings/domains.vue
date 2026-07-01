@@ -3,6 +3,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { formatDateTime } from '~/utils/formatters';
 import { hasInboundFeature } from '~/utils/inboundDns';
+import { computeSpfSuggestion, type SpfCoexistenceSuggestion } from '~/utils/spfCoexistence';
 import { rules } from '~/composables/useFormValidation';
 
 useHead({ title: 'Sending Domains — Owlat' });
@@ -210,9 +211,27 @@ const handleForceVerify = async (domainId: Id<'domains'>) => {
 	showToast('Domain force-verified (dev shortcut).');
 };
 
+// SPF coexistence hint for the currently-expanded domain. When a domain that
+// isn't verified yet already publishes a foreign SPF record, we proactively
+// resolve it (DoH) and suggest a single merged record rather than a second
+// v=spf1 (which would be a PermError, RFC 7208 §3.2).
+const spfCoexistence = ref<SpfCoexistenceSuggestion | null>(null);
+
 // Toggle domain expansion
 const toggleDomainExpansion = (domainId: Id<'domains'>) => {
-	expandedDomainId.value = expandedDomainId.value === domainId ? null : domainId;
+	const expanding = expandedDomainId.value !== domainId;
+	expandedDomainId.value = expanding ? domainId : null;
+	// The hint belongs to whichever panel is open — drop it on any change, then
+	// recompute only when an unverified domain with an SPF record is expanded.
+	spfCoexistence.value = null;
+	if (!expanding) return;
+	const domain = (domainsData.value ?? []).find((d) => d._id === domainId);
+	const spfValue = domain?.dnsRecords?.spf?.value;
+	if (!domain || domain.status === 'verified' || !spfValue) return;
+	void computeSpfSuggestion(domain.domain, spfValue).then((result) => {
+		// Ignore a slow DoH response if the user has since collapsed or switched.
+		if (expandedDomainId.value === domainId) spfCoexistence.value = result;
+	});
 };
 
 // Status badge styling
@@ -549,6 +568,7 @@ const hasDnsRecords = (dnsRecords: DomainDnsRecords | null | undefined): dnsReco
 											label="SPF"
 											:domain="domain.domain"
 											:verification="domain.verificationResults?.spf"
+											:coexistence="expandedDomainId === domain._id ? (spfCoexistence ?? undefined) : undefined"
 										/>
 
 										<DomainsDNSRecordPanel

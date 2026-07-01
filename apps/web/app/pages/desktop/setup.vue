@@ -20,7 +20,9 @@ import {
 	validateAdminPassword,
 	resolveServerIp,
 	buildDnsRecords,
+	type DnsRecordRow,
 } from '~/lib/desktop/provisioningForm';
+import { computeSpfSuggestion, type SpfCoexistenceSuggestion } from '~/utils/spfCoexistence';
 
 useHead({ title: 'Set up a server — Owlat' });
 definePageMeta({ layout: false });
@@ -52,6 +54,7 @@ const {
 // away mid-flow.
 onBeforeUnmount(() => {
 	stopReachPolling();
+	if (spfLookupTimer) clearTimeout(spfLookupTimer);
 	void disconnect();
 });
 
@@ -320,6 +323,75 @@ const dnsRecords = computed(() => {
 	const hosts = effectiveHosts.value;
 	if (!hosts) return [];
 	return buildDnsRecords({ hosts, withMta: sendingProvider.value === 'mta', serverIp: serverIp.value });
+});
+
+/**
+ * SPF coexistence: if the host where we'd publish the starter SPF record
+ * already carries a foreign SPF record, publishing a second `v=spf1` is a
+ * PermError (RFC 7208 §3.2). Resolve it (DoH) and, when a collision is found,
+ * fold our mechanisms into the existing record. Fail-soft — no suggestion
+ * leaves the starter value untouched.
+ */
+const isStarterSpf = (r: DnsRecordRow) => r.type === 'TXT' && r.value.startsWith('v=spf1');
+
+/**
+ * The only inputs the DoH lookup depends on — the SPF row's publish host + its
+ * value — as a scalar key, so the watcher fires when those change rather than
+ * on every `dnsRecords` recompute (packs/IP edits etc.).
+ */
+const spfLookupKey = computed(() => {
+	const row = dnsRecords.value.find(isStarterSpf);
+	return row ? `${row.name} ${row.value}` : '';
+});
+
+/**
+ * A host complete enough to resolve: a dotted name with non-empty labels and a
+ * ≥2-char alphabetic final label. Guards against firing DoH lookups against the
+ * partial hostnames produced on every keystroke in the domain field.
+ */
+function looksResolvable(host: string): boolean {
+	const labels = host.trim().split('.');
+	if (labels.length < 2 || labels.some((label) => label === '')) return false;
+	return /^[a-z]{2,}$/i.test(labels[labels.length - 1] ?? '');
+}
+
+const spfCoexistence = ref<SpfCoexistenceSuggestion | null>(null);
+let spfLookupTimer: ReturnType<typeof setTimeout> | null = null;
+watch(
+	spfLookupKey,
+	() => {
+		spfCoexistence.value = null;
+		if (spfLookupTimer) clearTimeout(spfLookupTimer);
+		const row = dnsRecords.value.find(isStarterSpf);
+		if (!row || !looksResolvable(row.name)) return;
+		const { name, value } = row;
+		// Debounce so typing in the domain field doesn't fire a DoH request per keystroke.
+		spfLookupTimer = setTimeout(() => {
+			void computeSpfSuggestion(name, value).then((result) => {
+				// Ignore a slow DoH response if the SPF row changed meanwhile.
+				const current = dnsRecords.value.find(isStarterSpf);
+				if (result && current && current.name === name && current.value === value) {
+					spfCoexistence.value = result;
+				}
+			});
+		}, 450);
+	},
+	{ immediate: true },
+);
+
+/** DNS rows for display, with the starter SPF row merged into any existing one. */
+const displayDnsRecords = computed<DnsRecordRow[]>(() => {
+	const suggestion = spfCoexistence.value;
+	if (!suggestion) return dnsRecords.value;
+	return dnsRecords.value.map((r) =>
+		isStarterSpf(r)
+			? {
+					...r,
+					value: suggestion.merged,
+					note: 'SPF — merged with the existing SPF record at this host so your other mail provider keeps working. SPF allows at most 10 DNS lookups — double-check it stays within that limit. Confirm in Settings → Domains.',
+				}
+			: r,
+	);
 });
 
 const inConnect = computed(() => ['idle', 'connecting', 'hostkey', 'authenticating'].includes(stage.value));
@@ -772,7 +844,7 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 									<p class="mb-2 text-xs font-semibold uppercase tracking-wide text-text-secondary">
 										DNS records to create
 									</p>
-									<DesktopDnsRecordList v-if="dnsRecords.length" :records="dnsRecords" />
+									<DesktopDnsRecordList v-if="dnsRecords.length" :records="displayDnsRecords" />
 									<p v-else class="text-xs text-text-secondary">
 										Enter a domain above to see the records you need.
 										<template v-if="isRemoteTarget"> A remote server needs one to be reachable from this app.</template>
@@ -863,7 +935,7 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 							<p class="mb-2 text-xs font-semibold uppercase tracking-wide text-text-secondary">
 								Create these DNS records
 							</p>
-							<DesktopDnsRecordList :records="dnsRecords" />
+							<DesktopDnsRecordList :records="displayDnsRecords" />
 							<p class="mt-2 text-xs text-text-secondary">
 								TLS is issued automatically once they resolve (ports 80/443 open).
 							</p>
