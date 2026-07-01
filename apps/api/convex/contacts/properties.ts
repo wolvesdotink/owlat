@@ -1,6 +1,6 @@
 import { v } from 'convex/values';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
-import { getMutationContext, hasPermission, requirePermission } from '../lib/sessionOrganization';
+import { requireOrgPermission } from '../lib/sessionOrganization';
 import { throwNotFound, throwAlreadyExists } from '../_utils/errors';
 
 // Query to list all contact properties
@@ -47,8 +47,7 @@ export const create = authedMutation({
 		),
 	},
 	handler: async (ctx, args) => {
-		const { role } = await getMutationContext(ctx);
-		requirePermission(hasPermission(role, 'contacts:manage'), 'Only owners and admins can manage contacts');
+		await requireOrgPermission(ctx, 'contacts:manage', 'Only owners and admins can manage contacts');
 
 		// Check if property with same key already exists
 		const existing = await ctx.db
@@ -76,8 +75,7 @@ export const update = authedMutation({
 		label: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		const { role } = await getMutationContext(ctx);
-		requirePermission(hasPermission(role, 'contacts:manage'), 'Only owners and admins can manage contacts');
+		await requireOrgPermission(ctx, 'contacts:manage', 'Only owners and admins can manage contacts');
 
 		const property = await ctx.db.get(args.propertyId);
 		if (!property) {
@@ -98,8 +96,7 @@ export const update = authedMutation({
 export const remove = authedMutation({
 	args: { propertyId: v.id('contactProperties') },
 	handler: async (ctx, args) => {
-		const { role } = await getMutationContext(ctx);
-		requirePermission(hasPermission(role, 'contacts:manage'), 'Only owners and admins can manage contacts');
+		await requireOrgPermission(ctx, 'contacts:manage', 'Only owners and admins can manage contacts');
 
 		const property = await ctx.db.get(args.propertyId);
 		if (!property) {
@@ -125,8 +122,7 @@ export const remove = authedMutation({
 export const createDefaultProperties = authedMutation({
 	args: {},
 	handler: async (ctx) => {
-		const { role } = await getMutationContext(ctx);
-		requirePermission(hasPermission(role, 'contacts:manage'), 'Only owners and admins can manage contacts');
+		await requireOrgPermission(ctx, 'contacts:manage', 'Only owners and admins can manage contacts');
 
 		const defaultProperties = [
 			{ key: 'first_name', label: 'First Name', type: 'string' as const },

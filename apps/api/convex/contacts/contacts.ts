@@ -5,11 +5,7 @@ import type { Id } from '../_generated/dataModel';
 import type { ImportOutcome } from './import';
 import { paginationOptsValidator } from 'convex/server';
 import { internal } from '../_generated/api';
-import {
-	getMutationContext,
-	requirePermission,
-	hasPermission,
-} from '../lib/sessionOrganization';
+import { requireOrgPermission } from '../lib/sessionOrganization';
 import { buildSearchableText } from '../lib/queryHelpers';
 import { listResources, countFacet } from '../lib/listing';
 import { contactListing } from './listing';
@@ -161,11 +157,7 @@ export const create = authedMutation({
 		if (args.firstName) validateStringLength(args.firstName, STRING_LIMITS.NAME, 'First name');
 		if (args.lastName) validateStringLength(args.lastName, STRING_LIMITS.NAME, 'Last name');
 
-		// Get full mutation context (userId, role)
-		const session = await getMutationContext(ctx);
-
-		// Check permission to manage contacts (owner/admin only)
-		requirePermission(hasPermission(session.role, 'contacts:manage'), 'Only owners and admins can create contacts');
+		const session = await requireOrgPermission(ctx, 'contacts:manage', 'Only owners and admins can create contacts');
 
 		const email = normalizeEmail(args.email);
 		const { contactId } = await createContact(ctx, {
@@ -209,15 +201,11 @@ export const update = authedMutation({
 	handler: async (ctx, args) => {
 		const contact = await ctx.db.get(args.contactId);
 
-		// Get full mutation context (userId, role)
-		const session = await getMutationContext(ctx);
+		const session = await requireOrgPermission(ctx, 'contacts:manage', 'Only owners and admins can update contacts');
 
 		if (!contact) {
 			throwNotFound('Contact');
 		}
-
-		// Check permission to manage contacts (owner/admin only)
-		requirePermission(hasPermission(session.role, 'contacts:manage'), 'Only owners and admins can update contacts');
 
 		// Bound input lengths the same way create() does — update was skipping it.
 		if (args.email !== undefined) validateStringLength(args.email, STRING_LIMITS.NAME, 'Email');
@@ -332,15 +320,11 @@ export const remove = authedMutation({
 	handler: async (ctx, args) => {
 		const contact = await ctx.db.get(args.contactId);
 
-		// Get full mutation context (userId, role)
-		const session = await getMutationContext(ctx);
+		const session = await requireOrgPermission(ctx, 'contacts:manage', 'Only owners and admins can delete contacts');
 
 		if (!contact) {
 			throwNotFound('Contact');
 		}
-
-		// Check permission to manage contacts (owner/admin only)
-		requirePermission(hasPermission(session.role, 'contacts:manage'), 'Only owners and admins can delete contacts');
 
 		await softDeleteContact(ctx, args.contactId, session.userId);
 
@@ -364,11 +348,7 @@ export const bulkDelete = authedMutation({
 		contactIds: v.array(v.id('contacts')),
 	},
 	handler: async (ctx, args) => {
-		// Get full mutation context (userId, role)
-		const session = await getMutationContext(ctx);
-
-		// Check permission to manage contacts (owner/admin only)
-		requirePermission(hasPermission(session.role, 'contacts:manage'), 'Only owners and admins can delete contacts');
+		const session = await requireOrgPermission(ctx, 'contacts:manage', 'Only owners and admins can delete contacts');
 
 		// Cap at 100 contacts per mutation to avoid transaction timeouts
 		if (args.contactIds.length > 100) {
@@ -449,11 +429,7 @@ export const importBatch = authedMutation({
 		),
 	},
 	handler: async (ctx, args) => {
-		// Get full mutation context (userId, role)
-		const session = await getMutationContext(ctx);
-
-		// Check permission to manage contacts (owner/admin only)
-		requirePermission(hasPermission(session.role, 'contacts:manage'), 'Only owners and admins can import contacts');
+		const session = await requireOrgPermission(ctx, 'contacts:manage', 'Only owners and admins can import contacts');
 
 		// Validate topic exists if provided
 		if (args.topicId) {
