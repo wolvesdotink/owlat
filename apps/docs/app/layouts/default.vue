@@ -35,7 +35,7 @@
 					height: calc(100dvh - 61px - env(safe-area-inset-top, 0px));
 				"
 			>
-				<DocsToc :key="$route.path" />
+				<DocsToc :key="route.path" />
 			</aside>
 		</div>
 		<DocsFooter />
@@ -45,4 +45,5 @@
 <script setup lang="ts">
 const sidebarOpen = ref(false)
 const { progress } = useReadingProgress()
+const route = useRoute()
 </script>

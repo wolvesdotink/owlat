@@ -91,10 +91,6 @@ export const CONVEX_RUNTIME_ENV_KEYS = [
 	'LLM_COMPLEXITY_ROUTING',
 	'OPENAI_API_KEY',
 	'OPENROUTER_API_KEY',
-	// Vector store
-	'VECTOR_STORE',
-	// Notifications
-	'NOTIFICATION_PROVIDER',
 	// Analytics & links
 	'POSTHOG_API_KEY',
 	'POSTHOG_HOST',
