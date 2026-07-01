@@ -20,7 +20,9 @@ import {
 	validateAdminPassword,
 	resolveServerIp,
 	buildDnsRecords,
+	type DnsRecordRow,
 } from '~/lib/desktop/provisioningForm';
+import { computeSpfSuggestion } from '~/utils/spfCoexistence';
 
 useHead({ title: 'Set up a server — Owlat' });
 definePageMeta({ layout: false });
@@ -320,6 +322,48 @@ const dnsRecords = computed(() => {
 	const hosts = effectiveHosts.value;
 	if (!hosts) return [];
 	return buildDnsRecords({ hosts, withMta: sendingProvider.value === 'mta', serverIp: serverIp.value });
+});
+
+/**
+ * SPF coexistence: if the host where we'd publish the starter SPF record
+ * already carries a foreign SPF record, publishing a second `v=spf1` is a
+ * PermError (RFC 7208 §3.2). Resolve it (DoH) and, when a collision is found,
+ * fold our mechanisms into the existing record. Fail-soft — no suggestion
+ * leaves the starter value untouched.
+ */
+const isStarterSpf = (r: DnsRecordRow) => r.type === 'TXT' && r.value.startsWith('v=spf1');
+const spfCoexistence = ref<{ existing: string; merged: string } | null>(null);
+watch(
+	dnsRecords,
+	(rows) => {
+		spfCoexistence.value = null;
+		const spfRow = rows.find(isStarterSpf);
+		if (!spfRow) return;
+		const { name, value } = spfRow;
+		void computeSpfSuggestion(name, value).then((result) => {
+			// Ignore a slow DoH response if the SPF row changed meanwhile.
+			const current = dnsRecords.value.find(isStarterSpf);
+			if (result && current && current.name === name && current.value === value) {
+				spfCoexistence.value = result;
+			}
+		});
+	},
+	{ immediate: true },
+);
+
+/** DNS rows for display, with the starter SPF row merged into any existing one. */
+const displayDnsRecords = computed<DnsRecordRow[]>(() => {
+	const suggestion = spfCoexistence.value;
+	if (!suggestion) return dnsRecords.value;
+	return dnsRecords.value.map((r) =>
+		isStarterSpf(r)
+			? {
+					...r,
+					value: suggestion.merged,
+					note: 'SPF — merged with the existing SPF record at this host so your other mail provider keeps working. Confirm in Settings → Domains.',
+				}
+			: r,
+	);
 });
 
 const inConnect = computed(() => ['idle', 'connecting', 'hostkey', 'authenticating'].includes(stage.value));
@@ -772,7 +816,7 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 									<p class="mb-2 text-xs font-semibold uppercase tracking-wide text-text-secondary">
 										DNS records to create
 									</p>
-									<DesktopDnsRecordList v-if="dnsRecords.length" :records="dnsRecords" />
+									<DesktopDnsRecordList v-if="dnsRecords.length" :records="displayDnsRecords" />
 									<p v-else class="text-xs text-text-secondary">
 										Enter a domain above to see the records you need.
 										<template v-if="isRemoteTarget"> A remote server needs one to be reachable from this app.</template>
@@ -863,7 +907,7 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 							<p class="mb-2 text-xs font-semibold uppercase tracking-wide text-text-secondary">
 								Create these DNS records
 							</p>
-							<DesktopDnsRecordList :records="dnsRecords" />
+							<DesktopDnsRecordList :records="displayDnsRecords" />
 							<p class="mt-2 text-xs text-text-secondary">
 								TLS is issued automatically once they resolve (ports 80/443 open).
 							</p>
