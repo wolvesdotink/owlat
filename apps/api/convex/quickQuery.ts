@@ -56,6 +56,9 @@ export const ask = authedAction({
 		question: v.string(),
 	},
 	handler: async (ctx, args): Promise<{ answer: string; sources: QuerySource[] }> => {
+		// authz: gate enforced in quickQueryGate.assertKnowledgeReadAccess via
+		// ctx.runQuery (ai.knowledge feature flag + knowledge:read permission) —
+		// an action cannot touch ctx.db, so the check lives in the internal query.
 		// Gate FIRST (flag, then knowledge:read). As an action we can't read the db
 		// directly, so both gates run in an internal query that inherits our
 		// identity; a disabled feature or a non-member throws here before retrieval.
