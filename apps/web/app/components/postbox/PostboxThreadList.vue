@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import type { PostboxComposeMode, PostboxPendingCompose } from '~/utils/postboxShortcuts';
 
 const props = defineProps<{
 	mailboxId: Id<'mailboxes'>;
@@ -80,12 +81,12 @@ function rowAction(event: MouseEvent, fn: () => void) {
 // Pending compose intent for r/a/f from the list: opening the composer needs
 // the reader's quoting/recipient logic, so we open the message first and let
 // PostboxThreadReader consume the intent once it renders that message.
-const pendingCompose = useState<{
-	messageId: string;
-	mode: 'reply' | 'replyAll' | 'forward';
-} | null>('postbox:pending-compose', () => null);
+const pendingCompose = useState<PostboxPendingCompose | null>(
+	POSTBOX_PENDING_COMPOSE_KEY,
+	() => null
+);
 
-function openMessageWithCompose(id: string, mode: 'reply' | 'replyAll' | 'forward') {
+function openMessageWithCompose(id: string, mode: PostboxComposeMode) {
 	pendingCompose.value = { messageId: id, mode };
 	if (props.selectable) emit('select', id);
 	else void navigateTo(`/dashboard/postbox/${props.folderRole}/${id}`);

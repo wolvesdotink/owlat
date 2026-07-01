@@ -4,6 +4,7 @@ import type { Id } from '@owlat/api/dataModel';
 import { extractAttachmentAt } from '@owlat/shared/mailMime';
 import { escapeHtmlWithBreaks } from '@owlat/shared/html';
 import { formatDateTime } from '~/utils/formatters';
+import type { PostboxPendingCompose } from '~/utils/postboxShortcuts';
 import {
 	classifySecureMessage,
 	isEncryptedClass,
@@ -270,19 +271,22 @@ async function openForward(msg?: ReplyForwardSource) {
 // Consume a pending compose intent set by the thread list's r/a/f shortcuts:
 // the list opens the message, then we open the matching composer once this
 // reader renders it (the quoting/recipient logic lives here).
-const pendingCompose = useState<{
-	messageId: string;
-	mode: 'reply' | 'replyAll' | 'forward';
-} | null>('postbox:pending-compose', () => null);
+const pendingCompose = useState<PostboxPendingCompose | null>(
+	POSTBOX_PENDING_COMPOSE_KEY,
+	() => null
+);
+// Watch the intent as well as the id: r/a/f on a row whose message is already
+// open never changes `props.message._id`. Stale intents (id changed to a
+// non-matching message) are dropped so they can't fire on a later plain open;
+// see settlePendingCompose in utils/postboxShortcuts.ts.
 watch(
-	() => props.message._id,
-	(id) => {
-		const pending = pendingCompose.value;
-		if (!pending || pending.messageId !== id) return;
-		pendingCompose.value = null;
-		if (pending.mode === 'reply') void openReply();
-		else if (pending.mode === 'replyAll') void openReplyAll();
-		else void openForward();
+	[() => props.message._id, pendingCompose] as const,
+	([id], prev) => {
+		const { open, clear } = settlePendingCompose(pendingCompose.value, id, prev?.[0]);
+		if (clear) pendingCompose.value = null;
+		if (open === 'reply') void openReply();
+		else if (open === 'replyAll') void openReplyAll();
+		else if (open === 'forward') void openForward();
 	},
 	{ immediate: true }
 );
@@ -334,7 +338,9 @@ function moveOpenMessageTo(targetFolderId: Id<'mailFolders'>) {
 }
 
 function onReaderShortcut(event: KeyboardEvent) {
-	if (event.metaKey || event.ctrlKey) return;
+	// Alt matters too: on Windows the browser-menu accelerators (Alt+E, Alt+F)
+	// deliver plain keydowns with altKey — never treat those as triage keys.
+	if (event.metaKey || event.ctrlKey || event.altKey) return;
 	if (isEditableTarget(event.target)) return;
 	const el = event.target as HTMLElement | null;
 	// The focused thread list and any open dialog own their keys.

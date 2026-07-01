@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
 	resolvePostboxShortcut,
 	isEditableTarget,
+	settlePendingCompose,
 	POSTBOX_SHORTCUT_GROUPS,
 } from '../postboxShortcuts';
 
@@ -57,6 +58,58 @@ describe('isEditableTarget', () => {
 		expect(isEditableTarget(document.createElement('div'))).toBe(false);
 		expect(isEditableTarget(document.createElement('button'))).toBe(false);
 		expect(isEditableTarget(null)).toBe(false);
+	});
+});
+
+describe('settlePendingCompose (list → reader r/a/f handoff)', () => {
+	it('is a no-op without a pending intent', () => {
+		expect(settlePendingCompose(null, 'msg-a', 'msg-a')).toEqual({ open: null, clear: false });
+	});
+
+	it('consumes a matching intent exactly once (opens + clears)', () => {
+		const pending = { messageId: 'msg-a', mode: 'reply' as const };
+		expect(settlePendingCompose(pending, 'msg-a', 'msg-b')).toEqual({
+			open: 'reply',
+			clear: true,
+		});
+	});
+
+	it('consumes when the target message is ALREADY open (id did not change)', () => {
+		// r/a/f on the focused row of the currently-open message: the reader
+		// re-settles when the intent itself changes, with an unchanged id.
+		const pending = { messageId: 'msg-a', mode: 'forward' as const };
+		expect(settlePendingCompose(pending, 'msg-a', 'msg-a')).toEqual({
+			open: 'forward',
+			clear: true,
+		});
+	});
+
+	it('keeps an in-flight intent for another message while the id is unchanged', () => {
+		// The list just armed the intent for msg-b; navigation has not landed yet.
+		const pending = { messageId: 'msg-b', mode: 'replyAll' as const };
+		expect(settlePendingCompose(pending, 'msg-a', 'msg-a')).toEqual({
+			open: null,
+			clear: false,
+		});
+	});
+
+	it('drops a stale intent when a DIFFERENT message is opened', () => {
+		// Intent was armed for msg-b, but the user opened msg-c (even by plain
+		// click, much later): never open a composer, and clear the intent so it
+		// cannot fire on a future open of msg-b.
+		const pending = { messageId: 'msg-b', mode: 'reply' as const };
+		expect(settlePendingCompose(pending, 'msg-c', 'msg-a')).toEqual({
+			open: null,
+			clear: true,
+		});
+	});
+
+	it('drops a stale intent on first mount (no previous id)', () => {
+		const pending = { messageId: 'msg-b', mode: 'reply' as const };
+		expect(settlePendingCompose(pending, 'msg-a', undefined)).toEqual({
+			open: null,
+			clear: true,
+		});
 	});
 });
 
