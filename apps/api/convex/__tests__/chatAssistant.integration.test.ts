@@ -31,10 +31,11 @@ vi.mock('../lib/sessionOrganization', async () => {
 		getMutationContext: vi.fn(async () => sess.user),
 		requireOrgPermission: vi.fn().mockImplementation(
 			async (_ctx: unknown, permission: string, message?: string) => {
-				actual.requirePermission(
-					actual.hasPermission(
-						sess.user.role as Parameters<typeof actual.hasPermission>[0],
-						permission as Parameters<typeof actual.hasPermission>[1],
+				const mod: typeof import('../lib/sessionOrganization') = actual;
+				mod.requirePermission(
+					mod.hasPermission(
+						sess.user.role as Parameters<typeof mod.hasPermission>[0],
+						permission as Parameters<typeof mod.hasPermission>[1],
 					),
 					message,
 				);

@@ -31,7 +31,7 @@ vi.mock('../lib/sessionOrganization', async () => {
 		getMutationContext: vi.fn(async () => ({ userId: 'test-user', role: mockRole })),
 		requireOrgPermission: vi.fn().mockImplementation(
 			async (_ctx: unknown, permission: string, message?: string) => {
-				const mod = actual as typeof import('../lib/sessionOrganization');
+				const mod: typeof import('../lib/sessionOrganization') = actual as typeof import('../lib/sessionOrganization');
 				mod.requirePermission(
 					mod.hasPermission(
 						mockRole as Parameters<typeof mod.hasPermission>[0],
