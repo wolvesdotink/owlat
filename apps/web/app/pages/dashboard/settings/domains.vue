@@ -5,6 +5,7 @@ import { formatDateTime } from '~/utils/formatters';
 import { hasInboundFeature } from '~/utils/inboundDns';
 import { computeSpfSuggestion, type SpfCoexistenceSuggestion } from '~/utils/spfCoexistence';
 import { summarizeDomainReadiness, domainReadinessMessage } from '~/utils/domainReadiness';
+import { createAutoRecheckPoller, type AutoRecheckPoller } from '~/utils/domainAutoRecheck';
 import { rules } from '~/composables/useFormValidation';
 
 useHead({ title: 'Sending Domains — Owlat' });
@@ -234,6 +235,82 @@ const toggleDomainExpansion = (domainId: Id<'domains'>) => {
 		if (expandedDomainId.value === domainId) spfCoexistence.value = result;
 	});
 };
+
+// Gentle auto-recheck: once a domain panel is expanded, keep quietly re-running
+// verifyDomain on a slow interval so the user doesn't have to click Verify over
+// and over while DNS propagates. Only runs for domains that can still become
+// verified — never for already-verified, still-registering, or
+// failed-registration domains. Stops on verify, collapse, unmount, or the cap.
+const autoRecheckActive = ref(false);
+
+type AutoRecheckStatus = { status: string; lastRegistrationError?: string | null };
+const isAutoRecheckable = (domain: AutoRecheckStatus | undefined): boolean => {
+	if (!domain) return false;
+	if (domain.status === 'verified' || domain.status === 'registering') return false;
+	// A failed *registration* is not something re-running DNS verification fixes.
+	if (domain.status === 'failed' && domain.lastRegistrationError) return false;
+	return true;
+};
+
+let recheckPoller: AutoRecheckPoller | null = null;
+let recheckDomainId: Id<'domains'> | null = null;
+
+const stopAutoRecheck = () => {
+	recheckPoller?.stop();
+	recheckPoller = null;
+	recheckDomainId = null;
+	autoRecheckActive.value = false;
+};
+
+const startAutoRecheck = (domainId: Id<'domains'>) => {
+	// Already polling this exact domain — leave the existing poller running. A
+	// poller that has self-stopped (verified / cap reached) reports isRunning()
+	// false, so it is not mistaken for a live one and auto-recheck can restart.
+	if (recheckPoller && recheckDomainId === domainId && recheckPoller.isRunning()) return;
+	stopAutoRecheck();
+	recheckDomainId = domainId;
+	autoRecheckActive.value = true;
+	recheckPoller = createAutoRecheckPoller({
+		onTick: async () => {
+			// Never overlap with a manual Verify the user just clicked.
+			if (verifyingDomainId.value === domainId) return false;
+			const result = await verifyDomain({ domainId });
+			// run() already surfaced any failure; treat undefined as "keep trying".
+			return result?.allVerified === true;
+		},
+		onStopped: () => {
+			// The poller stopped itself (domain verified, or the ~5-min cap was
+			// reached). Reconcile the component's mirror state so the subtle
+			// "Checking DNS…" indicator stops instead of spinning forever, and a
+			// later domainsData tick can start a fresh poller.
+			if (recheckDomainId === domainId) {
+				recheckPoller = null;
+				recheckDomainId = null;
+				autoRecheckActive.value = false;
+			}
+		},
+	});
+	recheckPoller.start();
+};
+
+// Drive the poller from whichever panel is open and that domain's live status
+// (domainsData is a real-time subscription, so a verify elsewhere collapses it).
+watch(
+	[expandedDomainId, () => domainsData.value],
+	() => {
+		const id = expandedDomainId.value;
+		const domain = id ? (domainsData.value ?? []).find((d) => d._id === id) : undefined;
+		if (id && isAutoRecheckable(domain)) {
+			startAutoRecheck(id);
+		} else {
+			stopAutoRecheck();
+		}
+	},
+);
+
+onBeforeUnmount(() => {
+	stopAutoRecheck();
+});
 
 // Status badge styling
 const getStatusBadgeClass = (status: string) => {
@@ -567,9 +644,21 @@ const readinessSummary = (domain: DomainWithVerification) =>
 
 								<!-- DNS records (normal state) -->
 								<template v-else-if="hasDnsRecords(domain.dnsRecords)">
-									<h4 class="text-sm font-medium text-text-primary mb-4">
-										Configure these DNS records with your domain provider:
-									</h4>
+									<div class="flex items-center justify-between gap-3 mb-4">
+										<h4 class="text-sm font-medium text-text-primary">
+											Configure these DNS records with your domain provider:
+										</h4>
+										<!-- Subtle auto-recheck indicator: we quietly re-verify while
+										     this panel is open so the user needn't keep clicking Verify. -->
+										<span
+											v-if="autoRecheckActive && expandedDomainId === domain._id"
+											class="inline-flex items-center gap-1.5 text-xs text-text-secondary whitespace-nowrap"
+											title="We recheck your DNS automatically every 30 seconds while this panel is open."
+										>
+											<Icon name="lucide:loader-2" class="w-3 h-3 animate-spin" />
+											Checking DNS…
+										</span>
+									</div>
 
 									<!-- One-line domain readiness summary derived purely from the
 									     verification data already on the domain. -->
