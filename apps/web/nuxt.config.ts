@@ -180,6 +180,12 @@ export default defineNuxtConfig({
 		public: {
 			convexUrl: process.env['NUXT_PUBLIC_CONVEX_URL'] || '',
 			convexSiteUrl: process.env['NUXT_PUBLIC_CONVEX_SITE_URL'] || '',
+			// Optional explicit URL for the Convex admin dashboard (port 6791) shown
+			// in the self-host onboarding banner. Empty by default: the dashboard is
+			// loopback-bound + SSH-tunnelled on a hardened install, so its address
+			// can't be derived reliably. When set, the banner links straight to it;
+			// otherwise it derives a best-effort guess the operator can override.
+			convexDashboardUrl: process.env['NUXT_PUBLIC_CONVEX_DASHBOARD_URL'] || '',
 			siteUrl: process.env['NUXT_PUBLIC_SITE_URL'] || DEFAULT_SITE_URL,
 			// True when the bundle is produced by `generate:desktop` for the Tauri
 			// app. Gates desktop-only runtime config (workspace picker, cross-domain
