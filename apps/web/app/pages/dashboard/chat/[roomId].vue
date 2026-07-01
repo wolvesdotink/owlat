@@ -105,7 +105,7 @@ const handleLeave = async () => {
 		<div class="flex-1 flex flex-col min-w-0">
 			<!-- Loading shell -->
 			<div v-if="roomLoading" class="flex-1 flex items-center justify-center">
-				<div class="w-8 h-8 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+				<UiSpinner />
 			</div>
 
 			<!-- Not found / no access -->
@@ -173,7 +173,7 @@ const handleLeave = async () => {
 							@delete="(id) => deleteMessage(id)"
 						/>
 						<div v-else class="flex-1 flex items-center justify-center">
-							<div class="w-6 h-6 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+							<UiSpinner size="md" />
 						</div>
 						<ChatInput v-if="room.isMember" @send="handleSend" />
 					</div>

@@ -266,7 +266,7 @@ const handleBack = () => {
 		<!-- Loading State -->
 		<div v-if="templateLoading" class="flex-1 flex items-center justify-center">
 			<div class="flex flex-col items-center gap-3">
-				<div class="w-8 h-8 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+				<UiSpinner />
 				<p class="text-text-secondary text-sm">Loading template...</p>
 			</div>
 		</div>

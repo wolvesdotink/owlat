@@ -174,7 +174,7 @@ const { showToast } = useToast();
 		<!-- Loading State -->
 		<div v-if="contactLoading && !contact" class="flex items-center justify-center py-16">
 			<div class="flex flex-col items-center gap-3">
-				<div class="w-8 h-8 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+				<UiSpinner />
 				<p class="text-text-secondary text-sm">Loading contact...</p>
 			</div>
 		</div>
@@ -454,9 +454,7 @@ const { showToast } = useToast();
 							class="flex items-center justify-center py-8"
 						>
 							<div class="flex flex-col items-center gap-3">
-								<div
-									class="w-6 h-6 border-2 border-brand border-t-transparent rounded-full animate-spin"
-								/>
+								<UiSpinner size="md" />
 								<p class="text-text-tertiary text-sm">Loading activities...</p>
 							</div>
 						</div>

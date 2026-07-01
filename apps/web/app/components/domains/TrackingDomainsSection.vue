@@ -152,7 +152,7 @@ const handleVerify = async (id: Id<'trackingDomains'>) => {
 		<!-- Loading -->
 		<div v-if="isLoading && !trackingDomains" class="flex items-center justify-center py-12">
 			<div class="flex flex-col items-center gap-3">
-				<div class="w-8 h-8 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+				<UiSpinner />
 				<p class="text-text-secondary text-sm">Loading tracking domains...</p>
 			</div>
 		</div>

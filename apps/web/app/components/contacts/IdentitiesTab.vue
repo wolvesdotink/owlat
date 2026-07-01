@@ -114,7 +114,7 @@ const onMerge = async (sourceId: Id<'contacts'>) => {
 
 			<!-- Loading -->
 			<div v-if="identitiesLoading" class="py-6 text-center">
-				<div class="w-6 h-6 border-2 border-brand border-t-transparent rounded-full animate-spin mx-auto" />
+				<UiSpinner size="md" class="mx-auto" />
 			</div>
 
 			<!-- Empty -->

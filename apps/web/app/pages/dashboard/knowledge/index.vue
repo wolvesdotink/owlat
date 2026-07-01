@@ -108,7 +108,7 @@ const handleCancelled = () => {
 					v-if="isLoading"
 					class="flex items-center justify-center py-16"
 				>
-					<div class="w-8 h-8 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+					<UiSpinner />
 				</div>
 
 				<!-- Empty State -->

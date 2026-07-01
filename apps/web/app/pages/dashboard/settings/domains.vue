@@ -318,7 +318,7 @@ const hasDnsRecords = (dnsRecords: DomainDnsRecords | null | undefined): dnsReco
 		<!-- Loading State -->
 		<div v-if="isLoading && !domainsData" class="flex items-center justify-center py-16">
 			<div class="flex flex-col items-center gap-3">
-				<div class="w-8 h-8 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+				<UiSpinner />
 				<p class="text-text-secondary text-sm">Loading domains...</p>
 			</div>
 		</div>

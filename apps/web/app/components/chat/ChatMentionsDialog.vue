@@ -31,7 +31,7 @@ const handleOpen = async (mention: {
 	<ChatDialogShell title="Mentions" size="lg" @close="emit('close')">
 		<div class="flex-1 overflow-y-auto p-3">
 			<div v-if="mentionsLoading" class="flex items-center justify-center py-8">
-				<div class="w-6 h-6 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+				<UiSpinner size="md" />
 			</div>
 			<div
 				v-else-if="mentions.length === 0"

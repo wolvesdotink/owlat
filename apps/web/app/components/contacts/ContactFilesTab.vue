@@ -56,7 +56,7 @@ const sourceIcon = (sourceType: string): string => {
 		<!-- Loading -->
 		<div v-if="isLoading" class="flex items-center justify-center py-8">
 			<div class="flex flex-col items-center gap-3">
-				<div class="w-6 h-6 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+				<UiSpinner size="md" />
 				<p class="text-text-tertiary text-sm">Loading files...</p>
 			</div>
 		</div>

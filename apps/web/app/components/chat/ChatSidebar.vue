@@ -89,7 +89,7 @@ const matchesQuery = (name: string) => {
 		<div class="flex-1 overflow-y-auto pb-3">
 			<!-- Loading -->
 			<div v-if="isLoading && channels.length === 0 && dms.length === 0" class="flex items-center justify-center py-12">
-				<div class="w-6 h-6 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+				<UiSpinner size="md" />
 			</div>
 
 			<template v-else>

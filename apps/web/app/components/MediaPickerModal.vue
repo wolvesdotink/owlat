@@ -179,7 +179,7 @@ const getFileIcon = (mimeType: string) => {
 
 			<!-- Loading -->
 			<div v-if="isLoading && assets.length === 0" class="flex items-center justify-center py-12">
-				<div class="w-6 h-6 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+				<UiSpinner size="md" />
 			</div>
 
 			<!-- Empty -->

@@ -207,7 +207,7 @@ const confidencePercent = computed(() => Math.round(form.confidenceThreshold * 1
 		<!-- Loading State -->
 		<div v-if="isLoading" class="flex items-center justify-center py-16">
 			<div class="flex flex-col items-center gap-3">
-				<div class="w-8 h-8 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+				<UiSpinner />
 				<p class="text-text-secondary text-sm">Loading agent settings...</p>
 			</div>
 		</div>

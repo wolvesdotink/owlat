@@ -46,9 +46,7 @@ onMounted(async () => {
 			<!-- Loading State -->
 			<div v-if="status === 'loading'" class="card p-8 text-center">
 				<div class="flex justify-center mb-4">
-					<div
-						class="w-12 h-12 border-2 border-brand border-t-transparent rounded-full animate-spin"
-					/>
+					<UiSpinner size="xl" />
 				</div>
 				<h1 class="text-xl font-semibold text-text-primary mb-2">Cancelling Deletion...</h1>
 				<p class="text-text-secondary text-sm">Please wait while we process your request.</p>
