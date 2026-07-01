@@ -48,7 +48,7 @@ import { createBlock, createColumnItem } from '../utils/blocks';
 import { htmlToBlocks } from '../utils/htmlToBlocks';
 import { generateId } from '../utils/id';
 import { setByPath } from '../utils/propertyPath';
-import { defaultTheme, allBlockTypes } from '../defaults';
+import { defaultTheme } from '../defaults';
 import { getBlock, getContainerItemTypes, getColumnItemTypes } from '../registry';
 
 // Schema

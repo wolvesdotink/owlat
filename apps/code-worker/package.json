@@ -18,11 +18,11 @@
 	},
 	"dependencies": {
 		"convex": "^1.34.0",
-		"@octokit/rest": "^21.0.0",
+		"@octokit/rest": "^22.0.1",
 		"execa": "^9.0.0"
 	},
 	"devDependencies": {
-		"@types/node": "^22.0.0",
+		"@types/node": "^26.0.1",
 		"tsx": "^4.19.0",
 		"typescript": "^5.9.0",
 		"vitest": "catalog:"

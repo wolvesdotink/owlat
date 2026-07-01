@@ -28,7 +28,7 @@ jobs:
         with:
           egress-policy: audit
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       # Linux system deps required by Tauri's webview + tray. perl/make (needed
       # by the vendored OpenSSL/libssh2 build for `ssh2`) are preinstalled.
