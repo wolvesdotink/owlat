@@ -256,6 +256,7 @@ import type * as lib_emailHelpers from "../lib/emailHelpers.js";
 import type * as lib_emailProviders_domainVerification from "../lib/emailProviders/domainVerification.js";
 import type * as lib_emailProviders_mtaIdentity from "../lib/emailProviders/mtaIdentity.js";
 import type * as lib_emailProviders_sesIdentity from "../lib/emailProviders/sesIdentity.js";
+import type * as lib_emailTranslations from "../lib/emailTranslations.js";
 import type * as lib_env from "../lib/env.js";
 import type * as lib_featureFlags from "../lib/featureFlags.js";
 import type * as lib_graphAnalyticsCompute from "../lib/graphAnalyticsCompute.js";
@@ -765,6 +766,7 @@ declare const fullApi: ApiFromModules<{
   "lib/emailProviders/domainVerification": typeof lib_emailProviders_domainVerification;
   "lib/emailProviders/mtaIdentity": typeof lib_emailProviders_mtaIdentity;
   "lib/emailProviders/sesIdentity": typeof lib_emailProviders_sesIdentity;
+  "lib/emailTranslations": typeof lib_emailTranslations;
   "lib/env": typeof lib_env;
   "lib/featureFlags": typeof lib_featureFlags;
   "lib/graphAnalyticsCompute": typeof lib_graphAnalyticsCompute;
