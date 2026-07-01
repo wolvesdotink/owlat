@@ -45,7 +45,7 @@ export {
 // SPF merge is shared with the web clients (the DNS-panel coexistence hint), so
 // backend generation/verification and the FE fold our mechanisms into an
 // existing record the same way. Re-exported for the domains callers + tests.
-export { isSpfRecord, parseSpfMechanisms, mergeSpfRecords } from '@owlat/shared/spf';
+export { isSpfRecord, mergeSpfRecords } from '@owlat/shared/spf';
 
 import { isSpfRecord, mergeSpfRecords } from '@owlat/shared/spf';
 

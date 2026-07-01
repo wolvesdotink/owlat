@@ -41,6 +41,15 @@ describe('mergeSpfRecords', () => {
 		).toBe('v=spf1 include:_spf.google.com include:amazonses.com ~all');
 	});
 
+	it('folds a Microsoft 365 include into an existing record', () => {
+		expect(
+			mergeSpfRecords(
+				'v=spf1 ip4:198.51.100.5 -all',
+				'v=spf1 include:spf.protection.outlook.com -all',
+			),
+		).toBe('v=spf1 ip4:198.51.100.5 include:spf.protection.outlook.com -all');
+	});
+
 	it('is idempotent when ours mechanisms are already present', () => {
 		const existing = 'v=spf1 include:_spf.google.com include:amazonses.com ~all';
 		expect(mergeSpfRecords(existing, 'v=spf1 include:amazonses.com ~all')).toBe(existing);

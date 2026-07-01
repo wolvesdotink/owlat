@@ -3,7 +3,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { formatDateTime } from '~/utils/formatters';
 import { hasInboundFeature } from '~/utils/inboundDns';
-import { computeSpfSuggestion } from '~/utils/spfCoexistence';
+import { computeSpfSuggestion, type SpfCoexistenceSuggestion } from '~/utils/spfCoexistence';
 import { rules } from '~/composables/useFormValidation';
 
 useHead({ title: 'Sending Domains — Owlat' });
@@ -215,7 +215,7 @@ const handleForceVerify = async (domainId: Id<'domains'>) => {
 // isn't verified yet already publishes a foreign SPF record, we proactively
 // resolve it (DoH) and suggest a single merged record rather than a second
 // v=spf1 (which would be a PermError, RFC 7208 §3.2).
-const spfCoexistence = ref<{ existing: string; merged: string } | null>(null);
+const spfCoexistence = ref<SpfCoexistenceSuggestion | null>(null);
 
 // Toggle domain expansion
 const toggleDomainExpansion = (domainId: Id<'domains'>) => {

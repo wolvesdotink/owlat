@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { SpfCoexistenceSuggestion } from '~/utils/spfCoexistence';
+
 interface DNSRecord {
 	type: string;
 	host: string;
@@ -20,7 +22,7 @@ interface Props {
 	 * carries the existing record and the single merged record to publish
 	 * instead (RFC 7208 §3.2 allows only one `v=spf1` record per host).
 	 */
-	coexistence?: { existing: string; merged: string };
+	coexistence?: SpfCoexistenceSuggestion;
 }
 
 const props = defineProps<Props>();
@@ -106,12 +108,13 @@ const handleCopyValue = () => {
 			     for everyone, so offer a single merged record instead. -->
 			<div v-if="coexistence" class="mt-3 rounded-lg border border-warning/30 bg-warning/10 p-3">
 				<p class="flex items-start gap-2 text-xs font-medium text-warning">
-					<Icon name="lucide:triangle-alert" class="mt-0.5 w-3.5 h-3.5 shrink-0" />
+					<Icon name="lucide:alert-triangle" class="mt-0.5 w-3.5 h-3.5 shrink-0" />
 					<span>
 						This domain already publishes an SPF record for another mail provider.
 						Only one <code class="font-mono">v=spf1</code> record is allowed per host
 						(RFC 7208 §3.2) — a second one breaks SPF for all your mail. Publish the
-						merged record below instead of the value above.
+						merged record below instead of the value above. SPF allows at most 10 DNS
+						lookups — double-check the merged record stays within that limit.
 					</span>
 				</p>
 				<div class="mt-2">

@@ -22,7 +22,7 @@ import {
 	buildDnsRecords,
 	type DnsRecordRow,
 } from '~/lib/desktop/provisioningForm';
-import { computeSpfSuggestion } from '~/utils/spfCoexistence';
+import { computeSpfSuggestion, type SpfCoexistenceSuggestion } from '~/utils/spfCoexistence';
 
 useHead({ title: 'Set up a server — Owlat' });
 definePageMeta({ layout: false });
@@ -54,6 +54,7 @@ const {
 // away mid-flow.
 onBeforeUnmount(() => {
 	stopReachPolling();
+	if (spfLookupTimer) clearTimeout(spfLookupTimer);
 	void disconnect();
 });
 
@@ -332,21 +333,48 @@ const dnsRecords = computed(() => {
  * leaves the starter value untouched.
  */
 const isStarterSpf = (r: DnsRecordRow) => r.type === 'TXT' && r.value.startsWith('v=spf1');
-const spfCoexistence = ref<{ existing: string; merged: string } | null>(null);
+
+/**
+ * The only inputs the DoH lookup depends on — the SPF row's publish host + its
+ * value — as a scalar key, so the watcher fires when those change rather than
+ * on every `dnsRecords` recompute (packs/IP edits etc.).
+ */
+const spfLookupKey = computed(() => {
+	const row = dnsRecords.value.find(isStarterSpf);
+	return row ? `${row.name} ${row.value}` : '';
+});
+
+/**
+ * A host complete enough to resolve: a dotted name with non-empty labels and a
+ * ≥2-char alphabetic final label. Guards against firing DoH lookups against the
+ * partial hostnames produced on every keystroke in the domain field.
+ */
+function looksResolvable(host: string): boolean {
+	const labels = host.trim().split('.');
+	if (labels.length < 2 || labels.some((label) => label === '')) return false;
+	return /^[a-z]{2,}$/i.test(labels[labels.length - 1] ?? '');
+}
+
+const spfCoexistence = ref<SpfCoexistenceSuggestion | null>(null);
+let spfLookupTimer: ReturnType<typeof setTimeout> | null = null;
 watch(
-	dnsRecords,
-	(rows) => {
+	spfLookupKey,
+	() => {
 		spfCoexistence.value = null;
-		const spfRow = rows.find(isStarterSpf);
-		if (!spfRow) return;
-		const { name, value } = spfRow;
-		void computeSpfSuggestion(name, value).then((result) => {
-			// Ignore a slow DoH response if the SPF row changed meanwhile.
-			const current = dnsRecords.value.find(isStarterSpf);
-			if (result && current && current.name === name && current.value === value) {
-				spfCoexistence.value = result;
-			}
-		});
+		if (spfLookupTimer) clearTimeout(spfLookupTimer);
+		const row = dnsRecords.value.find(isStarterSpf);
+		if (!row || !looksResolvable(row.name)) return;
+		const { name, value } = row;
+		// Debounce so typing in the domain field doesn't fire a DoH request per keystroke.
+		spfLookupTimer = setTimeout(() => {
+			void computeSpfSuggestion(name, value).then((result) => {
+				// Ignore a slow DoH response if the SPF row changed meanwhile.
+				const current = dnsRecords.value.find(isStarterSpf);
+				if (result && current && current.name === name && current.value === value) {
+					spfCoexistence.value = result;
+				}
+			});
+		}, 450);
 	},
 	{ immediate: true },
 );
@@ -360,7 +388,7 @@ const displayDnsRecords = computed<DnsRecordRow[]>(() => {
 			? {
 					...r,
 					value: suggestion.merged,
-					note: 'SPF — merged with the existing SPF record at this host so your other mail provider keeps working. Confirm in Settings → Domains.',
+					note: 'SPF — merged with the existing SPF record at this host so your other mail provider keeps working. SPF allows at most 10 DNS lookups — double-check it stays within that limit. Confirm in Settings → Domains.',
 				}
 			: r,
 	);

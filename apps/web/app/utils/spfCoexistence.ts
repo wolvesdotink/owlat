@@ -16,7 +16,10 @@
  * Fail-soft by design: any network / parse error resolves to `null` (publish
  * ours as-is) — a DoH hiccup must never block the DNS panel.
  */
-import { isSpfRecord, mergeSpfRecords, parseSpfMechanisms } from '@owlat/shared/spf';
+import { isSpfRecord, mergeSpfRecords } from '@owlat/shared/spf';
+
+/** The existing foreign SPF record and the single merged record to publish. */
+export type SpfCoexistenceSuggestion = { existing: string; merged: string };
 
 /** DoH JSON answer record type for TXT (RFC 1035). */
 const DNS_TYPE_TXT = 16;
@@ -69,22 +72,20 @@ export async function fetchSpfRecords(domain: string): Promise<string[]> {
 export async function computeSpfSuggestion(
 	domain: string,
 	ourSpfValue: string,
-): Promise<{ existing: string; merged: string } | null> {
+): Promise<SpfCoexistenceSuggestion | null> {
 	try {
 		const txtRecords = await fetchSpfRecords(domain);
 		const existing = txtRecords.find((value) => isSpfRecord(value));
 		if (!existing) return null;
 
-		// Already merged: the existing record carries every mechanism of ours.
-		const existingMechanisms = new Set(
-			parseSpfMechanisms(existing).map((mechanism) => mechanism.toLowerCase()),
-		);
-		const alreadyPresent = parseSpfMechanisms(ourSpfValue).every((mechanism) =>
-			existingMechanisms.has(mechanism.toLowerCase()),
-		);
-		if (alreadyPresent) return null;
+		// `mergeSpfRecords` returns the whitespace-normalised existing record when
+		// it adds nothing — so a merge that equals it means our mechanisms are
+		// already present (already merged / no change needed).
+		const normalizedExisting = existing.trim().replace(/\s+/g, ' ');
+		const merged = mergeSpfRecords(existing, ourSpfValue);
+		if (merged === normalizedExisting) return null;
 
-		return { existing: existing.trim(), merged: mergeSpfRecords(existing, ourSpfValue) };
+		return { existing: normalizedExisting, merged };
 	} catch {
 		return null;
 	}
