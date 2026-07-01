@@ -5,10 +5,23 @@ import { generateId } from '@owlat/shared';
  * Provides a global toast notification system with success and error variants
  */
 
+export interface ToastAction {
+	label: string;
+	onAction: () => void;
+}
+
 export interface Toast {
 	id: string;
 	message: string;
 	type: 'success' | 'error';
+	action?: ToastAction;
+}
+
+export interface ToastOptions {
+	/** How long the toast stays visible. Defaults to 3000ms. */
+	durationMs?: number;
+	/** Optional inline action button (e.g. "Undo"); clicking it dismisses the toast. */
+	action?: ToastAction;
 }
 
 // Global state for toasts (shared across all components)
@@ -19,20 +32,29 @@ export function useToast() {
 	 * Show a toast notification
 	 * @param message - The message to display
 	 * @param type - The type of toast ('success' | 'error'), defaults to 'success'
+	 * @param options - Optional duration override and inline action button
+	 * @returns the toast id (usable with removeToast for early dismissal)
 	 */
-	const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+	const showToast = (
+		message: string,
+		type: 'success' | 'error' = 'success',
+		options?: ToastOptions
+	): string => {
 		const id = generateId('toast');
 
 		toasts.value.push({
 			id,
 			message,
 			type,
+			...(options?.action ? { action: options.action } : {}),
 		});
 
-		// Auto-dismiss after 3 seconds
+		// Auto-dismiss after the requested window (3 seconds by default)
 		setTimeout(() => {
 			removeToast(id);
-		}, 3000);
+		}, options?.durationMs ?? 3000);
+
+		return id;
 	};
 
 	/**

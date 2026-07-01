@@ -299,7 +299,7 @@ describe('postbox snooze hide-from-inbox', () => {
 				messageIds: [msgId],
 				targetFolderId: archiveId,
 			})
-		).toEqual({ ok: true });
+		).toEqual({ ok: true, moved: [{ messageId: msgId, sourceFolderId: inboxId }] });
 		// Snoozed message wasn't counted in either folder, so the move shifts nothing.
 		expect((await t.run((ctx) => ctx.db.get(inboxId)))?.unseenCount).toBe(0);
 		expect((await t.run((ctx) => ctx.db.get(archiveId)))?.unseenCount).toBe(0);
