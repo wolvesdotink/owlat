@@ -110,38 +110,27 @@ export async function evaluateAgainstContact(
 }
 
 /**
- * Page size for the live-Contact stream. Each page is one `.paginate()` on the
- * `by_deleted_at` index pinned to `deletedAt === undefined`, so soft-deleted
- * rows never enter the page (the index range is exactly the live population,
- * never thinned by a post-filter) and no single query collects the whole
- * Contacts table — keeping each scan under the Convex per-query document-read
- * limit. Mirrors the topic-membership stream in `campaigns/audienceResolution`.
- */
-const CONTACT_PAGE_SIZE = 500;
-
-/**
  * Stream the live (not soft-deleted) Contacts — the canonical segment
- * population — in bounded pages, calling `visit` once per Contact. `visit`
- * returns `false` to stop early (the `matchLiveContacts` limit). Replaces the
- * old `liveContacts()` full-table scan (ADR-0033).
+ * population — via async iteration (no `.paginate()`), calling `visit` once per
+ * Contact. Iterating the `by_deleted_at` index pinned to `deletedAt === undefined`
+ * means soft-deleted rows never enter the stream, and reads are incremental
+ * under the per-execution read limit. `visit` returns `false` to stop early
+ * (the `matchLiveContacts` limit). Replaces the old `liveContacts()` full-table
+ * scan (ADR-0033).
  */
 async function forEachLiveContact(
 	ctx: { db: DatabaseReader },
 	visit: (contact: Doc<'contacts'>) => boolean | void,
 ): Promise<void> {
-	let cursor: string | null = null;
-	for (;;) {
-		const { page, isDone, continueCursor } = await ctx.db
-			.query('contacts')
-			.withIndex('by_deleted_at', (q) => q.eq('deletedAt', undefined))
-			.paginate({ cursor, numItems: CONTACT_PAGE_SIZE });
-
-		for (const contact of page) {
-			if (visit(contact) === false) return;
-		}
-
-		if (isDone) break;
-		cursor = continueCursor;
+	// Async-iterate (no `.paginate()`): Convex allows only one `.paginate()` per
+	// function execution, and these count/match helpers scan the whole live
+	// population in a single query. Streaming reads incrementally under the same
+	// per-execution read limit the old page-loop was already bounded by; `visit`
+	// returns false to stop early (the `matchLiveContacts` limit).
+	for await (const contact of ctx.db
+		.query('contacts')
+		.withIndex('by_deleted_at', (q) => q.eq('deletedAt', undefined))) {
+		if (visit(contact) === false) return;
 	}
 }
 

@@ -421,21 +421,23 @@ describe('countMatchingContactsPage (cursor-checkpointed audience walk)', () => 
 			for (let i = 0; i < 7; i++) await insertContact(ctx, { email: `acme${i}@acme.com` });
 			for (let i = 0; i < 3; i++) await insertContact(ctx, { email: `other${i}@other.com` });
 			await insertContact(ctx, { email: 'gone@acme.com', deletedAt: Date.now() });
-
-			// Walk in pages of 4 (forces > 1 page), accumulating like the action.
-			let cursor: string | null = null;
-			let total = 0;
-			let scanned = 0;
-			for (;;) {
-				const page = await countMatchingContactsPage(ctx, acmeFilters, cursor, 4);
-				total += page.matched;
-				scanned += page.scanned;
-				if (page.isDone || page.continueCursor === null) break;
-				cursor = page.continueCursor;
-			}
-			expect(total).toBe(7); // soft-deleted acme contact excluded
-			expect(scanned).toBe(10); // live population only
 		});
+
+		// Walk in pages of 4 (forces > 1 page), each page its OWN execution — the
+		// checkpointed action walker calls the page primitive once per hop, and
+		// Convex allows a single `.paginate()` per execution.
+		let cursor: string | null = null;
+		let total = 0;
+		let scanned = 0;
+		for (;;) {
+			const page = await t.run(async (ctx) => countMatchingContactsPage(ctx, acmeFilters, cursor, 4));
+			total += page.matched;
+			scanned += page.scanned;
+			if (page.isDone || page.continueCursor === null) break;
+			cursor = page.continueCursor;
+		}
+		expect(total).toBe(7); // soft-deleted acme contact excluded
+		expect(scanned).toBe(10); // live population only
 	});
 
 	it('empty conditions count every live contact', async () => {
@@ -463,20 +465,22 @@ describe('listMatchingContactsPage (cursor-checkpointed membership walk)', () =>
 			for (let i = 0; i < 7; i++) await insertContact(ctx, { email: `acme${i}@acme.com` });
 			for (let i = 0; i < 3; i++) await insertContact(ctx, { email: `other${i}@other.com` });
 			await insertContact(ctx, { email: 'gone@acme.com', deletedAt: Date.now() });
-
-			// Walk in pages of 4 (forces > 1 page), accumulating like the query caller.
-			let cursor: string | null = null;
-			const emails: string[] = [];
-			for (;;) {
-				const page = await listMatchingContactsPage(ctx, acmeFilters, cursor, 4);
-				for (const m of page.members) emails.push(m.email!);
-				if (page.isDone) break;
-				cursor = page.continueCursor;
-			}
-			expect(emails).toHaveLength(7); // soft-deleted acme contact excluded
-			expect(emails).not.toContain('gone@acme.com');
-			expect(emails.every((e) => e.includes('acme'))).toBe(true);
 		});
+
+		// Walk in pages of 4 (forces > 1 page), each page its OWN execution — the
+		// reactive `segments.listMembers` query serves one page per call, and
+		// Convex allows a single `.paginate()` per execution.
+		let cursor: string | null = null;
+		const emails: string[] = [];
+		for (;;) {
+			const page = await t.run(async (ctx) => listMatchingContactsPage(ctx, acmeFilters, cursor, 4));
+			for (const m of page.members) emails.push(m.email!);
+			if (page.isDone) break;
+			cursor = page.continueCursor;
+		}
+		expect(emails).toHaveLength(7); // soft-deleted acme contact excluded
+		expect(emails).not.toContain('gone@acme.com');
+		expect(emails.every((e) => e.includes('acme'))).toBe(true);
 	});
 
 	it('empty conditions return every live contact', async () => {
