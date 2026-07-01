@@ -52,7 +52,7 @@ export type {
 	EditorBlock,
 	SavedBlock,
 } from './blocks';
-export { isBlockType } from './blocks';
+export { isBlockType, SOCIAL_PLATFORMS } from './blocks';
 
 // Audience types
 export type { Audience, AudienceKind } from './audience';

@@ -1,3 +1,4 @@
+import { SOCIAL_PLATFORMS } from '@owlat/shared';
 import type { BlockAttributeSchema } from '../types';
 import { backgroundColorField, sharedGroupsNoBorderRadius } from './_shared';
 
@@ -17,25 +18,10 @@ export const socialSchema: BlockAttributeSchema = {
 							key: 'platform',
 							label: 'Platform',
 							type: 'select',
-							options: [
-								{ label: 'Twitter / X', value: 'twitter' },
-								{ label: 'Facebook', value: 'facebook' },
-								{ label: 'Instagram', value: 'instagram' },
-								{ label: 'LinkedIn', value: 'linkedin' },
-								{ label: 'YouTube', value: 'youtube' },
-								{ label: 'TikTok', value: 'tiktok' },
-								{ label: 'GitHub', value: 'github' },
-								{ label: 'WhatsApp', value: 'whatsapp' },
-								{ label: 'Telegram', value: 'telegram' },
-								{ label: 'Threads', value: 'threads' },
-								{ label: 'Pinterest', value: 'pinterest' },
-								{ label: 'Discord', value: 'discord' },
-								{ label: 'Mastodon', value: 'mastodon' },
-								{ label: 'Bluesky', value: 'bluesky' },
-								{ label: 'Vimeo', value: 'vimeo' },
-								{ label: 'Medium', value: 'medium' },
-								{ label: 'Snapchat', value: 'snapchat' },
-							],
+							options: Object.entries(SOCIAL_PLATFORMS).map(([value, m]) => ({
+								value,
+								label: m.editorLabel ?? m.label,
+							})),
 						},
 						{ key: 'url', label: 'URL', type: 'url' },
 						{ key: 'enabled', label: 'Enabled', type: 'toggle' },

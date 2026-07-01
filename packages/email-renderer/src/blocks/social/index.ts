@@ -9,7 +9,7 @@
  * accept social blocks.
  */
 
-import { fullSupport, type SocialBlockContent, type SocialPlatform } from '@owlat/shared';
+import { fullSupport, SOCIAL_PLATFORMS, type SocialBlockContent, type SocialPlatform } from '@owlat/shared';
 import type { BlockModule, Placement } from '../_module';
 import { escapeAttr, sanitizeUrl } from '../../sanitize';
 import { transformUrl } from '../../helpers/linkTransform';
@@ -18,25 +18,9 @@ import { checkShape, isString, isNumber, isArray, isOneOf } from '../../helpers/
 const SOCIAL_ALIGNS = ['left', 'center', 'right'] as const;
 const SOCIAL_ICON_STYLES = ['filled', 'outline'] as const;
 
-const PLATFORM_NAMES: Record<SocialPlatform, string> = {
-	twitter: 'X',
-	facebook: 'Facebook',
-	instagram: 'Instagram',
-	linkedin: 'LinkedIn',
-	youtube: 'YouTube',
-	tiktok: 'TikTok',
-	github: 'GitHub',
-	whatsapp: 'WhatsApp',
-	telegram: 'Telegram',
-	threads: 'Threads',
-	pinterest: 'Pinterest',
-	discord: 'Discord',
-	mastodon: 'Mastodon',
-	bluesky: 'Bluesky',
-	vimeo: 'Vimeo',
-	medium: 'Medium',
-	snapchat: 'Snapchat',
-};
+const PLATFORM_NAMES: Record<SocialPlatform, string> = Object.fromEntries(
+	(Object.entries(SOCIAL_PLATFORMS) as [SocialPlatform, { label: string }][]).map(([value, m]) => [value, m.label]),
+) as Record<SocialPlatform, string>;
 
 const getDefaultIconUrl = (platform: SocialPlatform, style: 'filled' | 'outline'): string =>
 	`/social-icons/${style}/${platform}.png`;
