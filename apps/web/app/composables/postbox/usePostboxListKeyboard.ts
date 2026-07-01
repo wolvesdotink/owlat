@@ -71,6 +71,9 @@ export function usePostboxListKeyboard<T extends { _id: string }>(opts: {
 				break;
 			}
 			default: {
+				// Never treat a Cmd/Ctrl/Alt chord (browser shortcut / Windows
+				// menu accelerator like Alt+E) as a triage key.
+				if (event.metaKey || event.ctrlKey || event.altKey) return;
 				const m = items[cur];
 				if (m && opts.onAction) opts.onAction(event.key, m);
 			}
