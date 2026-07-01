@@ -208,15 +208,35 @@ function onPaste(event: ClipboardEvent) {
 	}
 }
 
+// Keyboard shortcuts (Cmd/Ctrl+Enter send, +Shift schedule, Esc minimize),
+// bound on the composer root (capture) so each stacked popup composer only
+// handles its own keys.
+const rootEl = ref<HTMLElement | null>(null);
+const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } =
+	usePostboxComposerKeys({
+		rootEl,
+		canSend,
+		sending,
+		isScheduled,
+		scheduleOpen,
+		onSend: () => void handleSend(),
+		onSchedule: () => {
+			scheduleOpen.value = true;
+		},
+		onMinimize: () => emit('minimize'),
+	});
+
 </script>
 
 <template>
 	<div
+		ref="rootEl"
 		class="relative flex flex-col h-full bg-bg-elevated"
 		@dragover="onDragOver"
 		@dragleave="onDragLeave"
 		@drop="onDrop"
 		@paste="onPaste"
+		@keydown.capture="onComposerKeydown"
 	>
 		<div
 			v-if="dragActive"
@@ -385,6 +405,7 @@ function onPaste(event: ClipboardEvent) {
 				<button
 					type="button"
 					class="btn btn-primary"
+					:title="sendShortcutHint"
 					:disabled="!canSend || sending || isScheduled"
 					@click="handleSend()"
 				>
@@ -399,7 +420,7 @@ function onPaste(event: ClipboardEvent) {
 				<button
 					type="button"
 					class="btn btn-ghost"
-					title="Schedule send"
+					:title="scheduleShortcutHint"
 					:disabled="!canSend || sending || isScheduled"
 					@click="scheduleOpen = true"
 				>
