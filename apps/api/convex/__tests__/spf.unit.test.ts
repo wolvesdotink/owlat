@@ -20,7 +20,9 @@ import {
 	insertIncludeIntoExisting,
 	isSpfAligned,
 	isSpfQualifier,
+	isSpfRecord,
 	mergeSpfIncludeGuidance,
+	mergeSpfRecords,
 	resolveSpfQualifier,
 } from '../domains/spf';
 
@@ -143,6 +145,24 @@ describe('mergeSpfIncludeGuidance / insertIncludeIntoExisting', () => {
 		expect(insertIncludeIntoExisting('v=spf1 ip4:198.51.100.5', '_spf.x')).toBe(
 			'v=spf1 ip4:198.51.100.5 include:_spf.x',
 		);
+	});
+});
+
+describe('isSpfRecord / mergeSpfRecords (shared, re-exported)', () => {
+	it('detects SPF records case-insensitively with leading whitespace', () => {
+		expect(isSpfRecord('  V=SPF1 include:_spf.google.com ~all')).toBe(true);
+		expect(isSpfRecord('v=DMARC1; p=none')).toBe(false);
+	});
+
+	it('folds our include into an existing Google SPF record, before its all', () => {
+		expect(
+			mergeSpfRecords('v=spf1 include:_spf.google.com ~all', 'v=spf1 include:amazonses.com ~all'),
+		).toBe('v=spf1 include:_spf.google.com include:amazonses.com ~all');
+	});
+
+	it('preserves the existing hard-fail qualifier and is idempotent when already merged', () => {
+		const existing = 'v=spf1 include:_spf.google.com include:amazonses.com -all';
+		expect(mergeSpfRecords(existing, 'v=spf1 include:amazonses.com -all')).toBe(existing);
 	});
 });
 

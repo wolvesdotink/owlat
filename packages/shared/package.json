@@ -104,6 +104,10 @@
 		"./spfAlignment": {
 			"types": "./src/spfAlignment.ts",
 			"import": "./src/spfAlignment.ts"
+		},
+		"./spf": {
+			"types": "./src/spf.ts",
+			"import": "./src/spf.ts"
 		}
 	},
 	"peerDependencies": {

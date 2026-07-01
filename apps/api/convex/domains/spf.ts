@@ -42,6 +42,13 @@ export {
 	emailDomain,
 } from '@owlat/shared/spfAlignment';
 
+// SPF merge is shared with the web clients (the DNS-panel coexistence hint), so
+// backend generation/verification and the FE fold our mechanisms into an
+// existing record the same way. Re-exported for the domains callers + tests.
+export { isSpfRecord, parseSpfMechanisms, mergeSpfRecords } from '@owlat/shared/spf';
+
+import { isSpfRecord, mergeSpfRecords } from '@owlat/shared/spf';
+
 export const SPF_QUALIFIERS = ['~all', '-all', '?all', '+all'] as const;
 
 export type SpfQualifier = (typeof SPF_QUALIFIERS)[number];
@@ -115,7 +122,7 @@ export function buildReturnPathSpfRecord(
  * (`v=spf1` case-insensitively, RFC 7208 §3.2 allows leading whitespace).
  */
 export function countSpfRecords(txtValues: readonly string[]): number {
-	return txtValues.filter((value) => /^\s*v=spf1\b/i.test(value)).length;
+	return txtValues.filter((value) => isSpfRecord(value)).length;
 }
 
 /**
@@ -138,7 +145,7 @@ export function mergeSpfIncludeGuidance(
 	existingTxtValues: readonly string[],
 	include: string,
 ): string | null {
-	const existing = existingTxtValues.find((value) => /^\s*v=spf1\b/i.test(value));
+	const existing = existingTxtValues.find((value) => isSpfRecord(value));
 	if (!existing) return null;
 	return (
 		`merge include into existing record: the apex already publishes ` +
@@ -150,12 +157,9 @@ export function mergeSpfIncludeGuidance(
 
 /**
  * Splice an `include:` mechanism into an existing `v=spf1 …` record, before the
- * trailing `…all` mechanism (or appended when there is no `all`).
+ * trailing `…all` mechanism (or appended when there is no `all`). Thin wrapper
+ * over the shared full-record merge so there is one splice implementation.
  */
 export function insertIncludeIntoExisting(existing: string, include: string): string {
-	const tokens = existing.split(/\s+/).filter(Boolean);
-	const allIndex = tokens.findIndex((t) => /^[~+?-]?all$/i.test(t));
-	const insertAt = allIndex === -1 ? tokens.length : allIndex;
-	tokens.splice(insertAt, 0, `include:${include}`);
-	return tokens.join(' ');
+	return mergeSpfRecords(existing, `v=spf1 include:${include}`);
 }
