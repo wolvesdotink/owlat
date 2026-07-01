@@ -65,7 +65,7 @@ export function throwNotFound(resource: string): never {
  * `QueryCtx` and `MutationCtx` (and any other reader) satisfy it.
  */
 export async function getOrThrow<T extends TableNames>(
-	ctx: { db: { get(id: Id<T>): Promise<Doc<T> | null> } },
+	ctx: { db: { get<TN extends TableNames>(id: Id<TN>): Promise<Doc<TN> | null> } },
 	id: Id<T>,
 	label: string,
 ): Promise<Doc<T>> {
