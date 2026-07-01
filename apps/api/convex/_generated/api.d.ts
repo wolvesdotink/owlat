@@ -263,7 +263,6 @@ import type * as lib_graphRank from "../lib/graphRank.js";
 import type * as lib_httpResponse from "../lib/httpResponse.js";
 import type * as lib_inboundClassification from "../lib/inboundClassification.js";
 import type * as lib_inboxStats from "../lib/inboxStats.js";
-import type * as lib_instanceMailer from "../lib/instanceMailer.js";
 import type * as lib_ipBlocklist from "../lib/ipBlocklist.js";
 import type * as lib_knowledgeDedup from "../lib/knowledgeDedup.js";
 import type * as lib_knowledgeEdges from "../lib/knowledgeEdges.js";
@@ -773,7 +772,6 @@ declare const fullApi: ApiFromModules<{
   "lib/httpResponse": typeof lib_httpResponse;
   "lib/inboundClassification": typeof lib_inboundClassification;
   "lib/inboxStats": typeof lib_inboxStats;
-  "lib/instanceMailer": typeof lib_instanceMailer;
   "lib/ipBlocklist": typeof lib_ipBlocklist;
   "lib/knowledgeDedup": typeof lib_knowledgeDedup;
   "lib/knowledgeEdges": typeof lib_knowledgeEdges;
