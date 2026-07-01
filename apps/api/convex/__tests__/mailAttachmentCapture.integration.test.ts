@@ -212,3 +212,99 @@ describe('mail.delivery.ingestFromWebhook — attachment capture', () => {
 		expect(files).toHaveLength(ATTACHMENT_COMPOSE_LIMITS.maxCount);
 	});
 });
+
+/** Seed a live email-channel contact so the sender resolves find-only. */
+async function seedContact(
+	t: ReturnType<typeof convexTest>,
+	email: string,
+): Promise<string> {
+	return await t.run(async (ctx) => {
+		const now = Date.now();
+		return await ctx.db.insert('contacts', {
+			email,
+			source: 'inbound',
+			doiStatus: 'not_required',
+			searchableText: email,
+			createdAt: now,
+			updatedAt: now,
+		});
+	});
+}
+
+describe('mail.delivery.ingestFromWebhook — sender contact linking', () => {
+	it('links a captured attachment to the sender contact when one exists', async () => {
+		const t = convexTest(schema, modules);
+		await seedInbox(t);
+		const contactId = await seedContact(t, 'bob@example.com');
+
+		const raw = buildRawEml();
+		const result = await t.action(internal.mail.delivery.ingestFromWebhook, {
+			deliveryId: 'link-1',
+			rawBytesBase64: Buffer.from(raw, 'latin1').toString('base64'),
+			recipientAddress: 'alice@example.com',
+			from: 'Bob <bob@example.com>',
+			to: ['alice@example.com'],
+			cc: [],
+			bcc: [],
+			subject: 'with attachment',
+			textBody: 'See the attached notes.',
+			messageId: '<cap-link-1@example.com>',
+			attachments: [
+				{ filename: 'notes.txt', contentType: 'text/plain', size: 42, partIndex: '0' },
+			],
+		});
+		expect('messageId' in result).toBe(true);
+
+		const files = await t.run((ctx) => ctx.db.query('semanticFiles').collect());
+		expect(files).toHaveLength(1);
+		const file = files[0]!;
+		// The in-place array copy carries the sender contact.
+		expect(file.contactIds).toEqual([contactId]);
+		// The index-able junction (consumed by listByContact / ContactFilesTab) is
+		// linked to the same contact.
+		const junction = await t.run((ctx) =>
+			ctx.db
+				.query('semanticFileContacts')
+				.withIndex('by_file', (q) => q.eq('fileId', file._id))
+				.collect(),
+		);
+		expect(junction.map((r) => r.contactId)).toEqual([contactId]);
+	});
+
+	it('leaves the captured attachment org-general when the sender is unknown', async () => {
+		const t = convexTest(schema, modules);
+		await seedInbox(t);
+		// A DIFFERENT contact exists; the sender (bob@) must not resolve to it.
+		await seedContact(t, 'someone-else@example.com');
+
+		const raw = buildRawEml();
+		await t.action(internal.mail.delivery.ingestFromWebhook, {
+			deliveryId: 'link-2',
+			rawBytesBase64: Buffer.from(raw, 'latin1').toString('base64'),
+			recipientAddress: 'alice@example.com',
+			from: 'Bob <bob@example.com>',
+			to: ['alice@example.com'],
+			cc: [],
+			bcc: [],
+			subject: 'with attachment',
+			textBody: 'See the attached notes.',
+			messageId: '<cap-link-2@example.com>',
+			attachments: [
+				{ filename: 'notes.txt', contentType: 'text/plain', size: 42, partIndex: '0' },
+			],
+		});
+
+		const files = await t.run((ctx) => ctx.db.query('semanticFiles').collect());
+		expect(files).toHaveLength(1);
+		const file = files[0]!;
+		// No contact resolved → file stays org-general (today's behavior).
+		expect(file.contactIds ?? []).toEqual([]);
+		const junction = await t.run((ctx) =>
+			ctx.db
+				.query('semanticFileContacts')
+				.withIndex('by_file', (q) => q.eq('fileId', file._id))
+				.collect(),
+		);
+		expect(junction).toHaveLength(0);
+	});
+});
