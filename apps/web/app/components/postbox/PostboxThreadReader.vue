@@ -267,6 +267,125 @@ async function openForward(msg?: ReplyForwardSource) {
 	});
 }
 
+// Consume a pending compose intent set by the thread list's r/a/f shortcuts:
+// the list opens the message, then we open the matching composer once this
+// reader renders it (the quoting/recipient logic lives here).
+const pendingCompose = useState<{
+	messageId: string;
+	mode: 'reply' | 'replyAll' | 'forward';
+} | null>('postbox:pending-compose', () => null);
+watch(
+	() => props.message._id,
+	(id) => {
+		const pending = pendingCompose.value;
+		if (!pending || pending.messageId !== id) return;
+		pendingCompose.value = null;
+		if (pending.mode === 'reply') void openReply();
+		else if (pending.mode === 'replyAll') void openReplyAll();
+		else void openForward();
+	},
+	{ immediate: true }
+);
+
+// --- Single-key shortcuts while reading (same vocabulary as the list; see
+// utils/postboxShortcuts.ts). Registered on window, inert while focus is in
+// an input/contenteditable, and deferring to the list's own listbox handler
+// and to open dialogs so a key is never handled twice.
+const mailboxIdRef = computed(() => props.message.mailboxId as Id<'mailboxes'>);
+const readerBulk = usePostboxBulkActions(mailboxIdRef);
+const { labels: readerLabels, setOnMessage: setLabelOnMessage } = usePostboxLabels(mailboxIdRef);
+const { folders: readerFolders } = usePostboxFolders(mailboxIdRef);
+const readerMovableFolders = computed(() =>
+	readerFolders.value.filter((f) => f.role !== 'sent' && f.role !== 'drafts')
+);
+
+const archiveOp = useBackendOperation(api.mail.messageActions.archive, { label: 'Archive' });
+const trashOp = useBackendOperation(api.mail.messageActions.trash, { label: 'Move to trash' });
+const setStarOp = useBackendOperation(api.mail.messageActions.setStar, { label: 'Star' });
+const markReadOp = useBackendOperation(api.mail.messageActions.markRead, { label: 'Mark read' });
+const snoozeOp = useBackendOperation(api.mail.snooze.snooze, { label: 'Snooze' });
+const moveOp = useBackendOperation(api.mail.messageActions.move, { label: 'Move message' });
+
+// Live flags of the open message (the prop can be a stale list row).
+const openMessageFlags = computed(() => {
+	const live = allMessages.value.find((m) => m._id === props.message._id) as
+		| { flagSeen?: boolean; flagFlagged?: boolean }
+		| undefined;
+	return {
+		seen: live?.flagSeen ?? props.message.flagSeen ?? true,
+		flagged: live?.flagFlagged ?? false,
+	};
+});
+
+const snoozeDialogOpen = ref(false);
+const labelDialogOpen = ref(false);
+const moveDialogOpen = ref(false);
+
+function snoozeOpenMessage(until: number) {
+	void snoozeOp.run({ messageId: messageId.value, until });
+}
+async function applyLabelToOpenMessage(labelId: Id<'mailLabels'>) {
+	labelDialogOpen.value = false;
+	await setLabelOnMessage(messageId.value, labelId, true);
+}
+function moveOpenMessageTo(targetFolderId: Id<'mailFolders'>) {
+	moveDialogOpen.value = false;
+	void moveOp.run({ messageIds: [messageId.value], targetFolderId });
+}
+
+function onReaderShortcut(event: KeyboardEvent) {
+	if (event.metaKey || event.ctrlKey) return;
+	if (isEditableTarget(event.target)) return;
+	const el = event.target as HTMLElement | null;
+	// The focused thread list and any open dialog own their keys.
+	if (el?.closest?.('[role="listbox"], [role="dialog"]')) return;
+	const action = resolvePostboxShortcut(event.key);
+	// '?' is handled by the window-level PostboxShortcutHelp listener.
+	if (!action || action === 'help') return;
+	event.preventDefault();
+	switch (action) {
+		case 'archive':
+			void archiveOp.run({ messageIds: [messageId.value] });
+			break;
+		case 'trash':
+			void trashOp.run({ messageIds: [messageId.value] });
+			break;
+		case 'star':
+			void setStarOp.run({ messageId: messageId.value, starred: !openMessageFlags.value.flagged });
+			break;
+		case 'toggleRead':
+			void markReadOp.run({ messageId: messageId.value, seen: !openMessageFlags.value.seen });
+			break;
+		case 'markUnread':
+			void markReadOp.run({ messageId: messageId.value, seen: false });
+			break;
+		case 'toggleSelect':
+			readerBulk.toggle(messageId.value);
+			break;
+		case 'reply':
+			void openReply(latestMessage.value);
+			break;
+		case 'replyAll':
+			void openReplyAll(latestMessage.value);
+			break;
+		case 'forward':
+			void openForward(latestMessage.value);
+			break;
+		case 'snooze':
+			snoozeDialogOpen.value = true;
+			break;
+		case 'label':
+			labelDialogOpen.value = true;
+			break;
+		case 'move':
+			moveDialogOpen.value = true;
+			break;
+	}
+}
+
+onMounted(() => window.addEventListener('keydown', onReaderShortcut));
+onBeforeUnmount(() => window.removeEventListener('keydown', onReaderShortcut));
+
 const reportSpamOp = useBackendOperation(api.mail.messageActions.reportSpam, {
 	label: 'Report spam',
 });
@@ -540,5 +659,24 @@ async function handleAttachment(
 				@use-reply="(t) => latestMessage && openReplyWithBody(latestMessage, t)"
 			/>
 		</div>
+
+		<!-- Keyboard-flow pickers for the open message (h / l / v). -->
+		<PostboxSnoozeDialog
+			:open="snoozeDialogOpen"
+			@update:open="snoozeDialogOpen = $event"
+			@confirm="snoozeOpenMessage"
+		/>
+		<PostboxLabelPickerDialog
+			:open="labelDialogOpen"
+			:labels="readerLabels"
+			@update:open="labelDialogOpen = $event"
+			@pick="applyLabelToOpenMessage"
+		/>
+		<PostboxMovePickerDialog
+			:open="moveDialogOpen"
+			:folders="readerMovableFolders"
+			@update:open="moveDialogOpen = $event"
+			@pick="moveOpenMessageTo"
+		/>
 	</article>
 </template>
