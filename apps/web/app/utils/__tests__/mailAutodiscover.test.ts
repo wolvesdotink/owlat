@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { autodiscover, domainOfEmail, presetForEmail, resolveMailPreset } from '../mailAutodiscover';
+import { appPasswordHelpForEmail, autodiscover, domainOfEmail, presetForEmail, resolveMailPreset } from '../mailAutodiscover';
 
 /** Minimal Thunderbird autoconfig document for a made-up provider. */
 function autoconfigXml(opts?: {
@@ -152,5 +152,35 @@ describe('resolveMailPreset', () => {
 		);
 		const p = await resolveMailPreset('a@example.net');
 		expect(p?.imapHost).toBe('imap.example.net');
+	});
+});
+
+describe('appPasswordHelpForEmail', () => {
+	it('maps known providers to their deep-linked app-password page', () => {
+		expect(appPasswordHelpForEmail('me@gmail.com')?.url).toBe('https://myaccount.google.com/apppasswords');
+		expect(appPasswordHelpForEmail('me@googlemail.com')?.provider).toBe('Gmail');
+		expect(appPasswordHelpForEmail('me@outlook.com')?.url).toBe('https://account.live.com/proofs/AppPassword');
+		expect(appPasswordHelpForEmail('me@hotmail.com')?.provider).toBe('Outlook');
+		expect(appPasswordHelpForEmail('me@icloud.com')?.url).toBe('https://appleid.apple.com/account/manage');
+		expect(appPasswordHelpForEmail('me@me.com')?.provider).toBe('iCloud');
+		expect(appPasswordHelpForEmail('me@yahoo.com')?.url).toBe('https://login.yahoo.com/account/security/app-passwords');
+	});
+
+	it('is case-insensitive on the domain', () => {
+		expect(appPasswordHelpForEmail('Me@GMAIL.com')?.provider).toBe('Gmail');
+	});
+
+	it('always includes a non-empty steps line for known providers', () => {
+		expect(appPasswordHelpForEmail('me@gmail.com')?.steps.length).toBeGreaterThan(0);
+	});
+
+	it('returns null for unknown / self-hosted providers', () => {
+		expect(appPasswordHelpForEmail('me@fastmail.com')).toBeNull();
+		expect(appPasswordHelpForEmail('me@example.net')).toBeNull();
+	});
+
+	it('returns null for a malformed address', () => {
+		expect(appPasswordHelpForEmail('not-an-email')).toBeNull();
+		expect(appPasswordHelpForEmail('')).toBeNull();
 	});
 });

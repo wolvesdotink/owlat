@@ -71,6 +71,55 @@ export function presetForEmail(email: string): MailPreset | null {
 	return DOMAIN_PRESETS[domain] ?? null;
 }
 
+/**
+ * Actionable app-password guidance for a consumer provider. The big providers
+ * reject a plain account password over IMAP/SMTP once 2-factor is on and demand
+ * a provider-generated "app password" instead — the single most common reason a
+ * mailbox connection fails with an auth error. `url` deep-links straight to the
+ * page where the user mints that password.
+ */
+export type AppPasswordHelp = {
+	/** Human-readable provider name for the callout heading. */
+	provider: string;
+	/** Deep link to the provider's app-password page. */
+	url: string;
+	/** One concise line describing how to mint the app password. */
+	steps: string;
+};
+
+/**
+ * Curated domain → app-password help for the consumer providers that require an
+ * app password (not the account password) for IMAP/SMTP. Deep links are static.
+ */
+const APP_PASSWORD_PROVIDERS: Record<string, AppPasswordHelp> = {
+	// Google — requires 2-Step Verification, then a generated app password.
+	'gmail.com': { provider: 'Gmail', url: 'https://myaccount.google.com/apppasswords', steps: 'Turn on 2-Step Verification, then generate a 16-character app password and paste it here.' },
+	'googlemail.com': { provider: 'Gmail', url: 'https://myaccount.google.com/apppasswords', steps: 'Turn on 2-Step Verification, then generate a 16-character app password and paste it here.' },
+	// Microsoft consumer accounts.
+	'outlook.com': { provider: 'Outlook', url: 'https://account.live.com/proofs/AppPassword', steps: 'Turn on two-step verification, create an app password and paste it here.' },
+	'hotmail.com': { provider: 'Outlook', url: 'https://account.live.com/proofs/AppPassword', steps: 'Turn on two-step verification, create an app password and paste it here.' },
+	'live.com': { provider: 'Outlook', url: 'https://account.live.com/proofs/AppPassword', steps: 'Turn on two-step verification, create an app password and paste it here.' },
+	// Apple iCloud Mail.
+	'icloud.com': { provider: 'iCloud', url: 'https://appleid.apple.com/account/manage', steps: 'Under Sign-In & Security → App-Specific Passwords, generate one and paste it here.' },
+	'me.com': { provider: 'iCloud', url: 'https://appleid.apple.com/account/manage', steps: 'Under Sign-In & Security → App-Specific Passwords, generate one and paste it here.' },
+	'mac.com': { provider: 'iCloud', url: 'https://appleid.apple.com/account/manage', steps: 'Under Sign-In & Security → App-Specific Passwords, generate one and paste it here.' },
+	// Yahoo Mail.
+	'yahoo.com': { provider: 'Yahoo', url: 'https://login.yahoo.com/account/security/app-passwords', steps: 'Generate an app password under Account Security and paste it here.' },
+	'ymail.com': { provider: 'Yahoo', url: 'https://login.yahoo.com/account/security/app-passwords', steps: 'Generate an app password under Account Security and paste it here.' },
+	'yahoo.co.uk': { provider: 'Yahoo', url: 'https://login.yahoo.com/account/security/app-passwords', steps: 'Generate an app password under Account Security and paste it here.' },
+};
+
+/**
+ * Return app-password guidance for the email's domain, or `null` when the domain
+ * is unknown / the address is malformed / the provider does not use app
+ * passwords. Pure and synchronous — no network.
+ */
+export function appPasswordHelpForEmail(email: string): AppPasswordHelp | null {
+	const domain = domainOfEmail(email);
+	if (!domain) return null;
+	return APP_PASSWORD_PROVIDERS[domain] ?? null;
+}
+
 /** Autoconfig `socketType` values that mean "implicit TLS". */
 function isSecureSocket(socketType: string | null): boolean {
 	return socketType?.toUpperCase() === 'SSL';

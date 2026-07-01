@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
-import { presetForEmail, resolveMailPreset } from '~/utils/mailAutodiscover';
+import { appPasswordHelpForEmail, presetForEmail, resolveMailPreset } from '~/utils/mailAutodiscover';
 
 useHead({ title: 'Connect external mailbox — Owlat' });
 
@@ -238,6 +238,27 @@ const statusClass = computed(() => {
 });
 
 const showForm = computed(() => !isConnected.value || editing.value);
+
+// App-password deep-link guidance. The big consumer providers reject a plain
+// account password over IMAP/SMTP once 2FA is on and require a provider-minted
+// "app password" — by far the most common cause of an auth error here. We show
+// an actionable callout (deep link + one line of steps) whenever the email
+// domain is a provider we know requires an app password. Pure/offline lookup.
+const detectedEmail = computed(() => form.emailAddress || account.value?.emailAddress || '');
+const appPasswordProvider = computed(() => appPasswordHelpForEmail(detectedEmail.value));
+
+// Whether the mailbox is actively failing on credentials (backend status or a
+// failed connection test). Sharpens the callout wording via the `auth-error`
+// prop — a proactive hint when false, a "this is why it failed" fix when true.
+function looksLikeAuthError(error?: string): boolean {
+	return !!error && /auth|password|credential|login|denied|invalid/i.test(error);
+}
+const hasAuthError = computed(() => {
+	if (account.value?.status === 'auth_error') return true;
+	const r = testResult.value;
+	if (!r) return false;
+	return (!r.imap.ok && looksLikeAuthError(r.imap.error)) || (!r.smtp.ok && looksLikeAuthError(r.smtp.error));
+});
 </script>
 
 <template>
@@ -280,6 +301,12 @@ const showForm = computed(() => !isConnected.value || editing.value);
 				Re-enter your password below to reconnect. For Gmail / Outlook you may need an
 				<strong>app password</strong> (with 2-factor enabled).
 			</p>
+
+			<PostboxAppPasswordCallout
+				v-if="appPasswordProvider"
+				:help="appPasswordProvider"
+				:auth-error="hasAuthError"
+			/>
 
 			<div class="flex flex-wrap items-center gap-3 pt-2">
 				<button type="button" class="btn btn-secondary" @click="editing = true">
@@ -408,6 +435,12 @@ const showForm = computed(() => !isConnected.value || editing.value);
 					Stored encrypted. Gmail / Outlook require an app password (2-factor enabled).
 				</p>
 			</div>
+
+			<PostboxAppPasswordCallout
+				v-if="appPasswordProvider"
+				:help="appPasswordProvider"
+				:auth-error="hasAuthError"
+			/>
 
 			<div v-if="testResult" class="text-sm space-y-1">
 				<p :class="testResult.imap.ok ? 'text-success' : 'text-error'">
