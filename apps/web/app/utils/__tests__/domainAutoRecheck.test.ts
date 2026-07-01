@@ -102,6 +102,48 @@ describe('createAutoRecheckPoller', () => {
 		poller.stop();
 	});
 
+	it('calls onStopped once when onTick reports done (verified)', async () => {
+		const onStopped = vi.fn();
+		const onTick = vi.fn<[], Promise<boolean>>().mockResolvedValue(true);
+		const poller = createAutoRecheckPoller({ onTick, intervalMs: 30_000, onStopped });
+		poller.start();
+
+		await vi.advanceTimersByTimeAsync(30_000);
+		expect(poller.isRunning()).toBe(false);
+		expect(onStopped).toHaveBeenCalledTimes(1);
+
+		// No spurious repeat notifications once stopped.
+		await vi.advanceTimersByTimeAsync(120_000);
+		expect(onStopped).toHaveBeenCalledTimes(1);
+	});
+
+	it('calls onStopped once when the attempt cap is reached', async () => {
+		const onStopped = vi.fn();
+		const onTick = vi.fn(async () => false);
+		const poller = createAutoRecheckPoller({
+			onTick,
+			intervalMs: 30_000,
+			maxAttempts: 3,
+			onStopped,
+		});
+		poller.start();
+
+		await vi.advanceTimersByTimeAsync(30_000 * 5);
+		expect(onTick).toHaveBeenCalledTimes(3);
+		expect(poller.isRunning()).toBe(false);
+		expect(onStopped).toHaveBeenCalledTimes(1);
+	});
+
+	it('does NOT call onStopped on an external stop()', async () => {
+		const onStopped = vi.fn();
+		const onTick = vi.fn(async () => false);
+		const poller = createAutoRecheckPoller({ onTick, intervalMs: 30_000, onStopped });
+		poller.start();
+		await vi.advanceTimersByTimeAsync(30_000);
+		poller.stop();
+		expect(onStopped).not.toHaveBeenCalled();
+	});
+
 	it('start() is idempotent — does not stack intervals', async () => {
 		const onTick = vi.fn(async () => false);
 		const poller = createAutoRecheckPoller({ onTick, intervalMs: 30_000 });
