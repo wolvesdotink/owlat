@@ -12,13 +12,12 @@
  */
 
 import { v } from 'convex/values';
-import { authedQuery, authedMutation } from '../lib/authedFunctions';
+import { authedQuery, authedMutation, featureGated } from '../lib/authedFunctions';
 import { internalQuery, internalMutation } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { getMutationContext, getUserIdFromSession } from '../lib/sessionOrganization';
-import { assertFeatureEnabled } from '../lib/featureFlags';
 import { rateLimiter } from '../rateLimiter';
 import { throwInvalidInput, throwNotFound, throwRateLimited, throwForbidden } from '../_utils/errors';
 import {
@@ -26,6 +25,17 @@ import {
 	assistantToolCallValidator,
 	assistantMessageStatusValidator,
 } from '../lib/convexValidators';
+
+/**
+ * Feature-gated builders for the assistant data plane: the org-member auth floor
+ * (`authedQuery` / `authedMutation`) composed with an
+ * `assertFeatureEnabled(ctx, 'ai.assistant')` check, so handlers no longer
+ * repeat that call. Owner-scoping (`convo.ownerId === caller`) stays in-handler.
+ * The streaming runner action (`runner.ts`) intentionally keeps its base
+ * wrapper — `assertFeatureEnabled` needs `ctx.db`, which actions lack.
+ */
+const assistantQuery = featureGated(authedQuery, 'ai.assistant');
+const assistantMutation = featureGated(authedMutation, 'ai.assistant');
 
 const MESSAGE_MAX = 8000;
 const TITLE_MAX = 120;
@@ -56,10 +66,9 @@ async function loadOwnedConversation(
 
 /** Start a new (empty) conversation. */
 // all-members: a member manages their own private assistant conversations.
-export const createConversation = authedMutation({
+export const createConversation = assistantMutation({
 	args: {},
 	handler: async (ctx): Promise<Id<'aiConversations'>> => {
-		await assertFeatureEnabled(ctx, 'ai.assistant');
 		const { userId } = await getMutationContext(ctx);
 		const now = Date.now();
 		return ctx.db.insert('aiConversations', {
@@ -75,10 +84,9 @@ export const createConversation = authedMutation({
 
 /** List the caller's conversations, most-recently-active first. */
 // all-members: a member lists their own private assistant conversations (owner-scoped query).
-export const listConversations = authedQuery({
+export const listConversations = assistantQuery({
 	args: {},
 	handler: async (ctx) => {
-		await assertFeatureEnabled(ctx, 'ai.assistant');
 		const userId = await getUserIdFromSession(ctx);
 		const rows = await ctx.db
 			.query('aiConversations')
@@ -108,10 +116,9 @@ export const listConversations = authedQuery({
 
 /** Fetch one conversation's metadata (owner-scoped). */
 // all-members: a member reads their own private assistant conversation (ownership checked).
-export const getConversation = authedQuery({
+export const getConversation = assistantQuery({
 	args: { conversationId: v.id('aiConversations') },
 	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'ai.assistant');
 		const userId = await getUserIdFromSession(ctx);
 		const convo = await ctx.db.get(args.conversationId);
 		if (!convo || convo.deletedAt || convo.ownerId !== userId) return null;
@@ -124,10 +131,9 @@ export const getConversation = authedQuery({
  * the streaming subscription never leaks another member's conversation.
  */
 // all-members: a member reads messages of their own private conversation (ownership checked).
-export const listMessages = authedQuery({
+export const listMessages = assistantQuery({
 	args: { conversationId: v.id('aiConversations') },
 	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'ai.assistant');
 		const userId = await getUserIdFromSession(ctx);
 		const convo = await ctx.db.get(args.conversationId);
 		if (!convo || convo.deletedAt || convo.ownerId !== userId) return [];
@@ -156,10 +162,9 @@ export const listMessages = authedQuery({
 
 /** Rename a conversation. */
 // all-members: a member manages their own private assistant conversations.
-export const renameConversation = authedMutation({
+export const renameConversation = assistantMutation({
 	args: { conversationId: v.id('aiConversations'), title: v.string() },
 	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'ai.assistant');
 		const { userId } = await getMutationContext(ctx);
 		await loadOwnedConversation(ctx, args.conversationId, userId);
 		const title = args.title.trim();
@@ -171,10 +176,9 @@ export const renameConversation = authedMutation({
 
 /** Soft-delete a conversation (user-initiated). */
 // all-members: a member manages their own private assistant conversations.
-export const deleteConversation = authedMutation({
+export const deleteConversation = assistantMutation({
 	args: { conversationId: v.id('aiConversations') },
 	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'ai.assistant');
 		const { userId } = await getMutationContext(ctx);
 		await loadOwnedConversation(ctx, args.conversationId, userId);
 		await ctx.db.patch(args.conversationId, { deletedAt: Date.now(), updatedAt: Date.now() });
@@ -187,10 +191,9 @@ export const deleteConversation = authedMutation({
  * Node runner, which patches the placeholder in place as tokens arrive.
  */
 // all-members: a member sends into their own private assistant conversation (ownership checked).
-export const sendMessage = authedMutation({
+export const sendMessage = assistantMutation({
 	args: { conversationId: v.id('aiConversations'), text: v.string() },
 	handler: async (ctx, args): Promise<{ assistantMessageId: Id<'aiMessages'> }> => {
-		await assertFeatureEnabled(ctx, 'ai.assistant');
 		const { userId } = await getMutationContext(ctx);
 		const convo = await loadOwnedConversation(ctx, args.conversationId, userId);
 
@@ -238,10 +241,9 @@ export const sendMessage = authedMutation({
 
 /** Request the in-flight assistant turn to stop streaming. */
 // all-members: a member stops generation only on their own message (ownership checked).
-export const stopGeneration = authedMutation({
+export const stopGeneration = assistantMutation({
 	args: { messageId: v.id('aiMessages') },
 	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'ai.assistant');
 		const { userId } = await getMutationContext(ctx);
 		const msg = await ctx.db.get(args.messageId);
 		if (!msg || msg.ownerId !== userId) return; // never leak existence
