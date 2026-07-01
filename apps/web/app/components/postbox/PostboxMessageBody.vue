@@ -61,7 +61,13 @@ const bodyFetchSettled = ref(false);
 watch(
 	() => bodyData.value,
 	async (data) => {
-		if (!data) return;
+		if (data === undefined) return;
+		if (data === null) {
+			// Message deleted/unreadable — the query resolved empty, so settle
+			// and let the reader degrade to the "(empty message)" iframe.
+			bodyFetchSettled.value = true;
+			return;
+		}
 		const d = data as {
 			htmlInline: string | null;
 			textInline: string | null;
