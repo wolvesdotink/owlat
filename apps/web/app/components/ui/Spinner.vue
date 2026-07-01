@@ -1,9 +1,13 @@
 <script setup lang="ts">
-import {
-	SPINNER_SIZE_CLASSES,
-	DEFAULT_SPINNER_SIZE,
-	type SpinnerSize,
-} from './spinnerSizes';
+type SpinnerSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
+
+const SIZE_CLASSES: Record<SpinnerSize, string> = {
+	xs: 'w-4 h-4',
+	sm: 'w-5 h-5',
+	md: 'w-6 h-6',
+	lg: 'w-8 h-8',
+	xl: 'w-12 h-12',
+};
 
 const props = withDefaults(
 	defineProps<{
@@ -11,11 +15,11 @@ const props = withDefaults(
 		size?: SpinnerSize;
 	}>(),
 	{
-		size: DEFAULT_SPINNER_SIZE,
+		size: 'lg',
 	},
 );
 
-const sizeClass = computed(() => SPINNER_SIZE_CLASSES[props.size]);
+const sizeClass = computed(() => SIZE_CLASSES[props.size]);
 </script>
 
 <template>
