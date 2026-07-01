@@ -119,6 +119,18 @@ export function isIpv6(value: string): boolean {
  * message, or anything unparseable). Pure and fail-soft — the wizard falls back
  * to the manual-paste placeholder when this returns null.
  */
+/**
+ * Read-only probe for the server's public IP over the existing SSH session,
+ * used to auto-fill the DNS A-record target when the operator connected by
+ * hostname (so we cannot infer the IP from the SSH address). Tries a public
+ * echo service first, then falls back to the default-route source address.
+ * No user input is interpolated — the command is a fixed string, so it is
+ * injection-safe; callers treat any failure/empty output as "unknown".
+ */
+export function detectPublicIpCommand(): string {
+	return 'curl -fsS https://api.ipify.org 2>/dev/null || ip route get 1.1.1.1 2>/dev/null | awk \'{print $7; exit}\'';
+}
+
 export function parsePublicIp(output: string): string | null {
 	for (const raw of output.split(/[\r\n]+/)) {
 		const token = raw.trim();

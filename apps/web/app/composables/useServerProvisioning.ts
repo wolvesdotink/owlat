@@ -27,7 +27,6 @@ import {
 	setupConfigPath,
 	canOpenWorkspaceUrl,
 	isLoopbackUrl,
-	detectPublicIpCommand,
 	DEFAULT_REMOTE,
 	DEV_IMAGES,
 	type ProvisionTransport,
@@ -38,7 +37,13 @@ import {
 	type SetupConfigInput,
 	type TimelineStep,
 } from '~/lib/desktop/provisioning';
-import { removeSetupConfigCommand, stderrTail, parsePublicIp, resolveServerIp } from '~/lib/desktop/provisioningForm';
+import {
+	removeSetupConfigCommand,
+	stderrTail,
+	detectPublicIpCommand,
+	parsePublicIp,
+	resolveServerIp,
+} from '~/lib/desktop/provisioningForm';
 
 export type ProvisionStage =
 	| 'idle'
