@@ -93,6 +93,43 @@ export function isIpv4(value: string): boolean {
 }
 
 /**
+ * Whether a string is a valid IPv6 address. Handles the `::` zero-run
+ * compression (at most once) and full eight-group form; good enough to reject
+ * junk output from the remote IP probe without a full RFC-grade parser.
+ */
+export function isIpv6(value: string): boolean {
+	const v = value.trim();
+	if (!v.includes(':')) return false;
+	const isHextet = (h: string): boolean => /^[0-9a-fA-F]{1,4}$/.test(h);
+	const runs = v.split('::');
+	if (runs.length > 2) return false;
+	if (runs.length === 2) {
+		const head = runs[0] ? runs[0].split(':') : [];
+		const tail = runs[1] ? runs[1].split(':') : [];
+		if (head.length + tail.length > 7) return false;
+		return [...head, ...tail].every(isHextet);
+	}
+	const groups = v.split(':');
+	return groups.length === 8 && groups.every(isHextet);
+}
+
+/**
+ * Extract the server's public IP from the remote probe's raw output: the first
+ * line that is a valid IPv4 or IPv6 address, else null (empty output, an error
+ * message, or anything unparseable). Pure and fail-soft — the wizard falls back
+ * to the manual-paste placeholder when this returns null.
+ */
+export function parsePublicIp(output: string): string | null {
+	for (const raw of output.split(/[\r\n]+/)) {
+		const token = raw.trim();
+		if (!token) continue;
+		if (isIpv4(token)) return token;
+		if (isIpv6(token)) return token;
+	}
+	return null;
+}
+
+/**
  * The IP to drop into the A records: the SSH address itself when it is already
  * an IP, else an explicitly-provided public IP, else null — at which point the
  * table shows a clearly-flagged placeholder with its copy button disabled
@@ -102,7 +139,7 @@ export function resolveServerIp(sshAddress: string, publicIp = ''): string | nul
 	const ssh = sshAddress.trim();
 	if (isIpv4(ssh)) return ssh;
 	const ip = publicIp.trim();
-	if (isIpv4(ip)) return ip;
+	if (isIpv4(ip) || isIpv6(ip)) return ip;
 	return null;
 }
 
