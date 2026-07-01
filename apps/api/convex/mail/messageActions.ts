@@ -18,6 +18,18 @@ import { throwForbidden, throwInvalidState, throwNotFound } from '../_utils/erro
 
 type Flag = 'seen' | 'flagged' | 'answered' | 'deleted';
 
+/**
+ * Per-message provenance returned by the move-family mutations (move /
+ * archive / trash / reportSpam / notSpam) so the client can offer an
+ * "Undo" that moves each message back to the folder it came from.
+ */
+export type MovedMessage = {
+	messageId: Id<'mailMessages'>;
+	sourceFolderId: Id<'mailFolders'>;
+};
+
+type MoveResult = { ok: true; moved: MovedMessage[] };
+
 /** Bump folder modseq atomically; return the assigned value. */
 async function bumpFolderModseq(
 	ctx: MutationCtx,
@@ -173,13 +185,14 @@ export const move = authedMutation({
 		messageIds: v.array(v.id('mailMessages')),
 		targetFolderId: v.id('mailFolders'),
 	},
-	handler: async (ctx, args): Promise<{ ok: true }> => {
+	handler: async (ctx, args): Promise<MoveResult> => {
 		const target = await ctx.db.get(args.targetFolderId);
 		if (!target) throwNotFound('Target folder');
 		const owned = await loadOwnedMailbox(ctx, target.mailboxId);
 		if (!owned.ok) throwForbidden('Folder not accessible');
 
 		const now = Date.now();
+		const moved: MovedMessage[] = [];
 		const touchedThreads = new Set<Id<'mailThreads'>>();
 		const sourceFolderTouches = new Map<Id<'mailFolders'>, { count: number; unread: number }>();
 
@@ -221,6 +234,7 @@ export const move = authedMutation({
 				modseq,
 				updatedAt: Date.now(),
 			});
+			moved.push({ messageId: id, sourceFolderId: sourceFolder._id });
 			touchedThreads.add(message.threadId);
 		}
 
@@ -248,7 +262,7 @@ export const move = authedMutation({
 		for (const t of touchedThreads) {
 			await rebuildThreadAggregates(ctx, t);
 		}
-		return { ok: true };
+		return { ok: true, moved };
 	},
 });
 
@@ -257,7 +271,7 @@ export const move = authedMutation({
 // message); this is a thin folder-routing wrapper.
 export const archive = authedMutation({
 	args: { messageIds: v.array(v.id('mailMessages')) },
-	handler: async (ctx, args): Promise<{ ok: true } | undefined> => {
+	handler: async (ctx, args): Promise<MoveResult | undefined> => {
 		const firstId = args.messageIds[0];
 		if (!firstId) return undefined;
 		const first = await ctx.db.get(firstId);
@@ -269,11 +283,10 @@ export const archive = authedMutation({
 			)
 			.first();
 		if (!archive) throwInvalidState('Archive folder missing');
-		await ctx.runMutation(
+		return await ctx.runMutation(
 			(await import('../_generated/api')).api.mail.messageActions.move,
 			{ messageIds: args.messageIds, targetFolderId: archive._id }
 		);
-		return { ok: true };
 	},
 });
 
@@ -282,7 +295,7 @@ export const archive = authedMutation({
 // message); this is a thin folder-routing wrapper.
 export const trash = authedMutation({
 	args: { messageIds: v.array(v.id('mailMessages')) },
-	handler: async (ctx, args): Promise<{ ok: true } | undefined> => {
+	handler: async (ctx, args): Promise<MoveResult | undefined> => {
 		const firstId = args.messageIds[0];
 		if (!firstId) return undefined;
 		const first = await ctx.db.get(firstId);
@@ -294,11 +307,10 @@ export const trash = authedMutation({
 			)
 			.first();
 		if (!trash) throwInvalidState('Trash folder missing');
-		await ctx.runMutation(
+		return await ctx.runMutation(
 			(await import('../_generated/api')).api.mail.messageActions.move,
 			{ messageIds: args.messageIds, targetFolderId: trash._id }
 		);
-		return { ok: true };
 	},
 });
 
@@ -390,11 +402,11 @@ async function moveToRoleWithVerdict(
 	messageIds: Id<'mailMessages'>[],
 	role: 'spam' | 'inbox',
 	verdict: 'spam' | 'ham'
-): Promise<void> {
+): Promise<MoveResult> {
 	const firstId = messageIds[0];
-	if (!firstId) return;
+	if (!firstId) return { ok: true, moved: [] };
 	const first = await ctx.db.get(firstId);
-	if (!first) return;
+	if (!first) return { ok: true, moved: [] };
 	const owned = await loadOwnedMailbox(ctx, first.mailboxId);
 	if (!owned.ok) throwForbidden('Messages not accessible');
 	const folder = await ctx.db
@@ -411,7 +423,7 @@ async function moveToRoleWithVerdict(
 		if (!o.ok) continue;
 		await ctx.db.patch(id, { spamVerdict: verdict, updatedAt: Date.now() });
 	}
-	await ctx.runMutation(
+	return await ctx.runMutation(
 		(await import('../_generated/api')).api.mail.messageActions.move,
 		{ messageIds, targetFolderId: folder._id }
 	);
@@ -421,9 +433,8 @@ async function moveToRoleWithVerdict(
 // authz: moveToRoleWithVerdict enforces ownership (loadOwnedMailbox per message).
 export const reportSpam = authedMutation({
 	args: { messageIds: v.array(v.id('mailMessages')) },
-	handler: async (ctx, args): Promise<{ ok: true }> => {
-		await moveToRoleWithVerdict(ctx, args.messageIds, 'spam', 'spam');
-		return { ok: true };
+	handler: async (ctx, args): Promise<MoveResult> => {
+		return await moveToRoleWithVerdict(ctx, args.messageIds, 'spam', 'spam');
 	},
 });
 
@@ -431,9 +442,8 @@ export const reportSpam = authedMutation({
 // authz: moveToRoleWithVerdict enforces ownership (loadOwnedMailbox per message).
 export const notSpam = authedMutation({
 	args: { messageIds: v.array(v.id('mailMessages')) },
-	handler: async (ctx, args): Promise<{ ok: true }> => {
-		await moveToRoleWithVerdict(ctx, args.messageIds, 'inbox', 'ham');
-		return { ok: true };
+	handler: async (ctx, args): Promise<MoveResult> => {
+		return await moveToRoleWithVerdict(ctx, args.messageIds, 'inbox', 'ham');
 	},
 });
 

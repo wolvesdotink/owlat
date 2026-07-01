@@ -140,16 +140,18 @@ describe('postbox spam triage', () => {
 
 		// Returns { ok } on success so the bulk-actions composable clears the
 		// selection (a void return reads as failure and leaves rows checked).
+		// `moved` carries each message's source folder so the client can offer
+		// an Undo that moves it back where it came from.
 		expect(
 			await t.mutation(api.mail.messageActions.reportSpam, { messageIds: [messageId] })
-		).toEqual({ ok: true });
+		).toEqual({ ok: true, moved: [{ messageId, sourceFolderId: inboxId }] });
 		let msg = await t.run((ctx) => ctx.db.get(messageId));
 		expect(msg?.folderId).toBe(spamId);
 		expect(msg?.spamVerdict).toBe('spam');
 
 		expect(
 			await t.mutation(api.mail.messageActions.notSpam, { messageIds: [messageId] })
-		).toEqual({ ok: true });
+		).toEqual({ ok: true, moved: [{ messageId, sourceFolderId: spamId }] });
 		msg = await t.run((ctx) => ctx.db.get(messageId));
 		expect(msg?.folderId).toBe(inboxId);
 		expect(msg?.spamVerdict).toBe('ham');
