@@ -6,6 +6,10 @@
  * a "Recategorize as…" overflow action that writes a per-sender user override.
  */
 import type { Id } from '@owlat/api/dataModel';
+import {
+	RECATEGORIZE_OPTIONS,
+	type MailCategory,
+} from '~/composables/postbox/usePostboxThreadCategories';
 
 type CategoryThread = {
 	_id: string;
