@@ -65,6 +65,10 @@
 			"types": "./src/postboxSanitize.ts",
 			"import": "./src/postboxSanitize.ts"
 		},
+		"./postboxTrackers": {
+			"types": "./src/postboxTrackers.ts",
+			"import": "./src/postboxTrackers.ts"
+		},
 		"./mailMime": {
 			"types": "./src/mailMime.ts",
 			"import": "./src/mailMime.ts"
