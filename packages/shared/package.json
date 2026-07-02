@@ -2,7 +2,7 @@
 	"name": "@owlat/shared",
 	"version": "0.1.0",
 	"private": true,
-	"license": "MIT",
+	"license": "Apache-2.0",
 	"homepage": "https://owlat.app",
 	"type": "module",
 	"main": "./src/index.ts",

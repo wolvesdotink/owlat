@@ -2,7 +2,7 @@
 	"name": "@owlat/email-scanner",
 	"version": "0.1.0",
 	"private": true,
-	"license": "MIT",
+	"license": "Apache-2.0",
 	"homepage": "https://owlat.app",
 	"description": "Email security scanner — malicious content, attachment, and URL reputation scanning",
 	"type": "module",
