@@ -3,6 +3,7 @@ import {
 	detectTrackers,
 	stripTrackerPixels,
 	isTrackingPixelTag,
+	trackerPixelLabel,
 } from '../postboxTrackers';
 
 const PIXEL_1X1 = '<img src="https://tracker.example.com/open.gif" width="1" height="1" alt="">';
@@ -98,5 +99,12 @@ describe('isTrackingPixelTag', () => {
 
 	it('flags a bare 1px width with no other dimension', () => {
 		expect(isTrackingPixelTag('<img src="https://x.example.com/p" width="1">')).toBe(true);
+	});
+});
+
+describe('trackerPixelLabel', () => {
+	it('pluralizes the shared banner/badge copy', () => {
+		expect(trackerPixelLabel(1)).toBe('1 tracking pixel');
+		expect(trackerPixelLabel(3)).toBe('3 tracking pixels');
 	});
 });

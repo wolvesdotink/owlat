@@ -19,6 +19,7 @@ import { POSTBOX_SANITIZE_CONFIG } from '@owlat/shared/postboxSanitize';
 import {
 	detectTrackers,
 	stripTrackerPixels,
+	trackerPixelLabel,
 	type TrackerDetection,
 } from '@owlat/shared/postboxTrackers';
 import {
@@ -250,9 +251,7 @@ watch([showQuoted, showImages, loadEverything], () => {
 			<span class="text-text-secondary">
 				<template v-if="hasTrackers">
 					Images blocked —
-					{{ trackerDetection.pixelCount === 1
-						? '1 tracking pixel detected'
-						: `${trackerDetection.pixelCount} tracking pixels detected` }}.
+					{{ trackerPixelLabel(trackerDetection.pixelCount) }} detected.
 				</template>
 				<template v-else>
 					Images blocked to protect your privacy.
@@ -274,9 +273,7 @@ watch([showQuoted, showImages, loadEverything], () => {
 		>
 			<span class="text-text-secondary inline-flex items-center gap-1.5">
 				<Icon name="lucide:shield" class="w-3.5 h-3.5 flex-shrink-0" />
-				{{ trackerDetection.pixelCount === 1
-					? '1 tracking pixel'
-					: `${trackerDetection.pixelCount} tracking pixels` }}
+				{{ trackerPixelLabel(trackerDetection.pixelCount) }}
 				kept blocked.
 			</span>
 			<button
