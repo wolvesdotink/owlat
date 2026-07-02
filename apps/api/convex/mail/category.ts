@@ -87,10 +87,7 @@ export interface MailCategoryInput {
 export function classifyMailCategory(input: MailCategoryInput): MailCategory | null {
 	// Newsletter: List-Unsubscribe or Precedence: bulk/list — the strongest
 	// "this is broadcast mail" signal.
-	if (
-		input.hasListUnsubscribe ||
-		isBulkPrecedence(input.precedence)
-	) {
+	if (input.hasListUnsubscribe || isBulkPrecedence(input.precedence)) {
 		return 'newsletter';
 	}
 
@@ -98,14 +95,13 @@ export function classifyMailCategory(input: MailCategoryInput): MailCategory | n
 	// notification because order confirmations routinely come from no-reply@.
 	if (RECEIPT_SUBJECT.test(input.subject)) return 'receipt';
 
-	// Notification: automated / system sender local-parts.
+	// Notification: automated / system sender local-parts (incl. the shared
+	// no-reply/bounce heuristic used by the Reply Queue).
 	const localPart = input.fromAddress.split('@', 1)[0] ?? '';
-	if (NOTIFICATION_LOCAL_PART.test(localPart) || isBulkOrNoReplySender({
-		fromAddress: input.fromAddress,
-		hasListUnsubscribe: false,
-	})) {
-		return 'notification';
-	}
+	const isAutomatedSender =
+		NOTIFICATION_LOCAL_PART.test(localPart) ||
+		isBulkOrNoReplySender({ fromAddress: input.fromAddress, hasListUnsubscribe: false });
+	if (isAutomatedSender) return 'notification';
 
 	// Person: a known human correspondent with no automated markers.
 	if (input.isKnownCorrespondent) return 'person';

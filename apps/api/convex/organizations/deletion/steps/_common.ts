@@ -81,6 +81,7 @@ export type OrganizationDeletionTable =
 	| 'autonomyRules'
 	| 'mailThreads'
 	| 'mailContacts'
+	| 'mailSenderCategoryOverrides'
 	| 'mailForwarding'
 	| 'mailVacationResponders'
 	| 'mailVacationLog'
@@ -193,6 +194,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('autonomyRules'),
 	v.literal('mailThreads'),
 	v.literal('mailContacts'),
+	v.literal('mailSenderCategoryOverrides'),
 	v.literal('mailForwarding'),
 	v.literal('mailVacationResponders'),
 	v.literal('mailVacationLog'),
