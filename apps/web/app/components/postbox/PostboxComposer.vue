@@ -111,8 +111,7 @@ function switchMode(target: ComposerMode) {
 	composerMode.value = target;
 }
 
-// Per-message signature picker. Only shown once the mailbox has at least one
-// signature; empty value selects "No signature".
+// Per-message signature picker (only when the mailbox has ≥1 signature).
 const showSignaturePicker = computed(() => signatures.value.length > 0);
 
 function onSignatureChange(event: Event) {
@@ -122,24 +121,6 @@ function onSignatureChange(event: Event) {
 
 const sending = ref(false);
 const scheduleOpen = ref(false);
-
-// "Remind me if no reply by…" (Boomerang-style follow-up). The toggle opens
-// the preset picker when off, and clears the stored deadline when on — the
-// deadline itself autosaves onto the draft and arms a thread follow-up watch
-// at send time.
-const followUpOpen = ref(false);
-function toggleFollowUp() {
-	if (followUpRemindAt.value) {
-		followUpRemindAt.value = null;
-		return;
-	}
-	followUpOpen.value = true;
-}
-const followUpTitle = computed(() =>
-	followUpRemindAt.value
-		? `Reminder if no reply by ${formatDateTime(followUpRemindAt.value)} — click to remove`
-		: 'Remind me if no reply'
-);
 
 const ATTACHMENT_HINT = /\b(attach(ed|ment|ing|ments)?|enclosed)\b/i;
 
@@ -280,7 +261,6 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } =
 		},
 		onMinimize: () => emit('minimize'),
 	});
-
 </script>
 
 <template>
@@ -445,19 +425,10 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } =
 				>
 					<Icon name="lucide:clock" class="w-4 h-4" />
 				</button>
-				<button
-					type="button"
-					class="btn btn-ghost"
-					:class="{ 'text-brand': followUpRemindAt }"
-					:title="followUpTitle"
-					:aria-label="followUpTitle"
-					:aria-pressed="!!followUpRemindAt"
+				<PostboxComposerFollowUp
+					v-model:remind-at="followUpRemindAt"
 					:disabled="isScheduled"
-					@click="toggleFollowUp"
-				>
-					<Icon name="lucide:alarm-clock" class="w-4 h-4" />
-					<Icon v-if="followUpRemindAt" name="lucide:check" class="w-3 h-3 -ml-1" />
-				</button>
+				/>
 				<button
 					type="button"
 					class="btn btn-ghost"
@@ -524,11 +495,6 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } =
 			:open="scheduleOpen"
 			@update:open="scheduleOpen = $event"
 			@confirm="(ts) => handleSend({ scheduledSendAt: ts })"
-		/>
-		<PostboxFollowUpDialog
-			:open="followUpOpen"
-			@update:open="followUpOpen = $event"
-			@confirm="(ts) => (followUpRemindAt = ts)"
 		/>
 	</div>
 </template>
