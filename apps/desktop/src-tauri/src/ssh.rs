@@ -184,11 +184,83 @@ fn list_working_tree(root: &Path) -> Option<Vec<PathBuf>> {
     Some(files)
 }
 
+/// A regular file must be uploaded executable when it is a shell entry point
+/// the server invokes directly — `scripts/owlat`, `install.sh`, or any `*.sh`
+/// — OR when the client's on-disk mode already carries an exec bit (so exec
+/// bits from a Unix checkout are preserved). A Windows checkout has no Unix
+/// exec bit, so without the name-based rule `./scripts/owlat quickstart` would
+/// arrive 0644 and fail on the server with permission denied.
+fn is_exec_script(rel: &Path, disk_mode: Option<u32>) -> bool {
+    if disk_mode.is_some_and(|m| m & 0o111 != 0) {
+        return true;
+    }
+    // Normalise separators so a Windows client's `scripts\owlat` matches too.
+    let norm = rel.to_string_lossy().replace('\\', "/");
+    norm == "scripts/owlat" || norm == "install.sh" || norm.ends_with(".sh")
+}
+
+/// The file's Unix permission bits on disk, or `None` on platforms (Windows)
+/// that do not expose them.
+fn disk_mode_of(meta: &std::fs::Metadata) -> Option<u32> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        Some(meta.permissions().mode())
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = meta;
+        None
+    }
+}
+
+/// Append one regular file to the tarball with a deterministic mode, chosen by
+/// [`is_exec_script`] rather than copied from disk metadata — so shell entry
+/// points ship 0o755 even from a checkout with no Unix exec bit, and every
+/// other regular file ships 0o644.
+fn append_regular_file<W: Write>(
+    tar: &mut tar::Builder<W>,
+    abs: &Path,
+    rel: &Path,
+    disk_mode: Option<u32>,
+) -> std::io::Result<()> {
+    let bytes = std::fs::read(abs)?;
+    let mode = if is_exec_script(rel, disk_mode) {
+        0o755
+    } else {
+        0o644
+    };
+    let mut header = tar::Header::new_gnu();
+    header.set_size(bytes.len() as u64);
+    header.set_mtime(0);
+    header.set_mode(mode);
+    header.set_cksum();
+    tar.append_data(&mut header, rel, &bytes[..])
+}
+
+/// Archive one working-tree entry: regular files get a normalised mode via
+/// [`append_regular_file`]; symlinks (kept as symlinks by `follow_symlinks(false)`)
+/// and directories keep their existing metadata-copying handling.
+fn append_entry<W: Write>(
+    tar: &mut tar::Builder<W>,
+    abs: &Path,
+    rel: &Path,
+    meta: &std::fs::Metadata,
+) -> Result<(), String> {
+    let result = if meta.file_type().is_file() {
+        append_regular_file(tar, abs, rel, disk_mode_of(meta))
+    } else {
+        tar.append_path_with_name(abs, rel)
+    };
+    result.map_err(|e| format!("Could not archive {}: {e}", rel.display()))
+}
+
 /// Pack a working tree into a gzipped tarball. Uses git's working-tree view
 /// when available (see `list_working_tree`); falls back to a `.gitignore`-
-/// honouring walk for non-git folders. File modes are preserved so executable
-/// scripts (`scripts/owlat`, `install.sh`) survive the round-trip; symlinks
-/// are archived as symlinks, not followed.
+/// honouring walk for non-git folders. Shell entry points (`scripts/owlat`,
+/// `install.sh`, `*.sh`) are forced executable (0o755) so they survive a
+/// Windows checkout that carries no Unix exec bit; symlinks are archived as
+/// symlinks, not followed.
 fn pack_dir_targz(root: &Path) -> Result<Vec<u8>, String> {
     let enc = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
     let mut tar = tar::Builder::new(enc);
@@ -199,11 +271,11 @@ fn pack_dir_targz(root: &Path) -> Result<Vec<u8>, String> {
             let abs = root.join(&rel);
             // `ls-files --cached` also lists files deleted from disk but still
             // in the index — skip anything that no longer exists.
-            if abs.symlink_metadata().is_err() {
-                continue;
-            }
-            tar.append_path_with_name(&abs, &rel)
-                .map_err(|e| format!("Could not archive {}: {e}", rel.display()))?;
+            let meta = match abs.symlink_metadata() {
+                Ok(m) => m,
+                Err(_) => continue,
+            };
+            append_entry(&mut tar, &abs, &rel, &meta)?;
         }
     } else {
         let walker = ignore::WalkBuilder::new(root)
@@ -222,8 +294,8 @@ fn pack_dir_targz(root: &Path) -> Result<Vec<u8>, String> {
                 .strip_prefix(root)
                 .map_err(|e| e.to_string())?
                 .to_path_buf();
-            tar.append_path_with_name(path, &rel)
-                .map_err(|e| format!("Could not archive {}: {e}", rel.display()))?;
+            let meta = path.symlink_metadata().map_err(|e| e.to_string())?;
+            append_entry(&mut tar, path, &rel, &meta)?;
         }
     }
 
@@ -821,6 +893,10 @@ mod tests {
         std::fs::write(root.join(".gitignore"), "node_modules/\n").unwrap();
         std::fs::write(root.join(".env.selfhost.example"), "X=1\n").unwrap();
         std::fs::write(root.join("scripts/owlat"), "#!/bin/sh\n").unwrap();
+        // Shell entry points with DEFAULT (non-exec) perms — the server must
+        // still receive them executable even from a Windows checkout.
+        std::fs::write(root.join("install.sh"), "#!/bin/sh\n").unwrap();
+        std::fs::write(root.join("foo.sh"), "#!/bin/sh\n").unwrap();
         std::fs::write(root.join("node_modules/dep/index.js"), "x").unwrap();
         std::fs::write(root.join(".git/config"), "[core]").unwrap();
         #[cfg(unix)]
@@ -901,6 +977,28 @@ mod tests {
         );
         assert!(entries.contains(&"untracked.txt".to_string()));
         assert!(!entries.iter().any(|p| p.starts_with("node_modules")));
+    }
+
+    #[test]
+    fn pack_dir_forces_exec_bit_on_shell_scripts_regardless_of_disk_mode() {
+        // A Windows client checkout carries no Unix exec bit, so scripts/owlat,
+        // install.sh and *.sh files would arrive 0644 and the server's
+        // `./scripts/owlat quickstart` would fail with permission denied. They
+        // must be forced to 0o755 by name, on every OS. This test does not rely
+        // on `#[cfg(unix)]` set_mode, so it exercises the name-based rule for
+        // install.sh / foo.sh even on Unix (where they were left non-exec).
+        let entries = pack_fixture();
+        for name in ["scripts/owlat", "install.sh", "foo.sh"] {
+            let mode = entries[name];
+            assert_ne!(mode & 0o100, 0, "{name} missing owner-exec bit: {mode:o}");
+        }
+        // A plain, non-script file stays non-executable (0o644).
+        assert_eq!(
+            entries["turbo.json"] & 0o111,
+            0,
+            "plain file unexpectedly executable: {:o}",
+            entries["turbo.json"]
+        );
     }
 
     #[cfg(unix)]
