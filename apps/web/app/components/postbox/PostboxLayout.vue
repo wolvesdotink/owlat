@@ -109,6 +109,18 @@ const advanceIds = computed(() =>
 
 const labelManagerOpen = ref(false);
 
+// Reply Queue rail badge + the inbox "waiting on your reply" strip. The strip
+// is dismissible for the session (in-memory state, resets on reload) and only
+// renders while the queue is non-empty.
+const { count: replyQueueCount } = usePostboxReplyQueue(mailboxIdRef);
+const replyQueueStripDismissed = useState('postbox:reply-queue-strip-dismissed', () => false);
+const showReplyQueueStrip = computed(
+	() =>
+		folderRef.value === 'inbox' &&
+		replyQueueCount.value > 0 &&
+		!replyQueueStripDismissed.value
+);
+
 // Search entry point: a box in the folder rail + a "/" shortcut to focus it.
 const searchQuery = ref('');
 const searchBar = ref<{ focus: () => void } | null>(null);
@@ -147,6 +159,20 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 				:unread-counts="unreadByRole"
 				:active-folder="folderRole"
 			/>
+
+			<!-- Reply Queue — AI task list of emails waiting on a reply (virtual
+			     view like Snoozed; threads stay in their folders). -->
+			<NuxtLink
+				to="/dashboard/postbox/reply-queue"
+				class="flex items-center gap-2 px-2.5 py-1.5 rounded text-sm hover:bg-bg-surface"
+			>
+				<Icon name="lucide:reply" class="w-4 h-4" />
+				<span class="flex-1">Reply Queue</span>
+				<span
+					v-if="replyQueueCount > 0"
+					class="text-xs font-medium text-text-secondary"
+				>{{ replyQueueCount }}</span>
+			</NuxtLink>
 
 			<!-- Virtual "Snoozed" view (no backing system folder; messages stay in
 			     their origin folder, hidden until the wakeup cron). -->
@@ -296,6 +322,33 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 				</div>
 			</template>
 			<template v-else>
+				<!-- Compact "waiting on your reply" strip — inbox only, non-empty
+				     queue only, dismissible for the session. -->
+				<div
+					v-if="showReplyQueueStrip"
+					class="flex items-center gap-2 px-4 py-2 border-b border-border-subtle bg-brand/5 text-sm"
+				>
+					<Icon name="lucide:reply" class="w-4 h-4 text-brand flex-shrink-0" />
+					<span class="flex-1 truncate text-text-secondary">
+						{{ replyQueueCount }} {{ replyQueueCount === 1 ? 'email is' : 'emails are' }}
+						waiting on your reply
+					</span>
+					<NuxtLink
+						to="/dashboard/postbox/reply-queue"
+						class="text-brand hover:underline flex-shrink-0"
+					>
+						Open queue
+					</NuxtLink>
+					<button
+						type="button"
+						class="p-0.5 rounded text-text-tertiary hover:text-text-primary flex-shrink-0"
+						title="Dismiss for this session"
+						aria-label="Dismiss reply queue reminder"
+						@click="replyQueueStripDismissed = true"
+					>
+						<Icon name="lucide:x" class="w-3.5 h-3.5" />
+					</button>
+				</div>
 				<PostboxQuickActionsBar
 					v-if="!threadGroupsEnabled"
 					:mailbox-id="mailboxId"
