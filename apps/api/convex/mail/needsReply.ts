@@ -24,11 +24,12 @@
 
 import { v } from 'convex/values';
 import { internalMutation, internalQuery, type MutationCtx } from '../_generated/server';
-import { authedMutation } from '../lib/authedFunctions';
+import { authedMutation, publicQuery } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { throwForbidden, throwNotFound } from '../_utils/errors';
-import { loadOwnedMailbox } from './permissions';
+import { isMessageSnoozed } from '../lib/mailSnooze';
+import { loadOwnedMailbox, loadReadableMailbox } from './permissions';
 
 // ─── Deterministic heuristic (pure) ─────────────────────────────────────────
 
@@ -249,6 +250,64 @@ export const applyResult = internalMutation({
 			needsReplyPendingAt: undefined,
 			updatedAt: Date.now(),
 		});
+	},
+});
+
+/** Upper bound on Reply Queue rows returned per query (joins one message each). */
+const QUEUE_LIMIT = 100;
+
+/**
+ * The Reply Queue — every thread in the mailbox currently flagged as
+ * "needs a reply from me", joined with the message that triggered the flag.
+ *
+ * Live by construction: replying (draftLifecycle sent-effects), archiving /
+ * trashing (messageActions.move) and the manual `clear` mutation all unset
+ * `needsReply`, so subscribed clients drop the row without a manual refresh.
+ * Snoozed trigger messages are hidden here the same way the inbox hides them —
+ * the wakeup cron floats them back. Ranking (urgency, then age) is a pure
+ * client-side comparator so it stays unit-testable; this returns newest-first
+ * up to the cap.
+ */
+// public: soft-auth — returns empty for anonymous; mailbox ownership is still enforced in-handler
+export const listQueue = publicQuery({
+	args: { mailboxId: v.id('mailboxes') },
+	handler: async (ctx, args) => {
+		const mailbox = await loadReadableMailbox(ctx, args.mailboxId);
+		if (!mailbox) return { items: [] };
+
+		const now = Date.now();
+		const threads = await ctx.db
+			.query('mailThreads')
+			.withIndex('by_mailbox_needs_reply', (q) =>
+				q.eq('mailboxId', args.mailboxId).gt('needsReply.detectedAt', 0),
+			)
+			.order('desc')
+			.take(QUEUE_LIMIT);
+
+		const items = [];
+		for (const thread of threads) {
+			const flag = thread.needsReply;
+			if (!flag) continue;
+			const message = await ctx.db.get(flag.messageId);
+			if (!message) continue;
+			// Snoozed = deliberately deferred; it re-enters the queue on wakeup.
+			if (isMessageSnoozed(message, now)) continue;
+			items.push({
+				threadId: thread._id,
+				messageId: flag.messageId,
+				urgency: flag.urgency,
+				askSummary: flag.askSummary,
+				dueHint: flag.dueHint,
+				detectedAt: flag.detectedAt,
+				source: flag.source,
+				fromAddress: message.fromAddress,
+				fromName: message.fromName,
+				subject: message.subject,
+				snippet: thread.latestSnippet,
+				receivedAt: message.receivedAt,
+			});
+		}
+		return { items };
 	},
 });
 
