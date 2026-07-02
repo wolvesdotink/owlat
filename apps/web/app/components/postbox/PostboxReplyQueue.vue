@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
-import { escapeHtmlWithBreaks } from '@owlat/shared/html';
+import type { ReplyQuoteTarget } from '~/composables/postbox/usePostboxQuotedText';
 import {
 	replyQueueHeadline,
 	formatReplyQueueDueHint,
@@ -107,43 +107,23 @@ async function draftReply(row: QueueRow) {
 	}
 }
 
-/** Fetch the original (body included) and open a prefilled reply composer. */
+/**
+ * Fetch the original (body included) and open a prefilled reply composer via
+ * the same resolveBodyFields + buildReplySpec seam the thread reader uses.
+ */
 async function openReplyComposer(row: QueueRow, bodyText: string) {
 	const messageId = row.messageId as Id<'mailMessages'>;
-	let target: {
-		fromAddress: string;
-		fromName?: string;
-		subject: string;
-		receivedAt: number;
-		htmlBodyInline?: string;
-		textBodyInline?: string;
-	} = { ...row, subject: row.subject };
+	// The queue row carries headers but no body — fetch the full message first
+	// (fall through with the row's fields on failure; the composer still opens).
+	let target: ReplyQuoteTarget = { ...row, _id: row.messageId };
 	try {
 		const message = await requireConvex().query(api.mail.mailbox.getMessage, { messageId });
 		if (message) target = message;
-		// Large bodies live in blob storage with empty inline fields — fetch the
-		// full body so the quote isn't empty (same fallback as the reader).
-		if (!target.htmlBodyInline && !target.textBodyInline) {
-			const body = await requireConvex().query(api.mail.mailbox.getMessageBody, { messageId });
-			if (body) {
-				let html = body.htmlInline ?? undefined;
-				let text = body.textInline ?? undefined;
-				if (!html && body.htmlUrl) html = await (await fetch(body.htmlUrl)).text();
-				else if (!text && body.textUrl) text = await (await fetch(body.textUrl)).text();
-				target = { ...target, htmlBodyInline: html, textBodyInline: text };
-			}
-		}
+		target = await resolveBodyFields(target);
 	} catch {
 		// Fall through with the queue row's fields — the composer still opens.
 	}
-	const lead = bodyText ? `<p>${escapeHtmlWithBreaks(bodyText)}</p>` : '';
-	stack.open({
-		mailboxId: props.mailboxId,
-		inReplyToMessageId: messageId,
-		prefillTo: [target.fromAddress],
-		prefillSubject: target.subject.match(/^re\s*:\s*/i) ? target.subject : `Re: ${target.subject}`,
-		prefillBodyHtml: `${lead}${buildQuotedReply(target)}`,
-	});
+	stack.open(buildReplySpec(props.mailboxId, target, bodyText));
 }
 
 const {

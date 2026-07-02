@@ -70,7 +70,8 @@ beforeAll(() => {
 	vi.stubGlobal('resolvePostboxShortcut', () => null);
 	vi.stubGlobal('navigateTo', vi.fn());
 	vi.stubGlobal('requireConvex', () => ({ query: vi.fn(async () => null) }));
-	vi.stubGlobal('buildQuotedReply', () => '');
+	vi.stubGlobal('resolveBodyFields', async (t: unknown) => t);
+	vi.stubGlobal('buildReplySpec', () => ({}));
 });
 
 beforeEach(() => {
