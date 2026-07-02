@@ -9,7 +9,8 @@ import {
 	isBulkOrNoReplySender,
 	type NeedsReplyMessageInput,
 } from '../needsReply';
-import { normalizeDueHint } from '../needsReplyClassify';
+import { normalizeDueHint, normalizeMeetingIntent } from '../needsReplyClassify';
+import { isCalendarAttachment } from '../needsReply';
 
 const OWNER = 'me@example.com';
 
@@ -171,5 +172,54 @@ describe('normalizeDueHint', () => {
 		expect(normalizeDueHint(null)).toBeUndefined();
 		expect(normalizeDueHint('next Friday')).toBeUndefined();
 		expect(normalizeDueHint('07/04/2026')).toBeUndefined();
+	});
+});
+
+describe('isCalendarAttachment', () => {
+	it('matches text/calendar and .ics filenames', () => {
+		expect(isCalendarAttachment({ filename: 'invite.ics', contentType: 'application/octet-stream' })).toBe(true);
+		expect(isCalendarAttachment({ filename: 'meeting', contentType: 'text/calendar' })).toBe(true);
+		expect(isCalendarAttachment({ filename: 'photo.png', contentType: 'image/png' })).toBe(false);
+	});
+});
+
+describe('normalizeMeetingIntent', () => {
+	const intent = {
+		isScheduling: true,
+		proposedTimes: ['Tuesday afternoon', ' Wednesday 3pm '],
+		topic: '  quarterly review  ',
+	};
+
+	it('round-trips a scheduling intent, trimming times and topic', () => {
+		expect(normalizeMeetingIntent(intent, { hasCalendarInvite: false })).toEqual({
+			isScheduling: true,
+			proposedTimes: ['Tuesday afternoon', 'Wednesday 3pm'],
+			topic: 'quarterly review',
+		});
+	});
+
+	it('drops empty proposed-time phrases and caps the list', () => {
+		const many = {
+			isScheduling: true,
+			proposedTimes: ['a', '', '   ', 'b', 'c', 'd', 'e', 'f', 'g'],
+			topic: null,
+		};
+		const result = normalizeMeetingIntent(many, { hasCalendarInvite: false });
+		expect(result?.proposedTimes).toEqual(['a', 'b', 'c', 'd', 'e', 'f']);
+		expect(result?.topic).toBeUndefined();
+	});
+
+	it('excludes messages that already carry a calendar invite (.ics owns it)', () => {
+		expect(normalizeMeetingIntent(intent, { hasCalendarInvite: true })).toBeUndefined();
+	});
+
+	it('returns undefined when not scheduling or no intent', () => {
+		expect(
+			normalizeMeetingIntent(
+				{ isScheduling: false, proposedTimes: [], topic: null },
+				{ hasCalendarInvite: false },
+			),
+		).toBeUndefined();
+		expect(normalizeMeetingIntent(null, { hasCalendarInvite: false })).toBeUndefined();
 	});
 });

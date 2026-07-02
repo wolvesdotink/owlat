@@ -17,6 +17,7 @@ import { getLLMProvider } from '../lib/llmProvider';
 import { runLlmText, runLlmObject } from '../lib/llm/dispatch';
 import { recordLlmSpend } from '../analytics/llmUsage';
 import { stripHtml } from './rfc822';
+import { buildSchedulingInstruction } from './aiScheduling';
 import { throwNotFound } from '../_utils/errors';
 
 /** Flatten a thread into a bounded plaintext transcript for the prompt. */
@@ -198,7 +199,12 @@ export const getOrGenerateThreadSummary = authedAction({
 // authz: ownership enforced by mail.mailbox.listThreadMessages (returns null
 // for a non-owned message); org membership enforced by authedAction.
 export const suggestReplies = authedAction({
-	args: { messageId: v.id('mailMessages') },
+	args: {
+		messageId: v.id('mailMessages'),
+		// Optional scheduling framing (reader meeting-intent chip): proposedTimes are untrusted data.
+		focus: v.optional(v.literal('scheduling')),
+		proposedTimes: v.optional(v.array(v.string())),
+	},
 	handler: async (ctx, args): Promise<{ replies: string[] }> => {
 		await ctx.runMutation(internal.mail.aiGate.assertAiAllowed, {});
 		const thread = await ctx.runQuery(api.mail.mailbox.listThreadMessages, {
@@ -223,12 +229,15 @@ export const suggestReplies = authedAction({
 			}
 		}
 		const voiceSection = voiceGuidance ? `\n\n${voiceGuidance}` : '';
+		const instruction =
+			args.focus === 'scheduling'
+				? buildSchedulingInstruction(args.proposedTimes ?? [])
+				: `Suggest up to 3 short, distinct reply options the recipient could send ` +
+					`(1–2 sentences each, ready to send, varied in stance).`;
 		const { object, tokenUsage, modelUsed } = await runLlmObject({
 			model: getLLMProvider('draft'),
 			schema: z.object({ replies: z.array(z.string()).max(3) }),
-			prompt:
-				`${SYSTEM_GUARD}\n\nSuggest up to 3 short, distinct reply options the recipient could send ` +
-				`(1–2 sentences each, ready to send, varied in stance).${voiceSection}\n\nThread:\n\n${threadToText(thread.messages)}`,
+			prompt: `${SYSTEM_GUARD}\n\n${instruction}${voiceSection}\n\nThread:\n\n${threadToText(thread.messages)}`,
 			temperature: 0.7,
 		});
 		await recordLlmSpend(ctx, 'postbox_suggest_replies', tokenUsage, modelUsed);

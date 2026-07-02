@@ -37,6 +37,16 @@ const refinementSchema = z.object({
 	askSummary: z.string().nullable(),
 	// ISO 8601 date (YYYY-MM-DD) when the message states a deadline.
 	dueHint: z.string().nullable(),
+	// Plain-prose scheduling request ("can we meet…"). Null when the message is
+	// not proposing/asking to schedule a meeting.
+	meetingIntent: z
+		.object({
+			isScheduling: z.boolean(),
+			// Verbatim time phrases the sender used ("Tuesday afternoon").
+			proposedTimes: z.array(z.string()),
+			topic: z.string().nullable(),
+		})
+		.nullable(),
 });
 
 /** Keep only a parseable ISO-like date hint; drop hallucinated formats. */
@@ -45,6 +55,37 @@ export function normalizeDueHint(raw: string | null): string | undefined {
 	const trimmed = raw.trim();
 	if (!/^\d{4}-\d{2}-\d{2}/.test(trimmed)) return undefined;
 	return Number.isNaN(Date.parse(trimmed)) ? undefined : trimmed.slice(0, 10);
+}
+
+const MAX_PROPOSED_TIMES = 6;
+const MAX_TIME_PHRASE_CHARS = 80;
+const MAX_TOPIC_CHARS = 120;
+
+export interface MeetingIntent {
+	isScheduling: boolean;
+	proposedTimes: string[];
+	topic?: string;
+}
+
+/**
+ * Coerce the LLM's raw meetingIntent into the bounded persisted shape, or
+ * `undefined` when there is nothing to show. Returns `undefined` when the
+ * trigger message already carries a calendar invite (.ics) — that path is
+ * owned by PostboxInviteCard, and the plain-prose chip must never double up on
+ * it. Pure + exported so it unit-tests without a live model or Convex.
+ */
+export function normalizeMeetingIntent(
+	raw: { isScheduling: boolean; proposedTimes: string[]; topic: string | null } | null,
+	opts: { hasCalendarInvite: boolean },
+): MeetingIntent | undefined {
+	if (opts.hasCalendarInvite) return undefined;
+	if (!raw || !raw.isScheduling) return undefined;
+	const proposedTimes = (raw.proposedTimes ?? [])
+		.map((t) => t.trim().slice(0, MAX_TIME_PHRASE_CHARS))
+		.filter((t) => t.length > 0)
+		.slice(0, MAX_PROPOSED_TIMES);
+	const topic = raw.topic?.trim().slice(0, MAX_TOPIC_CHARS) || undefined;
+	return { isScheduling: true, proposedTimes, topic };
 }
 
 export const classifyThread = internalAction({
@@ -111,7 +152,11 @@ export const classifyThread = internalAction({
 					`${SYSTEM_GUARD}\n\nThe reader is ${context.ownerAddress}. Decide whether the LAST inbound message ` +
 					`in this thread needs a reply from the reader. Classify urgency (high/normal/low), give a one-line ` +
 					`askSummary of what the sender is asking (max 120 characters, null if nothing is asked), and a ` +
-					`dueHint as an ISO date (YYYY-MM-DD) only if the message states a concrete deadline, else null.` +
+					`dueHint as an ISO date (YYYY-MM-DD) only if the message states a concrete deadline, else null. ` +
+					`Also set meetingIntent when the sender is trying to SCHEDULE a meeting/call in prose ` +
+					`(isScheduling true), capturing any proposedTimes as the sender's VERBATIM phrases (e.g. ` +
+					`"Tuesday afternoon", "next week", "after 3pm") and an optional short topic; use null when the ` +
+					`message is not about scheduling.` +
 					`\n\nThread:\n\n${transcript}`,
 				temperature: 0,
 			});
@@ -127,6 +172,9 @@ export const classifyThread = internalAction({
 							urgency: object.urgency,
 							askSummary: object.askSummary?.trim().slice(0, 120) || undefined,
 							dueHint: normalizeDueHint(object.dueHint),
+							meetingIntent: normalizeMeetingIntent(object.meetingIntent, {
+								hasCalendarInvite: latestInbound.hasCalendarInvite,
+							}),
 						}
 					: null,
 			});

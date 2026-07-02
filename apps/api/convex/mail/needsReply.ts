@@ -123,6 +123,17 @@ export function evaluateNeedsReplyCandidate(opts: {
 	return { candidate: true, latestInboundIndex: latestInbound.index };
 }
 
+/** True when an attachment is a calendar invite (.ics / text/calendar). */
+export function isCalendarAttachment(att: {
+	filename: string;
+	contentType: string;
+}): boolean {
+	return (
+		att.contentType.toLowerCase().includes('calendar') ||
+		att.filename.toLowerCase().endsWith('.ics')
+	);
+}
+
 // ─── Trigger + clearing helpers (called from sibling mail modules) ──────────
 
 /** How many newest thread messages the classify action considers. */
@@ -196,6 +207,9 @@ export const getThreadContext = internalQuery({
 				toAddresses: m.toAddresses,
 				ccAddresses: m.ccAddresses,
 				hasListUnsubscribe: m.unsubscribe !== undefined,
+				// A real calendar invite (.ics) is handled by PostboxInviteCard —
+				// the scheduling chip must never double up on it.
+				hasCalendarInvite: (m.attachments ?? []).some(isCalendarAttachment),
 				isFromOwner:
 					m.outbound !== undefined || m.fromAddress.toLowerCase() === ownerAddress,
 				receivedAt: m.receivedAt,
@@ -216,6 +230,11 @@ const needsReplyResultValidator = v.union(
 		urgency: v.union(v.literal('high'), v.literal('normal'), v.literal('low')),
 		askSummary: v.optional(v.string()),
 		dueHint: v.optional(v.string()),
+		meetingIntent: v.optional(v.object({
+			isScheduling: v.boolean(),
+			proposedTimes: v.array(v.string()),
+			topic: v.optional(v.string()),
+		})),
 	}),
 );
 
