@@ -75,6 +75,7 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	// Postbox sidecar family (children + logs before mailboxes)
 	'mailThreads',
 	'mailContacts',
+	'mailSenderCategoryOverrides',
 	'mailForwarding',
 	'mailVacationResponders',
 	'mailVacationLog',
@@ -259,6 +260,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	autonomyRules: makeSweepStep('autonomyRules'),
 	mailThreads: makeSweepStep('mailThreads'),
 	mailContacts: makeSweepStep('mailContacts'),
+	mailSenderCategoryOverrides: makeSweepStep('mailSenderCategoryOverrides'),
 	mailForwarding: makeSweepStep('mailForwarding'),
 	mailVacationResponders: makeSweepStep('mailVacationResponders'),
 	mailVacationLog: makeSweepStep('mailVacationLog'),

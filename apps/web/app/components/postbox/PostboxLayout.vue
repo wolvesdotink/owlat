@@ -79,6 +79,27 @@ const {
 	enabled: threadGroupsEnabled,
 });
 
+// Smart-inbox split view — opt-in for the inbox, off by default. Groups the
+// inbox into People / Newsletters / Notifications / Receipts sections. Takes
+// precedence over the conversation toggle when both are on.
+const categoryView = useState('postbox:category-view', () => false);
+const categoryGroupsEnabled = computed(
+	() => folderRef.value === 'inbox' && categoryView.value
+);
+const {
+	sections: categorySections,
+	isLoading: categoryLoading,
+	hasMore: categoryHasMore,
+	loadMore: loadMoreCategories,
+	collapsed: categoryCollapsed,
+	toggle: toggleCategory,
+	recategorize,
+} = usePostboxThreadCategories({
+	mailboxId: mailboxIdRef,
+	folderRole: folderRef,
+	enabled: categoryGroupsEnabled,
+});
+
 const listActive = computed(() =>
 	messages.value.find((m) => m._id === props.activeMessageId)
 );
@@ -98,7 +119,7 @@ const activeMessage = computed(() => listActive.value ?? fetchedActive.value ?? 
 // empty list makes every triage fall back to back-to-list there.
 const threadListRef = ref<{ visibleIds: string[] } | null>(null);
 const advanceIds = computed(() =>
-	threadGroupsEnabled.value
+	threadGroupsEnabled.value || categoryGroupsEnabled.value
 		? []
 		: // The raw-messages fallback only applies while the list component is
 			// unmounted (e.g. the search overlay covers it); it skips the
@@ -301,20 +322,32 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 				<h2 class="text-sm font-semibold capitalize text-text-primary">
 					{{ currentFolderName }}
 				</h2>
-				<button
-					v-if="folderRole === 'inbox'"
-					type="button"
-					class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-text-primary"
-					:title="conversationView ? 'Show individual messages' : 'Group by conversation'"
-					:aria-label="conversationView ? 'Show individual messages' : 'Group by conversation'"
-					:aria-pressed="conversationView"
-					@click="conversationView = !conversationView"
-				>
-					<Icon
-						:name="conversationView ? 'lucide:list' : 'lucide:messages-square'"
-						class="w-4 h-4"
-					/>
-				</button>
+				<div v-if="folderRole === 'inbox'" class="flex items-center gap-1">
+					<button
+						type="button"
+						class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-text-primary"
+						:class="{ 'text-brand': categoryView }"
+						:title="categoryView ? 'Show a single list' : 'Group by category'"
+						:aria-label="categoryView ? 'Show a single list' : 'Group by category'"
+						:aria-pressed="categoryView"
+						@click="categoryView = !categoryView"
+					>
+						<Icon name="lucide:layout-list" class="w-4 h-4" />
+					</button>
+					<button
+						type="button"
+						class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-text-primary"
+						:title="conversationView ? 'Show individual messages' : 'Group by conversation'"
+						:aria-label="conversationView ? 'Show individual messages' : 'Group by conversation'"
+						:aria-pressed="conversationView"
+						@click="conversationView = !conversationView"
+					>
+						<Icon
+							:name="conversationView ? 'lucide:list' : 'lucide:messages-square'"
+							class="w-4 h-4"
+						/>
+					</button>
+				</div>
 			</header>
 			<template v-if="folderRole === 'drafts'">
 				<div class="flex-1 overflow-auto">
@@ -350,13 +383,25 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 					</button>
 				</div>
 				<PostboxQuickActionsBar
-					v-if="!threadGroupsEnabled"
+					v-if="!threadGroupsEnabled && !categoryGroupsEnabled"
 					:mailbox-id="mailboxId"
 					:folder-role="folderRole"
 				/>
 				<div class="flex-1 overflow-auto">
+					<PostboxThreadCategoryList
+						v-if="categoryGroupsEnabled"
+						:sections="categorySections"
+						:collapsed="categoryCollapsed"
+						:loading="categoryLoading"
+						:folder-role="folderRole"
+						:active-message-id="activeMessageId"
+						:has-more="categoryHasMore"
+						@load-more="loadMoreCategories"
+						@toggle="toggleCategory"
+						@recategorize="recategorize"
+					/>
 					<PostboxThreadGroupList
-						v-if="threadGroupsEnabled"
+						v-else-if="threadGroupsEnabled"
 						:threads="threadGroups"
 						:loading="threadGroupsLoading"
 						:folder-role="folderRole"
