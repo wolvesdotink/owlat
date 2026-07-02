@@ -76,12 +76,30 @@ export const suggestReplies = authedAction({
 			messageId: args.messageId,
 		});
 		if (!thread || thread.messages.length === 0) throwNotFound('Thread');
+		// Personalize to the user's learned writing voice when they have opted in
+		// and a profile exists. This also lazily schedules a background refresh if
+		// the profile is stale; it never blocks or throws, so a missing/disabled
+		// profile falls through to exactly the non-personalized behaviour below.
+		const mailboxId = thread.messages[0]?.mailboxId;
+		let voiceGuidance: string | null = null;
+		if (mailboxId) {
+			try {
+				const res = await ctx.runMutation(
+					internal.mail.voiceProfile.getGuidanceForMailbox,
+					{ mailboxId }
+				);
+				voiceGuidance = res.guidance;
+			} catch {
+				voiceGuidance = null;
+			}
+		}
+		const voiceSection = voiceGuidance ? `\n\n${voiceGuidance}` : '';
 		const { object, tokenUsage, modelUsed } = await runLlmObject({
 			model: getLLMProvider('draft'),
 			schema: z.object({ replies: z.array(z.string()).max(3) }),
 			prompt:
 				`${SYSTEM_GUARD}\n\nSuggest up to 3 short, distinct reply options the recipient could send ` +
-				`(1–2 sentences each, ready to send, varied in stance). Thread:\n\n${threadToText(thread.messages)}`,
+				`(1–2 sentences each, ready to send, varied in stance).${voiceSection}\n\nThread:\n\n${threadToText(thread.messages)}`,
 			temperature: 0.7,
 		});
 		await recordLlmSpend(ctx, 'postbox_suggest_replies', tokenUsage, modelUsed);

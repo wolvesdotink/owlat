@@ -69,6 +69,10 @@
 			"types": "./src/postboxTrackers.ts",
 			"import": "./src/postboxTrackers.ts"
 		},
+		"./quotedText": {
+			"types": "./src/quotedText.ts",
+			"import": "./src/quotedText.ts"
+		},
 		"./postboxLinkTransparency": {
 			"types": "./src/postboxLinkTransparency.ts",
 			"import": "./src/postboxLinkTransparency.ts"
