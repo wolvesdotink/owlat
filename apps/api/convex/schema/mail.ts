@@ -385,11 +385,35 @@ mailThreads: defineTable({
 	latestMessageId: v.optional(v.id('mailMessages')),
 	folderRoles: v.array(v.string()),
 	labelIds: v.array(v.id('mailLabels')),
+	// Reply Queue (advisory AI): set when the latest inbound message looks like
+	// it needs a reply from the mailbox owner. A deterministic heuristic flags
+	// the candidate first (source `heuristic`, urgency `normal`); the cheap-tier
+	// LLM refinement pass (mail/needsReplyClassify.ts) upgrades it with
+	// urgency / askSummary / dueHint when AI is enabled and the call succeeds.
+	// Cleared by any outbound reply in the thread, archive/trash of its
+	// messages, or the manual clear mutation (mail/needsReply.ts).
+	needsReply: v.optional(v.object({
+		// The inbound message that triggered the flag (usually the newest).
+		messageId: v.id('mailMessages'),
+		detectedAt: v.number(),
+		source: v.union(v.literal('heuristic'), v.literal('llm')),
+		urgency: v.union(v.literal('high'), v.literal('normal'), v.literal('low')),
+		// One-line "what they are asking" (<= 120 chars). LLM-refined only.
+		askSummary: v.optional(v.string()),
+		// ISO date when the message states a deadline. LLM-refined only.
+		dueHint: v.optional(v.string()),
+	})),
+	// Set when inbound ingest enqueues needs-reply classification; cleared once
+	// the classify action persists a result. Backs the reconcile cron that
+	// re-schedules threads whose scheduled classification was lost.
+	needsReplyPendingAt: v.optional(v.number()),
 	createdAt: v.number(),
 	updatedAt: v.number(),
 })
 	.index('by_mailbox_and_last_message', ['mailboxId', 'lastMessageAt'])
-	.index('by_mailbox_and_subject', ['mailboxId', 'normalizedSubject']),
+	.index('by_mailbox_and_subject', ['mailboxId', 'normalizedSubject'])
+	// Backs the needs-reply reconcile cron — range scan on needsReplyPendingAt.
+	.index('by_needs_reply_pending', ['needsReplyPendingAt']),
 
 // Gmail-style labels (orthogonal to folders).
 mailLabels: defineTable({

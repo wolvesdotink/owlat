@@ -539,6 +539,10 @@ async function runSentEffects(
 			latestSubject: draft.subject || '(no subject)',
 			latestMessageId: messageId,
 			folderRoles: Array.from(folderRoles),
+			// Any outbound in the thread answers the Reply Queue signal — clear
+			// the needs-reply flag and any in-flight classification marker.
+			needsReply: undefined,
+			needsReplyPendingAt: undefined,
 			updatedAt: now,
 		});
 	}

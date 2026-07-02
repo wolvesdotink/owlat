@@ -30,6 +30,7 @@ import { ATTACHMENT_COMPOSE_LIMITS, MAX_ATTACHMENT_BYTES } from '@owlat/shared/a
 import { logError } from '../lib/runtimeLog';
 import { getMtaConfig, scanAttachmentBytes } from './mtaClient';
 import { scanContent } from '@owlat/email-scanner';
+import { enqueueNeedsReplyCheck } from './needsReply';
 
 const INLINE_BODY_THRESHOLD_BYTES = 64 * 1024;
 
@@ -795,6 +796,18 @@ export const deliverToMailbox = internalMutation({
 			unsubscribe: args.unsubscribe,
 			countUsedBytes: true,
 		});
+
+		// 11b. Reply Queue: enqueue needs-reply classification for the affected
+		// thread — inbox deliveries only (spam/trash/filter-moved mail never
+		// needs a reply prompt), and only on this webhook ingest path so bulk
+		// IMAP backfill can't fan out background LLM work. The Precedence
+		// header rides along because it is not persisted on the message row.
+		const delivered = await ctx.db.get(messageId);
+		if (delivered && folder.role === 'inbox') {
+			await enqueueNeedsReplyCheck(ctx, delivered.threadId, {
+				precedence: args.antiLoopHeaders?.['precedence'],
+			});
+		}
 
 		// 12. Post-delivery hooks — forwarding + vacation auto-reply.
 		// Scheduled as an action so HTTP calls to the MTA happen in the
