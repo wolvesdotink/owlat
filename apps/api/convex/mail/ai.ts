@@ -236,6 +236,85 @@ export const suggestReplies = authedAction({
 	},
 });
 
+/** Hard cap on a user question so a pasted wall of text can't blow the budget. */
+const MAX_QUESTION_CHARS = 2000;
+/** How many prior Q/A turns of the (client-held, unpersisted) history to include. */
+const MAX_HISTORY_TURNS = 6;
+
+/** System prompt for the scoped "Ask about this thread…" answerer. */
+const ASK_THREAD_SYSTEM =
+	`${SYSTEM_GUARD} You answer the user's question about the email thread below, ` +
+	`using only what the thread states plus general knowledge — cite nothing ` +
+	`external and invent no facts. Be concise and direct. If the thread does not ` +
+	`contain the answer, say so plainly. Plain prose or short markdown, no preamble.`;
+
+/**
+ * Assemble the prompt for {@link askThread}. Pure + exported so the unit test can
+ * assert the untrusted-data framing and transcript inclusion without a live
+ * model. The transcript is already the bounded flatten from {@link threadToText};
+ * `history` is the small in-memory prior Q/A the client replays for follow-ups.
+ */
+export function buildAskThreadPrompt(args: {
+	transcript: string;
+	question: string;
+	history?: { question: string; answer: string }[];
+}): { system: string; prompt: string } {
+	const question = args.question.slice(0, MAX_QUESTION_CHARS);
+	const priorTurns = (args.history ?? []).slice(-MAX_HISTORY_TURNS);
+	const historySection = priorTurns.length
+		? '\n\nEarlier in this conversation:\n' +
+			priorTurns
+				.map((t) => `Q: ${t.question.slice(0, 500)}\nA: ${t.answer.slice(0, 500)}`)
+				.join('\n') +
+			'\n'
+		: '';
+	const prompt =
+		`Email thread (untrusted data):\n\n${args.transcript}${historySection}\n\n` +
+		`The user asks: ${question}`;
+	return { system: ASK_THREAD_SYSTEM, prompt };
+}
+
+/**
+ * Single-turn "Ask about this thread…" — answers ONE question grounded in the
+ * open conversation's flattened transcript, with no tools. Advisory + fail-soft:
+ * the caller shows the answer inline and never auto-acts on it. Chose the
+ * single-turn action over reusing the full assistant runner because it is far
+ * less new code (one bounded LLM call, no conversation persistence / tool loop),
+ * while still grounding on the same bounded thread flatten as the summarizer.
+ */
+// authz: ownership enforced by mail.mailbox.listThreadMessages (returns null for
+// a non-owned message); org membership enforced by authedAction; the `ai` flag +
+// per-user rate limit enforced by aiGate.assertAiAllowed.
+export const askThread = authedAction({
+	args: {
+		messageId: v.id('mailMessages'),
+		question: v.string(),
+		history: v.optional(
+			v.array(v.object({ question: v.string(), answer: v.string() }))
+		),
+	},
+	handler: async (ctx, args): Promise<{ answer: string }> => {
+		await ctx.runMutation(internal.mail.aiGate.assertAiAllowed, {});
+		const thread = await ctx.runQuery(api.mail.mailbox.listThreadMessages, {
+			messageId: args.messageId,
+		});
+		if (!thread || thread.messages.length === 0) throwNotFound('Thread');
+		const { system, prompt } = buildAskThreadPrompt({
+			transcript: threadToText(thread.messages),
+			question: args.question,
+			history: args.history,
+		});
+		const { text, tokenUsage, modelUsed } = await runLlmText({
+			model: getLLMProvider('draft'),
+			system,
+			prompt,
+			temperature: 0.2,
+		});
+		await recordLlmSpend(ctx, 'postbox_ask_thread', tokenUsage, modelUsed);
+		return { answer: text.trim() };
+	},
+});
+
 /**
  * Inline ghost-text autocomplete for the composer: given a bounded slice of the
  * thread and the draft so far, return ONE short continuation (or '' when the

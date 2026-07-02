@@ -933,6 +933,12 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 				@use-reply="(t) => latestMessage && openReplyWithBody(latestMessage, t)"
 			/>
 
+			<!-- Ask the advisory assistant a question grounded in THIS thread. -->
+			<PostboxAskThread
+				v-if="latestMessage && isFeatureEnabled('ai')"
+				:message-id="latestMessage._id"
+			/>
+
 			<!-- Inline reply box pinned under the conversation (r / a / f or the
 			     affordance expand it; it collapses back after send/discard). -->
 			<PostboxInlineReply
