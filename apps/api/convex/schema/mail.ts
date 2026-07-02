@@ -430,6 +430,25 @@ mailThreads: defineTable({
 	// once). Kept as a flat companion field so the cron can range-scan it
 	// (same pattern as needsReplyPendingAt above).
 	followUpRemindAt: v.optional(v.number()),
+	// Smart-inbox category (advisory, off by default in the UI). A deterministic
+	// heuristic classifies the latest inbound message first (source `heuristic`);
+	// genuinely ambiguous mail is refined by the cheap-tier LLM (source `llm`,
+	// mail/categoryClassify.ts) behind the same aiGate as the rest of Postbox AI.
+	// A user "Recategorize as…" override always wins (source `user`) and is
+	// remembered per sender in mailSenderCategoryOverrides. Set at inbound ingest
+	// and by the one-shot backfill; fail-soft to `other` when the LLM is
+	// unavailable. Never moves or modifies mail — this is a display grouping only.
+	category: v.optional(v.object({
+		label: v.union(
+			v.literal('person'),
+			v.literal('newsletter'),
+			v.literal('notification'),
+			v.literal('receipt'),
+			v.literal('other'),
+		),
+		source: v.union(v.literal('heuristic'), v.literal('llm'), v.literal('user')),
+		classifiedAt: v.number(),
+	})),
 	createdAt: v.number(),
 	updatedAt: v.number(),
 })
@@ -676,6 +695,24 @@ mailContacts: defineTable({
 })
 	.index('by_mailbox_and_email', ['mailboxId', 'email'])
 	.index('by_mailbox_and_lastUsed', ['mailboxId', 'lastUsedAt']),
+
+// Per-sender smart-inbox category overrides. When the user "Recategorizes as…"
+// a thread, the chosen category is remembered here for that sender so future
+// mail from them lands in the same section without another LLM call. A user
+// override always beats both the deterministic heuristic and the LLM.
+mailSenderCategoryOverrides: defineTable({
+	mailboxId: v.id('mailboxes'),
+	senderEmail: v.string(),                  // canonical lowercase
+	label: v.union(
+		v.literal('person'),
+		v.literal('newsletter'),
+		v.literal('notification'),
+		v.literal('receipt'),
+		v.literal('other'),
+	),
+	updatedAt: v.number(),
+})
+	.index('by_mailbox_and_sender', ['mailboxId', 'senderEmail']),
 
 // Per-mailbox signatures. Default-on-new-draft when isDefault=true.
 mailSignatures: defineTable({
