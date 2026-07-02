@@ -18,7 +18,7 @@ const refreshNow = useBackendOperation(api.mail.voiceProfile.requestRefresh, {
 	label: 'Refresh writing voice',
 });
 
-const enabled = computed(() => data.value?.enabled ?? false);
+const enabled = computed(() => data.value?.isEnabled ?? false);
 const profile = computed(() => data.value?.profile ?? null);
 const isRefreshing = computed(() => data.value?.status === 'refreshing');
 
@@ -93,7 +93,7 @@ async function onRefresh() {
 					</div>
 					<div>
 						<dt class="text-text-tertiary text-xs">Emoji</dt>
-						<dd>{{ profile.usesEmoji ? 'Yes' : 'No' }}</dd>
+						<dd>{{ profile.isEmojiUser ? 'Yes' : 'No' }}</dd>
 					</div>
 					<div v-if="profile.examplePhrasings.length" class="col-span-2">
 						<dt class="text-text-tertiary text-xs">Example phrasings</dt>

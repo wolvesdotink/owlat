@@ -24,7 +24,7 @@ const PROFILE: VoiceProfile = {
 	formality: 2,
 	brevity: 2,
 	languages: ['English'],
-	usesEmoji: true,
+	isEmojiUser: true,
 	examplePhrasings: ['sounds good', 'let me know'],
 };
 

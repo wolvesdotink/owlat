@@ -45,7 +45,7 @@ export const voiceProfileValidator = v.object({
 	formality: v.number(),
 	brevity: v.number(),
 	languages: v.array(v.string()),
-	usesEmoji: v.boolean(),
+	isEmojiUser: v.boolean(),
 	examplePhrasings: v.array(v.string()),
 });
 
@@ -55,7 +55,7 @@ export interface VoiceProfile {
 	formality: number;
 	brevity: number;
 	languages: string[];
-	usesEmoji: boolean;
+	isEmojiUser: boolean;
 	examplePhrasings: string[];
 }
 
@@ -150,7 +150,7 @@ export function buildVoiceGuidance(profile: VoiceProfile | null | undefined): st
 	lines.push(`- Formality: ${profile.formality}/5 (1=very casual, 5=very formal)`);
 	lines.push(`- Brevity: ${profile.brevity}/5 (1=terse, 5=elaborate)`);
 	if (profile.languages.length) lines.push(`- Language(s): ${profile.languages.join(', ')}`);
-	lines.push(`- Emoji: ${profile.usesEmoji ? 'occasionally uses emoji' : 'does not use emoji'}`);
+	lines.push(`- Emoji: ${profile.isEmojiUser ? 'occasionally uses emoji' : 'does not use emoji'}`);
 	if (profile.examplePhrasings.length) {
 		lines.push(`- Example phrasings (for tone only, never copy verbatim): ${profile.examplePhrasings.join(' | ')}`);
 	}
@@ -231,7 +231,7 @@ export const saveProfile = internalMutation({
 		}
 		return ctx.db.insert('mailVoiceProfiles', {
 			mailboxId: args.mailboxId,
-			enabled: true,
+			isEnabled: true,
 			createdAt: now,
 			...patch,
 		});
@@ -260,7 +260,7 @@ export const getGuidanceForMailbox = internalMutation({
 	args: { mailboxId: v.id('mailboxes') },
 	handler: async (ctx, args): Promise<{ guidance: string | null }> => {
 		const row = await findRow(ctx, args.mailboxId);
-		if (!row || !row.enabled) return { guidance: null };
+		if (!row || !row.isEnabled) return { guidance: null };
 		if (!(await isFeatureEnabled(ctx, 'ai'))) {
 			return { guidance: buildVoiceGuidance(row.profile) };
 		}
@@ -288,9 +288,9 @@ export const get = publicQuery({
 		const owned = await loadOwnedMailbox(ctx, args.mailboxId);
 		if (!owned.ok) return null;
 		const row = await findRow(ctx, args.mailboxId);
-		if (!row) return { enabled: false, profile: null, status: 'idle' as const, lastComputedAt: null };
+		if (!row) return { isEnabled: false, profile: null, status: 'idle' as const, lastComputedAt: null };
 		return {
-			enabled: row.enabled,
+			isEnabled: row.isEnabled,
 			profile: row.profile ?? null,
 			status: row.status,
 			lastComputedAt: row.lastComputedAt ?? null,
@@ -308,12 +308,12 @@ export const setEnabled = authedMutation({
 		const now = Date.now();
 		const row = await findRow(ctx, args.mailboxId);
 		if (row) {
-			await ctx.db.patch(row._id, { enabled: args.enabled, updatedAt: now });
+			await ctx.db.patch(row._id, { isEnabled: args.enabled, updatedAt: now });
 			return row._id;
 		}
 		return ctx.db.insert('mailVoiceProfiles', {
 			mailboxId: args.mailboxId,
-			enabled: args.enabled,
+			isEnabled: args.enabled,
 			status: 'idle',
 			sampleCount: 0,
 			sentCountAtCompute: 0,
@@ -338,11 +338,11 @@ export const requestRefresh = authedMutation({
 		const now = Date.now();
 		const row = await findRow(ctx, args.mailboxId);
 		if (row) {
-			await ctx.db.patch(row._id, { enabled: true, status: 'refreshing', updatedAt: now });
+			await ctx.db.patch(row._id, { isEnabled: true, status: 'refreshing', updatedAt: now });
 		} else {
 			await ctx.db.insert('mailVoiceProfiles', {
 				mailboxId: args.mailboxId,
-				enabled: true,
+				isEnabled: true,
 				status: 'refreshing',
 				sampleCount: 0,
 				sentCountAtCompute: 0,

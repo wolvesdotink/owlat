@@ -166,7 +166,7 @@ describe('mail.voiceProfileActions.refresh', () => {
 				formality: 2,
 				brevity: 2,
 				languages: ['English'],
-				usesEmoji: false,
+				isEmojiUser: false,
 				examplePhrasings: ['ship it', 'talk soon'],
 			},
 			tokenUsage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
@@ -205,7 +205,7 @@ describe('mail.voiceProfileActions.refresh', () => {
 			const now = Date.now();
 			await ctx.db.insert('mailVoiceProfiles', {
 				mailboxId,
-				enabled: true,
+				isEnabled: true,
 				status: 'refreshing',
 				sampleCount: 0,
 				sentCountAtCompute: 0,
@@ -248,7 +248,7 @@ describe('mail.voiceProfile.getGuidanceForMailbox', () => {
 			});
 			await ctx.db.insert('mailVoiceProfiles', {
 				mailboxId,
-				enabled: true,
+				isEnabled: true,
 				status: 'idle',
 				sampleCount: 10,
 				sentCountAtCompute: 10,
@@ -259,7 +259,7 @@ describe('mail.voiceProfile.getGuidanceForMailbox', () => {
 					formality: 3,
 					brevity: 3,
 					languages: ['English'],
-					usesEmoji: false,
+					isEmojiUser: false,
 					examplePhrasings: ['sounds good'],
 				},
 				createdAt: now,
@@ -315,7 +315,7 @@ describe('mail.voiceProfile.getGuidanceForMailbox', () => {
 				.query('mailVoiceProfiles')
 				.withIndex('by_mailbox', (q) => q.eq('mailboxId', mailboxId))
 				.first();
-			if (row) await ctx.db.patch(row._id, { enabled: false });
+			if (row) await ctx.db.patch(row._id, { isEnabled: false });
 		});
 
 		const res = await t.mutation(internal.mail.voiceProfile.getGuidanceForMailbox, {

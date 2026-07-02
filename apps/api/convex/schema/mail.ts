@@ -476,7 +476,7 @@ mailVoiceProfiles: defineTable({
 	mailboxId: v.id('mailboxes'),
 	// User toggle: "Personalize AI drafts". When false, the profile is never
 	// injected into prompts (and never recomputed) even if one exists.
-	enabled: v.boolean(),
+	isEnabled: v.boolean(),
 	// Guards against scheduling a second refresh while one is in flight.
 	status: v.union(v.literal('idle'), v.literal('refreshing')),
 	profile: v.optional(
@@ -486,7 +486,7 @@ mailVoiceProfiles: defineTable({
 			formality: v.number(), // 1 (very casual) … 5 (very formal)
 			brevity: v.number(), // 1 (terse) … 5 (elaborate)
 			languages: v.array(v.string()),
-			usesEmoji: v.boolean(),
+			isEmojiUser: v.boolean(),
 			examplePhrasings: v.array(v.string()),
 		})
 	),

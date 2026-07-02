@@ -31,7 +31,7 @@ const profileSchema = z.object({
 	formality: z.number().int().min(1).max(5),
 	brevity: z.number().int().min(1).max(5),
 	languages: z.array(z.string()).max(4),
-	usesEmoji: z.boolean(),
+	isEmojiUser: z.boolean(),
 	examplePhrasings: z.array(z.string()).max(3),
 });
 
@@ -87,7 +87,7 @@ export const refresh = internalAction({
 					formality: clamp1to5(object.formality),
 					brevity: clamp1to5(object.brevity),
 					languages: object.languages.slice(0, 4),
-					usesEmoji: object.usesEmoji,
+					isEmojiUser: object.isEmojiUser,
 					examplePhrasings: object.examplePhrasings.slice(0, 3),
 				},
 				sampleCount: samples.length,
