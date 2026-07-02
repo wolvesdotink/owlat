@@ -21,6 +21,8 @@ const {
 	setAutoAdvance,
 	writingSuggestions,
 	setWritingSuggestions,
+	autoSummarize,
+	setAutoSummarize,
 	isSaving: isSavingAutoAdvance,
 } = usePostboxSettings();
 
@@ -31,6 +33,10 @@ function onAutoAdvanceChange(event: Event) {
 
 function onWritingSuggestionsChange(event: Event) {
 	void setWritingSuggestions((event.target as HTMLInputElement).checked);
+}
+
+function onAutoSummarizeChange(event: Event) {
+	void setAutoSummarize((event.target as HTMLInputElement).checked);
 }
 
 type MailboxRow = (typeof mailboxes.value)[number];
@@ -233,6 +239,28 @@ async function handleDelete() {
 					:checked="writingSuggestions"
 					:disabled="isSavingAutoAdvance"
 					@change="onWritingSuggestionsChange"
+				/>
+			</div>
+			<div
+				v-if="isEnabled('ai')"
+				class="px-5 py-4 flex items-center justify-between gap-4 border-t border-border-subtle"
+			>
+				<div class="min-w-0">
+					<label for="postbox-auto-summarize" class="font-medium text-sm block">
+						Auto-summarize long threads
+					</label>
+					<p class="text-xs text-text-tertiary mt-0.5">
+						Show a one-line AI summary at the top of long conversations. Click it to
+						expand the key points.
+					</p>
+				</div>
+				<input
+					id="postbox-auto-summarize"
+					type="checkbox"
+					class="shrink-0 h-4 w-4"
+					:checked="autoSummarize"
+					:disabled="isSavingAutoAdvance"
+					@change="onAutoSummarizeChange"
 				/>
 			</div>
 		</section>

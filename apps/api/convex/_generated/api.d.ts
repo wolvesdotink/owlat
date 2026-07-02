@@ -356,6 +356,7 @@ import type * as mail_rfc822 from "../mail/rfc822.js";
 import type * as mail_settings from "../mail/settings.js";
 import type * as mail_signatures from "../mail/signatures.js";
 import type * as mail_snooze from "../mail/snooze.js";
+import type * as mail_summaryCache from "../mail/summaryCache.js";
 import type * as mail_unsubscribe from "../mail/unsubscribe.js";
 import type * as mail_vacation from "../mail/vacation.js";
 import type * as mail_voiceProfile from "../mail/voiceProfile.js";
@@ -876,6 +877,7 @@ declare const fullApi: ApiFromModules<{
   "mail/settings": typeof mail_settings;
   "mail/signatures": typeof mail_signatures;
   "mail/snooze": typeof mail_snooze;
+  "mail/summaryCache": typeof mail_summaryCache;
   "mail/unsubscribe": typeof mail_unsubscribe;
   "mail/vacation": typeof mail_vacation;
   "mail/voiceProfile": typeof mail_voiceProfile;
