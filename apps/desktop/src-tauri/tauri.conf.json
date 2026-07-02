@@ -4,7 +4,7 @@
 	"identifier": "com.owlat.desktop",
 	"build": {
 		"beforeBuildCommand": "cd ../../apps/web && bun run generate:desktop",
-		"beforeDevCommand": "cd ../../apps/web && OWLAT_DESKTOP=true bun run dev",
+		"beforeDevCommand": "cd ../../apps/web && bun run dev:desktop",
 		"devUrl": "http://localhost:3000",
 		"frontendDist": "../../web/.output/public"
 	},
