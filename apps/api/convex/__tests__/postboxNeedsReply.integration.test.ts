@@ -12,12 +12,18 @@
  *   - any outbound send in the thread clears the flag (draftLifecycle → sent)
  *   - trashing the thread's messages clears the flag (messageActions.trash)
  *   - the manual `clear` mutation clears the flag
+ *
+ * Plus the Reply Queue read side (`listQueue`): flagged threads are returned
+ * joined with the trigger message, snoozed trigger messages are hidden, a
+ * missing trigger message drops only its row, and anonymous / non-owner
+ * callers get an empty list (soft-auth).
  */
 
 import { convexTest } from 'convex-test';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import schema from '../schema';
+import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 import { api, internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { enableFeatures } from './factories';
@@ -417,6 +423,121 @@ describe('needs-reply clearing', () => {
 
 		const thread = await getThread(t, threadId);
 		expect(thread?.needsReply).toBeUndefined();
+	});
+});
+
+// ─── Reply Queue read side ───────────────────────────────────────────────────
+
+describe('mail.needsReply.listQueue', () => {
+	it('returns flagged threads joined with the trigger message fields', async () => {
+		const t = convexTest(schema, modules);
+		const seeded = await seedMailbox(t);
+		const { threadId, messageId } = await seedThreadWithMessage(t, seeded);
+		await t.run(async (ctx) => {
+			await ctx.db.patch(threadId, {
+				needsReply: {
+					messageId,
+					detectedAt: Date.now(),
+					source: 'llm' as const,
+					urgency: 'high' as const,
+					askSummary: 'Send the report',
+					dueHint: '2026-07-04',
+				},
+			});
+		});
+
+		const { items } = await t.query(api.mail.needsReply.listQueue, {
+			mailboxId: seeded.mailboxId,
+		});
+
+		expect(items).toHaveLength(1);
+		expect(items[0]).toMatchObject({
+			threadId,
+			messageId,
+			urgency: 'high',
+			askSummary: 'Send the report',
+			dueHint: '2026-07-04',
+			source: 'llm',
+			fromAddress: 'alice@example.com',
+			subject: 'Question',
+			snippet: 'Can you send the report by Friday?',
+		});
+	});
+
+	it('hides a snoozed trigger message and floats it back after wakeup', async () => {
+		const t = convexTest(schema, modules);
+		const seeded = await seedMailbox(t);
+		const { threadId, messageId } = await seedThreadWithMessage(t, seeded);
+		await setNeedsReply(t, threadId, messageId);
+
+		await t.mutation(api.mail.snooze.snooze, {
+			messageId,
+			until: Date.now() + 60 * 60 * 1000,
+		});
+		const snoozed = await t.query(api.mail.needsReply.listQueue, {
+			mailboxId: seeded.mailboxId,
+		});
+		expect(snoozed.items).toEqual([]);
+
+		// Past the wakeup instant the row is visible again (the cron only
+		// restores the folder; visibility here keys off snoozedUntil alone).
+		await t.run(async (ctx) => {
+			await ctx.db.patch(messageId, { snoozedUntil: Date.now() - 1000 });
+		});
+		const awake = await t.query(api.mail.needsReply.listQueue, {
+			mailboxId: seeded.mailboxId,
+		});
+		expect(awake.items.map((i) => i.threadId)).toEqual([threadId]);
+	});
+
+	it('drops only the row whose trigger message is gone', async () => {
+		const t = convexTest(schema, modules);
+		const seeded = await seedMailbox(t);
+		const orphan = await seedThreadWithMessage(t, seeded);
+		const intact = await seedThreadWithMessage(t, seeded);
+		await setNeedsReply(t, orphan.threadId, orphan.messageId);
+		await setNeedsReply(t, intact.threadId, intact.messageId);
+		await t.run(async (ctx) => {
+			await ctx.db.delete(orphan.messageId);
+		});
+
+		const { items } = await t.query(api.mail.needsReply.listQueue, {
+			mailboxId: seeded.mailboxId,
+		});
+
+		expect(items.map((i) => i.threadId)).toEqual([intact.threadId]);
+	});
+
+	it('returns an empty list for an anonymous caller (soft-auth)', async () => {
+		const t = convexTest(schema, modules);
+		const seeded = await seedMailbox(t);
+		const { threadId, messageId } = await seedThreadWithMessage(t, seeded);
+		await setNeedsReply(t, threadId, messageId);
+
+		vi.mocked(getBetterAuthSessionWithRole).mockResolvedValueOnce(null);
+		const { items } = await t.query(api.mail.needsReply.listQueue, {
+			mailboxId: seeded.mailboxId,
+		});
+
+		expect(items).toEqual([]);
+	});
+
+	it("returns an empty list for an editor who does not own the mailbox", async () => {
+		const t = convexTest(schema, modules);
+		const seeded = await seedMailbox(t); // mailbox.userId === 'test-user'
+		const { threadId, messageId } = await seedThreadWithMessage(t, seeded);
+		await setNeedsReply(t, threadId, messageId);
+
+		vi.mocked(getBetterAuthSessionWithRole).mockResolvedValueOnce({
+			userId: 'other-user',
+			role: 'editor',
+			activeOrganizationId: 'test-org',
+		});
+		const { items } = await t.query(api.mail.needsReply.listQueue, {
+			mailboxId: seeded.mailboxId,
+		});
+
+		expect(items).toEqual([]);
 	});
 });
 

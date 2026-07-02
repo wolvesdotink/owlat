@@ -2,7 +2,6 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { extractAttachmentAt } from '@owlat/shared/mailMime';
-import { escapeHtmlWithBreaks } from '@owlat/shared/html';
 import { formatCompactRelativeTime, formatDateTime } from '~/utils/formatters';
 import type { PostboxPendingCompose } from '~/utils/postboxShortcuts';
 import type {
@@ -224,30 +223,6 @@ type ReplyForwardSource = {
 };
 
 /**
- * Resolve the original body for quoting. Messages over ~64KB store their body
- * in blob storage with empty inline fields, so Reply/Forward would quote an
- * empty original — fetch the full body in that case (the same source
- * PostboxMessageBody renders from). Falls back to the row on any error so the
- * composer always opens.
- */
-async function resolveBodyFields(t: ReplyForwardSource): Promise<ReplyForwardSource> {
-	if (t.htmlBodyInline || t.textBodyInline) return t;
-	try {
-		const data = await requireConvex().query(api.mail.mailbox.getMessageBody, {
-			messageId: t._id as Id<'mailMessages'>,
-		});
-		if (!data) return t;
-		let html = data.htmlInline ?? undefined;
-		let text = data.textInline ?? undefined;
-		if (!html && data.htmlUrl) html = await (await fetch(data.htmlUrl)).text();
-		else if (!text && data.textUrl) text = await (await fetch(data.textUrl)).text();
-		return { ...t, htmlBodyInline: html, textBodyInline: text };
-	} catch {
-		return t;
-	}
-}
-
-/**
  * Build the one-time compose seed for a reply / reply-all / forward of
  * `source` — shared by the popup openers below and the inline reply box, so
  * both paths produce identical drafts (quoting, recipients, subject prefix).
@@ -268,15 +243,7 @@ async function buildComposeSpec(
 			forwardAttachmentsFromMessageId: target._id as Id<'mailMessages'>,
 		};
 	}
-	const spec: Omit<ComposerSpec, 'id' | 'minimized'> = {
-		mailboxId,
-		inReplyToMessageId: target._id as Id<'mailMessages'>,
-		prefillTo: [target.fromAddress],
-		prefillSubject: target.subject.match(/^re\s*:\s*/i)
-			? target.subject
-			: `Re: ${target.subject}`,
-		prefillBodyHtml: buildQuotedReply(target),
-	};
+	const spec: Omit<ComposerSpec, 'id' | 'minimized'> = buildReplySpec(mailboxId, target);
 	if (kind === 'replyAll') {
 		const seen = new Set<string>([canonicalEmail(target.fromAddress), ...ownAddresses.value]);
 		const cc: string[] = [];
@@ -311,15 +278,7 @@ function hasOtherRecipients(msg: { fromAddress: string; toAddresses: string[]; c
 /** Open a reply seeded with an AI-suggested body (above the quoted original). */
 async function openReplyWithBody(replyTarget: ReplyForwardSource, bodyText: string) {
 	const target = await resolveBodyFields(replyTarget);
-	stack.open({
-		mailboxId: props.message.mailboxId as Id<'mailboxes'>,
-		inReplyToMessageId: target._id as Id<'mailMessages'>,
-		prefillTo: [target.fromAddress],
-		prefillSubject: target.subject.match(/^re\s*:\s*/i)
-			? target.subject
-			: `Re: ${target.subject}`,
-		prefillBodyHtml: `<p>${escapeHtmlWithBreaks(bodyText)}</p>${buildQuotedReply(target)}`,
-	});
+	stack.open(buildReplySpec(props.message.mailboxId as Id<'mailboxes'>, target, bodyText));
 }
 
 async function openForward(msg?: ReplyForwardSource) {
