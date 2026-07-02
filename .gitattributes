@@ -1,0 +1,25 @@
+# Normalize line endings so shell scripts always check out with LF,
+# regardless of the contributor's OS or git core.autocrlf setting.
+# On Git-for-Windows (default core.autocrlf=true) *.sh files would otherwise
+# get CRLF and fail with `bad interpreter: /usr/bin/env bash^M`.
+* text=auto eol=lf
+
+# Shell scripts must always be LF.
+*.sh text eol=lf
+scripts/owlat text eol=lf
+install.sh text eol=lf
+
+# Binary assets: never normalize.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.icns binary
+*.woff binary
+*.woff2 binary
+*.pdf binary
+*.wasm binary
+
+# Keep the lockfile byte-exact.
+bun.lock -text
