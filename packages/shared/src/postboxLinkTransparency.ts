@@ -21,43 +21,54 @@
  * `POSTBOX_SANITIZE_CONFIG` (an <a title> and a <span style="color/font-size">).
  */
 
+import { escapeHtml } from './html';
 import { isTrackingParamName } from './postboxLinkTrackingParams';
 
 const ANCHOR_RE = /<a\b([^>]*)>([\s\S]*?)<\/a>/gi;
 
-/** Extract an attribute value from a single tag's attribute string. */
-function attrValue(attrs: string, name: string): string | null {
-	const re = new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, 'i');
-	const m = attrs.match(re);
-	if (!m) return null;
-	return m[1] ?? m[2] ?? m[3] ?? null;
+/**
+ * One parsed attribute. `value` is entity-DECODED text (or null for a bare
+ * boolean attribute); serialization re-escapes it.
+ */
+type ParsedAttr = { name: string; value: string | null };
+
+/**
+ * Sequential attribute tokenizer. Walks the tag's attribute string left to
+ * right consuming one `name` / `name="value"` / `name='value'` /
+ * `name=value` token at a time, so a literal `href=` or `title=` INSIDE a
+ * quoted value of another attribute can never be mistaken for a real
+ * attribute (regex-scanning the whole blob had exactly that flaw, letting a
+ * sender forge the tooltip host via e.g. `name="x href=https://trusted.com"`).
+ */
+const ATTR_TOKEN_RE = /([^\s"'=<>/]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
+
+function parseAttrs(attrs: string): ParsedAttr[] {
+	const parsed: ParsedAttr[] = [];
+	for (const m of attrs.matchAll(ATTR_TOKEN_RE)) {
+		const raw = m[2] ?? m[3] ?? m[4] ?? null;
+		parsed.push({ name: m[1] as string, value: raw === null ? null : decodeBasicEntities(raw) });
+	}
+	return parsed;
 }
 
-/** Remove an attribute (however quoted) from a tag's attribute string. */
-function removeAttr(attrs: string, name: string): string {
-	return attrs.replace(
-		new RegExp(`\\s*\\b${name}\\s*=\\s*(?:"[^"]*"|'[^']*'|[^\\s>]+)`, 'gi'),
-		''
-	);
+/** Serialize parsed attributes back to `name="escaped"` form. */
+function serializeAttrs(attrs: ParsedAttr[]): string {
+	return attrs
+		.map((a) => (a.value === null ? a.name : `${a.name}="${escapeHtml(a.value)}"`))
+		.join(' ');
 }
 
-/** Minimal escape for text injected into an HTML attribute or text node. */
-function escapeHtml(value: string): string {
-	return value
-		.replace(/&/g, '&amp;')
-		.replace(/</g, '&lt;')
-		.replace(/>/g, '&gt;')
-		.replace(/"/g, '&quot;');
-}
-
-/** Decode the handful of entities sanitize-html emits inside href values. */
+/**
+ * Decode the handful of entities sanitize-html emits inside attribute values
+ * (`&amp;` deliberately LAST so `&amp;lt;` decodes to `&lt;`, not `<`).
+ */
 function decodeBasicEntities(value: string): string {
 	return value
-		.replace(/&amp;/gi, '&')
 		.replace(/&lt;/gi, '<')
 		.replace(/&gt;/gi, '>')
 		.replace(/&quot;/gi, '"')
-		.replace(/&#39;/gi, "'");
+		.replace(/&#39;/gi, "'")
+		.replace(/&amp;/gi, '&');
 }
 
 /** Lowercased host of an http(s) URL string, or null when not parseable. */
@@ -148,31 +159,28 @@ export function applyLinkTransparency(sanitizedHtml: string): string {
 	try {
 		return sanitizedHtml.replace(ANCHOR_RE, (match, attrs: string, inner: string) => {
 			try {
-				const rawHref = attrValue(attrs, 'href');
-				if (!rawHref) return match;
-				const href = decodeBasicEntities(rawHref);
+				const parsed = parseAttrs(attrs);
+				const hrefAttr = parsed.find((a) => a.name.toLowerCase() === 'href');
+				if (!hrefAttr || hrefAttr.value === null) return match;
+				const href = hrefAttr.value;
 				const host = hostOf(href);
 				// mailto:/tel:/relative links: nothing to disclose.
 				if (!host) return match;
 
 				const cleanedHref = stripTrackingParams(href);
-				let newAttrs = attrs;
-				if (cleanedHref !== href) {
-					newAttrs = removeAttr(newAttrs, 'href');
-					newAttrs = `${newAttrs} href="${escapeHtml(cleanedHref)}"`;
-				}
+				if (cleanedHref !== href) hrefAttr.value = cleanedHref;
 
 				// Native tooltip with the real destination host. Always replace a
 				// sender-supplied title — it can claim anything.
-				newAttrs = removeAttr(newAttrs, 'title');
-				newAttrs = `${newAttrs} title="${escapeHtml(host)}"`;
+				const kept = parsed.filter((a) => a.name.toLowerCase() !== 'title');
+				kept.push({ name: 'title', value: host });
 
 				// Phish pattern: visible text says one host, href goes to another.
 				const claimed = textClaimedHost(visibleTextOf(inner));
 				const marker =
 					claimed && claimed !== normalizeHost(host) ? mismatchMarker(host) : '';
 
-				return `<a ${newAttrs.trim()}>${inner}${marker}</a>`;
+				return `<a ${serializeAttrs(kept)}>${inner}${marker}</a>`;
 			} catch {
 				return match;
 			}
