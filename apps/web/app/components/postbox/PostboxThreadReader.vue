@@ -553,9 +553,9 @@ async function handleAttachment(
 			</div>
 		</header>
 
-		<div v-if="isLoading" class="flex justify-center py-6">
-			<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin text-text-tertiary" />
-		</div>
+		<!-- Layout-matching skeleton while the thread loads (header is already
+		     rendered above from the list row, so only the message card shimmers). -->
+		<PostboxReaderSkeleton v-if="isLoading" />
 
 		<div v-else class="space-y-2">
 			<template v-for="msg in allMessages" :key="msg._id">

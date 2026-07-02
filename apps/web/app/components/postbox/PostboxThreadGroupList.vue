@@ -37,13 +37,14 @@ const { focusedIndex, activeId, onKeydown } = usePostboxListKeyboard({
 </script>
 
 <template>
-	<div v-if="loading" class="p-6 flex justify-center">
-		<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin text-text-tertiary" />
-	</div>
-	<div v-else-if="threads.length === 0" class="p-12 text-center">
-		<Icon name="lucide:messages-square" class="w-10 h-10 mx-auto text-text-tertiary" />
-		<p class="text-sm text-text-secondary mt-3">No conversations</p>
-	</div>
+	<!-- Skeleton only on FIRST load (no rows yet) so live refreshes don't flash. -->
+	<PostboxThreadListSkeleton v-if="loading && threads.length === 0" />
+	<!-- The conversation view only serves the inbox, so empty means inbox zero. -->
+	<PostboxEmptyState
+		v-else-if="threads.length === 0"
+		icon="lucide:check-circle-2"
+		title="All clear"
+	/>
 	<ul
 		v-else
 		tabindex="0"
