@@ -4,6 +4,7 @@ import type { Id } from '@owlat/api/dataModel';
 import { extractAttachmentAt } from '@owlat/shared/mailMime';
 import { formatCompactRelativeTime, formatDateTime } from '~/utils/formatters';
 import { isLongThreadForSummary } from '~/utils/postboxAutoSummary';
+import { shouldShowSchedulingChip } from '~/utils/postboxSchedulingChip';
 import type { PostboxPendingCompose } from '~/utils/postboxShortcuts';
 import type {
 	ComposerSpec,
@@ -170,6 +171,55 @@ const labelMap = computed(() => {
 	return map;
 });
 const threadLabels = computed(() => threadData.value?.thread?.labelIds ?? []);
+
+// Plain-prose scheduling request ("can we meet Tuesday afternoon?") detected by
+// the needs-reply refinement pass and stashed on the thread. Drives the quiet
+// "draft a reply?" chip under the triggering message's header. Server already
+// excludes messages that carry a real .ics invite; the reader guards again so
+// the chip never coexists with the PostboxInviteCard. Dismissible per message
+// for the session.
+const schedulingIntent = computed(() => {
+	const needsReply = (
+		threadData.value?.thread as
+			| {
+					needsReply?: {
+						messageId?: string;
+						meetingIntent?: {
+							isScheduling: boolean;
+							proposedTimes: string[];
+							topic?: string;
+						};
+					};
+			  }
+			| null
+			| undefined
+	)?.needsReply;
+	if (!needsReply?.meetingIntent?.isScheduling) return null;
+	return {
+		messageId: needsReply.messageId,
+		proposedTimes: needsReply.meetingIntent.proposedTimes ?? [],
+	};
+});
+
+const dismissedScheduling = ref(new Set<string>());
+function dismissScheduling(messageId: string) {
+	dismissedScheduling.value = new Set(dismissedScheduling.value).add(messageId);
+}
+function showSchedulingChip(msg: {
+	_id: string;
+	attachments: Array<{ filename: string; contentType: string; partIndex?: string }>;
+}): boolean {
+	const intent = schedulingIntent.value;
+	return shouldShowSchedulingChip({
+		aiEnabled: isFeatureEnabled('ai'),
+		meetingIntent: intent
+			? { isScheduling: true, proposedTimes: intent.proposedTimes }
+			: null,
+		triggerMessageId: intent?.messageId,
+		message: msg,
+		dismissed: dismissedScheduling.value,
+	});
+}
 
 // Mark-as-read on open (Gmail conversation-view semantics): the first time an
 // unread thread is opened, clear its unread flags. Guarded so the reactive
@@ -807,6 +857,14 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 							/>
 						</div>
 					</header>
+
+					<PostboxSchedulingChip
+						v-if="showSchedulingChip(msg)"
+						:message-id="msg._id"
+						:proposed-times="schedulingIntent?.proposedTimes ?? []"
+						@use-reply="(t) => openReplyWithBody(msg, t)"
+						@dismiss="dismissScheduling(msg._id)"
+					/>
 
 					<div
 						v-if="msg.spamVerdict === 'spam' || msg.dmarcResult === 'fail'"
