@@ -449,6 +449,17 @@ mailThreads: defineTable({
 		source: v.union(v.literal('heuristic'), v.literal('llm'), v.literal('user')),
 		classifiedAt: v.number(),
 	})),
+	// Cached advisory AI summary for the long-thread summary strip (mail/ai.ts
+	// getOrGenerateThreadSummary + mail/summaryCache.ts). `messageCount` is the
+	// thread's messageCount at generation time; the cache is served only while it
+	// still matches the live count, so a new inbound message makes it stale and
+	// the next open regenerates it (edge-triggered, never a hot loop). Absent
+	// until the strip first generates one; never moves or modifies mail.
+	summaryCache: v.optional(v.object({
+		summary: v.string(),
+		messageCount: v.number(),
+		generatedAt: v.number(),
+	})),
 	createdAt: v.number(),
 	updatedAt: v.number(),
 })
@@ -769,6 +780,11 @@ mailUserSettings: defineTable({
 	// Inline compose autocomplete ("Writing suggestions"). Optional so existing
 	// rows read as undefined; the reader defaults it ON when the `ai` flag is on.
 	isWritingSuggestionsOn: v.optional(v.boolean()),
+	// Auto-summarize long threads: show the cached one-line AI summary strip at the
+	// top of long conversations. Optional so existing rows read as undefined; the
+	// reader defaults it ON when the `ai` flag is on (user opt-out within an
+	// AI-enabled deploy).
+	isAutoSummarizeOn: v.optional(v.boolean()),
 	createdAt: v.number(),
 	updatedAt: v.number(),
 })
