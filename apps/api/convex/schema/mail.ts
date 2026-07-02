@@ -467,6 +467,40 @@ mailThreads: defineTable({
 	// due watches per mailbox without a full-table scan.
 	.index('by_mailbox_follow_up_due', ['mailboxId', 'followUp.dueAt']),
 
+// Per-identity (mailbox) writing-voice profile, derived from the user's own
+// SENT mail so advisory AI drafts sound like them. Recomputed lazily (see
+// mail/voiceProfile.ts): a stale row is served as-is while a background
+// refresh is scheduled. `profile` is undefined until the first successful
+// derivation — absence means "exactly today's non-personalized behaviour".
+mailVoiceProfiles: defineTable({
+	mailboxId: v.id('mailboxes'),
+	// User toggle: "Personalize AI drafts". When false, the profile is never
+	// injected into prompts (and never recomputed) even if one exists.
+	enabled: v.boolean(),
+	// Guards against scheduling a second refresh while one is in flight.
+	status: v.union(v.literal('idle'), v.literal('refreshing')),
+	profile: v.optional(
+		v.object({
+			greetings: v.array(v.string()),
+			signOffs: v.array(v.string()),
+			formality: v.number(), // 1 (very casual) … 5 (very formal)
+			brevity: v.number(), // 1 (terse) … 5 (elaborate)
+			languages: v.array(v.string()),
+			usesEmoji: v.boolean(),
+			examplePhrasings: v.array(v.string()),
+		})
+	),
+	// Number of SENT messages sampled at the last successful derivation.
+	sampleCount: v.number(),
+	// Sent-folder message count observed at the last derivation — a cheap way
+	// to detect "> N new sent messages since we last learned the voice".
+	sentCountAtCompute: v.number(),
+	lastComputedAt: v.optional(v.number()),
+	createdAt: v.number(),
+	updatedAt: v.number(),
+})
+	.index('by_mailbox', ['mailboxId']),
+
 // Gmail-style labels (orthogonal to folders).
 mailLabels: defineTable({
 	mailboxId: v.id('mailboxes'),

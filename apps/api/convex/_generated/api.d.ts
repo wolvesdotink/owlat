@@ -358,6 +358,8 @@ import type * as mail_signatures from "../mail/signatures.js";
 import type * as mail_snooze from "../mail/snooze.js";
 import type * as mail_unsubscribe from "../mail/unsubscribe.js";
 import type * as mail_vacation from "../mail/vacation.js";
+import type * as mail_voiceProfile from "../mail/voiceProfile.js";
+import type * as mail_voiceProfileActions from "../mail/voiceProfileActions.js";
 import type * as mail_webhook from "../mail/webhook.js";
 import type * as maintenance_retention from "../maintenance/retention.js";
 import type * as mediaAssets from "../mediaAssets.js";
@@ -876,6 +878,8 @@ declare const fullApi: ApiFromModules<{
   "mail/snooze": typeof mail_snooze;
   "mail/unsubscribe": typeof mail_unsubscribe;
   "mail/vacation": typeof mail_vacation;
+  "mail/voiceProfile": typeof mail_voiceProfile;
+  "mail/voiceProfileActions": typeof mail_voiceProfileActions;
   "mail/webhook": typeof mail_webhook;
   "maintenance/retention": typeof maintenance_retention;
   mediaAssets: typeof mediaAssets;
