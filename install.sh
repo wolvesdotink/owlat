@@ -31,6 +31,11 @@ OWLAT_REF="${OWLAT_REF:-${OWLAT_BRANCH:-}}"
 OWLAT_INSTALL_DIR="${OWLAT_INSTALL_DIR:-/opt/owlat}"
 OWLAT_ASSUME_YES="${OWLAT_ASSUME_YES:-0}"
 OWLAT_CONFIG_FILE="${OWLAT_CONFIG_FILE:-}"
+# This installer provisions a LINUX SERVER (writes /opt/owlat, /usr/local/bin,
+# runs Docker as a long-lived daemon). It is guarded to Linux in preflight. Set
+# OWLAT_ALLOW_NON_LINUX=1 to bypass the guard (advanced: e.g. evaluating locally
+# on Docker Desktop for macOS/Windows).
+OWLAT_ALLOW_NON_LINUX="${OWLAT_ALLOW_NON_LINUX:-0}"
 
 # GitHub "owner/repo" derived from OWLAT_REPO for API + image references.
 OWLAT_GH_SLUG="$(printf '%s' "$OWLAT_REPO" | sed -E 's#^(https://github\.com/|git@github\.com:)##; s#\.git$##')"
@@ -71,8 +76,49 @@ check_cmd() {
 	fi
 }
 
+require_linux() {
+	# This installer provisions a LINUX SERVER: it sudo-writes /opt/owlat and
+	# /usr/local/bin and runs Docker as a long-lived daemon. On any other OS it
+	# would either clobber the host or fail confusingly, so refuse early with an
+	# actionable route. The self-hosted server is Linux-only by design.
+	local kernel
+	kernel="$(uname -s 2>/dev/null || printf 'unknown')"
+
+	if [[ "$kernel" == "Linux" ]]; then
+		return
+	fi
+
+	if [[ "$OWLAT_ALLOW_NON_LINUX" == "1" ]]; then
+		warn "Detected non-Linux host ('${kernel}') but OWLAT_ALLOW_NON_LINUX=1 — proceeding anyway."
+		warn "This is unsupported: the installer expects a Linux server (Docker daemon, /opt, /usr/local/bin)."
+		return
+	fi
+
+	local platform
+	case "$kernel" in
+		Darwin) platform="macOS" ;;
+		MINGW*|MSYS*|CYGWIN*) platform="Windows" ;;
+		*) platform="$kernel" ;;
+	esac
+
+	error "This installer provisions a LINUX SERVER, but it is running on ${platform}."
+	error ""
+	error "To run Owlat from ${platform}, choose one of:"
+	error "  1. Owlat Desktop app — it SSH-provisions a fresh Linux VPS for you"
+	error "     (no manual server setup). Recommended."
+	error "  2. Evaluate locally with Docker Desktop — follow the manual"
+	error "     docker compose steps in the self-hosting docs:"
+	error "     https://docs.owlat.app"
+	error ""
+	error "Advanced: to force this installer to run here anyway (e.g. Docker"
+	error "Desktop on macOS), re-run with OWLAT_ALLOW_NON_LINUX=1."
+	die "Unsupported host OS for the server installer: ${platform}."
+}
+
 preflight() {
 	info "Running preflight checks…"
+
+	require_linux
 
 	check_cmd curl
 	check_cmd git
