@@ -1,5 +1,13 @@
 <script setup lang="ts">
-import { AVATAR_BG_CLASSES, AVATAR_SIZE_CLASSES, avatarInitials, type AvatarBg, type AvatarSize } from '~/utils/avatar';
+import {
+	AVATAR_BG_CLASSES,
+	AVATAR_COLOR_STYLES,
+	AVATAR_SIZE_CLASSES,
+	avatarInitials,
+	initialsAndColorForAddress,
+	type AvatarBg,
+	type AvatarSize,
+} from '~/utils/avatar';
 
 const props = withDefaults(
 	defineProps<{
@@ -13,6 +21,13 @@ const props = withDefaults(
 		size?: AvatarSize;
 		/** Circle background. Defaults to `surface`. */
 		bg?: AvatarBg;
+		/**
+		 * Deterministic identity coloring (Postbox sender/recipient avatars):
+		 * hashes the email (preferred) or name onto the fixed accessible palette
+		 * and uses word-aware initials ("Ada Lovelace" -> "AL", "jane.doe@x" ->
+		 * "JD"). Overrides `bg` and the neutral initials style.
+		 */
+		deterministicColor?: boolean;
 	}>(),
 	{
 		name: null,
@@ -20,18 +35,33 @@ const props = withDefaults(
 		image: null,
 		size: 'sm',
 		bg: 'surface',
+		deterministicColor: false,
 	},
 );
 
-const initials = computed(() => avatarInitials(props.name, props.email));
+const identity = computed(() => {
+	if (!props.deterministicColor) return null;
+	const nameOrEmail = props.name?.trim() || props.email?.trim();
+	if (!nameOrEmail) return null;
+	return initialsAndColorForAddress(nameOrEmail, {
+		colorKey: props.email?.trim() || undefined,
+	});
+});
+const initials = computed(() =>
+	identity.value ? identity.value.initials : avatarInitials(props.name, props.email)
+);
 const sizeClass = computed(() => AVATAR_SIZE_CLASSES[props.size]);
-const bgClass = computed(() => AVATAR_BG_CLASSES[props.bg]);
+const bgClass = computed(() => (identity.value ? '' : AVATAR_BG_CLASSES[props.bg]));
+const colorStyle = computed(() =>
+	identity.value ? AVATAR_COLOR_STYLES[identity.value.colorToken] : undefined
+);
 </script>
 
 <template>
 	<div
 		class="rounded-full border border-border-subtle flex items-center justify-center font-medium overflow-hidden"
 		:class="[sizeClass, bgClass]"
+		:style="colorStyle"
 	>
 		<img v-if="image" :src="image" :alt="name ?? ''" class="w-full h-full object-cover" />
 		<span v-else>{{ initials }}</span>
