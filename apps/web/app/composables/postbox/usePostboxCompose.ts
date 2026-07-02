@@ -377,6 +377,25 @@ export function usePostboxCompose(seed: DraftSeed) {
 		}
 	}
 
+	/**
+	 * Flush any pending autosave immediately and return the draft id (creating
+	 * the row if it doesn't exist yet). Used when promoting an inline reply to
+	 * a popup so the popup reopens the SAME draft with nothing lost.
+	 */
+	async function flush(): Promise<Id<'mailDrafts'> | null> {
+		if (saveTimer) {
+			clearTimeout(saveTimer);
+			saveTimer = null;
+		}
+		// Scheduled/pending rows are read-only (drafts.update rejects them) —
+		// just report the id without persisting.
+		if (draftState.value === 'draft') {
+			pendingSave = persist();
+			await pendingSave;
+		}
+		return draftId.value;
+	}
+
 	// Watch for any field change
 	watch(
 		[toAddresses, ccAddresses, bccAddresses, subject, bodyHtml, bodyBlocks, composerMode],
@@ -482,6 +501,7 @@ export function usePostboxCompose(seed: DraftSeed) {
 		scheduledSendAt,
 		cancelSchedule,
 		ensureDraft,
+		flush,
 		send,
 		discard,
 		undoSend,
