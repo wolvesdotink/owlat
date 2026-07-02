@@ -120,9 +120,9 @@ function rowAction(event: MouseEvent, fn: () => void) {
 	fn();
 }
 
-// Pending compose intent for r/a/f from the list: opening the composer needs
-// the reader's quoting/recipient logic, so we open the message first and let
-// PostboxThreadReader consume the intent once it renders that message.
+// Pending compose intent for r/a/f from the list: opening the composer needs the
+// reader's quoting/recipient logic, so we open the message first and let
+// PostboxThreadReader consume the intent once it renders.
 const pendingCompose = useState<PostboxPendingCompose | null>(
 	POSTBOX_PENDING_COMPOSE_KEY,
 	() => null
@@ -158,11 +158,9 @@ const movableFolders = computed(() =>
 const snoozeOp = useBackendOperation(api.mail.snooze.snooze, { label: 'Snooze' });
 const moveOp = useBackendOperation(api.mail.messageActions.move, { label: 'Move message' });
 
-// Follow-up chip on a watched row: click cancels the armed watch (or
-// dismisses the due "No reply yet" indicator). Ownership-checked server-side.
-const cancelFollowUpOp = useBackendOperation(api.mail.followUps.cancel, {
-	label: 'Cancel reply reminder',
-});
+// Follow-up chip on a watched row: cancel the armed watch / dismiss the due
+// "No reply yet" indicator. Ownership-checked server-side.
+const cancelFollowUpOp = useBackendOperation(api.mail.followUps.cancel, { label: 'Cancel reply reminder' });
 function cancelFollowUp(msg: { threadId?: string }) {
 	if (!msg.threadId) return;
 	void cancelFollowUpOp.run({ threadId: msg.threadId as Id<'mailThreads'> });
@@ -233,7 +231,6 @@ const emptyState = computed(() => {
 // Keyboard triage (Gmail/Superhuman-style): j/k move, Enter opens; single-key
 // actions resolve via utils/postboxShortcuts.ts (e archive, # delete, s star,
 // u toggle read, Shift+U unread, x select, r/a/f compose, h/l/v pickers).
-// Focus survives live updates (see composable).
 const {
 	focusedIndex,
 	activeId: activeRowId,
@@ -292,10 +289,9 @@ const {
 	},
 });
 
-// Read-ahead: when the j/k focus or the open message changes, warm the next
-// and previous rows' bodies (same query the reader runs, debounced, LRU-capped
-// and fail-soft — see usePostboxPrefetch) so Enter / auto-advance opens
-// instantly instead of waiting on a body round-trip or blob download.
+// Read-ahead: when the j/k focus or the open message changes, warm the next and
+// previous rows' bodies (same query the reader runs, debounced, LRU-capped and
+// fail-soft) so Enter / auto-advance opens instantly, not on a body round-trip.
 const { prefetch: prefetchAdjacent } = usePostboxPrefetch();
 watch(
 	[focusedIndex, () => props.activeMessageId],
@@ -414,29 +410,11 @@ watch(
 								name="lucide:paperclip"
 								class="w-3.5 h-3.5 text-text-tertiary"
 							/>
-							<!-- Follow-up watch chips: "No reply yet" once due, an armed
-							     reminder pill otherwise. Click cancels/dismisses. -->
-							<button
-								v-if="msg.followUp?.watched && msg.followUp.dueAt"
-								type="button"
-								class="inline-flex items-center gap-1 px-1.5 py-px rounded-full bg-warning/10 text-warning text-[10px] font-medium hover:bg-warning/20 flex-shrink-0"
-								title="No reply yet — click to dismiss the reminder"
-								aria-label="No reply yet — dismiss reminder"
-								@click="rowAction($event, () => cancelFollowUp(msg))"
-							>
-								<Icon name="lucide:alarm-clock" class="w-3 h-3" />
-								No reply yet
-							</button>
-							<button
-								v-else-if="msg.followUp?.watched"
-								type="button"
-								class="inline-flex items-center gap-1 px-1.5 py-px rounded-full bg-brand/10 text-brand text-[10px] font-medium hover:bg-brand/20 flex-shrink-0"
-								:title="`Reply reminder ${new Date(msg.followUp.remindAt).toLocaleString()} — click to cancel`"
-								aria-label="Cancel reply reminder"
-								@click="rowAction($event, () => cancelFollowUp(msg))"
-							>
-								<Icon name="lucide:alarm-clock" class="w-3 h-3" />
-							</button>
+							<PostboxThreadRowFollowUp
+								v-if="msg.followUp?.watched"
+								:follow-up="msg.followUp"
+								@cancel="rowAction($event, () => cancelFollowUp(msg))"
+							/>
 							<p
 								class="truncate text-sm flex-1"
 								:class="msg.flagSeen ? 'text-text-secondary' : 'font-medium text-text-primary'"
