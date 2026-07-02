@@ -11,14 +11,10 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { EditorBlock } from '@owlat/email-builder';
-import { MAX_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
-import { extractAttachments } from '@owlat/shared/mailMime';
+import { usePostboxComposeAttachments } from './usePostboxComposeAttachments';
 import { applySignatureToBody, wrapSignatureBlock } from './usePostboxSignatureBody';
 
 const AUTOSAVE_DEBOUNCE_MS = 1500;
-// Per-file attachment ceiling for user-facing copy, derived from the shared cap
-// (mirrors MAX_LIBRARY_FILE_MB) so the label moves with MAX_ATTACHMENT_BYTES.
-const MAX_ATTACHMENT_MB = MAX_ATTACHMENT_BYTES / 1024 / 1024;
 
 export type ComposerMode = 'simple' | 'full';
 
@@ -81,83 +77,15 @@ export function usePostboxCompose(seed: DraftSeed) {
 	const cancelScheduled = useBackendOperation(api.mail.drafts.cancelScheduledSend, {
 		label: 'Cancel scheduled send',
 	});
-	const generateUploadUrl = useBackendOperation(api.storage.generateUploadUrl, {
-		label: 'Prepare upload',
-	});
-	const addAttachmentOp = useBackendOperation(api.mail.drafts.addAttachment, {
-		label: 'Attach file',
-	});
-	const removeAttachmentOp = useBackendOperation(api.mail.drafts.removeAttachment, {
-		label: 'Remove attachment',
-	});
-
-	interface ComposerAttachment {
-		storageId: string;
-		filename: string;
-		contentType: string;
-		size: number;
-	}
-	const attachments = ref<ComposerAttachment[]>([]);
-	const uploadingCount = ref(0);
-	const isUploading = computed(() => uploadingCount.value > 0);
-
-	const { showToast } = useToast();
-
-	/** Upload each file to Convex storage, then attach it to the draft. */
-	async function addFiles(files: File[] | FileList) {
-		const id = await ensureDraft();
-		if (!id) return;
-		for (const file of Array.from(files)) {
-			if (file.size > MAX_ATTACHMENT_BYTES) {
-				showToast(`${file.name} is too large (max ${MAX_ATTACHMENT_MB} MB).`, 'error');
-				continue;
-			}
-			uploadingCount.value += 1;
-			try {
-				const url = await generateUploadUrl.run({});
-				if (!url) continue;
-				const res = await fetch(url, {
-					method: 'POST',
-					headers: { 'Content-Type': file.type || 'application/octet-stream' },
-					body: file,
-				});
-				if (!res.ok) {
-					showToast(`Couldn't upload ${file.name}.`, 'error');
-					continue;
-				}
-				const { storageId } = (await res.json()) as { storageId: string };
-				const contentType = file.type || 'application/octet-stream';
-				// addAttachment now returns { ok } — useBackendOperation.run yields
-				// undefined on failure, so gate on the truthy result, not !== undefined
-				// (a void mutation would also be undefined on success).
-				const result = await addAttachmentOp.run({
-					draftId: id,
-					storageId: storageId as Id<'_storage'>,
-					filename: file.name,
-					contentType,
-					size: file.size,
-				});
-				if (!result?.ok) continue;
-				attachments.value = [
-					...attachments.value,
-					{ storageId, filename: file.name, contentType, size: file.size },
-				];
-			} finally {
-				uploadingCount.value -= 1;
-			}
-		}
-	}
-
-	async function removeAttachment(storageId: string) {
-		const id = draftId.value;
-		if (!id) return;
-		const result = await removeAttachmentOp.run({
-			draftId: id,
-			storageId: storageId as Id<'_storage'>,
+	// Attachment upload/remove + pending-handoff + forward-clone live in a
+	// sibling composable; it drives the same draft via ensureDraft/draftId.
+	const { attachments, isUploading, addFiles, removeAttachment } =
+		usePostboxComposeAttachments({
+			ensureDraft,
+			draftId,
+			attachPendingKey: seed.attachPendingKey,
+			forwardAttachmentsFromMessageId: seed.forwardAttachmentsFromMessageId,
 		});
-		if (!result?.ok) return;
-		attachments.value = attachments.value.filter((a) => a.storageId !== storageId);
-	}
 
 	// Reopen an existing draft: hydrate the editor fields from the saved row.
 	if (seed.draftId) {
@@ -219,34 +147,6 @@ export function usePostboxCompose(seed: DraftSeed) {
 			{ immediate: true }
 		);
 	}
-
-	// Attach a transient generated file (e.g. an iCalendar RSVP REPLY) handed off
-	// via usePostboxPendingAttachments.
-	const { take: takePendingAttachment } = usePostboxPendingAttachments();
-	onMounted(async () => {
-		if (!seed.attachPendingKey) return;
-		const pending = takePendingAttachment(seed.attachPendingKey);
-		if (!pending) return;
-		const file = new File([pending.content], pending.filename, { type: pending.contentType });
-		await addFiles([file]);
-	});
-
-	// Forward: clone the original message's attachments onto this draft by
-	// fetching its raw .eml, extracting the parts client-side, and re-uploading
-	// them through the normal attachment path.
-	onMounted(async () => {
-		if (!seed.forwardAttachmentsFromMessageId) return;
-		try {
-			const bin = await loadRawEml(seed.forwardAttachmentsFromMessageId);
-			if (!bin) return;
-			const files = extractAttachments(bin)
-				.filter((a) => a.disposition === 'attachment')
-				.map((a) => new File([a.bytes as BlobPart], a.filename, { type: a.contentType }));
-			if (files.length > 0) await addFiles(files);
-		} catch {
-			// Forward still works without the attachments.
-		}
-	});
 
 	// Allowed-from set for this mailbox: canonical address + active aliases.
 	// The server is the source of truth — the dropdown is just UI.
