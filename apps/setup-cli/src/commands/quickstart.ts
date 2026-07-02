@@ -41,6 +41,7 @@ import {
 	looksLikeRealAdminKey,
 } from '../lib/convexDeploy';
 import { createReporter, progressSpinner, SetupStep, type Reporter } from '../lib/progress';
+import { resolveLocalUrls } from '../lib/localHost';
 import { parseSetupConfig, type SetupConfig } from '../lib/setupConfig';
 import { buildCaddyfile } from '../lib/caddyfile';
 import { runSetup } from './setup';
@@ -214,11 +215,15 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 	// functions are deployed, so we probe the cloud port here.
 	const env = await readEnv(envPath);
 	// The installer runs ON the box, so it always talks to the backend over the
-	// published localhost ports. For a domain install the NUXT_PUBLIC_* /
-	// CONVEX_SITE_URL values hold PUBLIC URLs (for clients + the function runtime)
-	// that aren't reachable on-box until DNS + TLS are live — never probe those.
-	const localCloud = config?.network ? 'http://localhost:3210' : env['NUXT_PUBLIC_CONVEX_URL'] || 'http://localhost:3210';
-	const localSite = config?.network ? 'http://localhost:3211' : env['CONVEX_SITE_URL'] || env['NUXT_PUBLIC_CONVEX_SITE_URL'] || 'http://localhost:3211';
+	// published host ports (3210 cloud / 3211 site). HOW it addresses them
+	// depends on the container network: under Linux host networking the wizard
+	// shares the host loopback so `localhost` works; under Docker Desktop
+	// (macOS/Windows) it runs on the bridge and scripts/owlat sets
+	// OWLAT_LOCAL_HOST=host.docker.internal. resolveLocalUrls() defaults to
+	// 'localhost' so the blessed Linux path is unchanged, and still ignores the
+	// PUBLIC NUXT_PUBLIC_* / CONVEX_SITE_URL values for a domain install (they
+	// aren't reachable on-box until DNS + TLS are live). See lib/localHost.ts.
+	const { localCloud, localSite } = resolveLocalUrls({ network: Boolean(config?.network), env });
 	const s = progressSpinner();
 	reporter.step(SetupStep.WaitConvex, `Waiting for Convex at ${localCloud}`);
 	s.start(`Waiting for Convex at ${localCloud}`);
