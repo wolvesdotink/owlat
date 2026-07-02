@@ -10,6 +10,7 @@ import {
 	isEncryptedClass,
 	type SecureMessageClass,
 } from '@owlat/shared/secureMessage';
+import type { TrackerDetection } from '@owlat/shared/postboxTrackers';
 
 const props = defineProps<{
 	message: {
@@ -85,6 +86,17 @@ function secureClass(msg: { _id: string }): SecureMessageClass {
 function hideRawBody(msg: { _id: string }): boolean {
 	const c = secureClass(msg);
 	return isEncryptedClass(c) || c === 'pgp-clearsigned';
+}
+
+// Tracking-pixel detections reported by each message body (fail-soft: a
+// message with no report simply shows no badge).
+const trackerDetections = ref<Record<string, TrackerDetection>>({});
+function onTrackersDetected(msgId: string, detection: TrackerDetection) {
+	trackerDetections.value[msgId] = detection;
+}
+function trackerDetection(msg: { _id: string }): TrackerDetection | null {
+	const detection = trackerDetections.value[msg._id];
+	return detection && detection.pixelCount > 0 ? detection : null;
 }
 
 /** The text/calendar (.ics) attachment of a message, if it carries an invite. */
@@ -652,6 +664,10 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 									</span>
 								</div>
 								<div class="flex items-center gap-2 flex-shrink-0">
+									<PostboxTrackerBadge
+										v-if="trackerDetection(msg)"
+										:detection="trackerDetection(msg)!"
+									/>
 									<button
 										v-if="appIsDark"
 										type="button"
@@ -702,6 +718,7 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 						v-if="!hideRawBody(msg)"
 						:message="msg"
 						:force-light="isForcedLight(msg._id)"
+						@trackers="onTrackersDetected(msg._id, $event)"
 					/>
 
 						<PostboxInviteCard
