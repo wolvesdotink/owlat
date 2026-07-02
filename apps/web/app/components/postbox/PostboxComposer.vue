@@ -90,6 +90,15 @@ const {
 	initialMode: props.initialMode,
 });
 
+// Inline ghost-text autocomplete is gated by the `ai` feature flag AND the
+// per-user "Writing suggestions" toggle. The subject line is a cheap, bounded
+// bit of thread context for the completion prompt.
+const { isEnabled } = useFeatureFlag();
+const { writingSuggestions } = usePostboxSettings();
+const ghostSuggestionsEnabled = computed(
+	() => isEnabled('ai') && writingSuggestions.value
+);
+
 async function onFromChange(address: string) {
 	try {
 		await setIdentity(address);
@@ -355,6 +364,8 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } =
 				ref="basicEditor"
 				v-model="bodyHtml"
 				placeholder="Write your message…"
+				:suggestions-enabled="ghostSuggestionsEnabled"
+				:ghost-thread-context="subject"
 			/>
 			<EmailBuilder
 				v-else

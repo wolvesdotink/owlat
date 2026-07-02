@@ -14,15 +14,28 @@
  * keystroke).
  */
 
+import { api } from '@owlat/api';
 import {
 	useRichText,
 	EMPTY_ACTIVE_MARKS,
 	type ActiveMarks,
 } from '@owlat/ui/composables/useRichText';
+import {
+	usePostboxGhostText,
+	type GhostTextRequestInput,
+} from '~/composables/postbox/usePostboxGhostText';
 
 const props = defineProps<{
 	modelValue: string;
 	placeholder?: string;
+	/**
+	 * Enable inline ghost-text autocomplete (Tab to accept). The parent passes
+	 * `ai` flag AND the per-user "Writing suggestions" toggle. Off by default so
+	 * the editor's other mount sites (e.g. signatures) never call out.
+	 */
+	suggestionsEnabled?: boolean;
+	/** Bounded thread context for the completion prompt (untrusted data). */
+	ghostThreadContext?: string;
 }>();
 
 const emit = defineEmits<{
@@ -30,8 +43,10 @@ const emit = defineEmits<{
 }>();
 
 const editorRef = ref<HTMLDivElement | null>(null);
+const surfaceRef = ref<HTMLDivElement | null>(null);
 const isEmpty = ref(true);
 const activeMarks = ref<ActiveMarks>({ ...EMPTY_ACTIVE_MARKS });
+const ghostStyle = ref<Record<string, string> | null>(null);
 
 const richText = useRichText({
 	editorRef,
@@ -81,7 +96,141 @@ function emitContent() {
 	syncActiveMarks();
 }
 
+// The editor input path must NEVER await the network: `onInput` only emits and
+// arms the debounce timer; the completion resolves (or is dropped) out of band.
+function onInput() {
+	emitContent();
+	scheduleGhost();
+}
+
+// ── Inline ghost-text autocomplete ─────────────────────────────────────
+// A muted suggestion at the caret, requested after a typing pause and accepted
+// with Tab. The overlay is a positioned, non-editable sibling of the
+// contenteditable — it is NEVER part of the DOM the draft serializes from, so
+// an un-accepted ghost can't leak into the sent message. Positioning is
+// best-effort: if the caret rect can't be measured, the ghost is dropped rather
+// than risk breaking typing.
+
+function insertAcceptedText(text: string) {
+	const el = editorRef.value;
+	if (!el) return;
+	el.focus();
+	// execCommand routes through the browser's own edit pipeline, so native
+	// undo and the @input autosave both see the insertion as real user text.
+	const ok = document.execCommand('insertText', false, text);
+	if (!ok) {
+		// Fallback: insert a text node at the caret and emit like a real input.
+		const sel = window.getSelection();
+		if (sel && sel.rangeCount > 0) {
+			const range = sel.getRangeAt(0);
+			range.deleteContents();
+			const node = document.createTextNode(text);
+			range.insertNode(node);
+			range.setStartAfter(node);
+			range.collapse(true);
+			sel.removeAllRanges();
+			sel.addRange(range);
+		}
+		emitContent();
+	}
+}
+
+const ghost = usePostboxGhostText({
+	enabled: () => props.suggestionsEnabled === true,
+	requestCompletion: async (input: GhostTextRequestInput) => {
+		const res = await requireConvex().action(api.mail.ai.completeDraft, {
+			threadContext: input.threadContext,
+			draftSoFar: input.draftSoFar,
+			cursorSentence: input.cursorSentence,
+		});
+		return res?.completion ?? '';
+	},
+	onAccept: insertAcceptedText,
+});
+
+/** Sample the caret context — null unless the caret sits at the end of a text node. */
+function getCaretContext(): GhostTextRequestInput | null {
+	const el = editorRef.value;
+	if (!el) return null;
+	const sel = window.getSelection();
+	if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return null;
+	const focusNode = sel.focusNode;
+	if (!focusNode || focusNode.nodeType !== Node.TEXT_NODE) return null;
+	if (!el.contains(focusNode)) return null;
+	if (sel.focusOffset !== (focusNode.textContent?.length ?? 0)) return null;
+	const pre = document.createRange();
+	pre.setStart(el, 0);
+	pre.setEnd(focusNode, sel.focusOffset);
+	const before = pre.toString();
+	if (!before.trim()) return null;
+	const lastBreak = Math.max(
+		before.lastIndexOf('. '),
+		before.lastIndexOf('! '),
+		before.lastIndexOf('? '),
+		before.lastIndexOf('\n')
+	);
+	const cursorSentence = (lastBreak >= 0 ? before.slice(lastBreak + 1) : before)
+		.slice(-500)
+		.trimStart();
+	return {
+		threadContext: (props.ghostThreadContext ?? '').slice(0, 4000),
+		draftSoFar: el.innerText.slice(-4000),
+		cursorSentence,
+	};
+}
+
+/** Position the ghost overlay at the caret; drop it if the rect is unmeasurable. */
+function positionGhost() {
+	const surface = surfaceRef.value;
+	const sel = window.getSelection();
+	if (!surface || !sel || sel.rangeCount === 0) {
+		ghost.cancel();
+		return;
+	}
+	const range = sel.getRangeAt(0).cloneRange();
+	range.collapse(false);
+	const rects = range.getClientRects();
+	const rect = rects.length ? rects[rects.length - 1] : range.getBoundingClientRect();
+	if (!rect || (rect.top === 0 && rect.left === 0 && rect.height === 0)) {
+		ghost.cancel(); // fail-soft: hide rather than mis-place
+		return;
+	}
+	const host = surface.getBoundingClientRect();
+	ghostStyle.value = {
+		left: `${rect.right - host.left + surface.scrollLeft}px`,
+		top: `${rect.top - host.top + surface.scrollTop}px`,
+		height: `${rect.height}px`,
+	};
+}
+
+function scheduleGhost() {
+	if (props.suggestionsEnabled !== true) return;
+	ghost.schedule(() => getCaretContext());
+}
+
+watch(ghost.ghost, (value) => {
+	if (!value) {
+		ghostStyle.value = null;
+		return;
+	}
+	void nextTick(() => positionGhost());
+});
+
 function onKeydown(event: KeyboardEvent) {
+	if (ghost.hasGhost()) {
+		if (event.key === 'Tab') {
+			event.preventDefault();
+			ghost.accept();
+			return;
+		}
+		if (event.key === 'Escape') {
+			event.preventDefault();
+			ghost.cancel();
+			return;
+		}
+		// Any other key: the draft is changing under the ghost — dismiss it.
+		ghost.cancel();
+	}
 	handleFormatKeydown(event);
 }
 
@@ -89,8 +238,16 @@ function onPaste(event: ClipboardEvent) {
 	pasteAsPlainText(event);
 }
 
+function onBlur() {
+	emitContent();
+	ghost.cancel(); // never leave a ghost hanging over an unfocused editor
+}
+
 function onSelectionChange() {
 	if (richText.getSelection()) syncActiveMarks();
+	// A caret move (arrow/click) invalidates a shown ghost. Only dismiss when one
+	// is visible, so this can't clear a request still pending in its debounce.
+	if (ghost.hasGhost()) ghost.cancel();
 }
 
 function focusEditor() {
@@ -122,6 +279,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
 	document.removeEventListener('selectionchange', onSelectionChange);
+	ghost.cancel();
 });
 
 watch(
@@ -240,7 +398,7 @@ defineExpose({ focus: focusEditor });
 				<Icon name="lucide:link" class="w-4 h-4" />
 			</button>
 		</div>
-		<div class="flex-1 overflow-auto relative">
+		<div ref="surfaceRef" class="flex-1 overflow-auto relative">
 			<div
 				ref="editorRef"
 				role="textbox"
@@ -248,10 +406,10 @@ defineExpose({ focus: focusEditor });
 				contenteditable="true"
 				spellcheck="true"
 				class="postbox-basic-editor outline-none p-3 min-h-full"
-				@input="emitContent"
+				@input="onInput"
 				@keydown="onKeydown"
 				@paste="onPaste"
-				@blur="emitContent"
+				@blur="onBlur"
 			/>
 			<div
 				v-if="isEmpty"
@@ -259,6 +417,17 @@ defineExpose({ focus: focusEditor });
 			>
 				{{ placeholder ?? 'Write your message…' }}
 			</div>
+			<!--
+				Ghost text: non-editable, positioned at the caret. Lives OUTSIDE the
+				contenteditable so it can never be serialized into the draft; aria-hidden
+				because it's advisory chrome, not committed content.
+			-->
+			<div
+				v-if="ghost.ghost.value && ghostStyle"
+				class="postbox-ghost-text pointer-events-none absolute whitespace-pre select-none"
+				:style="ghostStyle"
+				aria-hidden="true"
+			>{{ ghost.ghost.value }}</div>
 		</div>
 	</div>
 </template>
@@ -301,5 +470,11 @@ defineExpose({ focus: focusEditor });
 .postbox-basic-editor :deep(a) {
 	color: var(--color-brand, #0a6cdd);
 	text-decoration: underline;
+}
+.postbox-ghost-text {
+	font-size: 14px;
+	line-height: 1.55;
+	color: var(--color-text-tertiary, #9aa0a6);
+	opacity: 0.75;
 }
 </style>

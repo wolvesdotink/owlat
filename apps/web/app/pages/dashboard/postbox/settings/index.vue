@@ -19,12 +19,18 @@ const { isAdmin } = usePermissions();
 const {
 	autoAdvance,
 	setAutoAdvance,
+	writingSuggestions,
+	setWritingSuggestions,
 	isSaving: isSavingAutoAdvance,
 } = usePostboxSettings();
 
 function onAutoAdvanceChange(event: Event) {
 	const value = (event.target as HTMLSelectElement).value as PostboxAutoAdvanceMode;
 	void setAutoAdvance(value);
+}
+
+function onWritingSuggestionsChange(event: Event) {
+	void setWritingSuggestions((event.target as HTMLInputElement).checked);
 }
 
 type MailboxRow = (typeof mailboxes.value)[number];
@@ -196,6 +202,27 @@ async function handleDelete() {
 						{{ option.label }}
 					</option>
 				</select>
+			</div>
+			<div
+				v-if="isEnabled('ai')"
+				class="px-5 py-4 flex items-center justify-between gap-4 border-t border-border-subtle"
+			>
+				<div class="min-w-0">
+					<label for="postbox-writing-suggestions" class="font-medium text-sm block">
+						Writing suggestions
+					</label>
+					<p class="text-xs text-text-tertiary mt-0.5">
+						Show inline AI autocomplete as you write. Press Tab to accept.
+					</p>
+				</div>
+				<input
+					id="postbox-writing-suggestions"
+					type="checkbox"
+					class="shrink-0 h-4 w-4"
+					:checked="writingSuggestions"
+					:disabled="isSavingAutoAdvance"
+					@change="onWritingSuggestionsChange"
+				/>
 			</div>
 		</section>
 
