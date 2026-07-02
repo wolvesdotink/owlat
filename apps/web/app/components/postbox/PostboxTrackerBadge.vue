@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { TrackerDetection } from '@owlat/shared/postboxTrackers';
+import { trackerPixelLabel, type TrackerDetection } from '@owlat/shared/postboxTrackers';
 
 /**
  * Quiet shield badge for the reader header: shows that probable tracking
@@ -14,36 +14,21 @@ const props = defineProps<{
 const open = ref(false);
 const rootRef = ref<HTMLElement | null>(null);
 
-const label = computed(() =>
-	props.detection.pixelCount === 1
-		? '1 tracking pixel detected'
-		: `${props.detection.pixelCount} tracking pixels detected`
-);
+const label = computed(() => `${trackerPixelLabel(props.detection.pixelCount)} detected`);
 
-function onDocumentClick(e: MouseEvent) {
-	if (rootRef.value && !rootRef.value.contains(e.target as Node)) {
-		open.value = false;
-	}
-}
-
-function onKeydown(e: KeyboardEvent) {
-	if (e.key === 'Escape') open.value = false;
-}
-
+// Close on outside click (shared composable owns the listener lifecycle)
+// and on Escape.
+useClickOutside(rootRef, () => {
+	if (open.value) open.value = false;
+});
+const handleEscape = (event: KeyboardEvent) => {
+	if (event.key === 'Escape') open.value = false;
+};
 watch(open, (isOpen) => {
-	if (isOpen) {
-		document.addEventListener('click', onDocumentClick, true);
-		document.addEventListener('keydown', onKeydown);
-	} else {
-		document.removeEventListener('click', onDocumentClick, true);
-		document.removeEventListener('keydown', onKeydown);
-	}
+	if (isOpen) document.addEventListener('keydown', handleEscape);
+	else document.removeEventListener('keydown', handleEscape);
 });
-
-onUnmounted(() => {
-	document.removeEventListener('click', onDocumentClick, true);
-	document.removeEventListener('keydown', onKeydown);
-});
+onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 </script>
 
 <template>
