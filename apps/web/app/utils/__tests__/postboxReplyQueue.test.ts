@@ -54,6 +54,28 @@ describe('replyQueueHeadline', () => {
 	it('labels a missing subject', () => {
 		expect(replyQueueHeadline({ subject: '' })).toBe('(no subject)');
 	});
+
+	it('inverts the framing for follow-up items using waitingOn', () => {
+		expect(
+			replyQueueHeadline({ kind: 'followup', subject: 'Re: proposal', waitingOn: 'Dana' })
+		).toBe("You're waiting on Dana");
+	});
+
+	it('falls back to fromAddress when a follow-up has no waitingOn', () => {
+		expect(
+			replyQueueHeadline({
+				kind: 'followup',
+				subject: 'Re: proposal',
+				fromAddress: 'dana@acme.test',
+			})
+		).toBe("You're waiting on dana@acme.test");
+	});
+
+	it('falls back to a generic follow-up headline when waitingOn is blank and no fromAddress', () => {
+		expect(replyQueueHeadline({ kind: 'followup', subject: 'Re: proposal', waitingOn: '   ' })).toBe(
+			"You're waiting on a reply"
+		);
+	});
 });
 
 describe('formatReplyQueueDueHint', () => {
