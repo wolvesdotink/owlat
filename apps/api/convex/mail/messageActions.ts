@@ -14,6 +14,7 @@ import type { MutationCtx } from '../_generated/server';
 import { loadOwnedMailbox } from './permissions';
 import { isMessageSnoozed } from '../lib/mailSnooze';
 import { adjustFolderUnseen } from './folders';
+import { clearThreadNeedsReply } from './needsReply';
 import { throwForbidden, throwInvalidState, throwNotFound } from '../_utils/errors';
 
 type Flag = 'seen' | 'flagged' | 'answered' | 'deleted';
@@ -259,8 +260,12 @@ export const move = authedMutation({
 			});
 		}
 
+		// Archiving or trashing a thread's mail dismisses the Reply Queue signal
+		// (the owner triaged it away without replying).
+		const clearsNeedsReply = target.role === 'archive' || target.role === 'trash';
 		for (const t of touchedThreads) {
 			await rebuildThreadAggregates(ctx, t);
+			if (clearsNeedsReply) await clearThreadNeedsReply(ctx, t);
 		}
 		return { ok: true, moved };
 	},

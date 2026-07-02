@@ -341,6 +341,8 @@ import type * as mail_messageActions from "../mail/messageActions.js";
 import type * as mail_migration from "../mail/migration.js";
 import type * as mail_migrationIndexing from "../mail/migrationIndexing.js";
 import type * as mail_mtaClient from "../mail/mtaClient.js";
+import type * as mail_needsReply from "../mail/needsReply.js";
+import type * as mail_needsReplyClassify from "../mail/needsReplyClassify.js";
 import type * as mail_outbound from "../mail/outbound.js";
 import type * as mail_outboundCron from "../mail/outboundCron.js";
 import type * as mail_outboundQueries from "../mail/outboundQueries.js";
@@ -854,6 +856,8 @@ declare const fullApi: ApiFromModules<{
   "mail/migration": typeof mail_migration;
   "mail/migrationIndexing": typeof mail_migrationIndexing;
   "mail/mtaClient": typeof mail_mtaClient;
+  "mail/needsReply": typeof mail_needsReply;
+  "mail/needsReplyClassify": typeof mail_needsReplyClassify;
   "mail/outbound": typeof mail_outbound;
   "mail/outboundCron": typeof mail_outboundCron;
   "mail/outboundQueries": typeof mail_outboundQueries;

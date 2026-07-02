@@ -137,6 +137,10 @@ crons.interval('postbox dispatch overdue drafts', { minutes: 1 }, internal.mail.
 // Postbox snooze sweep — wake messages whose snoozedUntil has passed.
 crons.interval('postbox wake snoozed messages', { minutes: 1 }, internal.mail.snooze.internalSweep, {});
 
+// Postbox Reply Queue reconcile — re-schedule needs-reply classification for
+// threads whose ingest-time scheduled check was lost (deploy restart etc.).
+crons.interval('postbox needs-reply reconcile', { minutes: 5 }, internal.mail.needsReply.sweepPending, {});
+
 // Permanently delete soft-deleted contacts whose 30-day retention has expired.
 // Cascades to contact-owned children and nulls out FKs in append-only tables.
 crons.interval('cleanup soft-deleted contacts', { hours: 24 }, internal.contacts.contacts.cleanupSoftDeletedContacts, {});
