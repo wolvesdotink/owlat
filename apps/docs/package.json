@@ -2,7 +2,7 @@
 	"name": "@owlat/docs",
 	"version": "0.1.0",
 	"private": true,
-	"license": "MIT",
+	"license": "Apache-2.0",
 	"homepage": "https://owlat.app",
 	"description": "Owlat Documentation",
 	"type": "module",

@@ -4,12 +4,12 @@
 
 # Owlat
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](./LICENSE)
 [![Docs](https://img.shields.io/badge/docs-owlat.app-orange)](https://docs.owlat.app)
 
 Self-hosted, modular email platform. Run marketing campaigns, a personal mailbox, a team inbox, or any combination — turn features on and off through a single feature-flag system. Own your data, own your domain, no per-contact pricing.
 
-> **Open-source (MIT) · Free to self-host · Use anywhere, no restrictions** ([MIT](./LICENSE))
+> **Open-source (Apache 2.0) · Free to self-host · Use anywhere, no restrictions** ([Apache 2.0](./LICENSE))
 
 Hosted cloud is on the roadmap — [join the waitlist](https://owlat.app/waitlist). Until then, every Owlat install is self-hosted.
 
@@ -248,4 +248,4 @@ CLI equivalent: `owlat upgrade`.
 
 ## License
 
-[MIT](./LICENSE) — Use, modify, distribute, and sell freely; just keep the copyright notice.
+[Apache 2.0](./LICENSE) — Use, modify, distribute, and sell freely; includes an express patent grant. Keep the license and copyright notices.

@@ -14,7 +14,7 @@ const selfHostFeatures = [
 	'Unlimited team members',
 	'Unlimited contacts',
 	'In-app updates (one-click)',
-	'MIT licensed',
+	'Apache 2.0 licensed',
 ];
 
 function handleTilt(event: MouseEvent, el: HTMLElement) {
@@ -46,7 +46,7 @@ function resetTilt(el: HTMLElement) {
 					Free forever. Your infrastructure.
 				</h2>
 				<p class="price-el text-base text-text-tertiary max-w-[540px] mx-auto" style="--i: 2">
-					Open-source under MIT. Hosted cloud is coming later — self-host today and own your data.
+					Open-source under Apache 2.0. Hosted cloud is coming later — self-host today and own your data.
 				</p>
 			</div>
 

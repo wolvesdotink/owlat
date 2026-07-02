@@ -12,7 +12,7 @@
     "convex",
     "vue"
   ],
-  "license": "MIT",
+  "license": "Apache-2.0",
   "homepage": "https://owlat.app",
   "repository": {
     "type": "git",
