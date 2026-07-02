@@ -10,7 +10,7 @@
  *     background refresh is scheduled). Disabled personalization → no guidance.
  */
 
-import { convexTest } from 'convex-test';
+import { convexTest, type TestConvex } from 'convex-test';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import schema from '../schema';
@@ -61,7 +61,7 @@ beforeEach(() => {
 });
 
 async function seedMailboxWithSent(
-	t: ReturnType<typeof convexTest<typeof schema>>,
+	t: TestConvex<typeof schema>,
 	sentBodies: string[],
 ): Promise<Id<'mailboxes'>> {
 	return await t.run(async (ctx) => {
@@ -230,7 +230,7 @@ describe('mail.voiceProfileActions.refresh', () => {
 
 describe('mail.voiceProfile.getGuidanceForMailbox', () => {
 	async function seedProfile(
-		t: ReturnType<typeof convexTest<typeof schema>>,
+		t: TestConvex<typeof schema>,
 		lastComputedAt: number,
 	): Promise<Id<'mailboxes'>> {
 		return await t.run(async (ctx) => {
@@ -269,7 +269,7 @@ describe('mail.voiceProfile.getGuidanceForMailbox', () => {
 		});
 	}
 
-	async function statusOf(t: ReturnType<typeof convexTest<typeof schema>>, mailboxId: Id<'mailboxes'>) {
+	async function statusOf(t: TestConvex<typeof schema>, mailboxId: Id<'mailboxes'>) {
 		return await t.run(async (ctx) =>
 			ctx.db
 				.query('mailVoiceProfiles')
