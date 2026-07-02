@@ -24,13 +24,7 @@ import {
 	usePostboxGhostText,
 	type GhostTextRequestInput,
 } from '~/composables/postbox/usePostboxGhostText';
-import {
-	usePostboxSelectionRewrite,
-	isRewriteEligible,
-	type RewriteIntent,
-	type SelectionRewriteInput,
-} from '~/composables/postbox/usePostboxSelectionRewrite';
-import { useRewriteLanguages } from '~/composables/postbox/useRewriteLanguages';
+import { usePostboxRewriteController } from '~/composables/postbox/usePostboxRewriteController';
 import type { Id } from '@owlat/api/dataModel';
 
 const props = defineProps<{
@@ -79,10 +73,7 @@ const {
 	pasteAsPlainText,
 	handleFormatKeydown,
 	readActiveMarks,
-	replaceSelection,
 } = richText;
-
-const { showToast } = useToast();
 
 function syncActiveMarks() {
 	activeMarks.value = readActiveMarks();
@@ -120,9 +111,7 @@ function onInput() {
 	emitContent();
 	scheduleGhost();
 	// Typing invalidates any pending/previewed rewrite anchored to old text.
-	if (rewrite.status.value !== 'idle') rewrite.reset();
-	rewritePillStyle.value = null;
-	rewritePreviewStyle.value = null;
+	rewriteCtl.invalidateOnEdit();
 }
 
 // ── Inline ghost-text autocomplete ─────────────────────────────────────
@@ -240,146 +229,17 @@ watch(ghost.ghost, (value) => {
 
 // ── AI selection rewrite (Shorter / Friendlier / … / Translate) ─────────
 // A tiny floating pill over a >=3-word selection offers one-tap rewrites; the
-// result is shown as an original-vs-rewritten preview the user must Apply.
-// Apply routes through the editor's own input path (undo-able as one step).
+// result is shown as an original-vs-rewritten preview the user must Apply. The
+// whole lifecycle (placement, saved range, Apply/Discard/Undo) lives in the
+// controller composable; the editor just wires its refs + input hooks to it.
 
-const rewritePillStyle = ref<Record<string, string> | null>(null);
-const rewritePreviewStyle = ref<Record<string, string> | null>(null);
-// The selection to rewrite, saved so Apply can restore it even if focus moved.
-let savedRewriteRange: Range | null = null;
-const showRewriteUndo = ref(false);
-let undoTimer: ReturnType<typeof setTimeout> | null = null;
-
-const { languages: rewriteLanguages, remember: rememberLanguage } =
-	useRewriteLanguages();
-
-const rewrite = usePostboxSelectionRewrite({
-	requestRewrite: async (input: SelectionRewriteInput) => {
-		const res = await requireConvex().action(api.mail.ai.rewriteSelection, {
-			selection: input.selection,
-			intent: input.intent,
-			...(input.targetLanguage ? { targetLanguage: input.targetLanguage } : {}),
-			surroundingContext: input.surroundingContext,
-			...(props.rewriteMailboxId ? { mailboxId: props.rewriteMailboxId } : {}),
-		});
-		return res?.rewritten ?? '';
-	},
-	onError: (message) => {
-		showToast(message, 'error');
-	},
-});
-
-/** Position a box anchored to the current selection, relative to the surface. */
-function selectionBoxStyle(place: 'above' | 'below'): Record<string, string> | null {
-	const surface = surfaceRef.value;
-	const sel = window.getSelection();
-	if (!surface || !sel || sel.rangeCount === 0) return null;
-	const rect = sel.getRangeAt(0).getBoundingClientRect();
-	if (!rect || (rect.top === 0 && rect.left === 0 && rect.width === 0)) return null;
-	const host = surface.getBoundingClientRect();
-	const left = rect.left - host.left + surface.scrollLeft;
-	if (place === 'above') {
-		return {
-			left: `${Math.max(left, 4)}px`,
-			top: `${rect.top - host.top + surface.scrollTop}px`,
-			transform: 'translateY(-100%)',
-		};
-	}
-	return {
-		left: `${Math.max(left, 4)}px`,
-		top: `${rect.bottom - host.top + surface.scrollTop + 6}px`,
-	};
-}
-
-/** Recompute pill/preview placement + visibility for the current selection. */
-function refreshRewriteUi() {
-	if (props.rewriteEnabled !== true) {
-		rewritePillStyle.value = null;
-		rewritePreviewStyle.value = null;
-		return;
-	}
-	// A live preview owns the anchor; leave it in place until Apply/Discard.
-	if (rewrite.hasPreview()) {
-		rewritePillStyle.value = null;
-		return;
-	}
-	const ctx = richText.getSelection();
-	const text = ctx ? ctx.sel.toString() : '';
-	if (ctx && !ctx.range.collapsed && isRewriteEligible(true, text)) {
-		savedRewriteRange = ctx.range.cloneRange();
-		rewritePillStyle.value = selectionBoxStyle('above');
-	} else if (!rewrite.isLoading()) {
-		// Keep the pill (with its spinner) while a request is in flight even if the
-		// selection collapses; otherwise hide it.
-		rewritePillStyle.value = null;
-	}
-}
-
-function onRewriteSelect(payload: { intent: RewriteIntent; targetLanguage?: string }) {
-	const el = editorRef.value;
-	if (!el || !savedRewriteRange) return;
-	const selection = savedRewriteRange.toString();
-	if (!isRewriteEligible(true, selection)) return;
-	if (payload.targetLanguage) rememberLanguage(payload.targetLanguage);
-	void rewrite.start({
-		selection,
-		intent: payload.intent,
-		...(payload.targetLanguage ? { targetLanguage: payload.targetLanguage } : {}),
-		surroundingContext: el.innerText.slice(0, 2000),
-	});
-}
-
-function restoreRewriteSelection() {
-	const range = savedRewriteRange;
-	if (!range) return false;
-	const sel = window.getSelection();
-	if (!sel) return false;
-	editorRef.value?.focus();
-	sel.removeAllRanges();
-	sel.addRange(range);
-	return true;
-}
-
-function applyRewrite() {
-	const text = rewrite.takeApplied();
-	if (text === null) return;
-	if (!restoreRewriteSelection()) return;
-	if (replaceSelection(text)) {
-		emitContent();
-		// Transient "Rewritten — Undo" affordance reusing the native undo stack.
-		showRewriteUndo.value = true;
-		if (undoTimer) clearTimeout(undoTimer);
-		undoTimer = setTimeout(() => {
-			showRewriteUndo.value = false;
-		}, 6000);
-	}
-	rewritePreviewStyle.value = null;
-	savedRewriteRange = null;
-}
-
-function discardRewrite() {
-	rewrite.reset();
-	rewritePreviewStyle.value = null;
-}
-
-function undoRewrite() {
-	showRewriteUndo.value = false;
-	if (undoTimer) clearTimeout(undoTimer);
-	editorRef.value?.focus();
-	document.execCommand('undo');
-	emitContent();
-}
-
-// Move the preview into view when a rewrite result arrives; drop the pill.
-watch(rewrite.status, (status) => {
-	if (status === 'preview') {
-		rewritePillStyle.value = null;
-		void nextTick(() => {
-			rewritePreviewStyle.value = selectionBoxStyle('below');
-		});
-	} else if (status === 'idle') {
-		rewritePreviewStyle.value = null;
-	}
+const rewriteCtl = usePostboxRewriteController({
+	editorRef,
+	surfaceRef,
+	richText,
+	enabled: () => props.rewriteEnabled === true,
+	mailboxId: () => props.rewriteMailboxId,
+	emitContent,
 });
 
 function onKeydown(event: KeyboardEvent) {
@@ -398,9 +258,8 @@ function onKeydown(event: KeyboardEvent) {
 		ghost.cancel();
 	}
 	// Escape dismisses a rewrite pill/preview without touching the selection.
-	if (event.key === 'Escape' && rewrite.status.value !== 'idle') {
+	if (event.key === 'Escape' && rewriteCtl.handleEscape()) {
 		event.preventDefault();
-		discardRewrite();
 		return;
 	}
 	handleFormatKeydown(event);
@@ -420,9 +279,9 @@ function onSelectionChange() {
 	// A caret move (arrow/click) invalidates a shown ghost. Only dismiss when one
 	// is visible, so this can't clear a request still pending in its debounce.
 	if (ghost.hasGhost()) ghost.cancel();
-	// A selection change aborts an in-flight rewrite (its anchor is now stale).
-	if (rewrite.isLoading()) rewrite.reset();
-	refreshRewriteUi();
+	// A selection change aborts an in-flight rewrite (its anchor is now stale)
+	// and re-places the pill for the new selection.
+	rewriteCtl.onSelectionChange();
 }
 
 function focusEditor() {
@@ -455,8 +314,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
 	document.removeEventListener('selectionchange', onSelectionChange);
 	ghost.cancel();
-	rewrite.reset();
-	if (undoTimer) clearTimeout(undoTimer);
+	rewriteCtl.dispose();
 });
 
 watch(
@@ -478,103 +336,16 @@ defineExpose({ focus: focusEditor });
 
 <template>
 	<div class="flex flex-col h-full">
-		<div
-			class="flex items-center gap-0.5 px-1 py-1 border-b border-border-subtle bg-bg-surface"
-		>
-			<button
-				type="button"
-				class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
-				:class="{ 'bg-bg-elevated text-brand': activeMarks.bold }"
-				title="Bold (⌘B)"
-				@mousedown.prevent
-				@click="withFocus(toggleBold)()"
-			>
-				<Icon name="lucide:bold" class="w-4 h-4" />
-			</button>
-			<button
-				type="button"
-				class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
-				:class="{ 'bg-bg-elevated text-brand': activeMarks.italic }"
-				title="Italic (⌘I)"
-				@mousedown.prevent
-				@click="withFocus(toggleItalic)()"
-			>
-				<Icon name="lucide:italic" class="w-4 h-4" />
-			</button>
-			<button
-				type="button"
-				class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
-				:class="{ 'bg-bg-elevated text-brand': activeMarks.underline }"
-				title="Underline (⌘U)"
-				@mousedown.prevent
-				@click="withFocus(toggleUnderline)()"
-			>
-				<Icon name="lucide:underline" class="w-4 h-4" />
-			</button>
-			<span class="w-px h-4 bg-border-subtle mx-1" />
-			<button
-				type="button"
-				class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
-				:class="{ 'bg-bg-elevated text-brand': activeMarks.h1 }"
-				title="Heading 1"
-				@mousedown.prevent
-				@click="withFocus(() => toggleHeading(1))()"
-			>
-				<Icon name="lucide:heading-1" class="w-4 h-4" />
-			</button>
-			<button
-				type="button"
-				class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
-				:class="{ 'bg-bg-elevated text-brand': activeMarks.h2 }"
-				title="Heading 2"
-				@mousedown.prevent
-				@click="withFocus(() => toggleHeading(2))()"
-			>
-				<Icon name="lucide:heading-2" class="w-4 h-4" />
-			</button>
-			<span class="w-px h-4 bg-border-subtle mx-1" />
-			<button
-				type="button"
-				class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
-				:class="{ 'bg-bg-elevated text-brand': activeMarks.ul }"
-				title="Bullet list"
-				@mousedown.prevent
-				@click="withFocus(() => toggleList(false))()"
-			>
-				<Icon name="lucide:list" class="w-4 h-4" />
-			</button>
-			<button
-				type="button"
-				class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
-				:class="{ 'bg-bg-elevated text-brand': activeMarks.ol }"
-				title="Ordered list"
-				@mousedown.prevent
-				@click="withFocus(() => toggleList(true))()"
-			>
-				<Icon name="lucide:list-ordered" class="w-4 h-4" />
-			</button>
-			<button
-				type="button"
-				class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
-				:class="{ 'bg-bg-elevated text-brand': activeMarks.quote }"
-				title="Blockquote"
-				@mousedown.prevent
-				@click="withFocus(toggleBlockquote)()"
-			>
-				<Icon name="lucide:quote" class="w-4 h-4" />
-			</button>
-			<span class="w-px h-4 bg-border-subtle mx-1" />
-			<button
-				type="button"
-				class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
-				:class="{ 'bg-bg-elevated text-brand': activeMarks.link }"
-				title="Link (⌘K)"
-				@mousedown.prevent
-				@click="withFocus(setLink)()"
-			>
-				<Icon name="lucide:link" class="w-4 h-4" />
-			</button>
-		</div>
+		<PostboxEditorToolbar
+			:active-marks="activeMarks"
+			@bold="withFocus(toggleBold)()"
+			@italic="withFocus(toggleItalic)()"
+			@underline="withFocus(toggleUnderline)()"
+			@heading="(level) => withFocus(() => toggleHeading(level))()"
+			@list="(ordered) => withFocus(() => toggleList(ordered))()"
+			@blockquote="withFocus(toggleBlockquote)()"
+			@link="withFocus(setLink)()"
+		/>
 		<div ref="surfaceRef" class="flex-1 overflow-auto relative">
 			<div
 				ref="editorRef"
@@ -605,39 +376,11 @@ defineExpose({ focus: focusEditor });
 				:style="ghostStyle"
 				aria-hidden="true"
 			>{{ ghost.ghost.value }}</div>
-			<!-- AI rewrite pill over the selection (flag-gated; hidden while previewing). -->
-			<PostboxRewritePill
-				v-if="rewriteEnabled && rewritePillStyle"
-				:pill-style="rewritePillStyle"
-				:loading="rewrite.isLoading()"
-				:active-intent="rewrite.activeIntent.value"
-				:languages="rewriteLanguages"
-				@select="onRewriteSelect"
+			<!-- AI rewrite pill + preview + undo affordance (all flag-gated). -->
+			<PostboxRewriteLayer
+				v-if="rewriteEnabled"
+				:controller="rewriteCtl"
 			/>
-			<!-- Original-vs-rewritten preview; Apply/Discard only, never auto-applied. -->
-			<PostboxRewritePreview
-				v-if="rewriteEnabled && rewritePreviewStyle"
-				:card-style="rewritePreviewStyle"
-				:original="rewrite.original.value"
-				:rewritten="rewrite.rewritten.value"
-				@apply="applyRewrite"
-				@discard="discardRewrite"
-			/>
-			<!-- Transient "Rewritten — Undo" affordance (native single-step undo). -->
-			<div
-				v-if="showRewriteUndo"
-				class="absolute bottom-3 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-full border border-border-subtle bg-bg-elevated px-3 py-1.5 text-xs shadow-lg"
-			>
-				<span class="text-text-secondary">Rewritten</span>
-				<button
-					type="button"
-					class="font-medium text-brand hover:underline"
-					@mousedown.prevent
-					@click="undoRewrite"
-				>
-					Undo
-				</button>
-			</div>
 		</div>
 	</div>
 </template>
