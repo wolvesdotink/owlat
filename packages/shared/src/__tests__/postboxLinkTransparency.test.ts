@@ -97,6 +97,35 @@ describe('applyLinkTransparency — tracking param stripping', () => {
 	});
 });
 
+describe('applyLinkTransparency — attribute-value spoofing', () => {
+	it('ignores a literal href= inside another attribute value (forged tooltip)', () => {
+		const html =
+			'<a name="x href=https://trusted-bank.com" href="https://evil.example/steal">trusted-bank.com</a>';
+		const out = applyLinkTransparency(html);
+		expect(out).toContain('title="evil.example"');
+		expect(out).not.toContain('title="trusted-bank.com');
+		// The mismatch marker must disclose the REAL destination.
+		expect(out).toContain('→ evil.example');
+		expect(out).toContain('href="https://evil.example/steal"');
+	});
+
+	it('ignores a literal href= inside a sender-supplied title value', () => {
+		const html =
+			'<a title="href=https://apple.com/" href="https://evil.example/">Verify your Apple ID</a>';
+		const out = applyLinkTransparency(html);
+		expect(out).toContain('title="evil.example"');
+		expect(out).not.toContain('apple.com');
+	});
+
+	it('does not mangle an anchor whose other attribute value contains title=', () => {
+		const html = '<a name="a title=b" href="https://real.com">hi</a>';
+		const out = applyLinkTransparency(html);
+		expect(out).toContain('name="a title=b"');
+		expect(out).toContain('href="https://real.com"');
+		expect(out).toContain('title="real.com"');
+	});
+});
+
 describe('applyLinkTransparency — fail-soft', () => {
 	it('returns non-anchor HTML unchanged', () => {
 		const html = '<p>Hello <b>world</b></p>';
