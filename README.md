@@ -6,6 +6,7 @@
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](./LICENSE)
 [![Docs](https://img.shields.io/badge/docs-owlat.app-orange)](https://docs.owlat.app)
+[![Made by Wolves](https://img.shields.io/badge/made_by-wolves.ink-6d28d9)](https://wolves.ink)
 
 Self-hosted, modular email platform. Run marketing campaigns, a personal mailbox, a team inbox, or any combination — turn features on and off through a single feature-flag system. Own your data, own your domain, no per-contact pricing.
 
