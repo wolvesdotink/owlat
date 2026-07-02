@@ -9,6 +9,8 @@
  *   - `writingSuggestions` — inline ghost-text autocomplete in the composer.
  *     Defaults ON (undefined => true) so it's on by default wherever the `ai`
  *     feature flag is enabled; the flag itself is the master gate.
+ *   - `autoSummarize` — the cached one-line AI summary strip on long threads.
+ *     Defaults ON (undefined => true), same master-gate reasoning as above.
  */
 
 import { api } from '@owlat/api';
@@ -28,6 +30,12 @@ export function usePostboxSettings() {
 		() => data.value?.isWritingSuggestionsOn ?? true
 	);
 
+	// Default ON, same as writing suggestions: the `ai` flag is the master gate,
+	// this is a per-user opt-out for the long-thread summary strip.
+	const autoSummarize = computed<boolean>(
+		() => data.value?.isAutoSummarizeOn ?? true
+	);
+
 	const updateOp = useBackendOperation(api.mail.settings.update, {
 		label: 'Save Postbox settings',
 	});
@@ -40,12 +48,18 @@ export function usePostboxSettings() {
 		await updateOp.run({ isWritingSuggestionsOn: enabled });
 	}
 
+	async function setAutoSummarize(enabled: boolean) {
+		await updateOp.run({ isAutoSummarizeOn: enabled });
+	}
+
 	return {
 		autoAdvance,
 		writingSuggestions,
+		autoSummarize,
 		isLoading,
 		setAutoAdvance,
 		setWritingSuggestions,
+		setAutoSummarize,
 		isSaving: updateOp.isLoading,
 	};
 }

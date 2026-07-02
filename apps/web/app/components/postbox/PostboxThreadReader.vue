@@ -3,6 +3,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { extractAttachmentAt } from '@owlat/shared/mailMime';
 import { formatCompactRelativeTime, formatDateTime } from '~/utils/formatters';
+import { isLongThreadForSummary } from '~/utils/postboxAutoSummary';
 import type { PostboxPendingCompose } from '~/utils/postboxShortcuts';
 import type {
 	ComposerSpec,
@@ -124,6 +125,20 @@ const { data: threadData, isLoading } = useConvexQuery(
 
 const allMessages = computed(() => threadData.value?.messages ?? [props.message]);
 const latestMessage = computed(() => allMessages.value[allMessages.value.length - 1]);
+
+// Auto-summary strip: advisory AI, shown above long threads only. Long =
+// >= 5 messages OR a lot of body text (a single sprawling message still
+// benefits from a TL;DR). Gated by the `ai` flag AND the per-user toggle
+// (default ON); the strip itself reads the cache reactively and generates
+// lazily, so this only decides whether to mount it.
+const { autoSummarize } = usePostboxSettings();
+const showSummaryStrip = computed(
+	() =>
+		isFeatureEnabled('ai') &&
+		autoSummarize.value &&
+		isLongThreadForSummary(allMessages.value) &&
+		!!latestMessage.value
+);
 
 // Follow-up ("remind me if no reply") chip: armable only while the thread
 // ends on our own sent message — an inbound reply on top means they already
@@ -683,6 +698,14 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 		<PostboxReaderSkeleton v-if="isLoading" />
 
 		<div v-else class="space-y-2">
+			<!-- Advisory AI: cached one-line summary strip for long threads. Shows a
+			     quiet shimmer while it fills in and disappears entirely on AI failure. -->
+			<PostboxThreadSummary
+				v-if="showSummaryStrip && latestMessage"
+				:key="latestMessage._id"
+				:message-id="latestMessage._id"
+			/>
+
 			<template v-for="msg in allMessages" :key="msg._id">
 				<!-- Collapsed message header -->
 				<button
