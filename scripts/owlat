@@ -302,8 +302,20 @@ case "$cmd" in
 		# End-to-end: config wizard + docker up + convex deploy + env-set +
 		# admin bootstrap + demo seed. Unlike `setup` (config-only), this
 		# orchestrates the stack, so the container needs the Docker socket and
-		# the host network (to reach the published Convex site port for the
-		# /seed/admin POST). --legacy falls back to the complete bash wizard.
+		# a way to reach the published Convex site port for the /seed/admin POST.
+		#
+		# On a Linux host (the blessed VPS install) the container joins the host
+		# network with `--network host`, so `localhost:3210/3211` inside the
+		# container is the host's published ports — this path is preserved
+		# verbatim below.
+		#
+		# On Docker Desktop (macOS/Windows) containers run inside a Linux VM, so
+		# `--network host` joins the VM's loopback, NOT the host's — localhost
+		# would be unreachable and admin bootstrap + seed would fail. There we
+		# run on the default bridge with `--add-host=host.docker.internal:host-gateway`
+		# and pass OWLAT_LOCAL_HOST=host.docker.internal so the wizard reaches the
+		# published host ports via host.docker.internal instead of localhost.
+		# --legacy falls back to the complete bash wizard.
 		for arg in "$@"; do
 			if [[ "$arg" == "--legacy" ]]; then
 				exec bash scripts/setup.sh "$@"
@@ -315,6 +327,31 @@ case "$cmd" in
 		# pre-pushed dev images as-is (built on the developer machine). Only
 		# the flags are forwarded — OWLAT_VERSION itself must NOT leak into
 		# the container, or compose interpolation would override .env.
+		#
+		# Detect Docker Desktop: any non-Linux kernel is Docker Desktop (macOS or
+		# Windows), and on Linux hosts also honour a Docker Desktop engine
+		# (some Linux dev machines run Docker Desktop rather than the native
+		# daemon, where host networking is likewise VM-isolated).
+		quickstart_docker_desktop=0
+		if [[ "$(uname -s)" != "Linux" ]]; then
+			quickstart_docker_desktop=1
+		elif docker info --format '{{.OperatingSystem}}' 2>/dev/null | grep -qi 'docker desktop'; then
+			quickstart_docker_desktop=1
+		fi
+		if [[ "$quickstart_docker_desktop" == "1" ]]; then
+			exec docker run --rm $([ -t 1 ] && echo "-it") \
+				--add-host=host.docker.internal:host-gateway \
+				-v "$OWLAT_DIR:/opt/owlat" \
+				-v /var/run/docker.sock:/var/run/docker.sock \
+				${CONFIG_MOUNT_ARGS[@]+"${CONFIG_MOUNT_ARGS[@]}"} \
+				-e "OWLAT_DIR=/opt/owlat" \
+				-e "OWLAT_LOCAL_HOST=host.docker.internal" \
+				-e "OWLAT_ASSUME_YES=${OWLAT_ASSUME_YES:-0}" \
+				-e "OWLAT_PROGRESS=${OWLAT_PROGRESS:-}" \
+				-e "OWLAT_BUILD_LOCAL=${OWLAT_BUILD_LOCAL:-0}" \
+				-e "OWLAT_LOCAL_IMAGES=${OWLAT_LOCAL_IMAGES:-0}" \
+				"$OWLAT_SETUP_IMAGE" quickstart "$@"
+		fi
 		exec docker run --rm $([ -t 1 ] && echo "-it") \
 			--network host \
 			-v "$OWLAT_DIR:/opt/owlat" \
