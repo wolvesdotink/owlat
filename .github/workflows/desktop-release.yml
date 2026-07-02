@@ -99,3 +99,28 @@ jobs:
           # Emit latest.json so the in-app updater endpoint can serve it.
           includeUpdaterJson: true
           args: ${{ matrix.args }}
+
+  # Publish the drafted release only after ALL matrix builds succeed. The build
+  # matrix is fail-fast: false, so `needs: build` waits for every OS; a single
+  # failed build leaves the release a draft (never public / half-uploaded).
+  #
+  # The release is drafted during the matrix (releaseDraft: true) so a
+  # partially-uploaded release is never visible. GitHub does NOT serve
+  # /releases/latest/download/... for a draft, so the in-app updater endpoint
+  # (apps/desktop/src-tauri/tauri.conf.json → releases/latest/download/latest.json)
+  # never sees a new version until the draft is flipped to published below.
+  publish:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # flip the drafted release to published
+    steps:
+      - uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+
+      - name: Publish drafted release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "${{ github.ref_name }}" --repo ${{ github.repository }} --draft=false --latest
