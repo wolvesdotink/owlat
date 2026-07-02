@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { escapeHtmlWithBreaks } from '@owlat/shared/html';
 
 /**
  * Quiet "Unsubscribe" chip for list mail, shown only when the message carried
@@ -40,19 +41,6 @@ const targetHost = computed(() => {
 	}
 });
 
-/** `mailto:addr?subject=...&body=...` → compose prefill. */
-function parseMailto(uri: string): { to: string; subject?: string; body?: string } | null {
-	const match = uri.match(/^mailto:([^?]+)(?:\?(.*))?$/i);
-	const to = match?.[1] ? decodeURIComponent(match[1]).trim() : '';
-	if (!to) return null;
-	const params = new URLSearchParams(match?.[2] ?? '');
-	return {
-		to,
-		subject: params.get('subject') ?? undefined,
-		body: params.get('body') ?? undefined,
-	};
-}
-
 async function onClick() {
 	const t = props.unsubscribe;
 	if (t.oneClick && t.httpUrl) {
@@ -67,20 +55,26 @@ async function onClick() {
 			unsubscribed.value = true;
 			showToast('Unsubscribe request sent');
 		} else {
-			// Fail-soft: fall back to opening the page so the user can finish manually.
-			showToast('Unsubscribe request failed — opening the unsubscribe page instead', 'error');
+			// Fail-soft: fall back to opening the page so the user can finish
+			// manually. When the action *threw* (result === undefined),
+			// useBackendOperation already toasted the error — don't double up.
+			if (result) {
+				showToast('Unsubscribe request failed — opening the unsubscribe page instead', 'error');
+			}
 			window.open(t.httpUrl, '_blank', 'noopener,noreferrer');
 		}
 		return;
 	}
 	if (t.mailtoUrl) {
-		const mailto = parseMailto(t.mailtoUrl);
+		const mailto = parseUnsubscribeMailto(t.mailtoUrl);
 		if (mailto) {
 			stack.open({
 				mailboxId: props.mailboxId as Id<'mailboxes'>,
-				prefillTo: [mailto.to],
+				prefillTo: mailto.to,
 				prefillSubject: mailto.subject ?? 'Unsubscribe',
-				...(mailto.body ? { prefillBodyHtml: `<p>${mailto.body}</p>` } : {}),
+				// The header is attacker-controlled — mailto bodies are plain
+				// text, so escape before embedding as compose HTML.
+				...(mailto.body ? { prefillBodyHtml: `<p>${escapeHtmlWithBreaks(mailto.body)}</p>` } : {}),
 			});
 			return;
 		}
