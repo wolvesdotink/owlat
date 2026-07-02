@@ -276,6 +276,22 @@ const {
 		}
 	},
 });
+
+// Read-ahead: when the j/k focus or the open message changes, warm the next
+// and previous rows' bodies (same query the reader runs, debounced, LRU-capped
+// and fail-soft — see usePostboxPrefetch) so Enter / auto-advance opens
+// instantly instead of waiting on a body round-trip or blob download.
+const { prefetch: prefetchAdjacent } = usePostboxPrefetch();
+watch(
+	[focusedIndex, () => props.activeMessageId],
+	() => {
+		const ids = visibleIds.value;
+		let anchor = focusedIndex.value;
+		if (anchor < 0 && props.activeMessageId) anchor = ids.indexOf(props.activeMessageId);
+		if (anchor < 0) return;
+		prefetchAdjacent([ids[anchor + 1], ids[anchor - 1]]);
+	}
+);
 </script>
 
 <template>

@@ -30,7 +30,10 @@ vi.mock('@owlat/api', () => {
 	return { api: anyPath };
 });
 
+const prefetchSpy = vi.fn();
+
 beforeAll(() => {
+	vi.stubGlobal('usePostboxPrefetch', () => ({ prefetch: prefetchSpy }));
 	vi.stubGlobal('usePostboxBulkActions', () => ({
 		toggle: vi.fn(),
 		isSelected: () => false,
@@ -155,5 +158,15 @@ describe('PostboxThreadList states', () => {
 		const w = mountList({ loading: false, folderRole: 'inbox', emptyContext: 'label' });
 		expect(w.text()).toContain('No messages with this label');
 		expect(w.text()).not.toContain('All clear');
+	});
+
+	it('prefetches the adjacent rows when the open message changes', async () => {
+		prefetchSpy.mockClear();
+		const w = mountList({
+			loading: false,
+			messages: [makeMessage(1), makeMessage(2), makeMessage(3)],
+		});
+		await w.setProps({ activeMessageId: 'msg-2' });
+		expect(prefetchSpy).toHaveBeenCalledWith(['msg-3', 'msg-1']);
 	});
 });
