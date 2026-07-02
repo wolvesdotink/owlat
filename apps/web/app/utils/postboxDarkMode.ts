@@ -266,10 +266,24 @@ export function remapInlineColorsForDark(sanitizedHtml: string): string {
 /* ------------------------------------------------------------------ */
 
 /**
- * Base <style> for the iframe head. The light output is byte-identical to
- * the historical BASE_STYLE so the light path is a zero-change no-op.
+ * Reading-typography block for "simple" (mostly-text) mail: a comfortable
+ * measure — the text column capped around 70ch and centered, a slightly
+ * larger base size, and a roomier line-height. "Designed" mail (marketing /
+ * newsletter layouts) never receives this — its own layout stays untouched.
  */
-export function buildBaseStyle(scheme: PostboxRenderScheme): string {
+const SIMPLE_MEASURE_STYLE = 'body{max-width:70ch;margin:0 auto;font-size:15px;line-height:1.6;}';
+
+/**
+ * Base <style> for the iframe head. With the default `kind` ("designed") the
+ * output is byte-identical to the historical BASE_STYLE, so full-width
+ * designed mail renders exactly as before; "simple" mail additionally gets
+ * the comfortable-measure typography block.
+ */
+export function buildBaseStyle(
+	scheme: PostboxRenderScheme,
+	kind: EmailHtmlKind = 'designed'
+): string {
+	const measure = kind === 'simple' ? SIMPLE_MEASURE_STYLE : '';
 	if (scheme === 'dark') {
 		return (
 			'<style>:root{color-scheme:dark;}' +
@@ -277,10 +291,11 @@ export function buildBaseStyle(scheme: PostboxRenderScheme): string {
 			'img{max-width:100%;height:auto;}' +
 			`a{color:${POSTBOX_DARK_PALETTE.link};}` +
 			`blockquote{border-color:${POSTBOX_DARK_PALETTE.mutedBorder};}` +
+			measure +
 			'</style>'
 		);
 	}
-	return `<style>html,body{font-family:-apple-system,Segoe UI,sans-serif;color:#1a1a1a;font-size:14px;line-height:1.55;margin:0;padding:0;}img{max-width:100%;height:auto;}a{color:#0a6cdd;}</style>`;
+	return `<style>html,body{font-family:-apple-system,Segoe UI,sans-serif;color:#1a1a1a;font-size:14px;line-height:1.55;margin:0;padding:0;}img{max-width:100%;height:auto;}a{color:#0a6cdd;}${measure}</style>`;
 }
 
 /**
@@ -292,15 +307,19 @@ export function buildBaseStyle(scheme: PostboxRenderScheme): string {
  * - Dark app + simple mail: dark scheme, unreadable inline colors remapped.
  * - Dark app + designed mail: light scheme ("paper" card) with the email's
  *   own colors untouched.
+ *
+ * The returned `kind` is a real classification in BOTH app schemes (the light
+ * path classifies too, without touching the HTML) so callers can apply
+ * kind-dependent presentation such as the reading-measure base style.
  */
 export function adaptEmailHtml(
 	sanitizedHtml: string,
 	appScheme: PostboxRenderScheme
 ): { html: string; scheme: PostboxRenderScheme; kind: EmailHtmlKind } {
-	if (appScheme === 'light') {
-		return { html: sanitizedHtml, scheme: 'light', kind: 'simple' };
-	}
 	const kind = classifyEmailHtml(sanitizedHtml);
+	if (appScheme === 'light') {
+		return { html: sanitizedHtml, scheme: 'light', kind };
+	}
 	if (kind === 'designed') {
 		return { html: sanitizedHtml, scheme: 'light', kind };
 	}

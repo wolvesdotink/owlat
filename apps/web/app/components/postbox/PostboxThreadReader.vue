@@ -3,7 +3,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { extractAttachmentAt } from '@owlat/shared/mailMime';
 import { escapeHtmlWithBreaks } from '@owlat/shared/html';
-import { formatDateTime } from '~/utils/formatters';
+import { formatCompactRelativeTime, formatDateTime } from '~/utils/formatters';
 import type { PostboxPendingCompose } from '~/utils/postboxShortcuts';
 import {
 	classifySecureMessage,
@@ -22,6 +22,7 @@ const props = defineProps<{
 		toAddresses: string[];
 		ccAddresses: string[];
 		subject: string;
+		snippet?: string;
 		receivedAt: number;
 		htmlBodyInline?: string;
 		textBodyInline?: string;
@@ -151,6 +152,25 @@ watch(
 );
 
 const expanded = ref<Set<string>>(new Set());
+
+// Minute tick so the relative timestamps ("2h ago") stay fresh while a
+// thread sits open. Presentation-only; the absolute datetime lives in the
+// title tooltip.
+const relativeTimeTick = ref(0);
+let relativeTimeTimer: ReturnType<typeof setInterval> | undefined;
+onMounted(() => {
+	relativeTimeTimer = setInterval(() => {
+		relativeTimeTick.value++;
+	}, 60_000);
+});
+onBeforeUnmount(() => {
+	if (relativeTimeTimer) clearInterval(relativeTimeTimer);
+});
+function relativeReceivedAt(timestamp: number): string {
+	// Touch the tick so the computed template bindings re-run each minute.
+	void relativeTimeTick.value;
+	return formatCompactRelativeTime(timestamp);
+}
 
 // Adaptive dark rendering: per-message sun/moon escape hatch (in-memory only)
 // forcing light rendering for a single message while the app is dark.
@@ -584,6 +604,12 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 		<header class="mb-4">
 			<h1 class="text-2xl font-semibold text-text-primary">
 				{{ message.subject || '(no subject)' }}
+				<span
+					v-if="allMessages.length > 1"
+					class="ml-1 text-base font-normal text-text-tertiary align-middle"
+				>
+					({{ allMessages.length }})
+				</span>
 			</h1>
 			<div
 				v-if="threadLabels.length > 0"
@@ -630,13 +656,18 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 					/>
 					<div class="flex-1 min-w-0">
 						<p class="text-sm truncate">
-							<span class="font-medium">{{ msg.fromName || msg.fromAddress }}</span>
-							<span class="text-text-tertiary mx-1.5">·</span>
-							<span class="text-text-tertiary">{{ msg.subject }}</span>
+							<span class="font-medium text-text-primary">{{ msg.fromName || msg.fromAddress }}</span>
+							<template v-if="msg.snippet">
+								<span class="text-text-tertiary mx-1.5">·</span>
+								<span class="text-text-tertiary">{{ msg.snippet }}</span>
+							</template>
 						</p>
 					</div>
-					<span class="text-xs text-text-tertiary flex-shrink-0">
-						{{ formatDateTime(msg.receivedAt) }}
+					<span
+						class="text-xs text-text-tertiary tabular-nums whitespace-nowrap flex-shrink-0"
+						:title="formatDateTime(msg.receivedAt)"
+					>
+						{{ relativeReceivedAt(msg.receivedAt) }}
 					</span>
 				</button>
 
@@ -685,10 +716,11 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 									</button>
 									<button
 										type="button"
-										class="text-xs text-text-tertiary hover:text-text-primary"
+										class="text-xs text-text-tertiary tabular-nums whitespace-nowrap hover:text-text-primary"
+										:title="formatDateTime(msg.receivedAt)"
 										@click="toggleExpanded(msg._id)"
 									>
-										{{ formatDateTime(msg.receivedAt) }}
+										{{ relativeReceivedAt(msg.receivedAt) }}
 									</button>
 								</div>
 							</div>

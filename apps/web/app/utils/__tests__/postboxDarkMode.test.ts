@@ -140,6 +140,14 @@ describe('adaptEmailHtml', () => {
 		expect(adaptEmailHtml(designed, 'light').html).toBe(designed);
 	});
 
+	it('classifies designed mail on the light path too (HTML untouched)', () => {
+		expect(adaptEmailHtml(designed, 'light')).toEqual({
+			html: designed,
+			scheme: 'light',
+			kind: 'designed',
+		});
+	});
+
 	it('dark app + simple mail renders dark with remapped colors', () => {
 		const out = adaptEmailHtml(simple, 'dark');
 		expect(out.scheme).toBe('dark');
@@ -168,5 +176,22 @@ describe('buildBaseStyle', () => {
 		expect(style).toContain(`background:${POSTBOX_DARK_PALETTE.background}`);
 		expect(style).toContain(`color:${POSTBOX_DARK_PALETTE.text}`);
 		expect(style).toContain(`a{color:${POSTBOX_DARK_PALETTE.link}`);
+	});
+
+	it('simple mail gets the comfortable reading measure in both schemes', () => {
+		for (const scheme of ['light', 'dark'] as const) {
+			const style = buildBaseStyle(scheme, 'simple');
+			expect(style).toContain('max-width:70ch');
+			expect(style).toContain('margin:0 auto');
+			expect(style).toContain('line-height:1.6;');
+			expect(style).toContain('font-size:15px');
+		}
+	});
+
+	it('designed mail keeps the historical base style (no measure cap)', () => {
+		expect(buildBaseStyle('light', 'designed')).toBe(buildBaseStyle('light'));
+		expect(buildBaseStyle('dark', 'designed')).toBe(buildBaseStyle('dark'));
+		expect(buildBaseStyle('light', 'designed')).not.toContain('70ch');
+		expect(buildBaseStyle('dark', 'designed')).not.toContain('70ch');
 	});
 });
