@@ -3,7 +3,7 @@ import { resolveLocalHost, resolveLocalUrls } from '../localHost';
 
 describe('resolveLocalHost', () => {
 	afterEach(() => {
-		delete process.env.OWLAT_LOCAL_HOST;
+		delete process.env['OWLAT_LOCAL_HOST'];
 	});
 
 	it('defaults to localhost (blessed Linux host-networking path)', () => {
@@ -17,7 +17,7 @@ describe('resolveLocalHost', () => {
 	});
 
 	it('reads process.env by default', () => {
-		process.env.OWLAT_LOCAL_HOST = 'host.docker.internal';
+		process.env['OWLAT_LOCAL_HOST'] = 'host.docker.internal';
 		expect(resolveLocalHost()).toBe('host.docker.internal');
 	});
 });
@@ -85,7 +85,7 @@ describe('resolveLocalUrls', () => {
 	});
 
 	it('defaults localHost from process.env when omitted', () => {
-		delete process.env.OWLAT_LOCAL_HOST;
+		delete process.env['OWLAT_LOCAL_HOST'];
 		expect(resolveLocalUrls({ network: false, env: {} })).toEqual({
 			localCloud: 'http://localhost:3210',
 			localSite: 'http://localhost:3211',

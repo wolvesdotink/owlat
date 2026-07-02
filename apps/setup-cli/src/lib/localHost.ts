@@ -17,7 +17,7 @@
  * Defaults to `localhost` so the blessed Linux behaviour is unchanged.
  */
 export function resolveLocalHost(env: NodeJS.ProcessEnv = process.env): string {
-	return env.OWLAT_LOCAL_HOST ?? 'localhost';
+	return env['OWLAT_LOCAL_HOST'] ?? 'localhost';
 }
 
 interface LocalUrls {
