@@ -522,7 +522,7 @@ describe('mail.needsReply.listQueue', () => {
 		expect(items).toEqual([]);
 	});
 
-	it("returns an empty list for a member who does not own the mailbox", async () => {
+	it("returns an empty list for an editor who does not own the mailbox", async () => {
 		const t = convexTest(schema, modules);
 		const seeded = await seedMailbox(t); // mailbox.userId === 'test-user'
 		const { threadId, messageId } = await seedThreadWithMessage(t, seeded);
@@ -530,7 +530,7 @@ describe('mail.needsReply.listQueue', () => {
 
 		vi.mocked(getBetterAuthSessionWithRole).mockResolvedValueOnce({
 			userId: 'other-user',
-			role: 'member',
+			role: 'editor',
 			activeOrganizationId: 'test-org',
 		});
 		const { items } = await t.query(api.mail.needsReply.listQueue, {
