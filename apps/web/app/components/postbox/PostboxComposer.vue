@@ -89,15 +89,9 @@ const {
 	initialMode: props.initialMode,
 });
 
-// Show the From dropdown only when the mailbox actually has aliases —
-// otherwise the single-identity case is implicit and we'd just add noise.
-const showFromDropdown = computed(() => availableIdentities.value.length > 1);
-
-async function onFromChange(event: Event) {
-	const target = event.target as HTMLSelectElement;
-	if (!target.value) return;
+async function onFromChange(address: string) {
 	try {
-		await setIdentity(target.value);
+		await setIdentity(address);
 	} catch (err) {
 		// eslint-disable-next-line no-console
 		console.error('[Postbox] setIdentity failed', err);
@@ -124,9 +118,6 @@ function onSignatureChange(event: Event) {
 	const target = event.target as HTMLSelectElement;
 	applySignature((target.value as Id<'mailSignatures'>) || null);
 }
-
-const showCc = ref(ccAddresses.value.length > 0);
-const showBcc = ref(bccAddresses.value.length > 0);
 
 const sending = ref(false);
 const scheduleOpen = ref(false);
@@ -325,65 +316,16 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } =
 			</div>
 		</header>
 
-		<div class="flex flex-col gap-1 p-3 border-b border-border-subtle text-sm">
-			<div v-if="showFromDropdown" class="flex items-baseline gap-2">
-				<label class="text-text-tertiary w-12">From</label>
-				<select
-					:value="fromAddress || availableIdentities[0]"
-					class="flex-1 bg-transparent outline-none font-medium border-0"
-					@change="onFromChange"
-				>
-					<option
-						v-for="addr in availableIdentities"
-						:key="addr"
-						:value="addr"
-					>
-						{{ addr }}
-					</option>
-				</select>
-			</div>
-			<div class="flex items-start gap-2">
-				<PostboxRecipientField
-					v-model="toAddresses"
-					:mailbox-id="mailboxId"
-					label="To"
-				/>
-				<div class="flex items-center gap-2 text-xs pt-0.5">
-					<button
-						v-if="!showCc"
-						type="button"
-						class="text-text-tertiary hover:text-text-primary"
-						@click="showCc = true"
-					>Cc</button>
-					<button
-						v-if="!showBcc"
-						type="button"
-						class="text-text-tertiary hover:text-text-primary"
-						@click="showBcc = true"
-					>Bcc</button>
-				</div>
-			</div>
-			<PostboxRecipientField
-				v-if="showCc"
-				v-model="ccAddresses"
-				:mailbox-id="mailboxId"
-				label="Cc"
-			/>
-			<PostboxRecipientField
-				v-if="showBcc"
-				v-model="bccAddresses"
-				:mailbox-id="mailboxId"
-				label="Bcc"
-			/>
-			<div class="flex items-baseline gap-2">
-				<label for="subject" class="text-text-tertiary w-12">Subject</label>
-				<input id="subject"
-					v-model="subject"
-					type="text"
-					class="flex-1 bg-transparent outline-none font-medium"
-				/>
-			</div>
-		</div>
+		<PostboxComposerEnvelope
+			v-model:to-addresses="toAddresses"
+			v-model:cc-addresses="ccAddresses"
+			v-model:bcc-addresses="bccAddresses"
+			v-model:subject="subject"
+			:mailbox-id="mailboxId"
+			:from-address="fromAddress"
+			:available-identities="availableIdentities"
+			@from-change="onFromChange"
+		/>
 
 		<div
 			v-if="isScheduled"
