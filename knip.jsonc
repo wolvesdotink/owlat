@@ -83,6 +83,7 @@
 				"src/passwordHash.ts",
 				"src/operationError.ts",
 				"src/postboxSanitize.ts",
+				"src/postboxTrackers.ts",
 				"src/mailMime.ts",
 				"src/ical.ts",
 				"src/html.ts",
