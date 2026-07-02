@@ -36,6 +36,7 @@ export type OrganizationDeletionTable =
 	| 'mailAliases'
 	| 'mailFolders'
 	| 'mailLabels'
+	| 'mailVoiceProfiles'
 	| 'mailFilters'
 	| 'mailSignatures'
 	| 'mailUserSettings'
@@ -149,6 +150,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('mailAliases'),
 	v.literal('mailFolders'),
 	v.literal('mailLabels'),
+	v.literal('mailVoiceProfiles'),
 	v.literal('mailFilters'),
 	v.literal('mailSignatures'),
 	v.literal('mailUserSettings'),

@@ -157,6 +157,17 @@ async function handleDelete() {
 				</div>
 			</NuxtLink>
 			<NuxtLink
+				v-if="isEnabled('ai')"
+				to="/dashboard/postbox/settings/writing-voice"
+				class="card !p-4 hover:bg-bg-surface flex items-center gap-3"
+			>
+				<Icon name="lucide:wand-sparkles" class="w-5 h-5 text-text-secondary" />
+				<div>
+					<p class="font-medium text-sm">Writing voice</p>
+					<p class="text-xs text-text-tertiary">Make AI drafts sound like you</p>
+				</div>
+			</NuxtLink>
+			<NuxtLink
 				to="/dashboard/postbox/settings/app-passwords"
 				class="card !p-4 hover:bg-bg-surface flex items-center gap-3"
 			>
