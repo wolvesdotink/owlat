@@ -139,6 +139,11 @@ watch(
 
 const expanded = ref<Set<string>>(new Set());
 
+// Adaptive dark rendering: per-message sun/moon escape hatch (in-memory only)
+// forcing light rendering for a single message while the app is dark.
+const { isDark: appIsDark } = useAppTheme();
+const { isForcedLight, toggleForcedLight } = usePostboxForcedLight();
+
 watch(
 	allMessages,
 	(messages) => {
@@ -610,13 +615,29 @@ async function handleAttachment(
 										&lt;{{ msg.fromAddress }}&gt;
 									</span>
 								</div>
-								<button
-									type="button"
-									class="text-xs text-text-tertiary hover:text-text-primary"
-									@click="toggleExpanded(msg._id)"
-								>
-									{{ formatDateTime(msg.receivedAt) }}
-								</button>
+								<div class="flex items-center gap-2 flex-shrink-0">
+									<button
+										v-if="appIsDark"
+										type="button"
+										class="text-text-tertiary hover:text-text-primary"
+										:title="isForcedLight(msg._id) ? 'Render this message in dark mode' : 'Render this message on a light background'"
+										:aria-label="isForcedLight(msg._id) ? 'Render this message in dark mode' : 'Render this message on a light background'"
+										:aria-pressed="isForcedLight(msg._id)"
+										@click="toggleForcedLight(msg._id)"
+									>
+										<Icon
+											:name="isForcedLight(msg._id) ? 'lucide:moon' : 'lucide:sun'"
+											class="w-3.5 h-3.5"
+										/>
+									</button>
+									<button
+										type="button"
+										class="text-xs text-text-tertiary hover:text-text-primary"
+										@click="toggleExpanded(msg._id)"
+									>
+										{{ formatDateTime(msg.receivedAt) }}
+									</button>
+								</div>
 							</div>
 							<p class="text-text-secondary text-xs mt-0.5">
 								to {{ msg.toAddresses.join(', ') }}
@@ -641,7 +662,11 @@ async function handleAttachment(
 						:klass="secureClass(msg)"
 						:message="msg"
 					/>
-					<PostboxMessageBody v-if="!hideRawBody(msg)" :message="msg" />
+					<PostboxMessageBody
+						v-if="!hideRawBody(msg)"
+						:message="msg"
+						:force-light="isForcedLight(msg._id)"
+					/>
 
 						<PostboxInviteCard
 							v-if="calendarAttachment(msg)"

@@ -29,6 +29,8 @@ beforeAll(() => {
 	// Real quoted-text splitters (Nuxt auto-imports in the component).
 	vi.stubGlobal('splitQuotedText', splitQuotedText);
 	vi.stubGlobal('splitQuotedHtml', splitQuotedHtml);
+	// App theme (Nuxt auto-import) — light path keeps historical behavior.
+	vi.stubGlobal('useAppTheme', () => ({ isDark: ref(false) }));
 });
 
 const iconStub = { props: ['name'], template: '<span />' };

@@ -16,6 +16,12 @@
 
 import sanitizeHtml from 'sanitize-html';
 import { POSTBOX_SANITIZE_CONFIG } from '@owlat/shared/postboxSanitize';
+import {
+	adaptEmailHtml,
+	buildBaseStyle,
+	POSTBOX_DARK_PALETTE,
+	type PostboxRenderScheme,
+} from '~/utils/postboxDarkMode';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 
@@ -27,7 +33,17 @@ const props = defineProps<{
 		htmlBodyStorageId?: string;
 		textBodyStorageId?: string;
 	};
+	/** Per-message escape hatch: force light rendering even in dark mode. */
+	forceLight?: boolean;
 }>();
+
+const { isDark } = useAppTheme();
+
+// Scheme requested by the app: dark unless the app is light or the user
+// forced this one message back to light rendering.
+const appScheme = computed<PostboxRenderScheme>(() =>
+	isDark.value && !props.forceLight ? 'dark' : 'light'
+);
 
 const showImages = ref(false);
 const showQuoted = ref(false);
@@ -125,7 +141,6 @@ function rewriteLinks(html: string): string {
 }
 
 const META_CSP = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https: data:; style-src 'unsafe-inline'; font-src https: data:;">`;
-const BASE_STYLE = `<style>html,body{font-family:-apple-system,Segoe UI,sans-serif;color:#1a1a1a;font-size:14px;line-height:1.55;margin:0;padding:0;}img{max-width:100%;height:auto;}a{color:#0a6cdd;}</style>`;
 
 const quotedSplit = computed(() => {
 	const html = effectiveHtml.value;
@@ -144,14 +159,25 @@ const quotedSplit = computed(() => {
 	};
 });
 
-const srcdoc = computed(() => {
+// Adaptive dark rendering: classify the sanitized HTML and decide the iframe
+// scheme. Runs AFTER sanitization on the sanitized string only; when the app
+// is light (or the message is forced light) it's a pass-through no-op.
+const adapted = computed(() => {
 	const split = quotedSplit.value;
 	const fresh = sanitize(split.fresh);
 	const quoted = showQuoted.value ? sanitize(split.quoted) : '';
 	const combined = quoted ? `${fresh}<hr style="margin:1em 0;border:0;border-top:1px solid #eee">${quoted}` : fresh;
-	const gated = gateImages(combined, showImages.value);
+	return adaptEmailHtml(combined, appScheme.value);
+});
+
+// Scheme the iframe actually renders with ("designed" mail stays light —
+// a paper card on the dark app background — even when the app is dark).
+const renderScheme = computed(() => adapted.value.scheme);
+
+const srcdoc = computed(() => {
+	const gated = gateImages(adapted.value.html, showImages.value);
 	const linked = rewriteLinks(gated);
-	return `<!doctype html><html><head>${META_CSP}${BASE_STYLE}</head><body>${linked || '(empty message)'}</body></html>`;
+	return `<!doctype html><html><head>${META_CSP}${buildBaseStyle(renderScheme.value)}</head><body>${linked || '(empty message)'}</body></html>`;
 });
 
 const hasBlockedImages = computed(
@@ -199,12 +225,19 @@ watch([showQuoted, showImages], () => {
 				Show images
 			</button>
 		</div>
+		<!-- Wrapper background matches the iframe scheme so dark-rendered mail
+		     never flashes a white full-bleed; "designed" mail keeps its own
+		     colors as a light paper card on the dark app background. -->
 		<iframe
 			ref="iframeRef"
 			:srcdoc="srcdoc"
 			sandbox=""
-			class="w-full bg-white rounded border border-border-subtle"
-			style="min-height: 200px;"
+			class="w-full rounded border border-border-subtle"
+			:class="renderScheme === 'dark' ? '' : 'bg-white'"
+			:style="{
+				minHeight: '200px',
+				backgroundColor: renderScheme === 'dark' ? POSTBOX_DARK_PALETTE.background : undefined,
+			}"
 			referrerpolicy="no-referrer"
 		/>
 		<button
