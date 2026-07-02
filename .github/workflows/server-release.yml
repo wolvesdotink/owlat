@@ -1,27 +1,25 @@
-name: Desktop Release (single-target)
+name: Server Release (single-target)
 
-# DESKTOP-ONLY release for shipping a fix to the native apps without rebuilding
-# the server images. Same reusable core as the unified `v*` pipeline.
+# SERVER-ONLY release for shipping a fix to the backend service images without
+# rebuilding the desktop apps. Same reusable core as the unified `v*` pipeline.
 #
-#   git tag desktop-v0.2.1 && git push origin desktop-v0.2.1
+#   git tag server-v0.2.1 && git push origin server-v0.2.1
 #
 # (For a release of everything together, push a plain `v*` tag — see release.yml.)
-#
-# Signing & notarization are SECRET-GATED: when the relevant repo secrets are
-# absent (forks, PRs), the build still runs and produces unsigned artifacts.
 
 on:
   push:
     tags:
-      - 'desktop-v*'
+      - 'server-v*.*.*'
 
 permissions:
-  contents: write # create the Release + upload artifacts
-  id-token: write # OIDC for build provenance attestations
+  contents: write
+  packages: write
+  id-token: write
   attestations: write
 
 concurrency:
-  group: desktop-release-${{ github.ref }}
+  group: server-release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -36,47 +34,50 @@ jobs:
           egress-policy: audit
       - id: meta
         run: |
-          VERSION="${GITHUB_REF_NAME#desktop-v}"
+          VERSION="${GITHUB_REF_NAME#server-v}"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "Resolved desktop-only release VERSION=${VERSION}"
+          echo "Resolved server-only release VERSION=${VERSION}"
 
   create-release:
     name: Create draft Release
     needs: resolve
     runs-on: ubuntu-latest
-    outputs:
-      release_id: ${{ steps.create.outputs.id }}
     steps:
       - uses: step-security/harden-runner@v2
         with:
           egress-policy: audit
-      - id: create
-        uses: softprops/action-gh-release@v3
+      - uses: softprops/action-gh-release@v3
         with:
-          name: "Owlat Desktop ${{ github.ref_name }}"
+          name: "Server v${{ needs.resolve.outputs.version }}"
           tag_name: ${{ github.ref_name }}
           draft: true # published by `publish` once the core succeeds
           prerelease: ${{ contains(needs.resolve.outputs.version, '-') }}
           generate_release_notes: true
           body: |
-            ## Owlat Desktop v${{ needs.resolve.outputs.version }}
+            ## Owlat server v${{ needs.resolve.outputs.version }}
 
-            Desktop-only release. Download the installer for your OS from the
-            assets below (macOS `.dmg`, Windows `.msi`/`.exe`, Linux
-            `.AppImage`/`.deb`). Existing installs auto-update to this version.
+            Server-only release (Docker images + compose). Desktop apps unchanged.
 
-  desktop:
-    name: Desktop apps
+            From the admin dashboard → **Settings → System & Updates** → "Update now", or:
+
+            ```sh
+            owlat upgrade --version ${{ needs.resolve.outputs.version }}
+            ```
+
+            **Images:** `web`, `mta`, `updater`, `convex-deploy`, `imap`, `mail-sync`, `code-worker`, `setup` — all `ghcr.io/${{ github.repository_owner }}/<name>:${{ needs.resolve.outputs.version }}`
+
+  server:
+    name: Server images
     needs: [resolve, create-release]
-    uses: ./.github/workflows/_desktop-build.yml
+    uses: ./.github/workflows/_server-build.yml
     with:
+      version: ${{ needs.resolve.outputs.version }}
       tag: ${{ github.ref_name }}
-      release_id: ${{ needs.create-release.outputs.release_id }}
     secrets: inherit
 
   publish:
     name: Publish Release
-    needs: [resolve, desktop]
+    needs: [resolve, server]
     runs-on: ubuntu-latest
     steps:
       - uses: step-security/harden-runner@v2
@@ -94,4 +95,4 @@ jobs:
           else
             gh release edit "$TAG" --repo "${{ github.repository }}" --draft=false --latest
           fi
-          echo "Published $TAG (desktop apps only)."
+          echo "Published $TAG (server images only)."

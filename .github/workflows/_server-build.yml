@@ -1,0 +1,228 @@
+name: _server-build
+
+# Reusable CORE that builds + pushes every server service image to GHCR and
+# uploads the pinned docker-compose template (+ SHA256 manifest) as assets on an
+# ALREADY-EXISTING GitHub Release. It never creates or publishes the release —
+# the caller owns that, so the same core serves both the unified `v*` release
+# (release.yml) and the server-only `server-v*` release (server-release.yml).
+#
+# Contract: the caller has already created a (draft) Release for `tag`.
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: 'Release version without the leading v (e.g. 0.2.0)'
+        required: true
+        type: string
+      tag:
+        description: 'The git tag the Release is attached to (e.g. v0.2.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write # upload assets to the Release
+  packages: write # push images to GHCR
+  id-token: write # OIDC for cosign keyless signing + attestations
+  attestations: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}
+
+jobs:
+  # ── Resolve build args (version comes from the caller) ───────────────────────
+  resolve:
+    name: Resolve build metadata
+    runs-on: ubuntu-latest
+    outputs:
+      git_sha: ${{ steps.meta.outputs.git_sha }}
+      build_date: ${{ steps.meta.outputs.build_date }}
+    steps:
+      - uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - id: meta
+        name: Compute build metadata
+        run: |
+          GIT_SHA=$(git rev-parse --short HEAD)
+          BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          echo "git_sha=${GIT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "build_date=${BUILD_DATE}" >> "$GITHUB_OUTPUT"
+          echo "Resolved: VERSION=${{ inputs.version }} GIT_SHA=${GIT_SHA} BUILD_DATE=${BUILD_DATE}"
+
+  # ── Build + push each image in parallel ──────────────────────────────────────
+  build-and-push:
+    name: Build & push ${{ matrix.name }}
+    needs: resolve
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: web
+            dockerfile: apps/web/Dockerfile
+            context: .
+          - name: mta
+            dockerfile: apps/mta/Dockerfile
+            context: .
+          - name: updater
+            dockerfile: apps/updater/Dockerfile
+            # Monorepo-root context: the updater's `catalog:` versions only
+            # resolve via a bun workspace install (see its Dockerfile).
+            context: .
+          - name: convex-deploy
+            dockerfile: docker/convex-deploy.Dockerfile
+            context: .
+          - name: imap
+            dockerfile: apps/imap/Dockerfile
+            context: .
+          - name: mail-sync
+            dockerfile: apps/mail-sync/Dockerfile
+            context: .
+          - name: code-worker
+            dockerfile: apps/code-worker/Dockerfile
+            context: .
+          - name: setup
+            dockerfile: apps/setup-cli/Dockerfile
+            context: .
+    steps:
+      - uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE_PREFIX }}/${{ matrix.name }}
+          tags: |
+            type=semver,pattern={{version}},value=v${{ inputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=v${{ inputs.version }}
+            type=raw,value=latest
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/amd64
+          cache-from: type=gha,scope=release-${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=release-${{ matrix.name }}
+          provenance: mode=max
+          sbom: true
+          build-args: |
+            OWLAT_VERSION=${{ inputs.version }}
+            OWLAT_GIT_SHA=${{ needs.resolve.outputs.git_sha }}
+            OWLAT_BUILD_DATE=${{ needs.resolve.outputs.build_date }}
+
+      # S16 / Phase 1.2: Sigstore keyless sign the pushed image digest via
+      # GitHub OIDC. Verification (`cosign verify --certificate-identity-regexp`)
+      # then proves the image came from this repo's release workflow.
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign published image digest (cosign keyless)
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          set -euo pipefail
+          for tag in $TAGS; do
+            # Sign the concrete digest, not the mutable tag (sign-once guarantee).
+            cosign sign --yes "${tag%:*}@${DIGEST}"
+          done
+
+      # Publish an SLSA provenance attestation pinned to the image digest.
+      # Consumers verify with `gh attestation verify --repo wolvesdotink/owlat`.
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-name: ${{ env.IMAGE_PREFIX }}/${{ matrix.name }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+  # ── Generate pinned compose template + attach it to the caller's Release ─────
+  upload-release-assets:
+    name: Upload compose assets to the Release
+    needs: [resolve, build-and-push]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Generate pinned docker-compose
+        run: |
+          bash scripts/gen-release-compose.sh "${{ inputs.version }}"
+          ls -lh "docker-compose-${{ inputs.version }}.yml"
+
+      - name: Verify compose file is parseable
+        run: |
+          cp "docker-compose-${{ inputs.version }}.yml" docker-compose.verify.yml
+          docker compose -f docker-compose.verify.yml config --quiet
+        env:
+          # Supply placeholder envs so compose parses
+          OWLAT_VERSION: ${{ inputs.version }}
+          CONVEX_BACKEND_VERSION: placeholder
+          INSTANCE_SECRET: placeholder
+          MTA_API_KEY: placeholder
+          MTA_WEBHOOK_SECRET: placeholder
+
+      # S2 / Phase 1.3: publish a SHA256 manifest alongside the compose file so
+      # the in-app updater (apps/web/server/api/system/update.post.ts) can
+      # cryptographically verify the download.
+      - name: Generate compose SHA256 manifest
+        run: |
+          cd "$(dirname "docker-compose-${{ inputs.version }}.yml")"
+          sha256sum "docker-compose-${{ inputs.version }}.yml" \
+            > "docker-compose-${{ inputs.version }}.yml.sha256"
+          cat "docker-compose-${{ inputs.version }}.yml.sha256"
+
+      # Attest the compose file itself so consumers can verify it via
+      # `gh attestation verify docker-compose-<v>.yml --repo wolvesdotink/owlat`.
+      - name: Attest compose artifact provenance
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: |
+            docker-compose-${{ inputs.version }}.yml
+            docker-compose-${{ inputs.version }}.yml.sha256
+
+      # Attach the compose file + manifest to the Release the CALLER created.
+      # --clobber makes re-runs idempotent.
+      - name: Upload compose assets to the Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ inputs.tag }}" \
+            "docker-compose-${{ inputs.version }}.yml" \
+            "docker-compose-${{ inputs.version }}.yml.sha256" \
+            --repo "${{ github.repository }}" --clobber
