@@ -11,7 +11,7 @@
  * The thread body is framed as untrusted DATA behind the SYSTEM_GUARD.
  */
 
-import { convexTest } from 'convex-test';
+import { convexTest, type TestConvex } from 'convex-test';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import schema from '../schema';
@@ -64,7 +64,7 @@ beforeEach(() => {
 
 const OWNER = 'me@example.com';
 
-async function seedMailbox(t: ReturnType<typeof convexTest>): Promise<Id<'mailboxes'>> {
+async function seedMailbox(t: TestConvex<typeof schema>): Promise<Id<'mailboxes'>> {
 	return await t.run(async (ctx) => {
 		const now = Date.now();
 		const mailboxId = await ctx.db.insert('mailboxes', {
@@ -97,7 +97,7 @@ async function seedMailbox(t: ReturnType<typeof convexTest>): Promise<Id<'mailbo
 
 /** Seed a thread with `count` inbound messages; returns thread + latest id. */
 async function seedThread(
-	t: ReturnType<typeof convexTest>,
+	t: TestConvex<typeof schema>,
 	mailboxId: Id<'mailboxes'>,
 	count: number,
 ): Promise<{ threadId: Id<'mailThreads'>; latestMessageId: Id<'mailMessages'> }> {
@@ -166,7 +166,7 @@ async function seedThread(
 }
 
 async function getThread(
-	t: ReturnType<typeof convexTest>,
+	t: TestConvex<typeof schema>,
 	threadId: Id<'mailThreads'>,
 ): Promise<Doc<'mailThreads'> | null> {
 	return await t.run(async (ctx) => ctx.db.get(threadId));
