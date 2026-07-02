@@ -137,6 +137,10 @@ crons.interval('postbox dispatch overdue drafts', { minutes: 1 }, internal.mail.
 // Postbox snooze sweep — wake messages whose snoozedUntil has passed.
 crons.interval('postbox wake snoozed messages', { minutes: 1 }, internal.mail.snooze.internalSweep, {});
 
+// Postbox follow-up sweep — resurface sent threads whose "remind me if no
+// reply" deadline passed without an inbound reply.
+crons.interval('postbox follow-up reminders', { minutes: 1 }, internal.mail.followUps.internalSweep, {});
+
 // Postbox Reply Queue reconcile — re-schedule needs-reply classification for
 // threads whose ingest-time scheduled check was lost (deploy restart etc.).
 crons.interval('postbox needs-reply reconcile', { minutes: 5 }, internal.mail.needsReply.sweepPending, {});

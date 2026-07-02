@@ -245,6 +245,41 @@ export const setDisplayName = authedMutation({
 });
 
 
+/**
+ * Follow-up watch state attached to each list row ("No reply yet" chip /
+ * armed-reminder chip in the thread list). One thread get per distinct thread
+ * on the page, memoized.
+ */
+type RowFollowUp = { remindAt: number; dueAt?: number; watched: boolean };
+
+async function attachThreadFollowUps(
+	ctx: QueryCtx,
+	messages: Doc<'mailMessages'>[],
+): Promise<Array<Doc<'mailMessages'> & { followUp?: RowFollowUp }>> {
+	const cache = new Map<Id<'mailThreads'>, Doc<'mailThreads'>['followUp']>();
+	const out: Array<Doc<'mailMessages'> & { followUp?: RowFollowUp }> = [];
+	for (const m of messages) {
+		if (!cache.has(m.threadId)) {
+			const thread = await ctx.db.get(m.threadId);
+			cache.set(m.threadId, thread?.followUp);
+		}
+		const followUp = cache.get(m.threadId);
+		out.push(
+			followUp
+				? {
+						...m,
+						followUp: {
+							remindAt: followUp.remindAt,
+							dueAt: followUp.dueAt,
+							watched: followUp.messageId === m._id,
+						},
+					}
+				: m,
+		);
+	}
+	return out;
+}
+
 /** List messages in a mailbox (most-recent first), for the webmail UI. */
 // public: soft-auth — returns empty for anonymous; mailbox ownership is still enforced in-handler
 export const listMessages = publicQuery({
@@ -291,7 +326,10 @@ export const listMessages = publicQuery({
 				.order('desc')
 				.take(limit + 1);
 			return {
-				messages: raw.slice(0, limit).filter((m) => !isSnoozed(m)),
+				messages: await attachThreadFollowUps(
+					ctx,
+					raw.slice(0, limit).filter((m) => !isSnoozed(m)),
+				),
 				hasMore: raw.length > limit,
 			};
 		}
@@ -312,7 +350,10 @@ export const listMessages = publicQuery({
 				.order('desc')
 				.take(limit + 1);
 			return {
-				messages: raw.slice(0, limit).filter((m) => !isSnoozed(m)),
+				messages: await attachThreadFollowUps(
+					ctx,
+					raw.slice(0, limit).filter((m) => !isSnoozed(m)),
+				),
 				hasMore: raw.length > limit,
 			};
 		}
@@ -324,7 +365,10 @@ export const listMessages = publicQuery({
 			.order('desc')
 			.take(limit + 1);
 		return {
-			messages: raw.slice(0, limit).filter((m) => !isSnoozed(m)),
+			messages: await attachThreadFollowUps(
+				ctx,
+				raw.slice(0, limit).filter((m) => !isSnoozed(m)),
+			),
 			hasMore: raw.length > limit,
 		};
 	},

@@ -90,6 +90,10 @@ export const update = authedMutation({
 		bodyText: v.optional(v.string()),
 		bodyBlocks: v.optional(v.string()),
 		composerMode: v.optional(v.union(v.literal('simple'), v.literal('full'))),
+		// "Remind me if no reply by…" — a timestamp arms it, `null` clears it,
+		// absent leaves it untouched. Carried onto the sent thread as a
+		// follow-up watch by the sent-effects reducer (mail/followUps.ts).
+		followUpRemindAt: v.optional(v.union(v.number(), v.null())),
 	},
 	handler: async (ctx, args) => {
 		const draft = await getOrThrow(ctx, args.draftId, 'Draft');
@@ -106,6 +110,9 @@ export const update = authedMutation({
 		if (args.bodyText !== undefined) patch['bodyText'] = args.bodyText;
 		if (args.bodyBlocks !== undefined) patch['bodyBlocks'] = args.bodyBlocks;
 		if (args.composerMode !== undefined) patch['composerMode'] = args.composerMode;
+		if (args.followUpRemindAt !== undefined) {
+			patch['followUpRemindAt'] = args.followUpRemindAt ?? undefined;
+		}
 
 		await ctx.db.patch(args.draftId, patch);
 		return { savedAt: patch['lastEditedAt'] };

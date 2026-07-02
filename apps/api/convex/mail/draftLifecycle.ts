@@ -36,6 +36,7 @@ import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { recordAuditLog } from '../lib/auditLog';
 import { resolveAllowedFromAddressesForCtx } from './identities';
+import { followUpWaitingOn } from './followUps';
 import { logError } from '../lib/runtimeLog';
 import { normalizeSubject } from '../lib/emailAddress';
 
@@ -529,6 +530,14 @@ async function runSentEffects(
 	if (thread) {
 		const folderRoles = new Set(thread.folderRoles);
 		folderRoles.add('sent');
+		// "Remind me if no reply by…" carried from the composer: arm the
+		// thread's follow-up watch on the freshly sent message. A deadline
+		// already in the past (e.g. a scheduled send dispatched after it) is
+		// dropped silently rather than firing immediately.
+		const followUpRemindAt =
+			draft.followUpRemindAt !== undefined && draft.followUpRemindAt > now
+				? draft.followUpRemindAt
+				: undefined;
 		await ctx.db.patch(threadId, {
 			messageCount: thread.messageCount + 1,
 			hasAttachments:
@@ -543,6 +552,17 @@ async function runSentEffects(
 			// the needs-reply flag and any in-flight classification marker.
 			needsReply: undefined,
 			needsReplyPendingAt: undefined,
+			...(followUpRemindAt !== undefined
+				? {
+						followUp: {
+							messageId,
+							remindAt: followUpRemindAt,
+							armedAt: now,
+							waitingOn: followUpWaitingOn(recipients),
+						},
+						followUpRemindAt,
+					}
+				: {}),
 			updatedAt: now,
 		});
 	}

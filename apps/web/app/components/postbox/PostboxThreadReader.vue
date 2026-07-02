@@ -124,6 +124,31 @@ const { data: threadData, isLoading } = useConvexQuery(
 
 const allMessages = computed(() => threadData.value?.messages ?? [props.message]);
 const latestMessage = computed(() => allMessages.value[allMessages.value.length - 1]);
+
+// Follow-up ("remind me if no reply") chip: armable only while the thread
+// ends on our own sent message — an inbound reply on top means they already
+// answered (and clears any armed watch server-side anyway).
+const readerThread = computed(
+	() =>
+		threadData.value?.thread as
+			| {
+					_id: string;
+					followUp?: {
+						messageId: string;
+						remindAt: number;
+						dueAt?: number;
+						waitingOn?: string;
+					};
+			  }
+			| null
+			| undefined
+);
+const latestOutboundId = computed(() => {
+	const last = allMessages.value[allMessages.value.length - 1] as
+		| { _id: string; outbound?: unknown }
+		| undefined;
+	return last && last.outbound !== undefined ? last._id : undefined;
+});
 const labelMap = computed(() => {
 	const map = new Map<string, { _id: string; name: string; color?: string }>();
 	for (const l of threadData.value?.labels ?? []) map.set(l._id, l);
@@ -625,6 +650,12 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 					({{ allMessages.length }})
 				</span>
 			</h1>
+			<PostboxFollowUpChip
+				v-if="readerThread"
+				:thread="readerThread"
+				:latest-outbound-id="latestOutboundId"
+				class="mt-2"
+			/>
 			<div
 				v-if="threadLabels.length > 0"
 				class="mt-2 flex flex-wrap items-center gap-1.5"

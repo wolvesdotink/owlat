@@ -55,6 +55,9 @@ export function usePostboxCompose(seed: DraftSeed) {
 	const draftState = ref<'draft' | 'pending_send' | 'scheduled'>('draft');
 	const scheduledSendAt = ref<number | null>(null);
 	const isScheduled = computed(() => draftState.value === 'scheduled');
+	// "Remind me if no reply by…" — persisted on the draft and carried onto the
+	// sent thread as a follow-up watch (mail/followUps.ts). null = off.
+	const followUpRemindAt = ref<number | null>(null);
 
 	const createDraft = useBackendOperation(api.mail.drafts.create, {
 		label: 'Create draft',
@@ -109,6 +112,7 @@ export function usePostboxCompose(seed: DraftSeed) {
 					composerMode?: ComposerMode;
 					state?: 'draft' | 'pending_send' | 'scheduled';
 					scheduledSendAt?: number;
+					followUpRemindAt?: number;
 					attachments?: Array<{
 						storageId: string;
 						filename: string;
@@ -118,6 +122,9 @@ export function usePostboxCompose(seed: DraftSeed) {
 				};
 				draftState.value = draft.state ?? 'draft';
 				scheduledSendAt.value = draft.scheduledSendAt ?? null;
+				if (followUpRemindAt.value === null) {
+					followUpRemindAt.value = draft.followUpRemindAt ?? null;
+				}
 				// Fill only fields the user hasn't already touched: the composer is
 				// editable while drafts.get is in flight, so unconditional assignment
 				// would clobber (and then autosave away) edits typed in the gap.
@@ -269,6 +276,8 @@ export function usePostboxCompose(seed: DraftSeed) {
 						? JSON.stringify(bodyBlocks.value)
 						: undefined,
 				composerMode: composerMode.value,
+				// Always sent: a timestamp arms, explicit null clears server-side.
+				followUpRemindAt: followUpRemindAt.value,
 			});
 			if (result === undefined) return;
 			lastSavedAt.value = (result.savedAt as number) ?? Date.now();
@@ -298,7 +307,7 @@ export function usePostboxCompose(seed: DraftSeed) {
 
 	// Watch for any field change
 	watch(
-		[toAddresses, ccAddresses, bccAddresses, subject, bodyHtml, bodyBlocks, composerMode],
+		[toAddresses, ccAddresses, bccAddresses, subject, bodyHtml, bodyBlocks, composerMode, followUpRemindAt],
 		() => {
 			schedulePersist();
 		},
@@ -400,6 +409,7 @@ export function usePostboxCompose(seed: DraftSeed) {
 		isScheduled,
 		scheduledSendAt,
 		cancelSchedule,
+		followUpRemindAt,
 		ensureDraft,
 		flush,
 		send,

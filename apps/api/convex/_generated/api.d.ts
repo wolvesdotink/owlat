@@ -330,6 +330,7 @@ import type * as mail_externalAccountsActions from "../mail/externalAccountsActi
 import type * as mail_externalDelivery from "../mail/externalDelivery.js";
 import type * as mail_filters from "../mail/filters.js";
 import type * as mail_folders from "../mail/folders.js";
+import type * as mail_followUps from "../mail/followUps.js";
 import type * as mail_forwarding from "../mail/forwarding.js";
 import type * as mail_identities from "../mail/identities.js";
 import type * as mail_imap from "../mail/imap.js";
@@ -845,6 +846,7 @@ declare const fullApi: ApiFromModules<{
   "mail/externalDelivery": typeof mail_externalDelivery;
   "mail/filters": typeof mail_filters;
   "mail/folders": typeof mail_folders;
+  "mail/followUps": typeof mail_followUps;
   "mail/forwarding": typeof mail_forwarding;
   "mail/identities": typeof mail_identities;
   "mail/imap": typeof mail_imap;

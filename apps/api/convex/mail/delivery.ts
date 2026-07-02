@@ -31,6 +31,7 @@ import { logError } from '../lib/runtimeLog';
 import { getMtaConfig, scanAttachmentBytes } from './mtaClient';
 import { scanContent } from '@owlat/email-scanner';
 import { enqueueNeedsReplyCheck } from './needsReply';
+import { clearThreadFollowUp } from './followUps';
 
 const INLINE_BODY_THRESHOLD_BYTES = 64 * 1024;
 
@@ -807,6 +808,13 @@ export const deliverToMailbox = internalMutation({
 			await enqueueNeedsReplyCheck(ctx, delivered.threadId, {
 				precedence: args.antiLoopHeaders?.['precedence'],
 			});
+		}
+
+		// 11c. Follow-up reminders: any inbound delivery into a watched thread
+		// means the awaited reply arrived — clear the watch silently. Mail routed
+		// to Spam/Trash doesn't count as a reply.
+		if (delivered && folder.role !== 'spam' && folder.role !== 'trash') {
+			await clearThreadFollowUp(ctx, delivered.threadId);
 		}
 
 		// 12. Post-delivery hooks — forwarding + vacation auto-reply.

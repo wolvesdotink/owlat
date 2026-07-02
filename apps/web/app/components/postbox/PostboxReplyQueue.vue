@@ -36,6 +36,9 @@ const aiEnabled = computed(() => isFeatureEnabled('ai'));
 const stack = usePostboxComposerStack();
 
 const clearOp = useBackendOperation(api.mail.needsReply.clear, { label: 'Mark done' });
+const cancelFollowUpOp = useBackendOperation(api.mail.followUps.cancel, {
+	label: 'Dismiss reminder',
+});
 const archiveOp = useBackendOperation(api.mail.messageActions.archive, { label: 'Archive' });
 const snoozeOp = useBackendOperation(api.mail.snooze.snooze, { label: 'Snooze' });
 const suggestOp = useBackendOperation(api.mail.ai.suggestReplies, {
@@ -43,10 +46,14 @@ const suggestOp = useBackendOperation(api.mail.ai.suggestReplies, {
 	type: 'action',
 });
 
-/** Manual "Done" — clear the flag; the row hides instantly, restored on failure. */
+/** Manual "Done" — clear the flag; the row hides instantly, restored on failure.
+ * Follow-up rows ("You're waiting on…") dismiss their reminder watch instead. */
 async function markDone(row: QueueRow) {
 	hideRow(row._id);
-	const result = await clearOp.run({ threadId: row.threadId as Id<'mailThreads'> });
+	const result =
+		row.kind === 'followup'
+			? await cancelFollowUpOp.run({ threadId: row.threadId as Id<'mailThreads'> })
+			: await clearOp.run({ threadId: row.threadId as Id<'mailThreads'> });
 	if (result === undefined) unhideRow(row._id);
 }
 
@@ -198,6 +205,13 @@ const URGENCY_LABEL: Record<string, string> = { high: 'Urgent', low: 'Low priori
 					</div>
 					<div class="flex items-center gap-1.5 mt-0.5">
 						<span
+							v-if="row.kind === 'followup'"
+							class="flex-shrink-0 inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide px-1.5 py-px rounded-full bg-brand/10 text-brand"
+						>
+							<Icon name="lucide:alarm-clock" class="w-3 h-3" />
+							Follow-up
+						</span>
+						<span
 							v-if="row.urgency !== 'normal'"
 							class="flex-shrink-0 text-[10px] font-medium uppercase tracking-wide px-1.5 py-px rounded-full"
 							:class="row.urgency === 'high' ? 'bg-error/10 text-error' : 'bg-bg-elevated text-text-tertiary'"
@@ -218,7 +232,7 @@ const URGENCY_LABEL: Record<string, string> = { high: 'Urgent', low: 'Low priori
 				class="absolute right-3 top-1/2 -translate-y-1/2 hidden group-hover:flex group-focus-within:flex items-center gap-0.5 bg-bg-elevated/95 rounded px-1 py-0.5 shadow-sm border border-border-subtle"
 			>
 				<button
-					v-if="aiEnabled"
+					v-if="aiEnabled && row.kind !== 'followup'"
 					type="button"
 					class="inline-flex items-center gap-1 px-1.5 py-1 rounded text-xs hover:bg-bg-surface text-text-tertiary hover:text-text-primary disabled:opacity-50"
 					title="Draft reply"
@@ -233,7 +247,7 @@ const URGENCY_LABEL: Record<string, string> = { high: 'Urgent', low: 'Low priori
 					/>
 				</button>
 				<button
-					v-else
+					v-else-if="row.kind !== 'followup'"
 					type="button"
 					class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-text-primary"
 					title="Reply"
