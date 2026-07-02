@@ -1,24 +1,12 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
-import type { BlockType } from '@owlat/email-builder';
 import type { ComposerMode } from '~/composables/postbox/usePostboxCompose';
 import type { ComposerPromotePayload } from '~/composables/postbox/usePostboxComposerStack';
+import { SIMPLE_BLOCK_TYPES } from '~/composables/postbox/postboxBlockTypes';
 
 const EmailBuilder = defineAsyncComponent(() =>
 	import('@owlat/email-builder').then((m) => m.EmailBuilder)
 );
-
-// Same editor in both modes — we just narrow the block insert palette.
-// 'simple' is enough for everyday rich-text + lists + images;
-// 'full' unlocks heroes / columns / tables / accordions / etc.
-const SIMPLE_BLOCK_TYPES: BlockType[] = [
-	'text',
-	'image',
-	'button',
-	'divider',
-	'spacer',
-	'list',
-];
 
 const props = defineProps<{
 	mailboxId: Id<'mailboxes'>;
@@ -90,14 +78,9 @@ const {
 	initialMode: props.initialMode,
 });
 
-// Inline ghost-text autocomplete is gated by the `ai` feature flag AND the
-// per-user "Writing suggestions" toggle. The subject line is a cheap, bounded
-// bit of thread context for the completion prompt.
-const { isEnabled } = useFeatureFlag();
-const { writingSuggestions } = usePostboxSettings();
-const ghostSuggestionsEnabled = computed(
-	() => isEnabled('ai') && writingSuggestions.value
-);
+// Inline ghost-text autocomplete: gated by the `ai` flag AND the per-user
+// toggle; the subject line is the bounded thread context for the prompt.
+const { ghostSuggestionsEnabled } = usePostboxGhostGate();
 
 async function onFromChange(address: string) {
 	try {
