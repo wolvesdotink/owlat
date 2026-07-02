@@ -113,6 +113,51 @@ describe('PostboxAttachmentLightbox', () => {
 		expect(w.text()).toContain('3 of 3');
 	});
 
+	it('keeps focus in the dialog when a clicked chevron unmounts at the boundary and ArrowLeft still navigates', async () => {
+		// Mounted with the REAL Teleport: the boundary refocus depends on DOM
+		// element identity surviving re-renders, which the teleport stub does
+		// not preserve (it re-creates the whole subtree on every patch).
+		wrapper = mount(PostboxAttachmentLightbox, {
+			props: {
+				attachments,
+				initialIndex: 1,
+				loadPart: async (att: { contentType: string }) =>
+					new Blob(['x'], { type: att.contentType }),
+			},
+			attachTo: document.body,
+			global: { stubs: { Icon: true } },
+		});
+		await flush();
+		await nextTick();
+
+		// Mouse-click "next": the browser focuses the clicked chevron.
+		const nextChevron = document.body.querySelector<HTMLElement>(
+			'[aria-label="Next attachment"]'
+		)!;
+		nextChevron.focus();
+		nextChevron.click();
+		await flush();
+		await nextTick();
+		await flush();
+
+		// At the last attachment the clicked chevron unmounted (v-if="hasNext");
+		// focus must not escape to document.body — that would kill arrow-key
+		// navigation, break the focus trap, and leak triage shortcuts to the
+		// thread underneath.
+		const dialog = document.body.querySelector<HTMLElement>('[role="dialog"]')!;
+		expect(dialog.textContent).toContain('3 of 3');
+		expect(document.body.querySelector('[aria-label="Next attachment"]')).toBeNull();
+		expect(dialog.contains(document.activeElement)).toBe(true);
+
+		// Arrow-key navigation still works from the focused element.
+		(document.activeElement as HTMLElement).dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true })
+		);
+		await flush();
+		await nextTick();
+		expect(dialog.textContent).toContain('2 of 3');
+	});
+
 	it('closes on Escape, restores focus to the opener, and revokes the URL', async () => {
 		const w = mountLightbox(0);
 		await flush();
