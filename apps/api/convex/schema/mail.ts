@@ -402,6 +402,17 @@ mailThreads: defineTable({
 		askSummary: v.optional(v.string()),
 		// ISO date when the message states a deadline. LLM-refined only.
 		dueHint: v.optional(v.string()),
+		// Plain-prose scheduling request detected on the trigger message (no .ics
+		// attached — the calendar-invite path in PostboxInviteCard owns real
+		// invites). Drives the "Scheduling request — draft a reply?" chip in the
+		// reader. LLM-refined only; absent when nothing schedule-like was found.
+		meetingIntent: v.optional(v.object({
+			isScheduling: v.boolean(),
+			// Verbatim time phrases the sender proposed ("Tuesday afternoon").
+			proposedTimes: v.array(v.string()),
+			// What the meeting is about, if stated (<= 120 chars).
+			topic: v.optional(v.string()),
+		})),
 	})),
 	// Set when inbound ingest enqueues needs-reply classification; cleared once
 	// the classify action persists a result. Backs the reconcile cron that
