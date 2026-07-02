@@ -766,6 +766,9 @@ mailSignatures: defineTable({
 mailUserSettings: defineTable({
 	userId: v.string(),                       // BetterAuth user ID (owner)
 	autoAdvance: mailAutoAdvanceValidator,
+	// Inline compose autocomplete ("Writing suggestions"). Optional so existing
+	// rows read as undefined; the reader defaults it ON when the `ai` flag is on.
+	isWritingSuggestionsOn: v.optional(v.boolean()),
 	createdAt: v.number(),
 	updatedAt: v.number(),
 })

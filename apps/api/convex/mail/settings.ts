@@ -14,6 +14,7 @@
  * keyed by the session user rather than a mailbox id.
  */
 
+import { v } from 'convex/values';
 import { authedMutation, publicQuery } from '../lib/authedFunctions';
 import { mailAutoAdvanceValidator } from '../lib/convexValidators';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
@@ -30,12 +31,20 @@ export const get = publicQuery({
 			.withIndex('by_user', (q) => q.eq('userId', s.userId))
 			.first();
 		if (!row) return null;
-		return { autoAdvance: row.autoAdvance };
+		return {
+			autoAdvance: row.autoAdvance,
+			isWritingSuggestionsOn: row.isWritingSuggestionsOn,
+		};
 	},
 });
 
 export const update = authedMutation({
-	args: { autoAdvance: mailAutoAdvanceValidator },
+	// All fields optional so callers can patch a single preference (e.g. only the
+	// writing-suggestions toggle) without clobbering the others.
+	args: {
+		autoAdvance: v.optional(mailAutoAdvanceValidator),
+		isWritingSuggestionsOn: v.optional(v.boolean()),
+	},
 	// authz: self-scoped — upserts only the caller's own settings row (keyed
 	// by the session userId; no cross-user id is accepted).
 	handler: async (ctx, args) => {
@@ -46,13 +55,23 @@ export const update = authedMutation({
 			.withIndex('by_user', (q) => q.eq('userId', s.userId))
 			.first();
 		const now = Date.now();
+		const patch: {
+			autoAdvance?: (typeof args)['autoAdvance'];
+			isWritingSuggestionsOn?: boolean;
+		} = {};
+		if (args.autoAdvance !== undefined) patch.autoAdvance = args.autoAdvance;
+		if (args.isWritingSuggestionsOn !== undefined)
+			patch.isWritingSuggestionsOn = args.isWritingSuggestionsOn;
 		if (existing) {
-			await ctx.db.patch(existing._id, { autoAdvance: args.autoAdvance, updatedAt: now });
+			await ctx.db.patch(existing._id, { ...patch, updatedAt: now });
 			return existing._id;
 		}
 		return ctx.db.insert('mailUserSettings', {
+			// A fresh row needs a concrete autoAdvance; default it when the caller
+			// only set another preference.
+			autoAdvance: args.autoAdvance ?? 'next',
+			...patch,
 			userId: s.userId,
-			autoAdvance: args.autoAdvance,
 			createdAt: now,
 			updatedAt: now,
 		});
