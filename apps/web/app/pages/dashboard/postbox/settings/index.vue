@@ -194,6 +194,16 @@ async function handleDelete() {
 				</div>
 			</NuxtLink>
 			<NuxtLink
+				to="/dashboard/postbox/settings/snippets"
+				class="card !p-4 hover:bg-bg-surface flex items-center gap-3"
+			>
+				<Icon name="lucide:text-quote" class="w-5 h-5 text-text-secondary" />
+				<div>
+					<p class="font-medium text-sm">Snippets</p>
+					<p class="text-xs text-text-tertiary">Canned responses via "/"</p>
+				</div>
+			</NuxtLink>
+			<NuxtLink
 				v-if="isEnabled('ai')"
 				to="/dashboard/postbox/settings/writing-voice"
 				class="card !p-4 hover:bg-bg-surface flex items-center gap-3"
