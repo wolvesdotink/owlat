@@ -17,6 +17,11 @@
 import sanitizeHtml from 'sanitize-html';
 import { POSTBOX_SANITIZE_CONFIG } from '@owlat/shared/postboxSanitize';
 import {
+	detectTrackers,
+	stripTrackerPixels,
+	type TrackerDetection,
+} from '@owlat/shared/postboxTrackers';
+import {
 	adaptEmailHtml,
 	buildBaseStyle,
 	POSTBOX_DARK_PALETTE,
@@ -37,6 +42,11 @@ const props = defineProps<{
 	forceLight?: boolean;
 }>();
 
+const emit = defineEmits<{
+	/** Fires with the current tracker detection so the reader header can badge it. */
+	trackers: [detection: TrackerDetection];
+}>();
+
 const { isDark } = useAppTheme();
 
 // Scheme requested by the app: dark unless the app is light or the user
@@ -46,6 +56,9 @@ const appScheme = computed<PostboxRenderScheme>(() =>
 );
 
 const showImages = ref(false);
+// Escalation past "Show images": also load probable tracking pixels, which
+// otherwise stay stripped even after images are shown.
+const loadEverything = ref(false);
 const showQuoted = ref(false);
 const iframeRef = ref<HTMLIFrameElement | null>(null);
 
@@ -174,8 +187,28 @@ const adapted = computed(() => {
 // a paper card on the dark app background — even when the app is dark).
 const renderScheme = computed(() => adapted.value.scheme);
 
+// Tracking-pixel detection on the SANITIZED output only (never raw mail
+// HTML). Pure + fail-soft: a detector error reports zero trackers and the
+// reader behaves exactly as it did without this feature.
+const trackerDetection = computed<TrackerDetection>(() =>
+	detectTrackers(adapted.value.html)
+);
+const hasTrackers = computed(() => trackerDetection.value.pixelCount > 0);
+
+watch(
+	trackerDetection,
+	(detection) => emit('trackers', detection),
+	{ immediate: true }
+);
+
 const srcdoc = computed(() => {
-	const gated = gateImages(adapted.value.html, showImages.value);
+	let html = adapted.value.html;
+	// "Show images" loads real content but keeps probable tracking pixels
+	// stripped; "Load everything" is the explicit escalation past that.
+	if (showImages.value && !loadEverything.value && hasTrackers.value) {
+		html = stripTrackerPixels(html);
+	}
+	const gated = gateImages(html, showImages.value);
 	const linked = rewriteLinks(gated);
 	return `<!doctype html><html><head>${META_CSP}${buildBaseStyle(renderScheme.value)}</head><body>${linked || '(empty message)'}</body></html>`;
 });
@@ -200,7 +233,7 @@ watch(iframeRef, (iframe) => {
 });
 
 // Re-fit when the user toggles "Show quoted text" or shows images.
-watch([showQuoted, showImages], () => {
+watch([showQuoted, showImages, loadEverything], () => {
 	nextTick(resizeIframe);
 });
 </script>
@@ -215,7 +248,15 @@ watch([showQuoted, showImages], () => {
 			class="mb-2 px-3 py-2 rounded bg-bg-surface text-xs flex items-center justify-between"
 		>
 			<span class="text-text-secondary">
-				Images blocked to protect your privacy.
+				<template v-if="hasTrackers">
+					Images blocked —
+					{{ trackerDetection.pixelCount === 1
+						? '1 tracking pixel detected'
+						: `${trackerDetection.pixelCount} tracking pixels detected` }}.
+				</template>
+				<template v-else>
+					Images blocked to protect your privacy.
+				</template>
 			</span>
 			<button
 				type="button"
@@ -223,6 +264,27 @@ watch([showQuoted, showImages], () => {
 				@click="showImages = true"
 			>
 				Show images
+			</button>
+		</div>
+		<!-- After "Show images", probable tracking pixels stay stripped until
+		     the user explicitly escalates to loading everything. -->
+		<div
+			v-else-if="showImages && hasTrackers && !loadEverything"
+			class="mb-2 px-3 py-2 rounded bg-bg-surface text-xs flex items-center justify-between"
+		>
+			<span class="text-text-secondary inline-flex items-center gap-1.5">
+				<Icon name="lucide:shield" class="w-3.5 h-3.5 flex-shrink-0" />
+				{{ trackerDetection.pixelCount === 1
+					? '1 tracking pixel'
+					: `${trackerDetection.pixelCount} tracking pixels` }}
+				kept blocked.
+			</span>
+			<button
+				type="button"
+				class="text-text-tertiary font-medium hover:underline"
+				@click="loadEverything = true"
+			>
+				Load everything
 			</button>
 		</div>
 		<!-- Wrapper background matches the iframe scheme so dark-rendered mail
