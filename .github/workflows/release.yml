@@ -1,293 +1,144 @@
-name: Release
+name: Release (unified)
 
-# Tag-triggered release pipeline:
-#   1. Build + push each service image to GHCR, tagged :<version> and :latest
-#   2. Generate docker-compose-<version>.yml via scripts/gen-release-compose.sh
-#   3. Create a GitHub Release with auto-generated notes + the compose file attached
+# UNIFIED release: one tag builds and publishes EVERYTHING onto a single GitHub
+# Release — the server service images (GHCR) AND the desktop apps
+# (macOS / Windows / Linux) + updater manifest.
 #
-# Trigger: push a tag like v0.2.0
 #   git tag v0.2.0 && git push origin v0.2.0
+#
+# For a single-target fix release, use the dedicated pipelines instead:
+#   git tag server-v0.2.1  && git push origin server-v0.2.1    # server images only
+#   git tag desktop-v0.2.1 && git push origin desktop-v0.2.1    # desktop apps only
+#
+# Coordination: this workflow creates ONE draft Release, the reusable server and
+# desktop cores upload their assets to it in parallel, then `publish` flips it
+# live. The desktop app's own version comes from apps/desktop/src-tauri (Cargo /
+# tauri.conf) — keep it in step with the tag before cutting a unified release.
 
 on:
   push:
     tags:
       - 'v*.*.*'
 
-# Required for:
-#   contents: write   — create GitHub Release + upload artifacts
-#   packages: write   — push images to GHCR
-#   id-token: write   — OIDC token for keyless cosign signing + attestations
-#   attestations: write — publish GitHub Artifact Attestations (SLSA provenance)
 permissions:
-  contents: write
-  packages: write
-  id-token: write
+  contents: write # create the Release + upload assets
+  packages: write # push images to GHCR
+  id-token: write # OIDC for cosign keyless signing + attestations
   attestations: write
 
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
-env:
-  REGISTRY: ghcr.io
-  IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}
-
-# S10 / Phase 4.1: supply-chain defence.
-#
-# All third-party actions are currently pinned to major version tags
-# (e.g. @v5). Dependabot (.github/dependabot.yml) watches the
-# `github-actions` ecosystem and opens PRs when patch/minor releases ship,
-# so we receive fixes without manually tracking upstream.
-#
-# As defence-in-depth against a compromised action, every job starts with
-# `step-security/harden-runner` in `audit` mode. That baselines expected
-# outbound traffic and surfaces anomalies in the run summary. Flip the
-# mode to `block` once we've captured a clean egress allowlist.
-#
-# A future PR will ratchet each `@v<N>` reference to a pinned
-# `@<sha>  # v<N>.<minor>.<patch>` via the `pinact` tool — the pattern is
-# documented here so contributors understand why tags are current.
-
 jobs:
-  # ── Resolve version + build args ─────────────────────────────────────────────
   resolve:
-    name: Resolve version metadata
+    name: Resolve version
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.meta.outputs.version }}
-      git_sha: ${{ steps.meta.outputs.git_sha }}
-      build_date: ${{ steps.meta.outputs.build_date }}
     steps:
       - uses: step-security/harden-runner@v2
         with:
           egress-policy: audit
-
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-
       - id: meta
-        name: Compute version metadata
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          GIT_SHA=$(git rev-parse --short HEAD)
-          BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "git_sha=${GIT_SHA}" >> "$GITHUB_OUTPUT"
-          echo "build_date=${BUILD_DATE}" >> "$GITHUB_OUTPUT"
-          echo "Resolved: VERSION=${VERSION} GIT_SHA=${GIT_SHA} BUILD_DATE=${BUILD_DATE}"
+          echo "Resolved unified release VERSION=${VERSION}"
 
-  # ── Build + push each image in parallel ──────────────────────────────────────
-  build-and-push:
-    name: Build & push ${{ matrix.name }}
+  # Create ONE draft Release up front; both cores attach their assets to it.
+  create-release:
+    name: Create draft Release
     needs: resolve
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: web
-            dockerfile: apps/web/Dockerfile
-            context: .
-          - name: mta
-            dockerfile: apps/mta/Dockerfile
-            context: .
-          - name: updater
-            dockerfile: apps/updater/Dockerfile
-            # Monorepo-root context: the updater's `catalog:` versions only
-            # resolve via a bun workspace install (see its Dockerfile).
-            context: .
-          - name: convex-deploy
-            dockerfile: docker/convex-deploy.Dockerfile
-            context: .
-          - name: imap
-            dockerfile: apps/imap/Dockerfile
-            context: .
-          - name: mail-sync
-            dockerfile: apps/mail-sync/Dockerfile
-            context: .
-          - name: code-worker
-            dockerfile: apps/code-worker/Dockerfile
-            context: .
-          - name: setup
-            dockerfile: apps/setup-cli/Dockerfile
-            context: .
+    outputs:
+      release_id: ${{ steps.create.outputs.id }}
     steps:
       - uses: step-security/harden-runner@v2
         with:
           egress-policy: audit
-
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v4
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v6
-        with:
-          images: ${{ env.IMAGE_PREFIX }}/${{ matrix.name }}
-          tags: |
-            type=semver,pattern={{version}},value=v${{ needs.resolve.outputs.version }}
-            type=semver,pattern={{major}}.{{minor}},value=v${{ needs.resolve.outputs.version }}
-            type=raw,value=latest
-
-      - name: Build and push
-        id: build
-        uses: docker/build-push-action@v7
-        with:
-          context: ${{ matrix.context }}
-          file: ${{ matrix.dockerfile }}
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          platforms: linux/amd64
-          cache-from: type=gha,scope=release-${{ matrix.name }}
-          cache-to: type=gha,mode=max,scope=release-${{ matrix.name }}
-          provenance: mode=max
-          sbom: true
-          build-args: |
-            OWLAT_VERSION=${{ needs.resolve.outputs.version }}
-            OWLAT_GIT_SHA=${{ needs.resolve.outputs.git_sha }}
-            OWLAT_BUILD_DATE=${{ needs.resolve.outputs.build_date }}
-
-      # S16 / Phase 1.2: Sigstore keyless sign the pushed image digest via
-      # GitHub OIDC. Verification (`cosign verify --certificate-identity-regexp`)
-      # then proves the image came from this repo's release workflow.
-      - name: Install cosign
-        uses: sigstore/cosign-installer@v3
-
-      - name: Sign published image digest (cosign keyless)
-        env:
-          DIGEST: ${{ steps.build.outputs.digest }}
-          TAGS: ${{ steps.meta.outputs.tags }}
-          COSIGN_EXPERIMENTAL: "1"
-        run: |
-          set -euo pipefail
-          for tag in $TAGS; do
-            # Sign the concrete digest, not the mutable tag (sign-once guarantee).
-            cosign sign --yes "${tag%:*}@${DIGEST}"
-          done
-
-      # Publish an SLSA provenance attestation pinned to the image digest.
-      # Consumers verify with `gh attestation verify --repo wolvesdotink/owlat`.
-      - name: Attest build provenance
-        uses: actions/attest-build-provenance@v4
-        with:
-          subject-name: ${{ env.IMAGE_PREFIX }}/${{ matrix.name }}
-          subject-digest: ${{ steps.build.outputs.digest }}
-          push-to-registry: true
-
-  # ── Generate pinned compose template + create Release ────────────────────────
-  create-release:
-    name: Create GitHub Release
-    needs: [resolve, build-and-push]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: step-security/harden-runner@v2
-        with:
-          egress-policy: audit
-
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-
-      - name: Generate pinned docker-compose
-        run: |
-          bash scripts/gen-release-compose.sh "${{ needs.resolve.outputs.version }}"
-          ls -lh "docker-compose-${{ needs.resolve.outputs.version }}.yml"
-
-      - name: Verify compose file is parseable
-        run: |
-          cp "docker-compose-${{ needs.resolve.outputs.version }}.yml" docker-compose.verify.yml
-          docker compose -f docker-compose.verify.yml config --quiet
-        env:
-          # Supply placeholder envs so compose parses
-          OWLAT_VERSION: ${{ needs.resolve.outputs.version }}
-          CONVEX_BACKEND_VERSION: placeholder
-          INSTANCE_SECRET: placeholder
-          MTA_API_KEY: placeholder
-          MTA_WEBHOOK_SECRET: placeholder
-
-      # S2 / Phase 1.3: publish a SHA256 manifest alongside the compose file
-      # so the in-app updater (apps/web/server/api/system/update.post.ts) can
-      # cryptographically verify the download.
-      - name: Generate compose SHA256 manifest
-        run: |
-          cd "$(dirname "docker-compose-${{ needs.resolve.outputs.version }}.yml")"
-          sha256sum "docker-compose-${{ needs.resolve.outputs.version }}.yml" \
-            > "docker-compose-${{ needs.resolve.outputs.version }}.yml.sha256"
-          cat "docker-compose-${{ needs.resolve.outputs.version }}.yml.sha256"
-
-      # Attest the compose file itself so consumers can verify it via
-      # `gh attestation verify docker-compose-<v>.yml --repo wolvesdotink/owlat`.
-      - name: Attest compose artifact provenance
-        uses: actions/attest-build-provenance@v4
-        with:
-          subject-path: |
-            docker-compose-${{ needs.resolve.outputs.version }}.yml
-            docker-compose-${{ needs.resolve.outputs.version }}.yml.sha256
-
-      - name: Create GitHub Release
+      - id: create
         uses: softprops/action-gh-release@v3
         with:
           name: "v${{ needs.resolve.outputs.version }}"
           tag_name: ${{ github.ref_name }}
-          draft: false
+          draft: true # published by the `publish` job once both cores succeed
           prerelease: ${{ contains(needs.resolve.outputs.version, '-') }}
           generate_release_notes: true
           body: |
             ## Owlat v${{ needs.resolve.outputs.version }}
 
-            **Upgrade self-hosted instance:**
+            ### Self-hosted server
 
-            From the admin dashboard → **Settings → System & Updates** → click "Update now".
-
-            **CLI upgrade:**
+            From the admin dashboard → **Settings → System & Updates** → "Update now", or:
 
             ```sh
             owlat upgrade --version ${{ needs.resolve.outputs.version }}
             ```
 
-            **Manual upgrade:**
+            Manual upgrade (fetch compose + SHA256, verify, apply):
 
             ```sh
-            # Fetch compose + SHA256 manifest, verify, then apply.
             curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/docker-compose-${{ needs.resolve.outputs.version }}.yml -o docker-compose.yml
             curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/docker-compose-${{ needs.resolve.outputs.version }}.yml.sha256 -o docker-compose.yml.sha256
-            # Verify before applying — refuse to `compose up` on a tampered artifact.
             sha256sum -c <(sed "s|docker-compose-${{ needs.resolve.outputs.version }}.yml|docker-compose.yml|" docker-compose.yml.sha256)
-            docker compose pull
-            docker compose up -d
+            docker compose pull && docker compose up -d
             docker compose --profile deploy run --rm convex-deploy
             ```
 
-            **Supply-chain verification (recommended):**
+            ### Desktop app
+
+            Download the installer for your OS from the assets below (macOS `.dmg`,
+            Windows `.msi`/`.exe`, Linux `.AppImage`/`.deb`). Existing installs
+            auto-update to this version.
+
+            ### Supply-chain verification (recommended)
 
             ```sh
-            # Verify image signature + provenance (Sigstore / cosign)
             cosign verify ghcr.io/${{ github.repository_owner }}/web:${{ needs.resolve.outputs.version }} \
-              --certificate-identity-regexp "https://github.com/${{ github.repository }}/.github/workflows/release.yml@.*" \
+              --certificate-identity-regexp "https://github.com/${{ github.repository }}/.github/workflows/.*@.*" \
               --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
-
-            # Verify compose file attestation (GitHub CLI)
             gh attestation verify docker-compose.yml --repo ${{ github.repository }}
             ```
 
-            **Images published:**
-            - `ghcr.io/${{ github.repository_owner }}/web:${{ needs.resolve.outputs.version }}`
-            - `ghcr.io/${{ github.repository_owner }}/mta:${{ needs.resolve.outputs.version }}`
-            - `ghcr.io/${{ github.repository_owner }}/updater:${{ needs.resolve.outputs.version }}`
-            - `ghcr.io/${{ github.repository_owner }}/convex-deploy:${{ needs.resolve.outputs.version }}`
-          files: |
-            docker-compose-${{ needs.resolve.outputs.version }}.yml
-            docker-compose-${{ needs.resolve.outputs.version }}.yml.sha256
+            **Images:** `web`, `mta`, `updater`, `convex-deploy`, `imap`, `mail-sync`, `code-worker`, `setup` — all `ghcr.io/${{ github.repository_owner }}/<name>:${{ needs.resolve.outputs.version }}`
+
+  server:
+    name: Server images
+    needs: [resolve, create-release]
+    uses: ./.github/workflows/_server-build.yml
+    with:
+      version: ${{ needs.resolve.outputs.version }}
+      tag: ${{ github.ref_name }}
+    secrets: inherit
+
+  desktop:
+    name: Desktop apps
+    needs: [resolve, create-release]
+    uses: ./.github/workflows/_desktop-build.yml
+    with:
+      tag: ${{ github.ref_name }}
+      release_id: ${{ needs.create-release.outputs.release_id }}
+    secrets: inherit
+
+  publish:
+    name: Publish Release
+    needs: [resolve, server, desktop]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+      - name: Publish (flip draft → live)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ "$VERSION" == *-* ]]; then
+            gh release edit "$TAG" --repo "${{ github.repository }}" --draft=false --prerelease
+          else
+            gh release edit "$TAG" --repo "${{ github.repository }}" --draft=false --latest
+          fi
+          echo "Published $TAG (server images + desktop apps)."
