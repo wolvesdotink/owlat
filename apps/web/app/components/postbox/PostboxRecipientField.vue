@@ -124,8 +124,9 @@ function onBlur() {
 			<span
 				v-for="(addr, idx) in modelValue"
 				:key="addr"
-				class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-bg-surface text-xs"
+				class="inline-flex items-center gap-1 pl-0.5 pr-2 py-0.5 rounded-full bg-bg-surface text-xs"
 			>
+				<UiAvatar :email="addr" deterministic-color size="xs" class="flex-shrink-0" aria-hidden="true" />
 				{{ addr }}
 				<button
 					type="button"
@@ -156,12 +157,20 @@ function onBlur() {
 				v-for="(s, idx) in suggestions"
 				:key="s.email"
 				type="button"
-				class="w-full text-left px-3 py-1.5 text-sm hover:bg-bg-surface flex items-baseline justify-between gap-2"
+				class="w-full text-left px-3 py-1.5 text-sm hover:bg-bg-surface flex items-center gap-2"
 				:class="idx === highlightIdx ? 'bg-bg-surface' : ''"
 				@mouseenter="highlightIdx = idx"
 				@mousedown.prevent
 				@click="addRecipient(s.email)"
 			>
+				<UiAvatar
+					:name="s.displayName"
+					:email="s.email"
+					deterministic-color
+					size="sm"
+					class="flex-shrink-0"
+					aria-hidden="true"
+				/>
 				<span class="truncate">
 					<span v-if="s.displayName" class="font-medium">{{ s.displayName }}</span>
 					<span v-if="s.displayName" class="text-text-tertiary ml-1">&lt;{{ s.email }}&gt;</span>

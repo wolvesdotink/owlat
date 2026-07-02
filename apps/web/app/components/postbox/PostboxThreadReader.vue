@@ -566,11 +566,14 @@ async function handleAttachment(
 					class="w-full flex items-center gap-3 px-3 py-2 rounded border border-border-subtle bg-bg-surface text-left hover:bg-bg-elevated"
 					@click="toggleExpanded(msg._id)"
 				>
-					<div
-						class="w-7 h-7 rounded-full bg-brand-subtle text-brand flex items-center justify-center text-xs font-semibold flex-shrink-0"
-					>
-						{{ (msg.fromName || msg.fromAddress).charAt(0).toUpperCase() }}
-					</div>
+					<UiAvatar
+						:name="msg.fromName"
+						:email="msg.fromAddress"
+						deterministic-color
+						size="md"
+						class="flex-shrink-0"
+						aria-hidden="true"
+					/>
 					<div class="flex-1 min-w-0">
 						<p class="text-sm truncate">
 							<span class="font-medium">{{ msg.fromName || msg.fromAddress }}</span>
@@ -589,11 +592,14 @@ async function handleAttachment(
 					class="border border-border-subtle rounded bg-bg-surface px-4 py-3"
 				>
 					<header class="flex items-start gap-3">
-						<div
-							class="w-9 h-9 rounded-full bg-brand-subtle text-brand flex items-center justify-center font-semibold flex-shrink-0"
-						>
-							{{ (msg.fromName || msg.fromAddress).charAt(0).toUpperCase() }}
-						</div>
+						<UiAvatar
+							:name="msg.fromName"
+							:email="msg.fromAddress"
+							deterministic-color
+							size="lg"
+							class="flex-shrink-0"
+							aria-hidden="true"
+						/>
 						<div class="flex-1 min-w-0">
 							<div class="flex items-baseline justify-between gap-3">
 								<div>

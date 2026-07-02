@@ -346,6 +346,14 @@ const {
 							class="w-3 h-3"
 						/>
 					</button>
+					<UiAvatar
+						:name="msg.fromName"
+						:email="msg.fromAddress"
+						deterministic-color
+						size="sm"
+						class="flex-shrink-0"
+						aria-hidden="true"
+					/>
 					<div class="flex-1 min-w-0">
 						<div class="flex items-baseline justify-between gap-3">
 							<span
