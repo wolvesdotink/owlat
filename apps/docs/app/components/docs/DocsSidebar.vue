@@ -113,6 +113,7 @@ const sidebarConfig: SidebarGroup[] = [
 		section: 'guide',
 		items: [
 			{ label: 'Postbox', to: '/guide/postbox' },
+			{ label: 'Reply Queue', to: '/guide/reply-queue' },
 			{ label: 'Migrate from Google', to: '/guide/migrate-from-google' },
 			{ label: 'Connect External Mailbox', to: '/guide/postbox#connect-an-external-mailbox' },
 		],

@@ -413,7 +413,11 @@ mailThreads: defineTable({
 	.index('by_mailbox_and_last_message', ['mailboxId', 'lastMessageAt'])
 	.index('by_mailbox_and_subject', ['mailboxId', 'normalizedSubject'])
 	// Backs the needs-reply reconcile cron — range scan on needsReplyPendingAt.
-	.index('by_needs_reply_pending', ['needsReplyPendingAt']),
+	.index('by_needs_reply_pending', ['needsReplyPendingAt'])
+	// Backs the Reply Queue list — flagged threads per mailbox without a
+	// full-table scan (undefined needsReply sorts before every number, so the
+	// query lower-bounds detectedAt with gt(0), like the pending sweep above).
+	.index('by_mailbox_needs_reply', ['mailboxId', 'needsReply.detectedAt']),
 
 // Gmail-style labels (orthogonal to folders).
 mailLabels: defineTable({

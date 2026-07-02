@@ -13,8 +13,11 @@
  */
 
 import sanitizeHtml from 'sanitize-html';
+import { api } from '@owlat/api';
+import type { Id } from '@owlat/api/dataModel';
 import { POSTBOX_SANITIZE_CONFIG } from '@owlat/shared/postboxSanitize';
-import { escapeHtml } from '@owlat/shared/html';
+import { escapeHtml, escapeHtmlWithBreaks } from '@owlat/shared/html';
+import type { ComposerSpec } from '~/composables/postbox/usePostboxComposerStack';
 
 interface SplitResult {
 	fresh: string;
@@ -68,6 +71,64 @@ export function buildQuotedReply(msg: QuoteSource): string {
 		`<blockquote class="gmail_quote" style="margin:0 0 0 .8ex;border-left:1px solid #ccc;padding-left:1ex;color:#555;">` +
 		`${originalAsHtml(msg)}</blockquote></div>`
 	);
+}
+
+/** Minimal message shape needed to resolve and quote an original for reply. */
+export interface ReplyQuoteTarget extends QuoteSource {
+	_id: string;
+	subject: string;
+}
+
+/**
+ * Resolve the original body for quoting. Messages over ~64KB store their body
+ * in blob storage with empty inline fields, so a reply/forward would quote an
+ * empty original — fetch the full body in that case (the same source
+ * PostboxMessageBody renders from). Falls back to the input on any error so
+ * the composer always opens. Shared by the thread reader and the Reply Queue.
+ */
+export async function resolveBodyFields<T extends { _id: string } & QuoteSource>(
+	t: T
+): Promise<T> {
+	if (t.htmlBodyInline || t.textBodyInline) return t;
+	try {
+		const data = await requireConvex().query(api.mail.mailbox.getMessageBody, {
+			messageId: t._id as Id<'mailMessages'>,
+		});
+		if (!data) return t;
+		let html = data.htmlInline ?? undefined;
+		let text = data.textInline ?? undefined;
+		if (!html && data.htmlUrl) html = await (await fetch(data.htmlUrl)).text();
+		else if (!text && data.textUrl) text = await (await fetch(data.textUrl)).text();
+		return { ...t, htmlBodyInline: html, textBodyInline: text };
+	} catch {
+		return t;
+	}
+}
+
+/** "Re: " subject prefix guard — never stacks a second "Re:". */
+export function replySubject(subject: string): string {
+	return subject.match(/^re\s*:\s*/i) ? subject : `Re: ${subject}`;
+}
+
+/**
+ * The one-time compose seed for a reply to `target` (whose body should
+ * already be resolved via resolveBodyFields): an optional escaped lead
+ * paragraph (e.g. an AI suggestion) above the sanitized quoted original.
+ * Shared by the thread reader's reply paths and the Reply Queue.
+ */
+export function buildReplySpec(
+	mailboxId: Id<'mailboxes'>,
+	target: ReplyQuoteTarget,
+	leadText = ''
+): Omit<ComposerSpec, 'id' | 'minimized'> {
+	const lead = leadText ? `<p>${escapeHtmlWithBreaks(leadText)}</p>` : '';
+	return {
+		mailboxId,
+		inReplyToMessageId: target._id as Id<'mailMessages'>,
+		prefillTo: [target.fromAddress],
+		prefillSubject: replySubject(target.subject),
+		prefillBodyHtml: `${lead}${buildQuotedReply(target)}`,
+	};
 }
 
 /** A "Forwarded message" header block followed by the original body. */
