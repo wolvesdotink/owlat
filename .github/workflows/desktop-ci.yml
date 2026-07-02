@@ -21,8 +21,12 @@ concurrency:
 
 jobs:
   rust:
-    name: Rust build + tests
-    runs-on: ubuntu-22.04
+    name: Rust build + tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-14, windows-latest]
     steps:
       - uses: step-security/harden-runner@v2
         with:
@@ -33,10 +37,18 @@ jobs:
       # Linux system deps required by Tauri's webview + tray. perl/make (needed
       # by the vendored OpenSSL/libssh2 build for `ssh2`) are preinstalled.
       - name: Install Linux dependencies
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev \
             librsvg2-dev patchelf libssl-dev
+
+      # The vendored OpenSSL/libssh2 build for `ssh2` needs an assembler (NASM)
+      # on Windows; Strawberry Perl is preinstalled on windows-latest. The macOS
+      # and Linux images already ship perl/make and a usable assembler.
+      - name: Install Windows build dependencies (NASM)
+        if: runner.os == 'Windows'
+        uses: ilammy/setup-nasm@v1
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -55,7 +67,10 @@ jobs:
       # `tauri::generate_context!()` embeds the frontend dist at compile time, so
       # the path must exist. A placeholder is enough for a Rust-only gate (the
       # real SPA bundle is built by tauri-action in the release workflow).
+      # `shell: bash` keeps mkdir -p / the redirect working under Git Bash on
+      # windows-latest (bash is preinstalled) instead of PowerShell.
       - name: Stub frontend dist
+        shell: bash
         run: |
           mkdir -p apps/web/.output/public
           echo '<!doctype html><title>ci</title>' > apps/web/.output/public/index.html
