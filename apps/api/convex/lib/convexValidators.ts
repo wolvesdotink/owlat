@@ -286,6 +286,15 @@ export const mailMessageAttachmentValidator = v.object({
 	partIndex: v.string(),
 });
 
+// Parsed List-Unsubscribe / List-Unsubscribe-Post target (mailMessages.unsubscribe).
+// Parsed ONCE at ingest from the raw header block (see @owlat/shared/listUnsubscribe)
+// so the reader can render the Unsubscribe chip without re-opening the raw .eml.
+export const mailUnsubscribeValidator = v.object({
+	httpUrl: v.optional(v.string()),
+	mailtoUrl: v.optional(v.string()),
+	oneClick: v.boolean(),
+});
+
 // Compose-draft attachment referencing Convex storage (mailDrafts.attachments)
 export const mailDraftAttachmentValidator = v.object({
 	storageId: v.id('_storage'),
