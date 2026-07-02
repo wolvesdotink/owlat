@@ -85,12 +85,28 @@ async function loadActivePart() {
 
 watch(activeIndex, () => void loadActivePart(), { immediate: true });
 
+// The chevrons are v-if'd on hasPrev/hasNext, so the button that was just
+// clicked can unmount at a boundary — the browser then drops focus to
+// document.body, which kills arrow-key navigation (keydown listener is on the
+// container), escapes the focus trap, and lets the reader's triage shortcuts
+// fire underneath the open overlay. Pull focus back into the dialog whenever
+// navigation leaves it outside.
+async function keepFocusInDialog() {
+	await nextTick();
+	const el = containerRef.value;
+	if (el && !el.contains(document.activeElement)) el.focus();
+}
+
 function goPrev() {
-	if (hasPrev.value) activeIndex.value -= 1;
+	if (!hasPrev.value) return;
+	activeIndex.value -= 1;
+	void keepFocusInDialog();
 }
 
 function goNext() {
-	if (hasNext.value) activeIndex.value += 1;
+	if (!hasNext.value) return;
+	activeIndex.value += 1;
+	void keepFocusInDialog();
 }
 
 // Drives useModalFocus: flipping it off restores focus to the opener BEFORE
