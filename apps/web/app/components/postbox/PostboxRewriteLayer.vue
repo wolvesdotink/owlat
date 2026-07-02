@@ -24,7 +24,7 @@ defineProps<{
 		:pill-style="controller.pillStyle.value"
 		:loading="controller.rewrite.isLoading()"
 		:active-intent="controller.rewrite.activeIntent.value"
-		:languages="controller.languages"
+		:languages="controller.languages.value"
 		@select="controller.onSelect"
 	/>
 	<!-- Original-vs-rewritten preview; Apply/Discard only, never auto-applied. -->
