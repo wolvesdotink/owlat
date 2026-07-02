@@ -25,7 +25,7 @@ export function usePostboxSettings() {
 	// Default ON: an unset preference means "use suggestions" — the `ai` flag is
 	// the real on/off switch, this is a user opt-out within an AI-enabled deploy.
 	const writingSuggestions = computed<boolean>(
-		() => data.value?.writingSuggestions ?? true
+		() => data.value?.isWritingSuggestionsOn ?? true
 	);
 
 	const updateOp = useBackendOperation(api.mail.settings.update, {
@@ -37,7 +37,7 @@ export function usePostboxSettings() {
 	}
 
 	async function setWritingSuggestions(enabled: boolean) {
-		await updateOp.run({ writingSuggestions: enabled });
+		await updateOp.run({ isWritingSuggestionsOn: enabled });
 	}
 
 	return {

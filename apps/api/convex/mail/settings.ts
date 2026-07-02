@@ -33,7 +33,7 @@ export const get = publicQuery({
 		if (!row) return null;
 		return {
 			autoAdvance: row.autoAdvance,
-			writingSuggestions: row.writingSuggestions,
+			isWritingSuggestionsOn: row.isWritingSuggestionsOn,
 		};
 	},
 });
@@ -43,7 +43,7 @@ export const update = authedMutation({
 	// writing-suggestions toggle) without clobbering the others.
 	args: {
 		autoAdvance: v.optional(mailAutoAdvanceValidator),
-		writingSuggestions: v.optional(v.boolean()),
+		isWritingSuggestionsOn: v.optional(v.boolean()),
 	},
 	// authz: self-scoped — upserts only the caller's own settings row (keyed
 	// by the session userId; no cross-user id is accepted).
@@ -57,11 +57,11 @@ export const update = authedMutation({
 		const now = Date.now();
 		const patch: {
 			autoAdvance?: (typeof args)['autoAdvance'];
-			writingSuggestions?: boolean;
+			isWritingSuggestionsOn?: boolean;
 		} = {};
 		if (args.autoAdvance !== undefined) patch.autoAdvance = args.autoAdvance;
-		if (args.writingSuggestions !== undefined)
-			patch.writingSuggestions = args.writingSuggestions;
+		if (args.isWritingSuggestionsOn !== undefined)
+			patch.isWritingSuggestionsOn = args.isWritingSuggestionsOn;
 		if (existing) {
 			await ctx.db.patch(existing._id, { ...patch, updatedAt: now });
 			return existing._id;
