@@ -12,6 +12,8 @@
  *      bypass) under a sandboxed-but-not-script-free iframe.
  *   4. External images are gated behind a "Show images" button
  *   5. All <a> rewritten to target=_blank rel=noreferrer noopener
+ *   6. Link transparency: real-destination-host tooltips, inline markers on
+ *      text-vs-href host mismatches, tracking query params stripped
  */
 
 import sanitizeHtml from 'sanitize-html';
@@ -22,6 +24,7 @@ import {
 	trackerPixelLabel,
 	type TrackerDetection,
 } from '@owlat/shared/postboxTrackers';
+import { applyLinkTransparency } from '@owlat/shared/postboxLinkTransparency';
 import {
 	adaptEmailHtml,
 	buildBaseStyle,
@@ -210,7 +213,9 @@ const srcdoc = computed(() => {
 		html = stripTrackerPixels(html);
 	}
 	const gated = gateImages(html, showImages.value);
-	const linked = rewriteLinks(gated);
+	// Link transparency (real-host tooltips, phish-mismatch markers, tracking
+	// param stripping) runs on sanitized output only and fails soft to a no-op.
+	const linked = rewriteLinks(applyLinkTransparency(gated));
 	return `<!doctype html><html><head>${META_CSP}${buildBaseStyle(renderScheme.value, adapted.value.kind)}</head><body>${linked || '(empty message)'}</body></html>`;
 });
 
