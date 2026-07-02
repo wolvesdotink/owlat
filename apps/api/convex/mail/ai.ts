@@ -275,7 +275,9 @@ export function buildRewritePrompt(args: {
 // authz: org membership enforced by authedAction; the `ai` flag + per-user rate
 // limit enforced by aiGate.assertAiAllowed. Operates on the caller's own draft
 // text; mailboxId (if given) is only used to fetch the caller's voice guidance,
-// which itself enforces ownership + the ai flag.
+// and ONLY after mail.mailbox.get proves the caller owns that mailbox — a
+// foreign mailboxId resolves to null and yields no guidance (never leaks another
+// user's learned voice / example phrasings).
 export const rewriteSelection = authedAction({
 	args: {
 		selection: v.string(),
@@ -297,11 +299,20 @@ export const rewriteSelection = authedAction({
 		let voiceGuidance: string | null = null;
 		if (args.mailboxId) {
 			try {
-				const res = await ctx.runMutation(
-					internal.mail.voiceProfile.getGuidanceForMailbox,
-					{ mailboxId: args.mailboxId }
-				);
-				voiceGuidance = res.guidance;
+				// Prove the caller owns this mailbox before touching its voice
+				// profile — mail.mailbox.get returns null for a non-owner, so a
+				// foreign mailboxId can never fold another user's private voice
+				// guidance into the rewrite.
+				const mailbox = await ctx.runQuery(api.mail.mailbox.get, {
+					mailboxId: args.mailboxId,
+				});
+				if (mailbox) {
+					const res = await ctx.runMutation(
+						internal.mail.voiceProfile.getGuidanceForMailbox,
+						{ mailboxId: args.mailboxId }
+					);
+					voiceGuidance = res.guidance;
+				}
 			} catch {
 				voiceGuidance = null;
 			}
