@@ -7,6 +7,7 @@ const props = defineProps<{
 	mailboxId: Id<'mailboxes'>;
 	messages: Array<{
 		_id: string;
+		threadId?: string;
 		fromAddress: string;
 		fromName?: string;
 		subject: string;
@@ -16,6 +17,10 @@ const props = defineProps<{
 		flagFlagged: boolean;
 		hasAttachments: boolean;
 		snoozedUntil?: number;
+		// Thread follow-up watch state (mail/followUps.ts): `watched` marks the
+		// sent message the watch points at; `dueAt` means the deadline passed
+		// with no reply ("No reply yet" chip).
+		followUp?: { remindAt: number; dueAt?: number; watched: boolean };
 	}>;
 	loading: boolean;
 	folderRole: string;
@@ -152,6 +157,16 @@ const movableFolders = computed(() =>
 
 const snoozeOp = useBackendOperation(api.mail.snooze.snooze, { label: 'Snooze' });
 const moveOp = useBackendOperation(api.mail.messageActions.move, { label: 'Move message' });
+
+// Follow-up chip on a watched row: click cancels the armed watch (or
+// dismisses the due "No reply yet" indicator). Ownership-checked server-side.
+const cancelFollowUpOp = useBackendOperation(api.mail.followUps.cancel, {
+	label: 'Cancel reply reminder',
+});
+function cancelFollowUp(msg: { threadId?: string }) {
+	if (!msg.threadId) return;
+	void cancelFollowUpOp.run({ threadId: msg.threadId as Id<'mailThreads'> });
+}
 
 async function snoozeFocused(until: number) {
 	const id = snoozeTargetId.value;
@@ -399,6 +414,29 @@ watch(
 								name="lucide:paperclip"
 								class="w-3.5 h-3.5 text-text-tertiary"
 							/>
+							<!-- Follow-up watch chips: "No reply yet" once due, an armed
+							     reminder pill otherwise. Click cancels/dismisses. -->
+							<button
+								v-if="msg.followUp?.watched && msg.followUp.dueAt"
+								type="button"
+								class="inline-flex items-center gap-1 px-1.5 py-px rounded-full bg-warning/10 text-warning text-[10px] font-medium hover:bg-warning/20 flex-shrink-0"
+								title="No reply yet — click to dismiss the reminder"
+								aria-label="No reply yet — dismiss reminder"
+								@click="rowAction($event, () => cancelFollowUp(msg))"
+							>
+								<Icon name="lucide:alarm-clock" class="w-3 h-3" />
+								No reply yet
+							</button>
+							<button
+								v-else-if="msg.followUp?.watched"
+								type="button"
+								class="inline-flex items-center gap-1 px-1.5 py-px rounded-full bg-brand/10 text-brand text-[10px] font-medium hover:bg-brand/20 flex-shrink-0"
+								:title="`Reply reminder ${new Date(msg.followUp.remindAt).toLocaleString()} — click to cancel`"
+								aria-label="Cancel reply reminder"
+								@click="rowAction($event, () => cancelFollowUp(msg))"
+							>
+								<Icon name="lucide:alarm-clock" class="w-3 h-3" />
+							</button>
 							<p
 								class="truncate text-sm flex-1"
 								:class="msg.flagSeen ? 'text-text-secondary' : 'font-medium text-text-primary'"
