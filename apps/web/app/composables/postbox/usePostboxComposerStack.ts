@@ -23,6 +23,32 @@ export interface ComposerSpec {
 	minimized: boolean;
 }
 
+export type InlineComposeKind = 'reply' | 'replyAll' | 'forward';
+
+/**
+ * Seed for the reader's inline reply box (PostboxInlineReply) — the same
+ * one-time compose seed as a popup, minus the stack bookkeeping. `key` changes
+ * whenever the seed changes so the inline composer remounts and re-seeds.
+ */
+export interface InlineComposeSpec extends Omit<ComposerSpec, 'id' | 'minimized'> {
+	key: string;
+	kind: InlineComposeKind;
+}
+
+/**
+ * Live field values handed up when an inline composer is promoted to a popup.
+ * The popup reopens the SAME draft (autosave was flushed first), and the live
+ * values seed it so nothing typed in the last debounce window flashes stale.
+ */
+export interface ComposerPromotePayload {
+	draftId: Id<'mailDrafts'> | null;
+	toAddresses: string[];
+	ccAddresses: string[];
+	bccAddresses: string[];
+	subject: string;
+	bodyHtml: string;
+}
+
 const MAX_COMPOSERS = 3;
 
 export function usePostboxComposerStack() {

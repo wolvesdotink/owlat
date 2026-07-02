@@ -17,11 +17,11 @@ import {
  * shared constant and must NOT re-declare its own 25 MB literal / "25 MB" copy.
  */
 const composeSrc = readFileSync(
-	resolve(__dirname, '../usePostboxCompose.ts'),
+	resolve(__dirname, '../usePostboxComposeAttachments.ts'),
 	'utf8'
 );
 
-describe('usePostboxCompose attachment cap', () => {
+describe('usePostboxComposeAttachments attachment cap', () => {
 	it('imports MAX_ATTACHMENT_BYTES from the shared attachments module', () => {
 		expect(composeSrc).toMatch(
 			/import\s*\{[^}]*\bMAX_ATTACHMENT_BYTES\b[^}]*\}\s*from\s*'@owlat\/shared\/attachments'/
