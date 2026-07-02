@@ -30,12 +30,12 @@ export interface TrackerDetection {
 	/** Number of probable tracking-pixel <img> tags in the sanitized HTML. */
 	pixelCount: number;
 	/** Deduped, sorted hosts of the flagged images (for the badge popover). */
-	trackerHosts: string[];
+	trackerHosts: readonly string[];
 }
 
 export const EMPTY_TRACKER_DETECTION: TrackerDetection = Object.freeze({
 	pixelCount: 0,
-	trackerHosts: Object.freeze([]) as string[],
+	trackerHosts: Object.freeze([]),
 });
 
 /**
