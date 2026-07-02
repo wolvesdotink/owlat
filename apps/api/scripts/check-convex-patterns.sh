@@ -109,7 +109,10 @@ cd "$(dirname "$0")/.."
 # before ranking — a JS array `.filter()` over the already-bounded in-memory id
 # lists (and the SECURITY floor that keeps contact-scoped ids out of the ranker),
 # not a `ctx.db.query().filter()`.
-FILTER_BASELINE=171
+# Raised 171 → 172 for meeting-intent detection (mail/needsReplyClassify.ts and
+# mail/ai.ts): both are JS array `.filter()` calls that drop empty proposed-time
+# phrases from the LLM output, not a `ctx.db.query().filter()`.
+FILTER_BASELINE=172
 filter_count=$(grep -rn "\.filter(" convex --include="*.ts" 2>/dev/null \
 	| grep -v "/_generated/" \
 	| grep -v "/__tests__/" \
