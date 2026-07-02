@@ -211,7 +211,7 @@ const srcdoc = computed(() => {
 	}
 	const gated = gateImages(html, showImages.value);
 	const linked = rewriteLinks(gated);
-	return `<!doctype html><html><head>${META_CSP}${buildBaseStyle(renderScheme.value)}</head><body>${linked || '(empty message)'}</body></html>`;
+	return `<!doctype html><html><head>${META_CSP}${buildBaseStyle(renderScheme.value, adapted.value.kind)}</head><body>${linked || '(empty message)'}</body></html>`;
 });
 
 const hasBlockedImages = computed(

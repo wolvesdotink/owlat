@@ -256,12 +256,35 @@ describe('formatCompactRelativeTime', () => {
 		expect(formatCompactRelativeTime(NOW.getTime() - 5 * 60_000)).toBe('5m ago');
 	});
 
+	it('stays in minutes right up to the hour boundary', () => {
+		expect(formatCompactRelativeTime(NOW.getTime() - 59 * 60_000)).toBe('59m ago');
+		expect(formatCompactRelativeTime(NOW.getTime() - 60 * 60_000)).toBe('1h ago');
+	});
+
 	it('formats hours compactly', () => {
 		expect(formatCompactRelativeTime(NOW.getTime() - 3 * 3_600_000)).toBe('3h ago');
 	});
 
+	it('stays in hours right up to the day boundary', () => {
+		expect(formatCompactRelativeTime(NOW.getTime() - 23 * 3_600_000)).toBe('23h ago');
+	});
+
+	it('formats yesterday as 1d ago', () => {
+		expect(formatCompactRelativeTime(NOW.getTime() - 24 * 3_600_000)).toBe('1d ago');
+	});
+
 	it('formats days compactly', () => {
 		expect(formatCompactRelativeTime(NOW.getTime() - 2 * 86_400_000)).toBe('2d ago');
+	});
+
+	it('stays in days right up to the week boundary', () => {
+		expect(formatCompactRelativeTime(NOW.getTime() - (7 * 86_400_000 - 1))).toBe('6d ago');
+	});
+
+	it('falls back to a short date at exactly 7 days', () => {
+		const result = formatCompactRelativeTime(NOW.getTime() - 7 * 86_400_000);
+		expect(result).toContain('Jun');
+		expect(result).not.toContain('ago');
 	});
 
 	it('falls back to a short date past 7 days', () => {
