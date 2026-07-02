@@ -31,6 +31,7 @@ import { logError } from '../lib/runtimeLog';
 import { getMtaConfig, scanAttachmentBytes } from './mtaClient';
 import { scanContent } from '@owlat/email-scanner';
 import { enqueueNeedsReplyCheck } from './needsReply';
+import { enqueueCategoryCheck } from './category';
 import { clearThreadFollowUp } from './followUps';
 
 const INLINE_BODY_THRESHOLD_BYTES = 64 * 1024;
@@ -806,6 +807,12 @@ export const deliverToMailbox = internalMutation({
 		const delivered = await ctx.db.get(messageId);
 		if (delivered && folder.role === 'inbox') {
 			await enqueueNeedsReplyCheck(ctx, delivered.threadId, {
+				precedence: args.antiLoopHeaders?.['precedence'],
+			});
+			// Smart-inbox categories: classify the thread for the split-inbox
+			// view (advisory, off by default in the UI). Same inbox-only bound as
+			// the Reply Queue so bulk IMAP backfill never fans out LLM work.
+			await enqueueCategoryCheck(ctx, delivered.threadId, {
 				precedence: args.antiLoopHeaders?.['precedence'],
 			});
 		}

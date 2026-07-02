@@ -118,6 +118,7 @@ export const TENANT_TABLES = [
 	'mailVacationLog',
 	'mailAppPasswords',
 	'mailContacts',
+	'mailSenderCategoryOverrides',
 	'mailAuditLog',
 	'mailAuthFailures',
 	'mailboxMigrations',
