@@ -81,6 +81,9 @@ const {
 // Inline ghost-text autocomplete: gated by the `ai` flag AND the per-user
 // toggle; the subject line is the bounded thread context for the prompt.
 const { ghostSuggestionsEnabled } = usePostboxGhostGate();
+// The selection-rewrite pill is gated on the `ai` flag ONLY (no per-user toggle).
+const { isEnabled: isFeatureEnabled } = useFeatureFlag();
+const aiRewriteEnabled = computed(() => isFeatureEnabled('ai'));
 
 async function onFromChange(address: string) {
 	try {
@@ -349,6 +352,8 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } =
 				placeholder="Write your message…"
 				:suggestions-enabled="ghostSuggestionsEnabled"
 				:ghost-thread-context="subject"
+				:rewrite-enabled="aiRewriteEnabled"
+				:rewrite-mailbox-id="mailboxId"
 			/>
 			<EmailBuilder
 				v-else

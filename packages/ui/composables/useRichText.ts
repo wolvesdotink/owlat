@@ -368,6 +368,38 @@ export function useRichText(options: UseRichTextOptions) {
 	}
 
 	/**
+	 * Replace the current (non-collapsed) selection with `text`, routing through
+	 * the browser's own edit pipeline (`execCommand('insertText')`) so the swap
+	 * lands on the native undo stack as ONE step and the host's `@input` autosave
+	 * sees it as real user text. Falls back to a manual range replace when
+	 * `execCommand` is unavailable (older engines / JSDOM), which the caller can
+	 * still undo through its own history. No-ops (returns false) when there is no
+	 * selection inside the editor. Used by the AI selection-rewrite "Apply".
+	 */
+	function replaceSelection(text: string): boolean {
+		const ctx = getCtx();
+		if (!ctx) return false;
+		editorRef.value?.focus();
+		if (typeof document !== 'undefined' && typeof document.execCommand === 'function') {
+			// On success the native `input` event fires and the host re-emits, so
+			// don't also call notify() here (mirrors the ghost-text accept path).
+			const ok = document.execCommand('insertText', false, text);
+			if (ok) return true;
+		}
+		const { sel, range } = ctx;
+		range.deleteContents();
+		const node = document.createTextNode(text);
+		range.insertNode(node);
+		const after = document.createRange();
+		after.setStartAfter(node);
+		after.collapse(true);
+		sel.removeAllRanges();
+		sel.addRange(after);
+		notify();
+		return true;
+	}
+
+	/**
 	 * Plain-text paste — drops alien `<style>`/`<font>` cruft from
 	 * Word/Outlook. Call from the host's `@paste` handler.
 	 */
@@ -433,6 +465,7 @@ export function useRichText(options: UseRichTextOptions) {
 		setLink,
 		// State + events
 		readActiveMarks,
+		replaceSelection,
 		pasteAsPlainText,
 		handleFormatKeydown,
 	};

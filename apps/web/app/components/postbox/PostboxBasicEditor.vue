@@ -24,6 +24,8 @@ import {
 	usePostboxGhostText,
 	type GhostTextRequestInput,
 } from '~/composables/postbox/usePostboxGhostText';
+import { usePostboxRewriteController } from '~/composables/postbox/usePostboxRewriteController';
+import type { Id } from '@owlat/api/dataModel';
 
 const props = defineProps<{
 	modelValue: string;
@@ -36,6 +38,13 @@ const props = defineProps<{
 	suggestionsEnabled?: boolean;
 	/** Bounded thread context for the completion prompt (untrusted data). */
 	ghostThreadContext?: string;
+	/**
+	 * Enable the AI selection-rewrite pill (Shorter / Friendlier / …). Gated on
+	 * the `ai` flag ONLY (unlike ghost text, no per-user toggle). Off by default.
+	 */
+	rewriteEnabled?: boolean;
+	/** Mailbox whose voice profile personalizes rewrites (optional). */
+	rewriteMailboxId?: Id<'mailboxes'>;
 }>();
 
 const emit = defineEmits<{
@@ -101,6 +110,8 @@ function emitContent() {
 function onInput() {
 	emitContent();
 	scheduleGhost();
+	// Typing invalidates any pending/previewed rewrite anchored to old text.
+	rewriteCtl.invalidateOnEdit();
 }
 
 // ── Inline ghost-text autocomplete ─────────────────────────────────────
@@ -216,6 +227,21 @@ watch(ghost.ghost, (value) => {
 	void nextTick(() => positionGhost());
 });
 
+// ── AI selection rewrite (Shorter / Friendlier / … / Translate) ─────────
+// A tiny floating pill over a >=3-word selection offers one-tap rewrites; the
+// result is shown as an original-vs-rewritten preview the user must Apply. The
+// whole lifecycle (placement, saved range, Apply/Discard/Undo) lives in the
+// controller composable; the editor just wires its refs + input hooks to it.
+
+const rewriteCtl = usePostboxRewriteController({
+	editorRef,
+	surfaceRef,
+	richText,
+	enabled: () => props.rewriteEnabled === true,
+	mailboxId: () => props.rewriteMailboxId,
+	emitContent,
+});
+
 function onKeydown(event: KeyboardEvent) {
 	if (ghost.hasGhost()) {
 		if (event.key === 'Tab') {
@@ -230,6 +256,11 @@ function onKeydown(event: KeyboardEvent) {
 		}
 		// Any other key: the draft is changing under the ghost — dismiss it.
 		ghost.cancel();
+	}
+	// Escape dismisses a rewrite pill/preview without touching the selection.
+	if (event.key === 'Escape' && rewriteCtl.handleEscape()) {
+		event.preventDefault();
+		return;
 	}
 	handleFormatKeydown(event);
 }
@@ -248,6 +279,9 @@ function onSelectionChange() {
 	// A caret move (arrow/click) invalidates a shown ghost. Only dismiss when one
 	// is visible, so this can't clear a request still pending in its debounce.
 	if (ghost.hasGhost()) ghost.cancel();
+	// A selection change aborts an in-flight rewrite (its anchor is now stale)
+	// and re-places the pill for the new selection.
+	rewriteCtl.onSelectionChange();
 }
 
 function focusEditor() {
@@ -280,6 +314,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
 	document.removeEventListener('selectionchange', onSelectionChange);
 	ghost.cancel();
+	rewriteCtl.dispose();
 });
 
 watch(
@@ -301,103 +336,16 @@ defineExpose({ focus: focusEditor });
 
 <template>
 	<div class="flex flex-col h-full">
-		<div
-			class="flex items-center gap-0.5 px-1 py-1 border-b border-border-subtle bg-bg-surface"
-		>
-			<button
-				type="button"
-				class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
-				:class="{ 'bg-bg-elevated text-brand': activeMarks.bold }"
-				title="Bold (⌘B)"
-				@mousedown.prevent
-				@click="withFocus(toggleBold)()"
-			>
-				<Icon name="lucide:bold" class="w-4 h-4" />
-			</button>
-			<button
-				type="button"
-				class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
-				:class="{ 'bg-bg-elevated text-brand': activeMarks.italic }"
-				title="Italic (⌘I)"
-				@mousedown.prevent
-				@click="withFocus(toggleItalic)()"
-			>
-				<Icon name="lucide:italic" class="w-4 h-4" />
-			</button>
-			<button
-				type="button"
-				class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
-				:class="{ 'bg-bg-elevated text-brand': activeMarks.underline }"
-				title="Underline (⌘U)"
-				@mousedown.prevent
-				@click="withFocus(toggleUnderline)()"
-			>
-				<Icon name="lucide:underline" class="w-4 h-4" />
-			</button>
-			<span class="w-px h-4 bg-border-subtle mx-1" />
-			<button
-				type="button"
-				class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
-				:class="{ 'bg-bg-elevated text-brand': activeMarks.h1 }"
-				title="Heading 1"
-				@mousedown.prevent
-				@click="withFocus(() => toggleHeading(1))()"
-			>
-				<Icon name="lucide:heading-1" class="w-4 h-4" />
-			</button>
-			<button
-				type="button"
-				class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
-				:class="{ 'bg-bg-elevated text-brand': activeMarks.h2 }"
-				title="Heading 2"
-				@mousedown.prevent
-				@click="withFocus(() => toggleHeading(2))()"
-			>
-				<Icon name="lucide:heading-2" class="w-4 h-4" />
-			</button>
-			<span class="w-px h-4 bg-border-subtle mx-1" />
-			<button
-				type="button"
-				class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
-				:class="{ 'bg-bg-elevated text-brand': activeMarks.ul }"
-				title="Bullet list"
-				@mousedown.prevent
-				@click="withFocus(() => toggleList(false))()"
-			>
-				<Icon name="lucide:list" class="w-4 h-4" />
-			</button>
-			<button
-				type="button"
-				class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
-				:class="{ 'bg-bg-elevated text-brand': activeMarks.ol }"
-				title="Ordered list"
-				@mousedown.prevent
-				@click="withFocus(() => toggleList(true))()"
-			>
-				<Icon name="lucide:list-ordered" class="w-4 h-4" />
-			</button>
-			<button
-				type="button"
-				class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
-				:class="{ 'bg-bg-elevated text-brand': activeMarks.quote }"
-				title="Blockquote"
-				@mousedown.prevent
-				@click="withFocus(toggleBlockquote)()"
-			>
-				<Icon name="lucide:quote" class="w-4 h-4" />
-			</button>
-			<span class="w-px h-4 bg-border-subtle mx-1" />
-			<button
-				type="button"
-				class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
-				:class="{ 'bg-bg-elevated text-brand': activeMarks.link }"
-				title="Link (⌘K)"
-				@mousedown.prevent
-				@click="withFocus(setLink)()"
-			>
-				<Icon name="lucide:link" class="w-4 h-4" />
-			</button>
-		</div>
+		<PostboxEditorToolbar
+			:active-marks="activeMarks"
+			@bold="withFocus(toggleBold)()"
+			@italic="withFocus(toggleItalic)()"
+			@underline="withFocus(toggleUnderline)()"
+			@heading="(level) => withFocus(() => toggleHeading(level))()"
+			@list="(ordered) => withFocus(() => toggleList(ordered))()"
+			@blockquote="withFocus(toggleBlockquote)()"
+			@link="withFocus(setLink)()"
+		/>
 		<div ref="surfaceRef" class="flex-1 overflow-auto relative">
 			<div
 				ref="editorRef"
@@ -428,6 +376,11 @@ defineExpose({ focus: focusEditor });
 				:style="ghostStyle"
 				aria-hidden="true"
 			>{{ ghost.ghost.value }}</div>
+			<!-- AI rewrite pill + preview + undo affordance (all flag-gated). -->
+			<PostboxRewriteLayer
+				v-if="rewriteEnabled"
+				:controller="rewriteCtl"
+			/>
 		</div>
 	</div>
 </template>
