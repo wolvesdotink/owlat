@@ -2,7 +2,7 @@
 	"name": "@owlat/mta",
 	"version": "0.1.0",
 	"private": true,
-	"license": "MIT",
+	"license": "Apache-2.0",
 	"homepage": "https://owlat.app",
 	"description": "Owlat custom MTA - direct SMTP delivery with intelligent rate control",
 	"type": "module",

@@ -26,7 +26,7 @@ ARG OWLAT_GIT_SHA=unknown
 ARG OWLAT_BUILD_DATE=unknown
 
 LABEL org.opencontainers.image.source="https://github.com/wolvesdotink/owlat" \
-      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.licenses="Apache-2.0" \
       org.opencontainers.image.title="owlat-mail-sync" \
       org.opencontainers.image.description="Owlat mail-sync worker (external IMAP/SMTP accounts)" \
       org.opencontainers.image.version="${OWLAT_VERSION}" \

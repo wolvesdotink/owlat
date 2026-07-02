@@ -1,7 +1,7 @@
 {
 	"name": "@owlat/marketing",
 	"private": true,
-	"license": "MIT",
+	"license": "Apache-2.0",
 	"homepage": "https://owlat.app",
 	"type": "module",
 	"scripts": {
