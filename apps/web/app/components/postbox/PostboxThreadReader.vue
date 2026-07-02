@@ -490,43 +490,79 @@ function blockSenderOf(msgId: string) {
 
 const downloadingAttachment = ref<string | null>(null);
 
+type AttachmentMeta = {
+	filename: string;
+	contentType: string;
+	size: number;
+	partIndex?: string;
+};
+
 function isPreviewable(contentType: string): boolean {
 	return contentType.startsWith('image/') || contentType === 'application/pdf';
 }
 
-/** Fetch the raw .eml, extract the part client-side, then download or preview. */
-async function handleAttachment(
+/** Fetch the raw .eml and extract one part client-side as a Blob. */
+async function extractAttachmentBlob(
 	messageId: string,
-	att: { filename: string; contentType: string; partIndex?: string },
-	mode: 'download' | 'preview'
+	att: { filename: string; contentType: string; partIndex?: string }
+): Promise<Blob | null> {
+	const bin = await loadRawEml(messageId);
+	if (!bin) return null;
+	const extracted = extractAttachmentAt(bin, att.partIndex ?? '0', att.filename);
+	if (!extracted) return null;
+	return new Blob([extracted.bytes as BlobPart], {
+		type: extracted.contentType || att.contentType,
+	});
+}
+
+/** Extract the part, then trigger a browser download. */
+async function handleAttachmentDownload(
+	messageId: string,
+	att: { filename: string; contentType: string; partIndex?: string }
 ) {
 	const key = `${messageId}:${att.partIndex ?? att.filename}`;
 	downloadingAttachment.value = key;
 	try {
-		const bin = await loadRawEml(messageId);
-		if (!bin) return;
-		const extracted = extractAttachmentAt(bin, att.partIndex ?? '0', att.filename);
-		if (!extracted) return;
-		const blob = new Blob([extracted.bytes as BlobPart], {
-			type: extracted.contentType || att.contentType,
-		});
+		const blob = await extractAttachmentBlob(messageId, att);
+		if (!blob) return;
 		const objectUrl = URL.createObjectURL(blob);
-		if (mode === 'preview') {
-			window.open(objectUrl, '_blank', 'noopener');
-		} else {
-			const a = document.createElement('a');
-			a.href = objectUrl;
-			a.download = att.filename;
-			document.body.appendChild(a);
-			a.click();
-			a.remove();
-		}
+		const a = document.createElement('a');
+		a.href = objectUrl;
+		a.download = att.filename;
+		document.body.appendChild(a);
+		a.click();
+		a.remove();
 		setTimeout(() => URL.revokeObjectURL(objectUrl), 30000);
 	} catch {
 		// Network/extraction failure — silently no-op (the row stays available).
 	} finally {
 		downloadingAttachment.value = null;
 	}
+}
+
+// Quick Look overlay state: the clicked message's PREVIEWABLE attachments in
+// display order plus the index of the one that was clicked. Null = closed.
+const lightbox = ref<{
+	messageId: string;
+	attachments: AttachmentMeta[];
+	index: number;
+} | null>(null);
+
+function openAttachmentPreview(messageId: string, att: AttachmentMeta, all: AttachmentMeta[]) {
+	const previewable = all.filter((a) => isPreviewable(a.contentType));
+	const index = previewable.indexOf(att);
+	if (index === -1) return;
+	lightbox.value = { messageId, attachments: previewable, index };
+}
+
+function loadLightboxPart(att: AttachmentMeta): Promise<Blob | null> {
+	const lb = lightbox.value;
+	return lb ? extractAttachmentBlob(lb.messageId, att) : Promise.resolve(null);
+}
+
+function downloadLightboxAttachment(att: AttachmentMeta) {
+	const lb = lightbox.value;
+	if (lb) void handleAttachmentDownload(lb.messageId, att);
 }
 </script>
 
@@ -695,7 +731,7 @@ async function handleAttachment(
 									class="p-1 rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary"
 									:title="`Preview ${att.filename}`"
 									:aria-label="`Preview ${att.filename}`"
-									@click="handleAttachment(msg._id, att, 'preview')"
+									@click="openAttachmentPreview(msg._id, att, msg.attachments)"
 								>
 									<Icon name="lucide:eye" class="w-4 h-4" />
 								</button>
@@ -705,7 +741,7 @@ async function handleAttachment(
 									:title="`Download ${att.filename}`"
 									:aria-label="`Download ${att.filename}`"
 									:disabled="downloadingAttachment === `${msg._id}:${att.partIndex ?? att.filename}`"
-									@click="handleAttachment(msg._id, att, 'download')"
+									@click="handleAttachmentDownload(msg._id, att)"
 								>
 									<Icon
 										:name="downloadingAttachment === `${msg._id}:${att.partIndex ?? att.filename}` ? 'lucide:loader-2' : 'lucide:download'"
@@ -790,6 +826,16 @@ async function handleAttachment(
 			:folders="readerMovableFolders"
 			@update:open="moveDialogOpen = $event"
 			@pick="moveOpenMessageTo"
+		/>
+
+		<!-- Quick Look overlay for image/PDF attachments (Teleports to body). -->
+		<PostboxAttachmentLightbox
+			v-if="lightbox"
+			:attachments="lightbox.attachments"
+			:initial-index="lightbox.index"
+			:load-part="loadLightboxPart"
+			@close="lightbox = null"
+			@download="downloadLightboxAttachment"
 		/>
 	</article>
 </template>
