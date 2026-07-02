@@ -46,6 +46,7 @@ const labelMessages = computed(() =>
 						:messages="labelMessages"
 						:loading="isLoading"
 						folder-role="inbox"
+						empty-context="label"
 					/>
 				</div>
 			</aside>

@@ -74,12 +74,13 @@ function removeChip(key: string) {
 						Try operators like <code>from:sara</code>, <code>has:attachment</code>,
 						<code>before:2024-01-01</code>, <code>label:work</code>, <code>is:unread</code>.
 					</div>
-					<div v-else-if="isLoading" class="p-6 flex justify-center">
-						<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin text-text-tertiary" />
-					</div>
-					<div v-else-if="results.length === 0" class="p-6 text-sm text-text-tertiary">
-						No matches.
-					</div>
+					<PostboxThreadListSkeleton v-else-if="isLoading" :rows="6" />
+					<PostboxEmptyState
+						v-else-if="results.length === 0"
+						icon="lucide:search-x"
+						title="No results for this search"
+						hint="Try fewer or broader terms, or operators like from:, has:attachment, is:unread."
+					/>
 					<PostboxThreadList
 						v-else-if="mailboxId"
 						:mailbox-id="mailboxId"

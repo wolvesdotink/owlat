@@ -26,6 +26,10 @@ const props = defineProps<{
 	// search results screen, which previews hits in its own right-hand pane
 	// rather than ejecting the user into the three-pane folder view.
 	selectable?: boolean;
+	// Overrides the folder-role-derived empty state (e.g. the label view
+	// renders with folder-role "inbox" for row links but must not claim
+	// "All clear" when the label simply has no messages).
+	emptyContext?: 'label';
 }>();
 
 const emit = defineEmits<{
@@ -185,6 +189,32 @@ async function moveFocusedTo(targetFolderId: Id<'mailFolders'>) {
 	}
 }
 
+// Context-aware empty state: inbox-zero gets a quiet "All clear" moment;
+// empty custom folders (no role) and label views get a one-line hint with a
+// relevant action; other system folders keep a neutral "No messages".
+const emptyState = computed(() => {
+	if (props.emptyContext === 'label') {
+		return {
+			icon: 'lucide:tag',
+			title: 'No messages with this label',
+			hint: 'Apply it from a message with the label shortcut (l).',
+			showFilterAction: false,
+		};
+	}
+	if (props.folderRole === 'inbox') {
+		return { icon: 'lucide:check-circle-2', title: 'All clear', hint: undefined, showFilterAction: false };
+	}
+	if (props.folderRole === '') {
+		return {
+			icon: 'lucide:folder-open',
+			title: 'This folder is empty',
+			hint: 'Move messages here, or route them automatically with a filter.',
+			showFilterAction: true,
+		};
+	}
+	return { icon: 'lucide:inbox', title: 'No messages', hint: undefined, showFilterAction: false };
+});
+
 // Keyboard triage (Gmail/Superhuman-style): j/k move, Enter opens; single-key
 // actions resolve via utils/postboxShortcuts.ts (e archive, # delete, s star,
 // u toggle read, Shift+U unread, x select, r/a/f compose, h/l/v pickers).
@@ -249,13 +279,24 @@ const {
 </script>
 
 <template>
-	<div v-if="loading" class="p-6 flex justify-center">
-		<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin text-text-tertiary" />
-	</div>
-	<div v-else-if="visibleMessages.length === 0" class="p-12 text-center">
-		<Icon name="lucide:inbox" class="w-10 h-10 mx-auto text-text-tertiary" />
-		<p class="text-sm text-text-secondary mt-3">No messages</p>
-	</div>
+	<!-- Skeleton only on FIRST load (no rows yet): live-query refreshes keep
+	     `keepPreviousData` rows visible, so they never flash the skeleton. -->
+	<PostboxThreadListSkeleton v-if="loading && visibleMessages.length === 0" />
+	<PostboxEmptyState
+		v-else-if="visibleMessages.length === 0"
+		:icon="emptyState.icon"
+		:title="emptyState.title"
+		:hint="emptyState.hint"
+	>
+		<template v-if="emptyState.showFilterAction" #action>
+			<NuxtLink
+				to="/dashboard/postbox/settings/filters"
+				class="inline-block mt-2 text-xs text-brand hover:underline"
+			>
+				Set up a filter
+			</NuxtLink>
+		</template>
+	</PostboxEmptyState>
 	<ul
 		v-else
 		tabindex="0"
