@@ -13,6 +13,22 @@ bun run dev:api        # Convex backend — the first run provisions the deploym
 bun run dev            # Nuxt frontend
 ```
 
+### Developing on Windows
+
+The toolchain itself — Bun, Nuxt, Convex, the Tauri CLI, and vitest — is
+cross-platform and runs natively on Windows. The catch is the repo's lint and CI
+gates: `bun run lint` and `bun run ci:verify` shell out to bash scripts under
+`scripts/` and `apps/*/scripts/`, several of which use bash process substitution
+(`<(…)`) and coreutils. Native PowerShell/cmd cannot run those, so develop
+inside **WSL2** (recommended) or **Git Bash**.
+
+`.gitattributes` forces `LF` line endings, so the shell scripts are checked out
+without CRLF mangling regardless of your Git `core.autocrlf` setting. Run the
+desktop app from the same WSL2 or Git Bash shell too: the Tauri hooks in
+`apps/desktop/src-tauri/tauri.conf.json` (and the `generate:desktop` script they
+call) prefix commands with POSIX-style env vars like `OWLAT_DESKTOP=true …`,
+which native PowerShell/cmd cannot parse. macOS and Linux need no special setup.
+
 ## Testing
 
 All packages use **vitest**. Never use `bun test` — it skips the vitest setup file that polyfills Nuxt auto-imports and will produce false failures.
