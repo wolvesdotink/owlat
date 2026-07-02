@@ -407,6 +407,29 @@ mailThreads: defineTable({
 	// the classify action persists a result. Backs the reconcile cron that
 	// re-schedules threads whose scheduled classification was lost.
 	needsReplyPendingAt: v.optional(v.number()),
+	// "Remind me if no reply" follow-up watch on a sent message (Boomerang
+	// parity, mail/followUps.ts). Armed at send time (from the draft's
+	// followUpRemindAt) or after the fact from the reader/sent list. ANY
+	// inbound delivery into the thread clears it silently; otherwise the
+	// sweep cron resurfaces the thread at the deadline (sets dueAt exactly
+	// once — the "No reply yet" chip + Reply Queue follow-up item key off it).
+	followUp: v.optional(v.object({
+		// The sent message being watched for a reply.
+		messageId: v.id('mailMessages'),
+		remindAt: v.number(),
+		armedAt: v.number(),
+		// Set by the sweep when the deadline passed with no reply. Its
+		// presence flips the UI from "awaiting reply" to "No reply yet".
+		dueAt: v.optional(v.number()),
+		// Display hint for the Reply Queue ("You're waiting on <name>") —
+		// the first recipient of the watched message.
+		waitingOn: v.optional(v.string()),
+	})),
+	// Sweep key: mirrors followUp.remindAt while the watch is armed; cleared
+	// when the watch clears OR fires (so a due watch is resurfaced exactly
+	// once). Kept as a flat companion field so the cron can range-scan it
+	// (same pattern as needsReplyPendingAt above).
+	followUpRemindAt: v.optional(v.number()),
 	createdAt: v.number(),
 	updatedAt: v.number(),
 })
@@ -417,7 +440,13 @@ mailThreads: defineTable({
 	// Backs the Reply Queue list — flagged threads per mailbox without a
 	// full-table scan (undefined needsReply sorts before every number, so the
 	// query lower-bounds detectedAt with gt(0), like the pending sweep above).
-	.index('by_mailbox_needs_reply', ['mailboxId', 'needsReply.detectedAt']),
+	.index('by_mailbox_needs_reply', ['mailboxId', 'needsReply.detectedAt'])
+	// Backs the 1-minute follow-up sweep cron — range scan on
+	// followUpRemindAt <= now (lower-bounded gt(0) like the snooze sweep).
+	.index('by_follow_up_remind', ['followUpRemindAt'])
+	// Backs the Reply Queue's "You're waiting on <name>" follow-up items —
+	// due watches per mailbox without a full-table scan.
+	.index('by_mailbox_follow_up_due', ['mailboxId', 'followUp.dueAt']),
 
 // Gmail-style labels (orthogonal to folders).
 mailLabels: defineTable({
@@ -455,6 +484,10 @@ mailDrafts: defineTable({
 	bodyBlocksVersion: v.optional(v.number()),
 
 	attachments: v.array(mailDraftAttachmentValidator),
+
+	// "Remind me if no reply by…" — carried onto the sent message's thread as
+	// a follow-up watch by the sent-effects reducer (see mail/followUps.ts).
+	followUpRemindAt: v.optional(v.number()),
 
 	// Scheduled send / undo-send window
 	scheduledSendAt: v.optional(v.number()),

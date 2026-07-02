@@ -293,6 +293,7 @@ export const listQueue = publicQuery({
 			// Snoozed = deliberately deferred; it re-enters the queue on wakeup.
 			if (isMessageSnoozed(message, now)) continue;
 			items.push({
+				kind: 'needs_reply' as const,
 				threadId: thread._id,
 				messageId: flag.messageId,
 				urgency: flag.urgency,
@@ -300,8 +301,44 @@ export const listQueue = publicQuery({
 				dueHint: flag.dueHint,
 				detectedAt: flag.detectedAt,
 				source: flag.source,
+				waitingOn: undefined as string | undefined,
 				fromAddress: message.fromAddress,
 				fromName: message.fromName,
+				subject: message.subject,
+				snippet: thread.latestSnippet,
+				receivedAt: message.receivedAt,
+			});
+		}
+
+		// Follow-up items — sent mail whose "remind me if no reply" deadline
+		// passed (mail/followUps.ts sweep stamped followUp.dueAt). Deterministic;
+		// cleared by any inbound reply or the cancel/dismiss mutation.
+		const dueFollowUps = await ctx.db
+			.query('mailThreads')
+			.withIndex('by_mailbox_follow_up_due', (q) =>
+				q.eq('mailboxId', args.mailboxId).gt('followUp.dueAt', 0),
+			)
+			.order('desc')
+			.take(QUEUE_LIMIT);
+		for (const thread of dueFollowUps) {
+			const flag = thread.followUp;
+			if (!flag || flag.dueAt === undefined) continue;
+			const message = await ctx.db.get(flag.messageId);
+			if (!message) continue;
+			if (isMessageSnoozed(message, now)) continue;
+			items.push({
+				kind: 'followup' as const,
+				threadId: thread._id,
+				messageId: flag.messageId,
+				urgency: 'normal' as const,
+				askSummary: undefined,
+				dueHint: undefined,
+				detectedAt: flag.dueAt,
+				source: 'heuristic' as const,
+				waitingOn: flag.waitingOn,
+				// The counterpart shown on the card is who we're waiting ON.
+				fromAddress: flag.waitingOn ?? message.toAddresses[0] ?? message.fromAddress,
+				fromName: undefined,
 				subject: message.subject,
 				snippet: thread.latestSnippet,
 				receivedAt: message.receivedAt,

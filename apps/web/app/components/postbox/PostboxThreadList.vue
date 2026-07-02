@@ -7,6 +7,7 @@ const props = defineProps<{
 	mailboxId: Id<'mailboxes'>;
 	messages: Array<{
 		_id: string;
+		threadId?: string;
 		fromAddress: string;
 		fromName?: string;
 		subject: string;
@@ -16,6 +17,10 @@ const props = defineProps<{
 		flagFlagged: boolean;
 		hasAttachments: boolean;
 		snoozedUntil?: number;
+		// Thread follow-up watch state (mail/followUps.ts): `watched` marks the
+		// sent message the watch points at; `dueAt` means the deadline passed
+		// with no reply ("No reply yet" chip).
+		followUp?: { remindAt: number; dueAt?: number; watched: boolean };
 	}>;
 	loading: boolean;
 	folderRole: string;
@@ -115,9 +120,9 @@ function rowAction(event: MouseEvent, fn: () => void) {
 	fn();
 }
 
-// Pending compose intent for r/a/f from the list: opening the composer needs
-// the reader's quoting/recipient logic, so we open the message first and let
-// PostboxThreadReader consume the intent once it renders that message.
+// Pending compose intent for r/a/f from the list: opening the composer needs the
+// reader's quoting/recipient logic, so we open the message first and let
+// PostboxThreadReader consume the intent once it renders.
 const pendingCompose = useState<PostboxPendingCompose | null>(
 	POSTBOX_PENDING_COMPOSE_KEY,
 	() => null
@@ -152,6 +157,14 @@ const movableFolders = computed(() =>
 
 const snoozeOp = useBackendOperation(api.mail.snooze.snooze, { label: 'Snooze' });
 const moveOp = useBackendOperation(api.mail.messageActions.move, { label: 'Move message' });
+
+// Follow-up chip on a watched row: cancel the armed watch / dismiss the due
+// "No reply yet" indicator. Ownership-checked server-side.
+const cancelFollowUpOp = useBackendOperation(api.mail.followUps.cancel, { label: 'Cancel reply reminder' });
+function cancelFollowUp(msg: { threadId?: string }) {
+	if (!msg.threadId) return;
+	void cancelFollowUpOp.run({ threadId: msg.threadId as Id<'mailThreads'> });
+}
 
 async function snoozeFocused(until: number) {
 	const id = snoozeTargetId.value;
@@ -218,7 +231,6 @@ const emptyState = computed(() => {
 // Keyboard triage (Gmail/Superhuman-style): j/k move, Enter opens; single-key
 // actions resolve via utils/postboxShortcuts.ts (e archive, # delete, s star,
 // u toggle read, Shift+U unread, x select, r/a/f compose, h/l/v pickers).
-// Focus survives live updates (see composable).
 const {
 	focusedIndex,
 	activeId: activeRowId,
@@ -277,10 +289,9 @@ const {
 	},
 });
 
-// Read-ahead: when the j/k focus or the open message changes, warm the next
-// and previous rows' bodies (same query the reader runs, debounced, LRU-capped
-// and fail-soft — see usePostboxPrefetch) so Enter / auto-advance opens
-// instantly instead of waiting on a body round-trip or blob download.
+// Read-ahead: when the j/k focus or the open message changes, warm the next and
+// previous rows' bodies (same query the reader runs, debounced, LRU-capped and
+// fail-soft) so Enter / auto-advance opens instantly, not on a body round-trip.
 const { prefetch: prefetchAdjacent } = usePostboxPrefetch();
 watch(
 	[focusedIndex, () => props.activeMessageId],
@@ -398,6 +409,11 @@ watch(
 								v-if="msg.hasAttachments"
 								name="lucide:paperclip"
 								class="w-3.5 h-3.5 text-text-tertiary"
+							/>
+							<PostboxThreadRowFollowUp
+								v-if="msg.followUp?.watched"
+								:follow-up="msg.followUp"
+								@cancel="rowAction($event, () => cancelFollowUp(msg))"
 							/>
 							<p
 								class="truncate text-sm flex-1"

@@ -72,6 +72,7 @@ const {
 	isScheduled,
 	scheduledSendAt,
 	cancelSchedule,
+	followUpRemindAt,
 	flush,
 	send,
 	discard,
@@ -110,8 +111,7 @@ function switchMode(target: ComposerMode) {
 	composerMode.value = target;
 }
 
-// Per-message signature picker. Only shown once the mailbox has at least one
-// signature; empty value selects "No signature".
+// Per-message signature picker (only when the mailbox has ≥1 signature).
 const showSignaturePicker = computed(() => signatures.value.length > 0);
 
 function onSignatureChange(event: Event) {
@@ -261,7 +261,6 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } =
 		},
 		onMinimize: () => emit('minimize'),
 	});
-
 </script>
 
 <template>
@@ -426,6 +425,10 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } =
 				>
 					<Icon name="lucide:clock" class="w-4 h-4" />
 				</button>
+				<PostboxComposerFollowUp
+					v-model:remind-at="followUpRemindAt"
+					:disabled="isScheduled"
+				/>
 				<button
 					type="button"
 					class="btn btn-ghost"

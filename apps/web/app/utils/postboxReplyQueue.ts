@@ -7,6 +7,14 @@
 export type ReplyQueueUrgency = 'high' | 'normal' | 'low';
 
 export interface ReplyQueueItem {
+	/**
+	 * 'needs_reply' — an inbound message waiting on OUR reply (default).
+	 * 'followup'   — our sent message whose "remind me if no reply" deadline
+	 *                passed; we're waiting on THEM.
+	 */
+	kind?: 'needs_reply' | 'followup';
+	/** Who we're waiting on (follow-up items only) — the first recipient. */
+	waitingOn?: string;
 	threadId: string;
 	messageId: string;
 	urgency: ReplyQueueUrgency;
@@ -43,8 +51,14 @@ export function compareReplyQueueItems(
  * deterministic queue must read fine with AI disabled or failed.
  */
 export function replyQueueHeadline(
-	item: Pick<ReplyQueueItem, 'askSummary' | 'subject'>
+	item: Pick<ReplyQueueItem, 'askSummary' | 'subject' | 'kind' | 'waitingOn'> &
+		Partial<Pick<ReplyQueueItem, 'fromAddress'>>
 ): string {
+	// Follow-up items invert the framing: WE are waiting on THEM.
+	if (item.kind === 'followup') {
+		const who = item.waitingOn?.trim() || item.fromAddress?.trim();
+		return who ? `You're waiting on ${who}` : "You're waiting on a reply";
+	}
 	const ask = item.askSummary?.trim();
 	if (ask) return ask;
 	return item.subject.trim() || '(no subject)';

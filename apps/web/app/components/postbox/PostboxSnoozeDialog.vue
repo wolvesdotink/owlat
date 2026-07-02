@@ -1,5 +1,7 @@
 <script setup lang="ts">
-const props = defineProps<{
+import type { PresetTimeOption } from './PostboxPresetTimeDialog.vue';
+
+defineProps<{
 	open: boolean;
 }>();
 
@@ -15,9 +17,9 @@ function nextOccurrence(hour: number, dayOffset = 0): number {
 	return d.getTime();
 }
 
-const PRESETS = computed(() => {
+const PRESETS = computed<PresetTimeOption[]>(() => {
 	const now = new Date();
-	const items: Array<{ label: string; when: () => number; sub: string }> = [];
+	const items: PresetTimeOption[] = [];
 
 	// Later today @ 18:00 — only if it's still before 18:00
 	if (now.getHours() < 18) {
@@ -54,58 +56,15 @@ const PRESETS = computed(() => {
 	});
 	return items;
 });
-
-const customDate = ref('');
-
-function close() {
-	emit('update:open', false);
-}
-
-function pickPreset(p: { when: () => number }) {
-	emit('confirm', p.when());
-	close();
-}
-
-function pickCustom() {
-	if (!customDate.value) return;
-	const ts = new Date(customDate.value).getTime();
-	if (Number.isNaN(ts) || ts <= Date.now()) return;
-	emit('confirm', ts);
-	close();
-}
 </script>
 
 <template>
-	<UiModal :open="open" title="Snooze until" size="sm" @update:open="(v) => { if (!v) close(); }">
-			<ul class="space-y-1 mb-4">
-				<li v-for="preset in PRESETS" :key="preset.label">
-					<button
-						type="button"
-						class="w-full flex items-center justify-between px-3 py-2 rounded hover:bg-bg-surface text-left text-sm"
-						@click="pickPreset(preset)"
-					>
-						<span class="font-medium">{{ preset.label }}</span>
-						<span class="text-text-tertiary">{{ preset.sub }}</span>
-					</button>
-				</li>
-			</ul>
-			<div class="border-t border-border-subtle pt-3">
-				<label class="text-xs font-medium text-text-tertiary block mb-1">Custom</label>
-				<div class="flex items-center gap-2">
-					<input
-						v-model="customDate"
-						type="datetime-local"
-						class="input flex-1"
-					/>
-					<button
-						type="button"
-						class="btn btn-primary"
-						:disabled="!customDate"
-						@click="pickCustom"
-					>
-						Snooze
-					</button>
-				</div>
-			</div>
-	</UiModal>
+	<PostboxPresetTimeDialog
+		:open="open"
+		title="Snooze until"
+		:presets="PRESETS"
+		confirm-label="Snooze"
+		@update:open="emit('update:open', $event)"
+		@confirm="emit('confirm', $event)"
+	/>
 </template>
