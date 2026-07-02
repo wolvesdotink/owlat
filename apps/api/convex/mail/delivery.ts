@@ -201,13 +201,15 @@ export const ingestFromWebhook = internalAction({
 		// Decode raw MIME and stash in Convex storage.
 		const rawBytes = Buffer.from(args.rawBytesBase64, 'base64');
 		const rawSize = rawBytes.length;
-		// RFC 3834 anti-loop headers from the raw header block (64KB covers any
-		// header section) so forwarding + vacation hooks skip list/auto-submitted mail.
-		const antiLoopHeaders = extractAntiLoopHeaders(rawBytes.subarray(0, 65536).toString('utf8'));
+		// Raw header block decoded once (64KB covers any header section) for both
+		// extractions below.
+		const rawHeaderBlock = rawBytes.subarray(0, 65536).toString('utf8');
+		// RFC 3834 anti-loop headers so forwarding + vacation hooks skip
+		// list/auto-submitted mail.
+		const antiLoopHeaders = extractAntiLoopHeaders(rawHeaderBlock);
 		// List-Unsubscribe / List-Unsubscribe-Post (RFC 2369 / 8058), parsed once
 		// here so the reader's Unsubscribe chip never re-opens the raw .eml.
-		const unsubscribe =
-			extractListUnsubscribe(rawBytes.subarray(0, 65536).toString('utf8')) ?? undefined;
+		const unsubscribe = extractListUnsubscribe(rawHeaderBlock) ?? undefined;
 		const blob = new Blob([rawBytes], { type: 'message/rfc822' });
 		const rawStorageId = await ctx.storage.store(blob);
 
