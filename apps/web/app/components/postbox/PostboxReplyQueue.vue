@@ -7,6 +7,7 @@ import {
 	formatReplyQueueDueHint,
 	type ReplyQueueItem,
 } from '~/utils/postboxReplyQueue';
+import { formatThreadTimestamp } from '~/composables/postbox/usePostboxThreads';
 
 /**
  * The Reply Queue — a task list of emails waiting on the user's reply.
