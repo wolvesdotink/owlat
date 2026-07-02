@@ -13,7 +13,11 @@
  */
 
 import { v } from 'convex/values';
-import { mailMessageAttachmentValidator, spamVerdictValidator } from '../lib/convexValidators';
+import {
+	mailMessageAttachmentValidator,
+	mailUnsubscribeValidator,
+	spamVerdictValidator,
+} from '../lib/convexValidators';
 import { internalMutation, internalAction, type MutationCtx, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
@@ -21,6 +25,7 @@ import { evaluateFilters } from './filters';
 import { extractEmail, normalizeSubject } from '../lib/emailAddress';
 import { extractAntiLoopHeaders } from '../lib/inboundClassification';
 import { extractAttachments } from '@owlat/shared/mailMime';
+import { extractListUnsubscribe } from '@owlat/shared/listUnsubscribe';
 import { ATTACHMENT_COMPOSE_LIMITS, MAX_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
 import { logError } from '../lib/runtimeLog';
 import { getMtaConfig, scanAttachmentBytes } from './mtaClient';
@@ -196,9 +201,15 @@ export const ingestFromWebhook = internalAction({
 		// Decode raw MIME and stash in Convex storage.
 		const rawBytes = Buffer.from(args.rawBytesBase64, 'base64');
 		const rawSize = rawBytes.length;
-		// RFC 3834 anti-loop headers from the raw header block (64KB covers any
-		// header section) so forwarding + vacation hooks skip list/auto-submitted mail.
-		const antiLoopHeaders = extractAntiLoopHeaders(rawBytes.subarray(0, 65536).toString('utf8'));
+		// Raw header block decoded once (64KB covers any header section) for both
+		// extractions below.
+		const rawHeaderBlock = rawBytes.subarray(0, 65536).toString('utf8');
+		// RFC 3834 anti-loop headers so forwarding + vacation hooks skip
+		// list/auto-submitted mail.
+		const antiLoopHeaders = extractAntiLoopHeaders(rawHeaderBlock);
+		// List-Unsubscribe / List-Unsubscribe-Post (RFC 2369 / 8058), parsed once
+		// here so the reader's Unsubscribe chip never re-opens the raw .eml.
+		const unsubscribe = extractListUnsubscribe(rawHeaderBlock) ?? undefined;
 		const blob = new Blob([rawBytes], { type: 'message/rfc822' });
 		const rawStorageId = await ctx.storage.store(blob);
 
@@ -229,6 +240,7 @@ export const ingestFromWebhook = internalAction({
 				rawStorageId,
 				rawSize,
 				antiLoopHeaders,
+				unsubscribe,
 				recipientAddress: args.recipientAddress,
 				from: args.from,
 				to: args.to,
@@ -414,6 +426,8 @@ export async function insertDeliveredMessage(
 		dkimResult?: string;
 		dmarcResult?: string;
 		dmarcPolicy?: string;
+		/** Parsed List-Unsubscribe target (extracted at ingest from the raw header block). */
+		unsubscribe?: { httpUrl?: string; mailtoUrl?: string; oneClick: boolean };
 		/** Add rawSize to mailbox.usedBytes (local cache accounting). */
 		countUsedBytes?: boolean;
 	},
@@ -527,6 +541,7 @@ export async function insertDeliveredMessage(
 		dkimResult: params.dkimResult,
 		dmarcResult: params.dmarcResult,
 		dmarcPolicy: params.dmarcPolicy,
+		unsubscribe: params.unsubscribe,
 		createdAt: now,
 		updatedAt: now,
 	});
@@ -595,6 +610,8 @@ export const deliverToMailbox = internalMutation({
 		rawStorageId: v.id('_storage'),
 		rawSize: v.number(),
 		antiLoopHeaders: v.optional(v.record(v.string(), v.string())),
+		// Parsed List-Unsubscribe target (extracted at ingest by the caller).
+		unsubscribe: v.optional(mailUnsubscribeValidator),
 		recipientAddress: v.string(),
 		from: v.string(),
 		to: v.array(v.string()),
@@ -775,6 +792,7 @@ export const deliverToMailbox = internalMutation({
 			dkimResult: args.dkimResult,
 			dmarcResult: args.dmarcResult,
 			dmarcPolicy: args.dmarcPolicy,
+			unsubscribe: args.unsubscribe,
 			countUsedBytes: true,
 		});
 

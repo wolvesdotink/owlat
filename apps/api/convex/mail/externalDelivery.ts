@@ -13,11 +13,12 @@
  */
 
 import { v } from 'convex/values';
-import { mailMessageAttachmentValidator } from '../lib/convexValidators';
+import { mailMessageAttachmentValidator, mailUnsubscribeValidator } from '../lib/convexValidators';
 import { internalAction, internalMutation, internalQuery, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { insertDeliveredMessage, splitBodyForStorage, buildSnippet } from './delivery';
+import { extractListUnsubscribe } from '@owlat/shared/listUnsubscribe';
 
 const folderRoleValidator = v.union(
 	v.literal('inbox'),
@@ -68,6 +69,8 @@ export const ingestExternalMessage = internalMutation({
 		attachments: v.array(mailMessageAttachmentValidator),
 		flagSeen: v.optional(v.boolean()),
 		flagFlagged: v.optional(v.boolean()),
+		// Parsed List-Unsubscribe target (extracted at ingest by ingestExternalRaw).
+		unsubscribe: v.optional(mailUnsubscribeValidator),
 	},
 	handler: async (ctx, args): Promise<{ messageId: Id<'mailMessages'> } | { skipped: true }> => {
 		const dropBlob = async () => {
@@ -140,6 +143,7 @@ export const ingestExternalMessage = internalMutation({
 			attachments: args.attachments,
 			flagSeen: args.flagSeen,
 			flagFlagged: args.flagFlagged,
+			unsubscribe: args.unsubscribe,
 			// Remote provider already filtered spam/virus; no verdict fields.
 			countUsedBytes: true,
 		});
@@ -303,6 +307,10 @@ export const ingestExternalRaw = internalAction({
 		const textBody = await splitBodyForStorage(ctx, args.textBodyInline, 'text/plain; charset=utf-8');
 		const htmlBody = await splitBodyForStorage(ctx, args.htmlBodyInline, 'text/html; charset=utf-8');
 		const snippet = buildSnippet(args.textBodyInline, args.htmlBodyInline);
+		// List-Unsubscribe / List-Unsubscribe-Post (RFC 2369 / 8058), parsed once
+		// at ingest so the reader's Unsubscribe chip never re-opens the raw .eml.
+		const unsubscribe =
+			extractListUnsubscribe(rawBytes.subarray(0, 65536).toString('utf8')) ?? undefined;
 		// `ingestExternalMessage` deletes the staged blobs itself on skip/dup.
 		return await ctx.runMutation(internal.mail.externalDelivery.ingestExternalMessage, {
 			accountId: args.accountId,
@@ -330,6 +338,7 @@ export const ingestExternalRaw = internalAction({
 			attachments: args.attachments,
 			flagSeen: args.flagSeen,
 			flagFlagged: args.flagFlagged,
+			unsubscribe,
 		});
 	},
 });

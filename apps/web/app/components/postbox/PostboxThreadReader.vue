@@ -36,6 +36,7 @@ const props = defineProps<{
 		spamVerdict?: string;
 		dmarcResult?: string;
 		flagSeen?: boolean;
+		unsubscribe?: { httpUrl?: string; mailtoUrl?: string; oneClick: boolean };
 	};
 	// Auto-advance context (folder view only; the search preview passes
 	// neither and keeps its stay-put behavior). `advanceIds` is the list's
@@ -697,6 +698,13 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 									· cc {{ msg.ccAddresses.join(', ') }}
 								</span>
 							</p>
+							<PostboxUnsubscribeChip
+								v-if="msg.unsubscribe"
+								class="mt-1.5"
+								:message-id="msg._id"
+								:mailbox-id="message.mailboxId"
+								:unsubscribe="msg.unsubscribe"
+							/>
 						</div>
 					</header>
 
