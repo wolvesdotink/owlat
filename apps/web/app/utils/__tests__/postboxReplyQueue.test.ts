@@ -57,8 +57,10 @@ describe('replyQueueHeadline', () => {
 });
 
 describe('formatReplyQueueDueHint', () => {
-	it('formats an ISO date as a short due label', () => {
-		expect(formatReplyQueueDueHint('2026-07-03')).toMatch(/^Due Jul 0?3$/);
+	it('formats an ISO date as a short due label (timezone-independent)', () => {
+		// Must be the stated calendar date in EVERY runner timezone — a
+		// west-of-UTC machine used to render "Due Jul 2" for a Jul 3 deadline.
+		expect(formatReplyQueueDueHint('2026-07-03')).toBe('Due Jul 3');
 	});
 
 	it('returns null for missing or unparseable hints', () => {

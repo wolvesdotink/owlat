@@ -58,5 +58,8 @@ export function formatReplyQueueDueHint(dueHint: string | undefined): string | n
 	if (!dueHint) return null;
 	const parsed = new Date(dueHint);
 	if (Number.isNaN(parsed.getTime())) return null;
-	return `Due ${parsed.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+	// The hint is a calendar date ("YYYY-MM-DD"), which new Date() parses as
+	// UTC midnight — format in UTC too, or every west-of-UTC user would see
+	// the deadline one day early.
+	return `Due ${parsed.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })}`;
 }
