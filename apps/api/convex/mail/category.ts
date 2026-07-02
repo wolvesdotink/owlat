@@ -30,6 +30,7 @@ import {
 	internalQuery,
 	internalAction,
 	type MutationCtx,
+	type QueryCtx,
 } from '../_generated/server';
 import { authedMutation } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
@@ -161,29 +162,53 @@ export const CATEGORY_CONTEXT_MESSAGES = 4;
  * inbound message fields (heuristic inputs), whether the sender is a known
  * human correspondent, any remembered user override, and a short transcript.
  */
+/**
+ * The latest inbound (non-owner) message of a thread — the message whose sender
+ * drives the thread's category and the per-sender override key. `latestInbound`
+ * is the newest message that is not `outbound` and not from the mailbox owner's
+ * own address. Returns `null` for an owner-only thread. Shared by
+ * `getThreadCategoryContext` (classify) and `recategorize` (override) so both
+ * key on the same address — otherwise an override remembered on send would file
+ * under the owner's address and never match future inbound mail.
+ */
+async function latestInboundMessage(
+	ctx: { db: QueryCtx['db'] },
+	thread: Doc<'mailThreads'>,
+): Promise<Doc<'mailMessages'> | null> {
+	const mailbox = await ctx.db.get(thread.mailboxId);
+	if (!mailbox || mailbox.status !== 'active') return null;
+	const ownerAddress = mailbox.address.toLowerCase();
+
+	const all = await ctx.db
+		.query('mailMessages')
+		.withIndex('by_thread', (q) => q.eq('threadId', thread._id))
+		.collect();
+	const ordered = all.sort((a, b) => a.receivedAt - b.receivedAt);
+
+	let latestInbound: Doc<'mailMessages'> | undefined;
+	for (const m of ordered) {
+		const isFromOwner =
+			m.outbound !== undefined || m.fromAddress.toLowerCase() === ownerAddress;
+		if (!isFromOwner) latestInbound = m;
+	}
+	return latestInbound ?? null;
+}
+
 export const getThreadCategoryContext = internalQuery({
 	args: { threadId: v.id('mailThreads') },
 	handler: async (ctx, args) => {
 		const thread = await ctx.db.get(args.threadId);
 		if (!thread) return null;
-		const mailbox = await ctx.db.get(thread.mailboxId);
-		if (!mailbox || mailbox.status !== 'active') return null;
-		const ownerAddress = mailbox.address.toLowerCase();
+
+		// Latest inbound (not from the owner) message drives the category.
+		const latestInbound = await latestInboundMessage(ctx, thread);
+		if (!latestInbound) return null; // owner-only thread — nothing to classify
 
 		const all = await ctx.db
 			.query('mailMessages')
 			.withIndex('by_thread', (q) => q.eq('threadId', args.threadId))
 			.collect();
 		const ordered = all.sort((a, b) => a.receivedAt - b.receivedAt);
-
-		// Latest inbound (not from the owner) message drives the category.
-		let latestInbound: Doc<'mailMessages'> | undefined;
-		for (const m of ordered) {
-			const isFromOwner =
-				m.outbound !== undefined || m.fromAddress.toLowerCase() === ownerAddress;
-			if (!isFromOwner) latestInbound = m;
-		}
-		if (!latestInbound) return null; // owner-only thread — nothing to classify
 
 		const senderEmail = latestInbound.fromAddress.toLowerCase();
 
@@ -289,25 +314,31 @@ export const recategorize = authedMutation({
 		const owned = await loadOwnedMailbox(ctx, thread.mailboxId);
 		if (!owned.ok) throwForbidden('Thread not accessible');
 
-		// Remember the choice per sender (the latest inbound sender drives the
-		// section the thread appears in).
-		const senderEmail = thread.latestFromAddress.toLowerCase();
+		// Remember the choice per sender, keyed on the latest INBOUND sender — the
+		// same address `getThreadCategoryContext` looks the override up by. Keying
+		// on `thread.latestFromAddress` would file under the owner's own address on
+		// any thread the user last replied to (draftLifecycle advances it to
+		// `draft.fromAddress` on send), so future inbound mail would never match.
 		const now = Date.now();
-		const existing = await ctx.db
-			.query('mailSenderCategoryOverrides')
-			.withIndex('by_mailbox_and_sender', (q) =>
-				q.eq('mailboxId', thread.mailboxId).eq('senderEmail', senderEmail),
-			)
-			.first();
-		if (existing) {
-			await ctx.db.patch(existing._id, { label: args.label, updatedAt: now });
-		} else {
-			await ctx.db.insert('mailSenderCategoryOverrides', {
-				mailboxId: thread.mailboxId,
-				senderEmail,
-				label: args.label,
-				updatedAt: now,
-			});
+		const latestInbound = await latestInboundMessage(ctx, thread);
+		if (latestInbound) {
+			const senderEmail = latestInbound.fromAddress.toLowerCase();
+			const existing = await ctx.db
+				.query('mailSenderCategoryOverrides')
+				.withIndex('by_mailbox_and_sender', (q) =>
+					q.eq('mailboxId', thread.mailboxId).eq('senderEmail', senderEmail),
+				)
+				.first();
+			if (existing) {
+				await ctx.db.patch(existing._id, { label: args.label, updatedAt: now });
+			} else {
+				await ctx.db.insert('mailSenderCategoryOverrides', {
+					mailboxId: thread.mailboxId,
+					senderEmail,
+					label: args.label,
+					updatedAt: now,
+				});
+			}
 		}
 
 		await ctx.db.patch(args.threadId, {
