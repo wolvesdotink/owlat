@@ -4,6 +4,7 @@ import {
 	mailMessageAttachmentValidator,
 	mailDraftAttachmentValidator,
 	mailAutoAdvanceValidator,
+	mailUnsubscribeValidator,
 	spamVerdictValidator,
 } from '../lib/convexValidators';
 
@@ -282,6 +283,12 @@ mailMessages: defineTable({
 	// Folder the message snoozed FROM, so the wakeup cron knows where
 	// to put it back.
 	snoozedFromFolderId: v.optional(v.id('mailFolders')),
+
+	// List mail: parsed List-Unsubscribe / List-Unsubscribe-Post target
+	// (RFC 2369 / RFC 8058), extracted once at ingest from the raw header
+	// block. Absent for non-list mail — the reader's Unsubscribe chip keys
+	// off this field's presence.
+	unsubscribe: v.optional(mailUnsubscribeValidator),
 
 	// Delivery/security metadata
 	receivedAt: v.number(),

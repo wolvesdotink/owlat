@@ -73,6 +73,10 @@
 			"types": "./src/mailMime.ts",
 			"import": "./src/mailMime.ts"
 		},
+		"./listUnsubscribe": {
+			"types": "./src/listUnsubscribe.ts",
+			"import": "./src/listUnsubscribe.ts"
+		},
 		"./ical": {
 			"types": "./src/ical.ts",
 			"import": "./src/ical.ts"
