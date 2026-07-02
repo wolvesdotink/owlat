@@ -22,10 +22,12 @@ gates: `bun run lint` and `bun run ci:verify` shell out to bash scripts under
 (`<(…)`) and coreutils. Native PowerShell/cmd cannot run those, so develop
 inside **WSL2** (recommended) or **Git Bash**.
 
-The desktop app is fine on native Windows: `.gitattributes` forces `LF` line
-endings so the shell scripts are not CRLF-mangled, and the `package.json` scripts
-use `cross-env` for environment variables, so `tauri dev` / `tauri build` work
-from PowerShell or cmd. macOS and Linux need no special setup.
+`.gitattributes` forces `LF` line endings, so the shell scripts are checked out
+without CRLF mangling regardless of your Git `core.autocrlf` setting. Run the
+desktop app from the same WSL2 or Git Bash shell too: the Tauri hooks in
+`apps/desktop/src-tauri/tauri.conf.json` (and the `generate:desktop` script they
+call) prefix commands with POSIX-style env vars like `OWLAT_DESKTOP=true …`,
+which native PowerShell/cmd cannot parse. macOS and Linux need no special setup.
 
 ## Testing
 
