@@ -2,6 +2,7 @@
 import type { Id } from '@owlat/api/dataModel';
 import type { BlockType } from '@owlat/email-builder';
 import type { ComposerMode } from '~/composables/postbox/usePostboxCompose';
+import type { ComposerPromotePayload } from '~/composables/postbox/usePostboxComposerStack';
 
 const EmailBuilder = defineAsyncComponent(() =>
 	import('@owlat/email-builder').then((m) => m.EmailBuilder)
@@ -31,12 +32,20 @@ const props = defineProps<{
 	forwardAttachmentsFromMessageId?: Id<'mailMessages'>;
 	attachPendingKey?: string;
 	initialMode?: ComposerMode;
+	/**
+	 * Compact in-place variant (the reader's inline reply box): the header
+	 * swaps Minimize for an expand-to-popup button that emits `promote` with
+	 * the live draft, and the body editor is focused on mount (inline only
+	 * mounts on an explicit user action, so this never steals focus on load).
+	 */
+	inline?: boolean;
 }>();
 
 const emit = defineEmits<{
 	(e: 'sent', undoToken: string, sendAt: number): void;
 	(e: 'discarded'): void;
 	(e: 'minimize'): void;
+	(e: 'promote', payload: ComposerPromotePayload): void;
 }>();
 
 const {
@@ -63,6 +72,7 @@ const {
 	isScheduled,
 	scheduledSendAt,
 	cancelSchedule,
+	flush,
 	send,
 	discard,
 } = usePostboxCompose({
@@ -79,15 +89,9 @@ const {
 	initialMode: props.initialMode,
 });
 
-// Show the From dropdown only when the mailbox actually has aliases —
-// otherwise the single-identity case is implicit and we'd just add noise.
-const showFromDropdown = computed(() => availableIdentities.value.length > 1);
-
-async function onFromChange(event: Event) {
-	const target = event.target as HTMLSelectElement;
-	if (!target.value) return;
+async function onFromChange(address: string) {
 	try {
-		await setIdentity(target.value);
+		await setIdentity(address);
 	} catch (err) {
 		// eslint-disable-next-line no-console
 		console.error('[Postbox] setIdentity failed', err);
@@ -114,9 +118,6 @@ function onSignatureChange(event: Event) {
 	const target = event.target as HTMLSelectElement;
 	applySignature((target.value as Id<'mailSignatures'>) || null);
 }
-
-const showCc = ref(ccAddresses.value.length > 0);
-const showBcc = ref(bccAddresses.value.length > 0);
 
 const sending = ref(false);
 const scheduleOpen = ref(false);
@@ -160,6 +161,41 @@ async function handleDiscard() {
 	await discard();
 	emit('discarded');
 }
+
+// --- Inline variant: promote to a normal popup composer. Flush the debounced
+// autosave first (creating the draft row if needed) so the popup reopens the
+// SAME draft id — no content loss. The live field values ride along so the
+// popup seeds instantly instead of waiting for hydration.
+const promoting = ref(false);
+async function handlePromote() {
+	if (promoting.value) return;
+	promoting.value = true;
+	try {
+		const id = await flush();
+		emit('promote', {
+			draftId: id,
+			toAddresses: [...toAddresses.value],
+			ccAddresses: [...ccAddresses.value],
+			bccAddresses: [...bccAddresses.value],
+			subject: subject.value,
+			bodyHtml: bodyHtml.value,
+		});
+	} finally {
+		promoting.value = false;
+	}
+}
+
+// Focus the inline body editor on mount (simple mode only — the Designer
+// mode's builder manages its own focus). Exposed so the reader's r/a keys can
+// re-focus an already-open inline box.
+const basicEditor = ref<{ focus: () => void } | null>(null);
+function focusBody() {
+	basicEditor.value?.focus();
+}
+onMounted(() => {
+	if (props.inline) void nextTick(() => focusBody());
+});
+defineExpose({ focusBody });
 
 const unscheduling = ref(false);
 async function handleUnschedule() {
@@ -250,6 +286,18 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } =
 			</span>
 			<div class="flex items-center gap-1">
 				<button
+					v-if="inline"
+					type="button"
+					class="p-1 hover:bg-bg-elevated rounded"
+					title="Open in popup"
+					aria-label="Open in popup"
+					:disabled="promoting"
+					@click="handlePromote"
+				>
+					<Icon name="lucide:maximize-2" class="w-4 h-4" />
+				</button>
+				<button
+					v-else
 					type="button"
 					class="p-1 hover:bg-bg-elevated rounded"
 					title="Minimize"
@@ -268,65 +316,16 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } =
 			</div>
 		</header>
 
-		<div class="flex flex-col gap-1 p-3 border-b border-border-subtle text-sm">
-			<div v-if="showFromDropdown" class="flex items-baseline gap-2">
-				<label class="text-text-tertiary w-12">From</label>
-				<select
-					:value="fromAddress || availableIdentities[0]"
-					class="flex-1 bg-transparent outline-none font-medium border-0"
-					@change="onFromChange"
-				>
-					<option
-						v-for="addr in availableIdentities"
-						:key="addr"
-						:value="addr"
-					>
-						{{ addr }}
-					</option>
-				</select>
-			</div>
-			<div class="flex items-start gap-2">
-				<PostboxRecipientField
-					v-model="toAddresses"
-					:mailbox-id="mailboxId"
-					label="To"
-				/>
-				<div class="flex items-center gap-2 text-xs pt-0.5">
-					<button
-						v-if="!showCc"
-						type="button"
-						class="text-text-tertiary hover:text-text-primary"
-						@click="showCc = true"
-					>Cc</button>
-					<button
-						v-if="!showBcc"
-						type="button"
-						class="text-text-tertiary hover:text-text-primary"
-						@click="showBcc = true"
-					>Bcc</button>
-				</div>
-			</div>
-			<PostboxRecipientField
-				v-if="showCc"
-				v-model="ccAddresses"
-				:mailbox-id="mailboxId"
-				label="Cc"
-			/>
-			<PostboxRecipientField
-				v-if="showBcc"
-				v-model="bccAddresses"
-				:mailbox-id="mailboxId"
-				label="Bcc"
-			/>
-			<div class="flex items-baseline gap-2">
-				<label for="subject" class="text-text-tertiary w-12">Subject</label>
-				<input id="subject"
-					v-model="subject"
-					type="text"
-					class="flex-1 bg-transparent outline-none font-medium"
-				/>
-			</div>
-		</div>
+		<PostboxComposerEnvelope
+			v-model:to-addresses="toAddresses"
+			v-model:cc-addresses="ccAddresses"
+			v-model:bcc-addresses="bccAddresses"
+			v-model:subject="subject"
+			:mailbox-id="mailboxId"
+			:from-address="fromAddress"
+			:available-identities="availableIdentities"
+			@from-change="onFromChange"
+		/>
 
 		<div
 			v-if="isScheduled"
@@ -354,6 +353,7 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } =
 		<div class="flex-1 overflow-hidden">
 			<PostboxBasicEditor
 				v-if="composerMode === 'simple'"
+				ref="basicEditor"
 				v-model="bodyHtml"
 				placeholder="Write your message…"
 			/>

@@ -5,6 +5,11 @@ import { extractAttachmentAt } from '@owlat/shared/mailMime';
 import { escapeHtmlWithBreaks } from '@owlat/shared/html';
 import { formatCompactRelativeTime, formatDateTime } from '~/utils/formatters';
 import type { PostboxPendingCompose } from '~/utils/postboxShortcuts';
+import type {
+	ComposerSpec,
+	InlineComposeKind,
+	InlineComposeSpec,
+} from '~/composables/postbox/usePostboxComposerStack';
 import {
 	classifySecureMessage,
 	isEncryptedClass,
@@ -242,39 +247,56 @@ async function resolveBodyFields(t: ReplyForwardSource): Promise<ReplyForwardSou
 	}
 }
 
-async function openReply(replyTo?: ReplyForwardSource) {
-	const target = await resolveBodyFields(replyTo ?? props.message);
-	stack.open({
-		mailboxId: props.message.mailboxId as Id<'mailboxes'>,
+/**
+ * Build the one-time compose seed for a reply / reply-all / forward of
+ * `source` — shared by the popup openers below and the inline reply box, so
+ * both paths produce identical drafts (quoting, recipients, subject prefix).
+ */
+async function buildComposeSpec(
+	kind: InlineComposeKind,
+	source: ReplyForwardSource
+): Promise<Omit<ComposerSpec, 'id' | 'minimized'>> {
+	const target = await resolveBodyFields(source);
+	const mailboxId = props.message.mailboxId as Id<'mailboxes'>;
+	if (kind === 'forward') {
+		return {
+			mailboxId,
+			prefillSubject: target.subject.match(/^fwd?\s*:\s*/i)
+				? target.subject
+				: `Fwd: ${target.subject}`,
+			prefillBodyHtml: buildForwardedBody(target),
+			forwardAttachmentsFromMessageId: target._id as Id<'mailMessages'>,
+		};
+	}
+	const spec: Omit<ComposerSpec, 'id' | 'minimized'> = {
+		mailboxId,
 		inReplyToMessageId: target._id as Id<'mailMessages'>,
 		prefillTo: [target.fromAddress],
 		prefillSubject: target.subject.match(/^re\s*:\s*/i)
 			? target.subject
 			: `Re: ${target.subject}`,
 		prefillBodyHtml: buildQuotedReply(target),
-	});
+	};
+	if (kind === 'replyAll') {
+		const seen = new Set<string>([canonicalEmail(target.fromAddress), ...ownAddresses.value]);
+		const cc: string[] = [];
+		for (const addr of [...target.toAddresses, ...target.ccAddresses]) {
+			const canon = canonicalEmail(addr);
+			if (!canon || seen.has(canon)) continue;
+			seen.add(canon);
+			cc.push(addr);
+		}
+		spec.prefillCc = cc;
+	}
+	return spec;
+}
+
+async function openReply(replyTo?: ReplyForwardSource) {
+	stack.open(await buildComposeSpec('reply', replyTo ?? props.message));
 }
 
 async function openReplyAll(replyTo?: ReplyForwardSource) {
-	const target = await resolveBodyFields(replyTo ?? props.message);
-	const seen = new Set<string>([canonicalEmail(target.fromAddress), ...ownAddresses.value]);
-	const cc: string[] = [];
-	for (const addr of [...target.toAddresses, ...target.ccAddresses]) {
-		const canon = canonicalEmail(addr);
-		if (!canon || seen.has(canon)) continue;
-		seen.add(canon);
-		cc.push(addr);
-	}
-	stack.open({
-		mailboxId: props.message.mailboxId as Id<'mailboxes'>,
-		inReplyToMessageId: target._id as Id<'mailMessages'>,
-		prefillTo: [target.fromAddress],
-		prefillCc: cc,
-		prefillSubject: target.subject.match(/^re\s*:\s*/i)
-			? target.subject
-			: `Re: ${target.subject}`,
-		prefillBodyHtml: buildQuotedReply(target),
-	});
+	stack.open(await buildComposeSpec('replyAll', replyTo ?? props.message));
 }
 
 /** Whether Reply-All would add anyone beyond a plain Reply (extra To/Cc). */
@@ -301,16 +323,49 @@ async function openReplyWithBody(replyTarget: ReplyForwardSource, bodyText: stri
 }
 
 async function openForward(msg?: ReplyForwardSource) {
-	const target = await resolveBodyFields(msg ?? props.message);
-	stack.open({
-		mailboxId: props.message.mailboxId as Id<'mailboxes'>,
-		prefillSubject: target.subject.match(/^fwd?\s*:\s*/i)
-			? target.subject
-			: `Fwd: ${target.subject}`,
-		prefillBodyHtml: buildForwardedBody(target),
-		forwardAttachmentsFromMessageId: target._id as Id<'mailMessages'>,
-	});
+	stack.open(await buildComposeSpec('forward', msg ?? props.message));
 }
+
+// --- Inline reply box pinned under the conversation (Spark-style). Expands
+// via the collapsed affordance or the r/a/f keys; the popup path above stays
+// for the per-message Reply/Forward buttons inside the thread. Both share
+// buildComposeSpec, so the inline draft carries the same quoted text and
+// recipients as a popup reply would.
+const inlineSpec = ref<InlineComposeSpec | null>(null);
+const inlineReplyEl = ref<{ focusEditor: () => void } | null>(null);
+let inlineSeq = 0;
+
+async function expandInline(kind: InlineComposeKind) {
+	const target = latestMessage.value;
+	if (!target) return;
+	if (inlineSpec.value?.kind === kind) {
+		// Already open in this mode — just re-focus it (r/a re-press).
+		inlineReplyEl.value?.focusEditor();
+		return;
+	}
+	const seq = ++inlineSeq;
+	const seed = await buildComposeSpec(kind, target);
+	// Superseded by a newer expand or a thread change while resolving the body.
+	if (seq !== inlineSeq) return;
+	inlineSpec.value = { ...seed, kind, key: `${target._id}:${kind}` };
+}
+
+function collapseInline() {
+	inlineSeq++;
+	inlineSpec.value = null;
+}
+
+// A newly opened conversation always starts collapsed (and therefore can
+// never steal focus on thread open).
+watch(
+	() => props.message.threadId ?? props.message._id,
+	() => collapseInline()
+);
+
+const inlineSenderLabel = computed(() => {
+	const m = latestMessage.value;
+	return m ? m.fromName || m.fromAddress : '';
+});
 
 // Consume a pending compose intent set by the thread list's r/a/f shortcuts:
 // the list opens the message, then we open the matching composer once this
@@ -328,9 +383,9 @@ watch(
 	([id], prev) => {
 		const { open, clear } = settlePendingCompose(pendingCompose.value, id, prev?.[0]);
 		if (clear) pendingCompose.value = null;
-		if (open === 'reply') void openReply();
-		else if (open === 'replyAll') void openReplyAll();
-		else if (open === 'forward') void openForward();
+		if (open === 'reply') void expandInline('reply');
+		else if (open === 'replyAll') void expandInline('replyAll');
+		else if (open === 'forward') void expandInline('forward');
 	},
 	{ immediate: true }
 );
@@ -469,13 +524,13 @@ function onReaderShortcut(event: KeyboardEvent) {
 			readerBulk.toggle(messageId.value);
 			break;
 		case 'reply':
-			void openReply(latestMessage.value);
+			void expandInline('reply');
 			break;
 		case 'replyAll':
-			void openReplyAll(latestMessage.value);
+			void expandInline('replyAll');
 			break;
 		case 'forward':
-			void openForward(latestMessage.value);
+			void expandInline('forward');
 			break;
 		case 'snooze':
 			snoozeDialogOpen.value = true;
@@ -863,6 +918,18 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 				v-if="latestMessage && isFeatureEnabled('ai')"
 				:message-id="latestMessage._id"
 				@use-reply="(t) => latestMessage && openReplyWithBody(latestMessage, t)"
+			/>
+
+			<!-- Inline reply box pinned under the conversation (r / a / f or the
+			     affordance expand it; it collapses back after send/discard). -->
+			<PostboxInlineReply
+				v-if="latestMessage"
+				ref="inlineReplyEl"
+				:sender-label="inlineSenderLabel"
+				:show-reply-all="hasOtherRecipients(latestMessage)"
+				:spec="inlineSpec"
+				@expand="(kind) => void expandInline(kind)"
+				@collapse="collapseInline"
 			/>
 		</div>
 
