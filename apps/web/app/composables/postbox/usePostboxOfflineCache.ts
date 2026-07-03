@@ -22,10 +22,24 @@ import {
 
 const STORAGE_KEY = 'owlat:postbox:offline-cache-enabled';
 
+/**
+ * Client detection that is both SSR-safe (no `window` on the server) and
+ * test-friendly (happy-dom provides `window`), unlike Nuxt's compile-time
+ * `import.meta.client` which is undefined under vitest.
+ */
+const IS_CLIENT = typeof window !== 'undefined';
+
 /** Module-scoped reactive singletons so every caller shares one truth. */
 let enabledRef: Ref<boolean> | null = null;
 let onlineRef: Ref<boolean> | null = null;
 let writesDisabledRef: Ref<boolean> | null = null;
+
+/** Test-only: reset the shared reactive state between cases. */
+export function __resetPostboxOfflineCacheState() {
+	enabledRef = null;
+	onlineRef = null;
+	writesDisabledRef = null;
+}
 
 export function usePostboxOfflineCache() {
 	const { isDesktop } = useDesktopContext();
@@ -33,7 +47,7 @@ export function usePostboxOfflineCache() {
 	// ── "Store recent mail on this device" (device-local preference) ──────
 	if (!enabledRef) {
 		// Default ON on desktop, OFF in the browser; an explicit saved choice wins.
-		const stored = import.meta.client ? localStorage.getItem(STORAGE_KEY) : null;
+		const stored = IS_CLIENT ? localStorage.getItem(STORAGE_KEY) : null;
 		const initial = stored === null ? isDesktop.value : stored === '1';
 		enabledRef = ref(initial);
 	}
@@ -41,7 +55,7 @@ export function usePostboxOfflineCache() {
 
 	function setEnabled(value: boolean) {
 		enabled.value = value;
-		if (import.meta.client) localStorage.setItem(STORAGE_KEY, value ? '1' : '0');
+		if (IS_CLIENT) localStorage.setItem(STORAGE_KEY, value ? '1' : '0');
 		// Turning the cache OFF wipes whatever is already on the device.
 		if (!value) void clearCache();
 	}
@@ -49,9 +63,9 @@ export function usePostboxOfflineCache() {
 	// ── Connectivity ─────────────────────────────────────────────────────
 	if (!onlineRef) {
 		onlineRef = ref(
-			!import.meta.client || typeof navigator === 'undefined' ? true : navigator.onLine
+			!IS_CLIENT || typeof navigator === 'undefined' ? true : navigator.onLine
 		);
-		if (import.meta.client) {
+		if (IS_CLIENT) {
 			window.addEventListener('online', () => {
 				if (onlineRef) onlineRef.value = true;
 			});
@@ -67,7 +81,7 @@ export function usePostboxOfflineCache() {
 	if (!writesDisabledRef) writesDisabledRef = ref(false);
 	const writesDisabled = writesDisabledRef;
 
-	const store = import.meta.client ? getPostboxOfflineStore() : null;
+	const store = IS_CLIENT ? getPostboxOfflineStore() : null;
 
 	/** Mirror the store's disabled flag into the reactive settings surface. */
 	function syncDisabled() {
@@ -75,7 +89,7 @@ export function usePostboxOfflineCache() {
 	}
 
 	/** Whether a persist should even be attempted right now. */
-	const canPersist = computed(() => import.meta.client && enabled.value && !!store);
+	const canPersist = computed(() => IS_CLIENT && enabled.value && !!store);
 
 	// ── Best-effort persist/load wrappers (all no-op when disabled) ───────
 	async function persistFolders(folders: unknown): Promise<void> {
