@@ -8,7 +8,7 @@
  *   - `answerClarification` refuses a message that is NOT awaiting clarification.
  *   - The abandoned-question fallback cron
  *     (`processingLifecycle.reconcileAbandonedClarifications`) resumes a message
- *     that sat unanswered past the window, marking it `autoSendBlocked` (never
+ *     that sat unanswered past the window, marking it `isAutoSendBlocked` (never
  *     auto-send-eligible) and routing it into `drafting`; a still-fresh await is
  *     left alone.
  *
@@ -30,6 +30,15 @@ vi.mock('../lib/sessionOrganization', async () => {
 	return {
 		...actual,
 		getMutationContext: vi.fn(async (ctx: MutationCtx) => {
+			const identity = await ctx.auth.getUserIdentity();
+			if (!identity) throw new Error('Not authenticated');
+			return { userId: identity.subject, role: 'owner' };
+		}),
+		// `answerClarification` is an adminMutation, so its wrapper calls
+		// requireAdminContext(ctx). Mock it too (mirroring
+		// inboundMutations.integration.test.ts) so the handler is actually
+		// reached and the persist + transition + resume are exercised.
+		requireAdminContext: vi.fn(async (ctx: MutationCtx) => {
 			const identity = await ctx.auth.getUserIdentity();
 			if (!identity) throw new Error('Not authenticated');
 			return { userId: identity.subject, role: 'owner' };
@@ -212,7 +221,7 @@ describe('processingLifecycle.reconcileAbandonedClarifications', () => {
 			const msg = await ctx.db.get(messageId);
 			expect(msg!.processingStatus).toBe('drafting');
 			// Marked so the route step's safety gate can NEVER auto-send it.
-			expect(msg!.autoSendBlocked).toBe(true);
+			expect(msg!.isAutoSendBlocked).toBe(true);
 		});
 
 		const scheduled = await t.run(async (ctx) => {
@@ -244,7 +253,7 @@ describe('processingLifecycle.reconcileAbandonedClarifications', () => {
 		await t.run(async (ctx) => {
 			const msg = await ctx.db.get(messageId);
 			expect(msg!.processingStatus).toBe('awaiting_clarification');
-			expect(msg!.autoSendBlocked).toBeUndefined();
+			expect(msg!.isAutoSendBlocked).toBeUndefined();
 		});
 	});
 
@@ -277,7 +286,7 @@ describe('processingLifecycle.reconcileAbandonedClarifications', () => {
 		await t.run(async (ctx) => {
 			const msg = await ctx.db.get(messageId);
 			expect(msg!.processingStatus).toBe('drafting');
-			expect(msg!.autoSendBlocked).toBe(true);
+			expect(msg!.isAutoSendBlocked).toBe(true);
 		});
 	});
 });
