@@ -410,6 +410,27 @@ export const contextCoverageValidator = v.object({
 	lowCoverage: v.boolean(),
 });
 
+// Draft-quality self-check (inboundMessages.draftQuality).
+// Emitted by the `draft` Agent step AFTER the reply is generated — a cheap-tier
+// self-critique of the DRAFT itself (is it complete, grounded in the retrieved
+// context, and on-tone?), scored 0..1. This is deliberately SEPARATE from the
+// classifier's `confidenceScore` (which only measures certainty about the
+// category/sentiment, not draft correctness): the `route` step gates auto-send
+// on THIS score, not on the classifier confidence. Absent when the self-check
+// LLM call failed — the route step treats an absent value as LOW and never
+// auto-approves on it (fail-soft to human review).
+export const draftQualityValidator = v.object({
+	// Overall draft quality, 0..1. Fed into the auto-approve threshold.
+	score: v.number(),
+	// Did the draft address what the inbound actually asked?
+	complete: v.boolean(),
+	// Does every asserted fact trace to the retrieved context (no hallucination)?
+	grounded: v.boolean(),
+	// Human-readable issues for the review UI (e.g. "missing order number",
+	// "asserts a refund policy not in context"). Empty when clean.
+	flags: v.array(v.string()),
+});
+
 // Content scan flag (contentScanResults.flags array entry).
 // Mirrors @owlat/email-scanner ContentFlag — keep in sync when that type changes.
 export const contentScanFlagValidator = v.object({

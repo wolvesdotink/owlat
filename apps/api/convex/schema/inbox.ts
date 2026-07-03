@@ -4,6 +4,7 @@ import {
 	securityFlagsValidator,
 	classificationValidator,
 	contextCoverageValidator,
+	draftQualityValidator,
 	tokenUsageValidator,
 } from '../lib/convexValidators';
 
@@ -103,8 +104,14 @@ export const inboxTables = {
 		// Agent-generated draft
 		draftResponse: v.optional(v.string()),
 		draftSubject: v.optional(v.string()),
-		// Overall confidence score for routing decisions
+		// Overall confidence score for routing decisions — the CLASSIFIER's
+		// certainty about category/sentiment. NOT a measure of draft correctness.
 		confidenceScore: v.optional(v.number()),
+		// Draft-quality self-check — a cheap-tier critique of the DRAFT itself
+		// (complete / grounded / on-tone), scored 0..1. Persisted SEPARATELY from
+		// confidenceScore; the route step gates auto-send on this, not on the
+		// classifier confidence. Absent when the self-check failed.
+		draftQuality: v.optional(draftQualityValidator),
 		// Context compaction tier used (for transparency in review queue)
 		contextTier: v.optional(v.union(
 			v.literal('normal'),
