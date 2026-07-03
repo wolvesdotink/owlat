@@ -326,7 +326,7 @@ export const routeStep: AgentStepModule<'route', RouteInput, RouteOutput> = {
 		// persistence failure must degrade to "no rationale shown" and never wedge
 		// the walker or block the send/review transition.
 		try {
-			await ctx.runMutation(internal.inbox.processingLifecycle.recordAgentDecision, {
+			await ctx.runMutation(internal.inbox.stepOutputs.recordAgentDecision, {
 				inboundMessageId: input.inboundMessageId,
 				decision,
 				reason,

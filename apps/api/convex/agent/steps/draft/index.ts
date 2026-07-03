@@ -412,7 +412,7 @@ Classification of this message:
 		// confidenceScore (the classifier's certainty) and surfaces its flags to
 		// the review UI.
 		await ctx.runMutation(
-			internal.inbox.processingLifecycle.recordDraftOutput,
+			internal.inbox.stepOutputs.recordDraftOutput,
 			{
 				inboundMessageId: input.inboundMessageId,
 				draftResponse: draftBody,

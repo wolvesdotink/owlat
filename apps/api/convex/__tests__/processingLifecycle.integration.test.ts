@@ -710,7 +710,7 @@ describe('processingLifecycle.recordStep*', () => {
 		const t = convexTest(schema, modules);
 		const messageId = await createMessage(t, { processingStatus: 'classifying' });
 
-		await t.mutation(internal.inbox.processingLifecycle.recordContextTier, {
+		await t.mutation(internal.inbox.stepOutputs.recordContextTier, {
 			inboundMessageId: messageId,
 			contextTier: 'compacted',
 		});
@@ -726,7 +726,7 @@ describe('processingLifecycle.recordStep*', () => {
 		const t = convexTest(schema, modules);
 		const messageId = await createMessage(t, { processingStatus: 'drafting' });
 
-		await t.mutation(internal.inbox.processingLifecycle.recordDraftOutput, {
+		await t.mutation(internal.inbox.stepOutputs.recordDraftOutput, {
 			inboundMessageId: messageId,
 			draftResponse: 'Thanks for reaching out',
 			draftSubject: 'Re: Help please',

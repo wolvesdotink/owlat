@@ -232,6 +232,7 @@ import type * as inbox_processingLifecycle_effects from "../inbox/processingLife
 import type * as inbox_processingLifecycle_reducers from "../inbox/processingLifecycle/reducers.js";
 import type * as inbox_processingLifecycle_types from "../inbox/processingLifecycle/types.js";
 import type * as inbox_queries from "../inbox/queries.js";
+import type * as inbox_stepOutputs from "../inbox/stepOutputs.js";
 import type * as inbox_threads_module from "../inbox/threads/module.js";
 import type * as integrationImports__common from "../integrationImports/_common.js";
 import type * as integrationImports_providers_index from "../integrationImports/providers/index.js";
@@ -764,6 +765,7 @@ declare const fullApi: ApiFromModules<{
   "inbox/processingLifecycle/reducers": typeof inbox_processingLifecycle_reducers;
   "inbox/processingLifecycle/types": typeof inbox_processingLifecycle_types;
   "inbox/queries": typeof inbox_queries;
+  "inbox/stepOutputs": typeof inbox_stepOutputs;
   "inbox/threads/module": typeof inbox_threads_module;
   "integrationImports/_common": typeof integrationImports__common;
   "integrationImports/providers/index": typeof integrationImports_providers_index;

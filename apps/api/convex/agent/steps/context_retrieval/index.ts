@@ -343,7 +343,7 @@ export const contextRetrievalStep: AgentStepModule<
 		// side effect — see ADR-0010 for why `contextTier` has its own helper
 		// rather than rolling into a transition).
 		await ctx.runMutation(
-			internal.inbox.processingLifecycle.recordContextTier,
+			internal.inbox.stepOutputs.recordContextTier,
 			{
 				inboundMessageId: input.inboundMessageId,
 				contextTier: tier,
