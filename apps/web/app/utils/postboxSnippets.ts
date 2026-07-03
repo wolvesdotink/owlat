@@ -6,6 +6,8 @@
  * calls into these.
  */
 
+import { escapeHtml } from '@owlat/shared/html';
+
 export interface SnippetTrigger {
 	/** Text typed after the "/" (the live filter query). */
 	query: string;
@@ -68,14 +70,6 @@ export function rankSnippets<T extends RankableSnippet>(snippets: T[], query: st
 export function firstNameOf(displayName: string | null | undefined): string | undefined {
 	const first = (displayName ?? '').trim().split(/\s+/)[0];
 	return first || undefined;
-}
-
-function escapeHtml(value: string): string {
-	return value
-		.replace(/&/g, '&amp;')
-		.replace(/</g, '&lt;')
-		.replace(/>/g, '&gt;')
-		.replace(/"/g, '&quot;');
 }
 
 /**
