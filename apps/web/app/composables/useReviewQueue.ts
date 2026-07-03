@@ -49,6 +49,33 @@ export function useReviewQueue() {
 		return await approveDraft({ inboundMessageId: messageId });
 	};
 
+	/**
+	 * Approve a specific one of the agent's offered draft options. When the
+	 * picked text already IS the persisted default draft (option 0), this is a
+	 * plain approve. When the reviewer picked a DIFFERENT variant, persist it
+	 * first via `editDraft` (which also records the pick as a mild autonomy
+	 * feedback signal — the default wasn't the best fit) and then approve+queue,
+	 * reusing the same edit→approve path as the manual composer. Both runs go
+	 * through `useBackendOperation`; a failed edit stops before approving.
+	 */
+	const approveOption = async (
+		messageId: Id<'inboundMessages'>,
+		chosenText: string,
+		currentDraft: string | null | undefined,
+	) => {
+		const text = chosenText.trim();
+		if (text.length === 0) return undefined;
+		if (text === (currentDraft ?? '').trim()) {
+			return await approveDraft({ inboundMessageId: messageId });
+		}
+		const edited = await editDraft({
+			inboundMessageId: messageId,
+			draftResponse: text,
+		});
+		if (edited === undefined) return undefined;
+		return await approveDraft({ inboundMessageId: messageId });
+	};
+
 	const onReject = async (messageId: Id<'inboundMessages'>) => {
 		return await rejectDraft({ inboundMessageId: messageId });
 	};
@@ -83,6 +110,7 @@ export function useReviewQueue() {
 		isLoading,
 		needsReply,
 		onApprove,
+		approveOption,
 		onReject,
 		composeAndSend,
 	};
