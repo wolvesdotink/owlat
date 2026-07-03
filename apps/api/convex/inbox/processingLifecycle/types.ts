@@ -62,6 +62,7 @@ export const actionTypeValidator = v.union(
 	v.literal('security_scan'),
 	v.literal('context_retrieval'),
 	v.literal('classify'),
+	v.literal('clarify'),
 	v.literal('draft'),
 	v.literal('route'),
 );

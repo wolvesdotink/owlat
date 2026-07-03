@@ -7,8 +7,11 @@
  * intent / confidence using structured LLM output (generateObject).
  * Routes to:
  *   - archived (spam category)
- *   - draft_ready (complaint or urgent — skip drafter, human review)
- *   - drafting (everything else — schedule drafter)
+ *   - clarify (everything else — the missing-info gate, in-state, before the
+ *     drafter). Complaint / urgent mail is forked through here too (it used to
+ *     skip straight to a blank human-review box); the `clarify` step runs it
+ *     with cautious eagerness, and the `route` step keeps the hard rule that
+ *     complaint / urgent are never auto-send-eligible.
  */
 
 import { z } from 'zod';
@@ -85,20 +88,15 @@ Classify this message with:
 			};
 		}
 
-		// Complaint / urgent — escalate to human review, skip drafter
-		if (output.category === 'complaint' || output.priority === 'urgent') {
-			return {
-				kind: 'transition',
-				transition: { to: 'draft_ready', classification: output },
-			};
-		}
-
-		// Normal — schedule drafter, threading the context forward
+		// Everything else — run the missing-info gate IN-STATE before drafting.
+		// The clarify step decides whether the agent must ask a question first
+		// (→ awaiting_clarification) or can proceed to draft (→ drafting).
+		// Complaint / urgent flow through here as well; clarify runs them with
+		// cautious eagerness and route keeps them out of the auto-send path.
 		return {
-			kind: 'transition',
-			transition: { to: 'drafting', classification: output },
+			kind: 'in_state',
 			nextStep: {
-				kind: 'draft',
+				kind: 'clarify',
 				input: {
 					inboundMessageId: runCtx.inboundMessageId,
 					context: input.context,

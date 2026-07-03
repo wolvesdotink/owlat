@@ -42,6 +42,7 @@ const agentStepKindValidator = v.union(
 	v.literal('security_scan'),
 	v.literal('context_retrieval'),
 	v.literal('classify'),
+	v.literal('clarify'),
 	v.literal('draft'),
 	v.literal('route'),
 );
@@ -89,6 +90,20 @@ function assembleTransition(
 				durationMs,
 				modelUsed: result.modelUsed,
 				tokenUsage: result.tokenUsage,
+				classification: routeT.classification,
+			};
+		case 'awaiting_clarification':
+			return {
+				to: 'awaiting_clarification' as const,
+				at,
+				completedActionId: actionId,
+				output,
+				durationMs,
+				modelUsed: result.modelUsed,
+				tokenUsage: result.tokenUsage,
+				// The clarify step returns the questions; the walker stamps
+				// `askedAt` from the transition time so `route` stays pure.
+				pendingClarification: { questions: routeT.questions, askedAt: at },
 				classification: routeT.classification,
 			};
 		case 'draft_ready':
