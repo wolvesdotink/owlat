@@ -2,9 +2,10 @@
 import type { Id } from '@owlat/api/dataModel';
 import type { ComposerMode } from '~/composables/postbox/usePostboxCompose';
 
-defineProps<{
+const props = defineProps<{
 	canSend: boolean;
 	sending: boolean;
+	isUploading: boolean;
 	isScheduled: boolean;
 	sendShortcutHint: string;
 	scheduleShortcutHint: string;
@@ -29,6 +30,12 @@ const emit = defineEmits<{
 	(e: 'switch-mode', mode: ComposerMode): void;
 }>();
 
+// While an upload is in flight the Send button is disabled (canSend is false);
+// explain the wait in its tooltip instead of showing the keyboard hint.
+const sendTitle = computed(() =>
+	props.isUploading ? 'Waiting for attachments to finish uploading…' : props.sendShortcutHint
+);
+
 // The file input lives here alongside the attach button that triggers it; the
 // selected FileList is emitted to the composer, which owns the upload state.
 const fileInput = ref<HTMLInputElement | null>(null);
@@ -46,7 +53,7 @@ function onPickFiles(event: Event) {
 			<button
 				type="button"
 				class="btn btn-primary"
-				:title="sendShortcutHint"
+				:title="sendTitle"
 				:disabled="!canSend || sending || isScheduled"
 				@click="emit('send')"
 			>

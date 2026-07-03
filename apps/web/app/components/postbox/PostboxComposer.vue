@@ -70,6 +70,7 @@ const {
 	removeInlineImage,
 	isSaving,
 	lastSavedAt,
+	isUploading,
 	canSend,
 	isScheduled,
 	scheduledSendAt,
@@ -161,8 +162,17 @@ function onSignatureChange(event: Event) {
 
 const sending = ref(false);
 const scheduleOpen = ref(false);
+const { showToast } = useToast();
 
 async function handleSend(opts?: { scheduledSendAt?: number }) {
+	// Explain *why* Send is inert while an upload is in flight (Send is disabled
+	// via `canSend`, and Cmd/Ctrl+Enter routes here too) so the user waits rather
+	// than losing the not-yet-committed attachment. Keep this above the canSend
+	// short-circuit so the toast still fires when uploading is the sole blocker.
+	if (isUploading.value) {
+		showToast('Waiting for attachments to finish uploading…');
+		return;
+	}
 	if (!canSend.value || sending.value) return;
 	// Catch the classic "I said 'attached' but forgot to attach" mistake.
 	if (
@@ -412,6 +422,7 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } =
 			v-model:follow-up-remind-at="followUpRemindAt"
 			:can-send="canSend"
 			:sending="sending"
+			:is-uploading="isUploading"
 			:is-scheduled="isScheduled"
 			:send-shortcut-hint="sendShortcutHint"
 			:schedule-shortcut-hint="scheduleShortcutHint"
