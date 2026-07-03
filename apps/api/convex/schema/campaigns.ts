@@ -67,7 +67,11 @@ const campaignSendJobs = defineTable({
 	totalCandidates: v.number(),
 	startedAt: v.number(),
 	updatedAt: v.number(),
-}).index('by_campaign', ['campaignId']);
+})
+	.index('by_campaign', ['campaignId'])
+	// Watchdog lookup: find walks still `resolving` ordered by staleness, so the
+	// re-drive cron can resume a walk whose hop threw before rescheduling itself.
+	.index('by_phase_updatedAt', ['phase', 'updatedAt']);
 
 /**
  * Campaign tables — one-time marketing email blasts + per-recipient send tracking.

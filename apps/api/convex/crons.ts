@@ -11,6 +11,13 @@ crons.interval('process scheduled campaigns', { minutes: 1 }, internal.campaigns
 // completion callback): advances 'sending' → 'sent' when no queued sends remain.
 crons.interval('reconcile sending campaigns', { minutes: 1 }, internal.campaigns.lifecycle.reconcileSendingCampaigns, {});
 
+// Re-drive campaign send walks that stalled mid-flight. resolveCampaignPage
+// self-reschedules only after a successful hop, so any throw before that leaves
+// the campaignSendJobs row stuck in 'resolving' with the walk halted and the
+// remaining recipients undelivered. This watchdog resumes such a walk from its
+// committed cursor (idempotent — no dupes, no drops).
+crons.interval('reconcile stuck campaign sends', { minutes: 5 }, internal.campaigns.sendJob.redriveStuckSendJobs, {});
+
 // Roll sharded campaign send counters (campaignStatShards) into campaigns.stats*
 // for recently-sent campaigns, so the read cache stays fresh as opens/clicks
 // trickle in post-send. In-flight 'sending' campaigns are rolled up by the
