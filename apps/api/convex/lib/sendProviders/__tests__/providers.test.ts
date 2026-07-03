@@ -3,7 +3,8 @@ import { SESClient, SendEmailCommand, SendRawEmailCommand } from '@aws-sdk/clien
 import { mtaSendProvider } from '../mta';
 import { sesSendProvider, _resetSesClientCacheForTests } from '../ses';
 import { resendSendProvider, _resetResendClientCacheForTests } from '../resend';
-import { EmailErrorCode } from '../types';
+import { EmailErrorCode, isRetryableErrorCode } from '../types';
+import { sendProviderDispatch } from '../dispatch';
 
 // Capture the args passed to the Resend SDK's `emails.send` so the idempotency-
 // key forwarding (FIX H1) can be asserted without a live API call. The
@@ -390,6 +391,96 @@ describe('sesSendProvider', () => {
 			expect(result).toEqual({ success: true, id: 'ses-msg-1' });
 			expect(sendSpy).toHaveBeenCalledTimes(1);
 			expect(sendSpy.mock.calls[0]![0]).toBeInstanceOf(SendEmailCommand);
+		});
+	});
+
+	// ────────────────────────────────────────────────────────────────────────
+	// FIX: SES send is idempotent under dispatch retry (no double-delivery).
+	// SES has no server-side dedup, so a post-dispatch timeout — where AWS may
+	// already have accepted (and delivered) the message but the response was
+	// lost — MUST be classified TERMINAL, so the dispatch helper does not
+	// re-send and deliver a SECOND copy.
+	// ────────────────────────────────────────────────────────────────────────
+	describe('post-dispatch timeout is terminal (no double-delivery)', () => {
+		let sendSpy: ReturnType<typeof vi.spyOn>;
+
+		beforeEach(() => {
+			vi.stubEnv('AWS_SES_REGION', 'us-east-1');
+			vi.stubEnv('AWS_SES_ACCESS_KEY_ID', 'AKIATEST');
+			vi.stubEnv('AWS_SES_SECRET_ACCESS_KEY', 'secret');
+			_resetSesClientCacheForTests();
+		});
+
+		afterEach(() => {
+			sendSpy.mockRestore();
+			vi.unstubAllEnvs();
+			_resetSesClientCacheForTests();
+		});
+
+		it('classifies an SDK TimeoutError as the non-retryable AMBIGUOUS_TIMEOUT code', async () => {
+			const timeout = new Error('socket timed out');
+			timeout.name = 'TimeoutError';
+			sendSpy = vi.spyOn(SESClient.prototype, 'send').mockRejectedValue(timeout as never);
+
+			const result = await sesSendProvider.sendEmail({
+				to: 'to@example.com',
+				from: 'from@example.com',
+				subject: 'hi',
+				html: '<p>hi</p>',
+			});
+
+			expect(result.success).toBe(false);
+			if (!result.success) {
+				expect(result.errorCode).toBe(EmailErrorCode.AMBIGUOUS_TIMEOUT);
+			}
+			// The dispatch helper only re-sends retryable codes — this one is not.
+			expect(isRetryableErrorCode(EmailErrorCode.AMBIGUOUS_TIMEOUT)).toBe(false);
+		});
+
+		it('sendProviderDispatch does NOT re-send after a timeout (exactly one SES send call)', async () => {
+			const timeout = new Error('socket timed out');
+			timeout.name = 'TimeoutError';
+			sendSpy = vi.spyOn(SESClient.prototype, 'send').mockRejectedValue(timeout as never);
+
+			const ctx = { scheduler: { runAfter: vi.fn().mockResolvedValue(undefined) } };
+			const dispatched = await sendProviderDispatch(
+				// The dispatch helper only touches ctx.scheduler for health recording.
+				ctx as unknown as Parameters<typeof sendProviderDispatch>[0],
+				'ses',
+				{ to: 'to@example.com', from: 'from@example.com', subject: 'hi', html: '<p>hi</p>' },
+			);
+
+			// A SECOND SES SendEmail would double-deliver. There must be exactly one.
+			expect(sendSpy).toHaveBeenCalledTimes(1);
+			expect(dispatched.attempts).toBe(1);
+			expect(dispatched.result.success).toBe(false);
+			if (!dispatched.result.success) {
+				expect(dispatched.result.errorCode).toBe(EmailErrorCode.AMBIGUOUS_TIMEOUT);
+			}
+		});
+
+		it('an explicit AWS ServiceUnavailable (not accepted) stays the retryable SERVER_ERROR', async () => {
+			// Regression guard: only ambiguous timeouts become terminal. A real AWS
+			// 5xx means the request was NOT accepted, so it stays retryable (the
+			// dispatch loop will re-send) — we must not over-broaden the terminal
+			// classification. Asserted at the adapter level to avoid the real
+			// retry-backoff delays the dispatch loop would incur.
+			const err = new Error('ServiceUnavailable: try again later');
+			err.name = 'ServiceUnavailable';
+			sendSpy = vi.spyOn(SESClient.prototype, 'send').mockRejectedValue(err as never);
+
+			const result = await sesSendProvider.sendEmail({
+				to: 'to@example.com',
+				from: 'from@example.com',
+				subject: 'hi',
+				html: '<p>hi</p>',
+			});
+
+			expect(result.success).toBe(false);
+			if (!result.success) {
+				expect(result.errorCode).toBe(EmailErrorCode.SERVER_ERROR);
+			}
+			expect(isRetryableErrorCode(EmailErrorCode.SERVER_ERROR)).toBe(true);
 		});
 	});
 });

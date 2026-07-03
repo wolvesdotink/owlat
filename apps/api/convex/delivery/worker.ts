@@ -458,8 +458,8 @@ export const sendSingleEmail = internalAction({
 		//
 		// Thread a stable, Send-row-derived idempotency key so any surviving
 		// retry de-dupes at the boundary: MTA dedups on `messageId`, Resend on
-		// the `Idempotency-Key` header. SES has no idempotency surface, so its
-		// extras stay empty (see caveat in the fix report).
+		// the `Idempotency-Key` header. SES has no idempotency surface (its
+		// adapter treats a post-dispatch timeout as TERMINAL instead).
 		const idempotencyKey = deriveIdempotencyKey(envelopeInput);
 		const extras: ExtrasFor<SendProviderKind> =
 			providerKind === 'mta'
