@@ -424,15 +424,6 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } =
 					<Icon v-else name="lucide:send" class="w-4 h-4 mr-1.5" />
 					{{ sending ? 'Sending…' : 'Send' }}
 				</button>
-				<button
-					type="button"
-					class="btn btn-ghost"
-					:title="scheduleShortcutHint"
-					:disabled="!canSend || sending || isScheduled"
-					@click="scheduleOpen = true"
-				>
-					<Icon name="lucide:clock" class="w-4 h-4" />
-				</button>
 				<PostboxComposerFollowUp
 					v-model:remind-at="followUpRemindAt"
 					:disabled="isScheduled"
@@ -452,12 +443,6 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } =
 					class="hidden"
 					@change="onPickFiles"
 				>
-				<PostboxComposerModeControls
-					:mode="composerMode"
-					:persistent-toolbar="persistentToolbar"
-					@toggle-toolbar="toggleToolbar"
-					@switch-mode="switchMode"
-				/>
 				<label
 					v-if="showSignaturePicker"
 					class="inline-flex items-center gap-1 text-xs text-text-tertiary"
@@ -480,6 +465,37 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } =
 						</option>
 					</select>
 				</label>
+				<!-- Secondary controls (schedule send, Simple/Designer mode + the
+				     formatting-toolbar toggle) collapse behind ⋯ to keep the footer
+				     lean; the schedule shortcut (Cmd/Ctrl+Shift+Enter) still works. -->
+				<PostboxOverflowMenu
+					label="More compose options"
+					align="left"
+					direction="up"
+				>
+					<template #default="{ close }">
+						<button
+							type="button"
+							role="menuitem"
+							class="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface disabled:opacity-50"
+							:title="scheduleShortcutHint"
+							:disabled="!canSend || sending || isScheduled"
+							@click="scheduleOpen = true; close()"
+						>
+							<Icon name="lucide:clock" class="w-4 h-4 text-text-tertiary" />
+							Schedule send…
+						</button>
+						<div class="border-t border-border-subtle my-1" />
+						<div class="px-3 py-1.5">
+							<PostboxComposerModeControls
+								:mode="composerMode"
+								:persistent-toolbar="persistentToolbar"
+								@toggle-toolbar="toggleToolbar"
+								@switch-mode="switchMode"
+							/>
+						</div>
+					</template>
+				</PostboxOverflowMenu>
 			</div>
 			<span class="text-xs text-text-tertiary">{{ lastSavedLabel }}</span>
 		</footer>

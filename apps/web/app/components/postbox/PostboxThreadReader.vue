@@ -558,18 +558,12 @@ async function moveOpenMessageTo(targetFolderId: Id<'mailFolders'>) {
 	registerTriageUndo('Moved', result);
 }
 
-function onReaderShortcut(event: KeyboardEvent) {
-	// Alt matters too: on Windows the browser-menu accelerators (Alt+E, Alt+F)
-	// deliver plain keydowns with altKey — never treat those as triage keys.
-	if (event.metaKey || event.ctrlKey || event.altKey) return;
-	if (isEditableTarget(event.target)) return;
-	const el = event.target as HTMLElement | null;
-	// The focused thread list and any open dialog own their keys.
-	if (el?.closest?.('[role="listbox"], [role="dialog"]')) return;
-	const action = resolvePostboxShortcut(event.key);
-	// '?' is handled by the window-level PostboxShortcutHelp listener.
-	if (!action || action === 'help') return;
-	event.preventDefault();
+/**
+ * Run a thread-level action against the OPEN message. Shared by the keyboard
+ * shortcuts, the palette-command bridge, and the reader toolbar so a demoted
+ * action stays reachable from every entry point (keyboard, Cmd-K, overflow).
+ */
+function runReaderAction(action: string) {
 	switch (action) {
 		case 'archive':
 			void runAndAdvance(async () => {
@@ -615,11 +609,49 @@ function onReaderShortcut(event: KeyboardEvent) {
 		case 'move':
 			moveDialogOpen.value = true;
 			break;
+		case 'reportSpam':
+			reportSpamMessage(props.message._id);
+			break;
+		case 'blockSender':
+			blockSenderOf(props.message._id);
+			break;
+		case 'print':
+			if (typeof window !== 'undefined') window.print();
+			break;
 	}
 }
 
-onMounted(() => window.addEventListener('keydown', onReaderShortcut));
-onBeforeUnmount(() => window.removeEventListener('keydown', onReaderShortcut));
+function onReaderShortcut(event: KeyboardEvent) {
+	// Alt matters too: on Windows the browser-menu accelerators (Alt+E, Alt+F)
+	// deliver plain keydowns with altKey — never treat those as triage keys.
+	if (event.metaKey || event.ctrlKey || event.altKey) return;
+	if (isEditableTarget(event.target)) return;
+	const el = event.target as HTMLElement | null;
+	// The focused thread list and any open dialog own their keys.
+	if (el?.closest?.('[role="listbox"], [role="dialog"]')) return;
+	const action = resolvePostboxShortcut(event.key);
+	// '?' is handled by the window-level PostboxShortcutHelp listener.
+	if (!action || action === 'help') return;
+	event.preventDefault();
+	runReaderAction(action);
+}
+
+// Bridge for the Cmd-K palette: commands demoted into overflow menus (reply-all,
+// forward, report spam, block sender, print, …) dispatch this event so they
+// stay discoverable and runnable without a visible button.
+function onPaletteCommand(event: Event) {
+	const action = (event as CustomEvent<{ action?: string }>).detail?.action;
+	if (action) runReaderAction(action);
+}
+
+onMounted(() => {
+	window.addEventListener('keydown', onReaderShortcut);
+	window.addEventListener('owlat:postbox-reader-action', onPaletteCommand);
+});
+onBeforeUnmount(() => {
+	window.removeEventListener('keydown', onReaderShortcut);
+	window.removeEventListener('owlat:postbox-reader-action', onPaletteCommand);
+});
 
 const reportSpamOp = useBackendOperation(api.mail.messageActions.reportSpam, {
 	label: 'Report spam',
@@ -648,6 +680,22 @@ function reportSpamMessage(msgId: string) {
 
 function blockSenderOf(msgId: string) {
 	void blockSenderOp.run({ messageId: msgId as Id<'mailMessages'> });
+}
+
+/** Live starred state of a specific message in the thread. */
+function isMessageStarred(msg: { _id: string; flagFlagged?: boolean }): boolean {
+	const live = allMessages.value.find((m) => m._id === msg._id) as
+		| { flagFlagged?: boolean }
+		| undefined;
+	return live?.flagFlagged ?? msg.flagFlagged ?? false;
+}
+
+/** Toggle the star on a specific message (per-row affordance). */
+function toggleMessageStar(msg: { _id: string; flagFlagged?: boolean }) {
+	void setStarOp.run({
+		messageId: msg._id as Id<'mailMessages'>,
+		starred: !isMessageStarred(msg),
+	});
 }
 
 const downloadingAttachment = ref<string | null>(null);
@@ -817,7 +865,7 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 				<!-- Expanded message -->
 				<section
 					v-else
-					class="border border-border-subtle rounded bg-bg-surface px-4 py-3"
+					class="group border border-border-subtle rounded bg-bg-surface px-4 py-3"
 				>
 					<header class="flex items-start gap-3">
 						<UiAvatar
@@ -961,7 +1009,25 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 						</ul>
 					</section>
 
+					<!-- Progressive disclosure: star + reply stay visible; reply-all
+					     and forward reveal on row hover (pointer); the full set is
+					     always reachable — keyboard/touch — inside the ⋯ overflow. -->
 					<div class="mt-4 flex items-center gap-2">
+						<button
+							type="button"
+							class="btn btn-ghost"
+							:class="isMessageStarred(msg) ? 'text-warning' : 'text-text-tertiary'"
+							:title="isMessageStarred(msg) ? 'Unstar' : 'Star'"
+							:aria-label="isMessageStarred(msg) ? 'Unstar' : 'Star'"
+							:aria-pressed="isMessageStarred(msg)"
+							@click="toggleMessageStar(msg)"
+						>
+							<Icon
+								name="lucide:star"
+								class="w-4 h-4"
+								:class="{ 'fill-current': isMessageStarred(msg) }"
+							/>
+						</button>
 						<button
 							type="button"
 							class="btn btn-ghost"
@@ -973,7 +1039,7 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 						<button
 							v-if="hasOtherRecipients(msg)"
 							type="button"
-							class="btn btn-ghost"
+							class="btn btn-ghost hidden group-hover:inline-flex"
 							@click="openReplyAll(msg)"
 						>
 							<Icon name="lucide:reply-all" class="w-4 h-4 mr-1.5" />
@@ -981,31 +1047,54 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 						</button>
 						<button
 							type="button"
-							class="btn btn-ghost"
+							class="btn btn-ghost hidden group-hover:inline-flex"
 							@click="openForward(msg)"
 						>
 							<Icon name="lucide:forward" class="w-4 h-4 mr-1.5" />
 							Forward
 						</button>
 						<span class="flex-1" />
-						<button
-							type="button"
-							class="btn btn-ghost text-text-tertiary"
-							title="Report spam"
-							aria-label="Report spam"
-							@click="reportSpamMessage(msg._id)"
-						>
-							<Icon name="lucide:shield-alert" class="w-4 h-4" />
-						</button>
-						<button
-							type="button"
-							class="btn btn-ghost text-text-tertiary"
-							title="Block sender"
-							aria-label="Block sender"
-							@click="blockSenderOf(msg._id)"
-						>
-							<Icon name="lucide:ban" class="w-4 h-4" />
-						</button>
+						<PostboxOverflowMenu label="More message actions">
+							<template #default="{ close }">
+								<button
+									v-if="hasOtherRecipients(msg)"
+									type="button"
+									role="menuitem"
+									class="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface"
+									@click="openReplyAll(msg); close()"
+								>
+									<Icon name="lucide:reply-all" class="w-4 h-4 text-text-tertiary" />
+									Reply all
+								</button>
+								<button
+									type="button"
+									role="menuitem"
+									class="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface"
+									@click="openForward(msg); close()"
+								>
+									<Icon name="lucide:forward" class="w-4 h-4 text-text-tertiary" />
+									Forward
+								</button>
+								<button
+									type="button"
+									role="menuitem"
+									class="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface"
+									@click="reportSpamMessage(msg._id); close()"
+								>
+									<Icon name="lucide:shield-alert" class="w-4 h-4 text-text-tertiary" />
+									Report spam
+								</button>
+								<button
+									type="button"
+									role="menuitem"
+									class="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface"
+									@click="blockSenderOf(msg._id); close()"
+								>
+									<Icon name="lucide:ban" class="w-4 h-4 text-text-tertiary" />
+									Block sender
+								</button>
+							</template>
+						</PostboxOverflowMenu>
 					</div>
 				</section>
 			</template>
