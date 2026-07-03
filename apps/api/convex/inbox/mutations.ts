@@ -91,7 +91,7 @@ export const approveDraft = adminMutation({
 		// Record it as an outcome-sourced positive so real-world outcomes — not
 		// just the shrinking human-reviewed subset — tune autonomy. Best-effort:
 		// a learning-loop failure must never fail the human approve.
-		if (message.pendingClarification?.answeredAt && !message.draftEdited) {
+		if (message.pendingClarification?.answeredAt && !message.isDraftEdited) {
 			try {
 				await ctx.runMutation(internal.autonomy.recordOutcomeFeedback, {
 					inboundMessageId: message._id,
@@ -206,7 +206,7 @@ export const editDraft = adminMutation({
 			// Mark the draft as human-edited so a later approve can tell an
 			// UNEDITED owner-send of an answered-clarification draft (a strong
 			// positive autonomy outcome) apart from an edited-then-sent one.
-			draftEdited: true,
+			isDraftEdited: true,
 		};
 		if (args.draftSubject) {
 			patches.draftSubject = args.draftSubject;

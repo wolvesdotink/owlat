@@ -170,7 +170,7 @@ export const inboxTables = {
 		// Set once a human edits the agent draft on the review queue (editDraft).
 		// Used to tell an UNEDITED owner-send of an answered-clarification draft
 		// (a strong positive autonomy outcome) apart from an edited-then-sent one.
-		draftEdited: v.optional(v.boolean()),
+		isDraftEdited: v.optional(v.boolean()),
 		// Error tracking
 		errorMessage: v.optional(v.string()),
 		// Timestamps
