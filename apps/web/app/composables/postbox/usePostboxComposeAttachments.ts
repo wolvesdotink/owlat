@@ -106,8 +106,8 @@ export function usePostboxComposeAttachments(opts: {
 	 *   - per-file byte cap (MAX_ATTACHMENT_BYTES),
 	 *   - attachment COUNT cap (ATTACHMENT_COMPOSE_LIMITS.maxCount),
 	 *   - combined-SIZE cap (ATTACHMENT_COMPOSE_LIMITS.maxTotalBytes),
-	 * counting committed + in-flight attachments so a user can't queue 10×25 MB and
-	 * OOM the send.
+	 * counting committed + in-flight attachments so a user can't queue ten oversized
+	 * files and OOM the send.
 	 */
 	async function addFiles(files: File[] | FileList) {
 		const id = await opts.ensureDraft();
