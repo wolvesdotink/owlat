@@ -257,6 +257,15 @@ export const inboxTables = {
 		// auto-send-eligible. Unset ⇒ DEFAULT_CLARIFICATION_TIMEOUT_MS (24h). See
 		// inbox/processingLifecycle.ts:reconcileAbandonedClarifications.
 		clarificationTimeoutMs: v.optional(v.number()),
+		// Shadow ("would-have-sent") mode. When true (or unset — shadow is the
+		// DEFAULT posture before any real auto-send is trusted for a slice), the
+		// `route` step computes the auto-send decision EXACTLY as normal but never
+		// sends: an auto-approve is logged as a shadow "would-have-sent"
+		// observation (agent/shadowScorecard.ts) and the message is routed to
+		// human review instead. Set explicitly to `false` to let trusted slices
+		// auto-send for real. Zero send-side risk while on. See
+		// agent/steps/route/index.ts.
+		shadowMode: v.optional(v.boolean()),
 		// Timestamps
 		createdAt: v.number(),
 		updatedAt: v.number(),
@@ -390,6 +399,52 @@ export const inboxTables = {
 		createdAt: v.number(),
 	})
 		.index('by_category', ['category']),
+
+	// Agent Shadow Decisions - one row per message observed while shadow
+	// ("would-have-sent") mode is on. Records what the `route` step WOULD have
+	// done (auto-send vs hold), the draft snapshot at decision time, and — once
+	// the human acts on the review queue — how the shadowed decision compared to
+	// the human outcome. Feeds the per-category/per-sender graduation scorecard.
+	// Never influences routing; the message always goes to human review while
+	// shadow is on. See agent/shadowScorecard.ts.
+	agentShadowDecisions: defineTable({
+		inboundMessageId: v.id('inboundMessages'),
+		category: v.string(),
+		sender: v.string(),              // normalized sender email (slice key)
+		wouldHaveSent: v.boolean(),      // route would have auto-approved
+		reason: v.string(),              // the route decision's rationale
+		confidence: v.number(),
+		draftQualityScore: v.optional(v.number()),
+		shadowDraft: v.string(),         // draft snapshot at decision time
+		resolved: v.boolean(),           // reconciled against a human action yet?
+		userAction: v.optional(
+			v.union(v.literal('approved'), v.literal('rejected'), v.literal('edited')),
+		),
+		matched: v.optional(v.boolean()), // would-have-sent AND human approved unedited
+		similarity: v.optional(v.number()), // shadowDraft vs. final human draft
+		createdAt: v.number(),
+		resolvedAt: v.optional(v.number()),
+	})
+		.index('by_message', ['inboundMessageId'])
+		.index('by_category', ['category'])
+		.index('by_sender', ['sender']),
+
+	// Agent Shadow Scorecard - running per-(category, sender) aggregate of the
+	// shadow observations above. `matched` counts the cases where the shadowed
+	// decision would have auto-sent AND the human approved that exact draft
+	// unedited. A slice whose matched/wouldHaveSent rate clears the graduation
+	// thresholds surfaces an OFFER to enable auto-send — which still requires the
+	// user's explicit acceptance (autonomySuggestions). See agent/shadowScorecard.ts.
+	agentShadowScorecard: defineTable({
+		category: v.string(),
+		sender: v.string(),
+		samples: v.number(),        // total reconciled shadow observations for the slice
+		wouldHaveSent: v.number(),  // observations where route would have auto-sent
+		matched: v.number(),        // wouldHaveSent AND human approved the same draft unedited
+		lastActivityAt: v.number(),
+	})
+		.index('by_category', ['category'])
+		.index('by_category_sender', ['category', 'sender']),
 
 	// Coalesce Batches - one in-flight debounce window per thread. When rapid
 	// messages arrive on the same thread, the pending batch's scheduled job is
