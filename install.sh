@@ -165,10 +165,14 @@ resolve_ref() {
 	local response http_code latest
 	response=$(curl -sSL --max-time 10 -w $'\n%{http_code}' "$api_url" 2>/dev/null) || response=$'\n000'
 	http_code="${response##*$'\n'}"
-	# Match only bare `vX.Y.Z` tags (optionally with a -pre suffix); the leading
-	# `v` distinguishes them from the `server-`/`desktop-` prefixed lines.
+	# Match only bare STABLE `vX.Y.Z` tags: the trailing `"` is anchored so a
+	# prerelease tag like `v0.3.0-rc.1` is NOT matched. This preserves the old
+	# `/releases/latest` behaviour (which excludes prereleases/drafts) and keeps
+	# the installer in agreement with the updater (systemUpdates.ts, also
+	# stable-only). The leading `v` distinguishes these unified releases from the
+	# `server-v*` / `desktop-v*` prefixed lines.
 	latest=$(printf '%s' "${response%$'\n'*}" \
-		| grep -oE '"tag_name"[[:space:]]*:[[:space:]]*"v[0-9]+\.[0-9]+\.[0-9]+[^"]*"' \
+		| grep -oE '"tag_name"[[:space:]]*:[[:space:]]*"v[0-9]+\.[0-9]+\.[0-9]+"' \
 		| sed -n 's/.*"\(v[0-9][^"]*\)"/\1/p' | head -1)
 
 	if [[ -n "$latest" ]]; then
