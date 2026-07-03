@@ -24,6 +24,24 @@ export const escapeAttr = (str: string): string => {
 };
 
 /**
+ * Escape a value for interpolation into a CSS style value (inside a
+ * double-quoted `style="…"` attribute) or a VML color attribute
+ * (`fillcolor="…"`, `strokecolor="…"`, `<v:fill color="…">`).
+ *
+ * Colour / font-family / border / width / background fields are attacker- or
+ * template-controlled and were previously interpolated raw, so a `"` closed the
+ * attribute and injected markup into outbound email HTML and the public
+ * View-in-Browser archive (stored XSS). Escaping the HTML metacharacters
+ * neutralises the breakout while leaving benign values (`#fff`, `rgb(0,0,0)`,
+ * `1px solid #ccc`, `Arial, sans-serif`, `600px`, `100%`) rendered identically —
+ * browsers decode entities inside attribute values before the CSS/VML parser
+ * sees them. This mirrors the escaping the AMP path already applies.
+ */
+export const escapeCss = (value: string): string => {
+	return escapeHtml(value);
+};
+
+/**
  * Escape a value for use inside a CSS url() function.
  * Prevents breakout via ') or other CSS injection.
  */
