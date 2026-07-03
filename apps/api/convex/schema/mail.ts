@@ -806,6 +806,9 @@ mailUserSettings: defineTable({
 	// rows + single-line subject/snippet). Optional so existing rows read as
 	// undefined; the reader defaults it to 'comfortable'.
 	density: v.optional(mailDensityValidator),
+	// Play a short confirmation sound when a message is dispatched. Optional so
+	// existing rows read as undefined; the reader defaults it OFF (opt-in).
+	isSendSoundOn: v.optional(v.boolean()),
 	createdAt: v.number(),
 	updatedAt: v.number(),
 })
