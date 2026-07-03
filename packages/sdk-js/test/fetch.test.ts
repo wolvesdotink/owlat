@@ -528,4 +528,61 @@ describe('createHttpClient', () => {
 			expect(spy).toHaveBeenCalledTimes(2);
 		});
 	});
+
+	describe('empty-body error responses (regression)', () => {
+		// A 4xx/5xx with an empty body (gateway 502/503/504, edge 429, proxy 401)
+		// must surface the typed error — and retry the retryable ones — instead
+		// of being short-circuited by the "empty response" branch into a null
+		// "success" the resource layer then dereferences. Each call returns a
+		// fresh Response so the body can be re-read across retries.
+		function mockEmptyBody(status: number, headers: Record<string, string> = {}) {
+			return vi.spyOn(globalThis, 'fetch').mockImplementation(
+				async () => new Response(null, { status, headers: new Headers(headers) }),
+			);
+		}
+
+		function retryClient() {
+			return createHttpClient(API_KEY, BASE_URL, DEFAULT_TIMEOUT, {
+				maxRetries: 2,
+				initialDelayMs: 0,
+			});
+		}
+
+		it('throws a typed 503 error (not null) on an empty body and retries the idempotent GET', async () => {
+			const spy = mockEmptyBody(503);
+			const http = retryClient();
+
+			await expect(http.get('/test')).rejects.toMatchObject({
+				code: 'internal',
+				statusCode: 503,
+			});
+			// idempotent GET + 5xx → maxRetries + 1 attempts
+			expect(spy).toHaveBeenCalledTimes(3);
+		});
+
+		it('throws RateLimitError (not null) on an empty-body 429 and retries', async () => {
+			const spy = mockEmptyBody(429);
+			const http = retryClient();
+
+			await expect(http.get('/test')).rejects.toBeInstanceOf(RateLimitError);
+			expect(spy).toHaveBeenCalledTimes(3);
+		});
+
+		it('throws AuthenticationError (not null) on an empty-body 401 with Content-Length: 0, no retry', async () => {
+			const spy = mockEmptyBody(401, { 'content-length': '0' });
+			const http = retryClient();
+
+			await expect(http.get('/test')).rejects.toBeInstanceOf(AuthenticationError);
+			// 401 is not retryable — exactly one attempt.
+			expect(spy).toHaveBeenCalledOnce();
+		});
+
+		it('still returns undefined data for an empty-body 204 success', async () => {
+			mockEmptyBody(204);
+			const http = createClient();
+			const result = await http.delete('/test');
+
+			expect(result.data).toBeUndefined();
+		});
+	});
 });
