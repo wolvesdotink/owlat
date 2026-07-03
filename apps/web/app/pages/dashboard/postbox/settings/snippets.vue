@@ -12,6 +12,9 @@ definePageMeta({
 const { currentMailbox, isLoading: mailboxesLoading } = usePostboxMailbox();
 const mailboxId = computed(() => currentMailbox.value?._id ?? null);
 
+// literal token shown in copy; kept out of the template to avoid a `}}` mustache clash
+const firstNamePlaceholder = '{{firstName}}';
+
 const { snippets, isLoading, create, update, remove } =
 	usePostboxSnippets(mailboxId);
 
@@ -86,7 +89,7 @@ async function confirmRemove() {
 				<p class="text-text-secondary mt-1">
 					Canned responses you can drop into a message. In the composer, type
 					<code>/</code> at the start of a line to pick one. Use
-					<code>{{ '{{firstName}}' }}</code> to greet the recipient by name.
+					<code v-text="firstNamePlaceholder" /> to greet the recipient by name.
 				</p>
 			</div>
 			<button
