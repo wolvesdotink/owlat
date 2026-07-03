@@ -14,7 +14,7 @@ const folderRef = computed(() => props.folderRole);
 const folderIdRef = computed(() => props.folderId);
 // Custom folders drive the list-header name; the rest of the folder rail is
 // self-contained in PostboxFolderRail.
-const { customFolders, folders: allFolders } = usePostboxFolders(mailboxIdRef);
+const { customFolders } = usePostboxFolders(mailboxIdRef);
 
 // List/reader density → applied as a single data-density attribute on the
 // Postbox root; all compact styling lives in CSS keyed off it (postbox-density.css).
@@ -35,22 +35,11 @@ const {
 	showingCached,
 	isOffline,
 } = usePostboxOfflineThreads({
+	mailboxId: computed(() => String(props.mailboxId)),
 	folderRole: folderRef,
 	liveRows: messages,
 	isLoading,
 });
-
-// Persist the folder list to the device cache whenever it settles, so the rail
-// and list header can render instantly next cold start. Best-effort; no-op when
-// the cache is off or unavailable.
-const offlineCache = usePostboxOfflineCache();
-watch(
-	allFolders,
-	(folders) => {
-		if (folders.length > 0) void offlineCache.persistFolders(folders);
-	},
-	{ immediate: true }
-);
 
 // Once the inbox list has settled (first paint done), idle-prefetch the
 // composer + reader chunks so pressing `c` or Enter never waits on a chunk
@@ -181,8 +170,11 @@ const showReplyQueueStrip = computed(
 					{{ currentFolderName }}
 					<!-- Cold start from the device cache: a quiet "updating…" hint
 					     while the live query catches up. Live rows replace in place. -->
+					<!-- Suppressed while offline: the live query never settles, so a
+					     permanent "updating…" would read as stuck — the offline banner
+					     already communicates the state. -->
 					<span
-						v-if="showingCached"
+						v-if="showingCached && !isOffline"
 						class="animate-pulse text-[11px] font-normal text-text-tertiary lowercase"
 					>updating…</span>
 				</h2>

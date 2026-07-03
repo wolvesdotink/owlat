@@ -15,13 +15,15 @@
 import { reconcileThreadRows } from '~/utils/postboxOfflineStore';
 
 export function usePostboxOfflineThreads<T extends { _id: string }>(args: {
+	/** Active mailbox id — namespaces the cache so mailbox A's rows never reach B. */
+	mailboxId: Ref<string>;
 	folderRole: Ref<string>;
 	/** The live query rows (empty while pending). */
 	liveRows: Ref<readonly T[]>;
 	/** True while the live query has not yet produced a result. */
 	isLoading: Ref<boolean>;
 }) {
-	const cache = usePostboxOfflineCache();
+	const cache = usePostboxOfflineCache(args.mailboxId);
 
 	/** Only the inbox participates in the offline cache in v1. */
 	const cacheable = computed(() => args.folderRole.value === 'inbox');
@@ -40,9 +42,11 @@ export function usePostboxOfflineThreads<T extends { _id: string }>(args: {
 		loadedFolder.value = folder;
 	}
 
+	// Reload cached rows when the folder OR the mailbox changes, so switching
+	// accounts never leaves the previous mailbox's rows on screen.
 	watch(
-		args.folderRole,
-		(folder) => {
+		[args.folderRole, args.mailboxId],
+		([folder]) => {
 			void refreshCached(folder);
 		},
 		{ immediate: true }

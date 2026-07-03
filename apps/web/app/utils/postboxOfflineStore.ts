@@ -3,9 +3,11 @@
  *
  * V1 is READ-ONLY and best-effort. It persists just enough to make a cold start
  * instant and to keep already-read mail readable without a connection:
- *   - the folder list (whatever `listFolders` returns),
  *   - the newest ~200 inbox thread rows (the exact projection the list renders),
  *   - the sanitized bodies of the ~50 most-recently-READ messages.
+ * Everything is namespaced by the active mailboxId (see the key helpers) so one
+ * account's cache is never served to another on a shared device. (Folder-list
+ * caching is a follow-up — see the PR body.)
  *
  * INVARIANTS:
  *   - Only POST-sanitize HTML is ever stored (the srcdoc/body the reader already
@@ -27,10 +29,14 @@ const DB_NAME = 'owlat-postbox-offline';
 const STORE_NAME = 'kv';
 const DB_VERSION = 1;
 
-const FOLDERS_KEY = 'folders';
-const BODY_INDEX_KEY = 'body-index';
-const threadsKey = (folderRole: string) => `threads:${folderRole}`;
-const bodyKey = (messageId: string) => `body:${messageId}`;
+// Every cache key is namespaced by the active mailbox so one account's cached
+// inbox rows and message bodies can NEVER be served to a different mailbox on a
+// shared device (desktop multi-workspace rail, or a shared browser profile).
+// The namespace is the mailboxId; callers thread it through from the signed-in
+// mailbox. Without a namespace nothing is read or written.
+const threadsKey = (ns: string, folderRole: string) => `threads:${ns}:${folderRole}`;
+const bodyKey = (ns: string, messageId: string) => `body:${ns}:${messageId}`;
+const bodyIndexKey = (ns: string) => `body-index:${ns}`;
 
 /** Minimal async key/value contract the store is built on. */
 export interface OfflineKvDriver {
@@ -62,17 +68,17 @@ function isQuotaError(err: unknown): boolean {
 
 /**
  * Reconcile cached rows against the live query result: live data always wins.
- * Returns the live rows verbatim when the live query has produced a value; the
- * cached rows only stand in while live is still pending (`null`/`undefined`).
- * Cached-only rows are dropped once live arrives so a deleted/moved message
- * never lingers — the server is authoritative.
+ * While the live query is still pending (`null`/`undefined`) the cached rows
+ * stand in; the instant live has produced a value it fully replaces the cached
+ * set — including dropping cached-only rows, so a deleted/moved message never
+ * lingers. This is a whole-list swap, not an id-level merge: the server is
+ * authoritative, so `cached` is intentionally unused once `live` has arrived.
  */
 export function reconcileThreadRows<T extends { _id: string }>(
 	cached: readonly T[],
 	live: readonly T[] | null | undefined
 ): T[] {
 	if (live == null) return [...cached];
-	// Prefer the live version of every row (fresh flags/snippets/timestamps).
 	return live.map((row) => ({ ...row }));
 }
 
@@ -124,36 +130,31 @@ export class PostboxOfflineStore {
 		}
 	}
 
-	async saveFolders(folders: unknown): Promise<void> {
-		await this.safeSet(FOLDERS_KEY, folders);
+	/**
+	 * Persist the newest rows for a folder in `ns`. Capped at
+	 * {@link OFFLINE_THREADS_CAP} — callers pass the list as rendered; we keep
+	 * only the head. `ns` is the active mailboxId so a different mailbox's cold
+	 * start never reads these rows.
+	 */
+	async saveThreads<T>(ns: string, folderRole: string, rows: readonly T[]): Promise<void> {
+		await this.safeSet(threadsKey(ns, folderRole), rows.slice(0, OFFLINE_THREADS_CAP));
 	}
 
-	async loadFolders<T>(): Promise<T | null> {
-		return this.safeGet<T | null>(FOLDERS_KEY, null);
+	async loadThreads<T>(ns: string, folderRole: string): Promise<T[]> {
+		return this.safeGet<T[]>(threadsKey(ns, folderRole), []);
 	}
 
 	/**
-	 * Persist the newest rows for a folder. Capped at {@link OFFLINE_THREADS_CAP}
-	 * — callers pass the list as rendered; we keep only the head.
+	 * Cache one message's post-sanitize body under `ns` (the active mailboxId),
+	 * LRU-capped per-namespace at {@link OFFLINE_BODIES_CAP}. Re-reading a message
+	 * moves it to the most-recent end; overflow evicts the least-recently-read
+	 * body (and its index entry).
 	 */
-	async saveThreads<T>(folderRole: string, rows: readonly T[]): Promise<void> {
-		await this.safeSet(threadsKey(folderRole), rows.slice(0, OFFLINE_THREADS_CAP));
-	}
-
-	async loadThreads<T>(folderRole: string): Promise<T[]> {
-		return this.safeGet<T[]>(threadsKey(folderRole), []);
-	}
-
-	/**
-	 * Cache one message's post-sanitize body, LRU-capped at
-	 * {@link OFFLINE_BODIES_CAP}. Re-reading a message moves it to the most-recent
-	 * end; overflow evicts the least-recently-read body (and its index entry).
-	 */
-	async saveBody(messageId: string, srcdoc: string): Promise<void> {
+	async saveBody(ns: string, messageId: string, srcdoc: string): Promise<void> {
 		const entry: OfflineBodyEntry = { srcdoc, cachedAt: Date.now() };
-		if (!(await this.safeSet(bodyKey(messageId), entry))) return;
+		if (!(await this.safeSet(bodyKey(ns, messageId), entry))) return;
 
-		const index = await this.safeGet<string[]>(BODY_INDEX_KEY, []);
+		const index = await this.safeGet<string[]>(bodyIndexKey(ns), []);
 		const next = index.filter((id) => id !== messageId);
 		next.push(messageId);
 		// Evict least-recently-read bodies over the cap (best-effort deletes).
@@ -161,19 +162,19 @@ export class PostboxOfflineStore {
 			const evicted = next.shift();
 			if (evicted === undefined) break;
 			try {
-				await this.driver.delete(bodyKey(evicted));
+				await this.driver.delete(bodyKey(ns, evicted));
 			} catch {
 				// A failed eviction just leaves an orphan body; harmless.
 			}
 		}
-		await this.safeSet(BODY_INDEX_KEY, next);
+		await this.safeSet(bodyIndexKey(ns), next);
 	}
 
-	async loadBody(messageId: string): Promise<OfflineBodyEntry | null> {
-		return this.safeGet<OfflineBodyEntry | null>(bodyKey(messageId), null);
+	async loadBody(ns: string, messageId: string): Promise<OfflineBodyEntry | null> {
+		return this.safeGet<OfflineBodyEntry | null>(bodyKey(ns, messageId), null);
 	}
 
-	/** Wipe every cached row, folder and body from this device. */
+	/** Wipe every cached row and body (all mailboxes) from this device. */
 	async clear(): Promise<void> {
 		try {
 			await this.driver.clear();

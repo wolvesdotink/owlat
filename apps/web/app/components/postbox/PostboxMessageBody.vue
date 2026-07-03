@@ -42,6 +42,9 @@ import type { Id } from '@owlat/api/dataModel';
 const props = defineProps<{
 	message: {
 		_id?: string;
+		/** Owning mailbox — namespaces the offline cache so a different account on
+		 *  a shared device is never served this message's cached body. */
+		mailboxId?: string;
 		htmlBodyInline?: string;
 		textBodyInline?: string;
 		htmlBodyStorageId?: string;
@@ -62,11 +65,16 @@ const { isDark } = useAppTheme();
 // (so it stays readable without a connection) and, when offline, serve the
 // cached srcdoc if the live body can't be fetched. Best-effort + fail-soft;
 // never stores raw mail — only the sanitized document the iframe already shows.
-const { isOffline, persistBody, loadBody } = usePostboxOfflineCache();
+const { isOffline, persistBody, loadBody } = usePostboxOfflineCache(
+	() => props.message.mailboxId
+);
 const cachedSrcdoc = ref<string | null>(null);
 watch(
 	() => props.message._id,
 	async (id) => {
+		// Clear synchronously so switching messages never briefly shows the prior
+		// message's cached body while the async load resolves.
+		cachedSrcdoc.value = null;
 		cachedSrcdoc.value = id ? (await loadBody(id))?.srcdoc ?? null : null;
 	},
 	{ immediate: true }

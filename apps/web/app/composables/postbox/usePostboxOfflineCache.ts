@@ -23,6 +23,20 @@ import {
 const STORAGE_KEY = 'owlat:postbox:offline-cache-enabled';
 
 /**
+ * Deep plain-copy for values headed to IndexedDB's structured-clone boundary.
+ * Convex query results are reactive proxies; passing one straight to
+ * structured-clone throws and permanently disables the cache, so we strip all
+ * reactivity to a plain JSON snapshot first.
+ */
+function toPlain<T>(value: readonly T[]): T[] {
+	try {
+		return JSON.parse(JSON.stringify(value)) as T[];
+	} catch {
+		return [...value];
+	}
+}
+
+/**
  * Client detection that is both SSR-safe (no `window` on the server) and
  * test-friendly (happy-dom provides `window`), unlike Nuxt's compile-time
  * `import.meta.client` which is undefined under vitest.
@@ -41,8 +55,20 @@ export function __resetPostboxOfflineCacheState() {
 	writesDisabledRef = null;
 }
 
-export function usePostboxOfflineCache() {
+/**
+ * @param mailboxId Active mailbox id — used to namespace every cached key so one
+ *   account's cache is never served to another on a shared device. Persist/load
+ *   of threads and bodies are no-ops without it (e.g. the settings screen, which
+ *   only toggles the preference and clears the whole store).
+ */
+export function usePostboxOfflineCache(mailboxId?: MaybeRefOrGetter<string | undefined>) {
 	const { isDesktop } = useDesktopContext();
+
+	/** The cache namespace: the active mailboxId, or null when none is bound. */
+	const namespace = computed(() => {
+		const id = toValue(mailboxId);
+		return id ? String(id) : null;
+	});
 
 	// ── "Store recent mail on this device" (device-local preference) ──────
 	if (!enabledRef) {
@@ -89,40 +115,36 @@ export function usePostboxOfflineCache() {
 	}
 
 	/** Whether a persist should even be attempted right now. */
-	const canPersist = computed(() => IS_CLIENT && enabled.value && !!store);
+	const canPersist = computed(() => IS_CLIENT && enabled.value && !!store && !!namespace.value);
 
 	// ── Best-effort persist/load wrappers (all no-op when disabled) ───────
-	async function persistFolders(folders: unknown): Promise<void> {
-		if (!canPersist.value || !store) return;
-		await store.saveFolders(folders);
-		syncDisabled();
-	}
-
-	async function loadFolders<T>(): Promise<T | null> {
-		if (!enabled.value || !store) return null;
-		return store.loadFolders<T>();
-	}
-
 	async function persistThreads<T>(folderRole: string, rows: readonly T[]): Promise<void> {
-		if (!canPersist.value || !store) return;
-		await store.saveThreads(folderRole, rows);
+		const ns = namespace.value;
+		if (!canPersist.value || !store || !ns) return;
+		// Deep plain-copy so a reactive Convex proxy never hits structured-clone
+		// (a clone failure would permanently disable the whole cache for the
+		// session). toRaw alone leaves nested proxies, so round-trip through JSON.
+		await store.saveThreads(ns, folderRole, toPlain(rows));
 		syncDisabled();
 	}
 
 	async function loadThreads<T>(folderRole: string): Promise<T[]> {
-		if (!enabled.value || !store) return [];
-		return store.loadThreads<T>(folderRole);
+		const ns = namespace.value;
+		if (!enabled.value || !store || !ns) return [];
+		return store.loadThreads<T>(ns, folderRole);
 	}
 
 	async function persistBody(messageId: string, srcdoc: string): Promise<void> {
-		if (!canPersist.value || !store) return;
-		await store.saveBody(messageId, srcdoc);
+		const ns = namespace.value;
+		if (!canPersist.value || !store || !ns) return;
+		await store.saveBody(ns, messageId, srcdoc);
 		syncDisabled();
 	}
 
 	async function loadBody(messageId: string): Promise<OfflineBodyEntry | null> {
-		if (!enabled.value || !store) return null;
-		return store.loadBody(messageId);
+		const ns = namespace.value;
+		if (!enabled.value || !store || !ns) return null;
+		return store.loadBody(ns, messageId);
 	}
 
 	/** Wipe everything this device has cached and clear the disabled flag. */
@@ -140,8 +162,6 @@ export function usePostboxOfflineCache() {
 		isOffline,
 		writesDisabled: readonly(writesDisabled),
 		canPersist,
-		persistFolders,
-		loadFolders,
 		persistThreads,
 		loadThreads,
 		persistBody,
