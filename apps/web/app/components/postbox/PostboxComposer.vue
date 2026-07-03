@@ -3,6 +3,7 @@ import type { Id } from '@owlat/api/dataModel';
 import type { ComposerMode } from '~/composables/postbox/usePostboxCompose';
 import type { ComposerPromotePayload } from '~/composables/postbox/usePostboxComposerStack';
 import { SIMPLE_BLOCK_TYPES } from '~/composables/postbox/postboxBlockTypes';
+import { canonicalEmailAddress } from '~/utils/recipientHints';
 
 const EmailBuilder = defineAsyncComponent(() =>
 	import('@owlat/email-builder').then((m) => m.EmailBuilder)
@@ -20,6 +21,12 @@ const props = defineProps<{
 	forwardAttachmentsFromMessageId?: Id<'mailMessages'>;
 	attachPendingKey?: string;
 	initialMode?: ComposerMode;
+	/**
+	 * On a plain Reply, the extra recipients Reply-All would include. When
+	 * non-empty the envelope shows a dismissible "Also include …? (reply-all)"
+	 * hint that merges them into Cc.
+	 */
+	replyAllRecipients?: string[];
 	/**
 	 * Compact in-place variant (the reader's inline reply box): the header
 	 * swaps Minimize for an expand-to-popup button that emits `promote` with
@@ -97,6 +104,25 @@ async function onFromChange(address: string) {
 		// eslint-disable-next-line no-console
 		console.error('[Postbox] setIdentity failed', err);
 	}
+}
+
+// Reply-all gap hint accepted: fold the extra recipients into Cc, keeping the
+// draft (subject/body/To) exactly as-is. Dedupe by canonical address so an
+// already-present address isn't doubled.
+function onApplyReplyAll() {
+	const extras = props.replyAllRecipients ?? [];
+	if (extras.length === 0) return;
+	const seen = new Set(
+		[...ccAddresses.value, ...toAddresses.value].map(canonicalEmailAddress)
+	);
+	const merged = [...ccAddresses.value];
+	for (const addr of extras) {
+		const canon = canonicalEmailAddress(addr);
+		if (!canon || seen.has(canon)) continue;
+		seen.add(canon);
+		merged.push(addr);
+	}
+	ccAddresses.value = merged;
 }
 
 const composerName = ref(`Postbox compose ${new Date().toLocaleString()}`);
@@ -323,7 +349,9 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } =
 			:mailbox-id="mailboxId"
 			:from-address="fromAddress"
 			:available-identities="availableIdentities"
+			:reply-all-recipients="replyAllRecipients"
 			@from-change="onFromChange"
+			@apply-reply-all="onApplyReplyAll"
 		/>
 
 		<div
