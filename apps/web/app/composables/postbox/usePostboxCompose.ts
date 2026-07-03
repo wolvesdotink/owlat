@@ -332,6 +332,11 @@ export function usePostboxCompose(seed: DraftSeed) {
 	);
 
 	const canSend = computed(() => {
+		// Never let a send fire while an attachment upload is still in flight: the
+		// draft's `attachments` array has not yet committed the pending file, so a
+		// mid-upload send would silently drop it from the outgoing message. Mirror
+		// the chat composer (ChatInput), which gates its Send on `!isUploading`.
+		if (isUploading.value) return false;
 		if (toAddresses.value.length === 0) return false;
 		if (subject.value.trim().length > 0) return true;
 		if (attachments.value.length > 0) return true;
