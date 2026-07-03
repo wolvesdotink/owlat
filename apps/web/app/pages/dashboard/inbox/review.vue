@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
+import { REVIEW_SHORTCUT_GROUPS } from '~/utils/reviewShortcuts';
 
 useHead({ title: 'Review Queue — Owlat' });
 
@@ -23,11 +24,35 @@ const composeSubject = reactive<Record<string, string>>({});
 // Success toast
 const { showToast } = useToast();
 
+// Flat rows carrying an `_id` so the shared list-keyboard + optimistic-hide
+// composables (which key on `_id`) can drive this page. Each row keeps its
+// message + thread for rendering and navigation.
+type ReviewRow = {
+	_id: string;
+	message: NonNullable<typeof reviewItems.value>[number]['message'];
+	thread: NonNullable<typeof reviewItems.value>[number]['thread'];
+};
+const rows = computed<ReviewRow[]>(() =>
+	(reviewItems.value ?? []).map((it) => ({
+		_id: it.message._id,
+		message: it.message,
+		thread: it.thread,
+	})),
+);
+
+// Optimistic row removal — approve/reject hide the row immediately and the live
+// subscription confirms it; a failed action restores the row (usePostboxOptimisticHide).
+const { visible: visibleRows, hide: hideRow, unhide: unhideRow } = usePostboxOptimisticHide(rows);
+
 const onApproveClick = async (messageId: Id<'inboundMessages'>) => {
 	actionInProgress.value = messageId;
+	hideRow(messageId);
 	try {
 		const result = await onApprove(messageId);
-		if (result === undefined) return;
+		if (result === undefined) {
+			unhideRow(messageId);
+			return;
+		}
 		showToast('Draft approved and queued for sending');
 	} finally {
 		actionInProgress.value = null;
@@ -36,14 +61,49 @@ const onApproveClick = async (messageId: Id<'inboundMessages'>) => {
 
 const onRejectClick = async (messageId: Id<'inboundMessages'>) => {
 	actionInProgress.value = messageId;
+	hideRow(messageId);
 	try {
 		const result = await onReject(messageId);
-		if (result === undefined) return;
+		if (result === undefined) {
+			unhideRow(messageId);
+			return;
+		}
 		showToast('Draft rejected');
 	} finally {
 		actionInProgress.value = null;
 	}
 };
+
+// Keyboard-first triage: j/k move, Enter opens the thread, a approves (through
+// the SAME undo-guarded send the button calls), e edits, x/# rejects. Built by
+// reusing the Postbox house composables; keys stay inert while the inline
+// compose input/textarea is focused.
+function openThread(row: ReviewRow) {
+	if (row.thread) void navigateTo(`/dashboard/inbox/${row.thread._id}`);
+}
+const {
+	focusedIndex,
+	activeId: activeRowId,
+	onKeydown: onQueueKeydown,
+} = useReviewQueueKeyboard<ReviewRow>({
+	items: visibleRows,
+	resetKey: computed(() => (isLoading.value ? 'loading' : 'ready')),
+	rowDomId: (row) => `review-row-${row._id}`,
+	onOpen: openThread,
+	// `a` only sends when there is an agent draft to approve; draftless
+	// escalations (needsReply) have no draft, so fall back to opening the thread
+	// where the admin composes the reply — never an empty auto-send.
+	onApprove: (row) =>
+		needsReply(row.message) ? openThread(row) : void onApproveClick(row.message._id),
+	onEdit: openThread,
+	onReject: (row) => void onRejectClick(row.message._id),
+});
+
+// Focus the listbox on mount so j/k work without a click (keyboard-first).
+const listboxEl = ref<HTMLElement | null>(null);
+onMounted(() => {
+	void nextTick(() => listboxEl.value?.focus());
+});
 
 const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 	const body = composeBody[messageId] ?? '';
@@ -79,6 +139,26 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 			</div>
 		</div>
 
+		<!-- Keyboard hint: this queue is keyboard-first (j/k/Enter/a/e/x). -->
+		<div
+			v-if="visibleRows.length > 0"
+			class="flex flex-wrap items-center gap-x-4 gap-y-1 mb-4 text-xs text-text-tertiary"
+		>
+			<span
+				v-for="hint in REVIEW_SHORTCUT_GROUPS"
+				:key="hint.label"
+				class="inline-flex items-center gap-1"
+			>
+				<kbd
+					v-for="k in hint.keys"
+					:key="k"
+					class="px-1.5 py-0.5 rounded border border-border-subtle bg-bg-surface font-mono text-[10px] text-text-secondary"
+					>{{ k }}</kbd
+				>
+				<span>{{ hint.label }}</span>
+			</span>
+		</div>
+
 		<!-- Loading -->
 		<div v-if="isLoading" class="flex items-center justify-center py-16">
 			<div class="flex flex-col items-center gap-3">
@@ -89,7 +169,7 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 
 		<!-- Empty State -->
 		<div
-			v-else-if="!reviewItems || reviewItems.length === 0"
+			v-else-if="visibleRows.length === 0"
 			class="flex flex-col items-center justify-center py-16 text-center"
 		>
 			<UiIconBox icon="lucide:check-circle" size="xl" variant="success" rounded="full" class="mb-4" />
@@ -99,26 +179,39 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 			</p>
 		</div>
 
-		<!-- Review Items -->
-		<div v-else class="space-y-4">
-			<div
-				v-for="item in reviewItems"
-				:key="item.message._id"
+		<!-- Review Items — a keyboard-navigable listbox (j/k/Enter/a/e/x). -->
+		<ul
+			v-else
+			ref="listboxEl"
+			tabindex="0"
+			role="listbox"
+			aria-label="Review queue"
+			:aria-activedescendant="activeRowId"
+			class="space-y-4 outline-none focus-visible:ring-1 focus-visible:ring-brand/40 focus-visible:ring-inset rounded-lg"
+			@keydown="onQueueKeydown"
+		>
+			<li
+				v-for="(row, i) in visibleRows"
+				:id="`review-row-${row._id}`"
+				:key="row._id"
+				role="option"
+				:aria-selected="focusedIndex === i"
 				class="card"
+				:class="focusedIndex === i ? 'ring-2 ring-brand/60' : ''"
 			>
 				<div class="flex items-start justify-between mb-3">
 					<div class="flex items-center gap-3">
 						<UiIconBox icon="lucide:mail" size="sm" variant="surface" rounded="full" />
 						<div>
 							<p class="text-text-primary font-medium text-sm">
-								{{ item.message.from }}
+								{{ row.message.from }}
 							</p>
 							<p class="text-xs text-text-tertiary">
-								{{ formatCompactRelativeTime(item.message._creationTime) }}
-								<template v-if="item.thread">
+								{{ formatCompactRelativeTime(row.message._creationTime) }}
+								<template v-if="row.thread">
 									&middot;
 									<NuxtLink
-										:to="`/dashboard/inbox/${item.thread._id}`"
+										:to="`/dashboard/inbox/${row.thread._id}`"
 										class="text-brand hover:underline"
 									>
 										View thread
@@ -129,32 +222,32 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 					</div>
 
 					<!-- Classification badges -->
-					<div v-if="item.message.classification" class="flex items-center gap-2">
+					<div v-if="row.message.classification" class="flex items-center gap-2">
 						<span
-							v-if="needsReply(item.message)"
+							v-if="needsReply(row.message)"
 							class="text-xs px-2 py-0.5 rounded-full bg-warning/10 text-warning font-medium"
 						>
 							Needs reply
 						</span>
 						<span class="text-xs px-2 py-0.5 rounded-full bg-brand-subtle text-brand">
-							{{ item.message.classification.category }}
+							{{ row.message.classification.category }}
 						</span>
 						<span class="text-xs px-2 py-0.5 rounded-full bg-bg-surface text-text-secondary font-mono">
-							{{ Math.round((item.message.classification.confidence ?? 0) * 100) }}%
+							{{ Math.round((row.message.classification.confidence ?? 0) * 100) }}%
 						</span>
 					</div>
 				</div>
 
 				<!-- Original message excerpt -->
-				<p v-if="item.message.subject" class="text-text-primary font-medium text-sm mb-1">
-					{{ item.message.subject }}
+				<p v-if="row.message.subject" class="text-text-primary font-medium text-sm mb-1">
+					{{ row.message.subject }}
 				</p>
 				<p class="text-text-secondary text-sm mb-4 line-clamp-2">
-					{{ item.message.textBody || '(No text content)' }}
+					{{ row.message.textBody || '(No text content)' }}
 				</p>
 
 				<!-- Draftless escalation: compose a reply inline -->
-				<template v-if="needsReply(item.message)">
+				<template v-if="needsReply(row.message)">
 					<div class="bg-warning/5 border border-warning/20 rounded-lg p-4 mb-4">
 						<div class="flex items-center gap-2 mb-3">
 							<Icon name="lucide:user-round" class="w-4 h-4 text-warning" />
@@ -163,13 +256,13 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 							</p>
 						</div>
 						<input
-							v-model="composeSubject[item.message._id]"
+							v-model="composeSubject[row.message._id]"
 							type="text"
 							class="input w-full text-sm mb-3"
 							placeholder="Subject (optional)"
 						/>
 						<textarea
-							v-model="composeBody[item.message._id]"
+							v-model="composeBody[row.message._id]"
 							rows="6"
 							class="input w-full text-sm resize-y"
 							placeholder="Type your reply…"
@@ -178,8 +271,8 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 
 					<!-- Why it was escalated + what the agent had to work from -->
 					<InboxDecisionRationale
-						:decision="item.message.agentDecision"
-						:grounding-sources="item.message.groundingSources"
+						:decision="row.message.agentDecision"
+						:grounding-sources="row.message.groundingSources"
 						class="mb-4"
 					/>
 
@@ -187,15 +280,15 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 					<div class="flex items-center gap-2">
 						<button
 							class="btn btn-primary btn-sm gap-1"
-							:disabled="actionInProgress === item.message._id || !(composeBody[item.message._id]?.trim())"
-							@click="onComposeSend(item.message._id)"
+							:disabled="actionInProgress === row.message._id || !(composeBody[row.message._id]?.trim())"
+							@click="onComposeSend(row.message._id)"
 						>
 							<Icon name="lucide:send" class="w-3 h-3" />
 							Send Reply
 						</button>
 						<NuxtLink
-							v-if="item.thread"
-							:to="`/dashboard/inbox/${item.thread._id}`"
+							v-if="row.thread"
+							:to="`/dashboard/inbox/${row.thread._id}`"
 							class="btn btn-secondary btn-sm gap-1"
 						>
 							<Icon name="lucide:external-link" class="w-3 h-3" />
@@ -203,8 +296,8 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 						</NuxtLink>
 						<button
 							class="btn btn-ghost btn-sm gap-1 text-error hover:bg-error-subtle"
-							:disabled="actionInProgress === item.message._id"
-							@click="onRejectClick(item.message._id)"
+							:disabled="actionInProgress === row.message._id"
+							@click="onRejectClick(row.message._id)"
 						>
 							<Icon name="lucide:x" class="w-3 h-3" />
 							Dismiss
@@ -220,14 +313,14 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 							<p class="text-xs font-medium text-brand uppercase tracking-wider">Agent Draft</p>
 						</div>
 						<p class="text-text-primary text-sm whitespace-pre-wrap">
-							{{ item.message.draftResponse }}
+							{{ row.message.draftResponse }}
 						</p>
 					</div>
 
 					<!-- Why it was held + what it was grounded in (read-only) -->
 					<InboxDecisionRationale
-						:decision="item.message.agentDecision"
-						:grounding-sources="item.message.groundingSources"
+						:decision="row.message.agentDecision"
+						:grounding-sources="row.message.groundingSources"
 						class="mb-4"
 					/>
 
@@ -235,15 +328,15 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 					<div class="flex items-center gap-2">
 						<button
 							class="btn btn-primary btn-sm gap-1"
-							:disabled="actionInProgress === item.message._id"
-							@click="onApproveClick(item.message._id)"
+							:disabled="actionInProgress === row.message._id"
+							@click="onApproveClick(row.message._id)"
 						>
 							<Icon name="lucide:check" class="w-3 h-3" />
 							Approve & Send
 						</button>
 						<NuxtLink
-							v-if="item.thread"
-							:to="`/dashboard/inbox/${item.thread._id}`"
+							v-if="row.thread"
+							:to="`/dashboard/inbox/${row.thread._id}`"
 							class="btn btn-secondary btn-sm gap-1"
 						>
 							<Icon name="lucide:pencil" class="w-3 h-3" />
@@ -251,15 +344,15 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 						</NuxtLink>
 						<button
 							class="btn btn-ghost btn-sm gap-1 text-error hover:bg-error-subtle"
-							:disabled="actionInProgress === item.message._id"
-							@click="onRejectClick(item.message._id)"
+							:disabled="actionInProgress === row.message._id"
+							@click="onRejectClick(row.message._id)"
 						>
 							<Icon name="lucide:x" class="w-3 h-3" />
 							Reject
 						</button>
 					</div>
 				</template>
-			</div>
-		</div>
+			</li>
+		</ul>
 	</div>
 </template>
