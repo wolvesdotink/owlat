@@ -69,6 +69,7 @@ function makeExecuteCtx(message: FakeMessage) {
 				return { mode: 'enabled', allowed: true, reason: 'rule permits' };
 			if (name.includes('getMessage')) return withFrom;
 			if (name.includes('getAgentConfig')) return null;
+			if (name.includes('getBudgetStatus')) return { autonomousAutoSendAllowed: true };
 			throw new Error(`unexpected runQuery: ${name}`);
 		},
 		runMutation: async (ref: unknown) => {

@@ -71,6 +71,7 @@ function makeExecuteCtx(opts: {
 					dailyAutoReplyResetAt: 0,
 				};
 			}
+			if (name.includes('getBudgetStatus')) return { autonomousAutoSendAllowed: true };
 			throw new Error(`unexpected runQuery: ${name}`);
 		},
 		runMutation: async (ref: unknown) => {

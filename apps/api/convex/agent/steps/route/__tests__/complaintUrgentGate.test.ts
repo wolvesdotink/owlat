@@ -38,6 +38,7 @@ function makeCtx(classification: { category: string; priority: string } | undefi
 					...(classification ? { classification: { ...classification, sentiment: 'negative', intent: 'complaint', confidence: 0.9 } } : {}),
 				};
 			}
+			if (name.includes('getBudgetStatus')) return { autonomousAutoSendAllowed: true };
 			throw new Error(`unexpected runQuery: ${name}`);
 		},
 		runMutation: async (ref: unknown) => {

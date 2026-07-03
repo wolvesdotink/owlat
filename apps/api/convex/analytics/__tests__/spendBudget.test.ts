@@ -33,7 +33,9 @@ describe('evaluatePeriod', () => {
 	});
 
 	it('warns at the warn fraction but still allows', () => {
-		const p = evaluatePeriod(10, 8.5, 0.8, 0.2);
+		// warn at 0.8 (spend ≥ 8) with a smaller 0.1 reserve (floor 1.0): spend
+		// 8.5 leaves remaining 1.5 > 1.0, so advisory is still allowed while warning.
+		const p = evaluatePeriod(10, 8.5, 0.8, 0.1);
 		expect(p.state).toBe('warn');
 		expect(p.advisoryAllowed).toBe(true);
 	});

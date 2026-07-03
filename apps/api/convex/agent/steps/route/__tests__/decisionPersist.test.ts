@@ -37,6 +37,7 @@ function makeCtx(opts: { autonomyThreshold?: number; recordThrows?: boolean }) {
 				return { from: 'Alice Customer <alice@customer.example>', draftResponse: cleanDraft, securityFlags: { guardUnavailable: false } };
 			}
 			if (name.includes('getAgentConfig')) return null;
+			if (name.includes('getBudgetStatus')) return { autonomousAutoSendAllowed: true };
 			throw new Error(`unexpected runQuery: ${name}`);
 		},
 		runMutation: async (ref: unknown, args: unknown) => {
