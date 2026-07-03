@@ -13,6 +13,8 @@
  *     Defaults ON (undefined => true), same master-gate reasoning as above.
  *   - `replyDefault` — whether the primary reply affordance (Reply button /
  *     `r`) opens a plain Reply or a Reply-all. Defaults to 'reply'.
+ *   - `density` — 'comfortable' (roomy default) vs 'compact' (tighter rows +
+ *     single-line subject/snippet). Defaults to 'comfortable'.
  */
 
 import { api } from '@owlat/api';
@@ -20,6 +22,8 @@ import type { PostboxAutoAdvanceMode } from '~/utils/postboxAutoAdvance';
 import { POSTBOX_AUTO_ADVANCE_DEFAULT } from '~/utils/postboxAutoAdvance';
 import type { PostboxReplyDefaultMode } from '~/utils/postboxReplyDefault';
 import { POSTBOX_REPLY_DEFAULT } from '~/utils/postboxReplyDefault';
+import type { PostboxDensity } from '~/utils/postboxDensity';
+import { resolvePostboxDensity } from '~/utils/postboxDensity';
 
 export function usePostboxSettings() {
 	const { data, isLoading } = useConvexQuery(api.mail.settings.get, () => ({}));
@@ -47,6 +51,12 @@ export function usePostboxSettings() {
 		() => data.value?.replyDefault ?? POSTBOX_REPLY_DEFAULT
 	);
 
+	// List/reader density. An unset (or unknown) value resolves to 'comfortable',
+	// so the reader can consume it unconditionally while the query loads.
+	const density = computed<PostboxDensity>(() =>
+		resolvePostboxDensity(data.value?.density)
+	);
+
 	const updateOp = useBackendOperation(api.mail.settings.update, {
 		label: 'Save Postbox settings',
 	});
@@ -67,16 +77,22 @@ export function usePostboxSettings() {
 		await updateOp.run({ replyDefault: mode });
 	}
 
+	async function setDensity(mode: PostboxDensity) {
+		await updateOp.run({ density: mode });
+	}
+
 	return {
 		autoAdvance,
 		writingSuggestions,
 		autoSummarize,
 		replyDefault,
+		density,
 		isLoading,
 		setAutoAdvance,
 		setWritingSuggestions,
 		setAutoSummarize,
 		setReplyDefault,
+		setDensity,
 		isSaving: updateOp.isLoading,
 	};
 }

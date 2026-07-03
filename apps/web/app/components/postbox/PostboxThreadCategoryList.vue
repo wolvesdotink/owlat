@@ -109,14 +109,14 @@ function pickCategory(label: MailCategory) {
 						v-for="t in section.threads"
 						:key="t._id"
 						class="group relative border-b border-border-subtle"
-						style="content-visibility: auto; contain-intrinsic-size: auto 76px"
+						style="content-visibility: auto; contain-intrinsic-size: auto var(--pbx-row-intrinsic, 76px)"
 					>
 						<NuxtLink
 							:id="`postbox-cat-thread-${t._id}`"
 							role="option"
 							:aria-selected="visibleThreads[focusedIndex]?._id === t._id"
 							:to="threadTo(t)"
-							class="block px-4 py-3 hover:bg-bg-elevated"
+							class="pbx-row-link block px-4 py-3 hover:bg-bg-elevated"
 							:class="{ 'bg-bg-elevated': activeMessageId && activeMessageId === t.latestMessageId }"
 						>
 							<div class="flex items-baseline justify-between gap-3">
@@ -151,7 +151,7 @@ function pickCategory(label: MailCategory) {
 									class="text-xs bg-brand text-white rounded-full px-1.5 min-w-[1.25rem] text-center"
 								>{{ t.unreadCount }}</span>
 							</div>
-							<p class="text-xs text-text-tertiary truncate mt-0.5">{{ t.latestSnippet }}</p>
+							<p class="pbx-row-snippet text-xs text-text-tertiary truncate mt-0.5">{{ t.latestSnippet }}</p>
 						</NuxtLink>
 						<!-- Overflow: recategorize this sender's mail. -->
 						<button

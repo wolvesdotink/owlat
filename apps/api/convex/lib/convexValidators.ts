@@ -279,6 +279,14 @@ export const mailReplyDefaultValidator = v.union(
 	v.literal('reply-all'),
 );
 
+// Postbox list/reader density (mailUserSettings.density and mail/settings update
+// args) — 'comfortable' (the roomy default) vs 'compact' (tighter rows +
+// single-line subject/snippet). Single source so schema and args can't drift.
+export const mailDensityValidator = v.union(
+	v.literal('comfortable'),
+	v.literal('compact'),
+);
+
 // Email template kind (emailTemplates.type and its CRUD args)
 export const emailTemplateTypeValidator = v.union(
 	v.literal('marketing'),

@@ -777,8 +777,8 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 </script>
 
 <template>
-	<article class="p-6 max-w-4xl mx-auto">
-		<header class="mb-4">
+	<article class="pbx-reader-article p-6 max-w-4xl mx-auto">
+		<header class="pbx-reader-header mb-4">
 			<h1 class="text-2xl font-semibold text-text-primary">
 				{{ message.subject || '(no subject)' }}
 				<span

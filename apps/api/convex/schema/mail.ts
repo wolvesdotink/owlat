@@ -5,6 +5,7 @@ import {
 	mailDraftAttachmentValidator,
 	mailAutoAdvanceValidator,
 	mailReplyDefaultValidator,
+	mailDensityValidator,
 	mailUnsubscribeValidator,
 	spamVerdictValidator,
 } from '../lib/convexValidators';
@@ -801,6 +802,10 @@ mailUserSettings: defineTable({
 	// and the `r` shortcut) opens a plain Reply or a Reply-all. Optional so
 	// existing rows read as undefined; the reader defaults it to 'reply'.
 	replyDefault: v.optional(mailReplyDefaultValidator),
+	// List/reader density: 'comfortable' (roomy default) vs 'compact' (tighter
+	// rows + single-line subject/snippet). Optional so existing rows read as
+	// undefined; the reader defaults it to 'comfortable'.
+	density: v.optional(mailDensityValidator),
 	createdAt: v.number(),
 	updatedAt: v.number(),
 })
