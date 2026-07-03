@@ -63,7 +63,22 @@ function onCheckboxClick(event: MouseEvent) {
 function rowAction(event: MouseEvent, e: 'toggle-star' | 'toggle-read' | 'archive' | 'trash') {
 	event.stopPropagation();
 	event.preventDefault();
-	emit(e);
+	// Narrow to a literal per branch: Vue types `emit` as an intersection of
+	// per-event call signatures, so a union-typed argument matches no overload.
+	switch (e) {
+		case 'toggle-star':
+			emit('toggle-star');
+			break;
+		case 'toggle-read':
+			emit('toggle-read');
+			break;
+		case 'archive':
+			emit('archive');
+			break;
+		case 'trash':
+			emit('trash');
+			break;
+	}
 }
 </script>
 
