@@ -104,33 +104,11 @@ const aiRewriteEnabled = computed(() => isFeatureEnabled('ai'));
 // toolbar and persists the choice per user.
 const { persistentToolbar, toggleToolbar } = usePostboxToolbarPreference();
 
-// Canned responses ("/" slash-trigger). Loaded per-mailbox; the picker is
-// inert when the list is empty. Not AI, not feature-gated.
-const mailboxIdRef = computed<Id<'mailboxes'> | null>(() => props.mailboxId ?? null);
-const { snippets: snippetList } = usePostboxSnippets(mailboxIdRef);
-const editorSnippets = computed(() =>
-	snippetList.value.map((s) => ({
-		_id: s._id,
-		name: s.name,
-		shortcut: s.shortcut,
-		bodyHtml: s.bodyHtml,
-	}))
+// Canned responses ("/" slash-trigger); inert when the mailbox has no snippets.
+const { editorSnippets, snippetFirstName } = usePostboxComposerSnippets(
+	() => props.mailboxId ?? null,
+	() => toAddresses.value[0]
 );
-
-// Resolve `{{firstName}}` from the draft's first To recipient via the address
-// book (falls back to a visible token when the recipient isn't a known contact).
-const { contacts: snippetContacts } = usePostboxContacts(mailboxIdRef);
-function addressEmail(raw: string): string {
-	const angled = raw.match(/<([^>]+)>/);
-	return (angled ? angled[1] : raw).trim().toLowerCase();
-}
-const snippetFirstName = computed(() => {
-	const first = toAddresses.value[0];
-	if (!first) return undefined;
-	const email = addressEmail(first);
-	const contact = snippetContacts.value.find((c) => c.email.toLowerCase() === email);
-	return firstNameOf(contact?.displayName);
-});
 
 async function onFromChange(address: string) {
 	try {
