@@ -1,6 +1,7 @@
 'use node';
 
 import { v } from 'convex/values';
+import { internal } from '../_generated/api';
 import { internalAction } from '../_generated/server';
 import { sendProviderDispatch } from '../lib/sendProviders/dispatch';
 import {
@@ -391,6 +392,30 @@ export const sendSingleEmail = internalAction({
 		envelopeInput: envelopeInputValidator,
 	},
 	handler: async (ctx, { envelopeInput }) => {
+		// Suppression re-check — campaign path only. Campaigns filter the blocklist
+		// once, at audience-resolution time, then enqueue. But the timezone path
+		// can schedule a send up to ~24h out and the rate-limited campaign queue
+		// can run long, so a recipient who hard-bounces / complains / is manually
+		// blocked AFTER resolution but BEFORE this worker runs would still receive
+		// the already-queued campaign email. Re-read the blocklist here — the last
+		// gate before dispatch — to honor the suppression obligation (CAN-SPAM
+		// §316.5 + the Gmail/Yahoo 2024 sender requirements). O(1) indexed point
+		// read via `blockedEmails.by_email`; NOT a scan. The non-campaign path
+		// already gates at enqueue (delivery/enqueue.ts), so it is not re-checked.
+		if (envelopeInput.kind === 'campaign') {
+			const blocked = await ctx.runQuery(
+				internal.blockedEmails.isBlockedInternal,
+				{ email: envelopeInput.to },
+			);
+			if (blocked) {
+				// Finalize as skipped without delivering. Return normally (do NOT
+				// throw) so the workpool run counts as a success and does not retry;
+				// the Send completion handler translates `suppressed` into a terminal
+				// non-delivery transition (status 'failed', code RECIPIENT_SUPPRESSED).
+				return { success: false, suppressed: true };
+			}
+		}
+
 		const providerKind = resolveProviderKind(envelopeInput);
 		if (!providerKind) {
 			// Fail-closed: no delivery provider configured. The send entry points

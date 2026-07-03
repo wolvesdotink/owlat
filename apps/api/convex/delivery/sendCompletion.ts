@@ -42,6 +42,12 @@ interface SendWorkerSuccess {
 	providerMessageId?: string;
 	providerType?: string;
 	sendLatencyMs?: number;
+	// Set by the worker when a campaign recipient was found on the blocklist at
+	// the pre-dispatch suppression re-check (delivery/worker.ts) — the send was
+	// deliberately NOT delivered. The run itself succeeds (no retry); this flag
+	// routes the Send to a suppression-labelled terminal 'failed' transition
+	// instead of the generic WORKPOOL_FAILED one.
+	suppressed?: boolean;
 }
 
 export const completeSend = internalMutation({
@@ -67,6 +73,21 @@ export const completeSend = internalMutation({
 					...(returnValue.providerType
 						? { providerType: returnValue.providerType }
 						: {}),
+				},
+			});
+		} else if (returnValue?.suppressed) {
+			// Recipient was on the blocklist at the worker's pre-dispatch
+			// suppression re-check — the send was skipped, not delivered. Record a
+			// terminal, suppression-labelled non-delivery so campaign stats and the
+			// audit trail reflect that this was a deliberate honor-suppression skip
+			// (not a provider failure).
+			await ctx.runMutation(internal.delivery.sendLifecycle.transition, {
+				send: sendRef,
+				transition: {
+					to: 'failed',
+					at: now,
+					errorMessage: 'Recipient suppressed (blocklist) before dispatch',
+					errorCode: 'RECIPIENT_SUPPRESSED',
 				},
 			});
 		} else {
