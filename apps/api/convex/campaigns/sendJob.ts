@@ -143,6 +143,29 @@ export const advanceSendJob = internalMutation({
 	},
 });
 
+/**
+ * Bump `updatedAt` on a send job WITHOUT advancing the cursor. Called by a hop
+ * that intentionally defers itself with its own backoff reschedule (the
+ * fail-closed no-provider path) rather than making forward progress: touching
+ * `updatedAt` marks the row as "a live self-reschedule chain still owns this
+ * walk" so the `redriveStuckSendJobs` watchdog does NOT pile a second re-drive
+ * on top of the chain on every tick. The watchdog only re-drives once the row
+ * goes stale again — i.e. once that self-reschedule chain has actually died.
+ * No-ops if the row is gone or no longer `resolving` (a completed/cancelled
+ * walk must not be dragged back to a live timestamp).
+ */
+export const touchSendJob = internalMutation({
+	args: { campaignId: v.id('campaigns') },
+	handler: async (ctx, args): Promise<void> => {
+		const job = await ctx.db
+			.query('campaignSendJobs')
+			.withIndex('by_campaign', (q) => q.eq('campaignId', args.campaignId))
+			.first();
+		if (!job || job.phase !== 'resolving') return;
+		await ctx.db.patch(job._id, { updatedAt: Date.now() });
+	},
+});
+
 // A send walk that has not advanced in this long while still `resolving` is
 // treated as stranded and re-driven. `resolveCampaignPage` self-reschedules
 // only at the END of a successful hop, so ANY throw before that (a transient

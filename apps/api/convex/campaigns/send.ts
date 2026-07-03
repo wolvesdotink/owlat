@@ -674,12 +674,22 @@ export const resolveCampaignPage = internalAction({
 			// `resolving`, the cursor never advances, and every remaining recipient
 			// is silently dropped). Instead reschedule this SAME hop after a backoff
 			// so the walk resumes once a provider is (re)configured. The cursor is
-			// left untouched, so the page re-resolves from the checkpoint; the
-			// `reconcile stuck campaign sends` watchdog is the ultimate backstop if
-			// this reschedule is itself lost.
+			// left untouched, so the page re-resolves from the checkpoint.
+			//
+			// Touch `updatedAt` so this backoff reschedule — not the watchdog — owns
+			// the retry loop while the provider stays unconfigured. Without the touch
+			// the row's `updatedAt` would stay frozen at the last real progress and go
+			// ever staler, so the `reconcile stuck campaign sends` watchdog would match
+			// it on EVERY 5-min tick and schedule a fresh redundant hop on top of this
+			// self-reschedule chain, unbounded. With the touch the watchdog stays the
+			// true backstop: it only re-drives once the row goes stale again, i.e. once
+			// this self-reschedule chain has actually died.
 			logWarn(
 				`Campaign send hop deferred for ${args.campaignId}: no delivery provider configured; retrying in ${NO_PROVIDER_RETRY_MS}ms`,
 			);
+			await ctx.runMutation(internal.campaigns.sendJob.touchSendJob, {
+				campaignId: args.campaignId,
+			});
 			await ctx.scheduler.runAfter(
 				NO_PROVIDER_RETRY_MS,
 				internal.campaigns.send.resolveCampaignPage,
