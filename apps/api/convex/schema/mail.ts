@@ -4,6 +4,7 @@ import {
 	mailMessageAttachmentValidator,
 	mailDraftAttachmentValidator,
 	mailAutoAdvanceValidator,
+	mailReplyDefaultValidator,
 	mailUnsubscribeValidator,
 	spamVerdictValidator,
 } from '../lib/convexValidators';
@@ -796,6 +797,10 @@ mailUserSettings: defineTable({
 	// reader defaults it ON when the `ai` flag is on (user opt-out within an
 	// AI-enabled deploy).
 	isAutoSummarizeOn: v.optional(v.boolean()),
+	// Default reply behavior: whether the primary reply affordance (Reply button
+	// and the `r` shortcut) opens a plain Reply or a Reply-all. Optional so
+	// existing rows read as undefined; the reader defaults it to 'reply'.
+	replyDefault: v.optional(mailReplyDefaultValidator),
 	createdAt: v.number(),
 	updatedAt: v.number(),
 })

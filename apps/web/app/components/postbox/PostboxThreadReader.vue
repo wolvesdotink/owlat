@@ -5,6 +5,7 @@ import { extractAttachmentAt } from '@owlat/shared/mailMime';
 import { formatCompactRelativeTime, formatDateTime } from '~/utils/formatters';
 import { isLongThreadForSummary } from '~/utils/postboxAutoSummary';
 import { deriveReplyAllExtras } from '~/utils/recipientHints';
+import { resolvePrimaryReplyKind } from '~/utils/postboxReplyDefault';
 import { shouldShowSchedulingChip } from '~/utils/postboxSchedulingChip';
 import type { PostboxPendingCompose } from '~/utils/postboxShortcuts';
 import type {
@@ -345,12 +346,27 @@ async function buildComposeSpec(
 	return spec;
 }
 
-async function openReply(replyTo?: ReplyForwardSource) {
-	stack.open(await buildComposeSpec('reply', replyTo ?? props.message));
-}
-
 async function openReplyAll(replyTo?: ReplyForwardSource) {
 	stack.open(await buildComposeSpec('replyAll', replyTo ?? props.message));
+}
+
+/**
+ * The reply kind the PRIMARY affordance (Reply button / `r`) opens: honors the
+ * user's default-reply preference, collapsing to a plain reply when reply-all
+ * would add no one. The explicit Reply-all button / `a` bypass this.
+ */
+function primaryReplyKind(source: {
+	fromAddress: string;
+	toAddresses: string[];
+	ccAddresses: string[];
+}): InlineComposeKind {
+	return resolvePrimaryReplyKind(replyDefault.value, hasOtherRecipients(source));
+}
+
+/** Open the popup composer for the primary reply (per the default preference). */
+async function openPrimaryReply(replyTo?: ReplyForwardSource) {
+	const source = replyTo ?? props.message;
+	stack.open(await buildComposeSpec(primaryReplyKind(source), source));
 }
 
 /** Whether Reply-All would add anyone beyond a plain Reply (extra To/Cc). */
@@ -396,6 +412,18 @@ async function expandInline(kind: InlineComposeKind) {
 	inlineSpec.value = { ...seed, kind, key: `${target._id}:${kind}` };
 }
 
+/**
+ * Expand the inline box for the PRIMARY reply (Reply affordance / `r`): honors
+ * the default-reply preference, opening a reply-all when the user prefers it
+ * and the message actually has other recipients. The explicit `a` / Reply-all
+ * icon call expandInline('replyAll') directly and bypass this.
+ */
+async function expandPrimaryReply() {
+	const target = latestMessage.value;
+	if (!target) return;
+	await expandInline(primaryReplyKind(target));
+}
+
 function collapseInline() {
 	inlineSeq++;
 	inlineSpec.value = null;
@@ -429,7 +457,7 @@ watch(
 	([id], prev) => {
 		const { open, clear } = settlePendingCompose(pendingCompose.value, id, prev?.[0]);
 		if (clear) pendingCompose.value = null;
-		if (open === 'reply') void expandInline('reply');
+		if (open === 'reply') void expandPrimaryReply();
 		else if (open === 'replyAll') void expandInline('replyAll');
 		else if (open === 'forward') void expandInline('forward');
 	},
@@ -479,7 +507,7 @@ function registerTriageUndo(
 // snooze / spam): open the adjacent conversation in list order per the
 // user's preference, falling back to the list at the ends. Active only in
 // the folder view (advance props present); the search preview stays put.
-const { autoAdvance } = usePostboxSettings();
+const { autoAdvance, replyDefault } = usePostboxSettings();
 
 async function runAndAdvance(run: () => Promise<unknown>) {
 	// Capture the target before the mutation — the live list drops the
@@ -570,7 +598,7 @@ function onReaderShortcut(event: KeyboardEvent) {
 			readerBulk.toggle(messageId.value);
 			break;
 		case 'reply':
-			void expandInline('reply');
+			void expandPrimaryReply();
 			break;
 		case 'replyAll':
 			void expandInline('replyAll');
@@ -937,7 +965,7 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 						<button
 							type="button"
 							class="btn btn-ghost"
-							@click="openReply(msg)"
+							@click="openPrimaryReply(msg)"
 						>
 							<Icon name="lucide:reply" class="w-4 h-4 mr-1.5" />
 							Reply
@@ -1002,7 +1030,7 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 				:sender-label="inlineSenderLabel"
 				:show-reply-all="hasOtherRecipients(latestMessage)"
 				:spec="inlineSpec"
-				@expand="(kind) => void expandInline(kind)"
+				@expand="(kind) => void (kind === 'reply' ? expandPrimaryReply() : expandInline(kind))"
 				@collapse="collapseInline"
 			/>
 		</div>
