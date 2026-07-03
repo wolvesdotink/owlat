@@ -22,6 +22,7 @@ import {
 import { usePostboxGhostOverlay } from '~/composables/postbox/usePostboxGhostOverlay';
 import { usePostboxRewriteController } from '~/composables/postbox/usePostboxRewriteController';
 import { usePostboxFloatingFormatBar } from '~/composables/postbox/usePostboxFloatingFormatBar';
+import { usePostboxInlineImages } from '~/composables/postbox/usePostboxInlineImages';
 import type { Id } from '@owlat/api/dataModel';
 
 const props = defineProps<{
@@ -49,6 +50,16 @@ const props = defineProps<{
 	 * Keyboard shortcuts work in both modes.
 	 */
 	persistentToolbar?: boolean;
+	/**
+	 * Enable pasting/dropping images INTO the body as inline (cid-embedded)
+	 * images. The parent supplies `embedImage` (downscale + upload → contentId +
+	 * preview URL); off by default so the signature editor never embeds.
+	 */
+	inlineImagesEnabled?: boolean;
+	/** Upload an image and return the contentId + ephemeral preview URL to insert. */
+	embedImage?: (file: File) => Promise<{ contentId: string; previewUrl: string } | null>;
+	/** Called with the contentId of an inline image removed from the body. */
+	onRemoveEmbeddedImage?: (contentId: string) => void;
 }>();
 
 const emit = defineEmits<{
@@ -120,6 +131,8 @@ function onInput() {
 	scheduleGhost();
 	// Typing invalidates any pending/previewed rewrite anchored to old text.
 	rewriteCtl.invalidateOnEdit();
+	// An edit may have removed an inline image — drop its pending part.
+	inlineImages.reconcile();
 }
 
 // ── Inline ghost-text autocomplete ─────────────────────────────────────
@@ -221,8 +234,28 @@ function onKeydown(event: KeyboardEvent) {
 	handleFormatKeydown(event);
 }
 
+// ── Inline images (paste / drop into the body) ─────────────────────────────
+// Insert-at-caret, reconcile-on-delete, and the paste/drop handling live in the
+// composable so this component stays under the file-size ratchet.
+const inlineImages = usePostboxInlineImages({
+	editorRef,
+	enabled: () => props.inlineImagesEnabled === true,
+	embedImage: () => props.embedImage,
+	onRemoveEmbeddedImage: () => props.onRemoveEmbeddedImage,
+	emitContent,
+});
+
 function onPaste(event: ClipboardEvent) {
+	// When the clipboard carries images and inline embedding is on, the composable
+	// consumes the event; otherwise fall back to the plain-text paste path.
+	if (inlineImages.handlePaste(event)) return;
 	pasteAsPlainText(event);
+}
+
+function onDrop(event: DragEvent) {
+	// Image drops embed inline; non-image drops fall through to the composer's
+	// drop-to-attach handler.
+	inlineImages.handleDrop(event);
 }
 
 function onBlur() {
@@ -320,6 +353,7 @@ defineExpose({ focus: focusEditor });
 				@input="onInput"
 				@keydown="onKeydown"
 				@paste="onPaste"
+				@drop="onDrop"
 				@blur="onBlur"
 			/>
 			<div
@@ -409,6 +443,12 @@ defineExpose({ focus: focusEditor });
 .postbox-basic-editor :deep(a) {
 	color: var(--color-brand, #0a6cdd);
 	text-decoration: underline;
+}
+.postbox-basic-editor :deep(img) {
+	max-width: 100%;
+	height: auto;
+	border-radius: 4px;
+	margin: 0.25em 0;
 }
 .postbox-basic-editor :deep(code) {
 	font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;

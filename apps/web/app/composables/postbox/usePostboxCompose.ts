@@ -82,8 +82,14 @@ export function usePostboxCompose(seed: DraftSeed) {
 	});
 	// Attachment upload/remove + pending-handoff + forward-clone live in a
 	// sibling composable; it drives the same draft via ensureDraft/draftId.
-	const { attachments, isUploading, addFiles, removeAttachment } =
-		usePostboxComposeAttachments({
+	const {
+		attachments,
+		isUploading,
+		addFiles,
+		removeAttachment,
+		addInlineImage,
+		removeInlineImage,
+	} = usePostboxComposeAttachments({
 			ensureDraft,
 			draftId,
 			attachPendingKey: seed.attachPendingKey,
@@ -403,6 +409,8 @@ export function usePostboxCompose(seed: DraftSeed) {
 		isUploading,
 		addFiles,
 		removeAttachment,
+		addInlineImage,
+		removeInlineImage,
 		isSaving,
 		lastSavedAt,
 		canSend,

@@ -11,6 +11,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { MAX_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
 import { extractAttachments } from '@owlat/shared/mailMime';
+import { downscaleImageFile } from './postboxInlineImage';
 
 // Per-file attachment ceiling for user-facing copy, derived from the shared cap
 // (mirrors MAX_LIBRARY_FILE_MB) so the label moves with MAX_ATTACHMENT_BYTES.
@@ -92,6 +93,86 @@ export function usePostboxComposeAttachments(opts: {
 		}
 	}
 
+	// Inline body images: their bytes live in the SAME draft attachment store as
+	// files (uploaded via generateUploadUrl + addAttachment) but flagged
+	// `isInline` with a Content-ID, and they are NOT surfaced in the attachment
+	// row (they render in the body). Tracked here by contentId so the editor can
+	// drop the pending part when the user deletes the image from the body.
+	const inlineParts = ref<Array<{ contentId: string; storageId: string }>>([]);
+
+	function newContentId(): string {
+		const rand =
+			typeof crypto !== 'undefined' && 'randomUUID' in crypto
+				? crypto.randomUUID().replace(/-/g, '')
+				: Math.random().toString(36).slice(2) + Date.now().toString(36);
+		return `${rand}@owlat.inline`;
+	}
+
+	/**
+	 * Downscale, upload and attach an image as an INLINE part, returning the
+	 * `contentId` + an ephemeral preview object-URL the editor inserts as the
+	 * `<img>` src (rewritten to `cid:` at send time). Returns null on any failure
+	 * so the editor simply inserts nothing rather than breaking the compose flow.
+	 */
+	async function addInlineImage(
+		file: File,
+	): Promise<{ contentId: string; previewUrl: string } | null> {
+		if (!file.type.startsWith('image/')) return null;
+		const id = await opts.ensureDraft();
+		if (!id) return null;
+
+		const scaled = await downscaleImageFile(file);
+		if (scaled.size > MAX_ATTACHMENT_BYTES) {
+			showToast(`${file.name} is too large (max ${MAX_ATTACHMENT_MB} MB).`, 'error');
+			return null;
+		}
+
+		uploadingCount.value += 1;
+		try {
+			const url = await generateUploadUrl.run({});
+			if (!url) return null;
+			const contentType = scaled.type || 'image/jpeg';
+			const res = await fetch(url, {
+				method: 'POST',
+				headers: { 'Content-Type': contentType },
+				body: scaled,
+			});
+			if (!res.ok) {
+				showToast(`Couldn't upload ${file.name}.`, 'error');
+				return null;
+			}
+			const { storageId } = (await res.json()) as { storageId: string };
+			const contentId = newContentId();
+			const result = await addAttachmentOp.run({
+				draftId: id,
+				storageId: storageId as Id<'_storage'>,
+				filename: scaled.name,
+				contentType,
+				size: scaled.size,
+				isInline: true,
+				contentId,
+			});
+			if (!result?.ok) return null;
+			inlineParts.value = [...inlineParts.value, { contentId, storageId }];
+			return { contentId, previewUrl: URL.createObjectURL(scaled) };
+		} finally {
+			uploadingCount.value -= 1;
+		}
+	}
+
+	/** Drop a pending inline part when its image is deleted from the body. */
+	async function removeInlineImage(contentId: string) {
+		const part = inlineParts.value.find((p) => p.contentId === contentId);
+		if (!part) return;
+		const id = opts.draftId.value;
+		inlineParts.value = inlineParts.value.filter((p) => p.contentId !== contentId);
+		if (!id) return;
+		await removeAttachmentOp.run({
+			draftId: id,
+			storageId: part.storageId as Id<'_storage'>,
+		});
+	}
+
 	async function removeAttachment(storageId: string) {
 		const id = opts.draftId.value;
 		if (!id) return;
@@ -136,5 +217,7 @@ export function usePostboxComposeAttachments(opts: {
 		isUploading,
 		addFiles,
 		removeAttachment,
+		addInlineImage,
+		removeInlineImage,
 	};
 }

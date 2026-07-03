@@ -30,6 +30,7 @@ import {
 	stripHtml,
 	type DraftRow,
 } from './rfc822';
+import { rewriteInlineImageCids, isInlineImageReferenced } from '@owlat/shared/inlineImages';
 
 /**
  * Resolve the final HTML + plain-text (+ optional AMP) bodies for an outbound
@@ -268,6 +269,15 @@ export const dispatchDraft = internalAction({
 		// dispatch and revert the draft so the user sees it in the composer.
 		// Fail-open on scanner outage — matches the campaign-mail path in
 		// emailWorker.ts.
+		// Inline body images: rewrite each `<img data-inline-cid="X">` the Simple
+		// composer embedded to a `cid:X` reference (the editor kept an ephemeral
+		// blob/preview URL) and learn which content-IDs the body still references.
+		// This runs BEFORE rendering so the wrapped body carries the final `cid:`
+		// srcs, and BEFORE buffering attachments so an inline part whose image the
+		// user deleted from the body is pruned rather than shipped.
+		const { html: inlinedHtml, referencedCids } = rewriteInlineImageCids(draft.bodyHtml ?? '');
+		draft.bodyHtml = inlinedHtml;
+
 		const attachmentBuffers: Array<{
 			filename: string;
 			contentType: string;
@@ -277,6 +287,10 @@ export const dispatchDraft = internalAction({
 		}> = [];
 		try {
 			for (const att of draft.attachments) {
+				// Drop inline parts the body no longer references (image deleted).
+				if (att.isInline && !isInlineImageReferenced(referencedCids, att.contentId)) {
+					continue;
+				}
 				const blob = await ctx.storage.get(att.storageId);
 				if (!blob) continue;
 				const buf = Buffer.from(await blob.arrayBuffer());

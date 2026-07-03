@@ -305,6 +305,50 @@ function textPart(boundary: string, contentType: string, body: string, trailingC
 	return trailingCrlf ? `${part}\r\n` : part;
 }
 
+/**
+ * A self-contained MIME entity: the header lines that describe it (its
+ * Content-Type et al.) plus the already-encoded body that follows the blank
+ * line. Composing a message is wrapping one entity inside another (an
+ * `alternative` inside a `related` inside a `mixed`), so keeping the two apart
+ * lets `asPart` re-emit any entity as a child under a parent boundary.
+ */
+interface MimeEntity {
+	headerLines: string[];
+	body: string;
+}
+
+/** Emit an entity as a child part under `parentBoundary` (no trailing CRLF). */
+function asPart(parentBoundary: string, entity: MimeEntity): string {
+	return (
+		`--${parentBoundary}\r\n` +
+		`${entity.headerLines.join('\r\n')}\r\n\r\n${entity.body}`
+	);
+}
+
+/** Join child parts with CRLF and close the multipart with its `--boundary--`. */
+function closeMultipart(boundary: string, parts: string[]): string {
+	return `${parts.join('\r\n')}\r\n--${boundary}--`;
+}
+
+/** A base64 attachment/inline entity (Content-Disposition + optional Content-ID). */
+function attachmentEntity(att: {
+	filename: string;
+	contentType: string;
+	isInline: boolean;
+	data: Buffer;
+	contentId?: string;
+}): MimeEntity {
+	const b64 = att.data.toString('base64').replace(/(.{76})/g, '$1\r\n');
+	const dispositionType = att.isInline ? 'inline' : 'attachment';
+	const headerLines = [
+		`Content-Type: ${att.contentType}`,
+		'Content-Transfer-Encoding: base64',
+		`Content-Disposition: ${dispositionType}; filename="${safeAttachmentFilename(att.filename)}"`,
+	];
+	if (att.contentId) headerLines.push(`Content-ID: <${att.contentId}>`);
+	return { headerLines, body: b64 };
+}
+
 export function buildRfc822(
 	draft: DraftRow,
 	attachmentBuffers: Array<{ filename: string; contentType: string; isInline: boolean; data: Buffer; contentId?: string }>,
@@ -335,70 +379,78 @@ export function buildRfc822(
 	// An AMP part always needs a multipart/alternative wrapper so non-AMP
 	// clients can fall through to the HTML part.
 	const useMultipartAlt = (!!draft.bodyText && !!draft.bodyHtml) || !!amp;
-	const hasAttachments = attachmentBuffers.length > 0;
 	const text = draft.bodyText ?? stripHtml(draft.bodyHtml ?? '');
 	const html = draft.bodyHtml ?? '';
 
-	// RFC 2046 says a multipart/alternative reader picks the LAST part it can
-	// render. Per the AMP-email spec the order is text/plain, text/x-amp-html,
-	// text/html — so AMP-capable clients show the AMP body while everyone else
-	// falls through to the HTML fallback.
-	const ampPartCt = (boundary: string) =>
-		amp ? textPart(boundary, 'text/x-amp-html', amp, true) : '';
+	// Inline images (a `cid:`-referenced `<img>` in the body) ride in a
+	// multipart/related next to the HTML that references them; file attachments
+	// stay in the outer multipart/mixed. An inline part is one flagged `isInline`
+	// AND carrying a Content-ID (the two together are how the send path marks an
+	// embedded body image); everything else is a downloadable attachment.
+	const inlineBuffers = attachmentBuffers.filter((a) => a.isInline && !!a.contentId);
+	const fileBuffers = attachmentBuffers.filter((a) => !(a.isInline && a.contentId));
 
-	if (!hasAttachments && !useMultipartAlt) {
+	// ── The message "content" entity: the body itself, before any attachments.
+	// Either a single text/html part, or a multipart/alternative carrying
+	// text/plain, an optional text/x-amp-html, and the text/html fallback.
+	// RFC 2046: an alternative reader picks the LAST part it can render, so the
+	// AMP-email order is text/plain → text/x-amp-html → text/html.
+	let content: MimeEntity;
+	if (useMultipartAlt) {
+		const altBoundary = randomBoundary();
+		const altBody =
+			textPart(altBoundary, 'text/plain', text, true) +
+			(amp ? textPart(altBoundary, 'text/x-amp-html', amp, true) : '') +
+			textPart(altBoundary, 'text/html', html, true) +
+			`--${altBoundary}--`;
+		content = {
+			headerLines: [`Content-Type: multipart/alternative; boundary="${altBoundary}"`],
+			body: altBody,
+		};
+	} else {
 		// Single-part HTML. CRLF-normalize and pick a CTE that keeps every line
 		// <=998 octets and never emits 8bit (RFC 5322 §2.1.1, RFC 6152).
 		const { cte, encoded } = encodeTextBody(html || text);
-		headers.push('Content-Type: text/html; charset=utf-8');
-		headers.push(`Content-Transfer-Encoding: ${cte}`);
-		const raw = Buffer.from(`${headers.join('\r\n')}\r\n\r\n${encoded}\r\n`, 'utf-8');
-		return { raw, size: raw.length };
+		content = {
+			headerLines: ['Content-Type: text/html; charset=utf-8', `Content-Transfer-Encoding: ${cte}`],
+			body: encoded,
+		};
 	}
 
-	const outerBoundary = randomBoundary();
-	if (hasAttachments) {
-		headers.push(`Content-Type: multipart/mixed; boundary="${outerBoundary}"`);
-	} else {
-		headers.push(`Content-Type: multipart/alternative; boundary="${outerBoundary}"`);
+	// Wrap the body + its inline images in multipart/related (RFC 2387). The
+	// `type` parameter names the root part so a reader knows the HTML is the
+	// entity the cid: images belong to.
+	if (inlineBuffers.length > 0) {
+		const relBoundary = randomBoundary();
+		const parts = [
+			asPart(relBoundary, content),
+			...inlineBuffers.map((att) => asPart(relBoundary, attachmentEntity(att))),
+		];
+		content = {
+			headerLines: [
+				`Content-Type: multipart/related; type="text/html"; boundary="${relBoundary}"`,
+			],
+			body: closeMultipart(relBoundary, parts),
+		};
 	}
 
-	const parts: string[] = [];
-
-	if (useMultipartAlt && hasAttachments) {
-		const altBoundary = randomBoundary();
-		parts.push(
-			`--${outerBoundary}\r\nContent-Type: multipart/alternative; boundary="${altBoundary}"\r\n\r\n` +
-			textPart(altBoundary, 'text/plain', text, true) +
-			ampPartCt(altBoundary) +
-			textPart(altBoundary, 'text/html', html, true) +
-			`--${altBoundary}--`
-		);
-	} else if (hasAttachments) {
-		parts.push(textPart(outerBoundary, 'text/html', html || text, false));
-	} else {
-		parts.push(textPart(outerBoundary, 'text/plain', text, false));
-		if (amp) {
-			parts.push(textPart(outerBoundary, 'text/x-amp-html', amp, false));
-		}
-		parts.push(textPart(outerBoundary, 'text/html', html, false));
+	// Wrap everything in multipart/mixed when there are file attachments.
+	if (fileBuffers.length > 0) {
+		const mixBoundary = randomBoundary();
+		const parts = [
+			asPart(mixBoundary, content),
+			...fileBuffers.map((att) => asPart(mixBoundary, attachmentEntity(att))),
+		];
+		content = {
+			headerLines: [`Content-Type: multipart/mixed; boundary="${mixBoundary}"`],
+			body: closeMultipart(mixBoundary, parts),
+		};
 	}
 
-	for (const att of attachmentBuffers) {
-		const b64 = att.data.toString('base64').replace(/(.{76})/g, '$1\r\n');
-		const dispositionType = att.isInline ? 'inline' : 'attachment';
-		const cidHeader = att.contentId ? `Content-ID: <${att.contentId}>\r\n` : '';
-		parts.push(
-			`--${outerBoundary}\r\nContent-Type: ${att.contentType}\r\n` +
-			`Content-Transfer-Encoding: base64\r\n` +
-			`Content-Disposition: ${dispositionType}; filename="${safeAttachmentFilename(att.filename)}"\r\n` +
-			cidHeader +
-			`\r\n${b64}`
-		);
-	}
-
-	const body = parts.join('\r\n') + `\r\n--${outerBoundary}--\r\n`;
-	const raw = Buffer.from(`${headers.join('\r\n')}\r\n\r\n${body}`, 'utf-8');
+	const raw = Buffer.from(
+		`${headers.join('\r\n')}\r\n${content.headerLines.join('\r\n')}\r\n\r\n${content.body}\r\n`,
+		'utf-8',
+	);
 	return { raw, size: raw.length };
 }
 
