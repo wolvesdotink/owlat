@@ -119,6 +119,23 @@ async function assertSafeToAutoSend(
 		};
 	}
 
+	// Hard block: complaint / urgent mail is the highest-stakes inbound. It now
+	// flows through the drafter (via the clarify step) instead of skipping to a
+	// blank human-review box, but it must NEVER become auto-send-eligible — a
+	// human always reviews it. Fail closed regardless of autonomy tier, autonomy
+	// rules, or draft-quality score. The classification was persisted upstream on
+	// the classifying → drafting edge.
+	const classification = message.classification;
+	if (
+		classification &&
+		(classification.category === 'complaint' || classification.priority === 'urgent')
+	) {
+		return {
+			safe: false,
+			reason: 'Complaint/urgent mail is never auto-sent; routing to human review.',
+		};
+	}
+
 	if (message.securityFlags?.guardUnavailable) {
 		return {
 			safe: false,
