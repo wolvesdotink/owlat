@@ -677,6 +677,35 @@ describe('processingLifecycle.recordStep*', () => {
 		});
 	});
 
+	it('recordStepFail marks the action terminal (abandoned) once retries are exhausted', async () => {
+		const t = convexTest(schema, modules);
+		const messageId = await createMessage(t);
+		// Seed a row that has already failed twice (retryCount 2). The third
+		// failure lands at retryCount 3 (= MAX_RETRY_ATTEMPTS), which must move it
+		// OUT of the retryable `failed` bucket into terminal `abandoned` so the
+		// cron's `by_status='failed'` scan is never starved by exhausted rows.
+		const actionId = await t.run(async (ctx) => {
+			return await ctx.db.insert('agentActions', {
+				inboundMessageId: messageId,
+				actionType: 'draft',
+				status: 'failed',
+				retryCount: 2,
+				createdAt: Date.now(),
+			});
+		});
+
+		await t.mutation(internal.inbox.processingLifecycle.recordStepFail, {
+			actionId,
+			errorMessage: 'final failure',
+		});
+
+		await t.run(async (ctx) => {
+			const action = await ctx.db.get(actionId);
+			expect(action?.status).toBe('abandoned');
+			expect(action?.retryCount).toBe(3);
+		});
+	});
+
 	it('recordContextTier stores contextTier without changing status', async () => {
 		const t = convexTest(schema, modules);
 		const messageId = await createMessage(t, { processingStatus: 'classifying' });
@@ -792,6 +821,59 @@ describe('processingLifecycle.retryFailedActions', () => {
 			expect(m?.processingStatus).toBe('failed');
 			const action = await ctx.db.get(actionId);
 			expect(action?.status).toBe('failed');
+		});
+	});
+
+	// Regression: a growing head of retry-exhausted rows must NOT starve the
+	// cron. Exhausted rows are terminally `abandoned` (not `failed`), so they
+	// never enter the `by_status='failed'` scan and a fresh retryable failure
+	// is still picked up even behind >20 lifetime-exhausted ones. Under the old
+	// single-`failed`-bucket behaviour the ascending take(20) would only ever
+	// return the oldest exhausted rows and never reach the fresh one.
+	it('picks up a fresh retryable failure even behind >20 exhausted (abandoned) rows', async () => {
+		const t = convexTest(schema, modules);
+
+		// 25 lifetime-exhausted rows, each on its own failed message. These are
+		// the terminal state recordStepFail now writes once retries run out.
+		await t.run(async (ctx) => {
+			for (let i = 0; i < 25; i++) {
+				const exhaustedMessageId = await ctx.db.insert('inboundMessages', {
+					messageId: `exhausted-${i}-${Math.random().toString(36).slice(2)}`,
+					from: 'sender@example.com',
+					to: 'support@owlat.app',
+					subject: 'Help please',
+					textBody: 'I need help',
+					processingStatus: 'failed',
+					receivedAt: Date.now(),
+				});
+				await ctx.db.insert('agentActions', {
+					inboundMessageId: exhaustedMessageId,
+					actionType: 'classify',
+					status: 'abandoned',
+					retryCount: 3,
+					createdAt: Date.now() - 1_000_000 + i, // oldest, at the head
+				});
+			}
+		});
+
+		// One fresh, still-retryable failure — created LAST so it is newest.
+		const freshMessageId = await createMessage(t, { processingStatus: 'failed' });
+		const { actionId: freshActionId } = await t.mutation(
+			internal.inbox.processingLifecycle.recordStepBegin,
+			{ inboundMessageId: freshMessageId, actionType: 'classify' }
+		);
+		await t.mutation(internal.inbox.processingLifecycle.recordStepFail, {
+			actionId: freshActionId,
+			errorMessage: 'fresh transient failure',
+		});
+
+		await t.mutation(internal.inbox.processingLifecycle.retryFailedActions, {});
+
+		await t.run(async (ctx) => {
+			const fresh = await ctx.db.get(freshMessageId);
+			expect(fresh?.processingStatus).toBe('received');
+			const freshAction = await ctx.db.get(freshActionId);
+			expect(freshAction?.status).toBe('pending');
 		});
 	});
 });

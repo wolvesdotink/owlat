@@ -19,6 +19,7 @@ function statusIcon(status: string): string {
 		case 'completed':
 			return 'lucide:check-circle-2';
 		case 'failed':
+		case 'abandoned':
 			return 'lucide:x-circle';
 		case 'running':
 			return 'lucide:loader-2';
@@ -34,6 +35,7 @@ function statusColor(status: string): string {
 		case 'completed':
 			return 'text-success';
 		case 'failed':
+		case 'abandoned':
 			return 'text-error';
 		case 'skipped':
 			return 'text-text-tertiary';

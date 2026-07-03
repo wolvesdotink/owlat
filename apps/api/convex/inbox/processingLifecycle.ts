@@ -45,10 +45,12 @@ import {
 } from '../lib/convexValidators';
 import {
 	actionTypeValidator,
+	failedActionStatus,
 	transitionInputValidator,
 	type TransitionOutcome,
 } from './processingLifecycle/types';
 import { dispatch } from './processingLifecycle/effects';
+import { MAX_RETRY_ATTEMPTS } from '../lib/constants';
 import {
 	cancelPendingAutoSend,
 	cancelAutoSendReasonValidator,
@@ -158,11 +160,15 @@ export const recordStepFail = internalMutation({
 	handler: async (ctx, args) => {
 		const action = await ctx.db.get(args.actionId);
 		if (!action) return;
+		const retryCount = action.retryCount + 1;
 		await ctx.db.patch(args.actionId, {
-			status: 'failed',
+			// Once retries are exhausted the row becomes terminally `abandoned`
+			// so the retry cron's `by_status='failed'` scan is never starved by a
+			// growing head of lifetime-exhausted failures.
+			status: failedActionStatus(retryCount),
 			errorMessage: args.errorMessage,
 			completedAt: Date.now(),
-			retryCount: action.retryCount + 1,
+			retryCount,
 		});
 	},
 });
@@ -264,8 +270,13 @@ export const recordDraftOutput = internalMutation({
 // ─── Cron-driven retry ──────────────────────────────────────────────────────
 //
 // Replaces `agent/agentPipeline.retryFailedActions`. Resets failed
-// agentActions whose `retryCount < maxRetries` and brings their
+// agentActions whose `retryCount < MAX_RETRY_ATTEMPTS` and brings their
 // inboundMessages back to 'received' atomically via the lifecycle.
+//
+// INVARIANT: retry-exhausted rows are written as `abandoned` (see
+// `failedActionStatus`), NOT `failed`, so this ascending `by_status='failed'`
+// scan can't be starved by a growing head of lifetime-exhausted rows. The
+// `retryCount >= MAX_RETRY_ATTEMPTS` guard below is now belt-and-suspenders.
 
 export const retryFailedActions = internalMutation({
 	args: {},
@@ -275,11 +286,10 @@ export const retryFailedActions = internalMutation({
 			.withIndex('by_status', (q) => q.eq('status', 'failed'))
 			.take(20);
 
-		const maxRetries = 3;
 		const now = Date.now();
 
 		for (const action of failedActions) {
-			if (action.retryCount >= maxRetries) continue;
+			if (action.retryCount >= MAX_RETRY_ATTEMPTS) continue;
 			const message = await ctx.db.get(action.inboundMessageId);
 			if (!message || message.processingStatus !== 'failed') continue;
 
