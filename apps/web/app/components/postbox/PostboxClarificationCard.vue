@@ -140,14 +140,23 @@ function submit() {
 					</div>
 				</template>
 
-				<!-- drafting: answered, starter reply generating -->
-				<div
-					v-else-if="state === 'drafting'"
-					class="flex items-center gap-2 mt-2 text-sm text-text-secondary"
-					data-testid="clarification-drafting"
-				>
-					<Icon name="lucide:loader-2" class="w-4 h-4 animate-spin" />
-					Drafting your reply…
+				<!-- drafting: answered, starter reply generating. A Dismiss control is
+					always present so a failed/slow draft (AI gate off, empty output,
+					staleness-skipped persist) never strands the card — the owner can
+					clear it and fall back to the plain "Draft reply" button. -->
+				<div v-else-if="state === 'drafting'" class="mt-2" data-testid="clarification-drafting">
+					<div class="flex items-center gap-2 text-sm text-text-secondary">
+						<Icon name="lucide:loader-2" class="w-4 h-4 animate-spin" />
+						Drafting your reply…
+					</div>
+					<button
+						type="button"
+						data-testid="clarification-drafting-dismiss"
+						class="mt-2 text-xs text-text-tertiary hover:text-text-primary"
+						@click.stop="emit('done')"
+					>
+						Dismiss
+					</button>
 				</div>
 
 				<!-- ready: starter reply available -->
