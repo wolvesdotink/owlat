@@ -359,6 +359,24 @@ describe('XSS: style / VML colour & font fields', () => {
 		expect(html).toContain('red&quot;');
 	});
 
+	it('does not throw when newly-escaped optional style fields are omitted', () => {
+		// Regression: escapeCss(content.textColor) is called unconditionally, so
+		// rendering a text block whose optional colour/font fields are absent at
+		// runtime must not throw (escapeCss must tolerate undefined/null).
+		expect(() =>
+			renderBlock({
+				id: 't-min',
+				type: 'text',
+				content: {
+					html: '<p>hi</p>',
+					blockType: 'paragraph',
+					fontSize: 16,
+					// textColor / fontFamily intentionally omitted
+				} as unknown as TextBlockContent,
+			}),
+		).not.toThrow();
+	});
+
 	it('leaves a benign colour untouched in the divider style', () => {
 		const html = renderBlock({
 			id: 'd2',
