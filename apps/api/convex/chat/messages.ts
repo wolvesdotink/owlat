@@ -13,6 +13,7 @@ import {
 	hasPermission,
 } from '../lib/sessionOrganization';
 import { isFeatureEnabled } from '../lib/featureFlags';
+import { rateLimiter } from '../rateLimiter';
 import { throwForbidden, throwInvalidInput, throwNotFound } from '../_utils/errors';
 import {
 	chatQuery,
@@ -187,25 +188,34 @@ export const sendMessage = chatMutation({
 		// is on, post a streaming AI reply visible to the whole room and let the
 		// runner fill it in. Soft-checked (no throw): if the feature is off the
 		// human message still posts normally, the @assistant just goes unanswered.
+		//
+		// Each turn is a capable-tier streaming LLM call plus up to 8 tool steps
+		// (some of which fire more capable-tier calls), so a scripted @assistant
+		// loop could drain the self-hoster's LLM budget. Rate-limit per user the
+		// same way the personal-assistant path does — but soft-skip on limit: the
+		// human message still posts, only the assistant reply is withheld.
 		if (isAssistantInvoked(text) && (await isFeatureEnabled(ctx, 'ai.assistant'))) {
-			const assistantMessageId = await ctx.db.insert('chatMessages', {
-				roomId: args.roomId,
-				authorId: ASSISTANT_AUTHOR_ID,
-				text: '',
-				aiStatus: 'streaming',
-				aiPromptMessageId: messageId,
-				createdAt: now + 1,
-			});
-			await ctx.db.patch(args.roomId, {
-				lastMessageAt: now + 1,
-				messageCount: (room.messageCount ?? 0) + 2,
-				updatedAt: now + 1,
-			});
-			await ctx.scheduler.runAfter(0, internal.assistant.runner.runForChat, {
-				roomId: args.roomId,
-				assistantMessageId,
-				promptMessageId: messageId,
-			});
+			const rl = await rateLimiter.limit(ctx, 'assistantChatPerUser', { key: userId });
+			if (rl.ok) {
+				const assistantMessageId = await ctx.db.insert('chatMessages', {
+					roomId: args.roomId,
+					authorId: ASSISTANT_AUTHOR_ID,
+					text: '',
+					aiStatus: 'streaming',
+					aiPromptMessageId: messageId,
+					createdAt: now + 1,
+				});
+				await ctx.db.patch(args.roomId, {
+					lastMessageAt: now + 1,
+					messageCount: (room.messageCount ?? 0) + 2,
+					updatedAt: now + 1,
+				});
+				await ctx.scheduler.runAfter(0, internal.assistant.runner.runForChat, {
+					roomId: args.roomId,
+					assistantMessageId,
+					promptMessageId: messageId,
+				});
+			}
 		}
 
 		return messageId;
