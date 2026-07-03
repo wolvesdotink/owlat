@@ -95,7 +95,7 @@ const RAW: readonly EmojiTuple[] = [
 	['astonished', 'astonished shocked', '😲'],
 	['flushed', 'flushed embarrassed', '😳'],
 	['pleading', 'pleading puppy eyes', '🥺'],
-	['anguished', 'anguished open mouth', '😧'],
+	['cold_sweat', 'anxious cold sweat', '😰'],
 	['cry', 'crying sad tear', '😢'],
 	['sob', 'sobbing crying loud', '😭'],
 	['scream', 'scream fear', '😱'],
