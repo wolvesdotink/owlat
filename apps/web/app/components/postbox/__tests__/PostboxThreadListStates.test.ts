@@ -16,6 +16,7 @@ import { mount } from '@vue/test-utils';
 import { ref, computed, type Ref } from 'vue';
 
 import PostboxThreadList from '../PostboxThreadList.vue';
+import PostboxThreadRow from '../PostboxThreadRow.vue';
 import PostboxThreadListSkeleton from '../PostboxThreadListSkeleton.vue';
 import PostboxEmptyState from '../PostboxEmptyState.vue';
 import UiSkeleton from '../../../../../../packages/ui/components/ui/Skeleton.vue';
@@ -99,6 +100,7 @@ function mountList(opts: {
 		},
 		global: {
 			components: {
+				PostboxThreadRow,
 				PostboxThreadListSkeleton,
 				PostboxEmptyState,
 				UiSkeleton,
