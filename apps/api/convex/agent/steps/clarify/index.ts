@@ -124,7 +124,7 @@ export function eagernessForCategory(classification: {
  */
 export function selectQuestions(
 	candidateSlots: ReplySlot[],
-	divergentIndexes: readonly number[],
+	divergentIndexes: readonly number[]
 ): ClarificationQuestion[] {
 	const divergent = new Set(divergentIndexes);
 	const questions: ClarificationQuestion[] = [];
@@ -167,10 +167,9 @@ export const clarifyStep: AgentStepModule<'clarify', ClarifyInput, ClarifyOutput
 			// (complaint/urgent always get the check). `contextCoverage` is the
 			// advisory signal the context_retrieval step persisted on the message.
 			if (eagerness !== 'cautious') {
-				const message = await ctx.runQuery(
-					internal.agent.agentPipeline.getMessage,
-					{ inboundMessageId: input.inboundMessageId },
-				);
+				const message = await ctx.runQuery(internal.agent.agentPipeline.getMessage, {
+					inboundMessageId: input.inboundMessageId,
+				});
 				const coverage = message?.contextCoverage;
 				if (coverage && !coverage.lowCoverage) {
 					return {
@@ -251,7 +250,7 @@ export const clarifyStep: AgentStepModule<'clarify', ClarifyInput, ClarifyOutput
 
 			const questions = selectQuestions(
 				candidateSlots,
-				divergenceResult.object.divergentSlotIndexes,
+				divergenceResult.object.divergentSlotIndexes
 			);
 
 			return {

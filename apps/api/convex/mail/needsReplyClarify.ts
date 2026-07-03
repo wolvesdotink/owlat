@@ -54,9 +54,7 @@ export const answerClarification = authedMutation({
 		if (!flag || !clarification) throwNotFound('Clarification');
 
 		const now = Date.now();
-		const answerByQuestion = new Map(
-			args.answers.map((a) => [a.questionId, a.value] as const),
-		);
+		const answerByQuestion = new Map(args.answers.map((a) => [a.questionId, a.value] as const));
 		// Guard: at least one submitted answer must map to a real question before
 		// we stamp the clarification answered + schedule the draft. A payload that
 		// matches nothing would otherwise mark it answered with zero recorded
@@ -117,7 +115,7 @@ export const getClarificationContext = internalQuery({
 		const transcript = newest
 			.map(
 				(m) =>
-					`From: ${m.fromName || m.fromAddress}\nSubject: ${m.subject}\n${(m.textBodyInline ?? m.snippet ?? '').slice(0, 2000)}`,
+					`From: ${m.fromName || m.fromAddress}\nSubject: ${m.subject}\n${(m.textBodyInline ?? m.snippet ?? '').slice(0, 2000)}`
 			)
 			.join('\n\n---\n\n')
 			.slice(0, 12000);

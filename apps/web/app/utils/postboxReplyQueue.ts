@@ -115,7 +115,7 @@ export function formatReplyQueueDueHint(dueHint: string | undefined): string | n
  * is the same task the owner is still finishing.
  */
 export function replyQueueSection(
-	item: Pick<ReplyQueueItem, 'clarification'>,
+	item: Pick<ReplyQueueItem, 'clarification'>
 ): 'needs_input' | 'needs_you' {
 	return item.clarification ? 'needs_input' : 'needs_you';
 }
@@ -128,7 +128,7 @@ export function replyQueueSection(
  * Pure so the card's state machine is unit-testable.
  */
 export function clarificationCardState(
-	clarification: Pick<ReplyQueueClarification, 'answeredAt' | 'draft'> | undefined,
+	clarification: Pick<ReplyQueueClarification, 'answeredAt' | 'draft'> | undefined
 ): 'asking' | 'drafting' | 'ready' | null {
 	if (!clarification) return null;
 	if (clarification.draft) return 'ready';

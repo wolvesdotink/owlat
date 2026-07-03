@@ -53,19 +53,13 @@ export const replySlotsSchema = z.object({
 	slots: z
 		.array(
 			z.object({
-				slotType: z
-					.enum(SLOT_TYPES)
-					.describe('The kind of information the reply must supply'),
+				slotType: z.enum(SLOT_TYPES).describe('The kind of information the reply must supply'),
 				question: z
 					.string()
-					.describe(
-						'A single, focused question to the mailbox owner that would resolve this slot',
-					),
+					.describe('A single, focused question to the mailbox owner that would resolve this slot'),
 				answerableFromContext: z
 					.boolean()
-					.describe(
-						'True if the provided context already contains the answer (no need to ask)',
-					),
+					.describe('True if the provided context already contains the answer (no need to ask)'),
 				decisionRelevant: z
 					.boolean()
 					.describe('True if the answer materially changes what the reply should say'),
@@ -76,7 +70,7 @@ export const replySlotsSchema = z.object({
 					.array(z.string())
 					.max(4)
 					.describe('Suggested scoped answers for a multiple-choice slot; empty for free text'),
-			}),
+			})
 		)
 		.describe('The reply slots this email requires the reply to fill'),
 });
@@ -135,9 +129,7 @@ export function buildCandidatePrompt(context: string): string {
  */
 export function buildDivergencePrompt(slots: ReplySlot[], drafts: string[]): string {
 	const slotList = slots.map((s, i) => `${i}. [${s.slotType}] ${s.question}`).join('\n');
-	const draftList = drafts
-		.map((d, i) => `<candidate_${i}>\n${d}\n</candidate_${i}>`)
-		.join('\n\n');
+	const draftList = drafts.map((d, i) => `<candidate_${i}>\n${d}\n</candidate_${i}>`).join('\n\n');
 	return (
 		`${SYSTEM_GUARD}\n\n` +
 		'Below are candidate replies that were each drafted independently, and a ' +
@@ -171,7 +163,10 @@ export function isCredentialSolicitation(text: string): boolean {
 function senderDomain(fromAddress: string): string | undefined {
 	const at = fromAddress.lastIndexOf('@');
 	if (at < 0) return undefined;
-	const domain = fromAddress.slice(at + 1).trim().toLowerCase();
+	const domain = fromAddress
+		.slice(at + 1)
+		.trim()
+		.toLowerCase();
 	return domain.length > 0 ? domain : undefined;
 }
 
@@ -219,7 +214,7 @@ const MAX_OPTIONS = 4;
  */
 export function sanitizeClarificationQuestions(
 	raw: RawClarificationQuestion[],
-	fromAddress: string,
+	fromAddress: string
 ): SanitizedClarificationQuestion[] {
 	const attribution = attributeQuestion(fromAddress);
 	const out: SanitizedClarificationQuestion[] = [];

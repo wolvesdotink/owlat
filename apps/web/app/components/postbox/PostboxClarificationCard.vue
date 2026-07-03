@@ -37,9 +37,7 @@ function pick(questionId: string, option: string) {
 }
 
 const canSubmit = computed(
-	() =>
-		!props.submitting &&
-		questions.value.some((q) => (values[q.id] ?? '').trim().length > 0),
+	() => !props.submitting && questions.value.some((q) => (values[q.id] ?? '').trim().length > 0)
 );
 
 function submit() {
@@ -80,12 +78,7 @@ function submit() {
 
 				<!-- asking: question(s) + chips + free text -->
 				<template v-if="state === 'asking'">
-					<div
-						v-for="q in questions"
-						:key="q.id"
-						class="mt-2"
-						data-testid="clarification-question"
-					>
+					<div v-for="q in questions" :key="q.id" class="mt-2" data-testid="clarification-question">
 						<p class="text-sm font-medium text-text-primary">{{ q.text }}</p>
 						<div v-if="q.options?.length" class="flex flex-wrap gap-1.5 mt-1.5">
 							<button

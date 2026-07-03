@@ -93,9 +93,21 @@ beforeEach(() => {
 	mocks.getLLMProvider.mockReturnValue('mock-model');
 	// Three distinct candidate drafts by default.
 	mocks.runLlmText
-		.mockResolvedValueOnce({ text: 'Yes, we can push to March.', tokenUsage: undefined, modelUsed: 'mock-model' })
-		.mockResolvedValueOnce({ text: 'No, the date is fixed.', tokenUsage: undefined, modelUsed: 'mock-model' })
-		.mockResolvedValueOnce({ text: 'Maybe — let me check.', tokenUsage: undefined, modelUsed: 'mock-model' });
+		.mockResolvedValueOnce({
+			text: 'Yes, we can push to March.',
+			tokenUsage: undefined,
+			modelUsed: 'mock-model',
+		})
+		.mockResolvedValueOnce({
+			text: 'No, the date is fixed.',
+			tokenUsage: undefined,
+			modelUsed: 'mock-model',
+		})
+		.mockResolvedValueOnce({
+			text: 'Maybe — let me check.',
+			tokenUsage: undefined,
+			modelUsed: 'mock-model',
+		});
 });
 
 describe('eagernessForCategory', () => {
@@ -262,7 +274,7 @@ describe('clarifyStep.route', () => {
 		const route = clarifyStep.route(
 			outputWith([{ id: 'clarify_0', slotType: 'decision', text: 'Push the date?' }]),
 			input,
-			runCtx,
+			runCtx
 		);
 		expect(route.kind).toBe('transition');
 		if (route.kind !== 'transition') return;

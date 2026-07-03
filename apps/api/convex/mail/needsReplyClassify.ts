@@ -87,7 +87,7 @@ export interface MeetingIntent {
  */
 export function normalizeMeetingIntent(
 	raw: { isScheduling: boolean; proposedTimes: string[]; topic: string | null } | null,
-	opts: { hasCalendarInvite: boolean },
+	opts: { hasCalendarInvite: boolean }
 ): MeetingIntent | undefined {
 	if (opts.hasCalendarInvite) return undefined;
 	if (!raw || !raw.isScheduling) return undefined;
@@ -150,7 +150,7 @@ export const classifyThread = internalAction({
 			const transcript = context.messages
 				.map(
 					(m) =>
-						`From: ${m.fromName || m.fromAddress}\nTo: ${m.toAddresses.join(', ')}\nSubject: ${m.subject}\n${m.excerpt}`,
+						`From: ${m.fromName || m.fromAddress}\nTo: ${m.toAddresses.join(', ')}\nSubject: ${m.subject}\n${m.excerpt}`
 				)
 				.join('\n\n---\n\n')
 				.slice(0, 12000);
@@ -242,7 +242,7 @@ interface ClarificationFlag {
  */
 export async function refineClarification(
 	ctx: SpendCtx,
-	opts: { transcript: string; fromAddress: string },
+	opts: { transcript: string; fromAddress: string }
 ): Promise<ClarificationFlag | undefined> {
 	try {
 		// Stage 1 — cheap-tier reply-slot extraction (shared prompt module).
@@ -252,7 +252,12 @@ export async function refineClarification(
 			prompt: buildSlotPrompt(opts.transcript),
 			temperature: 0.2,
 		});
-		await recordLlmSpend(ctx, 'postbox_clarify_slots', slotsResult.tokenUsage, slotsResult.modelUsed);
+		await recordLlmSpend(
+			ctx,
+			'postbox_clarify_slots',
+			slotsResult.tokenUsage,
+			slotsResult.modelUsed
+		);
 
 		const candidateSlots: ReplySlot[] = [];
 		for (const slot of slotsResult.object.slots) {
@@ -288,7 +293,12 @@ export async function refineClarification(
 			prompt: buildDivergencePrompt(candidateSlots, drafts),
 			temperature: 0.1,
 		});
-		await recordLlmSpend(ctx, 'postbox_clarify_diverge', divergenceResult.tokenUsage, divergenceResult.modelUsed);
+		await recordLlmSpend(
+			ctx,
+			'postbox_clarify_diverge',
+			divergenceResult.tokenUsage,
+			divergenceResult.modelUsed
+		);
 
 		const divergent = new Set(divergenceResult.object.divergentSlotIndexes);
 		const raw = [];
@@ -345,9 +355,7 @@ export const draftWithAnswers = internalAction({
 			}
 			const voiceSection = voiceGuidance ? `\n\n${voiceGuidance}` : '';
 
-			const confirmed = context.answers
-				.map((a) => `- ${a.question}\n  ${a.answer}`)
-				.join('\n');
+			const confirmed = context.answers.map((a) => `- ${a.question}\n  ${a.answer}`).join('\n');
 
 			const { text, tokenUsage, modelUsed } = await runLlmText({
 				model: getLLMProvider('draft'),

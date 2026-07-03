@@ -102,7 +102,7 @@ export function evaluateNeedsReplyCandidate(opts: {
 	const ownerRepliedAfter = ordered.some(
 		(e) =>
 			(e.m.isFromOwner || owners.has(e.m.fromAddress.toLowerCase())) &&
-			e.m.receivedAt >= latestInbound.m.receivedAt,
+			e.m.receivedAt >= latestInbound.m.receivedAt
 	);
 	if (ownerRepliedAfter) return { candidate: false, reason: 'owner_replied' };
 
@@ -124,10 +124,7 @@ export function evaluateNeedsReplyCandidate(opts: {
 }
 
 /** True when an attachment is a calendar invite (.ics / text/calendar). */
-export function isCalendarAttachment(att: {
-	filename: string;
-	contentType: string;
-}): boolean {
+export function isCalendarAttachment(att: { filename: string; contentType: string }): boolean {
 	return (
 		att.contentType.toLowerCase().includes('calendar') ||
 		att.filename.toLowerCase().endsWith('.ics')
@@ -148,7 +145,7 @@ export const NEEDS_REPLY_CONTEXT_MESSAGES = 6;
 export async function enqueueNeedsReplyCheck(
 	ctx: MutationCtx,
 	threadId: Id<'mailThreads'>,
-	opts: { precedence?: string } = {},
+	opts: { precedence?: string } = {}
 ): Promise<void> {
 	await ctx.db.patch(threadId, {
 		needsReplyPendingAt: Date.now(),
@@ -163,7 +160,7 @@ export async function enqueueNeedsReplyCheck(
 /** Unset the needs-reply flag (and any pending marker) on a thread. */
 export async function clearThreadNeedsReply(
 	ctx: MutationCtx,
-	threadId: Id<'mailThreads'>,
+	threadId: Id<'mailThreads'>
 ): Promise<void> {
 	const thread = await ctx.db.get(threadId);
 	if (!thread) return;
@@ -210,8 +207,7 @@ export const getThreadContext = internalQuery({
 				// A real calendar invite (.ics) is handled by PostboxInviteCard —
 				// the scheduling chip must never double up on it.
 				hasCalendarInvite: (m.attachments ?? []).some(isCalendarAttachment),
-				isFromOwner:
-					m.outbound !== undefined || m.fromAddress.toLowerCase() === ownerAddress,
+				isFromOwner: m.outbound !== undefined || m.fromAddress.toLowerCase() === ownerAddress,
 				receivedAt: m.receivedAt,
 				subject: m.subject,
 				// Short bounded body excerpt — the refinement prompt does not need
@@ -237,7 +233,7 @@ const clarificationFlagValidator = v.object({
 			attribution: v.string(),
 			options: v.optional(v.array(v.string())),
 			answer: v.optional(v.object({ value: v.string(), at: v.number() })),
-		}),
+		})
 	),
 	askedAt: v.number(),
 	answeredAt: v.optional(v.number()),
@@ -252,13 +248,15 @@ const needsReplyResultValidator = v.union(
 		urgency: v.union(v.literal('high'), v.literal('normal'), v.literal('low')),
 		askSummary: v.optional(v.string()),
 		dueHint: v.optional(v.string()),
-		meetingIntent: v.optional(v.object({
-			isScheduling: v.boolean(),
-			proposedTimes: v.array(v.string()),
-			topic: v.optional(v.string()),
-		})),
+		meetingIntent: v.optional(
+			v.object({
+				isScheduling: v.boolean(),
+				proposedTimes: v.array(v.string()),
+				topic: v.optional(v.string()),
+			})
+		),
 		clarification: v.optional(clarificationFlagValidator),
-	}),
+	})
 );
 
 /**
@@ -286,9 +284,7 @@ export const applyResult = internalMutation({
 		}
 		await ctx.db.patch(args.threadId, {
 			needsReply:
-				args.needsReply === null
-					? undefined
-					: { ...args.needsReply, detectedAt: Date.now() },
+				args.needsReply === null ? undefined : { ...args.needsReply, detectedAt: Date.now() },
 			needsReplyPendingAt: undefined,
 			updatedAt: Date.now(),
 		});
@@ -321,7 +317,7 @@ export const listQueue = publicQuery({
 		const threads = await ctx.db
 			.query('mailThreads')
 			.withIndex('by_mailbox_needs_reply', (q) =>
-				q.eq('mailboxId', args.mailboxId).gt('needsReply.detectedAt', 0),
+				q.eq('mailboxId', args.mailboxId).gt('needsReply.detectedAt', 0)
 			)
 			.order('desc')
 			.take(QUEUE_LIMIT);
@@ -362,7 +358,7 @@ export const listQueue = publicQuery({
 		const dueFollowUps = await ctx.db
 			.query('mailThreads')
 			.withIndex('by_mailbox_follow_up_due', (q) =>
-				q.eq('mailboxId', args.mailboxId).gt('followUp.dueAt', 0),
+				q.eq('mailboxId', args.mailboxId).gt('followUp.dueAt', 0)
 			)
 			.order('desc')
 			.take(QUEUE_LIMIT);
@@ -435,7 +431,7 @@ export const sweepPending = internalMutation({
 		const stale: Doc<'mailThreads'>[] = await ctx.db
 			.query('mailThreads')
 			.withIndex('by_needs_reply_pending', (q) =>
-				q.gt('needsReplyPendingAt', 0).lte('needsReplyPendingAt', cutoff),
+				q.gt('needsReplyPendingAt', 0).lte('needsReplyPendingAt', cutoff)
 			)
 			.take(SWEEP_BATCH);
 		for (const thread of stale) {

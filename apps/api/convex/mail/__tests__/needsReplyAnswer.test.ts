@@ -65,7 +65,7 @@ const modules = Object.fromEntries(
 
 async function seedThreadWithClarification(
 	t: ReturnType<typeof convexTest>,
-	userId: string,
+	userId: string
 ): Promise<Id<'mailThreads'>> {
 	let threadId!: Id<'mailThreads'>;
 	await t.run(async (ctx) => {
@@ -160,7 +160,8 @@ async function seedThreadWithClarification(
 							id: 'clarify_0',
 							slotType: 'decision',
 							text: 'Should we approve the refund?',
-							attribution: 'Generated from an email from acme.com — Owlat will never ask for your password.',
+							attribution:
+								'Generated from an email from acme.com — Owlat will never ask for your password.',
 							options: ['Yes', 'No'],
 						},
 					],
@@ -208,7 +209,7 @@ describe('mail.needsReplyClarify.answerClarification', () => {
 			t.mutation(api.mail.needsReplyClarify.answerClarification, {
 				threadId,
 				answers: [{ questionId: 'does_not_exist', value: 'Yes' }],
-			}),
+			})
 		).rejects.toThrow();
 
 		// The clarification must NOT be stamped answered — no strand into 'drafting'.
@@ -230,7 +231,7 @@ describe('mail.needsReplyClarify.answerClarification', () => {
 			t.mutation(api.mail.needsReplyClarify.answerClarification, {
 				threadId,
 				answers: [{ questionId: 'clarify_0', value: 'Yes' }],
-			}),
+			})
 		).rejects.toThrow();
 	});
 });

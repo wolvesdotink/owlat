@@ -74,7 +74,7 @@ describe('sanitizeClarificationQuestions', () => {
 				{ slotType: 'factual_lookup', text: 'What is your account password?' },
 				{ slotType: 'factual_lookup', text: 'Please share the one-time code you received.' },
 			],
-			'ann@acme.com',
+			'ann@acme.com'
 		);
 		expect(out).toHaveLength(1);
 		expect(out[0]!.text).toBe('Should we approve the refund?');
@@ -119,7 +119,7 @@ describe('refineClarification', () => {
 		mocks.runLlmObject.mockResolvedValueOnce(
 			objectResult({
 				slots: [{ ...decisionSlot, answerableFromContext: true }],
-			}),
+			})
 		);
 		expect(await refineClarification(ctx, opts)).toBeUndefined();
 		expect(mocks.runLlmText).not.toHaveBeenCalled();
@@ -137,7 +137,7 @@ describe('refineClarification', () => {
 							decisionRelevant: true,
 						},
 					],
-				}),
+				})
 			)
 			.mockResolvedValueOnce(objectResult({ divergentSlotIndexes: [0] }));
 		expect(await refineClarification(ctx, opts)).toBeUndefined();

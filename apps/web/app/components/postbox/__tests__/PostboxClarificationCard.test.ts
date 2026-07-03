@@ -46,7 +46,8 @@ function makeItem(over: Partial<ReplyQueueItem['clarification']> = {}): ReplyQue
 					id: 'clarify_0',
 					slotType: 'decision',
 					text: 'Should we approve the refund?',
-					attribution: 'Generated from an email from acme.com — Owlat will never ask for your password.',
+					attribution:
+						'Generated from an email from acme.com — Owlat will never ask for your password.',
 					options: ['Yes', 'No'],
 				},
 			],
@@ -96,7 +97,7 @@ describe('PostboxClarificationCard', () => {
 			makeItem({
 				answeredAt: 2,
 				draft: 'Hi Ann — yes, we can approve the refund.',
-			}),
+			})
 		);
 		expect(wrapper.text()).toContain('Draft ready');
 		expect(wrapper.text()).toContain('we can approve the refund');
