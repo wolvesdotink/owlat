@@ -22,7 +22,7 @@
  * `clear` mutation for the UI.
  */
 
-import { v } from 'convex/values';
+import { v, type Infer } from 'convex/values';
 import { internalMutation, internalQuery, type MutationCtx } from '../_generated/server';
 import { authedMutation, publicQuery } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
@@ -222,6 +222,28 @@ export const getThreadContext = internalQuery({
 	},
 });
 
+/**
+ * Persisted clarification shape on `needsReply.clarification` (mirrors
+ * schema/mail.ts). Set by the refinement pass when a good reply needs a fact
+ * only the owner can supply; the owner answers it inline in the Reply Queue.
+ */
+const clarificationFlagValidator = v.object({
+	needed: v.boolean(),
+	questions: v.array(
+		v.object({
+			id: v.string(),
+			slotType: v.string(),
+			text: v.string(),
+			attribution: v.string(),
+			options: v.optional(v.array(v.string())),
+			answer: v.optional(v.object({ value: v.string(), at: v.number() })),
+		}),
+	),
+	askedAt: v.number(),
+	answeredAt: v.optional(v.number()),
+	draft: v.optional(v.string()),
+});
+
 const needsReplyResultValidator = v.union(
 	v.null(),
 	v.object({
@@ -235,6 +257,7 @@ const needsReplyResultValidator = v.union(
 			proposedTimes: v.array(v.string()),
 			topic: v.optional(v.string()),
 		})),
+		clarification: v.optional(clarificationFlagValidator),
 	}),
 );
 
@@ -321,6 +344,10 @@ export const listQueue = publicQuery({
 				detectedAt: flag.detectedAt,
 				source: flag.source,
 				waitingOn: undefined as string | undefined,
+				// Clarification loop: when present, the row renders as a "Needs your
+				// input" card (question + scoped chips + free-text) instead of the
+				// plain needs-reply row. Absent for the deterministic/plain case.
+				clarification: flag.clarification,
 				fromAddress: message.fromAddress,
 				fromName: message.fromName,
 				subject: message.subject,
@@ -355,6 +382,7 @@ export const listQueue = publicQuery({
 				detectedAt: flag.dueAt,
 				source: 'heuristic' as const,
 				waitingOn: flag.waitingOn,
+				clarification: undefined as Infer<typeof clarificationFlagValidator> | undefined,
 				// The counterpart shown on the card is who we're waiting ON.
 				fromAddress: flag.waitingOn ?? message.toAddresses[0] ?? message.fromAddress,
 				fromName: undefined,
@@ -378,6 +406,140 @@ export const clear = authedMutation({
 		const owned = await loadOwnedMailbox(ctx, thread.mailboxId);
 		if (!owned.ok) throwForbidden('Thread not accessible');
 		await clearThreadNeedsReply(ctx, args.threadId);
+	},
+});
+
+/**
+ * Answer the clarification questions on a Reply Queue thread and kick off the
+ * draft.
+ *
+ * Backs the "Needs your input" card: the owner types / taps the scoped answers
+ * inline and the card flips to "Draft ready". This folds each answer onto
+ * `needsReply.clarification`, stamps `answeredAt`, and schedules
+ * `draftWithAnswers` off the scheduler (so a slow model never blocks the
+ * mutation) which reuses the suggestReplies infra + voice profile + the pinned
+ * answers to produce the starter reply. Fail-soft: if the draft never lands the
+ * answer is still recorded and the plain "Draft reply" button keeps working.
+ */
+// authz: thread → mailbox ownership via loadOwnedMailbox; org membership via
+// authedMutation.
+export const answerClarification = authedMutation({
+	args: {
+		threadId: v.id('mailThreads'),
+		answers: v.array(v.object({ questionId: v.string(), value: v.string() })),
+	},
+	handler: async (ctx, args) => {
+		const thread = await ctx.db.get(args.threadId);
+		if (!thread) throwNotFound('Thread');
+		const owned = await loadOwnedMailbox(ctx, thread.mailboxId);
+		if (!owned.ok) throwForbidden('Thread not accessible');
+
+		const flag = thread.needsReply;
+		const clarification = flag?.clarification;
+		if (!flag || !clarification) throwNotFound('Clarification');
+
+		const now = Date.now();
+		const answerByQuestion = new Map(
+			args.answers.map((a) => [a.questionId, a.value] as const),
+		);
+		const questions = clarification.questions.map((q) => {
+			const value = answerByQuestion.get(q.id);
+			if (value === undefined) return q;
+			return { ...q, answer: { value: value.slice(0, 2000), at: now } };
+		});
+
+		await ctx.db.patch(args.threadId, {
+			needsReply: {
+				...flag,
+				clarification: { ...clarification, questions, answeredAt: now, needed: false },
+			},
+			updatedAt: now,
+		});
+
+		// Off the scheduler — the answer is already committed above.
+		await ctx.scheduler.runAfter(0, internal.mail.needsReplyClassify.draftWithAnswers, {
+			threadId: args.threadId,
+		});
+
+		return { success: true };
+	},
+});
+
+/**
+ * Bounded context for the `draftWithAnswers` action: the mailbox id, a short
+ * transcript of the newest messages, and the owner's confirmed answers folded
+ * into `question: answer` lines. Null when the clarification is gone / stale.
+ */
+export const getClarificationContext = internalQuery({
+	args: { threadId: v.id('mailThreads') },
+	handler: async (ctx, args) => {
+		const thread = await ctx.db.get(args.threadId);
+		if (!thread) return null;
+		const clarification = thread.needsReply?.clarification;
+		if (!clarification || clarification.answeredAt === undefined) return null;
+		const mailbox = await ctx.db.get(thread.mailboxId);
+		if (!mailbox || mailbox.status !== 'active') return null;
+
+		const all = await ctx.db
+			.query('mailMessages')
+			.withIndex('by_thread', (q) => q.eq('threadId', args.threadId))
+			.collect();
+		const newest = all
+			.sort((a, b) => a.receivedAt - b.receivedAt)
+			.slice(-NEEDS_REPLY_CONTEXT_MESSAGES);
+		const transcript = newest
+			.map(
+				(m) =>
+					`From: ${m.fromName || m.fromAddress}\nSubject: ${m.subject}\n${(m.textBodyInline ?? m.snippet ?? '').slice(0, 2000)}`,
+			)
+			.join('\n\n---\n\n')
+			.slice(0, 12000);
+
+		const answers = [];
+		for (const q of clarification.questions) {
+			if (q.answer) answers.push({ question: q.text, answer: q.answer.value });
+		}
+
+		return {
+			mailboxId: thread.mailboxId,
+			latestMessageId: thread.latestMessageId,
+			transcript,
+			answers,
+		};
+	},
+});
+
+/**
+ * Persist the starter reply produced by `draftWithAnswers`. Staleness-guarded
+ * (a newer inbound message re-triggers the whole flow) and clarification-guarded
+ * (the answer must still be present). Flips the card to "Draft ready".
+ */
+export const persistClarificationDraft = internalMutation({
+	args: {
+		threadId: v.id('mailThreads'),
+		expectedLatestMessageId: v.optional(v.id('mailMessages')),
+		draft: v.string(),
+	},
+	handler: async (ctx, args) => {
+		const thread = await ctx.db.get(args.threadId);
+		if (!thread) return;
+		const flag = thread.needsReply;
+		const clarification = flag?.clarification;
+		if (!flag || !clarification) return;
+		if (
+			args.expectedLatestMessageId !== undefined &&
+			thread.latestMessageId !== undefined &&
+			thread.latestMessageId !== args.expectedLatestMessageId
+		) {
+			return; // stale — a newer ingest re-enqueued its own check
+		}
+		await ctx.db.patch(args.threadId, {
+			needsReply: {
+				...flag,
+				clarification: { ...clarification, draft: args.draft.slice(0, 4000) },
+			},
+			updatedAt: Date.now(),
+		});
 	},
 });
 

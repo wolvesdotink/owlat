@@ -416,6 +416,42 @@ mailThreads: defineTable({
 			// What the meeting is about, if stated (<= 120 chars).
 			topic: v.optional(v.string()),
 		})),
+		// Clarification loop (Postbox-native): set when the refinement pass
+		// decides a good reply needs a fact only the owner can supply and the
+		// capable-tier divergence confirmation agrees it is genuinely open.
+		// Flips the Reply Queue row from "Needs you" to "Needs your input".
+		// LLM-refined only; every question is deterministically sanitized
+		// (credential/OTP solicitations dropped) and attributed to the sender
+		// in mail/needsReplyClassify.ts before it is persisted here.
+		clarification: v.optional(v.object({
+			// True while at least one question is still awaiting an answer.
+			needed: v.boolean(),
+			questions: v.array(v.object({
+				// Stable id matching an incoming answer back to its question.
+				id: v.string(),
+				// The reply-slot kind (shared taxonomy, inbox/clarificationSlots.ts).
+				slotType: v.string(),
+				// The question shown to the owner.
+				text: v.string(),
+				// Provenance + "Owlat will never ask for your password" promise.
+				attribution: v.string(),
+				// Suggested scoped answers rendered as one-tap chips (multiple
+				// choice); absent for a free-text-only slot.
+				options: v.optional(v.array(v.string())),
+				// The owner's answer — absent until answered.
+				answer: v.optional(v.object({
+					value: v.string(),
+					at: v.number(),
+				})),
+			})),
+			// When the questions were surfaced (advisory ordering only).
+			askedAt: v.number(),
+			// Set once the owner answers — drives the draftWithAnswers path.
+			answeredAt: v.optional(v.number()),
+			// The starter reply produced by draftWithAnswers once the owner
+			// answered. Its presence flips the card to "Draft ready".
+			draft: v.optional(v.string()),
+		})),
 	})),
 	// Set when inbound ingest enqueues needs-reply classification; cleared once
 	// the classify action persists a result. Backs the reconcile cron that
