@@ -34,3 +34,15 @@ export const POSTBOX_DENSITY_OPTIONS: Array<{
 export function resolvePostboxDensity(value: string | undefined | null): PostboxDensity {
 	return value === 'compact' ? 'compact' : POSTBOX_DENSITY_DEFAULT;
 }
+
+/**
+ * Fixed thread-row height per density, in pixels. Mirrors the
+ * `--pbx-row-intrinsic` CSS token (76px comfortable / 52px compact) in
+ * postbox-density.css — the two MUST stay in lockstep because the windowed
+ * thread list positions rows by this JS value while `content-visibility` uses
+ * the CSS token. Kept minimal (two values) so the drift risk is a single map.
+ */
+export const POSTBOX_ROW_HEIGHT: Record<PostboxDensity, number> = {
+	comfortable: 76,
+	compact: 52,
+};
