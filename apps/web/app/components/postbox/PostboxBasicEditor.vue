@@ -22,6 +22,7 @@ import {
 import { usePostboxGhostOverlay } from '~/composables/postbox/usePostboxGhostOverlay';
 import { usePostboxRewriteController } from '~/composables/postbox/usePostboxRewriteController';
 import { usePostboxFloatingFormatBar } from '~/composables/postbox/usePostboxFloatingFormatBar';
+import { usePostboxInlineImages } from '~/composables/postbox/usePostboxInlineImages';
 import type { Id } from '@owlat/api/dataModel';
 
 const props = defineProps<{
@@ -131,7 +132,7 @@ function onInput() {
 	// Typing invalidates any pending/previewed rewrite anchored to old text.
 	rewriteCtl.invalidateOnEdit();
 	// An edit may have removed an inline image — drop its pending part.
-	reconcileInlineImages();
+	inlineImages.reconcile();
 }
 
 // ── Inline ghost-text autocomplete ─────────────────────────────────────
@@ -234,90 +235,27 @@ function onKeydown(event: KeyboardEvent) {
 }
 
 // ── Inline images (paste / drop into the body) ─────────────────────────────
-// Tracks which inline content-IDs currently live in the editor so a deletion
-// (the user selects the <img> and hits Backspace) can drop the pending part.
-const knownInlineCids = new Set<string>();
-
-function imageFilesFrom(list: FileList | File[] | null | undefined): File[] {
-	return Array.from(list ?? []).filter((f) => f.type.startsWith('image/'));
-}
-
-function insertImageAtCaret(previewUrl: string, contentId: string) {
-	const el = editorRef.value;
-	if (!el) return;
-	const img = document.createElement('img');
-	img.src = previewUrl;
-	img.setAttribute('data-inline-cid', contentId);
-	img.style.maxWidth = '100%';
-	img.style.height = 'auto';
-	const sel = window.getSelection();
-	let range: Range;
-	if (sel && sel.rangeCount > 0 && el.contains(sel.anchorNode)) {
-		range = sel.getRangeAt(0);
-		range.deleteContents();
-	} else {
-		range = document.createRange();
-		range.selectNodeContents(el);
-		range.collapse(false);
-	}
-	range.insertNode(img);
-	range.setStartAfter(img);
-	range.collapse(true);
-	sel?.removeAllRanges();
-	sel?.addRange(range);
-	knownInlineCids.add(contentId);
-	emitContent();
-}
-
-async function embedImageFiles(files: File[]) {
-	if (!props.inlineImagesEnabled || !props.embedImage) return;
-	for (const file of files) {
-		const result = await props.embedImage(file);
-		if (result) insertImageAtCaret(result.previewUrl, result.contentId);
-	}
-}
-
-// After any edit, reconcile the tracked inline cids against what's still in the
-// DOM; any that vanished (image deleted from the body) drop their pending part.
-function reconcileInlineImages() {
-	if (!props.inlineImagesEnabled || knownInlineCids.size === 0) return;
-	const el = editorRef.value;
-	const present = new Set<string>();
-	if (el) {
-		el.querySelectorAll('img[data-inline-cid]').forEach((node) => {
-			const cid = node.getAttribute('data-inline-cid');
-			if (cid) present.add(cid);
-		});
-	}
-	for (const cid of [...knownInlineCids]) {
-		if (!present.has(cid)) {
-			knownInlineCids.delete(cid);
-			props.onRemoveEmbeddedImage?.(cid);
-		}
-	}
-}
+// Insert-at-caret, reconcile-on-delete, and the paste/drop handling live in the
+// composable so this component stays under the file-size ratchet.
+const inlineImages = usePostboxInlineImages({
+	editorRef,
+	enabled: () => props.inlineImagesEnabled === true,
+	embedImage: () => props.embedImage,
+	onRemoveEmbeddedImage: () => props.onRemoveEmbeddedImage,
+	emitContent,
+});
 
 function onPaste(event: ClipboardEvent) {
-	const images = imageFilesFrom(event.clipboardData?.files);
-	if (props.inlineImagesEnabled && props.embedImage && images.length > 0) {
-		event.preventDefault();
-		event.stopPropagation();
-		void embedImageFiles(images);
-		return;
-	}
+	// When the clipboard carries images and inline embedding is on, the composable
+	// consumes the event; otherwise fall back to the plain-text paste path.
+	if (inlineImages.handlePaste(event)) return;
 	pasteAsPlainText(event);
 }
 
 function onDrop(event: DragEvent) {
-	const images = imageFilesFrom(event.dataTransfer?.files);
-	if (props.inlineImagesEnabled && props.embedImage && images.length > 0) {
-		// Embed images dropped into the text; stop the composer's drop-to-attach
-		// handler from also treating them as attachments.
-		event.preventDefault();
-		event.stopPropagation();
-		void embedImageFiles(images);
-	}
-	// Non-image drops fall through to the composer's attach handler.
+	// Image drops embed inline; non-image drops fall through to the composer's
+	// drop-to-attach handler.
+	inlineImages.handleDrop(event);
 }
 
 function onBlur() {
