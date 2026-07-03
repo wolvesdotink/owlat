@@ -63,7 +63,7 @@ async function isScreenerEnabled(ctx: MutationCtx, userId: string): Promise<bool
  * the result shape so `needsReply.applyResult` keeps its exact validator type.
  */
 export async function scoreAndScreenResult<
-	T extends { messageId: Id<'mailMessages'>; urgency: PriorityUrgency }
+	T extends { messageId: Id<'mailMessages'>; urgency: PriorityUrgency },
 >(
 	ctx: MutationCtx,
 	opts: {

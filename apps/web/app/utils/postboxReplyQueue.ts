@@ -74,7 +74,11 @@ export interface ReplyQueueItem {
  * before scoring existed): map the urgency bucket alone. Mirrors the server
  * weights in mail/priorityScore.ts so mixed old/new rows stay comparable.
  */
-const URGENCY_FALLBACK_SCORE: Record<ReplyQueueUrgency, number> = { high: 100, normal: 50, low: 20 };
+const URGENCY_FALLBACK_SCORE: Record<ReplyQueueUrgency, number> = {
+	high: 100,
+	normal: 50,
+	low: 20,
+};
 
 /** The ranking key for a row: its priority score, or the urgency fallback. */
 function effectiveScore(item: Pick<ReplyQueueItem, 'urgency' | 'priorityScore'>): number {

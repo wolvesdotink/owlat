@@ -83,10 +83,7 @@ export function computePriorityScore(opts: {
  * a sender the owner already accepted always passes. Fail-open: with the
  * screener OFF this is a no-op, so it never changes today's behaviour.
  */
-export function isScreenedOut(opts: {
-	screenerEnabled: boolean;
-	sender: SenderSignal;
-}): boolean {
+export function isScreenedOut(opts: { screenerEnabled: boolean; sender: SenderSignal }): boolean {
 	if (!opts.screenerEnabled) return false;
 	const s = opts.sender;
 	if (s.isVip || s.accepted || s.isKnownContact) return false;

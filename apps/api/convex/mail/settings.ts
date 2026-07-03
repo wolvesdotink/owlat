@@ -88,16 +88,13 @@ export const update = authedMutation({
 		if (args.autoAdvance !== undefined) patch.autoAdvance = args.autoAdvance;
 		if (args.isWritingSuggestionsOn !== undefined)
 			patch.isWritingSuggestionsOn = args.isWritingSuggestionsOn;
-		if (args.isAutoSummarizeOn !== undefined)
-			patch.isAutoSummarizeOn = args.isAutoSummarizeOn;
+		if (args.isAutoSummarizeOn !== undefined) patch.isAutoSummarizeOn = args.isAutoSummarizeOn;
 		if (args.replyDefault !== undefined) patch.replyDefault = args.replyDefault;
 		if (args.density !== undefined) patch.density = args.density;
 		if (args.isSendSoundOn !== undefined) patch.isSendSoundOn = args.isSendSoundOn;
 		if (args.notifyAbout !== undefined) patch.notifyAbout = args.notifyAbout;
-		if (args.isBadgeNonPeopleOn !== undefined)
-			patch.isBadgeNonPeopleOn = args.isBadgeNonPeopleOn;
-		if (args.isSenderScreenerOn !== undefined)
-			patch.isSenderScreenerOn = args.isSenderScreenerOn;
+		if (args.isBadgeNonPeopleOn !== undefined) patch.isBadgeNonPeopleOn = args.isBadgeNonPeopleOn;
+		if (args.isSenderScreenerOn !== undefined) patch.isSenderScreenerOn = args.isSenderScreenerOn;
 		if (existing) {
 			await ctx.db.patch(existing._id, { ...patch, updatedAt: now });
 			return existing._id;

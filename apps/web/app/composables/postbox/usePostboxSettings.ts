@@ -43,15 +43,11 @@ export function usePostboxSettings() {
 
 	// Default ON: an unset preference means "use suggestions" — the `ai` flag is
 	// the real on/off switch, this is a user opt-out within an AI-enabled deploy.
-	const writingSuggestions = computed<boolean>(
-		() => data.value?.isWritingSuggestionsOn ?? true
-	);
+	const writingSuggestions = computed<boolean>(() => data.value?.isWritingSuggestionsOn ?? true);
 
 	// Default ON, same as writing suggestions: the `ai` flag is the master gate,
 	// this is a per-user opt-out for the long-thread summary strip.
-	const autoSummarize = computed<boolean>(
-		() => data.value?.isAutoSummarizeOn ?? true
-	);
+	const autoSummarize = computed<boolean>(() => data.value?.isAutoSummarizeOn ?? true);
 
 	// Which mode the primary reply affordance (Reply button / `r`) uses. Reads
 	// default to 'reply' while loading or when never saved, so the reader can
@@ -62,9 +58,7 @@ export function usePostboxSettings() {
 
 	// List/reader density. An unset (or unknown) value resolves to 'comfortable',
 	// so the reader can consume it unconditionally while the query loads.
-	const density = computed<PostboxDensity>(() =>
-		resolvePostboxDensity(data.value?.density)
-	);
+	const density = computed<PostboxDensity>(() => resolvePostboxDensity(data.value?.density));
 
 	// Confirmation sound on send. Default OFF (opt-in): an unset preference means
 	// no sound, so the composer stays silent unless the user turns it on.
@@ -79,16 +73,12 @@ export function usePostboxSettings() {
 
 	// Whether non-`person` mail still increments the dock/tray badge. Default ON
 	// (unset => badge counts everything, the pre-existing behavior).
-	const badgeNonPeople = computed<boolean>(
-		() => data.value?.isBadgeNonPeopleOn ?? true
-	);
+	const badgeNonPeople = computed<boolean>(() => data.value?.isBadgeNonPeopleOn ?? true);
 
 	// HEY-style first-time-sender screener. Default OFF (opt-in): mail from an
 	// unknown sender only skips the Reply Queue when the owner turns this on, so
 	// a deploy that never toggles it keeps today's behavior.
-	const senderScreener = computed<boolean>(
-		() => data.value?.isSenderScreenerOn ?? false
-	);
+	const senderScreener = computed<boolean>(() => data.value?.isSenderScreenerOn ?? false);
 
 	const updateOp = useBackendOperation(api.mail.settings.update, {
 		label: 'Save Postbox settings',

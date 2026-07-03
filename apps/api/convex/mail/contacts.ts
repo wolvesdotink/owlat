@@ -36,8 +36,7 @@ export function contactFrecencyScore(
 	now: number
 ): number {
 	const days = Math.max(0, now - contact.lastUsedAt) / DAY_MS;
-	const recency =
-		days < 1 ? 100 : days < 7 ? 70 : days < 30 ? 40 : days < 90 ? 20 : 10;
+	const recency = days < 1 ? 100 : days < 7 ? 70 : days < 30 ? 40 : days < 90 ? 20 : 10;
 	// Frequency is bounded so a runaway useCount can't drown out recency.
 	const frequency = Math.min(50, Math.max(0, contact.useCount) * 5);
 	return recency + frequency;

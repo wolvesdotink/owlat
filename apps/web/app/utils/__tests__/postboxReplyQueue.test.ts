@@ -12,20 +12,16 @@ const item = (urgency: 'high' | 'normal' | 'low', receivedAt: number) => ({
 
 describe('compareReplyQueueItems', () => {
 	it('ranks by urgency first: high before normal before low', () => {
-		const sorted = [
-			item('low', 1000),
-			item('high', 3000),
-			item('normal', 2000),
-		].sort(compareReplyQueueItems);
+		const sorted = [item('low', 1000), item('high', 3000), item('normal', 2000)].sort(
+			compareReplyQueueItems
+		);
 		expect(sorted.map((i) => i.urgency)).toEqual(['high', 'normal', 'low']);
 	});
 
 	it('breaks urgency ties by age — longest-waiting (oldest) first', () => {
-		const sorted = [
-			item('normal', 3000),
-			item('normal', 1000),
-			item('normal', 2000),
-		].sort(compareReplyQueueItems);
+		const sorted = [item('normal', 3000), item('normal', 1000), item('normal', 2000)].sort(
+			compareReplyQueueItems
+		);
 		expect(sorted.map((i) => i.receivedAt)).toEqual([1000, 2000, 3000]);
 	});
 
@@ -61,9 +57,9 @@ describe('compareReplyQueueItems', () => {
 
 describe('replyQueueHeadline', () => {
 	it('uses the AI askSummary when present', () => {
-		expect(
-			replyQueueHeadline({ askSummary: 'Wants the Q3 numbers', subject: 'Re: numbers' })
-		).toBe('Wants the Q3 numbers');
+		expect(replyQueueHeadline({ askSummary: 'Wants the Q3 numbers', subject: 'Re: numbers' })).toBe(
+			'Wants the Q3 numbers'
+		);
 	});
 
 	it('falls back to the subject when askSummary is absent (deterministic mode)', () => {
@@ -97,9 +93,9 @@ describe('replyQueueHeadline', () => {
 	});
 
 	it('falls back to a generic follow-up headline when waitingOn is blank and no fromAddress', () => {
-		expect(replyQueueHeadline({ kind: 'followup', subject: 'Re: proposal', waitingOn: '   ' })).toBe(
-			"You're waiting on a reply"
-		);
+		expect(
+			replyQueueHeadline({ kind: 'followup', subject: 'Re: proposal', waitingOn: '   ' })
+		).toBe("You're waiting on a reply");
 	});
 });
 
