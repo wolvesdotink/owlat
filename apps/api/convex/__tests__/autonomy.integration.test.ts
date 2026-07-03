@@ -4,6 +4,7 @@ import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import { createTestAutonomyRule, enableFeatures } from './factories';
 import type { Id } from '../_generated/dataModel';
+import { requireOrgPermission } from '../lib/sessionOrganization';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -431,6 +432,215 @@ describe('autonomy.incrementDailyCount', () => {
 				.first();
 			expect(rule!.currentDailyCount).toBe(1); // reset to 0 then charged once
 		});
+	});
+});
+
+// ============ adjustThresholds: asymmetric loosening ============
+
+describe('autonomy.adjustThresholds', () => {
+	async function seedFeedback(
+		t: ReturnType<typeof convexTest>,
+		category: string,
+		rows: Array<{ action: 'approved' | 'rejected' | 'edited'; count: number }>,
+	) {
+		const now = Date.now();
+		await t.run(async (ctx) => {
+			for (const { action, count } of rows) {
+				for (let i = 0; i < count; i++) {
+					await ctx.db.insert('autonomyFeedback', {
+						category,
+						action,
+						agentConfidence: 0.8,
+						createdAt: now - 1000, // within the 1-week window
+					});
+				}
+			}
+		});
+	}
+
+	it('still tightens automatically on a rejection spike (>40%) and creates no suggestion', async () => {
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('autonomyRules', createTestAutonomyRule({
+				category: 'support',
+				autoApproveThreshold: 0.5,
+				isEnabled: true,
+			}));
+		});
+		// 6 rows, 4 rejected => 66% rejection.
+		await seedFeedback(t, 'support', [
+			{ action: 'rejected', count: 4 },
+			{ action: 'approved', count: 2 },
+		]);
+
+		await t.action(internal.autonomy.adjustThresholds);
+
+		await t.run(async (ctx) => {
+			const rule = await ctx.db
+				.query('autonomyRules')
+				.withIndex('by_category', (q) => q.eq('category', 'support'))
+				.first();
+			expect(rule!.autoApproveThreshold).toBeCloseTo(0.6); // raised by 0.10
+			const suggestions = await ctx.db.query('autonomySuggestions').collect();
+			expect(suggestions).toHaveLength(0); // tightening never suggests
+		});
+	});
+
+	it('on low rejection it records a suggestion and does NOT change the threshold', async () => {
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('autonomyRules', createTestAutonomyRule({
+				category: 'support',
+				autoApproveThreshold: 0.8,
+				isEnabled: true,
+			}));
+		});
+		// 20 rows, 0 rejected => 0% rejection, n >= 20.
+		await seedFeedback(t, 'support', [{ action: 'approved', count: 20 }]);
+
+		await t.action(internal.autonomy.adjustThresholds);
+
+		await t.run(async (ctx) => {
+			const rule = await ctx.db
+				.query('autonomyRules')
+				.withIndex('by_category', (q) => q.eq('category', 'support'))
+				.first();
+			// Threshold is UNCHANGED — loosening is never automatic.
+			expect(rule!.autoApproveThreshold).toBe(0.8);
+
+			const suggestions = await ctx.db.query('autonomySuggestions').collect();
+			expect(suggestions).toHaveLength(1);
+			expect(suggestions[0]!.category).toBe('support');
+			expect(suggestions[0]!.currentThreshold).toBe(0.8);
+			expect(suggestions[0]!.suggestedThreshold).toBeCloseTo(0.75);
+			expect(suggestions[0]!.evidence.approved).toBe(20);
+			expect(suggestions[0]!.evidence.sampleSize).toBe(20);
+			expect(suggestions[0]!.evidence.rejectionRate).toBe(0);
+		});
+	});
+
+	it('clears a stale suggestion when the same category later tightens', async () => {
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('autonomyRules', createTestAutonomyRule({
+				category: 'support',
+				autoApproveThreshold: 0.5,
+				isEnabled: true,
+			}));
+			await ctx.db.insert('autonomySuggestions', {
+				category: 'support',
+				currentThreshold: 0.55,
+				suggestedThreshold: 0.5,
+				evidence: { approved: 30, sampleSize: 30, rejectionRate: 0 },
+				createdAt: Date.now() - 10000,
+			});
+		});
+		await seedFeedback(t, 'support', [
+			{ action: 'rejected', count: 4 },
+			{ action: 'approved', count: 2 },
+		]);
+
+		await t.action(internal.autonomy.adjustThresholds);
+
+		await t.run(async (ctx) => {
+			const suggestions = await ctx.db.query('autonomySuggestions').collect();
+			expect(suggestions).toHaveLength(0);
+		});
+	});
+});
+
+// ============ acceptGraduationSuggestion ============
+
+describe('autonomy.acceptGraduationSuggestion', () => {
+	it('applies the suggested threshold and clears the suggestion', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.autonomy']);
+		let suggestionId!: Id<'autonomySuggestions'>;
+		await t.run(async (ctx) => {
+			await ctx.db.insert('autonomyRules', createTestAutonomyRule({
+				category: 'support',
+				autoApproveThreshold: 0.8,
+				isEnabled: true,
+			}));
+			suggestionId = await ctx.db.insert('autonomySuggestions', {
+				category: 'support',
+				currentThreshold: 0.8,
+				suggestedThreshold: 0.75,
+				evidence: { approved: 20, sampleSize: 20, rejectionRate: 0 },
+				createdAt: Date.now(),
+			});
+		});
+
+		await t.mutation(api.autonomySuggestions.acceptGraduationSuggestion, { suggestionId });
+
+		await t.run(async (ctx) => {
+			const rule = await ctx.db
+				.query('autonomyRules')
+				.withIndex('by_category', (q) => q.eq('category', 'support'))
+				.first();
+			expect(rule!.autoApproveThreshold).toBe(0.75); // now applied
+			const remaining = await ctx.db.get(suggestionId);
+			expect(remaining).toBeNull(); // suggestion cleared
+		});
+	});
+
+	it('rejects an unauthorized (non-admin) caller and leaves the threshold untouched', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.autonomy']);
+		let suggestionId!: Id<'autonomySuggestions'>;
+		await t.run(async (ctx) => {
+			await ctx.db.insert('autonomyRules', createTestAutonomyRule({
+				category: 'support',
+				autoApproveThreshold: 0.8,
+				isEnabled: true,
+			}));
+			suggestionId = await ctx.db.insert('autonomySuggestions', {
+				category: 'support',
+				currentThreshold: 0.8,
+				suggestedThreshold: 0.75,
+				evidence: { approved: 20, sampleSize: 20, rejectionRate: 0 },
+				createdAt: Date.now(),
+			});
+		});
+
+		vi.mocked(requireOrgPermission).mockRejectedValueOnce(new Error('forbidden'));
+
+		await expect(
+			t.mutation(api.autonomySuggestions.acceptGraduationSuggestion, { suggestionId }),
+		).rejects.toThrow();
+
+		await t.run(async (ctx) => {
+			const rule = await ctx.db
+				.query('autonomyRules')
+				.withIndex('by_category', (q) => q.eq('category', 'support'))
+				.first();
+			// Unchanged — no widening without authorization.
+			expect(rule!.autoApproveThreshold).toBe(0.8);
+			const stillThere = await ctx.db.get(suggestionId);
+			expect(stillThere).not.toBeNull();
+		});
+	});
+});
+
+// ============ listGraduationSuggestions ============
+
+describe('autonomy.listGraduationSuggestions', () => {
+	it('returns pending suggestions for the settings UI', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.autonomy']);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('autonomySuggestions', {
+				category: 'support',
+				currentThreshold: 0.8,
+				suggestedThreshold: 0.75,
+				evidence: { approved: 20, sampleSize: 20, rejectionRate: 0 },
+				createdAt: Date.now(),
+			});
+		});
+
+		const suggestions = await t.query(api.autonomySuggestions.listGraduationSuggestions);
+		expect(suggestions).toHaveLength(1);
+		expect(suggestions[0]!.category).toBe('support');
 	});
 });
 

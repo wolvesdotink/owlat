@@ -366,9 +366,18 @@ export const resetDailyCounts = internalMutation({
 // ============================================================
 
 /**
- * Automatically adjust thresholds based on rejection patterns.
- * If rejection rate > 40% in a category over the past week,
- * tighten the auto-approve threshold by 10%.
+ * Weekly review of rejection patterns per category. Deliberately asymmetric:
+ *
+ *   - TIGHTENING is automatic. A rejection spike (>40% over the week) raises the
+ *     auto-approve threshold by 10% right away — that fails toward the human and
+ *     only ever makes auto-send harder, so it is always safe to do unattended.
+ *   - LOOSENING is NEVER automatic. A low rejection rate does not lower the
+ *     threshold; it records a "graduation suggestion" the user must explicitly
+ *     accept (see `acceptGraduationSuggestion`). Autonomy only widens by the
+ *     user's decision, never on its own.
+ *
+ * When a category tightens, any stale pending loosening suggestion for it is
+ * cleared — a suggestion minted before a rejection spike must not linger.
  */
 export const adjustThresholds = internalAction({
 	args: {},
@@ -389,23 +398,45 @@ export const adjustThresholds = internalAction({
 			const recentFeedback = feedback.filter((f) => f.createdAt > oneWeekAgo);
 			if (recentFeedback.length < 5) continue; // Not enough data
 
-			const rejections = recentFeedback.filter((f) => f.action === 'rejected').length;
+			let rejections = 0;
+			let approvals = 0;
+			for (const f of recentFeedback) {
+				if (f.action === 'rejected') rejections++;
+				else if (f.action === 'approved') approvals++;
+			}
 			const rejectionRate = rejections / recentFeedback.length;
 
 			if (rejectionRate > 0.40) {
-				// Tighten threshold: increase by 10% (make it harder to auto-approve)
+				// Tighten threshold: increase by 10% (make it harder to auto-approve).
+				// This is the only automatic threshold move, and it only ever narrows.
 				const newThreshold = Math.min(0.99, rule.autoApproveThreshold + 0.10);
 				await ctx.runMutation(internal.autonomy.updateThreshold, {
 					ruleId: rule._id,
 					newThreshold,
 				});
-			} else if (rejectionRate < 0.10 && recentFeedback.length >= 20) {
-				// Loosen threshold: decrease by 5% (allow more auto-approval)
-				const newThreshold = Math.max(0.50, rule.autoApproveThreshold - 0.05);
-				await ctx.runMutation(internal.autonomy.updateThreshold, {
-					ruleId: rule._id,
-					newThreshold,
+				// A prior loosening suggestion is now stale — drop it.
+				await ctx.runMutation(internal.autonomySuggestions.clearGraduationSuggestion, {
+					category: rule.category,
 				});
+			} else if (rejectionRate < 0.10 && recentFeedback.length >= 20) {
+				// Low rejection rate: do NOT lower the threshold. Record a
+				// graduation suggestion the user must explicitly accept. The
+				// suggested (looser) threshold is computed but only applied on
+				// acceptance.
+				const suggestedThreshold = Math.max(0.50, rule.autoApproveThreshold - 0.05);
+				// Only bother suggesting if it actually loosens something.
+				if (suggestedThreshold < rule.autoApproveThreshold) {
+					await ctx.runMutation(internal.autonomySuggestions.recordGraduationSuggestion, {
+						category: rule.category,
+						currentThreshold: rule.autoApproveThreshold,
+						suggestedThreshold,
+						evidence: {
+							approved: approvals,
+							sampleSize: recentFeedback.length,
+							rejectionRate,
+						},
+					});
+				}
 			}
 		}
 	},
