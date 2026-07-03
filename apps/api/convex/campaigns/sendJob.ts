@@ -28,6 +28,7 @@
 
 import { v } from 'convex/values';
 import { internalMutation, internalQuery } from '../_generated/server';
+import { internal } from '../_generated/api';
 import { audienceValidator } from './audience';
 
 const variantModeValidator = v.union(
@@ -139,5 +140,47 @@ export const advanceSendJob = internalMutation({
 		});
 
 		return { phase, enqueuedCount, totalCandidates };
+	},
+});
+
+// A send walk that has not advanced in this long while still `resolving` is
+// treated as stranded and re-driven. `resolveCampaignPage` self-reschedules
+// only at the END of a successful hop, so ANY throw before that (a transient
+// runQuery/OCC error, or the fail-closed no-provider route check) stops the
+// walk forever: the job stays `resolving`, the lifecycle completion guard
+// refuses to flip the campaign to `sent`, and every recipient past the last
+// committed cursor is silently dropped. A healthy hop bumps `updatedAt` within
+// seconds per page, so a walk stale past this threshold has genuinely stopped.
+const STUCK_SEND_JOB_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutes without progress
+
+/**
+ * Watchdog: re-drive send walks that stalled mid-flight. Finds `campaignSendJobs`
+ * rows still in `phase: 'resolving'` whose `updatedAt` is older than the
+ * staleness threshold and re-schedules `resolveCampaignPage` for each, resuming
+ * the walk from its committed cursor. Safe to fire against a walk that is not
+ * actually stuck: `resolveCampaignPage` re-reads the checkpoint and short-circuits
+ * a `done`/cancelled walk, and `createBatch` is idempotent (a re-run of the same
+ * page inserts zero duplicate rows), so a resume can neither drop nor duplicate
+ * recipients. Called by the `reconcile stuck campaign sends` cron.
+ */
+export const redriveStuckSendJobs = internalMutation({
+	args: {},
+	handler: async (ctx): Promise<{ redriven: number }> => {
+		const cutoff = Date.now() - STUCK_SEND_JOB_THRESHOLD_MS;
+
+		const stuck = await ctx.db
+			.query('campaignSendJobs')
+			.withIndex('by_phase_updatedAt', (q) =>
+				q.eq('phase', 'resolving').lt('updatedAt', cutoff),
+			)
+			.take(50);
+
+		for (const job of stuck) {
+			await ctx.scheduler.runAfter(0, internal.campaigns.send.resolveCampaignPage, {
+				campaignId: job.campaignId,
+			});
+		}
+
+		return { redriven: stuck.length };
 	},
 });
