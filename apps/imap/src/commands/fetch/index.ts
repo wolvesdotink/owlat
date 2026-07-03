@@ -24,6 +24,10 @@ export interface FetchArgs {
 	readonly byUid: boolean;
 }
 
+/** Octet separators for splicing body literals into a FETCH response Buffer. */
+const SPACE = Buffer.from(' ', 'ascii');
+const CLOSE_PAREN = Buffer.from(')', 'ascii');
+
 interface StoreFlagsResult {
 	readonly updated: ReadonlyArray<{ uid: number; modseq: number; flags: string[] }>;
 	readonly unchanged: ReadonlyArray<{ uid: number }>;
@@ -130,12 +134,30 @@ export const fetchModule: ImapCommandModule<FetchArgs> = {
 					if (items.has('ENVELOPE')) fields.push(`ENVELOPE ${formatEnvelope(m)}`);
 					if (items.has('MODSEQ')) fields.push(`MODSEQ (${m.modseq})`);
 
+					// Body sections carry raw 8-bit/binary octets, so the whole
+					// `* seq FETCH (...)` line is assembled as a Buffer: the
+					// ASCII prose fields, then each body literal spliced in
+					// verbatim. Sending it as a UTF-8 string would re-encode the
+					// body and desync the declared `{N}` octet count.
 					if (needsRaw) {
 						const raw = await fetchRawBody(deps.convex, m._id);
 						if (raw != null) {
-							for (const req of bodyRequests) {
-								fields.push(formatBodySection(req, raw));
-							}
+							// The prose prefix keeps the UTF-8 text path (an ENVELOPE
+							// subject/name may carry non-ASCII); only the appended
+							// body literal is spliced in as verbatim raw octets.
+							const parts: Buffer[] = [
+								Buffer.from(
+									`* ${seq} FETCH (${fields.length > 0 ? `${fields.join(' ')} ` : ''}`,
+									'utf8',
+								),
+							];
+							bodyRequests.forEach((req, i) => {
+								if (i > 0) parts.push(SPACE);
+								parts.push(formatBodySection(req, raw));
+							});
+							parts.push(CLOSE_PAREN);
+							send(Buffer.concat(parts));
+							continue;
 						}
 					}
 
@@ -182,14 +204,19 @@ async function markSeen(
 }
 
 /**
- * Pull a message's raw bytes out of Convex storage. Returns null on any
- * failure so FETCH can drop the body fields gracefully without aborting
- * the whole multi-row response.
+ * Pull a message's raw bytes out of Convex storage as a `Buffer`. Returns
+ * null on any failure so FETCH can drop the body fields gracefully without
+ * aborting the whole multi-row response.
+ *
+ * The response is read as an `ArrayBuffer`, never `res.text()`: the stored
+ * RFC822 blob is arbitrary 8-bit/binary MIME, and a UTF-8 decode would
+ * replace invalid bytes with U+FFFD and inflate/shrink the octet count,
+ * breaking the FETCH literal framing.
  */
 async function fetchRawBody(
 	convex: ConvexClient,
 	messageId: string,
-): Promise<string | null> {
+): Promise<Buffer | null> {
 	try {
 		const meta = (await convex.query(fn.fetchRawStorageId as never, {
 			messageId,
@@ -203,7 +230,7 @@ async function fetchRawBody(
 		if (!url) return null;
 		const res = await fetch(url);
 		if (!res.ok) return null;
-		return await res.text();
+		return Buffer.from(await res.arrayBuffer());
 	} catch (err) {
 		logger.warn({ err, messageId }, 'fetchRawBody failed');
 		return null;

@@ -186,5 +186,12 @@ export interface StartArgs<TArgs> {
 	readonly args: TArgs;
 	readonly tag: string;
 	readonly verb: ImapVerb;
-	readonly send: (line: string) => void;
+	/**
+	 * Emit one response line. A `string` is written as UTF-8 with a
+	 * trailing CRLF. A `Buffer` is written as raw octets (plus CRLF) so a
+	 * FETCH body literal preserves the exact 8-bit/binary bytes of the
+	 * stored message — the declared `{N}` octet count must equal the bytes
+	 * on the wire (RFC 3501 §4.3), which a lossy UTF-8 round-trip breaks.
+	 */
+	readonly send: (line: string | Buffer) => void;
 }

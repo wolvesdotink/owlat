@@ -31,7 +31,7 @@ interface DispatchEnv {
 	readonly rawArgs: string[];
 	readonly tag: string;
 	readonly verb: ImapVerb;
-	readonly send: (line: string) => void;
+	readonly send: (line: string | Buffer) => void;
 }
 
 /**
@@ -175,7 +175,7 @@ export function dispatch(
 	deps: CommandDeps,
 	state: ConnectionState,
 	parsed: ParsedCommand,
-	send: (line: string) => void,
+	send: (line: string | Buffer) => void,
 ): CommandSession {
 	const verb = parsed.command as ImapVerb;
 	const module = REGISTRY[verb];

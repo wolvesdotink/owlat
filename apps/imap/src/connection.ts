@@ -144,9 +144,14 @@ export class ImapConnection {
 		);
 	}
 
-	private send(line: string): void {
+	private send(line: string | Buffer): void {
 		try {
-			this.socket.write(`${line}\r\n`);
+			// A Buffer is written as raw octets so a FETCH body literal keeps
+			// the exact 8-bit/binary bytes of the stored message; the trailing
+			// CRLF is appended as octets too. Strings take the UTF-8 text path.
+			this.socket.write(
+				Buffer.isBuffer(line) ? Buffer.concat([line, CRLF]) : `${line}\r\n`,
+			);
 		} catch (err) {
 			logger.debug({ err }, 'write failed');
 		}
