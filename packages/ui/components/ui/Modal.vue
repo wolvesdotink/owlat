@@ -116,10 +116,14 @@ useModalFocus(
 </template>
 
 <style scoped>
-/* Modal transition */
+/*
+ * Modal transition — fade + scale on the standard motion curve. Reads the
+ * Postbox motion tokens (--pbx-motion-*) when present so every dialog moves the
+ * same way, with sensible standalone fallbacks for non-Postbox contexts.
+ */
 .modal-enter-active,
 .modal-leave-active {
-	transition: all 0.2s ease;
+	transition: all var(--pbx-motion-panel, 0.2s) var(--pbx-motion-ease, ease);
 }
 
 .modal-enter-from,
@@ -130,5 +134,13 @@ useModalFocus(
 .modal-enter-from > div,
 .modal-leave-to > div {
 	transform: scale(0.95);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	/* Reduced motion: fade only, no scale. */
+	.modal-enter-from > div,
+	.modal-leave-to > div {
+		transform: none;
+	}
 }
 </style>

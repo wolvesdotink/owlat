@@ -24,6 +24,7 @@ function onSent(composerId: string, undoToken: string, sendAt: number, mailboxId
 	     handler defers to the composer (its [role="dialog"] guard): focus on a
 	     non-editable control here (Send, remove-attachment) must never let
 	     e/# archive/trash the message being replied to. -->
+	<Transition name="pbx-popup" mode="out-in">
 	<div
 		v-if="!composer.minimized"
 		role="dialog"
@@ -60,4 +61,5 @@ function onSent(composerId: string, undoToken: string, sendAt: number, mailboxId
 			{{ composer.prefillSubject || 'Draft' }}
 		</span>
 	</button>
+	</Transition>
 </template>

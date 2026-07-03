@@ -429,7 +429,7 @@ watch(
 			<!-- Hover quick-actions (single-message triage without a round-trip
 			     through the bulk selection). -->
 			<div
-				class="absolute right-3 top-1/2 -translate-y-1/2 hidden group-hover:flex items-center gap-0.5 bg-bg-elevated/95 rounded px-1 py-0.5 shadow-sm border border-border-subtle"
+				class="pbx-hover-reveal absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-0.5 bg-bg-elevated/95 rounded px-1 py-0.5 shadow-sm border border-border-subtle"
 			>
 				<button
 					type="button"
