@@ -1118,3 +1118,116 @@ describe('processingLifecycle — autonomous send-delay / undo window', () => {
 		expect(result.reEnqueued).toBe(1);
 	});
 });
+
+// ============================================================
+// cancelAutoSend — kill-switch bulk cancel, race guard, audit
+// ============================================================
+
+describe('processingLifecycle — cancelAutoSend safety', () => {
+	async function armApprovedPendingSend(
+		t: ReturnType<typeof convexTest>,
+		overrides: Record<string, unknown> = {},
+	): Promise<Id<'inboundMessages'>> {
+		const threadId = await createThread(t);
+		const messageId = await createMessage(t, {
+			processingStatus: 'approved',
+			processedAt: Date.now(),
+			threadId,
+			draftResponse: 'Auto reply',
+			...overrides,
+		});
+		await t.run(async (ctx) => {
+			const scheduledFnId = await ctx.scheduler.runAfter(
+				60_000,
+				internal.agent.agentPipeline.sendApprovedReply,
+				{ inboundMessageId: messageId, autonomous: true },
+			);
+			await ctx.db.patch(messageId, {
+				pendingAutoSend: { scheduledFnId, sendAt: Date.now() + 60_000, scheduledAt: Date.now() },
+			});
+		});
+		return messageId;
+	}
+
+	it('kill-switch bulk cancel aborts every in-flight autonomous send and routes each to review', async () => {
+		const t = convexTest(schema, modules);
+		const a = await armApprovedPendingSend(t);
+		const b = await armApprovedPendingSend(t);
+
+		const result = await t.mutation(
+			internal.inbox.processingLifecycle.cancelPendingAutoSendsForKillSwitch,
+			{},
+		);
+		expect(result.cancelled).toBe(2);
+
+		await t.run(async (ctx) => {
+			for (const id of [a, b]) {
+				const m = await ctx.db.get(id);
+				expect(m?.processingStatus).toBe('draft_ready');
+				expect(m?.pendingAutoSend).toBeUndefined();
+			}
+		});
+	});
+
+	it('records an audit entry naming the cancel reason and actor', async () => {
+		const t = convexTest(schema, modules);
+		const messageId = await armApprovedPendingSend(t);
+
+		await t.mutation(internal.inbox.processingLifecycle.cancelAutoSend, {
+			inboundMessageId: messageId,
+			reason: 'user_cancel',
+			userId: 'user-42',
+		});
+
+		await t.run(async (ctx) => {
+			const logs = await ctx.db.query('auditLogs').collect();
+			const entry = logs.find((l) => l.action === 'inbound.auto_send_cancelled');
+			expect(entry).toBeDefined();
+			expect(entry?.userId).toBe('user-42');
+			expect(entry?.resourceId).toBe(messageId);
+			expect((entry?.details as { reason?: string } | undefined)?.reason).toBe('user_cancel');
+		});
+	});
+
+	it('system-initiated cancels record under the synthetic system actor', async () => {
+		const t = convexTest(schema, modules);
+		const messageId = await armApprovedPendingSend(t);
+
+		await t.mutation(internal.inbox.processingLifecycle.cancelAutoSend, {
+			inboundMessageId: messageId,
+			reason: 'thread_reply',
+		});
+
+		await t.run(async (ctx) => {
+			const logs = await ctx.db.query('auditLogs').collect();
+			const entry = logs.find((l) => l.action === 'inbound.auto_send_cancelled');
+			expect(entry?.userId).toBe('system');
+		});
+	});
+
+	it('does NOT cancel once the scheduled send has left the pending queue (enqueue→send race)', async () => {
+		const t = convexTest(schema, modules);
+		const messageId = await armApprovedPendingSend(t);
+
+		// Simulate the delayed send having already fired: its scheduled function
+		// is no longer `pending`. Cancelling here must NOT route an
+		// already-dispatched reply back to review.
+		await t.run(async (ctx) => {
+			const m = await ctx.db.get(messageId);
+			await ctx.scheduler.cancel(m!.pendingAutoSend!.scheduledFnId);
+		});
+
+		const result = await t.mutation(internal.inbox.processingLifecycle.cancelAutoSend, {
+			inboundMessageId: messageId,
+			reason: 'thread_reply',
+		});
+		expect(result.cancelled).toBe(false);
+		expect(result.reason).toBe('already_sent');
+
+		await t.run(async (ctx) => {
+			const m = await ctx.db.get(messageId);
+			// Left on the send path — NOT bounced back to review.
+			expect(m?.processingStatus).toBe('approved');
+		});
+	});
+});
