@@ -93,7 +93,7 @@ export const approveDraft = adminMutation({
 		// a learning-loop failure must never fail the human approve.
 		if (message.pendingClarification?.answeredAt && !message.isDraftEdited) {
 			try {
-				await ctx.runMutation(internal.autonomy.recordOutcomeFeedback, {
+				await ctx.runMutation(internal.autonomyOutcome.recordOutcomeFeedback, {
 					inboundMessageId: message._id,
 					signal: 'clarification_unedited_send',
 				});

@@ -15,7 +15,7 @@
  * records an outcome-sourced autonomy feedback row attributed to the ORIGINAL
  * message's category/sender. Bounces, complaints and unedited
  * answered-clarification sends are recorded directly by their callers via
- * `autonomy.recordOutcomeFeedback` (no LLM needed — they are unambiguous).
+ * `autonomyOutcome.recordOutcomeFeedback` (no LLM needed — they are unambiguous).
  *
  * Safety:
  *   - The reply body is attacker-controlled inbound email, so it is framed as
@@ -77,7 +77,7 @@ export const classifyReplyOutcome = internalAction({
 		// Re-verify the reply is genuinely to an AUTO-sent message (and get the
 		// original message id for attribution). A human-reviewed send must never
 		// be attributed a negative outcome here.
-		const context = await ctx.runQuery(internal.autonomy.getReplyOutcomeContext, {
+		const context = await ctx.runQuery(internal.autonomyOutcome.getReplyOutcomeContext, {
 			replyMessageId: args.replyMessageId,
 		});
 		if (!context?.wasAutoSent) return null;
@@ -108,7 +108,7 @@ export const classifyReplyOutcome = internalAction({
 		// weak, easily-faked signal; the strong positive is the unedited
 		// clarification send, wired separately).
 		if (sentiment === 'negative') {
-			await ctx.runMutation(internal.autonomy.recordOutcomeFeedback, {
+			await ctx.runMutation(internal.autonomyOutcome.recordOutcomeFeedback, {
 				inboundMessageId: context.originalMessageId,
 				signal: 'reply_negative',
 			});
