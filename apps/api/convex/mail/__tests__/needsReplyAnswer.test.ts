@@ -111,6 +111,8 @@ async function seedThreadWithClarification(
 			latestSubject: 'Refund?',
 			folderRoles: ['inbox'],
 			labelIds: [],
+			createdAt: now,
+			updatedAt: now,
 		});
 		const rawStorageId = await ctx.storage.store(new Blob(['raw']));
 		const messageId = await ctx.db.insert('mailMessages', {
@@ -150,7 +152,7 @@ async function seedThreadWithClarification(
 				source: 'llm',
 				urgency: 'normal',
 				clarification: {
-					needed: true,
+					isNeeded: true,
 					questions: [
 						{
 							id: 'clarify_0',
@@ -188,7 +190,7 @@ describe('mail.needsReply.answerClarification', () => {
 			const thread = await ctx.db.get(threadId);
 			const clarification = thread?.needsReply?.clarification;
 			expect(clarification?.answeredAt).toBeGreaterThan(0);
-			expect(clarification?.needed).toBe(false);
+			expect(clarification?.isNeeded).toBe(false);
 			expect(clarification?.questions[0]?.answer?.value).toBe('Yes');
 
 			const scheduled = await ctx.db.system.query('_scheduled_functions').collect();
@@ -212,7 +214,7 @@ describe('mail.needsReply.answerClarification', () => {
 			const thread = await ctx.db.get(threadId);
 			const clarification = thread?.needsReply?.clarification;
 			expect(clarification?.answeredAt).toBeUndefined();
-			expect(clarification?.needed).toBe(true);
+			expect(clarification?.isNeeded).toBe(true);
 			const scheduled = await ctx.db.system.query('_scheduled_functions').collect();
 			expect(scheduled.some((s) => s.name.includes('draftWithAnswers'))).toBe(false);
 		});
