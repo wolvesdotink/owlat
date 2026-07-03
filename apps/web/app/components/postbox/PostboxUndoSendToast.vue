@@ -45,6 +45,7 @@ async function handleUndo() {
 </script>
 
 <template>
+	<Transition name="pbx-toast">
 	<div
 		v-if="state.visible && remainingSec > 0"
 		class="fixed bottom-4 left-4 bg-text-primary text-white rounded-md shadow-lg px-4 py-3 flex items-center gap-3 z-50"
@@ -59,4 +60,5 @@ async function handleUndo() {
 			Undo
 		</button>
 	</div>
+	</Transition>
 </template>
