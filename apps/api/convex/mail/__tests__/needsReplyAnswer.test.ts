@@ -93,6 +93,25 @@ async function seedThreadWithClarification(
 			createdAt: now,
 			updatedAt: now,
 		});
+		// Insert the thread first (latestMessageId is optional) so the message can
+		// reference a REAL thread Id — a placeholder Id fails convex-test's
+		// validator and errors the whole test at setup.
+		threadId = await ctx.db.insert('mailThreads', {
+			mailboxId,
+			normalizedSubject: 'refund?',
+			participants: ['ann@acme.com'],
+			messageCount: 1,
+			unreadCount: 1,
+			hasFlagged: false,
+			hasAttachments: false,
+			lastMessageAt: now,
+			firstMessageAt: now,
+			latestSnippet: 'Can you approve the refund?',
+			latestFromAddress: 'ann@acme.com',
+			latestSubject: 'Refund?',
+			folderRoles: ['inbox'],
+			labelIds: [],
+		});
 		const rawStorageId = await ctx.storage.store(new Blob(['raw']));
 		const messageId = await ctx.db.insert('mailMessages', {
 			mailboxId,
@@ -100,7 +119,7 @@ async function seedThreadWithClarification(
 			uid: 1,
 			modseq: 1,
 			rfc822MessageId: '<m1@acme.com>',
-			threadId: 'placeholder' as Id<'mailThreads'>,
+			threadId,
 			fromAddress: 'ann@acme.com',
 			fromName: 'Ann',
 			toAddresses: [`${userId}@hinterland.camp`],
@@ -123,22 +142,8 @@ async function seedThreadWithClarification(
 			receivedAt: now,
 			internalDate: now,
 		});
-		threadId = await ctx.db.insert('mailThreads', {
-			mailboxId,
-			normalizedSubject: 'refund?',
-			participants: ['ann@acme.com'],
-			messageCount: 1,
-			unreadCount: 1,
-			hasFlagged: false,
-			hasAttachments: false,
-			lastMessageAt: now,
-			firstMessageAt: now,
-			latestSnippet: 'Can you approve the refund?',
-			latestFromAddress: 'ann@acme.com',
-			latestSubject: 'Refund?',
+		await ctx.db.patch(threadId, {
 			latestMessageId: messageId,
-			folderRoles: ['inbox'],
-			labelIds: [],
 			needsReply: {
 				messageId,
 				detectedAt: now,
@@ -159,7 +164,6 @@ async function seedThreadWithClarification(
 				},
 			},
 		});
-		await ctx.db.patch(messageId, { threadId });
 	});
 	return threadId;
 }
@@ -189,6 +193,28 @@ describe('mail.needsReply.answerClarification', () => {
 
 			const scheduled = await ctx.db.system.query('_scheduled_functions').collect();
 			expect(scheduled.some((s) => s.name.includes('draftWithAnswers'))).toBe(true);
+		});
+	});
+
+	it('rejects a payload whose questionIds match no open question', async () => {
+		const t = convexTest(schema, modules);
+		const threadId = await seedThreadWithClarification(t, 'user-A');
+
+		await expect(
+			t.mutation(api.mail.needsReply.answerClarification, {
+				threadId,
+				answers: [{ questionId: 'does_not_exist', value: 'Yes' }],
+			}),
+		).rejects.toThrow();
+
+		// The clarification must NOT be stamped answered — no strand into 'drafting'.
+		await t.run(async (ctx) => {
+			const thread = await ctx.db.get(threadId);
+			const clarification = thread?.needsReply?.clarification;
+			expect(clarification?.answeredAt).toBeUndefined();
+			expect(clarification?.needed).toBe(true);
+			const scheduled = await ctx.db.system.query('_scheduled_functions').collect();
+			expect(scheduled.some((s) => s.name.includes('draftWithAnswers'))).toBe(false);
 		});
 	});
 
