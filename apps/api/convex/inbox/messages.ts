@@ -99,6 +99,27 @@ export const receiveMessage = internalMutation({
 		});
 		await applyInboxStatsDelta(ctx, null, 'received');
 
+		// ── Capture post-send OUTCOME signal (graduated-autonomy learning) ──
+		// If this inbound message is a REPLY on a thread whose prior message the
+		// agent AUTO-sent, the reply's sentiment is a real-world calibration
+		// signal — otherwise the self-tuning loop only ever learns from the
+		// shrinking human-reviewed subset (see agent/outcomeFeedback.ts). Cheap
+		// tier + fail-soft: scheduled out-of-band so it can never block or fail
+		// ingest, gated to actual replies, and re-verified as auto-sent inside
+		// the action before anything is recorded.
+		const isReply = Boolean(args.inReplyTo || args.references);
+		const replyText = args.textBody ?? args.htmlBody;
+		if (isReply && replyText && (await isFeatureEnabled(ctx, 'ai.agent'))) {
+			try {
+				await ctx.scheduler.runAfter(0, internal.agent.outcomeFeedback.classifyReplyOutcome, {
+					replyMessageId: inboundMessageId,
+					replyText,
+				});
+			} catch (err) {
+				logError('[Inbound Email] Failed to schedule reply-outcome classification:', err);
+			}
+		}
+
 		// ── Mirror into the unified contact timeline ──
 		// Inbound email is a genuine cross-channel CONVERSATION: it has a real
 		// conversationThread and the per-contact UnifiedTimelineTab interleaves it
@@ -159,10 +180,11 @@ export const receiveMessage = internalMutation({
 					reason: 'sender_blocked',
 				},
 			});
-			logInfo(
-				'[Inbound Email] blocklisted sender mail stored and archived without AI processing',
-				{ contactId, threadId, from: args.from },
-			);
+			logInfo('[Inbound Email] blocklisted sender mail stored and archived without AI processing', {
+				contactId,
+				threadId,
+				from: args.from,
+			});
 			return { inboundMessageId, threadId, contactId };
 		}
 
@@ -187,19 +209,21 @@ export const receiveMessage = internalMutation({
 			const config = await ctx.db.query('agentConfig').first();
 			const windowMs = config?.coalesceWindowMs ?? 0;
 			if (windowMs > 0) {
-				const { shouldDefer } = await ctx.runMutation(
-					internal.agent.coalescing.shouldCoalesce,
-					{ threadId, messageId: inboundMessageId, coalesceWindowMs: windowMs },
-				);
+				const { shouldDefer } = await ctx.runMutation(internal.agent.coalescing.shouldCoalesce, {
+					threadId,
+					messageId: inboundMessageId,
+					coalesceWindowMs: windowMs,
+				});
 				deferred = shouldDefer;
 			}
 		}
 
 		if (suppressed) {
-			logInfo(
-				'[Inbound Email] automated/self-send mail stored without AI processing',
-				{ contactId, threadId, from: args.from },
-			);
+			logInfo('[Inbound Email] automated/self-send mail stored without AI processing', {
+				contactId,
+				threadId,
+				from: args.from,
+			});
 		} else if (!deferred) {
 			// Cost cap: each pipeline run spends multiple LLM calls (guard +
 			// classify + capable-tier draft + extract). Inbound email volume is
@@ -221,7 +245,7 @@ export const receiveMessage = internalMutation({
 			} else {
 				logError(
 					'[Inbound Email] Agent pipeline cost cap hit — message stored without AI processing',
-					{ contactId, threadId },
+					{ contactId, threadId }
 				);
 			}
 		}

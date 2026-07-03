@@ -1,5 +1,6 @@
 import { v } from 'convex/values';
 import { internalMutation, type MutationCtx } from '../_generated/server';
+import { internal } from '../_generated/api';
 import {
 	legalEdgesFor,
 	reduceBounced,
@@ -164,13 +165,7 @@ async function dispatch(
 		}
 		case 'complained': {
 			const senderDomain = await senderDomainFor(ctx, send, ref);
-			result = reduceComplained(
-				send,
-				input,
-				ref,
-				contactEmailOf(send),
-				senderDomain
-			);
+			result = reduceComplained(send, input, ref, contactEmailOf(send), senderDomain);
 			break;
 		}
 	}
@@ -187,6 +182,25 @@ async function dispatch(
 
 	if (result.applied !== 'duplicate') {
 		await applyEffects(ctx, result.effects);
+
+		// ── Post-send OUTCOME signal (graduated-autonomy learning) ──
+		// A bounce or complaint on any agent reply (auto-sent OR human-approved)
+		// is unambiguous negative feedback for the category/sender it was sent
+		// under — a bad recipient address or spam complaint is a real negative
+		// regardless of who pressed send — so record it for every agent_reply so
+		// real-world delivery outcomes tune autonomy, not just the shrinking
+		// human-reviewed subset (see agent/outcomeFeedback.ts). Fail-soft:
+		// scheduled out-of-band so a learning-loop failure can never roll back
+		// the delivery state transition. Only for genuinely new transitions.
+		if ((input.to === 'bounced' || input.to === 'complained') && ref.kind === 'transactional') {
+			const tSend = send as TransactionalSendDoc;
+			if (tSend.kind === 'agent_reply' && tSend.inboundMessageId) {
+				await ctx.scheduler.runAfter(0, internal.autonomyOutcome.recordOutcomeFeedback, {
+					inboundMessageId: tSend.inboundMessageId,
+					signal: input.to === 'bounced' ? 'bounce' : 'complaint',
+				});
+			}
+		}
 	}
 
 	return {

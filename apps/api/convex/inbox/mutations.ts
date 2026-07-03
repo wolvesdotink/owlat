@@ -30,7 +30,7 @@ async function recordAutonomyFeedback(
 	ctx: MutationCtx,
 	message: Doc<'inboundMessages'>,
 	action: 'approved' | 'rejected' | 'edited',
-	userFeedback?: string,
+	userFeedback?: string
 ): Promise<void> {
 	await ctx.runMutation(internal.autonomy.recordFeedback, {
 		category: message.classification?.category ?? 'other',
@@ -84,6 +84,23 @@ export const approveDraft = adminMutation({
 
 		// Feed the approval into the graduated-autonomy learning loop.
 		await recordAutonomyFeedback(ctx, message, 'approved');
+
+		// A draft the agent produced from an OWNER-answered clarification, sent
+		// UNEDITED, is a strong positive outcome signal: the owner supplied the
+		// missing facts, the agent drafted, and the owner shipped it verbatim.
+		// Record it as an outcome-sourced positive so real-world outcomes — not
+		// just the shrinking human-reviewed subset — tune autonomy. Best-effort:
+		// a learning-loop failure must never fail the human approve.
+		if (message.pendingClarification?.answeredAt && !message.isDraftEdited) {
+			try {
+				await ctx.runMutation(internal.autonomyOutcome.recordOutcomeFeedback, {
+					inboundMessageId: message._id,
+					signal: 'clarification_unedited_send',
+				});
+			} catch {
+				// swallowed: outcome bookkeeping is best-effort
+			}
+		}
 
 		// Log audit
 		await recordAuditLog(ctx, {
@@ -186,6 +203,10 @@ export const editDraft = adminMutation({
 
 		const patches: Partial<Doc<'inboundMessages'>> = {
 			draftResponse: args.draftResponse,
+			// Mark the draft as human-edited so a later approve can tell an
+			// UNEDITED owner-send of an answered-clarification draft (a strong
+			// positive autonomy outcome) apart from an edited-then-sent one.
+			isDraftEdited: true,
 		};
 		if (args.draftSubject) {
 			patches.draftSubject = args.draftSubject;
