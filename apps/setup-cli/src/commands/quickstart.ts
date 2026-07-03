@@ -58,6 +58,13 @@ interface RunOptions {
 	buildLocal?: boolean;
 	/** Use pre-pushed `dev`-tagged images as-is (built on the developer machine). */
 	localImages?: boolean;
+	/**
+	 * Release version (bare semver, e.g. `1.2.3`) resolved by install.sh from the
+	 * install ref. On the `curl | bash` PULL path this is pinned into `.env` as
+	 * `OWLAT_VERSION` so compose interpolates the cosign-signed release images
+	 * (`ghcr.io/.../<svc>:X.Y.Z`) instead of the never-pushed `:dev` sentinel.
+	 */
+	owlatVersion?: string;
 	owlatDir: string;
 	configFile?: string;
 	positional: string[];
@@ -123,17 +130,25 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 		log.success(`Reusing existing config at ${pc.cyan(envPath)}.`);
 	}
 
-	// Local-source install: pin compose interpolation to the `dev` images
-	// (docker-compose.yml's "local build, never pushed" sentinel) BEFORE the
-	// first compose call — either built from this tree (`buildLocal`) or
-	// pre-pushed from the developer machine (`localImages`), so nothing tries
-	// to pull a published image.
-	if (opts.buildLocal || opts.localImages) {
-		await writeEnv(envPath, mergeEnv(await readEnv(envPath), { OWLAT_VERSION: 'dev' }));
+	// Pin compose interpolation's OWLAT_VERSION into `.env` BEFORE the first
+	// compose call — docker-compose.yml interpolates `${OWLAT_VERSION:-dev}` and,
+	// left unset, would fall back to the never-pushed `:dev` sentinel and (because
+	// every service also declares a `build:`) rebuild all images from source on
+	// the box or hard-fail "manifest unknown". A release (`curl | bash`) install
+	// pins the resolved semver so compose pulls the cosign-signed release images;
+	// a local-source install pins `dev` to build from this tree / use pre-pushed
+	// dev images. A branch/main/commit install has no matching immutable tag, so
+	// nothing is written and the compose default (`dev` → build from source)
+	// stands.
+	const versionPin = resolveComposeVersionPin(opts);
+	if (versionPin) {
+		await writeEnv(envPath, mergeEnv(await readEnv(envPath), { OWLAT_VERSION: versionPin }));
 		log.info(
 			opts.buildLocal
 				? 'Local build mode: stack images will be built from this source tree (OWLAT_VERSION=dev).'
-				: 'Local images mode: using pre-pushed dev images (OWLAT_VERSION=dev).',
+				: opts.localImages
+					? 'Local images mode: using pre-pushed dev images (OWLAT_VERSION=dev).'
+					: `Pinned stack images to the signed release ${versionPin} (OWLAT_VERSION=${versionPin}).`,
 		);
 	}
 
@@ -440,6 +455,33 @@ async function deployBackend(
 	}
 
 	return 0;
+}
+
+/**
+ * Decide the `OWLAT_VERSION` value to pin into `.env` for compose interpolation
+ * BEFORE the first `docker compose up`, or `undefined` to leave it unset.
+ *
+ *   - Local-source installs (`buildLocal` / `localImages`) pin the `dev`
+ *     sentinel so compose builds from this tree / uses pre-pushed dev images.
+ *   - A release install threads the resolved semver (e.g. `1.2.3`) through from
+ *     install.sh; pinning it makes compose pull the cosign-signed release
+ *     images (`ghcr.io/.../<svc>:X.Y.Z`) rather than the never-pushed `:dev`
+ *     sentinel — which would otherwise rebuild every image from source or fail
+ *     "manifest unknown".
+ *   - A branch/`main`/commit install has no matching immutable image tag, so
+ *     return `undefined` and let the compose default (`dev` → build from
+ *     source) stand.
+ */
+export function resolveComposeVersionPin(opts: {
+	buildLocal?: boolean;
+	localImages?: boolean;
+	owlatVersion?: string;
+}): string | undefined {
+	if (opts.buildLocal || opts.localImages) return 'dev';
+	const version = opts.owlatVersion?.trim();
+	// Only a bare semver corresponds to a published, signed release image tag.
+	if (version && /^\d+\.\d+\.\d+/.test(version)) return version;
+	return undefined;
 }
 
 export function parseFlags(args: string[]): ParsedFlags {
