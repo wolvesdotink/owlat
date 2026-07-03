@@ -116,10 +116,11 @@ public class HttpClient {
 
                 RateLimitInfo rateLimit = extractRateLimit(response);
 
-                if (response.statusCode() == 204 || response.body().isEmpty()) {
-                    return null;
-                }
-
+                // Error responses (>=400) MUST be handled before the empty-body
+                // short-circuit below. A 4xx/5xx with an empty body (gateway
+                // 502/503/504, edge 429, proxy 401) would otherwise be returned
+                // as null "success" — the resource layer then NPEs, and the
+                // retryable ones would never be retried.
                 if (response.statusCode() >= 400) {
                     int status = response.statusCode();
                     // 429 is a pre-processing rejection — always retryable, and
@@ -141,6 +142,13 @@ public class HttpClient {
                         continue;
                     }
                     handleError(response, rateLimit);
+                }
+
+                // Empty success response (e.g., 204 No Content). Only reached
+                // once we know the status is <400, so an empty error body can
+                // never slip through here as a null "success".
+                if (response.statusCode() == 204 || response.body().isEmpty()) {
+                    return null;
                 }
 
                 return mapper.readValue(response.body(), typeRef);
