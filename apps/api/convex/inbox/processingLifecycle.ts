@@ -256,6 +256,10 @@ export const recordDraftOutput = internalMutation({
 		// classifier confidenceScore. Optional: absent when the self-check
 		// LLM call failed (the route step then treats quality as unknown/LOW).
 		draftQuality: v.optional(draftQualityValidator),
+		// Optional 2–3 pickable draft variants offered at the review gate (only
+		// on low-confidence / low-quality cases). `draftOptions[0]` mirrors
+		// `draftResponse`. Absent on the normal single-draft path.
+		draftOptions: v.optional(v.array(v.string())),
 	},
 	handler: async (ctx, args) => {
 		await ctx.db.patch(args.inboundMessageId, {
@@ -263,6 +267,7 @@ export const recordDraftOutput = internalMutation({
 			draftSubject: args.draftSubject,
 			confidenceScore: args.confidenceScore,
 			...(args.draftQuality ? { draftQuality: args.draftQuality } : {}),
+			...(args.draftOptions ? { draftOptions: args.draftOptions } : {}),
 		});
 	},
 });

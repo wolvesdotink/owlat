@@ -108,6 +108,14 @@ export const inboxTables = {
 		// Agent-generated draft
 		draftResponse: v.optional(v.string()),
 		draftSubject: v.optional(v.string()),
+		// Optional alternative drafts offered at the review gate (concise /
+		// hedged / detailed). Present ONLY on lower-confidence / low-quality
+		// cases, where the `draft` step spends one extra generation to give the
+		// reviewer 2–3 pickable variants. `draftOptions[0]` is always the
+		// self-checked primary draft (== `draftResponse`); the rest are
+		// alternatives. Absent on the normal single-draft path and whenever the
+		// options generation fails (fail-soft to the single draft).
+		draftOptions: v.optional(v.array(v.string())),
 		// Overall confidence score for routing decisions — the CLASSIFIER's
 		// certainty about category/sentiment. NOT a measure of draft correctness.
 		confidenceScore: v.optional(v.number()),
