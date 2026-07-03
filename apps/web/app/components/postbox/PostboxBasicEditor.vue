@@ -23,6 +23,9 @@ import { usePostboxGhostOverlay } from '~/composables/postbox/usePostboxGhostOve
 import { usePostboxRewriteController } from '~/composables/postbox/usePostboxRewriteController';
 import { usePostboxFloatingFormatBar } from '~/composables/postbox/usePostboxFloatingFormatBar';
 import { usePostboxInlineImages } from '~/composables/postbox/usePostboxInlineImages';
+import { usePostboxEmojiPicker } from '~/composables/postbox/usePostboxEmojiPicker';
+import { usePostboxEditorInput } from '~/composables/postbox/usePostboxEditorInput';
+import { matchAsciiSmiley } from '~/utils/postboxEmojiShortcodes';
 import type { Id } from '@owlat/api/dataModel';
 
 const props = defineProps<{
@@ -60,6 +63,8 @@ const props = defineProps<{
 	embedImage?: (file: File) => Promise<{ contentId: string; previewUrl: string } | null>;
 	/** Called with the contentId of an inline image removed from the body. */
 	onRemoveEmbeddedImage?: (contentId: string) => void;
+	/** Enable the `:shortcode:` emoji picker + ASCII-smiley conversion (opt-in). */
+	emojiShortcodesEnabled?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -76,6 +81,13 @@ const richText = useRichText({
 	onChange: () => emitContent(),
 	// Notion-style markdown typing shortcuts are a Postbox-only affordance.
 	patternShortcuts: true,
+	// ASCII-smiley conversion on space (`:)` -> 🙂) rides the shared one-shot-undo
+	// plumbing; only active when the emoji shortcodes affordance is opted in.
+	asciiReplace: (before) => {
+		if (props.emojiShortcodesEnabled !== true) return null;
+		const m = matchAsciiSmiley(before);
+		return m ? { spanLen: m.ascii.length, replacement: m.char, literal: m.ascii } : null;
+	},
 });
 
 const {
@@ -129,6 +141,7 @@ function emitContent() {
 function onInput() {
 	emitContent();
 	scheduleGhost();
+	emoji.refresh(); // re-evaluate the `:shortcode:` trigger at the caret
 	// Typing invalidates any pending/previewed rewrite anchored to old text.
 	rewriteCtl.invalidateOnEdit();
 	// An edit may have removed an inline image — drop its pending part.
@@ -193,47 +206,6 @@ const {
 	enabled: () => props.persistentToolbar !== true,
 });
 
-// Markdown shortcuts intercept the raw input BEFORE the character lands, so a
-// conversion never flickers the literal marker into the DOM. When consumed the
-// composable has already called preventDefault().
-function onBeforeInput(event: InputEvent) {
-	if (handleBeforeInput(event)) {
-		// The conversion mutates the DOM directly without firing @input, so emit
-		// the new content and re-run the ghost/rewrite bookkeeping the input path
-		// would normally do.
-		emitContent();
-		rewriteCtl.invalidateOnEdit();
-	}
-}
-
-function onKeydown(event: KeyboardEvent) {
-	// A conversion's first Cmd+Z restores the literal marker text (one undo step).
-	if (handleShortcutUndoKeydown(event)) {
-		emitContent();
-		return;
-	}
-	if (ghost.hasGhost()) {
-		if (event.key === 'Tab') {
-			event.preventDefault();
-			ghost.accept();
-			return;
-		}
-		if (event.key === 'Escape') {
-			event.preventDefault();
-			ghost.cancel();
-			return;
-		}
-		// Any other key: the draft is changing under the ghost — dismiss it.
-		ghost.cancel();
-	}
-	// Escape dismisses a rewrite pill/preview without touching the selection.
-	if (event.key === 'Escape' && rewriteCtl.handleEscape()) {
-		event.preventDefault();
-		return;
-	}
-	handleFormatKeydown(event);
-}
-
 // ── Inline images (paste / drop into the body) ─────────────────────────────
 // Insert-at-caret, reconcile-on-delete, and the paste/drop handling live in the
 // composable so this component stays under the file-size ratchet.
@@ -243,6 +215,28 @@ const inlineImages = usePostboxInlineImages({
 	embedImage: () => props.embedImage,
 	onRemoveEmbeddedImage: () => props.onRemoveEmbeddedImage,
 	emitContent,
+});
+
+// `:shortcode:` emoji picker; logic in composable. The sibling ASCII-smiley
+// conversion rides `useRichText`'s `asciiReplace` (shared one-shot-undo), above.
+const emoji = usePostboxEmojiPicker({
+	editorRef,
+	surfaceRef,
+	enabled: () => props.emojiShortcodesEnabled === true,
+	replaceSelection: richText.replaceSelection,
+	emitContent,
+});
+
+// One linear keyboard/beforeinput pathway multiplexed across the emoji picker,
+// ghost text, the AI rewrite pill, the shared undo, and format shortcuts.
+const { onBeforeInput, onKeydown } = usePostboxEditorInput({
+	handleBeforeInput,
+	handleShortcutUndoKeydown,
+	handleFormatKeydown,
+	emitContent,
+	emoji,
+	ghost,
+	rewrite: rewriteCtl,
 });
 
 function onPaste(event: ClipboardEvent) {
@@ -261,7 +255,8 @@ function onDrop(event: DragEvent) {
 function onBlur() {
 	emitContent();
 	ghost.cancel(); // never leave a ghost hanging over an unfocused editor
-	resetShortcutUndo(); // a literal-restore undo shouldn't survive leaving the editor
+	resetShortcutUndo(); // a literal-restore undo (markdown/ASCII) shouldn't survive leaving the editor
+	emoji.close(); // never leave the picker popover open over an unfocused editor
 	hideFormatBar(); // never leave the floating bar over an unfocused editor
 }
 
@@ -270,6 +265,8 @@ function onSelectionChange() {
 	// A caret move (arrow/click) invalidates a shown ghost. Only dismiss when one
 	// is visible, so this can't clear a request still pending in its debounce.
 	if (ghost.hasGhost()) ghost.cancel();
+	// A caret move re-evaluates an OPEN picker (closes it if the trigger is gone).
+	if (emoji.open.value) emoji.refresh();
 	// A selection change aborts an in-flight rewrite (its anchor is now stale)
 	// and re-places the pill for the new selection.
 	rewriteCtl.onSelectionChange();
@@ -307,6 +304,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
 	document.removeEventListener('selectionchange', onSelectionChange);
 	ghost.cancel();
+	emoji.close();
 	rewriteCtl.dispose();
 });
 
@@ -373,6 +371,14 @@ defineExpose({ focus: focusEditor });
 				:style="ghostStyle"
 				aria-hidden="true"
 			>{{ ghost.ghost.value }}</div>
+			<PostboxEmojiPicker
+				v-if="emojiShortcodesEnabled && emoji.open.value"
+				:items="emoji.items.value"
+				:active-index="emoji.activeIndex.value"
+				:bar-style="emoji.style.value"
+				@select="emoji.insert(emoji.items.value[$event])"
+				@hover="emoji.setActive($event)"
+			/>
 			<!--
 				Floating format bar (minimal mode): above the current selection. When
 				the AI rewrite pill would also show it merges in here as ONE combined

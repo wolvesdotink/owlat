@@ -43,6 +43,18 @@ export interface MarkdownShortcutDeps {
 	getCtx: () => { sel: Selection; range: Range } | null;
 	/** Re-emit the editor HTML after a DOM mutation. */
 	notify: () => void;
+	/**
+	 * Optional "convert on space" plain-text replacement (e.g. ASCII smileys
+	 * `:)` → 🙂). Given the text before the caret, return the trailing span to
+	 * swap, its replacement char(s), and the literal a single undo restores — or
+	 * `null` when nothing matches. Fires through the SAME one-shot-undo plumbing as
+	 * the markdown block/inline shortcuts (so consumers don't add a second parallel
+	 * undo pathway). Kept as a caller-supplied matcher so the shortcode/emoji data
+	 * stays out of `@owlat/ui`.
+	 */
+	asciiReplace?: (
+		textBeforeCaret: string,
+	) => { spanLen: number; replacement: string; literal: string } | null;
 }
 
 export interface MarkdownShortcuts {
@@ -219,6 +231,50 @@ export function createMarkdownShortcuts(deps: MarkdownShortcutDeps): MarkdownSho
 	}
 
 	/**
+	 * Convert a caller-matched trailing plain-text span (e.g. an ASCII smiley) into
+	 * its replacement char plus the space the user just pressed, recording the same
+	 * one-shot literal-restore undo as the markdown conversions. Fires on the space
+	 * keystroke (which the caller preventDefaults). Returns false when disabled or
+	 * nothing matches.
+	 */
+	function tryAsciiReplace(): boolean {
+		const matcher = deps.asciiReplace;
+		if (!matcher) return false;
+		const ctx = getCtx();
+		if (!ctx || !ctx.range.collapsed) return false;
+		const node = ctx.range.startContainer;
+		if (!node || node.nodeType !== Node.TEXT_NODE) return false;
+		const editor = editorRef.value;
+		// Never convert inside a code span/pre (loop guard, mirrors the others).
+		if (findAncestor(editor, node, ['code', 'pre'])) return false;
+		const textNode = node as Text;
+		const offset = ctx.range.startOffset;
+		const before = textNode.data.slice(0, offset);
+		const match = matcher(before);
+		if (!match) return false;
+		const spanStart = offset - match.spanLen;
+		if (spanStart < 0) return false;
+
+		const literal = `${match.literal} `; // what Cmd+Z restores (smiley + the space)
+		// Swap the matched span for the replacement, absorbing the pressed space so
+		// the caret lands after it just as a normal space keystroke would.
+		textNode.deleteData(spanStart, match.spanLen);
+		const tail = textNode.splitText(spanStart);
+		const inserted = document.createTextNode(`${match.replacement} `);
+		textNode.parentNode?.insertBefore(inserted, tail);
+		placeCaretAfter(inserted);
+
+		pendingUndo = () => {
+			const literalNode = document.createTextNode(literal);
+			inserted.replaceWith(literalNode);
+			placeCaretAfter(literalNode);
+			notify();
+		};
+		notify();
+		return true;
+	}
+
+	/**
 	 * `beforeinput` handler for markdown shortcuts. Returns `true` (and calls
 	 * `event.preventDefault()`) when it consumed the input to perform a
 	 * conversion; `false` otherwise.
@@ -227,6 +283,10 @@ export function createMarkdownShortcuts(deps: MarkdownShortcutDeps): MarkdownSho
 		const inputType = event.inputType;
 		if (inputType === 'insertText' && event.data === ' ') {
 			if (tryBlockShortcut()) {
+				event.preventDefault();
+				return true;
+			}
+			if (tryAsciiReplace()) {
 				event.preventDefault();
 				return true;
 			}
