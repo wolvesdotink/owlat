@@ -585,4 +585,81 @@ describe('createHttpClient', () => {
 			expect(result.data).toBeUndefined();
 		});
 	});
+
+	describe('429 Retry-After clamping (regression)', () => {
+		// A hostile or misconfigured server can return an arbitrarily large
+		// Retry-After. The retry sleep is not covered by the AbortController
+		// timeout, so an un-clamped value would hang the awaited call (incl.
+		// transactional.send) for that entire duration. The delay must be
+		// clamped to MAX_RETRY_AFTER_MS (30s), mirroring the Java SDK.
+		const MAX_RETRY_AFTER_MS = 30000;
+
+		afterEach(() => {
+			vi.useRealTimers();
+		});
+
+		/** First call 429s with the given Retry-After (seconds); second succeeds. */
+		function mock429ThenOk(retryAfterSeconds: number) {
+			let call = 0;
+			return vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+				const isFirst = call === 0;
+				call++;
+				return new Response(
+					isFirst
+						? JSON.stringify({
+								error: { message: 'Slow down', category: 'rate_limited' },
+							})
+						: JSON.stringify({ data: 'ok' }),
+					{
+						status: isFirst ? 429 : 200,
+						headers: new Headers(
+							isFirst ? { 'Retry-After': String(retryAfterSeconds) } : {},
+						),
+					},
+				);
+			});
+		}
+
+		it('clamps a huge Retry-After (3600s) to the 30s cap', async () => {
+			vi.useFakeTimers();
+			const spy = mock429ThenOk(3600);
+			const http = createHttpClient(API_KEY, BASE_URL, DEFAULT_TIMEOUT, {
+				maxRetries: 2,
+			});
+
+			const promise = http.get('/test');
+
+			// Advancing by exactly the cap must be enough to fire the retry. If the
+			// delay were the un-clamped 3_600_000ms, this would leave the request
+			// pending and the awaited result below would hang.
+			await vi.advanceTimersByTimeAsync(MAX_RETRY_AFTER_MS);
+
+			const result = await promise;
+			expect(result.data).toEqual({ data: 'ok' });
+			expect(spy).toHaveBeenCalledTimes(2);
+		});
+
+		it('does not wait the full un-clamped Retry-After', async () => {
+			vi.useFakeTimers();
+			mock429ThenOk(3600);
+			const http = createHttpClient(API_KEY, BASE_URL, DEFAULT_TIMEOUT, {
+				maxRetries: 2,
+			});
+
+			const promise = http.get('/test');
+			let settled = false;
+			void promise.then(() => {
+				settled = true;
+			});
+
+			// Just short of the cap: the retry has not fired yet.
+			await vi.advanceTimersByTimeAsync(MAX_RETRY_AFTER_MS - 1);
+			expect(settled).toBe(false);
+
+			// Crossing the cap resolves it — well before 3_600_000ms.
+			await vi.advanceTimersByTimeAsync(1);
+			await promise;
+			expect(settled).toBe(true);
+		});
+	});
 });

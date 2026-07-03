@@ -82,6 +82,16 @@ function createError(
 const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
 
 /**
+ * Upper bound on how long a single 429 `Retry-After` may pause an awaited
+ * request. A hostile or misconfigured server can return an arbitrarily large
+ * `Retry-After` (e.g. `3600`) and, because the retry sleep is not covered by
+ * the per-request AbortController timeout, an un-clamped value would hang the
+ * awaited call — including `transactional.send` — for that entire duration per
+ * attempt. Mirrors the Java SDK's `MAX_RETRY_AFTER_MS = 30_000L`.
+ */
+const MAX_RETRY_AFTER_MS = 30_000;
+
+/**
  * HTTP methods safe to auto-retry on 5xx / network failure. Excludes `POST`:
  * a `POST /api/v1/transactional` or `/api/v1/events` the server processed but
  * whose response was lost (502/timeout) must NOT be replayed — there is no
@@ -238,7 +248,7 @@ export function createHttpClient(
 				// server may have already applied is never replayed.
 				if (isRetryable(options.method, response.status) && attempt < maxRetries) {
 					const delay = response.status === 429 && retryAfter
-						? retryAfter * 1000
+						? Math.min(retryAfter * 1000, MAX_RETRY_AFTER_MS)
 						: initialDelayMs * Math.pow(backoffMultiplier, attempt);
 					await sleep(delay);
 					continue;
