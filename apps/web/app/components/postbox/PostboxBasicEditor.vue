@@ -14,11 +14,8 @@
  * keystroke).
  */
 
-import {
-	useRichText,
-	EMPTY_ACTIVE_MARKS,
-	type ActiveMarks,
-} from '@owlat/ui/composables/useRichText';
+import { useRichText } from '@owlat/ui/composables/useRichText';
+import { usePostboxEditorDocument } from '~/composables/postbox/usePostboxEditorDocument';
 import { usePostboxGhostOverlay } from '~/composables/postbox/usePostboxGhostOverlay';
 import { usePostboxRewriteController } from '~/composables/postbox/usePostboxRewriteController';
 import { usePostboxFloatingFormatBar } from '~/composables/postbox/usePostboxFloatingFormatBar';
@@ -26,7 +23,13 @@ import { usePostboxInlineImages } from '~/composables/postbox/usePostboxInlineIm
 import { usePostboxEmojiPicker } from '~/composables/postbox/usePostboxEmojiPicker';
 import { usePostboxEditorInput } from '~/composables/postbox/usePostboxEditorInput';
 import { matchAsciiSmiley } from '~/utils/postboxEmojiShortcodes';
+import {
+	usePostboxSnippetPicker,
+	type EditorSnippet,
+} from '~/composables/postbox/usePostboxSnippetPicker';
 import type { Id } from '@owlat/api/dataModel';
+
+export type { EditorSnippet };
 
 const props = defineProps<{
 	modelValue: string;
@@ -65,6 +68,17 @@ const props = defineProps<{
 	onRemoveEmbeddedImage?: (contentId: string) => void;
 	/** Enable the `:shortcode:` emoji picker + ASCII-smiley conversion (opt-in). */
 	emojiShortcodesEnabled?: boolean;
+	/**
+	 * Canned responses offered by the "/" slash-trigger. Empty/undefined
+	 * disables the picker entirely (the editor's other mount sites don't wire
+	 * snippets, so "/" stays literal there).
+	 */
+	snippets?: EditorSnippet[];
+	/**
+	 * First name of the draft's first To recipient, used to resolve
+	 * `{{firstName}}` placeholders on insert. Unknown -> visible `[firstName]`.
+	 */
+	snippetFirstName?: string | null;
 }>();
 
 const emit = defineEmits<{
@@ -73,8 +87,21 @@ const emit = defineEmits<{
 
 const editorRef = ref<HTMLDivElement | null>(null);
 const surfaceRef = ref<HTMLDivElement | null>(null);
-const isEmpty = ref(true);
-const activeMarks = ref<ActiveMarks>({ ...EMPTY_ACTIVE_MARKS });
+
+// Document lifecycle (empty/marks state, scaffold, modelValue mirroring) lives in
+// a composable so this component stays under the file-size ratchet.
+const {
+	isEmpty,
+	activeMarks,
+	syncActiveMarks,
+	emitContent,
+} = usePostboxEditorDocument({
+	editorRef,
+	modelValue: () => props.modelValue,
+	// `richText` is defined just below; the getter defers the read past its TDZ.
+	readActiveMarks: () => richText.readActiveMarks(),
+	emit: (value) => emit('update:modelValue', value),
+});
 
 const richText = useRichText({
 	editorRef,
@@ -103,44 +130,16 @@ const {
 	handleBeforeInput,
 	handleShortcutUndoKeydown,
 	resetShortcutUndo,
-	readActiveMarks,
 } = richText;
-
-function syncActiveMarks() {
-	activeMarks.value = readActiveMarks();
-}
-
-function syncEmptyState() {
-	const el = editorRef.value;
-	if (!el) {
-		isEmpty.value = true;
-		return;
-	}
-	const text = el.innerText.replace(/​/g, '').trim();
-	isEmpty.value = text.length === 0;
-}
-
-function ensureScaffold() {
-	const el = editorRef.value;
-	if (!el) return;
-	if (el.childNodes.length === 0) {
-		el.innerHTML = '<p><br></p>';
-	}
-}
-
-function emitContent() {
-	const el = editorRef.value;
-	if (!el) return;
-	emit('update:modelValue', el.innerHTML);
-	syncEmptyState();
-	syncActiveMarks();
-}
 
 // The editor input path must NEVER await the network: `onInput` only emits and
 // arms the debounce timer; the completion resolves (or is dropped) out of band.
 function onInput() {
 	emitContent();
-	scheduleGhost();
+	snippetPicker.update();
+	// While the snippet picker is open the caret sits in a "/token" run; don't
+	// also fire ghost-text requests over it.
+	if (!snippetPicker.open.value) scheduleGhost();
 	emoji.refresh(); // re-evaluate the `:shortcode:` trigger at the caret
 	// Typing invalidates any pending/previewed rewrite anchored to old text.
 	rewriteCtl.invalidateOnEdit();
@@ -159,6 +158,20 @@ const { ghost, ghostStyle, schedule: scheduleGhost } = usePostboxGhostOverlay({
 	surfaceRef,
 	enabled: () => props.suggestionsEnabled === true,
 	threadContext: () => props.ghostThreadContext ?? '',
+	emitContent,
+});
+
+// ── Snippet "/" slash-trigger picker ────────────────────────────────────
+// Typing "/" at the start of a line (or after whitespace) opens a compact
+// canned-response picker. All of the trigger/positioning/keyboard/insert
+// wiring lives in the controller composable (mirroring the ghost-text and
+// rewrite seams); the editor just hands it refs + input hooks.
+
+const snippetPicker = usePostboxSnippetPicker({
+	editorRef,
+	surfaceRef,
+	snippets: () => props.snippets,
+	firstName: () => props.snippetFirstName,
 	emitContent,
 });
 
@@ -229,7 +242,7 @@ const emoji = usePostboxEmojiPicker({
 
 // One linear keyboard/beforeinput pathway multiplexed across the emoji picker,
 // ghost text, the AI rewrite pill, the shared undo, and format shortcuts.
-const { onBeforeInput, onKeydown } = usePostboxEditorInput({
+const { onBeforeInput, onKeydown: baseOnKeydown } = usePostboxEditorInput({
 	handleBeforeInput,
 	handleShortcutUndoKeydown,
 	handleFormatKeydown,
@@ -238,6 +251,17 @@ const { onBeforeInput, onKeydown } = usePostboxEditorInput({
 	ghost,
 	rewrite: rewriteCtl,
 });
+
+// The snippet picker owns navigation keys while it's open; otherwise the key
+// event flows to the multiplexed editor-input pathway (emoji / ghost / rewrite
+// / format shortcuts).
+function onKeydown(event: KeyboardEvent) {
+	// The snippet picker owns navigation keys while it's open; otherwise the key
+	// event flows to the multiplexed editor-input pathway (emoji / ghost / rewrite
+	// / format shortcuts).
+	if (snippetPicker.handleKeydown(event)) return;
+	baseOnKeydown(event);
+}
 
 function onPaste(event: ClipboardEvent) {
 	// When the clipboard carries images and inline embedding is on, the composable
@@ -258,6 +282,7 @@ function onBlur() {
 	resetShortcutUndo(); // a literal-restore undo (markdown/ASCII) shouldn't survive leaving the editor
 	emoji.close(); // never leave the picker popover open over an unfocused editor
 	hideFormatBar(); // never leave the floating bar over an unfocused editor
+	snippetPicker.close(); // …nor the snippet picker over an unfocused editor
 }
 
 function onSelectionChange() {
@@ -265,8 +290,11 @@ function onSelectionChange() {
 	// A caret move (arrow/click) invalidates a shown ghost. Only dismiss when one
 	// is visible, so this can't clear a request still pending in its debounce.
 	if (ghost.hasGhost()) ghost.cancel();
-	// A caret move re-evaluates an OPEN picker (closes it if the trigger is gone).
+	// A caret move re-evaluates an OPEN emoji picker (closes it if the trigger is gone).
 	if (emoji.open.value) emoji.refresh();
+	// A caret move out of the "/token" run closes the snippet picker; a move within
+	// it (e.g. after inserting a char) refreshes the query + position.
+	snippetPicker.onSelectionChange();
 	// A selection change aborts an in-flight rewrite (its anchor is now stale)
 	// and re-places the pill for the new selection.
 	rewriteCtl.onSelectionChange();
@@ -287,17 +315,9 @@ function withFocus(fn: () => void | Promise<void>) {
 	};
 }
 
+// Content init + the incoming `modelValue` watcher live in usePostboxEditorDocument;
+// this component only owns the document-level selectionchange listener.
 onMounted(() => {
-	const el = editorRef.value;
-	if (el) {
-		if (props.modelValue && el.innerHTML !== props.modelValue) {
-			el.innerHTML = props.modelValue;
-		} else {
-			ensureScaffold();
-		}
-	}
-	syncEmptyState();
-	syncActiveMarks();
 	document.addEventListener('selectionchange', onSelectionChange);
 });
 
@@ -305,22 +325,9 @@ onBeforeUnmount(() => {
 	document.removeEventListener('selectionchange', onSelectionChange);
 	ghost.cancel();
 	emoji.close();
+	snippetPicker.close();
 	rewriteCtl.dispose();
 });
-
-watch(
-	() => props.modelValue,
-	(value) => {
-		const el = editorRef.value;
-		if (!el) return;
-		if (el.innerHTML === value) return;
-		const isFocused = document.activeElement === el;
-		if (isFocused) return; // don't clobber the user's cursor mid-typing
-		el.innerHTML = value || '';
-		ensureScaffold();
-		syncEmptyState();
-	}
-);
 
 defineExpose({ focus: focusEditor });
 </script>
@@ -401,6 +408,15 @@ defineExpose({ focus: focusEditor });
 				@blockquote="withFocus(toggleBlockquote)()"
 				@link="withFocus(setLink)()"
 				@ai-select="rewriteCtl.onSelect"
+			/>
+			<!-- Snippet "/" picker: a compact caret-anchored dropdown. -->
+			<PostboxSnippetPicker
+				v-if="snippetPicker.open.value"
+				:items="snippetPicker.items.value"
+				:active-index="snippetPicker.index.value"
+				:style="snippetPicker.style.value"
+				@select="snippetPicker.insert"
+				@hover="(i) => (snippetPicker.index.value = i)"
 			/>
 			<!-- AI rewrite pill + preview + undo affordance (all flag-gated). -->
 			<PostboxRewriteLayer

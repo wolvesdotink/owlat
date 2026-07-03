@@ -356,6 +356,7 @@ import type * as mail_postboxOutboundLifecycle from "../mail/postboxOutboundLife
 import type * as mail_rfc822 from "../mail/rfc822.js";
 import type * as mail_settings from "../mail/settings.js";
 import type * as mail_signatures from "../mail/signatures.js";
+import type * as mail_snippets from "../mail/snippets.js";
 import type * as mail_snooze from "../mail/snooze.js";
 import type * as mail_summaryCache from "../mail/summaryCache.js";
 import type * as mail_unsubscribe from "../mail/unsubscribe.js";
@@ -878,6 +879,7 @@ declare const fullApi: ApiFromModules<{
   "mail/rfc822": typeof mail_rfc822;
   "mail/settings": typeof mail_settings;
   "mail/signatures": typeof mail_signatures;
+  "mail/snippets": typeof mail_snippets;
   "mail/snooze": typeof mail_snooze;
   "mail/summaryCache": typeof mail_summaryCache;
   "mail/unsubscribe": typeof mail_unsubscribe;

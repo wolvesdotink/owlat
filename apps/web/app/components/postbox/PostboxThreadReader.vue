@@ -2,6 +2,7 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { extractAttachmentAt } from '@owlat/shared/mailMime';
+import { extractEmailAddress } from '~/utils/emailAddress';
 import { formatCompactRelativeTime, formatDateTime } from '~/utils/formatters';
 import { isLongThreadForSummary } from '~/utils/postboxAutoSummary';
 import { deriveReplyAllExtras } from '~/utils/recipientHints';
@@ -65,16 +66,10 @@ const ownIdentitiesQuery = useConvexQuery(
 	() => ({ mailboxId: props.message.mailboxId as Id<'mailboxes'> })
 );
 
-/** Strip "Name <addr>" framing and lowercase, for dedupe/exclusion compares. */
-function canonicalEmail(raw: string): string {
-	const m = raw.match(/<([^>]+)>/);
-	return (m?.[1] ?? raw).trim().toLowerCase();
-}
-
 const ownAddresses = computed(
 	() =>
 		new Set(
-			((ownIdentitiesQuery.data.value as string[] | undefined) ?? []).map(canonicalEmail)
+			((ownIdentitiesQuery.data.value as string[] | undefined) ?? []).map(extractEmailAddress)
 		)
 );
 const ownEmail = computed(() => (ownIdentitiesQuery.data.value as string[] | undefined)?.[0]);
@@ -371,9 +366,9 @@ async function openPrimaryReply(replyTo?: ReplyForwardSource) {
 
 /** Whether Reply-All would add anyone beyond a plain Reply (extra To/Cc). */
 function hasOtherRecipients(msg: { fromAddress: string; toAddresses: string[]; ccAddresses: string[] }) {
-	const seen = new Set<string>([canonicalEmail(msg.fromAddress), ...ownAddresses.value]);
+	const seen = new Set<string>([extractEmailAddress(msg.fromAddress), ...ownAddresses.value]);
 	return [...msg.toAddresses, ...msg.ccAddresses].some((a) => {
-		const c = canonicalEmail(a);
+		const c = extractEmailAddress(a);
 		return c.length > 0 && !seen.has(c);
 	});
 }

@@ -785,6 +785,21 @@ mailSignatures: defineTable({
 	.index('by_mailbox', ['mailboxId'])
 	.index('by_mailbox_and_default', ['mailboxId', 'isDefault']),
 
+// Per-mailbox canned responses ("snippets"). Inserted into a draft via the
+// composer's "/" slash-trigger. `bodyHtml` is stored post-sanitize (same
+// allowlist as signatures) and may carry plain-text {{firstName}}-style
+// placeholder tokens resolved at insert time from the draft's recipient.
+mailSnippets: defineTable({
+	mailboxId: v.id('mailboxes'),
+	name: v.string(),
+	shortcut: v.string(),
+	bodyHtml: v.string(),
+	createdAt: v.number(),
+	updatedAt: v.number(),
+})
+	.index('by_mailbox', ['mailboxId'])
+	.index('by_mailbox_and_shortcut', ['mailboxId', 'shortcut']),
+
 // Per-user Postbox behavior preferences (one row per BetterAuth user,
 // spanning all of the user's mailboxes). Currently: what the reader does
 // after triaging (archive/trash/snooze/spam) the open message.

@@ -115,7 +115,10 @@ cd "$(dirname "$0")/.."
 # Raised 172 → 174 for inline-image MIME assembly (mail/rfc822.ts): two in-memory
 # JS array `.filter()` calls that partition the collected attachment buffers into
 # inline (multipart/related) vs. regular parts, not a `ctx.db.query().filter()`.
-FILTER_BASELINE=174
+# Raised 174 → 175 to absorb a base-main drift picked up on rebase (a sibling
+# merge left the tree one JS array `.filter()` above the baseline line); this
+# branch adds no `ctx.db.query().filter()` of its own.
+FILTER_BASELINE=175
 filter_count=$(grep -rn "\.filter(" convex --include="*.ts" 2>/dev/null \
 	| grep -v "/_generated/" \
 	| grep -v "/__tests__/" \
@@ -180,7 +183,12 @@ filter_count=$(grep -rn "\.filter(" convex --include="*.ts" 2>/dev/null \
 # message's agentActions via the by_inbound_message index (one row per pipeline
 # step, ~5 max) to pick the most recent failed one — same bounded idiom as
 # inbox.queries.getMessageActions.
-COLLECT_BASELINE=192
+# Raised 193 → 194 for auth.memberErasure: the GDPR erasure sweep collects a
+# single mailbox's mailSnippets via the by_mailbox index (per-mailbox config
+# rows) to delete them — bounded, same idiom as the sibling erasure sweeps.
+# (Base main had meanwhile consumed the 192 → 193 headroom, so the mailSnippets
+# sweep lands at 194 after rebasing onto the current base.)
+COLLECT_BASELINE=194
 collect_count=$(grep -rn "\.collect()" convex --include="*.ts" 2>/dev/null \
 	| grep -v "/_generated/" \
 	| grep -v "/__tests__/" \

@@ -104,6 +104,12 @@ const aiRewriteEnabled = computed(() => isFeatureEnabled('ai'));
 // toolbar and persists the choice per user.
 const { persistentToolbar, toggleToolbar } = usePostboxToolbarPreference();
 
+// Canned responses ("/" slash-trigger); inert when the mailbox has no snippets.
+const { editorSnippets, snippetFirstName } = usePostboxComposerSnippets(
+	() => props.mailboxId ?? null,
+	() => toAddresses.value[0]
+);
+
 async function onFromChange(address: string) {
 	try {
 		await setIdentity(address);
@@ -373,6 +379,8 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } =
 				:inline-images-enabled="true"
 				:embed-image="addInlineImage"
 				:on-remove-embedded-image="removeInlineImage"
+				:snippets="editorSnippets"
+				:snippet-first-name="snippetFirstName"
 			/>
 			<EmailBuilder
 				v-else

@@ -112,6 +112,7 @@ export const TENANT_TABLES = [
 	'mailFolders',
 	'mailFilters',
 	'mailSignatures',
+	'mailSnippets',
 	'mailUserSettings',
 	'mailAliases',
 	'mailForwarding',
