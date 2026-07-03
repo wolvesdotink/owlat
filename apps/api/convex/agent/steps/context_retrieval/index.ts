@@ -46,11 +46,24 @@ export interface ContextCoverage {
 	lowCoverage: boolean;
 }
 
+/**
+ * A single provenance entry: one prior email or knowledge entry that was
+ * ACTUALLY assembled into the briefing (so it passed the same contact-scope gate
+ * the draft was grounded in). Read-side only — surfaced as the review UI's
+ * "Grounded in:" list; `title` is UNTRUSTED retrieved text.
+ */
+export interface GroundingSource {
+	type: 'thread' | 'knowledge';
+	id: string;
+	title: string;
+}
+
 export interface ContextRetrievalOutput {
 	context: string;
 	tier: 'normal' | 'compacted' | 'emergency';
 	estimatedTokens: number;
 	coverage: ContextCoverage;
+	groundingSources: GroundingSource[];
 }
 
 export const contextRetrievalStep: AgentStepModule<
@@ -77,6 +90,12 @@ export const contextRetrievalStep: AgentStepModule<
 		let hasFiles = false;
 		let knowledgeHitCount = 0;
 		let topScore: number | undefined;
+
+		// Provenance — the exact prior emails + knowledge entries fed into the
+		// briefing below. Only sources that were actually appended are recorded,
+		// so this list can never name a source the draft wasn't grounded in, and
+		// (because retrieval is contact-scoped) never a cross-contact source.
+		const groundingSources: GroundingSource[] = [];
 
 		// 1. Contact profile
 		if (message.contactId) {
@@ -128,6 +147,13 @@ export const contextRetrievalStep: AgentStepModule<
 			);
 			if (threadMessages.length > 0) {
 				hasThread = true;
+				for (const m of threadMessages) {
+					groundingSources.push({
+						type: 'thread',
+						id: m._id as string,
+						title: m.subject || '(no subject)',
+					});
+				}
 				contextParts.push(
 					'[CONVERSATION HISTORY]\n' +
 						threadMessages
@@ -176,6 +202,13 @@ export const contextRetrievalStep: AgentStepModule<
 			if (knowledge.length > 0) {
 				hasKnowledge = true;
 				knowledgeHitCount = knowledge.length;
+				for (const k of knowledge) {
+					groundingSources.push({
+						type: 'knowledge',
+						id: k._id as string,
+						title: k.title,
+					});
+				}
 				// Top vector-similarity score (0 for FTS-only hits); undefined
 				// only when every hit lacks a score.
 				for (const k of knowledge) {
@@ -295,11 +328,12 @@ export const contextRetrievalStep: AgentStepModule<
 				inboundMessageId: input.inboundMessageId,
 				contextTier: tier,
 				contextCoverage: coverage,
+				...(groundingSources.length > 0 ? { groundingSources } : {}),
 			},
 		);
 
 		return {
-			output: { context: finalContext, tier, estimatedTokens, coverage },
+			output: { context: finalContext, tier, estimatedTokens, coverage, groundingSources },
 		};
 	},
 

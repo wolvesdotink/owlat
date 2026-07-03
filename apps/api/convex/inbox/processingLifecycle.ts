@@ -39,6 +39,7 @@ import type { Id } from '../_generated/dataModel';
 import {
 	contextCoverageValidator,
 	draftQualityValidator,
+	groundingSourceValidator,
 	isOutboundChannel,
 	tokenUsageValidator,
 } from '../lib/convexValidators';
@@ -177,6 +178,10 @@ export const recordContextTier = internalMutation({
 			v.literal('emergency'),
 		),
 		contextCoverage: v.optional(contextCoverageValidator),
+		// The prior emails + knowledge entries actually assembled into the
+		// briefing — read-side provenance for the review UI. Optional so callers
+		// that only have a tier still work; changes NO routing.
+		groundingSources: v.optional(v.array(groundingSourceValidator)),
 	},
 	handler: async (ctx, args) => {
 		await ctx.db.patch(args.inboundMessageId, {
@@ -184,6 +189,37 @@ export const recordContextTier = internalMutation({
 			...(args.contextCoverage
 				? { contextCoverage: args.contextCoverage }
 				: {}),
+			...(args.groundingSources
+				? { groundingSources: args.groundingSources }
+				: {}),
+		});
+	},
+});
+
+/**
+ * Record the router's decision + reason + confidence onto an inboundMessage
+ * WITHOUT changing its processingStatus. Called by the `route` Agent step so the
+ * review UI can explain WHY a message was auto-sent or held ("Sent because… /
+ * Held because…"). This is a READ-SIDE MIRROR of the decision the route step
+ * already made — the actual auto-send vs human-review transition is still driven
+ * by the step's `route()` result, unchanged. FAIL-SOFT: the route step wraps
+ * this call so a persistence failure degrades to "no explanation shown" and
+ * never wedges the walker.
+ */
+export const recordAgentDecision = internalMutation({
+	args: {
+		inboundMessageId: v.id('inboundMessages'),
+		decision: v.union(v.literal('auto_approve'), v.literal('human_review')),
+		reason: v.string(),
+		confidence: v.number(),
+	},
+	handler: async (ctx, args) => {
+		await ctx.db.patch(args.inboundMessageId, {
+			agentDecision: {
+				decision: args.decision,
+				reason: args.reason,
+				confidence: args.confidence,
+			},
 		});
 	},
 });
