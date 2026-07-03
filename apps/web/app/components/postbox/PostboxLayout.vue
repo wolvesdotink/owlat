@@ -26,6 +26,21 @@ const { messages, isLoading, hasMore, loadMore } = usePostboxThreads({
 	folderId: folderIdRef,
 });
 
+// Offline read cache: serve the last-cached inbox rows instantly on a cold
+// start (with an "updating…" shimmer) and hand back to live rows the moment
+// they arrive. `displayMessages` is what the flat list renders; live always
+// wins. Non-inbox folders are a transparent pass-through.
+const {
+	rows: displayMessages,
+	showingCached,
+	isOffline,
+} = usePostboxOfflineThreads({
+	mailboxId: computed(() => String(props.mailboxId)),
+	folderRole: folderRef,
+	liveRows: messages,
+	isLoading,
+});
+
 // Once the inbox list has settled (first paint done), idle-prefetch the
 // composer + reader chunks so pressing `c` or Enter never waits on a chunk
 // download. Idempotent + fail-soft; the Designer-mode EmailBuilder stays lazy.
@@ -140,9 +155,28 @@ const showReplyQueueStrip = computed(
 
 		<!-- Pane 2: thread/message list -->
 		<section class="w-96 border-r border-border-subtle flex flex-col bg-bg-surface">
+			<!-- Quiet offline banner: cached list + already-read bodies stay
+			     readable; server-backed actions degrade with clear affordances. -->
+			<div
+				v-if="isOffline"
+				class="flex items-center gap-2 px-4 py-2 bg-warning-subtle text-warning text-xs border-b border-border-subtle"
+				role="status"
+			>
+				<Icon name="lucide:cloud-off" class="w-3.5 h-3.5 flex-shrink-0" />
+				<span class="truncate">Offline — showing recent mail from this device. Actions are paused.</span>
+			</div>
 			<header class="border-b border-border-subtle px-4 py-3 flex items-center justify-between">
-				<h2 class="text-sm font-semibold capitalize text-text-primary">
+				<h2 class="text-sm font-semibold capitalize text-text-primary flex items-center gap-2">
 					{{ currentFolderName }}
+					<!-- Cold start from the device cache: a quiet "updating…" hint
+					     while the live query catches up. Live rows replace in place. -->
+					<!-- Suppressed while offline: the live query never settles, so a
+					     permanent "updating…" would read as stuck — the offline banner
+					     already communicates the state. -->
+					<span
+						v-if="showingCached && !isOffline"
+						class="animate-pulse text-[11px] font-normal text-text-tertiary lowercase"
+					>updating…</span>
 				</h2>
 				<div v-if="folderRole === 'inbox'" class="flex items-center gap-1">
 					<button
@@ -237,8 +271,8 @@ const showReplyQueueStrip = computed(
 							v-else
 							ref="threadListRef"
 							:mailbox-id="mailboxId"
-							:messages="messages"
-							:loading="isLoading"
+							:messages="displayMessages"
+							:loading="isLoading && !showingCached"
 							:folder-role="folderRole"
 							:active-message-id="activeMessageId"
 							:has-more="hasMore"

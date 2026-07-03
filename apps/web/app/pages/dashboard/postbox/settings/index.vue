@@ -362,6 +362,9 @@ async function handleDelete() {
 			</div>
 		</section>
 
+		<!-- On this device: offline read cache (device-local, never synced). -->
+		<PostboxOfflineSettings />
+
 		<!-- Desktop-only: native notification behavior. -->
 		<PostboxNotificationSettings v-if="isDesktop" />
 
