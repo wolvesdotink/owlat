@@ -17,6 +17,7 @@ import {
 	securityFlagsValidator,
 	classificationValidator,
 	tokenUsageValidator,
+	pendingClarificationValidator,
 } from '../../lib/convexValidators';
 
 // ─── Status / action literals ────────────────────────────────────────────────
@@ -28,6 +29,7 @@ export type ProcessingStatus =
 	| 'classifying'
 	| 'drafting'
 	| 'draft_ready'
+	| 'awaiting_clarification'
 	| 'approved'
 	| 'sent'
 	| 'rejected'
@@ -54,6 +56,7 @@ export type ActionStatus =
 export type SecurityFlags = Infer<typeof securityFlagsValidator>;
 export type Classification = Infer<typeof classificationValidator>;
 export type TokenUsage = Infer<typeof tokenUsageValidator>;
+export type PendingClarification = Infer<typeof pendingClarificationValidator>;
 
 export const actionTypeValidator = v.union(
 	v.literal('security_scan'),
@@ -107,6 +110,17 @@ export type TransitionInput =
 			tokenUsage?: TokenUsage;
 	  }
 	| {
+			to: 'awaiting_clarification';
+			at: number;
+			completedActionId?: Id<'agentActions'>;
+			output?: string;
+			pendingClarification?: PendingClarification;
+			classification?: Classification;
+			durationMs?: number;
+			modelUsed?: string;
+			tokenUsage?: TokenUsage;
+	  }
+	| {
 			to: 'quarantined';
 			at: number;
 			completedActionId?: Id<'agentActions'>;
@@ -118,7 +132,12 @@ export type TransitionInput =
 			to: 'archived';
 			at: number;
 			completedActionId?: Id<'agentActions'>;
-			reason: 'spam' | 'sender_blocked' | 'classifier_spam' | 'coalesced';
+			reason:
+				| 'spam'
+				| 'sender_blocked'
+				| 'classifier_spam'
+				| 'coalesced'
+				| 'clarification_dismissed';
 			securityFlags?: SecurityFlags;
 			userId?: string;
 			output?: string;
@@ -212,6 +231,17 @@ export const transitionInputValidator = v.union(
 		tokenUsage: v.optional(tokenUsageValidator),
 	}),
 	v.object({
+		to: v.literal('awaiting_clarification'),
+		at: v.number(),
+		completedActionId: v.optional(v.id('agentActions')),
+		output: v.optional(v.string()),
+		pendingClarification: v.optional(pendingClarificationValidator),
+		classification: v.optional(classificationValidator),
+		durationMs: v.optional(v.number()),
+		modelUsed: v.optional(v.string()),
+		tokenUsage: v.optional(tokenUsageValidator),
+	}),
+	v.object({
 		to: v.literal('quarantined'),
 		at: v.number(),
 		completedActionId: v.optional(v.id('agentActions')),
@@ -228,6 +258,7 @@ export const transitionInputValidator = v.union(
 			v.literal('sender_blocked'),
 			v.literal('classifier_spam'),
 			v.literal('coalesced'),
+			v.literal('clarification_dismissed'),
 		),
 		securityFlags: v.optional(securityFlagsValidator),
 		userId: v.optional(v.string()),
