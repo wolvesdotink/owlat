@@ -19,6 +19,7 @@ import { authedMutation, publicQuery } from '../lib/authedFunctions';
 import {
 	mailAutoAdvanceValidator,
 	mailReplyDefaultValidator,
+	mailDensityValidator,
 } from '../lib/convexValidators';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 
@@ -39,6 +40,7 @@ export const get = publicQuery({
 			isWritingSuggestionsOn: row.isWritingSuggestionsOn,
 			isAutoSummarizeOn: row.isAutoSummarizeOn,
 			replyDefault: row.replyDefault,
+			density: row.density,
 		};
 	},
 });
@@ -51,6 +53,7 @@ export const update = authedMutation({
 		isWritingSuggestionsOn: v.optional(v.boolean()),
 		isAutoSummarizeOn: v.optional(v.boolean()),
 		replyDefault: v.optional(mailReplyDefaultValidator),
+		density: v.optional(mailDensityValidator),
 	},
 	// authz: self-scoped — upserts only the caller's own settings row (keyed
 	// by the session userId; no cross-user id is accepted).
@@ -67,6 +70,7 @@ export const update = authedMutation({
 			isWritingSuggestionsOn?: boolean;
 			isAutoSummarizeOn?: boolean;
 			replyDefault?: (typeof args)['replyDefault'];
+			density?: (typeof args)['density'];
 		} = {};
 		if (args.autoAdvance !== undefined) patch.autoAdvance = args.autoAdvance;
 		if (args.isWritingSuggestionsOn !== undefined)
@@ -74,6 +78,7 @@ export const update = authedMutation({
 		if (args.isAutoSummarizeOn !== undefined)
 			patch.isAutoSummarizeOn = args.isAutoSummarizeOn;
 		if (args.replyDefault !== undefined) patch.replyDefault = args.replyDefault;
+		if (args.density !== undefined) patch.density = args.density;
 		if (existing) {
 			await ctx.db.patch(existing._id, { ...patch, updatedAt: now });
 			return existing._id;
