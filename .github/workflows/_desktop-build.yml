@@ -93,9 +93,12 @@ jobs:
       - name: Stamp release version from tag
         shell: bash
         working-directory: apps/desktop/src-tauri
+        env:
+          # Passed via env (never interpolated into the script body) so a crafted
+          # tag cannot break out of quotes and inject shell into this signing job.
+          TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
-          TAG='${{ inputs.tag }}'
           VERSION="${TAG#desktop-v}"
           VERSION="${VERSION#v}"
           if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
