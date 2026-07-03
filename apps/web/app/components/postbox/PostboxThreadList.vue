@@ -2,6 +2,12 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { PostboxComposeMode, PostboxPendingCompose } from '~/utils/postboxShortcuts';
+import { POSTBOX_ROW_HEIGHT } from '~/utils/postboxDensity';
+import {
+	usePostboxVirtualList,
+	rememberScroll,
+	recallScroll,
+} from '~/composables/postbox/usePostboxVirtualList';
 
 const props = defineProps<{
 	mailboxId: Id<'mailboxes'>;
@@ -303,9 +309,84 @@ watch(
 		prefetchAdjacent([ids[anchor + 1], ids[anchor - 1]]);
 	}
 );
+
+// --- Windowed rendering + infinite scroll (large folders) --------------------
+// Only large folders pay the windowing cost; small folders keep the simple
+// content-visibility path unchanged (and group/category modes use their own
+// non-virtual list components entirely). Row height is a known per-density
+// constant, so this is fixed-height windowing with no dynamic measurement.
+const VIRTUAL_THRESHOLD = 100;
+const scrollEl = ref<HTMLElement | null>(null);
+const { density } = usePostboxSettings();
+const rowHeight = computed(() => POSTBOX_ROW_HEIGHT[density.value]);
+const itemCount = computed(() => visibleMessages.value.length);
+const virtualize = computed(() => itemCount.value > VIRTUAL_THRESHOLD);
+
+const { range, syncScroll, scrollToIndex } = usePostboxVirtualList({
+	scrollEl,
+	itemCount,
+	rowHeight,
+	enabled: virtualize,
+});
+
+// Rows actually mounted: a bounded window when virtualizing, everything
+// otherwise. `windowStart` maps a windowed row back to its absolute index so
+// focus, selection and ARIA stay correct.
+const windowStart = computed(() => (virtualize.value ? range.value.startIndex : 0));
+const windowedMessages = computed(() =>
+	virtualize.value
+		? visibleMessages.value.slice(range.value.startIndex, range.value.endIndex)
+		: visibleMessages.value
+);
+
+// Keep the keyboard-focused row visible even when it is outside the mounted
+// window: shift the scroll (which re-derives the window and mounts the row);
+// usePostboxListKeyboard's own scrollIntoView then refines to "nearest".
+watch(focusedIndex, (idx) => {
+	if (idx < 0 || !virtualize.value) return;
+	scrollToIndex(idx);
+});
+
+// Auto-grow the page as the window nears the end (replacing the manual "Load
+// more" click; the button stays as an always-available fallback). Guarded to
+// one emit per page count so a load in flight is never spammed — the count
+// changes when the new page lands, which re-arms the trigger.
+const AUTOLOAD_MARGIN_PX = 240;
+let emittedForCount = -1;
+const folderScrollKey = computed(() => `postbox:scroll:${props.folderRole}`);
+
+function onListScroll(event: Event) {
+	const el = event.target as HTMLElement;
+	syncScroll();
+	rememberScroll(folderScrollKey.value, el.scrollTop);
+	if (
+		props.hasMore &&
+		!props.loading &&
+		emittedForCount !== itemCount.value &&
+		el.scrollHeight - el.scrollTop - el.clientHeight < AUTOLOAD_MARGIN_PX
+	) {
+		emittedForCount = itemCount.value;
+		emit('load-more');
+	}
+}
+
+// Restore the folder's last scroll position when the list (re)mounts, e.g.
+// returning from an opened thread. Best-effort: if the rows aren't tall enough
+// yet the browser clamps the value.
+onMounted(async () => {
+	await nextTick();
+	const saved = recallScroll(folderScrollKey.value);
+	if (saved != null && scrollEl.value) {
+		scrollEl.value.scrollTop = saved;
+		syncScroll();
+	}
+});
 </script>
 
 <template>
+	<!-- Scroll container owns the folder's scroll position (windowing +
+	     infinite-scroll + restore all key off it). -->
+	<div ref="scrollEl" class="h-full overflow-auto" @scroll="onListScroll">
 	<!-- Skeleton only on FIRST load (no rows yet): live-query refreshes keep
 	     `keepPreviousData` rows visible, so they never flash the skeleton. -->
 	<PostboxThreadListSkeleton v-if="loading && visibleMessages.length === 0" />
@@ -324,19 +405,31 @@ watch(
 			</NuxtLink>
 		</template>
 	</PostboxEmptyState>
+	<!-- role=listbox owns the full scroll height (so the scrollbar reflects all
+	     rows even while only a window is mounted); the inner container is
+	     translate-positioned to the window's offset. Small folders render every
+	     row with no offset. -->
 	<ul
 		v-else
 		tabindex="0"
 		role="listbox"
 		aria-label="Messages"
 		:aria-activedescendant="activeRowId"
-		class="divide-y divide-border-subtle outline-none focus-visible:ring-1 focus-visible:ring-brand/40 focus-visible:ring-inset"
+		class="outline-none focus-visible:ring-1 focus-visible:ring-brand/40 focus-visible:ring-inset"
+		:class="{ relative: virtualize }"
+		:style="virtualize ? { height: `${range.totalHeight}px` } : undefined"
 		@keydown="onListKeydown"
 	>
+		<div
+			class="divide-y divide-border-subtle"
+			:class="{ 'absolute inset-x-0 top-0': virtualize }"
+			:style="virtualize ? { transform: `translateY(${range.offsetY}px)` } : undefined"
+		>
 		<li
-			v-for="(msg, i) in visibleMessages"
+			v-for="(msg, localI) in windowedMessages"
 			:key="msg._id"
 			class="group relative"
+			:class="{ 'pbx-virtual-row': virtualize }"
 			style="content-visibility: auto; contain-intrinsic-size: auto var(--pbx-row-intrinsic, 76px)"
 		>
 			<component
@@ -344,13 +437,13 @@ watch(
 				:id="`postbox-row-${msg._id}`"
 				role="option"
 				:tabindex="selectable ? -1 : undefined"
-				:aria-selected="focusedIndex === i"
+				:aria-selected="focusedIndex === windowStart + localI"
 				:to="selectable ? undefined : `/dashboard/postbox/${props.folderRole}/${msg._id}`"
 				class="pbx-row-link block w-full text-left px-4 py-3 hover:bg-bg-elevated"
 				:class="{
 					'bg-bg-elevated': activeMessageId === msg._id,
 					'bg-brand/5': bulk.isSelected(msg._id as unknown as Id<'mailMessages'>),
-					'ring-1 ring-inset ring-brand/50': focusedIndex === i,
+					'ring-1 ring-inset ring-brand/50': focusedIndex === windowStart + localI,
 					'cursor-pointer': selectable,
 				}"
 				@click="selectable ? emit('select', msg._id) : undefined"
@@ -469,7 +562,10 @@ watch(
 				</button>
 			</div>
 		</li>
+		</div>
 	</ul>
+	<!-- Fallback trigger: infinite scroll auto-grows the page, but the button
+	     stays so a user can still advance if the auto-load stalls or errors. -->
 	<div v-if="!loading && hasMore" class="p-3 text-center">
 		<button
 			type="button"
@@ -478,6 +574,7 @@ watch(
 		>
 			Load more
 		</button>
+	</div>
 	</div>
 	<!-- Keyboard-flow pickers for the focused row (h / l / v). -->
 	<PostboxSnoozeDialog
