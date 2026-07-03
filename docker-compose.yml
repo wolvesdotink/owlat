@@ -440,17 +440,28 @@ services:
     mem_limit: ${CODE_WORKER_MEM_LIMIT:-2g}
     cpus: ${CODE_WORKER_CPUS:-1.0}
     pids_limit: ${CODE_WORKER_PIDS_LIMIT:-512}
-    # Untrusted executor: drop every Linux capability (it needs none — git,
-    # node/vitest and the agent are all unprivileged) and make the root
-    # filesystem read-only so a compromised task cannot tamper with the image.
-    # Everything the worker legitimately writes goes to the dedicated
-    # `code-workspace` volume (clones/checkouts under /workspace, HOME is set to
-    # the per-task dir) which stays writable; /tmp is a size-capped tmpfs so
-    # tooling that needs scratch space still works without a writable rootfs.
+    # Untrusted executor. The orchestrator runs as CONFINED root purely so it can
+    # drop the untrusted children (the coding agent + `npx vitest`) to a SEPARATE
+    # unprivileged uid (`sandbox`, uid=10001) — a cross-uid kernel boundary those
+    # children cannot cross to read /proc/<orchestrator>/environ or ptrace it for
+    # the admin key / GITHUB_TOKEN. Untrusted code NEVER runs as root.
+    # Drop every Linux capability, then add back ONLY the three the confined-root
+    # model needs: SETUID/SETGID to spawn children as `sandbox`, and CHOWN to hand
+    # each per-task working tree to `sandbox` (while .git stays root-owned).
+    # The root filesystem stays read-only so a compromised task cannot tamper with
+    # the image. Everything the worker legitimately writes goes to the dedicated
+    # `code-workspace` volume (clones/checkouts under /workspace) which stays
+    # writable; /tmp is a size-capped tmpfs so tooling that needs scratch space
+    # still works without a writable rootfs. no-new-privileges stays on: dropping
+    # to a lower uid does not need it, and it blocks any setuid-binary escalation.
     # (The default Docker seccomp profile stays applied — no custom profile is
     # shipped so node/git syscalls are not accidentally blocked.)
     cap_drop:
       - ALL
+    cap_add:
+      - SETUID
+      - SETGID
+      - CHOWN
     read_only: true
     tmpfs:
       - /tmp:size=256m
