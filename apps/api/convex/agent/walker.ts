@@ -28,6 +28,8 @@ import { internalAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { stepModuleFor } from './steps';
+import { contextRetrievalStep } from './steps/context_retrieval';
+import { buildConfirmedContext } from './steps/draft';
 import type {
 	AgentRoute,
 	AgentRunContext,
@@ -174,6 +176,79 @@ export const start = internalAction({
 			inboundMessageId: args.inboundMessageId,
 			kind: 'security_scan' as AgentStepKind,
 			input: { inboundMessageId: args.inboundMessageId },
+		});
+	},
+});
+
+/**
+ * Resume a clarification-parked message back INTO the draft step.
+ *
+ * Two callers, both after the lifecycle has already moved the message
+ * `awaiting_clarification → drafting`:
+ *   - `inbox.answerClarification` — the owner answered; the confirmed answers
+ *     are folded in as a TRUSTED `[CONFIRMED BY OWNER]` block.
+ *   - `processingLifecycle.reconcileAbandonedClarifications` — the fallback
+ *     cron gave up after the window; the questions are unanswered so the block
+ *     is empty and the draft is a best-guess (the route step's safety gate
+ *     refuses to auto-send it because `autoSendBlocked` is set).
+ *
+ * Re-enters the DRAFT step specifically (not the whole tail): it rebuilds the
+ * retrieval context, folds in the confirmed answers, and schedules the draft
+ * step, which then hands off to `route` as usual.
+ *
+ * FAIL-SOFT: a vanished message, a message no longer in `drafting` (a racing
+ * transition won), or a context-retrieval failure never wedges anything — it
+ * either returns quietly or drafts on an empty base context.
+ */
+export const resumeDraft = internalAction({
+	args: { inboundMessageId: v.id('inboundMessages') },
+	handler: async (ctx, args) => {
+		const message = await ctx.runQuery(
+			internal.agent.agentPipeline.getMessage,
+			{ inboundMessageId: args.inboundMessageId },
+		);
+		// Only resume a message the lifecycle has already moved into `drafting`.
+		// If it's not there (already resumed, dismissed, or vanished), do nothing —
+		// re-running the draft step against a stale state would produce an illegal
+		// edge downstream.
+		if (!message || message.processingStatus !== 'drafting') return;
+
+		// Rebuild the retrieval briefing. FAIL-SOFT: if retrieval throws, draft on
+		// an empty base context rather than wedging the message in `drafting`.
+		let context = '';
+		try {
+			const retrieval = await contextRetrievalStep.execute(ctx, {
+				inboundMessageId: args.inboundMessageId,
+			});
+			context = retrieval.context;
+		} catch {
+			context = '';
+		}
+
+		// Fold the owner-confirmed answers into a trusted block (empty for the
+		// abandoned-question fallback path — an unanswered best-guess).
+		const confirmedContext = buildConfirmedContext(message.pendingClarification);
+
+		// The message went through `classify` to reach `awaiting_clarification`, so
+		// its classification is normally present; fall back to a neutral one so the
+		// draft can still run.
+		const classification = message.classification ?? {
+			category: 'other',
+			priority: 'normal',
+			sentiment: 'neutral',
+			intent: 'other',
+			confidence: 0,
+		};
+
+		await ctx.scheduler.runAfter(0, internal.agent.walker.runStep, {
+			inboundMessageId: args.inboundMessageId,
+			kind: 'draft' as AgentStepKind,
+			input: {
+				inboundMessageId: args.inboundMessageId,
+				context,
+				classification,
+				confirmedContext,
+			},
 		});
 	},
 });
