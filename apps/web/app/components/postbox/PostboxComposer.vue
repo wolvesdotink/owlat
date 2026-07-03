@@ -3,7 +3,8 @@ import type { Id } from '@owlat/api/dataModel';
 import type { ComposerMode } from '~/composables/postbox/usePostboxCompose';
 import type { ComposerPromotePayload } from '~/composables/postbox/usePostboxComposerStack';
 import { SIMPLE_BLOCK_TYPES } from '~/composables/postbox/postboxBlockTypes';
-import { canonicalEmailAddress } from '~/utils/recipientHints';
+import { mergeRecipients } from '~/utils/recipientHints';
+import { mentionsAttachment } from '~/utils/attachmentMention';
 
 const EmailBuilder = defineAsyncComponent(() =>
 	import('@owlat/email-builder').then((m) => m.EmailBuilder)
@@ -107,22 +108,12 @@ async function onFromChange(address: string) {
 }
 
 // Reply-all gap hint accepted: fold the extra recipients into Cc, keeping the
-// draft (subject/body/To) exactly as-is. Dedupe by canonical address so an
-// already-present address isn't doubled.
+// draft (subject/body/To) exactly as-is. Dedupe by canonical address (against
+// both Cc and To) so an already-present address isn't doubled.
 function onApplyReplyAll() {
 	const extras = props.replyAllRecipients ?? [];
 	if (extras.length === 0) return;
-	const seen = new Set(
-		[...ccAddresses.value, ...toAddresses.value].map(canonicalEmailAddress)
-	);
-	const merged = [...ccAddresses.value];
-	for (const addr of extras) {
-		const canon = canonicalEmailAddress(addr);
-		if (!canon || seen.has(canon)) continue;
-		seen.add(canon);
-		merged.push(addr);
-	}
-	ccAddresses.value = merged;
+	ccAddresses.value = mergeRecipients(ccAddresses.value, extras, toAddresses.value);
 }
 
 const composerName = ref(`Postbox compose ${new Date().toLocaleString()}`);
@@ -148,19 +139,12 @@ function onSignatureChange(event: Event) {
 const sending = ref(false);
 const scheduleOpen = ref(false);
 
-const ATTACHMENT_HINT = /\b(attach(ed|ment|ing|ments)?|enclosed)\b/i;
-
-/** Catch the classic "I said 'attached' but forgot to attach" mistake. */
-function missingAttachmentWarning(): boolean {
-	if (attachments.value.length > 0) return false;
-	const text = `${subject.value} ${bodyHtml.value.replace(/<[^>]+>/g, ' ')}`;
-	return ATTACHMENT_HINT.test(text);
-}
-
 async function handleSend(opts?: { scheduledSendAt?: number }) {
 	if (!canSend.value || sending.value) return;
+	// Catch the classic "I said 'attached' but forgot to attach" mistake.
 	if (
-		missingAttachmentWarning() &&
+		attachments.value.length === 0 &&
+		mentionsAttachment(subject.value, bodyHtml.value) &&
 		!window.confirm('Your message mentions an attachment, but none is attached. Send anyway?')
 	) {
 		return;
@@ -191,36 +175,21 @@ async function handleDiscard() {
 // --- Inline variant: promote to a normal popup composer. Flush the debounced
 // autosave first (creating the draft row if needed) so the popup reopens the
 // SAME draft id — no content loss. The live field values ride along so the
-// popup seeds instantly instead of waiting for hydration.
-const promoting = ref(false);
-async function handlePromote() {
-	if (promoting.value) return;
-	promoting.value = true;
-	try {
-		const id = await flush();
-		emit('promote', {
-			draftId: id,
+// popup seeds instantly instead of waiting for hydration. `focusBody` is
+// exposed so the reader's r/a keys can re-focus an already-open inline box.
+const { promoting, basicEditor, focusBody, handlePromote } =
+	usePostboxComposerInline({
+		inline: props.inline ?? false,
+		flush,
+		snapshot: () => ({
 			toAddresses: [...toAddresses.value],
 			ccAddresses: [...ccAddresses.value],
 			bccAddresses: [...bccAddresses.value],
 			subject: subject.value,
 			bodyHtml: bodyHtml.value,
-		});
-	} finally {
-		promoting.value = false;
-	}
-}
-
-// Focus the inline body editor on mount (simple mode only — the Designer
-// mode's builder manages its own focus). Exposed so the reader's r/a keys can
-// re-focus an already-open inline box.
-const basicEditor = ref<{ focus: () => void } | null>(null);
-function focusBody() {
-	basicEditor.value?.focus();
-}
-onMounted(() => {
-	if (props.inline) void nextTick(() => focusBody());
-});
+		}),
+		emitPromote: (payload) => emit('promote', payload),
+	});
 defineExpose({ focusBody });
 
 const unscheduling = ref(false);
