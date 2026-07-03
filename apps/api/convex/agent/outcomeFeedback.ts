@@ -44,11 +44,11 @@ const outcomeSchema = z.object({
 	sentiment: z
 		.enum(['negative', 'neutral', 'positive'])
 		.describe(
-			'The sender\'s sentiment toward the reply they received. ' +
+			"The sender's sentiment toward the reply they received. " +
 				'"negative" = clearly unhappy, angry, frustrated, disputes/corrects the ' +
 				'answer, or escalates. "positive" = clearly satisfied or thankful. ' +
 				'"neutral" = a routine follow-up, a further question, or anything ' +
-				'ambiguous. When unsure, answer "neutral".',
+				'ambiguous. When unsure, answer "neutral".'
 		),
 });
 

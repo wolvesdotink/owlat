@@ -38,7 +38,7 @@ const outcomeSignalValidator = v.union(
 	v.literal('reply_negative'),
 	v.literal('bounce'),
 	v.literal('complaint'),
-	v.literal('clarification_unedited_send'),
+	v.literal('clarification_unedited_send')
 );
 
 /**
@@ -66,8 +66,7 @@ export const recordOutcomeFeedback = internalMutation({
 
 		const category = message.classification?.category ?? 'other';
 		const action = OUTCOME_SIGNAL[args.signal as OutcomeSignal];
-		const agentConfidence =
-			message.confidenceScore ?? message.classification?.confidence ?? 0;
+		const agentConfidence = message.confidenceScore ?? message.classification?.confidence ?? 0;
 
 		await ctx.runMutation(internal.autonomy.recordFeedback, {
 			category,
@@ -91,7 +90,7 @@ export const getReplyOutcomeContext = internalQuery({
 	args: { replyMessageId: v.id('inboundMessages') },
 	handler: async (
 		ctx,
-		args,
+		args
 	): Promise<{ wasAutoSent: boolean; originalMessageId: Id<'inboundMessages'> } | null> => {
 		const reply = await ctx.db.get(args.replyMessageId);
 		if (!reply?.threadId) return null;
@@ -108,10 +107,7 @@ export const getReplyOutcomeContext = internalQuery({
 		for (const prior of priors) {
 			if (prior._id === reply._id) continue;
 			if (prior.receivedAt >= reply.receivedAt) continue; // must precede the reply
-			if (
-				prior.processingStatus === 'sent' &&
-				prior.agentDecision?.decision === 'auto_approve'
-			) {
+			if (prior.processingStatus === 'sent' && prior.agentDecision?.decision === 'auto_approve') {
 				return { wasAutoSent: true, originalMessageId: prior._id };
 			}
 		}

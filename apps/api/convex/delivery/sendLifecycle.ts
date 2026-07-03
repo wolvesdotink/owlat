@@ -165,13 +165,7 @@ async function dispatch(
 		}
 		case 'complained': {
 			const senderDomain = await senderDomainFor(ctx, send, ref);
-			result = reduceComplained(
-				send,
-				input,
-				ref,
-				contactEmailOf(send),
-				senderDomain
-			);
+			result = reduceComplained(send, input, ref, contactEmailOf(send), senderDomain);
 			break;
 		}
 	}
@@ -198,10 +192,7 @@ async function dispatch(
 		// human-reviewed subset (see agent/outcomeFeedback.ts). Fail-soft:
 		// scheduled out-of-band so a learning-loop failure can never roll back
 		// the delivery state transition. Only for genuinely new transitions.
-		if (
-			(input.to === 'bounced' || input.to === 'complained') &&
-			ref.kind === 'transactional'
-		) {
+		if ((input.to === 'bounced' || input.to === 'complained') && ref.kind === 'transactional') {
 			const tSend = send as TransactionalSendDoc;
 			if (tSend.kind === 'agent_reply' && tSend.inboundMessageId) {
 				await ctx.scheduler.runAfter(0, internal.autonomyOutcome.recordOutcomeFeedback, {

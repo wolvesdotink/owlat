@@ -30,7 +30,7 @@ async function recordAutonomyFeedback(
 	ctx: MutationCtx,
 	message: Doc<'inboundMessages'>,
 	action: 'approved' | 'rejected' | 'edited',
-	userFeedback?: string,
+	userFeedback?: string
 ): Promise<void> {
 	await ctx.runMutation(internal.autonomy.recordFeedback, {
 		category: message.classification?.category ?? 'other',

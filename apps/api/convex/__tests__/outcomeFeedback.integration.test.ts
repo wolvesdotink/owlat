@@ -60,8 +60,8 @@ const modules = Object.fromEntries(
 			!path.includes('knowledgeExtraction') &&
 			!path.includes('semanticFileProcessing') &&
 			!path.includes('visualizationAgent') &&
-			!path.includes('llmProvider'),
-	),
+			!path.includes('llmProvider')
+	)
 );
 
 function objectResult(object: unknown) {
@@ -77,14 +77,17 @@ beforeEach(() => {
 /** Insert an auto-approved message that reached `sent` on a fresh thread. */
 async function seedAutoSentOnThread(
 	t: ReturnType<typeof convexTest>,
-	opts: { category?: string; confidence?: number; decision?: 'auto_approve' | 'human_review' } = {},
+	opts: { category?: string; confidence?: number; decision?: 'auto_approve' | 'human_review' } = {}
 ): Promise<{ threadId: Id<'conversationThreads'>; originalId: Id<'inboundMessages'> }> {
 	return await t.run(async (ctx) => {
 		// Insert only schema-valid columns: the shared factory also emits
 		// `channel`/`updatedAt`, which are not on the conversationThreads table
 		// and a raw ctx.db.insert would reject.
-		const { channel: _channel, updatedAt: _updatedAt, ...threadDoc } =
-			createTestConversationThread({ contactId: undefined });
+		const {
+			channel: _channel,
+			updatedAt: _updatedAt,
+			...threadDoc
+		} = createTestConversationThread({ contactId: undefined });
 		const threadId = await ctx.db.insert('conversationThreads', threadDoc as never);
 		const originalId = await ctx.db.insert('inboundMessages', {
 			...createTestInboundMessage({
@@ -119,7 +122,10 @@ describe('autonomyOutcome.recordOutcomeFeedback', () => {
 	it('records a bounce as NEGATIVE (rejected) feedback for the original category', async () => {
 		const t = convexTest(schema, modules);
 		await t.run(async (ctx) => {
-			await ctx.db.insert('autonomyRules', createTestAutonomyRule({ category: 'billing' }) as never);
+			await ctx.db.insert(
+				'autonomyRules',
+				createTestAutonomyRule({ category: 'billing' }) as never
+			);
 		});
 		const { originalId } = await seedAutoSentOnThread(t, { category: 'billing', confidence: 0.8 });
 
@@ -151,7 +157,11 @@ describe('autonomyOutcome.recordOutcomeFeedback', () => {
 
 		const rows = await feedbackRows(t);
 		expect(rows).toHaveLength(1);
-		expect(rows[0]).toMatchObject({ action: 'rejected', outcomeSignal: 'complaint', source: 'outcome' });
+		expect(rows[0]).toMatchObject({
+			action: 'rejected',
+			outcomeSignal: 'complaint',
+			source: 'outcome',
+		});
 	});
 
 	it('records an unedited answered-clarification send as POSITIVE (approved) feedback', async () => {
@@ -176,7 +186,10 @@ describe('autonomyOutcome.recordOutcomeFeedback', () => {
 	it('is a no-op when the original message is gone', async () => {
 		const t = convexTest(schema, modules);
 		const ghostId = await t.run(async (ctx) => {
-			const id = await ctx.db.insert('inboundMessages', createTestInboundMessage({ threadId: undefined, contactId: undefined }) as never);
+			const id = await ctx.db.insert(
+				'inboundMessages',
+				createTestInboundMessage({ threadId: undefined, contactId: undefined }) as never
+			);
 			await ctx.db.delete(id);
 			return id;
 		});
@@ -197,11 +210,18 @@ describe('autonomyOutcome.getReplyOutcomeContext', () => {
 
 		const replyId = await t.run(async (ctx) =>
 			ctx.db.insert('inboundMessages', {
-				...createTestInboundMessage({ threadId, contactId: undefined, receivedAt: 2_000, processingStatus: 'received' }),
-			} as never),
+				...createTestInboundMessage({
+					threadId,
+					contactId: undefined,
+					receivedAt: 2_000,
+					processingStatus: 'received',
+				}),
+			} as never)
 		);
 
-		const ctx = await t.query(internal.autonomyOutcome.getReplyOutcomeContext, { replyMessageId: replyId });
+		const ctx = await t.query(internal.autonomyOutcome.getReplyOutcomeContext, {
+			replyMessageId: replyId,
+		});
 		expect(ctx).toEqual({ wasAutoSent: true, originalMessageId: originalId });
 	});
 
@@ -211,11 +231,18 @@ describe('autonomyOutcome.getReplyOutcomeContext', () => {
 
 		const replyId = await t.run(async (ctx) =>
 			ctx.db.insert('inboundMessages', {
-				...createTestInboundMessage({ threadId, contactId: undefined, receivedAt: 2_000, processingStatus: 'received' }),
-			} as never),
+				...createTestInboundMessage({
+					threadId,
+					contactId: undefined,
+					receivedAt: 2_000,
+					processingStatus: 'received',
+				}),
+			} as never)
 		);
 
-		expect(await t.query(internal.autonomyOutcome.getReplyOutcomeContext, { replyMessageId: replyId })).toBeNull();
+		expect(
+			await t.query(internal.autonomyOutcome.getReplyOutcomeContext, { replyMessageId: replyId })
+		).toBeNull();
 	});
 });
 
@@ -226,7 +253,7 @@ describe('agent.outcomeFeedback.classifyReplyOutcome', () => {
 		const replyId = await t.run(async (ctx) =>
 			ctx.db.insert('inboundMessages', {
 				...createTestInboundMessage({ threadId, contactId: undefined, receivedAt: 2_000 }),
-			} as never),
+			} as never)
 		);
 		mocks.runLlmObject.mockResolvedValue(objectResult({ sentiment: 'negative' }));
 
@@ -252,7 +279,7 @@ describe('agent.outcomeFeedback.classifyReplyOutcome', () => {
 		const replyId = await t.run(async (ctx) =>
 			ctx.db.insert('inboundMessages', {
 				...createTestInboundMessage({ threadId, contactId: undefined, receivedAt: 2_000 }),
-			} as never),
+			} as never)
 		);
 		mocks.runLlmObject.mockResolvedValue(objectResult({ sentiment: 'neutral' }));
 
@@ -270,7 +297,7 @@ describe('agent.outcomeFeedback.classifyReplyOutcome', () => {
 		const replyId = await t.run(async (ctx) =>
 			ctx.db.insert('inboundMessages', {
 				...createTestInboundMessage({ threadId, contactId: undefined, receivedAt: 2_000 }),
-			} as never),
+			} as never)
 		);
 		mocks.runLlmObject.mockRejectedValue(new Error('model down'));
 
@@ -278,7 +305,7 @@ describe('agent.outcomeFeedback.classifyReplyOutcome', () => {
 			t.action(internal.agent.outcomeFeedback.classifyReplyOutcome, {
 				replyMessageId: replyId,
 				replyText: 'anything',
-			}),
+			})
 		).resolves.toBeNull();
 
 		expect(await feedbackRows(t)).toHaveLength(0);
@@ -290,7 +317,7 @@ describe('agent.outcomeFeedback.classifyReplyOutcome', () => {
 		const replyId = await t.run(async (ctx) =>
 			ctx.db.insert('inboundMessages', {
 				...createTestInboundMessage({ threadId, contactId: undefined, receivedAt: 2_000 }),
-			} as never),
+			} as never)
 		);
 		mocks.runLlmObject.mockResolvedValue(objectResult({ sentiment: 'negative' }));
 
@@ -309,7 +336,10 @@ describe('outcome feedback flows into adjustThresholds input', () => {
 	it('surfaces outcome rows via getRecentFeedbackInternal (the cron input)', async () => {
 		const t = convexTest(schema, modules);
 		await t.run(async (ctx) => {
-			await ctx.db.insert('autonomyRules', createTestAutonomyRule({ category: 'support' }) as never);
+			await ctx.db.insert(
+				'autonomyRules',
+				createTestAutonomyRule({ category: 'support' }) as never
+			);
 		});
 		const { originalId } = await seedAutoSentOnThread(t, { category: 'support' });
 
