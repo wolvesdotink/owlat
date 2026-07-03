@@ -83,6 +83,13 @@ export function usePostboxSettings() {
 		() => data.value?.isBadgeNonPeopleOn ?? true
 	);
 
+	// HEY-style first-time-sender screener. Default OFF (opt-in): mail from an
+	// unknown sender only skips the Reply Queue when the owner turns this on, so
+	// a deploy that never toggles it keeps today's behavior.
+	const senderScreener = computed<boolean>(
+		() => data.value?.isSenderScreenerOn ?? false
+	);
+
 	const updateOp = useBackendOperation(api.mail.settings.update, {
 		label: 'Save Postbox settings',
 	});
@@ -119,6 +126,10 @@ export function usePostboxSettings() {
 		await updateOp.run({ isBadgeNonPeopleOn: enabled });
 	}
 
+	async function setSenderScreener(enabled: boolean) {
+		await updateOp.run({ isSenderScreenerOn: enabled });
+	}
+
 	return {
 		autoAdvance,
 		writingSuggestions,
@@ -128,6 +139,7 @@ export function usePostboxSettings() {
 		sendSound,
 		notifyAbout,
 		badgeNonPeople,
+		senderScreener,
 		isLoading,
 		setAutoAdvance,
 		setWritingSuggestions,
@@ -137,6 +149,7 @@ export function usePostboxSettings() {
 		setSendSound,
 		setNotifyAbout,
 		setBadgeNonPeople,
+		setSenderScreener,
 		isSaving: updateOp.isLoading,
 	};
 }
