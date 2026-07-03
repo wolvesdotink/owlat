@@ -231,7 +231,7 @@ export const setVip = authedMutation({
 
 /**
  * Accept a first-time sender through the HEY-style screener — records them in
- * the address book with `screenerAccepted`, so their mail enters the Reply
+ * the address book with `isScreenerAccepted`, so their mail enters the Reply
  * Queue / clarification loop from now on. No-op payload beyond the accept flag;
  * `screener` gating itself is toggled via mail/settings.update.
  */
@@ -251,13 +251,13 @@ export const acceptSender = authedMutation({
 			)
 			.first();
 		if (existing) {
-			await ctx.db.patch(existing._id, { screenerAccepted: true });
+			await ctx.db.patch(existing._id, { isScreenerAccepted: true });
 			return existing._id;
 		}
 		return ctx.db.insert('mailContacts', {
 			mailboxId: args.mailboxId,
 			email,
-			screenerAccepted: true,
+			isScreenerAccepted: true,
 			useCount: 0,
 			lastUsedAt: now,
 			createdAt: now,

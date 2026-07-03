@@ -814,7 +814,7 @@ export const mailTables = {
 		// letting their mail into the Reply Queue / clarification loop. Optional so
 		// existing rows read as undefined (unscreened, i.e. treated as accepted for
 		// pre-existing correspondents that already have a row).
-		screenerAccepted: v.optional(v.boolean()),
+		isScreenerAccepted: v.optional(v.boolean()),
 		createdAt: v.number(),
 	})
 		.index('by_mailbox_and_email', ['mailboxId', 'email'])

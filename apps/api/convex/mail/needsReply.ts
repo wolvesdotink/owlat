@@ -292,7 +292,7 @@ async function loadSenderSignal(
 		isVip: contact.isVip === true,
 		isKnownContact: true,
 		frecency: contactFrecencyScore(contact, now),
-		accepted: contact.screenerAccepted === true,
+		accepted: contact.isScreenerAccepted === true,
 	};
 }
 
