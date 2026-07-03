@@ -5,6 +5,7 @@ import type { ReplyQuoteTarget } from '~/composables/postbox/usePostboxQuotedTex
 import {
 	replyQueueHeadline,
 	formatReplyQueueDueHint,
+	replyQueueSection,
 	type ReplyQueueItem,
 } from '~/utils/postboxReplyQueue';
 import { formatThreadTimestamp } from '~/composables/postbox/usePostboxThreads';
@@ -30,6 +31,15 @@ type QueueRow = ReplyQueueItem & { _id: string };
 const rows = computed<QueueRow[]>(() => items.value.map((i) => ({ ...i, _id: i.threadId })));
 const { visible: visibleRows, hide: hideRow, unhide: unhideRow } = usePostboxOptimisticHide(rows);
 
+// Split the queue: threads with an open/answered clarification render as
+// "Needs your input" cards; everything else keeps the plain "Needs you" rows.
+const needsInputRows = computed<QueueRow[]>(() =>
+	visibleRows.value.filter((r) => replyQueueSection(r) === 'needs_input')
+);
+const needsYouRows = computed<QueueRow[]>(() =>
+	visibleRows.value.filter((r) => replyQueueSection(r) === 'needs_you')
+);
+
 const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 const aiEnabled = computed(() => isFeatureEnabled('ai'));
 
@@ -45,6 +55,33 @@ const suggestOp = useBackendOperation(api.mail.ai.suggestReplies, {
 	label: 'Draft reply',
 	type: 'action',
 });
+const answerOp = useBackendOperation(api.mail.needsReply.answerClarification, {
+	label: 'Answer',
+});
+
+// Which clarification card is submitting its answer (disables its Answer button).
+const answeringThreadId = ref<string | null>(null);
+
+/** Submit the owner's clarification answers; the server generates the starter
+ * reply and the live subscription flips the card to "Draft ready". */
+async function submitClarification(
+	row: QueueRow,
+	answers: { questionId: string; value: string }[]
+) {
+	if (answeringThreadId.value) return;
+	answeringThreadId.value = row.threadId;
+	try {
+		await answerOp.run({ threadId: row.threadId as Id<'mailThreads'>, answers });
+	} finally {
+		answeringThreadId.value = null;
+	}
+}
+
+/** "Open draft" on a ready clarification card — open the composer prefilled
+ * with the generated starter reply over the quoted original. */
+async function openClarificationDraft(row: QueueRow, draft: string) {
+	await openReplyComposer(row, draft);
+}
 
 /** Manual "Done" — clear the flag; the row hides instantly, restored on failure.
  * Follow-up rows ("You're waiting on…") dismiss their reminder watch instead. */
@@ -138,7 +175,7 @@ const {
 	activeId: activeRowId,
 	onKeydown: onListKeydown,
 } = usePostboxListKeyboard({
-	items: visibleRows,
+	items: needsYouRows,
 	resetKey: computed(() => props.mailboxId),
 	rowDomId: (row) => `reply-queue-row-${row._id}`,
 	onActivate: (row) => openRow(row),
@@ -168,16 +205,45 @@ const URGENCY_LABEL: Record<string, string> = { high: 'Urgent', low: 'Low priori
 		title="All caught up"
 		hint="Nothing is waiting on your reply."
 	/>
-	<ul
-		v-else
-		tabindex="0"
-		role="listbox"
-		aria-label="Reply queue"
-		:aria-activedescendant="activeRowId"
-		class="divide-y divide-border-subtle outline-none focus-visible:ring-1 focus-visible:ring-brand/40 focus-visible:ring-inset"
-		@keydown="onListKeydown"
-	>
-		<li v-for="(row, i) in visibleRows" :key="row._id" class="group relative">
+	<div v-else>
+		<!-- "Needs your input" — clarification cards answerable in one tap. -->
+		<section v-if="needsInputRows.length > 0" data-testid="needs-input-section">
+			<h3
+				v-if="needsYouRows.length > 0"
+				class="px-4 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-text-tertiary"
+			>
+				Needs your input
+			</h3>
+			<ul class="divide-y divide-border-subtle">
+				<li v-for="row in needsInputRows" :key="row._id">
+					<PostboxClarificationCard
+						:item="row"
+						:submitting="answeringThreadId === row.threadId"
+						@answer="(answers) => submitClarification(row, answers)"
+						@open-draft="(draft) => openClarificationDraft(row, draft)"
+						@open="openRow(row)"
+						@done="markDone(row)"
+					/>
+				</li>
+			</ul>
+		</section>
+
+		<h3
+			v-if="needsInputRows.length > 0 && needsYouRows.length > 0"
+			class="px-4 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-text-tertiary"
+		>
+			Needs you
+		</h3>
+		<ul
+			v-if="needsYouRows.length > 0"
+			tabindex="0"
+			role="listbox"
+			aria-label="Reply queue"
+			:aria-activedescendant="activeRowId"
+			class="divide-y divide-border-subtle outline-none focus-visible:ring-1 focus-visible:ring-brand/40 focus-visible:ring-inset"
+			@keydown="onListKeydown"
+		>
+		<li v-for="(row, i) in needsYouRows" :key="row._id" class="group relative">
 			<div
 				:id="`reply-queue-row-${row._id}`"
 				role="option"
@@ -277,7 +343,8 @@ const URGENCY_LABEL: Record<string, string> = { high: 'Urgent', low: 'Low priori
 				</button>
 			</div>
 		</li>
-	</ul>
+		</ul>
+	</div>
 
 	<PostboxSnoozeDialog
 		:open="snoozeOpen"

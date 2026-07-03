@@ -6,6 +6,29 @@
 
 export type ReplyQueueUrgency = 'high' | 'normal' | 'low';
 
+/** A single clarification question shown on a "Needs your input" card. */
+export interface ReplyQueueClarificationQuestion {
+	id: string;
+	slotType: string;
+	text: string;
+	/** Provenance + "Owlat will never ask for your password" promise. */
+	attribution: string;
+	/** Suggested scoped answers rendered as one-tap chips (multiple choice). */
+	options?: string[];
+	/** The owner's answer — present once answered. */
+	answer?: { value: string; at: number };
+}
+
+/** The clarification payload on a needs-reply thread (server shape). */
+export interface ReplyQueueClarification {
+	needed: boolean;
+	questions: ReplyQueueClarificationQuestion[];
+	askedAt: number;
+	answeredAt?: number;
+	/** The starter reply produced after answering — flips the card to Draft ready. */
+	draft?: string;
+}
+
 export interface ReplyQueueItem {
 	/**
 	 * 'needs_reply' — an inbound message waiting on OUR reply (default).
@@ -24,6 +47,12 @@ export interface ReplyQueueItem {
 	dueHint?: string;
 	detectedAt: number;
 	source: 'heuristic' | 'llm';
+	/**
+	 * Clarification loop: when present, the AI decided a good reply needs a fact
+	 * only the owner can supply. Renders as a "Needs your input" card until the
+	 * owner answers, then a "Draft ready" card. Absent for a plain needs-reply.
+	 */
+	clarification?: ReplyQueueClarification;
 	fromAddress: string;
 	fromName?: string;
 	subject: string;
@@ -76,4 +105,33 @@ export function formatReplyQueueDueHint(dueHint: string | undefined): string | n
 	// UTC midnight — format in UTC too, or every west-of-UTC user would see
 	// the deadline one day early.
 	return `Due ${parsed.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })}`;
+}
+
+/**
+ * Which section a queue row belongs to. A thread with an unanswered
+ * clarification goes in "Needs your input"; everything else ("Needs you")
+ * keeps the plain needs-reply / follow-up rows. A clarification that has been
+ * answered (draft produced or drafting) stays in "Needs your input" — the row
+ * is the same task the owner is still finishing.
+ */
+export function replyQueueSection(
+	item: Pick<ReplyQueueItem, 'clarification'>,
+): 'needs_input' | 'needs_you' {
+	return item.clarification ? 'needs_input' : 'needs_you';
+}
+
+/**
+ * The lifecycle state of a "Needs your input" card:
+ *   - 'asking'   — questions are open, waiting on the owner.
+ *   - 'drafting' — answered, the starter reply has not landed yet.
+ *   - 'ready'    — the starter reply is ready (flip to "Draft ready").
+ * Pure so the card's state machine is unit-testable.
+ */
+export function clarificationCardState(
+	clarification: Pick<ReplyQueueClarification, 'answeredAt' | 'draft'> | undefined,
+): 'asking' | 'drafting' | 'ready' | null {
+	if (!clarification) return null;
+	if (clarification.draft) return 'ready';
+	if (clarification.answeredAt) return 'drafting';
+	return 'asking';
 }
