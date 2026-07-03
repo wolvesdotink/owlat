@@ -55,6 +55,7 @@ beforeAll(() => {
 	vi.stubGlobal('POSTBOX_PENDING_COMPOSE_KEY', 'postbox:pending-compose');
 	vi.stubGlobal('usePostboxLabels', () => ({ labels: ref([]), setOnMessage: vi.fn() }));
 	vi.stubGlobal('usePostboxFolders', () => ({ folders: ref([]) }));
+	vi.stubGlobal('usePostboxSettings', () => ({ density: ref('comfortable') }));
 	vi.stubGlobal('usePostboxListKeyboard', () => ({
 		focusedIndex: ref(-1),
 		activeId: ref(undefined),
@@ -158,6 +159,25 @@ describe('PostboxThreadList states', () => {
 		const w = mountList({ loading: false, folderRole: 'inbox', emptyContext: 'label' });
 		expect(w.text()).toContain('No messages with this label');
 		expect(w.text()).not.toContain('All clear');
+	});
+
+	it('windows a large folder: DOM row count stays bounded well under the data', () => {
+		// 1000 rows is far past the ~100-row virtualization threshold, so only a
+		// window (viewport + overscan) is ever mounted, not a <li> per message.
+		const many = Array.from({ length: 1000 }, (_, i) => makeMessage(i));
+		const w = mountList({ loading: false, messages: many });
+		const rendered = w.findAll('[role="option"]').length;
+		expect(rendered).toBeGreaterThan(0);
+		expect(rendered).toBeLessThan(60);
+		// The listbox still advertises the full scroll height so the scrollbar
+		// reflects every row.
+		expect(w.find('[role="listbox"]').attributes('style')).toContain('76000px');
+	});
+
+	it('renders every row for a small folder (no virtualization)', () => {
+		const few = Array.from({ length: 12 }, (_, i) => makeMessage(i));
+		const w = mountList({ loading: false, messages: few });
+		expect(w.findAll('[role="option"]')).toHaveLength(12);
 	});
 
 	it('prefetches the adjacent rows when the open message changes', async () => {
