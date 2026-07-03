@@ -10,7 +10,7 @@
  */
 import type { PostboxEmoji } from '~/utils/postboxEmojiShortcodes';
 
-defineProps<{
+const props = defineProps<{
 	items: readonly PostboxEmoji[];
 	activeIndex: number;
 	/** Caret-anchored absolute position within the editor surface. */
@@ -21,6 +21,15 @@ const emit = defineEmits<{
 	(e: 'select', index: number): void;
 	(e: 'hover', index: number): void;
 }>();
+
+// Keep the arrow-selected option visible once the list scrolls past its max-height.
+const optionEls = ref<HTMLButtonElement[]>([]);
+watch(
+	() => props.activeIndex,
+	(index) => {
+		void nextTick(() => optionEls.value[index]?.scrollIntoView({ block: 'nearest' }));
+	},
+);
 </script>
 
 <template>
@@ -35,6 +44,7 @@ const emit = defineEmits<{
 		<button
 			v-for="(emoji, index) in items"
 			:key="emoji.shortcode"
+			ref="optionEls"
 			type="button"
 			role="option"
 			:aria-selected="index === activeIndex"
