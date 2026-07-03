@@ -134,6 +134,9 @@ export default defineNuxtConfig({
 
 	app: {
 		head: {
+			// Declare the document language so assistive tech can determine it.
+			// With ssr:false the shipped <html> would otherwise carry no lang (WCAG 3.1.1).
+			htmlAttrs: { lang: 'en' },
 			viewport: 'width=device-width, initial-scale=1, viewport-fit=cover',
 			link: [{ rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' }],
 		},
