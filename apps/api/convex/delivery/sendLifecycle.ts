@@ -190,9 +190,11 @@ async function dispatch(
 		await applyEffects(ctx, result.effects);
 
 		// ── Post-send OUTCOME signal (graduated-autonomy learning) ──
-		// A bounce or complaint on an AUTO-sent agent reply is unambiguous
-		// negative feedback for the category/sender it was sent under — record it
-		// so real-world delivery outcomes tune autonomy, not just the shrinking
+		// A bounce or complaint on any agent reply (auto-sent OR human-approved)
+		// is unambiguous negative feedback for the category/sender it was sent
+		// under — a bad recipient address or spam complaint is a real negative
+		// regardless of who pressed send — so record it for every agent_reply so
+		// real-world delivery outcomes tune autonomy, not just the shrinking
 		// human-reviewed subset (see agent/outcomeFeedback.ts). Fail-soft:
 		// scheduled out-of-band so a learning-loop failure can never roll back
 		// the delivery state transition. Only for genuinely new transitions.

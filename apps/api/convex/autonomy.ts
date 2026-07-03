@@ -365,7 +365,7 @@ export const recordOutcomeFeedback = internalMutation({
 /**
  * Load the fields the outcome-classification action needs about a prior
  * auto-sent message: whether it was actually AUTO-sent (so a human-reviewed
- * send is never mislabeled) plus the reply-side text to classify. Session-less
+ * send is never mislabeled) and the linked original message id. Session-less
  * — consumed by the `agent/outcomeFeedback` node action.
  */
 export const getReplyOutcomeContext = internalQuery({
