@@ -12,8 +12,8 @@ export const listSchema: BlockAttributeSchema = {
 					key: 'items',
 					label: 'List Items',
 					type: 'array',
-					itemSchema: [{ key: 'value', label: 'Text', type: 'text' }],
-					itemDefault: () => ({ value: 'New item' }),
+					// `items` is a string[] — new items must be plain strings, not objects.
+					itemType: 'string',
 				},
 			],
 		},
