@@ -13,6 +13,7 @@ import { internal } from '../_generated/api';
 import { getMutationContext } from '../lib/sessionOrganization';
 import { recordAuditLog } from '../lib/auditLog';
 import { transition as threadTransition } from './threads/module';
+import type { CancelAutoSendOutcome } from './processingLifecycle';
 import { getOrThrow, throwNotFound, throwInvalidState } from '../_utils/errors';
 import { extractEmail } from '../lib/emailAddress';
 
@@ -136,7 +137,7 @@ export const undoAutoSend = adminMutation({
 	args: {
 		inboundMessageId: v.id('inboundMessages'),
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, args): Promise<CancelAutoSendOutcome> => {
 		const { userId } = await getMutationContext(ctx);
 
 		// Existence check, mirroring the sibling approve/reject mutations. Authz

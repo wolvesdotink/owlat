@@ -351,7 +351,7 @@ const cancelAutoSendReasonValidator = v.union(
 	v.literal('user_cancel'),
 );
 
-type CancelAutoSendOutcome = {
+export type CancelAutoSendOutcome = {
 	cancelled: boolean;
 	reason: 'no_pending_send' | 'not_approved' | 'already_sent' | 'cancelled';
 };
