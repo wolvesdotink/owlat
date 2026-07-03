@@ -10,9 +10,27 @@
  * it under the file-size ratchet.
  */
 
+import { computed } from 'vue';
 import type { ActiveMarks } from '@owlat/ui/composables/useRichText';
 
-defineProps<{ activeMarks: ActiveMarks }>();
+const props = withDefaults(
+	defineProps<{
+		activeMarks: ActiveMarks;
+		/**
+		 * `persistent` = the classic full-width bar bolted to the top of the editor
+		 * (border + surface background). `floating` = the format section embedded in
+		 * a floating bar that supplies its own chrome, so the toolbar stays neutral.
+		 */
+		variant?: 'persistent' | 'floating';
+	}>(),
+	{ variant: 'persistent' },
+);
+
+const containerClass = computed(() =>
+	props.variant === 'floating'
+		? 'flex items-center gap-0.5'
+		: 'flex items-center gap-0.5 px-1 py-1 border-b border-border-subtle bg-bg-surface',
+);
 
 const emit = defineEmits<{
 	(e: 'bold'): void;
@@ -26,9 +44,7 @@ const emit = defineEmits<{
 </script>
 
 <template>
-	<div
-		class="flex items-center gap-0.5 px-1 py-1 border-b border-border-subtle bg-bg-surface"
-	>
+	<div :class="containerClass">
 		<button
 			type="button"
 			class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"

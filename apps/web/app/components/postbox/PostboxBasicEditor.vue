@@ -45,6 +45,13 @@ const props = defineProps<{
 	rewriteEnabled?: boolean;
 	/** Mailbox whose voice profile personalizes rewrites (optional). */
 	rewriteMailboxId?: Id<'mailboxes'>;
+	/**
+	 * Show the classic persistent formatting toolbar bolted to the top of the
+	 * editor. Default (false) is the Apple-minimal mode: the toolbar is hidden
+	 * and a floating format bar appears above a non-empty text selection instead.
+	 * Keyboard shortcuts work in both modes.
+	 */
+	persistentToolbar?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -53,9 +60,13 @@ const emit = defineEmits<{
 
 const editorRef = ref<HTMLDivElement | null>(null);
 const surfaceRef = ref<HTMLDivElement | null>(null);
+// Component ref — `$el` is the bar's root, measured for an accurate flip.
+const formatBarRef = ref<{ $el?: HTMLElement } | null>(null);
 const isEmpty = ref(true);
 const activeMarks = ref<ActiveMarks>({ ...EMPTY_ACTIVE_MARKS });
 const ghostStyle = ref<Record<string, string> | null>(null);
+// Placement of the floating format bar (minimal mode). Null when hidden.
+const formatBarStyle = ref<Record<string, string> | null>(null);
 
 const richText = useRichText({
 	editorRef,
@@ -243,9 +254,84 @@ const rewriteCtl = usePostboxRewriteController({
 	surfaceRef,
 	richText,
 	enabled: () => props.rewriteEnabled === true,
+	// The standalone pill only shows in the classic persistent-toolbar mode. In
+	// the default floating mode the AI actions render inside the combined format
+	// bar (see `showAiActions` below), so the pill stays suppressed.
+	pillEnabled: () => props.persistentToolbar === true,
 	mailboxId: () => props.rewriteMailboxId,
 	emitContent,
 });
+
+// Whether the combined floating bar should render the AI rewrite actions: only
+// in floating mode, when the rewrite feature is on and the selection is eligible.
+const showAiActions = computed(
+	() =>
+		props.persistentToolbar !== true &&
+		props.rewriteEnabled === true &&
+		rewriteCtl.eligible.value,
+);
+
+// ── Floating format bar (minimal mode) ──────────────────────────────────
+// Above a non-empty selection inside the editor; flips below near the top,
+// clamped to the surface, hidden on scroll/blur/collapse. Never steals focus
+// (the bar container uses `mousedown.prevent`).
+
+function hasEditorSelection(): boolean {
+	const el = editorRef.value;
+	const sel = window.getSelection();
+	if (!el || !sel || sel.rangeCount === 0 || sel.isCollapsed) return false;
+	if (!el.contains(sel.anchorNode) || !el.contains(sel.focusNode)) return false;
+	return sel.toString().trim().length > 0;
+}
+
+function computeFormatBar() {
+	if (props.persistentToolbar === true || !hasEditorSelection()) {
+		formatBarStyle.value = null;
+		return;
+	}
+	const surface = surfaceRef.value;
+	const sel = window.getSelection();
+	if (!surface || !sel || sel.rangeCount === 0) {
+		formatBarStyle.value = null;
+		return;
+	}
+	const rect = sel.getRangeAt(0).getBoundingClientRect();
+	if (!rect || (rect.top === 0 && rect.left === 0 && rect.width === 0)) {
+		formatBarStyle.value = null; // fail-soft: hide rather than mis-place
+		return;
+	}
+	const host = surface.getBoundingClientRect();
+	const gap = 6;
+	const barHeight = formatBarRef.value?.$el?.offsetHeight ?? 40;
+	const left = Math.max(4, rect.left - host.left + surface.scrollLeft);
+	// `topInView` = selection top relative to the visible surface, deciding the flip.
+	const topInView = rect.top - host.top;
+	if (topInView < barHeight + gap) {
+		// Not enough room above → flip below the selection.
+		formatBarStyle.value = {
+			left: `${left}px`,
+			top: `${rect.bottom - host.top + surface.scrollTop + gap}px`,
+		};
+	} else {
+		formatBarStyle.value = {
+			left: `${left}px`,
+			top: `${rect.top - host.top + surface.scrollTop - gap}px`,
+			transform: 'translateY(-100%)',
+		};
+	}
+}
+
+// A rendered bar can be measured for an accurate flip, so recompute once mounted.
+function refreshFormatBar() {
+	computeFormatBar();
+	if (formatBarStyle.value) void nextTick(() => computeFormatBar());
+}
+
+function onSurfaceScroll() {
+	// Superhuman-style: the bar hides while the surface scrolls; it re-appears on
+	// the next selection change.
+	if (formatBarStyle.value) formatBarStyle.value = null;
+}
 
 // Markdown shortcuts intercept the raw input BEFORE the character lands, so a
 // conversion never flickers the literal marker into the DOM. When consumed the
@@ -296,6 +382,7 @@ function onBlur() {
 	emitContent();
 	ghost.cancel(); // never leave a ghost hanging over an unfocused editor
 	resetShortcutUndo(); // a literal-restore undo shouldn't survive leaving the editor
+	formatBarStyle.value = null; // never leave the floating bar over an unfocused editor
 }
 
 function onSelectionChange() {
@@ -306,6 +393,8 @@ function onSelectionChange() {
 	// A selection change aborts an in-flight rewrite (its anchor is now stale)
 	// and re-places the pill for the new selection.
 	rewriteCtl.onSelectionChange();
+	// Re-place (or hide) the floating format bar for the new selection.
+	refreshFormatBar();
 }
 
 function focusEditor() {
@@ -333,10 +422,12 @@ onMounted(() => {
 	syncEmptyState();
 	syncActiveMarks();
 	document.addEventListener('selectionchange', onSelectionChange);
+	surfaceRef.value?.addEventListener('scroll', onSurfaceScroll, { passive: true });
 });
 
 onBeforeUnmount(() => {
 	document.removeEventListener('selectionchange', onSelectionChange);
+	surfaceRef.value?.removeEventListener('scroll', onSurfaceScroll);
 	ghost.cancel();
 	rewriteCtl.dispose();
 });
@@ -360,7 +451,9 @@ defineExpose({ focus: focusEditor });
 
 <template>
 	<div class="flex flex-col h-full">
+		<!-- Classic persistent toolbar: only when the user opts back in via "Aa". -->
 		<PostboxEditorToolbar
+			v-if="persistentToolbar"
 			:active-marks="activeMarks"
 			@bold="withFocus(toggleBold)()"
 			@italic="withFocus(toggleItalic)()"
@@ -401,6 +494,29 @@ defineExpose({ focus: focusEditor });
 				:style="ghostStyle"
 				aria-hidden="true"
 			>{{ ghost.ghost.value }}</div>
+			<!--
+				Floating format bar (minimal mode): above the current selection. When
+				the AI rewrite pill would also show it merges in here as ONE combined
+				bar (format left, AI right) instead of a second stacked popover.
+			-->
+			<PostboxFloatingFormatBar
+				v-if="!persistentToolbar"
+				ref="formatBarRef"
+				:bar-style="formatBarStyle"
+				:active-marks="activeMarks"
+				:show-ai-actions="showAiActions"
+				:ai-loading="rewriteCtl.rewrite.isLoading()"
+				:ai-active-intent="rewriteCtl.rewrite.activeIntent.value"
+				:ai-languages="rewriteCtl.languages.value"
+				@bold="withFocus(toggleBold)()"
+				@italic="withFocus(toggleItalic)()"
+				@underline="withFocus(toggleUnderline)()"
+				@heading="(level) => withFocus(() => toggleHeading(level))()"
+				@list="(ordered) => withFocus(() => toggleList(ordered))()"
+				@blockquote="withFocus(toggleBlockquote)()"
+				@link="withFocus(setLink)()"
+				@ai-select="rewriteCtl.onSelect"
+			/>
 			<!-- AI rewrite pill + preview + undo affordance (all flag-gated). -->
 			<PostboxRewriteLayer
 				v-if="rewriteEnabled"

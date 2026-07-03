@@ -85,6 +85,17 @@ const { ghostSuggestionsEnabled } = usePostboxGhostGate();
 const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 const aiRewriteEnabled = computed(() => isFeatureEnabled('ai'));
 
+// Formatting-toolbar preference. Default is the Apple-minimal floating bar (only
+// on selection); the footer "Aa" affordance flips back to the classic persistent
+// toolbar and persists the choice per user.
+const { data: persistentToolbar, set: setPersistentToolbar } = useLocalStorage(
+	'postbox-composer-persistent-toolbar',
+	false,
+);
+function toggleToolbar() {
+	setPersistentToolbar(!persistentToolbar.value);
+}
+
 async function onFromChange(address: string) {
 	try {
 		await setIdentity(address);
@@ -354,6 +365,7 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } =
 				:ghost-thread-context="subject"
 				:rewrite-enabled="aiRewriteEnabled"
 				:rewrite-mailbox-id="mailboxId"
+				:persistent-toolbar="persistentToolbar"
 			/>
 			<EmailBuilder
 				v-else
@@ -443,6 +455,17 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } =
 					class="hidden"
 					@change="onPickFiles"
 				>
+				<button
+					v-if="composerMode === 'simple'"
+					type="button"
+					class="btn btn-ghost"
+					:class="{ 'text-brand': persistentToolbar }"
+					:aria-pressed="persistentToolbar"
+					:title="persistentToolbar ? 'Hide formatting toolbar (show on selection)' : 'Show formatting toolbar'"
+					@click="toggleToolbar"
+				>
+					<Icon name="lucide:type" class="w-4 h-4" />
+				</button>
 				<div
 					class="inline-flex items-center gap-0.5 bg-bg-surface rounded text-xs border border-border-subtle"
 				>
