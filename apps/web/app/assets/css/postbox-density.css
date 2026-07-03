@@ -34,6 +34,20 @@
 	display: none;
 }
 
+/*
+ * Windowed thread list: when the list virtualizes (large folders) each row is
+ * absolutely positioned by a JS row height (POSTBOX_ROW_HEIGHT), so the row box
+ * must be pinned to exactly `--pbx-row-intrinsic` rather than growing with its
+ * content. Overflow is clipped so an unusually tall row can never overlap its
+ * neighbour and desync the fixed-height math. Non-virtual (small) folders never
+ * get this class and keep their natural, content-sized height.
+ */
+.pbx-virtual-row {
+	height: var(--pbx-row-intrinsic);
+	overflow: hidden;
+	box-sizing: border-box;
+}
+
 /* Compact reader: pull the header spacing in so the message body starts higher. */
 [data-density='compact'] .pbx-reader-article {
 	padding-top: 1rem;
