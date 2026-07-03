@@ -105,7 +105,11 @@ fn notify_with_actions(
         ));
         match send_notification(&title, None, &body, Some(&options)) {
             Ok(NotificationResponse::ActionButton(label)) => {
-                let action = if label == "Mark read" { "read" } else { "archive" };
+                let action = if label == "Mark read" {
+                    "read"
+                } else {
+                    "archive"
+                };
                 emit_notification_action(&app, action, &message_id, &folder_role)
             }
             Ok(NotificationResponse::Click) => {

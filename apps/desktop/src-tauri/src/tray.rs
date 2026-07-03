@@ -54,8 +54,7 @@ fn build_menu<R: Runtime, M: Manager<R>>(
     menu.append(&sep_top)?;
 
     if peek.is_empty() {
-        let none =
-            MenuItem::with_id(manager, "peek-empty", "No unread mail", false, None::<&str>)?;
+        let none = MenuItem::with_id(manager, "peek-empty", "No unread mail", false, None::<&str>)?;
         menu.append(&none)?;
     } else {
         let header =
