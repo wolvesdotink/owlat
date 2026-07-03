@@ -415,7 +415,7 @@ export const adjustThresholds = internalAction({
 					newThreshold,
 				});
 				// A prior loosening suggestion is now stale — drop it.
-				await ctx.runMutation(internal.autonomy.clearGraduationSuggestion, {
+				await ctx.runMutation(internal.autonomySuggestions.clearGraduationSuggestion, {
 					category: rule.category,
 				});
 			} else if (rejectionRate < 0.10 && recentFeedback.length >= 20) {
@@ -426,7 +426,7 @@ export const adjustThresholds = internalAction({
 				const suggestedThreshold = Math.max(0.50, rule.autoApproveThreshold - 0.05);
 				// Only bother suggesting if it actually loosens something.
 				if (suggestedThreshold < rule.autoApproveThreshold) {
-					await ctx.runMutation(internal.autonomy.recordGraduationSuggestion, {
+					await ctx.runMutation(internal.autonomySuggestions.recordGraduationSuggestion, {
 						category: rule.category,
 						currentThreshold: rule.autoApproveThreshold,
 						suggestedThreshold,
@@ -439,123 +439,6 @@ export const adjustThresholds = internalAction({
 				}
 			}
 		}
-	},
-});
-
-// ============================================================
-// Graduation Suggestions (explicit-acceptance loosening)
-// ============================================================
-
-/**
- * Admin-gated read of pending graduation suggestions for the autonomy settings
- * UI. Each row is a category where the agent has earned a looser threshold but
- * may only get it once an owner/admin accepts. Newest first.
- */
-export const listGraduationSuggestions = adminQuery({
-	args: {},
-	handler: async (ctx) => {
-		await assertFeatureEnabled(ctx, 'ai.autonomy');
-		return await ctx.db.query('autonomySuggestions').order('desc').collect(); // bounded: at most one row per agent category
-	},
-});
-
-/**
- * Record (or refresh) a pending graduation suggestion for a category. Upserts on
- * category so repeated weekly runs don't pile up duplicates — the latest
- * evidence replaces the previous suggestion. Internal-only: the weekly cron is
- * the sole writer. Recording a suggestion NEVER changes the live threshold.
- */
-export const recordGraduationSuggestion = internalMutation({
-	args: {
-		category: v.string(),
-		currentThreshold: v.number(),
-		suggestedThreshold: v.number(),
-		evidence: v.object({
-			approved: v.number(),
-			sampleSize: v.number(),
-			rejectionRate: v.number(),
-		}),
-	},
-	returns: v.null(),
-	handler: async (ctx, args) => {
-		const existing = await ctx.db
-			.query('autonomySuggestions')
-			.withIndex('by_category', (q) => q.eq('category', args.category))
-			.first();
-
-		const now = Date.now();
-		if (existing) {
-			await ctx.db.patch(existing._id, {
-				currentThreshold: args.currentThreshold,
-				suggestedThreshold: args.suggestedThreshold,
-				evidence: args.evidence,
-				createdAt: now,
-			});
-			return null;
-		}
-
-		await ctx.db.insert('autonomySuggestions', {
-			category: args.category,
-			currentThreshold: args.currentThreshold,
-			suggestedThreshold: args.suggestedThreshold,
-			evidence: args.evidence,
-			createdAt: now,
-		});
-		return null;
-	},
-});
-
-/**
- * Clear any pending graduation suggestion for a category. Used when the cron
- * tightens a category (a stale loosening suggestion must not survive a rejection
- * spike). Internal-only.
- */
-export const clearGraduationSuggestion = internalMutation({
-	args: { category: v.string() },
-	returns: v.null(),
-	handler: async (ctx, args) => {
-		const existing = await ctx.db
-			.query('autonomySuggestions')
-			.withIndex('by_category', (q) => q.eq('category', args.category))
-			.first();
-		if (existing) await ctx.db.delete(existing._id);
-		return null;
-	},
-});
-
-/**
- * Explicitly accept a graduation suggestion: apply its suggested (looser)
- * threshold to the category's rule and clear the suggestion. This is the ONLY
- * path that lowers an auto-approve threshold — autonomy never widens without a
- * user's deliberate action. Owner/admin only.
- */
-export const acceptGraduationSuggestion = authedMutation({
-	args: { suggestionId: v.id('autonomySuggestions') },
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'organization:manage',
-			'Only owners and admins can widen autonomy',
-		);
-		await assertFeatureEnabled(ctx, 'ai.autonomy');
-
-		const suggestion = await ctx.db.get(args.suggestionId);
-		if (!suggestion) return; // already accepted/cleared — idempotent no-op
-
-		const rule = await ctx.db
-			.query('autonomyRules')
-			.withIndex('by_category', (q) => q.eq('category', suggestion.category))
-			.first();
-
-		if (rule) {
-			await ctx.db.patch(rule._id, {
-				autoApproveThreshold: suggestion.suggestedThreshold,
-				updatedAt: Date.now(),
-			});
-		}
-
-		// Clear the suggestion whether or not a rule still exists.
-		await ctx.db.delete(args.suggestionId);
 	},
 });
 
