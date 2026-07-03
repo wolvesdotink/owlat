@@ -165,7 +165,7 @@ export const inboxTables = {
 		// route step's final safety gate refuses to auto-send while this is set, so
 		// a best-guess reply always goes to human review. Never cleared by the
 		// pipeline; a human reviews and sends (or discards) the draft.
-		autoSendBlocked: v.optional(v.boolean()),
+		isAutoSendBlocked: v.optional(v.boolean()),
 		// Error tracking
 		errorMessage: v.optional(v.string()),
 		// Timestamps

@@ -190,7 +190,7 @@ export const start = internalAction({
  *   - `processingLifecycle.reconcileAbandonedClarifications` — the fallback
  *     cron gave up after the window; the questions are unanswered so the block
  *     is empty and the draft is a best-guess (the route step's safety gate
- *     refuses to auto-send it because `autoSendBlocked` is set).
+ *     refuses to auto-send it because `isAutoSendBlocked` is set).
  *
  * Re-enters the DRAFT step specifically (not the whole tail): it rebuilds the
  * retrieval context, folds in the confirmed answers, and schedules the draft

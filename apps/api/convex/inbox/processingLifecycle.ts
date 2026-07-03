@@ -377,7 +377,7 @@ export const reconcileStuckApproved = internalMutation({
 // A message parked in `awaiting_clarification` waits on a human answer. If the
 // owner never answers, it must not wedge there forever: after a configurable
 // window this cron gives up, marks the message so it can NEVER be auto-sent
-// (`autoSendBlocked`), routes it `awaiting_clarification → drafting`, and
+// (`isAutoSendBlocked`), routes it `awaiting_clarification → drafting`, and
 // re-enters the draft step with NO confirmed answers — producing a flagged
 // best-guess draft that always lands in the human review queue. Same fail-soft
 // posture as the stuck-approved reconcile: on uncertainty, degrade to human
@@ -418,7 +418,7 @@ export const reconcileAbandonedClarifications = internalMutation({
 			// even if the resumed draft races to the route step the safety gate
 			// (assertSafeToAutoSend) already sees the block. Direct patch of an
 			// advisory field — the processingStatus change goes through dispatch.
-			await ctx.db.patch(message._id, { autoSendBlocked: true });
+			await ctx.db.patch(message._id, { isAutoSendBlocked: true });
 
 			const outcome = await dispatch(ctx, message, {
 				to: 'drafting',

@@ -112,7 +112,7 @@ async function assertSafeToAutoSend(
 	// best-guess (the owner never confirmed the missing facts). Never auto-send
 	// it, regardless of autonomy tier or draft-quality score — a human must
 	// review. Set by the abandoned-clarification fallback cron.
-	if (message.autoSendBlocked) {
+	if (message.isAutoSendBlocked) {
 		return {
 			safe: false,
 			reason: 'Draft was produced from an abandoned clarification (best-guess); routing to human review.',
