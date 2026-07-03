@@ -180,7 +180,10 @@ filter_count=$(grep -rn "\.filter(" convex --include="*.ts" 2>/dev/null \
 # message's agentActions via the by_inbound_message index (one row per pipeline
 # step, ~5 max) to pick the most recent failed one — same bounded idiom as
 # inbox.queries.getMessageActions.
-COLLECT_BASELINE=192
+# Raised 192 → 193 for auth.memberErasure: the GDPR erasure sweep collects a
+# single mailbox's mailSnippets via the by_mailbox index (per-mailbox config
+# rows) to delete them — bounded, same idiom as the sibling erasure sweeps.
+COLLECT_BASELINE=193
 collect_count=$(grep -rn "\.collect()" convex --include="*.ts" 2>/dev/null \
 	| grep -v "/_generated/" \
 	| grep -v "/__tests__/" \
