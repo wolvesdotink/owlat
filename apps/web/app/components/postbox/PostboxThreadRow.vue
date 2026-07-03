@@ -41,13 +41,13 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-	(e: 'select'): void;
-	(e: 'toggle-select'): void;
-	(e: 'toggle-star'): void;
-	(e: 'toggle-read'): void;
-	(e: 'archive'): void;
-	(e: 'trash'): void;
-	(e: 'cancel-follow-up'): void;
+	select: [];
+	'toggle-select': [];
+	'toggle-star': [];
+	'toggle-read': [];
+	archive: [];
+	trash: [];
+	'cancel-follow-up': [];
 }>();
 
 const rowId = computed(() => `postbox-row-${props.msg._id}`);
