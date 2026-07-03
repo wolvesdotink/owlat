@@ -138,6 +138,50 @@ export const autocomplete = publicQuery({
 	},
 });
 
+/**
+ * Sender-facing state for the thread reader's VIP star + first-time-sender
+ * screener affordance: whether this address is flagged VIP, is a known contact
+ * (in the address book), has been waved through the screener, and whether the
+ * owner has the screener switched on at all. Drives whether the reader shows an
+ * "Accept sender" button. Soft-auth: anonymous / non-owner reads return a safe
+ * empty state (no flags, screener off) so nothing renders.
+ */
+// public: soft-auth — returns empty state for anonymous; mailbox ownership is still enforced in-handler
+export const senderState = publicQuery({
+	args: { mailboxId: v.id('mailboxes'), email: v.string() },
+	handler: async (ctx, args) => {
+		const empty = {
+			isVip: false,
+			isKnown: false,
+			isScreenerAccepted: false,
+			isScreenerEnabled: false,
+		};
+		const owned = await loadOwnedMailbox(ctx, args.mailboxId);
+		if (!owned.ok) return empty;
+		const email = canonical(args.email);
+		const settings = await ctx.db
+			.query('mailUserSettings')
+			.withIndex('by_user', (q) => q.eq('userId', owned.mailbox.userId))
+			.first();
+		const isScreenerEnabled = settings?.isSenderScreenerOn === true;
+		const contact = await ctx.db
+			.query('mailContacts')
+			.withIndex('by_mailbox_and_email', (q) =>
+				q.eq('mailboxId', args.mailboxId).eq('email', email)
+			)
+			.first();
+		if (!contact) return { ...empty, isScreenerEnabled };
+		return {
+			isVip: contact.isVip === true,
+			// A row with real correspondence history is a "known" contact; a bare
+			// VIP/accept row (useCount 0) still counts so its VIP star reads right.
+			isKnown: true,
+			isScreenerAccepted: contact.isScreenerAccepted === true,
+			isScreenerEnabled,
+		};
+	},
+});
+
 export const upsert = authedMutation({
 	args: {
 		mailboxId: v.id('mailboxes'),
