@@ -65,7 +65,12 @@ function cmdZ(): KeyboardEvent {
 	} as unknown as KeyboardEvent;
 }
 
-function makeEditor(html: string, opts?: { patternShortcuts?: boolean }) {
+type AsciiReplace = NonNullable<Parameters<typeof useRichText>[0]['asciiReplace']>;
+
+function makeEditor(
+	html: string,
+	opts?: { patternShortcuts?: boolean; asciiReplace?: AsciiReplace },
+) {
 	const editor = mount(html);
 	const editorRef = ref<HTMLElement | null>(editor);
 	const onChange = vi.fn();
@@ -73,9 +78,19 @@ function makeEditor(html: string, opts?: { patternShortcuts?: boolean }) {
 		editorRef,
 		onChange,
 		patternShortcuts: opts?.patternShortcuts ?? true,
+		asciiReplace: opts?.asciiReplace,
 	});
 	return { editor, onChange, ...rt };
 }
+
+/** A minimal `:)` → 🙂 matcher (only fires at a word boundary), for the tests. */
+const smileyReplace: AsciiReplace = (before) => {
+	if (!before.endsWith(':)')) return null;
+	const start = before.length - 2;
+	const prev = start > 0 ? before[start - 1]! : '';
+	if (start !== 0 && !/\s/.test(prev)) return null;
+	return { spanLen: 2, replacement: '🙂', literal: ':)' };
+};
 
 afterEach(() => {
 	vi.restoreAllMocks();
@@ -191,6 +206,50 @@ describe('inline shortcuts (trigger: closing char)', () => {
 		caretAtEndOf(firstText(editor.querySelector('code')!));
 		expect(handleBeforeInput(beforeInput('insertText', '*'))).toBe(false);
 		expect(editor.querySelector('em')).toBeNull();
+	});
+});
+
+describe('asciiReplace (convert-on-space, shared one-shot undo)', () => {
+	it('converts a boundary `:) ` to the emoji + the pressed space', () => {
+		const { editor, handleBeforeInput } = makeEditor('<p>ok :)</p>', {
+			asciiReplace: smileyReplace,
+		});
+		caretAtEndOf(firstText(editor.querySelector('p')!));
+		const ev = beforeInput('insertText', ' ');
+		expect(handleBeforeInput(ev)).toBe(true);
+		expect(ev.defaultPrevented).toBe(true);
+		expect(editor.textContent).toBe('ok 🙂 ');
+	});
+
+	it('first Cmd+Z restores the literal smiley + space as one step', () => {
+		const { editor, handleBeforeInput, handleShortcutUndoKeydown } = makeEditor(
+			'<p>ok :)</p>',
+			{ asciiReplace: smileyReplace },
+		);
+		caretAtEndOf(firstText(editor.querySelector('p')!));
+		handleBeforeInput(beforeInput('insertText', ' '));
+		expect(editor.textContent).toBe('ok 🙂 ');
+
+		const undo = cmdZ();
+		expect(handleShortcutUndoKeydown(undo)).toBe(true);
+		expect(undo.defaultPrevented).toBe(true);
+		expect(editor.textContent).toBe('ok :) ');
+	});
+
+	it('does not fire mid-word (matcher rejects a glued `:)`)', () => {
+		const { editor, handleBeforeInput } = makeEditor('<p>http:)</p>', {
+			asciiReplace: smileyReplace,
+		});
+		caretAtEndOf(firstText(editor.querySelector('p')!));
+		expect(handleBeforeInput(beforeInput('insertText', ' '))).toBe(false);
+		expect(editor.textContent).toBe('http:)');
+	});
+
+	it('is inert without a matcher (default: no ASCII conversion)', () => {
+		const { editor, handleBeforeInput } = makeEditor('<p>ok :)</p>');
+		caretAtEndOf(firstText(editor.querySelector('p')!));
+		expect(handleBeforeInput(beforeInput('insertText', ' '))).toBe(false);
+		expect(editor.textContent).toBe('ok :)');
 	});
 });
 

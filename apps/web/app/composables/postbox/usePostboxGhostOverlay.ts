@@ -18,6 +18,7 @@ import {
 	usePostboxGhostText,
 	type GhostTextRequestInput,
 } from '~/composables/postbox/usePostboxGhostText';
+import { measureCaretRect } from '~/utils/postboxCaretRect';
 
 export interface GhostOverlayOptions {
 	editorRef: Ref<HTMLElement | null>;
@@ -104,24 +105,15 @@ export function usePostboxGhostOverlay(opts: GhostOverlayOptions) {
 
 	/** Position the ghost overlay at the caret; drop it if the rect is unmeasurable. */
 	function positionGhost() {
-		const surface = opts.surfaceRef.value;
-		const sel = window.getSelection();
-		if (!surface || !sel || sel.rangeCount === 0) {
-			ghost.cancel();
-			return;
-		}
-		const range = sel.getRangeAt(0).cloneRange();
-		range.collapse(false);
-		const rects = range.getClientRects();
-		const rect = rects.length ? rects[rects.length - 1] : range.getBoundingClientRect();
-		if (!rect || (rect.top === 0 && rect.left === 0 && rect.height === 0)) {
+		const rect = measureCaretRect(opts.surfaceRef.value);
+		if (!rect) {
 			ghost.cancel(); // fail-soft: hide rather than mis-place
 			return;
 		}
-		const host = surface.getBoundingClientRect();
+		// Anchor the ghost at the caret's trailing edge (it continues the line).
 		ghostStyle.value = {
-			left: `${rect.right - host.left + surface.scrollLeft}px`,
-			top: `${rect.top - host.top + surface.scrollTop}px`,
+			left: `${rect.right}px`,
+			top: `${rect.top}px`,
 			height: `${rect.height}px`,
 		};
 	}
