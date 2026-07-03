@@ -13,6 +13,7 @@
 
 import { SESClient, SendEmailCommand, SendRawEmailCommand } from '@aws-sdk/client-ses';
 import { resolveSesClient } from '../../emailProviders/sesIdentity';
+import { withTimeout } from '../../inputGuards';
 import {
 	EmailErrorCode,
 	httpStatusToErrorCode,
@@ -23,6 +24,35 @@ import {
 	type SesExtras,
 } from '../types';
 import { RETRY_DELAYS_MS } from '../../constants';
+
+/**
+ * Upper bound on a single SES send call. Once the request is on the wire, a
+ * timeout is AMBIGUOUS — AWS may already have accepted (and delivered) it, but
+ * the response was lost. SES has no idempotency surface (no dedup header, no
+ * dedup on Configuration-Set tags), so we CANNOT let the dispatch helper retry
+ * such a timeout without risking a second delivery. See `sendEmail`.
+ */
+const SES_SEND_TIMEOUT_MS = 30_000;
+const SES_SEND_TIMEOUT_MESSAGE = 'SES send timed out';
+
+/**
+ * Was this send failure an ambiguous post-dispatch timeout (request may have
+ * been accepted)? Covers our own `withTimeout` sentinel plus the AWS SDK's
+ * native timeout/abort signals. These are TERMINAL for SES because a retry
+ * cannot be de-duped and would double-deliver.
+ */
+function isAmbiguousSesTimeout(name: string | undefined, message: string): boolean {
+	if (message === SES_SEND_TIMEOUT_MESSAGE) return true;
+	const lowerName = (name ?? '').toLowerCase();
+	if (lowerName === 'timeouterror' || lowerName === 'aborterror') return true;
+	const lower = message.toLowerCase();
+	return (
+		lower.includes('timed out') ||
+		lower.includes('timeout') ||
+		lower.includes('etimedout') ||
+		lower.includes('socket hang up')
+	);
+}
 
 let cachedClient: SESClient | null = null;
 
@@ -164,8 +194,6 @@ export const sesSendProvider: SendProviderModule<'ses'> = {
 		}
 
 		try {
-			let messageId: string | undefined;
-
 			const hasAttachments = !!(params.attachments && params.attachments.length > 0);
 			// `SendEmailCommand` silently drops custom headers, so any send that
 			// carries headers (e.g. List-Unsubscribe / List-Unsubscribe-Post for
@@ -174,21 +202,32 @@ export const sesSendProvider: SendProviderModule<'ses'> = {
 			// path. See PR-17.
 			const hasHeaders = !!(params.headers && Object.keys(params.headers).length > 0);
 
+			// Bound the send so a stuck socket becomes a deterministic timeout we
+			// can classify TERMINAL below (SES cannot dedup a retry). The send is
+			// kept inside each branch so the AWS SDK `send` overload narrows to the
+			// concrete command type. Both outputs expose `MessageId`.
+			let messageId: string | undefined;
 			if (hasAttachments || hasHeaders) {
-				const rawMessage = buildRawMimeMessage({
-					from: params.from,
-					to: params.to,
-					subject: params.subject,
-					html: params.html,
-					replyTo: params.replyTo,
-					headers: params.headers,
-					attachments: params.attachments ?? [],
-				});
-
 				const command = new SendRawEmailCommand({
-					RawMessage: { Data: new TextEncoder().encode(rawMessage) },
+					RawMessage: {
+						Data: new TextEncoder().encode(
+							buildRawMimeMessage({
+								from: params.from,
+								to: params.to,
+								subject: params.subject,
+								html: params.html,
+								replyTo: params.replyTo,
+								headers: params.headers,
+								attachments: params.attachments ?? [],
+							}),
+						),
+					},
 				});
-				const response = await client.send(command);
+				const response = await withTimeout(
+					client.send(command),
+					SES_SEND_TIMEOUT_MS,
+					SES_SEND_TIMEOUT_MESSAGE,
+				);
 				messageId = response.MessageId;
 			} else {
 				const command = new SendEmailCommand({
@@ -202,7 +241,11 @@ export const sesSendProvider: SendProviderModule<'ses'> = {
 					},
 					ReplyToAddresses: params.replyTo ? [params.replyTo] : undefined,
 				});
-				const response = await client.send(command);
+				const response = await withTimeout(
+					client.send(command),
+					SES_SEND_TIMEOUT_MS,
+					SES_SEND_TIMEOUT_MESSAGE,
+				);
 				messageId = response.MessageId;
 			}
 
@@ -218,6 +261,20 @@ export const sesSendProvider: SendProviderModule<'ses'> = {
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 			const errorName = error instanceof Error ? error.name : undefined;
+			// A post-dispatch timeout is AMBIGUOUS: SES may already have accepted
+			// and delivered the message, but the response was lost. SES has no
+			// idempotency surface, so retrying would double-deliver. Classify it
+			// TERMINAL (AMBIGUOUS_TIMEOUT is not retryable) so the dispatch helper
+			// does NOT re-send. Explicit AWS 5xx responses (ServiceUnavailable /
+			// InternalFailure) still map to the retryable SERVER_ERROR via
+			// `categorizeError` because AWS did not accept those.
+			if (isAmbiguousSesTimeout(errorName, errorMessage)) {
+				return {
+					success: false,
+					errorMessage,
+					errorCode: EmailErrorCode.AMBIGUOUS_TIMEOUT,
+				};
+			}
 			return {
 				success: false,
 				errorMessage,
