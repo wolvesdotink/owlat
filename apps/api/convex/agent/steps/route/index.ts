@@ -161,9 +161,7 @@ export const routeStep: AgentStepModule<'route', RouteInput, RouteOutput> = {
 	kind: 'route',
 
 	async execute(ctx, input) {
-		const out = (decision: 'auto_approve' | 'human_review', reason: string) => ({
-			output: { decision, reason, confidence: input.confidence, category: input.category },
-		});
+		type Decision = { decision: 'auto_approve' | 'human_review'; reason: string };
 
 		// The auto-approve threshold is compared against DRAFT quality, not the
 		// classifier confidence. When the self-check is unknown/failed this is
@@ -172,77 +170,106 @@ export const routeStep: AgentStepModule<'route', RouteInput, RouteOutput> = {
 		// this only swaps WHICH score feeds their threshold comparison.
 		const gateScore = resolveAutoApproveScore(input.draftQuality);
 
-		// Auto-approval is only honoured if the final outbound safety gate passes;
-		// otherwise it degrades to human review with the gate's reason.
-		const autoApprove = async (reason: string) => {
-			const gate = await assertSafeToAutoSend(ctx, input.inboundMessageId);
-			return gate.safe ? out('auto_approve', reason) : out('human_review', gate.reason);
+		// Compute the routing decision + its precise reason. The tiers, order, and
+		// safety gates are UNCHANGED — this only collects the outcome into one
+		// value so the reason can be persisted alongside it (below) for the review
+		// UI, without altering the decision itself.
+		const decide = async (): Promise<Decision> => {
+			// Auto-approval is only honoured if the final outbound safety gate
+			// passes; otherwise it degrades to human review with the gate's reason.
+			const autoApprove = async (reason: string): Promise<Decision> => {
+				const gate = await assertSafeToAutoSend(ctx, input.inboundMessageId);
+				return gate.safe
+					? { decision: 'auto_approve', reason }
+					: { decision: 'human_review', reason: gate.reason };
+			};
+
+			// Tier 1 — circuit-breaker safety gate. A pipeline with an open breaker
+			// (LLM failures, confidence degradation, rejection spike) never
+			// auto-sends; everything goes to human review until it recovers.
+			const breakers = await ctx.runQuery(
+				internal.agentHealth.getCircuitBreakersInternal,
+				{},
+			);
+			const openBreaker = breakers.find((b) => b.state === 'open');
+			if (openBreaker) {
+				return { decision: 'human_review', reason: `Circuit breaker ${openBreaker.breakerType} is open — routing to human review.` };
+			}
+
+			// Tier 2 — graduated autonomy (per-category rules), when enabled.
+			const autonomy = await ctx.runQuery(
+				internal.autonomy.checkPermissionInternal,
+				{ category: input.category, confidence: gateScore },
+			);
+			if (autonomy.mode === 'enabled') {
+				if (autonomy.allowed) {
+					// Apply the outbound safety gate BEFORE charging the daily cap, so
+					// a withheld send doesn't consume an auto-reply slot.
+					const gate = await assertSafeToAutoSend(ctx, input.inboundMessageId);
+					if (!gate.safe) return { decision: 'human_review', reason: gate.reason };
+
+					// Atomically charge the per-category daily cap. The query above is
+					// advisory for the cap — `incrementDailyCount` is the authority and
+					// re-checks it under a single serialized transaction, so two
+					// concurrent route steps can't both auto-approve past the cap.
+					// Route on its result.
+					const charge = await ctx.runMutation(internal.autonomy.incrementDailyCount, {
+						category: input.category,
+					});
+					if (charge.allowed) {
+						return { decision: 'auto_approve', reason: autonomy.reason ?? `Per-category autonomy rule for ${input.category} permits auto-approval.` };
+					}
+					return { decision: 'human_review', reason: charge.reason ?? `Per-category autonomy denied for ${input.category}.` };
+				}
+				return { decision: 'human_review', reason: autonomy.reason ?? `Per-category autonomy denied for ${input.category}.` };
+			}
+
+			// Tier 3 — legacy global fallback (autonomy flag off).
+			const cfg = await ctx.runQuery(
+				internal.agent.agentPipeline.getAgentConfig,
+				{},
+			);
+
+			if (cfg?.isAutoReplyEnabled && gateScore >= (cfg.confidenceThreshold ?? 0.8)) {
+				const dailyCount = cfg.dailyAutoReplyCount ?? 0;
+				const maxDaily = cfg.maxDailyAutoReplies ?? 100;
+				const resetAt = cfg.dailyAutoReplyResetAt ?? 0;
+				const isNewDay = Date.now() > resetAt;
+
+				if (isNewDay || dailyCount < maxDaily) {
+					return await autoApprove(`Draft quality ${gateScore} >= threshold ${cfg.confidenceThreshold}. Auto-approving.`);
+				}
+				return { decision: 'human_review', reason: `Daily auto-reply limit reached (${dailyCount}/${maxDaily}). Routing to human review.` };
+			}
+
+			return {
+				decision: 'human_review',
+				reason: cfg?.isAutoReplyEnabled
+					? `Draft quality ${gateScore} < threshold ${cfg?.confidenceThreshold ?? 0.8}. Routing to human review.`
+					: 'Auto-reply is disabled. Routing to human review.',
+			};
 		};
 
-		// Tier 1 — circuit-breaker safety gate. A pipeline with an open breaker
-		// (LLM failures, confidence degradation, rejection spike) never
-		// auto-sends; everything goes to human review until it recovers.
-		const breakers = await ctx.runQuery(
-			internal.agentHealth.getCircuitBreakersInternal,
-			{},
-		);
-		const openBreaker = breakers.find((b) => b.state === 'open');
-		if (openBreaker) {
-			return out('human_review', `Circuit breaker ${openBreaker.breakerType} is open — routing to human review.`);
+		const { decision, reason } = await decide();
+
+		// Persist the decision + reason + confidence onto the inbound message so
+		// the review UI can explain WHY ("Sent because… / Held because…"). This is
+		// a READ-SIDE MIRROR of the decision the `route()` result already carries —
+		// it changes NO routing. FAIL-SOFT: explainability is best-effort, so a
+		// persistence failure must degrade to "no rationale shown" and never wedge
+		// the walker or block the send/review transition.
+		try {
+			await ctx.runMutation(internal.inbox.processingLifecycle.recordAgentDecision, {
+				inboundMessageId: input.inboundMessageId,
+				decision,
+				reason,
+				confidence: input.confidence,
+			});
+		} catch {
+			// swallowed: the routing decision below stands regardless
 		}
 
-		// Tier 2 — graduated autonomy (per-category rules), when enabled.
-		const autonomy = await ctx.runQuery(
-			internal.autonomy.checkPermissionInternal,
-			{ category: input.category, confidence: gateScore },
-		);
-		if (autonomy.mode === 'enabled') {
-			if (autonomy.allowed) {
-				// Apply the outbound safety gate BEFORE charging the daily cap, so a
-				// withheld send doesn't consume an auto-reply slot.
-				const gate = await assertSafeToAutoSend(ctx, input.inboundMessageId);
-				if (!gate.safe) return out('human_review', gate.reason);
-
-				// Atomically charge the per-category daily cap. The query above is
-				// advisory for the cap — `incrementDailyCount` is the authority and
-				// re-checks it under a single serialized transaction, so two
-				// concurrent route steps can't both auto-approve past the cap.
-				// Route on its result.
-				const charge = await ctx.runMutation(internal.autonomy.incrementDailyCount, {
-					category: input.category,
-				});
-				if (charge.allowed) {
-					return out('auto_approve', autonomy.reason ?? `Per-category autonomy rule for ${input.category} permits auto-approval.`);
-				}
-				return out('human_review', charge.reason ?? `Per-category autonomy denied for ${input.category}.`);
-			}
-			return out('human_review', autonomy.reason ?? `Per-category autonomy denied for ${input.category}.`);
-		}
-
-		// Tier 3 — legacy global fallback (autonomy flag off).
-		const cfg = await ctx.runQuery(
-			internal.agent.agentPipeline.getAgentConfig,
-			{},
-		);
-
-		if (cfg?.isAutoReplyEnabled && gateScore >= (cfg.confidenceThreshold ?? 0.8)) {
-			const dailyCount = cfg.dailyAutoReplyCount ?? 0;
-			const maxDaily = cfg.maxDailyAutoReplies ?? 100;
-			const resetAt = cfg.dailyAutoReplyResetAt ?? 0;
-			const isNewDay = Date.now() > resetAt;
-
-			if (isNewDay || dailyCount < maxDaily) {
-				return await autoApprove(`Draft quality ${gateScore} >= threshold ${cfg.confidenceThreshold}. Auto-approving.`);
-			}
-			return out('human_review', `Daily auto-reply limit reached (${dailyCount}/${maxDaily}). Routing to human review.`);
-		}
-
-		return out(
-			'human_review',
-			cfg?.isAutoReplyEnabled
-				? `Draft quality ${gateScore} < threshold ${cfg?.confidenceThreshold ?? 0.8}. Routing to human review.`
-				: 'Auto-reply is disabled. Routing to human review.',
-		);
+		return { output: { decision, reason, confidence: input.confidence, category: input.category } };
 	},
 
 	route(output, _input, _runCtx) {

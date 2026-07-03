@@ -176,6 +176,13 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 						/>
 					</div>
 
+					<!-- Why it was escalated + what the agent had to work from -->
+					<InboxDecisionRationale
+						:decision="item.message.agentDecision"
+						:grounding-sources="item.message.groundingSources"
+						class="mb-4"
+					/>
+
 					<!-- Actions -->
 					<div class="flex items-center gap-2">
 						<button
@@ -216,6 +223,13 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 							{{ item.message.draftResponse }}
 						</p>
 					</div>
+
+					<!-- Why it was held + what it was grounded in (read-only) -->
+					<InboxDecisionRationale
+						:decision="item.message.agentDecision"
+						:grounding-sources="item.message.groundingSources"
+						class="mb-4"
+					/>
 
 					<!-- Actions -->
 					<div class="flex items-center gap-2">

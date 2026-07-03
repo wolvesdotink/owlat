@@ -431,6 +431,33 @@ export const draftQualityValidator = v.object({
 	flags: v.array(v.string()),
 });
 
+// Grounding source (inboundMessages.groundingSources array entry).
+// Emitted by the `context_retrieval` Agent step: the prior emails + knowledge
+// entries that were ACTUALLY assembled into the briefing the draft was written
+// from — i.e. the exact set that passed the SAME contact-scope gate the draft
+// used (lib/contactScope.ts + knowledge/retrieval.ts). Read-side provenance
+// ONLY, surfaced as the "Grounded in:" list in the review UI — it drives no
+// routing. `title` is UNTRUSTED retrieved text (a thread subject / knowledge
+// title); render it as escaped text, never as HTML. `id` is for UI keying only.
+export const groundingSourceValidator = v.object({
+	type: v.union(v.literal('thread'), v.literal('knowledge')),
+	id: v.string(),
+	title: v.string(),
+});
+
+// Router decision record (inboundMessages.agentDecision).
+// Emitted by the `route` Agent step: the auto-approve / human-review outcome
+// with the precise human-readable `reason` it computed and the classifier
+// `confidence` at decision time. Persisted purely so the review UI can explain
+// WHY a message was sent or held ("Sent because… / Held because…") — it is a
+// READ-SIDE MIRROR of the decision, changing no routing. Absent on messages
+// processed before this field existed; the UI degrades cleanly.
+export const agentDecisionValidator = v.object({
+	decision: v.union(v.literal('auto_approve'), v.literal('human_review')),
+	reason: v.string(),
+	confidence: v.number(),
+});
+
 // Content scan flag (contentScanResults.flags array entry).
 // Mirrors @owlat/email-scanner ContentFlag — keep in sync when that type changes.
 export const contentScanFlagValidator = v.object({

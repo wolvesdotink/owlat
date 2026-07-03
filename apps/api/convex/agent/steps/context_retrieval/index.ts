@@ -46,11 +46,24 @@ export interface ContextCoverage {
 	lowCoverage: boolean;
 }
 
+/**
+ * A single provenance entry: one prior email or knowledge entry that was
+ * ACTUALLY assembled into the briefing (so it passed the same contact-scope gate
+ * the draft was grounded in). Read-side only — surfaced as the review UI's
+ * "Grounded in:" list; `title` is UNTRUSTED retrieved text.
+ */
+export interface GroundingSource {
+	type: 'thread' | 'knowledge';
+	id: string;
+	title: string;
+}
+
 export interface ContextRetrievalOutput {
 	context: string;
 	tier: 'normal' | 'compacted' | 'emergency';
 	estimatedTokens: number;
 	coverage: ContextCoverage;
+	groundingSources: GroundingSource[];
 }
 
 export const contextRetrievalStep: AgentStepModule<
@@ -77,6 +90,12 @@ export const contextRetrievalStep: AgentStepModule<
 		let hasFiles = false;
 		let knowledgeHitCount = 0;
 		let topScore: number | undefined;
+
+		// Provenance — the exact prior emails + knowledge entries fed into the
+		// briefing below. Only sources that were actually appended are recorded,
+		// so this list can never name a source the draft wasn't grounded in, and
+		// (because retrieval is contact-scoped) never a cross-contact source.
+		const groundingSources: GroundingSource[] = [];
 
 		// 1. Contact profile
 		if (message.contactId) {
@@ -128,6 +147,13 @@ export const contextRetrievalStep: AgentStepModule<
 			);
 			if (threadMessages.length > 0) {
 				hasThread = true;
+				for (const m of threadMessages) {
+					groundingSources.push({
+						type: 'thread',
+						id: m._id as string,
+						title: m.subject || '(no subject)',
+					});
+				}
 				contextParts.push(
 					'[CONVERSATION HISTORY]\n' +
 						threadMessages
@@ -176,6 +202,13 @@ export const contextRetrievalStep: AgentStepModule<
 			if (knowledge.length > 0) {
 				hasKnowledge = true;
 				knowledgeHitCount = knowledge.length;
+				for (const k of knowledge) {
+					groundingSources.push({
+						type: 'knowledge',
+						id: k._id as string,
+						title: k.title,
+					});
+				}
 				// Top vector-similarity score (0 for FTS-only hits); undefined
 				// only when every hit lacks a score.
 				for (const k of knowledge) {
@@ -272,6 +305,26 @@ export const contextRetrievalStep: AgentStepModule<
 			finalContext = `${contactInfo}\n\n${currentMessage}`;
 		}
 
+		// Trim provenance to what SURVIVED compaction so the review UI's
+		// "Grounded in:" list never over-claims sources the model didn't actually
+		// see. `normal` keeps everything (finalContext === fullContext). `emergency`
+		// keeps only [CONTACT] + [CURRENT MESSAGE], so no thread/knowledge source
+		// survives. `compacted` is a tail-slice, so a source survives iff its
+		// identifying text is still present in the truncated briefing.
+		let survivingSources: GroundingSource[];
+		if (tier === 'normal') {
+			survivingSources = groundingSources;
+		} else if (tier === 'emergency') {
+			survivingSources = [];
+		} else {
+			survivingSources = [];
+			for (const src of groundingSources) {
+				if (src.title && finalContext.includes(src.title)) {
+					survivingSources.push(src);
+				}
+			}
+		}
+
 		// Derive the advisory coverage signal. `lowCoverage` = no substantive
 		// grounding (no knowledge, files, or thread history) — the model would
 		// be replying essentially blind. Contact identity alone does NOT count
@@ -295,11 +348,20 @@ export const contextRetrievalStep: AgentStepModule<
 				inboundMessageId: input.inboundMessageId,
 				contextTier: tier,
 				contextCoverage: coverage,
+				...(survivingSources.length > 0
+					? { groundingSources: survivingSources }
+					: {}),
 			},
 		);
 
 		return {
-			output: { context: finalContext, tier, estimatedTokens, coverage },
+			output: {
+				context: finalContext,
+				tier,
+				estimatedTokens,
+				coverage,
+				groundingSources: survivingSources,
+			},
 		};
 	},
 

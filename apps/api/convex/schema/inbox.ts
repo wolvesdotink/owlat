@@ -5,6 +5,8 @@ import {
 	classificationValidator,
 	contextCoverageValidator,
 	draftQualityValidator,
+	groundingSourceValidator,
+	agentDecisionValidator,
 	tokenUsageValidator,
 } from '../lib/convexValidators';
 
@@ -121,6 +123,16 @@ export const inboxTables = {
 		// Retrieval coverage / grounding signal from context_retrieval —
 		// advisory only (see contextCoverageValidator).
 		contextCoverage: v.optional(contextCoverageValidator),
+		// The prior emails + knowledge entries that context_retrieval actually
+		// assembled into the draft's briefing (the same contact-scoped set the
+		// draft was grounded in). Read-side provenance for the review UI's
+		// "Grounded in:" list — drives no routing. See groundingSourceValidator.
+		groundingSources: v.optional(v.array(groundingSourceValidator)),
+		// The router's auto-approve / human-review outcome + the exact reason it
+		// computed + the classifier confidence at decision time. Read-side mirror
+		// of the routing decision so the review UI can explain WHY. See
+		// agentDecisionValidator.
+		agentDecision: v.optional(agentDecisionValidator),
 		// Human reviewer assignment
 		assignedTo: v.optional(v.string()),
 		// Error tracking
