@@ -123,6 +123,38 @@ export const rejectDraft = adminMutation({
 });
 
 /**
+ * Undo an in-flight autonomous auto-send during its delay / undo window.
+ *
+ * Backs the "Sending in 0:59 — Undo" control on the review surface. The message
+ * was auto-approved and its send scheduled behind `agentConfig.autoSendDelayMs`;
+ * this aborts the scheduled send (if still pending) and routes the reply back to
+ * the human review queue (`approved → draft_ready`) rather than dropping it —
+ * the same fail-soft degrade as a landing thread reply. Idempotent: a message
+ * whose send already fired (or was never delayed) returns `cancelled: false`.
+ */
+export const undoAutoSend = adminMutation({
+	args: {
+		inboundMessageId: v.id('inboundMessages'),
+	},
+	handler: async (ctx, args) => {
+		const { userId } = await getMutationContext(ctx);
+
+		// Existence check, mirroring the sibling approve/reject mutations. Authz
+		// is the `adminMutation` wrapper (owner/admin of this single-org
+		// deployment); there is exactly one org's inbox here.
+		await getOrThrow(ctx, args.inboundMessageId, 'Message');
+
+		const result = await ctx.runMutation(internal.inbox.processingLifecycle.cancelAutoSend, {
+			inboundMessageId: args.inboundMessageId,
+			reason: 'user_cancel',
+			userId,
+		});
+
+		return result;
+	},
+});
+
+/**
  * Edit the draft text before approving
  */
 export const editDraft = adminMutation({
