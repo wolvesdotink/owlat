@@ -59,9 +59,13 @@ const {
 	activeSignatureId,
 	applySignature,
 	attachments,
-	isUploading,
+	uploads,
+	attachmentSizeMeter,
+	thumbUrlFor,
 	addFiles,
 	removeAttachment,
+	cancelUpload,
+	retryUpload,
 	addInlineImage,
 	removeInlineImage,
 	isSaving,
@@ -381,32 +385,15 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } =
 			/>
 		</div>
 
-		<div
-			v-if="attachments.length > 0 || isUploading"
-			class="px-3 py-2 border-t border-border-subtle flex flex-wrap gap-2"
-		>
-			<span
-				v-for="att in attachments"
-				:key="att.storageId"
-				class="inline-flex items-center gap-1.5 pl-2 pr-1 py-1 rounded bg-bg-surface text-xs"
-			>
-				<Icon name="lucide:paperclip" class="w-3 h-3 text-text-tertiary" />
-				<span class="truncate max-w-[140px]">{{ att.filename }}</span>
-				<span class="text-text-tertiary">{{ formatCompactFileSize(att.size) }}</span>
-				<button
-					type="button"
-					class="p-0.5 rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary"
-					:aria-label="`Remove ${att.filename}`"
-					@click="removeAttachment(att.storageId)"
-				>
-					<Icon name="lucide:x" class="w-3 h-3" />
-				</button>
-			</span>
-			<span v-if="isUploading" class="inline-flex items-center gap-1 text-xs text-text-tertiary">
-				<Icon name="lucide:loader-2" class="w-3 h-3 animate-spin" />
-				Uploading…
-			</span>
-		</div>
+		<PostboxComposerAttachments
+			:attachments="attachments"
+			:uploads="uploads"
+			:meter="attachmentSizeMeter"
+			:thumb-url-for="thumbUrlFor"
+			@remove="removeAttachment"
+			@cancel="cancelUpload"
+			@retry="retryUpload"
+		/>
 
 		<footer class="px-3 py-2 border-t border-border-subtle flex items-center justify-between">
 			<div class="flex items-center gap-2">

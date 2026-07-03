@@ -12,6 +12,8 @@ import type { Id } from '@owlat/api/dataModel';
 import { MAX_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
 import { extractAttachments } from '@owlat/shared/mailMime';
 import { downscaleImageFile } from './postboxInlineImage';
+import { attachmentMeter } from './postboxAttachmentMeter';
+import { createAttachmentUploads, xhrPutFile } from './postboxAttachmentUploads';
 
 // Per-file attachment ceiling for user-facing copy, derived from the shared cap
 // (mirrors MAX_LIBRARY_FILE_MB) so the label moves with MAX_ATTACHMENT_BYTES.
@@ -43,54 +45,69 @@ export function usePostboxComposeAttachments(opts: {
 	});
 
 	const attachments = ref<ComposerAttachment[]>([]);
+	// Inline-image uploads still use their own path; count them so `isUploading`
+	// covers both surfaces. File attachments track their own per-chip state below.
 	const uploadingCount = ref(0);
-	const isUploading = computed(() => uploadingCount.value > 0);
 
 	const { showToast } = useToast();
 
-	/** Upload each file to Convex storage, then attach it to the draft. */
+	// Object URLs for committed image attachments, keyed by storageId, so the
+	// chip can show a thumbnail without a second fetch. Revoked on removal/unmount.
+	const thumbUrls = new Map<string, string>();
+
+	// Per-file upload chips (progress / cancel / retry / thumbnail). Committed
+	// uploads graduate into `attachments` via onCommitted; the transport (Convex
+	// upload URL + XHR + addAttachment) is injected so the state machine stays
+	// testable and this composable owns only the wiring.
+	const uploader = createAttachmentUploads({
+		generateUploadUrl: async () => (await generateUploadUrl.run({})) ?? null,
+		putFile: xhrPutFile,
+		attach: async (a) => {
+			const draftIdVal = opts.draftId.value;
+			if (!draftIdVal) return false;
+			// addAttachment returns { ok } — run() yields undefined on failure.
+			const result = await addAttachmentOp.run({
+				draftId: draftIdVal,
+				storageId: a.storageId as Id<'_storage'>,
+				filename: a.filename,
+				contentType: a.contentType,
+				size: a.size,
+			});
+			return !!result?.ok;
+		},
+		onCommitted: (a, thumbUrl) => {
+			if (thumbUrl) thumbUrls.set(a.storageId, thumbUrl);
+			attachments.value = [...attachments.value, a];
+		},
+	});
+
+	const isUploading = computed(() => uploader.isUploading.value || uploadingCount.value > 0);
+
+	// Total-size meter across committed + in-flight attachments.
+	const attachmentSizeMeter = computed(() => {
+		const committed = attachments.value.reduce((sum, a) => sum + a.size, 0);
+		const inflight = uploader.uploads.value.reduce((sum, c) => sum + c.size, 0);
+		return attachmentMeter(committed + inflight);
+	});
+
+	/** Object URL for a committed image attachment's thumbnail, or null. */
+	function thumbUrlFor(storageId: string): string | null {
+		return thumbUrls.get(storageId) ?? null;
+	}
+
+	/** Reject oversized files up front, then upload the rest as tracked chips. */
 	async function addFiles(files: File[] | FileList) {
 		const id = await opts.ensureDraft();
 		if (!id) return;
+		const accepted: File[] = [];
 		for (const file of Array.from(files)) {
 			if (file.size > MAX_ATTACHMENT_BYTES) {
 				showToast(`${file.name} is too large (max ${MAX_ATTACHMENT_MB} MB).`, 'error');
 				continue;
 			}
-			uploadingCount.value += 1;
-			try {
-				const url = await generateUploadUrl.run({});
-				if (!url) continue;
-				const res = await fetch(url, {
-					method: 'POST',
-					headers: { 'Content-Type': file.type || 'application/octet-stream' },
-					body: file,
-				});
-				if (!res.ok) {
-					showToast(`Couldn't upload ${file.name}.`, 'error');
-					continue;
-				}
-				const { storageId } = (await res.json()) as { storageId: string };
-				const contentType = file.type || 'application/octet-stream';
-				// addAttachment now returns { ok } — useBackendOperation.run yields
-				// undefined on failure, so gate on the truthy result, not !== undefined
-				// (a void mutation would also be undefined on success).
-				const result = await addAttachmentOp.run({
-					draftId: id,
-					storageId: storageId as Id<'_storage'>,
-					filename: file.name,
-					contentType,
-					size: file.size,
-				});
-				if (!result?.ok) continue;
-				attachments.value = [
-					...attachments.value,
-					{ storageId, filename: file.name, contentType, size: file.size },
-				];
-			} finally {
-				uploadingCount.value -= 1;
-			}
+			accepted.push(file);
 		}
+		if (accepted.length > 0) uploader.addFiles(accepted);
 	}
 
 	// Inline body images: their bytes live in the SAME draft attachment store as
@@ -182,6 +199,11 @@ export function usePostboxComposeAttachments(opts: {
 		});
 		if (!result?.ok) return;
 		attachments.value = attachments.value.filter((a) => a.storageId !== storageId);
+		const thumb = thumbUrls.get(storageId);
+		if (thumb) {
+			URL.revokeObjectURL(thumb);
+			thumbUrls.delete(storageId);
+		}
 	}
 
 	// Attach a transient generated file (e.g. an iCalendar RSVP REPLY) handed off
@@ -212,11 +234,23 @@ export function usePostboxComposeAttachments(opts: {
 		}
 	});
 
+	// Release outstanding object URLs when the composer is torn down.
+	onUnmounted(() => {
+		uploader.dispose();
+		for (const url of thumbUrls.values()) URL.revokeObjectURL(url);
+		thumbUrls.clear();
+	});
+
 	return {
 		attachments,
+		uploads: uploader.uploads,
 		isUploading,
+		attachmentSizeMeter,
+		thumbUrlFor,
 		addFiles,
 		removeAttachment,
+		cancelUpload: uploader.cancel,
+		retryUpload: uploader.retry,
 		addInlineImage,
 		removeInlineImage,
 	};
