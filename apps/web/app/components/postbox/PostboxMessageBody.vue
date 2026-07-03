@@ -31,6 +31,11 @@ import {
 	POSTBOX_DARK_PALETTE,
 	type PostboxRenderScheme,
 } from '~/utils/postboxDarkMode';
+import {
+	getPostboxRenderCache,
+	postboxRenderKey,
+	type PostboxRenderEntry,
+} from '~/utils/postboxRenderCache';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 
@@ -176,27 +181,71 @@ const quotedSplit = computed(() => {
 	};
 });
 
-// Adaptive dark rendering: classify the sanitized HTML and decide the iframe
-// scheme. Runs AFTER sanitization on the sanitized string only; when the app
-// is light (or the message is forced light) it's a pass-through no-op.
-const adapted = computed(() => {
+// Run the full render pipeline for the current message + options. Kept as a
+// plain function (not a chain of computeds) so a cache hit can skip ALL of it —
+// sanitize-html, dark-mode adaptation, tracker detection, image gating and link
+// transparency — rather than only skipping the final string concat.
+function buildRender(): Omit<PostboxRenderEntry, 'height'> {
 	const split = quotedSplit.value;
 	const fresh = sanitize(split.fresh);
 	const quoted = showQuoted.value ? sanitize(split.quoted) : '';
-	const combined = quoted ? `${fresh}<hr style="margin:1em 0;border:0;border-top:1px solid #eee">${quoted}` : fresh;
-	return adaptEmailHtml(combined, appScheme.value);
+	const combined = quoted
+		? `${fresh}<hr style="margin:1em 0;border:0;border-top:1px solid #eee">${quoted}`
+		: fresh;
+	// Adaptive dark rendering runs AFTER sanitization on the sanitized string
+	// only; when the app is light (or forced light) it's a pass-through no-op.
+	const adapted = adaptEmailHtml(combined, appScheme.value);
+	// Tracking-pixel detection on the SANITIZED output only (never raw mail).
+	const detection = detectTrackers(adapted.html);
+	let html = adapted.html;
+	// "Show images" loads real content but keeps probable tracking pixels
+	// stripped; "Load everything" is the explicit escalation past that.
+	if (showImages.value && !loadEverything.value && detection.pixelCount > 0) {
+		html = stripTrackerPixels(html);
+	}
+	const gated = gateImages(html, showImages.value);
+	// Link transparency (real-host tooltips, phish-mismatch markers, tracking
+	// param stripping) runs on sanitized output only and fails soft to a no-op.
+	const linked = rewriteLinks(applyLinkTransparency(gated));
+	const srcdoc = `<!doctype html><html><head>${META_CSP}${buildBaseStyle(adapted.scheme, adapted.kind)}</head><body>${linked || '(empty message)'}</body></html>`;
+	return { srcdoc, renderScheme: adapted.scheme, detection };
+}
+
+// The render key includes every option that changes the output; a body is
+// immutable once fetched, so a hit is always valid. We only touch the cache
+// once the body content is final (not mid-fetch), so a transient loading state
+// can never be memoised under a real key.
+const contentFinal = computed(() => !needsBodyFetch.value || bodyFetchSettled.value);
+const renderKey = computed(() =>
+	props.message._id
+		? postboxRenderKey(props.message._id, {
+				scheme: appScheme.value,
+				showImages: showImages.value,
+				loadEverything: loadEverything.value,
+				showQuoted: showQuoted.value,
+			})
+		: null
+);
+
+// Session-scoped LRU: re-opening a thread skips the whole pipeline above.
+const render = computed<Omit<PostboxRenderEntry, 'height'>>(() => {
+	const key = renderKey.value;
+	const cache = getPostboxRenderCache();
+	if (key && contentFinal.value) {
+		const hit = cache.get(key);
+		if (hit) return hit;
+		const built = buildRender();
+		cache.set(key, { ...built, height: null });
+		return built;
+	}
+	return buildRender();
 });
 
+const srcdoc = computed(() => render.value.srcdoc);
 // Scheme the iframe actually renders with ("designed" mail stays light —
 // a paper card on the dark app background — even when the app is dark).
-const renderScheme = computed(() => adapted.value.scheme);
-
-// Tracking-pixel detection on the SANITIZED output only (never raw mail
-// HTML). Pure + fail-soft: a detector error reports zero trackers and the
-// reader behaves exactly as it did without this feature.
-const trackerDetection = computed<TrackerDetection>(() =>
-	detectTrackers(adapted.value.html)
-);
+const renderScheme = computed(() => render.value.renderScheme);
+const trackerDetection = computed<TrackerDetection>(() => render.value.detection);
 const hasTrackers = computed(() => trackerDetection.value.pixelCount > 0);
 
 watch(
@@ -205,31 +254,35 @@ watch(
 	{ immediate: true }
 );
 
-const srcdoc = computed(() => {
-	let html = adapted.value.html;
-	// "Show images" loads real content but keeps probable tracking pixels
-	// stripped; "Load everything" is the explicit escalation past that.
-	if (showImages.value && !loadEverything.value && hasTrackers.value) {
-		html = stripTrackerPixels(html);
-	}
-	const gated = gateImages(html, showImages.value);
-	// Link transparency (real-host tooltips, phish-mismatch markers, tracking
-	// param stripping) runs on sanitized output only and fails soft to a no-op.
-	const linked = rewriteLinks(applyLinkTransparency(gated));
-	return `<!doctype html><html><head>${META_CSP}${buildBaseStyle(renderScheme.value, adapted.value.kind)}</head><body>${linked || '(empty message)'}</body></html>`;
-});
-
 const hasBlockedImages = computed(
 	() => !showImages.value && /<img\s/i.test(effectiveHtml.value ?? '')
 );
 const hasQuotedContent = computed(() => quotedSplit.value.hasQuote);
 
-// Auto-resize iframe to content height
+// Pre-size the iframe from the last measured height for this exact render so
+// re-opening a thread doesn't flash the 200px min-height and jump to full size.
+// Reconciled against the real content height on load. Kept as an explicit ref
+// (rather than reading the non-reactive cache in the template) so the height
+// updates when the render key changes.
+const presetHeight = ref<number | null>(null);
+watch(
+	renderKey,
+	(key) => {
+		presetHeight.value = key ? getPostboxRenderCache().get(key)?.height ?? null : null;
+	},
+	{ immediate: true }
+);
+
+// Auto-resize iframe to content height, and remember it so the next render of
+// this message can pre-size instead of jumping.
 function resizeIframe() {
 	const iframe = iframeRef.value;
 	if (!iframe?.contentDocument) return;
-	const h = iframe.contentDocument.documentElement.scrollHeight;
-	iframe.style.height = `${Math.max(120, h)}px`;
+	const h = Math.max(120, iframe.contentDocument.documentElement.scrollHeight);
+	iframe.style.height = `${h}px`;
+	presetHeight.value = h;
+	const key = renderKey.value;
+	if (key) getPostboxRenderCache().update(key, { height: h });
 }
 
 // The iframe mounts late when the body-loading skeleton renders first, so
@@ -300,6 +353,7 @@ watch([showQuoted, showImages, loadEverything], () => {
 			:class="renderScheme === 'dark' ? '' : 'bg-white'"
 			:style="{
 				minHeight: '200px',
+				height: presetHeight ? `${presetHeight}px` : undefined,
 				backgroundColor: renderScheme === 'dark' ? POSTBOX_DARK_PALETTE.background : undefined,
 			}"
 			referrerpolicy="no-referrer"
