@@ -301,12 +301,18 @@ export function useRichText(options: UseRichTextOptions) {
 	}
 
 	/**
-	 * Replace the current (non-collapsed) selection with `text`, routing through
-	 * the browser's own edit pipeline (`execCommand('insertText')`) so the swap
-	 * lands on the native undo stack as ONE step and the host's `@input` autosave
-	 * sees it as real user text. Falls back to a manual range replace when
-	 * `execCommand` is unavailable (older engines / JSDOM), which the caller can
-	 * still undo through its own history. No-ops (returns false) when there is no
+	 * Replace the current (non-collapsed) selection with `text` via the
+	 * insertText-through-input-events pattern: `execCommand('insertText')` is the
+	 * only cross-browser primitive that routes a *programmatic* insert through
+	 * the browser's own edit pipeline, so the swap lands on the NATIVE undo stack
+	 * as ONE step and the host's `@input` autosave sees it as real user text.
+	 * Postbox relies on that single-undo for markdown/emoji/AI-apply, so the
+	 * execCommand call is retained deliberately as the native-undo bridge — it is
+	 * NOT a formatting command (bold/italic/heading/list/link all run purely on
+	 * Selection/Range; no execCommand formatting remains in this composable).
+	 * Falls back fail-soft to a manual range replace when `execCommand` is
+	 * unavailable or throws (older engines / JSDOM), which the caller can still
+	 * undo through its own history. No-ops (returns false) when there is no
 	 * selection inside the editor. Used by the AI selection-rewrite "Apply".
 	 */
 	function replaceSelection(text: string): boolean {
@@ -314,10 +320,15 @@ export function useRichText(options: UseRichTextOptions) {
 		if (!ctx) return false;
 		editorRef.value?.focus();
 		if (typeof document !== 'undefined' && typeof document.execCommand === 'function') {
-			// On success the native `input` event fires and the host re-emits, so
-			// don't also call notify() here (mirrors the ghost-text accept path).
-			const ok = document.execCommand('insertText', false, text);
-			if (ok) return true;
+			try {
+				// On success the native `input` event fires and the host re-emits,
+				// so don't also call notify() here (mirrors the ghost-text accept
+				// path). On failure/throw, fall through to the manual replace.
+				if (document.execCommand('insertText', false, text)) return true;
+			} catch {
+				// Engine exposes execCommand but rejects the call — degrade to the
+				// manual range replace below rather than surfacing the error.
+			}
 		}
 		const { sel, range } = ctx;
 		range.deleteContents();
