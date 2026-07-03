@@ -1,13 +1,16 @@
 /**
- * Inline `:shortcode:` emoji picker + ASCII-smiley conversion for the Postbox
- * composer.
+ * Inline `:shortcode:` emoji picker for the Postbox composer.
  *
  * Typing `:` followed by >=2 characters opens a compact popover of fuzzy-matched
- * emoji at the caret (same lean caret-anchored placement as the ghost overlay);
- * arrow keys move the selection, Enter/Tab inserts the emoji char (plain text),
- * Esc closes and leaves the literal `:sm` text untouched. Separately, well-known
- * ASCII smileys (`:)` -> 🙂) convert on the following space as a single undo step
- * (same one-shot literal-restore pattern as the markdown typing shortcuts).
+ * emoji at the caret (same lean caret-anchored placement as the ghost overlay,
+ * via the shared `measureCaretRect`); arrow keys move the selection, Enter/Tab
+ * inserts the emoji char (plain text), Esc closes and leaves the literal `:sm`
+ * text untouched.
+ *
+ * The sibling ASCII-smiley conversion (`:)` -> 🙂 on space, one undo step) is NOT
+ * here — it rides the shared markdown-shortcut one-shot-undo plumbing in
+ * `@owlat/ui/composables/richTextShortcuts` (wired via `useRichText`'s
+ * `asciiReplace` option) so the editor runs a single undo pathway, not two.
  *
  * All caret/DOM plumbing lives here so `PostboxBasicEditor.vue` stays under the
  * file-size ratchet. The picker is opt-in (`enabled`) so the editor's other mount
@@ -17,15 +20,21 @@ import type { Ref } from 'vue';
 import {
 	detectShortcodeTrigger,
 	fuzzyFilterEmoji,
-	matchAsciiSmiley,
 	type PostboxEmoji,
 } from '~/utils/postboxEmojiShortcodes';
+import { measureCaretRect } from '~/utils/postboxCaretRect';
 
 export interface EmojiPickerOptions {
 	editorRef: Ref<HTMLElement | null>;
 	surfaceRef: Ref<HTMLElement | null>;
-	/** True when the picker + ASCII conversion are enabled (Postbox composer only). */
+	/** True when the picker is enabled (Postbox composer only). */
 	enabled: () => boolean;
+	/**
+	 * Replace the current in-editor selection with plain text, routing through the
+	 * shared `useRichText` helper (execCommand insertText + manual fallback) so the
+	 * swap lands on the native undo stack and the host's `@input` autosave sees it.
+	 */
+	replaceSelection: (text: string) => boolean;
 	/** Re-emit + re-sync the draft after a DOM mutation. */
 	emitContent: () => void;
 }
@@ -40,9 +49,6 @@ export function usePostboxEmojiPicker(opts: EmojiPickerOptions) {
 
 	// The trigger span being replaced on insert (`:` + query length).
 	let triggerLen = 0;
-	// One-shot literal-restore for an ASCII conversion (mirrors markdown shortcuts):
-	// the very next Cmd/Ctrl+Z restores the typed smiley text.
-	let pendingUndo: (() => void) | null = null;
 
 	function close() {
 		open.value = false;
@@ -50,8 +56,6 @@ export function usePostboxEmojiPicker(opts: EmojiPickerOptions) {
 		activeIndex.value = 0;
 		style.value = null;
 		triggerLen = 0;
-		// A stale ASCII literal-restore must not survive the popover closing / blur.
-		pendingUndo = null;
 	}
 
 	/** Text of the caret's text node up to the caret, or null when not applicable. */
@@ -67,24 +71,14 @@ export function usePostboxEmojiPicker(opts: EmojiPickerOptions) {
 
 	/** Place the popover just below the caret; hide it if the rect is unmeasurable. */
 	function position() {
-		const surface = opts.surfaceRef.value;
-		const sel = window.getSelection();
-		if (!surface || !sel || sel.rangeCount === 0) {
+		const rect = measureCaretRect(opts.surfaceRef.value);
+		if (!rect) {
 			style.value = null;
 			return;
 		}
-		const range = sel.getRangeAt(0).cloneRange();
-		range.collapse(false);
-		const rects = range.getClientRects();
-		const rect = rects.length ? rects[rects.length - 1] : range.getBoundingClientRect();
-		if (!rect || (rect.top === 0 && rect.left === 0 && rect.height === 0)) {
-			style.value = null;
-			return;
-		}
-		const host = surface.getBoundingClientRect();
 		style.value = {
-			left: `${rect.left - host.left + surface.scrollLeft}px`,
-			top: `${rect.bottom - host.top + surface.scrollTop + 4}px`,
+			left: `${rect.left}px`,
+			top: `${rect.bottom + 4}px`,
 		};
 	}
 
@@ -116,7 +110,7 @@ export function usePostboxEmojiPicker(opts: EmojiPickerOptions) {
 		void nextTick(position);
 	}
 
-	/** Select the text span immediately before the caret and replace it with `text`. */
+	/** Select the `:query` span immediately before the caret and replace it with `text`. */
 	function replaceBeforeCaret(spanLen: number, text: string) {
 		const el = opts.editorRef.value;
 		const sel = window.getSelection();
@@ -130,17 +124,8 @@ export function usePostboxEmojiPicker(opts: EmojiPickerOptions) {
 		select.setEnd(node, offset);
 		sel.removeAllRanges();
 		sel.addRange(select);
-		// execCommand routes through the browser's own edit pipeline so native undo
-		// and the @input autosave both treat the swap as real user editing.
-		if (!document.execCommand('insertText', false, text)) {
-			select.deleteContents();
-			const inserted = document.createTextNode(text);
-			select.insertNode(inserted);
-			select.setStartAfter(inserted);
-			select.collapse(true);
-			sel.removeAllRanges();
-			sel.addRange(select);
-		}
+		// Delegate the insert to the shared richText helper (native undo + autosave).
+		opts.replaceSelection(text);
 	}
 
 	function insert(emoji: PostboxEmoji | undefined) {
@@ -194,54 +179,6 @@ export function usePostboxEmojiPicker(opts: EmojiPickerOptions) {
 		}
 	}
 
-	/**
-	 * `beforeinput` handler for the ASCII-smiley conversion on space. Returns true
-	 * (and preventDefaults) when it converted a trailing smiley; false otherwise.
-	 */
-	function handleBeforeInput(event: InputEvent): boolean {
-		if (!opts.enabled()) return false;
-		if (event.inputType !== 'insertText' || event.data !== ' ') {
-			pendingUndo = null;
-			return false;
-		}
-		const before = caretText();
-		if (before == null) {
-			pendingUndo = null;
-			return false;
-		}
-		const match = matchAsciiSmiley(before);
-		if (!match) {
-			pendingUndo = null;
-			return false;
-		}
-		event.preventDefault();
-		const literal = `${match.ascii} `; // what a single undo restores (smiley + space)
-		// Replace the smiley with the emoji char, then let the space land after it.
-		replaceBeforeCaret(match.ascii.length, `${match.char} `);
-		const emojiLen = match.char.length + 1;
-		pendingUndo = () => {
-			replaceBeforeCaret(emojiLen, literal);
-			opts.emitContent();
-		};
-		opts.emitContent();
-		return true;
-	}
-
-	/**
-	 * Keydown handler that turns the first Cmd/Ctrl+Z after an ASCII conversion into
-	 * a single literal-restore step. Returns true when it handled the undo.
-	 */
-	function handleUndoKeydown(event: KeyboardEvent): boolean {
-		const meta = event.metaKey || event.ctrlKey;
-		if (!meta || event.shiftKey || event.key.toLowerCase() !== 'z') return false;
-		if (!pendingUndo) return false;
-		event.preventDefault();
-		const undo = pendingUndo;
-		pendingUndo = null;
-		undo();
-		return true;
-	}
-
 	return {
 		open,
 		items,
@@ -252,7 +189,5 @@ export function usePostboxEmojiPicker(opts: EmojiPickerOptions) {
 		insert,
 		setActive,
 		handleKeydown,
-		handleBeforeInput,
-		handleUndoKeydown,
 	};
 }

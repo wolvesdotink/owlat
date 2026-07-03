@@ -24,6 +24,7 @@ import { usePostboxRewriteController } from '~/composables/postbox/usePostboxRew
 import { usePostboxFloatingFormatBar } from '~/composables/postbox/usePostboxFloatingFormatBar';
 import { usePostboxInlineImages } from '~/composables/postbox/usePostboxInlineImages';
 import { usePostboxEmojiPicker } from '~/composables/postbox/usePostboxEmojiPicker';
+import { matchAsciiSmiley } from '~/utils/postboxEmojiShortcodes';
 import type { Id } from '@owlat/api/dataModel';
 
 const props = defineProps<{
@@ -79,6 +80,13 @@ const richText = useRichText({
 	onChange: () => emitContent(),
 	// Notion-style markdown typing shortcuts are a Postbox-only affordance.
 	patternShortcuts: true,
+	// ASCII-smiley conversion on space (`:)` -> 🙂) rides the shared one-shot-undo
+	// plumbing; only active when the emoji shortcodes affordance is opted in.
+	asciiReplace: (before) => {
+		if (props.emojiShortcodesEnabled !== true) return null;
+		const m = matchAsciiSmiley(before);
+		return m ? { spanLen: m.ascii.length, replacement: m.char, literal: m.ascii } : null;
+	},
 });
 
 const {
@@ -197,7 +205,8 @@ const {
 	enabled: () => props.persistentToolbar !== true,
 });
 
-// Markdown shortcuts intercept the raw input BEFORE the character lands, so a
+// Markdown shortcuts AND the ASCII-smiley conversion intercept the raw input
+// BEFORE the character lands (both via the shared `handleBeforeInput`), so a
 // conversion never flickers the literal marker into the DOM. When consumed the
 // composable has already called preventDefault().
 function onBeforeInput(event: InputEvent) {
@@ -207,19 +216,13 @@ function onBeforeInput(event: InputEvent) {
 		// would normally do.
 		emitContent();
 		rewriteCtl.invalidateOnEdit();
-		return;
 	}
-	// ASCII-smiley conversion on space (`:)` -> 🙂) applied as a single undo step.
-	if (emoji.handleBeforeInput(event)) rewriteCtl.invalidateOnEdit();
 }
 
 function onKeydown(event: KeyboardEvent) {
 	if (emoji.handleKeydown(event)) return; // open picker owns arrows/Enter/Tab/Esc
-	if (emoji.handleUndoKeydown(event)) {
-		emitContent();
-		return;
-	}
-	// A conversion's first Cmd+Z restores the literal marker text (one undo step).
+	// A conversion's first Cmd+Z restores the literal marker/smiley text (one undo
+	// step) — markdown shortcuts and the ASCII smiley share this one pathway.
 	if (handleShortcutUndoKeydown(event)) {
 		emitContent();
 		return;
@@ -257,11 +260,13 @@ const inlineImages = usePostboxInlineImages({
 	emitContent,
 });
 
-// `:shortcode:` emoji picker + single-undo ASCII conversion; logic in composable.
+// `:shortcode:` emoji picker; logic in composable. The sibling ASCII-smiley
+// conversion rides `useRichText`'s `asciiReplace` (shared one-shot-undo), above.
 const emoji = usePostboxEmojiPicker({
 	editorRef,
 	surfaceRef,
 	enabled: () => props.emojiShortcodesEnabled === true,
+	replaceSelection: richText.replaceSelection,
 	emitContent,
 });
 
@@ -281,8 +286,8 @@ function onDrop(event: DragEvent) {
 function onBlur() {
 	emitContent();
 	ghost.cancel(); // never leave a ghost hanging over an unfocused editor
-	resetShortcutUndo(); // a literal-restore undo shouldn't survive leaving the editor
-	emoji.close(); // never leave the popover (or a pending ASCII undo) over a blur
+	resetShortcutUndo(); // a literal-restore undo (markdown/ASCII) shouldn't survive leaving the editor
+	emoji.close(); // never leave the picker popover open over an unfocused editor
 	hideFormatBar(); // never leave the floating bar over an unfocused editor
 }
 
