@@ -10,6 +10,7 @@
  * handling both the cold-start URL and links delivered while already running.
  */
 import { completeConnection } from '~/composables/useDesktopWorkspaces';
+import { parseMailto } from '~/lib/desktop/mailto';
 
 const NAV_ROUTE_MAP: Record<string, string> = {
 	'thread/': '/dashboard/inbox/',
@@ -30,23 +31,20 @@ export async function handleDeepLink(url: string): Promise<void> {
 	// mailto: — opened when Owlat is the default mail handler. Parse RFC-6068
 	// recipients + subject and open the compose window seeded with them.
 	if (parsed.protocol === 'mailto:') {
-		const to = decodeURIComponent(parsed.pathname);
-		const params = parsed.searchParams;
-		const subject = params.get('subject') ?? '';
-		const cc = params.get('cc') ?? '';
-		const bcc = params.get('bcc') ?? '';
-		const body = params.get('body') ?? '';
-		const q = new URLSearchParams();
-		if (to) q.set('to', to);
-		if (subject) q.set('subject', subject);
-		if (cc) q.set('cc', cc);
-		if (bcc) q.set('bcc', bcc);
-		if (body) q.set('body', body);
-		try {
-			const { openCompose } = await import('@owlat/desktop/src/compose');
-			await openCompose(`/compose?${q.toString()}`);
-		} catch (e) {
-			console.warn('[desktop] mailto handling failed:', e);
+		const mailto = parseMailto(url);
+		if (mailto) {
+			const q = new URLSearchParams();
+			if (mailto.to.length) q.set('to', mailto.to.join(', '));
+			if (mailto.cc.length) q.set('cc', mailto.cc.join(', '));
+			if (mailto.bcc.length) q.set('bcc', mailto.bcc.join(', '));
+			if (mailto.subject) q.set('subject', mailto.subject);
+			if (mailto.body) q.set('body', mailto.body);
+			try {
+				const { openCompose } = await import('@owlat/desktop/src/compose');
+				await openCompose(`/compose?${q.toString()}`);
+			} catch (e) {
+				console.warn('[desktop] mailto handling failed:', e);
+			}
 		}
 		return;
 	}
