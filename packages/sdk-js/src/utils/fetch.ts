@@ -196,31 +196,27 @@ export function createHttpClient(
 
 			const rateLimit = extractRateLimit(response.headers);
 
-			// Handle empty response (e.g., 204 No Content)
-			if (response.status === 204 || response.headers.get('content-length') === '0') {
-				return {
-					data: undefined as T,
-					rateLimit,
-				};
-			}
-
-			let body: unknown;
-			try {
-				body = await response.json();
-			} catch {
-				throw new OwlatError(
-					'Failed to parse response body',
-					'parse_error',
-					response.status,
-					rateLimit
-				);
-			}
-
+			// Error responses (>=400) MUST be handled before the empty-body
+			// success short-circuit below. A 4xx/5xx with an empty body (gateway
+			// 502/503/504, edge 429, proxy 401) has no Content-Length or a
+			// Content-Length of 0, so the old "empty response" branch returned it
+			// as a null success — the resource layer then NPE'd, and the
+			// retryable ones were never retried. Read the body as text and parse
+			// the error envelope defensively: an empty or non-JSON body falls
+			// back to the generic category/message rather than throwing.
 			if (!response.ok) {
-				const errorBody = body as ApiErrorResponse;
-				const message = errorBody.error?.message || 'Unknown error';
-				const category = errorBody.error?.category || 'internal';
-				const data = errorBody.error?.data;
+				const rawErrorBody = await response.text();
+				let errorBody: ApiErrorResponse | undefined;
+				if (rawErrorBody) {
+					try {
+						errorBody = JSON.parse(rawErrorBody) as ApiErrorResponse;
+					} catch {
+						errorBody = undefined;
+					}
+				}
+				const message = errorBody?.error?.message || 'Unknown error';
+				const category = errorBody?.error?.category || 'internal';
+				const data = errorBody?.error?.data;
 				const retryAfterHeader = response.headers.get('Retry-After');
 				const retryAfterData =
 					typeof data?.['retryAfter'] === 'number' ? data['retryAfter'] : undefined;
@@ -249,6 +245,28 @@ export function createHttpClient(
 				}
 
 				throw lastError;
+			}
+
+			// Empty success response (e.g., 204 No Content). Only reached once
+			// we know the status is <400, so an empty error body can never slip
+			// through here as a null "success".
+			if (response.status === 204 || response.headers.get('content-length') === '0') {
+				return {
+					data: undefined as T,
+					rateLimit,
+				};
+			}
+
+			let body: unknown;
+			try {
+				body = await response.json();
+			} catch {
+				throw new OwlatError(
+					'Failed to parse response body',
+					'parse_error',
+					response.status,
+					rateLimit
+				);
 			}
 
 			// Defensive shape check before the unavoidable `as T`: a 2xx body
