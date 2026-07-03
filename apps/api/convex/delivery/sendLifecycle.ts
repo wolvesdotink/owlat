@@ -1,5 +1,6 @@
 import { v } from 'convex/values';
 import { internalMutation, type MutationCtx } from '../_generated/server';
+import { internal } from '../_generated/api';
 import {
 	legalEdgesFor,
 	reduceBounced,
@@ -187,6 +188,26 @@ async function dispatch(
 
 	if (result.applied !== 'duplicate') {
 		await applyEffects(ctx, result.effects);
+
+		// ── Post-send OUTCOME signal (graduated-autonomy learning) ──
+		// A bounce or complaint on an AUTO-sent agent reply is unambiguous
+		// negative feedback for the category/sender it was sent under — record it
+		// so real-world delivery outcomes tune autonomy, not just the shrinking
+		// human-reviewed subset (see agent/outcomeFeedback.ts). Fail-soft:
+		// scheduled out-of-band so a learning-loop failure can never roll back
+		// the delivery state transition. Only for genuinely new transitions.
+		if (
+			(input.to === 'bounced' || input.to === 'complained') &&
+			ref.kind === 'transactional'
+		) {
+			const tSend = send as TransactionalSendDoc;
+			if (tSend.kind === 'agent_reply' && tSend.inboundMessageId) {
+				await ctx.scheduler.runAfter(0, internal.autonomy.recordOutcomeFeedback, {
+					inboundMessageId: tSend.inboundMessageId,
+					signal: input.to === 'bounced' ? 'bounce' : 'complaint',
+				});
+			}
+		}
 	}
 
 	return {
