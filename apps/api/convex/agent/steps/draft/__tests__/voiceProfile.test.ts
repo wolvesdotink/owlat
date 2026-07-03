@@ -14,7 +14,7 @@ import { getFunctionName } from 'convex/server';
 import type { Id } from '../../../../_generated/dataModel';
 
 // Capture the messages passed to the model + return a fixed draft body.
-const runLlmTextMock = vi.fn(async () => ({
+const runLlmTextMock = vi.fn(async (_args: unknown) => ({
 	text: 'Thanks — happy to help.',
 	tokenUsage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
 	modelUsed: 'test-model',
@@ -71,7 +71,8 @@ function makeCtx(opts: {
 
 /** The system prompt string handed to the model on the last call. */
 function lastSystemPrompt(): string {
-	const call = runLlmTextMock.mock.calls.at(-1)?.[0] as
+	const calls = runLlmTextMock.mock.calls;
+	const call = calls[calls.length - 1]?.[0] as
 		| { messages: Array<{ role: string; content: string }> }
 		| undefined;
 	const sys = call?.messages.find((m) => m.role === 'system');
