@@ -93,4 +93,47 @@ describe('useReviewQueue', () => {
 			expect(approveRun()).not.toHaveBeenCalled();
 		});
 	});
+
+	describe('approveOption', () => {
+		const messageId = 'msg_1' as never;
+		const primary = 'Your order shipped Friday.';
+
+		it('approves directly when the picked option IS the current default draft', async () => {
+			const { approveOption } = useReviewQueue();
+			const result = await approveOption(messageId, primary, primary);
+			// No edit — the default draft is already persisted.
+			expect(editRun()).not.toHaveBeenCalled();
+			expect(approveRun()).toHaveBeenCalledWith({ inboundMessageId: messageId });
+			expect(result).toEqual({ success: true });
+		});
+
+		it('persists a DIFFERENT picked option via editDraft then approves', async () => {
+			const { approveOption } = useReviewQueue();
+			const result = await approveOption(messageId, '  A more cautious reply.  ', primary);
+			// The picked variant is written (trimmed) then sent — the pick is a
+			// preference signal recorded by editDraft.
+			expect(editRun()).toHaveBeenCalledWith({
+				inboundMessageId: messageId,
+				draftResponse: 'A more cautious reply.',
+			});
+			expect(approveRun()).toHaveBeenCalledWith({ inboundMessageId: messageId });
+			expect(result).toEqual({ success: true });
+		});
+
+		it('does not approve when persisting the picked option fails', async () => {
+			const { approveOption } = useReviewQueue();
+			editRun().mockResolvedValueOnce(undefined);
+			const result = await approveOption(messageId, 'A different reply.', primary);
+			expect(result).toBeUndefined();
+			expect(approveRun()).not.toHaveBeenCalled();
+		});
+
+		it('refuses an empty pick (never touches the backend)', async () => {
+			const { approveOption } = useReviewQueue();
+			const result = await approveOption(messageId, '   ', primary);
+			expect(result).toBeUndefined();
+			expect(editRun()).not.toHaveBeenCalled();
+			expect(approveRun()).not.toHaveBeenCalled();
+		});
+	});
 });
