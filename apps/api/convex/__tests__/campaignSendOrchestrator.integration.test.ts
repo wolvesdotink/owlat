@@ -946,4 +946,50 @@ describe('Campaign send walker — stuck-walk watchdog (redriveStuckSendJobs)', 
 		const result = await t.mutation(internal.campaigns.sendJob.redriveStuckSendJobs, {});
 		expect(result.redriven).toBe(0);
 	});
+
+	// The fail-closed no-provider defer path reschedules its OWN hop after a
+	// backoff. It must also refresh `updatedAt` (via `touchSendJob`) so that
+	// single self-reschedule chain owns the retry loop: otherwise the row's
+	// `updatedAt` stays frozen while the provider is missing and the watchdog
+	// piles a fresh redundant re-drive on top of the chain on every tick.
+	it('the no-provider defer refreshes updatedAt so the watchdog does not re-drive on top of the self-reschedule chain', async () => {
+		const t = convexTest(schema, modules);
+		const data = await setupWalker(t, 600);
+		// Prep + createSendJob happen with a provider configured (baseline env).
+		await t.action(internal.campaigns.send.startCampaignSend, { campaignId: data.campaignId });
+
+		// Age the job past the staleness threshold to prove the refresh matters:
+		// if the no-provider hop did NOT touch updatedAt, the row would remain
+		// stale and the watchdog below would re-drive it.
+		await makeJobStale(t, data.campaignId);
+
+		// Provider removed between schedule and this hop → resolveSendRoute → null.
+		const savedProvider = process.env['EMAIL_PROVIDER'];
+		delete process.env['EMAIL_PROVIDER'];
+		try {
+			await t.action(internal.campaigns.send.resolveCampaignPage, {
+				campaignId: data.campaignId,
+			});
+
+			// Fail-closed: nothing dispatched, cursor untouched, still resolving.
+			expect(await countSends(t, data.campaignId)).toBe(0);
+			const job = await getJob(t, data.campaignId);
+			expect(job?.phase).toBe('resolving');
+			// The defer touched updatedAt back to "now" — no longer stale.
+			expect(job!.updatedAt).toBeGreaterThan(Date.now() - 60 * 1000);
+
+			// Watchdog leaves the freshly-touched row alone: the self-reschedule
+			// chain owns the retry, so no redundant re-drive is stacked on it.
+			const result = await t.mutation(internal.campaigns.sendJob.redriveStuckSendJobs, {});
+			expect(result.redriven).toBe(0);
+		} finally {
+			if (savedProvider !== undefined) process.env['EMAIL_PROVIDER'] = savedProvider;
+		}
+
+		// Backstop still holds: if the self-reschedule chain truly dies (updatedAt
+		// goes stale again), the watchdog re-drives exactly this one job.
+		await makeJobStale(t, data.campaignId);
+		const backstop = await t.mutation(internal.campaigns.sendJob.redriveStuckSendJobs, {});
+		expect(backstop.redriven).toBe(1);
+	});
 });
