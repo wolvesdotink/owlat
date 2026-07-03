@@ -12,8 +12,9 @@ name: Release (unified)
 #
 # Coordination: this workflow creates ONE draft Release, the reusable server and
 # desktop cores upload their assets to it in parallel, then `publish` flips it
-# live. The desktop app's own version comes from apps/desktop/src-tauri (Cargo /
-# tauri.conf) — keep it in step with the tag before cutting a unified release.
+# live. The desktop app's version is stamped from the pushed tag automatically by
+# the reusable desktop core (see `_desktop-build.yml` "Stamp release version from
+# tag"), so Cargo.toml needs no manual bump before cutting a unified release.
 
 on:
   push:
