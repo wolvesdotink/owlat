@@ -27,19 +27,12 @@ import { usePostboxEmojiPicker } from '~/composables/postbox/usePostboxEmojiPick
 import { usePostboxEditorInput } from '~/composables/postbox/usePostboxEditorInput';
 import { matchAsciiSmiley } from '~/utils/postboxEmojiShortcodes';
 import {
-	detectSnippetTrigger,
-	rankSnippets,
-	resolveSnippetPlaceholders,
-} from '~/utils/postboxSnippets';
+	usePostboxSnippetPicker,
+	type EditorSnippet,
+} from '~/composables/postbox/usePostboxSnippetPicker';
 import type { Id } from '@owlat/api/dataModel';
 
-/** A canned response offered by the composer's "/" slash-trigger. */
-export interface EditorSnippet {
-	_id: string;
-	name: string;
-	shortcut: string;
-	bodyHtml: string;
-}
+export type { EditorSnippet };
 
 const props = defineProps<{
 	modelValue: string;
@@ -164,10 +157,10 @@ function emitContent() {
 // arms the debounce timer; the completion resolves (or is dropped) out of band.
 function onInput() {
 	emitContent();
-	updateSnippetPicker();
+	snippetPicker.update();
 	// While the snippet picker is open the caret sits in a "/token" run; don't
 	// also fire ghost-text requests over it.
-	if (!snippetOpen.value) scheduleGhost();
+	if (!snippetPicker.open.value) scheduleGhost();
 	emoji.refresh(); // re-evaluate the `:shortcode:` trigger at the caret
 	// Typing invalidates any pending/previewed rewrite anchored to old text.
 	rewriteCtl.invalidateOnEdit();
@@ -191,136 +184,17 @@ const { ghost, ghostStyle, schedule: scheduleGhost } = usePostboxGhostOverlay({
 
 // ── Snippet "/" slash-trigger picker ────────────────────────────────────
 // Typing "/" at the start of a line (or after whitespace) opens a compact
-// canned-response picker. Filter-as-you-type, arrow keys + Enter to insert,
-// Esc to dismiss (the literal "/" is never removed until a snippet is chosen,
-// so dismissing simply leaves it as typed). Insertion routes through the
-// browser edit pipeline so undo + autosave both see it.
+// canned-response picker. All of the trigger/positioning/keyboard/insert
+// wiring lives in the controller composable (mirroring the ghost-text and
+// rewrite seams); the editor just hands it refs + input hooks.
 
-const snippetOpen = ref(false);
-const snippetQuery = ref('');
-const snippetIndex = ref(0);
-const snippetStyle = ref<Record<string, string> | null>(null);
-// The trigger token last dismissed with Esc — suppresses immediate reopening
-// while the caret still sits in the same "/token" run.
-const snippetDismissed = ref<string | null>(null);
-
-const snippetItems = computed(() =>
-	rankSnippets(props.snippets ?? [], snippetQuery.value)
-);
-
-function hasSnippets() {
-	return (props.snippets?.length ?? 0) > 0;
-}
-
-/** Text from the start of the caret's text node up to the caret, or null. */
-function getSnippetCaretText(): string | null {
-	const el = editorRef.value;
-	const sel = window.getSelection();
-	if (!el || !sel || sel.rangeCount === 0 || !sel.isCollapsed) return null;
-	const node = sel.focusNode;
-	if (!node || !el.contains(node)) return null;
-	if (node.nodeType !== Node.TEXT_NODE) return '';
-	return (node.textContent ?? '').slice(0, sel.focusOffset);
-}
-
-function closeSnippet() {
-	snippetOpen.value = false;
-	snippetStyle.value = null;
-}
-
-function dismissSnippet() {
-	const before = getSnippetCaretText();
-	const trigger = before == null ? null : detectSnippetTrigger(before);
-	snippetDismissed.value = trigger ? `${trigger.triggerStart}:${trigger.query}` : null;
-	closeSnippet();
-}
-
-/** Re-evaluate the trigger after an edit; open/refresh/close the picker. */
-function updateSnippetPicker() {
-	if (!hasSnippets()) return closeSnippet();
-	const before = getSnippetCaretText();
-	const trigger = before == null ? null : detectSnippetTrigger(before);
-	if (!trigger) {
-		snippetDismissed.value = null;
-		return closeSnippet();
-	}
-	const token = `${trigger.triggerStart}:${trigger.query}`;
-	if (snippetDismissed.value === token) return; // stay closed until token changes
-	snippetDismissed.value = null;
-	snippetQuery.value = trigger.query;
-	if (!snippetOpen.value) {
-		snippetOpen.value = true;
-		snippetIndex.value = 0;
-	}
-	snippetIndex.value = Math.min(
-		snippetIndex.value,
-		Math.max(0, snippetItems.value.length - 1)
-	);
-	void nextTick(() => positionSnippet());
-}
-
-/** Position the picker just below the caret; drop it if unmeasurable. */
-function positionSnippet() {
-	const surface = surfaceRef.value;
-	const sel = window.getSelection();
-	if (!surface || !sel || sel.rangeCount === 0) return closeSnippet();
-	const range = sel.getRangeAt(0).cloneRange();
-	range.collapse(false);
-	const rects = range.getClientRects();
-	const rect = rects.length ? rects[rects.length - 1] : range.getBoundingClientRect();
-	if (!rect || (rect.top === 0 && rect.left === 0 && rect.height === 0)) {
-		return closeSnippet();
-	}
-	const host = surface.getBoundingClientRect();
-	snippetStyle.value = {
-		left: `${rect.left - host.left + surface.scrollLeft}px`,
-		top: `${rect.bottom - host.top + surface.scrollTop + 4}px`,
-	};
-}
-
-function snippetNext() {
-	const max = snippetItems.value.length;
-	if (max === 0) return;
-	snippetIndex.value = (snippetIndex.value + 1) % max;
-}
-
-function snippetPrev() {
-	const max = snippetItems.value.length;
-	if (max === 0) return;
-	snippetIndex.value = (snippetIndex.value - 1 + max) % max;
-}
-
-/** Replace the "/token" with the snippet HTML through the edit pipeline. */
-function insertSnippet(snippet: EditorSnippet) {
-	const el = editorRef.value;
-	if (!el) return;
-	const before = getSnippetCaretText();
-	const trigger = before == null ? null : detectSnippetTrigger(before);
-	closeSnippet();
-	snippetDismissed.value = null;
-	el.focus();
-	const tokenLen = trigger ? 1 + trigger.query.length : 0;
-	for (let i = 0; i < tokenLen; i++) document.execCommand('delete', false);
-	const resolved = resolveSnippetPlaceholders(snippet.bodyHtml, {
-		firstName: props.snippetFirstName ?? undefined,
-	});
-	const ok = document.execCommand('insertHTML', false, resolved);
-	if (!ok) {
-		const sel = window.getSelection();
-		if (sel && sel.rangeCount > 0) {
-			const range = sel.getRangeAt(0);
-			range.deleteContents();
-			const frag = range.createContextualFragment(resolved);
-			range.insertNode(frag);
-			range.collapse(false);
-		}
-	}
-	emitContent();
-}
-
-function onSnippetItemClick(snippet: EditorSnippet) {
-	insertSnippet(snippet);
-}
+const snippetPicker = usePostboxSnippetPicker({
+	editorRef,
+	surfaceRef,
+	snippets: () => props.snippets,
+	firstName: () => props.snippetFirstName,
+	emitContent,
+});
 
 // ── AI selection rewrite (Shorter / Friendlier / … / Translate) ─────────
 // A tiny floating pill over a >=3-word selection offers one-tap rewrites; the
@@ -403,31 +277,10 @@ const { onBeforeInput, onKeydown: baseOnKeydown } = usePostboxEditorInput({
 // event flows to the multiplexed editor-input pathway (emoji / ghost / rewrite
 // / format shortcuts).
 function onKeydown(event: KeyboardEvent) {
-	if (snippetOpen.value) {
-		if (event.key === 'ArrowDown') {
-			event.preventDefault();
-			snippetNext();
-			return;
-		}
-		if (event.key === 'ArrowUp') {
-			event.preventDefault();
-			snippetPrev();
-			return;
-		}
-		if (event.key === 'Enter' || event.key === 'Tab') {
-			const selected = snippetItems.value[snippetIndex.value];
-			if (selected) {
-				event.preventDefault();
-				insertSnippet(selected);
-				return;
-			}
-		}
-		if (event.key === 'Escape') {
-			event.preventDefault();
-			dismissSnippet();
-			return;
-		}
-	}
+	// The snippet picker owns navigation keys while it's open; otherwise the key
+	// event flows to the multiplexed editor-input pathway (emoji / ghost / rewrite
+	// / format shortcuts).
+	if (snippetPicker.handleKeydown(event)) return;
 	baseOnKeydown(event);
 }
 
@@ -450,7 +303,7 @@ function onBlur() {
 	resetShortcutUndo(); // a literal-restore undo (markdown/ASCII) shouldn't survive leaving the editor
 	emoji.close(); // never leave the picker popover open over an unfocused editor
 	hideFormatBar(); // never leave the floating bar over an unfocused editor
-	closeSnippet(); // …nor the snippet picker over an unfocused editor
+	snippetPicker.close(); // …nor the snippet picker over an unfocused editor
 }
 
 function onSelectionChange() {
@@ -462,15 +315,7 @@ function onSelectionChange() {
 	if (emoji.open.value) emoji.refresh();
 	// A caret move out of the "/token" run closes the snippet picker; a move within
 	// it (e.g. after inserting a char) refreshes the query + position.
-	if (snippetOpen.value) {
-		const before = getSnippetCaretText();
-		const trigger = before == null ? null : detectSnippetTrigger(before);
-		if (!trigger) closeSnippet();
-		else {
-			snippetQuery.value = trigger.query;
-			positionSnippet();
-		}
-	}
+	snippetPicker.onSelectionChange();
 	// A selection change aborts an in-flight rewrite (its anchor is now stale)
 	// and re-places the pill for the new selection.
 	rewriteCtl.onSelectionChange();
@@ -509,7 +354,7 @@ onBeforeUnmount(() => {
 	document.removeEventListener('selectionchange', onSelectionChange);
 	ghost.cancel();
 	emoji.close();
-	closeSnippet();
+	snippetPicker.close();
 	rewriteCtl.dispose();
 });
 
@@ -607,41 +452,15 @@ defineExpose({ focus: focusEditor });
 				@link="withFocus(setLink)()"
 				@ai-select="rewriteCtl.onSelect"
 			/>
-			<!--
-				Snippet "/" picker: a compact caret-anchored dropdown. Items use
-				mousedown.prevent so clicking one never blurs the editor first.
-			-->
-			<div
-				v-if="snippetOpen && snippetStyle"
-				class="postbox-snippet-picker absolute z-20 min-w-[220px] max-w-[320px] rounded-md border border-border-subtle bg-bg-elevated shadow-lg overflow-hidden"
-				:style="snippetStyle"
-				role="listbox"
-				aria-label="Snippets"
-			>
-				<div
-					v-if="snippetItems.length === 0"
-					class="px-3 py-2 text-xs text-text-tertiary"
-				>
-					No matching snippets
-				</div>
-				<button
-					v-for="(item, i) in snippetItems"
-					:key="item._id"
-					type="button"
-					role="option"
-					:aria-selected="i === snippetIndex"
-					class="w-full text-left px-3 py-1.5 flex items-center justify-between gap-2 text-sm"
-					:class="i === snippetIndex ? 'bg-brand-subtle text-text-primary' : 'text-text-secondary hover:bg-bg-surface'"
-					@mousedown.prevent="onSnippetItemClick(item)"
-					@mousemove="snippetIndex = i"
-				>
-					<span class="truncate">{{ item.name }}</span>
-					<span
-						v-if="item.shortcut"
-						class="shrink-0 text-xs text-text-tertiary font-mono"
-					>/{{ item.shortcut }}</span>
-				</button>
-			</div>
+			<!-- Snippet "/" picker: a compact caret-anchored dropdown. -->
+			<PostboxSnippetPicker
+				v-if="snippetPicker.open.value"
+				:items="snippetPicker.items.value"
+				:active-index="snippetPicker.index.value"
+				:style="snippetPicker.style.value"
+				@select="snippetPicker.insert"
+				@hover="(i) => (snippetPicker.index.value = i)"
+			/>
 			<!-- AI rewrite pill + preview + undo affordance (all flag-gated). -->
 			<PostboxRewriteLayer
 				v-if="rewriteEnabled"
