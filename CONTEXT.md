@@ -3210,7 +3210,7 @@ state and assignment state).
 
 **Agent action**:
 One row in `agentActions` — a single execution attempt of one pipeline
-step (`security_scan | context_retrieval | classify | draft | route`)
+step (`security_scan | context_retrieval | classify | clarify | draft | route`)
 against one `inboundMessages` row. Carries the per-step audit fields
 (input/output JSON, retry count, model used, token usage, duration). One
 Inbox processing message has 1..N Agent actions across its lifetime (one
@@ -3285,13 +3285,17 @@ compute + routing for one stage of the agent pipeline. Two pure functions:
 AgentRoute` decides what happens next — an in-state next step, a state
 transition optionally followed by a next step, or `done` (pipeline
 terminates). Modules carry an optional `llm?: { tier: 'fast' | 'capable' }`
-flag for the two LLM-based kinds (`classify`, `draft`); the **Agent
+flag for the three LLM-based kinds (`classify`, `clarify`, `draft`); the **Agent
 walker** uses the flag to call the **LLM dispatch (module)** at
 `convex/lib/llm/dispatch.ts` (lifted out of the agent-internal
 `shared/llm.ts` so non-agent callers share the same seam) so
-per-module `execute` shrinks to prompt construction + output parsing. The five kinds match the
+per-module `execute` shrinks to prompt construction + output parsing. The six kinds match the
 **Agent action** `actionType` enum exactly: `security_scan |
-context_retrieval | classify | draft | route`. The `plan` kind was
+context_retrieval | classify | clarify | draft | route`. The `clarify` kind
+sits at the classify fork — a missing-info gate that either parks the message
+in `awaiting_clarification` (open questions for the owner) or falls through to
+`drafting` (today's behaviour); it fails soft to `drafting` on any error. The
+`plan` kind was
 dropped with this deepening — today's plan-record was a placeholder JSON
 construction inside `agentDrafter` (`agentDrafter.ts:75-86`), never a
 real planning step; if a real planner ships later it joins as a new kind

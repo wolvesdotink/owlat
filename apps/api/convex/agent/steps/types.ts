@@ -21,11 +21,13 @@ import type {
 	classificationValidator,
 	tokenUsageValidator,
 } from '../../lib/convexValidators';
+import type { clarificationQuestionValidator } from '../../inbox/clarificationValidators';
 
 export type AgentStepKind =
 	| 'security_scan'
 	| 'context_retrieval'
 	| 'classify'
+	| 'clarify'
 	| 'draft'
 	| 'route';
 
@@ -36,6 +38,7 @@ export type AgentStepKind =
 // route step reads off the message.
 type SecurityFlags = Infer<typeof securityFlagsValidator>;
 type Classification = Infer<typeof classificationValidator>;
+type ClarificationQuestion = Infer<typeof clarificationQuestionValidator>;
 
 type ContextTier = 'normal' | 'compacted' | 'emergency';
 
@@ -56,6 +59,11 @@ export type RouteTransition =
 			contextTier?: ContextTier;
 	  }
 	| { to: 'drafting'; classification?: Classification }
+	| {
+			to: 'awaiting_clarification';
+			questions: ClarificationQuestion[];
+			classification?: Classification;
+	  }
 	| {
 			to: 'draft_ready';
 			draftResponse?: string;

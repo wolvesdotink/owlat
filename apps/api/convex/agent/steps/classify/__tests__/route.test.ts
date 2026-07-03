@@ -35,31 +35,36 @@ describe('classifyStep.route', () => {
 		expect(route.transition.reason).toBe('classifier_spam');
 	});
 
-	it('escalates complaints to draft_ready (skipping drafter)', () => {
-		const route = classifyStep.route(makeOutput({ category: 'complaint' }), sampleInput, runCtx);
-		expect(route.kind).toBe('transition');
-		if (route.kind !== 'transition') return;
-		expect(route.transition.to).toBe('draft_ready');
-		expect(route.nextStep).toBeUndefined();
+	it('forks complaints through the clarify step (in-state, not straight to draft_ready)', () => {
+		const output = makeOutput({ category: 'complaint' });
+		const route = classifyStep.route(output, sampleInput, runCtx);
+		expect(route.kind).toBe('in_state');
+		if (route.kind !== 'in_state') return;
+		expect(route.nextStep).toEqual({
+			kind: 'clarify',
+			input: {
+				inboundMessageId: messageId,
+				context: '[CONTEXT]',
+				classification: output,
+			},
+		});
 	});
 
-	it('escalates urgent messages to draft_ready (skipping drafter)', () => {
-		const route = classifyStep.route(makeOutput({ priority: 'urgent' }), sampleInput, runCtx);
-		expect(route.kind).toBe('transition');
-		if (route.kind !== 'transition') return;
-		expect(route.transition.to).toBe('draft_ready');
+	it('forks urgent messages through the clarify step (in-state)', () => {
+		const output = makeOutput({ priority: 'urgent' });
+		const route = classifyStep.route(output, sampleInput, runCtx);
+		expect(route.kind).toBe('in_state');
+		if (route.kind !== 'in_state') return;
+		expect(route.nextStep?.kind).toBe('clarify');
 	});
 
-	it('routes normal traffic to drafting + schedules the draft step', () => {
+	it('routes normal traffic to the clarify step (in-state) before drafting', () => {
 		const output = makeOutput({ category: 'support', priority: 'normal' });
 		const route = classifyStep.route(output, sampleInput, runCtx);
-		expect(route.kind).toBe('transition');
-		if (route.kind !== 'transition') return;
-		expect(route.transition.to).toBe('drafting');
-		if (route.transition.to !== 'drafting') return;
-		expect(route.transition.classification).toEqual(output);
+		expect(route.kind).toBe('in_state');
+		if (route.kind !== 'in_state') return;
 		expect(route.nextStep).toEqual({
-			kind: 'draft',
+			kind: 'clarify',
 			input: {
 				inboundMessageId: messageId,
 				context: '[CONTEXT]',

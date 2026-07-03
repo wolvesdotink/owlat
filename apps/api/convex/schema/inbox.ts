@@ -154,7 +154,7 @@ export const inboxTables = {
 			}),
 		),
 		// Open clarification questions parked before drafting. Set when the
-		// (future) clarify step routes the message to `awaiting_clarification`;
+		// clarify step routes the message to `awaiting_clarification`;
 		// answered via `inbox.answerClarification`, which folds each answer back in
 		// as a TRUSTED `[CONFIRMED BY OWNER]` block and resumes the draft. See
 		// pendingClarificationValidator.
@@ -189,6 +189,7 @@ export const inboxTables = {
 			v.literal('security_scan'),
 			v.literal('context_retrieval'),
 			v.literal('classify'),
+			v.literal('clarify'),
 			v.literal('draft'),
 			v.literal('route')
 		),
