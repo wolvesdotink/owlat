@@ -376,6 +376,7 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } =
 				:rewrite-enabled="aiRewriteEnabled"
 				:rewrite-mailbox-id="mailboxId"
 				:persistent-toolbar="persistentToolbar"
+				:emoji-shortcodes-enabled="true"
 				:inline-images-enabled="true"
 				:embed-image="addInlineImage"
 				:on-remove-embedded-image="removeInlineImage"
