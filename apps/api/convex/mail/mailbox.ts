@@ -566,15 +566,29 @@ export const newestUnreadInbox = publicQuery({
 				.withIndex('by_folder_and_received', (q) => q.eq('folderId', inbox._id))
 				.order('desc')
 				.take(limit + 20);
+			// The smart-inbox `category` object lives on the thread, not the
+			// message; dedupe thread reads within this bounded window (a thread
+			// often has several unread messages) so we do at most one .get per
+			// distinct thread.
+			const threadCategory = new Map<
+				Id<'mailThreads'>,
+				'person' | 'newsletter' | 'notification' | 'receipt' | 'other' | undefined
+			>();
 			for (const m of recent) {
 				if (m.flagSeen || isMessageSnoozed(m, now)) continue;
+				let category = threadCategory.get(m.threadId);
+				if (!threadCategory.has(m.threadId)) {
+					const thread = await ctx.db.get(m.threadId);
+					category = thread?.category?.label;
+					threadCategory.set(m.threadId, category);
+				}
 				collected.push({
 					messageId: m._id,
 					threadId: m.threadId,
 					fromName: m.fromName,
 					fromAddress: m.fromAddress,
 					subject: m.subject,
-					category: m.category?.label,
+					category,
 					receivedAt: m.receivedAt,
 				});
 			}
