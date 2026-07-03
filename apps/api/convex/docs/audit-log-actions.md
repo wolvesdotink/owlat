@@ -66,6 +66,7 @@ All inserts must go through `recordAuditLog(ctx, {...})` in
 | `inbound.received` / `quarantined` / `released` / `retried` | `inbound_message` | _empty_ |
 | `inbound.draft_approved` / `draft_rejected` / `draft_edited` | `inbound_message` | `{ reason? }` |
 | `inbound.reply_sent` | `inbound_message` | _empty_ |
+| `inbound.clarification_answered` | `inbound_message` | _empty_ |
 | `inbound.sender_blocked` | `inbound_message` | `{ email }` |
 | `agent.config_updated` | `agent_config` | `detailsBlob: { ...patchedFields }` |
 | `agent.backfill_started` / `backfill_cancelled` | `agent_config` | `{ jobId }` |

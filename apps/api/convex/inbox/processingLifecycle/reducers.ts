@@ -47,8 +47,16 @@ export const LEGAL_EDGES: Record<ProcessingStatus, ReadonlySet<ProcessingStatus>
 	classifying: new Set<ProcessingStatus>([
 		'drafting',
 		'draft_ready',
+		'awaiting_clarification',
 		'archived',
 	]),
+	// The clarification loop: parked awaiting an owner answer. Resumes into
+	// `drafting` two ways — the owner answers (`answerClarification`), or the
+	// abandoned-question fallback cron gives up after the window and drafts a
+	// flagged best-guess. `archived` is the dismiss edge (permitted uniformly by
+	// the `* → archived` star-source in dispatch; declared here to keep the
+	// contract in sync).
+	awaiting_clarification: new Set<ProcessingStatus>(['drafting', 'archived']),
 	drafting: new Set<ProcessingStatus>(['draft_ready', 'approved']),
 	draft_ready: new Set<ProcessingStatus>(['approved', 'rejected', 'archived']),
 	// `draft_ready` is the fail-soft degrade for a cancelled delayed auto-send
@@ -177,6 +185,33 @@ function reduceDraftReady(message: Doc<'inboundMessages'>, input: InputFor<'draf
 	return { patch, effects };
 }
 
+function reduceAwaitingClarification(
+	_message: Doc<'inboundMessages'>,
+	input: InputFor<'awaiting_clarification'>,
+): TransitionParts {
+	const patch: Record<string, unknown> = {};
+	const effects: Effect[] = [];
+	if (input.completedActionId) {
+		effects.push(
+			completeAction(input.completedActionId, input.output, {
+				durationMs: input.durationMs,
+				modelUsed: input.modelUsed,
+				tokenUsage: input.tokenUsage,
+			}),
+		);
+	}
+	// Persist the open questions + classification (so the resume path can
+	// reconstruct the draft input). No draft exists yet — thread draft status is
+	// left untouched; no knowledge-extraction / code-task effects fire here (they
+	// run on the classifying → drafting edge the resume will take).
+	if (input.pendingClarification) patch['pendingClarification'] = input.pendingClarification;
+	if (input.classification) {
+		patch['classification'] = input.classification;
+		patch['confidenceScore'] = input.classification.confidence;
+	}
+	return { patch, effects };
+}
+
 function reduceQuarantined(_message: Doc<'inboundMessages'>, input: InputFor<'quarantined'>): TransitionParts {
 	const effects: Effect[] = [];
 	if (input.completedActionId) {
@@ -267,6 +302,8 @@ function buildTransition(message: Doc<'inboundMessages'>, input: TransitionInput
 			return reduceDrafting(message, input);
 		case 'draft_ready':
 			return reduceDraftReady(message, input);
+		case 'awaiting_clarification':
+			return reduceAwaitingClarification(message, input);
 		case 'quarantined':
 			return reduceQuarantined(message, input);
 		case 'archived':

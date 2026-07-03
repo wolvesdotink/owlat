@@ -166,6 +166,7 @@ export const AUDIT_ACTION_LITERALS = [
 	action('inbound.draft_edited'),
 	action('inbound.reply_sent'),
 	action('inbound.auto_send_cancelled'),
+	action('inbound.clarification_answered'),
 	action('inbound.sender_blocked'),
 	action('agent.config_updated'),
 	action('agent.backfill_started'),

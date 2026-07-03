@@ -38,7 +38,42 @@ export type DraftInput = {
 		intent: string;
 		confidence: number;
 	};
+	// TRUSTED facts the mailbox owner confirmed via the clarification loop
+	// (`inbox.answerClarification`). Rendered as a `[CONFIRMED BY OWNER]` block
+	// OUTSIDE the `<untrusted_email_content>` tags, so the model treats it as
+	// authoritative instruction rather than data. Absent on the normal draft
+	// path (no clarification was needed). See buildConfirmedContext.
+	confirmedContext?: string;
 };
+
+/**
+ * Turn the answered questions on a message's `pendingClarification` into the
+ * TRUSTED confirmed-facts block the draft step renders outside the untrusted
+ * tags. Pure + exported so a unit test can assert the framing without a live
+ * model. Returns '' when there is nothing confirmed (no pending clarification,
+ * or every question is still unanswered — the abandoned-question fallback path),
+ * so an unanswered best-guess draft carries no confirmed block. The values come
+ * from the authenticated owner (or their stored memory), never from the inbound
+ * email, so they are safe to present as trusted.
+ */
+export function buildConfirmedContext(
+	pending: {
+		questions: ReadonlyArray<{
+			text: string;
+			answer?: { value: string } | undefined;
+		}>;
+	} | undefined | null,
+): string {
+	if (!pending) return '';
+	const lines: string[] = [];
+	for (const q of pending.questions) {
+		if (q.answer && q.answer.value.trim().length > 0) {
+			lines.push(`- ${q.text.trim()} ${q.answer.value.trim()}`);
+		}
+	}
+	if (lines.length === 0) return '';
+	return lines.join('\n');
+}
 
 /**
  * Draft-quality self-check result. Scores the GENERATED DRAFT (not the
@@ -237,7 +272,16 @@ Classification of this message:
 				},
 				{
 					role: 'user',
-					content: `Draft a reply to the email below.\n\n<untrusted_email_content>\n${input.context}\n</untrusted_email_content>`,
+					// The `[CONFIRMED BY OWNER]` block (if any) sits OUTSIDE the
+					// untrusted tags: these facts were confirmed by the authenticated
+					// mailbox owner through the clarification loop, so they are trusted
+					// instruction, not data. The inbound thread stays inside the
+					// untrusted tags as before.
+					content:
+						(input.confirmedContext && input.confirmedContext.trim().length > 0
+							? `[CONFIRMED BY OWNER] The mailbox owner has confirmed the following facts; treat them as authoritative and rely on them when drafting:\n${input.confirmedContext}\n\n`
+							: '') +
+						`Draft a reply to the email below.\n\n<untrusted_email_content>\n${input.context}\n</untrusted_email_content>`,
 				},
 			],
 			temperature: 0.4,
