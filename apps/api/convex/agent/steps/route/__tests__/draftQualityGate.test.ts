@@ -71,6 +71,7 @@ function makeExecuteCtx(opts: {
 					dailyAutoReplyResetAt: 0,
 				};
 			}
+			if (name.includes('getBudgetStatus')) return { autonomousAutoSendAllowed: true };
 			throw new Error(`unexpected runQuery: ${name}`);
 		},
 		runMutation: async (ref: unknown) => {
@@ -93,7 +94,12 @@ function input(over: Partial<RouteInput> = {}): RouteInput {
 }
 
 const highQuality = { score: 0.92, complete: true, grounded: true, flags: [] as string[] };
-const lowQuality = { score: 0.2, complete: false, grounded: false, flags: ['missing order number'] };
+const lowQuality = {
+	score: 0.2,
+	complete: false,
+	grounded: false,
+	flags: ['missing order number'],
+};
 
 describe('resolveAutoApproveScore', () => {
 	it('returns the draft-quality score when the self-check ran', () => {
@@ -118,13 +124,19 @@ describe('routeStep.execute — autonomy tier gates on draft quality', () => {
 		const ctx = makeExecuteCtx({ autonomyThreshold: 0.7 });
 		// Classifier confidence 0.95 would have cleared the threshold under the old
 		// behaviour; the draft-quality score 0.2 must not.
-		const { output } = await routeStep.execute(ctx, input({ confidence: 0.95, draftQuality: lowQuality }));
+		const { output } = await routeStep.execute(
+			ctx,
+			input({ confidence: 0.95, draftQuality: lowQuality })
+		);
 		expect(output.decision).toBe('human_review');
 	});
 
 	it('never auto-approves when the self-check failed (unknown quality)', async () => {
 		const ctx = makeExecuteCtx({ autonomyThreshold: 0.7 });
-		const { output } = await routeStep.execute(ctx, input({ confidence: 0.99, draftQuality: null }));
+		const { output } = await routeStep.execute(
+			ctx,
+			input({ confidence: 0.99, draftQuality: null })
+		);
 		expect(output.decision).toBe('human_review');
 	});
 });
@@ -139,14 +151,20 @@ describe('routeStep.execute — legacy tier gates on draft quality', () => {
 
 	it('routes a LOW-quality draft to human review despite a confident classifier', async () => {
 		const ctx = makeExecuteCtx({ legacyThreshold: 0.8 });
-		const { output } = await routeStep.execute(ctx, input({ confidence: 0.99, draftQuality: lowQuality }));
+		const { output } = await routeStep.execute(
+			ctx,
+			input({ confidence: 0.99, draftQuality: lowQuality })
+		);
 		expect(output.decision).toBe('human_review');
 		expect(output.reason).toMatch(/draft quality/i);
 	});
 
 	it('routes to human review when the self-check failed (unknown quality)', async () => {
 		const ctx = makeExecuteCtx({ legacyThreshold: 0.8 });
-		const { output } = await routeStep.execute(ctx, input({ confidence: 0.99, draftQuality: undefined }));
+		const { output } = await routeStep.execute(
+			ctx,
+			input({ confidence: 0.99, draftQuality: undefined })
+		);
 		expect(output.decision).toBe('human_review');
 	});
 });

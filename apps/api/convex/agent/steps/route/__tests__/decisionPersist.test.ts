@@ -31,12 +31,21 @@ function makeCtx(opts: { autonomyThreshold?: number; recordThrows?: boolean }) {
 				if (opts.autonomyThreshold === undefined) return { mode: 'disabled', allowed: false };
 				const confidence = (params as { confidence: number }).confidence;
 				const allowed = confidence >= opts.autonomyThreshold;
-				return { mode: 'enabled', allowed, reason: allowed ? 'rule permits' : 'below per-category threshold' };
+				return {
+					mode: 'enabled',
+					allowed,
+					reason: allowed ? 'rule permits' : 'below per-category threshold',
+				};
 			}
 			if (name.includes('getMessage')) {
-				return { from: 'Alice Customer <alice@customer.example>', draftResponse: cleanDraft, securityFlags: { guardUnavailable: false } };
+				return {
+					from: 'Alice Customer <alice@customer.example>',
+					draftResponse: cleanDraft,
+					securityFlags: { guardUnavailable: false },
+				};
 			}
 			if (name.includes('getAgentConfig')) return null;
+			if (name.includes('getBudgetStatus')) return { autonomousAutoSendAllowed: true };
 			throw new Error(`unexpected runQuery: ${name}`);
 		},
 		runMutation: async (ref: unknown, args: unknown) => {
@@ -63,12 +72,20 @@ function input(over: Partial<RouteInput> = {}): RouteInput {
 }
 
 const highQuality = { score: 0.92, complete: true, grounded: true, flags: [] as string[] };
-const lowQuality = { score: 0.2, complete: false, grounded: false, flags: ['missing order number'] };
+const lowQuality = {
+	score: 0.2,
+	complete: false,
+	grounded: false,
+	flags: ['missing order number'],
+};
 
 describe('routeStep.execute — decision persistence', () => {
 	it('mirrors an auto_approve decision + reason + confidence onto the message', async () => {
 		const { ctx, recorded } = makeCtx({ autonomyThreshold: 0.7 });
-		const { output } = await routeStep.execute(ctx, input({ confidence: 0.81, draftQuality: highQuality }));
+		const { output } = await routeStep.execute(
+			ctx,
+			input({ confidence: 0.81, draftQuality: highQuality })
+		);
 
 		expect(output.decision).toBe('auto_approve');
 		expect(recorded.value).toEqual({
@@ -82,7 +99,10 @@ describe('routeStep.execute — decision persistence', () => {
 
 	it('mirrors a human_review decision + reason when the draft quality is low', async () => {
 		const { ctx, recorded } = makeCtx({ autonomyThreshold: 0.7 });
-		const { output } = await routeStep.execute(ctx, input({ confidence: 0.95, draftQuality: lowQuality }));
+		const { output } = await routeStep.execute(
+			ctx,
+			input({ confidence: 0.95, draftQuality: lowQuality })
+		);
 
 		expect(output.decision).toBe('human_review');
 		expect(recorded.value?.['decision']).toBe('human_review');
@@ -91,7 +111,10 @@ describe('routeStep.execute — decision persistence', () => {
 
 	it('FAILS SOFT: a throwing recordAgentDecision does not change or block the decision', async () => {
 		const { ctx } = makeCtx({ autonomyThreshold: 0.7, recordThrows: true });
-		const { output } = await routeStep.execute(ctx, input({ confidence: 0.81, draftQuality: highQuality }));
+		const { output } = await routeStep.execute(
+			ctx,
+			input({ confidence: 0.81, draftQuality: highQuality })
+		);
 		// Decision still stands even though persistence threw.
 		expect(output.decision).toBe('auto_approve');
 	});

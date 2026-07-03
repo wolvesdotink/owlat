@@ -9,6 +9,7 @@ import { isFeatureEnabled } from '../lib/featureFlags';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 import { rateLimiter } from '../rateLimiter';
 import { throwForbidden, throwRateLimited } from '../_utils/errors';
+import { computeBudgetStatus } from '../analytics/spendBudget';
 
 export const assertAiAllowed = internalMutation({
 	args: {},
@@ -16,6 +17,24 @@ export const assertAiAllowed = internalMutation({
 		if (!(await isFeatureEnabled(ctx, 'ai'))) {
 			throwForbidden('AI features are disabled');
 		}
+
+		// Per-org dollar-spend budget: advisory (user-triggered) AI is paused once
+		// remaining headroom drops within the reserve held for the autonomous
+		// drafting path, so manual actions can't drain the budget to $0. FAIL-SOFT:
+		// only a definitively-computed over-reserve state blocks; any error
+		// determining the budget degrades to today's behaviour (allowed) rather
+		// than breaking a user's manual action on a transient hiccup.
+		let budgetBlock: string | undefined;
+		try {
+			const budget = await computeBudgetStatus(ctx);
+			if (!budget.advisoryAllowed) {
+				budgetBlock = budget.reason || 'AI spend budget reached — advisory AI is paused.';
+			}
+		} catch {
+			// swallowed: a computation error degrades to today's (allowed) behaviour
+		}
+		if (budgetBlock) throwForbidden(budgetBlock);
+
 		const session = await getBetterAuthSessionWithRole(ctx);
 		const key = session?.userId ?? 'anon';
 		const res = await rateLimiter.limit(ctx, 'postboxAiPerUser', { key });

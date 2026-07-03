@@ -21,6 +21,14 @@ const { data: llmSpend } = useOrganizationQuery(
 	() => ({ hoursBack: 168 }),
 );
 
+// Per-org dollar-spend budget: remaining daily/monthly headroom + warn state.
+// When a ceiling is hit the autonomous path degrades to draft-only and advisory
+// AI is paused (analytics/spendBudget.ts). Unset ceilings ⇒ `configured: false`.
+const { data: spendBudget } = useOrganizationQuery(
+	api.analytics.spendBudget.getBudgetStatusAdmin,
+	() => ({}),
+);
+
 // Cached latest-release info from Convex (read-only, reactive)
 const { data: latestRelease } = useConvexQuery(api.systemUpdates.getLatestRelease, () => ({}));
 
@@ -243,6 +251,39 @@ function formatDuration(start?: number, end?: number) {
 				</div>
 			</div>
 			<p v-else class="text-text-tertiary text-sm">No LLM usage recorded in the last 7 days.</p>
+
+			<!-- Spend budget: remaining headroom + warn / paused state -->
+			<div v-if="spendBudget?.configured" class="mt-4 pt-4 border-t border-border-default space-y-2">
+				<div class="flex items-baseline justify-between gap-2 flex-wrap">
+					<h4 class="text-xs font-medium text-text-tertiary uppercase tracking-wider">Spend budget</h4>
+					<span
+						v-if="spendBudget.state !== 'ok'"
+						class="text-[0.6875rem] font-medium px-2 py-0.5 rounded-full"
+						:class="spendBudget.state === 'exceeded'
+							? 'bg-red-500/15 text-red-500'
+							: 'bg-amber-500/15 text-amber-500'"
+					>
+						{{ spendBudget.state === 'exceeded' ? 'Ceiling reached — auto-send paused' : 'Approaching ceiling' }}
+					</span>
+				</div>
+				<div v-if="spendBudget.daily.configured" class="flex items-center justify-between text-sm">
+					<span class="text-text-secondary">Daily remaining</span>
+					<span class="text-text-primary font-medium">
+						${{ spendBudget.daily.remainingUsd.toFixed(2) }}
+						<span class="text-text-tertiary font-normal">of ${{ spendBudget.daily.limitUsd.toFixed(2) }}</span>
+					</span>
+				</div>
+				<div v-if="spendBudget.monthly.configured" class="flex items-center justify-between text-sm">
+					<span class="text-text-secondary">Monthly remaining</span>
+					<span class="text-text-primary font-medium">
+						${{ spendBudget.monthly.remainingUsd.toFixed(2) }}
+						<span class="text-text-tertiary font-normal">of ${{ spendBudget.monthly.limitUsd.toFixed(2) }}</span>
+					</span>
+				</div>
+				<p v-if="!spendBudget.advisoryAllowed" class="text-text-tertiary text-xs">
+					Advisory AI is paused; the remaining budget is reserved for autonomous replies.
+				</p>
+			</div>
 		</div>
 
 		<!-- Update check card -->

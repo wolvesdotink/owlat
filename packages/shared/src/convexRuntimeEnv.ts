@@ -91,6 +91,14 @@ export const CONVEX_RUNTIME_ENV_KEYS = [
 	'LLM_COMPLEXITY_ROUTING',
 	'OPENAI_API_KEY',
 	'OPENROUTER_API_KEY',
+	// Per-org dollar-spend budget for LLM calls (analytics/spendBudget.ts).
+	// Pushed into the deployment so resolveBudgetConfig() reads real ceilings
+	// at function runtime; without these the gate reads the '0' default and the
+	// budget is never enforced (fail-OPEN on spend).
+	'AI_SPEND_DAILY_BUDGET_USD',
+	'AI_SPEND_MONTHLY_BUDGET_USD',
+	'AI_SPEND_WARN_FRACTION',
+	'AI_SPEND_ADVISORY_RESERVE_FRACTION',
 	// Analytics & links
 	'POSTHOG_API_KEY',
 	'POSTHOG_HOST',
@@ -158,7 +166,7 @@ export async function pushConvexRuntimeEnv(
 	adminUrl: string,
 	adminKey: string,
 	vars: Array<[string, string]>,
-	fetchImpl: typeof fetch = fetch,
+	fetchImpl: typeof fetch = fetch
 ): Promise<void> {
 	if (vars.length === 0) return;
 	const base = adminUrl.replace(/\/+$/, '');
@@ -175,13 +183,13 @@ export async function pushConvexRuntimeEnv(
 		});
 	} catch (e) {
 		throw new Error(
-			`Could not reach the Convex admin API at ${base} to set runtime env vars: ${(e as Error).message}`,
+			`Could not reach the Convex admin API at ${base} to set runtime env vars: ${(e as Error).message}`
 		);
 	}
 	if (!res.ok) {
 		const detail = await res.text().catch(() => '');
 		throw new Error(
-			`Convex admin API rejected the runtime env update (status ${res.status})${detail ? `: ${detail}` : ''}.`,
+			`Convex admin API rejected the runtime env update (status ${res.status})${detail ? `: ${detail}` : ''}.`
 		);
 	}
 }
