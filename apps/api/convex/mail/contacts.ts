@@ -190,6 +190,81 @@ export const remove = authedMutation({
 	},
 });
 
+/**
+ * Toggle the explicit VIP ("important sender") flag on a contact, creating the
+ * address-book row if this sender isn't in it yet. A VIP dominates the Reply
+ * Queue priority score (mail/priorityScore.ts) — the owner's transparent,
+ * easy-to-correct override of the deterministic frecency baseline.
+ */
+// authz: mailbox ownership via loadOwnedMailbox; org membership via authedMutation.
+export const setVip = authedMutation({
+	args: { mailboxId: v.id('mailboxes'), email: v.string(), isVip: v.boolean() },
+	handler: async (ctx, args) => {
+		const owned = await loadOwnedMailbox(ctx, args.mailboxId);
+		if (!owned.ok) throwForbidden('Mailbox not accessible');
+		const email = canonical(args.email);
+		if (!email.includes('@')) throwInvalidInput('Invalid email');
+		const now = Date.now();
+		const existing = await ctx.db
+			.query('mailContacts')
+			.withIndex('by_mailbox_and_email', (q) =>
+				q.eq('mailboxId', args.mailboxId).eq('email', email)
+			)
+			.first();
+		if (existing) {
+			await ctx.db.patch(existing._id, { isVip: args.isVip });
+			return existing._id;
+		}
+		// VIP set on someone not yet in the address book — record them so the flag
+		// (and future frecency bumps) have a home. useCount 0: they've never been
+		// mailed, but the VIP flag short-circuits the score regardless.
+		return ctx.db.insert('mailContacts', {
+			mailboxId: args.mailboxId,
+			email,
+			isVip: args.isVip,
+			useCount: 0,
+			lastUsedAt: now,
+			createdAt: now,
+		});
+	},
+});
+
+/**
+ * Accept a first-time sender through the HEY-style screener — records them in
+ * the address book with `screenerAccepted`, so their mail enters the Reply
+ * Queue / clarification loop from now on. No-op payload beyond the accept flag;
+ * `screener` gating itself is toggled via mail/settings.update.
+ */
+// authz: mailbox ownership via loadOwnedMailbox; org membership via authedMutation.
+export const acceptSender = authedMutation({
+	args: { mailboxId: v.id('mailboxes'), email: v.string() },
+	handler: async (ctx, args) => {
+		const owned = await loadOwnedMailbox(ctx, args.mailboxId);
+		if (!owned.ok) throwForbidden('Mailbox not accessible');
+		const email = canonical(args.email);
+		if (!email.includes('@')) throwInvalidInput('Invalid email');
+		const now = Date.now();
+		const existing = await ctx.db
+			.query('mailContacts')
+			.withIndex('by_mailbox_and_email', (q) =>
+				q.eq('mailboxId', args.mailboxId).eq('email', email)
+			)
+			.first();
+		if (existing) {
+			await ctx.db.patch(existing._id, { screenerAccepted: true });
+			return existing._id;
+		}
+		return ctx.db.insert('mailContacts', {
+			mailboxId: args.mailboxId,
+			email,
+			screenerAccepted: true,
+			useCount: 0,
+			lastUsedAt: now,
+			createdAt: now,
+		});
+	},
+});
+
 /** Internal: bulk-record recipients on send. */
 export const internalRecordRecipients = internalMutation({
 	args: {

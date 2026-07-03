@@ -30,6 +30,14 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { throwForbidden, throwNotFound } from '../_utils/errors';
 import { isMessageSnoozed } from '../lib/mailSnooze';
 import { loadOwnedMailbox, loadReadableMailbox } from './permissions';
+import { contactFrecencyScore } from './contacts';
+import {
+	computePriorityScore,
+	isScreenedOut,
+	urgencyFallbackScore,
+	type PriorityUrgency,
+	type SenderSignal,
+} from './priorityScore';
 
 // ─── Deterministic heuristic (pure) ─────────────────────────────────────────
 
@@ -246,6 +254,9 @@ const needsReplyResultValidator = v.union(
 		messageId: v.id('mailMessages'),
 		source: v.union(v.literal('heuristic'), v.literal('llm')),
 		urgency: v.union(v.literal('high'), v.literal('normal'), v.literal('low')),
+		// Blended sender-importance × urgency score — the ranking key. Computed in
+		// applyResult (server-side) from the address book, never sent by callers.
+		priorityScore: v.optional(v.number()),
 		askSummary: v.optional(v.string()),
 		dueHint: v.optional(v.string()),
 		meetingIntent: v.optional(
@@ -260,10 +271,52 @@ const needsReplyResultValidator = v.union(
 );
 
 /**
+ * Deterministic sender-importance signal for the Reply Queue priority score:
+ * the personal address-book row (VIP flag, frecency, accepted) for `email`. A
+ * first-time sender with no row scores as a stranger (empty signal).
+ */
+async function loadSenderSignal(
+	ctx: MutationCtx,
+	mailboxId: Id<'mailboxes'>,
+	email: string,
+	now: number
+): Promise<SenderSignal> {
+	const contact = await ctx.db
+		.query('mailContacts')
+		.withIndex('by_mailbox_and_email', (q) =>
+			q.eq('mailboxId', mailboxId).eq('email', email.trim().toLowerCase())
+		)
+		.first();
+	if (!contact) return {};
+	return {
+		isVip: contact.isVip === true,
+		isKnownContact: true,
+		frecency: contactFrecencyScore(contact, now),
+		accepted: contact.screenerAccepted === true,
+	};
+}
+
+/** Whether the mailbox owner enabled the HEY-style first-time-sender screener. */
+async function isScreenerEnabled(ctx: MutationCtx, userId: string): Promise<boolean> {
+	const settings = await ctx.db
+		.query('mailUserSettings')
+		.withIndex('by_user', (q) => q.eq('userId', userId))
+		.first();
+	return settings?.isSenderScreenerOn === true;
+}
+
+/**
  * Persist a classification result and clear the pending marker. Guarded
  * against staleness: if a newer message arrived while classification was in
  * flight (thread.latestMessageId moved), the result is dropped — the newer
  * ingest already re-enqueued a check.
+ *
+ * When a result is being set, this is also the single place the unified
+ * priority score is computed (from the address book, server-side) and the
+ * HEY-style screener gate is applied — an unknown first-time sender is held
+ * OUT of the queue (result forced to null) when the owner enabled the screener.
+ * Fail-soft: a missing message/mailbox row falls back to persisting the result
+ * without a score rather than dropping the signal.
  */
 export const applyResult = internalMutation({
 	args: {
@@ -282,9 +335,31 @@ export const applyResult = internalMutation({
 		) {
 			return; // stale — a newer ingest re-enqueued its own check
 		}
+
+		let resolved = args.needsReply;
+		if (resolved !== null) {
+			const message = await ctx.db.get(resolved.messageId);
+			const mailbox = await ctx.db.get(thread.mailboxId);
+			if (message && mailbox) {
+				const now = Date.now();
+				const sender = await loadSenderSignal(ctx, thread.mailboxId, message.fromAddress, now);
+				if (isScreenedOut({ screenerEnabled: await isScreenerEnabled(ctx, mailbox.userId), sender })) {
+					// Screener held this first-time sender out of the queue entirely.
+					resolved = null;
+				} else {
+					resolved = {
+						...resolved,
+						priorityScore: computePriorityScore({
+							urgency: resolved.urgency as PriorityUrgency,
+							sender,
+						}),
+					};
+				}
+			}
+		}
+
 		await ctx.db.patch(args.threadId, {
-			needsReply:
-				args.needsReply === null ? undefined : { ...args.needsReply, detectedAt: Date.now() },
+			needsReply: resolved === null ? undefined : { ...resolved, detectedAt: Date.now() },
 			needsReplyPendingAt: undefined,
 			updatedAt: Date.now(),
 		});
@@ -335,6 +410,9 @@ export const listQueue = publicQuery({
 				threadId: thread._id,
 				messageId: flag.messageId,
 				urgency: flag.urgency,
+				// Ranking key — sender-importance × urgency blend. Falls back to the
+				// urgency bucket for rows persisted before scoring existed.
+				priorityScore: flag.priorityScore ?? urgencyFallbackScore(flag.urgency),
 				askSummary: flag.askSummary,
 				dueHint: flag.dueHint,
 				detectedAt: flag.detectedAt,
@@ -373,6 +451,9 @@ export const listQueue = publicQuery({
 				threadId: thread._id,
 				messageId: flag.messageId,
 				urgency: 'normal' as const,
+				// Follow-ups have no sender-importance signal — rank at the plain
+				// 'normal' urgency baseline so they interleave with needs-reply rows.
+				priorityScore: urgencyFallbackScore('normal'),
 				askSummary: undefined,
 				dueHint: undefined,
 				detectedAt: flag.dueAt,
