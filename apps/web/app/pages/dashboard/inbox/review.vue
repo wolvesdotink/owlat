@@ -10,10 +10,15 @@ definePageMeta({
 	requiresFeature: 'inbox',
 });
 
-const { reviewItems, isLoading, needsReply, onApprove, onReject, composeAndSend } = useReviewQueue();
+const { reviewItems, isLoading, needsReply, onApprove, approveOption, onReject, composeAndSend } = useReviewQueue();
 
 // Action state
 const actionInProgress = ref<string | null>(null);
+
+// Per-card selected draft option (index into message.draftOptions) for the
+// low-confidence cases where the agent offered 2–3 pickable variants. Defaults
+// to 0 (the primary self-checked draft). Absent for single-draft cards.
+const selectedOption = reactive<Record<string, number>>({});
 
 // Per-card compose state for draftless complaint/urgent escalations: the agent
 // pipeline skips the drafter for these, so there is no draft to approve — the
@@ -59,6 +64,32 @@ const onApproveClick = async (messageId: Id<'inboundMessages'>) => {
 	}
 };
 
+// Approve the currently-selected draft option (multi-option cards). Falls back
+// to the plain approve when no options were offered — same undo-guarded send.
+const onApproveOptionClick = async (
+	messageId: Id<'inboundMessages'>,
+	options: readonly string[] | undefined,
+	currentDraft: string | null | undefined,
+) => {
+	if (!options || options.length < 2) {
+		await onApproveClick(messageId);
+		return;
+	}
+	const chosen = options[selectedOption[messageId] ?? 0] ?? options[0]!;
+	actionInProgress.value = messageId;
+	hideRow(messageId);
+	try {
+		const result = await approveOption(messageId, chosen, currentDraft);
+		if (result === undefined) {
+			unhideRow(messageId);
+			return;
+		}
+		showToast('Draft approved and queued for sending');
+	} finally {
+		actionInProgress.value = null;
+	}
+};
+
 const onRejectClick = async (messageId: Id<'inboundMessages'>) => {
 	actionInProgress.value = messageId;
 	hideRow(messageId);
@@ -94,7 +125,13 @@ const {
 	// escalations (needsReply) have no draft, so fall back to opening the thread
 	// where the admin composes the reply — never an empty auto-send.
 	onApprove: (row) =>
-		needsReply(row.message) ? openThread(row) : void onApproveClick(row.message._id),
+		needsReply(row.message)
+			? openThread(row)
+			: void onApproveOptionClick(
+					row.message._id,
+					row.message.draftOptions,
+					row.message.draftResponse,
+				),
 	onEdit: openThread,
 	onReject: (row) => void onRejectClick(row.message._id),
 });
@@ -307,7 +344,17 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 
 				<!-- Agent draft awaiting approval -->
 				<template v-else>
-					<div class="bg-brand-subtle/30 rounded-lg p-4 mb-4">
+					<!-- Multiple pickable draft options (low-confidence / low-quality cases) -->
+					<InboxDraftOptions
+						v-if="(row.message.draftOptions?.length ?? 0) > 1"
+						:options="row.message.draftOptions ?? []"
+						:model-value="selectedOption[row.message._id] ?? 0"
+						class="mb-4"
+						@update:model-value="selectedOption[row.message._id] = $event"
+					/>
+
+					<!-- Single agent draft -->
+					<div v-else class="bg-brand-subtle/30 rounded-lg p-4 mb-4">
 						<div class="flex items-center gap-2 mb-2">
 							<Icon name="lucide:bot" class="w-4 h-4 text-brand" />
 							<p class="text-xs font-medium text-brand uppercase tracking-wider">Agent Draft</p>
@@ -329,7 +376,7 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 						<button
 							class="btn btn-primary btn-sm gap-1"
 							:disabled="actionInProgress === row.message._id"
-							@click="onApproveClick(row.message._id)"
+							@click="onApproveOptionClick(row.message._id, row.message.draftOptions, row.message.draftResponse)"
 						>
 							<Icon name="lucide:check" class="w-3 h-3" />
 							Approve & Send
