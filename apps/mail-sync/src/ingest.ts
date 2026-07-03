@@ -38,6 +38,27 @@ function addrList(field: AddressObject | AddressObject[] | undefined): string[] 
 	return out;
 }
 
+/**
+ * Fabricate a Message-ID for a message whose source has none.
+ *
+ * This MUST be deterministic from the message's stable remote identity — never
+ * time-based. Ingest dedups strictly on Message-ID within a mailbox, and the
+ * backfill walker only persists its cursor once per batch, so a mid-batch crash
+ * re-fetches the range. If the synthetic id changed each run (e.g. `Date.now()`),
+ * a header-less message would get a fresh id on re-fetch, miss dedup, and be
+ * inserted twice. Keying on `(uidvalidity, uid, remoteName)` — the IMAP-stable
+ * coordinates of the message — makes re-fetch produce the same id, so dedup
+ * catches it. `remoteName` is sanitised to keep the id a valid addr-spec token.
+ */
+export function syntheticMessageId(params: {
+	remoteUidValidity: number;
+	remoteUid: number;
+	remoteName: string;
+}): string {
+	const folder = params.remoteName.replace(/[^A-Za-z0-9._-]+/g, '_');
+	return `<${params.remoteUidValidity}.${params.remoteUid}.${folder}@owlat-mail-sync>`;
+}
+
 export interface IngestParams {
 	accountId: string;
 	folderRole: FolderRole;
@@ -78,7 +99,7 @@ export async function ingestMessage(convex: ConvexClient, params: IngestParams):
 		subject: parsed.subject ?? '',
 		textBodyInline: capBody(text),
 		htmlBodyInline: capBody(html),
-		messageId: parsed.messageId ?? `<${params.remoteUid}.${Date.now()}@owlat-mail-sync>`,
+		messageId: parsed.messageId ?? syntheticMessageId(params),
 		inReplyTo: parsed.inReplyTo ?? undefined,
 		references,
 		receivedAt: (parsed.date ?? new Date()).getTime(),
