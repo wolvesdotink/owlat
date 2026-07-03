@@ -16,6 +16,8 @@ import type * as agent_agentPipeline from "../agent/agentPipeline.js";
 import type * as agent_coalescing from "../agent/coalescing.js";
 import type * as agent_knowledgeBackfill from "../agent/knowledgeBackfill.js";
 import type * as agent_referenceMonitor from "../agent/referenceMonitor.js";
+import type * as agent_shadowScorecard from "../agent/shadowScorecard.js";
+import type * as agent_shadowSimilarity from "../agent/shadowSimilarity.js";
 import type * as agent_steps_classify_index from "../agent/steps/classify/index.js";
 import type * as agent_steps_clarify_index from "../agent/steps/clarify/index.js";
 import type * as agent_steps_context_retrieval_index from "../agent/steps/context_retrieval/index.js";
@@ -545,6 +547,8 @@ declare const fullApi: ApiFromModules<{
   "agent/coalescing": typeof agent_coalescing;
   "agent/knowledgeBackfill": typeof agent_knowledgeBackfill;
   "agent/referenceMonitor": typeof agent_referenceMonitor;
+  "agent/shadowScorecard": typeof agent_shadowScorecard;
+  "agent/shadowSimilarity": typeof agent_shadowSimilarity;
   "agent/steps/classify/index": typeof agent_steps_classify_index;
   "agent/steps/clarify/index": typeof agent_steps_clarify_index;
   "agent/steps/context_retrieval/index": typeof agent_steps_context_retrieval_index;
