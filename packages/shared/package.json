@@ -81,6 +81,10 @@
 			"types": "./src/mailMime.ts",
 			"import": "./src/mailMime.ts"
 		},
+		"./inlineImages": {
+			"types": "./src/inlineImages.ts",
+			"import": "./src/inlineImages.ts"
+		},
 		"./listUnsubscribe": {
 			"types": "./src/listUnsubscribe.ts",
 			"import": "./src/listUnsubscribe.ts"
