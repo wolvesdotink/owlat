@@ -213,7 +213,7 @@ type SpendCtx = Parameters<typeof recordLlmSpend>[0];
 
 /** The persisted clarification shape (mirrors mail/needsReply.ts validator). */
 interface ClarificationFlag {
-	needed: boolean;
+	isNeeded: boolean;
 	questions: {
 		id: string;
 		slotType: string;
@@ -304,7 +304,7 @@ export async function refineClarification(
 		const questions = sanitizeClarificationQuestions(raw, opts.fromAddress);
 		if (questions.length === 0) return undefined;
 
-		return { needed: true, questions, askedAt: Date.now() };
+		return { isNeeded: true, questions, askedAt: Date.now() };
 	} catch {
 		return undefined;
 	}

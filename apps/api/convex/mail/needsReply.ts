@@ -228,7 +228,7 @@ export const getThreadContext = internalQuery({
  * only the owner can supply; the owner answers it inline in the Reply Queue.
  */
 const clarificationFlagValidator = v.object({
-	needed: v.boolean(),
+	isNeeded: v.boolean(),
 	questions: v.array(
 		v.object({
 			id: v.string(),
@@ -462,7 +462,7 @@ export const answerClarification = authedMutation({
 		await ctx.db.patch(args.threadId, {
 			needsReply: {
 				...flag,
-				clarification: { ...clarification, questions, answeredAt: now, needed: false },
+				clarification: { ...clarification, questions, answeredAt: now, isNeeded: false },
 			},
 			updatedAt: now,
 		});

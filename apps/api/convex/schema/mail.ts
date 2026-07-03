@@ -425,7 +425,7 @@ mailThreads: defineTable({
 		// in mail/needsReplyClassify.ts before it is persisted here.
 		clarification: v.optional(v.object({
 			// True while at least one question is still awaiting an answer.
-			needed: v.boolean(),
+			isNeeded: v.boolean(),
 			questions: v.array(v.object({
 				// Stable id matching an incoming answer back to its question.
 				id: v.string(),

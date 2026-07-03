@@ -99,7 +99,7 @@ describe('refineClarification', () => {
 
 		const result = await refineClarification(ctx, opts);
 		expect(result).toBeDefined();
-		expect(result!.needed).toBe(true);
+		expect(result!.isNeeded).toBe(true);
 		expect(result!.questions).toHaveLength(1);
 		expect(result!.questions[0]!.text).toBe('Should we approve the refund?');
 		expect(result!.questions[0]!.options).toEqual(['Yes', 'No']);

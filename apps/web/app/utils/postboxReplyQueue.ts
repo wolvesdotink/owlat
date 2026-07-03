@@ -21,7 +21,7 @@ export interface ReplyQueueClarificationQuestion {
 
 /** The clarification payload on a needs-reply thread (server shape). */
 export interface ReplyQueueClarification {
-	needed: boolean;
+	isNeeded: boolean;
 	questions: ReplyQueueClarificationQuestion[];
 	askedAt: number;
 	answeredAt?: number;

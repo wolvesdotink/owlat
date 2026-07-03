@@ -39,7 +39,7 @@ function makeItem(over: Partial<ReplyQueueItem['clarification']> = {}): ReplyQue
 		snippet: 'Can you approve the refund?',
 		receivedAt: 1,
 		clarification: {
-			needed: true,
+			isNeeded: true,
 			askedAt: 1,
 			questions: [
 				{
