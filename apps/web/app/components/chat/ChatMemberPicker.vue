@@ -60,7 +60,7 @@ const removeMember = (memberId: string) => {
 				class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-brand-subtle text-brand text-xs"
 			>
 				{{ member.label }}
-				<button @click="removeMember(member.memberId)" aria-label="Close">
+				<button @click="removeMember(member.memberId)" :aria-label="`Remove ${member.label}`">
 					<Icon name="lucide:x" class="w-3 h-3" />
 				</button>
 			</span>

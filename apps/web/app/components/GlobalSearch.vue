@@ -288,7 +288,7 @@ defineExpose({ openSearch });
 						v-if="searchQuery"
 						class="p-1 text-text-tertiary hover:text-text-primary transition-colors"
 						@click="searchQuery = ''"
-					 aria-label="Close">
+					 aria-label="Clear search">
 						<Icon name="lucide:x" class="w-4 h-4" />
 					</button>
 					<kbd

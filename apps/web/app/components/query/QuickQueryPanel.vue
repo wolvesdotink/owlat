@@ -99,7 +99,7 @@ const handleKeydown = (e: KeyboardEvent) => {
 						v-if="question"
 						class="p-1 text-text-tertiary hover:text-text-primary transition-colors"
 						@click="question = ''"
-					 aria-label="Close">
+					 aria-label="Clear question">
 						<Icon name="lucide:x" class="w-4 h-4" />
 					</button>
 					<kbd class="hidden sm:inline-flex items-center px-2 py-1 text-xs text-text-tertiary bg-bg-surface border border-border-subtle rounded">

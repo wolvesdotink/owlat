@@ -192,7 +192,7 @@ function onBlur() {
 					type="button"
 					class="text-text-tertiary hover:text-text-primary"
 					@click="removeRecipient(idx)"
-				 aria-label="Close">
+				 :aria-label="`Remove ${addr}`">
 					<Icon name="lucide:x" class="w-3 h-3" />
 				</button>
 			</span>

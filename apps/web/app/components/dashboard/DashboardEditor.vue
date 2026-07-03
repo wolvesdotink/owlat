@@ -240,7 +240,7 @@ const roleOptions = ROLE_OPTIONS;
 									<button
 										class="p-1 rounded-lg text-text-tertiary hover:text-error hover:bg-error/10 transition-colors shrink-0"
 										@click="removeCard(index)"
-									 aria-label="Close">
+									 aria-label="Remove card">
 										<Icon name="lucide:x" class="w-4 h-4" />
 									</button>
 								</div>

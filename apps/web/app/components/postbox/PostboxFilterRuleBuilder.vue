@@ -164,7 +164,7 @@ function removeAction(idx: number) {
 						type="button"
 						class="p-1 rounded hover:bg-error/10 text-error"
 						@click="removeCondition(Number(idx))"
-					 aria-label="Close">
+					 aria-label="Remove condition">
 						<Icon name="lucide:x" class="w-4 h-4" />
 					</button>
 				</div>
@@ -230,7 +230,7 @@ function removeAction(idx: number) {
 						type="button"
 						class="p-1 rounded hover:bg-error/10 text-error"
 						@click="removeAction(Number(idx))"
-					 aria-label="Close">
+					 aria-label="Remove action">
 						<Icon name="lucide:x" class="w-4 h-4" />
 					</button>
 				</div>

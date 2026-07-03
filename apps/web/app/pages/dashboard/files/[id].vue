@@ -218,10 +218,10 @@ const sourceLabel = computed(() => {
 								@keyup.enter="saveTitle"
 								@keyup.escape="cancelEditTitle"
 							/>
-							<button class="p-1 rounded text-brand hover:bg-brand-subtle transition-colors" @click="saveTitle" aria-label="Confirm">
+							<button class="p-1 rounded text-brand hover:bg-brand-subtle transition-colors" @click="saveTitle" aria-label="Save title">
 								<Icon name="lucide:check" class="w-4 h-4" />
 							</button>
-							<button class="p-1 rounded text-text-tertiary hover:bg-bg-surface transition-colors" @click="cancelEditTitle" aria-label="Close">
+							<button class="p-1 rounded text-text-tertiary hover:bg-bg-surface transition-colors" @click="cancelEditTitle" aria-label="Cancel editing title">
 								<Icon name="lucide:x" class="w-4 h-4" />
 							</button>
 						</div>
