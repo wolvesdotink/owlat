@@ -25,6 +25,18 @@ import type {
 } from './types';
 import { canFail, LEGAL_EDGES, reduce, TERMINAL } from './reducers';
 
+// ─── Constants ──────────────────────────────────────────────────────────────
+
+/**
+ * Default undo / send-delay window for AUTONOMOUS auto-sends when
+ * `agentConfig.autoSendDelayMs` is unset. Mirrors the manual Postbox undo
+ * (mail/draftLifecycle.ts `DEFAULT_UNDO_SEND_DELAY_MS`, 30s) but leans longer
+ * for unattended sends so a landing customer reply or a human "Undo" has room
+ * to abort a now-stale reply before it goes out. `0` preserves the legacy
+ * immediate-send behaviour (`runAfter(0)`, no cancellable marker).
+ */
+export const DEFAULT_AUTO_SEND_DELAY_MS = 60_000;
+
 // ─── Runner ─────────────────────────────────────────────────────────────────
 
 export async function applyEffects(
@@ -82,11 +94,45 @@ export async function applyEffects(
 				break;
 			}
 			case 'schedule_send_approved': {
-				await ctx.scheduler.runAfter(
+				// Human-reviewed approvals send immediately — a human already
+				// signed off, there is nothing to undo. Only the AUTONOMOUS path
+				// gets the configurable send-delay / undo window.
+				if (!effect.autonomous) {
+					await ctx.scheduler.runAfter(
+						0,
+						internal.agent.agentPipeline.sendApprovedReply,
+						{ inboundMessageId: effect.inboundMessageId, autonomous: false },
+					);
+					break;
+				}
+
+				// Resolve the delay from the singleton agentConfig; fail soft to
+				// the default when unconfigured. Clamp to >= 0.
+				const configs = await ctx.db.query('agentConfig').take(1);
+				const configuredDelay = configs[0]?.autoSendDelayMs;
+				const delayMs = Math.max(
 					0,
-					internal.agent.agentPipeline.sendApprovedReply,
-					{ inboundMessageId: effect.inboundMessageId, autonomous: effect.autonomous },
+					configuredDelay ?? DEFAULT_AUTO_SEND_DELAY_MS,
 				);
+
+				const now = Date.now();
+				const scheduledFnId = await ctx.scheduler.runAfter(
+					delayMs,
+					internal.agent.agentPipeline.sendApprovedReply,
+					{ inboundMessageId: effect.inboundMessageId, autonomous: true },
+				);
+
+				// delay=0 is the legacy immediate path — no undo window, so no
+				// cancellable marker to record.
+				if (delayMs > 0) {
+					await ctx.db.patch(effect.inboundMessageId, {
+						pendingAutoSend: {
+							scheduledFnId,
+							sendAt: now + delayMs,
+							scheduledAt: now,
+						},
+					});
+				}
 				break;
 			}
 			case 'schedule_pipeline_start': {

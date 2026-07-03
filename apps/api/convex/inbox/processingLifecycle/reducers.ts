@@ -51,7 +51,10 @@ export const LEGAL_EDGES: Record<ProcessingStatus, ReadonlySet<ProcessingStatus>
 	]),
 	drafting: new Set<ProcessingStatus>(['draft_ready', 'approved']),
 	draft_ready: new Set<ProcessingStatus>(['approved', 'rejected', 'archived']),
-	approved: new Set<ProcessingStatus>(['sent']),
+	// `draft_ready` is the fail-soft degrade for a cancelled delayed auto-send
+	// (cancelAutoSend): aborting the in-flight send routes the reply back to the
+	// human review queue rather than silently dropping it.
+	approved: new Set<ProcessingStatus>(['sent', 'draft_ready']),
 	sent: new Set<ProcessingStatus>(),
 	rejected: new Set<ProcessingStatus>(),
 	archived: new Set<ProcessingStatus>(),
@@ -293,6 +296,14 @@ export function reduce(message: Doc<'inboundMessages'>, input: TransitionInput):
 	const patch: Record<string, unknown> = { processingStatus: input.to };
 	if (PROCESSED_AT_STATES.has(input.to)) {
 		patch['processedAt'] = input.at;
+	}
+	// Any transition OUT of `approved` closes the delayed-auto-send undo window,
+	// so clear the cancellable pending-send marker. Covers `→ sent` (delivered),
+	// `→ failed` (pre-flight error), and `→ draft_ready` (cancelAutoSend). The
+	// reducers below may re-set it via the `schedule_send_approved` effect on the
+	// way IN to `approved`; this only fires on the way out.
+	if (message.processingStatus === 'approved' && input.to !== 'approved') {
+		patch['pendingAutoSend'] = undefined;
 	}
 
 	const parts = buildTransition(message, input);

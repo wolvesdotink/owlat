@@ -55,6 +55,7 @@ function keys(ip: string, domain: string) {
  *
  * KEYS[1] = hash key (throttle state)
  * KEYS[2] = window key (sorted set of send timestamps)
+ * KEYS[3] = sequence key (monotonic counter for unique window members)
  * ARGV[1] = current timestamp (ms)
  * ARGV[2] = window start timestamp (ms)
  * ARGV[3] = default rate from ISP profile
@@ -66,6 +67,7 @@ function keys(ip: string, domain: string) {
 const ACQUIRE_SLOT_LUA = `
 local hashKey = KEYS[1]
 local windowKey = KEYS[2]
+local seqKey = KEYS[3]
 local now = ARGV[1]
 local windowStart = ARGV[2]
 local defaultRate = tonumber(ARGV[3])
@@ -103,8 +105,14 @@ if windowCount >= currentRate then
   return 0
 end
 
--- Acquire the slot atomically
-redis.call('ZADD', windowKey, now, now .. ':' .. tostring(math.random(1000000)))
+-- Acquire the slot atomically. Use a monotonic per-window sequence for the
+-- sorted-set member so it is ALWAYS unique — never a random suffix, which can
+-- collide (birthday) when many acquisitions share the same 'now', causing the
+-- ZADD to overwrite an existing member instead of adding a row, undercounting
+-- the window and admitting one slot over the cap.
+local seq = redis.call('INCR', seqKey)
+redis.call('EXPIRE', seqKey, windowTtl)
+redis.call('ZADD', windowKey, now, now .. ':' .. tostring(seq))
 redis.call('EXPIRE', windowKey, windowTtl)
 
 return 1
@@ -125,9 +133,10 @@ export async function acquireSlot(redis: Redis, ip: string, domain: string): Pro
 
 	const result = await redis.eval(
 		ACQUIRE_SLOT_LUA,
-		2,
+		3,
 		hashKey,
 		windowKey,
+		`${windowKey}:seq`,
 		String(now),
 		String(windowStart),
 		String(profile.defaultRate),
