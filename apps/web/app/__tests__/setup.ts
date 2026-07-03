@@ -3,7 +3,7 @@
  * Mocks Vue auto-imports that Nuxt provides globally
  */
 import { vi } from 'vitest';
-import { ref, computed, reactive, readonly, watch, watchEffect, onMounted, onUnmounted, nextTick, toRef, toRefs, unref, isRef, shallowRef, triggerRef, getCurrentInstance, getCurrentScope, onScopeDispose } from 'vue';
+import { ref, computed, reactive, readonly, watch, watchEffect, onMounted, onUnmounted, nextTick, toRef, toRefs, toValue, unref, isRef, shallowRef, triggerRef, getCurrentInstance, getCurrentScope, onScopeDispose } from 'vue';
 
 // Make Vue reactivity primitives available globally (Nuxt auto-imports these)
 vi.stubGlobal('ref', ref);
@@ -17,6 +17,7 @@ vi.stubGlobal('onUnmounted', onUnmounted);
 vi.stubGlobal('nextTick', nextTick);
 vi.stubGlobal('toRef', toRef);
 vi.stubGlobal('toRefs', toRefs);
+vi.stubGlobal('toValue', toValue);
 vi.stubGlobal('unref', unref);
 vi.stubGlobal('isRef', isRef);
 vi.stubGlobal('shallowRef', shallowRef);
@@ -38,6 +39,7 @@ declare global {
 	const nextTick: typeof import('vue')['nextTick'];
 	const toRef: typeof import('vue')['toRef'];
 	const toRefs: typeof import('vue')['toRefs'];
+	const toValue: typeof import('vue')['toValue'];
 	const unref: typeof import('vue')['unref'];
 	const isRef: typeof import('vue')['isRef'];
 	const shallowRef: typeof import('vue')['shallowRef'];
