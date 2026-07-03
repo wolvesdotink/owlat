@@ -14,6 +14,42 @@ export interface CsvContact {
 	updatedAt?: number;
 }
 
+/**
+ * Max contact ids to pass to `getPropertyValuesForContacts` in a single call.
+ *
+ * That query does one `db.get` plus one `by_contact` index range read per id.
+ * A Convex transaction can scan at most ~4,096 documents across its index range
+ * reads, so passing all ids from a large export (up to 10,000) in one call blew
+ * the cap and threw at ~2,000+ contacts — silently breaking CSV export at a
+ * reachable size. We chunk well under the cap and merge the per-chunk maps.
+ */
+export const PROPERTY_VALUES_CHUNK_SIZE = 500;
+
+/**
+ * Fetch custom-property values for an arbitrary number of contacts by chunking
+ * the ids into `chunkSize` batches and merging the per-chunk maps. Each chunk is
+ * a separate query/transaction, so the per-transaction index-range-read cap is
+ * never hit no matter how many contacts are exported.
+ *
+ * The merged shape is identical to a single `getPropertyValuesForContacts` call,
+ * so the CSV output is byte-for-byte unchanged.
+ */
+export async function fetchPropertyValuesChunked(
+	contactIds: ReadonlyArray<Id<'contacts'>>,
+	fetchChunk: (
+		chunk: Id<'contacts'>[],
+	) => Promise<Record<string, Record<string, string>>>,
+	chunkSize: number = PROPERTY_VALUES_CHUNK_SIZE,
+): Promise<Record<string, Record<string, string>>> {
+	const merged: Record<string, Record<string, string>> = {};
+	for (let i = 0; i < contactIds.length; i += chunkSize) {
+		const chunk = contactIds.slice(i, i + chunkSize);
+		const part = await fetchChunk(chunk);
+		Object.assign(merged, part);
+	}
+	return merged;
+}
+
 export interface CsvProperty {
 	// string key into the per-contact property-values map; callers may pass a
 	// branded Id<'contactProperties'> (assignable to string).
