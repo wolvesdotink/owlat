@@ -109,7 +109,7 @@ function pickCategory(label: MailCategory) {
 						v-for="t in section.threads"
 						:key="t._id"
 						class="group relative border-b border-border-subtle"
-						style="content-visibility: auto; contain-intrinsic-size: auto 76px"
+						style="content-visibility: auto; contain-intrinsic-size: auto var(--pbx-row-intrinsic, 76px)"
 					>
 						<NuxtLink
 							:id="`postbox-cat-thread-${t._id}`"

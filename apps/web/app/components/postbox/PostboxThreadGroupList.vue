@@ -57,7 +57,7 @@ const { focusedIndex, activeId, onKeydown } = usePostboxListKeyboard({
 		<li
 			v-for="(t, i) in threads"
 			:key="t._id"
-			style="content-visibility: auto; contain-intrinsic-size: auto 76px"
+			style="content-visibility: auto; contain-intrinsic-size: auto var(--pbx-row-intrinsic, 76px)"
 		>
 			<NuxtLink
 				:id="`postbox-thread-${t._id}`"

@@ -4,6 +4,8 @@ import type { Id } from '@owlat/api/dataModel';
 import type { PostboxAutoAdvanceMode } from '~/utils/postboxAutoAdvance';
 import type { PostboxReplyDefaultMode } from '~/utils/postboxReplyDefault';
 import { POSTBOX_REPLY_DEFAULT_OPTIONS } from '~/utils/postboxReplyDefault';
+import type { PostboxDensity } from '~/utils/postboxDensity';
+import { POSTBOX_DENSITY_OPTIONS } from '~/utils/postboxDensity';
 
 useHead({ title: 'Postbox settings — Owlat' });
 
@@ -27,6 +29,8 @@ const {
 	setAutoSummarize,
 	replyDefault,
 	setReplyDefault,
+	density,
+	setDensity,
 	isSaving: isSavingAutoAdvance,
 } = usePostboxSettings();
 
@@ -38,6 +42,11 @@ function onAutoAdvanceChange(event: Event) {
 function onReplyDefaultChange(event: Event) {
 	const value = (event.target as HTMLSelectElement).value as PostboxReplyDefaultMode;
 	void setReplyDefault(value);
+}
+
+function onDensityChange(event: Event) {
+	const value = (event.target as HTMLSelectElement).value as PostboxDensity;
+	void setDensity(value);
 }
 
 function onWritingSuggestionsChange(event: Event) {
@@ -222,6 +231,32 @@ async function handleDelete() {
 				>
 					<option
 						v-for="option in POSTBOX_AUTO_ADVANCE_OPTIONS"
+						:key="option.value"
+						:value="option.value"
+					>
+						{{ option.label }}
+					</option>
+				</select>
+			</div>
+			<div class="px-5 py-4 flex items-center justify-between gap-4 border-t border-border-subtle">
+				<div class="min-w-0">
+					<label for="postbox-density" class="font-medium text-sm block">
+						Density
+					</label>
+					<p class="text-xs text-text-tertiary mt-0.5">
+						How tightly the message list and reader are packed. Compact drops the
+						snippet line for single-line rows.
+					</p>
+				</div>
+				<select
+					id="postbox-density"
+					class="input w-64 shrink-0"
+					:value="density"
+					:disabled="isSavingAutoAdvance"
+					@change="onDensityChange"
+				>
+					<option
+						v-for="option in POSTBOX_DENSITY_OPTIONS"
 						:key="option.value"
 						:value="option.value"
 					>

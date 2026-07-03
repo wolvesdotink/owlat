@@ -13,6 +13,13 @@ const mailboxIdRef = computed(() => props.mailboxId);
 const folderRef = computed(() => props.folderRole);
 const folderIdRef = computed(() => props.folderId);
 const { systemFolders, customFolders, unreadByRole } = usePostboxFolders(mailboxIdRef);
+
+// List/reader density → applied as a single data-density attribute on the
+// Postbox root; all compact styling lives in CSS keyed off it (postbox-density.css).
+const { density } = usePostboxSettings();
+
+// Collapsible folder rail — icon strip when collapsed. Persisted per-device.
+const { collapsed: railCollapsed, toggle: toggleRail } = usePostboxRailCollapsed();
 const { labels } = usePostboxLabels(mailboxIdRef);
 const { messages, isLoading, hasMore, loadMore } = usePostboxThreads({
 	mailboxId: mailboxIdRef,
@@ -154,6 +161,13 @@ function goSearch(value: string) {
 }
 
 function onGlobalKey(event: KeyboardEvent) {
+	// Cmd/Ctrl+Shift+D toggles the folder rail between full width and the icon
+	// strip. Works regardless of focus so it's reachable from anywhere.
+	if ((event.metaKey || event.ctrlKey) && event.shiftKey && !event.altKey && event.key.toLowerCase() === 'd') {
+		event.preventDefault();
+		toggleRail();
+		return;
+	}
 	if (event.key !== '/' || event.metaKey || event.ctrlKey || event.altKey) return;
 	const el = event.target as HTMLElement | null;
 	if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) {
@@ -168,55 +182,94 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 </script>
 
 <template>
-	<div class="flex w-full">
-		<!-- Pane 1: folder rail -->
+	<div class="flex w-full" :data-density="density">
+		<!-- Pane 1: folder rail — collapses to a ~48px icon strip (Cmd/Ctrl+Shift+D
+		     or the chevron at the bottom). Collapsed hides folder CRUD, label
+		     management and the search box; folder/action glyphs stay reachable. -->
 		<aside
-			class="w-56 border-r border-border-subtle bg-bg-elevated flex flex-col p-3 gap-2"
+			class="border-r border-border-subtle bg-bg-elevated flex flex-col"
+			:class="railCollapsed ? 'w-12 p-2 gap-1.5 items-center' : 'w-56 p-3 gap-2'"
 		>
-			<PostboxSearchBar ref="searchBar" v-model="searchQuery" @submit="goSearch" />
-			<PostboxComposeButton :mailbox-id="mailboxId" />
+			<!-- Search: full box expanded; a single icon collapsed (opens the
+			     search page, which hosts the palette/query UI). -->
+			<PostboxSearchBar
+				v-if="!railCollapsed"
+				ref="searchBar"
+				v-model="searchQuery"
+				@submit="goSearch"
+			/>
+			<button
+				v-else
+				type="button"
+				class="w-9 h-9 flex items-center justify-center rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface"
+				title="Search"
+				aria-label="Search"
+				@click="goSearch('')"
+			>
+				<Icon name="lucide:search" class="w-4 h-4" />
+			</button>
+			<PostboxComposeButton :mailbox-id="mailboxId" :collapsed="railCollapsed" />
 			<PostboxFolderList
 				:folders="systemFolders"
 				:unread-counts="unreadByRole"
 				:active-folder="folderRole"
+				:collapsed="railCollapsed"
 			/>
 
 			<!-- Reply Queue — AI task list of emails waiting on a reply (virtual
 			     view like Snoozed; threads stay in their folders). -->
 			<NuxtLink
 				to="/dashboard/postbox/reply-queue"
-				class="flex items-center gap-2 px-2.5 py-1.5 rounded text-sm hover:bg-bg-surface"
+				class="rounded text-sm hover:bg-bg-surface"
+				:class="railCollapsed ? 'relative flex items-center justify-center w-9 h-9' : 'flex items-center gap-2 px-2.5 py-1.5'"
+				:title="railCollapsed ? 'Reply Queue' : undefined"
+				:aria-label="railCollapsed ? `Reply Queue${replyQueueCount > 0 ? `, ${replyQueueCount}` : ''}` : undefined"
 			>
 				<Icon name="lucide:reply" class="w-4 h-4" />
-				<span class="flex-1">Reply Queue</span>
+				<template v-if="!railCollapsed">
+					<span class="flex-1">Reply Queue</span>
+					<span
+						v-if="replyQueueCount > 0"
+						class="text-xs font-medium text-text-secondary"
+					>{{ replyQueueCount }}</span>
+				</template>
 				<span
-					v-if="replyQueueCount > 0"
-					class="text-xs font-medium text-text-secondary"
-				>{{ replyQueueCount }}</span>
+					v-else-if="replyQueueCount > 0"
+					class="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-brand text-white text-[10px] leading-4 font-medium text-center"
+				>{{ replyQueueCount > 99 ? '99+' : replyQueueCount }}</span>
 			</NuxtLink>
 
 			<!-- Virtual "Snoozed" view (no backing system folder; messages stay in
 			     their origin folder, hidden until the wakeup cron). -->
 			<NuxtLink
 				to="/dashboard/postbox/snoozed"
-				class="flex items-center gap-2 px-2.5 py-1.5 rounded text-sm hover:bg-bg-surface"
-				:class="{ 'bg-bg-surface text-brand': folderRole === 'snoozed' }"
+				class="rounded text-sm hover:bg-bg-surface"
+				:class="[
+					railCollapsed ? 'flex items-center justify-center w-9 h-9' : 'flex items-center gap-2 px-2.5 py-1.5',
+					{ 'bg-bg-surface text-brand': folderRole === 'snoozed' },
+				]"
+				:title="railCollapsed ? 'Snoozed' : undefined"
+				:aria-label="railCollapsed ? 'Snoozed' : undefined"
 			>
 				<Icon name="lucide:clock" class="w-4 h-4" />
-				<span class="flex-1">Snoozed</span>
+				<span v-if="!railCollapsed" class="flex-1">Snoozed</span>
 			</NuxtLink>
 			<!-- Secondary destination: lighter weight than the mail folders so the
 			     inbox/folders read as the primary rail. -->
 			<NuxtLink
 				to="/dashboard/postbox/contacts"
-				class="flex items-center gap-2 px-2.5 py-1 rounded text-sm text-text-tertiary hover:text-text-secondary hover:bg-bg-surface"
+				class="rounded text-sm text-text-tertiary hover:text-text-secondary hover:bg-bg-surface"
+				:class="railCollapsed ? 'flex items-center justify-center w-9 h-9' : 'flex items-center gap-2 px-2.5 py-1'"
+				:title="railCollapsed ? 'Contacts' : undefined"
+				:aria-label="railCollapsed ? 'Contacts' : undefined"
 			>
-				<Icon name="lucide:users" class="w-3.5 h-3.5" />
-				<span class="flex-1">Contacts</span>
+				<Icon name="lucide:users" :class="railCollapsed ? 'w-4 h-4' : 'w-3.5 h-3.5'" />
+				<span v-if="!railCollapsed" class="flex-1">Contacts</span>
 			</NuxtLink>
 
-			<!-- Custom folders (no role; user-created or custom IMAP folders) -->
-			<div class="mt-3">
+			<!-- Custom folders (no role; user-created or custom IMAP folders).
+			     Expanded-only: folder CRUD and label management live here. -->
+			<div v-if="!railCollapsed" class="mt-3">
 				<header class="flex items-center justify-between mb-1 px-2">
 					<span class="text-xs font-semibold uppercase tracking-wider text-text-tertiary">Folders</span>
 					<button
@@ -281,10 +334,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 				</ul>
 			</div>
 
-			<!-- Always shown so the "Manage labels" affordance (the only way to
+			<!-- Shown expanded so the "Manage labels" affordance (the only way to
 			     create the first label) stays reachable; the empty case is handled
-			     by the "No labels yet" row below. -->
-			<div class="mt-3">
+			     by the "No labels yet" row below. Collapsed hides labels with the
+			     rest of the management UI. -->
+			<div v-if="!railCollapsed" class="mt-3">
 				<header class="flex items-center justify-between mb-1 px-2">
 					<span
 						class="text-xs font-semibold uppercase tracking-wider text-text-tertiary"
@@ -316,6 +370,23 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 					</li>
 				</ul>
 			</div>
+
+			<!-- Collapse toggle pinned to the rail bottom (also Cmd/Ctrl+Shift+D). -->
+			<button
+				type="button"
+				class="mt-auto flex items-center justify-center rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface"
+				:class="railCollapsed ? 'w-9 h-9' : 'w-full gap-1.5 px-2.5 py-1.5 text-xs'"
+				:title="railCollapsed ? 'Expand sidebar (Cmd+Shift+D)' : 'Collapse sidebar (Cmd+Shift+D)'"
+				:aria-label="railCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
+				:aria-pressed="railCollapsed"
+				@click="toggleRail"
+			>
+				<Icon
+					:name="railCollapsed ? 'lucide:chevrons-right' : 'lucide:chevrons-left'"
+					class="w-4 h-4"
+				/>
+				<span v-if="!railCollapsed">Collapse</span>
+			</button>
 		</aside>
 
 		<!-- Pane 2: thread/message list -->

@@ -2,6 +2,7 @@
 @import '../../../../../packages/ui/assets/css/index.css';
 @import './desktop.css';
 @import './postbox-motion.css';
+@import './postbox-density.css';
 
 @source "../../../../../packages/email-builder/src/**/*.vue";
 @source "../../../../../packages/email-builder/src/**/*.ts";

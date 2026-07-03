@@ -337,7 +337,7 @@ watch(
 			v-for="(msg, i) in visibleMessages"
 			:key="msg._id"
 			class="group relative"
-			style="content-visibility: auto; contain-intrinsic-size: auto 76px"
+			style="content-visibility: auto; contain-intrinsic-size: auto var(--pbx-row-intrinsic, 76px)"
 		>
 			<component
 				:is="selectable ? 'div' : (resolveComponent('NuxtLink') as 'div')"
@@ -346,7 +346,7 @@ watch(
 				:tabindex="selectable ? -1 : undefined"
 				:aria-selected="focusedIndex === i"
 				:to="selectable ? undefined : `/dashboard/postbox/${props.folderRole}/${msg._id}`"
-				class="block w-full text-left px-4 py-3 hover:bg-bg-elevated"
+				class="pbx-row-link block w-full text-left px-4 py-3 hover:bg-bg-elevated"
 				:class="{
 					'bg-bg-elevated': activeMessageId === msg._id,
 					'bg-brand/5': bulk.isSelected(msg._id as unknown as Id<'mailMessages'>),
@@ -422,7 +422,7 @@ watch(
 								{{ msg.subject || '(no subject)' }}
 							</p>
 						</div>
-						<p class="text-xs text-text-tertiary truncate mt-0.5">{{ msg.snippet }}</p>
+						<p class="pbx-row-snippet text-xs text-text-tertiary truncate mt-0.5">{{ msg.snippet }}</p>
 					</div>
 				</div>
 			</component>
