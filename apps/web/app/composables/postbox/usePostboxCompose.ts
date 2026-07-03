@@ -212,7 +212,13 @@ export function usePostboxCompose(seed: DraftSeed) {
 	}
 
 	// Auto-prepend the default signature to a fresh, empty draft.
-	let signaturePrepended = false;
+	// A reopened draft (seed.draftId) already carries its own signature in the
+	// saved body; auto-prepending here would race drafts.get hydration — if this
+	// watcher wins it writes the signature into the still-empty body, hydration's
+	// `if (!bodyHtml.value)` guard then skips loading the saved body, and autosave
+	// later persists the signature OVER the saved draft (silent data loss). So we
+	// only auto-prepend for a brand-new compose, never when reopening a draft.
+	let signaturePrepended = Boolean(seed.draftId);
 	watch(
 		() => signatures.value,
 		(sigs) => {
