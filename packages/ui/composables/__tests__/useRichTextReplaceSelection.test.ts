@@ -87,6 +87,27 @@ describe('replaceSelection', () => {
 		expect(onChange).toHaveBeenCalledTimes(1);
 	});
 
+	it('falls back to a manual range replace when execCommand exists but throws', () => {
+		const editor = mountAndSelect('<p>hello world foo</p>', 'world');
+		const editorRef = ref<HTMLElement | null>(editor);
+		const onChange = vi.fn();
+		// execCommand is present but throws (some engines reject insertText on a
+		// detached/unsupported context); the composable must fail soft.
+		const exec = vi.fn(() => {
+			throw new Error('insertText unsupported');
+		});
+		(document as { execCommand?: unknown }).execCommand = exec;
+
+		const { replaceSelection } = useRichText({ editorRef, onChange });
+		const ok = replaceSelection('WORLD');
+
+		expect(exec).toHaveBeenCalledWith('insertText', false, 'WORLD');
+		expect(ok).toBe(true);
+		expect(editor.textContent).toBe('hello WORLD foo');
+		// The manual fallback is not observed by a native input event, so it emits once.
+		expect(onChange).toHaveBeenCalledTimes(1);
+	});
+
 	it('no-ops (returns false) with no selection inside the editor', () => {
 		document.body.innerHTML = '';
 		const editor = document.createElement('div');
