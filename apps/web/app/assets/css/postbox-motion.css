@@ -79,12 +79,17 @@
  */
 .pbx-hover-reveal {
 	opacity: 0;
+	/* Invisible actions must not be tappable (touch/no-hover devices where the
+	 * row never enters :hover) — the buttons stay in the DOM for zero layout
+	 * shift, but only accept input once actually revealed. */
+	pointer-events: none;
 	transition: opacity var(--pbx-motion-fast) var(--pbx-motion-ease);
 }
 .pbx-hover-reveal:focus-within,
 .group:hover .pbx-hover-reveal,
 .pbx-hover-reveal-host:hover .pbx-hover-reveal {
 	opacity: 1;
+	pointer-events: auto;
 }
 
 @media (prefers-reduced-motion: reduce) {
