@@ -14,11 +14,8 @@
  * keystroke).
  */
 
-import {
-	useRichText,
-	EMPTY_ACTIVE_MARKS,
-	type ActiveMarks,
-} from '@owlat/ui/composables/useRichText';
+import { useRichText } from '@owlat/ui/composables/useRichText';
+import { usePostboxEditorDocument } from '~/composables/postbox/usePostboxEditorDocument';
 import { usePostboxGhostOverlay } from '~/composables/postbox/usePostboxGhostOverlay';
 import { usePostboxRewriteController } from '~/composables/postbox/usePostboxRewriteController';
 import { usePostboxFloatingFormatBar } from '~/composables/postbox/usePostboxFloatingFormatBar';
@@ -90,8 +87,21 @@ const emit = defineEmits<{
 
 const editorRef = ref<HTMLDivElement | null>(null);
 const surfaceRef = ref<HTMLDivElement | null>(null);
-const isEmpty = ref(true);
-const activeMarks = ref<ActiveMarks>({ ...EMPTY_ACTIVE_MARKS });
+
+// Document lifecycle (empty/marks state, scaffold, modelValue mirroring) lives in
+// a composable so this component stays under the file-size ratchet.
+const {
+	isEmpty,
+	activeMarks,
+	syncActiveMarks,
+	emitContent,
+} = usePostboxEditorDocument({
+	editorRef,
+	modelValue: () => props.modelValue,
+	// `richText` is defined just below; the getter defers the read past its TDZ.
+	readActiveMarks: () => richText.readActiveMarks(),
+	emit: (value) => emit('update:modelValue', value),
+});
 
 const richText = useRichText({
 	editorRef,
@@ -120,38 +130,7 @@ const {
 	handleBeforeInput,
 	handleShortcutUndoKeydown,
 	resetShortcutUndo,
-	readActiveMarks,
 } = richText;
-
-function syncActiveMarks() {
-	activeMarks.value = readActiveMarks();
-}
-
-function syncEmptyState() {
-	const el = editorRef.value;
-	if (!el) {
-		isEmpty.value = true;
-		return;
-	}
-	const text = el.innerText.replace(/​/g, '').trim();
-	isEmpty.value = text.length === 0;
-}
-
-function ensureScaffold() {
-	const el = editorRef.value;
-	if (!el) return;
-	if (el.childNodes.length === 0) {
-		el.innerHTML = '<p><br></p>';
-	}
-}
-
-function emitContent() {
-	const el = editorRef.value;
-	if (!el) return;
-	emit('update:modelValue', el.innerHTML);
-	syncEmptyState();
-	syncActiveMarks();
-}
 
 // The editor input path must NEVER await the network: `onInput` only emits and
 // arms the debounce timer; the completion resolves (or is dropped) out of band.
@@ -336,17 +315,9 @@ function withFocus(fn: () => void | Promise<void>) {
 	};
 }
 
+// Content init + the incoming `modelValue` watcher live in usePostboxEditorDocument;
+// this component only owns the document-level selectionchange listener.
 onMounted(() => {
-	const el = editorRef.value;
-	if (el) {
-		if (props.modelValue && el.innerHTML !== props.modelValue) {
-			el.innerHTML = props.modelValue;
-		} else {
-			ensureScaffold();
-		}
-	}
-	syncEmptyState();
-	syncActiveMarks();
 	document.addEventListener('selectionchange', onSelectionChange);
 });
 
@@ -357,20 +328,6 @@ onBeforeUnmount(() => {
 	snippetPicker.close();
 	rewriteCtl.dispose();
 });
-
-watch(
-	() => props.modelValue,
-	(value) => {
-		const el = editorRef.value;
-		if (!el) return;
-		if (el.innerHTML === value) return;
-		const isFocused = document.activeElement === el;
-		if (isFocused) return; // don't clobber the user's cursor mid-typing
-		el.innerHTML = value || '';
-		ensureScaffold();
-		syncEmptyState();
-	}
-);
 
 defineExpose({ focus: focusEditor });
 </script>
