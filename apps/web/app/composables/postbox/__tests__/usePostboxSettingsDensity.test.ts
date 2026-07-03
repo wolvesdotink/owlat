@@ -27,6 +27,7 @@ beforeEach(() => {
 	runSpy.mockClear();
 	vi.stubGlobal('useConvexQuery', () => ({ data: settingsRow, isLoading: ref(false) }));
 	vi.stubGlobal('useBackendOperation', () => ({ run: runSpy, isLoading: ref(false) }));
+	vi.stubGlobal('useFeatureFlag', () => ({ isEnabled: () => false }));
 });
 
 describe('usePostboxSettings density', () => {
