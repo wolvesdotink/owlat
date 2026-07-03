@@ -24,6 +24,7 @@ import { usePostboxRewriteController } from '~/composables/postbox/usePostboxRew
 import { usePostboxFloatingFormatBar } from '~/composables/postbox/usePostboxFloatingFormatBar';
 import { usePostboxInlineImages } from '~/composables/postbox/usePostboxInlineImages';
 import { usePostboxEmojiPicker } from '~/composables/postbox/usePostboxEmojiPicker';
+import { usePostboxEditorInput } from '~/composables/postbox/usePostboxEditorInput';
 import { matchAsciiSmiley } from '~/utils/postboxEmojiShortcodes';
 import type { Id } from '@owlat/api/dataModel';
 
@@ -205,50 +206,6 @@ const {
 	enabled: () => props.persistentToolbar !== true,
 });
 
-// Markdown shortcuts AND the ASCII-smiley conversion intercept the raw input
-// BEFORE the character lands (both via the shared `handleBeforeInput`), so a
-// conversion never flickers the literal marker into the DOM. When consumed the
-// composable has already called preventDefault().
-function onBeforeInput(event: InputEvent) {
-	if (handleBeforeInput(event)) {
-		// The conversion mutates the DOM directly without firing @input, so emit
-		// the new content and re-run the ghost/rewrite bookkeeping the input path
-		// would normally do.
-		emitContent();
-		rewriteCtl.invalidateOnEdit();
-	}
-}
-
-function onKeydown(event: KeyboardEvent) {
-	if (emoji.handleKeydown(event)) return; // open picker owns arrows/Enter/Tab/Esc
-	// A conversion's first Cmd+Z restores the literal marker/smiley text (one undo
-	// step) — markdown shortcuts and the ASCII smiley share this one pathway.
-	if (handleShortcutUndoKeydown(event)) {
-		emitContent();
-		return;
-	}
-	if (ghost.hasGhost()) {
-		if (event.key === 'Tab') {
-			event.preventDefault();
-			ghost.accept();
-			return;
-		}
-		if (event.key === 'Escape') {
-			event.preventDefault();
-			ghost.cancel();
-			return;
-		}
-		// Any other key: the draft is changing under the ghost — dismiss it.
-		ghost.cancel();
-	}
-	// Escape dismisses a rewrite pill/preview without touching the selection.
-	if (event.key === 'Escape' && rewriteCtl.handleEscape()) {
-		event.preventDefault();
-		return;
-	}
-	handleFormatKeydown(event);
-}
-
 // ── Inline images (paste / drop into the body) ─────────────────────────────
 // Insert-at-caret, reconcile-on-delete, and the paste/drop handling live in the
 // composable so this component stays under the file-size ratchet.
@@ -268,6 +225,18 @@ const emoji = usePostboxEmojiPicker({
 	enabled: () => props.emojiShortcodesEnabled === true,
 	replaceSelection: richText.replaceSelection,
 	emitContent,
+});
+
+// One linear keyboard/beforeinput pathway multiplexed across the emoji picker,
+// ghost text, the AI rewrite pill, the shared undo, and format shortcuts.
+const { onBeforeInput, onKeydown } = usePostboxEditorInput({
+	handleBeforeInput,
+	handleShortcutUndoKeydown,
+	handleFormatKeydown,
+	emitContent,
+	emoji,
+	ghost,
+	rewrite: rewriteCtl,
 });
 
 function onPaste(event: ClipboardEvent) {
