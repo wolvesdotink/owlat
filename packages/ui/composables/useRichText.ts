@@ -1,21 +1,17 @@
 /**
- * Rich-text editing primitives for `contenteditable` editors.
+ * Rich-text editing primitives for `contenteditable` editors, shared by
+ * `PostboxBasicEditor.vue` (webmail composer) and the campaign builder's
+ * `InlineTextEditor.vue`.
  *
- * Shared by:
- *   - `apps/web/app/components/postbox/PostboxBasicEditor.vue` (full webmail composer)
- *   - `packages/email-builder/src/components/canvas/InlineTextEditor.vue`
- *     (campaign builder inline text block)
- *
- * The composable returns DOM-mutating helpers bound to a caller-supplied
- * editor element ref. Format toggles (bold/italic/underline/heading/list/
- * blockquote/link) operate on the current Selection/Range and re-emit the
- * editor's HTML through the supplied `onChange` callback.
- *
- * Selection-aware helpers are guarded against missing window (SSR) and
- * out-of-editor selections — they no-op rather than throwing.
+ * The composable returns DOM-mutating helpers bound to a caller-supplied editor
+ * element ref. Format toggles (bold/italic/underline/heading/list/blockquote/
+ * link) operate on the current Selection/Range and re-emit the editor's HTML
+ * through the supplied `onChange` callback. Selection-aware helpers no-op
+ * (rather than throw) under SSR or when the selection is outside the editor.
  */
 
 import type { Ref } from 'vue';
+import { createMarkdownShortcuts } from './richTextShortcuts';
 
 export interface ActiveMarks {
 	bold: boolean;
@@ -151,6 +147,12 @@ export interface UseRichTextOptions {
 	 * Return `null` to cancel; return `''` to remove an existing link.
 	 */
 	promptForLink?: (currentHref: string | null) => Promise<string | null> | string | null;
+	/**
+	 * Enable Notion-style markdown typing shortcuts (opt-in per consumer). Off by
+	 * default so non-Postbox consumers (e.g. the campaign builder inline editor)
+	 * are untouched. See {@link createMarkdownShortcuts} for the pattern set.
+	 */
+	patternShortcuts?: boolean;
 }
 
 /**
@@ -160,6 +162,7 @@ export interface UseRichTextOptions {
  */
 export function useRichText(options: UseRichTextOptions) {
 	const { editorRef, onChange, promptForLink } = options;
+	const patternShortcuts = options.patternShortcuts === true;
 
 	function notify() {
 		onChange?.();
@@ -452,6 +455,25 @@ export function useRichText(options: UseRichTextOptions) {
 		return false;
 	}
 
+	// Markdown typing shortcuts live in the sibling `richTextShortcuts` module
+	// (keeps this composable under the file-size ratchet). Only wired when the
+	// consumer opts in; otherwise the handlers are inert no-ops.
+	const shortcuts = patternShortcuts
+		? createMarkdownShortcuts({ editorRef, getCtx, notify })
+		: null;
+
+	function handleBeforeInput(event: InputEvent): boolean {
+		return shortcuts ? shortcuts.handleBeforeInput(event) : false;
+	}
+
+	function handleShortcutUndoKeydown(event: KeyboardEvent): boolean {
+		return shortcuts ? shortcuts.handleShortcutUndoKeydown(event) : false;
+	}
+
+	function resetShortcutUndo(): void {
+		shortcuts?.resetShortcutUndo();
+	}
+
 	return {
 		// Selection helpers
 		getSelection: getCtx,
@@ -468,5 +490,9 @@ export function useRichText(options: UseRichTextOptions) {
 		replaceSelection,
 		pasteAsPlainText,
 		handleFormatKeydown,
+		// Markdown typing shortcuts (opt-in via `patternShortcuts`)
+		handleBeforeInput,
+		handleShortcutUndoKeydown,
+		resetShortcutUndo,
 	};
 }
