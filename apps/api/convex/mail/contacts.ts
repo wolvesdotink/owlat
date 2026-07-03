@@ -36,8 +36,7 @@ export function contactFrecencyScore(
 	now: number
 ): number {
 	const days = Math.max(0, now - contact.lastUsedAt) / DAY_MS;
-	const recency =
-		days < 1 ? 100 : days < 7 ? 70 : days < 30 ? 40 : days < 90 ? 20 : 10;
+	const recency = days < 1 ? 100 : days < 7 ? 70 : days < 30 ? 40 : days < 90 ? 20 : 10;
 	// Frequency is bounded so a runaway useCount can't drown out recency.
 	const frequency = Math.min(50, Math.max(0, contact.useCount) * 5);
 	return recency + frequency;
@@ -138,6 +137,50 @@ export const autocomplete = publicQuery({
 	},
 });
 
+/**
+ * Sender-facing state for the thread reader's VIP star + first-time-sender
+ * screener affordance: whether this address is flagged VIP, is a known contact
+ * (in the address book), has been waved through the screener, and whether the
+ * owner has the screener switched on at all. Drives whether the reader shows an
+ * "Accept sender" button. Soft-auth: anonymous / non-owner reads return a safe
+ * empty state (no flags, screener off) so nothing renders.
+ */
+// public: soft-auth — returns empty state for anonymous; mailbox ownership is still enforced in-handler
+export const senderState = publicQuery({
+	args: { mailboxId: v.id('mailboxes'), email: v.string() },
+	handler: async (ctx, args) => {
+		const empty = {
+			isVip: false,
+			isKnown: false,
+			isScreenerAccepted: false,
+			isScreenerEnabled: false,
+		};
+		const owned = await loadOwnedMailbox(ctx, args.mailboxId);
+		if (!owned.ok) return empty;
+		const email = canonical(args.email);
+		const settings = await ctx.db
+			.query('mailUserSettings')
+			.withIndex('by_user', (q) => q.eq('userId', owned.mailbox.userId))
+			.first();
+		const isScreenerEnabled = settings?.isSenderScreenerOn === true;
+		const contact = await ctx.db
+			.query('mailContacts')
+			.withIndex('by_mailbox_and_email', (q) =>
+				q.eq('mailboxId', args.mailboxId).eq('email', email)
+			)
+			.first();
+		if (!contact) return { ...empty, isScreenerEnabled };
+		return {
+			isVip: contact.isVip === true,
+			// A row with real correspondence history is a "known" contact; a bare
+			// VIP/accept row (useCount 0) still counts so its VIP star reads right.
+			isKnown: true,
+			isScreenerAccepted: contact.isScreenerAccepted === true,
+			isScreenerEnabled,
+		};
+	},
+});
+
 export const upsert = authedMutation({
 	args: {
 		mailboxId: v.id('mailboxes'),
@@ -187,6 +230,81 @@ export const remove = authedMutation({
 		const owned = await loadOwnedMailbox(ctx, row.mailboxId);
 		if (!owned.ok) throwForbidden('Not accessible');
 		await ctx.db.delete(args.contactId);
+	},
+});
+
+/**
+ * Toggle the explicit VIP ("important sender") flag on a contact, creating the
+ * address-book row if this sender isn't in it yet. A VIP dominates the Reply
+ * Queue priority score (mail/priorityScore.ts) — the owner's transparent,
+ * easy-to-correct override of the deterministic frecency baseline.
+ */
+// authz: mailbox ownership via loadOwnedMailbox; org membership via authedMutation.
+export const setVip = authedMutation({
+	args: { mailboxId: v.id('mailboxes'), email: v.string(), isVip: v.boolean() },
+	handler: async (ctx, args) => {
+		const owned = await loadOwnedMailbox(ctx, args.mailboxId);
+		if (!owned.ok) throwForbidden('Mailbox not accessible');
+		const email = canonical(args.email);
+		if (!email.includes('@')) throwInvalidInput('Invalid email');
+		const now = Date.now();
+		const existing = await ctx.db
+			.query('mailContacts')
+			.withIndex('by_mailbox_and_email', (q) =>
+				q.eq('mailboxId', args.mailboxId).eq('email', email)
+			)
+			.first();
+		if (existing) {
+			await ctx.db.patch(existing._id, { isVip: args.isVip });
+			return existing._id;
+		}
+		// VIP set on someone not yet in the address book — record them so the flag
+		// (and future frecency bumps) have a home. useCount 0: they've never been
+		// mailed, but the VIP flag short-circuits the score regardless.
+		return ctx.db.insert('mailContacts', {
+			mailboxId: args.mailboxId,
+			email,
+			isVip: args.isVip,
+			useCount: 0,
+			lastUsedAt: now,
+			createdAt: now,
+		});
+	},
+});
+
+/**
+ * Accept a first-time sender through the HEY-style screener — records them in
+ * the address book with `isScreenerAccepted`, so their mail enters the Reply
+ * Queue / clarification loop from now on. No-op payload beyond the accept flag;
+ * `screener` gating itself is toggled via mail/settings.update.
+ */
+// authz: mailbox ownership via loadOwnedMailbox; org membership via authedMutation.
+export const acceptSender = authedMutation({
+	args: { mailboxId: v.id('mailboxes'), email: v.string() },
+	handler: async (ctx, args) => {
+		const owned = await loadOwnedMailbox(ctx, args.mailboxId);
+		if (!owned.ok) throwForbidden('Mailbox not accessible');
+		const email = canonical(args.email);
+		if (!email.includes('@')) throwInvalidInput('Invalid email');
+		const now = Date.now();
+		const existing = await ctx.db
+			.query('mailContacts')
+			.withIndex('by_mailbox_and_email', (q) =>
+				q.eq('mailboxId', args.mailboxId).eq('email', email)
+			)
+			.first();
+		if (existing) {
+			await ctx.db.patch(existing._id, { isScreenerAccepted: true });
+			return existing._id;
+		}
+		return ctx.db.insert('mailContacts', {
+			mailboxId: args.mailboxId,
+			email,
+			isScreenerAccepted: true,
+			useCount: 0,
+			lastUsedAt: now,
+			createdAt: now,
+		});
 	},
 });
 

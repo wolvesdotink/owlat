@@ -30,6 +30,8 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { throwForbidden, throwNotFound } from '../_utils/errors';
 import { isMessageSnoozed } from '../lib/mailSnooze';
 import { loadOwnedMailbox, loadReadableMailbox } from './permissions';
+import { urgencyFallbackScore } from './priorityScore';
+import { scoreAndScreenResult } from './needsReplyScoring';
 
 // ─── Deterministic heuristic (pure) ─────────────────────────────────────────
 
@@ -246,6 +248,9 @@ const needsReplyResultValidator = v.union(
 		messageId: v.id('mailMessages'),
 		source: v.union(v.literal('heuristic'), v.literal('llm')),
 		urgency: v.union(v.literal('high'), v.literal('normal'), v.literal('low')),
+		// Blended sender-importance × urgency score — the ranking key. Computed in
+		// applyResult (server-side) from the address book, never sent by callers.
+		priorityScore: v.optional(v.number()),
 		askSummary: v.optional(v.string()),
 		dueHint: v.optional(v.string()),
 		meetingIntent: v.optional(
@@ -264,6 +269,13 @@ const needsReplyResultValidator = v.union(
  * against staleness: if a newer message arrived while classification was in
  * flight (thread.latestMessageId moved), the result is dropped — the newer
  * ingest already re-enqueued a check.
+ *
+ * When a result is being set, this is also the single place the unified
+ * priority score is computed (from the address book, server-side) and the
+ * HEY-style screener gate is applied — an unknown first-time sender is held
+ * OUT of the queue (result forced to null) when the owner enabled the screener.
+ * Fail-soft: a missing message/mailbox row falls back to persisting the result
+ * without a score rather than dropping the signal.
  */
 export const applyResult = internalMutation({
 	args: {
@@ -282,9 +294,26 @@ export const applyResult = internalMutation({
 		) {
 			return; // stale — a newer ingest re-enqueued its own check
 		}
+
+		let resolved = args.needsReply;
+		if (resolved !== null) {
+			const message = await ctx.db.get(resolved.messageId);
+			const mailbox = await ctx.db.get(thread.mailboxId);
+			if (message && mailbox) {
+				// Single write point for the unified priority score + the HEY-style
+				// screener gate (mail/needsReplyScoring.ts). Fail-soft: a missing
+				// message/mailbox row skips scoring and persists the raw result.
+				resolved = await scoreAndScreenResult(ctx, {
+					mailboxId: thread.mailboxId,
+					ownerUserId: mailbox.userId,
+					message,
+					resolved,
+				});
+			}
+		}
+
 		await ctx.db.patch(args.threadId, {
-			needsReply:
-				args.needsReply === null ? undefined : { ...args.needsReply, detectedAt: Date.now() },
+			needsReply: resolved === null ? undefined : { ...resolved, detectedAt: Date.now() },
 			needsReplyPendingAt: undefined,
 			updatedAt: Date.now(),
 		});
@@ -335,6 +364,9 @@ export const listQueue = publicQuery({
 				threadId: thread._id,
 				messageId: flag.messageId,
 				urgency: flag.urgency,
+				// Ranking key — sender-importance × urgency blend. Falls back to the
+				// urgency bucket for rows persisted before scoring existed.
+				priorityScore: flag.priorityScore ?? urgencyFallbackScore(flag.urgency),
 				askSummary: flag.askSummary,
 				dueHint: flag.dueHint,
 				detectedAt: flag.detectedAt,
@@ -373,6 +405,9 @@ export const listQueue = publicQuery({
 				threadId: thread._id,
 				messageId: flag.messageId,
 				urgency: 'normal' as const,
+				// Follow-ups have no sender-importance signal — rank at the plain
+				// 'normal' urgency baseline so they interleave with needs-reply rows.
+				priorityScore: urgencyFallbackScore('normal'),
 				askSummary: undefined,
 				dueHint: undefined,
 				detectedAt: flag.dueAt,

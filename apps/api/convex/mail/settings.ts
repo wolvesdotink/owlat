@@ -45,6 +45,7 @@ export const get = publicQuery({
 			isSendSoundOn: row.isSendSoundOn,
 			notifyAbout: row.notifyAbout,
 			isBadgeNonPeopleOn: row.isBadgeNonPeopleOn,
+			isSenderScreenerOn: row.isSenderScreenerOn,
 		};
 	},
 });
@@ -61,6 +62,7 @@ export const update = authedMutation({
 		isSendSoundOn: v.optional(v.boolean()),
 		notifyAbout: v.optional(mailNotifyAboutValidator),
 		isBadgeNonPeopleOn: v.optional(v.boolean()),
+		isSenderScreenerOn: v.optional(v.boolean()),
 	},
 	// authz: self-scoped — upserts only the caller's own settings row (keyed
 	// by the session userId; no cross-user id is accepted).
@@ -81,18 +83,18 @@ export const update = authedMutation({
 			isSendSoundOn?: boolean;
 			notifyAbout?: (typeof args)['notifyAbout'];
 			isBadgeNonPeopleOn?: boolean;
+			isSenderScreenerOn?: boolean;
 		} = {};
 		if (args.autoAdvance !== undefined) patch.autoAdvance = args.autoAdvance;
 		if (args.isWritingSuggestionsOn !== undefined)
 			patch.isWritingSuggestionsOn = args.isWritingSuggestionsOn;
-		if (args.isAutoSummarizeOn !== undefined)
-			patch.isAutoSummarizeOn = args.isAutoSummarizeOn;
+		if (args.isAutoSummarizeOn !== undefined) patch.isAutoSummarizeOn = args.isAutoSummarizeOn;
 		if (args.replyDefault !== undefined) patch.replyDefault = args.replyDefault;
 		if (args.density !== undefined) patch.density = args.density;
 		if (args.isSendSoundOn !== undefined) patch.isSendSoundOn = args.isSendSoundOn;
 		if (args.notifyAbout !== undefined) patch.notifyAbout = args.notifyAbout;
-		if (args.isBadgeNonPeopleOn !== undefined)
-			patch.isBadgeNonPeopleOn = args.isBadgeNonPeopleOn;
+		if (args.isBadgeNonPeopleOn !== undefined) patch.isBadgeNonPeopleOn = args.isBadgeNonPeopleOn;
+		if (args.isSenderScreenerOn !== undefined) patch.isSenderScreenerOn = args.isSenderScreenerOn;
 		if (existing) {
 			await ctx.db.patch(existing._id, { ...patch, updatedAt: now });
 			return existing._id;

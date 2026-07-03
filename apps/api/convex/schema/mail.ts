@@ -406,6 +406,12 @@ export const mailTables = {
 				detectedAt: v.number(),
 				source: v.union(v.literal('heuristic'), v.literal('llm')),
 				urgency: v.union(v.literal('high'), v.literal('normal'), v.literal('low')),
+				// Unified cross-thread priority score (mail/priorityScore.ts): the
+				// deterministic sender-importance signal (VIP / person / frecency)
+				// blended with the LLM urgency. REPLACES the 3-bucket urgency for
+				// Reply Queue ranking. Optional so pre-existing rows fall back to
+				// their urgency bucket in the comparator until re-scored.
+				priorityScore: v.optional(v.number()),
 				// One-line "what they are asking" (<= 120 chars). LLM-refined only.
 				askSummary: v.optional(v.string()),
 				// ISO date when the message states a deadline. LLM-refined only.
@@ -800,6 +806,15 @@ export const mailTables = {
 		// Used to rank autocomplete suggestions.
 		useCount: v.number(),
 		lastUsedAt: v.number(),
+		// Explicit "important sender" flag the owner toggles on a contact. Feeds
+		// the Reply Queue priority score (a VIP outranks everyone). Optional so
+		// existing rows read as undefined (not a VIP).
+		isVip: v.optional(v.boolean()),
+		// HEY-style screener: set once the owner accepts this first-time sender,
+		// letting their mail into the Reply Queue / clarification loop. Optional so
+		// existing rows read as undefined (unscreened, i.e. treated as accepted for
+		// pre-existing correspondents that already have a row).
+		isScreenerAccepted: v.optional(v.boolean()),
 		createdAt: v.number(),
 	})
 		.index('by_mailbox_and_email', ['mailboxId', 'email'])
@@ -884,6 +899,12 @@ export const mailTables = {
 		// truthful). Optional so existing rows read as undefined; the reader defaults
 		// it ON (badge counts everything — the pre-existing behavior).
 		isBadgeNonPeopleOn: v.optional(v.boolean()),
+		// HEY-style first-time-sender screener. When ON, mail from a sender who is
+		// not a known contact / VIP / already-accepted is held OUT of the Reply
+		// Queue and clarification loop until the owner accepts them. Optional so
+		// existing rows read as undefined; the reader defaults it OFF (opt-in), so
+		// a deploy that never toggles it keeps today's behaviour.
+		isSenderScreenerOn: v.optional(v.boolean()),
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	}).index('by_user', ['userId']),
