@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
-import { buildContactsCsv, downloadCsv, type CsvContact } from '~/utils/contactsCsv';
+import { buildContactsCsv, downloadCsv, fetchPropertyValuesChunked, type CsvContact } from '~/utils/contactsCsv';
 
 const props = defineProps<{
 	totalCount: number;
@@ -57,9 +57,13 @@ const handleExport = async () => {
 		}
 
 		const contactExportIds = (contactsToExport as ExportContact[]).map((c) => c._id);
-		const propertyValues = await convex.query(api.contacts.organization.getPropertyValuesForContacts, {
-			contactIds: contactExportIds,
-		});
+		// Chunk the ids so each query stays under the Convex per-transaction
+		// index-range-read cap — exporting past ~2,000 contacts otherwise threw.
+		const propertyValues = await fetchPropertyValuesChunked(contactExportIds, (chunk) =>
+			convex.query(api.contacts.organization.getPropertyValuesForContacts, {
+				contactIds: chunk,
+			}),
+		);
 
 		const csv = buildContactsCsv(
 			contactsToExport as CsvContact[],
