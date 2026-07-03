@@ -17,6 +17,11 @@ import { nanoid } from 'nanoid';
 // campaign from `draft|scheduled|sending` through content scan, archive,
 // audience resolution, A/B variant fanout (test cohort), and workpool
 // enqueue. See CONTEXT.md "Campaign send orchestrator (module)".
+// Backoff before re-trying a send hop that found no configured delivery
+// provider (removed between schedule and send). Long enough not to hot-loop
+// while an admin re-configures the provider; the stuck-send watchdog backstops
+// a lost reschedule.
+const NO_PROVIDER_RETRY_MS = 5 * 60 * 1000; // 5 minutes
 const LIFECYCLE_USER_SCHEDULER_TICK = 'system:scheduler_tick';
 const LIFECYCLE_USER_CONTENT_SCAN = 'system:content_scan';
 const LIFECYCLE_USER_ORCHESTRATOR = 'system:orchestrator';
@@ -664,11 +669,23 @@ export const resolveCampaignPage = internalAction({
 		if (!resolvedRoute) {
 			// Fail-closed: the campaign pre-flight already requires a configured
 			// delivery provider, so a null route here means one was removed between
-			// schedule and this send hop. Abort the hop rather than dispatch to a
-			// phantom MTA.
-			throw new Error(
-				'Campaign send aborted: no delivery provider is configured (set EMAIL_PROVIDER + credentials or a provider route).',
+			// schedule and this send hop. Do NOT dispatch to a phantom MTA — but do
+			// NOT throw either: a bare throw would strand the walk forever (it stays
+			// `resolving`, the cursor never advances, and every remaining recipient
+			// is silently dropped). Instead reschedule this SAME hop after a backoff
+			// so the walk resumes once a provider is (re)configured. The cursor is
+			// left untouched, so the page re-resolves from the checkpoint; the
+			// `reconcile stuck campaign sends` watchdog is the ultimate backstop if
+			// this reschedule is itself lost.
+			logWarn(
+				`Campaign send hop deferred for ${args.campaignId}: no delivery provider configured; retrying in ${NO_PROVIDER_RETRY_MS}ms`,
 			);
+			await ctx.scheduler.runAfter(
+				NO_PROVIDER_RETRY_MS,
+				internal.campaigns.send.resolveCampaignPage,
+				{ campaignId: args.campaignId },
+			);
+			return { done: false, pageEnqueued: 0 };
 		}
 
 		const activeTrackingDomain = await ctx.runQuery(
