@@ -106,8 +106,8 @@ describe('draftStep.execute — draft-quality self-check', () => {
 
 		// Persisted: draftQuality present, confidenceScore = classifier confidence
 		expect(recorded).toHaveLength(1);
-		expect(recorded[0]!.confidenceScore).toBe(0.9);
-		expect(recorded[0]!.draftQuality).toEqual({
+		expect(recorded[0]!['confidenceScore']).toBe(0.9);
+		expect(recorded[0]!['draftQuality']).toEqual({
 			score: 0.88,
 			complete: true,
 			grounded: true,
@@ -138,7 +138,7 @@ describe('draftStep.execute — draft-quality self-check', () => {
 		// The draft is still recorded (pipeline never blocked) but WITHOUT a
 		// fabricated quality — the route step will treat it as unknown/LOW.
 		expect(recorded).toHaveLength(1);
-		expect(recorded[0]!.draftResponse).toBeTruthy();
+		expect(recorded[0]!['draftResponse']).toBeTruthy();
 		expect('draftQuality' in recorded[0]!).toBe(false);
 		expect(output.draftQuality).toBeNull();
 	});
