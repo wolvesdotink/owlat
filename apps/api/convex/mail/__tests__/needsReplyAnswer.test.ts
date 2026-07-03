@@ -1,5 +1,5 @@
 /**
- * answerClarification (mail.needsReply) — the owner answers a "Needs your
+ * answerClarification (mail.needsReplyClarify) — the owner answers a "Needs your
  * input" Reply Queue card.
  *
  * Asserts the mutation persists each answer onto
@@ -143,6 +143,8 @@ async function seedThreadWithClarification(
 			labelIds: [],
 			receivedAt: now,
 			internalDate: now,
+			createdAt: now,
+			updatedAt: now,
 		});
 		await ctx.db.patch(threadId, {
 			latestMessageId: messageId,
@@ -175,12 +177,12 @@ beforeEach(() => {
 	sessionMocks.role = 'editor';
 });
 
-describe('mail.needsReply.answerClarification', () => {
+describe('mail.needsReplyClarify.answerClarification', () => {
 	it('persists the answer, stamps answeredAt, and schedules draftWithAnswers', async () => {
 		const t = convexTest(schema, modules);
 		const threadId = await seedThreadWithClarification(t, 'user-A');
 
-		const res = await t.mutation(api.mail.needsReply.answerClarification, {
+		const res = await t.mutation(api.mail.needsReplyClarify.answerClarification, {
 			threadId,
 			answers: [{ questionId: 'clarify_0', value: 'Yes' }],
 		});
@@ -203,7 +205,7 @@ describe('mail.needsReply.answerClarification', () => {
 		const threadId = await seedThreadWithClarification(t, 'user-A');
 
 		await expect(
-			t.mutation(api.mail.needsReply.answerClarification, {
+			t.mutation(api.mail.needsReplyClarify.answerClarification, {
 				threadId,
 				answers: [{ questionId: 'does_not_exist', value: 'Yes' }],
 			}),
@@ -225,7 +227,7 @@ describe('mail.needsReply.answerClarification', () => {
 		const threadId = await seedThreadWithClarification(t, 'user-A');
 		sessionMocks.userId = 'user-B';
 		await expect(
-			t.mutation(api.mail.needsReply.answerClarification, {
+			t.mutation(api.mail.needsReplyClarify.answerClarification, {
 				threadId,
 				answers: [{ questionId: 'clarify_0', value: 'Yes' }],
 			}),
