@@ -157,7 +157,8 @@ export function evaluateBudget(
 	);
 
 	const configured = daily.configured || monthly.configured;
-	const state: BudgetState = WORST[daily.state] >= WORST[monthly.state] ? daily.state : monthly.state;
+	const state: BudgetState =
+		WORST[daily.state] >= WORST[monthly.state] ? daily.state : monthly.state;
 	const autonomousAutoSendAllowed = daily.state !== 'exceeded' && monthly.state !== 'exceeded';
 	const advisoryAllowed = daily.advisoryAllowed && monthly.advisoryAllowed;
 	const warn = state !== 'ok';

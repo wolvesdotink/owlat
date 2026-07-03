@@ -127,7 +127,8 @@ async function assertSafeToAutoSend(
 		if (!budget.autonomousAutoSendAllowed) {
 			return {
 				safe: false,
-				reason: budget.reason || 'AI spend budget exhausted; not auto-sending — routing to human review.',
+				reason:
+					budget.reason || 'AI spend budget exhausted; not auto-sending — routing to human review.',
 			};
 		}
 	} catch {

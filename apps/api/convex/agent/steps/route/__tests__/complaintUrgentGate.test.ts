@@ -35,7 +35,16 @@ function makeCtx(classification: { category: string; priority: string } | undefi
 					from: 'Alice Customer <alice@customer.example>',
 					draftResponse: cleanDraft,
 					securityFlags: { guardUnavailable: false },
-					...(classification ? { classification: { ...classification, sentiment: 'negative', intent: 'complaint', confidence: 0.9 } } : {}),
+					...(classification
+						? {
+								classification: {
+									...classification,
+									sentiment: 'negative',
+									intent: 'complaint',
+									confidence: 0.9,
+								},
+							}
+						: {}),
 				};
 			}
 			if (name.includes('getBudgetStatus')) return { autonomousAutoSendAllowed: true };

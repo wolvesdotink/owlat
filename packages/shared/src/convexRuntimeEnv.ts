@@ -166,7 +166,7 @@ export async function pushConvexRuntimeEnv(
 	adminUrl: string,
 	adminKey: string,
 	vars: Array<[string, string]>,
-	fetchImpl: typeof fetch = fetch,
+	fetchImpl: typeof fetch = fetch
 ): Promise<void> {
 	if (vars.length === 0) return;
 	const base = adminUrl.replace(/\/+$/, '');
@@ -183,13 +183,13 @@ export async function pushConvexRuntimeEnv(
 		});
 	} catch (e) {
 		throw new Error(
-			`Could not reach the Convex admin API at ${base} to set runtime env vars: ${(e as Error).message}`,
+			`Could not reach the Convex admin API at ${base} to set runtime env vars: ${(e as Error).message}`
 		);
 	}
 	if (!res.ok) {
 		const detail = await res.text().catch(() => '');
 		throw new Error(
-			`Convex admin API rejected the runtime env update (status ${res.status})${detail ? `: ${detail}` : ''}.`,
+			`Convex admin API rejected the runtime env update (status ${res.status})${detail ? `: ${detail}` : ''}.`
 		);
 	}
 }

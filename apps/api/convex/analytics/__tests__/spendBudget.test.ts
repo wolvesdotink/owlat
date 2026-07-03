@@ -4,11 +4,7 @@
  * reason; the advisory reserve blocks advisory before the hard ceiling.
  */
 import { describe, it, expect } from 'vitest';
-import {
-	evaluatePeriod,
-	evaluateBudget,
-	type SpendBudgetConfig,
-} from '../spendBudget';
+import { evaluatePeriod, evaluateBudget, type SpendBudgetConfig } from '../spendBudget';
 
 const config: SpendBudgetConfig = {
 	dailyUsd: 10,
