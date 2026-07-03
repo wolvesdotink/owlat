@@ -1,5 +1,5 @@
-import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync } from 'node:fs';
+import { execFileSync, spawn } from 'node:child_process';
+import { existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { getConvexClient, fn, type CodeWorkTask } from './convexClient.js';
 import { createPullRequest } from './github.js';
@@ -156,6 +156,112 @@ export function buildTestEnv(workDir: string, parentEnv: NodeJS.ProcessEnv = pro
 }
 
 /**
+ * Kill an entire process group given the group leader's pid.
+ *
+ * The untrusted children (the coding agent, `npx vitest`) are spawned
+ * `detached`, so each becomes the leader of its OWN process group. Signalling
+ * the NEGATIVE pid reaps the whole group — the direct child *and* every
+ * grandchild it spawned (vitest's worker pool, detached helpers) — instead of
+ * leaving orphaned workers running after a timeout. The `kill` param is
+ * injectable so the group-targeting can be unit-tested without real processes.
+ */
+export function killProcessGroup(
+	pid: number | undefined,
+	kill: (targetPid: number, signal: NodeJS.Signals) => void = process.kill,
+): void {
+	if (!pid || pid <= 0) return;
+	try {
+		kill(-pid, 'SIGKILL');
+	} catch {
+		// The group already exited between the timeout firing and this signal.
+	}
+}
+
+export interface DetachedRunResult {
+	code: number | null;
+	stdout: string;
+	stderr: string;
+	timedOut: boolean;
+}
+
+/**
+ * Run an UNTRUSTED subprocess in its own process group and, on timeout, kill the
+ * WHOLE group.
+ *
+ * `execFileSync`'s built-in `timeout` only signals the direct child, so a
+ * timed-out `vitest` run would leave its detached worker pool alive — still
+ * burning CPU/memory against the container's resource limits. Spawning
+ * `detached` (a new process group) and killing the negative pid guarantees the
+ * entire process tree is reaped when the deadline is hit. `shell: false` is
+ * kept (spawn with an argv array), preserving the shell-injection isolation the
+ * argv builders rely on.
+ */
+function runDetached(
+	command: string,
+	args: string[],
+	opts: { cwd: string; env: NodeJS.ProcessEnv; timeoutMs: number },
+): Promise<DetachedRunResult> {
+	return new Promise((resolve, reject) => {
+		const child = spawn(command, args, {
+			cwd: opts.cwd,
+			env: opts.env,
+			detached: true,
+			stdio: ['ignore', 'pipe', 'pipe'],
+		});
+
+		let stdout = '';
+		let stderr = '';
+		let timedOut = false;
+
+		child.stdout?.on('data', (chunk: Buffer) => {
+			stdout += chunk.toString();
+		});
+		child.stderr?.on('data', (chunk: Buffer) => {
+			stderr += chunk.toString();
+		});
+
+		const timer = setTimeout(() => {
+			timedOut = true;
+			killProcessGroup(child.pid);
+		}, opts.timeoutMs);
+
+		child.once('error', (err) => {
+			clearTimeout(timer);
+			reject(err);
+		});
+		child.once('close', (code) => {
+			clearTimeout(timer);
+			resolve({ code, stdout, stderr, timedOut });
+		});
+	});
+}
+
+/**
+ * Remove a task workspace directory, ignoring errors. Called in a `finally` so a
+ * per-task full clone is never leaked, whatever the task outcome.
+ */
+export function removeWorkspace(workDir: string): void {
+	try {
+		rmSync(workDir, { recursive: true, force: true });
+	} catch {
+		// Best-effort: a leftover dir will be reclaimed by pruneStaleWorkspaces on
+		// the next startup.
+	}
+}
+
+/**
+ * Delete every task workspace under the root on startup. Each task does a full
+ * clone into its own dir; before this they leaked forever across restarts, so a
+ * fresh boot begins from a clean workspace root.
+ */
+export function pruneStaleWorkspaces(root: string = WORKSPACE_ROOT): void {
+	if (!existsSync(root)) return;
+	for (const entry of readdirSync(root)) {
+		removeWorkspace(path.join(root, entry));
+	}
+}
+
+/**
  * Set up a git workspace for a task.
  * Clones the repo (or pulls latest) and creates a feature branch.
  */
@@ -191,15 +297,26 @@ async function runCodingAgent(workDir: string, description: string): Promise<{ s
 	const opencodeBin = process.env['OPENCODE_BIN'] ?? 'opencode';
 
 	try {
-		// Try to use OpenCode if available. Argv array + shell:false means the
-		// untrusted description can never break out into a shell command.
-		const result = execFileSync(opencodeBin, buildOpencodeArgs(description), {
+		// Argv array + shell:false means the untrusted description can never break
+		// out into a shell command. Detached so a timeout reaps the whole tree.
+		const result = await runDetached(opencodeBin, buildOpencodeArgs(description), {
 			cwd: workDir,
-			timeout: 600_000, // 10 minute timeout
-			encoding: 'utf-8',
+			timeoutMs: 600_000, // 10 minute timeout
 			env: buildAgentEnv(workDir),
 		});
-		return { success: true, output: result };
+		if (result.timedOut) {
+			return {
+				success: false,
+				output: `OpenCode timed out after 10m; process group killed.\n${(result.stdout + result.stderr).slice(-2000)}`,
+			};
+		}
+		if (result.code !== 0) {
+			return {
+				success: false,
+				output: (result.stdout + result.stderr).slice(-2000) || `OpenCode exited with code ${result.code}`,
+			};
+		}
+		return { success: true, output: result.stdout };
 	} catch (error) {
 		const errMsg = error instanceof Error ? error.message : String(error);
 		log(`OpenCode execution failed: ${errMsg}`);
@@ -210,38 +327,30 @@ async function runCodingAgent(workDir: string, description: string): Promise<{ s
 /**
  * Run tests in the workspace.
  */
-function runTests(workDir: string): { passed: boolean; output: string } {
+async function runTests(workDir: string): Promise<{ passed: boolean; output: string }> {
 	try {
-		// `shell: false`: invoke npx directly with an argv array. Failures are
-		// caught below instead of being swallowed by a shell `|| true`.
-		const output = execFileSync('npx', buildVitestArgs(), {
+		// `shell: false`: invoke npx directly with an argv array. Detached so a
+		// timeout kills vitest's whole worker pool, not just the direct child.
+		const result = await runDetached('npx', buildVitestArgs(), {
 			cwd: workDir,
-			timeout: 300_000, // 5 minute timeout
-			encoding: 'utf-8',
-			stdio: ['ignore', 'pipe', 'pipe'],
+			timeoutMs: 300_000, // 5 minute timeout
 			env: buildTestEnv(workDir),
 		});
-		// `execFileSync` only returns here on a zero exit code, and vitest exits
-		// non-zero iff any test failed — so reaching this branch *is* the pass
-		// signal. `passed` is derived purely from exit status (the catch block
-		// owns the failure path); `output` is captured for the PR body only and
-		// is never parsed for the verdict.
-		return { passed: true, output: output.slice(-2000) }; // Last 2000 chars
+		if (result.timedOut) {
+			return {
+				passed: false,
+				output: `Tests timed out after 5m; process group killed.\n${(result.stdout + result.stderr).slice(-2000)}`,
+			};
+		}
+		// vitest exits non-zero iff any test failed, so `passed` is derived purely
+		// from exit status; `output` is captured for the PR body only and is never
+		// parsed for the verdict.
+		const combined = (result.stdout + result.stderr).trim();
+		return { passed: result.code === 0, output: combined.slice(-2000) }; // Last 2000 chars
 	} catch (error) {
-		// vitest exits non-zero when tests fail; capture its combined output.
-		const stdout =
-			error && typeof error === 'object' && 'stdout' in error
-				? String((error as { stdout?: unknown }).stdout ?? '')
-				: '';
-		const stderr =
-			error && typeof error === 'object' && 'stderr' in error
-				? String((error as { stderr?: unknown }).stderr ?? '')
-				: '';
-		const combined = (stdout + stderr).trim();
-		return {
-			passed: false,
-			output: (combined || (error instanceof Error ? error.message : String(error))).slice(-2000),
-		};
+		// spawn itself failed (e.g. npx missing) — treat as a test failure.
+		const errMsg = error instanceof Error ? error.message : String(error);
+		return { passed: false, output: errMsg.slice(-2000) };
 	}
 }
 
@@ -299,7 +408,7 @@ export async function processTask(task: CodeWorkTask): Promise<void> {
 		// 6. Run tests
 		log(`Running tests for ${taskId}`);
 		await client.mutation(fn.markTesting, { taskId });
-		const testResult = runTests(workDir);
+		const testResult = await runTests(workDir);
 
 		// 7. Push and create PR. Auth is supplied out-of-band (GIT_AUTH_ARGS); the
 		// untrusted agent + tests have already finished, and the token was never
@@ -355,5 +464,9 @@ export async function processTask(task: CodeWorkTask): Promise<void> {
 		} catch {
 			log(`Failed to mark task ${taskId} as failed`);
 		}
+	} finally {
+		// Always reclaim the workspace. The per-task clone is large and must never
+		// leak — regardless of success, failure, or any early return above.
+		removeWorkspace(workDir);
 	}
 }
