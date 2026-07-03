@@ -6,15 +6,25 @@
  * are delegated up (the identity swap is a server round-trip).
  */
 import type { Id } from '@owlat/api/dataModel';
+import {
+	ownDomainsFromIdentities,
+	recipientLabel,
+	canonicalEmailAddress,
+} from '~/utils/recipientHints';
+
+type RecipientField = 'to' | 'cc' | 'bcc';
 
 const props = defineProps<{
 	mailboxId: Id<'mailboxes'>;
 	fromAddress: string;
 	availableIdentities: string[];
+	/** Extra recipients Reply-All would add (raw addresses); drives the gap hint. */
+	replyAllRecipients?: string[];
 }>();
 
 const emit = defineEmits<{
 	(e: 'from-change', address: string): void;
+	(e: 'apply-reply-all'): void;
 }>();
 
 const toAddresses = defineModel<string[]>('toAddresses', { required: true });
@@ -34,6 +44,51 @@ function onFromChange(event: Event) {
 
 const showCc = ref(ccAddresses.value.length > 0);
 const showBcc = ref(bccAddresses.value.length > 0);
+
+// The user's own domains (from the sending identities) — used purely client-side
+// to flag a recipient chip that's outside the org.
+const ownDomains = computed(() =>
+	ownDomainsFromIdentities([
+		...(props.fromAddress ? [props.fromAddress] : []),
+		...props.availableIdentities,
+	])
+);
+
+// ─── Reply-all gap hint ──────────────────────────────────────────────────────
+// Shown once, dismissibly, when a plain Reply left out other recipients.
+const replyAllHintDismissed = ref(false);
+const showReplyAllHint = computed(
+	() => !replyAllHintDismissed.value && (props.replyAllRecipients?.length ?? 0) > 0
+);
+const replyAllHintNames = computed(() =>
+	(props.replyAllRecipients ?? []).map(recipientLabel).join(', ')
+);
+function applyReplyAll() {
+	// Reveal Cc so the newly-added recipients are visible.
+	showCc.value = true;
+	replyAllHintDismissed.value = true;
+	emit('apply-reply-all');
+}
+
+// ─── Drag a chip between To / Cc / Bcc ───────────────────────────────────────
+const fieldModels: Record<RecipientField, { value: string[] }> = {
+	to: toAddresses,
+	cc: ccAddresses,
+	bcc: bccAddresses,
+};
+
+function moveRecipient(payload: { email: string; from: RecipientField }, to: RecipientField) {
+	if (payload.from === to) return;
+	const source = fieldModels[payload.from];
+	const target = fieldModels[to];
+	const canon = canonicalEmailAddress(payload.email);
+	source.value = source.value.filter((a) => canonicalEmailAddress(a) !== canon);
+	if (!target.value.some((a) => canonicalEmailAddress(a) === canon)) {
+		target.value = [...target.value, payload.email];
+	}
+	if (to === 'cc') showCc.value = true;
+	if (to === 'bcc') showBcc.value = true;
+}
 </script>
 
 <template>
@@ -59,6 +114,9 @@ const showBcc = ref(bccAddresses.value.length > 0);
 				v-model="toAddresses"
 				:mailbox-id="mailboxId"
 				label="To"
+				field="to"
+				:own-domains="ownDomains"
+				@move="moveRecipient($event, 'to')"
 			/>
 			<div class="flex items-center gap-2 text-xs pt-0.5">
 				<button
@@ -75,17 +133,43 @@ const showBcc = ref(bccAddresses.value.length > 0);
 				>Bcc</button>
 			</div>
 		</div>
+		<div
+			v-if="showReplyAllHint"
+			class="flex items-center gap-2 pl-14 text-xs text-text-tertiary"
+			data-testid="postbox-reply-all-hint"
+		>
+			<span>Also include {{ replyAllHintNames }}?</span>
+			<button
+				type="button"
+				class="text-brand hover:underline"
+				@click="applyReplyAll"
+			>reply-all</button>
+			<button
+				type="button"
+				class="text-text-tertiary hover:text-text-primary"
+				aria-label="Dismiss"
+				@click="replyAllHintDismissed = true"
+			>
+				<Icon name="lucide:x" class="w-3 h-3" />
+			</button>
+		</div>
 		<PostboxRecipientField
 			v-if="showCc"
 			v-model="ccAddresses"
 			:mailbox-id="mailboxId"
 			label="Cc"
+			field="cc"
+			:own-domains="ownDomains"
+			@move="moveRecipient($event, 'cc')"
 		/>
 		<PostboxRecipientField
 			v-if="showBcc"
 			v-model="bccAddresses"
 			:mailbox-id="mailboxId"
 			label="Bcc"
+			field="bcc"
+			:own-domains="ownDomains"
+			@move="moveRecipient($event, 'bcc')"
 		/>
 		<div class="flex items-baseline gap-2">
 			<label for="subject" class="text-text-tertiary w-12">Subject</label>

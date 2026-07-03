@@ -4,6 +4,7 @@ import type { Id } from '@owlat/api/dataModel';
 import { extractAttachmentAt } from '@owlat/shared/mailMime';
 import { formatCompactRelativeTime, formatDateTime } from '~/utils/formatters';
 import { isLongThreadForSummary } from '~/utils/postboxAutoSummary';
+import { deriveReplyAllExtras } from '~/utils/recipientHints';
 import { shouldShowSchedulingChip } from '~/utils/postboxSchedulingChip';
 import type { PostboxPendingCompose } from '~/utils/postboxShortcuts';
 import type {
@@ -334,16 +335,12 @@ async function buildComposeSpec(
 		};
 	}
 	const spec: Omit<ComposerSpec, 'id' | 'minimized'> = buildReplySpec(mailboxId, target);
+	const extras = deriveReplyAllExtras(target, [...ownAddresses.value]);
 	if (kind === 'replyAll') {
-		const seen = new Set<string>([canonicalEmail(target.fromAddress), ...ownAddresses.value]);
-		const cc: string[] = [];
-		for (const addr of [...target.toAddresses, ...target.ccAddresses]) {
-			const canon = canonicalEmail(addr);
-			if (!canon || seen.has(canon)) continue;
-			seen.add(canon);
-			cc.push(addr);
-		}
-		spec.prefillCc = cc;
+		spec.prefillCc = extras;
+	} else if (kind === 'reply' && extras.length > 0) {
+		// Surface the "Also include …?" gap hint in the composer.
+		spec.replyAllRecipients = extras;
 	}
 	return spec;
 }

@@ -20,6 +20,12 @@ export interface ComposerSpec {
 	forwardAttachmentsFromMessageId?: Id<'mailMessages'>;
 	/** Attach a transient generated file (key into usePostboxPendingAttachments). */
 	attachPendingKey?: string;
+	/**
+	 * On a plain Reply, the recipients a Reply-All would additionally include
+	 * (raw address strings). Drives the dismissible "Also include …" gap hint
+	 * under the To field. Empty/undefined on Reply-All, forwards, and new mail.
+	 */
+	replyAllRecipients?: string[];
 	minimized: boolean;
 }
 

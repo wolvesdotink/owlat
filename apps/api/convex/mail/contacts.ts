@@ -16,6 +16,78 @@ function canonical(addr: string): string {
 	return addr.trim().toLowerCase();
 }
 
+// ─── Pure frecency ranking (recency × frequency blend) ───────────────────────
+// Exported for unit tests. The autocomplete ordering blends how *recently* a
+// contact was corresponded with (a decaying bucket) and how *often* (a bounded
+// useCount boost), so a name typed daily outranks one used once long ago.
+
+export interface RankableContact {
+	email: string;
+	displayName?: string;
+	useCount: number;
+	lastUsedAt: number;
+}
+
+const DAY_MS = 86_400_000;
+
+/** Blended frecency score — higher sorts first. Pure/deterministic given `now`. */
+export function contactFrecencyScore(
+	contact: Pick<RankableContact, 'useCount' | 'lastUsedAt'>,
+	now: number
+): number {
+	const days = Math.max(0, now - contact.lastUsedAt) / DAY_MS;
+	const recency =
+		days < 1 ? 100 : days < 7 ? 70 : days < 30 ? 40 : days < 90 ? 20 : 10;
+	// Frequency is bounded so a runaway useCount can't drown out recency.
+	const frequency = Math.min(50, Math.max(0, contact.useCount) * 5);
+	return recency + frequency;
+}
+
+type MatchKind = 'emailPrefix' | 'nameStart' | 'nameContains' | 'none';
+
+function matchKind(contact: RankableContact, prefix: string): MatchKind {
+	if (contact.email.startsWith(prefix)) return 'emailPrefix';
+	const name = (contact.displayName ?? '').toLowerCase();
+	if (!name) return 'none';
+	if (name.startsWith(prefix)) return 'nameStart';
+	if (name.includes(prefix)) return 'nameContains';
+	return 'none';
+}
+
+const MATCH_RANK: Record<MatchKind, number> = {
+	emailPrefix: 3,
+	nameStart: 2,
+	nameContains: 1,
+	none: 0,
+};
+
+/**
+ * Filter `contacts` to those matching `prefix`, then order by match quality
+ * first (an email/name prefix beats a mid-name substring) and frecency second.
+ * Returns at most `limit` rows.
+ */
+export function rankContacts<T extends RankableContact>(
+	contacts: readonly T[],
+	prefix: string,
+	now: number,
+	limit: number
+): T[] {
+	const p = prefix.trim().toLowerCase();
+	if (!p) return [];
+	return contacts
+		.map((c) => ({ c, kind: matchKind(c, p) }))
+		.filter((x) => x.kind !== 'none')
+		.sort((a, b) => {
+			const byMatch = MATCH_RANK[b.kind] - MATCH_RANK[a.kind];
+			if (byMatch !== 0) return byMatch;
+			const byScore = contactFrecencyScore(b.c, now) - contactFrecencyScore(a.c, now);
+			if (byScore !== 0) return byScore;
+			return b.c.lastUsedAt - a.c.lastUsedAt;
+		})
+		.slice(0, limit)
+		.map((x) => x.c);
+}
+
 // public: soft-auth — returns empty for anonymous; mailbox ownership is still enforced in-handler
 export const list = publicQuery({
 	args: { mailboxId: v.id('mailboxes'), limit: v.optional(v.number()) },
@@ -59,13 +131,10 @@ export const autocomplete = publicQuery({
 			.order('desc')
 			.take(200);
 
-		return recent
-			.filter(
-				(c) =>
-					c.email.startsWith(prefix) ||
-					(c.displayName ?? '').toLowerCase().includes(prefix)
-			)
-			.slice(0, limit);
+		// Blend recency + frequency (and match quality) rather than relying on
+		// the index order alone, so a frequently-mailed contact isn't buried
+		// below a stale one that merely happens to prefix-match.
+		return rankContacts(recent, prefix, Date.now(), limit);
 	},
 });
 

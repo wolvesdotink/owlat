@@ -2,21 +2,60 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { isValidEmail, normalizeEmail } from '~/utils/validation';
+import { isExternalRecipient } from '~/utils/recipientHints';
 
 interface ContactSuggestion {
 	email: string;
 	displayName?: string;
 }
 
-const props = defineProps<{
-	modelValue: string[];
-	mailboxId: Id<'mailboxes'>;
-	label: string;
-}>();
+type RecipientField = 'to' | 'cc' | 'bcc';
+
+const props = withDefaults(
+	defineProps<{
+		modelValue: string[];
+		mailboxId: Id<'mailboxes'>;
+		label: string;
+		/** Which envelope field this is — carried in drag payloads. */
+		field?: RecipientField;
+		/** The user's own domains; a chip outside them is flagged as external. */
+		ownDomains?: string[];
+	}>(),
+	{ field: 'to', ownDomains: () => [] }
+);
 
 const emit = defineEmits<{
 	(e: 'update:modelValue', value: string[]): void;
+	(e: 'move', payload: { email: string; from: RecipientField }): void;
 }>();
+
+const ownDomainLabel = computed(() => props.ownDomains[0] ?? '');
+function isExternal(addr: string): boolean {
+	return isExternalRecipient(addr, props.ownDomains);
+}
+
+// ─── Drag a chip out of this field (dropped onto another) ────────────────────
+function onChipDragStart(event: DragEvent, addr: string) {
+	if (!event.dataTransfer) return;
+	event.dataTransfer.effectAllowed = 'move';
+	event.dataTransfer.setData(
+		'application/x-postbox-recipient',
+		JSON.stringify({ email: addr, from: props.field })
+	);
+}
+function onFieldDrop(event: DragEvent) {
+	const raw = event.dataTransfer?.getData('application/x-postbox-recipient');
+	if (!raw) return;
+	event.preventDefault();
+	try {
+		const payload = JSON.parse(raw) as { email: string; from: RecipientField };
+		if (payload.email && payload.from && payload.from !== props.field) {
+			emit('move', payload);
+		}
+	} catch {
+		// Ignore a malformed / foreign drag payload.
+	}
+}
 
 const inputValue = ref('');
 const showSuggestions = ref(false);
@@ -70,6 +109,15 @@ function removeRecipient(idx: number) {
 	emit('update:modelValue', next);
 }
 
+/** Pop the last chip off and load it into the input for editing. */
+function editLastChip() {
+	const last = props.modelValue[props.modelValue.length - 1];
+	if (last === undefined) return;
+	emit('update:modelValue', props.modelValue.slice(0, -1));
+	inputValue.value = last;
+	showSuggestions.value = false;
+}
+
 function onKeydown(event: KeyboardEvent) {
 	if (event.key === 'Enter' || event.key === ',' || event.key === ';') {
 		event.preventDefault();
@@ -82,8 +130,10 @@ function onKeydown(event: KeyboardEvent) {
 		return;
 	}
 	if (event.key === 'Backspace' && !inputValue.value && props.modelValue.length > 0) {
+		// Gmail behavior: pop the last chip back into the input as editable text
+		// rather than deleting it outright, so a mistyped recipient is fixable.
 		event.preventDefault();
-		removeRecipient(props.modelValue.length - 1);
+		editLastChip();
 		return;
 	}
 	if (event.key === 'ArrowDown' && suggestions.value.length > 0) {
@@ -120,11 +170,21 @@ function onBlur() {
 <template>
 	<div class="flex items-baseline gap-2 relative">
 		<label class="text-text-tertiary w-12 flex-shrink-0">{{ label }}</label>
-		<div class="flex flex-wrap items-center gap-1 flex-1 min-h-[1.5rem]">
+		<div
+			class="flex flex-wrap items-center gap-1 flex-1 min-h-[1.5rem]"
+			@dragover.prevent
+			@drop="onFieldDrop"
+		>
 			<span
 				v-for="(addr, idx) in modelValue"
 				:key="addr"
-				class="inline-flex items-center gap-1 pl-0.5 pr-2 py-0.5 rounded-full bg-bg-surface text-xs"
+				draggable="true"
+				class="inline-flex items-center gap-1 pl-0.5 pr-2 py-0.5 rounded-full bg-bg-surface text-xs cursor-grab active:cursor-grabbing"
+				:class="isExternal(addr)
+					? 'ring-1 ring-amber-400/70 dark:ring-amber-500/60'
+					: ''"
+				:title="isExternal(addr) && ownDomainLabel ? `outside ${ownDomainLabel}` : undefined"
+				@dragstart="onChipDragStart($event, addr)"
 			>
 				<UiAvatar :email="addr" deterministic-color size="xs" class="flex-shrink-0" aria-hidden="true" />
 				{{ addr }}

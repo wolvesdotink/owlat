@@ -42,6 +42,7 @@ function onSent(composerId: string, undoToken: string, sendAt: number, mailboxId
 			:prefill-body-html="composer.prefillBodyHtml"
 			:forward-attachments-from-message-id="composer.forwardAttachmentsFromMessageId"
 			:attach-pending-key="composer.attachPendingKey"
+			:reply-all-recipients="composer.replyAllRecipients"
 			@sent="(token, sendAt) => onSent(composer.id, token, sendAt, composer.mailboxId)"
 			@discarded="stack.close(composer.id)"
 			@minimize="stack.minimize(composer.id)"
