@@ -31,6 +31,8 @@ const {
 	setReplyDefault,
 	density,
 	setDensity,
+	sendSound,
+	setSendSound,
 	isSaving: isSavingAutoAdvance,
 } = usePostboxSettings();
 
@@ -55,6 +57,10 @@ function onWritingSuggestionsChange(event: Event) {
 
 function onAutoSummarizeChange(event: Event) {
 	void setAutoSummarize((event.target as HTMLInputElement).checked);
+}
+
+function onSendSoundChange(event: Event) {
+	void setSendSound((event.target as HTMLInputElement).checked);
 }
 
 type MailboxRow = (typeof mailboxes.value)[number];
@@ -331,6 +337,26 @@ async function handleDelete() {
 					:checked="autoSummarize"
 					:disabled="isSavingAutoAdvance"
 					@change="onAutoSummarizeChange"
+				/>
+			</div>
+			<div
+				class="px-5 py-4 flex items-center justify-between gap-4 border-t border-border-subtle"
+			>
+				<div class="min-w-0">
+					<label for="postbox-send-sound" class="font-medium text-sm block">
+						Play sound when sending
+					</label>
+					<p class="text-xs text-text-tertiary mt-0.5">
+						Play a short confirmation sound when a message is sent. Off by default.
+					</p>
+				</div>
+				<input
+					id="postbox-send-sound"
+					type="checkbox"
+					class="shrink-0 h-4 w-4"
+					:checked="sendSound"
+					:disabled="isSavingAutoAdvance"
+					@change="onSendSoundChange"
 				/>
 			</div>
 		</section>

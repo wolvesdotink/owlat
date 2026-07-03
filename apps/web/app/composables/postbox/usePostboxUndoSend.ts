@@ -23,6 +23,14 @@ export function usePostboxUndoSend() {
 		mailboxId: null,
 	}));
 
+	// Optional send-confirmation sound. Gated on the (default-off) preference;
+	// `playSend` no-ops entirely when it's disabled, so this is inert unless the
+	// user opted in. This is the single send-dispatch point (the undo window
+	// arming), so the sound fires once per send — not on button press and not
+	// again after the undo window expires.
+	const { sendSound } = usePostboxSettings();
+	const { playSend } = useUiSound(sendSound);
+
 	function arm(args: { undoToken: string; sendAt: number; mailboxId: Id<'mailboxes'> }) {
 		state.value = {
 			visible: true,
@@ -30,6 +38,7 @@ export function usePostboxUndoSend() {
 			sendAt: args.sendAt,
 			mailboxId: args.mailboxId,
 		};
+		playSend();
 	}
 
 	function dismiss() {
