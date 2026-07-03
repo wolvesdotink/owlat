@@ -37,6 +37,13 @@ export interface RewriteControllerOptions {
 	richText: RichText;
 	/** True when the AI rewrite pill is allowed (parent's `ai` flag). */
 	enabled: () => boolean;
+	/**
+	 * True when the STANDALONE floating pill may be placed. Off in the default
+	 * floating-toolbar mode, where the AI actions render inside the combined
+	 * format bar instead (the controller still tracks `eligible`/`savedRange`).
+	 * Defaults to always-on.
+	 */
+	pillEnabled?: () => boolean;
 	/** Mailbox whose voice profile personalizes rewrites (optional). */
 	mailboxId: () => Id<'mailboxes'> | undefined;
 	/** Re-emit the editor's HTML after an Apply/Undo mutates the DOM. */
@@ -47,6 +54,11 @@ export function usePostboxRewriteController(opts: RewriteControllerOptions) {
 	const { showToast } = useToast();
 	const pillStyle = ref<Record<string, string> | null>(null);
 	const previewStyle = ref<Record<string, string> | null>(null);
+	// True when the current selection is eligible for a rewrite — read by the
+	// editor's combined format bar to decide whether to show the AI actions even
+	// while `pillStyle` (the standalone pill) is suppressed.
+	const eligible = ref(false);
+	const pillEnabled = opts.pillEnabled ?? (() => true);
 	// The selection to rewrite, saved so Apply can restore it even if focus moved.
 	let savedRange: Range | null = null;
 	const showUndo = ref(false);
@@ -98,6 +110,7 @@ export function usePostboxRewriteController(opts: RewriteControllerOptions) {
 		if (!opts.enabled()) {
 			pillStyle.value = null;
 			previewStyle.value = null;
+			eligible.value = false;
 			return;
 		}
 		// A live preview owns the anchor; leave it in place until Apply/Discard.
@@ -109,8 +122,12 @@ export function usePostboxRewriteController(opts: RewriteControllerOptions) {
 		const text = ctx ? ctx.sel.toString() : '';
 		if (ctx && !ctx.range.collapsed && isRewriteEligible(true, text)) {
 			savedRange = ctx.range.cloneRange();
-			pillStyle.value = selectionBoxStyle('above');
+			eligible.value = true;
+			// In floating-toolbar mode the combined bar hosts the AI actions, so the
+			// standalone pill stays suppressed even though the selection is eligible.
+			pillStyle.value = pillEnabled() ? selectionBoxStyle('above') : null;
 		} else {
+			eligible.value = false;
 			pillStyle.value = null;
 		}
 	}
@@ -175,6 +192,7 @@ export function usePostboxRewriteController(opts: RewriteControllerOptions) {
 		if (rewrite.status.value !== 'idle') rewrite.reset();
 		pillStyle.value = null;
 		previewStyle.value = null;
+		eligible.value = false;
 	}
 
 	/** A caret/selection move aborts an in-flight rewrite and re-places the pill. */
@@ -213,6 +231,7 @@ export function usePostboxRewriteController(opts: RewriteControllerOptions) {
 		languages,
 		pillStyle,
 		previewStyle,
+		eligible,
 		showUndo,
 		refreshUi,
 		onSelect,

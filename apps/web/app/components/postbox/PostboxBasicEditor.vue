@@ -14,17 +14,14 @@
  * keystroke).
  */
 
-import { api } from '@owlat/api';
 import {
 	useRichText,
 	EMPTY_ACTIVE_MARKS,
 	type ActiveMarks,
 } from '@owlat/ui/composables/useRichText';
-import {
-	usePostboxGhostText,
-	type GhostTextRequestInput,
-} from '~/composables/postbox/usePostboxGhostText';
+import { usePostboxGhostOverlay } from '~/composables/postbox/usePostboxGhostOverlay';
 import { usePostboxRewriteController } from '~/composables/postbox/usePostboxRewriteController';
+import { usePostboxFloatingFormatBar } from '~/composables/postbox/usePostboxFloatingFormatBar';
 import type { Id } from '@owlat/api/dataModel';
 
 const props = defineProps<{
@@ -45,6 +42,13 @@ const props = defineProps<{
 	rewriteEnabled?: boolean;
 	/** Mailbox whose voice profile personalizes rewrites (optional). */
 	rewriteMailboxId?: Id<'mailboxes'>;
+	/**
+	 * Show the classic persistent formatting toolbar bolted to the top of the
+	 * editor. Default (false) is the Apple-minimal mode: the toolbar is hidden
+	 * and a floating format bar appears above a non-empty text selection instead.
+	 * Keyboard shortcuts work in both modes.
+	 */
+	persistentToolbar?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -55,7 +59,6 @@ const editorRef = ref<HTMLDivElement | null>(null);
 const surfaceRef = ref<HTMLDivElement | null>(null);
 const isEmpty = ref(true);
 const activeMarks = ref<ActiveMarks>({ ...EMPTY_ACTIVE_MARKS });
-const ghostStyle = ref<Record<string, string> | null>(null);
 
 const richText = useRichText({
 	editorRef,
@@ -121,115 +124,16 @@ function onInput() {
 
 // ── Inline ghost-text autocomplete ─────────────────────────────────────
 // A muted suggestion at the caret, requested after a typing pause and accepted
-// with Tab. The overlay is a positioned, non-editable sibling of the
-// contenteditable — it is NEVER part of the DOM the draft serializes from, so
-// an un-accepted ghost can't leak into the sent message. Positioning is
-// best-effort: if the caret rect can't be measured, the ghost is dropped rather
-// than risk breaking typing.
-
-function insertAcceptedText(text: string) {
-	const el = editorRef.value;
-	if (!el) return;
-	el.focus();
-	// execCommand routes through the browser's own edit pipeline, so native
-	// undo and the @input autosave both see the insertion as real user text.
-	const ok = document.execCommand('insertText', false, text);
-	if (!ok) {
-		// Fallback: insert a text node at the caret and emit like a real input.
-		const sel = window.getSelection();
-		if (sel && sel.rangeCount > 0) {
-			const range = sel.getRangeAt(0);
-			range.deleteContents();
-			const node = document.createTextNode(text);
-			range.insertNode(node);
-			range.setStartAfter(node);
-			range.collapse(true);
-			sel.removeAllRanges();
-			sel.addRange(range);
-		}
-		emitContent();
-	}
-}
-
-const ghost = usePostboxGhostText({
+// with Tab. The caret sampling + overlay placement live in the composable (so
+// this component stays under the file-size ratchet); the overlay is a
+// non-editable sibling of the contenteditable — NEVER part of the DOM the draft
+// serializes from, so an un-accepted ghost can't leak into the sent message.
+const { ghost, ghostStyle, schedule: scheduleGhost } = usePostboxGhostOverlay({
+	editorRef,
+	surfaceRef,
 	enabled: () => props.suggestionsEnabled === true,
-	requestCompletion: async (input: GhostTextRequestInput) => {
-		const res = await requireConvex().action(api.mail.ai.completeDraft, {
-			threadContext: input.threadContext,
-			draftSoFar: input.draftSoFar,
-			cursorSentence: input.cursorSentence,
-		});
-		return res?.completion ?? '';
-	},
-	onAccept: insertAcceptedText,
-});
-
-/** Sample the caret context — null unless the caret sits at the end of a text node. */
-function getCaretContext(): GhostTextRequestInput | null {
-	const el = editorRef.value;
-	if (!el) return null;
-	const sel = window.getSelection();
-	if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return null;
-	const focusNode = sel.focusNode;
-	if (!focusNode || focusNode.nodeType !== Node.TEXT_NODE) return null;
-	if (!el.contains(focusNode)) return null;
-	if (sel.focusOffset !== (focusNode.textContent?.length ?? 0)) return null;
-	const pre = document.createRange();
-	pre.setStart(el, 0);
-	pre.setEnd(focusNode, sel.focusOffset);
-	const before = pre.toString();
-	if (!before.trim()) return null;
-	const lastBreak = Math.max(
-		before.lastIndexOf('. '),
-		before.lastIndexOf('! '),
-		before.lastIndexOf('? '),
-		before.lastIndexOf('\n')
-	);
-	const cursorSentence = (lastBreak >= 0 ? before.slice(lastBreak + 1) : before)
-		.slice(-500)
-		.trimStart();
-	return {
-		threadContext: (props.ghostThreadContext ?? '').slice(0, 4000),
-		draftSoFar: el.innerText.slice(-4000),
-		cursorSentence,
-	};
-}
-
-/** Position the ghost overlay at the caret; drop it if the rect is unmeasurable. */
-function positionGhost() {
-	const surface = surfaceRef.value;
-	const sel = window.getSelection();
-	if (!surface || !sel || sel.rangeCount === 0) {
-		ghost.cancel();
-		return;
-	}
-	const range = sel.getRangeAt(0).cloneRange();
-	range.collapse(false);
-	const rects = range.getClientRects();
-	const rect = rects.length ? rects[rects.length - 1] : range.getBoundingClientRect();
-	if (!rect || (rect.top === 0 && rect.left === 0 && rect.height === 0)) {
-		ghost.cancel(); // fail-soft: hide rather than mis-place
-		return;
-	}
-	const host = surface.getBoundingClientRect();
-	ghostStyle.value = {
-		left: `${rect.right - host.left + surface.scrollLeft}px`,
-		top: `${rect.top - host.top + surface.scrollTop}px`,
-		height: `${rect.height}px`,
-	};
-}
-
-function scheduleGhost() {
-	if (props.suggestionsEnabled !== true) return;
-	ghost.schedule(() => getCaretContext());
-}
-
-watch(ghost.ghost, (value) => {
-	if (!value) {
-		ghostStyle.value = null;
-		return;
-	}
-	void nextTick(() => positionGhost());
+	threadContext: () => props.ghostThreadContext ?? '',
+	emitContent,
 });
 
 // ── AI selection rewrite (Shorter / Friendlier / … / Translate) ─────────
@@ -243,8 +147,37 @@ const rewriteCtl = usePostboxRewriteController({
 	surfaceRef,
 	richText,
 	enabled: () => props.rewriteEnabled === true,
+	// The standalone pill only shows in the classic persistent-toolbar mode. In
+	// the default floating mode the AI actions render inside the combined format
+	// bar (see `showAiActions` below), so the pill stays suppressed.
+	pillEnabled: () => props.persistentToolbar === true,
 	mailboxId: () => props.rewriteMailboxId,
 	emitContent,
+});
+
+// Whether the combined floating bar should render the AI rewrite actions: only
+// in floating mode, when the rewrite feature is on and the selection is eligible.
+const showAiActions = computed(
+	() =>
+		props.persistentToolbar !== true &&
+		props.rewriteEnabled === true &&
+		rewriteCtl.eligible.value,
+);
+
+// ── Floating format bar (minimal mode) ──────────────────────────────────
+// Above a non-empty selection inside the editor; flips below near the top,
+// clamped to the surface, hidden on scroll/blur/collapse. Never steals focus
+// (the bar container uses `mousedown.prevent`). The placement math + scroll-hide
+// live in the composable so this component stays under the file-size ratchet.
+const {
+	formatBarStyle,
+	formatBarRef,
+	refresh: refreshFormatBar,
+	hide: hideFormatBar,
+} = usePostboxFloatingFormatBar({
+	editorRef,
+	surfaceRef,
+	enabled: () => props.persistentToolbar !== true,
 });
 
 // Markdown shortcuts intercept the raw input BEFORE the character lands, so a
@@ -296,6 +229,7 @@ function onBlur() {
 	emitContent();
 	ghost.cancel(); // never leave a ghost hanging over an unfocused editor
 	resetShortcutUndo(); // a literal-restore undo shouldn't survive leaving the editor
+	hideFormatBar(); // never leave the floating bar over an unfocused editor
 }
 
 function onSelectionChange() {
@@ -306,6 +240,8 @@ function onSelectionChange() {
 	// A selection change aborts an in-flight rewrite (its anchor is now stale)
 	// and re-places the pill for the new selection.
 	rewriteCtl.onSelectionChange();
+	// Re-place (or hide) the floating format bar for the new selection.
+	refreshFormatBar();
 }
 
 function focusEditor() {
@@ -360,7 +296,9 @@ defineExpose({ focus: focusEditor });
 
 <template>
 	<div class="flex flex-col h-full">
+		<!-- Classic persistent toolbar: only when the user opts back in via "Aa". -->
 		<PostboxEditorToolbar
+			v-if="persistentToolbar"
 			:active-marks="activeMarks"
 			@bold="withFocus(toggleBold)()"
 			@italic="withFocus(toggleItalic)()"
@@ -401,6 +339,29 @@ defineExpose({ focus: focusEditor });
 				:style="ghostStyle"
 				aria-hidden="true"
 			>{{ ghost.ghost.value }}</div>
+			<!--
+				Floating format bar (minimal mode): above the current selection. When
+				the AI rewrite pill would also show it merges in here as ONE combined
+				bar (format left, AI right) instead of a second stacked popover.
+			-->
+			<PostboxFloatingFormatBar
+				v-if="!persistentToolbar"
+				ref="formatBarRef"
+				:bar-style="formatBarStyle"
+				:active-marks="activeMarks"
+				:show-ai-actions="showAiActions"
+				:ai-loading="rewriteCtl.rewrite.isLoading()"
+				:ai-active-intent="rewriteCtl.rewrite.activeIntent.value"
+				:ai-languages="rewriteCtl.languages.value"
+				@bold="withFocus(toggleBold)()"
+				@italic="withFocus(toggleItalic)()"
+				@underline="withFocus(toggleUnderline)()"
+				@heading="(level) => withFocus(() => toggleHeading(level))()"
+				@list="(ordered) => withFocus(() => toggleList(ordered))()"
+				@blockquote="withFocus(toggleBlockquote)()"
+				@link="withFocus(setLink)()"
+				@ai-select="rewriteCtl.onSelect"
+			/>
 			<!-- AI rewrite pill + preview + undo affordance (all flag-gated). -->
 			<PostboxRewriteLayer
 				v-if="rewriteEnabled"
