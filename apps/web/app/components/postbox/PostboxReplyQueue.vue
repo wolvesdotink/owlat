@@ -55,7 +55,7 @@ const suggestOp = useBackendOperation(api.mail.ai.suggestReplies, {
 	label: 'Draft reply',
 	type: 'action',
 });
-const answerOp = useBackendOperation(api.mail.needsReply.answerClarification, {
+const answerOp = useBackendOperation(api.mail.needsReplyClarify.answerClarification, {
 	label: 'Answer',
 });
 

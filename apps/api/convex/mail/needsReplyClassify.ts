@@ -314,7 +314,7 @@ export async function refineClarification(
  * Produce the starter reply for an answered clarification card, so it flips
  * from "Needs your input" to "Draft ready".
  *
- * Scheduled by `mail.needsReply.answerClarification`. Reuses the same LLM seam
+ * Scheduled by `mail.needsReplyClarify.answerClarification`. Reuses the same LLM seam
  * + voice profile as the Postbox `suggestReplies` action, but folds the owner's
  * confirmed answers in as a TRUSTED `[CONFIRMED BY OWNER]` block (the inbound
  * thread stays untrusted DATA). FAIL-SOFT: any gate/model failure simply leaves
@@ -328,7 +328,7 @@ export const draftWithAnswers = internalAction({
 			// Same gate as the user-triggered Postbox AI (feature flag + rate limit).
 			await ctx.runMutation(internal.mail.aiGate.assertAiAllowed, {});
 
-			const context = await ctx.runQuery(internal.mail.needsReply.getClarificationContext, {
+			const context = await ctx.runQuery(internal.mail.needsReplyClarify.getClarificationContext, {
 				threadId: args.threadId,
 			});
 			if (!context || context.answers.length === 0) return;
@@ -365,7 +365,7 @@ export const draftWithAnswers = internalAction({
 			const draft = text.trim();
 			if (draft.length === 0) return;
 
-			await ctx.runMutation(internal.mail.needsReply.persistClarificationDraft, {
+			await ctx.runMutation(internal.mail.needsReplyClarify.persistClarificationDraft, {
 				threadId: args.threadId,
 				expectedLatestMessageId: context.latestMessageId,
 				draft,
