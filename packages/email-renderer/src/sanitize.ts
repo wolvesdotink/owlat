@@ -18,9 +18,13 @@ export { escapeHtml };
 /**
  * Escape a value for use inside an HTML attribute (double-quoted).
  * Escapes &, <, >, " and '.
+ *
+ * Nullish input is coerced to '' so applying this to an optional field that is
+ * absent at runtime does not throw (mirrors the pre-escaping behaviour where an
+ * absent field interpolated to an empty/harmless value).
  */
-export const escapeAttr = (str: string): string => {
-	return escapeHtml(str);
+export const escapeAttr = (str: string | undefined | null): string => {
+	return escapeHtml(str ?? '');
 };
 
 /**
@@ -36,9 +40,16 @@ export const escapeAttr = (str: string): string => {
  * `1px solid #ccc`, `Arial, sans-serif`, `600px`, `100%`) rendered identically —
  * browsers decode entities inside attribute values before the CSS/VML parser
  * sees them. This mirrors the escaping the AMP path already applies.
+ *
+ * Nullish input is coerced to '' so applying this to an optional colour/font/
+ * width field that is absent at runtime does not throw. Before escaping, an
+ * absent field interpolated to a harmless `undefined`/empty literal; coercing
+ * here preserves that render-does-not-throw guarantee for the many optional
+ * style fields across the hand-built blocks (text `textColor`, list/menu
+ * colours, …).
  */
-export const escapeCss = (value: string): string => {
-	return escapeHtml(value);
+export const escapeCss = (value: string | undefined | null): string => {
+	return escapeHtml(value ?? '');
 };
 
 /**
