@@ -262,6 +262,14 @@ walk is the structural guarantee that count and send cannot diverge.
   consent-derived membership. Encoded once, in `forEachCandidate`'s gate
   construction. Do not "fix" the segment path to gate on DOI without
   revisiting this invariant.
+- **Form-forced DOI, per membership.** A public form can force double
+  opt-in on a topic that does NOT set `requireDoubleOptIn`; the resulting
+  `contactTopics` membership carries `pendingDoiConfirmation: true` until
+  the contact confirms. `selectRecipient` takes that flag as a third
+  argument and excludes a still-pending membership even when `requiresDoi`
+  is false — otherwise the form's DOI toggle would be silently ignored at
+  send time (consent/legal exposure). The flag is only ever set on the
+  topic path (there is no membership on the segment path).
 - **`eligible === resolveRecipients(audience).length`** for any Audience
   — the two entries share one predicate.
 - **`total`** is the raw membership count (topic) or segment-match count
