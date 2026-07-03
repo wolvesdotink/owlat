@@ -116,7 +116,7 @@ function pickCategory(label: MailCategory) {
 							role="option"
 							:aria-selected="visibleThreads[focusedIndex]?._id === t._id"
 							:to="threadTo(t)"
-							class="block px-4 py-3 hover:bg-bg-elevated"
+							class="pbx-row-link block px-4 py-3 hover:bg-bg-elevated"
 							:class="{ 'bg-bg-elevated': activeMessageId && activeMessageId === t.latestMessageId }"
 						>
 							<div class="flex items-baseline justify-between gap-3">
@@ -151,7 +151,7 @@ function pickCategory(label: MailCategory) {
 									class="text-xs bg-brand text-white rounded-full px-1.5 min-w-[1.25rem] text-center"
 								>{{ t.unreadCount }}</span>
 							</div>
-							<p class="text-xs text-text-tertiary truncate mt-0.5">{{ t.latestSnippet }}</p>
+							<p class="pbx-row-snippet text-xs text-text-tertiary truncate mt-0.5">{{ t.latestSnippet }}</p>
 						</NuxtLink>
 						<!-- Overflow: recategorize this sender's mail. -->
 						<button
