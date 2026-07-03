@@ -83,6 +83,7 @@ const decisionSlot: ReplySlot = {
 	question: 'Should we agree to push the launch date?',
 	answerableFromContext: false,
 	decisionRelevant: true,
+	options: [],
 };
 
 beforeEach(() => {
