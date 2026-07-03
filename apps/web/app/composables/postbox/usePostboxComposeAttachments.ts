@@ -9,7 +9,7 @@
 import type { Ref } from 'vue';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
-import { MAX_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
+import { ATTACHMENT_COMPOSE_LIMITS, MAX_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
 import { extractAttachments } from '@owlat/shared/mailMime';
 import { downscaleImageFile } from './postboxInlineImage';
 import { attachmentMeter } from './postboxAttachmentMeter';
@@ -18,6 +18,10 @@ import { createAttachmentUploads, xhrPutFile } from './postboxAttachmentUploads'
 // Per-file attachment ceiling for user-facing copy, derived from the shared cap
 // (mirrors MAX_LIBRARY_FILE_MB) so the label moves with MAX_ATTACHMENT_BYTES.
 const MAX_ATTACHMENT_MB = MAX_ATTACHMENT_BYTES / 1024 / 1024;
+
+// Per-message combined-size ceiling for user-facing copy, derived from the shared
+// compose limit so the label moves with ATTACHMENT_COMPOSE_LIMITS.maxTotalBytes.
+const MAX_TOTAL_MB = ATTACHMENT_COMPOSE_LIMITS.maxTotalBytes / 1024 / 1024;
 
 export interface ComposerAttachment {
 	storageId: string;
@@ -95,17 +99,44 @@ export function usePostboxComposeAttachments(opts: {
 		return thumbUrls.get(storageId) ?? null;
 	}
 
-	/** Reject oversized files up front, then upload the rest as tracked chips. */
+	/**
+	 * Reject files that would breach a per-message limit up front, then upload the
+	 * rest as tracked chips. Three gates, mirroring the server-side enforcement so
+	 * the interactive path can never queue more than the send path accepts:
+	 *   - per-file byte cap (MAX_ATTACHMENT_BYTES),
+	 *   - attachment COUNT cap (ATTACHMENT_COMPOSE_LIMITS.maxCount),
+	 *   - combined-SIZE cap (ATTACHMENT_COMPOSE_LIMITS.maxTotalBytes),
+	 * counting committed + in-flight attachments so a user can't queue ten oversized
+	 * files and OOM the send.
+	 */
 	async function addFiles(files: File[] | FileList) {
 		const id = await opts.ensureDraft();
 		if (!id) return;
+		// Existing footprint: committed attachments + still-uploading chips.
+		let currentCount = attachments.value.length + uploader.uploads.value.length;
+		let currentBytes =
+			attachments.value.reduce((sum, a) => sum + a.size, 0) +
+			uploader.uploads.value.reduce((sum, c) => sum + c.size, 0);
 		const accepted: File[] = [];
 		for (const file of Array.from(files)) {
 			if (file.size > MAX_ATTACHMENT_BYTES) {
 				showToast(`${file.name} is too large (max ${MAX_ATTACHMENT_MB} MB).`, 'error');
 				continue;
 			}
+			if (currentCount >= ATTACHMENT_COMPOSE_LIMITS.maxCount) {
+				showToast(
+					`You can attach up to ${ATTACHMENT_COMPOSE_LIMITS.maxCount} files.`,
+					'error',
+				);
+				break;
+			}
+			if (currentBytes + file.size > ATTACHMENT_COMPOSE_LIMITS.maxTotalBytes) {
+				showToast(`Attachments exceed the ${MAX_TOTAL_MB} MB total limit.`, 'error');
+				break;
+			}
 			accepted.push(file);
+			currentCount += 1;
+			currentBytes += file.size;
 		}
 		if (accepted.length > 0) uploader.addFiles(accepted);
 	}
