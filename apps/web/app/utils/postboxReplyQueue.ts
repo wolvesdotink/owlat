@@ -41,6 +41,15 @@ export interface ReplyQueueItem {
 	threadId: string;
 	messageId: string;
 	urgency: ReplyQueueUrgency;
+	/**
+	 * Unified cross-thread priority score (server-computed in mail/priorityScore.ts):
+	 * the deterministic sender-importance signal (VIP / known contact / frecency)
+	 * blended with the LLM urgency. The Reply Queue ranks by THIS, not the 3-bucket
+	 * urgency — a terse note from a VIP outranks a wordy ask from a stranger. Absent
+	 * only on rows persisted before scoring existed; the comparator then falls back
+	 * to the urgency bucket.
+	 */
+	priorityScore?: number;
 	/** One-line "what they are asking" — present only after LLM refinement. */
 	askSummary?: string;
 	/** ISO date (YYYY-MM-DD) when the message states a deadline. */
@@ -60,18 +69,34 @@ export interface ReplyQueueItem {
 	receivedAt: number;
 }
 
-const URGENCY_RANK: Record<ReplyQueueUrgency, number> = { high: 0, normal: 1, low: 2 };
+/**
+ * Fallback score for a row without a persisted priorityScore (rows classified
+ * before scoring existed): map the urgency bucket alone. Mirrors the server
+ * weights in mail/priorityScore.ts so mixed old/new rows stay comparable.
+ */
+const URGENCY_FALLBACK_SCORE: Record<ReplyQueueUrgency, number> = {
+	high: 100,
+	normal: 50,
+	low: 20,
+};
+
+/** The ranking key for a row: its priority score, or the urgency fallback. */
+function effectiveScore(item: Pick<ReplyQueueItem, 'urgency' | 'priorityScore'>): number {
+	return item.priorityScore ?? URGENCY_FALLBACK_SCORE[item.urgency];
+}
 
 /**
- * Queue order: urgency first (high → normal → low), then age — the message
- * that has been waiting the longest (oldest receivedAt) comes first.
+ * Queue order: unified priority score first (highest score = most important,
+ * so a VIP's terse note outranks a stranger's wordy ask), then age — among
+ * equally-scored rows the one waiting the longest (oldest receivedAt) comes
+ * first. Replaces the old "urgency bucket, then age" ordering.
  */
 export function compareReplyQueueItems(
-	a: Pick<ReplyQueueItem, 'urgency' | 'receivedAt'>,
-	b: Pick<ReplyQueueItem, 'urgency' | 'receivedAt'>
+	a: Pick<ReplyQueueItem, 'urgency' | 'receivedAt' | 'priorityScore'>,
+	b: Pick<ReplyQueueItem, 'urgency' | 'receivedAt' | 'priorityScore'>
 ): number {
-	const byUrgency = URGENCY_RANK[a.urgency] - URGENCY_RANK[b.urgency];
-	if (byUrgency !== 0) return byUrgency;
+	const byScore = effectiveScore(b) - effectiveScore(a); // higher score first
+	if (byScore !== 0) return byScore;
 	return a.receivedAt - b.receivedAt;
 }
 

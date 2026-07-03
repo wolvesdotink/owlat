@@ -882,6 +882,11 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 									</span>
 								</div>
 								<div class="flex items-center gap-2 flex-shrink-0">
+									<PostboxSenderControls
+										v-if="!ownAddresses.has(extractEmailAddress(msg.fromAddress))"
+										:mailbox-id="message.mailboxId"
+										:from-address="msg.fromAddress"
+									/>
 									<PostboxTrackerBadge
 										v-if="trackerDetection(msg)"
 										:detection="trackerDetection(msg)!"

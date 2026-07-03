@@ -12,33 +12,54 @@ const item = (urgency: 'high' | 'normal' | 'low', receivedAt: number) => ({
 
 describe('compareReplyQueueItems', () => {
 	it('ranks by urgency first: high before normal before low', () => {
-		const sorted = [
-			item('low', 1000),
-			item('high', 3000),
-			item('normal', 2000),
-		].sort(compareReplyQueueItems);
+		const sorted = [item('low', 1000), item('high', 3000), item('normal', 2000)].sort(
+			compareReplyQueueItems
+		);
 		expect(sorted.map((i) => i.urgency)).toEqual(['high', 'normal', 'low']);
 	});
 
 	it('breaks urgency ties by age — longest-waiting (oldest) first', () => {
-		const sorted = [
-			item('normal', 3000),
-			item('normal', 1000),
-			item('normal', 2000),
-		].sort(compareReplyQueueItems);
+		const sorted = [item('normal', 3000), item('normal', 1000), item('normal', 2000)].sort(
+			compareReplyQueueItems
+		);
 		expect(sorted.map((i) => i.receivedAt)).toEqual([1000, 2000, 3000]);
 	});
 
 	it('a fresh high-urgency item outranks an old normal one', () => {
 		expect(compareReplyQueueItems(item('high', 9000), item('normal', 1))).toBeLessThan(0);
 	});
+
+	it('ranks by priority score, not urgency: a VIP terse note beats a wordy stranger', () => {
+		// Terse VIP note (low urgency, high score) must sort before a wordy
+		// stranger (high urgency, low score) — the whole point of the score.
+		const vipTerse = { urgency: 'low' as const, receivedAt: 5000, priorityScore: 68 };
+		const strangerWordy = { urgency: 'high' as const, receivedAt: 1000, priorityScore: 40 };
+		const sorted = [strangerWordy, vipTerse].sort(compareReplyQueueItems);
+		expect(sorted[0]).toBe(vipTerse);
+		expect(compareReplyQueueItems(vipTerse, strangerWordy)).toBeLessThan(0);
+	});
+
+	it('breaks score ties by age — longest-waiting (oldest) first', () => {
+		const a = { urgency: 'normal' as const, receivedAt: 3000, priorityScore: 60 };
+		const b = { urgency: 'normal' as const, receivedAt: 1000, priorityScore: 60 };
+		const sorted = [a, b].sort(compareReplyQueueItems);
+		expect(sorted.map((i) => i.receivedAt)).toEqual([1000, 3000]);
+	});
+
+	it('falls back to the urgency bucket when a row has no priority score', () => {
+		// A scored VIP row (85) outranks an unscored high-urgency row (fallback 100)?
+		// No — 100 > 85, so the unscored high row wins; mixed rows stay comparable.
+		const scoredVip = { urgency: 'low' as const, receivedAt: 1000, priorityScore: 85 };
+		const unscoredHigh = { urgency: 'high' as const, receivedAt: 1000 };
+		expect(compareReplyQueueItems(unscoredHigh, scoredVip)).toBeLessThan(0);
+	});
 });
 
 describe('replyQueueHeadline', () => {
 	it('uses the AI askSummary when present', () => {
-		expect(
-			replyQueueHeadline({ askSummary: 'Wants the Q3 numbers', subject: 'Re: numbers' })
-		).toBe('Wants the Q3 numbers');
+		expect(replyQueueHeadline({ askSummary: 'Wants the Q3 numbers', subject: 'Re: numbers' })).toBe(
+			'Wants the Q3 numbers'
+		);
 	});
 
 	it('falls back to the subject when askSummary is absent (deterministic mode)', () => {
@@ -72,9 +93,9 @@ describe('replyQueueHeadline', () => {
 	});
 
 	it('falls back to a generic follow-up headline when waitingOn is blank and no fromAddress', () => {
-		expect(replyQueueHeadline({ kind: 'followup', subject: 'Re: proposal', waitingOn: '   ' })).toBe(
-			"You're waiting on a reply"
-		);
+		expect(
+			replyQueueHeadline({ kind: 'followup', subject: 'Re: proposal', waitingOn: '   ' })
+		).toBe("You're waiting on a reply");
 	});
 });
 
