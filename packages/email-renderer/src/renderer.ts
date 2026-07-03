@@ -153,7 +153,15 @@ const expandRepeats = (blocks: EditorBlock[], ctx: RenderContext): EditorBlock[]
 				}
 				// Also replace {{$index}} with the iteration index
 				replaced = replaced.split('{{$index}}').join(String(i));
-				clonedBlock.content = JSON.parse(replaced);
+				// Guard the re-parse (mirrors the array parse above): a value that
+				// still produces invalid JSON after escaping must not throw out of
+				// renderEmailHtml and fail the whole recipient — skip this item.
+				try {
+					clonedBlock.content = JSON.parse(replaced);
+				} catch {
+					addWarning(ctx, `Repeat item ${i} for variable "${repeat.variable}" produced invalid JSON after substitution — item skipped in block "${block.id}".`);
+					continue;
+				}
 			}
 
 			// Remove the repeat config from cloned blocks to prevent infinite recursion

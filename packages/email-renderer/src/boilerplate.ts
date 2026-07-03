@@ -1,7 +1,7 @@
 import type { RenderContext, GmailAnnotations } from './types';
 import { buildStyleBlock } from './styles';
 import { getOfficeDocumentSettings, msoTableOpen, msoTableClose } from './outlook';
-import { escapeAttr, escapeHtml, escapeJsonValue, isHttpsUrl } from './sanitize';
+import { escapeAttr, escapeHtml, isHttpsUrl } from './sanitize';
 
 /**
  * Generate hidden preheader text that shows as inbox preview snippet.
@@ -54,15 +54,15 @@ const getGmailAnnotations = (annotations: GmailAnnotations | undefined): string 
 	};
 
 	if (annotations.description) {
-		jsonLd['description'] = escapeJsonValue(annotations.description);
+		jsonLd['description'] = annotations.description;
 	}
 
 	if (annotations.image) {
-		jsonLd['image'] = escapeJsonValue(annotations.image);
+		jsonLd['image'] = annotations.image;
 	}
 
 	if (annotations.logo) {
-		jsonLd['logo'] = escapeJsonValue(annotations.logo);
+		jsonLd['logo'] = annotations.logo;
 	}
 
 	if (annotations.discountCode || annotations.dealDescription || annotations.availabilityEnds) {
@@ -70,18 +70,23 @@ const getGmailAnnotations = (annotations: GmailAnnotations | undefined): string 
 			'@type': 'Offer',
 		};
 		if (annotations.discountCode) {
-			offer['discountCode'] = escapeJsonValue(annotations.discountCode);
+			offer['discountCode'] = annotations.discountCode;
 		}
 		if (annotations.dealDescription) {
-			offer['description'] = escapeJsonValue(annotations.dealDescription);
+			offer['description'] = annotations.dealDescription;
 		}
 		if (annotations.availabilityEnds) {
-			offer['availabilityEnds'] = escapeJsonValue(annotations.availabilityEnds);
+			offer['availabilityEnds'] = annotations.availabilityEnds;
 		}
 		jsonLd['offers'] = offer;
 	}
 
-	return `<script type="application/ld+json">${JSON.stringify(jsonLd)}</script>`;
+	// Serialize once with JSON.stringify (correct JSON escaping — no double
+	// per-field escaping), then neutralize `<` so a user-controlled value can
+	// never close the surrounding <script> element (`</script>` breakout XSS).
+	// `<` is valid JSON and parses back to `<`, so consumers are unaffected.
+	const serialized = JSON.stringify(jsonLd).replace(/</g, '\\u003c');
+	return `<script type="application/ld+json">${serialized}</script>`;
 };
 
 export const wrapDocument = (bodyContent: string, ctx: RenderContext): string => {

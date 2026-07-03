@@ -210,14 +210,41 @@ export const sanitizeRawHtml = (html: string): string => {
 };
 
 /**
- * Escape a value for safe interpolation into a JSON string.
- * Handles characters that could break JSON.parse() or inject content.
+ * Escape a value for safe interpolation into a JSON string literal.
+ *
+ * Handles every character that could break `JSON.parse()` or smuggle content
+ * out of the surrounding context:
+ * - `\` and `"` (JSON string delimiters)
+ * - ALL C0 control chars U+0000–U+001F (raw control chars are illegal inside a
+ *   JSON string and make `JSON.parse` throw)
+ * - `<` → `\u003c` so an interpolated value can never form a `</script>` (or
+ *   any other tag) when the JSON is embedded in an HTML `<script>` element
+ * - U+2028 / U+2029 (valid in JSON but break a `<script>`/JS string context)
+ *
+ * The output is semantically identical after `JSON.parse` — `<` decodes
+ * back to `<`, control chars round-trip — so benign values render unchanged.
  */
 export const escapeJsonValue = (str: string): string => {
-	return str
-		.replace(/\\/g, '\\\\')
-		.replace(/"/g, '\\"')
-		.replace(/\n/g, '\\n')
-		.replace(/\r/g, '\\r')
-		.replace(/\t/g, '\\t');
+	return str.replace(/[\\"<\u0000-\u001f\u2028\u2029]/g, (ch) => {
+		switch (ch) {
+			case '\\':
+				return '\\\\';
+			case '"':
+				return '\\"';
+			case '<':
+				return '\\u003c';
+			case '\b':
+				return '\\b';
+			case '\t':
+				return '\\t';
+			case '\n':
+				return '\\n';
+			case '\f':
+				return '\\f';
+			case '\r':
+				return '\\r';
+			default:
+				return `\\u${ch.charCodeAt(0).toString(16).padStart(4, '0')}`;
+		}
+	});
 };
