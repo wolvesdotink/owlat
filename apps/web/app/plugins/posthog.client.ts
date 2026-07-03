@@ -1,7 +1,7 @@
-import posthog from 'posthog-js';
+import type PostHog from 'posthog-js';
 import { logWarn } from '~/lib/runtimeLog';
 
-export default defineNuxtPlugin((_nuxtApp) => {
+export default defineNuxtPlugin(async (_nuxtApp) => {
 	const config = useRuntimeConfig();
 	const apiKey = config.public.posthogApiKey as string;
 	const host = config.public.posthogHost as string;
@@ -12,10 +12,14 @@ export default defineNuxtPlugin((_nuxtApp) => {
 		}
 		return {
 			provide: {
-				posthog: null as typeof posthog | null,
+				posthog: null as typeof PostHog | null,
 			},
 		};
 	}
+
+	// Lazily import posthog-js only when a key is configured, so the ~193KB
+	// library is code-split out of the main chunk for the default (no-key) build.
+	const { default: posthog } = await import('posthog-js');
 
 	posthog.init(apiKey, {
 		// runtimeConfig.public.posthogHost already carries the default host.
