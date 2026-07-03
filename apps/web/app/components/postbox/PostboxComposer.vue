@@ -88,13 +88,7 @@ const aiRewriteEnabled = computed(() => isFeatureEnabled('ai'));
 // Formatting-toolbar preference. Default is the Apple-minimal floating bar (only
 // on selection); the footer "Aa" affordance flips back to the classic persistent
 // toolbar and persists the choice per user.
-const { data: persistentToolbar, set: setPersistentToolbar } = useLocalStorage(
-	'postbox-composer-persistent-toolbar',
-	false,
-);
-function toggleToolbar() {
-	setPersistentToolbar(!persistentToolbar.value);
-}
+const { persistentToolbar, toggleToolbar } = usePostboxToolbarPreference();
 
 async function onFromChange(address: string) {
 	try {
@@ -455,39 +449,12 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } =
 					class="hidden"
 					@change="onPickFiles"
 				>
-				<button
-					v-if="composerMode === 'simple'"
-					type="button"
-					class="btn btn-ghost"
-					:class="{ 'text-brand': persistentToolbar }"
-					:aria-pressed="persistentToolbar"
-					:title="persistentToolbar ? 'Hide formatting toolbar (show on selection)' : 'Show formatting toolbar'"
-					@click="toggleToolbar"
-				>
-					<Icon name="lucide:type" class="w-4 h-4" />
-				</button>
-				<div
-					class="inline-flex items-center gap-0.5 bg-bg-surface rounded text-xs border border-border-subtle"
-				>
-					<button
-						type="button"
-						class="px-2 py-1 rounded"
-						:class="composerMode === 'simple' ? 'bg-bg-elevated text-brand font-medium' : 'text-text-secondary hover:text-text-primary'"
-						title="Basic blocks only (text, image, button, divider, list)"
-						@click="switchMode('simple')"
-					>
-						Simple
-					</button>
-					<button
-						type="button"
-						class="px-2 py-1 rounded"
-						:class="composerMode === 'full' ? 'bg-bg-elevated text-brand font-medium' : 'text-text-secondary hover:text-text-primary'"
-						title="All blocks (heroes, columns, tables, …)"
-						@click="switchMode('full')"
-					>
-						Designer
-					</button>
-				</div>
+				<PostboxComposerModeControls
+					:mode="composerMode"
+					:persistent-toolbar="persistentToolbar"
+					@toggle-toolbar="toggleToolbar"
+					@switch-mode="switchMode"
+				/>
 				<label
 					v-if="showSignaturePicker"
 					class="inline-flex items-center gap-1 text-xs text-text-tertiary"
