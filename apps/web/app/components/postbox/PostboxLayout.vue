@@ -435,7 +435,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 			<Transition name="pbx-reader" mode="out-in">
 			<PostboxThreadReader
 				v-if="activeMessage"
-				:key="activeMessageId"
+				:key="activeMessageId ?? undefined"
 				:message="activeMessage"
 				:advance-ids="advanceIds"
 				:folder-role="folderId ? String(folderId) : folderRole"
