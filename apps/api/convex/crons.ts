@@ -109,6 +109,11 @@ crons.interval('retry failed agent actions', { minutes: 5 }, internal.inbox.proc
 // callback. Re-enqueues the agent reply when no queued send remains in flight.
 crons.interval('reconcile stuck approved inbox messages', { minutes: 5 }, internal.inbox.processingLifecycle.reconcileStuckApproved, {});
 
+// Give up on clarification questions the owner never answered: after the
+// configurable window, draft a flagged best-guess (never auto-send-eligible)
+// so an abandoned `awaiting_clarification` message can't wedge forever.
+crons.interval('reconcile abandoned clarifications', { minutes: 30 }, internal.inbox.processingLifecycle.reconcileAbandonedClarifications, {});
+
 // Channel health checks every 5 minutes
 // Monitors SMS, WhatsApp, webhook channel connectivity
 crons.interval('channel health checks', { minutes: 5 }, internal.unifiedMessages.runChannelHealthChecks);

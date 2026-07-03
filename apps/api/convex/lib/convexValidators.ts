@@ -431,6 +431,11 @@ export const draftQualityValidator = v.object({
 	flags: v.array(v.string()),
 });
 
+// Clarification-loop validators (clarificationQuestionValidator /
+// pendingClarificationValidator) live in `../inbox/clarificationValidators.ts`,
+// co-located with the `answerClarification` mutation — kept out of this shared
+// module so it stays under the ~500 LOC file-size ratchet.
+
 // Grounding source (inboundMessages.groundingSources array entry).
 // Emitted by the `context_retrieval` Agent step: the prior emails + knowledge
 // entries that were ACTUALLY assembled into the briefing the draft was written

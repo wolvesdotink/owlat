@@ -9,6 +9,7 @@ import {
 	agentDecisionValidator,
 	tokenUsageValidator,
 } from '../lib/convexValidators';
+import { pendingClarificationValidator } from '../inbox/clarificationValidators';
 
 /**
  * Inbox / Agent pipeline tables — AI-assisted shared inbox.
@@ -93,6 +94,7 @@ export const inboxTables = {
 			v.literal('classifying'),      // Agent classification in progress
 			v.literal('drafting'),         // Agent draft generation in progress
 			v.literal('draft_ready'),      // Draft ready for human review
+			v.literal('awaiting_clarification'), // Parked awaiting an owner answer before drafting
 			v.literal('approved'),         // Draft approved by human or auto-approved
 			v.literal('sent'),             // Reply sent
 			v.literal('rejected'),         // Draft rejected by human
@@ -151,6 +153,19 @@ export const inboxTables = {
 				scheduledAt: v.number(),
 			}),
 		),
+		// Open clarification questions parked before drafting. Set when the
+		// (future) clarify step routes the message to `awaiting_clarification`;
+		// answered via `inbox.answerClarification`, which folds each answer back in
+		// as a TRUSTED `[CONFIRMED BY OWNER]` block and resumes the draft. See
+		// pendingClarificationValidator.
+		pendingClarification: v.optional(pendingClarificationValidator),
+		// Set when a draft was produced from an ABANDONED clarification (the owner
+		// never answered within the window and the fallback cron resumed a
+		// best-guess). It is a hard, fail-closed block on autonomous sending — the
+		// route step's final safety gate refuses to auto-send while this is set, so
+		// a best-guess reply always goes to human review. Never cleared by the
+		// pipeline; a human reviews and sends (or discards) the draft.
+		isAutoSendBlocked: v.optional(v.boolean()),
 		// Error tracking
 		errorMessage: v.optional(v.string()),
 		// Timestamps
@@ -229,6 +244,12 @@ export const inboxTables = {
 		// (60s). 0 preserves the legacy immediate-send behaviour. Human-reviewed
 		// approvals are unaffected. See inbox/processingLifecycle/effects.ts.
 		autoSendDelayMs: v.optional(v.number()),
+		// Abandoned-clarification window (ms). A message parked in
+		// `awaiting_clarification` for longer than this with no owner answer is
+		// resumed by the fallback cron as a flagged best-guess that is never
+		// auto-send-eligible. Unset ⇒ DEFAULT_CLARIFICATION_TIMEOUT_MS (24h). See
+		// inbox/processingLifecycle.ts:reconcileAbandonedClarifications.
+		clarificationTimeoutMs: v.optional(v.number()),
 		// Timestamps
 		createdAt: v.number(),
 		updatedAt: v.number(),

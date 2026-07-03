@@ -219,6 +219,8 @@ import type * as forms_endpoints from "../forms/endpoints.js";
 import type * as forms_submission from "../forms/submission.js";
 import type * as globalSearch from "../globalSearch.js";
 import type * as http from "../http.js";
+import type * as inbox_clarification from "../inbox/clarification.js";
+import type * as inbox_clarificationValidators from "../inbox/clarificationValidators.js";
 import type * as inbox_messages from "../inbox/messages.js";
 import type * as inbox_mutations from "../inbox/mutations.js";
 import type * as inbox_processingLifecycle from "../inbox/processingLifecycle.js";
@@ -745,6 +747,8 @@ declare const fullApi: ApiFromModules<{
   "forms/submission": typeof forms_submission;
   globalSearch: typeof globalSearch;
   http: typeof http;
+  "inbox/clarification": typeof inbox_clarification;
+  "inbox/clarificationValidators": typeof inbox_clarificationValidators;
   "inbox/messages": typeof inbox_messages;
   "inbox/mutations": typeof inbox_mutations;
   "inbox/processingLifecycle": typeof inbox_processingLifecycle;

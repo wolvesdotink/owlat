@@ -2,11 +2,11 @@ import type { MutationCtx } from '../_generated/server';
 
 /**
  * Inbox processing-status bucket. Maps the wider `processingStatus`
- * literal union (10 values) into the 9 counter fields on
- * `instanceSettings.inboxStats`; `security_check`, `classifying`, and
- * `drafting` collapse to the single `processing` bucket because that's
- * what the dashboard surfaces (the three pipeline sub-stages aren't
- * separately interesting to the operator).
+ * literal union into the 9 counter fields on `instanceSettings.inboxStats`;
+ * `security_check`, `classifying`, `drafting`, and `awaiting_clarification`
+ * collapse to the single `processing` bucket because that's what the dashboard
+ * surfaces (the pipeline sub-stages aren't separately interesting to the
+ * operator).
  */
 export type InboxBucket =
 	| 'received'
@@ -32,6 +32,7 @@ export function bucketForStatus(status: string): InboxBucket | null {
 		case 'security_check':
 		case 'classifying':
 		case 'drafting':
+		case 'awaiting_clarification':
 			return 'processing';
 		case 'draft_ready':
 			return 'draftReady';
