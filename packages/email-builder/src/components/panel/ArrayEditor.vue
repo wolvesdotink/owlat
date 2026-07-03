@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { PropertyField } from '../../schema/types';
+import { createArrayItem } from '../../schema/arrayItem';
 import { GripVertical, Plus, Trash2 } from '@lucide/vue';
 import { VueDraggable } from 'vue-draggable-plus';
 import IconButton from '../ui/IconButton.vue';
@@ -21,17 +22,18 @@ const items = computed(() => {
 	return props.value;
 });
 
+// Primitive string array (string[]): render one text input per item.
 const isStringArray = computed(() => {
+	if (props.field.itemType === 'string') return true;
+	if (props.field.itemType === 'string[]') return false;
 	return items.value.length > 0 && typeof items.value[0] === 'string';
 });
 
+// Matrix (string[][]): render a row of text inputs, one per cell.
+const isMatrix = computed(() => props.field.itemType === 'string[]');
+
 function addItem() {
-	const newItem = props.field.itemDefault
-		? props.field.itemDefault()
-		: isStringArray.value
-			? ''
-			: {};
-	emit('update', [...items.value, newItem]);
+	emit('update', [...items.value, createArrayItem(props.field, items.value)]);
 }
 
 function removeItem(index: number) {
@@ -43,6 +45,15 @@ function removeItem(index: number) {
 function updateItem(index: number, value: unknown) {
 	const updated = [...items.value];
 	updated[index] = value;
+	emit('update', updated);
+}
+
+function updateCell(rowIndex: number, cellIndex: number, value: string) {
+	const updated = [...items.value];
+	const current = updated[rowIndex];
+	const row = Array.isArray(current) ? [...current] : [];
+	row[cellIndex] = value;
+	updated[rowIndex] = row;
 	emit('update', updated);
 }
 
@@ -80,6 +91,20 @@ function handleReorder(newItems: unknown[]) {
 							:value="item as string"
 							@input="(e) => updateItem(index, (e.target as HTMLInputElement).value)"
 						/>
+					</template>
+
+					<!-- Matrix (string[][]): one text input per cell -->
+					<template v-else-if="isMatrix">
+						<div class="flex flex-wrap gap-1">
+							<input
+								v-for="(cell, cellIndex) in (item as string[])"
+								:key="cellIndex"
+								type="text"
+								class="min-w-0 flex-1 py-1 px-1.5 text-xs border border-border-subtle rounded bg-bg-surface text-text-primary outline-none transition-[border-color] duration-150 focus:border-brand"
+								:value="cell"
+								@input="(e) => updateCell(index, cellIndex, (e.target as HTMLInputElement).value)"
+							/>
+						</div>
 					</template>
 
 					<!-- Object array: render sub-fields -->

@@ -12,17 +12,23 @@ export const tableSchema: BlockAttributeSchema = {
 					key: 'headers',
 					label: 'Headers',
 					type: 'array',
-					itemSchema: [{ key: 'value', label: 'Header', type: 'text' }],
-					itemDefault: () => ({ value: 'Header' }),
+					// `headers` is a string[] — append plain strings, not objects.
+					itemType: 'string',
 				},
 				{
 					key: 'rows',
 					label: 'Rows',
 					type: 'array',
-					itemSchema: [{ key: 'cells', label: 'Cells', type: 'text' }],
-					itemDefault: () => ({ cells: '' }),
+					// `rows` is a string[][] — each row is an array of cell strings.
+					itemType: 'string[]',
 				},
-				{ key: 'footerRow', label: 'Footer Row', type: 'array', itemSchema: [{ key: 'value', label: 'Footer', type: 'text' }], itemDefault: () => ({ value: '' }) },
+				{
+					key: 'footerRow',
+					label: 'Footer Row',
+					type: 'array',
+					// `footerRow` is a string[] — append plain strings, not objects.
+					itemType: 'string',
+				},
 				{ key: 'captionText', label: 'Caption', type: 'text', placeholder: 'Table description for accessibility' },
 			],
 		},
