@@ -82,11 +82,12 @@ async function seedAutoSentOnThread(
 	return await t.run(async (ctx) => {
 		const threadId = await ctx.db.insert(
 			'conversationThreads',
-			createTestConversationThread() as never,
+			createTestConversationThread({ contactId: undefined }) as never,
 		);
 		const originalId = await ctx.db.insert('inboundMessages', {
 			...createTestInboundMessage({
 				threadId,
+				contactId: undefined,
 				processingStatus: 'sent',
 				receivedAt: 1_000,
 				confidenceScore: opts.confidence ?? 0.9,
@@ -173,7 +174,7 @@ describe('autonomy.recordOutcomeFeedback', () => {
 	it('is a no-op when the original message is gone', async () => {
 		const t = convexTest(schema, modules);
 		const ghostId = await t.run(async (ctx) => {
-			const id = await ctx.db.insert('inboundMessages', createTestInboundMessage() as never);
+			const id = await ctx.db.insert('inboundMessages', createTestInboundMessage({ threadId: undefined, contactId: undefined }) as never);
 			await ctx.db.delete(id);
 			return id;
 		});
@@ -194,7 +195,7 @@ describe('autonomy.getReplyOutcomeContext', () => {
 
 		const replyId = await t.run(async (ctx) =>
 			ctx.db.insert('inboundMessages', {
-				...createTestInboundMessage({ threadId, receivedAt: 2_000, processingStatus: 'received' }),
+				...createTestInboundMessage({ threadId, contactId: undefined, receivedAt: 2_000, processingStatus: 'received' }),
 			} as never),
 		);
 
@@ -208,7 +209,7 @@ describe('autonomy.getReplyOutcomeContext', () => {
 
 		const replyId = await t.run(async (ctx) =>
 			ctx.db.insert('inboundMessages', {
-				...createTestInboundMessage({ threadId, receivedAt: 2_000, processingStatus: 'received' }),
+				...createTestInboundMessage({ threadId, contactId: undefined, receivedAt: 2_000, processingStatus: 'received' }),
 			} as never),
 		);
 
@@ -222,7 +223,7 @@ describe('agent.outcomeFeedback.classifyReplyOutcome', () => {
 		const { threadId, originalId } = await seedAutoSentOnThread(t, { category: 'support' });
 		const replyId = await t.run(async (ctx) =>
 			ctx.db.insert('inboundMessages', {
-				...createTestInboundMessage({ threadId, receivedAt: 2_000 }),
+				...createTestInboundMessage({ threadId, contactId: undefined, receivedAt: 2_000 }),
 			} as never),
 		);
 		mocks.runLlmObject.mockResolvedValue(objectResult({ sentiment: 'negative' }));
@@ -248,7 +249,7 @@ describe('agent.outcomeFeedback.classifyReplyOutcome', () => {
 		const { threadId } = await seedAutoSentOnThread(t);
 		const replyId = await t.run(async (ctx) =>
 			ctx.db.insert('inboundMessages', {
-				...createTestInboundMessage({ threadId, receivedAt: 2_000 }),
+				...createTestInboundMessage({ threadId, contactId: undefined, receivedAt: 2_000 }),
 			} as never),
 		);
 		mocks.runLlmObject.mockResolvedValue(objectResult({ sentiment: 'neutral' }));
@@ -266,7 +267,7 @@ describe('agent.outcomeFeedback.classifyReplyOutcome', () => {
 		const { threadId } = await seedAutoSentOnThread(t);
 		const replyId = await t.run(async (ctx) =>
 			ctx.db.insert('inboundMessages', {
-				...createTestInboundMessage({ threadId, receivedAt: 2_000 }),
+				...createTestInboundMessage({ threadId, contactId: undefined, receivedAt: 2_000 }),
 			} as never),
 		);
 		mocks.runLlmObject.mockRejectedValue(new Error('model down'));
@@ -286,7 +287,7 @@ describe('agent.outcomeFeedback.classifyReplyOutcome', () => {
 		const { threadId } = await seedAutoSentOnThread(t, { decision: 'human_review' });
 		const replyId = await t.run(async (ctx) =>
 			ctx.db.insert('inboundMessages', {
-				...createTestInboundMessage({ threadId, receivedAt: 2_000 }),
+				...createTestInboundMessage({ threadId, contactId: undefined, receivedAt: 2_000 }),
 			} as never),
 		);
 		mocks.runLlmObject.mockResolvedValue(objectResult({ sentiment: 'negative' }));
