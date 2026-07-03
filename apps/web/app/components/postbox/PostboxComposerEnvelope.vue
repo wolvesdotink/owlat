@@ -54,19 +54,24 @@ const ownDomains = computed(() =>
 	])
 );
 
-// ─── Reply-all gap hint ──────────────────────────────────────────────────────
-// Shown once, dismissibly, when a plain Reply left out other recipients.
-const replyAllHintDismissed = ref(false);
-const showReplyAllHint = computed(
-	() => !replyAllHintDismissed.value && (props.replyAllRecipients?.length ?? 0) > 0
+// ─── Reply mode toggle ───────────────────────────────────────────────────────
+// While a plain-reply draft is open and Reply-all would add other recipients,
+// show a persistent "Replying to sender only — switch to all" toggle near the
+// recipient fields. Clicking it converts the draft to a reply-all in place
+// (folds the extras into Cc, preserving the body). This SUPERSEDES the older
+// dismissible gap hint: `replyAllRecipients` is only ever populated on a plain
+// reply, so the two never render together — the toggle is the single affordance.
+const convertedToReplyAll = ref(false);
+const showReplyModeToggle = computed(
+	() => (props.replyAllRecipients?.length ?? 0) > 0
 );
-const replyAllHintNames = computed(() =>
+const replyAllExtraNames = computed(() =>
 	(props.replyAllRecipients ?? []).map(recipientLabel).join(', ')
 );
-function applyReplyAll() {
+function switchToReplyAll() {
 	// Reveal Cc so the newly-added recipients are visible.
 	showCc.value = true;
-	replyAllHintDismissed.value = true;
+	convertedToReplyAll.value = true;
 	emit('apply-reply-all');
 }
 
@@ -134,24 +139,24 @@ function moveRecipient(payload: { email: string; from: RecipientField }, to: Rec
 			</div>
 		</div>
 		<div
-			v-if="showReplyAllHint"
+			v-if="showReplyModeToggle"
 			class="flex items-center gap-2 pl-14 text-xs text-text-tertiary"
-			data-testid="postbox-reply-all-hint"
+			data-testid="postbox-reply-mode-toggle"
 		>
-			<span>Also include {{ replyAllHintNames }}?</span>
-			<button
-				type="button"
-				class="text-brand hover:underline"
-				@click="applyReplyAll"
-			>reply-all</button>
-			<button
-				type="button"
-				class="text-text-tertiary hover:text-text-primary"
-				aria-label="Dismiss"
-				@click="replyAllHintDismissed = true"
-			>
-				<Icon name="lucide:x" class="w-3 h-3" />
-			</button>
+			<template v-if="!convertedToReplyAll">
+				<Icon name="lucide:reply" class="w-3 h-3" />
+				<span>Replying to sender only</span>
+				<button
+					type="button"
+					class="text-brand hover:underline"
+					:title="`Also include ${replyAllExtraNames}`"
+					@click="switchToReplyAll"
+				>switch to all</button>
+			</template>
+			<template v-else>
+				<Icon name="lucide:reply-all" class="w-3 h-3" />
+				<span>Replying to everyone</span>
+			</template>
 		</div>
 		<PostboxRecipientField
 			v-if="showCc"

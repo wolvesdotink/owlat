@@ -3,7 +3,7 @@ import type { Id } from '@owlat/api/dataModel';
 import type { ComposerMode } from '~/composables/postbox/usePostboxCompose';
 import type { ComposerPromotePayload } from '~/composables/postbox/usePostboxComposerStack';
 import { SIMPLE_BLOCK_TYPES } from '~/composables/postbox/postboxBlockTypes';
-import { mergeRecipients } from '~/utils/recipientHints';
+import { convertReplyToReplyAll } from '~/utils/postboxReplyDefault';
 import { mentionsAttachment } from '~/utils/attachmentMention';
 
 const EmailBuilder = defineAsyncComponent(() =>
@@ -113,13 +113,24 @@ async function onFromChange(address: string) {
 	}
 }
 
-// Reply-all gap hint accepted: fold the extra recipients into Cc, keeping the
-// draft (subject/body/To) exactly as-is. Dedupe by canonical address (against
-// both Cc and To) so an already-present address isn't doubled.
+// Reply → Reply-all conversion (the envelope's mode toggle): fold the extra
+// recipients into Cc IN PLACE, keeping To / subject / body exactly as-is.
+// Dedupe by canonical address (against both Cc and To) so an already-present
+// address isn't doubled; self was already excluded when the extras were
+// derived. Same recipient math as opening a fresh reply-all.
 function onApplyReplyAll() {
 	const extras = props.replyAllRecipients ?? [];
 	if (extras.length === 0) return;
-	ccAddresses.value = mergeRecipients(ccAddresses.value, extras, toAddresses.value);
+	const converted = convertReplyToReplyAll(
+		{
+			to: toAddresses.value,
+			cc: ccAddresses.value,
+			subject: subject.value,
+			bodyHtml: bodyHtml.value,
+		},
+		extras
+	);
+	ccAddresses.value = converted.cc;
 }
 
 const composerName = ref(`Postbox compose ${new Date().toLocaleString()}`);

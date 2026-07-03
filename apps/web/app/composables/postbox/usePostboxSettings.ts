@@ -11,11 +11,15 @@
  *     feature flag is enabled; the flag itself is the master gate.
  *   - `autoSummarize` — the cached one-line AI summary strip on long threads.
  *     Defaults ON (undefined => true), same master-gate reasoning as above.
+ *   - `replyDefault` — whether the primary reply affordance (Reply button /
+ *     `r`) opens a plain Reply or a Reply-all. Defaults to 'reply'.
  */
 
 import { api } from '@owlat/api';
 import type { PostboxAutoAdvanceMode } from '~/utils/postboxAutoAdvance';
 import { POSTBOX_AUTO_ADVANCE_DEFAULT } from '~/utils/postboxAutoAdvance';
+import type { PostboxReplyDefaultMode } from '~/utils/postboxReplyDefault';
+import { POSTBOX_REPLY_DEFAULT } from '~/utils/postboxReplyDefault';
 
 export function usePostboxSettings() {
 	const { data, isLoading } = useConvexQuery(api.mail.settings.get, () => ({}));
@@ -36,6 +40,13 @@ export function usePostboxSettings() {
 		() => data.value?.isAutoSummarizeOn ?? true
 	);
 
+	// Which mode the primary reply affordance (Reply button / `r`) uses. Reads
+	// default to 'reply' while loading or when never saved, so the reader can
+	// consume it unconditionally.
+	const replyDefault = computed<PostboxReplyDefaultMode>(
+		() => data.value?.replyDefault ?? POSTBOX_REPLY_DEFAULT
+	);
+
 	const updateOp = useBackendOperation(api.mail.settings.update, {
 		label: 'Save Postbox settings',
 	});
@@ -52,14 +63,20 @@ export function usePostboxSettings() {
 		await updateOp.run({ isAutoSummarizeOn: enabled });
 	}
 
+	async function setReplyDefault(mode: PostboxReplyDefaultMode) {
+		await updateOp.run({ replyDefault: mode });
+	}
+
 	return {
 		autoAdvance,
 		writingSuggestions,
 		autoSummarize,
+		replyDefault,
 		isLoading,
 		setAutoAdvance,
 		setWritingSuggestions,
 		setAutoSummarize,
+		setReplyDefault,
 		isSaving: updateOp.isLoading,
 	};
 }

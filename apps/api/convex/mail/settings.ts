@@ -16,7 +16,10 @@
 
 import { v } from 'convex/values';
 import { authedMutation, publicQuery } from '../lib/authedFunctions';
-import { mailAutoAdvanceValidator } from '../lib/convexValidators';
+import {
+	mailAutoAdvanceValidator,
+	mailReplyDefaultValidator,
+} from '../lib/convexValidators';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 
 // public: soft-auth — returns null for anonymous; the row is self-scoped to
@@ -35,6 +38,7 @@ export const get = publicQuery({
 			autoAdvance: row.autoAdvance,
 			isWritingSuggestionsOn: row.isWritingSuggestionsOn,
 			isAutoSummarizeOn: row.isAutoSummarizeOn,
+			replyDefault: row.replyDefault,
 		};
 	},
 });
@@ -46,6 +50,7 @@ export const update = authedMutation({
 		autoAdvance: v.optional(mailAutoAdvanceValidator),
 		isWritingSuggestionsOn: v.optional(v.boolean()),
 		isAutoSummarizeOn: v.optional(v.boolean()),
+		replyDefault: v.optional(mailReplyDefaultValidator),
 	},
 	// authz: self-scoped — upserts only the caller's own settings row (keyed
 	// by the session userId; no cross-user id is accepted).
@@ -61,12 +66,14 @@ export const update = authedMutation({
 			autoAdvance?: (typeof args)['autoAdvance'];
 			isWritingSuggestionsOn?: boolean;
 			isAutoSummarizeOn?: boolean;
+			replyDefault?: (typeof args)['replyDefault'];
 		} = {};
 		if (args.autoAdvance !== undefined) patch.autoAdvance = args.autoAdvance;
 		if (args.isWritingSuggestionsOn !== undefined)
 			patch.isWritingSuggestionsOn = args.isWritingSuggestionsOn;
 		if (args.isAutoSummarizeOn !== undefined)
 			patch.isAutoSummarizeOn = args.isAutoSummarizeOn;
+		if (args.replyDefault !== undefined) patch.replyDefault = args.replyDefault;
 		if (existing) {
 			await ctx.db.patch(existing._id, { ...patch, updatedAt: now });
 			return existing._id;

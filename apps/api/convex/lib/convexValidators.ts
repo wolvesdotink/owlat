@@ -271,6 +271,14 @@ export const mailAutoAdvanceValidator = v.union(
 	v.literal('back-to-list'),
 );
 
+// Postbox default reply behavior (mailUserSettings.replyDefault and mail/settings
+// update args) — whether the primary reply affordance / `r` opens a plain Reply
+// or a Reply-all. Single source so schema and args can't drift.
+export const mailReplyDefaultValidator = v.union(
+	v.literal('reply'),
+	v.literal('reply-all'),
+);
+
 // Email template kind (emailTemplates.type and its CRUD args)
 export const emailTemplateTypeValidator = v.union(
 	v.literal('marketing'),
