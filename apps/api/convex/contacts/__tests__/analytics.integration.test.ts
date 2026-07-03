@@ -15,7 +15,20 @@ vi.mock('../../lib/sessionOrganization', async () => {
 	};
 });
 
-const modules = import.meta.glob('../../**/*.*s');
+// Vite's `import.meta.glob` excludes the directory chain it climbed up through
+// to reach the glob base, so `'../../**'` from this `contacts/__tests__` file
+// omits the sibling `contacts/*` modules (including `contacts/analytics.ts`, the
+// module under test). Merge a second glob rooted at `contacts/` and re-prefix its
+// keys to the same `../../`-relative form so convex-test's single module-root
+// prefix resolves every entry.
+const rootGlob = import.meta.glob('../../**/*.*s');
+const contactsGlob = Object.fromEntries(
+	Object.entries(import.meta.glob('../**/*.*s')).map(([path, mod]) => [
+		path.replace(/^\.\.\//, '../../contacts/'),
+		mod,
+	]),
+);
+const modules = { ...rootGlob, ...contactsGlob };
 
 async function insertContact(
 	t: ReturnType<typeof convexTest>,
