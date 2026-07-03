@@ -1,15 +1,12 @@
 /**
- * Postbox density util (utils/postboxDensity):
- *   - default + normalisation of stored/unknown values, and
- *   - the contain-intrinsic-size height per density (must track the real
- *     compact vs comfortable row height so scroll estimation stays correct).
+ * Postbox density util (utils/postboxDensity): default + normalisation of
+ * stored/unknown values. (The contain-intrinsic-size height per density is a
+ * static CSS token in postbox-density.css, not a JS constant.)
  */
 import { describe, it, expect } from 'vitest';
 import {
 	POSTBOX_DENSITY_DEFAULT,
 	POSTBOX_DENSITY_OPTIONS,
-	POSTBOX_ROW_INTRINSIC_PX,
-	postboxRowIntrinsicPx,
 	resolvePostboxDensity,
 } from '../postboxDensity';
 
@@ -34,17 +31,5 @@ describe('resolvePostboxDensity', () => {
 			'comfortable',
 			'compact',
 		]);
-	});
-});
-
-describe('postboxRowIntrinsicPx', () => {
-	it('follows density: compact rows are materially shorter than comfortable', () => {
-		expect(postboxRowIntrinsicPx('comfortable')).toBe(
-			POSTBOX_ROW_INTRINSIC_PX.comfortable
-		);
-		expect(postboxRowIntrinsicPx('compact')).toBe(POSTBOX_ROW_INTRINSIC_PX.compact);
-		expect(postboxRowIntrinsicPx('compact')).toBeLessThan(
-			postboxRowIntrinsicPx('comfortable')
-		);
 	});
 });

@@ -11,8 +11,8 @@
  * `--pbx-row-intrinsic` is the `contain-intrinsic-size` height the
  * content-visibility:auto rows use for off-screen scroll estimation. It MUST
  * track the real rendered row height per density or the scrollbar jumps as
- * off-screen rows realise — the values here mirror POSTBOX_ROW_INTRINSIC_PX in
- * utils/postboxDensity.ts.
+ * off-screen rows realise. These values are the single source of truth; the
+ * .pbx-row-link padding below is what makes compact rows hit ~52px.
  */
 
 [data-density='comfortable'] {

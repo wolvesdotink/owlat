@@ -22,21 +22,13 @@ export const POSTBOX_DENSITY_OPTIONS: Array<{
 ];
 
 /**
- * Estimated thread-row height (px) per density. Feeds `contain-intrinsic-size`
- * on the `content-visibility: auto` rows so the browser's scrollbar estimate
- * matches the actual rendered row height — a wrong value makes the scrollbar
- * jump as off-screen rows realise. Compact drops the standalone snippet line
- * and tightens the vertical padding, so its rows are materially shorter.
+ * The per-density thread-row height feeds `contain-intrinsic-size` on the
+ * `content-visibility: auto` rows so the browser's scrollbar estimate matches
+ * the actual rendered row height (a wrong value makes the scrollbar jump as
+ * off-screen rows realise). It is a static CSS token (`--pbx-row-intrinsic`:
+ * 76px comfortable / 52px compact) in postbox-density.css rather than a TS
+ * constant, so there is no JS mirror to drift.
  */
-export const POSTBOX_ROW_INTRINSIC_PX: Record<PostboxDensity, number> = {
-	comfortable: 76,
-	compact: 52,
-};
-
-/** The `contain-intrinsic-size` height for a given density, in px. */
-export function postboxRowIntrinsicPx(density: PostboxDensity): number {
-	return POSTBOX_ROW_INTRINSIC_PX[density] ?? POSTBOX_ROW_INTRINSIC_PX.comfortable;
-}
 
 /** Normalise a stored/unknown value to a valid density, defaulting safely. */
 export function resolvePostboxDensity(value: string | undefined | null): PostboxDensity {
