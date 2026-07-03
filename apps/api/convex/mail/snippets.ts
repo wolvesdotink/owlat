@@ -45,10 +45,11 @@ export const list = publicQuery({
 	handler: async (ctx, args) => {
 		const owned = await loadOwnedMailbox(ctx, args.mailboxId);
 		if (!owned.ok) return [];
+		// bounded: snippets per mailbox are naturally small; cap defensively
 		return ctx.db
 			.query('mailSnippets')
 			.withIndex('by_mailbox', (q) => q.eq('mailboxId', args.mailboxId))
-			.collect();
+			.take(200);
 	},
 });
 
