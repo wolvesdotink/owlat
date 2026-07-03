@@ -120,4 +120,31 @@ describe('contextRetrievalStep.execute — grounding sources', () => {
 		// ungrounded message carries no groundingSources field at all.
 		expect('groundingSources' in (recorded.value ?? {})).toBe(false);
 	});
+
+	it('drops sources truncated out of the briefing so the list never over-claims', async () => {
+		// A thread message whose body is huge enough to blow the token budget and
+		// force compaction/emergency. Its content lands at the FRONT of the
+		// briefing (conversation history precedes the current message), so the
+		// tail-slice / contact+current-only reduction drops it entirely — and the
+		// grounding list must drop with it rather than name an unseen source.
+		const filler = 'x'.repeat(40_000);
+		const { ctx, recorded } = makeCtx({
+			contactId,
+			threadId,
+			threadMessages: [
+				{ _id: 'm_prev', from: 'sender@example.com', receivedAt: Date.now(), subject: 'Truncated thread', textBody: filler },
+			],
+			knowledge: [
+				{ _id: 'k1', entryType: 'fact', confidence: 0.9, title: 'Truncated knowledge', content: filler },
+			],
+		});
+
+		const { output } = await contextRetrievalStep.execute(ctx, input);
+
+		// Compaction/emergency kicked in and the front-loaded sources fell away.
+		expect(output.tier).not.toBe('normal');
+		expect(output.groundingSources).toEqual([]);
+		// Nothing survived → field omitted from the persisted args.
+		expect('groundingSources' in (recorded.value ?? {})).toBe(false);
+	});
 });
