@@ -83,6 +83,37 @@ jobs:
       - name: Install workspace dependencies
         run: bun install --frozen-lockfile
 
+      # Make the release TAG the single source of truth for the shipped version.
+      # Cargo.toml stays frozen at 0.1.0 for local dev; tauri-action derives the
+      # installer + latest.json version from it, so without this a `v0.2.0` tag
+      # would ship artifacts advertising 0.1.0 and existing installs would see
+      # NO update. Strip the `desktop-v` / `v` prefix and stamp the package
+      # version in place. Idempotent (re-running on the same tag is a no-op) and
+      # only ever runs inside the tag-triggered release callers of this core.
+      - name: Stamp release version from tag
+        shell: bash
+        working-directory: apps/desktop/src-tauri
+        env:
+          # Passed via env (never interpolated into the script body) so a crafted
+          # tag cannot break out of quotes and inject shell into this signing job.
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#desktop-v}"
+          VERSION="${VERSION#v}"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Tag '$TAG' does not resolve to a semver version (got '$VERSION')." >&2
+            exit 1
+          fi
+          # Replace only the [package] version (the sole `^version = ` line);
+          # dependency versions are `name = { version = ... }` and untouched.
+          awk -v v="$VERSION" '
+            /^version = / && !done { print "version = \"" v "\""; done=1; next }
+            { print }
+          ' Cargo.toml > Cargo.toml.tmp && mv Cargo.toml.tmp Cargo.toml
+          echo "Stamped desktop version -> $VERSION"
+          grep -n '^version = ' Cargo.toml
+
       - name: Build, sign & upload desktop app
         uses: tauri-apps/tauri-action@v1
         env:
