@@ -9,6 +9,7 @@
 
 import { v } from 'convex/values';
 import type { Doc } from './_generated/dataModel';
+import { internal } from './_generated/api';
 import { publicQuery, adminMutation } from './lib/authedFunctions';
 import { recordAuditLog } from './lib/auditLog';
 import { requireAdminContext, isActiveOrgMember } from './lib/sessionOrganization';
@@ -43,6 +44,10 @@ export const updateConfig = adminMutation({
 		signatureTemplate: v.optional(v.string()),
 		maxDailyAutoReplies: v.optional(v.number()),
 		coalesceWindowMs: v.optional(v.number()),
+		// Undo / send-delay window (ms) for AUTONOMOUS auto-sends. Unset keeps
+		// the configured value; 0 restores the legacy immediate send. See
+		// inbox/processingLifecycle/effects.ts.
+		autoSendDelayMs: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
 		const { userId } = await requireAdminContext(ctx);
@@ -60,8 +65,22 @@ export const updateConfig = adminMutation({
 			if (args.signatureTemplate !== undefined) patches.signatureTemplate = args.signatureTemplate;
 			if (args.maxDailyAutoReplies !== undefined) patches.maxDailyAutoReplies = args.maxDailyAutoReplies;
 			if (args.coalesceWindowMs !== undefined) patches.coalesceWindowMs = args.coalesceWindowMs;
+			if (args.autoSendDelayMs !== undefined)
+				patches.autoSendDelayMs = Math.max(0, args.autoSendDelayMs);
 
 			await ctx.db.patch(config._id, patches);
+
+			// Kill switch: flipping auto-reply OFF must also abort any autonomous
+			// send still sitting in its undo window — otherwise a queued send
+			// fires seconds after the operator thought they stopped it. Scheduled
+			// so the (bounded) scan never blocks the config write; fail-soft.
+			if (args.isAutoReplyEnabled === false) {
+				await ctx.scheduler.runAfter(
+					0,
+					internal.inbox.processingLifecycle.cancelPendingAutoSendsForKillSwitch,
+					{},
+				);
+			}
 
 			await recordAuditLog(ctx, {
 				userId,
@@ -80,6 +99,7 @@ export const updateConfig = adminMutation({
 			signatureTemplate: args.signatureTemplate,
 			maxDailyAutoReplies: args.maxDailyAutoReplies ?? 100,
 			coalesceWindowMs: args.coalesceWindowMs ?? 30000,
+			autoSendDelayMs: args.autoSendDelayMs === undefined ? undefined : Math.max(0, args.autoSendDelayMs),
 			createdAt: now,
 			updatedAt: now,
 		});
