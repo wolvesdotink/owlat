@@ -15,6 +15,7 @@ import type * as accountDeletionEmail from "../accountDeletionEmail.js";
 import type * as agent_agentPipeline from "../agent/agentPipeline.js";
 import type * as agent_coalescing from "../agent/coalescing.js";
 import type * as agent_knowledgeBackfill from "../agent/knowledgeBackfill.js";
+import type * as agent_outcomeFeedback from "../agent/outcomeFeedback.js";
 import type * as agent_referenceMonitor from "../agent/referenceMonitor.js";
 import type * as agent_shadowScorecard from "../agent/shadowScorecard.js";
 import type * as agent_shadowSimilarity from "../agent/shadowSimilarity.js";
@@ -551,6 +552,7 @@ declare const fullApi: ApiFromModules<{
   "agent/agentPipeline": typeof agent_agentPipeline;
   "agent/coalescing": typeof agent_coalescing;
   "agent/knowledgeBackfill": typeof agent_knowledgeBackfill;
+  "agent/outcomeFeedback": typeof agent_outcomeFeedback;
   "agent/referenceMonitor": typeof agent_referenceMonitor;
   "agent/shadowScorecard": typeof agent_shadowScorecard;
   "agent/shadowSimilarity": typeof agent_shadowSimilarity;
