@@ -59,7 +59,8 @@ pub fn send_native_notification(app: AppHandle, title: String, body: String) -> 
 #[derive(Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct NotificationActionEvent {
-    /// "open" (notification clicked) or "archive" (the Archive button).
+    /// "open" (notification clicked), "archive" (Archive button), or
+    /// "read" (Mark read button).
     action: String,
     message_id: String,
     folder_role: String,
@@ -96,10 +97,20 @@ fn notify_with_actions(
         // "already set" error is fine — it just has to be set before sending.
         let _ = set_application(&bundle);
         let mut options = Notification::new();
-        options.main_button(MainButton::SingleAction("Archive"));
+        // A dropdown lets us offer BOTH Archive and Mark read (macOS notifications
+        // render a single main button, whose long-press/expand reveals the list).
+        options.main_button(MainButton::DropdownActions(
+            "Actions",
+            &["Archive", "Mark read"],
+        ));
         match send_notification(&title, None, &body, Some(&options)) {
-            Ok(NotificationResponse::ActionButton(_)) => {
-                emit_notification_action(&app, "archive", &message_id, &folder_role)
+            Ok(NotificationResponse::ActionButton(label)) => {
+                let action = if label == "Mark read" {
+                    "read"
+                } else {
+                    "archive"
+                };
+                emit_notification_action(&app, action, &message_id, &folder_role)
             }
             Ok(NotificationResponse::Click) => {
                 emit_notification_action(&app, "open", &message_id, &folder_role)
@@ -124,11 +135,13 @@ fn notify_with_actions(
             .body(&body)
             .action("default", "Open")
             .action("archive", "Archive")
+            .action("read", "Mark read")
             .show();
         if let Ok(handle) = handle {
             handle.wait_for_action(|action| {
                 let mapped = match action {
                     "archive" => "archive",
+                    "read" => "read",
                     "default" => "open",
                     _ => return,
                 };

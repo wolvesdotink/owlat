@@ -18,6 +18,7 @@ export interface NotificationActionPayload {
 export type NotifEffect =
 	| { type: 'open'; folderRole: string; messageId: string }
 	| { type: 'archive'; messageId: string }
+	| { type: 'read'; messageId: string }
 	| null;
 
 function str(v: unknown): string | undefined {
@@ -29,6 +30,7 @@ export function resolveNotificationEffect(payload: NotificationActionPayload): N
 	const messageId = str(payload?.messageId);
 	if (!messageId) return null;
 	if (payload.action === 'archive') return { type: 'archive', messageId };
+	if (payload.action === 'read') return { type: 'read', messageId };
 	return { type: 'open', folderRole: str(payload?.folderRole) ?? 'inbox', messageId };
 }
 
@@ -44,8 +46,11 @@ async function focusMainWindow(): Promise<void> {
 }
 
 async function runEffect(effect: NonNullable<NotifEffect>, convex: ConvexClient): Promise<void> {
-	await focusMainWindow();
+	// The Archive / Mark-read actions triage in place WITHOUT navigating away —
+	// they should not steal the user's current view. Only an explicit open
+	// (notification body / tray peek) focuses + deep-links.
 	if (effect.type === 'archive') {
+		await focusMainWindow();
 		try {
 			await convex.mutation(api.mail.messageActions.archive, {
 				messageIds: [effect.messageId as Id<'mailMessages'>],
@@ -55,6 +60,18 @@ async function runEffect(effect: NonNullable<NotifEffect>, convex: ConvexClient)
 		}
 		return;
 	}
+	if (effect.type === 'read') {
+		try {
+			await convex.mutation(api.mail.messageActions.markRead, {
+				messageId: effect.messageId as Id<'mailMessages'>,
+				seen: true,
+			});
+		} catch (e) {
+			console.warn('[desktop] mark-read from notification failed', e);
+		}
+		return;
+	}
+	await focusMainWindow();
 	window.location.assign(`/dashboard/postbox/${effect.folderRole}/${effect.messageId}`);
 }
 

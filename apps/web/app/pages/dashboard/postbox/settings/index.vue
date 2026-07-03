@@ -18,6 +18,7 @@ definePageMeta({
 const { mailboxes, isLoading } = usePostboxMailbox();
 const { isEnabled } = useFeatureFlag();
 const { isAdmin } = usePermissions();
+const { isDesktop } = useDesktopContext();
 
 // ── Reading behavior (per-user, spans all mailboxes) ───────────────────
 const {
@@ -360,6 +361,9 @@ async function handleDelete() {
 				/>
 			</div>
 		</section>
+
+		<!-- Desktop-only: native notification behavior. -->
+		<PostboxNotificationSettings v-if="isDesktop" />
 
 		<section class="card !p-0">
 			<header class="px-5 py-3 border-b border-border-subtle">
