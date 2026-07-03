@@ -108,6 +108,19 @@ describe('selectRecipient — the eligibility predicate', () => {
 		expect(r!.email).toBe('pending@x.com');
 	});
 
+	it('excludes a form-forced-DOI membership still pending, even when !requiresDoi', () => {
+		// The membership-level `pendingDoiConfirmation` flag gates independently of
+		// the topic-level DOI flag: a form forced DOI on a non-DOI topic.
+		const c = makeContact({ doiStatus: 'pending', email: 'pending@form.com' });
+		expect(selectRecipient(c, { requiresDoi: false, ...noBlocks }, true)).toBeNull();
+	});
+
+	it('includes an eligible contact when the form-forced-DOI flag is absent/false', () => {
+		const c = makeContact({ doiStatus: 'confirmed', email: 'ok@form.com' });
+		expect(selectRecipient(c, { requiresDoi: false, ...noBlocks }, false)).not.toBeNull();
+		expect(selectRecipient(c, { requiresDoi: false, ...noBlocks }, undefined)).not.toBeNull();
+	});
+
 	it('includes confirmed and not_required under a DOI-required gate', () => {
 		for (const doiStatus of ['confirmed', 'not_required'] as const) {
 			const c = makeContact({ doiStatus });
@@ -408,6 +421,68 @@ describe('Audience resolution — count and send share one predicate', () => {
 
 		expect(topicResolved.map((r) => String(r._id))).not.toContain(String(charlieId));
 		expect(segmentResolved.map((r) => String(r._id))).toContain(String(charlieId));
+	});
+
+	it('form-forced DOI on a NON-DOI topic: an unconfirmed pending membership is excluded', async () => {
+		// Regression (2026-07-03 review): a public form with its own "Enable
+		// Double Opt-In" toggle inserts a `contactTopics` membership with
+		// `pendingDoiConfirmation: true` on a topic that itself does NOT set
+		// `requireDoubleOptIn`. Before the fix the send-time gate derived
+		// `requiresDoi` solely from the topic flag (false here), so the pending
+		// flag was never consulted and the still-unconfirmed contact was mailed —
+		// the exact thing the form toggle exists to prevent.
+		const t = convexTest(schema, modules);
+		const { topicId, confirmedId, pendingFormId } = await t.run(async (ctx) => {
+			// Topic does NOT require DOI at the topic level.
+			const topicId = await ctx.db.insert(
+				'topics',
+				createTestTopic({ requireDoubleOptIn: false }),
+			);
+
+			// Control: confirmed member, no form-DOI flag → eligible. `pending`
+			// doiStatus here would normally be gated only by a DOI-required topic;
+			// on this non-DOI topic it is NOT the contact-level gate that excludes.
+			const confirmedId = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'confirmed@form.test', doiStatus: 'confirmed' }),
+			);
+			// Form-forced DOI, still unconfirmed. Without the membership flag this
+			// contact would pass the gate (topic requiresDoi === false).
+			const pendingFormId = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'pending@form.test', doiStatus: 'pending' }),
+			);
+
+			await ctx.db.insert('contactTopics', {
+				contactId: confirmedId,
+				topicId,
+				addedAt: Date.now(),
+			});
+			await ctx.db.insert('contactTopics', {
+				contactId: pendingFormId,
+				topicId,
+				addedAt: Date.now(),
+				pendingDoiConfirmation: true,
+			});
+
+			return { topicId, confirmedId, pendingFormId };
+		});
+
+		const audience = { kind: 'topic' as const, topicId };
+		const resolved = await t.query(
+			internal.campaigns.audienceResolution.resolveRecipients,
+			{ audience },
+		);
+		const count = await t.query(api.campaigns.audienceResolution.countRecipients, {
+			audience,
+		});
+
+		expect(resolved.map((r) => r.email)).toEqual(['confirmed@form.test']);
+		expect(resolved.map((r) => String(r._id))).not.toContain(String(pendingFormId));
+		expect(resolved.map((r) => String(r._id))).toContain(String(confirmedId));
+		expect(count.eligible).toBe(resolved.length); // anti-drift
+		expect(count.total).toBe(2); // both memberships are candidates
+		expect(count.total - count.eligible).toBe(1); // the pending form membership is the excluded gap
 	});
 });
 

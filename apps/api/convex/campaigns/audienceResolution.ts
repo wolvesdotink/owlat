@@ -64,7 +64,7 @@ function projectRecipient(contact: Doc<'contacts'>): CampaignRecipient {
  * The eligibility decision for one loaded Contact — the ONLY definition of
  * "eligible recipient". `null` = excluded. Ordered predicate:
  * live-contact → email-present → not-suppressed → not-globally-unsubscribed →
- * DOI (topic only).
+ * DOI (topic only) → form-forced-DOI still pending (topic membership only).
  *
  * The global-unsubscribe gate applies to BOTH paths (topic and segment): a
  * Contact who used the public unsubscribe link / preference-center "unsubscribe
@@ -77,10 +77,20 @@ function projectRecipient(contact: Doc<'contacts'>): CampaignRecipient {
  * explicit operator targeting, not consent-derived membership). Do not gate the
  * segment path on DOI without revisiting CONTEXT.md "Audience resolution
  * (module)".
+ *
+ * `membershipPendingDoi` is the per-membership `contactTopics.pendingDoiConfirmation`
+ * flag: a public form with its own "Enable Double Opt-In" toggle (forceDoi) can
+ * require confirmation on a topic that itself does NOT set `requireDoubleOptIn`.
+ * Such a membership is stored with `pendingDoiConfirmation: true` and only cleared
+ * once the contact confirms (see contacts/doiLifecycle.ts). A still-pending
+ * membership is excluded even when `requiresDoi` is false — otherwise the form's
+ * DOI toggle would be silently ignored at send time (consent/legal exposure). It
+ * is always undefined/false on the segment path (no membership).
  */
 export function selectRecipient(
 	contact: Doc<'contacts'>,
 	gate: { requiresDoi: boolean; blockedEmails: ReadonlySet<string> },
+	membershipPendingDoi?: boolean,
 ): CampaignRecipient | null {
 	if (contact.deletedAt !== undefined) return null; // live-contact
 	if (!contact.email) return null; // email-present
@@ -92,6 +102,9 @@ export function selectRecipient(
 		contact.doiStatus !== 'not_required'
 	) {
 		return null; // DOI (topic only)
+	}
+	if (membershipPendingDoi === true) {
+		return null; // form-forced DOI on a non-DOI topic, not yet confirmed
 	}
 	return projectRecipient(contact);
 }
@@ -179,7 +192,7 @@ async function resolveRecipientPageImpl(
 		for (const membership of page) {
 			const contact = contacts.get(String(membership.contactId));
 			if (!contact) continue; // orphan membership (contact hard-deleted)
-			const recipient = selectRecipient(contact, gate);
+			const recipient = selectRecipient(contact, gate, membership.pendingDoiConfirmation);
 			if (recipient) recipients.push(recipient);
 		}
 
@@ -270,8 +283,13 @@ async function* streamAudienceCandidates(
 			const contact = await ctx.db.get(membership.contactId);
 			// Every membership is a candidate (mirrors `pageCandidates: page.length`);
 			// an orphan membership (contact hard-deleted) is still a candidate but
-			// yields no recipient.
-			yield { recipient: contact ? selectRecipient(contact, gate) : null };
+			// yields no recipient. A form-forced-DOI membership still pending
+			// confirmation is a candidate too, but is excluded (yields null).
+			yield {
+				recipient: contact
+					? selectRecipient(contact, gate, membership.pendingDoiConfirmation)
+					: null,
+			};
 		}
 		return;
 	}
