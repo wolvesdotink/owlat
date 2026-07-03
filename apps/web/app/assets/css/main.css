@@ -1,6 +1,7 @@
 @import 'tailwindcss';
 @import '../../../../../packages/ui/assets/css/index.css';
 @import './desktop.css';
+@import './postbox-motion.css';
 
 @source "../../../../../packages/email-builder/src/**/*.vue";
 @source "../../../../../packages/email-builder/src/**/*.ts";

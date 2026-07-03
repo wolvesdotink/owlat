@@ -1,0 +1,115 @@
+/*
+ * Postbox motion system — one vocabulary for every Postbox transition.
+ *
+ * Tokens and Vue `<Transition>` class groups live here — the whole system is
+ * declarative CSS driven by Vue `<Transition>` wrappers in the Postbox
+ * components; there is no JS motion module to keep in sync.
+ *
+ * Vocabulary:
+ *   - fast (160ms): content swaps, hover reveals, toasts
+ *   - panel (220ms): popups + dialogs opening/closing
+ *   - one standard ease: cubic-bezier(0.2, 0, 0, 1)
+ *
+ * All groups reduce to opacity-only (no transform, no movement) under
+ * prefers-reduced-motion so nothing slides for motion-sensitive users.
+ */
+
+:root {
+	--pbx-motion-fast: 160ms;
+	--pbx-motion-panel: 220ms;
+	--pbx-motion-ease: cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* Reader-pane content swap on thread change: subtle fade + 2px rise. */
+.pbx-reader-enter-active,
+.pbx-reader-leave-active {
+	transition:
+		opacity var(--pbx-motion-fast) var(--pbx-motion-ease),
+		transform var(--pbx-motion-fast) var(--pbx-motion-ease);
+}
+.pbx-reader-enter-from {
+	opacity: 0;
+	transform: translateY(2px);
+}
+.pbx-reader-leave-to {
+	opacity: 0;
+}
+
+/* Folder-change list swap: plain fade. */
+.pbx-fade-enter-active,
+.pbx-fade-leave-active {
+	transition: opacity var(--pbx-motion-fast) var(--pbx-motion-ease);
+}
+.pbx-fade-enter-from,
+.pbx-fade-leave-to {
+	opacity: 0;
+}
+
+/* Composer popup open/minimize: scale + fade anchored to its footer chip. */
+.pbx-popup-enter-active,
+.pbx-popup-leave-active {
+	transition:
+		opacity var(--pbx-motion-panel) var(--pbx-motion-ease),
+		transform var(--pbx-motion-panel) var(--pbx-motion-ease);
+	transform-origin: bottom right;
+}
+.pbx-popup-enter-from,
+.pbx-popup-leave-to {
+	opacity: 0;
+	transform: scale(0.96) translateY(6px);
+}
+
+/* Toast / undo-send enter-exit: fade + small rise, same curve. */
+.pbx-toast-enter-active,
+.pbx-toast-leave-active {
+	transition:
+		opacity var(--pbx-motion-fast) var(--pbx-motion-ease),
+		transform var(--pbx-motion-fast) var(--pbx-motion-ease);
+}
+.pbx-toast-enter-from,
+.pbx-toast-leave-to {
+	opacity: 0;
+	transform: translateY(6px);
+}
+
+/*
+ * Hover-action reveal in list rows: fade only, never layout shift. Applied via
+ * a utility class on the actions container; the element keeps its box at all
+ * times (opacity, not display) so row height and scroll position never move.
+ */
+.pbx-hover-reveal {
+	opacity: 0;
+	/* Invisible actions must not be tappable (touch/no-hover devices where the
+	 * row never enters :hover) — the buttons stay in the DOM for zero layout
+	 * shift, but only accept input once actually revealed. */
+	pointer-events: none;
+	transition: opacity var(--pbx-motion-fast) var(--pbx-motion-ease);
+}
+.pbx-hover-reveal:focus-within,
+.group:hover .pbx-hover-reveal,
+.pbx-hover-reveal-host:hover .pbx-hover-reveal {
+	opacity: 1;
+	pointer-events: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	/* Collapse all Postbox transitions to opacity-only: no movement, no scale. */
+	.pbx-reader-enter-active,
+	.pbx-reader-leave-active,
+	.pbx-fade-enter-active,
+	.pbx-fade-leave-active,
+	.pbx-popup-enter-active,
+	.pbx-popup-leave-active,
+	.pbx-toast-enter-active,
+	.pbx-toast-leave-active,
+	.pbx-hover-reveal {
+		transition-property: opacity;
+	}
+	.pbx-reader-enter-from,
+	.pbx-popup-enter-from,
+	.pbx-popup-leave-to,
+	.pbx-toast-enter-from,
+	.pbx-toast-leave-to {
+		transform: none;
+	}
+}

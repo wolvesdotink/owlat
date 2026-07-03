@@ -390,46 +390,52 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 					:folder-role="folderRole"
 				/>
 				<div class="flex-1 overflow-auto">
-					<PostboxThreadCategoryList
-						v-if="categoryGroupsEnabled"
-						:sections="categorySections"
-						:collapsed="categoryCollapsed"
-						:loading="categoryLoading"
-						:folder-role="folderRole"
-						:active-message-id="activeMessageId"
-						:has-more="categoryHasMore"
-						@load-more="loadMoreCategories"
-						@toggle="toggleCategory"
-						@recategorize="recategorize"
-					/>
-					<PostboxThreadGroupList
-						v-else-if="threadGroupsEnabled"
-						:threads="threadGroups"
-						:loading="threadGroupsLoading"
-						:folder-role="folderRole"
-						:active-message-id="activeMessageId"
-						:has-more="threadGroupsHasMore"
-						@load-more="loadMoreThreadGroups"
-					/>
-					<PostboxThreadList
-						v-else
-						ref="threadListRef"
-						:mailbox-id="mailboxId"
-						:messages="messages"
-						:loading="isLoading"
-						:folder-role="folderRole"
-						:active-message-id="activeMessageId"
-						:has-more="hasMore"
-						@load-more="loadMore"
-					/>
+					<Transition name="pbx-fade" mode="out-in">
+					<div :key="String(folderId ?? folderRole ?? 'all')" class="h-full">
+						<PostboxThreadCategoryList
+							v-if="categoryGroupsEnabled"
+							:sections="categorySections"
+							:collapsed="categoryCollapsed"
+							:loading="categoryLoading"
+							:folder-role="folderRole"
+							:active-message-id="activeMessageId"
+							:has-more="categoryHasMore"
+							@load-more="loadMoreCategories"
+							@toggle="toggleCategory"
+							@recategorize="recategorize"
+						/>
+						<PostboxThreadGroupList
+							v-else-if="threadGroupsEnabled"
+							:threads="threadGroups"
+							:loading="threadGroupsLoading"
+							:folder-role="folderRole"
+							:active-message-id="activeMessageId"
+							:has-more="threadGroupsHasMore"
+							@load-more="loadMoreThreadGroups"
+						/>
+						<PostboxThreadList
+							v-else
+							ref="threadListRef"
+							:mailbox-id="mailboxId"
+							:messages="messages"
+							:loading="isLoading"
+							:folder-role="folderRole"
+							:active-message-id="activeMessageId"
+							:has-more="hasMore"
+							@load-more="loadMore"
+						/>
+					</div>
+					</Transition>
 				</div>
 			</template>
 		</section>
 
 		<!-- Pane 3: reader -->
 		<section class="flex-1 overflow-auto bg-bg-base">
+			<Transition name="pbx-reader" mode="out-in">
 			<PostboxThreadReader
 				v-if="activeMessage"
+				:key="activeMessageId ?? undefined"
 				:message="activeMessage"
 				:advance-ids="advanceIds"
 				:folder-role="folderId ? String(folderId) : folderRole"
@@ -440,6 +446,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 					<p class="mt-4 text-text-secondary">Select a message</p>
 				</div>
 			</div>
+			</Transition>
 		</section>
 
 		<UiConfirmationDialog
