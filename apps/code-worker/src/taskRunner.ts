@@ -1,5 +1,5 @@
 import { execFileSync, spawn } from 'node:child_process';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { getConvexClient, fn, type CodeWorkTask } from './convexClient.js';
 import { createPullRequest } from './github.js';
@@ -237,6 +237,31 @@ function runDetached(
 }
 
 /**
+ * Remove a task workspace directory, ignoring errors. Called in a `finally` so a
+ * per-task full clone is never leaked, whatever the task outcome.
+ */
+export function removeWorkspace(workDir: string): void {
+	try {
+		rmSync(workDir, { recursive: true, force: true });
+	} catch {
+		// Best-effort: a leftover dir will be reclaimed by pruneStaleWorkspaces on
+		// the next startup.
+	}
+}
+
+/**
+ * Delete every task workspace under the root on startup. Each task does a full
+ * clone into its own dir; before this they leaked forever across restarts, so a
+ * fresh boot begins from a clean workspace root.
+ */
+export function pruneStaleWorkspaces(root: string = WORKSPACE_ROOT): void {
+	if (!existsSync(root)) return;
+	for (const entry of readdirSync(root)) {
+		removeWorkspace(path.join(root, entry));
+	}
+}
+
+/**
  * Set up a git workspace for a task.
  * Clones the repo (or pulls latest) and creates a feature branch.
  */
@@ -439,5 +464,9 @@ export async function processTask(task: CodeWorkTask): Promise<void> {
 		} catch {
 			log(`Failed to mark task ${taskId} as failed`);
 		}
+	} finally {
+		// Always reclaim the workspace. The per-task clone is large and must never
+		// leak — regardless of success, failure, or any early return above.
+		removeWorkspace(workDir);
 	}
 }
