@@ -61,7 +61,14 @@ async function seedShadowedMessage(
 	const inboundMessageId = await t.run(async (ctx) =>
 		ctx.db.insert(
 			'inboundMessages',
-			createTestInboundMessage({ from: opts.from, draftResponse: opts.draft ?? DRAFT }),
+			// Strip the factory's fabricated threadId/contactId (test_* strings) so the
+			// row passes v.id(...) schema validation on a real insert.
+			createTestInboundMessage({
+				threadId: undefined,
+				contactId: undefined,
+				from: opts.from,
+				draftResponse: opts.draft ?? DRAFT,
+			}),
 		),
 	);
 	await t.mutation(internal.agent.shadowScorecard.recordShadowDecision, {
