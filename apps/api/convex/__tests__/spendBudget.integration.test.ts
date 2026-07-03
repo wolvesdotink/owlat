@@ -83,7 +83,7 @@ describe('analytics.spendBudget.getBudgetStatus', () => {
 	});
 
 	it('allows both paths while under the daily ceiling', async () => {
-		process.env.AI_SPEND_DAILY_BUDGET_USD = '10';
+		process.env['AI_SPEND_DAILY_BUDGET_USD'] = '10';
 		const t = convexTest(schema, modules);
 		await insertSpend(t, 1, Date.now());
 		const status = await t.query(internal.analytics.spendBudget.getBudgetStatus, {});
@@ -93,7 +93,7 @@ describe('analytics.spendBudget.getBudgetStatus', () => {
 	});
 
 	it('withholds autonomous auto-send once the daily ceiling is exceeded', async () => {
-		process.env.AI_SPEND_DAILY_BUDGET_USD = '10';
+		process.env['AI_SPEND_DAILY_BUDGET_USD'] = '10';
 		const t = convexTest(schema, modules);
 		await insertSpend(t, 6, Date.now());
 		await insertSpend(t, 6, Date.now());
@@ -104,7 +104,7 @@ describe('analytics.spendBudget.getBudgetStatus', () => {
 	});
 
 	it('resets per period — a previous-day event is not counted against today', async () => {
-		process.env.AI_SPEND_DAILY_BUDGET_USD = '10';
+		process.env['AI_SPEND_DAILY_BUDGET_USD'] = '10';
 		const t = convexTest(schema, modules);
 		const twoDaysAgo = Date.now() - 2 * 24 * 60 * 60 * 1000;
 		await insertSpend(t, 50, twoDaysAgo); // last period — must not count today
@@ -116,7 +116,7 @@ describe('analytics.spendBudget.getBudgetStatus', () => {
 
 describe('mail.aiGate.assertAiAllowed with a spend budget', () => {
 	it('blocks advisory AI with a clear reason once the budget is exhausted', async () => {
-		process.env.AI_SPEND_DAILY_BUDGET_USD = '10';
+		process.env['AI_SPEND_DAILY_BUDGET_USD'] = '10';
 		const t = convexTest(schema, modules);
 		rateLimiterTest.register(t);
 		await setAiFlag(t, true);
@@ -128,7 +128,7 @@ describe('mail.aiGate.assertAiAllowed with a spend budget', () => {
 	});
 
 	it('allows advisory AI while under budget', async () => {
-		process.env.AI_SPEND_DAILY_BUDGET_USD = '10';
+		process.env['AI_SPEND_DAILY_BUDGET_USD'] = '10';
 		const t = convexTest(schema, modules);
 		rateLimiterTest.register(t);
 		await setAiFlag(t, true);
