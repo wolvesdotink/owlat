@@ -34,12 +34,17 @@ const URL_SHORTENERS = new Set([
  */
 export function extractUrls(html: string): Array<{ href: string; text: string }> {
 	const urls: Array<{ href: string; text: string }> = [];
-	const linkRegex = /<a\s+[^>]*href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+	// Match href values that are double-quoted, single-quoted, or unquoted
+	// (HTML5 allows `<a href=http://evil.com>`). Unquoted values run up to the
+	// next whitespace or `>`; otherwise unquoted hrefs would be invisible to
+	// every downstream URL check (phishing/mismatch/homoglyph/Safe Browsing).
+	const linkRegex =
+		/<a\s+[^>]*href\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))[^>]*>([\s\S]*?)<\/a>/gi;
 	let match;
 	while ((match = linkRegex.exec(html)) !== null) {
-		const href = match[1]!;
+		const href = match[1] ?? match[2] ?? match[3] ?? '';
 		// Strip HTML tags from link text
-		const text = (match[2] ?? '').replace(/<[^>]+>/g, '').trim();
+		const text = (match[4] ?? '').replace(/<[^>]+>/g, '').trim();
 		urls.push({ href, text });
 	}
 	return urls;
@@ -62,9 +67,9 @@ export function extractDomain(url: string): string | null {
  * Prevents bypass via encoded domains like `paypal%2ecom` or `paypal&#46;com`.
  */
 function normalizeHref(href: string): string {
-	// Decode HTML entities that may appear in href attributes (named, then
-	// numeric/hex character references).
-	let normalized = decodeHtmlEntities(href)
+	// Trim surrounding whitespace so schemes like ` javascript:` (which browsers
+	// tolerate) cannot evade the dangerous-scheme check below.
+	let normalized = decodeHtmlEntities(href.trim())
 		.replace(/&#(\d+);/g, (_m, code) => String.fromCharCode(Number(code)))
 		.replace(/&#x([0-9a-fA-F]+);/g, (_m, code) => String.fromCharCode(parseInt(code, 16)));
 	// Decode percent-encoded characters (handles %2e → . etc.)
