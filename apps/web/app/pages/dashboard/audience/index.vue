@@ -92,17 +92,20 @@ const quickActions = [
 	},
 ];
 
+// Per-day buckets for the growth chart (the query now returns
+// `{ days, truncated }`; `truncated` is true only for very large 30-day intakes).
+const growthDays = computed(() => subscriberGrowth.value?.days ?? []);
+
 // Compute max value for growth chart scaling
 const maxGrowthValue = computed(() => {
-	if (!subscriberGrowth.value || subscriberGrowth.value.length === 0) return 10;
-	const max = Math.max(...subscriberGrowth.value.map((d: { count: number }) => d.count));
+	if (growthDays.value.length === 0) return 10;
+	const max = Math.max(...growthDays.value.map((d: { count: number }) => d.count));
 	return max > 0 ? max : 10;
 });
 
 // Compute total new subscribers in last 30 days
 const totalNewSubscribers = computed(() => {
-	if (!subscriberGrowth.value) return 0;
-	return subscriberGrowth.value.reduce((sum: number, d: { count: number }) => sum + d.count, 0);
+	return growthDays.value.reduce((sum: number, d: { count: number }) => sum + d.count, 0);
 });
 
 // Get activity icon and color
@@ -246,7 +249,7 @@ function getContactName(
 						<!-- Simple bar chart -->
 						<div class="flex items-end gap-0.5 h-32 mb-2">
 							<div
-								v-for="day in subscriberGrowth"
+								v-for="day in growthDays"
 								:key="day.date"
 								class="flex-1 flex items-end h-full"
 							>
@@ -264,12 +267,12 @@ function getContactName(
 						<!-- X-axis labels -->
 						<div class="flex gap-0.5">
 							<div
-								v-for="(day, index) in subscriberGrowth"
+								v-for="(day, index) in growthDays"
 								:key="`label-${day.date}`"
 								class="flex-1 text-center"
 							>
 								<span
-									v-if="index % 5 === 0 || index === (subscriberGrowth?.length ?? 0) - 1"
+									v-if="index % 5 === 0 || index === growthDays.length - 1"
 									class="text-[10px] text-text-tertiary"
 								>
 									{{ day.label.split(' ')[1] }}
