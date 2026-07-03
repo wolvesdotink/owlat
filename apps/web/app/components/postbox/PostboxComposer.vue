@@ -232,7 +232,6 @@ const lastSavedLabel = computed(() => {
 	return `Saved ${new Date(lastSavedAt.value).toLocaleTimeString()}`;
 });
 
-const fileInput = ref<HTMLInputElement | null>(null);
 const {
 	isDragOver: dragActive,
 	handleDragOver: onDragOver,
@@ -241,12 +240,6 @@ const {
 } = useDropZone((files) => {
 	void addFiles(files);
 });
-
-function onPickFiles(event: Event) {
-	const target = event.target as HTMLInputElement;
-	if (target.files) void addFiles(target.files);
-	target.value = '';
-}
 
 function onPaste(event: ClipboardEvent) {
 	const files = Array.from(event.clipboardData?.files ?? []);
@@ -407,82 +400,26 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } =
 			@retry="retryUpload"
 		/>
 
-		<footer class="px-3 py-2 border-t border-border-subtle flex items-center justify-between">
-			<div class="flex items-center gap-2">
-				<button
-					type="button"
-					class="btn btn-primary"
-					:title="sendShortcutHint"
-					:disabled="!canSend || sending || isScheduled"
-					@click="handleSend()"
-				>
-					<Icon
-						v-if="sending"
-						name="lucide:loader-2"
-						class="w-4 h-4 mr-1.5 animate-spin"
-					/>
-					<Icon v-else name="lucide:send" class="w-4 h-4 mr-1.5" />
-					{{ sending ? 'Sending…' : 'Send' }}
-				</button>
-				<button
-					type="button"
-					class="btn btn-ghost"
-					:title="scheduleShortcutHint"
-					:disabled="!canSend || sending || isScheduled"
-					@click="scheduleOpen = true"
-				>
-					<Icon name="lucide:clock" class="w-4 h-4" />
-				</button>
-				<PostboxComposerFollowUp
-					v-model:remind-at="followUpRemindAt"
-					:disabled="isScheduled"
-				/>
-				<button
-					type="button"
-					class="btn btn-ghost"
-					title="Attach files"
-					@click="fileInput?.click()"
-				>
-					<Icon name="lucide:paperclip" class="w-4 h-4" />
-				</button>
-				<input
-					ref="fileInput"
-					type="file"
-					multiple
-					class="hidden"
-					@change="onPickFiles"
-				>
-				<PostboxComposerModeControls
-					:mode="composerMode"
-					:persistent-toolbar="persistentToolbar"
-					@toggle-toolbar="toggleToolbar"
-					@switch-mode="switchMode"
-				/>
-				<label
-					v-if="showSignaturePicker"
-					class="inline-flex items-center gap-1 text-xs text-text-tertiary"
-					title="Signature"
-				>
-					<Icon name="lucide:pen-line" class="w-3.5 h-3.5" />
-					<select
-						:value="activeSignatureId ?? ''"
-						class="bg-bg-surface border border-border-subtle rounded px-1.5 py-1 text-xs text-text-secondary outline-none"
-						aria-label="Signature"
-						@change="onSignatureChange"
-					>
-						<option value="">No signature</option>
-						<option
-							v-for="sig in signatures"
-							:key="sig._id"
-							:value="sig._id"
-						>
-							{{ sig.name }}
-						</option>
-					</select>
-				</label>
-			</div>
-			<span class="text-xs text-text-tertiary">{{ lastSavedLabel }}</span>
-		</footer>
+		<PostboxComposerFooter
+			v-model:follow-up-remind-at="followUpRemindAt"
+			:can-send="canSend"
+			:sending="sending"
+			:is-scheduled="isScheduled"
+			:send-shortcut-hint="sendShortcutHint"
+			:schedule-shortcut-hint="scheduleShortcutHint"
+			:show-signature-picker="showSignaturePicker"
+			:signatures="signatures"
+			:active-signature-id="activeSignatureId"
+			:composer-mode="composerMode"
+			:persistent-toolbar="persistentToolbar"
+			:last-saved-label="lastSavedLabel"
+			@send="handleSend()"
+			@schedule="scheduleOpen = true"
+			@add-files="addFiles"
+			@signature-change="onSignatureChange"
+			@toggle-toolbar="toggleToolbar"
+			@switch-mode="switchMode"
+		/>
 		<PostboxScheduleDialog
 			:open="scheduleOpen"
 			@update:open="scheduleOpen = $event"
