@@ -26,6 +26,18 @@ const { messages, isLoading, hasMore, loadMore } = usePostboxThreads({
 	folderId: folderIdRef,
 });
 
+// Once the inbox list has settled (first paint done), idle-prefetch the
+// composer + reader chunks so pressing `c` or Enter never waits on a chunk
+// download. Idempotent + fail-soft; the Designer-mode EmailBuilder stays lazy.
+const chunkWarmup = usePostboxChunkWarmup();
+watch(
+	isLoading,
+	(loading) => {
+		if (!loading) chunkWarmup.warm();
+	},
+	{ immediate: true }
+);
+
 // Cmd/Ctrl+Z re-triages the last archive/trash/move/spam action while the
 // undo toast is visible (inert in inputs/contenteditable — see composable).
 const triageUndo = usePostboxTriageUndo();
