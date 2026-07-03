@@ -57,6 +57,13 @@ services:
       start_period: 10s
     security_opt:
       - no-new-privileges:true
+    # Also attached to the isolated `code-worker` network so the untrusted
+    # code-worker executor can reach the backend to poll for tasks WITHOUT the
+    # two sharing the wide-open `default` bridge. `default` keeps web /
+    # dashboard / caddy / deploy reaching convex exactly as before.
+    networks:
+      - default
+      - code-worker
     stop_grace_period: 45s
     restart: unless-stopped
 
@@ -427,6 +434,14 @@ services:
       POLL_INTERVAL_MS: ${CODE_WORKER_POLL_MS:-10000}
     security_opt:
       - no-new-privileges:true
+    # This container runs attacker-influenced (inbound-email-driven) code
+    # in-process (git / vitest / the coding agent), so it MUST NOT sit on the
+    # shared `default` bridge where it could reach the MTA admin port, IMAP,
+    # Redis, mail-sync, clamd, the updater or docker-socket-proxy. Pinning it to
+    # the isolated `code-worker` network (shared only with convex, which it must
+    # poll) cuts all lateral movement into the mail/infra tier.
+    networks:
+      - code-worker
     depends_on:
       convex:
         condition: service_healthy
@@ -579,6 +594,13 @@ networks:
   default:
   docker-proxy:
     internal: true
+  # Isolated bridge for the untrusted code-worker executor. Only convex (which
+  # the worker must reach with the deployment admin key to poll for tasks) also
+  # attaches here, so a compromised code task cannot pivot to the mail/infra
+  # tier that lives on `default`. Internet egress stays open because a code task
+  # must git-push its branch and call the LLM endpoint; narrowing that further
+  # would require an allowlisted egress proxy rather than the open bridge.
+  code-worker:
 
 volumes:
   convex-data:
