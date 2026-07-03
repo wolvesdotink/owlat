@@ -102,6 +102,15 @@ export enum EmailErrorCode {
 	AUTH_FAILED = 'AUTH_FAILED',
 	/** Content rejected (spam, etc.) — not retryable */
 	CONTENT_REJECTED = 'CONTENT_REJECTED',
+	/**
+	 * The send request timed out AFTER it was put on the wire, so it is
+	 * ambiguous whether the provider already accepted (and delivered) it.
+	 * NOT retryable: on a provider with no server-side dedup (SES), a retry
+	 * of an already-accepted request would double-deliver. Used only where a
+	 * surviving retry cannot be de-duped at the provider (see the SES adapter;
+	 * MTA/Resend instead thread an idempotency key and stay retryable).
+	 */
+	AMBIGUOUS_TIMEOUT = 'AMBIGUOUS_TIMEOUT',
 	/** Unknown error */
 	UNKNOWN = 'UNKNOWN',
 }
