@@ -17,8 +17,8 @@ import {
 	securityFlagsValidator,
 	classificationValidator,
 	tokenUsageValidator,
-	pendingClarificationValidator,
 } from '../../lib/convexValidators';
+import { pendingClarificationValidator } from '../clarificationValidators';
 
 // ─── Status / action literals ────────────────────────────────────────────────
 

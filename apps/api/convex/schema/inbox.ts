@@ -8,8 +8,8 @@ import {
 	groundingSourceValidator,
 	agentDecisionValidator,
 	tokenUsageValidator,
-	pendingClarificationValidator,
 } from '../lib/convexValidators';
+import { pendingClarificationValidator } from '../inbox/clarificationValidators';
 
 /**
  * Inbox / Agent pipeline tables — AI-assisted shared inbox.

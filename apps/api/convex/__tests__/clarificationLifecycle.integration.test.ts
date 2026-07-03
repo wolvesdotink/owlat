@@ -122,7 +122,7 @@ describe('inbox.answerClarification', () => {
 		});
 
 		const result = await t.withIdentity(testIdentity).mutation(
-			api.inbox.mutations.answerClarification,
+			api.inbox.clarification.answerClarification,
 			{
 				inboundMessageId: messageId,
 				answers: [{ questionId: 'q1', value: 'A-123' }],
@@ -172,7 +172,7 @@ describe('inbox.answerClarification', () => {
 		});
 
 		await expect(
-			t.withIdentity(testIdentity).mutation(api.inbox.mutations.answerClarification, {
+			t.withIdentity(testIdentity).mutation(api.inbox.clarification.answerClarification, {
 				inboundMessageId: messageId,
 				answers: [{ questionId: 'q1', value: 'x' }],
 			}),
@@ -189,7 +189,7 @@ describe('inbox.answerClarification', () => {
 			}));
 		});
 		await expect(
-			t.mutation(api.inbox.mutations.answerClarification, {
+			t.mutation(api.inbox.clarification.answerClarification, {
 				inboundMessageId: messageId,
 				answers: [],
 			}),
