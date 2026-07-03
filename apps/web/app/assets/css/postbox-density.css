@@ -1,0 +1,45 @@
+/*
+ * Postbox list/reader density.
+ *
+ * A single `data-density` attribute on the Postbox root drives every visual
+ * difference through CSS — components never branch on density themselves. Two
+ * modes:
+ *   - comfortable (default): today's roomy three-line rows.
+ *   - compact: tighter row padding + a single-line subject/snippet (the
+ *     standalone snippet line is hidden) and tighter reader-header spacing.
+ *
+ * `--pbx-row-intrinsic` is the `contain-intrinsic-size` height the
+ * content-visibility:auto rows use for off-screen scroll estimation. It MUST
+ * track the real rendered row height per density or the scrollbar jumps as
+ * off-screen rows realise. These values are the single source of truth; the
+ * .pbx-row-link padding below is what makes compact rows hit ~52px.
+ */
+
+[data-density='comfortable'] {
+	--pbx-row-intrinsic: 76px;
+}
+
+[data-density='compact'] {
+	--pbx-row-intrinsic: 52px;
+}
+
+/* Compact rows: tighter vertical padding and no standalone snippet line, so a
+   row is subject + sender on effectively one visual line. */
+[data-density='compact'] .pbx-row-link {
+	padding-top: 0.3rem;
+	padding-bottom: 0.3rem;
+}
+
+[data-density='compact'] .pbx-row-snippet {
+	display: none;
+}
+
+/* Compact reader: pull the header spacing in so the message body starts higher. */
+[data-density='compact'] .pbx-reader-article {
+	padding-top: 1rem;
+	padding-bottom: 1rem;
+}
+
+[data-density='compact'] .pbx-reader-header {
+	margin-bottom: 0.75rem;
+}
