@@ -60,6 +60,8 @@ const ghostStyle = ref<Record<string, string> | null>(null);
 const richText = useRichText({
 	editorRef,
 	onChange: () => emitContent(),
+	// Notion-style markdown typing shortcuts are a Postbox-only affordance.
+	patternShortcuts: true,
 });
 
 const {
@@ -72,6 +74,9 @@ const {
 	setLink,
 	pasteAsPlainText,
 	handleFormatKeydown,
+	handleBeforeInput,
+	handleShortcutUndoKeydown,
+	resetShortcutUndo,
 	readActiveMarks,
 } = richText;
 
@@ -242,7 +247,25 @@ const rewriteCtl = usePostboxRewriteController({
 	emitContent,
 });
 
+// Markdown shortcuts intercept the raw input BEFORE the character lands, so a
+// conversion never flickers the literal marker into the DOM. When consumed the
+// composable has already called preventDefault().
+function onBeforeInput(event: InputEvent) {
+	if (handleBeforeInput(event)) {
+		// The conversion mutates the DOM directly without firing @input, so emit
+		// the new content and re-run the ghost/rewrite bookkeeping the input path
+		// would normally do.
+		emitContent();
+		rewriteCtl.invalidateOnEdit();
+	}
+}
+
 function onKeydown(event: KeyboardEvent) {
+	// A conversion's first Cmd+Z restores the literal marker text (one undo step).
+	if (handleShortcutUndoKeydown(event)) {
+		emitContent();
+		return;
+	}
 	if (ghost.hasGhost()) {
 		if (event.key === 'Tab') {
 			event.preventDefault();
@@ -272,6 +295,7 @@ function onPaste(event: ClipboardEvent) {
 function onBlur() {
 	emitContent();
 	ghost.cancel(); // never leave a ghost hanging over an unfocused editor
+	resetShortcutUndo(); // a literal-restore undo shouldn't survive leaving the editor
 }
 
 function onSelectionChange() {
@@ -354,6 +378,7 @@ defineExpose({ focus: focusEditor });
 				contenteditable="true"
 				spellcheck="true"
 				class="postbox-basic-editor outline-none p-3 min-h-full"
+				@beforeinput="onBeforeInput"
 				@input="onInput"
 				@keydown="onKeydown"
 				@paste="onPaste"
@@ -423,6 +448,14 @@ defineExpose({ focus: focusEditor });
 .postbox-basic-editor :deep(a) {
 	color: var(--color-brand, #0a6cdd);
 	text-decoration: underline;
+}
+.postbox-basic-editor :deep(code) {
+	font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	font-size: 0.9em;
+	background: var(--color-bg-subtle, #f2f2f2);
+	border: 1px solid var(--color-border-subtle, #e0e0e0);
+	border-radius: 3px;
+	padding: 0.1em 0.3em;
 }
 .postbox-ghost-text {
 	font-size: 14px;
