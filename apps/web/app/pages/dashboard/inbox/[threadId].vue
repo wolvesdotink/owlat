@@ -338,7 +338,9 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 								<p class="text-sm font-medium text-brand">Agent Draft</p>
 							</div>
 
-							<!-- Editing mode -->
+							<!-- Editing mode: edit with a live before/after diff so the
+							     reviewer sees what changed before it becomes the outgoing
+							     draft. Apply saves + approves; Discard reverts to the original. -->
 							<template v-if="isEditingDraft">
 								<div class="space-y-3">
 									<input
@@ -347,24 +349,13 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 										class="input w-full text-sm"
 										placeholder="Subject (optional)"
 									/>
-									<textarea
+									<InboxDraftDiffEditor
 										v-model="editedDraftResponse"
-										rows="8"
-										class="input w-full text-sm resize-y"
+										:original="message.draftResponse ?? ''"
+										:saving="isSavingEdit"
+										@apply="onSaveEdit(message._id)"
+										@discard="cancelEditDraft"
 									/>
-									<div class="flex items-center gap-2">
-										<button
-											class="btn btn-primary btn-sm gap-1"
-											:disabled="isSavingEdit"
-											@click="onSaveEdit(message._id)"
-										>
-											<Icon name="lucide:save" class="w-3 h-3" />
-											Save & Approve
-										</button>
-										<button class="btn btn-ghost btn-sm" @click="cancelEditDraft">
-											Cancel
-										</button>
-									</div>
 								</div>
 							</template>
 
