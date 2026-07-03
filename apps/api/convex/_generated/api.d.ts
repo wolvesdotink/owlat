@@ -367,6 +367,7 @@ import type * as mail_outboundQueries from "../mail/outboundQueries.js";
 import type * as mail_pendingMailbox from "../mail/pendingMailbox.js";
 import type * as mail_permissions from "../mail/permissions.js";
 import type * as mail_postboxOutboundLifecycle from "../mail/postboxOutboundLifecycle.js";
+import type * as mail_priorityScore from "../mail/priorityScore.js";
 import type * as mail_replyOptions from "../mail/replyOptions.js";
 import type * as mail_rfc822 from "../mail/rfc822.js";
 import type * as mail_settings from "../mail/settings.js";
@@ -905,6 +906,7 @@ declare const fullApi: ApiFromModules<{
   "mail/pendingMailbox": typeof mail_pendingMailbox;
   "mail/permissions": typeof mail_permissions;
   "mail/postboxOutboundLifecycle": typeof mail_postboxOutboundLifecycle;
+  "mail/priorityScore": typeof mail_priorityScore;
   "mail/replyOptions": typeof mail_replyOptions;
   "mail/rfc822": typeof mail_rfc822;
   "mail/settings": typeof mail_settings;
