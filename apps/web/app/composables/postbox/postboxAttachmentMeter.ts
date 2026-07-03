@@ -2,12 +2,13 @@
  * Total-size meter math for the composer attachment row. Pure (no Vue/Nuxt
  * context) so it can be unit-tested directly and reused by the composer chip UI.
  *
- * The per-message budget is the shared MTA/wire cap `MAX_ATTACHMENT_BYTES` — the
- * real ceiling for a single Postbox message (the mail send path enforces a file
- * COUNT cap, not a combined-byte cap, so the wire cap is the size a user can
- * actually approach). The meter surfaces only once the total is worth worrying
- * about (past ~50% of budget) and turns amber as it nears the cap, nudging the
- * user toward a link for oversized files rather than a bounce at send time.
+ * The per-message budget is the shared MTA/wire cap `MAX_ATTACHMENT_BYTES`. The
+ * send path enforces BOTH an attachment COUNT cap and a combined-byte cap
+ * (`ATTACHMENT_COMPOSE_LIMITS`), and the composer now gates the interactive add
+ * path against the same limits; this meter is a softer visual nudge drawn against
+ * the wire cap. It surfaces only once the total is worth worrying about (past
+ * ~50% of budget) and turns amber as it nears the cap, nudging the user toward a
+ * link for oversized files rather than a bounce at send time.
  */
 
 import { MAX_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
