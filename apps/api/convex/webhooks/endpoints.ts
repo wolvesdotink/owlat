@@ -10,6 +10,19 @@ import { recordAuditLog } from '../lib/auditLog';
 import { subscribableWebhookEventValidator } from './events';
 import { test as testEventModule } from './events/test';
 import { isDisallowedIpAddress } from '../lib/ipBlocklist';
+import type { Doc } from '../_generated/dataModel';
+
+/**
+ * Strip the HMAC signing secret from a webhook document before returning it to
+ * the client. The plaintext `secret` is server-only (used to sign delivery
+ * payloads) and is surfaced to the user exactly once, from create /
+ * regenerateSecret — never re-read from a list or get. This keeps webhooks
+ * consistent with API keys (hash + prefix) and IMAP credentials (never
+ * returned), and honours the "shown only once" contract in the settings UI.
+ */
+function stripWebhookSecret({ secret: _secret, ...rest }: Doc<'webhooks'>): Omit<Doc<'webhooks'>, 'secret'> {
+	return rest;
+}
 
 function isDisallowedWebhookHost(hostname: string): boolean {
 	const host = hostname.toLowerCase();
@@ -76,8 +89,12 @@ export const listByOrganization = authedQuery({
 				.collect(); // bounded: active subset
 		}
 
-		// Sort by creation date descending (newest first)
-		return webhooks.sort((a, b) => b.createdAt - a.createdAt);
+		// Sort by creation date descending (newest first). Strip the HMAC secret:
+		// the client never reads it from the list, and it must not leak to the
+		// browser on every settings-page load.
+		return webhooks
+			.sort((a, b) => b.createdAt - a.createdAt)
+			.map(stripWebhookSecret);
 	},
 });
 
@@ -92,7 +109,9 @@ export const get = authedQuery({
 		await requireOrgPermission(ctx, 'organization:manage', 'Only owners and admins can manage webhooks');
 		const webhook = await ctx.db.get(args.webhookId);
 		if (!webhook) return null;
-		return webhook;
+		// Never return the HMAC secret to the client (shown only once, from
+		// create / regenerateSecret).
+		return stripWebhookSecret(webhook);
 	},
 });
 
