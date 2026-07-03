@@ -65,6 +65,8 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'autonomyFeedback',
 	'autonomyRules',
 	'autonomySuggestions',
+	'agentShadowDecisions',
+	'agentShadowScorecard',
 	'contentScanResults',
 
 	// Conversation parents (after their leaves)
@@ -264,6 +266,8 @@ export const ORGANIZATION_DELETION_STEPS = {
 	autonomyFeedback: makeSweepStep('autonomyFeedback'),
 	autonomyRules: makeSweepStep('autonomyRules'),
 	autonomySuggestions: makeSweepStep('autonomySuggestions'),
+	agentShadowDecisions: makeSweepStep('agentShadowDecisions'),
+	agentShadowScorecard: makeSweepStep('agentShadowScorecard'),
 	mailThreads: makeSweepStep('mailThreads'),
 	mailContacts: makeSweepStep('mailContacts'),
 	mailSenderCategoryOverrides: makeSweepStep('mailSenderCategoryOverrides'),

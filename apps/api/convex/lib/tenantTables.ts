@@ -103,6 +103,8 @@ export const TENANT_TABLES = [
 	'autonomyFeedback',
 	'autonomyRules',
 	'autonomySuggestions',
+	'agentShadowDecisions',
+	'agentShadowScorecard',
 
 	// ── Personal mail (Postbox) — children first, mailbox last ──
 	'mailMessages',

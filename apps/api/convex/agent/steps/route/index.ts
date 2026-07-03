@@ -22,6 +22,14 @@
  *
  * In every tier the score compared against the threshold is the draft-quality
  * self-check, resolved LOW (never auto-approve) when that check is unknown.
+ *
+ * SHADOW ("would-have-sent") MODE (agent/shadowScorecard.ts) wraps all of this:
+ * when it is on (the DEFAULT posture until a slice has earned real auto-send),
+ * the decision is computed exactly as above but an auto-approve is LOGGED as a
+ * would-have-sent observation instead of being sent, and the message is routed
+ * to human review regardless. Nothing auto-sends while shadow is on. The logged
+ * observations are later reconciled against the human's action to build a
+ * per-(category, sender) graduation scorecard.
  */
 
 import { internal } from '../../../_generated/api';
@@ -278,7 +286,38 @@ export const routeStep: AgentStepModule<'route', RouteInput, RouteOutput> = {
 			};
 		};
 
-		const { decision, reason } = await decide();
+		let { decision, reason } = await decide();
+
+		// SHADOW ("would-have-sent") MODE — the entire send-side safety net for a
+		// slice that hasn't earned real auto-send yet. When shadow is on (the
+		// DEFAULT posture), the decision computed above is logged as a
+		// would-have-sent observation and the message is routed to human review
+		// regardless: NOTHING auto-sends while shadow is on. FAIL-SOFT: any error
+		// here (including a config/query hiccup) leaves the real decision above
+		// standing, so shadow observability can never wedge the walker or flip a
+		// human-review outcome into a send.
+		try {
+			const shadow = await ctx.runQuery(internal.agent.shadowScorecard.getShadowMode, {});
+			if (shadow.enabled) {
+				await ctx.runMutation(internal.agent.shadowScorecard.recordShadowDecision, {
+					inboundMessageId: input.inboundMessageId,
+					category: input.category,
+					wouldHaveSent: decision === 'auto_approve',
+					reason,
+					confidence: input.confidence,
+					...(input.draftQuality && typeof input.draftQuality.score === 'number'
+						? { draftQualityScore: input.draftQuality.score }
+						: {}),
+				});
+				if (decision === 'auto_approve') {
+					decision = 'human_review';
+					reason =
+						'Shadow mode: the agent would have auto-sent this reply — logged to the graduation scorecard, not sent. Routing to human review.';
+				}
+			}
+		} catch {
+			// swallowed: shadow logging is best-effort; the real decision stands
+		}
 
 		// Persist the decision + reason + confidence onto the inbound message so
 		// the review UI can explain WHY ("Sent because… / Held because…"). This is
