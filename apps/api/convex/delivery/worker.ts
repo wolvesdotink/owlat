@@ -487,23 +487,9 @@ export const sendSingleEmail = internalAction({
 		);
 
 		if (dispatched.result.success) {
-			// Defensive (MTA only): the stored `providerMessageId` MUST equal the VERP
-			// token so async bounce/complaint DSNs resolve via
-			// `by_provider_message_id`. We threaded `messageId = send_<sendRowId>` to
-			// the MTA and the SMTP sender encodes that same value into the VERP
-			// Return-Path, so the accepted id must echo it. If an older MTA on a
-			// dedup retry hands back a non-VERP id (e.g. the legacy "duplicate"
-			// sentinel), refuse to persist it and fall back to the derived key we
-			// already computed — the exact token in the VERP Return-Path. Resend/SES
-			// mint their own ids that legitimately differ from the key, so this only
-			// applies to the MTA path.
-			const providerMessageId =
-				providerKind === 'mta' && idempotencyKey && dispatched.result.id !== idempotencyKey
-					? idempotencyKey
-					: dispatched.result.id;
 			return {
 				success: true,
-				providerMessageId,
+				providerMessageId: providerKind === 'mta' && idempotencyKey && dispatched.result.id !== idempotencyKey ? idempotencyKey : dispatched.result.id, // MTA-only: keep the VERP token, not a dedup sentinel, so bounce/complaint DSNs resolve by_provider_message_id (Resend/SES keep their own ids)
 				providerType: dispatched.providerType,
 				sendLatencyMs: dispatched.latencyMs,
 			};
