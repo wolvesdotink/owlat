@@ -123,6 +123,22 @@ export const inboxTables = {
 		contextCoverage: v.optional(contextCoverageValidator),
 		// Human reviewer assignment
 		assignedTo: v.optional(v.string()),
+		// Cancellable pending-send marker for a delayed AUTONOMOUS auto-send.
+		// Set when an auto-approved message schedules its send after the
+		// configurable undo window (agentConfig.autoSendDelayMs) instead of
+		// firing immediately. `scheduledFnId` is the handle the cancel path
+		// (`cancelAutoSend`) passes to `ctx.scheduler.cancel` to abort an
+		// in-flight delayed send; `sendAt` powers the UI countdown
+		// ("Sending in 0:59 — Undo"). Cleared on any transition out of
+		// `approved`. Absent for human-reviewed approvals and for delay=0
+		// (legacy immediate send).
+		pendingAutoSend: v.optional(
+			v.object({
+				scheduledFnId: v.id('_scheduled_functions'),
+				sendAt: v.number(),
+				scheduledAt: v.number(),
+			}),
+		),
 		// Error tracking
 		errorMessage: v.optional(v.string()),
 		// Timestamps
@@ -193,6 +209,14 @@ export const inboxTables = {
 		// burst coalescing (suggested 30000 = 30s); unset/0 processes each
 		// message immediately. See agent/coalescing.ts.
 		coalesceWindowMs: v.optional(v.number()),
+		// Undo / send-delay window (ms) applied to AUTONOMOUS auto-sends only.
+		// The auto-approved reply is scheduled after this delay instead of
+		// firing immediately, recording a cancellable pending-send marker so a
+		// landing customer reply, the kill switch, or an explicit user "Undo"
+		// can abort it before it goes out. Unset ⇒ DEFAULT_AUTO_SEND_DELAY_MS
+		// (60s). 0 preserves the legacy immediate-send behaviour. Human-reviewed
+		// approvals are unaffected. See inbox/processingLifecycle/effects.ts.
+		autoSendDelayMs: v.optional(v.number()),
 		// Timestamps
 		createdAt: v.number(),
 		updatedAt: v.number(),
