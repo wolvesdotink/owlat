@@ -1,6 +1,53 @@
 import { describe, it, expect } from 'vitest';
-import { parseFlags, dnsInstructions, formatSummary } from '../quickstart.js';
+import { mkdtemp, readFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { parseFlags, dnsInstructions, formatSummary, resolveComposeVersionPin } from '../quickstart.js';
+import { mergeEnv, readEnv, writeEnv } from '../../lib/env.js';
 import type { SetupConfig } from '../../lib/setupConfig.js';
+
+describe('resolveComposeVersionPin', () => {
+	it('pins the resolved semver on the release (pull) path so signed images deploy', () => {
+		expect(resolveComposeVersionPin({ owlatVersion: '1.2.3' })).toBe('1.2.3');
+		// prerelease semver is still a published tag
+		expect(resolveComposeVersionPin({ owlatVersion: '2.0.0-rc.1' })).toBe('2.0.0-rc.1');
+	});
+
+	it('pins the `dev` sentinel for local-source installs (build/local-images)', () => {
+		expect(resolveComposeVersionPin({ buildLocal: true })).toBe('dev');
+		expect(resolveComposeVersionPin({ localImages: true })).toBe('dev');
+		// build/local mode wins even when a version is also present
+		expect(resolveComposeVersionPin({ buildLocal: true, owlatVersion: '1.2.3' })).toBe('dev');
+	});
+
+	it('leaves OWLAT_VERSION unset (undefined) for a branch/main/commit ref — no matching immutable tag', () => {
+		expect(resolveComposeVersionPin({})).toBeUndefined();
+		expect(resolveComposeVersionPin({ owlatVersion: 'main' })).toBeUndefined();
+		expect(resolveComposeVersionPin({ owlatVersion: '' })).toBeUndefined();
+		expect(resolveComposeVersionPin({ owlatVersion: '  ' })).toBeUndefined();
+		expect(resolveComposeVersionPin({ owlatVersion: 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef' })).toBeUndefined();
+	});
+
+	it('a non-buildLocal (release) quickstart leaves a concrete, non-"dev" OWLAT_VERSION in the generated .env', async () => {
+		const dir = await mkdtemp(join(tmpdir(), 'owlat-pin-'));
+		const envPath = join(dir, '.env');
+		await writeEnv(envPath, { SOME_OTHER: 'keep-me' });
+
+		// Mirror the production write path in runQuickstart for the pull install.
+		const pin = resolveComposeVersionPin({ owlatVersion: '1.2.3' });
+		expect(pin).toBeDefined();
+		await writeEnv(envPath, mergeEnv(await readEnv(envPath), { OWLAT_VERSION: pin! }));
+
+		const env = await readEnv(envPath);
+		expect(env['OWLAT_VERSION']).toBe('1.2.3');
+		expect(env['OWLAT_VERSION']).not.toBe('dev');
+		// existing keys are preserved (not clobbered)
+		expect(env['SOME_OTHER']).toBe('keep-me');
+
+		// and the literal `:dev` sentinel never lands in the file
+		expect(await readFile(envPath, 'utf-8')).not.toMatch(/OWLAT_VERSION=dev/);
+	});
+});
 
 describe('parseFlags', () => {
 	it('parses --key value pairs', () => {

@@ -97,6 +97,11 @@ async function main(): Promise<number> {
 		// uses pre-pushed dev images as-is (localImages).
 		buildLocal: flagSet.has('--build-local') || process.env['OWLAT_BUILD_LOCAL'] === '1',
 		localImages: flagSet.has('--local-images') || process.env['OWLAT_LOCAL_IMAGES'] === '1',
+		// Release version resolved by install.sh (the `curl | bash` PULL path), so
+		// quickstart can pin `OWLAT_VERSION=<semver>` into .env and compose pulls
+		// the signed release images. Passed as a flag (not an env var) so it never
+		// leaks into the containerized compose interpolation and overrides .env.
+		owlatVersion: extractValue(rest, '--owlat-version'),
 		owlatDir: extractValue(rest, '--owlat-dir') ?? process.env['OWLAT_DIR'] ?? defaultOwlatDir(),
 		configFile: extractValue(rest, '--config'),
 		args: rest,
