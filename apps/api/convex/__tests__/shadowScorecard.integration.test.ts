@@ -9,16 +9,16 @@
 
 import { convexTest } from 'convex-test';
 import { describe, it, expect, vi } from 'vitest';
-import schema from '../../schema';
-import { api, internal } from '../../_generated/api';
-import { createTestInboundMessage, enableFeatures } from '../../__tests__/factories';
+import schema from '../schema';
+import { api, internal } from '../_generated/api';
+import { createTestInboundMessage, enableFeatures } from './factories';
 import {
 	GRADUATION_MIN_SAMPLE,
 	MATCH_SIMILARITY_THRESHOLD,
-} from '../shadowScorecard';
+} from '../agent/shadowScorecard';
 
-vi.mock('../../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual('../../lib/sessionOrganization');
+vi.mock('../lib/sessionOrganization', async () => {
+	const actual = await vi.importActual('../lib/sessionOrganization');
 	return {
 		...actual,
 		requireOrgMember: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
@@ -32,11 +32,11 @@ vi.mock('../../lib/sessionOrganization', async () => {
 	};
 });
 
-vi.mock('../../lib/posthogHelpers', async () => ({
+vi.mock('../lib/posthogHelpers', async () => ({
 	trackEvent: vi.fn().mockResolvedValue(undefined),
 }));
 
-const allModules = import.meta.glob('../../**/*.*s');
+const allModules = import.meta.glob('../**/*.*s');
 const modules = Object.fromEntries(
 	Object.entries(allModules).filter(
 		([path]) =>
@@ -88,7 +88,7 @@ describe('shadowScorecard — getShadowMode', () => {
 			ctx.db.insert('agentConfig', {
 				isAutoReplyEnabled: false,
 				confidenceThreshold: 0.85,
-				shadowMode: false,
+				isShadowMode: false,
 				createdAt: Date.now(),
 				updatedAt: Date.now(),
 			}),
@@ -118,8 +118,8 @@ describe('shadowScorecard — record + reconcile', () => {
 				.withIndex('by_message', (q) => q.eq('inboundMessageId', id))
 				.first(),
 		);
-		expect(observation?.resolved).toBe(true);
-		expect(observation?.matched).toBe(true);
+		expect(observation?.isResolved).toBe(true);
+		expect(observation?.isMatched).toBe(true);
 		expect(observation?.similarity).toBeGreaterThanOrEqual(MATCH_SIMILARITY_THRESHOLD);
 
 		await enableFeatures(t, ['ai.autonomy']);
@@ -157,7 +157,7 @@ describe('shadowScorecard — record + reconcile', () => {
 				.withIndex('by_message', (q) => q.eq('inboundMessageId', id))
 				.first(),
 		);
-		expect(observation?.matched).toBe(false);
+		expect(observation?.isMatched).toBe(false);
 
 		await enableFeatures(t, ['ai.autonomy']);
 		const scorecard = await t.query(api.agent.shadowScorecard.getShadowScorecard, {});
