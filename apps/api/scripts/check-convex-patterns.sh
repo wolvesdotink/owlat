@@ -112,7 +112,10 @@ cd "$(dirname "$0")/.."
 # Raised 171 → 172 for meeting-intent detection (mail/needsReplyClassify.ts and
 # mail/ai.ts): both are JS array `.filter()` calls that drop empty proposed-time
 # phrases from the LLM output, not a `ctx.db.query().filter()`.
-FILTER_BASELINE=172
+# Raised 172 → 174 for inline-image MIME assembly (mail/rfc822.ts): two in-memory
+# JS array `.filter()` calls that partition the collected attachment buffers into
+# inline (multipart/related) vs. regular parts, not a `ctx.db.query().filter()`.
+FILTER_BASELINE=174
 filter_count=$(grep -rn "\.filter(" convex --include="*.ts" 2>/dev/null \
 	| grep -v "/_generated/" \
 	| grep -v "/__tests__/" \
