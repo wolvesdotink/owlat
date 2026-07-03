@@ -49,6 +49,16 @@ const props = defineProps<{
 	 * Keyboard shortcuts work in both modes.
 	 */
 	persistentToolbar?: boolean;
+	/**
+	 * Enable pasting/dropping images INTO the body as inline (cid-embedded)
+	 * images. The parent supplies `embedImage` (downscale + upload → contentId +
+	 * preview URL); off by default so the signature editor never embeds.
+	 */
+	inlineImagesEnabled?: boolean;
+	/** Upload an image and return the contentId + ephemeral preview URL to insert. */
+	embedImage?: (file: File) => Promise<{ contentId: string; previewUrl: string } | null>;
+	/** Called with the contentId of an inline image removed from the body. */
+	onRemoveEmbeddedImage?: (contentId: string) => void;
 }>();
 
 const emit = defineEmits<{
@@ -120,6 +130,8 @@ function onInput() {
 	scheduleGhost();
 	// Typing invalidates any pending/previewed rewrite anchored to old text.
 	rewriteCtl.invalidateOnEdit();
+	// An edit may have removed an inline image — drop its pending part.
+	reconcileInlineImages();
 }
 
 // ── Inline ghost-text autocomplete ─────────────────────────────────────
@@ -221,8 +233,91 @@ function onKeydown(event: KeyboardEvent) {
 	handleFormatKeydown(event);
 }
 
+// ── Inline images (paste / drop into the body) ─────────────────────────────
+// Tracks which inline content-IDs currently live in the editor so a deletion
+// (the user selects the <img> and hits Backspace) can drop the pending part.
+const knownInlineCids = new Set<string>();
+
+function imageFilesFrom(list: FileList | File[] | null | undefined): File[] {
+	return Array.from(list ?? []).filter((f) => f.type.startsWith('image/'));
+}
+
+function insertImageAtCaret(previewUrl: string, contentId: string) {
+	const el = editorRef.value;
+	if (!el) return;
+	const img = document.createElement('img');
+	img.src = previewUrl;
+	img.setAttribute('data-inline-cid', contentId);
+	img.style.maxWidth = '100%';
+	img.style.height = 'auto';
+	const sel = window.getSelection();
+	let range: Range;
+	if (sel && sel.rangeCount > 0 && el.contains(sel.anchorNode)) {
+		range = sel.getRangeAt(0);
+		range.deleteContents();
+	} else {
+		range = document.createRange();
+		range.selectNodeContents(el);
+		range.collapse(false);
+	}
+	range.insertNode(img);
+	range.setStartAfter(img);
+	range.collapse(true);
+	sel?.removeAllRanges();
+	sel?.addRange(range);
+	knownInlineCids.add(contentId);
+	emitContent();
+}
+
+async function embedImageFiles(files: File[]) {
+	if (!props.inlineImagesEnabled || !props.embedImage) return;
+	for (const file of files) {
+		const result = await props.embedImage(file);
+		if (result) insertImageAtCaret(result.previewUrl, result.contentId);
+	}
+}
+
+// After any edit, reconcile the tracked inline cids against what's still in the
+// DOM; any that vanished (image deleted from the body) drop their pending part.
+function reconcileInlineImages() {
+	if (!props.inlineImagesEnabled || knownInlineCids.size === 0) return;
+	const el = editorRef.value;
+	const present = new Set<string>();
+	if (el) {
+		el.querySelectorAll('img[data-inline-cid]').forEach((node) => {
+			const cid = node.getAttribute('data-inline-cid');
+			if (cid) present.add(cid);
+		});
+	}
+	for (const cid of [...knownInlineCids]) {
+		if (!present.has(cid)) {
+			knownInlineCids.delete(cid);
+			props.onRemoveEmbeddedImage?.(cid);
+		}
+	}
+}
+
 function onPaste(event: ClipboardEvent) {
+	const images = imageFilesFrom(event.clipboardData?.files);
+	if (props.inlineImagesEnabled && props.embedImage && images.length > 0) {
+		event.preventDefault();
+		event.stopPropagation();
+		void embedImageFiles(images);
+		return;
+	}
 	pasteAsPlainText(event);
+}
+
+function onDrop(event: DragEvent) {
+	const images = imageFilesFrom(event.dataTransfer?.files);
+	if (props.inlineImagesEnabled && props.embedImage && images.length > 0) {
+		// Embed images dropped into the text; stop the composer's drop-to-attach
+		// handler from also treating them as attachments.
+		event.preventDefault();
+		event.stopPropagation();
+		void embedImageFiles(images);
+	}
+	// Non-image drops fall through to the composer's attach handler.
 }
 
 function onBlur() {
@@ -320,6 +415,7 @@ defineExpose({ focus: focusEditor });
 				@input="onInput"
 				@keydown="onKeydown"
 				@paste="onPaste"
+				@drop="onDrop"
 				@blur="onBlur"
 			/>
 			<div
@@ -409,6 +505,12 @@ defineExpose({ focus: focusEditor });
 .postbox-basic-editor :deep(a) {
 	color: var(--color-brand, #0a6cdd);
 	text-decoration: underline;
+}
+.postbox-basic-editor :deep(img) {
+	max-width: 100%;
+	height: auto;
+	border-radius: 4px;
+	margin: 0.25em 0;
 }
 .postbox-basic-editor :deep(code) {
 	font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;

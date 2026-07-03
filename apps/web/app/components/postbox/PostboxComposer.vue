@@ -62,6 +62,8 @@ const {
 	isUploading,
 	addFiles,
 	removeAttachment,
+	addInlineImage,
+	removeInlineImage,
 	isSaving,
 	lastSavedAt,
 	canSend,
@@ -272,7 +274,9 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } =
 			v-if="dragActive"
 			class="absolute inset-0 z-10 flex items-center justify-center bg-brand/10 border-2 border-dashed border-brand rounded pointer-events-none"
 		>
-			<span class="text-sm font-medium text-brand">Drop files to attach</span>
+			<span class="text-sm font-medium text-brand">
+				Drop to attach · drop in text to embed
+			</span>
 		</div>
 		<header class="flex items-center justify-between px-3 py-2 bg-bg-surface border-b border-border-subtle">
 			<span class="text-sm font-semibold">
@@ -357,6 +361,9 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } =
 				:rewrite-enabled="aiRewriteEnabled"
 				:rewrite-mailbox-id="mailboxId"
 				:persistent-toolbar="persistentToolbar"
+				:inline-images-enabled="true"
+				:embed-image="addInlineImage"
+				:on-remove-embedded-image="removeInlineImage"
 			/>
 			<EmailBuilder
 				v-else
