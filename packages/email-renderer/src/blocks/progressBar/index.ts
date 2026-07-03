@@ -10,19 +10,20 @@ import { fullSupport, type ProgressBarBlockContent } from '@owlat/shared';
 import type { BlockModule, Placement } from '../_module';
 import { checkShape, isString, isNumber } from '../../helpers/validation';
 import { getContrastRatio } from '../../validators/registry';
+import { escapeCss } from '../../sanitize';
 
 export const renderProgressBarContent = (content: ProgressBarBlockContent): string => {
 	const maxValue = content.maxValue ?? 100;
 	const percentage = Math.min(100, Math.max(0, (content.value / maxValue) * 100));
 	const rounded = Math.round(percentage);
 	const height = content.height || 20;
-	const barColor = content.barColor || '#4CAF50';
-	const trackColor = content.trackColor || '#e0e0e0';
+	const barColor = escapeCss(content.barColor || '#4CAF50');
+	const trackColor = escapeCss(content.trackColor || '#e0e0e0');
 	const borderRadius = content.borderRadius ?? 0;
 
 	const showLabel = content.showLabel ?? false;
 	const labelPosition = content.labelPosition || 'right';
-	const labelColor = content.labelColor || '#333333';
+	const labelColor = escapeCss(content.labelColor || '#333333');
 	const labelFontSize = content.labelFontSize ?? 14;
 	const labelText = `${rounded}%`;
 

@@ -14,7 +14,7 @@ import { fullSupport } from '@owlat/shared';
 import { itemToBlock, type BlockModule, type Placement } from '../_module';
 import { gradientToCssOrEmpty } from '../../helpers/gradient';
 import { msoVmlBackground, msoVmlBackgroundClose } from '../../outlook';
-import { escapeCssUrl, escapeAttr } from '../../sanitize';
+import { escapeCssUrl, escapeAttr, escapeCss } from '../../sanitize';
 import { backgroundImageCss } from '../../helpers/inline-styles';
 import { checkShape, checkGradientStopLimit, isString, isNumber, isArray, isOneOf } from '../../helpers/validation';
 
@@ -54,8 +54,8 @@ export const heroModule: BlockModule<'hero'> = {
 			.join('');
 
 		const heightStyle = content.mode === 'fixed-height' ? `height:${height}px;` : `min-height:${height}px;`;
-		const overlayStyle = overlayColor ? `background-color:${overlayColor};` : '';
-		const gradientCss = gradientToCssOrEmpty(content.backgroundGradient);
+		const overlayStyle = overlayColor ? `background-color:${escapeCss(overlayColor)};` : '';
+		const gradientCss = escapeCss(gradientToCssOrEmpty(content.backgroundGradient));
 
 		const parts: string[] = [];
 		parts.push(msoVmlBackground(content.backgroundImage, ctx.baseWidth, height, '#ffffff'));

@@ -12,7 +12,7 @@
 import { fullSupport, type TableBlockContent, type TableCell, type TableColumn } from '@owlat/shared';
 import type { BlockModule, Placement } from '../_module';
 import type { RenderContext } from '../../types';
-import { escapeHtml, escapeAttr } from '../../sanitize';
+import { escapeHtml, escapeAttr, escapeCss } from '../../sanitize';
 import { stripHtml } from '../../helpers/text';
 import { checkShape, isString, isBoolean, isNumber, isArray, isOneOf } from '../../helpers/validation';
 
@@ -47,8 +47,8 @@ const renderRichCell = (
 	content?: TableBlockContent,
 ): string => {
 	const colAlign = cell.textAlign || columns?.[colIdx]?.textAlign || defaultAlign;
-	const bg = cell.backgroundColor ? `background-color:${cell.backgroundColor};` : rowBg;
-	const fw = cell.fontWeight ? `font-weight:${cell.fontWeight};` : '';
+	const bg = cell.backgroundColor ? `background-color:${escapeCss(cell.backgroundColor)};` : rowBg;
+	const fw = cell.fontWeight ? `font-weight:${escapeCss(String(cell.fontWeight))};` : '';
 	const colSpan = cell.colSpan && cell.colSpan > 1 ? ` colspan="${cell.colSpan}"` : '';
 	const rowSpan = cell.rowSpan && cell.rowSpan > 1 ? ` rowspan="${cell.rowSpan}"` : '';
 	const hideClass = responsiveMode === 'hide-columns' && content?.hideOnMobileColumns?.includes(colIdx) ? ' class="owlat-hide-col"' : '';
@@ -61,11 +61,11 @@ const renderRichCell = (
 export const renderTableContent = (content: TableBlockContent, ctx?: RenderContext): string => {
 	const cellPadding = content.cellPadding ?? 8;
 	const textAlign = content.textAlign || 'left';
-	const borderColor = content.borderColor || '#e0e0e0';
+	const borderColor = escapeCss(content.borderColor || '#e0e0e0');
 	const borderStyle = `border:1px solid ${borderColor}`;
-	const headerBg = content.headerBackgroundColor || '#f5f5f5';
-	const headerColor = content.headerTextColor || '#333333';
-	const stripedBg = content.stripeColor || '#fafafa';
+	const headerBg = escapeCss(content.headerBackgroundColor || '#f5f5f5');
+	const headerColor = escapeCss(content.headerTextColor || '#333333');
+	const stripedBg = escapeCss(content.stripeColor || '#fafafa');
 	const columns = content.columns;
 	const responsiveMode = content.responsiveMode || 'default';
 
@@ -78,7 +78,7 @@ export const renderTableContent = (content: TableBlockContent, ctx?: RenderConte
 	let colgroupHtml = '';
 	if (columns && columns.length > 0) {
 		const cols = columns.map((col) => {
-			const width = col.width ? ` width="${col.width}"` : '';
+			const width = col.width ? ` width="${escapeAttr(col.width)}"` : '';
 			return `<col${width} />`;
 		}).join('');
 		colgroupHtml = `<colgroup>${cols}</colgroup>`;

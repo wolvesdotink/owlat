@@ -15,7 +15,7 @@ import { itemToBlock, type BlockModule, type Placement } from '../_module';
 import { toPixelWidth, toPercentNumber } from '../../helpers/dimensions';
 import { getColumnWidths } from '../../helpers/table';
 import { msoColumnsOpen, msoColumnCellOpen, msoColumnCellClose, msoColumnsClose } from '../../outlook';
-import { escapeCssUrl } from '../../sanitize';
+import { escapeCss, escapeCssUrl } from '../../sanitize';
 import { backgroundImageCss } from '../../helpers/inline-styles';
 import { checkShape, isString, isBoolean, isNumber, isArray, isObject } from '../../helpers/validation';
 
@@ -55,7 +55,7 @@ export const columnsModule: BlockModule<'columns'> = {
 			const columnStacks = colStyle?.stackOnMobile ?? content.mobileStacking;
 			const mobileClass = columnStacks ? ' class="owlat-col"' : '';
 
-			const colBg = colStyle?.backgroundColor ? `background-color:${colStyle.backgroundColor};` : '';
+			const colBg = colStyle?.backgroundColor ? `background-color:${escapeCss(colStyle.backgroundColor)};` : '';
 			const colVAlign = colStyle?.verticalAlign || verticalAlign;
 			const colPaddingTop = colStyle?.paddingTop ?? 0;
 			const colPaddingRight = colStyle?.paddingRight ?? gapRight;
@@ -67,7 +67,7 @@ export const columnsModule: BlockModule<'columns'> = {
 
 			const colBorderWidth = colStyle?.borderWidth ?? 0;
 			const colBorderStyle = colStyle?.borderStyle ?? 'none';
-			const colBorderColor = colStyle?.borderColor ?? '#000000';
+			const colBorderColor = escapeCss(colStyle?.borderColor ?? '#000000');
 			const colBorder = colBorderWidth > 0 && colBorderStyle !== 'none'
 				? `border:${colBorderWidth}px ${colBorderStyle} ${colBorderColor};`
 				: '';
@@ -83,9 +83,10 @@ export const columnsModule: BlockModule<'columns'> = {
 
 			const msoWidth = toPixelWidth(widthPercent, ctx.baseWidth);
 
+			const safeWidth = escapeCss(width);
 			const displayStyle = useTableCell
-				? `display:table-cell;width:${width};max-width:${msoWidth}px;vertical-align:${colVAlign};box-sizing:border-box;`
-				: `display:inline-block;width:${width};max-width:${msoWidth}px;vertical-align:${colVAlign};box-sizing:border-box;font-size:14px;`;
+				? `display:table-cell;width:${safeWidth};max-width:${msoWidth}px;vertical-align:${colVAlign};box-sizing:border-box;`
+				: `display:inline-block;width:${safeWidth};max-width:${msoWidth}px;vertical-align:${colVAlign};box-sizing:border-box;font-size:14px;`;
 
 			return `${msoColumnCellOpen(msoWidth, colVAlign)}<div${mobileClass} style="${displayStyle}${colBg}${colBgImage}${colPadding}${colBorder}${colBorderRadius}">${itemsHtml || '&nbsp;'}</div>${msoColumnCellClose()}`;
 		});
