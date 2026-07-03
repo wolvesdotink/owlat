@@ -55,7 +55,11 @@ function makeExecuteCtx(opts: {
 				};
 			}
 			if (name.includes('getMessage')) {
-				return { draftResponse, securityFlags: { guardUnavailable: false } };
+				return {
+					from: 'Alice Customer <alice@customer.example>',
+					draftResponse,
+					securityFlags: { guardUnavailable: false },
+				};
 			}
 			if (name.includes('getAgentConfig')) {
 				if (opts.legacyThreshold === undefined) return null;

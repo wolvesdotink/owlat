@@ -52,18 +52,22 @@ describe('routeStep.route', () => {
 // `internal.*` references (identical object in test + module).
 
 interface FakeMessage {
+	from?: string;
 	draftResponse?: string;
 	securityFlags?: { guardUnavailable?: boolean };
 }
 
 function makeExecuteCtx(message: FakeMessage) {
+	// Default to a resolvable authenticated inbound sender so the recipient-lock
+	// gate passes unless a test deliberately omits/garbles `from`.
+	const withFrom: FakeMessage = { from: 'Alice Customer <alice@customer.example>', ...message };
 	return {
 		runQuery: async (ref: unknown) => {
 			const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
 			if (name.includes('getCircuitBreakersInternal')) return [];
 			if (name.includes('checkPermissionInternal'))
 				return { mode: 'enabled', allowed: true, reason: 'rule permits' };
-			if (name.includes('getMessage')) return message;
+			if (name.includes('getMessage')) return withFrom;
 			if (name.includes('getAgentConfig')) return null;
 			throw new Error(`unexpected runQuery: ${name}`);
 		},
@@ -108,6 +112,37 @@ describe('routeStep.execute — auto-send safety gate', () => {
 	it('downgrades to human review when the outbound draft leaks a credential', async () => {
 		const ctx = makeExecuteCtx({
 			draftResponse: 'Here is the key you asked for: sk-ant-api03-abc123def456ghi789jkl012',
+			securityFlags: {},
+		});
+		const { output } = await routeStep.execute(ctx, sampleInput);
+		expect(output.decision).toBe('human_review');
+		expect(output.reason).toMatch(/credential pattern/i);
+	});
+
+	it('downgrades to human review when the inbound sender is unresolvable (recipient lock)', async () => {
+		const ctx = makeExecuteCtx({
+			from: '',
+			draftResponse: 'Thanks for reaching out — happy to help.',
+			securityFlags: {},
+		});
+		const { output } = await routeStep.execute(ctx, sampleInput);
+		expect(output.decision).toBe('human_review');
+		expect(output.reason).toMatch(/authenticated recipient/i);
+	});
+
+	it('downgrades to human review when the draft hands out a one-time passcode (DLP)', async () => {
+		const ctx = makeExecuteCtx({
+			draftResponse: 'Sure — your verification code is 481920, enter it to sign in.',
+			securityFlags: {},
+		});
+		const { output } = await routeStep.execute(ctx, sampleInput);
+		expect(output.decision).toBe('human_review');
+		expect(output.reason).toMatch(/credential pattern/i);
+	});
+
+	it('downgrades to human review when the draft contains an account-recovery link (DLP)', async () => {
+		const ctx = makeExecuteCtx({
+			draftResponse: 'Reset here: https://accounts.example.com/reset-password?reset_token=abc123',
 			securityFlags: {},
 		});
 		const { output } = await routeStep.execute(ctx, sampleInput);
