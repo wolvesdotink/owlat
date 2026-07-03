@@ -14,17 +14,14 @@
  * keystroke).
  */
 
-import { api } from '@owlat/api';
 import {
 	useRichText,
 	EMPTY_ACTIVE_MARKS,
 	type ActiveMarks,
 } from '@owlat/ui/composables/useRichText';
-import {
-	usePostboxGhostText,
-	type GhostTextRequestInput,
-} from '~/composables/postbox/usePostboxGhostText';
+import { usePostboxGhostOverlay } from '~/composables/postbox/usePostboxGhostOverlay';
 import { usePostboxRewriteController } from '~/composables/postbox/usePostboxRewriteController';
+import { usePostboxFloatingFormatBar } from '~/composables/postbox/usePostboxFloatingFormatBar';
 import type { Id } from '@owlat/api/dataModel';
 
 const props = defineProps<{
@@ -60,13 +57,8 @@ const emit = defineEmits<{
 
 const editorRef = ref<HTMLDivElement | null>(null);
 const surfaceRef = ref<HTMLDivElement | null>(null);
-// Component ref — `$el` is the bar's root, measured for an accurate flip.
-const formatBarRef = ref<{ $el?: HTMLElement } | null>(null);
 const isEmpty = ref(true);
 const activeMarks = ref<ActiveMarks>({ ...EMPTY_ACTIVE_MARKS });
-const ghostStyle = ref<Record<string, string> | null>(null);
-// Placement of the floating format bar (minimal mode). Null when hidden.
-const formatBarStyle = ref<Record<string, string> | null>(null);
 
 const richText = useRichText({
 	editorRef,
@@ -132,115 +124,16 @@ function onInput() {
 
 // ── Inline ghost-text autocomplete ─────────────────────────────────────
 // A muted suggestion at the caret, requested after a typing pause and accepted
-// with Tab. The overlay is a positioned, non-editable sibling of the
-// contenteditable — it is NEVER part of the DOM the draft serializes from, so
-// an un-accepted ghost can't leak into the sent message. Positioning is
-// best-effort: if the caret rect can't be measured, the ghost is dropped rather
-// than risk breaking typing.
-
-function insertAcceptedText(text: string) {
-	const el = editorRef.value;
-	if (!el) return;
-	el.focus();
-	// execCommand routes through the browser's own edit pipeline, so native
-	// undo and the @input autosave both see the insertion as real user text.
-	const ok = document.execCommand('insertText', false, text);
-	if (!ok) {
-		// Fallback: insert a text node at the caret and emit like a real input.
-		const sel = window.getSelection();
-		if (sel && sel.rangeCount > 0) {
-			const range = sel.getRangeAt(0);
-			range.deleteContents();
-			const node = document.createTextNode(text);
-			range.insertNode(node);
-			range.setStartAfter(node);
-			range.collapse(true);
-			sel.removeAllRanges();
-			sel.addRange(range);
-		}
-		emitContent();
-	}
-}
-
-const ghost = usePostboxGhostText({
+// with Tab. The caret sampling + overlay placement live in the composable (so
+// this component stays under the file-size ratchet); the overlay is a
+// non-editable sibling of the contenteditable — NEVER part of the DOM the draft
+// serializes from, so an un-accepted ghost can't leak into the sent message.
+const { ghost, ghostStyle, schedule: scheduleGhost } = usePostboxGhostOverlay({
+	editorRef,
+	surfaceRef,
 	enabled: () => props.suggestionsEnabled === true,
-	requestCompletion: async (input: GhostTextRequestInput) => {
-		const res = await requireConvex().action(api.mail.ai.completeDraft, {
-			threadContext: input.threadContext,
-			draftSoFar: input.draftSoFar,
-			cursorSentence: input.cursorSentence,
-		});
-		return res?.completion ?? '';
-	},
-	onAccept: insertAcceptedText,
-});
-
-/** Sample the caret context — null unless the caret sits at the end of a text node. */
-function getCaretContext(): GhostTextRequestInput | null {
-	const el = editorRef.value;
-	if (!el) return null;
-	const sel = window.getSelection();
-	if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return null;
-	const focusNode = sel.focusNode;
-	if (!focusNode || focusNode.nodeType !== Node.TEXT_NODE) return null;
-	if (!el.contains(focusNode)) return null;
-	if (sel.focusOffset !== (focusNode.textContent?.length ?? 0)) return null;
-	const pre = document.createRange();
-	pre.setStart(el, 0);
-	pre.setEnd(focusNode, sel.focusOffset);
-	const before = pre.toString();
-	if (!before.trim()) return null;
-	const lastBreak = Math.max(
-		before.lastIndexOf('. '),
-		before.lastIndexOf('! '),
-		before.lastIndexOf('? '),
-		before.lastIndexOf('\n')
-	);
-	const cursorSentence = (lastBreak >= 0 ? before.slice(lastBreak + 1) : before)
-		.slice(-500)
-		.trimStart();
-	return {
-		threadContext: (props.ghostThreadContext ?? '').slice(0, 4000),
-		draftSoFar: el.innerText.slice(-4000),
-		cursorSentence,
-	};
-}
-
-/** Position the ghost overlay at the caret; drop it if the rect is unmeasurable. */
-function positionGhost() {
-	const surface = surfaceRef.value;
-	const sel = window.getSelection();
-	if (!surface || !sel || sel.rangeCount === 0) {
-		ghost.cancel();
-		return;
-	}
-	const range = sel.getRangeAt(0).cloneRange();
-	range.collapse(false);
-	const rects = range.getClientRects();
-	const rect = rects.length ? rects[rects.length - 1] : range.getBoundingClientRect();
-	if (!rect || (rect.top === 0 && rect.left === 0 && rect.height === 0)) {
-		ghost.cancel(); // fail-soft: hide rather than mis-place
-		return;
-	}
-	const host = surface.getBoundingClientRect();
-	ghostStyle.value = {
-		left: `${rect.right - host.left + surface.scrollLeft}px`,
-		top: `${rect.top - host.top + surface.scrollTop}px`,
-		height: `${rect.height}px`,
-	};
-}
-
-function scheduleGhost() {
-	if (props.suggestionsEnabled !== true) return;
-	ghost.schedule(() => getCaretContext());
-}
-
-watch(ghost.ghost, (value) => {
-	if (!value) {
-		ghostStyle.value = null;
-		return;
-	}
-	void nextTick(() => positionGhost());
+	threadContext: () => props.ghostThreadContext ?? '',
+	emitContent,
 });
 
 // ── AI selection rewrite (Shorter / Friendlier / … / Translate) ─────────
@@ -274,64 +167,18 @@ const showAiActions = computed(
 // ── Floating format bar (minimal mode) ──────────────────────────────────
 // Above a non-empty selection inside the editor; flips below near the top,
 // clamped to the surface, hidden on scroll/blur/collapse. Never steals focus
-// (the bar container uses `mousedown.prevent`).
-
-function hasEditorSelection(): boolean {
-	const el = editorRef.value;
-	const sel = window.getSelection();
-	if (!el || !sel || sel.rangeCount === 0 || sel.isCollapsed) return false;
-	if (!el.contains(sel.anchorNode) || !el.contains(sel.focusNode)) return false;
-	return sel.toString().trim().length > 0;
-}
-
-function computeFormatBar() {
-	if (props.persistentToolbar === true || !hasEditorSelection()) {
-		formatBarStyle.value = null;
-		return;
-	}
-	const surface = surfaceRef.value;
-	const sel = window.getSelection();
-	if (!surface || !sel || sel.rangeCount === 0) {
-		formatBarStyle.value = null;
-		return;
-	}
-	const rect = sel.getRangeAt(0).getBoundingClientRect();
-	if (!rect || (rect.top === 0 && rect.left === 0 && rect.width === 0)) {
-		formatBarStyle.value = null; // fail-soft: hide rather than mis-place
-		return;
-	}
-	const host = surface.getBoundingClientRect();
-	const gap = 6;
-	const barHeight = formatBarRef.value?.$el?.offsetHeight ?? 40;
-	const left = Math.max(4, rect.left - host.left + surface.scrollLeft);
-	// `topInView` = selection top relative to the visible surface, deciding the flip.
-	const topInView = rect.top - host.top;
-	if (topInView < barHeight + gap) {
-		// Not enough room above → flip below the selection.
-		formatBarStyle.value = {
-			left: `${left}px`,
-			top: `${rect.bottom - host.top + surface.scrollTop + gap}px`,
-		};
-	} else {
-		formatBarStyle.value = {
-			left: `${left}px`,
-			top: `${rect.top - host.top + surface.scrollTop - gap}px`,
-			transform: 'translateY(-100%)',
-		};
-	}
-}
-
-// A rendered bar can be measured for an accurate flip, so recompute once mounted.
-function refreshFormatBar() {
-	computeFormatBar();
-	if (formatBarStyle.value) void nextTick(() => computeFormatBar());
-}
-
-function onSurfaceScroll() {
-	// Superhuman-style: the bar hides while the surface scrolls; it re-appears on
-	// the next selection change.
-	if (formatBarStyle.value) formatBarStyle.value = null;
-}
+// (the bar container uses `mousedown.prevent`). The placement math + scroll-hide
+// live in the composable so this component stays under the file-size ratchet.
+const {
+	formatBarStyle,
+	formatBarRef,
+	refresh: refreshFormatBar,
+	hide: hideFormatBar,
+} = usePostboxFloatingFormatBar({
+	editorRef,
+	surfaceRef,
+	enabled: () => props.persistentToolbar !== true,
+});
 
 // Markdown shortcuts intercept the raw input BEFORE the character lands, so a
 // conversion never flickers the literal marker into the DOM. When consumed the
@@ -382,7 +229,7 @@ function onBlur() {
 	emitContent();
 	ghost.cancel(); // never leave a ghost hanging over an unfocused editor
 	resetShortcutUndo(); // a literal-restore undo shouldn't survive leaving the editor
-	formatBarStyle.value = null; // never leave the floating bar over an unfocused editor
+	hideFormatBar(); // never leave the floating bar over an unfocused editor
 }
 
 function onSelectionChange() {
@@ -422,12 +269,10 @@ onMounted(() => {
 	syncEmptyState();
 	syncActiveMarks();
 	document.addEventListener('selectionchange', onSelectionChange);
-	surfaceRef.value?.addEventListener('scroll', onSurfaceScroll, { passive: true });
 });
 
 onBeforeUnmount(() => {
 	document.removeEventListener('selectionchange', onSelectionChange);
-	surfaceRef.value?.removeEventListener('scroll', onSurfaceScroll);
 	ghost.cancel();
 	rewriteCtl.dispose();
 });
