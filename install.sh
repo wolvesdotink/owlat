@@ -343,8 +343,17 @@ run_wizard() {
 	# loudly, since that wizard image may not match the pinned sources.
 	local setup_tag="latest"
 	local ref_ver="${OWLAT_REF#v}"
+	# On the PULL path the compose file interpolates the stack image tags from
+	# OWLAT_VERSION. A release ref (vX.Y.Z → X.Y.Z) has cosign-signed images
+	# published under that exact tag, so thread the resolved semver through to
+	# quickstart, which pins OWLAT_VERSION=<semver> into .env BEFORE the first
+	# `docker compose up`. Left unset it would fall back to the never-pushed
+	# `:dev` sentinel and rebuild every image from source on the box (or fail
+	# "manifest unknown") instead of deploying the signed release images.
+	local -a version_args=()
 	if [[ "$ref_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
 		setup_tag="$ref_ver"
+		version_args=(--owlat-version "$ref_ver")
 	else
 		warn "Could not pin the setup wizard image to ref '$OWLAT_REF' (not a vX.Y.Z release tag) — using the mutable ':latest' wizard image, which may not match the checked-out sources."
 	fi
@@ -363,7 +372,8 @@ run_wizard() {
 	info "Launching setup wizard (containerized quickstart)…"
 	echo
 	OWLAT_SETUP_IMAGE="$setup_image" OWLAT_CONFIG_FILE="$OWLAT_CONFIG_FILE" \
-		exec "$OWLAT_INSTALL_DIR/scripts/owlat" quickstart --terminal "${args[@]}"
+		exec "$OWLAT_INSTALL_DIR/scripts/owlat" quickstart --terminal \
+		${version_args[@]+"${version_args[@]}"} "${args[@]}"
 }
 
 # ── Main ──────────────────────────────────────────────────────────────────────
