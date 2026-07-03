@@ -29,10 +29,28 @@ export interface ContextRetrievalInput {
 	inboundMessageId: Id<'inboundMessages'>;
 }
 
+/**
+ * Advisory retrieval-coverage / grounding signal. Derived cheaply from
+ * what retrieval already computed (NO extra LLM call). Persisted on the
+ * inbound message alongside `contextTier`. Changes NO routing today — it
+ * exists so the future clarify step and the draft-quality gate have a
+ * cheap "is the AI replying blind?" trigger.
+ */
+export interface ContextCoverage {
+	contact: boolean;
+	thread: boolean;
+	knowledge: boolean;
+	files: boolean;
+	knowledgeHitCount: number;
+	topScore?: number;
+	lowCoverage: boolean;
+}
+
 export interface ContextRetrievalOutput {
 	context: string;
 	tier: 'normal' | 'compacted' | 'emergency';
 	estimatedTokens: number;
+	coverage: ContextCoverage;
 }
 
 export const contextRetrievalStep: AgentStepModule<
@@ -51,6 +69,15 @@ export const contextRetrievalStep: AgentStepModule<
 
 		const contextParts: string[] = [];
 
+		// Coverage tracking — which briefing legs actually produced content.
+		// Cheap booleans/counts derived inline; no extra LLM call.
+		let hasContact = false;
+		let hasThread = false;
+		let hasKnowledge = false;
+		let hasFiles = false;
+		let knowledgeHitCount = 0;
+		let topScore: number | undefined;
+
 		// 1. Contact profile
 		if (message.contactId) {
 			const contact = await ctx.runQuery(
@@ -58,6 +85,7 @@ export const contextRetrievalStep: AgentStepModule<
 				{ contactId: message.contactId },
 			);
 			if (contact) {
+				hasContact = true;
 				contextParts.push(
 					`[CONTACT] ${contact.email}` +
 						(contact.firstName
@@ -99,6 +127,7 @@ export const contextRetrievalStep: AgentStepModule<
 				},
 			);
 			if (threadMessages.length > 0) {
+				hasThread = true;
 				contextParts.push(
 					'[CONVERSATION HISTORY]\n' +
 						threadMessages
@@ -145,6 +174,18 @@ export const contextRetrievalStep: AgentStepModule<
 				},
 			);
 			if (knowledge.length > 0) {
+				hasKnowledge = true;
+				knowledgeHitCount = knowledge.length;
+				// Top vector-similarity score (0 for FTS-only hits); undefined
+				// only when every hit lacks a score.
+				for (const k of knowledge) {
+					if (typeof k._score === 'number') {
+						topScore =
+							topScore === undefined
+								? k._score
+								: Math.max(topScore, k._score);
+					}
+				}
 				contextParts.push(
 					'[KNOWLEDGE]\n' +
 						knowledge
@@ -185,6 +226,7 @@ export const contextRetrievalStep: AgentStepModule<
 				{ queryText, limit: CONTEXT_BUDGET.fileLimit, scopeToContact },
 			);
 			if (files.length > 0) {
+				hasFiles = true;
 				contextParts.push(
 					'[RELEVANT FILES]\n' +
 						files
@@ -230,16 +272,34 @@ export const contextRetrievalStep: AgentStepModule<
 			finalContext = `${contactInfo}\n\n${currentMessage}`;
 		}
 
-		// Record the contextTier on the inboundMessage (in-state side
-		// effect — see ADR-0010 for why `contextTier` has its own helper
+		// Derive the advisory coverage signal. `lowCoverage` = no substantive
+		// grounding (no knowledge, files, or thread history) — the model would
+		// be replying essentially blind. Contact identity alone does NOT count
+		// as grounding for the reply content.
+		const coverage: ContextCoverage = {
+			contact: hasContact,
+			thread: hasThread,
+			knowledge: hasKnowledge,
+			files: hasFiles,
+			knowledgeHitCount,
+			...(topScore === undefined ? {} : { topScore }),
+			lowCoverage: !hasKnowledge && !hasFiles && !hasThread,
+		};
+
+		// Record the contextTier + coverage on the inboundMessage (in-state
+		// side effect — see ADR-0010 for why `contextTier` has its own helper
 		// rather than rolling into a transition).
 		await ctx.runMutation(
 			internal.inbox.processingLifecycle.recordContextTier,
-			{ inboundMessageId: input.inboundMessageId, contextTier: tier },
+			{
+				inboundMessageId: input.inboundMessageId,
+				contextTier: tier,
+				contextCoverage: coverage,
+			},
 		);
 
 		return {
-			output: { context: finalContext, tier, estimatedTokens },
+			output: { context: finalContext, tier, estimatedTokens, coverage },
 		};
 	},
 

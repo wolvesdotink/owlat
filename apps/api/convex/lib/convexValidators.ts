@@ -389,6 +389,27 @@ export const classificationValidator = v.object({
 	confidence: v.number(),
 });
 
+// Retrieval coverage / grounding signal (inboundMessages.contextCoverage).
+// Emitted by the `context_retrieval` Agent step — a CHEAP, ADVISORY summary of
+// which briefing legs were populated so the (future) clarify step and the
+// draft-quality gate have an "is the AI replying blind?" trigger without a
+// second LLM call. Purely additive: it changes NO routing today.
+export const contextCoverageValidator = v.object({
+	// Which briefing sections were populated for this message.
+	contact: v.boolean(),
+	thread: v.boolean(),
+	knowledge: v.boolean(),
+	files: v.boolean(),
+	// Number of knowledge-graph entries retrieved.
+	knowledgeHitCount: v.number(),
+	// Best vector-similarity score among the retrieved knowledge entries
+	// (absent when nothing was retrieved). Cosine similarity, 0..1.
+	topScore: v.optional(v.number()),
+	// Derived: no substantive grounding (no knowledge, files, or thread
+	// history) — the model would be replying essentially blind.
+	lowCoverage: v.boolean(),
+});
+
 // Content scan flag (contentScanResults.flags array entry).
 // Mirrors @owlat/email-scanner ContentFlag — keep in sync when that type changes.
 export const contentScanFlagValidator = v.object({

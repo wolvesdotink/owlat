@@ -3,6 +3,7 @@ import { v } from 'convex/values';
 import {
 	securityFlagsValidator,
 	classificationValidator,
+	contextCoverageValidator,
 	tokenUsageValidator,
 } from '../lib/convexValidators';
 
@@ -110,6 +111,9 @@ export const inboxTables = {
 			v.literal('compacted'),
 			v.literal('emergency')
 		)),
+		// Retrieval coverage / grounding signal from context_retrieval —
+		// advisory only (see contextCoverageValidator).
+		contextCoverage: v.optional(contextCoverageValidator),
 		// Human reviewer assignment
 		assignedTo: v.optional(v.string()),
 		// Error tracking
