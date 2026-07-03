@@ -47,6 +47,7 @@ fn main() {
             notifications::update_tray_badge,
             notifications::send_native_notification,
             notifications::send_actionable_notification,
+            tray::update_tray_peek,
             secrets::secret_set,
             secrets::secret_get,
             secrets::secret_delete,
