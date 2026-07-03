@@ -11,7 +11,7 @@
  */
 
 import type { Ref } from 'vue';
-import { createMarkdownShortcuts } from './richTextShortcuts';
+import { createMarkdownShortcuts, type MarkdownShortcutDeps } from './richTextShortcuts';
 
 export interface ActiveMarks {
 	bold: boolean;
@@ -153,6 +153,13 @@ export interface UseRichTextOptions {
 	 * are untouched. See {@link createMarkdownShortcuts} for the pattern set.
 	 */
 	patternShortcuts?: boolean;
+	/**
+	 * Optional "convert on space" plain-text matcher (e.g. ASCII smileys `:)` →
+	 * 🙂), wired through the markdown shortcuts' one-shot-undo plumbing. Only
+	 * consulted when {@link patternShortcuts} is on. See
+	 * {@link MarkdownShortcutDeps.asciiReplace}.
+	 */
+	asciiReplace?: MarkdownShortcutDeps['asciiReplace'];
 }
 
 /**
@@ -459,7 +466,12 @@ export function useRichText(options: UseRichTextOptions) {
 	// (keeps this composable under the file-size ratchet). Only wired when the
 	// consumer opts in; otherwise the handlers are inert no-ops.
 	const shortcuts = patternShortcuts
-		? createMarkdownShortcuts({ editorRef, getCtx, notify })
+		? createMarkdownShortcuts({
+				editorRef,
+				getCtx,
+				notify,
+				asciiReplace: options.asciiReplace,
+			})
 		: null;
 
 	function handleBeforeInput(event: InputEvent): boolean {
