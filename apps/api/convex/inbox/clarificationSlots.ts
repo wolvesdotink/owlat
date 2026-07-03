@@ -227,10 +227,13 @@ export function sanitizeClarificationQuestions(
 		const text = (q.text ?? '').trim().slice(0, MAX_QUESTION_CHARS);
 		if (text.length === 0) continue;
 		if (isCredentialSolicitation(text)) continue;
-		const options = (q.options ?? [])
-			.map((o) => o.trim().slice(0, MAX_OPTION_CHARS))
-			.filter((o) => o.length > 0 && !isCredentialSolicitation(o))
-			.slice(0, MAX_OPTIONS);
+		const options: string[] = [];
+		for (const rawOption of q.options ?? []) {
+			const option = rawOption.trim().slice(0, MAX_OPTION_CHARS);
+			if (option.length === 0 || isCredentialSolicitation(option)) continue;
+			options.push(option);
+			if (options.length >= MAX_OPTIONS) break;
+		}
 		out.push({
 			id: `clarify_${out.length}`,
 			slotType: q.slotType,
