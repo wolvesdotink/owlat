@@ -4,8 +4,8 @@ import { getCachedContactCount } from '../lib/contactCountHelpers';
 import { countWithPagination } from '../lib/pagination';
 import { topicListing } from '../topics/listing';
 
-// Upper bound on the reactive subscriber-growth scan. A live `.collect()` of
-// every contact created in the last 30 days throws once the set exceeds the
+// Upper bound on the reactive subscriber-growth scan. A live unbounded collect
+// of every contact created in the last 30 days throws once the set exceeds the
 // Convex per-query document-read limit (~32k rows); `.take(SCAN_CAP + 1)` keeps
 // the read bounded and lets us flag truncation instead of crashing the whole
 // audience dashboard.
@@ -53,7 +53,7 @@ export const getSubscriberGrowth = authedQuery({
 
 		// Get contacts created in the last 30 days using index range. Read the
 		// most-recent contacts first and cap the scan: this is a live, reactive
-		// subscription and an unbounded `.collect()` throws once the 30-day
+		// subscription and an unbounded collect throws once the 30-day
 		// intake exceeds the Convex per-query read limit. Because we take newest
 		// first, the recent days always stay complete; if the cap is hit the
 		// oldest days in the window undercount and `truncated` flags it. Past
@@ -131,7 +131,7 @@ export const getTopTopics = authedQuery({
 		// this dashboard path and the entity's list/get cannot drift. It reads
 		// the denormalized `topic.cachedMemberCount` in O(1) and only falls back
 		// to a bounded `countWithPagination` on `by_topic` when the cache is
-		// absent — never the old unbounded `.collect()` of every membership,
+		// absent — never the old unbounded collect of every membership,
 		// which threw once a topic passed ~32k members.
 		const listsWithCounts = await Promise.all(
 			lists.map(async (list) => {
