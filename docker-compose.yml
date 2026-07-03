@@ -432,6 +432,14 @@ services:
       GIT_REPO_URL: ${GIT_REPO_URL:-}
       GIT_BASE_BRANCH: ${GIT_BASE_BRANCH:-main}
       POLL_INTERVAL_MS: ${CODE_WORKER_POLL_MS:-10000}
+    # Hard resource ceilings: this container executes UNTRUSTED, inbound-email-
+    # driven code (git / vitest / the coding agent), so a single task could
+    # otherwise fork-bomb or OOM the whole host. Cap memory, CPU and the process
+    # count so a runaway task is contained to its own cgroup and killed by the
+    # kernel instead of taking the box down.
+    mem_limit: ${CODE_WORKER_MEM_LIMIT:-2g}
+    cpus: ${CODE_WORKER_CPUS:-1.0}
+    pids_limit: ${CODE_WORKER_PIDS_LIMIT:-512}
     security_opt:
       - no-new-privileges:true
     # This container runs attacker-influenced (inbound-email-driven) code
