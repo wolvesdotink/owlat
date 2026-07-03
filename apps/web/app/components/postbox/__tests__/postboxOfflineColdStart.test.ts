@@ -37,7 +37,9 @@ function mountList(liveRows: Ref<Row[]>, isLoading: Ref<boolean>) {
 	const Comp = defineComponent({
 		setup() {
 			const folderRole = ref('inbox');
+			const mailboxId = ref('mbx1');
 			const { rows, showingCached } = usePostboxOfflineThreads<Row>({
+				mailboxId,
 				folderRole,
 				liveRows,
 				isLoading,

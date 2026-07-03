@@ -12,14 +12,16 @@ const fakeStore = {
 	writesDisabled: false,
 	saveThreads: vi.fn(async () => {}),
 	loadThreads: vi.fn(async () => [] as unknown[]),
-	saveFolders: vi.fn(async () => {}),
-	loadFolders: vi.fn(async () => null),
 	saveBody: vi.fn(async () => {}),
 	loadBody: vi.fn(async () => null),
 	clear: vi.fn(async () => {
 		fakeStore.writesDisabled = false;
 	}),
 };
+
+// The active mailbox id that namespaces the cache; persist/load are no-ops
+// without one.
+const MBX = 'mbx-test';
 
 vi.mock('~/utils/postboxOfflineStore', () => ({
 	getPostboxOfflineStore: () => fakeStore,
@@ -81,21 +83,28 @@ describe('usePostboxOfflineCache — enabled preference', () => {
 describe('usePostboxOfflineCache — persist gating', () => {
 	it('does not persist while the preference is OFF', async () => {
 		desktop = false;
+		const { persistThreads } = usePostboxOfflineCache(MBX);
+		await persistThreads('inbox', [{ _id: 'a' }]);
+		expect(fakeStore.saveThreads).not.toHaveBeenCalled();
+	});
+
+	it('persists once the preference is ON (namespaced by mailbox)', async () => {
+		desktop = true;
+		const { persistThreads } = usePostboxOfflineCache(MBX);
+		await persistThreads('inbox', [{ _id: 'a' }]);
+		expect(fakeStore.saveThreads).toHaveBeenCalledWith(MBX, 'inbox', [{ _id: 'a' }]);
+	});
+
+	it('does not persist without an active mailbox (no namespace)', async () => {
+		desktop = true;
 		const { persistThreads } = usePostboxOfflineCache();
 		await persistThreads('inbox', [{ _id: 'a' }]);
 		expect(fakeStore.saveThreads).not.toHaveBeenCalled();
 	});
 
-	it('persists once the preference is ON', async () => {
-		desktop = true;
-		const { persistThreads } = usePostboxOfflineCache();
-		await persistThreads('inbox', [{ _id: 'a' }]);
-		expect(fakeStore.saveThreads).toHaveBeenCalledWith('inbox', [{ _id: 'a' }]);
-	});
-
 	it('surfaces the store writes-disabled (quota) flag after a persist', async () => {
 		desktop = true;
-		const cache = usePostboxOfflineCache();
+		const cache = usePostboxOfflineCache(MBX);
 		expect(cache.writesDisabled.value).toBe(false);
 		fakeStore.writesDisabled = true; // simulate a quota rejection inside the store
 		await cache.persistThreads('inbox', [{ _id: 'a' }]);
@@ -104,7 +113,7 @@ describe('usePostboxOfflineCache — persist gating', () => {
 
 	it('loadThreads is empty while the preference is OFF', async () => {
 		desktop = false;
-		const { loadThreads } = usePostboxOfflineCache();
+		const { loadThreads } = usePostboxOfflineCache(MBX);
 		expect(await loadThreads('inbox')).toEqual([]);
 		expect(fakeStore.loadThreads).not.toHaveBeenCalled();
 	});

@@ -45,25 +45,42 @@ function quotaDriver(): OfflineKvDriver {
 
 const row = (id: string, extra: Record<string, unknown> = {}) => ({ _id: id, ...extra });
 
-describe('PostboxOfflineStore', () => {
-	it('round-trips folders, threads and bodies', async () => {
-		const store = new PostboxOfflineStore(memoryDriver());
-		await store.saveFolders([{ role: 'inbox' }]);
-		await store.saveThreads('inbox', [row('a'), row('b')]);
-		await store.saveBody('a', '<p>hi</p>');
+// Every store call is namespaced by the active mailbox id.
+const MBX = 'mbxA';
 
-		expect(await store.loadFolders()).toEqual([{ role: 'inbox' }]);
-		expect(await store.loadThreads('inbox')).toEqual([row('a'), row('b')]);
-		expect((await store.loadBody('a'))?.srcdoc).toBe('<p>hi</p>');
-		expect(await store.loadBody('missing')).toBeNull();
+describe('PostboxOfflineStore', () => {
+	it('round-trips threads and bodies', async () => {
+		const store = new PostboxOfflineStore(memoryDriver());
+		await store.saveThreads(MBX, 'inbox', [row('a'), row('b')]);
+		await store.saveBody(MBX, 'a', '<p>hi</p>');
+
+		expect(await store.loadThreads(MBX, 'inbox')).toEqual([row('a'), row('b')]);
+		expect((await store.loadBody(MBX, 'a'))?.srcdoc).toBe('<p>hi</p>');
+		expect(await store.loadBody(MBX, 'missing')).toBeNull();
+	});
+
+	it('never serves one mailbox\'s cache to another (namespace isolation)', async () => {
+		const store = new PostboxOfflineStore(memoryDriver());
+		// Mailbox A caches rows + a body.
+		await store.saveThreads('mbxA', 'inbox', [row('secret-a')]);
+		await store.saveBody('mbxA', 'msg-a', '<p>A private body</p>');
+
+		// Mailbox B (a different account on the same device) sees nothing of A's.
+		expect(await store.loadThreads('mbxB', 'inbox')).toEqual([]);
+		expect(await store.loadBody('mbxB', 'msg-a')).toBeNull();
+
+		// B's own cache is independent and does not leak back to A.
+		await store.saveThreads('mbxB', 'inbox', [row('b-only')]);
+		expect(await store.loadThreads('mbxA', 'inbox')).toEqual([row('secret-a')]);
+		expect(await store.loadThreads('mbxB', 'inbox')).toEqual([row('b-only')]);
 	});
 
 	it('caps stored threads at OFFLINE_THREADS_CAP', async () => {
 		const store = new PostboxOfflineStore(memoryDriver());
 		const many = Array.from({ length: OFFLINE_THREADS_CAP + 50 }, (_, i) => row(`r${i}`));
-		await store.saveThreads('inbox', many);
+		await store.saveThreads(MBX, 'inbox', many);
 
-		const loaded = await store.loadThreads('inbox');
+		const loaded = await store.loadThreads(MBX, 'inbox');
 		expect(loaded).toHaveLength(OFFLINE_THREADS_CAP);
 		// Head is kept (newest rows the caller passed first).
 		expect(loaded[0]).toEqual(row('r0'));
@@ -73,12 +90,12 @@ describe('PostboxOfflineStore', () => {
 		const driver = memoryDriver();
 		const store = new PostboxOfflineStore(driver);
 		for (let i = 0; i < OFFLINE_BODIES_CAP + 5; i++) {
-			await store.saveBody(`m${i}`, `body-${i}`);
+			await store.saveBody(MBX, `m${i}`, `body-${i}`);
 		}
 		// The 5 oldest were evicted.
-		expect(await store.loadBody('m0')).toBeNull();
-		expect(await store.loadBody('m4')).toBeNull();
-		expect((await store.loadBody('m5'))?.srcdoc).toBe('body-5');
+		expect(await store.loadBody(MBX, 'm0')).toBeNull();
+		expect(await store.loadBody(MBX, 'm4')).toBeNull();
+		expect((await store.loadBody(MBX, 'm5'))?.srcdoc).toBe('body-5');
 		// Never keeps more than the cap worth of body entries.
 		const bodyKeys = [...driver.map.keys()].filter((k) => k.startsWith('body:'));
 		expect(bodyKeys).toHaveLength(OFFLINE_BODIES_CAP);
@@ -86,37 +103,37 @@ describe('PostboxOfflineStore', () => {
 
 	it('re-reading a body moves it to most-recently-used (survives eviction)', async () => {
 		const store = new PostboxOfflineStore(memoryDriver());
-		for (let i = 0; i < OFFLINE_BODIES_CAP; i++) await store.saveBody(`m${i}`, `b${i}`);
+		for (let i = 0; i < OFFLINE_BODIES_CAP; i++) await store.saveBody(MBX, `m${i}`, `b${i}`);
 		// Re-read/refresh m0 so it is no longer the oldest.
-		await store.saveBody('m0', 'b0-fresh');
+		await store.saveBody(MBX, 'm0', 'b0-fresh');
 		// One more insert evicts the now-oldest (m1), not m0.
-		await store.saveBody('new', 'bn');
-		expect(await store.loadBody('m1')).toBeNull();
-		expect((await store.loadBody('m0'))?.srcdoc).toBe('b0-fresh');
+		await store.saveBody(MBX, 'new', 'bn');
+		expect(await store.loadBody(MBX, 'm1')).toBeNull();
+		expect((await store.loadBody(MBX, 'm0'))?.srcdoc).toBe('b0-fresh');
 	});
 
-	it('clear() wipes every cached row, folder and body', async () => {
+	it('clear() wipes every cached row and body (all mailboxes)', async () => {
 		const driver = memoryDriver();
 		const store = new PostboxOfflineStore(driver);
-		await store.saveFolders([{ role: 'inbox' }]);
-		await store.saveThreads('inbox', [row('a')]);
-		await store.saveBody('a', 'x');
+		await store.saveThreads('mbxA', 'inbox', [row('a')]);
+		await store.saveBody('mbxA', 'a', 'x');
+		await store.saveThreads('mbxB', 'inbox', [row('b')]);
 
 		await store.clear();
 
 		expect(driver.map.size).toBe(0);
-		expect(await store.loadFolders()).toBeNull();
-		expect(await store.loadThreads('inbox')).toEqual([]);
-		expect(await store.loadBody('a')).toBeNull();
+		expect(await store.loadThreads('mbxA', 'inbox')).toEqual([]);
+		expect(await store.loadThreads('mbxB', 'inbox')).toEqual([]);
+		expect(await store.loadBody('mbxA', 'a')).toBeNull();
 	});
 
 	it('disables writes on a quota error without throwing', async () => {
 		const store = new PostboxOfflineStore(quotaDriver());
-		await expect(store.saveThreads('inbox', [row('a')])).resolves.toBeUndefined();
+		await expect(store.saveThreads(MBX, 'inbox', [row('a')])).resolves.toBeUndefined();
 		expect(store.writesDisabled).toBe(true);
 		expect(store.reason).toMatch(/storage/i);
 		// Reads still resolve (to empty) rather than throw.
-		expect(await store.loadThreads('inbox')).toEqual([]);
+		expect(await store.loadThreads(MBX, 'inbox')).toEqual([]);
 	});
 
 	it('stops attempting further writes once disabled', async () => {
@@ -136,9 +153,8 @@ describe('PostboxOfflineStore', () => {
 			async clear() {},
 		};
 		const store = new PostboxOfflineStore(driver);
-		await store.saveFolders([]);
-		await store.saveThreads('inbox', [row('a')]);
-		await store.saveBody('a', 'x');
+		await store.saveThreads(MBX, 'inbox', [row('a')]);
+		await store.saveBody(MBX, 'a', 'x');
 		// Only the first write actually reached the backend; the rest short-circuit.
 		expect(sets).toBe(1);
 	});
