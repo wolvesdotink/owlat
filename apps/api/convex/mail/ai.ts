@@ -9,15 +9,15 @@
  */
 
 import { v } from 'convex/values';
-import { z } from 'zod';
 import { authedAction } from '../lib/authedFunctions';
 import { api, internal } from '../_generated/api';
 import type { Doc } from '../_generated/dataModel';
 import { getLLMProvider } from '../lib/llmProvider';
-import { runLlmText, runLlmObject } from '../lib/llm/dispatch';
+import { runLlmText } from '../lib/llm/dispatch';
 import { recordLlmSpend } from '../analytics/llmUsage';
 import { stripHtml } from './rfc822';
 import { buildSchedulingInstruction } from './aiScheduling';
+import { generateReplyOptions } from './replyOptions';
 import { throwNotFound } from '../_utils/errors';
 
 /** Flatten a thread into a bounded plaintext transcript for the prompt. */
@@ -219,10 +219,9 @@ export const suggestReplies = authedAction({
 		let voiceGuidance: string | null = null;
 		if (mailboxId) {
 			try {
-				const res = await ctx.runMutation(
-					internal.mail.voiceProfile.getGuidanceForMailbox,
-					{ mailboxId }
-				);
+				const res = await ctx.runMutation(internal.mail.voiceProfile.getGuidanceForMailbox, {
+					mailboxId,
+				});
 				voiceGuidance = res.guidance;
 			} catch {
 				voiceGuidance = null;
@@ -234,14 +233,11 @@ export const suggestReplies = authedAction({
 				? buildSchedulingInstruction(args.proposedTimes ?? [])
 				: `Suggest up to 3 short, distinct reply options the recipient could send ` +
 					`(1–2 sentences each, ready to send, varied in stance).`;
-		const { object, tokenUsage, modelUsed } = await runLlmObject({
-			model: getLLMProvider('draft'),
-			schema: z.object({ replies: z.array(z.string()).max(3) }),
+		const { replies, tokenUsage, modelUsed } = await generateReplyOptions({
 			prompt: `${SYSTEM_GUARD}\n\n${instruction}${voiceSection}\n\nThread:\n\n${threadToText(thread.messages)}`,
-			temperature: 0.7,
 		});
 		await recordLlmSpend(ctx, 'postbox_suggest_replies', tokenUsage, modelUsed);
-		return { replies: object.replies.slice(0, 3) };
+		return { replies };
 	},
 });
 
@@ -298,9 +294,7 @@ export const askThread = authedAction({
 	args: {
 		messageId: v.id('mailMessages'),
 		question: v.string(),
-		history: v.optional(
-			v.array(v.object({ question: v.string(), answer: v.string() }))
-		),
+		history: v.optional(v.array(v.object({ question: v.string(), answer: v.string() }))),
 	},
 	handler: async (ctx, args): Promise<{ answer: string }> => {
 		await ctx.runMutation(internal.mail.aiGate.assertAiAllowed, {});
@@ -359,13 +353,7 @@ export const completeDraft = authedAction({
 // ── Selection rewrite (tone / grammar / translate) ─────────────────────────
 
 /** The fixed set of one-tap rewrite intents offered by the selection pill. */
-export const REWRITE_INTENTS = [
-	'shorter',
-	'friendlier',
-	'formal',
-	'grammar',
-	'translate',
-] as const;
+export const REWRITE_INTENTS = ['shorter', 'friendlier', 'formal', 'grammar', 'translate'] as const;
 export type RewriteIntent = (typeof REWRITE_INTENTS)[number];
 
 /** Bound the untrusted-ish text that reaches the model. */
@@ -411,9 +399,7 @@ export function buildRewritePrompt(args: {
 			? (args.targetLanguage ?? '').slice(0, REWRITE_MAX_LANGUAGE_CHARS).trim()
 			: '';
 	const languageLine =
-		args.intent === 'translate' && language
-			? `\nTarget language: ${language}`
-			: '';
+		args.intent === 'translate' && language ? `\nTarget language: ${language}` : '';
 	const voiceSection = args.voiceGuidance ? `\n\n${args.voiceGuidance}` : '';
 	const system =
 		`${SYSTEM_GUARD} You are an editing assistant that rewrites a snippet of ` +
@@ -471,10 +457,9 @@ export const rewriteSelection = authedAction({
 					mailboxId: args.mailboxId,
 				});
 				if (mailbox) {
-					const res = await ctx.runMutation(
-						internal.mail.voiceProfile.getGuidanceForMailbox,
-						{ mailboxId: args.mailboxId }
-					);
+					const res = await ctx.runMutation(internal.mail.voiceProfile.getGuidanceForMailbox, {
+						mailboxId: args.mailboxId,
+					});
 					voiceGuidance = res.guidance;
 				}
 			} catch {

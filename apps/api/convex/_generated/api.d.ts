@@ -232,6 +232,7 @@ import type * as inbox_processingLifecycle_effects from "../inbox/processingLife
 import type * as inbox_processingLifecycle_reducers from "../inbox/processingLifecycle/reducers.js";
 import type * as inbox_processingLifecycle_types from "../inbox/processingLifecycle/types.js";
 import type * as inbox_queries from "../inbox/queries.js";
+import type * as inbox_stepOutputs from "../inbox/stepOutputs.js";
 import type * as inbox_threads_module from "../inbox/threads/module.js";
 import type * as integrationImports__common from "../integrationImports/_common.js";
 import type * as integrationImports_providers_index from "../integrationImports/providers/index.js";
@@ -361,6 +362,7 @@ import type * as mail_outboundQueries from "../mail/outboundQueries.js";
 import type * as mail_pendingMailbox from "../mail/pendingMailbox.js";
 import type * as mail_permissions from "../mail/permissions.js";
 import type * as mail_postboxOutboundLifecycle from "../mail/postboxOutboundLifecycle.js";
+import type * as mail_replyOptions from "../mail/replyOptions.js";
 import type * as mail_rfc822 from "../mail/rfc822.js";
 import type * as mail_settings from "../mail/settings.js";
 import type * as mail_signatures from "../mail/signatures.js";
@@ -763,6 +765,7 @@ declare const fullApi: ApiFromModules<{
   "inbox/processingLifecycle/reducers": typeof inbox_processingLifecycle_reducers;
   "inbox/processingLifecycle/types": typeof inbox_processingLifecycle_types;
   "inbox/queries": typeof inbox_queries;
+  "inbox/stepOutputs": typeof inbox_stepOutputs;
   "inbox/threads/module": typeof inbox_threads_module;
   "integrationImports/_common": typeof integrationImports__common;
   "integrationImports/providers/index": typeof integrationImports_providers_index;
@@ -892,6 +895,7 @@ declare const fullApi: ApiFromModules<{
   "mail/pendingMailbox": typeof mail_pendingMailbox;
   "mail/permissions": typeof mail_permissions;
   "mail/postboxOutboundLifecycle": typeof mail_postboxOutboundLifecycle;
+  "mail/replyOptions": typeof mail_replyOptions;
   "mail/rfc822": typeof mail_rfc822;
   "mail/settings": typeof mail_settings;
   "mail/signatures": typeof mail_signatures;

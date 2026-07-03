@@ -37,10 +37,10 @@ export const inboxTables = {
 		contactIdentifier: v.string(),
 		// Thread status
 		status: v.union(
-			v.literal('open'),        // Active conversation
-			v.literal('waiting'),     // Waiting for customer reply
-			v.literal('resolved'),    // Marked as resolved
-			v.literal('closed')       // Archived/closed
+			v.literal('open'), // Active conversation
+			v.literal('waiting'), // Waiting for customer reply
+			v.literal('resolved'), // Marked as resolved
+			v.literal('closed') // Archived/closed
 		),
 		// Assigned team member (BetterAuth user ID)
 		assignedTo: v.optional(v.string()),
@@ -50,12 +50,7 @@ export const inboxTables = {
 		firstMessageAt: v.number(),
 		// Latest draft status for quick queue filtering
 		latestDraftStatus: v.optional(
-			v.union(
-				v.literal('pending'),
-				v.literal('approved'),
-				v.literal('rejected'),
-				v.literal('sent')
-			)
+			v.union(v.literal('pending'), v.literal('approved'), v.literal('rejected'), v.literal('sent'))
 		),
 		createdAt: v.number(),
 	})
@@ -69,9 +64,9 @@ export const inboxTables = {
 	// Inbound Messages - stores every inbound email with its processing state
 	inboundMessages: defineTable({
 		// SMTP envelope data
-		messageId: v.string(),       // SMTP Message-ID header
-		from: v.string(),            // Sender email address
-		to: v.string(),              // Recipient email address
+		messageId: v.string(), // SMTP Message-ID header
+		from: v.string(), // Sender email address
+		to: v.string(), // Recipient email address
 		subject: v.string(),
 		// Message content
 		textBody: v.optional(v.string()),
@@ -88,18 +83,18 @@ export const inboxTables = {
 		contactId: v.optional(v.id('contacts')),
 		// Processing state machine
 		processingStatus: v.union(
-			v.literal('received'),         // Just stored, awaiting security scan
-			v.literal('security_check'),   // Security filter running
-			v.literal('quarantined'),      // Flagged by security filter
-			v.literal('classifying'),      // Agent classification in progress
-			v.literal('drafting'),         // Agent draft generation in progress
-			v.literal('draft_ready'),      // Draft ready for human review
+			v.literal('received'), // Just stored, awaiting security scan
+			v.literal('security_check'), // Security filter running
+			v.literal('quarantined'), // Flagged by security filter
+			v.literal('classifying'), // Agent classification in progress
+			v.literal('drafting'), // Agent draft generation in progress
+			v.literal('draft_ready'), // Draft ready for human review
 			v.literal('awaiting_clarification'), // Parked awaiting an owner answer before drafting
-			v.literal('approved'),         // Draft approved by human or auto-approved
-			v.literal('sent'),             // Reply sent
-			v.literal('rejected'),         // Draft rejected by human
-			v.literal('archived'),         // Archived without reply (spam, etc.)
-			v.literal('failed')            // Pipeline error
+			v.literal('approved'), // Draft approved by human or auto-approved
+			v.literal('sent'), // Reply sent
+			v.literal('rejected'), // Draft rejected by human
+			v.literal('archived'), // Archived without reply (spam, etc.)
+			v.literal('failed') // Pipeline error
 		),
 		// Security filter results
 		securityFlags: v.optional(securityFlagsValidator),
@@ -108,6 +103,14 @@ export const inboxTables = {
 		// Agent-generated draft
 		draftResponse: v.optional(v.string()),
 		draftSubject: v.optional(v.string()),
+		// Optional alternative drafts offered at the review gate (concise /
+		// hedged / detailed). Present ONLY on lower-confidence / low-quality
+		// cases, where the `draft` step spends one extra generation to give the
+		// reviewer 2–3 pickable variants. `draftOptions[0]` is always the
+		// self-checked primary draft (== `draftResponse`); the rest are
+		// alternatives. Absent on the normal single-draft path and whenever the
+		// options generation fails (fail-soft to the single draft).
+		draftOptions: v.optional(v.array(v.string())),
 		// Overall confidence score for routing decisions — the CLASSIFIER's
 		// certainty about category/sentiment. NOT a measure of draft correctness.
 		confidenceScore: v.optional(v.number()),
@@ -117,11 +120,9 @@ export const inboxTables = {
 		// classifier confidence. Absent when the self-check failed.
 		draftQuality: v.optional(draftQualityValidator),
 		// Context compaction tier used (for transparency in review queue)
-		contextTier: v.optional(v.union(
-			v.literal('normal'),
-			v.literal('compacted'),
-			v.literal('emergency')
-		)),
+		contextTier: v.optional(
+			v.union(v.literal('normal'), v.literal('compacted'), v.literal('emergency'))
+		),
 		// Retrieval coverage / grounding signal from context_retrieval —
 		// advisory only (see contextCoverageValidator).
 		contextCoverage: v.optional(contextCoverageValidator),
@@ -151,7 +152,7 @@ export const inboxTables = {
 				scheduledFnId: v.id('_scheduled_functions'),
 				sendAt: v.number(),
 				scheduledAt: v.number(),
-			}),
+			})
 		),
 		// Open clarification questions parked before drafting. Set when the
 		// clarify step routes the message to `awaiting_clarification`;
@@ -282,7 +283,7 @@ export const inboxTables = {
 			v.literal('cancelled'),
 			v.literal('failed')
 		),
-		triggeredBy: v.string(),                        // identity.subject
+		triggeredBy: v.string(), // identity.subject
 		totalCount: v.number(),
 		scannedCount: v.number(),
 		extractedCount: v.number(),
@@ -340,40 +341,34 @@ export const inboxTables = {
 			v.literal('rejection_spike')
 		),
 		state: v.union(
-			v.literal('closed'),       // Normal operation
-			v.literal('open'),         // Tripped, blocking auto-responses
-			v.literal('half_open')     // Testing recovery
+			v.literal('closed'), // Normal operation
+			v.literal('open'), // Tripped, blocking auto-responses
+			v.literal('half_open') // Testing recovery
 		),
 		threshold: v.number(),
 		currentValue: v.number(),
 		trippedAt: v.optional(v.number()),
 		recoveredAt: v.optional(v.number()),
 		createdAt: v.number(),
-	})
-		.index('by_breaker_type', ['breakerType']),
+	}).index('by_breaker_type', ['breakerType']),
 
 	// Autonomy Rules - per-category auto-approval configuration
 	autonomyRules: defineTable({
-		category: v.string(),             // "support", "sales", "billing", etc.
+		category: v.string(), // "support", "sales", "billing", etc.
 		autoApproveThreshold: v.number(), // Confidence threshold (0-1)
-		maxDailyAutoActions: v.number(),  // Safety cap
+		maxDailyAutoActions: v.number(), // Safety cap
 		currentDailyCount: v.optional(v.number()),
 		dailyCountResetAt: v.optional(v.number()),
 		isEnabled: v.boolean(),
 		createdAt: v.number(),
 		updatedAt: v.number(),
-	})
-		.index('by_category', ['category']),
+	}).index('by_category', ['category']),
 
 	// Autonomy Feedback - tracks human corrections for threshold adjustment
 	autonomyFeedback: defineTable({
 		ruleId: v.optional(v.id('autonomyRules')),
 		category: v.string(),
-		action: v.union(
-			v.literal('approved'),
-			v.literal('rejected'),
-			v.literal('edited')
-		),
+		action: v.union(v.literal('approved'), v.literal('rejected'), v.literal('edited')),
 		agentConfidence: v.number(),
 		userFeedback: v.optional(v.string()),
 		inboundMessageId: v.optional(v.id('inboundMessages')),
@@ -389,16 +384,15 @@ export const inboxTables = {
 	// threshold itself; an owner/admin must explicitly accept it to apply.
 	autonomySuggestions: defineTable({
 		category: v.string(),
-		currentThreshold: v.number(),   // rule threshold at suggestion time
+		currentThreshold: v.number(), // rule threshold at suggestion time
 		suggestedThreshold: v.number(), // the looser (lower) threshold on offer
 		evidence: v.object({
-			approved: v.number(),      // approvals observed in the window
-			sampleSize: v.number(),    // total feedback rows in the window
+			approved: v.number(), // approvals observed in the window
+			sampleSize: v.number(), // total feedback rows in the window
 			rejectionRate: v.number(), // rejections / sampleSize
 		}),
 		createdAt: v.number(),
-	})
-		.index('by_category', ['category']),
+	}).index('by_category', ['category']),
 
 	// Agent Shadow Decisions - one row per message observed while shadow
 	// ("would-have-sent") mode is on. Records what the `route` step WOULD have
@@ -410,15 +404,15 @@ export const inboxTables = {
 	agentShadowDecisions: defineTable({
 		inboundMessageId: v.id('inboundMessages'),
 		category: v.string(),
-		sender: v.string(),              // normalized sender email (slice key)
-		isWouldHaveSent: v.boolean(),    // route would have auto-approved
-		reason: v.string(),              // the route decision's rationale
+		sender: v.string(), // normalized sender email (slice key)
+		isWouldHaveSent: v.boolean(), // route would have auto-approved
+		reason: v.string(), // the route decision's rationale
 		confidence: v.number(),
 		draftQualityScore: v.optional(v.number()),
-		shadowDraft: v.string(),         // draft snapshot at decision time
-		isResolved: v.boolean(),         // reconciled against a human action yet?
+		shadowDraft: v.string(), // draft snapshot at decision time
+		isResolved: v.boolean(), // reconciled against a human action yet?
 		userAction: v.optional(
-			v.union(v.literal('approved'), v.literal('rejected'), v.literal('edited')),
+			v.union(v.literal('approved'), v.literal('rejected'), v.literal('edited'))
 		),
 		isMatched: v.optional(v.boolean()), // would-have-sent AND human approved unedited
 		similarity: v.optional(v.number()), // shadowDraft vs. final human draft
@@ -438,9 +432,9 @@ export const inboxTables = {
 	agentShadowScorecard: defineTable({
 		category: v.string(),
 		sender: v.string(),
-		samples: v.number(),        // total reconciled shadow observations for the slice
-		wouldHaveSent: v.number(),  // observations where route would have auto-sent
-		matched: v.number(),        // wouldHaveSent AND human approved the same draft unedited
+		samples: v.number(), // total reconciled shadow observations for the slice
+		wouldHaveSent: v.number(), // observations where route would have auto-sent
+		matched: v.number(), // wouldHaveSent AND human approved the same draft unedited
 		lastActivityAt: v.number(),
 	})
 		.index('by_category', ['category'])
@@ -460,6 +454,5 @@ export const inboxTables = {
 		// hard-cap flush is measured from the start of the burst. Optional for
 		// rows written before the field existed; readers fall back to createdAt.
 		firstReceivedAt: v.optional(v.number()),
-	})
-		.index('by_thread', ['threadId']),
+	}).index('by_thread', ['threadId']),
 };
