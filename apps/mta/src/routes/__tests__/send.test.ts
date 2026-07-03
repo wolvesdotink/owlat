@@ -251,11 +251,17 @@ describe('POST /send — dedup', () => {
 		const queue = fakeQueue();
 		// SET NX miss → key already exists → duplicate.
 		const redis = fakeRedis({ set: vi.fn().mockResolvedValue(null) });
-		const res = await post(buildApp(queue, redis), validBody());
+		const res = await post(buildApp(queue, redis), validBody({ messageId: 'send_abc123' }));
 
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as { id: string; deduplicated?: boolean };
-		expect(body).toMatchObject({ success: true, id: 'duplicate', deduplicated: true });
+		// The dedup response MUST echo the submitted messageId (the VERP token),
+		// NOT a literal "duplicate". The Convex worker stores this `id` as
+		// providerMessageId and later bounce/complaint DSNs resolve on it via the
+		// VERP Return-Path; a "duplicate" sentinel would make every post-acceptance
+		// bounce resolve to send_not_found so the recipient is never suppressed.
+		expect(body).toMatchObject({ success: true, id: 'send_abc123', deduplicated: true });
+		expect(body.id).not.toBe('duplicate');
 		expect(queue.add).not.toHaveBeenCalled();
 	});
 
