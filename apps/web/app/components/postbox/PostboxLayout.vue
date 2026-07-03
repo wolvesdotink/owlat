@@ -14,7 +14,7 @@ const folderRef = computed(() => props.folderRole);
 const folderIdRef = computed(() => props.folderId);
 // Custom folders drive the list-header name; the rest of the folder rail is
 // self-contained in PostboxFolderRail.
-const { customFolders } = usePostboxFolders(mailboxIdRef);
+const { customFolders, folders: allFolders } = usePostboxFolders(mailboxIdRef);
 
 // List/reader density → applied as a single data-density attribute on the
 // Postbox root; all compact styling lives in CSS keyed off it (postbox-density.css).
@@ -25,6 +25,32 @@ const { messages, isLoading, hasMore, loadMore } = usePostboxThreads({
 	folderRole: folderRef,
 	folderId: folderIdRef,
 });
+
+// Offline read cache: serve the last-cached inbox rows instantly on a cold
+// start (with an "updating…" shimmer) and hand back to live rows the moment
+// they arrive. `displayMessages` is what the flat list renders; live always
+// wins. Non-inbox folders are a transparent pass-through.
+const {
+	rows: displayMessages,
+	showingCached,
+	isOffline,
+} = usePostboxOfflineThreads({
+	folderRole: folderRef,
+	liveRows: messages,
+	isLoading,
+});
+
+// Persist the folder list to the device cache whenever it settles, so the rail
+// and list header can render instantly next cold start. Best-effort; no-op when
+// the cache is off or unavailable.
+const offlineCache = usePostboxOfflineCache();
+watch(
+	allFolders,
+	(folders) => {
+		if (folders.length > 0) void offlineCache.persistFolders(folders);
+	},
+	{ immediate: true }
+);
 
 // Once the inbox list has settled (first paint done), idle-prefetch the
 // composer + reader chunks so pressing `c` or Enter never waits on a chunk
@@ -140,9 +166,25 @@ const showReplyQueueStrip = computed(
 
 		<!-- Pane 2: thread/message list -->
 		<section class="w-96 border-r border-border-subtle flex flex-col bg-bg-surface">
+			<!-- Quiet offline banner: cached list + already-read bodies stay
+			     readable; server-backed actions degrade with clear affordances. -->
+			<div
+				v-if="isOffline"
+				class="flex items-center gap-2 px-4 py-2 bg-warning-subtle text-warning text-xs border-b border-border-subtle"
+				role="status"
+			>
+				<Icon name="lucide:cloud-off" class="w-3.5 h-3.5 flex-shrink-0" />
+				<span class="truncate">Offline — showing recent mail from this device. Actions are paused.</span>
+			</div>
 			<header class="border-b border-border-subtle px-4 py-3 flex items-center justify-between">
-				<h2 class="text-sm font-semibold capitalize text-text-primary">
+				<h2 class="text-sm font-semibold capitalize text-text-primary flex items-center gap-2">
 					{{ currentFolderName }}
+					<!-- Cold start from the device cache: a quiet "updating…" hint
+					     while the live query catches up. Live rows replace in place. -->
+					<span
+						v-if="showingCached"
+						class="animate-pulse text-[11px] font-normal text-text-tertiary lowercase"
+					>updating…</span>
 				</h2>
 				<div v-if="folderRole === 'inbox'" class="flex items-center gap-1">
 					<button
@@ -237,8 +279,8 @@ const showReplyQueueStrip = computed(
 							v-else
 							ref="threadListRef"
 							:mailbox-id="mailboxId"
-							:messages="messages"
-							:loading="isLoading"
+							:messages="displayMessages"
+							:loading="isLoading && !showingCached"
 							:folder-role="folderRole"
 							:active-message-id="activeMessageId"
 							:has-more="hasMore"
