@@ -5,8 +5,13 @@
  * inline-block links (Apple Mail) wrapped in MSO conditional comments for
  * Outlook, or as a single-column vertical stack.
  *
- * Root placement only — the historical `renderColumnItem` switch did not
- * accept social blocks.
+ * Accepted at `root` and `container` placement — the builder offers the social
+ * block in the container/hero add-block menu (`canBeInContainer: true`), and
+ * container/hero dispatch their children at the `container` placement. At
+ * `container` placement the icons are wrapped in a padding cell so they get
+ * vertical rhythm between sibling items (the container just concatenates
+ * children). The historical `renderColumnItem` switch did not accept social
+ * blocks, so `column` remains unsupported.
  */
 
 import { fullSupport, SOCIAL_PLATFORMS, type SocialBlockContent, type SocialPlatform } from '@owlat/shared';
@@ -75,20 +80,26 @@ export const renderSocialContent = (content: SocialBlockContent): string => {
 
 export const socialModule: BlockModule<'social'> = {
 	type: 'social',
-	placements: ['root'] as readonly Placement[],
+	placements: ['root', 'container'] as readonly Placement[],
 
 	isEmpty(content) {
 		return content.links.every((link) => !link.enabled || !link.url);
 	},
 
-	html({ block, content, ctx }) {
+	html({ block, content, ctx, placement }) {
 		const transformed = ctx.linkTransform
 			? { ...content, links: content.links.map((link) => ({
 					...link,
 					url: link.url ? transformUrl(link.url, 'social', block.id, ctx) : link.url,
 				})) }
 			: content;
-		return renderSocialContent(transformed);
+		const inner = renderSocialContent(transformed);
+		if (placement === 'container' && inner) {
+			// Wrap in a padding cell so nested icons get vertical rhythm between
+			// sibling container items (the container concatenates children raw).
+			return `<table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation"><tr><td style="padding:8px 0">${inner}</td></tr></table>`;
+		}
+		return inner;
 	},
 
 	plaintext({ content }) {

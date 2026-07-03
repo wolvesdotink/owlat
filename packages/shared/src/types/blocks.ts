@@ -402,6 +402,7 @@ export type ContainerItemType =
 	| 'divider'
 	| 'spacer'
 	| 'columns'
+	| 'social'
 	| 'container';
 
 /**
@@ -415,6 +416,7 @@ export type ContainerItemContent =
 	| DividerBlockContent
 	| SpacerBlockContent
 	| ColumnsBlockContent
+	| SocialBlockContent
 	| ContainerBlockContent;
 
 /**
