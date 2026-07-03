@@ -45,17 +45,32 @@ COPY --from=builder /build/apps/code-worker/dist ./dist
 COPY --from=proddeps /build/node_modules ./node_modules
 COPY apps/code-worker/package.json ./
 
-# Defense-in-depth: run as an unprivileged user so a compromised coding agent
-# (or git/test subprocess) does not execute as root. The workspace volume and
-# app dir are owned by this user so git clones, branch checkouts and commits
-# keep working.
-RUN addgroup -S worker && adduser -S -G worker -h /home/worker worker \
-	&& mkdir -p /workspace \
-	&& chown -R worker:worker /workspace /app /home/worker
+# UID isolation for untrusted execution.
+#
+# The orchestrator (dist/index.js) holds the deployment admin key, GITHUB_TOKEN
+# and the LLM key in its process env, but it spawns the UNTRUSTED coding agent
+# (opencode) and `npx vitest` as a DISTINCT unprivileged uid (`sandbox`,
+# uid=10001) via setuid — a hard cross-uid kernel boundary those children cannot
+# cross to read /proc/<orchestrator>/environ or ptrace the orchestrator memory.
+#
+# Dropping to another uid requires the orchestrator itself to run as root, so
+# this container runs as CONFINED root ONLY (cap_drop:ALL + a tiny cap_add of
+# SETUID/SETGID/CHOWN, read-only rootfs, no-new-privileges — see compose).
+# Untrusted code NEVER runs as root: it always runs as uid 10001.
+#
+# The `sandbox` account has no login shell and no valid home. The toolchain
+# (node/npx/opencode/git) is installed world-executable on PATH, so uid 10001
+# can run it. /workspace + /app stay root-owned; /workspace is root-writable and
+# the orchestrator chowns each per-task working tree to `sandbox` at runtime
+# (keeping .git root-owned) so the agent can write while secrets stay unreadable.
+RUN addgroup -S -g 10001 sandbox \
+	&& adduser -S -D -H -G sandbox -u 10001 -s /sbin/nologin sandbox \
+	&& mkdir -p /workspace
 
 ENV NODE_ENV=production
 ENV WORKSPACE_ROOT=/workspace
 
-USER worker
+# NOTE: intentionally NO `USER` directive — the main process runs as root (uid 0)
+# so it can setuid to `sandbox` for untrusted children (see comment above).
 
 CMD ["node", "dist/index.js"]
