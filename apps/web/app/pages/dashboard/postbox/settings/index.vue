@@ -395,7 +395,7 @@ async function handleDelete() {
 				</div>
 				<select
 					id="postbox-notify-about"
-					class="input shrink-0"
+					class="input w-64 shrink-0"
 					:value="notifyAbout"
 					:disabled="isSavingAutoAdvance"
 					@change="onNotifyAboutChange"
