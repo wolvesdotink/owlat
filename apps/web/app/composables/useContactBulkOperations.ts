@@ -1,7 +1,7 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { BATCH_SIZES } from '~/constants/operations';
-import { buildContactsCsv, downloadCsv, type CsvContact } from '~/utils/contactsCsv';
+import { buildContactsCsv, downloadCsv, fetchPropertyValuesChunked, type CsvContact } from '~/utils/contactsCsv';
 
 export function useContactBulkOperations(deps: {
 	bulkSelection: ReturnType<typeof useBulkSelection<Id<'contacts'>>>;
@@ -187,9 +187,14 @@ export function useContactBulkOperations(deps: {
 						return;
 					}
 
-					const propertyValues = await convex.query(
-						api.contacts.organization.getPropertyValuesForContacts,
-						{ contactIds: contactsToExport.map((c: { _id: string }) => c._id as Id<'contacts'>) }
+					// Chunk the ids so each query stays under the Convex per-transaction
+					// index-range-read cap — exporting past ~2,000 contacts otherwise threw.
+					const propertyValues = await fetchPropertyValuesChunked(
+						contactsToExport.map((c: { _id: string }) => c._id as Id<'contacts'>),
+						(chunk) =>
+							convex.query(api.contacts.organization.getPropertyValuesForContacts, {
+								contactIds: chunk,
+							}),
 					);
 
 					const csv = buildContactsCsv(
