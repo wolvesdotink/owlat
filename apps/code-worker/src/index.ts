@@ -1,5 +1,5 @@
 import { getConvexClient, fn } from './convexClient.js';
-import { processTask } from './taskRunner.js';
+import { processTask, pruneStaleWorkspaces } from './taskRunner.js';
 
 const POLL_INTERVAL_MS = Number(process.env['POLL_INTERVAL_MS'] ?? 10_000);
 
@@ -36,6 +36,15 @@ async function main(): Promise<void> {
 	} catch (error) {
 		log(`Failed to initialize Convex client: ${error}`);
 		process.exit(1);
+	}
+
+	// Reclaim any task workspaces left behind by a previous run (crash, restart)
+	// so per-task clones do not accumulate on the workspace volume forever.
+	try {
+		pruneStaleWorkspaces();
+		log('Pruned stale task workspaces');
+	} catch (error) {
+		log(`Failed to prune stale workspaces: ${error}`);
 	}
 
 	// Poll loop
