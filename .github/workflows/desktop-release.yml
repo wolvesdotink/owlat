@@ -89,9 +89,13 @@ jobs:
           VERSION: ${{ needs.resolve.outputs.version }}
         run: |
           set -euo pipefail
+          # This pipeline publishes a DESKTOP-ONLY asset set. It must never claim
+          # the shared "latest" release — that is reserved for the unified v*
+          # line, which consumers (the updater and install.sh) key off. Marking
+          # a desktop-only release "latest" would hide the server/install assets.
           if [[ "$VERSION" == *-* ]]; then
-            gh release edit "$TAG" --repo "${{ github.repository }}" --draft=false --prerelease
+            gh release edit "$TAG" --repo "${{ github.repository }}" --draft=false --prerelease --latest=false
           else
-            gh release edit "$TAG" --repo "${{ github.repository }}" --draft=false --latest
+            gh release edit "$TAG" --repo "${{ github.repository }}" --draft=false --latest=false
           fi
           echo "Published $TAG (desktop apps only)."
