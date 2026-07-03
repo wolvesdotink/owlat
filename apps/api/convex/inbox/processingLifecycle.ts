@@ -36,7 +36,11 @@ import { v } from 'convex/values';
 import { internalMutation } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import { isOutboundChannel, tokenUsageValidator } from '../lib/convexValidators';
+import {
+	contextCoverageValidator,
+	isOutboundChannel,
+	tokenUsageValidator,
+} from '../lib/convexValidators';
 import {
 	actionTypeValidator,
 	transitionInputValidator,
@@ -157,6 +161,11 @@ export const recordStepFail = internalMutation({
  * changing its processingStatus. Used by the `context_retrieval`
  * Agent step (module) after its execute completes (still in
  * `classifying` state).
+ *
+ * Also persists the ADVISORY retrieval-coverage / grounding signal
+ * (which briefing legs were populated, knowledge-hit count, top score,
+ * derived low-coverage). Coverage is optional so callers that only have
+ * a tier still work; it changes NO routing today.
  */
 export const recordContextTier = internalMutation({
 	args: {
@@ -166,10 +175,14 @@ export const recordContextTier = internalMutation({
 			v.literal('compacted'),
 			v.literal('emergency'),
 		),
+		contextCoverage: v.optional(contextCoverageValidator),
 	},
 	handler: async (ctx, args) => {
 		await ctx.db.patch(args.inboundMessageId, {
 			contextTier: args.contextTier,
+			...(args.contextCoverage
+				? { contextCoverage: args.contextCoverage }
+				: {}),
 		});
 	},
 });
