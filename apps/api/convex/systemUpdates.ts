@@ -67,6 +67,27 @@ function parseVersion(v: string): { parts: [number, number, number]; pre: string
 	};
 }
 
+/**
+ * Extract the semver string from a GitHub release tag, but ONLY for the
+ * unified release line (bare `vX.Y.Z` / `vX.Y.Z-pre`).
+ *
+ * The repo publishes three release lines from separate pipelines — the unified
+ * `v*` release (server + desktop + install assets) plus target-only
+ * `server-v*` and `desktop-v*` releases. Only the unified `v*` line is marked
+ * `--latest`, so `/releases/latest` normally returns it. This guard is defence
+ * in depth: a target-prefixed tag such as `server-v0.2.1` must be ignored
+ * rather than mis-parsed to `0.0.0` (which would hide a real available update).
+ *
+ * Returns the bare version (leading `v` stripped) or `null` if the tag is not
+ * a bare `vX.Y.Z` release tag.
+ */
+export function parseReleaseTag(tag: string): string | null {
+	if (!/^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(tag)) {
+		return null;
+	}
+	return tag.replace(/^v/, '');
+}
+
 const CHECK_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 const GITHUB_RELEASES_URL = 'https://api.github.com/repos/wolvesdotink/owlat/releases/latest';
 
@@ -346,12 +367,25 @@ export const checkForUpdates = authedAction({
 			};
 
 			const tag = release.tag_name || '';
-			const latestVersion = tag.replace(/^v/, '');
+			const latestVersion = parseReleaseTag(tag);
 			const releaseNotes = release.body || '';
 			const publishedAt = release.published_at ? new Date(release.published_at).getTime() : now;
 
 			if (!latestVersion) {
-				throwInternal('GitHub release has no tag_name');
+				// Not a bare `vX.Y.Z` tag from the unified release line (e.g. a
+				// target-only `server-v*` / `desktop-v*` release, or a missing
+				// tag). Ignore it: keep any cached version and report no update
+				// rather than mis-parsing the tag to 0.0.0.
+				const cachedVersion = cached?.latestVersion ?? null;
+				return {
+					latestVersion: cachedVersion,
+					currentVersion,
+					updateAvailable: cachedVersion ? isNewer(cachedVersion, currentVersion) : false,
+					releaseNotes: cached?.releaseNotes ?? null,
+					publishedAt: cached?.publishedAt ?? null,
+					checkedAt: now,
+					error: null,
+				};
 			}
 
 			await ctx.runMutation(internal.systemUpdates.cacheLatestRelease, {
