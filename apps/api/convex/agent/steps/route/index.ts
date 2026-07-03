@@ -76,14 +76,13 @@ export type RouteInput = {
  * check.
  */
 export function resolveAutoApproveScore(
-	draftQuality: RouteDraftQuality | null | undefined,
+	draftQuality: RouteDraftQuality | null | undefined
 ): number {
 	if (draftQuality && typeof draftQuality.score === 'number') {
 		return draftQuality.score;
 	}
 	return 0;
 }
-
 
 /**
  * Final safety gate applied to EVERY auto-approval, after the autonomy tiers
@@ -109,12 +108,13 @@ export function resolveAutoApproveScore(
  */
 async function assertSafeToAutoSend(
 	ctx: Parameters<AgentStepModule<'route', RouteInput, RouteOutput>['execute']>[0],
-	inboundMessageId: Id<'inboundMessages'>,
+	inboundMessageId: Id<'inboundMessages'>
 ): Promise<{ safe: true } | { safe: false; reason: string }> {
 	const message = await ctx.runQuery(internal.agent.agentPipeline.getMessage, {
 		inboundMessageId,
 	});
-	if (!message) return { safe: false, reason: 'Message not found before send — routing to human review.' };
+	if (!message)
+		return { safe: false, reason: 'Message not found before send — routing to human review.' };
 
 	// Hard block: a draft produced from an ABANDONED clarification is a
 	// best-guess (the owner never confirmed the missing facts). Never auto-send
@@ -123,7 +123,8 @@ async function assertSafeToAutoSend(
 	if (message.isAutoSendBlocked) {
 		return {
 			safe: false,
-			reason: 'Draft was produced from an abandoned clarification (best-guess); routing to human review.',
+			reason:
+				'Draft was produced from an abandoned clarification (best-guess); routing to human review.',
 		};
 	}
 
@@ -147,7 +148,8 @@ async function assertSafeToAutoSend(
 	if (message.securityFlags?.guardUnavailable) {
 		return {
 			safe: false,
-			reason: 'Inbound injection guard was unavailable; not auto-sending — routing to human review.',
+			reason:
+				'Inbound injection guard was unavailable; not auto-sending — routing to human review.',
 		};
 	}
 
@@ -159,7 +161,8 @@ async function assertSafeToAutoSend(
 	if (!recipient) {
 		return {
 			safe: false,
-			reason: 'Could not derive an authenticated recipient from the inbound sender; not auto-sending — routing to human review.',
+			reason:
+				'Could not derive an authenticated recipient from the inbound sender; not auto-sending — routing to human review.',
 		};
 	}
 
@@ -223,20 +226,20 @@ export const routeStep: AgentStepModule<'route', RouteInput, RouteOutput> = {
 			// Tier 1 — circuit-breaker safety gate. A pipeline with an open breaker
 			// (LLM failures, confidence degradation, rejection spike) never
 			// auto-sends; everything goes to human review until it recovers.
-			const breakers = await ctx.runQuery(
-				internal.agentHealth.getCircuitBreakersInternal,
-				{},
-			);
+			const breakers = await ctx.runQuery(internal.agentHealth.getCircuitBreakersInternal, {});
 			const openBreaker = breakers.find((b) => b.state === 'open');
 			if (openBreaker) {
-				return { decision: 'human_review', reason: `Circuit breaker ${openBreaker.breakerType} is open — routing to human review.` };
+				return {
+					decision: 'human_review',
+					reason: `Circuit breaker ${openBreaker.breakerType} is open — routing to human review.`,
+				};
 			}
 
 			// Tier 2 — graduated autonomy (per-category rules), when enabled.
-			const autonomy = await ctx.runQuery(
-				internal.autonomy.checkPermissionInternal,
-				{ category: input.category, confidence: gateScore },
-			);
+			const autonomy = await ctx.runQuery(internal.autonomy.checkPermissionInternal, {
+				category: input.category,
+				confidence: gateScore,
+			});
 			if (autonomy.mode === 'enabled') {
 				if (autonomy.allowed) {
 					// Apply the outbound safety gate BEFORE charging the daily cap, so
@@ -253,18 +256,26 @@ export const routeStep: AgentStepModule<'route', RouteInput, RouteOutput> = {
 						category: input.category,
 					});
 					if (charge.allowed) {
-						return { decision: 'auto_approve', reason: autonomy.reason ?? `Per-category autonomy rule for ${input.category} permits auto-approval.` };
+						return {
+							decision: 'auto_approve',
+							reason:
+								autonomy.reason ??
+								`Per-category autonomy rule for ${input.category} permits auto-approval.`,
+						};
 					}
-					return { decision: 'human_review', reason: charge.reason ?? `Per-category autonomy denied for ${input.category}.` };
+					return {
+						decision: 'human_review',
+						reason: charge.reason ?? `Per-category autonomy denied for ${input.category}.`,
+					};
 				}
-				return { decision: 'human_review', reason: autonomy.reason ?? `Per-category autonomy denied for ${input.category}.` };
+				return {
+					decision: 'human_review',
+					reason: autonomy.reason ?? `Per-category autonomy denied for ${input.category}.`,
+				};
 			}
 
 			// Tier 3 — legacy global fallback (autonomy flag off).
-			const cfg = await ctx.runQuery(
-				internal.agent.agentPipeline.getAgentConfig,
-				{},
-			);
+			const cfg = await ctx.runQuery(internal.agent.agentPipeline.getAgentConfig, {});
 
 			if (cfg?.isAutoReplyEnabled && gateScore >= (cfg.confidenceThreshold ?? 0.8)) {
 				const dailyCount = cfg.dailyAutoReplyCount ?? 0;
@@ -273,9 +284,14 @@ export const routeStep: AgentStepModule<'route', RouteInput, RouteOutput> = {
 				const isNewDay = Date.now() > resetAt;
 
 				if (isNewDay || dailyCount < maxDaily) {
-					return await autoApprove(`Draft quality ${gateScore} >= threshold ${cfg.confidenceThreshold}. Auto-approving.`);
+					return await autoApprove(
+						`Draft quality ${gateScore} >= threshold ${cfg.confidenceThreshold}. Auto-approving.`
+					);
 				}
-				return { decision: 'human_review', reason: `Daily auto-reply limit reached (${dailyCount}/${maxDaily}). Routing to human review.` };
+				return {
+					decision: 'human_review',
+					reason: `Daily auto-reply limit reached (${dailyCount}/${maxDaily}). Routing to human review.`,
+				};
 			}
 
 			return {

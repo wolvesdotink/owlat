@@ -74,10 +74,9 @@ export const contextRetrievalStep: AgentStepModule<
 	kind: 'context_retrieval',
 
 	async execute(ctx, input) {
-		const message = await ctx.runQuery(
-			internal.agent.agentPipeline.getMessage,
-			{ inboundMessageId: input.inboundMessageId },
-		);
+		const message = await ctx.runQuery(internal.agent.agentPipeline.getMessage, {
+			inboundMessageId: input.inboundMessageId,
+		});
 		if (!message) throw new Error('Inbound message not found');
 
 		const contextParts: string[] = [];
@@ -99,52 +98,43 @@ export const contextRetrievalStep: AgentStepModule<
 
 		// 1. Contact profile
 		if (message.contactId) {
-			const contact = await ctx.runQuery(
-				internal.agent.agentPipeline.getContact,
-				{ contactId: message.contactId },
-			);
+			const contact = await ctx.runQuery(internal.agent.agentPipeline.getContact, {
+				contactId: message.contactId,
+			});
 			if (contact) {
 				hasContact = true;
 				contextParts.push(
 					`[CONTACT] ${contact.email}` +
 						(contact.firstName
-							? ` | Name: ${contact.firstName}${
-									contact.lastName ? ' ' + contact.lastName : ''
-								}`
+							? ` | Name: ${contact.firstName}${contact.lastName ? ' ' + contact.lastName : ''}`
 							: '') +
 						(contact.language ? ` | Language: ${contact.language}` : '') +
-						(contact.timezone ? ` | Timezone: ${contact.timezone}` : ''),
+						(contact.timezone ? ` | Timezone: ${contact.timezone}` : '')
 				);
 			}
 
 			// 2. Recent contact activities
-			const activities = await ctx.runQuery(
-				internal.agent.agentPipeline.getRecentActivities,
-				{ contactId: message.contactId, limit: 5 },
-			);
+			const activities = await ctx.runQuery(internal.agent.agentPipeline.getRecentActivities, {
+				contactId: message.contactId,
+				limit: 5,
+			});
 			if (activities.length > 0) {
 				contextParts.push(
 					'[RECENT ACTIVITY]\n' +
 						activities
-							.map(
-								(a) =>
-									`- ${a.activityType} at ${new Date(a.occurredAt).toISOString()}`,
-							)
-							.join('\n'),
+							.map((a) => `- ${a.activityType} at ${new Date(a.occurredAt).toISOString()}`)
+							.join('\n')
 				);
 			}
 		}
 
 		// 3. Thread history (previous messages in this conversation)
 		if (message.threadId) {
-			const threadMessages = await ctx.runQuery(
-				internal.agent.agentPipeline.getThreadMessages,
-				{
-					threadId: message.threadId,
-					limit: CONTEXT_BUDGET.recentMessagesCount,
-					excludeMessageId: input.inboundMessageId,
-				},
-			);
+			const threadMessages = await ctx.runQuery(internal.agent.agentPipeline.getThreadMessages, {
+				threadId: message.threadId,
+				limit: CONTEXT_BUDGET.recentMessagesCount,
+				excludeMessageId: input.inboundMessageId,
+			});
 			if (threadMessages.length > 0) {
 				hasThread = true;
 				for (const m of threadMessages) {
@@ -159,18 +149,16 @@ export const contextRetrievalStep: AgentStepModule<
 						threadMessages
 							.map(
 								(m) =>
-									`From: ${m.from}\nDate: ${new Date(m.receivedAt).toISOString()}\nSubject: ${m.subject}\n${m.textBody ?? '(no text body)'}\n---`,
+									`From: ${m.from}\nDate: ${new Date(m.receivedAt).toISOString()}\nSubject: ${m.subject}\n${m.textBody ?? '(no text body)'}\n---`
 							)
-							.join('\n'),
+							.join('\n')
 				);
 			}
 		}
 
 		// Query text for semantic retrieval: the inbound subject + body.
-		const queryText = `${message.subject ?? ''}\n${message.textBody ?? message.htmlBody ?? ''}`.slice(
-			0,
-			2000,
-		);
+		const queryText =
+			`${message.subject ?? ''}\n${message.textBody ?? message.htmlBody ?? ''}`.slice(0, 2000);
 
 		if (queryText.trim().length > 10) {
 			// Contact-scope retrieval so a draft for this contact can only draw on
@@ -188,17 +176,14 @@ export const contextRetrievalStep: AgentStepModule<
 			// drafting path); the per-hop gate in graphTraversal.ts re-enforces it.
 			const graphRetrieval = await ctx.runQuery(
 				internal.knowledge.graphTraversal.isGraphRetrievalEnabled,
-				{},
+				{}
 			);
-			const knowledge = await ctx.runAction(
-				internal.knowledge.retrieval.semanticSearch,
-				{
-					queryText,
-					limit: CONTEXT_BUDGET.knowledgeEntryLimit,
-					scopeToContact,
-					expandGraph: graphRetrieval,
-				},
-			);
+			const knowledge = await ctx.runAction(internal.knowledge.retrieval.semanticSearch, {
+				queryText,
+				limit: CONTEXT_BUDGET.knowledgeEntryLimit,
+				scopeToContact,
+				expandGraph: graphRetrieval,
+			});
 			if (knowledge.length > 0) {
 				hasKnowledge = true;
 				knowledgeHitCount = knowledge.length;
@@ -213,10 +198,7 @@ export const contextRetrievalStep: AgentStepModule<
 				// only when every hit lacks a score.
 				for (const k of knowledge) {
 					if (typeof k._score === 'number') {
-						topScore =
-							topScore === undefined
-								? k._score
-								: Math.max(topScore, k._score);
+						topScore = topScore === undefined ? k._score : Math.max(topScore, k._score);
 					}
 				}
 				contextParts.push(
@@ -233,7 +215,7 @@ export const contextRetrievalStep: AgentStepModule<
 										: '';
 								return `- ${prefix}(${k.entryType}, confidence ${k.confidence.toFixed(2)}) ${k.title}: ${k.content}`;
 							})
-							.join('\n'),
+							.join('\n')
 				);
 
 				// [KNOWLEDGE RELATIONSHIPS] — the typed edges among the entries above,
@@ -254,10 +236,11 @@ export const contextRetrievalStep: AgentStepModule<
 
 			// 3c. Relevant source documents (the actual contract/invoice/etc.,
 			// not a summary of it).
-			const files = await ctx.runAction(
-				internal.semanticFileProcessing.semanticSearch,
-				{ queryText, limit: CONTEXT_BUDGET.fileLimit, scopeToContact },
-			);
+			const files = await ctx.runAction(internal.semanticFileProcessing.semanticSearch, {
+				queryText,
+				limit: CONTEXT_BUDGET.fileLimit,
+				scopeToContact,
+			});
 			if (files.length > 0) {
 				hasFiles = true;
 				contextParts.push(
@@ -265,9 +248,9 @@ export const contextRetrievalStep: AgentStepModule<
 						files
 							.map(
 								(f) =>
-									`- ${f.filename}${f.title ? ` ("${f.title}")` : ''}${f.summary ? `: ${f.summary}` : ''}`,
+									`- ${f.filename}${f.title ? ` ("${f.title}")` : ''}${f.summary ? `: ${f.summary}` : ''}`
 							)
-							.join('\n'),
+							.join('\n')
 				);
 			}
 		}
@@ -279,7 +262,7 @@ export const contextRetrievalStep: AgentStepModule<
 				`To: ${message.to}\n` +
 				`Subject: ${message.subject}\n` +
 				`Date: ${new Date(message.receivedAt).toISOString()}\n` +
-				`Body:\n${message.textBody ?? message.htmlBody ?? '(no body)'}`,
+				`Body:\n${message.textBody ?? message.htmlBody ?? '(no body)'}`
 		);
 
 		// ── Compile and compact ──
@@ -299,9 +282,7 @@ export const contextRetrievalStep: AgentStepModule<
 		} else {
 			tier = 'emergency';
 			const currentMessage = contextParts[contextParts.length - 1];
-			const contactInfo = contextParts[0]?.startsWith('[CONTACT]')
-				? contextParts[0]
-				: '';
+			const contactInfo = contextParts[0]?.startsWith('[CONTACT]') ? contextParts[0] : '';
 			finalContext = `${contactInfo}\n\n${currentMessage}`;
 		}
 
@@ -342,17 +323,12 @@ export const contextRetrievalStep: AgentStepModule<
 		// Record the contextTier + coverage on the inboundMessage (in-state
 		// side effect — see ADR-0010 for why `contextTier` has its own helper
 		// rather than rolling into a transition).
-		await ctx.runMutation(
-			internal.inbox.stepOutputs.recordContextTier,
-			{
-				inboundMessageId: input.inboundMessageId,
-				contextTier: tier,
-				contextCoverage: coverage,
-				...(survivingSources.length > 0
-					? { groundingSources: survivingSources }
-					: {}),
-			},
-		);
+		await ctx.runMutation(internal.inbox.stepOutputs.recordContextTier, {
+			inboundMessageId: input.inboundMessageId,
+			contextTier: tier,
+			contextCoverage: coverage,
+			...(survivingSources.length > 0 ? { groundingSources: survivingSources } : {}),
+		});
 
 		return {
 			output: {

@@ -28,22 +28,23 @@ vi.mock('../lib/contactCountHelpers', async () => {
 
 const allModules = import.meta.glob('../**/*.*s');
 const modules = Object.fromEntries(
-	Object.entries(allModules).filter(([path]) =>
-		!path.includes('sesActions') &&
-		!path.includes('agentSecurity') &&
-		!path.includes('agentContext') &&
-		!path.includes('agentClassifier') &&
-		!path.includes('agentDrafter') &&
-		!path.includes('agentRouter') &&
-		!path.includes('agent/walker') &&
-		!path.includes('agent/steps/index') &&
-		!path.includes('agent/steps/shared') &&
-		!path.includes('agent/steps/classify') &&
-		!path.includes('agent/steps/draft') &&
-		!path.includes('knowledgeExtraction') &&
-		!path.includes('semanticFileProcessing') &&
-		!path.includes('visualizationAgent') &&
-		!path.includes('llmProvider')
+	Object.entries(allModules).filter(
+		([path]) =>
+			!path.includes('sesActions') &&
+			!path.includes('agentSecurity') &&
+			!path.includes('agentContext') &&
+			!path.includes('agentClassifier') &&
+			!path.includes('agentDrafter') &&
+			!path.includes('agentRouter') &&
+			!path.includes('agent/walker') &&
+			!path.includes('agent/steps/index') &&
+			!path.includes('agent/steps/shared') &&
+			!path.includes('agent/steps/classify') &&
+			!path.includes('agent/steps/draft') &&
+			!path.includes('knowledgeExtraction') &&
+			!path.includes('semanticFileProcessing') &&
+			!path.includes('visualizationAgent') &&
+			!path.includes('llmProvider')
 	)
 );
 
@@ -135,10 +136,10 @@ describe('processingLifecycle.transition — pipeline phases', () => {
 			inboundMessageId: messageId,
 			input: { to: 'security_check', at: Date.now() },
 		});
-		const { actionId } = await t.mutation(
-			internal.inbox.processingLifecycle.recordStepBegin,
-			{ inboundMessageId: messageId, actionType: 'security_scan' }
-		);
+		const { actionId } = await t.mutation(internal.inbox.processingLifecycle.recordStepBegin, {
+			inboundMessageId: messageId,
+			actionType: 'security_scan',
+		});
 
 		// Complete security_scan + transition to classifying in one mutation
 		const outcome = await t.mutation(internal.inbox.processingLifecycle.transition, {
@@ -167,10 +168,10 @@ describe('processingLifecycle.transition — pipeline phases', () => {
 	it('classifying → drafting stores classification + completes classify action', async () => {
 		const t = convexTest(schema, modules);
 		const messageId = await createMessage(t, { processingStatus: 'classifying' });
-		const { actionId } = await t.mutation(
-			internal.inbox.processingLifecycle.recordStepBegin,
-			{ inboundMessageId: messageId, actionType: 'classify' }
-		);
+		const { actionId } = await t.mutation(internal.inbox.processingLifecycle.recordStepBegin, {
+			inboundMessageId: messageId,
+			actionType: 'classify',
+		});
 
 		await t.mutation(internal.inbox.processingLifecycle.transition, {
 			inboundMessageId: messageId,
@@ -328,10 +329,10 @@ describe('processingLifecycle.transition — quarantine / archive / failure', ()
 	it('security_check → quarantined stores securityFlags + completes action', async () => {
 		const t = convexTest(schema, modules);
 		const messageId = await createMessage(t, { processingStatus: 'security_check' });
-		const { actionId } = await t.mutation(
-			internal.inbox.processingLifecycle.recordStepBegin,
-			{ inboundMessageId: messageId, actionType: 'security_scan' }
-		);
+		const { actionId } = await t.mutation(internal.inbox.processingLifecycle.recordStepBegin, {
+			inboundMessageId: messageId,
+			actionType: 'security_scan',
+		});
 
 		await t.mutation(internal.inbox.processingLifecycle.transition, {
 			inboundMessageId: messageId,
@@ -355,10 +356,10 @@ describe('processingLifecycle.transition — quarantine / archive / failure', ()
 	it('drafting → failed marks the in-flight agentAction as failed', async () => {
 		const t = convexTest(schema, modules);
 		const messageId = await createMessage(t, { processingStatus: 'drafting' });
-		const { actionId } = await t.mutation(
-			internal.inbox.processingLifecycle.recordStepBegin,
-			{ inboundMessageId: messageId, actionType: 'draft' }
-		);
+		const { actionId } = await t.mutation(internal.inbox.processingLifecycle.recordStepBegin, {
+			inboundMessageId: messageId,
+			actionType: 'draft',
+		});
 
 		await t.mutation(internal.inbox.processingLifecycle.transition, {
 			inboundMessageId: messageId,
@@ -404,10 +405,10 @@ describe('processingLifecycle.transition — quarantine / archive / failure', ()
 	it('* → archived from classifying (classifier_spam) completes the running action', async () => {
 		const t = convexTest(schema, modules);
 		const messageId = await createMessage(t, { processingStatus: 'classifying' });
-		const { actionId } = await t.mutation(
-			internal.inbox.processingLifecycle.recordStepBegin,
-			{ inboundMessageId: messageId, actionType: 'classify' }
-		);
+		const { actionId } = await t.mutation(internal.inbox.processingLifecycle.recordStepBegin, {
+			inboundMessageId: messageId,
+			actionType: 'classify',
+		});
 
 		const outcome = await t.mutation(internal.inbox.processingLifecycle.transition, {
 			inboundMessageId: messageId,
@@ -502,10 +503,10 @@ describe('processingLifecycle.transition — reset paths', () => {
 	it('failed → received with resetActionId puts the action back to pending', async () => {
 		const t = convexTest(schema, modules);
 		const messageId = await createMessage(t, { processingStatus: 'failed' });
-		const { actionId } = await t.mutation(
-			internal.inbox.processingLifecycle.recordStepBegin,
-			{ inboundMessageId: messageId, actionType: 'classify' }
-		);
+		const { actionId } = await t.mutation(internal.inbox.processingLifecycle.recordStepBegin, {
+			inboundMessageId: messageId,
+			actionType: 'classify',
+		});
 		await t.mutation(internal.inbox.processingLifecycle.recordStepFail, {
 			actionId,
 			errorMessage: 'transient',
@@ -596,10 +597,10 @@ describe('processingLifecycle.recordStep*', () => {
 		const t = convexTest(schema, modules);
 		const messageId = await createMessage(t);
 
-		const { actionId } = await t.mutation(
-			internal.inbox.processingLifecycle.recordStepBegin,
-			{ inboundMessageId: messageId, actionType: 'context_retrieval' }
-		);
+		const { actionId } = await t.mutation(internal.inbox.processingLifecycle.recordStepBegin, {
+			inboundMessageId: messageId,
+			actionType: 'context_retrieval',
+		});
 
 		await t.run(async (ctx) => {
 			const action = await ctx.db.get(actionId);
@@ -612,10 +613,10 @@ describe('processingLifecycle.recordStep*', () => {
 	it('recordStepEnd patches the action to completed with output', async () => {
 		const t = convexTest(schema, modules);
 		const messageId = await createMessage(t);
-		const { actionId } = await t.mutation(
-			internal.inbox.processingLifecycle.recordStepBegin,
-			{ inboundMessageId: messageId, actionType: 'classify' }
-		);
+		const { actionId } = await t.mutation(internal.inbox.processingLifecycle.recordStepBegin, {
+			inboundMessageId: messageId,
+			actionType: 'classify',
+		});
 
 		await t.mutation(internal.inbox.processingLifecycle.recordStepEnd, {
 			actionId,
@@ -640,10 +641,10 @@ describe('processingLifecycle.recordStep*', () => {
 		// asserts recordStepEnd now matches.
 		const t = convexTest(schema, modules);
 		const messageId = await createMessage(t);
-		const { actionId } = await t.mutation(
-			internal.inbox.processingLifecycle.recordStepBegin,
-			{ inboundMessageId: messageId, actionType: 'classify' }
-		);
+		const { actionId } = await t.mutation(internal.inbox.processingLifecycle.recordStepBegin, {
+			inboundMessageId: messageId,
+			actionType: 'classify',
+		});
 		await t.run(async (ctx) => {
 			await ctx.db.delete(actionId);
 		});
@@ -659,10 +660,10 @@ describe('processingLifecycle.recordStep*', () => {
 	it('recordStepFail marks failed + increments retryCount', async () => {
 		const t = convexTest(schema, modules);
 		const messageId = await createMessage(t);
-		const { actionId } = await t.mutation(
-			internal.inbox.processingLifecycle.recordStepBegin,
-			{ inboundMessageId: messageId, actionType: 'draft' }
-		);
+		const { actionId } = await t.mutation(internal.inbox.processingLifecycle.recordStepBegin, {
+			inboundMessageId: messageId,
+			actionType: 'draft',
+		});
 
 		await t.mutation(internal.inbox.processingLifecycle.recordStepFail, {
 			actionId,
@@ -751,10 +752,10 @@ describe('processingLifecycle.retryFailedActions', () => {
 	it('resets failed actions with retryCount < 3 and brings their messages back to received', async () => {
 		const t = convexTest(schema, modules);
 		const messageId = await createMessage(t, { processingStatus: 'failed' });
-		const { actionId } = await t.mutation(
-			internal.inbox.processingLifecycle.recordStepBegin,
-			{ inboundMessageId: messageId, actionType: 'classify' }
-		);
+		const { actionId } = await t.mutation(internal.inbox.processingLifecycle.recordStepBegin, {
+			inboundMessageId: messageId,
+			actionType: 'classify',
+		});
 		await t.mutation(internal.inbox.processingLifecycle.recordStepFail, {
 			actionId,
 			errorMessage: 'first failure',
@@ -777,10 +778,10 @@ describe('processingLifecycle.retryFailedActions', () => {
 	it('schedules the Agent walker after cron retry resets to received', async () => {
 		const t = convexTest(schema, modules);
 		const messageId = await createMessage(t, { processingStatus: 'failed' });
-		const { actionId } = await t.mutation(
-			internal.inbox.processingLifecycle.recordStepBegin,
-			{ inboundMessageId: messageId, actionType: 'classify' }
-		);
+		const { actionId } = await t.mutation(internal.inbox.processingLifecycle.recordStepBegin, {
+			inboundMessageId: messageId,
+			actionType: 'classify',
+		});
 		await t.mutation(internal.inbox.processingLifecycle.recordStepFail, {
 			actionId,
 			errorMessage: 'first failure',
@@ -789,13 +790,12 @@ describe('processingLifecycle.retryFailedActions', () => {
 		await t.mutation(internal.inbox.processingLifecycle.retryFailedActions, {});
 
 		const walkerStarts = await t.run(async (ctx) => {
-			const scheduled = await ctx.db.system
-				.query('_scheduled_functions')
-				.collect();
+			const scheduled = await ctx.db.system.query('_scheduled_functions').collect();
 			return scheduled.filter(
 				(j) =>
 					j.name.includes('agent/walker') &&
-					(j.args[0] as { inboundMessageId?: Id<'inboundMessages'> })?.inboundMessageId === messageId,
+					(j.args[0] as { inboundMessageId?: Id<'inboundMessages'> })?.inboundMessageId ===
+						messageId
 			);
 		});
 		expect(walkerStarts.length).toBe(1);
@@ -887,14 +887,15 @@ describe('processingLifecycle.reconcileStuckApproved', () => {
 
 	async function countReEnqueues(
 		t: ReturnType<typeof convexTest>,
-		messageId: Id<'inboundMessages'>,
+		messageId: Id<'inboundMessages'>
 	) {
 		return t.run(async (ctx) => {
 			const scheduled = await ctx.db.system.query('_scheduled_functions').collect();
 			return scheduled.filter(
 				(j) =>
 					j.name.includes('agent/agentPipeline') &&
-					(j.args[0] as { inboundMessageId?: Id<'inboundMessages'> })?.inboundMessageId === messageId,
+					(j.args[0] as { inboundMessageId?: Id<'inboundMessages'> })?.inboundMessageId ===
+						messageId
 			).length;
 		});
 	}
@@ -971,7 +972,7 @@ describe('processingLifecycle.reconcileStuckApproved', () => {
 describe('processingLifecycle — autonomous send-delay / undo window', () => {
 	async function setAgentConfig(
 		t: ReturnType<typeof convexTest>,
-		overrides: Record<string, unknown> = {},
+		overrides: Record<string, unknown> = {}
 	) {
 		await t.run(async (ctx) => {
 			await ctx.db.insert('agentConfig', {
@@ -984,16 +985,14 @@ describe('processingLifecycle — autonomous send-delay / undo window', () => {
 		});
 	}
 
-	async function sendJobsFor(
-		t: ReturnType<typeof convexTest>,
-		messageId: Id<'inboundMessages'>,
-	) {
+	async function sendJobsFor(t: ReturnType<typeof convexTest>, messageId: Id<'inboundMessages'>) {
 		return t.run(async (ctx) => {
 			const scheduled = await ctx.db.system.query('_scheduled_functions').collect();
 			return scheduled.filter(
 				(j) =>
 					j.name.includes('agent/agentPipeline') &&
-					(j.args[0] as { inboundMessageId?: Id<'inboundMessages'> })?.inboundMessageId === messageId,
+					(j.args[0] as { inboundMessageId?: Id<'inboundMessages'> })?.inboundMessageId ===
+						messageId
 			);
 		});
 	}
@@ -1157,13 +1156,13 @@ describe('processingLifecycle — autonomous send-delay / undo window', () => {
 	async function armPendingAutoSend(
 		t: ReturnType<typeof convexTest>,
 		messageId: Id<'inboundMessages'>,
-		sendAt: number,
+		sendAt: number
 	) {
 		await t.run(async (ctx) => {
 			const scheduledFnId = await ctx.scheduler.runAfter(
 				Math.max(0, sendAt - Date.now()),
 				internal.agent.agentPipeline.sendApprovedReply,
-				{ inboundMessageId: messageId, autonomous: true },
+				{ inboundMessageId: messageId, autonomous: true }
 			);
 			await ctx.db.patch(messageId, {
 				pendingAutoSend: { scheduledFnId, sendAt, scheduledAt: Date.now() },
@@ -1208,7 +1207,7 @@ describe('processingLifecycle — autonomous send-delay / undo window', () => {
 describe('processingLifecycle — cancelAutoSend safety', () => {
 	async function armApprovedPendingSend(
 		t: ReturnType<typeof convexTest>,
-		overrides: Record<string, unknown> = {},
+		overrides: Record<string, unknown> = {}
 	): Promise<Id<'inboundMessages'>> {
 		const threadId = await createThread(t);
 		const messageId = await createMessage(t, {
@@ -1222,7 +1221,7 @@ describe('processingLifecycle — cancelAutoSend safety', () => {
 			const scheduledFnId = await ctx.scheduler.runAfter(
 				60_000,
 				internal.agent.agentPipeline.sendApprovedReply,
-				{ inboundMessageId: messageId, autonomous: true },
+				{ inboundMessageId: messageId, autonomous: true }
 			);
 			await ctx.db.patch(messageId, {
 				pendingAutoSend: { scheduledFnId, sendAt: Date.now() + 60_000, scheduledAt: Date.now() },
@@ -1238,7 +1237,7 @@ describe('processingLifecycle — cancelAutoSend safety', () => {
 
 		const result = await t.mutation(
 			internal.inbox.processingLifecycle.cancelPendingAutoSendsForKillSwitch,
-			{},
+			{}
 		);
 		expect(result.cancelled).toBe(2);
 

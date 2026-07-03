@@ -219,10 +219,9 @@ export const suggestReplies = authedAction({
 		let voiceGuidance: string | null = null;
 		if (mailboxId) {
 			try {
-				const res = await ctx.runMutation(
-					internal.mail.voiceProfile.getGuidanceForMailbox,
-					{ mailboxId }
-				);
+				const res = await ctx.runMutation(internal.mail.voiceProfile.getGuidanceForMailbox, {
+					mailboxId,
+				});
 				voiceGuidance = res.guidance;
 			} catch {
 				voiceGuidance = null;
@@ -295,9 +294,7 @@ export const askThread = authedAction({
 	args: {
 		messageId: v.id('mailMessages'),
 		question: v.string(),
-		history: v.optional(
-			v.array(v.object({ question: v.string(), answer: v.string() }))
-		),
+		history: v.optional(v.array(v.object({ question: v.string(), answer: v.string() }))),
 	},
 	handler: async (ctx, args): Promise<{ answer: string }> => {
 		await ctx.runMutation(internal.mail.aiGate.assertAiAllowed, {});
@@ -356,13 +353,7 @@ export const completeDraft = authedAction({
 // ── Selection rewrite (tone / grammar / translate) ─────────────────────────
 
 /** The fixed set of one-tap rewrite intents offered by the selection pill. */
-export const REWRITE_INTENTS = [
-	'shorter',
-	'friendlier',
-	'formal',
-	'grammar',
-	'translate',
-] as const;
+export const REWRITE_INTENTS = ['shorter', 'friendlier', 'formal', 'grammar', 'translate'] as const;
 export type RewriteIntent = (typeof REWRITE_INTENTS)[number];
 
 /** Bound the untrusted-ish text that reaches the model. */
@@ -408,9 +399,7 @@ export function buildRewritePrompt(args: {
 			? (args.targetLanguage ?? '').slice(0, REWRITE_MAX_LANGUAGE_CHARS).trim()
 			: '';
 	const languageLine =
-		args.intent === 'translate' && language
-			? `\nTarget language: ${language}`
-			: '';
+		args.intent === 'translate' && language ? `\nTarget language: ${language}` : '';
 	const voiceSection = args.voiceGuidance ? `\n\n${args.voiceGuidance}` : '';
 	const system =
 		`${SYSTEM_GUARD} You are an editing assistant that rewrites a snippet of ` +
@@ -468,10 +457,9 @@ export const rewriteSelection = authedAction({
 					mailboxId: args.mailboxId,
 				});
 				if (mailbox) {
-					const res = await ctx.runMutation(
-						internal.mail.voiceProfile.getGuidanceForMailbox,
-						{ mailboxId: args.mailboxId }
-					);
+					const res = await ctx.runMutation(internal.mail.voiceProfile.getGuidanceForMailbox, {
+						mailboxId: args.mailboxId,
+					});
 					voiceGuidance = res.guidance;
 				}
 			} catch {

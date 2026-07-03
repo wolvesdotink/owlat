@@ -37,11 +37,7 @@ import {
 export const recordContextTier = internalMutation({
 	args: {
 		inboundMessageId: v.id('inboundMessages'),
-		contextTier: v.union(
-			v.literal('normal'),
-			v.literal('compacted'),
-			v.literal('emergency'),
-		),
+		contextTier: v.union(v.literal('normal'), v.literal('compacted'), v.literal('emergency')),
 		contextCoverage: v.optional(contextCoverageValidator),
 		// The prior emails + knowledge entries actually assembled into the
 		// briefing — read-side provenance for the review UI. Optional so callers
@@ -51,12 +47,8 @@ export const recordContextTier = internalMutation({
 	handler: async (ctx, args) => {
 		await ctx.db.patch(args.inboundMessageId, {
 			contextTier: args.contextTier,
-			...(args.contextCoverage
-				? { contextCoverage: args.contextCoverage }
-				: {}),
-			...(args.groundingSources
-				? { groundingSources: args.groundingSources }
-				: {}),
+			...(args.contextCoverage ? { contextCoverage: args.contextCoverage } : {}),
+			...(args.groundingSources ? { groundingSources: args.groundingSources } : {}),
 		});
 	},
 });

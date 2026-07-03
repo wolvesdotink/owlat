@@ -51,7 +51,11 @@ describe('useReviewQueue', () => {
 		it('writes the reply via editDraft then sends via approveDraft', async () => {
 			const { composeAndSend } = useReviewQueue();
 
-			const result = await composeAndSend(messageId, '  We are looking into it.  ', '  Re: outage ');
+			const result = await composeAndSend(
+				messageId,
+				'  We are looking into it.  ',
+				'  Re: outage '
+			);
 
 			// Trimmed body + subject persisted via editDraft.
 			expect(editRun()).toHaveBeenCalledWith({

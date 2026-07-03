@@ -19,10 +19,9 @@ import type { Id } from '@owlat/api/dataModel';
  * with no new backend surface.
  */
 export function useReviewQueue() {
-	const { data: reviewItems, isLoading } = useConvexQuery(
-		api.inbox.queries.getReviewQueue,
-		() => ({ limit: 50 }),
-	);
+	const { data: reviewItems, isLoading } = useConvexQuery(api.inbox.queries.getReviewQueue, () => ({
+		limit: 50,
+	}));
 
 	const { run: approveDraft } = useBackendOperation(api.inbox.mutations.approveDraft, {
 		label: 'Approve draft',
@@ -61,7 +60,7 @@ export function useReviewQueue() {
 	const approveOption = async (
 		messageId: Id<'inboundMessages'>,
 		chosenText: string,
-		currentDraft: string | null | undefined,
+		currentDraft: string | null | undefined
 	) => {
 		const text = chosenText.trim();
 		if (text.length === 0) return undefined;
@@ -90,7 +89,7 @@ export function useReviewQueue() {
 	const composeAndSend = async (
 		messageId: Id<'inboundMessages'>,
 		body: string,
-		subject?: string,
+		subject?: string
 	) => {
 		const text = body.trim();
 		if (text.length === 0) return undefined;

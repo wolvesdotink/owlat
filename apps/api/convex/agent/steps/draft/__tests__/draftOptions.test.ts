@@ -101,16 +101,22 @@ beforeEach(() => {
 
 describe('shouldOfferDraftOptions', () => {
 	it('offers options when classifier confidence is low', () => {
-		expect(shouldOfferDraftOptions(0.5, { score: 0.95, complete: true, grounded: true, flags: [] })).toBe(true);
+		expect(
+			shouldOfferDraftOptions(0.5, { score: 0.95, complete: true, grounded: true, flags: [] })
+		).toBe(true);
 	});
 	it('offers options when draft quality is low', () => {
-		expect(shouldOfferDraftOptions(0.95, { score: 0.4, complete: false, grounded: true, flags: [] })).toBe(true);
+		expect(
+			shouldOfferDraftOptions(0.95, { score: 0.4, complete: false, grounded: true, flags: [] })
+		).toBe(true);
 	});
 	it('offers options when draft quality is unknown (null)', () => {
 		expect(shouldOfferDraftOptions(0.95, null)).toBe(true);
 	});
 	it('stays single-draft when confidence AND quality are high', () => {
-		expect(shouldOfferDraftOptions(0.95, { score: 0.9, complete: true, grounded: true, flags: [] })).toBe(false);
+		expect(
+			shouldOfferDraftOptions(0.95, { score: 0.9, complete: true, grounded: true, flags: [] })
+		).toBe(false);
 	});
 });
 

@@ -25,8 +25,11 @@ import { generateReplyOptions, MAX_REPLY_OPTIONS } from '../../../mail/replyOpti
 import { recordLlmSpend } from '../../../analytics/llmUsage';
 import { detectInjection, INJECTION_CONFIDENCE_THRESHOLD } from '../security_scan/patterns';
 import {
-	ALLOWED_CATEGORIES, ALLOWED_INTENTS, ALLOWED_PRIORITIES,
-	ALLOWED_SENTIMENTS, safeEnum,
+	ALLOWED_CATEGORIES,
+	ALLOWED_INTENTS,
+	ALLOWED_PRIORITIES,
+	ALLOWED_SENTIMENTS,
+	safeEnum,
 } from './sanitize';
 
 export type DraftInput = {
@@ -58,12 +61,15 @@ export type DraftInput = {
  * email, so they are safe to present as trusted.
  */
 export function buildConfirmedContext(
-	pending: {
-		questions: ReadonlyArray<{
-			text: string;
-			answer?: { value: string } | undefined;
-		}>;
-	} | undefined | null,
+	pending:
+		| {
+				questions: ReadonlyArray<{
+					text: string;
+					answer?: { value: string } | undefined;
+				}>;
+		  }
+		| undefined
+		| null
 ): string {
 	if (!pending) return '';
 	const lines: string[] = [];
@@ -127,7 +133,7 @@ const MULTI_OPTION_QUALITY_THRESHOLD = 0.8;
  */
 export function shouldOfferDraftOptions(
 	confidence: number,
-	draftQuality: DraftQuality | null,
+	draftQuality: DraftQuality | null
 ): boolean {
 	if (confidence < MULTI_OPTION_CONFIDENCE_THRESHOLD) return true;
 	if (draftQuality === null) return true;
@@ -165,7 +171,7 @@ export function buildDraftOptionsPrompt(args: { context: string; voiceSection: s
  */
 async function generateDraftOptions(
 	ctx: Parameters<AgentStepModule<'draft', DraftInput, DraftOutput>['execute']>[0],
-	args: { context: string; voiceSection: string; primaryDraft: string },
+	args: { context: string; voiceSection: string; primaryDraft: string }
 ): Promise<string[]> {
 	try {
 		const { replies, tokenUsage, modelUsed } = await generateReplyOptions({
@@ -249,7 +255,7 @@ export function buildSelfCheckPrompt(args: { context: string; draft: string }): 
  */
 async function runDraftSelfCheck(
 	ctx: Parameters<AgentStepModule<'draft', DraftInput, DraftOutput>['execute']>[0],
-	args: { context: string; draft: string },
+	args: { context: string; draft: string }
 ): Promise<DraftQuality | null> {
 	try {
 		const model = getLLMProvider('classify'); // cheap / fast tier
@@ -281,17 +287,13 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 	llm: { tier: 'capable' },
 
 	async execute(ctx, input) {
-		const agentConfig = await ctx.runQuery(
-			internal.agent.agentPipeline.getAgentConfig,
-			{},
-		);
+		const agentConfig = await ctx.runQuery(internal.agent.agentPipeline.getAgentConfig, {});
 
 		// Fetch the inbound message once — its recipient drives voice
 		// personalization (below) and its subject drives the reply subject.
-		const message = await ctx.runQuery(
-			internal.agent.agentPipeline.getMessage,
-			{ inboundMessageId: input.inboundMessageId },
-		);
+		const message = await ctx.runQuery(internal.agent.agentPipeline.getMessage, {
+			inboundMessageId: input.inboundMessageId,
+		});
 
 		// Personalize to the recipient's learned writing voice when a Postbox
 		// mailbox for this inbound recipient has opted in and has a derived
@@ -301,10 +303,9 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 		let voiceGuidance: string | null = null;
 		if (message?.to) {
 			try {
-				const res = await ctx.runMutation(
-					internal.mail.voiceProfile.getGuidanceForRecipient,
-					{ recipient: message.to },
-				);
+				const res = await ctx.runMutation(internal.mail.voiceProfile.getGuidanceForRecipient, {
+					recipient: message.to,
+				});
 				voiceGuidance = res.guidance;
 			} catch {
 				voiceGuidance = null;
@@ -316,7 +317,7 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 		const ctxInjection = detectInjection(input.context);
 		if (ctxInjection.detected && ctxInjection.confidence >= INJECTION_CONFIDENCE_THRESHOLD) {
 			throw new Error(
-				`Context contains prompt-injection pattern (pattern: ${ctxInjection.pattern}); manual review required.`,
+				`Context contains prompt-injection pattern (pattern: ${ctxInjection.pattern}); manual review required.`
 			);
 		}
 
@@ -335,7 +336,11 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 			: '';
 
 		const model = getLLMProvider('draft');
-		const { text: draftBody, tokenUsage, modelUsed } = await runLlmText({
+		const {
+			text: draftBody,
+			tokenUsage,
+			modelUsed,
+		} = await runLlmText({
 			model,
 			messages: [
 				{
@@ -411,17 +416,14 @@ Classification of this message:
 		// make the routing decision. draftQuality is persisted SEPARATELY from
 		// confidenceScore (the classifier's certainty) and surfaces its flags to
 		// the review UI.
-		await ctx.runMutation(
-			internal.inbox.stepOutputs.recordDraftOutput,
-			{
-				inboundMessageId: input.inboundMessageId,
-				draftResponse: draftBody,
-				draftSubject: replySubject,
-				confidenceScore: input.classification.confidence,
-				...(draftQuality ? { draftQuality } : {}),
-				...(draftOptions.length > 0 ? { draftOptions } : {}),
-			},
-		);
+		await ctx.runMutation(internal.inbox.stepOutputs.recordDraftOutput, {
+			inboundMessageId: input.inboundMessageId,
+			draftResponse: draftBody,
+			draftSubject: replySubject,
+			confidenceScore: input.classification.confidence,
+			...(draftQuality ? { draftQuality } : {}),
+			...(draftOptions.length > 0 ? { draftOptions } : {}),
+		});
 
 		return {
 			output: {

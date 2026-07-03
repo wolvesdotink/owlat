@@ -280,11 +280,9 @@ export const reconcileStuckApproved = internalMutation({
 			if (isOutboundChannel(message.to)) continue;
 			// Lost completion: re-fire the approved-send effect. Idempotent against
 			// duplication because we only reach here when no queued send remains.
-			await ctx.scheduler.runAfter(
-				0,
-				internal.agent.agentPipeline.sendApprovedReply,
-				{ inboundMessageId: message._id },
-			);
+			await ctx.scheduler.runAfter(0, internal.agent.agentPipeline.sendApprovedReply, {
+				inboundMessageId: message._id,
+			});
 			reEnqueued++;
 		}
 
@@ -313,15 +311,13 @@ export const reconcileAbandonedClarifications = internalMutation({
 		const configs = await ctx.db.query('agentConfig').take(1);
 		const windowMs = Math.max(
 			0,
-			configs[0]?.clarificationTimeoutMs ?? DEFAULT_CLARIFICATION_TIMEOUT_MS,
+			configs[0]?.clarificationTimeoutMs ?? DEFAULT_CLARIFICATION_TIMEOUT_MS
 		);
 		const cutoff = Date.now() - windowMs;
 
 		const awaiting = await ctx.db
 			.query('inboundMessages')
-			.withIndex('by_processing_status', (q) =>
-				q.eq('processingStatus', 'awaiting_clarification'),
-			)
+			.withIndex('by_processing_status', (q) => q.eq('processingStatus', 'awaiting_clarification'))
 			.take(100);
 
 		let resumed = 0;
@@ -329,9 +325,7 @@ export const reconcileAbandonedClarifications = internalMutation({
 			// Measure the abandonment window from when the questions were asked;
 			// fall back to processedAt / receivedAt if a row predates the field.
 			const askedAt =
-				message.pendingClarification?.askedAt ??
-				message.processedAt ??
-				message.receivedAt;
+				message.pendingClarification?.askedAt ?? message.processedAt ?? message.receivedAt;
 			if (askedAt > cutoff) continue;
 
 			// Mark the draft as never-auto-send-eligible BEFORE the transition, so
