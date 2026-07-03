@@ -197,8 +197,15 @@ function reduceApproved(message: Doc<'inboundMessages'>, input: InputFor<'approv
 	if (input.completedActionId) {
 		effects.push(completeAction(input.completedActionId, input.output));
 	}
-	// Schedule the actual send via the agent pipeline's send action.
-	effects.push({ kind: 'schedule_send_approved', inboundMessageId: message._id });
+	// Schedule the actual send via the agent pipeline's send action. Flag the
+	// autonomous path so the send action runs the deterministic pre-send
+	// reference monitor (recipient lock + DLP + HTML sanitize) only for
+	// unattended sends; human-reviewed approvals send unchanged.
+	effects.push({
+		kind: 'schedule_send_approved',
+		inboundMessageId: message._id,
+		autonomous: input.source === 'auto',
+	});
 	if (input.source === 'auto') {
 		effects.push({ kind: 'increment_auto_reply_count' });
 	}

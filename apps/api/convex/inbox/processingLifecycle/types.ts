@@ -295,6 +295,10 @@ export type Effect =
 	| {
 			kind: 'schedule_send_approved';
 			inboundMessageId: Id<'inboundMessages'>;
+			// True when the approval was autonomous (route step, `source: 'auto'`).
+			// The send path runs the deterministic pre-send reference monitor only
+			// on this path; human-reviewed sends are unchanged.
+			autonomous: boolean;
 	  }
 	| {
 			kind: 'schedule_pipeline_start';

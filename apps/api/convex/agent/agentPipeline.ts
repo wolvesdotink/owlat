@@ -17,6 +17,7 @@ import { escapeHtmlWithBreaks } from '@owlat/shared/html';
 import { parseAddress } from '@owlat/shared';
 import { logError, logInfo } from '../lib/runtimeLog';
 import { isOutboundChannel } from '../lib/convexValidators';
+import { runReferenceMonitor } from './referenceMonitor';
 
 // ============================================================
 // Helper Queries
@@ -168,6 +169,10 @@ function buildThreadingHeaders(inbound: {
 export const sendApprovedReply = internalAction({
 	args: {
 		inboundMessageId: v.id('inboundMessages'),
+		// True when the approval was autonomous (route step `source: 'auto'`).
+		// The deterministic pre-send reference monitor runs ONLY on this path;
+		// human-reviewed approvals (`autonomous: false`/absent) send unchanged.
+		autonomous: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
 		const fail = async (errorMessage: string): Promise<void> => {
@@ -256,6 +261,35 @@ export const sendApprovedReply = internalAction({
 			references: message.references,
 		});
 
+		let html = draftToHtml(message.draftResponse);
+
+		// Deterministic pre-send reference monitor — AUTONOMOUS path only. This is
+		// the non-LLM data-isolation backstop that runs immediately before an
+		// unattended send: it re-derives the authenticated recipient server-side and
+		// asserts the resolved target matches it (no model-supplied / redirected /
+		// forwarded recipient), runs a local DLP pass over the draft (credential /
+		// OTP / recovery-link fingerprints), and strips remote images / tracking
+		// pixels + off-allowlist link hosts from the outbound HTML. A recipient-lock
+		// or DLP violation FAILS CLOSED — the unattended send is withheld (the draft
+		// is preserved on the message; nothing is sent). The routine withhold path
+		// is the `route` step's gate (→ human review); this backstop only trips on an
+		// anomaly that slipped past it, and it never auto-sends on uncertainty.
+		// Human-reviewed sends bypass the monitor entirely.
+		if (args.autonomous) {
+			const monitor = runReferenceMonitor({
+				inboundFrom: message.from,
+				resolvedRecipient: recipient,
+				draftText: message.draftResponse,
+				draftHtml: html,
+				allowedLinkHosts: [fromEmail.slice(fromEmail.indexOf('@') + 1)],
+			});
+			if (!monitor.ok) {
+				await fail(monitor.reason);
+				return;
+			}
+			html = monitor.html;
+		}
+
 		// Enqueue the agent reply as a Send. The inbound message stays in
 		// `approved` until the Send completion module drives it to `sent` / `failed`
 		// (see delivery/sendCompletion.ts) — no more optimistic transition at
@@ -269,7 +303,7 @@ export const sendApprovedReply = internalAction({
 					...(message.contactId ? { contactId: message.contactId } : {}),
 					inboundMessageId: args.inboundMessageId,
 					subject,
-					html: draftToHtml(message.draftResponse),
+					html,
 					from,
 					...(Object.keys(headers).length > 0 ? { headers } : {}),
 				},
