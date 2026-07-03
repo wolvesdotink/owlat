@@ -15,6 +15,8 @@
  *     `r`) opens a plain Reply or a Reply-all. Defaults to 'reply'.
  *   - `density` — 'comfortable' (roomy default) vs 'compact' (tighter rows +
  *     single-line subject/snippet). Defaults to 'comfortable'.
+ *   - `sendSound` — play a short confirmation sound when a message is
+ *     dispatched. Defaults OFF (opt-in).
  */
 
 import { api } from '@owlat/api';
@@ -57,6 +59,10 @@ export function usePostboxSettings() {
 		resolvePostboxDensity(data.value?.density)
 	);
 
+	// Confirmation sound on send. Default OFF (opt-in): an unset preference means
+	// no sound, so the composer stays silent unless the user turns it on.
+	const sendSound = computed<boolean>(() => data.value?.isSendSoundOn ?? false);
+
 	const updateOp = useBackendOperation(api.mail.settings.update, {
 		label: 'Save Postbox settings',
 	});
@@ -81,18 +87,24 @@ export function usePostboxSettings() {
 		await updateOp.run({ density: mode });
 	}
 
+	async function setSendSound(enabled: boolean) {
+		await updateOp.run({ isSendSoundOn: enabled });
+	}
+
 	return {
 		autoAdvance,
 		writingSuggestions,
 		autoSummarize,
 		replyDefault,
 		density,
+		sendSound,
 		isLoading,
 		setAutoAdvance,
 		setWritingSuggestions,
 		setAutoSummarize,
 		setReplyDefault,
 		setDensity,
+		setSendSound,
 		isSaving: updateOp.isLoading,
 	};
 }

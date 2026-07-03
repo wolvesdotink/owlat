@@ -41,6 +41,7 @@ export const get = publicQuery({
 			isAutoSummarizeOn: row.isAutoSummarizeOn,
 			replyDefault: row.replyDefault,
 			density: row.density,
+			isSendSoundOn: row.isSendSoundOn,
 		};
 	},
 });
@@ -54,6 +55,7 @@ export const update = authedMutation({
 		isAutoSummarizeOn: v.optional(v.boolean()),
 		replyDefault: v.optional(mailReplyDefaultValidator),
 		density: v.optional(mailDensityValidator),
+		isSendSoundOn: v.optional(v.boolean()),
 	},
 	// authz: self-scoped — upserts only the caller's own settings row (keyed
 	// by the session userId; no cross-user id is accepted).
@@ -71,6 +73,7 @@ export const update = authedMutation({
 			isAutoSummarizeOn?: boolean;
 			replyDefault?: (typeof args)['replyDefault'];
 			density?: (typeof args)['density'];
+			isSendSoundOn?: boolean;
 		} = {};
 		if (args.autoAdvance !== undefined) patch.autoAdvance = args.autoAdvance;
 		if (args.isWritingSuggestionsOn !== undefined)
@@ -79,6 +82,7 @@ export const update = authedMutation({
 			patch.isAutoSummarizeOn = args.isAutoSummarizeOn;
 		if (args.replyDefault !== undefined) patch.replyDefault = args.replyDefault;
 		if (args.density !== undefined) patch.density = args.density;
+		if (args.isSendSoundOn !== undefined) patch.isSendSoundOn = args.isSendSoundOn;
 		if (existing) {
 			await ctx.db.patch(existing._id, { ...patch, updatedAt: now });
 			return existing._id;
