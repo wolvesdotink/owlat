@@ -17,13 +17,14 @@
 
 import { v } from 'convex/values';
 import { internalQuery, internalMutation } from '../_generated/server';
-import type { QueryCtx } from '../_generated/server';
+import type { QueryCtx, MutationCtx } from '../_generated/server';
 import { authedMutation, publicQuery } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { loadOwnedMailbox } from './permissions';
 import { throwForbidden } from '../_utils/errors';
+import { extractEmail } from '../lib/emailAddress';
 import { splitQuotedHtml, splitQuotedText } from '@owlat/shared/quotedText';
 
 // ── Tuning ────────────────────────────────────────────────────────────────
@@ -250,6 +251,31 @@ export const markIdle = internalMutation({
 });
 
 /**
+ * Shared core for the guidance accessors: read the profile for prompt injection
+ * AND lazily schedule a background refresh when it is stale. Returns the
+ * guidance block to inject, or null for today's non-personalized behaviour.
+ * Scheduling is a write, so callers must be mutations.
+ */
+async function guidanceForMailbox(
+	ctx: MutationCtx,
+	mailboxId: Id<'mailboxes'>
+): Promise<{ guidance: string | null }> {
+	const row = await findRow(ctx, mailboxId);
+	if (!row || !row.isEnabled) return { guidance: null };
+	if (!(await isFeatureEnabled(ctx, 'ai'))) {
+		return { guidance: buildVoiceGuidance(row.profile) };
+	}
+	const sentCount = await currentSentCount(ctx, mailboxId);
+	if (row.status === 'idle' && isVoiceProfileStale(row, sentCount, Date.now())) {
+		await ctx.db.patch(row._id, { status: 'refreshing', updatedAt: Date.now() });
+		await ctx.scheduler.runAfter(0, internal.mail.voiceProfileActions.refresh, {
+			mailboxId,
+		});
+	}
+	return { guidance: buildVoiceGuidance(row.profile) };
+}
+
+/**
  * Read the profile for prompt injection AND lazily schedule a background
  * refresh when it is stale. Internal mutation (not a query) because scheduling
  * is a write; called by mail/ai.ts before it drafts. Returns the guidance block
@@ -258,20 +284,29 @@ export const markIdle = internalMutation({
  */
 export const getGuidanceForMailbox = internalMutation({
 	args: { mailboxId: v.id('mailboxes') },
+	handler: async (ctx, args): Promise<{ guidance: string | null }> =>
+		guidanceForMailbox(ctx, args.mailboxId),
+});
+
+/**
+ * Same guidance accessor, keyed by the recipient email address instead of a
+ * mailbox id. Used by the autonomous agent draft step, whose inbound message
+ * carries the recipient (`to`) but not a resolved Postbox mailbox. Resolves the
+ * mailbox by its canonical address (same derivation as inbound sender/thread
+ * matching); no matching mailbox -> no guidance. Never throws — personalization
+ * must degrade silently to today's generic org tone.
+ */
+export const getGuidanceForRecipient = internalMutation({
+	args: { recipient: v.string() },
 	handler: async (ctx, args): Promise<{ guidance: string | null }> => {
-		const row = await findRow(ctx, args.mailboxId);
-		if (!row || !row.isEnabled) return { guidance: null };
-		if (!(await isFeatureEnabled(ctx, 'ai'))) {
-			return { guidance: buildVoiceGuidance(row.profile) };
-		}
-		const sentCount = await currentSentCount(ctx, args.mailboxId);
-		if (row.status === 'idle' && isVoiceProfileStale(row, sentCount, Date.now())) {
-			await ctx.db.patch(row._id, { status: 'refreshing', updatedAt: Date.now() });
-			await ctx.scheduler.runAfter(0, internal.mail.voiceProfileActions.refresh, {
-				mailboxId: args.mailboxId,
-			});
-		}
-		return { guidance: buildVoiceGuidance(row.profile) };
+		const address = extractEmail(args.recipient);
+		if (!address) return { guidance: null };
+		const mailbox = await ctx.db
+			.query('mailboxes')
+			.withIndex('by_address', (q) => q.eq('address', address))
+			.first();
+		if (!mailbox) return { guidance: null };
+		return guidanceForMailbox(ctx, mailbox._id);
 	},
 });
 
