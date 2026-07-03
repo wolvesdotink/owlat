@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { ingestMessage } from '../ingest.js';
+import { ingestMessage, syntheticMessageId } from '../ingest.js';
 import type { ConvexClient } from '../convex.js';
 
 /** Build a mock Convex client that records the args of the single `action` call. */
@@ -86,5 +86,38 @@ describe('ingestMessage', () => {
 			flags: new Set(),
 		});
 		expect(lastPayload().messageId).toMatch(/@owlat-mail-sync>$/);
+	});
+
+	it('synthesises a STABLE messageId across re-ingests of the same (uidvalidity, uid), so a re-fetched message dedups', async () => {
+		const noId = RAW.replace('Message-ID: <msg-123@example.com>\r\n', '');
+		const params = {
+			accountId: 'a',
+			folderRole: 'archive' as const,
+			remoteName: 'Archive',
+			remoteUid: 99,
+			remoteUidValidity: 3,
+			raw: Buffer.from(noId),
+			flags: new Set<string>(),
+		};
+
+		// First ingest run.
+		const first = mockConvex();
+		await ingestMessage(first.client, params);
+		// Second ingest run (simulates a mid-batch crash re-fetching the range,
+		// where Date.now() would otherwise have advanced).
+		const second = mockConvex();
+		await ingestMessage(second.client, params);
+
+		const id1 = first.lastPayload().messageId;
+		const id2 = second.lastPayload().messageId;
+		// Deterministic from stable identity — NOT time-based.
+		expect(id1).toBe(id2);
+		expect(id1).toBe('<3.99.Archive@owlat-mail-sync>');
+	});
+
+	it('sanitises the folder name so the synthetic id stays a valid token', () => {
+		expect(
+			syntheticMessageId({ remoteUidValidity: 1, remoteUid: 2, remoteName: 'Sent Items/2026' }),
+		).toBe('<1.2.Sent_Items_2026@owlat-mail-sync>');
 	});
 });
