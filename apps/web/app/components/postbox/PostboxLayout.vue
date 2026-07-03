@@ -205,11 +205,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 				<Icon name="lucide:clock" class="w-4 h-4" />
 				<span class="flex-1">Snoozed</span>
 			</NuxtLink>
+			<!-- Secondary destination: lighter weight than the mail folders so the
+			     inbox/folders read as the primary rail. -->
 			<NuxtLink
 				to="/dashboard/postbox/contacts"
-				class="flex items-center gap-2 px-2.5 py-1.5 rounded text-sm hover:bg-bg-surface"
+				class="flex items-center gap-2 px-2.5 py-1 rounded text-sm text-text-tertiary hover:text-text-secondary hover:bg-bg-surface"
 			>
-				<Icon name="lucide:users" class="w-4 h-4" />
+				<Icon name="lucide:users" class="w-3.5 h-3.5" />
 				<span class="flex-1">Contacts</span>
 			</NuxtLink>
 

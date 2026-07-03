@@ -43,6 +43,16 @@ const commands = computed<Command[]>(() => [
 	{ id: 'contacts', label: 'Go to Contacts', icon: 'lucide:users', run: () => navigateTo('/dashboard/postbox/contacts') },
 	{ id: 'search', label: 'Search mail', icon: 'lucide:search', hint: '/', run: () => navigateTo('/dashboard/postbox/search') },
 	{ id: 'settings', label: 'Mail settings', icon: 'lucide:settings', run: () => navigateTo('/dashboard/postbox/settings') },
+	// Actions demoted into the reader's ⋯ overflow / hover-only affordances —
+	// kept discoverable here. They operate on the currently open conversation
+	// (the reader listens for `owlat:postbox-reader-action`); a no-op when no
+	// thread is open.
+	{ id: 'reply-all', label: 'Reply all', icon: 'lucide:reply-all', hint: 'a', run: () => dispatchReaderAction('replyAll') },
+	{ id: 'forward', label: 'Forward', icon: 'lucide:forward', hint: 'f', run: () => dispatchReaderAction('forward') },
+	{ id: 'report-spam', label: 'Report spam', icon: 'lucide:shield-alert', run: () => dispatchReaderAction('reportSpam') },
+	{ id: 'block-sender', label: 'Block sender', icon: 'lucide:ban', run: () => dispatchReaderAction('blockSender') },
+	{ id: 'move', label: 'Move conversation…', icon: 'lucide:folder-input', hint: 'v', run: () => dispatchReaderAction('move') },
+	{ id: 'print', label: 'Print conversation', icon: 'lucide:printer', run: () => dispatchReaderAction('print') },
 	...(isDesktop.value
 		? [
 				{
@@ -54,6 +64,13 @@ const commands = computed<Command[]>(() => [
 			]
 		: []),
 ]);
+
+/** Dispatch a reader action to the open conversation (fail-soft: no reader = no-op). */
+function dispatchReaderAction(action: string) {
+	window.dispatchEvent(
+		new CustomEvent('owlat:postbox-reader-action', { detail: { action } }),
+	);
+}
 
 const filtered = computed(() => {
 	const q = query.value.trim().toLowerCase();
