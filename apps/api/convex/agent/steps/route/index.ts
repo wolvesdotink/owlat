@@ -116,6 +116,27 @@ async function assertSafeToAutoSend(
 	if (!message)
 		return { safe: false, reason: 'Message not found before send — routing to human review.' };
 
+	// Per-org dollar-spend budget: when the org's daily/monthly LLM budget is
+	// exhausted, degrade to draft-only — the draft is still produced and queued,
+	// only the unattended auto-SEND is withheld — so an autonomous (or injected)
+	// loop can't keep auto-replying past the ceiling and no mail is dropped.
+	// FAIL-SOFT: any error determining the budget also routes to human review
+	// (never auto-send on uncertainty).
+	try {
+		const budget = await ctx.runQuery(internal.analytics.spendBudget.getBudgetStatus, {});
+		if (!budget.autonomousAutoSendAllowed) {
+			return {
+				safe: false,
+				reason: budget.reason || 'AI spend budget exhausted; not auto-sending — routing to human review.',
+			};
+		}
+	} catch {
+		return {
+			safe: false,
+			reason: 'Could not verify the AI spend budget; not auto-sending — routing to human review.',
+		};
+	}
+
 	// Hard block: a draft produced from an ABANDONED clarification is a
 	// best-guess (the owner never confirmed the missing facts). Never auto-send
 	// it, regardless of autonomy tier or draft-quality score — a human must
