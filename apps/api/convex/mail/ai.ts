@@ -9,15 +9,15 @@
  */
 
 import { v } from 'convex/values';
-import { z } from 'zod';
 import { authedAction } from '../lib/authedFunctions';
 import { api, internal } from '../_generated/api';
 import type { Doc } from '../_generated/dataModel';
 import { getLLMProvider } from '../lib/llmProvider';
-import { runLlmText, runLlmObject } from '../lib/llm/dispatch';
+import { runLlmText } from '../lib/llm/dispatch';
 import { recordLlmSpend } from '../analytics/llmUsage';
 import { stripHtml } from './rfc822';
 import { buildSchedulingInstruction } from './aiScheduling';
+import { generateReplyOptions } from './replyOptions';
 import { throwNotFound } from '../_utils/errors';
 
 /** Flatten a thread into a bounded plaintext transcript for the prompt. */
@@ -234,14 +234,11 @@ export const suggestReplies = authedAction({
 				? buildSchedulingInstruction(args.proposedTimes ?? [])
 				: `Suggest up to 3 short, distinct reply options the recipient could send ` +
 					`(1–2 sentences each, ready to send, varied in stance).`;
-		const { object, tokenUsage, modelUsed } = await runLlmObject({
-			model: getLLMProvider('draft'),
-			schema: z.object({ replies: z.array(z.string()).max(3) }),
+		const { replies, tokenUsage, modelUsed } = await generateReplyOptions({
 			prompt: `${SYSTEM_GUARD}\n\n${instruction}${voiceSection}\n\nThread:\n\n${threadToText(thread.messages)}`,
-			temperature: 0.7,
 		});
 		await recordLlmSpend(ctx, 'postbox_suggest_replies', tokenUsage, modelUsed);
-		return { replies: object.replies.slice(0, 3) };
+		return { replies };
 	},
 });
 
