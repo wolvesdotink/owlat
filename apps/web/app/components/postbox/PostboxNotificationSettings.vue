@@ -7,8 +7,15 @@
 import type { PostboxNotifyAbout } from '~/utils/postboxNotify';
 import { POSTBOX_NOTIFY_ABOUT_OPTIONS } from '~/utils/postboxNotify';
 
-const { notifyAbout, setNotifyAbout, badgeNonPeople, setBadgeNonPeople, isSaving } =
-	usePostboxSettings();
+const {
+	notifyAbout,
+	setNotifyAbout,
+	badgeNonPeople,
+	setBadgeNonPeople,
+	senderScreener,
+	setSenderScreener,
+	isSaving,
+} = usePostboxSettings();
 
 function onNotifyAboutChange(event: Event) {
 	const value = (event.target as HTMLSelectElement).value as PostboxNotifyAbout;
@@ -17,6 +24,10 @@ function onNotifyAboutChange(event: Event) {
 
 function onBadgeNonPeopleChange(event: Event) {
 	void setBadgeNonPeople((event.target as HTMLInputElement).checked);
+}
+
+function onSenderScreenerChange(event: Event) {
+	void setSenderScreener((event.target as HTMLInputElement).checked);
 }
 </script>
 
@@ -72,6 +83,29 @@ function onBadgeNonPeopleChange(event: Event) {
 				:checked="badgeNonPeople"
 				:disabled="isSaving"
 				@change="onBadgeNonPeopleChange"
+			/>
+		</div>
+		<div
+			class="px-5 py-4 flex items-center justify-between gap-4 border-t border-border-subtle"
+		>
+			<div class="min-w-0">
+				<label for="postbox-sender-screener" class="font-medium text-sm block">
+					Screen first-time senders
+				</label>
+				<p class="text-xs text-text-tertiary mt-0.5">
+					When on, mail from someone you've never corresponded with is held out
+					of the Reply Queue until you accept the sender — their mail still
+					lands in the inbox. Keeps triage focused on people you know. Off by
+					default.
+				</p>
+			</div>
+			<input
+				id="postbox-sender-screener"
+				type="checkbox"
+				class="shrink-0 h-4 w-4"
+				:checked="senderScreener"
+				:disabled="isSaving"
+				@change="onSenderScreenerChange"
 			/>
 		</div>
 	</section>
