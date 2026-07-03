@@ -30,6 +30,7 @@
 
 import type { MutationCtx } from '../../_generated/server';
 import type { Doc, Id } from '../../_generated/dataModel';
+import { internal } from '../../_generated/api';
 import { recordAuditLog } from '../../lib/auditLog';
 import { applyOpenThreadDelta } from '../../lib/inboxStats';
 
@@ -391,6 +392,38 @@ async function runInboundActivity(
 	const thread = await ctx.db.get(threadId);
 	if (!thread) return;
 	await applyTransition(ctx, thread, { kind: 'inbound_activity', occurredAt });
+	await cancelStalePendingAutoSends(ctx, threadId);
+}
+
+/**
+ * A new inbound landing in an existing thread makes any queued AUTONOMOUS
+ * auto-reply stale — the customer said more before the delayed send fired. For
+ * each prior `approved` message in this thread still holding a cancellable
+ * `pendingAutoSend` marker, schedule its cancellation (which aborts the delayed
+ * send and routes the draft back to human review). Best-effort and fail-soft:
+ * the cancel runs in its own scheduled mutation so a miss never blocks intake,
+ * and a thread with nothing pending is a cheap empty scan.
+ */
+async function cancelStalePendingAutoSends(
+	ctx: MutationCtx,
+	threadId: Id<'conversationThreads'>,
+): Promise<void> {
+	// Bounded scan on the intake hot path: a thread realistically holds at most
+	// one `approved`+pending message, and the cancel is best-effort, so cap the
+	// read rather than `.collect()` an arbitrarily long thread on every inbound.
+	const messages = await ctx.db
+		.query('inboundMessages')
+		.withIndex('by_thread', (q) => q.eq('threadId', threadId))
+		.take(200);
+	for (const message of messages) {
+		if (message.processingStatus === 'approved' && message.pendingAutoSend) {
+			await ctx.scheduler.runAfter(
+				0,
+				internal.inbox.processingLifecycle.cancelAutoSend,
+				{ inboundMessageId: message._id, reason: 'thread_reply' },
+			);
+		}
+	}
 }
 
 // ─── Direct transition entry (non-intake writes) ────────────────────────────

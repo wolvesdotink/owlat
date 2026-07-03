@@ -13,6 +13,7 @@ import { internal } from '../_generated/api';
 import { getMutationContext } from '../lib/sessionOrganization';
 import { recordAuditLog } from '../lib/auditLog';
 import { transition as threadTransition } from './threads/module';
+import type { CancelAutoSendOutcome } from './processingLifecycle';
 import { getOrThrow, throwNotFound, throwInvalidState } from '../_utils/errors';
 import { extractEmail } from '../lib/emailAddress';
 
@@ -119,6 +120,38 @@ export const rejectDraft = adminMutation({
 		});
 
 		return { success: true };
+	},
+});
+
+/**
+ * Undo an in-flight autonomous auto-send during its delay / undo window.
+ *
+ * Backs the "Sending in 0:59 — Undo" control on the review surface. The message
+ * was auto-approved and its send scheduled behind `agentConfig.autoSendDelayMs`;
+ * this aborts the scheduled send (if still pending) and routes the reply back to
+ * the human review queue (`approved → draft_ready`) rather than dropping it —
+ * the same fail-soft degrade as a landing thread reply. Idempotent: a message
+ * whose send already fired (or was never delayed) returns `cancelled: false`.
+ */
+export const undoAutoSend = adminMutation({
+	args: {
+		inboundMessageId: v.id('inboundMessages'),
+	},
+	handler: async (ctx, args): Promise<CancelAutoSendOutcome> => {
+		const { userId } = await getMutationContext(ctx);
+
+		// Existence check, mirroring the sibling approve/reject mutations. Authz
+		// is the `adminMutation` wrapper (owner/admin of this single-org
+		// deployment); there is exactly one org's inbox here.
+		await getOrThrow(ctx, args.inboundMessageId, 'Message');
+
+		const result = await ctx.runMutation(internal.inbox.processingLifecycle.cancelAutoSend, {
+			inboundMessageId: args.inboundMessageId,
+			reason: 'user_cancel',
+			userId,
+		});
+
+		return result;
 	},
 });
 
