@@ -6,6 +6,8 @@ import type { PostboxReplyDefaultMode } from '~/utils/postboxReplyDefault';
 import { POSTBOX_REPLY_DEFAULT_OPTIONS } from '~/utils/postboxReplyDefault';
 import type { PostboxDensity } from '~/utils/postboxDensity';
 import { POSTBOX_DENSITY_OPTIONS } from '~/utils/postboxDensity';
+import type { PostboxNotifyAbout } from '~/utils/postboxNotify';
+import { POSTBOX_NOTIFY_ABOUT_OPTIONS } from '~/utils/postboxNotify';
 
 useHead({ title: 'Postbox settings — Owlat' });
 
@@ -18,6 +20,7 @@ definePageMeta({
 const { mailboxes, isLoading } = usePostboxMailbox();
 const { isEnabled } = useFeatureFlag();
 const { isAdmin } = usePermissions();
+const { isDesktop } = useDesktopContext();
 
 // ── Reading behavior (per-user, spans all mailboxes) ───────────────────
 const {
@@ -33,6 +36,10 @@ const {
 	setDensity,
 	sendSound,
 	setSendSound,
+	notifyAbout,
+	setNotifyAbout,
+	badgeNonPeople,
+	setBadgeNonPeople,
 	isSaving: isSavingAutoAdvance,
 } = usePostboxSettings();
 
@@ -61,6 +68,15 @@ function onAutoSummarizeChange(event: Event) {
 
 function onSendSoundChange(event: Event) {
 	void setSendSound((event.target as HTMLInputElement).checked);
+}
+
+function onNotifyAboutChange(event: Event) {
+	const value = (event.target as HTMLSelectElement).value as PostboxNotifyAbout;
+	void setNotifyAbout(value);
+}
+
+function onBadgeNonPeopleChange(event: Event) {
+	void setBadgeNonPeople((event.target as HTMLInputElement).checked);
 }
 
 type MailboxRow = (typeof mailboxes.value)[number];
@@ -357,6 +373,62 @@ async function handleDelete() {
 					:checked="sendSound"
 					:disabled="isSavingAutoAdvance"
 					@change="onSendSoundChange"
+				/>
+			</div>
+		</section>
+
+		<!-- Desktop-only: native notification behavior. -->
+		<section v-if="isDesktop" class="card !p-0 mb-6">
+			<header class="px-5 py-3 border-b border-border-subtle">
+				<h2 class="font-semibold">Notifications</h2>
+			</header>
+			<div class="px-5 py-4 flex items-center justify-between gap-4">
+				<div class="min-w-0">
+					<label for="postbox-notify-about" class="font-medium text-sm block">
+						Notify me about
+					</label>
+					<p class="text-xs text-text-tertiary mt-0.5">
+						Which new mail pops a desktop notification. "People &amp; important
+						only" uses smart categories to stay quiet about newsletters and
+						automated mail.
+					</p>
+				</div>
+				<select
+					id="postbox-notify-about"
+					class="input shrink-0"
+					:value="notifyAbout"
+					:disabled="isSavingAutoAdvance"
+					@change="onNotifyAboutChange"
+				>
+					<option
+						v-for="opt in POSTBOX_NOTIFY_ABOUT_OPTIONS"
+						:key="opt.value"
+						:value="opt.value"
+					>
+						{{ opt.label }}
+					</option>
+				</select>
+			</div>
+			<div
+				class="px-5 py-4 flex items-center justify-between gap-4 border-t border-border-subtle"
+			>
+				<div class="min-w-0">
+					<label for="postbox-badge-nonpeople" class="font-medium text-sm block">
+						Count all mail in the badge
+					</label>
+					<p class="text-xs text-text-tertiary mt-0.5">
+						When off, the dock/tray unread badge counts only people &amp;
+						important mail — keeping the number focused even when notifications
+						are quiet. On by default.
+					</p>
+				</div>
+				<input
+					id="postbox-badge-nonpeople"
+					type="checkbox"
+					class="shrink-0 h-4 w-4"
+					:checked="badgeNonPeople"
+					:disabled="isSavingAutoAdvance"
+					@change="onBadgeNonPeopleChange"
 				/>
 			</div>
 		</section>

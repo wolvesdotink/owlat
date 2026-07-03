@@ -26,9 +26,16 @@ import type { PostboxReplyDefaultMode } from '~/utils/postboxReplyDefault';
 import { POSTBOX_REPLY_DEFAULT } from '~/utils/postboxReplyDefault';
 import type { PostboxDensity } from '~/utils/postboxDensity';
 import { resolvePostboxDensity } from '~/utils/postboxDensity';
+import type { PostboxNotifyAbout } from '~/utils/postboxNotify';
+import { resolvePostboxNotifyAbout } from '~/utils/postboxNotify';
 
 export function usePostboxSettings() {
 	const { data, isLoading } = useConvexQuery(api.mail.settings.get, () => ({}));
+	const { isEnabled } = useFeatureFlag();
+	// Smart categories are AI-gated (mailMessages.category is classified behind
+	// the Postbox aiGate), so the `ai` flag is the client-side signal for whether
+	// the quieter 'people-important' default is meaningful yet.
+	const categoriesLive = computed(() => isEnabled('ai'));
 
 	const autoAdvance = computed<PostboxAutoAdvanceMode>(
 		() => data.value?.autoAdvance ?? POSTBOX_AUTO_ADVANCE_DEFAULT
@@ -63,6 +70,19 @@ export function usePostboxSettings() {
 	// no sound, so the composer stays silent unless the user turns it on.
 	const sendSound = computed<boolean>(() => data.value?.isSendSoundOn ?? false);
 
+	// Desktop notification scope. An unset value resolves to 'people-important'
+	// once categories are live and 'everything' otherwise, so the desktop reader
+	// can consume it unconditionally while the query loads.
+	const notifyAbout = computed<PostboxNotifyAbout>(() =>
+		resolvePostboxNotifyAbout(data.value?.notifyAbout, categoriesLive.value)
+	);
+
+	// Whether non-`person` mail still increments the dock/tray badge. Default ON
+	// (unset => badge counts everything, the pre-existing behavior).
+	const badgeNonPeople = computed<boolean>(
+		() => data.value?.isBadgeNonPeopleOn ?? true
+	);
+
 	const updateOp = useBackendOperation(api.mail.settings.update, {
 		label: 'Save Postbox settings',
 	});
@@ -91,6 +111,14 @@ export function usePostboxSettings() {
 		await updateOp.run({ isSendSoundOn: enabled });
 	}
 
+	async function setNotifyAbout(mode: PostboxNotifyAbout) {
+		await updateOp.run({ notifyAbout: mode });
+	}
+
+	async function setBadgeNonPeople(enabled: boolean) {
+		await updateOp.run({ isBadgeNonPeopleOn: enabled });
+	}
+
 	return {
 		autoAdvance,
 		writingSuggestions,
@@ -98,6 +126,8 @@ export function usePostboxSettings() {
 		replyDefault,
 		density,
 		sendSound,
+		notifyAbout,
+		badgeNonPeople,
 		isLoading,
 		setAutoAdvance,
 		setWritingSuggestions,
@@ -105,6 +135,8 @@ export function usePostboxSettings() {
 		setReplyDefault,
 		setDensity,
 		setSendSound,
+		setNotifyAbout,
+		setBadgeNonPeople,
 		isSaving: updateOp.isLoading,
 	};
 }
