@@ -9,6 +9,7 @@ import {
 	isExternalRecipient,
 	ownDomainsFromIdentities,
 	deriveReplyAllExtras,
+	mergeRecipients,
 	recipientLabel,
 } from '../recipientHints';
 
@@ -77,6 +78,24 @@ describe('deriveReplyAllExtras', () => {
 				[]
 			)
 		).toEqual(['Anna <ANNA@acme.io>']);
+	});
+});
+
+describe('mergeRecipients', () => {
+	it('appends additions, deduping against existing and exclude by canonical key', () => {
+		expect(
+			mergeRecipients(
+				['ben@acme.io'],
+				['Anna <ANNA@acme.io>', 'ben@acme.io', 'me@example.com'],
+				['me@example.com']
+			)
+		).toEqual(['ben@acme.io', 'Anna <ANNA@acme.io>']);
+	});
+	it('preserves existing order first and skips blank additions', () => {
+		expect(mergeRecipients(['a@x.io'], ['', '  ', 'b@x.io'])).toEqual([
+			'a@x.io',
+			'b@x.io',
+		]);
 	});
 });
 

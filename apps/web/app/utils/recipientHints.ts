@@ -1,25 +1,30 @@
 /**
  * Pure recipient-field helpers for the Postbox composer:
  *   - external-domain detection (is a recipient outside the user's own
- *     domain(s), treating subdomains as internal), and
- *   - reply-all-gap derivation (who a plain Reply leaves out versus Reply-All).
+ *     domain(s), treating subdomains as internal),
+ *   - reply-all-gap derivation (who a plain Reply leaves out vs Reply-All), and
+ *   - canonical-deduped recipient merging (fold reply-all extras into Cc).
  *
- * Kept framework-free so the composer logic is unit-testable in isolation.
+ * Address parsing (name/address/domain extraction, canonicalization) is
+ * delegated to the shared, better-tested RFC-5322-ish parser in `@owlat/shared`
+ * rather than re-implemented here — only the genuinely new domain-membership and
+ * reply-all logic lives in this module. Kept framework-free so it's unit-testable
+ * in isolation.
  */
+import { extractDomainOrNull, normalizeEmail, parseAddress } from '@owlat/shared';
 
-/** Strip "Name <addr>" framing and lowercase, for compares. */
+/**
+ * Canonical lookup key for a recipient string: the parsed `local@domain`,
+ * lowercased. Strips any `"Name" <addr>` framing. Falls back to a trimmed,
+ * lowercased form when no address can be parsed so dedup still has a stable key.
+ */
 export function canonicalEmailAddress(raw: string): string {
-	const m = raw.match(/<([^>]+)>/);
-	return (m?.[1] ?? raw).trim().toLowerCase();
+	return parseAddress(raw)?.address ?? normalizeEmail(raw);
 }
 
-/** Lowercased domain part of an email, or null if it has none. */
+/** Lowercased domain part of a recipient string, or null if it has none. */
 export function emailDomain(raw: string): string | null {
-	const canon = canonicalEmailAddress(raw);
-	const at = canon.lastIndexOf('@');
-	if (at < 0) return null;
-	const domain = canon.slice(at + 1);
-	return domain.length > 0 ? domain : null;
+	return extractDomainOrNull(raw);
 }
 
 /** True when `candidate` is the same domain as `own` or a subdomain of it. */
@@ -71,25 +76,42 @@ export function deriveReplyAllExtras(
 	source: ReplyAllSource,
 	selfAddresses: readonly string[]
 ): string[] {
-	const seen = new Set<string>([
-		canonicalEmailAddress(source.fromAddress),
-		...selfAddresses.map(canonicalEmailAddress),
+	return mergeRecipients([], [...source.toAddresses, ...source.ccAddresses], [
+		source.fromAddress,
+		...selfAddresses,
 	]);
-	const extras: string[] = [];
-	for (const addr of [...source.toAddresses, ...source.ccAddresses]) {
+}
+
+/**
+ * Append `additions` to `existing`, skipping any address already present in
+ * `existing` or in `exclude` (all compared by canonical key). Order is
+ * preserved and existing entries are kept first. Raw address strings survive so
+ * display framing is not lost. This is the single canonical-dedup merge behind
+ * both reply-all derivation and folding extras into Cc.
+ */
+export function mergeRecipients(
+	existing: readonly string[],
+	additions: readonly string[],
+	exclude: readonly string[] = []
+): string[] {
+	const seen = new Set<string>(
+		[...existing, ...exclude].map(canonicalEmailAddress)
+	);
+	const merged = [...existing];
+	for (const addr of additions) {
 		const canon = canonicalEmailAddress(addr);
 		if (!canon || seen.has(canon)) continue;
 		seen.add(canon);
-		extras.push(addr);
+		merged.push(addr);
 	}
-	return extras;
+	return merged;
 }
 
 /** Best display label for a recipient chip/hint: the name, else the local part. */
 export function recipientLabel(raw: string): string {
-	const named = raw.match(/^\s*"?([^"<]+?)"?\s*</);
-	if (named?.[1]) return named[1].trim();
-	const canon = canonicalEmailAddress(raw);
-	const at = canon.indexOf('@');
-	return at > 0 ? canon.slice(0, at) : canon;
+	const parsed = parseAddress(raw);
+	if (parsed?.name) return parsed.name;
+	const address = parsed?.address ?? normalizeEmail(raw);
+	const at = address.indexOf('@');
+	return at > 0 ? address.slice(0, at) : address;
 }
