@@ -65,3 +65,23 @@ export async function updateTrayBadge(count: number): Promise<void> {
 		console.warn('[desktop] Failed to update tray badge:', e);
 	}
 }
+
+/** One row in the tray quick-peek dropdown (plain text). */
+export interface TrayPeekItem {
+	messageId: string;
+	folderRole: string;
+	title: string;
+}
+
+/**
+ * Replace the tray menu's "quick peek" section with the newest unread messages.
+ * Clicking a row focuses the main window and deep-links to that thread. Pass an
+ * empty array to clear the peek (e.g. inbox is all read).
+ */
+export async function updateTrayPeek(items: TrayPeekItem[]): Promise<void> {
+	try {
+		await invoke('update_tray_peek', { items });
+	} catch (e) {
+		console.warn('[desktop] Failed to update tray peek:', e);
+	}
+}
