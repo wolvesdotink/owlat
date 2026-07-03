@@ -31,6 +31,13 @@ beforeAll(() => {
 	vi.stubGlobal('splitQuotedHtml', splitQuotedHtml);
 	// App theme (Nuxt auto-import) — light path keeps historical behavior.
 	vi.stubGlobal('useAppTheme', () => ({ isDark: ref(false) }));
+	// Offline read cache (Nuxt auto-import) — inert stub so the component mounts;
+	// this suite covers the live render/settle path, not the cache.
+	vi.stubGlobal('usePostboxOfflineCache', () => ({
+		isOffline: ref(false),
+		persistBody: vi.fn(async () => {}),
+		loadBody: vi.fn(async () => null),
+	}));
 });
 
 const iconStub = { props: ['name'], template: '<span />' };

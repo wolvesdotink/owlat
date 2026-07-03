@@ -42,6 +42,9 @@ import type { Id } from '@owlat/api/dataModel';
 const props = defineProps<{
 	message: {
 		_id?: string;
+		/** Owning mailbox — namespaces the offline cache so a different account on
+		 *  a shared device is never served this message's cached body. */
+		mailboxId?: string;
 		htmlBodyInline?: string;
 		textBodyInline?: string;
 		htmlBodyStorageId?: string;
@@ -57,6 +60,25 @@ const emit = defineEmits<{
 }>();
 
 const { isDark } = useAppTheme();
+
+// Offline read cache: persist this message's post-sanitize srcdoc once rendered
+// (so it stays readable without a connection) and, when offline, serve the
+// cached srcdoc if the live body can't be fetched. Best-effort + fail-soft;
+// never stores raw mail — only the sanitized document the iframe already shows.
+const { isOffline, persistBody, loadBody } = usePostboxOfflineCache(
+	() => props.message.mailboxId
+);
+const cachedSrcdoc = ref<string | null>(null);
+watch(
+	() => props.message._id,
+	async (id) => {
+		// Clear synchronously so switching messages never briefly shows the prior
+		// message's cached body while the async load resolves.
+		cachedSrcdoc.value = null;
+		cachedSrcdoc.value = id ? (await loadBody(id))?.srcdoc ?? null : null;
+	},
+	{ immediate: true }
+);
 
 // Scheme requested by the app: dark unless the app is light or the user
 // forced this one message back to light rendering.
@@ -129,7 +151,13 @@ watch(
 // Paragraph-bar skeleton while a blob-stored body loads. Degrades to the
 // normal "(empty message)" iframe if the query errors or the download fails.
 const bodyLoading = computed(
-	() => needsBodyFetch.value && !bodyFetchSettled.value && !bodyError.value
+	() =>
+		needsBodyFetch.value &&
+		!bodyFetchSettled.value &&
+		!bodyError.value &&
+		// Offline with a cached copy: skip the never-resolving skeleton and show
+		// the cached body instead.
+		!(isOffline.value && !!cachedSrcdoc.value)
 );
 
 const effectiveHtml = computed(() => props.message.htmlBodyInline ?? fetchedHtml.value ?? undefined);
@@ -242,6 +270,28 @@ const render = computed<Omit<PostboxRenderEntry, 'height'>>(() => {
 });
 
 const srcdoc = computed(() => render.value.srcdoc);
+
+// Whether the live pipeline actually produced a body (vs an "(empty message)"
+// placeholder while a blob body is still unfetched).
+const hasLiveContent = computed(() => !!(effectiveHtml.value || effectiveText.value));
+
+// The document the iframe renders: the live render when we have real content,
+// otherwise the cached srcdoc (offline/degraded), otherwise the live render.
+const displaySrcdoc = computed(() =>
+	hasLiveContent.value ? srcdoc.value : cachedSrcdoc.value ?? srcdoc.value
+);
+
+// Persist the rendered srcdoc once the body is final and non-empty. Best-effort
+// (LRU-capped, quota-safe); keeps the 50 most-recently-read bodies offline.
+watch(
+	[srcdoc, contentFinal, hasLiveContent],
+	() => {
+		if (contentFinal.value && hasLiveContent.value && props.message._id) {
+			void persistBody(props.message._id, srcdoc.value);
+		}
+	},
+	{ immediate: true }
+);
 // Scheme the iframe actually renders with ("designed" mail stays light —
 // a paper card on the dark app background — even when the app is dark).
 const renderScheme = computed(() => render.value.renderScheme);
@@ -347,7 +397,7 @@ watch([showQuoted, showImages, loadEverything], () => {
 		     colors as a light paper card on the dark app background. -->
 		<iframe
 			ref="iframeRef"
-			:srcdoc="srcdoc"
+			:srcdoc="displaySrcdoc"
 			sandbox=""
 			class="w-full rounded border border-border-subtle"
 			:class="renderScheme === 'dark' ? '' : 'bg-white'"

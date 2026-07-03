@@ -36,6 +36,13 @@ beforeAll(() => {
 	vi.stubGlobal('splitQuotedText', splitQuotedText);
 	vi.stubGlobal('splitQuotedHtml', splitQuotedHtml);
 	vi.stubGlobal('useAppTheme', () => ({ isDark: ref(false) }));
+	// Offline read cache (Nuxt auto-import) — inert stub so the component mounts;
+	// this suite covers the render-cache pipeline, not the offline cache.
+	vi.stubGlobal('usePostboxOfflineCache', () => ({
+		isOffline: ref(false),
+		persistBody: vi.fn(async () => {}),
+		loadBody: vi.fn(async () => null),
+	}));
 });
 
 beforeEach(() => {
