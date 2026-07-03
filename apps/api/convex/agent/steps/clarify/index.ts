@@ -72,8 +72,8 @@ export {
 	buildSlotPrompt,
 	buildCandidatePrompt,
 	buildDivergencePrompt,
-	type ReplySlot,
 } from '../../../inbox/clarificationSlots';
+export type { ReplySlot } from '../../../inbox/clarificationSlots';
 
 export type ClarificationQuestion = Infer<typeof clarificationQuestionValidator>;
 
@@ -114,66 +114,6 @@ export function eagernessForCategory(classification: {
 		return 'cautious';
 	}
 	return 'default';
-}
-
-/**
- * Build the reply-slot extraction prompt. Pure + exported so a unit test can
- * assert the untrusted-data framing without a live model. The inbound thread is
- * untrusted DATA (SYSTEM_GUARD), delimited and never treated as instructions.
- */
-export function buildSlotPrompt(context: string): string {
-	return (
-		`${SYSTEM_GUARD}\n\n` +
-		'You are preparing to reply to the email below on behalf of its recipient. ' +
-		'Identify the SLOTS the reply must fill — the specific pieces of ' +
-		'information the reply has to supply to be a good answer. For each slot ' +
-		'classify:\n' +
-		'- slotType: decision, date_time, price_number, attachment, stance_tone, or factual_lookup\n' +
-		'- question: one focused question to the recipient that would resolve it\n' +
-		'- answerableFromContext: true if the context ALREADY answers it\n' +
-		'- decisionRelevant: true if the answer materially changes the reply\n\n' +
-		'Return an empty list when the email needs no information the recipient ' +
-		'must supply (e.g. a simple acknowledgement).\n\n' +
-		`<untrusted_email_content>\n${context}\n</untrusted_email_content>`
-	);
-}
-
-/**
- * Build a single sampled-candidate-reply prompt. Pure + exported for tests. The
- * inbound thread stays untrusted DATA; we only ask for a brief candidate reply.
- */
-export function buildCandidatePrompt(context: string): string {
-	return (
-		`${SYSTEM_GUARD}\n\n` +
-		'Draft a brief candidate reply to the email below. Commit to concrete ' +
-		'specifics where the email calls for them (a decision, a date, a number). ' +
-		'Keep it short.\n\n' +
-		`<untrusted_email_content>\n${context}\n</untrusted_email_content>`
-	);
-}
-
-/**
- * Build the divergence-judgment prompt. Pure + exported for tests. Both the
- * numbered slots and the sampled candidate replies are untrusted DATA — the
- * model is only comparing them, never following them.
- */
-export function buildDivergencePrompt(slots: ReplySlot[], drafts: string[]): string {
-	const slotList = slots
-		.map((s, i) => `${i}. [${s.slotType}] ${s.question}`)
-		.join('\n');
-	const draftList = drafts
-		.map((d, i) => `<candidate_${i}>\n${d}\n</candidate_${i}>`)
-		.join('\n\n');
-	return (
-		`${SYSTEM_GUARD}\n\n` +
-		'Below are candidate replies that were each drafted independently, and a ' +
-		'numbered list of open slots. For each slot, decide whether the candidate ' +
-		'replies DISAGREE on how to fill it. A slot the candidates fill the same ' +
-		'way (or all leave open the same way) is NOT divergent. Return the ' +
-		'0-based indexes of only the slots the candidates genuinely disagree on.\n\n' +
-		`Slots:\n${slotList}\n\n` +
-		`${draftList}`
-	);
 }
 
 /**
