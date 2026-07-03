@@ -489,7 +489,7 @@ export const sendSingleEmail = internalAction({
 		if (dispatched.result.success) {
 			return {
 				success: true,
-				providerMessageId: dispatched.result.id,
+				providerMessageId: providerKind === 'mta' && idempotencyKey && dispatched.result.id !== idempotencyKey ? idempotencyKey : dispatched.result.id, // MTA-only: keep the VERP token, not a dedup sentinel, so bounce/complaint DSNs resolve by_provider_message_id (Resend/SES keep their own ids)
 				providerType: dispatched.providerType,
 				sendLatencyMs: dispatched.latencyMs,
 			};

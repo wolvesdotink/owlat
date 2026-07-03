@@ -153,7 +153,15 @@ export function createSendHandler(queue: Queue<EmailJob>, redis: Redis) {
 		const wasNew = await redis.set(dedupKey, '1', 'EX', 86400, 'NX'); // TTL: 24h, set-if-not-exists
 		if (!wasNew) {
 			logger.info({ messageId: body.messageId }, 'Duplicate messageId — skipping');
-			return c.json({ success: true, id: 'duplicate', deduplicated: true });
+			// Return the REAL messageId (the VERP token), not a literal "duplicate".
+			// The caller (Convex worker) stores the returned `id` as
+			// `providerMessageId`; the SMTP sender encodes that SAME `messageId` into
+			// the VERP Return-Path. If we returned "duplicate" here, the stored
+			// providerMessageId would never match the VERP token carried by the
+			// already-enqueued message, so every later bounce/complaint webhook would
+			// resolve to send_not_found and the hard-bouncing recipient would never be
+			// suppressed. Echoing body.messageId keeps stored id == VERP token.
+			return c.json({ success: true, id: body.messageId, deduplicated: true });
 		}
 
 		// Build job
