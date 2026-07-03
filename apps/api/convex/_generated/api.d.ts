@@ -15,6 +15,7 @@ import type * as accountDeletionEmail from "../accountDeletionEmail.js";
 import type * as agent_agentPipeline from "../agent/agentPipeline.js";
 import type * as agent_coalescing from "../agent/coalescing.js";
 import type * as agent_knowledgeBackfill from "../agent/knowledgeBackfill.js";
+import type * as agent_outcomeFeedback from "../agent/outcomeFeedback.js";
 import type * as agent_referenceMonitor from "../agent/referenceMonitor.js";
 import type * as agent_shadowScorecard from "../agent/shadowScorecard.js";
 import type * as agent_shadowSimilarity from "../agent/shadowSimilarity.js";
@@ -77,6 +78,7 @@ import type * as automations_triggers_topic_subscribed_index from "../automation
 import type * as automations_triggers_types from "../automations/triggers/types.js";
 import type * as automations_types from "../automations/types.js";
 import type * as autonomy from "../autonomy.js";
+import type * as autonomyOutcome from "../autonomyOutcome.js";
 import type * as autonomySuggestions from "../autonomySuggestions.js";
 import type * as blockedEmails from "../blockedEmails.js";
 import type * as campaigns_abTest from "../campaigns/abTest.js";
@@ -551,6 +553,7 @@ declare const fullApi: ApiFromModules<{
   "agent/agentPipeline": typeof agent_agentPipeline;
   "agent/coalescing": typeof agent_coalescing;
   "agent/knowledgeBackfill": typeof agent_knowledgeBackfill;
+  "agent/outcomeFeedback": typeof agent_outcomeFeedback;
   "agent/referenceMonitor": typeof agent_referenceMonitor;
   "agent/shadowScorecard": typeof agent_shadowScorecard;
   "agent/shadowSimilarity": typeof agent_shadowSimilarity;
@@ -613,6 +616,7 @@ declare const fullApi: ApiFromModules<{
   "automations/triggers/types": typeof automations_triggers_types;
   "automations/types": typeof automations_types;
   autonomy: typeof autonomy;
+  autonomyOutcome: typeof autonomyOutcome;
   autonomySuggestions: typeof autonomySuggestions;
   blockedEmails: typeof blockedEmails;
   "campaigns/abTest": typeof campaigns_abTest;

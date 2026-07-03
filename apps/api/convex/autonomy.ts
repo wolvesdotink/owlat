@@ -8,13 +8,17 @@
  */
 
 import { v } from 'convex/values';
-import { internalQuery, internalMutation, internalAction, type QueryCtx } from './_generated/server';
+import {
+	internalQuery,
+	internalMutation,
+	internalAction,
+	type QueryCtx,
+} from './_generated/server';
 import type { Doc } from './_generated/dataModel';
 import { adminQuery, authedMutation } from './lib/authedFunctions';
 import { requireOrgPermission } from './lib/sessionOrganization';
 import { internal } from './_generated/api';
 import { assertFeatureEnabled, isFeatureEnabled } from './lib/featureFlags';
-
 
 // ============================================================
 // Queries
@@ -62,11 +66,8 @@ export const checkPermissionInternal = internalQuery({
 	},
 	handler: async (
 		ctx,
-		args,
-	): Promise<
-		| { mode: 'disabled' }
-		| { mode: 'enabled'; allowed: boolean; reason?: string }
-	> => {
+		args
+	): Promise<{ mode: 'disabled' } | { mode: 'enabled'; allowed: boolean; reason?: string }> => {
 		const enabled = await isFeatureEnabled(ctx, 'ai.autonomy');
 		if (!enabled) return { mode: 'disabled' };
 
@@ -76,7 +77,11 @@ export const checkPermissionInternal = internalQuery({
 			.first();
 
 		if (!rule || !rule.isEnabled) {
-			return { mode: 'enabled', allowed: false, reason: 'No autonomy rule configured for this category' };
+			return {
+				mode: 'enabled',
+				allowed: false,
+				reason: 'No autonomy rule configured for this category',
+			};
 		}
 
 		if (args.confidence < rule.autoApproveThreshold) {
@@ -90,7 +95,9 @@ export const checkPermissionInternal = internalQuery({
 		const now = Date.now();
 		const oneDayAgo = now - 24 * 60 * 60 * 1000;
 		const currentCount =
-			rule.dailyCountResetAt && rule.dailyCountResetAt > oneDayAgo ? (rule.currentDailyCount ?? 0) : 0;
+			rule.dailyCountResetAt && rule.dailyCountResetAt > oneDayAgo
+				? (rule.currentDailyCount ?? 0)
+				: 0;
 		if (currentCount >= rule.maxDailyAutoActions) {
 			return {
 				mode: 'enabled',
@@ -109,7 +116,11 @@ export const checkPermissionInternal = internalQuery({
 			};
 		}
 
-		return { mode: 'enabled', allowed: true, reason: `Per-category rule for ${args.category} permits auto-approval` };
+		return {
+			mode: 'enabled',
+			allowed: true,
+			reason: `Per-category rule for ${args.category} permits auto-approval`,
+		};
 	},
 });
 
@@ -121,7 +132,7 @@ export const checkPermissionInternal = internalQuery({
 async function loadRecentFeedback(
 	ctx: QueryCtx,
 	category: string,
-	limit?: number,
+	limit?: number
 ): Promise<Doc<'autonomyFeedback'>[]> {
 	return ctx.db
 		.query('autonomyFeedback')
@@ -187,7 +198,10 @@ export const getFeedbackStats = adminQuery({
  */
 export const getFeedbackCountsInternal = internalQuery({
 	args: { since: v.number() },
-	handler: async (ctx, args): Promise<{ approved: number; rejected: number; edited: number; total: number }> => {
+	handler: async (
+		ctx,
+		args
+	): Promise<{ approved: number; rejected: number; edited: number; total: number }> => {
 		const feedback = await ctx.db
 			.query('autonomyFeedback')
 			.withIndex('by_created_at', (q) => q.gte('createdAt', args.since))
@@ -220,7 +234,11 @@ export const upsertRule = authedMutation({
 		isEnabled: v.boolean(),
 	},
 	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'organization:manage', 'Only owners and admins can change autonomy rules');
+		await requireOrgPermission(
+			ctx,
+			'organization:manage',
+			'Only owners and admins can change autonomy rules'
+		);
 		const now = Date.now();
 		const existing = await ctx.db
 			.query('autonomyRules')
@@ -254,7 +272,11 @@ export const upsertRule = authedMutation({
 export const deleteRule = authedMutation({
 	args: { ruleId: v.id('autonomyRules') },
 	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'organization:manage', 'Only owners and admins can delete autonomy rules');
+		await requireOrgPermission(
+			ctx,
+			'organization:manage',
+			'Only owners and admins can delete autonomy rules'
+		);
 		await ctx.db.delete(args.ruleId);
 	},
 });
@@ -273,6 +295,9 @@ export const recordFeedback = internalMutation({
 		agentConfidence: v.number(),
 		userFeedback: v.optional(v.string()),
 		inboundMessageId: v.optional(v.id('inboundMessages')),
+		// Provenance. Defaults to 'human' (a reviewer decision) when omitted.
+		source: v.optional(v.union(v.literal('human'), v.literal('outcome'))),
+		outcomeSignal: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		// Find the rule for this category
@@ -288,6 +313,8 @@ export const recordFeedback = internalMutation({
 			agentConfidence: args.agentConfidence,
 			userFeedback: args.userFeedback,
 			inboundMessageId: args.inboundMessageId,
+			source: args.source,
+			outcomeSignal: args.outcomeSignal,
 			createdAt: Date.now(),
 		});
 	},
@@ -406,10 +433,10 @@ export const adjustThresholds = internalAction({
 			}
 			const rejectionRate = rejections / recentFeedback.length;
 
-			if (rejectionRate > 0.40) {
+			if (rejectionRate > 0.4) {
 				// Tighten threshold: increase by 10% (make it harder to auto-approve).
 				// This is the only automatic threshold move, and it only ever narrows.
-				const newThreshold = Math.min(0.99, rule.autoApproveThreshold + 0.10);
+				const newThreshold = Math.min(0.99, rule.autoApproveThreshold + 0.1);
 				await ctx.runMutation(internal.autonomy.updateThreshold, {
 					ruleId: rule._id,
 					newThreshold,
@@ -418,12 +445,12 @@ export const adjustThresholds = internalAction({
 				await ctx.runMutation(internal.autonomySuggestions.clearGraduationSuggestion, {
 					category: rule.category,
 				});
-			} else if (rejectionRate < 0.10 && recentFeedback.length >= 20) {
+			} else if (rejectionRate < 0.1 && recentFeedback.length >= 20) {
 				// Low rejection rate: do NOT lower the threshold. Record a
 				// graduation suggestion the user must explicitly accept. The
 				// suggested (looser) threshold is computed but only applied on
 				// acceptance.
-				const suggestedThreshold = Math.max(0.50, rule.autoApproveThreshold - 0.05);
+				const suggestedThreshold = Math.max(0.5, rule.autoApproveThreshold - 0.05);
 				// Only bother suggesting if it actually loosens something.
 				if (suggestedThreshold < rule.autoApproveThreshold) {
 					await ctx.runMutation(internal.autonomySuggestions.recordGraduationSuggestion, {

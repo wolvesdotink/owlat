@@ -167,6 +167,10 @@ export const inboxTables = {
 		// a best-guess reply always goes to human review. Never cleared by the
 		// pipeline; a human reviews and sends (or discards) the draft.
 		isAutoSendBlocked: v.optional(v.boolean()),
+		// Set once a human edits the agent draft on the review queue (editDraft).
+		// Used to tell an UNEDITED owner-send of an answered-clarification draft
+		// (a strong positive autonomy outcome) apart from an edited-then-sent one.
+		isDraftEdited: v.optional(v.boolean()),
 		// Error tracking
 		errorMessage: v.optional(v.string()),
 		// Timestamps
@@ -364,7 +368,18 @@ export const inboxTables = {
 		updatedAt: v.number(),
 	}).index('by_category', ['category']),
 
-	// Autonomy Feedback - tracks human corrections for threshold adjustment
+	// Autonomy Feedback - tracks correction/outcome signals for threshold
+	// adjustment. Two sources feed the SAME calibration loop:
+	//   - `human`  : a reviewer's approve / reject / edit on the review queue.
+	//   - `outcome`: a real-world post-send outcome on an AUTO-sent reply
+	//     (an angry reply, a bounce, a complaint → negative; an owner sending
+	//     an answered-clarification draft unedited → positive). Without this,
+	//     the more the agent auto-sends the LESS signal the loop gets, because
+	//     only the shrinking human-reviewed subset was ever measured.
+	// The `action` mapping keeps the downstream cron/circuit-breaker readers
+	// unchanged: a negative outcome maps to `rejected`, a positive to
+	// `approved`. `source`/`outcomeSignal` are optional provenance — absent
+	// rows are legacy human feedback.
 	autonomyFeedback: defineTable({
 		ruleId: v.optional(v.id('autonomyRules')),
 		category: v.string(),
@@ -372,6 +387,12 @@ export const inboxTables = {
 		agentConfidence: v.number(),
 		userFeedback: v.optional(v.string()),
 		inboundMessageId: v.optional(v.id('inboundMessages')),
+		// Provenance. Absent (or 'human') = a reviewer decision; 'outcome' = a
+		// real-world post-send outcome captured by agent/outcomeFeedback.
+		source: v.optional(v.union(v.literal('human'), v.literal('outcome'))),
+		// For `source: 'outcome'` rows, which real-world signal produced it:
+		// 'reply_negative' | 'bounce' | 'complaint' | 'clarification_unedited_send'.
+		outcomeSignal: v.optional(v.string()),
 		createdAt: v.number(),
 	})
 		.index('by_category', ['category'])
