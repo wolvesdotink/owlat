@@ -265,7 +265,7 @@ export const inboxTables = {
 		// human review instead. Set explicitly to `false` to let trusted slices
 		// auto-send for real. Zero send-side risk while on. See
 		// agent/steps/route/index.ts.
-		shadowMode: v.optional(v.boolean()),
+		isShadowMode: v.optional(v.boolean()),
 		// Timestamps
 		createdAt: v.number(),
 		updatedAt: v.number(),
@@ -411,16 +411,16 @@ export const inboxTables = {
 		inboundMessageId: v.id('inboundMessages'),
 		category: v.string(),
 		sender: v.string(),              // normalized sender email (slice key)
-		wouldHaveSent: v.boolean(),      // route would have auto-approved
+		isWouldHaveSent: v.boolean(),    // route would have auto-approved
 		reason: v.string(),              // the route decision's rationale
 		confidence: v.number(),
 		draftQualityScore: v.optional(v.number()),
 		shadowDraft: v.string(),         // draft snapshot at decision time
-		resolved: v.boolean(),           // reconciled against a human action yet?
+		isResolved: v.boolean(),         // reconciled against a human action yet?
 		userAction: v.optional(
 			v.union(v.literal('approved'), v.literal('rejected'), v.literal('edited')),
 		),
-		matched: v.optional(v.boolean()), // would-have-sent AND human approved unedited
+		isMatched: v.optional(v.boolean()), // would-have-sent AND human approved unedited
 		similarity: v.optional(v.number()), // shadowDraft vs. final human draft
 		createdAt: v.number(),
 		resolvedAt: v.optional(v.number()),

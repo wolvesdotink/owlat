@@ -50,14 +50,14 @@ export const GRADUATION_MATCH_RATE = 0.9;
 
 /**
  * Whether shadow mode is active. Shadow is the DEFAULT: an instance with no
- * `agentConfig` row, or one that never set `shadowMode`, observes rather than
- * sends. Only an explicit `shadowMode: false` lets real auto-send proceed.
+ * `agentConfig` row, or one that never set `isShadowMode`, observes rather than
+ * sends. Only an explicit `isShadowMode: false` lets real auto-send proceed.
  */
 export const getShadowMode = internalQuery({
 	args: {},
 	handler: async (ctx): Promise<{ enabled: boolean }> => {
 		const cfg = await ctx.db.query('agentConfig').first();
-		return { enabled: cfg?.shadowMode ?? true };
+		return { enabled: cfg?.isShadowMode ?? true };
 	},
 });
 
@@ -100,11 +100,11 @@ export const recordShadowDecision = internalMutation({
 		if (existing) {
 			// Only refresh an as-yet unreconciled observation; never rewrite one
 			// the human has already been scored against.
-			if (!existing.resolved) {
+			if (!existing.isResolved) {
 				await ctx.db.patch(existing._id, {
 					category: args.category,
 					sender,
-					wouldHaveSent: args.wouldHaveSent,
+					isWouldHaveSent: args.wouldHaveSent,
 					reason: args.reason,
 					confidence: args.confidence,
 					draftQualityScore: args.draftQualityScore,
@@ -119,12 +119,12 @@ export const recordShadowDecision = internalMutation({
 			inboundMessageId: args.inboundMessageId,
 			category: args.category,
 			sender,
-			wouldHaveSent: args.wouldHaveSent,
+			isWouldHaveSent: args.wouldHaveSent,
 			reason: args.reason,
 			confidence: args.confidence,
 			draftQualityScore: args.draftQualityScore,
 			shadowDraft,
-			resolved: false,
+			isResolved: false,
 			createdAt: now,
 		});
 		return null;
@@ -157,7 +157,7 @@ export const reconcileShadowDecision = internalMutation({
 			.query('agentShadowDecisions')
 			.withIndex('by_message', (q) => q.eq('inboundMessageId', args.inboundMessageId))
 			.first();
-		if (!observation || observation.resolved) return null;
+		if (!observation || observation.isResolved) return null;
 
 		// The current draft on the message is what the human approved/edited.
 		const message = await ctx.db.get(args.inboundMessageId);
@@ -168,14 +168,14 @@ export const reconcileShadowDecision = internalMutation({
 		// same draft essentially unedited. An explicit edit is never a match even
 		// if the text stayed close — the human still felt the need to touch it.
 		const matched =
-			observation.wouldHaveSent &&
+			observation.isWouldHaveSent &&
 			args.action === 'approved' &&
 			similarity >= MATCH_SIMILARITY_THRESHOLD;
 
 		await ctx.db.patch(observation._id, {
-			resolved: true,
+			isResolved: true,
 			userAction: args.action,
-			matched,
+			isMatched: matched,
 			similarity,
 			resolvedAt: Date.now(),
 		});
@@ -183,7 +183,7 @@ export const reconcileShadowDecision = internalMutation({
 		await bumpScorecard(ctx, {
 			category: observation.category,
 			sender: observation.sender,
-			wouldHaveSent: observation.wouldHaveSent,
+			wouldHaveSent: observation.isWouldHaveSent,
 			matched,
 		});
 		return null;
@@ -275,7 +275,7 @@ export const getShadowScorecard = adminQuery({
 			? await ctx.db
 					.query('agentShadowScorecard')
 					.withIndex('by_category', (q) => q.eq('category', args.category!))
-					.collect()
+					.collect() // bounded: one row per observed sender in this category
 			: await ctx.db.query('agentShadowScorecard').collect(); // bounded: one row per observed (category, sender) slice
 
 		const slices: ShadowScorecardSlice[] = [];
