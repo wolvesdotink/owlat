@@ -937,6 +937,92 @@ describe('agentPipeline.sendApprovedReply', () => {
 		expect(env.template.subject).toBe('Re: No prefix subject');
 	});
 
+	// ── Autonomous pre-send reference monitor (autonomous: true) ──────────────
+	//
+	// The deterministic monitor runs ONLY on the autonomous send path. A clean
+	// routine reply to the authenticated sender still enqueues; a draft that
+	// would exfiltrate a one-time code fails closed (never enqueued). The
+	// human-review path (autonomous omitted) is unaffected.
+
+	it('autonomous: enqueues a clean routine reply to the authenticated sender', async () => {
+		const t = convexTest(schema, modules);
+		await seedSettings(t);
+
+		let messageId!: Id<'inboundMessages'>;
+		await t.run(async (ctx) => {
+			messageId = await ctx.db.insert('inboundMessages', msgData({
+				from: 'Jane Customer <jane@customer.test>',
+				subject: 'Help with my order',
+				processingStatus: 'approved',
+				draftResponse: 'Hi Jane,\nYour order ships Tuesday.\n\n— Acme',
+				draftSubject: 'Re: Help with my order',
+			}));
+		});
+
+		await t.action(internal.agent.agentPipeline.sendApprovedReply, {
+			inboundMessageId: messageId,
+			autonomous: true,
+		});
+
+		expect(enqueueActionMock).toHaveBeenCalledTimes(1);
+		expect(lastEnqueuedEnvelope().to).toBe('jane@customer.test');
+	});
+
+	it('autonomous: withholds (fails closed, no enqueue) when the draft hands out a one-time code', async () => {
+		const t = convexTest(schema, modules);
+		await seedSettings(t);
+
+		let messageId!: Id<'inboundMessages'>;
+		await t.run(async (ctx) => {
+			messageId = await ctx.db.insert('inboundMessages', msgData({
+				from: 'Jane Customer <jane@customer.test>',
+				subject: 'Access',
+				processingStatus: 'approved',
+				draftResponse: 'Sure — your verification code is 481920, enter it to sign in.',
+				draftSubject: 'Re: Access',
+			}));
+		});
+
+		await t.action(internal.agent.agentPipeline.sendApprovedReply, {
+			inboundMessageId: messageId,
+			autonomous: true,
+		});
+
+		// Reference monitor withheld the unattended send — nothing enqueued, the
+		// message is failed (never sent), and the draft is preserved for review.
+		expect(enqueueActionMock).not.toHaveBeenCalled();
+		await t.run(async (ctx) => {
+			const msg = await ctx.db.get(messageId);
+			expect(msg!.processingStatus).toBe('failed');
+			expect(msg!.errorMessage).toMatch(/reference monitor/i);
+			expect(msg!.draftResponse).toContain('481920'); // draft preserved
+		});
+	});
+
+	it('human-review path: the monitor does NOT run — the same draft still enqueues', async () => {
+		const t = convexTest(schema, modules);
+		await seedSettings(t);
+
+		let messageId!: Id<'inboundMessages'>;
+		await t.run(async (ctx) => {
+			messageId = await ctx.db.insert('inboundMessages', msgData({
+				from: 'Jane Customer <jane@customer.test>',
+				subject: 'Access',
+				processingStatus: 'approved',
+				draftResponse: 'Sure — your verification code is 481920, enter it to sign in.',
+				draftSubject: 'Re: Access',
+			}));
+		});
+
+		// No `autonomous` flag → human-reviewed send → monitor bypassed.
+		await t.action(internal.agent.agentPipeline.sendApprovedReply, {
+			inboundMessageId: messageId,
+		});
+
+		expect(enqueueActionMock).toHaveBeenCalledTimes(1);
+		expect(lastEnqueuedEnvelope().to).toBe('jane@customer.test');
+	});
+
 	it('dispatches a non-email (sms) reply via the channel adapter, not the email path', async () => {
 		const t = convexTest(schema, modules);
 

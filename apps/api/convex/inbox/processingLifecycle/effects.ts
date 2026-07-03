@@ -85,7 +85,7 @@ export async function applyEffects(
 				await ctx.scheduler.runAfter(
 					0,
 					internal.agent.agentPipeline.sendApprovedReply,
-					{ inboundMessageId: effect.inboundMessageId },
+					{ inboundMessageId: effect.inboundMessageId, autonomous: effect.autonomous },
 				);
 				break;
 			}

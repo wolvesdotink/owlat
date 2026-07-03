@@ -29,6 +29,7 @@ import type { Id } from '../../../_generated/dataModel';
 import type { AgentStepModule } from '../types';
 import { detectInjection, INJECTION_CONFIDENCE_THRESHOLD } from '../security_scan/patterns';
 import { detectSecretLeak } from '../../../lib/secretLeakScan';
+import { deriveAuthenticatedRecipient } from '../../referenceMonitor';
 
 /**
  * Draft-quality self-check threaded from the `draft` step. `null`/absent when
@@ -111,6 +112,18 @@ async function assertSafeToAutoSend(
 		return {
 			safe: false,
 			reason: 'Inbound injection guard was unavailable; not auto-sending — routing to human review.',
+		};
+	}
+
+	// RECIPIENT LOCK — the auto-send target is derived SERVER-SIDE from the
+	// authenticated inbound `From`; the model/draft can never supply or redirect
+	// it. If that sender can't be resolved to an address, there is no
+	// authenticated recipient to reply to unattended — fail closed.
+	const recipient = deriveAuthenticatedRecipient(message.from ?? '');
+	if (!recipient) {
+		return {
+			safe: false,
+			reason: 'Could not derive an authenticated recipient from the inbound sender; not auto-sending — routing to human review.',
 		};
 	}
 
