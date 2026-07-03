@@ -56,9 +56,18 @@ export interface PropertyField {
 	options?: { label: string; value: string | number | boolean }[];
 	/** Alignment options for 'align' fields (defaults to left/center/right) */
 	alignOptions?: ('left' | 'center' | 'right' | 'justify' | 'full')[];
-	/** Sub-field schema for 'array' items */
+	/**
+	 * Item kind for primitive 'array' fields whose values are NOT objects.
+	 * - `'string'`   → the array is `string[]` (e.g. list items, table headers).
+	 * - `'string[]'` → the array is `string[][]` (e.g. table rows).
+	 * When set, the array editor uses primitive inputs and appends a primitive
+	 * value on "Add item"; `itemSchema`/`itemDefault` are for OBJECT arrays only
+	 * and must not be combined with `itemType`.
+	 */
+	itemType?: 'string' | 'string[]';
+	/** Sub-field schema for OBJECT 'array' items */
 	itemSchema?: PropertyField[];
-	/** Factory for new array items */
+	/** Factory for new OBJECT array items */
 	itemDefault?: () => Record<string, unknown>;
 	/** Conditional visibility — only show this field when another field matches a value */
 	showWhen?: { key: string; value: unknown };
