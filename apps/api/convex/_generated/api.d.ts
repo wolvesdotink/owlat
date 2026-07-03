@@ -222,6 +222,7 @@ import type * as http from "../http.js";
 import type * as inbox_messages from "../inbox/messages.js";
 import type * as inbox_mutations from "../inbox/mutations.js";
 import type * as inbox_processingLifecycle from "../inbox/processingLifecycle.js";
+import type * as inbox_processingLifecycle_autoSendCancel from "../inbox/processingLifecycle/autoSendCancel.js";
 import type * as inbox_processingLifecycle_effects from "../inbox/processingLifecycle/effects.js";
 import type * as inbox_processingLifecycle_reducers from "../inbox/processingLifecycle/reducers.js";
 import type * as inbox_processingLifecycle_types from "../inbox/processingLifecycle/types.js";
@@ -747,6 +748,7 @@ declare const fullApi: ApiFromModules<{
   "inbox/messages": typeof inbox_messages;
   "inbox/mutations": typeof inbox_mutations;
   "inbox/processingLifecycle": typeof inbox_processingLifecycle;
+  "inbox/processingLifecycle/autoSendCancel": typeof inbox_processingLifecycle_autoSendCancel;
   "inbox/processingLifecycle/effects": typeof inbox_processingLifecycle_effects;
   "inbox/processingLifecycle/reducers": typeof inbox_processingLifecycle_reducers;
   "inbox/processingLifecycle/types": typeof inbox_processingLifecycle_types;
