@@ -37,6 +37,7 @@ import type * as analytics_llmUsage from "../analytics/llmUsage.js";
 import type * as analytics_reporter from "../analytics/reporter.js";
 import type * as analytics_reputationQueries from "../analytics/reputationQueries.js";
 import type * as analytics_sendingReputation from "../analytics/sendingReputation.js";
+import type * as analytics_spendBudget from "../analytics/spendBudget.js";
 import type * as assistant_conversations from "../assistant/conversations.js";
 import type * as assistant_insights from "../assistant/insights.js";
 import type * as assistant_prompt from "../assistant/prompt.js";
@@ -570,6 +571,7 @@ declare const fullApi: ApiFromModules<{
   "analytics/reporter": typeof analytics_reporter;
   "analytics/reputationQueries": typeof analytics_reputationQueries;
   "analytics/sendingReputation": typeof analytics_sendingReputation;
+  "analytics/spendBudget": typeof analytics_spendBudget;
   "assistant/conversations": typeof assistant_conversations;
   "assistant/insights": typeof assistant_insights;
   "assistant/prompt": typeof assistant_prompt;

@@ -86,6 +86,18 @@ export type EnvKey =
 	| 'LLM_COMPLEXITY_ROUTING'
 	| 'OPENAI_API_KEY'
 	| 'OPENROUTER_API_KEY'
+	// Per-org dollar-spend budget for LLM calls (analytics/spendBudget.ts).
+	// Daily / monthly USD ceilings — unset or `0` ⇒ no limit for that period
+	// (the budget gate is a no-op). When a ceiling is hit the autonomous path
+	// degrades to draft-only and advisory AI is paused; nothing drops mail.
+	| 'AI_SPEND_DAILY_BUDGET_USD'
+	| 'AI_SPEND_MONTHLY_BUDGET_USD'
+	// Fraction of a ceiling (0–1] at which to start warning. Default 0.8.
+	| 'AI_SPEND_WARN_FRACTION'
+	// Fraction of a ceiling [0–1) reserved for autonomous drafting: advisory
+	// (user-triggered) AI is paused once remaining headroom drops within it.
+	// Default 0.2.
+	| 'AI_SPEND_ADVISORY_RESERVE_FRACTION'
 	// Analytics & links
 	| 'POSTHOG_API_KEY'
 	| 'POSTHOG_HOST'
