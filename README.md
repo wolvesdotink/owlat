@@ -151,11 +151,11 @@ owlat/
 │   ├── sdk-js/           # JavaScript SDK
 │   └── sdk-java/         # Java SDK
 ├── infra/templates/      # Docker Compose, Caddy, and .env templates
-├── docker-compose.yml    # Base stack (web, api, mta, redis, updater)
+├── docker-compose.yml    # Base stack (web, convex, redis, docker-socket-proxy, updater); mta + others opt-in
 └── scripts/              # setup.sh, backup.sh, restore.sh, owlat CLI
 ```
 
-Self-hosters run `docker compose up -d`, which brings up the base stack (`web`, `api`, `mta`, `redis`, `updater`). Optional services are gated by Docker Compose profiles that are activated automatically when you enable the corresponding feature flag:
+Self-hosters run `docker compose up -d`, which brings up the base stack (`web`, `convex`, `redis`, `docker-socket-proxy`, `updater`). Everything else — including the `mta` mail server — is gated by Docker Compose profiles listed in `COMPOSE_PROFILES` (the default `.env.selfhost.example` ships `COMPOSE_PROFILES=mta`) and activated automatically when you enable the corresponding feature flag:
 
 | Flag | Profile | Service |
 |---|---|---|
