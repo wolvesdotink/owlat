@@ -11,7 +11,7 @@
  */
 
 import { v } from 'convex/values';
-import { internalMutation } from '../_generated/server';
+import { internalMutation, type MutationCtx } from '../_generated/server';
 import { authedMutation } from '../lib/authedFunctions';
 import type { Id } from '../_generated/dataModel';
 import { throwForbidden, throwInvalidInput } from '../_utils/errors';
@@ -44,6 +44,75 @@ export const snooze = authedMutation({
 	},
 });
 
+/**
+ * Snooze a message until the other party replies (Boomerang "snooze until they
+ * reply" parity). The message is hidden exactly like a normal snooze, but
+ * `snoozeUntilReply` is set and `until` is the FALLBACK cap: any inbound reply
+ * into the thread clears the snooze early (mail/delivery.ts → the awaited reply
+ * arrived), otherwise the standard snooze sweep resurfaces it once at the cap.
+ *
+ * Reuses the resurface-on-no-reply idea from mail/followUps.ts, applied to
+ * inbound deferral rather than sent-mail follow-ups.
+ */
+// authz: message → mailbox ownership via loadOwnedMessage; org membership via
+// authedMutation.
+export const snoozeUntilReply = authedMutation({
+	args: {
+		messageId: v.id('mailMessages'),
+		// Fallback cap — resurface by this time even if no reply arrives.
+		capUntil: v.number(),
+	},
+	handler: async (ctx, args) => {
+		const owned = await loadOwnedMessage(ctx, args.messageId);
+		if (!owned.ok) throwForbidden('Message not accessible');
+		if (args.capUntil <= Date.now()) {
+			throwInvalidInput('Snooze cap must be in the future');
+		}
+		const message = owned.message;
+		const alreadySnoozed = isMessageSnoozed(message, Date.now());
+		await ctx.db.patch(args.messageId, {
+			snoozedUntil: args.capUntil,
+			snoozedFromFolderId: message.snoozedFromFolderId ?? message.folderId,
+			snoozeUntilReply: true,
+			updatedAt: Date.now(),
+		});
+		if (!message.flagSeen && !alreadySnoozed) {
+			await adjustFolderUnseen(ctx, message.folderId, -1);
+		}
+	},
+});
+
+/**
+ * Clear any "snooze until they reply" watch on a thread — the awaited reply
+ * landed, so resurface the deferred message(s) immediately. Mirrors
+ * followUps.clearThreadFollowUp and is called from the same inbound-delivery
+ * hook. Fail-soft: a thread with no such watch is a no-op.
+ */
+export async function clearSnoozeUntilReplyForThread(
+	ctx: MutationCtx,
+	threadId: Id<'mailThreads'>,
+	now: number,
+): Promise<void> {
+	const messages = await ctx.db
+		.query('mailMessages')
+		.withIndex('by_thread', (q) => q.eq('threadId', threadId))
+		.collect();
+	for (const m of messages) {
+		if (m.snoozeUntilReply !== true) continue;
+		if (!isMessageSnoozed(m, now)) continue;
+		await ctx.db.patch(m._id, {
+			snoozedUntil: undefined,
+			snoozedFromFolderId: undefined,
+			snoozeUntilReply: undefined,
+			updatedAt: now,
+		});
+		// Returning to its folder re-enters the unread count (see unsnooze).
+		if (!m.flagSeen) {
+			await adjustFolderUnseen(ctx, m.folderId, 1);
+		}
+	}
+}
+
 export const unsnooze = authedMutation({
 	args: { messageId: v.id('mailMessages') },
 	handler: async (ctx, args) => {
@@ -54,6 +123,7 @@ export const unsnooze = authedMutation({
 		await ctx.db.patch(args.messageId, {
 			snoozedUntil: undefined,
 			snoozedFromFolderId: undefined,
+			snoozeUntilReply: undefined,
 			updatedAt: Date.now(),
 		});
 		// Returning to its folder re-enters the unread count.
@@ -85,6 +155,7 @@ export const internalSweep = internalMutation({
 			await ctx.db.patch(m._id, {
 				snoozedUntil: undefined,
 				snoozedFromFolderId: undefined,
+				snoozeUntilReply: undefined,
 				updatedAt: now,
 			});
 			// Re-enter the unread count as the message floats back.

@@ -33,6 +33,7 @@ import { scanContent } from '@owlat/email-scanner';
 import { enqueueNeedsReplyCheck } from './needsReply';
 import { enqueueCategoryCheck } from './category';
 import { clearThreadFollowUp } from './followUps';
+import { clearSnoozeUntilReplyForThread } from './snooze';
 
 const INLINE_BODY_THRESHOLD_BYTES = 64 * 1024;
 
@@ -822,6 +823,9 @@ export const deliverToMailbox = internalMutation({
 		// to Spam/Trash doesn't count as a reply.
 		if (delivered && folder.role !== 'spam' && folder.role !== 'trash') {
 			await clearThreadFollowUp(ctx, delivered.threadId);
+			// Same signal for "snooze until they reply": the awaited reply landed,
+			// so resurface the deferred message(s) now instead of at the cap.
+			await clearSnoozeUntilReplyForThread(ctx, delivered.threadId, Date.now());
 		}
 
 		// 12. Post-delivery hooks — forwarding + vacation auto-reply.
