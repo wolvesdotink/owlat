@@ -151,25 +151,34 @@ resolve_ref() {
 		info "Using requested ref: $OWLAT_REF"
 		return
 	fi
-	# Query the latest published release, but inspect the HTTP status so we can
-	# tell "no releases yet" (404 → the default branch is a fine fallback) apart
-	# from a hard API failure / rate-limit. On a hard failure we must NOT silently
-	# downgrade to bleeding-edge 'main' — fail fast and let the operator pin a ref.
-	local api_url="https://api.github.com/repos/${OWLAT_GH_SLUG}/releases/latest"
+	# Resolve the newest UNIFIED release tag. The repo publishes three release
+	# lines from separate pipelines: the unified `vX.Y.Z` line (server + desktop
+	# + install assets) plus target-only `server-v*` / `desktop-v*` lines. Only
+	# the unified line carries the full install asset set, so we list releases
+	# (newest first) and pick the first bare `vX.Y.Z` tag — ignoring any
+	# `server-v*` / `desktop-v*` tag even if it were mistakenly marked "latest".
+	# Inspect the HTTP status so we can tell "no releases yet" (fall back to the
+	# default branch) apart from a hard API failure / rate-limit. On a hard
+	# failure we must NOT silently downgrade to bleeding-edge 'main' — fail fast
+	# and let the operator pin a ref.
+	local api_url="https://api.github.com/repos/${OWLAT_GH_SLUG}/releases?per_page=30"
 	local response http_code latest
 	response=$(curl -sSL --max-time 10 -w $'\n%{http_code}' "$api_url" 2>/dev/null) || response=$'\n000'
 	http_code="${response##*$'\n'}"
+	# Match only bare `vX.Y.Z` tags (optionally with a -pre suffix); the leading
+	# `v` distinguishes them from the `server-`/`desktop-` prefixed lines.
 	latest=$(printf '%s' "${response%$'\n'*}" \
-		| sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
+		| grep -oE '"tag_name"[[:space:]]*:[[:space:]]*"v[0-9]+\.[0-9]+\.[0-9]+[^"]*"' \
+		| sed -n 's/.*"\(v[0-9][^"]*\)"/\1/p' | head -1)
 
 	if [[ -n "$latest" ]]; then
 		OWLAT_REF="$latest"
 		info "Installing latest release: $OWLAT_REF"
-	elif [[ "$http_code" == "404" ]]; then
-		# Repo reachable but no release published yet — the default branch is the
-		# only sensible target.
+	elif [[ "$http_code" == "200" || "$http_code" == "404" ]]; then
+		# Repo reachable but no unified release published yet — the default branch
+		# is the only sensible target.
 		OWLAT_REF="main"
-		warn "No published release found (HTTP 404) — falling back to the default branch 'main'."
+		warn "No published vX.Y.Z release found (HTTP ${http_code}) — falling back to the default branch 'main'."
 		warn "Pin a specific version with: OWLAT_REF=v1.2.3 curl … | bash"
 	else
 		die "Could not resolve a release from the GitHub API (HTTP ${http_code}) for ${OWLAT_GH_SLUG}.
