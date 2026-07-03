@@ -5,6 +5,7 @@ import type { ReplyQuoteTarget } from '~/composables/postbox/usePostboxQuotedTex
 import {
 	replyQueueHeadline,
 	formatReplyQueueDueHint,
+	replyQueueSection,
 	type ReplyQueueItem,
 } from '~/utils/postboxReplyQueue';
 import { formatThreadTimestamp } from '~/composables/postbox/usePostboxThreads';
@@ -30,6 +31,15 @@ type QueueRow = ReplyQueueItem & { _id: string };
 const rows = computed<QueueRow[]>(() => items.value.map((i) => ({ ...i, _id: i.threadId })));
 const { visible: visibleRows, hide: hideRow, unhide: unhideRow } = usePostboxOptimisticHide(rows);
 
+// Split the queue: threads with an open/answered clarification render as
+// "Needs your input" cards; everything else keeps the plain "Needs you" rows.
+const needsInputRows = computed<QueueRow[]>(() =>
+	visibleRows.value.filter((r) => replyQueueSection(r) === 'needs_input')
+);
+const needsYouRows = computed<QueueRow[]>(() =>
+	visibleRows.value.filter((r) => replyQueueSection(r) === 'needs_you')
+);
+
 const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 const aiEnabled = computed(() => isFeatureEnabled('ai'));
 
@@ -45,6 +55,33 @@ const suggestOp = useBackendOperation(api.mail.ai.suggestReplies, {
 	label: 'Draft reply',
 	type: 'action',
 });
+const answerOp = useBackendOperation(api.mail.needsReplyClarify.answerClarification, {
+	label: 'Answer',
+});
+
+// Which clarification card is submitting its answer (disables its Answer button).
+const answeringThreadId = ref<string | null>(null);
+
+/** Submit the owner's clarification answers; the server generates the starter
+ * reply and the live subscription flips the card to "Draft ready". */
+async function submitClarification(
+	row: QueueRow,
+	answers: { questionId: string; value: string }[]
+) {
+	if (answeringThreadId.value) return;
+	answeringThreadId.value = row.threadId;
+	try {
+		await answerOp.run({ threadId: row.threadId as Id<'mailThreads'>, answers });
+	} finally {
+		answeringThreadId.value = null;
+	}
+}
+
+/** "Open draft" on a ready clarification card — open the composer prefilled
+ * with the generated starter reply over the quoted original. */
+async function openClarificationDraft(row: QueueRow, draft: string) {
+	await openReplyComposer(row, draft);
+}
 
 /** Manual "Done" — clear the flag; the row hides instantly, restored on failure.
  * Follow-up rows ("You're waiting on…") dismiss their reminder watch instead. */
@@ -138,7 +175,7 @@ const {
 	activeId: activeRowId,
 	onKeydown: onListKeydown,
 } = usePostboxListKeyboard({
-	items: visibleRows,
+	items: needsYouRows,
 	resetKey: computed(() => props.mailboxId),
 	rowDomId: (row) => `reply-queue-row-${row._id}`,
 	onActivate: (row) => openRow(row),
@@ -168,116 +205,152 @@ const URGENCY_LABEL: Record<string, string> = { high: 'Urgent', low: 'Low priori
 		title="All caught up"
 		hint="Nothing is waiting on your reply."
 	/>
-	<ul
-		v-else
-		tabindex="0"
-		role="listbox"
-		aria-label="Reply queue"
-		:aria-activedescendant="activeRowId"
-		class="divide-y divide-border-subtle outline-none focus-visible:ring-1 focus-visible:ring-brand/40 focus-visible:ring-inset"
-		@keydown="onListKeydown"
-	>
-		<li v-for="(row, i) in visibleRows" :key="row._id" class="group relative">
-			<div
-				:id="`reply-queue-row-${row._id}`"
-				role="option"
-				:aria-selected="focusedIndex === i"
-				class="flex items-start gap-3 px-4 py-3 hover:bg-bg-elevated cursor-pointer"
-				:class="{ 'ring-1 ring-inset ring-brand/50': focusedIndex === i }"
-				@click="openRow(row)"
+	<div v-else>
+		<!-- "Needs your input" — clarification cards answerable in one tap. -->
+		<section v-if="needsInputRows.length > 0" data-testid="needs-input-section">
+			<h3
+				v-if="needsYouRows.length > 0"
+				class="px-4 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-text-tertiary"
 			>
-				<UiAvatar
-					:name="row.fromName"
-					:email="row.fromAddress"
-					deterministic-color
-					size="sm"
-					class="flex-shrink-0 mt-0.5"
-					aria-hidden="true"
-				/>
-				<div class="flex-1 min-w-0">
-					<div class="flex items-baseline justify-between gap-3">
-						<span class="truncate text-sm text-text-secondary">
-							{{ row.fromName || row.fromAddress }}
-						</span>
-						<span class="text-xs text-text-tertiary flex-shrink-0">
-							{{ formatThreadTimestamp(row.receivedAt) }}
-						</span>
-					</div>
-					<div class="flex items-center gap-1.5 mt-0.5">
-						<span
-							v-if="row.kind === 'followup'"
-							class="flex-shrink-0 inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide px-1.5 py-px rounded-full bg-brand/10 text-brand"
-						>
-							<Icon name="lucide:alarm-clock" class="w-3 h-3" />
-							Follow-up
-						</span>
-						<span
-							v-if="row.urgency !== 'normal'"
-							class="flex-shrink-0 text-[10px] font-medium uppercase tracking-wide px-1.5 py-px rounded-full"
-							:class="row.urgency === 'high' ? 'bg-error/10 text-error' : 'bg-bg-elevated text-text-tertiary'"
-						>{{ URGENCY_LABEL[row.urgency] }}</span>
-						<p class="truncate text-sm font-medium text-text-primary flex-1">
-							{{ replyQueueHeadline(row) }}
-						</p>
-						<span
-							v-if="formatReplyQueueDueHint(row.dueHint)"
-							class="flex-shrink-0 text-[10px] font-medium px-1.5 py-px rounded-full bg-warning/10 text-warning"
-						>{{ formatReplyQueueDueHint(row.dueHint) }}</span>
-					</div>
-					<p class="text-xs text-text-tertiary truncate mt-0.5">{{ row.snippet }}</p>
-				</div>
-			</div>
-			<!-- Hover / focus actions -->
-			<div
-				class="absolute right-3 top-1/2 -translate-y-1/2 hidden group-hover:flex group-focus-within:flex items-center gap-0.5 bg-bg-elevated/95 rounded px-1 py-0.5 shadow-sm border border-border-subtle"
-			>
-				<button
-					v-if="aiEnabled && row.kind !== 'followup'"
-					type="button"
-					class="inline-flex items-center gap-1 px-1.5 py-1 rounded text-xs hover:bg-bg-surface text-text-tertiary hover:text-text-primary disabled:opacity-50"
-					title="Draft reply"
-					aria-label="Draft reply"
-					:disabled="draftingThreadId !== null"
-					@click.stop.prevent="draftReply(row)"
-				>
-					<Icon
-						:name="draftingThreadId === row.threadId ? 'lucide:loader-2' : 'lucide:wand-2'"
-						class="w-4 h-4"
-						:class="{ 'animate-spin': draftingThreadId === row.threadId }"
+				Needs your input
+			</h3>
+			<ul class="divide-y divide-border-subtle">
+				<li v-for="row in needsInputRows" :key="row._id">
+					<PostboxClarificationCard
+						:item="row"
+						:submitting="answeringThreadId === row.threadId"
+						@answer="(answers) => submitClarification(row, answers)"
+						@open-draft="(draft) => openClarificationDraft(row, draft)"
+						@open="openRow(row)"
+						@done="markDone(row)"
 					/>
-				</button>
-				<button
-					v-else-if="row.kind !== 'followup'"
-					type="button"
-					class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-text-primary"
-					title="Reply"
-					aria-label="Reply"
-					@click.stop.prevent="draftReply(row)"
+				</li>
+			</ul>
+		</section>
+
+		<h3
+			v-if="needsInputRows.length > 0 && needsYouRows.length > 0"
+			class="px-4 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-text-tertiary"
+		>
+			Needs you
+		</h3>
+		<ul
+			v-if="needsYouRows.length > 0"
+			tabindex="0"
+			role="listbox"
+			aria-label="Reply queue"
+			:aria-activedescendant="activeRowId"
+			class="divide-y divide-border-subtle outline-none focus-visible:ring-1 focus-visible:ring-brand/40 focus-visible:ring-inset"
+			@keydown="onListKeydown"
+		>
+			<li v-for="(row, i) in needsYouRows" :key="row._id" class="group relative">
+				<div
+					:id="`reply-queue-row-${row._id}`"
+					role="option"
+					:aria-selected="focusedIndex === i"
+					class="flex items-start gap-3 px-4 py-3 hover:bg-bg-elevated cursor-pointer"
+					:class="{ 'ring-1 ring-inset ring-brand/50': focusedIndex === i }"
+					@click="openRow(row)"
 				>
-					<Icon name="lucide:reply" class="w-4 h-4" />
-				</button>
-				<button
-					type="button"
-					class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-text-primary"
-					title="Snooze"
-					aria-label="Snooze"
-					@click.stop.prevent="openSnooze(row)"
+					<UiAvatar
+						:name="row.fromName"
+						:email="row.fromAddress"
+						deterministic-color
+						size="sm"
+						class="flex-shrink-0 mt-0.5"
+						aria-hidden="true"
+					/>
+					<div class="flex-1 min-w-0">
+						<div class="flex items-baseline justify-between gap-3">
+							<span class="truncate text-sm text-text-secondary">
+								{{ row.fromName || row.fromAddress }}
+							</span>
+							<span class="text-xs text-text-tertiary flex-shrink-0">
+								{{ formatThreadTimestamp(row.receivedAt) }}
+							</span>
+						</div>
+						<div class="flex items-center gap-1.5 mt-0.5">
+							<span
+								v-if="row.kind === 'followup'"
+								class="flex-shrink-0 inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide px-1.5 py-px rounded-full bg-brand/10 text-brand"
+							>
+								<Icon name="lucide:alarm-clock" class="w-3 h-3" />
+								Follow-up
+							</span>
+							<span
+								v-if="row.urgency !== 'normal'"
+								class="flex-shrink-0 text-[10px] font-medium uppercase tracking-wide px-1.5 py-px rounded-full"
+								:class="
+									row.urgency === 'high'
+										? 'bg-error/10 text-error'
+										: 'bg-bg-elevated text-text-tertiary'
+								"
+								>{{ URGENCY_LABEL[row.urgency] }}</span
+							>
+							<p class="truncate text-sm font-medium text-text-primary flex-1">
+								{{ replyQueueHeadline(row) }}
+							</p>
+							<span
+								v-if="formatReplyQueueDueHint(row.dueHint)"
+								class="flex-shrink-0 text-[10px] font-medium px-1.5 py-px rounded-full bg-warning/10 text-warning"
+								>{{ formatReplyQueueDueHint(row.dueHint) }}</span
+							>
+						</div>
+						<p class="text-xs text-text-tertiary truncate mt-0.5">{{ row.snippet }}</p>
+					</div>
+				</div>
+				<!-- Hover / focus actions -->
+				<div
+					class="absolute right-3 top-1/2 -translate-y-1/2 hidden group-hover:flex group-focus-within:flex items-center gap-0.5 bg-bg-elevated/95 rounded px-1 py-0.5 shadow-sm border border-border-subtle"
 				>
-					<Icon name="lucide:clock" class="w-4 h-4" />
-				</button>
-				<button
-					type="button"
-					class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-success"
-					title="Done — clear from queue"
-					aria-label="Done"
-					data-testid="reply-queue-done"
-					@click.stop.prevent="markDone(row)"
-				>
-					<Icon name="lucide:check" class="w-4 h-4" />
-				</button>
-			</div>
-		</li>
-	</ul>
+					<button
+						v-if="aiEnabled && row.kind !== 'followup'"
+						type="button"
+						class="inline-flex items-center gap-1 px-1.5 py-1 rounded text-xs hover:bg-bg-surface text-text-tertiary hover:text-text-primary disabled:opacity-50"
+						title="Draft reply"
+						aria-label="Draft reply"
+						:disabled="draftingThreadId !== null"
+						@click.stop.prevent="draftReply(row)"
+					>
+						<Icon
+							:name="draftingThreadId === row.threadId ? 'lucide:loader-2' : 'lucide:wand-2'"
+							class="w-4 h-4"
+							:class="{ 'animate-spin': draftingThreadId === row.threadId }"
+						/>
+					</button>
+					<button
+						v-else-if="row.kind !== 'followup'"
+						type="button"
+						class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-text-primary"
+						title="Reply"
+						aria-label="Reply"
+						@click.stop.prevent="draftReply(row)"
+					>
+						<Icon name="lucide:reply" class="w-4 h-4" />
+					</button>
+					<button
+						type="button"
+						class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-text-primary"
+						title="Snooze"
+						aria-label="Snooze"
+						@click.stop.prevent="openSnooze(row)"
+					>
+						<Icon name="lucide:clock" class="w-4 h-4" />
+					</button>
+					<button
+						type="button"
+						class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-success"
+						title="Done — clear from queue"
+						aria-label="Done"
+						data-testid="reply-queue-done"
+						@click.stop.prevent="markDone(row)"
+					>
+						<Icon name="lucide:check" class="w-4 h-4" />
+					</button>
+				</div>
+			</li>
+		</ul>
+	</div>
 
 	<PostboxSnoozeDialog
 		:open="snoozeOpen"
