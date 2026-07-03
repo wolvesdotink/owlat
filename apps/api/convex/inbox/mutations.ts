@@ -39,6 +39,15 @@ async function recordAutonomyFeedback(
 		userFeedback,
 		inboundMessageId: message._id,
 	});
+
+	// Reconcile any pending shadow ("would-have-sent") observation for this
+	// message against the human's decision, feeding the graduation scorecard.
+	// A no-op when the message was never observed in shadow mode. Best-effort:
+	// scorecard bookkeeping must never affect the human action.
+	await ctx.runMutation(internal.agent.shadowScorecard.reconcileShadowDecision, {
+		inboundMessageId: message._id,
+		action,
+	});
 }
 
 /**
