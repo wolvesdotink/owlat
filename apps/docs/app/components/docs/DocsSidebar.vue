@@ -114,6 +114,8 @@ const sidebarConfig: SidebarGroup[] = [
 		items: [
 			{ label: 'Postbox', to: '/guide/postbox' },
 			{ label: 'Reply Queue', to: '/guide/reply-queue' },
+			{ label: 'Smart Inbox', to: '/guide/smart-inbox' },
+			{ label: 'Postbox Settings', to: '/guide/postbox-settings' },
 			{ label: 'Migrate from Google', to: '/guide/migrate-from-google' },
 			{ label: 'Connect External Mailbox', to: '/guide/postbox#connect-an-external-mailbox' },
 		],
