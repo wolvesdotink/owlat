@@ -15,7 +15,7 @@ import { itemToBlock, type BlockModule, type Placement } from '../_module';
 import { toPixelWidth } from '../../helpers/dimensions';
 import { gradientToCssOrEmpty } from '../../helpers/gradient';
 import { msoVmlBackground, msoVmlBackgroundClose } from '../../outlook';
-import { escapeCssUrl } from '../../sanitize';
+import { escapeCss, escapeCssUrl } from '../../sanitize';
 import { backgroundImageCss } from '../../helpers/inline-styles';
 import { checkShape, checkGradientStopLimit, isString, isNumber, isArray, isObject, isOneOf } from '../../helpers/validation';
 
@@ -61,9 +61,9 @@ const renderNested = (
 		.join('');
 
 	const hasBorder = borderWidth > 0 && borderStyle !== 'none';
-	const borderCss = hasBorder ? `border:${borderWidth}px ${borderStyle} ${borderColor};` : '';
-	const bgCss = bgColor !== 'transparent' ? `background-color:${bgColor};` : '';
-	const gradientCss = gradientToCssOrEmpty(content.backgroundGradient);
+	const borderCss = hasBorder ? `border:${borderWidth}px ${borderStyle} ${escapeCss(borderColor)};` : '';
+	const bgCss = bgColor !== 'transparent' ? `background-color:${escapeCss(bgColor)};` : '';
+	const gradientCss = escapeCss(gradientToCssOrEmpty(content.backgroundGradient));
 	const radiusCss = borderRadius > 0 ? `border-radius:${borderRadius}px;` : '';
 	const padding = `padding:${paddingTop}px ${paddingRight}px ${paddingBottom}px ${paddingLeft}px`;
 
@@ -129,7 +129,7 @@ export const containerModule: BlockModule<'container'> = {
 	},
 
 	amp({ content, walk }) {
-		const style = content.backgroundColor ? `background-color:${content.backgroundColor};` : '';
+		const style = content.backgroundColor ? `background-color:${escapeCss(content.backgroundColor)};` : '';
 		const itemsHtml = content.items.map((item) =>
 			walk(itemToBlock(item))
 		).join('\n');

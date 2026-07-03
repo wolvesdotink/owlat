@@ -6,8 +6,12 @@ import { renderEmailHtml } from '../../renderer';
 import type {
 	ButtonBlockContent,
 	CarouselBlockContent,
+	DividerBlockContent,
 	EditorBlock,
 	ListBlockContent,
+	ProgressBarBlockContent,
+	TableBlockContent,
+	TextBlockContent,
 	VideoBlockContent,
 } from '@owlat/shared';
 import type { RenderArgs, RenderContext } from '../../blocks/_module';
@@ -37,6 +41,9 @@ const renderListContent = (content: ListBlockContent): string => {
  *   - list.ts          — iconUrl (URL → src attribute)
  *   - video.ts         — thumbnailUrl, alt, videoUrl (URL/text → attributes)
  *   - carousel.ts      — img.linkUrl, img.src, img.alt, img.thumbnailSrc
+ *   - style / VML      — color / font-family / border-color / width fields
+ *                        interpolated into `style="…"` values and VML
+ *                        `fillcolor=`/`strokecolor=` attributes
  *
  * Each test feeds a payload that would break out of its context and asserts
  * the renderer escapes / sanitises rather than emitting the literal payload.
@@ -45,6 +52,9 @@ const renderListContent = (content: ListBlockContent): string => {
 const XSS_TEXT = '<script>alert(1)</script>';
 const XSS_ATTR = '" onerror="alert(1)';
 const XSS_PROTOCOL = 'javascript:alert(1)';
+// A colour / style value that closes the enclosing double-quoted attribute
+// and injects an event handler if interpolated raw.
+const XSS_STYLE = 'red" onload="alert(1)';
 
 describe('XSS: button block', () => {
 	const baseButton: ButtonBlockContent = {
@@ -215,5 +225,169 @@ describe('XSS: carousel block', () => {
 			{ inlineCss: false }
 		);
 		expect(html).not.toContain('javascript:');
+	});
+});
+
+/**
+ * Style-value / VML-attribute breakout. Colour, font-family, border-color and
+ * width fields are interpolated into `style="…"` values and VML colour
+ * attributes. A `"` in any of them would previously close the attribute and
+ * inject an event handler into the outbound / View-in-Browser HTML.
+ *
+ * `no attribute breakout` == the escaped output never contains the literal
+ * sequence that would end one double-quoted attribute and open an event
+ * handler (`" onload="` / `" onerror="`).
+ */
+const noAttributeBreakout = (html: string): void => {
+	expect(html).not.toContain('" onload="');
+	expect(html).not.toContain('" onerror="');
+};
+
+const renderBlock = (block: EditorBlock): string =>
+	renderEmailHtml([block], { inlineCss: false });
+
+describe('XSS: style / VML colour & font fields', () => {
+	it('escapes a breakout colour in the button VML fillcolor + inline style', () => {
+		const html = renderButtonContent({
+			text: 'go',
+			url: 'https://example.com',
+			backgroundColor: XSS_STYLE,
+			textColor: XSS_STYLE,
+			buttonBorderWidth: 2,
+			buttonBorderColor: XSS_STYLE,
+			buttonBorderStyle: 'solid',
+			fontFamily: XSS_STYLE,
+			align: 'center',
+			borderRadius: 4,
+			paddingX: 24,
+			paddingY: 12,
+		} as ButtonBlockContent);
+		noAttributeBreakout(html);
+		// The VML branch (Outlook) carries fillcolor / strokecolor.
+		const msoBranch = html.split('<!--[if !mso]>')[0]!;
+		expect(msoBranch).toContain('fillcolor=');
+		noAttributeBreakout(msoBranch);
+		// The escaped payload keeps the quotes encoded, so no raw `"` remains to
+		// terminate the fillcolor / style attribute.
+		expect(msoBranch).toContain('&quot;');
+	});
+
+	it('escapes a breakout colour in the button VML gradient fill', () => {
+		const html = renderButtonContent({
+			text: 'go',
+			url: 'https://example.com',
+			backgroundColor: '#007bff',
+			textColor: '#ffffff',
+			align: 'center',
+			borderRadius: 4,
+			paddingX: 24,
+			paddingY: 12,
+			backgroundGradient: {
+				type: 'linear',
+				angle: 180,
+				stops: [
+					{ color: XSS_STYLE, position: 0 },
+					{ color: '#00ff00', position: 100 },
+				],
+			},
+		} as ButtonBlockContent);
+		const msoBranch = html.split('<!--[if !mso]>')[0]!;
+		expect(msoBranch).toContain('v:fill');
+		noAttributeBreakout(msoBranch);
+	});
+
+	it('escapes a breakout colour / font in the text block style', () => {
+		const html = renderBlock({
+			id: 't',
+			type: 'text',
+			content: {
+				html: '<p>hi</p>',
+				blockType: 'paragraph',
+				fontSize: 16,
+				textColor: XSS_STYLE,
+				fontFamily: XSS_STYLE,
+			} as TextBlockContent,
+		});
+		noAttributeBreakout(html);
+		// Non-vacuous: the field rendered, with the quote entity-encoded.
+		expect(html).toContain('red&quot;');
+	});
+
+	it('escapes a breakout colour in the divider style', () => {
+		const html = renderBlock({
+			id: 'd',
+			type: 'divider',
+			content: {
+				color: XSS_STYLE,
+				thickness: 1,
+				width: 100,
+				style: 'solid',
+			} as DividerBlockContent,
+		});
+		noAttributeBreakout(html);
+		expect(html).toContain('red&quot;');
+	});
+
+	it('escapes a breakout colour in the progress-bar style', () => {
+		const html = renderBlock({
+			id: 'p',
+			type: 'progressBar',
+			content: {
+				value: 50,
+				maxValue: 100,
+				barColor: XSS_STYLE,
+				trackColor: XSS_STYLE,
+			} as ProgressBarBlockContent,
+		});
+		noAttributeBreakout(html);
+		expect(html).toContain('red&quot;');
+	});
+
+	it('escapes a breakout colour in the table border / header style', () => {
+		const html = renderBlock({
+			id: 'tbl',
+			type: 'table',
+			content: {
+				headers: ['a', 'b'],
+				rows: [['1', '2']],
+				borderColor: XSS_STYLE,
+				headerBackgroundColor: XSS_STYLE,
+				headerTextColor: XSS_STYLE,
+			} as TableBlockContent,
+		});
+		noAttributeBreakout(html);
+		expect(html).toContain('red&quot;');
+	});
+
+	it('does not throw when newly-escaped optional style fields are omitted', () => {
+		// Regression: escapeCss(content.textColor) is called unconditionally, so
+		// rendering a text block whose optional colour/font fields are absent at
+		// runtime must not throw (escapeCss must tolerate undefined/null).
+		expect(() =>
+			renderBlock({
+				id: 't-min',
+				type: 'text',
+				content: {
+					html: '<p>hi</p>',
+					blockType: 'paragraph',
+					fontSize: 16,
+					// textColor / fontFamily intentionally omitted
+				} as unknown as TextBlockContent,
+			}),
+		).not.toThrow();
+	});
+
+	it('leaves a benign colour untouched in the divider style', () => {
+		const html = renderBlock({
+			id: 'd2',
+			type: 'divider',
+			content: {
+				color: '#282D3A',
+				thickness: 1,
+				width: 100,
+				style: 'solid',
+			} as DividerBlockContent,
+		});
+		expect(html).toContain('#282D3A');
 	});
 });

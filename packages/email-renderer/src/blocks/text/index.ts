@@ -11,7 +11,7 @@ import { fullSupport, type TextBlockContent } from '@owlat/shared';
 import type { BlockModule, Placement } from '../_module';
 import { transformHtmlLinks } from '../../helpers/linkTransform';
 import { stripHtml, extractLinks } from '../../helpers/text';
-import { escapeAttr, sanitizeRawHtml } from '../../sanitize';
+import { escapeAttr, escapeCss, sanitizeRawHtml } from '../../sanitize';
 import { checkShape, isString, isNumber, isOneOf } from '../../helpers/validation';
 
 const TEXT_BLOCK_TYPES = ['paragraph', 'h1', 'h2', 'h3'] as const;
@@ -26,7 +26,7 @@ const baseStyles = (content: TextBlockContent, includeMsoRule: boolean, alignAll
 	const lineHeight = content.lineHeight ?? 1.5;
 	const styles: string[] = [
 		`font-size:${content.fontSize}px`,
-		`color:${content.textColor}`,
+		`color:${escapeCss(content.textColor)}`,
 		`line-height:${lineHeight}`,
 	];
 	if (includeMsoRule) styles.push('mso-line-height-rule:exactly');
@@ -35,7 +35,7 @@ const baseStyles = (content: TextBlockContent, includeMsoRule: boolean, alignAll
 	if (alignAllValues ? !!content.textAlign : !!(content.textAlign && content.textAlign !== 'left')) {
 		styles.push(`text-align:${content.textAlign}`);
 	}
-	if (content.fontFamily) styles.push(`font-family:${content.fontFamily}`);
+	if (content.fontFamily) styles.push(`font-family:${escapeCss(content.fontFamily)}`);
 	if (content.fontWeight) styles.push(`font-weight:${content.fontWeight}`);
 	if (content.letterSpacing) styles.push(`letter-spacing:${content.letterSpacing}px`);
 	if (content.textTransform && content.textTransform !== 'none') styles.push(`text-transform:${content.textTransform}`);

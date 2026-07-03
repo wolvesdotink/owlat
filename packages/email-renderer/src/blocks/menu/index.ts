@@ -13,7 +13,7 @@
 import { fullSupport, type MenuBlockContent } from '@owlat/shared';
 import type { BlockModule, Placement } from '../_module';
 import type { RenderContext } from '../../types';
-import { escapeHtml, escapeAttr, sanitizeUrl } from '../../sanitize';
+import { escapeHtml, escapeAttr, escapeCss, sanitizeUrl } from '../../sanitize';
 import { transformUrl } from '../../helpers/linkTransform';
 import { checkShape, isString, isArray, isObject, isOneOf } from '../../helpers/validation';
 
@@ -27,9 +27,9 @@ export const renderMenuContent = (content: MenuBlockContent, ctx: RenderContext)
 	if (!content.items || content.items.length === 0) return '';
 
 	const fontSize = content.fontSize || 14;
-	const fontFamily = content.fontFamily || ctx.theme.fontFamily;
+	const fontFamily = escapeCss(content.fontFamily || ctx.theme.fontFamily);
 	const fontWeight = content.fontWeight || 400;
-	const textColor = content.textColor || ctx.theme.bodyTextColor || '#333333';
+	const textColor = escapeCss(content.textColor || ctx.theme.bodyTextColor || '#333333');
 	const textTransform = content.textTransform && content.textTransform !== 'none'
 		? `text-transform:${content.textTransform};`
 		: '';
@@ -43,7 +43,7 @@ export const renderMenuContent = (content: MenuBlockContent, ctx: RenderContext)
 	const cells = content.items.map((item, idx) => {
 		const parts: string[] = [];
 		if (idx > 0 && separator) {
-			parts.push(`<td style="padding:0 ${halfSpacing}px;color:${separatorColor};font-size:${fontSize}px;font-family:${fontFamily}">${escapeHtml(separator)}</td>`);
+			parts.push(`<td style="padding:0 ${halfSpacing}px;color:${escapeCss(separatorColor)};font-size:${fontSize}px;font-family:${fontFamily}">${escapeHtml(separator)}</td>`);
 		}
 		const paddingStyle = `padding:0 ${halfSpacing}px`;
 		const safeUrl = escapeAttr(sanitizeUrl(item.url));

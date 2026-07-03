@@ -38,7 +38,7 @@ export type { ClientSimulator } from './simulators';
 export type { RenderOptions, RenderContext, TargetClient, ValidationLevel, EmailHealthScore, EmailHealthRecommendation, GmailAnnotations } from './types';
 export type { EmailAnalysis, EmailSizeBreakdown, OptimizationSuggestion } from './analyzer';
 export type { ValidationIssue, ValidateOptions } from './validator';
-export { escapeHtml, escapeAttr, sanitizeUrl, sanitizeCss, sanitizeRawHtml } from './sanitize';
+export { escapeHtml, escapeAttr, escapeCss, sanitizeUrl, sanitizeCss, sanitizeRawHtml } from './sanitize';
 
 // Compatibility — per-block data owned by Block modules, surfaced via the
 // Compatibility walker. Plugin extension points (registerEmailClient,

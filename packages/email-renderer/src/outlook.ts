@@ -1,3 +1,5 @@
+import { escapeAttr } from './sanitize';
+
 /**
  * Wraps content in Outlook conditional comments.
  */
@@ -63,7 +65,7 @@ export const msoVmlBackground = (
 	height: number,
 	bgColor: string = '#ffffff',
 ): string => {
-	return `<!--[if gte mso 9]><v:rect xmlns:v="urn:schemas-microsoft-com:vml" fill="true" stroke="false" style="width:${width}px;height:${height}px"><v:fill type="frame" src="${imageUrl}" color="${bgColor}" /><v:textbox inset="0,0,0,0" style="mso-fit-shape-to-text:true"><![endif]-->`;
+	return `<!--[if gte mso 9]><v:rect xmlns:v="urn:schemas-microsoft-com:vml" fill="true" stroke="false" style="width:${width}px;height:${height}px"><v:fill type="frame" src="${escapeAttr(imageUrl)}" color="${escapeAttr(bgColor)}" /><v:textbox inset="0,0,0,0" style="mso-fit-shape-to-text:true"><![endif]-->`;
 };
 
 export const msoVmlBackgroundClose = (): string => {
