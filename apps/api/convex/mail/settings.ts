@@ -20,6 +20,7 @@ import {
 	mailAutoAdvanceValidator,
 	mailReplyDefaultValidator,
 	mailDensityValidator,
+	mailNotifyAboutValidator,
 } from '../lib/convexValidators';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 
@@ -42,6 +43,8 @@ export const get = publicQuery({
 			replyDefault: row.replyDefault,
 			density: row.density,
 			isSendSoundOn: row.isSendSoundOn,
+			notifyAbout: row.notifyAbout,
+			isBadgeNonPeopleOn: row.isBadgeNonPeopleOn,
 		};
 	},
 });
@@ -56,6 +59,8 @@ export const update = authedMutation({
 		replyDefault: v.optional(mailReplyDefaultValidator),
 		density: v.optional(mailDensityValidator),
 		isSendSoundOn: v.optional(v.boolean()),
+		notifyAbout: v.optional(mailNotifyAboutValidator),
+		isBadgeNonPeopleOn: v.optional(v.boolean()),
 	},
 	// authz: self-scoped — upserts only the caller's own settings row (keyed
 	// by the session userId; no cross-user id is accepted).
@@ -74,6 +79,8 @@ export const update = authedMutation({
 			replyDefault?: (typeof args)['replyDefault'];
 			density?: (typeof args)['density'];
 			isSendSoundOn?: boolean;
+			notifyAbout?: (typeof args)['notifyAbout'];
+			isBadgeNonPeopleOn?: boolean;
 		} = {};
 		if (args.autoAdvance !== undefined) patch.autoAdvance = args.autoAdvance;
 		if (args.isWritingSuggestionsOn !== undefined)
@@ -83,6 +90,9 @@ export const update = authedMutation({
 		if (args.replyDefault !== undefined) patch.replyDefault = args.replyDefault;
 		if (args.density !== undefined) patch.density = args.density;
 		if (args.isSendSoundOn !== undefined) patch.isSendSoundOn = args.isSendSoundOn;
+		if (args.notifyAbout !== undefined) patch.notifyAbout = args.notifyAbout;
+		if (args.isBadgeNonPeopleOn !== undefined)
+			patch.isBadgeNonPeopleOn = args.isBadgeNonPeopleOn;
 		if (existing) {
 			await ctx.db.patch(existing._id, { ...patch, updatedAt: now });
 			return existing._id;

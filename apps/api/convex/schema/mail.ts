@@ -6,6 +6,7 @@ import {
 	mailAutoAdvanceValidator,
 	mailReplyDefaultValidator,
 	mailDensityValidator,
+	mailNotifyAboutValidator,
 	mailUnsubscribeValidator,
 	spamVerdictValidator,
 } from '../lib/convexValidators';
@@ -809,6 +810,16 @@ mailUserSettings: defineTable({
 	// Play a short confirmation sound when a message is dispatched. Optional so
 	// existing rows read as undefined; the reader defaults it OFF (opt-in).
 	isSendSoundOn: v.optional(v.boolean()),
+	// Desktop notification scope: which new inbox mail fires a native toast.
+	// Optional so existing rows read as undefined; the desktop reader defaults it
+	// to 'people-important' once smart categories exist and 'everything'
+	// otherwise (a fresh deploy without the classifier still notifies for all).
+	notifyAbout: v.optional(mailNotifyAboutValidator),
+	// Sub-setting of notifyAbout: whether non-`person` mail still increments the
+	// dock/tray unread badge (the toast can be quiet while the badge stays
+	// truthful). Optional so existing rows read as undefined; the reader defaults
+	// it ON (badge counts everything — the pre-existing behavior).
+	isBadgeNonPeopleOn: v.optional(v.boolean()),
 	createdAt: v.number(),
 	updatedAt: v.number(),
 })

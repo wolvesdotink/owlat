@@ -287,6 +287,18 @@ export const mailDensityValidator = v.union(
 	v.literal('compact'),
 );
 
+// Postbox desktop-notification scope (mailUserSettings.notifyAbout and
+// mail/settings update args). 'everything' fires a toast for every new inbox
+// message; 'people-important' only for smart-category `person` mail (and any
+// message whose category is absent — fail-open so nothing is silently dropped
+// before the classifier has run); 'nothing' suppresses toasts entirely. Single
+// source so schema and args can't drift.
+export const mailNotifyAboutValidator = v.union(
+	v.literal('everything'),
+	v.literal('people-important'),
+	v.literal('nothing'),
+);
+
 // Email template kind (emailTemplates.type and its CRUD args)
 export const emailTemplateTypeValidator = v.union(
 	v.literal('marketing'),

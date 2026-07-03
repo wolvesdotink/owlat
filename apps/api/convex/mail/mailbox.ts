@@ -514,6 +514,77 @@ export const inboxUnreadCount = publicQuery({
 });
 
 /**
+ * The newest unread, not-snoozed inbox messages across the user's mailboxes
+ * (plus the exact total unread count), for the desktop tray "quick peek"
+ * dropdown, notification-rule filtering, and per-thread grouping. `total`
+ * is the O(1) denormalized unread count (same source as `inboxUnreadCount`);
+ * `messages` is a bounded, best-effort newest-first window used only for the
+ * peek list and category-aware toast decisions — it never drives `total`.
+ * Minimal, plain-text fields only.
+ */
+// public: soft-auth — returns an empty peek for anonymous; ownership via by_user
+export const newestUnreadInbox = publicQuery({
+	args: { limit: v.optional(v.number()) },
+	handler: async (ctx, args) => {
+		const empty = {
+			total: 0,
+			messages: [] as Array<{
+				messageId: Id<'mailMessages'>;
+				threadId: Id<'mailThreads'>;
+				fromName?: string;
+				fromAddress: string;
+				subject: string;
+				category?: 'person' | 'newsletter' | 'notification' | 'receipt' | 'other';
+				receivedAt: number;
+			}>,
+		};
+		const session = await readSession(ctx);
+		if (!session) return empty;
+		// Clamp the window so a caller can't force an unbounded scan.
+		const limit = Math.max(1, Math.min(50, Math.round(args.limit ?? 5)));
+		const now = Date.now();
+		const mailboxes = await ctx.db
+			.query('mailboxes')
+			.withIndex('by_user', (q) => q.eq('userId', session.userId))
+			.collect(); // bounded: one user's mailboxes (typically 1)
+		let total = 0;
+		const collected: (typeof empty)['messages'] = [];
+		for (const mb of mailboxes) {
+			if (mb.status !== 'active') continue;
+			const inbox = await ctx.db
+				.query('mailFolders')
+				.withIndex('by_mailbox_and_role', (q) =>
+					q.eq('mailboxId', mb._id).eq('role', 'inbox')
+				)
+				.first();
+			if (!inbox) continue;
+			total += inbox.unseenCount;
+			// Scan a bounded window of the newest messages and keep the visible
+			// unread ones (mirrors latestInboxUnread's take-window posture).
+			const recent = await ctx.db
+				.query('mailMessages')
+				.withIndex('by_folder_and_received', (q) => q.eq('folderId', inbox._id))
+				.order('desc')
+				.take(limit + 20);
+			for (const m of recent) {
+				if (m.flagSeen || isMessageSnoozed(m, now)) continue;
+				collected.push({
+					messageId: m._id,
+					threadId: m.threadId,
+					fromName: m.fromName,
+					fromAddress: m.fromAddress,
+					subject: m.subject,
+					category: m.category?.label,
+					receivedAt: m.receivedAt,
+				});
+			}
+		}
+		collected.sort((a, b) => b.receivedAt - a.receivedAt);
+		return { total, messages: collected.slice(0, limit) };
+	},
+});
+
+/**
  * Load a message the caller is allowed to READ (owner/admin, or the mailbox
  * owner) on an active mailbox, else null. Single read-authz predicate shared by
  * the by-id message queries; mailbox ownership + `status === 'active'` flow
