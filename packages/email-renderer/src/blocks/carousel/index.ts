@@ -8,7 +8,7 @@
 
 import { fullSupport, type CarouselBlockContent } from '@owlat/shared';
 import type { BlockModule, Placement } from '../_module';
-import { escapeAttr, sanitizeUrl } from '../../sanitize';
+import { escapeAttr, escapeCss, sanitizeUrl } from '../../sanitize';
 import { transformUrl } from '../../helpers/linkTransform';
 import { checkShape, isString, isArray, isObject } from '../../helpers/validation';
 
@@ -62,7 +62,7 @@ export const renderCarouselContent = (content: CarouselBlockContent, ctx: { glob
 	}).join('');
 
 	const dots = images.map((_, i) => {
-		const bg = i === 0 ? iconColor : inactiveColor;
+		const bg = escapeCss(i === 0 ? iconColor : inactiveColor);
 		return `<label for="${carouselId}-${i}" style="display:inline-block;width:${iconWidth}px;height:${iconWidth}px;border-radius:50%;background-color:${bg};margin:0 4px;cursor:pointer"></label>`;
 	}).join('');
 	const dotsWrapped = `<!--[if !mso]><!--><div class="${dotsClass}" style="text-align:center;padding-top:8px">${dots}</div><!--<![endif]-->`;
@@ -72,7 +72,7 @@ export const renderCarouselContent = (content: CarouselBlockContent, ctx: { glob
 		const thumbs = images.map((img, i) => {
 			const thumbSrc = img.thumbnailSrc || img.src;
 			const safeThumbSrc = escapeAttr(sanitizeUrl(thumbSrc));
-			const borderColor = i === 0 ? iconColor : 'transparent';
+			const borderColor = escapeCss(i === 0 ? iconColor : 'transparent');
 			return `<label for="${carouselId}-${i}" style="display:inline-block;margin:0 2px;cursor:pointer;border:2px solid ${borderColor};${borderRadius}"><img src="${safeThumbSrc}" alt="" width="${thumbnailWidth}" style="display:block;width:${thumbnailWidth}px;height:auto;${borderRadius}" border="0" /></label>`;
 		}).join('');
 		thumbHtml = `<!--[if !mso]><!--><div class="${thumbsClass}" style="text-align:center;padding-top:8px">${thumbs}</div><!--<![endif]-->`;

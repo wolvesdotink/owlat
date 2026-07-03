@@ -7,7 +7,7 @@
 
 import { fullSupport, type DividerBlockContent } from '@owlat/shared';
 import type { BlockModule, Placement } from '../_module';
-import { escapeAttr } from '../../sanitize';
+import { escapeAttr, escapeCss } from '../../sanitize';
 import { checkShape, isString, isNumber, isOneOf } from '../../helpers/validation';
 
 const DIVIDER_STYLES = ['solid', 'dashed', 'dotted'] as const;
@@ -15,14 +15,14 @@ const DIVIDER_STYLES = ['solid', 'dashed', 'dotted'] as const;
 const renderInner = (content: DividerBlockContent): string => {
 	const style = content.style || 'solid';
 	const align = content.align || 'center';
-	return `<table width="${content.width}%" cellpadding="0" cellspacing="0" border="0" role="presentation" align="${align}" aria-hidden="true"><tr><td style="border-top:${content.thickness}px ${style} ${content.color};font-size:1px;line-height:1px">&nbsp;</td></tr></table>`;
+	return `<table width="${content.width}%" cellpadding="0" cellspacing="0" border="0" role="presentation" align="${align}" aria-hidden="true"><tr><td style="border-top:${content.thickness}px ${style} ${escapeCss(content.color)};font-size:1px;line-height:1px">&nbsp;</td></tr></table>`;
 };
 
 /** Column / container placement wraps the inner table in a padding cell. */
 const renderInColumn = (content: DividerBlockContent): string => {
 	const align = content.align || 'center';
 	const style = content.style || 'solid';
-	return `<table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation"><tr><td style="padding:8px 0"><table width="${content.width}%" cellpadding="0" cellspacing="0" border="0" role="presentation" align="${align}"><tr><td style="border-top:${content.thickness}px ${style} ${content.color};font-size:1px;line-height:1px">&nbsp;</td></tr></table></td></tr></table>`;
+	return `<table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation"><tr><td style="padding:8px 0"><table width="${content.width}%" cellpadding="0" cellspacing="0" border="0" role="presentation" align="${align}"><tr><td style="border-top:${content.thickness}px ${style} ${escapeCss(content.color)};font-size:1px;line-height:1px">&nbsp;</td></tr></table></td></tr></table>`;
 };
 
 export const dividerModule: BlockModule<'divider'> = {

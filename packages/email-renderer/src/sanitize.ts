@@ -18,9 +18,38 @@ export { escapeHtml };
 /**
  * Escape a value for use inside an HTML attribute (double-quoted).
  * Escapes &, <, >, " and '.
+ *
+ * Nullish input is coerced to '' so applying this to an optional field that is
+ * absent at runtime does not throw (mirrors the pre-escaping behaviour where an
+ * absent field interpolated to an empty/harmless value).
  */
-export const escapeAttr = (str: string): string => {
-	return escapeHtml(str);
+export const escapeAttr = (str: string | undefined | null): string => {
+	return escapeHtml(str ?? '');
+};
+
+/**
+ * Escape a value for interpolation into a CSS style value (inside a
+ * double-quoted `style="…"` attribute) or a VML color attribute
+ * (`fillcolor="…"`, `strokecolor="…"`, `<v:fill color="…">`).
+ *
+ * Colour / font-family / border / width / background fields are attacker- or
+ * template-controlled and were previously interpolated raw, so a `"` closed the
+ * attribute and injected markup into outbound email HTML and the public
+ * View-in-Browser archive (stored XSS). Escaping the HTML metacharacters
+ * neutralises the breakout while leaving benign values (`#fff`, `rgb(0,0,0)`,
+ * `1px solid #ccc`, `Arial, sans-serif`, `600px`, `100%`) rendered identically —
+ * browsers decode entities inside attribute values before the CSS/VML parser
+ * sees them. This mirrors the escaping the AMP path already applies.
+ *
+ * Nullish input is coerced to '' so applying this to an optional colour/font/
+ * width field that is absent at runtime does not throw. Before escaping, an
+ * absent field interpolated to a harmless `undefined`/empty literal; coercing
+ * here preserves that render-does-not-throw guarantee for the many optional
+ * style fields across the hand-built blocks (text `textColor`, list/menu
+ * colours, …).
+ */
+export const escapeCss = (value: string | undefined | null): string => {
+	return escapeHtml(value ?? '');
 };
 
 /**

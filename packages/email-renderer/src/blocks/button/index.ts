@@ -11,7 +11,7 @@ import { fullSupport, type ButtonBlockContent } from '@owlat/shared';
 import type { BlockModule, Placement } from '../_module';
 import { gradientToCss } from '../../helpers/gradient';
 import { wrapColumnItem } from '../../helpers/table';
-import { escapeAttr, escapeHtml, sanitizeUrl } from '../../sanitize';
+import { escapeAttr, escapeCss, escapeHtml, sanitizeUrl } from '../../sanitize';
 import { transformUrl } from '../../helpers/linkTransform';
 import { checkShape, checkGradientStopLimit, isString, isNumber, isOneOf } from '../../helpers/validation';
 import { getContrastRatio } from '../../validators/registry';
@@ -26,7 +26,7 @@ const renderVmlButton = (content: ButtonBlockContent): string => {
 	const px = content.paddingX || 24;
 	const py = content.paddingY || 12;
 	const fontSize = content.fontSize ?? 16;
-	const fontFamily = content.fontFamily ?? 'Arial, sans-serif';
+	const fontFamily = escapeCss(content.fontFamily ?? 'Arial, sans-serif');
 	const fontWeight = content.fontWeight ?? 400;
 	const radius = content.borderRadius;
 
@@ -38,7 +38,7 @@ const renderVmlButton = (content: ButtonBlockContent): string => {
 	}
 
 	const strokeWeight = content.buttonBorderWidth && content.buttonBorderWidth > 0 ? content.buttonBorderWidth : 0;
-	const strokeColor = content.buttonBorderColor || content.backgroundColor;
+	const strokeColor = escapeAttr(content.buttonBorderColor || content.backgroundColor);
 	const strokeAttr = strokeWeight > 0
 		? ` strokeweight="${strokeWeight}px" strokecolor="${strokeColor}"`
 		: ' stroked="false"';
@@ -49,13 +49,13 @@ const renderVmlButton = (content: ButtonBlockContent): string => {
 
 	const gradient = content.backgroundGradient;
 	if (gradient && gradient.stops.length >= 2) {
-		const color1 = gradient.stops[0]!.color;
-		const color2 = gradient.stops[gradient.stops.length - 1]!.color;
+		const color1 = escapeAttr(gradient.stops[0]!.color);
+		const color2 = escapeAttr(gradient.stops[gradient.stops.length - 1]!.color);
 		const fillHtml = `<v:fill type="gradient" color="${color1}" color2="${color2}" angle="180" />`;
-		return `<!--[if mso]><v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${escapeAttr(sanitizeUrl(content.url))}"${widthAttr} arcsize="${Math.round((radius / 40) * 100)}%"${strokeAttr}>${fillHtml}<w:anchorlock/><center style="color:${content.textColor};font-family:${fontFamily};font-size:${fontSize}px;font-weight:${fontWeight};${textTransformStyle}${letterSpacingStyle}padding:${py}px ${px}px">${escapeHtml(content.text)}</center></v:roundrect><![endif]-->`;
+		return `<!--[if mso]><v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${escapeAttr(sanitizeUrl(content.url))}"${widthAttr} arcsize="${Math.round((radius / 40) * 100)}%"${strokeAttr}>${fillHtml}<w:anchorlock/><center style="color:${escapeCss(content.textColor)};font-family:${fontFamily};font-size:${fontSize}px;font-weight:${fontWeight};${textTransformStyle}${letterSpacingStyle}padding:${py}px ${px}px">${escapeHtml(content.text)}</center></v:roundrect><![endif]-->`;
 	}
 
-	return `<!--[if mso]><v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${escapeAttr(sanitizeUrl(content.url))}"${widthAttr} arcsize="${Math.round((radius / 40) * 100)}%" fillcolor="${content.backgroundColor}"${strokeAttr}><w:anchorlock/><center style="color:${content.textColor};font-family:${fontFamily};font-size:${fontSize}px;font-weight:${fontWeight};${textTransformStyle}${letterSpacingStyle}padding:${py}px ${px}px">${escapeHtml(content.text)}</center></v:roundrect><![endif]-->`;
+	return `<!--[if mso]><v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${escapeAttr(sanitizeUrl(content.url))}"${widthAttr} arcsize="${Math.round((radius / 40) * 100)}%" fillcolor="${escapeAttr(content.backgroundColor)}"${strokeAttr}><w:anchorlock/><center style="color:${escapeCss(content.textColor)};font-family:${fontFamily};font-size:${fontSize}px;font-weight:${fontWeight};${textTransformStyle}${letterSpacingStyle}padding:${py}px ${px}px">${escapeHtml(content.text)}</center></v:roundrect><![endif]-->`;
 };
 
 /**
@@ -71,32 +71,32 @@ export const renderButtonContent = (content: ButtonBlockContent): string => {
 	if (content.align === 'full') {
 		btnWidth = 'width:100%;';
 	} else if (content.buttonWidth) {
-		btnWidth = `width:${content.buttonWidth};`;
+		btnWidth = `width:${escapeCss(content.buttonWidth)};`;
 	}
 	const displayStyle = content.align === 'full' ? 'display:block;' : 'display:inline-block;';
 	const fontSize = content.fontSize ?? 'inherit';
-	const fontFamily = content.fontFamily ?? 'inherit';
+	const fontFamily = content.fontFamily ? escapeCss(content.fontFamily) : 'inherit';
 	const fontWeight = content.fontWeight ?? 'inherit';
 
 	const tdStyles: string[] = [
-		`background-color:${content.backgroundColor}`,
+		`background-color:${escapeCss(content.backgroundColor)}`,
 		`border-radius:${content.borderRadius}px`,
 		'text-align:center',
 		`mso-padding-alt:${content.paddingY || 12}px ${content.paddingX || 24}px`,
 	];
 
 	if (content.backgroundGradient && content.backgroundGradient.stops.length >= 2) {
-		tdStyles.push(`background:${gradientToCss(content.backgroundGradient)}`);
+		tdStyles.push(`background:${escapeCss(gradientToCss(content.backgroundGradient))}`);
 	}
 
 	if (content.buttonBorderWidth && content.buttonBorderWidth > 0 && content.buttonBorderStyle !== 'none') {
-		tdStyles.push(`border:${content.buttonBorderWidth}px ${content.buttonBorderStyle || 'solid'} ${content.buttonBorderColor || '#000000'}`);
+		tdStyles.push(`border:${content.buttonBorderWidth}px ${content.buttonBorderStyle || 'solid'} ${escapeCss(content.buttonBorderColor || '#000000')}`);
 	}
 
 	const linkStyles: string[] = [
 		displayStyle,
 		btnWidth,
-		`color:${content.textColor}`,
+		`color:${escapeCss(content.textColor)}`,
 		`padding:${content.paddingY || 12}px ${content.paddingX || 24}px`,
 		'text-decoration:none',
 		`font-size:${typeof fontSize === 'number' ? `${fontSize}px` : fontSize}`,
@@ -114,7 +114,7 @@ export const renderButtonContent = (content: ButtonBlockContent): string => {
 	const notMsoStart = '<!--[if !mso]><!-->';
 	const notMsoEnd = '<!--<![endif]-->';
 
-	const tableWidth = content.align === 'full' ? ' width="100%"' : (content.buttonWidth ? ` width="${content.buttonWidth}"` : '');
+	const tableWidth = content.align === 'full' ? ' width="100%"' : (content.buttonWidth ? ` width="${escapeAttr(content.buttonWidth)}"` : '');
 	const safeUrl = escapeAttr(sanitizeUrl(content.url));
 	const relAttr = target === '_blank' ? ' rel="noopener noreferrer"' : '';
 	return `${vml}${notMsoStart}<table cellpadding="0" cellspacing="0" border="0" role="presentation" align="${tableAlign}"${tableWidth}><tr><td style="${tdStyles.join(';')}"><a href="${safeUrl}" target="${target}"${relAttr} style="${linkStyleStr}">${escapeHtml(content.text)}</a></td></tr></table>${notMsoEnd}`;
