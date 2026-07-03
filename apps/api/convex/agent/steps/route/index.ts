@@ -2,7 +2,10 @@
  * `route` Agent step (module) — see ADR-0014.
  *
  * Routes the agent's draft based on circuit-breaker safety, graduated
- * autonomy, and confidence scoring. The pipeline's last step — terminal in
+ * autonomy, and DRAFT-QUALITY scoring. The auto-approve threshold is compared
+ * against the draft-quality self-check (`resolveAutoApproveScore`) — how
+ * complete / grounded / on-tone the generated reply is — NOT the classifier's
+ * confidence about the message category. The pipeline's last step — terminal in
  * both branches:
  *   - Auto-approve → approved (lifecycle's `schedule_send_approved` effect
  *     handles the actual send via `internal.agent.agentPipeline.sendApprovedReply`).
@@ -15,7 +18,10 @@
  *      `autonomyRules` govern via `autonomy.checkPermissionInternal`. A
  *      category with no rule is never auto-approved.
  *   3. Legacy fallback (`ai.autonomy` off): the single global
- *      `agentConfig` auto-reply toggle + confidence threshold + daily cap.
+ *      `agentConfig` auto-reply toggle + draft-quality threshold + daily cap.
+ *
+ * In every tier the score compared against the threshold is the draft-quality
+ * self-check, resolved LOW (never auto-approve) when that check is unknown.
  */
 
 import { internal } from '../../../_generated/api';
@@ -24,11 +30,50 @@ import type { AgentStepModule } from '../types';
 import { detectInjection, INJECTION_CONFIDENCE_THRESHOLD } from '../security_scan/patterns';
 import { detectSecretLeak } from '../../../lib/secretLeakScan';
 
+/**
+ * Draft-quality self-check threaded from the `draft` step. `null`/absent when
+ * the self-check failed — {@link resolveAutoApproveScore} then treats quality as
+ * unknown/LOW so the message is never auto-approved on an unknown draft.
+ */
+export type RouteDraftQuality = {
+	score: number;
+	complete: boolean;
+	grounded: boolean;
+	flags: string[];
+};
+
 export type RouteInput = {
 	inboundMessageId: Id<'inboundMessages'>;
 	confidence: number;
 	category: string;
+	// Draft-quality self-check from the draft step. Optional for back-compat:
+	// a message routed without one (or with a failed self-check) is gated as
+	// LOW quality — never auto-approved.
+	draftQuality?: RouteDraftQuality | null;
 };
+
+/**
+ * Resolve the score fed into the auto-approve threshold comparison.
+ *
+ * Auto-send must gate on whether the DRAFT is send-ready (complete, grounded,
+ * on-tone) — NOT on the classifier's confidence about the message category,
+ * which says nothing about draft correctness. When the draft-quality self-check
+ * produced a score, that score is authoritative.
+ *
+ * FAIL-SOFT: when the self-check is absent (its LLM call failed → unknown
+ * quality), fall back through the same confidence-threshold gate but with a LOW
+ * score (0), so an unknown-quality draft can NEVER clear any threshold and is
+ * always routed to human review. We never auto-approve on a failed/unknown
+ * check.
+ */
+export function resolveAutoApproveScore(
+	draftQuality: RouteDraftQuality | null | undefined,
+): number {
+	if (draftQuality && typeof draftQuality.score === 'number') {
+		return draftQuality.score;
+	}
+	return 0;
+}
 
 
 /**
@@ -107,6 +152,13 @@ export const routeStep: AgentStepModule<'route', RouteInput, RouteOutput> = {
 			output: { decision, reason, confidence: input.confidence, category: input.category },
 		});
 
+		// The auto-approve threshold is compared against DRAFT quality, not the
+		// classifier confidence. When the self-check is unknown/failed this is
+		// LOW (0), so an unknown draft never clears any threshold (fail-soft to
+		// human review). The autonomy tiers + assertSafeToAutoSend are unchanged;
+		// this only swaps WHICH score feeds their threshold comparison.
+		const gateScore = resolveAutoApproveScore(input.draftQuality);
+
 		// Auto-approval is only honoured if the final outbound safety gate passes;
 		// otherwise it degrades to human review with the gate's reason.
 		const autoApprove = async (reason: string) => {
@@ -129,7 +181,7 @@ export const routeStep: AgentStepModule<'route', RouteInput, RouteOutput> = {
 		// Tier 2 — graduated autonomy (per-category rules), when enabled.
 		const autonomy = await ctx.runQuery(
 			internal.autonomy.checkPermissionInternal,
-			{ category: input.category, confidence: input.confidence },
+			{ category: input.category, confidence: gateScore },
 		);
 		if (autonomy.mode === 'enabled') {
 			if (autonomy.allowed) {
@@ -160,14 +212,14 @@ export const routeStep: AgentStepModule<'route', RouteInput, RouteOutput> = {
 			{},
 		);
 
-		if (cfg?.isAutoReplyEnabled && input.confidence >= (cfg.confidenceThreshold ?? 0.8)) {
+		if (cfg?.isAutoReplyEnabled && gateScore >= (cfg.confidenceThreshold ?? 0.8)) {
 			const dailyCount = cfg.dailyAutoReplyCount ?? 0;
 			const maxDaily = cfg.maxDailyAutoReplies ?? 100;
 			const resetAt = cfg.dailyAutoReplyResetAt ?? 0;
 			const isNewDay = Date.now() > resetAt;
 
 			if (isNewDay || dailyCount < maxDaily) {
-				return await autoApprove(`Confidence ${input.confidence} >= threshold ${cfg.confidenceThreshold}. Auto-approving.`);
+				return await autoApprove(`Draft quality ${gateScore} >= threshold ${cfg.confidenceThreshold}. Auto-approving.`);
 			}
 			return out('human_review', `Daily auto-reply limit reached (${dailyCount}/${maxDaily}). Routing to human review.`);
 		}
@@ -175,7 +227,7 @@ export const routeStep: AgentStepModule<'route', RouteInput, RouteOutput> = {
 		return out(
 			'human_review',
 			cfg?.isAutoReplyEnabled
-				? `Confidence ${input.confidence} < threshold ${cfg?.confidenceThreshold ?? 0.8}. Routing to human review.`
+				? `Draft quality ${gateScore} < threshold ${cfg?.confidenceThreshold ?? 0.8}. Routing to human review.`
 				: 'Auto-reply is disabled. Routing to human review.',
 		);
 	},

@@ -38,6 +38,7 @@ import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import {
 	contextCoverageValidator,
+	draftQualityValidator,
 	isOutboundChannel,
 	tokenUsageValidator,
 } from '../lib/convexValidators';
@@ -200,12 +201,17 @@ export const recordDraftOutput = internalMutation({
 		draftResponse: v.string(),
 		draftSubject: v.string(),
 		confidenceScore: v.number(),
+		// Draft-quality self-check result — persisted SEPARATELY from the
+		// classifier confidenceScore. Optional: absent when the self-check
+		// LLM call failed (the route step then treats quality as unknown/LOW).
+		draftQuality: v.optional(draftQualityValidator),
 	},
 	handler: async (ctx, args) => {
 		await ctx.db.patch(args.inboundMessageId, {
 			draftResponse: args.draftResponse,
 			draftSubject: args.draftSubject,
 			confidenceScore: args.confidenceScore,
+			...(args.draftQuality ? { draftQuality: args.draftQuality } : {}),
 		});
 	},
 });
