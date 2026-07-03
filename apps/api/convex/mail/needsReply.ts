@@ -30,14 +30,8 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { throwForbidden, throwNotFound } from '../_utils/errors';
 import { isMessageSnoozed } from '../lib/mailSnooze';
 import { loadOwnedMailbox, loadReadableMailbox } from './permissions';
-import { contactFrecencyScore } from './contacts';
-import {
-	computePriorityScore,
-	isScreenedOut,
-	urgencyFallbackScore,
-	type PriorityUrgency,
-	type SenderSignal,
-} from './priorityScore';
+import { urgencyFallbackScore } from './priorityScore';
+import { scoreAndScreenResult } from './needsReplyScoring';
 
 // ─── Deterministic heuristic (pure) ─────────────────────────────────────────
 
@@ -271,41 +265,6 @@ const needsReplyResultValidator = v.union(
 );
 
 /**
- * Deterministic sender-importance signal for the Reply Queue priority score:
- * the personal address-book row (VIP flag, frecency, accepted) for `email`. A
- * first-time sender with no row scores as a stranger (empty signal).
- */
-async function loadSenderSignal(
-	ctx: MutationCtx,
-	mailboxId: Id<'mailboxes'>,
-	email: string,
-	now: number
-): Promise<SenderSignal> {
-	const contact = await ctx.db
-		.query('mailContacts')
-		.withIndex('by_mailbox_and_email', (q) =>
-			q.eq('mailboxId', mailboxId).eq('email', email.trim().toLowerCase())
-		)
-		.first();
-	if (!contact) return {};
-	return {
-		isVip: contact.isVip === true,
-		isKnownContact: true,
-		frecency: contactFrecencyScore(contact, now),
-		accepted: contact.isScreenerAccepted === true,
-	};
-}
-
-/** Whether the mailbox owner enabled the HEY-style first-time-sender screener. */
-async function isScreenerEnabled(ctx: MutationCtx, userId: string): Promise<boolean> {
-	const settings = await ctx.db
-		.query('mailUserSettings')
-		.withIndex('by_user', (q) => q.eq('userId', userId))
-		.first();
-	return settings?.isSenderScreenerOn === true;
-}
-
-/**
  * Persist a classification result and clear the pending marker. Guarded
  * against staleness: if a newer message arrived while classification was in
  * flight (thread.latestMessageId moved), the result is dropped — the newer
@@ -341,20 +300,15 @@ export const applyResult = internalMutation({
 			const message = await ctx.db.get(resolved.messageId);
 			const mailbox = await ctx.db.get(thread.mailboxId);
 			if (message && mailbox) {
-				const now = Date.now();
-				const sender = await loadSenderSignal(ctx, thread.mailboxId, message.fromAddress, now);
-				if (isScreenedOut({ screenerEnabled: await isScreenerEnabled(ctx, mailbox.userId), sender })) {
-					// Screener held this first-time sender out of the queue entirely.
-					resolved = null;
-				} else {
-					resolved = {
-						...resolved,
-						priorityScore: computePriorityScore({
-							urgency: resolved.urgency as PriorityUrgency,
-							sender,
-						}),
-					};
-				}
+				// Single write point for the unified priority score + the HEY-style
+				// screener gate (mail/needsReplyScoring.ts). Fail-soft: a missing
+				// message/mailbox row skips scoring and persists the raw result.
+				resolved = await scoreAndScreenResult(ctx, {
+					mailboxId: thread.mailboxId,
+					ownerUserId: mailbox.userId,
+					message,
+					resolved,
+				});
 			}
 		}
 
