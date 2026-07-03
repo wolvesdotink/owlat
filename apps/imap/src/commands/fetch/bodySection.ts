@@ -68,21 +68,26 @@ export function parseBodySectionItem(item: string): BodySectionRequest | null {
  * header block includes the terminating blank line (CRLF CRLF or LF LF).
  * If no blank line is found the whole message is treated as the header
  * and the text is empty (matching how servers report a header-only blob).
+ *
+ * Operates on raw octets (a `Buffer`): the message body is arbitrary
+ * 8-bit/binary MIME, so slicing must happen at byte offsets, never on a
+ * lossily-decoded UTF-16 string. `subarray` returns a view (no copy) into
+ * the same backing store.
  */
-export function splitHeaderText(raw: string): { header: string; text: string } {
+export function splitHeaderText(raw: Buffer): { header: Buffer; text: Buffer } {
 	const crlf = raw.indexOf('\r\n\r\n');
 	if (crlf !== -1) {
-		return { header: raw.slice(0, crlf + 4), text: raw.slice(crlf + 4) };
+		return { header: raw.subarray(0, crlf + 4), text: raw.subarray(crlf + 4) };
 	}
 	const lf = raw.indexOf('\n\n');
 	if (lf !== -1) {
-		return { header: raw.slice(0, lf + 2), text: raw.slice(lf + 2) };
+		return { header: raw.subarray(0, lf + 2), text: raw.subarray(lf + 2) };
 	}
-	return { header: raw, text: '' };
+	return { header: raw, text: Buffer.alloc(0) };
 }
 
-/** Resolve the section bytes (before any partial slicing) for a request. */
-export function sectionBytes(req: BodySectionRequest, raw: string): string {
+/** Resolve the section octets (before any partial slicing) for a request. */
+export function sectionBytes(req: BodySectionRequest, raw: Buffer): Buffer {
 	switch (req.section) {
 		case '':
 			return raw;
@@ -94,31 +99,34 @@ export function sectionBytes(req: BodySectionRequest, raw: string): string {
 			// A non-multipart message has exactly one part, numbered `1`,
 			// whose content is the TEXT body. Any other part number has no
 			// content.
-			return req.section === '1' ? splitHeaderText(raw).text : '';
+			return req.section === '1' ? splitHeaderText(raw).text : Buffer.alloc(0);
 	}
 }
 
 /**
- * Build the response key + body literal for a BODY section request.
- * Returns the field string ready to splice into the FETCH response, e.g.
+ * Build the response key + body literal for a BODY section request as raw
+ * octets, ready to splice into the FETCH response, e.g. the octets for
  * `BODY[HEADER] {17}\r\n...` or `BODY[]<0> {5}\r\nHello`.
+ *
+ * The declared `{N}` is the EXACT byte length of the sliced section (RFC
+ * 3501 §4.3) — for any 8-bit/UTF-8/emoji body a UTF-16 code-unit count
+ * would under-declare the octets and desync the client's literal framing,
+ * corrupting every following response. The literal header is pure ASCII;
+ * the body octets are appended verbatim.
  */
-export function formatBodySection(req: BodySectionRequest, raw: string): string {
+export function formatBodySection(req: BodySectionRequest, raw: Buffer): Buffer {
 	let bytes = sectionBytes(req, raw);
 	let originOctet: number | undefined;
 	if (req.partial) {
 		originOctet = req.partial.offset;
-		bytes = bytes.slice(req.partial.offset, req.partial.offset + req.partial.length);
+		bytes = bytes.subarray(req.partial.offset, req.partial.offset + req.partial.length);
 	}
 
-	if (req.rfc822Alias === 'RFC822') return `RFC822 {${bytes.length}}\r\n${bytes}`;
-	if (req.rfc822Alias === 'RFC822.HEADER') {
-		return `RFC822.HEADER {${bytes.length}}\r\n${bytes}`;
-	}
-	if (req.rfc822Alias === 'RFC822.TEXT') {
-		return `RFC822.TEXT {${bytes.length}}\r\n${bytes}`;
-	}
-
-	const origin = originOctet !== undefined ? `<${originOctet}>` : '';
-	return `BODY[${req.section}]${origin} {${bytes.length}}\r\n${bytes}`;
+	const responsePrefix =
+		req.rfc822Alias ??
+		`BODY[${req.section}]${originOctet !== undefined ? `<${originOctet}>` : ''}`;
+	return Buffer.concat([
+		Buffer.from(`${responsePrefix} {${bytes.length}}\r\n`, 'ascii'),
+		bytes,
+	]);
 }
