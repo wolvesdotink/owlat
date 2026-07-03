@@ -141,6 +141,7 @@ defineExpose({
 				:prefill-subject="spec.prefillSubject"
 				:prefill-body-html="spec.prefillBodyHtml"
 				:forward-attachments-from-message-id="spec.forwardAttachmentsFromMessageId"
+				:reply-all-recipients="spec.replyAllRecipients"
 				@sent="onSent"
 				@discarded="emit('collapse')"
 				@minimize="emit('collapse')"
