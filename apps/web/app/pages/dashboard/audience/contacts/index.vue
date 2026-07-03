@@ -502,7 +502,7 @@ onUnmounted(() => {
 					<button
 						class="p-1.5 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
 						@click="bulkSelection.clearSelection()"
-					 aria-label="Close">
+					 aria-label="Clear selection">
 						<Icon name="lucide:x" class="w-4 h-4" />
 					</button>
 				</div>
@@ -649,7 +649,7 @@ onUnmounted(() => {
 												: 'border-border-default hover:border-border-strong',
 										]"
 										@click.stop="toggleContactSelection(contact._id)"
-									 aria-label="Confirm">
+									 :aria-label="`${bulkSelection.selectedIds.value.has(contact._id) ? 'Deselect' : 'Select'} ${contact.email}`">
 										<Icon
 											v-if="bulkSelection.selectedIds.value.has(contact._id)"
 											name="lucide:check"

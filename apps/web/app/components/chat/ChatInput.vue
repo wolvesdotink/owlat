@@ -175,7 +175,7 @@ const handleSend = async () => {
 				<button
 					class="text-text-tertiary hover:text-error"
 					@click="removeAttachment(attachment.id)"
-				 aria-label="Close">
+				 :aria-label="`Remove attachment ${attachment.filename}`">
 					<Icon name="lucide:x" class="w-3 h-3" />
 				</button>
 			</div>

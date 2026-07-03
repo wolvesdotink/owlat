@@ -170,7 +170,7 @@ watch(() => props.open, (isOpen) => {
 						<button
 							class="p-1.5 rounded text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors flex-shrink-0"
 							@click="removeSelectedFile"
-						 aria-label="Close">
+						 aria-label="Remove file">
 							<Icon name="lucide:x" class="w-4 h-4" />
 						</button>
 					</div>
