@@ -464,7 +464,7 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } =
 						aria-hidden="true"
 					>
 						<span
-							class="block h-full bg-accent-primary transition-[width] duration-150"
+							class="block h-full bg-accent transition-[width] duration-150"
 							:class="up.indeterminate ? 'w-full animate-pulse' : ''"
 							:style="up.indeterminate ? undefined : { width: Math.round(up.progress * 100) + '%' }"
 						/>
@@ -481,7 +481,7 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } =
 					>
 						<span
 							class="block h-full rounded-full transition-[width] duration-150"
-							:class="attachmentSizeMeter.amber ? 'bg-amber-500' : 'bg-accent-primary'"
+							:class="attachmentSizeMeter.amber ? 'bg-amber-500' : 'bg-accent'"
 							:style="{ width: Math.min(100, Math.round(attachmentSizeMeter.ratio * 100)) + '%' }"
 						/>
 					</span>
