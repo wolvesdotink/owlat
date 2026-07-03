@@ -408,10 +408,13 @@ async function cancelStalePendingAutoSends(
 	ctx: MutationCtx,
 	threadId: Id<'conversationThreads'>,
 ): Promise<void> {
+	// Bounded scan on the intake hot path: a thread realistically holds at most
+	// one `approved`+pending message, and the cancel is best-effort, so cap the
+	// read rather than `.collect()` an arbitrarily long thread on every inbound.
 	const messages = await ctx.db
 		.query('inboundMessages')
 		.withIndex('by_thread', (q) => q.eq('threadId', threadId))
-		.collect();
+		.take(200);
 	for (const message of messages) {
 		if (message.processingStatus === 'approved' && message.pendingAutoSend) {
 			await ctx.scheduler.runAfter(
