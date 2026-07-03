@@ -476,6 +476,9 @@ const trashOp = useBackendOperation(api.mail.messageActions.trash, { label: 'Mov
 const setStarOp = useBackendOperation(api.mail.messageActions.setStar, { label: 'Star' });
 const markReadOp = useBackendOperation(api.mail.messageActions.markRead, { label: 'Mark read' });
 const snoozeOp = useBackendOperation(api.mail.snooze.snooze, { label: 'Snooze' });
+const snoozeUntilReplyOp = useBackendOperation(api.mail.snooze.snoozeUntilReply, {
+	label: 'Snooze until reply',
+});
 const moveOp = useBackendOperation(api.mail.messageActions.move, { label: 'Move message' });
 
 // Successful triage registers its inverse for the "Undo — Cmd+Z" toast
@@ -543,6 +546,15 @@ const moveDialogOpen = ref(false);
 function snoozeOpenMessage(until: number) {
 	void runAndAdvance(() => snoozeOp.run({ messageId: messageId.value, until }));
 }
+function snoozeOpenMessageUntilReply(capUntil: number) {
+	void runAndAdvance(() =>
+		snoozeUntilReplyOp.run({ messageId: messageId.value, capUntil })
+	);
+}
+// Subject + snippet feed the deterministic wake-time suggestion in the dialog.
+const snoozeHintText = computed(() =>
+	[props.message.subject, props.message.snippet].filter(Boolean).join(' ')
+);
 async function applyLabelToOpenMessage(labelId: Id<'mailLabels'>) {
 	labelDialogOpen.value = false;
 	await setLabelOnMessage(messageId.value, labelId, true);
@@ -1127,8 +1139,10 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 		<!-- Keyboard-flow pickers for the open message (h / l / v). -->
 		<PostboxSnoozeDialog
 			:open="snoozeDialogOpen"
+			:hint-text="snoozeHintText"
 			@update:open="snoozeDialogOpen = $event"
 			@confirm="snoozeOpenMessage"
+			@confirm-until-reply="snoozeOpenMessageUntilReply"
 		/>
 		<PostboxLabelPickerDialog
 			:open="labelDialogOpen"
