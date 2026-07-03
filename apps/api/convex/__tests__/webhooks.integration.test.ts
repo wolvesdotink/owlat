@@ -905,6 +905,37 @@ describe('webhooks.listByOrganization', () => {
 		expect(result[1]!.name).toBe('Mid');
 		expect(result[2]!.name).toBe('Old');
 	});
+
+	it('should NOT include the HMAC secret in any returned webhook', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['webhooks']);
+
+		await t.run(async (ctx) => {
+			await ctx.db.insert('webhooks', createTestWebhook({
+				name: 'Active',
+				isActive: true,
+				secret: 'whsec_ActiveSecretValue1234567890',
+			}));
+			await ctx.db.insert('webhooks', createTestWebhook({
+				name: 'Inactive',
+				isActive: false,
+				secret: 'whsec_InactiveSecretValue123456789',
+			}));
+		});
+
+		const active = await t.query(api.webhooks.endpoints.listByOrganization, {});
+		const all = await t.query(api.webhooks.endpoints.listByOrganization, {
+			includeInactive: true,
+		});
+
+		expect(active.length).toBeGreaterThan(0);
+		for (const w of [...active, ...all]) {
+			expect(w).not.toHaveProperty('secret');
+			// Non-secret fields are still present.
+			expect(w.name).toBeDefined();
+			expect(w.url).toBeDefined();
+		}
+	});
 });
 
 // ============ webhooks.get ============
@@ -935,6 +966,25 @@ describe('webhooks.get', () => {
 
 		const result = await t.query(api.webhooks.endpoints.get, { webhookId });
 		expect(result).toBeNull();
+	});
+
+	it('should NOT include the HMAC secret', async () => {
+		const t = convexTest(schema, modules);
+
+		const webhookId = await t.run(async (ctx) => {
+			return await ctx.db.insert('webhooks', createTestWebhook({
+				name: 'My Hook',
+				secret: 'whsec_GetSecretValue12345678901234',
+			}));
+		});
+
+		const result = await t.query(api.webhooks.endpoints.get, { webhookId });
+
+		expect(result).not.toBeNull();
+		expect(result).not.toHaveProperty('secret');
+		// Non-secret fields are still returned.
+		expect(result!.name).toBe('My Hook');
+		expect(result!._id).toBe(webhookId);
 	});
 });
 
