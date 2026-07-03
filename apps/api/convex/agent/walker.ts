@@ -220,7 +220,7 @@ export const resumeDraft = internalAction({
 			const retrieval = await contextRetrievalStep.execute(ctx, {
 				inboundMessageId: args.inboundMessageId,
 			});
-			context = retrieval.context;
+			context = retrieval.output.context;
 		} catch {
 			context = '';
 		}
