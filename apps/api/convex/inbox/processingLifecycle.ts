@@ -275,7 +275,19 @@ export const reconcileStuckApproved = internalMutation({
 		// Only the ones that have been sitting in `approved` long enough that a
 		// healthy send would already have completed. `processedAt` is stamped when
 		// the message enters `approved` (the reducer sets it on that edge).
-		const stale = approved.filter((m) => (m.processedAt ?? m.receivedAt) <= cutoff);
+		//
+		// A message with a delayed auto-send (`pendingAutoSend`) has NOT enqueued
+		// its send yet — it fires at `sendAt`. Measuring staleness from
+		// `processedAt` (the approve time) would flag a legitimately-delayed send
+		// as stuck the moment `processedAt` crossed the threshold, even though the
+		// scheduled send is still pending in the future. Measure from `sendAt`
+		// instead so a delayed-but-not-yet-due send is never re-fired; only once
+		// its scheduled send time is itself past the staleness window (a genuinely
+		// lost completion) does it become eligible.
+		const stale = approved.filter((m) => {
+			const base = m.pendingAutoSend?.sendAt ?? m.processedAt ?? m.receivedAt;
+			return base <= cutoff;
+		});
 		if (stale.length === 0) return { reEnqueued: 0 };
 
 		// One scan of the live queue: which inbound messages still have an
@@ -312,5 +324,59 @@ export const reconcileStuckApproved = internalMutation({
 		}
 
 		return { reEnqueued };
+	},
+});
+
+// ─── Delayed auto-send cancellation (undo window) ────────────────────────────
+//
+// Aborts an in-flight DELAYED autonomous auto-send before its undo window
+// (`agentConfig.autoSendDelayMs`) elapses. Three callers:
+//   - a landing inbound reply in the same thread (the queued reply is now
+//     stale — the customer said more; see inbox/threads/module.ts),
+//   - the autonomy kill switch (stop everything in flight),
+//   - an explicit user "Undo" from the review surface.
+//
+// Cancelling the scheduled send routes the reply back to the human review
+// queue (`approved → draft_ready`) rather than dropping it — the fail-soft
+// degrade. Idempotent: a message with no `pendingAutoSend` marker (already
+// sent, never delayed, or already cancelled) is a no-op.
+
+export const cancelAutoSend = internalMutation({
+	args: {
+		inboundMessageId: v.id('inboundMessages'),
+		reason: v.union(
+			v.literal('thread_reply'),
+			v.literal('kill_switch'),
+			v.literal('user_cancel'),
+		),
+	},
+	handler: async (
+		ctx,
+		args,
+	): Promise<{ cancelled: boolean; reason: 'no_pending_send' | 'not_approved' | 'cancelled' }> => {
+		const message = await ctx.db.get(args.inboundMessageId);
+		if (!message) return { cancelled: false, reason: 'no_pending_send' };
+
+		const pending = message.pendingAutoSend;
+		if (!pending) return { cancelled: false, reason: 'no_pending_send' };
+
+		// A marker only ever lives on an `approved` message; if the status has
+		// already moved on (e.g. the send fired and completed), there is nothing
+		// to cancel — leave the state alone.
+		if (message.processingStatus !== 'approved') {
+			return { cancelled: false, reason: 'not_approved' };
+		}
+
+		// Abort the delayed send. `scheduler.cancel` is a no-op if the job has
+		// already run or been cancelled, so this is safe against a race with the
+		// send firing at its deadline.
+		await ctx.scheduler.cancel(pending.scheduledFnId);
+
+		// Route back to human review. The `→ draft_ready` reducer clears the
+		// pendingAutoSend marker (any transition out of `approved` does) and
+		// projects the thread's draft status back to `pending`.
+		await dispatch(ctx, message, { to: 'draft_ready', at: Date.now() });
+
+		return { cancelled: true, reason: 'cancelled' };
 	},
 });
