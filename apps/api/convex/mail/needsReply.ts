@@ -27,7 +27,7 @@ import { internalMutation, internalQuery, type MutationCtx } from '../_generated
 import { authedMutation, publicQuery } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
-import { throwForbidden, throwNotFound } from '../_utils/errors';
+import { throwForbidden, throwInvalidInput, throwNotFound } from '../_utils/errors';
 import { isMessageSnoozed } from '../lib/mailSnooze';
 import { loadOwnedMailbox, loadReadableMailbox } from './permissions';
 
@@ -442,6 +442,17 @@ export const answerClarification = authedMutation({
 		const answerByQuestion = new Map(
 			args.answers.map((a) => [a.questionId, a.value] as const),
 		);
+		// Guard: at least one submitted answer must map to a real question before
+		// we stamp the clarification answered + schedule the draft. A payload that
+		// matches nothing would otherwise mark it answered with zero recorded
+		// answers, so draftWithAnswers produces no draft and the card strands in
+		// 'drafting' forever. Reject instead of silently answering nothing.
+		let matched = 0;
+		for (const q of clarification.questions) {
+			if (answerByQuestion.has(q.id)) matched += 1;
+		}
+		if (matched === 0) throwInvalidInput('No answer matches an open question');
+
 		const questions = clarification.questions.map((q) => {
 			const value = answerByQuestion.get(q.id);
 			if (value === undefined) return q;
@@ -480,13 +491,14 @@ export const getClarificationContext = internalQuery({
 		const mailbox = await ctx.db.get(thread.mailboxId);
 		if (!mailbox || mailbox.status !== 'active') return null;
 
-		const all = await ctx.db
+		// Bounded index read — take the newest N by arrival, then re-sort
+		// ascending for a natural transcript. Never collect the whole thread.
+		const newestFirst = await ctx.db
 			.query('mailMessages')
 			.withIndex('by_thread', (q) => q.eq('threadId', args.threadId))
-			.collect();
-		const newest = all
-			.sort((a, b) => a.receivedAt - b.receivedAt)
-			.slice(-NEEDS_REPLY_CONTEXT_MESSAGES);
+			.order('desc')
+			.take(NEEDS_REPLY_CONTEXT_MESSAGES);
+		const newest = newestFirst.sort((a, b) => a.receivedAt - b.receivedAt);
 		const transcript = newest
 			.map(
 				(m) =>
