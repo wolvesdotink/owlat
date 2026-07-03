@@ -571,7 +571,7 @@ describe('autonomy.acceptGraduationSuggestion', () => {
 			});
 		});
 
-		await t.mutation(api.autonomy.acceptGraduationSuggestion, { suggestionId });
+		await t.mutation(api.autonomySuggestions.acceptGraduationSuggestion, { suggestionId });
 
 		await t.run(async (ctx) => {
 			const rule = await ctx.db
@@ -606,7 +606,7 @@ describe('autonomy.acceptGraduationSuggestion', () => {
 		vi.mocked(requireOrgPermission).mockRejectedValueOnce(new Error('forbidden'));
 
 		await expect(
-			t.mutation(api.autonomy.acceptGraduationSuggestion, { suggestionId }),
+			t.mutation(api.autonomySuggestions.acceptGraduationSuggestion, { suggestionId }),
 		).rejects.toThrow();
 
 		await t.run(async (ctx) => {
@@ -638,7 +638,7 @@ describe('autonomy.listGraduationSuggestions', () => {
 			});
 		});
 
-		const suggestions = await t.query(api.autonomy.listGraduationSuggestions);
+		const suggestions = await t.query(api.autonomySuggestions.listGraduationSuggestions);
 		expect(suggestions).toHaveLength(1);
 		expect(suggestions[0]!.category).toBe('support');
 	});
