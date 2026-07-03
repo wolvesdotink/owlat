@@ -25,7 +25,7 @@ export interface SnippetTrigger {
 export function detectSnippetTrigger(textBeforeCaret: string): SnippetTrigger | null {
 	const slash = textBeforeCaret.lastIndexOf('/');
 	if (slash < 0) return null;
-	const prev = slash === 0 ? '' : textBeforeCaret[slash - 1];
+	const prev = slash === 0 ? '' : (textBeforeCaret[slash - 1] ?? '');
 	// Must be at start-of-input, start-of-line, or after whitespace.
 	if (prev !== '' && !/\s/.test(prev)) return null;
 	const query = textBeforeCaret.slice(slash + 1);

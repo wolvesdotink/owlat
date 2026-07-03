@@ -9,5 +9,5 @@
  */
 export function extractEmailAddress(raw: string): string {
 	const angled = raw.match(/<([^>]+)>/);
-	return (angled ? angled[1] : raw).trim().toLowerCase();
+	return (angled?.[1] ?? raw).trim().toLowerCase();
 }
