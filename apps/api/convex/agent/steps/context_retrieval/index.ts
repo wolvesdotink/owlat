@@ -305,6 +305,26 @@ export const contextRetrievalStep: AgentStepModule<
 			finalContext = `${contactInfo}\n\n${currentMessage}`;
 		}
 
+		// Trim provenance to what SURVIVED compaction so the review UI's
+		// "Grounded in:" list never over-claims sources the model didn't actually
+		// see. `normal` keeps everything (finalContext === fullContext). `emergency`
+		// keeps only [CONTACT] + [CURRENT MESSAGE], so no thread/knowledge source
+		// survives. `compacted` is a tail-slice, so a source survives iff its
+		// identifying text is still present in the truncated briefing.
+		let survivingSources: GroundingSource[];
+		if (tier === 'normal') {
+			survivingSources = groundingSources;
+		} else if (tier === 'emergency') {
+			survivingSources = [];
+		} else {
+			survivingSources = [];
+			for (const src of groundingSources) {
+				if (src.title && finalContext.includes(src.title)) {
+					survivingSources.push(src);
+				}
+			}
+		}
+
 		// Derive the advisory coverage signal. `lowCoverage` = no substantive
 		// grounding (no knowledge, files, or thread history) — the model would
 		// be replying essentially blind. Contact identity alone does NOT count
@@ -328,12 +348,20 @@ export const contextRetrievalStep: AgentStepModule<
 				inboundMessageId: input.inboundMessageId,
 				contextTier: tier,
 				contextCoverage: coverage,
-				...(groundingSources.length > 0 ? { groundingSources } : {}),
+				...(survivingSources.length > 0
+					? { groundingSources: survivingSources }
+					: {}),
 			},
 		);
 
 		return {
-			output: { context: finalContext, tier, estimatedTokens, coverage, groundingSources },
+			output: {
+				context: finalContext,
+				tier,
+				estimatedTokens,
+				coverage,
+				groundingSources: survivingSources,
+			},
 		};
 	},
 
