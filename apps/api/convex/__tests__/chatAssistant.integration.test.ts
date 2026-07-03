@@ -135,6 +135,35 @@ describe('chat @assistant — trigger', () => {
 		expect(messages).toHaveLength(1);
 		expect(messages.some((m) => m.isAssistant)).toBe(false);
 	});
+
+	it('soft-skips the assistant reply once the per-user rate limit is exhausted (human message still posts)', async () => {
+		const t = makeT();
+		await enableFeatures(t, ['chat', 'ai.assistant']);
+		const roomId = await seedRoom(t);
+
+		// Drain the assistantChatPerUser token bucket (capacity 30). Every
+		// allowed @assistant turn posts a streaming assistant placeholder.
+		for (let i = 0; i < 30; i++) {
+			await t.mutation(api.chat.messages.sendMessage, { roomId, text: `@assistant q${i}` });
+		}
+
+		const before = await t.query(api.chat.messages.listMessages, { roomId, limit: 500 });
+		const assistantsBefore = before.messages.filter((m) => m.isAssistant).length;
+		expect(assistantsBefore).toBe(30);
+
+		// Next @assistant turn is over the limit: only the human message posts,
+		// no new assistant placeholder is created and nothing throws.
+		await t.mutation(api.chat.messages.sendMessage, { roomId, text: '@assistant one too many' });
+
+		const after = await t.query(api.chat.messages.listMessages, { roomId, limit: 500 });
+		const assistantsAfter = after.messages.filter((m) => m.isAssistant).length;
+		const humansAfter = after.messages.filter((m) => !m.isAssistant).length;
+		expect(assistantsAfter).toBe(30); // assistant reply skipped
+		expect(humansAfter).toBe(31); // human message still posted
+		expect(after.messages.some((m) => !m.isAssistant && m.text.includes('one too many'))).toBe(
+			true,
+		);
+	});
 });
 
 describe('chat @assistant — runner reply (mocked LLM)', () => {
