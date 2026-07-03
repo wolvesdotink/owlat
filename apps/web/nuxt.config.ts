@@ -81,7 +81,10 @@ export default defineNuxtConfig({
 							process.env['NUXT_PUBLIC_CONVEX_URL'] || process.env['CONVEX_URL'],
 							// Convex uses WebSocket — add explicit ws(s):// so browsers that don't
 							// auto-match http→ws per CSP3 still allow the connection.
-							(process.env['NUXT_PUBLIC_CONVEX_URL'] || process.env['CONVEX_URL'])?.replace(/^http/, 'ws'),
+							(process.env['NUXT_PUBLIC_CONVEX_URL'] || process.env['CONVEX_URL'])?.replace(
+								/^http/,
+								'ws'
+							),
 							process.env['NUXT_PUBLIC_CONVEX_SITE_URL'] || process.env['CONVEX_SITE_URL'],
 							process.env['NUXT_PUBLIC_POSTHOG_HOST'] || POSTHOG_DEFAULT_HOST,
 						]
