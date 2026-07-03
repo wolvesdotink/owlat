@@ -881,3 +881,240 @@ describe('processingLifecycle.reconcileStuckApproved', () => {
 		expect(await countReEnqueues(t, messageId)).toBe(0);
 	});
 });
+
+// ============================================================
+// Configurable send-delay / undo window on autonomous sends
+// ============================================================
+
+describe('processingLifecycle — autonomous send-delay / undo window', () => {
+	async function setAgentConfig(
+		t: ReturnType<typeof convexTest>,
+		overrides: Record<string, unknown> = {},
+	) {
+		await t.run(async (ctx) => {
+			await ctx.db.insert('agentConfig', {
+				isAutoReplyEnabled: true,
+				confidenceThreshold: 0.8,
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+				...overrides,
+			});
+		});
+	}
+
+	async function sendJobsFor(
+		t: ReturnType<typeof convexTest>,
+		messageId: Id<'inboundMessages'>,
+	) {
+		return t.run(async (ctx) => {
+			const scheduled = await ctx.db.system.query('_scheduled_functions').collect();
+			return scheduled.filter(
+				(j) =>
+					j.name.includes('agent/agentPipeline') &&
+					(j.args[0] as { inboundMessageId?: Id<'inboundMessages'> })?.inboundMessageId === messageId,
+			);
+		});
+	}
+
+	it('auto-approve schedules the send at the configured delay (not 0) and records a cancellable marker', async () => {
+		const t = convexTest(schema, modules);
+		await setAgentConfig(t, { autoSendDelayMs: 60_000 });
+		const messageId = await createMessage(t, {
+			processingStatus: 'drafting',
+			draftResponse: 'Auto reply',
+		});
+
+		const before = Date.now();
+		await t.mutation(internal.inbox.processingLifecycle.transition, {
+			inboundMessageId: messageId,
+			input: { to: 'approved', at: before, source: 'auto' },
+		});
+
+		// The send is scheduled ~60s out, not immediately.
+		const jobs = await sendJobsFor(t, messageId);
+		expect(jobs.length).toBe(1);
+		expect(jobs[0]!.scheduledTime).toBeGreaterThanOrEqual(before + 60_000 - 1_000);
+
+		// A cancellable pending-send marker is persisted for the UI countdown.
+		await t.run(async (ctx) => {
+			const m = await ctx.db.get(messageId);
+			expect(m?.pendingAutoSend).toBeDefined();
+			expect(m?.pendingAutoSend?.sendAt).toBeGreaterThanOrEqual(before + 60_000 - 1_000);
+			expect(m?.pendingAutoSend?.scheduledFnId).toBeDefined();
+		});
+	});
+
+	it('defaults to the 60s window when autoSendDelayMs is unset', async () => {
+		const t = convexTest(schema, modules);
+		await setAgentConfig(t); // no autoSendDelayMs
+		const messageId = await createMessage(t, {
+			processingStatus: 'drafting',
+			draftResponse: 'Auto reply',
+		});
+
+		const before = Date.now();
+		await t.mutation(internal.inbox.processingLifecycle.transition, {
+			inboundMessageId: messageId,
+			input: { to: 'approved', at: before, source: 'auto' },
+		});
+
+		const jobs = await sendJobsFor(t, messageId);
+		expect(jobs.length).toBe(1);
+		expect(jobs[0]!.scheduledTime).toBeGreaterThanOrEqual(before + 60_000 - 1_000);
+	});
+
+	it('delay=0 preserves legacy behaviour — immediate send, no marker', async () => {
+		const t = convexTest(schema, modules);
+		await setAgentConfig(t, { autoSendDelayMs: 0 });
+		const messageId = await createMessage(t, {
+			processingStatus: 'drafting',
+			draftResponse: 'Auto reply',
+		});
+
+		const before = Date.now();
+		await t.mutation(internal.inbox.processingLifecycle.transition, {
+			inboundMessageId: messageId,
+			input: { to: 'approved', at: before, source: 'auto' },
+		});
+
+		const jobs = await sendJobsFor(t, messageId);
+		expect(jobs.length).toBe(1);
+		// Immediate: scheduled at (near) now, not a minute out.
+		expect(jobs[0]!.scheduledTime).toBeLessThan(before + 5_000);
+
+		await t.run(async (ctx) => {
+			const m = await ctx.db.get(messageId);
+			expect(m?.pendingAutoSend).toBeUndefined();
+		});
+	});
+
+	it('human-reviewed approvals send immediately with no delay/marker', async () => {
+		const t = convexTest(schema, modules);
+		await setAgentConfig(t, { autoSendDelayMs: 60_000 });
+		const messageId = await createMessage(t, {
+			processingStatus: 'draft_ready',
+			draftResponse: 'Reviewed reply',
+		});
+
+		const before = Date.now();
+		await t.mutation(internal.inbox.processingLifecycle.transition, {
+			inboundMessageId: messageId,
+			input: { to: 'approved', at: before, source: 'human', userId: 'user-1' },
+		});
+
+		const jobs = await sendJobsFor(t, messageId);
+		expect(jobs.length).toBe(1);
+		expect(jobs[0]!.scheduledTime).toBeLessThan(before + 5_000);
+		await t.run(async (ctx) => {
+			const m = await ctx.db.get(messageId);
+			expect(m?.pendingAutoSend).toBeUndefined();
+		});
+	});
+
+	it('cancelAutoSend before the delay cancels the scheduled send and routes back to human review', async () => {
+		const t = convexTest(schema, modules);
+		await setAgentConfig(t, { autoSendDelayMs: 60_000 });
+		const threadId = await createThread(t);
+		const messageId = await createMessage(t, {
+			processingStatus: 'drafting',
+			threadId,
+			draftResponse: 'Auto reply',
+		});
+
+		await t.mutation(internal.inbox.processingLifecycle.transition, {
+			inboundMessageId: messageId,
+			input: { to: 'approved', at: Date.now(), source: 'auto' },
+		});
+
+		// The delayed send job is live and pending.
+		const before = await sendJobsFor(t, messageId);
+		expect(before.length).toBe(1);
+		expect(before[0]!.state.kind).toBe('pending');
+
+		const result = await t.mutation(internal.inbox.processingLifecycle.cancelAutoSend, {
+			inboundMessageId: messageId,
+			reason: 'user_cancel',
+		});
+		expect(result.cancelled).toBe(true);
+
+		// The scheduled send is cancelled (never runs) — no live pending send left.
+		const after = await sendJobsFor(t, messageId);
+		const stillPending = after.filter((j) => j.state.kind === 'pending');
+		expect(stillPending.length).toBe(0);
+
+		// The message is routed back to human review, the marker is cleared.
+		await t.run(async (ctx) => {
+			const m = await ctx.db.get(messageId);
+			expect(m?.processingStatus).toBe('draft_ready');
+			expect(m?.pendingAutoSend).toBeUndefined();
+			const thread = await ctx.db.get(threadId);
+			expect(thread?.latestDraftStatus).toBe('pending');
+		});
+	});
+
+	it('cancelAutoSend is a no-op when there is no pending send', async () => {
+		const t = convexTest(schema, modules);
+		const messageId = await createMessage(t, {
+			processingStatus: 'approved',
+			processedAt: Date.now(),
+			draftResponse: 'Auto reply',
+		});
+
+		const result = await t.mutation(internal.inbox.processingLifecycle.cancelAutoSend, {
+			inboundMessageId: messageId,
+			reason: 'kill_switch',
+		});
+		expect(result.cancelled).toBe(false);
+		expect(result.reason).toBe('no_pending_send');
+		await t.run(async (ctx) => {
+			const m = await ctx.db.get(messageId);
+			expect(m?.processingStatus).toBe('approved');
+		});
+	});
+
+	async function armPendingAutoSend(
+		t: ReturnType<typeof convexTest>,
+		messageId: Id<'inboundMessages'>,
+		sendAt: number,
+	) {
+		await t.run(async (ctx) => {
+			const scheduledFnId = await ctx.scheduler.runAfter(
+				Math.max(0, sendAt - Date.now()),
+				internal.agent.agentPipeline.sendApprovedReply,
+				{ inboundMessageId: messageId, autonomous: true },
+			);
+			await ctx.db.patch(messageId, {
+				pendingAutoSend: { scheduledFnId, sendAt, scheduledAt: Date.now() },
+			});
+		});
+	}
+
+	it('reconcile does NOT flag a delayed-but-not-yet-due send as stuck', async () => {
+		const t = convexTest(schema, modules);
+		const messageId = await createMessage(t, {
+			processingStatus: 'approved',
+			// Approved long ago (would be stale by processedAt alone) …
+			processedAt: Date.now() - 30 * 60 * 1000,
+			draftResponse: 'Auto reply',
+		});
+		// … but the delayed send is scheduled in the future.
+		await armPendingAutoSend(t, messageId, Date.now() + 60_000);
+
+		const result = await t.mutation(internal.inbox.processingLifecycle.reconcileStuckApproved, {});
+		expect(result.reEnqueued).toBe(0);
+	});
+
+	it('reconcile DOES flag a delayed send whose scheduled time is itself stale (lost completion)', async () => {
+		const t = convexTest(schema, modules);
+		const messageId = await createMessage(t, {
+			processingStatus: 'approved',
+			processedAt: Date.now() - 40 * 60 * 1000,
+			draftResponse: 'Auto reply',
+		});
+		// sendAt is 20m in the PAST — past the 10m staleness window.
+		await armPendingAutoSend(t, messageId, Date.now() - 20 * 60 * 1000);
+
+		const result = await t.mutation(internal.inbox.processingLifecycle.reconcileStuckApproved, {});
+		expect(result.reEnqueued).toBe(1);
+	});
+});
