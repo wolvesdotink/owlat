@@ -141,9 +141,9 @@ describe('contextRetrievalStep.execute — coverage signal', () => {
 
 		// Persisted alongside contextTier on the inbound message.
 		expect(recorded.value).not.toBeNull();
-		expect(recorded.value?.inboundMessageId).toBe(messageId);
-		expect(recorded.value?.contextTier).toBe('normal');
-		expect(recorded.value?.contextCoverage).toEqual(output.coverage);
+		expect(recorded.value?.['inboundMessageId']).toBe(messageId);
+		expect(recorded.value?.['contextTier']).toBe('normal');
+		expect(recorded.value?.['contextCoverage']).toEqual(output.coverage);
 	});
 
 	it('is low-coverage when every grounding leg is empty', async () => {
@@ -164,7 +164,7 @@ describe('contextRetrievalStep.execute — coverage signal', () => {
 			lowCoverage: true,
 		});
 		expect(output.coverage.topScore).toBeUndefined();
-		expect(recorded.value?.contextCoverage).toEqual(output.coverage);
+		expect(recorded.value?.['contextCoverage']).toEqual(output.coverage);
 	});
 
 	it('stays grounded (not low-coverage) on thread history alone, no knowledge/files', async () => {
