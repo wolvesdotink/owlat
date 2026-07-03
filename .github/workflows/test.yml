@@ -96,6 +96,11 @@ jobs:
           egress-policy: audit
 
       - uses: actions/checkout@v7
+        with:
+          # ci:lint ends with the oxfmt format gate (scripts/check-format.sh),
+          # which diffs changed JS/TS files against the base branch. Full
+          # history is needed so `git merge-base origin/<base> HEAD` resolves.
+          fetch-depth: 0
 
       - uses: oven-sh/setup-bun@v2
         with:
