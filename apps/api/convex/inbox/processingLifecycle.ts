@@ -34,8 +34,9 @@
 
 import { v } from 'convex/values';
 import { internalMutation } from '../_generated/server';
+import type { MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
-import type { Id } from '../_generated/dataModel';
+import type { Doc, Id } from '../_generated/dataModel';
 import {
 	contextCoverageValidator,
 	draftQualityValidator,
@@ -48,6 +49,7 @@ import {
 	type TransitionOutcome,
 } from './processingLifecycle/types';
 import { dispatch } from './processingLifecycle/effects';
+import { recordAuditLog } from '../lib/auditLog';
 
 // Re-export the lifecycle types so existing cross-file importers
 // (`agent/steps/*`, tests) keep a single import surface.
@@ -341,42 +343,126 @@ export const reconcileStuckApproved = internalMutation({
 // degrade. Idempotent: a message with no `pendingAutoSend` marker (already
 // sent, never delayed, or already cancelled) is a no-op.
 
+type CancelAutoSendReason = 'thread_reply' | 'kill_switch' | 'user_cancel';
+
+const cancelAutoSendReasonValidator = v.union(
+	v.literal('thread_reply'),
+	v.literal('kill_switch'),
+	v.literal('user_cancel'),
+);
+
+type CancelAutoSendOutcome = {
+	cancelled: boolean;
+	reason: 'no_pending_send' | 'not_approved' | 'already_sent' | 'cancelled';
+};
+
+// Audit the abort so the `reason` discriminator (thread reply / kill switch /
+// explicit user Undo) is a durable signal, not dead surface. `userId` is the
+// operator for an explicit Undo; system-initiated cancels (a landing reply, the
+// kill switch) record under the synthetic `system` actor.
+async function recordAutoSendCancellation(
+	ctx: MutationCtx,
+	message: Doc<'inboundMessages'>,
+	reason: CancelAutoSendReason,
+	userId: string | undefined,
+): Promise<void> {
+	await recordAuditLog(ctx, {
+		userId: userId ?? 'system',
+		action: 'inbound.auto_send_cancelled',
+		resource: 'inbound_message',
+		resourceId: message._id,
+		details: { reason },
+	});
+}
+
+// Shared core for both the single-message cancel and the kill-switch bulk
+// cancel. Aborts the delayed send on one message and routes it back to human
+// review, fail-soft: any message that has no live pending send is a no-op.
+async function cancelPendingAutoSend(
+	ctx: MutationCtx,
+	message: Doc<'inboundMessages'>,
+	reason: CancelAutoSendReason,
+	userId?: string,
+): Promise<CancelAutoSendOutcome> {
+	const pending = message.pendingAutoSend;
+	if (!pending) return { cancelled: false, reason: 'no_pending_send' };
+
+	// A marker only ever lives on an `approved` message; if the status has
+	// already moved on (e.g. the send fired and completed), there is nothing
+	// to cancel — leave the state alone.
+	if (message.processingStatus !== 'approved') {
+		return { cancelled: false, reason: 'not_approved' };
+	}
+
+	// Guard the enqueue→completion race. When the delayed `sendApprovedReply`
+	// fires it enqueues the send but the message stays `approved` (marker still
+	// present) until `sendCompletion` drives it to `sent`. In that window the
+	// scheduled function has left `pending`. Cancelling here would route an
+	// ALREADY-DISPATCHED reply back to review (a confusing status flip, and a
+	// duplicate if a human re-approves). Only cancel while the job is still
+	// pending in the queue.
+	const scheduled = await ctx.db.system.get(pending.scheduledFnId);
+	if (!scheduled || scheduled.state.kind !== 'pending') {
+		return { cancelled: false, reason: 'already_sent' };
+	}
+
+	// Abort the delayed send. `scheduler.cancel` is a no-op if the job has
+	// already run or been cancelled, so this is safe against a race with the
+	// send firing at its deadline.
+	await ctx.scheduler.cancel(pending.scheduledFnId);
+
+	// Record WHY the queued send was pulled back (thread reply / kill switch /
+	// explicit user Undo) as an audit trail before routing to review, so the
+	// `reason` discriminator is a real signal rather than dead surface.
+	await recordAutoSendCancellation(ctx, message, reason, userId);
+
+	// Route back to human review. The `→ draft_ready` reducer clears the
+	// pendingAutoSend marker (any transition out of `approved` does) and
+	// projects the thread's draft status back to `pending`.
+	await dispatch(ctx, message, { to: 'draft_ready', at: Date.now() });
+
+	return { cancelled: true, reason: 'cancelled' };
+}
+
 export const cancelAutoSend = internalMutation({
 	args: {
 		inboundMessageId: v.id('inboundMessages'),
-		reason: v.union(
-			v.literal('thread_reply'),
-			v.literal('kill_switch'),
-			v.literal('user_cancel'),
-		),
+		reason: cancelAutoSendReasonValidator,
+		// Operator behind an explicit user Undo; absent for system-initiated
+		// cancels (landing reply / kill switch).
+		userId: v.optional(v.string()),
 	},
-	handler: async (
-		ctx,
-		args,
-	): Promise<{ cancelled: boolean; reason: 'no_pending_send' | 'not_approved' | 'cancelled' }> => {
+	handler: async (ctx, args): Promise<CancelAutoSendOutcome> => {
 		const message = await ctx.db.get(args.inboundMessageId);
 		if (!message) return { cancelled: false, reason: 'no_pending_send' };
+		return cancelPendingAutoSend(ctx, message, args.reason, args.userId);
+	},
+});
 
-		const pending = message.pendingAutoSend;
-		if (!pending) return { cancelled: false, reason: 'no_pending_send' };
+// ─── Kill-switch bulk cancel ─────────────────────────────────────────────────
+//
+// When the operator flips the auto-reply kill switch off (updateConfig sets
+// `isAutoReplyEnabled=false`), every autonomous send still sitting in its undo
+// window must be pulled back — otherwise a queued send fires seconds after the
+// operator thought they stopped it. Scan the `approved` messages and cancel any
+// that still hold a live `pendingAutoSend` marker, routing each back to human
+// review. Scheduled off the admin mutation so a large scan never blocks the
+// config write; fail-soft per message.
 
-		// A marker only ever lives on an `approved` message; if the status has
-		// already moved on (e.g. the send fired and completed), there is nothing
-		// to cancel — leave the state alone.
-		if (message.processingStatus !== 'approved') {
-			return { cancelled: false, reason: 'not_approved' };
+export const cancelPendingAutoSendsForKillSwitch = internalMutation({
+	args: {},
+	handler: async (ctx): Promise<{ cancelled: number }> => {
+		const approved = await ctx.db
+			.query('inboundMessages')
+			.withIndex('by_processing_status', (q) => q.eq('processingStatus', 'approved'))
+			.take(100);
+
+		let cancelled = 0;
+		for (const message of approved) {
+			if (!message.pendingAutoSend) continue;
+			const outcome = await cancelPendingAutoSend(ctx, message, 'kill_switch');
+			if (outcome.cancelled) cancelled++;
 		}
-
-		// Abort the delayed send. `scheduler.cancel` is a no-op if the job has
-		// already run or been cancelled, so this is safe against a race with the
-		// send firing at its deadline.
-		await ctx.scheduler.cancel(pending.scheduledFnId);
-
-		// Route back to human review. The `→ draft_ready` reducer clears the
-		// pendingAutoSend marker (any transition out of `approved` does) and
-		// projects the thread's draft status back to `pending`.
-		await dispatch(ctx, message, { to: 'draft_ready', at: Date.now() });
-
-		return { cancelled: true, reason: 'cancelled' };
+		return { cancelled };
 	},
 });
