@@ -193,12 +193,18 @@ export const inboxTables = {
 			v.literal('draft'),
 			v.literal('route')
 		),
-		// Execution status
+		// Execution status. `failed` is a RETRYABLE terminal-of-attempt state
+		// the retry cron (processingLifecycle.retryFailedActions) picks back up;
+		// `abandoned` is the TRUE terminal state, set once retries are exhausted
+		// (retryCount >= MAX_RETRY_ATTEMPTS) so the by_status='failed' scan only
+		// ever holds still-retryable rows and can't be starved by a growing head
+		// of lifetime-exhausted failures.
 		status: v.union(
 			v.literal('pending'),
 			v.literal('running'),
 			v.literal('completed'),
 			v.literal('failed'),
+			v.literal('abandoned'),
 			v.literal('skipped')
 		),
 		// Step input/output (JSON strings for flexibility)

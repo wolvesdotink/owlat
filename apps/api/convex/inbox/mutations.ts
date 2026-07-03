@@ -329,14 +329,18 @@ export const retryFailedMessage = adminMutation({
 		}
 
 		// Reset the most recent failed agentAction (if any) alongside the status
-		// reset, mirroring the cron's per-message behaviour.
+		// reset, mirroring the cron's per-message behaviour. A message only
+		// reaches terminal `processingStatus === 'failed'` once its step retries
+		// are exhausted, at which point the step row is `abandoned` (the terminal
+		// twin of `failed`) — so match either so the operator retry still resets
+		// the offending step to a clean `pending`.
 		const failedAction = (
 			await ctx.db
 				.query('agentActions')
 				.withIndex('by_inbound_message', (q) => q.eq('inboundMessageId', args.inboundMessageId))
 				.collect()
 		)
-			.filter((a) => a.status === 'failed')
+			.filter((a) => a.status === 'failed' || a.status === 'abandoned')
 			.sort((a, b) => b.createdAt - a.createdAt)[0];
 
 		await ctx.runMutation(internal.inbox.processingLifecycle.transition, {

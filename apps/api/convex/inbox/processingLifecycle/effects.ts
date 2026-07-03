@@ -16,12 +16,13 @@ import { internal } from '../../_generated/api';
 import type { Doc } from '../../_generated/dataModel';
 import { transition as threadTransition } from '../threads/module';
 import { applyInboxStatsDelta, bucketForStatus } from '../../lib/inboxStats';
-import type {
-	ActionStatus,
-	Effect,
-	ProcessingStatus,
-	TransitionInput,
-	TransitionOutcome,
+import {
+	failedActionStatus,
+	type ActionStatus,
+	type Effect,
+	type ProcessingStatus,
+	type TransitionInput,
+	type TransitionOutcome,
 } from './types';
 import { canFail, LEGAL_EDGES, reduce, TERMINAL } from './reducers';
 
@@ -61,11 +62,14 @@ export async function applyEffects(
 			case 'fail_action': {
 				const action = await ctx.db.get(effect.actionId);
 				if (!action) break;
+				const retryCount = action.retryCount + 1;
 				await ctx.db.patch(effect.actionId, {
-					status: 'failed' as ActionStatus,
+					// Exhausted retries → terminal `abandoned`, keeping the retry
+					// cron's `by_status='failed'` scan free of dead rows.
+					status: failedActionStatus(retryCount),
 					errorMessage: effect.errorMessage,
 					completedAt: Date.now(),
-					retryCount: action.retryCount + 1,
+					retryCount,
 				});
 				break;
 			}

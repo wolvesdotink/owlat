@@ -19,6 +19,7 @@ import {
 	tokenUsageValidator,
 } from '../../lib/convexValidators';
 import { pendingClarificationValidator } from '../clarificationValidators';
+import { MAX_RETRY_ATTEMPTS } from '../../lib/constants';
 
 // ─── Status / action literals ────────────────────────────────────────────────
 
@@ -48,7 +49,23 @@ export type ActionStatus =
 	| 'running'
 	| 'completed'
 	| 'failed'
+	| 'abandoned'
 	| 'skipped';
+
+/**
+ * Terminal status for a just-failed agentAction. `failed` stays RETRYABLE and
+ * is what the retry cron (processingLifecycle.retryFailedActions) scans via
+ * `by_status`; `abandoned` is the true terminal state, applied the moment
+ * retries are exhausted. Keeping exhausted rows OUT of the `failed` bucket
+ * stops the ascending `by_status='failed'` scan from being permanently starved
+ * by a growing head of lifetime-exhausted rows.
+ *
+ * `newRetryCount` is the incremented count being written on THIS failure
+ * (i.e. `action.retryCount + 1`).
+ */
+export function failedActionStatus(newRetryCount: number): ActionStatus {
+	return newRetryCount >= MAX_RETRY_ATTEMPTS ? 'abandoned' : 'failed';
+}
 
 // Derived from the shared validators (single source of truth — also spread into
 // the inboundMessages / agentActions schema columns). A local hand-written copy

@@ -357,9 +357,14 @@ export const rollupMetrics = internalAction({
 			});
 		}
 
-		// Error rate: failed / total
+		// Error rate: failed / total. Count both the retryable `failed` state and
+		// its terminal twin `abandoned` (retries exhausted) — both are failures
+		// from the health signal's perspective; the split is a retry-scheduling
+		// concern, not an error-vs-success one.
 		const totalActions = actions.length;
-		const failedActions = actions.filter((a) => a.status === 'failed').length;
+		const failedActions = actions.filter(
+			(a) => a.status === 'failed' || a.status === 'abandoned',
+		).length;
 		const errorRate = totalActions > 0 ? failedActions / totalActions : 0;
 
 		await ctx.runMutation(internal.agentHealth.recordMetric, {
