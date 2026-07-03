@@ -309,6 +309,24 @@ export const inboxTables = {
 		.index('by_category', ['category'])
 		.index('by_created_at', ['createdAt']),
 
+	// Autonomy Suggestions - pending "graduation" nudges. Autonomy only ever
+	// widens (a lower auto-approve threshold = easier auto-send) by the user's
+	// explicit decision, never automatically. When the weekly cron observes a
+	// low rejection rate it records a suggestion here instead of loosening the
+	// threshold itself; an owner/admin must explicitly accept it to apply.
+	autonomySuggestions: defineTable({
+		category: v.string(),
+		currentThreshold: v.number(),   // rule threshold at suggestion time
+		suggestedThreshold: v.number(), // the looser (lower) threshold on offer
+		evidence: v.object({
+			approved: v.number(),      // approvals observed in the window
+			sampleSize: v.number(),    // total feedback rows in the window
+			rejectionRate: v.number(), // rejections / sampleSize
+		}),
+		createdAt: v.number(),
+	})
+		.index('by_category', ['category']),
+
 	// Coalesce Batches - one in-flight debounce window per thread. When rapid
 	// messages arrive on the same thread, the pending batch's scheduled job is
 	// cancelled and re-scheduled, so only the latest message triggers a single

@@ -366,9 +366,18 @@ export const resetDailyCounts = internalMutation({
 // ============================================================
 
 /**
- * Automatically adjust thresholds based on rejection patterns.
- * If rejection rate > 40% in a category over the past week,
- * tighten the auto-approve threshold by 10%.
+ * Weekly review of rejection patterns per category. Deliberately asymmetric:
+ *
+ *   - TIGHTENING is automatic. A rejection spike (>40% over the week) raises the
+ *     auto-approve threshold by 10% right away — that fails toward the human and
+ *     only ever makes auto-send harder, so it is always safe to do unattended.
+ *   - LOOSENING is NEVER automatic. A low rejection rate does not lower the
+ *     threshold; it records a "graduation suggestion" the user must explicitly
+ *     accept (see `acceptGraduationSuggestion`). Autonomy only widens by the
+ *     user's decision, never on its own.
+ *
+ * When a category tightens, any stale pending loosening suggestion for it is
+ * cleared — a suggestion minted before a rejection spike must not linger.
  */
 export const adjustThresholds = internalAction({
 	args: {},
@@ -389,25 +398,164 @@ export const adjustThresholds = internalAction({
 			const recentFeedback = feedback.filter((f) => f.createdAt > oneWeekAgo);
 			if (recentFeedback.length < 5) continue; // Not enough data
 
-			const rejections = recentFeedback.filter((f) => f.action === 'rejected').length;
+			let rejections = 0;
+			let approvals = 0;
+			for (const f of recentFeedback) {
+				if (f.action === 'rejected') rejections++;
+				else if (f.action === 'approved') approvals++;
+			}
 			const rejectionRate = rejections / recentFeedback.length;
 
 			if (rejectionRate > 0.40) {
-				// Tighten threshold: increase by 10% (make it harder to auto-approve)
+				// Tighten threshold: increase by 10% (make it harder to auto-approve).
+				// This is the only automatic threshold move, and it only ever narrows.
 				const newThreshold = Math.min(0.99, rule.autoApproveThreshold + 0.10);
 				await ctx.runMutation(internal.autonomy.updateThreshold, {
 					ruleId: rule._id,
 					newThreshold,
 				});
-			} else if (rejectionRate < 0.10 && recentFeedback.length >= 20) {
-				// Loosen threshold: decrease by 5% (allow more auto-approval)
-				const newThreshold = Math.max(0.50, rule.autoApproveThreshold - 0.05);
-				await ctx.runMutation(internal.autonomy.updateThreshold, {
-					ruleId: rule._id,
-					newThreshold,
+				// A prior loosening suggestion is now stale — drop it.
+				await ctx.runMutation(internal.autonomy.clearGraduationSuggestion, {
+					category: rule.category,
 				});
+			} else if (rejectionRate < 0.10 && recentFeedback.length >= 20) {
+				// Low rejection rate: do NOT lower the threshold. Record a
+				// graduation suggestion the user must explicitly accept. The
+				// suggested (looser) threshold is computed but only applied on
+				// acceptance.
+				const suggestedThreshold = Math.max(0.50, rule.autoApproveThreshold - 0.05);
+				// Only bother suggesting if it actually loosens something.
+				if (suggestedThreshold < rule.autoApproveThreshold) {
+					await ctx.runMutation(internal.autonomy.recordGraduationSuggestion, {
+						category: rule.category,
+						currentThreshold: rule.autoApproveThreshold,
+						suggestedThreshold,
+						evidence: {
+							approved: approvals,
+							sampleSize: recentFeedback.length,
+							rejectionRate,
+						},
+					});
+				}
 			}
 		}
+	},
+});
+
+// ============================================================
+// Graduation Suggestions (explicit-acceptance loosening)
+// ============================================================
+
+/**
+ * Admin-gated read of pending graduation suggestions for the autonomy settings
+ * UI. Each row is a category where the agent has earned a looser threshold but
+ * may only get it once an owner/admin accepts. Newest first.
+ */
+export const listGraduationSuggestions = adminQuery({
+	args: {},
+	handler: async (ctx) => {
+		await assertFeatureEnabled(ctx, 'ai.autonomy');
+		return await ctx.db.query('autonomySuggestions').order('desc').collect(); // bounded: at most one row per agent category
+	},
+});
+
+/**
+ * Record (or refresh) a pending graduation suggestion for a category. Upserts on
+ * category so repeated weekly runs don't pile up duplicates — the latest
+ * evidence replaces the previous suggestion. Internal-only: the weekly cron is
+ * the sole writer. Recording a suggestion NEVER changes the live threshold.
+ */
+export const recordGraduationSuggestion = internalMutation({
+	args: {
+		category: v.string(),
+		currentThreshold: v.number(),
+		suggestedThreshold: v.number(),
+		evidence: v.object({
+			approved: v.number(),
+			sampleSize: v.number(),
+			rejectionRate: v.number(),
+		}),
+	},
+	returns: v.null(),
+	handler: async (ctx, args) => {
+		const existing = await ctx.db
+			.query('autonomySuggestions')
+			.withIndex('by_category', (q) => q.eq('category', args.category))
+			.first();
+
+		const now = Date.now();
+		if (existing) {
+			await ctx.db.patch(existing._id, {
+				currentThreshold: args.currentThreshold,
+				suggestedThreshold: args.suggestedThreshold,
+				evidence: args.evidence,
+				createdAt: now,
+			});
+			return null;
+		}
+
+		await ctx.db.insert('autonomySuggestions', {
+			category: args.category,
+			currentThreshold: args.currentThreshold,
+			suggestedThreshold: args.suggestedThreshold,
+			evidence: args.evidence,
+			createdAt: now,
+		});
+		return null;
+	},
+});
+
+/**
+ * Clear any pending graduation suggestion for a category. Used when the cron
+ * tightens a category (a stale loosening suggestion must not survive a rejection
+ * spike). Internal-only.
+ */
+export const clearGraduationSuggestion = internalMutation({
+	args: { category: v.string() },
+	returns: v.null(),
+	handler: async (ctx, args) => {
+		const existing = await ctx.db
+			.query('autonomySuggestions')
+			.withIndex('by_category', (q) => q.eq('category', args.category))
+			.first();
+		if (existing) await ctx.db.delete(existing._id);
+		return null;
+	},
+});
+
+/**
+ * Explicitly accept a graduation suggestion: apply its suggested (looser)
+ * threshold to the category's rule and clear the suggestion. This is the ONLY
+ * path that lowers an auto-approve threshold — autonomy never widens without a
+ * user's deliberate action. Owner/admin only.
+ */
+export const acceptGraduationSuggestion = authedMutation({
+	args: { suggestionId: v.id('autonomySuggestions') },
+	handler: async (ctx, args) => {
+		await requireOrgPermission(
+			ctx,
+			'organization:manage',
+			'Only owners and admins can widen autonomy',
+		);
+		await assertFeatureEnabled(ctx, 'ai.autonomy');
+
+		const suggestion = await ctx.db.get(args.suggestionId);
+		if (!suggestion) return; // already accepted/cleared — idempotent no-op
+
+		const rule = await ctx.db
+			.query('autonomyRules')
+			.withIndex('by_category', (q) => q.eq('category', suggestion.category))
+			.first();
+
+		if (rule) {
+			await ctx.db.patch(rule._id, {
+				autoApproveThreshold: suggestion.suggestedThreshold,
+				updatedAt: Date.now(),
+			});
+		}
+
+		// Clear the suggestion whether or not a rule still exists.
+		await ctx.db.delete(args.suggestionId);
 	},
 });
 
