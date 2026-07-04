@@ -363,17 +363,29 @@ export const inboxTables = {
 		createdAt: v.number(),
 	}).index('by_breaker_type', ['breakerType']),
 
-	// Autonomy Rules - per-category auto-approval configuration
+	// Autonomy Rules - auto-approval configuration, scoped by the optional
+	// `sender`: ABSENT = the CATEGORY rule; PRESENT = a PER-SENDER/per-contact rule
+	// for that exact normalized email, which the `route` step reads first and which
+	// overrides the category rule (an `isEnabled: false` per-sender rule is an
+	// explicit "never auto-send this sender" opt-out). `warmupRequired` is the
+	// first-N-observed warm-up: a (category, sender) slice may auto-send only once
+	// it has this many MATCHED shadow observations (see agentShadowScorecard;
+	// absent → WARMUP_MATCHES_DEFAULT). A new sender with no scorecard row is
+	// hard-excluded from auto-send regardless of any rule.
 	autonomyRules: defineTable({
 		category: v.string(), // "support", "sales", "billing", etc.
+		sender: v.optional(v.string()), // per-sender/per-contact rule; absent on a category rule
 		autoApproveThreshold: v.number(), // Confidence threshold (0-1)
 		maxDailyAutoActions: v.number(), // Safety cap
+		warmupRequired: v.optional(v.number()), // matched shadow obs before this slice may auto-send
 		currentDailyCount: v.optional(v.number()),
 		dailyCountResetAt: v.optional(v.number()),
 		isEnabled: v.boolean(),
 		createdAt: v.number(),
 		updatedAt: v.number(),
-	}).index('by_category', ['category']),
+	})
+		.index('by_category', ['category'])
+		.index('by_sender_category', ['sender', 'category']),
 
 	// Autonomy Feedback - tracks correction/outcome signals for threshold
 	// adjustment. Two sources feed the SAME calibration loop:
