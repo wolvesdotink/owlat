@@ -9,8 +9,8 @@ import {
 	mailNotifyAboutValidator,
 	mailUnsubscribeValidator,
 	spamVerdictValidator,
-	editAdjustmentValidator,
 } from '../lib/convexValidators';
+import { editAdjustmentValidator } from '../mail/editLearningValidators';
 
 /**
  * Personal Mail (Postbox) tables — Gmail-equivalent backend.
