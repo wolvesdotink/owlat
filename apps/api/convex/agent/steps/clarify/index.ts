@@ -196,7 +196,10 @@ export const clarifyStep: AgentStepModule<'clarify', ClarifyInput, ClarifyOutput
 			// → undefined mode → today's behaviour.
 			let mode: EagernessMode | undefined;
 			try {
-				const setting = await ctx.runQuery(internal.autonomy.getAskEagernessInternal, {});
+				const setting = await ctx.runQuery(
+					internal.inbox.askEagernessSettings.getAskEagernessInternal,
+					{}
+				);
 				mode = setting.mode ?? undefined;
 			} catch {
 				mode = undefined;

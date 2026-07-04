@@ -11,6 +11,7 @@ import { authTables } from './schema/auth';
 import { templateTables } from './schema/templates';
 import { deliveryTables } from './schema/delivery';
 import { inboxTables } from './schema/inbox';
+import { askEagernessTables } from './schema/askEagerness';
 import { knowledgeTables } from './schema/knowledge';
 import { messagingTables } from './schema/messaging';
 import { dashboardTables } from './schema/dashboard';
@@ -34,6 +35,7 @@ export default defineSchema({
 	...templateTables,
 	...deliveryTables,
 	...inboxTables,
+	...askEagernessTables,
 	...knowledgeTables,
 	...messagingTables,
 	...dashboardTables,

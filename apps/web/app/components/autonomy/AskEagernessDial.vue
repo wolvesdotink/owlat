@@ -14,9 +14,12 @@ import { api } from '@owlat/api';
 
 type EagernessMode = 'cautious' | 'balanced' | 'confident' | 'off';
 
-const { data: setting, isLoading } = useConvexQuery(api.autonomy.getAskEagerness, () => ({}));
+const { data: setting, isLoading } = useConvexQuery(
+	api.inbox.askEagernessSettings.getAskEagerness,
+	() => ({})
+);
 
-const { run: setEagerness } = useBackendOperation(api.autonomy.setAskEagerness, {
+const { run: setEagerness } = useBackendOperation(api.inbox.askEagernessSettings.setAskEagerness, {
 	label: 'Save ask-eagerness',
 });
 
