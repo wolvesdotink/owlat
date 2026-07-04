@@ -113,7 +113,7 @@ const steps = [
   border-radius: 1px;
   transform-origin: top;
   transform: scaleY(0);
-  transition: transform 0.8s var(--ease-out-expo) 0.2s;
+  transition: transform var(--motion-choreo) var(--ease-spring) var(--motion-moderate);
 }
 
 .is-visible .df-line {
@@ -125,7 +125,7 @@ const steps = [
   margin-bottom: 16px;
   opacity: 0;
   transform: translateX(-8px);
-  transition: opacity 0.5s var(--ease-out-expo), transform 0.5s var(--ease-out-expo);
+  transition: opacity var(--motion-slow) var(--ease-spring), transform var(--motion-slow) var(--ease-spring);
   transition-delay: calc(0.15s + var(--si) * 0.15s);
 }
 
@@ -164,7 +164,7 @@ const steps = [
   border-radius: 50%;
   border: 2px solid var(--color-brand-dim);
   background: var(--color-bg-elevated);
-  transition: border-color 0.3s, box-shadow 0.3s;
+  transition: border-color var(--motion-moderate), box-shadow var(--motion-moderate);
 }
 
 .df-node--action .df-node-dot { border-color: var(--color-brand-dim); }
@@ -185,7 +185,7 @@ const steps = [
   background: var(--color-bg-surface);
   border: 1px solid transparent;
   flex: 1;
-  transition: border-color 0.25s, background 0.25s;
+  transition: border-color var(--motion-moderate), background var(--motion-moderate);
 }
 
 .df-step:hover .df-content {
@@ -266,7 +266,7 @@ const steps = [
   gap: 6px;
   opacity: 0;
   transform: translateX(-6px);
-  transition: opacity 0.5s var(--ease-out-expo), transform 0.5s var(--ease-out-expo);
+  transition: opacity var(--motion-slow) var(--ease-spring), transform var(--motion-slow) var(--ease-spring);
 }
 
 .is-visible .df-branch {
@@ -290,7 +290,7 @@ const steps = [
   border-radius: 6px;
   background: var(--color-bg-elevated);
   border: 1px solid var(--color-border-subtle);
-  transition: border-color 0.25s;
+  transition: border-color var(--motion-moderate);
 }
 
 .df-branch:hover .df-branch-content {

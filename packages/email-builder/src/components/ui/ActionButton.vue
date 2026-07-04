@@ -14,7 +14,7 @@ defineEmits<{
 
 <template>
 	<button
-		class="flex items-center justify-center gap-1 text-xs font-medium cursor-pointer transition-[background-color,border-color,color] duration-[120ms]"
+		class="flex items-center justify-center gap-1 text-xs font-medium cursor-pointer transition-[background-color,border-color,color] duration-(--motion-fast)"
 		:class="variant === 'subtle'
 			? 'py-1 px-2 border border-border-subtle rounded-md bg-none text-text-secondary hover:bg-bg-surface-hover hover:text-text-primary'
 			: 'py-[7px] border border-dashed border-border-strong rounded-lg bg-bg-surface text-text-secondary hover:bg-bg-surface-hover hover:text-text-primary hover:border-text-tertiary'"

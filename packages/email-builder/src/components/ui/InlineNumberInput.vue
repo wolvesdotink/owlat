@@ -19,7 +19,7 @@ function handleInput(event: Event) {
 <template>
 	<input
 		type="number"
-		class="w-12 py-[3px] px-0.5 text-xs tabular-nums text-center border-none border-b border-b-transparent bg-transparent text-text-primary outline-none appearance-number-plain transition-[border-color] duration-150 hover:border-b-border-default focus:border-b-brand"
+		class="w-12 py-[3px] px-0.5 text-xs tabular-nums text-center border-none border-b border-b-transparent bg-transparent text-text-primary outline-none appearance-number-plain transition-[border-color] duration-(--motion-fast) hover:border-b-border-default focus:border-b-brand"
 		:value="value"
 		:min="min"
 		:max="max"

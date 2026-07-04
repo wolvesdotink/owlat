@@ -34,7 +34,7 @@ const highlights = [
 				:style="{ '--i': i }"
 			>
 				<!-- Icon -->
-				<div class="shrink-0 w-9 h-9 rounded-[10px] bg-brand-soft border border-brand-border/30 flex items-center justify-center transition-all duration-300 group-hover:bg-brand/10 group-hover:border-brand/30 group-hover:scale-110">
+				<div class="shrink-0 w-9 h-9 rounded-[10px] bg-brand-soft border border-brand-border/30 flex items-center justify-center transition-all duration-(--motion-moderate) group-hover:bg-brand/10 group-hover:border-brand/30 group-hover:scale-110">
 					<!-- Editor -->
 					<svg v-if="item.icon === 'editor'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="text-brand">
 						<rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18" /><path d="M9 21V9" />
@@ -53,7 +53,7 @@ const highlights = [
 					</svg>
 				</div>
 				<div class="min-w-0">
-					<span class="block text-[0.8125rem] font-semibold text-text-primary leading-tight mb-0.5 transition-colors duration-300 group-hover:text-brand">
+					<span class="block text-[0.8125rem] font-semibold text-text-primary leading-tight mb-0.5 transition-colors duration-(--motion-moderate) group-hover:text-brand">
 						{{ item.label }}
 					</span>
 					<span class="block text-[0.75rem] text-text-tertiary leading-snug">
@@ -70,8 +70,8 @@ const highlights = [
 	opacity: 0;
 	transform: translateY(12px);
 	transition:
-		opacity 0.5s var(--ease-out-expo),
-		transform 0.5s var(--ease-out-expo);
+		opacity var(--motion-slow) var(--ease-spring),
+		transform var(--motion-slow) var(--ease-spring);
 	transition-delay: calc(0.05s + var(--i) * 0.08s);
 }
 

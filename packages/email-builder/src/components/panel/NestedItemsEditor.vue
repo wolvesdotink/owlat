@@ -56,7 +56,7 @@ const validChildTypes = computed<{ value: string; label: string; icon: Component
 			<div
 				v-for="child in children"
 				:key="child.id"
-				class="group/item flex items-center gap-1.5 py-[7px] px-2 border border-border-subtle rounded-lg cursor-pointer transition-all duration-[120ms] hover:bg-bg-surface-hover hover:border-border-subtle"
+				class="group/item flex items-center gap-1.5 py-[7px] px-2 border border-border-subtle rounded-lg cursor-pointer transition-all duration-(--motion-moderate) hover:bg-bg-surface-hover hover:border-border-subtle"
 				@click="emit('select-child', child.id)"
 			>
 				<component
@@ -66,9 +66,9 @@ const validChildTypes = computed<{ value: string; label: string; icon: Component
 					class="text-text-tertiary shrink-0 group-hover/item:text-brand"
 				/>
 				<span class="flex-1 text-xs text-text-primary whitespace-nowrap overflow-hidden text-ellipsis">{{ child.label }}</span>
-				<ChevronRight :size="12" class="text-text-tertiary shrink-0 opacity-0 group-hover/item:opacity-100 transition-opacity duration-[120ms]" />
+				<ChevronRight :size="12" class="text-text-tertiary shrink-0 opacity-0 group-hover/item:opacity-100 transition-opacity duration-(--motion-fast)" />
 				<button
-					class="flex items-center justify-center w-[22px] h-[22px] border-none rounded bg-none text-text-tertiary cursor-pointer shrink-0 opacity-0 group-hover/item:opacity-100 transition-[opacity,color,background-color] duration-[120ms] hover:text-error hover:bg-error-subtle"
+					class="flex items-center justify-center w-[22px] h-[22px] border-none rounded bg-none text-text-tertiary cursor-pointer shrink-0 opacity-0 group-hover/item:opacity-100 transition-[opacity,color,background-color] duration-(--motion-fast) hover:text-error hover:bg-error-subtle"
 					type="button"
 					title="Remove"
 					@click.stop="emit('remove-child', child.id)"
@@ -85,7 +85,7 @@ const validChildTypes = computed<{ value: string; label: string; icon: Component
 		<!-- Add child -->
 		<div v-if="validChildTypes.length > 0" class="mt-1">
 			<select
-				class="w-full py-[7px] px-2 text-xs font-medium border border-dashed border-border-strong rounded-lg bg-bg-surface text-text-secondary cursor-pointer outline-none appearance-none bg-no-repeat bg-[right_8px_center] transition-all duration-[120ms] hover:bg-bg-surface-hover hover:border-text-tertiary hover:text-text-primary"
+				class="w-full py-[7px] px-2 text-xs font-medium border border-dashed border-border-strong rounded-lg bg-bg-surface text-text-secondary cursor-pointer outline-none appearance-none bg-no-repeat bg-[right_8px_center] transition-all duration-(--motion-moderate) hover:bg-bg-surface-hover hover:border-text-tertiary hover:text-text-primary"
 				:style="{ backgroundImage: chevronBgImage }"
 				@change="(e) => { const val = (e.target as HTMLSelectElement).value; if (val) { emit('add-child', val as BlockType); (e.target as HTMLSelectElement).value = ''; } }"
 			>

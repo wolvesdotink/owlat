@@ -80,7 +80,9 @@ const handleBackdropClick = () => {
 		@update:open="close"
 	>
 		<div class="flex flex-col items-center text-center">
-			<div :class="['w-12 h-12 flex items-center justify-center rounded-full mb-4', config.iconClass]">
+			<div
+				:class="['w-12 h-12 flex items-center justify-center rounded-full mb-4', config.iconClass]"
+			>
 				<Icon :name="config.icon" class="w-6 h-6" />
 			</div>
 
@@ -98,7 +100,7 @@ const handleBackdropClick = () => {
 			<button
 				type="button"
 				:class="[
-					'inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-bg-base disabled:pointer-events-none disabled:opacity-50',
+					'inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium transition-[color,background-color,border-color,box-shadow,scale] duration-(--motion-fast) ease-spring active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-bg-base disabled:pointer-events-none disabled:opacity-50',
 					config.buttonClass,
 				]"
 				:disabled="isLoading"

@@ -15,7 +15,10 @@ const formattedName = computed(() => {
 		confidence_degradation: 'Confidence Degradation',
 		rejection_spike: 'Rejection Spike',
 	};
-	return names[props.breakerType] ?? props.breakerType.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+	return (
+		names[props.breakerType] ??
+		props.breakerType.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+	);
 });
 
 const stateConfig = computed(() => {
@@ -27,7 +30,12 @@ const stateConfig = computed(() => {
 		case 'half_open':
 			return { label: 'Recovering', color: 'text-warning', bg: 'bg-warning', dotBg: 'bg-warning' };
 		default:
-			return { label: 'Unknown', color: 'text-text-tertiary', bg: 'bg-bg-surface', dotBg: 'bg-bg-surface' };
+			return {
+				label: 'Unknown',
+				color: 'text-text-tertiary',
+				bg: 'bg-bg-surface',
+				dotBg: 'bg-bg-surface',
+			};
 	}
 });
 
@@ -50,17 +58,20 @@ const progressPercent = computed(() => {
 			<div>
 				<h3 class="text-sm font-medium text-text-primary">{{ formattedName }}</h3>
 				<div class="flex items-center gap-2 mt-1">
-					<span
-						class="inline-block w-2 h-2 rounded-full"
-						:class="stateConfig.dotBg"
-					/>
+					<span class="inline-block w-2 h-2 rounded-full" :class="stateConfig.dotBg" />
 					<span class="text-xs font-medium" :class="stateConfig.color">
 						{{ stateConfig.label }}
 					</span>
 				</div>
 			</div>
 			<Icon
-				:name="state === 'closed' ? 'lucide:shield-check' : state === 'open' ? 'lucide:shield-off' : 'lucide:shield-alert'"
+				:name="
+					state === 'closed'
+						? 'lucide:shield-check'
+						: state === 'open'
+							? 'lucide:shield-off'
+							: 'lucide:shield-alert'
+				"
 				class="w-5 h-5"
 				:class="stateConfig.color"
 			/>
@@ -74,17 +85,16 @@ const progressPercent = computed(() => {
 				</div>
 				<div class="w-full h-2 bg-bg-surface rounded-full overflow-hidden">
 					<div
-						class="h-full rounded-full transition-all duration-500"
-						:class="state === 'closed' ? 'bg-success' : state === 'open' ? 'bg-error' : 'bg-warning'"
+						class="h-full rounded-full transition-all duration-(--motion-slow)"
+						:class="
+							state === 'closed' ? 'bg-success' : state === 'open' ? 'bg-error' : 'bg-warning'
+						"
 						:style="{ width: `${progressPercent}%` }"
 					/>
 				</div>
 			</div>
 
-			<p
-				v-if="state !== 'closed' && trippedAgo"
-				class="text-xs" :class="stateConfig.color"
-			>
+			<p v-if="state !== 'closed' && trippedAgo" class="text-xs" :class="stateConfig.color">
 				Tripped {{ trippedAgo }}
 			</p>
 		</div>

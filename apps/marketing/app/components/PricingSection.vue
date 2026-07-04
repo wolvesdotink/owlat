@@ -16,17 +16,6 @@ const selfHostFeatures = [
 	'In-app updates (one-click)',
 	'Apache 2.0 licensed',
 ];
-
-function handleTilt(event: MouseEvent, el: HTMLElement) {
-	const rect = el.getBoundingClientRect();
-	const x = (event.clientX - rect.left) / rect.width - 0.5;
-	const y = (event.clientY - rect.top) / rect.height - 0.5;
-	el.style.transform = `perspective(600px) rotateY(${x * 5}deg) rotateX(${-y * 5}deg) translateY(-2px)`;
-}
-
-function resetTilt(el: HTMLElement) {
-	el.style.transform = '';
-}
 </script>
 
 <template>
@@ -56,8 +45,6 @@ function resetTilt(el: HTMLElement) {
 				<div
 					class="price-card relative rounded-2xl p-7 border border-brand/40 ring-1 ring-brand/10"
 					style="--i: 3; background: linear-gradient(180deg, color-mix(in oklab, var(--color-brand-subtle) 60%, var(--color-bg-elevated)) 0%, var(--color-bg-elevated) 100%)"
-					@mousemove="handleTilt($event, $event.currentTarget as HTMLElement)"
-					@mouseleave="resetTilt($event.currentTarget as HTMLElement)"
 				>
 					<span class="absolute -top-3 left-1/2 -translate-x-1/2 text-[0.6875rem] font-semibold text-text-inverse bg-brand px-3 py-0.5 rounded-full">
 						Available today
@@ -89,7 +76,7 @@ function resetTilt(el: HTMLElement) {
 					<!-- CTA -->
 					<a
 						href="https://docs.owlat.app/developer/self-hosting"
-						class="block w-full text-center px-4 py-2.5 text-[0.8125rem] font-semibold rounded-xl no-underline transition-all duration-250 btn-press bg-brand text-text-inverse hover:bg-brand-hover hover:-translate-y-px hover:shadow-brand-hover"
+						class="block w-full text-center px-4 py-2.5 text-[0.8125rem] font-semibold rounded-xl no-underline transition-all duration-(--motion-moderate) btn-press bg-brand text-text-inverse hover:bg-brand-hover hover:shadow-brand-hover"
 					>
 						Start self-hosting →
 					</a>
@@ -99,8 +86,6 @@ function resetTilt(el: HTMLElement) {
 				<div
 					class="price-card relative rounded-2xl p-7 border border-border-default opacity-75"
 					style="--i: 4; background: var(--color-bg-elevated)"
-					@mousemove="handleTilt($event, $event.currentTarget as HTMLElement)"
-					@mouseleave="resetTilt($event.currentTarget as HTMLElement)"
 				>
 					<span class="absolute -top-3 left-1/2 -translate-x-1/2 text-[0.6875rem] font-semibold text-text-tertiary bg-bg-surface border border-border-default px-3 py-0.5 rounded-full">
 						Coming soon
@@ -140,7 +125,7 @@ function resetTilt(el: HTMLElement) {
 
 					<a
 						href="/waitlist"
-						class="block w-full text-center px-4 py-2.5 text-[0.8125rem] font-semibold rounded-xl no-underline transition-all duration-250 btn-press bg-bg-surface text-text-primary border border-border-default hover:border-brand hover:-translate-y-px"
+						class="block w-full text-center px-4 py-2.5 text-[0.8125rem] font-semibold rounded-xl no-underline transition-all duration-(--motion-moderate) btn-press bg-bg-surface text-text-primary border border-border-default hover:border-brand"
 					>
 						Join waitlist
 					</a>
@@ -179,8 +164,8 @@ function resetTilt(el: HTMLElement) {
 	opacity: 0;
 	transform: translateY(14px);
 	transition:
-		opacity 0.6s var(--ease-out-expo),
-		transform 0.6s var(--ease-out-expo);
+		opacity var(--motion-slow) var(--ease-spring),
+		transform var(--motion-slow) var(--ease-spring);
 	transition-delay: calc(var(--i, 0) * 0.06s);
 }
 
@@ -188,10 +173,10 @@ function resetTilt(el: HTMLElement) {
 	opacity: 0;
 	transform: translateY(16px);
 	transition:
-		opacity 0.5s var(--ease-out-expo),
-		transform 0.5s var(--ease-out-expo),
-		border-color 0.3s ease,
-		box-shadow 0.3s ease;
+		opacity var(--motion-slow) var(--ease-spring),
+		transform var(--motion-slow) var(--ease-spring),
+		border-color var(--motion-moderate) var(--ease-spring),
+		box-shadow var(--motion-moderate) var(--ease-spring);
 	transition-delay: calc(0.12s + var(--i, 0) * 0.06s);
 	will-change: transform;
 }
@@ -203,14 +188,14 @@ function resetTilt(el: HTMLElement) {
 }
 
 .price-card:hover {
-	box-shadow: 0 12px 40px rgba(var(--owlat-shadow-tint), 0.08);
+	box-shadow: var(--shadow-3);
 }
 
 /* Animated checkmark draw */
 .check-path {
 	stroke-dasharray: 28;
 	stroke-dashoffset: 28;
-	transition: stroke-dashoffset 0.4s var(--ease-out-expo);
+	transition: stroke-dashoffset var(--motion-slow) var(--ease-spring);
 	transition-delay: calc(0.3s + var(--fi, 0) * 0.08s);
 }
 
@@ -223,8 +208,8 @@ function resetTilt(el: HTMLElement) {
 	opacity: 0;
 	transform: translateX(-6px);
 	transition:
-		opacity 0.4s ease,
-		transform 0.4s var(--ease-out-expo);
+		opacity var(--motion-slow) var(--ease-spring),
+		transform var(--motion-slow) var(--ease-spring);
 	transition-delay: calc(0.2s + var(--fi, 0) * 0.05s);
 }
 

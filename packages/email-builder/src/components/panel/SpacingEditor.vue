@@ -113,7 +113,7 @@ function sideValue(key: string): number {
 			<div class="inline-flex border border-border-subtle rounded-md overflow-hidden bg-bg-surface">
 				<!-- Uniform: solid square outline -->
 				<button
-					class="flex items-center justify-center w-[26px] h-[22px] border-none cursor-pointer transition-[background-color,color] duration-75"
+					class="flex items-center justify-center w-[26px] h-[22px] border-none cursor-pointer transition-[background-color,color] duration-(--motion-fast)"
 					:class="mode === 'uniform'
 						? 'bg-brand text-white'
 						: 'bg-transparent text-text-disabled hover:bg-bg-surface-hover hover:text-text-tertiary'"
@@ -127,7 +127,7 @@ function sideValue(key: string): number {
 				</button>
 				<!-- Axis pairs: square with crosshair -->
 				<button
-					class="flex items-center justify-center w-[26px] h-[22px] border-none border-l border-l-border-subtle cursor-pointer transition-[background-color,color] duration-75"
+					class="flex items-center justify-center w-[26px] h-[22px] border-none border-l border-l-border-subtle cursor-pointer transition-[background-color,color] duration-(--motion-fast)"
 					:class="mode === 'axis'
 						? 'bg-brand text-white'
 						: 'bg-transparent text-text-disabled hover:bg-bg-surface-hover hover:text-text-tertiary'"
@@ -143,7 +143,7 @@ function sideValue(key: string): number {
 				</button>
 				<!-- Individual: four separate edges -->
 				<button
-					class="flex items-center justify-center w-[26px] h-[22px] border-none border-l border-l-border-subtle cursor-pointer transition-[background-color,color] duration-75"
+					class="flex items-center justify-center w-[26px] h-[22px] border-none border-l border-l-border-subtle cursor-pointer transition-[background-color,color] duration-(--motion-fast)"
 					:class="mode === 'individual'
 						? 'bg-brand text-white'
 						: 'bg-transparent text-text-disabled hover:bg-bg-surface-hover hover:text-text-tertiary'"

@@ -42,7 +42,7 @@ const iconPaths: Record<string, string> = {
   padding: 16px 20px;
   border: 1px solid var(--color-border-default);
   border-radius: 10px;
-  animation: callout-enter 0.5s var(--ease-out-expo) both;
+  animation: callout-enter 0.5s var(--ease-spring) both;
 }
 
 @keyframes callout-enter {
@@ -65,15 +65,7 @@ const iconPaths: Record<string, string> = {
   margin-bottom: 8px;
 }
 
-.callout-icon {
-  animation: icon-glow 1.5s ease-out 0.4s;
-}
 
-@keyframes icon-glow {
-  0% { filter: drop-shadow(0 0 0px currentColor); }
-  35% { filter: drop-shadow(0 0 6px currentColor); }
-  100% { filter: drop-shadow(0 0 0px currentColor); }
-}
 
 .callout-content :deep(> *:first-child) {
   margin-top: 0;

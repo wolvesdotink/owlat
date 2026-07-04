@@ -96,7 +96,7 @@ function handleChildSelect(itemId: string, colIdx: number, event: MouseEvent) {
 			<div
 				v-for="(col, colIdx) in content.columns"
 				:key="colIdx"
-				class="flex flex-col min-h-[40px] border border-dashed border-transparent rounded transition-colors duration-150 hover:border-border-default"
+				class="flex flex-col min-h-[40px] border border-dashed border-transparent rounded transition-colors duration-(--motion-fast) hover:border-border-default"
 				:style="{ width: columnWidths[colIdx], verticalAlign: content.verticalAlign || 'top', ...getColumnStyles(colIdx) }"
 			>
 				<VueDraggable
@@ -114,7 +114,7 @@ function handleChildSelect(itemId: string, colIdx: number, event: MouseEvent) {
 						class="relative group/nested-block"
 						:data-block-id="item.id"
 						:class="[
-							'border rounded my-0.5 transition-[border-color] duration-150',
+							'border rounded my-0.5 transition-[border-color] duration-(--motion-fast)',
 							item.id === selectedNestedItemId
 								? 'border-brand'
 								: 'border-transparent hover:border-border-subtle',

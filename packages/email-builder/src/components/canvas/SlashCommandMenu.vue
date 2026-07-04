@@ -86,14 +86,14 @@ watch(() => props.selectedIndex, () => {
 					role="option"
 					:aria-selected="globalIndex === selectedIndex"
 					:data-index="globalIndex"
-					class="flex items-center gap-2 py-1.5 px-2 border-none rounded-md bg-transparent cursor-pointer w-full text-left transition-[background-color,box-shadow] duration-100 hover:bg-bg-surface-hover"
+					class="flex items-center gap-2 py-1.5 px-2 border-none rounded-md bg-transparent cursor-pointer w-full text-left transition-[background-color,box-shadow] duration-(--motion-fast) hover:bg-bg-surface-hover"
 					:class="globalIndex === selectedIndex && '!bg-[rgba(196,120,90,0.12)] shadow-[inset_0_0_0_1px_rgba(196,120,90,0.2)]'"
 					@mousedown.prevent="emit('select', command)"
 				>
 					<component
 						:is="command.icon"
 						v-if="command.icon"
-						class="shrink-0 w-4 h-4 transition-colors duration-100"
+						class="shrink-0 w-4 h-4 transition-colors duration-(--motion-fast)"
 						:class="globalIndex === selectedIndex ? 'text-[rgb(196,120,90)]' : 'text-text-secondary'"
 						:size="16"
 					/>

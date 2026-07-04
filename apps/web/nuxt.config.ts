@@ -32,6 +32,13 @@ export default defineNuxtConfig({
 
 	modules: ['nuxt-security', '@nuxtjs/color-mode', '@nuxt/fonts', '@nuxt/icon'],
 
+	fonts: {
+		// Variable wght axis required: the design system's weight-based emphasis
+		// uses intermediate instances (450/550) that a static 400/500/600/700
+		// subset would snap to the nearest hundred.
+		families: [{ name: 'Instrument Sans', weights: ['400 700'] }],
+	},
+
 	security: {
 		headers: {
 			contentSecurityPolicy: {

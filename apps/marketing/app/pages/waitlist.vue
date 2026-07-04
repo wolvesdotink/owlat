@@ -78,18 +78,6 @@ async function submit(e: Event) {
 
 <template>
 	<section class="relative min-h-[100dvh] flex items-center overflow-hidden py-32 max-md:py-20 px-8 max-md:px-6">
-		<!-- Background orbs -->
-		<div
-			class="absolute pointer-events-none"
-			style="top: 10%; left: 10%; width: 480px; height: 480px; border-radius: 50%; background: radial-gradient(circle, rgba(196, 120, 90, 0.05) 0%, transparent 70%);"
-			aria-hidden="true"
-		/>
-		<div
-			class="absolute pointer-events-none"
-			style="bottom: 5%; right: 5%; width: 360px; height: 360px; border-radius: 50%; background: radial-gradient(circle, rgba(212, 165, 116, 0.035) 0%, transparent 70%);"
-			aria-hidden="true"
-		/>
-
 		<div class="relative w-full max-w-[560px] mx-auto">
 			<!-- Eyebrow -->
 			<span class="font-mono text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-brand mb-4 block">
@@ -163,12 +151,12 @@ async function submit(e: Event) {
 					<button
 						type="submit"
 						:disabled="state === 'submitting'"
-						class="group w-full inline-flex items-center justify-center gap-2.5 px-7 py-3 text-[0.9375rem] font-semibold text-text-inverse bg-brand border border-brand rounded-xl transition-all duration-250 hover:bg-brand-hover hover:border-brand-hover hover:-translate-y-px hover:shadow-brand-hover disabled:opacity-60 disabled:cursor-not-allowed btn-press"
+						class="group w-full inline-flex items-center justify-center gap-2.5 px-7 py-3 text-[0.9375rem] font-semibold text-text-inverse bg-brand border border-brand rounded-xl transition-all duration-(--motion-moderate) hover:bg-brand-hover hover:border-brand-hover hover:shadow-brand-hover disabled:opacity-60 disabled:cursor-not-allowed btn-press"
 					>
 						<span>{{ state === 'submitting' ? 'Submitting…' : 'Join waitlist' }}</span>
 						<svg
 							v-if="state !== 'submitting'"
-							class="transition-transform duration-250 group-hover:translate-x-[3px]"
+							class="transition-transform duration-(--motion-moderate) group-hover:translate-x-[3px]"
 							width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
 						>
 							<path d="M5 12h14" /><path d="m12 5 7 7-7 7" />
@@ -195,7 +183,7 @@ async function submit(e: Event) {
 					</p>
 					<a
 						href="/"
-						class="inline-flex items-center gap-2 px-5 py-2.5 text-[0.8125rem] font-medium text-text-primary bg-transparent border border-border-default rounded-xl no-underline transition-all duration-250 hover:border-text-tertiary hover:text-brand hover:-translate-y-px btn-press"
+						class="inline-flex items-center gap-2 px-5 py-2.5 text-[0.8125rem] font-medium text-text-primary bg-transparent border border-border-default rounded-xl no-underline transition-all duration-(--motion-moderate) hover:border-text-tertiary hover:text-brand btn-press"
 					>
 						← Back to owlat.app
 					</a>

@@ -42,7 +42,7 @@ function handleSelectChange(event: Event) {
 			<button
 				v-for="opt in alignOptions"
 				:key="opt"
-				class="flex items-center justify-center w-[26px] h-[26px] border-none bg-transparent rounded text-text-secondary cursor-pointer transition-[background-color,color] duration-100 hover:bg-black/[0.08]"
+				class="flex items-center justify-center w-[26px] h-[26px] border-none bg-transparent rounded text-text-secondary cursor-pointer transition-[background-color,color] duration-(--motion-fast) hover:bg-black/[0.08]"
 				:class="{ 'bg-black/[0.12] text-brand': value === opt }"
 				:title="opt"
 				@click.stop="emit('update', field.key, opt)"

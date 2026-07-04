@@ -23,15 +23,18 @@ const { run: askMutation, isLoading } = useBackendOperation(api.quickQuery.ask, 
 });
 
 // Reset state when panel opens
-watch(() => props.isOpen, (open) => {
-	if (open) {
-		question.value = '';
-		result.value = null;
-		nextTick(() => {
-			inputRef.value?.focus();
-		});
+watch(
+	() => props.isOpen,
+	(open) => {
+		if (open) {
+			question.value = '';
+			result.value = null;
+			nextTick(() => {
+				inputRef.value?.focus();
+			});
+		}
 	}
-});
+);
 
 const handleSubmit = async () => {
 	const q = question.value.trim();
@@ -56,10 +59,10 @@ const handleKeydown = (e: KeyboardEvent) => {
 	<Teleport to="body">
 		<!-- Backdrop -->
 		<Transition
-			enter-active-class="transition-opacity duration-150"
+			enter-active-class="transition-opacity duration-(--motion-fast)"
 			enter-from-class="opacity-0"
 			enter-to-class="opacity-100"
-			leave-active-class="transition-opacity duration-150"
+			leave-active-class="transition-opacity duration-(--motion-fast-exit)"
 			leave-from-class="opacity-100"
 			leave-to-class="opacity-0"
 		>
@@ -72,10 +75,10 @@ const handleKeydown = (e: KeyboardEvent) => {
 
 		<!-- Panel -->
 		<Transition
-			enter-active-class="transition-all duration-200"
+			enter-active-class="transition-all duration-(--motion-moderate)"
 			enter-from-class="opacity-0 scale-95"
 			enter-to-class="opacity-100 scale-100"
-			leave-active-class="transition-all duration-150"
+			leave-active-class="transition-all duration-(--motion-moderate-exit)"
 			leave-from-class="opacity-100 scale-100"
 			leave-to-class="opacity-0 scale-95"
 		>
@@ -99,10 +102,13 @@ const handleKeydown = (e: KeyboardEvent) => {
 						v-if="question"
 						class="p-1 text-text-tertiary hover:text-text-primary transition-colors"
 						@click="question = ''"
-					 aria-label="Clear question">
+						aria-label="Clear question"
+					>
 						<Icon name="lucide:x" class="w-4 h-4" />
 					</button>
-					<kbd class="hidden sm:inline-flex items-center px-2 py-1 text-xs text-text-tertiary bg-bg-surface border border-border-subtle rounded">
+					<kbd
+						class="hidden sm:inline-flex items-center px-2 py-1 text-xs text-text-tertiary bg-bg-surface border border-border-subtle rounded"
+					>
 						ESC
 					</kbd>
 				</div>
@@ -117,10 +123,7 @@ const handleKeydown = (e: KeyboardEvent) => {
 
 					<!-- Result -->
 					<div v-else-if="result" class="p-4">
-						<QueryResult
-							:answer="result.answer"
-							:sources="result.sources"
-						/>
+						<QueryResult :answer="result.answer" :sources="result.sources" />
 					</div>
 
 					<!-- Empty state -->
@@ -132,13 +135,19 @@ const handleKeydown = (e: KeyboardEvent) => {
 				</div>
 
 				<!-- Footer -->
-				<div class="px-4 py-2 border-t border-border-subtle bg-bg-surface text-xs text-text-tertiary flex items-center gap-4">
+				<div
+					class="px-4 py-2 border-t border-border-subtle bg-bg-surface text-xs text-text-tertiary flex items-center gap-4"
+				>
 					<span class="flex items-center gap-1">
-						<kbd class="px-1 py-0.5 bg-bg-elevated border border-border-subtle rounded text-[10px]">↵</kbd>
+						<kbd class="px-1 py-0.5 bg-bg-elevated border border-border-subtle rounded text-[10px]"
+							>↵</kbd
+						>
 						Search
 					</span>
 					<span class="flex items-center gap-1">
-						<kbd class="px-1 py-0.5 bg-bg-elevated border border-border-subtle rounded text-[10px]">ESC</kbd>
+						<kbd class="px-1 py-0.5 bg-bg-elevated border border-border-subtle rounded text-[10px]"
+							>ESC</kbd
+						>
 						Close
 					</span>
 					<span class="ml-auto flex items-center gap-1">

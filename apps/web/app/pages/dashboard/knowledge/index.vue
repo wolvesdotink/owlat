@@ -59,10 +59,7 @@ const handleCancelled = () => {
 					</p>
 				</div>
 			</div>
-			<button
-				class="btn btn-primary gap-2 flex-shrink-0"
-				@click="showCreateForm = true"
-			>
+			<button class="btn btn-primary gap-2 flex-shrink-0" @click="showCreateForm = true">
 				<Icon name="lucide:plus" class="w-4 h-4" />
 				Create Entry
 			</button>
@@ -104,10 +101,7 @@ const handleCancelled = () => {
 			<!-- Main Content -->
 			<div class="lg:col-span-2 space-y-3">
 				<!-- Loading -->
-				<div
-					v-if="isLoading"
-					class="flex items-center justify-center py-16"
-				>
+				<div v-if="isLoading" class="flex items-center justify-center py-16">
 					<UiSpinner />
 				</div>
 
@@ -171,16 +165,36 @@ const handleCancelled = () => {
 					</h3>
 					<div class="space-y-3 text-sm text-text-secondary">
 						<div class="flex items-start gap-2.5">
-							<div class="w-5 h-5 rounded-full bg-brand-subtle text-brand flex items-center justify-center flex-shrink-0 text-xs font-bold mt-0.5">1</div>
-							<p>Knowledge is automatically extracted from emails, chats, and files by the AI agent.</p>
+							<div
+								class="w-5 h-5 rounded-full bg-brand-subtle text-brand flex items-center justify-center flex-shrink-0 text-xs font-bold mt-0.5"
+							>
+								1
+							</div>
+							<p>
+								Knowledge is automatically extracted from emails, chats, and files by the AI agent.
+							</p>
 						</div>
 						<div class="flex items-start gap-2.5">
-							<div class="w-5 h-5 rounded-full bg-brand-subtle text-brand flex items-center justify-center flex-shrink-0 text-xs font-bold mt-0.5">2</div>
-							<p>Each entry has a confidence score that decays over time, with recent use slowing the decay.</p>
+							<div
+								class="w-5 h-5 rounded-full bg-brand-subtle text-brand flex items-center justify-center flex-shrink-0 text-xs font-bold mt-0.5"
+							>
+								2
+							</div>
+							<p>
+								Each entry has a confidence score that decays over time, with recent use slowing the
+								decay.
+							</p>
 						</div>
 						<div class="flex items-start gap-2.5">
-							<div class="w-5 h-5 rounded-full bg-brand-subtle text-brand flex items-center justify-center flex-shrink-0 text-xs font-bold mt-0.5">3</div>
-							<p>Entries are linked to contacts and related to each other, forming a navigable knowledge graph.</p>
+							<div
+								class="w-5 h-5 rounded-full bg-brand-subtle text-brand flex items-center justify-center flex-shrink-0 text-xs font-bold mt-0.5"
+							>
+								3
+							</div>
+							<p>
+								Entries are linked to contacts and related to each other, forming a navigable
+								knowledge graph.
+							</p>
 						</div>
 					</div>
 				</div>
@@ -189,11 +203,7 @@ const handleCancelled = () => {
 				<div class="rounded-xl border border-border-subtle bg-bg-elevated p-5">
 					<h3 class="text-sm font-semibold text-text-primary mb-3">Entry Types</h3>
 					<div class="space-y-2">
-						<div
-							v-for="t in ENTRY_TYPES"
-							:key="t"
-							class="flex items-center gap-2.5"
-						>
+						<div v-for="t in ENTRY_TYPES" :key="t" class="flex items-center gap-2.5">
 							<div
 								class="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0"
 								:class="{
@@ -216,10 +226,10 @@ const handleCancelled = () => {
 		<!-- Create Entry Modal -->
 		<Teleport to="body">
 			<Transition
-				enter-active-class="transition-opacity duration-200"
+				enter-active-class="transition-opacity duration-(--motion-fast)"
 				enter-from-class="opacity-0"
 				enter-to-class="opacity-100"
-				leave-active-class="transition-opacity duration-150"
+				leave-active-class="transition-opacity duration-(--motion-fast-exit)"
 				leave-from-class="opacity-100"
 				leave-to-class="opacity-0"
 			>
@@ -229,10 +239,10 @@ const handleCancelled = () => {
 					@click.self="handleCancelled"
 				>
 					<Transition
-						enter-active-class="transition-all duration-200"
+						enter-active-class="transition-all duration-(--motion-moderate)"
 						enter-from-class="opacity-0 scale-95"
 						enter-to-class="opacity-100 scale-100"
-						leave-active-class="transition-all duration-150"
+						leave-active-class="transition-all duration-(--motion-moderate-exit)"
 						leave-from-class="opacity-100 scale-100"
 						leave-to-class="opacity-0 scale-95"
 					>
@@ -240,20 +250,20 @@ const handleCancelled = () => {
 							v-if="showCreateForm"
 							class="w-full max-w-lg bg-bg-elevated border border-border-subtle rounded-xl shadow-xl max-h-[90vh] overflow-y-auto"
 						>
-							<div class="flex items-center justify-between px-5 py-4 border-b border-border-subtle sticky top-0 bg-bg-elevated z-10">
+							<div
+								class="flex items-center justify-between px-5 py-4 border-b border-border-subtle sticky top-0 bg-bg-elevated z-10"
+							>
 								<h3 class="text-base font-semibold text-text-primary">Create Knowledge Entry</h3>
 								<button
 									class="w-8 h-8 rounded-lg flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-bg-surface transition-colors"
 									@click="handleCancelled"
-								 aria-label="Close">
+									aria-label="Close"
+								>
 									<Icon name="lucide:x" class="w-4 h-4" />
 								</button>
 							</div>
 							<div class="px-5 py-4">
-								<KnowledgeEntryForm
-									@saved="handleSaved"
-									@cancelled="handleCancelled"
-								/>
+								<KnowledgeEntryForm @saved="handleSaved" @cancelled="handleCancelled" />
 							</div>
 						</div>
 					</Transition>

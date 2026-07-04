@@ -1,17 +1,18 @@
 /* Owlat Design System — Unified Tokens (Single Source of Truth)
  *
- * Warm palette (Nocturne base) + Geist font stack.
+ * Fluid Functionalism neutral surface ladder + terracotta brand accent,
+ * Instrument Sans/Serif + JetBrains Mono font stack.
  * All apps import this via index.css.
  */
 @theme {
-	/* === BACKGROUNDS (Warm darks) === */
-	--color-bg-deep: #070605;
-	--color-bg-base: #0c0b09;
-	--color-bg-elevated: #141210;
-	--color-bg-surface: #1c1916;
-	--color-bg-surface-hover: #24211d;
-	--color-bg-overlay: #2c2925;
-	--color-bg-soft: #181614;
+	/* === BACKGROUNDS (neutral surface ladder — see dark.css/light.css) === */
+	--color-bg-deep: #101010;
+	--color-bg-base: var(--surface-1);
+	--color-bg-elevated: var(--surface-2);
+	--color-bg-surface: var(--surface-3);
+	--color-bg-surface-hover: color-mix(in srgb, var(--color-bg-surface) 94%, var(--surface-tint));
+	--color-bg-overlay: var(--surface-5);
+	--color-bg-soft: var(--surface-2);
 
 	/* === PRIMARY: TERRACOTTA === */
 	--color-brand: #c4785a;
@@ -28,44 +29,111 @@
 	--color-accent-muted: #b8936a;
 
 	/* === TEXT === */
-	--color-text-primary: #f0ece6;
-	--color-text-secondary: #968e84;
-	--color-text-tertiary: #5c564e;
-	--color-text-disabled: #3a3632;
-	--color-text-inverse: #0c0b09;
+	--color-text-primary: #ededed;
+	--color-text-secondary: #a6a6a6;
+	--color-text-tertiary: #9a9a9a;
+	--color-text-disabled: #4a4a4a;
+	--color-text-inverse: #171717;
 
-	/* === BORDERS === */
-	--color-border-subtle: #1a1816;
-	--color-border-default: #262320;
-	--color-border-strong: #35312c;
+	/* === BORDERS (legacy consumers — quiet ring-equivalents) === */
+	--color-border-subtle: #232323;
+	--color-border-default: #2e2e2e;
+	--color-border-strong: #3d3d3d;
 
 	/* === SEMANTIC === */
 	--color-success: #7a9b6e;
-	--color-success-subtle: #141a12;
+	--color-success-subtle: #16211a;
 	--color-warning: #c9a55a;
-	--color-warning-subtle: #1a1710;
+	--color-warning-subtle: #221c12;
 	--color-error: #c46b5a;
-	--color-error-subtle: #1a1210;
+	--color-error-subtle: #241614;
 	--color-info: #6b8fa8;
-	--color-info-subtle: #101a20;
+	--color-info-subtle: #121b22;
 
 	/* === FONTS === */
 	--font-display: 'Instrument Serif', Georgia, serif;
 	--font-sans: 'Instrument Sans', -apple-system, BlinkMacSystemFont, sans-serif;
 	--font-mono: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
 
-	/* === SHADOWS === */
-	--shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.35);
-	--shadow-md: 0 4px 16px rgba(0, 0, 0, 0.25);
-	--shadow-lg: 0 12px 48px rgba(0, 0, 0, 0.3);
-	--shadow-glow: 0 0 80px rgba(196, 120, 90, 0.12);
-	--shadow-brand-hover: 0 4px 24px rgba(196, 120, 90, 0.2);
-	--shadow-card: 0 1px 3px rgba(0, 0, 0, 0.12), 0 8px 40px rgba(0, 0, 0, 0.15);
-	--shadow-card-hover: 0 16px 48px rgba(196, 120, 90, 0.08), 0 4px 12px rgba(196, 120, 90, 0.04);
+	/* === SHADOWS (elevation ladder; decorative glows retired) === */
+	--shadow-sm: var(--shadow-2);
+	--shadow-md: var(--shadow-4);
+	--shadow-lg: var(--shadow-6);
+	--shadow-brand-hover: var(--shadow-3);
+	--shadow-card: var(--shadow-2);
+	--shadow-card-hover: var(--shadow-3);
 
 	/* === MOTION / LAYOUT === */
-	--ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
-	--ease-smooth: cubic-bezier(0.25, 0.1, 0.25, 1);
-	--radius-card: 16px;
-	--owlat-shadow-tint: 196, 120, 90;
+	--radius-card: 12px;
+
+	/* === FLUID FUNCTIONALISM: WEIGHT-BASED EMPHASIS ===
+	 * Overrides Tailwind's font-weight scale so every existing font-medium /
+	 * font-semibold consumer adopts FF weights. Instrument Sans is a variable
+	 * font (wght 400–700) so the in-between instances render correctly. */
+	--font-weight-normal: 400;
+	--font-weight-medium: 450;
+	--font-weight-semibold: 550;
+	--font-weight-bold: 700;
+
+	/* === FLUID FUNCTIONALISM: MOTION EASINGS ===
+	 * ease-spring: critically damped spring approximation — fast + moderate enters.
+	 * ease-spring-bounce: slow enters (dialogs/panels), bounce ≈ 0.12.
+	 * ease-exit: plain ease-out tween — ALL exits (crisp, final). */
+	--ease-spring: cubic-bezier(0.25, 1, 0.5, 1);
+	--ease-spring-bounce: cubic-bezier(0.34, 1.3, 0.64, 1);
+	--ease-exit: cubic-bezier(0, 0, 0.2, 1);
+}
+
+/* === FLUID FUNCTIONALISM: SURFACE LADDER UTILITIES ===
+ * Inline so utilities emit var(--surface-N) / var(--shadow-N) and re-resolve
+ * per color mode (.light overrides the raw vars in light.css).
+ * → bg-surface-1..8, shadow-surface-1..8 */
+@theme inline {
+	--color-surface-1: var(--surface-1);
+	--color-surface-2: var(--surface-2);
+	--color-surface-3: var(--surface-3);
+	--color-surface-4: var(--surface-4);
+	--color-surface-5: var(--surface-5);
+	--color-surface-6: var(--surface-6);
+	--color-surface-7: var(--surface-7);
+	--color-surface-8: var(--surface-8);
+	--shadow-surface-1: var(--shadow-1);
+	--shadow-surface-2: var(--shadow-2);
+	--shadow-surface-3: var(--shadow-3);
+	--shadow-surface-4: var(--shadow-4);
+	--shadow-surface-5: var(--shadow-5);
+	--shadow-surface-6: var(--shadow-6);
+	--shadow-surface-7: var(--shadow-7);
+	--shadow-surface-8: var(--shadow-8);
+}
+
+/* === FLUID FUNCTIONALISM: MOTION DURATION TIERS ===
+ * Plain vars (not a Tailwind namespace) — consumed as duration-(--motion-fast)
+ * in class lists or var(--motion-fast) in <style> blocks.
+ * The bigger the thing that moves, the slower the spring; exits are always
+ * a notch faster than entrances. Never hand-write a literal ms. */
+:root {
+	--motion-fast: 80ms; /* hover states, focus rings, small toggles */
+	--motion-fast-exit: 60ms;
+	--motion-moderate: 160ms; /* dropdowns, tabs, selection indicators */
+	--motion-moderate-exit: 120ms;
+	--motion-slow: 240ms; /* dialogs, modals, big panels */
+	--motion-slow-exit: 160ms;
+	/* Diagram/landing entrance choreography (staggered node reveals) — the one
+	   sanctioned longer-than-slow duration; not for interaction feedback. */
+	--motion-choreo: 800ms;
+}
+
+/* === FLUID FUNCTIONALISM: HOVER/SELECTED SURFACE RECIPES ===
+ * The +6% hover / +10% selected rule over ladder levels. --surface-tint is
+ * #fff in dark mode and #000 in light mode (dark.css/light.css), so these
+ * re-resolve per mode. Class lists: bg-(--surface-1-hover); CSS blocks:
+ * background: var(--surface-2-hover). */
+:root {
+	--surface-1-hover: color-mix(in srgb, var(--surface-1) 94%, var(--surface-tint));
+	--surface-1-selected: color-mix(in srgb, var(--surface-1) 90%, var(--surface-tint));
+	--surface-2-hover: color-mix(in srgb, var(--surface-2) 94%, var(--surface-tint));
+	--surface-2-selected: color-mix(in srgb, var(--surface-2) 90%, var(--surface-tint));
+	--surface-3-hover: color-mix(in srgb, var(--surface-3) 94%, var(--surface-tint));
+	--surface-3-selected: color-mix(in srgb, var(--surface-3) 90%, var(--surface-tint));
 }

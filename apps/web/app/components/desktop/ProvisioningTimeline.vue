@@ -62,7 +62,7 @@ watch(
 		if (!showLogs.value) return;
 		await nextTick();
 		if (logEl.value) logEl.value.scrollTop = logEl.value.scrollHeight;
-	},
+	}
 );
 </script>
 
@@ -81,16 +81,16 @@ watch(
 				</li>
 				<li
 					v-else
-					class="flex items-center gap-3 rounded-lg px-2 py-1.5 transition-colors duration-300"
+					class="flex items-center gap-3 rounded-lg px-2 py-1.5 transition-colors duration-(--motion-moderate)"
 					:class="row.step.state === 'running' ? 'bg-bg-surface' : ''"
 				>
 					<Icon
 						:name="ICON[row.step.state]"
-						class="size-[18px] shrink-0 transition-colors duration-300"
+						class="size-[18px] shrink-0 transition-colors duration-(--motion-moderate)"
 						:class="[COLOR[row.step.state], row.step.state === 'running' ? 'animate-spin' : '']"
 					/>
 					<span
-						class="flex-1 text-sm transition-colors duration-300"
+						class="flex-1 text-sm transition-colors duration-(--motion-moderate)"
 						:class="
 							row.step.state === 'pending'
 								? 'text-text-secondary'
@@ -120,16 +120,19 @@ watch(
 				@click="showLogs = !showLogs"
 			>
 				<span class="flex items-center gap-1.5">
-					<Icon :name="showLogs ? 'lucide:chevron-down' : 'lucide:chevron-right'" class="size-3.5" />
+					<Icon
+						:name="showLogs ? 'lucide:chevron-down' : 'lucide:chevron-right'"
+						class="size-3.5"
+					/>
 					Server log
 					<span class="text-text-secondary/60">({{ logs.length }})</span>
 				</span>
 			</button>
 			<Transition
-				enter-active-class="transition-all duration-200 ease-out"
+				enter-active-class="transition-all duration-(--motion-moderate) ease-spring"
 				enter-from-class="opacity-0 max-h-0"
 				enter-to-class="opacity-100 max-h-64"
-				leave-active-class="transition-all duration-150 ease-in"
+				leave-active-class="transition-all duration-(--motion-moderate-exit) ease-exit"
 				leave-from-class="opacity-100 max-h-64"
 				leave-to-class="opacity-0 max-h-0"
 			>

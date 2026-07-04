@@ -61,7 +61,7 @@ const { data: opensTimeline } = useConvexQuery(api.delivery.sends.getOpensTimeli
 // variants' emailSends (2×10k); skipping it for the common non-A/B case avoids
 // that scan re-running on every emailSends write while the report is open.
 const { data: abTestStats } = useConvexQuery(api.campaigns.abTest.getABTestStats, () =>
-	campaign.value?.isABTest ? { campaignId: campaignId.value } : 'skip',
+	campaign.value?.isABTest ? { campaignId: campaignId.value } : 'skip'
 );
 
 // Fetch link click stats for heatmap
@@ -102,7 +102,7 @@ const { data: openedContacts, isLoading: openedLoading } = useConvexQuery(
 	() =>
 		selectedTab.value === 'opened'
 			? { campaignId: campaignId.value, limit: pageSize, offset: openedOffset.value }
-			: 'skip',
+			: 'skip'
 );
 
 const { data: clickedContacts, isLoading: clickedLoading } = useConvexQuery(
@@ -110,7 +110,7 @@ const { data: clickedContacts, isLoading: clickedLoading } = useConvexQuery(
 	() =>
 		selectedTab.value === 'clicked'
 			? { campaignId: campaignId.value, limit: pageSize, offset: clickedOffset.value }
-			: 'skip',
+			: 'skip'
 );
 
 const isLoading = computed(() => campaignLoading.value || statsLoading.value);
@@ -261,7 +261,13 @@ const loadPrevClicked = () => {
 			v-else-if="!campaign"
 			class="card flex flex-col items-center justify-center py-16 text-center px-6"
 		>
-			<UiIconBox icon="lucide:bar-chart-3" size="xl" variant="surface" rounded="full" class="mb-4" />
+			<UiIconBox
+				icon="lucide:bar-chart-3"
+				size="xl"
+				variant="surface"
+				rounded="full"
+				class="mb-4"
+			/>
 			<p class="text-text-secondary font-medium">Campaign not found</p>
 			<p class="text-sm text-text-tertiary mt-1">
 				This campaign may have been deleted or you don't have access to it.
@@ -320,10 +326,7 @@ const loadPrevClicked = () => {
 							<p class="text-xs text-text-tertiary truncate max-w-md">{{ archiveUrl }}</p>
 						</div>
 					</div>
-					<button
-						class="btn btn-secondary text-sm gap-1.5"
-						@click="copyArchiveLink"
-					>
+					<button class="btn btn-secondary text-sm gap-1.5" @click="copyArchiveLink">
 						<Icon :name="archiveCopied ? 'lucide:check' : 'lucide:copy'" class="w-3.5 h-3.5" />
 						{{ archiveCopied ? 'Copied' : 'Copy Link' }}
 					</button>
@@ -403,7 +406,11 @@ const loadPrevClicked = () => {
 									A
 								</div>
 								<span class="font-medium text-text-primary">Variant A</span>
-								<Icon v-if="abTestStats.winner === 'A'" name="lucide:trophy" class="w-4 h-4 text-success" />
+								<Icon
+									v-if="abTestStats.winner === 'A'"
+									name="lucide:trophy"
+									class="w-4 h-4 text-success"
+								/>
 							</div>
 						</div>
 						<div class="space-y-3">
@@ -455,7 +462,11 @@ const loadPrevClicked = () => {
 									B
 								</div>
 								<span class="font-medium text-text-primary">Variant B</span>
-								<Icon v-if="abTestStats.winner === 'B'" name="lucide:trophy" class="w-4 h-4 text-success" />
+								<Icon
+									v-if="abTestStats.winner === 'B'"
+									name="lucide:trophy"
+									class="w-4 h-4 text-success"
+								/>
 							</div>
 						</div>
 						<div class="space-y-3">
@@ -533,8 +544,10 @@ const loadPrevClicked = () => {
 					class="border-t border-border-subtle pt-4 text-sm text-text-secondary"
 				>
 					Winner selected
-					{{ abTestStats.winnerSelectedAt ? formatDateTime(abTestStats.winnerSelectedAt) : '' }} based
-					on
+					{{
+						abTestStats.winnerSelectedAt ? formatDateTime(abTestStats.winnerSelectedAt) : ''
+					}}
+					based on
 					{{
 						abTestStats.config?.winnerCriteria === 'open_rate'
 							? 'best open rate'
@@ -555,14 +568,13 @@ const loadPrevClicked = () => {
 					</div>
 					<div class="h-2 bg-bg-surface rounded-full overflow-hidden">
 						<div
-							class="h-full bg-brand rounded-full transition-all duration-500"
+							class="h-full bg-brand rounded-full transition-all duration-(--motion-slow)"
 							:style="{ width: `${Math.min(openRate, 100)}%` }"
 						/>
 					</div>
 					<p class="text-sm text-text-tertiary mt-3">
-						{{ stats?.uniqueOpens || 0 }} of
-						{{ stats?.delivered || 0 }} delivered
-						emails were opened
+						{{ stats?.uniqueOpens || 0 }} of {{ stats?.delivered || 0 }} delivered emails were
+						opened
 					</p>
 				</div>
 
@@ -574,14 +586,13 @@ const loadPrevClicked = () => {
 					</div>
 					<div class="h-2 bg-bg-surface rounded-full overflow-hidden">
 						<div
-							class="h-full bg-warning rounded-full transition-all duration-500"
+							class="h-full bg-warning rounded-full transition-all duration-(--motion-slow)"
 							:style="{ width: `${Math.min(clickRate, 100)}%` }"
 						/>
 					</div>
 					<p class="text-sm text-text-tertiary mt-3">
-						{{ stats?.uniqueClicks || 0 }} of
-						{{ stats?.delivered || 0 }} delivered
-						emails had link clicks
+						{{ stats?.uniqueClicks || 0 }} of {{ stats?.delivered || 0 }} delivered emails had link
+						clicks
 					</p>
 				</div>
 			</div>
@@ -792,7 +803,10 @@ const loadPrevClicked = () => {
 						v-else-if="!clickedContacts || clickedContacts.sends.length === 0"
 						class="py-12 text-center"
 					>
-						<Icon name="lucide:mouse-pointer-click" class="w-10 h-10 text-text-tertiary mx-auto mb-3" />
+						<Icon
+							name="lucide:mouse-pointer-click"
+							class="w-10 h-10 text-text-tertiary mx-auto mb-3"
+						/>
 						<p class="text-text-secondary">No contacts have clicked links in this email yet</p>
 					</div>
 

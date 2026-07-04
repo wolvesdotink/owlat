@@ -38,7 +38,7 @@ type SearchResults = {
 // Search results from Convex
 const { data: searchResultsData } = useOrganizationQuery(api.globalSearch.search, () =>
 	// undefined → the wrapper skips the subscription (no empty < 2-char query).
-	debouncedSearch.value.length >= 2 ? { query: debouncedSearch.value, limit: 5 } : undefined,
+	debouncedSearch.value.length >= 2 ? { query: debouncedSearch.value, limit: 5 } : undefined
 );
 
 // Type cast the data
@@ -243,10 +243,10 @@ defineExpose({ openSearch });
 	<!-- Modal overlay -->
 	<Teleport to="body">
 		<Transition
-			enter-active-class="transition-opacity duration-150"
+			enter-active-class="transition-opacity duration-(--motion-fast)"
 			enter-from-class="opacity-0"
 			enter-to-class="opacity-100"
-			leave-active-class="transition-opacity duration-150"
+			leave-active-class="transition-opacity duration-(--motion-fast-exit)"
 			leave-from-class="opacity-100"
 			leave-to-class="opacity-0"
 		>
@@ -258,10 +258,10 @@ defineExpose({ openSearch });
 		</Transition>
 
 		<Transition
-			enter-active-class="transition-all duration-200"
+			enter-active-class="transition-all duration-(--motion-moderate)"
 			enter-from-class="opacity-0 scale-95"
 			enter-to-class="opacity-100 scale-100"
-			leave-active-class="transition-all duration-150"
+			leave-active-class="transition-all duration-(--motion-moderate-exit)"
 			leave-from-class="opacity-100 scale-100"
 			leave-to-class="opacity-0 scale-95"
 		>
@@ -288,7 +288,8 @@ defineExpose({ openSearch });
 						v-if="searchQuery"
 						class="p-1 text-text-tertiary hover:text-text-primary transition-colors"
 						@click="searchQuery = ''"
-					 aria-label="Clear search">
+						aria-label="Clear search"
+					>
 						<Icon name="lucide:x" class="w-4 h-4" />
 					</button>
 					<kbd

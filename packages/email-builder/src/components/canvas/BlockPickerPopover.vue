@@ -110,7 +110,7 @@ onUnmounted(() => {
 							:key="block.type"
 							role="menuitem"
 							:aria-label="block.label"
-							class="flex flex-col items-center gap-1 py-2 px-1 rounded-lg border-none bg-transparent cursor-pointer transition-colors duration-100 text-text-secondary hover:bg-bg-surface-hover hover:text-text-primary"
+							class="flex flex-col items-center gap-1 py-2 px-1 rounded-lg border-none bg-transparent cursor-pointer transition-colors duration-(--motion-fast) text-text-secondary hover:bg-bg-surface-hover hover:text-text-primary"
 							type="button"
 							@click="emit('select', block.type); emit('close')"
 						>

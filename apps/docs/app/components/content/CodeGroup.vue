@@ -62,7 +62,7 @@ onMounted(() => {
 	border: 1px solid var(--color-border-default);
 	border-radius: 10px;
 	overflow: hidden;
-	transition: border-color 0.3s ease, box-shadow 0.3s ease;
+	transition: border-color var(--motion-moderate) var(--ease-spring), box-shadow var(--motion-moderate) var(--ease-spring);
 }
 
 .code-group:hover {

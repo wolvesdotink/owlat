@@ -254,7 +254,7 @@ function getContactName(
 								class="flex-1 flex items-end h-full"
 							>
 								<div
-									class="w-full rounded-t transition-all duration-300 cursor-pointer"
+									class="w-full rounded-t transition-all duration-(--motion-moderate) cursor-pointer"
 									:class="day.count > 0 ? 'bg-brand hover:bg-brand-hover' : 'bg-border-subtle'"
 									:style="{
 										height:

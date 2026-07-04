@@ -77,14 +77,11 @@ onScopeDispose(() => {
 });
 
 // Live autocomplete query — fires only once the debounced prefix has a value.
-const { data: suggestionsData } = useConvexQuery(
-	api.mail.contacts.autocomplete,
-	() => {
-		const v = debouncedPrefix.value;
-		if (!v) return 'skip';
-		return { mailboxId: props.mailboxId, prefix: v, limit: 6 };
-	}
-);
+const { data: suggestionsData } = useConvexQuery(api.mail.contacts.autocomplete, () => {
+	const v = debouncedPrefix.value;
+	if (!v) return 'skip';
+	return { mailboxId: props.mailboxId, prefix: v, limit: 6 };
+});
 const suggestions = computed<ContactSuggestion[]>(() =>
 	(suggestionsData.value ?? []).filter((s) => !props.modelValue.includes(s.email))
 );
@@ -180,19 +177,24 @@ function onBlur() {
 				:key="addr"
 				draggable="true"
 				class="inline-flex items-center gap-1 pl-0.5 pr-2 py-0.5 rounded-full bg-bg-surface text-xs cursor-grab active:cursor-grabbing"
-				:class="isExternal(addr)
-					? 'ring-1 ring-amber-400/70 dark:ring-amber-500/60'
-					: ''"
+				:class="isExternal(addr) ? 'ring-1 ring-amber-400/70 dark:ring-amber-500/60' : ''"
 				:title="isExternal(addr) && ownDomainLabel ? `outside ${ownDomainLabel}` : undefined"
 				@dragstart="onChipDragStart($event, addr)"
 			>
-				<UiAvatar :email="addr" deterministic-color size="xs" class="flex-shrink-0" aria-hidden="true" />
+				<UiAvatar
+					:email="addr"
+					deterministic-color
+					size="xs"
+					class="flex-shrink-0"
+					aria-hidden="true"
+				/>
 				{{ addr }}
 				<button
 					type="button"
 					class="text-text-tertiary hover:text-text-primary"
 					@click="removeRecipient(idx)"
-				 :aria-label="`Remove ${addr}`">
+					:aria-label="`Remove ${addr}`"
+				>
 					<Icon name="lucide:x" class="w-3 h-3" />
 				</button>
 			</span>
@@ -218,7 +220,7 @@ function onBlur() {
 				:key="s.email"
 				type="button"
 				class="w-full text-left px-3 py-1.5 text-sm hover:bg-bg-surface flex items-center gap-2"
-				:class="idx === highlightIdx ? 'bg-bg-surface' : ''"
+				:class="idx === highlightIdx ? 'bg-bg-surface-hover' : ''"
 				@mouseenter="highlightIdx = idx"
 				@mousedown.prevent
 				@click="addRecipient(s.email)"

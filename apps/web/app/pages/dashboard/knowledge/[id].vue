@@ -31,15 +31,16 @@ const {
 } = useKnowledgeGraph();
 
 // Fetch entry with relations
-const { data: entryData, isLoading } = useOrganizationQuery(
-	api.knowledge.graph.getEntry,
-	() => ({ entryId: entryId.value }),
-);
+const { data: entryData, isLoading } = useOrganizationQuery(api.knowledge.graph.getEntry, () => ({
+	entryId: entryId.value,
+}));
 
 const entry = computed(() => entryData.value?.entry ?? null);
 const outgoingRelations = computed(() => entryData.value?.outgoing ?? []);
 const incomingRelations = computed(() => entryData.value?.incoming ?? []);
-const hasRelations = computed(() => outgoingRelations.value.length > 0 || incomingRelations.value.length > 0);
+const hasRelations = computed(
+	() => outgoingRelations.value.length > 0 || incomingRelations.value.length > 0
+);
 
 // Build entry map for relation display by fetching related entries
 // For now we show IDs; in production you'd batch-fetch related entry titles
@@ -134,18 +135,15 @@ const isSavingRelation = ref(false);
 
 // Search the graph for the target entry to relate to. Skipped until the user
 // types — the FTS `search` query already powers the index page's search box.
-const { data: relationSearchResults } = useConvexQuery(
-	api.knowledge.graph.search,
-	() => {
-		const q = relationSearch.value.trim();
-		if (!q) return 'skip';
-		return { searchQuery: q, limit: 8 };
-	},
-);
+const { data: relationSearchResults } = useConvexQuery(api.knowledge.graph.search, () => {
+	const q = relationSearch.value.trim();
+	if (!q) return 'skip';
+	return { searchQuery: q, limit: 8 };
+});
 
 // Exclude the current entry (no self-edge) from the picker results.
 const relationCandidates = computed(() =>
-	(relationSearchResults.value ?? []).filter((e) => e._id !== entryId.value),
+	(relationSearchResults.value ?? []).filter((e) => e._id !== entryId.value)
 );
 
 const resetRelationForm = () => {
@@ -201,11 +199,10 @@ const handleRemoveRelation = async (relationId: string) => {
 		</div>
 
 		<!-- Not Found -->
-		<div
-			v-else-if="!entry"
-			class="flex flex-col items-center justify-center py-20 text-center"
-		>
-			<div class="w-14 h-14 rounded-full bg-bg-surface border border-border-subtle flex items-center justify-center mb-4">
+		<div v-else-if="!entry" class="flex flex-col items-center justify-center py-20 text-center">
+			<div
+				class="w-14 h-14 rounded-full bg-bg-surface border border-border-subtle flex items-center justify-center mb-4"
+			>
 				<Icon name="lucide:file-question" class="w-7 h-7 text-text-tertiary" />
 			</div>
 			<h3 class="text-base font-medium text-text-primary">Entry not found</h3>
@@ -222,38 +219,36 @@ const handleRemoveRelation = async (relationId: string) => {
 			<!-- Header -->
 			<div class="flex items-start justify-between gap-4">
 				<div class="flex items-start gap-4 min-w-0">
-				<div
-					class="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
-					:class="{
-						'bg-brand-subtle text-brand': typeVariant(entry.entryType) === 'default',
-						'bg-warning/10 text-warning': typeVariant(entry.entryType) === 'warning',
-						'bg-bg-surface text-text-secondary': typeVariant(entry.entryType) === 'neutral',
-						'bg-success-subtle text-success': typeVariant(entry.entryType) === 'success',
-						'bg-error/10 text-error': typeVariant(entry.entryType) === 'error',
-					}"
-				>
-					<Icon :name="typeIcon(entry.entryType)" class="w-6 h-6" />
-				</div>
-				<div class="min-w-0">
-					<div class="flex items-center gap-2 mb-1">
-						<h1 class="text-xl font-bold text-text-primary">{{ entry.title }}</h1>
-						<span
-							class="text-xs font-medium px-2 py-0.5 rounded-full uppercase tracking-wide"
-							:class="{
-								'bg-brand-subtle text-brand': typeVariant(entry.entryType) === 'default',
-								'bg-warning/10 text-warning': typeVariant(entry.entryType) === 'warning',
-								'bg-bg-surface text-text-tertiary': typeVariant(entry.entryType) === 'neutral',
-								'bg-success-subtle text-success': typeVariant(entry.entryType) === 'success',
-								'bg-error/10 text-error': typeVariant(entry.entryType) === 'error',
-							}"
-						>
-							{{ typeLabel(entry.entryType) }}
-						</span>
+					<div
+						class="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
+						:class="{
+							'bg-brand-subtle text-brand': typeVariant(entry.entryType) === 'default',
+							'bg-warning/10 text-warning': typeVariant(entry.entryType) === 'warning',
+							'bg-bg-surface text-text-secondary': typeVariant(entry.entryType) === 'neutral',
+							'bg-success-subtle text-success': typeVariant(entry.entryType) === 'success',
+							'bg-error/10 text-error': typeVariant(entry.entryType) === 'error',
+						}"
+					>
+						<Icon :name="typeIcon(entry.entryType)" class="w-6 h-6" />
 					</div>
-					<p class="text-sm text-text-tertiary">
-						Created {{ formattedCreatedAt }}
-					</p>
-				</div>
+					<div class="min-w-0">
+						<div class="flex items-center gap-2 mb-1">
+							<h1 class="text-xl font-bold text-text-primary">{{ entry.title }}</h1>
+							<span
+								class="text-xs font-medium px-2 py-0.5 rounded-full uppercase tracking-wide"
+								:class="{
+									'bg-brand-subtle text-brand': typeVariant(entry.entryType) === 'default',
+									'bg-warning/10 text-warning': typeVariant(entry.entryType) === 'warning',
+									'bg-bg-surface text-text-tertiary': typeVariant(entry.entryType) === 'neutral',
+									'bg-success-subtle text-success': typeVariant(entry.entryType) === 'success',
+									'bg-error/10 text-error': typeVariant(entry.entryType) === 'error',
+								}"
+							>
+								{{ typeLabel(entry.entryType) }}
+							</span>
+						</div>
+						<p class="text-sm text-text-tertiary">Created {{ formattedCreatedAt }}</p>
+					</div>
 				</div>
 
 				<!-- Actions -->
@@ -321,7 +316,10 @@ const handleRemoveRelation = async (relationId: string) => {
 							class="rounded-lg border border-border-subtle bg-bg-surface p-4 mb-4 space-y-3"
 						>
 							<div>
-								<label for="relation-type" class="block text-xs font-medium text-text-secondary mb-1.5">
+								<label
+									for="relation-type"
+									class="block text-xs font-medium text-text-secondary mb-1.5"
+								>
 									This entry
 								</label>
 								<select id="relation-type" v-model="relationType" class="input w-full">
@@ -332,7 +330,10 @@ const handleRemoveRelation = async (relationId: string) => {
 							</div>
 
 							<div>
-								<label for="relation-target" class="block text-xs font-medium text-text-secondary mb-1.5">
+								<label
+									for="relation-target"
+									class="block text-xs font-medium text-text-secondary mb-1.5"
+								>
 									Related entry
 								</label>
 								<div
@@ -374,15 +375,14 @@ const handleRemoveRelation = async (relationId: string) => {
 												class="w-3.5 h-3.5 text-text-tertiary flex-shrink-0"
 											/>
 											<span class="text-sm text-text-primary truncate">{{ candidate.title }}</span>
-											<span class="text-[10px] uppercase tracking-wide text-text-tertiary ml-auto flex-shrink-0">
+											<span
+												class="text-[10px] uppercase tracking-wide text-text-tertiary ml-auto flex-shrink-0"
+											>
 												{{ typeLabel(candidate.entryType) }}
 											</span>
 										</button>
 									</div>
-									<p
-										v-else-if="relationSearch.trim()"
-										class="text-xs text-text-tertiary mt-2"
-									>
+									<p v-else-if="relationSearch.trim()" class="text-xs text-text-tertiary mt-2">
 										No matching entries.
 									</p>
 								</template>
@@ -410,10 +410,7 @@ const handleRemoveRelation = async (relationId: string) => {
 							:entry-map="entryMap"
 							@remove="handleRemoveRelation"
 						/>
-						<p
-							v-else-if="!showRelationForm"
-							class="text-sm text-text-tertiary"
-						>
+						<p v-else-if="!showRelationForm" class="text-sm text-text-tertiary">
 							No relations yet. Link this entry to another to build out the knowledge graph.
 						</p>
 					</div>
@@ -432,10 +429,7 @@ const handleRemoveRelation = async (relationId: string) => {
 								:variant="confidenceVariant(entry.confidence)"
 								aria-label="Confidence"
 							/>
-							<span
-								class="text-sm font-semibold"
-								:class="confidenceColor(entry.confidence)"
-							>
+							<span class="text-sm font-semibold" :class="confidenceColor(entry.confidence)">
 								{{ formatConfidence(entry.confidence) }}
 							</span>
 						</div>
@@ -452,7 +446,9 @@ const handleRemoveRelation = async (relationId: string) => {
 								<Icon :name="sourceIcon(entry.sourceType)" class="w-4 h-4 text-text-secondary" />
 							</div>
 							<div>
-								<p class="text-sm font-medium text-text-primary">{{ sourceLabel(entry.sourceType) }}</p>
+								<p class="text-sm font-medium text-text-primary">
+									{{ sourceLabel(entry.sourceType) }}
+								</p>
 								<p v-if="entry.sourceId" class="text-xs text-text-tertiary truncate max-w-[160px]">
 									{{ entry.sourceId }}
 								</p>
@@ -482,9 +478,7 @@ const handleRemoveRelation = async (relationId: string) => {
 							</div>
 							<div v-if="formattedExpiresAt" class="flex justify-between">
 								<dt class="text-text-tertiary">Expires</dt>
-								<dd
-									:class="formattedExpiresAt.isExpired ? 'text-error' : 'text-text-secondary'"
-								>
+								<dd :class="formattedExpiresAt.isExpired ? 'text-error' : 'text-text-secondary'">
 									{{ formattedExpiresAt.text }}
 									<span v-if="formattedExpiresAt.isExpired" class="text-xs">(expired)</span>
 								</dd>
@@ -518,10 +512,10 @@ const handleRemoveRelation = async (relationId: string) => {
 		<!-- Edit Entry Modal -->
 		<Teleport to="body">
 			<Transition
-				enter-active-class="transition-opacity duration-200"
+				enter-active-class="transition-opacity duration-(--motion-fast)"
 				enter-from-class="opacity-0"
 				enter-to-class="opacity-100"
-				leave-active-class="transition-opacity duration-150"
+				leave-active-class="transition-opacity duration-(--motion-fast-exit)"
 				leave-from-class="opacity-100"
 				leave-to-class="opacity-0"
 			>
@@ -533,12 +527,15 @@ const handleRemoveRelation = async (relationId: string) => {
 					<div
 						class="w-full max-w-lg bg-bg-elevated border border-border-subtle rounded-xl shadow-xl max-h-[90vh] overflow-y-auto"
 					>
-						<div class="flex items-center justify-between px-5 py-4 border-b border-border-subtle sticky top-0 bg-bg-elevated z-10">
+						<div
+							class="flex items-center justify-between px-5 py-4 border-b border-border-subtle sticky top-0 bg-bg-elevated z-10"
+						>
 							<h3 class="text-base font-semibold text-text-primary">Edit Knowledge Entry</h3>
 							<button
 								class="w-8 h-8 rounded-lg flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-bg-surface transition-colors"
 								@click="showEditForm = false"
-							 aria-label="Close">
+								aria-label="Close"
+							>
 								<Icon name="lucide:x" class="w-4 h-4" />
 							</button>
 						</div>
@@ -559,10 +556,10 @@ const handleRemoveRelation = async (relationId: string) => {
 		<!-- Delete confirmation -->
 		<Teleport to="body">
 			<Transition
-				enter-active-class="duration-200 ease-out"
+				enter-active-class="duration-(--motion-moderate) ease-spring"
 				enter-from-class="opacity-0"
 				enter-to-class="opacity-100"
-				leave-active-class="duration-150 ease-in"
+				leave-active-class="duration-(--motion-moderate-exit) ease-exit"
 				leave-from-class="opacity-100"
 				leave-to-class="opacity-0"
 			>
@@ -571,10 +568,13 @@ const handleRemoveRelation = async (relationId: string) => {
 					class="fixed inset-0 z-50 flex items-center justify-center p-4"
 				>
 					<div class="absolute inset-0 bg-black/60" @click="showDeleteConfirm = false" />
-					<div class="relative bg-bg-elevated border border-border-subtle rounded-2xl p-6 w-full max-w-sm">
+					<div
+						class="relative bg-bg-elevated border border-border-subtle rounded-2xl p-6 w-full max-w-sm"
+					>
 						<h3 class="text-lg font-semibold text-text-primary mb-2">Delete Knowledge Entry</h3>
 						<p class="text-sm text-text-secondary mb-6">
-							This permanently removes this entry from the knowledge graph so it no longer feeds the agent's drafting context. This action cannot be undone.
+							This permanently removes this entry from the knowledge graph so it no longer feeds the
+							agent's drafting context. This action cannot be undone.
 						</p>
 						<div class="flex items-center justify-end gap-3">
 							<button class="btn btn-secondary" @click="showDeleteConfirm = false">Cancel</button>

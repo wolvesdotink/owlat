@@ -5,27 +5,35 @@
  * declarative CSS driven by Vue `<Transition>` wrappers in the Postbox
  * components; there is no JS motion module to keep in sync.
  *
- * Vocabulary:
- *   - fast (160ms): content swaps, hover reveals, toasts
- *   - panel (220ms): popups + dialogs opening/closing
- *   - one standard ease: cubic-bezier(0.2, 0, 0, 1)
+ * Vocabulary (aliases over the shared Fluid Functionalism motion tiers —
+ * packages/ui/assets/css/tokens.css):
+ *   - fast → moderate tier (160ms): content swaps, hover reveals, toasts
+ *   - panel → slow tier (240ms): popups + dialogs opening/closing
+ *   - exits are one notch faster and ride a plain ease-out tween
  *
  * All groups reduce to opacity-only (no transform, no movement) under
  * prefers-reduced-motion so nothing slides for motion-sensitive users.
  */
 
 :root {
-	--pbx-motion-fast: 160ms;
-	--pbx-motion-panel: 220ms;
-	--pbx-motion-ease: cubic-bezier(0.2, 0, 0, 1);
+	--pbx-motion-fast: var(--motion-moderate);
+	--pbx-motion-fast-exit: var(--motion-moderate-exit);
+	--pbx-motion-panel: var(--motion-slow);
+	--pbx-motion-panel-exit: var(--motion-slow-exit);
+	--pbx-motion-ease: var(--ease-spring);
+	--pbx-motion-ease-exit: var(--ease-exit);
 }
 
 /* Reader-pane content swap on thread change: subtle fade + 2px rise. */
-.pbx-reader-enter-active,
-.pbx-reader-leave-active {
+.pbx-reader-enter-active {
 	transition:
 		opacity var(--pbx-motion-fast) var(--pbx-motion-ease),
 		transform var(--pbx-motion-fast) var(--pbx-motion-ease);
+}
+.pbx-reader-leave-active {
+	transition:
+		opacity var(--pbx-motion-fast-exit) var(--pbx-motion-ease-exit),
+		transform var(--pbx-motion-fast-exit) var(--pbx-motion-ease-exit);
 }
 .pbx-reader-enter-from {
 	opacity: 0;
@@ -36,21 +44,29 @@
 }
 
 /* Folder-change list swap: plain fade. */
-.pbx-fade-enter-active,
-.pbx-fade-leave-active {
+.pbx-fade-enter-active {
 	transition: opacity var(--pbx-motion-fast) var(--pbx-motion-ease);
+}
+.pbx-fade-leave-active {
+	transition: opacity var(--pbx-motion-fast-exit) var(--pbx-motion-ease-exit);
 }
 .pbx-fade-enter-from,
 .pbx-fade-leave-to {
 	opacity: 0;
 }
 
-/* Composer popup open/minimize: scale + fade anchored to its footer chip. */
-.pbx-popup-enter-active,
+/* Composer popup open/minimize: scale + fade anchored to its footer chip.
+   The enter rides the bouncy spring (big panel, slow tier). */
+.pbx-popup-enter-active {
+	transition:
+		opacity var(--pbx-motion-panel) var(--ease-spring-bounce),
+		transform var(--pbx-motion-panel) var(--ease-spring-bounce);
+	transform-origin: bottom right;
+}
 .pbx-popup-leave-active {
 	transition:
-		opacity var(--pbx-motion-panel) var(--pbx-motion-ease),
-		transform var(--pbx-motion-panel) var(--pbx-motion-ease);
+		opacity var(--pbx-motion-panel-exit) var(--pbx-motion-ease-exit),
+		transform var(--pbx-motion-panel-exit) var(--pbx-motion-ease-exit);
 	transform-origin: bottom right;
 }
 .pbx-popup-enter-from,
@@ -60,11 +76,15 @@
 }
 
 /* Toast / undo-send enter-exit: fade + small rise, same curve. */
-.pbx-toast-enter-active,
-.pbx-toast-leave-active {
+.pbx-toast-enter-active {
 	transition:
 		opacity var(--pbx-motion-fast) var(--pbx-motion-ease),
 		transform var(--pbx-motion-fast) var(--pbx-motion-ease);
+}
+.pbx-toast-leave-active {
+	transition:
+		opacity var(--pbx-motion-fast-exit) var(--pbx-motion-ease-exit),
+		transform var(--pbx-motion-fast-exit) var(--pbx-motion-ease-exit);
 }
 .pbx-toast-enter-from,
 .pbx-toast-leave-to {

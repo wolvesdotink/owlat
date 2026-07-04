@@ -50,7 +50,7 @@ const trackHeight = computed(() => (props.size === 'sm' ? 'h-1.5' : 'h-2.5'));
 		/>
 		<div
 			v-else
-			class="h-full rounded-full transition-[width] duration-500 ease-out"
+			class="h-full rounded-full transition-[width] duration-(--motion-slow) ease-spring"
 			:class="fillColor[variant]"
 			:style="{ width: `${clamped}%` }"
 		/>

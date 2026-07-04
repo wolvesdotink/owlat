@@ -280,7 +280,7 @@ const queueActions = [
 .hub-section {
   opacity: 0;
   transform: translateY(14px);
-  transition: opacity 0.6s var(--ease-out-expo), transform 0.6s var(--ease-out-expo);
+  transition: opacity 0.6s var(--ease-spring), transform 0.6s var(--ease-spring);
   transition-delay: calc(var(--stagger) * 0.12s);
 }
 
@@ -349,7 +349,7 @@ const queueActions = [
   overflow: hidden;
   opacity: 0;
   transform: translateY(8px);
-  transition: opacity 0.5s var(--ease-out-expo), transform 0.5s var(--ease-out-expo), border-color 0.25s, box-shadow 0.25s;
+  transition: opacity var(--motion-slow) var(--ease-spring), transform var(--motion-slow) var(--ease-spring), border-color var(--motion-moderate), box-shadow var(--motion-moderate);
   transition-delay: calc(0.1s + var(--i) * 0.06s);
 }
 
@@ -374,7 +374,7 @@ const queueActions = [
   background: color-mix(in oklab, var(--color-brand) 10%, var(--color-bg-surface));
   color: var(--color-brand);
   flex-shrink: 0;
-  transition: box-shadow 0.3s;
+  transition: box-shadow var(--motion-moderate);
 }
 
 .hub-channel:hover .hub-channel-icon {
@@ -414,7 +414,7 @@ const queueActions = [
   align-items: center;
   padding: 10px 0;
   opacity: 0;
-  transition: opacity 0.5s var(--ease-out-expo);
+  transition: opacity var(--motion-slow) var(--ease-spring);
   transition-delay: calc(var(--stagger) * 0.12s);
   position: relative;
 }
@@ -432,7 +432,7 @@ const queueActions = [
 }
 
 .is-visible .hub-connector-line {
-  animation: line-draw 0.5s var(--ease-out-expo) both;
+  animation: line-draw 0.5s var(--ease-spring) both;
   animation-delay: calc(var(--stagger) * 0.12s + 0.2s);
 }
 
@@ -494,7 +494,7 @@ const queueActions = [
 }
 
 .is-visible .hub-converge-drop::after {
-  animation: line-draw 0.4s var(--ease-out-expo) both;
+  animation: line-draw 0.4s var(--ease-spring) both;
   animation-delay: calc(var(--b) * 0.05s + 0.15s);
 }
 
@@ -680,7 +680,7 @@ const queueActions = [
   align-items: stretch;
   opacity: 0;
   transform: translateY(14px);
-  transition: opacity 0.6s var(--ease-out-expo), transform 0.6s var(--ease-out-expo);
+  transition: opacity 0.6s var(--ease-spring), transform 0.6s var(--ease-spring);
   transition-delay: calc(var(--stagger) * 0.12s);
 }
 
@@ -703,7 +703,7 @@ const queueActions = [
   padding: 14px 16px;
   position: relative;
   overflow: hidden;
-  transition: border-color 0.25s, box-shadow 0.3s;
+  transition: border-color var(--motion-moderate), box-shadow var(--motion-moderate);
 }
 
 .hub-card::before {
@@ -711,7 +711,7 @@ const queueActions = [
   position: absolute;
   inset: 0;
   opacity: 0;
-  transition: opacity 0.4s;
+  transition: opacity var(--motion-slow);
   pointer-events: none;
 }
 
@@ -739,7 +739,7 @@ const queueActions = [
   height: 32px;
   border-radius: 8px;
   flex-shrink: 0;
-  transition: box-shadow 0.3s;
+  transition: box-shadow var(--motion-moderate);
 }
 
 .hub-card:hover .hub-card-icon {
@@ -910,7 +910,7 @@ const queueActions = [
   border-radius: 6px;
   background: var(--color-bg-surface);
   border: 1px solid var(--color-border-subtle);
-  transition: border-color 0.25s, background 0.25s;
+  transition: border-color var(--motion-moderate), background var(--motion-moderate);
   opacity: 0;
   transform: translateX(-6px);
 }
@@ -918,7 +918,7 @@ const queueActions = [
 .is-visible .hub-pipeline-step {
   opacity: 1;
   transform: translateX(0);
-  transition: border-color 0.25s, background 0.25s, opacity 0.4s var(--ease-out-expo), transform 0.4s var(--ease-out-expo);
+  transition: border-color var(--motion-moderate), background var(--motion-moderate), opacity var(--motion-slow) var(--ease-spring), transform var(--motion-slow) var(--ease-spring);
   transition-delay: calc(0.3s + var(--s) * 0.08s);
 }
 
@@ -967,14 +967,9 @@ const queueActions = [
 }
 
 .is-visible .hub-pipeline-arrow {
-  animation: arrow-nudge 2.5s ease-in-out infinite;
   animation-delay: calc(var(--s) * 0.3s + 1.5s);
 }
 
-@keyframes arrow-nudge {
-  0%, 100% { transform: translateX(0); opacity: 0.4; }
-  50% { transform: translateX(2px); opacity: 0.8; }
-}
 
 .hub-pipeline-badge {
   display: flex;
@@ -1070,7 +1065,7 @@ const queueActions = [
   border-radius: 6px;
   background: var(--color-bg-surface);
   border: 1px solid var(--color-border-subtle);
-  transition: border-color 0.2s;
+  transition: border-color var(--motion-moderate);
 }
 
 .hub-filter-layer:hover {
@@ -1217,7 +1212,7 @@ const queueActions = [
   font-size: 0.6875rem;
   font-weight: 500;
   color: var(--color-text-secondary);
-  transition: border-color 0.2s, color 0.2s, background 0.2s;
+  transition: border-color var(--motion-moderate), color var(--motion-moderate), background var(--motion-moderate);
   cursor: default;
 }
 
@@ -1239,7 +1234,7 @@ const queueActions = [
   align-items: center;
   opacity: 0;
   transform: translateY(12px);
-  transition: opacity 0.6s var(--ease-out-expo), transform 0.6s var(--ease-out-expo);
+  transition: opacity 0.6s var(--ease-spring), transform 0.6s var(--ease-spring);
   transition-delay: calc(var(--stagger) * 0.12s);
 }
 
@@ -1340,7 +1335,7 @@ const queueActions = [
   background: color-mix(in oklab, var(--color-warning) 3%, var(--color-bg-soft));
   opacity: 0;
   transform: translateY(10px);
-  transition: opacity 0.5s var(--ease-out-expo), transform 0.5s var(--ease-out-expo);
+  transition: opacity var(--motion-slow) var(--ease-spring), transform var(--motion-slow) var(--ease-spring);
   transition-delay: calc(var(--stagger) * 0.12s);
 }
 
@@ -1359,31 +1354,9 @@ const queueActions = [
   color: var(--color-text-secondary);
 }
 
-/* ── Ambient animations ── */
-.is-visible .hub-card--pipeline {
-  animation: card-shimmer-brand 4s ease-in-out infinite 1.5s;
-}
 
-.is-visible .hub-card--knowledge {
-  animation: card-shimmer-accent 4s ease-in-out infinite 2s;
-}
 
-.is-visible .hub-card--queue {
-  animation: card-shimmer-success 4s ease-in-out infinite 2.5s;
-}
 
-@keyframes card-shimmer-brand {
-  0%, 100% { border-color: color-mix(in oklab, var(--color-brand) 25%, var(--color-border-default)); }
-  50% { border-color: color-mix(in oklab, var(--color-brand) 40%, var(--color-border-default)); }
-}
 
-@keyframes card-shimmer-accent {
-  0%, 100% { border-color: color-mix(in oklab, var(--color-accent) 20%, var(--color-border-default)); }
-  50% { border-color: color-mix(in oklab, var(--color-accent) 35%, var(--color-border-default)); }
-}
 
-@keyframes card-shimmer-success {
-  0%, 100% { border-color: color-mix(in oklab, var(--color-success) 20%, var(--color-border-default)); }
-  50% { border-color: color-mix(in oklab, var(--color-success) 35%, var(--color-border-default)); }
-}
 </style>

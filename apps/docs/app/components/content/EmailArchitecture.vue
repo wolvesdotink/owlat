@@ -199,7 +199,7 @@ const providerFeatures = [
   background: var(--color-bg-elevated);
   opacity: 0;
   transform: translateY(14px);
-  transition: opacity 0.6s var(--ease-out-expo), transform 0.6s var(--ease-out-expo), border-color 0.3s, box-shadow 0.3s;
+  transition: opacity 0.6s var(--ease-spring), transform 0.6s var(--ease-spring), border-color var(--motion-moderate), box-shadow var(--motion-moderate);
   transition-delay: calc(var(--s) * 0.12s);
   position: relative;
   overflow: hidden;
@@ -285,7 +285,7 @@ const providerFeatures = [
   border-radius: 8px;
   background: var(--color-bg-surface);
   border: 1px solid transparent;
-  transition: border-color 0.25s, background 0.25s, transform 0.3s var(--ease-out-expo);
+  transition: border-color var(--motion-moderate), background var(--motion-moderate), transform var(--motion-moderate) var(--ease-spring);
   opacity: 0;
   transform: translateY(8px);
 }
@@ -353,7 +353,7 @@ const providerFeatures = [
   font-size: 0.6875rem;
   font-family: var(--font-mono);
   color: var(--color-text-secondary);
-  transition: border-color 0.25s, color 0.25s;
+  transition: border-color var(--motion-moderate), color var(--motion-moderate);
   opacity: 0;
 }
 
@@ -409,18 +409,11 @@ const providerFeatures = [
   flex-shrink: 0;
 }
 
-.is-visible .ea-arrow {
-  animation: ea-arrow-drift 2.5s ease-in-out infinite;
-}
 
 .is-visible .ea-arrow:nth-of-type(2) {
   animation-delay: 0.5s;
 }
 
-@keyframes ea-arrow-drift {
-  0%, 100% { transform: translateX(0); }
-  50% { transform: translateX(3px); }
-}
 
 .ea-tags {
   display: flex;
@@ -445,7 +438,7 @@ const providerFeatures = [
   gap: 0;
   padding: 2px 0;
   opacity: 0;
-  transition: opacity 0.5s var(--ease-out-expo);
+  transition: opacity var(--motion-slow) var(--ease-spring);
   transition-delay: calc(var(--s) * 0.12s + 0.1s);
 }
 
@@ -497,7 +490,7 @@ const providerFeatures = [
   margin-bottom: 12px;
   opacity: 0;
   transform: translateY(8px);
-  transition: border-color 0.25s, transform 0.3s var(--ease-out-expo), background 0.25s, opacity 0.5s var(--ease-out-expo);
+  transition: border-color var(--motion-moderate), transform var(--motion-moderate) var(--ease-spring), background var(--motion-moderate), opacity var(--motion-slow) var(--ease-spring);
 }
 
 .is-visible .ea-provider--default {
@@ -550,7 +543,7 @@ const providerFeatures = [
   border-radius: 8px;
   background: var(--color-bg-surface);
   border: 1px solid transparent;
-  transition: border-color 0.25s, transform 0.3s var(--ease-out-expo), background 0.25s;
+  transition: border-color var(--motion-moderate), transform var(--motion-moderate) var(--ease-spring), background var(--motion-moderate);
   opacity: 0;
   transform: translateY(8px);
 }
@@ -622,7 +615,7 @@ const providerFeatures = [
   border: 1px solid var(--color-border-subtle);
   font-size: 0.75rem;
   color: var(--color-text-secondary);
-  transition: border-color 0.25s, transform 0.25s var(--ease-out-expo);
+  transition: border-color var(--motion-moderate), transform var(--motion-moderate) var(--ease-spring);
   opacity: 0;
 }
 

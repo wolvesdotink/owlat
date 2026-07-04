@@ -7,13 +7,35 @@ definePageMeta({
 });
 
 const {
-	formsData, topicsData, isLoading,
-	isAddModalOpen, addForm, addFormErrors, isAdding, resetAddForm, handleAddForm, addFieldEditor,
-	formToEdit, editForm, editFormErrors, isSaving, openEditModal, handleSaveEdit, editFieldEditor,
+	formsData,
+	topicsData,
+	isLoading,
+	isAddModalOpen,
+	addForm,
+	addFormErrors,
+	isAdding,
+	resetAddForm,
+	handleAddForm,
+	addFieldEditor,
+	formToEdit,
+	editForm,
+	editFormErrors,
+	isSaving,
+	openEditModal,
+	handleSaveEdit,
+	editFieldEditor,
 	handleToggleActive,
-	formToDelete, isDeleting, handleDeleteForm,
-	expandedFormId, copiedCode, toggleFormExpansion, getFormUrl, getEmbedCode, copyToClipboard,
-	getTopicName, formatDate,
+	formToDelete,
+	isDeleting,
+	handleDeleteForm,
+	expandedFormId,
+	copiedCode,
+	toggleFormExpansion,
+	getFormUrl,
+	getEmbedCode,
+	copyToClipboard,
+	getTopicName,
+	formatDate,
 } = useFormSettings();
 
 const { hasActiveOrganization } = useOrganizationContext();
@@ -84,7 +106,13 @@ const { hasActiveOrganization } = useOrganizationContext();
 				v-if="formsData && formsData.length === 0"
 				class="card flex flex-col items-center justify-center py-16 text-center px-6"
 			>
-				<UiIconBox icon="lucide:file-text" size="xl" variant="surface" rounded="full" class="mb-4" />
+				<UiIconBox
+					icon="lucide:file-text"
+					size="xl"
+					variant="surface"
+					rounded="full"
+					class="mb-4"
+				/>
 				<p class="text-text-secondary font-medium">No form endpoints yet</p>
 				<p class="text-sm text-text-tertiary mt-1 max-w-sm">
 					Create your first form endpoint to start collecting signups from your website.
@@ -116,7 +144,10 @@ const { hasActiveOrganization } = useOrganizationContext();
 												: 'bg-text-tertiary/20 text-text-tertiary border-text-tertiary/30',
 										]"
 									>
-										<Icon :name="form.isActive ? 'lucide:check-circle-2' : 'lucide:x-circle'" class="w-3 h-3" />
+										<Icon
+											:name="form.isActive ? 'lucide:check-circle-2' : 'lucide:x-circle'"
+											class="w-3 h-3"
+										/>
 										{{ form.isActive ? 'Active' : 'Inactive' }}
 									</span>
 								</div>
@@ -143,7 +174,11 @@ const { hasActiveOrganization } = useOrganizationContext();
 								/>
 							</button>
 							<!-- Edit -->
-							<button class="btn btn-ghost p-2" title="Edit form" @click.stop="openEditModal(form as Parameters<typeof openEditModal>[0])">
+							<button
+								class="btn btn-ghost p-2"
+								title="Edit form"
+								@click.stop="openEditModal(form as Parameters<typeof openEditModal>[0])"
+							>
 								<Icon name="lucide:settings-2" class="w-4 h-4" />
 							</button>
 							<!-- Delete -->
@@ -242,7 +277,11 @@ const { hasActiveOrganization } = useOrganizationContext();
 											title="Copy URL"
 											@click="copyToClipboard(getFormUrl(form._id), `url-${form._id}`)"
 										>
-											<Icon v-if="copiedCode === `url-${form._id}`" name="lucide:check" class="w-4 h-4 text-success" />
+											<Icon
+												v-if="copiedCode === `url-${form._id}`"
+												name="lucide:check"
+												class="w-4 h-4 text-success"
+											/>
 											<Icon v-else name="lucide:copy" class="w-4 h-4" />
 										</button>
 									</div>
@@ -300,7 +339,11 @@ const { hasActiveOrganization } = useOrganizationContext();
 			:open="isAddModalOpen"
 			title="Create Form Endpoint"
 			size="md"
-			@update:open="(v) => { if (!v) isAddModalOpen = false; }"
+			@update:open="
+				(v) => {
+					if (!v) isAddModalOpen = false;
+				}
+			"
 		>
 			<form id="add-form" @submit.prevent="handleAddForm">
 				<div class="space-y-4">
@@ -325,12 +368,7 @@ const { hasActiveOrganization } = useOrganizationContext();
 					<!-- Topic Select -->
 					<div>
 						<label for="form-topic" class="label"> Add to Topic </label>
-						<select
-							id="form-topic"
-							v-model="addForm.topicId"
-							class="input"
-							:disabled="isAdding"
-						>
+						<select id="form-topic" v-model="addForm.topicId" class="input" :disabled="isAdding">
 							<option value="">None (contacts only)</option>
 							<option v-for="list in topicsData" :key="list._id" :value="list._id">
 								{{ list.name }}
@@ -399,8 +437,7 @@ const { hasActiveOrganization } = useOrganizationContext();
 								Enable Double Opt-In
 							</label>
 							<p class="mt-0.5 text-xs text-text-tertiary">
-								Require email confirmation before subscribing. Recommended for GDPR
-								compliance.
+								Require email confirmation before subscribing. Recommended for GDPR compliance.
 							</p>
 						</div>
 					</div>
@@ -432,7 +469,11 @@ const { hasActiveOrganization } = useOrganizationContext();
 			:open="!!formToEdit"
 			title="Edit Form Endpoint"
 			size="md"
-			@update:open="(v) => { if (!v) formToEdit = null; }"
+			@update:open="
+				(v) => {
+					if (!v) formToEdit = null;
+				}
+			"
 		>
 			<form id="edit-form" @submit.prevent="handleSaveEdit">
 				<div class="space-y-4">
@@ -494,9 +535,7 @@ const { hasActiveOrganization } = useOrganizationContext();
 
 					<!-- Honeypot Field -->
 					<div>
-						<label for="edit-form-honeypot" class="label">
-							Honeypot Field Name (optional)
-						</label>
+						<label for="edit-form-honeypot" class="label"> Honeypot Field Name (optional) </label>
 						<input
 							id="edit-form-honeypot"
 							v-model="editForm.honeypotFieldName"
@@ -524,8 +563,7 @@ const { hasActiveOrganization } = useOrganizationContext();
 								Enable Double Opt-In
 							</label>
 							<p class="mt-0.5 text-xs text-text-tertiary">
-								Require email confirmation before subscribing. Recommended for GDPR
-								compliance.
+								Require email confirmation before subscribing. Recommended for GDPR compliance.
 							</p>
 						</div>
 					</div>
@@ -557,13 +595,14 @@ const { hasActiveOrganization } = useOrganizationContext();
 			:description="`Are you sure you want to delete &quot;${formToDelete?.name ?? ''}&quot;?`"
 			confirm-text="Delete Form"
 			:is-loading="isDeleting"
-			@update:open="(v: boolean) => { if (!v) formToDelete = null; }"
+			@update:open="
+				(v: boolean) => {
+					if (!v) formToDelete = null;
+				}
+			"
 			@confirm="handleDeleteForm"
 		>
-			<p
-				v-if="formToDelete && formToDelete.totalSubmissions > 0"
-				class="mt-2 text-sm text-warning"
-			>
+			<p v-if="formToDelete && formToDelete.totalSubmissions > 0" class="mt-2 text-sm text-warning">
 				This will also delete {{ formToDelete.totalSubmissions }} submission record(s).
 			</p>
 			<p class="mt-2 text-sm text-text-tertiary">
@@ -575,9 +614,17 @@ const { hasActiveOrganization } = useOrganizationContext();
 
 <style scoped>
 .expand-enter-active,
-.expand-leave-active { transition: all 0.2s ease; overflow: hidden; }
+.expand-leave-active {
+	transition: all var(--motion-moderate) var(--ease-spring);
+	overflow: hidden;
+}
 .expand-enter-from,
-.expand-leave-to { opacity: 0; max-height: 0; }
+.expand-leave-to {
+	opacity: 0;
+	max-height: 0;
+}
 .expand-enter-to,
-.expand-leave-from { max-height: 1500px; }
+.expand-leave-from {
+	max-height: 1500px;
+}
 </style>

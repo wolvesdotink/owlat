@@ -35,7 +35,7 @@ const handleToggle = () => {
 		:aria-label="label"
 		:disabled="disabled"
 		:class="[
-			'relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors duration-200',
+			'relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors duration-(--motion-moderate) ease-spring',
 			'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-bg-elevated',
 			modelValue ? 'bg-brand' : 'bg-bg-surface-hover',
 			disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer',
@@ -44,7 +44,7 @@ const handleToggle = () => {
 	>
 		<span
 			:class="[
-				'inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform duration-200',
+				'inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform duration-(--motion-moderate) ease-spring',
 				modelValue ? 'translate-x-[22px]' : 'translate-x-[2px]',
 			]"
 		/>

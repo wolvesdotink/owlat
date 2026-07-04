@@ -14,22 +14,22 @@ const { hasActiveOrganization } = useOrganizationContext();
 
 // Real-time list of tracking domains for the active org.
 const { data: trackingDomains, isLoading } = useOrganizationQuery(
-	api.domains.trackingDomains.listTrackingDomains,
+	api.domains.trackingDomains.listTrackingDomains
 );
 
 // Mutations / action, routed through the shared Operation module so they share
 // the error vocabulary, toasts and telemetry policy used elsewhere.
 const { run: addTrackingDomain } = useBackendOperation(
 	api.domains.trackingDomains.addTrackingDomain,
-	{ label: 'Add tracking domain' },
+	{ label: 'Add tracking domain' }
 );
 const { run: removeTrackingDomain } = useBackendOperation(
 	api.domains.trackingDomains.removeTrackingDomain,
-	{ label: 'Remove tracking domain' },
+	{ label: 'Remove tracking domain' }
 );
 const { run: verifyTrackingDomain } = useBackendOperation(
 	api.domains.trackingDomains.verifyTrackingDomain,
-	{ label: 'Verify tracking domain' },
+	{ label: 'Verify tracking domain' }
 );
 
 const { showToast } = useToast();
@@ -105,7 +105,7 @@ const handleVerify = async (id: Id<'trackingDomains'>) => {
 		if (result === undefined) return; // run() already surfaced the failure
 		expandedId.value = id;
 		showToast(
-			'Checking DNS for this tracking domain. It will show as verified once the CNAME resolves.',
+			'Checking DNS for this tracking domain. It will show as verified once the CNAME resolves.'
 		);
 	} finally {
 		verifyingId.value = null;
@@ -123,11 +123,7 @@ const handleVerify = async (id: Id<'trackingDomains'>) => {
 					Serve open &amp; click tracking from your own branded subdomain
 				</p>
 			</div>
-			<button
-				v-if="hasActiveOrganization"
-				class="btn btn-secondary gap-2"
-				@click="addModal.open()"
-			>
+			<button v-if="hasActiveOrganization" class="btn btn-secondary gap-2" @click="addModal.open()">
 				<Icon name="lucide:plus" class="w-4 h-4" />
 				Add Tracking Domain
 			</button>
@@ -142,8 +138,9 @@ const handleVerify = async (id: Id<'trackingDomains'>) => {
 					<p class="text-sm text-text-secondary">
 						Links in your emails are rewritten through a tracking host so opens and clicks can be
 						measured. Pointing that host at your own subdomain keeps links on-brand and isolates
-						your sending reputation. Add a subdomain like <code class="font-mono">track.example.com</code>,
-						create the CNAME record we show you, then verify.
+						your sending reputation. Add a subdomain like
+						<code class="font-mono">track.example.com</code>, create the CNAME record we show you,
+						then verify.
 					</p>
 				</div>
 			</div>
@@ -205,9 +202,7 @@ const handleVerify = async (id: Id<'trackingDomains'>) => {
 								<span v-if="td.isVerified && td.verifiedAt">
 									Verified {{ formatDateTime(td.verifiedAt) }}
 								</span>
-								<span v-else>
-									Add the CNAME record, then click Verify
-								</span>
+								<span v-else> Add the CNAME record, then click Verify </span>
 							</p>
 						</div>
 					</div>
@@ -348,7 +343,7 @@ const handleVerify = async (id: Id<'trackingDomains'>) => {
 /* Expand transition (mirrors the Sending Domains rows) */
 .expand-enter-active,
 .expand-leave-active {
-	transition: all 0.2s ease;
+	transition: all var(--motion-moderate) var(--ease-spring);
 	overflow: hidden;
 }
 

@@ -170,17 +170,23 @@ provide('dropdownClose', close);
 <template>
 	<div class="relative inline-block">
 		<!-- Trigger -->
-		<div ref="triggerRef" role="button" :aria-expanded="isOpen" aria-haspopup="menu" @click.stop="toggle">
+		<div
+			ref="triggerRef"
+			role="button"
+			:aria-expanded="isOpen"
+			aria-haspopup="menu"
+			@click.stop="toggle"
+		>
 			<slot name="trigger" />
 		</div>
 
 		<!-- Menu (Teleported to body) -->
 		<Teleport to="body">
 			<Transition
-				enter-active-class="duration-150 ease-out"
+				enter-active-class="duration-(--motion-moderate) ease-spring"
 				enter-from-class="opacity-0 scale-95"
 				enter-to-class="opacity-100 scale-100"
-				leave-active-class="duration-100 ease-in"
+				leave-active-class="duration-(--motion-moderate-exit) ease-exit"
 				leave-from-class="opacity-100 scale-100"
 				leave-to-class="opacity-0 scale-95"
 			>

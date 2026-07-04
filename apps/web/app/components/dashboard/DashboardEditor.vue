@@ -152,25 +152,22 @@ const roleOptions = ROLE_OPTIONS;
 <template>
 	<Teleport to="body">
 		<Transition name="slide">
-			<div
-				v-if="isOpen"
-				class="fixed inset-0 z-50"
-			>
+			<div v-if="isOpen" class="fixed inset-0 z-50">
 				<!-- Backdrop -->
-				<div
-					class="absolute inset-0 bg-black/30"
-					@click="handleCancel"
-				/>
+				<div class="absolute inset-0 bg-black/30" @click="handleCancel" />
 
 				<!-- Panel -->
-				<div class="absolute right-0 top-0 bottom-0 w-full max-w-md bg-bg-base border-l border-border-subtle shadow-xl flex flex-col">
+				<div
+					class="absolute right-0 top-0 bottom-0 w-full max-w-md bg-bg-base border-l border-border-subtle shadow-xl flex flex-col"
+				>
 					<!-- Header -->
 					<div class="flex items-center justify-between px-5 py-4 border-b border-border-subtle">
 						<h2 class="text-lg font-semibold text-text-primary">Customize Dashboard</h2>
 						<button
 							class="p-1.5 rounded-lg hover:bg-bg-surface transition-colors text-text-secondary"
 							@click="handleCancel"
-						 aria-label="Close">
+							aria-label="Close"
+						>
 							<Icon name="lucide:x" class="w-5 h-5" />
 						</button>
 					</div>
@@ -199,14 +196,16 @@ const roleOptions = ROLE_OPTIONS;
 											:disabled="index === 0"
 											class="p-0.5 rounded text-text-tertiary hover:text-text-primary disabled:opacity-30 transition-colors"
 											@click="moveCard(index, 'up')"
-										 aria-label="Move up">
+											aria-label="Move up"
+										>
 											<Icon name="lucide:chevron-up" class="w-3.5 h-3.5" />
 										</button>
 										<button
 											:disabled="index === editableCards.length - 1"
 											class="p-0.5 rounded text-text-tertiary hover:text-text-primary disabled:opacity-30 transition-colors"
 											@click="moveCard(index, 'down')"
-										 aria-label="Move down">
+											aria-label="Move down"
+										>
 											<Icon name="lucide:chevron-down" class="w-3.5 h-3.5" />
 										</button>
 									</div>
@@ -227,9 +226,11 @@ const roleOptions = ROLE_OPTIONS;
 											v-for="opt in sizeOptions"
 											:key="opt.value"
 											class="px-2 py-1 text-xs font-medium rounded transition-colors"
-											:class="card.size === opt.value
-												? 'bg-brand text-white'
-												: 'bg-bg-surface text-text-secondary hover:text-text-primary'"
+											:class="
+												card.size === opt.value
+													? 'bg-brand text-white'
+													: 'bg-bg-surface text-text-secondary hover:text-text-primary'
+											"
 											@click="card.size = opt.value"
 										>
 											{{ opt.label }}
@@ -240,7 +241,8 @@ const roleOptions = ROLE_OPTIONS;
 									<button
 										class="p-1 rounded-lg text-text-tertiary hover:text-error hover:bg-error/10 transition-colors shrink-0"
 										@click="removeCard(index)"
-									 aria-label="Remove card">
+										aria-label="Remove card"
+									>
 										<Icon name="lucide:x" class="w-4 h-4" />
 									</button>
 								</div>
@@ -287,8 +289,8 @@ const roleOptions = ROLE_OPTIONS;
 								</button>
 							</div>
 							<p class="text-xs text-text-tertiary mb-3">
-								Show a different set of cards by time of day, day of week, or role.
-								Higher priority wins when several rules match.
+								Show a different set of cards by time of day, day of week, or role. Higher priority
+								wins when several rules match.
 							</p>
 
 							<div v-if="editableRules.length === 0" class="py-4 text-center">
@@ -312,7 +314,7 @@ const roleOptions = ROLE_OPTIONS;
 												type="number"
 												class="w-16 bg-bg-surface border border-border-default rounded-md text-text-primary text-sm px-2 py-1 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand"
 												aria-label="Rule priority"
-											>
+											/>
 										</div>
 										<button
 											class="p-1 rounded-lg text-text-tertiary hover:text-error hover:bg-error/10 transition-colors shrink-0"
@@ -332,14 +334,14 @@ const roleOptions = ROLE_OPTIONS;
 												type="time"
 												class="flex-1 bg-bg-surface border border-border-default rounded-md text-text-primary text-sm px-2 py-1 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand"
 												aria-label="Start time"
-											>
+											/>
 											<span class="text-text-tertiary text-xs">to</span>
 											<input
 												v-model="rule.timeEnd"
 												type="time"
 												class="flex-1 bg-bg-surface border border-border-default rounded-md text-text-primary text-sm px-2 py-1 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand"
 												aria-label="End time"
-											>
+											/>
 										</div>
 									</div>
 
@@ -352,9 +354,11 @@ const roleOptions = ROLE_OPTIONS;
 												:key="day.value"
 												type="button"
 												class="px-2 py-1 text-xs font-medium rounded transition-colors"
-												:class="rule.dayOfWeek.includes(day.value)
-													? 'bg-brand text-white'
-													: 'bg-bg-surface text-text-secondary hover:text-text-primary'"
+												:class="
+													rule.dayOfWeek.includes(day.value)
+														? 'bg-brand text-white'
+														: 'bg-bg-surface text-text-secondary hover:text-text-primary'
+												"
 												@click="toggleRuleDay(rule, day.value)"
 											>
 												{{ day.label }}
@@ -371,9 +375,11 @@ const roleOptions = ROLE_OPTIONS;
 												:key="opt.value || 'any'"
 												type="button"
 												class="px-2 py-1 text-xs font-medium rounded transition-colors"
-												:class="rule.role === opt.value
-													? 'bg-brand text-white'
-													: 'bg-bg-surface text-text-secondary hover:text-text-primary'"
+												:class="
+													rule.role === opt.value
+														? 'bg-brand text-white'
+														: 'bg-bg-surface text-text-secondary hover:text-text-primary'
+												"
 												@click="setRuleRole(rule, opt.value)"
 											>
 												{{ opt.label }}
@@ -401,9 +407,11 @@ const roleOptions = ROLE_OPTIONS;
 														v-for="opt in sizeOptions"
 														:key="opt.value"
 														class="px-1.5 py-0.5 text-[10px] font-medium rounded transition-colors"
-														:class="card.size === opt.value
-															? 'bg-brand text-white'
-															: 'bg-bg-elevated text-text-secondary hover:text-text-primary'"
+														:class="
+															card.size === opt.value
+																? 'bg-brand text-white'
+																: 'bg-bg-elevated text-text-secondary hover:text-text-primary'
+														"
 														@click="card.size = opt.value"
 													>
 														{{ opt.label }}
@@ -438,12 +446,8 @@ const roleOptions = ROLE_OPTIONS;
 
 					<!-- Footer -->
 					<div class="flex items-center justify-end gap-3 px-5 py-4 border-t border-border-subtle">
-						<UiButton variant="ghost" @click="handleCancel">
-							Cancel
-						</UiButton>
-						<UiButton @click="handleSave">
-							Save Layout
-						</UiButton>
+						<UiButton variant="ghost" @click="handleCancel"> Cancel </UiButton>
+						<UiButton @click="handleSave"> Save Layout </UiButton>
 					</div>
 				</div>
 			</div>
@@ -454,12 +458,12 @@ const roleOptions = ROLE_OPTIONS;
 <style scoped>
 .slide-enter-active,
 .slide-leave-active {
-	transition: opacity 0.2s ease;
+	transition: opacity var(--motion-moderate) var(--ease-spring);
 }
 
 .slide-enter-active > div:last-child,
 .slide-leave-active > div:last-child {
-	transition: transform 0.3s ease;
+	transition: transform var(--motion-moderate) var(--ease-spring);
 }
 
 .slide-enter-from,

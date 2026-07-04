@@ -17,9 +17,7 @@
 					class="search-modal-inner relative w-full max-w-lg mx-4 bg-bg-elevated border border-border-default rounded-2xl shadow-lg overflow-hidden"
 				>
 					<!-- Search input -->
-					<div
-						class="flex items-center gap-3 px-4 h-14 border-b border-border-subtle"
-					>
+					<div class="flex items-center gap-3 px-4 h-14 border-b border-border-subtle">
 						<svg
 							class="w-5 h-5 text-text-tertiary shrink-0"
 							fill="none"
@@ -57,27 +55,19 @@
 							v-if="status === 'pending' && search.length > 0"
 							class="px-4 py-8 text-center text-text-tertiary text-sm"
 						>
-							<div class="search-loading-dots">
-								<span /><span /><span />
-							</div>
+							<div class="search-loading-dots"><span /><span /><span /></div>
 						</div>
 
 						<!-- Empty state -->
 						<div
-							v-else-if="
-								search.length > 0 && flatResults.length === 0
-							"
+							v-else-if="search.length > 0 && flatResults.length === 0"
 							class="px-4 py-8 text-center text-text-tertiary text-sm"
 						>
 							No results found for "{{ search }}"
 						</div>
 
 						<!-- Results list -->
-						<template
-							v-else-if="
-								search.length > 0 && flatResults.length > 0
-							"
-						>
+						<template v-else-if="search.length > 0 && flatResults.length > 0">
 							<div
 								v-for="(result, index) in flatResults"
 								:key="result.path"
@@ -85,7 +75,7 @@
 								:style="{ '--result-i': index }"
 							>
 								<button
-									class="w-full flex items-center gap-3 px-4 py-2.5 text-left transition-all duration-150"
+									class="w-full flex items-center gap-3 px-4 py-2.5 text-left transition-all duration-(--motion-moderate)"
 									:class="
 										selectedIndex === index
 											? 'bg-brand-soft text-text-primary'
@@ -118,9 +108,7 @@
 											{{ result.description }}
 										</div>
 									</div>
-									<span
-										class="text-[11px] text-text-tertiary capitalize shrink-0"
-									>
+									<span class="text-[11px] text-text-tertiary capitalize shrink-0">
 										{{ getSectionLabel(result.path) }}
 									</span>
 								</button>
@@ -128,10 +116,7 @@
 						</template>
 
 						<!-- Empty input state -->
-						<div
-							v-else
-							class="px-4 py-8 text-center text-text-tertiary text-sm"
-						>
+						<div v-else class="px-4 py-8 text-center text-text-tertiary text-sm">
 							Type to search the documentation
 						</div>
 					</div>
@@ -169,23 +154,23 @@
 
 <script setup lang="ts">
 interface SearchResult {
-	path: string
-	title: string
-	description?: string
+	path: string;
+	title: string;
+	description?: string;
 }
 
 const props = defineProps<{
-	open: boolean
-}>()
+	open: boolean;
+}>();
 
 const emit = defineEmits<{
-	'update:open': [value: boolean]
-}>()
+	'update:open': [value: boolean];
+}>();
 
-const router = useRouter()
-const search = ref('')
-const selectedIndex = ref(0)
-const inputEl = ref<HTMLInputElement | null>(null)
+const router = useRouter();
+const search = ref('');
+const selectedIndex = ref(0);
+const inputEl = ref<HTMLInputElement | null>(null);
 
 const { data: results, status } = await useAsyncData(
 	'search',
@@ -195,34 +180,34 @@ const { data: results, status } = await useAsyncData(
 			.select('path', 'title', 'description')
 			.all(),
 	{ watch: [search], default: () => [] }
-)
+);
 
 const flatResults = computed<SearchResult[]>(() => {
-	if (!results.value) return []
-	return results.value as unknown as SearchResult[]
-})
+	if (!results.value) return [];
+	return results.value as unknown as SearchResult[];
+});
 
 function getSectionLabel(path: string): string {
-	const segment = path.split('/')[1]
-	return segment || 'docs'
+	const segment = path.split('/')[1];
+	return segment || 'docs';
 }
 
 function moveSelection(delta: number) {
-	const len = flatResults.value.length
-	if (len === 0) return
-	selectedIndex.value = (selectedIndex.value + delta + len) % len
+	const len = flatResults.value.length;
+	if (len === 0) return;
+	selectedIndex.value = (selectedIndex.value + delta + len) % len;
 }
 
 function selectCurrent() {
-	const result = flatResults.value[selectedIndex.value]
+	const result = flatResults.value[selectedIndex.value];
 	if (result) {
-		navigateTo(result.path)
+		navigateTo(result.path);
 	}
 }
 
 function navigateTo(path: string) {
-	emit('update:open', false)
-	router.push(path)
+	emit('update:open', false);
+	router.push(path);
 }
 
 // Focus input on open
@@ -230,41 +215,49 @@ watch(
 	() => props.open,
 	async (isOpen) => {
 		if (isOpen) {
-			search.value = ''
-			selectedIndex.value = 0
-			await nextTick()
-			inputEl.value?.focus()
+			search.value = '';
+			selectedIndex.value = 0;
+			await nextTick();
+			inputEl.value?.focus();
 		}
 	}
-)
+);
 
 // Reset selection on search change
 watch(search, () => {
-	selectedIndex.value = 0
-})
+	selectedIndex.value = 0;
+});
 
 // Lock body scroll when open
 watch(
 	() => props.open,
 	(isOpen) => {
-		if (import.meta.server) return
-		document.body.style.overflow = isOpen ? 'hidden' : ''
+		if (import.meta.server) return;
+		document.body.style.overflow = isOpen ? 'hidden' : '';
 	}
-)
+);
 </script>
 
 <style scoped>
-/* Modal transitions */
-.search-modal-enter-active,
-.search-modal-leave-active {
-	transition: opacity 0.25s var(--ease-out-expo);
+/* Modal transitions — slow tier dialog: bouncy spring in, quick tween out */
+.search-modal-enter-active {
+	transition: opacity var(--motion-slow) var(--ease-spring);
 }
 
-.search-modal-enter-active .search-modal-inner,
+.search-modal-leave-active {
+	transition: opacity var(--motion-slow-exit) var(--ease-exit);
+}
+
+.search-modal-enter-active .search-modal-inner {
+	transition:
+		transform var(--motion-slow) var(--ease-spring-bounce),
+		opacity var(--motion-slow) var(--ease-spring);
+}
+
 .search-modal-leave-active .search-modal-inner {
 	transition:
-		transform 0.3s var(--ease-out-expo),
-		opacity 0.25s var(--ease-out-expo);
+		transform var(--motion-slow-exit) var(--ease-exit),
+		opacity var(--motion-slow-exit) var(--ease-exit);
 }
 
 .search-modal-enter-from,
@@ -284,7 +277,7 @@ watch(
 
 /* Stagger search results */
 .search-result {
-	animation: result-in 0.25s var(--ease-out-expo) both;
+	animation: result-in var(--motion-moderate) var(--ease-spring) both;
 	animation-delay: calc(var(--result-i, 0) * 0.03s);
 }
 
@@ -323,7 +316,9 @@ watch(
 }
 
 @keyframes loading-pulse {
-	0%, 80%, 100% {
+	0%,
+	80%,
+	100% {
 		opacity: 0.3;
 		transform: scale(0.8);
 	}

@@ -96,7 +96,7 @@ const adapterFeatures = [
   overflow: hidden;
   opacity: 0;
   transform: translateY(14px);
-  transition: opacity 0.6s var(--ease-out-expo), transform 0.6s var(--ease-out-expo), border-color 0.3s, box-shadow 0.3s;
+  transition: opacity 0.6s var(--ease-spring), transform 0.6s var(--ease-spring), border-color var(--motion-moderate), box-shadow var(--motion-moderate);
 }
 
 .auth-layer--top {
@@ -112,13 +112,8 @@ const adapterFeatures = [
   height: 120px;
   background: radial-gradient(circle, rgba(196, 120, 90, 0.06) 0%, transparent 70%);
   pointer-events: none;
-  animation: auth-glow-drift 6s ease-in-out infinite alternate;
 }
 
-@keyframes auth-glow-drift {
-  0% { transform: translate(0, 0); }
-  100% { transform: translate(-10px, 10px); }
-}
 
 .auth-layer--bottom {
   transition-delay: 0.2s;
@@ -186,7 +181,7 @@ const adapterFeatures = [
   border-radius: 8px;
   background: var(--color-bg-surface);
   border: 1px solid transparent;
-  transition: border-color 0.25s, transform 0.3s var(--ease-out-expo), background 0.25s;
+  transition: border-color var(--motion-moderate), transform var(--motion-moderate) var(--ease-spring), background var(--motion-moderate);
   opacity: 0;
   transform: translateY(8px);
 }
@@ -214,7 +209,7 @@ const adapterFeatures = [
   background: var(--color-bg-elevated);
   color: var(--color-brand);
   flex-shrink: 0;
-  transition: box-shadow 0.3s;
+  transition: box-shadow var(--motion-moderate);
 }
 
 .auth-item:hover .auth-item-icon {
@@ -247,7 +242,7 @@ const adapterFeatures = [
   gap: 2px;
   padding: 6px 0;
   opacity: 0;
-  transition: opacity 0.5s var(--ease-out-expo) 0.15s;
+  transition: opacity var(--motion-slow) var(--ease-spring) var(--motion-fast);
 }
 
 .is-visible .auth-connector {
@@ -261,7 +256,7 @@ const adapterFeatures = [
   border-radius: 1px;
   transform-origin: top;
   transform: scaleY(0);
-  transition: transform 0.5s var(--ease-out-expo) 0.25s;
+  transition: transform var(--motion-slow) var(--ease-spring) var(--motion-moderate);
 }
 
 .is-visible .auth-connector-line {
@@ -270,13 +265,8 @@ const adapterFeatures = [
 
 .auth-connector-chevron {
   color: var(--color-brand-dim);
-  animation: chevron-bounce 2s ease-in-out infinite;
 }
 
-@keyframes chevron-bounce {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(3px); }
-}
 
 /* Features list */
 .auth-features {
@@ -296,7 +286,7 @@ const adapterFeatures = [
   color: var(--color-text-secondary);
   padding: 6px 10px;
   border-radius: 6px;
-  transition: color 0.25s, background 0.25s;
+  transition: color var(--motion-moderate), background var(--motion-moderate);
   opacity: 0;
   transform: translateX(-6px);
 }
@@ -304,7 +294,7 @@ const adapterFeatures = [
 .is-visible .auth-feature {
   opacity: 1;
   transform: translateX(0);
-  transition: color 0.25s, background 0.25s, opacity 0.5s var(--ease-out-expo), transform 0.5s var(--ease-out-expo);
+  transition: color var(--motion-moderate), background var(--motion-moderate), opacity var(--motion-slow) var(--ease-spring), transform var(--motion-slow) var(--ease-spring);
   transition-delay: calc(0.2s + var(--i) * 0.08s);
 }
 
@@ -317,7 +307,7 @@ const adapterFeatures = [
 .auth-feature svg {
   color: var(--color-accent-muted);
   flex-shrink: 0;
-  transition: transform 0.25s var(--ease-out-expo);
+  transition: transform var(--motion-moderate) var(--ease-spring);
 }
 
 .auth-feature:hover svg {
@@ -325,17 +315,9 @@ const adapterFeatures = [
   color: var(--color-accent);
 }
 
-/* ── Ambient animations ── */
-.is-visible .auth-layer {
-  animation: auth-border-shimmer 4s ease-in-out infinite;
-}
 
 .is-visible .auth-layer--bottom {
   animation-delay: 2s;
 }
 
-@keyframes auth-border-shimmer {
-  0%, 100% { border-color: var(--color-border-default); }
-  50% { border-color: color-mix(in oklab, var(--color-brand) 18%, var(--color-border-default)); }
-}
 </style>

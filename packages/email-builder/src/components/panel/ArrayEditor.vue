@@ -77,8 +77,8 @@ function handleReorder(newItems: unknown[]) {
 			class="flex flex-col gap-1"
 			@update:model-value="handleReorder"
 		>
-			<div v-for="(item, index) in items" :key="index" class="group/item flex items-start gap-1 p-1.5 border border-border-subtle rounded-lg bg-bg-surface transition-[border-color] duration-[120ms] hover:border-border-strong">
-				<div class="array-editor-drag-handle flex items-center py-1 cursor-grab text-text-tertiary opacity-0 group-hover/item:opacity-100 transition-opacity duration-[120ms] active:cursor-grabbing">
+			<div v-for="(item, index) in items" :key="index" class="group/item flex items-start gap-1 p-1.5 border border-border-subtle rounded-lg bg-bg-surface transition-[border-color] duration-(--motion-fast) hover:border-border-strong">
+				<div class="array-editor-drag-handle flex items-center py-1 cursor-grab text-text-tertiary opacity-0 group-hover/item:opacity-100 transition-opacity duration-(--motion-fast) active:cursor-grabbing">
 					<GripVertical :size="12" />
 				</div>
 
@@ -87,7 +87,7 @@ function handleReorder(newItems: unknown[]) {
 					<template v-if="isStringArray">
 						<input
 							type="text"
-							class="w-full py-1 px-1.5 text-xs border border-border-subtle rounded bg-bg-surface text-text-primary outline-none transition-[border-color] duration-150 focus:border-brand"
+							class="w-full py-1 px-1.5 text-xs border border-border-subtle rounded bg-bg-surface text-text-primary outline-none transition-[border-color] duration-(--motion-fast) focus:border-brand"
 							:value="item as string"
 							@input="(e) => updateItem(index, (e.target as HTMLInputElement).value)"
 						/>
@@ -100,7 +100,7 @@ function handleReorder(newItems: unknown[]) {
 								v-for="(cell, cellIndex) in (item as string[])"
 								:key="cellIndex"
 								type="text"
-								class="min-w-0 flex-1 py-1 px-1.5 text-xs border border-border-subtle rounded bg-bg-surface text-text-primary outline-none transition-[border-color] duration-150 focus:border-brand"
+								class="min-w-0 flex-1 py-1 px-1.5 text-xs border border-border-subtle rounded bg-bg-surface text-text-primary outline-none transition-[border-color] duration-(--motion-fast) focus:border-brand"
 								:value="cell"
 								@input="(e) => updateCell(index, cellIndex, (e.target as HTMLInputElement).value)"
 							/>
@@ -119,7 +119,7 @@ function handleReorder(newItems: unknown[]) {
 							<input
 								v-if="subField.type === 'text' || subField.type === 'url'"
 								:type="subField.type === 'url' ? 'url' : 'text'"
-								class="w-full py-1 px-1.5 text-xs border border-border-subtle rounded bg-bg-surface text-text-primary outline-none transition-[border-color] duration-150 focus:border-brand"
+								class="w-full py-1 px-1.5 text-xs border border-border-subtle rounded bg-bg-surface text-text-primary outline-none transition-[border-color] duration-(--motion-fast) focus:border-brand"
 								:value="(item as Record<string, unknown>)[subField.key] ?? ''"
 								:placeholder="subField.placeholder"
 								@input="(e) => updateItemField(index, subField.key, (e.target as HTMLInputElement).value)"
@@ -127,20 +127,20 @@ function handleReorder(newItems: unknown[]) {
 							<!-- Toggle sub-field -->
 							<button
 								v-else-if="subField.type === 'toggle'"
-								class="relative w-7 h-4 rounded-lg border-none cursor-pointer p-0 transition-[background] duration-200"
+								class="relative w-7 h-4 rounded-lg border-none cursor-pointer p-0 transition-[background] duration-(--motion-moderate)"
 								:class="(item as Record<string, unknown>)[subField.key] ? 'bg-brand' : 'bg-border-default'"
 								type="button"
 								@click="updateItemField(index, subField.key, !(item as Record<string, unknown>)[subField.key])"
 							>
 								<span
-									class="absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white transition-transform duration-150"
+									class="absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white transition-transform duration-(--motion-moderate)"
 									:class="{ 'translate-x-3': (item as Record<string, unknown>)[subField.key] }"
 								/>
 							</button>
 							<!-- Select sub-field -->
 							<select
 								v-else-if="subField.type === 'select'"
-								class="w-full py-1 px-1.5 text-xs border border-border-subtle rounded bg-bg-surface text-text-primary outline-none transition-[border-color] duration-150 focus:border-brand"
+								class="w-full py-1 px-1.5 text-xs border border-border-subtle rounded bg-bg-surface text-text-primary outline-none transition-[border-color] duration-(--motion-fast) focus:border-brand"
 								:value="(item as Record<string, unknown>)[subField.key] ?? ''"
 								@change="(e) => updateItemField(index, subField.key, (e.target as HTMLSelectElement).value)"
 							>
@@ -161,7 +161,7 @@ function handleReorder(newItems: unknown[]) {
 					title="Remove"
 					size="sm"
 					variant="destructive"
-					class="shrink-0 opacity-0 group-hover/item:opacity-100 transition-opacity duration-[120ms]"
+					class="shrink-0 opacity-0 group-hover/item:opacity-100 transition-opacity duration-(--motion-fast)"
 					@click="removeItem(index)"
 				/>
 			</div>

@@ -36,7 +36,6 @@ apps/docs/app/components/content/ArchVerificationQueue.vue
 apps/docs/app/components/content/EmailArchitecture.vue
 apps/docs/app/components/content/ScopeMap.vue
 apps/docs/app/components/content/SmtpSession.vue
-apps/docs/app/components/illustrations/MtaArchitectureIllustration.vue
 apps/docs/app/pages/index.vue
 apps/mail-sync/src/connection.ts
 apps/marketing/app/components/FeatureBento.vue

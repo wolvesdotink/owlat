@@ -62,7 +62,7 @@ watch(
 			<button
 				v-for="v in group.items"
 				:key="v.key"
-				class="flex items-center gap-2 w-full py-1.5 px-2 text-[13px] text-left border-none rounded bg-transparent cursor-pointer transition-[background-color] duration-100 hover:bg-bg-surface-hover"
+				class="flex items-center gap-2 w-full py-1.5 px-2 text-[13px] text-left border-none rounded bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) hover:bg-bg-surface-hover"
 				:class="{
 					'bg-brand/[0.08]':
 						flatList.indexOf(v) === selectedIndex,

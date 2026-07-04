@@ -290,7 +290,7 @@ function isHighlighted(name: string): boolean {
 .scope-section {
   opacity: 0;
   transform: translateY(16px);
-  transition: opacity 0.6s var(--ease-out-expo), transform 0.6s var(--ease-out-expo);
+  transition: opacity 0.6s var(--ease-spring), transform 0.6s var(--ease-spring);
   transition-delay: calc(var(--stagger) * 0.18s);
 }
 
@@ -361,7 +361,7 @@ function isHighlighted(name: string): boolean {
   transition:
     border-color 0.25s,
     background 0.25s,
-    transform 0.3s var(--ease-out-expo),
+    transform 0.3s var(--ease-spring),
     box-shadow 0.3s;
   opacity: 0;
   transform: translateY(10px) scale(0.97);
@@ -375,7 +375,7 @@ function isHighlighted(name: string): boolean {
   position: absolute;
   inset: 0;
   opacity: 0;
-  transition: opacity 0.4s;
+  transition: opacity var(--motion-slow);
   pointer-events: none;
 }
 
@@ -397,9 +397,9 @@ function isHighlighted(name: string): boolean {
   transition:
     border-color 0.25s,
     background 0.25s,
-    transform 0.3s var(--ease-out-expo),
+    transform 0.3s var(--ease-spring),
     box-shadow 0.3s,
-    opacity 0.5s var(--ease-out-expo);
+    opacity 0.5s var(--ease-spring);
   transition-delay: calc(0.2s + var(--item-stagger) * 0.06s);
 }
 
@@ -429,7 +429,7 @@ function isHighlighted(name: string): boolean {
   height: 36px;
   border-radius: 9px;
   flex-shrink: 0;
-  transition: box-shadow 0.3s;
+  transition: box-shadow var(--motion-moderate);
 }
 
 .scope-card-icon--brand {
@@ -499,7 +499,7 @@ function isHighlighted(name: string): boolean {
   gap: 0;
   padding: 6px 0;
   opacity: 0;
-  transition: opacity 0.5s var(--ease-out-expo);
+  transition: opacity var(--motion-slow) var(--ease-spring);
   transition-delay: calc(var(--stagger) * 0.18s + 0.1s);
 }
 
@@ -516,7 +516,7 @@ function isHighlighted(name: string): boolean {
 }
 
 .is-visible .scope-connections-line {
-  animation: scope-line-draw 0.6s var(--ease-out-expo) both;
+  animation: scope-line-draw 0.6s var(--ease-spring) both;
   animation-delay: calc(var(--stagger) * 0.18s + 0.3s);
 }
 
@@ -565,7 +565,7 @@ function isHighlighted(name: string): boolean {
   font-family: var(--font-mono);
   color: var(--color-text-secondary);
   cursor: default;
-  transition: border-color 0.25s, background 0.25s, box-shadow 0.25s;
+  transition: border-color var(--motion-moderate), background var(--motion-moderate), box-shadow var(--motion-moderate);
   white-space: nowrap;
 }
 
@@ -610,7 +610,7 @@ function isHighlighted(name: string): boolean {
   color: var(--color-text-secondary);
   opacity: 0;
   transform: translateY(12px);
-  transition: opacity 0.6s var(--ease-out-expo), transform 0.6s var(--ease-out-expo), border-color 0.25s;
+  transition: opacity 0.6s var(--ease-spring), transform 0.6s var(--ease-spring), border-color var(--motion-moderate);
   transition-delay: calc(var(--stagger) * 0.18s);
 }
 
@@ -637,25 +637,8 @@ function isHighlighted(name: string): boolean {
   border-radius: 4px;
 }
 
-/* ── Ambient animations ── */
-.is-visible .scope-card {
-  animation: scope-card-shimmer 4s ease-in-out infinite;
-  animation-delay: calc(var(--item-stagger) * 0.3s + 1.5s);
-}
 
-@keyframes scope-card-shimmer {
-  0%, 100% { border-color: var(--color-border-default); }
-  50% { border-color: color-mix(in oklab, var(--color-brand) 15%, var(--color-border-default)); }
-}
 
-.is-visible .scope-card--accent {
-  animation-name: scope-card-shimmer-accent;
-}
-
-@keyframes scope-card-shimmer-accent {
-  0%, 100% { border-color: var(--color-border-default); }
-  50% { border-color: color-mix(in oklab, var(--color-accent) 15%, var(--color-border-default)); }
-}
 
 .is-visible .scope-card-icon {
   animation: scope-icon-pulse 3s ease-in-out infinite;

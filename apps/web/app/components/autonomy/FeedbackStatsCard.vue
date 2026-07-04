@@ -77,24 +77,22 @@ const editedWidth = computed(() => {
 			<div class="w-full h-3 bg-bg-surface rounded-full overflow-hidden flex">
 				<div
 					v-if="approvedWidth > 0"
-					class="h-full bg-success transition-all duration-500"
+					class="h-full bg-success transition-all duration-(--motion-slow)"
 					:style="{ width: `${approvedWidth}%` }"
 				/>
 				<div
 					v-if="editedWidth > 0"
-					class="h-full bg-warning transition-all duration-500"
+					class="h-full bg-warning transition-all duration-(--motion-slow)"
 					:style="{ width: `${editedWidth}%` }"
 				/>
 				<div
 					v-if="rejectedWidth > 0"
-					class="h-full bg-error transition-all duration-500"
+					class="h-full bg-error transition-all duration-(--motion-slow)"
 					:style="{ width: `${rejectedWidth}%` }"
 				/>
 			</div>
 
-			<p class="text-xs text-text-tertiary mt-2 text-center">
-				{{ total }} total feedback actions
-			</p>
+			<p class="text-xs text-text-tertiary mt-2 text-center">{{ total }} total feedback actions</p>
 		</template>
 	</UiCard>
 </template>

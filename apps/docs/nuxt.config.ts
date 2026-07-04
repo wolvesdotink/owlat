@@ -12,18 +12,19 @@ export default defineNuxtConfig({
 		compatibilityVersion: 4,
 	},
 
-	modules: [
-		'@nuxt/content',
-		'@nuxtjs/color-mode',
-		'@nuxt/fonts',
-		'@nuxtjs/seo',
-	],
+	modules: ['@nuxt/content', '@nuxtjs/color-mode', '@nuxt/fonts', '@nuxtjs/seo'],
+
+	fonts: {
+		// Variable wght axis required: the design system's weight-based emphasis
+		// uses intermediate instances (450/550) that a static 400/500/600/700
+		// subset would snap to the nearest hundred.
+		families: [{ name: 'Instrument Sans', weights: ['400 700'] }],
+	},
 
 	site: {
 		url: 'https://docs.owlat.app',
 		name: 'Owlat Docs',
-		description:
-			'Product guides, API reference, and developer docs for Owlat.',
+		description: 'Product guides, API reference, and developer docs for Owlat.',
 		defaultLocale: 'en',
 	},
 

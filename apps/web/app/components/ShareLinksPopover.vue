@@ -28,10 +28,7 @@ const queryArgs = computed(() => {
 	return 'skip' as const;
 });
 
-const { data: shareLinks } = useConvexQuery(
-	api.shareLinks.listShareLinks,
-	() => queryArgs.value
-);
+const { data: shareLinks } = useConvexQuery(api.shareLinks.listShareLinks, () => queryArgs.value);
 
 // Mutations
 const { run: createShareLink } = useBackendOperation(api.shareLinks.createShareLink, {
@@ -115,10 +112,10 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 
 		<Teleport to="body">
 			<Transition
-				enter-active-class="duration-150 ease-out"
+				enter-active-class="duration-(--motion-moderate) ease-spring"
 				enter-from-class="opacity-0 scale-95"
 				enter-to-class="opacity-100 scale-100"
-				leave-active-class="duration-100 ease-in"
+				leave-active-class="duration-(--motion-moderate-exit) ease-exit"
 				leave-from-class="opacity-100 scale-100"
 				leave-to-class="opacity-0 scale-95"
 			>
@@ -184,12 +181,7 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 								>
 									Expired
 								</span>
-								<span
-									v-else
-									class="text-xs text-red-500 font-medium"
-								>
-									Revoked
-								</span>
+								<span v-else class="text-xs text-red-500 font-medium"> Revoked </span>
 
 								<!-- Actions -->
 								<div class="flex items-center gap-1">

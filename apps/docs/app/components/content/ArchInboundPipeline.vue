@@ -141,7 +141,7 @@ const outcomes = [
   position: relative;
   opacity: 0;
   transform: translateY(8px);
-  transition: opacity 0.4s var(--ease-out-expo), transform 0.4s var(--ease-out-expo), border-color 0.25s;
+  transition: opacity var(--motion-slow) var(--ease-spring), transform var(--motion-slow) var(--ease-spring), border-color var(--motion-moderate);
   transition-delay: calc(0.08s + var(--i) * 0.08s);
   margin-bottom: 4px;
 }
@@ -215,7 +215,7 @@ const outcomes = [
   overflow: hidden;
   opacity: 0;
   transform: translateY(8px);
-  transition: opacity 0.5s var(--ease-out-expo), transform 0.5s var(--ease-out-expo);
+  transition: opacity var(--motion-slow) var(--ease-spring), transform var(--motion-slow) var(--ease-spring);
   transition-delay: calc(var(--stagger) * 0.12s + 0.5s);
 }
 

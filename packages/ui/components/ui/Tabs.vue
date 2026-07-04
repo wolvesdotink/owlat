@@ -86,7 +86,7 @@ const handleKeyDown = (event: KeyboardEvent) => {
 			:aria-controls="`${tabsId}-panel-${index}`"
 			:tabindex="modelValue === tab.value ? 0 : -1"
 			:class="[
-				'px-3 py-1.5 rounded-md text-sm font-medium transition-all duration-150',
+				'px-3 py-1.5 rounded-md text-sm font-medium transition-all duration-(--motion-moderate) ease-spring',
 				modelValue === tab.value
 					? 'bg-bg-elevated text-text-primary shadow-sm'
 					: 'text-text-secondary hover:text-text-primary',

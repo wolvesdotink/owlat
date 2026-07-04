@@ -1,0 +1,74 @@
+/* Shared overlay scrollbar + scroll-edge fades (Fluid Functionalism)
+ *
+ * One implementation for all apps — do not restyle scrollbars locally.
+ * Thumb starts narrow and low-contrast, widens + darkens on hover; track is
+ * invisible. Colors come from --scrollbar-thumb / --scrollbar-thumb-hover
+ * (dark.css / light.css).
+ */
+
+/* Pointer devices only. Touch-primary devices get no rules at all — native
+   overflow scrolling stays untouched. */
+@media (hover: hover) and (pointer: fine) {
+	/* Firefox */
+	* {
+		scrollbar-width: thin;
+		scrollbar-color: var(--scrollbar-thumb) transparent;
+	}
+
+	::-webkit-scrollbar {
+		width: 10px;
+		height: 10px;
+	}
+	::-webkit-scrollbar-track {
+		background: transparent;
+	}
+	::-webkit-scrollbar-thumb {
+		background-color: var(--scrollbar-thumb);
+		border-radius: 999px; /* shape system */
+		border: 3px solid transparent; /* rest: 4px visible thumb */
+		background-clip: padding-box;
+	}
+	::-webkit-scrollbar-thumb:hover,
+	::-webkit-scrollbar-thumb:active {
+		background-color: var(--scrollbar-thumb-hover);
+		border-width: 1px; /* hover: widens to 8px */
+	}
+}
+
+/* Edge fade toward scrollable overflow: a mask dissolves content toward edges
+   that have more to scroll; the scroll-driven animation keeps the true start
+   and end crisp. Gated entirely on scroll-timeline support — a static mask
+   would permanently fade the first/last 24px on browsers without it, so those
+   get no mask at all. */
+@utility scroll-fade {
+	@supports (animation-timeline: scroll(self)) {
+		mask-image: linear-gradient(
+			to bottom,
+			transparent 0,
+			black 24px,
+			black calc(100% - 24px),
+			transparent 100%
+		);
+		animation: sf-edges linear both;
+		animation-timeline: scroll(self);
+	}
+}
+
+@keyframes sf-edges {
+	0% {
+		mask-image: linear-gradient(to bottom, black 0, black calc(100% - 24px), transparent 100%);
+	}
+	10%,
+	90% {
+		mask-image: linear-gradient(
+			to bottom,
+			transparent 0,
+			black 24px,
+			black calc(100% - 24px),
+			transparent 100%
+		);
+	}
+	100% {
+		mask-image: linear-gradient(to bottom, transparent 0, black 24px, black 100%);
+	}
+}
