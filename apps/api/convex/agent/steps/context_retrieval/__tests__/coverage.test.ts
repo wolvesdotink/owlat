@@ -40,6 +40,13 @@ type Legs = {
 		_score?: number;
 	}>;
 	files?: Array<{ filename: string; title?: string; summary?: string }>;
+	openCommitments?: Array<{
+		_id: string;
+		entryType: string;
+		title: string;
+		content: string;
+		dueAt?: number;
+	}>;
 };
 
 /** Captures the args handed to recordContextTier for persistence assertions. */
@@ -57,20 +64,17 @@ function makeCtx(legs: Legs) {
 
 	const ctx = {
 		runQuery: async (ref: unknown) => {
-			const name = getFunctionName(
-				ref as Parameters<typeof getFunctionName>[0],
-			);
+			const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
 			if (name.includes('getMessage')) return message;
 			if (name.includes('getContact')) return legs.contact ?? null;
 			if (name.includes('getRecentActivities')) return legs.activities ?? [];
 			if (name.includes('getThreadMessages')) return legs.threadMessages ?? [];
+			if (name.includes('getOpenCommitments')) return legs.openCommitments ?? [];
 			if (name.includes('isGraphRetrievalEnabled')) return false;
 			throw new Error(`unexpected runQuery: ${name}`);
 		},
 		runAction: async (ref: unknown) => {
-			const name = getFunctionName(
-				ref as Parameters<typeof getFunctionName>[0],
-			);
+			const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
 			// knowledge/retrieval.semanticSearch
 			if (name.includes('knowledge')) return legs.knowledge ?? [];
 			// semanticFileProcessing.semanticSearch
@@ -78,9 +82,7 @@ function makeCtx(legs: Legs) {
 			throw new Error(`unexpected runAction: ${name}`);
 		},
 		runMutation: async (ref: unknown, args: unknown) => {
-			const name = getFunctionName(
-				ref as Parameters<typeof getFunctionName>[0],
-			);
+			const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
 			if (name.includes('recordContextTier')) {
 				recorded.value = args as Record<string, unknown>;
 				return null;

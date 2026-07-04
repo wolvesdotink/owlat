@@ -27,6 +27,7 @@ import { entryTypeValidator } from '../schema/knowledge';
 import { logInfo } from '../lib/runtimeLog';
 import { isContactScopeVisible } from '../lib/contactScope';
 import { reciprocalRankFusion } from '../lib/rrf';
+import { applyAuthorityPrecedence } from '../lib/knowledgePrecedence';
 import {
 	rankWithGraph,
 	type GraphRankEdge,
@@ -166,12 +167,17 @@ export const semanticSearch = internalAction({
 		// `_score` stays the cosine similarity (0 for an FTS-only hit) so the
 		// org-wide Q&A path can still interleave knowledge with file results on one
 		// scale; RRF governs ORDER, which is what the draft path consumes.
-		const scored = live.map((entry) => ({ ...entry, _score: scoreById.get(entry._id as string) ?? 0 }));
+		const scored = live.map((entry) => ({
+			...entry,
+			_score: scoreById.get(entry._id as string) ?? 0,
+		}));
 
 		// Contact scoping AFTER fusion (over-fetched above so this doesn't starve
 		// the result set).
 		const visible =
-			scope === 'org-wide' ? scored : scored.filter((entry) => isContactScopeVisible(entry.contactIds, scope));
+			scope === 'org-wide'
+				? scored
+				: scored.filter((entry) => isContactScopeVisible(entry.contactIds, scope));
 
 		// Graph-augmented retrieval (seed-then-expand). KILL SWITCH: when
 		// `expandGraph` is not set we take exactly the flat path below — byte for
@@ -194,10 +200,15 @@ export const semanticSearch = internalAction({
 				logInfo('[knowledge.retrieval] graph expansion failed; falling back to flat', {
 					error: String(error),
 				});
-				returned = visible.slice(0, limit);
+				// Curated canonical answers still outrank scraped facts on the
+				// fallback path; nothing here is `_stale`, so no supersede to honour.
+				returned = applyAuthorityPrecedence(visible).slice(0, limit);
 			}
 		} else {
-			returned = visible.slice(0, limit);
+			// Flat path: promote curated canonical answers ahead of scraped facts
+			// BEFORE the limit slice, so a policy never drops out of the top `limit`
+			// just because a noisier fact fused higher.
+			returned = applyAuthorityPrecedence(visible).slice(0, limit);
 		}
 
 		// Record the recall hit fire-and-forget (off the request critical path) so
@@ -244,7 +255,7 @@ async function expandAndRank(
 		limit: number;
 		hops: number | undefined;
 		neighborBudget: number | undefined;
-	},
+	}
 ): Promise<ScoredKnowledgeEntry[]> {
 	const { visible, vectorRanked, ftsRanked, scope, entryType, limit } = params;
 
@@ -281,7 +292,12 @@ async function expandAndRank(
 		relationType: e.relationType,
 	}));
 
-	const ranked = rankWithGraph({ vectorRanked: vectorVisible, ftsRanked: ftsVisible, neighbors, edges });
+	const ranked = rankWithGraph({
+		vectorRanked: vectorVisible,
+		ftsRanked: ftsVisible,
+		neighbors,
+		edges,
+	});
 
 	// Hydrate neighbour docs (seeds are already hydrated in `visible`). Re-apply
 	// the scope gate as defence in depth — getByIds itself does not scope.
@@ -336,7 +352,9 @@ async function expandAndRank(
 		if (caveatSet.has(key)) annotated._caveat = true;
 		if (supersededSet.has(key)) annotated._stale = true;
 		out.push(annotated);
-		if (out.length >= limit) break;
 	}
-	return out;
+	// Promote curated canonical answers ahead of scraped facts, AFTER `_stale` is
+	// attached above, so a policy superseded by a newer fact is NOT promoted (the
+	// fresher fact still wins) — then take the top `limit`.
+	return applyAuthorityPrecedence(out).slice(0, limit);
 }
