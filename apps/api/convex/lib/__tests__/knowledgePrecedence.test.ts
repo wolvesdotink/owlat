@@ -1,7 +1,7 @@
 /**
  * Curated-answer precedence (lib/knowledgePrecedence.ts).
  *
- * A curated canonical answer (authority:true) must outrank a scraped fact that
+ * A curated canonical answer (isAuthoritative:true) must outrank a scraped fact that
  * competes with it in the same fused pool — UNLESS a newer fact has superseded
  * it (`_stale`), in which case the fresher fact still wins. Pure unit test; no
  * backend.
@@ -12,7 +12,7 @@ import { applyAuthorityPrecedence, isPrioritizedAuthority } from '../knowledgePr
 
 interface Row {
 	id: string;
-	authority?: boolean;
+	isAuthoritative?: boolean;
 	_stale?: boolean;
 }
 
@@ -20,7 +20,7 @@ describe('applyAuthorityPrecedence', () => {
 	it('promotes a curated policy ahead of a conflicting scraped fact that fused higher', () => {
 		// Scraped fact ranked first by RRF; curated policy ranked second.
 		const scraped: Row = { id: 'scraped-returns-30d' };
-		const policy: Row = { id: 'policy-returns-14d', authority: true };
+		const policy: Row = { id: 'policy-returns-14d', isAuthoritative: true };
 
 		const ordered = applyAuthorityPrecedence([scraped, policy]);
 
@@ -30,7 +30,7 @@ describe('applyAuthorityPrecedence', () => {
 	it('does NOT promote a curated policy that a newer fact has superseded (_stale) — the fresher fact wins', () => {
 		// The curated policy is out of date: a newer scraped fact supersedes it, so
 		// graph expansion marked it `_stale`. Precedence must leave it demoted.
-		const stalePolicy: Row = { id: 'policy-hours-old', authority: true, _stale: true };
+		const stalePolicy: Row = { id: 'policy-hours-old', isAuthoritative: true, _stale: true };
 		const freshFact: Row = { id: 'fact-hours-new' };
 
 		const ordered = applyAuthorityPrecedence([freshFact, stalePolicy]);
@@ -42,9 +42,9 @@ describe('applyAuthorityPrecedence', () => {
 	it('is a stable partition — relative order is preserved within each group', () => {
 		const rows: Row[] = [
 			{ id: 'f1' },
-			{ id: 'p1', authority: true },
+			{ id: 'p1', isAuthoritative: true },
 			{ id: 'f2' },
-			{ id: 'p2', authority: true },
+			{ id: 'p2', isAuthoritative: true },
 		];
 
 		const ordered = applyAuthorityPrecedence(rows);
@@ -53,7 +53,7 @@ describe('applyAuthorityPrecedence', () => {
 	});
 
 	it('returns a new array and does not mutate the input', () => {
-		const rows: Row[] = [{ id: 'f1' }, { id: 'p1', authority: true }];
+		const rows: Row[] = [{ id: 'f1' }, { id: 'p1', isAuthoritative: true }];
 		const ordered = applyAuthorityPrecedence(rows);
 		expect(ordered).not.toBe(rows);
 		expect(rows.map((r) => r.id)).toEqual(['f1', 'p1']);

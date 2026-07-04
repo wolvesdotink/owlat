@@ -9,7 +9,7 @@ import { v } from 'convex/values';
  *
  * `policy` / `faq` are CURATED canonical answers (returns policy, pricing, hours,
  * standard terms). They are authored by a human through the FAQ surface
- * (knowledge/graph.ts:createPolicyEntry) with `authority: true`, so retrieval
+ * (knowledge/graph.ts:createPolicyEntry) with `isAuthoritative: true`, so retrieval
  * ranks them ahead of scraped facts (see lib/knowledgePrecedence.ts) — a policy
  * answer must not be outranked by a noisy scraped fact in the same RRF pool.
  */
@@ -68,7 +68,7 @@ export function isCommitmentOpen(
 }
 
 /**
- * The seven knowledge entry types. Exported so retrieval/extraction code can
+ * The nine knowledge entry types. Exported so retrieval/extraction code can
  * validate `entryType` args against the same source of truth as the table.
  */
 export const entryTypeValidator = v.union(
@@ -88,7 +88,7 @@ export const sourceTypeValidator = v.union(
 	v.literal('agent_extracted'),
 	// A human-curated canonical answer authored through the FAQ surface. Kept
 	// distinct from `manual` so curated policy/FAQ can be listed/managed on its
-	// own and so the authority flag has an unambiguous origin.
+	// own and so the isAuthoritative flag has an unambiguous origin.
 	v.literal('curated')
 );
 
@@ -183,7 +183,8 @@ export const knowledgeTables = {
 		// answer can't be outranked by noise. A newer scraped fact that SUPERSEDES
 		// the policy (a `supersedes` edge → `_stale`) still wins — precedence never
 		// promotes a superseded entry. Optional/absent ⇒ an ordinary (scraped) fact.
-		authority: v.optional(v.boolean()),
+		// Named with the required is* prefix per the boolean-naming ratchet.
+		isAuthoritative: v.optional(v.boolean()),
 		// Commitment lifecycle for `decision` / `action_item` entries. `dueAt` is the
 		// promised-by time (if any); `commitmentStatus` drives the contact-scoped
 		// open-commitments recall (undefined ⇒ open — see isCommitmentOpen). Absent

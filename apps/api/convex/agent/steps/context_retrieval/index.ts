@@ -269,7 +269,7 @@ export const contextRetrievalStep: AgentStepModule<
 					return `- ${prefix}(${k.entryType}, confidence ${k.confidence.toFixed(2)}) ${k.title}: ${k.content}`;
 				};
 
-				// Curated canonical answers (policy / faq authored with authority)
+				// Curated canonical answers (policy / faq authored as authoritative)
 				// get their OWN first-class section so a maintained answer isn't buried
 				// among scraped facts. A curated entry SUPERSEDED by a newer scraped
 				// fact (`_stale`) is demoted back into [KNOWLEDGE] with the superseded
@@ -277,7 +277,7 @@ export const contextRetrievalStep: AgentStepModule<
 				const policyEntries: typeof knowledge = [];
 				const otherEntries: typeof knowledge = [];
 				for (const k of knowledge) {
-					if (k.authority === true && !k._stale) {
+					if (k.isAuthoritative === true && !k._stale) {
 						policyEntries.push(k);
 					} else {
 						otherEntries.push(k);

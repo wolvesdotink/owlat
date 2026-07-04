@@ -634,7 +634,7 @@ const policyEntryTypeValidator = v.union(...POLICY_ENTRY_TYPES.map((t) => v.lite
  * Until curated answers existed, a policy question ("what's your returns
  * policy?") competed with scraped facts in the same RRF pool and could be
  * outranked by noise. A curated entry is written with `sourceType: 'curated'` and
- * `authority: true`, so retrieval ranks it ahead of scraped facts
+ * `isAuthoritative: true`, so retrieval ranks it ahead of scraped facts
  * (lib/knowledgePrecedence.ts). Org-general by design (no contactIds) — a policy
  * applies to everyone. Passing `entryId` edits an existing curated entry in place
  * (the fix path for a wrong/stale answer). Embedding stays empty here and is
@@ -670,7 +670,7 @@ export const createPolicyEntry = authedMutation({
 				title: args.title,
 				content: args.content,
 				sourceType: 'curated',
-				authority: true,
+				isAuthoritative: true,
 				tags: args.tags,
 				expiresAt: args.expiresAt,
 				searchableText,
@@ -685,7 +685,7 @@ export const createPolicyEntry = authedMutation({
 			title: args.title,
 			content: args.content,
 			sourceType: 'curated',
-			authority: true,
+			isAuthoritative: true,
 			embedding: [], // filled by the embedding pipeline; FTS works immediately
 			confidence: 1.0, // a human-authored canonical answer is fully trusted
 			lastValidatedAt: now,

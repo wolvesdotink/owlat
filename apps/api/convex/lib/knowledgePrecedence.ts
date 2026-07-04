@@ -1,7 +1,7 @@
 /**
  * Curated-answer precedence for knowledge retrieval.
  *
- * A curated canonical answer (`authority: true`, authored through the FAQ
+ * A curated canonical answer (`isAuthoritative: true`, authored through the FAQ
  * surface as a `policy` / `faq` entry) must OUTRANK a noisy scraped fact that
  * competes with it in the same RRF pool — otherwise "what's your returns
  * policy?" can be grounded on a stray sentence lifted from an old thread instead
@@ -26,7 +26,7 @@
  * usable from both the action and its tests.
  */
 export interface PrecedenceEntry {
-	authority?: boolean;
+	isAuthoritative?: boolean;
 	/** Set by graph expansion when this entry is superseded by a newer fact. */
 	_stale?: boolean;
 }
@@ -36,7 +36,7 @@ export interface PrecedenceEntry {
  * canonical answer AND it has not been superseded by a newer fact.
  */
 export function isPrioritizedAuthority(entry: PrecedenceEntry): boolean {
-	return entry.authority === true && entry._stale !== true;
+	return entry.isAuthoritative === true && entry._stale !== true;
 }
 
 /**
