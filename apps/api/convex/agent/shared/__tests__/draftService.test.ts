@@ -17,17 +17,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // ─── Mock the LLM seam ───────────────────────────────────────────────────────
-const runLlmTextMock = vi.fn(async () => ({
+const runLlmTextMock = vi.fn(async (_a: unknown) => ({
 	text: 'GENERATED DRAFT BODY',
 	tokenUsage: undefined,
 	modelUsed: 'mock-model',
 }));
-const runLlmTextWithToolsMock = vi.fn(async () => ({
+const runLlmTextWithToolsMock = vi.fn(async (_a: unknown) => ({
 	text: 'GENERATED DRAFT BODY',
 	tokenUsage: undefined,
 	modelUsed: 'mock-model',
 }));
-const runLlmObjectMock = vi.fn(async () => ({
+const runLlmObjectMock = vi.fn(async (_a: unknown) => ({
 	object: { score: 0.72, complete: true, grounded: true, flags: [] },
 	tokenUsage: undefined,
 	modelUsed: 'mock-model',
@@ -42,7 +42,7 @@ vi.mock('../../../lib/llmProvider', () => ({
 	getLLMProvider: () => ({}) as never,
 	getLLMProviderForClassifiedDraft: () => ({}) as never,
 }));
-const generateReplyOptionsMock = vi.fn(async () => ({
+const generateReplyOptionsMock = vi.fn(async (_a: unknown) => ({
 	replies: ['ALT ONE', 'ALT TWO'],
 	tokenUsage: undefined,
 	modelUsed: 'mock-model',

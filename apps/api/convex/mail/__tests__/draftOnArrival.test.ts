@@ -17,12 +17,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // LLM seam used by the shared draft service (resolved paths match its imports).
-const runLlmTextMock = vi.fn(async () => ({
+const runLlmTextMock = vi.fn(async (_a: unknown) => ({
 	text: 'PERSONAL DRAFT BODY',
 	tokenUsage: undefined,
 	modelUsed: 'mock-model',
 }));
-const runLlmObjectMock = vi.fn(async () => ({
+const runLlmObjectMock = vi.fn(async (_a: unknown) => ({
 	object: { score: 0.72, complete: true, grounded: true, flags: [] },
 	tokenUsage: undefined,
 	modelUsed: 'mock-model',
