@@ -221,4 +221,40 @@ export const autonomyTables = {
 	})
 		.index('by_category', ['category'])
 		.index('by_category_sender', ['category', 'sender']),
+
+	// Natural-language handling rules — plain-English standing intent the user
+	// teaches the assistant ("always decline cold pitches", "flag anything from
+	// legal for me"). The prose is TRUSTED (user-authored); a cheap LLM compiles
+	// it ONCE into a deterministic `{ matcher, action }` (mail/handlingRulesCompile.ts).
+	// The matcher runs at classify time with NO model in the loop, so the
+	// untrusted inbound body never reaches an LLM through a rule. Actions can only
+	// ever RESTRICT auto-send (draft-only / never-auto-send / always-ask /
+	// auto-archive) or force a category — never widen auto-send. Single-org
+	// deployment: rules are deployment-global, like autonomyRules. Inspectable +
+	// editable + revocable in settings.
+	handlingRules: defineTable({
+		instruction: v.string(), // the user-authored prose (trusted)
+		isEnabled: v.boolean(),
+		matcher: v.object({
+			senders: v.optional(v.array(v.string())),
+			subjectContains: v.optional(v.array(v.string())),
+			bodyContains: v.optional(v.array(v.string())),
+			categories: v.optional(v.array(v.string())),
+		}),
+		action: v.object({
+			type: v.union(
+				v.literal('draft_with_stance'),
+				v.literal('categorize'),
+				v.literal('auto_archive'),
+				v.literal('always_ask'),
+				v.literal('never_auto_send')
+			),
+			stance: v.optional(v.string()),
+			category: v.optional(v.string()),
+		}),
+		// Provenance for the settings UI ("compiled by <model>").
+		compiledModel: v.optional(v.string()),
+		createdAt: v.number(),
+		updatedAt: v.number(),
+	}).index('by_enabled', ['isEnabled']),
 };

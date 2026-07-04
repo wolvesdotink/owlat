@@ -85,6 +85,7 @@ export type OrganizationDeletionTable =
 	| 'autonomyFeedback'
 	| 'autonomyRules'
 	| 'autonomySuggestions'
+	| 'handlingRules'
 	| 'askEagernessSettings'
 	| 'clarificationAskLog'
 	| 'clarificationMemory'
@@ -210,6 +211,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('autonomyFeedback'),
 	v.literal('autonomyRules'),
 	v.literal('autonomySuggestions'),
+	v.literal('handlingRules'),
 	v.literal('askEagernessSettings'),
 	v.literal('clarificationAskLog'),
 	v.literal('clarificationMemory'),
