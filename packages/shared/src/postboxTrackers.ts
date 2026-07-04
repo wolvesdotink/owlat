@@ -94,9 +94,7 @@ function remoteSrcHost(tag: string): string | null {
 }
 
 function isKnownTrackerHost(host: string): boolean {
-	return TRACKER_HOST_PATTERNS.some(
-		(pattern) => host === pattern || host.endsWith(`.${pattern}`)
-	);
+	return TRACKER_HOST_PATTERNS.some((pattern) => host === pattern || host.endsWith(`.${pattern}`));
 }
 
 /** Classify one <img ...> tag string. Exported for the strip transform + tests. */
@@ -145,9 +143,7 @@ export function detectTrackers(sanitizedHtml: string): TrackerDetection {
  */
 export function stripTrackerPixels(sanitizedHtml: string): string {
 	try {
-		return sanitizedHtml.replace(IMG_TAG_RE, (tag) =>
-			isTrackingPixelTag(tag) ? '' : tag
-		);
+		return sanitizedHtml.replace(IMG_TAG_RE, (tag) => (isTrackingPixelTag(tag) ? '' : tag));
 	} catch {
 		return sanitizedHtml;
 	}

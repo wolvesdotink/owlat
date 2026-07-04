@@ -9,7 +9,8 @@ import {
 
 const PIXEL_1X1 = '<img src="https://tracker.example.com/open.gif" width="1" height="1" alt="">';
 const HIDDEN_IMG = '<img src="https://tracker.example.net/o.png" style="display:none">';
-const PHOTO = '<img src="https://cdn.example.com/photo.jpg" width="600" height="400" alt="A photo">';
+const PHOTO =
+	'<img src="https://cdn.example.com/photo.jpg" width="600" height="400" alt="A photo">';
 const KNOWN_HOST = '<img src="https://click.list-manage.com/track/open.php?u=abc" alt="">';
 
 describe('detectTrackers', () => {

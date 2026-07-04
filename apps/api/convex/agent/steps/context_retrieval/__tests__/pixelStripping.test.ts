@@ -19,8 +19,7 @@ import { contextRetrievalStep, inboundBodyForContext } from '../index';
 const messageId = 'msg_pixel' as Id<'inboundMessages'>;
 const input = { inboundMessageId: messageId };
 
-const REMOTE_PIXEL =
-	'<img src="https://tracker.evil/open.gif?u=abc" width="1" height="1" alt="">';
+const REMOTE_PIXEL = '<img src="https://tracker.evil/open.gif?u=abc" width="1" height="1" alt="">';
 const INLINE_CID = '<img src="cid:logo@corp" alt="logo">';
 
 /** Minimal ctx serving an HTML-only inbound; retrieval legs return empty. */

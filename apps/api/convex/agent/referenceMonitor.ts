@@ -69,7 +69,7 @@ export interface OutboundHtmlSanitizeResult {
  */
 export function sanitizeOutboundHtml(
 	html: string,
-	allowedHosts: readonly string[],
+	allowedHosts: readonly string[]
 ): OutboundHtmlSanitizeResult {
 	const allowed = new Set<string>();
 	for (const host of allowedHosts) {
@@ -94,7 +94,7 @@ export function sanitizeOutboundHtml(
 			if (allowed.has(host)) return match;
 			neutralizedLinks += 1;
 			return `${pre}${post}`;
-		},
+		}
 	);
 
 	return { html: sanitized, strippedRemoteImages, neutralizedLinks };
@@ -115,7 +115,9 @@ function linkHost(url: string): string | undefined {
 	if (!m || !m[1]) return undefined; // relative path — same-origin, allowed.
 	// Strip userinfo + port, lowercase the host.
 	const authority = m[1];
-	const hostPort = authority.includes('@') ? authority.slice(authority.indexOf('@') + 1) : authority;
+	const hostPort = authority.includes('@')
+		? authority.slice(authority.indexOf('@') + 1)
+		: authority;
 	const host = hostPort.includes(':') ? hostPort.slice(0, hostPort.indexOf(':')) : hostPort;
 	return host.toLowerCase();
 }
@@ -179,7 +181,7 @@ export function runReferenceMonitor(input: ReferenceMonitorInput): ReferenceMoni
 	// 3. Outbound HTML sanitize — remediation, not a veto.
 	const { html, strippedRemoteImages, neutralizedLinks } = sanitizeOutboundHtml(
 		input.draftHtml,
-		input.allowedLinkHosts,
+		input.allowedLinkHosts
 	);
 
 	return { ok: true, html, strippedRemoteImages, neutralizedLinks };
