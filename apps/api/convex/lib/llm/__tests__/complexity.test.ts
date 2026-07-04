@@ -15,11 +15,11 @@ describe('scoreComplexity', () => {
 	});
 
 	it('scores code / structured payloads as complex', () => {
-		expect(scoreComplexity('Write a function to dedupe this list: ```const x = [1,2,2]```')).toBeGreaterThan(
-			COMPLEXITY_DOWNGRADE_THRESHOLD,
-		);
+		expect(
+			scoreComplexity('Write a function to dedupe this list: ```const x = [1,2,2]```')
+		).toBeGreaterThan(COMPLEXITY_DOWNGRADE_THRESHOLD);
 		expect(scoreComplexity('SELECT * FROM contacts WHERE created_at > now()')).toBeGreaterThan(
-			COMPLEXITY_DOWNGRADE_THRESHOLD,
+			COMPLEXITY_DOWNGRADE_THRESHOLD
 		);
 	});
 
@@ -38,7 +38,9 @@ describe('scoreComplexity', () => {
 describe('isTrivialUserText', () => {
 	it('flags trivial text and spares complex text', () => {
 		expect(isTrivialUserText('thanks, got it')).toBe(true);
-		expect(isTrivialUserText('Explain why our deliverability dropped and how to analyze the bounce logs')).toBe(false);
+		expect(
+			isTrivialUserText('Explain why our deliverability dropped and how to analyze the bounce logs')
+		).toBe(false);
 	});
 });
 
@@ -64,7 +66,10 @@ describe('isTrivialClassifiedMessage', () => {
 
 	it('never downgrades a low-confidence classification', () => {
 		expect(
-			isTrivialClassifiedMessage({ ...trivial, confidence: TRIVIAL_CLASSIFICATION_CONFIDENCE - 0.01 }),
+			isTrivialClassifiedMessage({
+				...trivial,
+				confidence: TRIVIAL_CLASSIFICATION_CONFIDENCE - 0.01,
+			})
 		).toBe(false);
 	});
 

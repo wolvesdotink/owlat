@@ -22,11 +22,16 @@ export function scoreComplexity(text: string): number {
 	// Code / markup / structured payloads → keep the capable model.
 	if (/```|<\/?[a-z][\s\S]*?>|[{};]|\bfunction\b|\bSELECT\b|\bimport\b/i.test(t)) score += 0.4;
 	// Multi-part / analytical asks add complexity.
-	if (/\b(and also|additionally|furthermore|step by step|compare|analy[sz]e|explain why)\b/i.test(t)) score += 0.2;
+	if (
+		/\b(and also|additionally|furthermore|step by step|compare|analy[sz]e|explain why)\b/i.test(t)
+	)
+		score += 0.2;
 	// Trivial acknowledgements / one-liners pull the score down.
 	if (
 		words <= 8 &&
-		/\b(thanks?|thank you|ok|okay|got it|sounds good|will do|noted|yep|yes|no|fix (a )?typo|one[- ]?liner)\b/i.test(t)
+		/\b(thanks?|thank you|ok|okay|got it|sounds good|will do|noted|yep|yes|no|fix (a )?typo|one[- ]?liner)\b/i.test(
+			t
+		)
 	) {
 		score -= 0.3;
 	}
