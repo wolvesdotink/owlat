@@ -31,7 +31,7 @@ const MAX_OPEN_SLOT_CHARS = 60;
  */
 export function buildSchedulingInstruction(
 	proposedTimes: string[],
-	openSlots: string[] = [],
+	openSlots: string[] = []
 ): string {
 	const times = proposedTimes
 		.map((t) => t.trim().slice(0, MAX_SCHEDULING_TIME_CHARS))

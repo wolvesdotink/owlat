@@ -154,7 +154,7 @@ export function parseIcsBusyIntervals(ics: string): BusyInterval[] {
 /** Wall-clock fields of an instant, read in a given IANA timezone. */
 function getTzParts(
 	ms: number,
-	timeZone: string,
+	timeZone: string
 ): { year: number; month: number; day: number; hour: number; minute: number; weekday: number } {
 	const dtf = new Intl.DateTimeFormat('en-US', {
 		timeZone,
@@ -198,7 +198,7 @@ function wallClockToEpoch(
 	day: number,
 	hour: number,
 	minute: number,
-	timeZone: string,
+	timeZone: string
 ): number {
 	const asUtc = Date.UTC(year, month - 1, day, hour, minute);
 	const parts = getTzParts(asUtc, timeZone);
@@ -219,11 +219,7 @@ function overlapsBusy(start: number, end: number, busy: BusyInterval[]): boolean
  * overlap the busy intervals, looking forward from `now` over the horizon,
  * skipping weekends and past slots. Pure + exported for unit testing.
  */
-export function computeOpenSlots(
-	busy: BusyInterval[],
-	now: number,
-	timeZone: string,
-): OpenSlot[] {
+export function computeOpenSlots(busy: BusyInterval[], now: number, timeZone: string): OpenSlot[] {
 	const slots: OpenSlot[] = [];
 	for (let dayOffset = 0; dayOffset < HORIZON_DAYS; dayOffset++) {
 		const probe = getTzParts(now + dayOffset * DAY_MS, timeZone);
@@ -305,7 +301,7 @@ export async function fetchOpenSlots(deps: AvailabilityDeps = {}): Promise<strin
  */
 export async function buildSchedulingReplyInstruction(
 	proposedTimes: string[],
-	deps: AvailabilityDeps = {},
+	deps: AvailabilityDeps = {}
 ): Promise<string> {
 	const openSlots = await fetchOpenSlots(deps);
 	return buildSchedulingInstruction(proposedTimes, openSlots);

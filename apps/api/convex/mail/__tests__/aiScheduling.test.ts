@@ -25,17 +25,7 @@ describe('buildSchedulingInstruction', () => {
 	});
 
 	it('drops empty phrases and caps the list at six', () => {
-		const out = buildSchedulingInstruction([
-			' a ',
-			'',
-			'   ',
-			'b',
-			'c',
-			'd',
-			'e',
-			'f',
-			'g',
-		]);
+		const out = buildSchedulingInstruction([' a ', '', '   ', 'b', 'c', 'd', 'e', 'f', 'g']);
 		expect(out).toContain('- a');
 		expect(out).toContain('- f');
 		expect(out).not.toContain('- g');
@@ -56,7 +46,7 @@ describe('buildSchedulingInstruction', () => {
 	it('grounds concrete open slots from the owner calendar as trusted data', () => {
 		const out = buildSchedulingInstruction(
 			['Tuesday afternoon'],
-			['Tue, Jul 8, 2:00 PM', 'Wed, Jul 9, 10:00 AM'],
+			['Tue, Jul 8, 2:00 PM', 'Wed, Jul 9, 10:00 AM']
 		);
 		expect(out).toContain('from their own calendar');
 		expect(out).toContain('- Tue, Jul 8, 2:00 PM');
@@ -67,10 +57,7 @@ describe('buildSchedulingInstruction', () => {
 	});
 
 	it('caps the open-slot list at three', () => {
-		const out = buildSchedulingInstruction(
-			[],
-			['s1', 's2', 's3', 's4'],
-		);
+		const out = buildSchedulingInstruction([], ['s1', 's2', 's3', 's4']);
 		expect(out).toContain('- s1');
 		expect(out).toContain('- s3');
 		expect(out).not.toContain('- s4');

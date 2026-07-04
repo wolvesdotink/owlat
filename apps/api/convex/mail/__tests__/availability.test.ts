@@ -140,7 +140,7 @@ describe('fetchOpenSlots (fail-soft, in-deployment)', () => {
 
 	it('fetches the configured feed server-side and returns concrete labels', async () => {
 		const fetchImpl = vi.fn(
-			async () => ({ ok: true, text: async () => icsBody }) as unknown as Response,
+			async () => ({ ok: true, text: async () => icsBody }) as unknown as Response
 		);
 		const slots = await fetchOpenSlots({
 			icsUrl: 'https://cal.example.test/private.ics',
@@ -174,7 +174,7 @@ describe('fetchOpenSlots (fail-soft, in-deployment)', () => {
 
 	it('degrades to [] on a non-ok response', async () => {
 		const fetchImpl = vi.fn(
-			async () => ({ ok: false, text: async () => '' }) as unknown as Response,
+			async () => ({ ok: false, text: async () => '' }) as unknown as Response
 		);
 		const slots = await fetchOpenSlots({
 			icsUrl: 'https://cal.example.test/private.ics',
@@ -196,7 +196,7 @@ describe('buildSchedulingReplyInstruction (fetch + framing orchestration)', () =
 
 	it('folds the owner real open slots into the scheduling instruction', async () => {
 		const fetchImpl = vi.fn(
-			async () => ({ ok: true, text: async () => icsBody }) as unknown as Response,
+			async () => ({ ok: true, text: async () => icsBody }) as unknown as Response
 		);
 		const instruction = await buildSchedulingReplyInstruction(['maybe Thursday?'], {
 			icsUrl: 'https://cal.example.test/private.ics',
@@ -215,7 +215,7 @@ describe('buildSchedulingReplyInstruction (fetch + framing orchestration)', () =
 			timeZone: 'UTC',
 			now: NOW,
 			fetchImpl: vi.fn(
-				async () => ({ ok: true, text: async () => icsBody }) as unknown as Response,
+				async () => ({ ok: true, text: async () => icsBody }) as unknown as Response
 			),
 		});
 		const withoutCal = await buildSchedulingReplyInstruction([], { icsUrl: undefined });
