@@ -100,6 +100,16 @@ const { ghostSuggestionsEnabled } = usePostboxGhostGate();
 const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 const aiRewriteEnabled = computed(() => isFeatureEnabled('ai'));
 
+// Plain-text flatten of the live draft for "Coach my draft" — the self-check
+// critiques prose, not HTML tags. Client-only (the composer never SSRs); empty
+// on the server so nothing renders until hydration.
+const coachDraftText = computed(() => {
+	const html = bodyHtml.value ?? '';
+	if (!html || typeof window === 'undefined') return '';
+	const doc = new DOMParser().parseFromString(html, 'text/html');
+	return (doc.body.textContent ?? '').trim();
+});
+
 // Formatting-toolbar preference. Default is the Apple-minimal floating bar (only
 // on selection); the footer "Aa" affordance flips back to the classic persistent
 // toolbar and persists the choice per user.
@@ -416,6 +426,14 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } =
 			@remove="removeAttachment"
 			@cancel="cancelUpload"
 			@retry="retryUpload"
+		/>
+
+		<!-- "Coach my draft": advisory self-check of the user's OWN wording for
+		     high-stakes mail. Never rewrites; hidden when AI is off / draft short. -->
+		<PostboxCoachPanel
+			:draft-text="coachDraftText"
+			:enabled="aiRewriteEnabled"
+			:message-id="inReplyToMessageId"
 		/>
 
 		<PostboxComposerFooter

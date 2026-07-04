@@ -29,6 +29,10 @@ const composeSubject = reactive<Record<string, string>>({});
 // Success toast
 const { showToast } = useToast();
 
+// "Coach my draft" is gated on the `ai` flag only (advisory, no per-user toggle).
+const { isEnabled: isFeatureEnabled } = useFeatureFlag();
+const aiEnabled = computed(() => isFeatureEnabled('ai'));
+
 // Flat rows carrying an `_id` so the shared list-keyboard + optimistic-hide
 // composables (which key on `_id`) can drive this page. Each row keeps its
 // message + thread for rendering and navigation.
@@ -303,6 +307,13 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 							rows="6"
 							class="input w-full text-sm resize-y"
 							placeholder="Type your reply…"
+						/>
+						<!-- Coach the ADMIN's own reply to a high-stakes escalation before
+						     they send it. Advisory only — never rewrites the text. -->
+						<PostboxCoachPanel
+							:draft-text="composeBody[row.message._id] ?? ''"
+							:enabled="aiEnabled"
+							:thread-context="row.message.textBody ?? undefined"
 						/>
 					</div>
 
