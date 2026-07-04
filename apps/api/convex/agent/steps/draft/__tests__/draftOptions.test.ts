@@ -29,6 +29,8 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../../../../lib/llm/dispatch', () => ({
 	runLlmText: mocks.runLlmText,
+	// The primary draft now runs through the tool-calling text seam.
+	runLlmTextWithTools: mocks.runLlmText,
 	runLlmObject: mocks.runLlmObject,
 }));
 vi.mock('../../../../lib/llmProvider', () => ({

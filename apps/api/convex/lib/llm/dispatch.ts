@@ -26,11 +26,13 @@ import {
 import type { z } from 'zod';
 import type { TokenUsage } from '../../agent/steps/types';
 
-type RawUsage = {
-	inputTokens?: number;
-	outputTokens?: number;
-	totalTokens?: number;
-} | undefined;
+type RawUsage =
+	| {
+			inputTokens?: number;
+			outputTokens?: number;
+			totalTokens?: number;
+	  }
+	| undefined;
 
 export function normalizeUsage(usage: RawUsage): TokenUsage | undefined {
 	if (!usage) return undefined;
@@ -46,7 +48,11 @@ const LLM_BACKOFF_BASE_MS = 500;
 
 /** Best-effort HTTP status off an AI-SDK / fetch error shape. */
 function errorStatus(error: unknown): number | undefined {
-	const e = error as { statusCode?: number; status?: number; response?: { status?: number } } | null;
+	const e = error as {
+		statusCode?: number;
+		status?: number;
+		response?: { status?: number };
+	} | null;
 	return e?.statusCode ?? e?.status ?? e?.response?.status;
 }
 
@@ -69,7 +75,7 @@ export function isRetriableLlmError(error: unknown): boolean {
 	const message = String((error as { message?: unknown } | null)?.message ?? error).toLowerCase();
 	if (
 		/\b(400|401|403|404|422)\b|invalid.?api.?key|unauthor|forbidden|authentication|invalid request|bad request|not found/.test(
-			message,
+			message
 		)
 	) {
 		return false;
@@ -99,9 +105,7 @@ async function withLlmRetry<T>(run: () => Promise<T>): Promise<T> {
 	throw lastError;
 }
 
-export type LlmTextInput =
-	| { messages: ModelMessage[] }
-	| { prompt: string; system?: string };
+export type LlmTextInput = { messages: ModelMessage[] } | { prompt: string; system?: string };
 
 export type LlmTextOptions = LlmTextInput & {
 	model: LanguageModel;
@@ -116,15 +120,49 @@ export interface LlmTextResult {
 
 export async function runLlmText(opts: LlmTextOptions): Promise<LlmTextResult> {
 	const sdkArgs =
-		'messages' in opts
-			? { messages: opts.messages }
-			: { prompt: opts.prompt, system: opts.system };
+		'messages' in opts ? { messages: opts.messages } : { prompt: opts.prompt, system: opts.system };
 	const { text, usage } = await withLlmRetry(() =>
 		generateText({
 			model: opts.model,
 			temperature: opts.temperature,
 			...sdkArgs,
-		}),
+		})
+	);
+	return {
+		text,
+		tokenUsage: normalizeUsage(usage),
+		modelUsed: typeof opts.model === 'string' ? opts.model : opts.model.modelId,
+	};
+}
+
+export type LlmTextWithToolsOptions = {
+	model: LanguageModel;
+	messages: ModelMessage[];
+	/** AI SDK tool set (built via `tool({...})`). The model may call these across
+	 * up to `maxSteps` agentic steps before a final text answer. */
+	tools: ToolSet;
+	/** Max agentic steps before a forced stop. Defaults to {@link DEFAULT_MAX_TOOL_STEPS}. */
+	maxSteps?: number;
+	temperature?: number;
+};
+
+/**
+ * One-shot (non-streaming) tool-calling counterpart to {@link runLlmText}: the
+ * model may call the supplied tools across up to `maxSteps` agentic steps, then
+ * returns the final text. Same bounded-retry + usage normalization as the other
+ * one-shot helpers. Use this (not {@link runLlmStream}) when you want a bounded
+ * fetch-more loop but do NOT need token streaming to a user — e.g. the draft
+ * step's `recallKnowledge` loop.
+ */
+export async function runLlmTextWithTools(opts: LlmTextWithToolsOptions): Promise<LlmTextResult> {
+	const { text, usage } = await withLlmRetry(() =>
+		generateText({
+			model: opts.model,
+			messages: opts.messages,
+			tools: opts.tools,
+			stopWhen: stepCountIs(opts.maxSteps ?? DEFAULT_MAX_TOOL_STEPS),
+			temperature: opts.temperature,
+		})
 	);
 	return {
 		text,
@@ -147,7 +185,7 @@ export interface LlmObjectResult<S extends z.ZodTypeAny> {
 }
 
 export async function runLlmObject<S extends z.ZodTypeAny>(
-	opts: LlmObjectOptions<S>,
+	opts: LlmObjectOptions<S>
 ): Promise<LlmObjectResult<S>> {
 	const { object, usage } = await withLlmRetry(() =>
 		generateObject({
@@ -155,7 +193,7 @@ export async function runLlmObject<S extends z.ZodTypeAny>(
 			schema: opts.schema,
 			prompt: opts.prompt,
 			temperature: opts.temperature,
-		}),
+		})
 	);
 	return {
 		object: object as z.infer<S>,

@@ -142,12 +142,13 @@ describe('contextRetrievalStep.execute — grounding sources', () => {
 		expect('groundingSources' in (recorded.value ?? {})).toBe(false);
 	});
 
-	it('drops sources truncated out of the briefing so the list never over-claims', async () => {
-		// A thread message whose body is huge enough to blow the token budget and
-		// force compaction/emergency. Its content lands at the FRONT of the
-		// briefing (conversation history precedes the current message), so the
-		// tail-slice / contact+current-only reduction drops it entirely — and the
-		// grounding list must drop with it rather than name an unseen source.
+	it('drops thread sources truncated out of the briefing but preserves the top knowledge fact', async () => {
+		// A thread message + knowledge entry whose bodies are huge enough to blow
+		// the token budget and force the emergency tier. The emergency tier now
+		// RE-ASSEMBLES a compact grounding set: the thread history is dropped (not
+		// carried), so its source must fall away and never be named — but the top
+		// knowledge fact is preserved compact, so its source SURVIVES (the review
+		// "Grounded in:" list still reflects exactly what the model saw).
 		const filler = 'x'.repeat(40_000);
 		const { ctx, recorded } = makeCtx({
 			contactId,
@@ -166,7 +167,7 @@ describe('contextRetrievalStep.execute — grounding sources', () => {
 					_id: 'k1',
 					entryType: 'fact',
 					confidence: 0.9,
-					title: 'Truncated knowledge',
+					title: 'Preserved knowledge',
 					content: filler,
 				},
 			],
@@ -174,10 +175,12 @@ describe('contextRetrievalStep.execute — grounding sources', () => {
 
 		const { output } = await contextRetrievalStep.execute(ctx, input);
 
-		// Compaction/emergency kicked in and the front-loaded sources fell away.
-		expect(output.tier).not.toBe('normal');
-		expect(output.groundingSources).toEqual([]);
-		// Nothing survived → field omitted from the persisted args.
-		expect('groundingSources' in (recorded.value ?? {})).toBe(false);
+		// Emergency tier kicked in; thread source fell away, knowledge survived.
+		expect(output.tier).toBe('emergency');
+		const survived: GroundingSource[] = [
+			{ type: 'knowledge', id: 'k1', title: 'Preserved knowledge' },
+		];
+		expect(output.groundingSources).toEqual(survived);
+		expect(recorded.value?.['groundingSources']).toEqual(survived);
 	});
 });
