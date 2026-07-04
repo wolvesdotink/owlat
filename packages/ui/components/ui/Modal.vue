@@ -59,7 +59,7 @@ useModalFocus(
 	() => props.open,
 	() => {
 		if (props.closable && !props.persistent) close();
-	},
+	}
 );
 </script>
 
@@ -87,7 +87,9 @@ useModalFocus(
 						v-if="title || closable"
 						class="flex items-center justify-between p-6 border-b border-border-subtle"
 					>
-						<h2 v-if="title" :id="titleId" class="text-lg font-semibold text-text-primary">{{ title }}</h2>
+						<h2 v-if="title" :id="titleId" class="text-lg font-semibold text-text-primary">
+							{{ title }}
+						</h2>
 						<div v-else />
 						<button
 							v-if="closable"
@@ -117,13 +119,16 @@ useModalFocus(
 
 <style scoped>
 /*
- * Modal transition — fade + scale on the standard motion curve. Reads the
- * Postbox motion tokens (--pbx-motion-*) when present so every dialog moves the
- * same way, with sensible standalone fallbacks for non-Postbox contexts.
+ * Modal transition — slow tier (dialogs are the biggest thing that moves).
+ * Enter rides the bouncy spring; the exit is a faster, plain ease-out tween
+ * so dismissal reads crisp and final.
  */
-.modal-enter-active,
+.modal-enter-active {
+	transition: all var(--motion-slow) var(--ease-spring-bounce);
+}
+
 .modal-leave-active {
-	transition: all var(--pbx-motion-panel, 0.2s) var(--pbx-motion-ease, ease);
+	transition: all var(--motion-slow-exit) var(--ease-exit);
 }
 
 .modal-enter-from,
