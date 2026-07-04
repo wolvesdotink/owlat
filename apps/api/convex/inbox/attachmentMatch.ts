@@ -91,11 +91,14 @@ const QUERY_STOPWORDS = new Set([
 
 /** Trim a captured object phrase down to its meaningful document tokens. */
 function cleanQuery(raw: string): string {
-	const words = raw
+	const tokens = raw
 		.toLowerCase()
 		.replace(/[^\p{L}\p{N}\s._-]/gu, ' ')
-		.split(/\s+/)
-		.filter((w) => w.length > 0 && !QUERY_STOPWORDS.has(w));
+		.split(/\s+/);
+	const words: string[] = [];
+	for (const token of tokens) {
+		if (token.length > 0 && !QUERY_STOPWORDS.has(token)) words.push(token);
+	}
 	return words.join(' ').trim();
 }
 
