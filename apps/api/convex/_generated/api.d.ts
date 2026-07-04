@@ -480,6 +480,7 @@ import type * as schema_askEagerness from "../schema/askEagerness.js";
 import type * as schema_assistant from "../schema/assistant.js";
 import type * as schema_auth from "../schema/auth.js";
 import type * as schema_automations from "../schema/automations.js";
+import type * as schema_autonomy from "../schema/autonomy.js";
 import type * as schema_campaigns from "../schema/campaigns.js";
 import type * as schema_chat from "../schema/chat.js";
 import type * as schema_codeWork from "../schema/codeWork.js";
@@ -1044,6 +1045,7 @@ declare const fullApi: ApiFromModules<{
   "schema/assistant": typeof schema_assistant;
   "schema/auth": typeof schema_auth;
   "schema/automations": typeof schema_automations;
+  "schema/autonomy": typeof schema_autonomy;
   "schema/campaigns": typeof schema_campaigns;
   "schema/chat": typeof schema_chat;
   "schema/codeWork": typeof schema_codeWork;
