@@ -188,7 +188,10 @@ filter_count=$(grep -rn "\.filter(" convex --include="*.ts" 2>/dev/null \
 # rows) to delete them — bounded, same idiom as the sibling erasure sweeps.
 # (Base main had meanwhile consumed the 192 → 193 headroom, so the mailSnippets
 # sweep lands at 194 after rebasing onto the current base.)
-COLLECT_BASELINE=194
+# Raised 194 → 195 for auth.memberErasure: the same GDPR erasure sweep also
+# collects a single mailbox's mailContactStyleOverrides via the by_mailbox index
+# to delete them — bounded per-mailbox, same idiom as the sibling erasure sweeps.
+COLLECT_BASELINE=195
 collect_count=$(grep -rn "\.collect()" convex --include="*.ts" 2>/dev/null \
 	| grep -v "/_generated/" \
 	| grep -v "/__tests__/" \

@@ -21,10 +21,7 @@ import type { Id } from '../_generated/dataModel';
 import { loadOwnedMailbox } from './permissions';
 import { resolveAllowedFromAddressesForCtx } from './identities';
 import { getOrThrow, throwForbidden, throwInvalidState, throwNotFound } from '../_utils/errors';
-import {
-	assertStateIs,
-	type TransitionOutcome as DraftTransitionOutcome,
-} from './draftLifecycle';
+import { assertStateIs, type TransitionOutcome as DraftTransitionOutcome } from './draftLifecycle';
 
 export const create = authedMutation({
 	args: {
@@ -62,18 +59,15 @@ export const create = authedMutation({
 			}
 		}
 
-		const draftId: Id<'mailDrafts'> = await ctx.runMutation(
-			internal.mail.draftLifecycle.create,
-			{
-				mailboxId: args.mailboxId,
-				fromAddress: mailbox.address,
-				inReplyToMessageId,
-				threadId,
-				toAddresses,
-				subject,
-				at: now,
-			},
-		);
+		const draftId: Id<'mailDrafts'> = await ctx.runMutation(internal.mail.draftLifecycle.create, {
+			mailboxId: args.mailboxId,
+			fromAddress: mailbox.address,
+			inReplyToMessageId,
+			threadId,
+			toAddresses,
+			subject,
+			at: now,
+		});
 
 		return { draftId, inReplySubject, inReplyFrom };
 	},
@@ -94,6 +88,11 @@ export const update = authedMutation({
 		// absent leaves it untouched. Carried onto the sent thread as a
 		// follow-up watch by the sent-effects reducer (mail/followUps.ts).
 		followUpRemindAt: v.optional(v.union(v.number(), v.null())),
+		// Edit-learning flywheel: the composer passes the AI's ORIGINAL draft text
+		// here the first time it applies an AI-generated draft. Snapshotted ONCE
+		// (never overwritten) so a later human edit still diffs against the AI's
+		// version on send. Absent → no learning, exactly today's behaviour.
+		aiBaseline: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		const draft = await getOrThrow(ctx, args.draftId, 'Draft');
@@ -112,6 +111,15 @@ export const update = authedMutation({
 		if (args.composerMode !== undefined) patch['composerMode'] = args.composerMode;
 		if (args.followUpRemindAt !== undefined) {
 			patch['followUpRemindAt'] = args.followUpRemindAt ?? undefined;
+		}
+		// Snapshot the AI baseline exactly once — the first apply wins so a later
+		// human edit still diffs against the AI's original text on send.
+		if (
+			args.aiBaseline !== undefined &&
+			args.aiBaseline.trim().length > 0 &&
+			draft.aiDraftBaseline === undefined
+		) {
+			patch['aiDraftBaseline'] = { text: args.aiBaseline, capturedAt: Date.now() };
 		}
 
 		await ctx.db.patch(args.draftId, patch);
@@ -259,10 +267,7 @@ export const send = authedMutation({
 		undoSendDelayMs: v.optional(v.number()),
 		scheduledSendAt: v.optional(v.number()),
 	},
-	handler: async (
-		ctx,
-		args,
-	): Promise<{ undoToken: string; sendAt: number }> => {
+	handler: async (ctx, args): Promise<{ undoToken: string; sendAt: number }> => {
 		const draft = await getOrThrow(ctx, args.draftId, 'Draft');
 		const owned = await loadOwnedMailbox(ctx, draft.mailboxId);
 		if (!owned.ok) throwForbidden('Draft not accessible');
@@ -283,7 +288,7 @@ export const send = authedMutation({
 							at: now,
 							undoSendDelayMs: args.undoSendDelayMs,
 						},
-			},
+			}
 		);
 
 		if (!outcome.ok) {
@@ -310,10 +315,7 @@ export const send = authedMutation({
  */
 export const cancelPendingSend = authedMutation({
 	args: { undoToken: v.string() },
-	handler: async (
-		ctx,
-		args,
-	): Promise<{ ok: false } | { ok: true; draftId: Id<'mailDrafts'> }> => {
+	handler: async (ctx, args): Promise<{ ok: false } | { ok: true; draftId: Id<'mailDrafts'> }> => {
 		// Ownership check before delegating — the undo token alone isn't
 		// enough to authenticate the caller.
 		const draft = await ctx.db
@@ -329,7 +331,7 @@ export const cancelPendingSend = authedMutation({
 			{
 				undoToken: args.undoToken,
 				input: { to: 'draft', at: Date.now(), reason: 'user_cancel' },
-			},
+			}
 		);
 
 		if (!outcome.ok) return { ok: false };
@@ -350,10 +352,7 @@ export const cancelPendingSend = authedMutation({
  */
 export const cancelScheduledSend = authedMutation({
 	args: { draftId: v.id('mailDrafts') },
-	handler: async (
-		ctx,
-		args,
-	): Promise<{ ok: false } | { ok: true; draftId: Id<'mailDrafts'> }> => {
+	handler: async (ctx, args): Promise<{ ok: false } | { ok: true; draftId: Id<'mailDrafts'> }> => {
 		const draft = await getOrThrow(ctx, args.draftId, 'Draft');
 		const owned = await loadOwnedMailbox(ctx, draft.mailboxId);
 		if (!owned.ok) throwForbidden('Draft not accessible');
@@ -363,7 +362,7 @@ export const cancelScheduledSend = authedMutation({
 			{
 				draftId: args.draftId,
 				input: { to: 'draft', at: Date.now(), reason: 'user_cancel' },
-			},
+			}
 		);
 
 		if (!outcome.ok) {

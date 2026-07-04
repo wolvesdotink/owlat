@@ -11,6 +11,7 @@ import {
 	spamVerdictValidator,
 	draftQualityValidator,
 } from '../lib/convexValidators';
+import { editAdjustmentValidator } from '../mail/editLearningValidators';
 
 /**
  * Personal Mail (Postbox) tables — Gmail-equivalent backend.
@@ -617,9 +618,35 @@ export const mailTables = {
 		// to detect "> N new sent messages since we last learned the voice".
 		sentCountAtCompute: v.number(),
 		lastComputedAt: v.optional(v.number()),
+		// User-authored standing instructions ("never use exclamation marks",
+		// "sign as Dr.") merged into every draft prompt ABOVE the derived voice.
+		// These are explicit user rules, never inferred, and always applied.
+		standingInstructions: v.optional(v.array(v.string())),
+		// Edit-learning flywheel (mail/editLearning.ts): recurring deltas the user
+		// makes to the AI's OWN drafts before sending, each with a live observation
+		// count. A delta only becomes a durable, injected rule once its
+		// `promoted` flag flips (recurrence threshold) — one-offs never stick.
+		derivedAdjustments: v.optional(v.array(editAdjustmentValidator)),
+		// North-star metric: a bounded rolling window of recent normalized (0..1)
+		// draft→sent edit distances. The median is derived on read.
+		editDistanceSamples: v.optional(v.array(v.number())),
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	}).index('by_mailbox', ['mailboxId']),
+
+	// Per-recipient style memory for the edit-learning flywheel. Keyed by the
+	// mailbox + the LOWERCASED recipient address so an override learned from mail
+	// to contact X is ONLY ever blended when drafting to that same address — it
+	// can never cross a contact-scope boundary onto another recipient. Holds
+	// recipient-specific deltas (e.g. "always replies to this contact in German")
+	// with the same promote-on-recurrence gate as the voice-level adjustments.
+	mailContactStyleOverrides: defineTable({
+		mailboxId: v.id('mailboxes'),
+		contactAddress: v.string(),
+		adjustments: v.array(editAdjustmentValidator),
+		createdAt: v.number(),
+		updatedAt: v.number(),
+	}).index('by_mailbox_and_address', ['mailboxId', 'contactAddress']),
 
 	// Gmail-style labels (orthogonal to folders).
 	mailLabels: defineTable({
@@ -661,6 +688,15 @@ export const mailTables = {
 		// "Remind me if no reply by…" — carried onto the sent message's thread as
 		// a follow-up watch by the sent-effects reducer (see mail/followUps.ts).
 		followUpRemindAt: v.optional(v.number()),
+
+		// Edit-learning flywheel: a snapshot of the AI's ORIGINAL draft text, taken
+		// when the composer first applies an AI-generated draft. On send, the
+		// sent-effects reducer diffs this baseline against what the user actually
+		// sent and feeds the delta back into the voice profile / per-contact memory
+		// (mail/editLearning.ts). Absent → the draft was not AI-authored (or the
+		// client did not record a baseline) → no learning happens, exactly today's
+		// behaviour. Snapshotted ONCE and never overwritten.
+		aiDraftBaseline: v.optional(v.object({ text: v.string(), capturedAt: v.number() })),
 
 		// Scheduled send / undo-send window
 		scheduledSendAt: v.optional(v.number()),
