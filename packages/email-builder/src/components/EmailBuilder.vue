@@ -103,26 +103,55 @@ const emailBackgroundColor = ref('#ffffff');
 // Sync props → local
 let lastEmittedBlocks: EditorBlock[] | null = null;
 
-watch(() => props.blocks, (v) => {
-	if (v === lastEmittedBlocks) return; // Skip echo from our own emit
-	if (lastEmittedBlocks && v.length === lastEmittedBlocks.length &&
-		v.every((b, i) => b.id === lastEmittedBlocks![i]!.id)) return;
-	canvasBlocks.value = [...v];
-}, { immediate: true });
+watch(
+	() => props.blocks,
+	(v) => {
+		if (v === lastEmittedBlocks) return; // Skip echo from our own emit
+		if (
+			lastEmittedBlocks &&
+			v.length === lastEmittedBlocks.length &&
+			v.every((b, i) => b.id === lastEmittedBlocks![i]!.id)
+		)
+			return;
+		canvasBlocks.value = [...v];
+	},
+	{ immediate: true }
+);
 
-watch(() => props.subject, (v) => { if (v !== formSubject.value) formSubject.value = v; }, { immediate: true });
-watch(() => props.name, (v) => { if (v !== formName.value) formName.value = v; }, { immediate: true });
+watch(
+	() => props.subject,
+	(v) => {
+		if (v !== formSubject.value) formSubject.value = v;
+	},
+	{ immediate: true }
+);
+watch(
+	() => props.name,
+	(v) => {
+		if (v !== formName.value) formName.value = v;
+	},
+	{ immediate: true }
+);
 // Seed the background from an explicit page-supplied value, else the org theme's
 // configured background — otherwise the hardcoded white default masked the org
 // theme background in both the editor preview and the test-send.
 watch(
 	() => props.backgroundColor ?? props.config?.theme?.backgroundColor,
-	(v) => { if (v && v !== emailBackgroundColor.value) emailBackgroundColor.value = v; },
-	{ immediate: true },
+	(v) => {
+		if (v && v !== emailBackgroundColor.value) emailBackgroundColor.value = v;
+	},
+	{ immediate: true }
 );
 
 // Emit local → props
-watch(canvasBlocks, (v) => { lastEmittedBlocks = v; emit('update:blocks', v); }, { deep: true, flush: 'post' });
+watch(
+	canvasBlocks,
+	(v) => {
+		lastEmittedBlocks = v;
+		emit('update:blocks', v);
+	},
+	{ deep: true, flush: 'post' }
+);
 watch(formSubject, (v) => emit('update:subject', v));
 watch(formName, (v) => emit('update:name', v));
 watch(emailBackgroundColor, (v) => emit('update:backgroundColor', v));
@@ -155,7 +184,9 @@ function handleVariableCreate(variable: { key: string; type?: string }) {
 	showVariableDialog.value = false;
 }
 
-const showMandatoryUnsubscribeFooter = computed(() => props.config?.showMandatoryUnsubscribeFooter ?? false);
+const showMandatoryUnsubscribeFooter = computed(
+	() => props.config?.showMandatoryUnsubscribeFooter ?? false
+);
 const hideSubject = computed(() => props.config?.hideSubject ?? true);
 
 // Host-config allowlist for the insertable block palette. Threaded to the
@@ -170,7 +201,8 @@ const allowedBlockTypes = computed<BlockType[] | undefined>(() => props.config?.
 const handlers = useEmailBuilderHandlers();
 
 // Linked blocks
-const { isLinkedBlock, detachBlock, getLinkedGroupByBlockId, isFirstInGroup, isLastInGroup } = useLinkedBlocks({ canvasBlocks });
+const { isLinkedBlock, detachBlock, getLinkedGroupByBlockId, isFirstInGroup, isLastInGroup } =
+	useLinkedBlocks({ canvasBlocks });
 
 // Provide linked block helpers so CanvasBlock can access them without prop drilling
 provide('isLinkedBlock', isLinkedBlock);
@@ -222,23 +254,30 @@ const activeBlockSchema = computed(() => {
 // Linked block state for the active selection
 const isActiveBlockLinked = computed(() => {
 	if (selectedBlockId.value) return isLinkedBlock(selectedBlockId.value);
-	if (blockState.selectedColumnContext.value) return isLinkedBlock(blockState.selectedColumnContext.value.blockId);
-	if (blockState.selectedContainerContext.value) return isLinkedBlock(blockState.selectedContainerContext.value.blockId);
+	if (blockState.selectedColumnContext.value)
+		return isLinkedBlock(blockState.selectedColumnContext.value.blockId);
+	if (blockState.selectedContainerContext.value)
+		return isLinkedBlock(blockState.selectedContainerContext.value.blockId);
 	return false;
 });
 
 const activeLinkedBlockName = computed<string | null>(() => {
 	if (!isActiveBlockLinked.value) return null;
-	const rootId = selectedBlockId.value
-		?? blockState.selectedColumnContext.value?.blockId
-		?? blockState.selectedContainerContext.value?.blockId;
+	const rootId =
+		selectedBlockId.value ??
+		blockState.selectedColumnContext.value?.blockId ??
+		blockState.selectedContainerContext.value?.blockId;
 	if (!rootId) return null;
 	const group = getLinkedGroupByBlockId(rootId);
 	return group?.blockName ?? null;
 });
 
 // Handle nested selection from CanvasArea
-function handleSelectNested(payload: { itemId: string; context: ParentContext; element: HTMLElement }) {
+function handleSelectNested(payload: {
+	itemId: string;
+	context: ParentContext;
+	element: HTMLElement;
+}) {
 	const { itemId, context, element } = payload;
 	if (context.type === 'column') {
 		handleSelectColumnItem(context.parentId, context.columnIndex, itemId, undefined, element);
@@ -280,7 +319,9 @@ watch(isFocusMode, (active) => {
 	if (active) {
 		showFocusHint.value = true;
 		clearTimeout(focusHintTimer);
-		focusHintTimer = setTimeout(() => { showFocusHint.value = false; }, 2500);
+		focusHintTimer = setTimeout(() => {
+			showFocusHint.value = false;
+		}, 2500);
 	} else {
 		showFocusHint.value = false;
 		clearTimeout(focusHintTimer);
@@ -349,7 +390,8 @@ function clearSelection() {
 // Simplified keyboard shortcuts (no TipTap dependencies)
 function handleKeydown(event: KeyboardEvent) {
 	const target = event.target as HTMLElement;
-	const isEditable = target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName);
+	const isEditable =
+		target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName);
 
 	// Escape: exit inline edit first
 	if (event.key === 'Escape' && isInlineEditing.value) {
@@ -437,9 +479,13 @@ const {
 
 // Keep the live editing reactivity the canvas had before: while a non-edit
 // preview is open, re-render the moment the blocks change.
-watch(canvasBlocks, () => {
-	if (previewMode.value !== 'edit') regeneratePreview();
-}, { deep: true });
+watch(
+	canvasBlocks,
+	() => {
+		if (previewMode.value !== 'edit') regeneratePreview();
+	},
+	{ deep: true }
+);
 
 // Dark-mode toggle from the previewer re-renders against the new mode.
 function handlePreviewDarkMode(value: boolean) {
@@ -454,7 +500,9 @@ function handlePreviewDarkMode(value: boolean) {
 /**
  * Find a nested block inside columns/containers and return its parent + mutator.
  */
-function findNestedBlock(blockId: string): { parentIndex: number; mutate: (value: unknown, key: string) => void } | null {
+function findNestedBlock(
+	blockId: string
+): { parentIndex: number; mutate: (value: unknown, key: string) => void } | null {
 	for (let i = 0; i < canvasBlocks.value.length; i++) {
 		const block = canvasBlocks.value[i]!;
 		if (block.type === 'columns') {
@@ -471,13 +519,20 @@ function findNestedBlock(blockId: string): { parentIndex: number; mutate: (value
 								return c.map((item, ii) => {
 									if (ii !== itemIdx) return item;
 									if (key.includes('.')) {
-										const itemContent = setByPath(item.content as unknown as Record<string, unknown>, key, value);
+										const itemContent = setByPath(
+											item.content as unknown as Record<string, unknown>,
+											key,
+											value
+										);
 										return { ...item, content: itemContent as unknown as ColumnItem['content'] };
 									}
 									return { ...item, content: { ...item.content, [key]: value } };
 								});
 							});
-							canvasBlocks.value[i] = { ...block, content: { ...content, columns: newColumns } } as EditorBlock;
+							canvasBlocks.value[i] = {
+								...block,
+								content: { ...content, columns: newColumns },
+							} as EditorBlock;
 						},
 					};
 				}
@@ -493,12 +548,19 @@ function findNestedBlock(blockId: string): { parentIndex: number; mutate: (value
 						const newItems = content.items.map((item, ii) => {
 							if (ii !== itemIdx) return item;
 							if (key.includes('.')) {
-								const itemContent = setByPath(item.content as unknown as Record<string, unknown>, key, value);
+								const itemContent = setByPath(
+									item.content as unknown as Record<string, unknown>,
+									key,
+									value
+								);
 								return { ...item, content: itemContent as unknown as ContainerItem['content'] };
 							}
 							return { ...item, content: { ...item.content, [key]: value } };
 						});
-						canvasBlocks.value[i] = { ...block, content: { ...content, items: newItems } } as EditorBlock;
+						canvasBlocks.value[i] = {
+							...block,
+							content: { ...content, items: newItems },
+						} as EditorBlock;
 					},
 				};
 			}
@@ -521,7 +583,10 @@ function handleBlockPropertyUpdate(blockId: string, key: string, value: unknown)
 		// Support dot notation (e.g. 'labels.days')
 		if (key.includes('.')) {
 			const content = setByPath(block.content as unknown as Record<string, unknown>, key, value);
-			canvasBlocks.value[blockIndex] = { ...block, content: content as unknown as EditorBlock['content'] } as EditorBlock;
+			canvasBlocks.value[blockIndex] = {
+				...block,
+				content: content as unknown as EditorBlock['content'],
+			} as EditorBlock;
 		} else {
 			canvasBlocks.value[blockIndex] = {
 				...block,
@@ -605,7 +670,10 @@ function handleMoveBlock(direction: 'up' | 'down') {
 		const newColumns = [...content.columns];
 		newColumns[ctx.columnIndex] = col;
 		const parentIdx = canvasBlocks.value.findIndex((b) => b.id === ctx.blockId);
-		canvasBlocks.value[parentIdx] = { ...block, content: { ...content, columns: newColumns } } as EditorBlock;
+		canvasBlocks.value[parentIdx] = {
+			...block,
+			content: { ...content, columns: newColumns },
+		} as EditorBlock;
 	} else if (selectedContainerItemId.value && blockState.selectedContainerContext.value) {
 		const ctx = blockState.selectedContainerContext.value;
 		const block = canvasBlocks.value.find((b) => b.id === ctx.blockId);
@@ -668,7 +736,7 @@ function handleRemoveChild(blockId: string, childId: string) {
 }
 
 function handleUpdateChildren(blockId: string, children: unknown[]) {
-	const block = canvasBlocks.value.find(b => b.id === blockId);
+	const block = canvasBlocks.value.find((b) => b.id === blockId);
 	const key = block?.type === 'columns' ? 'columns' : 'items';
 	handleBlockPropertyUpdate(blockId, key, children);
 }
@@ -694,7 +762,6 @@ function handleToolbarDelete() {
 function handleToolbarDuplicate() {
 	handleDuplicateActiveBlock();
 }
-
 
 // Inline edit handlers
 function handleDoubleClickBlock(blockId: string) {
@@ -732,9 +799,10 @@ function cancelDetach() {
 }
 
 function handleDetachActiveBlock() {
-	const rootId = selectedBlockId.value
-		?? blockState.selectedColumnContext.value?.blockId
-		?? blockState.selectedContainerContext.value?.blockId;
+	const rootId =
+		selectedBlockId.value ??
+		blockState.selectedColumnContext.value?.blockId ??
+		blockState.selectedContainerContext.value?.blockId;
 	if (rootId) {
 		requestDetachBlock(rootId);
 	}
@@ -821,7 +889,9 @@ function handlePasteRichContent(html: string) {
 
 // Canvas ref for sidebar positioning
 const documentCanvasRef = ref<InstanceType<typeof DocumentCanvas> | null>(null);
-const canvasInnerElement = computed(() => (documentCanvasRef.value?.canvasInnerElement ?? null) as HTMLElement | null);
+const canvasInnerElement = computed(
+	() => (documentCanvasRef.value?.canvasInnerElement ?? null) as HTMLElement | null
+);
 
 // Add block from sidebar
 function handleAddBlockFromToolbar(type: BlockType) {
@@ -847,7 +917,7 @@ function handleSlashCommandSelect(command: SlashCommand, fromBlockId: string) {
 	const anchorBlockId = blockStillExists
 		? fromBlockId
 		: fromIndex > 0
-			? canvasBlocks.value[fromIndex - 1]?.id ?? null
+			? (canvasBlocks.value[fromIndex - 1]?.id ?? null)
 			: null;
 
 	// Handle saved block direct insertion
@@ -871,7 +941,10 @@ function handleSlashCommandSelect(command: SlashCommand, fromBlockId: string) {
 <template>
 	<div class="light flex flex-col h-screen bg-bg-base">
 		<!-- Header -->
-		<div class="shrink-0 overflow-hidden transition-[max-height,opacity] duration-(--motion-moderate) ease-[cubic-bezier(0.4,0,0.2,1)] max-h-20" :class="{ '!max-h-0 !opacity-0 !pointer-events-none': isFocusMode }">
+		<div
+			class="shrink-0 overflow-hidden transition-[max-height,opacity] duration-(--motion-moderate) ease-spring max-h-20"
+			:class="{ '!max-h-0 !opacity-0 !pointer-events-none': isFocusMode }"
+		>
 			<EditorHeader
 				:name="formName"
 				:subject="formSubject"
@@ -935,7 +1008,7 @@ function handleSlashCommandSelect(command: SlashCommand, fromBlockId: string) {
 				@paste-rich-content="handlePasteRichContent"
 				@insert-block-at="handleInsertBlockAt"
 				@update:background-color="emailBackgroundColor = $event"
-				>
+			>
 				<!-- Subject fields slot -->
 				<template #subject-fields>
 					<SubjectFields

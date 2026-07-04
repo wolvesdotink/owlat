@@ -44,9 +44,7 @@ function isFieldVisible(field: { showWhen?: { key: string; value: unknown } }): 
 </script>
 
 <template>
-	<div
-		class="border-b border-border-subtle transition-colors duration-(--motion-fast)"
-	>
+	<div class="border-b border-border-subtle transition-colors duration-(--motion-fast)">
 		<button
 			v-if="!hideHeader"
 			class="flex items-center justify-between w-full py-2.5 pr-4 pl-4 bg-none border-none cursor-pointer select-none transition-colors duration-(--motion-fast) hover:bg-bg-surface-hover active:bg-bg-surface-hover"
@@ -60,22 +58,21 @@ function isFieldVisible(field: { showWhen?: { key: string; value: unknown } }): 
 					class="shrink-0 transition-colors duration-(--motion-fast)"
 					:class="!isCollapsed && !hideHeader ? 'text-text-secondary' : 'text-text-disabled'"
 				/>
-				<span class="text-[10px] font-semibold uppercase tracking-[0.08em]" :class="!isCollapsed && !hideHeader ? 'text-text-secondary' : 'text-text-tertiary'">{{ group.label }}</span>
+				<span
+					class="text-[10px] font-semibold uppercase tracking-[0.08em]"
+					:class="!isCollapsed && !hideHeader ? 'text-text-secondary' : 'text-text-tertiary'"
+					>{{ group.label }}</span
+				>
 			</div>
 			<ChevronDown
-				class="text-text-disabled transition-transform duration-(--motion-moderate) ease-[cubic-bezier(0.4,0,0.2,1)]"
+				class="text-text-disabled transition-transform duration-(--motion-moderate) ease-spring"
 				:class="{ '-rotate-90': isCollapsed }"
 				:size="12"
 			/>
 		</button>
 
-		<div
-			v-show="hideHeader || !isCollapsed"
-		>
-			<div
-				class="px-4 pb-4 flex flex-col gap-[14px]"
-				:class="hideHeader ? 'pt-3' : 'pt-0.5'"
-			>
+		<div v-show="hideHeader || !isCollapsed">
+			<div class="px-4 pb-4 flex flex-col gap-[14px]" :class="hideHeader ? 'pt-3' : 'pt-0.5'">
 				<template v-for="field in group.fields" :key="field.key">
 					<PropertyField
 						v-if="isFieldVisible(field)"

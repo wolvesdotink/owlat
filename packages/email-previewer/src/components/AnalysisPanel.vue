@@ -125,7 +125,7 @@ const headerSummary = computed(() => {
 	background: transparent;
 	border: none;
 	cursor: pointer;
-	transition: background var(--motion-fast) var(--ease-spring);
+	transition: background var(--motion-fast, 80ms) var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
 }
 
 .ep-analysis-header:hover {
@@ -166,7 +166,7 @@ const headerSummary = computed(() => {
 	width: 14px;
 	height: 14px;
 	color: var(--ep-text-tertiary);
-	transition: transform var(--motion-moderate) var(--ease-spring);
+	transition: transform var(--motion-moderate, 160ms) var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
 }
 
 .ep-analysis-chevron-open {
@@ -198,7 +198,7 @@ const headerSummary = computed(() => {
 	font-size: 12px;
 	font-weight: 500;
 	cursor: pointer;
-	transition: all var(--motion-fast) var(--ease-spring);
+	transition: all var(--motion-fast, 80ms) var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
 }
 
 .ep-analysis-tab:hover {

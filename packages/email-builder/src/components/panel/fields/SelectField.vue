@@ -75,8 +75,10 @@ function select(value: unknown) {
 function handleClickOutside(event: MouseEvent) {
 	const target = event.target as Node;
 	if (
-		wrapperRef.value && !wrapperRef.value.contains(target) &&
-		menuRef.value && !menuRef.value.contains(target)
+		wrapperRef.value &&
+		!wrapperRef.value.contains(target) &&
+		menuRef.value &&
+		!menuRef.value.contains(target)
 	) {
 		isOpen.value = false;
 	}
@@ -119,10 +121,11 @@ onUnmounted(() => {
 			<span
 				class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap"
 				:class="{ 'text-text-tertiary': !hasSelection }"
-			>{{ displayText }}</span>
+				>{{ displayText }}</span
+			>
 			<ChevronDown
 				:size="14"
-				class="text-text-secondary shrink-0 transition-transform duration-(--motion-moderate) ease-[cubic-bezier(0.4,0,0.2,1)]"
+				class="text-text-secondary shrink-0 transition-transform duration-(--motion-moderate) ease-spring"
 				:class="{ 'rotate-180': isOpen }"
 			/>
 		</button>
@@ -148,7 +151,9 @@ onUnmounted(() => {
 						type="button"
 						@click="select(opt.value)"
 					>
-						<span class="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{{ opt.label }}</span>
+						<span class="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{{
+							opt.label
+						}}</span>
 						<Check
 							v-if="String(opt.value) === String(value)"
 							:size="14"

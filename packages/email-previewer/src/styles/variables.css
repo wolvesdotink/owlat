@@ -63,11 +63,6 @@
 		0 3px 3px -1.5px rgba(0, 0, 0, 0.18), 0 6px 6px -3px rgba(0, 0, 0, 0.18),
 		0 12px 12px -6px rgba(0, 0, 0, 0.18), 0 24px 24px -12px rgba(0, 0, 0, 0.18);
 
-	/* Transitions - motion tiers */
-	--ep-transition-fast: 80ms cubic-bezier(0.25, 1, 0.5, 1);
-	--ep-transition-base: 160ms cubic-bezier(0.25, 1, 0.5, 1);
-	--ep-transition-slow: 240ms cubic-bezier(0.25, 1, 0.5, 1);
-
 	/* Spacing */
 	--ep-radius-sm: 4px;
 	--ep-radius-md: 8px;
