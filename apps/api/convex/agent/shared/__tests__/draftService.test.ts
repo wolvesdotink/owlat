@@ -171,7 +171,9 @@ describe('buildDraftMessages — untrusted framing', () => {
 		});
 		const user = msgs.find((m) => m.role === 'user');
 		const content = String(user?.content);
-		expect(content).toContain('<untrusted_email_content>\nINBOUND-BODY\n</untrusted_email_content>');
+		expect(content).toContain(
+			'<untrusted_email_content>\nINBOUND-BODY\n</untrusted_email_content>'
+		);
 		// Confirmed facts sit ABOVE / outside the untrusted tags.
 		const confirmedIdx = content.indexOf('[CONFIRMED BY OWNER]');
 		const untrustedIdx = content.indexOf('<untrusted_email_content>');

@@ -156,34 +156,31 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 		// self-check → gated multi-option review drafts. Personal Postbox
 		// (mail/draftOnArrival.ts) runs the exact same service so both surfaces
 		// produce identical output for the same inbound message.
-		const {
-			draftBody,
-			draftQuality,
-			draftOptions,
-			tokenUsage,
-			modelUsed,
-		} = await runSharedDraft(ctx, {
-			model,
-			audience: 'an organization',
-			styleReference: "the organization's",
-			context: input.context,
-			confirmedContext: input.confirmedContext,
-			classification: {
-				category: safeCategory,
-				intent: safeIntent,
-				sentiment: safeSentiment,
-				priority: safePriority,
-			},
-			toneInstruction,
-			signatureInstruction,
-			voiceSection,
-			confidence: input.classification.confidence,
-			// Allow a couple of fetch-more round-trips beyond the recall cap so the
-			// model can act on what it fetched, then still produce the final draft.
-			tools: { recallKnowledge },
-			maxSteps: MAX_RECALL_CALLS + 2,
-			spendLabels: { selfCheck: 'agent_draft_selfcheck', options: 'agent_draft_options' },
-		});
+		const { draftBody, draftQuality, draftOptions, tokenUsage, modelUsed } = await runSharedDraft(
+			ctx,
+			{
+				model,
+				audience: 'an organization',
+				styleReference: "the organization's",
+				context: input.context,
+				confirmedContext: input.confirmedContext,
+				classification: {
+					category: safeCategory,
+					intent: safeIntent,
+					sentiment: safeSentiment,
+					priority: safePriority,
+				},
+				toneInstruction,
+				signatureInstruction,
+				voiceSection,
+				confidence: input.classification.confidence,
+				// Allow a couple of fetch-more round-trips beyond the recall cap so the
+				// model can act on what it fetched, then still produce the final draft.
+				tools: { recallKnowledge },
+				maxSteps: MAX_RECALL_CALLS + 2,
+				spendLabels: { selfCheck: 'agent_draft_selfcheck', options: 'agent_draft_options' },
+			}
+		);
 
 		// Compose the reply subject from the original (fetched above).
 		const replySubject = buildReplySubject(message?.subject);

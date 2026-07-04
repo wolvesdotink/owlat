@@ -186,9 +186,10 @@ export function replyQueueSection(
  * review chip. Pure so the mapping is unit-testable. Deliberately conservative:
  * this is a REVIEW hint, never an auto-send authorization.
  */
-export function draftSlotConfidence(
-	slot: Pick<ReplyQueueDraftSlot, 'confidence' | 'quality'>
-): { label: string; level: 'high' | 'medium' | 'low' | 'unverified' } {
+export function draftSlotConfidence(slot: Pick<ReplyQueueDraftSlot, 'confidence' | 'quality'>): {
+	label: string;
+	level: 'high' | 'medium' | 'low' | 'unverified';
+} {
 	if (!slot.quality) return { label: 'Unverified', level: 'unverified' };
 	if (slot.confidence >= 0.8) return { label: 'High confidence', level: 'high' };
 	if (slot.confidence >= 0.6) return { label: 'Medium confidence', level: 'medium' };

@@ -137,7 +137,8 @@ export const FEATURE_FLAGS: Record<FeatureFlagKey, FeatureFlagDefinition> = {
 		key: 'postbox',
 		category: 'receiving',
 		label: 'Personal mail (Postbox)',
-		description: 'Per-user mailboxes with webmail UI, IMAP/SMTP for native clients, and MX-based delivery (Gmail-equivalent).',
+		description:
+			'Per-user mailboxes with webmail UI, IMAP/SMTP for native clients, and MX-based delivery (Gmail-equivalent).',
 		default: false,
 		// personal-mail = the hosted IMAP server + ACME stack; mta = the MX/send
 		// transport hosted mailboxes deliver through.
@@ -174,7 +175,16 @@ export const FEATURE_FLAGS: Record<FeatureFlagKey, FeatureFlagDefinition> = {
 		label: 'AI features',
 		description: 'Master toggle for all AI-powered features. Requires an LLM provider.',
 		default: false,
-		cascadesOff: ['ai.agent', 'ai.autonomy', 'ai.knowledge', 'ai.knowledge.autoLink', 'ai.knowledge.graphRetrieval', 'ai.knowledge.analytics', 'ai.assistant', 'ai.visualizations'],
+		cascadesOff: [
+			'ai.agent',
+			'ai.autonomy',
+			'ai.knowledge',
+			'ai.knowledge.autoLink',
+			'ai.knowledge.graphRetrieval',
+			'ai.knowledge.analytics',
+			'ai.assistant',
+			'ai.visualizations',
+		],
 		requiredEnvVars: ['LLM_PROVIDER', 'LLM_API_KEY'],
 		dockerProfiles: ['ai'], // optional local-LLM (ollama) sidecar
 	},
@@ -191,7 +201,8 @@ export const FEATURE_FLAGS: Record<FeatureFlagKey, FeatureFlagDefinition> = {
 		key: 'ai.autonomy',
 		category: 'ai',
 		label: 'Autonomous actions',
-		description: 'Let the agent send replies and take actions without human approval when confidence is high.',
+		description:
+			'Let the agent send replies and take actions without human approval when confidence is high.',
 		default: false,
 		requires: ['ai', 'ai.agent'],
 	},
@@ -252,7 +263,8 @@ export const FEATURE_FLAGS: Record<FeatureFlagKey, FeatureFlagDefinition> = {
 		key: 'webhooks',
 		category: 'integrations',
 		label: 'Outbound webhooks',
-		description: 'Deliver event payloads (campaign sends, contact changes) to external HTTP endpoints.',
+		description:
+			'Deliver event payloads (campaign sends, contact changes) to external HTTP endpoints.',
 		default: false,
 		// Outbound webhook delivery runs inside the Convex backend — no service.
 	},
@@ -321,7 +333,8 @@ export const FEATURE_FLAGS: Record<FeatureFlagKey, FeatureFlagDefinition> = {
 		key: 'domains.dkimRotation',
 		category: 'deliverability',
 		label: 'DKIM auto-rotation',
-		description: 'Flag DKIM keys due for rotation and auto-activate an operator-initiated new key once its DNS record is published.',
+		description:
+			'Flag DKIM keys due for rotation and auto-activate an operator-initiated new key once its DNS record is published.',
 		default: true,
 	},
 
@@ -363,7 +376,11 @@ export const ALL_FEATURE_FLAG_KEYS = Object.keys(FEATURE_FLAGS) as FeatureFlagKe
  * provider. `campaigns.archive` is excluded: it `requires:['campaigns']`, so it
  * can never be the lone reason a provider is needed.
  */
-export const SENDING_FLAGS_REQUIRING_DELIVERY = ['campaigns', 'transactional', 'automations'] as const satisfies readonly FeatureFlagKey[];
+export const SENDING_FLAGS_REQUIRING_DELIVERY = [
+	'campaigns',
+	'transactional',
+	'automations',
+] as const satisfies readonly FeatureFlagKey[];
 
 export type FeatureFlagState = Partial<Record<FeatureFlagKey, boolean>>;
 
@@ -385,7 +402,10 @@ export function getDefaultFlags(opts: { hosted?: boolean } = {}): FeatureFlagSta
  * `requires` rules. A flag is OFF if any of its dependencies are OFF, regardless
  * of its own stored value.
  */
-export function resolveFlags(stored: FeatureFlagState, opts: { hosted?: boolean } = {}): Record<FeatureFlagKey, boolean> {
+export function resolveFlags(
+	stored: FeatureFlagState,
+	opts: { hosted?: boolean } = {}
+): Record<FeatureFlagKey, boolean> {
 	const defaults = getDefaultFlags(opts);
 	const merged: Record<string, boolean> = { ...defaults, ...stored } as Record<string, boolean>;
 
@@ -413,7 +433,11 @@ export function resolveFlags(stored: FeatureFlagState, opts: { hosted?: boolean 
 /**
  * Returns true if `flag` is enabled given `stored` state, after resolving dependencies.
  */
-export function isFlagEnabled(stored: FeatureFlagState, flag: FeatureFlagKey, opts: { hosted?: boolean } = {}): boolean {
+export function isFlagEnabled(
+	stored: FeatureFlagState,
+	flag: FeatureFlagKey,
+	opts: { hosted?: boolean } = {}
+): boolean {
 	return resolveFlags(stored, opts)[flag];
 }
 
@@ -470,7 +494,7 @@ export function applyToggle(
  */
 export function getActiveProfiles(
 	stored: FeatureFlagState,
-	opts: { hosted?: boolean; deliveryProvider?: string } = {},
+	opts: { hosted?: boolean; deliveryProvider?: string } = {}
 ): string[] {
 	const resolved = resolveFlags(stored, opts);
 	const profiles = new Set<string>();
@@ -492,7 +516,7 @@ export function getActiveProfiles(
  */
 export function getRequiredEnvVars(
 	stored: FeatureFlagState,
-	opts: { hosted?: boolean; deliveryProvider?: string } = {},
+	opts: { hosted?: boolean; deliveryProvider?: string } = {}
 ): string[] {
 	const resolved = resolveFlags(stored, opts);
 	const vars = new Set<string>();
@@ -519,7 +543,10 @@ export function getRequiredEnvVars(
  * provider is actually present. This is the single predicate the wizard,
  * setup-cli, admin UI, and docs share for the "sending needs a provider" rule.
  */
-export function needsDeliveryProvider(stored: FeatureFlagState, opts: { hosted?: boolean } = {}): boolean {
+export function needsDeliveryProvider(
+	stored: FeatureFlagState,
+	opts: { hosted?: boolean } = {}
+): boolean {
 	const resolved = resolveFlags(stored, opts);
 	return SENDING_FLAGS_REQUIRING_DELIVERY.some((flag) => resolved[flag]);
 }
@@ -569,7 +596,9 @@ export function getSendPathRequiredEnv(provider: string | undefined): string[] {
  * Group flag definitions by category for UI rendering.
  * Hosted-only categories are excluded unless `hosted: true`.
  */
-export function getFlagsByCategory(opts: { hosted?: boolean } = {}): Record<FeatureCategory, FeatureFlagDefinition[]> {
+export function getFlagsByCategory(
+	opts: { hosted?: boolean } = {}
+): Record<FeatureCategory, FeatureFlagDefinition[]> {
 	const result: Record<string, FeatureFlagDefinition[]> = {};
 	for (const def of Object.values(FEATURE_FLAGS)) {
 		if (def.hostedOnly && !opts.hosted) continue;
@@ -610,8 +639,19 @@ export const FEATURE_PACKS: Record<FeaturePackKey, FeaturePack> = {
 	ai: {
 		key: 'ai',
 		label: 'AI',
-		description: 'AI agent, autonomy, knowledge graph (+ auto-link, graph retrieval, analytics), assistant, and dashboards.',
-		flags: ['ai', 'ai.agent', 'ai.autonomy', 'ai.knowledge', 'ai.knowledge.autoLink', 'ai.knowledge.graphRetrieval', 'ai.knowledge.analytics', 'ai.assistant', 'ai.visualizations'],
+		description:
+			'AI agent, autonomy, knowledge graph (+ auto-link, graph retrieval, analytics), assistant, and dashboards.',
+		flags: [
+			'ai',
+			'ai.agent',
+			'ai.autonomy',
+			'ai.knowledge',
+			'ai.knowledge.autoLink',
+			'ai.knowledge.graphRetrieval',
+			'ai.knowledge.analytics',
+			'ai.assistant',
+			'ai.visualizations',
+		],
 	},
 };
 
