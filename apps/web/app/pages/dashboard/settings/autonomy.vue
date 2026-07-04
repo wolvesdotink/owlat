@@ -365,6 +365,10 @@ const handleSaveWorkingHours = async (payload: {
 					</UiCard>
 				</div>
 			</div>
+
+			<UiCard class="mt-6">
+				<AutonomyHandlingRulesManager />
+			</UiCard>
 		</template>
 	</div>
 </template>
