@@ -109,8 +109,10 @@ describe('calibrateThreshold', () => {
 	it('finds a separating threshold from labelled outcomes', () => {
 		// Cleanly separable: accepts cluster high, edits cluster low.
 		const outcomes: LabelledOutcome[] = [];
-		for (let i = 0; i < 15; i++) outcomes.push({ similarity: 0.9 + Math.random() * 0.1, acceptedUnedited: true });
-		for (let i = 0; i < 15; i++) outcomes.push({ similarity: Math.random() * 0.5, acceptedUnedited: false });
+		for (let i = 0; i < 15; i++)
+			outcomes.push({ similarity: 0.9 + Math.random() * 0.1, acceptedUnedited: true });
+		for (let i = 0; i < 15; i++)
+			outcomes.push({ similarity: Math.random() * 0.5, acceptedUnedited: false });
 		const result = calibrateThreshold(outcomes);
 		expect(result.sampleSize).toBe(30);
 		expect(result.accuracy).toBeGreaterThan(0.95);
@@ -131,8 +133,20 @@ describe('aggregateClarifyMetrics', () => {
 	it('computes question-rate, answer-delta and divergence', () => {
 		const rows: ClarifyAskRow[] = [
 			{ source: 'agent', questionCount: 2, predictedValue: 0.8 },
-			{ source: 'reply_queue', questionCount: 1, predictedValue: 0.6, isDraftChanged: true, draftDivergence: 0.4 },
-			{ source: 'reply_queue', questionCount: 3, predictedValue: 0.4, isDraftChanged: false, draftDivergence: 0.05 },
+			{
+				source: 'reply_queue',
+				questionCount: 1,
+				predictedValue: 0.6,
+				isDraftChanged: true,
+				draftDivergence: 0.4,
+			},
+			{
+				source: 'reply_queue',
+				questionCount: 3,
+				predictedValue: 0.4,
+				isDraftChanged: false,
+				draftDivergence: 0.05,
+			},
 		];
 		const m = aggregateClarifyMetrics(rows);
 		expect(m.askCount).toBe(3);
@@ -146,9 +160,7 @@ describe('aggregateClarifyMetrics', () => {
 
 describe('aggregateDraftQuality', () => {
 	it('ignores unresolved decisions', () => {
-		const rows: ShadowDecisionRow[] = [
-			{ sender: 'a@x.com', isResolved: false },
-		];
+		const rows: ShadowDecisionRow[] = [{ sender: 'a@x.com', isResolved: false }];
 		const m = aggregateDraftQuality(rows);
 		expect(m.sampleCount).toBe(0);
 		expect(m.bySender).toHaveLength(0);

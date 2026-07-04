@@ -70,7 +70,8 @@ export const GOLDEN_SET: readonly GoldenCase[] = [
 	{
 		id: 'support-followup',
 		category: 'support',
-		inbound: 'The export button still throws an error after your last reply. What should I try next?',
+		inbound:
+			'The export button still throws an error after your last reply. What should I try next?',
 		idealReply:
 			'Sorry that is still happening. Could you send a screenshot of the error and the browser you are on? In the meantime, try the export from an incognito window — that clears a stale session in most cases.',
 	},
@@ -109,7 +110,10 @@ export type EvalSuiteResult = {
  * over {@link draftSimilarity} so callers speak in eval terms (similarity +
  * edit-distance) rather than reaching into the shadow module directly.
  */
-export function scoreDraft(candidate: string, ideal: string): { similarity: number; editDistance: number } {
+export function scoreDraft(
+	candidate: string,
+	ideal: string
+): { similarity: number; editDistance: number } {
 	const similarity = draftSimilarity(candidate, ideal);
 	return { similarity, editDistance: 1 - similarity };
 }
@@ -122,7 +126,7 @@ export function scoreDraft(candidate: string, ideal: string): { similarity: numb
  */
 export function runEvalSuite(
 	candidatesById: ReadonlyMap<string, string>,
-	set: readonly GoldenCase[] = GOLDEN_SET,
+	set: readonly GoldenCase[] = GOLDEN_SET
 ): EvalSuiteResult {
 	const cases: CaseScore[] = [];
 	let simSum = 0;
@@ -132,7 +136,13 @@ export function runEvalSuite(
 	for (const gc of set) {
 		const candidate = candidatesById.get(gc.id);
 		if (candidate === undefined) {
-			cases.push({ id: gc.id, category: gc.category, similarity: 0, editDistance: 1, scored: false });
+			cases.push({
+				id: gc.id,
+				category: gc.category,
+				similarity: 0,
+				editDistance: 1,
+				scored: false,
+			});
 			continue;
 		}
 		const { similarity, editDistance } = scoreDraft(candidate, gc.idealReply);
@@ -180,7 +190,7 @@ export function detectRegression(
 	result: EvalSuiteResult,
 	baseline: EvalBaseline,
 	tolerance: number = DEFAULT_REGRESSION_TOLERANCE,
-	perCaseFloor: number = DEFAULT_PER_CASE_FLOOR,
+	perCaseFloor: number = DEFAULT_PER_CASE_FLOOR
 ): RegressionReport {
 	const meanDrop = Math.max(0, baseline.meanSimilarity - result.meanSimilarity);
 	const failingCases: string[] = [];
@@ -227,7 +237,7 @@ export function calibrateThreshold(
 	outcomes: readonly LabelledOutcome[],
 	fallback = 0.95,
 	minSamples = 20,
-	step = 0.01,
+	step = 0.01
 ): CalibrationResult {
 	if (outcomes.length < minSamples) {
 		return { suggestedThreshold: fallback, accuracy: 0, sampleSize: outcomes.length };
