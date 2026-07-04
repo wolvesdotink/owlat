@@ -151,6 +151,26 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 			scopeToContact: recallScope,
 		});
 
+		// Natural-language handling rules — a matching `draft_with_stance` rule
+		// ("draft a polite decline for recruiters") carries a user-authored STANCE
+		// that must shape the wording of this reply. The rule text is trusted; the
+		// deterministic engine already matched it against the message with no model
+		// in the loop. Fold every matched stance into the draft as authoritative
+		// posture guidance (rendered outside the untrusted tags in the shared
+		// service). FAIL-SOFT: any failure evaluating the rules leaves the draft
+		// exactly as today (no stance) — a stance is additive, never blocking.
+		let stanceGuidance: string | undefined;
+		try {
+			const rules = await ctx.runQuery(internal.mail.handlingRules.evaluateForMessage, {
+				inboundMessageId: input.inboundMessageId,
+			});
+			if (rules.stances.length > 0) {
+				stanceGuidance = rules.stances.join('; ');
+			}
+		} catch {
+			stanceGuidance = undefined;
+		}
+
 		// THE shared draft pipeline (agent/shared/draftService.ts): context
 		// injection re-scan → primary generation (with the recall tool) → draft
 		// self-check → gated multi-option review drafts. Personal Postbox
@@ -164,6 +184,7 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 				styleReference: "the organization's",
 				context: input.context,
 				confirmedContext: input.confirmedContext,
+				stanceGuidance,
 				classification: {
 					category: safeCategory,
 					intent: safeIntent,

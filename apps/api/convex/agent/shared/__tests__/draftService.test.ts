@@ -180,6 +180,34 @@ describe('buildDraftMessages — untrusted framing', () => {
 		expect(confirmedIdx).toBeGreaterThanOrEqual(0);
 		expect(confirmedIdx).toBeLessThan(untrustedIdx);
 	});
+
+	it("renders a handling-rule stance as a trusted standing instruction OUTSIDE the untrusted tags (so 'draft a polite decline for recruiters' reaches the draft)", () => {
+		const msgs = buildDraftMessages({
+			systemPrompt: 'SYS',
+			classification: { category: 'c', intent: 'i', sentiment: 's', priority: 'p' },
+			context: 'INBOUND-BODY',
+			stanceGuidance: 'a polite decline',
+		});
+		const user = msgs.find((m) => m.role === 'user');
+		const content = String(user?.content);
+		// The user-authored stance is present, phrased as an authoritative standing
+		// instruction, and sits ABOVE / outside the untrusted email tags.
+		expect(content).toContain('a polite decline');
+		const stanceIdx = content.indexOf('STANDING INSTRUCTION');
+		const untrustedIdx = content.indexOf('<untrusted_email_content>');
+		expect(stanceIdx).toBeGreaterThanOrEqual(0);
+		expect(stanceIdx).toBeLessThan(untrustedIdx);
+	});
+
+	it('omits the stance block entirely when no stance is supplied (normal path unchanged)', () => {
+		const msgs = buildDraftMessages({
+			systemPrompt: 'SYS',
+			classification: { category: 'c', intent: 'i', sentiment: 's', priority: 'p' },
+			context: 'INBOUND-BODY',
+		});
+		const content = String(msgs.find((m) => m.role === 'user')?.content);
+		expect(content).not.toContain('STANDING INSTRUCTION');
+	});
 });
 
 describe('buildDraftSystemPrompt — audience seam', () => {

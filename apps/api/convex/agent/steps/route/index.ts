@@ -243,6 +243,30 @@ async function assertSafeToAutoSend(
 		};
 	}
 
+	// Natural-language handling rules — a standing "draft-only" / "never
+	// auto-send" / "always ask" / "auto-archive" rule the user taught the
+	// assistant holds this message for human review. This gate can only ever
+	// RESTRICT (it lives inside the safety gate that only downgrades), so a rule
+	// can never widen auto-send — only tighten it. FAIL-SOFT: a failure evaluating
+	// the rules degrades to the pre-rule autonomy decision (today's behaviour),
+	// which already passed every gate above.
+	try {
+		const rules = await ctx.runQuery(internal.mail.handlingRules.evaluateForMessage, {
+			inboundMessageId,
+		});
+		if (rules.restrictsAutoSend) {
+			return {
+				safe: false,
+				reason:
+					rules.reasons[0] ??
+					'A handling rule holds this message for human review; not auto-sending.',
+			};
+		}
+	} catch {
+		// swallowed: the rule layer is additive; a transient failure falls back to
+		// the autonomy decision already computed above.
+	}
+
 	return { safe: true };
 }
 
