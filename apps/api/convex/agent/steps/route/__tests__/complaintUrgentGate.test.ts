@@ -27,6 +27,7 @@ function makeCtx(classification: { category: string; priority: string } | undefi
 		runQuery: async (ref: unknown) => {
 			const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
 			if (name.includes('getCircuitBreakersInternal')) return [];
+			if (name.includes('listActiveInternal')) return [];
 			if (name.includes('checkPermissionInternal')) {
 				return { mode: 'enabled', allowed: true, reason: 'rule permits' };
 			}

@@ -65,6 +65,7 @@ function makeExecuteCtx(message: FakeMessage) {
 		runQuery: async (ref: unknown) => {
 			const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
 			if (name.includes('getCircuitBreakersInternal')) return [];
+			if (name.includes('listActiveInternal')) return [];
 			if (name.includes('checkPermissionInternal'))
 				return { mode: 'enabled', allowed: true, reason: 'rule permits' };
 			if (name.includes('getMessage')) return withFrom;

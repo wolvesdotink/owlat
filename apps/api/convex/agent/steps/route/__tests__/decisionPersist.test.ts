@@ -27,6 +27,7 @@ function makeCtx(opts: { autonomyThreshold?: number; recordThrows?: boolean }) {
 		runQuery: async (ref: unknown, params?: unknown) => {
 			const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
 			if (name.includes('getCircuitBreakersInternal')) return [];
+			if (name.includes('listActiveInternal')) return [];
 			if (name.includes('checkPermissionInternal')) {
 				if (opts.autonomyThreshold === undefined) return { mode: 'disabled', allowed: false };
 				const confidence = (params as { confidence: number }).confidence;

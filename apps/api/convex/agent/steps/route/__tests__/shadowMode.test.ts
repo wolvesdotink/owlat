@@ -44,6 +44,7 @@ function makeCtx(shadowEnabled: boolean, recorded: Recorded[]) {
 			const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
 			if (name.includes('getBudgetStatus')) return { autonomousAutoSendAllowed: true };
 			if (name.includes('getCircuitBreakersInternal')) return [];
+			if (name.includes('listActiveInternal')) return [];
 			if (name.includes('checkPermissionInternal'))
 				return { mode: 'enabled', allowed: true, reason: 'rule permits' };
 			if (name.includes('getMessage'))
@@ -103,6 +104,7 @@ describe('routeStep.execute — shadow mode', () => {
 				const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
 				if (name.includes('getBudgetStatus')) return { autonomousAutoSendAllowed: true };
 				if (name.includes('getCircuitBreakersInternal')) return [];
+				if (name.includes('listActiveInternal')) return [];
 				if (name.includes('checkPermissionInternal'))
 					return { mode: 'enabled', allowed: false, reason: 'below threshold' };
 				if (name.includes('getShadowMode')) return { enabled: true };

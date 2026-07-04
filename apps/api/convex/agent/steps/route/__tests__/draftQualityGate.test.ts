@@ -42,6 +42,7 @@ function makeExecuteCtx(opts: {
 		runQuery: async (ref: unknown, params?: unknown) => {
 			const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
 			if (name.includes('getCircuitBreakersInternal')) return [];
+			if (name.includes('listActiveInternal')) return [];
 			if (name.includes('checkPermissionInternal')) {
 				if (opts.autonomyThreshold === undefined) {
 					return { mode: 'disabled', allowed: false };
