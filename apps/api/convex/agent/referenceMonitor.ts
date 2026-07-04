@@ -28,6 +28,7 @@
  */
 
 import { parseAddress } from '@owlat/shared';
+import { stripRemoteImages } from '@owlat/shared/postboxTrackers';
 import { detectSecretLeak } from '../lib/secretLeakScan';
 
 /**
@@ -75,17 +76,12 @@ export function sanitizeOutboundHtml(
 		if (host) allowed.add(host.trim().toLowerCase());
 	}
 
-	let strippedRemoteImages = 0;
 	let neutralizedLinks = 0;
 
-	// Remove <img> tags whose src is remote (absolute http(s) or protocol-relative).
-	const withoutRemoteImages = html.replace(
-		/<img\b[^>]*?\bsrc\s*=\s*(["'])\s*(?:https?:)?\/\/[^"']*\1[^>]*>/gi,
-		() => {
-			strippedRemoteImages += 1;
-			return '';
-		},
-	);
+	// Remove <img> tags whose src is remote (absolute http(s) or protocol-relative)
+	// via the shared privacy-strip primitive so outbound + inbound neutralize
+	// remote images identically (covers 1×1 tracking pixels and remote images).
+	const { html: withoutRemoteImages, strippedRemoteImages } = stripRemoteImages(html);
 
 	// Neutralize <a href="..."> whose host is not allow-listed: drop the href
 	// attribute, keep the tag (and its inner text) intact.
