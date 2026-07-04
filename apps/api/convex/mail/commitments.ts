@@ -207,8 +207,19 @@ const GLOBAL_EXTRACT_CAP = 40;
  *   2. Arm a pre-lapse reminder for any OPEN commitment whose deadline is within
  *      REMIND_WINDOW_MS — reusing mail/followUps.ts so the thread floats into
  *      the Reply Queue — and flip it to `reminded` exactly once.
- * Fail-soft: a per-mailbox error is swallowed so one bad mailbox can't wedge the
- * sweep for the rest.
+ *
+ * One bounded transaction: it reads ≤ MAILBOX_SCAN_LIMIT mailboxes and, per
+ * mailbox, ≤ SENT_SCAN_LIMIT sent messages (Pass 1) + ≤ COMMITMENT_SCAN_LIMIT
+ * open commitments (Pass 2) — worst case ~50 × (40 + 50) ≈ 4,500 reads, well
+ * under Convex's per-transaction read cap. The LLM extraction itself is NEVER
+ * run here: Pass 1 only fans it out via `ctx.scheduler`, and each extraction
+ * runs (and fails soft) in its own scheduled action. The reminder writes in
+ * Pass 2 patch `thread.followUp` + the commitment row; the GLOBAL_EXTRACT_CAP
+ * is a cross-mailbox guard, so the passes stay in this single transaction rather
+ * than a per-mailbox fan-out — a throw in one mailbox's pass therefore aborts
+ * the whole tick, but the next 30-min tick simply retries and the sweep is
+ * idempotent (extraction is de-duped by the `by_message` guard; the reminder
+ * only flips `open → reminded` once).
  */
 export const sweep = internalMutation({
 	args: {},
@@ -247,9 +258,7 @@ export const sweep = internalMutation({
 				}
 				const already = await ctx.db
 					.query('mailCommitments')
-					.withIndex('by_message', (q) =>
-						q.eq('messageId', msg._id).eq('direction', 'outbound')
-					)
+					.withIndex('by_message', (q) => q.eq('messageId', msg._id).eq('direction', 'outbound'))
 					.first();
 				if (already) continue;
 				await ctx.scheduler.runAfter(0, internal.mail.commitmentExtract.extractCommitment, {
@@ -264,7 +273,10 @@ export const sweep = internalMutation({
 			const open = await ctx.db
 				.query('mailCommitments')
 				.withIndex('by_mailbox_status_due', (q) =>
-					q.eq('mailboxId', mailbox._id).eq('status', 'open').lte('dueAt', now + REMIND_WINDOW_MS)
+					q
+						.eq('mailboxId', mailbox._id)
+						.eq('status', 'open')
+						.lte('dueAt', now + REMIND_WINDOW_MS)
 				)
 				.take(COMMITMENT_SCAN_LIMIT);
 			for (const commitment of open) {
