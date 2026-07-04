@@ -183,12 +183,45 @@ export const classifyThread = internalAction({
 			// fact only the owner can supply. Self-contained fail-soft (returns
 			// undefined on any error) so a clarification failure never downgrades
 			// the refinement above.
-			const clarification = object.needsReply
+			let clarification = object.needsReply
 				? await refineClarification(ctx, {
 						transcript,
 						fromAddress: latestInbound.fromAddress,
 					})
 				: undefined;
+
+			// ANSWER-MEMORY: before surfacing a "Needs your input" card, drop any
+			// question a stored standing answer (scoped to this sender's contact, or
+			// org-general) already resolves — so the Reply Queue never re-asks a
+			// question the owner has already answered. Fail-soft: any lookup error
+			// leaves the questions untouched (ask exactly as today).
+			if (clarification && clarification.questions.length > 0) {
+				try {
+					const { fills } = await ctx.runMutation(
+						internal.inbox.clarificationMemory.resolveFills,
+						{
+							fromAddress: latestInbound.fromAddress,
+							questions: clarification.questions.map((q) => ({
+								id: q.id,
+								slotType: q.slotType,
+								text: q.text,
+							})),
+						}
+					);
+					if (fills.length > 0) {
+						const filled = new Set(fills.map((f) => f.questionId));
+						const remaining = [];
+						for (const q of clarification.questions) {
+							if (!filled.has(q.id)) remaining.push(q);
+						}
+						// Every open slot was answered from memory → no card needed.
+						clarification =
+							remaining.length > 0 ? { ...clarification, questions: remaining } : undefined;
+					}
+				} catch {
+					// Leave the clarification untouched — ask as today.
+				}
+			}
 
 			await ctx.runMutation(internal.mail.needsReply.applyResult, {
 				threadId: args.threadId,
