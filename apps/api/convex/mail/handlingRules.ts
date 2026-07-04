@@ -27,8 +27,9 @@ import {
 /**
  * Upper bound on how many handling rules a deployment can hold. The table is
  * deployment-global and hand-curated in settings (mirroring autonomyRules), so
- * this ceiling is generous while still keeping every read BOUNDED — no unbounded
- * `.collect()` on either the settings list or the per-message evaluation.
+ * this ceiling is generous while still keeping every read BOUNDED — the settings
+ * list and the per-message evaluation both cap their fetch at this ceiling
+ * (via `.take(MAX_HANDLING_RULES)`) rather than reading the table unbounded.
  */
 export const MAX_HANDLING_RULES = 500;
 
