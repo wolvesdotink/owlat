@@ -321,6 +321,19 @@ crons.interval(
 	{}
 );
 
+// Daily Brief — rebuild the "what needs you today" digest per active mailbox
+// (mail/dailyBrief.ts): ranked pending replies + clarifications + due follow-ups
+// + open commitments, plus the auditable low-signal bundle. Reads persisted
+// signals only (no LLM spend); in-app surface via getLatestBrief.
+crons.interval('build daily briefs', { hours: 24 }, internal.mail.dailyBrief.buildDailyBriefs, {});
+
+// Commitment sweep — bidirectional deadline/promise tracking (mail/commitments.ts).
+// Schedules cheap-tier LLM extraction for recent sent promises (bounded fan-out)
+// and arms a pre-lapse reminder (reusing mail/followUps.ts) for any open
+// commitment inside its reminder window, so a promise the owner made can't lapse
+// unseen. Fail-soft; never sends mail.
+crons.interval('commitment reminder sweep', { minutes: 30 }, internal.mail.commitments.sweep, {});
+
 // Permanently delete soft-deleted contacts whose 30-day retention has expired.
 // Cascades to contact-owned children and nulls out FKs in append-only tables.
 crons.interval(
