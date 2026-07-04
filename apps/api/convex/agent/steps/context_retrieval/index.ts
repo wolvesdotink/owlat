@@ -146,6 +146,37 @@ export const contextRetrievalStep: AgentStepModule<
 							.join('\n')
 				);
 			}
+
+			// 2b. OPEN COMMITMENTS — durable promises we owe THIS contact (an
+			// action_item or a communicated decision), pulled by contact scope
+			// INDEPENDENT of semantic similarity. The vector/FTS legs only surface a
+			// promise when the new inbound restates it, which is exactly when it's
+			// least needed; this ensures "we said we'd ship X by Friday" is in the
+			// briefing even for an unrelated inbound. First-class briefing section.
+			const openCommitments = await ctx.runQuery(
+				internal.knowledge.graph.getOpenCommitmentsByContact,
+				{ contactId: message.contactId }
+			);
+			if (openCommitments.length > 0) {
+				hasKnowledge = true;
+				for (const c of openCommitments) {
+					groundingSources.push({
+						type: 'knowledge',
+						id: c._id as string,
+						title: c.title,
+					});
+				}
+				contextParts.push(
+					'[OPEN COMMITMENTS — still owed to this contact; honour these]\n' +
+						openCommitments
+							.map((c) => {
+								const due =
+									c.dueAt !== undefined ? ` | due ${new Date(c.dueAt).toISOString()}` : '';
+								return `- (${c.entryType}${due}) ${c.title}: ${c.content}`;
+							})
+							.join('\n')
+				);
+			}
 		}
 
 		// 3. Thread history (previous messages in this conversation)
@@ -224,22 +255,41 @@ export const contextRetrievalStep: AgentStepModule<
 						topScore = topScore === undefined ? k._score : Math.max(topScore, k._score);
 					}
 				}
-				contextParts.push(
-					'[KNOWLEDGE]\n' +
-						knowledge
-							.map((k) => {
-								// A superseded fact is kept for context but flagged so the
-								// model won't ground a reply on it; a contradicts endpoint
-								// is framed as a caveat.
-								const prefix = k._stale
-									? '[SUPERSEDED — do not rely on this] '
-									: k._caveat
-										? 'CAVEAT: '
-										: '';
-								return `- ${prefix}(${k.entryType}, confidence ${k.confidence.toFixed(2)}) ${k.title}: ${k.content}`;
-							})
-							.join('\n')
-				);
+				const renderEntry = (k: (typeof knowledge)[number]): string => {
+					// A superseded fact is kept for context but flagged so the
+					// model won't ground a reply on it; a contradicts endpoint
+					// is framed as a caveat.
+					const prefix = k._stale
+						? '[SUPERSEDED — do not rely on this] '
+						: k._caveat
+							? 'CAVEAT: '
+							: '';
+					return `- ${prefix}(${k.entryType}, confidence ${k.confidence.toFixed(2)}) ${k.title}: ${k.content}`;
+				};
+
+				// Curated canonical answers (policy / faq authored as authoritative)
+				// get their OWN first-class section so a maintained answer isn't buried
+				// among scraped facts. A curated entry SUPERSEDED by a newer scraped
+				// fact (`_stale`) is demoted back into [KNOWLEDGE] with the superseded
+				// flag, so the fresher fact still wins.
+				const policyEntries: typeof knowledge = [];
+				const otherEntries: typeof knowledge = [];
+				for (const k of knowledge) {
+					if (k.isAuthoritative === true && !k._stale) {
+						policyEntries.push(k);
+					} else {
+						otherEntries.push(k);
+					}
+				}
+				if (policyEntries.length > 0) {
+					contextParts.push(
+						'[POLICY / CANONICAL ANSWERS — curated; authoritative over scraped facts]\n' +
+							policyEntries.map(renderEntry).join('\n')
+					);
+				}
+				if (otherEntries.length > 0) {
+					contextParts.push('[KNOWLEDGE]\n' + otherEntries.map(renderEntry).join('\n'));
+				}
 
 				// [KNOWLEDGE RELATIONSHIPS] — the typed edges among the entries above,
 				// one line per edge (outgoing direction), e.g. "A" SUPERSEDES "B".
