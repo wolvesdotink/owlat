@@ -16,6 +16,7 @@
 
 import { z } from 'zod';
 import { getLLMProvider } from '../../../lib/llmProvider';
+import { internal } from '../../../_generated/api';
 import type { Id } from '../../../_generated/dataModel';
 import type { AgentStepModule } from '../types';
 import { runLlmObject } from '../../../lib/llm/dispatch';
@@ -23,21 +24,22 @@ import { runLlmObject } from '../../../lib/llm/dispatch';
 const classificationSchema = z.object({
 	category: z
 		.enum([
-			'support', 'sales', 'billing', 'feature_request',
-			'complaint', 'spam', 'internal', 'other',
+			'support',
+			'sales',
+			'billing',
+			'feature_request',
+			'complaint',
+			'spam',
+			'internal',
+			'other',
 		])
 		.describe('The primary category of this message'),
-	priority: z
-		.enum(['urgent', 'normal', 'low'])
-		.describe('How urgently this needs attention'),
+	priority: z.enum(['urgent', 'normal', 'low']).describe('How urgently this needs attention'),
 	sentiment: z
 		.enum(['positive', 'neutral', 'negative'])
 		.describe('The emotional tone of the message'),
 	intent: z
-		.enum([
-			'question', 'complaint', 'request', 'information',
-			'escalation', 'acknowledgment',
-		])
+		.enum(['question', 'complaint', 'request', 'information', 'escalation', 'acknowledgment'])
 		.describe('What the sender is trying to do'),
 	confidence: z
 		.number()
@@ -51,13 +53,28 @@ export type ClassifyInput = {
 	context: string;
 };
 
-export type ClassifyOutput = z.infer<typeof classificationSchema>;
+export type ClassifyOutput = z.infer<typeof classificationSchema> & {
+	// Set when a deterministic natural-language handling rule (auto_archive)
+	// matched this message — the `route` fork below archives it without a reply,
+	// mirroring the spam path. Absent on the normal path.
+	handlingRuleArchive?: boolean;
+};
+
+/**
+ * Is the LLM's own classification safety-critical — i.e. one the route step's
+ * inviolable hard-block keys off (complaint/urgent) or the classify fork
+ * archives (spam)? A natural-language `categorize` rule must never be able to
+ * relabel such a verdict, so it can only ever RESTRICT auto-send, never widen it.
+ */
+function isSafetyCriticalClassification(c: { category: string; priority: string }): boolean {
+	return c.category === 'complaint' || c.category === 'spam' || c.priority === 'urgent';
+}
 
 export const classifyStep: AgentStepModule<'classify', ClassifyInput, ClassifyOutput> = {
 	kind: 'classify',
 	llm: { tier: 'fast' },
 
-	async execute(_ctx, input) {
+	async execute(ctx, input) {
 		const model = getLLMProvider('classify');
 
 		const { object, tokenUsage, modelUsed } = await runLlmObject({
@@ -76,7 +93,38 @@ Classify this message with:
 			temperature: 0.2,
 		});
 
-		return { output: object, tokenUsage, modelUsed };
+		// Deterministic natural-language handling rules — evaluated with NO model in
+		// the loop against the message's sender/subject/body. A matching
+		// `categorize` rule forces the category; a matching `auto_archive` rule
+		// short-circuits to archived (via `route` below). FAIL-SOFT: any failure
+		// leaves the LLM classification untouched (today's behaviour).
+		let output: ClassifyOutput = object;
+		try {
+			const rules = await ctx.runQuery(internal.mail.handlingRules.evaluateForMessage, {
+				inboundMessageId: input.inboundMessageId,
+			});
+			if (rules.autoArchive) {
+				output = { ...object, handlingRuleArchive: true };
+			} else if (rules.categoryOverride && !isSafetyCriticalClassification(object)) {
+				// The compiled category is validated at compile time; persisted as a
+				// free string (classificationValidator.category is v.string()).
+				//
+				// SECURITY: a `categorize` rule may only RESTRICT, never widen,
+				// auto-send. It is therefore FORBIDDEN from relabelling a
+				// safety-critical verdict — a genuine `complaint`/`spam` category or an
+				// `urgent` priority. Were it allowed, a rule could relabel a complaint
+				// as (say) `support`, laundering it past the inviolable complaint/urgent
+				// hard-block in the route step (route/index.ts) and onto the auto-send
+				// path — the exact "a rule can widen auto-send" bypass. When the LLM's
+				// own verdict is safety-critical, that verdict stands and the override
+				// is dropped; benign→benign filing overrides still apply.
+				output = { ...object, category: rules.categoryOverride as ClassifyOutput['category'] };
+			}
+		} catch {
+			// swallowed: rules are additive; the LLM classification stands.
+		}
+
+		return { output, tokenUsage, modelUsed };
 	},
 
 	route(output, input, runCtx) {
@@ -85,6 +133,15 @@ Classify this message with:
 			return {
 				kind: 'transition',
 				transition: { to: 'archived', reason: 'classifier_spam' },
+			};
+		}
+
+		// Natural-language handling rule (auto_archive) matched — archive without a
+		// reply, mirroring the spam path.
+		if (output.handlingRuleArchive) {
+			return {
+				kind: 'transition',
+				transition: { to: 'archived', reason: 'handling_rule_archive' },
 			};
 		}
 

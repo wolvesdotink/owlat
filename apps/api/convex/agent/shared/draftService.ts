@@ -303,6 +303,7 @@ export function buildDraftMessages(args: {
 	classification: DraftClassificationBlock;
 	context: string;
 	confirmedContext?: string;
+	stanceGuidance?: string;
 }): ModelMessage[] {
 	return [
 		cacheableSystemMessage(args.systemPrompt),
@@ -320,6 +321,16 @@ export function buildDraftMessages(args: {
 				(args.confirmedContext && args.confirmedContext.trim().length > 0
 					? `[CONFIRMED BY OWNER] The mailbox owner has confirmed the following facts; treat them as authoritative and rely on them when drafting:\n${args.confirmedContext}\n\n`
 					: '') +
+				// TRUSTED standing instruction: the stance a natural-language handling
+				// rule ("draft a polite decline for recruiters") compiled to. It is
+				// user-authored, so — like the confirmed facts — it sits OUTSIDE the
+				// untrusted tags and is treated as authoritative WORDING/POSTURE
+				// guidance. It shapes tone/stance only; it can never license inventing
+				// facts, and the message is still held for human review (a
+				// draft_with_stance rule restricts auto-send).
+				(args.stanceGuidance && args.stanceGuidance.trim().length > 0
+					? `[STANDING INSTRUCTION FROM THE MAILBOX OWNER] When replying to messages like this, take the following stance/posture: ${args.stanceGuidance.trim()}. Honour this stance while staying grounded in the context below and never inventing facts.\n\n`
+					: '') +
 				`Draft a reply to the email below.\n\n<untrusted_email_content>\n${args.context}\n</untrusted_email_content>`,
 		},
 	];
@@ -336,6 +347,12 @@ export type SharedDraftParams = {
 	context: string;
 	/** TRUSTED owner-confirmed facts (clarification loop); rendered outside the untrusted tags. */
 	confirmedContext?: string;
+	/**
+	 * TRUSTED stance/posture from a natural-language handling rule (e.g. "a polite
+	 * decline"); rendered outside the untrusted tags as authoritative wording
+	 * guidance. Absent on the normal path and on personal Postbox mail.
+	 */
+	stanceGuidance?: string;
 	classification: DraftClassificationBlock;
 	toneInstruction: string;
 	signatureInstruction: string;
@@ -395,6 +412,7 @@ export async function runSharedDraft(
 		classification: params.classification,
 		context: params.context,
 		confirmedContext: params.confirmedContext,
+		stanceGuidance: params.stanceGuidance,
 	});
 
 	const temperature = params.temperature ?? 0.4;
