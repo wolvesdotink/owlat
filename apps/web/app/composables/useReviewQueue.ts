@@ -112,5 +112,6 @@ export function useReviewQueue() {
 		approveOption,
 		onReject,
 		composeAndSend,
+		editDraft,
 	};
 }
