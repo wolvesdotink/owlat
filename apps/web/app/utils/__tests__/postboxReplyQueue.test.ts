@@ -3,6 +3,7 @@ import {
 	compareReplyQueueItems,
 	replyQueueHeadline,
 	formatReplyQueueDueHint,
+	draftSlotConfidence,
 } from '../postboxReplyQueue';
 
 const item = (urgency: 'high' | 'normal' | 'low', receivedAt: number) => ({
@@ -109,5 +110,20 @@ describe('formatReplyQueueDueHint', () => {
 	it('returns null for missing or unparseable hints', () => {
 		expect(formatReplyQueueDueHint(undefined)).toBeNull();
 		expect(formatReplyQueueDueHint('whenever you can')).toBeNull();
+	});
+});
+
+describe('draftSlotConfidence', () => {
+	it('buckets the quality self-check score into a label + level', () => {
+		const q = { score: 0, complete: true, grounded: true, flags: [] };
+		expect(draftSlotConfidence({ confidence: 0.9, quality: q }).level).toBe('high');
+		expect(draftSlotConfidence({ confidence: 0.7, quality: q }).level).toBe('medium');
+		expect(draftSlotConfidence({ confidence: 0.4, quality: q }).level).toBe('low');
+	});
+
+	it('reports "Unverified" when the self-check failed (no quality)', () => {
+		const c = draftSlotConfidence({ confidence: 0.4, quality: undefined });
+		expect(c.level).toBe('unverified');
+		expect(c.label).toBe('Unverified');
 	});
 });
