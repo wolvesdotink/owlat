@@ -18,6 +18,7 @@ export type FeatureFlagKey =
 	| 'inbox.codeTasks'
 	| 'chat'
 	| 'postbox'
+	| 'postbox.aiDraft'
 	| 'mail.external'
 	// AI
 	| 'ai'
@@ -141,6 +142,18 @@ export const FEATURE_FLAGS: Record<FeatureFlagKey, FeatureFlagDefinition> = {
 		// personal-mail = the hosted IMAP server + ACME stack; mta = the MX/send
 		// transport hosted mailboxes deliver through.
 		dockerProfiles: ['personal-mail', 'mta'],
+	},
+	'postbox.aiDraft': {
+		key: 'postbox.aiDraft',
+		category: 'ai',
+		label: 'Draft-on-arrival for personal mail',
+		description:
+			'Pre-generate a reply draft (with a confidence + quality self-check) into the Reply Queue the moment a personal-mail message that needs a reply lands, so the owner can review-and-send instead of starting from a blank composer. Human review only — never auto-sends.',
+		default: false,
+		// Needs personal Postbox to have a mailbox to draft for, and the AI master
+		// toggle for an LLM provider. resolveFlags forces this OFF whenever either
+		// dependency is off, so a disabled AI stack degrades to today's behaviour.
+		requires: ['postbox', 'ai'],
 	},
 	'mail.external': {
 		key: 'mail.external',
