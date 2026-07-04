@@ -30,7 +30,7 @@ describe('detectAttachmentRequest', () => {
 	it('fires on "please forward" and "could you share"', () => {
 		expect(detectAttachmentRequest('Please forward the signed contract.').requested).toBe(true);
 		expect(detectAttachmentRequest('Could you share your latest invoice with us?').requested).toBe(
-			true,
+			true
 		);
 	});
 
@@ -41,16 +41,20 @@ describe('detectAttachmentRequest', () => {
 
 	it('stays quiet on ordinary prose that merely mentions sending', () => {
 		expect(detectAttachmentRequest('Thanks, I already sent the report last week.').requested).toBe(
-			false,
+			false
 		);
 		expect(detectAttachmentRequest('We can meet on Tuesday to discuss pricing.').requested).toBe(
-			false,
+			false
 		);
 		expect(detectAttachmentRequest('').requested).toBe(false);
 	});
 });
 
-function candidate(id: string, score: number, over: Partial<AttachmentCandidate> = {}): AttachmentCandidate {
+function candidate(
+	id: string,
+	score: number,
+	over: Partial<AttachmentCandidate> = {}
+): AttachmentCandidate {
 	return { fileId: id, filename: `${id}.pdf`, score, ...over };
 }
 
@@ -86,16 +90,16 @@ describe('pickAttachmentSuggestion', () => {
 	});
 
 	it('caps the shortlist at MAX_CANDIDATES', () => {
-		const files = Array.from({ length: MAX_CANDIDATES + 3 }, (_, i) => candidate(`f${i}`, 0.5 - i * 0.01));
+		const files = Array.from({ length: MAX_CANDIDATES + 3 }, (_, i) =>
+			candidate(`f${i}`, 0.5 - i * 0.01)
+		);
 		const result = pickAttachmentSuggestion(files);
 		expect(result.candidates.length).toBeLessThanOrEqual(MAX_CANDIDATES);
 	});
 
 	it('preserves extra candidate fields (generic over the row shape)', () => {
 		type Rich = AttachmentCandidate & { storageId: string };
-		const rows: Rich[] = [
-			{ fileId: 'a', filename: 'a.pdf', score: 0.9, storageId: 'store_a' },
-		];
+		const rows: Rich[] = [{ fileId: 'a', filename: 'a.pdf', score: 0.9, storageId: 'store_a' }];
 		const result = pickAttachmentSuggestion(rows);
 		expect(result.candidates[0]!.storageId).toBe('store_a');
 	});

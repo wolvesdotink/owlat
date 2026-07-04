@@ -557,7 +557,8 @@ describe('clarifyStep.execute — attachment ambiguity', () => {
 			runQuery: async (ref: unknown) => {
 				const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
 				if (name.includes('getAskEagernessInternal')) return { mode: null };
-				if (name.includes('getMessage')) return { contextCoverage: coverage, contactId: 'contact_x' };
+				if (name.includes('getMessage'))
+					return { contextCoverage: coverage, contactId: 'contact_x' };
 				throw new Error(`unexpected runQuery: ${name}`);
 			},
 			runAction: async (ref: unknown) => {
@@ -605,7 +606,8 @@ describe('clarifyStep.execute — attachment ambiguity', () => {
 			runQuery: async (ref: unknown) => {
 				const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
 				if (name.includes('getAskEagernessInternal')) return { mode: null };
-				if (name.includes('getMessage')) return { contextCoverage: { lowCoverage: false }, contactId: 'contact_x' };
+				if (name.includes('getMessage'))
+					return { contextCoverage: { lowCoverage: false }, contactId: 'contact_x' };
 				throw new Error(`unexpected runQuery: ${name}`);
 			},
 			runAction: async () => {

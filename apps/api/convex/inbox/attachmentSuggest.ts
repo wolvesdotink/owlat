@@ -45,7 +45,7 @@ const MAX_QUERY_CHARS = 400;
  */
 export async function computeAttachmentSuggestions(
 	ctx: SuggestCtx,
-	args: { context: string; contactId?: Id<'contacts'> | undefined },
+	args: { context: string; contactId?: Id<'contacts'> | undefined }
 ): Promise<AttachmentSuggestions | null> {
 	try {
 		const { requested, query } = detectAttachmentRequest(args.context);

@@ -114,9 +114,7 @@ export const recordDraftOutput = internalMutation({
 			confidenceScore: args.confidenceScore,
 			...(args.draftQuality ? { draftQuality: args.draftQuality } : {}),
 			...(args.draftOptions ? { draftOptions: args.draftOptions } : {}),
-			...(args.attachmentSuggestions
-				? { attachmentSuggestions: args.attachmentSuggestions }
-				: {}),
+			...(args.attachmentSuggestions ? { attachmentSuggestions: args.attachmentSuggestions } : {}),
 		});
 	},
 });

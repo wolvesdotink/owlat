@@ -134,7 +134,7 @@ export function detectAttachmentRequest(text: string): { requested: boolean; que
  * Pure + exported for tests. Never throws.
  */
 export function pickAttachmentSuggestion<T extends AttachmentCandidate>(
-	files: T[],
+	files: T[]
 ): AttachmentSuggestionResult<T> {
 	const ranked = files.slice(0, MAX_CANDIDATES);
 	if (ranked.length === 0) return { candidates: [], ambiguous: false };
