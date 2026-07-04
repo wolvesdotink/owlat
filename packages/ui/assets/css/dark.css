@@ -14,8 +14,8 @@
 	--surface-7: #414141;
 	--surface-8: #484848;
 
-	/* Mix target for the +6% hover / +10% selected surface rule:
-	   color-mix(in srgb, var(--surface-N) 94%, var(--surface-tint)) */
+	/* Mix target for the +6% hover / +10% selected surface recipes
+	   (see --surface-N-hover/-selected in tokens.css) */
 	--surface-tint: #fff;
 
 	--dm-hi-base: rgba(255, 255, 255, 0.01);
@@ -67,7 +67,11 @@
 	--color-bg-base: var(--surface-1);
 	--color-bg-elevated: var(--surface-2);
 	--color-bg-surface: var(--surface-3);
-	--color-bg-surface-hover: color-mix(in srgb, var(--surface-3) 94%, #fff); /* +6% hover rule */
+	--color-bg-surface-hover: color-mix(
+		in srgb,
+		var(--color-bg-surface) 94%,
+		var(--surface-tint)
+	); /* +6% hover rule */
 	--color-bg-overlay: var(--surface-5);
 	--color-bg-soft: var(--surface-2);
 
@@ -107,6 +111,9 @@
 	--shadow-sm: var(--shadow-2);
 	--shadow-md: var(--shadow-4);
 	--shadow-lg: var(--shadow-6);
+	--shadow-brand-hover: var(--shadow-3);
+	--shadow-card: var(--shadow-2);
+	--shadow-card-hover: var(--shadow-3);
 
 	--owlat-code-bg: #131313;
 	--owlat-bg-soft: var(--surface-2);

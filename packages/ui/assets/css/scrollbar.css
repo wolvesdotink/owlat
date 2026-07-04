@@ -36,33 +36,21 @@
 }
 
 /* Edge fade toward scrollable overflow: a mask dissolves content toward edges
-   that have more to scroll. Where scroll-driven animations are supported the
-   true start/end stay crisp and the fade only appears mid-scroll. */
+   that have more to scroll; the scroll-driven animation keeps the true start
+   and end crisp. Gated entirely on scroll-timeline support — a static mask
+   would permanently fade the first/last 24px on browsers without it, so those
+   get no mask at all. */
 @utility scroll-fade {
-	mask-image: linear-gradient(
-		to bottom,
-		transparent 0,
-		black 24px,
-		black calc(100% - 24px),
-		transparent 100%
-	);
 	@supports (animation-timeline: scroll(self)) {
+		mask-image: linear-gradient(
+			to bottom,
+			transparent 0,
+			black 24px,
+			black calc(100% - 24px),
+			transparent 100%
+		);
 		animation: sf-edges linear both;
 		animation-timeline: scroll(self);
-	}
-}
-
-@utility scroll-fade-x {
-	mask-image: linear-gradient(
-		to right,
-		transparent 0,
-		black 24px,
-		black calc(100% - 24px),
-		transparent 100%
-	);
-	@supports (animation-timeline: scroll(self inline)) {
-		animation: sf-edges-x linear both;
-		animation-timeline: scroll(self inline);
 	}
 }
 
@@ -82,24 +70,5 @@
 	}
 	100% {
 		mask-image: linear-gradient(to bottom, transparent 0, black 24px, black 100%);
-	}
-}
-
-@keyframes sf-edges-x {
-	0% {
-		mask-image: linear-gradient(to right, black 0, black calc(100% - 24px), transparent 100%);
-	}
-	10%,
-	90% {
-		mask-image: linear-gradient(
-			to right,
-			transparent 0,
-			black 24px,
-			black calc(100% - 24px),
-			transparent 100%
-		);
-	}
-	100% {
-		mask-image: linear-gradient(to right, transparent 0, black 24px, black 100%);
 	}
 }

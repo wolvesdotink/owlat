@@ -1,6 +1,7 @@
 /* Owlat Design System — Unified Tokens (Single Source of Truth)
  *
- * Warm palette (Nocturne base) + Geist font stack.
+ * Fluid Functionalism neutral surface ladder + terracotta brand accent,
+ * Instrument Sans/Serif + JetBrains Mono font stack.
  * All apps import this via index.css.
  */
 @theme {
@@ -9,7 +10,7 @@
 	--color-bg-base: var(--surface-1);
 	--color-bg-elevated: var(--surface-2);
 	--color-bg-surface: var(--surface-3);
-	--color-bg-surface-hover: color-mix(in srgb, var(--surface-3) 94%, #fff);
+	--color-bg-surface-hover: color-mix(in srgb, var(--color-bg-surface) 94%, var(--surface-tint));
 	--color-bg-overlay: var(--surface-5);
 	--color-bg-soft: var(--surface-2);
 
@@ -118,4 +119,21 @@
 	--motion-moderate-exit: 120ms;
 	--motion-slow: 240ms; /* dialogs, modals, big panels */
 	--motion-slow-exit: 160ms;
+	/* Diagram/landing entrance choreography (staggered node reveals) — the one
+	   sanctioned longer-than-slow duration; not for interaction feedback. */
+	--motion-choreo: 800ms;
+}
+
+/* === FLUID FUNCTIONALISM: HOVER/SELECTED SURFACE RECIPES ===
+ * The +6% hover / +10% selected rule over ladder levels. --surface-tint is
+ * #fff in dark mode and #000 in light mode (dark.css/light.css), so these
+ * re-resolve per mode. Class lists: bg-(--surface-1-hover); CSS blocks:
+ * background: var(--surface-2-hover). */
+:root {
+	--surface-1-hover: color-mix(in srgb, var(--surface-1) 94%, var(--surface-tint));
+	--surface-1-selected: color-mix(in srgb, var(--surface-1) 90%, var(--surface-tint));
+	--surface-2-hover: color-mix(in srgb, var(--surface-2) 94%, var(--surface-tint));
+	--surface-2-selected: color-mix(in srgb, var(--surface-2) 90%, var(--surface-tint));
+	--surface-3-hover: color-mix(in srgb, var(--surface-3) 94%, var(--surface-tint));
+	--surface-3-selected: color-mix(in srgb, var(--surface-3) 90%, var(--surface-tint));
 }

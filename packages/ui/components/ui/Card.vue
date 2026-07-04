@@ -36,10 +36,12 @@ const paddingClasses: Record<CardPadding, string> = {
 	lg: 'p-8',
 };
 
-// Default carries elevation via the surface ladder (shadow ring, no border);
-// tinted status variants keep their translucent border for the colored edge.
+// Default carries elevation via the surface ladder (shadow ring); the
+// transparent border keeps the box metrics and lets consumer border-color
+// overrides (e.g. border-error/20) keep rendering their tinted edge.
+// Tinted status variants keep their translucent border for the colored edge.
 const variantClasses: Record<CardVariant, string> = {
-	default: 'bg-surface-2 shadow-surface-1',
+	default: 'bg-surface-2 shadow-surface-1 border border-transparent',
 	info: 'bg-brand/5 border border-brand/20',
 	warning: 'bg-warning/5 border border-warning/20',
 	error: 'bg-error/5 border border-error/20',

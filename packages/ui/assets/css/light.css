@@ -48,14 +48,23 @@
 	--scrollbar-thumb: rgba(0, 0, 0, 0.16);
 	--scrollbar-thumb-hover: rgba(0, 0, 0, 0.34);
 
-	/* Semantic tokens remapped onto the surface ladder */
-	--color-bg-deep: #f4f4f4; /* one step below surface-1 (page substrate wells) */
+	/* Semantic tokens remapped onto the surface ladder.
+	   NOTE: --color-bg-surface/-soft deliberately do NOT equal the raw ladder
+	   here — the light ladder flattens to white (elevation via shadows), but
+	   the semantic "surface"/"soft" fills are used as flat hover/selection/
+	   grouping backgrounds by hundreds of call sites and must stay a visible
+	   step against base/elevated/white parents. */
+	--color-bg-deep: #f2f2f2; /* one step below surface-1 (page substrate wells) */
 	--color-bg-base: var(--surface-1);
 	--color-bg-elevated: var(--surface-2);
-	--color-bg-surface: var(--surface-3);
-	--color-bg-surface-hover: color-mix(in srgb, var(--surface-3) 94%, #000); /* +6% hover rule */
+	--color-bg-surface: #f4f4f4;
+	--color-bg-surface-hover: color-mix(
+		in srgb,
+		var(--color-bg-surface) 94%,
+		var(--surface-tint)
+	); /* +6% hover rule */
 	--color-bg-overlay: var(--surface-5); /* white — elevation carried by --shadow-5 */
-	--color-bg-soft: var(--surface-2);
+	--color-bg-soft: #f6f6f6;
 
 	/* Brand stays terracotta — identity accent on a neutral field */
 	--color-brand: #b86b4d;
@@ -92,6 +101,9 @@
 	--shadow-sm: var(--shadow-2);
 	--shadow-md: var(--shadow-4);
 	--shadow-lg: var(--shadow-6);
+	--shadow-brand-hover: var(--shadow-3);
+	--shadow-card: var(--shadow-2);
+	--shadow-card-hover: var(--shadow-3);
 
 	--owlat-code-bg: #f5f5f5;
 	--owlat-bg-soft: var(--surface-2);

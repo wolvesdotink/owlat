@@ -95,9 +95,9 @@ function rowAction(event: MouseEvent, e: 'toggle-star' | 'toggle-read' | 'archiv
 			:tabindex="selectable ? -1 : undefined"
 			:aria-selected="focused"
 			:to="selectable ? undefined : `/dashboard/postbox/${folderRole}/${msg._id}`"
-			class="pbx-row-link block w-full text-left px-4 py-3 hover:bg-[color-mix(in_srgb,var(--surface-1)_94%,var(--surface-tint))]"
+			class="pbx-row-link block w-full text-left px-4 py-3 hover:bg-(--surface-1-hover)"
 			:class="{
-				'bg-[color-mix(in_srgb,var(--surface-1)_90%,var(--surface-tint))]': active,
+				'bg-(--surface-1-selected)': active,
 				'bg-brand/5': selected,
 				'ring-1 ring-inset ring-brand/50': focused,
 				'cursor-pointer': selectable,

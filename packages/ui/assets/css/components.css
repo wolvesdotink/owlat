@@ -3,7 +3,8 @@
  * Form Element Sizing Conventions:
  * - All form elements (input, select, textarea, button) use py-3 (12px vertical padding)
  * - This ensures consistent height for inline layouts (e.g., search bar + button)
- * - Calculated height: py-3 (24px) + text (~20px) + border (2px) ≈ 46px
+ * - Calculated height: py-3 (24px) + text (~20px) ≈ 44px (elevation comes from
+ *   shadow rings, not borders, so borders no longer add to the box)
  * - Small variants use py-2 (8px vertical padding) for compact layouts
  * - Large variants use h-12 (48px fixed height) for emphasis
  */
@@ -76,7 +77,10 @@
 	}
 
 	.link {
-		@apply text-brand hover:text-brand-hover hover:font-medium transition-[color,font-weight] duration-(--motion-fast) ease-spring underline-offset-2 hover:underline;
+		/* No hover weight shift: inline links sit in prose and a weight change
+		   alters advance width, reflowing the line. Weight-based selection is
+		   reserved for layout-safe spots (sidebar, segmented control). */
+		@apply text-brand hover:text-brand-hover transition-colors duration-(--motion-fast) ease-spring underline-offset-2 hover:underline;
 	}
 
 	.error-message {
