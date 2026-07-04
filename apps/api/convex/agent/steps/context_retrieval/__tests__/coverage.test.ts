@@ -40,6 +40,13 @@ type Legs = {
 		_score?: number;
 	}>;
 	files?: Array<{ filename: string; title?: string; summary?: string }>;
+	openCommitments?: Array<{
+		_id: string;
+		entryType: string;
+		title: string;
+		content: string;
+		dueAt?: number;
+	}>;
 };
 
 /** Captures the args handed to recordContextTier for persistence assertions. */
@@ -64,6 +71,7 @@ function makeCtx(legs: Legs) {
 			if (name.includes('getContact')) return legs.contact ?? null;
 			if (name.includes('getRecentActivities')) return legs.activities ?? [];
 			if (name.includes('getThreadMessages')) return legs.threadMessages ?? [];
+			if (name.includes('getOpenCommitments')) return legs.openCommitments ?? [];
 			if (name.includes('isGraphRetrievalEnabled')) return false;
 			throw new Error(`unexpected runQuery: ${name}`);
 		},

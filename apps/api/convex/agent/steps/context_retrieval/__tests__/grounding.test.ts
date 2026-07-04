@@ -61,6 +61,7 @@ function makeCtx(legs: Legs) {
 			if (name.includes('getContact')) return null;
 			if (name.includes('getRecentActivities')) return [];
 			if (name.includes('getThreadMessages')) return legs.threadMessages ?? [];
+			if (name.includes('getOpenCommitments')) return [];
 			if (name.includes('isGraphRetrievalEnabled')) return false;
 			throw new Error(`unexpected runQuery: ${name}`);
 		},
