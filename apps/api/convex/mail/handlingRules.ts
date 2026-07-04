@@ -66,8 +66,7 @@ export const handlingCompilationValidator = v.object({
 export const list = adminQuery({
 	args: {},
 	handler: async (ctx) => {
-		// bounded: a per-org standing-intent list, intrinsically small.
-		return await ctx.db.query('handlingRules').collect();
+		return await ctx.db.query('handlingRules').collect(); // bounded: a per-org standing-intent list, intrinsically small.
 	},
 });
 
@@ -172,11 +171,10 @@ export const remove = authedMutation({
 export const listActiveInternal = internalQuery({
 	args: {},
 	handler: async (ctx) => {
-		// bounded: intrinsically small per-org standing-intent list.
 		return await ctx.db
 			.query('handlingRules')
 			.withIndex('by_status', (q) => q.eq('status', 'active'))
-			.collect();
+			.collect(); // bounded: intrinsically small per-org standing-intent list.
 	},
 });
 
