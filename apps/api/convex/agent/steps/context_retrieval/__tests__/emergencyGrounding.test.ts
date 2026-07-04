@@ -173,7 +173,8 @@ describe('activityContentSnippet', () => {
 	it('returns empty string when there is nothing human-meaningful', () => {
 		expect(activityContentSnippet({ metadata: null })).toBe('');
 		expect(activityContentSnippet({})).toBe('');
-		expect(activityContentSnippet({ metadata: { campaignId: 'abc' } })).toBe('');
+		// Metadata present but none of the human-meaningful fields set.
+		expect(activityContentSnippet({ metadata: {} })).toBe('');
 	});
 
 	it('length-caps a long snippet', () => {

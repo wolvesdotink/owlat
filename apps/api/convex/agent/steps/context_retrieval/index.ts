@@ -84,7 +84,19 @@ function truncateOneLine(text: string, max: number): string {
  * surface verbatim; still length-capped to keep the briefing terse.
  */
 export function activityContentSnippet(activity: {
-	metadata?: Record<string, string | undefined> | null;
+	metadata?:
+		| {
+				emailSubject?: string;
+				linkUrl?: string;
+				topicName?: string;
+				propertyKey?: string;
+				newValue?: string;
+				bounceType?: string;
+				errorMessage?: string;
+				reason?: string;
+				source?: string;
+		  }
+		| null;
 }): string {
 	const m = activity.metadata;
 	if (!m) return '';
