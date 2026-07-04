@@ -21,6 +21,7 @@ import type * as agent_shadowScorecard from "../agent/shadowScorecard.js";
 import type * as agent_shadowSimilarity from "../agent/shadowSimilarity.js";
 import type * as agent_steps_classify_index from "../agent/steps/classify/index.js";
 import type * as agent_steps_clarify_index from "../agent/steps/clarify/index.js";
+import type * as agent_steps_context_retrieval_emergency from "../agent/steps/context_retrieval/emergency.js";
 import type * as agent_steps_context_retrieval_index from "../agent/steps/context_retrieval/index.js";
 import type * as agent_steps_draft_index from "../agent/steps/draft/index.js";
 import type * as agent_steps_draft_recall from "../agent/steps/draft/recall.js";
@@ -571,6 +572,7 @@ declare const fullApi: ApiFromModules<{
   "agent/shadowSimilarity": typeof agent_shadowSimilarity;
   "agent/steps/classify/index": typeof agent_steps_classify_index;
   "agent/steps/clarify/index": typeof agent_steps_clarify_index;
+  "agent/steps/context_retrieval/emergency": typeof agent_steps_context_retrieval_emergency;
   "agent/steps/context_retrieval/index": typeof agent_steps_context_retrieval_index;
   "agent/steps/draft/index": typeof agent_steps_draft_index;
   "agent/steps/draft/recall": typeof agent_steps_draft_recall;

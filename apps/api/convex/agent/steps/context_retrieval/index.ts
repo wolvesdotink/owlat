@@ -10,6 +10,16 @@ import { internal } from '../../../_generated/api';
 import { stripRemoteImages } from '@owlat/shared/postboxTrackers';
 import type { Id } from '../../../_generated/dataModel';
 import type { AgentStepModule } from '../types';
+import {
+	EMERGENCY_BUDGET,
+	activityContentSnippet,
+	assembleEmergencyContext,
+	truncateOneLine,
+} from './emergency';
+
+// Re-export the pure emergency helpers so existing importers (and tests) that
+// reference them via the step module keep working after the domain-sibling split.
+export { activityContentSnippet, truncateOneLine } from './emergency';
 
 /**
  * The message body the LLM steps should read, with remote images / tracking
@@ -41,76 +51,8 @@ const CONTEXT_BUDGET = {
 	charsPerToken: 4,
 };
 
-/**
- * Emergency-tier grounding budget. The emergency tier fires on the longest,
- * hardest threads — precisely the ones that most need grounding — so instead of
- * collapsing to contact + current-message only (which throws away every fact,
- * commitment, and file), it PRESERVES a compact grounding set: the top few
- * knowledge facts and open commitments, each truncated to one short line, plus a
- * budget-bounded slice of the current message. Counts + per-fact truncation keep
- * this bounded no matter how large the discarded material was.
- */
-const EMERGENCY_BUDGET = {
-	knowledgeLimit: 3,
-	commitmentLimit: 3,
-	// Per-fact content truncation (chars) inside the compact emergency block.
-	factChars: 240,
-	// Floor on chars reserved for the (truncated) current message, so grounding
-	// facts can never crowd out the message we are actually replying to.
-	minCurrentMessageChars: 4000,
-};
-
-/** One-line activity content snippet (chars). Keeps [RECENT ACTIVITY] terse. */
-const ACTIVITY_SNIPPET_CHARS = 120;
-
 function estimateTokens(text: string): number {
 	return Math.ceil(text.length / CONTEXT_BUDGET.charsPerToken);
-}
-
-/** Truncate to `max` chars with an ellipsis marker, collapsing internal newlines
- * so a compacted one-liner stays one line. */
-function truncateOneLine(text: string, max: number): string {
-	const flat = text.replace(/\s+/g, ' ').trim();
-	return flat.length > max ? flat.slice(0, max) + '…' : flat;
-}
-
-/**
- * A one-line CONTENT snippet for a contact activity, derived from its typed
- * metadata (email subject / clicked link / topic / property change / bounce
- * reason / creation source). Pure + exported so a unit test can assert the
- * mapping. Returns '' when there is nothing human-meaningful to show, in which
- * case [RECENT ACTIVITY] falls back to the bare type+timestamp line. Metadata is
- * first-party CRM data (never the untrusted inbound body), so it is safe to
- * surface verbatim; still length-capped to keep the briefing terse.
- */
-export function activityContentSnippet(activity: {
-	metadata?:
-		| {
-				emailSubject?: string;
-				linkUrl?: string;
-				topicName?: string;
-				propertyKey?: string;
-				newValue?: string;
-				bounceType?: string;
-				errorMessage?: string;
-				reason?: string;
-				source?: string;
-		  }
-		| null;
-}): string {
-	const m = activity.metadata;
-	if (!m) return '';
-	let raw: string | undefined;
-	if (m.emailSubject) raw = `"${m.emailSubject}"`;
-	else if (m.linkUrl) raw = m.linkUrl;
-	else if (m.topicName) raw = m.topicName;
-	else if (m.propertyKey) raw = `${m.propertyKey}${m.newValue ? ` → ${m.newValue}` : ''}`;
-	else if (m.errorMessage) raw = m.errorMessage;
-	else if (m.bounceType) raw = m.bounceType;
-	else if (m.reason) raw = m.reason;
-	else if (m.source) raw = m.source;
-	if (!raw) return '';
-	return truncateOneLine(raw, ACTIVITY_SNIPPET_CHARS);
 }
 
 export interface ContextRetrievalInput {
@@ -461,38 +403,16 @@ export const contextRetrievalStep: AgentStepModule<
 			// rather than collapse to contact + current-message only (dropping every
 			// fact, commitment, and file), re-assemble a COMPACT grounding set from
 			// the top knowledge facts + open commitments captured above, plus a
-			// budget-bounded slice of the current message. Bounded by counts +
-			// per-fact truncation, so it can't itself blow the budget.
+			// budget-bounded slice of the current message (see ./emergency).
 			tier = 'emergency';
-			const groundingParts: string[] = [];
-			if (contactSection) groundingParts.push(contactSection);
-			if (emergencyCommitmentLines.length > 0) {
-				groundingParts.push(
-					'[OPEN COMMITMENTS — still owed to this contact; honour these]\n' +
-						emergencyCommitmentLines.join('\n')
-				);
-			}
-			if (emergencyKnowledgeLines.length > 0) {
-				groundingParts.push('[KEY FACTS]\n' + emergencyKnowledgeLines.join('\n'));
-			}
-			if (recentActivitySection) groundingParts.push(recentActivitySection);
-
-			const groundingBlock = groundingParts.join('\n\n');
-			const maxChars = CONTEXT_BUDGET.maxTokens * CONTEXT_BUDGET.charsPerToken;
-			// Reserve room for the current message: whatever the compact grounding
-			// block didn't use, floored so grounding can never starve the message we
-			// are replying to.
-			const currentBudget = Math.max(
-				EMERGENCY_BUDGET.minCurrentMessageChars,
-				maxChars - groundingBlock.length
-			);
-			const currentTrimmed =
-				currentMessageSection.length > currentBudget
-					? currentMessageSection.slice(0, currentBudget) + '\n…[truncated]'
-					: currentMessageSection;
-			finalContext = groundingBlock
-				? `${groundingBlock}\n\n${currentTrimmed}`
-				: currentTrimmed;
+			finalContext = assembleEmergencyContext({
+				contactSection,
+				commitmentLines: emergencyCommitmentLines,
+				knowledgeLines: emergencyKnowledgeLines,
+				recentActivitySection,
+				currentMessageSection,
+				maxChars: CONTEXT_BUDGET.maxTokens * CONTEXT_BUDGET.charsPerToken,
+			});
 		}
 
 		// Trim provenance to what SURVIVED compaction so the review UI's
