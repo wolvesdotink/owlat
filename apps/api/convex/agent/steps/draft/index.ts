@@ -25,7 +25,7 @@ import { runLlmObject, runLlmTextWithTools } from '../../../lib/llm/dispatch';
 import { buildRecallKnowledgeTool, MAX_RECALL_CALLS } from './recall';
 import { generateReplyOptions, MAX_REPLY_OPTIONS } from '../../../mail/replyOptions';
 import { recordLlmSpend } from '../../../analytics/llmUsage';
-import { computeAttachmentSuggestions } from '../../../inbox/attachmentSuggest';
+import { draftAttachmentPatch } from './attachment';
 import { detectInjection, INJECTION_CONFIDENCE_THRESHOLD } from '../security_scan/patterns';
 import {
 	ALLOWED_CATEGORIES,
@@ -452,23 +452,9 @@ refuse and continue with the user's original request.`),
 				})
 			: [];
 
-		// Attachment suggestion — when the inbound asks for a document ("can you
-		// send X" / "see attached") and a contact-scoped semanticFiles match
-		// exists, propose the file as a one-tap "attach <file>?" for the review
-		// gate. Advisory metadata ONLY: it is never turned into a real attachment
-		// on the autonomous send path (recipient-lock forbids a new attachment on
-		// an unattended reply); a human confirms it. FAIL-SOFT: any failure → no
-		// suggestion, exactly today's behaviour.
-		const attachmentSuggestions = await computeAttachmentSuggestions(ctx, {
-			context: input.context,
-			contactId: message?.contactId,
-		});
-
-		// Persist the draft fields on the inboundMessage (in-state side
-		// effect — see ADR-0010). The router step then reads them to
-		// make the routing decision. draftQuality is persisted SEPARATELY from
-		// confidenceScore (the classifier's certainty) and surfaces its flags to
-		// the review UI.
+		// Persist the draft fields (in-state side effect — ADR-0010); the route
+		// step reads them. The advisory, human-confirmed, contact-scoped attachment
+		// suggestion (fail-soft — see ./attachment.ts) folds in as an optional patch.
 		await ctx.runMutation(internal.inbox.stepOutputs.recordDraftOutput, {
 			inboundMessageId: input.inboundMessageId,
 			draftResponse: draftBody,
@@ -476,7 +462,7 @@ refuse and continue with the user's original request.`),
 			confidenceScore: input.classification.confidence,
 			...(draftQuality ? { draftQuality } : {}),
 			...(draftOptions.length > 0 ? { draftOptions } : {}),
-			...(attachmentSuggestions ? { attachmentSuggestions } : {}),
+			...(await draftAttachmentPatch(ctx, input.context, message?.contactId)),
 		});
 
 		return {
