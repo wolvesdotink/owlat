@@ -16,7 +16,7 @@ defineEmits<{
 
 <template>
 	<button
-		class="flex items-center justify-center border-none bg-transparent rounded-md cursor-pointer transition-[background-color,color,transform] duration-100 active:scale-[0.92]"
+		class="flex items-center justify-center border-none bg-transparent rounded-md cursor-pointer transition-[background-color,color,transform] duration-(--motion-fast) active:scale-[0.92]"
 		:class="[
 			size === 'sm' ? 'w-6 h-6' : 'w-[30px] h-[30px]',
 			active

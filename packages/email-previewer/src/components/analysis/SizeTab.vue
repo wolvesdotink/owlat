@@ -153,7 +153,7 @@ function formatBytes(bytes: number): string {
 	height: 100%;
 	border-radius: 3px;
 	background: var(--ep-success);
-	transition: width 0.3s ease;
+	transition: width var(--motion-moderate) var(--ease-spring);
 }
 
 .ep-size-bar-danger {
@@ -228,7 +228,7 @@ function formatBytes(bytes: number): string {
 .ep-size-breakdown-fill {
 	height: 100%;
 	border-radius: 2px;
-	transition: width 0.3s ease;
+	transition: width var(--motion-moderate) var(--ease-spring);
 }
 
 .ep-size-stats {

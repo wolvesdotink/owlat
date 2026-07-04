@@ -106,7 +106,7 @@ function toggleSeverity(severity: string) {
 	color: var(--ep-text-tertiary);
 	font-size: 11px;
 	cursor: pointer;
-	transition: all 0.1s ease;
+	transition: all var(--motion-fast) var(--ease-spring);
 }
 
 .ep-filter-active {

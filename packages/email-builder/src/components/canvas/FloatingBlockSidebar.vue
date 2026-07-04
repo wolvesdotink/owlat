@@ -134,7 +134,7 @@ function handlePickerSelect(type: BlockType) {
 			<button
 				v-for="block in quickBlocks"
 				:key="block.type"
-				class="flex items-center justify-center w-[32px] h-[32px] rounded-lg border-none bg-transparent text-text-secondary cursor-pointer transition-all duration-100 hover:bg-bg-surface-hover hover:text-text-primary active:scale-[0.92]"
+				class="flex items-center justify-center w-[32px] h-[32px] rounded-lg border-none bg-transparent text-text-secondary cursor-pointer transition-all duration-(--motion-moderate) hover:bg-bg-surface-hover hover:text-text-primary active:scale-[0.92]"
 				:title="block.label"
 				type="button"
 				@click="emit('add-block', block.type)"
@@ -146,7 +146,7 @@ function handlePickerSelect(type: BlockType) {
 
 			<button
 				ref="moreButtonRef"
-				class="flex items-center justify-center w-[32px] h-[32px] rounded-lg border border-dashed border-border-default bg-transparent text-text-tertiary cursor-pointer transition-all duration-100 hover:bg-bg-surface-hover hover:text-text-secondary hover:border-border-strong active:scale-[0.92]"
+				class="flex items-center justify-center w-[32px] h-[32px] rounded-lg border border-dashed border-border-default bg-transparent text-text-tertiary cursor-pointer transition-all duration-(--motion-moderate) hover:bg-bg-surface-hover hover:text-text-secondary hover:border-border-strong active:scale-[0.92]"
 				title="More blocks..."
 				type="button"
 				@click="showPicker = !showPicker"

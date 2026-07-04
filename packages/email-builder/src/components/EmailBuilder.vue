@@ -871,7 +871,7 @@ function handleSlashCommandSelect(command: SlashCommand, fromBlockId: string) {
 <template>
 	<div class="light flex flex-col h-screen bg-bg-base">
 		<!-- Header -->
-		<div class="shrink-0 overflow-hidden transition-[max-height,opacity] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] max-h-20" :class="{ '!max-h-0 !opacity-0 !pointer-events-none': isFocusMode }">
+		<div class="shrink-0 overflow-hidden transition-[max-height,opacity] duration-(--motion-moderate) ease-[cubic-bezier(0.4,0,0.2,1)] max-h-20" :class="{ '!max-h-0 !opacity-0 !pointer-events-none': isFocusMode }">
 			<EditorHeader
 				:name="formName"
 				:subject="formSubject"

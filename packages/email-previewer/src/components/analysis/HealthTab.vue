@@ -114,7 +114,7 @@ const scoreBarColor = scoreColor;
 .ep-health-bar-fill {
 	height: 100%;
 	border-radius: 2px;
-	transition: width 0.3s ease;
+	transition: width var(--motion-moderate) var(--ease-spring);
 }
 
 .ep-health-subscores {
@@ -156,7 +156,7 @@ const scoreBarColor = scoreColor;
 .ep-health-subscore-fill {
 	height: 100%;
 	border-radius: 2px;
-	transition: width 0.3s ease;
+	transition: width var(--motion-moderate) var(--ease-spring);
 }
 
 .ep-health-recommendations {

@@ -98,7 +98,7 @@ onUnmounted(() => {
 				<button
 					v-for="(block, i) in filteredBlocks"
 					:key="block._id"
-					class="flex items-center gap-2.5 w-full py-2 px-2.5 text-left border-none rounded-md bg-transparent cursor-pointer transition-[background-color] duration-100 hover:bg-bg-surface-hover"
+					class="flex items-center gap-2.5 w-full py-2 px-2.5 text-left border-none rounded-md bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) hover:bg-bg-surface-hover"
 					:class="{ 'bg-brand/[0.08]': i === selectedIndex }"
 					@mousedown.prevent="emit('select', block)"
 					@mouseenter="selectedIndex = i"

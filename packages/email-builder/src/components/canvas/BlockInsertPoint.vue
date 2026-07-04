@@ -35,7 +35,7 @@ function handleSelect(type: BlockType, afterBlockId: string) {
 	>
 		<!-- Horizontal line -->
 		<div
-			class="absolute top-1/2 left-0 right-0 h-px -translate-y-1/2 transition-all duration-150 origin-center"
+			class="absolute top-1/2 left-0 right-0 h-px -translate-y-1/2 transition-all duration-(--motion-moderate) origin-center"
 			:class="isHovered || showPicker ? 'bg-brand/20 scale-x-100' : 'bg-transparent scale-x-0'"
 			:style="isHovered || showPicker ? 'animation: eb-insert-line 150ms ease both' : ''"
 		/>
@@ -43,7 +43,7 @@ function handleSelect(type: BlockType, afterBlockId: string) {
 		<!-- Plus button -->
 		<button
 			ref="buttonRef"
-			class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-5 h-5 rounded-full border bg-bg-elevated flex items-center justify-center cursor-pointer transition-all duration-150 z-[2]"
+			class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-5 h-5 rounded-full border bg-bg-elevated flex items-center justify-center cursor-pointer transition-all duration-(--motion-moderate) z-[2]"
 			:class="[
 				isHovered || showPicker
 					? 'opacity-100 scale-100'

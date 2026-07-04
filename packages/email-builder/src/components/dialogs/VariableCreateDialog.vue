@@ -57,7 +57,7 @@ watch(
 				<input
 					v-model="variableKey"
 					type="text"
-					class="w-full px-4 py-3 bg-white/[0.04] border border-border-subtle rounded-lg text-text-primary outline-none transition-[border-color,box-shadow] duration-150 focus:border-brand focus:ring-1 focus:ring-brand"
+					class="w-full px-4 py-3 bg-white/[0.04] border border-border-subtle rounded-lg text-text-primary outline-none transition-[border-color,box-shadow] duration-(--motion-fast) focus:border-brand focus:ring-1 focus:ring-brand"
 					placeholder="order_id"
 					@keyup.enter="handleCreate"
 				/>
@@ -73,7 +73,7 @@ watch(
 				<label class="block text-sm font-medium text-text-secondary mb-2">Type</label>
 				<select
 					v-model="variableType"
-					class="w-full px-4 py-3 bg-white/[0.04] border border-border-subtle rounded-lg text-text-primary outline-none transition-[border-color,box-shadow] duration-150 focus:border-brand"
+					class="w-full px-4 py-3 bg-white/[0.04] border border-border-subtle rounded-lg text-text-primary outline-none transition-[border-color,box-shadow] duration-(--motion-fast) focus:border-brand"
 				>
 					<option value="string">String</option>
 					<option value="number">Number</option>

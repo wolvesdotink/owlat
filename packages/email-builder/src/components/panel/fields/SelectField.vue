@@ -122,15 +122,15 @@ onUnmounted(() => {
 			>{{ displayText }}</span>
 			<ChevronDown
 				:size="14"
-				class="text-text-secondary shrink-0 transition-transform duration-200 ease-[cubic-bezier(0.4,0,0.2,1)]"
+				class="text-text-secondary shrink-0 transition-transform duration-(--motion-moderate) ease-[cubic-bezier(0.4,0,0.2,1)]"
 				:class="{ 'rotate-180': isOpen }"
 			/>
 		</button>
 
 		<Teleport to="body">
 			<Transition
-				enter-active-class="transition-[opacity,transform] duration-100 ease-out"
-				leave-active-class="transition-[opacity,transform] duration-[60ms] ease-in"
+				enter-active-class="transition-[opacity,transform] duration-(--motion-moderate) ease-spring"
+				leave-active-class="transition-[opacity,transform] duration-(--motion-fast-exit) ease-exit"
 				:enter-from-class="openUpward ? 'opacity-0 translate-y-1' : 'opacity-0 -translate-y-1'"
 				:leave-to-class="openUpward ? 'opacity-0 translate-y-1' : 'opacity-0 -translate-y-1'"
 			>
@@ -143,7 +143,7 @@ onUnmounted(() => {
 					<button
 						v-for="opt in options"
 						:key="String(opt.value)"
-						class="flex items-center justify-between w-full py-[7px] px-2.5 text-[13px] text-left border-none rounded-[5px] bg-none text-text-primary cursor-pointer gap-2 transition-[background-color] duration-[60ms] hover:bg-bg-surface-hover"
+						class="flex items-center justify-between w-full py-[7px] px-2.5 text-[13px] text-left border-none rounded-[5px] bg-none text-text-primary cursor-pointer gap-2 transition-[background-color] duration-(--motion-fast) hover:bg-bg-surface-hover"
 						:class="{ 'text-brand font-medium bg-bg-surface': String(opt.value) === String(value) }"
 						type="button"
 						@click="select(opt.value)"

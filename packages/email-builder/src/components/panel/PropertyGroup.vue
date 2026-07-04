@@ -45,11 +45,11 @@ function isFieldVisible(field: { showWhen?: { key: string; value: unknown } }): 
 
 <template>
 	<div
-		class="border-b border-border-subtle transition-colors duration-200"
+		class="border-b border-border-subtle transition-colors duration-(--motion-fast)"
 	>
 		<button
 			v-if="!hideHeader"
-			class="flex items-center justify-between w-full py-2.5 pr-4 pl-4 bg-none border-none cursor-pointer select-none transition-colors duration-[120ms] hover:bg-bg-surface-hover active:bg-bg-surface-hover"
+			class="flex items-center justify-between w-full py-2.5 pr-4 pl-4 bg-none border-none cursor-pointer select-none transition-colors duration-(--motion-fast) hover:bg-bg-surface-hover active:bg-bg-surface-hover"
 			type="button"
 			@click="toggleCollapse"
 		>
@@ -57,13 +57,13 @@ function isFieldVisible(field: { showWhen?: { key: string; value: unknown } }): 
 				<component
 					:is="groupIcon"
 					:size="11"
-					class="shrink-0 transition-colors duration-200"
+					class="shrink-0 transition-colors duration-(--motion-fast)"
 					:class="!isCollapsed && !hideHeader ? 'text-text-secondary' : 'text-text-disabled'"
 				/>
 				<span class="text-[10px] font-semibold uppercase tracking-[0.08em]" :class="!isCollapsed && !hideHeader ? 'text-text-secondary' : 'text-text-tertiary'">{{ group.label }}</span>
 			</div>
 			<ChevronDown
-				class="text-text-disabled transition-transform duration-250 ease-[cubic-bezier(0.4,0,0.2,1)]"
+				class="text-text-disabled transition-transform duration-(--motion-moderate) ease-[cubic-bezier(0.4,0,0.2,1)]"
 				:class="{ '-rotate-90': isCollapsed }"
 				:size="12"
 			/>

@@ -266,12 +266,12 @@ function handleSourceInput(event: Event) {
 </script>
 
 <template>
-	<div ref="wrapperRef" data-rich-text class="relative border border-border-subtle rounded-lg overflow-hidden transition-[border-color,box-shadow] duration-150 focus-within:border-brand/50 focus-within:shadow-[0_0_0_3px_rgba(196,120,90,0.06)]">
+	<div ref="wrapperRef" data-rich-text class="relative border border-border-subtle rounded-lg overflow-hidden transition-[border-color,box-shadow] duration-(--motion-fast) focus-within:border-brand/50 focus-within:shadow-[0_0_0_3px_rgba(196,120,90,0.06)]">
 		<!-- Toolbar -->
 		<div class="flex items-center gap-px p-1 border-b border-border-subtle bg-bg-surface">
 			<button
 				type="button"
-				class="flex items-center justify-center w-[26px] h-[26px] border-none rounded bg-none text-text-secondary cursor-pointer transition-[background-color,color] duration-75 hover:bg-bg-surface-hover hover:text-text-primary"
+				class="flex items-center justify-center w-[26px] h-[26px] border-none rounded bg-none text-text-secondary cursor-pointer transition-[background-color,color] duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-primary"
 				:title="`Bold (${modKey}+B)`"
 				@click="toggleBold"
 			>
@@ -279,7 +279,7 @@ function handleSourceInput(event: Event) {
 			</button>
 			<button
 				type="button"
-				class="flex items-center justify-center w-[26px] h-[26px] border-none rounded bg-none text-text-secondary cursor-pointer transition-[background-color,color] duration-75 hover:bg-bg-surface-hover hover:text-text-primary"
+				class="flex items-center justify-center w-[26px] h-[26px] border-none rounded bg-none text-text-secondary cursor-pointer transition-[background-color,color] duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-primary"
 				:title="`Italic (${modKey}+I)`"
 				@click="toggleItalic"
 			>
@@ -287,7 +287,7 @@ function handleSourceInput(event: Event) {
 			</button>
 			<button
 				type="button"
-				class="flex items-center justify-center w-[26px] h-[26px] border-none rounded bg-none text-text-secondary cursor-pointer transition-[background-color,color] duration-75 hover:bg-bg-surface-hover hover:text-text-primary"
+				class="flex items-center justify-center w-[26px] h-[26px] border-none rounded bg-none text-text-secondary cursor-pointer transition-[background-color,color] duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-primary"
 				:title="`Underline (${modKey}+U)`"
 				@click="toggleUnderline"
 			>
@@ -295,7 +295,7 @@ function handleSourceInput(event: Event) {
 			</button>
 			<button
 				type="button"
-				class="flex items-center justify-center w-[26px] h-[26px] border-none rounded bg-none text-text-secondary cursor-pointer transition-[background-color,color] duration-75 hover:bg-bg-surface-hover hover:text-text-primary"
+				class="flex items-center justify-center w-[26px] h-[26px] border-none rounded bg-none text-text-secondary cursor-pointer transition-[background-color,color] duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-primary"
 				:title="`Link (${modKey}+K)`"
 				@click="insertLink"
 			>
@@ -305,7 +305,7 @@ function handleSourceInput(event: Event) {
 			<div v-if="variables?.length" class="relative">
 				<button
 					type="button"
-					class="flex items-center justify-center w-[26px] h-[26px] border-none rounded bg-none text-text-secondary cursor-pointer transition-[background-color,color] duration-75 hover:bg-bg-surface-hover hover:text-text-primary"
+					class="flex items-center justify-center w-[26px] h-[26px] border-none rounded bg-none text-text-secondary cursor-pointer transition-[background-color,color] duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-primary"
 					title="Insert variable"
 					@click="showVariableMenu = !showVariableMenu"
 				>
@@ -316,7 +316,7 @@ function handleSourceInput(event: Event) {
 						v-for="v in variables"
 						:key="v.key"
 						type="button"
-						class="block w-full py-1.5 px-2 text-xs text-left border-none rounded bg-none text-text-primary cursor-pointer transition-[background-color] duration-75 hover:bg-bg-surface-hover"
+						class="block w-full py-1.5 px-2 text-xs text-left border-none rounded bg-none text-text-primary cursor-pointer transition-[background-color] duration-(--motion-fast) hover:bg-bg-surface-hover"
 						@click="insertVariable(v)"
 					>
 						{{ v.key }}
@@ -326,7 +326,7 @@ function handleSourceInput(event: Event) {
 			<div class="flex-1" />
 			<button
 				type="button"
-				class="flex items-center justify-center w-[26px] h-[26px] border-none rounded bg-none text-text-secondary cursor-pointer transition-[background-color,color] duration-75 hover:bg-bg-surface-hover hover:text-text-primary"
+				class="flex items-center justify-center w-[26px] h-[26px] border-none rounded bg-none text-text-secondary cursor-pointer transition-[background-color,color] duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-primary"
 				:class="{ 'bg-brand text-white': isSourceMode }"
 				title="Source mode"
 				@click="toggleSourceMode"

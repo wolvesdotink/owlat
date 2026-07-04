@@ -56,7 +56,7 @@ function selectSwatch(color: string) {
 		<!-- Main: swatch + hex input + picker button -->
 		<div class="flex items-center gap-0 border border-border-subtle rounded-lg overflow-hidden bg-bg-surface eb-input-ring">
 			<button
-				class="w-[34px] h-[34px] border-none border-r border-r-border-subtle cursor-pointer shrink-0 p-0 transition-opacity duration-[120ms] hover:opacity-85"
+				class="w-[34px] h-[34px] border-none border-r border-r-border-subtle cursor-pointer shrink-0 p-0 transition-opacity duration-(--motion-fast) hover:opacity-85"
 				:class="{ 'bg-checker': !value || value === 'transparent' }"
 				:style="value && value !== 'transparent' ? { backgroundColor: value } : undefined"
 				type="button"
@@ -73,7 +73,7 @@ function selectSwatch(color: string) {
 				@blur="handleTextBlur"
 			/>
 			<button
-				class="flex items-center justify-center w-8 h-[34px] border-none border-l border-l-border-subtle bg-transparent text-text-disabled cursor-pointer shrink-0 transition-[background-color,color] duration-100 hover:bg-bg-surface-hover hover:text-text-secondary"
+				class="flex items-center justify-center w-8 h-[34px] border-none border-l border-l-border-subtle bg-transparent text-text-disabled cursor-pointer shrink-0 transition-[background-color,color] duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-secondary"
 				type="button"
 				title="Pick color"
 				@click="openColorPicker"

@@ -29,7 +29,7 @@ const emit = defineEmits<{
 				<input
 					:value="blockName"
 					type="text"
-					class="w-full px-4 py-3 bg-white/[0.04] border border-border-subtle rounded-lg text-text-primary outline-none transition-[border-color,box-shadow] duration-150 focus:border-brand focus:ring-1 focus:ring-brand"
+					class="w-full px-4 py-3 bg-white/[0.04] border border-border-subtle rounded-lg text-text-primary outline-none transition-[border-color,box-shadow] duration-(--motion-fast) focus:border-brand focus:ring-1 focus:ring-brand"
 					placeholder="e.g., Company Header"
 					@input="emit('update:blockName', ($event.target as HTMLInputElement).value)"
 					@keyup.enter="emit('save')"

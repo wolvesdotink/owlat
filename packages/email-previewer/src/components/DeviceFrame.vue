@@ -94,7 +94,7 @@ const isTablet = computed(() => props.device.type === 'tablet');
 	background: var(--ep-bg-surface);
 	border: 1px solid var(--ep-border-default);
 	overflow: hidden;
-	transition: all 0.3s ease;
+	transition: all var(--motion-moderate) var(--ease-spring);
 }
 
 /* Desktop frame */
