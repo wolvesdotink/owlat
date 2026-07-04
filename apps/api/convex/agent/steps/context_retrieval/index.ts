@@ -7,8 +7,28 @@
  */
 
 import { internal } from '../../../_generated/api';
+import { stripRemoteImages } from '@owlat/shared/postboxTrackers';
 import type { Id } from '../../../_generated/dataModel';
 import type { AgentStepModule } from '../types';
+
+/**
+ * The message body the LLM steps should read, with remote images / tracking
+ * pixels neutralized. The agent reads EVERY inbound automatically, so an
+ * HTML-only message (no text/plain part) whose body reached the model verbatim
+ * would carry live remote-image URLs — merely assembling them into context is a
+ * privacy hazard and a remote-resource-resolution vector. Prefer the plain-text
+ * part (no images to strip); otherwise strip remote images from the HTML before
+ * it becomes context. Fails soft (see `stripRemoteImages`): a strip error leaves
+ * the HTML as-is, matching prior behaviour, and never blocks retrieval.
+ */
+export function inboundBodyForContext(message: {
+	textBody?: string | null;
+	htmlBody?: string | null;
+}): string | undefined {
+	if (message.textBody != null) return message.textBody;
+	if (message.htmlBody != null) return stripRemoteImages(message.htmlBody).html;
+	return undefined;
+}
 
 /**
  * Token budget for context (approximate, based on ~4 chars per token).
@@ -156,9 +176,12 @@ export const contextRetrievalStep: AgentStepModule<
 			}
 		}
 
+		// The inbound body the model reads, with remote images / tracking pixels
+		// neutralized (privacy: the agent reads every inbound automatically).
+		const inboundBody = inboundBodyForContext(message);
+
 		// Query text for semantic retrieval: the inbound subject + body.
-		const queryText =
-			`${message.subject ?? ''}\n${message.textBody ?? message.htmlBody ?? ''}`.slice(0, 2000);
+		const queryText = `${message.subject ?? ''}\n${inboundBody ?? ''}`.slice(0, 2000);
 
 		if (queryText.trim().length > 10) {
 			// Contact-scope retrieval so a draft for this contact can only draw on
@@ -262,7 +285,7 @@ export const contextRetrievalStep: AgentStepModule<
 				`To: ${message.to}\n` +
 				`Subject: ${message.subject}\n` +
 				`Date: ${new Date(message.receivedAt).toISOString()}\n` +
-				`Body:\n${message.textBody ?? message.htmlBody ?? '(no body)'}`
+				`Body:\n${inboundBody ?? '(no body)'}`
 		);
 
 		// ── Compile and compact ──
