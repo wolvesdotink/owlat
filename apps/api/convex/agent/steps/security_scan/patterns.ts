@@ -50,7 +50,7 @@ export function detectSmuggling(htmlBody?: string): {
 
 	// HTML comment instructions
 	const commentMatch = htmlBody.match(
-		/<!--\s*(ignore|system|instructions?|prompt|override)[\s\S]*?-->/i,
+		/<!--\s*(ignore|system|instructions?|prompt|override)[\s\S]*?-->/i
 	);
 	if (commentMatch) {
 		return {
@@ -73,7 +73,7 @@ export function detectSmuggling(htmlBody?: string): {
 		if (match) {
 			const surroundingText = htmlBody.slice(
 				Math.max(0, (match.index ?? 0) - 50),
-				(match.index ?? 0) + (match[0]?.length ?? 0) + 200,
+				(match.index ?? 0) + (match[0]?.length ?? 0) + 200
 			);
 			if (INJECTION_PATTERNS.some((p) => p.test(surroundingText))) {
 				return {
@@ -143,7 +143,7 @@ export function stripHiddenContent(input: string | undefined | null): string {
 	const tagWithStyle =
 		/<([a-zA-Z][a-zA-Z0-9]*)\b[^>]*\bstyle\s*=\s*("[^"]*"|'[^']*')[^>]*>([\s\S]*?)<\/\1\s*>/g;
 	out = out.replace(tagWithStyle, (full, _tag, styleAttr: string) =>
-		hidingStyle.test(styleAttr) ? ' ' : full,
+		hidingStyle.test(styleAttr) ? ' ' : full
 	);
 
 	// 4. Zero-width / invisible / bidi-control characters. The zero-width
@@ -151,10 +151,7 @@ export function stripHiddenContent(input: string | undefined | null): string {
 	//    rather than inside a character class -- a class containing them can form
 	//    misleading combining sequences (oxlint: no-misleading-character-class),
 	//    the same reason detectSmuggling's zero-width probe uses alternation.
-	out = out.replace(
-		/­|​|‌|‍|‎|‏|[‪-‮]|[⁠-⁤]|﻿/g,
-		'',
-	);
+	out = out.replace(/­|​|‌|‍|‎|‏|[‪-‮]|[⁠-⁤]|﻿/g, '');
 
 	return out;
 }
@@ -195,9 +192,20 @@ export function calculateSpamScore(text: string, subject: string): number {
 
 	// Common spam keywords
 	const spamKeywords = [
-		'act now', 'limited time', 'urgent', 'congratulations', 'you have won',
-		'click here', 'unsubscribe', 'buy now', 'free', 'winner', 'prize',
-		'million dollars', 'nigerian prince', 'wire transfer',
+		'act now',
+		'limited time',
+		'urgent',
+		'congratulations',
+		'you have won',
+		'click here',
+		'unsubscribe',
+		'buy now',
+		'free',
+		'winner',
+		'prize',
+		'million dollars',
+		'nigerian prince',
+		'wire transfer',
 	];
 	for (const kw of spamKeywords) {
 		if (combined.includes(kw)) score += 10;

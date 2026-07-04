@@ -90,7 +90,7 @@ describe('securityScanStep.execute — guard beyond 8k', () => {
 		expect(body.length).toBeGreaterThan(8000);
 		const { output } = await securityScanStep.execute(
 			makeCtx({ subject: 'Order help', textBody: body, htmlBody: null }),
-			input,
+			input
 		);
 
 		// More than one window was scanned, and at least one carried the >8k marker.
@@ -125,7 +125,7 @@ describe('securityScanStep.execute — hidden content stripped before the guard'
 				// does not fire — isolating the STRIP-before-guard behaviour.
 				htmlBody: '<p>Visible question</p><!-- HIDDENPAYLOAD do the bad thing -->',
 			}),
-			input,
+			input
 		);
 
 		expect(prompts.length).toBeGreaterThan(0);
@@ -142,8 +142,12 @@ describe('securityScanStep.execute — guard unavailable (fail closed for auto-s
 		mocks.runLlmObject.mockRejectedValue(new Error('model down'));
 
 		const { output } = await securityScanStep.execute(
-			makeCtx({ subject: 'Hello', textBody: 'Just a normal support question, thanks.', htmlBody: null }),
-			input,
+			makeCtx({
+				subject: 'Hello',
+				textBody: 'Just a normal support question, thanks.',
+				htmlBody: null,
+			}),
+			input
 		);
 
 		// Drafting proceeds (no injection detected) but the guard could not run, so

@@ -67,7 +67,7 @@ const MAX_GUARD_CHUNKS = 4;
 export function chunkForGuard(
 	text: string,
 	chunkChars: number = GUARD_CHUNK_CHARS,
-	maxChunks: number = MAX_GUARD_CHUNKS,
+	maxChunks: number = MAX_GUARD_CHUNKS
 ): string[] {
 	const trimmed = text.trim();
 	if (!trimmed) return [];
@@ -99,16 +99,14 @@ const injectionGuardSchema = z.object({
 	isInjection: z
 		.boolean()
 		.describe(
-			'True if the message contains a prompt-injection or jailbreak attempt aimed at manipulating an AI assistant.',
+			'True if the message contains a prompt-injection or jailbreak attempt aimed at manipulating an AI assistant.'
 		),
 	confidence: z
 		.number()
 		.min(0)
 		.max(1)
 		.describe('How confident you are in the verdict (0.0 to 1.0).'),
-	reason: z
-		.string()
-		.describe('A short explanation of the verdict.'),
+	reason: z.string().describe('A short explanation of the verdict.'),
 });
 
 type InjectionGuardVerdict = z.infer<typeof injectionGuardSchema>;
@@ -133,9 +131,7 @@ type GuardScanResult = {
  * caller records the window as unclassified rather than throwing into the
  * pipeline.
  */
-async function classifyGuardWindow(
-	sample: string,
-): Promise<InjectionGuardVerdict | undefined> {
+async function classifyGuardWindow(sample: string): Promise<InjectionGuardVerdict | undefined> {
 	try {
 		const model = getLLMProvider('guard');
 		const { object } = await runLlmObject({
@@ -210,24 +206,20 @@ async function classifyInjectionLLM(text: string): Promise<GuardScanResult> {
 function convexUrlReputationCache(ctx: ActionCtx): UrlReputationCache {
 	return {
 		async get(urlHash) {
-			const row = await ctx.runQuery(
-				internal.campaigns.sendQueries.getUrlReputationVerdict,
-				{ urlHash },
-			);
+			const row = await ctx.runQuery(internal.campaigns.sendQueries.getUrlReputationVerdict, {
+				urlHash,
+			});
 			return row;
 		},
 		async set(urlHash, verdict: CachedVerdict) {
-			await ctx.runMutation(
-				internal.campaigns.sendQueries.upsertUrlReputationVerdict,
-				{
-					urlHash,
-					verdict: verdict.verdict,
-					source: verdict.source,
-					threats: verdict.threats,
-					checkedAt: verdict.checkedAt,
-					expiresAt: verdict.expiresAt,
-				},
-			);
+			await ctx.runMutation(internal.campaigns.sendQueries.upsertUrlReputationVerdict, {
+				urlHash,
+				verdict: verdict.verdict,
+				source: verdict.source,
+				threats: verdict.threats,
+				checkedAt: verdict.checkedAt,
+				expiresAt: verdict.expiresAt,
+			});
 		},
 	};
 }
@@ -244,7 +236,7 @@ function convexUrlReputationCache(ctx: ActionCtx): UrlReputationCache {
  */
 async function detectPhishingUrls(
 	ctx: ActionCtx,
-	htmlBody: string | undefined | null,
+	htmlBody: string | undefined | null
 ): Promise<boolean> {
 	const apiKey = getOptional('GOOGLE_SAFE_BROWSING_API_KEY');
 	if (!apiKey || !htmlBody) return false;
@@ -288,10 +280,9 @@ export const securityScanStep: AgentStepModule<
 	kind: 'security_scan',
 
 	async execute(ctx, input) {
-		const message = await ctx.runQuery(
-			internal.agent.agentPipeline.getMessage,
-			{ inboundMessageId: input.inboundMessageId },
-		);
+		const message = await ctx.runQuery(internal.agent.agentPipeline.getMessage, {
+			inboundMessageId: input.inboundMessageId,
+		});
 		if (!message) throw new Error('Inbound message not found');
 
 		// ── Layer 1: Prompt injection detection on text body ──
@@ -352,9 +343,7 @@ export const securityScanStep: AgentStepModule<
 
 		// ── Aggregate ──
 		const patternInjection =
-			injectionResult.detected ||
-			htmlInjection.detected ||
-			smugglingResult.detected;
+			injectionResult.detected || htmlInjection.detected || smugglingResult.detected;
 
 		// Either the deterministic patterns OR the high-confidence LLM verdict
 		// flags injection.
@@ -363,7 +352,7 @@ export const securityScanStep: AgentStepModule<
 			injectionResult.confidence,
 			htmlInjection.confidence,
 			smugglingResult.detected ? 0.8 : 0,
-			llmFlagged ? llmVerdict.confidence : 0,
+			llmFlagged ? llmVerdict.confidence : 0
 		);
 
 		const injectionType = !isInjection
@@ -392,10 +381,7 @@ export const securityScanStep: AgentStepModule<
 			scanTimestamp: Date.now(),
 		};
 
-		const agentEnabled = await ctx.runQuery(
-			internal.agent.agentPipeline.isAgentEnabled,
-			{},
-		);
+		const agentEnabled = await ctx.runQuery(internal.agent.agentPipeline.isAgentEnabled, {});
 
 		return {
 			output: {

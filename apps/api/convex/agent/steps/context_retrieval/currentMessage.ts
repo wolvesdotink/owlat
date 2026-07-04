@@ -36,8 +36,7 @@ export function inboundBodyForContext(message: {
 	// threshold. `stripHiddenContent` is a no-op on already-clean text (the
 	// plain-text part passes through verbatim).
 	if (message.textBody != null) return stripHiddenContent(message.textBody);
-	if (message.htmlBody != null)
-		return stripHiddenContent(stripRemoteImages(message.htmlBody).html);
+	if (message.htmlBody != null) return stripHiddenContent(stripRemoteImages(message.htmlBody).html);
 	return undefined;
 }
 
@@ -54,14 +53,14 @@ export function inboundBodyForContext(message: {
 export async function buildCurrentMessageSection(
 	ctx: ActionCtx,
 	message: { from: string; to: string; subject?: string; receivedAt: number },
-	inboundBody: string | undefined,
+	inboundBody: string | undefined
 ): Promise<string> {
 	let currentMessageBody = inboundBody ?? '(no body)';
 	if (inboundBody != null && inboundBody.trim().length > 0) {
 		try {
 			const structured = await ctx.runAction(
 				internal.agent.steps.context_retrieval.quarantine.extract,
-				{ text: inboundBody },
+				{ text: inboundBody }
 			);
 			if (typeof structured === 'string' && structured.trim().length > 0) {
 				currentMessageBody = structured;
