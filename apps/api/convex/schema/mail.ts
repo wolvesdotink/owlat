@@ -284,6 +284,12 @@ export const mailTables = {
 		// Folder the message snoozed FROM, so the wakeup cron knows where
 		// to put it back.
 		snoozedFromFolderId: v.optional(v.id('mailFolders')),
+		// "Snooze until they reply": when set alongside `snoozedUntil` (which
+		// holds the fallback cap), ANY inbound reply into the thread clears the
+		// snooze early (mail/delivery.ts hook, mirroring followUps) so the
+		// conversation resurfaces the moment the awaited reply lands. If no reply
+		// arrives, the normal snooze sweep resurfaces it once at the cap.
+		isSnoozeUntilReply: v.optional(v.boolean()),
 
 		// List mail: parsed List-Unsubscribe / List-Unsubscribe-Post target
 		// (RFC 2369 / RFC 8058), extracted once at ingest from the raw header

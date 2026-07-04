@@ -18,7 +18,12 @@ import {
 	mailUnsubscribeValidator,
 	spamVerdictValidator,
 } from '../lib/convexValidators';
-import { internalMutation, internalAction, type MutationCtx, type ActionCtx } from '../_generated/server';
+import {
+	internalMutation,
+	internalAction,
+	type MutationCtx,
+	type ActionCtx,
+} from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { evaluateFilters } from './filters';
@@ -33,6 +38,7 @@ import { scanContent } from '@owlat/email-scanner';
 import { enqueueNeedsReplyCheck } from './needsReply';
 import { enqueueCategoryCheck } from './category';
 import { clearThreadFollowUp } from './followUps';
+import { clearSnoozeUntilReplyForThread } from './snooze';
 
 const INLINE_BODY_THRESHOLD_BYTES = 64 * 1024;
 
@@ -112,7 +118,7 @@ function parseReferences(refs: string | undefined): string[] {
  */
 export async function scanInboundAttachments(
 	mta: { baseUrl: string; apiKey: string } | null,
-	rawBytes: Buffer,
+	rawBytes: Buffer
 ): Promise<'clean' | 'infected' | 'skipped' | undefined> {
 	if (!mta) return undefined; // scanner not configured → no verdict asserted
 
@@ -121,9 +127,7 @@ export async function scanInboundAttachments(
 	// Only real (non-inline) attachment leaves carry a malware risk worth gating
 	// delivery on; inline images (logos/signatures) are skipped, matching the
 	// `captureAttachments` policy.
-	const candidates = parts.filter(
-		(p) => p.disposition !== 'inline' && p.bytes.byteLength > 0,
-	);
+	const candidates = parts.filter((p) => p.disposition !== 'inline' && p.bytes.byteLength > 0);
 	if (candidates.length === 0) return undefined; // nothing to scan
 
 	let scannedAny = false;
@@ -187,9 +191,7 @@ export const ingestFromWebhook = internalAction({
 		inReplyTo: v.optional(v.string()),
 		references: v.optional(v.string()),
 		date: v.optional(v.number()),
-		attachments: v.array(
-			mailMessageAttachmentValidator
-		),
+		attachments: v.array(mailMessageAttachmentValidator),
 		spamScore: v.optional(v.number()),
 		spamVerdict: v.optional(spamVerdictValidator),
 		virusVerdict: v.optional(
@@ -325,7 +327,7 @@ async function captureAttachments(
 	},
 	rawBytes: Buffer,
 	messageId: string,
-	fromRaw: string,
+	fromRaw: string
 ): Promise<void> {
 	// The extractor wants a binary string (one char per byte) so binary parts survive.
 	const binary = rawBytes.toString('latin1');
@@ -337,10 +339,9 @@ async function captureAttachments(
 	const senderEmail = extractEmail(fromRaw);
 	let senderContactIds: Id<'contacts'>[] | undefined;
 	if (senderEmail) {
-		const contact = await ctx.runQuery(
-			internal.contacts.contacts.getByEmailForTeam,
-			{ email: senderEmail },
-		);
+		const contact = await ctx.runQuery(internal.contacts.contacts.getByEmailForTeam, {
+			email: senderEmail,
+		});
 		if (contact) senderContactIds = [contact._id];
 	}
 
@@ -359,7 +360,7 @@ async function captureAttachments(
 		if (size === 0 || size > MAX_ATTACHMENT_BYTES) continue;
 
 		const storageId = await ctx.storage.store(
-			new Blob([Buffer.from(part.bytes)], { type: part.contentType }),
+			new Blob([Buffer.from(part.bytes)], { type: part.contentType })
 		);
 		// `ingest` runs the file-type policy and deletes the blob if rejected.
 		await ctx.runMutation(internal.semanticFiles.ingest, {
@@ -433,7 +434,7 @@ export async function insertDeliveredMessage(
 		unsubscribe?: { httpUrl?: string; mailtoUrl?: string; oneClick: boolean };
 		/** Add rawSize to mailbox.usedBytes (local cache accounting). */
 		countUsedBytes?: boolean;
-	},
+	}
 ): Promise<Id<'mailMessages'>> {
 	const { mailbox, folder } = params;
 	const recipient = mailbox.address;
@@ -444,8 +445,7 @@ export async function insertDeliveredMessage(
 	const inReplyTo = stripBrackets(params.inReplyTo);
 	const normalizedSubject = normalizeSubject(params.subject);
 	const now = Date.now();
-	const snippet =
-		params.snippet ?? buildSnippet(params.textBodyInline, params.htmlBodyInline);
+	const snippet = params.snippet ?? buildSnippet(params.textBodyInline, params.htmlBodyInline);
 	const hasAttachments = params.attachments.length > 0;
 	const flagSeen = params.flagSeen ?? false;
 	// Unread delta is shared by the folder + thread counters so they stay in
@@ -471,7 +471,7 @@ export async function insertDeliveredMessage(
 		const recent = await ctx.db
 			.query('mailThreads')
 			.withIndex('by_mailbox_and_subject', (q) =>
-				q.eq('mailboxId', mailbox._id).eq('normalizedSubject', normalizedSubject),
+				q.eq('mailboxId', mailbox._id).eq('normalizedSubject', normalizedSubject)
 			)
 			.first();
 		if (recent && Math.abs(params.receivedAt - recent.lastMessageAt) <= window) {
@@ -635,9 +635,7 @@ export const deliverToMailbox = internalMutation({
 		inReplyTo: v.optional(v.string()),
 		references: v.optional(v.string()),
 		receivedAt: v.number(),
-		attachments: v.array(
-			mailMessageAttachmentValidator
-		),
+		attachments: v.array(mailMessageAttachmentValidator),
 		spamScore: v.optional(v.number()),
 		spamVerdict: v.optional(spamVerdictValidator),
 		virusVerdict: v.optional(
@@ -663,10 +661,7 @@ export const deliverToMailbox = internalMutation({
 		}
 
 		// 2. Quota check
-		if (
-			mailbox.quotaBytes != null &&
-			mailbox.usedBytes + args.rawSize > mailbox.quotaBytes
-		) {
+		if (mailbox.quotaBytes != null && mailbox.usedBytes + args.rawSize > mailbox.quotaBytes) {
 			return { skipped: true };
 		}
 
@@ -691,10 +686,7 @@ export const deliverToMailbox = internalMutation({
 		let spamScore = args.spamScore;
 		let spamVerdict = args.spamVerdict;
 		if (spamScore == null && spamVerdict == null) {
-			const scan = scanContent(
-				args.subject,
-				args.htmlBodyInline ?? args.textBodyInline ?? '',
-			);
+			const scan = scanContent(args.subject, args.htmlBodyInline ?? args.textBodyInline ?? '');
 			spamScore = scan.score;
 			// `blocked` (score >= 40) is high enough confidence to route to Spam;
 			// `suspicious`/`clean` stay in the inbox but keep their numeric score.
@@ -785,9 +777,7 @@ export const deliverToMailbox = internalMutation({
 			attachments: args.attachments,
 			flagSeen: flagsFromFilters.markRead,
 			flagFlagged: flagsFromFilters.markFlagged,
-			labelIds: labelActions
-				.map((a) => a.labelId)
-				.filter((id): id is Id<'mailLabels'> => !!id),
+			labelIds: labelActions.map((a) => a.labelId).filter((id): id is Id<'mailLabels'> => !!id),
 			spamScore,
 			spamVerdict,
 			virusVerdict: args.virusVerdict,
@@ -822,6 +812,9 @@ export const deliverToMailbox = internalMutation({
 		// to Spam/Trash doesn't count as a reply.
 		if (delivered && folder.role !== 'spam' && folder.role !== 'trash') {
 			await clearThreadFollowUp(ctx, delivered.threadId);
+			// Same signal for "snooze until they reply": the awaited reply landed,
+			// so resurface the deferred message(s) now instead of at the cap.
+			await clearSnoozeUntilReplyForThread(ctx, delivered.threadId, Date.now());
 		}
 
 		// 12. Post-delivery hooks — forwarding + vacation auto-reply.
