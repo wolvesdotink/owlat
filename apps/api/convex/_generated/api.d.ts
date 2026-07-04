@@ -84,6 +84,7 @@ import type * as automations_triggers_topic_subscribed_index from "../automation
 import type * as automations_triggers_types from "../automations/triggers/types.js";
 import type * as automations_types from "../automations/types.js";
 import type * as autonomy from "../autonomy.js";
+import type * as autonomyFeedback from "../autonomyFeedback.js";
 import type * as autonomyOutcome from "../autonomyOutcome.js";
 import type * as autonomySuggestions from "../autonomySuggestions.js";
 import type * as blockedEmails from "../blockedEmails.js";
@@ -271,6 +272,7 @@ import type * as knowledge_retrieval from "../knowledge/retrieval.js";
 import type * as lib_auditLog from "../lib/auditLog.js";
 import type * as lib_authedFunctions from "../lib/authedFunctions.js";
 import type * as lib_automationConfigTypes from "../lib/automationConfigTypes.js";
+import type * as lib_autonomyRules from "../lib/autonomyRules.js";
 import type * as lib_constants from "../lib/constants.js";
 import type * as lib_contactCountHelpers from "../lib/contactCountHelpers.js";
 import type * as lib_contactHelpers from "../lib/contactHelpers.js";
@@ -645,6 +647,7 @@ declare const fullApi: ApiFromModules<{
   "automations/triggers/types": typeof automations_triggers_types;
   "automations/types": typeof automations_types;
   autonomy: typeof autonomy;
+  autonomyFeedback: typeof autonomyFeedback;
   autonomyOutcome: typeof autonomyOutcome;
   autonomySuggestions: typeof autonomySuggestions;
   blockedEmails: typeof blockedEmails;
@@ -832,6 +835,7 @@ declare const fullApi: ApiFromModules<{
   "lib/auditLog": typeof lib_auditLog;
   "lib/authedFunctions": typeof lib_authedFunctions;
   "lib/automationConfigTypes": typeof lib_automationConfigTypes;
+  "lib/autonomyRules": typeof lib_autonomyRules;
   "lib/constants": typeof lib_constants;
   "lib/contactCountHelpers": typeof lib_contactCountHelpers;
   "lib/contactHelpers": typeof lib_contactHelpers;

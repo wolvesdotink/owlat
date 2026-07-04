@@ -353,7 +353,7 @@ describe('outcome feedback flows into adjustThresholds input', () => {
 			signal: 'complaint',
 		});
 
-		const feedback = await t.query(internal.autonomy.getRecentFeedbackInternal, {
+		const feedback = await t.query(internal.autonomyFeedback.getRecentFeedbackInternal, {
 			category: 'support',
 		});
 		expect(feedback).toHaveLength(2);

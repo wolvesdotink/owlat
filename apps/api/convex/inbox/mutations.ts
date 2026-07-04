@@ -32,7 +32,7 @@ async function recordAutonomyFeedback(
 	action: 'approved' | 'rejected' | 'edited',
 	userFeedback?: string
 ): Promise<void> {
-	await ctx.runMutation(internal.autonomy.recordFeedback, {
+	await ctx.runMutation(internal.autonomyFeedback.recordFeedback, {
 		category: message.classification?.category ?? 'other',
 		action,
 		agentConfidence: message.confidenceScore ?? message.classification?.confidence ?? 0,
