@@ -56,6 +56,7 @@ async function insertMessage(
 			subject: 'Exciting opportunity',
 			textBody: 'We have a great role for you.',
 			processingStatus: 'classifying',
+			receivedAt: Date.now(),
 			...over,
 		});
 	});
