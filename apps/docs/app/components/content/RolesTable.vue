@@ -79,7 +79,7 @@ const roles = [
   background: var(--color-bg-elevated);
   opacity: 0;
   transform: translateY(10px);
-  transition: opacity 0.5s var(--ease-out-expo), transform 0.5s var(--ease-out-expo), border-color 0.25s, box-shadow 0.3s;
+  transition: opacity var(--motion-slow) var(--ease-spring), transform var(--motion-slow) var(--ease-spring), border-color var(--motion-moderate), box-shadow var(--motion-moderate);
 }
 
 .is-visible .rt-role {
@@ -150,12 +150,12 @@ const roles = [
   gap: 8px;
   font-size: 0.8125rem;
   color: var(--color-text-secondary);
-  transition: color 0.25s;
+  transition: color var(--motion-moderate);
 }
 
 .rt-cap svg {
   flex-shrink: 0;
-  transition: transform 0.25s var(--ease-out-expo), color 0.25s;
+  transition: transform var(--motion-moderate) var(--ease-spring), color var(--motion-moderate);
 }
 
 .rt-role--brand .rt-cap svg { color: var(--color-brand-muted); }

@@ -107,7 +107,7 @@ function getIcon(type?: string) {
   border-radius: 1px;
   transform-origin: top;
   transform: scaleY(0);
-  transition: transform 0.8s var(--ease-out-expo) 0.2s;
+  transition: transform 0.8s var(--ease-spring) var(--motion-moderate);
 }
 
 .is-visible .arch-flow-line {
@@ -123,7 +123,7 @@ function getIcon(type?: string) {
   margin-bottom: 8px;
   opacity: 0;
   transform: translateX(-8px);
-  transition: opacity 0.5s var(--ease-out-expo), transform 0.5s var(--ease-out-expo);
+  transition: opacity var(--motion-slow) var(--ease-spring), transform var(--motion-slow) var(--ease-spring);
   transition-delay: calc(0.15s + var(--step-i) * 0.1s);
 }
 
@@ -159,7 +159,7 @@ function getIcon(type?: string) {
   border-radius: 50%;
   border: 2px solid var(--color-brand-dim);
   background: var(--color-bg-elevated);
-  transition: border-color 0.3s, box-shadow 0.3s;
+  transition: border-color var(--motion-moderate), box-shadow var(--motion-moderate);
 }
 
 .arch-flow-step:hover .arch-flow-node-ring {
@@ -179,7 +179,7 @@ function getIcon(type?: string) {
   position: relative;
   z-index: 1;
   color: var(--color-brand-muted);
-  transition: color 0.25s;
+  transition: color var(--motion-moderate);
 }
 
 .arch-flow-step--result .arch-flow-node-icon { color: var(--color-success); }
@@ -195,7 +195,7 @@ function getIcon(type?: string) {
   border-radius: 8px;
   background: var(--color-bg-surface);
   border: 1px solid transparent;
-  transition: border-color 0.25s, background 0.25s;
+  transition: border-color var(--motion-moderate), background var(--motion-moderate);
   flex: 1;
 }
 

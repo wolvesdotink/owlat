@@ -124,7 +124,7 @@ const layers = [
   overflow: hidden;
   opacity: 0;
   transform: translateY(14px);
-  transition: opacity 0.6s var(--ease-out-expo), transform 0.6s var(--ease-out-expo), border-color 0.3s, box-shadow 0.3s;
+  transition: opacity 0.6s var(--ease-spring), transform 0.6s var(--ease-spring), border-color var(--motion-moderate), box-shadow var(--motion-moderate);
   transition-delay: calc(var(--s) * 0.12s);
 }
 
@@ -323,7 +323,7 @@ const layers = [
   gap: 0;
   padding: 2px 0;
   opacity: 0;
-  transition: opacity 0.5s var(--ease-out-expo);
+  transition: opacity var(--motion-slow) var(--ease-spring);
   transition-delay: calc(var(--s) * 0.12s + 0.1s);
 }
 
@@ -358,12 +358,7 @@ const layers = [
 
 /* Ambient shimmer */
 .is-visible .ea-layer {
-  animation: ea-shimmer 4s ease-in-out infinite;
   animation-delay: calc(var(--s) * 0.5s);
 }
 
-@keyframes ea-shimmer {
-  0%, 100% { border-color: var(--color-border-default); }
-  50% { border-color: color-mix(in oklab, var(--color-brand) 14%, var(--color-border-default)); }
-}
 </style>

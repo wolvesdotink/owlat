@@ -253,14 +253,6 @@ const props = withDefaults(defineProps<{ class?: string }>(), { class: '' })
 .auth-orb-2 { animation: auth-drift-rev 28s ease-in-out infinite; }
 .auth-orb-3 { animation: auth-drift 20s ease-in-out infinite 5s; }
 
-@keyframes auth-drift {
-	0%, 100% { transform: translate(0, 0); }
-	50% { transform: translate(8px, -5px); }
-}
-@keyframes auth-drift-rev {
-	0%, 100% { transform: translate(0, 0); }
-	50% { transform: translate(-6px, 4px); }
-}
 
 /* ── Session pulse ── */
 .auth-pulse {
@@ -286,10 +278,6 @@ const props = withDefaults(defineProps<{ class?: string }>(), { class: '' })
 .auth-p3 { animation: auth-pfloat 6s ease-in-out infinite 3s; }
 .auth-p4 { animation: auth-pfloat 9s ease-in-out infinite 0.5s; }
 
-@keyframes auth-pfloat {
-	0%, 100% { transform: translate(0, 0); opacity: 0.2; }
-	50% { transform: translate(2px, -4px); opacity: 0.35; }
-}
 
 /* ── Node entrance ── */
 .auth-node {

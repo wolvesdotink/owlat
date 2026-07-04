@@ -17,7 +17,6 @@ const { target: linksRef, isVisible: linksVisible } = useScrollReveal()
 const { target: guidesRef, isVisible: guidesVisible } = useScrollReveal()
 const { target: codeRef, isVisible: codeVisible } = useScrollReveal()
 const { target: ossRef, isVisible: ossVisible } = useScrollReveal()
-const { onMouseMove } = useSpotlight()
 
 onMounted(() => {
 	requestAnimationFrame(() => {
@@ -77,13 +76,6 @@ const popularGuides = [
 	<div :class="['landing', { visible }]">
 		<!-- Hero -->
 		<section class="hero-section">
-			<!-- Floating orbs -->
-			<div class="hero-orbs" aria-hidden="true">
-				<div class="orb orb-1" />
-				<div class="orb orb-2" />
-				<div class="orb orb-3" />
-			</div>
-
 			<div class="hero-container">
 				<div class="hero-grid">
 					<!-- Left column -->
@@ -96,7 +88,7 @@ const popularGuides = [
 								style="
 									-webkit-mask: url('/logo.svg') no-repeat center / contain;
 									mask: url('/logo.svg') no-repeat center / contain;
-									background: linear-gradient(135deg, var(--color-brand) 20%, #d9946e 80%);
+									background: var(--color-brand);
 								"
 								aria-hidden="true"
 							/>
@@ -161,9 +153,8 @@ const popularGuides = [
 						v-for="(section, i) in sections"
 						:key="section.label"
 						:to="section.href"
-						class="section-card spotlight-card reveal-item"
+						class="section-card reveal-item"
 						:style="{ '--i': i }"
-						@mousemove="onMouseMove"
 					>
 						<div class="section-card-header">
 							<div class="section-icon">
@@ -192,9 +183,8 @@ const popularGuides = [
 						v-for="(guide, i) in popularGuides"
 						:key="guide.title"
 						:to="guide.href"
-						class="guide-card spotlight-card reveal-item"
+						class="guide-card reveal-item"
 						:style="{ '--i': i + 1 }"
-						@mousemove="onMouseMove"
 					>
 						<h3 class="guide-title">{{ guide.title }}</h3>
 						<p class="guide-description">{{ guide.description }}</p>
@@ -306,7 +296,7 @@ curl -X POST https://your-deployment.convex.site/api/v1/transactional \
 		<!-- Open Source Callout -->
 		<section ref="ossRef" :class="['oss-section', { visible: ossVisible }]">
 			<div class="section-container">
-				<div class="oss-banner spotlight-card reveal-item" :style="{ '--i': 0 }" @mousemove="onMouseMove">
+				<div class="oss-banner reveal-item" :style="{ '--i': 0 }">
 					<div class="oss-content">
 						<div class="oss-icon-row">
 							<svg class="oss-icon" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
@@ -344,11 +334,6 @@ curl -X POST https://your-deployment.convex.site/api/v1/transactional \
 </template>
 
 <style scoped>
-/* ── Easing ── */
-:root {
-	--ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
-}
-
 /* ── Layout ── */
 .landing {
 	overflow-x: hidden;
@@ -363,11 +348,11 @@ curl -X POST https://your-deployment.convex.site/api/v1/transactional \
 /* ── Scroll Reveal ── */
 .reveal-item {
 	opacity: 0;
-	transform: translateY(18px);
+	transform: translateY(8px);
 	transition:
-		opacity 0.6s var(--ease-out-expo),
-		transform 0.6s var(--ease-out-expo);
-	transition-delay: calc(var(--i, 0) * 0.07s);
+		opacity var(--motion-slow) var(--ease-spring),
+		transform var(--motion-slow) var(--ease-spring);
+	transition-delay: calc(var(--i, 0) * 0.05s);
 }
 
 .visible .reveal-item {
@@ -395,48 +380,6 @@ curl -X POST https://your-deployment.convex.site/api/v1/transactional \
 	grid-template-columns: 1.15fr 0.85fr;
 	gap: 48px;
 	align-items: center;
-}
-
-/* ── Floating Orbs ── */
-.hero-orbs {
-	position: absolute;
-	inset: 0;
-	overflow: hidden;
-	pointer-events: none;
-}
-
-.orb {
-	position: absolute;
-	border-radius: 50%;
-	filter: blur(80px);
-	will-change: transform;
-}
-
-.orb-1 {
-	width: 320px;
-	height: 320px;
-	top: -60px;
-	right: 10%;
-	background: radial-gradient(circle, rgba(196, 120, 90, 0.12) 0%, transparent 70%);
-	animation: drift 20s ease-in-out infinite;
-}
-
-.orb-2 {
-	width: 240px;
-	height: 240px;
-	bottom: -40px;
-	left: 15%;
-	background: radial-gradient(circle, rgba(212, 165, 116, 0.08) 0%, transparent 70%);
-	animation: drift-reverse 25s ease-in-out infinite;
-}
-
-.orb-3 {
-	width: 180px;
-	height: 180px;
-	top: 30%;
-	left: 50%;
-	background: radial-gradient(circle, rgba(196, 120, 90, 0.06) 0%, transparent 70%);
-	animation: drift 18s ease-in-out infinite 3s;
 }
 
 .hero-badge {
@@ -493,7 +436,7 @@ curl -X POST https://your-deployment.convex.site/api/v1/transactional \
 	margin-top: 20px;
 	width: 40px;
 	height: 2px;
-	background: linear-gradient(90deg, var(--color-brand), var(--color-accent, var(--color-brand)));
+	background: var(--color-brand);
 	opacity: 0.6;
 	border-radius: 1px;
 }
@@ -517,22 +460,21 @@ curl -X POST https://your-deployment.convex.site/api/v1/transactional \
 	border: 1px solid var(--color-brand);
 	border-radius: 8px;
 	text-decoration: none;
-	transition: transform 0.25s var(--ease-out-expo), box-shadow 0.25s var(--ease-out-expo), background 0.25s;
+	transition:
+		background var(--motion-fast) var(--ease-spring),
+		transform var(--motion-fast) var(--ease-spring);
 }
 
 .btn-primary:hover {
-	transform: translateY(-1px);
 	background: var(--color-brand-hover);
-	box-shadow: 0 4px 20px color-mix(in srgb, var(--color-brand) 35%, transparent);
 }
 
 .btn-primary:active {
-	transform: translateY(1px) scale(0.98);
-	box-shadow: none;
+	transform: scale(0.98);
 }
 
 .btn-primary svg {
-	transition: transform 0.25s var(--ease-out-expo);
+	transition: transform var(--motion-moderate) var(--ease-spring);
 }
 
 .btn-primary:hover svg {
@@ -551,31 +493,27 @@ curl -X POST https://your-deployment.convex.site/api/v1/transactional \
 	border: 1px solid var(--color-border-default);
 	border-radius: 8px;
 	text-decoration: none;
-	transition: transform 0.25s var(--ease-out-expo), border-color 0.25s, background 0.25s;
+	transition:
+		border-color var(--motion-fast) var(--ease-spring),
+		background var(--motion-fast) var(--ease-spring),
+		transform var(--motion-fast) var(--ease-spring);
 }
 
 .btn-secondary:hover {
-	transform: translateY(-1px);
 	border-color: var(--color-brand);
 	background: var(--color-brand-soft, rgba(191, 106, 62, 0.06));
 }
 
 .btn-secondary:active {
-	transform: translateY(1px) scale(0.98);
+	transform: scale(0.98);
 }
 
 /* ── Hero Snippet ── */
 .snippet-card {
-	border: 1px solid var(--color-border-default);
-	border-radius: 12px;
+	border-radius: var(--radius-card);
 	overflow: hidden;
-	background: var(--color-bg-elevated);
-	transition: border-color 0.3s, box-shadow 0.4s;
-}
-
-.snippet-card:hover {
-	border-color: color-mix(in srgb, var(--color-brand) 25%, var(--color-border-default));
-	box-shadow: 0 0 60px rgba(196, 120, 90, 0.06);
+	background: var(--surface-2);
+	box-shadow: var(--shadow-2);
 }
 
 .snippet-chrome {
@@ -638,21 +576,19 @@ curl -X POST https://your-deployment.convex.site/api/v1/transactional \
 	position: relative;
 	display: block;
 	padding: 22px 24px;
-	border: 1px solid var(--color-border-default);
-	border-radius: 12px;
-	background: var(--color-bg-base);
+	border-radius: var(--radius-card);
+	background: var(--surface-2);
+	box-shadow: var(--shadow-2);
 	text-decoration: none;
 	transition:
-		transform 0.3s var(--ease-out-expo),
-		border-color 0.3s,
-		background 0.3s,
-		box-shadow 0.3s var(--ease-out-expo);
+		background var(--motion-moderate) var(--ease-spring),
+		box-shadow var(--motion-moderate) var(--ease-spring);
 }
 
+/* Hover: +6% surface, one elevation step */
 .section-card:hover {
-	transform: translateY(-3px);
-	border-color: color-mix(in srgb, var(--color-brand) 35%, var(--color-border-default));
-	box-shadow: 0 8px 32px color-mix(in srgb, var(--color-brand) 10%, transparent);
+	background: color-mix(in srgb, var(--surface-2) 94%, var(--surface-tint));
+	box-shadow: var(--shadow-3);
 }
 
 .section-card-header {
@@ -670,11 +606,10 @@ curl -X POST https://your-deployment.convex.site/api/v1/transactional \
 	border-radius: 8px;
 	background: var(--color-brand-soft);
 	color: var(--color-brand);
-	transition: transform 0.3s var(--ease-out-expo), background 0.3s;
+	transition: background var(--motion-fast) var(--ease-spring);
 }
 
 .section-card:hover .section-icon {
-	transform: scale(1.1);
 	background: color-mix(in srgb, var(--color-brand) 15%, transparent);
 }
 
@@ -708,7 +643,9 @@ curl -X POST https://your-deployment.convex.site/api/v1/transactional \
 	color: var(--color-text-tertiary);
 	opacity: 0;
 	transform: translateX(-4px);
-	transition: opacity 0.25s, transform 0.25s var(--ease-out-expo);
+	transition:
+		opacity var(--motion-moderate) var(--ease-spring),
+		transform var(--motion-moderate) var(--ease-spring);
 }
 
 .section-card:hover .section-arrow {
@@ -739,27 +676,25 @@ curl -X POST https://your-deployment.convex.site/api/v1/transactional \
 	position: relative;
 	display: block;
 	padding: 20px 22px;
-	border: 1px solid var(--color-border-default);
-	border-radius: 12px;
-	background: var(--color-bg-base);
+	border-radius: var(--radius-card);
+	background: var(--surface-2);
+	box-shadow: var(--shadow-2);
 	text-decoration: none;
 	transition:
-		transform 0.3s var(--ease-out-expo),
-		border-color 0.3s,
-		box-shadow 0.3s var(--ease-out-expo);
+		background var(--motion-moderate) var(--ease-spring),
+		box-shadow var(--motion-moderate) var(--ease-spring);
 }
 
 .guide-card:hover {
-	transform: translateY(-3px);
-	border-color: color-mix(in srgb, var(--color-brand) 40%, var(--color-border-default));
-	box-shadow: 0 8px 32px color-mix(in srgb, var(--color-brand) 10%, transparent);
+	background: color-mix(in srgb, var(--surface-2) 94%, var(--surface-tint));
+	box-shadow: var(--shadow-3);
 }
 
 .guide-title {
 	font-size: 16px;
 	font-weight: 600;
 	color: var(--color-text-primary);
-	transition: color 0.2s;
+	transition: color var(--motion-fast) var(--ease-spring);
 }
 
 .guide-card:hover .guide-title {
@@ -780,7 +715,9 @@ curl -X POST https://your-deployment.convex.site/api/v1/transactional \
 	color: var(--color-text-tertiary);
 	opacity: 0;
 	transform: translateX(-4px);
-	transition: opacity 0.25s, transform 0.25s var(--ease-out-expo);
+	transition:
+		opacity var(--motion-moderate) var(--ease-spring),
+		transform var(--motion-moderate) var(--ease-spring);
 }
 
 .guide-card:hover .guide-arrow {
@@ -794,16 +731,10 @@ curl -X POST https://your-deployment.convex.site/api/v1/transactional \
 }
 
 .code-window {
-	border: 1px solid var(--color-border-default);
-	border-radius: 12px;
+	border-radius: var(--radius-card);
 	overflow: hidden;
-	background: var(--color-bg-elevated);
-	transition: border-color 0.3s, box-shadow 0.4s;
-}
-
-.code-window:hover {
-	border-color: color-mix(in srgb, var(--color-brand) 20%, var(--color-border-default));
-	box-shadow: 0 0 60px rgba(196, 120, 90, 0.06);
+	background: var(--surface-2);
+	box-shadow: var(--shadow-2);
 }
 
 .code-chrome {
@@ -833,7 +764,10 @@ curl -X POST https://your-deployment.convex.site/api/v1/transactional \
 	border: none;
 	border-radius: 5px;
 	cursor: pointer;
-	transition: color 0.2s, background 0.2s, box-shadow 0.2s;
+	transition:
+		color var(--motion-fast) var(--ease-spring),
+		background var(--motion-fast) var(--ease-spring),
+		box-shadow var(--motion-fast) var(--ease-spring);
 }
 
 .code-tab:hover {
@@ -842,8 +776,9 @@ curl -X POST https://your-deployment.convex.site/api/v1/transactional \
 
 .code-tab.active {
 	color: var(--color-text-primary);
-	background: var(--color-bg-elevated);
-	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+	font-weight: var(--font-weight-medium, 500);
+	background: var(--surface-4);
+	box-shadow: var(--shadow-1);
 }
 
 .code-body {
@@ -851,10 +786,17 @@ curl -X POST https://your-deployment.convex.site/api/v1/transactional \
 	overflow-x: auto;
 }
 
-/* Code tab transition */
-.code-fade-enter-active,
+/* Code tab transition — content swap on the moderate tier */
+.code-fade-enter-active {
+	transition:
+		opacity var(--motion-moderate) var(--ease-spring),
+		transform var(--motion-moderate) var(--ease-spring);
+}
+
 .code-fade-leave-active {
-	transition: opacity 0.15s ease, transform 0.15s var(--ease-out-expo);
+	transition:
+		opacity var(--motion-moderate-exit) var(--ease-exit),
+		transform var(--motion-moderate-exit) var(--ease-exit);
 }
 
 .code-fade-enter-from {
@@ -874,20 +816,17 @@ curl -X POST https://your-deployment.convex.site/api/v1/transactional \
 
 .oss-banner {
 	padding: 32px 36px;
-	border-radius: 12px;
-	border: 1px solid var(--color-border-default);
-	background:
-		linear-gradient(
-			135deg,
-			var(--color-bg-elevated),
-			color-mix(in srgb, var(--color-brand) 4%, var(--color-bg-elevated))
-		);
-	transition: border-color 0.3s, box-shadow 0.4s;
+	border-radius: var(--radius-card);
+	background: var(--surface-2);
+	box-shadow: var(--shadow-2);
+	transition:
+		background var(--motion-moderate) var(--ease-spring),
+		box-shadow var(--motion-moderate) var(--ease-spring);
 }
 
 .oss-banner:hover {
-	border-color: color-mix(in srgb, var(--color-brand) 25%, var(--color-border-default));
-	box-shadow: 0 8px 40px rgba(196, 120, 90, 0.06);
+	background: color-mix(in srgb, var(--surface-2) 94%, var(--surface-tint));
+	box-shadow: var(--shadow-3);
 }
 
 .oss-content {
@@ -904,11 +843,6 @@ curl -X POST https://your-deployment.convex.site/api/v1/transactional \
 
 .oss-icon {
 	color: var(--color-text-primary);
-	transition: transform 0.3s var(--ease-out-expo);
-}
-
-.oss-banner:hover .oss-icon {
-	transform: rotate(-8deg) scale(1.1);
 }
 
 .oss-label {
@@ -933,7 +867,7 @@ curl -X POST https://your-deployment.convex.site/api/v1/transactional \
 	font-weight: 600;
 	color: var(--color-brand);
 	text-decoration: none;
-	transition: gap 0.25s var(--ease-out-expo);
+	transition: gap var(--motion-moderate) var(--ease-spring);
 }
 
 .oss-link:hover {
@@ -960,14 +894,14 @@ curl -X POST https://your-deployment.convex.site/api/v1/transactional \
 .anim-actions,
 .anim-snippet {
 	opacity: 0;
-	transform: translateY(18px);
+	transform: translateY(8px);
 	transition:
-		opacity 0.7s var(--ease-out-expo),
-		transform 0.7s var(--ease-out-expo);
+		opacity var(--motion-slow) var(--ease-spring),
+		transform var(--motion-slow) var(--ease-spring);
 }
 
 .anim-snippet {
-	transform: translateY(24px);
+	transform: translateY(12px);
 }
 
 .visible .anim-badge {

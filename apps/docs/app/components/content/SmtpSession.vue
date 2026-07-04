@@ -392,7 +392,7 @@ onMounted(() => {
   margin: 2rem 0;
   opacity: 0;
   transform: translateY(12px);
-  transition: opacity 0.6s var(--ease-out-expo), transform 0.6s var(--ease-out-expo);
+  transition: opacity 0.6s var(--ease-spring), transform 0.6s var(--ease-spring);
 }
 
 .smtp.is-visible {
@@ -420,7 +420,7 @@ onMounted(() => {
   font-weight: 500;
   letter-spacing: 0.02em;
   color: var(--color-text-disabled);
-  transition: all 0.4s var(--ease-out-expo);
+  transition: all var(--motion-slow) var(--ease-spring);
 }
 
 .smtp-phase-icon {
@@ -432,12 +432,12 @@ onMounted(() => {
   border-radius: 50%;
   background: var(--color-bg-surface);
   border: 1.5px solid var(--color-border-subtle);
-  transition: all 0.4s var(--ease-out-expo);
+  transition: all var(--motion-slow) var(--ease-spring);
 }
 
 .smtp-phase-icon svg {
   opacity: 0.4;
-  transition: opacity 0.3s;
+  transition: opacity var(--motion-moderate);
 }
 
 .smtp-phase--reached .smtp-phase-icon {
@@ -473,7 +473,7 @@ onMounted(() => {
   height: 1.5px;
   background: var(--color-border-subtle);
   flex-shrink: 0;
-  transition: background 0.4s var(--ease-out-expo);
+  transition: background var(--motion-slow) var(--ease-spring);
 }
 
 .smtp-phase-connector--active {
@@ -538,7 +538,7 @@ onMounted(() => {
 
 .smtp-lock {
   color: var(--color-success);
-  animation: smtp-lock-in 0.4s var(--ease-out-expo);
+  animation: smtp-lock-in 0.4s var(--ease-spring);
 }
 
 @keyframes smtp-lock-in {
@@ -563,7 +563,7 @@ onMounted(() => {
   background: transparent;
   color: var(--color-text-tertiary);
   cursor: pointer;
-  transition: background 0.2s, color 0.2s;
+  transition: background var(--motion-moderate), color var(--motion-moderate);
 }
 
 .smtp-btn:hover {
@@ -726,7 +726,7 @@ onMounted(() => {
 
 .smtp-tls-icon {
   flex-shrink: 0;
-  animation: smtp-tls-lock 0.6s var(--ease-out-expo) 0.3s both;
+  animation: smtp-tls-lock 0.6s var(--ease-spring) 0.3s both;
 }
 
 @keyframes smtp-tls-lock {
@@ -769,7 +769,7 @@ onMounted(() => {
   overflow: hidden;
   opacity: 0;
   transform: translateX(10px) scale(0.97);
-  transition: opacity 0.5s var(--ease-out-expo), transform 0.5s var(--ease-out-expo), border-color 0.5s;
+  transition: opacity var(--motion-slow) var(--ease-spring), transform var(--motion-slow) var(--ease-spring), border-color var(--motion-slow);
   pointer-events: none;
 }
 
@@ -812,7 +812,7 @@ onMounted(() => {
   letter-spacing: 0.04em;
   background: color-mix(in oklab, var(--color-success) 12%, var(--color-bg-surface));
   color: var(--color-success);
-  animation: smtp-badge-in 0.4s var(--ease-out-expo);
+  animation: smtp-badge-in 0.4s var(--ease-spring);
 }
 
 @keyframes smtp-badge-in {

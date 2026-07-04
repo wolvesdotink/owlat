@@ -249,7 +249,7 @@ function setStep(i: number) {
   border: 1px solid color-mix(in oklab, var(--color-info) 20%, var(--color-border-default));
   opacity: 0;
   transform: translateY(10px);
-  transition: opacity 0.5s var(--ease-out-expo), transform 0.5s var(--ease-out-expo);
+  transition: opacity var(--motion-slow) var(--ease-spring), transform var(--motion-slow) var(--ease-spring);
   transition-delay: calc(var(--stagger) * 0.12s);
 }
 
@@ -300,7 +300,7 @@ function setStep(i: number) {
   justify-content: center;
   padding: 2px 0;
   opacity: 0;
-  transition: opacity 0.4s var(--ease-out-expo);
+  transition: opacity var(--motion-slow) var(--ease-spring);
   transition-delay: calc(var(--stagger) * 0.12s + 0.1s);
 }
 
@@ -317,7 +317,7 @@ function setStep(i: number) {
 }
 
 .is-visible .pipe-connector-v-line {
-  animation: v-line-draw 0.4s var(--ease-out-expo) both;
+  animation: v-line-draw 0.4s var(--ease-spring) both;
   animation-delay: 0.2s;
 }
 
@@ -337,7 +337,7 @@ function setStep(i: number) {
   border-radius: 10px;
   opacity: 0;
   transform: translateY(10px);
-  transition: opacity 0.5s var(--ease-out-expo), transform 0.5s var(--ease-out-expo);
+  transition: opacity var(--motion-slow) var(--ease-spring), transform var(--motion-slow) var(--ease-spring);
   transition-delay: calc(var(--stagger) * 0.12s);
   overflow-x: auto;
 }
@@ -359,7 +359,7 @@ function setStep(i: number) {
   white-space: nowrap;
   flex-shrink: 0;
   position: relative;
-  transition: background 0.25s, border-color 0.25s, box-shadow 0.25s;
+  transition: background var(--motion-moderate), border-color var(--motion-moderate), box-shadow var(--motion-moderate);
   opacity: 0;
   transform: translateX(-6px);
   font-family: inherit;
@@ -368,7 +368,7 @@ function setStep(i: number) {
 .is-visible .pipe-nav-step {
   opacity: 1;
   transform: translateX(0);
-  transition: background 0.25s, border-color 0.25s, box-shadow 0.25s, opacity 0.4s var(--ease-out-expo), transform 0.4s var(--ease-out-expo);
+  transition: background var(--motion-moderate), border-color var(--motion-moderate), box-shadow var(--motion-moderate), opacity var(--motion-slow) var(--ease-spring), transform var(--motion-slow) var(--ease-spring);
   transition-delay: calc(0.15s + var(--i) * 0.06s);
 }
 
@@ -396,7 +396,7 @@ function setStep(i: number) {
   font-weight: 700;
   color: var(--color-text-tertiary);
   flex-shrink: 0;
-  transition: background 0.25s, border-color 0.25s, color 0.25s;
+  transition: background var(--motion-moderate), border-color var(--motion-moderate), color var(--motion-moderate);
 }
 
 .pipe-nav-step.is-active .pipe-nav-num {
@@ -415,7 +415,7 @@ function setStep(i: number) {
   font-size: 0.75rem;
   font-weight: 500;
   color: var(--color-text-tertiary);
-  transition: color 0.25s;
+  transition: color var(--motion-moderate);
 }
 
 .pipe-nav-step.is-active .pipe-nav-name {
@@ -446,7 +446,7 @@ function setStep(i: number) {
   border-radius: 2px;
   transform: scaleY(0);
   transform-origin: top;
-  transition: transform 0.4s var(--ease-out-expo);
+  transition: transform var(--motion-slow) var(--ease-spring);
 }
 
 .pipe-nav-connector-fill.is-filled {
@@ -470,7 +470,7 @@ function setStep(i: number) {
   margin-top: 8px;
   opacity: 0;
   transform: translateY(10px);
-  transition: opacity 0.5s var(--ease-out-expo), transform 0.5s var(--ease-out-expo);
+  transition: opacity var(--motion-slow) var(--ease-spring), transform var(--motion-slow) var(--ease-spring);
   transition-delay: calc(var(--stagger) * 0.12s);
 }
 
@@ -495,14 +495,14 @@ function setStep(i: number) {
   visibility: hidden;
   opacity: 0;
   transform: translateY(6px);
-  transition: opacity 0.3s var(--ease-out-expo), transform 0.3s var(--ease-out-expo), visibility 0s 0.3s, border-color 0.25s, box-shadow 0.3s;
+  transition: opacity var(--motion-moderate) var(--ease-spring), transform var(--motion-moderate) var(--ease-spring), visibility 0s var(--motion-moderate), border-color var(--motion-moderate), box-shadow var(--motion-moderate);
 }
 
 .pipe-panel.is-active {
   visibility: visible;
   opacity: 1;
   transform: translateY(0);
-  transition: opacity 0.35s var(--ease-out-expo), transform 0.35s var(--ease-out-expo), visibility 0s, border-color 0.25s, box-shadow 0.3s;
+  transition: opacity var(--motion-slow) var(--ease-spring), transform var(--motion-slow) var(--ease-spring), visibility 0s, border-color var(--motion-moderate), box-shadow var(--motion-moderate);
 }
 
 .pipe-panel::before {
@@ -546,7 +546,7 @@ function setStep(i: number) {
   height: 34px;
   border-radius: 8px;
   flex-shrink: 0;
-  transition: box-shadow 0.3s;
+  transition: box-shadow var(--motion-moderate);
 }
 
 .pipe-panel-icon--accent { background: color-mix(in oklab, var(--color-accent) 12%, var(--color-bg-surface)); color: var(--color-accent); }
@@ -605,7 +605,7 @@ function setStep(i: number) {
   border-radius: 6px;
   background: var(--color-bg-surface);
   border: 1px solid var(--color-border-subtle);
-  transition: border-color 0.2s;
+  transition: border-color var(--motion-moderate);
 }
 
 .pipe-source:hover {
@@ -637,7 +637,7 @@ function setStep(i: number) {
   background: var(--color-bg-surface);
   border: 1px solid var(--color-border-subtle);
   color: var(--color-text-tertiary);
-  transition: all 0.25s;
+  transition: all var(--motion-moderate);
 }
 
 .pipe-intent.is-active {
@@ -662,7 +662,7 @@ function setStep(i: number) {
   border-radius: 6px;
   background: var(--color-bg-surface);
   border: 1px solid var(--color-border-subtle);
-  transition: border-color 0.2s;
+  transition: border-color var(--motion-moderate);
 }
 
 .pipe-action-item:hover {
@@ -787,7 +787,7 @@ function setStep(i: number) {
   border-radius: 7px;
   background: var(--color-bg-surface);
   border: 1px solid var(--color-border-subtle);
-  transition: border-color 0.2s, background 0.2s;
+  transition: border-color var(--motion-moderate), background var(--motion-moderate);
 }
 
 .pipe-route:hover {
@@ -839,11 +839,6 @@ function setStep(i: number) {
 
 /* ── Ambient animations ── */
 .is-visible .pipe-nav {
-  animation: nav-border-shimmer 4s ease-in-out infinite 1.5s;
 }
 
-@keyframes nav-border-shimmer {
-  0%, 100% { border-color: var(--color-border-default); }
-  50% { border-color: color-mix(in oklab, var(--color-brand) 15%, var(--color-border-default)); }
-}
 </style>

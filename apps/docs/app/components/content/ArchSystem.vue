@@ -210,7 +210,7 @@ const analytics = { name: 'PostHog', detail: 'Analytics & Errors', lines: ['Clie
   background: var(--color-bg-elevated);
   opacity: 0;
   transform: translateY(16px);
-  transition: opacity 0.6s var(--ease-out-expo), transform 0.6s var(--ease-out-expo), border-color 0.3s, box-shadow 0.3s;
+  transition: opacity 0.6s var(--ease-spring), transform 0.6s var(--ease-spring), border-color var(--motion-moderate), box-shadow var(--motion-moderate);
   transition-delay: calc(var(--stagger) * 0.15s);
   position: relative;
   overflow: hidden;
@@ -221,7 +221,7 @@ const analytics = { name: 'PostHog', detail: 'Analytics & Errors', lines: ['Clie
   position: absolute;
   inset: 0;
   opacity: 0;
-  transition: opacity 0.4s;
+  transition: opacity var(--motion-slow);
   pointer-events: none;
 }
 
@@ -298,7 +298,7 @@ const analytics = { name: 'PostHog', detail: 'Analytics & Errors', lines: ['Clie
   border-radius: 8px;
   background: var(--color-bg-surface);
   border: 1px solid transparent;
-  transition: border-color 0.25s, background 0.25s, transform 0.3s var(--ease-out-expo);
+  transition: border-color var(--motion-moderate), background var(--motion-moderate), transform var(--motion-moderate) var(--ease-spring);
   opacity: 0;
   transform: translateY(10px) scale(0.97);
   cursor: default;
@@ -307,7 +307,7 @@ const analytics = { name: 'PostHog', detail: 'Analytics & Errors', lines: ['Clie
 .is-visible .arch-item {
   opacity: 1;
   transform: translateY(0) scale(1);
-  transition: border-color 0.25s, background 0.25s, transform 0.3s var(--ease-out-expo), opacity 0.5s var(--ease-out-expo);
+  transition: border-color var(--motion-moderate), background var(--motion-moderate), transform var(--motion-moderate) var(--ease-spring), opacity var(--motion-slow) var(--ease-spring);
   transition-delay: calc(0.2s + var(--item-stagger) * 0.06s);
 }
 
@@ -328,7 +328,7 @@ const analytics = { name: 'PostHog', detail: 'Analytics & Errors', lines: ['Clie
   background: var(--color-bg-elevated);
   color: var(--color-brand);
   flex-shrink: 0;
-  transition: color 0.25s, box-shadow 0.3s;
+  transition: color var(--motion-moderate), box-shadow var(--motion-moderate);
 }
 
 .arch-layer--accent .arch-item-icon {
@@ -367,7 +367,7 @@ const analytics = { name: 'PostHog', detail: 'Analytics & Errors', lines: ['Clie
   gap: 0;
   padding: 4px 0;
   opacity: 0;
-  transition: opacity 0.5s var(--ease-out-expo);
+  transition: opacity var(--motion-slow) var(--ease-spring);
   transition-delay: calc(var(--stagger) * 0.15s + 0.1s);
 }
 
@@ -384,7 +384,7 @@ const analytics = { name: 'PostHog', detail: 'Analytics & Errors', lines: ['Clie
 }
 
 .is-visible .arch-connector-line {
-  animation: line-draw 0.6s var(--ease-out-expo) both;
+  animation: line-draw 0.6s var(--ease-spring) both;
   animation-delay: calc(var(--stagger) * 0.15s + 0.3s);
 }
 
@@ -446,7 +446,7 @@ const analytics = { name: 'PostHog', detail: 'Analytics & Errors', lines: ['Clie
   gap: 10px;
   opacity: 0;
   transform: translateY(12px);
-  transition: opacity 0.6s var(--ease-out-expo), transform 0.6s var(--ease-out-expo);
+  transition: opacity 0.6s var(--ease-spring), transform 0.6s var(--ease-spring);
   transition-delay: calc(var(--stagger) * 0.15s);
 }
 
@@ -467,7 +467,7 @@ const analytics = { name: 'PostHog', detail: 'Analytics & Errors', lines: ['Clie
   border-radius: 12px;
   border: 1px solid color-mix(in oklab, var(--color-brand) 30%, var(--color-border-default));
   background: var(--color-bg-elevated);
-  transition: border-color 0.25s, transform 0.3s var(--ease-out-expo), box-shadow 0.3s;
+  transition: border-color var(--motion-moderate), transform var(--motion-moderate) var(--ease-spring), box-shadow var(--motion-moderate);
   opacity: 0;
   transform: translateY(10px);
   position: relative;
@@ -566,7 +566,7 @@ const analytics = { name: 'PostHog', detail: 'Analytics & Errors', lines: ['Clie
   border-radius: 6px;
   background: var(--color-bg-surface);
   border: 1px solid var(--color-border-subtle);
-  transition: color 0.2s, border-color 0.2s;
+  transition: color var(--motion-moderate), border-color var(--motion-moderate);
 }
 
 .arch-alt-provider:hover {
@@ -591,7 +591,7 @@ const analytics = { name: 'PostHog', detail: 'Analytics & Errors', lines: ['Clie
   border: 1px solid var(--color-border-default);
   background: var(--color-bg-elevated);
   text-align: center;
-  transition: border-color 0.25s, transform 0.3s var(--ease-out-expo), box-shadow 0.3s;
+  transition: border-color var(--motion-moderate), transform var(--motion-moderate) var(--ease-spring), box-shadow var(--motion-moderate);
   opacity: 0;
   transform: translateY(10px);
 }
@@ -629,7 +629,7 @@ const analytics = { name: 'PostHog', detail: 'Analytics & Errors', lines: ['Clie
   background: var(--color-bg-soft);
   opacity: 0;
   transform: translateY(12px);
-  transition: opacity 0.6s var(--ease-out-expo), transform 0.6s var(--ease-out-expo), border-color 0.25s;
+  transition: opacity 0.6s var(--ease-spring), transform 0.6s var(--ease-spring), border-color var(--motion-moderate);
   transition-delay: calc(var(--stagger) * 0.15s);
 }
 
@@ -687,31 +687,16 @@ const analytics = { name: 'PostHog', detail: 'Analytics & Errors', lines: ['Clie
 
 /* ── Ambient animations ── */
 .is-visible .arch-layer {
-  animation: layer-border-shimmer 4s ease-in-out infinite;
   animation-delay: calc(var(--stagger) * 0.5s + 1s);
 }
 
-@keyframes layer-border-shimmer {
-  0%, 100% { border-color: var(--color-border-default); }
-  50% { border-color: color-mix(in oklab, var(--color-brand) 20%, var(--color-border-default)); }
-}
 
 .is-visible .arch-layer--accent {
-  animation-name: layer-border-shimmer-accent;
 }
 
-@keyframes layer-border-shimmer-accent {
-  0%, 100% { border-color: var(--color-border-default); }
-  50% { border-color: color-mix(in oklab, var(--color-accent) 20%, var(--color-border-default)); }
-}
 
 .is-visible .arch-item-icon--ext,
 .is-visible .arch-item-icon--primary {
-  animation: icon-glow-pulse 3s ease-in-out infinite;
 }
 
-@keyframes icon-glow-pulse {
-  0%, 100% { box-shadow: none; }
-  50% { box-shadow: 0 0 8px rgba(196, 120, 90, 0.12); }
-}
 </style>

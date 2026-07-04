@@ -141,7 +141,7 @@ const connections = [
   position: relative;
   opacity: 0;
   transform: translateY(10px);
-  transition: opacity 0.45s var(--ease-out-expo), transform 0.45s var(--ease-out-expo), border-color 0.25s, box-shadow 0.25s;
+  transition: opacity 0.45s var(--ease-spring), transform 0.45s var(--ease-spring), border-color var(--motion-moderate), box-shadow var(--motion-moderate);
   transition-delay: calc(0.1s + var(--i) * 0.06s);
 }
 
@@ -218,7 +218,7 @@ const connections = [
   background: var(--color-bg-soft);
   border: 1px solid var(--color-border-subtle);
   opacity: 0;
-  transition: opacity 0.5s var(--ease-out-expo);
+  transition: opacity var(--motion-slow) var(--ease-spring);
   transition-delay: 0.5s;
 }
 

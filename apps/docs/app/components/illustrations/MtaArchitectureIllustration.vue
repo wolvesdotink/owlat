@@ -460,26 +460,13 @@ const props = withDefaults(defineProps<{ class?: string }>(), { class: '' })
 
 /* ── Floating orbs ── */
 .mta-orb-1 {
-	animation: mta-drift 20s ease-in-out infinite;
 }
 .mta-orb-2 {
-	animation: mta-drift-rev 24s ease-in-out infinite;
 }
 .mta-orb-3 {
-	animation: mta-drift 18s ease-in-out infinite 3s;
 }
 
-@keyframes mta-drift {
-	0%, 100% { transform: translate(0, 0); }
-	33% { transform: translate(10px, -7px); }
-	66% { transform: translate(-7px, 5px); }
-}
 
-@keyframes mta-drift-rev {
-	0%, 100% { transform: translate(0, 0); }
-	33% { transform: translate(-8px, 5px); }
-	66% { transform: translate(6px, -4px); }
-}
 
 /* ── Pulse (delivered indicator) ── */
 .mta-pulse {
@@ -507,17 +494,11 @@ const props = withDefaults(defineProps<{ class?: string }>(), { class: '' })
 .mta-ep4 { animation: mta-p-float 8s ease-in-out infinite 0.5s; }
 .mta-ep5 { animation: mta-p-float 9s ease-in-out infinite 1.5s; }
 
-@keyframes mta-p-float {
-	0%, 100% { transform: translate(0, 0); opacity: 0.25; }
-	25% { transform: translate(3px, -4px); opacity: 0.4; }
-	50% { transform: translate(-2px, -6px); opacity: 0.15; }
-	75% { transform: translate(4px, -2px); opacity: 0.35; }
-}
 
 /* ── Node entrance ── */
 .mta-node {
 	opacity: 0;
-	animation: mta-node-in 0.8s var(--ease-out-expo, cubic-bezier(0.16, 1, 0.3, 1)) forwards;
+	animation: mta-node-in 0.8s var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1)) forwards;
 }
 .mta-node-api { animation-delay: 0.1s; }
 .mta-node-queue { animation-delay: 0.2s; }

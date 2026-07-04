@@ -135,7 +135,7 @@ const tree: TreeNode[] = [
   background: var(--color-bg-elevated);
   opacity: 0;
   transform: translateY(14px);
-  transition: opacity 0.6s var(--ease-out-expo), transform 0.6s var(--ease-out-expo), border-color 0.3s;
+  transition: opacity 0.6s var(--ease-spring), transform 0.6s var(--ease-spring), border-color var(--motion-moderate);
 }
 
 .convex-tree.is-visible {
@@ -184,7 +184,7 @@ const tree: TreeNode[] = [
 .ct-node {
   opacity: 0;
   transform: translateX(-8px);
-  transition: opacity 0.5s var(--ease-out-expo), transform 0.5s var(--ease-out-expo);
+  transition: opacity var(--motion-slow) var(--ease-spring), transform var(--motion-slow) var(--ease-spring);
 }
 
 .is-visible .ct-node {
@@ -200,7 +200,7 @@ const tree: TreeNode[] = [
   gap: 8px;
   padding: 6px 10px;
   border-radius: 6px;
-  transition: background 0.2s;
+  transition: background var(--motion-moderate);
 }
 
 .ct-node-main:hover,
@@ -210,7 +210,7 @@ const tree: TreeNode[] = [
 
 .ct-node-icon {
   flex-shrink: 0;
-  transition: color 0.25s;
+  transition: color var(--motion-moderate);
 }
 
 .ct-node--brand .ct-node-icon { color: var(--color-brand); }
@@ -251,7 +251,7 @@ const tree: TreeNode[] = [
   margin-left: 16px;
   opacity: 0;
   transform: translateX(-6px);
-  transition: opacity 0.5s var(--ease-out-expo), transform 0.5s var(--ease-out-expo);
+  transition: opacity var(--motion-slow) var(--ease-spring), transform var(--motion-slow) var(--ease-spring);
 }
 
 .is-visible .ct-child {
@@ -270,7 +270,7 @@ const tree: TreeNode[] = [
   border-left: 1px solid var(--color-border-subtle);
   margin-left: 16px;
   border-radius: 0 6px 6px 0;
-  transition: background 0.2s;
+  transition: background var(--motion-moderate);
   opacity: 0;
   transform: translateX(-6px);
 }
@@ -278,7 +278,7 @@ const tree: TreeNode[] = [
 .is-visible .ct-grandchild {
   opacity: 1;
   transform: translateX(0);
-  transition: opacity 0.5s var(--ease-out-expo), transform 0.5s var(--ease-out-expo), background 0.2s;
+  transition: opacity var(--motion-slow) var(--ease-spring), transform var(--motion-slow) var(--ease-spring), background var(--motion-moderate);
   transition-delay: calc(0.1s + var(--i) * 0.03s);
 }
 
@@ -302,11 +302,6 @@ const tree: TreeNode[] = [
 
 /* Ambient */
 .convex-tree.is-visible {
-  animation: ct-border-shimmer 4s ease-in-out infinite 1s;
 }
 
-@keyframes ct-border-shimmer {
-  0%, 100% { border-color: var(--color-border-default); }
-  50% { border-color: color-mix(in oklab, var(--color-accent) 18%, var(--color-border-default)); }
-}
 </style>

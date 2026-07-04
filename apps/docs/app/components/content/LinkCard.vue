@@ -4,18 +4,10 @@ defineProps<{
   title: string
   description?: string
 }>()
-
-function onMouseMove(e: MouseEvent) {
-  const el = e.currentTarget as HTMLElement
-  const rect = el.getBoundingClientRect()
-  el.style.setProperty('--mouse-x', `${e.clientX - rect.left}px`)
-  el.style.setProperty('--mouse-y', `${e.clientY - rect.top}px`)
-}
 </script>
 
 <template>
-  <NuxtLink :to="to" class="link-card" @mousemove="onMouseMove">
-    <div class="link-card-spotlight" />
+  <NuxtLink :to="to" class="link-card">
     <div class="link-card-body">
       <div class="link-card-title">{{ title }}</div>
       <div v-if="description" class="link-card-description">
@@ -49,35 +41,21 @@ function onMouseMove(e: MouseEvent) {
   gap: 16px;
   margin: 1rem 0;
   padding: 16px 20px;
-  border: 1px solid var(--color-border-default);
+  background: var(--surface-2);
+  box-shadow: var(--shadow-1);
   border-radius: 10px;
   text-decoration: none;
   color: inherit;
   overflow: hidden;
-  transition: border-color 0.3s, transform 0.3s var(--ease-out-expo), box-shadow 0.3s var(--ease-out-expo);
+  transition:
+    background var(--motion-moderate) var(--ease-spring),
+    box-shadow var(--motion-moderate) var(--ease-spring);
 }
 
+/* Hover: +6% surface, one elevation step — no lift, no spotlight */
 .link-card:hover {
-  border-color: color-mix(in oklab, var(--color-brand) 50%, var(--color-border-default));
-  transform: translateY(-2px) scale(1.005);
-  box-shadow: 0 8px 24px color-mix(in oklab, var(--color-brand) 10%, transparent);
-}
-
-.link-card-spotlight {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  background: radial-gradient(
-    300px circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
-    rgba(196, 120, 90, 0.08) 0%,
-    transparent 70%
-  );
-  transition: opacity 0.3s ease;
-  pointer-events: none;
-}
-
-.link-card:hover .link-card-spotlight {
-  opacity: 1;
+  background: color-mix(in srgb, var(--surface-2) 94%, var(--surface-tint));
+  box-shadow: var(--shadow-2);
 }
 
 .link-card-body {
@@ -101,7 +79,7 @@ function onMouseMove(e: MouseEvent) {
 .link-card-arrow {
   flex-shrink: 0;
   color: var(--color-text-tertiary);
-  transition: color 0.25s, transform 0.3s var(--ease-out-expo);
+  transition: color var(--motion-moderate), transform var(--motion-moderate) var(--ease-spring);
 }
 
 .link-card:hover .link-card-arrow {

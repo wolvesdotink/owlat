@@ -23,7 +23,7 @@
   background: var(--color-border-default);
   border-radius: 1px;
   transform-origin: top;
-  animation: line-grow 0.8s var(--ease-out-expo) 0.1s both;
+  animation: line-grow 0.8s var(--ease-spring) 0.1s both;
 }
 
 @keyframes line-grow {
@@ -61,7 +61,7 @@
   font-weight: 700;
   line-height: 1;
   z-index: 1;
-  animation: step-pop 0.4s var(--ease-out-expo) both;
+  animation: step-pop 0.4s var(--ease-spring) both;
 }
 
 .steps :deep(h3:nth-of-type(1))::before { animation-delay: 0.2s; }

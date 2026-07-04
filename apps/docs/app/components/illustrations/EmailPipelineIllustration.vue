@@ -350,26 +350,13 @@ const props = withDefaults(defineProps<{ class?: string }>(), { class: '' })
 
 /* ── Floating orbs ── */
 .email-orb-1 {
-	animation: email-drift 22s ease-in-out infinite;
 }
 .email-orb-2 {
-	animation: email-drift-rev 26s ease-in-out infinite;
 }
 .email-orb-3 {
-	animation: email-drift 19s ease-in-out infinite 3s;
 }
 
-@keyframes email-drift {
-	0%, 100% { transform: translate(0, 0); }
-	33% { transform: translate(10px, -7px); }
-	66% { transform: translate(-7px, 5px); }
-}
 
-@keyframes email-drift-rev {
-	0%, 100% { transform: translate(0, 0); }
-	33% { transform: translate(-8px, 5px); }
-	66% { transform: translate(6px, -4px); }
-}
 
 /* ── Pulse ── */
 .email-pulse {
@@ -395,10 +382,6 @@ const props = withDefaults(defineProps<{ class?: string }>(), { class: '' })
 .email-bb-2 { animation: email-bb-float 5s ease-in-out infinite 0.6s; }
 .email-bb-3 { animation: email-bb-float 5s ease-in-out infinite 1.2s; }
 
-@keyframes email-bb-float {
-	0%, 100% { transform: translateX(0); }
-	50% { transform: translateX(3px); }
-}
 
 /* ── Particles ── */
 .email-ep1 { animation: email-p-float 6s ease-in-out infinite; }
@@ -406,17 +389,11 @@ const props = withDefaults(defineProps<{ class?: string }>(), { class: '' })
 .email-ep3 { animation: email-p-float 5.5s ease-in-out infinite 2s; }
 .email-ep4 { animation: email-p-float 8s ease-in-out infinite 0.5s; }
 
-@keyframes email-p-float {
-	0%, 100% { transform: translate(0, 0); opacity: 0.25; }
-	25% { transform: translate(3px, -4px); opacity: 0.4; }
-	50% { transform: translate(-2px, -6px); opacity: 0.15; }
-	75% { transform: translate(4px, -2px); opacity: 0.35; }
-}
 
 /* ── Node entrance ── */
 .email-node {
 	opacity: 0;
-	animation: email-node-in 0.8s var(--ease-out-expo, cubic-bezier(0.16, 1, 0.3, 1)) forwards;
+	animation: email-node-in 0.8s var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1)) forwards;
 }
 .email-node-builder { animation-delay: 0.1s; }
 .email-node-json { animation-delay: 0.2s; }

@@ -113,7 +113,7 @@ const betterAuthTables = [
   overflow: hidden;
   opacity: 0;
   transform: translateY(14px);
-  transition: opacity 0.6s var(--ease-out-expo), transform 0.6s var(--ease-out-expo), border-color 0.3s, box-shadow 0.3s;
+  transition: opacity 0.6s var(--ease-spring), transform 0.6s var(--ease-spring), border-color var(--motion-moderate), box-shadow var(--motion-moderate);
   transition-delay: calc(var(--s) * 0.12s);
 }
 
@@ -137,13 +137,8 @@ const betterAuthTables = [
   height: 120px;
   background: radial-gradient(circle, rgba(196, 120, 90, 0.06) 0%, transparent 70%);
   pointer-events: none;
-  animation: aa-glow-drift 6s ease-in-out infinite alternate;
 }
 
-@keyframes aa-glow-drift {
-  0% { transform: translate(0, 0); }
-  100% { transform: translate(-10px, 10px); }
-}
 
 .aa-layer-header {
   display: flex;
@@ -198,7 +193,7 @@ const betterAuthTables = [
   border-radius: 8px;
   background: var(--color-bg-surface);
   border: 1px solid transparent;
-  transition: border-color 0.25s, background 0.25s, transform 0.3s var(--ease-out-expo);
+  transition: border-color var(--motion-moderate), background var(--motion-moderate), transform var(--motion-moderate) var(--ease-spring);
   opacity: 0;
   transform: translateY(8px);
 }
@@ -233,7 +228,7 @@ const betterAuthTables = [
   background: var(--color-bg-elevated);
   color: var(--color-brand);
   flex-shrink: 0;
-  transition: box-shadow 0.3s;
+  transition: box-shadow var(--motion-moderate);
 }
 
 .aa-composable:hover .aa-composable-icon {
@@ -261,7 +256,7 @@ const betterAuthTables = [
   font-size: 0.6875rem;
   color: var(--color-text-secondary);
   font-family: var(--font-mono);
-  transition: border-color 0.25s, color 0.25s;
+  transition: border-color var(--motion-moderate), color var(--motion-moderate);
 }
 
 .aa-composable:hover .aa-composable-item {
@@ -277,7 +272,7 @@ const betterAuthTables = [
   gap: 2px;
   padding: 6px 0;
   opacity: 0;
-  transition: opacity 0.5s var(--ease-out-expo) 0.15s;
+  transition: opacity var(--motion-slow) var(--ease-spring) var(--motion-fast);
 }
 
 .is-visible .aa-connector {
@@ -291,7 +286,7 @@ const betterAuthTables = [
   border-radius: 1px;
   transform-origin: top;
   transform: scaleY(0);
-  transition: transform 0.5s var(--ease-out-expo) 0.25s;
+  transition: transform var(--motion-slow) var(--ease-spring) var(--motion-moderate);
 }
 
 .is-visible .aa-connector-line {
@@ -300,13 +295,8 @@ const betterAuthTables = [
 
 .aa-connector-chevron {
   color: var(--color-brand-dim);
-  animation: aa-chevron-bounce 2s ease-in-out infinite;
 }
 
-@keyframes aa-chevron-bounce {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(3px); }
-}
 
 /* BetterAuth tables */
 .aa-tables {
@@ -337,7 +327,7 @@ const betterAuthTables = [
   background: var(--color-bg-surface);
   border: 1px solid transparent;
   text-align: center;
-  transition: border-color 0.25s, background 0.25s, transform 0.3s var(--ease-out-expo);
+  transition: border-color var(--motion-moderate), background var(--motion-moderate), transform var(--motion-moderate) var(--ease-spring);
   opacity: 0;
   transform: translateY(8px);
 }
@@ -387,15 +377,10 @@ const betterAuthTables = [
 
 /* Ambient */
 .is-visible .aa-layer {
-  animation: aa-border-shimmer 4s ease-in-out infinite;
 }
 
 .is-visible .aa-layer--betterauth {
   animation-delay: 2s;
 }
 
-@keyframes aa-border-shimmer {
-  0%, 100% { border-color: var(--color-border-default); }
-  50% { border-color: color-mix(in oklab, var(--color-brand) 18%, var(--color-border-default)); }
-}
 </style>
