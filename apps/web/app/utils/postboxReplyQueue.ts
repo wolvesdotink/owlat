@@ -29,6 +29,35 @@ export interface ReplyQueueClarification {
 	draft?: string;
 }
 
+/** Draft-quality self-check surfaced next to a draft-on-arrival slot. */
+export interface ReplyQueueDraftQuality {
+	score: number;
+	complete: boolean;
+	grounded: boolean;
+	flags: string[];
+}
+
+/**
+ * Draft-on-arrival review slot (postbox.aiDraft): a reply pre-generated the
+ * moment the message landed, via the SAME shared draft service the B2B agent
+ * runs. Surfaced as a "Draft ready — review & send" affordance on the plain
+ * needs-you row. HUMAN REVIEW ONLY — its presence never auto-sends.
+ */
+export interface ReplyQueueDraftSlot {
+	/** The pre-generated reply body (options[0] === this). */
+	draft: string;
+	/** Reply subject (Re: …) composed from the trigger message. */
+	draftSubject?: string;
+	/** Confidence shown next to the draft (0..1) — the quality self-check score. */
+	confidence: number;
+	/** Draft-quality self-check; absent when the check failed (shown as unverified). */
+	quality?: ReplyQueueDraftQuality;
+	/** Alternative pickable drafts (present only on low-confidence / low-quality cases). */
+	options?: string[];
+	/** When the slot was generated. */
+	generatedAt: number;
+}
+
 export interface ReplyQueueItem {
 	/**
 	 * 'needs_reply' — an inbound message waiting on OUR reply (default).
@@ -62,6 +91,12 @@ export interface ReplyQueueItem {
 	 * owner answers, then a "Draft ready" card. Absent for a plain needs-reply.
 	 */
 	clarification?: ReplyQueueClarification;
+	/**
+	 * Draft-on-arrival review slot (postbox.aiDraft): present when a reply was
+	 * pre-generated for this thread. Drives the "Draft ready — review & send"
+	 * affordance on the row. Absent when the flag is off or generation failed.
+	 */
+	draftSlot?: ReplyQueueDraftSlot;
 	fromAddress: string;
 	fromName?: string;
 	subject: string;
@@ -143,6 +178,22 @@ export function replyQueueSection(
 	item: Pick<ReplyQueueItem, 'clarification'>
 ): 'needs_input' | 'needs_you' {
 	return item.clarification ? 'needs_input' : 'needs_you';
+}
+
+/**
+ * Bucket a draft-on-arrival slot's confidence (the quality self-check score, or
+ * a low fallback when the check failed) into a human label + severity for the
+ * review chip. Pure so the mapping is unit-testable. Deliberately conservative:
+ * this is a REVIEW hint, never an auto-send authorization.
+ */
+export function draftSlotConfidence(slot: Pick<ReplyQueueDraftSlot, 'confidence' | 'quality'>): {
+	label: string;
+	level: 'high' | 'medium' | 'low' | 'unverified';
+} {
+	if (!slot.quality) return { label: 'Unverified', level: 'unverified' };
+	if (slot.confidence >= 0.8) return { label: 'High confidence', level: 'high' };
+	if (slot.confidence >= 0.6) return { label: 'Medium confidence', level: 'medium' };
+	return { label: 'Low confidence', level: 'low' };
 }
 
 /**
