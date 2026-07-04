@@ -17,7 +17,7 @@ import { toCoachSuggestions, categorizeCoachFlag } from '../aiCoach';
 describe('categorizeCoachFlag', () => {
 	it('buckets a missing-answer flag', () => {
 		expect(categorizeCoachFlag('Does not answer the question about the refund')).toBe(
-			'missing-answer',
+			'missing-answer'
 		);
 		expect(categorizeCoachFlag('The pricing question is left out')).toBe('missing-answer');
 	});
@@ -28,9 +28,7 @@ describe('categorizeCoachFlag', () => {
 	});
 
 	it('buckets an ambiguity flag', () => {
-		expect(categorizeCoachFlag('The date is ambiguous — could mean two things')).toBe(
-			'ambiguity',
-		);
+		expect(categorizeCoachFlag('The date is ambiguous — could mean two things')).toBe('ambiguity');
 		expect(categorizeCoachFlag('"soon" is vague')).toBe('ambiguity');
 	});
 
@@ -42,9 +40,9 @@ describe('categorizeCoachFlag', () => {
 
 describe('toCoachSuggestions', () => {
 	it('returns NO suggestions for a clean self-check', () => {
-		expect(
-			toCoachSuggestions({ score: 0.95, complete: true, grounded: true, flags: [] }),
-		).toEqual([]);
+		expect(toCoachSuggestions({ score: 0.95, complete: true, grounded: true, flags: [] })).toEqual(
+			[]
+		);
 	});
 
 	it('returns NO suggestions for the fail-soft null result', () => {

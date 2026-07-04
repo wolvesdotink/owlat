@@ -52,15 +52,21 @@ export function categorizeCoachFlag(flag: string): CoachCategory {
 	const f = flag.toLowerCase();
 	if (
 		/\b(unanswer|unaddress|missing|incomplete|does ?n'?t answer|not answer|no answer|left out|ignore[sd]? the|fails to address)\b/.test(
-			f,
+			f
 		)
 	) {
 		return 'missing-answer';
 	}
-	if (/\b(tone|rude|curt|harsh|abrupt|cold|aggressive|dismissive|formal|informal|polite)\b/.test(f)) {
+	if (
+		/\b(tone|rude|curt|harsh|abrupt|cold|aggressive|dismissive|formal|informal|polite)\b/.test(f)
+	) {
 		return 'tone';
 	}
-	if (/\b(ambig|vague|unclear which|could mean|open to interpretation|which \w+ do you|non-committal)\b/.test(f)) {
+	if (
+		/\b(ambig|vague|unclear which|could mean|open to interpretation|which \w+ do you|non-committal)\b/.test(
+			f
+		)
+	) {
 		return 'ambiguity';
 	}
 	return 'clarity';
