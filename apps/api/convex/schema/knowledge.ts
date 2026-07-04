@@ -2,10 +2,16 @@ import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 
 /**
- * The seven knowledge entry types, as a literal tuple. Single source of truth
- * for both the Convex validator below and the zod enum the extraction pipeline
- * feeds the LLM (knowledge/extraction.ts) — deriving both from this tuple keeps
- * them from drifting.
+ * The knowledge entry types, as a literal tuple. Single source of truth for both
+ * the Convex validator below and the zod enum the extraction pipeline feeds the
+ * LLM (knowledge/extraction.ts) — deriving both from this tuple keeps them from
+ * drifting.
+ *
+ * `policy` / `faq` are CURATED canonical answers (returns policy, pricing, hours,
+ * standard terms). They are authored by a human through the FAQ surface
+ * (knowledge/graph.ts:createPolicyEntry) with `authority: true`, so retrieval
+ * ranks them ahead of scraped facts (see lib/knowledgePrecedence.ts) — a policy
+ * answer must not be outranked by a noisy scraped fact in the same RRF pool.
  */
 export const ENTRY_TYPES = [
 	'fact',
@@ -15,7 +21,51 @@ export const ENTRY_TYPES = [
 	'goal',
 	'relationship',
 	'action_item',
+	'policy',
+	'faq',
 ] as const;
+
+/**
+ * The two commitment-bearing entry types: an `action_item` we owe a contact and a
+ * `decision` we communicated. Single source of truth for the open-commitments
+ * recall (knowledge/graph.ts:getOpenCommitmentsByContact) so a promise ("we'll
+ * ship X by Friday") is surfaced by contact scope INDEPENDENTLY of whether the
+ * new inbound restates it — semantic similarity would only recall it when the
+ * email mentions it, which is exactly when it is least needed.
+ */
+export const COMMITMENT_ENTRY_TYPES = ['decision', 'action_item'] as const;
+
+/**
+ * The two curated canonical entry types (see ENTRY_TYPES). Single source of truth
+ * for the policy authoring surface and the briefing's first-class policy section.
+ */
+export const POLICY_ENTRY_TYPES = ['policy', 'faq'] as const;
+
+/**
+ * Lifecycle of a commitment (`decision` / `action_item`). A missing value is
+ * treated as `open` (durable commitments authored before the field existed, and
+ * fresh extractions that don't set it, stay recallable until a human resolves
+ * them). Only `fulfilled` / `cancelled` drop a commitment out of the open-recall.
+ */
+export const COMMITMENT_STATUSES = ['open', 'fulfilled', 'cancelled'] as const;
+
+/**
+ * Validator for `knowledgeEntries.commitmentStatus`, derived from
+ * `COMMITMENT_STATUSES`.
+ */
+export const commitmentStatusValidator = v.union(
+	...COMMITMENT_STATUSES.map((s) => v.literal(s)),
+);
+
+/**
+ * Whether a commitment is still open (undefined ⇒ open — see COMMITMENT_STATUSES).
+ * Pure helper shared by the recall query and its tests.
+ */
+export function isCommitmentOpen(
+	status: (typeof COMMITMENT_STATUSES)[number] | undefined,
+): boolean {
+	return status !== 'fulfilled' && status !== 'cancelled';
+}
 
 /**
  * The seven knowledge entry types. Exported so retrieval/extraction code can
@@ -35,7 +85,11 @@ export const sourceTypeValidator = v.union(
 	v.literal('chat'),
 	v.literal('manual'),
 	v.literal('file'),
-	v.literal('agent_extracted')
+	v.literal('agent_extracted'),
+	// A human-curated canonical answer authored through the FAQ surface. Kept
+	// distinct from `manual` so curated policy/FAQ can be listed/managed on its
+	// own and so the authority flag has an unambiguous origin.
+	v.literal('curated')
 );
 
 /**
@@ -123,6 +177,19 @@ export const knowledgeTables = {
 		confidence: v.number(), // 0-1
 		lastValidatedAt: v.number(),
 		expiresAt: v.optional(v.number()),
+		// Curated-canonical marker. Set true only on human-authored `policy` / `faq`
+		// entries (sourceType 'curated'); retrieval ranks these ahead of scraped
+		// facts in the same RRF pool (lib/knowledgePrecedence.ts) so a canonical
+		// answer can't be outranked by noise. A newer scraped fact that SUPERSEDES
+		// the policy (a `supersedes` edge → `_stale`) still wins — precedence never
+		// promotes a superseded entry. Optional/absent ⇒ an ordinary (scraped) fact.
+		authority: v.optional(v.boolean()),
+		// Commitment lifecycle for `decision` / `action_item` entries. `dueAt` is the
+		// promised-by time (if any); `commitmentStatus` drives the contact-scoped
+		// open-commitments recall (undefined ⇒ open — see isCommitmentOpen). Absent
+		// on non-commitment entries and on commitments authored before the field.
+		commitmentStatus: v.optional(commitmentStatusValidator),
+		dueAt: v.optional(v.number()),
 		// Usage signal: how often / how recently this entry has been retrieved.
 		// Bumped fire-and-forget by knowledge.retrieval on every recall hit and
 		// read by the decay cron's access boost (frequently-grounded facts decay
