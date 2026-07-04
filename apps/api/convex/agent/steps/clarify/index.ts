@@ -99,6 +99,11 @@ export type ClarifyInput = {
 export type ClarifyOutput = {
 	/** Open questions to park on the message; empty → route to `drafting`. */
 	questions: ClarificationQuestion[];
+	/** Questions that a stored standing answer (answer-memory) resolved silently,
+	 * carried through with their answer prefilled (`source: 'memory'`) so the
+	 * resumed / direct draft folds them in as confirmed facts WITHOUT re-asking.
+	 * See inbox/clarificationMemory.ts. */
+	memoryAnswers: ClarificationQuestion[];
 	/** Why the expensive check was skipped / how it resolved — observability
 	 * only, never drives routing. */
 	resolution:
@@ -108,8 +113,25 @@ export type ClarifyOutput = {
 		| 'converged'
 		| 'insufficient_samples'
 		| 'questions_emitted'
+		| 'memory_filled'
 		| 'fail_soft';
 };
+
+/**
+ * Render the memory-filled answers as the TRUSTED confirmed-facts block the
+ * draft step expects (mirrors draft/index.ts buildConfirmedContext). The values
+ * come from the owner's own stored answers, never the inbound email, so they are
+ * safe to present as authoritative. Pure + exported for tests. Returns '' when
+ * there is nothing filled.
+ */
+export function buildMemoryConfirmedContext(memoryAnswers: ClarificationQuestion[]): string {
+	const lines: string[] = [];
+	for (const q of memoryAnswers) {
+		const value = q.answer?.value?.trim();
+		if (value && value.length > 0) lines.push(`- ${q.text.trim()} ${value}`);
+	}
+	return lines.join('\n');
+}
 
 /** Cautious eagerness = the cheap coverage short-circuit is disabled so the
  * missing-info check always runs. Applied to the highest-stakes mail
@@ -211,7 +233,7 @@ export const clarifyStep: AgentStepModule<'clarify', ClarifyInput, ClarifyOutput
 			// complaint/urgent are still forced to HUMAN REVIEW downstream (the route
 			// step's assertSafeToAutoSend), they just aren't asked a question.
 			if (!policy.enabled) {
-				return { output: { questions: [], resolution: 'eagerness_off' } };
+				return { output: { questions: [], memoryAnswers: [], resolution: 'eagerness_off' } };
 			}
 
 			// Cheap coverage short-circuit — skip the whole (expensive) pass when
@@ -225,7 +247,11 @@ export const clarifyStep: AgentStepModule<'clarify', ClarifyInput, ClarifyOutput
 				const coverage = message?.contextCoverage;
 				if (coverage && !coverage.lowCoverage) {
 					return {
-						output: { questions: [], resolution: 'high_coverage_short_circuit' },
+						output: {
+							questions: [],
+							memoryAnswers: [],
+							resolution: 'high_coverage_short_circuit',
+						},
 					};
 				}
 			}
@@ -255,7 +281,7 @@ export const clarifyStep: AgentStepModule<'clarify', ClarifyInput, ClarifyOutput
 			}
 			if (candidateSlots.length === 0) {
 				return {
-					output: { questions: [], resolution: 'no_candidate_slots' },
+					output: { questions: [], memoryAnswers: [], resolution: 'no_candidate_slots' },
 					tokenUsage,
 					modelUsed,
 				};
@@ -286,7 +312,7 @@ export const clarifyStep: AgentStepModule<'clarify', ClarifyInput, ClarifyOutput
 			if (drafts.length < MIN_SAMPLES_FOR_JUDGMENT) {
 				// Can't judge divergence → don't invent questions; draft as today.
 				return {
-					output: { questions: [], resolution: 'insufficient_samples' },
+					output: { questions: [], memoryAnswers: [], resolution: 'insufficient_samples' },
 					tokenUsage,
 					modelUsed,
 				};
@@ -300,15 +326,54 @@ export const clarifyStep: AgentStepModule<'clarify', ClarifyInput, ClarifyOutput
 			});
 			tokenUsage = addUsage(tokenUsage, divergenceResult.tokenUsage);
 
-			const questions = selectQuestions(
+			const candidateQuestions = selectQuestions(
 				candidateSlots,
 				divergenceResult.object.divergentSlotIndexes,
 				{ maxQuestions: policy.maxQuestions, highStakesOnly: policy.highStakesOnly }
 			);
 
-			// Instrument the ask (predicted value + dial position) so thresholds can
-			// calibrate on real outcomes. Isolated so a logging failure never drops
-			// the questions or wedges the walker.
+			// ANSWER-MEMORY: before asking, look up a stored standing answer for each
+			// candidate question (scoped to this message's contact + org-general) and
+			// fill the slot silently instead of re-asking. Fail-soft: any lookup error
+			// → no fills → ask exactly as today. See inbox/clarificationMemory.ts.
+			let fills: { questionId: string; value: string }[] = [];
+			if (candidateQuestions.length > 0) {
+				try {
+					const message = await ctx.runQuery(internal.agent.agentPipeline.getMessage, {
+						inboundMessageId: input.inboundMessageId,
+					});
+					const result = await ctx.runMutation(internal.inbox.clarificationMemory.resolveFills, {
+						contactId: message?.contactId,
+						questions: candidateQuestions.map((q) => ({
+							id: q.id,
+							slotType: q.slotType,
+							text: q.text,
+						})),
+					});
+					fills = result.fills;
+				} catch {
+					fills = [];
+				}
+			}
+			const fillByQuestion = new Map(fills.map((f) => [f.questionId, f.value] as const));
+			const filledAt = Date.now();
+			const memoryAnswers: ClarificationQuestion[] = [];
+			const questions: ClarificationQuestion[] = [];
+			for (const q of candidateQuestions) {
+				const value = fillByQuestion.get(q.id);
+				if (value !== undefined) {
+					memoryAnswers.push({
+						...q,
+						answer: { value, source: 'memory', at: filledAt },
+					});
+				} else {
+					questions.push(q);
+				}
+			}
+
+			// Instrument only the questions we ACTUALLY ask (memory-filled ones are
+			// not asks). Isolated so a logging failure never drops the questions or
+			// wedges the walker.
 			if (questions.length > 0) {
 				try {
 					const slotTypes = questions.map((q) => q.slotType);
@@ -327,35 +392,48 @@ export const clarifyStep: AgentStepModule<'clarify', ClarifyInput, ClarifyOutput
 			return {
 				output: {
 					questions,
-					resolution: questions.length > 0 ? 'questions_emitted' : 'converged',
+					memoryAnswers,
+					resolution:
+						questions.length > 0
+							? 'questions_emitted'
+							: memoryAnswers.length > 0
+								? 'memory_filled'
+								: 'converged',
 				},
 				tokenUsage,
 				modelUsed,
 			};
 		} catch {
 			// Fail-soft: degrade to today's behaviour (draft), never block.
-			return { output: { questions: [], resolution: 'fail_soft' } };
+			return { output: { questions: [], memoryAnswers: [], resolution: 'fail_soft' } };
 		}
 	},
 
 	route(output, input, runCtx) {
-		// Missing info → park for a human answer. The walker stamps `askedAt` from
-		// the transition time; classification rides along so the resume path can
-		// reconstruct the draft input.
+		const memoryAnswers = output.memoryAnswers ?? [];
+
+		// Missing info still remains → park for a human answer. The memory-filled
+		// questions (already answered from stored standing answers) ride along
+		// pre-answered so the resumed draft folds them in as confirmed facts too —
+		// the owner is only asked the questions memory could NOT resolve. The
+		// walker stamps `askedAt` from the transition time; classification rides
+		// along so the resume path can reconstruct the draft input.
 		if (output.questions.length > 0) {
 			return {
 				kind: 'transition',
 				transition: {
 					to: 'awaiting_clarification',
-					questions: output.questions,
+					questions: [...memoryAnswers, ...output.questions],
 					classification: input.classification,
 				},
 			};
 		}
 
-		// Nothing missing → drafting, exactly as classify did before: transition
-		// to `drafting` (carrying classification) and schedule the draft step with
-		// the same context.
+		// Nothing left to ask → drafting, exactly as classify did before. When
+		// answer-memory silently resolved every open slot, thread those confirmed
+		// facts straight into the draft (as a TRUSTED block) so the reply uses them
+		// even though we never parked for a human.
+		const confirmedContext = buildMemoryConfirmedContext(memoryAnswers);
 		return {
 			kind: 'transition',
 			transition: { to: 'drafting', classification: input.classification },
@@ -365,6 +443,7 @@ export const clarifyStep: AgentStepModule<'clarify', ClarifyInput, ClarifyOutput
 					inboundMessageId: runCtx.inboundMessageId,
 					context: input.context,
 					classification: input.classification,
+					...(confirmedContext.length > 0 ? { confirmedContext } : {}),
 				},
 			},
 		};

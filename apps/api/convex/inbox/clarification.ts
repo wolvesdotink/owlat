@@ -12,6 +12,7 @@ import { internal } from '../_generated/api';
 import { getMutationContext } from '../lib/sessionOrganization';
 import { recordAuditLog } from '../lib/auditLog';
 import { getOrThrow, throwInvalidState } from '../_utils/errors';
+import { captureStandingAnswers } from './clarificationMemory';
 
 /**
  * Answer the open clarification questions parked on a message and resume the
@@ -37,7 +38,7 @@ export const answerClarification = adminMutation({
 				// Origin of the value — the owner typed it ("user", default) or it
 				// was auto-filled from stored memory ("memory").
 				source: v.optional(v.union(v.literal('user'), v.literal('memory'))),
-			}),
+			})
 		),
 	},
 	handler: async (ctx, args) => {
@@ -51,9 +52,7 @@ export const answerClarification = adminMutation({
 		if (!pending) throwInvalidState('No clarification is pending');
 
 		const now = Date.now();
-		const answerByQuestion = new Map(
-			args.answers.map((a) => [a.questionId, a] as const),
-		);
+		const answerByQuestion = new Map(args.answers.map((a) => [a.questionId, a] as const));
 		const questions = pending.questions.map((q) => {
 			const provided = answerByQuestion.get(q.id);
 			if (!provided) return q;
@@ -72,6 +71,30 @@ export const answerClarification = adminMutation({
 		await ctx.db.patch(args.inboundMessageId, {
 			pendingClarification: { ...pending, questions, answeredAt: now },
 		});
+
+		// ANSWER-MEMORY: promote the owner-typed answers to durable standing facts
+		// scoped to this message's contact, so a later matching thread fills the
+		// slot silently instead of re-asking. Only the owner's own answers (not
+		// memory-replayed ones) are captured. Fail-soft: a memory-write failure
+		// never blocks resuming the draft.
+		try {
+			const capture = [] as { slotType: string; questionText: string; value: string }[];
+			for (const q of questions) {
+				const provided = answerByQuestion.get(q.id);
+				if (!provided) continue;
+				if ((provided.source ?? 'user') !== 'user') continue;
+				capture.push({ slotType: q.slotType, questionText: q.text, value: provided.value });
+			}
+			if (capture.length > 0) {
+				await captureStandingAnswers(ctx, {
+					contactId: message.contactId,
+					source: 'agent',
+					answers: capture,
+				});
+			}
+		} catch {
+			// Memory is best-effort — never block the draft resume below.
+		}
 
 		// Drive awaiting_clarification → drafting via the single lifecycle writer.
 		await ctx.runMutation(internal.inbox.processingLifecycle.transition, {
