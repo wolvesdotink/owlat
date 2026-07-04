@@ -10,7 +10,17 @@ definePageMeta({
 	requiresFeature: 'inbox',
 });
 
-const { reviewItems, isLoading, needsReply, onApprove, approveOption, onReject, composeAndSend } = useReviewQueue();
+const { reviewItems, isLoading, needsReply, onApprove, approveOption, onReject, composeAndSend, editDraft } = useReviewQueue();
+
+// Persist a freeform whole-draft revision from the AiReviseBox onto the card's
+// draft (through the same `editDraft` mutation an inline edit uses), so the
+// revised text is what Approve & Send then queues. Fail-soft: editDraft toasts
+// its own failures and resolves undefined, leaving the existing draft in place.
+async function onReviseApply(messageId: Id<'inboundMessages'>, text: string) {
+	const next = text.trim();
+	if (next.length === 0) return;
+	await editDraft({ inboundMessageId: messageId, draftResponse: next });
+}
 
 // Action state
 const actionInProgress = ref<string | null>(null);
@@ -373,6 +383,16 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 						<p class="text-text-primary text-sm whitespace-pre-wrap">
 							{{ row.message.draftResponse }}
 						</p>
+
+						<!-- Freeform whole-draft revise ("redo but decline politely"), streamed. -->
+						<AiReviseBox
+							v-if="aiEnabled && row.message.draftResponse"
+							class="mt-3"
+							surface="review"
+							:ai-enabled="aiEnabled"
+							:current-draft="row.message.draftResponse ?? ''"
+							@apply="(text: string) => onReviseApply(row.message._id, text)"
+						/>
 					</div>
 
 					<!-- Why it was held + what it was grounded in (read-only) -->

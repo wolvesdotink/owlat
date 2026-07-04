@@ -175,6 +175,9 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'aiMessages',
 	'aiConversations',
 
+	// AI draft-revise stream buffers (ephemeral, owner-scoped)
+	'aiDraftStreams',
+
 	// Independent feature state
 	'coalesceBatches',
 	'visualizations',
@@ -306,6 +309,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	chatRooms: makeSweepStep('chatRooms'),
 	aiMessages: makeSweepStep('aiMessages'),
 	aiConversations: makeSweepStep('aiConversations'),
+	aiDraftStreams: makeSweepStep('aiDraftStreams'),
 	coalesceBatches: makeSweepStep('coalesceBatches'),
 	visualizations: makeSweepStep('visualizations'),
 	dashboardLayouts: makeSweepStep('dashboardLayouts'),

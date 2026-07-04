@@ -145,6 +145,9 @@ export const TENANT_TABLES = [
 	'aiMessages',
 	'aiConversations',
 
+	// ── AI draft-revise stream buffers (ephemeral, owner-scoped) ──
+	'aiDraftStreams',
+
 	// ── Dashboard & visualizations ──
 	'visualizations',
 	'dashboardLayouts',

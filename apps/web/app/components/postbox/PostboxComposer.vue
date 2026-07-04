@@ -110,6 +110,21 @@ const coachDraftText = computed(() => {
 	return (doc.body.textContent ?? '').trim();
 });
 
+// Apply a freeform whole-draft revision (from AiReviseBox) into the composer.
+// The revise returns plain text; escape it and preserve line breaks so the
+// rewritten draft replaces the body without injecting markup. Advisory: only
+// runs when the user clicks Apply on a shown revision.
+function applyRevisedBody(text: string) {
+	const escaped = text
+		.replace(/&/g, '&amp;')
+		.replace(/</g, '&lt;')
+		.replace(/>/g, '&gt;');
+	bodyHtml.value = escaped
+		.split(/\n/)
+		.map((line) => (line.length ? line : '<br>'))
+		.join('<br>');
+}
+
 // Formatting-toolbar preference. Default is the Apple-minimal floating bar (only
 // on selection); the footer "Aa" affordance flips back to the classic persistent
 // toolbar and persists the choice per user.
@@ -434,6 +449,19 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } =
 			:draft-text="coachDraftText"
 			:enabled="aiRewriteEnabled"
 			:message-id="inReplyToMessageId"
+		/>
+
+		<!-- Freeform whole-draft revise ("make it half the length", "add that the
+		     invoice is attached"), streamed progressively. Advisory: replaces the
+		     body only on Apply; hidden when AI is off or the draft is empty. -->
+		<AiReviseBox
+			v-if="aiRewriteEnabled && coachDraftText"
+			class="px-3 pb-2"
+			surface="compose"
+			:ai-enabled="aiRewriteEnabled"
+			:current-draft="coachDraftText"
+			:mailbox-id="mailboxId"
+			@apply="applyRevisedBody"
 		/>
 
 		<PostboxComposerFooter
