@@ -171,6 +171,11 @@ export const AUDIT_ACTION_LITERALS = [
 	action('agent.config_updated'),
 	action('agent.backfill_started'),
 	action('agent.backfill_cancelled'),
+	// Autonomy trust controls. Kill switch reverts to draft-only globally
+	// (agentConfigMutations.killSwitch); demotion-acknowledged clears a
+	// per-sender auto-demotion incident alert (autonomyOutcome.ts).
+	action('agent.kill_switch'),
+	action('agent.demotion_acknowledged'),
 	// Knowledge graph — the one-shot edge backfill kicked off by the first
 	// false→true toggle of `ai.knowledge.autoLink`. See knowledge/edgeBackfill.ts.
 	action('knowledge.edge_backfill_started'),
@@ -202,6 +207,7 @@ export const AUDIT_RESOURCE_LITERALS = [
 	'instance_settings',
 	'inbound_message',
 	'agent_config',
+	'autonomy_rule',
 	'knowledge_config',
 	'mail_message',
 	'conversation_thread',
