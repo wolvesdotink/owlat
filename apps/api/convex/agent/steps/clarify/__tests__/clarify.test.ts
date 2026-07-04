@@ -38,6 +38,7 @@ import {
 	clarifyStep,
 	buildSlotPrompt,
 	buildDivergencePrompt,
+	buildMemoryConfirmedContext,
 	eagernessForCategory,
 	selectQuestions,
 	type ClarifyInput,
@@ -69,7 +70,11 @@ type Mode = 'cautious' | 'balanced' | 'confident' | 'off' | null;
  * (or null when `coverage` is the string 'missing'); getAskEagernessInternal
  * returns `mode` (null = no setting = today's behaviour). `asked` captures the
  * ask-instrumentation rows written via runMutation. */
-function makeCtx(coverage: unknown | 'missing', mode: Mode = null) {
+function makeCtx(
+	coverage: unknown | 'missing',
+	mode: Mode = null,
+	fills: { questionId: string; slotType: string; value: string }[] = []
+) {
 	const asked: unknown[] = [];
 	const ctx = {
 		runQuery: async (ref: unknown) => {
@@ -78,7 +83,9 @@ function makeCtx(coverage: unknown | 'missing', mode: Mode = null) {
 				return { mode };
 			}
 			if (name.includes('getMessage')) {
-				return coverage === 'missing' ? null : { contextCoverage: coverage };
+				return coverage === 'missing'
+					? null
+					: { contextCoverage: coverage, contactId: 'contact_test' };
 			}
 			throw new Error(`unexpected runQuery: ${name}`);
 		},
@@ -87,6 +94,10 @@ function makeCtx(coverage: unknown | 'missing', mode: Mode = null) {
 			if (name.includes('recordClarificationAsk')) {
 				asked.push(args);
 				return undefined;
+			}
+			// Answer-memory fill lookup — return the configured fills.
+			if (name.includes('resolveFills')) {
+				return { fills };
 			}
 			throw new Error(`unexpected runMutation: ${name}`);
 		},
@@ -375,8 +386,15 @@ describe('clarifyStep.execute — ask-eagerness dial', () => {
 });
 
 describe('clarifyStep.route', () => {
-	function outputWith(questions: ClarifyOutput['questions']): ClarifyOutput {
-		return { questions, resolution: questions.length > 0 ? 'questions_emitted' : 'converged' };
+	function outputWith(
+		questions: ClarifyOutput['questions'],
+		memoryAnswers: ClarifyOutput['memoryAnswers'] = []
+	): ClarifyOutput {
+		return {
+			questions,
+			memoryAnswers,
+			resolution: questions.length > 0 ? 'questions_emitted' : 'converged',
+		};
 	}
 
 	it('routes to awaiting_clarification when questions are present', () => {
@@ -409,5 +427,92 @@ describe('clarifyStep.route', () => {
 				classification: input.classification,
 			},
 		});
+	});
+
+	it('folds memory-filled answers into the parked questions when some remain open', () => {
+		const input = makeInput();
+		const memoryAnswers: ClarifyOutput['memoryAnswers'] = [
+			{
+				id: 'clarify_1',
+				slotType: 'factual_lookup',
+				text: 'Which dock?',
+				answer: { value: 'Bay 3', source: 'memory', at: 1 },
+			},
+		];
+		const route = clarifyStep.route(
+			outputWith([{ id: 'clarify_0', slotType: 'decision', text: 'Push the date?' }], memoryAnswers),
+			input,
+			runCtx
+		);
+		if (route.kind !== 'transition' || route.transition.to !== 'awaiting_clarification') {
+			throw new Error('expected awaiting_clarification');
+		}
+		// The memory-answered question rides along pre-answered; only the open one
+		// will be shown to the owner.
+		expect(route.transition.questions).toHaveLength(2);
+		const dock = route.transition.questions.find((q) => q.id === 'clarify_1');
+		expect(dock?.answer?.source).toBe('memory');
+	});
+
+	it('threads memory-filled facts into the draft when every slot was resolved silently', () => {
+		const input = makeInput();
+		const memoryAnswers: ClarifyOutput['memoryAnswers'] = [
+			{
+				id: 'clarify_0',
+				slotType: 'factual_lookup',
+				text: 'Which dock?',
+				answer: { value: 'Bay 3', source: 'memory', at: 1 },
+			},
+		];
+		const route = clarifyStep.route(outputWith([], memoryAnswers), input, runCtx);
+		if (route.kind !== 'transition' || route.transition.to !== 'drafting') {
+			throw new Error('expected drafting');
+		}
+		expect(route.nextStep?.kind).toBe('draft');
+		const draftInput = route.nextStep?.input as { confirmedContext?: string };
+		expect(draftInput.confirmedContext).toContain('Bay 3');
+	});
+});
+
+describe('clarifyStep.execute — answer-memory', () => {
+	it('fills a would-be question silently from stored memory (no ask, no park)', async () => {
+		mocks.runLlmObject
+			.mockResolvedValueOnce({
+				object: { slots: [decisionSlot] },
+				tokenUsage: undefined,
+				modelUsed: 'mock-model',
+			})
+			.mockResolvedValueOnce({
+				object: { divergentSlotIndexes: [0] }, // would normally ask
+				tokenUsage: undefined,
+				modelUsed: 'mock-model',
+			});
+		// Memory already holds the answer for the emitted question (clarify_0).
+		const ctx = makeCtx({ lowCoverage: true }, null, [
+			{ questionId: 'clarify_0', slotType: 'decision', value: 'Yes, push to March.' },
+		]);
+		const { output } = await clarifyStep.execute(ctx, makeInput());
+		expect(output.resolution).toBe('memory_filled');
+		expect(output.questions).toEqual([]);
+		expect(output.memoryAnswers).toHaveLength(1);
+		expect(output.memoryAnswers[0]!.answer?.value).toBe('Yes, push to March.');
+		expect(output.memoryAnswers[0]!.answer?.source).toBe('memory');
+		// It was NOT asked — no ask instrumentation row.
+		expect(ctx.asked).toHaveLength(0);
+	});
+});
+
+describe('buildMemoryConfirmedContext', () => {
+	it('renders filled answers as a confirmed-facts block, skipping blanks', () => {
+		const block = buildMemoryConfirmedContext([
+			{
+				id: 'clarify_0',
+				slotType: 'factual_lookup',
+				text: 'Which dock?',
+				answer: { value: 'Bay 3', source: 'memory', at: 1 },
+			},
+			{ id: 'clarify_1', slotType: 'decision', text: 'Ship it?' }, // unanswered → skipped
+		]);
+		expect(block).toBe('- Which dock? Bay 3');
 	});
 });
