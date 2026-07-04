@@ -606,7 +606,7 @@ function handleClickOutside(event: MouseEvent) {
 	font-size: 13px;
 	font-weight: 500;
 	cursor: pointer;
-	transition: all 0.15s ease;
+	transition: all var(--motion-fast, 80ms) var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
 }
 
 .ep-view-btn:hover {
@@ -635,7 +635,7 @@ function handleClickOutside(event: MouseEvent) {
 	border-radius: 6px;
 	color: var(--ep-text-tertiary);
 	cursor: pointer;
-	transition: all 0.15s ease;
+	transition: all var(--motion-fast, 80ms) var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
 }
 
 .ep-control-btn:hover:not(:disabled) {
@@ -668,7 +668,7 @@ function handleClickOutside(event: MouseEvent) {
 	font-size: 13px;
 	font-weight: 500;
 	cursor: pointer;
-	transition: filter 0.15s ease;
+	transition: filter var(--motion-fast, 80ms) var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
 }
 
 .ep-action-primary {
@@ -698,7 +698,7 @@ function handleClickOutside(event: MouseEvent) {
 	font-size: 12px;
 	font-weight: 600;
 	cursor: pointer;
-	transition: all 0.15s ease;
+	transition: all var(--motion-fast, 80ms) var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
 }
 
 .ep-warning-badge:hover,
@@ -807,7 +807,7 @@ function handleClickOutside(event: MouseEvent) {
 	color: var(--ep-text-secondary);
 	font-size: 13px;
 	cursor: pointer;
-	transition: all 0.1s ease;
+	transition: all var(--motion-fast, 80ms) var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
 }
 
 .ep-export-item:hover {

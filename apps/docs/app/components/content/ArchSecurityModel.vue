@@ -185,7 +185,7 @@ const stateIcons: Record<string, string> = {
   overflow: hidden;
   opacity: 0;
   transform: translateY(12px);
-  transition: opacity 0.6s var(--ease-out-expo), transform 0.6s var(--ease-out-expo), border-color 0.25s;
+  transition: opacity 0.6s var(--ease-spring), transform 0.6s var(--ease-spring), border-color var(--motion-moderate);
   transition-delay: calc(var(--stagger) * 0.12s);
 }
 
@@ -302,7 +302,7 @@ const stateIcons: Record<string, string> = {
 .sec-core svg {
   opacity: 0;
   transform: scale(0.6);
-  transition: opacity 0.5s var(--ease-out-expo), transform 0.5s var(--ease-out-expo);
+  transition: opacity var(--motion-slow) var(--ease-spring), transform var(--motion-slow) var(--ease-spring);
 }
 
 .is-visible .sec-core svg {
@@ -338,7 +338,7 @@ const stateIcons: Record<string, string> = {
   gap: 8px;
   opacity: 0;
   transform: translateY(10px);
-  transition: opacity 0.5s var(--ease-out-expo), transform 0.5s var(--ease-out-expo);
+  transition: opacity var(--motion-slow) var(--ease-spring), transform var(--motion-slow) var(--ease-spring);
   transition-delay: calc(var(--stagger) * 0.12s);
 }
 
@@ -360,7 +360,7 @@ const stateIcons: Record<string, string> = {
   border: 1px solid var(--color-border-default);
   opacity: 0;
   transform: translateY(8px);
-  transition: opacity 0.45s var(--ease-out-expo), transform 0.45s var(--ease-out-expo), border-color 0.25s, box-shadow 0.25s;
+  transition: opacity 0.45s var(--ease-spring), transform 0.45s var(--ease-spring), border-color var(--motion-moderate), box-shadow var(--motion-moderate);
   transition-delay: calc(0.2s + var(--i) * 0.07s);
 }
 
@@ -390,7 +390,7 @@ const stateIcons: Record<string, string> = {
   height: 28px;
   border-radius: 7px;
   flex-shrink: 0;
-  transition: box-shadow 0.3s;
+  transition: box-shadow var(--motion-moderate);
 }
 
 .sec-layer:hover .sec-layer-icon {
@@ -467,7 +467,7 @@ const stateIcons: Record<string, string> = {
   overflow: hidden;
   opacity: 0;
   transform: translateY(10px);
-  transition: opacity 0.5s var(--ease-out-expo), transform 0.5s var(--ease-out-expo), box-shadow 0.25s;
+  transition: opacity var(--motion-slow) var(--ease-spring), transform var(--motion-slow) var(--ease-spring), box-shadow var(--motion-moderate);
   transition-delay: calc(var(--stagger) * 0.12s);
 }
 

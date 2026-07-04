@@ -157,7 +157,7 @@ function typeColor(type: string) {
   border-radius: 1px;
   transform-origin: top;
   transform: scaleY(0);
-  transition: transform 1s var(--ease-out-expo) 0.2s;
+  transition: transform 1s var(--ease-spring) var(--motion-moderate);
 }
 
 .is-visible .ej-line {
@@ -189,7 +189,7 @@ function typeColor(type: string) {
   margin-bottom: 6px;
   opacity: 0;
   transform: translateX(-10px);
-  transition: opacity 0.5s var(--ease-out-expo), transform 0.5s var(--ease-out-expo);
+  transition: opacity var(--motion-slow) var(--ease-spring), transform var(--motion-slow) var(--ease-spring);
   transition-delay: calc(0.2s + var(--si) * 0.12s);
 }
 
@@ -221,7 +221,7 @@ function typeColor(type: string) {
   border-radius: 50%;
   border: 2px solid var(--color-brand-dim);
   background: var(--color-bg-elevated);
-  transition: border-color 0.3s, box-shadow 0.3s;
+  transition: border-color var(--motion-moderate), box-shadow var(--motion-moderate);
 }
 
 .ej-stage:hover .ej-node-ring {
@@ -245,7 +245,7 @@ function typeColor(type: string) {
   position: relative;
   z-index: 1;
   color: var(--color-brand-muted);
-  transition: color 0.25s;
+  transition: color var(--motion-moderate);
 }
 
 .ej-stage--sender .ej-node-icon { color: var(--color-brand-muted); }
@@ -263,7 +263,7 @@ function typeColor(type: string) {
   border-radius: 8px;
   background: var(--color-bg-surface);
   border: 1px solid transparent;
-  transition: border-color 0.25s, background 0.25s;
+  transition: border-color var(--motion-moderate), background var(--motion-moderate);
 }
 
 .ej-stage:hover .ej-card {

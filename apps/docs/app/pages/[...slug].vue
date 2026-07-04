@@ -51,11 +51,11 @@ defineOgImage('Docs', {
 
 <style scoped>
 .content-title {
-	animation: content-enter 0.5s var(--ease-out-expo) both;
+	animation: content-enter 0.5s var(--ease-spring) both;
 }
 
 .content-description {
-	animation: content-enter 0.5s var(--ease-out-expo) 0.05s both;
+	animation: content-enter 0.5s var(--ease-spring) 0.05s both;
 }
 
 @keyframes content-enter {

@@ -73,7 +73,9 @@ const {
 );
 
 // Fetch contact properties and topics
-const { data: contactProperties } = useOrganizationQuery(api.contacts.properties.listByOrganization);
+const { data: contactProperties } = useOrganizationQuery(
+	api.contacts.properties.listByOrganization
+);
 
 const { results: topics } = useTopicsList();
 
@@ -94,7 +96,9 @@ const canLoadMore = computed(() => paginationStatus.value === 'CanLoadMore');
 const isLoadingMore = computed(() => paginationStatus.value === 'LoadingMore');
 const totalCount = computed(() => contacts.value?.length ?? 0);
 
-const contactIds = computed(() => (contacts.value ?? []).map((c: { _id: Id<'contacts'> }) => c._id));
+const contactIds = computed(() =>
+	(contacts.value ?? []).map((c: { _id: Id<'contacts'> }) => c._id)
+);
 const isAllPageSelected = computed(() => bulkSelection.isAllPageSelected(contactIds.value));
 
 // Showing count text
@@ -183,16 +187,16 @@ const handleCsvImport = async () => {
 					| Array<{ email: string; topicIds: Id<'topics'>[] }>
 					| undefined,
 			});
-			return result ?? { imported: 0, updated: 0, skipped: 0, failed: 0, errors: [], addedToList: 0 };
+			return (
+				result ?? { imported: 0, updated: 0, skipped: 0, failed: 0, errors: [], addedToList: 0 }
+			);
 		},
 		// CSV is an operator import source: the backend drops property values for
 		// keys that are not already registered. Register any mapped custom-column
 		// keys that don't yet exist (string type — CSV cells are strings) before
 		// the contact rows are imported.
 		async (keys) => {
-			const existing = new Set(
-				(contactProperties.value ?? []).map((p: { key: string }) => p.key)
-			);
+			const existing = new Set((contactProperties.value ?? []).map((p: { key: string }) => p.key));
 			for (const key of keys) {
 				if (existing.has(key)) continue;
 				await createProperty({ key, label: key, type: 'string' });
@@ -282,10 +286,10 @@ onUnmounted(() => {
 						<Icon name="lucide:chevron-down" class="w-4 h-4" />
 					</button>
 					<Transition
-						enter-active-class="duration-150 ease-out"
+						enter-active-class="duration-(--motion-moderate) ease-spring"
 						enter-from-class="opacity-0 translate-y-1"
 						enter-to-class="opacity-100 translate-y-0"
-						leave-active-class="duration-100 ease-in"
+						leave-active-class="duration-(--motion-moderate-exit) ease-exit"
 						leave-from-class="opacity-100 translate-y-0"
 						leave-to-class="opacity-0 translate-y-1"
 					>
@@ -340,10 +344,10 @@ onUnmounted(() => {
 
 			<!-- Bulk Actions -->
 			<Transition
-				enter-active-class="duration-150 ease-out"
+				enter-active-class="duration-(--motion-moderate) ease-spring"
 				enter-from-class="opacity-0 scale-95"
 				enter-to-class="opacity-100 scale-100"
-				leave-active-class="duration-100 ease-in"
+				leave-active-class="duration-(--motion-moderate-exit) ease-exit"
 				leave-from-class="opacity-100 scale-100"
 				leave-to-class="opacity-0 scale-95"
 			>
@@ -358,7 +362,11 @@ onUnmounted(() => {
 						:disabled="bulkOps.isLoadingAllMatching.value"
 						@click="bulkOps.selectAllMatchingFilter"
 					>
-						<Icon v-if="bulkOps.isLoadingAllMatching.value" name="lucide:loader-2" class="w-3 h-3 animate-spin inline mr-1" />
+						<Icon
+							v-if="bulkOps.isLoadingAllMatching.value"
+							name="lucide:loader-2"
+							class="w-3 h-3 animate-spin inline mr-1"
+						/>
 						Select all {{ totalCount }}
 					</button>
 
@@ -367,7 +375,9 @@ onUnmounted(() => {
 						<UiButton
 							variant="secondary"
 							:disabled="bulkOps.isBulkOperationInProgress.value"
-							@click.stop="bulkOps.isBulkActionDropdownOpen.value = !bulkOps.isBulkActionDropdownOpen.value"
+							@click.stop="
+								bulkOps.isBulkActionDropdownOpen.value = !bulkOps.isBulkActionDropdownOpen.value
+							"
 						>
 							<template #iconLeft><Icon name="lucide:more-horizontal" class="w-4 h-4" /></template>
 							Actions
@@ -375,10 +385,10 @@ onUnmounted(() => {
 						</UiButton>
 
 						<Transition
-							enter-active-class="duration-150 ease-out"
+							enter-active-class="duration-(--motion-moderate) ease-spring"
 							enter-from-class="opacity-0 translate-y-1"
 							enter-to-class="opacity-100 translate-y-0"
-							leave-active-class="duration-100 ease-in"
+							leave-active-class="duration-(--motion-moderate-exit) ease-exit"
 							leave-from-class="opacity-100 translate-y-0"
 							leave-to-class="opacity-0 translate-y-1"
 						>
@@ -391,7 +401,8 @@ onUnmounted(() => {
 									<button
 										class="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-bg-surface flex items-center justify-between transition-colors"
 										@click.stop="
-											bulkOps.isAddToListDropdownOpen.value = !bulkOps.isAddToListDropdownOpen.value;
+											bulkOps.isAddToListDropdownOpen.value =
+												!bulkOps.isAddToListDropdownOpen.value;
 											bulkOps.isRemoveFromListDropdownOpen.value = false;
 										"
 									>
@@ -403,10 +414,10 @@ onUnmounted(() => {
 									</button>
 
 									<Transition
-										enter-active-class="duration-100 ease-out"
+										enter-active-class="duration-(--motion-moderate) ease-spring"
 										enter-from-class="opacity-0 -translate-x-1"
 										enter-to-class="opacity-100 translate-x-0"
-										leave-active-class="duration-75 ease-in"
+										leave-active-class="duration-(--motion-moderate-exit) ease-exit"
 										leave-from-class="opacity-100 translate-x-0"
 										leave-to-class="opacity-0 -translate-x-1"
 									>
@@ -436,7 +447,8 @@ onUnmounted(() => {
 									<button
 										class="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-bg-surface flex items-center justify-between transition-colors"
 										@click.stop="
-											bulkOps.isRemoveFromListDropdownOpen.value = !bulkOps.isRemoveFromListDropdownOpen.value;
+											bulkOps.isRemoveFromListDropdownOpen.value =
+												!bulkOps.isRemoveFromListDropdownOpen.value;
 											bulkOps.isAddToListDropdownOpen.value = false;
 										"
 									>
@@ -448,10 +460,10 @@ onUnmounted(() => {
 									</button>
 
 									<Transition
-										enter-active-class="duration-100 ease-out"
+										enter-active-class="duration-(--motion-moderate) ease-spring"
 										enter-from-class="opacity-0 -translate-x-1"
 										enter-to-class="opacity-100 translate-x-0"
-										leave-active-class="duration-75 ease-in"
+										leave-active-class="duration-(--motion-moderate-exit) ease-exit"
 										leave-from-class="opacity-100 translate-x-0"
 										leave-to-class="opacity-0 -translate-x-1"
 									>
@@ -502,7 +514,8 @@ onUnmounted(() => {
 					<button
 						class="p-1.5 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
 						@click="bulkSelection.clearSelection()"
-					 aria-label="Clear selection">
+						aria-label="Clear selection"
+					>
 						<Icon name="lucide:x" class="w-4 h-4" />
 					</button>
 				</div>
@@ -510,10 +523,10 @@ onUnmounted(() => {
 
 			<!-- Bulk Operation Progress -->
 			<Transition
-				enter-active-class="duration-150 ease-out"
+				enter-active-class="duration-(--motion-moderate) ease-spring"
 				enter-from-class="opacity-0 scale-95"
 				enter-to-class="opacity-100 scale-100"
-				leave-active-class="duration-100 ease-in"
+				leave-active-class="duration-(--motion-moderate-exit) ease-exit"
 				leave-from-class="opacity-100 scale-100"
 				leave-to-class="opacity-0 scale-95"
 			>
@@ -524,13 +537,19 @@ onUnmounted(() => {
 					<Icon name="lucide:loader-2" class="w-4 h-4 animate-spin text-brand" />
 					<span class="text-sm text-text-secondary">
 						<template v-if="bulkOps.bulkOperationType.value === 'add'">Adding to topic...</template>
-						<template v-else-if="bulkOps.bulkOperationType.value === 'remove'">Removing from topic...</template>
-						<template v-else-if="bulkOps.bulkOperationType.value === 'delete'">Deleting...</template>
-						<template v-else-if="bulkOps.bulkOperationType.value === 'export'">Exporting...</template>
+						<template v-else-if="bulkOps.bulkOperationType.value === 'remove'"
+							>Removing from topic...</template
+						>
+						<template v-else-if="bulkOps.bulkOperationType.value === 'delete'"
+							>Deleting...</template
+						>
+						<template v-else-if="bulkOps.bulkOperationType.value === 'export'"
+							>Exporting...</template
+						>
 					</span>
 					<div class="w-20 h-1.5 bg-bg-elevated rounded-full overflow-hidden">
 						<div
-							class="h-full bg-brand transition-all duration-300"
+							class="h-full bg-brand transition-all duration-(--motion-moderate)"
 							:style="{ width: `${bulkOps.bulkOperationProgress.value}%` }"
 						/>
 					</div>
@@ -542,160 +561,161 @@ onUnmounted(() => {
 		<!-- Content -->
 		<div class="card p-0 overflow-hidden">
 			<UiQueryBoundary :error="contactsError">
-			<!-- Loading State -->
-			<div v-if="isLoading && !contacts" class="flex items-center justify-center py-16">
-				<div class="flex flex-col items-center gap-3">
-					<UiSpinner />
-					<p class="text-text-secondary text-sm">Loading contacts...</p>
-				</div>
-			</div>
-
-			<!-- Empty States -->
-			<UiEmptyState
-				v-else-if="!hasActiveOrganization"
-				icon="lucide:users"
-				title="No team selected"
-				description="Create or select a team to start managing your contacts."
-			/>
-
-			<UiEmptyState
-				v-else-if="!isLoading && contacts.length === 0 && !debouncedSearch"
-				icon="lucide:users"
-				title="No contacts yet"
-				description="Get started by adding your first contact or importing from a CSV file."
-			>
-				<template #action>
-					<UiButton @click="addModal.open()">
-						<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
-						Add Contact
-					</UiButton>
-				</template>
-			</UiEmptyState>
-
-			<UiEmptyState
-				v-else-if="!isLoading && contacts.length === 0 && debouncedSearch"
-				icon="lucide:search"
-				title="No results found"
-				:description="`No contacts match &quot;${debouncedSearch}&quot;. Try a different search term.`"
-			>
-				<template #action>
-					<UiButton variant="secondary" @click="searchQuery = ''">Clear search</UiButton>
-				</template>
-			</UiEmptyState>
-
-			<!-- Data Table -->
-			<div v-else>
-				<div class="overflow-x-auto">
-					<table class="w-full">
-						<thead>
-							<tr class="border-b border-border-subtle">
-								<th class="w-12 px-4 py-4">
-									<button
-										class="w-5 h-5 rounded border flex items-center justify-center transition-colors"
-										:class="[
-											isAllPageSelected
-												? 'bg-brand border-brand text-text-inverse'
-												: bulkSelection.hasSelected.value
-													? 'border-brand bg-brand/20'
-													: 'border-border-default hover:border-border-strong',
-										]"
-										@click.stop="toggleSelectAll"
-									>
-										<Icon v-if="isAllPageSelected" name="lucide:check" class="w-3 h-3" />
-										<div
-											v-else-if="bulkSelection.hasSelected.value"
-											class="w-2 h-0.5 bg-brand rounded"
-										/>
-									</button>
-								</th>
-								<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
-									Email
-								</th>
-								<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
-									First Name
-								</th>
-								<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
-									Last Name
-								</th>
-								<th
-									class="text-left px-6 py-4 text-sm font-medium text-text-secondary cursor-pointer hover:text-text-primary transition-colors"
-									@click="toggleSort('createdAt')"
-								>
-									<div class="flex items-center gap-1">
-										Created
-										<Icon
-											v-if="getSortIcon('createdAt')"
-											:name="getSortIcon('createdAt')!"
-											class="w-4 h-4"
-										/>
-									</div>
-								</th>
-							</tr>
-						</thead>
-						<tbody>
-							<tr
-								v-for="contact in contacts"
-								:key="contact._id"
-								class="border-b border-border-subtle last:border-b-0 hover:bg-bg-surface transition-colors cursor-pointer"
-								:class="{ 'bg-brand/5': bulkSelection.selectedIds.value.has(contact._id) }"
-								@click="router.push(`/dashboard/audience/contacts/${contact._id}`)"
-							>
-								<td class="w-12 px-4 py-4">
-									<button
-										class="w-5 h-5 rounded border flex items-center justify-center transition-colors"
-										:class="[
-											bulkSelection.selectedIds.value.has(contact._id)
-												? 'bg-brand border-brand text-text-inverse'
-												: 'border-border-default hover:border-border-strong',
-										]"
-										@click.stop="toggleContactSelection(contact._id)"
-									 :aria-label="`${bulkSelection.selectedIds.value.has(contact._id) ? 'Deselect' : 'Select'} ${contact.email}`">
-										<Icon
-											v-if="bulkSelection.selectedIds.value.has(contact._id)"
-											name="lucide:check"
-											class="w-3 h-3"
-										/>
-									</button>
-								</td>
-								<td class="px-6 py-4">
-									<span class="text-text-primary font-medium">{{ contact.email }}</span>
-								</td>
-								<td class="px-6 py-4">
-									<span class="text-text-secondary">{{ contact.firstName || '-' }}</span>
-								</td>
-								<td class="px-6 py-4">
-									<span class="text-text-secondary">{{ contact.lastName || '-' }}</span>
-								</td>
-								<td class="px-6 py-4">
-									<span class="text-text-tertiary text-sm">{{
-										formatDate(contact.createdAt)
-									}}</span>
-								</td>
-							</tr>
-						</tbody>
-					</table>
+				<!-- Loading State -->
+				<div v-if="isLoading && !contacts" class="flex items-center justify-center py-16">
+					<div class="flex flex-col items-center gap-3">
+						<UiSpinner />
+						<p class="text-text-secondary text-sm">Loading contacts...</p>
+					</div>
 				</div>
 
-				<!-- Load More -->
-				<div
-					v-if="totalCount > 0"
-					class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 px-6 py-4 border-t border-border-subtle"
+				<!-- Empty States -->
+				<UiEmptyState
+					v-else-if="!hasActiveOrganization"
+					icon="lucide:users"
+					title="No team selected"
+					description="Create or select a team to start managing your contacts."
+				/>
+
+				<UiEmptyState
+					v-else-if="!isLoading && contacts.length === 0 && !debouncedSearch"
+					icon="lucide:users"
+					title="No contacts yet"
+					description="Get started by adding your first contact or importing from a CSV file."
 				>
-					<p class="text-sm text-text-tertiary">{{ showingText }}</p>
-					<UiButton
-						v-if="canLoadMore"
-						variant="secondary"
-						:loading="isLoadingMore"
-						@click="handleLoadMore"
+					<template #action>
+						<UiButton @click="addModal.open()">
+							<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
+							Add Contact
+						</UiButton>
+					</template>
+				</UiEmptyState>
+
+				<UiEmptyState
+					v-else-if="!isLoading && contacts.length === 0 && debouncedSearch"
+					icon="lucide:search"
+					title="No results found"
+					:description="`No contacts match &quot;${debouncedSearch}&quot;. Try a different search term.`"
+				>
+					<template #action>
+						<UiButton variant="secondary" @click="searchQuery = ''">Clear search</UiButton>
+					</template>
+				</UiEmptyState>
+
+				<!-- Data Table -->
+				<div v-else>
+					<div class="overflow-x-auto">
+						<table class="w-full">
+							<thead>
+								<tr class="border-b border-border-subtle">
+									<th class="w-12 px-4 py-4">
+										<button
+											class="w-5 h-5 rounded border flex items-center justify-center transition-colors"
+											:class="[
+												isAllPageSelected
+													? 'bg-brand border-brand text-text-inverse'
+													: bulkSelection.hasSelected.value
+														? 'border-brand bg-brand/20'
+														: 'border-border-default hover:border-border-strong',
+											]"
+											@click.stop="toggleSelectAll"
+										>
+											<Icon v-if="isAllPageSelected" name="lucide:check" class="w-3 h-3" />
+											<div
+												v-else-if="bulkSelection.hasSelected.value"
+												class="w-2 h-0.5 bg-brand rounded"
+											/>
+										</button>
+									</th>
+									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">Email</th>
+									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
+										First Name
+									</th>
+									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
+										Last Name
+									</th>
+									<th
+										class="text-left px-6 py-4 text-sm font-medium text-text-secondary cursor-pointer hover:text-text-primary transition-colors"
+										@click="toggleSort('createdAt')"
+									>
+										<div class="flex items-center gap-1">
+											Created
+											<Icon
+												v-if="getSortIcon('createdAt')"
+												:name="getSortIcon('createdAt')!"
+												class="w-4 h-4"
+											/>
+										</div>
+									</th>
+								</tr>
+							</thead>
+							<tbody>
+								<tr
+									v-for="contact in contacts"
+									:key="contact._id"
+									class="border-b border-border-subtle last:border-b-0 hover:bg-bg-surface transition-colors cursor-pointer"
+									:class="{ 'bg-brand/5': bulkSelection.selectedIds.value.has(contact._id) }"
+									@click="router.push(`/dashboard/audience/contacts/${contact._id}`)"
+								>
+									<td class="w-12 px-4 py-4">
+										<button
+											class="w-5 h-5 rounded border flex items-center justify-center transition-colors"
+											:class="[
+												bulkSelection.selectedIds.value.has(contact._id)
+													? 'bg-brand border-brand text-text-inverse'
+													: 'border-border-default hover:border-border-strong',
+											]"
+											@click.stop="toggleContactSelection(contact._id)"
+											:aria-label="`${bulkSelection.selectedIds.value.has(contact._id) ? 'Deselect' : 'Select'} ${contact.email}`"
+										>
+											<Icon
+												v-if="bulkSelection.selectedIds.value.has(contact._id)"
+												name="lucide:check"
+												class="w-3 h-3"
+											/>
+										</button>
+									</td>
+									<td class="px-6 py-4">
+										<span class="text-text-primary font-medium">{{ contact.email }}</span>
+									</td>
+									<td class="px-6 py-4">
+										<span class="text-text-secondary">{{ contact.firstName || '-' }}</span>
+									</td>
+									<td class="px-6 py-4">
+										<span class="text-text-secondary">{{ contact.lastName || '-' }}</span>
+									</td>
+									<td class="px-6 py-4">
+										<span class="text-text-tertiary text-sm">{{
+											formatDate(contact.createdAt)
+										}}</span>
+									</td>
+								</tr>
+							</tbody>
+						</table>
+					</div>
+
+					<!-- Load More -->
+					<div
+						v-if="totalCount > 0"
+						class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 px-6 py-4 border-t border-border-subtle"
 					>
-						<template v-if="!isLoadingMore" #iconLeft><Icon name="lucide:chevron-down" class="w-4 h-4" /></template>
-						{{ isLoadingMore ? 'Loading...' : 'Load More' }}
-					</UiButton>
-					<span v-else-if="paginationStatus === 'Exhausted'" class="text-sm text-text-tertiary">
-						All contacts loaded
-					</span>
+						<p class="text-sm text-text-tertiary">{{ showingText }}</p>
+						<UiButton
+							v-if="canLoadMore"
+							variant="secondary"
+							:loading="isLoadingMore"
+							@click="handleLoadMore"
+						>
+							<template v-if="!isLoadingMore" #iconLeft
+								><Icon name="lucide:chevron-down" class="w-4 h-4"
+							/></template>
+							{{ isLoadingMore ? 'Loading...' : 'Load More' }}
+						</UiButton>
+						<span v-else-if="paginationStatus === 'Exhausted'" class="text-sm text-text-tertiary">
+							All contacts loaded
+						</span>
+					</div>
 				</div>
-			</div>
 			</UiQueryBoundary>
 		</div>
 
@@ -738,7 +758,12 @@ onUnmounted(() => {
 				<div class="mb-6">
 					<UiSelect
 						v-model="addModal.form.language"
-						:options="languageOptionsWithUnset.map((l) => ({ value: l.value, label: formatLanguageLabel(l) }))"
+						:options="
+							languageOptionsWithUnset.map((l) => ({
+								value: l.value,
+								label: formatLanguageLabel(l),
+							}))
+						"
 						label="Preferred Language"
 						placeholder="Select a language"
 						:disabled="addModal.isSubmitting.value"
@@ -746,7 +771,10 @@ onUnmounted(() => {
 				</div>
 			</form>
 			<template #footer>
-				<UiButton variant="secondary" :disabled="addModal.isSubmitting.value" @click="addModal.close()"
+				<UiButton
+					variant="secondary"
+					:disabled="addModal.isSubmitting.value"
+					@click="addModal.close()"
 					>Cancel</UiButton
 				>
 				<UiButton :loading="addModal.isSubmitting.value" @click="handleAddSubmit">{{
@@ -756,7 +784,11 @@ onUnmounted(() => {
 		</UiModal>
 
 		<!-- CSV Import Modal -->
-		<LazyContactsCsvImportModal :csv-import="csvImport" :topics="topics" @import="handleCsvImport" />
+		<LazyContactsCsvImportModal
+			:csv-import="csvImport"
+			:topics="topics"
+			@import="handleCsvImport"
+		/>
 
 		<!-- Export Modal -->
 		<LazyContactsExportModal
@@ -767,7 +799,10 @@ onUnmounted(() => {
 		/>
 
 		<!-- Integration Import Modal -->
-		<LazyContactsIntegrationImportModal v-model:open="isIntegrationImportModalOpen" :topics="topics" />
+		<LazyContactsIntegrationImportModal
+			v-model:open="isIntegrationImportModalOpen"
+			:topics="topics"
+		/>
 
 		<!-- Bulk Delete Modal -->
 		<LazyContactsBulkDeleteModal

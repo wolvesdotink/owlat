@@ -95,9 +95,9 @@ function rowAction(event: MouseEvent, e: 'toggle-star' | 'toggle-read' | 'archiv
 			:tabindex="selectable ? -1 : undefined"
 			:aria-selected="focused"
 			:to="selectable ? undefined : `/dashboard/postbox/${folderRole}/${msg._id}`"
-			class="pbx-row-link block w-full text-left px-4 py-3 hover:bg-bg-elevated"
+			class="pbx-row-link block w-full text-left px-4 py-3 hover:bg-(--surface-1-hover)"
 			:class="{
-				'bg-bg-elevated': active,
+				'bg-(--surface-1-selected)': active,
 				'bg-brand/5': selected,
 				'ring-1 ring-inset ring-brand/50': focused,
 				'cursor-pointer': selectable,
@@ -139,11 +139,7 @@ function rowAction(event: MouseEvent, e: 'toggle-star' | 'toggle-read' | 'archiv
 						</span>
 					</div>
 					<div class="flex items-center gap-1.5 mt-0.5">
-						<Icon
-							v-if="msg.flagFlagged"
-							name="lucide:star"
-							class="w-3.5 h-3.5 text-warning"
-						/>
+						<Icon v-if="msg.flagFlagged" name="lucide:star" class="w-3.5 h-3.5 text-warning" />
 						<Icon
 							v-if="msg.snoozedUntil"
 							name="lucide:clock"
@@ -158,7 +154,13 @@ function rowAction(event: MouseEvent, e: 'toggle-star' | 'toggle-read' | 'archiv
 						<PostboxThreadRowFollowUp
 							v-if="msg.followUp?.watched"
 							:follow-up="msg.followUp"
-							@cancel="(e: MouseEvent) => { e.stopPropagation(); e.preventDefault(); emit('cancel-follow-up'); }"
+							@cancel="
+								(e: MouseEvent) => {
+									e.stopPropagation();
+									e.preventDefault();
+									emit('cancel-follow-up');
+								}
+							"
 						/>
 						<p
 							class="truncate text-sm flex-1"
@@ -167,7 +169,9 @@ function rowAction(event: MouseEvent, e: 'toggle-star' | 'toggle-read' | 'archiv
 							{{ msg.subject || '(no subject)' }}
 						</p>
 					</div>
-					<p class="pbx-row-snippet text-xs text-text-tertiary truncate mt-0.5">{{ msg.snippet }}</p>
+					<p class="pbx-row-snippet text-xs text-text-tertiary truncate mt-0.5">
+						{{ msg.snippet }}
+					</p>
 				</div>
 			</div>
 		</component>

@@ -21,16 +21,14 @@ const { isAdmin } = usePermissions();
 const fileId = computed(() => route.params['id'] as Id<'semanticFiles'>);
 
 // File data
-const { data: file, isLoading } = useConvexQuery(
-	api.semanticFiles.get,
-	() => ({ fileId: fileId.value }),
-);
+const { data: file, isLoading } = useConvexQuery(api.semanticFiles.get, () => ({
+	fileId: fileId.value,
+}));
 
 // Version history
-const { data: versions } = useConvexQuery(
-	api.semanticFiles.getVersionHistory,
-	() => ({ fileId: fileId.value }),
-);
+const { data: versions } = useConvexQuery(api.semanticFiles.getVersionHistory, () => ({
+	fileId: fileId.value,
+}));
 
 // Mutations
 const { run: updateFile } = useBackendOperation(api.semanticFiles.update, {
@@ -51,10 +49,9 @@ const editContacts = ref<PickerContact[]>([]);
 // Hydrate the file's linked contact ids into full rows so the editable picker
 // can render labels/chips (the file row carries only ids).
 const linkedContactIds = computed(() => file.value?.contactIds ?? []);
-const { data: linkedContacts } = useConvexQuery(
-	api.contacts.contacts.getByIds,
-	() => ({ contactIds: linkedContactIds.value }),
-);
+const { data: linkedContacts } = useConvexQuery(api.contacts.contacts.getByIds, () => ({
+	contactIds: linkedContactIds.value,
+}));
 
 // Delete state
 const showDeleteConfirm = ref(false);
@@ -105,7 +102,10 @@ const startEditTitle = () => {
 
 const saveTitle = async () => {
 	if (!file.value) return;
-	const result = await updateFile({ fileId: fileId.value, title: editTitleInput.value || undefined });
+	const result = await updateFile({
+		fileId: fileId.value,
+		title: editTitleInput.value || undefined,
+	});
 	if (result === undefined) return;
 	isEditingTitle.value = false;
 	showToast('Title updated');
@@ -163,10 +163,14 @@ const mimeIcon = computed(() => {
 const sourceLabel = computed(() => {
 	if (!file.value) return '';
 	switch (file.value.sourceType) {
-		case 'upload': return 'Manual Upload';
-		case 'email_attachment': return 'Email Attachment';
-		case 'agent_generated': return 'AI Generated';
-		default: return file.value.sourceType;
+		case 'upload':
+			return 'Manual Upload';
+		case 'email_attachment':
+			return 'Email Attachment';
+		case 'agent_generated':
+			return 'AI Generated';
+		default:
+			return file.value.sourceType;
 	}
 });
 </script>
@@ -204,7 +208,9 @@ const sourceLabel = computed(() => {
 			<!-- Header -->
 			<div class="flex items-start justify-between gap-4 mb-8">
 				<div class="flex items-start gap-4 min-w-0">
-					<div class="flex-shrink-0 w-14 h-14 rounded-xl bg-bg-surface border border-border-subtle flex items-center justify-center">
+					<div
+						class="flex-shrink-0 w-14 h-14 rounded-xl bg-bg-surface border border-border-subtle flex items-center justify-center"
+					>
 						<Icon :name="mimeIcon" class="w-7 h-7 text-text-tertiary" />
 					</div>
 					<div class="min-w-0">
@@ -218,10 +224,18 @@ const sourceLabel = computed(() => {
 								@keyup.enter="saveTitle"
 								@keyup.escape="cancelEditTitle"
 							/>
-							<button class="p-1 rounded text-brand hover:bg-brand-subtle transition-colors" @click="saveTitle" aria-label="Save title">
+							<button
+								class="p-1 rounded text-brand hover:bg-brand-subtle transition-colors"
+								@click="saveTitle"
+								aria-label="Save title"
+							>
 								<Icon name="lucide:check" class="w-4 h-4" />
 							</button>
-							<button class="p-1 rounded text-text-tertiary hover:bg-bg-surface transition-colors" @click="cancelEditTitle" aria-label="Cancel editing title">
+							<button
+								class="p-1 rounded text-text-tertiary hover:bg-bg-surface transition-colors"
+								@click="cancelEditTitle"
+								aria-label="Cancel editing title"
+							>
 								<Icon name="lucide:x" class="w-4 h-4" />
 							</button>
 						</div>
@@ -232,7 +246,11 @@ const sourceLabel = computed(() => {
 							@click="isAdmin && startEditTitle()"
 						>
 							{{ file.title || file.filename }}
-							<Icon v-if="isAdmin" name="lucide:pencil" class="w-3.5 h-3.5 text-text-tertiary inline-block opacity-0 group-hover:opacity-100 transition-opacity ml-1" />
+							<Icon
+								v-if="isAdmin"
+								name="lucide:pencil"
+								class="w-3.5 h-3.5 text-text-tertiary inline-block opacity-0 group-hover:opacity-100 transition-opacity ml-1"
+							/>
 						</h1>
 						<p class="text-sm text-text-secondary mt-0.5">{{ file.filename }}</p>
 					</div>
@@ -249,11 +267,7 @@ const sourceLabel = computed(() => {
 						<Icon name="lucide:download" class="w-4 h-4 mr-2" />
 						Download
 					</a>
-					<button
-						v-if="isAdmin"
-						class="btn btn-secondary"
-						@click="showVersionUpload = true"
-					>
+					<button v-if="isAdmin" class="btn btn-secondary" @click="showVersionUpload = true">
 						<Icon name="lucide:upload" class="w-4 h-4 mr-2" />
 						New Version
 					</button>
@@ -288,12 +302,17 @@ const sourceLabel = computed(() => {
 							/>
 						</button>
 						<div v-if="showSummary" class="px-5 pb-4">
-							<p class="text-sm text-text-secondary leading-relaxed whitespace-pre-wrap">{{ file.summary }}</p>
+							<p class="text-sm text-text-secondary leading-relaxed whitespace-pre-wrap">
+								{{ file.summary }}
+							</p>
 						</div>
 					</div>
 
 					<!-- Extracted text -->
-					<div v-if="file.extractedText" class="bg-bg-elevated border border-border-subtle rounded-lg">
+					<div
+						v-if="file.extractedText"
+						class="bg-bg-elevated border border-border-subtle rounded-lg"
+					>
 						<button
 							class="w-full flex items-center justify-between px-5 py-4"
 							@click="showExtractedText = !showExtractedText"
@@ -309,7 +328,10 @@ const sourceLabel = computed(() => {
 							/>
 						</button>
 						<div v-if="showExtractedText" class="px-5 pb-4">
-							<pre class="text-sm text-text-secondary leading-relaxed whitespace-pre-wrap font-mono bg-bg-surface rounded-lg p-4 max-h-96 overflow-y-auto">{{ file.extractedText }}</pre>
+							<pre
+								class="text-sm text-text-secondary leading-relaxed whitespace-pre-wrap font-mono bg-bg-surface rounded-lg p-4 max-h-96 overflow-y-auto"
+								>{{ file.extractedText }}</pre
+							>
 						</div>
 					</div>
 
@@ -322,7 +344,9 @@ const sourceLabel = computed(() => {
 							<div class="flex items-center gap-2">
 								<Icon name="lucide:history" class="w-4 h-4 text-text-tertiary" />
 								<span class="text-sm font-medium text-text-primary">Version History</span>
-								<span v-if="versions" class="text-xs text-text-tertiary">({{ versions.length }})</span>
+								<span v-if="versions" class="text-xs text-text-tertiary"
+									>({{ versions.length }})</span
+								>
 							</div>
 							<Icon
 								name="lucide:chevron-down"
@@ -331,10 +355,7 @@ const sourceLabel = computed(() => {
 							/>
 						</button>
 						<div v-if="showVersions" class="px-5 pb-4">
-							<FilesVersionHistory
-								:versions="versions || []"
-								:current-version-id="file._id"
-							/>
+							<FilesVersionHistory :versions="versions || []" :current-version-id="file._id" />
 						</div>
 					</div>
 				</div>
@@ -352,7 +373,9 @@ const sourceLabel = computed(() => {
 							</div>
 							<div>
 								<p class="text-xs text-text-tertiary mb-0.5">File Size</p>
-								<p class="text-sm text-text-secondary">{{ formatCompactFileSize(file.fileSize) }}</p>
+								<p class="text-sm text-text-secondary">
+									{{ formatCompactFileSize(file.fileSize) }}
+								</p>
 							</div>
 							<div>
 								<p class="text-xs text-text-tertiary mb-0.5">Created</p>
@@ -364,14 +387,19 @@ const sourceLabel = computed(() => {
 									class="inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium rounded-full"
 									:class="{
 										'bg-bg-surface text-text-secondary': file.sourceType === 'upload',
-										'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300': file.sourceType === 'email_attachment',
+										'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300':
+											file.sourceType === 'email_attachment',
 										'bg-brand-subtle text-brand': file.sourceType === 'agent_generated',
 									}"
 								>
 									<Icon
-										:name="file.sourceType === 'upload' ? 'lucide:upload'
-											: file.sourceType === 'email_attachment' ? 'lucide:mail'
-											: 'lucide:sparkles'"
+										:name="
+											file.sourceType === 'upload'
+												? 'lucide:upload'
+												: file.sourceType === 'email_attachment'
+													? 'lucide:mail'
+													: 'lucide:sparkles'
+										"
 										class="w-3.5 h-3.5"
 									/>
 									{{ sourceLabel }}
@@ -397,7 +425,8 @@ const sourceLabel = computed(() => {
 								v-if="!isEditingTags && isAdmin"
 								class="p-1 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
 								@click="startEditTags"
-							 aria-label="Edit">
+								aria-label="Edit"
+							>
 								<Icon name="lucide:pencil" class="w-3.5 h-3.5" />
 							</button>
 						</div>
@@ -411,10 +440,7 @@ const sourceLabel = computed(() => {
 								@keyup.enter="saveTags"
 							/>
 							<div class="flex items-center gap-2">
-								<button
-									class="text-xs text-brand font-medium hover:underline"
-									@click="saveTags"
-								>
+								<button class="text-xs text-brand font-medium hover:underline" @click="saveTags">
 									Save
 								</button>
 								<button
@@ -473,10 +499,16 @@ const sourceLabel = computed(() => {
 						<div v-if="isEditingContacts" class="space-y-3">
 							<FilesContactPicker v-model="editContacts" />
 							<div class="flex items-center gap-2">
-								<button class="text-xs text-brand font-medium hover:underline" @click="saveContacts">
+								<button
+									class="text-xs text-brand font-medium hover:underline"
+									@click="saveContacts"
+								>
 									Save
 								</button>
-								<button class="text-xs text-text-tertiary hover:text-text-primary" @click="cancelEditContacts">
+								<button
+									class="text-xs text-text-tertiary hover:text-text-primary"
+									@click="cancelEditContacts"
+								>
 									Cancel
 								</button>
 							</div>
@@ -492,7 +524,9 @@ const sourceLabel = computed(() => {
 									class="flex items-center gap-2 p-2 -mx-2 rounded-lg hover:bg-bg-surface transition-colors"
 								>
 									<Icon name="lucide:user" class="w-4 h-4 text-text-tertiary" />
-									<span class="text-sm text-brand hover:underline truncate">{{ contactPickerLabel(contact) }}</span>
+									<span class="text-sm text-brand hover:underline truncate">{{
+										contactPickerLabel(contact)
+									}}</span>
 								</NuxtLink>
 							</div>
 							<p v-else class="text-sm text-text-tertiary">No linked contacts</p>
@@ -513,10 +547,10 @@ const sourceLabel = computed(() => {
 		<!-- Delete confirmation -->
 		<Teleport to="body">
 			<Transition
-				enter-active-class="duration-200 ease-out"
+				enter-active-class="duration-(--motion-moderate) ease-spring"
 				enter-from-class="opacity-0"
 				enter-to-class="opacity-100"
-				leave-active-class="duration-150 ease-in"
+				leave-active-class="duration-(--motion-moderate-exit) ease-exit"
 				leave-from-class="opacity-100"
 				leave-to-class="opacity-0"
 			>
@@ -525,10 +559,13 @@ const sourceLabel = computed(() => {
 					class="fixed inset-0 z-50 flex items-center justify-center p-4"
 				>
 					<div class="absolute inset-0 bg-black/60" @click="showDeleteConfirm = false" />
-					<div class="relative bg-bg-elevated border border-border-subtle rounded-2xl p-6 w-full max-w-sm">
+					<div
+						class="relative bg-bg-elevated border border-border-subtle rounded-2xl p-6 w-full max-w-sm"
+					>
 						<h3 class="text-lg font-semibold text-text-primary mb-2">Delete File</h3>
 						<p class="text-sm text-text-secondary mb-6">
-							This will permanently delete this file and all its version history. This action cannot be undone.
+							This will permanently delete this file and all its version history. This action cannot
+							be undone.
 						</p>
 						<div class="flex items-center justify-end gap-3">
 							<button class="btn btn-secondary" @click="showDeleteConfirm = false">Cancel</button>

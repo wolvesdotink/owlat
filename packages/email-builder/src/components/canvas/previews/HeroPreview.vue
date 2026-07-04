@@ -118,7 +118,7 @@ function handleChildSelect(itemId: string, event: MouseEvent) {
 				class="relative group/nested-block"
 				:data-block-id="item.id"
 				:class="[
-					'border rounded my-0.5 transition-[border-color] duration-150',
+					'border rounded my-0.5 transition-[border-color] duration-(--motion-fast)',
 					item.id === selectedNestedItemId
 						? 'border-brand'
 						: 'border-transparent hover:border-white/20',

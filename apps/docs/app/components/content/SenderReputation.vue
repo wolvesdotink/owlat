@@ -126,7 +126,7 @@ const timeline = [
   overflow: hidden;
   opacity: 0;
   transform: translateY(14px);
-  transition: opacity 0.6s var(--ease-out-expo), transform 0.6s var(--ease-out-expo), border-color 0.3s, box-shadow 0.3s;
+  transition: opacity 0.6s var(--ease-spring), transform 0.6s var(--ease-spring), border-color var(--motion-moderate), box-shadow var(--motion-moderate);
   transition-delay: calc(var(--i) * 0.15s);
 }
 
@@ -141,16 +141,6 @@ const timeline = [
   transition-delay: 0s;
 }
 
-/* Ambient shimmer */
-.is-visible .sr-card {
-  animation: sr-shimmer 4s ease-in-out infinite;
-  animation-delay: calc(var(--i) * 0.6s);
-}
-
-@keyframes sr-shimmer {
-  0%, 100% { border-color: var(--color-border-default); }
-  50% { border-color: color-mix(in oklab, var(--color-brand) 14%, var(--color-border-default)); }
-}
 
 /* Card header */
 .sr-card-header {
@@ -245,7 +235,7 @@ const timeline = [
   background: var(--color-bg-elevated);
   opacity: 0;
   transform: translateY(14px);
-  transition: opacity 0.6s var(--ease-out-expo), transform 0.6s var(--ease-out-expo);
+  transition: opacity 0.6s var(--ease-spring), transform 0.6s var(--ease-spring);
   transition-delay: calc(0.1s + var(--i) * 0.15s);
 }
 
@@ -280,7 +270,7 @@ const timeline = [
   border-radius: 1px;
   transform: scaleX(0);
   transform-origin: left;
-  transition: transform 0.8s var(--ease-out-expo);
+  transition: transform var(--motion-choreo) var(--ease-spring);
   transition-delay: 0.4s;
 }
 
@@ -297,7 +287,7 @@ const timeline = [
   z-index: 1;
   opacity: 0;
   transform: translateY(6px);
-  transition: opacity 0.5s var(--ease-out-expo), transform 0.5s var(--ease-out-expo);
+  transition: opacity var(--motion-slow) var(--ease-spring), transform var(--motion-slow) var(--ease-spring);
   transition-delay: calc(0.5s + var(--j) * 0.12s);
 }
 

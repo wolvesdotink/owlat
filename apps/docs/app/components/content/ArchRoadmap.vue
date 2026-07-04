@@ -154,7 +154,7 @@ function statusText(s: string) {
   position: relative;
   opacity: 0;
   transform: translateY(12px);
-  transition: opacity 0.6s var(--ease-out-expo), transform 0.6s var(--ease-out-expo), border-color 0.25s;
+  transition: opacity 0.6s var(--ease-spring), transform 0.6s var(--ease-spring), border-color var(--motion-moderate);
 }
 
 .rm-container::before {
@@ -226,8 +226,8 @@ function statusText(s: string) {
   opacity: 0;
   transform: translateY(10px);
   transition:
-    opacity 0.4s var(--ease-out-expo),
-    transform 0.4s var(--ease-out-expo);
+    opacity 0.4s var(--ease-spring),
+    transform 0.4s var(--ease-spring);
 }
 
 .is-visible .rm-phase {
@@ -238,18 +238,18 @@ function statusText(s: string) {
 /* Expanding: width goes first (no delay) */
 .rm-phase.is-expanded {
   transition:
-    flex 0.4s var(--ease-out-expo),
-    opacity 0.4s var(--ease-out-expo),
-    transform 0.4s var(--ease-out-expo),
+    flex 0.4s var(--ease-spring),
+    opacity 0.4s var(--ease-spring),
+    transform 0.4s var(--ease-spring),
     background 0.3s;
 }
 
 /* Collapsing: width waits for content to fade out first */
 .rm-phase.is-collapsed {
   transition:
-    flex 0.4s var(--ease-out-expo) 0.15s,
-    opacity 0.4s var(--ease-out-expo),
-    transform 0.4s var(--ease-out-expo),
+    flex 0.4s var(--ease-spring) 0.15s,
+    opacity 0.4s var(--ease-spring),
+    transform 0.4s var(--ease-spring),
     background 0.3s;
 }
 
@@ -286,7 +286,7 @@ function statusText(s: string) {
   bottom: 0;
   width: 3px;
   opacity: 0;
-  transition: opacity 0.3s;
+  transition: opacity var(--motion-moderate);
 }
 
 .rm-phase.is-expanded .rm-depth-edge {
@@ -318,7 +318,7 @@ function statusText(s: string) {
   border-radius: 3px;
   background: var(--color-bg-surface);
   border: 1px solid var(--color-border-subtle);
-  transition: color 0.25s, background 0.25s, border-color 0.25s;
+  transition: color var(--motion-moderate), background var(--motion-moderate), border-color var(--motion-moderate);
 }
 
 .rm-phase--active .rm-marker-num {
@@ -373,7 +373,7 @@ function statusText(s: string) {
   justify-content: center;
   background: color-mix(in oklab, var(--color-brand) 6%, var(--color-bg-elevated));
   color: var(--color-text-secondary);
-  transition: color 0.25s, background 0.25s, transform 0.3s var(--ease-out-expo);
+  transition: color var(--motion-moderate), background var(--motion-moderate), transform var(--motion-moderate) var(--ease-spring);
 }
 
 .rm-phase--active .rm-icon {
@@ -411,7 +411,7 @@ function statusText(s: string) {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  transition: font-size 0.3s;
+  transition: font-size var(--motion-moderate);
 }
 
 .rm-phase.is-collapsed .rm-title {
@@ -425,7 +425,7 @@ function statusText(s: string) {
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--color-text-tertiary);
-  transition: color 0.25s;
+  transition: color var(--motion-moderate);
 }
 
 .rm-phase--active .rm-status {
@@ -445,7 +445,7 @@ function statusText(s: string) {
   visibility: hidden;
   pointer-events: none;
   /* Collapsing: fade out immediately, then hide */
-  transition: opacity 0.12s ease-out, visibility 0s linear 0.12s;
+  transition: opacity 0.12s var(--ease-spring), visibility 0s linear 0.12s;
 }
 
 .rm-phase.is-expanded .rm-detail {
@@ -453,7 +453,7 @@ function statusText(s: string) {
   visibility: visible;
   pointer-events: auto;
   /* Expanding: wait for width to finish, then fade in */
-  transition: visibility 0s linear 0.35s, opacity 0.25s var(--ease-out-expo) 0.35s;
+  transition: visibility 0s linear var(--motion-slow), opacity var(--motion-moderate) var(--ease-spring) var(--motion-slow);
 }
 
 .rm-ships {
@@ -473,7 +473,7 @@ function statusText(s: string) {
   white-space: nowrap;
   opacity: 0;
   transform: translateY(3px);
-  transition: opacity 0.3s var(--ease-out-expo), transform 0.3s var(--ease-out-expo), border-color 0.2s, background 0.2s;
+  transition: opacity var(--motion-moderate) var(--ease-spring), transform var(--motion-moderate) var(--ease-spring), border-color var(--motion-moderate), background var(--motion-moderate);
 }
 
 .is-visible .rm-ship {

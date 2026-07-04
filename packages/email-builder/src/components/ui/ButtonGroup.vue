@@ -16,7 +16,7 @@ const emit = defineEmits<{
 		<button
 			v-for="(opt, i) in options"
 			:key="opt.value"
-			class="flex items-center justify-center w-[36px] h-8 cursor-pointer transition-[background-color,color] duration-75"
+			class="flex items-center justify-center w-[36px] h-8 cursor-pointer transition-[background-color,color] duration-(--motion-fast)"
 			:class="[
 				value === opt.value
 					? 'bg-brand text-white shadow-[inset_0_1px_2px_rgba(0,0,0,0.2)]'

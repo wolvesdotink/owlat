@@ -47,7 +47,9 @@ const { run: updateAutomation } = useBackendOperation(api.automations.automation
 });
 
 // Fetch contact properties for condition step configuration
-const { data: contactProperties } = useOrganizationQuery(api.contacts.properties.listByOrganization);
+const { data: contactProperties } = useOrganizationQuery(
+	api.contacts.properties.listByOrganization
+);
 
 // Fetch topics for condition step configuration
 const { results: topics } = useTopicsList();
@@ -236,7 +238,8 @@ onUnmounted(() => {
 						<button
 							class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
 							@click="handleBack"
-						 aria-label="Back">
+							aria-label="Back"
+						>
 							<Icon name="lucide:arrow-left" class="w-5 h-5" />
 						</button>
 						<div v-if="automation">
@@ -423,7 +426,8 @@ onUnmounted(() => {
 								<button
 									class="flex items-center justify-center w-8 h-8 rounded-full bg-bg-surface border border-border-default text-text-tertiary hover:text-brand hover:border-brand transition-colors"
 									@click="addStepDropdownIndex = addStepDropdownIndex === -1 ? null : -1"
-								 aria-label="Add">
+									aria-label="Add"
+								>
 									<Icon name="lucide:plus" class="w-4 h-4" />
 								</button>
 
@@ -444,9 +448,20 @@ onUnmounted(() => {
 											class="flex items-center gap-3 w-full p-2 rounded-lg text-left transition-colors hover:bg-bg-surface"
 											@click="handleAddStep(type.id, 0)"
 										>
-											<div :class="['p-2 rounded-lg flex items-center justify-center', getIconColorClass(type.color)]">
+											<div
+												:class="[
+													'p-2 rounded-lg flex items-center justify-center',
+													getIconColorClass(type.color),
+												]"
+											>
 												<Icon
-													:name="type.id === 'email' ? 'lucide:mail' : type.id === 'delay' ? 'lucide:clock' : 'lucide:git-branch'"
+													:name="
+														type.id === 'email'
+															? 'lucide:mail'
+															: type.id === 'delay'
+																? 'lucide:clock'
+																: 'lucide:git-branch'
+													"
 													class="w-4 h-4"
 												/>
 											</div>
@@ -547,7 +562,8 @@ onUnmounted(() => {
 										<button
 											class="p-2 text-text-tertiary hover:text-error transition-colors"
 											@click.stop="handleDeleteStep(step._id)"
-										 aria-label="Delete">
+											aria-label="Delete"
+										>
 											<Icon name="lucide:trash-2" class="w-4 h-4" />
 										</button>
 									</div>
@@ -562,7 +578,8 @@ onUnmounted(() => {
 										<button
 											class="flex items-center justify-center w-8 h-8 rounded-full bg-bg-surface border border-border-default text-text-tertiary hover:text-brand hover:border-brand transition-colors"
 											@click="addStepDropdownIndex = addStepDropdownIndex === index ? null : index"
-										 aria-label="Add">
+											aria-label="Add"
+										>
 											<Icon name="lucide:plus" class="w-4 h-4" />
 										</button>
 
@@ -583,9 +600,20 @@ onUnmounted(() => {
 													class="flex items-center gap-3 w-full p-2 rounded-lg text-left transition-colors hover:bg-bg-surface"
 													@click="handleAddStep(type.id, index + 1)"
 												>
-													<div :class="['p-2 rounded-lg flex items-center justify-center', getIconColorClass(type.color)]">
+													<div
+														:class="[
+															'p-2 rounded-lg flex items-center justify-center',
+															getIconColorClass(type.color),
+														]"
+													>
 														<Icon
-															:name="type.id === 'email' ? 'lucide:mail' : type.id === 'delay' ? 'lucide:clock' : 'lucide:git-branch'"
+															:name="
+																type.id === 'email'
+																	? 'lucide:mail'
+																	: type.id === 'delay'
+																		? 'lucide:clock'
+																		: 'lucide:git-branch'
+															"
 															class="w-4 h-4"
 														/>
 													</div>
@@ -678,10 +706,10 @@ onUnmounted(() => {
 		<!-- Activate Confirmation Modal -->
 		<Teleport to="body">
 			<Transition
-				enter-active-class="transition-opacity duration-200"
+				enter-active-class="transition-opacity duration-(--motion-fast)"
 				enter-from-class="opacity-0"
 				enter-to-class="opacity-100"
-				leave-active-class="transition-opacity duration-150"
+				leave-active-class="transition-opacity duration-(--motion-fast-exit)"
 				leave-from-class="opacity-100"
 				leave-to-class="opacity-0"
 			>

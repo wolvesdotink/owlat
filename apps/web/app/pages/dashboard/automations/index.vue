@@ -126,7 +126,11 @@ const getTriggerDisplay = (
 const getStatusBadge = (status: 'draft' | 'active' | 'paused') => {
 	switch (status) {
 		case 'draft':
-			return { color: 'bg-text-tertiary/10 text-text-tertiary', icon: 'lucide:pencil', label: 'Draft' };
+			return {
+				color: 'bg-text-tertiary/10 text-text-tertiary',
+				icon: 'lucide:pencil',
+				label: 'Draft',
+			};
 		case 'active':
 			return { color: 'bg-success/10 text-success', icon: 'lucide:play', label: 'Active' };
 		case 'paused':
@@ -456,8 +460,16 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 											:disabled="toggleingId === automation._id"
 											@click="handleToggleStatus(automation)"
 										>
-											<Icon v-if="toggleingId === automation._id" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
-											<Icon v-else-if="automation.status === 'active'" name="lucide:pause" class="w-4 h-4" />
+											<Icon
+												v-if="toggleingId === automation._id"
+												name="lucide:loader-2"
+												class="w-4 h-4 animate-spin"
+											/>
+											<Icon
+												v-else-if="automation.status === 'active'"
+												name="lucide:pause"
+												class="w-4 h-4"
+											/>
 											<Icon v-else name="lucide:play" class="w-4 h-4" />
 										</button>
 										<!-- Edit -->
@@ -473,14 +485,15 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 											<button
 												class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors"
 												@click="toggleDropdown(automation._id)"
-											 aria-label="More actions">
+												aria-label="More actions"
+											>
 												<Icon name="lucide:more-vertical" class="w-4 h-4" />
 											</button>
 											<Transition
-												enter-active-class="duration-150 ease-out"
+												enter-active-class="duration-(--motion-moderate) ease-spring"
 												enter-from-class="opacity-0 scale-95"
 												enter-to-class="opacity-100 scale-100"
-												leave-active-class="duration-100 ease-in"
+												leave-active-class="duration-(--motion-moderate-exit) ease-exit"
 												leave-from-class="opacity-100 scale-100"
 												leave-to-class="opacity-0 scale-95"
 											>
@@ -517,7 +530,9 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 														@click="handleToggleStatus(automation)"
 													>
 														<Icon
-															:name="automation.status === 'active' ? 'lucide:pause' : 'lucide:play'"
+															:name="
+																automation.status === 'active' ? 'lucide:pause' : 'lucide:play'
+															"
 															class="w-4 h-4"
 														/>
 														{{ automation.status === 'active' ? 'Pause' : 'Activate' }}
@@ -555,7 +570,11 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 			size="md"
 			:closable="!isDeleting"
 			:persistent="isDeleting"
-			@update:open="(v) => { if (!v) closeDeleteModal(); }"
+			@update:open="
+				(v) => {
+					if (!v) closeDeleteModal();
+				}
+			"
 		>
 			<div class="flex items-start gap-4">
 				<div class="p-3 rounded-full bg-error/10 shrink-0 flex items-center justify-center">
@@ -567,8 +586,8 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 						<span class="font-semibold">"{{ automationToDelete?.name }}"</span>?
 					</p>
 					<p class="text-sm text-text-secondary mt-2">
-						This action cannot be undone. The automation and all its steps will be
-						permanently deleted.
+						This action cannot be undone. The automation and all its steps will be permanently
+						deleted.
 					</p>
 					<p
 						v-if="automationToDelete?.status === 'active'"

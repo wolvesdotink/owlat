@@ -46,8 +46,11 @@ const markReadOp = useBackendOperation(api.mail.messageActions.markRead, { label
 // Optimistic row removal — hide on archive/trash, restore on failure (see
 // usePostboxOptimisticHide).
 const messagesRef = computed(() => props.messages);
-const { visible: visibleMessages, hide: hideRow, unhide: unhideRow } =
-	usePostboxOptimisticHide(messagesRef);
+const {
+	visible: visibleMessages,
+	hide: hideRow,
+	unhide: unhideRow,
+} = usePostboxOptimisticHide(messagesRef);
 
 // Visual row order for the reader's auto-advance (PostboxLayout reads this
 // via a template ref): the optimistic-hide-filtered list as rendered.
@@ -138,7 +141,9 @@ const moveOp = useBackendOperation(api.mail.messageActions.move, { label: 'Move 
 
 // Follow-up chip on a watched row: cancel the armed watch / dismiss the due
 // "No reply yet" indicator. Ownership-checked server-side.
-const cancelFollowUpOp = useBackendOperation(api.mail.followUps.cancel, { label: 'Cancel reply reminder' });
+const cancelFollowUpOp = useBackendOperation(api.mail.followUps.cancel, {
+	label: 'Cancel reply reminder',
+});
 function cancelFollowUp(msg: { threadId?: string }) {
 	if (!msg.threadId) return;
 	void cancelFollowUpOp.run({ threadId: msg.threadId as Id<'mailThreads'> });
@@ -193,7 +198,12 @@ const emptyState = computed(() => {
 		};
 	}
 	if (props.folderRole === 'inbox') {
-		return { icon: 'lucide:check-circle-2', title: 'All clear', hint: undefined, showFilterAction: false };
+		return {
+			icon: 'lucide:check-circle-2',
+			title: 'All clear',
+			hint: undefined,
+			showFilterAction: false,
+		};
 	}
 	if (props.folderRole === '') {
 		return {
@@ -271,16 +281,13 @@ const {
 // previous rows' bodies (same query the reader runs, debounced, LRU-capped and
 // fail-soft) so Enter / auto-advance opens instantly, not on a body round-trip.
 const { prefetch: prefetchAdjacent } = usePostboxPrefetch();
-watch(
-	[focusedIndex, () => props.activeMessageId],
-	() => {
-		const ids = visibleIds.value;
-		let anchor = focusedIndex.value;
-		if (anchor < 0 && props.activeMessageId) anchor = ids.indexOf(props.activeMessageId);
-		if (anchor < 0) return;
-		prefetchAdjacent([ids[anchor + 1], ids[anchor - 1]]);
-	}
-);
+watch([focusedIndex, () => props.activeMessageId], () => {
+	const ids = visibleIds.value;
+	let anchor = focusedIndex.value;
+	if (anchor < 0 && props.activeMessageId) anchor = ids.indexOf(props.activeMessageId);
+	if (anchor < 0) return;
+	prefetchAdjacent([ids[anchor + 1], ids[anchor - 1]]);
+});
 
 // --- Windowed rendering + infinite scroll (large folders) --------------------
 // Only large folders pay the windowing cost; small folders keep the simple
@@ -358,76 +365,72 @@ onMounted(async () => {
 <template>
 	<!-- Scroll container owns the folder's scroll position (windowing +
 	     infinite-scroll + restore all key off it). -->
-	<div ref="scrollEl" class="h-full overflow-auto" @scroll="onListScroll">
-	<!-- Skeleton only on FIRST load (no rows yet): live-query refreshes keep
+	<div ref="scrollEl" class="h-full overflow-auto scroll-fade" @scroll="onListScroll">
+		<!-- Skeleton only on FIRST load (no rows yet): live-query refreshes keep
 	     `keepPreviousData` rows visible, so they never flash the skeleton. -->
-	<PostboxThreadListSkeleton v-if="loading && visibleMessages.length === 0" />
-	<PostboxEmptyState
-		v-else-if="visibleMessages.length === 0"
-		:icon="emptyState.icon"
-		:title="emptyState.title"
-		:hint="emptyState.hint"
-	>
-		<template v-if="emptyState.showFilterAction" #action>
-			<NuxtLink
-				to="/dashboard/postbox/settings/filters"
-				class="inline-block mt-2 text-xs text-brand hover:underline"
-			>
-				Set up a filter
-			</NuxtLink>
-		</template>
-	</PostboxEmptyState>
-	<!-- role=listbox owns the full scroll height (so the scrollbar reflects all
+		<PostboxThreadListSkeleton v-if="loading && visibleMessages.length === 0" />
+		<PostboxEmptyState
+			v-else-if="visibleMessages.length === 0"
+			:icon="emptyState.icon"
+			:title="emptyState.title"
+			:hint="emptyState.hint"
+		>
+			<template v-if="emptyState.showFilterAction" #action>
+				<NuxtLink
+					to="/dashboard/postbox/settings/filters"
+					class="inline-block mt-2 text-xs text-brand hover:underline"
+				>
+					Set up a filter
+				</NuxtLink>
+			</template>
+		</PostboxEmptyState>
+		<!-- role=listbox owns the full scroll height (so the scrollbar reflects all
 	     rows even while only a window is mounted); the inner container is
 	     translate-positioned to the window's offset. Small folders render every
 	     row with no offset. -->
-	<ul
-		v-else
-		tabindex="0"
-		role="listbox"
-		aria-label="Messages"
-		:aria-activedescendant="activeRowId"
-		class="outline-none focus-visible:ring-1 focus-visible:ring-brand/40 focus-visible:ring-inset"
-		:class="{ relative: virtualize }"
-		:style="virtualize ? { height: `${range.totalHeight}px` } : undefined"
-		@keydown="onListKeydown"
-	>
-		<div
-			class="divide-y divide-border-subtle"
-			:class="{ 'absolute inset-x-0 top-0': virtualize }"
-			:style="virtualize ? { transform: `translateY(${range.offsetY}px)` } : undefined"
+		<ul
+			v-else
+			tabindex="0"
+			role="listbox"
+			aria-label="Messages"
+			:aria-activedescendant="activeRowId"
+			class="outline-none focus-visible:ring-1 focus-visible:ring-brand/40 focus-visible:ring-inset"
+			:class="{ relative: virtualize }"
+			:style="virtualize ? { height: `${range.totalHeight}px` } : undefined"
+			@keydown="onListKeydown"
 		>
-			<PostboxThreadRow
-				v-for="(msg, localI) in windowedMessages"
-				:key="msg._id"
-				:msg="msg"
-				:selectable="selectable"
-				:folder-role="props.folderRole"
-				:virtualize="virtualize"
-				:selected="bulk.isSelected(msg._id as unknown as Id<'mailMessages'>)"
-				:focused="focusedIndex === windowStart + localI"
-				:active="activeMessageId === msg._id"
-				@select="emit('select', msg._id)"
-				@toggle-select="bulk.toggle(mid(msg._id))"
-				@toggle-star="toggleStar(msg._id, !msg.flagFlagged)"
-				@toggle-read="toggleRead(msg._id, !msg.flagSeen)"
-				@archive="archiveMsg(msg._id)"
-				@trash="trashMsg(msg._id)"
-				@cancel-follow-up="cancelFollowUp(msg)"
-			/>
-		</div>
-	</ul>
-	<!-- Fallback trigger: infinite scroll auto-grows the page, but the button
+			<div
+				class="divide-y divide-border-subtle"
+				:class="{ 'absolute inset-x-0 top-0': virtualize }"
+				:style="virtualize ? { transform: `translateY(${range.offsetY}px)` } : undefined"
+			>
+				<PostboxThreadRow
+					v-for="(msg, localI) in windowedMessages"
+					:key="msg._id"
+					:msg="msg"
+					:selectable="selectable"
+					:folder-role="props.folderRole"
+					:virtualize="virtualize"
+					:selected="bulk.isSelected(msg._id as unknown as Id<'mailMessages'>)"
+					:focused="focusedIndex === windowStart + localI"
+					:active="activeMessageId === msg._id"
+					@select="emit('select', msg._id)"
+					@toggle-select="bulk.toggle(mid(msg._id))"
+					@toggle-star="toggleStar(msg._id, !msg.flagFlagged)"
+					@toggle-read="toggleRead(msg._id, !msg.flagSeen)"
+					@archive="archiveMsg(msg._id)"
+					@trash="trashMsg(msg._id)"
+					@cancel-follow-up="cancelFollowUp(msg)"
+				/>
+			</div>
+		</ul>
+		<!-- Fallback trigger: infinite scroll auto-grows the page, but the button
 	     stays so a user can still advance if the auto-load stalls or errors. -->
-	<div v-if="!loading && hasMore" class="p-3 text-center">
-		<button
-			type="button"
-			class="text-sm text-brand hover:underline"
-			@click="emit('load-more')"
-		>
-			Load more
-		</button>
-	</div>
+		<div v-if="!loading && hasMore" class="p-3 text-center">
+			<button type="button" class="text-sm text-brand hover:underline" @click="emit('load-more')">
+				Load more
+			</button>
+		</div>
 	</div>
 	<!-- Keyboard-flow pickers for the focused row (h / l / v). -->
 	<PostboxSnoozeDialog

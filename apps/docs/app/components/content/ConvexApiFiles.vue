@@ -77,7 +77,7 @@ const files = [
   border-radius: 8px;
   background: var(--color-bg-elevated);
   border: 1px solid transparent;
-  transition: border-color 0.25s, background 0.25s, transform 0.3s var(--ease-out-expo);
+  transition: border-color var(--motion-moderate), background var(--motion-moderate), transform var(--motion-moderate) var(--ease-spring);
   opacity: 0;
   transform: translateY(8px);
 }
@@ -104,7 +104,7 @@ const files = [
   border-radius: 6px;
   background: var(--color-bg-surface);
   flex-shrink: 0;
-  transition: box-shadow 0.3s;
+  transition: box-shadow var(--motion-moderate);
 }
 
 .af-file--brand .af-file-icon { color: var(--color-brand); }

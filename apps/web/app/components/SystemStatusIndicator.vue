@@ -86,10 +86,10 @@ const lastUpdated = computed(() => {
 
 		<!-- Expanded Dropdown -->
 		<Transition
-			enter-active-class="transition-all duration-200"
+			enter-active-class="transition-all duration-(--motion-moderate)"
 			enter-from-class="opacity-0 translate-y-2"
 			enter-to-class="opacity-100 translate-y-0"
-			leave-active-class="transition-all duration-150"
+			leave-active-class="transition-all duration-(--motion-moderate-exit)"
 			leave-from-class="opacity-100 translate-y-0"
 			leave-to-class="opacity-0 translate-y-2"
 		>

@@ -1,27 +1,21 @@
 <template>
-	<div
-		v-if="surround?.length"
-		class="max-w-3xl mx-auto mt-12 pt-8 border-t border-border-subtle"
-	>
+	<div v-if="surround?.length" class="max-w-3xl mx-auto mt-12 pt-8 border-t border-border-subtle">
 		<div class="grid grid-cols-2 gap-4">
 			<!-- Previous -->
 			<div>
 				<NuxtLink
 					v-if="prev"
 					:to="prev.path"
-					class="prev-next-card spotlight-card group flex flex-col gap-1.5 p-4 rounded-xl border border-border-default bg-bg-surface"
-					@mousemove="onMouseMove"
+					class="prev-next-card group flex flex-col gap-1.5 p-4 rounded-(--radius-card) surface-2"
 				>
-					<span
-						class="text-xs font-semibold uppercase tracking-wider text-text-tertiary"
-					>
+					<span class="text-xs font-semibold uppercase tracking-wider text-text-tertiary">
 						Previous
 					</span>
 					<span
-						class="text-sm text-text-secondary group-hover:text-brand transition-colors duration-200 flex items-center gap-1.5"
+						class="text-sm text-text-secondary group-hover:text-brand transition-colors duration-(--motion-fast) flex items-center gap-1.5"
 					>
 						<svg
-							class="w-3.5 h-3.5 shrink-0 transition-transform duration-300 group-hover:-translate-x-1"
+							class="w-3.5 h-3.5 shrink-0 transition-transform duration-(--motion-moderate) group-hover:-translate-x-1"
 							fill="none"
 							stroke="currentColor"
 							viewBox="0 0 24 24"
@@ -43,20 +37,17 @@
 				<NuxtLink
 					v-if="next"
 					:to="next.path"
-					class="prev-next-card spotlight-card group flex flex-col items-end gap-1.5 p-4 rounded-xl border border-border-default bg-bg-surface"
-					@mousemove="onMouseMove"
+					class="prev-next-card group flex flex-col items-end gap-1.5 p-4 rounded-(--radius-card) surface-2"
 				>
-					<span
-						class="text-xs font-semibold uppercase tracking-wider text-text-tertiary"
-					>
+					<span class="text-xs font-semibold uppercase tracking-wider text-text-tertiary">
 						Next
 					</span>
 					<span
-						class="text-sm text-text-secondary group-hover:text-brand transition-colors duration-200 flex items-center gap-1.5"
+						class="text-sm text-text-secondary group-hover:text-brand transition-colors duration-(--motion-fast) flex items-center gap-1.5"
 					>
 						{{ next.title }}
 						<svg
-							class="w-3.5 h-3.5 shrink-0 transition-transform duration-300 group-hover:translate-x-1"
+							class="w-3.5 h-3.5 shrink-0 transition-transform duration-(--motion-moderate) group-hover:translate-x-1"
 							fill="none"
 							stroke="currentColor"
 							viewBox="0 0 24 24"
@@ -77,12 +68,11 @@
 
 <script setup lang="ts">
 interface SurroundItem {
-	path: string
-	title: string
+	path: string;
+	title: string;
 }
 
-const route = useRoute()
-const { onMouseMove } = useSpotlight()
+const route = useRoute();
 
 const { data: surround } = await useAsyncData(
 	`surround-${route.path}`,
@@ -92,29 +82,30 @@ const { data: surround } = await useAsyncData(
 			after: 1,
 		}),
 	{ watch: [() => route.path] }
-)
+);
 
 const prev = computed<SurroundItem | null>(() => {
-	if (!surround.value || surround.value.length < 1) return null
-	return surround.value[0] as unknown as SurroundItem
-})
+	if (!surround.value || surround.value.length < 1) return null;
+	return surround.value[0] as unknown as SurroundItem;
+});
 
 const next = computed<SurroundItem | null>(() => {
-	if (!surround.value || surround.value.length < 2) return null
-	return surround.value[1] as unknown as SurroundItem
-})
+	if (!surround.value || surround.value.length < 2) return null;
+	return surround.value[1] as unknown as SurroundItem;
+});
 </script>
 
 <style scoped>
 .prev-next-card {
 	text-decoration: none;
-	transition: all 0.3s var(--ease-out-expo);
+	transition:
+		background-color var(--motion-moderate) var(--ease-spring),
+		box-shadow var(--motion-moderate) var(--ease-spring);
 }
 
+/* Hover: +6% surface shift, one elevation step up — no glow, no lift. */
 .prev-next-card:hover {
-	border-color: color-mix(in srgb, var(--color-brand) 30%, var(--color-border-default));
-	background: var(--color-bg-surface-hover);
-	box-shadow: 0 4px 20px rgba(196, 120, 90, 0.06);
-	transform: translateY(-2px);
+	background: var(--surface-2-hover);
+	box-shadow: var(--shadow-2);
 }
 </style>

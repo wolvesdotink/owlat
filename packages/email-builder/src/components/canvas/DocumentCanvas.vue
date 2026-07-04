@@ -279,7 +279,7 @@ function handleInlineEditorMounted(blockId: string, comp: InlineEditorComponentR
 							:key="block.id"
 							:ref="(el) => setBlockRef(block.id, el as HTMLElement)"
 							:class="[
-								'relative group/block transition-all duration-150 rounded-md',
+								'relative group/block transition-all duration-(--motion-moderate) rounded-md',
 								isLinkedBlockFn(block.id)
 									? [
 										'border-x-2 border-y-0 border-dashed border-border-default my-0 rounded-none',
@@ -323,7 +323,7 @@ function handleInlineEditorMounted(blockId: string, comp: InlineEditorComponentR
 									{{ block.savedBlockRef?.blockName || 'Linked block' }}
 								</span>
 								<button
-									class="inline-flex items-center justify-center w-[18px] h-[18px] p-0 text-text-tertiary bg-transparent border-none rounded-[3px] cursor-pointer transition-colors duration-150 hover:text-brand hover:bg-brand/10"
+									class="inline-flex items-center justify-center w-[18px] h-[18px] p-0 text-text-tertiary bg-transparent border-none rounded-[3px] cursor-pointer transition-colors duration-(--motion-fast) hover:text-brand hover:bg-brand/10"
 									title="Detach"
 									type="button"
 									@click.stop="requestDetachLinkedBlock(block.id)"
@@ -381,7 +381,7 @@ function handleInlineEditorMounted(blockId: string, comp: InlineEditorComponentR
 				<!-- Empty state -->
 				<div
 					v-if="blocks.length === 0"
-					class="flex flex-col items-center justify-center gap-2 h-60 border-2 border-dashed border-border-subtle rounded-lg my-4 cursor-pointer transition-[border-color,background-color] duration-150 hover:border-brand hover:bg-brand/[0.02]"
+					class="flex flex-col items-center justify-center gap-2 h-60 border-2 border-dashed border-border-subtle rounded-lg my-4 cursor-pointer transition-[border-color,background-color] duration-(--motion-fast) hover:border-brand hover:bg-brand/[0.02]"
 					@click="emit('add-text-block')"
 				>
 					<svg class="text-text-tertiary" width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">

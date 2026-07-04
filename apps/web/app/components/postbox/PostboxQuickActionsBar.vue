@@ -59,9 +59,7 @@ async function purgeSelected() {
 	const n = bulk.count.value;
 	if (n === 0) return;
 	if (
-		!window.confirm(
-			`Permanently delete ${n} message${n === 1 ? '' : 's'}? This cannot be undone.`,
-		)
+		!window.confirm(`Permanently delete ${n} message${n === 1 ? '' : 's'}? This cannot be undone.`)
 	)
 		return;
 	await bulk.purgeSelected();
@@ -74,16 +72,16 @@ const movableFolders = computed(() =>
 		if (f.role === 'sent' || f.role === 'drafts') return false;
 		if (props.folderRole && f.role === props.folderRole) return false;
 		return true;
-	}),
+	})
 );
 </script>
 
 <template>
 	<Transition
-		enter-active-class="transition-all duration-150"
+		enter-active-class="transition-all duration-(--motion-moderate)"
 		enter-from-class="-translate-y-full opacity-0"
 		enter-to-class="translate-y-0 opacity-100"
-		leave-active-class="transition-all duration-100"
+		leave-active-class="transition-all duration-(--motion-moderate-exit)"
 		leave-from-class="translate-y-0 opacity-100"
 		leave-to-class="-translate-y-full opacity-0"
 	>
@@ -125,7 +123,10 @@ const movableFolders = computed(() =>
 				<button
 					type="button"
 					class="px-2 py-1 rounded hover:bg-bg-surface flex items-center gap-1.5"
-					@click="moveOpen = !moveOpen; labelOpen = false"
+					@click="
+						moveOpen = !moveOpen;
+						labelOpen = false;
+					"
 				>
 					<Icon name="lucide:folder-input" class="w-4 h-4" />
 					Move
@@ -139,7 +140,10 @@ const movableFolders = computed(() =>
 						:key="folder._id"
 						type="button"
 						class="w-full text-left px-3 py-1.5 text-sm hover:bg-bg-surface capitalize"
-						@click="bulk.moveSelected(folder._id); moveOpen = false"
+						@click="
+							bulk.moveSelected(folder._id);
+							moveOpen = false;
+						"
 					>
 						{{ folder.role ?? folder.name }}
 					</button>
@@ -149,7 +153,10 @@ const movableFolders = computed(() =>
 				<button
 					type="button"
 					class="px-2 py-1 rounded hover:bg-bg-surface flex items-center gap-1.5"
-					@click="labelOpen = !labelOpen; moveOpen = false"
+					@click="
+						labelOpen = !labelOpen;
+						moveOpen = false;
+					"
 				>
 					<Icon name="lucide:tag" class="w-4 h-4" />
 					Label
@@ -171,10 +178,9 @@ const movableFolders = computed(() =>
 						/>
 						{{ label.name }}
 					</button>
-					<div
-						v-if="labels.length === 0"
-						class="px-3 py-2 text-xs text-text-tertiary"
-					>No labels yet</div>
+					<div v-if="labels.length === 0" class="px-3 py-2 text-xs text-text-tertiary">
+						No labels yet
+					</div>
 				</div>
 			</div>
 			<button
@@ -198,26 +204,26 @@ const movableFolders = computed(() =>
 				Un-snooze
 			</button>
 			<button
-					v-if="props.folderRole === 'spam'"
-					type="button"
-					class="px-2 py-1 rounded hover:bg-bg-surface flex items-center gap-1.5"
-					title="Not spam — move to Inbox"
-					@click="bulk.notSpamSelected()"
-				>
-					<Icon name="lucide:shield-check" class="w-4 h-4" />
-					Not spam
-				</button>
-				<button
-					v-else
-					type="button"
-					class="px-2 py-1 rounded hover:bg-bg-surface flex items-center gap-1.5"
-					title="Report spam"
-					@click="bulk.reportSpamSelected()"
-				>
-					<Icon name="lucide:shield-alert" class="w-4 h-4" />
-					Spam
-				</button>
-				<span class="flex-1" />
+				v-if="props.folderRole === 'spam'"
+				type="button"
+				class="px-2 py-1 rounded hover:bg-bg-surface flex items-center gap-1.5"
+				title="Not spam — move to Inbox"
+				@click="bulk.notSpamSelected()"
+			>
+				<Icon name="lucide:shield-check" class="w-4 h-4" />
+				Not spam
+			</button>
+			<button
+				v-else
+				type="button"
+				class="px-2 py-1 rounded hover:bg-bg-surface flex items-center gap-1.5"
+				title="Report spam"
+				@click="bulk.reportSpamSelected()"
+			>
+				<Icon name="lucide:shield-alert" class="w-4 h-4" />
+				Spam
+			</button>
+			<span class="flex-1" />
 			<button
 				type="button"
 				class="px-2 py-1 rounded hover:bg-bg-surface flex items-center gap-1.5"

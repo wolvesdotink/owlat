@@ -26,7 +26,12 @@ const { toasts, removeToast } = useToast();
 							toast.type === 'success' ? 'bg-success/20' : 'bg-error/20',
 						]"
 					>
-						<Icon v-if="toast.type === 'success'" name="lucide:check" size="16" class="text-success" />
+						<Icon
+							v-if="toast.type === 'success'"
+							name="lucide:check"
+							size="16"
+							class="text-success"
+						/>
 						<Icon v-else name="lucide:alert-circle" size="16" class="text-error" />
 					</div>
 
@@ -50,7 +55,10 @@ const { toasts, removeToast } = useToast();
 								? 'text-success hover:bg-success/20'
 								: 'text-error hover:bg-error/20',
 						]"
-						@click="toast.action.onAction(); removeToast(toast.id)"
+						@click="
+							toast.action.onAction();
+							removeToast(toast.id);
+						"
 					>
 						{{ toast.action.label }}
 					</button>
@@ -81,10 +89,13 @@ const { toasts, removeToast } = useToast();
 </template>
 
 <style scoped>
-/* Toast transition - slide up + fade */
-.toast-enter-active,
+/* Toast transition - slide up + fade; exits one notch faster than enters */
+.toast-enter-active {
+	transition: all var(--motion-fast) var(--ease-spring);
+}
+
 .toast-leave-active {
-	transition: all 0.3s ease;
+	transition: all var(--motion-fast-exit) var(--ease-exit);
 }
 
 .toast-enter-from {
@@ -99,6 +110,6 @@ const { toasts, removeToast } = useToast();
 
 /* Ensure items animate when siblings are removed */
 .toast-move {
-	transition: transform 0.3s ease;
+	transition: transform var(--motion-moderate) var(--ease-spring);
 }
 </style>

@@ -113,7 +113,7 @@ const dimensions = [
   margin-bottom: 6px;
   opacity: 0;
   transform: translateY(8px);
-  transition: opacity 0.5s var(--ease-out-expo), transform 0.5s var(--ease-out-expo);
+  transition: opacity var(--motion-slow) var(--ease-spring), transform var(--motion-slow) var(--ease-spring);
   transition-delay: calc(0.1s + var(--i) * 0.07s);
 }
 
@@ -146,7 +146,7 @@ const dimensions = [
   font-size: 0.75rem;
   color: var(--color-text-secondary);
   line-height: 1.5;
-  transition: border-color 0.25s, background 0.25s;
+  transition: border-color var(--motion-moderate), background var(--motion-moderate);
 }
 
 .ec-cell:hover {

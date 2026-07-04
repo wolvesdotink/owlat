@@ -37,7 +37,7 @@ const footerLinks = {
 					<h4 class="font-mono text-[0.625rem] font-medium uppercase tracking-[0.1em] text-text-disabled mb-5">Product</h4>
 					<ul class="space-y-3">
 						<li v-for="link in footerLinks.product" :key="link.label">
-							<a :href="link.href" class="footer-link text-[0.8125rem] text-text-tertiary hover:text-text-primary transition-colors duration-200 no-underline relative">
+							<a :href="link.href" class="footer-link text-[0.8125rem] text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast) no-underline relative">
 								{{ link.label }}
 							</a>
 						</li>
@@ -49,7 +49,7 @@ const footerLinks = {
 					<h4 class="font-mono text-[0.625rem] font-medium uppercase tracking-[0.1em] text-text-disabled mb-5">Developers</h4>
 					<ul class="space-y-3">
 						<li v-for="link in footerLinks.developers" :key="link.label">
-							<a :href="link.href" class="footer-link text-[0.8125rem] text-text-tertiary hover:text-text-primary transition-colors duration-200 no-underline relative">
+							<a :href="link.href" class="footer-link text-[0.8125rem] text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast) no-underline relative">
 								{{ link.label }}
 							</a>
 						</li>
@@ -61,7 +61,7 @@ const footerLinks = {
 					<h4 class="font-mono text-[0.625rem] font-medium uppercase tracking-[0.1em] text-text-disabled mb-5">Company</h4>
 					<ul class="space-y-3">
 						<li v-for="link in footerLinks.company" :key="link.label">
-							<a :href="link.href" class="footer-link text-[0.8125rem] text-text-tertiary hover:text-text-primary transition-colors duration-200 no-underline relative">
+							<a :href="link.href" class="footer-link text-[0.8125rem] text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast) no-underline relative">
 								{{ link.label }}
 							</a>
 						</li>
@@ -73,7 +73,7 @@ const footerLinks = {
 			<div class="flex items-center justify-between pt-10 mt-12 border-t border-border-subtle max-sm:flex-col max-sm:gap-4">
 				<p class="text-[0.6875rem] text-text-disabled">&copy; {{ new Date().getFullYear() }} <a href="https://wolves.ink">Wolves</a>. All rights reserved.</p>
 				<UiThemeToggle
-					class="theme-toggle flex items-center gap-2 text-[0.6875rem] text-text-disabled hover:text-text-tertiary transition-all duration-300 cursor-pointer bg-transparent border-none p-0"
+					class="theme-toggle flex items-center gap-2 text-[0.6875rem] text-text-disabled hover:text-text-tertiary transition-all duration-(--motion-moderate) cursor-pointer bg-transparent border-none p-0"
 				>
 					<span>Theme</span>
 				</UiThemeToggle>
@@ -92,7 +92,7 @@ const footerLinks = {
 	width: 0;
 	height: 1px;
 	background: var(--color-text-tertiary);
-	transition: width 0.3s var(--ease-out-expo);
+	transition: width var(--motion-moderate) var(--ease-spring);
 }
 
 .footer-link:hover::after {

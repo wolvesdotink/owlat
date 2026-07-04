@@ -40,7 +40,7 @@ function handleAdd(type: BlockType) {
 		<button
 			v-for="block in quickBlocks"
 			:key="block.type"
-			class="flex items-center justify-center w-8 h-8 rounded-lg border border-transparent bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-surface-hover hover:text-text-primary hover:border-border-subtle"
+			class="flex items-center justify-center w-8 h-8 rounded-lg border border-transparent bg-transparent text-text-secondary cursor-pointer transition-all duration-(--motion-moderate) hover:bg-bg-surface-hover hover:text-text-primary hover:border-border-subtle"
 			:title="block.label"
 			:aria-label="block.label"
 			type="button"
@@ -49,7 +49,7 @@ function handleAdd(type: BlockType) {
 			<component :is="block.icon" :size="16" />
 		</button>
 		<button
-			class="flex items-center justify-center w-8 h-8 rounded-lg border border-dashed border-border-default bg-transparent text-text-tertiary cursor-pointer transition-all duration-150 hover:bg-bg-surface-hover hover:text-text-secondary hover:border-border-strong"
+			class="flex items-center justify-center w-8 h-8 rounded-lg border border-dashed border-border-default bg-transparent text-text-tertiary cursor-pointer transition-all duration-(--motion-moderate) hover:bg-bg-surface-hover hover:text-text-secondary hover:border-border-strong"
 			title="More blocks..."
 			aria-label="More blocks..."
 			:aria-expanded="showMore"

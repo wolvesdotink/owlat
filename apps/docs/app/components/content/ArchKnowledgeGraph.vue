@@ -283,7 +283,7 @@ const briefing = 'Customer X has been on the Pro plan since 2024, upgraded in Ja
   overflow: hidden;
   opacity: 0;
   transform: translateY(12px);
-  transition: opacity 0.6s var(--ease-out-expo), transform 0.6s var(--ease-out-expo), border-color 0.25s;
+  transition: opacity 0.6s var(--ease-spring), transform 0.6s var(--ease-spring), border-color var(--motion-moderate);
   transition-delay: calc(var(--stagger) * 0.12s);
 }
 
@@ -346,12 +346,12 @@ const briefing = 'Customer X has been on the Pro plan since 2024, upgraded in Ja
   stroke: var(--color-border-default);
   stroke-width: 0.3;
   opacity: 0;
-  transition: stroke 0.3s, opacity 0.3s, stroke-width 0.3s;
+  transition: stroke var(--motion-moderate), opacity var(--motion-moderate), stroke-width var(--motion-moderate);
 }
 
 .is-visible .kg-edge {
   opacity: 0.6;
-  animation: edge-draw 0.5s var(--ease-out-expo) both;
+  animation: edge-draw 0.5s var(--ease-spring) both;
   animation-delay: calc(0.4s + var(--edge-i) * 0.06s);
 }
 
@@ -380,14 +380,14 @@ const briefing = 'Customer X has been on the Pro plan since 2024, upgraded in Ja
   gap: 0;
   cursor: default;
   opacity: 0;
-  transition: opacity 0.4s var(--ease-out-expo), filter 0.3s;
+  transition: opacity var(--motion-slow) var(--ease-spring), filter var(--motion-moderate);
   animation: none;
 }
 
 .is-visible .kg-node {
   opacity: 1;
-  transition: opacity 0.4s var(--ease-out-expo), filter 0.3s;
-  animation: node-enter 0.5s var(--ease-out-expo) both;
+  transition: opacity var(--motion-slow) var(--ease-spring), filter var(--motion-moderate);
+  animation: node-enter 0.5s var(--ease-spring) both;
   animation-delay: calc(0.3s + var(--i) * 0.08s);
 }
 
@@ -407,7 +407,7 @@ const briefing = 'Customer X has been on the Pro plan since 2024, upgraded in Ja
   border-radius: 50%;
   flex-shrink: 0;
   border: 2px solid var(--color-bg-elevated);
-  transition: box-shadow 0.3s, transform 0.3s;
+  transition: box-shadow var(--motion-moderate), transform var(--motion-moderate);
   position: absolute;
   left: 50%;
   top: 50%;
@@ -447,7 +447,7 @@ const briefing = 'Customer X has been on the Pro plan since 2024, upgraded in Ja
   white-space: nowrap;
   pointer-events: none;
   opacity: 0.85;
-  transition: opacity 0.25s, border-color 0.25s, box-shadow 0.25s;
+  transition: opacity var(--motion-moderate), border-color var(--motion-moderate), box-shadow var(--motion-moderate);
   max-width: 170px;
 }
 
@@ -518,7 +518,7 @@ const briefing = 'Customer X has been on the Pro plan since 2024, upgraded in Ja
   gap: 6px;
   opacity: 0;
   transform: translateY(8px);
-  transition: opacity 0.5s var(--ease-out-expo), transform 0.5s var(--ease-out-expo);
+  transition: opacity var(--motion-slow) var(--ease-spring), transform var(--motion-slow) var(--ease-spring);
   transition-delay: calc(var(--stagger) * 0.12s);
 }
 
@@ -537,7 +537,7 @@ const briefing = 'Customer X has been on the Pro plan since 2024, upgraded in Ja
   border: 1px solid var(--color-border-subtle);
   font-size: 0.6875rem;
   font-weight: 600;
-  transition: border-color 0.2s;
+  transition: border-color var(--motion-moderate);
 }
 
 .kg-type-badge:hover {
@@ -563,7 +563,7 @@ const briefing = 'Customer X has been on the Pro plan since 2024, upgraded in Ja
   padding: 14px 16px;
   opacity: 0;
   transform: translateY(10px);
-  transition: opacity 0.5s var(--ease-out-expo), transform 0.5s var(--ease-out-expo), border-color 0.25s;
+  transition: opacity var(--motion-slow) var(--ease-spring), transform var(--motion-slow) var(--ease-spring), border-color var(--motion-moderate);
   transition-delay: calc(var(--stagger) * 0.12s);
 }
 
@@ -613,7 +613,7 @@ const briefing = 'Customer X has been on the Pro plan since 2024, upgraded in Ja
   border: 1px solid var(--color-border-subtle);
   opacity: 0;
   transform: translateX(-6px);
-  transition: opacity 0.4s var(--ease-out-expo), transform 0.4s var(--ease-out-expo), border-color 0.2s;
+  transition: opacity var(--motion-slow) var(--ease-spring), transform var(--motion-slow) var(--ease-spring), border-color var(--motion-moderate);
   transition-delay: calc(0.3s + var(--i) * 0.07s);
 }
 
@@ -687,7 +687,7 @@ const briefing = 'Customer X has been on the Pro plan since 2024, upgraded in Ja
   overflow: hidden;
   opacity: 0;
   transform: translateY(10px);
-  transition: opacity 0.5s var(--ease-out-expo), transform 0.5s var(--ease-out-expo), border-color 0.25s, box-shadow 0.25s;
+  transition: opacity var(--motion-slow) var(--ease-spring), transform var(--motion-slow) var(--ease-spring), border-color var(--motion-moderate), box-shadow var(--motion-moderate);
   transition-delay: calc(var(--stagger) * 0.12s);
 }
 
@@ -755,12 +755,5 @@ const briefing = 'Customer X has been on the Pro plan since 2024, upgraded in Ja
   50% { box-shadow: 0 0 6px 1px rgba(196, 120, 90, 0.2); }
 }
 
-.is-visible .kg-briefing {
-  animation: briefing-shimmer 4s ease-in-out infinite 2s;
-}
 
-@keyframes briefing-shimmer {
-  0%, 100% { border-color: color-mix(in oklab, var(--color-brand) 20%, var(--color-border-default)); }
-  50% { border-color: color-mix(in oklab, var(--color-brand) 35%, var(--color-border-default)); }
-}
 </style>

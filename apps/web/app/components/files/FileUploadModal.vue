@@ -43,7 +43,6 @@ const parsedTags = computed(() => {
 		.filter(Boolean);
 });
 
-
 const handleFileSelect = (event: Event) => {
 	const input = event.target as HTMLInputElement;
 	if (input.files?.length) {
@@ -91,36 +90,41 @@ const handleSubmit = async () => {
 };
 
 // Reset form when modal opens
-watch(() => props.open, (isOpen) => {
-	if (isOpen) {
-		resetForm();
+watch(
+	() => props.open,
+	(isOpen) => {
+		if (isOpen) {
+			resetForm();
+		}
 	}
-});
+);
 </script>
 
 <template>
 	<Teleport to="body">
 		<Transition
-			enter-active-class="duration-200 ease-out"
+			enter-active-class="duration-(--motion-moderate) ease-spring"
 			enter-from-class="opacity-0"
 			enter-to-class="opacity-100"
-			leave-active-class="duration-150 ease-in"
+			leave-active-class="duration-(--motion-moderate-exit) ease-exit"
 			leave-from-class="opacity-100"
 			leave-to-class="opacity-0"
 		>
-			<div
-				v-if="open"
-				class="fixed inset-0 z-50 flex items-center justify-center p-4"
-			>
+			<div v-if="open" class="fixed inset-0 z-50 flex items-center justify-center p-4">
 				<div class="absolute inset-0 bg-black/60" @click="close" />
-				<div class="relative bg-bg-elevated border border-border-subtle rounded-2xl p-6 w-full max-w-lg">
+				<div
+					class="relative bg-bg-elevated border border-border-subtle rounded-2xl p-6 w-full max-w-lg"
+				>
 					<!-- Header -->
 					<div class="flex items-center justify-between mb-6">
-						<h3 class="text-lg font-semibold text-text-primary">{{ isNewVersion ? 'Upload New Version' : 'Upload File' }}</h3>
+						<h3 class="text-lg font-semibold text-text-primary">
+							{{ isNewVersion ? 'Upload New Version' : 'Upload File' }}
+						</h3>
 						<button
 							class="p-1.5 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
 							@click="close"
-						 aria-label="Close">
+							aria-label="Close"
+						>
 							<Icon name="lucide:x" class="w-5 h-5" />
 						</button>
 					</div>
@@ -132,7 +136,8 @@ watch(() => props.open, (isOpen) => {
 					>
 						<Icon name="lucide:history" class="w-4 h-4 text-brand flex-shrink-0 mt-0.5" />
 						<p class="text-xs leading-relaxed">
-							This file will be added as a new version. The previous version stays in the version history.
+							This file will be added as a new version. The previous version stays in the version
+							history.
 						</p>
 					</div>
 
@@ -140,18 +145,18 @@ watch(() => props.open, (isOpen) => {
 					<div
 						v-if="!selectedFile"
 						class="border-2 border-dashed rounded-xl p-8 text-center transition-colors cursor-pointer"
-						:class="isDragOver
-							? 'border-brand bg-brand-subtle/50'
-							: 'border-border-subtle hover:border-border-default'"
+						:class="
+							isDragOver
+								? 'border-brand bg-brand-subtle/50'
+								: 'border-border-subtle hover:border-border-default'
+						"
 						@dragover="handleDragOver"
 						@dragleave="handleDragLeave"
 						@drop="handleDrop"
 						@click="fileInputRef?.click()"
 					>
 						<Icon name="lucide:upload-cloud" class="w-10 h-10 text-text-tertiary mx-auto mb-3" />
-						<p class="text-sm font-medium text-text-primary">
-							Drop a file here or click to browse
-						</p>
+						<p class="text-sm font-medium text-text-primary">Drop a file here or click to browse</p>
 						<p class="text-xs text-text-tertiary mt-1">
 							Any file type up to {{ MAX_LIBRARY_FILE_MB }} MB
 						</p>
@@ -165,28 +170,29 @@ watch(() => props.open, (isOpen) => {
 						<Icon name="lucide:file" class="w-8 h-8 text-text-tertiary flex-shrink-0" />
 						<div class="min-w-0 flex-1">
 							<p class="text-sm font-medium text-text-primary truncate">{{ selectedFile.name }}</p>
-							<p class="text-xs text-text-tertiary">{{ formatCompactFileSize(selectedFile.size) }}</p>
+							<p class="text-xs text-text-tertiary">
+								{{ formatCompactFileSize(selectedFile.size) }}
+							</p>
 						</div>
 						<button
 							class="p-1.5 rounded text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors flex-shrink-0"
 							@click="removeSelectedFile"
-						 aria-label="Remove file">
+							aria-label="Remove file"
+						>
 							<Icon name="lucide:x" class="w-4 h-4" />
 						</button>
 					</div>
 
-					<input
-						ref="fileInputRef"
-						type="file"
-						class="hidden"
-						@change="handleFileSelect"
-					/>
+					<input ref="fileInputRef" type="file" class="hidden" @change="handleFileSelect" />
 
 					<!-- Form fields -->
 					<div class="mt-5 space-y-4">
 						<div>
-							<label for="title" class="block text-sm font-medium text-text-primary mb-1.5">Title (optional)</label>
-							<input id="title"
+							<label for="title" class="block text-sm font-medium text-text-primary mb-1.5"
+								>Title (optional)</label
+							>
+							<input
+								id="title"
 								v-model="title"
 								type="text"
 								class="w-full rounded-lg border border-border-subtle bg-bg-base px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent"
@@ -195,8 +201,11 @@ watch(() => props.open, (isOpen) => {
 						</div>
 
 						<div>
-							<label for="tagsinput" class="block text-sm font-medium text-text-primary mb-1.5">Tags (optional)</label>
-							<input id="tagsinput"
+							<label for="tagsinput" class="block text-sm font-medium text-text-primary mb-1.5"
+								>Tags (optional)</label
+							>
+							<input
+								id="tagsinput"
 								v-model="tagsInput"
 								type="text"
 								class="w-full rounded-lg border border-border-subtle bg-bg-base px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent"
@@ -214,8 +223,11 @@ watch(() => props.open, (isOpen) => {
 						</div>
 
 						<div>
-							<label for="sourcetype" class="block text-sm font-medium text-text-primary mb-1.5">Source</label>
-							<select id="sourcetype"
+							<label for="sourcetype" class="block text-sm font-medium text-text-primary mb-1.5"
+								>Source</label
+							>
+							<select
+								id="sourcetype"
 								v-model="sourceType"
 								class="w-full rounded-lg border border-border-subtle bg-bg-base px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent"
 							>
@@ -226,23 +238,25 @@ watch(() => props.open, (isOpen) => {
 						</div>
 
 						<div>
-							<label class="block text-sm font-medium text-text-primary mb-1.5">Linked contacts (optional)</label>
+							<label class="block text-sm font-medium text-text-primary mb-1.5"
+								>Linked contacts (optional)</label
+							>
 							<FilesContactPicker v-model="selectedContacts" />
 						</div>
 					</div>
 
 					<!-- Footer -->
 					<div class="flex items-center justify-end gap-3 mt-6">
-						<button class="btn btn-secondary" @click="close">
-							Cancel
-						</button>
+						<button class="btn btn-secondary" @click="close">Cancel</button>
 						<button
 							class="btn bg-brand text-white hover:bg-brand/90 disabled:opacity-50 disabled:cursor-not-allowed"
 							:disabled="!selectedFile || isUploading"
 							@click="handleSubmit"
 						>
 							<template v-if="isUploading">
-								<div class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+								<div
+									class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"
+								/>
 								Uploading...
 							</template>
 							<template v-else>

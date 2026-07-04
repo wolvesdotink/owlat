@@ -6,7 +6,7 @@ const emit = defineEmits<{
 
 <template>
 	<div
-		class="p-3 px-1 cursor-text rounded transition-[background-color] duration-150 hover:bg-bg-surface-hover"
+		class="p-3 px-1 cursor-text rounded transition-[background-color] duration-(--motion-fast) hover:bg-bg-surface-hover"
 		@click="emit('click')"
 	>
 		<span class="text-sm text-text-tertiary pointer-events-none select-none">

@@ -23,7 +23,7 @@ const isSelfHost = config.public.deploymentMode === 'selfhost';
 // with the shared progress).
 const { data: progress, isLoading } = useOrganizationQuery(
 	api.auth.onboarding.getWithActualProgress,
-	() => (isSelfHost ? { userId: props.userId } : undefined),
+	() => (isSelfHost ? { userId: props.userId } : undefined)
 );
 const dismissed = computed(() => progress.value?.dismissed ?? false);
 // Hide the banner once the instance can actually send (a delivery provider is
@@ -47,14 +47,14 @@ async function dismiss() {
 // `~/utils/convexDashboard`.
 const { data: dashboardOverride, set: setDashboardOverride } = useLocalStorage<string>(
 	'owlat:convexDashboardUrl',
-	'',
+	''
 );
 const resolvedDashboard = computed(() =>
 	resolveConvexDashboardUrl({
 		override: dashboardOverride.value,
 		configured: config.public.convexDashboardUrl,
 		currentHref: import.meta.client ? window.location.href : null,
-	}),
+	})
 );
 const convexDashboardUrl = computed(() => resolvedDashboard.value.url);
 // A `derived` value is only a guess; surface the "customize" affordance so an
@@ -65,7 +65,8 @@ const isDashboardGuess = computed(() => resolvedDashboard.value.source === 'deri
 const isEditingDashboard = ref(false);
 const dashboardDraft = ref('');
 const dashboardDraftInvalid = computed(
-	() => dashboardDraft.value.trim().length > 0 && normalizeDashboardUrl(dashboardDraft.value) === null,
+	() =>
+		dashboardDraft.value.trim().length > 0 && normalizeDashboardUrl(dashboardDraft.value) === null
 );
 function startEditingDashboard() {
 	dashboardDraft.value = dashboardOverride.value || convexDashboardUrl.value;
@@ -101,10 +102,10 @@ const shouldShow = computed(() => {
 
 <template>
 	<Transition
-		enter-active-class="transition-all duration-300 ease-out"
+		enter-active-class="transition-all duration-(--motion-moderate) ease-spring"
 		enter-from-class="opacity-0 -translate-y-2"
 		enter-to-class="opacity-100 translate-y-0"
-		leave-active-class="transition-all duration-200 ease-in"
+		leave-active-class="transition-all duration-(--motion-moderate-exit) ease-exit"
 		leave-from-class="opacity-100 translate-y-0"
 		leave-to-class="opacity-0 -translate-y-2"
 	>
@@ -125,7 +126,9 @@ const shouldShow = computed(() => {
 			</button>
 
 			<div class="flex items-start gap-4">
-				<div class="shrink-0 w-10 h-10 rounded-xl bg-brand/15 flex items-center justify-center text-brand">
+				<div
+					class="shrink-0 w-10 h-10 rounded-xl bg-brand/15 flex items-center justify-center text-brand"
+				>
 					<Icon name="lucide:layers" class="w-5 h-5" />
 				</div>
 
@@ -134,7 +137,8 @@ const shouldShow = computed(() => {
 						Welcome to your self-hosted Owlat instance
 					</h3>
 					<p class="text-[0.8125rem] text-text-secondary mb-4">
-						You're running Owlat on your own infrastructure. Here are a few things to do before you send your first email:
+						You're running Owlat on your own infrastructure. Here are a few things to do before you
+						send your first email:
 					</p>
 
 					<div class="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -144,11 +148,20 @@ const shouldShow = computed(() => {
 							class="group flex flex-col gap-1 rounded-lg border border-border-default bg-bg-elevated p-3 hover:border-brand/40 hover:-translate-y-px transition-all"
 						>
 							<div class="flex items-center gap-2">
-								<span class="w-5 h-5 rounded-full bg-brand/15 text-brand text-[0.6875rem] font-semibold flex items-center justify-center">1</span>
-								<span class="text-[0.8125rem] font-medium text-text-primary">Configure a sending provider</span>
+								<span
+									class="w-5 h-5 rounded-full bg-brand/15 text-brand text-[0.6875rem] font-semibold flex items-center justify-center"
+									>1</span
+								>
+								<span class="text-[0.8125rem] font-medium text-text-primary"
+									>Configure a sending provider</span
+								>
 							</div>
-							<span class="text-[0.75rem] text-text-tertiary pl-7">A delivery provider + credentials — required to send any email</span>
-							<span class="text-[0.75rem] text-brand font-medium group-hover:translate-x-0.5 transition-transform mt-1 pl-7">
+							<span class="text-[0.75rem] text-text-tertiary pl-7"
+								>A delivery provider + credentials — required to send any email</span
+							>
+							<span
+								class="text-[0.75rem] text-brand font-medium group-hover:translate-x-0.5 transition-transform mt-1 pl-7"
+							>
 								Check delivery →
 							</span>
 						</NuxtLink>
@@ -159,17 +172,28 @@ const shouldShow = computed(() => {
 							class="group flex flex-col gap-1 rounded-lg border border-border-default bg-bg-elevated p-3 hover:border-brand/40 hover:-translate-y-px transition-all"
 						>
 							<div class="flex items-center gap-2">
-								<span class="w-5 h-5 rounded-full bg-brand/15 text-brand text-[0.6875rem] font-semibold flex items-center justify-center">2</span>
-								<span class="text-[0.8125rem] font-medium text-text-primary">Verify a sending domain</span>
+								<span
+									class="w-5 h-5 rounded-full bg-brand/15 text-brand text-[0.6875rem] font-semibold flex items-center justify-center"
+									>2</span
+								>
+								<span class="text-[0.8125rem] font-medium text-text-primary"
+									>Verify a sending domain</span
+								>
 							</div>
-							<span class="text-[0.75rem] text-text-tertiary pl-7">SPF, DKIM, and DMARC — for deliverability</span>
-							<span class="text-[0.75rem] text-brand font-medium group-hover:translate-x-0.5 transition-transform mt-1 pl-7">
+							<span class="text-[0.75rem] text-text-tertiary pl-7"
+								>SPF, DKIM, and DMARC — for deliverability</span
+							>
+							<span
+								class="text-[0.75rem] text-brand font-medium group-hover:translate-x-0.5 transition-transform mt-1 pl-7"
+							>
 								Open Settings →
 							</span>
 						</NuxtLink>
 
 						<!-- 3. Convex dashboard -->
-						<div class="flex flex-col gap-1 rounded-lg border border-border-default bg-bg-elevated p-3">
+						<div
+							class="flex flex-col gap-1 rounded-lg border border-border-default bg-bg-elevated p-3"
+						>
 							<a
 								:href="convexDashboardUrl"
 								target="_blank"
@@ -177,11 +201,20 @@ const shouldShow = computed(() => {
 								class="group flex flex-col gap-1 hover:-translate-y-px transition-all"
 							>
 								<div class="flex items-center gap-2">
-									<span class="w-5 h-5 rounded-full bg-brand/15 text-brand text-[0.6875rem] font-semibold flex items-center justify-center">3</span>
-									<span class="text-[0.8125rem] font-medium text-text-primary">Open Convex dashboard</span>
+									<span
+										class="w-5 h-5 rounded-full bg-brand/15 text-brand text-[0.6875rem] font-semibold flex items-center justify-center"
+										>3</span
+									>
+									<span class="text-[0.8125rem] font-medium text-text-primary"
+										>Open Convex dashboard</span
+									>
 								</div>
-								<span class="text-[0.75rem] text-text-tertiary pl-7">Inspect your database, functions, and logs</span>
-								<span class="text-[0.75rem] text-brand font-medium group-hover:translate-x-0.5 transition-transform mt-1 pl-7">
+								<span class="text-[0.75rem] text-text-tertiary pl-7"
+									>Inspect your database, functions, and logs</span
+								>
+								<span
+									class="text-[0.75rem] text-brand font-medium group-hover:translate-x-0.5 transition-transform mt-1 pl-7"
+								>
 									Launch dashboard ↗
 								</span>
 							</a>
@@ -196,7 +229,11 @@ const shouldShow = computed(() => {
 									class="text-[0.6875rem] text-text-tertiary underline decoration-dotted hover:text-text-primary transition-colors"
 									@click="startEditingDashboard"
 								>
-									{{ isDashboardGuess ? 'Customize if you are behind a proxy' : 'Customize dashboard URL' }}
+									{{
+										isDashboardGuess
+											? 'Customize if you are behind a proxy'
+											: 'Customize dashboard URL'
+									}}
 								</button>
 							</div>
 
@@ -208,10 +245,14 @@ const shouldShow = computed(() => {
 									placeholder="http://localhost:6791"
 									aria-label="Convex dashboard URL"
 									class="w-full rounded-md border bg-bg-surface px-2 py-1 text-[0.75rem] text-text-primary focus:outline-none focus:ring-1"
-									:class="dashboardDraftInvalid ? 'border-red-500 focus:ring-red-500' : 'border-border-default focus:ring-brand'"
+									:class="
+										dashboardDraftInvalid
+											? 'border-red-500 focus:ring-red-500'
+											: 'border-border-default focus:ring-brand'
+									"
 									@keydown.enter.prevent="saveDashboardUrl"
 									@keydown.esc.prevent="cancelEditingDashboard"
-								>
+								/>
 								<p v-if="dashboardDraftInvalid" class="text-[0.6875rem] text-red-500">
 									Enter a valid http(s) URL, or leave empty to reset.
 								</p>
@@ -243,11 +284,20 @@ const shouldShow = computed(() => {
 							class="group flex flex-col gap-1 rounded-lg border border-border-default bg-bg-elevated p-3 hover:border-brand/40 hover:-translate-y-px transition-all"
 						>
 							<div class="flex items-center gap-2">
-								<span class="w-5 h-5 rounded-full bg-brand/15 text-brand text-[0.6875rem] font-semibold flex items-center justify-center">4</span>
-								<span class="text-[0.8125rem] font-medium text-text-primary">Read the self-host docs</span>
+								<span
+									class="w-5 h-5 rounded-full bg-brand/15 text-brand text-[0.6875rem] font-semibold flex items-center justify-center"
+									>4</span
+								>
+								<span class="text-[0.8125rem] font-medium text-text-primary"
+									>Read the self-host docs</span
+								>
 							</div>
-							<span class="text-[0.75rem] text-text-tertiary pl-7">DNS, production config, maintenance</span>
-							<span class="text-[0.75rem] text-brand font-medium group-hover:translate-x-0.5 transition-transform mt-1 pl-7">
+							<span class="text-[0.75rem] text-text-tertiary pl-7"
+								>DNS, production config, maintenance</span
+							>
+							<span
+								class="text-[0.75rem] text-brand font-medium group-hover:translate-x-0.5 transition-transform mt-1 pl-7"
+							>
 								Open docs ↗
 							</span>
 						</a>

@@ -73,23 +73,23 @@
 /* === Animation Utilities === */
 
 @utility animate-eb-block-insert {
-	animation: eb-block-insert 250ms ease both;
+	animation: eb-block-insert var(--motion-moderate, 160ms) var(--ease-spring, ease) both;
 }
 
 @utility animate-eb-slide-up {
-	animation: eb-slide-up 200ms ease both;
+	animation: eb-slide-up var(--motion-moderate, 160ms) var(--ease-spring, ease) both;
 }
 
 @utility animate-eb-toolbar-enter {
-	animation: eb-toolbar-enter 200ms cubic-bezier(0.4, 0, 0.2, 1) both;
+	animation: eb-toolbar-enter var(--motion-moderate, 160ms) var(--ease-spring, ease) both;
 }
 
 @utility animate-eb-fade-in {
-	animation: eb-fade-in 200ms ease both;
+	animation: eb-fade-in var(--motion-moderate, 160ms) var(--ease-spring, ease) both;
 }
 
 @utility animate-eb-popover-enter {
-	animation: eb-popover-enter 200ms cubic-bezier(0.4, 0, 0.2, 1) both;
+	animation: eb-popover-enter var(--motion-moderate, 160ms) var(--ease-spring, ease) both;
 }
 
 @utility animate-eb-pulse {
@@ -106,7 +106,7 @@
 }
 
 @utility animate-eb-insert-line {
-	animation: eb-insert-line 150ms ease both;
+	animation: eb-insert-line var(--motion-fast, 80ms) var(--ease-spring, ease) both;
 }
 
 /* === Backdrop Blur === */
@@ -134,7 +134,8 @@
 }
 
 @utility bg-checker {
-	background-image: linear-gradient(45deg, #d1d5db 25%, transparent 25%),
+	background-image:
+		linear-gradient(45deg, #d1d5db 25%, transparent 25%),
 		linear-gradient(-45deg, #d1d5db 25%, transparent 25%),
 		linear-gradient(45deg, transparent 75%, #d1d5db 75%),
 		linear-gradient(-45deg, transparent 75%, #d1d5db 75%);
@@ -148,9 +149,11 @@
 
 /* === Scrollbar === */
 
+/* Thin wrapper over the shared overlay-scrollbar tokens
+   (packages/ui/assets/css/scrollbar.css owns the global treatment). */
 @utility scrollbar-thin-overlay {
 	scrollbar-width: thin;
-	scrollbar-color: rgba(255, 255, 255, 0.08) transparent;
+	scrollbar-color: var(--scrollbar-thumb, rgba(255, 255, 255, 0.14)) transparent;
 
 	&::-webkit-scrollbar {
 		width: 5px;
@@ -161,11 +164,11 @@
 	}
 
 	&::-webkit-scrollbar-thumb {
-		background: rgba(255, 255, 255, 0.08);
-		border-radius: 3px;
+		background: var(--scrollbar-thumb, rgba(255, 255, 255, 0.14));
+		border-radius: 999px;
 
 		&:hover {
-			background: rgba(255, 255, 255, 0.14);
+			background: var(--scrollbar-thumb-hover, rgba(255, 255, 255, 0.3));
 		}
 	}
 }
@@ -173,38 +176,45 @@
 /* === Shadows === */
 
 @utility shadow-toolbar {
-	box-shadow:
+	box-shadow: var(
+		--shadow-4,
 		0 0 0 1px rgba(255, 255, 255, 0.06),
 		0 2px 4px rgba(0, 0, 0, 0.12),
-		0 8px 24px rgba(0, 0, 0, 0.2);
+		0 8px 24px rgba(0, 0, 0, 0.2)
+	);
 }
 
 @utility shadow-selected-block {
 	box-shadow:
 		0 0 0 1.5px var(--color-brand),
-		0 0 0 4px rgba(196, 120, 90, 0.1);
+		0 0 0 4px color-mix(in srgb, var(--color-brand, #c4785a) 10%, transparent);
 }
 
 @utility shadow-popover {
-	box-shadow:
+	box-shadow: var(
+		--shadow-5,
 		0 0 0 1px rgba(255, 255, 255, 0.06),
 		0 4px 8px rgba(0, 0, 0, 0.15),
-		0 16px 32px rgba(0, 0, 0, 0.25);
+		0 16px 32px rgba(0, 0, 0, 0.25)
+	);
 }
 
 @utility shadow-canvas-inner {
-	box-shadow:
+	box-shadow: var(
+		--shadow-3,
 		0 0 0 1px rgba(0, 0, 0, 0.08),
 		0 2px 4px rgba(0, 0, 0, 0.06),
 		0 8px 16px rgba(0, 0, 0, 0.08),
-		0 16px 32px rgba(0, 0, 0, 0.06);
+		0 16px 32px rgba(0, 0, 0, 0.06)
+	);
 }
 
 /* === Form Utilities === */
 
 @utility eb-input-ring {
 	transition-property: border-color, box-shadow, background-color;
-	transition-duration: 150ms;
+	transition-duration: var(--motion-fast, 80ms);
+	transition-timing-function: var(--ease-spring, ease);
 
 	&:hover {
 		border-color: var(--color-border-strong);
@@ -213,7 +223,7 @@
 
 	&:focus-within {
 		border-color: var(--color-brand);
-		box-shadow: 0 0 0 3px rgba(196, 120, 90, 0.08);
+		box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-brand, #c4785a) 8%, transparent);
 		background-color: rgba(255, 255, 255, 0.04);
 	}
 }
@@ -245,13 +255,13 @@
 		border: 2px solid var(--color-bg-base);
 		box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 		cursor: pointer;
-		transition: box-shadow 150ms ease;
+		transition: box-shadow var(--motion-fast, 80ms) var(--ease-spring, ease);
 	}
 
 	&::-webkit-slider-thumb:hover {
 		box-shadow:
 			0 1px 4px rgba(0, 0, 0, 0.3),
-			0 0 0 4px rgba(196, 120, 90, 0.1);
+			0 0 0 4px color-mix(in srgb, var(--color-brand, #c4785a) 10%, transparent);
 	}
 
 	&::-moz-range-thumb {
@@ -269,8 +279,8 @@
 
 @utility variable-tag {
 	display: inline;
-	background: rgba(196, 120, 90, 0.1);
-	border: 1px solid rgba(196, 120, 90, 0.2);
+	background: color-mix(in srgb, var(--color-brand, #c4785a) 10%, transparent);
+	border: 1px solid color-mix(in srgb, var(--color-brand, #c4785a) 20%, transparent);
 	border-radius: 4px;
 	padding: 1px 4px;
 	font-size: 0.85em;

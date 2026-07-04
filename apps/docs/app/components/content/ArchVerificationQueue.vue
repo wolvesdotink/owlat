@@ -183,7 +183,7 @@ const stats = [
   gap: 8px;
   opacity: 0;
   transform: translateY(10px);
-  transition: opacity 0.5s var(--ease-out-expo), transform 0.5s var(--ease-out-expo);
+  transition: opacity var(--motion-slow) var(--ease-spring), transform var(--motion-slow) var(--ease-spring);
   transition-delay: calc(var(--stagger) * 0.12s);
 }
 
@@ -209,7 +209,7 @@ const stats = [
   border: 1px solid var(--color-border-default);
   opacity: 0;
   transform: translateY(6px);
-  transition: opacity 0.4s var(--ease-out-expo), transform 0.4s var(--ease-out-expo), border-color 0.25s;
+  transition: opacity var(--motion-slow) var(--ease-spring), transform var(--motion-slow) var(--ease-spring), border-color var(--motion-moderate);
   transition-delay: calc(0.1s + var(--i) * 0.06s);
 }
 
@@ -246,7 +246,7 @@ const stats = [
   gap: 6px;
   opacity: 0;
   transform: translateY(10px);
-  transition: opacity 0.5s var(--ease-out-expo), transform 0.5s var(--ease-out-expo);
+  transition: opacity var(--motion-slow) var(--ease-spring), transform var(--motion-slow) var(--ease-spring);
   transition-delay: calc(var(--stagger) * 0.12s);
 }
 
@@ -266,7 +266,7 @@ const stats = [
   border: 1px solid var(--color-border-default);
   opacity: 0;
   transform: translateX(-8px);
-  transition: opacity 0.45s var(--ease-out-expo), transform 0.45s var(--ease-out-expo), border-color 0.25s, box-shadow 0.25s;
+  transition: opacity 0.45s var(--ease-spring), transform 0.45s var(--ease-spring), border-color var(--motion-moderate), box-shadow var(--motion-moderate);
   transition-delay: calc(0.15s + var(--i) * 0.08s);
 }
 
@@ -320,7 +320,7 @@ const stats = [
   left: 0;
   right: 0;
   border-radius: 2px;
-  transition: height 0.6s var(--ease-out-expo);
+  transition: height 0.6s var(--ease-spring);
 }
 
 .vq-confidence-fill--high { background: var(--color-success); }
@@ -416,7 +416,7 @@ const stats = [
   background: var(--color-bg-surface);
   color: var(--color-text-tertiary);
   cursor: pointer;
-  transition: border-color 0.2s, color 0.2s, background 0.2s, box-shadow 0.2s;
+  transition: border-color var(--motion-moderate), color var(--motion-moderate), background var(--motion-moderate), box-shadow var(--motion-moderate);
   font-family: inherit;
 }
 
@@ -480,7 +480,7 @@ const stats = [
   border: 1px solid var(--color-border-subtle);
   opacity: 0;
   transform: translateY(8px);
-  transition: opacity 0.5s var(--ease-out-expo), transform 0.5s var(--ease-out-expo);
+  transition: opacity var(--motion-slow) var(--ease-spring), transform var(--motion-slow) var(--ease-spring);
   transition-delay: calc(var(--stagger) * 0.12s);
 }
 
@@ -528,7 +528,7 @@ const stats = [
   background: var(--color-bg-soft);
   opacity: 0;
   transform: translateY(8px);
-  transition: opacity 0.5s var(--ease-out-expo), transform 0.5s var(--ease-out-expo);
+  transition: opacity var(--motion-slow) var(--ease-spring), transform var(--motion-slow) var(--ease-spring);
   transition-delay: calc(var(--stagger) * 0.12s);
 }
 

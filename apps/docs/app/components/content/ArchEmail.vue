@@ -200,7 +200,7 @@ const pipelineFeatures = [
   background: var(--color-bg-elevated);
   opacity: 0;
   transform: translateY(14px);
-  transition: opacity 0.6s var(--ease-out-expo), transform 0.6s var(--ease-out-expo), border-color 0.3s, box-shadow 0.3s;
+  transition: opacity 0.6s var(--ease-spring), transform 0.6s var(--ease-spring), border-color var(--motion-moderate), box-shadow var(--motion-moderate);
   transition-delay: calc(var(--s) * 0.12s);
   position: relative;
   overflow: hidden;
@@ -274,7 +274,7 @@ const pipelineFeatures = [
   font-weight: 500;
   color: var(--color-text-primary);
   border: 1px solid transparent;
-  transition: border-color 0.25s, background 0.25s, transform 0.3s var(--ease-out-expo);
+  transition: border-color var(--motion-moderate), background var(--motion-moderate), transform var(--motion-moderate) var(--ease-spring);
   opacity: 0;
   transform: translateY(8px);
 }
@@ -315,7 +315,7 @@ const pipelineFeatures = [
   font-family: var(--font-mono);
   color: var(--color-text-secondary);
   white-space: nowrap;
-  transition: border-color 0.25s, color 0.25s;
+  transition: border-color var(--motion-moderate), color var(--motion-moderate);
 }
 
 .email-pipeline-step--brand {
@@ -333,7 +333,7 @@ const pipelineFeatures = [
 .email-pipeline-arrow {
   color: var(--color-text-disabled);
   flex-shrink: 0;
-  transition: color 0.25s;
+  transition: color var(--motion-moderate);
 }
 
 .email-section--rendering:hover .email-pipeline-arrow {
@@ -363,7 +363,7 @@ const pipelineFeatures = [
   gap: 0;
   padding: 2px 0;
   opacity: 0;
-  transition: opacity 0.5s var(--ease-out-expo);
+  transition: opacity var(--motion-slow) var(--ease-spring);
   transition-delay: calc(var(--s) * 0.12s + 0.1s);
 }
 
@@ -408,7 +408,7 @@ const pipelineFeatures = [
   margin-bottom: 12px;
   opacity: 0;
   transform: translateY(8px);
-  transition: border-color 0.25s, transform 0.3s var(--ease-out-expo), background 0.25s, opacity 0.5s var(--ease-out-expo);
+  transition: border-color var(--motion-moderate), transform var(--motion-moderate) var(--ease-spring), background var(--motion-moderate), opacity var(--motion-slow) var(--ease-spring);
 }
 
 .is-visible .email-provider--default {
@@ -447,7 +447,7 @@ const pipelineFeatures = [
   letter-spacing: 0.05em;
   margin-bottom: 6px;
   opacity: 0;
-  transition: opacity 0.5s var(--ease-out-expo);
+  transition: opacity var(--motion-slow) var(--ease-spring);
 }
 
 .is-visible .email-alt-label {
@@ -477,7 +477,7 @@ const pipelineFeatures = [
   border-radius: 8px;
   background: var(--color-bg-surface);
   border: 1px solid transparent;
-  transition: border-color 0.25s, transform 0.3s var(--ease-out-expo), background 0.25s;
+  transition: border-color var(--motion-moderate), transform var(--motion-moderate) var(--ease-spring), background var(--motion-moderate);
   opacity: 0;
   transform: translateY(8px);
 }
@@ -533,7 +533,7 @@ const pipelineFeatures = [
   margin-bottom: 12px;
   opacity: 0;
   transform: translateY(8px);
-  transition: opacity 0.5s var(--ease-out-expo), transform 0.5s var(--ease-out-expo), border-color 0.25s;
+  transition: opacity var(--motion-slow) var(--ease-spring), transform var(--motion-slow) var(--ease-spring), border-color var(--motion-moderate);
 }
 
 .is-visible .email-ses {
@@ -627,7 +627,7 @@ const pipelineFeatures = [
   border: 1px solid var(--color-border-subtle);
   font-size: 0.75rem;
   color: var(--color-text-secondary);
-  transition: border-color 0.25s, transform 0.25s var(--ease-out-expo);
+  transition: border-color var(--motion-moderate), transform var(--motion-moderate) var(--ease-spring);
   opacity: 0;
 }
 
@@ -647,17 +647,9 @@ const pipelineFeatures = [
   transition-delay: 0s;
 }
 
-/* ── Ambient animations ── */
-.is-visible .email-pipeline-arrow {
-  animation: arrow-drift 2.5s ease-in-out infinite;
-}
 
 .is-visible .email-pipeline-arrow:nth-child(4) {
   animation-delay: 0.5s;
 }
 
-@keyframes arrow-drift {
-  0%, 100% { transform: translateX(0); }
-  50% { transform: translateX(3px); }
-}
 </style>

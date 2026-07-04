@@ -39,7 +39,7 @@ function clamp(val: number): number {
 <template>
 	<div class="group flex items-center border border-border-subtle rounded-lg bg-bg-surface min-w-[120px] eb-input-ring">
 		<button
-			class="flex items-center justify-center w-[30px] h-8 border-none bg-transparent text-text-disabled cursor-pointer shrink-0 transition-[background-color,color] duration-100 hover:not-disabled:bg-bg-surface-hover hover:not-disabled:text-text-secondary active:not-disabled:bg-bg-overlay disabled:opacity-25 disabled:cursor-not-allowed"
+			class="flex items-center justify-center w-[30px] h-8 border-none bg-transparent text-text-disabled cursor-pointer shrink-0 transition-[background-color,color] duration-(--motion-fast) hover:not-disabled:bg-bg-surface-hover hover:not-disabled:text-text-secondary active:not-disabled:bg-bg-overlay disabled:opacity-25 disabled:cursor-not-allowed"
 			type="button"
 			tabindex="-1"
 			:disabled="min !== undefined && value <= min"
@@ -58,7 +58,7 @@ function clamp(val: number): number {
 		/>
 		<div v-if="unit" class="text-[11px] font-medium text-text-tertiary pr-0.5 select-none tracking-[0.02em]">{{ unit }}</div>
 		<button
-			class="flex items-center justify-center w-[30px] h-8 border-none bg-transparent text-text-disabled cursor-pointer shrink-0 transition-[background-color,color] duration-100 hover:not-disabled:bg-bg-surface-hover hover:not-disabled:text-text-secondary active:not-disabled:bg-bg-overlay disabled:opacity-25 disabled:cursor-not-allowed"
+			class="flex items-center justify-center w-[30px] h-8 border-none bg-transparent text-text-disabled cursor-pointer shrink-0 transition-[background-color,color] duration-(--motion-fast) hover:not-disabled:bg-bg-surface-hover hover:not-disabled:text-text-secondary active:not-disabled:bg-bg-overlay disabled:opacity-25 disabled:cursor-not-allowed"
 			type="button"
 			tabindex="-1"
 			:disabled="max !== undefined && value >= max"

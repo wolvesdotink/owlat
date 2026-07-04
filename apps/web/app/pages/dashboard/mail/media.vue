@@ -68,7 +68,7 @@ const { isDragOver, handleDragOver, handleDragLeave, handleDrop } = useDropZone(
 	(files) => {
 		void uploadFiles(files);
 	},
-	{ enabled: () => isAdmin.value },
+	{ enabled: () => isAdmin.value }
 );
 
 // Detail modal
@@ -183,9 +183,11 @@ const copyUrl = async (url: string) => {
 					:key="opt.value"
 					type="button"
 					class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-full border transition-colors"
-					:class="selectedTypes.includes(opt.value)
-						? 'bg-brand/10 border-brand text-brand'
-						: 'bg-bg-surface border-border-subtle text-text-secondary hover:border-border-default hover:text-text-primary'"
+					:class="
+						selectedTypes.includes(opt.value)
+							? 'bg-brand/10 border-brand text-brand'
+							: 'bg-bg-surface border-border-subtle text-text-secondary hover:border-border-default hover:text-text-primary'
+					"
 					@click="toggleTypeFilter(opt.value)"
 				>
 					<Icon :name="opt.icon" class="w-3.5 h-3.5" />
@@ -202,10 +204,10 @@ const copyUrl = async (url: string) => {
 
 		<!-- Drag overlay -->
 		<Transition
-			enter-active-class="transition-opacity duration-200"
+			enter-active-class="transition-opacity duration-(--motion-fast)"
 			enter-from-class="opacity-0"
 			enter-to-class="opacity-100"
-			leave-active-class="transition-opacity duration-200"
+			leave-active-class="transition-opacity duration-(--motion-fast-exit)"
 			leave-from-class="opacity-100"
 			leave-to-class="opacity-0"
 		>
@@ -213,7 +215,9 @@ const copyUrl = async (url: string) => {
 				v-if="isDragOver"
 				class="fixed inset-0 z-50 flex items-center justify-center bg-bg-base/80 backdrop-blur-sm pointer-events-none"
 			>
-				<div class="flex flex-col items-center gap-3 p-8 border-2 border-dashed border-brand rounded-xl bg-bg-elevated">
+				<div
+					class="flex flex-col items-center gap-3 p-8 border-2 border-dashed border-brand rounded-xl bg-bg-elevated"
+				>
 					<Icon name="lucide:upload-cloud" class="w-12 h-12 text-brand" />
 					<p class="text-lg font-medium text-text-primary">Drop files to upload</p>
 				</div>
@@ -229,7 +233,11 @@ const copyUrl = async (url: string) => {
 		<UiEmptyState
 			v-else-if="assets.length === 0 && !searchQuery && !selectedTag && selectedTypes.length === 0"
 			title="No media yet"
-			:description="isAdmin ? 'Upload images to use across your email templates.' : 'Media will appear here once an admin uploads it.'"
+			:description="
+				isAdmin
+					? 'Upload images to use across your email templates.'
+					: 'Media will appear here once an admin uploads it.'
+			"
 			icon="lucide:image"
 		>
 			<UiButton v-if="isAdmin" variant="primary" size="sm" @click="fileInputRef?.click()">
@@ -241,10 +249,7 @@ const copyUrl = async (url: string) => {
 		</UiEmptyState>
 
 		<!-- No results -->
-		<div
-			v-else-if="assets.length === 0"
-			class="text-center py-16 text-text-secondary"
-		>
+		<div v-else-if="assets.length === 0" class="text-center py-16 text-text-secondary">
 			No media found matching your search.
 		</div>
 
@@ -253,7 +258,7 @@ const copyUrl = async (url: string) => {
 			<div
 				v-for="asset in assets"
 				:key="asset._id"
-				class="group relative bg-bg-elevated border border-border-subtle rounded-lg overflow-hidden cursor-pointer transition-all duration-150 hover:border-border-default hover:shadow-sm"
+				class="group relative bg-bg-elevated border border-border-subtle rounded-lg overflow-hidden cursor-pointer transition-all duration-(--motion-moderate) hover:border-border-default hover:shadow-sm"
 				:class="{ 'ring-2 ring-brand border-brand': selectedAssets.has(asset._id) }"
 				@click="openDetail(asset)"
 			>
@@ -277,9 +282,14 @@ const copyUrl = async (url: string) => {
 						class="w-full h-full object-contain"
 						loading="lazy"
 					/>
-					<div v-else class="flex flex-col items-center justify-center gap-2 bg-bg-surface w-full h-full p-3">
+					<div
+						v-else
+						class="flex flex-col items-center justify-center gap-2 bg-bg-surface w-full h-full p-3"
+					>
 						<Icon :name="getFileIcon(asset.mimeType || '')" class="w-10 h-10 text-text-tertiary" />
-						<span class="text-[10px] text-text-secondary text-center truncate max-w-full px-1">{{ asset.filename }}</span>
+						<span class="text-[10px] text-text-secondary text-center truncate max-w-full px-1">{{
+							asset.filename
+						}}</span>
 					</div>
 				</div>
 
@@ -290,7 +300,9 @@ const copyUrl = async (url: string) => {
 						<span v-if="asset.width && asset.height" class="text-[10px] text-text-tertiary">
 							{{ asset.width }}&times;{{ asset.height }}
 						</span>
-						<span class="text-[10px] text-text-tertiary">{{ formatCompactFileSize(asset.fileSize) }}</span>
+						<span class="text-[10px] text-text-tertiary">{{
+							formatCompactFileSize(asset.fileSize)
+						}}</span>
 					</div>
 				</div>
 			</div>
@@ -298,9 +310,7 @@ const copyUrl = async (url: string) => {
 
 		<!-- Load more -->
 		<div v-if="status === 'CanLoadMore'" class="flex justify-center mt-8">
-			<UiButton variant="outline" size="sm" @click="loadMore(24)">
-				Load more
-			</UiButton>
+			<UiButton variant="outline" size="sm" @click="loadMore(24)"> Load more </UiButton>
 		</div>
 
 		<!-- Detail Modal -->
@@ -308,13 +318,19 @@ const copyUrl = async (url: string) => {
 			:open="!!detailAsset"
 			title="Asset Details"
 			size="lg"
-			@update:open="(v: boolean) => { if (!v) detailAsset = null }"
+			@update:open="
+				(v: boolean) => {
+					if (!v) detailAsset = null;
+				}
+			"
 		>
 			<template v-if="detailAsset">
 				<div class="flex flex-col md:flex-row gap-6">
 					<!-- Preview -->
 					<div class="md:w-1/2 flex-shrink-0">
-						<div class="aspect-square bg-checker rounded-lg overflow-hidden flex items-center justify-center">
+						<div
+							class="aspect-square bg-checker rounded-lg overflow-hidden flex items-center justify-center"
+						>
 							<img
 								v-if="detailAsset.mimeType?.startsWith('image/')"
 								:src="detailAsset.url"
@@ -322,7 +338,10 @@ const copyUrl = async (url: string) => {
 								class="max-w-full max-h-full object-contain"
 							/>
 							<div v-else class="flex flex-col items-center justify-center gap-3">
-								<Icon :name="getFileIcon(detailAsset.mimeType || '')" class="w-16 h-16 text-text-tertiary" />
+								<Icon
+									:name="getFileIcon(detailAsset.mimeType || '')"
+									class="w-16 h-16 text-text-tertiary"
+								/>
 								<span class="text-sm text-text-secondary">{{ detailAsset.filename }}</span>
 							</div>
 						</div>
@@ -338,7 +357,11 @@ const copyUrl = async (url: string) => {
 								</template>
 							</p>
 							<p v-if="usageCount !== null" class="text-xs text-text-secondary mt-1">
-								{{ usageCount === 0 ? 'Not used in any email yet' : `Used in ${usageCount} email${usageCount === 1 ? '' : 's'}` }}
+								{{
+									usageCount === 0
+										? 'Not used in any email yet'
+										: `Used in ${usageCount} email${usageCount === 1 ? '' : 's'}`
+								}}
 							</p>
 						</div>
 
@@ -369,7 +392,10 @@ const copyUrl = async (url: string) => {
 								variant="outline"
 								size="sm"
 								class="!text-error !border-error"
-								@click="deleteAssets([detailAsset!._id]); detailAsset = null"
+								@click="
+									deleteAssets([detailAsset!._id]);
+									detailAsset = null;
+								"
 							>
 								<template #iconLeft>
 									<Icon name="lucide:trash-2" class="w-3.5 h-3.5" />
@@ -382,7 +408,9 @@ const copyUrl = async (url: string) => {
 			</template>
 
 			<template #footer>
-				<UiButton variant="secondary" @click="detailAsset = null">{{ isAdmin ? 'Cancel' : 'Close' }}</UiButton>
+				<UiButton variant="secondary" @click="detailAsset = null">{{
+					isAdmin ? 'Cancel' : 'Close'
+				}}</UiButton>
 				<UiButton v-if="isAdmin" variant="primary" @click="saveDetail">Save</UiButton>
 			</template>
 		</UiModal>

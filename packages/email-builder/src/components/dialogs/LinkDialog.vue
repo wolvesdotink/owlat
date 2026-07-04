@@ -50,7 +50,7 @@ function handleKeydown(event: KeyboardEvent) {
 				id="link-url"
 				ref="inputEl"
 				v-model="urlInput"
-				class="w-full px-3 py-2 text-sm bg-white/[0.04] border border-border-subtle rounded-lg text-text-primary outline-none transition-[border-color,box-shadow] duration-150 focus:border-brand focus:ring-1 focus:ring-brand"
+				class="w-full px-3 py-2 text-sm bg-white/[0.04] border border-border-subtle rounded-lg text-text-primary outline-none transition-[border-color,box-shadow] duration-(--motion-fast) focus:border-brand focus:ring-1 focus:ring-brand"
 				type="url"
 				placeholder="https://example.com"
 				autocomplete="off"

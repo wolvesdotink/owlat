@@ -37,7 +37,7 @@ async function control(fn: 'minimizeWindow' | 'toggleMaximizeWindow' | 'closeWin
 	>
 		<!-- Brand + active workspace (draggable) -->
 		<div class="flex items-center gap-2 min-w-0" data-tauri-drag-region>
-			<img src="/owlat.svg" alt="" class="w-4 h-4 shrink-0" data-tauri-drag-region >
+			<img src="/owlat.svg" alt="" class="w-4 h-4 shrink-0" data-tauri-drag-region />
 			<span
 				class="font-display text-[13px] leading-none text-text-secondary truncate"
 				data-tauri-drag-region
@@ -59,7 +59,12 @@ async function control(fn: 'minimizeWindow' | 'toggleMaximizeWindow' | 'closeWin
 			>
 				<Icon name="lucide:square" class="w-3.5 h-3.5" />
 			</button>
-			<button type="button" class="tb-btn tb-close" aria-label="Close" @click="control('closeWindow')">
+			<button
+				type="button"
+				class="tb-btn tb-close"
+				aria-label="Close"
+				@click="control('closeWindow')"
+			>
 				<Icon name="lucide:x" class="w-4 h-4" />
 			</button>
 		</div>
@@ -75,8 +80,8 @@ async function control(fn: 'minimizeWindow' | 'toggleMaximizeWindow' | 'closeWin
 	height: 100%;
 	color: var(--color-text-secondary);
 	transition:
-		background-color 0.15s ease,
-		color 0.15s ease;
+		background-color var(--motion-fast) var(--ease-spring),
+		color var(--motion-fast) var(--ease-spring);
 }
 .tb-btn:hover {
 	background-color: var(--color-bg-surface-hover);

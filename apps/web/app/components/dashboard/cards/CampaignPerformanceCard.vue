@@ -34,7 +34,9 @@ function formatRate(rate: number): string {
 
 			<div v-else>
 				<div class="flex items-baseline gap-2 mb-4">
-					<span class="text-3xl font-bold text-text-primary">{{ emailsSent.toLocaleString() }}</span>
+					<span class="text-3xl font-bold text-text-primary">{{
+						emailsSent.toLocaleString()
+					}}</span>
 					<span class="text-sm text-text-secondary">emails in 30 days</span>
 				</div>
 
@@ -42,11 +44,13 @@ function formatRate(rate: number): string {
 					<div>
 						<div class="flex items-center justify-between mb-1">
 							<span class="text-xs text-text-secondary">Open Rate</span>
-							<span class="text-xs font-semibold text-text-primary">{{ formatRate(openRate) }}</span>
+							<span class="text-xs font-semibold text-text-primary">{{
+								formatRate(openRate)
+							}}</span>
 						</div>
 						<div class="h-1.5 bg-bg-surface rounded-full overflow-hidden">
 							<div
-								class="h-full bg-brand rounded-full transition-all duration-500"
+								class="h-full bg-brand rounded-full transition-all duration-(--motion-slow)"
 								:style="{ width: `${Math.min(openRate, 100)}%` }"
 							/>
 						</div>
@@ -54,11 +58,13 @@ function formatRate(rate: number): string {
 					<div>
 						<div class="flex items-center justify-between mb-1">
 							<span class="text-xs text-text-secondary">Click Rate</span>
-							<span class="text-xs font-semibold text-text-primary">{{ formatRate(clickRate) }}</span>
+							<span class="text-xs font-semibold text-text-primary">{{
+								formatRate(clickRate)
+							}}</span>
 						</div>
 						<div class="h-1.5 bg-bg-surface rounded-full overflow-hidden">
 							<div
-								class="h-full bg-success rounded-full transition-all duration-500"
+								class="h-full bg-success rounded-full transition-all duration-(--motion-slow)"
 								:style="{ width: `${Math.min(clickRate, 100)}%` }"
 							/>
 						</div>

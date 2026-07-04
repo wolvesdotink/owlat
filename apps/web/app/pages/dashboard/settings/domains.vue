@@ -30,7 +30,7 @@ const isLoading = computed(() => teamLoading.value || domainsLoading.value);
 // is verified and the feature is enabled — the "no domain to send from" wall.
 const { isEnabled, flags } = useFeatureFlag();
 const hasVerifiedDomain = computed(() =>
-	(domainsData.value ?? []).some((d) => d.status === 'verified'),
+	(domainsData.value ?? []).some((d) => d.status === 'verified')
 );
 
 // Mutations
@@ -65,7 +65,9 @@ const { run: forceVerifyDomain } = isDevBuild
 // Force Verify is owner/admin-only. The backend re-checks via
 // `requirePermission('organization:manage')`; the client-side gate is here so
 // editors don't see a button that 403s on click.
-const canForceVerify = computed(() => isDevBuild && (role.value === 'owner' || role.value === 'admin'));
+const canForceVerify = computed(
+	() => isDevBuild && (role.value === 'owner' || role.value === 'admin')
+);
 
 const forcingDomainId = ref<Id<'domains'> | null>(null);
 
@@ -201,20 +203,27 @@ const canManageDomains = computed(() => role.value === 'owner' || role.value ===
 // would otherwise fail with `forbidden`, and the Receiving panel is an operator
 // task anyway. Returns the deployment's mail host (MTA EHLO hostname) used as
 // the MX target plus the inbound SMTP port.
-const { data: inboundMailConfig } = useConvexQuery(
-	api.domains.domains.getInboundMailConfig,
-	() => (canManageDomains.value ? {} : 'skip'),
+const { data: inboundMailConfig } = useConvexQuery(api.domains.domains.getInboundMailConfig, () =>
+	canManageDomains.value ? {} : 'skip'
 );
 // Show the Receiving (MX) section only when an inbound feature flag is active
 // AND the deployment has a mail host to point at — mirrors how the sending
 // panels gate, so a send-only install never sees inbound noise.
 const showReceivingDns = computed(
-	() => hasInboundFeature(flags.value) && Boolean(inboundMailConfig.value?.mailHost),
+	() => hasInboundFeature(flags.value) && Boolean(inboundMailConfig.value?.mailHost)
 );
 const dmarcPolicyOptions: { value: DmarcPolicy; label: string; hint: string }[] = [
-	{ value: 'none', label: 'Monitor only (p=none)', hint: 'Collect reports, take no action on failures.' },
+	{
+		value: 'none',
+		label: 'Monitor only (p=none)',
+		hint: 'Collect reports, take no action on failures.',
+	},
 	{ value: 'quarantine', label: 'Quarantine (p=quarantine)', hint: 'Send failing mail to spam.' },
-	{ value: 'reject', label: 'Reject (p=reject)', hint: 'Reject failing mail outright — full enforcement.' },
+	{
+		value: 'reject',
+		label: 'Reject (p=reject)',
+		hint: 'Reject failing mail outright — full enforcement.',
+	},
 ];
 const updatingDmarcDomainId = ref<Id<'domains'> | null>(null);
 
@@ -226,7 +235,7 @@ const handleDmarcPolicyChange = async (domainId: Id<'domains'>, policy: DmarcPol
 		showToast(
 			policy === 'none'
 				? 'DMARC set to monitor-only. Re-publish the updated _dmarc record, then verify.'
-				: `DMARC policy raised to ${policy}. Re-publish the updated _dmarc record, then verify.`,
+				: `DMARC policy raised to ${policy}. Re-publish the updated _dmarc record, then verify.`
 		);
 	} finally {
 		updatingDmarcDomainId.value = null;
@@ -325,18 +334,15 @@ const startAutoRecheck = (domainId: Id<'domains'>) => {
 
 // Drive the poller from whichever panel is open and that domain's live status
 // (domainsData is a real-time subscription, so a verify elsewhere collapses it).
-watch(
-	[expandedDomainId, () => domainsData.value],
-	() => {
-		const id = expandedDomainId.value;
-		const domain = id ? (domainsData.value ?? []).find((d) => d._id === id) : undefined;
-		if (id && isAutoRecheckable(domain)) {
-			startAutoRecheck(id);
-		} else {
-			stopAutoRecheck();
-		}
-	},
-);
+watch([expandedDomainId, () => domainsData.value], () => {
+	const id = expandedDomainId.value;
+	const domain = id ? (domainsData.value ?? []).find((d) => d._id === id) : undefined;
+	if (id && isAutoRecheckable(domain)) {
+		startAutoRecheck(id);
+	} else {
+		stopAutoRecheck();
+	}
+});
 
 onBeforeUnmount(() => {
 	stopAutoRecheck();
@@ -406,13 +412,12 @@ const normalizeDnsRecord = (
 	};
 };
 
-const hasDnsRecords = (dnsRecords: DomainDnsRecords | null | undefined): dnsRecords is DomainDnsRecords => {
+const hasDnsRecords = (
+	dnsRecords: DomainDnsRecords | null | undefined
+): dnsRecords is DomainDnsRecords => {
 	if (!dnsRecords) return false;
 	return Boolean(
-		dnsRecords.spf ||
-			dnsRecords.dkim?.length ||
-			dnsRecords.dmarc ||
-			dnsRecords.mailFrom?.length
+		dnsRecords.spf || dnsRecords.dkim?.length || dnsRecords.dmarc || dnsRecords.mailFrom?.length
 	);
 };
 
@@ -553,14 +558,8 @@ const readinessSummary = (domain: DomainWithVerification) =>
 									</span>
 								</div>
 								<p class="text-sm text-text-tertiary mt-0.5">
-									<span v-if="domain.status === 'registering'">
-										Setting up domain...
-									</span>
-									<span
-										v-else-if="
-											domain.status === 'failed' && (domain.lastRegistrationError)
-										"
-									>
+									<span v-if="domain.status === 'registering'"> Setting up domain... </span>
+									<span v-else-if="domain.status === 'failed' && domain.lastRegistrationError">
 										Registration failed — click Retry to try again
 									</span>
 									<span v-else-if="domain.status === 'verified'">
@@ -589,21 +588,39 @@ const readinessSummary = (domain: DomainWithVerification) =>
 								/>
 								<Icon v-else name="lucide:wand-2" class="w-4 h-4" />
 								Force Verify
-								<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-yellow-500/30 uppercase tracking-wide">
+								<span
+									class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-yellow-500/30 uppercase tracking-wide"
+								>
 									Dev
 								</span>
 							</button>
 							<button
 								class="btn btn-secondary gap-1.5 text-sm py-1.5 px-3"
-								:title="domain.status === 'registering' ? 'Waiting for registration...' : 'Verify DNS records'"
+								:title="
+									domain.status === 'registering'
+										? 'Waiting for registration...'
+										: 'Verify DNS records'
+								"
 								:disabled="verifyingDomainId === domain._id || domain.status === 'registering'"
-								@click.stop="domain.status === 'failed' && (domain.lastRegistrationError) ? handleRetryRegistration(domain._id) : handleVerifyDomain(domain._id)"
+								@click.stop="
+									domain.status === 'failed' && domain.lastRegistrationError
+										? handleRetryRegistration(domain._id)
+										: handleVerifyDomain(domain._id)
+								"
 							>
-								<Icon v-if="verifyingDomainId === domain._id || domain.status === 'registering'" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
+								<Icon
+									v-if="verifyingDomainId === domain._id || domain.status === 'registering'"
+									name="lucide:loader-2"
+									class="w-4 h-4 animate-spin"
+								/>
 								<Icon v-else name="lucide:refresh-cw" class="w-4 h-4" />
 								<template v-if="domain.status === 'registering'">Registering...</template>
-								<template v-else-if="domain.status === 'failed' && (domain.lastRegistrationError)">Retry</template>
-								<template v-else>{{ verifyingDomainId === domain._id ? 'Verifying...' : 'Verify' }}</template>
+								<template v-else-if="domain.status === 'failed' && domain.lastRegistrationError"
+									>Retry</template
+								>
+								<template v-else>{{
+									verifyingDomainId === domain._id ? 'Verifying...' : 'Verify'
+								}}</template>
 							</button>
 							<button
 								class="btn btn-ghost p-2 text-error hover:bg-error/10"
@@ -652,13 +669,11 @@ const readinessSummary = (domain: DomainWithVerification) =>
 
 								<!-- Registration error -->
 								<div
-									v-else-if="domain.status === 'failed' && (domain.lastRegistrationError)"
+									v-else-if="domain.status === 'failed' && domain.lastRegistrationError"
 									class="py-4"
 								>
 									<div class="p-4 bg-error/5 border border-error/20 rounded-xl mb-4">
-										<p class="text-sm text-error font-medium mb-1">
-											Registration Failed
-										</p>
+										<p class="text-sm text-error font-medium mb-1">Registration Failed</p>
 										<p class="text-sm text-text-secondary">
 											{{ domain.lastRegistrationError }}
 										</p>
@@ -732,7 +747,9 @@ const readinessSummary = (domain: DomainWithVerification) =>
 											label="SPF"
 											:domain="domain.domain"
 											:verification="domain.verificationResults?.spf"
-											:coexistence="expandedDomainId === domain._id ? (spfCoexistence ?? undefined) : undefined"
+											:coexistence="
+												expandedDomainId === domain._id ? (spfCoexistence ?? undefined) : undefined
+											"
 										/>
 
 										<DomainsDNSRecordPanel
@@ -769,7 +786,12 @@ const readinessSummary = (domain: DomainWithVerification) =>
 													class="input flex-1"
 													:value="domain.dmarcPolicy ?? 'none'"
 													:disabled="!canManageDomains || updatingDmarcDomainId === domain._id"
-													@change="handleDmarcPolicyChange(domain._id, ($event.target as HTMLSelectElement).value as DmarcPolicy)"
+													@change="
+														handleDmarcPolicyChange(
+															domain._id,
+															($event.target as HTMLSelectElement).value as DmarcPolicy
+														)
+													"
 												>
 													<option
 														v-for="opt in dmarcPolicyOptions"
@@ -786,19 +808,19 @@ const readinessSummary = (domain: DomainWithVerification) =>
 												/>
 											</div>
 											<p class="mt-2 text-xs text-text-secondary">
-												{{ dmarcPolicyOptions.find((o) => o.value === (domain.dmarcPolicy ?? 'none'))?.hint }}
-												Start at monitor-only, then raise to quarantine or reject once
-												SPF + DKIM are aligned. Changing this updates the _dmarc record
-												above — re-publish it and verify again.
+												{{
+													dmarcPolicyOptions.find((o) => o.value === (domain.dmarcPolicy ?? 'none'))
+														?.hint
+												}}
+												Start at monitor-only, then raise to quarantine or reject once SPF + DKIM
+												are aligned. Changing this updates the _dmarc record above — re-publish it
+												and verify again.
 											</p>
 										</div>
 
 										<!-- MAIL FROM records -->
 										<template
-											v-if="
-												domain.dnsRecords.mailFrom &&
-												domain.dnsRecords.mailFrom.length > 0
-											"
+											v-if="domain.dnsRecords.mailFrom && domain.dnsRecords.mailFrom.length > 0"
 										>
 											<div class="pt-2">
 												<p
@@ -810,7 +832,12 @@ const readinessSummary = (domain: DomainWithVerification) =>
 													<DomainsDNSRecordPanel
 														v-for="(mailFromRecord, i) in domain.dnsRecords.mailFrom"
 														:key="`mailfrom-${i}`"
-														:record="normalizeDnsRecord(mailFromRecord, mailFromRecord.type === 'MX' ? 'MX' : 'TXT')!"
+														:record="
+															normalizeDnsRecord(
+																mailFromRecord,
+																mailFromRecord.type === 'MX' ? 'MX' : 'TXT'
+															)!
+														"
 														:label="mailFromRecord.type === 'MX' ? 'MAIL FROM MX' : 'MAIL FROM SPF'"
 														:domain="domain.domain"
 														:verification="domain.verificationResults?.mailFrom?.[i]"
@@ -840,7 +867,10 @@ const readinessSummary = (domain: DomainWithVerification) =>
 
 								<!-- Help Text -->
 								<div
-									v-if="domain.status !== 'registering' && !(domain.status === 'failed' && (domain.lastRegistrationError))"
+									v-if="
+										domain.status !== 'registering' &&
+										!(domain.status === 'failed' && domain.lastRegistrationError)
+									"
 									class="mt-4 p-4 bg-bg-surface rounded-xl border border-border-subtle"
 								>
 									<p class="text-sm text-text-secondary">
@@ -903,12 +933,13 @@ const readinessSummary = (domain: DomainWithVerification) =>
 							<Icon name="lucide:shield-alert" class="w-4 h-4 text-error shrink-0 mt-0.5" />
 							<p class="text-xs text-text-secondary">
 								You can't publish DNS records for
-								<strong class="text-text-primary">{{ addForm.domain.trim().toLowerCase() }}</strong> —
-								it's a shared mailbox provider you don't control. Use a domain you own, or
+								<strong class="text-text-primary">{{ addForm.domain.trim().toLowerCase() }}</strong>
+								— it's a shared mailbox provider you don't control. Use a domain you own, or
 								<NuxtLink
 									to="/dashboard/postbox/settings/external-account"
 									class="text-brand hover:underline font-medium"
-								>connect an external mailbox</NuxtLink>
+									>connect an external mailbox</NuxtLink
+								>
 								instead.
 							</p>
 						</div>
@@ -921,8 +952,8 @@ const readinessSummary = (domain: DomainWithVerification) =>
 							<Icon name="lucide:alert-triangle" class="w-4 h-4 text-warning shrink-0 mt-0.5" />
 							<p class="text-xs text-text-secondary">
 								We couldn't find any nameservers for
-								<strong class="text-text-primary">{{ addForm.domain.trim().toLowerCase() }}</strong> —
-								double-check the spelling. You can still add it if the domain is brand new and its
+								<strong class="text-text-primary">{{ addForm.domain.trim().toLowerCase() }}</strong>
+								— double-check the spelling. You can still add it if the domain is brand new and its
 								DNS is still being set up.
 							</p>
 						</div>
@@ -938,8 +969,16 @@ const readinessSummary = (domain: DomainWithVerification) =>
 					>
 						Cancel
 					</button>
-					<button type="submit" class="btn btn-primary gap-2" :disabled="addModal.isLoading.value || isFreemail">
-						<Icon v-if="addModal.isLoading.value" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
+					<button
+						type="submit"
+						class="btn btn-primary gap-2"
+						:disabled="addModal.isLoading.value || isFreemail"
+					>
+						<Icon
+							v-if="addModal.isLoading.value"
+							name="lucide:loader-2"
+							class="w-4 h-4 animate-spin"
+						/>
 						<Icon v-else name="lucide:plus" class="w-4 h-4" />
 						{{ addModal.isLoading.value ? 'Adding...' : 'Add Domain' }}
 					</button>
@@ -964,7 +1003,7 @@ const readinessSummary = (domain: DomainWithVerification) =>
 /* Expand transition */
 .expand-enter-active,
 .expand-leave-active {
-	transition: all 0.2s ease;
+	transition: all var(--motion-moderate) var(--ease-spring);
 	overflow: hidden;
 }
 

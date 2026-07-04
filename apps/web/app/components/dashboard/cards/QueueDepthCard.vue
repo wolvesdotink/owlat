@@ -50,7 +50,7 @@ const maxCount = computed(() => {
 						</div>
 						<div class="h-1.5 bg-bg-surface rounded-full overflow-hidden">
 							<div
-								class="h-full rounded-full transition-all duration-500"
+								class="h-full rounded-full transition-all duration-(--motion-slow)"
 								:class="item.color"
 								:style="{ width: `${(item.count / maxCount) * 100}%` }"
 							/>

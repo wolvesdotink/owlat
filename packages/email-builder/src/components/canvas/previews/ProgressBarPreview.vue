@@ -57,7 +57,7 @@ const barStyles = computed(() => {
 		height: '100%',
 		backgroundColor: barColor.value,
 		borderRadius: radius,
-		transition: 'width 0.3s ease',
+		transition: 'width var(--motion-moderate) ease',
 		position: 'relative' as const,
 	};
 });

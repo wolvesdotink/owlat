@@ -241,7 +241,7 @@ const legendTypes = [
   overflow: hidden;
   opacity: 0;
   transform: translateY(12px);
-  transition: opacity 0.6s var(--ease-out-expo), transform 0.6s var(--ease-out-expo), border-color 0.25s;
+  transition: opacity 0.6s var(--ease-spring), transform 0.6s var(--ease-spring), border-color var(--motion-moderate);
 }
 
 .dm-diagram::before {
@@ -303,7 +303,7 @@ const legendTypes = [
   gap: 0;
   opacity: 0;
   transform: translateY(8px);
-  transition: opacity 0.5s var(--ease-out-expo), transform 0.5s var(--ease-out-expo);
+  transition: opacity var(--motion-slow) var(--ease-spring), transform var(--motion-slow) var(--ease-spring);
   transition-delay: calc(0.15s + var(--li) * 0.1s);
 }
 
@@ -365,10 +365,10 @@ const legendTypes = [
   min-width: 0;
   max-width: 220px;
   cursor: default;
-  transition: opacity 0.3s, border-color 0.25s, box-shadow 0.25s, filter 0.3s, transform 0.25s;
+  transition: opacity var(--motion-moderate), border-color var(--motion-moderate), box-shadow var(--motion-moderate), filter var(--motion-moderate), transform var(--motion-moderate);
   opacity: 0;
   transform: translateY(4px);
-  animation: dm-entity-enter 0.4s var(--ease-out-expo) both;
+  animation: dm-entity-enter 0.4s var(--ease-spring) both;
   animation-delay: calc(0.25s + var(--li) * 0.1s + var(--ei) * 0.05s);
 }
 
@@ -472,7 +472,7 @@ const legendTypes = [
   padding: 6px 0;
   color: var(--color-border-default);
   opacity: 0;
-  transition: opacity 0.4s var(--ease-out-expo);
+  transition: opacity var(--motion-slow) var(--ease-spring);
   transition-delay: calc(0.3s + var(--li) * 0.1s);
 }
 
@@ -487,7 +487,7 @@ const legendTypes = [
   gap: 6px;
   opacity: 0;
   transform: translateY(8px);
-  transition: opacity 0.5s var(--ease-out-expo), transform 0.5s var(--ease-out-expo);
+  transition: opacity var(--motion-slow) var(--ease-spring), transform var(--motion-slow) var(--ease-spring);
   transition-delay: calc(var(--stagger) * 0.12s);
 }
 
@@ -506,7 +506,7 @@ const legendTypes = [
   border: 1px solid var(--color-border-subtle);
   font-size: 0.6875rem;
   font-weight: 600;
-  transition: border-color 0.2s;
+  transition: border-color var(--motion-moderate);
 }
 
 .dm-type-badge:hover {
@@ -532,7 +532,7 @@ const legendTypes = [
   overflow: hidden;
   opacity: 0;
   transform: translateY(10px);
-  transition: opacity 0.5s var(--ease-out-expo), transform 0.5s var(--ease-out-expo), border-color 0.25s, box-shadow 0.25s;
+  transition: opacity var(--motion-slow) var(--ease-spring), transform var(--motion-slow) var(--ease-spring), border-color var(--motion-moderate), box-shadow var(--motion-moderate);
   transition-delay: calc(var(--stagger) * 0.12s);
 }
 
@@ -580,7 +580,7 @@ const legendTypes = [
   background: var(--color-bg-elevated);
   opacity: 0;
   transform: translateY(6px);
-  transition: opacity 0.4s var(--ease-out-expo), transform 0.4s var(--ease-out-expo);
+  transition: opacity var(--motion-slow) var(--ease-spring), transform var(--motion-slow) var(--ease-spring);
   transition-delay: calc(0.4s + var(--i) * 0.07s);
 }
 

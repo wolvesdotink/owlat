@@ -370,7 +370,7 @@ const buttonTextColor = computed(() => {
 				<div class="p-6">
 					<!-- Email Preview Container -->
 					<div
-						class="rounded-xl overflow-hidden border border-border-subtle mx-auto transition-all duration-300"
+						class="rounded-xl overflow-hidden border border-border-subtle mx-auto transition-all duration-(--motion-moderate)"
 						:style="{ backgroundColor: form.backgroundColor, maxWidth: form.baseWidth + 'px' }"
 					>
 						<!-- Email Content Preview -->

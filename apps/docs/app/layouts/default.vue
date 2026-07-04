@@ -4,10 +4,7 @@
 
 		<!-- Reading progress bar -->
 		<div class="reading-progress">
-			<div
-				class="reading-progress-bar"
-				:style="{ transform: `scaleX(${progress})` }"
-			/>
+			<div class="reading-progress-bar" :style="{ transform: `scaleX(${progress})` }" />
 		</div>
 
 		<DocsSidebarMobile v-model:open="sidebarOpen" />
@@ -43,7 +40,7 @@
 </template>
 
 <script setup lang="ts">
-const sidebarOpen = ref(false)
-const { progress } = useReadingProgress()
-const route = useRoute()
+const sidebarOpen = ref(false);
+const { progress } = useReadingProgress();
+const route = useRoute();
 </script>

@@ -47,7 +47,11 @@ function formatTokens(n: number): string {
 			</div>
 
 			<div v-if="isLoading" class="flex items-center justify-center py-6">
-				<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin text-text-tertiary" aria-label="Loading" />
+				<Icon
+					name="lucide:loader-2"
+					class="w-5 h-5 animate-spin text-text-tertiary"
+					aria-label="Loading"
+				/>
 			</div>
 
 			<div v-else-if="steps.length === 0" class="py-4 text-center">
@@ -64,7 +68,9 @@ function formatTokens(n: number): string {
 					<li v-for="item in steps" :key="item.step">
 						<div class="flex items-center justify-between mb-1">
 							<span class="text-xs text-text-secondary">{{ stepLabel(item.step) }}</span>
-							<span class="text-xs font-medium text-text-primary">{{ formatTokens(item.totalTokens) }}</span>
+							<span class="text-xs font-medium text-text-primary">{{
+								formatTokens(item.totalTokens)
+							}}</span>
 						</div>
 						<div
 							class="h-1.5 bg-bg-surface rounded-full overflow-hidden"
@@ -75,11 +81,13 @@ function formatTokens(n: number): string {
 							:aria-label="`${stepLabel(item.step)}: ${formatTokens(item.totalTokens)} tokens across ${item.actionCount} actions`"
 						>
 							<div
-								class="h-full bg-brand rounded-full transition-all duration-500"
+								class="h-full bg-brand rounded-full transition-all duration-(--motion-slow)"
 								:style="{ width: `${(item.totalTokens / maxTokens) * 100}%` }"
 							/>
 						</div>
-						<p class="text-xs text-text-tertiary mt-0.5">{{ item.actionCount }} {{ item.actionCount === 1 ? 'action' : 'actions' }}</p>
+						<p class="text-xs text-text-tertiary mt-0.5">
+							{{ item.actionCount }} {{ item.actionCount === 1 ? 'action' : 'actions' }}
+						</p>
 					</li>
 				</ul>
 			</div>

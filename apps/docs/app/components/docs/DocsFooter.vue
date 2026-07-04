@@ -8,14 +8,9 @@
 				:href="editUrl"
 				target="_blank"
 				rel="noopener noreferrer"
-				class="flex items-center gap-2 text-sm text-text-tertiary hover:text-brand transition-colors duration-200"
+				class="flex items-center gap-2 text-sm text-text-tertiary hover:text-brand transition-colors duration-(--motion-fast)"
 			>
-				<svg
-					class="w-4 h-4"
-					fill="none"
-					stroke="currentColor"
-					viewBox="0 0 24 24"
-				>
+				<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path
 						stroke-linecap="round"
 						stroke-linejoin="round"
@@ -36,10 +31,10 @@
 </template>
 
 <script setup lang="ts">
-const route = useRoute()
+const route = useRoute();
 
 const editUrl = computed(() => {
-	const path = route.path === '/' ? '/index' : route.path
-	return `https://github.com/wolvesdotink/owlat/edit/main/apps/docs/content${path}.md`
-})
+	const path = route.path === '/' ? '/index' : route.path;
+	return `https://github.com/wolvesdotink/owlat/edit/main/apps/docs/content${path}.md`;
+});
 </script>

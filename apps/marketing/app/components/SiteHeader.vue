@@ -64,8 +64,6 @@ const headerSurfaceStyle = computed(() => {
 		class="beta-bar relative z-[51] overflow-hidden pt-[env(safe-area-inset-top)]"
 		:class="{ 'beta-bar--hidden': bannerDismissed }"
 	>
-		<!-- Animated gradient underlay -->
-		<div class="beta-bar-glow" aria-hidden="true" />
 
 		<div class="relative flex items-center justify-center gap-2 max-md:gap-1.5 px-10 max-md:px-8 py-[7px]">
 			<span class="beta-dot" aria-hidden="true" />
@@ -74,14 +72,14 @@ const headerSurfaceStyle = computed(() => {
 				<span class="sm:hidden">Beta<span class="text-text-tertiary mx-1">&mdash;</span></span>
 				<a
 					href="https://app.owlat.app/auth/register"
-					class="text-brand hover:text-brand-hover transition-colors duration-200 no-underline border-b border-brand/30 hover:border-brand/60 pb-px"
+					class="text-brand hover:text-brand-hover transition-colors duration-(--motion-fast) no-underline border-b border-brand/30 hover:border-brand/60 pb-px"
 				>
 					<span class="max-sm:hidden">Join early and shape the future of email</span>
 					<span class="sm:hidden">Join early & shape email's future</span>
 				</a>
 			</p>
 			<button
-				class="absolute right-3 max-md:right-2 top-1/2 -translate-y-1/2 flex items-center justify-center w-5 h-5 text-text-disabled hover:text-text-tertiary transition-colors duration-200 bg-transparent border-none cursor-pointer"
+				class="absolute right-3 max-md:right-2 top-1/2 -translate-y-1/2 flex items-center justify-center w-5 h-5 text-text-disabled hover:text-text-tertiary transition-colors duration-(--motion-fast) bg-transparent border-none cursor-pointer"
 				aria-label="Dismiss banner"
 				@click="bannerDismissed = true"
 			>
@@ -96,7 +94,7 @@ const headerSurfaceStyle = computed(() => {
 	</div>
 
 	<header
-		class="sticky top-0 z-50 border-b transition-all duration-300"
+		class="sticky top-0 z-50 border-b transition-all duration-(--motion-moderate)"
 		:class="[
 			scrolled
 			? 'border-border-subtle/60'
@@ -109,7 +107,7 @@ const headerSurfaceStyle = computed(() => {
 			<!-- Logo -->
 			<a href="/" class="flex items-center gap-2.5 no-underline group">
 				<OwlLogo size="28px" />
-				<span class="font-display text-lg text-text-primary transition-colors duration-200 group-hover:text-brand">Owlat</span>
+				<span class="font-display text-lg text-text-primary transition-colors duration-(--motion-fast) group-hover:text-brand">Owlat</span>
 			</a>
 
 			<!-- Desktop nav — centered -->
@@ -118,7 +116,7 @@ const headerSurfaceStyle = computed(() => {
 					v-for="link in navLinks"
 					:key="link.label"
 					:href="link.href"
-					class="nav-link relative text-[0.8125rem] font-medium transition-colors duration-200 no-underline py-1"
+					class="nav-link relative text-[0.8125rem] font-medium transition-colors duration-(--motion-fast) no-underline py-1"
 					:class="activeSection === link.href.replace('#', '')
 						? 'text-text-primary'
 						: 'text-text-secondary hover:text-text-primary'"
@@ -126,7 +124,7 @@ const headerSurfaceStyle = computed(() => {
 					{{ link.label }}
 					<!-- Active section indicator -->
 					<span
-						class="active-dot absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-brand transition-all duration-300"
+						class="active-dot absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-brand transition-all duration-(--motion-moderate)"
 						:class="activeSection === link.href.replace('#', '') ? 'opacity-100 scale-100' : 'opacity-0 scale-0'"
 					/>
 				</a>
@@ -136,13 +134,13 @@ const headerSurfaceStyle = computed(() => {
 			<div class="hidden lg:flex items-center gap-4">
 				<a
 					href="https://app.owlat.app/login"
-					class="text-[0.8125rem] font-medium text-text-tertiary hover:text-text-primary transition-colors duration-200 no-underline"
+					class="text-[0.8125rem] font-medium text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast) no-underline"
 				>
 					Sign in
 				</a>
 				<a
 					href="https://app.owlat.app/auth/register"
-					class="inline-flex items-center px-5 py-[9px] text-[0.8125rem] font-semibold text-text-inverse bg-brand border border-brand rounded-[10px] no-underline transition-all duration-200 hover:bg-brand-hover hover:border-brand-hover hover:-translate-y-px hover:shadow-brand-hover btn-press"
+					class="inline-flex items-center px-5 py-[9px] text-[0.8125rem] font-semibold text-text-inverse bg-brand border border-brand rounded-[10px] no-underline transition-all duration-(--motion-moderate) hover:bg-brand-hover hover:border-brand-hover hover:shadow-brand-hover btn-press"
 				>
 					Join Waiting List
 				</a>
@@ -185,7 +183,7 @@ const headerSurfaceStyle = computed(() => {
 					</a>
 					<a
 						href="https://app.owlat.app/auth/register"
-						class="inline-flex items-center justify-center px-5 py-2.5 text-sm font-semibold text-text-inverse bg-brand border border-brand rounded-[10px] no-underline transition-all duration-200 hover:bg-brand-hover btn-press"
+						class="inline-flex items-center justify-center px-5 py-2.5 text-sm font-semibold text-text-inverse bg-brand border border-brand rounded-[10px] no-underline transition-all duration-(--motion-moderate) hover:bg-brand-hover btn-press"
 					>
 						Join Waiting List
 					</a>
@@ -204,8 +202,8 @@ const headerSurfaceStyle = computed(() => {
 		color-mix(in oklab, var(--color-bg-deep) 70%, var(--color-brand-subtle)) 50%,
 		color-mix(in oklab, var(--color-brand-subtle) 80%, var(--color-bg-deep)) 100%
 	);
-	transition: transform 0.4s var(--ease-out-expo), opacity 0.3s ease, margin-top 0.4s var(--ease-out-expo);
-	animation: beta-bar-enter 0.6s var(--ease-out-expo) both;
+	transition: transform var(--motion-slow) var(--ease-spring), opacity var(--motion-moderate) var(--ease-spring), margin-top var(--motion-slow) var(--ease-spring);
+	animation: beta-bar-enter var(--motion-slow) var(--ease-spring) both;
 }
 
 .beta-bar--hidden {
@@ -215,28 +213,11 @@ const headerSurfaceStyle = computed(() => {
 	pointer-events: none;
 }
 
-.beta-bar-glow {
-	position: absolute;
-	inset: 0;
-	background: linear-gradient(
-		90deg,
-		transparent 0%,
-		rgba(196, 120, 90, 0.06) 30%,
-		rgba(196, 120, 90, 0.10) 50%,
-		rgba(196, 120, 90, 0.06) 70%,
-		transparent 100%
-	);
-	background-size: 200% 100%;
-	animation: beta-glow-sweep 8s ease-in-out infinite;
-}
-
 .beta-dot {
 	width: 5px;
 	height: 5px;
 	border-radius: 50%;
 	background: var(--color-brand);
-	box-shadow: 0 0 6px rgba(196, 120, 90, 0.4);
-	animation: glow-pulse 3s ease-in-out infinite;
 	flex-shrink: 0;
 }
 
@@ -251,11 +232,6 @@ const headerSurfaceStyle = computed(() => {
 	}
 }
 
-@keyframes beta-glow-sweep {
-	0%, 100% { background-position: 200% center; }
-	50% { background-position: -200% center; }
-}
-
 .nav-link::after {
 	content: '';
 	position: absolute;
@@ -266,8 +242,8 @@ const headerSurfaceStyle = computed(() => {
 	background: var(--color-brand);
 	border-radius: 1px;
 	transition:
-		left 0.3s var(--ease-out-expo),
-		right 0.3s var(--ease-out-expo);
+		left var(--motion-slow) var(--ease-spring),
+		right var(--motion-slow) var(--ease-spring);
 }
 
 .nav-link:hover::after {
@@ -278,8 +254,8 @@ const headerSurfaceStyle = computed(() => {
 .drawer-enter-active,
 .drawer-leave-active {
 	transition:
-		opacity 0.2s ease,
-		transform 0.2s var(--ease-out-expo);
+		opacity var(--motion-moderate) var(--ease-spring),
+		transform var(--motion-slow) var(--ease-spring);
 }
 
 .drawer-enter-from,

@@ -407,7 +407,7 @@ watch(() => props.options, (newOpts) => {
 	font-size: 12px;
 	font-family: inherit;
 	outline: none;
-	transition: border-color 0.15s ease;
+	transition: border-color var(--motion-fast, 80ms) var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
 }
 
 .ep-settings-input:focus {
@@ -465,7 +465,7 @@ watch(() => props.options, (newOpts) => {
 	font-size: 12px;
 	font-weight: 500;
 	cursor: pointer;
-	transition: all 0.1s ease;
+	transition: all var(--motion-fast, 80ms) var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
 }
 
 .ep-settings-toggle-active {
@@ -483,7 +483,7 @@ watch(() => props.options, (newOpts) => {
 	border: none;
 	border-radius: 9px;
 	cursor: pointer;
-	transition: background 0.15s ease;
+	transition: background var(--motion-fast, 80ms) var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
 }
 
 .ep-settings-checkbox-active {
@@ -496,7 +496,7 @@ watch(() => props.options, (newOpts) => {
 	height: 14px;
 	background: var(--ep-text-primary);
 	border-radius: 50%;
-	transition: transform 0.15s ease;
+	transition: transform var(--motion-fast, 80ms) var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
 }
 
 .ep-settings-checkbox-active .ep-settings-checkbox-dot {
@@ -542,7 +542,7 @@ watch(() => props.options, (newOpts) => {
 	width: 14px;
 	height: 14px;
 	color: var(--ep-text-tertiary);
-	transition: transform 0.2s ease;
+	transition: transform var(--motion-moderate, 160ms) var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
 }
 
 .ep-settings-accordion-open {

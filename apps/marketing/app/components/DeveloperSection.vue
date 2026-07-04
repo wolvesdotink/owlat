@@ -79,7 +79,7 @@ const capabilities = [
 				<div class="dev-el flex flex-wrap gap-2 mb-8" style="--i: 3">
 					<span
 						v-for="(cap, i) in capabilities" :key="cap.label"
-						class="capability-pill inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[0.75rem] font-medium text-text-tertiary border border-border-default transition-all duration-300 hover:border-brand/30 hover:text-brand hover:bg-brand-soft cursor-default"
+						class="capability-pill inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[0.75rem] font-medium text-text-tertiary border border-border-default transition-all duration-(--motion-moderate) hover:border-brand/30 hover:text-brand hover:bg-brand-soft cursor-default"
 						:style="{ transitionDelay: `${i * 50}ms` }"
 					>
 						<!-- Send icon -->
@@ -118,7 +118,7 @@ const capabilities = [
 					<button
 						v-for="tab in (['sdk', 'curl'] as const)"
 						:key="tab"
-						class="tab-btn px-4 py-2 font-mono text-[0.625rem] font-medium tracking-[0.04em] uppercase cursor-pointer transition-all duration-200 border-none rounded-t-lg relative"
+						class="tab-btn px-4 py-2 font-mono text-[0.625rem] font-medium tracking-[0.04em] uppercase cursor-pointer transition-all duration-(--motion-moderate) border-none rounded-t-lg relative"
 						:class="activeTab === tab
 							? 'text-brand bg-[var(--owlat-code-bg)]'
 							: 'text-text-disabled bg-transparent hover:text-text-tertiary'"
@@ -129,7 +129,7 @@ const capabilities = [
 						<span
 							v-if="activeTab === tab"
 							class="absolute bottom-0 left-2 right-2 h-[2px] bg-brand rounded-full"
-							style="transition: all 0.3s var(--ease-out-expo)"
+							style="transition: all var(--motion-moderate) var(--ease-spring)"
 						/>
 					</button>
 				</div>
@@ -148,7 +148,7 @@ const capabilities = [
 							</span>
 							<!-- Copy button -->
 							<button
-								class="copy-btn flex items-center gap-1.5 px-2 py-1 rounded-md text-text-disabled hover:text-text-secondary hover:bg-bg-surface transition-all duration-200 cursor-pointer border-none bg-transparent"
+								class="copy-btn flex items-center gap-1.5 px-2 py-1 rounded-md text-text-disabled hover:text-text-secondary hover:bg-bg-surface transition-all duration-(--motion-moderate) cursor-pointer border-none bg-transparent"
 								:class="{ 'text-success!': copied }"
 								@click="copyCode"
 							>
@@ -211,8 +211,8 @@ const capabilities = [
 	opacity: 0;
 	transform: translateY(14px);
 	transition:
-		opacity 0.6s var(--ease-out-expo),
-		transform 0.6s var(--ease-out-expo);
+		opacity var(--motion-slow) var(--ease-spring),
+		transform var(--motion-slow) var(--ease-spring);
 	transition-delay: calc(var(--i, 0) * 0.07s);
 }
 
@@ -220,8 +220,8 @@ const capabilities = [
 	opacity: 0;
 	transform: translateY(18px);
 	transition:
-		opacity 0.6s var(--ease-out-expo),
-		transform 0.6s var(--ease-out-expo);
+		opacity var(--motion-slow) var(--ease-spring),
+		transform var(--motion-slow) var(--ease-spring);
 	transition-delay: 0.15s;
 }
 
@@ -240,7 +240,7 @@ const capabilities = [
 	right: 100%;
 	height: 1px;
 	background: var(--color-brand);
-	transition: right 0.3s var(--ease-out-expo);
+	transition: right var(--motion-moderate) var(--ease-spring);
 }
 
 .dev-link:hover::after {
@@ -249,7 +249,7 @@ const capabilities = [
 
 /* Capability pill entrance */
 .visible .capability-pill {
-	animation: pill-in 0.5s var(--ease-out-expo) backwards;
+	animation: pill-in var(--motion-slow) var(--ease-spring) backwards;
 }
 
 @keyframes pill-in {
@@ -259,18 +259,17 @@ const capabilities = [
 	}
 }
 
-/* Code window hover glow */
 .code-window {
-	transition: box-shadow 0.4s ease;
+	transition: box-shadow var(--motion-moderate) var(--ease-spring);
 }
 
 .code-window:hover {
-	box-shadow: var(--shadow-card), 0 0 60px rgba(196, 120, 90, 0.06);
+	box-shadow: var(--shadow-3);
 }
 
 /* Copy button feedback */
 .copy-btn {
-	transition: all 0.2s ease;
+	transition: all var(--motion-moderate) var(--ease-spring);
 }
 
 .copy-btn:active {
@@ -281,8 +280,8 @@ const capabilities = [
 .code-fade-enter-active,
 .code-fade-leave-active {
 	transition:
-		opacity 0.2s ease,
-		transform 0.2s ease;
+		opacity var(--motion-moderate) var(--ease-spring),
+		transform var(--motion-moderate) var(--ease-spring);
 }
 
 .code-fade-enter-from {

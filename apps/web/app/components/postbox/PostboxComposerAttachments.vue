@@ -45,7 +45,7 @@ const emit = defineEmits<{
 					:src="thumbUrlFor(att.storageId) || ''"
 					:alt="att.filename"
 					class="w-5 h-5 rounded object-cover"
-				>
+				/>
 				<Icon v-else name="lucide:paperclip" class="w-3 h-3 text-text-tertiary" />
 				<span class="truncate max-w-[140px]">{{ att.filename }}</span>
 				<span class="text-text-tertiary">{{ formatCompactFileSize(att.size) }}</span>
@@ -71,7 +71,7 @@ const emit = defineEmits<{
 					:src="up.thumbUrl"
 					:alt="up.filename"
 					class="w-5 h-5 rounded object-cover"
-				>
+				/>
 				<Icon
 					v-else
 					:name="up.status === 'failed' ? 'lucide:alert-circle' : 'lucide:paperclip'"
@@ -108,7 +108,7 @@ const emit = defineEmits<{
 					aria-hidden="true"
 				>
 					<span
-						class="block h-full bg-accent transition-[width] duration-150"
+						class="block h-full bg-accent transition-[width] duration-(--motion-moderate)"
 						:class="up.indeterminate ? 'w-full animate-pulse' : ''"
 						:style="up.indeterminate ? undefined : { width: Math.round(up.progress * 100) + '%' }"
 					/>
@@ -124,7 +124,7 @@ const emit = defineEmits<{
 					aria-hidden="true"
 				>
 					<span
-						class="block h-full rounded-full transition-[width] duration-150"
+						class="block h-full rounded-full transition-[width] duration-(--motion-moderate)"
 						:class="meter.amber ? 'bg-amber-500' : 'bg-accent'"
 						:style="{ width: Math.min(100, Math.round(meter.ratio * 100)) + '%' }"
 					/>

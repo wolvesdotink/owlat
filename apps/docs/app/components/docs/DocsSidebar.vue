@@ -1,9 +1,7 @@
 <template>
 	<nav class="space-y-6" aria-label="Documentation navigation">
 		<div v-for="group in visibleGroups" :key="group.label">
-			<h3
-				class="text-xs font-semibold uppercase tracking-wider text-text-tertiary mb-2 px-2"
-			>
+			<h3 class="text-xs font-semibold uppercase tracking-wider text-text-tertiary mb-2 px-2">
 				{{ group.label }}
 			</h3>
 			<ul class="space-y-0.5">
@@ -27,17 +25,17 @@
 
 <script setup lang="ts">
 interface SidebarItem {
-	label: string
-	to: string
+	label: string;
+	to: string;
 }
 
 interface SidebarGroup {
-	label: string
-	section: string
-	items: SidebarItem[]
+	label: string;
+	section: string;
+	items: SidebarItem[];
 }
 
-const route = useRoute()
+const route = useRoute();
 
 const sidebarConfig: SidebarGroup[] = [
 	// Guide
@@ -340,28 +338,26 @@ const sidebarConfig: SidebarGroup[] = [
 			},
 		],
 	},
-]
+];
 
 const currentSection = computed(() => {
-	const segments = route.path.split('/')
-	return segments[1] || ''
-})
+	const segments = route.path.split('/');
+	return segments[1] || '';
+});
 
 const visibleGroups = computed(() =>
-	sidebarConfig.filter(
-		(group) => group.section === currentSection.value,
-	),
-)
+	sidebarConfig.filter((group) => group.section === currentSection.value)
+);
 
 function isActive(path: string): boolean {
-	return route.path === path
+	return route.path === path;
 }
 </script>
 
 <style scoped>
 .sidebar-link {
 	position: relative;
-	transition: all 0.25s var(--ease-out-expo);
+	transition: all var(--motion-moderate) var(--ease-spring);
 }
 
 /* Animated pill background for active state */
@@ -373,7 +369,9 @@ function isActive(path: string): boolean {
 	background: var(--color-brand-soft);
 	opacity: 0;
 	transform: scale(0.92);
-	transition: opacity 0.3s var(--ease-out-expo), transform 0.3s var(--ease-out-expo);
+	transition:
+		opacity var(--motion-moderate) var(--ease-spring),
+		transform var(--motion-moderate) var(--ease-spring);
 	z-index: -1;
 }
 
@@ -392,7 +390,7 @@ function isActive(path: string): boolean {
 	width: 2px;
 	border-radius: 1px;
 	background: var(--color-brand);
-	animation: indicator-in 0.3s var(--ease-out-expo) both;
+	animation: indicator-in var(--motion-moderate) var(--ease-spring) both;
 }
 
 @keyframes indicator-in {
@@ -416,5 +414,11 @@ function isActive(path: string): boolean {
 .sidebar-link-text {
 	position: relative;
 	z-index: 1;
+	transition: font-weight var(--motion-fast) var(--ease-spring);
+}
+
+/* Selection reads through weight, not color alone */
+.sidebar-link.active .sidebar-link-text {
+	font-weight: var(--font-weight-medium, 450);
 }
 </style>

@@ -1,19 +1,14 @@
 <template>
 	<header
 		ref="headerEl"
-		class="sticky top-0 z-40 pt-[env(safe-area-inset-top)] transition-[background-color,border-color,box-shadow] duration-300"
-		:class="
-			scrolled
-				? 'border-b border-border-default'
-				: 'border-b border-transparent'
-		"
+		class="sticky top-0 z-40 pt-[env(safe-area-inset-top)] transition-[background-color,border-color,box-shadow] duration-(--motion-moderate)"
+		:class="scrolled ? 'border-b border-border-default' : 'border-b border-transparent'"
 		:style="
 			scrolled
 				? {
 						backdropFilter: 'saturate(160%) blur(16px)',
 						WebkitBackdropFilter: 'saturate(160%) blur(16px)',
-						backgroundColor:
-							'color-mix(in oklab, var(--color-bg-base) 80%, transparent)',
+						backgroundColor: 'color-mix(in oklab, var(--color-bg-base) 80%, transparent)',
 					}
 				: { backgroundColor: 'var(--color-bg-base)' }
 		"
@@ -23,12 +18,9 @@
 		>
 			<!-- Left: Logo -->
 			<div class="flex items-center gap-6">
-				<NuxtLink
-					to="/"
-					class="flex items-center gap-2.5 text-text-primary group"
-				>
+				<NuxtLink to="/" class="flex items-center gap-2.5 text-text-primary group">
 					<div
-						class="w-7 h-7 text-brand transition-[color,transform] duration-300 group-hover:text-brand-hover group-hover:scale-110"
+						class="w-7 h-7 text-brand transition-[color,transform] duration-(--motion-moderate) group-hover:text-brand-hover group-hover:scale-110"
 						style="
 							-webkit-mask: url('/logo.svg') no-repeat center / contain;
 							mask: url('/logo.svg') no-repeat center / contain;
@@ -36,7 +28,8 @@
 						"
 						aria-hidden="true"
 					/>
-					<span class="font-display text-xl tracking-tight transition-colors duration-200 group-hover:text-brand"
+					<span
+						class="font-display text-xl tracking-tight transition-colors duration-(--motion-fast) group-hover:text-brand"
 						>Owlat Docs</span
 					>
 				</NuxtLink>
@@ -47,7 +40,7 @@
 						v-for="link in navLinks"
 						:key="link.to"
 						:to="link.to"
-						class="nav-link px-3 py-1.5 text-sm rounded-lg transition-all duration-200"
+						class="nav-link px-3 py-1.5 text-sm rounded-lg transition-all duration-(--motion-moderate)"
 						:class="
 							isActiveSection(link.to)
 								? 'text-brand bg-brand-soft'
@@ -63,15 +56,10 @@
 			<div class="flex items-center gap-2">
 				<!-- Search trigger -->
 				<button
-					class="search-trigger flex items-center gap-2.5 h-9 pl-3 pr-2.5 rounded-lg border border-border-default bg-bg-surface text-text-tertiary hover:text-text-secondary hover:border-border-strong transition-all duration-200 text-sm"
+					class="search-trigger flex items-center gap-2.5 h-9 pl-3 pr-2.5 rounded-lg border border-border-default bg-bg-surface text-text-tertiary hover:text-text-secondary hover:border-border-strong transition-all duration-(--motion-moderate) text-sm"
 					@click="searchOpen = true"
 				>
-					<svg
-						class="w-4 h-4"
-						fill="none"
-						stroke="currentColor"
-						viewBox="0 0 24 24"
-					>
+					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path
 							stroke-linecap="round"
 							stroke-linejoin="round"
@@ -89,21 +77,16 @@
 
 				<!-- Color mode toggle -->
 				<UiThemeToggle
-					class="color-toggle flex items-center justify-center w-9 h-9 rounded-lg text-text-tertiary hover:text-text-secondary hover:bg-bg-surface transition-all duration-200"
+					class="color-toggle flex items-center justify-center w-9 h-9 rounded-lg text-text-tertiary hover:text-text-secondary hover:bg-bg-surface transition-all duration-(--motion-moderate)"
 				/>
 
 				<!-- Mobile hamburger (< lg) -->
 				<button
-					class="flex lg:hidden items-center justify-center w-9 h-9 rounded-lg text-text-tertiary hover:text-text-secondary hover:bg-bg-surface transition-colors duration-200"
+					class="flex lg:hidden items-center justify-center w-9 h-9 rounded-lg text-text-tertiary hover:text-text-secondary hover:bg-bg-surface transition-colors duration-(--motion-fast)"
 					aria-label="Toggle sidebar"
 					@click="$emit('toggleSidebar')"
 				>
-					<svg
-						class="w-5 h-5"
-						fill="none"
-						stroke="currentColor"
-						viewBox="0 0 24 24"
-					>
+					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path
 							stroke-linecap="round"
 							stroke-linejoin="round"
@@ -121,62 +104,62 @@
 
 <script setup lang="ts">
 defineEmits<{
-	toggleSidebar: []
-}>()
+	toggleSidebar: [];
+}>();
 
-const route = useRoute()
+const route = useRoute();
 
-const scrolled = ref(false)
-const searchOpen = ref(false)
-const headerEl = ref<HTMLElement | null>(null)
+const scrolled = ref(false);
+const searchOpen = ref(false);
+const headerEl = ref<HTMLElement | null>(null);
 
 const metaKey = computed(() => {
-	if (import.meta.server) return '\u2318'
-	return navigator.platform?.includes('Mac') ? '\u2318' : 'Ctrl+'
-})
+	if (import.meta.server) return '\u2318';
+	return navigator.platform?.includes('Mac') ? '\u2318' : 'Ctrl+';
+});
 
 const navLinks = [
 	{ label: 'Guide', to: '/guide/getting-started' },
 	{ label: 'API', to: '/api' },
 	{ label: 'Developer', to: '/developer' },
 	{ label: 'Vision', to: '/vision' },
-]
+];
 
 function isActiveSection(to: string): boolean {
-	const section = to.split('/')[1]
-	return route.path.startsWith(`/${section}`)
+	const section = to.split('/')[1];
+	return route.path.startsWith(`/${section}`);
 }
 
 function onKeydown(e: KeyboardEvent) {
 	if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-		e.preventDefault()
-		searchOpen.value = true
+		e.preventDefault();
+		searchOpen.value = true;
 	}
 }
 
 onMounted(() => {
 	const onScroll = () => {
-		scrolled.value = window.scrollY > 4
-	}
-	window.addEventListener('scroll', onScroll, { passive: true })
-	window.addEventListener('keydown', onKeydown)
+		scrolled.value = window.scrollY > 4;
+	};
+	window.addEventListener('scroll', onScroll, { passive: true });
+	window.addEventListener('keydown', onKeydown);
 
 	onUnmounted(() => {
-		window.removeEventListener('scroll', onScroll)
-		window.removeEventListener('keydown', onKeydown)
-	})
-})
+		window.removeEventListener('scroll', onScroll);
+		window.removeEventListener('keydown', onKeydown);
+	});
+});
 </script>
 
 <style scoped>
-/* Search trigger hover glow */
+/* Search trigger hover: one elevation ring, no glow */
 .search-trigger:hover {
-	box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-brand) 10%, transparent);
+	box-shadow: var(--shadow-1);
 }
 
 /* Color toggle rotation */
 .color-toggle:active svg {
-	transition: transform 0.3s var(--ease-out-expo);
+	transition: transform var(--motion-moderate) var(--ease-spring);
 	transform: rotate(25deg) scale(0.9);
 }
 

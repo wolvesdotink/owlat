@@ -113,7 +113,7 @@ const indicatorStyle = computed(() => {
 .segmented-control {
 	position: relative;
 	display: grid;
-	grid-template-columns: v-bind("`repeat(${options.length}, 1fr)`");
+	grid-template-columns: v-bind('`repeat(${options.length}, 1fr)`');
 	background: var(--color-bg-surface, #f3f4f6);
 	border: 1px solid var(--color-border, #e5e7eb);
 	border-radius: 8px;
@@ -127,7 +127,7 @@ const indicatorStyle = computed(() => {
 	height: calc(100% - 6px);
 	background: var(--color-brand, #c4785a);
 	border-radius: 5px;
-	transition: transform 200ms cubic-bezier(0.4, 0, 0.2, 1);
+	transition: transform var(--motion-moderate) var(--ease-spring);
 	z-index: 0;
 	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
@@ -146,7 +146,9 @@ const indicatorStyle = computed(() => {
 	border-radius: 5px;
 	color: var(--color-text-secondary, #6b7280);
 	cursor: pointer;
-	transition: color 150ms ease;
+	transition:
+		color var(--motion-fast) var(--ease-spring),
+		font-weight var(--motion-fast) var(--ease-spring);
 	white-space: nowrap;
 }
 
@@ -165,7 +167,7 @@ const indicatorStyle = computed(() => {
 
 .segmented-control__btn--active {
 	color: var(--color-text-inverse, #fff);
-	font-weight: 500;
+	font-weight: var(--font-weight-medium, 500);
 }
 
 .segmented-control__btn:disabled {

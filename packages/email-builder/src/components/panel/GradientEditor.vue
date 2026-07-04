@@ -156,7 +156,7 @@ function openColorPicker(index: number) {
 					<!-- Color swatch with hidden color input -->
 					<div class="relative shrink-0">
 						<button
-							class="w-[22px] h-[22px] rounded-[5px] border-[1.5px] border-border-subtle cursor-pointer p-0 transition-[transform,box-shadow] duration-[120ms] hover:scale-[1.12] hover:border-text-tertiary"
+							class="w-[22px] h-[22px] rounded-[5px] border-[1.5px] border-border-subtle cursor-pointer p-0 transition-[transform,box-shadow] duration-(--motion-moderate) hover:scale-[1.12] hover:border-text-tertiary"
 							:style="{ backgroundColor: stop.color }"
 							:title="stop.color"
 							type="button"
@@ -186,7 +186,7 @@ function openColorPicker(index: number) {
 					<div class="flex items-center shrink-0">
 						<input
 							type="number"
-							class="w-11 py-[3px] px-0.5 text-xs tabular-nums text-right border-none border-b border-b-transparent bg-transparent text-text-primary outline-none appearance-number-plain transition-[border-color] duration-150 hover:border-b-border-subtle focus:border-b-brand"
+							class="w-11 py-[3px] px-0.5 text-xs tabular-nums text-right border-none border-b border-b-transparent bg-transparent text-text-primary outline-none appearance-number-plain transition-[border-color] duration-(--motion-fast) hover:border-b-border-subtle focus:border-b-brand"
 							:value="stop.position"
 							min="0"
 							max="100"
@@ -248,7 +248,7 @@ function openColorPicker(index: number) {
 	margin-top: -5px;
 	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 	cursor: pointer;
-	transition: transform 120ms ease;
+	transition: transform var(--motion-fast) var(--ease-spring);
 }
 
 .gradient-range::-moz-range-thumb {

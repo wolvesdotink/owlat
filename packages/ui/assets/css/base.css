@@ -5,7 +5,7 @@
 	}
 
 	::selection {
-		background-color: rgba(196, 120, 90, 0.25);
+		background-color: color-mix(in srgb, var(--color-brand) 25%, transparent);
 		color: var(--color-text-primary);
 	}
 
@@ -21,8 +21,22 @@
 	summary:focus-visible,
 	[role='button']:focus-visible,
 	[tabindex]:focus-visible {
+		/* Outline stays static — outline transitions aren't reliable cross-browser. */
 		outline: 2px solid var(--color-brand);
 		outline-offset: 2px;
 		border-radius: 3px;
+	}
+
+	/* Global reduced-motion floor: collapse every animation/transition to an
+	 * imperceptible duration. Component-level reduced-motion rules (e.g.
+	 * postbox-motion.css dropping transforms) refine this; this is the backstop
+	 * that guarantees nothing keeps moving. */
+	@media (prefers-reduced-motion: reduce) {
+		*,
+		*::before,
+		*::after {
+			animation-duration: 0.01ms !important;
+			transition-duration: 0.01ms !important;
+		}
 	}
 }

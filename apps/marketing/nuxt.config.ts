@@ -13,10 +13,18 @@ export default defineNuxtConfig({
 
 	modules: ['@nuxtjs/seo', '@nuxtjs/color-mode', '@nuxt/fonts'],
 
+	fonts: {
+		// Variable wght axis required: the design system's weight-based emphasis
+		// uses intermediate instances (450/550) that a static 400/500/600/700
+		// subset would snap to the nearest hundred.
+		families: [{ name: 'Instrument Sans', weights: ['400 700'] }],
+	},
+
 	site: {
 		url: 'https://owlat.app',
 		name: 'Owlat',
-		description: 'Campaigns, automations, transactional sends, and audience operations from one platform. Backed by Convex and powered by AWS SES.',
+		description:
+			'Campaigns, automations, transactional sends, and audience operations from one platform. Backed by Convex and powered by AWS SES.',
 		defaultLocale: 'en',
 	},
 
@@ -26,7 +34,11 @@ export default defineNuxtConfig({
 			viewport: 'width=device-width, initial-scale=1, viewport-fit=cover',
 			link: [{ rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' }],
 			meta: [
-				{ name: 'description', content: 'Campaigns, automations, transactional sends, and audience operations from one platform. Backed by Convex and powered by AWS SES.' },
+				{
+					name: 'description',
+					content:
+						'Campaigns, automations, transactional sends, and audience operations from one platform. Backed by Convex and powered by AWS SES.',
+				},
 			],
 		},
 	},

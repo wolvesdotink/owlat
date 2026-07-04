@@ -335,10 +335,7 @@ useClickOutsideSelector('[data-property-dropdown]', () => {
 						<div class="flex items-center gap-4">
 							<!-- Type Icon -->
 							<div class="p-2 rounded-lg bg-bg-surface flex items-center justify-center">
-								<Icon
-									:name="getTypeInfo(property.type).icon"
-									class="w-5 h-5 text-text-secondary"
-								/>
+								<Icon :name="getTypeInfo(property.type).icon" class="w-5 h-5 text-text-secondary" />
 							</div>
 
 							<!-- Property Info -->
@@ -599,7 +596,7 @@ useClickOutsideSelector('[data-property-dropdown]', () => {
 /* Dropdown transition */
 .dropdown-enter-active,
 .dropdown-leave-active {
-	transition: all 0.15s ease;
+	transition: all var(--motion-fast) var(--ease-spring);
 }
 
 .dropdown-enter-from,

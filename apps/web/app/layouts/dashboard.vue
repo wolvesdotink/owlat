@@ -74,13 +74,25 @@ const navigationSections = computed(() => {
 		{ name: 'Technical', href: '/dashboard/settings/technical', icon: 'lucide:wrench' },
 		{ name: 'Properties', href: '/dashboard/settings/properties', icon: 'lucide:tags' },
 		{ name: 'Features', href: '/dashboard/settings/features', icon: 'lucide:toggle-right' },
-		...(isFeatureEnabled('ai.agent') ? [
-			{ name: 'AI Agent', href: '/dashboard/settings/agent', icon: 'lucide:bot' },
-			{ name: 'Agent Health', href: '/dashboard/settings/agent-health', icon: 'lucide:activity' },
-		] : []),
-		...(isFeatureEnabled('ai.autonomy') ? [
-			{ name: 'Autonomy', href: '/dashboard/settings/autonomy', icon: 'lucide:sliders-horizontal' },
-		] : []),
+		...(isFeatureEnabled('ai.agent')
+			? [
+					{ name: 'AI Agent', href: '/dashboard/settings/agent', icon: 'lucide:bot' },
+					{
+						name: 'Agent Health',
+						href: '/dashboard/settings/agent-health',
+						icon: 'lucide:activity',
+					},
+				]
+			: []),
+		...(isFeatureEnabled('ai.autonomy')
+			? [
+					{
+						name: 'Autonomy',
+						href: '/dashboard/settings/autonomy',
+						icon: 'lucide:sliders-horizontal',
+					},
+				]
+			: []),
 		{ name: 'Channels', href: '/dashboard/settings/channels', icon: 'lucide:radio' },
 		{ name: 'Account', href: '/dashboard/settings/account', icon: 'lucide:users' },
 		...(isDesktop.value
@@ -92,33 +104,33 @@ const navigationSections = computed(() => {
 		{ name: 'All Threads', href: '/dashboard/inbox', icon: 'lucide:message-square' },
 		{ name: 'Channels', href: '/dashboard/inbox/channels', icon: 'lucide:radio' },
 		{ name: 'Review Queue', href: '/dashboard/inbox/review', icon: 'lucide:check-circle' },
-		...(isFeatureEnabled('inbox.codeTasks') ? [
-			{ name: 'Code Tasks', href: '/dashboard/inbox/code-tasks', icon: 'lucide:code' },
-		] : []),
+		...(isFeatureEnabled('inbox.codeTasks')
+			? [{ name: 'Code Tasks', href: '/dashboard/inbox/code-tasks', icon: 'lucide:code' }]
+			: []),
 		{ name: 'Quarantine', href: '/dashboard/inbox/quarantine', icon: 'lucide:shield-alert' },
 	];
 
 	const mailItems = [
 		{ name: 'Overview', href: '/dashboard/mail', icon: 'lucide:layout-dashboard' },
-		...(isFeatureEnabled('campaigns') ? [
-			{ name: 'Marketing', href: '/dashboard/mail/marketing', icon: 'lucide:megaphone' },
-		] : []),
-		...(isFeatureEnabled('transactional') ? [
-			{ name: 'Transactional', href: '/dashboard/mail/transactional', icon: 'lucide:send' },
-		] : []),
+		...(isFeatureEnabled('campaigns')
+			? [{ name: 'Marketing', href: '/dashboard/mail/marketing', icon: 'lucide:megaphone' }]
+			: []),
+		...(isFeatureEnabled('transactional')
+			? [{ name: 'Transactional', href: '/dashboard/mail/transactional', icon: 'lucide:send' }]
+			: []),
 		{ name: 'Blocks', href: '/dashboard/mail/blocks', icon: 'lucide:blocks' },
 		{ name: 'Media', href: '/dashboard/mail/media', icon: 'lucide:image' },
-		...(isFeatureEnabled('ai.visualizations') ? [
-			{ name: 'Visualizations', href: '/dashboard/visualizations', icon: 'lucide:bar-chart-3' },
-		] : []),
+		...(isFeatureEnabled('ai.visualizations')
+			? [{ name: 'Visualizations', href: '/dashboard/visualizations', icon: 'lucide:bar-chart-3' }]
+			: []),
 		{ name: 'Files', href: '/dashboard/files', icon: 'lucide:file-search' },
 	];
 
 	const campaignsItems = [
 		{ name: 'All Campaigns', href: '/dashboard/campaigns', icon: 'lucide:megaphone' },
-		...(isFeatureEnabled('automations') ? [
-			{ name: 'Automations', href: '/dashboard/automations', icon: 'lucide:zap' },
-		] : []),
+		...(isFeatureEnabled('automations')
+			? [{ name: 'Automations', href: '/dashboard/automations', icon: 'lucide:zap' }]
+			: []),
 		{ name: 'Reports', href: '/dashboard/campaigns/reports', icon: 'lucide:bar-chart-3' },
 		{ name: 'A/B Results', href: '/dashboard/campaigns/ab-results', icon: 'lucide:flask-conical' },
 	];
@@ -187,7 +199,12 @@ const navigationSections = computed(() => {
 	}
 
 	if (isFeatureEnabled('campaigns')) {
-		sections.push({ key: 'campaigns', name: 'Campaigns', icon: 'lucide:megaphone', items: campaignsItems });
+		sections.push({
+			key: 'campaigns',
+			name: 'Campaigns',
+			icon: 'lucide:megaphone',
+			items: campaignsItems,
+		});
 	}
 
 	sections.push({
@@ -202,7 +219,12 @@ const navigationSections = computed(() => {
 		],
 	});
 
-	sections.push({ key: 'settings', name: 'Settings', icon: 'lucide:settings', items: settingsItems });
+	sections.push({
+		key: 'settings',
+		name: 'Settings',
+		icon: 'lucide:settings',
+		items: settingsItems,
+	});
 
 	return sections;
 });
@@ -375,10 +397,10 @@ const mainPaddingClass = computed(() => {
 
 		<!-- Mobile sidebar overlay -->
 		<Transition
-			enter-active-class="transition-opacity duration-300"
+			enter-active-class="transition-opacity duration-(--motion-moderate)"
 			enter-from-class="opacity-0"
 			enter-to-class="opacity-100"
-			leave-active-class="transition-opacity duration-300"
+			leave-active-class="transition-opacity duration-(--motion-moderate-exit)"
 			leave-from-class="opacity-100"
 			leave-to-class="opacity-0"
 		>
@@ -392,7 +414,7 @@ const mainPaddingClass = computed(() => {
 		<!-- Sidebar -->
 		<aside
 			:class="[
-				'fixed top-0 left-0 z-50 h-full bg-bg-elevated border-r border-border-subtle flex flex-col transition-all duration-300 pt-[env(safe-area-inset-top)] lg:pt-0',
+				'fixed top-0 left-0 z-50 h-full bg-bg-elevated border-r border-border-subtle flex flex-col transition-all duration-(--motion-moderate) pt-[env(safe-area-inset-top)] lg:pt-0',
 				sidebarWidthClass,
 				isSidebarOpen ? 'translate-x-0' : '-translate-x-full',
 				isFocusMode ? '-translate-x-full' : 'lg:translate-x-0',
@@ -419,7 +441,8 @@ const mainPaddingClass = computed(() => {
 					v-if="!isCollapsed"
 					class="lg:hidden p-2 text-text-secondary hover:text-text-primary"
 					@click="isSidebarOpen = false"
-				 aria-label="Close">
+					aria-label="Close"
+				>
 					<Icon name="lucide:x" class="w-5 h-5" />
 				</button>
 			</div>
@@ -518,7 +541,7 @@ const mainPaddingClass = computed(() => {
 								v-if="!isCollapsed"
 								name="lucide:chevron-down"
 								:class="[
-									'w-4 h-4 text-text-tertiary transition-transform duration-200',
+									'w-4 h-4 text-text-tertiary transition-transform duration-(--motion-moderate)',
 									sectionStates[section.key] ? '' : '-rotate-90',
 								]"
 							/>
@@ -526,10 +549,10 @@ const mainPaddingClass = computed(() => {
 
 						<!-- Section items -->
 						<Transition
-							enter-active-class="transition-all duration-200 ease-out"
+							enter-active-class="transition-all duration-(--motion-moderate) ease-spring"
 							enter-from-class="opacity-0 max-h-0"
 							enter-to-class="opacity-100 max-h-96"
-							leave-active-class="transition-all duration-150 ease-in"
+							leave-active-class="transition-all duration-(--motion-moderate-exit) ease-exit"
 							leave-from-class="opacity-100 max-h-96"
 							leave-to-class="opacity-0 max-h-0"
 						>
@@ -574,7 +597,11 @@ const mainPaddingClass = computed(() => {
 					:title="isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
 					@click="toggleCollapsed"
 				>
-					<Icon v-if="!isCollapsed" name="lucide:panel-left-close" class="w-5 h-5 text-text-tertiary" />
+					<Icon
+						v-if="!isCollapsed"
+						name="lucide:panel-left-close"
+						class="w-5 h-5 text-text-tertiary"
+					/>
 					<Icon v-else name="lucide:panel-left" class="w-5 h-5 text-text-tertiary" />
 					<span v-if="!isCollapsed">Collapse</span>
 				</button>
@@ -633,10 +660,10 @@ const mainPaddingClass = computed(() => {
 
 				<!-- Dropdown menu -->
 				<Transition
-					enter-active-class="transition-all duration-200"
+					enter-active-class="transition-all duration-(--motion-moderate)"
 					enter-from-class="opacity-0 translate-y-2"
 					enter-to-class="opacity-100 translate-y-0"
-					leave-active-class="transition-all duration-150"
+					leave-active-class="transition-all duration-(--motion-moderate-exit)"
 					leave-from-class="opacity-100 translate-y-0"
 					leave-to-class="opacity-0 translate-y-2"
 				>
@@ -660,7 +687,10 @@ const mainPaddingClass = computed(() => {
 		</aside>
 
 		<!-- Main content area -->
-		<div :class="isFocusMode ? '' : mainPaddingClass" class="transition-all duration-300">
+		<div
+			:class="isFocusMode ? '' : mainPaddingClass"
+			class="transition-all duration-(--motion-moderate)"
+		>
 			<!-- Desktop header with breadcrumbs and search (hidden in focus mode) -->
 			<header
 				v-if="!isFocusMode"

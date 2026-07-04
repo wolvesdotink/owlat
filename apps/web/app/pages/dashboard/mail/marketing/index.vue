@@ -78,7 +78,9 @@ const templates = computed(() => {
 });
 
 // Fetch template counts
-const { data: typeCounts } = useOrganizationQuery(api.emailTemplates.organization.countByTypeByOrganization);
+const { data: typeCounts } = useOrganizationQuery(
+	api.emailTemplates.organization.countByTypeByOrganization
+);
 
 const isLoading = computed(() => teamLoading.value || templatesLoading.value);
 
@@ -202,7 +204,6 @@ onMounted(() => {
 			closeDeleteModal();
 		}
 	});
-
 });
 
 onUnmounted(() => {
@@ -232,7 +233,9 @@ onUnmounted(() => {
 		<!-- Stats and Search -->
 		<div class="flex flex-col sm:flex-row sm:items-center gap-4 mb-6">
 			<div v-if="typeCounts" class="text-sm text-text-secondary">
-				{{ typeCounts['marketing'] }} marketing template{{ typeCounts['marketing'] !== 1 ? 's' : '' }}
+				{{ typeCounts['marketing'] }} marketing template{{
+					typeCounts['marketing'] !== 1 ? 's' : ''
+				}}
 			</div>
 
 			<div class="flex-1" />
@@ -261,10 +264,10 @@ onUnmounted(() => {
 						<Icon name="lucide:chevron-down" class="w-4 h-4" />
 					</button>
 					<Transition
-						enter-active-class="duration-150 ease-out"
+						enter-active-class="duration-(--motion-moderate) ease-spring"
 						enter-from-class="opacity-0 scale-95"
 						enter-to-class="opacity-100 scale-100"
-						leave-active-class="duration-100 ease-in"
+						leave-active-class="duration-(--motion-moderate-exit) ease-exit"
 						leave-from-class="opacity-100 scale-100"
 						leave-to-class="opacity-0 scale-95"
 					>
@@ -284,7 +287,11 @@ onUnmounted(() => {
 								@click="selectSort(option)"
 							>
 								{{ option.label }}
-								<Icon v-if="currentSort.value === option.value" name="lucide:check" class="w-4 h-4" />
+								<Icon
+									v-if="currentSort.value === option.value"
+									name="lucide:check"
+									class="w-4 h-4"
+								/>
 							</button>
 						</div>
 					</Transition>
@@ -300,7 +307,8 @@ onUnmounted(() => {
 								: 'text-text-tertiary hover:text-text-primary',
 						]"
 						@click="viewMode = 'grid'"
-					 aria-label="Grid view">
+						aria-label="Grid view"
+					>
 						<Icon name="lucide:grid-3x3" class="w-4 h-4" />
 					</button>
 					<button
@@ -311,7 +319,8 @@ onUnmounted(() => {
 								: 'text-text-tertiary hover:text-text-primary',
 						]"
 						@click="viewMode = 'list'"
-					 aria-label="List view">
+						aria-label="List view"
+					>
 						<Icon name="lucide:list" class="w-4 h-4" />
 					</button>
 				</div>
@@ -397,19 +406,22 @@ onUnmounted(() => {
 							<button
 								class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-brand hover:text-text-inverse transition-colors"
 								@click.stop="handleEdit(template._id)"
-							 aria-label="Edit">
+								aria-label="Edit"
+							>
 								<Icon name="lucide:pencil" class="w-4 h-4" />
 							</button>
 							<button
 								class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-brand hover:text-text-inverse transition-colors"
 								@click.stop="handleDuplicate(template._id)"
-							 aria-label="Copy">
+								aria-label="Copy"
+							>
 								<Icon name="lucide:copy" class="w-4 h-4" />
 							</button>
 							<button
 								class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-error hover:text-white transition-colors"
 								@click.stop="openDeleteModal(template._id, template.name)"
-							 aria-label="Delete">
+								aria-label="Delete"
+							>
 								<Icon name="lucide:trash-2" class="w-4 h-4" />
 							</button>
 						</div>
@@ -513,19 +525,22 @@ onUnmounted(() => {
 										<button
 											class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors"
 											@click="handleEdit(template._id)"
-										 aria-label="Edit">
+											aria-label="Edit"
+										>
 											<Icon name="lucide:pencil" class="w-4 h-4" />
 										</button>
 										<button
 											class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors"
 											@click="handleDuplicate(template._id)"
-										 aria-label="Copy">
+											aria-label="Copy"
+										>
 											<Icon name="lucide:copy" class="w-4 h-4" />
 										</button>
 										<button
 											class="p-2 rounded-lg text-text-tertiary hover:text-error hover:bg-error/10 transition-colors"
 											@click="openDeleteModal(template._id, template.name)"
-										 aria-label="Delete">
+											aria-label="Delete"
+										>
 											<Icon name="lucide:trash-2" class="w-4 h-4" />
 										</button>
 									</div>

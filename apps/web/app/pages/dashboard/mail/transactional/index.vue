@@ -12,17 +12,45 @@ definePageMeta({
 const { hasActiveOrganization, isLoading: teamLoading } = useOrganizationContext();
 
 const {
-	selectedStatus, viewMode, searchQuery, debouncedSearch,
-	currentSort, isSortDropdownOpen, selectSort, statusFilters, sortOptions,
-	transactionalEmails, statusCounts, sendCounts, isLoading: listLoading,
-	dropdownOpenStates, formatDate, getStatusBadge,
+	selectedStatus,
+	viewMode,
+	searchQuery,
+	debouncedSearch,
+	currentSort,
+	isSortDropdownOpen,
+	selectSort,
+	statusFilters,
+	sortOptions,
+	transactionalEmails,
+	statusCounts,
+	sendCounts,
+	isLoading: listLoading,
+	dropdownOpenStates,
+	formatDate,
+	getStatusBadge,
 	handleDuplicate,
-	isDeleteModalOpen, emailToDelete, isDeleting, openDeleteModal, closeDeleteModal, handleDelete,
-	isCreateModalOpen, createForm, createFormErrors, createError, isCreating,
-	openCreateModal, closeCreateModal, handleCreate,
+	isDeleteModalOpen,
+	emailToDelete,
+	isDeleting,
+	openDeleteModal,
+	closeDeleteModal,
+	handleDelete,
+	isCreateModalOpen,
+	createForm,
+	createFormErrors,
+	createError,
+	isCreating,
+	openCreateModal,
+	closeCreateModal,
+	handleCreate,
 	handleEdit,
-	isCodeSnippetModalOpen, selectedEmailForCode, copiedSnippet,
-	openCodeSnippetModal, closeCodeSnippetModal, getCodeSnippet, copyToClipboard,
+	isCodeSnippetModalOpen,
+	selectedEmailForCode,
+	copiedSnippet,
+	openCodeSnippetModal,
+	closeCodeSnippetModal,
+	getCodeSnippet,
+	copyToClipboard,
 } = useTransactionalList();
 
 // Recent-sends modal (links through to the per-send delivery timeline)
@@ -103,10 +131,10 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 						<Icon name="lucide:chevron-down" class="w-4 h-4" />
 					</button>
 					<Transition
-						enter-active-class="duration-150 ease-out"
+						enter-active-class="duration-(--motion-moderate) ease-spring"
 						enter-from-class="opacity-0 scale-95"
 						enter-to-class="opacity-100 scale-100"
-						leave-active-class="duration-100 ease-in"
+						leave-active-class="duration-(--motion-moderate-exit) ease-exit"
 						leave-from-class="opacity-100 scale-100"
 						leave-to-class="opacity-0 scale-95"
 					>
@@ -126,7 +154,11 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 								@click="selectSort(option)"
 							>
 								{{ option.label }}
-								<Icon v-if="currentSort.value === option.value" name="lucide:check" class="w-4 h-4" />
+								<Icon
+									v-if="currentSort.value === option.value"
+									name="lucide:check"
+									class="w-4 h-4"
+								/>
 							</button>
 						</div>
 					</Transition>
@@ -142,7 +174,8 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 								: 'text-text-tertiary hover:text-text-primary',
 						]"
 						@click="viewMode = 'grid'"
-					 aria-label="Grid view">
+						aria-label="Grid view"
+					>
 						<Icon name="lucide:grid-3x3" class="w-4 h-4" />
 					</button>
 					<button
@@ -153,7 +186,8 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 								: 'text-text-tertiary hover:text-text-primary',
 						]"
 						@click="viewMode = 'list'"
-					 aria-label="List view">
+						aria-label="List view"
+					>
 						<Icon name="lucide:list" class="w-4 h-4" />
 					</button>
 				</div>
@@ -269,19 +303,22 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 							<button
 								class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-brand hover:text-text-inverse transition-colors"
 								@click.stop="handleEdit(email._id)"
-							 aria-label="Edit">
+								aria-label="Edit"
+							>
 								<Icon name="lucide:pencil" class="w-4 h-4" />
 							</button>
 							<button
 								class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-brand hover:text-text-inverse transition-colors"
 								@click.stop="handleDuplicate(email._id)"
-							 aria-label="Copy">
+								aria-label="Copy"
+							>
 								<Icon name="lucide:copy" class="w-4 h-4" />
 							</button>
 							<button
 								class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-error hover:text-white transition-colors"
 								@click.stop="openDeleteModal(email._id, email.name)"
-							 aria-label="Delete">
+								aria-label="Delete"
+							>
 								<Icon name="lucide:trash-2" class="w-4 h-4" />
 							</button>
 						</div>
@@ -309,7 +346,10 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 								>
 									View API Code
 								</UiDropdownMenuItem>
-								<UiDropdownMenuItem icon="lucide:send" @click="openRecentSends(email._id, email.name)">
+								<UiDropdownMenuItem
+									icon="lucide:send"
+									@click="openRecentSends(email._id, email.name)"
+								>
 									View sends
 								</UiDropdownMenuItem>
 								<UiDropdownMenuItem icon="lucide:pencil" @click="handleEdit(email._id)">
@@ -427,7 +467,8 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 											<template #trigger>
 												<button
 													class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors"
-												 aria-label="More actions">
+													aria-label="More actions"
+												>
 													<Icon name="lucide:more-vertical" class="w-4 h-4" />
 												</button>
 											</template>
@@ -437,7 +478,10 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 											>
 												View API Code
 											</UiDropdownMenuItem>
-											<UiDropdownMenuItem icon="lucide:send" @click="openRecentSends(email._id, email.name)">
+											<UiDropdownMenuItem
+												icon="lucide:send"
+												@click="openRecentSends(email._id, email.name)"
+											>
 												View sends
 											</UiDropdownMenuItem>
 											<UiDropdownMenuItem icon="lucide:copy" @click="handleDuplicate(email._id)">
@@ -513,9 +557,7 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 				<UiSelect
 					v-model="createForm.defaultLanguage"
 					label="Default Language"
-					:options="
-						languageOptions.map((l) => ({ value: l.value, label: formatLanguageLabel(l) }))
-					"
+					:options="languageOptions.map((l) => ({ value: l.value, label: formatLanguageLabel(l) }))"
 					:disabled="isCreating"
 					class="mb-6"
 				/>
@@ -590,7 +632,8 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 							<button
 								class="p-1 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
 								@click="closeCodeSnippetModal"
-							 aria-label="Close">
+								aria-label="Close"
+							>
 								<Icon name="lucide:x" class="w-5 h-5" />
 							</button>
 						</div>
@@ -605,7 +648,11 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 										class="flex items-center gap-1.5 text-xs text-text-secondary hover:text-text-primary transition-colors"
 										@click="copyToClipboard('curl')"
 									>
-										<Icon v-if="copiedSnippet === 'curl'" name="lucide:check" class="w-3.5 h-3.5 text-success" />
+										<Icon
+											v-if="copiedSnippet === 'curl'"
+											name="lucide:check"
+											class="w-3.5 h-3.5 text-success"
+										/>
 										<Icon v-else name="lucide:copy" class="w-3.5 h-3.5" />
 										{{ copiedSnippet === 'curl' ? 'Copied!' : 'Copy' }}
 									</button>
@@ -624,7 +671,11 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 										class="flex items-center gap-1.5 text-xs text-text-secondary hover:text-text-primary transition-colors"
 										@click="copyToClipboard('javascript')"
 									>
-										<Icon v-if="copiedSnippet === 'javascript'" name="lucide:check" class="w-3.5 h-3.5 text-success" />
+										<Icon
+											v-if="copiedSnippet === 'javascript'"
+											name="lucide:check"
+											class="w-3.5 h-3.5 text-success"
+										/>
 										<Icon v-else name="lucide:copy" class="w-3.5 h-3.5" />
 										{{ copiedSnippet === 'javascript' ? 'Copied!' : 'Copy' }}
 									</button>
@@ -643,7 +694,11 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 										class="flex items-center gap-1.5 text-xs text-text-secondary hover:text-text-primary transition-colors"
 										@click="copyToClipboard('python')"
 									>
-										<Icon v-if="copiedSnippet === 'python'" name="lucide:check" class="w-3.5 h-3.5 text-success" />
+										<Icon
+											v-if="copiedSnippet === 'python'"
+											name="lucide:check"
+											class="w-3.5 h-3.5 text-success"
+										/>
 										<Icon v-else name="lucide:copy" class="w-3.5 h-3.5" />
 										{{ copiedSnippet === 'python' ? 'Copied!' : 'Copy' }}
 									</button>
@@ -682,6 +737,5 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 			:email-id="recentSendsEmailId"
 			:email-name="recentSendsEmailName"
 		/>
-
 	</div>
 </template>
