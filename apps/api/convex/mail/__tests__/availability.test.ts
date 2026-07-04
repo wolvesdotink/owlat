@@ -150,7 +150,7 @@ describe('fetchOpenSlots (fail-soft, in-deployment)', () => {
 		});
 		// The module itself performs the fetch (in-deployment), not the caller.
 		expect(fetchImpl).toHaveBeenCalledTimes(1);
-		expect(fetchImpl.mock.calls[0]![0]).toBe('https://cal.example.test/private.ics');
+		expect((fetchImpl.mock.calls[0]! as unknown[])[0]).toBe('https://cal.example.test/private.ics');
 		expect(slots.length).toBeGreaterThan(0);
 	});
 
