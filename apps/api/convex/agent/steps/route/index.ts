@@ -40,6 +40,7 @@ import type { AgentStepModule } from '../types';
 import { detectInjection, INJECTION_CONFIDENCE_THRESHOLD } from '../security_scan/patterns';
 import { detectSecretLeak } from '../../../lib/secretLeakScan';
 import { deriveAuthenticatedRecipient } from '../../referenceMonitor';
+import { isWithinWorkingHours } from '../../../lib/workingHours';
 
 /**
  * Draft-quality self-check threaded from the `draft` step. `null`/absent when
@@ -138,6 +139,38 @@ async function assertSafeToAutoSend(
 			safe: false,
 			reason: 'Could not verify the AI spend budget; not auto-sending — routing to human review.',
 		};
+	}
+
+	// WORKING-HOURS gate. When the operator has confined autonomous sends to
+	// business hours, an auto-approve decided OUTSIDE the window is held for human
+	// review (the draft is still queued) rather than fired at, say, 3am — it waits
+	// for morning review. This runs BEFORE the daily cap is charged and before the
+	// send-delay/undo window or coalescing apply, so an out-of-hours reply never
+	// becomes a pending auto-send (see lib/workingHours.ts precedence note).
+	// FAIL-SAFE: the gate is off by default (24/7, today's behaviour); when it is
+	// ENABLED but can't be evaluated (e.g. an invalid timezone), hold for review —
+	// never auto-send on uncertainty.
+	try {
+		const cfg = await ctx.runQuery(internal.agent.agentPipeline.getAgentConfig, {});
+		if (cfg?.isWorkingHoursEnabled) {
+			let within: boolean;
+			try {
+				within = isWithinWorkingHours(cfg, Date.now());
+			} catch {
+				within = false;
+			}
+			if (!within) {
+				return {
+					safe: false,
+					reason:
+						'Outside configured working hours; not auto-sending — held for morning human review.',
+				};
+			}
+		}
+	} catch {
+		// Config read failed — fall through. A missing/unreadable config means the
+		// window can't be enforced; that degrades to today's 24/7 behaviour rather
+		// than blocking all sends. The other safety gates below still apply.
 	}
 
 	// Hard block: a draft produced from an ABANDONED clarification is a

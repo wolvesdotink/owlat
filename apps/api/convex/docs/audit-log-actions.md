@@ -70,6 +70,8 @@ All inserts must go through `recordAuditLog(ctx, {...})` in
 | `inbound.sender_blocked` | `inbound_message` | `{ email }` |
 | `agent.config_updated` | `agent_config` | `detailsBlob: { ...patchedFields }` |
 | `agent.backfill_started` / `backfill_cancelled` | `agent_config` | `{ jobId }` |
+| `agent.kill_switch` | `agent_config` | `{ revertedToDraftOnly }` |
+| `agent.demotion_acknowledged` | `autonomy_rule` | `{ category, sender }` |
 | `knowledge.edge_backfill_started` / `edge_backfill_cancelled` | `knowledge_config` | `{ jobId }` |
 | `abuse_status_changed` | `instance_settings` | `{ previousStatus, newStatus, reason, changedBy }` (see ADR-0011) |
 | `postbox_outbound_transition` | `mail_message` | `{ mailboxId, recipientIdx, from, to, aggregateBefore, aggregateAfter, at, bounceMessage?, errorMessage?, errorCode? }` (see ADR-0012) |
