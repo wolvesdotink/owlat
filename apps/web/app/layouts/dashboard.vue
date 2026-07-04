@@ -81,6 +81,9 @@ const navigationSections = computed(() => {
 		...(isFeatureEnabled('ai.autonomy') ? [
 			{ name: 'Autonomy', href: '/dashboard/settings/autonomy', icon: 'lucide:sliders-horizontal' },
 		] : []),
+		...(isFeatureEnabled('ai') ? [
+			{ name: 'Handling Rules', href: '/dashboard/settings/handling-rules', icon: 'lucide:wand-sparkles' },
+		] : []),
 		{ name: 'Channels', href: '/dashboard/settings/channels', icon: 'lucide:radio' },
 		{ name: 'Account', href: '/dashboard/settings/account', icon: 'lucide:users' },
 		...(isDesktop.value
