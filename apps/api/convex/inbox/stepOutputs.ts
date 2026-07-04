@@ -22,6 +22,7 @@ import {
 	draftQualityValidator,
 	groundingSourceValidator,
 } from '../lib/convexValidators';
+import { attachmentSuggestionsValidator } from './attachmentValidators';
 
 /**
  * Record the context-tier metadata onto an inboundMessage without
@@ -102,6 +103,9 @@ export const recordDraftOutput = internalMutation({
 		// on low-confidence / low-quality cases). `draftOptions[0]` mirrors
 		// `draftResponse`. Absent on the normal single-draft path.
 		draftOptions: v.optional(v.array(v.string())),
+		// Advisory attachment suggestion (see attachmentValidators). Absent unless
+		// the inbound asked for a document and a contact-scoped file matched.
+		attachmentSuggestions: v.optional(attachmentSuggestionsValidator),
 	},
 	handler: async (ctx, args) => {
 		await ctx.db.patch(args.inboundMessageId, {
@@ -110,6 +114,9 @@ export const recordDraftOutput = internalMutation({
 			confidenceScore: args.confidenceScore,
 			...(args.draftQuality ? { draftQuality: args.draftQuality } : {}),
 			...(args.draftOptions ? { draftOptions: args.draftOptions } : {}),
+			...(args.attachmentSuggestions
+				? { attachmentSuggestions: args.attachmentSuggestions }
+				: {}),
 		});
 	},
 });
