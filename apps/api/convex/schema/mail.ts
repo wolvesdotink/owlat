@@ -999,11 +999,7 @@ export const mailTables = {
 		bundled: v.array(
 			v.object({
 				threadId: v.id('mailThreads'),
-				category: v.union(
-					v.literal('newsletter'),
-					v.literal('notification'),
-					v.literal('receipt')
-				),
+				category: v.union(v.literal('newsletter'), v.literal('notification'), v.literal('receipt')),
 				fromAddress: v.string(),
 				subject: v.string(),
 			})

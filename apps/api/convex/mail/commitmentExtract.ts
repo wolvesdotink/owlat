@@ -91,8 +91,7 @@ export const extractCommitment = internalAction({
 				messageId: args.messageId,
 				direction: args.direction,
 				description,
-				counterparty:
-					args.direction === 'outbound' ? context.toAddress : context.fromAddress,
+				counterparty: args.direction === 'outbound' ? context.toAddress : context.fromAddress,
 				dueAt: dueHintToTimestamp(object.dueDate),
 				dueHintRaw: object.duePhrase?.trim().slice(0, MAX_DUE_PHRASE_CHARS) || undefined,
 				source: 'llm',

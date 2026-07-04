@@ -44,9 +44,9 @@ describe('shouldExtractOutboundCommitment (bounds the LLM fan-out)', () => {
 	});
 
 	it('skips no-reply / automated senders', () => {
-		expect(
-			shouldExtractOutboundCommitment({ ...base, fromAddress: 'no-reply@example.com' })
-		).toBe(false);
+		expect(shouldExtractOutboundCommitment({ ...base, fromAddress: 'no-reply@example.com' })).toBe(
+			false
+		);
 	});
 
 	it('skips mass sends (over the recipient cap)', () => {
