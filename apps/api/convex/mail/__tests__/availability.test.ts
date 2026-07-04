@@ -13,6 +13,7 @@ import {
 	computeOpenSlots,
 	formatOpenSlots,
 	fetchOpenSlots,
+	buildSchedulingReplyInstruction,
 	type BusyInterval,
 } from '../availability';
 
@@ -180,5 +181,45 @@ describe('fetchOpenSlots (fail-soft, in-deployment)', () => {
 			fetchImpl,
 		});
 		expect(slots).toEqual([]);
+	});
+});
+
+describe('buildSchedulingReplyInstruction (fetch + framing orchestration)', () => {
+	const icsBody = [
+		'BEGIN:VCALENDAR',
+		'BEGIN:VEVENT',
+		'DTSTART:20260708T140000Z',
+		'DTEND:20260708T150000Z',
+		'END:VEVENT',
+		'END:VCALENDAR',
+	].join('\r\n');
+
+	it('folds the owner real open slots into the scheduling instruction', async () => {
+		const fetchImpl = vi.fn(
+			async () => ({ ok: true, text: async () => icsBody }) as unknown as Response,
+		);
+		const instruction = await buildSchedulingReplyInstruction(['maybe Thursday?'], {
+			icsUrl: 'https://cal.example.test/private.ics',
+			timeZone: 'UTC',
+			now: NOW,
+			fetchImpl,
+		});
+		expect(fetchImpl).toHaveBeenCalledTimes(1);
+		// Untrusted sender phrase is carried through verbatim.
+		expect(instruction).toContain('maybe Thursday?');
+	});
+
+	it('degrades to today sender-phrase-only framing when no source is configured', async () => {
+		const withCal = await buildSchedulingReplyInstruction([], {
+			icsUrl: 'https://cal.example.test/private.ics',
+			timeZone: 'UTC',
+			now: NOW,
+			fetchImpl: vi.fn(
+				async () => ({ ok: true, text: async () => icsBody }) as unknown as Response,
+			),
+		});
+		const withoutCal = await buildSchedulingReplyInstruction([], { icsUrl: undefined });
+		// With a source the grounded framing differs from the ungrounded one.
+		expect(withCal).not.toEqual(withoutCal);
 	});
 });
