@@ -182,7 +182,7 @@ describe('autonomy.checkPermissionInternal', () => {
 
 // ============ getFeedbackCountsInternal (rejection-spike breaker input) ============
 
-describe('autonomy.getFeedbackCountsInternal', () => {
+describe('autonomyFeedback.getFeedbackCountsInternal', () => {
 	it('splits counts by action since the window start', async () => {
 		const t = convexTest(schema, modules);
 		const now = Date.now();
@@ -202,7 +202,7 @@ describe('autonomy.getFeedbackCountsInternal', () => {
 			await mk('rejected', now - 48 * 60 * 60 * 1000);
 		});
 
-		const counts = await t.query(internal.autonomy.getFeedbackCountsInternal, {
+		const counts = await t.query(internal.autonomyFeedback.getFeedbackCountsInternal, {
 			since: now - 24 * 60 * 60 * 1000,
 		});
 		expect(counts.approved).toBe(1);
@@ -288,7 +288,7 @@ describe('autonomy.deleteRule', () => {
 
 // ============ recordFeedback (internal) ============
 
-describe('autonomy.recordFeedback', () => {
+describe('autonomyFeedback.recordFeedback', () => {
 	it('should record feedback with a linked rule', async () => {
 		const t = convexTest(schema, modules);
 
@@ -296,7 +296,7 @@ describe('autonomy.recordFeedback', () => {
 			await ctx.db.insert('autonomyRules', createTestAutonomyRule({ category: 'support' }));
 		});
 
-		await t.mutation(internal.autonomy.recordFeedback, {
+		await t.mutation(internal.autonomyFeedback.recordFeedback, {
 			category: 'support',
 			action: 'approved',
 			agentConfidence: 0.92,
@@ -317,7 +317,7 @@ describe('autonomy.recordFeedback', () => {
 	it('should record feedback even without a matching rule', async () => {
 		const t = convexTest(schema, modules);
 
-		await t.mutation(internal.autonomy.recordFeedback, {
+		await t.mutation(internal.autonomyFeedback.recordFeedback, {
 			category: 'unknown',
 			action: 'rejected',
 			agentConfidence: 0.3,
@@ -437,7 +437,7 @@ describe('autonomy.incrementDailyCount', () => {
 
 // ============ adjustThresholds: asymmetric loosening ============
 
-describe('autonomy.adjustThresholds', () => {
+describe('autonomyFeedback.adjustThresholds', () => {
 	async function seedFeedback(
 		t: ReturnType<typeof convexTest>,
 		category: string,
@@ -473,7 +473,7 @@ describe('autonomy.adjustThresholds', () => {
 			{ action: 'approved', count: 2 },
 		]);
 
-		await t.action(internal.autonomy.adjustThresholds);
+		await t.action(internal.autonomyFeedback.adjustThresholds);
 
 		await t.run(async (ctx) => {
 			const rule = await ctx.db
@@ -498,7 +498,7 @@ describe('autonomy.adjustThresholds', () => {
 		// 20 rows, 0 rejected => 0% rejection, n >= 20.
 		await seedFeedback(t, 'support', [{ action: 'approved', count: 20 }]);
 
-		await t.action(internal.autonomy.adjustThresholds);
+		await t.action(internal.autonomyFeedback.adjustThresholds);
 
 		await t.run(async (ctx) => {
 			const rule = await ctx.db
@@ -540,7 +540,7 @@ describe('autonomy.adjustThresholds', () => {
 			{ action: 'approved', count: 2 },
 		]);
 
-		await t.action(internal.autonomy.adjustThresholds);
+		await t.action(internal.autonomyFeedback.adjustThresholds);
 
 		await t.run(async (ctx) => {
 			const suggestions = await ctx.db.query('autonomySuggestions').collect();
