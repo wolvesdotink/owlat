@@ -372,7 +372,8 @@ function reduceSent(
 	// baseline) AND the user actually changed something before sending. The diff
 	// itself + recurrence gating happen out of band in mail/editLearning.ts.
 	const baselineText = draft.aiDraftBaseline?.text?.trim() ?? '';
-	const sentText = (args.context.bodyText ?? args.context.bodyHtml).trim();
+	// `||` (not `??`) so a present-but-empty bodyText falls through to bodyHtml.
+	const sentText = (args.context.bodyText || args.context.bodyHtml).trim();
 	const learningEffects: Effect[] =
 		baselineText.length > 0 && sentText.length > 0
 			? [

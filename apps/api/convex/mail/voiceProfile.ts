@@ -257,12 +257,6 @@ export const markIdle = internalMutation({
 });
 
 /**
- * Shared core for the guidance accessors: read the profile for prompt injection
- * AND lazily schedule a background refresh when it is stale. Returns the
- * guidance block to inject, or null for today's non-personalized behaviour.
- * Scheduling is a write, so callers must be mutations.
- */
-/**
  * Promoted per-recipient style directives for one address, or [] when there is
  * no override row / no promoted rule yet. Keyed by the exact lowercased address
  * so an override learned for contact X is only ever blended when drafting to X.
@@ -284,6 +278,12 @@ async function contactStyleDirectives(
 	return promotedDirectives(row.adjustments);
 }
 
+/**
+ * Shared core for the guidance accessors: read the profile for prompt injection
+ * AND lazily schedule a background refresh when it is stale. Returns the
+ * guidance block to inject, or null for today's non-personalized behaviour.
+ * Scheduling is a write, so callers must be mutations.
+ */
 async function guidanceForMailbox(
 	ctx: MutationCtx,
 	mailboxId: Id<'mailboxes'>,
