@@ -134,7 +134,7 @@ crons.interval('reset autonomy daily counts', { hours: 24 }, internal.autonomy.r
 
 // Weekly autonomy threshold adjustment
 // Tightens thresholds on high rejection, loosens on low rejection
-crons.interval('adjust autonomy thresholds', { hours: 168 }, internal.autonomy.adjustThresholds);
+crons.interval('adjust autonomy thresholds', { hours: 168 }, internal.autonomyFeedback.adjustThresholds);
 
 // Report instance analytics to control plane every 15 minutes
 crons.interval('report analytics', { minutes: 15 }, internal.analytics.reporter.reportMetrics);

@@ -84,6 +84,7 @@ import type * as automations_triggers_topic_subscribed_index from "../automation
 import type * as automations_triggers_types from "../automations/triggers/types.js";
 import type * as automations_types from "../automations/types.js";
 import type * as autonomy from "../autonomy.js";
+import type * as autonomyFeedback from "../autonomyFeedback.js";
 import type * as autonomyOutcome from "../autonomyOutcome.js";
 import type * as autonomySuggestions from "../autonomySuggestions.js";
 import type * as blockedEmails from "../blockedEmails.js";
@@ -646,6 +647,7 @@ declare const fullApi: ApiFromModules<{
   "automations/triggers/types": typeof automations_triggers_types;
   "automations/types": typeof automations_types;
   autonomy: typeof autonomy;
+  autonomyFeedback: typeof autonomyFeedback;
   autonomyOutcome: typeof autonomyOutcome;
   autonomySuggestions: typeof autonomySuggestions;
   blockedEmails: typeof blockedEmails;

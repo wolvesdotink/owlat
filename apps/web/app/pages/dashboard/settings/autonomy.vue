@@ -18,7 +18,7 @@ const { data: rules, isLoading: rulesLoading, error: rulesError } = useConvexQue
 
 // Fetch feedback stats for the last 24h
 const { data: feedbackStats } = useConvexQuery(
-	api.autonomy.getFeedbackStats,
+	api.autonomyFeedback.getFeedbackStats,
 	() => ({ hoursBack: 24 }),
 );
 

@@ -415,7 +415,7 @@ export const rollupMetrics = internalAction({
 
 		// Rejection rate from the human verification queue (last 24h, the
 		// window the rejection_spike breaker reacts to).
-		const feedback = await ctx.runQuery(internal.autonomy.getFeedbackCountsInternal, {
+		const feedback = await ctx.runQuery(internal.autonomyFeedback.getFeedbackCountsInternal, {
 			since: now - 24 * 60 * 60 * 1000,
 		});
 		// Decisions-only denominator: an edit-then-approve records both an

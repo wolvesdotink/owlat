@@ -9,7 +9,7 @@
  *
  * Split out of `autonomy.ts` to keep that module under the file-size ratchet;
  * the recorded rows are plain `autonomyFeedback` rows written through the same
- * `internal.autonomy.recordFeedback` writer the human path uses.
+ * `internal.autonomyFeedback.recordFeedback` writer the human path uses.
  */
 
 import { v } from 'convex/values';
@@ -68,7 +68,7 @@ export const recordOutcomeFeedback = internalMutation({
 		const action = OUTCOME_SIGNAL[args.signal as OutcomeSignal];
 		const agentConfidence = message.confidenceScore ?? message.classification?.confidence ?? 0;
 
-		await ctx.runMutation(internal.autonomy.recordFeedback, {
+		await ctx.runMutation(internal.autonomyFeedback.recordFeedback, {
 			category,
 			action,
 			agentConfidence,
