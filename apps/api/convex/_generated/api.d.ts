@@ -366,6 +366,8 @@ import type * as mail_filters from "../mail/filters.js";
 import type * as mail_folders from "../mail/folders.js";
 import type * as mail_followUps from "../mail/followUps.js";
 import type * as mail_forwarding from "../mail/forwarding.js";
+import type * as mail_handlingRules from "../mail/handlingRules.js";
+import type * as mail_handlingRulesCompile from "../mail/handlingRulesCompile.js";
 import type * as mail_identities from "../mail/identities.js";
 import type * as mail_imap from "../mail/imap.js";
 import type * as mail_labels from "../mail/labels.js";
@@ -927,6 +929,8 @@ declare const fullApi: ApiFromModules<{
   "mail/folders": typeof mail_folders;
   "mail/followUps": typeof mail_followUps;
   "mail/forwarding": typeof mail_forwarding;
+  "mail/handlingRules": typeof mail_handlingRules;
+  "mail/handlingRulesCompile": typeof mail_handlingRulesCompile;
   "mail/identities": typeof mail_identities;
   "mail/imap": typeof mail_imap;
   "mail/labels": typeof mail_labels;
