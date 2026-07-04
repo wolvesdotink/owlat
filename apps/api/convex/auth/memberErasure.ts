@@ -113,6 +113,16 @@ export const eraseMemberData = internalMutation({
 				.collect()) {
 				await ctx.db.delete(row._id); // bounded: per-mailbox configuration rows
 			}
+			const commitmentRows = await ctx.db
+				.query('mailCommitments')
+				.withIndex('by_mailbox', (q) => q.eq('mailboxId', mailbox._id))
+				.collect(); // bounded: per-mailbox commitment rows
+			for (const row of commitmentRows) await ctx.db.delete(row._id);
+			const briefRows = await ctx.db
+				.query('mailDailyBriefs')
+				.withIndex('by_mailbox_and_generated', (q) => q.eq('mailboxId', mailbox._id))
+				.collect(); // bounded: per-mailbox brief snapshots
+			for (const row of briefRows) await ctx.db.delete(row._id);
 			for (const row of await ctx.db
 				.query('mailAliases')
 				.withIndex('by_target', (q) => q.eq('targetMailboxId', mailbox._id))

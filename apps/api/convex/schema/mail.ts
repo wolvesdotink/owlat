@@ -914,4 +914,102 @@ export const mailTables = {
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	}).index('by_user', ['userId']),
+
+	// Bidirectional commitment / deadline tracking (Daily Brief). A commitment is
+	// either a deadline SOMEONE GAVE the owner (`inbound` — "please send it by
+	// Friday") or a promise the OWNER MADE in their own sent mail (`outbound` —
+	// "I'll get the draft to you Friday"). Extraction is deterministic-gated then
+	// cheap-tier-LLM-refined (mail/commitmentExtract.ts), behind the same aiGate
+	// as the rest of Postbox AI and fail-soft. The commitment-reminder cron
+	// (mail/commitments.ts) surfaces an open commitment before its deadline —
+	// arming the thread follow-up (mail/followUps.ts) so it floats into the Reply
+	// Queue — and marks it `reminded` exactly once. Advisory only: this never
+	// sends or modifies mail.
+	mailCommitments: defineTable({
+		mailboxId: v.id('mailboxes'),
+		threadId: v.id('mailThreads'),
+		// The source message the commitment was extracted from (inbound message
+		// that stated a deadline, or the owner's own sent message that made a
+		// promise). One commitment per message+direction (dedup key).
+		messageId: v.id('mailMessages'),
+		// `inbound` = a deadline someone gave the owner; `outbound` = a promise the
+		// owner made in sent mail.
+		direction: v.union(v.literal('inbound'), v.literal('outbound')),
+		// One line describing the commitment (<= 200 chars).
+		description: v.string(),
+		// The other party (who is owed / who is waiting). Display hint.
+		counterparty: v.optional(v.string()),
+		// Parsed absolute deadline (ms epoch), when the source stated a concrete
+		// date. Absent when only a fuzzy phrase was found — the row still shows in
+		// the brief but the pre-lapse reminder needs a concrete dueAt.
+		dueAt: v.optional(v.number()),
+		// The raw deadline phrase as written ("by Friday", "end of week"), for the
+		// auditable brief even when it could not be parsed to a timestamp.
+		dueHintRaw: v.optional(v.string()),
+		status: v.union(
+			v.literal('open'),
+			v.literal('reminded'),
+			v.literal('done'),
+			v.literal('lapsed')
+		),
+		source: v.union(v.literal('heuristic'), v.literal('llm')),
+		// Set once the pre-lapse reminder fired (status → reminded), so the cron
+		// never re-reminds the same commitment.
+		remindedAt: v.optional(v.number()),
+		createdAt: v.number(),
+		updatedAt: v.number(),
+	})
+		.index('by_mailbox', ['mailboxId'])
+		// Dedup / idempotency: at most one commitment per source message+direction.
+		.index('by_message', ['messageId', 'direction'])
+		// Backs the pre-lapse reminder scan — open commitments per mailbox ordered
+		// by deadline.
+		.index('by_mailbox_status_due', ['mailboxId', 'status', 'dueAt']),
+
+	// "What needs you today" digest snapshot (Daily Brief), rebuilt by the daily
+	// cron per active mailbox (mail/dailyBrief.ts). Holds the ranked list of
+	// things that need the owner (pending replies + clarification questions + due
+	// follow-ups + deadlines/commitments), plus the AUDITABLE bundle of low-signal
+	// mail (newsletters / receipts / notifications) it folded away — a digest that
+	// silently hides something important is a trust-killer, so the exact bundled
+	// threads are always inspectable. Read-only in-app surface; never sends mail
+	// (an optional email delivery is a separate opt-in).
+	mailDailyBriefs: defineTable({
+		mailboxId: v.id('mailboxes'),
+		generatedAt: v.number(),
+		// Ranked "needs you" items, highest priority first (mail/priorityScore.ts).
+		items: v.array(
+			v.object({
+				kind: v.union(
+					v.literal('needs_reply'),
+					v.literal('clarification'),
+					v.literal('followup'),
+					v.literal('commitment')
+				),
+				threadId: v.id('mailThreads'),
+				priorityScore: v.number(),
+				title: v.string(),
+				subtitle: v.optional(v.string()),
+				// Absolute deadline (ms) when the item carries one.
+				dueAt: v.optional(v.number()),
+			})
+		),
+		// The auditable "what I bundled" view — every low-signal thread the brief
+		// folded into the digest, so nothing is hidden without a trail.
+		bundled: v.array(
+			v.object({
+				threadId: v.id('mailThreads'),
+				category: v.union(v.literal('newsletter'), v.literal('notification'), v.literal('receipt')),
+				fromAddress: v.string(),
+				subject: v.string(),
+			})
+		),
+		// Per-category bundled counts, for the digest header without re-counting.
+		bundledCounts: v.object({
+			newsletter: v.number(),
+			notification: v.number(),
+			receipt: v.number(),
+		}),
+		createdAt: v.number(),
+	}).index('by_mailbox_and_generated', ['mailboxId', 'generatedAt']),
 };

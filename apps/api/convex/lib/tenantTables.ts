@@ -127,6 +127,8 @@ export const TENANT_TABLES = [
 	'mailAppPasswords',
 	'mailContacts',
 	'mailSenderCategoryOverrides',
+	'mailCommitments',
+	'mailDailyBriefs',
 	'mailAuditLog',
 	'mailAuthFailures',
 	'mailboxMigrations',
