@@ -38,7 +38,7 @@ export const draftStreamTables = {
 		text: v.string(),
 		// Advisory: set true when the FINAL text tripped the outbound
 		// prompt-injection scan. Surfaced to the human; never auto-sends.
-		injectionFlagged: v.optional(v.boolean()),
+		isInjectionFlagged: v.optional(v.boolean()),
 		model: v.optional(v.string()),
 		tokenUsage: v.optional(tokenUsageValidator),
 		errorMessage: v.optional(v.string()),

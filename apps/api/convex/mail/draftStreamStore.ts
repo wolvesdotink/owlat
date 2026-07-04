@@ -68,7 +68,7 @@ export const beginDraftStream = internalMutation({
 		await ctx.db.patch(args.streamId, {
 			status: 'streaming',
 			text: '',
-			injectionFlagged: undefined,
+			isInjectionFlagged: undefined,
 			errorMessage: undefined,
 			updatedAt: Date.now(),
 		});
@@ -114,7 +114,7 @@ export const finalizeDraftStream = internalMutation({
 		await ctx.db.patch(args.streamId, {
 			text: args.text.slice(0, DRAFT_STREAM_MAX_CHARS),
 			status: args.status,
-			injectionFlagged: args.injectionFlagged,
+			isInjectionFlagged: args.injectionFlagged,
 			model: args.model,
 			tokenUsage: args.tokenUsage,
 			errorMessage: args.errorMessage,
@@ -135,7 +135,7 @@ export const getDraftStream = authedQuery({
 			_id: row._id,
 			status: row.status,
 			text: row.text,
-			injectionFlagged: row.injectionFlagged ?? false,
+			injectionFlagged: row.isInjectionFlagged ?? false,
 			errorMessage: row.errorMessage,
 		};
 	},
