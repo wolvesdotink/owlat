@@ -204,7 +204,7 @@ async function generateDraftOptions(
  * cheap: one fast-tier `generateObject` pass scoring the draft the agent just
  * wrote. `score` (0..1) is what the route step gates auto-send on.
  */
-const draftQualitySchema = z.object({
+export const draftQualitySchema = z.object({
 	score: z
 		.number()
 		.min(0)
