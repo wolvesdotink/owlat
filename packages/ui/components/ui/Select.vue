@@ -148,17 +148,17 @@ onUnmounted(() => {
 				<span :class="textClasses" class="truncate">{{ displayText }}</span>
 				<Icon
 					name="lucide:chevron-down"
-					class="w-4 h-4 text-text-tertiary shrink-0 transition-transform duration-150"
+					class="w-4 h-4 text-text-tertiary shrink-0 transition-transform duration-(--motion-moderate)"
 					:class="{ 'rotate-180': isOpen }"
 				/>
 			</button>
 
 			<!-- Dropdown menu -->
 			<Transition
-				enter-active-class="duration-150 ease-out"
+				enter-active-class="duration-(--motion-moderate) ease-spring"
 				enter-from-class="opacity-0 translate-y-1"
 				enter-to-class="opacity-100 translate-y-0"
-				leave-active-class="duration-100 ease-in"
+				leave-active-class="duration-(--motion-moderate-exit) ease-exit"
 				leave-from-class="opacity-100 translate-y-0"
 				leave-to-class="opacity-0 translate-y-1"
 			>

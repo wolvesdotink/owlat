@@ -58,19 +58,12 @@
 	--shadow-sm: var(--shadow-2);
 	--shadow-md: var(--shadow-4);
 	--shadow-lg: var(--shadow-6);
-	/* Retired decorative glow — kept as a valid zero shadow so consumers that
-	   concatenate ("var(--shadow-card), var(--shadow-glow)") stay valid CSS. */
-	--shadow-glow: 0 0 #0000;
 	--shadow-brand-hover: var(--shadow-3);
 	--shadow-card: var(--shadow-2);
 	--shadow-card-hover: var(--shadow-3);
 
 	/* === MOTION / LAYOUT === */
-	/* Legacy ease aliases — kept during migration; use --ease-spring/--ease-exit */
-	--ease-out-expo: var(--ease-spring);
-	--ease-smooth: var(--ease-spring);
 	--radius-card: 12px;
-	--owlat-shadow-tint: 196, 120, 90;
 
 	/* === FLUID FUNCTIONALISM: WEIGHT-BASED EMPHASIS ===
 	 * Overrides Tailwind's font-weight scale so every existing font-medium /

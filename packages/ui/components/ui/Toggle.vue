@@ -31,7 +31,7 @@ const iconSize = computed(() => (props.size === 'sm' ? 'w-4 h-4' : 'w-5 h-5'));
 		:aria-checked="modelValue"
 		:aria-label="label"
 		:disabled="disabled"
-		class="inline-flex items-center gap-2 p-2 rounded-lg bg-transparent text-text-secondary hover:text-text-primary hover:bg-bg-surface transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+		class="inline-flex items-center gap-2 p-2 rounded-lg bg-transparent text-text-secondary hover:text-text-primary hover:bg-bg-surface transition-colors duration-(--motion-fast) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 		:class="{ 'opacity-50 cursor-not-allowed': disabled }"
 		@click="handleToggle"
 	>
