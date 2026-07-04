@@ -4,14 +4,14 @@
  * All apps import this via index.css.
  */
 @theme {
-	/* === BACKGROUNDS (Warm darks) === */
-	--color-bg-deep: #070605;
-	--color-bg-base: #0c0b09;
-	--color-bg-elevated: #141210;
-	--color-bg-surface: #1c1916;
-	--color-bg-surface-hover: #24211d;
-	--color-bg-overlay: #2c2925;
-	--color-bg-soft: #181614;
+	/* === BACKGROUNDS (neutral surface ladder — see dark.css/light.css) === */
+	--color-bg-deep: #101010;
+	--color-bg-base: var(--surface-1);
+	--color-bg-elevated: var(--surface-2);
+	--color-bg-surface: var(--surface-3);
+	--color-bg-surface-hover: color-mix(in srgb, var(--surface-3) 94%, #fff);
+	--color-bg-overlay: var(--surface-5);
+	--color-bg-soft: var(--surface-2);
 
 	/* === PRIMARY: TERRACOTTA === */
 	--color-brand: #c4785a;
@@ -28,45 +28,48 @@
 	--color-accent-muted: #b8936a;
 
 	/* === TEXT === */
-	--color-text-primary: #f0ece6;
-	--color-text-secondary: #968e84;
-	--color-text-tertiary: #5c564e;
-	--color-text-disabled: #3a3632;
-	--color-text-inverse: #0c0b09;
+	--color-text-primary: #ededed;
+	--color-text-secondary: #a6a6a6;
+	--color-text-tertiary: #9a9a9a;
+	--color-text-disabled: #4a4a4a;
+	--color-text-inverse: #171717;
 
-	/* === BORDERS === */
-	--color-border-subtle: #1a1816;
-	--color-border-default: #262320;
-	--color-border-strong: #35312c;
+	/* === BORDERS (legacy consumers — quiet ring-equivalents) === */
+	--color-border-subtle: #232323;
+	--color-border-default: #2e2e2e;
+	--color-border-strong: #3d3d3d;
 
 	/* === SEMANTIC === */
 	--color-success: #7a9b6e;
-	--color-success-subtle: #141a12;
+	--color-success-subtle: #16211a;
 	--color-warning: #c9a55a;
-	--color-warning-subtle: #1a1710;
+	--color-warning-subtle: #221c12;
 	--color-error: #c46b5a;
-	--color-error-subtle: #1a1210;
+	--color-error-subtle: #241614;
 	--color-info: #6b8fa8;
-	--color-info-subtle: #101a20;
+	--color-info-subtle: #121b22;
 
 	/* === FONTS === */
 	--font-display: 'Instrument Serif', Georgia, serif;
 	--font-sans: 'Instrument Sans', -apple-system, BlinkMacSystemFont, sans-serif;
 	--font-mono: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
 
-	/* === SHADOWS === */
-	--shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.35);
-	--shadow-md: 0 4px 16px rgba(0, 0, 0, 0.25);
-	--shadow-lg: 0 12px 48px rgba(0, 0, 0, 0.3);
-	--shadow-glow: 0 0 80px rgba(196, 120, 90, 0.12);
-	--shadow-brand-hover: 0 4px 24px rgba(196, 120, 90, 0.2);
-	--shadow-card: 0 1px 3px rgba(0, 0, 0, 0.12), 0 8px 40px rgba(0, 0, 0, 0.15);
-	--shadow-card-hover: 0 16px 48px rgba(196, 120, 90, 0.08), 0 4px 12px rgba(196, 120, 90, 0.04);
+	/* === SHADOWS (elevation ladder; decorative glows retired) === */
+	--shadow-sm: var(--shadow-2);
+	--shadow-md: var(--shadow-4);
+	--shadow-lg: var(--shadow-6);
+	/* Retired decorative glow — kept as a valid zero shadow so consumers that
+	   concatenate ("var(--shadow-card), var(--shadow-glow)") stay valid CSS. */
+	--shadow-glow: 0 0 #0000;
+	--shadow-brand-hover: var(--shadow-3);
+	--shadow-card: var(--shadow-2);
+	--shadow-card-hover: var(--shadow-3);
 
 	/* === MOTION / LAYOUT === */
-	--ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
-	--ease-smooth: cubic-bezier(0.25, 0.1, 0.25, 1);
-	--radius-card: 16px;
+	/* Legacy ease aliases — kept during migration; use --ease-spring/--ease-exit */
+	--ease-out-expo: var(--ease-spring);
+	--ease-smooth: var(--ease-spring);
+	--radius-card: 12px;
 	--owlat-shadow-tint: 196, 120, 90;
 
 	/* === FLUID FUNCTIONALISM: WEIGHT-BASED EMPHASIS ===

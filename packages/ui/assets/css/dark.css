@@ -58,14 +58,16 @@
 	--scrollbar-thumb: rgba(255, 255, 255, 0.14);
 	--scrollbar-thumb-hover: rgba(255, 255, 255, 0.3);
 
-	--color-bg-deep: #070605;
-	--color-bg-base: #0c0b09;
-	--color-bg-elevated: #141210;
-	--color-bg-surface: #1c1916;
-	--color-bg-surface-hover: #24211d;
-	--color-bg-overlay: #2c2925;
-	--color-bg-soft: #181614;
+	/* Semantic tokens remapped onto the surface ladder */
+	--color-bg-deep: #101010; /* one step below surface-1 (page substrate wells) */
+	--color-bg-base: var(--surface-1);
+	--color-bg-elevated: var(--surface-2);
+	--color-bg-surface: var(--surface-3);
+	--color-bg-surface-hover: color-mix(in srgb, var(--surface-3) 94%, #fff); /* +6% hover rule */
+	--color-bg-overlay: var(--surface-5);
+	--color-bg-soft: var(--surface-2);
 
+	/* Brand stays terracotta — identity accent on a neutral field */
 	--color-brand: #c4785a;
 	--color-brand-hover: #d4896a;
 	--color-brand-muted: #a8674d;
@@ -76,31 +78,33 @@
 	--color-accent: #d4a574;
 	--color-accent-muted: #b8936a;
 
-	--color-text-primary: #f0ece6;
-	--color-text-secondary: #968e84;
-	/* WCAG AA: >=4.5:1 on bg-base/elevated/surface (worst case #1c1916 -> 4.53:1) */
-	--color-text-tertiary: #948a82; /* >=4.5:1 incl. bg-surface-hover (was 4.15:1 there) */
-	--color-text-disabled: #3a3632;
-	--color-text-inverse: #0c0b09;
+	--color-text-primary: #ededed;
+	--color-text-secondary: #a6a6a6;
+	/* WCAG AA: >=4.5:1 on surface-1..4 AND bg-surface-hover (+6% of surface-3
+	   = #323232 -> 4.55:1; the plan's #949494 was 4.22:1 there) */
+	--color-text-tertiary: #9a9a9a;
+	--color-text-disabled: #4a4a4a;
+	--color-text-inverse: #171717;
 
-	--color-border-subtle: #1a1816;
-	--color-border-default: #262320;
-	--color-border-strong: #35312c;
+	/* Legacy border consumers — quiet neutral ring-equivalents */
+	--color-border-subtle: #232323;
+	--color-border-default: #2e2e2e;
+	--color-border-strong: #3d3d3d;
 
 	--color-success: #7a9b6e;
-	--color-success-subtle: #141a12;
+	--color-success-subtle: #16211a;
 	--color-warning: #c9a55a;
-	--color-warning-subtle: #1a1710;
+	--color-warning-subtle: #221c12;
 	--color-error: #c46b5a;
-	--color-error-subtle: #1a1210;
+	--color-error-subtle: #241614;
 	--color-info: #6b8fa8;
-	--color-info-subtle: #101a20;
+	--color-info-subtle: #121b22;
 
-	--shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.35);
-	--shadow-md: 0 4px 16px rgba(0, 0, 0, 0.25);
-	--shadow-lg: 0 12px 48px rgba(0, 0, 0, 0.3);
+	--shadow-sm: var(--shadow-2);
+	--shadow-md: var(--shadow-4);
+	--shadow-lg: var(--shadow-6);
 
-	--owlat-code-bg: #0e0d0b;
-	--owlat-bg-soft: #141210;
-	--owlat-divider: #1e1b18;
+	--owlat-code-bg: #131313;
+	--owlat-bg-soft: var(--surface-2);
+	--owlat-divider: #262626;
 }
