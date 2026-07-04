@@ -17,7 +17,7 @@
 
 import { createOpenAI } from '@ai-sdk/openai';
 import { getOptional } from './env';
-import { isTrivialUserText } from './llm/complexity';
+import { isTrivialUserText, isTrivialClassifiedMessage, type ClassificationSignals } from './llm/complexity';
 import { CURRENT_EMBEDDING_MODEL, EMBEDDING_DIMENSIONS } from './constants';
 
 /**
@@ -98,6 +98,21 @@ export function getLLMProviderForUserText(task: LLMTask, userText: string) {
 	const downgrade =
 		getOptional('LLM_COMPLEXITY_ROUTING') === '1' && taskTier(task) === 'capable' && isTrivialUserText(userText);
 	return getClient()(modelIdForTier(downgrade ? 'fast' : taskTier(task)));
+}
+
+/**
+ * Resolve the model for the inbound agent's `draft` step, downgrading the
+ * capable tier to fast when the message is clearly trivial AND complexity
+ * routing is enabled (`LLM_COMPLEXITY_ROUTING=1`, default off). Unlike
+ * {@link getLLMProviderForUserText}, triviality is judged from the TRUSTED,
+ * sanitized classifier signals only — never the attacker-controlled email body —
+ * so a crafted "thanks!"-looking inbound can't force a cheaper, lower-quality
+ * draft. Ambiguous / important / low-confidence messages keep the capable tier,
+ * and when routing is off this is exactly today's single-tier behaviour.
+ */
+export function getLLMProviderForClassifiedDraft(signals: ClassificationSignals) {
+	const downgrade = getOptional('LLM_COMPLEXITY_ROUTING') === '1' && isTrivialClassifiedMessage(signals);
+	return getClient()(modelIdForTier(downgrade ? 'fast' : 'capable'));
 }
 
 // Known embedding models and their native output width. Used to fail fast when
