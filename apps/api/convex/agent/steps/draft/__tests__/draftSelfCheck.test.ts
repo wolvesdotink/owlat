@@ -28,6 +28,7 @@ vi.mock('../../../../lib/llm/dispatch', () => ({
 }));
 vi.mock('../../../../lib/llmProvider', () => ({
 	getLLMProvider: mocks.getLLMProvider,
+	getLLMProviderForClassifiedDraft: mocks.getLLMProvider,
 }));
 
 import { draftStep, buildSelfCheckPrompt, type DraftInput } from '../index';

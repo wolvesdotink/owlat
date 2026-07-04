@@ -25,6 +25,7 @@ vi.mock('../../../../lib/llm/dispatch', () => ({
 }));
 vi.mock('../../../../lib/llmProvider', () => ({
 	getLLMProvider: () => ({}) as never,
+	getLLMProviderForClassifiedDraft: () => ({}) as never,
 }));
 
 // Import AFTER mocks are registered.

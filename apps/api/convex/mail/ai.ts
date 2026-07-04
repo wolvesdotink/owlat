@@ -12,7 +12,7 @@ import { v } from 'convex/values';
 import { authedAction } from '../lib/authedFunctions';
 import { api, internal } from '../_generated/api';
 import type { Doc } from '../_generated/dataModel';
-import { getLLMProvider } from '../lib/llmProvider';
+import { getLLMProvider, getLLMProviderForUserText } from '../lib/llmProvider';
 import { runLlmText } from '../lib/llm/dispatch';
 import { recordLlmSpend } from '../analytics/llmUsage';
 import { stripHtml } from './rfc822';
@@ -474,7 +474,12 @@ export const rewriteSelection = authedAction({
 			voiceGuidance,
 		});
 		const { text, tokenUsage, modelUsed } = await runLlmText({
-			model: getLLMProvider('draft'),
+			// The selection is the caller's OWN draft text (trusted — the
+			// authenticated user typed it), so it is a safe complexity signal:
+			// a clearly-trivial selection may downgrade to the fast tier when
+			// complexity routing is enabled. FAIL-SOFT: routing off / any
+			// non-trivial selection keeps the capable tier (today's behaviour).
+			model: getLLMProviderForUserText('draft', args.selection),
 			system,
 			prompt,
 			temperature: 0.4,

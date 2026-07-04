@@ -285,6 +285,7 @@ import type * as lib_listing from "../lib/listing.js";
 import type * as lib_llm_complexity from "../lib/llm/complexity.js";
 import type * as lib_llm_dispatch from "../lib/llm/dispatch.js";
 import type * as lib_llm_pricing from "../lib/llm/pricing.js";
+import type * as lib_llm_promptCache from "../lib/llm/promptCache.js";
 import type * as lib_llmProvider from "../lib/llmProvider.js";
 import type * as lib_mailHost from "../lib/mailHost.js";
 import type * as lib_mailSnooze from "../lib/mailSnooze.js";
@@ -825,6 +826,7 @@ declare const fullApi: ApiFromModules<{
   "lib/llm/complexity": typeof lib_llm_complexity;
   "lib/llm/dispatch": typeof lib_llm_dispatch;
   "lib/llm/pricing": typeof lib_llm_pricing;
+  "lib/llm/promptCache": typeof lib_llm_promptCache;
   "lib/llmProvider": typeof lib_llmProvider;
   "lib/mailHost": typeof lib_mailHost;
   "lib/mailSnooze": typeof lib_mailSnooze;
