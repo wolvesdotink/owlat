@@ -23,6 +23,7 @@ import { internal } from '../_generated/api';
 import { throwForbidden, throwInvalidInput, throwNotFound } from '../_utils/errors';
 import { loadOwnedMailbox } from './permissions';
 import { NEEDS_REPLY_CONTEXT_MESSAGES } from './needsReply';
+import { captureStandingAnswers } from '../inbox/clarificationMemory';
 
 /**
  * Answer the clarification questions on a Reply Queue thread and kick off the
@@ -79,6 +80,32 @@ export const answerClarification = authedMutation({
 			},
 			updatedAt: now,
 		});
+
+		// ANSWER-MEMORY: promote the owner's answers to durable standing facts,
+		// scoped to the thread's sender contact, so a later matching thread fills
+		// the slot silently instead of re-asking. Fail-soft: a memory-write failure
+		// never blocks the starter draft below.
+		try {
+			const senderMessage = await ctx.db.get(flag.messageId);
+			const fromAddress = senderMessage?.fromAddress;
+			if (fromAddress) {
+				const capture = [] as { slotType: string; questionText: string; value: string }[];
+				for (const q of questions) {
+					const value = answerByQuestion.get(q.id);
+					if (value === undefined) continue;
+					capture.push({ slotType: q.slotType, questionText: q.text, value });
+				}
+				if (capture.length > 0) {
+					await captureStandingAnswers(ctx, {
+						fromAddress,
+						source: 'reply_queue',
+						answers: capture,
+					});
+				}
+			}
+		} catch {
+			// Memory is best-effort — never block the draft schedule below.
+		}
 
 		// Off the scheduler — the answer is already committed above.
 		await ctx.scheduler.runAfter(0, internal.mail.needsReplyClassify.draftWithAnswers, {

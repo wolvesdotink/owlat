@@ -229,6 +229,8 @@ import type * as inbox_askEagerness from "../inbox/askEagerness.js";
 import type * as inbox_askEagernessSettings from "../inbox/askEagernessSettings.js";
 import type * as inbox_clarification from "../inbox/clarification.js";
 import type * as inbox_clarificationLog from "../inbox/clarificationLog.js";
+import type * as inbox_clarificationMemory from "../inbox/clarificationMemory.js";
+import type * as inbox_clarificationMemoryMatch from "../inbox/clarificationMemoryMatch.js";
 import type * as inbox_clarificationSlots from "../inbox/clarificationSlots.js";
 import type * as inbox_clarificationValidators from "../inbox/clarificationValidators.js";
 import type * as inbox_messages from "../inbox/messages.js";
@@ -775,6 +777,8 @@ declare const fullApi: ApiFromModules<{
   "inbox/askEagernessSettings": typeof inbox_askEagernessSettings;
   "inbox/clarification": typeof inbox_clarification;
   "inbox/clarificationLog": typeof inbox_clarificationLog;
+  "inbox/clarificationMemory": typeof inbox_clarificationMemory;
+  "inbox/clarificationMemoryMatch": typeof inbox_clarificationMemoryMatch;
   "inbox/clarificationSlots": typeof inbox_clarificationSlots;
   "inbox/clarificationValidators": typeof inbox_clarificationValidators;
   "inbox/messages": typeof inbox_messages;
