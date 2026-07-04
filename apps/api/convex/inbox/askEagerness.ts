@@ -95,7 +95,12 @@ export function resolveEagernessPolicy(
 		case 'off':
 			return { enabled: false, maxQuestions: 0, highStakesOnly: false, forceCheck: false };
 		case 'cautious':
-			return { enabled: true, maxQuestions: MAX_QUESTIONS, highStakesOnly: false, forceCheck: true };
+			return {
+				enabled: true,
+				maxQuestions: MAX_QUESTIONS,
+				highStakesOnly: false,
+				forceCheck: true,
+			};
 		case 'balanced':
 			return { enabled: true, maxQuestions: 2, highStakesOnly: false, forceCheck: categoryForce };
 		case 'confident':

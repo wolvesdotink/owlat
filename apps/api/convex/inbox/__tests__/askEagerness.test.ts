@@ -31,7 +31,7 @@ describe('resolveEagernessPolicy', () => {
 	const routine = { categoryCautious: false };
 	const highStakesCategory = { categoryCautious: true };
 
-	it('no setting reproduces today\'s behaviour (full cap, no filter, category-driven check)', () => {
+	it("no setting reproduces today's behaviour (full cap, no filter, category-driven check)", () => {
 		expect(resolveEagernessPolicy(undefined, routine)).toEqual({
 			enabled: true,
 			maxQuestions: MAX_QUESTIONS,
