@@ -22,6 +22,7 @@
 
 import { v } from 'convex/values';
 import { internalMutation, type MutationCtx } from '../_generated/server';
+import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { publicQuery } from '../lib/authedFunctions';
 import { isMessageSnoozed } from '../lib/mailSnooze';
@@ -103,8 +104,13 @@ const MAX_ITEMS = 100;
 const MAX_BUNDLED = 200;
 
 /**
- * Rebuild the Daily Brief for every active mailbox. Bounded scans; fail-soft
- * per mailbox (one bad mailbox can't wedge the rest). Reads already-persisted
+ * Rebuild the Daily Brief for every active mailbox. This dispatcher only reads
+ * the active-mailbox list and fans out one `buildForMailbox` mutation per
+ * mailbox via the scheduler — each brief is then built in its OWN transaction,
+ * which (a) bounds every transaction to a single mailbox's ~≤700 reads, well
+ * under Convex's per-transaction read cap, and (b) makes the fail-soft promise
+ * real: a throw while building one mailbox's brief fails only that scheduled
+ * mutation, never the dispatcher or the other mailboxes. Reads already-persisted
  * signals only — no LLM spend, no mail mutations.
  */
 export const buildDailyBriefs = internalMutation({
@@ -115,16 +121,31 @@ export const buildDailyBriefs = internalMutation({
 			.withIndex('by_status', (q) => q.eq('status', 'active'))
 			.take(MAILBOX_SCAN_LIMIT);
 
-		let built = 0;
+		let scheduled = 0;
 		for (const mailbox of mailboxes) {
-			await buildForMailbox(ctx, mailbox._id);
-			built += 1;
+			await ctx.scheduler.runAfter(0, internal.mail.dailyBrief.buildForMailbox, {
+				mailboxId: mailbox._id,
+			});
+			scheduled += 1;
 		}
-		return { built };
+		return { scheduled };
 	},
 });
 
-async function buildForMailbox(ctx: MutationCtx, mailboxId: Id<'mailboxes'>): Promise<void> {
+/**
+ * Build (and persist) the Daily Brief for a single mailbox. Scheduled once per
+ * active mailbox by `buildDailyBriefs`, so this whole handler is one bounded
+ * transaction: ≤ THREAD_SCAN_LIMIT thread reads (+ one message read per pending
+ * reply) + ≤ MAX_ITEMS commitment reads + one insert.
+ */
+export const buildForMailbox = internalMutation({
+	args: { mailboxId: v.id('mailboxes') },
+	handler: async (ctx, args) => {
+		await buildBriefForMailbox(ctx, args.mailboxId);
+	},
+});
+
+async function buildBriefForMailbox(ctx: MutationCtx, mailboxId: Id<'mailboxes'>): Promise<void> {
 	const now = Date.now();
 
 	const threads = await ctx.db
@@ -148,7 +169,7 @@ async function buildForMailbox(ctx: MutationCtx, mailboxId: Id<'mailboxes'>): Pr
 					threadId: thread._id,
 					priorityScore: nr.priorityScore ?? urgencyFallbackScore(nr.urgency),
 					title: thread.latestSubject || '(no subject)',
-					subtitle: isClarify ? 'Needs your input' : nr.askSummary ?? message.fromAddress,
+					subtitle: isClarify ? 'Needs your input' : (nr.askSummary ?? message.fromAddress),
 					dueAt: undefined,
 				});
 			}

@@ -158,7 +158,10 @@ async function seedSentMessage(
 			flagDeleted: false,
 			customFlags: [],
 			labelIds: [],
-			outbound: { state: 'sent', recipients: [{ idx: 0, address: to, mtaJobId: 'j0', state: 'sent', sentAt: now }] },
+			outbound: {
+				state: 'sent',
+				recipients: [{ idx: 0, address: to, mtaJobId: 'j0', state: 'sent', sentAt: now }],
+			},
 			receivedAt: now,
 			internalDate: now,
 			createdAt: now,
@@ -442,8 +445,11 @@ describe('mail.dailyBrief.buildDailyBriefs', () => {
 			})
 		);
 
+		// The dispatcher only fans out one bounded `buildForMailbox` mutation per
+		// active mailbox; drain it so the brief is actually built.
 		const res = await t.mutation(internal.mail.dailyBrief.buildDailyBriefs, {});
-		expect(res.built).toBe(1);
+		expect(res.scheduled).toBe(1);
+		await t.finishInProgressScheduledFunctions();
 
 		const brief = await t.query(api.mail.dailyBrief.getLatestBrief, {
 			mailboxId: seeded.mailboxId,
