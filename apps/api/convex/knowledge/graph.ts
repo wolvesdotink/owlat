@@ -718,7 +718,15 @@ export const listPolicies = publicQuery({
 				.withIndex('by_entry_type', (q) => q.eq('entryType', entryType))
 				.order('desc')
 				.take(limit);
-			for (const row of rows) out.push(row);
+			// Only human-curated canonical answers belong in the FAQ surface. The
+			// extraction pipeline can emit `policy`/`faq` entries typed by the LLM
+			// (sourceType 'agent_extracted', never authoritative); those must not
+			// intermix with hand-authored answers here.
+			for (const row of rows) {
+				if (row.sourceType === 'curated' && row.isAuthoritative === true) {
+					out.push(row);
+				}
+			}
 		}
 		out.sort((a, b) => b.createdAt - a.createdAt);
 		return out.slice(0, limit);
