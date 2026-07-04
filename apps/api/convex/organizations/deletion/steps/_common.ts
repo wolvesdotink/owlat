@@ -37,6 +37,7 @@ export type OrganizationDeletionTable =
 	| 'mailFolders'
 	| 'mailLabels'
 	| 'mailVoiceProfiles'
+	| 'mailContactStyleOverrides'
 	| 'mailFilters'
 	| 'mailSignatures'
 	| 'mailSnippets'
