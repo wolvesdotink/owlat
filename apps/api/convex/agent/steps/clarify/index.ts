@@ -69,6 +69,7 @@ import {
 	type EagernessMode,
 	type EagernessPolicy,
 } from '../../../inbox/askEagerness';
+import { detectAttachmentClarification } from './attachment';
 import type { AgentStepModule, TokenUsage } from '../types';
 
 // The slot taxonomy + untrusted-data prompt module is SHARED with the personal
@@ -114,6 +115,7 @@ export type ClarifyOutput = {
 		| 'insufficient_samples'
 		| 'questions_emitted'
 		| 'memory_filled'
+		| 'attachment_ambiguous'
 		| 'fail_soft';
 };
 
@@ -234,6 +236,24 @@ export const clarifyStep: AgentStepModule<'clarify', ClarifyInput, ClarifyOutput
 			// step's assertSafeToAutoSend), they just aren't asked a question.
 			if (!policy.enabled) {
 				return { output: { questions: [], memoryAnswers: [], resolution: 'eagerness_off' } };
+			}
+
+			// Deterministic attachment-ambiguity ask (model-free), BEFORE the
+			// coverage short-circuit and the slot/divergence LLM passes. When the
+			// inbound asks for a document and the contact-scoped file match is
+			// genuinely ambiguous, park for the owner to pick the right file instead
+			// of the agent guessing — the one thing we must never do on attachments.
+			// A single confident match yields no question here (the draft step
+			// surfaces it as a one-tap suggestion). FAIL-SOFT: any failure → [].
+			const attachmentQuestions = await detectAttachmentClarification(ctx, input);
+			if (attachmentQuestions.length > 0) {
+				return {
+					output: {
+						questions: attachmentQuestions,
+						memoryAnswers: [],
+						resolution: 'attachment_ambiguous',
+					},
+				};
 			}
 
 			// Cheap coverage short-circuit — skip the whole (expensive) pass when

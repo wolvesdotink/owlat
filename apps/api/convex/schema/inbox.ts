@@ -10,6 +10,7 @@ import {
 	tokenUsageValidator,
 } from '../lib/convexValidators';
 import { pendingClarificationValidator } from '../inbox/clarificationValidators';
+import { attachmentSuggestionsValidator } from '../inbox/attachmentValidators';
 
 /**
  * Inbox / Agent pipeline tables — AI-assisted shared inbox.
@@ -111,6 +112,12 @@ export const inboxTables = {
 		// alternatives. Absent on the normal single-draft path and whenever the
 		// options generation fails (fail-soft to the single draft).
 		draftOptions: v.optional(v.array(v.string())),
+		// Advisory attachment suggestion the `draft` step computed when the inbound
+		// asks for a document ("can you send X" / "see attached") and a
+		// contact-scoped semanticFiles match exists. Rendered as a one-tap
+		// "attach <file>?" chip in the review gate + composer. NEVER consumed by the
+		// autonomous send path — human-confirmed only. Absent when nothing matched.
+		attachmentSuggestions: v.optional(attachmentSuggestionsValidator),
 		// Overall confidence score for routing decisions — the CLASSIFIER's
 		// certainty about category/sentiment. NOT a measure of draft correctness.
 		confidenceScore: v.optional(v.number()),
