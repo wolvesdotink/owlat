@@ -31,25 +31,9 @@
 								fill="none"
 								xmlns="http://www.w3.org/2000/svg"
 							>
-								<circle
-									cx="14"
-									cy="14"
-									r="13"
-									stroke="currentColor"
-									stroke-width="1.5"
-								/>
-								<circle
-									cx="10"
-									cy="12"
-									r="2.5"
-									fill="currentColor"
-								/>
-								<circle
-									cx="18"
-									cy="12"
-									r="2.5"
-									fill="currentColor"
-								/>
+								<circle cx="14" cy="14" r="13" stroke="currentColor" stroke-width="1.5" />
+								<circle cx="10" cy="12" r="2.5" fill="currentColor" />
+								<circle cx="18" cy="12" r="2.5" fill="currentColor" />
 								<path
 									d="M10 18c1.5 1.5 6.5 1.5 8 0"
 									stroke="currentColor"
@@ -60,16 +44,11 @@
 							<span class="font-display text-lg">Owlat Docs</span>
 						</NuxtLink>
 						<button
-							class="flex items-center justify-center w-8 h-8 rounded-lg text-text-tertiary hover:text-text-secondary hover:bg-bg-surface transition-colors duration-200"
+							class="flex items-center justify-center w-8 h-8 rounded-lg text-text-tertiary hover:text-text-secondary hover:bg-bg-surface transition-colors duration-(--motion-fast)"
 							aria-label="Close sidebar"
 							@click="emit('update:open', false)"
 						>
-							<svg
-								class="w-5 h-5"
-								fill="none"
-								stroke="currentColor"
-								viewBox="0 0 24 24"
-							>
+							<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 								<path
 									stroke-linecap="round"
 									stroke-linejoin="round"
@@ -86,7 +65,7 @@
 							v-for="link in mobileNavLinks"
 							:key="link.to"
 							:to="link.to"
-							class="block px-2 py-2 text-sm rounded-lg transition-colors duration-200 text-text-secondary hover:text-text-primary hover:bg-bg-surface"
+							class="block px-2 py-2 text-sm rounded-lg transition-colors duration-(--motion-fast) text-text-secondary hover:text-text-primary hover:bg-bg-surface"
 							@click="emit('update:open', false)"
 						>
 							{{ link.label }}
@@ -105,47 +84,47 @@
 
 <script setup lang="ts">
 const props = defineProps<{
-	open: boolean
-}>()
+	open: boolean;
+}>();
 
 const emit = defineEmits<{
-	'update:open': [value: boolean]
-}>()
+	'update:open': [value: boolean];
+}>();
 
 const mobileNavLinks = [
 	{ label: 'Guide', to: '/guide/getting-started' },
 	{ label: 'API', to: '/api' },
 	{ label: 'Developer', to: '/developer' },
-]
+];
 
 // Close sidebar on route change
-const route = useRoute()
+const route = useRoute();
 watch(
 	() => route.path,
 	() => {
-		emit('update:open', false)
+		emit('update:open', false);
 	}
-)
+);
 
 // Lock body scroll when open
 watch(
 	() => props.open,
 	(isOpen) => {
-		if (import.meta.server) return
-		document.body.style.overflow = isOpen ? 'hidden' : ''
+		if (import.meta.server) return;
+		document.body.style.overflow = isOpen ? 'hidden' : '';
 	}
-)
+);
 </script>
 
 <style scoped>
 .sidebar-mobile-enter-active,
 .sidebar-mobile-leave-active {
-	transition: opacity 0.25s var(--ease-out-expo);
+	transition: opacity var(--motion-moderate) var(--ease-spring);
 }
 
 .sidebar-mobile-enter-active > div:last-child,
 .sidebar-mobile-leave-active > div:last-child {
-	transition: transform 0.3s var(--ease-out-expo);
+	transition: transform var(--motion-moderate) var(--ease-spring);
 }
 
 .sidebar-mobile-enter-from,

@@ -1,9 +1,5 @@
 <template>
-	<nav
-		v-if="crumbs.length > 1"
-		class="max-w-3xl mx-auto mb-6"
-		aria-label="Breadcrumb"
-	>
+	<nav v-if="crumbs.length > 1" class="max-w-3xl mx-auto mb-6" aria-label="Breadcrumb">
 		<ol class="flex items-center gap-1.5 text-sm">
 			<li v-for="(crumb, index) in crumbs" :key="crumb.path">
 				<div class="flex items-center gap-1.5">
@@ -27,15 +23,11 @@
 					<NuxtLink
 						v-if="index < crumbs.length - 1"
 						:to="crumb.path"
-						class="text-text-tertiary hover:text-text-secondary transition-colors duration-200"
+						class="text-text-tertiary hover:text-text-secondary transition-colors duration-(--motion-fast)"
 					>
 						{{ crumb.label }}
 					</NuxtLink>
-					<span
-						v-else
-						class="text-text-secondary"
-						aria-current="page"
-					>
+					<span v-else class="text-text-secondary" aria-current="page">
 						{{ crumb.label }}
 					</span>
 				</div>
@@ -46,33 +38,31 @@
 
 <script setup lang="ts">
 interface Crumb {
-	label: string
-	path: string
+	label: string;
+	path: string;
 }
 
-const route = useRoute()
+const route = useRoute();
 
 const crumbs = computed<Crumb[]>(() => {
-	const segments = route.path.split('/').filter(Boolean)
-	if (segments.length === 0) return []
+	const segments = route.path.split('/').filter(Boolean);
+	if (segments.length === 0) return [];
 
-	const items: Crumb[] = [{ label: 'Docs', path: '/' }]
+	const items: Crumb[] = [{ label: 'Docs', path: '/' }];
 
-	let currentPath = ''
+	let currentPath = '';
 	for (const segment of segments) {
-		currentPath += `/${segment}`
+		currentPath += `/${segment}`;
 		items.push({
 			label: formatSegment(segment),
 			path: currentPath,
-		})
+		});
 	}
 
-	return items
-})
+	return items;
+});
 
 function formatSegment(segment: string): string {
-	return segment
-		.replace(/-/g, ' ')
-		.replace(/\b\w/g, (char) => char.toUpperCase())
+	return segment.replace(/-/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
 }
 </script>
