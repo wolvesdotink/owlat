@@ -22,6 +22,7 @@ import type * as agent_shadowSimilarity from "../agent/shadowSimilarity.js";
 import type * as agent_steps_classify_index from "../agent/steps/classify/index.js";
 import type * as agent_steps_clarify_attachment from "../agent/steps/clarify/attachment.js";
 import type * as agent_steps_clarify_index from "../agent/steps/clarify/index.js";
+import type * as agent_steps_context_retrieval_currentMessage from "../agent/steps/context_retrieval/currentMessage.js";
 import type * as agent_steps_context_retrieval_emergency from "../agent/steps/context_retrieval/emergency.js";
 import type * as agent_steps_context_retrieval_index from "../agent/steps/context_retrieval/index.js";
 import type * as agent_steps_context_retrieval_quarantine from "../agent/steps/context_retrieval/quarantine.js";
@@ -582,6 +583,7 @@ declare const fullApi: ApiFromModules<{
   "agent/steps/classify/index": typeof agent_steps_classify_index;
   "agent/steps/clarify/attachment": typeof agent_steps_clarify_attachment;
   "agent/steps/clarify/index": typeof agent_steps_clarify_index;
+  "agent/steps/context_retrieval/currentMessage": typeof agent_steps_context_retrieval_currentMessage;
   "agent/steps/context_retrieval/emergency": typeof agent_steps_context_retrieval_emergency;
   "agent/steps/context_retrieval/index": typeof agent_steps_context_retrieval_index;
   "agent/steps/context_retrieval/quarantine": typeof agent_steps_context_retrieval_quarantine;

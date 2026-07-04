@@ -7,45 +7,22 @@
  */
 
 import { internal } from '../../../_generated/api';
-import { stripRemoteImages } from '@owlat/shared/postboxTrackers';
 import type { Id } from '../../../_generated/dataModel';
 import type { AgentStepModule } from '../types';
-import { stripHiddenContent } from '../security_scan/patterns';
 import {
 	EMERGENCY_BUDGET,
 	activityContentSnippet,
 	assembleEmergencyContext,
 	truncateOneLine,
 } from './emergency';
+import { buildCurrentMessageSection, inboundBodyForContext } from './currentMessage';
 
 // Re-export the pure emergency helpers so existing importers (and tests) that
 // reference them via the step module keep working after the domain-sibling split.
 export { activityContentSnippet, truncateOneLine } from './emergency';
-
-/**
- * The message body the LLM steps should read, with remote images / tracking
- * pixels neutralized. The agent reads EVERY inbound automatically, so an
- * HTML-only message (no text/plain part) whose body reached the model verbatim
- * would carry live remote-image URLs — merely assembling them into context is a
- * privacy hazard and a remote-resource-resolution vector. Prefer the plain-text
- * part (no images to strip); otherwise strip remote images from the HTML before
- * it becomes context. Fails soft (see `stripRemoteImages`): a strip error leaves
- * the HTML as-is, matching prior behaviour, and never blocks retrieval.
- */
-export function inboundBodyForContext(message: {
-	textBody?: string | null;
-	htmlBody?: string | null;
-}): string | undefined {
-	// Strip hidden content (HTML comments / display:none / zero-width smuggling)
-	// before the body becomes model context, so a hidden instruction never
-	// reaches the draft even when the message scored below the quarantine
-	// threshold. `stripHiddenContent` is a no-op on already-clean text (the
-	// plain-text part passes through verbatim).
-	if (message.textBody != null) return stripHiddenContent(message.textBody);
-	if (message.htmlBody != null)
-		return stripHiddenContent(stripRemoteImages(message.htmlBody).html);
-	return undefined;
-}
+// Re-export the current-message helpers so existing importers/tests that
+// reference them via the step module keep working after the domain-sibling split.
+export { inboundBodyForContext, buildCurrentMessageSection } from './currentMessage';
 
 /**
  * Token budget for context (approximate, based on ~4 chars per token).
@@ -382,33 +359,9 @@ export const contextRetrievalStep: AgentStepModule<
 
 		// 4. Current message — the sender's body rendered as a QUARANTINED
 		// STRUCTURED extraction (facts + the sender's actual questions) rather than
-		// raw prose, so the draft/clarify steps never consume the sender's free
-		// text verbatim in an instruction-adjacent slot. A no-tool quarantined LLM
-		// pass produces the structured form; FAIL-SOFT: extraction unavailable
-		// (empty body, model error, or a throwing/absent seam in tests) falls back
-		// to the hidden-stripped raw body — exactly today's behaviour. Wrapped in
-		// try/catch so a guard hiccup never blocks retrieval.
-		let currentMessageBody = inboundBody ?? '(no body)';
-		if (inboundBody != null && inboundBody.trim().length > 0) {
-			try {
-				const structured = await ctx.runAction(
-					internal.agent.steps.context_retrieval.quarantine.extract,
-					{ text: inboundBody },
-				);
-				if (typeof structured === 'string' && structured.trim().length > 0) {
-					currentMessageBody = structured;
-				}
-			} catch {
-				// Fail soft — keep the hidden-stripped raw body.
-			}
-		}
-		const currentMessageSection =
-			'[CURRENT MESSAGE]\n' +
-			`From: ${message.from}\n` +
-			`To: ${message.to}\n` +
-			`Subject: ${message.subject}\n` +
-			`Date: ${new Date(message.receivedAt).toISOString()}\n` +
-			`Body:\n${currentMessageBody}`;
+		// raw prose (see ./currentMessage). FAIL-SOFT to the hidden-stripped raw
+		// body; never blocks retrieval.
+		const currentMessageSection = await buildCurrentMessageSection(ctx, message, inboundBody);
 		contextParts.push(currentMessageSection);
 
 		// ── Compile and compact ──
