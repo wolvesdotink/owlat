@@ -46,12 +46,10 @@ const { isDragOver, handleDragOver, handleDragLeave, handleDrop } = useDropZone(
 const MAX_ATTACHMENTS = ATTACHMENT_COMPOSE_LIMITS.maxCount;
 const MAX_TOTAL_SIZE = ATTACHMENT_COMPOSE_LIMITS.maxTotalBytes;
 
-const totalSize = computed(() =>
-	props.attachments.reduce((sum, a) => sum + a.fileSize, 0)
-);
+const totalSize = computed(() => props.attachments.reduce((sum, a) => sum + a.fileSize, 0));
 
-const canAddMore = computed(() =>
-	props.attachments.length < MAX_ATTACHMENTS && totalSize.value < MAX_TOTAL_SIZE
+const canAddMore = computed(
+	() => props.attachments.length < MAX_ATTACHMENTS && totalSize.value < MAX_TOTAL_SIZE
 );
 
 const sizePercent = computed(() =>
@@ -65,8 +63,14 @@ function generateAttachmentId() {
 function getFileIcon(contentType: string) {
 	if (contentType.startsWith('image/')) return 'lucide:image';
 	if (contentType === 'application/pdf') return 'lucide:file-text';
-	if (contentType.includes('spreadsheet') || contentType.includes('csv') || contentType.includes('excel')) return 'lucide:table';
-	if (contentType.includes('zip') || contentType.includes('compressed')) return 'lucide:file-archive';
+	if (
+		contentType.includes('spreadsheet') ||
+		contentType.includes('csv') ||
+		contentType.includes('excel')
+	)
+		return 'lucide:table';
+	if (contentType.includes('zip') || contentType.includes('compressed'))
+		return 'lucide:file-archive';
 	if (contentType.includes('word') || contentType.includes('document')) return 'lucide:file-text';
 	return 'lucide:file';
 }
@@ -74,7 +78,12 @@ function getFileIcon(contentType: string) {
 function getFileExtColor(contentType: string) {
 	if (contentType === 'application/pdf') return 'text-red-500 bg-red-500/10';
 	if (contentType.startsWith('image/')) return 'text-violet-500 bg-violet-500/10';
-	if (contentType.includes('spreadsheet') || contentType.includes('csv') || contentType.includes('excel')) return 'text-emerald-500 bg-emerald-500/10';
+	if (
+		contentType.includes('spreadsheet') ||
+		contentType.includes('csv') ||
+		contentType.includes('excel')
+	)
+		return 'text-emerald-500 bg-emerald-500/10';
 	if (contentType.includes('zip')) return 'text-amber-500 bg-amber-500/10';
 	return 'text-text-secondary bg-bg-surface';
 }
@@ -99,14 +108,17 @@ async function handleFileUpload(files: FileList | File[]) {
 
 		for (const file of filesToUpload) {
 			if (currentTotal + file.size > MAX_TOTAL_SIZE) {
-				showToast(`Total size would exceed ${formatCompactFileSize(MAX_TOTAL_SIZE)} limit`, 'error');
+				showToast(
+					`Total size would exceed ${formatCompactFileSize(MAX_TOTAL_SIZE)} limit`,
+					'error'
+				);
 				break;
 			}
 
 			const upload = await uploadFileToStorage(
 				file,
 				() => generateUploadUrl({}),
-				file.type || 'application/octet-stream',
+				file.type || 'application/octet-stream'
 			);
 			if (!upload.ok) {
 				if (upload.reason === 'upload-failed') showToast(`Failed to upload ${file.name}`, 'error');
@@ -185,7 +197,10 @@ function handleMediaPickerSelect(result: {
 }
 
 function removeAttachment(id: string) {
-	emit('update:attachments', props.attachments.filter((a) => a.id !== id));
+	emit(
+		'update:attachments',
+		props.attachments.filter((a) => a.id !== id)
+	);
 }
 
 function handleFileInput(event: Event) {
@@ -195,19 +210,20 @@ function handleFileInput(event: Event) {
 		input.value = '';
 	}
 }
-
 </script>
 
 <template>
 	<div>
 		<!-- Drop zone — always visible -->
 		<div
-			class="relative rounded-xl border-2 border-dashed transition-all duration-150 cursor-pointer"
-			:class="isDragOver
-				? 'border-brand bg-brand/5'
-				: attachments.length > 0
-					? 'border-border-subtle bg-bg-base'
-					: 'border-border-subtle hover:border-border-strong hover:bg-bg-surface/30'"
+			class="relative rounded-xl border-2 border-dashed transition-all duration-(--motion-moderate) cursor-pointer"
+			:class="
+				isDragOver
+					? 'border-brand bg-brand/5'
+					: attachments.length > 0
+						? 'border-border-subtle bg-bg-base'
+						: 'border-border-subtle hover:border-border-strong hover:bg-bg-surface/30'
+			"
 			@dragover="handleDragOver"
 			@dragleave="handleDragLeave"
 			@drop="handleDrop"
@@ -227,7 +243,9 @@ function handleFileInput(event: Event) {
 					</div>
 					<div class="flex-1 min-w-0">
 						<p class="text-[13px] text-text-primary truncate leading-tight">{{ att.filename }}</p>
-						<p class="text-[11px] text-text-tertiary leading-tight">{{ formatCompactFileSize(att.fileSize) }}</p>
+						<p class="text-[11px] text-text-tertiary leading-tight">
+							{{ formatCompactFileSize(att.fileSize) }}
+						</p>
 					</div>
 					<button
 						class="shrink-0 p-1 rounded-md text-text-tertiary opacity-0 group-hover:opacity-100 hover:text-error hover:bg-error/10 transition-all"
@@ -260,15 +278,15 @@ function handleFileInput(event: Event) {
 				:class="attachments.length > 0 ? 'pb-3 pt-1' : 'py-5'"
 				@click="fileInputRef?.click()"
 			>
-				<Icon
-					v-if="isUploading"
-					name="lucide:loader-2"
-					class="w-4 h-4 text-brand animate-spin"
-				/>
+				<Icon v-if="isUploading" name="lucide:loader-2" class="w-4 h-4 text-brand animate-spin" />
 				<template v-else>
 					<Icon name="lucide:paperclip" class="w-4 h-4 text-text-tertiary" />
 					<span class="text-sm text-text-secondary">
-						{{ attachments.length > 0 ? 'Drop more files or click to add' : 'Drop files here to attach, or click to browse' }}
+						{{
+							attachments.length > 0
+								? 'Drop more files or click to add'
+								: 'Drop files here to attach, or click to browse'
+						}}
 					</span>
 				</template>
 				<span class="text-text-tertiary mx-1">|</span>
@@ -281,23 +299,14 @@ function handleFileInput(event: Event) {
 			</div>
 
 			<!-- Limit reached -->
-			<div
-				v-if="!canAddMore && attachments.length > 0"
-				class="px-4 pb-3 pt-1 text-center"
-			>
+			<div v-if="!canAddMore && attachments.length > 0" class="px-4 pb-3 pt-1 text-center">
 				<span class="text-[11px] text-text-tertiary">
 					{{ attachments.length >= MAX_ATTACHMENTS ? 'Max files reached' : 'Size limit reached' }}
 				</span>
 			</div>
 		</div>
 
-		<input
-			ref="fileInputRef"
-			type="file"
-			class="hidden"
-			multiple
-			@change="handleFileInput"
-		/>
+		<input ref="fileInputRef" type="file" class="hidden" multiple @change="handleFileInput" />
 
 		<!-- Media Picker Modal -->
 		<MediaPickerModal

@@ -1,5 +1,10 @@
 <script setup lang="ts">
-import { EmailBuilder, UnsavedChangesDialog, useFocusMode, type Variable } from '@owlat/email-builder';
+import {
+	EmailBuilder,
+	UnsavedChangesDialog,
+	useFocusMode,
+	type Variable,
+} from '@owlat/email-builder';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { StoredAttachment } from '~/components/AttachmentPanel.vue';
@@ -48,7 +53,9 @@ interface DataVariableInfo {
 
 const dataVariables = ref<DataVariableInfo[]>([]);
 const dataVariableKeyRegex = /^[a-zA-Z][a-zA-Z0-9_]*$/;
-const buildDataVariablesSchema = (vars: DataVariableInfo[]): Record<string, DataVariableInfo['type']> =>
+const buildDataVariablesSchema = (
+	vars: DataVariableInfo[]
+): Record<string, DataVariableInfo['type']> =>
 	Object.fromEntries(vars.map((variable) => [variable.key, variable.type]));
 
 // Initialize data variables from email schema
@@ -58,7 +65,9 @@ watch(
 		if (newEmail && newEmail.dataVariablesSchema) {
 			try {
 				const rawSchema = newEmail.dataVariablesSchema;
-				const schema = (typeof rawSchema === 'string' ? JSON.parse(rawSchema) : rawSchema) as Record<string, string>;
+				const schema = (
+					typeof rawSchema === 'string' ? JSON.parse(rawSchema) : rawSchema
+				) as Record<string, string>;
 				dataVariables.value = Object.entries(schema).map(([key, type]) => ({
 					key,
 					type: type as DataVariableInfo['type'],
@@ -330,11 +339,13 @@ const handleCreateVariable = async (variable: { key: string; type?: string }) =>
 					/>
 					{{ isPublished ? 'Published' : isPendingReview ? 'Awaiting review' : 'Draft' }}
 				</span>
-				<ShareLinksPopover
-					:transactional-email-id="emailId"
-					:has-unsaved-changes="hasChanges"
-				/>
-				<UiButton variant="outline" size="sm" title="Manage translations" @click="handleTranslations">
+				<ShareLinksPopover :transactional-email-id="emailId" :has-unsaved-changes="hasChanges" />
+				<UiButton
+					variant="outline"
+					size="sm"
+					title="Manage translations"
+					@click="handleTranslations"
+				>
 					<template #iconLeft>
 						<Icon name="lucide:languages" class="w-4 h-4" />
 					</template>
@@ -369,10 +380,7 @@ const handleCreateVariable = async (variable: { key: string; type?: string }) =>
 					@click="handleTogglePublish"
 				>
 					<template v-if="!isPublishing" #iconLeft>
-						<Icon
-							:name="isPublished ? 'lucide:rotate-ccw' : 'lucide:rocket'"
-							class="w-4 h-4"
-						/>
+						<Icon :name="isPublished ? 'lucide:rotate-ccw' : 'lucide:rocket'" class="w-4 h-4" />
 					</template>
 					{{ isPublished ? 'Unpublish' : 'Publish' }}
 				</UiButton>
@@ -389,33 +397,26 @@ const handleCreateVariable = async (variable: { key: string; type?: string }) =>
 					<div>
 						<p class="text-sm font-medium text-text-primary">Awaiting review</p>
 						<p class="text-sm text-text-secondary mt-1">
-							This email was flagged by our content scanner and is pending review by a
-							platform administrator. It is not published and the send API will reject
-							requests for it until it has been approved. Edit the content and publish
-							again to re-run the scan.
+							This email was flagged by our content scanner and is pending review by a platform
+							administrator. It is not published and the send API will reject requests for it until
+							it has been approved. Edit the content and publish again to re-run the scan.
 						</p>
 					</div>
 				</div>
-				<div
-					class="mt-3 rounded-lg shadow-[0_1px_4px_rgba(0,0,0,0.08)] bg-bg-elevated px-10 py-5"
-				>
-					<AttachmentPanel
-						:attachments="attachments"
-						@update:attachments="attachments = $event"
-					/>
+				<div class="mt-3 rounded-lg shadow-surface-1 bg-bg-elevated px-10 py-5">
+					<AttachmentPanel :attachments="attachments" @update:attachments="attachments = $event" />
 				</div>
 				<!-- Unsubscribe footer — when on, sends of this email append a
 				     Manage Preferences / Unsubscribe footer (built per-recipient at
 				     send time). Off by default: most transactional mail is exempt. -->
 				<div
-					class="mt-3 rounded-lg shadow-[0_1px_4px_rgba(0,0,0,0.08)] bg-bg-elevated px-10 py-5 flex items-center justify-between gap-4"
+					class="mt-3 rounded-lg shadow-surface-1 bg-bg-elevated px-10 py-5 flex items-center justify-between gap-4"
 				>
 					<div>
 						<p class="text-base font-medium text-text-primary">Show unsubscribe link</p>
 						<p class="text-sm text-text-tertiary mt-0.5">
-							Append a Manage Preferences and Unsubscribe footer to every send of this
-							email. Leave off for receipts, password resets, and other mail recipients
-							can't opt out of.
+							Append a Manage Preferences and Unsubscribe footer to every send of this email. Leave
+							off for receipts, password resets, and other mail recipients can't opt out of.
 						</p>
 					</div>
 					<UiSwitch

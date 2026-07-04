@@ -13,6 +13,9 @@
 	--surface-7: #ffffff;
 	--surface-8: #ffffff;
 
+	/* Mix target for the +6% hover / +10% selected surface rule */
+	--surface-tint: #000;
+
 	--shadow-color: rgb(0 0 0 / 0.06);
 	--shadow-1: 0 0 0 1px var(--shadow-color);
 	--shadow-2: 0 0 0 1px var(--shadow-color), 0 1px 1px -0.5px var(--shadow-color);

@@ -80,7 +80,9 @@ const handleConfirmSend = async () => {
 };
 
 // IP Warmup state
-const { data: warmingOverview } = useOrganizationQuery(api.analytics.reputationQueries.getSendingOverview);
+const { data: warmingOverview } = useOrganizationQuery(
+	api.analytics.reputationQueries.getSendingOverview
+);
 
 // Warming-aware "this campaign will take ~N days" estimate. The projection
 // algorithm lives once on the backend (getCampaignSendEstimate); we just feed
@@ -115,7 +117,8 @@ const sendEstimate = computed(() => {
 						<button
 							class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
 							@click="handleBack"
-						 aria-label="Back">
+							aria-label="Back"
+						>
 							<Icon name="lucide:arrow-left" class="w-5 h-5" />
 						</button>
 						<div>
@@ -165,7 +168,13 @@ const sendEstimate = computed(() => {
 
 		<!-- Not Found State -->
 		<div v-else-if="!campaignData" class="max-w-4xl mx-auto px-6 py-16 text-center">
-			<UiIconBox icon="lucide:alert-circle" size="xl" variant="surface" rounded="full" class="mb-4 mx-auto" />
+			<UiIconBox
+				icon="lucide:alert-circle"
+				size="xl"
+				variant="surface"
+				rounded="full"
+				class="mb-4 mx-auto"
+			/>
 			<p class="text-text-primary font-medium">Campaign not found</p>
 			<p class="text-sm text-text-secondary mt-1">
 				The campaign you're looking for doesn't exist or you don't have access to it.
@@ -174,8 +183,17 @@ const sendEstimate = computed(() => {
 		</div>
 
 		<!-- Cannot Edit State -->
-		<div v-else-if="!canEdit && campaignData.status !== 'pending_review'" class="max-w-4xl mx-auto px-6 py-16 text-center">
-			<UiIconBox icon="lucide:alert-circle" size="xl" variant="surface" rounded="full" class="mb-4 mx-auto" />
+		<div
+			v-else-if="!canEdit && campaignData.status !== 'pending_review'"
+			class="max-w-4xl mx-auto px-6 py-16 text-center"
+		>
+			<UiIconBox
+				icon="lucide:alert-circle"
+				size="xl"
+				variant="surface"
+				rounded="full"
+				class="mb-4 mx-auto"
+			/>
 			<p class="text-text-primary font-medium">Cannot edit this campaign</p>
 			<p class="text-sm text-text-secondary mt-1">
 				This campaign is {{ campaignData.status }} and cannot be edited.
@@ -185,13 +203,15 @@ const sendEstimate = computed(() => {
 
 		<!-- Pending Review State -->
 		<div v-else-if="campaignData.status === 'pending_review'" class="max-w-4xl mx-auto px-6 py-8">
-			<div class="p-4 bg-warning/10 border border-warning/20 rounded-lg flex items-start gap-3 mb-6">
+			<div
+				class="p-4 bg-warning/10 border border-warning/20 rounded-lg flex items-start gap-3 mb-6"
+			>
 				<Icon name="lucide:shield-alert" class="w-5 h-5 text-warning shrink-0 mt-0.5" />
 				<div>
 					<p class="text-sm font-medium text-text-primary">Campaign Under Review</p>
 					<p class="text-sm text-text-secondary mt-1">
-						This campaign has been flagged by our content scanner and is pending review by a platform administrator.
-						You will be able to send it once it has been approved.
+						This campaign has been flagged by our content scanner and is pending review by a
+						platform administrator. You will be able to send it once it has been approved.
 					</p>
 				</div>
 			</div>
@@ -222,7 +242,8 @@ const sendEstimate = computed(() => {
 					<div>
 						<p class="text-sm font-medium text-text-primary">Content Blocked</p>
 						<p class="text-sm text-text-secondary mt-1">
-							Your previous send attempt was blocked by our content scanner. Please update your content and try again.
+							Your previous send attempt was blocked by our content scanner. Please update your
+							content and try again.
 						</p>
 						<p class="text-xs text-text-tertiary mt-1">
 							{{ campaignData.contentBlockReason }}
@@ -487,14 +508,13 @@ const sendEstimate = computed(() => {
 										</p>
 										<p class="text-warning/80 mt-0.5">
 											{{ audienceCount.total - audienceCount.eligible }} of
-											{{ audienceCount.total }} contacts in this topic are not eligible (no
-											email address, unsubscribed/suppressed, or double opt-in not completed)
-											and will be excluded.
+											{{ audienceCount.total }} contacts in this topic are not eligible (no email
+											address, unsubscribed/suppressed, or double opt-in not completed) and will be
+											excluded.
 										</p>
 									</div>
 								</div>
 							</div>
-
 						</div>
 					</div>
 				</div>
@@ -548,7 +568,8 @@ const sendEstimate = computed(() => {
 							</p>
 
 							<p class="mt-3 text-sm text-text-tertiary">
-								This campaign is linked to one marketing email. Edit the linked email in the builder.
+								This campaign is linked to one marketing email. Edit the linked email in the
+								builder.
 							</p>
 						</div>
 
@@ -595,7 +616,8 @@ const sendEstimate = computed(() => {
 						<div>
 							<h3 class="text-lg font-semibold text-text-primary">Public Archive</h3>
 							<p class="text-sm text-text-secondary mt-1">
-								Add a "View in browser" link at the top of sent emails and create a public archive page.
+								Add a "View in browser" link at the top of sent emails and create a public archive
+								page.
 							</p>
 						</div>
 						<UiSwitch v-model="archiveEnabled" :disabled="isScheduled" label="Public archive" />
@@ -700,16 +722,23 @@ const sendEstimate = computed(() => {
 						<UiIconBox icon="lucide:flame" size="lg" variant="brand" rounded="xl" />
 						<div>
 							<h2 class="text-lg font-semibold text-text-primary">IP Warmup Status</h2>
-							<p class="text-sm text-text-secondary">Your sending capacity based on IP reputation warming</p>
+							<p class="text-sm text-text-secondary">
+								Your sending capacity based on IP reputation warming
+							</p>
 						</div>
 					</div>
 
 					<!-- Graduated State -->
-					<div v-if="warmingOverview.warming.phase === 'graduated'" class="flex items-center gap-3 p-4 bg-success/10 border border-success/20 rounded-lg">
+					<div
+						v-if="warmingOverview.warming.phase === 'graduated'"
+						class="flex items-center gap-3 p-4 bg-success/10 border border-success/20 rounded-lg"
+					>
 						<Icon name="lucide:check-circle" class="w-5 h-5 text-success shrink-0" />
 						<div>
 							<p class="text-sm font-medium text-success">Fully Warmed</p>
-							<p class="text-sm text-text-secondary">Your IPs are fully warmed. Campaigns will send at full speed.</p>
+							<p class="text-sm text-text-secondary">
+								Your IPs are fully warmed. Campaigns will send at full speed.
+							</p>
 						</div>
 					</div>
 
@@ -725,8 +754,10 @@ const sendEstimate = computed(() => {
 							</div>
 							<div class="w-full h-2.5 bg-bg-surface rounded-full overflow-hidden">
 								<div
-									class="h-full bg-brand rounded-full transition-all duration-500"
-									:style="{ width: `${Math.min(100, Math.round(((warmingOverview.warming.ips?.[0]?.currentDay ?? 1) / 30) * 100))}%` }"
+									class="h-full bg-brand rounded-full transition-all duration-(--motion-slow)"
+									:style="{
+										width: `${Math.min(100, Math.round(((warmingOverview.warming.ips?.[0]?.currentDay ?? 1) / 30) * 100))}%`,
+									}"
 								/>
 							</div>
 						</div>
@@ -735,20 +766,31 @@ const sendEstimate = computed(() => {
 						<div class="flex items-center justify-between p-3 bg-bg-surface rounded-lg">
 							<p class="text-sm text-text-secondary">Today's remaining capacity</p>
 							<p class="text-sm font-medium text-text-primary">
-								{{ Math.max(0, warmingOverview.warming.totalDailyCap - warmingOverview.warming.totalSentToday).toLocaleString() }}
+								{{
+									Math.max(
+										0,
+										warmingOverview.warming.totalDailyCap - warmingOverview.warming.totalSentToday
+									).toLocaleString()
+								}}
 								of {{ warmingOverview.warming.totalDailyCap.toLocaleString() }} emails
 							</p>
 						</div>
 
 						<!-- Send Estimate -->
-						<div v-if="sendEstimate && audienceCount && sendEstimate.days > 1" class="flex items-start gap-3 p-3 bg-warning/10 border border-warning/20 rounded-lg">
+						<div
+							v-if="sendEstimate && audienceCount && sendEstimate.days > 1"
+							class="flex items-start gap-3 p-3 bg-warning/10 border border-warning/20 rounded-lg"
+						>
 							<Icon name="lucide:clock" class="w-5 h-5 text-warning shrink-0 mt-0.5" />
 							<div>
 								<p class="text-sm font-medium text-text-primary">
-									Estimated send time: ~{{ sendEstimate.days }} day{{ sendEstimate.days === 1 ? '' : 's' }}
+									Estimated send time: ~{{ sendEstimate.days }} day{{
+										sendEstimate.days === 1 ? '' : 's'
+									}}
 								</p>
 								<p class="text-sm text-text-secondary mt-0.5">
-									This campaign has {{ (audienceCount.eligible ?? 0).toLocaleString() }} recipients. {{ sendEstimate.message }}
+									This campaign has {{ (audienceCount.eligible ?? 0).toLocaleString() }} recipients.
+									{{ sendEstimate.message }}
 								</p>
 							</div>
 						</div>
@@ -782,7 +824,11 @@ const sendEstimate = computed(() => {
 						</button>
 
 						<!-- Send Now button -->
-						<button class="btn btn-primary gap-2" :disabled="isSaving" @click="showSendConfirm = true">
+						<button
+							class="btn btn-primary gap-2"
+							:disabled="isSaving"
+							@click="showSendConfirm = true"
+						>
 							<Icon v-if="isSaving" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
 							<Icon v-else name="lucide:send" class="w-4 h-4" />
 							Send Now

@@ -239,7 +239,8 @@ const handleBack = () => {
 				<button
 					class="p-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-bg-surface transition-colors"
 					@click="handleBack"
-				 aria-label="Back">
+					aria-label="Back"
+				>
 					<Icon name="lucide:arrow-left" class="w-5 h-5" />
 				</button>
 
@@ -474,7 +475,7 @@ const handleBack = () => {
 <style scoped>
 .fade-enter-active,
 .fade-leave-active {
-	transition: opacity 0.15s ease;
+	transition: opacity var(--motion-fast) var(--ease-spring);
 }
 
 .fade-enter-from,

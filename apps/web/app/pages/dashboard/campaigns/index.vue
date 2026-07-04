@@ -17,10 +17,11 @@ const { data: statusCounts, isLoading: countsLoading } = useOrganizationQuery(
 );
 
 // Fetch active campaigns (scheduled, sending)
-const { data: activeCampaigns, isLoading: activeLoading, error: activeError } = useOrganizationQuery(
-	api.campaigns.analytics.getActiveByOrganization,
-	{ limit: 5 }
-);
+const {
+	data: activeCampaigns,
+	isLoading: activeLoading,
+	error: activeError,
+} = useOrganizationQuery(api.campaigns.analytics.getActiveByOrganization, { limit: 5 });
 
 // Fetch send volume by day
 const { data: sendVolume, isLoading: volumeLoading } = useOrganizationQuery(
@@ -28,10 +29,11 @@ const { data: sendVolume, isLoading: volumeLoading } = useOrganizationQuery(
 );
 
 // Fetch top performing campaigns
-const { data: topCampaigns, isLoading: topLoading, error: topError } = useOrganizationQuery(
-	api.campaigns.analytics.getTopPerformingByOrganization,
-	{ limit: 5 }
-);
+const {
+	data: topCampaigns,
+	isLoading: topLoading,
+	error: topError,
+} = useOrganizationQuery(api.campaigns.analytics.getTopPerformingByOrganization, { limit: 5 });
 
 // Stats for display
 const stats = computed(() => [
@@ -162,12 +164,18 @@ const handleEditCampaign = (campaignId: Id<'campaigns'>) =>
 							<p v-else class="text-3xl font-semibold text-text-primary">
 								{{ stat.value }}
 							</p>
-							<Icon v-if="countsLoading" name="lucide:loader-2" class="w-4 h-4 animate-spin text-text-tertiary" />
+							<Icon
+								v-if="countsLoading"
+								name="lucide:loader-2"
+								class="w-4 h-4 animate-spin text-text-tertiary"
+							/>
 						</div>
 					</div>
 					<UiIconBox
 						:icon="stat.icon"
-						:variant="stat.color === 'success' ? 'success' : stat.color === 'brand' ? 'brand' : 'surface'"
+						:variant="
+							stat.color === 'success' ? 'success' : stat.color === 'brand' ? 'brand' : 'surface'
+						"
 					/>
 				</div>
 			</UiCard>
@@ -185,7 +193,10 @@ const handleEditCampaign = (campaignId: Id<'campaigns'>) =>
 				>
 					<UiCard hoverable clickable>
 						<div class="flex items-center gap-4">
-							<UiIconBox :icon="action.icon" class="group-hover:bg-brand group-hover:text-text-inverse transition-colors" />
+							<UiIconBox
+								:icon="action.icon"
+								class="group-hover:bg-brand group-hover:text-text-inverse transition-colors"
+							/>
 							<div>
 								<p class="font-medium text-text-primary group-hover:text-brand transition-colors">
 									{{ action.label }}
@@ -245,42 +256,42 @@ const handleEditCampaign = (campaignId: Id<'campaigns'>) =>
 
 						<!-- Campaigns list -->
 						<div class="divide-y divide-border-subtle">
-						<div
-							v-for="campaign in activeCampaigns"
-							:key="campaign._id"
-							class="flex items-center gap-4 py-3 first:pt-0 last:pb-0 cursor-pointer hover:bg-bg-surface -mx-4 px-4 transition-colors"
-							@click="handleEditCampaign(campaign._id)"
-						>
-							<div class="flex-1 min-w-0">
-								<p class="text-sm text-text-primary truncate font-medium">
-									{{ campaign.name }}
-								</p>
-								<div class="flex items-center gap-2 mt-0.5">
-									<span
-										:class="[
-											'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium',
-											getStatusBadge(campaign.status).color,
-										]"
-									>
-										<Icon
-											:name="getStatusBadge(campaign.status).icon"
-											:class="['w-3 h-3', campaign.status === 'sending' ? 'animate-spin' : '']"
-										/>
-										{{ getStatusBadge(campaign.status).label }}
-									</span>
-									<span class="text-xs text-text-tertiary">
-										{{
-											campaign.status === 'scheduled'
-												? formatCompactRelativeTime(campaign.scheduledAt!)
-												: 'Sending now'
-										}}
-									</span>
+							<div
+								v-for="campaign in activeCampaigns"
+								:key="campaign._id"
+								class="flex items-center gap-4 py-3 first:pt-0 last:pb-0 cursor-pointer hover:bg-bg-surface -mx-4 px-4 transition-colors"
+								@click="handleEditCampaign(campaign._id)"
+							>
+								<div class="flex-1 min-w-0">
+									<p class="text-sm text-text-primary truncate font-medium">
+										{{ campaign.name }}
+									</p>
+									<div class="flex items-center gap-2 mt-0.5">
+										<span
+											:class="[
+												'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium',
+												getStatusBadge(campaign.status).color,
+											]"
+										>
+											<Icon
+												:name="getStatusBadge(campaign.status).icon"
+												:class="['w-3 h-3', campaign.status === 'sending' ? 'animate-spin' : '']"
+											/>
+											{{ getStatusBadge(campaign.status).label }}
+										</span>
+										<span class="text-xs text-text-tertiary">
+											{{
+												campaign.status === 'scheduled'
+													? formatCompactRelativeTime(campaign.scheduledAt!)
+													: 'Sending now'
+											}}
+										</span>
+									</div>
 								</div>
+								<span class="text-xs text-text-tertiary">
+									{{ formatDateTime(campaign.scheduledAt) }}
+								</span>
 							</div>
-							<span class="text-xs text-text-tertiary">
-								{{ formatDateTime(campaign.scheduledAt) }}
-							</span>
-						</div>
 						</div>
 					</UiQueryBoundary>
 				</UiCard>
@@ -314,7 +325,7 @@ const handleEditCampaign = (campaignId: Id<'campaigns'>) =>
 							>
 								<div class="w-full flex-1 flex items-end">
 									<div
-										class="w-full bg-brand rounded-t transition-all duration-300 hover:bg-brand-hover"
+										class="w-full bg-brand rounded-t transition-all duration-(--motion-moderate) hover:bg-brand-hover"
 										:style="{
 											height:
 												day.count > 0
@@ -372,66 +383,68 @@ const handleEditCampaign = (campaignId: Id<'campaigns'>) =>
 
 					<!-- Table -->
 					<div class="overflow-x-auto -mx-4 -mb-4 mt-0">
-					<table class="w-full">
-						<thead>
-							<tr class="border-b border-border-subtle">
-								<th class="text-left px-4 py-3 text-sm font-medium text-text-secondary">
-									Campaign
-								</th>
-								<th class="text-right px-4 py-3 text-sm font-medium text-text-secondary">
-									Delivered
-								</th>
-								<th class="text-right px-4 py-3 text-sm font-medium text-text-secondary">Opened</th>
-								<th class="text-right px-4 py-3 text-sm font-medium text-text-secondary">
-									Open Rate
-								</th>
-								<th class="text-right px-4 py-3 text-sm font-medium text-text-secondary" />
-							</tr>
-						</thead>
-						<tbody>
-							<tr
-								v-for="campaign in topCampaigns"
-								:key="campaign._id"
-								class="border-b border-border-subtle last:border-b-0 hover:bg-bg-surface transition-colors"
-							>
-								<td class="px-4 py-3">
-									<div class="min-w-0">
-										<p class="text-sm text-text-primary font-medium truncate">
-											{{ campaign.name }}
-										</p>
-										<p v-if="campaign.sentAt" class="text-xs text-text-tertiary mt-0.5">
-											Sent {{ formatCompactRelativeTime(campaign.sentAt) }}
-										</p>
-									</div>
-								</td>
-								<td class="px-4 py-3 text-right">
-									<span class="text-sm text-text-secondary">
-										{{ (campaign.statsDelivered || 0).toLocaleString() }}
-									</span>
-								</td>
-								<td class="px-4 py-3 text-right">
-									<span class="text-sm text-text-secondary">
-										{{ (campaign.statsOpened || 0).toLocaleString() }}
-									</span>
-								</td>
-								<td class="px-4 py-3 text-right">
-									<span class="text-sm font-medium text-brand">
-										{{ campaign.openRate.toFixed(1) }}%
-									</span>
-								</td>
-								<td class="px-4 py-3 text-right">
-									<button
-										class="p-2 rounded-lg text-text-tertiary hover:text-brand hover:bg-brand/10 transition-colors"
-										title="View Report"
-										@click="handleViewReport(campaign._id)"
-									>
-										<Icon name="lucide:bar-chart-3" class="w-4 h-4" />
-									</button>
-								</td>
-							</tr>
-						</tbody>
-					</table>
-				</div>
+						<table class="w-full">
+							<thead>
+								<tr class="border-b border-border-subtle">
+									<th class="text-left px-4 py-3 text-sm font-medium text-text-secondary">
+										Campaign
+									</th>
+									<th class="text-right px-4 py-3 text-sm font-medium text-text-secondary">
+										Delivered
+									</th>
+									<th class="text-right px-4 py-3 text-sm font-medium text-text-secondary">
+										Opened
+									</th>
+									<th class="text-right px-4 py-3 text-sm font-medium text-text-secondary">
+										Open Rate
+									</th>
+									<th class="text-right px-4 py-3 text-sm font-medium text-text-secondary" />
+								</tr>
+							</thead>
+							<tbody>
+								<tr
+									v-for="campaign in topCampaigns"
+									:key="campaign._id"
+									class="border-b border-border-subtle last:border-b-0 hover:bg-bg-surface transition-colors"
+								>
+									<td class="px-4 py-3">
+										<div class="min-w-0">
+											<p class="text-sm text-text-primary font-medium truncate">
+												{{ campaign.name }}
+											</p>
+											<p v-if="campaign.sentAt" class="text-xs text-text-tertiary mt-0.5">
+												Sent {{ formatCompactRelativeTime(campaign.sentAt) }}
+											</p>
+										</div>
+									</td>
+									<td class="px-4 py-3 text-right">
+										<span class="text-sm text-text-secondary">
+											{{ (campaign.statsDelivered || 0).toLocaleString() }}
+										</span>
+									</td>
+									<td class="px-4 py-3 text-right">
+										<span class="text-sm text-text-secondary">
+											{{ (campaign.statsOpened || 0).toLocaleString() }}
+										</span>
+									</td>
+									<td class="px-4 py-3 text-right">
+										<span class="text-sm font-medium text-brand">
+											{{ campaign.openRate.toFixed(1) }}%
+										</span>
+									</td>
+									<td class="px-4 py-3 text-right">
+										<button
+											class="p-2 rounded-lg text-text-tertiary hover:text-brand hover:bg-brand/10 transition-colors"
+											title="View Report"
+											@click="handleViewReport(campaign._id)"
+										>
+											<Icon name="lucide:bar-chart-3" class="w-4 h-4" />
+										</button>
+									</td>
+								</tr>
+							</tbody>
+						</table>
+					</div>
 				</UiQueryBoundary>
 			</UiCard>
 		</div>

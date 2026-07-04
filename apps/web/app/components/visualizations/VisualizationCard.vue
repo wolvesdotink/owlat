@@ -62,7 +62,6 @@ const handleRemove = async () => {
 	showConfirmRemove.value = false;
 	emit('removed');
 };
-
 </script>
 
 <template>
@@ -102,9 +101,11 @@ const handleRemove = async () => {
 				</button>
 				<button
 					class="p-1.5 rounded transition-colors"
-					:class="pinned
-						? 'text-brand bg-brand-subtle hover:bg-brand-subtle/80'
-						: 'text-text-tertiary hover:text-text-primary hover:bg-bg-surface'"
+					:class="
+						pinned
+							? 'text-brand bg-brand-subtle hover:bg-brand-subtle/80'
+							: 'text-text-tertiary hover:text-text-primary hover:bg-bg-surface'
+					"
 					:title="pinned ? 'Unpin from dashboard' : 'Pin to dashboard'"
 					:disabled="isTogglingPin"
 					@click="handleTogglePin"
@@ -127,10 +128,10 @@ const handleRemove = async () => {
 		<!-- Remove confirmation -->
 		<Teleport to="body">
 			<Transition
-				enter-active-class="duration-200 ease-out"
+				enter-active-class="duration-(--motion-moderate) ease-spring"
 				enter-from-class="opacity-0"
 				enter-to-class="opacity-100"
-				leave-active-class="duration-150 ease-in"
+				leave-active-class="duration-(--motion-moderate-exit) ease-exit"
 				leave-from-class="opacity-100"
 				leave-to-class="opacity-0"
 			>
@@ -139,7 +140,9 @@ const handleRemove = async () => {
 					class="fixed inset-0 z-50 flex items-center justify-center p-4"
 				>
 					<div class="absolute inset-0 bg-black/60" @click="showConfirmRemove = false" />
-					<div class="relative bg-bg-elevated border border-border-subtle rounded-2xl p-6 w-full max-w-sm">
+					<div
+						class="relative bg-bg-elevated border border-border-subtle rounded-2xl p-6 w-full max-w-sm"
+					>
 						<h3 class="text-lg font-semibold text-text-primary mb-2">Remove Visualization</h3>
 						<p class="text-sm text-text-secondary mb-6">
 							This will permanently delete this visualization. This action cannot be undone.

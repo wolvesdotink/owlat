@@ -291,7 +291,11 @@ const {
 										:disabled="!webhook.isActive || isSendingTest"
 										@click.stop="handleSendTest(webhook._id)"
 									>
-										<Icon v-if="isSendingTest" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
+										<Icon
+											v-if="isSendingTest"
+											name="lucide:loader-2"
+											class="w-4 h-4 animate-spin"
+										/>
 										<Icon v-else name="lucide:send" class="w-4 h-4" />
 										Send Test
 									</button>
@@ -408,7 +412,7 @@ const {
 /* Expand transition */
 .expand-enter-active,
 .expand-leave-active {
-	transition: all 0.2s ease;
+	transition: all var(--motion-moderate) var(--ease-spring);
 	overflow: hidden;
 }
 

@@ -14,6 +14,10 @@
 	--surface-7: #414141;
 	--surface-8: #484848;
 
+	/* Mix target for the +6% hover / +10% selected surface rule:
+	   color-mix(in srgb, var(--surface-N) 94%, var(--surface-tint)) */
+	--surface-tint: #fff;
+
 	--dm-hi-base: rgba(255, 255, 255, 0.01);
 	--dm-hi-mid: rgba(255, 255, 255, 0.02);
 	--dm-hi-high: rgba(255, 255, 255, 0.04);

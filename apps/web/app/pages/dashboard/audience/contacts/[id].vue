@@ -17,9 +17,8 @@ const contactId = computed(() => route.params['id'] as Id<'contacts'>);
 // GDPR data-subject access export: lazily fetch the full personal-data bundle
 // on demand and download it as JSON. The query is skipped until requested.
 const exportRequested = ref(false);
-const { data: exportData } = useConvexQuery(
-	api.contacts.dataExport.exportContactData,
-	() => (exportRequested.value ? { contactId: contactId.value } : 'skip'),
+const { data: exportData } = useConvexQuery(api.contacts.dataExport.exportContactData, () =>
+	exportRequested.value ? { contactId: contactId.value } : 'skip'
 );
 watch(exportData, (data) => {
 	if (!data || !exportRequested.value || !import.meta.client) return;
@@ -184,7 +183,13 @@ const { showToast } = useToast();
 			v-else-if="!contactLoading && !contact"
 			class="flex flex-col items-center justify-center py-16 text-center"
 		>
-			<UiIconBox icon="lucide:alert-circle" size="xl" variant="surface" rounded="full" class="mb-4" />
+			<UiIconBox
+				icon="lucide:alert-circle"
+				size="xl"
+				variant="surface"
+				rounded="full"
+				class="mb-4"
+			/>
 			<p class="text-text-secondary font-medium">Contact not found</p>
 			<p class="text-sm text-text-tertiary mt-1">
 				This contact may have been deleted or you don't have access.
@@ -247,11 +252,7 @@ const { showToast } = useToast();
 							title="Re-send the double-opt-in confirmation email to this pending contact"
 							@click="handleResendDoi"
 						>
-							<Icon
-								v-if="isResendingDoi"
-								name="lucide:loader-2"
-								class="w-4 h-4 animate-spin"
-							/>
+							<Icon v-if="isResendingDoi" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
 							<Icon v-else name="lucide:mail-check" class="w-4 h-4" />
 							{{ isResendingDoi ? 'Sending…' : 'Resend confirmation' }}
 						</button>
@@ -271,7 +272,8 @@ const { showToast } = useToast();
 						<button
 							class="btn btn-ghost text-error hover:bg-error-subtle"
 							@click="showDeleteConfirm = true"
-						 aria-label="Delete">
+							aria-label="Delete"
+						>
 							<Icon name="lucide:trash-2" class="w-4 h-4" />
 						</button>
 					</template>
@@ -413,7 +415,13 @@ const { showToast } = useToast();
 								<input
 									v-else
 									v-model="propertyForm[property._id]"
-									:type="property.type === 'number' ? 'number' : property.type === 'date' ? 'date' : 'text'"
+									:type="
+										property.type === 'number'
+											? 'number'
+											: property.type === 'date'
+												? 'date'
+												: 'text'
+									"
 									class="input"
 									:placeholder="property.label"
 								/>
@@ -464,7 +472,13 @@ const { showToast } = useToast();
 							v-else-if="accumulatedActivities.length === 0"
 							class="flex flex-col items-center justify-center py-8 text-center"
 						>
-							<UiIconBox icon="lucide:clock" size="lg" variant="surface" rounded="full" class="mb-3" />
+							<UiIconBox
+								icon="lucide:clock"
+								size="lg"
+								variant="surface"
+								rounded="full"
+								class="mb-3"
+							/>
 							<p class="text-text-secondary text-sm">No activity yet</p>
 							<p class="text-text-tertiary text-sm mt-1">
 								Activity will appear here when you send emails to this contact.
@@ -519,7 +533,11 @@ const { showToast } = useToast();
 									:disabled="isLoadingMoreActivities"
 									@click="loadMoreActivities"
 								>
-									<Icon v-if="isLoadingMoreActivities" name="lucide:loader-2" class="w-4 h-4 animate-spin mr-2" />
+									<Icon
+										v-if="isLoadingMoreActivities"
+										name="lucide:loader-2"
+										class="w-4 h-4 animate-spin mr-2"
+									/>
 									{{ isLoadingMoreActivities ? 'Loading...' : 'Load More' }}
 								</button>
 							</div>
@@ -527,22 +545,13 @@ const { showToast } = useToast();
 					</div>
 
 					<!-- Unified Timeline Tab -->
-					<ContactsUnifiedTimelineTab
-						v-if="activeTab === 'timeline'"
-						:contact-id="contactId"
-					/>
+					<ContactsUnifiedTimelineTab v-if="activeTab === 'timeline'" :contact-id="contactId" />
 
 					<!-- Knowledge Tab -->
-					<ContactsContactKnowledgeTab
-						v-if="activeTab === 'knowledge'"
-						:contact-id="contactId"
-					/>
+					<ContactsContactKnowledgeTab v-if="activeTab === 'knowledge'" :contact-id="contactId" />
 
 					<!-- Files Tab -->
-					<ContactsContactFilesTab
-						v-if="activeTab === 'files'"
-						:contact-id="contactId"
-					/>
+					<ContactsContactFilesTab v-if="activeTab === 'files'" :contact-id="contactId" />
 
 					<!-- Identities Tab -->
 					<ContactsIdentitiesTab
@@ -604,7 +613,11 @@ const { showToast } = useToast();
 									:disabled="availableTopicsToAdd.length === 0 || isAddingToTopic"
 									@click.stop="isAddToTopicDropdownOpen = !isAddToTopicDropdownOpen"
 								>
-									<Icon v-if="isAddingToTopic" name="lucide:loader-2" class="w-3 h-3 animate-spin" />
+									<Icon
+										v-if="isAddingToTopic"
+										name="lucide:loader-2"
+										class="w-3 h-3 animate-spin"
+									/>
 									<Icon v-else name="lucide:plus" class="w-3 h-3" />
 									Add to Topic
 									<Icon name="lucide:chevron-down" class="w-3 h-3" />
@@ -612,10 +625,10 @@ const { showToast } = useToast();
 
 								<!-- Dropdown Menu -->
 								<Transition
-									enter-active-class="duration-150 ease-out"
+									enter-active-class="duration-(--motion-moderate) ease-spring"
 									enter-from-class="opacity-0 translate-y-1"
 									enter-to-class="opacity-100 translate-y-0"
-									leave-active-class="duration-100 ease-in"
+									leave-active-class="duration-(--motion-moderate-exit) ease-exit"
 									leave-from-class="opacity-100 translate-y-0"
 									leave-to-class="opacity-0 translate-y-1"
 								>
@@ -638,10 +651,10 @@ const { showToast } = useToast();
 
 								<!-- Empty Dropdown Message -->
 								<Transition
-									enter-active-class="duration-150 ease-out"
+									enter-active-class="duration-(--motion-moderate) ease-spring"
 									enter-from-class="opacity-0 translate-y-1"
 									enter-to-class="opacity-100 translate-y-0"
-									leave-active-class="duration-100 ease-in"
+									leave-active-class="duration-(--motion-moderate-exit) ease-exit"
 									leave-from-class="opacity-100 translate-y-0"
 									leave-to-class="opacity-0 translate-y-1"
 								>
@@ -686,10 +699,7 @@ const { showToast } = useToast();
 								</button>
 							</div>
 						</div>
-						<div
-							v-else-if="allTopics && allTopics.length === 0"
-							class="text-center py-4"
-						>
+						<div v-else-if="allTopics && allTopics.length === 0" class="text-center py-4">
 							<p class="text-text-tertiary text-sm">No topics created yet</p>
 							<NuxtLink to="/dashboard/audience/topics" class="text-brand text-sm hover:underline">
 								Create a topic
@@ -706,10 +716,10 @@ const { showToast } = useToast();
 		<!-- Delete Confirmation Modal -->
 		<Teleport to="body">
 			<Transition
-				enter-active-class="duration-200 ease-out"
+				enter-active-class="duration-(--motion-moderate) ease-spring"
 				enter-from-class="opacity-0"
 				enter-to-class="opacity-100"
-				leave-active-class="duration-150 ease-in"
+				leave-active-class="duration-(--motion-moderate-exit) ease-exit"
 				leave-from-class="opacity-100"
 				leave-to-class="opacity-0"
 			>
@@ -730,15 +740,17 @@ const { showToast } = useToast();
 							</div>
 							<div>
 								<h3 class="text-lg font-semibold text-text-primary">Delete Contact</h3>
-								<p class="text-sm text-text-secondary">Hidden now, permanently erased after 30 days.</p>
+								<p class="text-sm text-text-secondary">
+									Hidden now, permanently erased after 30 days.
+								</p>
 							</div>
 						</div>
 
 						<p class="text-text-secondary mb-6">
 							Are you sure you want to delete
 							<span class="font-medium text-text-primary">{{ contact?.email }}</span
-							>? The contact is hidden immediately and permanently erased — along with its
-							topic memberships and custom properties — after the 30-day retention period.
+							>? The contact is hidden immediately and permanently erased — along with its topic
+							memberships and custom properties — after the 30-day retention period.
 						</p>
 
 						<div class="flex items-center justify-end gap-3">

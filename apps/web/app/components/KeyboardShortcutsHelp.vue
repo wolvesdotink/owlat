@@ -3,7 +3,11 @@ const { isHelpModalOpen, closeHelpModal } = useKeyboardShortcuts();
 
 const dialogRef = ref<HTMLElement | null>(null);
 // Focus trap + opener restore + Escape, shared with UiModal and the chat dialogs.
-useModalFocus(dialogRef, () => isHelpModalOpen.value, () => closeHelpModal());
+useModalFocus(
+	dialogRef,
+	() => isHelpModalOpen.value,
+	() => closeHelpModal()
+);
 
 // Shortcut categories
 const shortcuts = {
@@ -37,10 +41,10 @@ const handleBackdropClick = () => {
 	<Teleport to="body">
 		<!-- Backdrop -->
 		<Transition
-			enter-active-class="transition-opacity duration-150"
+			enter-active-class="transition-opacity duration-(--motion-fast)"
 			enter-from-class="opacity-0"
 			enter-to-class="opacity-100"
-			leave-active-class="transition-opacity duration-150"
+			leave-active-class="transition-opacity duration-(--motion-fast-exit)"
 			leave-from-class="opacity-100"
 			leave-to-class="opacity-0"
 		>
@@ -53,10 +57,10 @@ const handleBackdropClick = () => {
 
 		<!-- Modal -->
 		<Transition
-			enter-active-class="transition-all duration-200"
+			enter-active-class="transition-all duration-(--motion-moderate)"
 			enter-from-class="opacity-0 scale-95"
 			enter-to-class="opacity-100 scale-100"
-			leave-active-class="transition-all duration-150"
+			leave-active-class="transition-all duration-(--motion-moderate-exit)"
 			leave-from-class="opacity-100 scale-100"
 			leave-to-class="opacity-0 scale-95"
 		>
@@ -75,14 +79,17 @@ const handleBackdropClick = () => {
 					<div class="flex items-center gap-3">
 						<UiIconBox icon="lucide:keyboard" size="sm" rounded="lg" />
 						<div>
-							<h2 id="keyboard-shortcuts-title" class="text-lg font-semibold text-text-primary">Keyboard Shortcuts</h2>
+							<h2 id="keyboard-shortcuts-title" class="text-lg font-semibold text-text-primary">
+								Keyboard Shortcuts
+							</h2>
 							<p class="text-sm text-text-tertiary">Navigate faster with your keyboard</p>
 						</div>
 					</div>
 					<button
 						class="p-2 text-text-tertiary hover:text-text-primary hover:bg-bg-surface rounded-lg transition-colors"
 						@click="closeHelpModal"
-					 aria-label="Close">
+						aria-label="Close"
+					>
 						<Icon name="lucide:x" class="w-5 h-5" />
 					</button>
 				</div>

@@ -69,11 +69,14 @@ const channelMeta: Record<string, { icon: string; label: string; description: st
 	},
 };
 
-const meta = computed(() => channelMeta[props.channelConfig.channel] ?? {
-	icon: 'lucide:radio',
-	label: props.channelConfig.channel,
-	description: '',
-});
+const meta = computed(
+	() =>
+		channelMeta[props.channelConfig.channel] ?? {
+			icon: 'lucide:radio',
+			label: props.channelConfig.channel,
+			description: '',
+		}
+);
 
 // Health status helpers
 function getHealthDotClass(config: ChannelConfig): string {
@@ -242,7 +245,7 @@ function handleConfigCancelled() {
 <style scoped>
 .expand-enter-active,
 .expand-leave-active {
-	transition: all 0.2s ease;
+	transition: all var(--motion-moderate) var(--ease-spring);
 	overflow: hidden;
 }
 
