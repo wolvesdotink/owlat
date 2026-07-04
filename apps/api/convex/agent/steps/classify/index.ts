@@ -59,6 +59,19 @@ export type ClassifyOutput = z.infer<typeof classificationSchema> & {
 	handlingRuleArchive?: boolean;
 };
 
+/**
+ * Is the LLM's own classification safety-critical — i.e. one the route step's
+ * inviolable hard-block keys off (complaint/urgent) or the classify fork
+ * archives (spam)? A natural-language `categorize` rule must never be able to
+ * relabel such a verdict, so it can only ever RESTRICT auto-send, never widen it.
+ */
+function isSafetyCriticalClassification(c: {
+	category: string;
+	priority: string;
+}): boolean {
+	return c.category === 'complaint' || c.category === 'spam' || c.priority === 'urgent';
+}
+
 export const classifyStep: AgentStepModule<'classify', ClassifyInput, ClassifyOutput> = {
 	kind: 'classify',
 	llm: { tier: 'fast' },
@@ -94,9 +107,19 @@ Classify this message with:
 			});
 			if (rules.autoArchive) {
 				output = { ...object, handlingRuleArchive: true };
-			} else if (rules.categoryOverride) {
+			} else if (rules.categoryOverride && !isSafetyCriticalClassification(object)) {
 				// The compiled category is validated at compile time; persisted as a
 				// free string (classificationValidator.category is v.string()).
+				//
+				// SECURITY: a `categorize` rule may only RESTRICT, never widen,
+				// auto-send. It is therefore FORBIDDEN from relabelling a
+				// safety-critical verdict — a genuine `complaint`/`spam` category or an
+				// `urgent` priority. Were it allowed, a rule could relabel a complaint
+				// as (say) `support`, laundering it past the inviolable complaint/urgent
+				// hard-block in the route step (route/index.ts) and onto the auto-send
+				// path — the exact "a rule can widen auto-send" bypass. When the LLM's
+				// own verdict is safety-critical, that verdict stands and the override
+				// is dropped; benign→benign filing overrides still apply.
 				output = { ...object, category: rules.categoryOverride as ClassifyOutput['category'] };
 			}
 		} catch {
