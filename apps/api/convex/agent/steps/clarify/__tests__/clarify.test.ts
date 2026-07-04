@@ -519,3 +519,105 @@ describe('buildMemoryConfirmedContext', () => {
 		expect(block).toBe('- Which dock? Bay 3');
 	});
 });
+
+describe('clarifyStep.execute — attachment ambiguity', () => {
+	const ATTACH_CONTEXT = 'Hi — can you send me the signed contract?';
+
+	function attachInput(): ClarifyInput {
+		return {
+			inboundMessageId: messageId,
+			context: ATTACH_CONTEXT,
+			classification: {
+				category: 'support',
+				priority: 'normal',
+				sentiment: 'neutral',
+				intent: 'question',
+				confidence: 0.9,
+			},
+		};
+	}
+
+	function fileRow(id: string, score: number) {
+		return {
+			_id: id,
+			storageId: `store_${id}`,
+			filename: `${id}.pdf`,
+			title: `Title ${id}`,
+			mimeType: 'application/pdf',
+			fileSize: 100,
+			url: null,
+			_score: score,
+		};
+	}
+
+	/** Ctx with a contact + an ask-enabled dial, whose runAction returns the given
+	 * file rows from the semanticFiles search. */
+	function makeAttachCtx(files: unknown[], coverage: unknown = { lowCoverage: false }) {
+		const ctx = {
+			runQuery: async (ref: unknown) => {
+				const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
+				if (name.includes('getAskEagernessInternal')) return { mode: null };
+				if (name.includes('getMessage'))
+					return { contextCoverage: coverage, contactId: 'contact_x' };
+				throw new Error(`unexpected runQuery: ${name}`);
+			},
+			runAction: async (ref: unknown) => {
+				const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
+				if (name.includes('semanticSearch')) return files;
+				throw new Error(`unexpected runAction: ${name}`);
+			},
+			runMutation: async () => undefined,
+		} as unknown as Parameters<typeof clarifyStep.execute>[0];
+		return ctx;
+	}
+
+	it('parks an ambiguous file choice as a single which-file question (routes to clarify)', async () => {
+		const ctx = makeAttachCtx([fileRow('a', 0.6), fileRow('b', 0.58), fileRow('c', 0.55)]);
+		const { output } = await clarifyStep.execute(ctx, attachInput());
+		expect(output.resolution).toBe('attachment_ambiguous');
+		expect(output.questions).toHaveLength(1);
+		expect(output.questions[0]!.slotType).toBe('attachment');
+		expect(output.questions[0]!.text).toMatch(/which file/i);
+		expect(output.questions[0]!.options).toHaveLength(3);
+		// No slot/divergence LLM was spent — the ambiguity ask is model-free.
+		expect(mocks.runLlmObject).not.toHaveBeenCalled();
+		expect(mocks.runLlmText).not.toHaveBeenCalled();
+
+		// route() parks it for the owner to pick.
+		const route = clarifyStep.route(output, attachInput(), runCtx);
+		if (route.kind !== 'transition' || route.transition.to !== 'awaiting_clarification') {
+			throw new Error('expected awaiting_clarification');
+		}
+		expect(route.transition.questions).toHaveLength(1);
+		expect(route.transition.questions[0]!.slotType).toBe('attachment');
+	});
+
+	it('does NOT ask when the file match is a single confident winner', async () => {
+		// One dominant match → no attachment question; flow continues (and here the
+		// high-coverage short-circuit resolves it).
+		const ctx = makeAttachCtx([fileRow('a', 0.95), fileRow('b', 0.1)]);
+		const { output } = await clarifyStep.execute(ctx, attachInput());
+		expect(output.resolution).toBe('high_coverage_short_circuit');
+		expect(output.questions).toEqual([]);
+	});
+
+	it('fails soft (no ask, flow continues) when the file search errors', async () => {
+		const ctx = {
+			runQuery: async (ref: unknown) => {
+				const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
+				if (name.includes('getAskEagernessInternal')) return { mode: null };
+				if (name.includes('getMessage'))
+					return { contextCoverage: { lowCoverage: false }, contactId: 'contact_x' };
+				throw new Error(`unexpected runQuery: ${name}`);
+			},
+			runAction: async () => {
+				throw new Error('vector search down');
+			},
+			runMutation: async () => undefined,
+		} as unknown as Parameters<typeof clarifyStep.execute>[0];
+		const { output } = await clarifyStep.execute(ctx, attachInput());
+		// Attachment check swallowed the error → normal flow → coverage short-circuit.
+		expect(output.resolution).toBe('high_coverage_short_circuit');
+		expect(output.questions).toEqual([]);
+	});
+});

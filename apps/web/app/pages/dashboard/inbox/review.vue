@@ -22,6 +22,21 @@ async function onReviseApply(messageId: Id<'inboundMessages'>, text: string) {
 	await editDraft({ inboundMessageId: messageId, draftResponse: next });
 }
 
+// One-tap "attach <file>?" from the review-gate suggestion. The autonomous send
+// path never attaches (recipient-lock forbids a new attachment on an unattended
+// reply), so attaching is human-confirmed: we surface the matched file and take
+// the reviewer to the thread reply surface to finish and send. Naming the file
+// in the toast keeps the confirmation explicit.
+function onAttachSuggested(
+	threadId: string | undefined,
+	candidate: { fileId: string; filename: string },
+) {
+	showToast(`Suggested attachment: ${candidate.filename} — open the reply to attach and send`);
+	if (threadId) {
+		navigateTo(`/dashboard/inbox/${threadId}`);
+	}
+}
+
 // Action state
 const actionInProgress = ref<string | null>(null);
 
@@ -394,6 +409,16 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 							@apply="(text: string) => onReviseApply(row.message._id, text)"
 						/>
 					</div>
+
+					<!-- One-tap "attach the right file?" when the inbound asked for a
+					     document and a contact-scoped file matched. Advisory; the human
+					     confirms — the agent never auto-attaches. -->
+					<InboxAttachSuggestion
+						v-if="(row.message.attachmentSuggestions?.candidates?.length ?? 0) > 0"
+						:suggestions="row.message.attachmentSuggestions!"
+						class="mb-4"
+						@attach="(c) => onAttachSuggested(row.thread?._id, c)"
+					/>
 
 					<!-- Why it was held + what it was grounded in (read-only) -->
 					<InboxDecisionRationale
