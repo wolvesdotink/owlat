@@ -82,9 +82,7 @@ export const sampleSentBodies = internalQuery({
 	handler: async (ctx, args): Promise<{ samples: string[]; sentCount: number }> => {
 		const sent = await ctx.db
 			.query('mailFolders')
-			.withIndex('by_mailbox_and_role', (q) =>
-				q.eq('mailboxId', args.mailboxId).eq('role', 'sent')
-			)
+			.withIndex('by_mailbox_and_role', (q) => q.eq('mailboxId', args.mailboxId).eq('role', 'sent'))
 			.first();
 		if (!sent) return { samples: [], sentCount: 0 };
 		const messages = await ctx.db

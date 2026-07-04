@@ -15,7 +15,7 @@ export const editDeltaKindValidator = v.union(
 	v.literal('lengthened'),
 	v.literal('removed_emoji'),
 	v.literal('removed_exclamation'),
-	v.literal('language_switch'),
+	v.literal('language_switch')
 );
 
 // One learned adjustment: a delta kind plus its human-readable prompt directive,

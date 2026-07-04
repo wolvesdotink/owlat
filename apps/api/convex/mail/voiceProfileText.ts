@@ -138,7 +138,9 @@ export function buildVoiceGuidance(profile: VoiceProfile | null | undefined): st
 	if (profile.languages.length) lines.push(`- Language(s): ${profile.languages.join(', ')}`);
 	lines.push(`- Emoji: ${profile.isEmojiUser ? 'occasionally uses emoji' : 'does not use emoji'}`);
 	if (profile.examplePhrasings.length) {
-		lines.push(`- Example phrasings (for tone only, never copy verbatim): ${profile.examplePhrasings.join(' | ')}`);
+		lines.push(
+			`- Example phrasings (for tone only, never copy verbatim): ${profile.examplePhrasings.join(' | ')}`
+		);
 	}
 	lines.push('Write in this voice while staying appropriate to the thread.');
 	return lines.join('\n');

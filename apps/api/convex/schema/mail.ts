@@ -668,9 +668,7 @@ export const mailTables = {
 		// (mail/editLearning.ts). Absent → the draft was not AI-authored (or the
 		// client did not record a baseline) → no learning happens, exactly today's
 		// behaviour. Snapshotted ONCE and never overwritten.
-		aiDraftBaseline: v.optional(
-			v.object({ text: v.string(), capturedAt: v.number() })
-		),
+		aiDraftBaseline: v.optional(v.object({ text: v.string(), capturedAt: v.number() })),
 
 		// Scheduled send / undo-send window
 		scheduledSendAt: v.optional(v.number()),

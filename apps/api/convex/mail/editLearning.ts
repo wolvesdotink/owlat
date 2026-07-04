@@ -132,8 +132,10 @@ function wordCount(text: string): number {
 	return trimmed.split(/\s+/).length;
 }
 
-const GREETING_RE = /^(hi|hello|hey|dear|good (morning|afternoon|evening)|greetings|hej|hola|bonjour|hallo|salut)\b/i;
-const SIGNOFF_RE = /^(thanks|thank you|cheers|best|regards|best regards|kind regards|warm regards|sincerely|yours|talk soon|speak soon|all the best|many thanks)\b/i;
+const GREETING_RE =
+	/^(hi|hello|hey|dear|good (morning|afternoon|evening)|greetings|hej|hola|bonjour|hallo|salut)\b/i;
+const SIGNOFF_RE =
+	/^(thanks|thank you|cheers|best|regards|best regards|kind regards|warm regards|sincerely|yours|talk soon|speak soon|all the best|many thanks)\b/i;
 const EMOJI_RE = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}]/u;
 
 export function hasGreeting(text: string): boolean {
@@ -198,11 +200,7 @@ export function normalizedEditDistance(baseline: string, sent: string): number {
 		curr[0] = i;
 		for (let j = 1; j <= b.length; j++) {
 			const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-			curr[j] = Math.min(
-				(prev[j] ?? 0) + 1,
-				(curr[j - 1] ?? 0) + 1,
-				(prev[j - 1] ?? 0) + cost,
-			);
+			curr[j] = Math.min((prev[j] ?? 0) + 1, (curr[j - 1] ?? 0) + 1, (prev[j - 1] ?? 0) + cost);
 		}
 		const tmp = prev;
 		prev = curr;
@@ -267,7 +265,7 @@ export function mergeAdjustment(
 	list: readonly EditAdjustment[],
 	kind: EditDeltaKind,
 	now: number,
-	threshold: number = EDIT_RECURRENCE_THRESHOLD,
+	threshold: number = EDIT_RECURRENCE_THRESHOLD
 ): { list: EditAdjustment[]; justPromoted: boolean } {
 	const next: EditAdjustment[] = [];
 	let matched = false;
@@ -319,7 +317,7 @@ export function promotedDirectives(list: readonly EditAdjustment[]): string[] {
 export function pushEditDistanceSample(
 	samples: readonly number[],
 	value: number,
-	max: number = EDIT_DISTANCE_WINDOW,
+	max: number = EDIT_DISTANCE_WINDOW
 ): number[] {
 	const next = [...samples, value];
 	if (next.length > max) return next.slice(next.length - max);
@@ -359,7 +357,7 @@ export function buildLayeredGuidance(args: {
 	if (standing.length > 0) {
 		sections.push(
 			'The user set these standing instructions — always follow them:\n' +
-				standing.map((s) => `- ${s.trim()}`).join('\n'),
+				standing.map((s) => `- ${s.trim()}`).join('\n')
 		);
 	}
 
@@ -369,7 +367,7 @@ export function buildLayeredGuidance(args: {
 	if (derived.length > 0) {
 		sections.push(
 			'Learned from how the user edits AI drafts before sending — apply these:\n' +
-				derived.map((d) => `- ${d}`).join('\n'),
+				derived.map((d) => `- ${d}`).join('\n')
 		);
 	}
 
@@ -377,7 +375,7 @@ export function buildLayeredGuidance(args: {
 	if (contact.length > 0) {
 		sections.push(
 			'For this specific recipient, the user consistently:\n' +
-				contact.map((d) => `- ${d}`).join('\n'),
+				contact.map((d) => `- ${d}`).join('\n')
 		);
 	}
 
@@ -415,9 +413,7 @@ export const recordEdit = internalMutation({
 				.withIndex('by_mailbox', (q) => q.eq('mailboxId', args.mailboxId))
 				.first();
 			const samples = pushEditDistanceSample(row?.editDistanceSamples ?? [], distance);
-			let derived: EditAdjustment[] = row?.derivedAdjustments
-				? [...row.derivedAdjustments]
-				: [];
+			let derived: EditAdjustment[] = row?.derivedAdjustments ? [...row.derivedAdjustments] : [];
 			for (const kind of kinds) {
 				if (!isVoiceLevelKind(kind)) continue;
 				derived = mergeAdjustment(derived, kind, now).list;
@@ -452,12 +448,10 @@ export const recordEdit = internalMutation({
 				const existing = await ctx.db
 					.query('mailContactStyleOverrides')
 					.withIndex('by_mailbox_and_address', (q) =>
-						q.eq('mailboxId', args.mailboxId).eq('contactAddress', address),
+						q.eq('mailboxId', args.mailboxId).eq('contactAddress', address)
 					)
 					.first();
-				let adjustments: EditAdjustment[] = existing?.adjustments
-					? [...existing.adjustments]
-					: [];
+				let adjustments: EditAdjustment[] = existing?.adjustments ? [...existing.adjustments] : [];
 				for (const kind of kinds) {
 					if (!isContactLevelKind(kind)) continue;
 					adjustments = mergeAdjustment(adjustments, kind, now).list;
@@ -478,7 +472,7 @@ export const recordEdit = internalMutation({
 			logError(
 				`[editLearning] recordEdit failed for mailbox ${args.mailboxId}: ${
 					error instanceof Error ? error.message : String(error)
-				}`,
+				}`
 			);
 		}
 		return null;
