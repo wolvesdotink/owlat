@@ -173,9 +173,7 @@ export async function captureStandingAnswers(
 		// Upsert within the exact contact scope (never touch an org-general row).
 		const existingForSlot = await ctx.db
 			.query('clarificationMemory')
-			.withIndex('by_contact_slot', (q) =>
-				q.eq('contactId', scope).eq('slotType', answer.slotType)
-			)
+			.withIndex('by_contact_slot', (q) => q.eq('contactId', scope).eq('slotType', answer.slotType))
 			.collect(); // bounded: standing answers for one contact + slot kind (tiny set)
 		let matched: Doc<'clarificationMemory'> | undefined;
 		for (const row of existingForSlot) {

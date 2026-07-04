@@ -38,7 +38,7 @@ export const answerClarification = adminMutation({
 				// Origin of the value — the owner typed it ("user", default) or it
 				// was auto-filled from stored memory ("memory").
 				source: v.optional(v.union(v.literal('user'), v.literal('memory'))),
-			}),
+			})
 		),
 	},
 	handler: async (ctx, args) => {
@@ -52,9 +52,7 @@ export const answerClarification = adminMutation({
 		if (!pending) throwInvalidState('No clarification is pending');
 
 		const now = Date.now();
-		const answerByQuestion = new Map(
-			args.answers.map((a) => [a.questionId, a] as const),
-		);
+		const answerByQuestion = new Map(args.answers.map((a) => [a.questionId, a] as const));
 		const questions = pending.questions.map((q) => {
 			const provided = answerByQuestion.get(q.id);
 			if (!provided) return q;

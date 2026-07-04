@@ -23,8 +23,7 @@ function row(over: Partial<StandingAnswerRow> & { answerValue: string }): Standi
 	return {
 		contactId: over.contactId,
 		slotType: over.slotType ?? 'factual_lookup',
-		questionKey:
-			over.questionKey ?? normalizeQuestionKey(over.slotType ?? 'factual_lookup', 'q'),
+		questionKey: over.questionKey ?? normalizeQuestionKey(over.slotType ?? 'factual_lookup', 'q'),
 		answerValue: over.answerValue,
 		updatedAt: over.updatedAt ?? 1,
 	};
@@ -109,7 +108,12 @@ describe('selectFills', () => {
 describe('matchStandingAnswers preserves the winning row', () => {
 	it('returns the row object so a caller can bump usage', () => {
 		const key = normalizeQuestionKey('factual_lookup', 'Which dock should the delivery use?');
-		const winner = row({ contactId: CONTACT_A, questionKey: key, answerValue: 'Bay 3', updatedAt: 9 });
+		const winner = row({
+			contactId: CONTACT_A,
+			questionKey: key,
+			answerValue: 'Bay 3',
+			updatedAt: 9,
+		});
 		const matches = matchStandingAnswers([winner], [question()], CONTACT_A);
 		expect(matches).toHaveLength(1);
 		expect(matches[0]!.row).toBe(winner);

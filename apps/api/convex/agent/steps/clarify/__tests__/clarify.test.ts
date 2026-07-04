@@ -440,7 +440,10 @@ describe('clarifyStep.route', () => {
 			},
 		];
 		const route = clarifyStep.route(
-			outputWith([{ id: 'clarify_0', slotType: 'decision', text: 'Push the date?' }], memoryAnswers),
+			outputWith(
+				[{ id: 'clarify_0', slotType: 'decision', text: 'Push the date?' }],
+				memoryAnswers
+			),
 			input,
 			runCtx
 		);

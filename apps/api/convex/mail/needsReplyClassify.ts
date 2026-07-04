@@ -197,17 +197,14 @@ export const classifyThread = internalAction({
 			// leaves the questions untouched (ask exactly as today).
 			if (clarification && clarification.questions.length > 0) {
 				try {
-					const { fills } = await ctx.runMutation(
-						internal.inbox.clarificationMemory.resolveFills,
-						{
-							fromAddress: latestInbound.fromAddress,
-							questions: clarification.questions.map((q) => ({
-								id: q.id,
-								slotType: q.slotType,
-								text: q.text,
-							})),
-						}
-					);
+					const { fills } = await ctx.runMutation(internal.inbox.clarificationMemory.resolveFills, {
+						fromAddress: latestInbound.fromAddress,
+						questions: clarification.questions.map((q) => ({
+							id: q.id,
+							slotType: q.slotType,
+							text: q.text,
+						})),
+					});
 					if (fills.length > 0) {
 						const filled = new Set(fills.map((f) => f.questionId));
 						const remaining = [];

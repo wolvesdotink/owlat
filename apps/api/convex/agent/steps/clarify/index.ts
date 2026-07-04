@@ -342,17 +342,14 @@ export const clarifyStep: AgentStepModule<'clarify', ClarifyInput, ClarifyOutput
 					const message = await ctx.runQuery(internal.agent.agentPipeline.getMessage, {
 						inboundMessageId: input.inboundMessageId,
 					});
-					const result = await ctx.runMutation(
-						internal.inbox.clarificationMemory.resolveFills,
-						{
-							contactId: message?.contactId,
-							questions: candidateQuestions.map((q) => ({
-								id: q.id,
-								slotType: q.slotType,
-								text: q.text,
-							})),
-						}
-					);
+					const result = await ctx.runMutation(internal.inbox.clarificationMemory.resolveFills, {
+						contactId: message?.contactId,
+						questions: candidateQuestions.map((q) => ({
+							id: q.id,
+							slotType: q.slotType,
+							text: q.text,
+						})),
+					});
 					fills = result.fills;
 				} catch {
 					fills = [];
