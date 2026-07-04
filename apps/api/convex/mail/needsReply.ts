@@ -32,6 +32,7 @@ import { isMessageSnoozed } from '../lib/mailSnooze';
 import { loadOwnedMailbox, loadReadableMailbox } from './permissions';
 import { urgencyFallbackScore } from './priorityScore';
 import { scoreAndScreenResult } from './needsReplyScoring';
+import { isFeatureEnabled } from '../lib/featureFlags';
 
 // ─── Deterministic heuristic (pure) ─────────────────────────────────────────
 
@@ -317,6 +318,16 @@ export const applyResult = internalMutation({
 			needsReplyPendingAt: undefined,
 			updatedAt: Date.now(),
 		});
+
+		// Draft-on-arrival (postbox.aiDraft): the moment a message is confirmed to
+		// need a reply, pre-generate a draft into the review slot via the shared
+		// draft service. Flag-gated + fully async (own action) + fail-soft: it
+		// never blocks classification and degrades to no slot when AI is off.
+		if (resolved !== null && (await isFeatureEnabled(ctx, 'postbox.aiDraft'))) {
+			await ctx.scheduler.runAfter(0, internal.mail.draftOnArrival.generateForThread, {
+				threadId: args.threadId,
+			});
+		}
 	},
 });
 
@@ -376,6 +387,10 @@ export const listQueue = publicQuery({
 				// input" card (question + scoped chips + free-text) instead of the
 				// plain needs-reply row. Absent for the deterministic/plain case.
 				clarification: flag.clarification,
+				// Draft-on-arrival review slot (postbox.aiDraft): a pre-generated reply
+				// + confidence/quality, reviewed-and-sent by the owner. Absent when the
+				// flag is off or generation hasn't landed / failed. Never auto-sent.
+				draftSlot: flag.draftSlot,
 				fromAddress: message.fromAddress,
 				fromName: message.fromName,
 				subject: message.subject,
@@ -414,6 +429,7 @@ export const listQueue = publicQuery({
 				source: 'heuristic' as const,
 				waitingOn: flag.waitingOn,
 				clarification: undefined as Infer<typeof clarificationFlagValidator> | undefined,
+				draftSlot: undefined,
 				// The counterpart shown on the card is who we're waiting ON.
 				fromAddress: flag.waitingOn ?? message.toAddresses[0] ?? message.fromAddress,
 				fromName: undefined,

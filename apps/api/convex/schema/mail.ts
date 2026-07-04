@@ -9,6 +9,7 @@ import {
 	mailNotifyAboutValidator,
 	mailUnsubscribeValidator,
 	spamVerdictValidator,
+	draftQualityValidator,
 } from '../lib/convexValidators';
 
 /**
@@ -475,6 +476,33 @@ export const mailTables = {
 						// The starter reply produced by draftWithAnswers once the owner
 						// answered. Its presence flips the card to "Draft ready".
 						draft: v.optional(v.string()),
+					})
+				),
+				// Draft-on-arrival review slot (postbox.aiDraft flag): a reply
+				// pre-generated the moment the message landed — or the moment a
+				// clarification was answered — via the SHARED draft service
+				// (agent/shared/draftService.ts), so the owner reviews-and-sends
+				// instead of starting from a blank composer. HUMAN REVIEW ONLY: its
+				// presence never auto-sends. Absent when the flag is off, no AI
+				// provider is configured, or generation failed (fail-soft — the
+				// plain needs-reply row still renders).
+				draftSlot: v.optional(
+					v.object({
+						// The pre-generated reply body (option 0 == this string).
+						draft: v.string(),
+						// Reply subject (Re: …) composed from the trigger message.
+						draftSubject: v.optional(v.string()),
+						// Confidence surfaced next to the draft (0..1) — the blended
+						// classifier/urgency signal, NOT an auto-send authorization.
+						confidence: v.number(),
+						// Draft-quality self-check (completeness/grounding/tone). Absent
+						// when the self-check failed → shown as "unverified" in review.
+						quality: v.optional(draftQualityValidator),
+						// Alternative pickable drafts (present only on low-confidence /
+						// low-quality cases; options[0] == draft). Absent otherwise.
+						options: v.optional(v.array(v.string())),
+						// When the slot was generated (advisory; freshness display).
+						generatedAt: v.number(),
 					})
 				),
 			})
