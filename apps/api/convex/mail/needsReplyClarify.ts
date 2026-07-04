@@ -121,8 +121,15 @@ export const getClarificationContext = internalQuery({
 			.slice(0, 12000);
 
 		const answers = [];
+		// Slot kinds of the ANSWERED questions — carried through so the draft path
+		// can score the predicted value of the ask (see inbox/askEagerness.ts)
+		// without re-reading the thread.
+		const answeredSlotTypes: string[] = [];
 		for (const q of clarification.questions) {
-			if (q.answer) answers.push({ question: q.text, answer: q.answer.value });
+			if (q.answer) {
+				answers.push({ question: q.text, answer: q.answer.value });
+				answeredSlotTypes.push(q.slotType);
+			}
 		}
 
 		return {
@@ -130,6 +137,7 @@ export const getClarificationContext = internalQuery({
 			latestMessageId: thread.latestMessageId,
 			transcript,
 			answers,
+			answeredSlotTypes,
 		};
 	},
 });
