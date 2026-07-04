@@ -131,6 +131,37 @@ describe('llmProvider', () => {
 		});
 	});
 
+	// ============ getLLMProviderForClassifiedDraft ============
+
+	describe('getLLMProviderForClassifiedDraft', () => {
+		const trivial = { category: 'other', intent: 'praise', priority: 'low', confidence: 0.95 };
+		const complex = { category: 'support', intent: 'question', priority: 'high', confidence: 0.95 };
+
+		it('keeps the capable tier when complexity routing is off (default), even for a trivial message', async () => {
+			vi.stubEnv('OPENAI_API_KEY', 'test-key');
+			// LLM_COMPLEXITY_ROUTING unset ⇒ off
+			const { getLLMProviderForClassifiedDraft } = await import('../llmProvider');
+			getLLMProviderForClassifiedDraft(trivial);
+			expect(mockOpenAIFactory).toHaveBeenCalledWith('gpt-4o');
+		});
+
+		it('downgrades a trivial message to the fast tier when routing is on', async () => {
+			vi.stubEnv('OPENAI_API_KEY', 'test-key');
+			vi.stubEnv('LLM_COMPLEXITY_ROUTING', '1');
+			const { getLLMProviderForClassifiedDraft } = await import('../llmProvider');
+			getLLMProviderForClassifiedDraft(trivial);
+			expect(mockOpenAIFactory).toHaveBeenCalledWith('gpt-4o-mini');
+		});
+
+		it('keeps a complex message on the capable tier even when routing is on', async () => {
+			vi.stubEnv('OPENAI_API_KEY', 'test-key');
+			vi.stubEnv('LLM_COMPLEXITY_ROUTING', '1');
+			const { getLLMProviderForClassifiedDraft } = await import('../llmProvider');
+			getLLMProviderForClassifiedDraft(complex);
+			expect(mockOpenAIFactory).toHaveBeenCalledWith('gpt-4o');
+		});
+	});
+
 	// ============ getLLMConfig ============
 
 	describe('getLLMConfig', () => {
