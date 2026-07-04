@@ -157,7 +157,7 @@ export const compile = authedAction({
 			senders: boundFacet(object.matcher.senders),
 			subjectContains: boundFacet(object.matcher.subjectContains),
 			bodyContains: boundFacet(object.matcher.bodyContains),
-			categories: boundFacet(object.matcher.categories),
+			categories: boundFacet(object.matcher.categories) as typeof object.matcher.categories,
 		};
 		const hasFacet =
 			(matcher.senders?.length ?? 0) > 0 ||
