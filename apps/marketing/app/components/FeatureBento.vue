@@ -13,14 +13,6 @@ watch(isVisible, (v) => {
 		setTimeout(() => variantB.start(), 750);
 	}
 });
-
-// Track mouse position for spotlight effect on cards
-function handleMouseMove(event: MouseEvent) {
-	const card = (event.currentTarget as HTMLElement);
-	const rect = card.getBoundingClientRect();
-	card.style.setProperty('--mouse-x', `${event.clientX - rect.left}px`);
-	card.style.setProperty('--mouse-y', `${event.clientY - rect.top}px`);
-}
 </script>
 
 <template>
@@ -47,7 +39,7 @@ function handleMouseMove(event: MouseEvent) {
 			<!-- Bento Grid -->
 			<div class="grid grid-cols-12 gap-3 max-lg:grid-cols-6 max-md:grid-cols-1">
 				<!-- 01 — Email Editor (large card) -->
-				<div class="bento-card group col-span-8 max-lg:col-span-6 max-md:col-span-1 min-h-[260px]" style="--i: 3" @mousemove="handleMouseMove">
+				<div class="bento-card group col-span-8 max-lg:col-span-6 max-md:col-span-1 min-h-[260px]" style="--i: 3">
 					<div class="flex max-md:flex-col gap-8 h-full">
 						<div class="flex-1 min-w-0">
 							<span class="card-number">01</span>
@@ -59,7 +51,7 @@ function handleMouseMove(event: MouseEvent) {
 						<!-- Visual: Mini email builder -->
 						<div class="visual-editor flex flex-col gap-2 w-[200px] max-md:w-full shrink-0 self-center">
 							<div class="editor-block" style="--d: 0">
-								<div class="flex items-center gap-2 p-3 rounded-lg bg-brand-soft border border-brand-border/40 transition-all duration-300 group-hover:border-brand/30">
+								<div class="flex items-center gap-2 p-3 rounded-lg bg-brand-soft border border-brand-border/40 transition-all duration-(--motion-moderate) group-hover:border-brand/30">
 									<div class="w-5 h-5 rounded-full bg-brand/25" />
 									<div class="flex-1 space-y-1">
 										<div class="h-1.5 w-3/4 rounded-full bg-text-tertiary/15" />
@@ -68,15 +60,15 @@ function handleMouseMove(event: MouseEvent) {
 								</div>
 							</div>
 							<div class="editor-block" style="--d: 1">
-								<div class="h-14 rounded-lg bg-bg-surface border border-border-subtle flex items-center justify-center transition-all duration-300 group-hover:border-brand/20">
-									<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="text-text-disabled transition-colors duration-300 group-hover:text-brand/40">
+								<div class="h-14 rounded-lg bg-bg-surface border border-border-subtle flex items-center justify-center transition-all duration-(--motion-moderate) group-hover:border-brand/20">
+									<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="text-text-disabled transition-colors duration-(--motion-moderate) group-hover:text-brand/40">
 										<rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="m21 15-5-5L5 21" />
 									</svg>
 								</div>
 							</div>
 							<div class="editor-block" style="--d: 2">
 								<div class="flex justify-center p-2">
-									<div class="px-6 py-1.5 rounded-md bg-brand text-text-inverse text-[0.6rem] font-semibold transition-all duration-300 group-hover:shadow-brand-hover group-hover:scale-105">
+									<div class="px-6 py-1.5 rounded-md bg-brand text-text-inverse text-[0.6rem] font-semibold transition-all duration-(--motion-moderate) group-hover:shadow-brand-hover group-hover:scale-105">
 										Call to Action
 									</div>
 								</div>
@@ -85,7 +77,7 @@ function handleMouseMove(event: MouseEvent) {
 								<div class="flex justify-center gap-2 py-1">
 									<div
 										v-for="i in 3" :key="i"
-										class="w-4 h-4 rounded-full bg-text-tertiary/10 transition-all duration-300 group-hover:bg-brand/15"
+										class="w-4 h-4 rounded-full bg-text-tertiary/10 transition-all duration-(--motion-moderate) group-hover:bg-brand/15"
 										:style="{ transitionDelay: `${i * 40}ms` }"
 									/>
 								</div>
@@ -95,7 +87,7 @@ function handleMouseMove(event: MouseEvent) {
 				</div>
 
 				<!-- 02 — Audience Engine -->
-				<div class="bento-card group col-span-4 max-lg:col-span-6 max-md:col-span-1 min-h-[260px] flex flex-col" style="--i: 4" @mousemove="handleMouseMove">
+				<div class="bento-card group col-span-4 max-lg:col-span-6 max-md:col-span-1 min-h-[260px] flex flex-col" style="--i: 4">
 					<div class="flex-1">
 						<span class="card-number">02</span>
 						<h3 class="card-title">Audience Engine</h3>
@@ -108,7 +100,7 @@ function handleMouseMove(event: MouseEvent) {
 						<div class="avatar-stack flex -space-x-2.5">
 							<div v-for="i in 5" :key="i" class="avatar-circle" :style="{ '--d': i - 1 }">
 								<div
-									class="w-8 h-8 rounded-full border-2 border-bg-elevated transition-transform duration-300 group-hover:scale-110"
+									class="w-8 h-8 rounded-full border-2 border-bg-elevated transition-transform duration-(--motion-moderate) group-hover:scale-110"
 									:style="{
 										background: ['#c4785a', '#d4a574', '#7a9b6e', '#c9a55a', '#a8674d'][i-1],
 										transitionDelay: `${i * 30}ms`
@@ -116,12 +108,12 @@ function handleMouseMove(event: MouseEvent) {
 								/>
 							</div>
 						</div>
-						<span class="avatar-count font-mono text-xs font-medium text-text-tertiary ml-2 transition-colors duration-300 group-hover:text-brand">+2.4k</span>
+						<span class="avatar-count font-mono text-xs font-medium text-text-tertiary ml-2 transition-colors duration-(--motion-moderate) group-hover:text-brand">+2.4k</span>
 					</div>
 				</div>
 
 				<!-- 03 — Campaigns + A/B Testing -->
-				<div class="bento-card group col-span-4 max-lg:col-span-3 max-md:col-span-1 min-h-[240px] flex flex-col" style="--i: 5" @mousemove="handleMouseMove">
+				<div class="bento-card group col-span-4 max-lg:col-span-3 max-md:col-span-1 min-h-[240px] flex flex-col" style="--i: 5">
 					<div class="flex-1">
 						<span class="card-number">03</span>
 						<h3 class="card-title">Campaigns + A/B Testing</h3>
@@ -149,7 +141,6 @@ function handleMouseMove(event: MouseEvent) {
 								</div>
 								<div class="ab-rail">
 									<div class="ab-fill winning" style="--h: 82%; --d: 1">
-										<div class="ab-shimmer" />
 									</div>
 								</div>
 							</div>
@@ -163,15 +154,11 @@ function handleMouseMove(event: MouseEvent) {
 							<span>Winner</span>
 						</div>
 
-						<!-- Floating data particles -->
-						<div class="ab-particles">
-							<div v-for="i in 6" :key="i" class="ab-particle" :style="{ '--p': i }" />
-						</div>
 					</div>
 				</div>
 
 				<!-- 04 — Automations -->
-				<div class="bento-card group col-span-4 max-lg:col-span-3 max-md:col-span-1 min-h-[240px] flex flex-col" style="--i: 6" @mousemove="handleMouseMove">
+				<div class="bento-card group col-span-4 max-lg:col-span-3 max-md:col-span-1 min-h-[240px] flex flex-col" style="--i: 6">
 					<div class="flex-1">
 						<span class="card-number">04</span>
 						<h3 class="card-title">Automations</h3>
@@ -206,7 +193,7 @@ function handleMouseMove(event: MouseEvent) {
 				</div>
 
 				<!-- 05 — Transactional Delivery -->
-				<div class="bento-card group col-span-4 max-lg:col-span-6 max-md:col-span-1 min-h-[240px] flex flex-col" style="--i: 7" @mousemove="handleMouseMove">
+				<div class="bento-card group col-span-4 max-lg:col-span-6 max-md:col-span-1 min-h-[240px] flex flex-col" style="--i: 7">
 					<div class="flex-1">
 						<span class="card-number">05</span>
 						<h3 class="card-title">Transactional Delivery</h3>
@@ -215,7 +202,7 @@ function handleMouseMove(event: MouseEvent) {
 						</p>
 					</div>
 					<!-- Visual: Mini terminal -->
-					<div class="visual-code mt-4 rounded-lg border border-border-subtle p-3 font-mono text-[0.6rem] leading-[1.8] text-text-tertiary transition-all duration-300 group-hover:border-brand/20" style="background: var(--owlat-code-bg)">
+					<div class="visual-code mt-4 rounded-lg border border-border-subtle p-3 font-mono text-[0.6rem] leading-[1.8] text-text-tertiary transition-all duration-(--motion-moderate) group-hover:border-brand/20" style="background: var(--owlat-code-bg)">
 						<div class="code-line" style="--d: 0"><span class="c-kw">POST</span> <span class="text-text-secondary">/api/v1/send</span></div>
 						<div class="code-line" style="--d: 1"><span class="c-str">"slug"</span>: <span class="c-str">"welcome"</span></div>
 						<div class="code-line" style="--d: 2"><span class="text-success">→ 200 OK</span><span class="typing-cursor" /></div>
@@ -223,7 +210,7 @@ function handleMouseMove(event: MouseEvent) {
 				</div>
 
 				<!-- 06 — Deliverability (full width) -->
-				<div class="bento-card group col-span-12 max-lg:col-span-6 max-md:col-span-1" style="--i: 8" @mousemove="handleMouseMove">
+				<div class="bento-card group col-span-12 max-lg:col-span-6 max-md:col-span-1" style="--i: 8">
 					<div class="flex max-md:flex-col items-center gap-8">
 						<div class="flex-1 min-w-0">
 							<span class="card-number">06</span>
@@ -254,22 +241,22 @@ function handleMouseMove(event: MouseEvent) {
 	opacity: 0;
 	transform: translateY(16px);
 	transition:
-		opacity 0.6s var(--ease-out-expo),
-		transform 0.6s var(--ease-out-expo);
+		opacity var(--motion-slow) var(--ease-spring),
+		transform var(--motion-slow) var(--ease-spring);
 	transition-delay: calc(var(--i, 0) * 0.06s);
 }
 
 .bento-card {
 	opacity: 0;
-	transform: translateY(20px) scale(0.98);
+	transform: translateY(8px);
 	transition:
-		opacity 0.6s var(--ease-out-expo),
-		transform 0.6s var(--ease-out-expo),
-		border-color 0.35s ease,
-		box-shadow 0.4s ease;
+		opacity var(--motion-slow) var(--ease-spring),
+		transform var(--motion-slow) var(--ease-spring),
+		background var(--motion-moderate) var(--ease-spring),
+		box-shadow var(--motion-moderate) var(--ease-spring);
 	transition-delay: calc(0.1s + var(--i, 0) * 0.06s);
-	background: var(--color-bg-elevated);
-	border: 1px solid var(--color-border-default);
+	background: var(--surface-2);
+	box-shadow: var(--shadow-2);
 	border-radius: var(--radius-card);
 	padding: 1.75rem;
 	position: relative;
@@ -282,30 +269,10 @@ function handleMouseMove(event: MouseEvent) {
 	transform: none;
 }
 
-/* === Card hover with spotlight === */
-.bento-card::before {
-	content: '';
-	position: absolute;
-	inset: 0;
-	border-radius: inherit;
-	background: radial-gradient(
-		600px circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
-		rgba(196, 120, 90, 0.06),
-		transparent 40%
-	);
-	opacity: 0;
-	transition: opacity 0.4s ease;
-	pointer-events: none;
-}
-
+/* Hover: +6% surface, one elevation step — no spotlight, no lift */
 .bento-card:hover {
-	border-color: color-mix(in oklab, var(--color-brand) 30%, var(--color-border-default));
-	box-shadow: 0 8px 40px rgba(196, 120, 90, 0.06), 0 0 0 1px rgba(196, 120, 90, 0.03);
-	transform: translateY(-2px);
-}
-
-.bento-card:hover::before {
-	opacity: 1;
+	background: color-mix(in srgb, var(--surface-2) 94%, var(--surface-tint));
+	box-shadow: var(--shadow-3);
 }
 
 /* === Card content === */
@@ -316,7 +283,7 @@ function handleMouseMove(event: MouseEvent) {
 	font-weight: 500;
 	color: var(--color-text-disabled);
 	margin-bottom: 0.75rem;
-	transition: color 0.3s ease;
+	transition: color var(--motion-moderate) var(--ease-spring);
 }
 
 .group:hover .card-number {
@@ -329,7 +296,7 @@ function handleMouseMove(event: MouseEvent) {
 	color: var(--color-text-primary);
 	margin-bottom: 0.5rem;
 	line-height: 1.3;
-	transition: color 0.3s ease;
+	transition: color var(--motion-moderate) var(--ease-spring);
 }
 
 .group:hover .card-title {
@@ -348,8 +315,8 @@ function handleMouseMove(event: MouseEvent) {
 	opacity: 0;
 	transform: translateX(-12px);
 	transition:
-		opacity 0.5s var(--ease-out-expo),
-		transform 0.5s var(--ease-out-expo);
+		opacity var(--motion-slow) var(--ease-spring),
+		transform var(--motion-slow) var(--ease-spring);
 	transition-delay: calc(0.4s + var(--d, 0) * 0.08s);
 }
 
@@ -368,8 +335,8 @@ function handleMouseMove(event: MouseEvent) {
 	opacity: 0;
 	transform: scale(0.5);
 	transition:
-		opacity 0.4s var(--ease-out-expo),
-		transform 0.4s var(--ease-out-expo);
+		opacity var(--motion-slow) var(--ease-spring),
+		transform var(--motion-slow) var(--ease-spring);
 	transition-delay: calc(0.5s + var(--d, 0) * 0.06s);
 }
 
@@ -384,7 +351,7 @@ function handleMouseMove(event: MouseEvent) {
 
 .avatar-count {
 	opacity: 0;
-	transition: opacity 0.4s ease 0.8s;
+	transition: opacity var(--motion-slow) ease var(--motion-slow);
 }
 
 .visible .avatar-count {
@@ -406,8 +373,8 @@ function handleMouseMove(event: MouseEvent) {
 	opacity: 0;
 	transform: translateX(-12px);
 	transition:
-		opacity 0.5s var(--ease-out-expo),
-		transform 0.5s var(--ease-out-expo);
+		opacity var(--motion-slow) var(--ease-spring),
+		transform var(--motion-slow) var(--ease-spring);
 	transition-delay: calc(0.5s + var(--d, 0) * 0.12s);
 }
 
@@ -428,7 +395,7 @@ function handleMouseMove(event: MouseEvent) {
 	font-size: 0.6rem;
 	font-weight: 600;
 	color: var(--color-text-disabled);
-	transition: color 0.3s ease;
+	transition: color var(--motion-moderate) var(--ease-spring);
 }
 
 .ab-variant.winning-label {
@@ -447,7 +414,7 @@ function handleMouseMove(event: MouseEvent) {
 	font-size: 0.6rem;
 	font-weight: 500;
 	color: var(--color-text-disabled);
-	transition: color 0.3s ease;
+	transition: color var(--motion-moderate) var(--ease-spring);
 	letter-spacing: -0.01em;
 }
 
@@ -473,8 +440,8 @@ function handleMouseMove(event: MouseEvent) {
 	border-radius: 3px;
 	background: var(--color-border-strong);
 	transition:
-		width 1.2s var(--ease-out-expo),
-		filter 0.3s ease;
+		width 1.2s var(--ease-spring),
+		filter var(--motion-moderate) var(--ease-spring);
 	transition-delay: calc(0.6s + var(--d, 0) * 0.18s);
 	position: relative;
 	overflow: hidden;
@@ -496,39 +463,6 @@ function handleMouseMove(event: MouseEvent) {
 	filter: brightness(1.18) saturate(1.1);
 }
 
-/* Shimmer on winning bar */
-.ab-shimmer {
-	position: absolute;
-	inset: 0;
-	background: linear-gradient(
-		90deg,
-		transparent 0%,
-		rgba(255, 255, 255, 0.18) 45%,
-		rgba(255, 255, 255, 0.25) 50%,
-		rgba(255, 255, 255, 0.18) 55%,
-		transparent 100%
-	);
-	transform: translateX(-100%);
-	opacity: 0;
-}
-
-.visible .ab-shimmer {
-	animation: ab-shimmer-sweep 2.8s ease-in-out 1.6s infinite;
-}
-
-@keyframes ab-shimmer-sweep {
-	0% {
-		transform: translateX(-100%);
-		opacity: 1;
-	}
-	60% {
-		transform: translateX(200%);
-		opacity: 1;
-	}
-	61%, 100% {
-		opacity: 0;
-	}
-}
 
 /* Winner badge */
 .ab-winner-badge {
@@ -549,10 +483,10 @@ function handleMouseMove(event: MouseEvent) {
 	opacity: 0;
 	transform: translateY(6px) scale(0.9);
 	transition:
-		opacity 0.5s var(--ease-out-expo),
-		transform 0.5s var(--ease-out-expo),
-		background 0.3s ease,
-		border-color 0.3s ease;
+		opacity var(--motion-slow) var(--ease-spring),
+		transform var(--motion-slow) var(--ease-spring),
+		background var(--motion-moderate) var(--ease-spring),
+		border-color var(--motion-moderate) var(--ease-spring);
 	transition-delay: 1.8s;
 }
 
@@ -573,7 +507,7 @@ function handleMouseMove(event: MouseEvent) {
 }
 
 .visible .ab-crown {
-	animation: crown-bounce 0.5s var(--ease-out-expo) 2.2s both;
+	animation: crown-bounce var(--motion-slow) var(--ease-spring) 2.2s both;
 }
 
 @keyframes crown-bounce {
@@ -585,51 +519,6 @@ function handleMouseMove(event: MouseEvent) {
 	}
 	100% {
 		transform: scale(1) rotate(0deg);
-	}
-}
-
-/* Floating data particles */
-.ab-particles {
-	position: absolute;
-	inset: 0;
-	pointer-events: none;
-	overflow: hidden;
-}
-
-.ab-particle {
-	position: absolute;
-	width: 3px;
-	height: 3px;
-	border-radius: 50%;
-	background: var(--color-brand);
-	opacity: 0;
-	bottom: 0;
-	left: calc(15% + var(--p) * 12%);
-}
-
-.visible .ab-particle {
-	animation: particle-rise 3s ease-in-out infinite;
-	animation-delay: calc(0.8s + var(--p) * 0.45s);
-}
-
-.group:hover .ab-particle {
-	animation-duration: 1.8s;
-}
-
-@keyframes particle-rise {
-	0% {
-		opacity: 0;
-		transform: translateY(0) scale(0.6);
-	}
-	15% {
-		opacity: 0.35;
-	}
-	50% {
-		opacity: 0.2;
-	}
-	100% {
-		opacity: 0;
-		transform: translateY(-60px) scale(0.2);
 	}
 }
 
@@ -646,9 +535,9 @@ function handleMouseMove(event: MouseEvent) {
 	opacity: 0;
 	transform: scale(0.7);
 	transition:
-		opacity 0.4s var(--ease-out-expo),
-		transform 0.4s var(--ease-out-expo),
-		border-color 0.3s ease;
+		opacity var(--motion-slow) var(--ease-spring),
+		transform var(--motion-slow) var(--ease-spring),
+		border-color var(--motion-moderate) var(--ease-spring);
 	transition-delay: calc(0.4s + var(--d, 0) * 0.12s);
 }
 
@@ -708,8 +597,8 @@ function handleMouseMove(event: MouseEvent) {
 	opacity: 0;
 	transform: translateX(-8px);
 	transition:
-		opacity 0.4s var(--ease-out-expo),
-		transform 0.4s var(--ease-out-expo);
+		opacity var(--motion-slow) var(--ease-spring),
+		transform var(--motion-slow) var(--ease-spring);
 	transition-delay: calc(0.5s + var(--d, 0) * 0.12s);
 }
 
@@ -751,8 +640,8 @@ function handleMouseMove(event: MouseEvent) {
 	opacity: 0;
 	transform: translateY(8px);
 	transition:
-		opacity 0.4s var(--ease-out-expo),
-		transform 0.4s var(--ease-out-expo);
+		opacity var(--motion-slow) var(--ease-spring),
+		transform var(--motion-slow) var(--ease-spring);
 	transition-delay: calc(0.5s + var(--d, 0) * 0.1s);
 }
 
@@ -763,7 +652,7 @@ function handleMouseMove(event: MouseEvent) {
 
 .check-icon {
 	opacity: 0;
-	transition: opacity 0.3s ease;
+	transition: opacity var(--motion-moderate) var(--ease-spring);
 	transition-delay: calc(0.9s + var(--d, 0) * 0.15s);
 }
 
@@ -772,7 +661,6 @@ function handleMouseMove(event: MouseEvent) {
 }
 
 .group:hover .dns-badge {
-	transform: translateY(-2px);
-	box-shadow: 0 4px 12px rgba(122, 155, 110, 0.12);
+	box-shadow: var(--shadow-1);
 }
 </style>
