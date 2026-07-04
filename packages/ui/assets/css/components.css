@@ -83,3 +83,39 @@
 		font-family: var(--font-display);
 	}
 }
+
+/* Fluid Functionalism elevation pairs — one class = the correct background +
+ * shadow for a nesting level (card in page = 2, popover in card = 3, dialog
+ * over all = 5+). Prefer these over ad-hoc borders/shadows. */
+@utility surface-1 {
+	background-color: var(--surface-1);
+	box-shadow: var(--shadow-1);
+}
+@utility surface-2 {
+	background-color: var(--surface-2);
+	box-shadow: var(--shadow-2);
+}
+@utility surface-3 {
+	background-color: var(--surface-3);
+	box-shadow: var(--shadow-3);
+}
+@utility surface-4 {
+	background-color: var(--surface-4);
+	box-shadow: var(--shadow-4);
+}
+@utility surface-5 {
+	background-color: var(--surface-5);
+	box-shadow: var(--shadow-5);
+}
+@utility surface-6 {
+	background-color: var(--surface-6);
+	box-shadow: var(--shadow-6);
+}
+@utility surface-7 {
+	background-color: var(--surface-7);
+	box-shadow: var(--shadow-7);
+}
+@utility surface-8 {
+	background-color: var(--surface-8);
+	box-shadow: var(--shadow-8);
+}

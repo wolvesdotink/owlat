@@ -68,4 +68,58 @@
 	--ease-smooth: cubic-bezier(0.25, 0.1, 0.25, 1);
 	--radius-card: 16px;
 	--owlat-shadow-tint: 196, 120, 90;
+
+	/* === FLUID FUNCTIONALISM: WEIGHT-BASED EMPHASIS ===
+	 * Overrides Tailwind's font-weight scale so every existing font-medium /
+	 * font-semibold consumer adopts FF weights. Instrument Sans is a variable
+	 * font (wght 400–700) so the in-between instances render correctly. */
+	--font-weight-normal: 400;
+	--font-weight-medium: 450;
+	--font-weight-semibold: 550;
+	--font-weight-bold: 700;
+
+	/* === FLUID FUNCTIONALISM: MOTION EASINGS ===
+	 * ease-spring: critically damped spring approximation — fast + moderate enters.
+	 * ease-spring-bounce: slow enters (dialogs/panels), bounce ≈ 0.12.
+	 * ease-exit: plain ease-out tween — ALL exits (crisp, final). */
+	--ease-spring: cubic-bezier(0.25, 1, 0.5, 1);
+	--ease-spring-bounce: cubic-bezier(0.34, 1.3, 0.64, 1);
+	--ease-exit: cubic-bezier(0, 0, 0.2, 1);
+}
+
+/* === FLUID FUNCTIONALISM: SURFACE LADDER UTILITIES ===
+ * Inline so utilities emit var(--surface-N) / var(--shadow-N) and re-resolve
+ * per color mode (.light overrides the raw vars in light.css).
+ * → bg-surface-1..8, shadow-surface-1..8 */
+@theme inline {
+	--color-surface-1: var(--surface-1);
+	--color-surface-2: var(--surface-2);
+	--color-surface-3: var(--surface-3);
+	--color-surface-4: var(--surface-4);
+	--color-surface-5: var(--surface-5);
+	--color-surface-6: var(--surface-6);
+	--color-surface-7: var(--surface-7);
+	--color-surface-8: var(--surface-8);
+	--shadow-surface-1: var(--shadow-1);
+	--shadow-surface-2: var(--shadow-2);
+	--shadow-surface-3: var(--shadow-3);
+	--shadow-surface-4: var(--shadow-4);
+	--shadow-surface-5: var(--shadow-5);
+	--shadow-surface-6: var(--shadow-6);
+	--shadow-surface-7: var(--shadow-7);
+	--shadow-surface-8: var(--shadow-8);
+}
+
+/* === FLUID FUNCTIONALISM: MOTION DURATION TIERS ===
+ * Plain vars (not a Tailwind namespace) — consumed as duration-(--motion-fast)
+ * in class lists or var(--motion-fast) in <style> blocks.
+ * The bigger the thing that moves, the slower the spring; exits are always
+ * a notch faster than entrances. Never hand-write a literal ms. */
+:root {
+	--motion-fast: 80ms; /* hover states, focus rings, small toggles */
+	--motion-fast-exit: 60ms;
+	--motion-moderate: 160ms; /* dropdowns, tabs, selection indicators */
+	--motion-moderate-exit: 120ms;
+	--motion-slow: 240ms; /* dialogs, modals, big panels */
+	--motion-slow-exit: 160ms;
 }
