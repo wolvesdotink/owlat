@@ -123,10 +123,7 @@ async function copyInstall() {
 
 			<!-- Right: Interactive email builder mockup -->
 			<div class="hero-visual max-lg:flex max-lg:justify-center">
-				<div
-					class="mockup-frame w-full max-w-[420px] max-md:max-w-full"
-					style="perspective: 800px"
-				>
+				<div class="mockup-frame w-full max-w-[420px] max-md:max-w-full">
 					<div
 						class="mockup-inner rounded-2xl overflow-hidden relative"
 						style="background: var(--owlat-code-bg); box-shadow: var(--shadow-3)"

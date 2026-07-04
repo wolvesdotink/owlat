@@ -64,7 +64,6 @@ const headerSurfaceStyle = computed(() => {
 		class="beta-bar relative z-[51] overflow-hidden pt-[env(safe-area-inset-top)]"
 		:class="{ 'beta-bar--hidden': bannerDismissed }"
 	>
-		<!-- Animated gradient underlay -->
 
 		<div class="relative flex items-center justify-center gap-2 max-md:gap-1.5 px-10 max-md:px-8 py-[7px]">
 			<span class="beta-dot" aria-hidden="true" />

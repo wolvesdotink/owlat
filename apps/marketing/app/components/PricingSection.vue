@@ -16,17 +16,6 @@ const selfHostFeatures = [
 	'In-app updates (one-click)',
 	'Apache 2.0 licensed',
 ];
-
-function handleTilt(event: MouseEvent, el: HTMLElement) {
-	const rect = el.getBoundingClientRect();
-	const x = (event.clientX - rect.left) / rect.width - 0.5;
-	const y = (event.clientY - rect.top) / rect.height - 0.5;
-	el.style.transform = `perspective(600px) rotateY(${x * 5}deg) rotateX(${-y * 5}deg) translateY(-2px)`;
-}
-
-function resetTilt(el: HTMLElement) {
-	el.style.transform = '';
-}
 </script>
 
 <template>
@@ -56,8 +45,6 @@ function resetTilt(el: HTMLElement) {
 				<div
 					class="price-card relative rounded-2xl p-7 border border-brand/40 ring-1 ring-brand/10"
 					style="--i: 3; background: linear-gradient(180deg, color-mix(in oklab, var(--color-brand-subtle) 60%, var(--color-bg-elevated)) 0%, var(--color-bg-elevated) 100%)"
-					@mousemove="handleTilt($event, $event.currentTarget as HTMLElement)"
-					@mouseleave="resetTilt($event.currentTarget as HTMLElement)"
 				>
 					<span class="absolute -top-3 left-1/2 -translate-x-1/2 text-[0.6875rem] font-semibold text-text-inverse bg-brand px-3 py-0.5 rounded-full">
 						Available today
@@ -99,8 +86,6 @@ function resetTilt(el: HTMLElement) {
 				<div
 					class="price-card relative rounded-2xl p-7 border border-border-default opacity-75"
 					style="--i: 4; background: var(--color-bg-elevated)"
-					@mousemove="handleTilt($event, $event.currentTarget as HTMLElement)"
-					@mouseleave="resetTilt($event.currentTarget as HTMLElement)"
 				>
 					<span class="absolute -top-3 left-1/2 -translate-x-1/2 text-[0.6875rem] font-semibold text-text-tertiary bg-bg-surface border border-border-default px-3 py-0.5 rounded-full">
 						Coming soon
