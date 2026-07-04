@@ -129,6 +129,10 @@ function boundFacet(entries: string[] | undefined): string[] | undefined {
  * `assertAiAllowed`. Does NOT persist — the client reviews the preview and saves
  * it via `mail.handlingRules.create` (owner/admin only).
  */
+// authz: org membership enforced by authedAction; the `ai` flag + budget +
+// per-user rate limit enforced by aiGate.assertAiAllowed. Preview generation is
+// intentionally open to any authenticated member — it does NOT persist, and the
+// owner/admin write gate lives on mail.handlingRules.create.
 export const compile = authedAction({
 	args: { instruction: v.string() },
 	handler: async (ctx, args): Promise<CompiledRule & { compiledModel?: string }> => {
