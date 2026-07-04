@@ -14,9 +14,11 @@
  * The decision is made in three tiers, safest-first:
  *   1. Any open circuit breaker → human review (a degraded pipeline never
  *      auto-sends, regardless of config).
- *   2. Graduated autonomy (`ai.autonomy` flag on): the per-category
- *      `autonomyRules` govern via `autonomy.checkPermissionInternal`. A
- *      category with no rule is never auto-approved.
+ *      2. Graduated autonomy (`ai.autonomy` flag on): the `autonomyRules` govern
+ *      via `autonomy.checkPermissionInternal`, which reads the PER-SENDER rule
+ *      before the per-category one and applies a first-N-observed warm-up (a new
+ *      sender, or one short of its matched-shadow-observation count, is held for
+ *      review). A category/sender with no rule is never auto-approved.
  *   3. Legacy fallback (`ai.autonomy` off): the single global
  *      `agentConfig` auto-reply toggle + draft-quality threshold + daily cap.
  *
@@ -261,6 +263,10 @@ export const routeStep: AgentStepModule<'route', RouteInput, RouteOutput> = {
 			const autonomy = await ctx.runQuery(internal.autonomy.checkPermissionInternal, {
 				category: input.category,
 				confidence: gateScore,
+				// Pass the message so the per-sender rule + first-N-observed warm-up
+				// apply (the sender is resolved from it, matching the shadow
+				// scorecard's normalization).
+				inboundMessageId: input.inboundMessageId,
 			});
 			if (autonomy.mode === 'enabled') {
 				if (autonomy.allowed) {
@@ -276,6 +282,9 @@ export const routeStep: AgentStepModule<'route', RouteInput, RouteOutput> = {
 					// Route on its result.
 					const charge = await ctx.runMutation(internal.autonomy.incrementDailyCount, {
 						category: input.category,
+						// Charge the SAME effective rule the decision used (per-sender
+						// when one governs this sender, else the category rule).
+						inboundMessageId: input.inboundMessageId,
 					});
 					if (charge.allowed) {
 						return {

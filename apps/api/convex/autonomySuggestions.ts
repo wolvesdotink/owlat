@@ -16,6 +16,7 @@ import { internalMutation } from './_generated/server';
 import { adminQuery, authedMutation } from './lib/authedFunctions';
 import { requireOrgPermission } from './lib/sessionOrganization';
 import { assertFeatureEnabled } from './lib/featureFlags';
+import { getCategoryRule } from './lib/autonomyRules';
 
 /**
  * Admin-gated read of pending graduation suggestions for the autonomy settings
@@ -113,10 +114,9 @@ export const acceptGraduationSuggestion = authedMutation({
 		const suggestion = await ctx.db.get(args.suggestionId);
 		if (!suggestion) return; // already accepted/cleared — idempotent no-op
 
-		const rule = await ctx.db
-			.query('autonomyRules')
-			.withIndex('by_category', (q) => q.eq('category', suggestion.category))
-			.first();
+		// The CATEGORY rule (sender absent) — a graduation suggestion loosens the
+		// category threshold, never a per-sender rule.
+		const rule = await getCategoryRule(ctx.db, suggestion.category);
 
 		if (rule) {
 			await ctx.db.patch(rule._id, {
