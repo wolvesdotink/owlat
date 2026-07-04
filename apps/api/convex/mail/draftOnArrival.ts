@@ -18,8 +18,9 @@
  */
 
 import { v } from 'convex/values';
-import { internalAction } from '../_generated/server';
+import { internalAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
+import type { Id } from '../_generated/dataModel';
 import { getLLMProvider } from '../lib/llmProvider';
 import { buildReplySubject } from '../lib/emailAddress';
 import { logError } from '../lib/runtimeLog';
@@ -35,87 +36,98 @@ function priorityForUrgency(urgency: 'high' | 'normal' | 'low'): string {
 /** Fallback confidence shown next to a draft when the quality self-check failed. */
 const UNKNOWN_QUALITY_CONFIDENCE = 0.4;
 
+/**
+ * Handler body, exported so the fail-soft branches (AI off, no thread, injection
+ * / LLM error → no slot written) are unit-testable with a mock ctx without
+ * standing up Convex. The `generateForThread` internalAction below is a thin
+ * wrapper.
+ */
+export async function generateDraftOnArrival(
+	ctx: ActionCtx,
+	args: { threadId: Id<'mailThreads'> }
+): Promise<void> {
+	// Defense-in-depth: refuse if the AI stack is off, even though the schedule
+	// site already flag-gated. assertAiAllowed throws when AI is disabled; that
+	// (and every other failure below) degrades to no slot.
+	try {
+		await ctx.runMutation(internal.mail.aiGate.assertAiAllowed, {});
+	} catch {
+		return;
+	}
+
+	const loaded = await ctx.runQuery(internal.mail.draftOnArrivalStore.loadForDraft, {
+		threadId: args.threadId,
+	});
+	if (!loaded) return; // not a live needs-reply personal-mail thread
+
+	// Personalize to the owner's learned writing voice (opt-in). FAIL-SOFT: a
+	// missing/disabled profile falls through to the generic tone.
+	let voiceGuidance: string | null = null;
+	try {
+		const res = await ctx.runMutation(internal.mail.voiceProfile.getGuidanceForMailbox, {
+			mailboxId: loaded.mailboxId,
+		});
+		voiceGuidance = res.guidance;
+	} catch {
+		voiceGuidance = null;
+	}
+	const voiceSection = voiceGuidance ? `\n\n${voiceGuidance}` : '';
+
+	// Owner-confirmed clarification facts (trusted; rendered outside the
+	// untrusted tags by the shared service).
+	const confirmedContext = buildConfirmedContext(
+		loaded.clarificationQuestions ? { questions: loaded.clarificationQuestions } : undefined
+	);
+
+	try {
+		const result = await runSharedDraft(ctx, {
+			model: getLLMProvider('draft'), // capable tier
+			audience: 'the mailbox owner',
+			styleReference: "the owner's",
+			context: loaded.context,
+			confirmedContext: confirmedContext.length > 0 ? confirmedContext : undefined,
+			classification: {
+				// person / newsletter → the shared block's neutral vocabulary.
+				category: 'other',
+				intent: 'question',
+				sentiment: 'neutral',
+				priority: priorityForUrgency(loaded.urgency),
+			},
+			toneInstruction:
+				'\n\nTone: match the owner’s natural, personal style — warm and direct, not corporate.',
+			signatureInstruction: '',
+			voiceSection,
+			// Personal mail has no classifier confidence; run review-first so the
+			// shared service offers alternative drafts. The confidence SHOWN is the
+			// quality self-check score (below), not this gating value.
+			confidence: 0.5,
+			spendLabels: {
+				selfCheck: 'postbox_draft_selfcheck',
+				options: 'postbox_draft_options',
+			},
+		});
+
+		if (result.draftBody.trim().length === 0) return; // nothing usable
+
+		await ctx.runMutation(internal.mail.draftOnArrivalStore.persistDraftSlot, {
+			threadId: args.threadId,
+			triggerMessageId: loaded.triggerMessageId,
+			draft: result.draftBody,
+			draftSubject: buildReplySubject(loaded.triggerSubject),
+			// Surface the quality self-check score as the confidence; unknown
+			// quality shows a deliberately low value so review-first reads right.
+			confidence: result.draftQuality?.score ?? UNKNOWN_QUALITY_CONFIDENCE,
+			...(result.draftQuality ? { quality: result.draftQuality } : {}),
+			...(result.draftOptions.length > 0 ? { options: result.draftOptions } : {}),
+		});
+	} catch (err) {
+		// Injection re-scan / LLM error → no slot; the thread still shows for
+		// manual reply. Never wedge the caller.
+		logError('[draftOnArrival] generation failed:', err);
+	}
+}
+
 export const generateForThread = internalAction({
 	args: { threadId: v.id('mailThreads') },
-	handler: async (ctx, args) => {
-		// Defense-in-depth: refuse if the AI stack is off, even though the schedule
-		// site already flag-gated. assertAiAllowed throws when AI is disabled; that
-		// (and every other failure below) degrades to no slot.
-		try {
-			await ctx.runMutation(internal.mail.aiGate.assertAiAllowed, {});
-		} catch {
-			return;
-		}
-
-		const loaded = await ctx.runQuery(internal.mail.draftOnArrivalStore.loadForDraft, {
-			threadId: args.threadId,
-		});
-		if (!loaded) return; // not a live needs-reply personal-mail thread
-
-		// Personalize to the owner's learned writing voice (opt-in). FAIL-SOFT: a
-		// missing/disabled profile falls through to the generic tone.
-		let voiceGuidance: string | null = null;
-		try {
-			const res = await ctx.runMutation(internal.mail.voiceProfile.getGuidanceForMailbox, {
-				mailboxId: loaded.mailboxId,
-			});
-			voiceGuidance = res.guidance;
-		} catch {
-			voiceGuidance = null;
-		}
-		const voiceSection = voiceGuidance ? `\n\n${voiceGuidance}` : '';
-
-		// Owner-confirmed clarification facts (trusted; rendered outside the
-		// untrusted tags by the shared service).
-		const confirmedContext = buildConfirmedContext(
-			loaded.clarificationQuestions ? { questions: loaded.clarificationQuestions } : undefined
-		);
-
-		try {
-			const result = await runSharedDraft(ctx, {
-				model: getLLMProvider('draft'), // capable tier
-				audience: 'the mailbox owner',
-				styleReference: "the owner's",
-				context: loaded.context,
-				confirmedContext: confirmedContext.length > 0 ? confirmedContext : undefined,
-				classification: {
-					// person / newsletter → the shared block's neutral vocabulary.
-					category: 'other',
-					intent: 'question',
-					sentiment: 'neutral',
-					priority: priorityForUrgency(loaded.urgency),
-				},
-				toneInstruction:
-					'\n\nTone: match the owner’s natural, personal style — warm and direct, not corporate.',
-				signatureInstruction: '',
-				voiceSection,
-				// Personal mail has no classifier confidence; run review-first so the
-				// shared service offers alternative drafts. The confidence SHOWN is the
-				// quality self-check score (below), not this gating value.
-				confidence: 0.5,
-				spendLabels: {
-					selfCheck: 'postbox_draft_selfcheck',
-					options: 'postbox_draft_options',
-				},
-			});
-
-			if (result.draftBody.trim().length === 0) return; // nothing usable
-
-			await ctx.runMutation(internal.mail.draftOnArrivalStore.persistDraftSlot, {
-				threadId: args.threadId,
-				triggerMessageId: loaded.triggerMessageId,
-				draft: result.draftBody,
-				draftSubject: buildReplySubject(loaded.triggerSubject),
-				// Surface the quality self-check score as the confidence; unknown
-				// quality shows a deliberately low value so review-first reads right.
-				confidence: result.draftQuality?.score ?? UNKNOWN_QUALITY_CONFIDENCE,
-				...(result.draftQuality ? { quality: result.draftQuality } : {}),
-				...(result.draftOptions.length > 0 ? { options: result.draftOptions } : {}),
-			});
-		} catch (err) {
-			// Injection re-scan / LLM error → no slot; the thread still shows for
-			// manual reply. Never wedge the caller.
-			logError('[draftOnArrival] generation failed:', err);
-		}
-	},
+	handler: (ctx, args) => generateDraftOnArrival(ctx, args),
 });
