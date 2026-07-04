@@ -38,6 +38,7 @@ import type { AgentStepModule } from '../types';
 import { detectInjection, INJECTION_CONFIDENCE_THRESHOLD } from '../security_scan/patterns';
 import { detectSecretLeak } from '../../../lib/secretLeakScan';
 import { deriveAuthenticatedRecipient } from '../../referenceMonitor';
+import { evaluateHandlingRules, toHandlingEvalMessage } from '../../../mail/handlingRules';
 
 /**
  * Draft-quality self-check threaded from the `draft` step. `null`/absent when
@@ -172,6 +173,40 @@ async function assertSafeToAutoSend(
 			safe: false,
 			reason:
 				'Inbound injection guard was unavailable; not auto-sending — routing to human review.',
+		};
+	}
+
+	// Standing natural-language handling rules (mail/handlingRules). A matched
+	// rule can ONLY restrict — it downgrades a would-be auto-send to human review
+	// (never_auto_send / draft_with_stance / always_ask), never the reverse.
+	// FAIL-SOFT/CLOSED: if the rules can't be evaluated we do NOT auto-send
+	// (same posture as the budget/guard gates above — never auto-send on
+	// uncertainty).
+	try {
+		const rules = await ctx.runQuery(internal.mail.handlingRules.listActiveInternal, {});
+		if (rules.length > 0) {
+			const outcome = evaluateHandlingRules(
+				rules,
+				toHandlingEvalMessage({
+					from: message.from,
+					subject: message.subject,
+					textBody: message.textBody,
+					htmlBody: message.htmlBody,
+				})
+			);
+			if (outcome.restrictAutoSend) {
+				return {
+					safe: false,
+					reason:
+						outcome.restrictReason ??
+						'A handling rule requires human review; not auto-sending — routing to human review.',
+				};
+			}
+		}
+	} catch {
+		return {
+			safe: false,
+			reason: 'Could not evaluate handling rules; not auto-sending — routing to human review.',
 		};
 	}
 

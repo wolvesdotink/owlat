@@ -16,9 +16,11 @@
 
 import { z } from 'zod';
 import { getLLMProvider } from '../../../lib/llmProvider';
+import { internal } from '../../../_generated/api';
 import type { Id } from '../../../_generated/dataModel';
 import type { AgentStepModule } from '../types';
 import { runLlmObject } from '../../../lib/llm/dispatch';
+import { evaluateHandlingRules, toHandlingEvalMessage } from '../../../mail/handlingRules';
 
 const classificationSchema = z.object({
 	category: z
@@ -51,13 +53,37 @@ export type ClassifyInput = {
 	context: string;
 };
 
-export type ClassifyOutput = z.infer<typeof classificationSchema>;
+export type ClassifyOutput = z.infer<typeof classificationSchema> & {
+	// Set by deterministic natural-language handling rules (mail/handlingRules):
+	// an `auto_archive` rule matched this message, so `route()` sends it straight
+	// to archived. Absent/false = normal flow.
+	handlingAutoArchive?: boolean;
+};
+
+const CLASSIFY_CATEGORIES = [
+	'support',
+	'sales',
+	'billing',
+	'feature_request',
+	'complaint',
+	'spam',
+	'internal',
+	'other',
+] as const;
+type ClassifyCategory = (typeof CLASSIFY_CATEGORIES)[number];
+
+function isClassifyCategory(value: string): value is ClassifyCategory {
+	for (const c of CLASSIFY_CATEGORIES) {
+		if (c === value) return true;
+	}
+	return false;
+}
 
 export const classifyStep: AgentStepModule<'classify', ClassifyInput, ClassifyOutput> = {
 	kind: 'classify',
 	llm: { tier: 'fast' },
 
-	async execute(_ctx, input) {
+	async execute(ctx, input) {
 		const model = getLLMProvider('classify');
 
 		const { object, tokenUsage, modelUsed } = await runLlmObject({
@@ -76,10 +102,46 @@ Classify this message with:
 			temperature: 0.2,
 		});
 
-		return { output: object, tokenUsage, modelUsed };
+		// Deterministic natural-language handling rules (mail/handlingRules).
+		// FAIL-SOFT: any error evaluating rules leaves the LLM classification
+		// exactly as-is — rules never block or corrupt ingest.
+		let output: ClassifyOutput = object;
+		try {
+			const rules = await ctx.runQuery(internal.mail.handlingRules.listActiveInternal, {});
+			if (rules.length > 0) {
+				const message = await ctx.runQuery(internal.agent.agentPipeline.getMessage, {
+					inboundMessageId: input.inboundMessageId,
+				});
+				if (message) {
+					const outcome = evaluateHandlingRules(rules, toHandlingEvalMessage(message));
+					// `categorize` forces the classification category (only if it is a
+					// real category the pipeline understands).
+					if (outcome.forcedCategory && isClassifyCategory(outcome.forcedCategory)) {
+						output = { ...output, category: outcome.forcedCategory };
+					}
+					// `auto_archive` short-circuits to archived in route().
+					if (outcome.autoArchive) {
+						output = { ...output, handlingAutoArchive: true };
+					}
+				}
+			}
+		} catch {
+			// swallowed: handling rules are best-effort; classification stands
+		}
+
+		return { output, tokenUsage, modelUsed };
 	},
 
 	route(output, input, runCtx) {
+		// A natural-language `auto_archive` handling rule matched — archive
+		// without a reply, same terminal edge as spam.
+		if (output.handlingAutoArchive) {
+			return {
+				kind: 'transition',
+				transition: { to: 'archived', reason: 'handling_rule_archive' },
+			};
+		}
+
 		// Spam — archive
 		if (output.category === 'spam') {
 			return {
