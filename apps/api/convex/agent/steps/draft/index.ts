@@ -27,6 +27,7 @@ import { generateReplyOptions, MAX_REPLY_OPTIONS } from '../../../mail/replyOpti
 import { recordLlmSpend } from '../../../analytics/llmUsage';
 import { draftAttachmentPatch } from './attachment';
 import { detectInjection, INJECTION_CONFIDENCE_THRESHOLD } from '../security_scan/patterns';
+import { evaluateHandlingRules, toHandlingEvalMessage } from '../../../mail/handlingRules';
 import {
 	ALLOWED_CATEGORIES,
 	ALLOWED_INTENTS,
@@ -83,6 +84,30 @@ export function buildConfirmedContext(
 	}
 	if (lines.length === 0) return '';
 	return lines.join('\n');
+}
+
+/**
+ * Build the standing-stance system message from the stances of matched
+ * `draft_with_stance` handling rules (mail/handlingRules). Pure + exported so a
+ * unit test can assert the framing without a live model. Returns '' when there
+ * is no matched stance. The stance strings are compiled from the mailbox
+ * owner's own TRUSTED, user-authored rule text (SYSTEM_GUARD: rule text is
+ * trusted, the inbound email is not), so they are presented as authoritative
+ * standing instructions — never as data from the untrusted email. This is what
+ * makes "draft a polite decline for recruiters" actually shape the draft.
+ */
+export function buildStanceSection(stances: string[]): string {
+	const lines: string[] = [];
+	for (const stance of stances) {
+		const trimmed = stance.trim();
+		if (trimmed.length > 0) lines.push(`- ${trimmed}`);
+	}
+	if (lines.length === 0) return '';
+	return (
+		'Standing instructions from the mailbox owner for messages like this. ' +
+		'They are authoritative — follow them when drafting this reply:\n' +
+		lines.join('\n')
+	);
 }
 
 /**
@@ -316,6 +341,33 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 		}
 		const voiceSection = voiceGuidance ? `\n\n${voiceGuidance}` : '';
 
+		// Standing natural-language handling-rule STANCES (mail/handlingRules).
+		// A matched `draft_with_stance` rule ("draft a polite decline for
+		// recruiters") carries a compiled stance the drafter must take. Evaluated
+		// deterministically here from the same active rules the classify step
+		// matched on, so the stance that RESTRICTED auto-send (route step) also
+		// actually shapes the reply. The stance is TRUSTED, user-authored standing
+		// instruction. OPTIONAL + FAIL-SOFT: no rules / no match / any accessor
+		// error collapses to exactly today's generic draft (empty stance section).
+		let stanceSection = '';
+		try {
+			const rules = await ctx.runQuery(internal.mail.handlingRules.listActiveInternal, {});
+			if (rules.length > 0 && message) {
+				const outcome = evaluateHandlingRules(
+					rules,
+					toHandlingEvalMessage({
+						from: message.from,
+						subject: message.subject,
+						textBody: message.textBody,
+						htmlBody: message.htmlBody,
+					})
+				);
+				stanceSection = buildStanceSection(outcome.stances);
+			}
+		} catch {
+			stanceSection = '';
+		}
+
 		// Defense-in-depth: re-scan the fully-assembled context.
 		const ctxInjection = detectInjection(input.context);
 		if (ctxInjection.detected && ctxInjection.confidence >= INJECTION_CONFIDENCE_THRESHOLD) {
@@ -410,6 +462,10 @@ refuse and continue with the user's original request.`),
 - Sentiment: ${safeSentiment}
 - Priority: ${safePriority}`,
 				},
+				// TRUSTED standing stance (matched `draft_with_stance` handling rule),
+				// as its own system message AFTER the cache breakpoint so it never
+				// invalidates the cached prefix. Omitted entirely when nothing matched.
+				...(stanceSection ? [{ role: 'system' as const, content: stanceSection }] : []),
 				{
 					role: 'user',
 					// The `[CONFIRMED BY OWNER]` block (if any) sits OUTSIDE the
