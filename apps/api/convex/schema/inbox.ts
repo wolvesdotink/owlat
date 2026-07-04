@@ -363,32 +363,21 @@ export const inboxTables = {
 		createdAt: v.number(),
 	}).index('by_breaker_type', ['breakerType']),
 
-	// Autonomy Rules - auto-approval configuration.
-	//
-	// A rule is scoped one of two ways, keyed by the optional `sender`:
-	//   - `sender` ABSENT  → the CATEGORY rule (the historical shape): governs
-	//     every sender in that category that has no rule of its own.
-	//   - `sender` PRESENT → a PER-SENDER / per-contact rule for that exact
-	//     normalized email within the category. It takes precedence over the
-	//     category rule (the `route` step reads the per-sender rule first). A
-	//     per-sender rule with `isEnabled: false` is an explicit "never auto-send
-	//     this sender" opt-out that also overrides the category rule.
-	//
-	// `warmupRequired` is the first-N-observed warm-up: a (category, sender) slice
-	// becomes auto-send-eligible only after it has accumulated at least this many
-	// MATCHED shadow observations (see agentShadowScorecard). Absent → the module
-	// default. A brand-new sender with no scorecard row is hard-excluded from
-	// auto-send regardless of any rule.
+	// Autonomy Rules - auto-approval configuration, scoped by the optional
+	// `sender`: ABSENT = the CATEGORY rule; PRESENT = a PER-SENDER/per-contact rule
+	// for that exact normalized email, which the `route` step reads first and which
+	// overrides the category rule (an `isEnabled: false` per-sender rule is an
+	// explicit "never auto-send this sender" opt-out). `warmupRequired` is the
+	// first-N-observed warm-up: a (category, sender) slice may auto-send only once
+	// it has this many MATCHED shadow observations (see agentShadowScorecard;
+	// absent → WARMUP_MATCHES_DEFAULT). A new sender with no scorecard row is
+	// hard-excluded from auto-send regardless of any rule.
 	autonomyRules: defineTable({
 		category: v.string(), // "support", "sales", "billing", etc.
-		// Normalized sender email for a per-sender/per-contact rule; absent on a
-		// category rule.
-		sender: v.optional(v.string()),
+		sender: v.optional(v.string()), // per-sender/per-contact rule; absent on a category rule
 		autoApproveThreshold: v.number(), // Confidence threshold (0-1)
 		maxDailyAutoActions: v.number(), // Safety cap
-		// First-N-observed warm-up: matched shadow observations required before
-		// this slice may auto-send. Absent → WARMUP_MATCHES_DEFAULT.
-		warmupRequired: v.optional(v.number()),
+		warmupRequired: v.optional(v.number()), // matched shadow obs before this slice may auto-send
 		currentDailyCount: v.optional(v.number()),
 		dailyCountResetAt: v.optional(v.number()),
 		isEnabled: v.boolean(),
