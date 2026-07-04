@@ -328,6 +328,7 @@ import type * as lib_tenantTables from "../lib/tenantTables.js";
 import type * as lib_inputGuards from "../lib/inputGuards.js";
 import type * as lib_convexValidators from "../lib/convexValidators.js";
 import type * as mail_ai from "../mail/ai.js";
+import type * as mail_aiCoach from "../mail/aiCoach.js";
 import type * as mail_aiGate from "../mail/aiGate.js";
 import type * as mail_aiScheduling from "../mail/aiScheduling.js";
 import type * as mail_aliases from "../mail/aliases.js";
@@ -869,6 +870,7 @@ declare const fullApi: ApiFromModules<{
   "lib/inputGuards": typeof lib_inputGuards;
   "lib/convexValidators": typeof lib_convexValidators;
   "mail/ai": typeof mail_ai;
+  "mail/aiCoach": typeof mail_aiCoach;
   "mail/aiGate": typeof mail_aiGate;
   "mail/aiScheduling": typeof mail_aiScheduling;
   "mail/aliases": typeof mail_aliases;
