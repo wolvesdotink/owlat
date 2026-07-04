@@ -117,7 +117,16 @@ export type EnvKey =
 	| 'META_VERIFY_TOKEN'
 	| 'GENERIC_WEBHOOK_SECRET'
 	// Code-work / GitHub PR merge webhook
-	| 'GITHUB_WEBHOOK_SECRET';
+	| 'GITHUB_WEBHOOK_SECRET'
+	// Calendar / availability grounding for scheduling replies (mail/availability).
+	// Optional read-only ICS/CalDAV subscription URL for the owner's own calendar
+	// (a private iCal export). Fetched server-side, in-deployment, to derive
+	// free/busy only — never event content. Unset ⇒ scheduling replies fall back
+	// to referencing only the sender's proposed times (no availability grounding).
+	| 'CALENDAR_FREEBUSY_ICS_URL'
+	// IANA timezone (e.g. `America/New_York`) used to compute and label the owner's
+	// open business-hours slots. Unset ⇒ `UTC`.
+	| 'CALENDAR_TIMEZONE';
 
 /**
  * Read a required environment variable. Throws if unset or empty.
