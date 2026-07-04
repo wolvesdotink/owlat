@@ -16,8 +16,7 @@ import { getLLMProvider, getLLMProviderForUserText } from '../lib/llmProvider';
 import { runLlmText } from '../lib/llm/dispatch';
 import { recordLlmSpend } from '../analytics/llmUsage';
 import { stripHtml } from './rfc822';
-import { buildSchedulingInstruction } from './aiScheduling';
-import { fetchOpenSlots } from './availability';
+import { buildSchedulingReplyInstruction } from './availability';
 import { generateReplyOptions } from './replyOptions';
 import { throwNotFound } from '../_utils/errors';
 
@@ -230,19 +229,12 @@ export const suggestReplies = authedAction({
 		}
 		const voiceSection = voiceGuidance ? `\n\n${voiceGuidance}` : '';
 		// Ground scheduling replies in the owner's real free/busy when a self-hosted
-		// calendar source is configured. Fetched server-side (privacy) and fail-soft:
-		// no source / any error -> empty slots -> today's sender-phrase-only behaviour.
-		let openSlots: string[] = [];
-		if (args.focus === 'scheduling') {
-			try {
-				openSlots = await fetchOpenSlots();
-			} catch {
-				openSlots = [];
-			}
-		}
+		// calendar source is configured (see mail/availability). Fetched server-side
+		// (privacy) and fail-soft: no source / any error -> no slots -> today's
+		// sender-phrase-only behaviour.
 		const instruction =
 			args.focus === 'scheduling'
-				? buildSchedulingInstruction(args.proposedTimes ?? [], openSlots)
+				? await buildSchedulingReplyInstruction(args.proposedTimes ?? [])
 				: `Suggest up to 3 short, distinct reply options the recipient could send ` +
 					`(1–2 sentences each, ready to send, varied in stance).`;
 		const { replies, tokenUsage, modelUsed } = await generateReplyOptions({

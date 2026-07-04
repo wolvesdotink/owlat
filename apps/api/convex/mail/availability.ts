@@ -19,6 +19,7 @@
  */
 
 import { getOptional } from '../lib/env';
+import { buildSchedulingInstruction } from './aiScheduling';
 
 /** A busy time range, epoch-ms half-open interval [start, end). */
 export interface BusyInterval {
@@ -289,4 +290,23 @@ export async function fetchOpenSlots(deps: AvailabilityDeps = {}): Promise<strin
 	} catch {
 		return [];
 	}
+}
+
+/**
+ * Orchestrate the scheduling-focused reply instruction for
+ * {@link import('./ai').suggestReplies}: fetch the owner's real open slots
+ * (fail-soft — no configured source or any error yields no grounding) and fold
+ * them into the fixed scheduling framing from {@link buildSchedulingInstruction}.
+ *
+ * Kept here rather than inline in mail/ai.ts so the advisory-AI file stays under
+ * the file-size ratchet, and because the free/busy fetch is this module's
+ * concern. `proposedTimes` are the verbatim, untrusted sender phrases; the
+ * returned string is prompt-ready. Never throws (fetchOpenSlots is fail-soft).
+ */
+export async function buildSchedulingReplyInstruction(
+	proposedTimes: string[],
+	deps: AvailabilityDeps = {},
+): Promise<string> {
+	const openSlots = await fetchOpenSlots(deps);
+	return buildSchedulingInstruction(proposedTimes, openSlots);
 }
