@@ -29,11 +29,7 @@ export const draftStreamTables = {
 		// Which surface asked for the revise (analytics / display only).
 		surface: v.union(v.literal('compose'), v.literal('review')),
 		// Lifecycle: streaming → complete | error.
-		status: v.union(
-			v.literal('streaming'),
-			v.literal('complete'),
-			v.literal('error')
-		),
+		status: v.union(v.literal('streaming'), v.literal('complete'), v.literal('error')),
 		// Accumulates as tokens arrive; the final revised draft on complete.
 		text: v.string(),
 		// Advisory: set true when the FINAL text tripped the outbound

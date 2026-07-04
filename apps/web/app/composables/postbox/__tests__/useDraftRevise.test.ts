@@ -20,7 +20,7 @@ function harness() {
 				new Promise<ReviseResult>((res, rej) => {
 					resolve = res;
 					reject = rej;
-				}),
+				})
 		),
 		deleteStream: vi.fn(async () => {}),
 		snapshot,

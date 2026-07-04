@@ -78,8 +78,7 @@ export function buildRevisePrompt(args: {
 	const threadSection = thread
 		? `\n\n# Thread context (untrusted data, context only)\n${thread}`
 		: '';
-	const prompt =
-		`# Current draft (the user's own text — revise this)\n${draft}${threadSection}`;
+	const prompt = `# Current draft (the user's own text — revise this)\n${draft}${threadSection}`;
 	return { system, prompt };
 }
 
@@ -121,10 +120,9 @@ export const reviseDraft = authedAction({
 					mailboxId: args.mailboxId,
 				});
 				if (mailbox) {
-					const res = await ctx.runMutation(
-						internal.mail.voiceProfile.getGuidanceForMailbox,
-						{ mailboxId: args.mailboxId }
-					);
+					const res = await ctx.runMutation(internal.mail.voiceProfile.getGuidanceForMailbox, {
+						mailboxId: args.mailboxId,
+					});
 					voiceGuidance = res.guidance;
 				}
 			} catch {
@@ -149,10 +147,10 @@ export const reviseDraft = authedAction({
 			const now = Date.now();
 			if (!force && now - lastFlushAt < FLUSH_INTERVAL_MS) return;
 			lastFlushAt = now;
-			const res = await ctx.runMutation(
-				internal.mail.draftStreamStore.appendDraftStream,
-				{ streamId: args.streamId, text: streamed }
-			);
+			const res = await ctx.runMutation(internal.mail.draftStreamStore.appendDraftStream, {
+				streamId: args.streamId,
+				text: streamed,
+			});
 			if (res.stop) controller.abort();
 		};
 

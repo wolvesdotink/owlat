@@ -20,7 +20,7 @@ const sess = vi.hoisted(() => ({ user: { userId: 'user-a', role: 'owner' as cons
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual<typeof import('../lib/sessionOrganization')>(
-		'../lib/sessionOrganization',
+		'../lib/sessionOrganization'
 	);
 	return {
 		...actual,
@@ -182,7 +182,7 @@ describe('reviseDraft — streaming', () => {
 				streamId,
 				instruction: 'hijack',
 				currentDraft: 'x',
-			}),
+			})
 		).rejects.toThrow();
 		expect(runLlmStream).not.toHaveBeenCalled();
 	});
