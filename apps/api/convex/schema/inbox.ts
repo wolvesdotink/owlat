@@ -279,7 +279,7 @@ export const inboxTables = {
 		// agent/steps/route/index.ts.
 		isShadowMode: v.optional(v.boolean()),
 		// Timezone-aware WORKING-HOURS window for AUTONOMOUS auto-sends. When
-		// `workingHoursEnabled` is true, an auto-approved reply whose routing
+		// `isWorkingHoursEnabled` is true, an auto-approved reply whose routing
 		// decision lands OUTSIDE the window is held for human review instead of
 		// sent (the draft is still queued) — so the agent never fires at 3am and
 		// out-of-hours replies wait for morning review. Times are minutes from
@@ -287,7 +287,7 @@ export const inboxTables = {
 		// are the allowed weekdays (0=Sun … 6=Sat). Unset fields fall back to the
 		// Mon–Fri 09:00–17:00 UTC default. Human-reviewed approvals are unaffected.
 		// See lib/workingHours.ts + agent/steps/route/index.ts.
-		workingHoursEnabled: v.optional(v.boolean()),
+		isWorkingHoursEnabled: v.optional(v.boolean()),
 		workingHoursTimezone: v.optional(v.string()),
 		workingHoursStart: v.optional(v.number()),
 		workingHoursEnd: v.optional(v.number()),

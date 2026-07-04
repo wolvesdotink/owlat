@@ -69,7 +69,7 @@ export const updateConfig = adminMutation({
 		// Timezone-aware working-hours window for autonomous auto-sends. When
 		// enabled, an auto-approved reply decided OUTSIDE the window is held for
 		// human review instead of sent. See lib/workingHours.ts.
-		workingHoursEnabled: v.optional(v.boolean()),
+		isWorkingHoursEnabled: v.optional(v.boolean()),
 		workingHoursTimezone: v.optional(v.string()),
 		workingHoursStart: v.optional(v.number()),
 		workingHoursEnd: v.optional(v.number()),
@@ -93,8 +93,8 @@ export const updateConfig = adminMutation({
 			if (args.coalesceWindowMs !== undefined) patches.coalesceWindowMs = args.coalesceWindowMs;
 			if (args.autoSendDelayMs !== undefined)
 				patches.autoSendDelayMs = Math.max(0, args.autoSendDelayMs);
-			if (args.workingHoursEnabled !== undefined)
-				patches.workingHoursEnabled = args.workingHoursEnabled;
+			if (args.isWorkingHoursEnabled !== undefined)
+				patches.isWorkingHoursEnabled = args.isWorkingHoursEnabled;
 			if (args.workingHoursTimezone !== undefined)
 				patches.workingHoursTimezone = args.workingHoursTimezone;
 			if (args.workingHoursStart !== undefined)
@@ -136,7 +136,7 @@ export const updateConfig = adminMutation({
 			maxDailyAutoReplies: args.maxDailyAutoReplies ?? 100,
 			coalesceWindowMs: args.coalesceWindowMs ?? 30000,
 			autoSendDelayMs: args.autoSendDelayMs === undefined ? undefined : Math.max(0, args.autoSendDelayMs),
-			workingHoursEnabled: args.workingHoursEnabled,
+			isWorkingHoursEnabled: args.isWorkingHoursEnabled,
 			workingHoursTimezone: args.workingHoursTimezone,
 			workingHoursStart:
 				args.workingHoursStart === undefined ? undefined : clampMinuteOfDay(args.workingHoursStart),

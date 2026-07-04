@@ -23,12 +23,12 @@ const SAT_1200_UTC = Date.UTC(2026, 6, 4, 12, 0, 0);
 describe('isWithinWorkingHours', () => {
 	it('is always within when the window is disabled/unset (24/7 default)', () => {
 		expect(isWithinWorkingHours({}, MON_0300_UTC)).toBe(true);
-		expect(isWithinWorkingHours({ workingHoursEnabled: false }, MON_0300_UTC)).toBe(true);
+		expect(isWithinWorkingHours({ isWorkingHoursEnabled: false }, MON_0300_UTC)).toBe(true);
 	});
 
 	it('admits a mid-day instant and HOLDS a 3am instant for a Mon–Fri 09:00–17:00 UTC window', () => {
 		const cfg = {
-			workingHoursEnabled: true,
+			isWorkingHoursEnabled: true,
 			workingHoursTimezone: 'UTC',
 			workingHoursStart: 9 * 60,
 			workingHoursEnd: 17 * 60,
@@ -42,7 +42,7 @@ describe('isWithinWorkingHours', () => {
 		// 14:00 UTC is 09:00 in New York (UTC-5 in July → actually UTC-4 DST → 10:00).
 		// Use a window that only passes when interpreted in New York local time.
 		const cfg = {
-			workingHoursEnabled: true,
+			isWorkingHoursEnabled: true,
 			workingHoursTimezone: 'America/New_York',
 			workingHoursStart: 9 * 60,
 			workingHoursEnd: 17 * 60,
@@ -56,7 +56,7 @@ describe('isWithinWorkingHours', () => {
 
 	it('holds a weekend instant even during business hours', () => {
 		const cfg = {
-			workingHoursEnabled: true,
+			isWorkingHoursEnabled: true,
 			workingHoursTimezone: 'UTC',
 			workingHoursStart: 9 * 60,
 			workingHoursEnd: 17 * 60,
@@ -67,7 +67,7 @@ describe('isWithinWorkingHours', () => {
 
 	it('supports an overnight window that wraps past midnight (22:00–06:00)', () => {
 		const cfg = {
-			workingHoursEnabled: true,
+			isWorkingHoursEnabled: true,
 			workingHoursTimezone: 'UTC',
 			workingHoursStart: 22 * 60,
 			workingHoursEnd: 6 * 60,
@@ -87,7 +87,7 @@ describe('isWithinWorkingHours', () => {
 
 	it('throws on an invalid timezone so the caller can fail safe (hold for review)', () => {
 		const cfg = {
-			workingHoursEnabled: true,
+			isWorkingHoursEnabled: true,
 			workingHoursTimezone: 'Not/AZone',
 			workingHoursStart: 9 * 60,
 			workingHoursEnd: 17 * 60,

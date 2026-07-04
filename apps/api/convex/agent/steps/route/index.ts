@@ -152,7 +152,7 @@ async function assertSafeToAutoSend(
 	// never auto-send on uncertainty.
 	try {
 		const cfg = await ctx.runQuery(internal.agent.agentPipeline.getAgentConfig, {});
-		if (cfg?.workingHoursEnabled) {
+		if (cfg?.isWorkingHoursEnabled) {
 			let within: boolean;
 			try {
 				within = isWithinWorkingHours(cfg, Date.now());

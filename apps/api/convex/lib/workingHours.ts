@@ -29,7 +29,7 @@
  */
 
 export type WorkingHoursConfig = {
-	workingHoursEnabled?: boolean;
+	isWorkingHoursEnabled?: boolean;
 	workingHoursTimezone?: string;
 	workingHoursStart?: number; // minutes from local midnight, inclusive
 	workingHoursEnd?: number; // minutes from local midnight, exclusive
@@ -94,7 +94,7 @@ function localMinuteAndDay(nowMs: number, timeZone: string): { minute: number; w
  * evaluated — never auto-send on uncertainty.
  */
 export function isWithinWorkingHours(config: WorkingHoursConfig, nowMs: number): boolean {
-	if (!config.workingHoursEnabled) return true;
+	if (!config.isWorkingHoursEnabled) return true;
 
 	const timeZone = config.workingHoursTimezone || DEFAULT_WORKING_HOURS_TZ;
 	const start = config.workingHoursStart ?? DEFAULT_WORKING_HOURS_START;

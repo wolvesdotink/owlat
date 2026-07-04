@@ -171,7 +171,7 @@ const handleSaveWorkingHours = async (payload: {
 	workingHoursBusy.value = true;
 	try {
 		const result = await runUpdateConfig({
-			workingHoursEnabled: payload.enabled,
+			isWorkingHoursEnabled: payload.enabled,
 			workingHoursTimezone: payload.timezone,
 			workingHoursStart: payload.start,
 			workingHoursEnd: payload.end,
@@ -305,7 +305,7 @@ const handleSaveWorkingHours = async (payload: {
 
 					<!-- Timezone-aware working-hours window -->
 					<AutonomyWorkingHours
-						:enabled="agentConfig?.workingHoursEnabled ?? false"
+						:enabled="agentConfig?.isWorkingHoursEnabled ?? false"
 						:timezone="agentConfig?.workingHoursTimezone ?? ''"
 						:start="agentConfig?.workingHoursStart ?? 540"
 						:end="agentConfig?.workingHoursEnd ?? 1020"
