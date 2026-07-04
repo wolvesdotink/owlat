@@ -71,7 +71,7 @@ function statusLabel(status: string): string {
 function actionLabel(action?: string): string {
 	switch (action) {
 		case 'draft_with_stance':
-			return 'Draft (never auto-send)';
+			return 'Draft with stance (never auto-send)';
 		case 'categorize':
 			return 'Categorize';
 		case 'auto_archive':
@@ -164,7 +164,7 @@ function actionLabel(action?: string): string {
 										:class="{
 											'bg-brand-subtle text-brand': rule.status === 'active',
 											'bg-surface-secondary text-text-tertiary': rule.status === 'compiling',
-											'bg-danger-subtle text-danger': rule.status === 'failed',
+											'bg-error-subtle text-error': rule.status === 'failed',
 										}"
 									>
 										{{ statusLabel(rule.status) }}
@@ -174,7 +174,7 @@ function actionLabel(action?: string): string {
 									</span>
 									<span v-if="!rule.isEnabled" class="text-text-tertiary">· Paused</span>
 								</div>
-								<p v-if="rule.status === 'failed' && rule.compileError" class="text-xs text-danger mt-2">
+								<p v-if="rule.status === 'failed' && rule.compileError" class="text-xs text-error mt-2">
 									{{ rule.compileError }}
 								</p>
 								<div
@@ -195,7 +195,7 @@ function actionLabel(action?: string): string {
 									<Icon :name="rule.isEnabled ? 'lucide:pause' : 'lucide:play'" class="w-4 h-4" />
 								</button>
 								<button
-									class="btn btn-ghost btn-sm text-danger"
+									class="btn btn-ghost btn-sm text-error"
 									title="Delete"
 									@click="deleteRule(rule._id)"
 								>
