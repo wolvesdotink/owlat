@@ -69,6 +69,10 @@
 			"types": "./src/postboxTrackers.ts",
 			"import": "./src/postboxTrackers.ts"
 		},
+		"./snoozePresets": {
+			"types": "./src/snoozePresets.ts",
+			"import": "./src/snoozePresets.ts"
+		},
 		"./quotedText": {
 			"types": "./src/quotedText.ts",
 			"import": "./src/quotedText.ts"
