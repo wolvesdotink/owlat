@@ -26,18 +26,6 @@ const props = withDefaults(defineProps<{ class?: string }>(), { class: '' })
 					<stop offset="0%" stop-color="var(--color-bg-surface, #1c1916)" />
 					<stop offset="100%" stop-color="var(--color-bg-elevated, #141210)" />
 				</linearGradient>
-				<radialGradient id="email-orb-1" cx="50%" cy="50%" r="50%">
-					<stop offset="0%" stop-color="var(--color-brand, #c4785a)" stop-opacity="0.1" />
-					<stop offset="100%" stop-color="var(--color-brand, #c4785a)" stop-opacity="0" />
-				</radialGradient>
-				<radialGradient id="email-orb-2" cx="50%" cy="50%" r="50%">
-					<stop offset="0%" stop-color="var(--color-accent, #d4a574)" stop-opacity="0.07" />
-					<stop offset="100%" stop-color="var(--color-accent, #d4a574)" stop-opacity="0" />
-				</radialGradient>
-				<radialGradient id="email-center-glow" cx="50%" cy="50%" r="50%">
-					<stop offset="0%" stop-color="var(--color-brand, #c4785a)" stop-opacity="0.06" />
-					<stop offset="100%" stop-color="var(--color-brand, #c4785a)" stop-opacity="0" />
-				</radialGradient>
 
 				<!-- Filters -->
 				<filter id="email-shadow" x="-20%" y="-20%" width="140%" height="140%">
@@ -56,11 +44,6 @@ const props = withDefaults(defineProps<{ class?: string }>(), { class: '' })
 			<!-- Background -->
 			<rect y="70" width="800" height="360" rx="16" fill="var(--color-bg-elevated, #141210)" />
 			<rect y="70" width="800" height="360" rx="16" fill="url(#email-dots)" />
-
-			<!-- Ambient orbs -->
-			<circle cx="120" cy="130" r="100" fill="url(#email-orb-1)" class="email-orb email-orb-1" />
-			<circle cx="680" cy="280" r="90" fill="url(#email-orb-2)" class="email-orb email-orb-2" />
-			<circle cx="400" cy="210" r="140" fill="url(#email-center-glow)" class="email-orb email-orb-3" />
 
 			<!-- ═══ Flow paths ═══ -->
 			<!-- Builder → JSON -->
@@ -304,11 +287,6 @@ const props = withDefaults(defineProps<{ class?: string }>(), { class: '' })
 				<path d="M626.922 872.737c72.812 0 128.59-100.82 154.99-153.92 27.5-55.3 35.6-112.8 23.5-166.8-6.5-29-19.7-56.7-37.8-79.1l-6.7-8.3 5-7.7c10.5-16 19-36.5 23.3-56.5 3.2-14.8 3.2-45.6 0-60.2-3-13.9-6.4-23.9-12.7-37-5.1-10.9-14.9-26.8-18-29.4-2.2-1.8-1.9-3.5 1.3-5.6 4.3-2.8 16-14.4 20.6-20.4 9.4-12.2 15.9-25.9 20.3-42.9 4.5-17.4 4.3-49.1-.4-54.3-2.7-3-5.6-2.1-14.4 4.8-24.5 19.4-49.7 33.9-79.7 46-10.768 4.37-21.834 8.065-33 11.274-4.533 1.303-9.83 2.715-14.475 3.716-2.415.52-6.817 1.408-9.525 1.41-.707 0-1.4-.205-2.088-.368-3.965-.94-10.904-3.28-13.612-4.233-26.2-9.2-50.4-15.1-78.5-19-15.9-2.3-65.9-2.6-82-.6-28.2 3.6-51.6 9-79.1 18.3-4.425 1.46-8.886 2.812-13.35 4.15-.564.17-5.837 1.696-7.35 1.75-1.433.051-5.828-.866-6.738-1.078-3.707-.866-7.41-1.756-11.087-2.747-7.548-2.034-17.17-4.91-24.575-7.575-33.7-12.2-64.6-29-90.3-49.1-10.6-8.3-13-9.3-16.2-7-3.182 2.273-3.746 6.997-4.136 10.542a57 57 0 0 0-.322 3.985c-.415 10.65-.486 21.435 1.158 31.998 1.04 6.674 2.826 13.188 5 19.575 6.9 20.2 21.9 41 37.3 51.4 3.7 2.5 4.6 4.3 2.7 5.5-2 1.2-12.8 18.2-17.3 27.1-5.7 11.4-11.1 26.7-13.9 39.8-3.1 14.5-3.1 43.5 0 58.3 4.5 20.9 12.8 41.1 23.5 57.6l5.4 8.3-4.4 4.9c-6.9 7.7-19.7 27.6-25.8 39.9-16 32.7-23 72.8-19.5 112.6 4.8 54.3 27 107.4 64.6 154.5 11.2 14 38.8 41.6 52.4 52.5 12.3 9.7 30.7 22.1 42.3 28.4" fill="var(--color-brand, #c4785a)" />
 			</g>
 
-			<!-- ═══ Floating particles ═══ -->
-			<circle cx="230" cy="170" r="1.5" fill="var(--color-brand, #c4785a)" opacity="0.3" class="email-particle email-ep1" />
-			<circle cx="340" cy="160" r="1" fill="var(--color-accent, #d4a574)" opacity="0.25" class="email-particle email-ep2" />
-			<circle cx="530" cy="200" r="2" fill="var(--color-brand, #c4785a)" opacity="0.2" class="email-particle email-ep3" />
-			<circle cx="450" cy="290" r="1.5" fill="var(--color-accent, #d4a574)" opacity="0.2" class="email-particle email-ep4" />
 
 			<!-- Flow arrowheads -->
 			<g transform="translate(218, 186) rotate(0)">
@@ -348,16 +326,6 @@ const props = withDefaults(defineProps<{ class?: string }>(), { class: '' })
 	overflow: hidden;
 }
 
-/* ── Floating orbs ── */
-.email-orb-1 {
-}
-.email-orb-2 {
-}
-.email-orb-3 {
-}
-
-
-
 /* ── Pulse ── */
 .email-pulse {
 	animation: email-pulse-anim 2.5s ease-in-out infinite;
@@ -377,23 +345,10 @@ const props = withDefaults(defineProps<{ class?: string }>(), { class: '' })
 	to { stroke-dashoffset: -24; }
 }
 
-/* ── Block badge float ── */
-.email-bb-1 { animation: email-bb-float 5s ease-in-out infinite; }
-.email-bb-2 { animation: email-bb-float 5s ease-in-out infinite 0.6s; }
-.email-bb-3 { animation: email-bb-float 5s ease-in-out infinite 1.2s; }
-
-
-/* ── Particles ── */
-.email-ep1 { animation: email-p-float 6s ease-in-out infinite; }
-.email-ep2 { animation: email-p-float 7s ease-in-out infinite 1s; }
-.email-ep3 { animation: email-p-float 5.5s ease-in-out infinite 2s; }
-.email-ep4 { animation: email-p-float 8s ease-in-out infinite 0.5s; }
-
-
 /* ── Node entrance ── */
 .email-node {
 	opacity: 0;
-	animation: email-node-in 0.8s var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1)) forwards;
+	animation: email-node-in var(--motion-choreo, 800ms) var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1)) forwards;
 }
 .email-node-builder { animation-delay: 0.1s; }
 .email-node-json { animation-delay: 0.2s; }
@@ -411,10 +366,8 @@ const props = withDefaults(defineProps<{ class?: string }>(), { class: '' })
 
 /* ── Reduced motion ── */
 @media (prefers-reduced-motion: reduce) {
-	.email-orb-1, .email-orb-2, .email-orb-3,
-	.email-pulse, .email-flow-path,
-	.email-bb-1, .email-bb-2, .email-bb-3,
-	.email-ep1, .email-ep2, .email-ep3, .email-ep4,
+	.email-pulse,
+	.email-flow-path,
 	.email-node {
 		animation: none;
 		opacity: 1;

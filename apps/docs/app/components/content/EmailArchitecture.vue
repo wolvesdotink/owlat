@@ -409,8 +409,6 @@ const providerFeatures = [
   flex-shrink: 0;
 }
 
-.is-visible .ea-arrow {
-}
 
 .is-visible .ea-arrow:nth-of-type(2) {
   animation-delay: 0.5s;

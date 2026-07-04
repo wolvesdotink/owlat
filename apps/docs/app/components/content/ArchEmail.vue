@@ -647,9 +647,6 @@ const pipelineFeatures = [
   transition-delay: 0s;
 }
 
-/* ── Ambient animations ── */
-.is-visible .email-pipeline-arrow {
-}
 
 .is-visible .email-pipeline-arrow:nth-child(4) {
   animation-delay: 0.5s;

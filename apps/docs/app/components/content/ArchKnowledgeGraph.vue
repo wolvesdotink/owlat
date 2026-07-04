@@ -755,7 +755,5 @@ const briefing = 'Customer X has been on the Pro plan since 2024, upgraded in Ja
   50% { box-shadow: 0 0 6px 1px rgba(196, 120, 90, 0.2); }
 }
 
-.is-visible .kg-briefing {
-}
 
 </style>

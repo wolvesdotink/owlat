@@ -54,7 +54,7 @@ defineProps<{
 
 /* Hover: +6% surface, one elevation step — no lift, no spotlight */
 .link-card:hover {
-  background: color-mix(in srgb, var(--surface-2) 94%, var(--surface-tint));
+  background: var(--surface-2-hover);
   box-shadow: var(--shadow-2);
 }
 

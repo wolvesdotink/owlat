@@ -107,7 +107,7 @@ function getIcon(type?: string) {
   border-radius: 1px;
   transform-origin: top;
   transform: scaleY(0);
-  transition: transform 0.8s var(--ease-spring) var(--motion-moderate);
+  transition: transform var(--motion-choreo) var(--ease-spring) var(--motion-moderate);
 }
 
 .is-visible .arch-flow-line {

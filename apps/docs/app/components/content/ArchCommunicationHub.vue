@@ -1354,15 +1354,8 @@ const queueActions = [
   color: var(--color-text-secondary);
 }
 
-/* ── Ambient animations ── */
-.is-visible .hub-card--pipeline {
-}
 
-.is-visible .hub-card--knowledge {
-}
 
-.is-visible .hub-card--queue {
-}
 
 
 

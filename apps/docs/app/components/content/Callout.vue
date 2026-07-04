@@ -65,8 +65,6 @@ const iconPaths: Record<string, string> = {
   margin-bottom: 8px;
 }
 
-.callout-icon {
-}
 
 
 .callout-content :deep(> *:first-child) {

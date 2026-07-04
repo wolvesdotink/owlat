@@ -587,7 +587,7 @@ curl -X POST https://your-deployment.convex.site/api/v1/transactional \
 
 /* Hover: +6% surface, one elevation step */
 .section-card:hover {
-	background: color-mix(in srgb, var(--surface-2) 94%, var(--surface-tint));
+	background: var(--surface-2-hover);
 	box-shadow: var(--shadow-3);
 }
 
@@ -686,7 +686,7 @@ curl -X POST https://your-deployment.convex.site/api/v1/transactional \
 }
 
 .guide-card:hover {
-	background: color-mix(in srgb, var(--surface-2) 94%, var(--surface-tint));
+	background: var(--surface-2-hover);
 	box-shadow: var(--shadow-3);
 }
 
@@ -825,7 +825,7 @@ curl -X POST https://your-deployment.convex.site/api/v1/transactional \
 }
 
 .oss-banner:hover {
-	background: color-mix(in srgb, var(--surface-2) 94%, var(--surface-tint));
+	background: var(--surface-2-hover);
 	box-shadow: var(--shadow-3);
 }
 

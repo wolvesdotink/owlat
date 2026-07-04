@@ -637,14 +637,7 @@ function isHighlighted(name: string): boolean {
   border-radius: 4px;
 }
 
-/* ── Ambient animations ── */
-.is-visible .scope-card {
-  animation-delay: calc(var(--item-stagger) * 0.3s + 1.5s);
-}
 
-
-.is-visible .scope-card--accent {
-}
 
 
 .is-visible .scope-card-icon {

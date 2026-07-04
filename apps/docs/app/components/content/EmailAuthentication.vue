@@ -356,9 +356,4 @@ const layers = [
   color: var(--color-text-tertiary);
 }
 
-/* Ambient shimmer */
-.is-visible .ea-layer {
-  animation-delay: calc(var(--s) * 0.5s);
-}
-
 </style>

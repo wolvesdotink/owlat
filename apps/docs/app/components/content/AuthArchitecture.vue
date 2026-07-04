@@ -375,9 +375,6 @@ const betterAuthTables = [
   font-family: var(--font-mono);
 }
 
-/* Ambient */
-.is-visible .aa-layer {
-}
 
 .is-visible .aa-layer--betterauth {
   animation-delay: 2s;

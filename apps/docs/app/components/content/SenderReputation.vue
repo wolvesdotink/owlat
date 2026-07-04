@@ -141,11 +141,6 @@ const timeline = [
   transition-delay: 0s;
 }
 
-/* Ambient shimmer */
-.is-visible .sr-card {
-  animation-delay: calc(var(--i) * 0.6s);
-}
-
 
 /* Card header */
 .sr-card-header {
@@ -275,7 +270,7 @@ const timeline = [
   border-radius: 1px;
   transform: scaleX(0);
   transform-origin: left;
-  transition: transform 0.8s var(--ease-spring);
+  transition: transform var(--motion-choreo) var(--ease-spring);
   transition-delay: 0.4s;
 }
 

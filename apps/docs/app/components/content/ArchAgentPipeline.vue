@@ -837,8 +837,5 @@ function setStep(i: number) {
   line-height: 1.5;
 }
 
-/* ── Ambient animations ── */
-.is-visible .pipe-nav {
-}
 
 </style>

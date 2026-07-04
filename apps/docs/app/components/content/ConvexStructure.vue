@@ -300,8 +300,5 @@ const tree: TreeNode[] = [
   font-size: 0.625rem;
 }
 
-/* Ambient */
-.convex-tree.is-visible {
-}
 
 </style>

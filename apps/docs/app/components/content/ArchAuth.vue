@@ -315,9 +315,6 @@ const adapterFeatures = [
   color: var(--color-accent);
 }
 
-/* ── Ambient animations ── */
-.is-visible .auth-layer {
-}
 
 .is-visible .auth-layer--bottom {
   animation-delay: 2s;

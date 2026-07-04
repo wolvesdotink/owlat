@@ -23,7 +23,7 @@
   background: var(--color-border-default);
   border-radius: 1px;
   transform-origin: top;
-  animation: line-grow 0.8s var(--ease-spring) 0.1s both;
+  animation: line-grow var(--motion-choreo) var(--ease-spring) 0.1s both;
 }
 
 @keyframes line-grow {

@@ -152,7 +152,9 @@
    ============================================================ */
 .prose img {
 	border-radius: 10px;
-	box-shadow: var(--shadow-1);
+	/* Outer 1px ring, not the ladder shadow: dark --shadow-1 is inset-only and
+	   paints beneath replaced content, leaving images edgeless. */
+	box-shadow: 0 0 0 1px var(--color-border-subtle);
 }
 
 /* ============================================================
@@ -161,7 +163,8 @@
 .prose table {
 	border-collapse: separate;
 	border-spacing: 0;
-	box-shadow: var(--shadow-1);
+	/* Outer 1px ring — inset shadows disappear under opaque cell backgrounds */
+	box-shadow: 0 0 0 1px var(--color-border-subtle);
 	border-radius: 10px;
 	overflow: hidden;
 }
@@ -181,6 +184,8 @@
 	padding: 10px 16px;
 	border-bottom: 1px solid var(--color-border-subtle);
 	font-size: 0.875rem;
+	/* On td (not just :hover) so hover-out eases instead of snapping */
+	transition: background-color var(--motion-fast) var(--ease-spring);
 }
 
 .prose tr:last-child td {
@@ -189,7 +194,6 @@
 
 .prose tr:hover td {
 	background: var(--color-bg-surface-hover);
-	transition: background-color var(--motion-fast) var(--ease-spring);
 }
 
 /* ============================================================
@@ -197,7 +201,7 @@
    ============================================================ */
 .prose pre {
 	background: var(--owlat-code-bg);
-	box-shadow: var(--shadow-1);
+	box-shadow: 0 0 0 1px var(--color-border-subtle);
 	border-radius: 10px;
 	padding: 1rem 1.25rem;
 	overflow-x: auto;

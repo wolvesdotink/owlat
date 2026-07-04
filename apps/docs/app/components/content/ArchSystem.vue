@@ -685,18 +685,8 @@ const analytics = { name: 'PostHog', detail: 'Analytics & Errors', lines: ['Clie
   white-space: nowrap;
 }
 
-/* ── Ambient animations ── */
-.is-visible .arch-layer {
-  animation-delay: calc(var(--stagger) * 0.5s + 1s);
-}
 
 
-.is-visible .arch-layer--accent {
-}
 
-
-.is-visible .arch-item-icon--ext,
-.is-visible .arch-item-icon--primary {
-}
 
 </style>

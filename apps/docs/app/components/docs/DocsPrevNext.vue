@@ -105,7 +105,7 @@ const next = computed<SurroundItem | null>(() => {
 
 /* Hover: +6% surface shift, one elevation step up — no glow, no lift. */
 .prev-next-card:hover {
-	background: color-mix(in srgb, var(--surface-2) 94%, var(--surface-tint));
+	background: var(--surface-2-hover);
 	box-shadow: var(--shadow-2);
 }
 </style>
