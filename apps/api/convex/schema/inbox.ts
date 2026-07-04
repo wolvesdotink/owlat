@@ -278,6 +278,20 @@ export const inboxTables = {
 		// auto-send for real. Zero send-side risk while on. See
 		// agent/steps/route/index.ts.
 		isShadowMode: v.optional(v.boolean()),
+		// Timezone-aware WORKING-HOURS window for AUTONOMOUS auto-sends. When
+		// `workingHoursEnabled` is true, an auto-approved reply whose routing
+		// decision lands OUTSIDE the window is held for human review instead of
+		// sent (the draft is still queued) — so the agent never fires at 3am and
+		// out-of-hours replies wait for morning review. Times are minutes from
+		// local midnight in `workingHoursTimezone` (an IANA zone); `workingHoursDays`
+		// are the allowed weekdays (0=Sun … 6=Sat). Unset fields fall back to the
+		// Mon–Fri 09:00–17:00 UTC default. Human-reviewed approvals are unaffected.
+		// See lib/workingHours.ts + agent/steps/route/index.ts.
+		workingHoursEnabled: v.optional(v.boolean()),
+		workingHoursTimezone: v.optional(v.string()),
+		workingHoursStart: v.optional(v.number()),
+		workingHoursEnd: v.optional(v.number()),
+		workingHoursDays: v.optional(v.array(v.number())),
 		// Timestamps
 		createdAt: v.number(),
 		updatedAt: v.number(),
@@ -381,6 +395,16 @@ export const inboxTables = {
 		currentDailyCount: v.optional(v.number()),
 		dailyCountResetAt: v.optional(v.number()),
 		isEnabled: v.boolean(),
+		// Auto-demotion incident (post-send-outcome-feedback). When a confirmed
+		// BAD auto-send outcome (angry reply / bounce / complaint) lands on a
+		// (category, sender) slice, that slice is auto-DEMOTED to draft-only:
+		// `isEnabled` is forced false and these fields record the incident so the
+		// autonomy UI can surface it as a first-class alert. `demotionAcknowledgedAt`
+		// is set when the operator dismisses the alert. See autonomyOutcome.ts.
+		autoDemotedAt: v.optional(v.number()),
+		autoDemotedReason: v.optional(v.string()),
+		autoDemotedSignal: v.optional(v.string()),
+		demotionAcknowledgedAt: v.optional(v.number()),
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	})

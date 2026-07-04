@@ -14,6 +14,22 @@ import { publicQuery, adminMutation } from './lib/authedFunctions';
 import { recordAuditLog } from './lib/auditLog';
 import { requireAdminContext, isActiveOrgMember } from './lib/sessionOrganization';
 
+/** Clamp a minute-of-day into [0, 1439] so a bad client value can't wedge the window. */
+function clampMinuteOfDay(minute: number): number {
+	if (!Number.isFinite(minute)) return 0;
+	return Math.min(1439, Math.max(0, Math.round(minute)));
+}
+
+/** De-dupe + keep only valid weekday indices (0=Sun … 6=Sat). */
+function normalizeWeekdays(days: number[]): number[] {
+	const seen = new Set<number>();
+	for (const d of days) {
+		const n = Math.round(d);
+		if (n >= 0 && n <= 6) seen.add(n);
+	}
+	return Array.from(seen).sort((a, b) => a - b);
+}
+
 /**
  * Get the current agent configuration
  */
@@ -48,6 +64,14 @@ export const updateConfig = adminMutation({
 		// the configured value; 0 restores the legacy immediate send. See
 		// inbox/processingLifecycle/effects.ts.
 		autoSendDelayMs: v.optional(v.number()),
+		// Timezone-aware working-hours window for autonomous auto-sends. When
+		// enabled, an auto-approved reply decided OUTSIDE the window is held for
+		// human review instead of sent. See lib/workingHours.ts.
+		workingHoursEnabled: v.optional(v.boolean()),
+		workingHoursTimezone: v.optional(v.string()),
+		workingHoursStart: v.optional(v.number()),
+		workingHoursEnd: v.optional(v.number()),
+		workingHoursDays: v.optional(v.array(v.number())),
 	},
 	handler: async (ctx, args) => {
 		const { userId } = await requireAdminContext(ctx);
@@ -67,6 +91,16 @@ export const updateConfig = adminMutation({
 			if (args.coalesceWindowMs !== undefined) patches.coalesceWindowMs = args.coalesceWindowMs;
 			if (args.autoSendDelayMs !== undefined)
 				patches.autoSendDelayMs = Math.max(0, args.autoSendDelayMs);
+			if (args.workingHoursEnabled !== undefined)
+				patches.workingHoursEnabled = args.workingHoursEnabled;
+			if (args.workingHoursTimezone !== undefined)
+				patches.workingHoursTimezone = args.workingHoursTimezone;
+			if (args.workingHoursStart !== undefined)
+				patches.workingHoursStart = clampMinuteOfDay(args.workingHoursStart);
+			if (args.workingHoursEnd !== undefined)
+				patches.workingHoursEnd = clampMinuteOfDay(args.workingHoursEnd);
+			if (args.workingHoursDays !== undefined)
+				patches.workingHoursDays = normalizeWeekdays(args.workingHoursDays);
 
 			await ctx.db.patch(config._id, patches);
 
@@ -100,6 +134,14 @@ export const updateConfig = adminMutation({
 			maxDailyAutoReplies: args.maxDailyAutoReplies ?? 100,
 			coalesceWindowMs: args.coalesceWindowMs ?? 30000,
 			autoSendDelayMs: args.autoSendDelayMs === undefined ? undefined : Math.max(0, args.autoSendDelayMs),
+			workingHoursEnabled: args.workingHoursEnabled,
+			workingHoursTimezone: args.workingHoursTimezone,
+			workingHoursStart:
+				args.workingHoursStart === undefined ? undefined : clampMinuteOfDay(args.workingHoursStart),
+			workingHoursEnd:
+				args.workingHoursEnd === undefined ? undefined : clampMinuteOfDay(args.workingHoursEnd),
+			workingHoursDays:
+				args.workingHoursDays === undefined ? undefined : normalizeWeekdays(args.workingHoursDays),
 			createdAt: now,
 			updatedAt: now,
 		});
