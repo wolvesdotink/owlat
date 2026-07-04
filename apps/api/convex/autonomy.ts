@@ -124,7 +124,8 @@ export const checkPermissionInternal = internalQuery({
 				return {
 					mode: 'enabled',
 					allowed: false,
-					reason: 'Sender could not be identified — held for human review (first-contact safeguard)',
+					reason:
+						'Sender could not be identified — held for human review (first-contact safeguard)',
 				};
 			}
 			const warmupRequired = rule.warmupRequired ?? WARMUP_MATCHES_DEFAULT;
@@ -392,4 +393,3 @@ export const resetDailyCounts = internalMutation({
 		}
 	},
 });
-

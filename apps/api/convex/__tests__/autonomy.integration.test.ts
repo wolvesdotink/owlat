@@ -15,7 +15,11 @@ vi.mock('../lib/sessionOrganization', async () => {
 		getUserIdFromSession: vi.fn().mockResolvedValue('test-user'),
 		getMutationContext: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
 		requireOrgPermission: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
-		requireAuthenticatedIdentity: vi.fn().mockResolvedValue({ subject: 'test-user', issuer: 'test', tokenIdentifier: 'test|test-user' }),
+		requireAuthenticatedIdentity: vi.fn().mockResolvedValue({
+			subject: 'test-user',
+			issuer: 'test',
+			tokenIdentifier: 'test|test-user',
+		}),
 	};
 });
 
@@ -35,13 +39,23 @@ vi.mock('../lib/contactCountHelpers', async () => {
 
 const allModules = import.meta.glob('../**/*.*s');
 const modules = Object.fromEntries(
-	Object.entries(allModules).filter(([path]) =>
-		!path.includes('sesActions') && !path.includes('agentSecurity') && !path.includes('agentContext') && !path.includes('agentClassifier') && !path.includes('agentDrafter') && !path.includes('agentRouter') &&
-		!path.includes('agent/walker') &&
-		!path.includes('agent/steps/index') &&
-		!path.includes('agent/steps/shared') &&
-		!path.includes('agent/steps/classify') &&
-		!path.includes('agent/steps/draft') && !path.includes('knowledgeExtraction') && !path.includes('semanticFileProcessing') && !path.includes('visualizationAgent') && !path.includes('llmProvider')
+	Object.entries(allModules).filter(
+		([path]) =>
+			!path.includes('sesActions') &&
+			!path.includes('agentSecurity') &&
+			!path.includes('agentContext') &&
+			!path.includes('agentClassifier') &&
+			!path.includes('agentDrafter') &&
+			!path.includes('agentRouter') &&
+			!path.includes('agent/walker') &&
+			!path.includes('agent/steps/index') &&
+			!path.includes('agent/steps/shared') &&
+			!path.includes('agent/steps/classify') &&
+			!path.includes('agent/steps/draft') &&
+			!path.includes('knowledgeExtraction') &&
+			!path.includes('semanticFileProcessing') &&
+			!path.includes('visualizationAgent') &&
+			!path.includes('llmProvider')
 	)
 );
 
@@ -77,12 +91,15 @@ describe('autonomy.checkPermissionInternal', () => {
 		const t = convexTest(schema, modules);
 		// Flag NOT enabled → autonomy off, even with a matching rule present.
 		await t.run(async (ctx) => {
-			await ctx.db.insert('autonomyRules', createTestAutonomyRule({
-				category: 'support',
-				autoApproveThreshold: 0.5,
-				maxDailyAutoActions: 100,
-				isEnabled: true,
-			}));
+			await ctx.db.insert(
+				'autonomyRules',
+				createTestAutonomyRule({
+					category: 'support',
+					autoApproveThreshold: 0.5,
+					maxDailyAutoActions: 100,
+					isEnabled: true,
+				})
+			);
 		});
 
 		const result = await t.query(internal.autonomy.checkPermissionInternal, {
@@ -110,12 +127,15 @@ describe('autonomy.checkPermissionInternal', () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['ai.autonomy']);
 		await t.run(async (ctx) => {
-			await ctx.db.insert('autonomyRules', createTestAutonomyRule({
-				category: 'support',
-				autoApproveThreshold: 0.8,
-				maxDailyAutoActions: 100,
-				isEnabled: true,
-			}));
+			await ctx.db.insert(
+				'autonomyRules',
+				createTestAutonomyRule({
+					category: 'support',
+					autoApproveThreshold: 0.8,
+					maxDailyAutoActions: 100,
+					isEnabled: true,
+				})
+			);
 		});
 
 		const result = await t.query(internal.autonomy.checkPermissionInternal, {
@@ -131,12 +151,15 @@ describe('autonomy.checkPermissionInternal', () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['ai.autonomy']);
 		await t.run(async (ctx) => {
-			await ctx.db.insert('autonomyRules', createTestAutonomyRule({
-				category: 'support',
-				autoApproveThreshold: 0.85,
-				maxDailyAutoActions: 100,
-				isEnabled: true,
-			}));
+			await ctx.db.insert(
+				'autonomyRules',
+				createTestAutonomyRule({
+					category: 'support',
+					autoApproveThreshold: 0.85,
+					maxDailyAutoActions: 100,
+					isEnabled: true,
+				})
+			);
 		});
 
 		const result = await t.query(internal.autonomy.checkPermissionInternal, {
@@ -153,12 +176,15 @@ describe('autonomy.checkPermissionInternal', () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['ai.autonomy']);
 		await t.run(async (ctx) => {
-			await ctx.db.insert('autonomyRules', createTestAutonomyRule({
-				category: 'support',
-				autoApproveThreshold: 0.5,
-				maxDailyAutoActions: 100,
-				isEnabled: true,
-			}));
+			await ctx.db.insert(
+				'autonomyRules',
+				createTestAutonomyRule({
+					category: 'support',
+					autoApproveThreshold: 0.5,
+					maxDailyAutoActions: 100,
+					isEnabled: true,
+				})
+			);
 			await ctx.db.insert('agentCircuitBreakers', {
 				breakerType: 'rejection_spike',
 				state: 'open',
@@ -274,7 +300,10 @@ describe('autonomy.deleteRule', () => {
 		let ruleId!: Id<'autonomyRules'>;
 
 		await t.run(async (ctx) => {
-			ruleId = await ctx.db.insert('autonomyRules', createTestAutonomyRule({ category: 'billing' }));
+			ruleId = await ctx.db.insert(
+				'autonomyRules',
+				createTestAutonomyRule({ category: 'billing' })
+			);
 		});
 
 		await t.mutation(api.autonomy.deleteRule, { ruleId });
@@ -338,11 +367,14 @@ describe('autonomy.incrementDailyCount', () => {
 		const t = convexTest(schema, modules);
 
 		await t.run(async (ctx) => {
-			await ctx.db.insert('autonomyRules', createTestAutonomyRule({
-				category: 'support',
-				currentDailyCount: 5,
-				dailyCountResetAt: Date.now(),
-			}));
+			await ctx.db.insert(
+				'autonomyRules',
+				createTestAutonomyRule({
+					category: 'support',
+					currentDailyCount: 5,
+					dailyCountResetAt: Date.now(),
+				})
+			);
 		});
 
 		await t.mutation(internal.autonomy.incrementDailyCount, { category: 'support' });
@@ -359,19 +391,24 @@ describe('autonomy.incrementDailyCount', () => {
 	it('should do nothing if the category does not exist', async () => {
 		const t = convexTest(schema, modules);
 		// Should not throw, and reports not-allowed (no rule = never auto-approved).
-		const result = await t.mutation(internal.autonomy.incrementDailyCount, { category: 'nonexistent' });
+		const result = await t.mutation(internal.autonomy.incrementDailyCount, {
+			category: 'nonexistent',
+		});
 		expect(result.allowed).toBe(false);
 	});
 
 	it('charges atomically: returns allowed and increments while under the cap', async () => {
 		const t = convexTest(schema, modules);
 		await t.run(async (ctx) => {
-			await ctx.db.insert('autonomyRules', createTestAutonomyRule({
-				category: 'support',
-				maxDailyAutoActions: 3,
-				currentDailyCount: 2,
-				dailyCountResetAt: Date.now(),
-			}));
+			await ctx.db.insert(
+				'autonomyRules',
+				createTestAutonomyRule({
+					category: 'support',
+					maxDailyAutoActions: 3,
+					currentDailyCount: 2,
+					dailyCountResetAt: Date.now(),
+				})
+			);
 		});
 
 		const result = await t.mutation(internal.autonomy.incrementDailyCount, { category: 'support' });
@@ -389,12 +426,15 @@ describe('autonomy.incrementDailyCount', () => {
 	it('denies and does NOT increment once the cap is reached (the race fix)', async () => {
 		const t = convexTest(schema, modules);
 		await t.run(async (ctx) => {
-			await ctx.db.insert('autonomyRules', createTestAutonomyRule({
-				category: 'support',
-				maxDailyAutoActions: 3,
-				currentDailyCount: 3, // already at cap
-				dailyCountResetAt: Date.now(),
-			}));
+			await ctx.db.insert(
+				'autonomyRules',
+				createTestAutonomyRule({
+					category: 'support',
+					maxDailyAutoActions: 3,
+					currentDailyCount: 3, // already at cap
+					dailyCountResetAt: Date.now(),
+				})
+			);
 		});
 
 		const result = await t.mutation(internal.autonomy.incrementDailyCount, { category: 'support' });
@@ -414,12 +454,15 @@ describe('autonomy.incrementDailyCount', () => {
 	it('resets the rolling window before charging when 24h have elapsed', async () => {
 		const t = convexTest(schema, modules);
 		await t.run(async (ctx) => {
-			await ctx.db.insert('autonomyRules', createTestAutonomyRule({
-				category: 'support',
-				maxDailyAutoActions: 3,
-				currentDailyCount: 3, // at cap, but stale window
-				dailyCountResetAt: Date.now() - 25 * 60 * 60 * 1000, // >24h ago
-			}));
+			await ctx.db.insert(
+				'autonomyRules',
+				createTestAutonomyRule({
+					category: 'support',
+					maxDailyAutoActions: 3,
+					currentDailyCount: 3, // at cap, but stale window
+					dailyCountResetAt: Date.now() - 25 * 60 * 60 * 1000, // >24h ago
+				})
+			);
 		});
 
 		const result = await t.mutation(internal.autonomy.incrementDailyCount, { category: 'support' });
@@ -441,7 +484,7 @@ describe('autonomyFeedback.adjustThresholds', () => {
 	async function seedFeedback(
 		t: ReturnType<typeof convexTest>,
 		category: string,
-		rows: Array<{ action: 'approved' | 'rejected' | 'edited'; count: number }>,
+		rows: Array<{ action: 'approved' | 'rejected' | 'edited'; count: number }>
 	) {
 		const now = Date.now();
 		await t.run(async (ctx) => {
@@ -461,11 +504,14 @@ describe('autonomyFeedback.adjustThresholds', () => {
 	it('still tightens automatically on a rejection spike (>40%) and creates no suggestion', async () => {
 		const t = convexTest(schema, modules);
 		await t.run(async (ctx) => {
-			await ctx.db.insert('autonomyRules', createTestAutonomyRule({
-				category: 'support',
-				autoApproveThreshold: 0.5,
-				isEnabled: true,
-			}));
+			await ctx.db.insert(
+				'autonomyRules',
+				createTestAutonomyRule({
+					category: 'support',
+					autoApproveThreshold: 0.5,
+					isEnabled: true,
+				})
+			);
 		});
 		// 6 rows, 4 rejected => 66% rejection.
 		await seedFeedback(t, 'support', [
@@ -489,11 +535,14 @@ describe('autonomyFeedback.adjustThresholds', () => {
 	it('on low rejection it records a suggestion and does NOT change the threshold', async () => {
 		const t = convexTest(schema, modules);
 		await t.run(async (ctx) => {
-			await ctx.db.insert('autonomyRules', createTestAutonomyRule({
-				category: 'support',
-				autoApproveThreshold: 0.8,
-				isEnabled: true,
-			}));
+			await ctx.db.insert(
+				'autonomyRules',
+				createTestAutonomyRule({
+					category: 'support',
+					autoApproveThreshold: 0.8,
+					isEnabled: true,
+				})
+			);
 		});
 		// 20 rows, 0 rejected => 0% rejection, n >= 20.
 		await seedFeedback(t, 'support', [{ action: 'approved', count: 20 }]);
@@ -522,11 +571,14 @@ describe('autonomyFeedback.adjustThresholds', () => {
 	it('clears a stale suggestion when the same category later tightens', async () => {
 		const t = convexTest(schema, modules);
 		await t.run(async (ctx) => {
-			await ctx.db.insert('autonomyRules', createTestAutonomyRule({
-				category: 'support',
-				autoApproveThreshold: 0.5,
-				isEnabled: true,
-			}));
+			await ctx.db.insert(
+				'autonomyRules',
+				createTestAutonomyRule({
+					category: 'support',
+					autoApproveThreshold: 0.5,
+					isEnabled: true,
+				})
+			);
 			await ctx.db.insert('autonomySuggestions', {
 				category: 'support',
 				currentThreshold: 0.55,
@@ -557,11 +609,14 @@ describe('autonomy.acceptGraduationSuggestion', () => {
 		await enableFeatures(t, ['ai.autonomy']);
 		let suggestionId!: Id<'autonomySuggestions'>;
 		await t.run(async (ctx) => {
-			await ctx.db.insert('autonomyRules', createTestAutonomyRule({
-				category: 'support',
-				autoApproveThreshold: 0.8,
-				isEnabled: true,
-			}));
+			await ctx.db.insert(
+				'autonomyRules',
+				createTestAutonomyRule({
+					category: 'support',
+					autoApproveThreshold: 0.8,
+					isEnabled: true,
+				})
+			);
 			suggestionId = await ctx.db.insert('autonomySuggestions', {
 				category: 'support',
 				currentThreshold: 0.8,
@@ -589,11 +644,14 @@ describe('autonomy.acceptGraduationSuggestion', () => {
 		await enableFeatures(t, ['ai.autonomy']);
 		let suggestionId!: Id<'autonomySuggestions'>;
 		await t.run(async (ctx) => {
-			await ctx.db.insert('autonomyRules', createTestAutonomyRule({
-				category: 'support',
-				autoApproveThreshold: 0.8,
-				isEnabled: true,
-			}));
+			await ctx.db.insert(
+				'autonomyRules',
+				createTestAutonomyRule({
+					category: 'support',
+					autoApproveThreshold: 0.8,
+					isEnabled: true,
+				})
+			);
 			suggestionId = await ctx.db.insert('autonomySuggestions', {
 				category: 'support',
 				currentThreshold: 0.8,
@@ -606,7 +664,7 @@ describe('autonomy.acceptGraduationSuggestion', () => {
 		vi.mocked(requireOrgPermission).mockRejectedValueOnce(new Error('forbidden'));
 
 		await expect(
-			t.mutation(api.autonomySuggestions.acceptGraduationSuggestion, { suggestionId }),
+			t.mutation(api.autonomySuggestions.acceptGraduationSuggestion, { suggestionId })
 		).rejects.toThrow();
 
 		await t.run(async (ctx) => {
@@ -651,8 +709,14 @@ describe('autonomy.resetDailyCounts', () => {
 		const t = convexTest(schema, modules);
 
 		await t.run(async (ctx) => {
-			await ctx.db.insert('autonomyRules', createTestAutonomyRule({ category: 'support', currentDailyCount: 10 }));
-			await ctx.db.insert('autonomyRules', createTestAutonomyRule({ category: 'sales', currentDailyCount: 25 }));
+			await ctx.db.insert(
+				'autonomyRules',
+				createTestAutonomyRule({ category: 'support', currentDailyCount: 10 })
+			);
+			await ctx.db.insert(
+				'autonomyRules',
+				createTestAutonomyRule({ category: 'sales', currentDailyCount: 25 })
+			);
 		});
 
 		await t.mutation(internal.autonomy.resetDailyCounts);
@@ -674,7 +738,7 @@ describe('autonomy per-sender rules + warm-up', () => {
 	// passes it to checkPermissionInternal so the sender is resolved from it).
 	async function seedMessage(
 		t: ReturnType<typeof convexTest>,
-		fromAddress: string,
+		fromAddress: string
 	): Promise<Id<'inboundMessages'>> {
 		return t.run(async (ctx) =>
 			ctx.db.insert(
@@ -683,8 +747,8 @@ describe('autonomy per-sender rules + warm-up', () => {
 					from: fromAddress,
 					threadId: undefined,
 					contactId: undefined,
-				}) as never,
-			),
+				}) as never
+			)
 		);
 	}
 
@@ -693,7 +757,7 @@ describe('autonomy per-sender rules + warm-up', () => {
 		t: ReturnType<typeof convexTest>,
 		category: string,
 		sender: string,
-		matched: number,
+		matched: number
 	) {
 		await t.run(async (ctx) => {
 			await ctx.db.insert('agentShadowScorecard', {
@@ -711,12 +775,15 @@ describe('autonomy per-sender rules + warm-up', () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['ai.autonomy']);
 		await t.run(async (ctx) => {
-			await ctx.db.insert('autonomyRules', createTestAutonomyRule({
-				category: 'support',
-				autoApproveThreshold: 0.5,
-				maxDailyAutoActions: 100,
-				isEnabled: true,
-			}));
+			await ctx.db.insert(
+				'autonomyRules',
+				createTestAutonomyRule({
+					category: 'support',
+					autoApproveThreshold: 0.5,
+					maxDailyAutoActions: 100,
+					isEnabled: true,
+				})
+			);
 		});
 		const messageId = await seedMessage(t, 'Newbie <newbie@example.com>');
 
@@ -735,12 +802,15 @@ describe('autonomy per-sender rules + warm-up', () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['ai.autonomy']);
 		await t.run(async (ctx) => {
-			await ctx.db.insert('autonomyRules', createTestAutonomyRule({
-				category: 'support',
-				autoApproveThreshold: 0.5,
-				maxDailyAutoActions: 100,
-				isEnabled: true,
-			}));
+			await ctx.db.insert(
+				'autonomyRules',
+				createTestAutonomyRule({
+					category: 'support',
+					autoApproveThreshold: 0.5,
+					maxDailyAutoActions: 100,
+					isEnabled: true,
+				})
+			);
 		});
 		const messageId = await seedMessage(t, 'Warming <warming@example.com>');
 		// Only 2 matched observations — below the default warm-up of 3.
@@ -762,12 +832,15 @@ describe('autonomy per-sender rules + warm-up', () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['ai.autonomy']);
 		await t.run(async (ctx) => {
-			await ctx.db.insert('autonomyRules', createTestAutonomyRule({
-				category: 'support',
-				autoApproveThreshold: 0.5,
-				maxDailyAutoActions: 100,
-				isEnabled: true,
-			}));
+			await ctx.db.insert(
+				'autonomyRules',
+				createTestAutonomyRule({
+					category: 'support',
+					autoApproveThreshold: 0.5,
+					maxDailyAutoActions: 100,
+					isEnabled: true,
+				})
+			);
 		});
 		const messageId = await seedMessage(t, 'Trusted <trusted@example.com>');
 		await seedScorecard(t, 'support', 'trusted@example.com', 3);
@@ -788,20 +861,26 @@ describe('autonomy per-sender rules + warm-up', () => {
 		await enableFeatures(t, ['ai.autonomy']);
 		await t.run(async (ctx) => {
 			// Category rule would DENY at 0.6 (threshold 0.95)...
-			await ctx.db.insert('autonomyRules', createTestAutonomyRule({
-				category: 'support',
-				autoApproveThreshold: 0.95,
-				maxDailyAutoActions: 100,
-				isEnabled: true,
-			}));
+			await ctx.db.insert(
+				'autonomyRules',
+				createTestAutonomyRule({
+					category: 'support',
+					autoApproveThreshold: 0.95,
+					maxDailyAutoActions: 100,
+					isEnabled: true,
+				})
+			);
 			// ...but a per-sender rule for this VIP allows at 0.6 (threshold 0.5).
-			await ctx.db.insert('autonomyRules', createTestAutonomyRule({
-				category: 'support',
-				sender: 'vip@corp.com',
-				autoApproveThreshold: 0.5,
-				maxDailyAutoActions: 100,
-				isEnabled: true,
-			}));
+			await ctx.db.insert(
+				'autonomyRules',
+				createTestAutonomyRule({
+					category: 'support',
+					sender: 'vip@corp.com',
+					autoApproveThreshold: 0.5,
+					maxDailyAutoActions: 100,
+					isEnabled: true,
+				})
+			);
 		});
 		const messageId = await seedMessage(t, 'VIP <vip@corp.com>');
 		await seedScorecard(t, 'support', 'vip@corp.com', 3);
@@ -821,19 +900,25 @@ describe('autonomy per-sender rules + warm-up', () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['ai.autonomy']);
 		await t.run(async (ctx) => {
-			await ctx.db.insert('autonomyRules', createTestAutonomyRule({
-				category: 'support',
-				autoApproveThreshold: 0.5,
-				maxDailyAutoActions: 100,
-				isEnabled: true,
-			}));
-			await ctx.db.insert('autonomyRules', createTestAutonomyRule({
-				category: 'support',
-				sender: 'blocked@corp.com',
-				autoApproveThreshold: 0.5,
-				maxDailyAutoActions: 100,
-				isEnabled: false, // explicit "never auto-send this sender"
-			}));
+			await ctx.db.insert(
+				'autonomyRules',
+				createTestAutonomyRule({
+					category: 'support',
+					autoApproveThreshold: 0.5,
+					maxDailyAutoActions: 100,
+					isEnabled: true,
+				})
+			);
+			await ctx.db.insert(
+				'autonomyRules',
+				createTestAutonomyRule({
+					category: 'support',
+					sender: 'blocked@corp.com',
+					autoApproveThreshold: 0.5,
+					maxDailyAutoActions: 100,
+					isEnabled: false, // explicit "never auto-send this sender"
+				})
+			);
 		});
 		const messageId = await seedMessage(t, 'Blocked <blocked@corp.com>');
 		// Warmed up — proves the block comes from the sender opt-out, not warm-up.
@@ -872,19 +957,25 @@ describe('autonomy per-sender rules + warm-up', () => {
 		let categoryId!: Id<'autonomyRules'>;
 		let senderId!: Id<'autonomyRules'>;
 		await t.run(async (ctx) => {
-			categoryId = await ctx.db.insert('autonomyRules', createTestAutonomyRule({
-				category: 'support',
-				maxDailyAutoActions: 100,
-				currentDailyCount: 0,
-				dailyCountResetAt: Date.now(),
-			}));
-			senderId = await ctx.db.insert('autonomyRules', createTestAutonomyRule({
-				category: 'support',
-				sender: 'vip@corp.com',
-				maxDailyAutoActions: 3,
-				currentDailyCount: 2,
-				dailyCountResetAt: Date.now(),
-			}));
+			categoryId = await ctx.db.insert(
+				'autonomyRules',
+				createTestAutonomyRule({
+					category: 'support',
+					maxDailyAutoActions: 100,
+					currentDailyCount: 0,
+					dailyCountResetAt: Date.now(),
+				})
+			);
+			senderId = await ctx.db.insert(
+				'autonomyRules',
+				createTestAutonomyRule({
+					category: 'support',
+					sender: 'vip@corp.com',
+					maxDailyAutoActions: 3,
+					currentDailyCount: 2,
+					dailyCountResetAt: Date.now(),
+				})
+			);
 		});
 		const messageId = await seedMessage(t, 'VIP <vip@corp.com>');
 
@@ -905,13 +996,16 @@ describe('autonomy per-sender rules + warm-up', () => {
 	it('per-sender daily cap is enforced atomically (the race fix is preserved)', async () => {
 		const t = convexTest(schema, modules);
 		await t.run(async (ctx) => {
-			await ctx.db.insert('autonomyRules', createTestAutonomyRule({
-				category: 'support',
-				sender: 'vip@corp.com',
-				maxDailyAutoActions: 3,
-				currentDailyCount: 3, // already at cap
-				dailyCountResetAt: Date.now(),
-			}));
+			await ctx.db.insert(
+				'autonomyRules',
+				createTestAutonomyRule({
+					category: 'support',
+					sender: 'vip@corp.com',
+					maxDailyAutoActions: 3,
+					currentDailyCount: 3, // already at cap
+					dailyCountResetAt: Date.now(),
+				})
+			);
 		});
 		const messageId = await seedMessage(t, 'VIP <vip@corp.com>');
 
@@ -926,7 +1020,7 @@ describe('autonomy per-sender rules + warm-up', () => {
 			const rule = await ctx.db
 				.query('autonomyRules')
 				.withIndex('by_sender_category', (q) =>
-					q.eq('sender', 'vip@corp.com').eq('category', 'support'),
+					q.eq('sender', 'vip@corp.com').eq('category', 'support')
 				)
 				.first();
 			expect(rule!.currentDailyCount).toBe(3); // never charged past the cap
@@ -940,12 +1034,15 @@ describe('autonomy.setSenderAutonomy', () => {
 	it('creates a per-sender rule, inheriting threshold/cap from the category rule', async () => {
 		const t = convexTest(schema, modules);
 		await t.run(async (ctx) => {
-			await ctx.db.insert('autonomyRules', createTestAutonomyRule({
-				category: 'support',
-				autoApproveThreshold: 0.7,
-				maxDailyAutoActions: 42,
-				isEnabled: true,
-			}));
+			await ctx.db.insert(
+				'autonomyRules',
+				createTestAutonomyRule({
+					category: 'support',
+					autoApproveThreshold: 0.7,
+					maxDailyAutoActions: 42,
+					isEnabled: true,
+				})
+			);
 		});
 
 		const ruleId = await t.mutation(api.autonomy.setSenderAutonomy, {
@@ -986,7 +1083,7 @@ describe('autonomy.setSenderAutonomy', () => {
 			const rows = await ctx.db
 				.query('autonomyRules')
 				.withIndex('by_sender_category', (q) =>
-					q.eq('sender', 'vip@corp.com').eq('category', 'support'),
+					q.eq('sender', 'vip@corp.com').eq('category', 'support')
 				)
 				.collect();
 			expect(rows).toHaveLength(1);
@@ -1002,7 +1099,7 @@ describe('autonomy.setSenderAutonomy', () => {
 				category: 'support',
 				sender: 'vip@corp.com',
 				isEnabled: true,
-			}),
+			})
 		).rejects.toThrow();
 	});
 });

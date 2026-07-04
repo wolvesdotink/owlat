@@ -7,12 +7,16 @@
  */
 
 import { v } from 'convex/values';
-import { internalQuery, internalMutation, internalAction, type ActionCtx } from './_generated/server';
+import {
+	internalQuery,
+	internalMutation,
+	internalAction,
+	type ActionCtx,
+} from './_generated/server';
 import type { Doc } from './_generated/dataModel';
 import { adminQuery } from './lib/authedFunctions';
 import { internal } from './_generated/api';
 import { estimateCostUsd } from './lib/llm/pricing';
-
 
 // ============================================================
 // Dashboard Queries
@@ -36,7 +40,10 @@ export const getDashboardMetrics = adminQuery({
 
 		const latestByType: Record<string, number> = {};
 		for (const metric of recentMetrics) {
-			if (!latestByType[metric.metricType] || metric.createdAt > (latestByType[metric.metricType + '_ts'] ?? 0)) {
+			if (
+				!latestByType[metric.metricType] ||
+				metric.createdAt > (latestByType[metric.metricType + '_ts'] ?? 0)
+			) {
 				latestByType[metric.metricType] = metric.value;
 				latestByType[metric.metricType + '_ts'] = metric.createdAt;
 			}
@@ -127,7 +134,13 @@ export const getCostByStep = adminQuery({
 		// Accumulate token usage + estimated cost per pipeline step.
 		const byStep = new Map<
 			string,
-			{ promptTokens: number; completionTokens: number; totalTokens: number; costUsd: number; actionCount: number }
+			{
+				promptTokens: number;
+				completionTokens: number;
+				totalTokens: number;
+				costUsd: number;
+				actionCount: number;
+			}
 		>();
 		for (const action of actions) {
 			const usage = action.tokenUsage;
@@ -185,14 +198,25 @@ export const getAccuracyTrend = adminQuery({
 
 		// Align the two series by their rollup window start so a single point on
 		// the x-axis carries both values. Missing values default to 0.
-		const byWindow = new Map<number, { windowStart: number; autoApproveRatio: number; rejectionRate: number }>();
+		const byWindow = new Map<
+			number,
+			{ windowStart: number; autoApproveRatio: number; rejectionRate: number }
+		>();
 		for (const m of autoApprove) {
-			const point = byWindow.get(m.windowStart) ?? { windowStart: m.windowStart, autoApproveRatio: 0, rejectionRate: 0 };
+			const point = byWindow.get(m.windowStart) ?? {
+				windowStart: m.windowStart,
+				autoApproveRatio: 0,
+				rejectionRate: 0,
+			};
 			point.autoApproveRatio = m.value;
 			byWindow.set(m.windowStart, point);
 		}
 		for (const m of rejection) {
-			const point = byWindow.get(m.windowStart) ?? { windowStart: m.windowStart, autoApproveRatio: 0, rejectionRate: 0 };
+			const point = byWindow.get(m.windowStart) ?? {
+				windowStart: m.windowStart,
+				autoApproveRatio: 0,
+				rejectionRate: 0,
+			};
 			point.rejectionRate = m.value;
 			byWindow.set(m.windowStart, point);
 		}
@@ -348,7 +372,8 @@ export const rollupMetrics = internalAction({
 		// Processing latency: average duration of completed actions
 		const completedActions = actions.filter((a) => a.status === 'completed' && a.durationMs);
 		if (completedActions.length > 0) {
-			const avgLatency = completedActions.reduce((sum, a) => sum + (a.durationMs ?? 0), 0) / completedActions.length;
+			const avgLatency =
+				completedActions.reduce((sum, a) => sum + (a.durationMs ?? 0), 0) / completedActions.length;
 			await ctx.runMutation(internal.agentHealth.recordMetric, {
 				metricType: 'processing_latency',
 				value: Math.round(avgLatency),
@@ -363,7 +388,7 @@ export const rollupMetrics = internalAction({
 		// concern, not an error-vs-success one.
 		const totalActions = actions.length;
 		const failedActions = actions.filter(
-			(a) => a.status === 'failed' || a.status === 'abandoned',
+			(a) => a.status === 'failed' || a.status === 'abandoned'
 		).length;
 		const errorRate = totalActions > 0 ? failedActions / totalActions : 0;
 
@@ -392,7 +417,12 @@ export const rollupMetrics = internalAction({
 			} catch {
 				continue;
 			}
-			if (a.actionType === 'classify' && parsed && typeof parsed === 'object' && 'confidence' in parsed) {
+			if (
+				a.actionType === 'classify' &&
+				parsed &&
+				typeof parsed === 'object' &&
+				'confidence' in parsed
+			) {
 				const c = (parsed as { confidence?: unknown }).confidence;
 				if (typeof c === 'number') {
 					scoredClassifications++;
@@ -400,17 +430,24 @@ export const rollupMetrics = internalAction({
 					if (c < 0.5) lowConfidence++;
 				}
 			}
-			if (a.actionType === 'route' && parsed && typeof parsed === 'object' && 'decision' in parsed) {
+			if (
+				a.actionType === 'route' &&
+				parsed &&
+				typeof parsed === 'object' &&
+				'decision' in parsed
+			) {
 				routedTotal++;
 				if ((parsed as { decision?: unknown }).decision === 'auto_approve') autoApproved++;
 			}
 		}
-		const confidenceDegradation = scoredClassifications > 0 ? lowConfidence / scoredClassifications : 0;
+		const confidenceDegradation =
+			scoredClassifications > 0 ? lowConfidence / scoredClassifications : 0;
 		// Classification accuracy proxy: the mean self-reported confidence of
 		// this window's `classify` actions. There is no human ground-truth label
 		// stream, so this records the model's own confidence (0..1) as the best
 		// available quality signal — the inverse view of confidence_degradation.
-		const classificationAccuracy = scoredClassifications > 0 ? confidenceSum / scoredClassifications : 0;
+		const classificationAccuracy =
+			scoredClassifications > 0 ? confidenceSum / scoredClassifications : 0;
 		const autoApproveRatio = routedTotal > 0 ? autoApproved / routedTotal : 0;
 
 		// Rejection rate from the human verification queue (last 24h, the
@@ -462,7 +499,8 @@ export const rollupMetrics = internalAction({
 		});
 
 		// Cleanup old metrics periodically
-		if (Math.random() < 0.05) { // ~5% chance each run
+		if (Math.random() < 0.05) {
+			// ~5% chance each run
 			await ctx.runMutation(internal.agentHealth.cleanupOldMetrics);
 		}
 	},
@@ -549,9 +587,13 @@ async function evaluateCircuitBreakers(ctx: ActionCtx, values: Record<BreakerTyp
 
 function getDefaultThreshold(breakerType: string): number {
 	switch (breakerType) {
-		case 'llm_failure': return 0.20;
-		case 'confidence_degradation': return 0.30;
-		case 'rejection_spike': return 0.40;
-		default: return 0.25;
+		case 'llm_failure':
+			return 0.2;
+		case 'confidence_degradation':
+			return 0.3;
+		case 'rejection_spike':
+			return 0.4;
+		default:
+			return 0.25;
 	}
 }

@@ -107,7 +107,7 @@ export const acceptGraduationSuggestion = authedMutation({
 		await requireOrgPermission(
 			ctx,
 			'organization:manage',
-			'Only owners and admins can widen autonomy',
+			'Only owners and admins can widen autonomy'
 		);
 		await assertFeatureEnabled(ctx, 'ai.autonomy');
 

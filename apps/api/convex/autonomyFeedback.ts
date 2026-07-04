@@ -10,7 +10,12 @@
  */
 
 import { v } from 'convex/values';
-import { internalQuery, internalMutation, internalAction, type QueryCtx } from './_generated/server';
+import {
+	internalQuery,
+	internalMutation,
+	internalAction,
+	type QueryCtx,
+} from './_generated/server';
 import type { Doc } from './_generated/dataModel';
 import { adminQuery } from './lib/authedFunctions';
 import { internal } from './_generated/api';

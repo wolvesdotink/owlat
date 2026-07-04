@@ -31,7 +31,7 @@ export const WARMUP_MATCHES_DEFAULT = 3;
  */
 export async function getCategoryRule(
 	db: DatabaseReader,
-	category: string,
+	category: string
 ): Promise<Doc<'autonomyRules'> | null> {
 	const rows = await db
 		.query('autonomyRules')
@@ -50,7 +50,7 @@ export async function getCategoryRule(
 export async function getSenderRule(
 	db: DatabaseReader,
 	category: string,
-	sender: string,
+	sender: string
 ): Promise<Doc<'autonomyRules'> | null> {
 	return db
 		.query('autonomyRules')
@@ -82,7 +82,7 @@ export type EffectiveRule =
 export async function resolveEffectiveRule(
 	db: DatabaseReader,
 	category: string,
-	sender: string | null,
+	sender: string | null
 ): Promise<EffectiveRule> {
 	if (sender) {
 		const senderRule = await getSenderRule(db, category, sender);
@@ -110,7 +110,7 @@ export async function resolveEffectiveRule(
 export async function getScorecardSlice(
 	db: DatabaseReader,
 	category: string,
-	sender: string,
+	sender: string
 ): Promise<Doc<'agentShadowScorecard'> | null> {
 	return db
 		.query('agentShadowScorecard')
