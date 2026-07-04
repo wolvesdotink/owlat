@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
 	detectTrackers,
 	stripTrackerPixels,
+	stripRemoteImages,
 	isTrackingPixelTag,
 	trackerPixelLabel,
 } from '../postboxTrackers';
@@ -106,5 +107,60 @@ describe('trackerPixelLabel', () => {
 	it('pluralizes the shared banner/badge copy', () => {
 		expect(trackerPixelLabel(1)).toBe('1 tracking pixel');
 		expect(trackerPixelLabel(3)).toBe('3 tracking pixels');
+	});
+});
+
+describe('stripRemoteImages', () => {
+	const INLINE_DATA = '<img src="data:image/png;base64,iVBOR" alt="inline">';
+	const INLINE_CID = '<img src="cid:logo@corp" alt="logo">';
+
+	it('strips a 1x1 remote tracking pixel', () => {
+		const out = stripRemoteImages(`<p>Hi</p>${PIXEL_1X1}`);
+		expect(out.strippedRemoteImages).toBe(1);
+		expect(out.html).not.toContain('<img');
+		expect(out.html).toContain('<p>Hi</p>');
+	});
+
+	it('strips a display:none hidden remote pixel', () => {
+		const out = stripRemoteImages(`<div>Body${HIDDEN_IMG}</div>`);
+		expect(out.strippedRemoteImages).toBe(1);
+		expect(out.html).not.toContain('tracker.example.net');
+	});
+
+	it('strips a known-tracker-host image', () => {
+		const out = stripRemoteImages(KNOWN_HOST);
+		expect(out.strippedRemoteImages).toBe(1);
+		expect(out.html).toBe('');
+	});
+
+	it('strips a full-size remote photo (all remote images, not only pixels)', () => {
+		const out = stripRemoteImages(PHOTO);
+		expect(out.strippedRemoteImages).toBe(1);
+		expect(out.html).toBe('');
+	});
+
+	it('strips a protocol-relative remote image', () => {
+		const out = stripRemoteImages('<img src="//evil.example/beacon.gif">');
+		expect(out.strippedRemoteImages).toBe(1);
+		expect(out.html).toBe('');
+	});
+
+	it('leaves inline data:/cid: images and text content untouched', () => {
+		const html = `<p>Hello there</p>${INLINE_DATA}${INLINE_CID}`;
+		const out = stripRemoteImages(html);
+		expect(out.strippedRemoteImages).toBe(0);
+		expect(out.html).toBe(html);
+	});
+
+	it('strips remote images but keeps inline ones in a mixed body', () => {
+		const out = stripRemoteImages(`${INLINE_CID}${PIXEL_1X1}<p>x</p>`);
+		expect(out.strippedRemoteImages).toBe(1);
+		expect(out.html).toContain('cid:logo@corp');
+		expect(out.html).not.toContain('tracker.example.com');
+	});
+
+	it('fails soft on non-string input', () => {
+		const out = stripRemoteImages(undefined as unknown as string);
+		expect(out.strippedRemoteImages).toBe(0);
 	});
 });
