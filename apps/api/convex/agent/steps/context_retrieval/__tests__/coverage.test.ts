@@ -64,9 +64,7 @@ function makeCtx(legs: Legs) {
 
 	const ctx = {
 		runQuery: async (ref: unknown) => {
-			const name = getFunctionName(
-				ref as Parameters<typeof getFunctionName>[0],
-			);
+			const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
 			if (name.includes('getMessage')) return message;
 			if (name.includes('getContact')) return legs.contact ?? null;
 			if (name.includes('getRecentActivities')) return legs.activities ?? [];
@@ -76,9 +74,7 @@ function makeCtx(legs: Legs) {
 			throw new Error(`unexpected runQuery: ${name}`);
 		},
 		runAction: async (ref: unknown) => {
-			const name = getFunctionName(
-				ref as Parameters<typeof getFunctionName>[0],
-			);
+			const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
 			// knowledge/retrieval.semanticSearch
 			if (name.includes('knowledge')) return legs.knowledge ?? [];
 			// semanticFileProcessing.semanticSearch
@@ -86,9 +82,7 @@ function makeCtx(legs: Legs) {
 			throw new Error(`unexpected runAction: ${name}`);
 		},
 		runMutation: async (ref: unknown, args: unknown) => {
-			const name = getFunctionName(
-				ref as Parameters<typeof getFunctionName>[0],
-			);
+			const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
 			if (name.includes('recordContextTier')) {
 				recorded.value = args as Record<string, unknown>;
 				return null;

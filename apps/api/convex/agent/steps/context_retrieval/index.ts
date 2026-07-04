@@ -171,9 +171,7 @@ export const contextRetrievalStep: AgentStepModule<
 						openCommitments
 							.map((c) => {
 								const due =
-									c.dueAt !== undefined
-										? ` | due ${new Date(c.dueAt).toISOString()}`
-										: '';
+									c.dueAt !== undefined ? ` | due ${new Date(c.dueAt).toISOString()}` : '';
 								return `- (${c.entryType}${due}) ${c.title}: ${c.content}`;
 							})
 							.join('\n')

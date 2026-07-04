@@ -90,11 +90,31 @@ describe('contextRetrievalStep.execute — grounding sources', () => {
 			contactId,
 			threadId,
 			threadMessages: [
-				{ _id: 'm_prev', from: 'sender@example.com', receivedAt: Date.now(), subject: 'Order 123', textBody: 'Earlier message' },
+				{
+					_id: 'm_prev',
+					from: 'sender@example.com',
+					receivedAt: Date.now(),
+					subject: 'Order 123',
+					textBody: 'Earlier message',
+				},
 			],
 			knowledge: [
-				{ _id: 'k1', entryType: 'fact', confidence: 0.9, title: 'Shipping policy', content: 'Orders ship within 2 days.', _score: 0.42 },
-				{ _id: 'k2', entryType: 'fact', confidence: 0.8, title: 'Order 123 status', content: 'Shipped 2026-07-01.', _score: 0.71 },
+				{
+					_id: 'k1',
+					entryType: 'fact',
+					confidence: 0.9,
+					title: 'Shipping policy',
+					content: 'Orders ship within 2 days.',
+					_score: 0.42,
+				},
+				{
+					_id: 'k2',
+					entryType: 'fact',
+					confidence: 0.8,
+					title: 'Order 123 status',
+					content: 'Shipped 2026-07-01.',
+					_score: 0.71,
+				},
 			],
 		});
 
@@ -133,10 +153,22 @@ describe('contextRetrievalStep.execute — grounding sources', () => {
 			contactId,
 			threadId,
 			threadMessages: [
-				{ _id: 'm_prev', from: 'sender@example.com', receivedAt: Date.now(), subject: 'Truncated thread', textBody: filler },
+				{
+					_id: 'm_prev',
+					from: 'sender@example.com',
+					receivedAt: Date.now(),
+					subject: 'Truncated thread',
+					textBody: filler,
+				},
 			],
 			knowledge: [
-				{ _id: 'k1', entryType: 'fact', confidence: 0.9, title: 'Truncated knowledge', content: filler },
+				{
+					_id: 'k1',
+					entryType: 'fact',
+					confidence: 0.9,
+					title: 'Truncated knowledge',
+					content: filler,
+				},
 			],
 		});
 

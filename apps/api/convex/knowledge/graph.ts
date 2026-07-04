@@ -42,7 +42,7 @@ import {
 async function insertEntryContacts(
 	ctx: MutationCtx,
 	entryId: Id<'knowledgeEntries'>,
-	contactIds: Id<'contacts'>[] | undefined,
+	contactIds: Id<'contacts'>[] | undefined
 ): Promise<void> {
 	if (!contactIds) return;
 	// De-dup the input so a contactId repeated in the array yields one row.
@@ -61,7 +61,7 @@ async function insertEntryContacts(
 async function syncEntryContacts(
 	ctx: MutationCtx,
 	entryId: Id<'knowledgeEntries'>,
-	contactIds: Id<'contacts'>[] | undefined,
+	contactIds: Id<'contacts'>[] | undefined
 ): Promise<void> {
 	const existing = await ctx.db
 		.query('knowledgeEntryContacts')
@@ -94,15 +94,13 @@ export const search = publicQuery({
 
 		const limit = args.limit ?? 25;
 
-		let searchQuery = ctx.db
-			.query('knowledgeEntries')
-			.withSearchIndex('search_knowledge', (q) => {
-				let sq = q.search('searchableText', args.searchQuery);
-				if (args.entryType) {
-					sq = sq.eq('entryType', args.entryType);
-				}
-				return sq;
-			});
+		let searchQuery = ctx.db.query('knowledgeEntries').withSearchIndex('search_knowledge', (q) => {
+			let sq = q.search('searchableText', args.searchQuery);
+			if (args.entryType) {
+				sq = sq.eq('entryType', args.entryType);
+			}
+			return sq;
+		});
 
 		return await searchQuery.take(limit);
 	},
@@ -216,13 +214,13 @@ export const getByContact = publicQuery({
 
 		const entryMap = await batchGet<Doc<'knowledgeEntries'>, 'knowledgeEntries'>(
 			ctx,
-			links.map((link) => link.entryId),
+			links.map((link) => link.entryId)
 		);
 
 		return [...entryMap.values()]
 			.filter(
 				(e): e is Doc<'knowledgeEntries'> =>
-					e !== null && !(e.expiresAt !== undefined && e.expiresAt < now),
+					e !== null && !(e.expiresAt !== undefined && e.expiresAt < now)
 			)
 			.sort((a, b) => b.createdAt - a.createdAt)
 			.slice(0, limit);
@@ -386,7 +384,7 @@ export const deleteEntry = authedMutation({
 		const RELATION_DELETE_PAGE = 500;
 		const drainDirection = async (
 			index: 'by_from' | 'by_to',
-			field: 'fromEntryId' | 'toEntryId',
+			field: 'fromEntryId' | 'toEntryId'
 		): Promise<void> => {
 			for (;;) {
 				const page = await ctx.db
@@ -465,7 +463,7 @@ export const saveEntry = internalMutation({
 			const fromSource = await ctx.db
 				.query('knowledgeEntries')
 				.withIndex('by_source', (q) =>
-					q.eq('sourceType', args.sourceType).eq('sourceId', args.sourceId),
+					q.eq('sourceType', args.sourceType).eq('sourceId', args.sourceId)
 				)
 				.collect(); // bounded: entries extracted from a single source (small)
 			const dup = fromSource.find((e) => e.title === args.title);
@@ -577,7 +575,7 @@ export const addRelation = authedMutation({
 			.withIndex('by_from', (q) => q.eq('fromEntryId', args.fromEntryId))
 			.collect(); // bounded: outgoing relations for one entry (manually curated, small)
 		const dup = existing.find(
-			(r) => r.toEntryId === args.toEntryId && r.relationType === args.relationType,
+			(r) => r.toEntryId === args.toEntryId && r.relationType === args.relationType
 		);
 		if (dup) return dup._id;
 
@@ -783,7 +781,7 @@ export const countBySource = internalQuery({
 		const existing = await ctx.db
 			.query('knowledgeEntries')
 			.withIndex('by_source', (q) =>
-				q.eq('sourceType', args.sourceType).eq('sourceId', args.sourceId),
+				q.eq('sourceType', args.sourceType).eq('sourceId', args.sourceId)
 			)
 			.take(1);
 		return existing.length;
@@ -841,7 +839,7 @@ export const getOpenCommitmentsByContact = internalQuery({
 
 		const entryMap = await batchGet<Doc<'knowledgeEntries'>, 'knowledgeEntries'>(
 			ctx,
-			links.map((link) => link.entryId),
+			links.map((link) => link.entryId)
 		);
 
 		const commitmentTypes = new Set<string>(COMMITMENT_ENTRY_TYPES);

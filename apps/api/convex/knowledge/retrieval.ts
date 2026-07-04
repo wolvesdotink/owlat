@@ -167,12 +167,17 @@ export const semanticSearch = internalAction({
 		// `_score` stays the cosine similarity (0 for an FTS-only hit) so the
 		// org-wide Q&A path can still interleave knowledge with file results on one
 		// scale; RRF governs ORDER, which is what the draft path consumes.
-		const scored = live.map((entry) => ({ ...entry, _score: scoreById.get(entry._id as string) ?? 0 }));
+		const scored = live.map((entry) => ({
+			...entry,
+			_score: scoreById.get(entry._id as string) ?? 0,
+		}));
 
 		// Contact scoping AFTER fusion (over-fetched above so this doesn't starve
 		// the result set).
 		const visible =
-			scope === 'org-wide' ? scored : scored.filter((entry) => isContactScopeVisible(entry.contactIds, scope));
+			scope === 'org-wide'
+				? scored
+				: scored.filter((entry) => isContactScopeVisible(entry.contactIds, scope));
 
 		// Graph-augmented retrieval (seed-then-expand). KILL SWITCH: when
 		// `expandGraph` is not set we take exactly the flat path below — byte for
@@ -250,7 +255,7 @@ async function expandAndRank(
 		limit: number;
 		hops: number | undefined;
 		neighborBudget: number | undefined;
-	},
+	}
 ): Promise<ScoredKnowledgeEntry[]> {
 	const { visible, vectorRanked, ftsRanked, scope, entryType, limit } = params;
 
@@ -287,7 +292,12 @@ async function expandAndRank(
 		relationType: e.relationType,
 	}));
 
-	const ranked = rankWithGraph({ vectorRanked: vectorVisible, ftsRanked: ftsVisible, neighbors, edges });
+	const ranked = rankWithGraph({
+		vectorRanked: vectorVisible,
+		ftsRanked: ftsVisible,
+		neighbors,
+		edges,
+	});
 
 	// Hydrate neighbour docs (seeds are already hydrated in `visible`). Re-apply
 	// the scope gate as defence in depth — getByIds itself does not scope.

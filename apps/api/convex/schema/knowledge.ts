@@ -53,16 +53,14 @@ export const COMMITMENT_STATUSES = ['open', 'fulfilled', 'cancelled'] as const;
  * Validator for `knowledgeEntries.commitmentStatus`, derived from
  * `COMMITMENT_STATUSES`.
  */
-export const commitmentStatusValidator = v.union(
-	...COMMITMENT_STATUSES.map((s) => v.literal(s)),
-);
+export const commitmentStatusValidator = v.union(...COMMITMENT_STATUSES.map((s) => v.literal(s)));
 
 /**
  * Whether a commitment is still open (undefined ⇒ open — see COMMITMENT_STATUSES).
  * Pure helper shared by the recall query and its tests.
  */
 export function isCommitmentOpen(
-	status: (typeof COMMITMENT_STATUSES)[number] | undefined,
+	status: (typeof COMMITMENT_STATUSES)[number] | undefined
 ): boolean {
 	return status !== 'fulfilled' && status !== 'cancelled';
 }
@@ -71,9 +69,7 @@ export function isCommitmentOpen(
  * The nine knowledge entry types. Exported so retrieval/extraction code can
  * validate `entryType` args against the same source of truth as the table.
  */
-export const entryTypeValidator = v.union(
-	...ENTRY_TYPES.map((t) => v.literal(t)),
-);
+export const entryTypeValidator = v.union(...ENTRY_TYPES.map((t) => v.literal(t)));
 
 /**
  * The five knowledge source types (knowledgeEntries.sourceType). Exported so
@@ -110,9 +106,7 @@ export const RELATION_TYPES = [
 /**
  * Validator for `knowledgeRelations.relationType`, derived from `RELATION_TYPES`.
  */
-export const relationTypeValidator = v.union(
-	...RELATION_TYPES.map((t) => v.literal(t)),
-);
+export const relationTypeValidator = v.union(...RELATION_TYPES.map((t) => v.literal(t)));
 
 /**
  * How sure we are an edge is real, as a literal tuple. Single source of truth for
@@ -129,9 +123,7 @@ export const EDGE_CONFIDENCE_TAGS = ['extracted', 'inferred', 'ambiguous'] as co
  * Validator for `knowledgeRelations.confidenceTag`, derived from
  * `EDGE_CONFIDENCE_TAGS`.
  */
-export const edgeConfidenceTagValidator = v.union(
-	...EDGE_CONFIDENCE_TAGS.map((t) => v.literal(t)),
-);
+export const edgeConfidenceTagValidator = v.union(...EDGE_CONFIDENCE_TAGS.map((t) => v.literal(t)));
 
 /**
  * Where an edge came from, as a literal tuple. Single source of truth for the
@@ -145,9 +137,7 @@ export const EDGE_PROVENANCES = ['deterministic', 'llm', 'manual'] as const;
 /**
  * Validator for `knowledgeRelations.provenance`, derived from `EDGE_PROVENANCES`.
  */
-export const edgeProvenanceValidator = v.union(
-	...EDGE_PROVENANCES.map((p) => v.literal(p)),
-);
+export const edgeProvenanceValidator = v.union(...EDGE_PROVENANCES.map((p) => v.literal(p)));
 
 /**
  * Knowledge graph + semantic file tables — typed knowledge extracted from communications,
@@ -417,7 +407,7 @@ export const knowledgeTables = {
 				degree: v.number(),
 				inDegree: v.number(),
 				outDegree: v.number(),
-			}),
+			})
 		),
 		// Node-confidence distribution: 10 bucket counts over [0,1] (sum === nodeCount),
 		// plus mean/median and the count below the review threshold.
@@ -439,7 +429,7 @@ export const knowledgeTables = {
 				toTitle: v.string(),
 				relationType: relationTypeValidator,
 				score: v.number(),
-			}),
+			})
 		),
 		// Aggregate count of cross-contact-disjoint edges in the scanned graph (the
 		// member-visible summary of the redacted set).
@@ -454,7 +444,7 @@ export const knowledgeTables = {
 				toTitle: v.string(),
 				relationType: relationTypeValidator,
 				score: v.number(),
-			}),
+			})
 		),
 		createdAt: v.number(),
 		updatedAt: v.number(),

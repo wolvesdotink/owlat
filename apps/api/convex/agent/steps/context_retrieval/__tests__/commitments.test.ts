@@ -106,8 +106,8 @@ describe('contextRetrievalStep.execute — open commitments', () => {
 		});
 		expect(
 			(recorded.value?.['groundingSources'] as Array<{ id: string }> | undefined)?.some(
-				(s) => s.id === 'commit_1',
-			),
+				(s) => s.id === 'commit_1'
+			)
 		).toBe(true);
 	});
 
