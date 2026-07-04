@@ -247,9 +247,18 @@ describe('agentConfigMutations.killSwitch', () => {
 			return id;
 		});
 
-		await t.mutation(api.agentConfigMutations.killSwitch, {});
-		// Run the scheduled bulk-cancel.
-		await t.finishInProgressScheduledFunctions();
+		// killSwitch schedules the bulk-cancel via runAfter(0); that scheduled
+		// mutation only fires on a macrotask, so drain it under fake timers.
+		// Advance by a single millisecond per pump so ONLY the due-now cancel
+		// fires — never the 60s-out sendApprovedReply (which stays queued and is
+		// then cancelled, not run).
+		vi.useFakeTimers();
+		try {
+			await t.mutation(api.agentConfigMutations.killSwitch, {});
+			await t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(1));
+		} finally {
+			vi.useRealTimers();
+		}
 
 		// Feature flag off …
 		const flags = await t.run(async (ctx) => {
