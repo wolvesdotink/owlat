@@ -37,20 +37,9 @@ export type ProcessingStatus =
 	| 'archived'
 	| 'failed';
 
-export type ActionType =
-	| 'security_scan'
-	| 'context_retrieval'
-	| 'classify'
-	| 'draft'
-	| 'route';
+export type ActionType = 'security_scan' | 'context_retrieval' | 'classify' | 'draft' | 'route';
 
-export type ActionStatus =
-	| 'pending'
-	| 'running'
-	| 'completed'
-	| 'failed'
-	| 'abandoned'
-	| 'skipped';
+export type ActionStatus = 'pending' | 'running' | 'completed' | 'failed' | 'abandoned' | 'skipped';
 
 /**
  * Terminal status for a just-failed agentAction. `failed` stays RETRYABLE and
@@ -81,7 +70,7 @@ export const actionTypeValidator = v.union(
 	v.literal('classify'),
 	v.literal('clarify'),
 	v.literal('draft'),
-	v.literal('route'),
+	v.literal('route')
 );
 
 // ─── TransitionInput ────────────────────────────────────────────────────────
@@ -216,11 +205,7 @@ export const transitionInputValidator = v.union(
 		output: v.optional(v.string()),
 		securityFlags: v.optional(securityFlagsValidator),
 		contextTier: v.optional(
-			v.union(
-				v.literal('normal'),
-				v.literal('compacted'),
-				v.literal('emergency'),
-			),
+			v.union(v.literal('normal'), v.literal('compacted'), v.literal('emergency'))
 		),
 		durationMs: v.optional(v.number()),
 		modelUsed: v.optional(v.string()),
@@ -278,7 +263,7 @@ export const transitionInputValidator = v.union(
 			v.literal('classifier_spam'),
 			v.literal('handling_rule_archive'),
 			v.literal('coalesced'),
-			v.literal('clarification_dismissed'),
+			v.literal('clarification_dismissed')
 		),
 		securityFlags: v.optional(securityFlagsValidator),
 		userId: v.optional(v.string()),
@@ -303,10 +288,7 @@ export const transitionInputValidator = v.union(
 	v.object({
 		to: v.literal('received'),
 		at: v.number(),
-		source: v.union(
-			v.literal('release_quarantine'),
-			v.literal('cron_retry'),
-		),
+		source: v.union(v.literal('release_quarantine'), v.literal('cron_retry')),
 		userId: v.optional(v.string()),
 		resetActionId: v.optional(v.id('agentActions')),
 	}),
@@ -315,7 +297,7 @@ export const transitionInputValidator = v.union(
 		at: v.number(),
 		errorMessage: v.string(),
 		failingActionId: v.optional(v.id('agentActions')),
-	}),
+	})
 );
 
 // ─── Effects ────────────────────────────────────────────────────────────────

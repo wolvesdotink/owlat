@@ -110,11 +110,7 @@ export interface AgentRunContext {
 	agentConfig: Doc<'agentConfig'> | null;
 }
 
-export interface AgentStepModule<
-	K extends AgentStepKind,
-	In,
-	Out,
-> {
+export interface AgentStepModule<K extends AgentStepKind, In, Out> {
 	readonly kind: K;
 	/** Present iff the step calls an LLM. The walker uses this for
 	 * observability tagging — token-usage extraction itself lives in

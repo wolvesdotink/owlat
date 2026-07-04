@@ -103,10 +103,7 @@ describe('classifyStep.execute — categorize override cannot widen auto-send', 
 
 	it('an auto_archive rule still short-circuits regardless of category', async () => {
 		mockClassification({ category: 'support' });
-		const { output } = await classifyStep.execute(
-			fakeCtx({ ...inert, autoArchive: true }),
-			input
-		);
+		const { output } = await classifyStep.execute(fakeCtx({ ...inert, autoArchive: true }), input);
 		expect(output.handlingRuleArchive).toBe(true);
 	});
 });

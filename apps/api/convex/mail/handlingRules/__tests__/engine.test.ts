@@ -36,9 +36,7 @@ describe('matchHandlingRule', () => {
 	});
 
 	it('does not match a different sender', () => {
-		expect(
-			matchHandlingRule(rule({ matcher: { senders: ['other.com'] } }), target())
-		).toBe(false);
+		expect(matchHandlingRule(rule({ matcher: { senders: ['other.com'] } }), target())).toBe(false);
 	});
 
 	it('OR-s entries within a facet', () => {
@@ -118,10 +116,7 @@ describe('evaluateHandlingRules', () => {
 	});
 
 	it('non-matching rules contribute nothing', () => {
-		const out = evaluateHandlingRules(
-			[rule({ matcher: { senders: ['other.com'] } })],
-			target()
-		);
+		const out = evaluateHandlingRules([rule({ matcher: { senders: ['other.com'] } })], target());
 		expect(out.restrictsAutoSend).toBe(false);
 		expect(out.matchedInstructions).toHaveLength(0);
 	});
@@ -150,10 +145,7 @@ describe('restrictAutonomy', () => {
 	});
 
 	it('leaves a permitted auto-send permitted when nothing restricts', () => {
-		const out = evaluateHandlingRules(
-			[rule({ matcher: { senders: ['other.com'] } })],
-			target()
-		);
+		const out = evaluateHandlingRules([rule({ matcher: { senders: ['other.com'] } })], target());
 		expect(restrictAutonomy(true, out).allowed).toBe(true);
 	});
 });

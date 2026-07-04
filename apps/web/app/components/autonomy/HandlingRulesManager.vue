@@ -73,7 +73,8 @@ function matcherSummary(matcher: {
 }): string {
 	const parts: string[] = [];
 	if (matcher.senders?.length) parts.push(`from ${matcher.senders.join(', ')}`);
-	if (matcher.subjectContains?.length) parts.push(`subject ~ ${matcher.subjectContains.join(', ')}`);
+	if (matcher.subjectContains?.length)
+		parts.push(`subject ~ ${matcher.subjectContains.join(', ')}`);
 	if (matcher.bodyContains?.length) parts.push(`body ~ ${matcher.bodyContains.join(', ')}`);
 	if (matcher.categories?.length) parts.push(`category: ${matcher.categories.join(', ')}`);
 	return parts.join(' · ');
@@ -86,8 +87,8 @@ function matcherSummary(matcher: {
 			<h2 class="text-sm font-semibold text-text-primary">Natural-language rules</h2>
 			<p class="text-xs text-text-secondary">
 				Teach the assistant standing intent in plain English. A rule can hold mail for review,
-				pre-draft a stance, categorize, or auto-archive — it can only ever restrict auto-send,
-				never widen it.
+				pre-draft a stance, categorize, or auto-archive — it can only ever restrict auto-send, never
+				widen it.
 			</p>
 		</div>
 
@@ -128,10 +129,14 @@ function matcherSummary(matcher: {
 				<div class="min-w-0">
 					<p class="text-sm text-text-primary truncate">{{ rule.instruction }}</p>
 					<p class="text-xs text-text-secondary">
-						<span class="font-medium">{{ ACTION_LABELS[rule.action.type] ?? rule.action.type }}</span>
+						<span class="font-medium">{{
+							ACTION_LABELS[rule.action.type] ?? rule.action.type
+						}}</span>
 						<template v-if="rule.action.stance"> · “{{ rule.action.stance }}”</template>
 						<template v-if="rule.action.category"> · {{ rule.action.category }}</template>
-						<template v-if="matcherSummary(rule.matcher)"> — {{ matcherSummary(rule.matcher) }}</template>
+						<template v-if="matcherSummary(rule.matcher)">
+							— {{ matcherSummary(rule.matcher) }}</template
+						>
 					</p>
 				</div>
 				<div class="flex items-center gap-2 shrink-0">

@@ -24,21 +24,22 @@ import { runLlmObject } from '../../../lib/llm/dispatch';
 const classificationSchema = z.object({
 	category: z
 		.enum([
-			'support', 'sales', 'billing', 'feature_request',
-			'complaint', 'spam', 'internal', 'other',
+			'support',
+			'sales',
+			'billing',
+			'feature_request',
+			'complaint',
+			'spam',
+			'internal',
+			'other',
 		])
 		.describe('The primary category of this message'),
-	priority: z
-		.enum(['urgent', 'normal', 'low'])
-		.describe('How urgently this needs attention'),
+	priority: z.enum(['urgent', 'normal', 'low']).describe('How urgently this needs attention'),
 	sentiment: z
 		.enum(['positive', 'neutral', 'negative'])
 		.describe('The emotional tone of the message'),
 	intent: z
-		.enum([
-			'question', 'complaint', 'request', 'information',
-			'escalation', 'acknowledgment',
-		])
+		.enum(['question', 'complaint', 'request', 'information', 'escalation', 'acknowledgment'])
 		.describe('What the sender is trying to do'),
 	confidence: z
 		.number()
@@ -65,10 +66,7 @@ export type ClassifyOutput = z.infer<typeof classificationSchema> & {
  * archives (spam)? A natural-language `categorize` rule must never be able to
  * relabel such a verdict, so it can only ever RESTRICT auto-send, never widen it.
  */
-function isSafetyCriticalClassification(c: {
-	category: string;
-	priority: string;
-}): boolean {
+function isSafetyCriticalClassification(c: { category: string; priority: string }): boolean {
 	return c.category === 'complaint' || c.category === 'spam' || c.priority === 'urgent';
 }
 
