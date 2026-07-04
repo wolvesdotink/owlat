@@ -72,7 +72,7 @@ function atLocalHour(
 	now: number,
 	tzOffsetMinutes: number,
 	hour: number,
-	dayOffset: number,
+	dayOffset: number
 ): number {
 	const local = localParts(now, tzOffsetMinutes);
 	const target = Date.UTC(
@@ -82,7 +82,7 @@ function atLocalHour(
 		hour,
 		0,
 		0,
-		0,
+		0
 	);
 	return target - tzOffsetMinutes * 60_000;
 }
@@ -153,7 +153,10 @@ const HINT_RULES: HintRule[] = [
 		key: 'tomorrow_am',
 		test: /\btomorrow (morning|am|first thing|a\.m\.)\b|\bfirst thing tomorrow\b|\btomorrow\b/,
 	},
-	{ key: 'this_evening', test: /\b(this evening|tonight|later tonight|end of day|by eod|by end of day)\b/ },
+	{
+		key: 'this_evening',
+		test: /\b(this evening|tonight|later tonight|end of day|by eod|by end of day)\b/,
+	},
 	{ key: 'later_today', test: /\b(this afternoon|later today|in a (few|couple of) hours)\b/ },
 	{ key: 'next_week', test: /\b(monday|next mon)\b/ },
 ];

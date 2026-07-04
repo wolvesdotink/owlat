@@ -91,7 +91,7 @@ export const snoozeUntilReply = authedMutation({
 export async function clearSnoozeUntilReplyForThread(
 	ctx: MutationCtx,
 	threadId: Id<'mailThreads'>,
-	now: number,
+	now: number
 ): Promise<void> {
 	const messages = await ctx.db
 		.query('mailMessages')
