@@ -62,13 +62,13 @@ const modules = Object.fromEntries(
 				!path.includes('knowledgeExtraction') &&
 				!path.includes('semanticFileProcessing') &&
 				!path.includes('visualizationAgent') &&
-				!path.includes('llmProvider'),
+				!path.includes('llmProvider')
 		)
 		.map(([key, val]) =>
 			key.startsWith('../') && !key.startsWith('../../')
 				? (['../../mail/' + key.slice(3), val] as const)
-				: ([key, val] as const),
-		),
+				: ([key, val] as const)
+		)
 );
 
 // ── Test fixtures for the pure evaluator ──────────────────────────
@@ -94,7 +94,7 @@ function rule(overrides: Partial<Doc<'handlingRules'>>): Doc<'handlingRules'> {
 function fromRule(
 	action: Doc<'handlingRules'>['action'],
 	senderNeedle: string,
-	extra: Partial<Doc<'handlingRules'>> = {},
+	extra: Partial<Doc<'handlingRules'>> = {}
 ): Doc<'handlingRules'> {
 	return rule({
 		action,
@@ -147,12 +147,12 @@ describe('evaluateHandlingRules — matching + actions', () => {
 		});
 		const both = evaluateHandlingRules(
 			[r],
-			toHandlingEvalMessage({ from: 'ap@acme.com', subject: 'Overdue invoice', textBody: '' }),
+			toHandlingEvalMessage({ from: 'ap@acme.com', subject: 'Overdue invoice', textBody: '' })
 		);
 		expect(both.matchedRuleIds).toEqual([r._id]);
 		const onlyOne = evaluateHandlingRules(
 			[r],
-			toHandlingEvalMessage({ from: 'ap@acme.com', subject: 'hello', textBody: '' }),
+			toHandlingEvalMessage({ from: 'ap@acme.com', subject: 'hello', textBody: '' })
 		);
 		expect(onlyOne.matchedRuleIds).toEqual([]);
 	});
@@ -168,10 +168,7 @@ describe('evaluateHandlingRules — never-auto-send / restrict-only invariant', 
 
 	it('always_ask and draft_with_stance also restrict auto-send', () => {
 		for (const action of ['always_ask', 'draft_with_stance'] as const) {
-			const out = evaluateHandlingRules(
-				[fromRule(action, 'x@')],
-				msgFrom('x@y.com'),
-			);
+			const out = evaluateHandlingRules([fromRule(action, 'x@')], msgFrom('x@y.com'));
 			expect(out.restrictAutoSend).toBe(true);
 		}
 	});
@@ -196,7 +193,7 @@ describe('evaluateHandlingRules — never-auto-send / restrict-only invariant', 
 	it('non-restricting rules leave auto-send untouched (restrictAutoSend=false)', () => {
 		const out = evaluateHandlingRules(
 			[fromRule('categorize', 'a@', { category: 'support' })],
-			msgFrom('a@b.com'),
+			msgFrom('a@b.com')
 		);
 		expect(out.restrictAutoSend).toBe(false);
 	});
@@ -207,19 +204,15 @@ describe('evaluateHandlingRules — inert rules are ignored', () => {
 		const m = msgFrom('legal@corp.com');
 		expect(
 			evaluateHandlingRules([fromRule('never_auto_send', 'legal@', { isEnabled: false })], m)
-				.restrictAutoSend,
+				.restrictAutoSend
 		).toBe(false);
 		expect(
-			evaluateHandlingRules(
-				[fromRule('never_auto_send', 'legal@', { status: 'compiling' })],
-				m,
-			).restrictAutoSend,
+			evaluateHandlingRules([fromRule('never_auto_send', 'legal@', { status: 'compiling' })], m)
+				.restrictAutoSend
 		).toBe(false);
 		expect(
-			evaluateHandlingRules(
-				[rule({ action: 'never_auto_send', matcher: undefined })],
-				m,
-			).restrictAutoSend,
+			evaluateHandlingRules([rule({ action: 'never_auto_send', matcher: undefined })], m)
+				.restrictAutoSend
 		).toBe(false);
 	});
 });
@@ -263,7 +256,7 @@ describe('handling rule lifecycle', () => {
 
 		const out = evaluateHandlingRules(
 			active as Doc<'handlingRules'>[],
-			msgFrom('counsel legal@corp.com'),
+			msgFrom('counsel legal@corp.com')
 		);
 		expect(out.restrictAutoSend).toBe(true);
 	});

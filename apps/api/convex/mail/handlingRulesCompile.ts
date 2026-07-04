@@ -39,9 +39,7 @@ const compileSchema = z.object({
 	conditions: z
 		.array(
 			z.object({
-				field: z
-					.enum(['from', 'subject', 'body'])
-					.describe('Which part of the email to test'),
+				field: z.enum(['from', 'subject', 'body']).describe('Which part of the email to test'),
 				op: z
 					.enum(['contains', 'equals', 'matches'])
 					.describe('contains = substring; equals = exact; matches = regex'),
@@ -63,7 +61,16 @@ const compileSchema = z.object({
 		.optional()
 		.describe('For draft_with_stance: the stance the reply should take (e.g. "a polite decline")'),
 	category: z
-		.enum(['support', 'sales', 'billing', 'feature_request', 'complaint', 'spam', 'internal', 'other'])
+		.enum([
+			'support',
+			'sales',
+			'billing',
+			'feature_request',
+			'complaint',
+			'spam',
+			'internal',
+			'other',
+		])
 		.optional()
 		.describe('For categorize: the category to apply'),
 });

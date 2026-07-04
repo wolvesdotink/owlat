@@ -74,16 +74,34 @@ const navigationSections = computed(() => {
 		{ name: 'Technical', href: '/dashboard/settings/technical', icon: 'lucide:wrench' },
 		{ name: 'Properties', href: '/dashboard/settings/properties', icon: 'lucide:tags' },
 		{ name: 'Features', href: '/dashboard/settings/features', icon: 'lucide:toggle-right' },
-		...(isFeatureEnabled('ai.agent') ? [
-			{ name: 'AI Agent', href: '/dashboard/settings/agent', icon: 'lucide:bot' },
-			{ name: 'Agent Health', href: '/dashboard/settings/agent-health', icon: 'lucide:activity' },
-		] : []),
-		...(isFeatureEnabled('ai.autonomy') ? [
-			{ name: 'Autonomy', href: '/dashboard/settings/autonomy', icon: 'lucide:sliders-horizontal' },
-		] : []),
-		...(isFeatureEnabled('ai') ? [
-			{ name: 'Handling Rules', href: '/dashboard/settings/handling-rules', icon: 'lucide:wand-sparkles' },
-		] : []),
+		...(isFeatureEnabled('ai.agent')
+			? [
+					{ name: 'AI Agent', href: '/dashboard/settings/agent', icon: 'lucide:bot' },
+					{
+						name: 'Agent Health',
+						href: '/dashboard/settings/agent-health',
+						icon: 'lucide:activity',
+					},
+				]
+			: []),
+		...(isFeatureEnabled('ai.autonomy')
+			? [
+					{
+						name: 'Autonomy',
+						href: '/dashboard/settings/autonomy',
+						icon: 'lucide:sliders-horizontal',
+					},
+				]
+			: []),
+		...(isFeatureEnabled('ai')
+			? [
+					{
+						name: 'Handling Rules',
+						href: '/dashboard/settings/handling-rules',
+						icon: 'lucide:wand-sparkles',
+					},
+				]
+			: []),
 		{ name: 'Channels', href: '/dashboard/settings/channels', icon: 'lucide:radio' },
 		{ name: 'Account', href: '/dashboard/settings/account', icon: 'lucide:users' },
 		...(isDesktop.value
@@ -95,33 +113,33 @@ const navigationSections = computed(() => {
 		{ name: 'All Threads', href: '/dashboard/inbox', icon: 'lucide:message-square' },
 		{ name: 'Channels', href: '/dashboard/inbox/channels', icon: 'lucide:radio' },
 		{ name: 'Review Queue', href: '/dashboard/inbox/review', icon: 'lucide:check-circle' },
-		...(isFeatureEnabled('inbox.codeTasks') ? [
-			{ name: 'Code Tasks', href: '/dashboard/inbox/code-tasks', icon: 'lucide:code' },
-		] : []),
+		...(isFeatureEnabled('inbox.codeTasks')
+			? [{ name: 'Code Tasks', href: '/dashboard/inbox/code-tasks', icon: 'lucide:code' }]
+			: []),
 		{ name: 'Quarantine', href: '/dashboard/inbox/quarantine', icon: 'lucide:shield-alert' },
 	];
 
 	const mailItems = [
 		{ name: 'Overview', href: '/dashboard/mail', icon: 'lucide:layout-dashboard' },
-		...(isFeatureEnabled('campaigns') ? [
-			{ name: 'Marketing', href: '/dashboard/mail/marketing', icon: 'lucide:megaphone' },
-		] : []),
-		...(isFeatureEnabled('transactional') ? [
-			{ name: 'Transactional', href: '/dashboard/mail/transactional', icon: 'lucide:send' },
-		] : []),
+		...(isFeatureEnabled('campaigns')
+			? [{ name: 'Marketing', href: '/dashboard/mail/marketing', icon: 'lucide:megaphone' }]
+			: []),
+		...(isFeatureEnabled('transactional')
+			? [{ name: 'Transactional', href: '/dashboard/mail/transactional', icon: 'lucide:send' }]
+			: []),
 		{ name: 'Blocks', href: '/dashboard/mail/blocks', icon: 'lucide:blocks' },
 		{ name: 'Media', href: '/dashboard/mail/media', icon: 'lucide:image' },
-		...(isFeatureEnabled('ai.visualizations') ? [
-			{ name: 'Visualizations', href: '/dashboard/visualizations', icon: 'lucide:bar-chart-3' },
-		] : []),
+		...(isFeatureEnabled('ai.visualizations')
+			? [{ name: 'Visualizations', href: '/dashboard/visualizations', icon: 'lucide:bar-chart-3' }]
+			: []),
 		{ name: 'Files', href: '/dashboard/files', icon: 'lucide:file-search' },
 	];
 
 	const campaignsItems = [
 		{ name: 'All Campaigns', href: '/dashboard/campaigns', icon: 'lucide:megaphone' },
-		...(isFeatureEnabled('automations') ? [
-			{ name: 'Automations', href: '/dashboard/automations', icon: 'lucide:zap' },
-		] : []),
+		...(isFeatureEnabled('automations')
+			? [{ name: 'Automations', href: '/dashboard/automations', icon: 'lucide:zap' }]
+			: []),
 		{ name: 'Reports', href: '/dashboard/campaigns/reports', icon: 'lucide:bar-chart-3' },
 		{ name: 'A/B Results', href: '/dashboard/campaigns/ab-results', icon: 'lucide:flask-conical' },
 	];
@@ -190,7 +208,12 @@ const navigationSections = computed(() => {
 	}
 
 	if (isFeatureEnabled('campaigns')) {
-		sections.push({ key: 'campaigns', name: 'Campaigns', icon: 'lucide:megaphone', items: campaignsItems });
+		sections.push({
+			key: 'campaigns',
+			name: 'Campaigns',
+			icon: 'lucide:megaphone',
+			items: campaignsItems,
+		});
 	}
 
 	sections.push({
@@ -205,7 +228,12 @@ const navigationSections = computed(() => {
 		],
 	});
 
-	sections.push({ key: 'settings', name: 'Settings', icon: 'lucide:settings', items: settingsItems });
+	sections.push({
+		key: 'settings',
+		name: 'Settings',
+		icon: 'lucide:settings',
+		items: settingsItems,
+	});
 
 	return sections;
 });
@@ -422,7 +450,8 @@ const mainPaddingClass = computed(() => {
 					v-if="!isCollapsed"
 					class="lg:hidden p-2 text-text-secondary hover:text-text-primary"
 					@click="isSidebarOpen = false"
-				 aria-label="Close">
+					aria-label="Close"
+				>
 					<Icon name="lucide:x" class="w-5 h-5" />
 				</button>
 			</div>
@@ -577,7 +606,11 @@ const mainPaddingClass = computed(() => {
 					:title="isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
 					@click="toggleCollapsed"
 				>
-					<Icon v-if="!isCollapsed" name="lucide:panel-left-close" class="w-5 h-5 text-text-tertiary" />
+					<Icon
+						v-if="!isCollapsed"
+						name="lucide:panel-left-close"
+						class="w-5 h-5 text-text-tertiary"
+					/>
 					<Icon v-else name="lucide:panel-left" class="w-5 h-5 text-text-tertiary" />
 					<span v-if="!isCollapsed">Collapse</span>
 				</button>

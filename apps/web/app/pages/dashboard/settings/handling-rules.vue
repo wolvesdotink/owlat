@@ -17,9 +17,12 @@ const {
 	error: rulesError,
 } = useConvexQuery(api.mail.handlingRules.list, () => ({}));
 
-const { run: createRule, isLoading: creating } = useBackendOperation(api.mail.handlingRules.create, {
-	label: 'Create handling rule',
-});
+const { run: createRule, isLoading: creating } = useBackendOperation(
+	api.mail.handlingRules.create,
+	{
+		label: 'Create handling rule',
+	}
+);
 const { run: updateRule } = useBackendOperation(api.mail.handlingRules.update, {
 	label: 'Update handling rule',
 });
@@ -101,9 +104,9 @@ function actionLabel(action?: string): string {
 			<div>
 				<h1 class="text-2xl font-semibold text-text-primary">Handling Rules</h1>
 				<p class="text-text-secondary mt-1 max-w-xl">
-					Teach the assistant in plain English how to handle certain mail. A rule can only ever
-					make the agent <em>more</em> cautious — it can hold a reply for your review or archive
-					mail, but it can never widen what gets auto-sent.
+					Teach the assistant in plain English how to handle certain mail. A rule can only ever make
+					the agent <em>more</em> cautious — it can hold a reply for your review or archive mail,
+					but it can never widen what gets auto-sent.
 				</p>
 			</div>
 		</div>
@@ -112,9 +115,7 @@ function actionLabel(action?: string): string {
 			<div class="lg:col-span-2 space-y-4">
 				<!-- New rule -->
 				<UiCard>
-					<label class="block text-sm font-medium text-text-primary mb-2">
-						Add a rule
-					</label>
+					<label class="block text-sm font-medium text-text-primary mb-2"> Add a rule </label>
 					<textarea
 						v-model="draft"
 						rows="2"
@@ -174,7 +175,10 @@ function actionLabel(action?: string): string {
 									</span>
 									<span v-if="!rule.isEnabled" class="text-text-tertiary">· Paused</span>
 								</div>
-								<p v-if="rule.status === 'failed' && rule.compileError" class="text-xs text-error mt-2">
+								<p
+									v-if="rule.status === 'failed' && rule.compileError"
+									class="text-xs text-error mt-2"
+								>
 									{{ rule.compileError }}
 								</p>
 								<div
@@ -207,7 +211,12 @@ function actionLabel(action?: string): string {
 
 					<UiCard v-if="!rules?.length">
 						<div class="py-8 text-center">
-							<UiIconBox icon="lucide:wand-sparkles" size="lg" variant="surface" class="mx-auto mb-4" />
+							<UiIconBox
+								icon="lucide:wand-sparkles"
+								size="lg"
+								variant="surface"
+								class="mx-auto mb-4"
+							/>
 							<h3 class="text-base font-medium text-text-primary mb-2">No handling rules yet</h3>
 							<p class="text-sm text-text-tertiary max-w-sm mx-auto">
 								Add a rule above to teach the assistant standing intent in plain English.
@@ -225,8 +234,13 @@ function actionLabel(action?: string): string {
 					</div>
 					<ul class="space-y-2 text-sm text-text-secondary">
 						<li v-for="ex in examples" :key="ex" class="flex gap-2">
-							<Icon name="lucide:corner-down-right" class="w-4 h-4 mt-0.5 shrink-0 text-text-tertiary" />
-							<button class="text-left hover:text-text-primary" @click="draft = ex">{{ ex }}</button>
+							<Icon
+								name="lucide:corner-down-right"
+								class="w-4 h-4 mt-0.5 shrink-0 text-text-tertiary"
+							/>
+							<button class="text-left hover:text-text-primary" @click="draft = ex">
+								{{ ex }}
+							</button>
 						</li>
 					</ul>
 				</UiCard>
@@ -238,8 +252,8 @@ function actionLabel(action?: string): string {
 					</div>
 					<p class="text-sm text-text-secondary">
 						Rules are compiled into a deterministic matcher run on every inbound message. A rule can
-						only <b>restrict</b> automation — hold a reply for review, archive, or categorize. It can
-						never cause the agent to auto-send something it otherwise wouldn't.
+						only <b>restrict</b> automation — hold a reply for review, archive, or categorize. It
+						can never cause the agent to auto-send something it otherwise wouldn't.
 					</p>
 				</UiCard>
 			</div>
