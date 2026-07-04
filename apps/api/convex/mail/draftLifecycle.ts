@@ -218,6 +218,17 @@ type Effect =
 			kind: 'record_recipients_in_address_book';
 			mailboxId: Id<'mailboxes'>;
 			emails: ReadonlyArray<string>;
+	  }
+	| {
+			// Edit-learning flywheel: the sent draft carried an AI baseline, so
+			// diff baseline → sent out of band and fold the delta into the voice
+			// profile / per-contact memory (mail/editLearning.ts). Fire-and-forget;
+			// never blocks the send.
+			kind: 'schedule_edit_learning';
+			mailboxId: Id<'mailboxes'>;
+			contactAddress?: string;
+			baselineText: string;
+			sentText: string;
 	  };
 
 type ReducerResult = {
@@ -357,6 +368,24 @@ function reduceSent(
 ): ReducerResult {
 	const recipients = dedupedRecipients(draft);
 
+	// Edit-learning flywheel: only when this draft was AI-authored (has a
+	// baseline) AND the user actually changed something before sending. The diff
+	// itself + recurrence gating happen out of band in mail/editLearning.ts.
+	const baselineText = draft.aiDraftBaseline?.text?.trim() ?? '';
+	const sentText = (args.context.bodyText ?? args.context.bodyHtml).trim();
+	const learningEffects: Effect[] =
+		baselineText.length > 0 && sentText.length > 0
+			? [
+					{
+						kind: 'schedule_edit_learning',
+						mailboxId: draft.mailboxId,
+						...(recipients[0] !== undefined ? { contactAddress: recipients[0] } : {}),
+						baselineText,
+						sentText,
+					},
+			  ]
+			: [];
+
 	return {
 		// The `→ sent` reducer carries no draft patch — the runner deletes
 		// the row instead. The patch is empty so the runner skips
@@ -374,6 +403,7 @@ function reduceSent(
 				mailboxId: draft.mailboxId,
 				emails: recipients,
 			},
+			...learningEffects,
 			// The audit log fires AFTER the new mailMessages row insert so
 			// `messageId` is available — the runner enriches the details
 			// after insertion.
@@ -634,6 +664,19 @@ async function applyNonSentEffects(
 						emails: Array.from(effect.emails),
 					},
 				);
+				break;
+			}
+			case 'schedule_edit_learning': {
+				// Fire-and-forget: the diff + recurrence gating run out of band so
+				// a learning failure can never block or delay the send.
+				await ctx.scheduler.runAfter(0, internal.mail.editLearning.recordEdit, {
+					mailboxId: effect.mailboxId,
+					...(effect.contactAddress !== undefined
+						? { contactAddress: effect.contactAddress }
+						: {}),
+					baselineText: effect.baselineText,
+					sentText: effect.sentText,
+				});
 				break;
 			}
 		}

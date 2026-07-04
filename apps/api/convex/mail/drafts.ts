@@ -94,6 +94,11 @@ export const update = authedMutation({
 		// absent leaves it untouched. Carried onto the sent thread as a
 		// follow-up watch by the sent-effects reducer (mail/followUps.ts).
 		followUpRemindAt: v.optional(v.union(v.number(), v.null())),
+		// Edit-learning flywheel: the composer passes the AI's ORIGINAL draft text
+		// here the first time it applies an AI-generated draft. Snapshotted ONCE
+		// (never overwritten) so a later human edit still diffs against the AI's
+		// version on send. Absent → no learning, exactly today's behaviour.
+		aiBaseline: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		const draft = await getOrThrow(ctx, args.draftId, 'Draft');
@@ -112,6 +117,15 @@ export const update = authedMutation({
 		if (args.composerMode !== undefined) patch['composerMode'] = args.composerMode;
 		if (args.followUpRemindAt !== undefined) {
 			patch['followUpRemindAt'] = args.followUpRemindAt ?? undefined;
+		}
+		// Snapshot the AI baseline exactly once — the first apply wins so a later
+		// human edit still diffs against the AI's original text on send.
+		if (
+			args.aiBaseline !== undefined &&
+			args.aiBaseline.trim().length > 0 &&
+			draft.aiDraftBaseline === undefined
+		) {
+			patch['aiDraftBaseline'] = { text: args.aiBaseline, capturedAt: Date.now() };
 		}
 
 		await ctx.db.patch(args.draftId, patch);

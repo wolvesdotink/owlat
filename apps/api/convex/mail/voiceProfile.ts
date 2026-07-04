@@ -26,6 +26,12 @@ import { loadOwnedMailbox } from './permissions';
 import { throwForbidden } from '../_utils/errors';
 import { extractEmail } from '../lib/emailAddress';
 import { splitQuotedHtml, splitQuotedText } from '@owlat/shared/quotedText';
+import {
+	buildLayeredGuidance,
+	promotedDirectives,
+	medianEditDistance,
+	type EditDeltaKind,
+} from './editLearning';
 
 // ── Tuning ────────────────────────────────────────────────────────────────
 
@@ -256,23 +262,57 @@ export const markIdle = internalMutation({
  * guidance block to inject, or null for today's non-personalized behaviour.
  * Scheduling is a write, so callers must be mutations.
  */
+/**
+ * Promoted per-recipient style directives for one address, or [] when there is
+ * no override row / no promoted rule yet. Keyed by the exact lowercased address
+ * so an override learned for contact X is only ever blended when drafting to X.
+ */
+async function contactStyleDirectives(
+	ctx: MutationCtx,
+	mailboxId: Id<'mailboxes'>,
+	recipient: string
+): Promise<string[]> {
+	const address = extractEmail(recipient);
+	if (!address) return [];
+	const row = await ctx.db
+		.query('mailContactStyleOverrides')
+		.withIndex('by_mailbox_and_address', (q) =>
+			q.eq('mailboxId', mailboxId).eq('contactAddress', address)
+		)
+		.first();
+	if (!row) return [];
+	return promotedDirectives(row.adjustments);
+}
+
 async function guidanceForMailbox(
 	ctx: MutationCtx,
-	mailboxId: Id<'mailboxes'>
+	mailboxId: Id<'mailboxes'>,
+	recipient?: string
 ): Promise<{ guidance: string | null }> {
 	const row = await findRow(ctx, mailboxId);
 	if (!row || !row.isEnabled) return { guidance: null };
-	if (!(await isFeatureEnabled(ctx, 'ai'))) {
-		return { guidance: buildVoiceGuidance(row.profile) };
+	// Lazy background refresh of the SAMPLED voice profile (gated on `ai`); the
+	// derived/standing/contact layers below are served regardless so learning
+	// surfaces even when the sampler is idle.
+	if (await isFeatureEnabled(ctx, 'ai')) {
+		const sentCount = await currentSentCount(ctx, mailboxId);
+		if (row.status === 'idle' && isVoiceProfileStale(row, sentCount, Date.now())) {
+			await ctx.db.patch(row._id, { status: 'refreshing', updatedAt: Date.now() });
+			await ctx.scheduler.runAfter(0, internal.mail.voiceProfileActions.refresh, {
+				mailboxId,
+			});
+		}
 	}
-	const sentCount = await currentSentCount(ctx, mailboxId);
-	if (row.status === 'idle' && isVoiceProfileStale(row, sentCount, Date.now())) {
-		await ctx.db.patch(row._id, { status: 'refreshing', updatedAt: Date.now() });
-		await ctx.scheduler.runAfter(0, internal.mail.voiceProfileActions.refresh, {
-			mailboxId,
-		});
-	}
-	return { guidance: buildVoiceGuidance(row.profile) };
+	const contactDirectives = recipient
+		? await contactStyleDirectives(ctx, mailboxId, recipient)
+		: [];
+	const guidance = buildLayeredGuidance({
+		standingInstructions: row.standingInstructions ?? [],
+		voiceBlock: buildVoiceGuidance(row.profile),
+		derivedDirectives: promotedDirectives(row.derivedAdjustments ?? []),
+		contactDirectives,
+	});
+	return { guidance };
 }
 
 /**
@@ -306,7 +346,9 @@ export const getGuidanceForRecipient = internalMutation({
 			.withIndex('by_address', (q) => q.eq('address', address))
 			.first();
 		if (!mailbox) return { guidance: null };
-		return guidanceForMailbox(ctx, mailbox._id);
+		// Pass the recipient through so the per-contact override for this exact
+		// address is blended in (never any other contact's override).
+		return guidanceForMailbox(ctx, mailbox._id, args.recipient);
 	},
 });
 
@@ -323,13 +365,101 @@ export const get = publicQuery({
 		const owned = await loadOwnedMailbox(ctx, args.mailboxId);
 		if (!owned.ok) return null;
 		const row = await findRow(ctx, args.mailboxId);
-		if (!row) return { isEnabled: false, profile: null, status: 'idle' as const, lastComputedAt: null };
+		if (!row) {
+			return {
+				isEnabled: false,
+				profile: null,
+				status: 'idle' as const,
+				lastComputedAt: null,
+				standingInstructions: [],
+				derivedAdjustments: [],
+				editDistanceMedian: null,
+			};
+		}
+		// Surface only the PROMOTED (durable, active) learned adjustments so the
+		// settings UI can list and revoke real rules, not pending observations.
+		const durable: Array<{ kind: EditDeltaKind; directive: string; observations: number }> = [];
+		for (const adj of row.derivedAdjustments ?? []) {
+			if (adj.promoted) {
+				durable.push({ kind: adj.kind, directive: adj.directive, observations: adj.observations });
+			}
+		}
 		return {
 			isEnabled: row.isEnabled,
 			profile: row.profile ?? null,
 			status: row.status,
 			lastComputedAt: row.lastComputedAt ?? null,
+			standingInstructions: row.standingInstructions ?? [],
+			derivedAdjustments: durable,
+			// North-star metric: median normalized draft→sent edit distance.
+			editDistanceMedian: medianEditDistance(row.editDistanceSamples ?? []),
 		};
+	},
+});
+
+/** Max standing instructions retained, and per-instruction character bound. */
+export const MAX_STANDING_INSTRUCTIONS = 20;
+export const MAX_STANDING_INSTRUCTION_CHARS = 200;
+
+/**
+ * Replace the mailbox's user-authored standing instructions ("never use
+ * exclamation marks", "sign as Dr."). These are explicit rules, merged ABOVE the
+ * derived voice at draft time. Trimmed, de-duplicated, empties dropped, bounded.
+ */
+export const setStandingInstructions = authedMutation({
+	args: { mailboxId: v.id('mailboxes'), instructions: v.array(v.string()) },
+	// authz: ownership enforced via loadOwnedMailbox.
+	handler: async (ctx, args) => {
+		const owned = await loadOwnedMailbox(ctx, args.mailboxId);
+		if (!owned.ok) throwForbidden('Mailbox not found');
+		const seen = new Set<string>();
+		const cleaned: string[] = [];
+		for (const raw of args.instructions) {
+			const trimmed = raw.trim().slice(0, MAX_STANDING_INSTRUCTION_CHARS);
+			if (trimmed.length === 0) continue;
+			const key = trimmed.toLowerCase();
+			if (seen.has(key)) continue;
+			seen.add(key);
+			cleaned.push(trimmed);
+			if (cleaned.length >= MAX_STANDING_INSTRUCTIONS) break;
+		}
+		const now = Date.now();
+		const row = await findRow(ctx, args.mailboxId);
+		if (row) {
+			await ctx.db.patch(row._id, { standingInstructions: cleaned, updatedAt: now });
+			return row._id;
+		}
+		return ctx.db.insert('mailVoiceProfiles', {
+			mailboxId: args.mailboxId,
+			isEnabled: true,
+			status: 'idle',
+			sampleCount: 0,
+			sentCountAtCompute: 0,
+			standingInstructions: cleaned,
+			createdAt: now,
+			updatedAt: now,
+		});
+	},
+});
+
+/**
+ * Revoke one learned voice-level adjustment by kind ("stop applying this rule").
+ * Drops it entirely so it neither injects nor keeps its observation count.
+ */
+export const removeDerivedAdjustment = authedMutation({
+	args: { mailboxId: v.id('mailboxes'), kind: v.string() },
+	// authz: ownership enforced via loadOwnedMailbox.
+	handler: async (ctx, args) => {
+		const owned = await loadOwnedMailbox(ctx, args.mailboxId);
+		if (!owned.ok) throwForbidden('Mailbox not found');
+		const row = await findRow(ctx, args.mailboxId);
+		if (!row || !row.derivedAdjustments) return null;
+		const kept: typeof row.derivedAdjustments = [];
+		for (const adj of row.derivedAdjustments) {
+			if (adj.kind !== args.kind) kept.push(adj);
+		}
+		await ctx.db.patch(row._id, { derivedAdjustments: kept, updatedAt: Date.now() });
+		return null;
 	},
 });
 
