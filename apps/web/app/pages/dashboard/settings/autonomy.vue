@@ -162,8 +162,10 @@ const handleNewCancelled = () => {
 					</UiCard>
 				</div>
 
-				<!-- Sidebar: Feedback Stats -->
+				<!-- Sidebar: Ask-eagerness dial + Feedback Stats -->
 				<div class="space-y-4">
+					<AutonomyAskEagernessDial />
+
 					<AutonomyFeedbackStatsCard :stats="feedbackStats ?? null" />
 
 					<!-- How It Works -->
