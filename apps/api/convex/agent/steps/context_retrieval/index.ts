@@ -41,8 +41,74 @@ const CONTEXT_BUDGET = {
 	charsPerToken: 4,
 };
 
+/**
+ * Emergency-tier grounding budget. The emergency tier fires on the longest,
+ * hardest threads — precisely the ones that most need grounding — so instead of
+ * collapsing to contact + current-message only (which throws away every fact,
+ * commitment, and file), it PRESERVES a compact grounding set: the top few
+ * knowledge facts and open commitments, each truncated to one short line, plus a
+ * budget-bounded slice of the current message. Counts + per-fact truncation keep
+ * this bounded no matter how large the discarded material was.
+ */
+const EMERGENCY_BUDGET = {
+	knowledgeLimit: 3,
+	commitmentLimit: 3,
+	// Per-fact content truncation (chars) inside the compact emergency block.
+	factChars: 240,
+	// Floor on chars reserved for the (truncated) current message, so grounding
+	// facts can never crowd out the message we are actually replying to.
+	minCurrentMessageChars: 4000,
+};
+
+/** One-line activity content snippet (chars). Keeps [RECENT ACTIVITY] terse. */
+const ACTIVITY_SNIPPET_CHARS = 120;
+
 function estimateTokens(text: string): number {
 	return Math.ceil(text.length / CONTEXT_BUDGET.charsPerToken);
+}
+
+/** Truncate to `max` chars with an ellipsis marker, collapsing internal newlines
+ * so a compacted one-liner stays one line. */
+function truncateOneLine(text: string, max: number): string {
+	const flat = text.replace(/\s+/g, ' ').trim();
+	return flat.length > max ? flat.slice(0, max) + '…' : flat;
+}
+
+/**
+ * A one-line CONTENT snippet for a contact activity, derived from its typed
+ * metadata (email subject / clicked link / topic / property change / bounce
+ * reason / creation source). Pure + exported so a unit test can assert the
+ * mapping. Returns '' when there is nothing human-meaningful to show, in which
+ * case [RECENT ACTIVITY] falls back to the bare type+timestamp line. Metadata is
+ * first-party CRM data (never the untrusted inbound body), so it is safe to
+ * surface verbatim; still length-capped to keep the briefing terse.
+ */
+export function activityContentSnippet(activity: {
+	metadata?: {
+		emailSubject?: string;
+		linkUrl?: string;
+		topicName?: string;
+		propertyKey?: string;
+		newValue?: string;
+		bounceType?: string;
+		errorMessage?: string;
+		reason?: string;
+		source?: string;
+	} | null;
+}): string {
+	const m = activity.metadata;
+	if (!m) return '';
+	let raw: string | undefined;
+	if (m.emailSubject) raw = `"${m.emailSubject}"`;
+	else if (m.linkUrl) raw = m.linkUrl;
+	else if (m.topicName) raw = m.topicName;
+	else if (m.propertyKey) raw = `${m.propertyKey}${m.newValue ? ` → ${m.newValue}` : ''}`;
+	else if (m.errorMessage) raw = m.errorMessage;
+	else if (m.bounceType) raw = m.bounceType;
+	else if (m.reason) raw = m.reason;
+	else if (m.source) raw = m.source;
+	if (!raw) return '';
+	return truncateOneLine(raw, ACTIVITY_SNIPPET_CHARS);
 }
 
 export interface ContextRetrievalInput {
@@ -101,6 +167,15 @@ export const contextRetrievalStep: AgentStepModule<
 
 		const contextParts: string[] = [];
 
+		// Emergency-tier grounding carriers. On the emergency tier the full
+		// briefing is discarded and re-assembled from just these compact pieces
+		// (plus a truncated current message), so the longest threads keep their
+		// grounding instead of collapsing to contact-only.
+		let contactSection: string | undefined;
+		let recentActivitySection: string | undefined;
+		const emergencyCommitmentLines: string[] = [];
+		const emergencyKnowledgeLines: string[] = [];
+
 		// Coverage tracking — which briefing legs actually produced content.
 		// Cheap booleans/counts derived inline; no extra LLM call.
 		let hasContact = false;
@@ -123,14 +198,14 @@ export const contextRetrievalStep: AgentStepModule<
 			});
 			if (contact) {
 				hasContact = true;
-				contextParts.push(
+				contactSection =
 					`[CONTACT] ${contact.email}` +
-						(contact.firstName
-							? ` | Name: ${contact.firstName}${contact.lastName ? ' ' + contact.lastName : ''}`
-							: '') +
-						(contact.language ? ` | Language: ${contact.language}` : '') +
-						(contact.timezone ? ` | Timezone: ${contact.timezone}` : '')
-				);
+					(contact.firstName
+						? ` | Name: ${contact.firstName}${contact.lastName ? ' ' + contact.lastName : ''}`
+						: '') +
+					(contact.language ? ` | Language: ${contact.language}` : '') +
+					(contact.timezone ? ` | Timezone: ${contact.timezone}` : '');
+				contextParts.push(contactSection);
 			}
 
 			// 2. Recent contact activities
@@ -139,12 +214,16 @@ export const contextRetrievalStep: AgentStepModule<
 				limit: 5,
 			});
 			if (activities.length > 0) {
-				contextParts.push(
+				recentActivitySection =
 					'[RECENT ACTIVITY]\n' +
-						activities
-							.map((a) => `- ${a.activityType} at ${new Date(a.occurredAt).toISOString()}`)
-							.join('\n')
-				);
+					activities
+						.map((a) => {
+							const when = new Date(a.occurredAt).toISOString();
+							const snippet = activityContentSnippet(a);
+							return `- ${a.activityType} at ${when}${snippet ? ` — ${snippet}` : ''}`;
+						})
+						.join('\n');
+				contextParts.push(recentActivitySection);
 			}
 
 			// 2b. OPEN COMMITMENTS — durable promises we owe THIS contact (an
@@ -165,6 +244,14 @@ export const contextRetrievalStep: AgentStepModule<
 						id: c._id as string,
 						title: c.title,
 					});
+				}
+				// Compact carriers for the emergency tier — the top few commitments,
+				// each truncated to one line, so a still-owed promise survives even
+				// when the full briefing is discarded.
+				for (const c of openCommitments.slice(0, EMERGENCY_BUDGET.commitmentLimit)) {
+					emergencyCommitmentLines.push(
+						`- ${c.title}: ${truncateOneLine(c.content, EMERGENCY_BUDGET.factChars)}`
+					);
 				}
 				contextParts.push(
 					'[OPEN COMMITMENTS — still owed to this contact; honour these]\n' +
@@ -291,6 +378,20 @@ export const contextRetrievalStep: AgentStepModule<
 					contextParts.push('[KNOWLEDGE]\n' + otherEntries.map(renderEntry).join('\n'));
 				}
 
+				// Compact carriers for the emergency tier — the top few facts in
+				// precedence order (curated policy ahead of scraped facts), each
+				// truncated to one line, so the hardest threads keep real grounding
+				// rather than collapsing to contact-only.
+				for (const k of [...policyEntries, ...otherEntries].slice(
+					0,
+					EMERGENCY_BUDGET.knowledgeLimit
+				)) {
+					const stalePrefix = k._stale ? '[SUPERSEDED] ' : '';
+					emergencyKnowledgeLines.push(
+						`- ${stalePrefix}(${k.entryType}) ${k.title}: ${truncateOneLine(k.content, EMERGENCY_BUDGET.factChars)}`
+					);
+				}
+
 				// [KNOWLEDGE RELATIONSHIPS] — the typed edges among the entries above,
 				// one line per edge (outgoing direction), e.g. "A" SUPERSEDES "B".
 				// Sits before [CURRENT MESSAGE]; titles are untrusted retrieved data.
@@ -329,14 +430,14 @@ export const contextRetrievalStep: AgentStepModule<
 		}
 
 		// 4. Current message
-		contextParts.push(
+		const currentMessageSection =
 			'[CURRENT MESSAGE]\n' +
-				`From: ${message.from}\n` +
-				`To: ${message.to}\n` +
-				`Subject: ${message.subject}\n` +
-				`Date: ${new Date(message.receivedAt).toISOString()}\n` +
-				`Body:\n${inboundBody ?? '(no body)'}`
-		);
+			`From: ${message.from}\n` +
+			`To: ${message.to}\n` +
+			`Subject: ${message.subject}\n` +
+			`Date: ${new Date(message.receivedAt).toISOString()}\n` +
+			`Body:\n${inboundBody ?? '(no body)'}`;
+		contextParts.push(currentMessageSection);
 
 		// ── Compile and compact ──
 		const fullContext = contextParts.join('\n\n');
@@ -353,23 +454,55 @@ export const contextRetrievalStep: AgentStepModule<
 			const maxChars = CONTEXT_BUDGET.maxTokens * CONTEXT_BUDGET.charsPerToken;
 			finalContext = fullContext.slice(-maxChars);
 		} else {
+			// EMERGENCY: the full briefing is too large to keep, but this tier fires
+			// on the longest/hardest threads — the ones that most need grounding. So
+			// rather than collapse to contact + current-message only (dropping every
+			// fact, commitment, and file), re-assemble a COMPACT grounding set from
+			// the top knowledge facts + open commitments captured above, plus a
+			// budget-bounded slice of the current message. Bounded by counts +
+			// per-fact truncation, so it can't itself blow the budget.
 			tier = 'emergency';
-			const currentMessage = contextParts[contextParts.length - 1];
-			const contactInfo = contextParts[0]?.startsWith('[CONTACT]') ? contextParts[0] : '';
-			finalContext = `${contactInfo}\n\n${currentMessage}`;
+			const groundingParts: string[] = [];
+			if (contactSection) groundingParts.push(contactSection);
+			if (emergencyCommitmentLines.length > 0) {
+				groundingParts.push(
+					'[OPEN COMMITMENTS — still owed to this contact; honour these]\n' +
+						emergencyCommitmentLines.join('\n')
+				);
+			}
+			if (emergencyKnowledgeLines.length > 0) {
+				groundingParts.push('[KEY FACTS]\n' + emergencyKnowledgeLines.join('\n'));
+			}
+			if (recentActivitySection) groundingParts.push(recentActivitySection);
+
+			const groundingBlock = groundingParts.join('\n\n');
+			const maxChars = CONTEXT_BUDGET.maxTokens * CONTEXT_BUDGET.charsPerToken;
+			// Reserve room for the current message: whatever the compact grounding
+			// block didn't use, floored so grounding can never starve the message we
+			// are replying to.
+			const currentBudget = Math.max(
+				EMERGENCY_BUDGET.minCurrentMessageChars,
+				maxChars - groundingBlock.length
+			);
+			const currentTrimmed =
+				currentMessageSection.length > currentBudget
+					? currentMessageSection.slice(0, currentBudget) + '\n…[truncated]'
+					: currentMessageSection;
+			finalContext = groundingBlock
+				? `${groundingBlock}\n\n${currentTrimmed}`
+				: currentTrimmed;
 		}
 
 		// Trim provenance to what SURVIVED compaction so the review UI's
 		// "Grounded in:" list never over-claims sources the model didn't actually
-		// see. `normal` keeps everything (finalContext === fullContext). `emergency`
-		// keeps only [CONTACT] + [CURRENT MESSAGE], so no thread/knowledge source
-		// survives. `compacted` is a tail-slice, so a source survives iff its
-		// identifying text is still present in the truncated briefing.
+		// see. `normal` keeps everything (finalContext === fullContext). Both
+		// `compacted` (tail-slice) and `emergency` (compact grounding block) keep a
+		// source iff its identifying title text is still present in the final
+		// briefing — the emergency tier now preserves the top facts/commitments, so
+		// those survive here too rather than being dropped wholesale.
 		let survivingSources: GroundingSource[];
 		if (tier === 'normal') {
 			survivingSources = groundingSources;
-		} else if (tier === 'emergency') {
-			survivingSources = [];
 		} else {
 			survivingSources = [];
 			for (const src of groundingSources) {
