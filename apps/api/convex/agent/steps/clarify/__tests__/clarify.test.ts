@@ -63,19 +63,35 @@ function makeInput(over: Partial<ClarifyInput['classification']> = {}): ClarifyI
 	};
 }
 
+type Mode = 'cautious' | 'balanced' | 'confident' | 'off' | null;
+
 /** Fake execute ctx: getMessage returns a message with the given coverage
- * (or null when `coverage` is the string 'missing'). */
-function makeCtx(coverage: unknown | 'missing') {
+ * (or null when `coverage` is the string 'missing'); getAskEagernessInternal
+ * returns `mode` (null = no setting = today's behaviour). `asked` captures the
+ * ask-instrumentation rows written via runMutation. */
+function makeCtx(coverage: unknown | 'missing', mode: Mode = null) {
+	const asked: unknown[] = [];
 	const ctx = {
 		runQuery: async (ref: unknown) => {
 			const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
+			if (name.includes('getAskEagernessInternal')) {
+				return { mode };
+			}
 			if (name.includes('getMessage')) {
 				return coverage === 'missing' ? null : { contextCoverage: coverage };
 			}
 			throw new Error(`unexpected runQuery: ${name}`);
 		},
+		runMutation: async (ref: unknown, args: unknown) => {
+			const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
+			if (name.includes('recordClarificationAsk')) {
+				asked.push(args);
+				return undefined;
+			}
+			throw new Error(`unexpected runMutation: ${name}`);
+		},
 	} as unknown as Parameters<typeof clarifyStep.execute>[0];
-	return ctx;
+	return Object.assign(ctx, { asked });
 }
 
 const decisionSlot: ReplySlot = {
@@ -261,6 +277,100 @@ describe('clarifyStep.execute — fail-soft', () => {
 		const { output } = await clarifyStep.execute(ctx, makeInput());
 		expect(output.resolution).toBe('insufficient_samples');
 		expect(output.questions).toEqual([]);
+	});
+});
+
+describe('clarifyStep.execute — ask-eagerness dial', () => {
+	const routineSlot: ReplySlot = {
+		slotType: 'factual_lookup',
+		question: 'What is our standard turnaround time?',
+		answerableFromContext: false,
+		decisionRelevant: true,
+		options: [],
+	};
+
+	/** Slots [high-stakes decision, routine lookup], both divergent. */
+	function mockTwoDivergentSlots() {
+		mocks.runLlmObject
+			.mockResolvedValueOnce({
+				object: { slots: [decisionSlot, routineSlot] },
+				tokenUsage: undefined,
+				modelUsed: 'mock-model',
+			})
+			.mockResolvedValueOnce({
+				object: { divergentSlotIndexes: [0, 1] },
+				tokenUsage: undefined,
+				modelUsed: 'mock-model',
+			});
+	}
+
+	it('Off suppresses asking entirely — no LLM calls, no ask logged', async () => {
+		const ctx = makeCtx({ lowCoverage: true }, 'off');
+		const { output } = await clarifyStep.execute(ctx, makeInput());
+		expect(output.resolution).toBe('eagerness_off');
+		expect(output.questions).toEqual([]);
+		expect(mocks.runLlmObject).not.toHaveBeenCalled();
+		expect(mocks.runLlmText).not.toHaveBeenCalled();
+		expect(ctx.asked).toHaveLength(0);
+	});
+
+	it('Cautious surfaces every divergent slot (raises no bar)', async () => {
+		mockTwoDivergentSlots();
+		const ctx = makeCtx({ lowCoverage: true }, 'cautious');
+		const { output } = await clarifyStep.execute(ctx, makeInput());
+		expect(output.resolution).toBe('questions_emitted');
+		expect(output.questions).toHaveLength(2);
+	});
+
+	it('Confident raises the bar vs Cautious — only high-stakes slots, capped at 1', async () => {
+		mockTwoDivergentSlots();
+		const ctx = makeCtx({ lowCoverage: true }, 'confident');
+		const { output } = await clarifyStep.execute(ctx, makeInput());
+		expect(output.questions).toHaveLength(1);
+		expect(output.questions[0]!.slotType).toBe('decision'); // routine lookup dropped
+	});
+
+	it('enforces the hard per-email cap and batches into one form', async () => {
+		// Five divergent high-stakes slots; cautious cap is 3.
+		const slots: ReplySlot[] = Array.from({ length: 5 }, (_, i) => ({
+			...decisionSlot,
+			question: `Decision ${i}?`,
+		}));
+		mocks.runLlmObject
+			.mockResolvedValueOnce({
+				object: { slots },
+				tokenUsage: undefined,
+				modelUsed: 'mock-model',
+			})
+			.mockResolvedValueOnce({
+				object: { divergentSlotIndexes: [0, 1, 2, 3, 4] },
+				tokenUsage: undefined,
+				modelUsed: 'mock-model',
+			});
+		const ctx = makeCtx({ lowCoverage: true }, 'cautious');
+		const { output } = await clarifyStep.execute(ctx, makeInput());
+		// One batch (single array), hard-capped at 3 — never dripped.
+		expect(output.questions).toHaveLength(3);
+	});
+
+	it('logs the ask with its predicted value + dial position when a question is emitted', async () => {
+		mockTwoDivergentSlots();
+		const ctx = makeCtx({ lowCoverage: true }, 'confident');
+		await clarifyStep.execute(ctx, makeInput());
+		expect(ctx.asked).toHaveLength(1);
+		const row = ctx.asked[0] as {
+			source: string;
+			eagerness: string;
+			questionCount: number;
+			predictedValue: number;
+			slotTypes: string[];
+		};
+		expect(row.source).toBe('agent');
+		expect(row.eagerness).toBe('confident');
+		expect(row.questionCount).toBe(1);
+		expect(row.slotTypes).toEqual(['decision']);
+		// A high-stakes decision ask scores the maximum predicted value.
+		expect(row.predictedValue).toBeCloseTo(1);
 	});
 });
 

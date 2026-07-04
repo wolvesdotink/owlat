@@ -82,6 +82,8 @@ export type OrganizationDeletionTable =
 	| 'autonomyFeedback'
 	| 'autonomyRules'
 	| 'autonomySuggestions'
+	| 'askEagernessSettings'
+	| 'clarificationAskLog'
 	| 'agentShadowDecisions'
 	| 'agentShadowScorecard'
 	| 'mailThreads'
@@ -200,6 +202,8 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('autonomyFeedback'),
 	v.literal('autonomyRules'),
 	v.literal('autonomySuggestions'),
+	v.literal('askEagernessSettings'),
+	v.literal('clarificationAskLog'),
 	v.literal('agentShadowDecisions'),
 	v.literal('agentShadowScorecard'),
 	v.literal('mailThreads'),
@@ -239,7 +243,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('dashboardLayouts'),
 	v.literal('shareLinks'),
 	v.literal('integrationImports'),
-	v.literal('codeWorkTasks'),
+	v.literal('codeWorkTasks')
 );
 
 export const DEFAULT_BATCH_SIZE = 100;
@@ -259,9 +263,7 @@ export interface DeleteBatchOutcome {
  * module (per-row, not per-batch), so it does not surface in the
  * walker-facing interface.
  */
-export interface OrganizationDeletionStepModule<
-	T extends OrganizationDeletionTable,
-> {
+export interface OrganizationDeletionStepModule<T extends OrganizationDeletionTable> {
 	readonly table: T;
 	readonly batchSize?: number;
 	deleteBatch(ctx: MutationCtx): Promise<DeleteBatchOutcome>;
@@ -274,7 +276,7 @@ export interface OrganizationDeletionStepModule<
  * not the broad union).
  */
 export function defineStep<T extends OrganizationDeletionTable>(
-	module: OrganizationDeletionStepModule<T>,
+	module: OrganizationDeletionStepModule<T>
 ): OrganizationDeletionStepModule<T> {
 	return module;
 }
