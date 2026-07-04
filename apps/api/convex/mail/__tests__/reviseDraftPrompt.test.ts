@@ -56,13 +56,15 @@ describe('buildRevisePrompt', () => {
 	});
 
 	it('bounds every input so a runaway draft/instruction cannot bloat the prompt', () => {
+		// Sentinel chars (digits) that never appear in the fixed prompt prose, so
+		// the counts measure ONLY the caller-supplied input and not the template.
 		const { system, prompt } = buildRevisePrompt({
-			instruction: 'x'.repeat(10000),
-			currentDraft: 'y'.repeat(50000),
-			threadContext: 'z'.repeat(50000),
+			instruction: '1'.repeat(10000),
+			currentDraft: '2'.repeat(50000),
+			threadContext: '3'.repeat(50000),
 		});
-		expect((system.match(/x/g) ?? []).length).toBeLessThanOrEqual(2000);
-		expect((prompt.match(/y/g) ?? []).length).toBeLessThanOrEqual(12000);
-		expect((prompt.match(/z/g) ?? []).length).toBeLessThanOrEqual(8000);
+		expect((system.match(/1/g) ?? []).length).toBeLessThanOrEqual(2000);
+		expect((prompt.match(/2/g) ?? []).length).toBeLessThanOrEqual(12000);
+		expect((prompt.match(/3/g) ?? []).length).toBeLessThanOrEqual(8000);
 	});
 });
