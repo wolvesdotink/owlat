@@ -103,6 +103,8 @@ export const TENANT_TABLES = [
 	'autonomyFeedback',
 	'autonomyRules',
 	'autonomySuggestions',
+	'askEagernessSettings',
+	'clarificationAskLog',
 	'agentShadowDecisions',
 	'agentShadowScorecard',
 

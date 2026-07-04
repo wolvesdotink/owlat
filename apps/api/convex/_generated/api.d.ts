@@ -226,6 +226,8 @@ import type * as forms_submission from "../forms/submission.js";
 import type * as globalSearch from "../globalSearch.js";
 import type * as http from "../http.js";
 import type * as inbox_clarification from "../inbox/clarification.js";
+import type * as inbox_askEagerness from "../inbox/askEagerness.js";
+import type * as inbox_clarificationLog from "../inbox/clarificationLog.js";
 import type * as inbox_clarificationSlots from "../inbox/clarificationSlots.js";
 import type * as inbox_clarificationValidators from "../inbox/clarificationValidators.js";
 import type * as inbox_messages from "../inbox/messages.js";
@@ -768,6 +770,8 @@ declare const fullApi: ApiFromModules<{
   globalSearch: typeof globalSearch;
   http: typeof http;
   "inbox/clarification": typeof inbox_clarification;
+  "inbox/askEagerness": typeof inbox_askEagerness;
+  "inbox/clarificationLog": typeof inbox_clarificationLog;
   "inbox/clarificationSlots": typeof inbox_clarificationSlots;
   "inbox/clarificationValidators": typeof inbox_clarificationValidators;
   "inbox/messages": typeof inbox_messages;
