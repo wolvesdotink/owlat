@@ -8,7 +8,7 @@ export const unifiedMessageChannelValidator = v.union(
 	v.literal('sms'),
 	v.literal('whatsapp'),
 	v.literal('generic'),
-	v.literal('chat'),
+	v.literal('chat')
 );
 export type UnifiedMessageChannel = Infer<typeof unifiedMessageChannelValidator>;
 
@@ -18,7 +18,7 @@ export type UnifiedMessageChannel = Infer<typeof unifiedMessageChannelValidator>
 export const outboundChannelValidator = v.union(
 	v.literal('sms'),
 	v.literal('whatsapp'),
-	v.literal('generic'),
+	v.literal('generic')
 );
 export type OutboundChannel = Infer<typeof outboundChannelValidator>;
 
@@ -39,7 +39,7 @@ export const updateStepResultValidator = v.array(
 		step: v.string(),
 		stdout: v.string(),
 		stderr: v.string(),
-	}),
+	})
 );
 
 // Activity metadata (contactActivities)
@@ -107,7 +107,7 @@ const contactPropertyOperatorValidator = v.union(
 	v.literal('is_empty'),
 	v.literal('not_empty'),
 	v.literal('is_true'),
-	v.literal('is_false'),
+	v.literal('is_false')
 );
 
 const contactPropertyConditionValidator = v.object({
@@ -130,7 +130,7 @@ const topicMembershipConditionValidator = v.object({
 export const filterConditionValidator = v.union(
 	contactPropertyConditionValidator,
 	emailActivityConditionValidator,
-	topicMembershipConditionValidator,
+	topicMembershipConditionValidator
 );
 export const segmentFiltersValidator = v.object({
 	logic: v.union(v.literal('AND'), v.literal('OR')),
@@ -151,7 +151,7 @@ export const abTestConfigValidator = v.object({
 export const triggerConfigValidator = v.union(
 	v.object({ propertyKey: v.string() }),
 	v.object({ eventName: v.string() }),
-	v.object({ topicId: v.string() }),
+	v.object({ topicId: v.string() })
 );
 
 // Automation step config — canonical condition-step shape:
@@ -164,8 +164,11 @@ const conditionStepConfigValidator = v.object({
 
 export const stepConfigValidator = v.union(
 	v.object({ emailTemplateId: v.string(), subjectOverride: v.optional(v.string()) }),
-	v.object({ duration: v.number(), unit: v.union(v.literal('minutes'), v.literal('hours'), v.literal('days'), v.literal('weeks')) }),
-	conditionStepConfigValidator,
+	v.object({
+		duration: v.number(),
+		unit: v.union(v.literal('minutes'), v.literal('hours'), v.literal('days'), v.literal('weeks')),
+	}),
+	conditionStepConfigValidator
 );
 
 // DNS records.
@@ -178,7 +181,7 @@ export const stepConfigValidator = v.union(
 // the builder UI can render it verbatim.
 export const dnsRecordValidator = v.object({
 	type: v.optional(
-		v.union(v.literal('TXT'), v.literal('CNAME'), v.literal('MX'), v.literal('TLSA')),
+		v.union(v.literal('TXT'), v.literal('CNAME'), v.literal('MX'), v.literal('TLSA'))
 	),
 	host: v.optional(v.string()),
 	hostname: v.optional(v.string()),
@@ -234,7 +237,7 @@ export const campaignStatusValidator = v.union(
 	v.literal('sending'),
 	v.literal('sent'),
 	v.literal('cancelled'),
-	v.literal('pending_review'),
+	v.literal('pending_review')
 );
 
 export const CAMPAIGN_STATUSES = [
@@ -260,7 +263,7 @@ export const linkClickValidator = v.object({
 export const spamVerdictValidator = v.union(
 	v.literal('ham'),
 	v.literal('spam'),
-	v.literal('quarantine'),
+	v.literal('quarantine')
 );
 
 // Postbox reader auto-advance preference (mailUserSettings.autoAdvance and
@@ -268,24 +271,18 @@ export const spamVerdictValidator = v.union(
 export const mailAutoAdvanceValidator = v.union(
 	v.literal('next'),
 	v.literal('previous'),
-	v.literal('back-to-list'),
+	v.literal('back-to-list')
 );
 
 // Postbox default reply behavior (mailUserSettings.replyDefault and mail/settings
 // update args) — whether the primary reply affordance / `r` opens a plain Reply
 // or a Reply-all. Single source so schema and args can't drift.
-export const mailReplyDefaultValidator = v.union(
-	v.literal('reply'),
-	v.literal('reply-all'),
-);
+export const mailReplyDefaultValidator = v.union(v.literal('reply'), v.literal('reply-all'));
 
 // Postbox list/reader density (mailUserSettings.density and mail/settings update
 // args) — 'comfortable' (the roomy default) vs 'compact' (tighter rows +
 // single-line subject/snippet). Single source so schema and args can't drift.
-export const mailDensityValidator = v.union(
-	v.literal('comfortable'),
-	v.literal('compact'),
-);
+export const mailDensityValidator = v.union(v.literal('comfortable'), v.literal('compact'));
 
 // Postbox desktop-notification scope (mailUserSettings.notifyAbout and
 // mail/settings update args). 'everything' fires a toast for every new inbox
@@ -296,13 +293,13 @@ export const mailDensityValidator = v.union(
 export const mailNotifyAboutValidator = v.union(
 	v.literal('everything'),
 	v.literal('people-important'),
-	v.literal('nothing'),
+	v.literal('nothing')
 );
 
 // Email template kind (emailTemplates.type and its CRUD args)
 export const emailTemplateTypeValidator = v.union(
 	v.literal('marketing'),
-	v.literal('transactional'),
+	v.literal('transactional')
 );
 
 // Attachment metadata embedded in raw .eml (mailMessages.attachments)
@@ -333,6 +330,11 @@ export const mailDraftAttachmentValidator = v.object({
 	contentId: v.optional(v.string()),
 });
 
+// Edit-learning flywheel validators (`editDeltaKindValidator`,
+// `editAdjustmentValidator`) live in the feature-local sibling
+// mail/editLearningValidators.ts to keep this shared module under the
+// file-size cap.
+
 // LLM call accounting (agentActions.tokenUsage and similar)
 export const tokenUsageValidator = v.object({
 	promptTokens: v.number(),
@@ -348,7 +350,7 @@ export const assistantMessageStatusValidator = v.union(
 	v.literal('streaming'),
 	v.literal('complete'),
 	v.literal('stopped'),
-	v.literal('error'),
+	v.literal('error')
 );
 
 // One entry in the tool-call transcript an assistant turn produces (aiMessages
@@ -475,7 +477,4 @@ export const contentScanFlagValidator = v.object({
 // Audit log action and resource literal unions — derived from the single
 // catalog in `auditActions/catalog.ts`. Re-exported here so existing
 // `lib/validators` and `lib/auditLog` consumers keep their import path.
-export {
-	auditActionValidator,
-	auditResourceValidator,
-} from '../auditActions/catalog';
+export { auditActionValidator, auditResourceValidator } from '../auditActions/catalog';

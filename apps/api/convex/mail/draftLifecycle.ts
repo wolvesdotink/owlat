@@ -113,9 +113,7 @@ const sentInputContextValidator = v.object({
 	references: v.array(v.string()),
 	bodyHtml: v.string(),
 	bodyText: v.optional(v.string()),
-	attachmentsMeta: v.array(
-		mailMessageAttachmentValidator,
-	),
+	attachmentsMeta: v.array(mailMessageAttachmentValidator),
 });
 
 const transitionInputValidator = v.union(
@@ -132,17 +130,13 @@ const transitionInputValidator = v.union(
 	v.object({
 		to: v.literal('draft'),
 		at: v.number(),
-		reason: v.union(
-			v.literal('user_cancel'),
-			v.literal('from_revoked'),
-			v.literal('scan_blocked'),
-		),
+		reason: v.union(v.literal('user_cancel'), v.literal('from_revoked'), v.literal('scan_blocked')),
 	}),
 	v.object({
 		to: v.literal('sent'),
 		at: v.number(),
 		context: sentInputContextValidator,
-	}),
+	})
 );
 
 // ─── Legal-edges graph ──────────────────────────────────────────────────────
@@ -161,14 +155,9 @@ const LEGAL_EDGES: Record<DraftState, ReadonlySet<TransitionInput['to']>> = {
  * outboundQueries.ts. Throws so the call site keeps its `throw new Error(...)`
  * surface — callers that want a soft outcome should use `transition` instead.
  */
-export function assertStateIs(
-	draft: Doc<'mailDrafts'>,
-	state: DraftState,
-): void {
+export function assertStateIs(draft: Doc<'mailDrafts'>, state: DraftState): void {
 	if (draft.state !== state) {
-		throw new Error(
-			`Draft state is ${draft.state}, expected ${state}`,
-		);
+		throw new Error(`Draft state is ${draft.state}, expected ${state}`);
 	}
 }
 
@@ -218,6 +207,17 @@ type Effect =
 			kind: 'record_recipients_in_address_book';
 			mailboxId: Id<'mailboxes'>;
 			emails: ReadonlyArray<string>;
+	  }
+	| {
+			// Edit-learning flywheel: the sent draft carried an AI baseline, so
+			// diff baseline → sent out of band and fold the delta into the voice
+			// profile / per-contact memory (mail/editLearning.ts). Fire-and-forget;
+			// never blocks the send.
+			kind: 'schedule_edit_learning';
+			mailboxId: Id<'mailboxes'>;
+			contactAddress?: string;
+			baselineText: string;
+			sentText: string;
 	  };
 
 type ReducerResult = {
@@ -247,7 +247,7 @@ function generateUndoToken(at: number): string {
 
 function reducePendingSend(
 	draft: Doc<'mailDrafts'>,
-	args: Extract<TransitionInput, { to: 'pending_send' }>,
+	args: Extract<TransitionInput, { to: 'pending_send' }>
 ): ReducerResult {
 	const delay = Math.max(0, args.undoSendDelayMs ?? DEFAULT_UNDO_SEND_DELAY_MS);
 	const sendAt = args.at + delay;
@@ -285,7 +285,7 @@ function reducePendingSend(
 
 function reduceScheduled(
 	draft: Doc<'mailDrafts'>,
-	args: Extract<TransitionInput, { to: 'scheduled' }>,
+	args: Extract<TransitionInput, { to: 'scheduled' }>
 ): ReducerResult {
 	const undoToken = generateUndoToken(args.at);
 	return {
@@ -326,7 +326,7 @@ const REVERT_AUDIT_ACTION: Record<RevertReason, AuditLogEffect['action']> = {
 
 function reduceDraftRevert(
 	draft: Doc<'mailDrafts'>,
-	args: Extract<TransitionInput, { to: 'draft' }>,
+	args: Extract<TransitionInput, { to: 'draft' }>
 ): ReducerResult {
 	return {
 		patch: {
@@ -353,9 +353,28 @@ function reduceDraftRevert(
 
 function reduceSent(
 	draft: Doc<'mailDrafts'>,
-	args: Extract<TransitionInput, { to: 'sent' }>,
+	args: Extract<TransitionInput, { to: 'sent' }>
 ): ReducerResult {
 	const recipients = dedupedRecipients(draft);
+
+	// Edit-learning flywheel: only when this draft was AI-authored (has a
+	// baseline) AND the user actually changed something before sending. The diff
+	// itself + recurrence gating happen out of band in mail/editLearning.ts.
+	const baselineText = draft.aiDraftBaseline?.text?.trim() ?? '';
+	// `||` (not `??`) so a present-but-empty bodyText falls through to bodyHtml.
+	const sentText = (args.context.bodyText || args.context.bodyHtml).trim();
+	const learningEffects: Effect[] =
+		baselineText.length > 0 && sentText.length > 0
+			? [
+					{
+						kind: 'schedule_edit_learning',
+						mailboxId: draft.mailboxId,
+						...(recipients[0] !== undefined ? { contactAddress: recipients[0] } : {}),
+						baselineText,
+						sentText,
+					},
+				]
+			: [];
 
 	return {
 		// The `→ sent` reducer carries no draft patch — the runner deletes
@@ -374,6 +393,7 @@ function reduceSent(
 				mailboxId: draft.mailboxId,
 				emails: recipients,
 			},
+			...learningEffects,
 			// The audit log fires AFTER the new mailMessages row insert so
 			// `messageId` is available — the runner enriches the details
 			// after insertion.
@@ -411,16 +431,14 @@ interface SentRunnerOutput {
 async function runSentEffects(
 	ctx: MutationCtx,
 	draft: Doc<'mailDrafts'>,
-	context: SentInputContext,
+	context: SentInputContext
 ): Promise<SentRunnerOutput> {
 	const mailbox = await ctx.db.get(draft.mailboxId);
 	if (!mailbox) return { messageId: null };
 
 	const sentFolder = await ctx.db
 		.query('mailFolders')
-		.withIndex('by_mailbox_and_role', (q) =>
-			q.eq('mailboxId', draft.mailboxId).eq('role', 'sent'),
-		)
+		.withIndex('by_mailbox_and_role', (q) => q.eq('mailboxId', draft.mailboxId).eq('role', 'sent'))
 		.first();
 	if (!sentFolder) return { messageId: null };
 
@@ -481,11 +499,8 @@ async function runSentEffects(
 		rawStorageId: context.rawStorageId,
 		rawSize: context.rawSize,
 		textBodyInline:
-			context.bodyText && context.bodyText.length <= 64 * 1024
-				? context.bodyText
-				: undefined,
-		htmlBodyInline:
-			context.bodyHtml.length <= 64 * 1024 ? context.bodyHtml : undefined,
+			context.bodyText && context.bodyText.length <= 64 * 1024 ? context.bodyText : undefined,
+		htmlBodyInline: context.bodyHtml.length <= 64 * 1024 ? context.bodyHtml : undefined,
 		attachments: context.attachmentsMeta,
 		hasAttachments: context.attachmentsMeta.length > 0,
 		flagSeen: true,
@@ -540,8 +555,7 @@ async function runSentEffects(
 				: undefined;
 		await ctx.db.patch(threadId, {
 			messageCount: thread.messageCount + 1,
-			hasAttachments:
-				thread.hasAttachments || context.attachmentsMeta.length > 0,
+			hasAttachments: thread.hasAttachments || context.attachmentsMeta.length > 0,
 			lastMessageAt: now,
 			latestSnippet: snippet,
 			latestFromAddress: draft.fromAddress,
@@ -593,16 +607,15 @@ async function runSentEffects(
 
 async function applyNonSentEffects(
 	ctx: MutationCtx,
-	effects: ReadonlyArray<Effect>,
+	effects: ReadonlyArray<Effect>
 ): Promise<void> {
 	for (const effect of effects) {
 		switch (effect.kind) {
 			case 'schedule_dispatch_action': {
-				await ctx.scheduler.runAt(
-					effect.sendAt,
-					internal.mail.outbound.dispatchDraft,
-					{ draftId: effect.draftId, undoToken: effect.undoToken },
-				);
+				await ctx.scheduler.runAt(effect.sendAt, internal.mail.outbound.dispatchDraft, {
+					draftId: effect.draftId,
+					undoToken: effect.undoToken,
+				});
 				break;
 			}
 			case 'audit_log': {
@@ -627,13 +640,21 @@ async function applyNonSentEffects(
 			case 'record_recipients_in_address_book': {
 				// Routed through the same internalMutation used by the old
 				// inline call site at outbound.dispatchDraft.
-				await ctx.runMutation(
-					internal.mail.contacts.internalRecordRecipients,
-					{
-						mailboxId: effect.mailboxId,
-						emails: Array.from(effect.emails),
-					},
-				);
+				await ctx.runMutation(internal.mail.contacts.internalRecordRecipients, {
+					mailboxId: effect.mailboxId,
+					emails: Array.from(effect.emails),
+				});
+				break;
+			}
+			case 'schedule_edit_learning': {
+				// Fire-and-forget: the diff + recurrence gating run out of band so
+				// a learning failure can never block or delay the send.
+				await ctx.scheduler.runAfter(0, internal.mail.editLearning.recordEdit, {
+					mailboxId: effect.mailboxId,
+					...(effect.contactAddress !== undefined ? { contactAddress: effect.contactAddress } : {}),
+					baselineText: effect.baselineText,
+					sentText: effect.sentText,
+				});
 				break;
 			}
 		}
@@ -645,7 +666,7 @@ async function applyNonSentEffects(
 async function dispatch(
 	ctx: MutationCtx,
 	draft: Doc<'mailDrafts'>,
-	input: TransitionInput,
+	input: TransitionInput
 ): Promise<TransitionOutcome> {
 	const from = draft.state;
 	const isLegalEdge = LEGAL_EDGES[from].has(input.to);
@@ -678,10 +699,7 @@ async function dispatch(
 		// since the draft was queued, the kind is rejected — the caller
 		// (the dispatch action) must instead call transition({to:'draft',
 		// reason:'from_revoked'}). The reducer never silently downgrades.
-		const allowed = await resolveAllowedFromAddressesForCtx(
-			ctx,
-			draft.mailboxId,
-		);
+		const allowed = await resolveAllowedFromAddressesForCtx(ctx, draft.mailboxId);
 		if (!allowed.includes(draft.fromAddress.toLowerCase())) {
 			return {
 				ok: false,
@@ -719,11 +737,7 @@ async function dispatch(
 	// (a crash mid-cascade leaves the draft intact for retry).
 	let messageId: Id<'mailMessages'> | undefined;
 	if (input.to === 'sent' && result.extras?.sentContext) {
-		const sentOutput = await runSentEffects(
-			ctx,
-			draft,
-			result.extras.sentContext,
-		);
+		const sentOutput = await runSentEffects(ctx, draft, result.extras.sentContext);
 		if (sentOutput.messageId === null) {
 			// Mailbox or Sent folder vanished between the dispatcher's
 			// initial read and now. Refuse with a typed outcome — the
@@ -745,7 +759,7 @@ async function dispatch(
 						...e,
 						details: { ...e.details, messageId: messageId as string },
 					}
-				: e,
+				: e
 		);
 		await applyNonSentEffects(ctx, enrichedEffects);
 
@@ -763,12 +777,8 @@ async function dispatch(
 		draftId: draft._id,
 		from,
 		to: input.to,
-		...(result.extras?.undoToken !== undefined
-			? { undoToken: result.extras.undoToken }
-			: {}),
-		...(result.extras?.sendAt !== undefined
-			? { sendAt: result.extras.sendAt }
-			: {}),
+		...(result.extras?.undoToken !== undefined ? { undoToken: result.extras.undoToken } : {}),
+		...(result.extras?.sendAt !== undefined ? { sendAt: result.extras.sendAt } : {}),
 		...(messageId !== undefined ? { messageId } : {}),
 	};
 }
@@ -836,14 +846,8 @@ export const transition = internalMutation({
 		// Log reverts so an operator can see why a draft popped back to
 		// Drafts unexpectedly. The audit-log row carries the structured
 		// reason; the runtime log is for live debugging.
-		if (
-			outcome.ok &&
-			args.input.to === 'draft' &&
-			args.input.reason !== 'user_cancel'
-		) {
-			logError(
-				`[DraftLifecycle] Reverted draft ${args.draftId} → 'draft': ${args.input.reason}`,
-			);
+		if (outcome.ok && args.input.to === 'draft' && args.input.reason !== 'user_cancel') {
+			logError(`[DraftLifecycle] Reverted draft ${args.draftId} → 'draft': ${args.input.reason}`);
 		}
 		return outcome;
 	},

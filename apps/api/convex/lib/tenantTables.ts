@@ -115,6 +115,7 @@ export const TENANT_TABLES = [
 	'mailDrafts',
 	'mailLabels',
 	'mailVoiceProfiles',
+	'mailContactStyleOverrides',
 	'mailFolders',
 	'mailFilters',
 	'mailSignatures',

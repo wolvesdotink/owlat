@@ -25,139 +25,35 @@ import { isFeatureEnabled } from '../lib/featureFlags';
 import { loadOwnedMailbox } from './permissions';
 import { throwForbidden } from '../_utils/errors';
 import { extractEmail } from '../lib/emailAddress';
-import { splitQuotedHtml, splitQuotedText } from '@owlat/shared/quotedText';
-
-// ── Tuning ────────────────────────────────────────────────────────────────
-
-/** Max SENT messages sampled per derivation. */
-export const VOICE_SAMPLE_SIZE = 30;
-/** Per-sample character cap so one long email can't dominate the prompt. */
-export const VOICE_SAMPLE_CHARS = 1500;
-/** Recompute if the profile is older than this. */
-export const VOICE_STALE_MS = 14 * 24 * 60 * 60 * 1000; // 14 days
-/** …or if this many new sent messages have accumulated since. */
-export const VOICE_SENT_DELTA = 20;
-
-// ── Shape ─────────────────────────────────────────────────────────────────
-
-export const voiceProfileValidator = v.object({
-	greetings: v.array(v.string()),
-	signOffs: v.array(v.string()),
-	formality: v.number(),
-	brevity: v.number(),
-	languages: v.array(v.string()),
-	isEmojiUser: v.boolean(),
-	examplePhrasings: v.array(v.string()),
-});
-
-export interface VoiceProfile {
-	greetings: string[];
-	signOffs: string[];
-	formality: number;
-	brevity: number;
-	languages: string[];
-	isEmojiUser: boolean;
-	examplePhrasings: string[];
-}
-
-interface VoiceRowLike {
-	status: 'idle' | 'refreshing';
-	lastComputedAt?: number;
-	sentCountAtCompute: number;
-	profile?: VoiceProfile;
-}
-
-// ── Pure helpers (unit-tested directly) ─────────────────────────────────────
-
-/**
- * Is this profile stale enough to warrant a background recompute? True when it
- * has never been computed, is older than {@link VOICE_STALE_MS}, or has
- * accumulated {@link VOICE_SENT_DELTA}+ new sent messages since it was learned.
- */
-export function isVoiceProfileStale(
-	row: VoiceRowLike,
-	currentSentCount: number,
-	now: number
-): boolean {
-	if (!row.profile || row.lastComputedAt == null) return true;
-	if (now - row.lastComputedAt >= VOICE_STALE_MS) return true;
-	if (currentSentCount - row.sentCountAtCompute >= VOICE_SENT_DELTA) return true;
-	return false;
-}
-
-/** Minimal, dependency-free HTML→text for sampling (not for rendering). */
-function htmlToPlainText(html: string): string {
-	return html
-		.replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, ' ')
-		.replace(/<br\s*\/?>/gi, '\n')
-		.replace(/<\/(p|div|li|tr|h[1-6])>/gi, '\n')
-		.replace(/<[^>]+>/g, ' ')
-		.replace(/&nbsp;/gi, ' ')
-		.replace(/&amp;/gi, '&')
-		.replace(/&lt;/gi, '<')
-		.replace(/&gt;/gi, '>')
-		.replace(/&#39;|&apos;/gi, "'")
-		.replace(/&quot;/gi, '"')
-		.replace(/[ \t]+/g, ' ')
-		.replace(/\n{3,}/g, '\n\n')
-		.trim();
-}
-
-export interface RawSentBody {
-	textBodyInline?: string;
-	htmlBodyInline?: string;
-	snippet?: string;
-}
-
-/**
- * The user's own "fresh" prose for one sent message: the quoted reply-chain
- * (other people's words) is stripped with the same heuristics the composer
- * uses, HTML is flattened to text, and the result is bounded.
- */
-export function extractSampleText(raw: RawSentBody): string {
-	let text: string;
-	if (raw.textBodyInline && raw.textBodyInline.trim()) {
-		text = splitQuotedText(raw.textBodyInline).fresh;
-	} else if (raw.htmlBodyInline && raw.htmlBodyInline.trim()) {
-		text = htmlToPlainText(splitQuotedHtml(raw.htmlBodyInline).fresh);
-	} else {
-		text = raw.snippet ?? '';
-	}
-	return text.trim().slice(0, VOICE_SAMPLE_CHARS);
-}
-
-/** Build the bounded, non-empty sample set fed to the LLM. */
-export function buildVoiceSamples(rows: RawSentBody[], max = VOICE_SAMPLE_SIZE): string[] {
-	const out: string[] = [];
-	for (const r of rows) {
-		const s = extractSampleText(r);
-		if (s.length > 0) out.push(s);
-		if (out.length >= max) break;
-	}
-	return out;
-}
-
-/**
- * The "match this user's voice" prompt section, or null when there is no
- * profile to inject (caller omits the section entirely — no empty scaffolding).
- */
-export function buildVoiceGuidance(profile: VoiceProfile | null | undefined): string | null {
-	if (!profile) return null;
-	const lines: string[] = [
-		"Match this user's personal writing voice (learned from their own sent mail):",
-	];
-	if (profile.greetings.length) lines.push(`- Typical greetings: ${profile.greetings.join(', ')}`);
-	if (profile.signOffs.length) lines.push(`- Typical sign-offs: ${profile.signOffs.join(', ')}`);
-	lines.push(`- Formality: ${profile.formality}/5 (1=very casual, 5=very formal)`);
-	lines.push(`- Brevity: ${profile.brevity}/5 (1=terse, 5=elaborate)`);
-	if (profile.languages.length) lines.push(`- Language(s): ${profile.languages.join(', ')}`);
-	lines.push(`- Emoji: ${profile.isEmojiUser ? 'occasionally uses emoji' : 'does not use emoji'}`);
-	if (profile.examplePhrasings.length) {
-		lines.push(`- Example phrasings (for tone only, never copy verbatim): ${profile.examplePhrasings.join(' | ')}`);
-	}
-	lines.push('Write in this voice while staying appropriate to the thread.');
-	return lines.join('\n');
-}
+import {
+	buildLayeredGuidance,
+	promotedDirectives,
+	medianEditDistance,
+	type EditDeltaKind,
+} from './editLearning';
+// Tuning constants, the profile shape, and the pure staleness/sampling/prompt
+// helpers live in the sibling voiceProfileText.ts (keeps this Convex-runtime
+// module under the file-size cap). Re-exported here so existing importers and
+// the unit tests keep their `./voiceProfile` import path.
+import {
+	VOICE_SAMPLE_SIZE,
+	voiceProfileValidator,
+	isVoiceProfileStale,
+	buildVoiceSamples,
+	buildVoiceGuidance,
+} from './voiceProfileText';
+export {
+	VOICE_SAMPLE_SIZE,
+	VOICE_SAMPLE_CHARS,
+	VOICE_STALE_MS,
+	VOICE_SENT_DELTA,
+	voiceProfileValidator,
+	isVoiceProfileStale,
+	extractSampleText,
+	buildVoiceSamples,
+	buildVoiceGuidance,
+} from './voiceProfileText';
+export type { VoiceProfile, RawSentBody } from './voiceProfileText';
 
 // ── Internal data access ────────────────────────────────────────────────────
 
@@ -186,9 +82,7 @@ export const sampleSentBodies = internalQuery({
 	handler: async (ctx, args): Promise<{ samples: string[]; sentCount: number }> => {
 		const sent = await ctx.db
 			.query('mailFolders')
-			.withIndex('by_mailbox_and_role', (q) =>
-				q.eq('mailboxId', args.mailboxId).eq('role', 'sent')
-			)
+			.withIndex('by_mailbox_and_role', (q) => q.eq('mailboxId', args.mailboxId).eq('role', 'sent'))
 			.first();
 		if (!sent) return { samples: [], sentCount: 0 };
 		const messages = await ctx.db
@@ -251,6 +145,28 @@ export const markIdle = internalMutation({
 });
 
 /**
+ * Promoted per-recipient style directives for one address, or [] when there is
+ * no override row / no promoted rule yet. Keyed by the exact lowercased address
+ * so an override learned for contact X is only ever blended when drafting to X.
+ */
+async function contactStyleDirectives(
+	ctx: MutationCtx,
+	mailboxId: Id<'mailboxes'>,
+	recipient: string
+): Promise<string[]> {
+	const address = extractEmail(recipient);
+	if (!address) return [];
+	const row = await ctx.db
+		.query('mailContactStyleOverrides')
+		.withIndex('by_mailbox_and_address', (q) =>
+			q.eq('mailboxId', mailboxId).eq('contactAddress', address)
+		)
+		.first();
+	if (!row) return [];
+	return promotedDirectives(row.adjustments);
+}
+
+/**
  * Shared core for the guidance accessors: read the profile for prompt injection
  * AND lazily schedule a background refresh when it is stale. Returns the
  * guidance block to inject, or null for today's non-personalized behaviour.
@@ -258,21 +174,33 @@ export const markIdle = internalMutation({
  */
 async function guidanceForMailbox(
 	ctx: MutationCtx,
-	mailboxId: Id<'mailboxes'>
+	mailboxId: Id<'mailboxes'>,
+	recipient?: string
 ): Promise<{ guidance: string | null }> {
 	const row = await findRow(ctx, mailboxId);
 	if (!row || !row.isEnabled) return { guidance: null };
-	if (!(await isFeatureEnabled(ctx, 'ai'))) {
-		return { guidance: buildVoiceGuidance(row.profile) };
+	// Lazy background refresh of the SAMPLED voice profile (gated on `ai`); the
+	// derived/standing/contact layers below are served regardless so learning
+	// surfaces even when the sampler is idle.
+	if (await isFeatureEnabled(ctx, 'ai')) {
+		const sentCount = await currentSentCount(ctx, mailboxId);
+		if (row.status === 'idle' && isVoiceProfileStale(row, sentCount, Date.now())) {
+			await ctx.db.patch(row._id, { status: 'refreshing', updatedAt: Date.now() });
+			await ctx.scheduler.runAfter(0, internal.mail.voiceProfileActions.refresh, {
+				mailboxId,
+			});
+		}
 	}
-	const sentCount = await currentSentCount(ctx, mailboxId);
-	if (row.status === 'idle' && isVoiceProfileStale(row, sentCount, Date.now())) {
-		await ctx.db.patch(row._id, { status: 'refreshing', updatedAt: Date.now() });
-		await ctx.scheduler.runAfter(0, internal.mail.voiceProfileActions.refresh, {
-			mailboxId,
-		});
-	}
-	return { guidance: buildVoiceGuidance(row.profile) };
+	const contactDirectives = recipient
+		? await contactStyleDirectives(ctx, mailboxId, recipient)
+		: [];
+	const guidance = buildLayeredGuidance({
+		standingInstructions: row.standingInstructions ?? [],
+		voiceBlock: buildVoiceGuidance(row.profile),
+		derivedDirectives: promotedDirectives(row.derivedAdjustments ?? []),
+		contactDirectives,
+	});
+	return { guidance };
 }
 
 /**
@@ -306,7 +234,9 @@ export const getGuidanceForRecipient = internalMutation({
 			.withIndex('by_address', (q) => q.eq('address', address))
 			.first();
 		if (!mailbox) return { guidance: null };
-		return guidanceForMailbox(ctx, mailbox._id);
+		// Pass the recipient through so the per-contact override for this exact
+		// address is blended in (never any other contact's override).
+		return guidanceForMailbox(ctx, mailbox._id, args.recipient);
 	},
 });
 
@@ -323,13 +253,101 @@ export const get = publicQuery({
 		const owned = await loadOwnedMailbox(ctx, args.mailboxId);
 		if (!owned.ok) return null;
 		const row = await findRow(ctx, args.mailboxId);
-		if (!row) return { isEnabled: false, profile: null, status: 'idle' as const, lastComputedAt: null };
+		if (!row) {
+			return {
+				isEnabled: false,
+				profile: null,
+				status: 'idle' as const,
+				lastComputedAt: null,
+				standingInstructions: [],
+				derivedAdjustments: [],
+				editDistanceMedian: null,
+			};
+		}
+		// Surface only the PROMOTED (durable, active) learned adjustments so the
+		// settings UI can list and revoke real rules, not pending observations.
+		const durable: Array<{ kind: EditDeltaKind; directive: string; observations: number }> = [];
+		for (const adj of row.derivedAdjustments ?? []) {
+			if (adj.promoted) {
+				durable.push({ kind: adj.kind, directive: adj.directive, observations: adj.observations });
+			}
+		}
 		return {
 			isEnabled: row.isEnabled,
 			profile: row.profile ?? null,
 			status: row.status,
 			lastComputedAt: row.lastComputedAt ?? null,
+			standingInstructions: row.standingInstructions ?? [],
+			derivedAdjustments: durable,
+			// North-star metric: median normalized draft→sent edit distance.
+			editDistanceMedian: medianEditDistance(row.editDistanceSamples ?? []),
 		};
+	},
+});
+
+/** Max standing instructions retained, and per-instruction character bound. */
+export const MAX_STANDING_INSTRUCTIONS = 20;
+export const MAX_STANDING_INSTRUCTION_CHARS = 200;
+
+/**
+ * Replace the mailbox's user-authored standing instructions ("never use
+ * exclamation marks", "sign as Dr."). These are explicit rules, merged ABOVE the
+ * derived voice at draft time. Trimmed, de-duplicated, empties dropped, bounded.
+ */
+export const setStandingInstructions = authedMutation({
+	args: { mailboxId: v.id('mailboxes'), instructions: v.array(v.string()) },
+	// authz: ownership enforced via loadOwnedMailbox.
+	handler: async (ctx, args) => {
+		const owned = await loadOwnedMailbox(ctx, args.mailboxId);
+		if (!owned.ok) throwForbidden('Mailbox not found');
+		const seen = new Set<string>();
+		const cleaned: string[] = [];
+		for (const raw of args.instructions) {
+			const trimmed = raw.trim().slice(0, MAX_STANDING_INSTRUCTION_CHARS);
+			if (trimmed.length === 0) continue;
+			const key = trimmed.toLowerCase();
+			if (seen.has(key)) continue;
+			seen.add(key);
+			cleaned.push(trimmed);
+			if (cleaned.length >= MAX_STANDING_INSTRUCTIONS) break;
+		}
+		const now = Date.now();
+		const row = await findRow(ctx, args.mailboxId);
+		if (row) {
+			await ctx.db.patch(row._id, { standingInstructions: cleaned, updatedAt: now });
+			return row._id;
+		}
+		return ctx.db.insert('mailVoiceProfiles', {
+			mailboxId: args.mailboxId,
+			isEnabled: true,
+			status: 'idle',
+			sampleCount: 0,
+			sentCountAtCompute: 0,
+			standingInstructions: cleaned,
+			createdAt: now,
+			updatedAt: now,
+		});
+	},
+});
+
+/**
+ * Revoke one learned voice-level adjustment by kind ("stop applying this rule").
+ * Drops it entirely so it neither injects nor keeps its observation count.
+ */
+export const removeDerivedAdjustment = authedMutation({
+	args: { mailboxId: v.id('mailboxes'), kind: v.string() },
+	// authz: ownership enforced via loadOwnedMailbox.
+	handler: async (ctx, args) => {
+		const owned = await loadOwnedMailbox(ctx, args.mailboxId);
+		if (!owned.ok) throwForbidden('Mailbox not found');
+		const row = await findRow(ctx, args.mailboxId);
+		if (!row || !row.derivedAdjustments) return null;
+		const kept: typeof row.derivedAdjustments = [];
+		for (const adj of row.derivedAdjustments) {
+			if (adj.kind !== args.kind) kept.push(adj);
+		}
+		await ctx.db.patch(row._id, { derivedAdjustments: kept, updatedAt: Date.now() });
+		return null;
 	},
 });
 
