@@ -357,6 +357,7 @@ import type * as mail_aliasesActions from "../mail/aliasesActions.js";
 import type * as mail_appPasswords from "../mail/appPasswords.js";
 import type * as mail_authHttp from "../mail/authHttp.js";
 import type * as mail_authRateLimit from "../mail/authRateLimit.js";
+import type * as mail_availability from "../mail/availability.js";
 import type * as mail_category from "../mail/category.js";
 import type * as mail_categoryClassify from "../mail/categoryClassify.js";
 import type * as mail_commitmentExtract from "../mail/commitmentExtract.js";
@@ -933,6 +934,7 @@ declare const fullApi: ApiFromModules<{
   "mail/appPasswords": typeof mail_appPasswords;
   "mail/authHttp": typeof mail_authHttp;
   "mail/authRateLimit": typeof mail_authRateLimit;
+  "mail/availability": typeof mail_availability;
   "mail/category": typeof mail_category;
   "mail/categoryClassify": typeof mail_categoryClassify;
   "mail/commitmentExtract": typeof mail_commitmentExtract;
