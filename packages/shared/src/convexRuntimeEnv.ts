@@ -117,6 +117,15 @@ export const CONVEX_RUNTIME_ENV_KEYS = [
 	'GENERIC_WEBHOOK_SECRET',
 	// Code-work / GitHub PR merge webhook
 	'GITHUB_WEBHOOK_SECRET',
+	// Calendar / availability grounding for scheduling replies (mail/availability.ts).
+	// Read at Convex function runtime by fetchOpenSlots via getOptional(), so they
+	// must be pushed into the deployment — without them a self-hoster who sets them
+	// in .env would find them silently never applied and availability grounding stays
+	// off. Optional read-only ICS/CalDAV URL for the owner's own calendar + the IANA
+	// timezone used to label open slots. Unset ⇒ exactly today's sender-phrase-only
+	// scheduling replies.
+	'CALENDAR_FREEBUSY_ICS_URL',
+	'CALENDAR_TIMEZONE',
 ] as const;
 
 /**
