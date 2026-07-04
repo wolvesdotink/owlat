@@ -24,6 +24,14 @@ import {
 	type HandlingRuleOutcome,
 } from './handlingRules/engine';
 
+/**
+ * Upper bound on how many handling rules a deployment can hold. The table is
+ * deployment-global and hand-curated in settings (mirroring autonomyRules), so
+ * this ceiling is generous while still keeping every read BOUNDED — no unbounded
+ * `.collect()` on either the settings list or the per-message evaluation.
+ */
+export const MAX_HANDLING_RULES = 500;
+
 // Shared validators — the persisted shape mirrors schema/autonomy.ts:handlingRules.
 export const matcherValidator = v.object({
 	senders: v.optional(v.array(v.string())),
@@ -51,7 +59,7 @@ export const list = adminQuery({
 	args: {},
 	handler: async (ctx) => {
 		await assertFeatureEnabled(ctx, 'ai.autonomy');
-		return await ctx.db.query('handlingRules').collect();
+		return await ctx.db.query('handlingRules').take(MAX_HANDLING_RULES);
 	},
 });
 
@@ -176,7 +184,7 @@ export const evaluateForMessage = internalQuery({
 		const rules = await ctx.db
 			.query('handlingRules')
 			.withIndex('by_enabled', (q) => q.eq('isEnabled', true))
-			.collect();
+			.take(MAX_HANDLING_RULES);
 		if (rules.length === 0) return inert;
 
 		const body = message.textBody ?? (message.htmlBody ? stripTags(message.htmlBody) : '');
