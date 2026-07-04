@@ -21,7 +21,7 @@ import { generateReplyOptions } from './replyOptions';
 import { throwNotFound } from '../_utils/errors';
 
 /** Flatten a thread into a bounded plaintext transcript for the prompt. */
-function threadToText(messages: Doc<'mailMessages'>[]): string {
+export function threadToText(messages: Doc<'mailMessages'>[]): string {
 	return messages
 		.map((m) => {
 			const body = (
