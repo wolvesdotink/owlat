@@ -22,6 +22,9 @@ const runLlmTextMock = vi.fn(async (_args: unknown) => ({
 
 vi.mock('../../../../lib/llm/dispatch', () => ({
 	runLlmText: (args: unknown) => runLlmTextMock(args as never),
+	// The primary draft now runs through the tool-calling text seam; alias it to
+	// the same capture so the assembled `messages` are still inspected here.
+	runLlmTextWithTools: (args: unknown) => runLlmTextMock(args as never),
 }));
 vi.mock('../../../../lib/llmProvider', () => ({
 	getLLMProvider: () => ({}) as never,

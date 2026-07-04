@@ -10,6 +10,16 @@ import { internal } from '../../../_generated/api';
 import { stripRemoteImages } from '@owlat/shared/postboxTrackers';
 import type { Id } from '../../../_generated/dataModel';
 import type { AgentStepModule } from '../types';
+import {
+	EMERGENCY_BUDGET,
+	activityContentSnippet,
+	assembleEmergencyContext,
+	truncateOneLine,
+} from './emergency';
+
+// Re-export the pure emergency helpers so existing importers (and tests) that
+// reference them via the step module keep working after the domain-sibling split.
+export { activityContentSnippet, truncateOneLine } from './emergency';
 
 /**
  * The message body the LLM steps should read, with remote images / tracking
@@ -101,6 +111,15 @@ export const contextRetrievalStep: AgentStepModule<
 
 		const contextParts: string[] = [];
 
+		// Emergency-tier grounding carriers. On the emergency tier the full
+		// briefing is discarded and re-assembled from just these compact pieces
+		// (plus a truncated current message), so the longest threads keep their
+		// grounding instead of collapsing to contact-only.
+		let contactSection: string | undefined;
+		let recentActivitySection: string | undefined;
+		const emergencyCommitmentLines: string[] = [];
+		const emergencyKnowledgeLines: string[] = [];
+
 		// Coverage tracking — which briefing legs actually produced content.
 		// Cheap booleans/counts derived inline; no extra LLM call.
 		let hasContact = false;
@@ -123,14 +142,14 @@ export const contextRetrievalStep: AgentStepModule<
 			});
 			if (contact) {
 				hasContact = true;
-				contextParts.push(
+				contactSection =
 					`[CONTACT] ${contact.email}` +
-						(contact.firstName
-							? ` | Name: ${contact.firstName}${contact.lastName ? ' ' + contact.lastName : ''}`
-							: '') +
-						(contact.language ? ` | Language: ${contact.language}` : '') +
-						(contact.timezone ? ` | Timezone: ${contact.timezone}` : '')
-				);
+					(contact.firstName
+						? ` | Name: ${contact.firstName}${contact.lastName ? ' ' + contact.lastName : ''}`
+						: '') +
+					(contact.language ? ` | Language: ${contact.language}` : '') +
+					(contact.timezone ? ` | Timezone: ${contact.timezone}` : '');
+				contextParts.push(contactSection);
 			}
 
 			// 2. Recent contact activities
@@ -139,12 +158,16 @@ export const contextRetrievalStep: AgentStepModule<
 				limit: 5,
 			});
 			if (activities.length > 0) {
-				contextParts.push(
+				recentActivitySection =
 					'[RECENT ACTIVITY]\n' +
-						activities
-							.map((a) => `- ${a.activityType} at ${new Date(a.occurredAt).toISOString()}`)
-							.join('\n')
-				);
+					activities
+						.map((a) => {
+							const when = new Date(a.occurredAt).toISOString();
+							const snippet = activityContentSnippet(a);
+							return `- ${a.activityType} at ${when}${snippet ? ` — ${snippet}` : ''}`;
+						})
+						.join('\n');
+				contextParts.push(recentActivitySection);
 			}
 
 			// 2b. OPEN COMMITMENTS — durable promises we owe THIS contact (an
@@ -165,6 +188,14 @@ export const contextRetrievalStep: AgentStepModule<
 						id: c._id as string,
 						title: c.title,
 					});
+				}
+				// Compact carriers for the emergency tier — the top few commitments,
+				// each truncated to one line, so a still-owed promise survives even
+				// when the full briefing is discarded.
+				for (const c of openCommitments.slice(0, EMERGENCY_BUDGET.commitmentLimit)) {
+					emergencyCommitmentLines.push(
+						`- ${c.title}: ${truncateOneLine(c.content, EMERGENCY_BUDGET.factChars)}`
+					);
 				}
 				contextParts.push(
 					'[OPEN COMMITMENTS — still owed to this contact; honour these]\n' +
@@ -291,6 +322,20 @@ export const contextRetrievalStep: AgentStepModule<
 					contextParts.push('[KNOWLEDGE]\n' + otherEntries.map(renderEntry).join('\n'));
 				}
 
+				// Compact carriers for the emergency tier — the top few facts in
+				// precedence order (curated policy ahead of scraped facts), each
+				// truncated to one line, so the hardest threads keep real grounding
+				// rather than collapsing to contact-only.
+				for (const k of [...policyEntries, ...otherEntries].slice(
+					0,
+					EMERGENCY_BUDGET.knowledgeLimit
+				)) {
+					const stalePrefix = k._stale ? '[SUPERSEDED] ' : '';
+					emergencyKnowledgeLines.push(
+						`- ${stalePrefix}(${k.entryType}) ${k.title}: ${truncateOneLine(k.content, EMERGENCY_BUDGET.factChars)}`
+					);
+				}
+
 				// [KNOWLEDGE RELATIONSHIPS] — the typed edges among the entries above,
 				// one line per edge (outgoing direction), e.g. "A" SUPERSEDES "B".
 				// Sits before [CURRENT MESSAGE]; titles are untrusted retrieved data.
@@ -329,14 +374,14 @@ export const contextRetrievalStep: AgentStepModule<
 		}
 
 		// 4. Current message
-		contextParts.push(
+		const currentMessageSection =
 			'[CURRENT MESSAGE]\n' +
-				`From: ${message.from}\n` +
-				`To: ${message.to}\n` +
-				`Subject: ${message.subject}\n` +
-				`Date: ${new Date(message.receivedAt).toISOString()}\n` +
-				`Body:\n${inboundBody ?? '(no body)'}`
-		);
+			`From: ${message.from}\n` +
+			`To: ${message.to}\n` +
+			`Subject: ${message.subject}\n` +
+			`Date: ${new Date(message.receivedAt).toISOString()}\n` +
+			`Body:\n${inboundBody ?? '(no body)'}`;
+		contextParts.push(currentMessageSection);
 
 		// ── Compile and compact ──
 		const fullContext = contextParts.join('\n\n');
@@ -353,23 +398,33 @@ export const contextRetrievalStep: AgentStepModule<
 			const maxChars = CONTEXT_BUDGET.maxTokens * CONTEXT_BUDGET.charsPerToken;
 			finalContext = fullContext.slice(-maxChars);
 		} else {
+			// EMERGENCY: the full briefing is too large to keep, but this tier fires
+			// on the longest/hardest threads — the ones that most need grounding. So
+			// rather than collapse to contact + current-message only (dropping every
+			// fact, commitment, and file), re-assemble a COMPACT grounding set from
+			// the top knowledge facts + open commitments captured above, plus a
+			// budget-bounded slice of the current message (see ./emergency).
 			tier = 'emergency';
-			const currentMessage = contextParts[contextParts.length - 1];
-			const contactInfo = contextParts[0]?.startsWith('[CONTACT]') ? contextParts[0] : '';
-			finalContext = `${contactInfo}\n\n${currentMessage}`;
+			finalContext = assembleEmergencyContext({
+				contactSection,
+				commitmentLines: emergencyCommitmentLines,
+				knowledgeLines: emergencyKnowledgeLines,
+				recentActivitySection,
+				currentMessageSection,
+				maxChars: CONTEXT_BUDGET.maxTokens * CONTEXT_BUDGET.charsPerToken,
+			});
 		}
 
 		// Trim provenance to what SURVIVED compaction so the review UI's
 		// "Grounded in:" list never over-claims sources the model didn't actually
-		// see. `normal` keeps everything (finalContext === fullContext). `emergency`
-		// keeps only [CONTACT] + [CURRENT MESSAGE], so no thread/knowledge source
-		// survives. `compacted` is a tail-slice, so a source survives iff its
-		// identifying text is still present in the truncated briefing.
+		// see. `normal` keeps everything (finalContext === fullContext). Both
+		// `compacted` (tail-slice) and `emergency` (compact grounding block) keep a
+		// source iff its identifying title text is still present in the final
+		// briefing — the emergency tier now preserves the top facts/commitments, so
+		// those survive here too rather than being dropped wholesale.
 		let survivingSources: GroundingSource[];
 		if (tier === 'normal') {
 			survivingSources = groundingSources;
-		} else if (tier === 'emergency') {
-			survivingSources = [];
 		} else {
 			survivingSources = [];
 			for (const src of groundingSources) {
