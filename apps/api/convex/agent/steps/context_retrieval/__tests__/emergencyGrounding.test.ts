@@ -43,7 +43,11 @@ type Legs = {
 		content: string;
 		dueAt?: number;
 	}>;
-	activities?: Array<{ activityType: string; occurredAt: number; metadata?: Record<string, unknown> }>;
+	activities?: Array<{
+		activityType: string;
+		occurredAt: number;
+		metadata?: Record<string, unknown>;
+	}>;
 };
 
 function makeCtx(legs: Legs) {
@@ -165,9 +169,9 @@ describe('activityContentSnippet', () => {
 			'https://x.test/a'
 		);
 		expect(activityContentSnippet({ metadata: { topicName: 'Newsletter' } })).toBe('Newsletter');
-		expect(
-			activityContentSnippet({ metadata: { propertyKey: 'plan', newValue: 'pro' } })
-		).toBe('plan → pro');
+		expect(activityContentSnippet({ metadata: { propertyKey: 'plan', newValue: 'pro' } })).toBe(
+			'plan → pro'
+		);
 	});
 
 	it('returns empty string when there is nothing human-meaningful', () => {

@@ -23,11 +23,7 @@ const contactId = 'contact_1' as Id<'contacts'>;
 
 // ── recall tool, in isolation ────────────────────────────────────────────────
 
-import {
-	buildRecallKnowledgeTool,
-	MAX_RECALL_CALLS,
-	RECALL_RESULT_LIMIT,
-} from '../recall';
+import { buildRecallKnowledgeTool, MAX_RECALL_CALLS, RECALL_RESULT_LIMIT } from '../recall';
 
 type RunAction = (ref: unknown, args: Record<string, unknown>) => Promise<unknown>;
 
@@ -45,7 +41,13 @@ describe('buildRecallKnowledgeTool', () => {
 			expect(name).toContain('semanticSearch');
 			calls.push(args);
 			return [
-				{ title: 'Refund policy', entryType: 'fact', confidence: 0.9, content: 'Refund in 14 days.', _stale: false },
+				{
+					title: 'Refund policy',
+					entryType: 'fact',
+					confidence: 0.9,
+					content: 'Refund in 14 days.',
+					_stale: false,
+				},
 			];
 		};
 		const tool = buildRecallKnowledgeTool({
@@ -168,7 +170,13 @@ describe('draftStep.execute — recall wiring', () => {
 	it('a draft needing an un-retrieved fact triggers a recall', async () => {
 		let recalled = false;
 		const recalledFacts = [
-			{ title: 'Refund policy', entryType: 'fact', confidence: 0.9, content: 'Refund in 14 days.', _stale: false },
+			{
+				title: 'Refund policy',
+				entryType: 'fact',
+				confidence: 0.9,
+				content: 'Refund in 14 days.',
+				_stale: false,
+			},
 		];
 
 		// The mocked model "decides" it needs a fact and calls the tool once,
