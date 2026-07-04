@@ -63,11 +63,7 @@ const handleConfirm = () => {
 						<Icon v-else name="lucide:check" class="w-4 h-4" />
 						Yes, stop now
 					</button>
-					<button
-						class="btn btn-secondary"
-						:disabled="busy"
-						@click="showConfirm = false"
-					>
+					<button class="btn btn-secondary" :disabled="busy" @click="showConfirm = false">
 						Cancel
 					</button>
 				</div>

@@ -85,11 +85,14 @@ export const updateConfig = adminMutation({
 			const config = configs[0]!;
 			const patches: Partial<Doc<'agentConfig'>> = { updatedAt: now };
 
-			if (args.isAutoReplyEnabled !== undefined) patches.isAutoReplyEnabled = args.isAutoReplyEnabled;
-			if (args.confidenceThreshold !== undefined) patches.confidenceThreshold = args.confidenceThreshold;
+			if (args.isAutoReplyEnabled !== undefined)
+				patches.isAutoReplyEnabled = args.isAutoReplyEnabled;
+			if (args.confidenceThreshold !== undefined)
+				patches.confidenceThreshold = args.confidenceThreshold;
 			if (args.toneDescription !== undefined) patches.toneDescription = args.toneDescription;
 			if (args.signatureTemplate !== undefined) patches.signatureTemplate = args.signatureTemplate;
-			if (args.maxDailyAutoReplies !== undefined) patches.maxDailyAutoReplies = args.maxDailyAutoReplies;
+			if (args.maxDailyAutoReplies !== undefined)
+				patches.maxDailyAutoReplies = args.maxDailyAutoReplies;
 			if (args.coalesceWindowMs !== undefined) patches.coalesceWindowMs = args.coalesceWindowMs;
 			if (args.autoSendDelayMs !== undefined)
 				patches.autoSendDelayMs = Math.max(0, args.autoSendDelayMs);
@@ -114,7 +117,7 @@ export const updateConfig = adminMutation({
 				await ctx.scheduler.runAfter(
 					0,
 					internal.inbox.processingLifecycle.cancelPendingAutoSendsForKillSwitch,
-					{},
+					{}
 				);
 			}
 
@@ -135,7 +138,8 @@ export const updateConfig = adminMutation({
 			signatureTemplate: args.signatureTemplate,
 			maxDailyAutoReplies: args.maxDailyAutoReplies ?? 100,
 			coalesceWindowMs: args.coalesceWindowMs ?? 30000,
-			autoSendDelayMs: args.autoSendDelayMs === undefined ? undefined : Math.max(0, args.autoSendDelayMs),
+			autoSendDelayMs:
+				args.autoSendDelayMs === undefined ? undefined : Math.max(0, args.autoSendDelayMs),
 			isWorkingHoursEnabled: args.isWorkingHoursEnabled,
 			workingHoursTimezone: args.workingHoursTimezone,
 			workingHoursStart:
@@ -221,7 +225,7 @@ export const killSwitch = adminMutation({
 		await ctx.scheduler.runAfter(
 			0,
 			internal.inbox.processingLifecycle.cancelPendingAutoSendsForKillSwitch,
-			{},
+			{}
 		);
 
 		await recordAuditLog(ctx, {

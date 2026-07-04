@@ -102,7 +102,8 @@ const pct = (n: number) => `${Math.round(n * 100)}%`;
 					<p class="text-sm text-text-primary">
 						Lower the <strong>{{ s.category }}</strong> auto-approve threshold from
 						<strong>{{ pct(s.currentThreshold) }}</strong> to
-						<strong>{{ pct(s.suggestedThreshold) }}</strong>?
+						<strong>{{ pct(s.suggestedThreshold) }}</strong
+						>?
 					</p>
 					<p class="text-xs text-text-tertiary mt-0.5">
 						{{ s.evidence.approved }}/{{ s.evidence.sampleSize }} approved,

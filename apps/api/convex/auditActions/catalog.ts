@@ -222,9 +222,9 @@ export type AuditResourceLiteral = (typeof AUDIT_RESOURCE_LITERALS)[number];
 // ---------------------------------------------------------------------------
 
 export const auditActionValidator = v.union(
-	...AUDIT_ACTION_LITERALS.map((l) => v.literal(l)),
+	...AUDIT_ACTION_LITERALS.map((l) => v.literal(l))
 ) as unknown as Validator<AuditActionLiteral>;
 
 export const auditResourceValidator = v.union(
-	...AUDIT_RESOURCE_LITERALS.map((l) => v.literal(l)),
+	...AUDIT_RESOURCE_LITERALS.map((l) => v.literal(l))
 ) as unknown as Validator<AuditResourceLiteral>;

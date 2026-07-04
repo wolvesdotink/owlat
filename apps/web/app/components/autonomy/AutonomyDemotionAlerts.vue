@@ -32,7 +32,9 @@ const hasIncidents = computed(() => (props.incidents ?? []).length > 0);
 		<div class="flex items-center gap-3 mb-4">
 			<UiIconBox icon="lucide:shield-alert" size="sm" variant="error" />
 			<div>
-				<h3 class="text-base font-medium text-text-primary">Auto-send paused after a bad outcome</h3>
+				<h3 class="text-base font-medium text-text-primary">
+					Auto-send paused after a bad outcome
+				</h3>
 				<p class="text-xs text-text-tertiary">
 					These senders were reverted to draft-only after a confirmed bad auto-send. Review before
 					re-enabling.

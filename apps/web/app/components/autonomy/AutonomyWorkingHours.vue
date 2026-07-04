@@ -27,7 +27,9 @@ const props = withDefaults(defineProps<Props>(), {
 });
 
 const emit = defineEmits<{
-	save: [payload: { enabled: boolean; timezone: string; start: number; end: number; days: number[] }];
+	save: [
+		payload: { enabled: boolean; timezone: string; start: number; end: number; days: number[] },
+	];
 }>();
 
 const minutesToHHMM = (m: number): string => {
