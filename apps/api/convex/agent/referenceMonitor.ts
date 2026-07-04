@@ -28,6 +28,7 @@
  */
 
 import { parseAddress } from '@owlat/shared';
+import { stripRemoteImages } from '@owlat/shared/postboxTrackers';
 import { detectSecretLeak } from '../lib/secretLeakScan';
 
 /**
@@ -68,24 +69,19 @@ export interface OutboundHtmlSanitizeResult {
  */
 export function sanitizeOutboundHtml(
 	html: string,
-	allowedHosts: readonly string[],
+	allowedHosts: readonly string[]
 ): OutboundHtmlSanitizeResult {
 	const allowed = new Set<string>();
 	for (const host of allowedHosts) {
 		if (host) allowed.add(host.trim().toLowerCase());
 	}
 
-	let strippedRemoteImages = 0;
 	let neutralizedLinks = 0;
 
-	// Remove <img> tags whose src is remote (absolute http(s) or protocol-relative).
-	const withoutRemoteImages = html.replace(
-		/<img\b[^>]*?\bsrc\s*=\s*(["'])\s*(?:https?:)?\/\/[^"']*\1[^>]*>/gi,
-		() => {
-			strippedRemoteImages += 1;
-			return '';
-		},
-	);
+	// Remove <img> tags whose src is remote (absolute http(s) or protocol-relative)
+	// via the shared privacy-strip primitive so outbound + inbound neutralize
+	// remote images identically (covers 1×1 tracking pixels and remote images).
+	const { html: withoutRemoteImages, strippedRemoteImages } = stripRemoteImages(html);
 
 	// Neutralize <a href="..."> whose host is not allow-listed: drop the href
 	// attribute, keep the tag (and its inner text) intact.
@@ -98,7 +94,7 @@ export function sanitizeOutboundHtml(
 			if (allowed.has(host)) return match;
 			neutralizedLinks += 1;
 			return `${pre}${post}`;
-		},
+		}
 	);
 
 	return { html: sanitized, strippedRemoteImages, neutralizedLinks };
@@ -119,7 +115,9 @@ function linkHost(url: string): string | undefined {
 	if (!m || !m[1]) return undefined; // relative path — same-origin, allowed.
 	// Strip userinfo + port, lowercase the host.
 	const authority = m[1];
-	const hostPort = authority.includes('@') ? authority.slice(authority.indexOf('@') + 1) : authority;
+	const hostPort = authority.includes('@')
+		? authority.slice(authority.indexOf('@') + 1)
+		: authority;
 	const host = hostPort.includes(':') ? hostPort.slice(0, hostPort.indexOf(':')) : hostPort;
 	return host.toLowerCase();
 }
@@ -183,7 +181,7 @@ export function runReferenceMonitor(input: ReferenceMonitorInput): ReferenceMoni
 	// 3. Outbound HTML sanitize — remediation, not a veto.
 	const { html, strippedRemoteImages, neutralizedLinks } = sanitizeOutboundHtml(
 		input.draftHtml,
-		input.allowedLinkHosts,
+		input.allowedLinkHosts
 	);
 
 	return { ok: true, html, strippedRemoteImages, neutralizedLinks };
