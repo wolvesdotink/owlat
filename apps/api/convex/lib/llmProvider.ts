@@ -17,7 +17,11 @@
 
 import { createOpenAI } from '@ai-sdk/openai';
 import { getOptional } from './env';
-import { isTrivialUserText } from './llm/complexity';
+import {
+	isTrivialUserText,
+	isTrivialClassifiedMessage,
+	type ClassificationSignals,
+} from './llm/complexity';
 import { CURRENT_EMBEDDING_MODEL, EMBEDDING_DIMENSIONS } from './constants';
 
 /**
@@ -42,7 +46,9 @@ function taskTier(task: LLMTask): LLMTier {
 }
 
 function resolveApiKey(): string | undefined {
-	return getOptional('LLM_API_KEY') || getOptional('OPENROUTER_API_KEY') || getOptional('OPENAI_API_KEY');
+	return (
+		getOptional('LLM_API_KEY') || getOptional('OPENROUTER_API_KEY') || getOptional('OPENAI_API_KEY')
+	);
 }
 
 function resolveBaseURL(): string | undefined {
@@ -77,8 +83,8 @@ function getClient() {
 
 function modelIdForTier(tier: LLMTier): string {
 	return tier === 'fast'
-		? getOptional('LLM_MODEL_FAST') ?? getOptional('LLM_MODEL') ?? DEFAULT_MODEL_FAST
-		: getOptional('LLM_MODEL_CAPABLE') ?? getOptional('LLM_MODEL') ?? DEFAULT_MODEL_CAPABLE;
+		? (getOptional('LLM_MODEL_FAST') ?? getOptional('LLM_MODEL') ?? DEFAULT_MODEL_FAST)
+		: (getOptional('LLM_MODEL_CAPABLE') ?? getOptional('LLM_MODEL') ?? DEFAULT_MODEL_CAPABLE);
 }
 
 /** Resolve the language model for a given task (plugs into the AI SDK helpers). */
@@ -96,8 +102,26 @@ export function getLLMProvider(task: LLMTask = 'draft') {
  */
 export function getLLMProviderForUserText(task: LLMTask, userText: string) {
 	const downgrade =
-		getOptional('LLM_COMPLEXITY_ROUTING') === '1' && taskTier(task) === 'capable' && isTrivialUserText(userText);
+		getOptional('LLM_COMPLEXITY_ROUTING') === '1' &&
+		taskTier(task) === 'capable' &&
+		isTrivialUserText(userText);
 	return getClient()(modelIdForTier(downgrade ? 'fast' : taskTier(task)));
+}
+
+/**
+ * Resolve the model for the inbound agent's `draft` step, downgrading the
+ * capable tier to fast when the message is clearly trivial AND complexity
+ * routing is enabled (`LLM_COMPLEXITY_ROUTING=1`, default off). Unlike
+ * {@link getLLMProviderForUserText}, triviality is judged from the TRUSTED,
+ * sanitized classifier signals only — never the attacker-controlled email body —
+ * so a crafted "thanks!"-looking inbound can't force a cheaper, lower-quality
+ * draft. Ambiguous / important / low-confidence messages keep the capable tier,
+ * and when routing is off this is exactly today's single-tier behaviour.
+ */
+export function getLLMProviderForClassifiedDraft(signals: ClassificationSignals) {
+	const downgrade =
+		getOptional('LLM_COMPLEXITY_ROUTING') === '1' && isTrivialClassifiedMessage(signals);
+	return getClient()(modelIdForTier(downgrade ? 'fast' : 'capable'));
 }
 
 // Known embedding models and their native output width. Used to fail fast when
@@ -118,7 +142,7 @@ export function getEmbeddingModel() {
 		throw new Error(
 			`LLM_EMBEDDING_MODEL='${modelId}' produces ${known}-dimensional vectors, but the ` +
 				`vector index is fixed at ${EMBEDDING_DIMENSIONS}. Set a ${EMBEDDING_DIMENSIONS}-dim ` +
-				`embedding model (e.g. text-embedding-3-small) or change the schema vectorIndex dimensions.`,
+				`embedding model (e.g. text-embedding-3-small) or change the schema vectorIndex dimensions.`
 		);
 	}
 	return getClient().embedding(modelId);
@@ -134,7 +158,7 @@ export function assertEmbeddingDimension(embedding: ArrayLike<number>): void {
 	if (embedding.length !== EMBEDDING_DIMENSIONS) {
 		throw new Error(
 			`Embedding model produced a ${embedding.length}-dimensional vector but the vector ` +
-				`index requires ${EMBEDDING_DIMENSIONS}. Set LLM_EMBEDDING_MODEL to a ${EMBEDDING_DIMENSIONS}-dim model.`,
+				`index requires ${EMBEDDING_DIMENSIONS}. Set LLM_EMBEDDING_MODEL to a ${EMBEDDING_DIMENSIONS}-dim model.`
 		);
 	}
 }
