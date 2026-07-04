@@ -115,4 +115,20 @@ describe('computeAttachmentSuggestions', () => {
 		});
 		expect(result).toBeNull();
 	});
+
+	it('is advisory only — never performs a mutation / attach (auto-send never attaches)', async () => {
+		// The autonomous send path never attaches (recipient-lock forbids a new
+		// attachment on an unattended reply); suggestions are pure read-only
+		// metadata. Prove it: computing a suggestion issues NO mutation — only the
+		// read-only file search — so nothing here can turn into a real attachment.
+		const runMutation = vi.fn();
+		const runAction = vi.fn(async () => [fileRow('a', 0.95), fileRow('b', 0.1)]);
+		const ctx = { runAction: runAction as never, runMutation: runMutation as never };
+		const result = await computeAttachmentSuggestions(ctx, {
+			context: 'Can you send me the signed contract?',
+			contactId: CONTACT,
+		});
+		expect(result).not.toBeNull();
+		expect(runMutation).not.toHaveBeenCalled();
+	});
 });
