@@ -62,6 +62,13 @@ import {
 	buildDivergencePrompt,
 	type ReplySlot,
 } from '../../../inbox/clarificationSlots';
+import {
+	resolveEagernessPolicy,
+	isHighStakesSlot,
+	predictedAskValue,
+	type EagernessMode,
+	type EagernessPolicy,
+} from '../../../inbox/askEagerness';
 import type { AgentStepModule, TokenUsage } from '../types';
 
 // The slot taxonomy + untrusted-data prompt module is SHARED with the personal
@@ -95,6 +102,7 @@ export type ClarifyOutput = {
 	/** Why the expensive check was skipped / how it resolved — observability
 	 * only, never drives routing. */
 	resolution:
+		| 'eagerness_off'
 		| 'high_coverage_short_circuit'
 		| 'no_candidate_slots'
 		| 'converged'
@@ -116,27 +124,49 @@ export function eagernessForCategory(classification: {
 	return 'default';
 }
 
+/** How the ask-eagerness dial narrows which divergent slots become questions:
+ * a hard per-email cap (batched into one micro-form, never dripped) and an
+ * optional high-stakes-only filter. Defaults reproduce today's behaviour. */
+export interface QuestionSelectionPolicy {
+	maxQuestions: number;
+	highStakesOnly: boolean;
+}
+
+const DEFAULT_SELECTION_POLICY: QuestionSelectionPolicy = {
+	maxQuestions: MAX_QUESTIONS,
+	highStakesOnly: false,
+};
+
 /**
  * Pure selection of which candidate slots become surfaced questions. Takes the
  * candidate slots and the divergent indexes into that same array, keeps the
- * divergent ones, caps at {@link MAX_QUESTIONS}, and shapes them into
- * `pendingClarification` question rows with stable ids. Exported for tests.
+ * divergent ones, applies the eagerness policy (high-stakes filter + hard cap),
+ * and shapes them into `pendingClarification` question rows with stable ids.
+ * The cap is a HARD ceiling: every surviving question is returned in ONE batch,
+ * never dripped across replies. Exported for tests. The optional `policy`
+ * defaults to today's behaviour (cap {@link MAX_QUESTIONS}, no filter).
  */
 export function selectQuestions(
 	candidateSlots: ReplySlot[],
-	divergentIndexes: readonly number[]
+	divergentIndexes: readonly number[],
+	policy: QuestionSelectionPolicy = DEFAULT_SELECTION_POLICY
 ): ClarificationQuestion[] {
+	const cap = Math.min(policy.maxQuestions, MAX_QUESTIONS);
+	if (cap <= 0) return [];
 	const divergent = new Set(divergentIndexes);
 	const questions: ClarificationQuestion[] = [];
 	for (let i = 0; i < candidateSlots.length; i++) {
 		if (!divergent.has(i)) continue;
 		const slot = candidateSlots[i]!;
+		// Confident eagerness only surfaces genuinely high-stakes slots
+		// (money / commitment / date / legal-tone); routine acks are dropped.
+		if (policy.highStakesOnly && !isHighStakesSlot(slot.slotType)) continue;
 		questions.push({
 			id: `clarify_${i}`,
 			slotType: slot.slotType,
 			text: slot.question,
 		});
-		if (questions.length >= MAX_QUESTIONS) break;
+		if (questions.length >= cap) break;
 	}
 	return questions;
 }
@@ -160,13 +190,32 @@ export const clarifyStep: AgentStepModule<'clarify', ClarifyInput, ClarifyOutput
 		// FAIL-SOFT ENVELOPE: any failure inside collapses to zero questions →
 		// drafting (today's behaviour). The step never throws.
 		try {
-			const eagerness = eagernessForCategory(input.classification);
+			const categoryCautious = eagernessForCategory(input.classification) === 'cautious';
+
+			// Read the ask-eagerness dial (session-less). Fail-soft: any read error
+			// → undefined mode → today's behaviour.
+			let mode: EagernessMode | undefined;
+			try {
+				const setting = await ctx.runQuery(internal.autonomy.getAskEagernessInternal, {});
+				mode = setting.mode ?? undefined;
+			} catch {
+				mode = undefined;
+			}
+			const policy: EagernessPolicy = resolveEagernessPolicy(mode, { categoryCautious });
+
+			// Dial set to Off → never ask; draft for human review (today's
+			// pre-clarify behaviour minus the ask). Category can't override Off here:
+			// complaint/urgent are still forced to HUMAN REVIEW downstream (the route
+			// step's assertSafeToAutoSend), they just aren't asked a question.
+			if (!policy.enabled) {
+				return { output: { questions: [], resolution: 'eagerness_off' } };
+			}
 
 			// Cheap coverage short-circuit — skip the whole (expensive) pass when
-			// the retrieval briefing is well-grounded, UNLESS eagerness is cautious
-			// (complaint/urgent always get the check). `contextCoverage` is the
+			// the retrieval briefing is well-grounded, UNLESS the policy forces the
+			// check (complaint/urgent, or a cautious dial). `contextCoverage` is the
 			// advisory signal the context_retrieval step persisted on the message.
-			if (eagerness !== 'cautious') {
+			if (!policy.forceCheck) {
 				const message = await ctx.runQuery(internal.agent.agentPipeline.getMessage, {
 					inboundMessageId: input.inboundMessageId,
 				});
@@ -250,8 +299,27 @@ export const clarifyStep: AgentStepModule<'clarify', ClarifyInput, ClarifyOutput
 
 			const questions = selectQuestions(
 				candidateSlots,
-				divergenceResult.object.divergentSlotIndexes
+				divergenceResult.object.divergentSlotIndexes,
+				{ maxQuestions: policy.maxQuestions, highStakesOnly: policy.highStakesOnly }
 			);
+
+			// Instrument the ask (predicted value + dial position) so thresholds can
+			// calibrate on real outcomes. Isolated so a logging failure never drops
+			// the questions or wedges the walker.
+			if (questions.length > 0) {
+				try {
+					const slotTypes = questions.map((q) => q.slotType);
+					await ctx.runMutation(internal.inbox.clarificationLog.recordClarificationAsk, {
+						source: 'agent',
+						slotTypes,
+						questionCount: questions.length,
+						predictedValue: predictedAskValue(slotTypes),
+						eagerness: mode,
+					});
+				} catch {
+					// Observability only — never let it affect routing.
+				}
+			}
 
 			return {
 				output: {
