@@ -50,7 +50,7 @@ export function detectSmuggling(htmlBody?: string): {
 
 	// HTML comment instructions
 	const commentMatch = htmlBody.match(
-		/<!--\s*(ignore|system|instructions?|prompt|override)[\s\S]*?-->/i,
+		/<!--\s*(ignore|system|instructions?|prompt|override)[\s\S]*?-->/i
 	);
 	if (commentMatch) {
 		return {
@@ -73,7 +73,7 @@ export function detectSmuggling(htmlBody?: string): {
 		if (match) {
 			const surroundingText = htmlBody.slice(
 				Math.max(0, (match.index ?? 0) - 50),
-				(match.index ?? 0) + (match[0]?.length ?? 0) + 200,
+				(match.index ?? 0) + (match[0]?.length ?? 0) + 200
 			);
 			if (INJECTION_PATTERNS.some((p) => p.test(surroundingText))) {
 				return {
@@ -98,6 +98,62 @@ export function detectSmuggling(htmlBody?: string): {
 	}
 
 	return { detected: false };
+}
+
+/**
+ * STRIP (not just DETECT) content that is hidden from a human reader but still
+ * legible to an LLM, so a smuggled instruction can never reach a model. This is
+ * the strip complement to {@link detectSmuggling}: detection flags a message for
+ * quarantine; stripping neutralizes whatever hidden text survives INTO the paths
+ * a model actually reads (the guard sample and the assembled draft context).
+ * Defense in depth: a message that scored below the quarantine threshold must
+ * still never feed hidden instructions to a model.
+ *
+ * Pure + deterministic. Strips, in order:
+ *   - HTML comments (`<!-- ... -->`) -- a classic instruction-smuggling channel.
+ *   - `<script>` / `<style>` elements (never human-visible prose).
+ *   - Elements whose inline style hides them: display:none, visibility:hidden,
+ *     font-size:0, opacity:0, or white / near-white text (white-on-white). A
+ *     negative lookbehind keeps `background-color: white` (visible dark text on
+ *     a white background) from being treated as hidden.
+ *   - Zero-width / invisible / bidi-control unicode used to obfuscate payloads.
+ *
+ * Non-HTML plain text is handled too: the element rules simply don't match, but
+ * the comment strip and the zero-width strip still apply. Never throws.
+ */
+export function stripHiddenContent(input: string | undefined | null): string {
+	if (!input) return '';
+	let out = input;
+
+	// 1. HTML comments (per-comment, non-greedy).
+	out = out.replace(/<!--[\s\S]*?-->/g, ' ');
+
+	// 2. <script> / <style> blocks -- content is never human-visible prose.
+	out = out.replace(/<script[\s\S]*?<\/script>/gi, ' ');
+	out = out.replace(/<style[\s\S]*?<\/style>/gi, ' ');
+
+	// 3. Elements hidden via inline style. Match an opening tag whose `style`
+	//    attribute contains a hiding rule and drop the element (open tag + inner
+	//    content + matching close tag). Bounded, non-nesting -- good enough that
+	//    a smuggled `<span style="display:none">...</span>` payload is removed; a
+	//    hidden element that slips through is still DETECTED upstream and
+	//    quarantined by detectSmuggling.
+	const hidingStyle =
+		/display\s*:\s*none|visibility\s*:\s*hidden|font-size\s*:\s*0(?:\.0+)?(?:px|pt|em|rem|%)?(?![.\d])|opacity\s*:\s*0(?:\.0+)?(?![.\d])|(?<![-\w])color\s*:\s*(?:white|#fff(?:fff)?|rgb\(\s*255\s*,\s*255\s*,\s*255\s*\)|rgba\([^)]*,\s*0(?:\.0+)?\s*\))/i;
+	const tagWithStyle =
+		/<([a-zA-Z][a-zA-Z0-9]*)\b[^>]*\bstyle\s*=\s*("[^"]*"|'[^']*')[^>]*>([\s\S]*?)<\/\1\s*>/g;
+	out = out.replace(tagWithStyle, (full, _tag, styleAttr: string) =>
+		hidingStyle.test(styleAttr) ? ' ' : full
+	);
+
+	// 4. Zero-width / invisible / bidi-control characters. The zero-width
+	//    joiner/non-joiner (U+200C/U+200D) are listed as standalone alternatives
+	//    rather than inside a character class -- a class containing them can form
+	//    misleading combining sequences (oxlint: no-misleading-character-class),
+	//    the same reason detectSmuggling's zero-width probe uses alternation.
+	out = out.replace(/­|​|‌|‍|‎|‏|[‪-‮]|[⁠-⁤]|﻿/g, '');
+
+	return out;
 }
 
 /**
@@ -136,9 +192,20 @@ export function calculateSpamScore(text: string, subject: string): number {
 
 	// Common spam keywords
 	const spamKeywords = [
-		'act now', 'limited time', 'urgent', 'congratulations', 'you have won',
-		'click here', 'unsubscribe', 'buy now', 'free', 'winner', 'prize',
-		'million dollars', 'nigerian prince', 'wire transfer',
+		'act now',
+		'limited time',
+		'urgent',
+		'congratulations',
+		'you have won',
+		'click here',
+		'unsubscribe',
+		'buy now',
+		'free',
+		'winner',
+		'prize',
+		'million dollars',
+		'nigerian prince',
+		'wire transfer',
 	];
 	for (const kw of spamKeywords) {
 		if (combined.includes(kw)) score += 10;
