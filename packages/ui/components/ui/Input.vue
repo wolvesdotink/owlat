@@ -37,7 +37,7 @@ const hasIconRight = computed(() => !!useSlots()['iconRight']);
 
 const inputClasses = computed(() => {
 	const classes = [
-		'w-full bg-bg-surface border border-border-default rounded-lg text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand transition-colors duration-150',
+		'w-full bg-surface-1 shadow-surface-1 rounded-lg text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-1 focus:ring-brand transition-[box-shadow,background-color] duration-(--motion-fast) ease-spring',
 	];
 
 	if (props.size === 'sm') {
@@ -47,7 +47,7 @@ const inputClasses = computed(() => {
 	}
 
 	if (props.error) {
-		classes.push('border-error focus:border-error focus:ring-error');
+		classes.push('ring-1 ring-error focus:ring-error');
 	}
 
 	if (hasIconLeft.value) {
@@ -126,6 +126,8 @@ const handleInput = (event: Event) => {
 		<p v-if="error" :id="`${inputId}-error`" class="text-sm text-error mt-1">{{ error }}</p>
 
 		<!-- Help text (only shown when no error) -->
-		<p v-else-if="helpText" :id="`${inputId}-help`" class="text-sm text-text-tertiary mt-1">{{ helpText }}</p>
+		<p v-else-if="helpText" :id="`${inputId}-help`" class="text-sm text-text-tertiary mt-1">
+			{{ helpText }}
+		</p>
 	</div>
 </template>

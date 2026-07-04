@@ -49,8 +49,8 @@ const displayText = computed(() => {
 const triggerClasses = computed(() => {
 	const classes = [
 		'w-full flex items-center justify-between gap-2 text-left',
-		'bg-bg-surface border rounded-lg transition-colors duration-150',
-		'focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand',
+		'bg-surface-1 rounded-lg transition-[box-shadow,background-color] duration-(--motion-fast) ease-spring',
+		'focus:outline-none focus:ring-1 focus:ring-brand',
 	];
 
 	if (props.size === 'sm') {
@@ -60,17 +60,17 @@ const triggerClasses = computed(() => {
 	}
 
 	if (props.error) {
-		classes.push('border-error focus:border-error focus:ring-error');
+		classes.push('shadow-surface-1 ring-1 ring-error focus:ring-error');
 	} else if (isOpen.value) {
-		classes.push('border-brand ring-1 ring-brand');
+		classes.push('ring-1 ring-brand');
 	} else {
-		classes.push('border-border-default');
+		classes.push('shadow-surface-1');
 	}
 
 	if (props.disabled) {
 		classes.push('opacity-50 cursor-not-allowed');
 	} else {
-		classes.push('cursor-pointer hover:border-border-strong');
+		classes.push('cursor-pointer hover:shadow-surface-2');
 	}
 
 	return classes.join(' ');
@@ -176,7 +176,11 @@ onUnmounted(() => {
 						@click="selectOption(option)"
 					>
 						<span class="truncate">{{ option.label }}</span>
-						<Icon v-if="option.value === modelValue" name="lucide:check" class="w-4 h-4 text-brand shrink-0" />
+						<Icon
+							v-if="option.value === modelValue"
+							name="lucide:check"
+							class="w-4 h-4 text-brand shrink-0"
+						/>
 					</button>
 				</div>
 			</Transition>

@@ -12,7 +12,7 @@
 	   classes; raw markup uses them directly. Keep variants HERE, not in
 	   UiButton's script (the two had already drifted once). */
 	.btn {
-		@apply inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-bg-base disabled:pointer-events-none disabled:opacity-50;
+		@apply inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium transition-[color,background-color,border-color,box-shadow,scale] duration-(--motion-fast) ease-spring active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-bg-base disabled:pointer-events-none disabled:opacity-50;
 	}
 
 	.btn-sm {
@@ -28,7 +28,7 @@
 	}
 
 	.btn-secondary {
-		@apply bg-bg-surface text-text-primary border border-border-default hover:bg-bg-surface-hover hover:border-border-strong;
+		@apply bg-surface-3 text-text-primary shadow-surface-1 hover:bg-bg-surface-hover;
 	}
 
 	.btn-ghost {
@@ -36,7 +36,7 @@
 	}
 
 	.btn-outline {
-		@apply bg-transparent text-text-secondary border border-border-default hover:text-text-primary hover:border-border-strong;
+		@apply bg-transparent text-text-secondary shadow-surface-1 hover:text-text-primary hover:shadow-surface-2;
 	}
 
 	.btn-danger {
@@ -52,7 +52,7 @@
 	}
 
 	.input {
-		@apply w-full px-4 py-3 bg-bg-surface border border-border-default rounded-lg text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand transition-colors duration-150;
+		@apply w-full px-4 py-3 bg-surface-1 shadow-surface-1 rounded-lg text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-1 focus:ring-brand transition-[box-shadow,background-color] duration-(--motion-fast) ease-spring;
 	}
 
 	.input-sm {
@@ -60,7 +60,7 @@
 	}
 
 	.input-error {
-		@apply border-error focus:border-error focus:ring-error;
+		@apply ring-1 ring-error focus:ring-error;
 	}
 
 	.label {
@@ -68,11 +68,15 @@
 	}
 
 	.card {
-		@apply bg-bg-elevated border border-border-subtle rounded-xl p-6;
+		/* Elevation from the ladder (shadow ring), not a painted border. The
+		   transparent border keeps the box metrics and lets existing
+		   border-color overrides (border-error/20, hover:border-brand …)
+		   keep rendering their tinted edge. */
+		@apply bg-surface-2 shadow-surface-1 border border-transparent rounded-(--radius-card) p-6;
 	}
 
 	.link {
-		@apply text-brand hover:text-brand-hover transition-colors duration-150 underline-offset-2 hover:underline;
+		@apply text-brand hover:text-brand-hover hover:font-medium transition-[color,font-weight] duration-(--motion-fast) ease-spring underline-offset-2 hover:underline;
 	}
 
 	.error-message {

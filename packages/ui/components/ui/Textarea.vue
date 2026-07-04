@@ -34,7 +34,7 @@ const textareaId = computed(() => props.id || generatedId);
 
 const textareaClasses = computed(() => {
 	const classes = [
-		'w-full bg-bg-surface border border-border-default rounded-lg text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand transition-colors duration-150',
+		'w-full bg-surface-1 shadow-surface-1 rounded-lg text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-1 focus:ring-brand transition-[box-shadow,background-color] duration-(--motion-fast) ease-spring',
 	];
 
 	if (props.size === 'sm') {
@@ -44,7 +44,7 @@ const textareaClasses = computed(() => {
 	}
 
 	if (props.error) {
-		classes.push('border-error focus:border-error focus:ring-error');
+		classes.push('ring-1 ring-error focus:ring-error');
 	}
 
 	// Resize classes

@@ -36,16 +36,18 @@ const paddingClasses: Record<CardPadding, string> = {
 	lg: 'p-8',
 };
 
+// Default carries elevation via the surface ladder (shadow ring, no border);
+// tinted status variants keep their translucent border for the colored edge.
 const variantClasses: Record<CardVariant, string> = {
-	default: 'bg-bg-elevated border-border-subtle',
-	info: 'bg-brand/5 border-brand/20',
-	warning: 'bg-warning/5 border-warning/20',
-	error: 'bg-error/5 border-error/20',
+	default: 'bg-surface-2 shadow-surface-1',
+	info: 'bg-brand/5 border border-brand/20',
+	warning: 'bg-warning/5 border border-warning/20',
+	error: 'bg-error/5 border border-error/20',
 };
 
 const cardClasses = computed(() => {
 	const classes = [
-		'border rounded-xl transition-colors duration-150',
+		'rounded-(--radius-card) transition-[color,background-color,border-color,box-shadow] duration-(--motion-fast) ease-spring',
 		variantClasses[props.variant],
 	];
 
@@ -57,9 +59,10 @@ const cardClasses = computed(() => {
 		classes.push('overflow-hidden');
 	}
 
-	// Hover/clickable states
+	// Hover/clickable states: the default variant lifts one elevation step;
+	// tinted variants highlight their border.
 	if (props.hoverable || props.clickable) {
-		classes.push('hover:border-brand');
+		classes.push(props.variant === 'default' ? 'hover:shadow-surface-2' : 'hover:border-brand');
 	}
 
 	if (props.clickable) {
