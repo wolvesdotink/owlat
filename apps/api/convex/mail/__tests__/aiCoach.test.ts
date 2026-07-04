@@ -1,5 +1,5 @@
 /**
- * Unit tests for "Coach my draft" (mail/ai.coachDraft) via its pure exported
+ * Unit tests for "Coach my draft" (mail/aiCoach.coachDraft) via its pure exported
  * adapters {@link toCoachSuggestions} + {@link categorizeCoachFlag}.
  *
  * coachDraft REUSES the agent's draft-quality self-check pass on the USER's own
@@ -12,7 +12,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { toCoachSuggestions, categorizeCoachFlag } from '../ai';
+import { toCoachSuggestions, categorizeCoachFlag } from '../aiCoach';
 
 describe('categorizeCoachFlag', () => {
 	it('buckets a missing-answer flag', () => {

@@ -5,7 +5,7 @@
  * hand to an AI.
  *
  * A single button runs the SAME draft-quality self-check the agent runs on its
- * own drafts, but over the USER's own text (`mail.ai.coachDraft`), and lists the
+ * own drafts, but over the USER's own text (`mail.aiCoach.coachDraft`), and lists the
  * critique inline — tone, ambiguity, clarity, a missing answer. It NEVER
  * rewrites or replaces the draft; the user stays the author. Advisory + fail
  * soft: an empty result renders "Looks solid" and any error is a silent no-op
@@ -42,7 +42,7 @@ const { showToast } = useToast();
 
 const coach = usePostboxCoach({
 	requestCoach: async (draftText, signal): Promise<CoachSuggestion[]> => {
-		const res = await requireConvex().action(api.mail.ai.coachDraft, {
+		const res = await requireConvex().action(api.mail.aiCoach.coachDraft, {
 			draftText,
 			...(props.messageId ? { messageId: props.messageId } : {}),
 			...(props.threadContext ? { threadContext: props.threadContext } : {}),

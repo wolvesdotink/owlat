@@ -10,7 +10,7 @@
  * and network-agnostic: it owns only the request lifecycle (loading, abort on
  * re-run, stale-response rejection) and the list of suggestions. The host
  * injects `requestCoach(draftText, signal)` which returns the structured
- * suggestions from the backend `mail.ai.coachDraft` action.
+ * suggestions from the backend `mail.aiCoach.coachDraft` action.
  *
  * Fail-soft: any error resolves to NO suggestions (a silent no-op) — coaching is
  * advisory and stays quiet on uncertainty rather than nagging the user.
