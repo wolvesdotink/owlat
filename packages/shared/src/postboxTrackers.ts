@@ -152,3 +152,52 @@ export function stripTrackerPixels(sanitizedHtml: string): string {
 		return sanitizedHtml;
 	}
 }
+
+/** True when an <img ...> tag string has a REMOTE src (http/https/protocol-relative). */
+function isRemoteImgTag(tag: string): boolean {
+	const src = attrValue(tag, 'src');
+	if (!src) return false;
+	const trimmed = src.trim();
+	// `data:`/`cid:`/relative sources never phone home; only absolute http(s)
+	// and protocol-relative `//host/...` can resolve a remote resource.
+	return /^https?:\/\//i.test(trimmed) || trimmed.startsWith('//');
+}
+
+export interface RemoteImageStripResult {
+	/** HTML with every remote-src <img> tag removed. */
+	html: string;
+	/** How many remote-image tags were removed (tracking pixels included). */
+	strippedRemoteImages: number;
+}
+
+/**
+ * Remove EVERY remote-src <img> tag from an HTML body — the superset of
+ * `stripTrackerPixels` (a 1×1 / display:none / known-tracker pixel is just a
+ * remote image, so this covers them all) while leaving inline `data:`/`cid:`
+ * images and non-image content untouched.
+ *
+ * This is the single privacy-strip primitive shared by:
+ *   - the OUTBOUND auto-send reference monitor (so an unattended reply can't
+ *     beacon), and
+ *   - the INBOUND agent pipeline (so merely scanning/reading a message for
+ *     context never resolves a remote pixel and leaks an open + IP to the
+ *     sender — the AI reads every inbound, which would otherwise register an
+ *     "open" on every message automatically).
+ *
+ * Pure string surgery — makes NO network call and never touches the sanitizer
+ * allowlist. Fails soft: any unexpected error returns the input unchanged with
+ * a zero count, so callers degrade to their prior behaviour.
+ */
+export function stripRemoteImages(html: string): RemoteImageStripResult {
+	try {
+		let strippedRemoteImages = 0;
+		const out = html.replace(IMG_TAG_RE, (tag) => {
+			if (!isRemoteImgTag(tag)) return tag;
+			strippedRemoteImages += 1;
+			return '';
+		});
+		return { html: out, strippedRemoteImages };
+	} catch {
+		return { html, strippedRemoteImages: 0 };
+	}
+}
