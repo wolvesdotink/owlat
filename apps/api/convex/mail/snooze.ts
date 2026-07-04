@@ -47,7 +47,7 @@ export const snooze = authedMutation({
 /**
  * Snooze a message until the other party replies (Boomerang "snooze until they
  * reply" parity). The message is hidden exactly like a normal snooze, but
- * `snoozeUntilReply` is set and `until` is the FALLBACK cap: any inbound reply
+ * `isSnoozeUntilReply` is set and `until` is the FALLBACK cap: any inbound reply
  * into the thread clears the snooze early (mail/delivery.ts → the awaited reply
  * arrived), otherwise the standard snooze sweep resurfaces it once at the cap.
  *
@@ -73,7 +73,7 @@ export const snoozeUntilReply = authedMutation({
 		await ctx.db.patch(args.messageId, {
 			snoozedUntil: args.capUntil,
 			snoozedFromFolderId: message.snoozedFromFolderId ?? message.folderId,
-			snoozeUntilReply: true,
+			isSnoozeUntilReply: true,
 			updatedAt: Date.now(),
 		});
 		if (!message.flagSeen && !alreadySnoozed) {
@@ -98,12 +98,12 @@ export async function clearSnoozeUntilReplyForThread(
 		.withIndex('by_thread', (q) => q.eq('threadId', threadId))
 		.collect();
 	for (const m of messages) {
-		if (m.snoozeUntilReply !== true) continue;
+		if (m.isSnoozeUntilReply !== true) continue;
 		if (!isMessageSnoozed(m, now)) continue;
 		await ctx.db.patch(m._id, {
 			snoozedUntil: undefined,
 			snoozedFromFolderId: undefined,
-			snoozeUntilReply: undefined,
+			isSnoozeUntilReply: undefined,
 			updatedAt: now,
 		});
 		// Returning to its folder re-enters the unread count (see unsnooze).
@@ -123,7 +123,7 @@ export const unsnooze = authedMutation({
 		await ctx.db.patch(args.messageId, {
 			snoozedUntil: undefined,
 			snoozedFromFolderId: undefined,
-			snoozeUntilReply: undefined,
+			isSnoozeUntilReply: undefined,
 			updatedAt: Date.now(),
 		});
 		// Returning to its folder re-enters the unread count.
@@ -155,7 +155,7 @@ export const internalSweep = internalMutation({
 			await ctx.db.patch(m._id, {
 				snoozedUntil: undefined,
 				snoozedFromFolderId: undefined,
-				snoozeUntilReply: undefined,
+				isSnoozeUntilReply: undefined,
 				updatedAt: now,
 			});
 			// Re-enter the unread count as the message floats back.

@@ -289,7 +289,7 @@ export const mailTables = {
 		// snooze early (mail/delivery.ts hook, mirroring followUps) so the
 		// conversation resurfaces the moment the awaited reply lands. If no reply
 		// arrives, the normal snooze sweep resurfaces it once at the cap.
-		snoozeUntilReply: v.optional(v.boolean()),
+		isSnoozeUntilReply: v.optional(v.boolean()),
 
 		// List mail: parsed List-Unsubscribe / List-Unsubscribe-Post target
 		// (RFC 2369 / RFC 8058), extracted once at ingest from the raw header

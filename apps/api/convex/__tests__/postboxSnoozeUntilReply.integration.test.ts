@@ -1,7 +1,7 @@
 /**
  * "Snooze until they reply" coverage.
  *
- *   - snoozeUntilReply hides the message (cap on `snoozedUntil`, flag set) and
+ *   - the snoozeUntilReply mutation hides the message (cap on `snoozedUntil`, flag set) and
  *     drops it from the folder unread count like a normal snooze.
  *   - an inbound reply into the thread clears the watch early
  *     (clearSnoozeUntilReplyForThread — the hook mail/delivery.ts fires) and
@@ -147,7 +147,7 @@ describe('snooze until they reply', () => {
 
 		const msg = await t.run((ctx) => ctx.db.get(messageId));
 		expect(msg?.snoozedUntil).toBe(cap);
-		expect(msg?.snoozeUntilReply).toBe(true);
+		expect(msg?.isSnoozeUntilReply).toBe(true);
 		expect((await t.run((ctx) => ctx.db.get(inboxId)))?.unseenCount).toBe(0);
 	});
 
@@ -169,7 +169,7 @@ describe('snooze until they reply', () => {
 
 		const msg = await t.run((ctx) => ctx.db.get(messageId));
 		expect(msg?.snoozedUntil).toBeUndefined();
-		expect(msg?.snoozeUntilReply).toBeUndefined();
+		expect(msg?.isSnoozeUntilReply).toBeUndefined();
 		// Re-entered its folder → back in the unread count.
 		expect((await t.run((ctx) => ctx.db.get(inboxId)))?.unseenCount).toBe(1);
 	});
@@ -190,7 +190,7 @@ describe('snooze until they reply', () => {
 		expect(first.woken).toBe(1);
 		const msg = await t.run((ctx) => ctx.db.get(messageId));
 		expect(msg?.snoozedUntil).toBeUndefined();
-		expect(msg?.snoozeUntilReply).toBeUndefined();
+		expect(msg?.isSnoozeUntilReply).toBeUndefined();
 		expect((await t.run((ctx) => ctx.db.get(inboxId)))?.unseenCount).toBe(1);
 
 		// Fires exactly once — a second sweep wakes nothing.
