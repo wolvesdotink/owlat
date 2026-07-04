@@ -74,7 +74,7 @@ export type RouteTransition =
 	| { to: 'quarantined'; securityFlags: SecurityFlags }
 	| {
 			to: 'archived';
-			reason: 'spam' | 'sender_blocked' | 'classifier_spam';
+			reason: 'spam' | 'sender_blocked' | 'classifier_spam' | 'handling_rule_archive';
 			securityFlags?: SecurityFlags;
 	  }
 	| { to: 'approved'; source: 'human' | 'auto'; userId?: string };

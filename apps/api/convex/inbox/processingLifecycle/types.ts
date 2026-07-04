@@ -154,6 +154,7 @@ export type TransitionInput =
 				| 'spam'
 				| 'sender_blocked'
 				| 'classifier_spam'
+				| 'handling_rule_archive'
 				| 'coalesced'
 				| 'clarification_dismissed';
 			securityFlags?: SecurityFlags;
@@ -275,6 +276,7 @@ export const transitionInputValidator = v.union(
 			v.literal('spam'),
 			v.literal('sender_blocked'),
 			v.literal('classifier_spam'),
+			v.literal('handling_rule_archive'),
 			v.literal('coalesced'),
 			v.literal('clarification_dismissed'),
 		),

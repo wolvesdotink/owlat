@@ -16,6 +16,7 @@
 
 import { z } from 'zod';
 import { getLLMProvider } from '../../../lib/llmProvider';
+import { internal } from '../../../_generated/api';
 import type { Id } from '../../../_generated/dataModel';
 import type { AgentStepModule } from '../types';
 import { runLlmObject } from '../../../lib/llm/dispatch';
@@ -51,13 +52,18 @@ export type ClassifyInput = {
 	context: string;
 };
 
-export type ClassifyOutput = z.infer<typeof classificationSchema>;
+export type ClassifyOutput = z.infer<typeof classificationSchema> & {
+	// Set when a deterministic natural-language handling rule (auto_archive)
+	// matched this message — the `route` fork below archives it without a reply,
+	// mirroring the spam path. Absent on the normal path.
+	handlingRuleArchive?: boolean;
+};
 
 export const classifyStep: AgentStepModule<'classify', ClassifyInput, ClassifyOutput> = {
 	kind: 'classify',
 	llm: { tier: 'fast' },
 
-	async execute(_ctx, input) {
+	async execute(ctx, input) {
 		const model = getLLMProvider('classify');
 
 		const { object, tokenUsage, modelUsed } = await runLlmObject({
@@ -76,7 +82,28 @@ Classify this message with:
 			temperature: 0.2,
 		});
 
-		return { output: object, tokenUsage, modelUsed };
+		// Deterministic natural-language handling rules — evaluated with NO model in
+		// the loop against the message's sender/subject/body. A matching
+		// `categorize` rule forces the category; a matching `auto_archive` rule
+		// short-circuits to archived (via `route` below). FAIL-SOFT: any failure
+		// leaves the LLM classification untouched (today's behaviour).
+		let output: ClassifyOutput = object;
+		try {
+			const rules = await ctx.runQuery(internal.mail.handlingRules.evaluateForMessage, {
+				inboundMessageId: input.inboundMessageId,
+			});
+			if (rules.autoArchive) {
+				output = { ...object, handlingRuleArchive: true };
+			} else if (rules.categoryOverride) {
+				// The compiled category is validated at compile time; persisted as a
+				// free string (classificationValidator.category is v.string()).
+				output = { ...object, category: rules.categoryOverride as ClassifyOutput['category'] };
+			}
+		} catch {
+			// swallowed: rules are additive; the LLM classification stands.
+		}
+
+		return { output, tokenUsage, modelUsed };
 	},
 
 	route(output, input, runCtx) {
@@ -85,6 +112,15 @@ Classify this message with:
 			return {
 				kind: 'transition',
 				transition: { to: 'archived', reason: 'classifier_spam' },
+			};
+		}
+
+		// Natural-language handling rule (auto_archive) matched — archive without a
+		// reply, mirroring the spam path.
+		if (output.handlingRuleArchive) {
+			return {
+				kind: 'transition',
+				transition: { to: 'archived', reason: 'handling_rule_archive' },
 			};
 		}
 
