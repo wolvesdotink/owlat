@@ -40,13 +40,16 @@ export const loadForDraft = internalQuery({
 		const trigger = await ctx.db.get(flag.messageId);
 		if (!trigger) return null;
 
-		const all = await ctx.db
+		// Bounded read: the `by_thread` index is ordered by _creationTime, so
+		// `order('desc').take(N)` pulls only the newest N docs off the index
+		// instead of scanning the whole thread (no unbounded collect). Re-sort
+		// ascending by receivedAt for a chronological transcript.
+		const newestDesc = await ctx.db
 			.query('mailMessages')
 			.withIndex('by_thread', (q) => q.eq('threadId', args.threadId))
-			.collect();
-		const newest = all
-			.sort((a, b) => a.receivedAt - b.receivedAt)
-			.slice(-NEEDS_REPLY_CONTEXT_MESSAGES);
+			.order('desc')
+			.take(NEEDS_REPLY_CONTEXT_MESSAGES);
+		const newest = newestDesc.sort((a, b) => a.receivedAt - b.receivedAt);
 
 		const transcript = newest
 			.map((m) => {
