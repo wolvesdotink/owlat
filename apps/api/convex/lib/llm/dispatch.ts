@@ -133,6 +133,44 @@ export async function runLlmText(opts: LlmTextOptions): Promise<LlmTextResult> {
 	};
 }
 
+export type LlmTextWithToolsOptions = {
+	model: LanguageModel;
+	messages: ModelMessage[];
+	/** AI SDK tool set (built via `tool({...})`). The model may call these across
+	 * up to `maxSteps` agentic steps before a final text answer. */
+	tools: ToolSet;
+	/** Max agentic steps before a forced stop. Defaults to {@link DEFAULT_MAX_TOOL_STEPS}. */
+	maxSteps?: number;
+	temperature?: number;
+};
+
+/**
+ * One-shot (non-streaming) tool-calling counterpart to {@link runLlmText}: the
+ * model may call the supplied tools across up to `maxSteps` agentic steps, then
+ * returns the final text. Same bounded-retry + usage normalization as the other
+ * one-shot helpers. Use this (not {@link runLlmStream}) when you want a bounded
+ * fetch-more loop but do NOT need token streaming to a user — e.g. the draft
+ * step's `recallKnowledge` loop.
+ */
+export async function runLlmTextWithTools(
+	opts: LlmTextWithToolsOptions,
+): Promise<LlmTextResult> {
+	const { text, usage } = await withLlmRetry(() =>
+		generateText({
+			model: opts.model,
+			messages: opts.messages,
+			tools: opts.tools,
+			stopWhen: stepCountIs(opts.maxSteps ?? DEFAULT_MAX_TOOL_STEPS),
+			temperature: opts.temperature,
+		}),
+	);
+	return {
+		text,
+		tokenUsage: normalizeUsage(usage),
+		modelUsed: typeof opts.model === 'string' ? opts.model : opts.model.modelId,
+	};
+}
+
 export interface LlmObjectOptions<S extends z.ZodTypeAny> {
 	model: LanguageModel;
 	schema: S;

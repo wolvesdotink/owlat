@@ -23,6 +23,7 @@ import type * as agent_steps_classify_index from "../agent/steps/classify/index.
 import type * as agent_steps_clarify_index from "../agent/steps/clarify/index.js";
 import type * as agent_steps_context_retrieval_index from "../agent/steps/context_retrieval/index.js";
 import type * as agent_steps_draft_index from "../agent/steps/draft/index.js";
+import type * as agent_steps_draft_recall from "../agent/steps/draft/recall.js";
 import type * as agent_steps_draft_sanitize from "../agent/steps/draft/sanitize.js";
 import type * as agent_steps_index from "../agent/steps/index.js";
 import type * as agent_steps_route_index from "../agent/steps/route/index.js";
@@ -572,6 +573,7 @@ declare const fullApi: ApiFromModules<{
   "agent/steps/clarify/index": typeof agent_steps_clarify_index;
   "agent/steps/context_retrieval/index": typeof agent_steps_context_retrieval_index;
   "agent/steps/draft/index": typeof agent_steps_draft_index;
+  "agent/steps/draft/recall": typeof agent_steps_draft_recall;
   "agent/steps/draft/sanitize": typeof agent_steps_draft_sanitize;
   "agent/steps/index": typeof agent_steps_index;
   "agent/steps/route/index": typeof agent_steps_route_index;
