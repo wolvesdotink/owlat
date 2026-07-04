@@ -116,7 +116,25 @@ Classify this message with:
 					const outcome = evaluateHandlingRules(rules, toHandlingEvalMessage(message));
 					// `categorize` forces the classification category (only if it is a
 					// real category the pipeline understands).
-					if (outcome.forcedCategory && isClassifyCategory(outcome.forcedCategory)) {
+					//
+					// SECURITY — restrict-only: a categorize rule may NEVER move a
+					// message OUT of the protected complaint category or off urgent
+					// priority. The route step's fail-closed complaint/urgent hard-block
+					// (route/index.ts) keys off the persisted classification, so allowing
+					// an attacker-craftable inbound to match a benign categorize rule and
+					// re-label a complaint as e.g. `support` would strip that guaranteed
+					// human review — a WIDENING of the auto-send set via a rule. Evaluate
+					// the hard-block on the ORIGINAL classifier signal: when the original
+					// classification is complaint/urgent, the forced category is dropped.
+					// (Forcing a category INTO complaint only ever adds protection, so it
+					// is allowed.)
+					const originalProtected =
+						object.category === 'complaint' || object.priority === 'urgent';
+					if (
+						outcome.forcedCategory &&
+						isClassifyCategory(outcome.forcedCategory) &&
+						!originalProtected
+					) {
 						output = { ...output, category: outcome.forcedCategory };
 					}
 					// `auto_archive` short-circuits to archived in route().
