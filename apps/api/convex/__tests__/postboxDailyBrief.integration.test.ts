@@ -14,7 +14,7 @@
  */
 
 import { convexTest } from 'convex-test';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import schema from '../schema';
 import { internal, api } from '../_generated/api';
@@ -335,6 +335,20 @@ describe('mail.commitments.sweep', () => {
 // ─── buildDailyBriefs ────────────────────────────────────────────────────────
 
 describe('mail.dailyBrief.buildDailyBriefs', () => {
+	// `buildDailyBriefs` fans out one `buildForMailbox` per active mailbox via
+	// `ctx.scheduler.runAfter(0, …)`. A real-timer drain
+	// (`finishInProgressScheduledFunctions`) races the still-pending timer, so the
+	// scheduled brief may not have committed before we query it (see
+	// suppressionMirror.integration.test.ts:90 / sendFlow.integration.test.ts:317).
+	// Fake timers + `finishAllScheduledFunctions(vi.runAllTimers)` fire the timer
+	// and await the scheduled mutation to completion deterministically.
+	beforeEach(() => {
+		vi.useFakeTimers();
+	});
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
 	it('ranks pending items + commitments and bundles low-signal mail auditably', async () => {
 		const t = convexTest(schema, modules);
 		rateLimiterTest.register(t);
@@ -449,7 +463,7 @@ describe('mail.dailyBrief.buildDailyBriefs', () => {
 		// active mailbox; drain it so the brief is actually built.
 		const res = await t.mutation(internal.mail.dailyBrief.buildDailyBriefs, {});
 		expect(res.scheduled).toBe(1);
-		await t.finishInProgressScheduledFunctions();
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
 
 		const brief = await t.query(api.mail.dailyBrief.getLatestBrief, {
 			mailboxId: seeded.mailboxId,
