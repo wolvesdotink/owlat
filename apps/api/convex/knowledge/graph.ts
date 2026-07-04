@@ -21,6 +21,10 @@ import {
 	relationTypeValidator,
 	edgeConfidenceTagValidator,
 	edgeProvenanceValidator,
+	commitmentStatusValidator,
+	COMMITMENT_ENTRY_TYPES,
+	POLICY_ENTRY_TYPES,
+	isCommitmentOpen,
 } from '../schema/knowledge';
 
 // ============================================================
@@ -618,6 +622,141 @@ export const removeRelation = authedMutation({
 });
 
 // ============================================================
+// Curated policy / FAQ authoring surface
+// ============================================================
+
+/** Validator for the curated entry types (policy / faq). */
+const policyEntryTypeValidator = v.union(...POLICY_ENTRY_TYPES.map((t) => v.literal(t)));
+
+/**
+ * Author (or edit) a curated canonical answer — the minimal FAQ surface.
+ *
+ * Until curated answers existed, a policy question ("what's your returns
+ * policy?") competed with scraped facts in the same RRF pool and could be
+ * outranked by noise. A curated entry is written with `sourceType: 'curated'` and
+ * `authority: true`, so retrieval ranks it ahead of scraped facts
+ * (lib/knowledgePrecedence.ts). Org-general by design (no contactIds) — a policy
+ * applies to everyone. Passing `entryId` edits an existing curated entry in place
+ * (the fix path for a wrong/stale answer). Embedding stays empty here and is
+ * filled by the extraction/embedding pipeline; the FTS leg works immediately from
+ * `searchableText`, so a fresh policy is retrievable at once.
+ */
+// all-members: any org member can curate canonical answers; mirrors createEntry's write tier
+export const createPolicyEntry = authedMutation({
+	args: {
+		entryId: v.optional(v.id('knowledgeEntries')),
+		entryType: v.optional(policyEntryTypeValidator),
+		title: v.string(),
+		content: v.string(),
+		tags: v.optional(v.array(v.string())),
+		expiresAt: v.optional(v.number()),
+	},
+	handler: async (ctx, args) => {
+		await getMutationContext(ctx);
+
+		if (args.title.trim().length === 0 || args.content.trim().length === 0) {
+			throw new Error('A curated answer needs both a question and an answer.');
+		}
+
+		const now = Date.now();
+		const entryType = args.entryType ?? 'faq';
+		const searchableText = `${args.title} ${args.content}`;
+
+		if (args.entryId) {
+			const existing = await ctx.db.get(args.entryId);
+			if (!existing) return null;
+			await ctx.db.patch(args.entryId, {
+				entryType,
+				title: args.title,
+				content: args.content,
+				sourceType: 'curated',
+				authority: true,
+				tags: args.tags,
+				expiresAt: args.expiresAt,
+				searchableText,
+				lastValidatedAt: now,
+				updatedAt: now,
+			});
+			return args.entryId;
+		}
+
+		return await ctx.db.insert('knowledgeEntries', {
+			entryType,
+			title: args.title,
+			content: args.content,
+			sourceType: 'curated',
+			authority: true,
+			embedding: [], // filled by the embedding pipeline; FTS works immediately
+			confidence: 1.0, // a human-authored canonical answer is fully trusted
+			lastValidatedAt: now,
+			expiresAt: args.expiresAt,
+			tags: args.tags,
+			searchableText,
+			createdAt: now,
+			updatedAt: now,
+		});
+	},
+});
+
+/**
+ * List curated canonical answers (policy / faq), newest first — the read side of
+ * the FAQ authoring surface.
+ */
+export const listPolicies = publicQuery({
+	// public: soft-auth — org members only; returns empty for anonymous/non-members
+	args: {
+		limit: v.optional(v.number()),
+	},
+	handler: async (ctx, args) => {
+		if (!(await isActiveOrgMember(ctx))) return [];
+
+		const limit = args.limit ?? 100;
+		const out: Doc<'knowledgeEntries'>[] = [];
+		for (const entryType of POLICY_ENTRY_TYPES) {
+			const rows = await ctx.db
+				.query('knowledgeEntries')
+				.withIndex('by_entry_type', (q) => q.eq('entryType', entryType))
+				.order('desc')
+				.take(limit);
+			for (const row of rows) out.push(row);
+		}
+		out.sort((a, b) => b.createdAt - a.createdAt);
+		return out.slice(0, limit);
+	},
+});
+
+/**
+ * Set the lifecycle status of a commitment (`decision` / `action_item`) so a
+ * fulfilled or cancelled promise stops surfacing in the open-commitments recall.
+ * The human remedy for "we already delivered X" — without it a satisfied
+ * commitment would keep leading the briefing until decay/expiry.
+ */
+// all-members: any org member can resolve a commitment; mirrors createEntry's write tier
+export const setCommitmentStatus = authedMutation({
+	args: {
+		entryId: v.id('knowledgeEntries'),
+		commitmentStatus: commitmentStatusValidator,
+		dueAt: v.optional(v.number()),
+	},
+	handler: async (ctx, args) => {
+		await getMutationContext(ctx);
+
+		const entry = await ctx.db.get(args.entryId);
+		if (!entry) return null;
+
+		const now = Date.now();
+		const patch: Partial<Doc<'knowledgeEntries'>> = {
+			commitmentStatus: args.commitmentStatus,
+			updatedAt: now,
+			lastValidatedAt: now,
+		};
+		if (args.dueAt !== undefined) patch.dueAt = args.dueAt;
+		await ctx.db.patch(args.entryId, patch);
+		return args.entryId;
+	},
+});
+
+// ============================================================
 // Internal Queries (for agent pipeline)
 // ============================================================
 
@@ -662,6 +801,62 @@ export const getByIds = internalQuery({
 			if (entry) out.push(entry);
 		}
 		return out;
+	},
+});
+
+/**
+ * Contact-scoped OPEN-commitments recall for the agent's context step.
+ *
+ * A promise we owe a contact — an `action_item` ("we'll ship X by Friday") or a
+ * communicated `decision` — is durable grounding the draft must honour, yet the
+ * semantic retrieval leg only surfaces it when the NEW inbound restates it, which
+ * is exactly when it's least needed. This pulls those commitments by CONTACT
+ * SCOPE, independent of similarity, filtered to the still-open ones
+ * (`isCommitmentOpen`; a `fulfilled` / `cancelled` commitment drops out). Ordered
+ * soonest-due first (undated last), then newest, so the most pressing promise
+ * leads. Internal: the caller (context_retrieval) has already resolved + scoped
+ * the contact, so no feature/membership gate here.
+ */
+export const getOpenCommitmentsByContact = internalQuery({
+	args: {
+		contactId: v.id('contacts'),
+		limit: v.optional(v.number()),
+	},
+	handler: async (ctx, args): Promise<Doc<'knowledgeEntries'>[]> => {
+		const limit = args.limit ?? 10;
+		const now = Date.now();
+
+		const links = await ctx.db
+			.query('knowledgeEntryContacts')
+			.withIndex('by_contact', (q) => q.eq('contactId', args.contactId))
+			.collect(); // bounded: junction rows for one contact (knowledge per person)
+
+		const entryMap = await batchGet<Doc<'knowledgeEntries'>, 'knowledgeEntries'>(
+			ctx,
+			links.map((link) => link.entryId),
+		);
+
+		const commitmentTypes = new Set<string>(COMMITMENT_ENTRY_TYPES);
+		const open: Doc<'knowledgeEntries'>[] = [];
+		for (const entry of entryMap.values()) {
+			if (entry === null) continue;
+			// Honour TTL at read time (the indexes hold expired rows until the decay
+			// cron reaps them).
+			if (entry.expiresAt !== undefined && entry.expiresAt < now) continue;
+			if (!commitmentTypes.has(entry.entryType)) continue;
+			if (!isCommitmentOpen(entry.commitmentStatus)) continue;
+			open.push(entry);
+		}
+
+		open.sort((a, b) => {
+			// Soonest promised-by first; undated commitments sort after dated ones.
+			const aDue = a.dueAt ?? Number.POSITIVE_INFINITY;
+			const bDue = b.dueAt ?? Number.POSITIVE_INFINITY;
+			if (aDue !== bDue) return aDue - bDue;
+			return b.createdAt - a.createdAt;
+		});
+
+		return open.slice(0, limit);
 	},
 });
 
