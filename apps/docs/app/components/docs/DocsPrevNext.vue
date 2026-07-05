@@ -8,14 +8,14 @@
 					:to="prev.path"
 					class="prev-next-card group flex flex-col gap-1.5 p-4 rounded-(--radius-card) surface-2"
 				>
-					<span class="text-xs font-semibold uppercase tracking-wider text-text-tertiary">
+					<span class="text-xs uppercase tracking-widest text-text-tertiary">
 						Previous
 					</span>
 					<span
-						class="text-sm text-text-secondary group-hover:text-brand transition-colors duration-(--motion-fast) flex items-center gap-1.5"
+						class="text-sm text-text-secondary group-hover:text-text-primary transition-colors duration-(--motion-fast) flex items-center gap-1.5"
 					>
 						<svg
-							class="w-3.5 h-3.5 shrink-0 transition-transform duration-(--motion-moderate) group-hover:-translate-x-1"
+							class="w-3.5 h-3.5 shrink-0"
 							fill="none"
 							stroke="currentColor"
 							viewBox="0 0 24 24"
@@ -39,15 +39,15 @@
 					:to="next.path"
 					class="prev-next-card group flex flex-col items-end gap-1.5 p-4 rounded-(--radius-card) surface-2"
 				>
-					<span class="text-xs font-semibold uppercase tracking-wider text-text-tertiary">
+					<span class="text-xs uppercase tracking-widest text-text-tertiary">
 						Next
 					</span>
 					<span
-						class="text-sm text-text-secondary group-hover:text-brand transition-colors duration-(--motion-fast) flex items-center gap-1.5"
+						class="text-sm text-text-secondary group-hover:text-text-primary transition-colors duration-(--motion-fast) flex items-center gap-1.5"
 					>
 						{{ next.title }}
 						<svg
-							class="w-3.5 h-3.5 shrink-0 transition-transform duration-(--motion-moderate) group-hover:translate-x-1"
+							class="w-3.5 h-3.5 shrink-0"
 							fill="none"
 							stroke="currentColor"
 							viewBox="0 0 24 24"

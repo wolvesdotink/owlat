@@ -1,8 +1,6 @@
 <template>
 	<nav v-if="headings.length" class="toc" aria-label="Table of contents">
-		<h4 class="text-xs font-semibold uppercase tracking-wider text-text-tertiary px-2">
-			On this page
-		</h4>
+		<h4 class="text-xs uppercase tracking-widest text-text-tertiary px-2">On this page</h4>
 		<ul class="toc-list">
 			<li v-for="heading in headings" :key="heading.id">
 				<a
@@ -11,7 +9,7 @@
 					:class="[heading.level === 3 ? 'toc-h3' : 'toc-h2', { active: activeId === heading.id }]"
 					@click.prevent="scrollToHeading(heading.id)"
 				>
-					<span class="toc-link-text">{{ heading.text }}</span>
+					{{ heading.text }}
 				</a>
 			</li>
 		</ul>
@@ -102,18 +100,14 @@ onUnmounted(() => {
 }
 
 .toc-link {
-	position: relative;
 	display: block;
 	padding: 4px 8px;
 	font-size: 14px;
 	line-height: 1.4;
 	border-radius: 6px;
 	text-decoration: none;
-	color: var(--color-text-tertiary);
-	transition:
-		color var(--motion-moderate),
-		background var(--motion-moderate),
-		transform var(--motion-moderate) var(--ease-spring);
+	color: var(--color-text-secondary);
+	transition: color var(--motion-fast);
 }
 
 .toc-h2 {
@@ -124,41 +118,12 @@ onUnmounted(() => {
 	padding-left: 20px;
 }
 
-/* Left border indicator */
-.toc-link::before {
-	content: '';
-	position: absolute;
-	left: 0;
-	top: 6px;
-	bottom: 6px;
-	width: 2px;
-	border-radius: 1px;
-	background: var(--color-brand);
-	opacity: 0;
-	transform: scaleY(0);
-	transition:
-		opacity var(--motion-moderate) var(--ease-spring),
-		transform var(--motion-moderate) var(--ease-spring);
-}
-
-.toc-link.active::before {
-	opacity: 1;
-	transform: scaleY(1);
-}
-
 .toc-link.active {
-	color: var(--color-brand);
+	color: var(--color-text-primary);
+	font-weight: 450;
 }
 
-/* Hover */
 .toc-link:not(.active):hover {
-	color: var(--color-text-secondary);
-	background: var(--color-bg-surface);
-	transform: translateX(2px);
-}
-
-.toc-link-text {
-	position: relative;
-	z-index: 1;
+	color: var(--color-text-primary);
 }
 </style>
