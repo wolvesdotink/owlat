@@ -2,7 +2,6 @@
 const mobileOpen = ref(false);
 const activeSection = ref('');
 const scrolled = ref(false);
-const bannerDismissed = ref(false);
 
 const navLinks = [
 	{ label: 'Features', href: '#features' },
@@ -46,61 +45,16 @@ const headerSurfaceStyle = computed(() => {
 		};
 	}
 
-	if (bannerDismissed.value) {
-		return {
-			backgroundColor: 'var(--color-bg-base)',
-		};
-	}
-
 	return {
-		backgroundColor: 'transparent',
+		backgroundColor: 'var(--color-bg-base)',
 	};
 });
 </script>
 
 <template>
-	<!-- Beta announcement bar -->
-	<div
-		class="beta-bar relative z-[51] overflow-hidden pt-[env(safe-area-inset-top)]"
-		:class="{ 'beta-bar--hidden': bannerDismissed }"
-	>
-
-		<div class="relative flex items-center justify-center gap-2 max-md:gap-1.5 px-10 max-md:px-8 py-[7px]">
-			<span class="beta-dot" aria-hidden="true" />
-			<p class="text-[0.75rem] max-md:text-[0.6875rem] font-medium tracking-[0.04em] text-text-primary/80 text-center">
-				<span class="max-sm:hidden">Currently in Beta<span class="text-text-tertiary mx-1.5">&mdash;</span></span>
-				<span class="sm:hidden">Beta<span class="text-text-tertiary mx-1">&mdash;</span></span>
-				<a
-					href="https://app.owlat.app/auth/register"
-					class="text-brand hover:text-brand-hover transition-colors duration-(--motion-fast) no-underline border-b border-brand/30 hover:border-brand/60 pb-px"
-				>
-					<span class="max-sm:hidden">Join early and shape the future of email</span>
-					<span class="sm:hidden">Join early & shape email's future</span>
-				</a>
-			</p>
-			<button
-				class="absolute right-3 max-md:right-2 top-1/2 -translate-y-1/2 flex items-center justify-center w-5 h-5 text-text-disabled hover:text-text-tertiary transition-colors duration-(--motion-fast) bg-transparent border-none cursor-pointer"
-				aria-label="Dismiss banner"
-				@click="bannerDismissed = true"
-			>
-				<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-					<path d="M18 6 6 18" /><path d="m6 6 12 12" />
-				</svg>
-			</button>
-		</div>
-
-		<!-- Bottom edge line -->
-		<div class="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-brand/20 to-transparent" />
-	</div>
-
 	<header
-		class="sticky top-0 z-50 border-b transition-all duration-(--motion-moderate)"
-		:class="[
-			scrolled
-			? 'border-border-subtle/60'
-			: 'border-transparent',
-			scrolled || bannerDismissed ? 'pt-[env(safe-area-inset-top)]' : '',
-		]"
+		class="sticky top-0 z-50 border-b pt-[env(safe-area-inset-top)] transition-all duration-(--motion-moderate)"
+		:class="scrolled ? 'border-border-subtle/60' : 'border-transparent'"
 		:style="headerSurfaceStyle"
 	>
 		<div class="max-w-[1200px] mx-auto px-8 max-md:px-6 h-[60px] flex items-center justify-between">
@@ -194,44 +148,6 @@ const headerSurfaceStyle = computed(() => {
 </template>
 
 <style scoped>
-/* Beta announcement bar */
-.beta-bar {
-	background: linear-gradient(
-		90deg,
-		color-mix(in oklab, var(--color-brand-subtle) 80%, var(--color-bg-deep)) 0%,
-		color-mix(in oklab, var(--color-bg-deep) 70%, var(--color-brand-subtle)) 50%,
-		color-mix(in oklab, var(--color-brand-subtle) 80%, var(--color-bg-deep)) 100%
-	);
-	transition: transform var(--motion-slow) var(--ease-spring), opacity var(--motion-moderate) var(--ease-spring), margin-top var(--motion-slow) var(--ease-spring);
-	animation: beta-bar-enter var(--motion-slow) var(--ease-spring) both;
-}
-
-.beta-bar--hidden {
-	transform: translateY(-100%);
-	opacity: 0;
-	margin-top: calc(-34px - env(safe-area-inset-top, 0px));
-	pointer-events: none;
-}
-
-.beta-dot {
-	width: 5px;
-	height: 5px;
-	border-radius: 50%;
-	background: var(--color-brand);
-	flex-shrink: 0;
-}
-
-@keyframes beta-bar-enter {
-	from {
-		opacity: 0;
-		transform: translateY(-100%);
-	}
-	to {
-		opacity: 1;
-		transform: none;
-	}
-}
-
 .nav-link::after {
 	content: '';
 	position: absolute;
