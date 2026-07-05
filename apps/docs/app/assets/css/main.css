@@ -12,43 +12,6 @@
 	}
 }
 
-/* ═══════════════ KEYFRAMES ═══════════════ */
-
-/* Entry reveal — small offset, moderate tier (motion is information: "this
-   just arrived"), no decorative drift/glow/shimmer. */
-@keyframes fade-up {
-	from {
-		opacity: 0;
-		transform: translateY(4px);
-	}
-	to {
-		opacity: 1;
-		transform: translateY(0);
-	}
-}
-
-/* ═══════════════ READING PROGRESS BAR ═══════════════ */
-
-.reading-progress {
-	position: fixed;
-	top: calc(60px + env(safe-area-inset-top, 0px));
-	left: 0;
-	width: 100%;
-	height: 2px;
-	z-index: 39;
-	pointer-events: none;
-	background: transparent;
-}
-
-.reading-progress-bar {
-	height: 100%;
-	background: var(--color-brand);
-	transform-origin: left;
-	transition: transform var(--motion-fast) linear;
-	will-change: transform;
-	border-radius: 0 1px 1px 0;
-}
-
 /* ═══════════════ PAGE TRANSITIONS ═══════════════ */
 
 .page-enter-active {
