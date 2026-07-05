@@ -1,7 +1,7 @@
 <script setup lang="ts">
 withDefaults(
   defineProps<{
-    type?: 'tip' | 'warning' | 'danger' | 'info'
+    type?: 'tip' | 'warning' | 'danger' | 'info' | 'success'
     title?: string
   }>(),
   { type: 'tip' },
@@ -67,6 +67,16 @@ withDefaults(
 
 .callout-danger .callout-title {
   color: var(--color-error);
+}
+
+/* Success */
+.callout-success {
+  border-left-color: var(--color-success);
+  background: var(--color-success-subtle);
+}
+
+.callout-success .callout-title {
+  color: var(--color-success);
 }
 
 /* Info */
