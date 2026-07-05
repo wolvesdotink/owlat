@@ -1,16 +1,10 @@
 <template>
 	<header
-		ref="headerEl"
-		class="sticky top-0 z-40 pt-[env(safe-area-inset-top)] transition-[background-color,border-color,box-shadow] duration-(--motion-moderate)"
-		:class="scrolled ? 'border-b border-border-default' : 'border-b border-transparent'"
-		:style="
-			scrolled
-				? {
-						backdropFilter: 'saturate(160%) blur(16px)',
-						WebkitBackdropFilter: 'saturate(160%) blur(16px)',
-						backgroundColor: 'color-mix(in oklab, var(--color-bg-base) 80%, transparent)',
-					}
-				: { backgroundColor: 'var(--color-bg-base)' }
+		class="sticky top-0 z-40 border-b border-border-subtle pt-[env(safe-area-inset-top)]"
+		style="
+			background-color: color-mix(in oklab, var(--color-bg-base) 85%, transparent);
+			backdrop-filter: saturate(160%) blur(16px);
+			-webkit-backdrop-filter: saturate(160%) blur(16px);
 		"
 	>
 		<div
@@ -18,9 +12,9 @@
 		>
 			<!-- Left: Logo -->
 			<div class="flex items-center gap-6">
-				<NuxtLink to="/" class="flex items-center gap-2.5 text-text-primary group">
+				<NuxtLink to="/" class="flex items-center gap-2.5 text-text-primary">
 					<div
-						class="w-7 h-7 text-brand transition-[color,transform] duration-(--motion-moderate) group-hover:text-brand-hover group-hover:scale-110"
+						class="w-7 h-7 text-brand"
 						style="
 							-webkit-mask: url('/logo.svg') no-repeat center / contain;
 							mask: url('/logo.svg') no-repeat center / contain;
@@ -28,23 +22,20 @@
 						"
 						aria-hidden="true"
 					/>
-					<span
-						class="font-display text-xl tracking-tight transition-colors duration-(--motion-fast) group-hover:text-brand"
-						>Owlat Docs</span
-					>
+					<span class="text-[0.9375rem] font-semibold tracking-tight">Owlat Docs</span>
 				</NuxtLink>
 
 				<!-- Nav links (md+) -->
-				<nav class="hidden md:flex items-center gap-1">
+				<nav class="hidden md:flex items-center gap-6">
 					<NuxtLink
 						v-for="link in navLinks"
 						:key="link.to"
 						:to="link.to"
-						class="nav-link px-3 py-1.5 text-sm rounded-lg transition-all duration-(--motion-moderate)"
+						class="text-[0.8125rem] font-medium py-1 transition-colors duration-(--motion-fast)"
 						:class="
 							isActiveSection(link.to)
-								? 'text-brand bg-brand-soft'
-								: 'text-text-secondary hover:text-text-primary hover:bg-bg-surface'
+								? 'text-text-primary'
+								: 'text-text-secondary hover:text-text-primary'
 						"
 					>
 						{{ link.label }}
@@ -56,7 +47,7 @@
 			<div class="flex items-center gap-2">
 				<!-- Search trigger -->
 				<button
-					class="search-trigger flex items-center gap-2.5 h-9 pl-3 pr-2.5 rounded-lg border border-border-default bg-bg-surface text-text-tertiary hover:text-text-secondary hover:border-border-strong transition-all duration-(--motion-moderate) text-sm"
+					class="flex items-center gap-2.5 h-9 pl-3 pr-2.5 rounded-lg border border-border-subtle bg-bg-surface text-text-tertiary hover:text-text-secondary transition-colors duration-(--motion-fast) text-sm"
 					@click="searchOpen = true"
 				>
 					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -69,7 +60,7 @@
 					</svg>
 					<span class="hidden sm:inline">Search...</span>
 					<kbd
-						class="hidden sm:inline-flex items-center h-5 px-1.5 rounded border border-border-default bg-bg-elevated text-[11px] font-mono text-text-tertiary"
+						class="hidden sm:inline-flex items-center h-5 px-1.5 rounded border border-border-subtle bg-bg-elevated text-[11px] font-mono text-text-tertiary"
 					>
 						{{ metaKey }}K
 					</kbd>
@@ -77,7 +68,7 @@
 
 				<!-- Color mode toggle -->
 				<UiThemeToggle
-					class="color-toggle flex items-center justify-center w-9 h-9 rounded-lg text-text-tertiary hover:text-text-secondary hover:bg-bg-surface transition-all duration-(--motion-moderate)"
+					class="flex items-center justify-center w-9 h-9 rounded-lg text-text-tertiary hover:text-text-secondary hover:bg-bg-surface transition-colors duration-(--motion-fast)"
 				/>
 
 				<!-- Mobile hamburger (< lg) -->
@@ -109,13 +100,11 @@ defineEmits<{
 
 const route = useRoute();
 
-const scrolled = ref(false);
 const searchOpen = ref(false);
-const headerEl = ref<HTMLElement | null>(null);
 
 const metaKey = computed(() => {
-	if (import.meta.server) return '\u2318';
-	return navigator.platform?.includes('Mac') ? '\u2318' : 'Ctrl+';
+	if (import.meta.server) return '⌘';
+	return navigator.platform?.includes('Mac') ? '⌘' : 'Ctrl+';
 });
 
 const navLinks = [
@@ -138,33 +127,10 @@ function onKeydown(e: KeyboardEvent) {
 }
 
 onMounted(() => {
-	const onScroll = () => {
-		scrolled.value = window.scrollY > 4;
-	};
-	window.addEventListener('scroll', onScroll, { passive: true });
 	window.addEventListener('keydown', onKeydown);
 
 	onUnmounted(() => {
-		window.removeEventListener('scroll', onScroll);
 		window.removeEventListener('keydown', onKeydown);
 	});
 });
 </script>
-
-<style scoped>
-/* Search trigger hover: one elevation ring, no glow */
-.search-trigger:hover {
-	box-shadow: var(--shadow-1);
-}
-
-/* Color toggle rotation */
-.color-toggle:active svg {
-	transition: transform var(--motion-moderate) var(--ease-spring);
-	transform: rotate(25deg) scale(0.9);
-}
-
-/* Nav link active dot indicator */
-.nav-link {
-	position: relative;
-}
-</style>
