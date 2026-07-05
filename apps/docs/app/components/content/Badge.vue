@@ -19,31 +19,25 @@ withDefaults(
   align-items: center;
   padding: 2px 8px;
   font-size: 0.6875rem;
-  font-weight: 600;
+  font-weight: 550;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   line-height: 1.5;
+  border: 1px solid var(--color-border-default);
   border-radius: 9999px;
   vertical-align: middle;
-}
-
-.badge-info {
-  background: var(--color-info-subtle);
-  color: var(--color-info);
+  color: var(--color-text-secondary);
 }
 
 .badge-warning {
-  background: var(--color-warning-subtle);
   color: var(--color-warning);
 }
 
 .badge-success {
-  background: var(--color-success-subtle);
   color: var(--color-success);
 }
 
 .badge-danger {
-  background: var(--color-error-subtle);
   color: var(--color-error);
 }
 </style>
