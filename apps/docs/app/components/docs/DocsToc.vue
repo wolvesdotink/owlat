@@ -120,7 +120,7 @@ onUnmounted(() => {
 
 .toc-link.active {
 	color: var(--color-text-primary);
-	font-weight: 450;
+	font-weight: var(--font-weight-medium, 450);
 }
 
 .toc-link:not(.active):hover {
