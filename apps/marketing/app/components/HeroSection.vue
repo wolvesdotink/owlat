@@ -7,9 +7,6 @@ onMounted(() => {
 	});
 });
 
-// Interactive mockup — blocks highlight on hover
-const activeBlock = ref(-1);
-
 // Copy-paste install command
 const installCommand = 'curl -fsSL https://get.owlat.app | bash';
 const copied = ref(false);
@@ -28,23 +25,12 @@ async function copyInstall() {
 
 <template>
 	<section class="hero relative min-h-[100dvh] flex items-center overflow-hidden" :class="{ visible }">
-		<!-- Scroll progress indicator -->
-		<div class="scroll-progress" aria-hidden="true" />
-
 		<!-- Horizontal rule at bottom -->
 		<div class="absolute bottom-0 left-0 right-0 h-px bg-border-subtle" />
 
 		<div class="relative w-full max-w-[1200px] mx-auto px-8 max-md:px-6 py-32 max-md:py-20 grid grid-cols-[1fr_420px] gap-20 items-center max-lg:grid-cols-1 max-lg:gap-14">
 			<!-- Left: Copy -->
 			<div>
-				<!-- Badge -->
-				<div class="hero-el" style="--delay: 0s">
-					<span class="beta-badge inline-flex items-center gap-2.5 text-xs font-medium tracking-[0.12em] uppercase text-brand border border-brand-border rounded-full px-4 py-[6px] bg-brand-soft">
-						<span class="w-1.5 h-1.5 rounded-full bg-brand" />
-						Open-source · Self-hosted
-					</span>
-				</div>
-
 				<!-- Logo + Name -->
 				<div class="hero-el flex items-center gap-4 mt-10 mb-2" style="--delay: 0.06s">
 					<OwlLogo size="56px" />
@@ -70,7 +56,7 @@ async function copyInstall() {
 				<div class="hero-el flex items-center gap-3.5 flex-wrap" style="--delay: 0.28s">
 					<a
 						href="https://docs.owlat.app/developer/self-hosting"
-						class="cta-primary group inline-flex items-center gap-2.5 px-7 py-3 text-[0.9375rem] font-semibold text-text-inverse bg-brand border border-brand rounded-xl no-underline transition-all duration-(--motion-moderate) hover:bg-brand-hover hover:border-brand-hover hover:shadow-brand-hover btn-press"
+						class="cta-primary group inline-flex items-center gap-2.5 px-7 py-3 text-[0.9375rem] font-semibold text-text-inverse bg-brand border border-brand rounded-xl no-underline transition-all duration-(--motion-moderate) hover:bg-brand-hover hover:border-brand-hover btn-press"
 					>
 						<span>Self-host in 5 minutes</span>
 						<svg
@@ -135,16 +121,10 @@ async function copyInstall() {
 							<span class="w-[7px] h-[7px] rounded-full" style="background: color-mix(in oklab, #7a9b6e 45%, var(--color-border-strong))" />
 							<span class="ml-auto font-mono text-[0.6875rem] font-medium uppercase tracking-[0.06em] text-text-tertiary">Email Builder</span>
 						</div>
-						<!-- Mock email content with hover interactions -->
+						<!-- Mock email content (static) -->
 						<div class="p-5 space-y-3">
 							<!-- Header block -->
-							<div
-								class="mockup-block rounded-xl border p-4 transition-all duration-(--motion-moderate) cursor-default"
-								:class="activeBlock === 0 ? 'border-brand/40 bg-brand-soft shadow-[0_0_20px_rgba(196,120,90,0.08)]' : 'border-border-subtle'"
-								style="background: var(--owlat-bg-soft); --bd: 0"
-								@mouseenter="activeBlock = 0"
-								@mouseleave="activeBlock = -1"
-							>
+							<div class="rounded-xl border border-border-subtle p-4" style="background: var(--owlat-bg-soft)">
 								<div class="flex items-center gap-2 mb-3">
 									<div class="w-6 h-6 rounded-full bg-brand/20" />
 									<div class="h-2 w-20 rounded-full bg-text-tertiary/20" />
@@ -154,46 +134,22 @@ async function copyInstall() {
 								<div class="h-[7px] w-2/3 rounded-full bg-text-tertiary/8" />
 							</div>
 							<!-- Image placeholder -->
-							<div
-								class="mockup-block rounded-xl border h-24 flex items-center justify-center transition-all duration-(--motion-moderate) cursor-default"
-								:class="activeBlock === 1 ? 'border-brand/40 shadow-[0_0_20px_rgba(196,120,90,0.08)]' : 'border-border-subtle'"
-								style="background: var(--owlat-bg-soft); --bd: 1"
-								@mouseenter="activeBlock = 1"
-								@mouseleave="activeBlock = -1"
-							>
-								<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="text-text-disabled transition-colors duration-(--motion-moderate)" :class="activeBlock === 1 && 'text-brand/50!'">
+							<div class="rounded-xl border border-border-subtle h-24 flex items-center justify-center" style="background: var(--owlat-bg-soft)">
+								<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="text-text-disabled">
 									<rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="m21 15-5-5L5 21" />
 								</svg>
 							</div>
 							<!-- Button block -->
-							<div
-								class="mockup-block flex justify-center py-1.5 transition-all duration-(--motion-moderate) cursor-default"
-								style="--bd: 2"
-								@mouseenter="activeBlock = 2"
-								@mouseleave="activeBlock = -1"
-							>
-								<div
-									class="px-8 py-2.5 rounded-lg text-xs font-semibold transition-all duration-(--motion-moderate)"
-									:class="activeBlock === 2 ? 'bg-brand-hover text-text-inverse scale-105 shadow-brand-hover' : 'bg-brand text-text-inverse'"
-								>
+							<div class="flex justify-center py-1.5">
+								<div class="px-8 py-2.5 rounded-lg text-xs font-semibold bg-brand text-text-inverse">
 									Call to Action
 								</div>
 							</div>
 							<!-- Divider -->
 							<div class="border-t border-border-subtle" />
 							<!-- Social row -->
-							<div
-								class="mockup-block flex justify-center gap-2.5 py-0.5 transition-all duration-(--motion-moderate) cursor-default"
-								style="--bd: 3"
-								@mouseenter="activeBlock = 3"
-								@mouseleave="activeBlock = -1"
-							>
-								<div
-									v-for="i in 3" :key="i"
-									class="w-6 h-6 rounded-full transition-all duration-(--motion-moderate)"
-									:class="activeBlock === 3 ? 'bg-brand/25 scale-110' : 'bg-text-tertiary/12'"
-									:style="{ transitionDelay: activeBlock === 3 ? `${(i - 1) * 50}ms` : '0ms' }"
-								/>
+							<div class="flex justify-center gap-2.5 py-0.5">
+								<div v-for="i in 3" :key="i" class="w-6 h-6 rounded-full bg-text-tertiary/12" />
 							</div>
 						</div>
 					</div>
@@ -231,24 +187,5 @@ async function copyInstall() {
 .visible .hero-visual {
 	opacity: 1;
 	transform: none;
-}
-
-/* Scroll progress bar */
-.scroll-progress {
-	position: fixed;
-	top: 60px;
-	left: 0;
-	height: 2px;
-	background: var(--color-brand);
-	width: 0%;
-	z-index: 100;
-	animation: scroll-progress linear;
-	animation-timeline: scroll();
-}
-
-@keyframes scroll-progress {
-	to {
-		width: 100%;
-	}
 }
 </style>
