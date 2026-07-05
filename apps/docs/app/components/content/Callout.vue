@@ -1,91 +1,91 @@
 <script setup lang="ts">
 withDefaults(
-  defineProps<{
-    type?: 'tip' | 'warning' | 'danger' | 'info' | 'success'
-    title?: string
-  }>(),
-  { type: 'tip' },
-)
+	defineProps<{
+		type?: 'tip' | 'warning' | 'danger' | 'info' | 'success';
+		title?: string;
+	}>(),
+	{ type: 'tip' }
+);
 </script>
 
 <template>
-  <div class="callout" :class="`callout-${type}`">
-    <div v-if="title" class="callout-title">{{ title }}</div>
-    <div class="callout-content">
-      <slot />
-    </div>
-  </div>
+	<div class="callout" :class="`callout-${type}`">
+		<div v-if="title" class="callout-title">{{ title }}</div>
+		<div class="callout-content">
+			<slot />
+		</div>
+	</div>
 </template>
 
 <style scoped>
 .callout {
-  margin: 1.5rem 0;
-  padding: 14px 20px;
-  border-left: 1px solid var(--color-border-default);
-  border-radius: 0 6px 6px 0;
+	margin: 1.5rem 0;
+	padding: 14px 20px;
+	border-left: 1px solid var(--color-border-default);
+	border-radius: 0 6px 6px 0;
 }
 
 .callout-title {
-  font-weight: 550;
-  font-size: 0.8125rem;
-  margin-bottom: 6px;
+	font-weight: 550;
+	font-size: 0.8125rem;
+	margin-bottom: 6px;
 }
 
 .callout-content :deep(> *:first-child) {
-  margin-top: 0;
+	margin-top: 0;
 }
 
 .callout-content :deep(> *:last-child) {
-  margin-bottom: 0;
+	margin-bottom: 0;
 }
 
 /* Tip */
 .callout-tip {
-  border-left-color: var(--color-brand);
-  background: var(--color-brand-soft);
+	border-left-color: var(--color-brand);
+	background: var(--color-brand-soft);
 }
 
 .callout-tip .callout-title {
-  color: var(--color-brand);
+	color: var(--color-brand);
 }
 
 /* Warning */
 .callout-warning {
-  border-left-color: var(--color-warning);
-  background: var(--color-warning-subtle);
+	border-left-color: var(--color-warning);
+	background: var(--color-warning-subtle);
 }
 
 .callout-warning .callout-title {
-  color: var(--color-warning);
+	color: var(--color-warning);
 }
 
 /* Danger */
 .callout-danger {
-  border-left-color: var(--color-error);
-  background: var(--color-error-subtle);
+	border-left-color: var(--color-error);
+	background: var(--color-error-subtle);
 }
 
 .callout-danger .callout-title {
-  color: var(--color-error);
+	color: var(--color-error);
 }
 
 /* Success */
 .callout-success {
-  border-left-color: var(--color-success);
-  background: var(--color-success-subtle);
+	border-left-color: var(--color-success);
+	background: var(--color-success-subtle);
 }
 
 .callout-success .callout-title {
-  color: var(--color-success);
+	color: var(--color-success);
 }
 
 /* Info */
 .callout-info {
-  border-left-color: var(--color-info);
-  background: var(--color-info-subtle);
+	border-left-color: var(--color-info);
+	background: var(--color-info-subtle);
 }
 
 .callout-info .callout-title {
-  color: var(--color-info);
+	color: var(--color-info);
 }
 </style>
