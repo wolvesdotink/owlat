@@ -18,14 +18,14 @@ const footerLinks = {
 </script>
 
 <template>
-	<footer class="border-t border-border-subtle" style="background: var(--color-bg-deep)">
+	<footer class="border-t border-border-subtle">
 		<div class="max-w-[1200px] mx-auto px-8 max-md:px-6 py-16">
 			<div class="grid grid-cols-[2fr_1fr_1fr_1fr] gap-12 max-lg:grid-cols-2 max-lg:gap-8 max-sm:grid-cols-1">
 				<!-- Brand -->
 				<div>
 					<div class="flex items-center gap-2.5 mb-4">
 						<OwlLogo size="24px" />
-						<span class="font-display text-lg text-text-primary">Owlat</span>
+						<span class="text-[0.9375rem] font-semibold tracking-tight text-text-primary">Owlat</span>
 					</div>
 					<p class="text-[0.8125rem] text-text-tertiary leading-[1.7] max-w-[240px]">
 						Email infrastructure for product teams. Campaigns, automations, and transactional sends from one platform.
@@ -37,7 +37,7 @@ const footerLinks = {
 					<h4 class="font-mono text-[0.625rem] font-medium uppercase tracking-[0.1em] text-text-disabled mb-5">Product</h4>
 					<ul class="space-y-3">
 						<li v-for="link in footerLinks.product" :key="link.label">
-							<a :href="link.href" class="footer-link text-[0.8125rem] text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast) no-underline relative">
+							<a :href="link.href" class="text-[0.8125rem] text-text-secondary hover:text-text-primary transition-colors duration-(--motion-fast) no-underline">
 								{{ link.label }}
 							</a>
 						</li>
@@ -49,7 +49,7 @@ const footerLinks = {
 					<h4 class="font-mono text-[0.625rem] font-medium uppercase tracking-[0.1em] text-text-disabled mb-5">Developers</h4>
 					<ul class="space-y-3">
 						<li v-for="link in footerLinks.developers" :key="link.label">
-							<a :href="link.href" class="footer-link text-[0.8125rem] text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast) no-underline relative">
+							<a :href="link.href" class="text-[0.8125rem] text-text-secondary hover:text-text-primary transition-colors duration-(--motion-fast) no-underline">
 								{{ link.label }}
 							</a>
 						</li>
@@ -61,7 +61,7 @@ const footerLinks = {
 					<h4 class="font-mono text-[0.625rem] font-medium uppercase tracking-[0.1em] text-text-disabled mb-5">Company</h4>
 					<ul class="space-y-3">
 						<li v-for="link in footerLinks.company" :key="link.label">
-							<a :href="link.href" class="footer-link text-[0.8125rem] text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast) no-underline relative">
+							<a :href="link.href" class="text-[0.8125rem] text-text-secondary hover:text-text-primary transition-colors duration-(--motion-fast) no-underline">
 								{{ link.label }}
 							</a>
 						</li>
@@ -73,7 +73,7 @@ const footerLinks = {
 			<div class="flex items-center justify-between pt-10 mt-12 border-t border-border-subtle max-sm:flex-col max-sm:gap-4">
 				<p class="text-[0.6875rem] text-text-disabled">&copy; {{ new Date().getFullYear() }} <a href="https://wolves.ink">Wolves</a>. All rights reserved.</p>
 				<UiThemeToggle
-					class="theme-toggle flex items-center gap-2 text-[0.6875rem] text-text-disabled hover:text-text-tertiary transition-all duration-(--motion-moderate) cursor-pointer bg-transparent border-none p-0"
+					class="theme-toggle flex items-center gap-2 text-[0.6875rem] text-text-disabled hover:text-text-tertiary transition-colors duration-(--motion-fast) cursor-pointer bg-transparent border-none p-0"
 				>
 					<span>Theme</span>
 				</UiThemeToggle>
@@ -81,21 +81,3 @@ const footerLinks = {
 		</div>
 	</footer>
 </template>
-
-<style scoped>
-/* Footer link hover underline animation */
-.footer-link::after {
-	content: '';
-	position: absolute;
-	bottom: -2px;
-	left: 0;
-	width: 0;
-	height: 1px;
-	background: var(--color-text-tertiary);
-	transition: width var(--motion-moderate) var(--ease-spring);
-}
-
-.footer-link:hover::after {
-	width: 100%;
-}
-</style>
