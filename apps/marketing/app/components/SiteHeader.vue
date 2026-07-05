@@ -20,7 +20,7 @@ onMounted(() => {
 				}
 			}
 		},
-		{ threshold: 0.3 },
+		{ threshold: 0.3 }
 	);
 
 	for (const id of sections) {
@@ -33,7 +33,11 @@ onMounted(() => {
 <template>
 	<header
 		class="sticky top-0 z-50 border-b border-border-subtle pt-[env(safe-area-inset-top)]"
-		style="background-color: color-mix(in oklab, var(--color-bg-base) 85%, transparent); backdrop-filter: saturate(160%) blur(16px); -webkit-backdrop-filter: saturate(160%) blur(16px)"
+		style="
+			background-color: color-mix(in oklab, var(--color-bg-base) 85%, transparent);
+			backdrop-filter: saturate(160%) blur(16px);
+			-webkit-backdrop-filter: saturate(160%) blur(16px);
+		"
 	>
 		<div class="max-w-[1200px] mx-auto px-8 max-md:px-6 h-[60px] flex items-center justify-between">
 			<!-- Logo -->
@@ -49,9 +53,11 @@ onMounted(() => {
 					:key="link.label"
 					:href="link.href"
 					class="text-[0.8125rem] font-medium transition-colors duration-(--motion-fast) no-underline py-1"
-					:class="activeSection === link.href.replace('#', '')
-						? 'text-text-primary'
-						: 'text-text-secondary hover:text-text-primary'"
+					:class="
+						activeSection === link.href.replace('#', '')
+							? 'text-text-primary'
+							: 'text-text-secondary hover:text-text-primary'
+					"
 				>
 					{{ link.label }}
 				</a>
@@ -79,11 +85,32 @@ onMounted(() => {
 				:aria-label="mobileOpen ? 'Close menu' : 'Open menu'"
 				@click="mobileOpen = !mobileOpen"
 			>
-				<svg v-if="!mobileOpen" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-					<path d="M4 7h16" /><path d="M4 12h16" /><path d="M4 17h16" />
+				<svg
+					v-if="!mobileOpen"
+					width="20"
+					height="20"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2"
+					stroke-linecap="round"
+				>
+					<path d="M4 7h16" />
+					<path d="M4 12h16" />
+					<path d="M4 17h16" />
 				</svg>
-				<svg v-else width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-					<path d="M18 6 6 18" /><path d="m6 6 12 12" />
+				<svg
+					v-else
+					width="20"
+					height="20"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2"
+					stroke-linecap="round"
+				>
+					<path d="M18 6 6 18" />
+					<path d="m6 6 12 12" />
 				</svg>
 			</button>
 		</div>
@@ -93,7 +120,10 @@ onMounted(() => {
 			<div
 				v-if="mobileOpen"
 				class="lg:hidden border-t border-border-subtle px-8 max-md:px-6 py-6 flex flex-col gap-4"
-				style="background-color: color-mix(in oklab, var(--color-bg-base) 96%, transparent); backdrop-filter: saturate(160%) blur(16px)"
+				style="
+					background-color: color-mix(in oklab, var(--color-bg-base) 96%, transparent);
+					backdrop-filter: saturate(160%) blur(16px);
+				"
 			>
 				<a
 					v-for="link in navLinks"
@@ -105,7 +135,10 @@ onMounted(() => {
 					{{ link.label }}
 				</a>
 				<div class="flex flex-col gap-3 pt-4 border-t border-border-subtle">
-					<a href="https://app.owlat.app/login" class="text-sm font-medium text-text-secondary hover:text-text-primary transition-colors duration-(--motion-fast) no-underline text-center py-2">
+					<a
+						href="https://app.owlat.app/login"
+						class="text-sm font-medium text-text-secondary hover:text-text-primary transition-colors duration-(--motion-fast) no-underline text-center py-2"
+					>
 						Sign in
 					</a>
 					<a
