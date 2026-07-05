@@ -8,7 +8,7 @@
 				:href="editUrl"
 				target="_blank"
 				rel="noopener noreferrer"
-				class="flex items-center gap-2 text-sm text-text-tertiary hover:text-brand transition-colors duration-(--motion-fast)"
+				class="flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary transition-colors duration-(--motion-fast)"
 			>
 				<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path

@@ -14,7 +14,7 @@
 
 				<!-- Panel -->
 				<div
-					class="absolute inset-y-0 left-0 w-72 bg-bg-base border-r border-border-default shadow-lg overflow-y-auto pt-[env(safe-area-inset-top)]"
+					class="absolute inset-y-0 left-0 w-72 bg-bg-base border-r border-border-subtle shadow-(--shadow-4) overflow-y-auto pt-[env(safe-area-inset-top)]"
 				>
 					<!-- Panel header -->
 					<div
@@ -41,7 +41,7 @@
 									stroke-linecap="round"
 								/>
 							</svg>
-							<span class="font-display text-lg">Owlat Docs</span>
+							<span class="text-[0.9375rem] font-semibold tracking-tight">Owlat Docs</span>
 						</NuxtLink>
 						<button
 							class="flex items-center justify-center w-8 h-8 rounded-lg text-text-tertiary hover:text-text-secondary hover:bg-bg-surface transition-colors duration-(--motion-fast)"

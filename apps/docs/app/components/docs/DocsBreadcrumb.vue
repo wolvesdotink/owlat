@@ -23,11 +23,11 @@
 					<NuxtLink
 						v-if="index < crumbs.length - 1"
 						:to="crumb.path"
-						class="text-text-tertiary hover:text-text-secondary transition-colors duration-(--motion-fast)"
+						class="text-text-secondary hover:text-text-primary transition-colors duration-(--motion-fast)"
 					>
 						{{ crumb.label }}
 					</NuxtLink>
-					<span v-else class="text-text-secondary" aria-current="page">
+					<span v-else class="text-text-primary" aria-current="page">
 						{{ crumb.label }}
 					</span>
 				</div>

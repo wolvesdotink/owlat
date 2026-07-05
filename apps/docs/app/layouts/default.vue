@@ -2,11 +2,6 @@
 	<div class="min-h-dvh bg-bg-base">
 		<DocsHeader @toggle-sidebar="sidebarOpen = !sidebarOpen" />
 
-		<!-- Reading progress bar -->
-		<div class="reading-progress">
-			<div class="reading-progress-bar" :style="{ transform: `scaleX(${progress})` }" />
-		</div>
-
 		<DocsSidebarMobile v-model:open="sidebarOpen" />
 		<div class="max-w-[1400px] mx-auto flex">
 			<aside
@@ -41,6 +36,5 @@
 
 <script setup lang="ts">
 const sidebarOpen = ref(false);
-const { progress } = useReadingProgress();
 const route = useRoute();
 </script>
