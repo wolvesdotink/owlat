@@ -18,20 +18,6 @@
 	}
 }
 
-/* ═══════════════ KEYFRAMES ═══════════════ */
-
-/* Entry reveal — small offset, no decorative drift/glow/shimmer. */
-@keyframes fade-up {
-	from {
-		opacity: 0;
-		transform: translateY(8px);
-	}
-	to {
-		opacity: 1;
-		transform: none;
-	}
-}
-
 /* ═══════════════ UTILITIES ═══════════════ */
 
 @utility btn-press {
