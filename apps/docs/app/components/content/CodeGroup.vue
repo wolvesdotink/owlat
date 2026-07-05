@@ -59,22 +59,16 @@ onMounted(() => {
 <style scoped>
 .code-group {
 	margin: 1.5rem 0;
-	border: 1px solid var(--color-border-default);
+	border: 1px solid var(--color-border-subtle);
 	border-radius: 10px;
 	overflow: hidden;
-	transition: border-color var(--motion-moderate) var(--ease-spring), box-shadow var(--motion-moderate) var(--ease-spring);
-}
-
-.code-group:hover {
-	border-color: color-mix(in oklab, var(--color-brand) 20%, var(--color-border-default));
-	box-shadow: 0 0 20px rgba(196, 120, 90, 0.03);
 }
 
 .code-group-tabs {
 	display: flex;
 	gap: 0;
 	background: var(--color-bg-soft);
-	border-bottom: 1px solid var(--color-border-default);
+	border-bottom: 1px solid var(--color-border-subtle);
 	padding: 0 4px;
 	overflow-x: auto;
 }
@@ -100,8 +94,8 @@ onMounted(() => {
 	border-bottom: 2px solid transparent;
 	margin-bottom: -1px;
 	transition:
-		color 0.15s,
-		border-color 0.15s;
+		color var(--motion-fast) var(--ease-spring),
+		border-color var(--motion-fast) var(--ease-spring);
 }
 
 .code-group-tab:hover {
