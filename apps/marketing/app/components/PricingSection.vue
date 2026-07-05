@@ -17,7 +17,11 @@ const selfHostFeatures = [
 	'Apache 2.0 licensed',
 ];
 
-const hostedFeatures = ['Managed infrastructure', 'Dedicated IPs & warmup', 'Automatic updates & backups'];
+const hostedFeatures = [
+	'Managed infrastructure',
+	'Dedicated IPs & warmup',
+	'Automatic updates & backups',
+];
 </script>
 
 <template>
@@ -42,7 +46,10 @@ const hostedFeatures = ['Managed infrastructure', 'Dedicated IPs & warmup', 'Aut
 				>
 					Free forever. Your infrastructure.
 				</h2>
-				<p class="price-el text-base text-text-secondary leading-relaxed max-w-prose" style="--i: 2">
+				<p
+					class="price-el text-base text-text-secondary leading-relaxed max-w-prose"
+					style="--i: 2"
+				>
 					Open-source under Apache 2.0. Hosted cloud is coming later — self-host today and own your
 					data.
 				</p>
@@ -54,7 +61,9 @@ const hostedFeatures = ['Managed infrastructure', 'Dedicated IPs & warmup', 'Aut
 				<div class="price-card price-card-highlight" style="--i: 3">
 					<p class="text-xs text-text-tertiary mb-3">Available today</p>
 					<h3 class="text-lg font-[550] text-text-primary mb-1">Self-Host</h3>
-					<p class="text-[0.8125rem] text-text-tertiary mb-5">Run on your own VPS. No limits. No billing.</p>
+					<p class="text-[0.8125rem] text-text-tertiary mb-5">
+						Run on your own VPS. No limits. No billing.
+					</p>
 
 					<p class="mb-6">
 						<span class="text-4xl font-[550] text-text-primary tracking-tight">Free</span>
@@ -150,7 +159,9 @@ const hostedFeatures = ['Managed infrastructure', 'Dedicated IPs & warmup', 'Aut
 							<tr v-for="row in resourceRows" :key="row.label">
 								<td class="px-3.5 py-2 text-text-primary font-medium">{{ row.label }}</td>
 								<td class="px-3.5 py-2 text-right text-text-secondary">{{ row.min }}</td>
-								<td class="px-3.5 py-2 text-right text-text-primary font-medium">{{ row.recommended }}</td>
+								<td class="px-3.5 py-2 text-right text-text-primary font-medium">
+									{{ row.recommended }}
+								</td>
 							</tr>
 						</tbody>
 					</table>
