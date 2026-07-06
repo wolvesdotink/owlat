@@ -17,6 +17,7 @@
  *   - apps/api/convex/seedDemo/index.ts       (POST /seed/demo)
  *   - apps/api/convex/devShortcuts/reset.ts   (POST /dev/reset)
  *   - apps/api/convex/devShortcuts/forceVerifyDomain.ts
+ *   - apps/api/convex/auth/auth.ts            (disables BetterAuth rate limiting on dev)
  */
 
 import { getBoolean } from '../lib/env';
@@ -32,9 +33,7 @@ export function isDevDeployment(): boolean {
  */
 export function assertDevDeployment(): void {
 	if (!isDevDeployment()) {
-		throw new Error(
-			'Dev-only endpoint refused: OWLAT_DEV_MODE is not enabled on this deployment.',
-		);
+		throw new Error('Dev-only endpoint refused: OWLAT_DEV_MODE is not enabled on this deployment.');
 	}
 }
 
@@ -48,6 +47,6 @@ export function devDeploymentResponseOrNull(): Response | null {
 		JSON.stringify({
 			error: 'Dev-only endpoint refused: OWLAT_DEV_MODE is not enabled',
 		}),
-		{ status: 403, headers: { 'Content-Type': 'application/json' } },
+		{ status: 403, headers: { 'Content-Type': 'application/json' } }
 	);
 }
