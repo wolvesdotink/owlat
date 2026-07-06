@@ -14,6 +14,7 @@ import { components, internal } from '../_generated/api';
 import type { DataModel } from '../_generated/dataModel';
 import type { ActionCtx } from '../_generated/server';
 import authConfig from './config';
+import { isDevDeployment } from '../devShortcuts/_guard';
 import {
 	generateInvitationEmailHtml,
 	generatePasswordResetEmailHtml,
@@ -169,6 +170,16 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 				enabled: true,
 				maxAge: 5 * 60, // 5 minutes
 			},
+		},
+		rateLimit: {
+			// BetterAuth's built-in limiter keys on the client IP (first entry of
+			// X-Forwarded-For). Production deployments get that header from the
+			// fronting proxy (Caddy, and the web app's /api/auth proxy extends the
+			// chain). Traffic that reaches a DEV deployment directly (the desktop
+			// app in `tauri dev`, curl against :3211) carries no such header, so
+			// the limiter would skip every request and log a WARN each time —
+			// disable it where OWLAT_DEV_MODE is set, keep the default elsewhere.
+			enabled: !isDevDeployment(),
 		},
 		trustedOrigins: (() => {
 			const adminSiteUrl = getOptional('ADMIN_SITE_URL');
