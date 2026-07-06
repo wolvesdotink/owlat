@@ -1,14 +1,17 @@
 <script setup lang="ts">
-import { draftSlotConfidence, type ReplyQueueDraftSlot } from '~/utils/postboxReplyQueue';
+import InboxTrustChip from '~/components/inbox/TrustChip.vue';
+import type { ReplyQueueDraftSlot } from '~/utils/postboxReplyQueue';
+import { trustLabel } from '~/utils/trustLabel';
 
 /**
  * Draft-on-arrival review slot (postbox.aiDraft).
  *
  * Renders under a Reply Queue row when the shared draft service pre-generated a
- * reply the moment the message landed: a "Draft ready" chip, a confidence badge
- * (the quality self-check score — or "Unverified" when the check failed), the
- * self-check flags a reviewer should skim, a preview of the draft, and a
- * keyboard-first "Review & send" action that opens the composer prefilled.
+ * reply the moment the message landed: a "Draft ready" chip, a human trust chip
+ * ("Ready to send" / "Worth a look" / "Needs you" — never raw confidence
+ * percentages; the self-check flags become plain-language reasons in the chip's
+ * popover), a preview of the draft, and a keyboard-first "Review & send" action
+ * that opens the composer prefilled.
  *
  * HUMAN REVIEW ONLY: this surface never sends. It emits `review` (open the
  * composer with the draft) and `dismiss` (drop the slot from view).
@@ -19,14 +22,15 @@ const emit = defineEmits<{
 	(e: 'dismiss'): void;
 }>();
 
-const confidence = computed(() => draftSlotConfidence(props.draftSlot));
-
-const CONFIDENCE_CLASS: Record<string, string> = {
-	high: 'bg-success/10 text-success',
-	medium: 'bg-brand/10 text-brand',
-	low: 'bg-warning/10 text-warning',
-	unverified: 'bg-bg-elevated text-text-tertiary',
-};
+// A failed self-check (no quality) reads "Needs you", conservatively — the old
+// "Unverified" state in human words. The score + flags otherwise map to the
+// three trust states; the raw number survives as the popover's quiet footer.
+const trust = computed(() =>
+	trustLabel(
+		props.draftSlot.quality ? props.draftSlot.confidence : null,
+		props.draftSlot.quality?.flags ?? []
+	)
+);
 
 /** Trimmed preview so a long draft doesn't blow up the row. */
 const preview = computed(() => {
@@ -47,13 +51,7 @@ const preview = computed(() => {
 				<Icon name="lucide:sparkles" class="w-3 h-3" aria-hidden="true" />
 				Draft ready
 			</span>
-			<span
-				data-testid="review-slot-confidence"
-				class="text-[10px] font-medium uppercase tracking-wide px-1.5 py-px rounded-full"
-				:class="CONFIDENCE_CLASS[confidence.level]"
-			>
-				{{ confidence.label }}
-			</span>
+			<InboxTrustChip data-testid="review-slot-confidence" :trust="trust" />
 			<span
 				v-if="draftSlot.options && draftSlot.options.length > 1"
 				class="text-[10px] text-text-tertiary"
@@ -62,21 +60,6 @@ const preview = computed(() => {
 				{{ draftSlot.options.length }} options
 			</span>
 		</div>
-
-		<!-- Self-check flags a reviewer should skim before sending. -->
-		<ul
-			v-if="draftSlot.quality && draftSlot.quality.flags.length > 0"
-			class="mt-1.5 flex flex-wrap gap-1"
-			data-testid="review-slot-flags"
-		>
-			<li
-				v-for="flag in draftSlot.quality.flags"
-				:key="flag"
-				class="text-[10px] px-1.5 py-px rounded-full bg-warning/10 text-warning"
-			>
-				{{ flag }}
-			</li>
-		</ul>
 
 		<p class="mt-1.5 text-xs text-text-secondary whitespace-pre-line line-clamp-3">
 			{{ preview }}

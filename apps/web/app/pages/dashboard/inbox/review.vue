@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
 import { REVIEW_SHORTCUT_GROUPS } from '~/utils/reviewShortcuts';
+import { escalationTrustLabel, trustLabel, type TrustLabel } from '~/utils/trustLabel';
 
 useHead({ title: 'Review Queue — Owlat' });
 
@@ -10,7 +11,16 @@ definePageMeta({
 	requiresFeature: 'inbox',
 });
 
-const { reviewItems, isLoading, needsReply, onApprove, approveOption, onReject, composeAndSend, editDraft } = useReviewQueue();
+const {
+	reviewItems,
+	isLoading,
+	needsReply,
+	onApprove,
+	approveOption,
+	onReject,
+	composeAndSend,
+	editDraft,
+} = useReviewQueue();
 
 // Persist a freeform whole-draft revision from the AiReviseBox onto the card's
 // draft (through the same `editDraft` mutation an inline edit uses), so the
@@ -29,7 +39,7 @@ async function onReviseApply(messageId: Id<'inboundMessages'>, text: string) {
 // in the toast keeps the confirmation explicit.
 function onAttachSuggested(
 	threadId: string | undefined,
-	candidate: { fileId: string; filename: string },
+	candidate: { fileId: string; filename: string }
 ) {
 	showToast(`Suggested attachment: ${candidate.filename} — open the reply to attach and send`);
 	if (threadId) {
@@ -71,8 +81,28 @@ const rows = computed<ReviewRow[]>(() =>
 		_id: it.message._id,
 		message: it.message,
 		thread: it.thread,
-	})),
+	}))
 );
+
+// Human trust chip replacing the raw confidence % badge. Draft cards map the
+// DRAFT self-check (score + flags → plain-language reasons); draftless
+// escalations always read "Needs you". The old numbers stay reachable as the
+// chip popover's quiet footer (rowTrustDetail) — disclosure, not deletion.
+function rowTrust(message: ReviewRow['message']): TrustLabel {
+	if (needsReply(message)) return escalationTrustLabel();
+	return trustLabel(
+		message.draftQuality ? message.draftQuality.score : null,
+		message.draftQuality?.flags ?? []
+	);
+}
+
+/** Quiet footer line keeping the classifier's certainty available to power users. */
+function rowTrustDetail(message: ReviewRow['message']): string | undefined {
+	const confidence = message.classification?.confidence;
+	return typeof confidence === 'number'
+		? `Classifier confidence ${Math.round(confidence * 100)}%`
+		: undefined;
+}
 
 // Optimistic row removal — approve/reject hide the row immediately and the live
 // subscription confirms it; a failed action restores the row (usePostboxOptimisticHide).
@@ -98,7 +128,7 @@ const onApproveClick = async (messageId: Id<'inboundMessages'>) => {
 const onApproveOptionClick = async (
 	messageId: Id<'inboundMessages'>,
 	options: readonly string[] | undefined,
-	currentDraft: string | null | undefined,
+	currentDraft: string | null | undefined
 ) => {
 	if (!options || options.length < 2) {
 		await onApproveClick(messageId);
@@ -159,7 +189,7 @@ const {
 			: void onApproveOptionClick(
 					row.message._id,
 					row.message.draftOptions,
-					row.message.draftResponse,
+					row.message.draftResponse
 				),
 	onEdit: openThread,
 	onReject: (row) => void onRejectClick(row.message._id),
@@ -238,11 +268,15 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 			v-else-if="visibleRows.length === 0"
 			class="flex flex-col items-center justify-center py-16 text-center"
 		>
-			<UiIconBox icon="lucide:check-circle" size="xl" variant="success" rounded="full" class="mb-4" />
+			<UiIconBox
+				icon="lucide:check-circle"
+				size="xl"
+				variant="success"
+				rounded="full"
+				class="mb-4"
+			/>
 			<p class="text-text-secondary font-medium">All caught up!</p>
-			<p class="text-sm text-text-tertiary mt-1">
-				No drafts need your review right now.
-			</p>
+			<p class="text-sm text-text-tertiary mt-1">No drafts need your review right now.</p>
 		</div>
 
 		<!-- Review Items — a keyboard-navigable listbox (j/k/Enter/a/e/x). -->
@@ -287,19 +321,15 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 						</div>
 					</div>
 
-					<!-- Classification badges -->
+					<!-- One roll-up trust chip (human language; reasons + raw numbers in
+					     its popover) + the category chip. -->
 					<div v-if="row.message.classification" class="flex items-center gap-2">
-						<span
-							v-if="needsReply(row.message)"
-							class="text-xs px-2 py-0.5 rounded-full bg-warning/10 text-warning font-medium"
-						>
-							Needs reply
-						</span>
+						<InboxTrustChip
+							:trust="rowTrust(row.message)"
+							:extra-detail="rowTrustDetail(row.message)"
+						/>
 						<span class="text-xs px-2 py-0.5 rounded-full bg-brand-subtle text-brand">
 							{{ row.message.classification.category }}
-						</span>
-						<span class="text-xs px-2 py-0.5 rounded-full bg-bg-surface text-text-secondary font-mono">
-							{{ Math.round((row.message.classification.confidence ?? 0) * 100) }}%
 						</span>
 					</div>
 				</div>
@@ -353,7 +383,9 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 					<div class="flex items-center gap-2">
 						<button
 							class="btn btn-primary btn-sm gap-1"
-							:disabled="actionInProgress === row.message._id || !(composeBody[row.message._id]?.trim())"
+							:disabled="
+								actionInProgress === row.message._id || !composeBody[row.message._id]?.trim()
+							"
 							@click="onComposeSend(row.message._id)"
 						>
 							<Icon name="lucide:send" class="w-3 h-3" />
@@ -432,7 +464,13 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 						<button
 							class="btn btn-primary btn-sm gap-1"
 							:disabled="actionInProgress === row.message._id"
-							@click="onApproveOptionClick(row.message._id, row.message.draftOptions, row.message.draftResponse)"
+							@click="
+								onApproveOptionClick(
+									row.message._id,
+									row.message.draftOptions,
+									row.message.draftResponse
+								)
+							"
 						>
 							<Icon name="lucide:check" class="w-3 h-3" />
 							Approve & Send
