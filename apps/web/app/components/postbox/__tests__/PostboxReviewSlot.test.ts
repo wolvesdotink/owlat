@@ -4,9 +4,13 @@
  * on a Reply Queue row (postbox.aiDraft).
  *
  * Covers:
- *   - a generated slot renders the draft preview + a confidence badge derived
- *     from the quality self-check + the self-check flags;
- *   - a slot whose self-check failed renders as "Unverified";
+ *   - a generated slot renders the draft preview + a HUMAN trust chip
+ *     ("Ready to send" / "Worth a look" / "Needs you") derived from the
+ *     quality self-check — never a raw confidence percentage;
+ *   - the chip popover translates self-check flags into plain-language
+ *     reasons (raw flag strings never render) and keeps the numeric
+ *     confidence as quiet footer detail;
+ *   - a slot whose self-check failed reads "Needs you" (the old Unverified);
  *   - "Review & send" emits the draft (opens the composer — never auto-sends)
  *     and "Dismiss" emits dismiss.
  */
@@ -37,28 +41,43 @@ function mountSlot(slot: ReplyQueueDraftSlot) {
 }
 
 describe('PostboxReviewSlot', () => {
-	it('renders the draft preview + a confidence badge from the self-check', () => {
+	it('renders the draft preview + a human trust chip from the self-check', () => {
 		const wrapper = mountSlot(makeSlot());
 		expect(wrapper.find('[data-testid="review-slot"]').exists()).toBe(true);
 		expect(wrapper.text()).toContain('Draft ready');
 		expect(wrapper.text()).toContain('Friday works for me');
-		expect(wrapper.find('[data-testid="review-slot-confidence"]').text()).toBe('High confidence');
+		expect(wrapper.find('[data-testid="trust-chip"]').text()).toBe('Ready to send');
+		// No raw percentage on the row itself.
+		expect(wrapper.text()).not.toMatch(/\d+%/);
 	});
 
-	it('shows the self-check flags a reviewer should skim', () => {
+	it('translates self-check flags into plain-language popover reasons — never the raw string', async () => {
 		const wrapper = mountSlot(
 			makeSlot({
 				confidence: 0.5,
-				quality: { score: 0.5, complete: false, grounded: true, flags: ['missing date'] },
+				quality: {
+					score: 0.5,
+					complete: false,
+					grounded: true,
+					flags: ['missing the date they asked about'],
+				},
 			})
 		);
-		expect(wrapper.find('[data-testid="review-slot-flags"]').text()).toContain('missing date');
-		expect(wrapper.find('[data-testid="review-slot-confidence"]').text()).toBe('Low confidence');
+		expect(wrapper.find('[data-testid="trust-chip"]').text()).toBe('Needs you');
+		await wrapper.find('[data-testid="trust-chip"]').trigger('click');
+		const popover = wrapper.find('[data-testid="trust-chip-popover"]');
+		expect(popover.exists()).toBe(true);
+		expect(popover.text()).toContain('Mentions a date or time worth confirming');
+		expect(popover.text()).not.toContain('missing the date they asked about');
+		// Progressive disclosure: the number survives as quiet footer detail.
+		expect(wrapper.find('[data-testid="trust-chip-detail"]').text()).toContain(
+			'Agent confidence 50%'
+		);
 	});
 
-	it('renders "Unverified" when the quality self-check failed', () => {
+	it('reads "Needs you" when the quality self-check failed (old Unverified state)', () => {
 		const wrapper = mountSlot(makeSlot({ quality: undefined, confidence: 0.4 }));
-		expect(wrapper.find('[data-testid="review-slot-confidence"]').text()).toBe('Unverified');
+		expect(wrapper.find('[data-testid="trust-chip"]').text()).toBe('Needs you');
 	});
 
 	it('shows the option count when alternatives were generated', () => {

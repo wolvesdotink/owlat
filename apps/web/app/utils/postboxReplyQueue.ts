@@ -181,22 +181,6 @@ export function replyQueueSection(
 }
 
 /**
- * Bucket a draft-on-arrival slot's confidence (the quality self-check score, or
- * a low fallback when the check failed) into a human label + severity for the
- * review chip. Pure so the mapping is unit-testable. Deliberately conservative:
- * this is a REVIEW hint, never an auto-send authorization.
- */
-export function draftSlotConfidence(slot: Pick<ReplyQueueDraftSlot, 'confidence' | 'quality'>): {
-	label: string;
-	level: 'high' | 'medium' | 'low' | 'unverified';
-} {
-	if (!slot.quality) return { label: 'Unverified', level: 'unverified' };
-	if (slot.confidence >= 0.8) return { label: 'High confidence', level: 'high' };
-	if (slot.confidence >= 0.6) return { label: 'Medium confidence', level: 'medium' };
-	return { label: 'Low confidence', level: 'low' };
-}
-
-/**
  * The lifecycle state of a "Needs your input" card:
  *   - 'asking'   — questions are open, waiting on the owner.
  *   - 'drafting' — answered, the starter reply has not landed yet.
