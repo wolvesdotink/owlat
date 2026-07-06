@@ -114,8 +114,12 @@ jobs:
           echo "Stamped desktop version -> $VERSION"
           grep -n '^version = ' Cargo.toml
 
-      - name: Build, sign & upload desktop app
-        uses: tauri-apps/tauri-action@v1
+      # Signing env is exported only when the secret actually has a value.
+      # GitHub renders unset secrets as EMPTY strings, and tauri-bundler treats
+      # a set-but-empty APPLE_CERTIFICATE as "sign with this" — `security
+      # import` then fails the whole build instead of skipping signing.
+      - name: Export signing env (skip unset secrets)
+        shell: bash
         env:
           # Updater signing (required for auto-update to verify downloads).
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -130,6 +134,30 @@ jobs:
           # Windows Authenticode (skipped when unset).
           WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
           WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for name in TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD \
+            APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY \
+            APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID \
+            WINDOWS_CERTIFICATE WINDOWS_CERTIFICATE_PASSWORD; do
+            value="${!name}"
+            if [ -n "$value" ]; then
+              {
+                echo "${name}<<__SIGNING_ENV_EOF__"
+                echo "$value"
+                echo "__SIGNING_ENV_EOF__"
+              } >> "$GITHUB_ENV"
+              echo "exported ${name}"
+            else
+              echo "skipped ${name} (not configured)"
+            fi
+          done
+
+      - name: Build, sign & upload desktop app
+        uses: tauri-apps/tauri-action@v1
+        env:
+          # Required for uploading the bundles to the draft Release.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           projectPath: apps/desktop
           # Upload to the Release the caller already created; do NOT create a new
