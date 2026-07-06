@@ -105,9 +105,11 @@ function selectViewMode(value: string) {
 const activeListRenderer = computed(() => postboxListRenderer(viewMode.value, folderRef.value));
 
 // Inbox landing mode — 'today' (the focused single-column PostboxTodayView;
-// the default) vs 'browse' (the three panes below). Inbox-only and only while
-// no message is open: the reader route and every other folder keep the
-// three-pane UI regardless of mode. Same optimistic-override pattern as the
+// the default) vs 'browse' (the three panes below). Inbox-only: every other
+// folder keeps the three-pane UI regardless of mode. A deep-linked message
+// (/inbox/<id>) stays in Today mode too — the Today view opens it in its
+// centered reader overlay over the list; in browse mode the same route is
+// the unchanged three-pane reader. Same optimistic-override pattern as the
 // view mode above; the server remembers the last-used mode.
 const pendingInboxMode = ref<PostboxInboxMode | null>(null);
 const inboxMode = computed<PostboxInboxMode>(() => pendingInboxMode.value ?? savedInboxMode.value);
@@ -122,12 +124,15 @@ function switchInboxMode(mode: PostboxInboxMode) {
 	});
 }
 const todayActive = computed(
-	() =>
-		folderRef.value === 'inbox' &&
-		!props.folderId &&
-		!props.activeMessageId &&
-		inboxMode.value === 'today'
+	() => folderRef.value === 'inbox' && !props.folderId && inboxMode.value === 'today'
 );
+
+// The Today overlay closed while the route still points at a deep-linked
+// message — settle the URL back on the plain inbox (replace: the overlay was
+// never its own history entry when opened from the list).
+function onTodayReaderClosed() {
+	if (props.activeMessageId) void navigateTo('/dashboard/postbox/inbox', { replace: true });
+}
 
 // The Today roll-up line's "view" opens the auto-filed mail where it lives:
 // browse mode with the Categories renderer. The Categories choice is a
@@ -246,8 +251,10 @@ const showReplyQueueStrip = computed(
 			<PostboxTodayView
 				v-if="todayActive"
 				:mailbox-id="mailboxId"
+				:initial-message-id="activeMessageId"
 				@browse="switchInboxMode('browse')"
 				@view-auto-filed="viewAutoFiled"
+				@reader-closed="onTodayReaderClosed"
 			/>
 			<div v-else class="flex w-full min-w-0">
 				<!-- Pane 1: folder rail — collapsible icon strip; self-contained (search,
