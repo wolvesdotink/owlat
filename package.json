@@ -1,116 +1,117 @@
 {
-  "name": "owlat",
-  "version": "0.1.0",
-  "private": true,
-  "description": "Owlat — self-hosted, modular email platform: marketing campaigns, team inbox, personal mailbox, and an AI agent, gated by a single feature-flag system.",
-  "keywords": [
-    "email",
-    "self-hosted",
-    "marketing",
-    "inbox",
-    "nuxt",
-    "convex",
-    "vue"
-  ],
-  "license": "Apache-2.0",
-  "homepage": "https://owlat.app",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/wolvesdotink/owlat.git"
-  },
-  "bugs": {
-    "url": "https://github.com/wolvesdotink/owlat/issues"
-  },
-  "author": "wolves <npm@wolves.ink>",
-  "packageManager": "bun@1.3.11",
-  "trustedDependencies": [
-    "@owlat/ui",
-    "better-sqlite3"
-  ],
-  "workspaces": {
-    "packages": [
-      "apps/*",
-      "packages/*",
-      "!packages/sdk-java"
-    ],
-    "catalog": {
-      "typescript": "^6.0.3",
-      "vitest": "^4.1.5",
-      "@vitest/coverage-v8": "^4.1.5",
-      "@types/node": "^25.6.0",
-      "vue-tsc": "^3.2.7"
-    },
-    "catalogs": {
-      "vue": {
-        "vue": "^3.5.33",
-        "nuxt": "^4.4.2",
-        "@nuxtjs/color-mode": "^4.0.0",
-        "@nuxt/fonts": "^0.14.0",
-        "tailwindcss": "^4.2.4",
-        "@tailwindcss/vite": "^4.2.4"
-      },
-      "convex": {
-        "convex": "^1.36.1",
-        "better-auth": "~1.6.9",
-        "@convex-dev/better-auth": "^0.12.0"
-      },
-      "ai": {
-        "ai": "^6.0.168",
-        "@ai-sdk/openai": "^3.0.53"
-      }
-    }
-  },
-  "scripts": {
-    "setup": "bun --cwd apps/setup-cli src/index.ts quickstart",
-    "dev": "turbo dev --filter=@owlat/web --filter=@owlat/api",
-    "dev:web": "turbo dev --filter=@owlat/web",
-    "dev:api": "turbo dev --filter=@owlat/api",
-    "dev:docs": "turbo dev --filter=@owlat/docs",
-    "dev:marketing": "turbo dev --filter=@owlat/marketing",
-    "build": "turbo build",
-    "build:web": "turbo build --filter=@owlat/web",
-    "build:docs": "turbo build --filter=@owlat/docs",
-    "build:marketing": "turbo build --filter=@owlat/marketing",
-    "typecheck": "turbo typecheck",
-    "lint": "turbo lint",
-    "lint:fix": "turbo lint:fix",
-    "lint:deadcode": "bash scripts/check-dead-code.sh",
-    "lint:filesize": "bash scripts/check-file-size.sh",
-    "lint:adr": "bash scripts/check-adr-numbers.sh",
-    "lint:branding": "bash scripts/check-branding.sh",
-    "lint:format": "bash scripts/check-format.sh",
-    "deploy:api": "turbo deploy --filter=@owlat/api",
-    "ox:lint": "oxlint --config oxlintrc.json",
-    "ox:lint:fix": "oxlint --config oxlintrc.json --fix",
-    "ox:fmt": "oxfmt --config oxfmtrc.json .",
-    "ox:fmt:check": "oxfmt --config oxfmtrc.json --check .",
-    "ci:lint": "turbo lint --filter='!@owlat/desktop' && bun run lint:deadcode && bun run lint:filesize && bun run lint:adr && bun run lint:branding && bun run lint:format",
-    "ci:typecheck": "turbo typecheck --filter='!@owlat/desktop'",
-    "ci:test": "turbo test --filter='!@owlat/desktop'",
-    "ci:verify": "turbo lint typecheck test --filter='!@owlat/desktop' && bun run lint:deadcode && bun run lint:filesize && bun run lint:adr && bun run lint:branding && bun run lint:format",
-    "test": "turbo test",
-    "test:watch": "turbo test:watch",
-    "changeset": "changeset",
-    "changeset:version": "changeset version",
-    "changeset:publish": "changeset publish",
-    "release": "bun run build && bun run changeset:publish"
-  },
-  "devDependencies": {
-    "@changesets/cli": "^2.31.0",
-    "knip": "6.23.0",
-    "oxfmt": "^0.46.0",
-    "oxlint": "^1.69.0",
-    "turbo": "^2.9.18"
-  },
-  "overrides": {
-    "shell-quote": "^1.8.4",
-    "tmp": "^0.2.7",
-    "fast-xml-builder": "^1.2.0",
-    "protobufjs": "^7.6.3",
-    "js-cookie": "^3.0.8",
-    "devalue": "^5.8.1",
-    "ws": "^8.21.0",
-    "undici": "^7.28.0",
-    "linkify-it": "^5.0.1"
-  }
+	"name": "owlat",
+	"version": "0.1.0",
+	"private": true,
+	"description": "Owlat — self-hosted, modular email platform: marketing campaigns, team inbox, personal mailbox, and an AI agent, gated by a single feature-flag system.",
+	"keywords": [
+		"convex",
+		"email",
+		"inbox",
+		"marketing",
+		"nuxt",
+		"self-hosted",
+		"vue"
+	],
+	"homepage": "https://owlat.app",
+	"bugs": {
+		"url": "https://github.com/wolvesdotink/owlat/issues"
+	},
+	"license": "Apache-2.0",
+	"author": "wolves <npm@wolves.ink>",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/wolvesdotink/owlat.git"
+	},
+	"workspaces": {
+		"packages": [
+			"apps/*",
+			"packages/*",
+			"!packages/sdk-java"
+		],
+		"catalog": {
+			"typescript": "^6.0.3",
+			"vitest": "^4.1.5",
+			"@vitest/coverage-v8": "^4.1.5",
+			"@types/node": "^25.6.0",
+			"vue-tsc": "^3.2.7"
+		},
+		"catalogs": {
+			"vue": {
+				"vue": "^3.5.33",
+				"nuxt": "^4.4.2",
+				"@nuxtjs/color-mode": "^4.0.0",
+				"@nuxt/fonts": "^0.14.0",
+				"tailwindcss": "^4.2.4",
+				"@tailwindcss/vite": "^4.2.4"
+			},
+			"convex": {
+				"convex": "^1.36.1",
+				"better-auth": "~1.6.9",
+				"@convex-dev/better-auth": "^0.12.0"
+			},
+			"ai": {
+				"ai": "^6.0.168",
+				"@ai-sdk/openai": "^3.0.53"
+			}
+		}
+	},
+	"scripts": {
+		"setup": "bun --cwd apps/setup-cli src/index.ts quickstart",
+		"dev": "turbo dev --filter=@owlat/web --filter=@owlat/api",
+		"dev:web": "turbo dev --filter=@owlat/web",
+		"dev:api": "turbo dev --filter=@owlat/api",
+		"dev:docs": "turbo dev --filter=@owlat/docs",
+		"dev:marketing": "turbo dev --filter=@owlat/marketing",
+		"build": "turbo build",
+		"build:web": "turbo build --filter=@owlat/web",
+		"build:docs": "turbo build --filter=@owlat/docs",
+		"build:marketing": "turbo build --filter=@owlat/marketing",
+		"typecheck": "turbo typecheck",
+		"lint": "turbo lint",
+		"lint:fix": "turbo lint:fix",
+		"lint:deadcode": "bash scripts/check-dead-code.sh",
+		"lint:filesize": "bash scripts/check-file-size.sh",
+		"lint:adr": "bash scripts/check-adr-numbers.sh",
+		"lint:branding": "bash scripts/check-branding.sh",
+		"lint:format": "bash scripts/check-format.sh",
+		"deploy:api": "turbo deploy --filter=@owlat/api",
+		"ox:lint": "oxlint --config oxlintrc.json",
+		"ox:lint:fix": "oxlint --config oxlintrc.json --fix",
+		"ox:fmt": "oxfmt --config oxfmtrc.json .",
+		"ox:fmt:check": "oxfmt --config oxfmtrc.json --check .",
+		"ci:lint": "turbo lint --filter='!@owlat/desktop' && bun run lint:deadcode && bun run lint:filesize && bun run lint:adr && bun run lint:branding && bun run lint:format",
+		"ci:typecheck": "turbo typecheck --filter='!@owlat/desktop'",
+		"ci:test": "turbo test --filter='!@owlat/desktop'",
+		"ci:verify": "turbo lint typecheck test --filter='!@owlat/desktop' && bun run lint:deadcode && bun run lint:filesize && bun run lint:adr && bun run lint:branding && bun run lint:format",
+		"test": "turbo test",
+		"test:watch": "turbo test:watch",
+		"release:cut": "bun scripts/release.ts",
+		"changeset": "changeset",
+		"changeset:version": "changeset version",
+		"changeset:publish": "changeset publish",
+		"release": "bun run build && bun run changeset:publish"
+	},
+	"devDependencies": {
+		"@changesets/cli": "^2.31.0",
+		"knip": "6.23.0",
+		"oxfmt": "^0.46.0",
+		"oxlint": "^1.69.0",
+		"turbo": "^2.9.18"
+	},
+	"overrides": {
+		"devalue": "^5.8.1",
+		"fast-xml-builder": "^1.2.0",
+		"js-cookie": "^3.0.8",
+		"linkify-it": "^5.0.1",
+		"protobufjs": "^7.6.3",
+		"shell-quote": "^1.8.4",
+		"tmp": "^0.2.7",
+		"undici": "^7.28.0",
+		"ws": "^8.21.0"
+	},
+	"packageManager": "bun@1.3.11",
+	"trustedDependencies": [
+		"@owlat/ui",
+		"better-sqlite3"
+	]
 }
