@@ -191,7 +191,11 @@ filter_count=$(grep -rn "\.filter(" convex --include="*.ts" 2>/dev/null \
 # Raised 194 → 195 for auth.memberErasure: the same GDPR erasure sweep also
 # collects a single mailbox's mailContactStyleOverrides via the by_mailbox index
 # to delete them — bounded per-mailbox, same idiom as the sibling erasure sweeps.
-COLLECT_BASELINE=195
+# Raised 195 → 196: realignment, no new collect in this change. Two concurrent
+# PRs each validated against baseline 195 and squash-merged, so main's actual
+# count (196) drifted one above the recorded baseline and every subsequent
+# apps/api PR failed this gate regardless of its own diff.
+COLLECT_BASELINE=196
 collect_count=$(grep -rn "\.collect()" convex --include="*.ts" 2>/dev/null \
 	| grep -v "/_generated/" \
 	| grep -v "/__tests__/" \

@@ -6,8 +6,8 @@
 	"homepage": "https://owlat.app",
 	"type": "module",
 	"scripts": {
-		"dev": "nuxt dev",
-		"dev:desktop": "cross-env OWLAT_DESKTOP=true nuxt dev",
+		"dev": "bun --env-file=../../.env --env-file=../../.env.local run nuxt dev",
+		"dev:desktop": "bun --env-file=../../.env --env-file=../../.env.local run cross-env OWLAT_DESKTOP=true nuxt dev",
 		"dev:typecheck": "cross-env NUXT_TYPECHECK=true nuxt dev",
 		"build": "nuxt build",
 		"generate": "nuxt generate",

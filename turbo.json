@@ -1,5 +1,6 @@
 {
 	"$schema": "https://v2-9-14.turborepo.dev/schema.json",
+	"globalEnv": ["NUXT_*", "CONVEX_*", "OWLAT_*", "POSTHOG_*"],
 	"tasks": {
 		"build": {
 			"dependsOn": ["^build"],
