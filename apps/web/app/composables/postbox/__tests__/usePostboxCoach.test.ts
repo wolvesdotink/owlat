@@ -2,7 +2,6 @@ import { describe, it, expect, vi } from 'vitest';
 import {
 	usePostboxCoach,
 	isCoachEligible,
-	countWords,
 	MIN_COACH_WORDS,
 	type CoachSuggestion,
 } from '../usePostboxCoach';
@@ -44,12 +43,8 @@ function deferredCoach() {
 }
 
 describe('visibility rules', () => {
-	it('counts whitespace-delimited words', () => {
-		expect(countWords('')).toBe(0);
-		expect(countWords('   ')).toBe(0);
-		expect(countWords('  one   two three ')).toBe(3);
-	});
-
+	// countWords itself is covered by usePostboxSelectionRewrite.test.ts — the
+	// coach shares that single implementation.
 	it('hides for a short draft even when AI is enabled', () => {
 		expect(MIN_COACH_WORDS).toBe(6);
 		expect(isCoachEligible(true, 'thanks a lot friend')).toBe(false);

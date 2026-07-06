@@ -23,7 +23,7 @@
  */
 
 import type { Ref } from 'vue';
-import { findAncestor, getNearestBlock } from './useRichText';
+import { findAncestor, getNearestBlock } from './richTextDom';
 
 /** Block markers → the block command they expand to, keyed on exact line text. */
 type BlockShortcutKind = 'ul' | 'ol' | 'h1' | 'h2' | 'blockquote';
@@ -53,7 +53,7 @@ export interface MarkdownShortcutDeps {
 	 * stays out of `@owlat/ui`.
 	 */
 	asciiReplace?: (
-		textBeforeCaret: string,
+		textBeforeCaret: string
 	) => { spanLen: number; replacement: string; literal: string } | null;
 }
 

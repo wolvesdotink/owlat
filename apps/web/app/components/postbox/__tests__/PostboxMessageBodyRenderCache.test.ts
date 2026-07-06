@@ -17,8 +17,11 @@ const sanitizeSpy = vi.mocked(sanitizeHtml);
 
 import PostboxMessageBody from '../PostboxMessageBody.vue';
 import PostboxReaderSkeleton from '../PostboxReaderSkeleton.vue';
-import UiSkeleton from '../../../../../../packages/ui/components/ui/Skeleton.vue';
-import { splitQuotedText, splitQuotedHtml } from '../../../composables/postbox/usePostboxQuotedText';
+import UiSkeleton from '@owlat/ui/components/ui/Skeleton.vue';
+import {
+	splitQuotedText,
+	splitQuotedHtml,
+} from '../../../composables/postbox/usePostboxQuotedText';
 import { getPostboxRenderCache } from '../../../utils/postboxRenderCache';
 
 vi.mock('@owlat/api', () => {

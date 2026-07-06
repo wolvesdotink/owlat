@@ -17,11 +17,8 @@
  * sites (e.g. signatures) never surface it. Nothing here calls the network.
  */
 import type { Ref } from 'vue';
-import {
-	detectShortcodeTrigger,
-	fuzzyFilterEmoji,
-	type PostboxEmoji,
-} from '~/utils/postboxEmojiShortcodes';
+import { detectShortcodeTrigger, fuzzyFilterEmoji } from '~/utils/postboxEmojiShortcodes';
+import type { PostboxEmoji } from '~/utils/postboxEmojiData';
 import { measureCaretRect } from '~/utils/postboxCaretRect';
 
 export interface EmojiPickerOptions {

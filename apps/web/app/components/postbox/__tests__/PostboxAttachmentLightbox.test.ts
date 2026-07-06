@@ -5,7 +5,7 @@ import { nextTick } from 'vue';
 // The component references useModalFocus as a Nuxt auto-import (provided by
 // the @owlat/ui layer); wire the real implementation in as a global so the
 // test exercises the actual focus-trap/restore behavior.
-import { useModalFocus } from '../../../../../../packages/ui/composables/useModalFocus';
+import { useModalFocus } from '@owlat/ui/composables/useModalFocus';
 import PostboxAttachmentLightbox from '../PostboxAttachmentLightbox.vue';
 
 vi.stubGlobal('useModalFocus', useModalFocus);
@@ -131,9 +131,7 @@ describe('PostboxAttachmentLightbox', () => {
 		await nextTick();
 
 		// Mouse-click "next": the browser focuses the clicked chevron.
-		const nextChevron = document.body.querySelector<HTMLElement>(
-			'[aria-label="Next attachment"]'
-		)!;
+		const nextChevron = document.body.querySelector<HTMLElement>('[aria-label="Next attachment"]')!;
 		nextChevron.focus();
 		nextChevron.click();
 		await flush();

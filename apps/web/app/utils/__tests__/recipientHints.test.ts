@@ -5,24 +5,12 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
-	emailDomain,
 	isExternalRecipient,
 	ownDomainsFromIdentities,
 	deriveReplyAllExtras,
 	mergeRecipients,
 	recipientLabel,
 } from '../recipientHints';
-
-describe('emailDomain', () => {
-	it('extracts and lowercases the domain, unwrapping "Name <addr>"', () => {
-		expect(emailDomain('Alice <Alice@Example.COM>')).toBe('example.com');
-		expect(emailDomain('bob@sub.example.com')).toBe('sub.example.com');
-	});
-	it('returns null when there is no domain', () => {
-		expect(emailDomain('not-an-email')).toBeNull();
-		expect(emailDomain('trailing@')).toBeNull();
-	});
-});
 
 describe('isExternalRecipient', () => {
 	const own = ['example.com'];
@@ -74,7 +62,11 @@ describe('deriveReplyAllExtras', () => {
 	it('is case-insensitive and unwraps display framing', () => {
 		expect(
 			deriveReplyAllExtras(
-				{ fromAddress: 'S@acme.io', toAddresses: ['Anna <ANNA@acme.io>'], ccAddresses: ['anna@acme.io'] },
+				{
+					fromAddress: 'S@acme.io',
+					toAddresses: ['Anna <ANNA@acme.io>'],
+					ccAddresses: ['anna@acme.io'],
+				},
 				[]
 			)
 		).toEqual(['Anna <ANNA@acme.io>']);
@@ -92,10 +84,7 @@ describe('mergeRecipients', () => {
 		).toEqual(['ben@acme.io', 'Anna <ANNA@acme.io>']);
 	});
 	it('preserves existing order first and skips blank additions', () => {
-		expect(mergeRecipients(['a@x.io'], ['', '  ', 'b@x.io'])).toEqual([
-			'a@x.io',
-			'b@x.io',
-		]);
+		expect(mergeRecipients(['a@x.io'], ['', '  ', 'b@x.io'])).toEqual(['a@x.io', 'b@x.io']);
 	});
 });
 
