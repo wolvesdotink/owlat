@@ -1,3 +1,37 @@
+<script lang="ts">
+/**
+ * The full message row the reader renders (the list-row shape plus body /
+ * verdict fields). Exported for hosts that pass rows through — the folder
+ * view, the search preview, and the Today view's centered overlay.
+ */
+export type PostboxReaderMessage = {
+	_id: string;
+	mailboxId: string;
+	threadId?: string;
+	fromAddress: string;
+	fromName?: string;
+	toAddresses: string[];
+	ccAddresses: string[];
+	subject: string;
+	snippet?: string;
+	receivedAt: number;
+	htmlBodyInline?: string;
+	textBodyInline?: string;
+	hasAttachments: boolean;
+	attachments: Array<{
+		filename: string;
+		contentType: string;
+		size: number;
+		partIndex?: string;
+		contentId?: string;
+	}>;
+	spamVerdict?: string;
+	dmarcResult?: string;
+	flagSeen?: boolean;
+	unsubscribe?: { httpUrl?: string; mailtoUrl?: string; oneClick: boolean };
+};
+</script>
+
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
@@ -22,38 +56,22 @@ import {
 import type { TrackerDetection } from '@owlat/shared/postboxTrackers';
 
 const props = defineProps<{
-	message: {
-		_id: string;
-		mailboxId: string;
-		threadId?: string;
-		fromAddress: string;
-		fromName?: string;
-		toAddresses: string[];
-		ccAddresses: string[];
-		subject: string;
-		snippet?: string;
-		receivedAt: number;
-		htmlBodyInline?: string;
-		textBodyInline?: string;
-		hasAttachments: boolean;
-		attachments: Array<{
-			filename: string;
-			contentType: string;
-			size: number;
-			partIndex?: string;
-			contentId?: string;
-		}>;
-		spamVerdict?: string;
-		dmarcResult?: string;
-		flagSeen?: boolean;
-		unsubscribe?: { httpUrl?: string; mailtoUrl?: string; oneClick: boolean };
-	};
+	message: PostboxReaderMessage;
 	// Auto-advance context (folder view only; the search preview passes
 	// neither and keeps its stay-put behavior). `advanceIds` is the list's
 	// current visual order (optimistic-hide filtered), `folderRole` the
 	// route segment used to build /dashboard/postbox/<folder>/<id> links.
 	advanceIds?: string[];
 	folderRole?: string;
+	// Overlay hosting (the Today view's centered reader): auto-advance swaps
+	// the reader IN PLACE via the `advance` emit instead of navigating to the
+	// folder/message route, so triaging never tears down the overlay.
+	advanceInPlace?: boolean;
+}>();
+
+const emit = defineEmits<{
+	/** advance-in-place hosts: open this message next (null = back to the list). */
+	advance: [messageId: string | null];
 }>();
 
 const stack = usePostboxComposerStack();
@@ -61,10 +79,9 @@ const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 
 // The mailbox's own addresses (canonical + active aliases) — excluded from the
 // Cc set on Reply-All so the user never adds themselves.
-const ownIdentitiesQuery = useConvexQuery(
-	api.mail.identities.listForOwnedMailbox,
-	() => ({ mailboxId: props.message.mailboxId as Id<'mailboxes'> })
-);
+const ownIdentitiesQuery = useConvexQuery(api.mail.identities.listForOwnedMailbox, () => ({
+	mailboxId: props.message.mailboxId as Id<'mailboxes'>,
+}));
 
 const ownAddresses = computed(
 	() =>
@@ -79,7 +96,10 @@ const ownEmail = computed(() => (ownIdentitiesQuery.data.value as string[] | und
 const secureClassMap = computed(() => {
 	const map = new Map<string, SecureMessageClass>();
 	for (const m of allMessages.value) {
-		map.set(m._id, classifySecureMessage({ attachments: m.attachments, textBody: m.textBodyInline }));
+		map.set(
+			m._id,
+			classifySecureMessage({ attachments: m.attachments, textBody: m.textBodyInline })
+		);
 	}
 	return map;
 });
@@ -110,16 +130,14 @@ function calendarAttachment(msg: {
 }) {
 	return msg.attachments?.find(
 		(a) =>
-			a.contentType.toLowerCase().includes('calendar') ||
-			a.filename.toLowerCase().endsWith('.ics')
+			a.contentType.toLowerCase().includes('calendar') || a.filename.toLowerCase().endsWith('.ics')
 	);
 }
 
 const messageId = computed(() => props.message._id as Id<'mailMessages'>);
-const { data: threadData, isLoading } = useConvexQuery(
-	api.mail.mailbox.listThreadMessages,
-	() => ({ messageId: messageId.value })
-);
+const { data: threadData, isLoading } = useConvexQuery(api.mail.mailbox.listThreadMessages, () => ({
+	messageId: messageId.value,
+}));
 
 const allMessages = computed(() => threadData.value?.messages ?? [props.message]);
 const latestMessage = computed(() => allMessages.value[allMessages.value.length - 1]);
@@ -209,9 +227,7 @@ function showSchedulingChip(msg: {
 	const intent = schedulingIntent.value;
 	return shouldShowSchedulingChip({
 		aiEnabled: isFeatureEnabled('ai'),
-		meetingIntent: intent
-			? { isScheduling: true, proposedTimes: intent.proposedTimes }
-			: null,
+		meetingIntent: intent ? { isScheduling: true, proposedTimes: intent.proposedTimes } : null,
 		triggerMessageId: intent?.messageId,
 		message: msg,
 		dismissed: dismissedScheduling.value,
@@ -365,7 +381,11 @@ async function openPrimaryReply(replyTo?: ReplyForwardSource) {
 }
 
 /** Whether Reply-All would add anyone beyond a plain Reply (extra To/Cc). */
-function hasOtherRecipients(msg: { fromAddress: string; toAddresses: string[]; ccAddresses: string[] }) {
+function hasOtherRecipients(msg: {
+	fromAddress: string;
+	toAddresses: string[];
+	ccAddresses: string[];
+}) {
 	const seen = new Set<string>([extractEmailAddress(msg.fromAddress), ...ownAddresses.value]);
 	return [...msg.toAddresses, ...msg.ccAddresses].some((a) => {
 		const c = extractEmailAddress(a);
@@ -520,6 +540,12 @@ async function runAndAdvance(run: () => Promise<unknown>) {
 	// e.g. archive/trash's row-already-gone soft-fail, or snooze's void
 	// success) still advances; that's fine because the row is gone either way.
 	if (result === undefined) return;
+	// Overlay host: swap the reader in place (or close it at the list's ends)
+	// instead of leaving the Today surface for the three-pane route.
+	if (props.advanceInPlace) {
+		emit('advance', target);
+		return;
+	}
 	if (!props.folderRole) return;
 	void navigateTo(
 		target
@@ -547,9 +573,7 @@ function snoozeOpenMessage(until: number) {
 	void runAndAdvance(() => snoozeOp.run({ messageId: messageId.value, until }));
 }
 function snoozeOpenMessageUntilReply(capUntil: number) {
-	void runAndAdvance(() =>
-		snoozeUntilReplyOp.run({ messageId: messageId.value, capUntil })
-	);
+	void runAndAdvance(() => snoozeUntilReplyOp.run({ messageId: messageId.value, capUntil }));
 }
 // Subject + snippet feed the deterministic wake-time suggestion in the dialog.
 const snoozeHintText = computed(() =>
@@ -801,10 +825,7 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 				:latest-outbound-id="latestOutboundId"
 				class="mt-2"
 			/>
-			<div
-				v-if="threadLabels.length > 0"
-				class="mt-2 flex flex-wrap items-center gap-1.5"
-			>
+			<div v-if="threadLabels.length > 0" class="mt-2 flex flex-wrap items-center gap-1.5">
 				<span
 					v-for="labelId in threadLabels"
 					:key="labelId"
@@ -854,7 +875,9 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 					/>
 					<div class="flex-1 min-w-0">
 						<p class="text-sm truncate">
-							<span class="font-medium text-text-primary">{{ msg.fromName || msg.fromAddress }}</span>
+							<span class="font-medium text-text-primary">{{
+								msg.fromName || msg.fromAddress
+							}}</span>
 							<template v-if="msg.snippet">
 								<span class="text-text-tertiary mx-1.5">·</span>
 								<span class="text-text-tertiary">{{ msg.snippet }}</span>
@@ -870,10 +893,7 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 				</button>
 
 				<!-- Expanded message -->
-				<section
-					v-else
-					class="group border border-border-subtle rounded bg-bg-surface px-4 py-3"
-				>
+				<section v-else class="group border border-border-subtle rounded bg-bg-surface px-4 py-3">
 					<header class="flex items-start gap-3">
 						<UiAvatar
 							:name="msg.fromName"
@@ -907,8 +927,16 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 										v-if="appIsDark"
 										type="button"
 										class="text-text-tertiary hover:text-text-primary"
-										:title="isForcedLight(msg._id) ? 'Render this message in dark mode' : 'Render this message on a light background'"
-										:aria-label="isForcedLight(msg._id) ? 'Render this message in dark mode' : 'Render this message on a light background'"
+										:title="
+											isForcedLight(msg._id)
+												? 'Render this message in dark mode'
+												: 'Render this message on a light background'
+										"
+										:aria-label="
+											isForcedLight(msg._id)
+												? 'Render this message in dark mode'
+												: 'Render this message on a light background'
+										"
 										:aria-pressed="isForcedLight(msg._id)"
 										@click="toggleForcedLight(msg._id)"
 									>
@@ -972,12 +1000,12 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 						@trackers="onTrackersDetected(msg._id, $event)"
 					/>
 
-						<PostboxInviteCard
-							v-if="calendarAttachment(msg)"
-							:message-id="msg._id"
-							:mailbox-id="message.mailboxId"
-							:own-email="ownEmail"
-						/>
+					<PostboxInviteCard
+						v-if="calendarAttachment(msg)"
+						:message-id="msg._id"
+						:mailbox-id="message.mailboxId"
+						:own-email="ownEmail"
+					/>
 
 					<section v-if="msg.attachments?.length > 0" class="mt-3">
 						<ul class="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1008,13 +1036,22 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 									class="p-1 rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary disabled:opacity-50"
 									:title="`Download ${att.filename}`"
 									:aria-label="`Download ${att.filename}`"
-									:disabled="downloadingAttachment === `${msg._id}:${att.partIndex ?? att.filename}`"
+									:disabled="
+										downloadingAttachment === `${msg._id}:${att.partIndex ?? att.filename}`
+									"
 									@click="handleAttachmentDownload(msg._id, att)"
 								>
 									<Icon
-										:name="downloadingAttachment === `${msg._id}:${att.partIndex ?? att.filename}` ? 'lucide:loader-2' : 'lucide:download'"
+										:name="
+											downloadingAttachment === `${msg._id}:${att.partIndex ?? att.filename}`
+												? 'lucide:loader-2'
+												: 'lucide:download'
+										"
 										class="w-4 h-4"
-										:class="{ 'animate-spin': downloadingAttachment === `${msg._id}:${att.partIndex ?? att.filename}` }"
+										:class="{
+											'animate-spin':
+												downloadingAttachment === `${msg._id}:${att.partIndex ?? att.filename}`,
+										}"
 									/>
 								</button>
 							</li>
@@ -1040,11 +1077,7 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 								:class="{ 'fill-current': isMessageStarred(msg) }"
 							/>
 						</button>
-						<button
-							type="button"
-							class="btn btn-ghost"
-							@click="openPrimaryReply(msg)"
-						>
+						<button type="button" class="btn btn-ghost" @click="openPrimaryReply(msg)">
 							<Icon name="lucide:reply" class="w-4 h-4 mr-1.5" />
 							Reply
 						</button>
@@ -1073,7 +1106,10 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 									type="button"
 									role="menuitem"
 									class="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface"
-									@click="openReplyAll(msg); close()"
+									@click="
+										openReplyAll(msg);
+										close();
+									"
 								>
 									<Icon name="lucide:reply-all" class="w-4 h-4 text-text-tertiary" />
 									Reply all
@@ -1082,7 +1118,10 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 									type="button"
 									role="menuitem"
 									class="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface"
-									@click="openForward(msg); close()"
+									@click="
+										openForward(msg);
+										close();
+									"
 								>
 									<Icon name="lucide:forward" class="w-4 h-4 text-text-tertiary" />
 									Forward
@@ -1091,7 +1130,10 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 									type="button"
 									role="menuitem"
 									class="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface"
-									@click="reportSpamMessage(msg._id); close()"
+									@click="
+										reportSpamMessage(msg._id);
+										close();
+									"
 								>
 									<Icon name="lucide:shield-alert" class="w-4 h-4 text-text-tertiary" />
 									Report spam
@@ -1100,7 +1142,10 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 									type="button"
 									role="menuitem"
 									class="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface"
-									@click="blockSenderOf(msg._id); close()"
+									@click="
+										blockSenderOf(msg._id);
+										close();
+									"
 								>
 									<Icon name="lucide:ban" class="w-4 h-4 text-text-tertiary" />
 									Block sender

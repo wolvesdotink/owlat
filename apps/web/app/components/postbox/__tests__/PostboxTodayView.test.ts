@@ -13,7 +13,7 @@
  */
 import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { mount } from '@vue/test-utils';
-import { ref, computed } from 'vue';
+import { ref, computed, nextTick } from 'vue';
 
 import PostboxTodayView from '../PostboxTodayView.vue';
 
@@ -48,8 +48,23 @@ beforeAll(() => {
 const iconStub = { props: ['name'], template: '<span class="icon" :data-name="name" />' };
 const nuxtLinkStub = { props: ['to'], template: '<a :href="to"><slot /></a>' };
 const threadListStub = {
-	props: ['messages', 'loading', 'folderRole', 'hasMore', 'mailboxId'],
-	template: '<div class="thread-list" :data-count="messages.length" />',
+	props: {
+		messages: { type: Array, default: () => [] },
+		loading: { type: Boolean, default: false },
+		folderRole: { type: String, default: undefined },
+		hasMore: { type: Boolean, default: false },
+		mailboxId: { type: String, default: undefined },
+		selectable: { type: Boolean, default: false },
+		activeMessageId: { type: String, default: undefined },
+	},
+	emits: ['select', 'load-more'],
+	template:
+		'<div class="thread-list" :data-count="messages.length" :data-selectable="selectable" :data-active="activeMessageId ?? \'\'" />',
+};
+const overlayStub = {
+	props: ['message', 'advanceIds'],
+	emits: ['close', 'open'],
+	template: '<div class="reader-overlay" :data-id="message._id" />',
 };
 const skeletonStub = { template: '<div class="skeleton" />' };
 
@@ -67,16 +82,20 @@ function todayMsg(id: string, overrides: Record<string, unknown> = {}) {
 	};
 }
 
-function mountView() {
+function mountView(extraProps: Record<string, unknown> = {}) {
 	return mount(PostboxTodayView, {
-		props: { mailboxId: 'mbx-1' as never },
+		props: { mailboxId: 'mbx-1' as never, ...extraProps },
 		global: {
 			components: {
 				Icon: iconStub,
 				NuxtLink: nuxtLinkStub,
 				PostboxThreadList: threadListStub,
 				PostboxThreadListSkeleton: skeletonStub,
+				PostboxTodayReaderOverlay: overlayStub,
 			},
+			// Render Transition content synchronously so v-if swaps (overlay
+			// open/close, Show past) can be asserted without racing rAF timing.
+			stubs: { transition: true },
 		},
 	});
 }
@@ -164,5 +183,48 @@ describe('PostboxTodayView', () => {
 		await showPast!.trigger('click');
 		expect(w.find('.thread-list').attributes('data-count')).toBe('2');
 		expect(w.text()).toContain('Past');
+	});
+
+	it('opens a selected row in the centered overlay, keeping the list mounted', async () => {
+		feed.messages.value = [todayMsg('m-a'), todayMsg('m-b')];
+		queue.items.value = [];
+		threads.value = { threads: [] };
+		const w = mountView();
+		// Rows open in place (no navigation) — the list is selectable.
+		const list = w.findComponent(threadListStub);
+		expect(list.attributes('data-selectable')).toBe('true');
+		expect(w.find('.reader-overlay').exists()).toBe(false);
+
+		list.vm.$emit('select', 'm-a');
+		await nextTick();
+		expect(w.find('.reader-overlay').attributes('data-id')).toBe('m-a');
+		// The column stays mounted underneath (scroll + selection preserved)
+		// and the row reads as active.
+		expect(w.find('.thread-list').exists()).toBe(true);
+		expect(w.find('.thread-list').attributes('data-active')).toBe('m-a');
+
+		// j/k advance: the overlay swaps the thread in place via `open`.
+		const overlay = w.findComponent(overlayStub);
+		expect(overlay.props('advanceIds')).toEqual(['m-a', 'm-b']);
+		overlay.vm.$emit('open', 'm-b');
+		await nextTick();
+		expect(w.find('.reader-overlay').attributes('data-id')).toBe('m-b');
+		expect(w.emitted('reader-closed')).toBeUndefined();
+
+		// Esc/scrim close: back to the intact list; the host is notified so a
+		// deep-linked route can settle back on the inbox URL.
+		w.findComponent(overlayStub).vm.$emit('close');
+		await nextTick();
+		expect(w.find('.reader-overlay').exists()).toBe(false);
+		expect(w.find('.thread-list').exists()).toBe(true);
+		expect(w.emitted('reader-closed')).toHaveLength(1);
+	});
+
+	it('seeds the overlay from a deep-linked message id', () => {
+		feed.messages.value = [todayMsg('m-deep')];
+		queue.items.value = [];
+		threads.value = { threads: [] };
+		const w = mountView({ initialMessageId: 'm-deep' });
+		expect(w.find('.reader-overlay').attributes('data-id')).toBe('m-deep');
 	});
 });
