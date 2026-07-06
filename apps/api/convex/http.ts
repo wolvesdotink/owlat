@@ -1,7 +1,7 @@
 import { httpRouter } from 'convex/server';
 import { authComponent, createAuth } from './auth/auth';
-import { trackOpen, trackClick } from "./delivery/trackingHttp";
-import { handleCors, healthCheck } from "./auth/apiAuth";
+import { trackOpen, trackClick } from './delivery/trackingHttp';
+import { handleCors, healthCheck } from './auth/apiAuth';
 import { seedAdmin } from './seedAdmin';
 import { seedDemoHttp } from './seedDemo';
 import { resetHttp } from './devShortcuts/reset';
@@ -11,12 +11,12 @@ import {
 	updateContact,
 	deleteContact,
 	listContacts,
-} from "./contacts/api";
+} from './contacts/api';
 import { sendEvent } from './eventsApi';
 import { sendTransactional } from './transactional/api';
 import { addContactToTopic, removeContactFromTopic } from './topics/apiHttp';
-import { handleOneClickUnsubscribe, verifyUnsubscribeToken } from "./delivery/unsubscribeHttp";
-import { verifyPreferenceToken, updatePreferences } from "./delivery/preferencesHttp";
+import { handleOneClickUnsubscribe, verifyUnsubscribeToken } from './delivery/unsubscribeHttp';
+import { verifyPreferenceToken, updatePreferences } from './delivery/preferencesHttp';
 import { submitForm, handleFormCors } from './forms/apiHttp';
 import { handleResendWebhook } from './resendWebhook';
 import { handleMtaWebhook } from './mtaWebhook';
@@ -390,6 +390,20 @@ http.route({
 // This handles all /api/auth/* endpoints
 // Cast required: BetterAuth component bundles its own copy of Convex types
 // which are structurally identical but nominally different (bun duplicate resolution)
-authComponent.registerRoutes(http, createAuth as Parameters<typeof authComponent.registerRoutes>[1]);
+// cors is required for the desktop app: the browser web client proxies auth
+// same-origin through the Nuxt server, but the desktop webview calls this
+// router cross-origin (auth-client.ts desktop branch, crossDomain plugin with
+// a Better-Auth-Cookie header → CORS preflight). Without it registerRoutes
+// only adds GET/POST routes, so every OPTIONS preflight 404s and desktop
+// sign-in cannot reach /api/auth/* at all. `cors: true` allowlists the
+// resolved trustedOrigins (SITE_URL, tauri://localhost, …) and the
+// Better-Auth-Cookie / Set-Better-Auth-Cookie header pair.
+authComponent.registerRoutes(
+	http,
+	createAuth as Parameters<typeof authComponent.registerRoutes>[1],
+	{
+		cors: true,
+	}
+);
 
 export default http;
