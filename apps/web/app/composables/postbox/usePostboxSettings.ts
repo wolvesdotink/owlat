@@ -15,6 +15,9 @@
  *     `r`) opens a plain Reply or a Reply-all. Defaults to 'reply'.
  *   - `density` — 'comfortable' (roomy default) vs 'compact' (tighter rows +
  *     single-line subject/snippet). Defaults to 'comfortable'.
+ *   - `viewMode` — which list renderer the inbox uses: 'flat' (default),
+ *     'conversations' (thread-grouped), or 'categories' (smart-inbox
+ *     sections). Inbox-only; other folders always render flat.
  *   - `sendSound` — play a short confirmation sound when a message is
  *     dispatched. Defaults OFF (opt-in).
  */
@@ -26,6 +29,8 @@ import type { PostboxReplyDefaultMode } from '~/utils/postboxReplyDefault';
 import { POSTBOX_REPLY_DEFAULT } from '~/utils/postboxReplyDefault';
 import type { PostboxDensity } from '~/utils/postboxDensity';
 import { resolvePostboxDensity } from '~/utils/postboxDensity';
+import type { PostboxViewMode } from '~/utils/postboxViewMode';
+import { resolvePostboxViewMode } from '~/utils/postboxViewMode';
 import type { PostboxNotifyAbout } from '~/utils/postboxNotify';
 import { resolvePostboxNotifyAbout } from '~/utils/postboxNotify';
 
@@ -59,6 +64,10 @@ export function usePostboxSettings() {
 	// List/reader density. An unset (or unknown) value resolves to 'comfortable',
 	// so the reader can consume it unconditionally while the query loads.
 	const density = computed<PostboxDensity>(() => resolvePostboxDensity(data.value?.density));
+
+	// Inbox list view mode. An unset (or unknown) value resolves to 'flat', so
+	// the layout can consume it unconditionally while the query loads.
+	const viewMode = computed<PostboxViewMode>(() => resolvePostboxViewMode(data.value?.viewMode));
 
 	// Confirmation sound on send. Default OFF (opt-in): an unset preference means
 	// no sound, so the composer stays silent unless the user turns it on.
@@ -104,6 +113,13 @@ export function usePostboxSettings() {
 		await updateOp.run({ density: mode });
 	}
 
+	// Reports success so callers with an optimistic override can snap back on
+	// failure: the update mutation returns a row id, while a failed run()
+	// resolves to undefined (the error is already toasted).
+	async function setViewMode(mode: PostboxViewMode): Promise<boolean> {
+		return (await updateOp.run({ viewMode: mode })) !== undefined;
+	}
+
 	async function setSendSound(enabled: boolean) {
 		await updateOp.run({ isSendSoundOn: enabled });
 	}
@@ -126,6 +142,7 @@ export function usePostboxSettings() {
 		autoSummarize,
 		replyDefault,
 		density,
+		viewMode,
 		sendSound,
 		notifyAbout,
 		badgeNonPeople,
@@ -136,6 +153,7 @@ export function usePostboxSettings() {
 		setAutoSummarize,
 		setReplyDefault,
 		setDensity,
+		setViewMode,
 		setSendSound,
 		setNotifyAbout,
 		setBadgeNonPeople,

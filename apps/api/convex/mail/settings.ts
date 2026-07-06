@@ -20,6 +20,7 @@ import {
 	mailAutoAdvanceValidator,
 	mailReplyDefaultValidator,
 	mailDensityValidator,
+	mailViewModeValidator,
 	mailNotifyAboutValidator,
 } from '../lib/convexValidators';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
@@ -42,6 +43,7 @@ export const get = publicQuery({
 			isAutoSummarizeOn: row.isAutoSummarizeOn,
 			replyDefault: row.replyDefault,
 			density: row.density,
+			viewMode: row.viewMode,
 			isSendSoundOn: row.isSendSoundOn,
 			notifyAbout: row.notifyAbout,
 			isBadgeNonPeopleOn: row.isBadgeNonPeopleOn,
@@ -59,6 +61,7 @@ export const update = authedMutation({
 		isAutoSummarizeOn: v.optional(v.boolean()),
 		replyDefault: v.optional(mailReplyDefaultValidator),
 		density: v.optional(mailDensityValidator),
+		viewMode: v.optional(mailViewModeValidator),
 		isSendSoundOn: v.optional(v.boolean()),
 		notifyAbout: v.optional(mailNotifyAboutValidator),
 		isBadgeNonPeopleOn: v.optional(v.boolean()),
@@ -80,6 +83,7 @@ export const update = authedMutation({
 			isAutoSummarizeOn?: boolean;
 			replyDefault?: (typeof args)['replyDefault'];
 			density?: (typeof args)['density'];
+			viewMode?: (typeof args)['viewMode'];
 			isSendSoundOn?: boolean;
 			notifyAbout?: (typeof args)['notifyAbout'];
 			isBadgeNonPeopleOn?: boolean;
@@ -91,6 +95,7 @@ export const update = authedMutation({
 		if (args.isAutoSummarizeOn !== undefined) patch.isAutoSummarizeOn = args.isAutoSummarizeOn;
 		if (args.replyDefault !== undefined) patch.replyDefault = args.replyDefault;
 		if (args.density !== undefined) patch.density = args.density;
+		if (args.viewMode !== undefined) patch.viewMode = args.viewMode;
 		if (args.isSendSoundOn !== undefined) patch.isSendSoundOn = args.isSendSoundOn;
 		if (args.notifyAbout !== undefined) patch.notifyAbout = args.notifyAbout;
 		if (args.isBadgeNonPeopleOn !== undefined) patch.isBadgeNonPeopleOn = args.isBadgeNonPeopleOn;

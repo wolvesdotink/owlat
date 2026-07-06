@@ -89,11 +89,28 @@ describe('mail.settings get/update', () => {
 		expect(await t.query(api.mail.settings.get, {})).toEqual({
 			autoAdvance: 'back-to-list',
 		});
-		const rows = await t.run((ctx) =>
-			ctx.db.query('mailUserSettings').take(10)
-		);
+		const rows = await t.run((ctx) => ctx.db.query('mailUserSettings').take(10));
 		expect(rows).toHaveLength(1);
 		expect(rows[0]?.userId).toBe('user-A');
+	});
+
+	it('round-trips the inbox view mode without clobbering other preferences', async () => {
+		const t = convexTest(schema, modules);
+		await t.mutation(api.mail.settings.update, { autoAdvance: 'previous' });
+		await t.mutation(api.mail.settings.update, { viewMode: 'categories' });
+		expect(await t.query(api.mail.settings.get, {})).toEqual({
+			autoAdvance: 'previous',
+			viewMode: 'categories',
+		});
+	});
+
+	it('rejects a view mode outside the union', async () => {
+		const t = convexTest(schema, modules);
+		await expect(
+			t.mutation(api.mail.settings.update, {
+				viewMode: 'stacked' as unknown as 'flat',
+			})
+		).rejects.toThrow();
 	});
 
 	it('rejects values outside the mode union', async () => {

@@ -284,6 +284,17 @@ export const mailReplyDefaultValidator = v.union(v.literal('reply'), v.literal('
 // single-line subject/snippet). Single source so schema and args can't drift.
 export const mailDensityValidator = v.union(v.literal('comfortable'), v.literal('compact'));
 
+// Postbox inbox list view mode (mailUserSettings.viewMode and mail/settings
+// update args) — 'flat' (single message list, the default), 'conversations'
+// (thread-grouped rows), or 'categories' (People / Newsletters / Notifications
+// / Receipts sections). Inbox-only; other folders always render flat. Single
+// source so schema and args can't drift.
+export const mailViewModeValidator = v.union(
+	v.literal('flat'),
+	v.literal('conversations'),
+	v.literal('categories')
+);
+
 // Postbox desktop-notification scope (mailUserSettings.notifyAbout and
 // mail/settings update args). 'everything' fires a toast for every new inbox
 // message; 'people-important' only for smart-category `person` mail (and any
