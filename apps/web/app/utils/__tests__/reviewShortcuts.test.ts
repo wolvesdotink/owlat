@@ -7,6 +7,7 @@ describe('resolveReviewShortcut', () => {
 		expect(resolveReviewShortcut('e')).toBe('edit');
 		expect(resolveReviewShortcut('x')).toBe('reject');
 		expect(resolveReviewShortcut('#')).toBe('reject');
+		expect(resolveReviewShortcut('s')).toBe('skip');
 	});
 
 	it('returns null for unmapped keys (so they never trigger a destructive action)', () => {
@@ -24,5 +25,7 @@ describe('resolveReviewShortcut', () => {
 		expect(labels).toContain('Approve & send');
 		expect(labels).toContain('Edit');
 		expect(labels).toContain('Reject');
+		expect(labels).toContain('Skip');
+		expect(labels).toContain('Pick option');
 	});
 });

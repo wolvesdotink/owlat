@@ -1,10 +1,15 @@
 <script setup lang="ts">
 import InboxTrustChip from '~/components/inbox/TrustChip.vue';
+import TaskActions from '~/components/agent-tasks/TaskActions.vue';
+import TaskAsk from '~/components/agent-tasks/TaskAsk.vue';
+import TaskCardShell from '~/components/agent-tasks/TaskCardShell.vue';
 import type { ReplyQueueDraftSlot } from '~/utils/postboxReplyQueue';
 import { trustLabel } from '~/utils/trustLabel';
 
 /**
- * Draft-on-arrival review slot (postbox.aiDraft).
+ * Draft-on-arrival review slot (postbox.aiDraft), built on the shared
+ * agent-task card anatomy (TaskCardShell/Ask/Actions) so it matches its
+ * Review Queue siblings.
  *
  * Renders under a Reply Queue row when the shared draft service pre-generated a
  * reply the moment the message landed: a "Draft ready" chip, a human trust chip
@@ -40,11 +45,8 @@ const preview = computed(() => {
 </script>
 
 <template>
-	<div
-		data-testid="review-slot"
-		class="mt-2 rounded-lg border border-border-subtle bg-bg-elevated/60 p-3"
-	>
-		<div class="flex items-center gap-2">
+	<TaskCardShell data-testid="review-slot" dense class="mt-2">
+		<div class="flex items-center gap-2 flex-wrap">
 			<span
 				class="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-px rounded-full bg-brand/10 text-brand"
 			>
@@ -61,28 +63,17 @@ const preview = computed(() => {
 			</span>
 		</div>
 
-		<p class="mt-1.5 text-xs text-text-secondary whitespace-pre-line line-clamp-3">
-			{{ preview }}
-		</p>
+		<TaskAsk class="mt-1.5" :detail="preview" />
 
-		<div class="mt-2 flex items-center gap-2">
-			<button
-				type="button"
-				data-testid="review-slot-send"
-				class="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-brand text-white hover:bg-brand/90"
-				@click.stop.prevent="emit('review', draftSlot.draft)"
-			>
-				<Icon name="lucide:send" class="w-3.5 h-3.5" aria-hidden="true" />
-				Review &amp; send
-			</button>
-			<button
-				type="button"
-				data-testid="review-slot-dismiss"
-				class="px-2 py-1 rounded text-xs text-text-tertiary hover:text-text-primary hover:bg-bg-surface"
-				@click.stop.prevent="emit('dismiss')"
-			>
-				Dismiss
-			</button>
-		</div>
-	</div>
+		<TaskActions
+			class="mt-2"
+			primary-label="Review &amp; send"
+			primary-icon="lucide:send"
+			primary-test-id="review-slot-send"
+			skip-label="Dismiss"
+			skip-test-id="review-slot-dismiss"
+			@primary="emit('review', draftSlot.draft)"
+			@skip="emit('dismiss')"
+		/>
+	</TaskCardShell>
 </template>

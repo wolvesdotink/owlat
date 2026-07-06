@@ -9,7 +9,7 @@
  * the caller (usePostboxListKeyboard, which useReviewQueueKeyboard reuses).
  */
 
-export type ReviewShortcutAction = 'approve' | 'edit' | 'reject';
+export type ReviewShortcutAction = 'approve' | 'edit' | 'reject' | 'skip';
 
 export function resolveReviewShortcut(key: string): ReviewShortcutAction | null {
 	switch (key) {
@@ -20,6 +20,9 @@ export function resolveReviewShortcut(key: string): ReviewShortcutAction | null 
 		case 'x':
 		case '#':
 			return 'reject';
+		case 's':
+			// Skip is NON-destructive: move on to the next card without acting.
+			return 'skip';
 		default:
 			return null;
 	}
@@ -30,7 +33,9 @@ export const REVIEW_SHORTCUT_GROUPS: ReadonlyArray<{ keys: readonly string[]; la
 	{ keys: ['j', '↓'], label: 'Next' },
 	{ keys: ['k', '↑'], label: 'Previous' },
 	{ keys: ['Enter'], label: 'Open thread' },
+	{ keys: ['1–9'], label: 'Pick option' },
 	{ keys: ['a'], label: 'Approve & send' },
 	{ keys: ['e'], label: 'Edit' },
+	{ keys: ['s'], label: 'Skip' },
 	{ keys: ['x', '#'], label: 'Reject' },
 ];

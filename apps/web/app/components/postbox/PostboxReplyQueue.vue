@@ -33,11 +33,22 @@ const { visible: visibleRows, hide: hideRow, unhide: unhideRow } = usePostboxOpt
 
 // Split the queue: threads with an open/answered clarification render as
 // "Needs your input" cards; everything else keeps the plain "Needs you" rows.
+// "I'll answer later" (defer) is the NON-DESTRUCTIVE escape from a
+// clarification card: the thread drops back to the plain rows for this
+// session — the clarification survives server-side, nothing is cleared.
+const deferredThreads = ref<Set<string>>(new Set());
+function deferClarification(threadId: string) {
+	deferredThreads.value = new Set(deferredThreads.value).add(threadId);
+}
 const needsInputRows = computed<QueueRow[]>(() =>
-	visibleRows.value.filter((r) => replyQueueSection(r) === 'needs_input')
+	visibleRows.value.filter(
+		(r) => replyQueueSection(r) === 'needs_input' && !deferredThreads.value.has(r.threadId)
+	)
 );
 const needsYouRows = computed<QueueRow[]>(() =>
-	visibleRows.value.filter((r) => replyQueueSection(r) === 'needs_you')
+	visibleRows.value.filter(
+		(r) => replyQueueSection(r) === 'needs_you' || deferredThreads.value.has(r.threadId)
+	)
 );
 
 const { isEnabled: isFeatureEnabled } = useFeatureFlag();
@@ -230,7 +241,7 @@ const URGENCY_LABEL: Record<string, string> = { high: 'Urgent', low: 'Low priori
 			>
 				Needs your input
 			</h3>
-			<ul class="divide-y divide-border-subtle">
+			<ul class="space-y-2 px-3 py-2">
 				<li v-for="row in needsInputRows" :key="row._id">
 					<PostboxClarificationCard
 						:item="row"
@@ -239,6 +250,7 @@ const URGENCY_LABEL: Record<string, string> = { high: 'Urgent', low: 'Low priori
 						@open-draft="(draft) => openClarificationDraft(row, draft)"
 						@open="openRow(row)"
 						@done="markDone(row)"
+						@defer="deferClarification(row.threadId)"
 					/>
 				</li>
 			</ul>

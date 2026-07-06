@@ -20,6 +20,7 @@ function harness(items = [{ _id: 'a' }, { _id: 'b' }, { _id: 'c' }]) {
 		onApprove: (r) => calls.push(['approve', r._id]),
 		onEdit: (r) => calls.push(['edit', r._id]),
 		onReject: (r) => calls.push(['reject', r._id]),
+		onPickOption: (r, index) => calls.push(['pick', `${r._id}:${index}`]),
 	});
 	return { kb, calls };
 }
@@ -50,6 +51,28 @@ describe('useReviewQueueKeyboard', () => {
 			['reject', 'a'],
 			['reject', 'a'],
 		]);
+	});
+
+	it('maps 1–9 → onPickOption with the zero-based chip index on the focused row', () => {
+		const { kb, calls } = harness();
+		kb.onKeydown(key('j')); // focus 'a'
+		kb.onKeydown(key('1'));
+		kb.onKeydown(key('3'));
+		expect(calls).toEqual([
+			['pick', 'a:0'],
+			['pick', 'a:2'],
+		]);
+	});
+
+	it('s skips: focuses the next card without dispatching any action (non-destructive)', () => {
+		const { kb, calls } = harness();
+		kb.onKeydown(key('j')); // focus 'a'
+		kb.onKeydown(key('s'));
+		expect(kb.focusedIndex.value).toBe(1);
+		kb.onKeydown(key('s'));
+		kb.onKeydown(key('s')); // clamped at the last card
+		expect(kb.focusedIndex.value).toBe(2);
+		expect(calls).toEqual([]);
 	});
 
 	it('the approve key routes through the SAME onApprove callback the button uses', () => {
