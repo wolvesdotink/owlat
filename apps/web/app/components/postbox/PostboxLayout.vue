@@ -7,6 +7,8 @@ import {
 	postboxListRenderer,
 	resolvePostboxViewMode,
 } from '~/utils/postboxViewMode';
+import type { PostboxInboxMode } from '~/utils/postboxInboxMode';
+import { isEditableTarget } from '~/utils/postboxShortcuts';
 
 const props = defineProps<{
 	mailboxId: Id<'mailboxes'>;
@@ -26,7 +28,13 @@ const { customFolders } = usePostboxFolders(mailboxIdRef);
 // Postbox root; all compact styling lives in CSS keyed off it (postbox-density.css).
 // viewMode → which of the three inbox list renderers is active (Flat /
 // Conversations / Categories), persisted per user on the server.
-const { density, viewMode: savedViewMode, setViewMode } = usePostboxSettings();
+const {
+	density,
+	viewMode: savedViewMode,
+	setViewMode,
+	inboxMode: savedInboxMode,
+	setInboxMode,
+} = usePostboxSettings();
 
 const { messages, isLoading, hasMore, loadMore } = usePostboxThreads({
 	mailboxId: mailboxIdRef,
@@ -96,6 +104,73 @@ function selectViewMode(value: string) {
 }
 const activeListRenderer = computed(() => postboxListRenderer(viewMode.value, folderRef.value));
 
+// Inbox landing mode — 'today' (the focused single-column PostboxTodayView;
+// the default) vs 'browse' (the three panes below). Inbox-only and only while
+// no message is open: the reader route and every other folder keep the
+// three-pane UI regardless of mode. Same optimistic-override pattern as the
+// view mode above; the server remembers the last-used mode.
+const pendingInboxMode = ref<PostboxInboxMode | null>(null);
+const inboxMode = computed<PostboxInboxMode>(() => pendingInboxMode.value ?? savedInboxMode.value);
+watch(savedInboxMode, (saved) => {
+	if (pendingInboxMode.value === saved) pendingInboxMode.value = null;
+});
+function switchInboxMode(mode: PostboxInboxMode) {
+	if (mode === inboxMode.value) return;
+	pendingInboxMode.value = mode;
+	void setInboxMode(mode).then((saved) => {
+		if (!saved && pendingInboxMode.value === mode) pendingInboxMode.value = null;
+	});
+}
+const todayActive = computed(
+	() =>
+		folderRef.value === 'inbox' &&
+		!props.folderId &&
+		!props.activeMessageId &&
+		inboxMode.value === 'today'
+);
+
+// The Today roll-up line's "view" opens the auto-filed mail where it lives:
+// browse mode with the Categories renderer. The Categories choice is a
+// TRANSIENT override (pendingViewMode) — it must not silently overwrite the
+// user's saved list preference.
+function viewAutoFiled() {
+	pendingViewMode.value = 'categories';
+	switchInboxMode('browse');
+}
+
+// Focus the rail's search box after a mode flip mounts it (the `/` shortcut
+// from Today mode; the rail consumes + clears the flag on mount).
+const searchAutofocus = useState('postbox:search-autofocus', () => false);
+
+// Mode shortcuts (window-level, like the triage-undo chord above): B (and
+// Cmd/Ctrl-B) toggles Today ↔ Browse from the inbox list; Esc returns from
+// Browse to Today; `/` from Today jumps to Browse with the search focused
+// (search never renders inside the Today column). All inert in text inputs,
+// while a message is open, and while any dialog is up.
+function onModeKeydown(event: KeyboardEvent) {
+	if (folderRef.value !== 'inbox' || props.folderId || props.activeMessageId) return;
+	if (isEditableTarget(event.target)) return;
+	if (event.defaultPrevented) return;
+	if (document.querySelector('[role="dialog"]')) return;
+	if (event.key.toLowerCase() === 'b' && !event.altKey && !event.shiftKey) {
+		event.preventDefault();
+		switchInboxMode(inboxMode.value === 'today' ? 'browse' : 'today');
+		return;
+	}
+	if (event.metaKey || event.ctrlKey || event.altKey) return;
+	if (event.key === 'Escape' && inboxMode.value === 'browse') {
+		switchInboxMode('today');
+		return;
+	}
+	if (event.key === '/' && todayActive.value) {
+		event.preventDefault();
+		searchAutofocus.value = true;
+		switchInboxMode('browse');
+	}
+}
+onMounted(() => window.addEventListener('keydown', onModeKeydown));
+onBeforeUnmount(() => window.removeEventListener('keydown', onModeKeydown));
+
 const threadGroupsEnabled = computed(() => activeListRenderer.value === 'conversations');
 const {
 	threads: threadGroups,
@@ -163,152 +238,187 @@ const showReplyQueueStrip = computed(
 
 <template>
 	<div class="flex w-full" :data-density="density">
-		<!-- Pane 1: folder rail — collapsible icon strip; self-contained (search,
+		<!-- Landing mode: the focused Today column replaces the three panes on
+		     the inbox route until the user opens a message or switches to
+		     Browse (header button / B / Esc back). pbx-fade is opacity-only and
+		     inert under prefers-reduced-motion. -->
+		<Transition name="pbx-fade" mode="out-in">
+			<PostboxTodayView
+				v-if="todayActive"
+				:mailbox-id="mailboxId"
+				@browse="switchInboxMode('browse')"
+				@view-auto-filed="viewAutoFiled"
+			/>
+			<div v-else class="flex w-full min-w-0">
+				<!-- Pane 1: folder rail — collapsible icon strip; self-contained (search,
 		     folder CRUD, labels, Reply Queue/Snoozed/Contacts, Cmd+Shift+D). -->
-		<PostboxFolderRail :mailbox-id="mailboxId" :folder-role="folderRole" :folder-id="folderId" />
-
-		<!-- Pane 2: thread/message list -->
-		<section class="w-96 border-r border-border-subtle flex flex-col bg-bg-surface">
-			<!-- Quiet offline banner: cached list + already-read bodies stay
-			     readable; server-backed actions degrade with clear affordances. -->
-			<div
-				v-if="isOffline"
-				class="flex items-center gap-2 px-4 py-2 bg-warning-subtle text-warning text-xs border-b border-border-subtle"
-				role="status"
-			>
-				<Icon name="lucide:cloud-off" class="w-3.5 h-3.5 flex-shrink-0" />
-				<span class="truncate"
-					>Offline — showing recent mail from this device. Actions are paused.</span
-				>
-			</div>
-			<header class="border-b border-border-subtle px-4 py-3 flex items-center justify-between">
-				<h2 class="text-sm font-semibold capitalize text-text-primary flex items-center gap-2">
-					{{ currentFolderName }}
-					<!-- Cold start from the device cache: a quiet "updating…" hint
-					     while the live query catches up. Live rows replace in place. -->
-					<!-- Suppressed while offline: the live query never settles, so a
-					     permanent "updating…" would read as stuck — the offline banner
-					     already communicates the state. -->
-					<span
-						v-if="showingCached && !isOffline"
-						class="animate-pulse text-[11px] font-normal text-text-tertiary lowercase"
-						>updating…</span
-					>
-				</h2>
-				<!-- Labeled view-mode control — exactly one mode active; persisted
-				     per user. Inbox-only: other folders stay flat. -->
-				<UiSegmentedControl
-					v-if="folderRole === 'inbox'"
-					size="sm"
-					aria-label="Inbox view"
-					:options="POSTBOX_VIEW_MODE_OPTIONS"
-					:model-value="viewMode"
-					@update:model-value="selectViewMode"
-				/>
-			</header>
-			<template v-if="folderRole === 'drafts'">
-				<div class="flex-1 overflow-auto">
-					<PostboxDraftList :mailbox-id="mailboxId" />
-				</div>
-			</template>
-			<template v-else>
-				<!-- Compact "waiting on your reply" strip — inbox only, non-empty
-				     queue only, dismissible for the session. -->
-				<div
-					v-if="showReplyQueueStrip"
-					class="flex items-center gap-2 px-4 py-2 border-b border-border-subtle bg-brand/5 text-sm"
-				>
-					<Icon name="lucide:reply" class="w-4 h-4 text-brand flex-shrink-0" />
-					<span class="flex-1 truncate text-text-secondary">
-						{{ replyQueueCount }} {{ replyQueueCount === 1 ? 'email is' : 'emails are' }}
-						waiting on your reply
-					</span>
-					<NuxtLink
-						to="/dashboard/postbox/reply-queue"
-						class="text-brand hover:underline flex-shrink-0"
-					>
-						Open queue
-					</NuxtLink>
-					<button
-						type="button"
-						class="p-0.5 rounded text-text-tertiary hover:text-text-primary flex-shrink-0"
-						title="Dismiss for this session"
-						aria-label="Dismiss reply queue reminder"
-						@click="replyQueueStripDismissed = true"
-					>
-						<Icon name="lucide:x" class="w-3.5 h-3.5" />
-					</button>
-				</div>
-				<PostboxQuickActionsBar
-					v-if="!threadGroupsEnabled && !categoryGroupsEnabled"
+				<PostboxFolderRail
 					:mailbox-id="mailboxId"
 					:folder-role="folderRole"
+					:folder-id="folderId"
 				/>
-				<div class="flex-1 overflow-auto">
-					<!-- Keyed on folder + renderer so both folder changes and view-mode
-					     switches cross-fade (pbx-fade is opacity-only and inert under
-					     prefers-reduced-motion). -->
-					<Transition name="pbx-fade" mode="out-in">
-						<div
-							:key="`${String(folderId ?? folderRole ?? 'all')}:${activeListRenderer}`"
-							class="h-full"
+
+				<!-- Pane 2: thread/message list -->
+				<section class="w-96 border-r border-border-subtle flex flex-col bg-bg-surface">
+					<!-- Quiet offline banner: cached list + already-read bodies stay
+			     readable; server-backed actions degrade with clear affordances. -->
+					<div
+						v-if="isOffline"
+						class="flex items-center gap-2 px-4 py-2 bg-warning-subtle text-warning text-xs border-b border-border-subtle"
+						role="status"
+					>
+						<Icon name="lucide:cloud-off" class="w-3.5 h-3.5 flex-shrink-0" />
+						<span class="truncate"
+							>Offline — showing recent mail from this device. Actions are paused.</span
 						>
-							<PostboxThreadCategoryList
-								v-if="categoryGroupsEnabled"
-								:sections="categorySections"
-								:collapsed="categoryCollapsed"
-								:loading="categoryLoading"
-								:folder-role="folderRole"
-								:active-message-id="activeMessageId"
-								:has-more="categoryHasMore"
-								@load-more="loadMoreCategories"
-								@toggle="toggleCategory"
-								@recategorize="recategorize"
-							/>
-							<PostboxThreadGroupList
-								v-else-if="threadGroupsEnabled"
-								:threads="threadGroups"
-								:loading="threadGroupsLoading"
-								:folder-role="folderRole"
-								:active-message-id="activeMessageId"
-								:has-more="threadGroupsHasMore"
-								@load-more="loadMoreThreadGroups"
-							/>
-							<PostboxThreadList
-								v-else
-								ref="threadListRef"
-								:mailbox-id="mailboxId"
-								:messages="displayMessages"
-								:loading="isLoading && !showingCached"
-								:folder-role="folderRole"
-								:active-message-id="activeMessageId"
-								:has-more="hasMore"
-								@load-more="loadMore"
+					</div>
+					<header class="border-b border-border-subtle px-4 py-3 flex items-center justify-between">
+						<h2 class="text-sm font-semibold capitalize text-text-primary flex items-center gap-2">
+							{{ currentFolderName }}
+							<!-- Cold start from the device cache: a quiet "updating…" hint
+					     while the live query catches up. Live rows replace in place. -->
+							<!-- Suppressed while offline: the live query never settles, so a
+					     permanent "updating…" would read as stuck — the offline banner
+					     already communicates the state. -->
+							<span
+								v-if="showingCached && !isOffline"
+								class="animate-pulse text-[11px] font-normal text-text-tertiary lowercase"
+								>updating…</span
+							>
+						</h2>
+						<div v-if="folderRole === 'inbox'" class="flex items-center gap-2">
+							<!-- Back to the focused Today landing view (Esc / B do the same). -->
+							<button
+								v-if="!activeMessageId && !folderId"
+								type="button"
+								class="flex items-center gap-1.5 px-2 py-1 rounded text-xs text-text-secondary hover:text-text-primary hover:bg-bg-base focus-visible:ring-1 focus-visible:ring-brand/40 outline-none"
+								aria-keyshortcuts="Escape b"
+								title="Back to Today (Esc)"
+								@click="switchInboxMode('today')"
+							>
+								Today
+								<kbd
+									class="text-[10px] text-text-tertiary border border-border-subtle rounded px-1"
+									aria-hidden="true"
+									>esc</kbd
+								>
+							</button>
+							<!-- Labeled view-mode control — exactly one mode active; persisted
+					     per user. Inbox-only: other folders stay flat. -->
+							<UiSegmentedControl
+								size="sm"
+								aria-label="Inbox view"
+								:options="POSTBOX_VIEW_MODE_OPTIONS"
+								:model-value="viewMode"
+								@update:model-value="selectViewMode"
 							/>
 						</div>
-					</Transition>
-				</div>
-			</template>
-		</section>
+					</header>
+					<template v-if="folderRole === 'drafts'">
+						<div class="flex-1 overflow-auto">
+							<PostboxDraftList :mailbox-id="mailboxId" />
+						</div>
+					</template>
+					<template v-else>
+						<!-- Compact "waiting on your reply" strip — inbox only, non-empty
+				     queue only, dismissible for the session. -->
+						<div
+							v-if="showReplyQueueStrip"
+							class="flex items-center gap-2 px-4 py-2 border-b border-border-subtle bg-brand/5 text-sm"
+						>
+							<Icon name="lucide:reply" class="w-4 h-4 text-brand flex-shrink-0" />
+							<span class="flex-1 truncate text-text-secondary">
+								{{ replyQueueCount }} {{ replyQueueCount === 1 ? 'email is' : 'emails are' }}
+								waiting on your reply
+							</span>
+							<NuxtLink
+								to="/dashboard/postbox/reply-queue"
+								class="text-brand hover:underline flex-shrink-0"
+							>
+								Open queue
+							</NuxtLink>
+							<button
+								type="button"
+								class="p-0.5 rounded text-text-tertiary hover:text-text-primary flex-shrink-0"
+								title="Dismiss for this session"
+								aria-label="Dismiss reply queue reminder"
+								@click="replyQueueStripDismissed = true"
+							>
+								<Icon name="lucide:x" class="w-3.5 h-3.5" />
+							</button>
+						</div>
+						<PostboxQuickActionsBar
+							v-if="!threadGroupsEnabled && !categoryGroupsEnabled"
+							:mailbox-id="mailboxId"
+							:folder-role="folderRole"
+						/>
+						<div class="flex-1 overflow-auto">
+							<!-- Keyed on folder + renderer so both folder changes and view-mode
+					     switches cross-fade (pbx-fade is opacity-only and inert under
+					     prefers-reduced-motion). -->
+							<Transition name="pbx-fade" mode="out-in">
+								<div
+									:key="`${String(folderId ?? folderRole ?? 'all')}:${activeListRenderer}`"
+									class="h-full"
+								>
+									<PostboxThreadCategoryList
+										v-if="categoryGroupsEnabled"
+										:sections="categorySections"
+										:collapsed="categoryCollapsed"
+										:loading="categoryLoading"
+										:folder-role="folderRole"
+										:active-message-id="activeMessageId"
+										:has-more="categoryHasMore"
+										@load-more="loadMoreCategories"
+										@toggle="toggleCategory"
+										@recategorize="recategorize"
+									/>
+									<PostboxThreadGroupList
+										v-else-if="threadGroupsEnabled"
+										:threads="threadGroups"
+										:loading="threadGroupsLoading"
+										:folder-role="folderRole"
+										:active-message-id="activeMessageId"
+										:has-more="threadGroupsHasMore"
+										@load-more="loadMoreThreadGroups"
+									/>
+									<PostboxThreadList
+										v-else
+										ref="threadListRef"
+										:mailbox-id="mailboxId"
+										:messages="displayMessages"
+										:loading="isLoading && !showingCached"
+										:folder-role="folderRole"
+										:active-message-id="activeMessageId"
+										:has-more="hasMore"
+										@load-more="loadMore"
+									/>
+								</div>
+							</Transition>
+						</div>
+					</template>
+				</section>
 
-		<!-- Pane 3: reader -->
-		<section class="flex-1 overflow-auto bg-bg-base">
-			<Transition name="pbx-reader" mode="out-in">
-				<PostboxThreadReader
-					v-if="activeMessage"
-					:key="activeMessageId ?? undefined"
-					:message="activeMessage"
-					:advance-ids="advanceIds"
-					:folder-role="folderId ? String(folderId) : folderRole"
-				/>
-				<div v-else class="h-full flex items-center justify-center">
-					<div class="text-center">
-						<Icon name="lucide:mail-open" class="w-12 h-12 mx-auto text-text-tertiary" />
-						<p class="mt-4 text-text-secondary">Select a message</p>
-					</div>
-				</div>
-			</Transition>
-		</section>
+				<!-- Pane 3: reader -->
+				<section class="flex-1 overflow-auto bg-bg-base">
+					<Transition name="pbx-reader" mode="out-in">
+						<PostboxThreadReader
+							v-if="activeMessage"
+							:key="activeMessageId ?? undefined"
+							:message="activeMessage"
+							:advance-ids="advanceIds"
+							:folder-role="folderId ? String(folderId) : folderRole"
+						/>
+						<div v-else class="h-full flex items-center justify-center">
+							<div class="text-center">
+								<Icon name="lucide:mail-open" class="w-12 h-12 mx-auto text-text-tertiary" />
+								<p class="mt-4 text-text-secondary">Select a message</p>
+							</div>
+						</div>
+					</Transition>
+				</section>
+			</div>
+		</Transition>
 
 		<PostboxCommandPalette :mailbox-id="mailboxId" />
 		<PostboxShortcutHelp />
