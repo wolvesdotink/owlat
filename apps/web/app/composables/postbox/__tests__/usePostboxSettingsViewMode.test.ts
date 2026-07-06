@@ -2,7 +2,8 @@
  * usePostboxSettings inbox view-mode preference:
  *   - derives 'flat' when the settings row is unset/loading, reflects a saved
  *     mode, and normalises an unknown stored value, and
- *   - setViewMode persists via the mail-settings update mutation.
+ *   - setViewMode persists via the mail-settings update mutation and reports
+ *     whether the save landed (a failed run() resolves to undefined).
  *
  * The Convex query/operation composables are stubbed as globals; a shared ref
  * stands in for the settings row so the view-mode derivation can be driven.
@@ -20,7 +21,7 @@ vi.mock('@owlat/api', () => {
 });
 
 const settingsRow = ref<Record<string, unknown> | null>(null);
-const runSpy = vi.fn(async () => undefined);
+const runSpy = vi.fn(async (): Promise<unknown> => undefined);
 
 beforeEach(() => {
 	settingsRow.value = null;
@@ -48,9 +49,16 @@ describe('usePostboxSettings viewMode', () => {
 		expect(viewMode.value).toBe('flat');
 	});
 
-	it('setViewMode persists through the update mutation', async () => {
+	it('setViewMode persists through the update mutation and reports success', async () => {
+		runSpy.mockResolvedValueOnce('settingsRowId');
 		const { setViewMode } = usePostboxSettings();
-		await setViewMode('categories');
+		await expect(setViewMode('categories')).resolves.toBe(true);
 		expect(runSpy).toHaveBeenCalledWith({ viewMode: 'categories' });
+	});
+
+	it('setViewMode reports failure when the save does not land', async () => {
+		// useBackendOperation.run resolves to undefined on error (after toasting).
+		const { setViewMode } = usePostboxSettings();
+		await expect(setViewMode('categories')).resolves.toBe(false);
 	});
 });

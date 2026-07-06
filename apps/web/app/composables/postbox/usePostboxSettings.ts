@@ -113,8 +113,11 @@ export function usePostboxSettings() {
 		await updateOp.run({ density: mode });
 	}
 
-	async function setViewMode(mode: PostboxViewMode) {
-		await updateOp.run({ viewMode: mode });
+	// Reports success so callers with an optimistic override can snap back on
+	// failure: the update mutation returns a row id, while a failed run()
+	// resolves to undefined (the error is already toasted).
+	async function setViewMode(mode: PostboxViewMode): Promise<boolean> {
+		return (await updateOp.run({ viewMode: mode })) !== undefined;
 	}
 
 	async function setSendSound(enabled: boolean) {

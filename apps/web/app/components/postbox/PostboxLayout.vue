@@ -88,9 +88,11 @@ function selectViewMode(value: string) {
 	const mode = resolvePostboxViewMode(value);
 	if (mode === viewMode.value) return;
 	pendingViewMode.value = mode;
-	// Fire-and-forget persistence — the list already switched optimistically;
-	// useBackendOperation surfaces a toast if the save fails.
-	void setViewMode(mode);
+	// The list already switched optimistically; useBackendOperation surfaces a
+	// toast if the save fails, and the override snaps back to the saved mode.
+	void setViewMode(mode).then((saved) => {
+		if (!saved && pendingViewMode.value === mode) pendingViewMode.value = null;
+	});
 }
 const activeListRenderer = computed(() => postboxListRenderer(viewMode.value, folderRef.value));
 
