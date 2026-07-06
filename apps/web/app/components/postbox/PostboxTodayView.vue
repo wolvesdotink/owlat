@@ -16,22 +16,33 @@
  *   - a centered "Show past mails (n)" affordance that expands older mail
  *     inline (same rows, same pagination).
  *
- * Opening a row navigates to the existing reader route. Presentation follows
- * the shared brief: weight-based emphasis, at most one accent per region,
- * pbx-* motion tiers (opacity-only under prefers-reduced-motion).
+ * Opening a row renders the conversation in PostboxTodayReaderOverlay — a
+ * centered pane over the list, so the column (scroll + selection) stays put
+ * underneath; j/k inside the overlay swap the thread in place and Esc/scrim
+ * return to the list. Presentation follows the shared brief: weight-based
+ * emphasis, at most one accent per region, pbx-* motion tiers (opacity-only
+ * under prefers-reduced-motion).
  */
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { partitionTodayMessages, formatAutoFiledLine } from '~/utils/postboxTodayPartition';
 import { replyQueueHeadline, type ReplyQueueItem } from '~/utils/postboxReplyQueue';
 
-const props = defineProps<{ mailboxId: Id<'mailboxes'> }>();
+const props = defineProps<{
+	mailboxId: Id<'mailboxes'>;
+	/** Deep-link seed (/dashboard/postbox/inbox/<id> in Today mode): open this
+	 * conversation in the overlay on mount. */
+	initialMessageId?: string | null;
+}>();
 
 const emit = defineEmits<{
 	/** Switch to the three-pane browse mode (header button / B / Cmd-B). */
 	browse: [];
 	/** Open the auto-filed mail: browse mode with the Categories view. */
 	'view-auto-filed': [];
+	/** The reader overlay closed (Esc / scrim / advance past the ends) — the
+	 * host clears a deep-linked message route back to the plain inbox URL. */
+	'reader-closed': [];
 }>();
 
 const mailboxIdRef = computed(() => props.mailboxId);
@@ -107,6 +118,39 @@ function forYouAction(item: ReplyQueueItem): string {
 const showPast = ref(false);
 const olderCountLabel = computed(() => `${olderRows.value.length}${hasMore.value ? '+' : ''}`);
 const hasOlder = computed(() => olderRows.value.length > 0 || hasMore.value);
+
+// --- Centered reader overlay -------------------------------------------------
+// Rows open IN PLACE (the lists are `selectable`, so Enter/click emit
+// `select` instead of navigating): the column stays mounted, preserving
+// scroll and the j/k selection. Deep links seed the same state.
+const openMessageId = ref<string | null>(props.initialMessageId ?? null);
+
+// The visible row order the overlay's j/k and the reader's triage
+// auto-advance walk: today's rows, then the expanded past rows.
+const overlayAdvanceIds = computed(() => [
+	...todayRows.value.map((m) => m._id),
+	...(showPast.value ? olderRows.value.map((m) => m._id) : []),
+]);
+
+// The reader needs the full row; deep-linked messages outside the loaded feed
+// (an old conversation reached via bookmark/notification) are fetched by id —
+// same fallback the three-pane layout uses.
+const openListMessage = computed(() =>
+	openMessageId.value ? messages.value.find((m) => m._id === openMessageId.value) : undefined
+);
+const { data: fetchedOpenMessage } = useConvexQuery(api.mail.mailbox.getMessage, () =>
+	openMessageId.value && !openListMessage.value
+		? { messageId: openMessageId.value as Id<'mailMessages'> }
+		: 'skip'
+);
+const overlayMessage = computed(() =>
+	openMessageId.value ? (openListMessage.value ?? fetchedOpenMessage.value ?? undefined) : undefined
+);
+
+function closeOverlay() {
+	openMessageId.value = null;
+	emit('reader-closed');
+}
 </script>
 
 <template>
@@ -191,6 +235,9 @@ const hasOlder = computed(() => olderRows.value.length > 0 || hasMore.value);
 						:messages="todayRows"
 						:loading="false"
 						folder-role="inbox"
+						selectable
+						:active-message-id="openMessageId"
+						@select="openMessageId = $event"
 					/>
 				</div>
 				<PostboxThreadListSkeleton v-else-if="isLoading" class="mt-2" />
@@ -230,11 +277,27 @@ const hasOlder = computed(() => olderRows.value.length > 0 || hasMore.value);
 							:loading="isLoading"
 							folder-role="inbox"
 							:has-more="hasMore"
+							selectable
+							:active-message-id="openMessageId"
+							@select="openMessageId = $event"
 							@load-more="loadMore"
 						/>
 					</div>
 				</section>
 			</Transition>
 		</div>
+
+		<!-- Centered reader: the ONE doing-surface while a conversation is open.
+		     Enters with the shared fade+rise; the list underneath keeps its
+		     scroll and selection for Esc/scrim return. -->
+		<Transition name="pbx-reader">
+			<PostboxTodayReaderOverlay
+				v-if="overlayMessage"
+				:message="overlayMessage"
+				:advance-ids="overlayAdvanceIds"
+				@open="openMessageId = $event"
+				@close="closeOverlay"
+			/>
+		</Transition>
 	</div>
 </template>

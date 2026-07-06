@@ -119,7 +119,7 @@ export const POSTBOX_SHORTCUT_GROUPS: ReadonlyArray<{
 			{ keys: ['Enter'], label: 'Open message' },
 			{ keys: ['/'], label: 'Focus search' },
 			{ keys: ['b'], label: 'Toggle Today / Browse (inbox)' },
-			{ keys: ['Esc'], label: 'Back to Today (from Browse)' },
+			{ keys: ['Esc'], label: 'Close the open conversation / back to Today' },
 		],
 	},
 	{
