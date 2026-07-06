@@ -84,12 +84,13 @@ jobs:
         run: bun install --frozen-lockfile
 
       # Make the release TAG the single source of truth for the shipped version.
-      # Cargo.toml stays frozen at 0.1.0 for local dev; tauri-action derives the
-      # installer + latest.json version from it, so without this a `v0.2.0` tag
-      # would ship artifacts advertising 0.1.0 and existing installs would see
-      # NO update. Strip the `desktop-v` / `v` prefix and stamp the package
-      # version in place. Idempotent (re-running on the same tag is a no-op) and
-      # only ever runs inside the tag-triggered release callers of this core.
+      # `bun run release:cut` keeps Cargo.toml in step, but tauri-action derives
+      # the installer + latest.json version from Cargo.toml, so a tag cut any
+      # other way (e.g. a quick `desktop-v*` fix tag) would ship artifacts
+      # advertising a stale version and existing installs would see NO update.
+      # Strip the `desktop-v` / `v` prefix and stamp the package version in
+      # place. Idempotent (re-running on the same tag is a no-op) and only ever
+      # runs inside the tag-triggered release callers of this core.
       - name: Stamp release version from tag
         shell: bash
         working-directory: apps/desktop/src-tauri
@@ -152,6 +153,14 @@ jobs:
               echo "skipped ${name} (not configured)"
             fi
           done
+          # The updater key's password may legitimately be EMPTY, and GitHub
+          # cannot store an empty secret. tauri only skips the interactive
+          # password prompt when the password env is SET — so when the key is
+          # configured, always export the password, even as "".
+          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ] && [ -z "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" ]; then
+            echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD=" >> "$GITHUB_ENV"
+            echo "exported TAURI_SIGNING_PRIVATE_KEY_PASSWORD (empty — passwordless key)"
+          fi
 
       - name: Build, sign & upload desktop app
         uses: tauri-apps/tauri-action@v1
@@ -166,4 +175,6 @@ jobs:
           releaseId: ${{ inputs.release_id }}
           tagName: ${{ inputs.tag }}
           includeUpdaterJson: true
-          args: ${{ matrix.args }}
+          # tauri.release.conf.json enables createUpdaterArtifacts only here:
+          # unsigned dev/CI builds must not require the updater signing key.
+          args: ${{ matrix.args }} --config src-tauri/tauri.release.conf.json
