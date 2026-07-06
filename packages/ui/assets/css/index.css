@@ -6,5 +6,6 @@
 @import './dark.css';
 @import './light.css';
 @import './components.css';
+@import './motion.css';
 @import './base.css';
 @import './scrollbar.css';

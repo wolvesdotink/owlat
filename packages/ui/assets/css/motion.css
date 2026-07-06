@@ -1,0 +1,134 @@
+/* Micro-interaction kit — reusable Fluid Functionalism motion drop-ins.
+ *
+ * Every utility consumes the shared motion tokens (tokens.css): durations from
+ * the --motion-* tiers, curves from --ease-spring/--ease-exit. Never
+ * hand-written milliseconds. All of them collapse to opacity-only (or to
+ * nothing) under prefers-reduced-motion, on top of the global duration
+ * backstop in base.css.
+ *
+ *   .ui-hover-reveal (+ .ui-hover-reveal-host) — opacity-only action reveal
+ *   .ui-press                                  — spring press on :active
+ *   .ui-stagger                                — staggered list entrance
+ *   .ui-proximity                              — nearest-target hover emphasis
+ *
+ * The matching NumberTicker component lives in components/ui/NumberTicker.vue.
+ */
+
+/*
+ * Hover-action reveal in list rows: fade only, never layout shift. Apply to
+ * the actions container inside a hovered host (either Tailwind's `group`
+ * class or an explicit `.ui-hover-reveal-host`). The element keeps its box at
+ * all times (opacity, not display) so row height and scroll position never
+ * move; while invisible it must not be tappable (touch/no-hover devices where
+ * the row never enters :hover), so pointer-events gate with the reveal.
+ * Runs on the moderate tier — it is a list-row content swap, not a hover
+ * accent. Focus-within on the cluster OR the host reveals it for keyboard
+ * users.
+ */
+.ui-hover-reveal {
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity var(--motion-moderate) var(--ease-spring);
+}
+.ui-hover-reveal:focus-within,
+.group:hover .ui-hover-reveal,
+.group:focus-within .ui-hover-reveal,
+.ui-hover-reveal-host:hover .ui-hover-reveal,
+.ui-hover-reveal-host:focus-within .ui-hover-reveal {
+	opacity: 1;
+	pointer-events: auto;
+}
+
+/*
+ * Spring press for interactive elements that don't already come from .btn
+ * (which carries its own active:scale). Scale only — no color or shadow —
+ * so it composes with any styling.
+ */
+.ui-press {
+	transition: scale var(--motion-fast) var(--ease-spring);
+}
+.ui-press:active {
+	scale: 0.98;
+}
+
+/*
+ * Staggered list entrance: opacity + a <=8px rise per item, 20ms steps,
+ * moderate tier. Meant for short lists (<=8 items — queues, action decks);
+ * items past the eighth share the last delay so long lists never feel
+ * sluggish. `backwards` fill keeps late items invisible until their delay
+ * elapses.
+ */
+.ui-stagger > * {
+	animation: ui-stagger-in var(--motion-moderate) var(--ease-spring) backwards;
+}
+.ui-stagger > :nth-child(1) {
+	animation-delay: 0ms;
+}
+.ui-stagger > :nth-child(2) {
+	animation-delay: 20ms;
+}
+.ui-stagger > :nth-child(3) {
+	animation-delay: 40ms;
+}
+.ui-stagger > :nth-child(4) {
+	animation-delay: 60ms;
+}
+.ui-stagger > :nth-child(5) {
+	animation-delay: 80ms;
+}
+.ui-stagger > :nth-child(6) {
+	animation-delay: 100ms;
+}
+.ui-stagger > :nth-child(7) {
+	animation-delay: 120ms;
+}
+.ui-stagger > :nth-child(n + 8) {
+	animation-delay: 140ms;
+}
+@keyframes ui-stagger-in {
+	from {
+		opacity: 0;
+		transform: translateY(6px);
+	}
+}
+
+/*
+ * Nearest-target hover emphasis for dense icon rows (toolbars, quick-action
+ * clusters). CSS-only: the hovered target lifts slightly, its immediate
+ * neighbours stay near-full, everything else recedes — reads as focus
+ * following the pointer without any JS proximity math. Keyboard focus gets
+ * the same emphasis via :focus-visible.
+ */
+.ui-proximity > * {
+	transition:
+		opacity var(--motion-fast) var(--ease-spring),
+		scale var(--motion-fast) var(--ease-spring);
+}
+.ui-proximity:hover > *:not(:hover) {
+	opacity: 0.72;
+}
+/* Immediate neighbours of the hovered target recede less. */
+.ui-proximity:hover > :hover + *,
+.ui-proximity:hover > *:has(+ :hover) {
+	opacity: 0.9;
+}
+.ui-proximity > *:hover,
+.ui-proximity > *:focus-visible {
+	opacity: 1;
+	scale: 1.06;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	/* Opacity-only (hover-reveal already is); scale/translate emphasis and
+	 * entrance movement drop entirely. */
+	.ui-press:active {
+		scale: none;
+	}
+	.ui-stagger > * {
+		animation: none;
+	}
+	.ui-proximity > *:hover,
+	.ui-proximity > *:focus-visible {
+		scale: none;
+	}
+}
