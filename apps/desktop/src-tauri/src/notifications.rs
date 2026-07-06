@@ -1,11 +1,4 @@
-use serde::Deserialize;
 use tauri::{command, AppHandle, Manager};
-
-#[derive(Deserialize)]
-pub struct NotificationPayload {
-    pub title: String,
-    pub body: String,
-}
 
 /// Tauri command: Update the tray icon tooltip with unread count.
 /// On macOS, also updates the dock badge.
