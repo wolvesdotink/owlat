@@ -118,12 +118,14 @@ function formatCompactRelativeTime(timestamp: number): string {
 	return 'Now';
 }
 
-// Compute max value for chart scaling
-const maxVolumeValue = computed(() => {
-	if (!sendVolume.value || sendVolume.value.length === 0) return 100;
-	const max = Math.max(...sendVolume.value.map((d: { count: number }) => d.count));
-	return max > 0 ? max : 100;
-});
+// Per-day bars for the send-volume chart (UiBars)
+const sendVolumeBars = computed(
+	() =>
+		sendVolume.value?.map((d: { label: string; count: number }) => ({
+			label: d.label,
+			value: d.count,
+		})) ?? []
+);
 
 // Compute total sent in last 7 days
 const totalSentLast7Days = computed(() => {
@@ -315,32 +317,14 @@ const handleEditCampaign = (campaignId: Id<'campaigns'>) =>
 					</div>
 
 					<!-- Chart -->
-					<div v-else class="h-40">
-						<!-- Simple bar chart -->
-						<div class="flex items-end justify-between h-full gap-2">
-							<div
-								v-for="day in sendVolume"
-								:key="day.date"
-								class="flex-1 flex flex-col items-center gap-2"
-							>
-								<div class="w-full flex-1 flex items-end">
-									<div
-										class="w-full bg-brand rounded-t transition-all duration-(--motion-moderate) hover:bg-brand-hover"
-										:style="{
-											height:
-												day.count > 0
-													? `${Math.max((day.count / maxVolumeValue) * 100, 8)}%`
-													: '4px',
-											minHeight: day.count > 0 ? '8px' : '4px',
-											opacity: day.count > 0 ? 1 : 0.3,
-										}"
-										:title="`${day.count.toLocaleString()} emails on ${day.label}`"
-									/>
-								</div>
-								<span class="text-xs text-text-tertiary">{{ day.label }}</span>
-							</div>
-						</div>
-					</div>
+					<UiBars
+						v-else
+						:data="sendVolumeBars"
+						:height="132"
+						:label-every="1"
+						:format-value="(v: number) => `${v.toLocaleString()} emails`"
+						aria-label="Emails sent per day over the last 7 days"
+					/>
 				</UiCard>
 			</div>
 		</div>

@@ -96,12 +96,14 @@ const quickActions = [
 // `{ days, truncated }`; `truncated` is true only for very large 30-day intakes).
 const growthDays = computed(() => subscriberGrowth.value?.days ?? []);
 
-// Compute max value for growth chart scaling
-const maxGrowthValue = computed(() => {
-	if (growthDays.value.length === 0) return 10;
-	const max = Math.max(...growthDays.value.map((d: { count: number }) => d.count));
-	return max > 0 ? max : 10;
-});
+// Per-day bars for the growth chart (UiBars); tooltips carry the full
+// "Jun 5"-style label, the sparse axis shows every 5th.
+const growthBars = computed(() =>
+	growthDays.value.map((d: { label: string; count: number }) => ({
+		label: d.label,
+		value: d.count,
+	}))
+);
 
 // Compute total new subscribers in last 30 days
 const totalNewSubscribers = computed(() => {
@@ -181,7 +183,11 @@ function getContactName(
 							<p v-else class="text-3xl font-semibold text-text-primary">
 								{{ stat.value.toLocaleString() }}
 							</p>
-							<Icon v-if="statsLoading" name="lucide:loader-2" class="w-4 h-4 animate-spin text-text-tertiary" />
+							<Icon
+								v-if="statsLoading"
+								name="lucide:loader-2"
+								class="w-4 h-4 animate-spin text-text-tertiary"
+							/>
 						</div>
 					</div>
 					<div
@@ -213,7 +219,10 @@ function getContactName(
 					class="card group hover:border-brand transition-colors cursor-pointer"
 				>
 					<div class="flex items-center gap-4">
-						<UiIconBox :icon="action.icon" class="group-hover:bg-brand group-hover:text-text-inverse transition-colors" />
+						<UiIconBox
+							:icon="action.icon"
+							class="group-hover:bg-brand group-hover:text-text-inverse transition-colors"
+						/>
 						<div>
 							<p class="font-medium text-text-primary group-hover:text-brand transition-colors">
 								{{ action.label }}
@@ -245,41 +254,14 @@ function getContactName(
 					</div>
 
 					<!-- Chart -->
-					<div v-else>
-						<!-- Simple bar chart -->
-						<div class="flex items-end gap-0.5 h-32 mb-2">
-							<div
-								v-for="day in growthDays"
-								:key="day.date"
-								class="flex-1 flex items-end h-full"
-							>
-								<div
-									class="w-full rounded-t transition-all duration-(--motion-moderate) cursor-pointer"
-									:class="day.count > 0 ? 'bg-brand hover:bg-brand-hover' : 'bg-border-subtle'"
-									:style="{
-										height:
-											day.count > 0 ? `${Math.max((day.count / maxGrowthValue) * 100, 6)}%` : '2px',
-									}"
-									:title="`${day.count} new subscribers on ${day.label}`"
-								/>
-							</div>
-						</div>
-						<!-- X-axis labels -->
-						<div class="flex gap-0.5">
-							<div
-								v-for="(day, index) in growthDays"
-								:key="`label-${day.date}`"
-								class="flex-1 text-center"
-							>
-								<span
-									v-if="index % 5 === 0 || index === growthDays.length - 1"
-									class="text-[10px] text-text-tertiary"
-								>
-									{{ day.label.split(' ')[1] }}
-								</span>
-							</div>
-						</div>
-					</div>
+					<UiBars
+						v-else
+						:data="growthBars"
+						:height="128"
+						:label-every="5"
+						:format-value="(v: number) => `${v.toLocaleString()} new subscribers`"
+						aria-label="New subscribers per day over the last 30 days"
+					/>
 				</div>
 			</div>
 
@@ -309,7 +291,13 @@ function getContactName(
 						v-else-if="!topLists || topLists.length === 0"
 						class="flex flex-col items-center justify-center py-12 text-center"
 					>
-						<UiIconBox icon="lucide:list-plus" size="xl" variant="surface" rounded="full" class="mb-4" />
+						<UiIconBox
+							icon="lucide:list-plus"
+							size="xl"
+							variant="surface"
+							rounded="full"
+							class="mb-4"
+						/>
 						<p class="text-text-secondary font-medium">No topics yet</p>
 						<p class="text-sm text-text-tertiary mt-1 max-w-sm">
 							Create a topic to organize your contacts.
@@ -384,7 +372,13 @@ function getContactName(
 						v-else-if="!recentContacts || recentContacts.length === 0"
 						class="flex flex-col items-center justify-center py-12 text-center"
 					>
-						<UiIconBox icon="lucide:users" size="xl" variant="surface" rounded="full" class="mb-4" />
+						<UiIconBox
+							icon="lucide:users"
+							size="xl"
+							variant="surface"
+							rounded="full"
+							class="mb-4"
+						/>
 						<p class="text-text-secondary font-medium">No contacts yet</p>
 						<p class="text-sm text-text-tertiary mt-1 max-w-sm">
 							Add your first contact to get started.
@@ -446,7 +440,13 @@ function getContactName(
 						v-else-if="!recentActivity || recentActivity.length === 0"
 						class="flex flex-col items-center justify-center py-12 text-center"
 					>
-						<UiIconBox icon="lucide:activity" size="xl" variant="surface" rounded="full" class="mb-4" />
+						<UiIconBox
+							icon="lucide:activity"
+							size="xl"
+							variant="surface"
+							rounded="full"
+							class="mb-4"
+						/>
 						<p class="text-text-secondary font-medium">No recent activity</p>
 						<p class="text-sm text-text-tertiary mt-1 max-w-sm">
 							Activity will appear here as contacts subscribe to or unsubscribe from topics.
