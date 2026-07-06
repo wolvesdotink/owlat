@@ -123,7 +123,7 @@ export function createApp(queue: Queue<EmailJob>, redis: Redis, config: MtaConfi
 	app.get('/', (c) =>
 		c.json({
 			service: 'owlat-mta',
-			version: '0.1.0',
+			version: '0.1.0', // x-release-version (kept in sync by scripts/release.ts)
 			docs: 'POST /send, GET /health, GET /metrics, /credentials, /org-limits, /suppression, /dkim, /pool-rules, /inbound/routes, /delivery-logs, /queue, /dlq, /isp-profiles, /ip-reputation, /scan',
 		})
 	);
