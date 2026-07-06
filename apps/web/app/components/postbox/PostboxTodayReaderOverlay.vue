@@ -105,7 +105,7 @@ onMounted(() => {
 	window.addEventListener('keydown', onWindowKeydown);
 	nextTick(() => paneEl.value?.focus());
 });
-onBeforeUnmount(() => {
+onUnmounted(() => {
 	window.removeEventListener('keydown', onWindowKeydown);
 	if (openerEl && openerEl !== document.body && openerEl.isConnected) {
 		openerEl.focus();
