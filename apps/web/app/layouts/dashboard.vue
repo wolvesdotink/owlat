@@ -93,7 +93,7 @@ const navigationSections = computed(() => {
 					},
 				]
 			: []),
-		{ name: 'Channels', href: '/dashboard/settings/channels', icon: 'lucide:radio' },
+		{ name: 'Messaging', href: '/dashboard/settings/channels', icon: 'lucide:radio' },
 		{ name: 'Account', href: '/dashboard/settings/account', icon: 'lucide:users' },
 		...(isDesktop.value
 			? [{ name: 'Desktop', href: '/dashboard/settings/desktop', icon: 'lucide:monitor' }]
@@ -102,7 +102,7 @@ const navigationSections = computed(() => {
 
 	const inboxItems = [
 		{ name: 'All Threads', href: '/dashboard/inbox', icon: 'lucide:message-square' },
-		{ name: 'Channels', href: '/dashboard/inbox/channels', icon: 'lucide:radio' },
+		{ name: 'All activity', href: '/dashboard/inbox/activity', icon: 'lucide:activity' },
 		{ name: 'Review Queue', href: '/dashboard/inbox/review', icon: 'lucide:check-circle' },
 		...(isFeatureEnabled('inbox.codeTasks')
 			? [{ name: 'Code Tasks', href: '/dashboard/inbox/code-tasks', icon: 'lucide:code' }]
@@ -143,7 +143,7 @@ const navigationSections = computed(() => {
 	}> = [];
 
 	if (isFeatureEnabled('inbox')) {
-		sections.push({ key: 'inbox', name: 'Inbox', icon: 'lucide:inbox', items: inboxItems });
+		sections.push({ key: 'inbox', name: 'Team Inbox', icon: 'lucide:inbox', items: inboxItems });
 	}
 
 	if (isFeatureEnabled('postbox') || isFeatureEnabled('mail.external')) {
