@@ -12,7 +12,10 @@ import { ref, nextTick, type Ref } from 'vue';
 import PostboxMessageBody from '../PostboxMessageBody.vue';
 import PostboxReaderSkeleton from '../PostboxReaderSkeleton.vue';
 import UiSkeleton from '@owlat/ui/components/ui/Skeleton.vue';
-import { splitQuotedText, splitQuotedHtml } from '../../../composables/postbox/usePostboxQuotedText';
+import {
+	splitQuotedText,
+	splitQuotedHtml,
+} from '../../../composables/postbox/usePostboxQuotedText';
 
 vi.mock('@owlat/api', () => {
 	const anyPath: unknown = new Proxy(function () {}, {

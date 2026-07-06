@@ -131,9 +131,7 @@ describe('PostboxAttachmentLightbox', () => {
 		await nextTick();
 
 		// Mouse-click "next": the browser focuses the clicked chevron.
-		const nextChevron = document.body.querySelector<HTMLElement>(
-			'[aria-label="Next attachment"]'
-		)!;
+		const nextChevron = document.body.querySelector<HTMLElement>('[aria-label="Next attachment"]')!;
 		nextChevron.focus();
 		nextChevron.click();
 		await flush();

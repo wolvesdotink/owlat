@@ -40,14 +40,11 @@ beforeAll(() => {
 		isSelected: () => false,
 	}));
 	vi.stubGlobal('useBackendOperation', () => ({ run: vi.fn(async () => undefined) }));
-	vi.stubGlobal(
-		'usePostboxOptimisticHide',
-		(messages: Ref<unknown[]>) => ({
-			visible: computed(() => messages.value),
-			hide: vi.fn(),
-			unhide: vi.fn(),
-		})
-	);
+	vi.stubGlobal('usePostboxOptimisticHide', (messages: Ref<unknown[]>) => ({
+		visible: computed(() => messages.value),
+		hide: vi.fn(),
+		unhide: vi.fn(),
+	}));
 	vi.stubGlobal('usePostboxTriageUndo', () => ({
 		registerMoveBack: vi.fn(),
 		onWindowKeydown: vi.fn(),
