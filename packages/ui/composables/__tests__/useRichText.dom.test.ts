@@ -4,7 +4,7 @@ import {
 	getNearestBlock,
 	unwrapElement,
 	replaceTagPreservingChildren,
-} from '../useRichText';
+} from '../richTextDom';
 
 function editorWith(html: string): HTMLElement {
 	const root = document.createElement('div');

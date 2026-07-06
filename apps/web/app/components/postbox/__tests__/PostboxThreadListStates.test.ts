@@ -19,7 +19,7 @@ import PostboxThreadList from '../PostboxThreadList.vue';
 import PostboxThreadRow from '../PostboxThreadRow.vue';
 import PostboxThreadListSkeleton from '../PostboxThreadListSkeleton.vue';
 import PostboxEmptyState from '../PostboxEmptyState.vue';
-import UiSkeleton from '../../../../../../packages/ui/components/ui/Skeleton.vue';
+import UiSkeleton from '@owlat/ui/components/ui/Skeleton.vue';
 
 // The generated Convex api object is only passed through to the (stubbed)
 // operation composables — a self-returning proxy stands in for any path.
@@ -40,14 +40,11 @@ beforeAll(() => {
 		isSelected: () => false,
 	}));
 	vi.stubGlobal('useBackendOperation', () => ({ run: vi.fn(async () => undefined) }));
-	vi.stubGlobal(
-		'usePostboxOptimisticHide',
-		(messages: Ref<unknown[]>) => ({
-			visible: computed(() => messages.value),
-			hide: vi.fn(),
-			unhide: vi.fn(),
-		})
-	);
+	vi.stubGlobal('usePostboxOptimisticHide', (messages: Ref<unknown[]>) => ({
+		visible: computed(() => messages.value),
+		hide: vi.fn(),
+		unhide: vi.fn(),
+	}));
 	vi.stubGlobal('usePostboxTriageUndo', () => ({
 		registerMoveBack: vi.fn(),
 		onWindowKeydown: vi.fn(),

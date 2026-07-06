@@ -22,11 +22,6 @@ export function canonicalEmailAddress(raw: string): string {
 	return parseAddress(raw)?.address ?? normalizeEmail(raw);
 }
 
-/** Lowercased domain part of a recipient string, or null if it has none. */
-export function emailDomain(raw: string): string | null {
-	return extractDomainOrNull(raw);
-}
-
 /** True when `candidate` is the same domain as `own` or a subdomain of it. */
 function domainIsInternal(candidate: string, own: string): boolean {
 	return candidate === own || candidate.endsWith(`.${own}`);
@@ -40,11 +35,9 @@ function domainIsInternal(candidate: string, own: string): boolean {
  */
 export function isExternalRecipient(email: string, ownDomains: readonly string[]): boolean {
 	if (ownDomains.length === 0) return false;
-	const domain = emailDomain(email);
+	const domain = extractDomainOrNull(email);
 	if (!domain) return false;
-	const owned = ownDomains
-		.map((d) => d.trim().toLowerCase())
-		.filter((d) => d.length > 0);
+	const owned = ownDomains.map((d) => d.trim().toLowerCase()).filter((d) => d.length > 0);
 	if (owned.length === 0) return false;
 	return !owned.some((own) => domainIsInternal(domain, own));
 }
@@ -53,7 +46,7 @@ export function isExternalRecipient(email: string, ownDomains: readonly string[]
 export function ownDomainsFromIdentities(identities: readonly string[]): string[] {
 	const set = new Set<string>();
 	for (const id of identities) {
-		const d = emailDomain(id);
+		const d = extractDomainOrNull(id);
 		if (d) set.add(d);
 	}
 	return [...set];
@@ -76,10 +69,11 @@ export function deriveReplyAllExtras(
 	source: ReplyAllSource,
 	selfAddresses: readonly string[]
 ): string[] {
-	return mergeRecipients([], [...source.toAddresses, ...source.ccAddresses], [
-		source.fromAddress,
-		...selfAddresses,
-	]);
+	return mergeRecipients(
+		[],
+		[...source.toAddresses, ...source.ccAddresses],
+		[source.fromAddress, ...selfAddresses]
+	);
 }
 
 /**
@@ -94,9 +88,7 @@ export function mergeRecipients(
 	additions: readonly string[],
 	exclude: readonly string[] = []
 ): string[] {
-	const seen = new Set<string>(
-		[...existing, ...exclude].map(canonicalEmailAddress)
-	);
+	const seen = new Set<string>([...existing, ...exclude].map(canonicalEmailAddress));
 	const merged = [...existing];
 	for (const addr of additions) {
 		const canon = canonicalEmailAddress(addr);

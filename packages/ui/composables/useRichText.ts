@@ -45,17 +45,6 @@ export const EMPTY_ACTIVE_MARKS: Readonly<ActiveMarks> = Object.freeze({
 	link: false,
 });
 
-// Pure DOM/Selection helpers live in ./richTextDom and are re-exported here so
-// existing importers of `useRichText` keep working (see richTextDom.ts).
-export {
-	findAncestor,
-	getNearestBlock,
-	getSelectionInsideEditor,
-	replaceTagPreservingChildren,
-	selectNodeContents,
-	unwrapElement,
-};
-
 export interface UseRichTextOptions {
 	/** Ref to the contenteditable host element. */
 	editorRef: Ref<HTMLElement | null>;
@@ -107,11 +96,7 @@ export function useRichText(options: UseRichTextOptions) {
 		if (!ctx) return;
 		const { sel, range } = ctx;
 
-		const existing = findAncestor(
-			editorRef.value,
-			range.commonAncestorContainer,
-			tagAliases,
-		);
+		const existing = findAncestor(editorRef.value, range.commonAncestorContainer, tagAliases);
 		if (existing) {
 			// Acceptable trade-off: removes formatting from the entire ancestor
 			// span rather than only the selected sub-range. Matches user intent
@@ -219,7 +204,7 @@ export function useRichText(options: UseRichTextOptions) {
 		const existing = findAncestor(
 			editorRef.value,
 			range.commonAncestorContainer,
-			'a',
+			'a'
 		) as HTMLAnchorElement | null;
 		const previousHref = existing?.getAttribute('href') ?? null;
 
