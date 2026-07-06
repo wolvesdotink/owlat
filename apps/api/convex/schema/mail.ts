@@ -6,6 +6,7 @@ import {
 	mailAutoAdvanceValidator,
 	mailReplyDefaultValidator,
 	mailDensityValidator,
+	mailViewModeValidator,
 	mailNotifyAboutValidator,
 	mailUnsubscribeValidator,
 	spamVerdictValidator,
@@ -956,6 +957,11 @@ export const mailTables = {
 		// rows + single-line subject/snippet). Optional so existing rows read as
 		// undefined; the reader defaults it to 'comfortable'.
 		density: v.optional(mailDensityValidator),
+		// Inbox list view mode: 'flat' (single message list), 'conversations'
+		// (thread-grouped), or 'categories' (smart-inbox sections). Inbox-only —
+		// other folders always render flat. Optional so existing rows read as
+		// undefined; the reader defaults it to 'flat'.
+		viewMode: v.optional(mailViewModeValidator),
 		// Play a short confirmation sound when a message is dispatched. Optional so
 		// existing rows read as undefined; the reader defaults it OFF (opt-in).
 		isSendSoundOn: v.optional(v.boolean()),
