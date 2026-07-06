@@ -1,0 +1,6 @@
+{
+	"$schema": "https://raw.githubusercontent.com/nicovrc/tauri2/schema.json",
+	"bundle": {
+		"createUpdaterArtifacts": true
+	}
+}
