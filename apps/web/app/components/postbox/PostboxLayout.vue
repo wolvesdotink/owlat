@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import type { PostboxViewMode } from '~/utils/postboxViewMode';
+import {
+	POSTBOX_VIEW_MODE_OPTIONS,
+	postboxListRenderer,
+	resolvePostboxViewMode,
+} from '~/utils/postboxViewMode';
 
 const props = defineProps<{
 	mailboxId: Id<'mailboxes'>;
@@ -18,7 +24,9 @@ const { customFolders } = usePostboxFolders(mailboxIdRef);
 
 // List/reader density → applied as a single data-density attribute on the
 // Postbox root; all compact styling lives in CSS keyed off it (postbox-density.css).
-const { density } = usePostboxSettings();
+// viewMode → which of the three inbox list renderers is active (Flat /
+// Conversations / Categories), persisted per user on the server.
+const { density, viewMode: savedViewMode, setViewMode } = usePostboxSettings();
 
 const { messages, isLoading, hasMore, loadMore } = usePostboxThreads({
 	mailboxId: mailboxIdRef,
@@ -62,14 +70,33 @@ onBeforeUnmount(() => window.removeEventListener('keydown', triageUndo.onWindowK
 // Folder name shown in the list header (custom folders carry no role).
 const currentFolderName = computed(() =>
 	props.folderId
-		? customFolders.value.find((f) => f._id === props.folderId)?.name ?? 'Folder'
+		? (customFolders.value.find((f) => f._id === props.folderId)?.name ?? 'Folder')
 		: props.folderRole
 );
 
-// Conversation (thread-grouped) view — opt-in for the inbox; the flat list with
-// its hover/keyboard triage stays the default and serves all other folders.
-const conversationView = useState('postbox:conversation-view', () => false);
-const threadGroupsEnabled = computed(() => folderRef.value === 'inbox' && conversationView.value);
+// Inbox view mode — exactly one of Flat / Conversations / Categories is
+// active. The saved (server-persisted) value drives the list; a pending
+// optimistic override reflects a tap immediately while the mutation lands,
+// then hands back to the server value. Grouped renderers are inbox-only; the
+// flat list with its hover/keyboard triage serves all other folders.
+const pendingViewMode = ref<PostboxViewMode | null>(null);
+const viewMode = computed<PostboxViewMode>(() => pendingViewMode.value ?? savedViewMode.value);
+watch(savedViewMode, (saved) => {
+	if (pendingViewMode.value === saved) pendingViewMode.value = null;
+});
+function selectViewMode(value: string) {
+	const mode = resolvePostboxViewMode(value);
+	if (mode === viewMode.value) return;
+	pendingViewMode.value = mode;
+	// The list already switched optimistically; useBackendOperation surfaces a
+	// toast if the save fails, and the override snaps back to the saved mode.
+	void setViewMode(mode).then((saved) => {
+		if (!saved && pendingViewMode.value === mode) pendingViewMode.value = null;
+	});
+}
+const activeListRenderer = computed(() => postboxListRenderer(viewMode.value, folderRef.value));
+
+const threadGroupsEnabled = computed(() => activeListRenderer.value === 'conversations');
 const {
 	threads: threadGroups,
 	isLoading: threadGroupsLoading,
@@ -81,13 +108,9 @@ const {
 	enabled: threadGroupsEnabled,
 });
 
-// Smart-inbox split view — opt-in for the inbox, off by default. Groups the
-// inbox into People / Newsletters / Notifications / Receipts sections. Takes
-// precedence over the conversation toggle when both are on.
-const categoryView = useState('postbox:category-view', () => false);
-const categoryGroupsEnabled = computed(
-	() => folderRef.value === 'inbox' && categoryView.value
-);
+// Smart-inbox split view — groups the inbox into People / Newsletters /
+// Notifications / Receipts sections.
+const categoryGroupsEnabled = computed(() => activeListRenderer.value === 'categories');
 const {
 	sections: categorySections,
 	isLoading: categoryLoading,
@@ -102,9 +125,7 @@ const {
 	enabled: categoryGroupsEnabled,
 });
 
-const listActive = computed(() =>
-	messages.value.find((m) => m._id === props.activeMessageId)
-);
+const listActive = computed(() => messages.value.find((m) => m._id === props.activeMessageId));
 // Deep-link fallback: when the active message isn't in the loaded page (an old
 // message reached via bookmark / notification / search), fetch it by id so the
 // reader renders instead of showing an empty "Select a message".
@@ -127,7 +148,7 @@ const advanceIds = computed(() =>
 			// unmounted (e.g. the search overlay covers it); it skips the
 			// optimistic-hide filter, but any hidden row is mid-mutation and about
 			// to leave `messages` anyway, so the order is at worst one row stale.
-			threadListRef.value?.visibleIds ?? messages.value.map((m) => m._id)
+			(threadListRef.value?.visibleIds ?? messages.value.map((m) => m._id))
 );
 
 // Reply Queue inbox "waiting on your reply" strip. The strip is dismissible for
@@ -136,10 +157,7 @@ const advanceIds = computed(() =>
 const { count: replyQueueCount } = usePostboxReplyQueue(mailboxIdRef);
 const replyQueueStripDismissed = useState('postbox:reply-queue-strip-dismissed', () => false);
 const showReplyQueueStrip = computed(
-	() =>
-		folderRef.value === 'inbox' &&
-		replyQueueCount.value > 0 &&
-		!replyQueueStripDismissed.value
+	() => folderRef.value === 'inbox' && replyQueueCount.value > 0 && !replyQueueStripDismissed.value
 );
 </script>
 
@@ -147,11 +165,7 @@ const showReplyQueueStrip = computed(
 	<div class="flex w-full" :data-density="density">
 		<!-- Pane 1: folder rail — collapsible icon strip; self-contained (search,
 		     folder CRUD, labels, Reply Queue/Snoozed/Contacts, Cmd+Shift+D). -->
-		<PostboxFolderRail
-			:mailbox-id="mailboxId"
-			:folder-role="folderRole"
-			:folder-id="folderId"
-		/>
+		<PostboxFolderRail :mailbox-id="mailboxId" :folder-role="folderRole" :folder-id="folderId" />
 
 		<!-- Pane 2: thread/message list -->
 		<section class="w-96 border-r border-border-subtle flex flex-col bg-bg-surface">
@@ -163,7 +177,9 @@ const showReplyQueueStrip = computed(
 				role="status"
 			>
 				<Icon name="lucide:cloud-off" class="w-3.5 h-3.5 flex-shrink-0" />
-				<span class="truncate">Offline — showing recent mail from this device. Actions are paused.</span>
+				<span class="truncate"
+					>Offline — showing recent mail from this device. Actions are paused.</span
+				>
 			</div>
 			<header class="border-b border-border-subtle px-4 py-3 flex items-center justify-between">
 				<h2 class="text-sm font-semibold capitalize text-text-primary flex items-center gap-2">
@@ -176,34 +192,19 @@ const showReplyQueueStrip = computed(
 					<span
 						v-if="showingCached && !isOffline"
 						class="animate-pulse text-[11px] font-normal text-text-tertiary lowercase"
-					>updating…</span>
+						>updating…</span
+					>
 				</h2>
-				<div v-if="folderRole === 'inbox'" class="flex items-center gap-1">
-					<button
-						type="button"
-						class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-text-primary"
-						:class="{ 'text-brand': categoryView }"
-						:title="categoryView ? 'Show a single list' : 'Group by category'"
-						:aria-label="categoryView ? 'Show a single list' : 'Group by category'"
-						:aria-pressed="categoryView"
-						@click="categoryView = !categoryView"
-					>
-						<Icon name="lucide:layout-list" class="w-4 h-4" />
-					</button>
-					<button
-						type="button"
-						class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-text-primary"
-						:title="conversationView ? 'Show individual messages' : 'Group by conversation'"
-						:aria-label="conversationView ? 'Show individual messages' : 'Group by conversation'"
-						:aria-pressed="conversationView"
-						@click="conversationView = !conversationView"
-					>
-						<Icon
-							:name="conversationView ? 'lucide:list' : 'lucide:messages-square'"
-							class="w-4 h-4"
-						/>
-					</button>
-				</div>
+				<!-- Labeled view-mode control — exactly one mode active; persisted
+				     per user. Inbox-only: other folders stay flat. -->
+				<UiSegmentedControl
+					v-if="folderRole === 'inbox'"
+					size="sm"
+					aria-label="Inbox view"
+					:options="POSTBOX_VIEW_MODE_OPTIONS"
+					:model-value="viewMode"
+					@update:model-value="selectViewMode"
+				/>
 			</header>
 			<template v-if="folderRole === 'drafts'">
 				<div class="flex-1 overflow-auto">
@@ -244,41 +245,47 @@ const showReplyQueueStrip = computed(
 					:folder-role="folderRole"
 				/>
 				<div class="flex-1 overflow-auto">
+					<!-- Keyed on folder + renderer so both folder changes and view-mode
+					     switches cross-fade (pbx-fade is opacity-only and inert under
+					     prefers-reduced-motion). -->
 					<Transition name="pbx-fade" mode="out-in">
-					<div :key="String(folderId ?? folderRole ?? 'all')" class="h-full">
-						<PostboxThreadCategoryList
-							v-if="categoryGroupsEnabled"
-							:sections="categorySections"
-							:collapsed="categoryCollapsed"
-							:loading="categoryLoading"
-							:folder-role="folderRole"
-							:active-message-id="activeMessageId"
-							:has-more="categoryHasMore"
-							@load-more="loadMoreCategories"
-							@toggle="toggleCategory"
-							@recategorize="recategorize"
-						/>
-						<PostboxThreadGroupList
-							v-else-if="threadGroupsEnabled"
-							:threads="threadGroups"
-							:loading="threadGroupsLoading"
-							:folder-role="folderRole"
-							:active-message-id="activeMessageId"
-							:has-more="threadGroupsHasMore"
-							@load-more="loadMoreThreadGroups"
-						/>
-						<PostboxThreadList
-							v-else
-							ref="threadListRef"
-							:mailbox-id="mailboxId"
-							:messages="displayMessages"
-							:loading="isLoading && !showingCached"
-							:folder-role="folderRole"
-							:active-message-id="activeMessageId"
-							:has-more="hasMore"
-							@load-more="loadMore"
-						/>
-					</div>
+						<div
+							:key="`${String(folderId ?? folderRole ?? 'all')}:${activeListRenderer}`"
+							class="h-full"
+						>
+							<PostboxThreadCategoryList
+								v-if="categoryGroupsEnabled"
+								:sections="categorySections"
+								:collapsed="categoryCollapsed"
+								:loading="categoryLoading"
+								:folder-role="folderRole"
+								:active-message-id="activeMessageId"
+								:has-more="categoryHasMore"
+								@load-more="loadMoreCategories"
+								@toggle="toggleCategory"
+								@recategorize="recategorize"
+							/>
+							<PostboxThreadGroupList
+								v-else-if="threadGroupsEnabled"
+								:threads="threadGroups"
+								:loading="threadGroupsLoading"
+								:folder-role="folderRole"
+								:active-message-id="activeMessageId"
+								:has-more="threadGroupsHasMore"
+								@load-more="loadMoreThreadGroups"
+							/>
+							<PostboxThreadList
+								v-else
+								ref="threadListRef"
+								:mailbox-id="mailboxId"
+								:messages="displayMessages"
+								:loading="isLoading && !showingCached"
+								:folder-role="folderRole"
+								:active-message-id="activeMessageId"
+								:has-more="hasMore"
+								@load-more="loadMore"
+							/>
+						</div>
 					</Transition>
 				</div>
 			</template>
@@ -287,19 +294,19 @@ const showReplyQueueStrip = computed(
 		<!-- Pane 3: reader -->
 		<section class="flex-1 overflow-auto bg-bg-base">
 			<Transition name="pbx-reader" mode="out-in">
-			<PostboxThreadReader
-				v-if="activeMessage"
-				:key="activeMessageId ?? undefined"
-				:message="activeMessage"
-				:advance-ids="advanceIds"
-				:folder-role="folderId ? String(folderId) : folderRole"
-			/>
-			<div v-else class="h-full flex items-center justify-center">
-				<div class="text-center">
-					<Icon name="lucide:mail-open" class="w-12 h-12 mx-auto text-text-tertiary" />
-					<p class="mt-4 text-text-secondary">Select a message</p>
+				<PostboxThreadReader
+					v-if="activeMessage"
+					:key="activeMessageId ?? undefined"
+					:message="activeMessage"
+					:advance-ids="advanceIds"
+					:folder-role="folderId ? String(folderId) : folderRole"
+				/>
+				<div v-else class="h-full flex items-center justify-center">
+					<div class="text-center">
+						<Icon name="lucide:mail-open" class="w-12 h-12 mx-auto text-text-tertiary" />
+						<p class="mt-4 text-text-secondary">Select a message</p>
+					</div>
 				</div>
-			</div>
 			</Transition>
 		</section>
 
