@@ -67,7 +67,7 @@ onMounted(() => {
 		now.value = new Date();
 	}, 60_000);
 });
-onBeforeUnmount(() => {
+onUnmounted(() => {
 	if (clock !== undefined) window.clearInterval(clock);
 });
 
