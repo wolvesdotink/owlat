@@ -11,7 +11,9 @@
  *
  * Loaders run in topological order based on their declared `dependencies`.
  * Each loader inserts rows tagged with `seedTag: 'demo'` so reset can find
- * them again.
+ * them again. Exception: the `accounts` loader writes BetterAuth component
+ * rows, which cannot carry the tag — it dedupes by email instead and is only
+ * wiped by the full `POST /dev/reset`.
  */
 
 import { v } from 'convex/values';
@@ -22,6 +24,7 @@ import { getOptional } from '../lib/env';
 import { safeCompare } from '../lib/safeCompare';
 import { devDeploymentResponseOrNull } from '../devShortcuts/_guard';
 
+import accountsFixture from './fixtures/accounts.json';
 import topicsFixture from './fixtures/topics.json';
 import contactsFixture from './fixtures/contacts.json';
 import contactTopicsFixture from './fixtures/contactTopics.json';
@@ -32,6 +35,7 @@ import automationsFixture from './fixtures/automations.json';
 import webhooksFixture from './fixtures/webhooks.json';
 import domainsFixture from './fixtures/domains.json';
 
+import { accountsLoader } from './loaders/accounts';
 import { topicsLoader } from './loaders/topics';
 import { contactsLoader } from './loaders/contacts';
 import { contactTopicsLoader } from './loaders/contactTopics';
@@ -46,15 +50,16 @@ import type { Loader, SeedRefs } from './loaders/types';
 // Order matters: each entry's `dependencies` reference earlier modules in the
 // list. Keeping the list ordered makes the topological sort a single pass.
 const LOADERS: Array<{ loader: Loader; records: unknown[] }> = [
-	{ loader: topicsLoader,         records: topicsFixture },
-	{ loader: contactsLoader,       records: contactsFixture },
-	{ loader: contactTopicsLoader,  records: contactTopicsFixture },
-	{ loader: savedBlocksLoader,    records: savedBlocksFixture },
+	{ loader: accountsLoader, records: accountsFixture },
+	{ loader: topicsLoader, records: topicsFixture },
+	{ loader: contactsLoader, records: contactsFixture },
+	{ loader: contactTopicsLoader, records: contactTopicsFixture },
+	{ loader: savedBlocksLoader, records: savedBlocksFixture },
 	{ loader: emailTemplatesLoader, records: emailTemplatesFixture },
-	{ loader: campaignsLoader,      records: campaignsFixture },
-	{ loader: automationsLoader,    records: automationsFixture },
-	{ loader: webhooksLoader,       records: webhooksFixture },
-	{ loader: domainsLoader,        records: domainsFixture },
+	{ loader: campaignsLoader, records: campaignsFixture },
+	{ loader: automationsLoader, records: automationsFixture },
+	{ loader: webhooksLoader, records: webhooksFixture },
+	{ loader: domainsLoader, records: domainsFixture },
 ];
 
 // Tables that may carry `seedTag: 'demo'` rows. Used by reset to wipe them.
@@ -108,7 +113,7 @@ export const runSeedDemo = internalMutation({
 			for (const dep of loader.dependencies) {
 				if (!(dep in refs)) {
 					throw new Error(
-						`Seed loader '${loader.module}' depends on '${dep}', which has not been loaded yet.`,
+						`Seed loader '${loader.module}' depends on '${dep}', which has not been loaded yet.`
 					);
 				}
 			}

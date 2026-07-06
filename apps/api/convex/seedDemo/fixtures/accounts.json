@@ -1,0 +1,18 @@
+[
+	{
+		"slug": "taylor",
+		"email": "taylor@example.com",
+		"name": "Taylor Demo",
+		"role": "admin",
+		"password": "devpassword12345",
+		"passwordHash": "b80a39f8eeba18ad03b7206475e4e34a:b2e46115484ab2e82b094e2c203791599c4f0e7d59ac3fc7b13eae4006e35986e514ed9b9e765a5ea3414158683b942a0de68092b3c25f1b1ddeef4d7959000d"
+	},
+	{
+		"slug": "jordan",
+		"email": "jordan@example.com",
+		"name": "Jordan Demo",
+		"role": "member",
+		"password": "devpassword12345",
+		"passwordHash": "eb16c0600f3d0110675f5430db917b7f:d87c37d6c764fee8f54a61ffaeb7eec1997b6b2bab113b4e0a28d80f9852eacee720fffecc03de05704a32719e89486b3eefd01bffa0460e7741f697571c48ce"
+	}
+]
