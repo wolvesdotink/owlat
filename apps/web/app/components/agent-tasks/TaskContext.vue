@@ -85,7 +85,7 @@ const hasAvatar = computed(() => Boolean(props.name || props.email));
 				</span>
 				<slot name="chips" />
 			</div>
-			<div v-if="meta || $slots.meta" class="text-xs text-text-tertiary mt-0.5">
+			<div v-if="meta || $slots['meta']" class="text-xs text-text-tertiary mt-0.5">
 				<slot name="meta">{{ meta }}</slot>
 			</div>
 		</div>
