@@ -48,15 +48,15 @@ beforeAll(() => {
 const iconStub = { props: ['name'], template: '<span class="icon" :data-name="name" />' };
 const nuxtLinkStub = { props: ['to'], template: '<a :href="to"><slot /></a>' };
 const threadListStub = {
-	props: [
-		'messages',
-		'loading',
-		'folderRole',
-		'hasMore',
-		'mailboxId',
-		'selectable',
-		'activeMessageId',
-	],
+	props: {
+		messages: { type: Array, default: () => [] },
+		loading: { type: Boolean, default: false },
+		folderRole: { type: String, default: undefined },
+		hasMore: { type: Boolean, default: false },
+		mailboxId: { type: String, default: undefined },
+		selectable: { type: Boolean, default: false },
+		activeMessageId: { type: String, default: undefined },
+	},
 	emits: ['select', 'load-more'],
 	template:
 		'<div class="thread-list" :data-count="messages.length" :data-selectable="selectable" :data-active="activeMessageId ?? \'\'" />',

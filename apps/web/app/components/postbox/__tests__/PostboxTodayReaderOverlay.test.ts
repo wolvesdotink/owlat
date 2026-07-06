@@ -18,7 +18,12 @@ import { nextTick } from 'vue';
 import PostboxTodayReaderOverlay from '../PostboxTodayReaderOverlay.vue';
 
 const readerStub = {
-	props: ['message', 'advanceIds', 'folderRole', 'advanceInPlace'],
+	props: {
+		message: { type: Object, required: true },
+		advanceIds: { type: Array, default: () => [] },
+		folderRole: { type: String, default: undefined },
+		advanceInPlace: { type: Boolean, default: false },
+	},
 	emits: ['advance'],
 	template: '<div class="reader-stub" :data-id="message._id" />',
 };
