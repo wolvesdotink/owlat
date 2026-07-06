@@ -11,6 +11,8 @@
 useHead({ title: 'Connect desktop app — Owlat' });
 definePageMeta({ layout: false });
 
+import { formatConnectionCode } from '~/lib/desktop/connectionCode';
+
 const route = useRoute();
 const { user, signInWithEmail, isPending } = useAuth();
 
@@ -24,6 +26,21 @@ const password = ref('');
 const isLoading = ref(false);
 const errorMessage = ref('');
 const handingBack = ref(false);
+// Deep-link fallback: the same payload as a paste-able code, for environments
+// where the `owlat://` link never reaches the app (macOS `tauri dev` binaries,
+// browsers that refuse custom schemes). See lib/desktop/connectionCode.ts.
+const connectionCode = ref('');
+const codeCopied = ref(false);
+
+async function copyCode() {
+	try {
+		await navigator.clipboard.writeText(connectionCode.value);
+		codeCopied.value = true;
+		setTimeout(() => (codeCopied.value = false), 2000);
+	} catch {
+		// Clipboard unavailable — the code is selectable text, copy by hand.
+	}
+}
 
 async function generateAndReturn() {
 	if (handingBack.value) return;
@@ -35,6 +52,7 @@ async function generateAndReturn() {
 		if (!res.ok) throw new Error('Could not create a sign-in token.');
 		const data = (await res.json()) as { token?: string };
 		if (!data.token) throw new Error('No token returned by the server.');
+		connectionCode.value = formatConnectionCode(state.value, data.token);
 		window.location.href = `${redirect.value}?ott=${encodeURIComponent(data.token)}&state=${encodeURIComponent(state.value)}`;
 	} catch (e) {
 		errorMessage.value = e instanceof Error ? e.message : 'Something went wrong.';
@@ -50,7 +68,7 @@ watch(
 			void generateAndReturn();
 		}
 	},
-	{ immediate: true },
+	{ immediate: true }
 );
 
 async function handleSubmit() {
@@ -73,7 +91,9 @@ async function handleSubmit() {
 </script>
 
 <template>
-	<div class="min-h-screen bg-bg-deep flex flex-col items-center justify-center px-4 text-text-primary">
+	<div
+		class="min-h-screen bg-bg-deep flex flex-col items-center justify-center px-4 text-text-primary"
+	>
 		<div class="w-full max-w-sm rounded-2xl border border-border-default bg-bg-surface p-8">
 			<h1 class="text-xl font-semibold mb-1">Connect the desktop app</h1>
 			<p class="text-sm text-text-secondary mb-6">
@@ -85,7 +105,27 @@ async function handleSubmit() {
 			</div>
 
 			<div v-else-if="handingBack || (user && !isPending)" class="text-sm text-text-secondary">
-				Signing you in to the desktop app…
+				<p>Signing you in to the desktop app…</p>
+				<div v-if="connectionCode" class="mt-6 border-t border-border-default pt-4">
+					<p class="mb-2">
+						Desktop app didn't open? Paste this code into its connect screen (valid for a few
+						minutes):
+					</p>
+					<div class="flex items-center gap-2">
+						<code
+							class="min-w-0 flex-1 truncate rounded-lg border border-border-default bg-bg-deep px-3 py-2 text-xs select-all"
+						>
+							{{ connectionCode }}
+						</code>
+						<button
+							type="button"
+							class="shrink-0 rounded-lg border border-border-default px-3 py-2 text-xs hover:text-text-primary"
+							@click="copyCode"
+						>
+							{{ codeCopied ? 'Copied!' : 'Copy' }}
+						</button>
+					</div>
+				</div>
 			</div>
 
 			<form v-else class="space-y-4" @submit.prevent="handleSubmit">
