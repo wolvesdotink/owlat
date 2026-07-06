@@ -93,24 +93,10 @@
 }
 
 /*
- * Hover-action reveal in list rows: fade only, never layout shift. Applied via
- * a utility class on the actions container; the element keeps its box at all
- * times (opacity, not display) so row height and scroll position never move.
+ * Hover-action reveal in list rows moved to the shared micro-interaction kit:
+ * use `.ui-hover-reveal` (packages/ui/assets/css/motion.css). Same recipe —
+ * opacity-only, pointer-events gated, zero layout shift, moderate tier.
  */
-.pbx-hover-reveal {
-	opacity: 0;
-	/* Invisible actions must not be tappable (touch/no-hover devices where the
-	 * row never enters :hover) — the buttons stay in the DOM for zero layout
-	 * shift, but only accept input once actually revealed. */
-	pointer-events: none;
-	transition: opacity var(--pbx-motion-fast) var(--pbx-motion-ease);
-}
-.pbx-hover-reveal:focus-within,
-.group:hover .pbx-hover-reveal,
-.pbx-hover-reveal-host:hover .pbx-hover-reveal {
-	opacity: 1;
-	pointer-events: auto;
-}
 
 @media (prefers-reduced-motion: reduce) {
 	/* Collapse all Postbox transitions to opacity-only: no movement, no scale. */
@@ -121,8 +107,7 @@
 	.pbx-popup-enter-active,
 	.pbx-popup-leave-active,
 	.pbx-toast-enter-active,
-	.pbx-toast-leave-active,
-	.pbx-hover-reveal {
+	.pbx-toast-leave-active {
 		transition-property: opacity;
 	}
 	.pbx-reader-enter-from,
