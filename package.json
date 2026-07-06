@@ -62,6 +62,7 @@
 		"dev:api": "bun --env-file=.env --env-file=.env.local run turbo dev --filter=@owlat/api",
 		"dev:docs": "bun --env-file=.env --env-file=.env.local run turbo dev --filter=@owlat/docs",
 		"dev:marketing": "bun --env-file=.env --env-file=.env.local run turbo dev --filter=@owlat/marketing",
+		"dev:seed": "bun scripts/dev-seed.ts",
 		"build": "turbo build",
 		"build:web": "turbo build --filter=@owlat/web",
 		"build:docs": "turbo build --filter=@owlat/docs",
