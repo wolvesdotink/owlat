@@ -21,6 +21,7 @@ import {
 	mailReplyDefaultValidator,
 	mailDensityValidator,
 	mailViewModeValidator,
+	mailInboxModeValidator,
 	mailNotifyAboutValidator,
 } from '../lib/convexValidators';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
@@ -44,6 +45,7 @@ export const get = publicQuery({
 			replyDefault: row.replyDefault,
 			density: row.density,
 			viewMode: row.viewMode,
+			inboxMode: row.inboxMode,
 			isSendSoundOn: row.isSendSoundOn,
 			notifyAbout: row.notifyAbout,
 			isBadgeNonPeopleOn: row.isBadgeNonPeopleOn,
@@ -62,6 +64,7 @@ export const update = authedMutation({
 		replyDefault: v.optional(mailReplyDefaultValidator),
 		density: v.optional(mailDensityValidator),
 		viewMode: v.optional(mailViewModeValidator),
+		inboxMode: v.optional(mailInboxModeValidator),
 		isSendSoundOn: v.optional(v.boolean()),
 		notifyAbout: v.optional(mailNotifyAboutValidator),
 		isBadgeNonPeopleOn: v.optional(v.boolean()),
@@ -84,6 +87,7 @@ export const update = authedMutation({
 			replyDefault?: (typeof args)['replyDefault'];
 			density?: (typeof args)['density'];
 			viewMode?: (typeof args)['viewMode'];
+			inboxMode?: (typeof args)['inboxMode'];
 			isSendSoundOn?: boolean;
 			notifyAbout?: (typeof args)['notifyAbout'];
 			isBadgeNonPeopleOn?: boolean;
@@ -96,6 +100,7 @@ export const update = authedMutation({
 		if (args.replyDefault !== undefined) patch.replyDefault = args.replyDefault;
 		if (args.density !== undefined) patch.density = args.density;
 		if (args.viewMode !== undefined) patch.viewMode = args.viewMode;
+		if (args.inboxMode !== undefined) patch.inboxMode = args.inboxMode;
 		if (args.isSendSoundOn !== undefined) patch.isSendSoundOn = args.isSendSoundOn;
 		if (args.notifyAbout !== undefined) patch.notifyAbout = args.notifyAbout;
 		if (args.isBadgeNonPeopleOn !== undefined) patch.isBadgeNonPeopleOn = args.isBadgeNonPeopleOn;

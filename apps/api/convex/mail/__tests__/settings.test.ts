@@ -104,6 +104,26 @@ describe('mail.settings get/update', () => {
 		});
 	});
 
+	it('round-trips the inbox landing mode without clobbering other preferences', async () => {
+		const t = convexTest(schema, modules);
+		await t.mutation(api.mail.settings.update, { viewMode: 'categories' });
+		await t.mutation(api.mail.settings.update, { inboxMode: 'browse' });
+		expect(await t.query(api.mail.settings.get, {})).toEqual({
+			autoAdvance: 'next',
+			viewMode: 'categories',
+			inboxMode: 'browse',
+		});
+	});
+
+	it('rejects an inbox landing mode outside the union', async () => {
+		const t = convexTest(schema, modules);
+		await expect(
+			t.mutation(api.mail.settings.update, {
+				inboxMode: 'zen' as unknown as 'today',
+			})
+		).rejects.toThrow();
+	});
+
 	it('rejects a view mode outside the union', async () => {
 		const t = convexTest(schema, modules);
 		await expect(
