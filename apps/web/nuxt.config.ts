@@ -77,6 +77,12 @@ export default defineNuxtConfig({
 							'wss:',
 							'http://localhost:*',
 							'ws://localhost:*',
+							// CSP host matching is literal — `localhost` does not cover the
+							// loopback IP, and the local dev stack advertises its Convex
+							// backend as 127.0.0.1 (apps/api/.env.local), so the webview's
+							// Convex websocket (ws://127.0.0.1:3210) needs its own entries.
+							'http://127.0.0.1:*',
+							'ws://127.0.0.1:*',
 							// Tauri IPC: WKWebView fetches the `ipc:` scheme on macOS;
 							// Windows/Linux route it through http://ipc.localhost.
 							'ipc:',
