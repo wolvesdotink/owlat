@@ -7,7 +7,7 @@
  * Under prefers-reduced-motion the number simply updates — plain text, no
  * animation.
  */
-import { onMounted, ref } from 'vue';
+import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { parseCssDurationMs, useNumberTicker } from '../../composables/useNumberTicker';
 
 const props = withDefaults(
@@ -33,9 +33,11 @@ onMounted(() => {
 	if (typeof matchMedia === 'function') {
 		const query = matchMedia('(prefers-reduced-motion: reduce)');
 		reducedMotion.value = query.matches;
-		query.addEventListener('change', (event) => {
+		const onChange = (event: MediaQueryListEvent) => {
 			reducedMotion.value = event.matches;
-		});
+		};
+		query.addEventListener('change', onChange);
+		onBeforeUnmount(() => query.removeEventListener('change', onChange));
 	}
 });
 
