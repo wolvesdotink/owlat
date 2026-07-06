@@ -136,7 +136,16 @@ export default defineNuxtConfig({
 		csrf: true,
 	},
 
-	routeRules: {},
+	routeRules: {
+		// The BetterAuth proxy must be exempt from nuxt-csurf: the better-auth
+		// client uses its own fetch, which cannot carry the csrf-token header, so
+		// every proxied sign-in/sign-up POST would 403 ("CSRF Token not found").
+		// Safe to exempt — BetterAuth applies its own CSRF defense server-side
+		// (Origin/Referer must match trustedOrigins on any cookie-bearing POST;
+		// see better-auth's originCheckMiddleware), and the proxy forwards the
+		// browser's Origin header verbatim.
+		'/api/auth/**': { csurf: false },
+	},
 
 	icon: {
 		serverBundle: 'local',
