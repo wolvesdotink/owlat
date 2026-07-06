@@ -2,7 +2,7 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 
-useHead({ title: 'Topics — Owlat' });
+useHead({ title: 'Subscription topics — Owlat' });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -270,9 +270,9 @@ onMounted(() => {
 		<!-- Header -->
 		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
 			<div>
-				<h1 class="text-2xl font-semibold text-text-primary">Topics</h1>
+				<h1 class="text-2xl font-semibold text-text-primary">Subscription topics</h1>
 				<p class="mt-1 text-text-secondary">
-					Organize your contacts into topics for targeted campaigns
+					What contacts subscribe to — group them for targeted campaigns
 				</p>
 			</div>
 			<UiButton @click="openCreateModal">

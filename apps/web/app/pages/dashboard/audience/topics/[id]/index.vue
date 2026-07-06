@@ -2,7 +2,7 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 
-useHead({ title: 'Topic — Owlat' });
+useHead({ title: 'Subscription topic — Owlat' });
 
 definePageMeta({
 	layout: 'dashboard',
