@@ -204,6 +204,11 @@ scripts/owlat quickstart      # the blessed flow (legacy bash fallback: bash scr
 bun run dev           # web + api in parallel (localhost:3000)
 bun run dev:web       # Nuxt frontend only
 bun run dev:api       # Convex backend only
+bun run dev:seed      # OPTIONAL: seed the local stack with dummy accounts +
+                      # demo data (contacts, topics, campaigns, …). Never runs
+                      # automatically — skip it for a blank instance. Prints
+                      # the sign-in credentials (dev@example.com etc.).
+                      # --reset reseeds demo rows, --wipe starts from blank.
 bun run dev:docs      # docs site
 bun run dev:marketing # marketing site
 bun run build         # Production build (all apps)
