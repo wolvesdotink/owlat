@@ -17,6 +17,7 @@
  */
 
 import { ref } from 'vue';
+import { countWords } from './usePostboxSelectionRewrite';
 
 /** Mirrors the backend `CoachCategory` union in mail/ai.ts. */
 export type CoachCategory = 'tone' | 'ambiguity' | 'clarity' | 'missing-answer';
@@ -35,13 +36,6 @@ export interface UsePostboxCoachOptions {
 
 /** Minimum draft words before the Coach action is offered (a 3-word draft has nothing to coach). */
 export const MIN_COACH_WORDS = 6;
-
-/** Count whitespace-delimited words in a draft. */
-export function countWords(text: string): number {
-	const trimmed = text.trim();
-	if (!trimmed) return 0;
-	return trimmed.split(/\s+/).length;
-}
 
 /**
  * Pure visibility rule for the Coach action: only when AI is enabled AND the

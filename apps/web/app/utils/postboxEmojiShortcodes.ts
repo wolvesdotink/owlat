@@ -11,8 +11,6 @@
 
 import { POSTBOX_EMOJI, type PostboxEmoji } from './postboxEmojiData';
 
-export type { PostboxEmoji } from './postboxEmojiData';
-
 /** A detected `:shortcode` trigger at the caret. */
 export interface ShortcodeTrigger {
 	/** The query typed after the colon (lowercased), e.g. `sm` for `:sm`. */
@@ -75,9 +73,7 @@ export function fuzzyFilterEmoji(query: string, limit = 8): PostboxEmoji[] {
 		const score = scoreEmoji(emoji, q);
 		if (score > 0) scored.push({ emoji, score });
 	}
-	scored.sort(
-		(a, b) => b.score - a.score || a.emoji.shortcode.localeCompare(b.emoji.shortcode),
-	);
+	scored.sort((a, b) => b.score - a.score || a.emoji.shortcode.localeCompare(b.emoji.shortcode));
 	return scored.slice(0, limit).map((s) => s.emoji);
 }
 

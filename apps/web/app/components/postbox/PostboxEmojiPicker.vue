@@ -8,7 +8,7 @@
  * click intent. `mousedown.prevent` keeps focus in the editor so a click inserts
  * without collapsing the selection first.
  */
-import type { PostboxEmoji } from '~/utils/postboxEmojiShortcodes';
+import type { PostboxEmoji } from '~/utils/postboxEmojiData';
 
 const props = defineProps<{
 	items: readonly PostboxEmoji[];
@@ -28,7 +28,7 @@ watch(
 	() => props.activeIndex,
 	(index) => {
 		void nextTick(() => optionEls.value[index]?.scrollIntoView({ block: 'nearest' }));
-	},
+	}
 );
 </script>
 
