@@ -1,4 +1,5 @@
 import { usePostboxListKeyboard } from '~/composables/postbox/usePostboxListKeyboard';
+import { resolveAgentTaskShortcut } from '~/utils/agentTaskShortcuts';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
 import { resolveReviewShortcut } from '~/utils/reviewShortcuts';
 
@@ -13,7 +14,9 @@ import { resolveReviewShortcut } from '~/utils/reviewShortcuts';
  *   text input / textarea / contenteditable is focused — so typing a reply into
  *   the inline compose box never approves or rejects a draft.
  * - `resolveReviewShortcut` maps the review vocabulary: a → approve (send),
- *   e → edit, x/# → reject.
+ *   e → edit, x/# → reject, s → skip (non-destructive: focus the next card).
+ * - `resolveAgentTaskShortcut` (the shared agent-task-card vocabulary) adds
+ *   1–9 → pick the matching option chip on the focused card.
  *
  * FAIL-SOFT: this is purely an input layer. Every action is dispatched to the
  * SAME callbacks the on-screen buttons already call (which route through the
@@ -34,6 +37,8 @@ export function useReviewQueueKeyboard<T extends { _id: string }>(opts: {
 	onEdit: (row: T) => void;
 	/** x / # — reject the draft. */
 	onReject: (row: T) => void;
+	/** 1–9 — pick the matching option chip on the focused card (optional). */
+	onPickOption?: (row: T, index: number) => void;
 }) {
 	const { focusedIndex, activeId, onKeydown: listKeydown } = usePostboxListKeyboard<T>({
 		items: opts.items,
@@ -41,6 +46,12 @@ export function useReviewQueueKeyboard<T extends { _id: string }>(opts: {
 		rowDomId: opts.rowDomId,
 		onActivate: opts.onOpen,
 		onAction: (key, row) => {
+			// The shared agent-task-card vocabulary first: digits pick a chip.
+			const taskShortcut = resolveAgentTaskShortcut(key);
+			if (taskShortcut?.type === 'chip') {
+				opts.onPickOption?.(row, taskShortcut.index);
+				return;
+			}
 			switch (resolveReviewShortcut(key)) {
 				case 'approve':
 					opts.onApprove(row);
@@ -50,6 +61,10 @@ export function useReviewQueueKeyboard<T extends { _id: string }>(opts: {
 					break;
 				case 'reject':
 					opts.onReject(row);
+					break;
+				case 'skip':
+					// Non-destructive: leave the card for later, focus the next one.
+					focusedIndex.value = Math.min(focusedIndex.value + 1, opts.items.value.length - 1);
 					break;
 			}
 		},

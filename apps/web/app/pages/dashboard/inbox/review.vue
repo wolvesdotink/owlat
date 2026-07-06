@@ -1,5 +1,9 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
+import TaskActions from '~/components/agent-tasks/TaskActions.vue';
+import TaskAsk from '~/components/agent-tasks/TaskAsk.vue';
+import TaskCardShell from '~/components/agent-tasks/TaskCardShell.vue';
+import TaskContext from '~/components/agent-tasks/TaskContext.vue';
 import { REVIEW_SHORTCUT_GROUPS } from '~/utils/reviewShortcuts';
 import { escalationTrustLabel, trustLabel, type TrustLabel } from '~/utils/trustLabel';
 
@@ -104,6 +108,17 @@ function rowTrustDetail(message: ReviewRow['message']): string | undefined {
 		: undefined;
 }
 
+/**
+ * The muted one-line WHY under the card's ask (shared task-card anatomy):
+ * the route step's recorded reason for holding/escalating, moved up from the
+ * old rationale block. Grounding provenance stays in InboxDecisionRationale.
+ */
+function rowWhy(message: ReviewRow['message']): string | undefined {
+	const reason = message.agentDecision?.reason;
+	if (!reason) return undefined;
+	return needsReply(message) ? `Escalated because: ${reason}` : `Held because: ${reason}`;
+}
+
 // Optimistic row removal — approve/reject hide the row immediately and the live
 // subscription confirms it; a failed action restores the row (usePostboxOptimisticHide).
 const { visible: visibleRows, hide: hideRow, unhide: unhideRow } = usePostboxOptimisticHide(rows);
@@ -193,6 +208,13 @@ const {
 				),
 	onEdit: openThread,
 	onReject: (row) => void onRejectClick(row.message._id),
+	// 1–9 — pick the matching draft option on multi-option cards.
+	onPickOption: (row, index) => {
+		const options = row.message.draftOptions;
+		if (options && options.length > 1 && index < options.length) {
+			selectedOption[row.message._id] = index;
+		}
+	},
 });
 
 // Focus the listbox on mount so j/k work without a click (keyboard-first).
@@ -279,7 +301,8 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 			<p class="text-sm text-text-tertiary mt-1">No drafts need your review right now.</p>
 		</div>
 
-		<!-- Review Items — a keyboard-navigable listbox (j/k/Enter/a/e/x). -->
+		<!-- Review Items — a keyboard-navigable listbox (j/k/Enter/1-9/a/e/s/x)
+		     of shared agent task cards. -->
 		<ul
 			v-else
 			ref="listboxEl"
@@ -290,57 +313,51 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 			class="space-y-4 outline-none focus-visible:ring-1 focus-visible:ring-brand/40 focus-visible:ring-inset rounded-lg"
 			@keydown="onQueueKeydown"
 		>
-			<li
+			<TaskCardShell
 				v-for="(row, i) in visibleRows"
 				:id="`review-row-${row._id}`"
 				:key="row._id"
+				as="li"
 				role="option"
 				:aria-selected="focusedIndex === i"
-				class="card"
-				:class="focusedIndex === i ? 'ring-2 ring-brand/60' : ''"
+				:focused="focusedIndex === i"
 			>
-				<div class="flex items-start justify-between mb-3">
-					<div class="flex items-center gap-3">
-						<UiIconBox icon="lucide:mail" size="sm" variant="surface" rounded="full" />
-						<div>
-							<p class="text-text-primary font-medium text-sm">
-								{{ row.message.from }}
-							</p>
-							<p class="text-xs text-text-tertiary">
-								{{ formatCompactRelativeTime(row.message._creationTime) }}
-								<template v-if="row.thread">
-									&middot;
-									<NuxtLink
-										:to="`/dashboard/inbox/${row.thread._id}`"
-										class="text-brand hover:underline"
-									>
-										View thread
-									</NuxtLink>
-								</template>
-							</p>
-						</div>
-					</div>
-
+				<TaskContext :who="row.message.from" icon="lucide:mail">
+					<template #meta>
+						{{ formatCompactRelativeTime(row.message._creationTime) }}
+						<template v-if="row.thread">
+							&middot;
+							<NuxtLink
+								:to="`/dashboard/inbox/${row.thread._id}`"
+								class="text-brand hover:underline"
+							>
+								View thread
+							</NuxtLink>
+						</template>
+					</template>
 					<!-- One roll-up trust chip (human language; reasons + raw numbers in
 					     its popover) + the category chip. -->
-					<div v-if="row.message.classification" class="flex items-center gap-2">
-						<InboxTrustChip
-							:trust="rowTrust(row.message)"
-							:extra-detail="rowTrustDetail(row.message)"
-						/>
-						<span class="text-xs px-2 py-0.5 rounded-full bg-brand-subtle text-brand">
-							{{ row.message.classification.category }}
-						</span>
-					</div>
-				</div>
+					<template #trailing>
+						<div v-if="row.message.classification" class="flex items-center gap-2">
+							<InboxTrustChip
+								:trust="rowTrust(row.message)"
+								:extra-detail="rowTrustDetail(row.message)"
+							/>
+							<span class="text-xs px-2 py-0.5 rounded-full bg-brand-subtle text-brand">
+								{{ row.message.classification.category }}
+							</span>
+						</div>
+					</template>
+				</TaskContext>
 
-				<!-- Original message excerpt -->
-				<p v-if="row.message.subject" class="text-text-primary font-medium text-sm mb-1">
-					{{ row.message.subject }}
-				</p>
-				<p class="text-text-secondary text-sm mb-4 line-clamp-2">
-					{{ row.message.textBody || '(No text content)' }}
-				</p>
+				<!-- The ask: subject + excerpt, with the muted one-line WHY the agent
+				     held/escalated it (moved up from the old rationale block). -->
+				<TaskAsk
+					class="mt-3 mb-4"
+					:ask="row.message.subject || undefined"
+					:detail="row.message.textBody || '(No text content)'"
+					:why="rowWhy(row.message)"
+				/>
 
 				<!-- Draftless escalation: compose a reply inline -->
 				<template v-if="needsReply(row.message)">
@@ -372,42 +389,35 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 						/>
 					</div>
 
-					<!-- Why it was escalated + what the agent had to work from -->
+					<!-- What the agent had to work from (the WHY line above carries the
+					     escalation reason). -->
 					<InboxDecisionRationale
-						:decision="row.message.agentDecision"
 						:grounding-sources="row.message.groundingSources"
 						class="mb-4"
 					/>
 
 					<!-- Actions -->
-					<div class="flex items-center gap-2">
-						<button
-							class="btn btn-primary btn-sm gap-1"
-							:disabled="
-								actionInProgress === row.message._id || !composeBody[row.message._id]?.trim()
-							"
-							@click="onComposeSend(row.message._id)"
-						>
-							<Icon name="lucide:send" class="w-3 h-3" />
-							Send Reply
-						</button>
+					<TaskActions
+						primary-label="Send Reply"
+						primary-icon="lucide:send"
+						:primary-disabled="
+							actionInProgress === row.message._id || !composeBody[row.message._id]?.trim()
+						"
+						skip-label="Dismiss"
+						skip-destructive
+						:skip-disabled="actionInProgress === row.message._id"
+						@primary="onComposeSend(row.message._id)"
+						@skip="onRejectClick(row.message._id)"
+					>
 						<NuxtLink
 							v-if="row.thread"
 							:to="`/dashboard/inbox/${row.thread._id}`"
-							class="btn btn-secondary btn-sm gap-1"
+							class="inline-flex items-center gap-1 text-xs px-2 py-1.5 rounded border border-border-subtle text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast)"
 						>
 							<Icon name="lucide:external-link" class="w-3 h-3" />
 							Open thread
 						</NuxtLink>
-						<button
-							class="btn btn-ghost btn-sm gap-1 text-error hover:bg-error-subtle"
-							:disabled="actionInProgress === row.message._id"
-							@click="onRejectClick(row.message._id)"
-						>
-							<Icon name="lucide:x" class="w-3 h-3" />
-							Dismiss
-						</button>
-					</div>
+					</TaskActions>
 				</template>
 
 				<!-- Agent draft awaiting approval -->
@@ -452,48 +462,41 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 						@attach="(c) => onAttachSuggested(row.thread?._id, c)"
 					/>
 
-					<!-- Why it was held + what it was grounded in (read-only) -->
+					<!-- What it was grounded in (the WHY line above carries the hold
+					     reason; read-only) -->
 					<InboxDecisionRationale
-						:decision="row.message.agentDecision"
 						:grounding-sources="row.message.groundingSources"
 						class="mb-4"
 					/>
 
 					<!-- Actions -->
-					<div class="flex items-center gap-2">
-						<button
-							class="btn btn-primary btn-sm gap-1"
-							:disabled="actionInProgress === row.message._id"
-							@click="
-								onApproveOptionClick(
-									row.message._id,
-									row.message.draftOptions,
-									row.message.draftResponse
-								)
-							"
-						>
-							<Icon name="lucide:check" class="w-3 h-3" />
-							Approve & Send
-						</button>
+					<TaskActions
+						primary-label="Approve & Send"
+						primary-icon="lucide:check"
+						:primary-disabled="actionInProgress === row.message._id"
+						skip-label="Reject"
+						skip-destructive
+						:skip-disabled="actionInProgress === row.message._id"
+						@primary="
+							onApproveOptionClick(
+								row.message._id,
+								row.message.draftOptions,
+								row.message.draftResponse
+							)
+						"
+						@skip="onRejectClick(row.message._id)"
+					>
 						<NuxtLink
 							v-if="row.thread"
 							:to="`/dashboard/inbox/${row.thread._id}`"
-							class="btn btn-secondary btn-sm gap-1"
+							class="inline-flex items-center gap-1 text-xs px-2 py-1.5 rounded border border-border-subtle text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast)"
 						>
 							<Icon name="lucide:pencil" class="w-3 h-3" />
 							Edit
 						</NuxtLink>
-						<button
-							class="btn btn-ghost btn-sm gap-1 text-error hover:bg-error-subtle"
-							:disabled="actionInProgress === row.message._id"
-							@click="onRejectClick(row.message._id)"
-						>
-							<Icon name="lucide:x" class="w-3 h-3" />
-							Reject
-						</button>
-					</div>
+					</TaskActions>
 				</template>
-			</li>
+			</TaskCardShell>
 		</ul>
 	</div>
 </template>
