@@ -9,6 +9,11 @@
 - [ ] Unit / integration tests (`bun run ci:test`)
 - [ ] Manual verification — what did you click through?
 
+## UX checklist
+
+- [ ] Surfaces lead with a verdict/summary; detail is one interaction away
+      (see [`docs/design/progressive-disclosure.md`](../docs/design/progressive-disclosure.md)).
+
 ## Security checklist
 
 Skim before requesting review. Tick each item or strike it through with a
