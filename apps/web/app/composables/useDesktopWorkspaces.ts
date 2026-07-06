@@ -83,12 +83,20 @@ export async function loadWorkspaces(): Promise<void> {
 }
 
 /** Normalize a user-typed instance URL into an origin (https unless localhost). */
-function normalizeSiteUrl(input: string): string {
+export function normalizeSiteUrl(input: string): string {
 	let raw = input.trim();
-	if (!/^https?:\/\//i.test(raw)) raw = `https://${raw}`;
+	const hasScheme = /^https?:\/\//i.test(raw);
+	if (!hasScheme) raw = `https://${raw}`;
 	const url = new URL(raw);
 	const isLocal = /^(localhost|127\.0\.0\.1)/.test(url.hostname);
-	if (!isLocal) url.protocol = 'https:';
+	if (!isLocal) {
+		url.protocol = 'https:';
+	} else if (!hasScheme) {
+		// Schemeless localhost input ("localhost:3000") means a plain-http dev
+		// server — defaulting it to https would TLS-fail with an opaque
+		// "Load failed". An explicit https://localhost is left untouched.
+		url.protocol = 'http:';
+	}
 	return url.origin;
 }
 
@@ -139,12 +147,18 @@ export async function completeConnection(params: { ott: string; state: string })
 	// cross-domain client capture the Set-Better-Auth-Cookie into keychainStorage.
 	const tempClient = createAuthClient({
 		baseURL: info.convexSiteUrl,
-		plugins: [convexClient(), organizationClient(), crossDomainClient({ storage: keychainStorage })],
+		plugins: [
+			convexClient(),
+			organizationClient(),
+			crossDomainClient({ storage: keychainStorage }),
+		],
 	});
 
-	await (tempClient as unknown as {
-		$fetch: (path: string, opts: Record<string, unknown>) => Promise<unknown>;
-	}).$fetch('/cross-domain/one-time-token/verify', {
+	await (
+		tempClient as unknown as {
+			$fetch: (path: string, opts: Record<string, unknown>) => Promise<unknown>;
+		}
+	).$fetch('/cross-domain/one-time-token/verify', {
 		method: 'POST',
 		body: { token: params.ott },
 	});
