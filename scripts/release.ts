@@ -240,6 +240,13 @@ for (const { file, apply } of changes) {
 	if (!dryRun) writeFileSync(join(ROOT, file), after);
 }
 
+// bun.lock embeds each workspace's "version" field — refresh it so the
+// lockfile stays in step with the bumped package.json files.
+if (!dryRun) {
+	execFileSync('bun', ['install'], { cwd: ROOT, stdio: 'ignore' });
+	if (git('status', '--porcelain', '--', 'bun.lock') !== '') changed.push('bun.lock');
+}
+
 console.info(`${dryRun ? '[dry-run] Would update' : 'Updated'} ${changed.length} files:`);
 for (const file of changed) console.info(`  ${file}`);
 const bucketSummary = Object.entries(buckets)
