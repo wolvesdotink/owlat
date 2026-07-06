@@ -52,21 +52,31 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 		// publicly-known default, which would let anyone forge session cookies.
 		// Real deploys always set it (quickstart generates it); this throws loudly
 		// on a misconfigured deploy instead of silently signing with a weak key.
-		secret: getRequired('BETTER_AUTH_SECRET'),
+		// Lazy getter: the betterAuth component calls createAuthOptions at import
+		// time purely to derive its table schema, and Convex components cannot see
+		// deployment env vars — an eager getRequired there fails module analysis
+		// on every push. Reading on first access keeps the fail-closed throw for
+		// real auth flows (app context, env available) without breaking the push.
+		get secret() {
+			return getRequired('BETTER_AUTH_SECRET');
+		},
 		baseURL: getOptional('SITE_URL'),
 		emailAndPassword: {
 			enabled: true,
 			minPasswordLength: 10,
 			maxPasswordLength: 128,
-			sendResetPassword: async ({ user, token }: { user: { name?: string; email: string }; token: string }) => {
+			sendResetPassword: async ({
+				user,
+				token,
+			}: {
+				user: { name?: string; email: string };
+				token: string;
+			}) => {
 				const siteUrl = getOptional('SITE_URL') || 'http://localhost:3000';
 				const fromDomain = getOptional('DEFAULT_FROM_DOMAIN') || 'mail.owlat.app';
 				const resetUrl = `${siteUrl}/auth/reset-password?token=${encodeURIComponent(token)}`;
 
-				const html = generatePasswordResetEmailHtml(
-					user.name || user.email,
-					resetUrl
-				);
+				const html = generatePasswordResetEmailHtml(user.name || user.email, resetUrl);
 
 				await sendViaMta({
 					to: user.email,
@@ -112,11 +122,7 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 				}) => {
 					const fromDomain = getOptional('DEFAULT_FROM_DOMAIN') || 'mail.owlat.app';
 
-					const html = generateChangeEmailVerificationHtml(
-						user.name || user.email,
-						newEmail,
-						url,
-					);
+					const html = generateChangeEmailVerificationHtml(user.name || user.email, newEmail, url);
 
 					await sendViaMta({
 						// Sent to the CURRENT address on file, not the new one.
@@ -145,11 +151,7 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 			}) => {
 				const fromDomain = getOptional('DEFAULT_FROM_DOMAIN') || 'mail.owlat.app';
 
-				const html = generateNewEmailVerificationHtml(
-					user.name || user.email,
-					user.email,
-					url,
-				);
+				const html = generateNewEmailVerificationHtml(user.name || user.email, user.email, url);
 
 				await sendViaMta({
 					// Sent to the NEW address (user.email is the claimed one here).
