@@ -18,6 +18,9 @@
  *   - `viewMode` — which list renderer the inbox uses: 'flat' (default),
  *     'conversations' (thread-grouped), or 'categories' (smart-inbox
  *     sections). Inbox-only; other folders always render flat.
+ *   - `inboxMode` — which surface the inbox route lands on: 'today' (the
+ *     focused single-column view, the default) or 'browse' (the full
+ *     three-pane UI). Persisted as the last-used mode.
  *   - `sendSound` — play a short confirmation sound when a message is
  *     dispatched. Defaults OFF (opt-in).
  */
@@ -31,6 +34,8 @@ import type { PostboxDensity } from '~/utils/postboxDensity';
 import { resolvePostboxDensity } from '~/utils/postboxDensity';
 import type { PostboxViewMode } from '~/utils/postboxViewMode';
 import { resolvePostboxViewMode } from '~/utils/postboxViewMode';
+import type { PostboxInboxMode } from '~/utils/postboxInboxMode';
+import { resolvePostboxInboxMode } from '~/utils/postboxInboxMode';
 import type { PostboxNotifyAbout } from '~/utils/postboxNotify';
 import { resolvePostboxNotifyAbout } from '~/utils/postboxNotify';
 
@@ -68,6 +73,13 @@ export function usePostboxSettings() {
 	// Inbox list view mode. An unset (or unknown) value resolves to 'flat', so
 	// the layout can consume it unconditionally while the query loads.
 	const viewMode = computed<PostboxViewMode>(() => resolvePostboxViewMode(data.value?.viewMode));
+
+	// Inbox landing mode ('today' vs 'browse'). An unset (or unknown) value
+	// resolves to 'today' — the focused single-column view is the default
+	// landing experience; 'browse' is remembered once the user switches.
+	const inboxMode = computed<PostboxInboxMode>(() =>
+		resolvePostboxInboxMode(data.value?.inboxMode)
+	);
 
 	// Confirmation sound on send. Default OFF (opt-in): an unset preference means
 	// no sound, so the composer stays silent unless the user turns it on.
@@ -120,6 +132,12 @@ export function usePostboxSettings() {
 		return (await updateOp.run({ viewMode: mode })) !== undefined;
 	}
 
+	// Same success contract as setViewMode: callers with an optimistic override
+	// snap back when the save failed (already toasted by useBackendOperation).
+	async function setInboxMode(mode: PostboxInboxMode): Promise<boolean> {
+		return (await updateOp.run({ inboxMode: mode })) !== undefined;
+	}
+
 	async function setSendSound(enabled: boolean) {
 		await updateOp.run({ isSendSoundOn: enabled });
 	}
@@ -143,6 +161,7 @@ export function usePostboxSettings() {
 		replyDefault,
 		density,
 		viewMode,
+		inboxMode,
 		sendSound,
 		notifyAbout,
 		badgeNonPeople,
@@ -154,6 +173,7 @@ export function usePostboxSettings() {
 		setReplyDefault,
 		setDensity,
 		setViewMode,
+		setInboxMode,
 		setSendSound,
 		setNotifyAbout,
 		setBadgeNonPeople,

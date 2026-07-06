@@ -295,6 +295,12 @@ export const mailViewModeValidator = v.union(
 	v.literal('categories')
 );
 
+// Postbox inbox landing mode (mailUserSettings.inboxMode and mail/settings
+// update args) — 'today' (the focused single-column landing view; the default)
+// vs 'browse' (the full three-pane folder UI). Inbox-only; persisted as the
+// user's last-used mode. Single source so schema and args can't drift.
+export const mailInboxModeValidator = v.union(v.literal('today'), v.literal('browse'));
+
 // Postbox desktop-notification scope (mailUserSettings.notifyAbout and
 // mail/settings update args). 'everything' fires a toast for every new inbox
 // message; 'people-important' only for smart-category `person` mail (and any

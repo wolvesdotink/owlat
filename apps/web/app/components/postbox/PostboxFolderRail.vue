@@ -38,7 +38,10 @@ function startRenameFolder(folder: { _id: Id<'mailFolders'>; name: string }) {
 	renameFolderName.value = folder.name;
 }
 async function confirmRenameFolder() {
-	if (renamingFolderId.value && (await folderActions.rename(renamingFolderId.value, renameFolderName.value))) {
+	if (
+		renamingFolderId.value &&
+		(await folderActions.rename(renamingFolderId.value, renameFolderName.value))
+	) {
 		renamingFolderId.value = null;
 	}
 }
@@ -64,7 +67,12 @@ function goSearch(value: string) {
 function onGlobalKey(event: KeyboardEvent) {
 	// Cmd/Ctrl+Shift+D toggles the folder rail between full width and the icon
 	// strip. Works regardless of focus so it's reachable from anywhere.
-	if ((event.metaKey || event.ctrlKey) && event.shiftKey && !event.altKey && event.key.toLowerCase() === 'd') {
+	if (
+		(event.metaKey || event.ctrlKey) &&
+		event.shiftKey &&
+		!event.altKey &&
+		event.key.toLowerCase() === 'd'
+	) {
 		event.preventDefault();
 		toggleRail();
 		return;
@@ -78,7 +86,18 @@ function onGlobalKey(event: KeyboardEvent) {
 	searchBar.value?.focus();
 }
 
-onMounted(() => window.addEventListener('keydown', onGlobalKey));
+// `/` pressed in the Today landing view: the layout flips to browse mode and
+// arms this flag so the freshly mounted rail carries the intent through —
+// search always lives here, never inside the Today column.
+const searchAutofocus = useState('postbox:search-autofocus', () => false);
+
+onMounted(() => {
+	window.addEventListener('keydown', onGlobalKey);
+	if (searchAutofocus.value) {
+		searchAutofocus.value = false;
+		void nextTick(() => searchBar.value?.focus());
+	}
+});
 onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 </script>
 
@@ -121,22 +140,30 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 		<NuxtLink
 			to="/dashboard/postbox/reply-queue"
 			class="rounded text-sm hover:bg-bg-surface"
-			:class="railCollapsed ? 'relative flex items-center justify-center w-9 h-9' : 'flex items-center gap-2 px-2.5 py-1.5'"
+			:class="
+				railCollapsed
+					? 'relative flex items-center justify-center w-9 h-9'
+					: 'flex items-center gap-2 px-2.5 py-1.5'
+			"
 			:title="railCollapsed ? 'Reply Queue' : undefined"
-			:aria-label="railCollapsed ? `Reply Queue${replyQueueCount > 0 ? `, ${replyQueueCount}` : ''}` : undefined"
+			:aria-label="
+				railCollapsed
+					? `Reply Queue${replyQueueCount > 0 ? `, ${replyQueueCount}` : ''}`
+					: undefined
+			"
 		>
 			<Icon name="lucide:reply" class="w-4 h-4" />
 			<template v-if="!railCollapsed">
 				<span class="flex-1">Reply Queue</span>
-				<span
-					v-if="replyQueueCount > 0"
-					class="text-xs font-medium text-text-secondary"
-				>{{ replyQueueCount }}</span>
+				<span v-if="replyQueueCount > 0" class="text-xs font-medium text-text-secondary">{{
+					replyQueueCount
+				}}</span>
 			</template>
 			<span
 				v-else-if="replyQueueCount > 0"
 				class="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-brand text-white text-[10px] leading-4 font-medium text-center"
-			>{{ replyQueueCount > 99 ? '99+' : replyQueueCount }}</span>
+				>{{ replyQueueCount > 99 ? '99+' : replyQueueCount }}</span
+			>
 		</NuxtLink>
 
 		<!-- Virtual "Snoozed" view (no backing system folder; messages stay in
@@ -145,7 +172,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 			to="/dashboard/postbox/snoozed"
 			class="rounded text-sm hover:bg-bg-surface"
 			:class="[
-				railCollapsed ? 'flex items-center justify-center w-9 h-9' : 'flex items-center gap-2 px-2.5 py-1.5',
+				railCollapsed
+					? 'flex items-center justify-center w-9 h-9'
+					: 'flex items-center gap-2 px-2.5 py-1.5',
 				{ 'bg-bg-surface text-brand': folderRole === 'snoozed' },
 			]"
 			:title="railCollapsed ? 'Snoozed' : undefined"
@@ -159,7 +188,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 		<NuxtLink
 			to="/dashboard/postbox/contacts"
 			class="rounded text-sm text-text-tertiary hover:text-text-secondary hover:bg-bg-surface"
-			:class="railCollapsed ? 'flex items-center justify-center w-9 h-9' : 'flex items-center gap-2 px-2.5 py-1'"
+			:class="
+				railCollapsed
+					? 'flex items-center justify-center w-9 h-9'
+					: 'flex items-center gap-2 px-2.5 py-1'
+			"
 			:title="railCollapsed ? 'Contacts' : undefined"
 			:aria-label="railCollapsed ? 'Contacts' : undefined"
 		>
@@ -171,12 +204,17 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 		     Expanded-only: folder CRUD and label management live here. -->
 		<div v-if="!railCollapsed" class="mt-3">
 			<header class="flex items-center justify-between mb-1 px-2">
-				<span class="text-xs font-semibold uppercase tracking-wider text-text-tertiary">Folders</span>
+				<span class="text-xs font-semibold uppercase tracking-wider text-text-tertiary"
+					>Folders</span
+				>
 				<button
 					type="button"
 					class="text-text-tertiary hover:text-text-primary"
 					title="New folder"
-					@click="creatingFolder = true; newFolderName = ''"
+					@click="
+						creatingFolder = true;
+						newFolderName = '';
+					"
 				>
 					<Icon name="lucide:folder-plus" class="w-3.5 h-3.5" />
 				</button>
@@ -189,7 +227,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 					aria-label="New folder name"
 					@keyup.enter="confirmCreateFolder"
 					@keyup.esc="creatingFolder = false"
-				>
+				/>
 			</div>
 			<ul class="flex flex-col gap-0.5">
 				<li v-for="folder in customFolders" :key="folder._id" class="group flex items-center">
@@ -200,7 +238,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 						aria-label="Folder name"
 						@keyup.enter="confirmRenameFolder"
 						@keyup.esc="renamingFolderId = null"
-					>
+					/>
 					<template v-else>
 						<NuxtLink
 							:to="`/dashboard/postbox/${folder._id}`"
@@ -228,7 +266,10 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 						</button>
 					</template>
 				</li>
-				<li v-if="customFolders.length === 0 && !creatingFolder" class="text-xs text-text-tertiary px-2 py-1">
+				<li
+					v-if="customFolders.length === 0 && !creatingFolder"
+					class="text-xs text-text-tertiary px-2 py-1"
+				>
 					No custom folders
 				</li>
 			</ul>
@@ -240,9 +281,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 		     rest of the management UI. -->
 		<div v-if="!railCollapsed" class="mt-3">
 			<header class="flex items-center justify-between mb-1 px-2">
-				<span
-					class="text-xs font-semibold uppercase tracking-wider text-text-tertiary"
-				>Labels</span>
+				<span class="text-xs font-semibold uppercase tracking-wider text-text-tertiary"
+					>Labels</span
+				>
 				<button
 					type="button"
 					class="text-text-tertiary hover:text-text-primary"
@@ -295,7 +336,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 		title="Delete folder"
 		:description="`Delete the folder &quot;${deletingFolder?.name ?? ''}&quot;? Messages in it are relocated, not deleted.`"
 		confirm-text="Delete folder"
-		@update:open="(v: boolean) => { if (!v) deletingFolder = null; }"
+		@update:open="
+			(v: boolean) => {
+				if (!v) deletingFolder = null;
+			}
+		"
 		@confirm="confirmDeleteFolder"
 	/>
 
