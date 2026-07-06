@@ -7,6 +7,7 @@ import {
 	mailReplyDefaultValidator,
 	mailDensityValidator,
 	mailViewModeValidator,
+	mailInboxModeValidator,
 	mailNotifyAboutValidator,
 	mailUnsubscribeValidator,
 	spamVerdictValidator,
@@ -962,6 +963,11 @@ export const mailTables = {
 		// other folders always render flat. Optional so existing rows read as
 		// undefined; the reader defaults it to 'flat'.
 		viewMode: v.optional(mailViewModeValidator),
+		// Inbox landing mode: 'today' (focused single-column landing view) vs
+		// 'browse' (the full three-pane folder UI). Persisted as the last-used
+		// mode. Optional so existing rows read as undefined; the reader defaults
+		// it to 'today'.
+		inboxMode: v.optional(mailInboxModeValidator),
 		// Play a short confirmation sound when a message is dispatched. Optional so
 		// existing rows read as undefined; the reader defaults it OFF (opt-in).
 		isSendSoundOn: v.optional(v.boolean()),
