@@ -99,12 +99,9 @@ defineExpose({ pickIndex });
 				"
 				@click.stop="pick(option)"
 			>
-				<kbd
-					v-if="i < 9"
-					class="font-mono text-[9px] leading-none opacity-60"
-					aria-hidden="true"
-					>{{ i + 1 }}</kbd
-				>
+				<kbd v-if="i < 9" class="font-mono text-[9px] leading-none opacity-60" aria-hidden="true">{{
+					i + 1
+				}}</kbd>
 				{{ option }}
 			</button>
 		</div>
@@ -113,7 +110,9 @@ defineExpose({ pickIndex });
 			type="text"
 			:data-testid="inputTestId"
 			:disabled="disabled"
-			:placeholder="placeholder ?? (options.length > 0 ? 'Or type an answer…' : 'Type your answer…')"
+			:placeholder="
+				placeholder ?? (options.length > 0 ? 'Or type an answer…' : 'Type your answer…')
+			"
 			class="w-full text-sm px-2 py-1.5 rounded border border-border-subtle bg-bg-surface focus:outline-none focus:ring-1 focus:ring-brand/40"
 			:class="options.length > 0 ? 'mt-1.5' : ''"
 			@input="onTextInput"

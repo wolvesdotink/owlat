@@ -121,7 +121,12 @@ function onCardKeydown(event: KeyboardEvent) {
 
 		<!-- asking: question(s) + chips + free text -->
 		<template v-if="state === 'asking'">
-			<div v-for="(q, qi) in questions" :key="q.id" class="mt-2" data-testid="clarification-question">
+			<div
+				v-for="(q, qi) in questions"
+				:key="q.id"
+				class="mt-2"
+				data-testid="clarification-question"
+			>
 				<TaskAsk :ask="q.text" :why="q.attribution" />
 				<TaskOptions
 					:ref="(el) => (optionRefs[qi] = el as InstanceType<typeof TaskOptions>)"

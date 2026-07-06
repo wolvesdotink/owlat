@@ -391,10 +391,7 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 
 					<!-- What the agent had to work from (the WHY line above carries the
 					     escalation reason). -->
-					<InboxDecisionRationale
-						:grounding-sources="row.message.groundingSources"
-						class="mb-4"
-					/>
+					<InboxDecisionRationale :grounding-sources="row.message.groundingSources" class="mb-4" />
 
 					<!-- Actions -->
 					<TaskActions
@@ -464,10 +461,7 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 
 					<!-- What it was grounded in (the WHY line above carries the hold
 					     reason; read-only) -->
-					<InboxDecisionRationale
-						:grounding-sources="row.message.groundingSources"
-						class="mb-4"
-					/>
+					<InboxDecisionRationale :grounding-sources="row.message.groundingSources" class="mb-4" />
 
 					<!-- Actions -->
 					<TaskActions

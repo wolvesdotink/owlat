@@ -54,12 +54,7 @@ const emit = defineEmits<{ (e: 'primary'): void; (e: 'skip'): void }>();
 				class="w-3.5 h-3.5 animate-spin"
 				aria-hidden="true"
 			/>
-			<Icon
-				v-else-if="primaryIcon"
-				:name="primaryIcon"
-				class="w-3.5 h-3.5"
-				aria-hidden="true"
-			/>
+			<Icon v-else-if="primaryIcon" :name="primaryIcon" class="w-3.5 h-3.5" aria-hidden="true" />
 			{{ primaryLabel }}
 		</button>
 		<slot />

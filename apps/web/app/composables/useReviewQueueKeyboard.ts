@@ -40,7 +40,11 @@ export function useReviewQueueKeyboard<T extends { _id: string }>(opts: {
 	/** 1–9 — pick the matching option chip on the focused card (optional). */
 	onPickOption?: (row: T, index: number) => void;
 }) {
-	const { focusedIndex, activeId, onKeydown: listKeydown } = usePostboxListKeyboard<T>({
+	const {
+		focusedIndex,
+		activeId,
+		onKeydown: listKeydown,
+	} = usePostboxListKeyboard<T>({
 		items: opts.items,
 		resetKey: opts.resetKey,
 		rowDomId: opts.rowDomId,
