@@ -131,8 +131,9 @@ describe('PostboxTodayView', () => {
 		const w = mountView();
 		expect(w.text()).toContain('1 newsletter auto-filed');
 		expect(w.find('.thread-list').attributes('data-count')).toBe('1');
-		await w.find('button[type="button"]:not([aria-keyshortcuts])').trigger('click');
-		// The second button in DOM order is the roll-up "view" (Browse has the kbd hint).
+		const viewButton = w.findAll('button').find((b) => b.text() === 'view');
+		expect(viewButton).toBeTruthy();
+		await viewButton!.trigger('click');
 		expect(w.emitted('view-auto-filed')).toBeTruthy();
 	});
 
