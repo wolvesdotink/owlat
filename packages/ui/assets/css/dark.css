@@ -118,4 +118,13 @@
 	--owlat-code-bg: #131313;
 	--owlat-bg-soft: var(--surface-2);
 	--owlat-divider: #262626;
+
+	/* Chart kit — categorical palette (fixed order, CVD + contrast validated)
+	   and the recessive grid-line color. Exposed via @theme inline in tokens.css
+	   (like --surface-N) so utilities re-resolve per color mode. */
+	--chart-cat-1: #c4785a;
+	--chart-cat-2: #b3873a;
+	--chart-cat-3: #33a68a;
+	--chart-cat-4: #6b95dd;
+	--chart-grid: #232323;
 }

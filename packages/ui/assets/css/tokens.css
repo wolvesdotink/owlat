@@ -105,6 +105,16 @@
 	--shadow-surface-6: var(--shadow-6);
 	--shadow-surface-7: var(--shadow-7);
 	--shadow-surface-8: var(--shadow-8);
+
+	/* Chart kit — categorical series palette (fixed order; single-series charts
+	   use --color-brand, multi-series charts assign cat-1..4 in order) plus the
+	   recessive grid-line color. Raw values live in dark.css/light.css so they
+	   re-resolve per color mode. → text-chart-cat-1, bg-chart-cat-1, … */
+	--color-chart-cat-1: var(--chart-cat-1);
+	--color-chart-cat-2: var(--chart-cat-2);
+	--color-chart-cat-3: var(--chart-cat-3);
+	--color-chart-cat-4: var(--chart-cat-4);
+	--color-chart-grid: var(--chart-grid);
 }
 
 /* === FLUID FUNCTIONALISM: MOTION DURATION TIERS ===
