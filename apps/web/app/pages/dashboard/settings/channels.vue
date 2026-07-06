@@ -7,7 +7,7 @@ definePageMeta({
 	middleware: 'auth',
 });
 
-useHead({ title: 'Communication Channels — Owlat' });
+useHead({ title: 'Messaging channels — Owlat' });
 
 const { data: channels, isLoading } = useOrganizationQuery(api.unifiedMessages.getChannelConfigs);
 
@@ -87,10 +87,10 @@ const handleChannelError = (message: string) => {
 			<div class="flex items-center gap-4">
 				<UiIconBox icon="lucide:radio" size="xl" variant="brand" rounded="full" />
 				<div>
-					<h1 class="text-2xl font-semibold text-text-primary">Messaging Channels</h1>
+					<h1 class="text-2xl font-semibold text-text-primary">Messaging channels</h1>
 					<p class="text-text-secondary mt-1 max-w-xl">
-						Connect and monitor the external messaging channels — SMS, WhatsApp, and
-						generic webhooks — that reach your contacts beyond email. Once enabled, send a
+						Connect and monitor the messaging integrations — SMS, WhatsApp, and
+						webchat/webhooks — that reach your contacts beyond email. Once enabled, send a
 						message to a contact from their Unified Timeline, and AI agent replies dispatch
 						through them too. Email and team chat are built in and need no setup here; to
 						configure email sending, set up your

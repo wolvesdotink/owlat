@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
 
-useHead({ title: 'Inbox — Owlat' });
+useHead({ title: 'Team Inbox — Owlat' });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -38,9 +38,9 @@ const statusOptions: { value: string; label: string }[] = [
 		<!-- Header -->
 		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
 			<div>
-				<h1 class="text-2xl font-semibold text-text-primary">Inbox</h1>
+				<h1 class="text-2xl font-semibold text-text-primary">Team Inbox</h1>
 				<p class="text-text-secondary mt-1">
-					Inbound messages and verification queue.
+					Customer conversations your team handles together.
 				</p>
 			</div>
 

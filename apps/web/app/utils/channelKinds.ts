@@ -1,5 +1,5 @@
 /**
- * Channel-kind metadata for the Communication Channels settings page
+ * Channel-kind metadata for the Messaging channels settings page
  * (settings/channels.vue).
  *
  * Email and team chat are BUILT IN: email sending is configured under Sending
@@ -37,7 +37,7 @@ export const ADDABLE_CHANNEL_KINDS: AddableChannel[] = [
  */
 export function availableChannelKinds(
 	existingChannels: ReadonlyArray<{ channel: string }>,
-	addable: AddableChannel[] = ADDABLE_CHANNEL_KINDS,
+	addable: AddableChannel[] = ADDABLE_CHANNEL_KINDS
 ): AddableChannel[] {
 	const existing = new Set(existingChannels.map((c) => c.channel));
 	return addable.filter((c) => !existing.has(c.kind));
