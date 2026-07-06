@@ -8,13 +8,13 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ref } from 'vue';
-import { useRichText } from '../../../../packages/ui/composables/useRichText';
+import { useRichText } from '@owlat/ui/composables/useRichText';
 import {
 	findAncestor,
 	getNearestBlock,
 	unwrapElement,
 	replaceTagPreservingChildren,
-} from '../../../../packages/ui/composables/richTextDom';
+} from '@owlat/ui/composables/richTextDom';
 
 function makeEditor(html: string) {
 	const el = document.createElement('div');

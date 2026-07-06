@@ -5,7 +5,7 @@ import { nextTick } from 'vue';
 // The component references useModalFocus as a Nuxt auto-import (provided by
 // the @owlat/ui layer); wire the real implementation in as a global so the
 // test exercises the actual focus-trap/restore behavior.
-import { useModalFocus } from '../../../../../../packages/ui/composables/useModalFocus';
+import { useModalFocus } from '@owlat/ui/composables/useModalFocus';
 import PostboxAttachmentLightbox from '../PostboxAttachmentLightbox.vue';
 
 vi.stubGlobal('useModalFocus', useModalFocus);

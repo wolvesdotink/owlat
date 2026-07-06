@@ -18,7 +18,7 @@ vi.mock('sanitize-html', () => ({ default: vi.fn((html: string) => html) }));
 
 import PostboxMessageBody from '../PostboxMessageBody.vue';
 import PostboxReaderSkeleton from '../PostboxReaderSkeleton.vue';
-import UiSkeleton from '../../../../../../packages/ui/components/ui/Skeleton.vue';
+import UiSkeleton from '@owlat/ui/components/ui/Skeleton.vue';
 import { splitQuotedText, splitQuotedHtml } from '../../../composables/postbox/usePostboxQuotedText';
 import { getPostboxRenderCache, postboxRenderKey } from '../../../utils/postboxRenderCache';
 
