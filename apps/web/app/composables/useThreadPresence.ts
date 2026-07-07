@@ -56,7 +56,7 @@ export function useThreadPresence(
 	const isHidden = () => typeof document !== 'undefined' && document.hidden;
 
 	const beat = async () => {
-		if (!enabled.value || isHidden()) return;
+		if (!client || !enabled.value || isHidden()) return;
 		try {
 			await client.mutation(api.inbox.presence.heartbeat, {
 				threadId: threadId.value,
@@ -69,6 +69,7 @@ export function useThreadPresence(
 	};
 
 	const leave = async (id: Id<'conversationThreads'>) => {
+		if (!client) return;
 		try {
 			await client.mutation(api.inbox.presence.leave, { threadId: id });
 		} catch {
