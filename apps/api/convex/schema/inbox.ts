@@ -57,6 +57,17 @@ export const inboxTables = {
 		latestDraftStatus: v.optional(
 			v.union(v.literal('pending'), v.literal('approved'), v.literal('rejected'), v.literal('sent'))
 		),
+		// Team snooze — hide the thread from the Open filter until this timestamp,
+		// then the wake cron (inbox/snooze.ts → internalSweep) clears it and marks
+		// it returned. Mirrors the Postbox mail snooze shape (mail/snooze.ts).
+		// Absent = not snoozed. `snooze()` rejects any `until <= now`, so a real
+		// value is always a future ms-epoch.
+		snoozedUntil: v.optional(v.number()),
+		// Set by the wake cron when a snooze lapses (or by an inbound reply that
+		// clears an active snooze). Drives the transient "returned" marker on the
+		// thread row so a resurfaced thread is visibly distinct from a never-snoozed
+		// one. Never gates any query; purely a read-side hint.
+		snoozeReturnedAt: v.optional(v.number()),
 		createdAt: v.number(),
 	})
 		.index('by_contact_identifier', ['contactIdentifier'])
@@ -64,6 +75,7 @@ export const inboxTables = {
 		.index('by_last_message_at', ['lastMessageAt'])
 		.index('by_contact', ['contactId'])
 		.index('by_assigned_to', ['assignedTo'])
+		.index('by_snoozed_until', ['snoozedUntil'])
 		.index('by_normalized_subject_and_contact', ['normalizedSubject', 'contactIdentifier']),
 
 	// Inbound Messages - stores every inbound email with its processing state
