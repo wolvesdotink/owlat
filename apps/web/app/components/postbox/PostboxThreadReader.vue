@@ -142,19 +142,17 @@ const { data: threadData, isLoading } = useConvexQuery(api.mail.mailbox.listThre
 const allMessages = computed(() => threadData.value?.messages ?? [props.message]);
 const latestMessage = computed(() => allMessages.value[allMessages.value.length - 1]);
 
-// Auto-summary strip: advisory AI, shown above long threads only. Long =
-// >= 5 messages OR a lot of body text (a single sprawling message still
-// benefits from a TL;DR). Gated by the `ai` flag AND the per-user toggle
-// (default ON); the strip itself reads the cache reactively and generates
-// lazily, so this only decides whether to mount it.
+// The one reader AI strip (PostboxAiStrip) mounts whenever AI is on and the
+// thread has a latest message; it hosts the summary gist, Ask, and Draft reply.
+// `warrantsSummary` decides whether it eagerly generates a summary: long thread
+// (>= 5 messages OR a lot of body text) AND the per-user auto-summary toggle
+// (default ON). When false and nothing is cached, the strip collapses to zero
+// height — so a short thread shows no AI element at all.
 const { autoSummarize } = usePostboxSettings();
-const showSummaryStrip = computed(
-	() =>
-		isFeatureEnabled('ai') &&
-		autoSummarize.value &&
-		isLongThreadForSummary(allMessages.value) &&
-		!!latestMessage.value
+const warrantsSummary = computed(
+	() => autoSummarize.value && isLongThreadForSummary(allMessages.value)
 );
+const showAiStrip = computed(() => isFeatureEnabled('ai') && !!latestMessage.value);
 
 // Follow-up ("remind me if no reply") chip: armable only while the thread
 // ends on our own sent message — an inbound reply on top means they already
@@ -849,12 +847,15 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 		<PostboxReaderSkeleton v-if="isLoading" />
 
 		<div v-else class="space-y-2">
-			<!-- Advisory AI: cached one-line summary strip for long threads. Shows a
-			     quiet shimmer while it fills in and disappears entirely on AI failure. -->
-			<PostboxThreadSummary
-				v-if="showSummaryStrip && latestMessage"
+			<!-- The reader's ONE AI home: a single quiet strip with the summary gist
+			     plus Ask + Draft reply. Renders nothing when there's no summary and
+			     the thread is too short to warrant one (fail-soft, same thresholds). -->
+			<PostboxAiStrip
+				v-if="showAiStrip && latestMessage"
 				:key="latestMessage._id"
 				:message-id="latestMessage._id"
+				:warrants-summary="warrantsSummary"
+				@use-reply="(t) => latestMessage && openReplyWithBody(latestMessage, t)"
 			/>
 
 			<template v-for="msg in allMessages" :key="msg._id">
@@ -1155,18 +1156,6 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 					</div>
 				</section>
 			</template>
-
-			<PostboxAiAssist
-				v-if="latestMessage && isFeatureEnabled('ai')"
-				:message-id="latestMessage._id"
-				@use-reply="(t) => latestMessage && openReplyWithBody(latestMessage, t)"
-			/>
-
-			<!-- Ask the advisory assistant a question grounded in THIS thread. -->
-			<PostboxAskThread
-				v-if="latestMessage && isFeatureEnabled('ai')"
-				:message-id="latestMessage._id"
-			/>
 
 			<!-- Inline reply box pinned under the conversation (r / a / f or the
 			     affordance expand it; it collapses back after send/discard). -->
