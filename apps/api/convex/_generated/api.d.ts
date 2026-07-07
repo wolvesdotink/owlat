@@ -350,6 +350,7 @@ import type * as lib_statShards from "../lib/statShards.js";
 import type * as lib_suppression from "../lib/suppression.js";
 import type * as lib_systemEmails from "../lib/systemEmails.js";
 import type * as lib_tenantTables from "../lib/tenantTables.js";
+import type * as lib_textPreview from "../lib/textPreview.js";
 import type * as lib_workingHours from "../lib/workingHours.js";
 import type * as mail_ai from "../mail/ai.js";
 import type * as mail_aiCoach from "../mail/aiCoach.js";
@@ -894,6 +895,7 @@ declare const fullApi: ApiFromModules<{
   "lib/suppression": typeof lib_suppression;
   "lib/systemEmails": typeof lib_systemEmails;
   "lib/tenantTables": typeof lib_tenantTables;
+  "lib/textPreview": typeof lib_textPreview;
   "lib/workingHours": typeof lib_workingHours;
   "mail/ai": typeof mail_ai;
   "mail/aiCoach": typeof mail_aiCoach;
