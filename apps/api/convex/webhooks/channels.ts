@@ -60,6 +60,7 @@ import { v } from 'convex/values';
 import { internal } from '../_generated/api';
 import { createContact } from '../contacts/creation';
 import { findOrCreateForChannel } from '../inbox/threads/module';
+import { buildMessagePreview } from '../lib/textPreview';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { logError } from '../lib/runtimeLog';
 
@@ -109,6 +110,8 @@ export const processInboundChannel = internalMutation({
 			subject: `${args.channel.toUpperCase()} conversation`,
 			normalizedSubject: `${args.channel} conversation`,
 			occurredAt: now,
+			channel: args.channel,
+			preview: buildMessagePreview({ text: args.content }),
 		});
 
 		// Store unified message
@@ -141,11 +144,8 @@ export const processInboundChannel = internalMutation({
 				// `to` is the channel name, the subject is a synthetic first
 				// line, and `messageId` falls back to a synthetic id when the
 				// provider gave no external id (so `by_message_id` stays unique).
-				const subject =
-					args.content.trim().slice(0, 80) ||
-					`${args.channel.toUpperCase()} message`;
-				const messageId =
-					args.externalMessageId ?? `${args.channel}:${threadId}:${now}`;
+				const subject = args.content.trim().slice(0, 80) || `${args.channel.toUpperCase()} message`;
+				const messageId = args.externalMessageId ?? `${args.channel}:${threadId}:${now}`;
 
 				const inboundMessageId = await ctx.db.insert('inboundMessages', {
 					messageId,

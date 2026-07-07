@@ -55,6 +55,18 @@ const { members, fetchMembers } = useOrganization();
 onMounted(() => {
 	void fetchMembers();
 });
+
+// Mark the thread seen for THIS user (per-user unread, mirroring chat's
+// lastReadAt) on open and whenever we navigate to another thread. Best-effort:
+// a failed mark just leaves the row bold until the next open.
+const { run: markThreadSeen } = useBackendOperation(api.inbox.reads.markThreadSeen, {
+	label: 'Mark thread seen',
+});
+const markSeen = () => {
+	void markThreadSeen({ threadId: threadId.value });
+};
+onMounted(markSeen);
+watch(threadId, markSeen);
 const assignedMemberName = computed(() => {
 	const id = thread.value?.assignedTo;
 	if (!id) return null;
