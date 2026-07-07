@@ -14,7 +14,7 @@ export const processPendingDeletions = internalMutation({
 		const pendingRequests = await ctx.db
 			.query('accountDeletionRequests')
 			.withIndex('by_status', (q) => q.eq('status', 'pending'))
-			.collect();
+			.collect(); // bounded: pending deletion requests (few)
 
 		let processedCount = 0;
 

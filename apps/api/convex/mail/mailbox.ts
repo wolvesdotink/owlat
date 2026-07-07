@@ -15,10 +15,7 @@ import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { authedMutation, publicQuery } from '../lib/authedFunctions';
 import type { Id, Doc } from '../_generated/dataModel';
 import { internal } from '../_generated/api';
-import {
-	requireAdminContext,
-	getBetterAuthSessionWithRole,
-} from '../lib/sessionOrganization';
+import { requireAdminContext, getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 import {
 	throwForbidden,
 	throwInvalidInput,
@@ -177,11 +174,11 @@ export const list = publicQuery({
 			ctx.db
 				.query('mailboxes')
 				.withIndex('by_status', (q) => q.eq('status', 'active'))
-				.collect(),
+				.collect(), // bounded: active mailboxes (single-org: member roster, few)
 			ctx.db
 				.query('mailboxes')
 				.withIndex('by_status', (q) => q.eq('status', 'suspended'))
-				.collect(),
+				.collect(), // bounded: suspended mailboxes (single-org: member roster, few)
 		]);
 		const visible = [...active, ...suspended];
 		if (session.role === 'owner' || session.role === 'admin') {
@@ -244,7 +241,6 @@ export const setDisplayName = authedMutation({
 	},
 });
 
-
 /**
  * Follow-up watch state attached to each list row ("No reply yet" chip /
  * armed-reminder chip in the thread list). One thread get per distinct thread
@@ -254,7 +250,7 @@ type RowFollowUp = { remindAt: number; dueAt?: number; watched: boolean };
 
 async function attachThreadFollowUps(
 	ctx: QueryCtx,
-	messages: Doc<'mailMessages'>[],
+	messages: Doc<'mailMessages'>[]
 ): Promise<Array<Doc<'mailMessages'> & { followUp?: RowFollowUp }>> {
 	const cache = new Map<Id<'mailThreads'>, Doc<'mailThreads'>['followUp']>();
 	const out: Array<Doc<'mailMessages'> & { followUp?: RowFollowUp }> = [];
@@ -274,7 +270,7 @@ async function attachThreadFollowUps(
 							watched: followUp.messageId === m._id,
 						},
 					}
-				: m,
+				: m
 		);
 	}
 	return out;
@@ -328,7 +324,7 @@ export const listMessages = publicQuery({
 			return {
 				messages: await attachThreadFollowUps(
 					ctx,
-					raw.slice(0, limit).filter((m) => !isSnoozed(m)),
+					raw.slice(0, limit).filter((m) => !isSnoozed(m))
 				),
 				hasMore: raw.length > limit,
 			};
@@ -352,7 +348,7 @@ export const listMessages = publicQuery({
 			return {
 				messages: await attachThreadFollowUps(
 					ctx,
-					raw.slice(0, limit).filter((m) => !isSnoozed(m)),
+					raw.slice(0, limit).filter((m) => !isSnoozed(m))
 				),
 				hasMore: raw.length > limit,
 			};
@@ -367,7 +363,7 @@ export const listMessages = publicQuery({
 		return {
 			messages: await attachThreadFollowUps(
 				ctx,
-				raw.slice(0, limit).filter((m) => !isSnoozed(m)),
+				raw.slice(0, limit).filter((m) => !isSnoozed(m))
 			),
 			hasMore: raw.length > limit,
 		};
@@ -425,7 +421,7 @@ export const listFolders = publicQuery({
 		return ctx.db
 			.query('mailFolders')
 			.withIndex('by_mailbox', (q) => q.eq('mailboxId', args.mailboxId))
-			.collect();
+			.collect(); // bounded: one mailbox's folders
 	},
 });
 
@@ -463,9 +459,7 @@ export const latestInboxUnread = publicQuery({
 			if (mb.status !== 'active') continue;
 			const inbox = await ctx.db
 				.query('mailFolders')
-				.withIndex('by_mailbox_and_role', (q) =>
-					q.eq('mailboxId', mb._id).eq('role', 'inbox')
-				)
+				.withIndex('by_mailbox_and_role', (q) => q.eq('mailboxId', mb._id).eq('role', 'inbox'))
 				.first();
 			if (!inbox) continue;
 			const recent = await ctx.db
@@ -503,9 +497,7 @@ export const inboxUnreadCount = publicQuery({
 			if (mb.status !== 'active') continue;
 			const inbox = await ctx.db
 				.query('mailFolders')
-				.withIndex('by_mailbox_and_role', (q) =>
-					q.eq('mailboxId', mb._id).eq('role', 'inbox')
-				)
+				.withIndex('by_mailbox_and_role', (q) => q.eq('mailboxId', mb._id).eq('role', 'inbox'))
 				.first();
 			if (inbox) unread += inbox.unseenCount;
 		}
@@ -553,9 +545,7 @@ export const newestUnreadInbox = publicQuery({
 			if (mb.status !== 'active') continue;
 			const inbox = await ctx.db
 				.query('mailFolders')
-				.withIndex('by_mailbox_and_role', (q) =>
-					q.eq('mailboxId', mb._id).eq('role', 'inbox')
-				)
+				.withIndex('by_mailbox_and_role', (q) => q.eq('mailboxId', mb._id).eq('role', 'inbox'))
 				.first();
 			if (!inbox) continue;
 			total += inbox.unseenCount;
@@ -641,12 +631,12 @@ export const listThreadMessages = publicQuery({
 		const siblings = await ctx.db
 			.query('mailMessages')
 			.withIndex('by_thread', (q) => q.eq('threadId', seed.threadId))
-			.collect();
+			.collect(); // bounded: one thread's messages
 		siblings.sort((a, b) => a.receivedAt - b.receivedAt);
 		const labels = await ctx.db
 			.query('mailLabels')
 			.withIndex('by_mailbox', (q) => q.eq('mailboxId', seed.mailboxId))
-			.collect();
+			.collect(); // bounded: one mailbox's labels
 		const labelMap = new Map(labels.map((l) => [l._id, l]));
 		const thread = await ctx.db.get(seed.threadId);
 		return {
@@ -731,7 +721,10 @@ export const search = publicQuery({
 				.withIndex('by_mailbox_and_role', (q) =>
 					q
 						.eq('mailboxId', args.mailboxId)
-						.eq('role', args.folderRole as 'inbox' | 'sent' | 'drafts' | 'trash' | 'spam' | 'archive')
+						.eq(
+							'role',
+							args.folderRole as 'inbox' | 'sent' | 'drafts' | 'trash' | 'spam' | 'archive'
+						)
 				)
 				.first();
 			folderId = folder?._id;
@@ -762,8 +755,8 @@ export const search = publicQuery({
 					let filtered = q.search('snippet', args.text).eq('mailboxId', args.mailboxId);
 					if (folderId) filtered = filtered.eq('folderId', folderId);
 					// `from` is a partial token (e.g. "sara"), not a full address, so it
-						// can't use the search index's exact .eq('fromAddress') — the substring
-						// post-filter below handles it for both the text and no-text branches.
+					// can't use the search index's exact .eq('fromAddress') — the substring
+					// post-filter below handles it for both the text and no-text branches.
 					if (args.flagSeen !== undefined) filtered = filtered.eq('flagSeen', args.flagSeen);
 					if (args.flagFlagged !== undefined)
 						filtered = filtered.eq('flagFlagged', args.flagFlagged);

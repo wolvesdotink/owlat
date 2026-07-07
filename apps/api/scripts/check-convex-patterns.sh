@@ -4,211 +4,110 @@
 # count is the signal that a migration phase landed; raising one needs
 # justification in the PR description.
 #
-# Baselines reflect the state at the end of the Convex best-practices
-# remediation work (Phases 1, 4, 6, 7, 8, 9 landed). Phases 2 (bound
-# .collect()) and 3 (filter→withIndex) lower these counts over time.
-#
 # See https://docs.convex.dev/production/best-practices
+#
+# Counting rules (both pattern 1 and 2):
+#   - Lines whose content starts with a comment marker (`//`, `*`, `/*`) are
+#     NOT counted. Doc comments that mention `.collect()`/`.filter()` in prose
+#     (e.g. "the pre-deepening shape did `x.collect()`") are documentation,
+#     not calls, and must not inflate the metric.
+#   - `.collect()` is exempt when a `// bounded: <reason>` comment sits on the
+#     SAME line or the line immediately AFTER it — so a multi-line query chain
+#     (`.query(...).withIndex(...)\n  .collect();` with the justification on the
+#     next line) keeps its exemption without cramming the comment inline.
 
 cd "$(dirname "$0")/.."
 
-# ── Pattern 1: `.filter(` calls in Convex source ─────────────────────────────
-# Best practice: filter via `.withIndex(...)` rather than in-memory predicate.
-# False positives exist (filter after withIndex on a non-leading field, which
-# is fine) — the baseline absorbs them. The number should trend down only.
-# Bumped 157 → 163 in Phase 3.4 (soft-delete filtering on contact queries
-# composes with the by_email / by_created_at index, so .filter is correct here).
-# Bumped 163 → 166 in ADR-0003 (webhook event modules): `webhooks/events/
-# registry.ts` filters Object.values over a static 9-entry catalog to derive
-# SUBSCRIBABLE_LITERALS, plus the existing `WEBHOOK_EVENT_CATALOG.filter` in
-# events.ts — both are JS array filters, not Convex DB queries.
-# Lowered 166 → 165 in the post-ADR-0003 cleanup: `WEBHOOK_EVENT_CATALOG`
-# was removed from events.ts; the per-event description / isSubscribable
-# fields now live only on each Webhook event module.
-# Bumped 165 → 168 for the internal team chat module (apps/api/convex/chat/*):
-# net 8 new in-memory JS array filters (after subtracting the two removed
-# from the deleted chat.ts scaffold). Every chat .filter() narrows an already
-# bounded result set (room members of one room, caller's memberships,
-# unread mentions, etc.) — never a `ctx.db.query().filter()` antipattern.
-# Bumped 168 → 170 to track an existing under-counted baseline surfaced
-# during ADR-0018 (Sending domain lifecycle) — no new `.filter()` antipatterns
-# were introduced by that work, but the previous baseline drifted two
-# below the head count.
-# Bumped 170 → 172 in ADR-0030 (Public token endpoint module): two new
-# JS Array `.filter(Boolean)` calls in `lib/publicTokenEndpoint.ts`'s path
-# matcher — they strip empty segments from `pattern.split('/')` and
-# `pathname.split('/')`. Not Convex DB queries; intrinsically bounded.
-# Lowered 172 → 167 in ADR-0037 (Resource listing engine): the ported list
-# shells dropped their in-memory `.filter()` search/status narrowing — the
-# Listing engine indexes instead of filtering.
-# Bumped 167 → 168 for external mailbox sync (mail/externalDelivery.ts): the
-# `ingestExternalMessage` dedup narrows `by_rfc822_message_id` by mailboxId via
-# `.filter()` — the same Message-ID dedup pattern `deliverToMailbox` already
-# uses (there is no compound rfc822+mailbox index; the row set is one Message-ID).
-# Lowered 168 → 151 in the Convex performance-audit remediation: the A/B list
-# moved its `isABTest` filter into an internal query and the dead
-# forms.getSubmissionStats was deleted, net dropping the in-memory filter count.
-# Raised 149 → 151 in the public-route security pass: two in-memory ARRAY
-# `.filter()`s (not DB filters) — emailsQueries.getTestSendAllowedRecipients
-# narrows the (bounded) member roster to non-empty emails for the test-send
-# recipient allowlist, and security_scan builds its guard sample from the
-# non-empty subject/text/stripped-HTML parts. Both operate on tiny in-memory
-# arrays.
-# Raised 151 → 153 for the Postbox snooze hide-from-inbox fix: mail.mailbox
-# listMessages now drops still-snoozed rows (snoozedUntil > now) from each
-# folder view and serves the virtual "Snoozed" view — two in-memory ARRAY
-# `.filter()`s over the already-`.take()`-bounded recent-message window, not
-# DB filters.
-# Raised 153 → 154 for hybrid knowledge retrieval + dedup: in-memory ARRAY
-# `.filter()`s — knowledge/retrieval drops TTL-expired entries from the already-
-# bounded fused candidate set, and knowledge/maintenance dedup keeps only
-# embeddable (non-null, non-empty-embedding) entries of one contact. Both are
-# JS array filters over bounded in-memory sets, not `ctx.db.query().filter()`.
-# Raised 154 → 155 for custom-folder listMessages: the new folderId branch drops
-# snoozed messages from the already-`.take()`-bounded folder window — the same
-# in-memory array `.filter((m) => !isSnoozed(m))` the sibling folderRole path uses.
-# Raised 155 → 161 for the soft-delete-contract review fixes: six `deletedAt ===
-# undefined` post-filters on equality-indexed access paths that have no
-# `*_and_deleted_at` compound index — contacts.getByEmailForTeam + contacts
-# update duplicate-email (×2) compose with `by_email`, and three transactionalSends
-# reads (listByTransactionalEmail, listAll, getByEmail) compose with their
-# template/email index. Each filters a row set already narrowed by an indexed
-# equality (one email, or one template's bounded `.take()` page), so `.filter()`
-# is correct and cheap; a GDPR-erased gravestone must not re-surface.
-# Raised 161 → 162 for the inbox.listThreads pagination fix: when assignedToMe
-# AND a status filter are both set, the query paginates the by_assigned_to index
-# and post-filters status — a .filter() composed with .paginate() (filtered rows
-# shrink the page but the cursor stays complete), no compound index exists.
-# Raised 162 → 163 for the postbox filter-forward fix: deliverToMailbox selects
-# the 'forward' actions from the in-memory evalResult.actions array and the
-# post-delivery hook keeps only enabled account-forwarding rules — both JS array
-# `.filter()`s over already-bounded in-memory sets, not `ctx.db.query().filter()`.
-# Raised 163 → 164 for inbox.mutations.retryFailedMessage: it picks the most
-# recent failed agentAction with a JS array `.filter()` over the per-message
-# action rows (one row per pipeline step, ~5 max), not a `ctx.db.query().filter()`.
-# Raised 164 → 165 for semanticFiles list/search pagination: applySourceFilter
-# narrows one already-`.paginate()`-bounded page by `sourceType` — a JS array
-# `.filter()` (mirroring mediaAssets.list's post-pagination filter), not a
-# `ctx.db.query().filter()`. The client auto-loads pages so filtering spans the
-# whole table rather than the old client-side filter over the newest 50 rows.
-# Raised 165 → 169 for the SPF helpers (PR-68, domains/spf.ts + dnsVerification.ts
-# + providers/mta/index.ts): JS array `.filter()`s over tiny in-memory sets —
-# countSpfRecords narrows the published TXT values to SPF records, the
-# return-path SPF generator strips blank pool IPs via `.filter(Boolean)`, and
-# the verifier filters the published TXT values down to the SPF records to join
-# them for display (and, on a duplicate, to fold a foreign record into ours).
-# None are `ctx.db.query().filter()` — they operate on DNS-TXT arrays / split
-# strings. (The record-merge splice now lives in @owlat/shared/spf, outside the
-# convex tree, so the count sits one below this baseline.)
-# Raised 169 → 170 for inbound attachment malware scanning (PR-39, mail/delivery.ts):
-# scanInboundAttachments narrows the extracted MIME attachment leaves to the
-# non-inline, non-empty parts worth scanning — a JS array `.filter()` over the
-# in-memory `extractAttachments(...)` result, not a `ctx.db.query().filter()`.
-# Raised 170 → 171 for graph-augmented retrieval (knowledge/retrieval.ts):
-# expandAndRank narrows the vector/FTS id legs to the post-fusion VISIBLE pool
-# before ranking — a JS array `.filter()` over the already-bounded in-memory id
-# lists (and the SECURITY floor that keeps contact-scoped ids out of the ranker),
-# not a `ctx.db.query().filter()`.
-# Raised 171 → 172 for meeting-intent detection (mail/needsReplyClassify.ts and
-# mail/ai.ts): both are JS array `.filter()` calls that drop empty proposed-time
-# phrases from the LLM output, not a `ctx.db.query().filter()`.
-# Raised 172 → 174 for inline-image MIME assembly (mail/rfc822.ts): two in-memory
-# JS array `.filter()` calls that partition the collected attachment buffers into
-# inline (multipart/related) vs. regular parts, not a `ctx.db.query().filter()`.
-# Raised 174 → 175 to absorb a base-main drift picked up on rebase (a sibling
-# merge left the tree one JS array `.filter()` above the baseline line); this
-# branch adds no `ctx.db.query().filter()` of its own.
-# Raised 175 → 176 to absorb another base-main drift surfaced on the thread-
-# presence branch (a concurrent merge left the head tree one JS array
-# `.filter()` above the recorded line). The thread-presence piece itself adds
-# NO `.filter()` — `inbox/presence.ts` reads exclusively via `withIndex`
-# (heartbeat/leave point-read `by_user_thread` with `.unique()`; `list`
-# range-scans `by_thread_heartbeat` on the heartbeat window instead of an
-# in-memory predicate) — so this bump only realigns the baseline with the
-# already-drifted base head.
-FILTER_BASELINE=176
-filter_count=$(grep -rn "\.filter(" convex --include="*.ts" 2>/dev/null \
-	| grep -v "/_generated/" \
-	| grep -v "/__tests__/" \
-	| wc -l | tr -d ' ')
+# ── Pattern 1: full-table `ctx.db.query().filter()` scans ────────────────────
+# Best practice: narrow with `.withIndex(...)` rather than an in-memory predicate.
+# This flags ONLY the real anti-pattern — a `.filter(...)` on a `ctx.db.query()`
+# chain that has NO `.withIndex()`/`.withSearchIndex()` before it — and ignores
+# the two harmless cases the old blanket count kept churning the baseline for:
+#   - JS Array `.filter()` over an in-memory set (`arr.filter(...)`), and
+#   - a DB `.filter()` composed AFTER an index (soft-delete `deletedAt`, Message-ID
+#     dedup, per-parent `.first()` status filters, the dynamic audit-log viewer).
+# Detection (awk, statement-aware): for each `.filter(`, if it opens a fluent
+# continuation line, walk back through the chain to the `.query(`; if that chain
+# carries no index it is a full scan. An inline `.query(...).filter(...)` with no
+# index counts too. A trailing `;` (± line comment) marks a statement boundary so
+# a JS filter after a query statement is not misattributed.
+#
+# Baseline is 1: transactional/sends.ts listAll pages `transactionalSends` newest-
+# first and post-filters the soft-delete `deletedAt` (GDPR-erased sends are rare,
+# the read is `.take()`-bounded, and no index preserves creation-desc order while
+# filtering deletedAt). A NEW full-table filter must add the index instead.
+FILTER_BASELINE=1
+filter_count=0
+while IFS= read -r f; do
+	c=$(awk '
+		{ lines[NR] = $0 }
+		END {
+			for (i = 1; i <= NR; i++) {
+				line = lines[i]
+				if (line !~ /\.filter\(/) continue
+				t = line; sub(/^[[:space:]]+/, "", t)
+				if (t ~ /^(\/\/|\*|\/\*)/) continue           # comment-only line
+				isDb = 0; hasIndex = 0
+				if (t ~ /^\.filter\(/) {
+					# fluent continuation: walk back through the chain to its query
+					for (k = i - 1; k >= 1 && k >= i - 20; k--) {
+						if (lines[k] ~ /\.withIndex\(|\.withSearchIndex\(/) hasIndex = 1
+						ends = (lines[k] ~ /;[[:space:]]*(\/\/.*)?$/)   # statement boundary
+						if (lines[k] ~ /\.query\(/ && !ends) { isDb = 1; break }
+						if (ends) break
+					}
+				} else if (line ~ /\.query\(/ && line !~ /\.withIndex\(|\.withSearchIndex\(/) {
+					isDb = 1                                   # inline query().filter(), no index
+				}
+				if (isDb && !hasIndex) n++
+			}
+			print n + 0
+		}' "$f")
+	filter_count=$((filter_count + c))
+done < <(find convex -name "*.ts" -not -path "*/_generated/*" -not -path "*/__tests__/*")
 
-# ── Pattern 2: `.collect()` without an obvious bound ─────────────────────────
-# Best practice: bound reads via `.take(n)`, pagination, or document with a
-# trailing `// bounded:` comment when the table is intrinsically small.
-# Phase 3.4 added cascade .collect() scans of contactActivities / contactIdentities /
-# contactRelationships (from + to) when permanently deleting a soft-deleted contact.
-# Each child table is filtered by contactId, so the row set is intrinsically per-contact.
-# Lowered 276 → 242 in ADR-0037 (Resource listing engine): the ported list/count
-# shells (contacts, campaigns, emailTemplates, topics, segments, automations) no
-# longer `.collect()` whole tables — the engine paginates / index-counts instead.
-# Lowered 242 → 236 in ADR-0042 (Sending reputation module): the five copied
-# window-sum loops collapsed into one summarizer and the reputation reads
-# (reputationQueries, platformAdmin, reporter) stopped `.collect()`-ing the table
-# per call; the module's own scans carry `// bounded:` (cleanup-pruned window).
-# Lowered 236 → 234: getInboundStats no longer collects the open-thread set per
-# subscriber — the count is denormalized onto instanceSettings.openThreads and
-# maintained by the Conversation thread module (the sole status writer).
-# Raised 234 → 236: the permanent-delete cascade now also scans automationRuns
-# (owned, deleted) and the optional-FK clear tables (unifiedMessages /
-# formSubmissions / inboundMessages / conversationThreads) by contactId, closing
-# the dangling-FK orphan bug. Each is the same intrinsically per-contact child
-# scan as the sibling cascade collects already counted above.
-# Lowered 236 → 234: the postbox overdue-draft cron (mail/outboundCron) stopped
-# `.collect()`-ing the whole pending_send / scheduled partitions and now
-# range-scans the overdue tail via the compound index with `.take(BATCH_SIZE)`.
-# Lowered 234 → 229: blockedEmails.listByTeam now `.order('desc').take(N)` the
-# blocklist view instead of collecting every row (two collects removed), and
-# auditLogs.list uses native `.paginate()` instead of collecting the whole
-# filtered set to seek a cursor.
-# Lowered 229 → 226: systemHealth.getHealthStats no longer collects all
-# campaigns + all sends-per-campaign + all transactionalSends; it reads the
-# bounded sendingReputation summary and a capped by_status queue probe.
-# Lowered 226 → 189 in the Convex performance-audit remediation: the
-# contact_property/topic_membership single-contact path point-reads instead of
-# collecting whole columns; semanticFiles.listByContact, automation funnel
-# analytics, getTimelineStats, blockedEmails counts, labels.remove, form +
-# folder deletion, the pending-delay sweep, and the agent-metrics rollup all
-# stopped collecting unbounded tables (paginated continuations / .take caps /
-# denormalized counters / index-able junctions).
-# Raised 185 → 186 in the public-route security pass: the test-send recipient
-# allowlist (emailsQueries.getTestSendAllowedRecipients) collects `userProfiles`
-# to enumerate org-member inboxes. On a single-org deployment that table is the
-# member roster — intrinsically tiny (1 row per user).
-# Raised 186 → 190 by the GDPR contact-erasure cascade (lib/contactMutations):
-# four bounded-in-practice per-contact reads (threads + their messages,
-# knowledge junction links, semantic-file links) following the file's
-# existing cascade idiom — each is scoped by a by_contact/by_thread index.
-# Raised 190 → 196 by auth/memberErasure: per-mailbox/per-account index-scoped
-# reads inside the batched member-erasure walker (folders/labels/filters/
-# signatures/passwords/aliases/sync-state of ONE mailbox per hop).
-# Lowered 196 → 193: the review bounded three unbounded scans (mediaAssets
-# getStats + listTags now .take(MEDIA_SCAN_LIMIT); codeWorkTasks.getReviewTasks
-# now .take(200) — that orphaned query was later deleted entirely) and deleted
-# the orphaned contacts.activities.deleteByContact.
-# Lowered 193 → 191: deleted caller-less providerRoutes.listRoutesInternal and
-# auth.apiAuth.validateApiKey, each of which held an unbounded collect/read.
-# Raised 191 → 192 for inbox.mutations.retryFailedMessage: it collects ONE
-# message's agentActions via the by_inbound_message index (one row per pipeline
-# step, ~5 max) to pick the most recent failed one — same bounded idiom as
-# inbox.queries.getMessageActions.
-# Raised 193 → 194 for auth.memberErasure: the GDPR erasure sweep collects a
-# single mailbox's mailSnippets via the by_mailbox index (per-mailbox config
-# rows) to delete them — bounded, same idiom as the sibling erasure sweeps.
-# (Base main had meanwhile consumed the 192 → 193 headroom, so the mailSnippets
-# sweep lands at 194 after rebasing onto the current base.)
-# Raised 194 → 195 for auth.memberErasure: the same GDPR erasure sweep also
-# collects a single mailbox's mailContactStyleOverrides via the by_mailbox index
-# to delete them — bounded per-mailbox, same idiom as the sibling erasure sweeps.
-# Raised 195 → 196: realignment, no new collect in this change. Two concurrent
-# PRs each validated against baseline 195 and squash-merged, so main's actual
-# count (196) drifted one above the recorded baseline and every subsequent
-# apps/api PR failed this gate regardless of its own diff.
-COLLECT_BASELINE=196
-collect_count=$(grep -rn "\.collect()" convex --include="*.ts" 2>/dev/null \
-	| grep -v "/_generated/" \
-	| grep -v "/__tests__/" \
-	| grep -v "// bounded:" \
-	| wc -l | tr -d ' ')
+# ── Pattern 2: unbounded `.collect()` ────────────────────────────────────────
+# Best practice: bound reads via `.take(n)`, pagination, or a per-parent /
+# time-window / shard index that caps the row set, and document intentional
+# scans of intrinsically-small tables with a trailing `// bounded: reason`.
+#
+# The baseline is the count of `.collect()` calls that are NEITHER take/paginate
+# -bounded NOR carry a `// bounded:` justification. As of the boundedness-audit
+# pass it is the following KNOWN-UNBOUNDED fan-out scans, each deliberately left
+# uncommented pending a batched-delete / denormalized-counter follow-up:
+#   1. topics/topics.ts               deleteTopic → all `contactTopics` by_topic
+#   2. contacts/properties.ts         deleteProperty → all `contactPropertyValues` by_property
+#   3. contacts/propertyValues.ts     getPropertyValueCount → `.collect().length` by_property
+#   4. delivery/sends.ts              deleteByCampaign → all `emailSends` by_campaign
+#   5. transactional/sends.ts         delete → all `transactionalSends` by_transactional_email
+#   6. webhooks/endpoints.ts          deleteWebhook → all `webhookDeliveryLogs` by_webhook
+#   7. conditions/topic_membership    segment eval preloads all members by_topic
+#   8. conditions/contact_property    segment eval preloads all values by_property
+# These fan out by a secondary key (per-campaign/topic/property/webhook), so
+# they are genuinely unbounded — unlike the per-CONTACT cascade collects, which
+# a single person's bounded fan-out keeps small and which carry `// bounded:`.
+# Fixing them means batched self-rescheduling deletes and denormalized counts;
+# tracked separately. Do NOT slap `// bounded:` on these — the baseline holds
+# the line so no NEW unbounded scan slips in.
+COLLECT_BASELINE=8
+collect_count=0
+while IFS= read -r f; do
+	c=$(awk '
+		{ lines[NR] = $0 }
+		END {
+			for (i = 1; i <= NR; i++) {
+				if (lines[i] !~ /\.collect\(\)/) continue
+				# skip comment-only lines (prose mentions of .collect())
+				if (lines[i] ~ /^[[:space:]]*(\/\/|\*|\/\*)/) continue
+				# exempt when justified on the same or the next line
+				if (lines[i] ~ /\/\/ bounded:/) continue
+				if (i < NR && lines[i + 1] ~ /\/\/ bounded:/) continue
+				n++
+			}
+			print n + 0
+		}' "$f")
+	collect_count=$((collect_count + c))
+done < <(find convex -name "*.ts" -not -path "*/_generated/*" -not -path "*/__tests__/*")
 
 # ── Pattern 3: Exported Convex function with no `args:` (`handler:` directly) ─
 # `awk` walks each .ts file: when it sees `export const X = query({` (or any
@@ -251,7 +150,7 @@ report() {
 	fi
 }
 
-report ".filter() calls           " "$filter_count"      "$FILTER_BASELINE"
+report "query().filter() full-scans" "$filter_count"      "$FILTER_BASELINE"
 report ".collect() unbounded      " "$collect_count"     "$COLLECT_BASELINE"
 report "missing args: validators  " "$args_count"        "$ARGS_BASELINE"
 report "console.log debug calls   " "$console_log_count" "$CONSOLE_LOG_BASELINE"
@@ -261,5 +160,6 @@ if [ "$fail" -ne 0 ]; then
 	echo "One or more Convex anti-pattern counts grew. See https://docs.convex.dev/production/best-practices"
 	echo "If the regression is justified (e.g. an intrinsically small table), raise the baseline"
 	echo "in apps/api/scripts/check-convex-patterns.sh and explain why in the PR description."
+	echo "For .collect(): prefer .take()/paginate, or trail the call with a '// bounded: reason' comment."
 	exit 1
 fi

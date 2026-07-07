@@ -16,15 +16,13 @@ export const getContactForUnsubscribe = internalQuery({
 		if (!contact) return null;
 
 		// Get instance display name from settings
-		const settings = await ctx.db
-			.query('instanceSettings')
-			.first();
+		const settings = await ctx.db.query('instanceSettings').first();
 
 		// Check if contact is subscribed to any topics
 		const memberships = await ctx.db
 			.query('contactTopics')
 			.withIndex('by_contact', (q) => q.eq('contactId', args.contactId))
-			.collect();
+			.collect(); // bounded: one contact's topic memberships
 
 		const hasActiveSubscriptions = memberships.length > 0;
 
@@ -64,7 +62,7 @@ export const processUnsubscribe = internalMutation({
 				...(args.topicId ? { topicId: args.topicId } : {}),
 				source: 'public_email_link',
 				reason: 'unsubscribe',
-			},
+			}
 		);
 
 		// Preserve the legacy response shape.
@@ -78,9 +76,7 @@ export const processUnsubscribe = internalMutation({
 			}
 		}
 
-		const removedCount = outcomes.filter(
-			(o) => o.ok && o.action === 'unsubscribed',
-		).length;
+		const removedCount = outcomes.filter((o) => o.ok && o.action === 'unsubscribed').length;
 
 		if (removedCount === 0) {
 			return { success: true, alreadyUnsubscribed: true };

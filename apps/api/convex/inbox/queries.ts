@@ -104,7 +104,7 @@ export const getThread = publicQuery({
 			.query('inboundMessages')
 			.withIndex('by_thread', (q) => q.eq('threadId', args.threadId))
 			.order('asc')
-			.collect();
+			.collect(); // bounded: one thread's inbound messages
 
 		// Get contact info if linked
 		let contact = null;
@@ -272,6 +272,6 @@ export const getMessageActions = publicQuery({
 		return await ctx.db
 			.query('agentActions')
 			.withIndex('by_inbound_message', (q) => q.eq('inboundMessageId', args.inboundMessageId))
-			.collect();
+			.collect(); // bounded: one message's pipeline actions (~1 per step)
 	},
 });

@@ -29,17 +29,13 @@ export const getActiveByOrganization = authedQuery({
 		// Get scheduled campaigns (bounded to limit to avoid loading all)
 		const scheduledCampaigns = await ctx.db
 			.query('campaigns')
-			.withIndex('by_status_and_scheduled_at', (q) =>
-				q.eq('status', 'scheduled')
-			)
+			.withIndex('by_status_and_scheduled_at', (q) => q.eq('status', 'scheduled'))
 			.take(limit);
 
 		// Get sending campaigns (bounded to limit to avoid loading all)
 		const sendingCampaigns = await ctx.db
 			.query('campaigns')
-			.withIndex('by_status', (q) =>
-				q.eq('status', 'sending')
-			)
+			.withIndex('by_status', (q) => q.eq('status', 'sending'))
 			.take(limit);
 
 		// Combine and sort by scheduledAt or sentAt
@@ -64,9 +60,7 @@ export const getTopPerformingByOrganization = authedQuery({
 		// Get sent campaigns (bounded to prevent unbounded memory usage)
 		const sentCampaigns = await ctx.db
 			.query('campaigns')
-			.withIndex('by_status_sent_at', (q) =>
-				q.eq('status', 'sent')
-			)
+			.withIndex('by_status_sent_at', (q) => q.eq('status', 'sent'))
 			.order('desc')
 			.take(1000);
 
@@ -97,9 +91,7 @@ export const getSendVolumeByDayByOrganization = authedQuery({
 		// index range bounds the read to one week of sent campaigns.
 		const sentCampaigns = await ctx.db
 			.query('campaigns')
-			.withIndex('by_status_sent_at', (q) =>
-				q.eq('status', 'sent').gte('sentAt', sevenDaysAgo)
-			)
+			.withIndex('by_status_sent_at', (q) => q.eq('status', 'sent').gte('sentAt', sevenDaysAgo))
 			.collect(); // bounded: 7-day index range
 
 		// Group by day
@@ -148,9 +140,7 @@ export const getRecentlySentByOrganization = authedQuery({
 		// ordered descending so we can take(limit) directly without loading all.
 		const sentCampaigns = await ctx.db
 			.query('campaigns')
-			.withIndex('by_status_sent_at', (q) =>
-				q.eq('status', 'sent')
-			)
+			.withIndex('by_status_sent_at', (q) => q.eq('status', 'sent'))
 			.order('desc')
 			.take(limit);
 
@@ -165,7 +155,7 @@ export const listABTestCampaignDocs = internalQuery({
 	handler: async (ctx) =>
 		ctx.db
 			.query('campaigns')
-			.filter((q) => q.eq(q.field('isABTest'), true))
+			.withIndex('by_is_ab_test', (q) => q.eq('isABTest', true))
 			.take(AB_LIST_LIMIT),
 });
 
@@ -194,14 +184,14 @@ export const getABTestCampaignsByOrganization = authedAction({
 	handler: async (ctx): Promise<AbCampaignWithStats[]> => {
 		const campaigns: Doc<'campaigns'>[] = await ctx.runQuery(
 			internal.campaigns.analytics.listABTestCampaignDocs,
-			{},
+			{}
 		);
 
 		const campaignsWithStats: AbCampaignWithStats[] = await Promise.all(
 			campaigns.map(async (campaign): Promise<AbCampaignWithStats> => {
 				const { variantA, variantB } = await ctx.runQuery(
 					internal.campaigns.analytics.getAbVariantStatsForCampaign,
-					{ campaignId: campaign._id },
+					{ campaignId: campaign._id }
 				);
 				return {
 					...campaign,
@@ -214,7 +204,7 @@ export const getABTestCampaignsByOrganization = authedAction({
 						variantB,
 					},
 				};
-			}),
+			})
 		);
 
 		// Sort by updatedAt descending (most recent first)

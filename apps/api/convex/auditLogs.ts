@@ -22,10 +22,7 @@ export const list = adminQuery({
 		const limit = args.limit ?? 50;
 
 		// Use the created_at index for date range filtering and ordering
-		const baseQuery = ctx.db
-			.query('auditLogs')
-			.withIndex('by_created_at')
-			.order('desc');
+		const baseQuery = ctx.db.query('auditLogs').withIndex('by_created_at').order('desc');
 
 		// Apply date and attribute filters at the database level
 		const query = baseQuery.filter((q) => {
@@ -120,10 +117,8 @@ export const getStats = adminQuery({
 
 		const logs = await ctx.db
 			.query('auditLogs')
-			.withIndex('by_created_at', (q) =>
-				q.gte('createdAt', startDate).lte('createdAt', endDate)
-			)
-			.collect();
+			.withIndex('by_created_at', (q) => q.gte('createdAt', startDate).lte('createdAt', endDate))
+			.collect(); // bounded: audit logs within the ≤90-day window range
 
 		// Count by resource type
 		const byResource: Record<string, number> = {};
@@ -153,7 +148,7 @@ export const getActiveUsers = adminQuery({
 		const logs = await ctx.db
 			.query('auditLogs')
 			.withIndex('by_created_at', (q) => q.gte('createdAt', since))
-			.collect();
+			.collect(); // bounded: audit logs within the ≤90-day window range
 
 		// Get unique authUserIds from logs
 		const authUserIds = [...new Set(logs.map((log) => log.userId))];

@@ -96,7 +96,7 @@ export async function clearSnoozeUntilReplyForThread(
 	const messages = await ctx.db
 		.query('mailMessages')
 		.withIndex('by_thread', (q) => q.eq('threadId', threadId))
-		.collect();
+		.collect(); // bounded: one thread's messages
 	for (const m of messages) {
 		if (m.isSnoozeUntilReply !== true) continue;
 		if (!isMessageSnoozed(m, now)) continue;

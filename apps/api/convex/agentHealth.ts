@@ -36,7 +36,7 @@ export const getDashboardMetrics = adminQuery({
 		const recentMetrics = await ctx.db
 			.query('agentMetrics')
 			.withIndex('by_window_start', (q) => q.gte('windowStart', fiveMinAgo))
-			.collect();
+			.collect(); // bounded: metrics within the recent 5-minute window
 
 		const latestByType: Record<string, number> = {};
 		for (const metric of recentMetrics) {
@@ -50,7 +50,7 @@ export const getDashboardMetrics = adminQuery({
 		}
 
 		// Get circuit breaker states
-		const breakers = await ctx.db.query('agentCircuitBreakers').collect();
+		const breakers = await ctx.db.query('agentCircuitBreakers').collect(); // bounded: one row per agent category (tiny)
 
 		// Get pending queue depth
 		const pendingMessages = await ctx.db
@@ -104,9 +104,10 @@ export const getMetricHistory = adminQuery({
 
 		return await ctx.db
 			.query('agentMetrics')
-			.withIndex('by_metric_type', (q) => q.eq('metricType', args.metricType))
-			.filter((q) => q.gte(q.field('windowStart'), since))
-			.collect();
+			.withIndex('by_metric_type_and_window_start', (q) =>
+				q.eq('metricType', args.metricType).gte('windowStart', since)
+			)
+			.collect(); // bounded: one metric type's rollups within the recent window (gte since)
 	},
 });
 
@@ -187,13 +188,15 @@ export const getAccuracyTrend = adminQuery({
 		// series; .take caps a wider hoursBack at a fixed ceiling.
 		const autoApprove = await ctx.db
 			.query('agentMetrics')
-			.withIndex('by_metric_type', (q) => q.eq('metricType', 'auto_approve_ratio'))
-			.filter((q) => q.gte(q.field('windowStart'), since))
+			.withIndex('by_metric_type_and_window_start', (q) =>
+				q.eq('metricType', 'auto_approve_ratio').gte('windowStart', since)
+			)
 			.take(2000);
 		const rejection = await ctx.db
 			.query('agentMetrics')
-			.withIndex('by_metric_type', (q) => q.eq('metricType', 'rejection_rate'))
-			.filter((q) => q.gte(q.field('windowStart'), since))
+			.withIndex('by_metric_type_and_window_start', (q) =>
+				q.eq('metricType', 'rejection_rate').gte('windowStart', since)
+			)
 			.take(2000);
 
 		// Align the two series by their rollup window start so a single point on
@@ -233,7 +236,7 @@ export const getAccuracyTrend = adminQuery({
 export const getCircuitBreakers = adminQuery({
 	args: {},
 	handler: async (ctx) => {
-		return await ctx.db.query('agentCircuitBreakers').collect();
+		return await ctx.db.query('agentCircuitBreakers').collect(); // bounded: one row per agent category (tiny)
 	},
 });
 

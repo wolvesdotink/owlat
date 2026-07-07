@@ -39,11 +39,7 @@ function utcDate(at: number): string {
  * zero deduplication of actual logic beyond the four-line bump. (Mutations may use Math.random; only the workflow runtime
  * forbids it.)
  */
-export async function bumpSendDailyStat(
-	ctx: MutationCtx,
-	field: Field,
-	at: number,
-): Promise<void> {
+export async function bumpSendDailyStat(ctx: MutationCtx, field: Field, at: number): Promise<void> {
 	const date = utcDate(at);
 	const shardKey = Math.floor(Math.random() * SHARD_COUNT);
 	const existing = await ctx.db
@@ -84,7 +80,7 @@ export interface DailyStatRow {
 export async function readDailyStats(
 	db: DatabaseReader,
 	days: number,
-	now: number,
+	now: number
 ): Promise<DailyStatRow[]> {
 	// `days - 1`: the inclusive `gte(cutoff)` date-string range spans the cutoff
 	// day through today, so subtracting `days` would cover `days + 1` calendar days.
@@ -93,7 +89,7 @@ export async function readDailyStats(
 	const rows = await db
 		.query('sendDailyStats')
 		.withIndex('by_date', (q) => q.gte('date', cutoff))
-		.collect();
+		.collect(); // bounded: days × shard rows within the date window
 
 	const byDate = new Map<string, DailyStatRow>();
 	for (const r of rows) {

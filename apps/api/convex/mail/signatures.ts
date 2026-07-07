@@ -48,7 +48,7 @@ export const list = publicQuery({
 		return ctx.db
 			.query('mailSignatures')
 			.withIndex('by_mailbox', (q) => q.eq('mailboxId', args.mailboxId))
-			.collect();
+			.collect(); // bounded: one mailbox's signatures
 	},
 });
 
@@ -148,4 +148,3 @@ export const remove = authedMutation({
 		await ctx.db.delete(args.signatureId);
 	},
 });
-

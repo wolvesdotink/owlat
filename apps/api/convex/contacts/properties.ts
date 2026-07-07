@@ -7,9 +7,7 @@ import { throwNotFound, throwAlreadyExists } from '../_utils/errors';
 export const listByOrganization = authedQuery({
 	args: {},
 	handler: async (ctx) => {
-		return await ctx.db
-			.query('contactProperties')
-			.collect();
+		return await ctx.db.query('contactProperties').collect(); // bounded: custom property definitions (org-scale, few)
 	},
 });
 
@@ -47,7 +45,11 @@ export const create = authedMutation({
 		),
 	},
 	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'contacts:manage', 'Only owners and admins can manage contacts');
+		await requireOrgPermission(
+			ctx,
+			'contacts:manage',
+			'Only owners and admins can manage contacts'
+		);
 
 		// Check if property with same key already exists
 		const existing = await ctx.db
@@ -75,7 +77,11 @@ export const update = authedMutation({
 		label: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'contacts:manage', 'Only owners and admins can manage contacts');
+		await requireOrgPermission(
+			ctx,
+			'contacts:manage',
+			'Only owners and admins can manage contacts'
+		);
 
 		const property = await ctx.db.get(args.propertyId);
 		if (!property) {
@@ -96,7 +102,11 @@ export const update = authedMutation({
 export const remove = authedMutation({
 	args: { propertyId: v.id('contactProperties') },
 	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'contacts:manage', 'Only owners and admins can manage contacts');
+		await requireOrgPermission(
+			ctx,
+			'contacts:manage',
+			'Only owners and admins can manage contacts'
+		);
 
 		const property = await ctx.db.get(args.propertyId);
 		if (!property) {
@@ -122,7 +132,11 @@ export const remove = authedMutation({
 export const createDefaultProperties = authedMutation({
 	args: {},
 	handler: async (ctx) => {
-		await requireOrgPermission(ctx, 'contacts:manage', 'Only owners and admins can manage contacts');
+		await requireOrgPermission(
+			ctx,
+			'contacts:manage',
+			'Only owners and admins can manage contacts'
+		);
 
 		const defaultProperties = [
 			{ key: 'first_name', label: 'First Name', type: 'string' as const },

@@ -30,7 +30,7 @@ export const listByContact = authedQuery({
 		return await ctx.db
 			.query('contactIdentities')
 			.withIndex('by_contact', (q) => q.eq('contactId', args.contactId))
-			.collect();
+			.collect(); // bounded: one contact's identities
 	},
 });
 
@@ -70,7 +70,7 @@ export const getMergeSuggestions = authedQuery({
 		const identities = await ctx.db
 			.query('contactIdentities')
 			.withIndex('by_contact', (q) => q.eq('contactId', args.contactId))
-			.collect();
+			.collect(); // bounded: one contact's identities
 
 		const candidateIds = new Set<string>();
 		const suggestions: Array<{
@@ -86,7 +86,7 @@ export const getMergeSuggestions = authedQuery({
 				.withIndex('by_identifier', (q) =>
 					q.eq('channel', identity.channel).eq('identifier', identity.identifier)
 				)
-				.collect();
+				.collect(); // bounded: identities for one identifier (≈1 row)
 
 			for (const match of matches) {
 				if (match.contactId === args.contactId) continue;
@@ -101,7 +101,7 @@ export const getMergeSuggestions = authedQuery({
 				const candidateIdentities = await ctx.db
 					.query('contactIdentities')
 					.withIndex('by_contact', (q) => q.eq('contactId', match.contactId))
-					.collect();
+					.collect(); // bounded: one contact's identities
 
 				const shared = candidateIdentities.filter((ci) =>
 					identities.some((i) => i.channel === ci.channel && i.identifier === ci.identifier)
@@ -136,7 +136,11 @@ export const addIdentity = authedMutation({
 		isPrimary: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'contacts:manage', 'Only owners and admins can manage contacts');
+		await requireOrgPermission(
+			ctx,
+			'contacts:manage',
+			'Only owners and admins can manage contacts'
+		);
 
 		// Check for existing identity with same channel+identifier
 		const existing = await ctx.db
@@ -160,7 +164,7 @@ export const addIdentity = authedMutation({
 			const contactIdentities = await ctx.db
 				.query('contactIdentities')
 				.withIndex('by_contact', (q) => q.eq('contactId', args.contactId))
-				.collect();
+				.collect(); // bounded: one contact's identities
 
 			for (const ci of contactIdentities) {
 				if (ci.channel === args.channel && ci.isPrimary) {
@@ -185,7 +189,11 @@ export const addIdentity = authedMutation({
 export const removeIdentity = authedMutation({
 	args: { identityId: v.id('contactIdentities') },
 	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'contacts:manage', 'Only owners and admins can manage contacts');
+		await requireOrgPermission(
+			ctx,
+			'contacts:manage',
+			'Only owners and admins can manage contacts'
+		);
 
 		await ctx.db.delete(args.identityId);
 	},
@@ -197,7 +205,11 @@ export const removeIdentity = authedMutation({
 export const verifyIdentity = authedMutation({
 	args: { identityId: v.id('contactIdentities') },
 	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'contacts:manage', 'Only owners and admins can manage contacts');
+		await requireOrgPermission(
+			ctx,
+			'contacts:manage',
+			'Only owners and admins can manage contacts'
+		);
 
 		await ctx.db.patch(args.identityId, { verifiedAt: Date.now() });
 	},
@@ -213,7 +225,11 @@ export const mergeContacts = authedMutation({
 		sourceContactId: v.id('contacts'),
 	},
 	handler: async (ctx, args) => {
-		const { userId } = await requireOrgPermission(ctx, 'contacts:manage', 'Only owners and admins can manage contacts');
+		const { userId } = await requireOrgPermission(
+			ctx,
+			'contacts:manage',
+			'Only owners and admins can manage contacts'
+		);
 
 		const target = await ctx.db.get(args.targetContactId);
 		const source = await ctx.db.get(args.sourceContactId);
@@ -289,7 +305,7 @@ const STRONG_MERGE_CHANNELS = new Set<string>(['email', 'phone', 'sms', 'whatsap
 async function mergeContactInto(
 	ctx: MutationCtx,
 	targetContactId: Doc<'contacts'>['_id'],
-	sourceContactId: Doc<'contacts'>['_id'],
+	sourceContactId: Doc<'contacts'>['_id']
 ): Promise<void> {
 	const target = await ctx.db.get(targetContactId);
 	const source = await ctx.db.get(sourceContactId);
@@ -342,7 +358,7 @@ export const autoMergeDuplicates = internalMutation({
 			const rows = await ctx.db
 				.query('contactIdentities')
 				.withIndex('by_identifier', (q) => q.eq('channel', channel))
-				.collect();
+				.collect(); // bounded: identities for one identifier (≈1 row)
 			for (const row of rows) {
 				const key = `${row.channel} ${row.identifier}`;
 				const bucket = seen.get(key);
@@ -374,9 +390,7 @@ export const autoMergeDuplicates = internalMutation({
 			if (contactById.size < 2) continue;
 
 			// Oldest contact survives; everyone else folds into it.
-			const contacts = [...contactById.values()].sort(
-				(a, b) => a._creationTime - b._creationTime,
-			);
+			const contacts = [...contactById.values()].sort((a, b) => a._creationTime - b._creationTime);
 			const target = contacts[0];
 			if (!target) continue; // unreachable (size >= 2 guarded above); satisfies the checker
 
@@ -409,9 +423,7 @@ export const ensureEmailIdentity = internalMutation({
 
 		const existing = await ctx.db
 			.query('contactIdentities')
-			.withIndex('by_identifier', (q) =>
-				q.eq('channel', 'email').eq('identifier', email)
-			)
+			.withIndex('by_identifier', (q) => q.eq('channel', 'email').eq('identifier', email))
 			.first();
 
 		if (existing) return existing._id;

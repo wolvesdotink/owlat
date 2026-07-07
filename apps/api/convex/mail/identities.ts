@@ -39,7 +39,7 @@ export async function resolveAllowedFromAddressesForCtx(
 	const aliases = await ctx.db
 		.query('mailAliases')
 		.withIndex('by_target', (q) => q.eq('targetMailboxId', mailboxId))
-		.collect();
+		.collect(); // bounded: aliases pointing at one target
 	const set = new Set<string>();
 	set.add(canonical(mailbox.address));
 	for (const a of aliases) set.add(canonical(a.alias));

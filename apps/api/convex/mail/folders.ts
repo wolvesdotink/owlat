@@ -230,6 +230,6 @@ export const list = publicQuery({
 		return ctx.db
 			.query('mailFolders')
 			.withIndex('by_mailbox', (q) => q.eq('mailboxId', args.mailboxId))
-			.collect();
+			.collect(); // bounded: one mailbox's folders
 	},
 });

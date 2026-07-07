@@ -36,7 +36,7 @@ export async function getCategoryRule(
 	const rows = await db
 		.query('autonomyRules')
 		.withIndex('by_category', (q) => q.eq('category', category))
-		.collect();
+		.collect(); // bounded: one category's autonomy rules (few)
 	for (const row of rows) {
 		if (row.sender == null) return row;
 	}

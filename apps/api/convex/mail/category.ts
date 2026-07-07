@@ -144,7 +144,7 @@ export function resolveCategory(opts: {
 export async function enqueueCategoryCheck(
 	ctx: MutationCtx,
 	threadId: Id<'mailThreads'>,
-	opts: { precedence?: string } = {},
+	opts: { precedence?: string } = {}
 ): Promise<void> {
 	await ctx.scheduler.runAfter(0, internal.mail.categoryClassify.classifyThread, {
 		threadId,
@@ -173,7 +173,7 @@ export const CATEGORY_CONTEXT_MESSAGES = 4;
  */
 async function latestInboundMessage(
 	ctx: { db: QueryCtx['db'] },
-	thread: Doc<'mailThreads'>,
+	thread: Doc<'mailThreads'>
 ): Promise<Doc<'mailMessages'> | null> {
 	const mailbox = await ctx.db.get(thread.mailboxId);
 	if (!mailbox || mailbox.status !== 'active') return null;
@@ -182,13 +182,12 @@ async function latestInboundMessage(
 	const all = await ctx.db
 		.query('mailMessages')
 		.withIndex('by_thread', (q) => q.eq('threadId', thread._id))
-		.collect();
+		.collect(); // bounded: one thread's messages
 	const ordered = all.sort((a, b) => a.receivedAt - b.receivedAt);
 
 	let latestInbound: Doc<'mailMessages'> | undefined;
 	for (const m of ordered) {
-		const isFromOwner =
-			m.outbound !== undefined || m.fromAddress.toLowerCase() === ownerAddress;
+		const isFromOwner = m.outbound !== undefined || m.fromAddress.toLowerCase() === ownerAddress;
 		if (!isFromOwner) latestInbound = m;
 	}
 	return latestInbound ?? null;
@@ -207,7 +206,7 @@ export const getThreadCategoryContext = internalQuery({
 		const all = await ctx.db
 			.query('mailMessages')
 			.withIndex('by_thread', (q) => q.eq('threadId', args.threadId))
-			.collect();
+			.collect(); // bounded: one thread's messages
 		const ordered = all.sort((a, b) => a.receivedAt - b.receivedAt);
 
 		const senderEmail = latestInbound.fromAddress.toLowerCase();
@@ -218,14 +217,14 @@ export const getThreadCategoryContext = internalQuery({
 		const contact = await ctx.db
 			.query('mailContacts')
 			.withIndex('by_mailbox_and_email', (q) =>
-				q.eq('mailboxId', thread.mailboxId).eq('email', senderEmail),
+				q.eq('mailboxId', thread.mailboxId).eq('email', senderEmail)
 			)
 			.first();
 
 		const override = await ctx.db
 			.query('mailSenderCategoryOverrides')
 			.withIndex('by_mailbox_and_sender', (q) =>
-				q.eq('mailboxId', thread.mailboxId).eq('senderEmail', senderEmail),
+				q.eq('mailboxId', thread.mailboxId).eq('senderEmail', senderEmail)
 			)
 			.first();
 
@@ -233,7 +232,7 @@ export const getThreadCategoryContext = internalQuery({
 			.slice(-CATEGORY_CONTEXT_MESSAGES)
 			.map(
 				(m) =>
-					`From: ${m.fromName || m.fromAddress}\nSubject: ${m.subject}\n${(m.textBodyInline ?? m.snippet ?? '').slice(0, 1500)}`,
+					`From: ${m.fromName || m.fromAddress}\nSubject: ${m.subject}\n${(m.textBodyInline ?? m.snippet ?? '').slice(0, 1500)}`
 			)
 			.join('\n\n---\n\n')
 			.slice(0, 8000);
@@ -268,7 +267,7 @@ export const applyCategory = internalMutation({
 			v.literal('newsletter'),
 			v.literal('notification'),
 			v.literal('receipt'),
-			v.literal('other'),
+			v.literal('other')
 		),
 		source: v.union(v.literal('heuristic'), v.literal('llm'), v.literal('user')),
 	},
@@ -305,7 +304,7 @@ export const recategorize = authedMutation({
 			v.literal('newsletter'),
 			v.literal('notification'),
 			v.literal('receipt'),
-			v.literal('other'),
+			v.literal('other')
 		),
 	},
 	handler: async (ctx, args) => {
@@ -326,7 +325,7 @@ export const recategorize = authedMutation({
 			const existing = await ctx.db
 				.query('mailSenderCategoryOverrides')
 				.withIndex('by_mailbox_and_sender', (q) =>
-					q.eq('mailboxId', thread.mailboxId).eq('senderEmail', senderEmail),
+					q.eq('mailboxId', thread.mailboxId).eq('senderEmail', senderEmail)
 				)
 				.first();
 			if (existing) {

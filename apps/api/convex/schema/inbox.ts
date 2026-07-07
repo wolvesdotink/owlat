@@ -299,7 +299,11 @@ export const inboxTables = {
 		createdAt: v.number(),
 	})
 		.index('by_metric_type', ['metricType'])
-		.index('by_window_start', ['windowStart']),
+		.index('by_window_start', ['windowStart'])
+		// Dashboard reads select one metricType over a recent window; the
+		// compound index bounds the scan to that type's window instead of
+		// filtering windowStart in memory after an equality-only index seek.
+		.index('by_metric_type_and_window_start', ['metricType', 'windowStart']),
 
 	// Per-call LLM usage + estimated cost for EVERY feature, not just the inbound
 	// agent (which also records to agentActions). Gives a deployment-wide AI-spend

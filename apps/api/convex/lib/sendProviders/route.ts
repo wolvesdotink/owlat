@@ -10,11 +10,7 @@
  */
 
 import { v } from 'convex/values';
-import {
-	internalQuery,
-	type MutationCtx,
-	type QueryCtx,
-} from '../../_generated/server';
+import { internalQuery, type MutationCtx, type QueryCtx } from '../../_generated/server';
 import type { Doc } from '../../_generated/dataModel';
 import {
 	resolveRoute,
@@ -30,7 +26,7 @@ export type MessageType = Doc<'providerRoutes'>['messageType'];
 export const messageTypeValidator = v.union(
 	v.literal('campaign'),
 	v.literal('transactional'),
-	v.literal('automation'),
+	v.literal('automation')
 );
 
 /**
@@ -41,15 +37,14 @@ export const messageTypeValidator = v.union(
  */
 export async function resolveSendRouteFromDb(
 	ctx: QueryCtx | MutationCtx,
-	messageType: MessageType,
+	messageType: MessageType
 ): Promise<ResolvedRoute | null> {
 	const routeConfig = await ctx.db
 		.query('providerRoutes')
 		.withIndex('by_message_type', (q) => q.eq('messageType', messageType))
 		.first();
 
-	// bounded: providerHealth has one row per provider kind (3 today)
-	const healthRecords = await ctx.db.query('providerHealth').collect();
+	const healthRecords = await ctx.db.query('providerHealth').collect(); // bounded: providerHealth has one row per provider kind (3 today)
 	const healthStatuses: ProviderHealthStatus[] = healthRecords.map((h) => ({
 		providerType: h.providerType,
 		status: h.status,

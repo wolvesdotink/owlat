@@ -192,7 +192,7 @@ export const getThreadContext = internalQuery({
 		const all = await ctx.db
 			.query('mailMessages')
 			.withIndex('by_thread', (q) => q.eq('threadId', args.threadId))
-			.collect();
+			.collect(); // bounded: one thread's messages
 		const newest = all
 			.sort((a, b) => a.receivedAt - b.receivedAt)
 			.slice(-NEEDS_REPLY_CONTEXT_MESSAGES);

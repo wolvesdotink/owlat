@@ -2,10 +2,7 @@ import { v } from 'convex/values';
 import { internalMutation, internalQuery } from '../_generated/server';
 import { CURRENT_WEBHOOK_PAYLOAD_VERSION } from '../lib/constants';
 import { webhookPayloadValidator } from '../lib/convexValidators';
-import {
-	subscribableWebhookEventValidator,
-	webhookEventValidator,
-} from './events';
+import { subscribableWebhookEventValidator, webhookEventValidator } from './events';
 
 // ============ INTERNAL QUERIES ============
 
@@ -19,10 +16,8 @@ export const getWebhooksForEvent = internalQuery({
 	handler: async (ctx, args) => {
 		const webhooks = await ctx.db
 			.query('webhooks')
-			.withIndex('by_active', (q) =>
-				q.eq('isActive', true)
-			)
-			.collect();
+			.withIndex('by_active', (q) => q.eq('isActive', true))
+			.collect(); // bounded: active webhooks (org-scale config)
 
 		return webhooks.filter((webhook) => webhook.events.includes(args.event));
 	},
@@ -81,10 +76,7 @@ export const listDeliveryLogsByTeam = internalQuery({
 	},
 	handler: async (ctx, args) => {
 		const limit = args.limit ?? 50;
-		const logs = await ctx.db
-			.query('webhookDeliveryLogs')
-			.order('desc')
-			.take(limit);
+		const logs = await ctx.db.query('webhookDeliveryLogs').order('desc').take(limit);
 
 		return logs;
 	},

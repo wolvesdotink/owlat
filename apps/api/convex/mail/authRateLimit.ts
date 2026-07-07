@@ -11,10 +11,7 @@
  */
 
 import { v } from 'convex/values';
-import {
-	internalMutation,
-	internalQuery,
-} from '../_generated/server';
+import { internalMutation, internalQuery } from '../_generated/server';
 
 const WINDOW_MS = 60_000;
 const PER_ADDRESS_LIMIT = 5;
@@ -48,19 +45,15 @@ export const isThrottled = internalQuery({
 
 		const byAddr = await ctx.db
 			.query('mailAuthFailures')
-			.withIndex('by_address_and_time', (q) =>
-				q.eq('address', lower).gte('occurredAt', cutoff)
-			)
-			.collect();
+			.withIndex('by_address_and_time', (q) => q.eq('address', lower).gte('occurredAt', cutoff))
+			.collect(); // bounded: one address's auth failures in the time window
 		if (byAddr.length >= PER_ADDRESS_LIMIT) return true;
 
 		if (args.ip) {
 			const byIp = await ctx.db
 				.query('mailAuthFailures')
-				.withIndex('by_ip_and_time', (q) =>
-					q.eq('ip', args.ip).gte('occurredAt', cutoff)
-				)
-				.collect();
+				.withIndex('by_ip_and_time', (q) => q.eq('ip', args.ip).gte('occurredAt', cutoff))
+				.collect(); // bounded: one IP's auth failures in the time window
 			if (byIp.length >= PER_IP_LIMIT) return true;
 		}
 

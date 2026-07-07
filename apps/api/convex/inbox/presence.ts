@@ -153,7 +153,7 @@ export async function getActiveReplierOtherThan(
 	const rows = await ctx.db
 		.query('threadPresence')
 		.withIndex('by_thread_heartbeat', (q) => q.eq('threadId', threadId).gt('heartbeatAt', cutoff))
-		.collect();
+		.collect(); // bounded: one thread's active presence rows (bounded by team size)
 	const other = rows.find((r) => r.mode === 'replying' && r.userId !== excludeUserId);
 	return other ? { userId: other.userId } : null;
 }

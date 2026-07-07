@@ -10,12 +10,7 @@ import { contactCreatedTrigger } from './triggers/contact_created';
 import { contactUpdatedTrigger } from './triggers/contact_updated';
 import { eventReceivedTrigger } from './triggers/event_received';
 import { topicSubscribedTrigger } from './triggers/topic_subscribed';
-import type {
-	FireInputFor,
-	TriggerKind,
-	TriggerModule,
-	TriggerData,
-} from './triggers/types';
+import type { FireInputFor, TriggerKind, TriggerModule, TriggerData } from './triggers/types';
 import { createContact } from '../contacts/creation';
 import { throwNotFound } from '../_utils/errors';
 
@@ -79,7 +74,7 @@ export async function fireTrigger<K extends TriggerKind>(
 	const automations = await ctx.db
 		.query('automations')
 		.withIndex('by_status_trigger', (q) => q.eq('status', 'active').eq('triggerType', kind))
-		.collect();
+		.collect(); // bounded: active automations of one trigger kind (org-scale)
 
 	const triggered: Id<'automationRuns'>[] = [];
 	const now = Date.now();

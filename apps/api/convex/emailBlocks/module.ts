@@ -64,9 +64,7 @@ export type SavedBlockDuplicateOutcome =
 	| { ok: true; blockId: Id<'emailBlocks'> }
 	| { ok: false; reason: 'block_not_found' };
 
-export type SavedBlockRemoveOutcome =
-	| { ok: true }
-	| { ok: false; reason: 'block_not_found' };
+export type SavedBlockRemoveOutcome = { ok: true } | { ok: false; reason: 'block_not_found' };
 
 // ─── Effects ────────────────────────────────────────────────────────────────
 
@@ -150,9 +148,7 @@ async function walkConsumers(
 	ctx: MutationCtx,
 	blockId: Id<'emailBlocks'>,
 	transform: (blocks: EditorBlock[]) => EditorBlock[] | null,
-	extraPatch?: (
-		row: Doc<'emailTemplates'> | Doc<'transactionalEmails'>,
-	) => Record<string, unknown>,
+	extraPatch?: (row: Doc<'emailTemplates'> | Doc<'transactionalEmails'>) => Record<string, unknown>
 ): Promise<WalkResult> {
 	const templateIds: Id<'emailTemplates'>[] = [];
 	const transactionalIds: Id<'transactionalEmails'>[] = [];
@@ -161,7 +157,7 @@ async function walkConsumers(
 	// bounded: emailTemplates is intrinsically small (one row per saved
 	// template). Convex doesn't natively index array fields; an
 	// `emailBlockConsumers` sidecar is listed as follow-up in ADR-0023.
-	const templates = await ctx.db.query('emailTemplates').collect();
+	const templates = await ctx.db.query('emailTemplates').collect(); // bounded: email templates (org-scale library)
 	for (const template of templates) {
 		const linkedBlockIds = template.linkedBlockIds ?? [];
 		if (!linkedBlockIds.includes(blockId)) continue;
@@ -181,7 +177,7 @@ async function walkConsumers(
 
 	// bounded: transactionalEmails is intrinsically small (one row per
 	// per-instance transactional template).
-	const transactionalEmails = await ctx.db.query('transactionalEmails').collect();
+	const transactionalEmails = await ctx.db.query('transactionalEmails').collect(); // bounded: transactional-email templates (org-scale library)
 	for (const email of transactionalEmails) {
 		const linkedBlockIds = email.linkedBlockIds ?? [];
 		if (!linkedBlockIds.includes(blockId)) continue;
@@ -212,7 +208,7 @@ function replaceLinkedBlocks(
 	emailBlocks: EditorBlock[],
 	savedBlockId: string,
 	newBlocks: EditorBlock[],
-	newName: string,
+	newName: string
 ): EditorBlock[] | null {
 	const groupIds = new Set<string>();
 	for (const block of emailBlocks) {
@@ -252,7 +248,7 @@ function replaceLinkedBlocks(
 function renameLinkedBlocks(
 	emailBlocks: EditorBlock[],
 	savedBlockId: string,
-	newName: string,
+	newName: string
 ): EditorBlock[] | null {
 	let changed = false;
 	for (const block of emailBlocks) {
@@ -266,7 +262,7 @@ function renameLinkedBlocks(
 
 function detachLinkedBlocks(
 	emailBlocks: EditorBlock[],
-	savedBlockId: string,
+	savedBlockId: string
 ): EditorBlock[] | null {
 	let changed = false;
 	for (const block of emailBlocks) {
@@ -280,10 +276,7 @@ function detachLinkedBlocks(
 
 // ─── Effect runner ──────────────────────────────────────────────────────────
 
-async function applyEffects(
-	ctx: MutationCtx,
-	effects: ReadonlyArray<Effect>,
-): Promise<void> {
+async function applyEffects(ctx: MutationCtx, effects: ReadonlyArray<Effect>): Promise<void> {
 	for (const effect of effects) {
 		switch (effect.kind) {
 			case 'audit_log': {
@@ -301,16 +294,12 @@ async function applyEffects(
 				const walked = await walkConsumers(
 					ctx,
 					effect.blockId,
-					(blocks) =>
-						replaceLinkedBlocks(blocks, effect.blockId, newBlocks, effect.newName),
+					(blocks) => replaceLinkedBlocks(blocks, effect.blockId, newBlocks, effect.newName),
 					() => ({
 						htmlRenderState: { stale: true, failureCount: 0 },
-					}),
+					})
 				);
-				if (
-					walked.templateIds.length > 0 ||
-					walked.transactionalIds.length > 0
-				) {
+				if (walked.templateIds.length > 0 || walked.transactionalIds.length > 0) {
 					// `schedule_rerender` is dispatched immediately so the pool
 					// kicks off once we know which consumers were touched.
 					await applyEffects(ctx, [
@@ -325,7 +314,7 @@ async function applyEffects(
 			}
 			case 'propagate_name': {
 				await walkConsumers(ctx, effect.blockId, (blocks) =>
-					renameLinkedBlocks(blocks, effect.blockId, effect.newName),
+					renameLinkedBlocks(blocks, effect.blockId, effect.newName)
 				);
 				break;
 			}
@@ -335,10 +324,8 @@ async function applyEffects(
 					effect.blockId,
 					(blocks) => detachLinkedBlocks(blocks, effect.blockId),
 					(row) => ({
-						linkedBlockIds: (row.linkedBlockIds ?? []).filter(
-							(id) => id !== effect.blockId,
-						),
-					}),
+						linkedBlockIds: (row.linkedBlockIds ?? []).filter((id) => id !== effect.blockId),
+					})
 				);
 				break;
 			}
@@ -360,7 +347,7 @@ async function applyEffects(
 							templateIds: effect.templateIds,
 							transactionalIds: effect.transactionalIds,
 						},
-					},
+					}
 				);
 				break;
 			}
@@ -433,11 +420,8 @@ export const update = internalMutation({
 		const block = await ctx.db.get(args.blockId);
 		if (!block) return { ok: false, reason: 'block_not_found' };
 
-		const contentChanged =
-			args.patch.content !== undefined && args.patch.content !== block.content;
-		const nameChanged =
-			args.patch.name !== undefined &&
-			args.patch.name.trim() !== block.name;
+		const contentChanged = args.patch.content !== undefined && args.patch.content !== block.content;
+		const nameChanged = args.patch.name !== undefined && args.patch.name.trim() !== block.name;
 		const descriptionChanged =
 			args.patch.description !== undefined &&
 			args.patch.description.trim() !== (block.description ?? '');
@@ -445,8 +429,7 @@ export const update = internalMutation({
 		const now = Date.now();
 		const rowPatch: Partial<Doc<'emailBlocks'>> = { updatedAt: now };
 		if (args.patch.name !== undefined) rowPatch.name = args.patch.name.trim();
-		if (args.patch.description !== undefined)
-			rowPatch.description = args.patch.description.trim();
+		if (args.patch.description !== undefined) rowPatch.description = args.patch.description.trim();
 		if (args.patch.content !== undefined) rowPatch.content = args.patch.content;
 
 		await ctx.db.patch(args.blockId, rowPatch);
@@ -598,7 +581,7 @@ export const updateBlockUsageCounts = internalMutation({
 export async function applyUsageCountDelta(
 	ctx: MutationCtx,
 	previousIds: ReadonlyArray<string>,
-	nextIds: ReadonlyArray<string>,
+	nextIds: ReadonlyArray<string>
 ): Promise<void> {
 	const previousSet = new Set(previousIds);
 	const nextSet = new Set(nextIds);

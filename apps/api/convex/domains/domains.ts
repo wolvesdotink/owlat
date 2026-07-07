@@ -3,7 +3,12 @@ import type { Infer } from 'convex/values';
 import type { QueryCtx, MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Id, Doc } from '../_generated/dataModel';
-import { throwInvalidInput, throwAlreadyExists, throwNotFound, throwInvalidState } from '../_utils/errors';
+import {
+	throwInvalidInput,
+	throwAlreadyExists,
+	throwNotFound,
+	throwInvalidState,
+} from '../_utils/errors';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import { getOptional } from '../lib/env';
@@ -30,9 +35,7 @@ type DomainRow = Doc<'domains'>;
  * read queries. One copy of the cast so the three single-row readers
  * (`listByOrganization`, `get`, `getByDomain`) can't disagree.
  */
-function serializeDomainRow(
-	domain: DomainRow,
-): DomainRow & {
+function serializeDomainRow(domain: DomainRow): DomainRow & {
 	dnsRecords: DnsRecords;
 	verificationResults: VerificationResults | undefined;
 } {
@@ -54,7 +57,7 @@ const LIFECYCLE_USER_PUBLIC_MUTATION = 'user';
 export const listByOrganization = authedQuery({
 	args: {},
 	handler: async (ctx) => {
-		const domains = await ctx.db.query('domains').collect();
+		const domains = await ctx.db.query('domains').collect(); // bounded: verified sending domains (few per org)
 
 		return domains.map(serializeDomainRow);
 	},
@@ -166,7 +169,11 @@ export const create = authedMutation({
 		domain: v.string(),
 	},
 	handler: async (ctx, args): Promise<Id<'domains'>> => {
-		await requireOrgPermission(ctx, 'organization:manage', 'Only owners and admins can manage sending domains');
+		await requireOrgPermission(
+			ctx,
+			'organization:manage',
+			'Only owners and admins can manage sending domains'
+		);
 		const outcome = await ctx.runMutation(internal.domains.lifecycle.create, {
 			domain: args.domain,
 			userId: LIFECYCLE_USER_PUBLIC_MUTATION,
@@ -192,7 +199,11 @@ export const remove = authedMutation({
 		domainId: v.id('domains'),
 	},
 	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'organization:manage', 'Only owners and admins can manage sending domains');
+		await requireOrgPermission(
+			ctx,
+			'organization:manage',
+			'Only owners and admins can manage sending domains'
+		);
 		const outcome = await ctx.runMutation(internal.domains.lifecycle.remove, {
 			domainId: args.domainId,
 			userId: LIFECYCLE_USER_PUBLIC_MUTATION,
@@ -211,7 +222,11 @@ export const regenerateDnsRecords = authedMutation({
 		domainId: v.id('domains'),
 	},
 	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'organization:manage', 'Only owners and admins can manage sending domains');
+		await requireOrgPermission(
+			ctx,
+			'organization:manage',
+			'Only owners and admins can manage sending domains'
+		);
 		const outcome = await ctx.runMutation(internal.domains.lifecycle.transition, {
 			domainId: args.domainId,
 			input: { to: 'registering', at: Date.now() },
@@ -238,11 +253,12 @@ export const setDmarcPolicy = authedMutation({
 		pct: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'organization:manage', 'Only owners and admins can manage sending domains');
-		if (
-			args.pct !== undefined &&
-			(!Number.isInteger(args.pct) || args.pct < 0 || args.pct > 100)
-		) {
+		await requireOrgPermission(
+			ctx,
+			'organization:manage',
+			'Only owners and admins can manage sending domains'
+		);
+		if (args.pct !== undefined && (!Number.isInteger(args.pct) || args.pct < 0 || args.pct > 100)) {
 			throwInvalidInput('DMARC pct must be an integer between 0 and 100');
 		}
 		const outcome = await ctx.runMutation(internal.domains.lifecycle.setDmarcPolicy, {
@@ -293,7 +309,7 @@ export const isDomainVerificationFresh = authedQuery({
 	},
 	handler: async (
 		ctx,
-		args,
+		args
 	): Promise<{
 		fresh: boolean;
 		stale: boolean;
@@ -360,7 +376,7 @@ export interface EmailDomainVerificationStatus {
  */
 export async function checkEmailDomainVerification(
 	ctx: QueryCtx | MutationCtx,
-	email: string,
+	email: string
 ): Promise<EmailDomainVerificationStatus> {
 	const domain = extractDomainOrNull(email);
 	if (!domain) {
@@ -400,8 +416,7 @@ export async function checkEmailDomainVerification(
 	}
 
 	const maxAgeMs = 24 * 60 * 60 * 1000;
-	const stale =
-		!domainRecord.lastVerifiedAt || Date.now() - domainRecord.lastVerifiedAt > maxAgeMs;
+	const stale = !domainRecord.lastVerifiedAt || Date.now() - domainRecord.lastVerifiedAt > maxAgeMs;
 
 	return {
 		domain,

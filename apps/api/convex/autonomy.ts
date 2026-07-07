@@ -33,7 +33,7 @@ export const listRules = adminQuery({
 	args: {},
 	handler: async (ctx) => {
 		await assertFeatureEnabled(ctx, 'ai.autonomy');
-		return await ctx.db.query('autonomyRules').collect();
+		return await ctx.db.query('autonomyRules').collect(); // bounded: one row per category / per-sender (tiny)
 	},
 });
 
@@ -160,7 +160,7 @@ export const checkPermissionInternal = internalQuery({
 			};
 		}
 
-		const breakers = await ctx.db.query('agentCircuitBreakers').collect();
+		const breakers = await ctx.db.query('agentCircuitBreakers').collect(); // bounded: one row per agent category (tiny)
 		const openBreaker = breakers.find((b) => b.state === 'open');
 		if (openBreaker) {
 			return {
@@ -382,7 +382,7 @@ export const resetDailyCounts = internalMutation({
 	args: {},
 	returns: v.null(),
 	handler: async (ctx) => {
-		const rules = await ctx.db.query('autonomyRules').collect();
+		const rules = await ctx.db.query('autonomyRules').collect(); // bounded: one row per category / per-sender (tiny)
 		const now = Date.now();
 
 		for (const rule of rules) {

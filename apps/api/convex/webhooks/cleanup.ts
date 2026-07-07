@@ -14,8 +14,9 @@ export const cleanupOldLogs = internalMutation({
 		// Clean up old success logs (batch limited)
 		const successLogs = await ctx.db
 			.query('webhookDeliveryLogs')
-			.withIndex('by_status', (q) => q.eq('status', 'success'))
-			.filter((q) => q.lt(q.field('completedAt'), cutoff))
+			.withIndex('by_status_and_completed_at', (q) =>
+				q.eq('status', 'success').lt('completedAt', cutoff)
+			)
 			.take(CLEANUP_BATCH_SIZE);
 
 		for (const log of successLogs) {
@@ -26,8 +27,9 @@ export const cleanupOldLogs = internalMutation({
 		// Clean up old failed logs (batch limited)
 		const failedLogs = await ctx.db
 			.query('webhookDeliveryLogs')
-			.withIndex('by_status', (q) => q.eq('status', 'failed'))
-			.filter((q) => q.lt(q.field('completedAt'), cutoff))
+			.withIndex('by_status_and_completed_at', (q) =>
+				q.eq('status', 'failed').lt('completedAt', cutoff)
+			)
 			.take(CLEANUP_BATCH_SIZE);
 
 		for (const log of failedLogs) {

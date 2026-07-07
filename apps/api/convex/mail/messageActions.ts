@@ -32,10 +32,7 @@ export type MovedMessage = {
 type MoveResult = { ok: true; moved: MovedMessage[] };
 
 /** Bump folder modseq atomically; return the assigned value. */
-async function bumpFolderModseq(
-	ctx: MutationCtx,
-	folderId: Id<'mailFolders'>
-): Promise<number> {
+async function bumpFolderModseq(ctx: MutationCtx, folderId: Id<'mailFolders'>): Promise<number> {
 	const folder = await ctx.db.get(folderId);
 	if (!folder) throw new Error('Folder not found');
 	const next = folder.highestModseq + 1;
@@ -53,7 +50,7 @@ export async function rebuildThreadAggregates(
 	const messages = await ctx.db
 		.query('mailMessages')
 		.withIndex('by_thread', (q) => q.eq('threadId', threadId))
-		.collect();
+		.collect(); // bounded: one thread's messages
 
 	if (messages.length === 0) {
 		await ctx.db.delete(threadId);
@@ -171,7 +168,7 @@ export const markThreadRead = authedMutation({
 		const messages = await ctx.db
 			.query('mailMessages')
 			.withIndex('by_thread', (q) => q.eq('threadId', args.threadId))
-			.collect();
+			.collect(); // bounded: one thread's messages
 		for (const m of messages) {
 			if (m.flagSeen === args.seen) continue;
 			await applyFlagDelta(ctx, m, { seen: args.seen });
@@ -288,10 +285,10 @@ export const archive = authedMutation({
 			)
 			.first();
 		if (!archive) throwInvalidState('Archive folder missing');
-		return await ctx.runMutation(
-			(await import('../_generated/api')).api.mail.messageActions.move,
-			{ messageIds: args.messageIds, targetFolderId: archive._id }
-		);
+		return await ctx.runMutation((await import('../_generated/api')).api.mail.messageActions.move, {
+			messageIds: args.messageIds,
+			targetFolderId: archive._id,
+		});
 	},
 });
 
@@ -312,10 +309,10 @@ export const trash = authedMutation({
 			)
 			.first();
 		if (!trash) throwInvalidState('Trash folder missing');
-		return await ctx.runMutation(
-			(await import('../_generated/api')).api.mail.messageActions.move,
-			{ messageIds: args.messageIds, targetFolderId: trash._id }
-		);
+		return await ctx.runMutation((await import('../_generated/api')).api.mail.messageActions.move, {
+			messageIds: args.messageIds,
+			targetFolderId: trash._id,
+		});
 	},
 });
 
@@ -359,12 +356,16 @@ export const purge = authedMutation({
 			if (message.textBodyStorageId) {
 				try {
 					await ctx.storage.delete(message.textBodyStorageId);
-				} catch { /* noop */ }
+				} catch {
+					/* noop */
+				}
 			}
 			if (message.htmlBodyStorageId) {
 				try {
 					await ctx.storage.delete(message.htmlBodyStorageId);
-				} catch { /* noop */ }
+				} catch {
+					/* noop */
+				}
 			}
 
 			touchedThreads.add(message.threadId);
@@ -382,10 +383,10 @@ export const purge = authedMutation({
 export const markRead = authedMutation({
 	args: { messageId: v.id('mailMessages'), seen: v.boolean() },
 	handler: async (ctx, args): Promise<void> => {
-		await ctx.runMutation(
-			(await import('../_generated/api')).api.mail.messageActions.setFlags,
-			{ messageIds: [args.messageId], seen: args.seen }
-		);
+		await ctx.runMutation((await import('../_generated/api')).api.mail.messageActions.setFlags, {
+			messageIds: [args.messageId],
+			seen: args.seen,
+		});
 	},
 });
 
@@ -394,10 +395,10 @@ export const markRead = authedMutation({
 export const setStar = authedMutation({
 	args: { messageId: v.id('mailMessages'), starred: v.boolean() },
 	handler: async (ctx, args): Promise<void> => {
-		await ctx.runMutation(
-			(await import('../_generated/api')).api.mail.messageActions.setFlags,
-			{ messageIds: [args.messageId], flagged: args.starred }
-		);
+		await ctx.runMutation((await import('../_generated/api')).api.mail.messageActions.setFlags, {
+			messageIds: [args.messageId],
+			flagged: args.starred,
+		});
 	},
 });
 
@@ -416,9 +417,7 @@ async function moveToRoleWithVerdict(
 	if (!owned.ok) throwForbidden('Messages not accessible');
 	const folder = await ctx.db
 		.query('mailFolders')
-		.withIndex('by_mailbox_and_role', (q) =>
-			q.eq('mailboxId', first.mailboxId).eq('role', role)
-		)
+		.withIndex('by_mailbox_and_role', (q) => q.eq('mailboxId', first.mailboxId).eq('role', role))
 		.first();
 	if (!folder) throwInvalidState(`${role} folder missing`);
 	for (const id of messageIds) {
@@ -428,10 +427,10 @@ async function moveToRoleWithVerdict(
 		if (!o.ok) continue;
 		await ctx.db.patch(id, { spamVerdict: verdict, updatedAt: Date.now() });
 	}
-	return await ctx.runMutation(
-		(await import('../_generated/api')).api.mail.messageActions.move,
-		{ messageIds, targetFolderId: folder._id }
-	);
+	return await ctx.runMutation((await import('../_generated/api')).api.mail.messageActions.move, {
+		messageIds,
+		targetFolderId: folder._id,
+	});
 }
 
 /** Report as spam: move to Spam and record the verdict. */
@@ -478,18 +477,16 @@ export const blockSender = authedMutation({
 			isEnabled: true,
 			priority: 0,
 			conditions: [{ field: 'from', op: 'contains', value: message.fromAddress }],
-			actions: spam
-				? [{ type: 'moveToFolder', folderId: spam._id }]
-				: [{ type: 'delete' }],
+			actions: spam ? [{ type: 'moveToFolder', folderId: spam._id }] : [{ type: 'delete' }],
 			stopProcessing: true,
 			createdAt: now,
 			updatedAt: now,
 		});
 		if (spam) {
-			await ctx.runMutation(
-				(await import('../_generated/api')).api.mail.messageActions.move,
-				{ messageIds: [args.messageId], targetFolderId: spam._id }
-			);
+			await ctx.runMutation((await import('../_generated/api')).api.mail.messageActions.move, {
+				messageIds: [args.messageId],
+				targetFolderId: spam._id,
+			});
 		}
 	},
 });

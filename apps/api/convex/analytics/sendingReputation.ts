@@ -29,11 +29,7 @@
  */
 
 import { v } from 'convex/values';
-import {
-	internalMutation,
-	type DatabaseReader,
-	type MutationCtx,
-} from '../_generated/server';
+import { internalMutation, type DatabaseReader, type MutationCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
 import { internal } from '../_generated/api';
 import { REPUTATION_THRESHOLDS, REPUTATION_MIN_SAMPLE_SIZE } from '@owlat/shared/reputation';
@@ -64,7 +60,7 @@ type RiskLevel = 'low' | 'medium' | 'high' | 'critical';
 export function calculateRiskLevel(
 	bounceRate: number,
 	complaintRate: number,
-	totalSent: number,
+	totalSent: number
 ): RiskLevel {
 	// Not enough data to assess
 	if (totalSent < RISK_THRESHOLDS.MIN_SAMPLE_SIZE) {
@@ -124,7 +120,7 @@ const eventTypeValidator = v.union(
 	v.literal('complaint'),
 	v.literal('hard_bounce'),
 	v.literal('send'),
-	v.literal('deliver'),
+	v.literal('deliver')
 );
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -163,7 +159,7 @@ function scopedBucketQuery(db: DatabaseReader, scope: ReputationScope) {
 		.withIndex('by_scope_domain_period_shard', (q) =>
 			scope.kind === 'org'
 				? q.eq('scope', 'org')
-				: q.eq('scope', 'domain').eq('domain', scope.domain),
+				: q.eq('scope', 'domain').eq('domain', scope.domain)
 		);
 }
 
@@ -205,13 +201,13 @@ function summarizeBuckets(buckets: ReputationBucket[], cutoff: number): Reputati
  */
 export async function summarize(
 	db: DatabaseReader,
-	scope: ReputationScope,
+	scope: ReputationScope
 ): Promise<ReputationSummary> {
 	const cutoff = Date.now() - WINDOW_MS;
 	// bounded: the cleanup cron prunes >60-day buckets, so one scope holds at
 	// most ~60 days × SHARD_COUNT shard rows. Summing across shards here is what
 	// makes the write-side shard split invisible to readers.
-	const buckets = await scopedBucketQuery(db, scope).collect();
+	const buckets = await scopedBucketQuery(db, scope).collect(); // bounded: one scope's ≤60-day × shard buckets (cron-pruned)
 	return summarizeBuckets(buckets, cutoff);
 }
 
@@ -221,7 +217,7 @@ export async function summarize(
  * `summarizeBuckets` core. Only domains with in-window activity appear.
  */
 export async function summarizeDomains(
-	db: DatabaseReader,
+	db: DatabaseReader
 ): Promise<Array<ReputationSummary & { domain: string }>> {
 	const cutoff = Date.now() - WINDOW_MS;
 	// bounded: per-domain × ≤60 days × SHARD_COUNT shard rows, kept bounded by
@@ -229,7 +225,7 @@ export async function summarizeDomains(
 	const buckets = await db
 		.query('sendingReputation')
 		.withIndex('by_scope_domain_period_shard', (q) => q.eq('scope', 'domain'))
-		.collect();
+		.collect(); // bounded: one scope's ≤60-day × shard buckets (cron-pruned)
 
 	const byDomain = new Map<string, ReputationBucket[]>();
 	for (const b of buckets) {
@@ -277,7 +273,7 @@ async function todayShardBucket(
 	scope: ReputationScope,
 	todayStart: number,
 	shardKey: number,
-	now: number,
+	now: number
 ): Promise<ReputationBucket> {
 	const existing = await ctx.db
 		.query('sendingReputation')
@@ -292,7 +288,7 @@ async function todayShardBucket(
 						.eq('scope', 'domain')
 						.eq('domain', scope.domain)
 						.eq('periodStart', todayStart)
-						.eq('shardKey', shardKey),
+						.eq('shardKey', shardKey)
 		)
 		.unique();
 	if (existing) return existing;
@@ -324,7 +320,7 @@ async function todayShardBucket(
 async function bumpBucket(
 	ctx: MutationCtx,
 	scope: ReputationScope,
-	eventType: EventType,
+	eventType: EventType
 ): Promise<void> {
 	const now = Date.now();
 	const shardKey = Math.floor(Math.random() * SHARD_COUNT);
@@ -383,11 +379,9 @@ export const evaluateAutoEnforce = internalMutation({
 	handler: async (ctx) => {
 		const org = await summarize(ctx.db, { kind: 'org' });
 		if (org.riskLevel === 'high' || org.riskLevel === 'critical') {
-			await ctx.scheduler.runAfter(
-				0,
-				internal.analytics.sendingReputation.autoEnforceReputation,
-				{ riskLevel: org.riskLevel },
-			);
+			await ctx.scheduler.runAfter(0, internal.analytics.sendingReputation.autoEnforceReputation, {
+				riskLevel: org.riskLevel,
+			});
 		}
 		return { riskLevel: org.riskLevel };
 	},
@@ -447,11 +441,11 @@ export const recalculateAll = internalMutation({
 		const orgBuckets = await ctx.db
 			.query('sendingReputation')
 			.withIndex('by_scope_domain_period_shard', (q) => q.eq('scope', 'org'))
-			.collect();
+			.collect(); // bounded: one scope's ≤60-day × shard buckets (cron-pruned)
 		const domainBuckets = await ctx.db
 			.query('sendingReputation')
 			.withIndex('by_scope_domain_period_shard', (q) => q.eq('scope', 'domain'))
-			.collect();
+			.collect(); // bounded: one scope's ≤60-day × shard buckets (cron-pruned)
 
 		for (const bucket of [...orgBuckets, ...domainBuckets]) {
 			if (bucket.periodStart < cutoff) {

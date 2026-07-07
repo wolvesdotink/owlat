@@ -166,13 +166,13 @@ export const getEntry = publicQuery({
 		const outgoing = await ctx.db
 			.query('knowledgeRelations')
 			.withIndex('by_from', (q) => q.eq('fromEntryId', args.entryId))
-			.collect();
+			.collect(); // bounded: one node's outgoing graph edges
 
 		// Get incoming relations
 		const incoming = await ctx.db
 			.query('knowledgeRelations')
 			.withIndex('by_to', (q) => q.eq('toEntryId', args.entryId))
-			.collect();
+			.collect(); // bounded: one node's incoming graph edges
 
 		// Resolve the related entries' titles so the UI can render readable links
 		// instead of raw Convex ids.

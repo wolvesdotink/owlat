@@ -62,7 +62,7 @@ export const getPropertyValuesForContacts = authedQuery({
 			const values = await ctx.db
 				.query('contactPropertyValues')
 				.withIndex('by_contact', (q) => q.eq('contactId', contactId))
-				.collect();
+				.collect(); // bounded: one contact's property values
 
 			result[contactId] = {};
 			for (const value of values) {

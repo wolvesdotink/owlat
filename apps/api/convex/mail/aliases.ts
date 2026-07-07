@@ -32,7 +32,7 @@ export const list = publicQuery({
 		return ctx.db
 			.query('mailAliases')
 			.withIndex('by_target', (q) => q.eq('targetMailboxId', args.mailboxId))
-			.collect();
+			.collect(); // bounded: aliases pointing at one target
 	},
 });
 
@@ -102,4 +102,3 @@ export const remove = authedMutation({
 		});
 	},
 });
-
