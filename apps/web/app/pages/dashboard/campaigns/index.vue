@@ -83,6 +83,12 @@ const quickActions = [
 		icon: 'lucide:bar-chart-3',
 		description: 'View campaign analytics and reports',
 	},
+	{
+		label: 'A/B Results',
+		href: '/dashboard/campaigns/ab-results',
+		icon: 'lucide:flask-conical',
+		description: 'Compare A/B test variants and winners',
+	},
 ];
 
 // Get status badge configuration

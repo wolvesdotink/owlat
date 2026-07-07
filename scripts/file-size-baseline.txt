@@ -69,9 +69,9 @@ apps/web/app/pages/dashboard/campaigns/all.vue
 apps/web/app/pages/dashboard/files/[id].vue
 apps/web/app/pages/dashboard/inbox/[threadId].vue
 apps/web/app/pages/dashboard/knowledge/[id].vue
-apps/web/app/pages/dashboard/mail/blocks/index.vue
-apps/web/app/pages/dashboard/mail/marketing/index.vue
-apps/web/app/pages/dashboard/mail/transactional/index.vue
+apps/web/app/pages/dashboard/send/blocks/index.vue
+apps/web/app/pages/dashboard/send/marketing/index.vue
+apps/web/app/pages/dashboard/send/transactional/index.vue
 apps/web/app/pages/dashboard/postbox/migrate.vue
 apps/web/app/pages/dashboard/settings/account.vue
 apps/web/app/pages/dashboard/settings/api/index.vue
