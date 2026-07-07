@@ -72,24 +72,19 @@ done < <(find convex -name "*.ts" -not -path "*/_generated/*" -not -path "*/__te
 # scans of intrinsically-small tables with a trailing `// bounded: reason`.
 #
 # The baseline is the count of `.collect()` calls that are NEITHER take/paginate
-# -bounded NOR carry a `// bounded:` justification. As of the boundedness-audit
-# pass it is the following KNOWN-UNBOUNDED fan-out scans, each deliberately left
-# uncommented pending a batched-delete / denormalized-counter follow-up:
-#   1. topics/topics.ts               deleteTopic → all `contactTopics` by_topic
-#   2. contacts/properties.ts         deleteProperty → all `contactPropertyValues` by_property
-#   3. contacts/propertyValues.ts     getPropertyValueCount → `.collect().length` by_property
-#   4. delivery/sends.ts              deleteByCampaign → all `emailSends` by_campaign
-#   5. transactional/sends.ts         delete → all `transactionalSends` by_transactional_email
-#   6. webhooks/endpoints.ts          deleteWebhook → all `webhookDeliveryLogs` by_webhook
-#   7. conditions/topic_membership    segment eval preloads all members by_topic
-#   8. conditions/contact_property    segment eval preloads all values by_property
-# These fan out by a secondary key (per-campaign/topic/property/webhook), so
-# they are genuinely unbounded — unlike the per-CONTACT cascade collects, which
-# a single person's bounded fan-out keeps small and which carry `// bounded:`.
-# Fixing them means batched self-rescheduling deletes and denormalized counts;
-# tracked separately. Do NOT slap `// bounded:` on these — the baseline holds
-# the line so no NEW unbounded scan slips in.
-COLLECT_BASELINE=8
+# -bounded NOR carry a `// bounded:` justification. It is now 0: every remaining
+# `.collect()` is either take/paginate-bounded, per-parent/window/shard-indexed,
+# or carries a `// bounded:` reason. The last 8 KNOWN-UNBOUNDED fan-out scans
+# (per-campaign/topic/property/webhook) were fixed in the cascade-bounding pass:
+#   - deleteByCampaign / deleteByTransactionalEmail — deleted (dead code).
+#   - webhooks/topics/properties `remove` — batched, self-rescheduling cascade
+#     deletes (drain a `.take(BATCH)` page, reschedule until drained).
+#   - getPropertyValueCount — bounded usage probe (`.take(CAP)`, reported "N+").
+#   - conditions/{topic_membership,contact_property} preloads — streamed via
+#     `for await` instead of an unbounded `.collect()`.
+# Keep it at 0: a NEW `.collect()` must be take/paginate-bounded or carry a
+# `// bounded:` reason, else it fails this gate.
+COLLECT_BASELINE=0
 collect_count=0
 while IFS= read -r f; do
 	c=$(awk '

@@ -180,6 +180,23 @@ export const update = authedMutation({
 });
 
 // Mutation to delete a topic and all its memberships
+// Batch size for cascading a topic's membership deletion. Small enough to keep
+// each mutation well under Convex's per-transaction document limit.
+const TOPIC_CASCADE_BATCH = 200;
+
+// Delete one batch of a topic's memberships. Returns true once the topic has no
+// remaining memberships (the caller may then delete the topic itself).
+async function drainTopicMemberships(ctx: MutationCtx, topicId: Id<'topics'>): Promise<boolean> {
+	const batch = await ctx.db
+		.query('contactTopics')
+		.withIndex('by_topic', (q) => q.eq('topicId', topicId))
+		.take(TOPIC_CASCADE_BATCH);
+	for (const membership of batch) {
+		await ctx.db.delete(membership._id);
+	}
+	return batch.length < TOPIC_CASCADE_BATCH;
+}
+
 export const remove = authedMutation({
 	args: { topicId: v.id('topics') },
 	handler: async (ctx, args) => {
@@ -189,18 +206,35 @@ export const remove = authedMutation({
 			throwNotFound('Topic');
 		}
 
-		// Delete all memberships associated with this topic
-		const memberships = await ctx.db
-			.query('contactTopics')
-			.withIndex('by_topic', (q) => q.eq('topicId', args.topicId))
-			.collect();
-
-		for (const membership of memberships) {
-			await ctx.db.delete(membership._id);
+		// Drain the topic's memberships first so the topic never outlives a dangling
+		// membership. A small topic finishes inline; a large one hands off to a
+		// self-rescheduling internal mutation that deletes the topic once drained.
+		const drained = await drainTopicMemberships(ctx, args.topicId);
+		if (drained) {
+			await ctx.db.delete(args.topicId);
+		} else {
+			await ctx.scheduler.runAfter(0, internal.topics.topics.finishRemoveTopic, {
+				topicId: args.topicId,
+			});
 		}
+	},
+});
 
-		// Delete the topic itself
-		await ctx.db.delete(args.topicId);
+// Continuation of `remove` for topics with more memberships than one batch:
+// drain another batch, reschedule until empty, then delete the topic itself.
+export const finishRemoveTopic = internalMutation({
+	args: { topicId: v.id('topics') },
+	handler: async (ctx, args) => {
+		const drained = await drainTopicMemberships(ctx, args.topicId);
+		if (!drained) {
+			await ctx.scheduler.runAfter(0, internal.topics.topics.finishRemoveTopic, args);
+			return;
+		}
+		// Memberships gone — remove the topic (guarding against a concurrent delete).
+		const topic = await ctx.db.get(args.topicId);
+		if (topic) {
+			await ctx.db.delete(args.topicId);
+		}
 	},
 });
 

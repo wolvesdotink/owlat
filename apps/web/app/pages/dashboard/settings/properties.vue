@@ -71,6 +71,7 @@ const propertyToDelete = ref<{
 	label: string;
 } | null>(null);
 const deletePropertyUsageCount = ref(0);
+const deletePropertyUsageCapped = ref(false);
 const isDeleting = ref(false);
 const isLoadingUsageCount = ref(false);
 
@@ -212,13 +213,15 @@ const openDeleteModal = async (property: NonNullable<typeof propertiesData.value
 	isLoadingUsageCount.value = true;
 	try {
 		if (convex) {
-			const count = await convex.query(api.contacts.propertyValues.countByProperty, {
+			const usage = await convex.query(api.contacts.propertyValues.countByProperty, {
 				propertyId: property._id,
 			});
-			deletePropertyUsageCount.value = count;
+			deletePropertyUsageCount.value = usage.count;
+			deletePropertyUsageCapped.value = usage.isCapped;
 		}
 	} catch {
 		deletePropertyUsageCount.value = 0;
+		deletePropertyUsageCapped.value = false;
 	} finally {
 		isLoadingUsageCount.value = false;
 	}
@@ -563,7 +566,7 @@ useClickOutsideSelector('[data-property-dropdown]', () => {
 					<div>
 						<p class="font-medium text-warning">Data will be deleted</p>
 						<p class="text-sm text-warning/80 mt-1">
-							{{ deletePropertyUsageCount }} contact{{
+							{{ deletePropertyUsageCount }}{{ deletePropertyUsageCapped ? '+' : '' }} contact{{
 								deletePropertyUsageCount !== 1 ? 's have' : ' has'
 							}}
 							values for this property. All values will be permanently deleted.

@@ -442,17 +442,12 @@ export const remove = authedMutation({
 			throwNotFound('Webhook');
 		}
 
-		// Delete all delivery logs for this webhook
-		const deliveryLogs = await ctx.db
-			.query('webhookDeliveryLogs')
-			.withIndex('by_webhook', (q) => q.eq('webhookId', args.webhookId))
-			.collect();
-
-		for (const log of deliveryLogs) {
-			await ctx.db.delete(log._id);
-		}
-
+		// Delete the webhook itself, then drain its (potentially large) delivery-log
+		// history in the background so this mutation stays within the document limit.
 		await ctx.db.delete(args.webhookId);
+		await ctx.scheduler.runAfter(0, internal.webhooks.cleanup.deleteWebhookLogs, {
+			webhookId: args.webhookId,
+		});
 
 		await recordAuditLog(ctx, {
 			userId: session.userId,

@@ -1,10 +1,6 @@
 import type { DatabaseReader } from '../../_generated/server';
 import type { Doc, Id } from '../../_generated/dataModel';
-import type {
-	ConditionTypeModule,
-	ContactPropertyCondition,
-	PropertyOperator,
-} from '../types';
+import type { ConditionTypeModule, ContactPropertyCondition, PropertyOperator } from '../types';
 
 const BUILT_IN_FIELDS = new Set(['email', 'firstName', 'lastName', 'source']);
 
@@ -35,13 +31,9 @@ function applyOperator(
 ): boolean {
 	switch (operator) {
 		case 'equals':
-			return (
-				String(fieldValue ?? '').toLowerCase() === String(conditionValue ?? '').toLowerCase()
-			);
+			return String(fieldValue ?? '').toLowerCase() === String(conditionValue ?? '').toLowerCase();
 		case 'not_equals':
-			return (
-				String(fieldValue ?? '').toLowerCase() !== String(conditionValue ?? '').toLowerCase()
-			);
+			return String(fieldValue ?? '').toLowerCase() !== String(conditionValue ?? '').toLowerCase();
 		case 'contains':
 			return String(fieldValue ?? '')
 				.toLowerCase()
@@ -85,7 +77,10 @@ export const contactPropertyConditionModule: ConditionTypeModule<
 		if (typeof r['field'] !== 'string') {
 			throw new Error('contact_property: field must be a string');
 		}
-		if (typeof r['operator'] !== 'string' || !VALID_OPERATORS.has(r['operator'] as PropertyOperator)) {
+		if (
+			typeof r['operator'] !== 'string' ||
+			!VALID_OPERATORS.has(r['operator'] as PropertyOperator)
+		) {
 			throw new Error(`contact_property: unknown operator "${r['operator'] as string}"`);
 		}
 		return {
@@ -115,13 +110,14 @@ export const contactPropertyConditionModule: ConditionTypeModule<
 			if (property) lookup.propertyIds.set(key, property._id);
 		}
 
-		// Preload all values for those properties.
+		// Preload all values for those properties. Streamed via `for await` so the
+		// value map builds without materializing an unbounded `.collect()`; this
+		// whole-base preload feeds one Convex-limited segment scan (the paginated
+		// match paths use `preloadLookupForContacts` and point-reads instead).
 		for (const [, propertyId] of lookup.propertyIds) {
-			const values = await ctx.db
+			for await (const v of ctx.db
 				.query('contactPropertyValues')
-				.withIndex('by_property', (q) => q.eq('propertyId', propertyId))
-				.collect();
-			for (const v of values) {
+				.withIndex('by_property', (q) => q.eq('propertyId', propertyId))) {
 				lookup.values.set(`${v.contactId}:${propertyId}`, v.value);
 			}
 		}
@@ -158,7 +154,7 @@ export const contactPropertyConditionModule: ConditionTypeModule<
 				const row = await ctx.db
 					.query('contactPropertyValues')
 					.withIndex('by_contact_and_property', (q) =>
-						q.eq('contactId', contact._id).eq('propertyId', propertyId),
+						q.eq('contactId', contact._id).eq('propertyId', propertyId)
 					)
 					.unique();
 				if (row) lookup.values.set(`${contact._id}:${propertyId}`, row.value);

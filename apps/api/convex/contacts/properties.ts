@@ -1,4 +1,7 @@
 import { v } from 'convex/values';
+import { internalMutation, type MutationCtx } from '../_generated/server';
+import { internal } from '../_generated/api';
+import type { Id } from '../_generated/dataModel';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import { throwNotFound, throwAlreadyExists } from '../_utils/errors';
@@ -98,6 +101,26 @@ export const update = authedMutation({
 	},
 });
 
+// Batch size for cascading a property's value deletion. Small enough to keep
+// each mutation well under Convex's per-transaction document limit.
+const PROPERTY_CASCADE_BATCH = 200;
+
+// Delete one batch of a property's values. Returns true once none remain (the
+// caller may then delete the property itself).
+async function drainPropertyValues(
+	ctx: MutationCtx,
+	propertyId: Id<'contactProperties'>
+): Promise<boolean> {
+	const batch = await ctx.db
+		.query('contactPropertyValues')
+		.withIndex('by_property', (q) => q.eq('propertyId', propertyId))
+		.take(PROPERTY_CASCADE_BATCH);
+	for (const value of batch) {
+		await ctx.db.delete(value._id);
+	}
+	return batch.length < PROPERTY_CASCADE_BATCH;
+}
+
 // Mutation to delete a contact property and all its values
 export const remove = authedMutation({
 	args: { propertyId: v.id('contactProperties') },
@@ -113,18 +136,34 @@ export const remove = authedMutation({
 			throwNotFound('Property');
 		}
 
-		// Delete all property values associated with this property
-		const values = await ctx.db
-			.query('contactPropertyValues')
-			.withIndex('by_property', (q) => q.eq('propertyId', args.propertyId))
-			.collect();
-
-		for (const value of values) {
-			await ctx.db.delete(value._id);
+		// Drain the property's values first so it never outlives a dangling value.
+		// A property with few values finishes inline; a large one hands off to a
+		// self-rescheduling internal mutation that deletes the property once drained.
+		const drained = await drainPropertyValues(ctx, args.propertyId);
+		if (drained) {
+			await ctx.db.delete(args.propertyId);
+		} else {
+			await ctx.scheduler.runAfter(0, internal.contacts.properties.finishRemoveProperty, {
+				propertyId: args.propertyId,
+			});
 		}
+	},
+});
 
-		// Delete the property itself
-		await ctx.db.delete(args.propertyId);
+// Continuation of `remove` for properties with more values than one batch:
+// drain another batch, reschedule until empty, then delete the property itself.
+export const finishRemoveProperty = internalMutation({
+	args: { propertyId: v.id('contactProperties') },
+	handler: async (ctx, args) => {
+		const drained = await drainPropertyValues(ctx, args.propertyId);
+		if (!drained) {
+			await ctx.scheduler.runAfter(0, internal.contacts.properties.finishRemoveProperty, args);
+			return;
+		}
+		const property = await ctx.db.get(args.propertyId);
+		if (property) {
+			await ctx.db.delete(args.propertyId);
+		}
 	},
 });
 
