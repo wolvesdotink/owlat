@@ -58,6 +58,26 @@ export function resolvePostboxShortcut(key: string): PostboxShortcutAction | nul
 	}
 }
 
+/**
+ * True when a keyboard event is the "focus compose" chord (Cmd/Ctrl+Shift+F):
+ * promote the active popup composer to the centered distraction-free surface.
+ * Pure so the chord contract is unit-testable without a window handler.
+ */
+export function isFocusComposeChord(event: {
+	key: string;
+	metaKey: boolean;
+	ctrlKey: boolean;
+	shiftKey: boolean;
+	altKey: boolean;
+}): boolean {
+	return (
+		(event.metaKey || event.ctrlKey) &&
+		event.shiftKey &&
+		!event.altKey &&
+		(event.key === 'f' || event.key === 'F')
+	);
+}
+
 export type PostboxComposeMode = 'reply' | 'replyAll' | 'forward';
 
 /**
@@ -147,6 +167,7 @@ export const POSTBOX_SHORTCUT_GROUPS: ReadonlyArray<{
 			{ keys: ['r'], label: 'Reply' },
 			{ keys: ['a'], label: 'Reply all' },
 			{ keys: ['f'], label: 'Forward' },
+			{ keys: ['⌘', 'Shift', 'F'], label: 'Focus the composer' },
 			{ keys: ['⌘', 'Enter'], label: 'Send (in composer)' },
 			{ keys: ['⌘', 'Shift', 'Enter'], label: 'Schedule send (in composer)' },
 		],

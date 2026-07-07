@@ -117,6 +117,36 @@
 	transform: translateY(-16px);
 }
 
+/* Focus compose: promoting a popup to the centered distraction-free surface.
+   The scrim fades on the slow tier; the centered column enters on the bouncy
+   spring (`.pbx-focus-frame.is-focused`) and is hidden + inert otherwise so its
+   teleport mount can stay in the DOM without catching clicks. */
+.pbx-focus-scrim-enter-active {
+	transition: opacity var(--pbx-motion-panel) var(--ease-spring-bounce);
+}
+.pbx-focus-scrim-leave-active {
+	transition: opacity var(--pbx-motion-panel-exit) var(--pbx-motion-ease-exit);
+}
+.pbx-focus-scrim-enter-from,
+.pbx-focus-scrim-leave-to {
+	opacity: 0;
+}
+
+.pbx-focus-frame {
+	transition:
+		opacity var(--pbx-motion-panel) var(--ease-spring-bounce),
+		transform var(--pbx-motion-panel) var(--ease-spring-bounce);
+}
+.pbx-focus-frame:not(.is-focused) {
+	opacity: 0;
+	transform: scale(0.96) translateY(6px);
+	pointer-events: none;
+}
+.pbx-focus-frame.is-focused {
+	opacity: 1;
+	transform: none;
+}
+
 /*
  * Hover-action reveal in list rows moved to the shared micro-interaction kit:
  * use `.ui-hover-reveal` (packages/ui/assets/css/motion.css). Same recipe —
@@ -134,7 +164,10 @@
 	.pbx-toast-enter-active,
 	.pbx-toast-leave-active,
 	.pbx-cardstack-enter-active,
-	.pbx-cardstack-leave-active {
+	.pbx-cardstack-leave-active,
+	.pbx-focus-scrim-enter-active,
+	.pbx-focus-scrim-leave-active,
+	.pbx-focus-frame {
 		transition-property: opacity;
 	}
 	.pbx-reader-enter-from,
@@ -143,7 +176,8 @@
 	.pbx-toast-enter-from,
 	.pbx-toast-leave-to,
 	.pbx-cardstack-enter-from,
-	.pbx-cardstack-leave-to {
+	.pbx-cardstack-leave-to,
+	.pbx-focus-frame:not(.is-focused) {
 		transform: none;
 	}
 }

@@ -40,7 +40,6 @@ vi.stubGlobal('usePostboxComposerStack', () => ({
 	open: stackOpen,
 	close: vi.fn(),
 	minimize: vi.fn(),
-	restore: vi.fn(),
 }));
 vi.stubGlobal('usePostboxUndoSend', () => ({ arm: undoArm }));
 
