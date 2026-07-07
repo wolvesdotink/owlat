@@ -1,7 +1,7 @@
 /**
  * Provider-routes mutation contract tests.
  *
- * The settings UI (apps/web .../settings/provider-routing.vue) uses the shared
+ * The settings UI (apps/web .../delivery/provider-routing.vue) uses the shared
  * `result === undefined ⇒ failure` idiom from `useBackendOperation` to decide
  * whether to fire the success toast and close the confirm dialog. Because a
  * caught throw also resolves to `undefined`, every mutation that idiom guards

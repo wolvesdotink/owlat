@@ -13,7 +13,7 @@
  *   - `assertDevDeployment()` — refuses when `OWLAT_DEV_MODE` is not enabled
  *   - `hasPermission(role, 'organization:manage')` — must be org owner/admin
  *   - UI button is only rendered when `import.meta.env.DEV` is true AND the
- *     current user is owner/admin (see apps/web/.../settings/domains.vue)
+ *     current user is owner/admin (see apps/web/.../delivery/domains.vue)
  *
  * `seedTag` semantics: the user's existing domain row is NEVER tagged — that
  * would silently opt a real domain into the `/dev/reset` cascade. Only rows
