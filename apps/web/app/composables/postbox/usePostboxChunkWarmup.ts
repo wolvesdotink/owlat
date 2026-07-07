@@ -27,23 +27,24 @@ export type IdleScheduler = (cb: () => void) => void;
 
 function defaultIdleScheduler(cb: () => void): void {
 	if (typeof window === 'undefined') return;
-	const ric = (window as unknown as {
-		requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
-	}).requestIdleCallback;
+	const ric = (
+		window as unknown as {
+			requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+		}
+	).requestIdleCallback;
 	if (typeof ric === 'function') ric(cb, { timeout: 2000 });
 	else window.setTimeout(cb, 200);
 }
 
 /**
  * Default chunks to warm: the composer stack (compose / reply) and the
- * reader-heavy body renderer + command palette. NOT the EmailBuilder.
+ * reader-heavy body renderer. NOT the EmailBuilder.
  */
 const DEFAULT_LOADERS: ChunkLoader[] = [
 	() => import('~/components/postbox/PostboxComposerStack.vue'),
 	() => import('~/components/postbox/PostboxComposerPopup.vue'),
 	() => import('~/components/postbox/PostboxThreadReader.vue'),
 	() => import('~/components/postbox/PostboxMessageBody.vue'),
-	() => import('~/components/postbox/PostboxCommandPalette.vue'),
 ];
 
 export function usePostboxChunkWarmup(options?: {

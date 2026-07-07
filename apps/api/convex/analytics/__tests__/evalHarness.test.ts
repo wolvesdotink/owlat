@@ -107,12 +107,14 @@ describe('calibrateThreshold', () => {
 	});
 
 	it('finds a separating threshold from labelled outcomes', () => {
-		// Cleanly separable: accepts cluster high, edits cluster low.
+		// Cleanly separable: accepts cluster high, edits cluster low. Use a fixed,
+		// deterministic spread (not Math.random) so the calibrated cut is stable —
+		// the lowest accept sits exactly at 0.9, so the highest separating cut is 0.9.
 		const outcomes: LabelledOutcome[] = [];
 		for (let i = 0; i < 15; i++)
-			outcomes.push({ similarity: 0.9 + Math.random() * 0.1, acceptedUnedited: true });
+			outcomes.push({ similarity: 0.9 + i * 0.005, acceptedUnedited: true });
 		for (let i = 0; i < 15; i++)
-			outcomes.push({ similarity: Math.random() * 0.5, acceptedUnedited: false });
+			outcomes.push({ similarity: 0.1 + i * 0.02, acceptedUnedited: false });
 		const result = calibrateThreshold(outcomes);
 		expect(result.sampleSize).toBe(30);
 		expect(result.accuracy).toBeGreaterThan(0.95);
