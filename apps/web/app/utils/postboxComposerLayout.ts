@@ -52,6 +52,11 @@ export function clampComposerSize(size: Partial<ComposerSize>, viewport: Viewpor
  *
  * `slot` is the right-to-left position of a floating popup (0 = rightmost /
  * newest). The dock preserves the original stack order.
+ *
+ * `focusedId` (the composer promoted to the centered focus surface) is always
+ * kept in the floating partition — even if it's no longer one of the newest —
+ * so opening more composers while one is focused can never strand the focus
+ * surface with an empty teleport mount while its scrim is still up.
  */
 export const MAX_POPUPS = 2;
 
@@ -62,12 +67,27 @@ export interface ComposerPlacement {
 
 export function layoutComposerStack(
 	specs: ReadonlyArray<{ id: string; minimized: boolean }>,
-	maxPopups: number = MAX_POPUPS
+	maxPopups: number = MAX_POPUPS,
+	focusedId: string | null = null
 ): ComposerPlacement {
 	const expanded = specs.filter((s) => !s.minimized);
 	// Keep the newest `maxPopups` expanded composers floating; everything else
 	// (older expanded overflow + every minimized composer) docks.
-	const popupIds = new Set(expanded.slice(-Math.max(0, maxPopups)).map((s) => s.id));
+	const kept = expanded.slice(-Math.max(0, maxPopups));
+	const popupIds = new Set(kept.map((s) => s.id));
+
+	// Pin the focused composer into the floating set. If it fell out of the
+	// newest window, drop the oldest kept popup to make room so the count stays
+	// within `maxPopups`.
+	if (focusedId) {
+		const focusedSpec = expanded.find((s) => s.id === focusedId);
+		if (focusedSpec && !popupIds.has(focusedSpec.id)) {
+			if (popupIds.size >= Math.max(0, maxPopups) && kept.length > 0) {
+				popupIds.delete(kept[0]!.id);
+			}
+			popupIds.add(focusedSpec.id);
+		}
+	}
 
 	const floating: string[] = [];
 	const dock: { id: string }[] = [];

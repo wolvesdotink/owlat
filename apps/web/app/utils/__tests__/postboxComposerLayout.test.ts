@@ -82,4 +82,22 @@ describe('layoutComposerStack', () => {
 		expect(layout.popups).toEqual([]);
 		expect(layout.dock).toEqual([{ id: 'a' }, { id: 'b' }]);
 	});
+
+	it('keeps the focused composer floating even when it falls out of the newest window', () => {
+		// a is focused but oldest; opening b and c would normally dock a. The focus
+		// surface teleports a into a popup, so a must stay floating (the oldest of
+		// the two newest, b, drops to the dock instead) — never an empty mount.
+		const layout = layoutComposerStack([spec('a'), spec('b'), spec('c')], undefined, 'a');
+		expect(layout.popups.map((p) => p.id).sort()).toEqual(['a', 'c']);
+		expect(layout.dock).toEqual([{ id: 'b' }]);
+	});
+
+	it('is a no-op when the focused composer is already floating', () => {
+		const layout = layoutComposerStack([spec('a'), spec('b'), spec('c')], undefined, 'c');
+		expect(layout.popups).toEqual([
+			{ id: 'b', slot: 1 },
+			{ id: 'c', slot: 0 },
+		]);
+		expect(layout.dock).toEqual([{ id: 'a' }]);
+	});
 });

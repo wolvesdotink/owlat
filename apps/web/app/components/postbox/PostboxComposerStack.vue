@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { layoutComposerStack } from '~/utils/postboxComposerLayout';
 
-const { state } = usePostboxComposerStack();
+const { state, focusedId } = usePostboxComposerStack();
 
-const placement = computed(() => layoutComposerStack(state.value));
+// Pass focusedId so the promoted composer is always kept floating — it can
+// never be pushed into the dock (which would strand the focus surface with an
+// empty mount while its scrim is up).
+const placement = computed(() => layoutComposerStack(state.value, undefined, focusedId.value));
 
 // Floating popups, each with its right-to-left slot; the docked composers roll
 // up into the bottom dock so nothing marches offscreen once 3+ are open.
