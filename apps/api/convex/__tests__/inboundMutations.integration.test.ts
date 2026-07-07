@@ -220,12 +220,10 @@ describe('inboundMutations.rejectDraft', () => {
 			);
 		});
 
-		const result = await t
-			.withIdentity(testIdentity)
-			.mutation(api.inbox.mutations.rejectDraft, {
-				inboundMessageId: messageId,
-				reason: 'Tone is too formal',
-			});
+		const result = await t.withIdentity(testIdentity).mutation(api.inbox.mutations.rejectDraft, {
+			inboundMessageId: messageId,
+			reason: 'Tone is too formal',
+		});
 
 		expect(result.success).toBe(true);
 
@@ -263,12 +261,10 @@ describe('inboundMutations.rejectDraft', () => {
 			);
 		});
 
-		await t
-			.withIdentity(testIdentity)
-			.mutation(api.inbox.mutations.rejectDraft, {
-				inboundMessageId: messageId,
-				reason: 'Inaccurate information',
-			});
+		await t.withIdentity(testIdentity).mutation(api.inbox.mutations.rejectDraft, {
+			inboundMessageId: messageId,
+			reason: 'Inaccurate information',
+		});
 
 		await t.run(async (ctx) => {
 			const logs = await ctx.db
@@ -300,12 +296,10 @@ describe('inboundMutations.editDraft', () => {
 			);
 		});
 
-		const result = await t
-			.withIdentity(testIdentity)
-			.mutation(api.inbox.mutations.editDraft, {
-				inboundMessageId: messageId,
-				draftResponse: 'Edited draft with better wording',
-			});
+		const result = await t.withIdentity(testIdentity).mutation(api.inbox.mutations.editDraft, {
+			inboundMessageId: messageId,
+			draftResponse: 'Edited draft with better wording',
+		});
 
 		expect(result.success).toBe(true);
 
@@ -331,13 +325,11 @@ describe('inboundMutations.editDraft', () => {
 			);
 		});
 
-		await t
-			.withIdentity(testIdentity)
-			.mutation(api.inbox.mutations.editDraft, {
-				inboundMessageId: messageId,
-				draftResponse: 'New body',
-				draftSubject: 'Re: New Subject',
-			});
+		await t.withIdentity(testIdentity).mutation(api.inbox.mutations.editDraft, {
+			inboundMessageId: messageId,
+			draftResponse: 'New body',
+			draftSubject: 'Re: New Subject',
+		});
 
 		await t.run(async (ctx) => {
 			const msg = await ctx.db.get(messageId);
@@ -373,12 +365,10 @@ describe('inboundMutations.editDraft', () => {
 			);
 		});
 
-		await t
-			.withIdentity(testIdentity)
-			.mutation(api.inbox.mutations.editDraft, {
-				inboundMessageId: messageId,
-				draftResponse: 'Edited text',
-			});
+		await t.withIdentity(testIdentity).mutation(api.inbox.mutations.editDraft, {
+			inboundMessageId: messageId,
+			draftResponse: 'Edited text',
+		});
 
 		await t.run(async (ctx) => {
 			const logs = await ctx.db
