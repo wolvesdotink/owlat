@@ -118,8 +118,7 @@ export const getDeliveryHealth = authedQuery({
 			orgSummary.totalBounced > 0 ||
 			orgSummary.totalComplaints > 0;
 
-		// bounded: org-curated sending domains, low-tens at most.
-		const domains = await ctx.db.query('domains').collect();
+		const domains = await ctx.db.query('domains').collect(); // bounded: org-curated sending domains, low-tens at most.
 
 		const canSend = await isDeliveryConfigured(ctx);
 
