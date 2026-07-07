@@ -109,7 +109,7 @@ const emptyMessage = computed(() => INBOX_FILTER_META[filter.value].empty);
 
 			<button
 				type="button"
-				class="inline-flex items-center gap-1.5 text-xs text-text-tertiary hover:text-text-primary transition-colors duration-[--motion-fast] outline-none focus-visible:ring-1 focus-visible:ring-brand/50 rounded px-1.5 py-1"
+				class="inline-flex items-center gap-1.5 text-xs text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast) outline-none focus-visible:ring-1 focus-visible:ring-brand/50 rounded px-1.5 py-1"
 				:title="
 					sort === 'needs-attention'
 						? 'Sorted by needs-attention — switch to newest first'

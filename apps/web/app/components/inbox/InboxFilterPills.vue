@@ -42,7 +42,7 @@ function displayCount(filter: InboxFilter): string | null {
 			:key="f"
 			type="button"
 			:aria-pressed="modelValue === f"
-			class="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors duration-[--motion-fast] outline-none focus-visible:ring-1 focus-visible:ring-brand/50"
+			class="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors duration-(--motion-fast) outline-none focus-visible:ring-1 focus-visible:ring-brand/50"
 			:class="
 				modelValue === f
 					? 'border-brand/30 bg-brand-soft text-brand'
