@@ -23,6 +23,8 @@
 
 import { v } from 'convex/values';
 import { internalMutation } from '../_generated/server';
+import type { QueryCtx, MutationCtx } from '../_generated/server';
+import type { Id } from '../_generated/dataModel';
 import { adminMutation, publicQuery } from '../lib/authedFunctions';
 import { getMutationContext, getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 import { getOrThrow } from '../_utils/errors';
@@ -122,6 +124,39 @@ export const list = publicQuery({
 		return rows.map((r) => ({ userId: r.userId, mode: r.mode, heartbeatAt: r.heartbeatAt }));
 	},
 });
+
+// ── Collision soft-hold helper ─────────────────────────────────────
+
+/**
+ * The other team member (if any) who is ACTIVELY replying to this thread right
+ * now, ignoring the caller's own presence. "Active" mirrors `list`: a
+ * `replying`-mode row whose heartbeat is inside PRESENCE_ACTIVE_WINDOW_MS.
+ *
+ * This is the predicate behind the b3b soft-hold: the reply composer / Approve &
+ * Send button renders HELD (disabled-styled but visible) while this returns a
+ * teammate, and the `approveDraft` mutation re-checks it at execution time so a
+ * held button that slipped through still can't quietly double-answer. It is
+ * advisory only — last-writer-wins if two callers race past it — and self is
+ * never counted, so your own `replying` row never holds your own button.
+ *
+ * Returns the first such teammate's userId, or `null` when nobody else is
+ * replying (viewers don't hold — you can send while a teammate merely reads).
+ */
+export async function getActiveReplierOtherThan(
+	ctx: QueryCtx | MutationCtx,
+	threadId: Id<'conversationThreads'>,
+	excludeUserId: string
+): Promise<{ userId: string } | null> {
+	const cutoff = Date.now() - PRESENCE_ACTIVE_WINDOW_MS;
+	// Range-scan only ACTIVE rows for this thread via the compound index, then
+	// keep the first OTHER user in `replying` mode. Bounded by team size.
+	const rows = await ctx.db
+		.query('threadPresence')
+		.withIndex('by_thread_heartbeat', (q) => q.eq('threadId', threadId).gt('heartbeatAt', cutoff))
+		.collect();
+	const other = rows.find((r) => r.mode === 'replying' && r.userId !== excludeUserId);
+	return other ? { userId: other.userId } : null;
+}
 
 // ── Internal cron sweep ────────────────────────────────────────────
 
