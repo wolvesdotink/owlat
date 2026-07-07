@@ -387,4 +387,25 @@ export const inboxTables = {
 		// rows written before the field existed; readers fall back to createdAt.
 		firstReceivedAt: v.optional(v.number()),
 	}).index('by_thread', ['threadId']),
+
+	// Assignment Notices - one row per "a teammate assigned this thread to you"
+	// event. Written by `inbox.mutations.assignThread` when the new assignee is
+	// someone OTHER than the person doing the assigning (self-assign never
+	// notifies). The assignee's session subscribes via
+	// `inbox.queries.pendingAssignments`, which drives an in-app toast and a
+	// desktop notification; the client coalesces bursts and remembers which
+	// notices it has already surfaced, so this table is an append-only signal —
+	// never mutated, and old rows simply age out of the query window.
+	inboxAssignmentNotices: defineTable({
+		// Assignee (BetterAuth user id) — who the thread was handed to.
+		userId: v.string(),
+		threadId: v.id('conversationThreads'),
+		// Denormalized at write time so the notice renders without joining.
+		subject: v.string(),
+		// Display name (or email) of the teammate who did the assigning.
+		assignedByName: v.string(),
+		createdAt: v.number(),
+	})
+		// Newest-first window of notices for one assignee.
+		.index('by_user_and_created', ['userId', 'createdAt']),
 };

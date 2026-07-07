@@ -21,6 +21,8 @@ export interface InboxThreadRowThread {
 	lastPreview?: string | null;
 	/** Newer activity than this viewer's last-seen marker. */
 	unread?: boolean;
+	/** Raw assigned user id (null/absent when unassigned) — drives the picker. */
+	assignedTo?: string | null;
 	/** Assigned member, resolved for the avatar (null when unassigned). */
 	assignee?: { name?: string; email: string; image?: string | null } | null;
 	/** The assignee currently has the thread open (drives the presence ring). */
@@ -44,14 +46,25 @@ const props = defineProps<{
 	focused: boolean;
 	/** Shared relative-time formatter from useInbox. */
 	formatRelativeTime: (timestamp: number) => string;
+	/** Org members for the hover assignee picker. */
+	members?: { userId: string; name?: string | null; email: string; image?: string | null }[];
+	/** Current viewer's user id — drives the picker's "Me" row + the `i` shortcut. */
+	currentUserId?: string | null;
 }>();
 
 const emit = defineEmits<{
-	assign: [];
+	/** Chosen assignee — a user id, or `undefined` to unassign. */
+	assign: [assignedTo?: string];
 	resolve: [];
 	snooze: [];
 	open: [];
 }>();
+
+const rowMembers = computed(() => props.members ?? []);
+
+// Keep the (opacity-only) hover cluster visible while the teleported picker is
+// open — otherwise focus leaves the row and the reveal would fade under the menu.
+const assignMenuOpen = ref(false);
 
 const rowId = computed(() => `inbox-row-${props.thread._id}`);
 
@@ -72,20 +85,11 @@ const assigneeName = computed(() => {
 });
 
 /** Stop a hover-action button from following the row's NuxtLink. */
-function rowAction(event: MouseEvent, action: 'assign' | 'resolve' | 'snooze') {
+function rowAction(event: MouseEvent, action: 'resolve' | 'snooze') {
 	event.stopPropagation();
 	event.preventDefault();
-	switch (action) {
-		case 'assign':
-			emit('assign');
-			break;
-		case 'resolve':
-			emit('resolve');
-			break;
-		case 'snooze':
-			emit('snooze');
-			break;
-	}
+	if (action === 'resolve') emit('resolve');
+	else emit('snooze');
 }
 </script>
 
@@ -158,19 +162,36 @@ function rowAction(event: MouseEvent, action: 'assign' | 'resolve' | 'snooze') {
 		</NuxtLink>
 
 		<!-- Hover-reveal quick actions (opacity-only, focus-within reveals for
-		     keyboard) — single-thread triage without opening the thread. -->
+		     keyboard) — single-thread triage without opening the thread. While the
+		     assignee picker is open the cluster stays visible (dropping the
+		     hover-reveal class) so the teleported menu keeps its anchor. -->
 		<div
-			class="ui-hover-reveal absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-0.5 bg-bg-elevated/95 rounded px-1 py-0.5 shadow-sm border border-border-subtle"
+			:class="[
+				assignMenuOpen ? '' : 'ui-hover-reveal',
+				'absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-0.5 bg-bg-elevated/95 rounded px-1 py-0.5 shadow-sm border border-border-subtle',
+			]"
 		>
-			<button
-				type="button"
-				class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-brand"
-				title="Assign to me"
-				aria-label="Assign to me"
-				@click="rowAction($event, 'assign')"
+			<!-- Assignee picker (Me / members / Unassign). The `i` shortcut on a
+			     focused row still assigns to me directly (handled by the list). -->
+			<InboxAssignPopover
+				v-model:open="assignMenuOpen"
+				:members="rowMembers"
+				:current-user-id="currentUserId ?? null"
+				:assigned-to="thread.assignedTo ?? null"
+				position="right"
+				@assign="emit('assign', $event)"
 			>
-				<Icon name="lucide:user-plus" class="w-4 h-4" />
-			</button>
+				<template #trigger>
+					<button
+						type="button"
+						class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-brand"
+						title="Assign"
+						aria-label="Assign thread"
+					>
+						<Icon name="lucide:user-plus" class="w-4 h-4" />
+					</button>
+				</template>
+			</InboxAssignPopover>
 			<button
 				type="button"
 				class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-success"

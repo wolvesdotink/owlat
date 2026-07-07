@@ -1,6 +1,14 @@
 import { api } from '@owlat/api';
 import { setupNotificationActionRouting } from '~/lib/desktop/notificationActions.client';
 import {
+	assignmentGroupNotificationParts,
+	assignmentGroupToastMessage,
+	assignmentNotificationParts,
+	assignmentToastMessage,
+	planAssignmentNotices,
+	type AssignmentNotice,
+} from '~/lib/inbox/assignmentNoticeRules';
+import {
 	badgeCount,
 	groupBody,
 	newlyArrived,
@@ -36,6 +44,7 @@ export function useDesktopNotifications() {
 	const { isDesktop } = useDesktopContext();
 	const convex = requireConvex();
 	const { notifyAbout, badgeNonPeople } = usePostboxSettings();
+	const { showToast } = useToast();
 
 	// Route notification clicks / Archive / Mark read actions → focus + triage.
 	onMounted(() => {
@@ -51,16 +60,21 @@ export function useDesktopNotifications() {
 	const previousReviewQueue = ref<number | null>(null);
 
 	// Personal inbox unread window → badge + toast + tray peek.
-	const { data: unreadData } = useConvexQuery(
-		api.mail.mailbox.newestUnreadInbox,
-		() => (isDesktop.value ? { limit: 5 } : 'skip'),
+	const { data: unreadData } = useConvexQuery(api.mail.mailbox.newestUnreadInbox, () =>
+		isDesktop.value ? { limit: 5 } : 'skip'
 	);
 
 	// AI shared-inbox review queue (admin-only; null otherwise) → labeled toast.
-	const { data: inboundStats } = useConvexQuery(
-		api.inbox.queries.getInboundStats,
-		() => (isDesktop.value ? {} : 'skip'),
+	const { data: inboundStats } = useConvexQuery(api.inbox.queries.getInboundStats, () =>
+		isDesktop.value ? {} : 'skip'
 	);
+
+	// "Assigned to you" notices for the current user. Runs in EVERY session (not
+	// desktop-gated) so the in-app toast lands in the browser too; the desktop
+	// notification path is gated below. Empty for non-admins server-side.
+	const { data: assignmentData } = useConvexQuery(api.inbox.queries.pendingAssignments, () => ({}));
+	const seenAssignmentIds = new Set<string>();
+	let loadedAssignmentsOnce = false;
 
 	function loadDesktopNotifications() {
 		return import('@owlat/desktop/src/notifications');
@@ -72,7 +86,7 @@ export function useDesktopNotifications() {
 	async function firePlanned(
 		notif: DesktopNotif,
 		messages: UnreadPeekMessage[],
-		now: number,
+		now: number
 	): Promise<void> {
 		const fresh = newlyArrived(messages, seenUnreadIds);
 		if (fresh.length === 0) return;
@@ -85,14 +99,14 @@ export function useDesktopNotifications() {
 					n.message.fromName || n.message.fromAddress,
 					n.message.subject || '(no subject)',
 					n.message.messageId,
-					'inbox',
+					'inbox'
 				);
 			} else {
 				await notif.sendActionableNotification(
 					'New mail',
 					groupBody(n.count, n.sender),
 					n.sample.messageId,
-					'inbox',
+					'inbox'
 				);
 			}
 		}
@@ -124,7 +138,7 @@ export function useDesktopNotifications() {
 			rememberSeen(messages);
 			loadedOnce = true;
 		},
-		{ immediate: true, deep: true },
+		{ immediate: true, deep: true }
 	);
 
 	watch(
@@ -140,7 +154,7 @@ export function useDesktopNotifications() {
 						'Drafts ready for review',
 						delta === 1
 							? '1 new draft is ready for your review'
-							: `${delta} new drafts are ready for your review`,
+							: `${delta} new drafts are ready for your review`
 					);
 				}
 			} catch {
@@ -148,7 +162,79 @@ export function useDesktopNotifications() {
 			}
 			previousReviewQueue.value = reviewQueue;
 		},
-		{ deep: true },
+		{ deep: true }
+	);
+
+	// "Assigned to you" → in-app toast (always) + desktop notification (when the
+	// user hasn't muted notifications). Bursts coalesce via planAssignmentNotices;
+	// the first load seeds `seen` silently so we never toast the backlog.
+	watch(
+		() => assignmentData.value,
+		async (rows) => {
+			if (!rows) return;
+			const notices = rows as AssignmentNotice[];
+			if (!loadedAssignmentsOnce) {
+				for (const n of notices) seenAssignmentIds.add(n.id);
+				loadedAssignmentsOnce = true;
+				return;
+			}
+
+			const plans = planAssignmentNotices(notices, seenAssignmentIds);
+			for (const n of notices) seenAssignmentIds.add(n.id);
+			if (seenAssignmentIds.size > 1000) {
+				seenAssignmentIds.clear();
+				for (const n of notices) seenAssignmentIds.add(n.id);
+			}
+			if (plans.length === 0) return;
+
+			// Desktop notifications honor the user's notify scope: 'nothing' mutes
+			// them (the in-app toast still shows — it's a foreground signal).
+			const notifyDesktop = isDesktop.value && notifyAbout.value !== 'nothing';
+			let notif: DesktopNotif | null = null;
+			if (notifyDesktop) {
+				try {
+					notif = await loadDesktopNotifications();
+				} catch {
+					notif = null;
+				}
+			}
+
+			for (const plan of plans) {
+				if (plan.kind === 'single') {
+					const threadId = plan.notice.threadId;
+					showToast(assignmentToastMessage(plan.notice), 'success', {
+						action: {
+							label: 'Open',
+							onAction: () => void navigateTo(`/dashboard/inbox/${threadId}`),
+						},
+					});
+					if (notif) {
+						const parts = assignmentNotificationParts(plan.notice);
+						try {
+							await notif.sendDesktopNotification(parts.title, parts.body);
+						} catch {
+							// Tauri modules unavailable.
+						}
+					}
+				} else {
+					showToast(assignmentGroupToastMessage(plan.count), 'success', {
+						action: {
+							label: 'Open',
+							onAction: () => void navigateTo('/dashboard/inbox?filter=mine'),
+						},
+					});
+					if (notif) {
+						const parts = assignmentGroupNotificationParts(plan.count);
+						try {
+							await notif.sendDesktopNotification(parts.title, parts.body);
+						} catch {
+							// Tauri modules unavailable.
+						}
+					}
+				}
+			}
+		},
+		{ immediate: true, deep: true }
 	);
 
 	return { isDesktop };

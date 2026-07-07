@@ -2,6 +2,7 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { InboxThreadRowThread } from '~/components/inbox/InboxThreadRow.vue';
+import { useOrganization } from '~/composables/useOrganization';
 import { INBOX_FILTER_META } from '~/utils/inboxFilters';
 
 useHead({ title: 'Team Inbox — Owlat' });
@@ -39,11 +40,30 @@ const { run: snoozeThread } = useBackendOperation(api.inbox.snooze.snoozeThread,
 
 type TeamThread = InboxThreadRowThread & { _id: Id<'conversationThreads'> };
 
-/** `i` and the hover Assign action both claim the thread for the current user. */
+// Org members for the row hover assignee picker (Me / members / Unassign).
+const { members, fetchMembers } = useOrganization();
+onMounted(() => {
+	void fetchMembers();
+});
+const assignMembers = computed(() =>
+	members.value.map((m) => ({
+		userId: m.userId,
+		name: m.user.name,
+		email: m.user.email,
+		image: m.user.image,
+	}))
+);
+
+/** `i` claims the thread for the current user. */
 async function assignToMe(thread: TeamThread) {
 	const me = user.value?.id;
 	if (!me) return;
 	await assignThread({ threadId: thread._id, assignedTo: me });
+}
+
+/** Hover picker choice — a specific member, or `undefined` to unassign. */
+async function assignThreadTo(thread: TeamThread, assignedTo: string | undefined) {
+	await assignThread({ threadId: thread._id, assignedTo });
 }
 
 async function resolveThread(thread: TeamThread) {
@@ -156,7 +176,9 @@ const emptyMessage = computed(() => INBOX_FILTER_META[filter.value].empty);
 					:thread="thread"
 					:focused="index === focusedIndex"
 					:format-relative-time="formatRelativeTime"
-					@assign="assignToMe(thread)"
+					:members="assignMembers"
+					:current-user-id="user?.id ?? null"
+					@assign="assignThreadTo(thread, $event)"
 					@resolve="resolveThread(thread)"
 					@snooze="openSnooze(thread)"
 				/>

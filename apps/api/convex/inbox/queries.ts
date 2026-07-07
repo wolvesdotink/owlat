@@ -430,3 +430,47 @@ export const getMessageActions = publicQuery({
 			.collect(); // bounded: one message's pipeline actions (~1 per step)
 	},
 });
+
+/**
+ * Recent "assigned to you" notices for the current user.
+ *
+ * Backs the assignment notification: the assignee's session subscribes and,
+ * for each newly-arrived notice, fires an in-app toast plus (on desktop) a
+ * native notification. The client remembers which notices it has already
+ * surfaced and coalesces bursts, so this query only has to return a bounded,
+ * newest-first window — stale rows simply fall outside it. Returns [] for
+ * non-admins (the shared inbox is admin-only).
+ */
+// public: soft-auth — self-scoped notices; returns empty for non-admins
+export const pendingAssignments = publicQuery({
+	args: {
+		/** How far back to look. Defaults to 5 minutes. */
+		sinceMs: v.optional(v.number()),
+		/** Max notices to return. Defaults to 20. */
+		limit: v.optional(v.number()),
+	},
+	handler: async (ctx, args) => {
+		const session = await getBetterAuthSessionWithRole(ctx);
+		if (!session || (session.role !== 'owner' && session.role !== 'admin')) return [];
+
+		const window = args.sinceMs ?? 5 * 60 * 1000;
+		const cutoff = Date.now() - window;
+		const limit = args.limit ?? 20;
+
+		const rows = await ctx.db
+			.query('inboxAssignmentNotices')
+			.withIndex('by_user_and_created', (q) =>
+				q.eq('userId', session.userId).gte('createdAt', cutoff)
+			)
+			.order('desc')
+			.take(limit);
+
+		return rows.map((r) => ({
+			id: r._id,
+			threadId: r.threadId,
+			subject: r.subject,
+			assignedByName: r.assignedByName,
+			createdAt: r.createdAt,
+		}));
+	},
+});

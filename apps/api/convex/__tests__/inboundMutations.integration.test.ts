@@ -70,16 +70,16 @@ const modules = Object.fromEntries(
 			!path.includes('agentClassifier') &&
 			!path.includes('agentDrafter') &&
 			!path.includes('agentRouter') &&
-		!path.includes('agent/walker') &&
-		!path.includes('agent/steps/index') &&
-		!path.includes('agent/steps/shared') &&
-		!path.includes('agent/steps/classify') &&
-		!path.includes('agent/steps/draft') &&
+			!path.includes('agent/walker') &&
+			!path.includes('agent/steps/index') &&
+			!path.includes('agent/steps/shared') &&
+			!path.includes('agent/steps/classify') &&
+			!path.includes('agent/steps/draft') &&
 			!path.includes('knowledgeExtraction') &&
 			!path.includes('semanticFileProcessing') &&
 			!path.includes('visualizationAgent') &&
 			!path.includes('llmProvider') &&
-				!path.includes('delivery/workpool')
+			!path.includes('delivery/workpool')
 	)
 );
 
@@ -124,19 +124,21 @@ describe('inboundMutations.approveDraft', () => {
 		await t.run(async (ctx) => {
 			const contactId = await ctx.db.insert('contacts', createTestContact());
 			threadId = await ctx.db.insert('conversationThreads', threadData({ contactId }));
-			messageId = await ctx.db.insert('inboundMessages', msgData({
-				contactId,
-				threadId,
-				processingStatus: 'draft_ready',
-				draftResponse: 'Thank you for contacting us.',
-				draftSubject: 'Re: Support request',
-			}));
+			messageId = await ctx.db.insert(
+				'inboundMessages',
+				msgData({
+					contactId,
+					threadId,
+					processingStatus: 'draft_ready',
+					draftResponse: 'Thank you for contacting us.',
+					draftSubject: 'Re: Support request',
+				})
+			);
 		});
 
-		const result = await t.withIdentity(testIdentity).mutation(
-			api.inbox.mutations.approveDraft,
-			{ inboundMessageId: messageId }
-		);
+		const result = await t
+			.withIdentity(testIdentity)
+			.mutation(api.inbox.mutations.approveDraft, { inboundMessageId: messageId });
 
 		expect(result.success).toBe(true);
 
@@ -170,16 +172,18 @@ describe('inboundMutations.approveDraft', () => {
 
 		let messageId!: Id<'inboundMessages'>;
 		await t.run(async (ctx) => {
-			messageId = await ctx.db.insert('inboundMessages', msgData({
-				processingStatus: 'draft_ready',
-				draftResponse: 'Draft reply',
-			}));
+			messageId = await ctx.db.insert(
+				'inboundMessages',
+				msgData({
+					processingStatus: 'draft_ready',
+					draftResponse: 'Draft reply',
+				})
+			);
 		});
 
-		await t.withIdentity(testIdentity).mutation(
-			api.inbox.mutations.approveDraft,
-			{ inboundMessageId: messageId }
-		);
+		await t
+			.withIdentity(testIdentity)
+			.mutation(api.inbox.mutations.approveDraft, { inboundMessageId: messageId });
 
 		await t.run(async (ctx) => {
 			const logs = await ctx.db
@@ -205,18 +209,21 @@ describe('inboundMutations.rejectDraft', () => {
 		await t.run(async (ctx) => {
 			const contactId = await ctx.db.insert('contacts', createTestContact());
 			threadId = await ctx.db.insert('conversationThreads', threadData({ contactId }));
-			messageId = await ctx.db.insert('inboundMessages', msgData({
-				contactId,
-				threadId,
-				processingStatus: 'draft_ready',
-				draftResponse: 'AI-generated draft',
-			}));
+			messageId = await ctx.db.insert(
+				'inboundMessages',
+				msgData({
+					contactId,
+					threadId,
+					processingStatus: 'draft_ready',
+					draftResponse: 'AI-generated draft',
+				})
+			);
 		});
 
-		const result = await t.withIdentity(testIdentity).mutation(
-			api.inbox.mutations.rejectDraft,
-			{ inboundMessageId: messageId, reason: 'Tone is too formal' }
-		);
+		const result = await t.withIdentity(testIdentity).mutation(api.inbox.mutations.rejectDraft, {
+			inboundMessageId: messageId,
+			reason: 'Tone is too formal',
+		});
 
 		expect(result.success).toBe(true);
 
@@ -248,13 +255,16 @@ describe('inboundMutations.rejectDraft', () => {
 
 		let messageId!: Id<'inboundMessages'>;
 		await t.run(async (ctx) => {
-			messageId = await ctx.db.insert('inboundMessages', msgData({ processingStatus: 'draft_ready' }));
+			messageId = await ctx.db.insert(
+				'inboundMessages',
+				msgData({ processingStatus: 'draft_ready' })
+			);
 		});
 
-		await t.withIdentity(testIdentity).mutation(
-			api.inbox.mutations.rejectDraft,
-			{ inboundMessageId: messageId, reason: 'Inaccurate information' }
-		);
+		await t.withIdentity(testIdentity).mutation(api.inbox.mutations.rejectDraft, {
+			inboundMessageId: messageId,
+			reason: 'Inaccurate information',
+		});
 
 		await t.run(async (ctx) => {
 			const logs = await ctx.db
@@ -276,17 +286,20 @@ describe('inboundMutations.editDraft', () => {
 
 		let messageId!: Id<'inboundMessages'>;
 		await t.run(async (ctx) => {
-			messageId = await ctx.db.insert('inboundMessages', msgData({
-				processingStatus: 'draft_ready',
-				draftResponse: 'Original draft',
-				draftSubject: 'Re: Original',
-			}));
+			messageId = await ctx.db.insert(
+				'inboundMessages',
+				msgData({
+					processingStatus: 'draft_ready',
+					draftResponse: 'Original draft',
+					draftSubject: 'Re: Original',
+				})
+			);
 		});
 
-		const result = await t.withIdentity(testIdentity).mutation(
-			api.inbox.mutations.editDraft,
-			{ inboundMessageId: messageId, draftResponse: 'Edited draft with better wording' }
-		);
+		const result = await t.withIdentity(testIdentity).mutation(api.inbox.mutations.editDraft, {
+			inboundMessageId: messageId,
+			draftResponse: 'Edited draft with better wording',
+		});
 
 		expect(result.success).toBe(true);
 
@@ -302,17 +315,21 @@ describe('inboundMutations.editDraft', () => {
 
 		let messageId!: Id<'inboundMessages'>;
 		await t.run(async (ctx) => {
-			messageId = await ctx.db.insert('inboundMessages', msgData({
-				processingStatus: 'draft_ready',
-				draftResponse: 'Original',
-				draftSubject: 'Re: Old Subject',
-			}));
+			messageId = await ctx.db.insert(
+				'inboundMessages',
+				msgData({
+					processingStatus: 'draft_ready',
+					draftResponse: 'Original',
+					draftSubject: 'Re: Old Subject',
+				})
+			);
 		});
 
-		await t.withIdentity(testIdentity).mutation(
-			api.inbox.mutations.editDraft,
-			{ inboundMessageId: messageId, draftResponse: 'New body', draftSubject: 'Re: New Subject' }
-		);
+		await t.withIdentity(testIdentity).mutation(api.inbox.mutations.editDraft, {
+			inboundMessageId: messageId,
+			draftResponse: 'New body',
+			draftSubject: 'Re: New Subject',
+		});
 
 		await t.run(async (ctx) => {
 			const msg = await ctx.db.get(messageId);
@@ -330,7 +347,10 @@ describe('inboundMutations.editDraft', () => {
 		});
 
 		await expect(
-			t.mutation(api.inbox.mutations.editDraft, { inboundMessageId: messageId, draftResponse: 'test' })
+			t.mutation(api.inbox.mutations.editDraft, {
+				inboundMessageId: messageId,
+				draftResponse: 'test',
+			})
 		).rejects.toThrow('Not authenticated');
 	});
 
@@ -339,13 +359,16 @@ describe('inboundMutations.editDraft', () => {
 
 		let messageId!: Id<'inboundMessages'>;
 		await t.run(async (ctx) => {
-			messageId = await ctx.db.insert('inboundMessages', msgData({ processingStatus: 'draft_ready' }));
+			messageId = await ctx.db.insert(
+				'inboundMessages',
+				msgData({ processingStatus: 'draft_ready' })
+			);
 		});
 
-		await t.withIdentity(testIdentity).mutation(
-			api.inbox.mutations.editDraft,
-			{ inboundMessageId: messageId, draftResponse: 'Edited text' }
-		);
+		await t.withIdentity(testIdentity).mutation(api.inbox.mutations.editDraft, {
+			inboundMessageId: messageId,
+			draftResponse: 'Edited text',
+		});
 
 		await t.run(async (ctx) => {
 			const logs = await ctx.db
@@ -377,10 +400,9 @@ describe('inboundMutations.assignThread', () => {
 			});
 		});
 
-		const result = await t.withIdentity(testIdentity).mutation(
-			api.inbox.mutations.assignThread,
-			{ threadId, assignedTo: 'team-member-42' }
-		);
+		const result = await t
+			.withIdentity(testIdentity)
+			.mutation(api.inbox.mutations.assignThread, { threadId, assignedTo: 'team-member-42' });
 
 		expect(result.success).toBe(true);
 
@@ -396,13 +418,13 @@ describe('inboundMutations.assignThread', () => {
 		let threadId!: Id<'conversationThreads'>;
 		await t.run(async (ctx) => {
 			const contactId = await ctx.db.insert('contacts', createTestContact());
-			threadId = await ctx.db.insert('conversationThreads', threadData({ contactId, assignedTo: 'some-user' }));
+			threadId = await ctx.db.insert(
+				'conversationThreads',
+				threadData({ contactId, assignedTo: 'some-user' })
+			);
 		});
 
-		await t.withIdentity(testIdentity).mutation(
-			api.inbox.mutations.assignThread,
-			{ threadId }
-		);
+		await t.withIdentity(testIdentity).mutation(api.inbox.mutations.assignThread, { threadId });
 
 		await t.run(async (ctx) => {
 			const thread = await ctx.db.get(threadId);
@@ -425,6 +447,98 @@ describe('inboundMutations.assignThread', () => {
 	});
 });
 
+// ============ assignThread — assignee notification fan-out ============
+
+describe('inboundMutations.assignThread notification', () => {
+	it('writes one notice for a cross-user assignment, with subject + assigner name', async () => {
+		const t = convexTest(schema, modules);
+
+		let threadId!: Id<'conversationThreads'>;
+		await t.run(async (ctx) => {
+			const contactId = await ctx.db.insert('contacts', createTestContact());
+			threadId = await ctx.db.insert(
+				'conversationThreads',
+				threadData({ contactId, subject: 'Refund request' })
+			);
+			await ctx.db.insert('userProfiles', {
+				authUserId: 'team-member-42',
+				email: 'member42@example.com',
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+			// The assigner's profile supplies the display name on the notice.
+			await ctx.db.insert('userProfiles', {
+				authUserId: testIdentity.subject,
+				email: 'actor@example.com',
+				name: 'Actor Admin',
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+		});
+
+		await t.withIdentity(testIdentity).mutation(api.inbox.mutations.assignThread, {
+			threadId,
+			assignedTo: 'team-member-42',
+		});
+
+		await t.run(async (ctx) => {
+			const notices = await ctx.db.query('inboxAssignmentNotices').collect();
+			expect(notices).toHaveLength(1);
+			expect(notices[0]!.userId).toBe('team-member-42');
+			expect(notices[0]!.threadId).toBe(threadId);
+			expect(notices[0]!.subject).toBe('Refund request');
+			expect(notices[0]!.assignedByName).toBe('Actor Admin');
+		});
+	});
+
+	it('does NOT notify on self-assign', async () => {
+		const t = convexTest(schema, modules);
+
+		let threadId!: Id<'conversationThreads'>;
+		await t.run(async (ctx) => {
+			const contactId = await ctx.db.insert('contacts', createTestContact());
+			threadId = await ctx.db.insert('conversationThreads', threadData({ contactId }));
+			// The actor claims the thread for themselves — must exist to pass validation.
+			await ctx.db.insert('userProfiles', {
+				authUserId: testIdentity.subject,
+				email: 'actor@example.com',
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+		});
+
+		await t.withIdentity(testIdentity).mutation(api.inbox.mutations.assignThread, {
+			threadId,
+			assignedTo: testIdentity.subject,
+		});
+
+		await t.run(async (ctx) => {
+			const notices = await ctx.db.query('inboxAssignmentNotices').collect();
+			expect(notices).toHaveLength(0);
+		});
+	});
+
+	it('does NOT notify on unassign', async () => {
+		const t = convexTest(schema, modules);
+
+		let threadId!: Id<'conversationThreads'>;
+		await t.run(async (ctx) => {
+			const contactId = await ctx.db.insert('contacts', createTestContact());
+			threadId = await ctx.db.insert(
+				'conversationThreads',
+				threadData({ contactId, assignedTo: 'someone' })
+			);
+		});
+
+		await t.withIdentity(testIdentity).mutation(api.inbox.mutations.assignThread, { threadId });
+
+		await t.run(async (ctx) => {
+			const notices = await ctx.db.query('inboxAssignmentNotices').collect();
+			expect(notices).toHaveLength(0);
+		});
+	});
+});
+
 // ============ updateThreadStatus ============
 
 describe('inboundMutations.updateThreadStatus', () => {
@@ -434,13 +548,15 @@ describe('inboundMutations.updateThreadStatus', () => {
 		let threadId!: Id<'conversationThreads'>;
 		await t.run(async (ctx) => {
 			const contactId = await ctx.db.insert('contacts', createTestContact());
-			threadId = await ctx.db.insert('conversationThreads', threadData({ contactId, status: 'open' }));
+			threadId = await ctx.db.insert(
+				'conversationThreads',
+				threadData({ contactId, status: 'open' })
+			);
 		});
 
-		const result = await t.withIdentity(testIdentity).mutation(
-			api.inbox.mutations.updateThreadStatus,
-			{ threadId, status: 'resolved' }
-		);
+		const result = await t
+			.withIdentity(testIdentity)
+			.mutation(api.inbox.mutations.updateThreadStatus, { threadId, status: 'resolved' });
 
 		expect(result.success).toBe(true);
 
@@ -456,13 +572,15 @@ describe('inboundMutations.updateThreadStatus', () => {
 		let threadId!: Id<'conversationThreads'>;
 		await t.run(async (ctx) => {
 			const contactId = await ctx.db.insert('contacts', createTestContact());
-			threadId = await ctx.db.insert('conversationThreads', threadData({ contactId, status: 'open' }));
+			threadId = await ctx.db.insert(
+				'conversationThreads',
+				threadData({ contactId, status: 'open' })
+			);
 		});
 
-		await t.withIdentity(testIdentity).mutation(
-			api.inbox.mutations.updateThreadStatus,
-			{ threadId, status: 'closed' }
-		);
+		await t
+			.withIdentity(testIdentity)
+			.mutation(api.inbox.mutations.updateThreadStatus, { threadId, status: 'closed' });
 
 		await t.run(async (ctx) => {
 			const thread = await ctx.db.get(threadId);
@@ -493,20 +611,22 @@ describe('inboundMutations.releaseFromQuarantine', () => {
 
 		let messageId!: Id<'inboundMessages'>;
 		await t.run(async (ctx) => {
-			messageId = await ctx.db.insert('inboundMessages', msgData({
-				processingStatus: 'quarantined',
-				securityFlags: {
-					injectionDetected: true,
-					confidence: 0.7,
-					scanTimestamp: Date.now(),
-				},
-			}));
+			messageId = await ctx.db.insert(
+				'inboundMessages',
+				msgData({
+					processingStatus: 'quarantined',
+					securityFlags: {
+						injectionDetected: true,
+						confidence: 0.7,
+						scanTimestamp: Date.now(),
+					},
+				})
+			);
 		});
 
-		const result = await t.withIdentity(testIdentity).mutation(
-			api.inbox.mutations.releaseFromQuarantine,
-			{ inboundMessageId: messageId }
-		);
+		const result = await t
+			.withIdentity(testIdentity)
+			.mutation(api.inbox.mutations.releaseFromQuarantine, { inboundMessageId: messageId });
 
 		expect(result.success).toBe(true);
 
@@ -526,10 +646,9 @@ describe('inboundMutations.releaseFromQuarantine', () => {
 		});
 
 		await expect(
-			t.withIdentity(testIdentity).mutation(
-				api.inbox.mutations.releaseFromQuarantine,
-				{ inboundMessageId: messageId }
-			)
+			t
+				.withIdentity(testIdentity)
+				.mutation(api.inbox.mutations.releaseFromQuarantine, { inboundMessageId: messageId })
 		).rejects.toThrow('Message is not quarantined');
 	});
 
@@ -538,20 +657,22 @@ describe('inboundMutations.releaseFromQuarantine', () => {
 
 		let messageId!: Id<'inboundMessages'>;
 		await t.run(async (ctx) => {
-			messageId = await ctx.db.insert('inboundMessages', msgData({
-				processingStatus: 'quarantined',
-				securityFlags: {
-					injectionDetected: false,
-					confidence: 0.3,
-					scanTimestamp: Date.now(),
-				},
-			}));
+			messageId = await ctx.db.insert(
+				'inboundMessages',
+				msgData({
+					processingStatus: 'quarantined',
+					securityFlags: {
+						injectionDetected: false,
+						confidence: 0.3,
+						scanTimestamp: Date.now(),
+					},
+				})
+			);
 		});
 
-		await t.withIdentity(testIdentity).mutation(
-			api.inbox.mutations.releaseFromQuarantine,
-			{ inboundMessageId: messageId }
-		);
+		await t
+			.withIdentity(testIdentity)
+			.mutation(api.inbox.mutations.releaseFromQuarantine, { inboundMessageId: messageId });
 
 		await t.run(async (ctx) => {
 			const logs = await ctx.db
@@ -573,16 +694,18 @@ describe('inboundMutations.retryFailedMessage', () => {
 
 		let messageId!: Id<'inboundMessages'>;
 		await t.run(async (ctx) => {
-			messageId = await ctx.db.insert('inboundMessages', msgData({
-				processingStatus: 'failed',
-				errorMessage: 'draft step exhausted retries',
-			}));
+			messageId = await ctx.db.insert(
+				'inboundMessages',
+				msgData({
+					processingStatus: 'failed',
+					errorMessage: 'draft step exhausted retries',
+				})
+			);
 		});
 
-		const result = await t.withIdentity(testIdentity).mutation(
-			api.inbox.mutations.retryFailedMessage,
-			{ inboundMessageId: messageId }
-		);
+		const result = await t
+			.withIdentity(testIdentity)
+			.mutation(api.inbox.mutations.retryFailedMessage, { inboundMessageId: messageId });
 
 		expect(result.success).toBe(true);
 
@@ -599,10 +722,13 @@ describe('inboundMutations.retryFailedMessage', () => {
 		let messageId!: Id<'inboundMessages'>;
 		let actionId!: Id<'agentActions'>;
 		await t.run(async (ctx) => {
-			messageId = await ctx.db.insert('inboundMessages', msgData({
-				processingStatus: 'failed',
-				errorMessage: 'boom',
-			}));
+			messageId = await ctx.db.insert(
+				'inboundMessages',
+				msgData({
+					processingStatus: 'failed',
+					errorMessage: 'boom',
+				})
+			);
 			actionId = await ctx.db.insert('agentActions', {
 				inboundMessageId: messageId,
 				actionType: 'draft',
@@ -612,10 +738,9 @@ describe('inboundMutations.retryFailedMessage', () => {
 			});
 		});
 
-		await t.withIdentity(testIdentity).mutation(
-			api.inbox.mutations.retryFailedMessage,
-			{ inboundMessageId: messageId }
-		);
+		await t
+			.withIdentity(testIdentity)
+			.mutation(api.inbox.mutations.retryFailedMessage, { inboundMessageId: messageId });
 
 		await t.run(async (ctx) => {
 			const action = await ctx.db.get(actionId);
@@ -632,10 +757,9 @@ describe('inboundMutations.retryFailedMessage', () => {
 		});
 
 		await expect(
-			t.withIdentity(testIdentity).mutation(
-				api.inbox.mutations.retryFailedMessage,
-				{ inboundMessageId: messageId }
-			)
+			t
+				.withIdentity(testIdentity)
+				.mutation(api.inbox.mutations.retryFailedMessage, { inboundMessageId: messageId })
 		).rejects.toThrow('Message has not failed');
 	});
 
@@ -644,16 +768,18 @@ describe('inboundMutations.retryFailedMessage', () => {
 
 		let messageId!: Id<'inboundMessages'>;
 		await t.run(async (ctx) => {
-			messageId = await ctx.db.insert('inboundMessages', msgData({
-				processingStatus: 'failed',
-				errorMessage: 'boom',
-			}));
+			messageId = await ctx.db.insert(
+				'inboundMessages',
+				msgData({
+					processingStatus: 'failed',
+					errorMessage: 'boom',
+				})
+			);
 		});
 
-		await t.withIdentity(testIdentity).mutation(
-			api.inbox.mutations.retryFailedMessage,
-			{ inboundMessageId: messageId }
-		);
+		await t
+			.withIdentity(testIdentity)
+			.mutation(api.inbox.mutations.retryFailedMessage, { inboundMessageId: messageId });
 
 		await t.run(async (ctx) => {
 			const logs = await ctx.db
@@ -675,16 +801,18 @@ describe('inboundMutations.blockSender', () => {
 
 		let messageId!: Id<'inboundMessages'>;
 		await t.run(async (ctx) => {
-			messageId = await ctx.db.insert('inboundMessages', msgData({
-				from: 'Spammer <spammer@evil.com>',
-				processingStatus: 'quarantined',
-			}));
+			messageId = await ctx.db.insert(
+				'inboundMessages',
+				msgData({
+					from: 'Spammer <spammer@evil.com>',
+					processingStatus: 'quarantined',
+				})
+			);
 		});
 
-		const result = await t.withIdentity(testIdentity).mutation(
-			api.inbox.mutations.blockSender,
-			{ inboundMessageId: messageId }
-		);
+		const result = await t
+			.withIdentity(testIdentity)
+			.mutation(api.inbox.mutations.blockSender, { inboundMessageId: messageId });
 
 		expect(result.success).toBe(true);
 
@@ -707,16 +835,18 @@ describe('inboundMutations.blockSender', () => {
 
 		let messageId!: Id<'inboundMessages'>;
 		await t.run(async (ctx) => {
-			messageId = await ctx.db.insert('inboundMessages', msgData({
-				from: 'plainaddr@example.com',
-				processingStatus: 'quarantined',
-			}));
+			messageId = await ctx.db.insert(
+				'inboundMessages',
+				msgData({
+					from: 'plainaddr@example.com',
+					processingStatus: 'quarantined',
+				})
+			);
 		});
 
-		await t.withIdentity(testIdentity).mutation(
-			api.inbox.mutations.blockSender,
-			{ inboundMessageId: messageId }
-		);
+		await t
+			.withIdentity(testIdentity)
+			.mutation(api.inbox.mutations.blockSender, { inboundMessageId: messageId });
 
 		await t.run(async (ctx) => {
 			const blocked = await ctx.db
@@ -738,16 +868,18 @@ describe('inboundMutations.blockSender', () => {
 				createdAt: Date.now(),
 			});
 
-			messageId = await ctx.db.insert('inboundMessages', msgData({
-				from: 'Already <already@blocked.com>',
-				processingStatus: 'quarantined',
-			}));
+			messageId = await ctx.db.insert(
+				'inboundMessages',
+				msgData({
+					from: 'Already <already@blocked.com>',
+					processingStatus: 'quarantined',
+				})
+			);
 		});
 
-		await t.withIdentity(testIdentity).mutation(
-			api.inbox.mutations.blockSender,
-			{ inboundMessageId: messageId }
-		);
+		await t
+			.withIdentity(testIdentity)
+			.mutation(api.inbox.mutations.blockSender, { inboundMessageId: messageId });
 
 		await t.run(async (ctx) => {
 			const blocked = await ctx.db
@@ -763,15 +895,17 @@ describe('inboundMutations.blockSender', () => {
 
 		let messageId!: Id<'inboundMessages'>;
 		await t.run(async (ctx) => {
-			messageId = await ctx.db.insert('inboundMessages', msgData({
-				from: 'Bad Actor <bad@actor.com>',
-			}));
+			messageId = await ctx.db.insert(
+				'inboundMessages',
+				msgData({
+					from: 'Bad Actor <bad@actor.com>',
+				})
+			);
 		});
 
-		await t.withIdentity(testIdentity).mutation(
-			api.inbox.mutations.blockSender,
-			{ inboundMessageId: messageId }
-		);
+		await t
+			.withIdentity(testIdentity)
+			.mutation(api.inbox.mutations.blockSender, { inboundMessageId: messageId });
 
 		await t.run(async (ctx) => {
 			const logs = await ctx.db
@@ -806,14 +940,13 @@ describe('agentPipeline.sendApprovedReply', () => {
 	// action queue.
 	async function approveAndDrain(
 		t: ReturnType<typeof convexTest>,
-		inboundMessageId: Id<'inboundMessages'>,
+		inboundMessageId: Id<'inboundMessages'>
 	) {
 		vi.useFakeTimers();
 		try {
-			await t.withIdentity(testIdentity).mutation(
-				api.inbox.mutations.approveDraft,
-				{ inboundMessageId }
-			);
+			await t
+				.withIdentity(testIdentity)
+				.mutation(api.inbox.mutations.approveDraft, { inboundMessageId });
 			await t.finishAllScheduledFunctions(vi.runAllTimers);
 		} finally {
 			vi.useRealTimers();
@@ -847,17 +980,20 @@ describe('agentPipeline.sendApprovedReply', () => {
 		await t.run(async (ctx) => {
 			contactId = await ctx.db.insert('contacts', createTestContact());
 			const threadId = await ctx.db.insert('conversationThreads', threadData({ contactId }));
-			messageId = await ctx.db.insert('inboundMessages', msgData({
-				contactId,
-				threadId,
-				from: 'Jane Customer <jane@customer.test>',
-				subject: 'Help with my order',
-				messageId: '<orig-123@customer.test>',
-				references: '<thread-root@customer.test>',
-				processingStatus: 'draft_ready',
-				draftResponse: 'Hi Jane,\nYour order is on the way.\n\n— Acme',
-				draftSubject: 'Re: Help with my order',
-			}));
+			messageId = await ctx.db.insert(
+				'inboundMessages',
+				msgData({
+					contactId,
+					threadId,
+					from: 'Jane Customer <jane@customer.test>',
+					subject: 'Help with my order',
+					messageId: '<orig-123@customer.test>',
+					references: '<thread-root@customer.test>',
+					processingStatus: 'draft_ready',
+					draftResponse: 'Hi Jane,\nYour order is on the way.\n\n— Acme',
+					draftSubject: 'Re: Help with my order',
+				})
+			);
 		});
 
 		await approveAndDrain(t, messageId);
@@ -871,9 +1007,7 @@ describe('agentPipeline.sendApprovedReply', () => {
 		expect(env.template.htmlContent).toContain('Your order is on the way.');
 		// Threading: In-Reply-To = the inbound message id; References appends it.
 		expect(env.headers['In-Reply-To']).toBe('<orig-123@customer.test>');
-		expect(env.headers['References']).toBe(
-			'<thread-root@customer.test> <orig-123@customer.test>'
-		);
+		expect(env.headers['References']).toBe('<thread-root@customer.test> <orig-123@customer.test>');
 
 		// A queued agent_reply Send row backs the inbound message.
 		await t.run(async (ctx) => {
@@ -893,12 +1027,15 @@ describe('agentPipeline.sendApprovedReply', () => {
 
 		let messageId!: Id<'inboundMessages'>;
 		await t.run(async (ctx) => {
-			messageId = await ctx.db.insert('inboundMessages', msgData({
-				from: 'Bob <bob@customer.test>',
-				processingStatus: 'draft_ready',
-				draftResponse: 'Thanks for reaching out.',
-				draftSubject: 'Re: question',
-			}));
+			messageId = await ctx.db.insert(
+				'inboundMessages',
+				msgData({
+					from: 'Bob <bob@customer.test>',
+					processingStatus: 'draft_ready',
+					draftResponse: 'Thanks for reaching out.',
+					draftSubject: 'Re: question',
+				})
+			);
 		});
 
 		await approveAndDrain(t, messageId);
@@ -918,13 +1055,16 @@ describe('agentPipeline.sendApprovedReply', () => {
 
 		let messageId!: Id<'inboundMessages'>;
 		await t.run(async (ctx) => {
-			messageId = await ctx.db.insert('inboundMessages', msgData({
-				from: 'plain@customer.test',
-				subject: 'No prefix subject',
-				processingStatus: 'approved',
-				draftResponse: 'Reply body',
-				// No draftSubject → derived "Re: ..." from inbound subject.
-			}));
+			messageId = await ctx.db.insert(
+				'inboundMessages',
+				msgData({
+					from: 'plain@customer.test',
+					subject: 'No prefix subject',
+					processingStatus: 'approved',
+					draftResponse: 'Reply body',
+					// No draftSubject → derived "Re: ..." from inbound subject.
+				})
+			);
 		});
 
 		await t.action(internal.agent.agentPipeline.sendApprovedReply, {
@@ -950,13 +1090,16 @@ describe('agentPipeline.sendApprovedReply', () => {
 
 		let messageId!: Id<'inboundMessages'>;
 		await t.run(async (ctx) => {
-			messageId = await ctx.db.insert('inboundMessages', msgData({
-				from: 'Jane Customer <jane@customer.test>',
-				subject: 'Help with my order',
-				processingStatus: 'approved',
-				draftResponse: 'Hi Jane,\nYour order ships Tuesday.\n\n— Acme',
-				draftSubject: 'Re: Help with my order',
-			}));
+			messageId = await ctx.db.insert(
+				'inboundMessages',
+				msgData({
+					from: 'Jane Customer <jane@customer.test>',
+					subject: 'Help with my order',
+					processingStatus: 'approved',
+					draftResponse: 'Hi Jane,\nYour order ships Tuesday.\n\n— Acme',
+					draftSubject: 'Re: Help with my order',
+				})
+			);
 		});
 
 		await t.action(internal.agent.agentPipeline.sendApprovedReply, {
@@ -974,13 +1117,16 @@ describe('agentPipeline.sendApprovedReply', () => {
 
 		let messageId!: Id<'inboundMessages'>;
 		await t.run(async (ctx) => {
-			messageId = await ctx.db.insert('inboundMessages', msgData({
-				from: 'Jane Customer <jane@customer.test>',
-				subject: 'Access',
-				processingStatus: 'approved',
-				draftResponse: 'Sure — your verification code is 481920, enter it to sign in.',
-				draftSubject: 'Re: Access',
-			}));
+			messageId = await ctx.db.insert(
+				'inboundMessages',
+				msgData({
+					from: 'Jane Customer <jane@customer.test>',
+					subject: 'Access',
+					processingStatus: 'approved',
+					draftResponse: 'Sure — your verification code is 481920, enter it to sign in.',
+					draftSubject: 'Re: Access',
+				})
+			);
 		});
 
 		await t.action(internal.agent.agentPipeline.sendApprovedReply, {
@@ -1005,13 +1151,16 @@ describe('agentPipeline.sendApprovedReply', () => {
 
 		let messageId!: Id<'inboundMessages'>;
 		await t.run(async (ctx) => {
-			messageId = await ctx.db.insert('inboundMessages', msgData({
-				from: 'Jane Customer <jane@customer.test>',
-				subject: 'Access',
-				processingStatus: 'approved',
-				draftResponse: 'Sure — your verification code is 481920, enter it to sign in.',
-				draftSubject: 'Re: Access',
-			}));
+			messageId = await ctx.db.insert(
+				'inboundMessages',
+				msgData({
+					from: 'Jane Customer <jane@customer.test>',
+					subject: 'Access',
+					processingStatus: 'approved',
+					draftResponse: 'Sure — your verification code is 481920, enter it to sign in.',
+					draftSubject: 'Re: Access',
+				})
+			);
 		});
 
 		// No `autonomous` flag → human-reviewed send → monitor bypassed.
@@ -1030,14 +1179,17 @@ describe('agentPipeline.sendApprovedReply', () => {
 		await t.run(async (ctx) => {
 			const contactId = await ctx.db.insert('contacts', createTestContact());
 			const threadId = await ctx.db.insert('conversationThreads', threadData({ contactId }));
-			messageId = await ctx.db.insert('inboundMessages', msgData({
-				contactId,
-				threadId,
-				from: '+15551234567',
-				to: 'sms', // processInboundChannel stores the channel literal in `to`
-				processingStatus: 'approved',
-				draftResponse: 'Thanks! Your order ships today.',
-			}));
+			messageId = await ctx.db.insert(
+				'inboundMessages',
+				msgData({
+					contactId,
+					threadId,
+					from: '+15551234567',
+					to: 'sms', // processInboundChannel stores the channel literal in `to`
+					processingStatus: 'approved',
+					draftResponse: 'Thanks! Your order ships today.',
+				})
+			);
 		});
 
 		await t.action(internal.agent.agentPipeline.sendApprovedReply, {
@@ -1057,13 +1209,16 @@ describe('agentPipeline.sendApprovedReply', () => {
 
 		let messageId!: Id<'inboundMessages'>;
 		await t.run(async (ctx) => {
-			messageId = await ctx.db.insert('inboundMessages', msgData({
-				from: '+15559999999',
-				to: 'whatsapp',
-				processingStatus: 'approved',
-				draftResponse: 'hi',
-				// no threadId / contactId
-			}));
+			messageId = await ctx.db.insert(
+				'inboundMessages',
+				msgData({
+					from: '+15559999999',
+					to: 'whatsapp',
+					processingStatus: 'approved',
+					draftResponse: 'hi',
+					// no threadId / contactId
+				})
+			);
 		});
 
 		await t.action(internal.agent.agentPipeline.sendApprovedReply, {
@@ -1176,4 +1331,3 @@ describe('inbound.receiveMessage blocklist auto-archive', () => {
 		expect(await scheduledWalkerStarts(t)).toBe(1);
 	});
 });
-

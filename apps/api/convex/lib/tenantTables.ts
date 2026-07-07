@@ -78,6 +78,7 @@ export const TENANT_TABLES = [
 	'domains',
 
 	// ── Inbox / inbound pipeline ──
+	'inboxAssignmentNotices',
 	'threadPresence',
 	'threadReads',
 	'inboundMessages',
