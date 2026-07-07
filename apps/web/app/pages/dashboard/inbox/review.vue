@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
+import ReviewFocusFlow from '~/components/agent-tasks/ReviewFocusFlow.vue';
 import TaskActions from '~/components/agent-tasks/TaskActions.vue';
 import TaskAsk from '~/components/agent-tasks/TaskAsk.vue';
 import TaskCardShell from '~/components/agent-tasks/TaskCardShell.vue';
@@ -50,6 +51,11 @@ function onAttachSuggested(
 		navigateTo(`/dashboard/inbox/${threadId}`);
 	}
 }
+
+// "Focus" runs the same one-task-at-a-time card-stack flow (useTaskFlow) over
+// these review items; the list below stays as the browse alternative. Separate
+// flow from the personal Reply Queue — different data source, never interleaved.
+const focusMode = ref(false);
 
 // Action state
 const actionInProgress = ref<string | null>(null);
@@ -255,242 +261,262 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 					Agent-generated drafts and escalations waiting for your action.
 				</p>
 			</div>
+			<!-- Focus: switch to the one-task-at-a-time card-stack flow. -->
+			<button
+				v-if="!focusMode && !isLoading && visibleRows.length > 0"
+				type="button"
+				class="ml-auto inline-flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-md bg-brand text-white hover:bg-brand/90 transition-colors duration-(--motion-fast)"
+				@click="focusMode = true"
+			>
+				<Icon name="lucide:target" class="w-4 h-4" />
+				Focus
+			</button>
 		</div>
 
-		<!-- Keyboard hint: this queue is keyboard-first (j/k/Enter/a/e/x). -->
-		<div
-			v-if="visibleRows.length > 0"
-			class="flex flex-wrap items-center gap-x-4 gap-y-1 mb-4 text-xs text-text-tertiary"
-		>
-			<span
-				v-for="hint in REVIEW_SHORTCUT_GROUPS"
-				:key="hint.label"
-				class="inline-flex items-center gap-1"
+		<!-- Focus flow (the browse list below stays as the alternative). -->
+		<ReviewFocusFlow v-if="focusMode" @exit="focusMode = false" />
+		<template v-else>
+			<!-- Keyboard hint: this queue is keyboard-first (j/k/Enter/a/e/x). -->
+			<div
+				v-if="visibleRows.length > 0"
+				class="flex flex-wrap items-center gap-x-4 gap-y-1 mb-4 text-xs text-text-tertiary"
 			>
-				<kbd
-					v-for="k in hint.keys"
-					:key="k"
-					class="px-1.5 py-0.5 rounded border border-border-subtle bg-bg-surface font-mono text-[10px] text-text-secondary"
-					>{{ k }}</kbd
+				<span
+					v-for="hint in REVIEW_SHORTCUT_GROUPS"
+					:key="hint.label"
+					class="inline-flex items-center gap-1"
 				>
-				<span>{{ hint.label }}</span>
-			</span>
-		</div>
-
-		<!-- Loading -->
-		<div v-if="isLoading" class="flex items-center justify-center py-16">
-			<div class="flex flex-col items-center gap-3">
-				<UiSpinner />
-				<p class="text-text-secondary text-sm">Loading review queue...</p>
-			</div>
-		</div>
-
-		<!-- Empty State -->
-		<div
-			v-else-if="visibleRows.length === 0"
-			class="flex flex-col items-center justify-center py-16 text-center"
-		>
-			<UiIconBox
-				icon="lucide:check-circle"
-				size="xl"
-				variant="success"
-				rounded="full"
-				class="mb-4"
-			/>
-			<p class="text-text-secondary font-medium">All caught up!</p>
-			<p class="text-sm text-text-tertiary mt-1">No drafts need your review right now.</p>
-		</div>
-
-		<!-- Review Items — a keyboard-navigable listbox (j/k/Enter/1-9/a/e/s/x)
-		     of shared agent task cards. -->
-		<ul
-			v-else
-			ref="listboxEl"
-			tabindex="0"
-			role="listbox"
-			aria-label="Review queue"
-			:aria-activedescendant="activeRowId"
-			class="space-y-4 outline-none focus-visible:ring-1 focus-visible:ring-brand/40 focus-visible:ring-inset rounded-lg"
-			@keydown="onQueueKeydown"
-		>
-			<TaskCardShell
-				v-for="(row, i) in visibleRows"
-				:id="`review-row-${row._id}`"
-				:key="row._id"
-				as="li"
-				role="option"
-				:aria-selected="focusedIndex === i"
-				:focused="focusedIndex === i"
-			>
-				<TaskContext :who="row.message.from" icon="lucide:mail">
-					<template #meta>
-						{{ formatCompactRelativeTime(row.message._creationTime) }}
-						<template v-if="row.thread">
-							&middot;
-							<NuxtLink
-								:to="`/dashboard/inbox/${row.thread._id}`"
-								class="text-brand hover:underline"
-							>
-								View thread
-							</NuxtLink>
-						</template>
-					</template>
-					<!-- One roll-up trust chip (human language; reasons + raw numbers in
-					     its popover) + the category chip. -->
-					<template #trailing>
-						<div v-if="row.message.classification" class="flex items-center gap-2">
-							<InboxTrustChip
-								:trust="rowTrust(row.message)"
-								:extra-detail="rowTrustDetail(row.message)"
-							/>
-							<span class="text-xs px-2 py-0.5 rounded-full bg-brand-subtle text-brand">
-								{{ row.message.classification.category }}
-							</span>
-						</div>
-					</template>
-				</TaskContext>
-
-				<!-- The ask: subject + excerpt, with the muted one-line WHY the agent
-				     held/escalated it (moved up from the old rationale block). -->
-				<TaskAsk
-					class="mt-3 mb-4"
-					:ask="row.message.subject || undefined"
-					:detail="row.message.textBody || '(No text content)'"
-					:why="rowWhy(row.message)"
-				/>
-
-				<!-- Draftless escalation: compose a reply inline -->
-				<template v-if="needsReply(row.message)">
-					<div class="bg-warning/5 border border-warning/20 rounded-lg p-4 mb-4">
-						<div class="flex items-center gap-2 mb-3">
-							<Icon name="lucide:user-round" class="w-4 h-4 text-warning" />
-							<p class="text-xs font-medium text-warning uppercase tracking-wider">
-								Escalated — write a reply
-							</p>
-						</div>
-						<input
-							v-model="composeSubject[row.message._id]"
-							type="text"
-							class="input w-full text-sm mb-3"
-							placeholder="Subject (optional)"
-						/>
-						<textarea
-							v-model="composeBody[row.message._id]"
-							rows="6"
-							class="input w-full text-sm resize-y"
-							placeholder="Type your reply…"
-						/>
-						<!-- Coach the ADMIN's own reply to a high-stakes escalation before
-						     they send it. Advisory only — never rewrites the text. -->
-						<PostboxCoachPanel
-							:draft-text="composeBody[row.message._id] ?? ''"
-							:enabled="aiEnabled"
-							:thread-context="row.message.textBody ?? undefined"
-						/>
-					</div>
-
-					<!-- What the agent had to work from (the WHY line above carries the
-					     escalation reason). -->
-					<InboxDecisionRationale :grounding-sources="row.message.groundingSources" class="mb-4" />
-
-					<!-- Actions -->
-					<TaskActions
-						primary-label="Send Reply"
-						primary-icon="lucide:send"
-						:primary-disabled="
-							actionInProgress === row.message._id || !composeBody[row.message._id]?.trim()
-						"
-						skip-label="Dismiss"
-						skip-destructive
-						:skip-disabled="actionInProgress === row.message._id"
-						@primary="onComposeSend(row.message._id)"
-						@skip="onRejectClick(row.message._id)"
+					<kbd
+						v-for="k in hint.keys"
+						:key="k"
+						class="px-1.5 py-0.5 rounded border border-border-subtle bg-bg-surface font-mono text-[10px] text-text-secondary"
+						>{{ k }}</kbd
 					>
-						<NuxtLink
-							v-if="row.thread"
-							:to="`/dashboard/inbox/${row.thread._id}`"
-							class="inline-flex items-center gap-1 text-xs px-2 py-1.5 rounded border border-border-subtle text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast)"
-						>
-							<Icon name="lucide:external-link" class="w-3 h-3" />
-							Open thread
-						</NuxtLink>
-					</TaskActions>
-				</template>
+					<span>{{ hint.label }}</span>
+				</span>
+			</div>
 
-				<!-- Agent draft awaiting approval -->
-				<template v-else>
-					<!-- Multiple pickable draft options (low-confidence / low-quality cases) -->
-					<InboxDraftOptions
-						v-if="(row.message.draftOptions?.length ?? 0) > 1"
-						:options="row.message.draftOptions ?? []"
-						:model-value="selectedOption[row.message._id] ?? 0"
-						class="mb-4"
-						@update:model-value="selectedOption[row.message._id] = $event"
+			<!-- Loading -->
+			<div v-if="isLoading" class="flex items-center justify-center py-16">
+				<div class="flex flex-col items-center gap-3">
+					<UiSpinner />
+					<p class="text-text-secondary text-sm">Loading review queue...</p>
+				</div>
+			</div>
+
+			<!-- Empty State -->
+			<div
+				v-else-if="visibleRows.length === 0"
+				class="flex flex-col items-center justify-center py-16 text-center"
+			>
+				<UiIconBox
+					icon="lucide:check-circle"
+					size="xl"
+					variant="success"
+					rounded="full"
+					class="mb-4"
+				/>
+				<p class="text-text-secondary font-medium">All caught up!</p>
+				<p class="text-sm text-text-tertiary mt-1">No drafts need your review right now.</p>
+			</div>
+
+			<!-- Review Items — a keyboard-navigable listbox (j/k/Enter/1-9/a/e/s/x)
+		     of shared agent task cards. -->
+			<ul
+				v-else
+				ref="listboxEl"
+				tabindex="0"
+				role="listbox"
+				aria-label="Review queue"
+				:aria-activedescendant="activeRowId"
+				class="space-y-4 outline-none focus-visible:ring-1 focus-visible:ring-brand/40 focus-visible:ring-inset rounded-lg"
+				@keydown="onQueueKeydown"
+			>
+				<TaskCardShell
+					v-for="(row, i) in visibleRows"
+					:id="`review-row-${row._id}`"
+					:key="row._id"
+					as="li"
+					role="option"
+					:aria-selected="focusedIndex === i"
+					:focused="focusedIndex === i"
+				>
+					<TaskContext :who="row.message.from" icon="lucide:mail">
+						<template #meta>
+							{{ formatCompactRelativeTime(row.message._creationTime) }}
+							<template v-if="row.thread">
+								&middot;
+								<NuxtLink
+									:to="`/dashboard/inbox/${row.thread._id}`"
+									class="text-brand hover:underline"
+								>
+									View thread
+								</NuxtLink>
+							</template>
+						</template>
+						<!-- One roll-up trust chip (human language; reasons + raw numbers in
+					     its popover) + the category chip. -->
+						<template #trailing>
+							<div v-if="row.message.classification" class="flex items-center gap-2">
+								<InboxTrustChip
+									:trust="rowTrust(row.message)"
+									:extra-detail="rowTrustDetail(row.message)"
+								/>
+								<span class="text-xs px-2 py-0.5 rounded-full bg-brand-subtle text-brand">
+									{{ row.message.classification.category }}
+								</span>
+							</div>
+						</template>
+					</TaskContext>
+
+					<!-- The ask: subject + excerpt, with the muted one-line WHY the agent
+				     held/escalated it (moved up from the old rationale block). -->
+					<TaskAsk
+						class="mt-3 mb-4"
+						:ask="row.message.subject || undefined"
+						:detail="row.message.textBody || '(No text content)'"
+						:why="rowWhy(row.message)"
 					/>
 
-					<!-- Single agent draft -->
-					<div v-else class="bg-brand-subtle/30 rounded-lg p-4 mb-4">
-						<div class="flex items-center gap-2 mb-2">
-							<Icon name="lucide:bot" class="w-4 h-4 text-brand" />
-							<p class="text-xs font-medium text-brand uppercase tracking-wider">Agent Draft</p>
+					<!-- Draftless escalation: compose a reply inline -->
+					<template v-if="needsReply(row.message)">
+						<div class="bg-warning/5 border border-warning/20 rounded-lg p-4 mb-4">
+							<div class="flex items-center gap-2 mb-3">
+								<Icon name="lucide:user-round" class="w-4 h-4 text-warning" />
+								<p class="text-xs font-medium text-warning uppercase tracking-wider">
+									Escalated — write a reply
+								</p>
+							</div>
+							<input
+								v-model="composeSubject[row.message._id]"
+								type="text"
+								class="input w-full text-sm mb-3"
+								placeholder="Subject (optional)"
+							/>
+							<textarea
+								v-model="composeBody[row.message._id]"
+								rows="6"
+								class="input w-full text-sm resize-y"
+								placeholder="Type your reply…"
+							/>
+							<!-- Coach the ADMIN's own reply to a high-stakes escalation before
+						     they send it. Advisory only — never rewrites the text. -->
+							<PostboxCoachPanel
+								:draft-text="composeBody[row.message._id] ?? ''"
+								:enabled="aiEnabled"
+								:thread-context="row.message.textBody ?? undefined"
+							/>
 						</div>
-						<p class="text-text-primary text-sm whitespace-pre-wrap">
-							{{ row.message.draftResponse }}
-						</p>
 
-						<!-- Freeform whole-draft revise ("redo but decline politely"), streamed. -->
-						<AiReviseBox
-							v-if="aiEnabled && row.message.draftResponse"
-							class="mt-3"
-							surface="review"
-							:ai-enabled="aiEnabled"
-							:current-draft="row.message.draftResponse ?? ''"
-							@apply="(text: string) => onReviseApply(row.message._id, text)"
+						<!-- What the agent had to work from (the WHY line above carries the
+					     escalation reason). -->
+						<InboxDecisionRationale
+							:grounding-sources="row.message.groundingSources"
+							class="mb-4"
 						/>
-					</div>
 
-					<!-- One-tap "attach the right file?" when the inbound asked for a
+						<!-- Actions -->
+						<TaskActions
+							primary-label="Send Reply"
+							primary-icon="lucide:send"
+							:primary-disabled="
+								actionInProgress === row.message._id || !composeBody[row.message._id]?.trim()
+							"
+							skip-label="Dismiss"
+							skip-destructive
+							:skip-disabled="actionInProgress === row.message._id"
+							@primary="onComposeSend(row.message._id)"
+							@skip="onRejectClick(row.message._id)"
+						>
+							<NuxtLink
+								v-if="row.thread"
+								:to="`/dashboard/inbox/${row.thread._id}`"
+								class="inline-flex items-center gap-1 text-xs px-2 py-1.5 rounded border border-border-subtle text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast)"
+							>
+								<Icon name="lucide:external-link" class="w-3 h-3" />
+								Open thread
+							</NuxtLink>
+						</TaskActions>
+					</template>
+
+					<!-- Agent draft awaiting approval -->
+					<template v-else>
+						<!-- Multiple pickable draft options (low-confidence / low-quality cases) -->
+						<InboxDraftOptions
+							v-if="(row.message.draftOptions?.length ?? 0) > 1"
+							:options="row.message.draftOptions ?? []"
+							:model-value="selectedOption[row.message._id] ?? 0"
+							class="mb-4"
+							@update:model-value="selectedOption[row.message._id] = $event"
+						/>
+
+						<!-- Single agent draft -->
+						<div v-else class="bg-brand-subtle/30 rounded-lg p-4 mb-4">
+							<div class="flex items-center gap-2 mb-2">
+								<Icon name="lucide:bot" class="w-4 h-4 text-brand" />
+								<p class="text-xs font-medium text-brand uppercase tracking-wider">Agent Draft</p>
+							</div>
+							<p class="text-text-primary text-sm whitespace-pre-wrap">
+								{{ row.message.draftResponse }}
+							</p>
+
+							<!-- Freeform whole-draft revise ("redo but decline politely"), streamed. -->
+							<AiReviseBox
+								v-if="aiEnabled && row.message.draftResponse"
+								class="mt-3"
+								surface="review"
+								:ai-enabled="aiEnabled"
+								:current-draft="row.message.draftResponse ?? ''"
+								@apply="(text: string) => onReviseApply(row.message._id, text)"
+							/>
+						</div>
+
+						<!-- One-tap "attach the right file?" when the inbound asked for a
 					     document and a contact-scoped file matched. Advisory; the human
 					     confirms — the agent never auto-attaches. -->
-					<InboxAttachSuggestion
-						v-if="(row.message.attachmentSuggestions?.candidates?.length ?? 0) > 0"
-						:suggestions="row.message.attachmentSuggestions!"
-						class="mb-4"
-						@attach="(c) => onAttachSuggested(row.thread?._id, c)"
-					/>
+						<InboxAttachSuggestion
+							v-if="(row.message.attachmentSuggestions?.candidates?.length ?? 0) > 0"
+							:suggestions="row.message.attachmentSuggestions!"
+							class="mb-4"
+							@attach="(c) => onAttachSuggested(row.thread?._id, c)"
+						/>
 
-					<!-- What it was grounded in (the WHY line above carries the hold
+						<!-- What it was grounded in (the WHY line above carries the hold
 					     reason; read-only) -->
-					<InboxDecisionRationale :grounding-sources="row.message.groundingSources" class="mb-4" />
+						<InboxDecisionRationale
+							:grounding-sources="row.message.groundingSources"
+							class="mb-4"
+						/>
 
-					<!-- Actions -->
-					<TaskActions
-						primary-label="Approve & Send"
-						primary-icon="lucide:check"
-						:primary-disabled="actionInProgress === row.message._id"
-						skip-label="Reject"
-						skip-destructive
-						:skip-disabled="actionInProgress === row.message._id"
-						@primary="
-							onApproveOptionClick(
-								row.message._id,
-								row.message.draftOptions,
-								row.message.draftResponse
-							)
-						"
-						@skip="onRejectClick(row.message._id)"
-					>
-						<NuxtLink
-							v-if="row.thread"
-							:to="`/dashboard/inbox/${row.thread._id}`"
-							class="inline-flex items-center gap-1 text-xs px-2 py-1.5 rounded border border-border-subtle text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast)"
+						<!-- Actions -->
+						<TaskActions
+							primary-label="Approve & Send"
+							primary-icon="lucide:check"
+							:primary-disabled="actionInProgress === row.message._id"
+							skip-label="Reject"
+							skip-destructive
+							:skip-disabled="actionInProgress === row.message._id"
+							@primary="
+								onApproveOptionClick(
+									row.message._id,
+									row.message.draftOptions,
+									row.message.draftResponse
+								)
+							"
+							@skip="onRejectClick(row.message._id)"
 						>
-							<Icon name="lucide:pencil" class="w-3 h-3" />
-							Edit
-						</NuxtLink>
-					</TaskActions>
-				</template>
-			</TaskCardShell>
-		</ul>
+							<NuxtLink
+								v-if="row.thread"
+								:to="`/dashboard/inbox/${row.thread._id}`"
+								class="inline-flex items-center gap-1 text-xs px-2 py-1.5 rounded border border-border-subtle text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast)"
+							>
+								<Icon name="lucide:pencil" class="w-3 h-3" />
+								Edit
+							</NuxtLink>
+						</TaskActions>
+					</template>
+				</TaskCardShell>
+			</ul>
+		</template>
 	</div>
 </template>
