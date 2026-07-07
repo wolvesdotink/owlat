@@ -3,7 +3,7 @@ import { api } from '@owlat/api';
 import { isValidEmail } from '~/utils/validation';
 import { buildDeliveryEnvSnippet } from '~/utils/deliveryEnvSnippet';
 
-useHead({ title: 'Delivery — Owlat' });
+useHead({ title: 'Delivery provider — Owlat' });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -15,18 +15,14 @@ const { showToast } = useToast();
 
 // Admin-gated send-path status. Booleans only — the query never returns a
 // credential value, just the presence of each required env var.
-const {
-	data: status,
-	isLoading,
-	error,
-} = useOrganizationQuery(api.delivery.status.getStatus);
+const { data: status, isLoading, error } = useOrganizationQuery(api.delivery.status.getStatus);
 
 const canSend = computed(() => status.value?.canSend === true);
 
 // Names of the required env vars the active provider is MISSING. Names only —
 // `getStatus` never returns credential values, so nothing secret reaches here.
 const missingEnvNames = computed(() =>
-	(status.value?.requiredEnv ?? []).filter((entry) => !entry.isPresent).map((entry) => entry.name),
+	(status.value?.requiredEnv ?? []).filter((entry) => !entry.isPresent).map((entry) => entry.name)
 );
 
 // Paste-ready `.env` skeleton for the missing vars (one `NAME=` line, empty
@@ -56,7 +52,7 @@ watch(
 	(u) => {
 		if (u?.email && !testEmail.value) testEmail.value = u.email;
 	},
-	{ immediate: true },
+	{ immediate: true }
 );
 
 const { run: sendTest, isLoading: isSending } = useBackendOperation(api.delivery.status.sendTest, {
@@ -86,16 +82,16 @@ async function handleSendTest() {
 		<!-- Header -->
 		<div class="mb-6">
 			<NuxtLink
-				to="/dashboard/settings/technical"
+				to="/dashboard/delivery/setup"
 				class="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary mb-4"
 			>
 				<Icon name="lucide:arrow-left" class="w-4 h-4" />
-				Back to Technical
+				Delivery setup
 			</NuxtLink>
 			<div class="flex items-center gap-3">
 				<UiIconBox icon="lucide:send" size="lg" variant="brand" rounded="xl" />
 				<div>
-					<h1 class="text-2xl font-semibold text-text-primary">Delivery</h1>
+					<h1 class="text-2xl font-semibold text-text-primary">Delivery provider</h1>
 					<p class="mt-1 text-text-secondary">
 						Configure and validate the email delivery provider this instance sends through
 					</p>
@@ -118,15 +114,15 @@ async function handleSendTest() {
 		<div v-else-if="status" class="space-y-6 max-w-3xl">
 			<!-- Can-send status -->
 			<UiCard padding="none" overflow="hidden">
-				<div
-					class="p-6 flex items-start gap-4"
-					:class="canSend ? 'bg-success/5' : 'bg-error/5'"
-				>
+				<div class="p-6 flex items-start gap-4" :class="canSend ? 'bg-success/5' : 'bg-error/5'">
 					<div
 						class="shrink-0 w-12 h-12 rounded-xl flex items-center justify-center"
 						:class="canSend ? 'bg-success/15 text-success' : 'bg-error/15 text-error'"
 					>
-						<Icon :name="canSend ? 'lucide:check-circle-2' : 'lucide:alert-triangle'" class="w-6 h-6" />
+						<Icon
+							:name="canSend ? 'lucide:check-circle-2' : 'lucide:alert-triangle'"
+							class="w-6 h-6"
+						/>
 					</div>
 					<div class="flex-1 min-w-0">
 						<h2 class="text-lg font-semibold" :class="canSend ? 'text-success' : 'text-error'">
@@ -151,7 +147,8 @@ async function handleSendTest() {
 							<div>
 								<div class="flex items-center justify-between mb-2">
 									<p class="text-xs font-medium text-text-primary">
-										Add to your <code class="text-text-primary">.env</code>, then restart the instance
+										Add to your <code class="text-text-primary">.env</code>, then restart the
+										instance
 									</p>
 									<button
 										type="button"
@@ -167,9 +164,13 @@ async function handleSendTest() {
 										{{ isCopied('env-snippet') ? 'Copied' : 'Copy' }}
 									</button>
 								</div>
-								<pre class="select-all overflow-x-auto rounded-lg bg-bg-surface px-3 py-2 font-mono text-xs text-text-primary">{{ envSnippet }}</pre>
+								<pre
+									class="select-all overflow-x-auto rounded-lg bg-bg-surface px-3 py-2 font-mono text-xs text-text-primary"
+									>{{ envSnippet }}</pre
+								>
 								<p class="text-xs text-text-tertiary mt-1.5">
-									Values are left blank — fill in your real credentials. They are never displayed here.
+									Values are left blank — fill in your real credentials. They are never displayed
+									here.
 								</p>
 							</div>
 
@@ -191,10 +192,13 @@ async function handleSendTest() {
 										{{ isCopied('env-cmd') ? 'Copied' : 'Copy' }}
 									</button>
 								</div>
-								<pre class="select-all overflow-x-auto rounded-lg bg-bg-surface px-3 py-2 font-mono text-xs text-text-primary">{{ envSetCommand }}</pre>
+								<pre
+									class="select-all overflow-x-auto rounded-lg bg-bg-surface px-3 py-2 font-mono text-xs text-text-primary"
+									>{{ envSetCommand }}</pre
+								>
 								<p class="text-xs text-text-tertiary mt-1.5">
-									Run <code class="text-text-primary">owlat-setup env --show</code> to list every variable
-									your current configuration needs. See the
+									Run <code class="text-text-primary">owlat-setup env --show</code> to list every
+									variable your current configuration needs. See the
 									<a
 										href="https://docs.owlat.app/developer/environment-variables"
 										target="_blank"
@@ -228,7 +232,9 @@ async function handleSendTest() {
 					<div class="flex items-center justify-between">
 						<div>
 							<p class="text-sm font-medium text-text-primary">Active provider</p>
-							<p class="text-xs text-text-tertiary mt-0.5">From the EMAIL_PROVIDER environment variable</p>
+							<p class="text-xs text-text-tertiary mt-0.5">
+								From the EMAIL_PROVIDER environment variable
+							</p>
 						</div>
 						<UiBadge v-if="status.provider && status.isKnownProvider" variant="default" size="md">
 							{{ status.provider }}
@@ -252,10 +258,7 @@ async function handleSendTest() {
 									class="inline-flex items-center gap-1.5 text-xs font-medium"
 									:class="entry.isPresent ? 'text-success' : 'text-error'"
 								>
-									<Icon
-										:name="entry.isPresent ? 'lucide:check' : 'lucide:x'"
-										class="w-3.5 h-3.5"
-									/>
+									<Icon :name="entry.isPresent ? 'lucide:check' : 'lucide:x'" class="w-3.5 h-3.5" />
 									{{ entry.isPresent ? 'present' : 'missing' }}
 								</span>
 							</li>
@@ -266,7 +269,8 @@ async function handleSendTest() {
 					</div>
 					<p v-else class="text-sm text-text-tertiary border-t border-border-subtle pt-5">
 						Select a delivery provider (set <code class="text-text-primary">EMAIL_PROVIDER</code> to
-						<code class="text-text-primary">mta</code>, <code class="text-text-primary">resend</code>, or
+						<code class="text-text-primary">mta</code>,
+						<code class="text-text-primary">resend</code>, or
 						<code class="text-text-primary">ses</code>) to see its required variables.
 					</p>
 				</div>
@@ -298,7 +302,11 @@ async function handleSendTest() {
 								:disabled="isSending"
 							/>
 						</div>
-						<UiButton :loading="isSending" :disabled="isSending || !canSend" @click="handleSendTest">
+						<UiButton
+							:loading="isSending"
+							:disabled="isSending || !canSend"
+							@click="handleSendTest"
+						>
 							<template #iconLeft>
 								<Icon v-if="!isSending" name="lucide:send" class="w-4 h-4" />
 							</template>
