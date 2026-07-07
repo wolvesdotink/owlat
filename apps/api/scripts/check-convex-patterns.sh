@@ -18,28 +18,53 @@
 
 cd "$(dirname "$0")/.."
 
-# ── Pattern 1: `.filter(` calls in Convex source ─────────────────────────────
-# Best practice: narrow with `.withIndex(...)` rather than an in-memory
-# predicate. The count includes legitimate, unavoidable uses that the baseline
-# absorbs and that should only trend DOWN:
-#   - JS Array `.filter()` over already-bounded in-memory sets (the majority).
-#   - DB `.filter()` composed AFTER a `.withIndex(...)` equality on a non-leading
-#     field, where no compound index exists and the narrowed set is tiny — e.g.
-#     the soft-delete `deletedAt === undefined` post-filter, Message-ID dedup by
-#     mailboxId, per-parent `.first()` status filters, and the dynamic audit-log
-#     viewer (optional date/action/resource/user filters over `by_created_at`).
-# A NEW `ctx.db.query().filter()` full-table scan is the anti-pattern to avoid;
-# add the index instead. Raising this baseline needs a per-call justification.
-# Lowered 175 → 168 in the boundedness-audit pass: six DB `.filter()` scans moved
-# onto (new) compound indexes — webhooks/cleanup ×2 (by_status_and_completed_at),
-# agentHealth ×3 (by_metric_type_and_window_start), campaigns/analytics (by_is_ab_test)
-# — plus the comment-line skip drops one prose mention of `.filter()`.
-FILTER_BASELINE=168
-filter_count=$(grep -rn "\.filter(" convex --include="*.ts" 2>/dev/null \
-	| grep -v "/_generated/" \
-	| grep -v "/__tests__/" \
-	| grep -vE '^[^:]*:[0-9]+:[[:space:]]*(//|\*|/\*)' \
-	| wc -l | tr -d ' ')
+# ── Pattern 1: full-table `ctx.db.query().filter()` scans ────────────────────
+# Best practice: narrow with `.withIndex(...)` rather than an in-memory predicate.
+# This flags ONLY the real anti-pattern — a `.filter(...)` on a `ctx.db.query()`
+# chain that has NO `.withIndex()`/`.withSearchIndex()` before it — and ignores
+# the two harmless cases the old blanket count kept churning the baseline for:
+#   - JS Array `.filter()` over an in-memory set (`arr.filter(...)`), and
+#   - a DB `.filter()` composed AFTER an index (soft-delete `deletedAt`, Message-ID
+#     dedup, per-parent `.first()` status filters, the dynamic audit-log viewer).
+# Detection (awk, statement-aware): for each `.filter(`, if it opens a fluent
+# continuation line, walk back through the chain to the `.query(`; if that chain
+# carries no index it is a full scan. An inline `.query(...).filter(...)` with no
+# index counts too. A trailing `;` (± line comment) marks a statement boundary so
+# a JS filter after a query statement is not misattributed.
+#
+# Baseline is 1: transactional/sends.ts listAll pages `transactionalSends` newest-
+# first and post-filters the soft-delete `deletedAt` (GDPR-erased sends are rare,
+# the read is `.take()`-bounded, and no index preserves creation-desc order while
+# filtering deletedAt). A NEW full-table filter must add the index instead.
+FILTER_BASELINE=1
+filter_count=0
+while IFS= read -r f; do
+	c=$(awk '
+		{ lines[NR] = $0 }
+		END {
+			for (i = 1; i <= NR; i++) {
+				line = lines[i]
+				if (line !~ /\.filter\(/) continue
+				t = line; sub(/^[[:space:]]+/, "", t)
+				if (t ~ /^(\/\/|\*|\/\*)/) continue           # comment-only line
+				isDb = 0; hasIndex = 0
+				if (t ~ /^\.filter\(/) {
+					# fluent continuation: walk back through the chain to its query
+					for (k = i - 1; k >= 1 && k >= i - 20; k--) {
+						if (lines[k] ~ /\.withIndex\(|\.withSearchIndex\(/) hasIndex = 1
+						ends = (lines[k] ~ /;[[:space:]]*(\/\/.*)?$/)   # statement boundary
+						if (lines[k] ~ /\.query\(/ && !ends) { isDb = 1; break }
+						if (ends) break
+					}
+				} else if (line ~ /\.query\(/ && line !~ /\.withIndex\(|\.withSearchIndex\(/) {
+					isDb = 1                                   # inline query().filter(), no index
+				}
+				if (isDb && !hasIndex) n++
+			}
+			print n + 0
+		}' "$f")
+	filter_count=$((filter_count + c))
+done < <(find convex -name "*.ts" -not -path "*/_generated/*" -not -path "*/__tests__/*")
 
 # ── Pattern 2: unbounded `.collect()` ────────────────────────────────────────
 # Best practice: bound reads via `.take(n)`, pagination, or a per-parent /
@@ -125,7 +150,7 @@ report() {
 	fi
 }
 
-report ".filter() calls           " "$filter_count"      "$FILTER_BASELINE"
+report "query().filter() full-scans" "$filter_count"      "$FILTER_BASELINE"
 report ".collect() unbounded      " "$collect_count"     "$COLLECT_BASELINE"
 report "missing args: validators  " "$args_count"        "$ARGS_BASELINE"
 report "console.log debug calls   " "$console_log_count" "$CONSOLE_LOG_BASELINE"
