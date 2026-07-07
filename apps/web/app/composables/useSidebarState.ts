@@ -6,6 +6,7 @@ export interface SectionState {
 	chat: boolean;
 	assistant: boolean;
 	send: boolean;
+	delivery: boolean;
 	knowledge: boolean;
 	audience: boolean;
 	settings: boolean;
@@ -19,6 +20,7 @@ const defaultSectionState: SectionState = {
 	chat: true,
 	assistant: true,
 	send: true,
+	delivery: true,
 	knowledge: true,
 	audience: true,
 	settings: true,

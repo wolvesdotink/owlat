@@ -15,7 +15,7 @@ export class SettingsTrackingDomainsPage extends BasePage {
 	}
 
 	async goto() {
-		await this.page.goto('/dashboard/settings/domains');
+		await this.page.goto('/dashboard/delivery/domains');
 		await this.waitForHeading();
 	}
 

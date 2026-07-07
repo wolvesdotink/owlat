@@ -160,6 +160,21 @@ export default defineNuxtConfig({
 		'/dashboard/mail/**': { redirect: '/dashboard/send/**' },
 		'/dashboard/emails/**': { redirect: '/dashboard/send/emails/**' },
 		'/dashboard/transactional/**': { redirect: '/dashboard/send/transactional/**' },
+
+		// IA restructure (part 2): deliverability is promoted out of the hidden
+		// Settings → Technical hub into its own first-class "Delivery" section at
+		// /dashboard/delivery/*. Redirect the old settings paths so bookmarks and
+		// deep links keep working; splat forwarding preserves trailing paths.
+		// (settings/blocklist stays put — it moves in a later piece; settings/api
+		// stays under Settings, it's app-level and only cross-linked from here.)
+		'/dashboard/settings/reputation': { redirect: '/dashboard/delivery' },
+		'/dashboard/settings/domains': { redirect: '/dashboard/delivery/domains' },
+		'/dashboard/settings/domains/**': { redirect: '/dashboard/delivery/domains/**' },
+		'/dashboard/settings/provider-routing': { redirect: '/dashboard/delivery/provider-routing' },
+		'/dashboard/settings/webhooks': { redirect: '/dashboard/delivery/webhooks' },
+		'/dashboard/settings/delivery': { redirect: '/dashboard/delivery/config' },
+		// Technical hub dissolved: its non-delivery cards re-home under Settings.
+		'/dashboard/settings/technical': { redirect: '/dashboard/settings' },
 	},
 
 	icon: {

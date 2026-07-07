@@ -13,7 +13,7 @@
  *   - `assertDevDeployment()` — refuses when `OWLAT_DEV_MODE` is not enabled
  *   - `hasPermission(role, 'organization:manage')` — must be org owner/admin
  *   - UI button is only rendered when `import.meta.env.DEV` is true AND the
- *     current user is owner/admin (see apps/web/.../settings/domains.vue)
+ *     current user is owner/admin (see apps/web/.../delivery/domains.vue)
  *
  * `seedTag` semantics: the user's existing domain row is NEVER tagged — that
  * would silently opt a real domain into the `/dev/reset` cascade. Only rows
@@ -45,10 +45,7 @@ type VerificationResults = NonNullable<DomainDoc['verificationResults']>;
  * that read `domain.verificationResults` (and assume `verified` rows carry
  * one) don't trip over `undefined`.
  */
-function synthesiseVerificationResults(
-	domain: DomainDoc,
-	at: number,
-): VerificationResults {
+function synthesiseVerificationResults(domain: DomainDoc, at: number): VerificationResults {
 	const dns = domain.dnsRecords;
 	const ok = { verified: true, lastChecked: at };
 	const results: VerificationResults = {};
@@ -138,10 +135,14 @@ export const forceVerifyDomain = authedMutation({
 	},
 	handler: async (ctx, { domainId }): Promise<ForceVerifyResult> => {
 		assertDevDeployment();
-		const session = await requireOrgPermission(ctx, 'organization:manage', 'Only owners and admins can force-verify domains');
+		const session = await requireOrgPermission(
+			ctx,
+			'organization:manage',
+			'Only owners and admins can force-verify domains'
+		);
 		return await ctx.runMutation(
 			internal.devShortcuts.forceVerifyDomain.forceVerifyDomainInternal,
-			{ domainId, userId: session.userId },
+			{ domainId, userId: session.userId }
 		);
 	},
 });

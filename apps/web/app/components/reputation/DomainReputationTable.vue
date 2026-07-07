@@ -48,7 +48,7 @@ function getStatusBadgeClass(status: string | null): string {
 				description="Domain reputation metrics will appear after you start sending from verified domains."
 			>
 				<template #action>
-					<NuxtLink to="/dashboard/settings/domains">
+					<NuxtLink to="/dashboard/delivery/domains">
 						<UiButton variant="secondary">
 							<template #iconLeft>
 								<Icon name="lucide:plus" class="w-4 h-4" />
@@ -61,11 +61,7 @@ function getStatusBadgeClass(status: string | null): string {
 
 			<!-- Domain list -->
 			<div v-else class="divide-y divide-border-subtle">
-				<div
-					v-for="domain in domains"
-					:key="domain.domain"
-					class="py-4 first:pt-0 last:pb-0"
-				>
+				<div v-for="domain in domains" :key="domain.domain" class="py-4 first:pt-0 last:pb-0">
 					<div class="flex items-start justify-between gap-4">
 						<div class="min-w-0 flex-1">
 							<div class="flex items-center gap-2 mb-1">

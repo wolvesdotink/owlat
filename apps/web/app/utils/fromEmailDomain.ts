@@ -3,7 +3,7 @@
  * verified sending domains (settings/index.vue). Surfacing the mismatch as a
  * non-blocking warning — rather than a hard error — keeps the field usable
  * while a domain is still being verified, but points the operator at
- * /dashboard/settings/domains before they ship campaigns from an unauthorized
+ * /dashboard/delivery/domains before they ship campaigns from an unauthorized
  * domain.
  */
 
@@ -11,7 +11,10 @@
 export function emailDomain(email: string): string | null {
 	const at = email.lastIndexOf('@');
 	if (at < 0) return null;
-	const domain = email.slice(at + 1).trim().toLowerCase();
+	const domain = email
+		.slice(at + 1)
+		.trim()
+		.toLowerCase();
 	return domain.length > 0 ? domain : null;
 }
 
@@ -26,7 +29,7 @@ export function emailDomain(email: string): string | null {
  */
 export function unverifiedFromDomainWarning(
 	email: string,
-	verifiedDomains: string[] | undefined | null,
+	verifiedDomains: string[] | undefined | null
 ): string | null {
 	const domain = emailDomain(email);
 	if (!domain) return null;

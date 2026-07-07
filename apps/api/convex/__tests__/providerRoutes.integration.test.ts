@@ -1,7 +1,7 @@
 /**
  * Provider-routes mutation contract tests.
  *
- * The settings UI (apps/web .../settings/provider-routing.vue) uses the shared
+ * The settings UI (apps/web .../delivery/provider-routing.vue) uses the shared
  * `result === undefined ⇒ failure` idiom from `useBackendOperation` to decide
  * whether to fire the success toast and close the confirm dialog. Because a
  * caught throw also resolves to `undefined`, every mutation that idiom guards
@@ -19,17 +19,11 @@ vi.mock('../lib/sessionOrganization', async () => {
 	return {
 		...actual,
 		// `authedQuery`/`authedMutation` floor + the handler's own role check.
-		requireOrgMember: vi
-			.fn()
-			.mockResolvedValue({ userId: 'test-user', role: 'owner' }),
+		requireOrgMember: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
 		getUserIdFromSession: vi.fn().mockResolvedValue('test-user'),
-		getMutationContext: vi
-			.fn()
-			.mockResolvedValue({ userId: 'test-user', role: 'owner' }),
-		requireOrgPermission: vi
-			.fn()
-			.mockResolvedValue({ userId: 'test-user', role: 'owner' }),
+		getMutationContext: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
+		requireOrgPermission: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
 	};
 });
 
@@ -48,8 +42,8 @@ const modules = Object.fromEntries(
 			!path.includes('knowledgeExtraction') &&
 			!path.includes('semanticFileProcessing') &&
 			!path.includes('visualizationAgent') &&
-			!path.includes('llmProvider'),
-	),
+			!path.includes('llmProvider')
+	)
 );
 
 const identity = {

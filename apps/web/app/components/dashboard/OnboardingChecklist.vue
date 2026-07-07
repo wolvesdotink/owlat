@@ -38,7 +38,7 @@ const steps = computed(() => [
 			'Set up a delivery provider so this instance can actually send email — then send a test',
 		icon: 'lucide:send',
 		completed: progress.value?.sendPathReady ?? false,
-		href: '/dashboard/settings/delivery',
+		href: '/dashboard/delivery/config',
 		cta: 'Set up sending',
 	},
 	{
@@ -84,7 +84,7 @@ const steps = computed(() => [
 		description: 'Verify a sending domain (SPF, DKIM, DMARC) for deliverability',
 		icon: 'lucide:globe',
 		completed: progress.value?.setupDomain ?? false,
-		href: '/dashboard/settings/domains',
+		href: '/dashboard/delivery/domains',
 		cta: 'Add Domain',
 	},
 ]);
