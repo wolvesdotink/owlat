@@ -1,12 +1,20 @@
 <script setup lang="ts">
+import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import AgentTaskFlow from '~/components/agent-tasks/AgentTaskFlow.vue';
 import TaskActions from '~/components/agent-tasks/TaskActions.vue';
 import TaskAsk from '~/components/agent-tasks/TaskAsk.vue';
 import TaskCardShell from '~/components/agent-tasks/TaskCardShell.vue';
 import TaskContext from '~/components/agent-tasks/TaskContext.vue';
+import { useOrganization } from '~/composables/useOrganization';
 import { useTaskFlow } from '~/composables/useTaskFlow';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
+import {
+	GENERIC_TEAMMATE_NAME,
+	isReplyCollision,
+	replyCollisionToast,
+	sendHoldReason,
+} from '~/utils/replyCollision';
 import { formatTaskFlowEstimate, type TaskFlowKind, type TaskFlowOrderKey } from '~/utils/taskFlow';
 import { escalationTrustLabel, trustLabel, type TrustLabel } from '~/utils/trustLabel';
 
@@ -41,6 +49,35 @@ const peekLabel = computed(() => {
 	const n = flow.nextItem.value;
 	return n ? n.message.subject || '(no subject)' : '';
 });
+
+// Collision soft-hold: while ANOTHER teammate is actively replying to the
+// current card's thread, hold the send/approve button (disabled-styled but
+// visible) so we don't double-answer. Read-only presence subscription (this
+// fast card stack doesn't advertise its own heartbeat); the server re-checks at
+// send time as a belt-and-braces guard. Releases on its own when they drop.
+const { user } = useAuth();
+const { members, fetchMembers } = useOrganization();
+onMounted(() => void fetchMembers());
+
+const currentThreadId = computed<Id<'conversationThreads'> | null>(
+	() => current.value?.thread?._id ?? null
+);
+const { data: presenceData } = useConvexQuery(api.inbox.presence.list, () =>
+	currentThreadId.value ? { threadId: currentThreadId.value } : 'skip'
+);
+const heldReplier = computed(() => {
+	const uid = user.value?.id;
+	return (presenceData.value ?? []).find((r) => r.mode === 'replying' && r.userId !== uid) ?? null;
+});
+const isHeld = computed(() => heldReplier.value !== null);
+const heldByName = computed(() => {
+	if (!heldReplier.value) return null;
+	const m = members.value.find((x) => x.userId === heldReplier.value!.userId);
+	return m ? m.user.name || m.user.email : GENERIC_TEAMMATE_NAME;
+});
+const heldReason = computed(() =>
+	isHeld.value && heldByName.value ? sendHoldReason(heldByName.value) : undefined
+);
 
 const started = ref(false);
 watch(
@@ -101,7 +138,7 @@ function rowTrust(message: FlowItem['message']): TrustLabel {
 const composeBody = reactive<Record<string, string>>({});
 
 async function approve(row: FlowItem) {
-	if (busy.value) return;
+	if (busy.value || isHeld.value) return;
 	busy.value = true;
 	try {
 		const options = row.message.draftOptions;
@@ -110,6 +147,11 @@ async function approve(row: FlowItem) {
 				? await approveOption(row.message._id, options[0]!, row.message.draftResponse)
 				: await onApprove(row.message._id);
 		if (result === undefined) return;
+		// Server refused because a teammate just replied — toast, don't advance.
+		if (isReplyCollision(result)) {
+			showToast(replyCollisionToast(result.heldByName ?? GENERIC_TEAMMATE_NAME), 'error');
+			return;
+		}
 		showToast('Draft approved and queued for sending');
 		flow.complete(row.id, { outcome: 'approved' });
 	} finally {
@@ -131,11 +173,16 @@ async function reject(row: FlowItem) {
 
 async function sendReply(row: FlowItem) {
 	const body = composeBody[row.message._id] ?? '';
-	if (busy.value || body.trim().length === 0) return;
+	if (busy.value || isHeld.value || body.trim().length === 0) return;
 	busy.value = true;
 	try {
 		const result = await composeAndSend(row.message._id, body);
 		if (result === undefined) return;
+		// Server refused because a teammate just replied — toast, don't advance.
+		if (isReplyCollision(result)) {
+			showToast(replyCollisionToast(result.heldByName ?? GENERIC_TEAMMATE_NAME), 'error');
+			return;
+		}
 		delete composeBody[row.message._id];
 		showToast('Reply sent');
 		flow.complete(row.id, { outcome: 'sent' });
@@ -217,6 +264,8 @@ function openThread(row: FlowItem) {
 						primary-icon="lucide:send"
 						:primary-disabled="busy || !composeBody[current.message._id]?.trim()"
 						:primary-loading="busy"
+						:held="isHeld"
+						:held-reason="heldReason"
 						skip-label="Dismiss"
 						skip-destructive
 						:skip-disabled="busy"
@@ -261,6 +310,8 @@ function openThread(row: FlowItem) {
 						primary-icon="lucide:check"
 						:primary-disabled="busy"
 						:primary-loading="busy"
+						:held="isHeld"
+						:held-reason="heldReason"
 						skip-label="Reject"
 						skip-destructive
 						:skip-disabled="busy"

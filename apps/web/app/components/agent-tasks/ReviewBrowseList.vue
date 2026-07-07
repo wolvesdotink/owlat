@@ -4,6 +4,11 @@ import TaskActions from '~/components/agent-tasks/TaskActions.vue';
 import TaskAsk from '~/components/agent-tasks/TaskAsk.vue';
 import TaskCardShell from '~/components/agent-tasks/TaskCardShell.vue';
 import TaskContext from '~/components/agent-tasks/TaskContext.vue';
+import {
+	GENERIC_TEAMMATE_NAME,
+	isReplyCollision,
+	replyCollisionToast,
+} from '~/utils/replyCollision';
 import { REVIEW_SHORTCUT_GROUPS } from '~/utils/reviewShortcuts';
 import { escalationTrustLabel, trustLabel, type TrustLabel } from '~/utils/trustLabel';
 
@@ -133,6 +138,12 @@ const onApproveClick = async (messageId: Id<'inboundMessages'>) => {
 			unhideRow(messageId);
 			return;
 		}
+		// Server refused because a teammate just replied — restore the row + toast.
+		if (isReplyCollision(result)) {
+			unhideRow(messageId);
+			showToast(replyCollisionToast(result.heldByName ?? GENERIC_TEAMMATE_NAME), 'error');
+			return;
+		}
 		showToast('Draft approved and queued for sending');
 	} finally {
 		actionInProgress.value = null;
@@ -157,6 +168,12 @@ const onApproveOptionClick = async (
 		const result = await approveOption(messageId, chosen, currentDraft);
 		if (result === undefined) {
 			unhideRow(messageId);
+			return;
+		}
+		// Server refused because a teammate just replied — restore the row + toast.
+		if (isReplyCollision(result)) {
+			unhideRow(messageId);
+			showToast(replyCollisionToast(result.heldByName ?? GENERIC_TEAMMATE_NAME), 'error');
 			return;
 		}
 		showToast('Draft approved and queued for sending');
@@ -231,6 +248,11 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 	try {
 		const result = await composeAndSend(messageId, body, composeSubject[messageId]);
 		if (result === undefined) return;
+		// Server refused because a teammate just replied — keep the draft + toast.
+		if (isReplyCollision(result)) {
+			showToast(replyCollisionToast(result.heldByName ?? GENERIC_TEAMMATE_NAME), 'error');
+			return;
+		}
 		delete composeBody[messageId];
 		delete composeSubject[messageId];
 		showToast('Reply sent');
