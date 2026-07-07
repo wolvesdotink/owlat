@@ -44,7 +44,7 @@ beforeEach(() => {
 			return Promise.resolve({ success: true });
 		},
 	}));
-	vi.stubGlobal('displayToast', () => {});
+	vi.stubGlobal('useToast', () => ({ showToast: vi.fn() }));
 });
 
 describe('useChannelInbox', () => {
