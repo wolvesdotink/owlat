@@ -2,6 +2,12 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { useOrganization } from '~/composables/useOrganization';
+import {
+	GENERIC_TEAMMATE_NAME,
+	isReplyCollision,
+	replyCollisionToast,
+	sendHoldReason,
+} from '~/utils/replyCollision';
 
 useHead({ title: 'Thread — Owlat' });
 
@@ -72,6 +78,20 @@ const presencePeople = computed(() =>
 	})
 );
 
+// Collision soft-hold: while another teammate is actively replying to THIS
+// thread, hold the send/approve controls (disabled-styled but visible) so we
+// don't double-answer. Never a lock — it releases on its own when their
+// `replying` presence expires or drops. The `approveDraft` mutation re-checks
+// server-side as a belt-and-braces guard (see utils/replyCollision.ts).
+const heldByReplierName = computed(() => {
+	const r = presencePeople.value.find((p) => p.mode === 'replying');
+	return r ? r.name : null;
+});
+const isHeld = computed(() => heldByReplierName.value !== null);
+const holdReason = computed(() =>
+	isHeld.value && heldByReplierName.value ? sendHoldReason(heldByReplierName.value) : undefined
+);
+
 // Actions state
 const isApproving = ref(false);
 const isRejecting = ref(false);
@@ -106,10 +126,17 @@ const onUnsnooze = async () => {
 };
 
 const onApprove = async (messageId: Id<'inboundMessages'>) => {
+	if (isHeld.value) return;
 	isApproving.value = true;
 	try {
 		const result = await handleApprove(messageId);
-		if (result !== undefined) showToast('Draft approved and queued for sending');
+		if (result === undefined) return;
+		// Server refused because a teammate just replied — toast, don't claim success.
+		if (isReplyCollision(result)) {
+			showToast(replyCollisionToast(result.heldByName ?? GENERIC_TEAMMATE_NAME), 'error');
+			return;
+		}
+		showToast('Draft approved and queued for sending');
 	} finally {
 		isApproving.value = false;
 	}
@@ -146,10 +173,17 @@ const onRetry = async (messageId: Id<'inboundMessages'>) => {
 };
 
 const onSaveEdit = async (messageId: Id<'inboundMessages'>) => {
+	if (isHeld.value) return;
 	isSavingEdit.value = true;
 	try {
 		const result = await saveEditedDraft(messageId);
-		if (result !== undefined) showToast('Draft saved, approved and queued for sending');
+		if (result === undefined) return;
+		// Server refused because a teammate just replied — toast, don't claim success.
+		if (isReplyCollision(result)) {
+			showToast(replyCollisionToast(result.heldByName ?? GENERIC_TEAMMATE_NAME), 'error');
+			return;
+		}
+		showToast('Draft saved, approved and queued for sending');
 	} finally {
 		isSavingEdit.value = false;
 	}
@@ -419,6 +453,8 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 										v-model="editedDraftResponse"
 										:original="message.draftResponse ?? ''"
 										:saving="isSavingEdit"
+										:held="isHeld"
+										:held-reason="holdReason"
 										@apply="onSaveEdit(message._id)"
 										@discard="cancelEditDraft"
 									/>
@@ -436,8 +472,9 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 								<!-- Action Buttons -->
 								<div class="flex items-center gap-2 mt-4">
 									<button
-										class="btn btn-primary btn-sm gap-1"
-										:disabled="isApproving"
+										class="btn btn-primary btn-sm gap-1 disabled:cursor-not-allowed"
+										:disabled="isApproving || isHeld"
+										:aria-disabled="isHeld ? 'true' : undefined"
 										@click="onApprove(message._id)"
 									>
 										<div
@@ -459,6 +496,20 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 										Reject
 									</button>
 								</div>
+								<!-- Soft-hold reason: a teammate is replying; releases on its own. -->
+								<p
+									v-if="isHeld && holdReason"
+									class="mt-2 inline-flex items-center gap-1.5 text-[11px] text-text-tertiary"
+									data-testid="thread-held-reason"
+									role="status"
+								>
+									<Icon
+										name="lucide:pencil-line"
+										class="w-3 h-3 text-warning shrink-0"
+										aria-hidden="true"
+									/>
+									<span>{{ holdReason }}</span>
+								</p>
 							</template>
 						</div>
 					</div>
