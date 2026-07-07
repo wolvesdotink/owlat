@@ -7,10 +7,9 @@
  * command-palette can react regardless of the current route. Call once from the
  * dashboard layout. No-op on web.
  *
- * Consumers of `owlat:quick-switcher`: the header `GlobalSearch` opens it
- * whenever no `PostboxCommandPalette` is mounted, and `PostboxCommandPalette`
- * owns it whenever one is (it bumps a shared mount counter `GlobalSearch`
- * watches) — so the OS-global shortcut always opens exactly one switcher.
+ * Consumer of `owlat:quick-switcher`: the app-wide `AppCommandPalette` (mounted
+ * once in the dashboard layout) opens on this event, so the OS-global shortcut
+ * always opens exactly one palette regardless of route.
  */
 export function useDesktopShortcuts() {
 	const { isDesktop } = useDesktopContext();
@@ -22,8 +21,8 @@ export function useDesktopShortcuts() {
 			const { onShortcut } = await import('@owlat/desktop/src/shortcuts');
 			unsubs.push(
 				await onShortcut('quick-switcher', () =>
-					window.dispatchEvent(new CustomEvent('owlat:quick-switcher')),
-				),
+					window.dispatchEvent(new CustomEvent('owlat:quick-switcher'))
+				)
 			);
 		} catch {
 			// Tauri not available
