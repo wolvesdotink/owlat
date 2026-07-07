@@ -12,17 +12,39 @@ import { useChannelInbox } from '../useChannelInbox';
 let lastQueryName: string | null;
 let lastArgsFactory: (() => unknown) | null;
 const dataRef = ref<unknown>(undefined);
+// getChannelConfigs data (org query) — drives the per-channel health dots.
+const channelConfigsRef = ref<unknown>(undefined);
+// Records the last updateThreadStatus call so the resolve action can be asserted.
+let lastStatusArgs: unknown;
 
 beforeEach(() => {
 	lastQueryName = null;
 	lastArgsFactory = null;
 	dataRef.value = undefined;
+	channelConfigsRef.value = undefined;
+	lastStatusArgs = undefined;
 
-	vi.stubGlobal('useConvexQuery', (query: Parameters<typeof getFunctionName>[0], argsFactory: () => unknown) => {
-		lastQueryName = getFunctionName(query);
-		lastArgsFactory = argsFactory;
-		return { data: dataRef, isLoading: ref(false), error: ref(undefined) };
-	});
+	vi.stubGlobal(
+		'useConvexQuery',
+		(query: Parameters<typeof getFunctionName>[0], argsFactory: () => unknown) => {
+			lastQueryName = getFunctionName(query);
+			lastArgsFactory = argsFactory;
+			return { data: dataRef, isLoading: ref(false), error: ref(undefined) };
+		}
+	);
+	// getChannelConfigs is subscribed via useOrganizationQuery, not useConvexQuery.
+	vi.stubGlobal('useOrganizationQuery', () => ({
+		data: channelConfigsRef,
+		isLoading: ref(false),
+		error: ref(undefined),
+	}));
+	vi.stubGlobal('useBackendOperation', () => ({
+		run: (args: unknown) => {
+			lastStatusArgs = args;
+			return Promise.resolve({ success: true });
+		},
+	}));
+	vi.stubGlobal('displayToast', () => {});
 });
 
 describe('useChannelInbox', () => {
@@ -53,11 +75,33 @@ describe('useChannelInbox', () => {
 	it('exposes the timeline (empty array until data arrives) and channel display helpers', () => {
 		const inbox = useChannelInbox();
 		expect(inbox.timeline.value).toEqual([]);
-		dataRef.value = [{ _id: 'm1', channel: 'email', direction: 'inbound', createdAt: 0, content: {} }];
+		dataRef.value = [
+			{ _id: 'm1', channel: 'email', direction: 'inbound', createdAt: 0, content: {} },
+		];
 		expect(inbox.timeline.value).toHaveLength(1);
 		expect(inbox.channelLabel('email')).toBe('Email');
 		expect(inbox.channelLabel('sms')).toBe('SMS');
 		expect(inbox.directionLabel('inbound')).toBe('Received');
 		expect(inbox.directionLabel('outbound')).toBe('Sent');
+	});
+
+	it('surfaces a health dot only for enabled channels that have a config row', () => {
+		const inbox = useChannelInbox();
+		channelConfigsRef.value = [
+			{ channel: 'sms', isEnabled: true, healthStatus: 'degraded' },
+			{ channel: 'whatsapp', isEnabled: true }, // no status → healthy
+			{ channel: 'generic', isEnabled: false, healthStatus: 'down' }, // disabled → no dot
+		];
+		expect(inbox.channelHealth('sms')?.variant).toBe('warning');
+		expect(inbox.channelHealth('whatsapp')?.variant).toBe('success');
+		// Disabled row and channels with no config row get no dot.
+		expect(inbox.channelHealth('generic')).toBeNull();
+		expect(inbox.channelHealth('email')).toBeNull();
+	});
+
+	it('resolves a conversation via the shared updateThreadStatus lifecycle', async () => {
+		const inbox = useChannelInbox();
+		await inbox.resolveThread('thread_1' as never);
+		expect(lastStatusArgs).toEqual({ threadId: 'thread_1', status: 'resolved' });
 	});
 });
