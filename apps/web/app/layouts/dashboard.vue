@@ -71,7 +71,6 @@ const navigationSections = computed(() => {
 	const settingsItems = [
 		{ name: 'Overview', href: '/dashboard/settings', icon: 'lucide:settings' },
 		{ name: 'Organization', href: '/dashboard/settings/organization', icon: 'lucide:building-2' },
-		{ name: 'Technical', href: '/dashboard/settings/technical', icon: 'lucide:wrench' },
 		{ name: 'Properties', href: '/dashboard/settings/properties', icon: 'lucide:tags' },
 		{ name: 'Features', href: '/dashboard/settings/features', icon: 'lucide:toggle-right' },
 		...(isFeatureEnabled('ai.agent')
@@ -174,6 +173,20 @@ const navigationSections = computed(() => {
 
 	sections.push({ key: 'send', name: 'Send', icon: 'lucide:send', items: sendItems });
 
+	// Delivery: deliverability promoted to its own first-class section. Health is
+	// the landing overview; Setup is the slim config hub (domains, provider
+	// routing, webhooks, provider config, API keys). The section header carries a
+	// live worst-of status dot (see useDeliveryHealth).
+	sections.push({
+		key: 'delivery',
+		name: 'Delivery',
+		icon: 'lucide:truck',
+		items: [
+			{ name: 'Health', href: '/dashboard/delivery', icon: 'lucide:activity' },
+			{ name: 'Setup', href: '/dashboard/delivery/setup', icon: 'lucide:settings-2' },
+		],
+	});
+
 	if (isFeatureEnabled('ai.knowledge')) {
 		sections.push({
 			key: 'knowledge',
@@ -226,6 +239,14 @@ const isActiveRoute = (href: string) => {
 			(route.path.startsWith(href + '/') && !route.path.startsWith('/dashboard/send/transactional'))
 		);
 	}
+	if (href === '/dashboard/delivery') {
+		// Health owns only the section root; every other /dashboard/delivery/* page
+		// (Setup + the infra config pages it links to) belongs to Setup.
+		return route.path === href;
+	}
+	if (href === '/dashboard/delivery/setup') {
+		return route.path.startsWith('/dashboard/delivery/');
+	}
 	if (href === '/dashboard/knowledge') {
 		// Knowledge list + entry detail pages, but not the Graph subpage (its own item).
 		return (
@@ -248,6 +269,7 @@ const getSectionOverviewRoute = (sectionKey: string) => {
 		chat: '/dashboard/chat',
 		assistant: '/dashboard/assistant',
 		send: '/dashboard/send',
+		delivery: '/dashboard/delivery',
 		knowledge: '/dashboard/knowledge',
 		audience: '/dashboard/audience',
 		settings: '/dashboard/settings',
@@ -323,6 +345,15 @@ useDesktopNotifications();
 const chatMentionCount = computed(() => 0);
 const chatMentions = isFeatureEnabled('chat') ? useChatMentions() : null;
 const liveChatMentionCount = computed(() => chatMentions?.count.value ?? chatMentionCount.value);
+
+// Live delivery-health roll-up for the Delivery section's status dot. Stays
+// invisible while healthy; shows a warning/error dot with a title tooltip
+// naming the worst offender otherwise.
+const {
+	isVisible: isDeliveryHealthVisible,
+	reason: deliveryHealthReason,
+	dotClass: deliveryHealthDotClass,
+} = useDeliveryHealth();
 
 // Register Quick Query keyboard shortcut (Cmd+Shift+K / Ctrl+Shift+K).
 // Quick Query searches the knowledge graph, so it is gated on `ai.knowledge`
@@ -490,7 +521,7 @@ const mainPaddingClass = computed(() => {
 						<!-- Section header -->
 						<button
 							:class="[
-								'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+								'relative w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
 								isSectionActive(section)
 									? 'text-brand'
 									: 'text-text-secondary hover:text-text-primary hover:bg-bg-surface',
@@ -514,6 +545,22 @@ const mainPaddingClass = computed(() => {
 							>
 								{{ liveChatMentionCount > 99 ? '99+' : liveChatMentionCount }}
 							</span>
+							<!-- Delivery health dot: worst-of reputation / domains / provider.
+							     Hidden while healthy. Expanded → inline; collapsed → corner overlay. -->
+							<span
+								v-if="section.key === 'delivery' && isDeliveryHealthVisible && !isCollapsed"
+								class="w-2 h-2 rounded-full flex-shrink-0"
+								:class="deliveryHealthDotClass"
+								:title="deliveryHealthReason"
+								:aria-label="deliveryHealthReason"
+							/>
+							<span
+								v-if="section.key === 'delivery' && isDeliveryHealthVisible && isCollapsed"
+								class="absolute top-1.5 right-1.5 w-2 h-2 rounded-full ring-2 ring-bg-base"
+								:class="deliveryHealthDotClass"
+								:title="deliveryHealthReason"
+								:aria-label="deliveryHealthReason"
+							/>
 							<Icon
 								v-if="!isCollapsed"
 								name="lucide:chevron-down"
