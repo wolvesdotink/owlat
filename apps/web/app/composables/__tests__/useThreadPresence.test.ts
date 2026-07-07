@@ -44,7 +44,11 @@ afterEach(() => {
 		// already unmounted
 	}
 	wrapper = null;
-	vi.unstubAllGlobals();
+	// NB: do NOT call vi.unstubAllGlobals() here — it would also wipe the Vue
+	// auto-import polyfills (`ref`/`computed`/…) that app/__tests__/setup.ts
+	// registers via vi.stubGlobal, breaking every test after the first. The
+	// per-test stubs (useConvex/useConvexQuery/useAuth) are re-applied in
+	// beforeEach, and vitest isolates globals per test file.
 });
 
 describe('useThreadPresence', () => {
