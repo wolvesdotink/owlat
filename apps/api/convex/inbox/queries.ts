@@ -6,10 +6,95 @@
  */
 
 import { v } from 'convex/values';
+import type { QueryCtx } from '../_generated/server';
 import { publicQuery } from '../lib/authedFunctions';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 import { assertFeatureEnabled } from '../lib/featureFlags';
 import { PRESENCE_ACTIVE_WINDOW_MS } from './presence';
+import { compareNeedsAttention } from './threadSort';
+
+/**
+ * Team Inbox filter pills. Each value is one focused slice of the shared inbox:
+ *   - open        active conversations, snoozed ones hidden until they wake
+ *   - mine        assigned to me and still active (open/waiting)
+ *   - unassigned  nobody owns it yet and still active (open/waiting)
+ *   - waiting     waiting on the customer's reply
+ *   - snoozed     currently snoozed (returns automatically later)
+ *   - resolved    marked resolved
+ * Absent = every thread (used by the chat "link an inbox thread" picker).
+ */
+const threadFilterValidator = v.union(
+	v.literal('open'),
+	v.literal('mine'),
+	v.literal('unassigned'),
+	v.literal('waiting'),
+	v.literal('snoozed'),
+	v.literal('resolved')
+);
+
+/** How many rows a filter-count pill will read before rendering "99+". */
+const FILTER_COUNT_CAP = 100;
+
+type ThreadFilter = 'open' | 'mine' | 'unassigned' | 'waiting' | 'snoozed' | 'resolved';
+
+/**
+ * Build the index-driven query for one filter pill. Every branch is indexed so
+ * a filter change simply selects a different index — pagination and counts both
+ * page cleanly without any O(all-threads) scan. Shared by `listThreads` and
+ * `getThreadFilterCounts` so a pill's count and its list always agree.
+ *
+ * `undefined` filter = every thread (the chat link-thread picker), ordered by
+ * recency.
+ */
+function buildThreadQuery(
+	ctx: QueryCtx,
+	filter: ThreadFilter | undefined,
+	userId: string,
+	now: number
+) {
+	const base = ctx.db.query('conversationThreads');
+	switch (filter) {
+		case 'open':
+			// Active conversations; a snoozed thread stays hidden until it wakes.
+			return base
+				.withIndex('by_status_and_last_message_at', (idx) => idx.eq('status', 'open'))
+				.filter((f) =>
+					f.or(f.eq(f.field('snoozedUntil'), undefined), f.lte(f.field('snoozedUntil'), now))
+				);
+		case 'waiting':
+			// Waiting on the customer — also parks snoozed rows under Snoozed only.
+			return base
+				.withIndex('by_status_and_last_message_at', (idx) => idx.eq('status', 'waiting'))
+				.filter((f) =>
+					f.or(f.eq(f.field('snoozedUntil'), undefined), f.lte(f.field('snoozedUntil'), now))
+				);
+		case 'resolved':
+			return base.withIndex('by_status_and_last_message_at', (idx) => idx.eq('status', 'resolved'));
+		case 'mine':
+			// Assigned to me, still active (open/waiting), not currently snoozed.
+			return base
+				.withIndex('by_assigned_to', (idx) => idx.eq('assignedTo', userId))
+				.filter((f) =>
+					f.and(
+						f.or(f.eq(f.field('status'), 'open'), f.eq(f.field('status'), 'waiting')),
+						f.or(f.eq(f.field('snoozedUntil'), undefined), f.lte(f.field('snoozedUntil'), now))
+					)
+				);
+		case 'unassigned':
+			return base
+				.withIndex('by_assigned_to', (idx) => idx.eq('assignedTo', undefined))
+				.filter((f) =>
+					f.and(
+						f.or(f.eq(f.field('status'), 'open'), f.eq(f.field('status'), 'waiting')),
+						f.or(f.eq(f.field('snoozedUntil'), undefined), f.lte(f.field('snoozedUntil'), now))
+					)
+				);
+		case 'snoozed':
+			return base.withIndex('by_snoozed_until', (idx) => idx.gt('snoozedUntil', now));
+		default:
+			return base.withIndex('by_last_message_at');
+	}
+}
 
 /**
  * List conversation threads with filtering
@@ -17,10 +102,10 @@ import { PRESENCE_ACTIVE_WINDOW_MS } from './presence';
 // public: soft-auth — admin-only shared inbox; returns empty for non-admins
 export const listThreads = publicQuery({
 	args: {
-		status: v.optional(
-			v.union(v.literal('open'), v.literal('waiting'), v.literal('resolved'), v.literal('closed'))
-		),
-		assignedToMe: v.optional(v.boolean()),
+		filter: v.optional(threadFilterValidator),
+		// Ordering. `needs-attention` (the default view) floats drafts-ready then
+		// unassigned-unread then oldest-open to the top; `newest` is plain recency.
+		sort: v.optional(v.union(v.literal('needs-attention'), v.literal('newest'))),
 		limit: v.optional(v.number()),
 		cursor: v.optional(v.string()),
 	},
@@ -32,49 +117,21 @@ export const listThreads = publicQuery({
 		}
 
 		const limit = args.limit ?? 20;
-
-		// Real keyset pagination via .paginate() — the previous implementation
-		// ignored `args.cursor` entirely (so load-more re-returned the first
-		// page) and post-filtered `assignedToMe` AFTER .take(), which dropped
-		// assigned threads beyond the first window and produced a wrong cursor.
-		// Drive the query off an index that already encodes the filter so paging
-		// is complete:
-		//   - assignedToMe → by_assigned_to (eq this user)
-		//   - status only  → by_status (eq status)
-		//   - neither      → by_last_message_at
-		const base = ctx.db.query('conversationThreads');
-		// A snoozed thread leaves the Open filter until its snoozedUntil passes
-		// (the wake cron then clears it). Applied ONLY to the Open filter — the
-		// All / Waiting / Resolved views still surface snoozed rows, whose chip
-		// reads "Snoozed". Composes with .paginate() the same way a status filter
-		// does (filtered-out rows shrink the page; the cursor stays complete).
 		const now = Date.now();
-		const hideSnoozed = args.status === 'open';
+		const sort = args.sort ?? 'newest';
 
-		let q;
-		if (args.assignedToMe) {
-			const userId = session.userId;
-			let assigned = base.withIndex('by_assigned_to', (idx) => idx.eq('assignedTo', userId));
-			// A status filter composes correctly with .paginate() (filtered-out
-			// rows shrink the page but the cursor stays complete).
-			if (args.status) assigned = assigned.filter((f) => f.eq(f.field('status'), args.status!));
-			if (hideSnoozed) {
-				assigned = assigned.filter((f) =>
-					f.or(f.eq(f.field('snoozedUntil'), undefined), f.lte(f.field('snoozedUntil'), now))
-				);
-			}
-			q = assigned.order('desc');
-		} else if (args.status) {
-			let statusQ = base.withIndex('by_status', (idx) => idx.eq('status', args.status!));
-			if (hideSnoozed) {
-				statusQ = statusQ.filter((f) =>
-					f.or(f.eq(f.field('snoozedUntil'), undefined), f.lte(f.field('snoozedUntil'), now))
-				);
-			}
-			q = statusQ.order('desc');
-		} else {
-			q = base.withIndex('by_last_message_at').order('desc');
-		}
+		// Each filter selects an index that already encodes the slice, so paging
+		// stays complete (a filtered-out row shrinks the page but the keyset
+		// cursor is still valid). Ordering:
+		//   - snoozed         → next-to-wake first (snoozedUntil asc)
+		//   - needs-attention → oldest activity first (asc) so the longest-waiting
+		//                        thread leads; the page is then re-floated by the
+		//                        shared needs-attention comparator.
+		//   - newest          → most-recent activity first (desc).
+		const built = buildThreadQuery(ctx, args.filter, session.userId, now);
+		const order: 'asc' | 'desc' =
+			args.filter === 'snoozed' || sort === 'needs-attention' ? 'asc' : 'desc';
+		const q = built.order(order);
 
 		const result = await q.paginate({ cursor: args.cursor ?? null, numItems: limit });
 
@@ -134,10 +191,51 @@ export const listThreads = publicQuery({
 			})
 		);
 
+		// Re-float the fetched page by the needs-attention rule (drafts-ready →
+		// unassigned-unread → oldest). The index already delivered rows oldest
+		// activity first, so this only lifts the drafts/unread tiers within the
+		// loaded window; pagination stays index-driven.
+		if (sort === 'needs-attention') threads.sort(compareNeedsAttention);
+
 		return {
 			threads,
 			nextCursor: result.isDone ? null : result.continueCursor,
 		};
+	},
+});
+
+/**
+ * Per-filter thread counts for the Team Inbox filter pills.
+ *
+ * Each count reads at most `FILTER_COUNT_CAP` rows off the same index the list
+ * uses, so a pill never triggers an unbounded scan; a slice at the cap renders
+ * as "99+" in the UI. Subscribed only by the inbox landing view.
+ */
+// public: soft-auth — admin-only shared inbox; returns empty for non-admins
+export const getThreadFilterCounts = publicQuery({
+	args: {},
+	handler: async (ctx) => {
+		await assertFeatureEnabled(ctx, 'inbox');
+		const session = await getBetterAuthSessionWithRole(ctx);
+		if (!session || (session.role !== 'owner' && session.role !== 'admin')) return null;
+
+		const now = Date.now();
+		const userId = session.userId;
+		const countFilter = async (filter: ThreadFilter) => {
+			const rows = await buildThreadQuery(ctx, filter, userId, now).take(FILTER_COUNT_CAP);
+			return rows.length;
+		};
+
+		const [open, mine, unassigned, waiting, snoozed, resolved] = await Promise.all([
+			countFilter('open'),
+			countFilter('mine'),
+			countFilter('unassigned'),
+			countFilter('waiting'),
+			countFilter('snoozed'),
+			countFilter('resolved'),
+		]);
+
+		return { open, mine, unassigned, waiting, snoozed, resolved, cap: FILTER_COUNT_CAP };
 	},
 });
 

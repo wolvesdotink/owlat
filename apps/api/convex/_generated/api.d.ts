@@ -258,6 +258,7 @@ import type * as inbox_queries from "../inbox/queries.js";
 import type * as inbox_reads from "../inbox/reads.js";
 import type * as inbox_snooze from "../inbox/snooze.js";
 import type * as inbox_stepOutputs from "../inbox/stepOutputs.js";
+import type * as inbox_threadSort from "../inbox/threadSort.js";
 import type * as inbox_threads_module from "../inbox/threads/module.js";
 import type * as integrationImports__common from "../integrationImports/_common.js";
 import type * as integrationImports_providers_index from "../integrationImports/providers/index.js";
@@ -803,6 +804,7 @@ declare const fullApi: ApiFromModules<{
   "inbox/reads": typeof inbox_reads;
   "inbox/snooze": typeof inbox_snooze;
   "inbox/stepOutputs": typeof inbox_stepOutputs;
+  "inbox/threadSort": typeof inbox_threadSort;
   "inbox/threads/module": typeof inbox_threads_module;
   "integrationImports/_common": typeof integrationImports__common;
   "integrationImports/providers/index": typeof integrationImports_providers_index;

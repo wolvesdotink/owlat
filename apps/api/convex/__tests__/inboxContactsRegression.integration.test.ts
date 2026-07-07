@@ -34,7 +34,7 @@ const setUser = (id: string, role: 'owner' | 'admin' | 'editor' = 'owner') => {
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual<typeof import('../lib/sessionOrganization')>(
-		'../lib/sessionOrganization',
+		'../lib/sessionOrganization'
 	);
 	return {
 		...actual,
@@ -50,19 +50,19 @@ vi.mock('../lib/sessionOrganization', async () => {
 		})),
 		// authedMutation handlers gate on requireOrgPermission; run the real
 		// role→permission map so an editor is rejected by the genuine check.
-		requireOrgPermission: vi.fn().mockImplementation(
-			async (_ctx: unknown, permission: string, message?: string) => {
+		requireOrgPermission: vi
+			.fn()
+			.mockImplementation(async (_ctx: unknown, permission: string, message?: string) => {
 				const mod: typeof import('../lib/sessionOrganization') = actual;
 				mod.requirePermission(
 					mod.hasPermission(
 						sessionMock.user.role as Parameters<typeof mod.hasPermission>[0],
-						permission as Parameters<typeof mod.hasPermission>[1],
+						permission as Parameters<typeof mod.hasPermission>[1]
 					),
-					message,
+					message
 				);
 				return { userId: sessionMock.user.id, role: sessionMock.user.role };
-			},
-		),
+			}),
 		// adminMutation's wrapper calls requireAdminContext; reject editors so the
 		// role gate is exercised end-to-end.
 		requireAdminContext: vi.fn().mockImplementation(async () => {
@@ -103,8 +103,8 @@ const modules = Object.fromEntries(
 			!path.includes('knowledgeExtraction') &&
 			!path.includes('semanticFileProcessing') &&
 			!path.includes('visualizationAgent') &&
-			!path.includes('llmProvider'),
-	),
+			!path.includes('llmProvider')
+	)
 );
 
 /** Seed a userProfiles row so an assignee resolves via by_auth_user_id. */
@@ -128,7 +128,7 @@ const seedThread = async (
 		status: 'open' | 'waiting' | 'resolved' | 'closed';
 		assignedTo: string;
 		lastMessageAt: number;
-	}> = {},
+	}> = {}
 ) =>
 	t.run(async (ctx) => {
 		const now = Date.now();
@@ -147,7 +147,7 @@ const seedThread = async (
 
 const auditRows = (t: TestConvex<typeof schema>, action: string) =>
 	t.run(async (ctx) =>
-		(await ctx.db.query('auditLogs').collect()).filter((r) => r.action === action),
+		(await ctx.db.query('auditLogs').collect()).filter((r) => r.action === action)
 	);
 
 beforeEach(() => {
@@ -199,7 +199,7 @@ describe('inbox.listThreads pagination', () => {
 		expect(new Set(seen)).toEqual(new Set(ids));
 	});
 
-	it('assignedToMe=true returns only the caller assigned threads, paginated correctly', async () => {
+	it("filter='mine' returns only the caller assigned threads, paginated correctly", async () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['inbox']);
 		setUser('user-owner', 'owner');
@@ -208,16 +208,14 @@ describe('inbox.listThreads pagination', () => {
 		// 5 assigned to the caller, 3 assigned to someone else.
 		const mine: Id<'conversationThreads'>[] = [];
 		for (let i = 0; i < 5; i++) {
-			mine.push(
-				await seedThread(t, { assignedTo: 'user-owner', lastMessageAt: base + i * 1000 }),
-			);
+			mine.push(await seedThread(t, { assignedTo: 'user-owner', lastMessageAt: base + i * 1000 }));
 		}
 		for (let i = 0; i < 3; i++) {
 			await seedThread(t, { assignedTo: 'someone-else', lastMessageAt: base + i * 1000 });
 		}
 
 		const page1 = await t.query(api.inbox.queries.listThreads, {
-			assignedToMe: true,
+			filter: 'mine',
 			limit: 2,
 		});
 		expect(page1.threads).toHaveLength(2);
@@ -229,7 +227,7 @@ describe('inbox.listThreads pagination', () => {
 		// Drain the rest of the assigned pages.
 		while (cursor) {
 			const next = await t.query(api.inbox.queries.listThreads, {
-				assignedToMe: true,
+				filter: 'mine',
 				limit: 2,
 				cursor,
 			});
@@ -269,7 +267,7 @@ describe('inbox.assignThread', () => {
 			t.mutation(api.inbox.mutations.assignThread, {
 				threadId,
 				assignedTo: 'ghost-user',
-			}),
+			})
 		).rejects.toThrow();
 
 		// The thread must remain unassigned.
@@ -321,10 +319,10 @@ describe('contacts.bulkDelete', () => {
 		setUser('user-owner', 'owner');
 
 		const c1 = await t.run(async (ctx) =>
-			ctx.db.insert('contacts', createTestContact({ email: 'a@example.com' })),
+			ctx.db.insert('contacts', createTestContact({ email: 'a@example.com' }))
 		);
 		const c2 = await t.run(async (ctx) =>
-			ctx.db.insert('contacts', createTestContact({ email: 'b@example.com' })),
+			ctx.db.insert('contacts', createTestContact({ email: 'b@example.com' }))
 		);
 
 		const result = await t.mutation(api.contacts.contacts.bulkDelete, {
@@ -342,12 +340,10 @@ describe('contacts.bulkDelete', () => {
 		const t = convexTest(schema, modules);
 		setUser('user-editor', 'editor');
 
-		const c1 = await t.run(async (ctx) =>
-			ctx.db.insert('contacts', createTestContact()),
-		);
+		const c1 = await t.run(async (ctx) => ctx.db.insert('contacts', createTestContact()));
 
 		await expect(
-			t.mutation(api.contacts.contacts.bulkDelete, { contactIds: [c1] }),
+			t.mutation(api.contacts.contacts.bulkDelete, { contactIds: [c1] })
 		).rejects.toThrow();
 
 		expect(await auditRows(t, 'contact.deleted')).toHaveLength(0);
@@ -362,10 +358,10 @@ describe('contacts.identities.mergeContacts', () => {
 		setUser('user-owner', 'owner');
 
 		const target = await t.run(async (ctx) =>
-			ctx.db.insert('contacts', createTestContact({ email: 'keep@example.com' })),
+			ctx.db.insert('contacts', createTestContact({ email: 'keep@example.com' }))
 		);
 		const source = await t.run(async (ctx) =>
-			ctx.db.insert('contacts', createTestContact({ email: 'merge-away@example.com' })),
+			ctx.db.insert('contacts', createTestContact({ email: 'merge-away@example.com' }))
 		);
 
 		const returned = await t.mutation(api.contacts.identities.mergeContacts, {
@@ -396,7 +392,7 @@ describe('contacts.update', () => {
 		setUser('user-owner', 'owner');
 
 		const contactId = await t.run(async (ctx) =>
-			ctx.db.insert('contacts', createTestContact({ firstName: 'Old', lastName: 'Name' })),
+			ctx.db.insert('contacts', createTestContact({ firstName: 'Old', lastName: 'Name' }))
 		);
 
 		await t.mutation(api.contacts.contacts.update, {
@@ -418,7 +414,7 @@ describe('contacts.update', () => {
 		setUser('user-owner', 'owner');
 
 		const contactId = await t.run(async (ctx) =>
-			ctx.db.insert('contacts', createTestContact({ firstName: 'Same' })),
+			ctx.db.insert('contacts', createTestContact({ firstName: 'Same' }))
 		);
 
 		await t.mutation(api.contacts.contacts.update, {
@@ -433,15 +429,13 @@ describe('contacts.update', () => {
 		const t = convexTest(schema, modules);
 		setUser('user-owner', 'owner');
 
-		const contactId = await t.run(async (ctx) =>
-			ctx.db.insert('contacts', createTestContact()),
-		);
+		const contactId = await t.run(async (ctx) => ctx.db.insert('contacts', createTestContact()));
 
 		await expect(
 			t.mutation(api.contacts.contacts.update, {
 				contactId,
 				firstName: 'x'.repeat(201),
-			}),
+			})
 		).rejects.toThrow(/at most 200 characters/);
 
 		// No audit row for a rejected update.
@@ -451,16 +445,14 @@ describe('contacts.update', () => {
 	it('is gated to owners/admins — an editor cannot update a contact', async () => {
 		const t = convexTest(schema, modules);
 
-		const contactId = await t.run(async (ctx) =>
-			ctx.db.insert('contacts', createTestContact()),
-		);
+		const contactId = await t.run(async (ctx) => ctx.db.insert('contacts', createTestContact()));
 
 		setUser('user-editor', 'editor');
 		await expect(
 			t.mutation(api.contacts.contacts.update, {
 				contactId,
 				firstName: 'Nope',
-			}),
+			})
 		).rejects.toThrow();
 	});
 });

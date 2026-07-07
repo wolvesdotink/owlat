@@ -136,7 +136,7 @@ describe('inboundQueries.listThreads', () => {
 		expect(result.threads[2]!.subject).toBe('Older');
 	});
 
-	it('should filter by status', async () => {
+	it('should filter by the open pill', async () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['inbox']);
 
@@ -149,10 +149,95 @@ describe('inboundQueries.listThreads', () => {
 
 		const result = await t
 			.withIdentity(testIdentity)
-			.query(api.inbox.queries.listThreads, { status: 'open' });
+			.query(api.inbox.queries.listThreads, { filter: 'open' });
 
 		expect(result.threads).toHaveLength(2);
 		expect(result.threads.every((t) => t.status === 'open')).toBe(true);
+	});
+
+	it('hides snoozed threads from the open pill but surfaces them under snoozed', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['inbox']);
+		const now = Date.now();
+
+		await t.run(async (ctx) => {
+			const contactId = await ctx.db.insert('contacts', createTestContact());
+			await ctx.db.insert('conversationThreads', threadData({ contactId, status: 'open' }));
+			await ctx.db.insert(
+				'conversationThreads',
+				threadData({ contactId, status: 'open', snoozedUntil: now + 60_000 })
+			);
+		});
+
+		const open = await t
+			.withIdentity(testIdentity)
+			.query(api.inbox.queries.listThreads, { filter: 'open' });
+		expect(open.threads).toHaveLength(1);
+		expect(open.threads[0]!.snoozedUntil).toBeUndefined();
+
+		const snoozed = await t
+			.withIdentity(testIdentity)
+			.query(api.inbox.queries.listThreads, { filter: 'snoozed' });
+		expect(snoozed.threads).toHaveLength(1);
+		expect(snoozed.threads[0]!.snoozedUntil).toBe(now + 60_000);
+	});
+
+	it('filters unassigned to open/waiting threads with no owner', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['inbox']);
+
+		await t.run(async (ctx) => {
+			const contactId = await ctx.db.insert('contacts', createTestContact());
+			await ctx.db.insert('conversationThreads', threadData({ contactId, status: 'open' }));
+			await ctx.db.insert(
+				'conversationThreads',
+				threadData({ contactId, status: 'open', assignedTo: 'someone' })
+			);
+			await ctx.db.insert('conversationThreads', threadData({ contactId, status: 'resolved' }));
+		});
+
+		const result = await t
+			.withIdentity(testIdentity)
+			.query(api.inbox.queries.listThreads, { filter: 'unassigned' });
+
+		expect(result.threads).toHaveLength(1);
+		expect(result.threads[0]!.assignedTo).toBeUndefined();
+		expect(result.threads[0]!.status).toBe('open');
+	});
+
+	it('orders newest-first vs needs-attention (drafts float up)', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['inbox']);
+		const now = Date.now();
+
+		await t.run(async (ctx) => {
+			const contactId = await ctx.db.insert('contacts', createTestContact());
+			// Oldest activity, but a reply is drafted and waiting.
+			await ctx.db.insert(
+				'conversationThreads',
+				threadData({
+					contactId,
+					subject: 'DraftReady',
+					status: 'open',
+					lastMessageAt: now - 5_000,
+					latestDraftStatus: 'pending',
+				})
+			);
+			await ctx.db.insert(
+				'conversationThreads',
+				threadData({ contactId, subject: 'Newest', status: 'open', lastMessageAt: now })
+			);
+		});
+
+		const newest = await t
+			.withIdentity(testIdentity)
+			.query(api.inbox.queries.listThreads, { filter: 'open', sort: 'newest' });
+		expect(newest.threads[0]!.subject).toBe('Newest');
+
+		const needs = await t
+			.withIdentity(testIdentity)
+			.query(api.inbox.queries.listThreads, { filter: 'open', sort: 'needs-attention' });
+		expect(needs.threads[0]!.subject).toBe('DraftReady');
 	});
 
 	it('should respect the limit parameter', async () => {
@@ -176,7 +261,7 @@ describe('inboundQueries.listThreads', () => {
 		expect(result.threads).toHaveLength(2);
 	});
 
-	it('should filter by assignedToMe', async () => {
+	it('should filter by the mine pill', async () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['inbox']);
 
@@ -195,10 +280,59 @@ describe('inboundQueries.listThreads', () => {
 
 		const result = await t
 			.withIdentity(testIdentity)
-			.query(api.inbox.queries.listThreads, { assignedToMe: true });
+			.query(api.inbox.queries.listThreads, { filter: 'mine' });
 
 		expect(result.threads).toHaveLength(1);
 		expect(result.threads[0]!.assignedTo).toBe('test-user-123');
+	});
+});
+
+// ============ getThreadFilterCounts ============
+
+describe('inboundQueries.getThreadFilterCounts', () => {
+	it('returns null when not authenticated', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['inbox']);
+		const result = await t.query(api.inbox.queries.getThreadFilterCounts, {});
+		expect(result).toBeNull();
+	});
+
+	it('counts each pill consistently with the list', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['inbox']);
+		const now = Date.now();
+
+		await t.run(async (ctx) => {
+			const contactId = await ctx.db.insert('contacts', createTestContact());
+			await ctx.db.insert(
+				'conversationThreads',
+				threadData({ contactId, status: 'open', assignedTo: 'test-user-123' })
+			);
+			await ctx.db.insert('conversationThreads', threadData({ contactId, status: 'open' }));
+			await ctx.db.insert('conversationThreads', threadData({ contactId, status: 'waiting' }));
+			await ctx.db.insert('conversationThreads', threadData({ contactId, status: 'resolved' }));
+			await ctx.db.insert(
+				'conversationThreads',
+				threadData({ contactId, status: 'open', snoozedUntil: now + 60_000 })
+			);
+		});
+
+		const counts = await t
+			.withIdentity(testIdentity)
+			.query(api.inbox.queries.getThreadFilterCounts, {});
+
+		// open excludes the snoozed row; mine = the one assigned to me;
+		// unassigned = open/waiting with no owner (the plain open + the waiting);
+		// waiting/resolved/snoozed each = 1.
+		expect(counts).toMatchObject({
+			open: 2,
+			mine: 1,
+			unassigned: 2,
+			waiting: 1,
+			resolved: 1,
+			snoozed: 1,
+			cap: 100,
+		});
 	});
 });
 

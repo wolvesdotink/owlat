@@ -20,6 +20,15 @@ describe('useInbox pagination', () => {
 			return handle;
 		});
 		vi.stubGlobal('formatCompactRelativeTime', () => 'just now');
+		// The composable mirrors the filter into the URL and persists the sort
+		// choice; stub the Nuxt/localStorage seams the pagination logic doesn't care
+		// about so the accumulator behaviour can be exercised in isolation.
+		vi.stubGlobal('useRoute', () => ({ query: {} }));
+		vi.stubGlobal('useRouter', () => ({ replace: vi.fn() }));
+		vi.stubGlobal('useLocalStorage', (_key: string, def: unknown) => ({
+			data: ref(def),
+			set: vi.fn(),
+		}));
 	});
 
 	const thread = (id: string) => ({ _id: id, status: 'open', lastMessageAt: 1 });
@@ -55,7 +64,7 @@ describe('useInbox pagination', () => {
 	});
 
 	it('resets accumulated pages and cursor when a filter changes', async () => {
-		const { threads, statusFilter, loadMoreThreads } = useInbox();
+		const { threads, filter, loadMoreThreads } = useInbox();
 		const threadsData = created[0]!.data;
 
 		threadsData.value = { threads: [thread('a'), thread('b')], nextCursor: 'c1' };
@@ -67,7 +76,7 @@ describe('useInbox pagination', () => {
 
 		// Changing the filter must clear the accumulator immediately (sync watch),
 		// so the next first page replaces rather than appends.
-		statusFilter.value = 'resolved';
+		filter.value = 'resolved';
 		expect(threads.value).toHaveLength(0);
 
 		threadsData.value = { threads: [thread('x')], nextCursor: null };

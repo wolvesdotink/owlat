@@ -83,6 +83,10 @@ export const inboxTables = {
 	})
 		.index('by_contact_identifier', ['contactIdentifier'])
 		.index('by_status', ['status'])
+		// Status + recency: lets the Team Inbox filter pills page an Open / Waiting
+		// / Resolved view in true lastMessageAt order (both directions) instead of
+		// falling back to creation order on the plain by_status index.
+		.index('by_status_and_last_message_at', ['status', 'lastMessageAt'])
 		.index('by_last_message_at', ['lastMessageAt'])
 		.index('by_contact', ['contactId'])
 		.index('by_assigned_to', ['assignedTo'])
