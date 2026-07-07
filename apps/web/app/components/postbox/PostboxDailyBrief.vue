@@ -70,8 +70,10 @@ watch(
 		const key = `${props.mailboxId}:${localDay.value}`;
 		if (lastRefreshKey.value === key) return;
 		lastRefreshKey.value = key;
+		// Fail-soft: no client (SSR / plugin not ready) simply skips the
+		// refresh — the cached card (or nothing) keeps rendering.
 		client
-			.mutation(api.mail.brief.refresh, {
+			?.mutation(api.mail.brief.refresh, {
 				mailboxId: props.mailboxId,
 				localDay: localDay.value,
 				dayStartTs: localDayStartOf(now.value),
@@ -89,8 +91,9 @@ watch(
 const dismissedLocally = ref<string | null>(null);
 function dismiss() {
 	dismissedLocally.value = localDay.value;
+	// Fail-soft: without a client the card still hides locally for this day.
 	client
-		.mutation(api.mail.brief.dismiss, { mailboxId: props.mailboxId, localDay: localDay.value })
+		?.mutation(api.mail.brief.dismiss, { mailboxId: props.mailboxId, localDay: localDay.value })
 		.catch(() => {
 			// Fail-soft (see above).
 		});
