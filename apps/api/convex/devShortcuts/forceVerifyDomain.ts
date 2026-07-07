@@ -45,10 +45,7 @@ type VerificationResults = NonNullable<DomainDoc['verificationResults']>;
  * that read `domain.verificationResults` (and assume `verified` rows carry
  * one) don't trip over `undefined`.
  */
-function synthesiseVerificationResults(
-	domain: DomainDoc,
-	at: number,
-): VerificationResults {
+function synthesiseVerificationResults(domain: DomainDoc, at: number): VerificationResults {
 	const dns = domain.dnsRecords;
 	const ok = { verified: true, lastChecked: at };
 	const results: VerificationResults = {};
@@ -138,10 +135,14 @@ export const forceVerifyDomain = authedMutation({
 	},
 	handler: async (ctx, { domainId }): Promise<ForceVerifyResult> => {
 		assertDevDeployment();
-		const session = await requireOrgPermission(ctx, 'organization:manage', 'Only owners and admins can force-verify domains');
+		const session = await requireOrgPermission(
+			ctx,
+			'organization:manage',
+			'Only owners and admins can force-verify domains'
+		);
 		return await ctx.runMutation(
 			internal.devShortcuts.forceVerifyDomain.forceVerifyDomainInternal,
-			{ domainId, userId: session.userId },
+			{ domainId, userId: session.userId }
 		);
 	},
 });

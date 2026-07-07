@@ -19,17 +19,11 @@ vi.mock('../lib/sessionOrganization', async () => {
 	return {
 		...actual,
 		// `authedQuery`/`authedMutation` floor + the handler's own role check.
-		requireOrgMember: vi
-			.fn()
-			.mockResolvedValue({ userId: 'test-user', role: 'owner' }),
+		requireOrgMember: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
 		getUserIdFromSession: vi.fn().mockResolvedValue('test-user'),
-		getMutationContext: vi
-			.fn()
-			.mockResolvedValue({ userId: 'test-user', role: 'owner' }),
-		requireOrgPermission: vi
-			.fn()
-			.mockResolvedValue({ userId: 'test-user', role: 'owner' }),
+		getMutationContext: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
+		requireOrgPermission: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
 	};
 });
 
@@ -48,8 +42,8 @@ const modules = Object.fromEntries(
 			!path.includes('knowledgeExtraction') &&
 			!path.includes('semanticFileProcessing') &&
 			!path.includes('visualizationAgent') &&
-			!path.includes('llmProvider'),
-	),
+			!path.includes('llmProvider')
+	)
 );
 
 const identity = {
