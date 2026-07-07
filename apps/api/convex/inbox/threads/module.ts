@@ -44,7 +44,7 @@ export type ThreadDraftStatus = 'pending' | 'approved' | 'rejected' | 'sent';
 export type ThreadWriteSource = 'inbound' | 'agent' | 'user';
 
 export type TransitionInput =
-	| { kind: 'inbound_activity'; occurredAt: number }
+	| { kind: 'inbound_activity'; occurredAt: number; preview?: string }
 	| { kind: 'status_change'; to: ConversationThreadStatus; source: ThreadWriteSource }
 	| { kind: 'assignment_change'; assignedTo?: string; source: ThreadWriteSource }
 	| { kind: 'draft_status_change'; latestDraftStatus: ThreadDraftStatus };
@@ -88,7 +88,8 @@ const NOOP: ReducerResult = { patch: {}, effects: [], applied: 'noop' };
 
 function reduceInboundActivity(
 	thread: Doc<'conversationThreads'>,
-	occurredAt: number
+	occurredAt: number,
+	preview?: string
 ): ReducerResult {
 	// Reopen any non-open thread on inbound activity. This preserves the email
 	// path's original unconditional `status: 'open'` reopen (resolved/closed/
@@ -106,6 +107,10 @@ function reduceInboundActivity(
 		patch: {
 			messageCount: thread.messageCount + 1,
 			lastMessageAt: occurredAt,
+			// Denormalize the newest message's preview for the team-inbox row.
+			// Only overwrite when the caller supplied one — an activity with no
+			// extractable preview keeps the prior snippet rather than blanking it.
+			...(preview ? { lastPreview: preview } : {}),
 			...(reopened ? { status: 'open' as const } : {}),
 			...(wasSnoozed ? { snoozedUntil: undefined, snoozeReturnedAt: occurredAt } : {}),
 		},
@@ -190,7 +195,7 @@ function reduceDraftStatusChange(
 function reduce(thread: Doc<'conversationThreads'>, input: TransitionInput): ReducerResult {
 	switch (input.kind) {
 		case 'inbound_activity':
-			return reduceInboundActivity(thread, input.occurredAt);
+			return reduceInboundActivity(thread, input.occurredAt, input.preview);
 		case 'status_change':
 			return reduceStatusChange(thread, input);
 		case 'assignment_change':
@@ -258,6 +263,8 @@ export async function findOrCreateForEmail(
 		inReplyTo?: string;
 		references?: string;
 		occurredAt: number;
+		/** Newest-message plaintext preview for the team-inbox snippet line. */
+		preview?: string;
 	}
 ): Promise<{ threadId: Id<'conversationThreads'>; action: 'matched' | 'created' }> {
 	let threadId: Id<'conversationThreads'> | undefined;
@@ -322,6 +329,8 @@ export async function findOrCreateForEmail(
 			contactId: args.contactId,
 			contactIdentifier: args.contactIdentifier,
 			status: 'open',
+			// Email is the default channel — leave `channel` unset so the row shows
+			// no channel chip (only non-email threads carry one).
 			messageCount: 0,
 			lastMessageAt: args.occurredAt,
 			firstMessageAt: args.occurredAt,
@@ -331,7 +340,7 @@ export async function findOrCreateForEmail(
 	// re-bump (already open), so account the open-count entry here.
 	if (action === 'created') await applyOpenThreadDelta(ctx, 1);
 
-	await runInboundActivity(ctx, resolvedId, args.occurredAt);
+	await runInboundActivity(ctx, resolvedId, args.occurredAt, args.preview);
 	return { threadId: resolvedId, action };
 }
 
@@ -343,6 +352,10 @@ export async function findOrCreateForChannel(
 		subject: string;
 		normalizedSubject: string;
 		occurredAt: number;
+		/** Non-email channel key ('sms' / 'whatsapp' / …) for the row's chip. */
+		channel?: string;
+		/** Newest-message plaintext preview for the team-inbox snippet line. */
+		preview?: string;
 	}
 ): Promise<{ threadId: Id<'conversationThreads'>; action: 'matched' | 'created' }> {
 	// Single strategy — the contact's most-recent thread, STATUS-AGNOSTIC.
@@ -366,6 +379,8 @@ export async function findOrCreateForChannel(
 			contactId: args.contactId,
 			contactIdentifier: args.contactIdentifier,
 			status: 'open',
+			// Non-email origin — stamp the channel so the row shows one channel chip.
+			channel: args.channel,
 			messageCount: 0,
 			lastMessageAt: args.occurredAt,
 			firstMessageAt: args.occurredAt,
@@ -375,7 +390,7 @@ export async function findOrCreateForChannel(
 	// re-bump (already open), so account the open-count entry here.
 	if (action === 'created') await applyOpenThreadDelta(ctx, 1);
 
-	await runInboundActivity(ctx, resolvedId, args.occurredAt);
+	await runInboundActivity(ctx, resolvedId, args.occurredAt, args.preview);
 	return { threadId: resolvedId, action };
 }
 
@@ -387,11 +402,12 @@ export async function findOrCreateForChannel(
 async function runInboundActivity(
 	ctx: MutationCtx,
 	threadId: Id<'conversationThreads'>,
-	occurredAt: number
+	occurredAt: number,
+	preview?: string
 ): Promise<void> {
 	const thread = await ctx.db.get(threadId);
 	if (!thread) return;
-	await applyTransition(ctx, thread, { kind: 'inbound_activity', occurredAt });
+	await applyTransition(ctx, thread, { kind: 'inbound_activity', occurredAt, preview });
 	await cancelStalePendingAutoSends(ctx, threadId);
 }
 

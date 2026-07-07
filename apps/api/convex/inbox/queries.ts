@@ -9,6 +9,7 @@ import { v } from 'convex/values';
 import { publicQuery } from '../lib/authedFunctions';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 import { assertFeatureEnabled } from '../lib/featureFlags';
+import { PRESENCE_ACTIVE_WINDOW_MS } from './presence';
 
 /**
  * List conversation threads with filtering
@@ -77,8 +78,63 @@ export const listThreads = publicQuery({
 
 		const result = await q.paginate({ cursor: args.cursor ?? null, numItems: limit });
 
+		// Enrich each row for the team-inbox list DNA:
+		//  - `unread`: activity newer than THIS user's last-seen marker (the
+		//    per-user unread badge; mirrors chat's lastReadAt). Bounded: one
+		//    point-read per row on `threadReads.by_user_thread`.
+		//  - `assignee`: the assigned member's display name/email/image so the row
+		//    can render a deterministic-colour avatar without the client joining
+		//    to the member directory. Cached per handler so repeat assignees cost
+		//    one read.
+		const viewerId = session.userId;
+		const assigneeCache = new Map<
+			string,
+			{ name?: string; email: string; image?: string } | null
+		>();
+		const resolveAssignee = async (userId: string) => {
+			if (assigneeCache.has(userId)) return assigneeCache.get(userId)!;
+			const profile = await ctx.db
+				.query('userProfiles')
+				.withIndex('by_auth_user_id', (idx) => idx.eq('authUserId', userId))
+				.first();
+			const resolved = profile
+				? { name: profile.name, email: profile.email, image: profile.image }
+				: null;
+			assigneeCache.set(userId, resolved);
+			return resolved;
+		};
+
+		const presenceCutoff = Date.now() - PRESENCE_ACTIVE_WINDOW_MS;
+		const threads = await Promise.all(
+			result.page.map(async (thread) => {
+				const read = await ctx.db
+					.query('threadReads')
+					.withIndex('by_user_thread', (idx) =>
+						idx.eq('userId', viewerId).eq('threadId', thread._id)
+					)
+					.unique();
+				const unread = thread.lastMessageAt > (read?.lastSeenAt ?? 0);
+				const assignee = thread.assignedTo ? await resolveAssignee(thread.assignedTo) : null;
+				// Does the assignee currently have this thread open? Drives the
+				// pulsing presence ring on their row avatar (b3a DNA). Bounded: one
+				// short range-read on the active-presence index, and ONLY for
+				// assigned threads (unassigned rows skip it entirely).
+				let assigneePresent = false;
+				if (thread.assignedTo) {
+					const active = await ctx.db
+						.query('threadPresence')
+						.withIndex('by_thread_heartbeat', (idx) =>
+							idx.eq('threadId', thread._id).gt('heartbeatAt', presenceCutoff)
+						)
+						.collect();
+					assigneePresent = active.some((r) => r.userId === thread.assignedTo);
+				}
+				return { ...thread, unread, assignee, assigneePresent };
+			})
+		);
+
 		return {
-			threads: result.page,
+			threads,
 			nextCursor: result.isDone ? null : result.continueCursor,
 		};
 	},

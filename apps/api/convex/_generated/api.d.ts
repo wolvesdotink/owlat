@@ -255,6 +255,7 @@ import type * as inbox_processingLifecycle_effects from "../inbox/processingLife
 import type * as inbox_processingLifecycle_reducers from "../inbox/processingLifecycle/reducers.js";
 import type * as inbox_processingLifecycle_types from "../inbox/processingLifecycle/types.js";
 import type * as inbox_queries from "../inbox/queries.js";
+import type * as inbox_reads from "../inbox/reads.js";
 import type * as inbox_snooze from "../inbox/snooze.js";
 import type * as inbox_stepOutputs from "../inbox/stepOutputs.js";
 import type * as inbox_threads_module from "../inbox/threads/module.js";
@@ -798,6 +799,7 @@ declare const fullApi: ApiFromModules<{
   "inbox/processingLifecycle/reducers": typeof inbox_processingLifecycle_reducers;
   "inbox/processingLifecycle/types": typeof inbox_processingLifecycle_types;
   "inbox/queries": typeof inbox_queries;
+  "inbox/reads": typeof inbox_reads;
   "inbox/snooze": typeof inbox_snooze;
   "inbox/stepOutputs": typeof inbox_stepOutputs;
   "inbox/threads/module": typeof inbox_threads_module;

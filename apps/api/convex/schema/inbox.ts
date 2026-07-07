@@ -49,6 +49,17 @@ export const inboxTables = {
 		),
 		// Assigned team member (BetterAuth user ID)
 		assignedTo: v.optional(v.string()),
+		// Originating channel for the thread-list channel chip. Absent (or 'email')
+		// = the default email channel and renders NO chip; a non-email value
+		// ('sms' / 'whatsapp' / …) surfaces a single channel chip on the row.
+		// Denormalized at create time by the thread module so the list never has to
+		// join to the newest message to know the channel.
+		channel: v.optional(v.string()),
+		// Newest message's plaintext preview — denormalized by the thread module on
+		// each inbound_activity so the team-inbox row can show a snippet line
+		// without an N+1 read of the latest inboundMessages/unifiedMessages row.
+		// Read-side hint only; never gates a query.
+		lastPreview: v.optional(v.string()),
 		// Thread metadata
 		messageCount: v.number(),
 		lastMessageAt: v.number(),
@@ -338,6 +349,20 @@ export const inboxTables = {
 		// Range-scan a thread's ACTIVE rows (heartbeatAt within the window)
 		// directly on the index — no in-memory window predicate.
 		.index('by_thread_heartbeat', ['threadId', 'heartbeatAt']),
+
+	// Thread Reads - per-user "last seen" marker for shared-inbox threads, the
+	// unread counterpart to chat's `chatRoomMembers.lastReadAt`. One row per
+	// (user, thread), upserted to `lastSeenAt = now` whenever that user opens the
+	// thread. A thread is UNREAD for a user when its `lastMessageAt` is newer than
+	// that user's `lastSeenAt` (or they have no row yet). Purely a read-side badge
+	// — it never gates a mutation and records no audit-log entry.
+	threadReads: defineTable({
+		threadId: v.id('conversationThreads'),
+		userId: v.string(), // BetterAuth user ID
+		lastSeenAt: v.number(),
+	})
+		// Point-read (and upsert) the caller's own marker for one thread.
+		.index('by_user_thread', ['userId', 'threadId']),
 
 	// Coalesce Batches - one in-flight debounce window per thread. When rapid
 	// messages arrive on the same thread, the pending batch's scheduled job is
