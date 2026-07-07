@@ -121,7 +121,7 @@ describe('inbox thread snooze', () => {
 			until: Date.now() + 60 * 60 * 1000,
 		});
 
-		const open = await t.query(api.inbox.queries.listThreads, { status: 'open' });
+		const open = await t.query(api.inbox.queries.listThreads, { filter: 'open' });
 		expect(open.threads.map((x) => x._id)).not.toContain(id);
 
 		const all = await t.query(api.inbox.queries.listThreads, {});
@@ -148,7 +148,7 @@ describe('inbox thread snooze', () => {
 		const row = await getThread(t, id);
 		expect(row?.snoozedUntil).toBeUndefined();
 
-		const open = await t.query(api.inbox.queries.listThreads, { status: 'open' });
+		const open = await t.query(api.inbox.queries.listThreads, { filter: 'open' });
 		expect(open.threads.map((x) => x._id)).toContain(id);
 	});
 
