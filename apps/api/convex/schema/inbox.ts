@@ -315,6 +315,24 @@ export const inboxTables = {
 		createdAt: v.number(),
 	}).index('by_feature', ['feature']),
 
+	// Thread Presence - ephemeral "who is here" rows for the shared-inbox thread
+	// view. One row per (thread, user); `mode` is `viewing` while the thread is
+	// open and `replying` while a reply/review editor is focused. `heartbeatAt`
+	// is refreshed every ~20s by the client (inbox/presence.ts → heartbeat); a
+	// row is considered ACTIVE only while `heartbeatAt` is within
+	// PRESENCE_ACTIVE_WINDOW_MS (60s), and the `sweep expired presence` cron
+	// deletes rows past that window. Purely a read-side collaboration hint — it
+	// never gates a mutation and never records an audit-log entry.
+	threadPresence: defineTable({
+		threadId: v.id('conversationThreads'),
+		userId: v.string(), // BetterAuth user ID
+		mode: v.union(v.literal('viewing'), v.literal('replying')),
+		heartbeatAt: v.number(),
+	})
+		.index('by_thread', ['threadId'])
+		.index('by_user', ['userId'])
+		.index('by_heartbeat', ['heartbeatAt']),
+
 	// Coalesce Batches - one in-flight debounce window per thread. When rapid
 	// messages arrive on the same thread, the pending batch's scheduled job is
 	// cancelled and re-scheduled, so only the latest message triggers a single
