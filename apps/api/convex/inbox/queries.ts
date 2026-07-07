@@ -116,18 +116,19 @@ export const listThreads = publicQuery({
 				const unread = thread.lastMessageAt > (read?.lastSeenAt ?? 0);
 				const assignee = thread.assignedTo ? await resolveAssignee(thread.assignedTo) : null;
 				// Does the assignee currently have this thread open? Drives the
-				// pulsing presence ring on their row avatar (b3a DNA). Bounded: one
-				// short range-read on the active-presence index, and ONLY for
+				// pulsing presence ring on their row avatar (b3a DNA). Bounded: a
+				// single point-read on `by_user_thread` (one row per user+thread,
+				// exactly as the presence heartbeat upserts it), and ONLY for
 				// assigned threads (unassigned rows skip it entirely).
 				let assigneePresent = false;
 				if (thread.assignedTo) {
-					const active = await ctx.db
+					const presence = await ctx.db
 						.query('threadPresence')
-						.withIndex('by_thread_heartbeat', (idx) =>
-							idx.eq('threadId', thread._id).gt('heartbeatAt', presenceCutoff)
+						.withIndex('by_user_thread', (idx) =>
+							idx.eq('userId', thread.assignedTo!).eq('threadId', thread._id)
 						)
-						.collect();
-					assigneePresent = active.some((r) => r.userId === thread.assignedTo);
+						.unique();
+					assigneePresent = !!presence && presence.heartbeatAt > presenceCutoff;
 				}
 				return { ...thread, unread, assignee, assigneePresent };
 			})
