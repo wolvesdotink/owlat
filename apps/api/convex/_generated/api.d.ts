@@ -255,6 +255,7 @@ import type * as inbox_processingLifecycle_effects from "../inbox/processingLife
 import type * as inbox_processingLifecycle_reducers from "../inbox/processingLifecycle/reducers.js";
 import type * as inbox_processingLifecycle_types from "../inbox/processingLifecycle/types.js";
 import type * as inbox_queries from "../inbox/queries.js";
+import type * as inbox_reads from "../inbox/reads.js";
 import type * as inbox_snooze from "../inbox/snooze.js";
 import type * as inbox_stepOutputs from "../inbox/stepOutputs.js";
 import type * as inbox_threads_module from "../inbox/threads/module.js";
@@ -349,6 +350,7 @@ import type * as lib_statShards from "../lib/statShards.js";
 import type * as lib_suppression from "../lib/suppression.js";
 import type * as lib_systemEmails from "../lib/systemEmails.js";
 import type * as lib_tenantTables from "../lib/tenantTables.js";
+import type * as lib_textPreview from "../lib/textPreview.js";
 import type * as lib_workingHours from "../lib/workingHours.js";
 import type * as mail_ai from "../mail/ai.js";
 import type * as mail_aiCoach from "../mail/aiCoach.js";
@@ -798,6 +800,7 @@ declare const fullApi: ApiFromModules<{
   "inbox/processingLifecycle/reducers": typeof inbox_processingLifecycle_reducers;
   "inbox/processingLifecycle/types": typeof inbox_processingLifecycle_types;
   "inbox/queries": typeof inbox_queries;
+  "inbox/reads": typeof inbox_reads;
   "inbox/snooze": typeof inbox_snooze;
   "inbox/stepOutputs": typeof inbox_stepOutputs;
   "inbox/threads/module": typeof inbox_threads_module;
@@ -892,6 +895,7 @@ declare const fullApi: ApiFromModules<{
   "lib/suppression": typeof lib_suppression;
   "lib/systemEmails": typeof lib_systemEmails;
   "lib/tenantTables": typeof lib_tenantTables;
+  "lib/textPreview": typeof lib_textPreview;
   "lib/workingHours": typeof lib_workingHours;
   "mail/ai": typeof mail_ai;
   "mail/aiCoach": typeof mail_aiCoach;

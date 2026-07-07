@@ -79,6 +79,7 @@ export const TENANT_TABLES = [
 
 	// ── Inbox / inbound pipeline ──
 	'threadPresence',
+	'threadReads',
 	'inboundMessages',
 	'conversationThreads',
 	'coalesceBatches',

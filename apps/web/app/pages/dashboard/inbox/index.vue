@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import type { InboxThreadRowThread } from '~/components/inbox/InboxThreadRow.vue';
 
 useHead({ title: 'Team Inbox — Owlat' });
 
@@ -31,6 +33,58 @@ const statusOptions: { value: string; label: string }[] = [
 	{ value: 'waiting', label: 'Waiting' },
 	{ value: 'resolved', label: 'Resolved' },
 ];
+
+// ── Row triage mutations (shared with the thread detail view) ──
+const { user } = useAuth();
+const { run: assignThread } = useBackendOperation(api.inbox.mutations.assignThread, {
+	label: 'Assign thread',
+});
+const { run: updateThreadStatus } = useBackendOperation(api.inbox.mutations.updateThreadStatus, {
+	label: 'Update thread status',
+});
+const { run: snoozeThread } = useBackendOperation(api.inbox.snooze.snoozeThread, {
+	label: 'Snooze thread',
+});
+
+type TeamThread = InboxThreadRowThread & { _id: Id<'conversationThreads'> };
+
+/** `i` and the hover Assign action both claim the thread for the current user. */
+async function assignToMe(thread: TeamThread) {
+	const me = user.value?.id;
+	if (!me) return;
+	await assignThread({ threadId: thread._id, assignedTo: me });
+}
+
+async function resolveThread(thread: TeamThread) {
+	await updateThreadStatus({ threadId: thread._id, status: 'resolved' });
+}
+
+// Snooze picker — reuses the Postbox snooze presets (PostboxSnoozeDialog),
+// bound to whichever row's Snooze quick-action opened it.
+const showSnoozeDialog = ref(false);
+const snoozeThreadId = ref<Id<'conversationThreads'> | null>(null);
+function openSnooze(thread: TeamThread) {
+	snoozeThreadId.value = thread._id;
+	showSnoozeDialog.value = true;
+}
+async function onSnoozeConfirm(timestamp: number) {
+	showSnoozeDialog.value = false;
+	const id = snoozeThreadId.value;
+	if (id) await snoozeThread({ threadId: id, until: timestamp });
+}
+
+// ── List keyboard: j/k move, Enter opens, i assigns-to-me (b4 fills the
+// popover). Shares the Postbox listbox composable so the conventions match. ──
+const filterKey = computed(() => `${statusFilter.value ?? ''}:${assignedToMe.value}`);
+const { focusedIndex, activeId, onKeydown } = usePostboxListKeyboard<TeamThread>({
+	items: threads as Ref<TeamThread[]>,
+	resetKey: filterKey,
+	rowDomId: (t) => `inbox-row-${t._id}`,
+	onActivate: (t) => navigateTo(`/dashboard/inbox/${t._id}`),
+	onAction: (key, t) => {
+		if (key === 'i') void assignToMe(t);
+	},
+});
 </script>
 
 <template>
@@ -155,57 +209,39 @@ const statusOptions: { value: string; label: string }[] = [
 			</p>
 		</div>
 
-		<!-- Thread List -->
-		<div v-else class="space-y-2">
-			<NuxtLink
-				v-for="thread in threads"
-				:key="thread._id"
-				:to="`/dashboard/inbox/${thread._id}`"
-				class="card !p-4 flex items-center gap-4 hover:border-brand transition-colors cursor-pointer block"
+		<!-- Thread List — Postbox row DNA: single column, weight-based unread,
+		     one status chip, hover-reveal triage. Keyboard: j/k/Enter + i. -->
+		<div v-else>
+			<ul
+				role="listbox"
+				tabindex="0"
+				aria-label="Team inbox threads"
+				:aria-activedescendant="activeId"
+				class="divide-y divide-border-subtle rounded-lg border border-border-subtle focus:outline-none focus-visible:ring-1 focus-visible:ring-brand/50"
+				@keydown="onKeydown"
 			>
-				<!-- Leading channel anchor (neutral — status lives in the one chip) -->
-				<div
-					class="flex-shrink-0 w-10 h-10 rounded-full bg-bg-surface flex items-center justify-center"
-				>
-					<Icon name="lucide:mail" class="w-5 h-5 text-text-tertiary" />
-				</div>
-
-				<!-- Thread info -->
-				<div class="flex-1 min-w-0">
-					<div class="flex items-center gap-2">
-						<p class="text-text-primary font-medium truncate">
-							{{ thread.subject || 'No subject' }}
-						</p>
-						<!-- The single roll-up status chip (shared vocabulary) -->
-						<InboxStatusChip
-							class="flex-shrink-0"
-							:status="thread.status"
-							:latest-draft-status="thread.latestDraftStatus"
-							:snoozed-until="thread.snoozedUntil"
-							:snooze-returned-at="thread.snoozeReturnedAt"
-						/>
-					</div>
-					<p class="text-sm text-text-secondary truncate mt-0.5">
-						{{ thread.contactIdentifier || 'Unknown sender' }}
-					</p>
-				</div>
-
-				<!-- Metadata -->
-				<div class="flex-shrink-0 text-right">
-					<p class="text-xs text-text-tertiary">
-						{{ formatRelativeTime(thread.lastMessageAt ?? thread._creationTime) }}
-					</p>
-					<p class="text-xs text-text-tertiary mt-1">
-						{{ thread.messageCount ?? 0 }}
-						{{ (thread.messageCount ?? 0) === 1 ? 'message' : 'messages' }}
-					</p>
-				</div>
-			</NuxtLink>
+				<InboxThreadRow
+					v-for="(thread, index) in threads"
+					:key="thread._id"
+					:thread="thread"
+					:focused="index === focusedIndex"
+					:format-relative-time="formatRelativeTime"
+					@assign="assignToMe(thread)"
+					@resolve="resolveThread(thread)"
+					@snooze="openSnooze(thread)"
+				/>
+			</ul>
 
 			<!-- Load More -->
 			<div v-if="hasMoreThreads" class="pt-4 text-center">
 				<button class="btn btn-secondary btn-sm" @click="loadMoreThreads">Load More</button>
 			</div>
 		</div>
+
+		<PostboxSnoozeDialog
+			:open="showSnoozeDialog"
+			@update:open="showSnoozeDialog = $event"
+			@confirm="onSnoozeConfirm"
+		/>
 	</div>
 </template>

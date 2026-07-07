@@ -17,6 +17,7 @@ import { internal } from '../_generated/api';
 import { createContact } from '../contacts/creation';
 import { recordContactActivity } from '../contactActivities/writer';
 import { findOrCreateForEmail } from './threads/module';
+import { buildMessagePreview } from '../lib/textPreview';
 import { applyInboxStatsDelta } from '../lib/inboxStats';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { recordInboundMirror } from '../unifiedMessages';
@@ -78,6 +79,7 @@ export const receiveMessage = internalMutation({
 			inReplyTo: args.inReplyTo,
 			references: args.references,
 			occurredAt: now,
+			preview: buildMessagePreview({ text: args.textBody, html: args.htmlBody }),
 		});
 
 		// ── 3. Store the inbound message ──

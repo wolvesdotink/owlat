@@ -10,6 +10,7 @@
  *   .ui-press                                  — spring press on :active
  *   .ui-stagger                                — staggered list entrance
  *   .ui-proximity                              — nearest-target hover emphasis
+ *   .ui-presence-ring                          — pulsing "here now" avatar halo
  *
  * The matching NumberTicker component lives in components/ui/NumberTicker.vue.
  */
@@ -118,6 +119,33 @@
 	scale: 1.06;
 }
 
+/*
+ * Presence ring — a softly-pulsing success halo on an avatar to say "this
+ * person is here right now" (shared-inbox thread presence + the assignee avatar
+ * on a team-inbox row). Box-shadow only, so it adds ZERO layout shift and never
+ * nudges neighbours in an overlap stack. Two beats fade an outer glow in/out
+ * atop a steady 1.5px ring. Wrap the avatar: `<span class="ui-presence-ring">`.
+ */
+.ui-presence-ring {
+	display: inline-flex;
+	border-radius: 9999px;
+	box-shadow: 0 0 0 1.5px var(--color-success);
+	animation: ui-presence-pulse 2s var(--ease-spring, ease-in-out) infinite;
+}
+@keyframes ui-presence-pulse {
+	0%,
+	100% {
+		box-shadow:
+			0 0 0 1.5px var(--color-success),
+			0 0 0 3px color-mix(in srgb, var(--color-success) 40%, transparent);
+	}
+	50% {
+		box-shadow:
+			0 0 0 1.5px var(--color-success),
+			0 0 0 3px color-mix(in srgb, var(--color-success) 0%, transparent);
+	}
+}
+
 @media (prefers-reduced-motion: reduce) {
 	/* Opacity-only (hover-reveal already is); scale/translate emphasis and
 	 * entrance movement drop entirely. */
@@ -130,5 +158,10 @@
 	.ui-proximity > *:hover,
 	.ui-proximity > *:focus-visible {
 		scale: none;
+	}
+	/* Motion is information, not decoration — hold a static ring when reduced. */
+	.ui-presence-ring {
+		animation: none;
+		box-shadow: 0 0 0 1.5px var(--color-success);
 	}
 }

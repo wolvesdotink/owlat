@@ -126,18 +126,9 @@ function rowAction(event: MouseEvent, e: 'toggle-star' | 'toggle-read' | 'archiv
 					class="flex-shrink-0"
 					aria-hidden="true"
 				/>
-				<div class="flex-1 min-w-0">
-					<div class="flex items-baseline justify-between gap-3">
-						<span
-							class="truncate text-sm"
-							:class="msg.flagSeen ? 'text-text-secondary' : 'font-semibold text-text-primary'"
-						>
-							{{ msg.fromName || msg.fromAddress }}
-						</span>
-						<span class="text-xs text-text-tertiary flex-shrink-0">
-							{{ formatThreadTimestamp(msg.receivedAt) }}
-						</span>
-					</div>
+				<PostboxRowCore :unread="!msg.flagSeen">
+					<template #identifier>{{ msg.fromName || msg.fromAddress }}</template>
+					<template #meta>{{ formatThreadTimestamp(msg.receivedAt) }}</template>
 					<div class="flex items-center gap-1.5 mt-0.5">
 						<Icon v-if="msg.flagFlagged" name="lucide:star" class="w-3.5 h-3.5 text-warning" />
 						<Icon
@@ -172,7 +163,7 @@ function rowAction(event: MouseEvent, e: 'toggle-star' | 'toggle-read' | 'archiv
 					<p class="pbx-row-snippet text-xs text-text-tertiary truncate mt-0.5">
 						{{ msg.snippet }}
 					</p>
-				</div>
+				</PostboxRowCore>
 			</div>
 		</component>
 		<!-- Hover quick-actions (single-message triage without a round-trip

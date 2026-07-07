@@ -76,6 +76,7 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	// Conversation parents (after their leaves)
 	'unifiedMessages',
 	'threadPresence', // ephemeral viewer/replier signals — clear before their threads
+	'threadReads', // per-user read markers — clear before their threads
 	'inboundMessages',
 	'conversationThreads',
 	'channelConfigs',
@@ -271,6 +272,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	auditLogs: makeSweepStep('auditLogs'),
 	instanceSettings: makeSweepStep('instanceSettings'),
 	threadPresence: makeSweepStep('threadPresence'),
+	threadReads: makeSweepStep('threadReads'),
 	unifiedMessages: makeSweepStep('unifiedMessages'),
 	channelConfigs: makeSweepStep('channelConfigs'),
 	agentMetrics: makeSweepStep('agentMetrics'),
