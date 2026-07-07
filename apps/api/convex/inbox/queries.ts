@@ -16,12 +16,9 @@ import { assertFeatureEnabled } from '../lib/featureFlags';
 // public: soft-auth — admin-only shared inbox; returns empty for non-admins
 export const listThreads = publicQuery({
 	args: {
-		status: v.optional(v.union(
-			v.literal('open'),
-			v.literal('waiting'),
-			v.literal('resolved'),
-			v.literal('closed')
-		)),
+		status: v.optional(
+			v.union(v.literal('open'), v.literal('waiting'), v.literal('resolved'), v.literal('closed'))
+		),
 		assignedToMe: v.optional(v.boolean()),
 		limit: v.optional(v.number()),
 		cursor: v.optional(v.string()),
@@ -45,15 +42,35 @@ export const listThreads = publicQuery({
 		//   - status only  → by_status (eq status)
 		//   - neither      → by_last_message_at
 		const base = ctx.db.query('conversationThreads');
+		// A snoozed thread leaves the Open filter until its snoozedUntil passes
+		// (the wake cron then clears it). Applied ONLY to the Open filter — the
+		// All / Waiting / Resolved views still surface snoozed rows, whose chip
+		// reads "Snoozed". Composes with .paginate() the same way a status filter
+		// does (filtered-out rows shrink the page; the cursor stays complete).
+		const now = Date.now();
+		const hideSnoozed = args.status === 'open';
+
 		let q;
 		if (args.assignedToMe) {
 			const userId = session.userId;
-			const assigned = base.withIndex('by_assigned_to', (idx) => idx.eq('assignedTo', userId));
+			let assigned = base.withIndex('by_assigned_to', (idx) => idx.eq('assignedTo', userId));
 			// A status filter composes correctly with .paginate() (filtered-out
 			// rows shrink the page but the cursor stays complete).
-			q = (args.status ? assigned.filter((f) => f.eq(f.field('status'), args.status!)) : assigned).order('desc');
+			if (args.status) assigned = assigned.filter((f) => f.eq(f.field('status'), args.status!));
+			if (hideSnoozed) {
+				assigned = assigned.filter((f) =>
+					f.or(f.eq(f.field('snoozedUntil'), undefined), f.lte(f.field('snoozedUntil'), now))
+				);
+			}
+			q = assigned.order('desc');
 		} else if (args.status) {
-			q = base.withIndex('by_status', (idx) => idx.eq('status', args.status!)).order('desc');
+			let statusQ = base.withIndex('by_status', (idx) => idx.eq('status', args.status!));
+			if (hideSnoozed) {
+				statusQ = statusQ.filter((f) =>
+					f.or(f.eq(f.field('snoozedUntil'), undefined), f.lte(f.field('snoozedUntil'), now))
+				);
+			}
+			q = statusQ.order('desc');
 		} else {
 			q = base.withIndex('by_last_message_at').order('desc');
 		}

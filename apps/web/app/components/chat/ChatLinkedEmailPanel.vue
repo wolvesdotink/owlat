@@ -7,6 +7,9 @@ interface Thread {
 	subject: string;
 	contactIdentifier: string;
 	status: 'open' | 'waiting' | 'resolved' | 'closed';
+	latestDraftStatus?: 'pending' | 'approved' | 'rejected' | 'sent';
+	snoozedUntil?: number;
+	snoozeReturnedAt?: number;
 	messageCount: number;
 	lastMessageAt: number;
 	assignedTo?: string;
@@ -32,19 +35,6 @@ interface Props {
 defineProps<Props>();
 
 const isExpanded = ref(false);
-
-const statusClass = (status: Thread['status']) => {
-	switch (status) {
-		case 'open':
-			return 'text-brand bg-brand-subtle';
-		case 'waiting':
-			return 'text-warning bg-warning/10';
-		case 'resolved':
-			return 'text-success bg-success-subtle';
-		case 'closed':
-			return 'text-text-tertiary bg-bg-surface';
-	}
-};
 </script>
 
 <template>
@@ -53,19 +43,23 @@ const statusClass = (status: Thread['status']) => {
 			<Icon name="lucide:mail" class="w-4 h-4 text-brand flex-shrink-0" />
 			<div class="flex-1 min-w-0">
 				<div class="flex items-center gap-2">
-					<span class="text-xs uppercase tracking-wider font-semibold text-brand">Linked email</span>
-					<span
-						class="text-[10px] px-1.5 py-0.5 rounded-full font-semibold uppercase tracking-wider"
-						:class="statusClass(data.thread.status)"
+					<span class="text-xs uppercase tracking-wider font-semibold text-brand"
+						>Linked email</span
 					>
-						{{ data.thread.status }}
-					</span>
+					<InboxStatusChip
+						:status="data.thread.status"
+						:latest-draft-status="data.thread.latestDraftStatus"
+						:snoozed-until="data.thread.snoozedUntil"
+						:snooze-returned-at="data.thread.snoozeReturnedAt"
+					/>
 				</div>
 				<h3 class="text-sm font-semibold text-text-primary truncate mt-0.5">
 					{{ data.thread.subject }}
 				</h3>
 				<p class="text-xs text-text-tertiary truncate">
-					{{ data.thread.contactIdentifier }} · {{ data.thread.messageCount }} message{{ data.thread.messageCount === 1 ? '' : 's' }}
+					{{ data.thread.contactIdentifier }} · {{ data.thread.messageCount }} message{{
+						data.thread.messageCount === 1 ? '' : 's'
+					}}
 				</p>
 			</div>
 			<button
@@ -96,7 +90,9 @@ const statusClass = (status: Thread['status']) => {
 			>
 				<div class="flex items-center justify-between mb-1">
 					<span class="font-medium text-text-primary truncate">{{ message.from }}</span>
-					<span class="text-text-tertiary flex-shrink-0">{{ formatDateTime(message.receivedAt) }}</span>
+					<span class="text-text-tertiary flex-shrink-0">{{
+						formatDateTime(message.receivedAt)
+					}}</span>
 				</div>
 				<p v-if="message.textBody" class="text-text-secondary whitespace-pre-wrap line-clamp-3">
 					{{ message.textBody }}

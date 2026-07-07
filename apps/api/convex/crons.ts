@@ -240,6 +240,15 @@ crons.interval(
 	{}
 );
 
+// Team-inbox snooze sweep — float snoozed conversation threads back into the
+// Open filter once their snoozedUntil has passed (stamps a "returned" marker).
+crons.interval(
+	'inbox wake snoozed threads',
+	{ minutes: 1 },
+	internal.inbox.snooze.internalSweep,
+	{}
+);
+
 // Channel health checks every 5 minutes
 // Monitors SMS, WhatsApp, webhook channel connectivity
 crons.interval(

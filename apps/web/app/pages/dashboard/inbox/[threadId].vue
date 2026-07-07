@@ -29,12 +29,20 @@ const {
 	cancelEditDraft,
 	saveEditedDraft,
 	handleStatusChange,
+	handleSnooze,
+	handleUnsnooze,
 	getProcessingStatusColor,
 	getProcessingStatusLabel,
 	getCategoryIcon,
 	formatTimestamp,
 	handleAssign,
 } = useThreadDetail(threadId);
+
+// Snooze picker — reuses the Postbox snooze presets (PostboxSnoozeDialog).
+const showSnoozeDialog = ref(false);
+const isSnoozed = computed(
+	() => !!thread.value?.snoozedUntil && thread.value.snoozedUntil > Date.now()
+);
 
 // Org members for the assignee picker (shared-inbox team triage).
 const { members, fetchMembers } = useOrganization();
@@ -62,6 +70,24 @@ const actionMessageId = ref<Id<'inboundMessages'> | null>(null);
 // only emit the success toast here, and only when the operation truly
 // succeeded (run resolves to `undefined` on failure, never throws).
 const { showToast } = useToast();
+
+const onSnoozeConfirm = async (timestamp: number) => {
+	showSnoozeDialog.value = false;
+	const result = await handleSnooze(timestamp);
+	if (result !== undefined) showToast('Thread snoozed');
+};
+// "Until they reply" maps to a capped snooze: an inbound reply already
+// resurfaces a snoozed thread (the thread module's inbound_activity reducer
+// clears the snooze), so the cap is just the no-reply fallback.
+const onSnoozeUntilReply = async (capTimestamp: number) => {
+	showSnoozeDialog.value = false;
+	const result = await handleSnooze(capTimestamp);
+	if (result !== undefined) showToast('Snoozed until they reply');
+};
+const onUnsnooze = async () => {
+	const result = await handleUnsnooze();
+	if (result !== undefined) showToast('Thread unsnoozed');
+};
 
 const onApprove = async (messageId: Id<'inboundMessages'>) => {
 	isApproving.value = true;
@@ -113,7 +139,9 @@ const onSaveEdit = async (messageId: Id<'inboundMessages'>) => {
 	}
 };
 
-const statusOptions = ['open', 'waiting', 'resolved', 'closed'] as const;
+// `closed` is merged into `resolved` in the UI — the picker no longer offers it
+// (legacy closed threads still read "Resolved" via the shared status chip).
+const statusOptions = ['open', 'waiting', 'resolved'] as const;
 
 // Chat integration: surface existing chat channels that already discuss this
 // thread, and offer to spin up a new one. Only active when the chat flag is
@@ -123,7 +151,7 @@ const chatEnabled = computed(() => isFeatureEnabled('chat'));
 
 const { data: discussionChannelsData } = useConvexQuery(
 	api.chat.emailLink.findChannelsForInboxThread,
-	() => (chatEnabled.value ? { inboxThreadId: threadId.value } : 'skip'),
+	() => (chatEnabled.value ? { inboxThreadId: threadId.value } : 'skip')
 );
 const discussionChannels = computed(() => discussionChannelsData.value ?? []);
 
@@ -165,7 +193,13 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 
 		<!-- Not Found -->
 		<div v-else-if="!thread" class="flex flex-col items-center justify-center py-16 text-center">
-			<UiIconBox icon="lucide:alert-circle" size="xl" variant="surface" rounded="full" class="mb-4" />
+			<UiIconBox
+				icon="lucide:alert-circle"
+				size="xl"
+				variant="surface"
+				rounded="full"
+				class="mb-4"
+			/>
 			<p class="text-text-secondary font-medium">Thread not found</p>
 			<NuxtLink to="/dashboard/inbox" class="btn btn-secondary mt-6">Back to Inbox</NuxtLink>
 		</div>
@@ -179,17 +213,12 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 						{{ thread.subject || 'No subject' }}
 					</h1>
 					<div class="flex items-center gap-3 mt-2">
-						<span
-							class="text-xs px-2 py-0.5 rounded-full font-medium"
-							:class="{
-								'text-brand bg-brand-subtle': thread.status === 'open',
-								'text-warning bg-warning/10': thread.status === 'waiting',
-								'text-success bg-success-subtle': thread.status === 'resolved',
-								'text-text-tertiary bg-bg-surface': thread.status === 'closed',
-							}"
-						>
-							{{ thread.status }}
-						</span>
+						<InboxStatusChip
+							:status="thread.status"
+							:latest-draft-status="thread.latestDraftStatus"
+							:snoozed-until="thread.snoozedUntil"
+							:snooze-returned-at="thread.snoozeReturnedAt"
+						/>
 						<span v-if="contact" class="text-sm text-text-secondary">
 							{{ contact.email }}
 						</span>
@@ -221,10 +250,24 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 							Discuss in channel
 						</button>
 					</div>
+					<!-- Snooze / unsnooze — reuses the Postbox snooze presets. -->
+					<button v-if="isSnoozed" class="btn btn-secondary btn-sm gap-1.5" @click="onUnsnooze">
+						<Icon name="lucide:alarm-clock-off" class="w-4 h-4" />
+						Unsnooze
+					</button>
+					<button v-else class="btn btn-secondary btn-sm gap-1.5" @click="showSnoozeDialog = true">
+						<Icon name="lucide:alarm-clock" class="w-4 h-4" />
+						Snooze
+					</button>
 					<select
-						:value="thread.status"
+						:value="thread.status === 'closed' ? 'resolved' : thread.status"
 						class="input w-auto text-sm"
-						@change="handleStatusChange(($event.target as HTMLSelectElement).value as 'open' | 'waiting' | 'resolved' | 'closed')"
+						aria-label="Change thread status"
+						@change="
+							handleStatusChange(
+								($event.target as HTMLSelectElement).value as 'open' | 'waiting' | 'resolved'
+							)
+						"
 					>
 						<option v-for="s in statusOptions" :key="s" :value="s">
 							{{ s.charAt(0).toUpperCase() + s.slice(1) }}
@@ -232,6 +275,14 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 					</select>
 				</div>
 			</div>
+
+			<PostboxSnoozeDialog
+				:open="showSnoozeDialog"
+				:hint-text="thread.subject ?? ''"
+				@update:open="showSnoozeDialog = $event"
+				@confirm="onSnoozeConfirm"
+				@confirm-until-reply="onSnoozeUntilReply"
+			/>
 
 			<ChatNewChannelDialog
 				v-if="showNewChannel"
@@ -242,11 +293,7 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 			<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 				<!-- Messages Timeline -->
 				<div class="lg:col-span-2 space-y-4">
-					<div
-						v-for="message in messages"
-						:key="message._id"
-						class="card"
-					>
+					<div v-for="message in messages" :key="message._id" class="card">
 						<!-- Message Header -->
 						<div class="flex items-center justify-between mb-4">
 							<div class="flex items-center gap-3">
@@ -272,20 +319,21 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 						</p>
 
 						<!-- Message Body -->
-						<div class="text-text-secondary text-sm whitespace-pre-wrap border-t border-border-subtle pt-4">
+						<div
+							class="text-text-secondary text-sm whitespace-pre-wrap border-t border-border-subtle pt-4"
+						>
 							{{ message.textBody || '(No text content)' }}
 						</div>
 
 						<!-- Classification -->
-						<div
-							v-if="message.classification"
-							class="mt-4 p-3 bg-bg-surface rounded-lg"
-						>
+						<div v-if="message.classification" class="mt-4 p-3 bg-bg-surface rounded-lg">
 							<p class="text-xs text-text-tertiary mb-2 font-medium uppercase tracking-wider">
 								AI Classification
 							</p>
 							<div class="flex flex-wrap gap-2">
-								<span class="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-brand-subtle text-brand">
+								<span
+									class="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-brand-subtle text-brand"
+								>
 									<Icon :name="getCategoryIcon(message.classification.category)" class="w-3 h-3" />
 									{{ message.classification.category }}
 								</span>
@@ -295,7 +343,9 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 								<span class="text-xs px-2 py-1 rounded-full bg-bg-elevated text-text-secondary">
 									{{ message.classification.sentiment }}
 								</span>
-								<span class="text-xs px-2 py-1 rounded-full bg-bg-elevated text-text-secondary font-mono">
+								<span
+									class="text-xs px-2 py-1 rounded-full bg-bg-elevated text-text-secondary font-mono"
+								>
 									{{ Math.round((message.classification.confidence ?? 0) * 100) }}% confidence
 								</span>
 							</div>
@@ -312,9 +362,7 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 							<p v-if="message.errorMessage" class="text-sm text-text-primary break-words mb-3">
 								{{ message.errorMessage }}
 							</p>
-							<p v-else class="text-sm text-text-secondary mb-3">
-								No error detail was recorded.
-							</p>
+							<p v-else class="text-sm text-text-secondary mb-3">No error detail was recorded.</p>
 							<button
 								class="btn btn-secondary btn-sm gap-1"
 								:disabled="isRetrying"
@@ -361,7 +409,9 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 
 							<!-- View mode -->
 							<template v-else>
-								<div class="text-text-primary text-sm whitespace-pre-wrap bg-brand-subtle/30 rounded-lg p-4">
+								<div
+									class="text-text-primary text-sm whitespace-pre-wrap bg-brand-subtle/30 rounded-lg p-4"
+								>
 									{{ message.draftResponse }}
 								</div>
 
@@ -379,10 +429,7 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 										<Icon v-else name="lucide:check" class="w-3 h-3" />
 										Approve & Send
 									</button>
-									<button
-										class="btn btn-secondary btn-sm gap-1"
-										@click="startEditDraft(message)"
-									>
+									<button class="btn btn-secondary btn-sm gap-1" @click="startEditDraft(message)">
 										<Icon name="lucide:pencil" class="w-3 h-3" />
 										Edit
 									</button>
@@ -414,9 +461,10 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 								<UiIconBox icon="lucide:user" size="sm" variant="surface" rounded="full" />
 								<div>
 									<p class="text-text-primary text-sm font-medium">
-										{{ contact.firstName || contact.lastName
-											? `${contact.firstName ?? ''} ${contact.lastName ?? ''}`.trim()
-											: contact.email
+										{{
+											contact.firstName || contact.lastName
+												? `${contact.firstName ?? ''} ${contact.lastName ?? ''}`.trim()
+												: contact.email
 										}}
 									</p>
 									<p class="text-xs text-text-tertiary">{{ contact.email }}</p>
@@ -436,8 +484,13 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 						<h2 class="text-lg font-medium text-text-primary mb-4">Details</h2>
 						<div class="space-y-3">
 							<div>
-								<p class="text-xs text-text-tertiary">Status</p>
-								<p class="text-text-primary capitalize">{{ thread.status }}</p>
+								<p class="text-xs text-text-tertiary mb-1">Status</p>
+								<InboxStatusChip
+									:status="thread.status"
+									:latest-draft-status="thread.latestDraftStatus"
+									:snoozed-until="thread.snoozedUntil"
+									:snooze-returned-at="thread.snoozeReturnedAt"
+								/>
 							</div>
 							<div>
 								<p class="text-xs text-text-tertiary">Messages</p>
@@ -456,7 +509,10 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 										{{ m.user.name || m.user.email }}
 									</option>
 								</select>
-								<p v-if="assignedMemberName && !members.length" class="text-text-tertiary text-xs mt-1">
+								<p
+									v-if="assignedMemberName && !members.length"
+									class="text-text-tertiary text-xs mt-1"
+								>
 									Currently: {{ assignedMemberName }}
 								</p>
 							</div>
