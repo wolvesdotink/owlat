@@ -160,7 +160,7 @@ const MAX_DOTS = 9;
 		</div>
 
 		<!-- Muted "next:" peek — depth on demand, one task still the focus. -->
-		<footer v-if="!complete && (peekLabel || $slots.peek)" class="mt-4 px-1">
+		<footer v-if="!complete && (peekLabel || $slots['peek'])" class="mt-4 px-1">
 			<p class="text-xs text-text-tertiary truncate">
 				<span class="text-text-tertiary/80">Next:</span>
 				<slot name="peek">{{ peekLabel }}</slot>

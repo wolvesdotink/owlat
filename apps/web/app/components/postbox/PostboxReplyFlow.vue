@@ -183,7 +183,7 @@ async function markDone(row: FlowItem) {
 /** Archive — moves the flagged message; Cmd/Ctrl+Z moves it back. */
 async function archiveRow(row: FlowItem) {
 	const result = await archiveOp.run({ messageIds: [row.messageId as Id<'mailMessages'>] });
-	if (result === undefined || !('moved' in result)) return;
+	if (result == null || !('moved' in result)) return;
 	const moved = result.moved;
 	flow.complete(row.id, {
 		outcome: 'archived',
