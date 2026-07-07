@@ -15,12 +15,26 @@ import { findOrCreateForEmail, transition } from '../inbox/threads/module';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
+	// Resolve the mutation/admin context from the test's withIdentity() so the
+	// caller's userId matches `identity.subject` — the same id `listThreads`
+	// reads via `getBetterAuthSessionWithRole`. This keeps `markThreadSeen`
+	// writing its read marker under the id the list later checks, and lets
+	// admin-gated mutations resolve WITHOUT the real active-org membership
+	// lookup (which the harness never seeds). `requireAdminContext` is mocked
+	// directly because the real one calls the module-internal `getMutationContext`
+	// (not the mocked export), so mocking `getMutationContext` alone wouldn't
+	// intercept the admin-floor check inside `adminMutation`.
+	const contextFromIdentity = async (ctx: QueryCtx) => {
+		const identity = await ctx.auth.getUserIdentity();
+		return { userId: identity?.subject ?? 'test-user', role: 'owner' as const };
+	};
 	return {
 		...actual,
-		requireOrgMember: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
+		requireOrgMember: vi.fn(contextFromIdentity),
+		requireAdminContext: vi.fn(contextFromIdentity),
+		getMutationContext: vi.fn(contextFromIdentity),
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
-		getUserIdFromSession: vi.fn().mockResolvedValue('test-user'),
-		getMutationContext: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
+		getUserIdFromSession: vi.fn(async (ctx: QueryCtx) => (await contextFromIdentity(ctx)).userId),
 		// The inbox is admin-only. Resolve role from the test's withIdentity():
 		// return null when absent (so the not-authenticated path returns empty)
 		// and use the real identity.subject so assignedToMe matching still works.
@@ -650,7 +664,9 @@ describe('inbox.reads.markThreadSeen + listThreads unread', () => {
 		const first = await t.run(async (ctx) =>
 			ctx.db
 				.query('threadReads')
-				.withIndex('by_user_thread', (q) => q.eq('userId', 'test-user').eq('threadId', threadId))
+				.withIndex('by_user_thread', (q) =>
+					q.eq('userId', testIdentity.subject).eq('threadId', threadId)
+				)
 				.collect()
 		);
 		expect(first).toHaveLength(1);
@@ -661,7 +677,9 @@ describe('inbox.reads.markThreadSeen + listThreads unread', () => {
 		const second = await t.run(async (ctx) =>
 			ctx.db
 				.query('threadReads')
-				.withIndex('by_user_thread', (q) => q.eq('userId', 'test-user').eq('threadId', threadId))
+				.withIndex('by_user_thread', (q) =>
+					q.eq('userId', testIdentity.subject).eq('threadId', threadId)
+				)
 				.collect()
 		);
 		expect(second).toHaveLength(1);
@@ -685,15 +703,9 @@ describe('inbox.reads.markThreadSeen + listThreads unread', () => {
 		const before = await t.withIdentity(testIdentity).query(api.inbox.queries.listThreads, {});
 		expect(before.threads[0]!.unread).toBe(true);
 
-		// Seen after the last message → read. (The list viewer id is the
-		// identity subject, so write the marker for that id.)
-		await t.run(async (ctx) => {
-			await ctx.db.insert('threadReads', {
-				threadId,
-				userId: testIdentity.subject,
-				lastSeenAt: now + 1000,
-			});
-		});
+		// Opening the thread marks it seen through the real mutation (records
+		// lastSeenAt = now, which is >= the thread's lastMessageAt) → read.
+		await t.withIdentity(testIdentity).mutation(api.inbox.reads.markThreadSeen, { threadId });
 		const seen = await t.withIdentity(testIdentity).query(api.inbox.queries.listThreads, {});
 		expect(seen.threads[0]!.unread).toBe(false);
 
