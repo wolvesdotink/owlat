@@ -43,7 +43,6 @@ apps/mta/src/bounce/inboundSecurity.ts
 apps/mta/src/smtp/submissionServer.ts
 apps/mta/src/smtp/tlsRpt.ts
 apps/setup-cli/src/commands/quickstart.ts
-apps/web/app/components/campaigns/steps/ABTestStep.vue
 apps/web/app/components/campaigns/steps/ReviewStep.vue
 apps/web/app/components/contacts/CsvImportModal.vue
 apps/web/app/components/contacts/IntegrationImportModal.vue

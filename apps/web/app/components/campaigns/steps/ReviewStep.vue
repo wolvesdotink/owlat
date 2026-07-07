@@ -219,8 +219,9 @@ const variantBTemplateName = computed(() => {
 					</div>
 					<button
 						class="p-2 text-text-tertiary hover:text-text-primary hover:bg-bg-elevated rounded-lg transition-colors"
-						@click="emit('editStep', 'basics')"
-					 aria-label="Edit">
+						@click="emit('editStep', 'setup')"
+						aria-label="Edit"
+					>
 						<Icon name="lucide:pencil" class="w-4 h-4" />
 					</button>
 				</div>
@@ -242,8 +243,9 @@ const variantBTemplateName = computed(() => {
 					</div>
 					<button
 						class="p-2 text-text-tertiary hover:text-text-primary hover:bg-bg-elevated rounded-lg transition-colors"
-						@click="emit('editStep', 'basics')"
-					 aria-label="Edit">
+						@click="emit('editStep', 'setup')"
+						aria-label="Edit"
+					>
 						<Icon name="lucide:pencil" class="w-4 h-4" />
 					</button>
 				</div>
@@ -265,8 +267,9 @@ const variantBTemplateName = computed(() => {
 					</div>
 					<button
 						class="p-2 text-text-tertiary hover:text-text-primary hover:bg-bg-elevated rounded-lg transition-colors"
-						@click="emit('editStep', 'audience')"
-					 aria-label="Edit">
+						@click="emit('editStep', 'setup')"
+						aria-label="Edit"
+					>
 						<Icon name="lucide:pencil" class="w-4 h-4" />
 					</button>
 				</div>
@@ -292,7 +295,8 @@ const variantBTemplateName = computed(() => {
 					<button
 						class="p-2 text-text-tertiary hover:text-text-primary hover:bg-bg-elevated rounded-lg transition-colors"
 						@click="emit('editStep', 'content')"
-					 aria-label="Edit">
+						aria-label="Edit"
+					>
 						<Icon name="lucide:pencil" class="w-4 h-4" />
 					</button>
 				</div>
@@ -333,8 +337,8 @@ const variantBTemplateName = computed(() => {
 									}}</span>
 								</div>
 								<p class="text-sm text-text-tertiary mt-2">
-									{{ data.abSplitPercentage }}% each for test, winner sent to
-									remaining {{ Math.max(0, 100 - 2 * data.abSplitPercentage) }}%
+									{{ data.abSplitPercentage }}% each for test, winner sent to remaining
+									{{ Math.max(0, 100 - 2 * data.abSplitPercentage) }}%
 								</p>
 								<p class="text-sm text-text-tertiary">
 									Winner by:
@@ -354,8 +358,9 @@ const variantBTemplateName = computed(() => {
 					</div>
 					<button
 						class="p-2 text-text-tertiary hover:text-text-primary hover:bg-bg-elevated rounded-lg transition-colors"
-						@click="emit('editStep', 'abtest')"
-					 aria-label="Edit">
+						@click="emit('editStep', 'setup')"
+						aria-label="Edit"
+					>
 						<Icon name="lucide:pencil" class="w-4 h-4" />
 					</button>
 				</div>
@@ -536,7 +541,9 @@ const variantBTemplateName = computed(() => {
 			<UiButton
 				:loading="isLoading"
 				:disabled="
-					isLoading || Boolean(sendBlockedReason) || (sendOption === 'later' && (!scheduledDate || !scheduledTime))
+					isLoading ||
+					Boolean(sendBlockedReason) ||
+					(sendOption === 'later' && (!scheduledDate || !scheduledTime))
 				"
 				@click="handleSendCampaign"
 			>
