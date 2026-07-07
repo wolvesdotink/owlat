@@ -3,7 +3,7 @@ import type { Page, Locator } from '@playwright/test';
 export class CampaignWizardPage {
 	readonly page: Page;
 
-	// Basics step
+	// Setup step (basics fields)
 	readonly campaignNameInput: Locator;
 	readonly fromNameInput: Locator;
 	readonly fromEmailInput: Locator;
@@ -17,7 +17,7 @@ export class CampaignWizardPage {
 	constructor(page: Page) {
 		this.page = page;
 
-		// Basics step fields (using id selectors from BasicsStep.vue)
+		// Setup step fields (using id selectors from SetupStep.vue)
 		this.campaignNameInput = page.locator('#campaignName');
 		this.fromNameInput = page.locator('#fromName');
 		this.fromEmailInput = page.locator('#fromEmail');

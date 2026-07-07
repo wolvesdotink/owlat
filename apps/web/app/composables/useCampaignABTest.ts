@@ -45,7 +45,8 @@ export function useCampaignABTest() {
 			const config = campaign.abTestConfig;
 			abTestType.value = config.testType ?? 'subject';
 			abVariantBSubject.value = config.variantBSubject ?? '';
-			abVariantBTemplateId.value = (config.variantBTemplateId ?? null) as Id<"emailTemplates"> | null;
+			abVariantBTemplateId.value = (config.variantBTemplateId ??
+				null) as Id<'emailTemplates'> | null;
 			abSplitPercentage.value = config.splitPercentage ?? 20;
 			abWinnerCriteria.value = config.winnerCriteria ?? 'open_rate';
 			abTestDuration.value = config.testDuration ?? 4;
@@ -71,15 +72,35 @@ export function useCampaignABTest() {
 	});
 
 	/**
+	 * Validate the current A/B configuration. Returns an error message when the
+	 * enabled test is incomplete (missing Variant B, out-of-range split), or
+	 * `null` when the config is valid — including when A/B is off. Shared by the
+	 * campaign wizard's Setup step and the campaign editor so the gate is
+	 * identical in both places.
+	 */
+	const validate = (): string | null => {
+		if (!abTestEnabled.value) return null;
+
+		if (abTestType.value === 'subject' && !abVariantBSubject.value.trim()) {
+			return 'Variant B subject line is required';
+		}
+		if (abTestType.value === 'content' && !abVariantBTemplateId.value) {
+			return 'Variant B email template is required';
+		}
+		if (abSplitPercentage.value < 10 || abSplitPercentage.value > 50) {
+			return 'Split percentage must be between 10% and 50%';
+		}
+		return null;
+	};
+
+	/**
 	 * Build the A/B test config payload for the enableABTest mutation.
 	 */
 	const buildEnablePayload = (campaignId: Id<'campaigns'>) => ({
 		campaignId,
 		testType: abTestType.value,
-		variantBSubject:
-			abTestType.value === 'subject' ? abVariantBSubject.value.trim() : undefined,
-		variantBTemplateId:
-			abTestType.value === 'content' ? abVariantBTemplateId.value! : undefined,
+		variantBSubject: abTestType.value === 'subject' ? abVariantBSubject.value.trim() : undefined,
+		variantBTemplateId: abTestType.value === 'content' ? abVariantBTemplateId.value! : undefined,
 		splitPercentage: abSplitPercentage.value,
 		winnerCriteria: abWinnerCriteria.value,
 		testDuration: abWinnerCriteria.value !== 'manual' ? abTestDuration.value : undefined,
@@ -100,6 +121,7 @@ export function useCampaignABTest() {
 
 		// Methods
 		initializeFromCampaign,
+		validate,
 		buildEnablePayload,
 	};
 }
