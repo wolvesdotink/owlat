@@ -172,7 +172,7 @@ const openCreateModal = () => {
 };
 
 const handleTemplateCreate = (templateId: Id<'emailTemplates'>) => {
-	router.push(`/dashboard/emails/${templateId}/edit`);
+	router.push(`/dashboard/send/emails/${templateId}/edit`);
 };
 
 const handleCreateSubmit = async () => {
@@ -181,7 +181,7 @@ const handleCreateSubmit = async () => {
 
 // Navigate to edit
 const handleEdit = (templateId: Id<'emailTemplates'>) => {
-	router.push(`/dashboard/emails/${templateId}/edit`);
+	router.push(`/dashboard/send/emails/${templateId}/edit`);
 };
 
 // Close sort dropdown when clicking outside

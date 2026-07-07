@@ -28,26 +28,31 @@ const routeConfigs: Record<string, RouteConfig> = {
 		sectionHref: '/dashboard',
 	},
 
-	// Mail section
-	'/dashboard/mail': {
-		section: 'Mail',
-		sectionHref: '/dashboard/mail',
-		page: 'Overview',
+	// Send section
+	'/dashboard/send': {
+		section: 'Send',
+		sectionHref: '/dashboard/send',
+		page: 'Templates & blocks',
 	},
-	'/dashboard/mail/marketing': {
-		section: 'Mail',
-		sectionHref: '/dashboard/mail',
+	'/dashboard/send/marketing': {
+		section: 'Send',
+		sectionHref: '/dashboard/send',
 		page: 'Marketing',
 	},
-	'/dashboard/mail/transactional': {
-		section: 'Mail',
-		sectionHref: '/dashboard/mail',
+	'/dashboard/send/transactional': {
+		section: 'Send',
+		sectionHref: '/dashboard/send',
 		page: 'Transactional',
 	},
-	'/dashboard/mail/blocks': {
-		section: 'Mail',
-		sectionHref: '/dashboard/mail',
+	'/dashboard/send/blocks': {
+		section: 'Send',
+		sectionHref: '/dashboard/send',
 		page: 'Blocks',
+	},
+	'/dashboard/send/media': {
+		section: 'Send',
+		sectionHref: '/dashboard/send',
+		page: 'Media',
 	},
 
 	// Campaigns section
@@ -200,23 +205,23 @@ interface PatternConfig {
 const patternConfigs: PatternConfig[] = [
 	// Email template edit
 	{
-		pattern: /^\/dashboard\/emails\/([^/]+)\/edit$/,
+		pattern: /^\/dashboard\/send\/emails\/([^/]+)\/edit$/,
 		getConfig: () => ({
-			section: 'Mail',
-			sectionHref: '/dashboard/mail',
+			section: 'Send',
+			sectionHref: '/dashboard/send',
 			subsection: 'Marketing',
-			subsectionHref: '/dashboard/mail/marketing',
+			subsectionHref: '/dashboard/send/marketing',
 			page: 'Edit Template',
 		}),
 	},
 	// Transactional template edit
 	{
-		pattern: /^\/dashboard\/transactional\/([^/]+)\/edit$/,
+		pattern: /^\/dashboard\/send\/transactional\/([^/]+)\/edit$/,
 		getConfig: () => ({
-			section: 'Mail',
-			sectionHref: '/dashboard/mail',
+			section: 'Send',
+			sectionHref: '/dashboard/send',
 			subsection: 'Transactional',
-			subsectionHref: '/dashboard/mail/transactional',
+			subsectionHref: '/dashboard/send/transactional',
 			page: 'Edit Template',
 		}),
 	},

@@ -57,7 +57,7 @@ const selectedTemplate = computed(() =>
 			>
 				<p class="text-sm text-warning">
 					No automation templates found.
-					<NuxtLink to="/dashboard/mail/marketing" class="underline">
+					<NuxtLink to="/dashboard/send/marketing" class="underline">
 						Create an email template
 					</NuxtLink>
 					with type "Automation" first.
@@ -68,7 +68,7 @@ const selectedTemplate = computed(() =>
 				<p class="text-sm text-text-secondary mb-2">
 					Or create a new email template for this automation:
 				</p>
-				<NuxtLink to="/dashboard/mail/marketing" class="btn btn-secondary btn-sm gap-2 w-full">
+				<NuxtLink to="/dashboard/send/marketing" class="btn btn-secondary btn-sm gap-2 w-full">
 					<Icon name="lucide:plus" class="w-4 h-4" />
 					Create New Email
 				</NuxtLink>
@@ -90,10 +90,7 @@ const selectedTemplate = computed(() =>
 			</p>
 		</div>
 
-		<div
-			v-if="selectedTemplate"
-			class="p-4 bg-bg-surface border border-border-subtle rounded-lg"
-		>
+		<div v-if="selectedTemplate" class="p-4 bg-bg-surface border border-border-subtle rounded-lg">
 			<p class="text-xs font-medium text-text-tertiary uppercase tracking-wide mb-2">
 				Template Preview
 			</p>
@@ -103,7 +100,7 @@ const selectedTemplate = computed(() =>
 					Subject: {{ modelValue.subjectOverride || selectedTemplate.subject }}
 				</p>
 				<NuxtLink
-					:to="`/dashboard/emails/${selectedTemplate._id}/edit`"
+					:to="`/dashboard/send/emails/${selectedTemplate._id}/edit`"
 					class="text-sm text-brand hover:underline"
 				>
 					Edit template →

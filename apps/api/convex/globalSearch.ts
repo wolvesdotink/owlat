@@ -19,7 +19,7 @@ export interface GlobalSearchResults {
 export async function runGlobalSearch(
 	ctx: QueryCtx,
 	rawQuery: string,
-	rawLimit?: number,
+	rawLimit?: number
 ): Promise<GlobalSearchResults> {
 	const searchQuery = rawQuery.trim();
 	const limit = Math.max(1, Math.min(rawLimit ?? 5, 25)); // per category
@@ -35,7 +35,7 @@ export async function runGlobalSearch(
 			.withSearchIndex('search_contacts', (q) =>
 				// Exclude soft-deleted (GDPR-erased) contacts — their PII must
 				// not be discoverable via global search.
-				q.search('searchableText', searchQuery).eq('deletedAt', undefined),
+				q.search('searchableText', searchQuery).eq('deletedAt', undefined)
 			)
 			.take(limit),
 		ctx.db
@@ -69,7 +69,7 @@ export async function runGlobalSearch(
 		type: 'email' as const,
 		title: template.name,
 		subtitle: template.subject ?? '',
-		url: `/dashboard/emails/${template._id}/edit`,
+		url: `/dashboard/send/emails/${template._id}/edit`,
 	}));
 
 	const matchedTransactional = transactionalEmails.map((email) => ({
@@ -77,7 +77,7 @@ export async function runGlobalSearch(
 		type: 'email' as const,
 		title: email.name,
 		subtitle: `${email.subject ?? ''} (${email.slug})`,
-		url: `/dashboard/transactional/${email._id}/edit`,
+		url: `/dashboard/send/transactional/${email._id}/edit`,
 	}));
 
 	const matchedCampaigns = campaigns.map((campaign) => ({

@@ -48,16 +48,20 @@ declare module '#app' {
  *
  * Mirrors the feature conditionals in `layouts/dashboard.vue`'s nav.
  */
-export const PATH_FEATURE_RULES: ReadonlyArray<{ prefix: string; required?: FeatureFlagKey | FeatureFlagKey[]; anyOf?: FeatureFlagKey[] }> = [
+export const PATH_FEATURE_RULES: ReadonlyArray<{
+	prefix: string;
+	required?: FeatureFlagKey | FeatureFlagKey[];
+	anyOf?: FeatureFlagKey[];
+}> = [
 	{ prefix: '/dashboard/campaigns', required: 'campaigns' },
 	{ prefix: '/dashboard/automations', required: 'automations' },
 	{ prefix: '/dashboard/visualizations', required: 'ai.visualizations' },
-	{ prefix: '/dashboard/mail/marketing', required: 'campaigns' },
-	{ prefix: '/dashboard/mail/transactional', required: 'transactional' },
-	// The transactional editor tree lives outside /dashboard/mail/* (at
-	// /dashboard/transactional/[id]/{edit,sends/[sendId],translations}) and must
-	// be gated too — otherwise the editor is reachable by URL when the flag is off.
-	{ prefix: '/dashboard/transactional', required: 'transactional' },
+	{ prefix: '/dashboard/send/marketing', required: 'campaigns' },
+	// Transactional list AND editor now both live under /dashboard/send/transactional
+	// (list at .../transactional, editor at .../transactional/[id]/{edit,sends,translations}),
+	// so one prefix gates the whole tree — otherwise the editor is reachable by URL
+	// when the flag is off.
+	{ prefix: '/dashboard/send/transactional', required: 'transactional' },
 	{ prefix: '/dashboard/knowledge', required: 'ai.knowledge' },
 	{ prefix: '/dashboard/inbox', required: 'inbox' },
 	{ prefix: '/dashboard/chat', required: 'chat' },
