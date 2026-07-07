@@ -1,6 +1,6 @@
 /**
  * Email-settings save — the app-side helper behind the marketing template
- * Settings page (pages/dashboard/emails/[id]/settings.vue). It routes the save
+ * Settings page (pages/dashboard/send/emails/[id]/settings.vue). It routes the save
  * to the right backend mutation depending on whether the user changed the
  * template's **default language**.
  *
@@ -79,7 +79,7 @@ export type EmailSettingsSaveResult =
  * overlay had only just been added in the form and never persisted.
  */
 export async function emailSettingsSave(
-	args: EmailSettingsSaveArgs,
+	args: EmailSettingsSaveArgs
 ): Promise<EmailSettingsSaveResult> {
 	const languageChanged = args.selectedDefaultLanguage !== args.persistedDefaultLanguage;
 

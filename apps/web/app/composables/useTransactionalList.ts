@@ -111,10 +111,13 @@ export function useTransactionalList() {
 
 	// --- UTILITIES ---
 
-
 	const getStatusBadge = (status: 'draft' | 'published' | 'pending_review') => {
 		if (status === 'published') {
-			return { color: 'bg-success/10 text-success', icon: 'lucide:check-circle', label: 'Published' };
+			return {
+				color: 'bg-success/10 text-success',
+				icon: 'lucide:check-circle',
+				label: 'Published',
+			};
 		}
 
 		if (status === 'pending_review') {
@@ -125,7 +128,11 @@ export function useTransactionalList() {
 			};
 		}
 
-		return { color: 'bg-text-tertiary/10 text-text-tertiary', icon: 'lucide:file-text', label: 'Draft' };
+		return {
+			color: 'bg-text-tertiary/10 text-text-tertiary',
+			icon: 'lucide:file-text',
+			label: 'Draft',
+		};
 	};
 
 	// --- DUPLICATE HANDLER ---
@@ -174,7 +181,6 @@ export function useTransactionalList() {
 	const createForm = reactive({ name: '', slug: '', defaultLanguage: 'en' });
 	const createFormErrors = reactive({ name: '', slug: '' });
 	const isCreating = ref(false);
-
 
 	watch(
 		() => createForm.name,
@@ -236,13 +242,13 @@ export function useTransactionalList() {
 		if (emailId === undefined) return;
 
 		closeCreateModal();
-		router.push(`/dashboard/transactional/${emailId}/edit`);
+		router.push(`/dashboard/send/transactional/${emailId}/edit`);
 	};
 
 	// --- NAVIGATION ---
 
 	const handleEdit = (emailId: Id<'transactionalEmails'>) => {
-		router.push(`/dashboard/transactional/${emailId}/edit`);
+		router.push(`/dashboard/send/transactional/${emailId}/edit`);
 	};
 
 	// --- CODE SNIPPET MODAL ---
@@ -354,7 +360,6 @@ result = response.json()`;
 		// Utilities
 		formatDate,
 		getStatusBadge,
-
 
 		// Duplicate
 		handleDuplicate,

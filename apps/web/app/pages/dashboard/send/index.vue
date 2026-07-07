@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 
-useHead({ title: 'Mail — Owlat' });
+useHead({ title: 'Templates & blocks — Owlat' });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -9,26 +9,32 @@ definePageMeta({
 });
 
 // Fetch template counts
-const { data: templateCounts, isLoading: countsLoading, error: countsError } = useOrganizationQuery(
-	api.emailTemplates.organization.countByTypeByOrganization
-);
+const {
+	data: templateCounts,
+	isLoading: countsLoading,
+	error: countsError,
+} = useOrganizationQuery(api.emailTemplates.organization.countByTypeByOrganization);
 
 // Fetch recently edited templates
-const { data: recentTemplates, isLoading: templatesLoading, error: templatesError } = useOrganizationQuery(
-	api.emailTemplates.organization.getRecentByOrganization,
-	{ limit: 5 }
-);
+const {
+	data: recentTemplates,
+	isLoading: templatesLoading,
+	error: templatesError,
+} = useOrganizationQuery(api.emailTemplates.organization.getRecentByOrganization, { limit: 5 });
 
 // Fetch blocks stats
-const { data: blocksStats, isLoading: blocksStatsLoading, error: blocksStatsError } = useOrganizationQuery(
-	api.emailBlocks.blocks.getStatsByTeam
-);
+const {
+	data: blocksStats,
+	isLoading: blocksStatsLoading,
+	error: blocksStatsError,
+} = useOrganizationQuery(api.emailBlocks.blocks.getStatsByTeam);
 
 // Fetch recent blocks
-const { data: recentBlocks, isLoading: blocksLoading, error: blocksError } = useOrganizationQuery(
-	api.emailBlocks.blocks.getRecentByTeam,
-	{ limit: 3 }
-);
+const {
+	data: recentBlocks,
+	isLoading: blocksLoading,
+	error: blocksError,
+} = useOrganizationQuery(api.emailBlocks.blocks.getRecentByTeam, { limit: 3 });
 
 // Stats for display
 const stats = computed(() => [
@@ -58,21 +64,33 @@ const stats = computed(() => [
 const quickActions = [
 	{
 		label: 'Marketing Emails',
-		href: '/dashboard/mail/marketing',
+		href: '/dashboard/send/marketing',
 		icon: 'lucide:megaphone',
 		description: 'Create a newsletter or promotional email',
 	},
 	{
 		label: 'Transactional Emails',
-		href: '/dashboard/mail/transactional',
+		href: '/dashboard/send/transactional',
 		icon: 'lucide:file-code',
 		description: 'Create an API-triggered email',
 	},
 	{
 		label: 'Browse Blocks',
-		href: '/dashboard/mail/blocks',
+		href: '/dashboard/send/blocks',
 		icon: 'lucide:layout-grid',
 		description: 'View and manage saved blocks',
+	},
+	{
+		label: 'Media',
+		href: '/dashboard/send/media',
+		icon: 'lucide:image',
+		description: 'Upload and manage images',
+	},
+	{
+		label: 'Files',
+		href: '/dashboard/files',
+		icon: 'lucide:file-search',
+		description: 'Browse uploaded files',
 	},
 ];
 
@@ -86,7 +104,7 @@ function getTypeBadgeClass(type: string): string {
 	<div class="p-6 lg:p-8">
 		<!-- Header -->
 		<div class="mb-8">
-			<h1 class="text-2xl font-semibold text-text-primary">Mail</h1>
+			<h1 class="text-2xl font-semibold text-text-primary">Templates &amp; blocks</h1>
 			<p class="mt-1 text-text-secondary">Manage your email templates and reusable blocks.</p>
 		</div>
 
@@ -138,7 +156,10 @@ function getTypeBadgeClass(type: string): string {
 					class="card group hover:border-brand transition-colors cursor-pointer"
 				>
 					<div class="flex items-center gap-4">
-						<UiIconBox :icon="action.icon" class="group-hover:bg-brand group-hover:text-text-inverse transition-colors" />
+						<UiIconBox
+							:icon="action.icon"
+							class="group-hover:bg-brand group-hover:text-text-inverse transition-colors"
+						/>
 						<div>
 							<p class="font-medium text-text-primary group-hover:text-brand transition-colors">
 								{{ action.label }}
@@ -157,7 +178,7 @@ function getTypeBadgeClass(type: string): string {
 				<div class="flex items-center justify-between mb-4">
 					<h2 class="text-lg font-semibold text-text-primary">Recently Edited</h2>
 					<NuxtLink
-						to="/dashboard/mail/marketing"
+						to="/dashboard/send/marketing"
 						class="text-sm text-brand hover:text-brand-hover flex items-center gap-1"
 					>
 						View all
@@ -175,12 +196,18 @@ function getTypeBadgeClass(type: string): string {
 						v-else-if="!recentTemplates || recentTemplates.length === 0"
 						class="flex flex-col items-center justify-center py-12 text-center"
 					>
-						<UiIconBox icon="lucide:file-text" size="xl" variant="surface" rounded="full" class="mb-4" />
+						<UiIconBox
+							icon="lucide:file-text"
+							size="xl"
+							variant="surface"
+							rounded="full"
+							class="mb-4"
+						/>
 						<p class="text-text-secondary font-medium">No templates yet</p>
 						<p class="text-sm text-text-tertiary mt-1 max-w-sm">
 							Create your first email template to get started.
 						</p>
-						<NuxtLink to="/dashboard/mail/marketing" class="btn btn-primary mt-6 gap-2">
+						<NuxtLink to="/dashboard/send/marketing" class="btn btn-primary mt-6 gap-2">
 							<Icon name="lucide:plus" class="w-4 h-4" />
 							Create Template
 						</NuxtLink>
@@ -191,7 +218,7 @@ function getTypeBadgeClass(type: string): string {
 						<NuxtLink
 							v-for="template in recentTemplates"
 							:key="template._id"
-							:to="`/dashboard/emails/${template._id}/edit`"
+							:to="`/dashboard/send/emails/${template._id}/edit`"
 							class="flex items-center gap-4 py-3 first:pt-0 last:pb-0 hover:bg-bg-surface -mx-4 px-4 transition-colors"
 						>
 							<UiIconBox icon="lucide:mail" size="sm" variant="surface" rounded="lg" />
@@ -221,7 +248,7 @@ function getTypeBadgeClass(type: string): string {
 				<div class="flex items-center justify-between mb-4">
 					<h2 class="text-lg font-semibold text-text-primary">Saved Blocks</h2>
 					<NuxtLink
-						to="/dashboard/mail/blocks"
+						to="/dashboard/send/blocks"
 						class="text-sm text-brand hover:text-brand-hover flex items-center gap-1"
 					>
 						View all
@@ -239,7 +266,13 @@ function getTypeBadgeClass(type: string): string {
 						v-else-if="!recentBlocks || recentBlocks.length === 0"
 						class="flex flex-col items-center justify-center py-12 text-center"
 					>
-						<UiIconBox icon="lucide:layout-grid" size="xl" variant="surface" rounded="full" class="mb-4" />
+						<UiIconBox
+							icon="lucide:layout-grid"
+							size="xl"
+							variant="surface"
+							rounded="full"
+							class="mb-4"
+						/>
 						<p class="text-text-secondary font-medium">No blocks saved</p>
 						<p class="text-sm text-text-tertiary mt-1 max-w-sm">
 							Save reusable blocks from your email editor to use across templates.

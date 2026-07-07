@@ -17,7 +17,7 @@ export class EmailEditorPage {
 	 * Navigate to marketing templates listing, create a new blank template, and end up in the editor.
 	 */
 	async gotoNewTemplate() {
-		await this.page.goto('/dashboard/mail/marketing');
+		await this.page.goto('/dashboard/send/marketing');
 		// Wait for page to load
 		await this.page.waitForSelector('h1', { timeout: 15_000 });
 

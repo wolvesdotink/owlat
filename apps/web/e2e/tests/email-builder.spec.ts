@@ -9,15 +9,13 @@ test.describe('Email Builder', () => {
 	});
 
 	test('navigate to marketing templates listing', async ({ page }) => {
-		await page.goto('/dashboard/mail/marketing');
+		await page.goto('/dashboard/send/marketing');
 
 		// Verify page loaded with correct heading
 		await expect(page.getByText('Marketing Templates')).toBeVisible({ timeout: 15_000 });
 
 		// Verify "New Marketing Template" button is visible
-		await expect(
-			page.getByRole('button', { name: /New Marketing Template/i })
-		).toBeVisible();
+		await expect(page.getByRole('button', { name: /New Marketing Template/i })).toBeVisible();
 	});
 
 	test('create new template from blank and open editor', async ({ page }) => {

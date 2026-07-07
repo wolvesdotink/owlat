@@ -37,7 +37,9 @@ const { run: updateBlock } = useBackendOperation(api.emailBlocks.blocks.update, 
 const { emailTheme } = useEmailTheme();
 
 // Fetch contact properties for personalization variables
-const { data: contactProperties } = useOrganizationQuery(api.contacts.properties.listByOrganization);
+const { data: contactProperties } = useOrganizationQuery(
+	api.contacts.properties.listByOrganization
+);
 
 // Built-in contact variables (always available)
 const builtInVariables: Variable[] = [
@@ -159,7 +161,7 @@ const handleSave = async () => {
 
 // Back handler - route guard will handle unsaved changes warning
 const handleBack = () => {
-	router.push('/dashboard/mail/blocks');
+	router.push('/dashboard/send/blocks');
 };
 
 // Settings handler - opens the settings modal

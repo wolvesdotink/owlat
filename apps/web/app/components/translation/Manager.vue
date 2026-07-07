@@ -516,9 +516,9 @@ const autoTranslateColumn = async (targetLanguage: string) => {
 // Navigation
 const handleBack = () => {
 	if (props.emailType === 'marketing') {
-		router.push(`/dashboard/emails/${props.emailId}/edit`);
+		router.push(`/dashboard/send/emails/${props.emailId}/edit`);
 	} else {
-		router.push(`/dashboard/transactional/${props.emailId}/edit`);
+		router.push(`/dashboard/send/transactional/${props.emailId}/edit`);
 	}
 };
 
@@ -538,7 +538,8 @@ const isCellSaving = (rowId: string, language: string) => {
 				<button
 					class="p-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-bg-surface transition-colors"
 					@click="handleBack"
-				 aria-label="Back">
+					aria-label="Back"
+				>
 					<Icon name="lucide:arrow-left" class="w-5 h-5" />
 				</button>
 
@@ -737,16 +738,20 @@ const isCellSaving = (rowId: string, language: string) => {
 					</div>
 				</div>
 			</div>
-		<UiConfirmationDialog
-			:open="!!languageToRemove"
-			variant="danger"
-			title="Remove translation?"
-			:description="languageToRemove ? `Remove the ${getLanguageInfo(languageToRemove).label} translation? This cannot be undone.` : 'This cannot be undone.'"
-			confirm-text="Remove translation"
-			:is-loading="isSaving"
-			@update:open="(v: boolean) => !v && (languageToRemove = null)"
-			@confirm="confirmRemoveLanguage"
-		/>
+			<UiConfirmationDialog
+				:open="!!languageToRemove"
+				variant="danger"
+				title="Remove translation?"
+				:description="
+					languageToRemove
+						? `Remove the ${getLanguageInfo(languageToRemove).label} translation? This cannot be undone.`
+						: 'This cannot be undone.'
+				"
+				confirm-text="Remove translation"
+				:is-loading="isSaving"
+				@update:open="(v: boolean) => !v && (languageToRemove = null)"
+				@confirm="confirmRemoveLanguage"
+			/>
 		</div>
 	</div>
 </template>

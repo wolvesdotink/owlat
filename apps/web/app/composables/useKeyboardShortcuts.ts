@@ -189,7 +189,7 @@ export function useKeyboardShortcuts() {
 		// g+e - Go to Emails
 		registerShortcut({
 			key: 'g+e',
-			handler: () => router.push('/dashboard/mail'),
+			handler: () => router.push('/dashboard/send'),
 			description: 'Go to Emails',
 			ignoreInputs: true,
 		});
@@ -213,7 +213,7 @@ export function useKeyboardShortcuts() {
 		// g+t - Go to Transactional
 		registerShortcut({
 			key: 'g+t',
-			handler: () => router.push('/dashboard/mail/transactional'),
+			handler: () => router.push('/dashboard/send/transactional'),
 			description: 'Go to Transactional',
 			ignoreInputs: true,
 		});
