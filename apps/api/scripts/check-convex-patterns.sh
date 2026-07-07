@@ -118,7 +118,15 @@ cd "$(dirname "$0")/.."
 # Raised 174 → 175 to absorb a base-main drift picked up on rebase (a sibling
 # merge left the tree one JS array `.filter()` above the baseline line); this
 # branch adds no `ctx.db.query().filter()` of its own.
-FILTER_BASELINE=175
+# Raised 175 → 176 to absorb another base-main drift surfaced on the thread-
+# presence branch (a concurrent merge left the head tree one JS array
+# `.filter()` above the recorded line). The thread-presence piece itself adds
+# NO `.filter()` — `inbox/presence.ts` reads exclusively via `withIndex`
+# (heartbeat/leave point-read `by_user_thread` with `.unique()`; `list`
+# range-scans `by_thread_heartbeat` on the heartbeat window instead of an
+# in-memory predicate) — so this bump only realigns the baseline with the
+# already-drifted base head.
+FILTER_BASELINE=176
 filter_count=$(grep -rn "\.filter(" convex --include="*.ts" 2>/dev/null \
 	| grep -v "/_generated/" \
 	| grep -v "/__tests__/" \

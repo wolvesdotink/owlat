@@ -249,6 +249,16 @@ crons.interval(
 	{}
 );
 
+// Thread-presence sweep — delete shared-inbox presence rows whose heartbeat has
+// aged past the 60s active window (tab closed without a clean leave, laptop
+// slept). Keeps threadPresence bounded; presence is read-side only.
+crons.interval(
+	'sweep expired thread presence',
+	{ minutes: 1 },
+	internal.inbox.presence.internalSweep,
+	{}
+);
+
 // Channel health checks every 5 minutes
 // Monitors SMS, WhatsApp, webhook channel connectivity
 crons.interval(

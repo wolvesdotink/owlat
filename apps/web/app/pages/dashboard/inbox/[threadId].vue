@@ -56,6 +56,22 @@ const assignedMemberName = computed(() => {
 	return m ? m.user.name || m.user.email : id;
 });
 
+// Live thread presence — heartbeat while this thread is open, flip to "replying"
+// while the draft editor is active. `others` excludes the current user; resolve
+// each to a display name/avatar via the already-fetched org members.
+const { others: presenceOthers } = useThreadPresence(threadId, { replying: isEditingDraft });
+const presencePeople = computed(() =>
+	presenceOthers.value.map((p) => {
+		const m = members.value.find((x) => x.userId === p.userId);
+		return {
+			userId: p.userId,
+			mode: p.mode,
+			name: m ? m.user.name || m.user.email : 'Someone',
+			image: m?.user.image ?? null,
+		};
+	})
+);
+
 // Actions state
 const isApproving = ref(false);
 const isRejecting = ref(false);
@@ -226,6 +242,8 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 							{{ thread.messageCount ?? 0 }} messages
 						</span>
 					</div>
+					<!-- Who else is here — pulsing viewer ring + "is replying" banner -->
+					<InboxThreadPresence :people="presencePeople" class="mt-3" />
 				</div>
 
 				<!-- Status actions -->
