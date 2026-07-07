@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 
-useHead({ title: 'Sending Reputation — Owlat' });
+useHead({ title: 'Delivery health — Owlat' });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -11,9 +11,11 @@ definePageMeta({
 const { isLoading: teamLoading } = useOrganizationContext();
 
 // Fetch sending overview (tier, limits, reputation, progression)
-const { data: sendingOverview, isLoading: overviewLoading, error: overviewError } = useOrganizationQuery(
-	api.analytics.reputationQueries.getSendingOverview
-);
+const {
+	data: sendingOverview,
+	isLoading: overviewLoading,
+	error: overviewError,
+} = useOrganizationQuery(api.analytics.reputationQueries.getSendingOverview);
 
 // Fetch per-domain reputations
 const { data: domainReputations, isLoading: domainsLoading } = useOrganizationQuery(
@@ -26,23 +28,23 @@ const isLoading = computed(() => teamLoading.value || overviewLoading.value);
 <template>
 	<div class="p-6 lg:p-8">
 		<!-- Header -->
-		<div class="mb-6">
-			<NuxtLink
-				to="/dashboard/settings/technical"
-				class="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary mb-4"
-			>
-				<Icon name="lucide:arrow-left" class="w-4 h-4" />
-				Back to Technical
-			</NuxtLink>
+		<div class="mb-6 flex items-start justify-between gap-4">
 			<div class="flex items-center gap-3">
 				<UiIconBox icon="lucide:shield-check" size="lg" variant="brand" rounded="xl" />
 				<div>
-					<h1 class="text-2xl font-semibold text-text-primary">Sending Reputation</h1>
+					<h1 class="text-2xl font-semibold text-text-primary">Delivery health</h1>
 					<p class="mt-1 text-text-secondary">
 						Monitor your domain reputation, sending limits, and account health
 					</p>
 				</div>
 			</div>
+			<NuxtLink
+				to="/dashboard/delivery/setup"
+				class="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-brand transition-colors shrink-0 mt-1"
+			>
+				<Icon name="lucide:settings-2" class="w-4 h-4" />
+				Delivery setup
+			</NuxtLink>
 		</div>
 
 		<!-- Loading -->
@@ -66,15 +68,10 @@ const isLoading = computed(() => teamLoading.value || overviewLoading.value);
 			/>
 
 			<!-- Section 2: Org Reputation -->
-			<ReputationOrgReputationCard
-				:reputation="sendingOverview.reputation"
-			/>
+			<ReputationOrgReputationCard :reputation="sendingOverview.reputation" />
 
 			<!-- Section 3: Domain Reputation -->
-			<ReputationDomainReputationTable
-				v-if="!domainsLoading"
-				:domains="domainReputations ?? []"
-			/>
+			<ReputationDomainReputationTable v-if="!domainsLoading" :domains="domainReputations ?? []" />
 
 			<!-- Section 4: Tips -->
 			<UiCard>
@@ -83,7 +80,9 @@ const isLoading = computed(() => teamLoading.value || overviewLoading.value);
 						<UiIconBox icon="lucide:lightbulb" size="lg" variant="brand" rounded="xl" />
 						<div>
 							<h2 class="text-lg font-semibold text-text-primary">How to Improve</h2>
-							<p class="text-sm text-text-secondary">Best practices for maintaining a healthy sending reputation</p>
+							<p class="text-sm text-text-secondary">
+								Best practices for maintaining a healthy sending reputation
+							</p>
 						</div>
 					</div>
 
@@ -94,7 +93,8 @@ const isLoading = computed(() => teamLoading.value || overviewLoading.value);
 								<p class="text-sm font-medium text-text-primary">Keep bounce rate below 2%</p>
 							</div>
 							<p class="text-xs text-text-tertiary">
-								Regularly clean your contact list by removing invalid or inactive email addresses. Use double opt-in to ensure valid emails.
+								Regularly clean your contact list by removing invalid or inactive email addresses.
+								Use double opt-in to ensure valid emails.
 							</p>
 						</div>
 						<div class="p-4 rounded-lg bg-bg-surface">
@@ -103,16 +103,20 @@ const isLoading = computed(() => teamLoading.value || overviewLoading.value);
 								<p class="text-sm font-medium text-text-primary">Keep complaint rate below 0.1%</p>
 							</div>
 							<p class="text-xs text-text-tertiary">
-								Only email opted-in contacts and make unsubscribing easy. Gmail and Yahoo reject senders above 0.3%.
+								Only email opted-in contacts and make unsubscribing easy. Gmail and Yahoo reject
+								senders above 0.3%.
 							</p>
 						</div>
 						<div class="p-4 rounded-lg bg-bg-surface">
 							<div class="flex items-center gap-2 mb-2">
 								<Icon name="lucide:trending-up" class="w-4 h-4 text-brand" />
-								<p class="text-sm font-medium text-text-primary">Your sending capacity increases daily based on deliverability signals</p>
+								<p class="text-sm font-medium text-text-primary">
+									Your sending capacity increases daily based on deliverability signals
+								</p>
 							</div>
 							<p class="text-xs text-text-tertiary">
-								New IPs typically take ~30 days to fully warm. The MTA automatically adjusts daily capacity based on bounce and deferral rates.
+								New IPs typically take ~30 days to fully warm. The MTA automatically adjusts daily
+								capacity based on bounce and deferral rates.
 							</p>
 						</div>
 						<div class="p-4 rounded-lg bg-bg-surface">
@@ -121,7 +125,8 @@ const isLoading = computed(() => teamLoading.value || overviewLoading.value);
 								<p class="text-sm font-medium text-text-primary">Verify your sending domains</p>
 							</div>
 							<p class="text-xs text-text-tertiary">
-								Configure SPF, DKIM, and DMARC records for all your sending domains to improve deliverability and protect against spoofing.
+								Configure SPF, DKIM, and DMARC records for all your sending domains to improve
+								deliverability and protect against spoofing.
 							</p>
 						</div>
 					</div>

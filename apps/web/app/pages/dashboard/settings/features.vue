@@ -26,11 +26,17 @@ const {
 } = useConvexQuery(api.organizations.featureFlags.getFeatureFlags, {});
 // Whether a real delivery provider is configured — drives the "needs a provider"
 // hint for sending flags, which carry no requiredEnvVars of their own.
-const { data: deliveryConfigured } = useConvexQuery(api.organizations.featureFlags.deliveryConfigured, {});
+const { data: deliveryConfigured } = useConvexQuery(
+	api.organizations.featureFlags.deliveryConfigured,
+	{}
+);
 // Per-flag configuration gaps (missing env vars / no delivery provider). Joined
 // against the resolved on/off state to badge flags that are ENABLED but not yet
 // configured.
-const { data: flagsConfigStatus } = useConvexQuery(api.organizations.featureFlags.getFlagsConfigStatus, {});
+const { data: flagsConfigStatus } = useConvexQuery(
+	api.organizations.featureFlags.getFlagsConfigStatus,
+	{}
+);
 const { showToast } = useToast();
 
 // Writes go through the Operation module (ADR-0036): categorized failures are
@@ -53,7 +59,11 @@ const resolved = computed(() => resolveFlags(stored.value));
 // Flags that are enabled yet still missing configuration → badged "needs config".
 const needsConfig = computed(() => flagsNeedingConfig(resolved.value, flagsConfigStatus.value));
 
-const pendingCascade = ref<{ flag: FeatureFlagKey; value: boolean; cascaded: FeatureFlagKey[] } | null>(null);
+const pendingCascade = ref<{
+	flag: FeatureFlagKey;
+	value: boolean;
+	cascaded: FeatureFlagKey[];
+} | null>(null);
 const missingEnv = ref<{ flag: FeatureFlagKey; vars: string[] } | null>(null);
 
 function categoryLabel(cat: string): string {
@@ -88,7 +98,9 @@ async function onToggle(flag: FeatureFlagKey, value: boolean) {
 	if (value && isSendingFlag && deliveryConfigured.value === false) {
 		missingEnv.value = {
 			flag,
-			vars: ['A delivery provider — set EMAIL_PROVIDER (mta, resend, or ses) and its credentials, then restart'],
+			vars: [
+				'A delivery provider — set EMAIL_PROVIDER (mta, resend, or ses) and its credentials, then restart',
+			],
 		};
 	}
 
@@ -230,12 +242,7 @@ async function togglePack(packKey: FeaturePackKey) {
 				</UiCard>
 
 				<!-- Individual flags by category -->
-				<UiCard
-					v-for="(defs, cat) in byCategory"
-					:key="cat"
-					padding="none"
-					overflow="hidden"
-				>
+				<UiCard v-for="(defs, cat) in byCategory" :key="cat" padding="none" overflow="hidden">
 					<template #header>
 						<h2 class="text-sm font-semibold text-text-tertiary uppercase tracking-wide">
 							{{ categoryLabel(cat) }}
@@ -252,9 +259,10 @@ async function togglePack(packKey: FeaturePackKey) {
 						<p class="text-sm text-text-secondary">
 							Receiving mail needs MX + inbound-port DNS. Add the records under
 							<NuxtLink
-								to="/dashboard/settings/domains"
+								to="/dashboard/delivery/domains"
 								class="text-brand hover:underline font-medium"
-							>Settings → Domains → Receiving</NuxtLink>
+								>Settings → Domains → Receiving</NuxtLink
+							>
 							so inbound mail reaches this instance.
 						</p>
 					</div>
@@ -268,7 +276,9 @@ async function togglePack(packKey: FeaturePackKey) {
 							<div class="min-w-0">
 								<div class="flex items-center gap-2 flex-wrap">
 									<p class="font-medium text-text-primary">{{ def.label }}</p>
-									<code class="text-xs text-text-tertiary bg-bg-surface px-1.5 py-0.5 rounded">{{ def.key }}</code>
+									<code class="text-xs text-text-tertiary bg-bg-surface px-1.5 py-0.5 rounded">{{
+										def.key
+									}}</code>
 									<span
 										v-if="needsConfig.has(def.key)"
 										class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-warning/10 text-warning"
@@ -298,8 +308,12 @@ async function togglePack(packKey: FeaturePackKey) {
 								:aria-checked="resolved[def.key]"
 								:aria-label="`Toggle ${def.label}`"
 								class="relative inline-flex shrink-0 h-6 w-11 items-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-40 disabled:cursor-not-allowed"
-								:class="resolved[def.key] ? 'bg-brand border-brand' : 'bg-bg-surface border-border-subtle'"
-								:disabled="isSavingFlag || def.requires?.some((dep) => !resolved[dep as FeatureFlagKey])"
+								:class="
+									resolved[def.key] ? 'bg-brand border-brand' : 'bg-bg-surface border-border-subtle'
+								"
+								:disabled="
+									isSavingFlag || def.requires?.some((dep) => !resolved[dep as FeatureFlagKey])
+								"
 								:title="
 									def.requires?.some((dep) => !resolved[dep as FeatureFlagKey])
 										? `Enable ${def.requires?.join(', ')} first`
@@ -322,7 +336,9 @@ async function togglePack(packKey: FeaturePackKey) {
 		<UiConfirmationDialog
 			:open="!!pendingCascade"
 			variant="warning"
-			:title="pendingCascade ? `Disable ${FEATURE_FLAGS[pendingCascade.flag].label}?` : 'Disable feature?'"
+			:title="
+				pendingCascade ? `Disable ${FEATURE_FLAGS[pendingCascade.flag].label}?` : 'Disable feature?'
+			"
 			description="Disabling this will also turn off the dependent features listed below."
 			confirm-text="Disable all"
 			cancel-text="Cancel"
@@ -346,7 +362,9 @@ async function togglePack(packKey: FeaturePackKey) {
 		<!-- Missing env hint -->
 		<UiModal
 			:open="!!missingEnv"
-			:title="missingEnv ? `${FEATURE_FLAGS[missingEnv.flag].label} needs config` : 'Configuration needed'"
+			:title="
+				missingEnv ? `${FEATURE_FLAGS[missingEnv.flag].label} needs config` : 'Configuration needed'
+			"
 			@update:open="(v: boolean) => !v && (missingEnv = null)"
 		>
 			<p class="text-text-secondary">
@@ -359,8 +377,9 @@ async function togglePack(packKey: FeaturePackKey) {
 				</li>
 			</ul>
 			<p class="mt-3 text-sm text-text-tertiary">
-				Run <code class="bg-bg-surface px-1.5 py-0.5 rounded">owlat env &lt;KEY&gt; &lt;VALUE&gt;</code> on the
-				host, then <code class="bg-bg-surface px-1.5 py-0.5 rounded">owlat restart</code>.
+				Run
+				<code class="bg-bg-surface px-1.5 py-0.5 rounded">owlat env &lt;KEY&gt; &lt;VALUE&gt;</code>
+				on the host, then <code class="bg-bg-surface px-1.5 py-0.5 rounded">owlat restart</code>.
 			</p>
 
 			<template #footer>

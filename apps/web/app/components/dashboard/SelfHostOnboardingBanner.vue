@@ -144,7 +144,7 @@ const shouldShow = computed(() => {
 					<div class="grid grid-cols-1 md:grid-cols-2 gap-3">
 						<!-- 1. Configure a sending provider (the actual pre-send requirement) -->
 						<NuxtLink
-							to="/dashboard/settings/delivery"
+							to="/dashboard/delivery/config"
 							class="group flex flex-col gap-1 rounded-lg border border-border-default bg-bg-elevated p-3 hover:border-brand/40 hover:-translate-y-px transition-all"
 						>
 							<div class="flex items-center gap-2">
@@ -168,7 +168,7 @@ const shouldShow = computed(() => {
 
 						<!-- 2. Verify sending domain -->
 						<NuxtLink
-							to="/dashboard/settings/domains"
+							to="/dashboard/delivery/domains"
 							class="group flex flex-col gap-1 rounded-lg border border-border-default bg-bg-elevated p-3 hover:border-brand/40 hover:-translate-y-px transition-all"
 						>
 							<div class="flex items-center gap-2">

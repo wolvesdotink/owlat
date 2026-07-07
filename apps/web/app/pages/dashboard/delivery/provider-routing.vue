@@ -54,7 +54,8 @@ const STRATEGIES: { value: Strategy; label: string; description: string }[] = [
 	{
 		value: 'priority_failover',
 		label: 'Priority failover',
-		description: 'Try providers in order; fall over to the next on failure or when one is unhealthy.',
+		description:
+			'Try providers in order; fall over to the next on failure or when one is unhealthy.',
 	},
 	{
 		value: 'workload_split',
@@ -88,7 +89,10 @@ const { data: ipPools } = useOrganizationQuery(api.providerRoutes.listIpPools);
 const isLoading = computed(() => organizationLoading.value || routesLoading.value);
 
 const routeByType = computed(() => {
-	const map = new Map<MessageType, { strategy: string; providers: ProviderEntry[]; ipPool?: string }>();
+	const map = new Map<
+		MessageType,
+		{ strategy: string; providers: ProviderEntry[]; ipPool?: string }
+	>();
 	for (const route of routesData.value ?? []) {
 		map.set(route.messageType, {
 			strategy: route.strategy,
@@ -155,9 +159,7 @@ function moveProvider(index: number, direction: -1 | 1) {
 	editProviders.value = next;
 }
 
-const enabledProviderCount = computed(
-	() => editProviders.value.filter((p) => p.isEnabled).length
-);
+const enabledProviderCount = computed(() => editProviders.value.filter((p) => p.isEnabled).length);
 
 async function handleSave() {
 	if (!hasActiveOrganization.value) return;
@@ -212,19 +214,19 @@ async function handleReset() {
 		<!-- Header -->
 		<div class="mb-6">
 			<NuxtLink
-				to="/dashboard/settings/technical"
+				to="/dashboard/delivery/setup"
 				class="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary mb-4"
 			>
 				<Icon name="lucide:arrow-left" class="w-4 h-4" />
-				Back to Technical
+				Delivery setup
 			</NuxtLink>
 			<div class="flex items-center gap-3">
 				<UiIconBox icon="lucide:route" size="lg" variant="brand" rounded="xl" />
 				<div>
 					<h1 class="text-2xl font-semibold text-text-primary">Provider Routing</h1>
 					<p class="mt-1 text-text-secondary">
-						Choose which email provider sends each message type, with failover and
-						weighted workload-split across providers
+						Choose which email provider sends each message type, with failover and weighted
+						workload-split across providers
 					</p>
 				</div>
 			</div>
@@ -259,11 +261,13 @@ async function handleReset() {
 					<div>
 						<h3 class="font-medium text-text-primary mb-1">How routing works</h3>
 						<p class="text-sm text-text-secondary">
-							Each message type can use its own provider strategy. When no route is
-							configured, sends fall back to the provider set by the
-							<code class="px-1 py-0.5 rounded bg-bg-surface text-text-primary text-xs">EMAIL_PROVIDER</code>
-							environment variable (the built-in MTA by default). Configure a route to
-							enable failover or to split traffic across multiple providers.
+							Each message type can use its own provider strategy. When no route is configured,
+							sends fall back to the provider set by the
+							<code class="px-1 py-0.5 rounded bg-bg-surface text-text-primary text-xs"
+								>EMAIL_PROVIDER</code
+							>
+							environment variable (the built-in MTA by default). Configure a route to enable
+							failover or to split traffic across multiple providers.
 						</p>
 					</div>
 				</div>
@@ -271,11 +275,7 @@ async function handleReset() {
 
 			<!-- Message-type route cards -->
 			<div class="grid gap-4">
-				<div
-					v-for="type in MESSAGE_TYPES"
-					:key="type.value"
-					class="card p-6"
-				>
+				<div v-for="type in MESSAGE_TYPES" :key="type.value" class="card p-6">
 					<div class="flex items-start justify-between gap-4">
 						<div class="flex items-start gap-4">
 							<div class="p-3 rounded-lg bg-bg-surface flex items-center justify-center">
@@ -286,10 +286,7 @@ async function handleReset() {
 								<p class="text-sm text-text-secondary mt-0.5">{{ type.description }}</p>
 
 								<!-- Configured route summary -->
-								<div
-									v-if="routeByType.get(type.value)"
-									class="mt-3 space-y-2"
-								>
+								<div v-if="routeByType.get(type.value)" class="mt-3 space-y-2">
 									<span
 										class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-brand/20 text-brand border-brand/30"
 									>
@@ -298,7 +295,9 @@ async function handleReset() {
 									</span>
 									<div class="flex flex-wrap items-center gap-2">
 										<span
-											v-for="(provider, index) in routeByType.get(type.value)!.providers.filter((p) => p.isEnabled)"
+											v-for="(provider, index) in routeByType
+												.get(type.value)!
+												.providers.filter((p) => p.isEnabled)"
 											:key="provider.providerType"
 											class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-medium bg-bg-surface text-text-secondary border border-border-subtle"
 										>
@@ -312,10 +311,7 @@ async function handleReset() {
 											</span>
 										</span>
 									</div>
-									<p
-										v-if="routeByType.get(type.value)!.ipPool"
-										class="text-xs text-text-tertiary"
-									>
+									<p v-if="routeByType.get(type.value)!.ipPool" class="text-xs text-text-tertiary">
 										IP pool: {{ routeByType.get(type.value)!.ipPool }}
 									</p>
 								</div>
@@ -348,10 +344,7 @@ async function handleReset() {
 		</div>
 
 		<!-- Edit Modal -->
-		<UiModal
-			v-model:open="editOpen"
-			:title="`Route — ${editMessageTypeMeta?.label ?? ''}`"
-		>
+		<UiModal v-model:open="editOpen" :title="`Route — ${editMessageTypeMeta?.label ?? ''}`">
 			<div class="space-y-5">
 				<!-- Strategy -->
 				<div>
@@ -415,10 +408,7 @@ async function handleReset() {
 							</label>
 
 							<!-- Weight (workload_split only) -->
-							<div
-								v-if="editStrategy === 'workload_split'"
-								class="flex items-center gap-1.5"
-							>
+							<div v-if="editStrategy === 'workload_split'" class="flex items-center gap-1.5">
 								<input
 									v-model.number="provider.weight"
 									type="number"
@@ -431,10 +421,7 @@ async function handleReset() {
 							</div>
 						</div>
 					</div>
-					<p
-						v-if="enabledProviderCount === 0"
-						class="mt-2 text-xs text-error"
-					>
+					<p v-if="enabledProviderCount === 0" class="mt-2 text-xs text-error">
 						Enable at least one provider.
 					</p>
 				</div>
@@ -459,8 +446,8 @@ async function handleReset() {
 						<span>{{ ipPoolWarning }}</span>
 					</p>
 					<p class="mt-1 text-xs text-text-tertiary">
-						Overrides the IP pool for the built-in MTA provider. Leave blank to use the
-						provider's default.
+						Overrides the IP pool for the built-in MTA provider. Leave blank to use the provider's
+						default.
 					</p>
 				</div>
 			</div>
@@ -483,7 +470,11 @@ async function handleReset() {
 			description="This message type will revert to the default provider set by the EMAIL_PROVIDER environment variable."
 			confirm-text="Reset to Default"
 			:is-loading="isResetting"
-			@update:open="(v: boolean) => { if (!v) resetMessageType = null; }"
+			@update:open="
+				(v: boolean) => {
+					if (!v) resetMessageType = null;
+				}
+			"
 			@confirm="handleReset"
 		/>
 	</div>

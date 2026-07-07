@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 
-const { data: overview, isLoading } = useOrganizationQuery(api.analytics.reputationQueries.getSendingOverview);
+const { data: overview, isLoading } = useOrganizationQuery(
+	api.analytics.reputationQueries.getSendingOverview
+);
 
 // NOTE: this card surfaces sending CAPACITY (IP-warming phase + daily-cap usage
 // from the MTA warming state), not a delivery rate. The real, data-backed
@@ -16,20 +18,29 @@ const phase = computed<string | null>(() => warming.value?.phase ?? null);
 const tierLabel = computed(() => {
 	const p = phase.value;
 	switch (p) {
-		case 'ramp': return 'Warming Up';
-		case 'plateau': return 'Ramping';
-		case 'graduated': return 'Fully Warmed';
-		case null: return 'No IP Warming';
-		default: return p;
+		case 'ramp':
+			return 'Warming Up';
+		case 'plateau':
+			return 'Ramping';
+		case 'graduated':
+			return 'Fully Warmed';
+		case null:
+			return 'No IP Warming';
+		default:
+			return p;
 	}
 });
 
 const tierVariant = computed<'neutral' | 'warning' | 'default' | 'success'>(() => {
 	switch (phase.value) {
-		case 'ramp': return 'warning';
-		case 'plateau': return 'default';
-		case 'graduated': return 'success';
-		default: return 'neutral';
+		case 'ramp':
+			return 'warning';
+		case 'plateau':
+			return 'default';
+		case 'graduated':
+			return 'success';
+		default:
+			return 'neutral';
 	}
 });
 
@@ -53,7 +64,7 @@ const usagePercent = computed(() => {
 					<h3 class="text-sm font-semibold text-text-primary">Sending Capacity</h3>
 				</div>
 				<NuxtLink
-					to="/dashboard/settings/reputation"
+					to="/dashboard/delivery"
 					class="text-xs font-medium text-brand hover:text-brand/80 transition-colors"
 				>
 					Details

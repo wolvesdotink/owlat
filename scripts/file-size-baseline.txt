@@ -66,6 +66,7 @@ apps/web/app/pages/dashboard/campaigns/[id]/edit.vue
 apps/web/app/pages/dashboard/campaigns/[id]/report.vue
 apps/web/app/pages/dashboard/campaigns/ab-results/index.vue
 apps/web/app/pages/dashboard/campaigns/all.vue
+apps/web/app/pages/dashboard/delivery/domains.vue
 apps/web/app/pages/dashboard/files/[id].vue
 apps/web/app/pages/dashboard/inbox/[threadId].vue
 apps/web/app/pages/dashboard/knowledge/[id].vue
@@ -75,7 +76,6 @@ apps/web/app/pages/dashboard/send/transactional/index.vue
 apps/web/app/pages/dashboard/postbox/migrate.vue
 apps/web/app/pages/dashboard/settings/account.vue
 apps/web/app/pages/dashboard/settings/api/index.vue
-apps/web/app/pages/dashboard/settings/domains.vue
 apps/web/app/pages/dashboard/settings/forms.vue
 apps/web/app/pages/dashboard/settings/index.vue
 apps/web/app/pages/dashboard/settings/operator/index.vue

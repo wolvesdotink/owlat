@@ -274,10 +274,34 @@ const settingsSections = computed(() => {
 			icon: 'lucide:building-2',
 		},
 		{
-			name: 'Technical',
-			description: 'API keys, domains, webhooks, forms, blocklist, and audit log',
-			href: '/dashboard/settings/technical',
+			name: 'Delivery',
+			description: 'Sending health, domains, providers, and webhooks — now its own section',
+			href: '/dashboard/delivery',
+			icon: 'lucide:truck',
+		},
+		{
+			name: 'API Keys',
+			description: 'Manage API keys that authenticate your send and API requests',
+			href: '/dashboard/settings/api',
 			icon: 'lucide:key',
+		},
+		{
+			name: 'Form Endpoints',
+			description: 'Create embeddable signup forms for your website',
+			href: '/dashboard/settings/forms',
+			icon: 'lucide:file-text',
+		},
+		{
+			name: 'Email Blocklist',
+			description: 'Manage blocked email addresses to protect sender reputation',
+			href: '/dashboard/settings/blocklist',
+			icon: 'lucide:ban',
+		},
+		{
+			name: 'Audit Log',
+			description: 'Track team member actions and changes',
+			href: '/dashboard/settings/audit',
+			icon: 'lucide:clipboard-list',
 		},
 		{
 			name: 'Contact Properties',
@@ -423,7 +447,7 @@ const settingsSections = computed(() => {
 									<span>
 										{{ fromDomainWarning }}
 										<NuxtLink
-											to="/dashboard/settings/domains"
+											to="/dashboard/delivery/domains"
 											class="underline hover:text-warning/80 whitespace-nowrap"
 										>
 											Set up a verified domain →

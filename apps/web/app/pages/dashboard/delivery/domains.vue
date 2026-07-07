@@ -436,11 +436,11 @@ const readinessSummary = (domain: DomainWithVerification) =>
 		<!-- Header -->
 		<div class="mb-6">
 			<NuxtLink
-				to="/dashboard/settings"
+				to="/dashboard/delivery/setup"
 				class="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary mb-4"
 			>
 				<Icon name="lucide:arrow-left" class="w-4 h-4" />
-				Back to Settings
+				Delivery setup
 			</NuxtLink>
 			<div class="flex items-center justify-between">
 				<div>

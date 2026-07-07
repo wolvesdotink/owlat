@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
-import { ADDABLE_CHANNEL_KINDS, availableChannelKinds as computeAvailableChannelKinds, type ChannelKind } from '~/utils/channelKinds';
+import {
+	ADDABLE_CHANNEL_KINDS,
+	availableChannelKinds as computeAvailableChannelKinds,
+	type ChannelKind,
+} from '~/utils/channelKinds';
 
 definePageMeta({
 	layout: 'dashboard',
@@ -53,7 +57,8 @@ const healthyCounts = computed(() => {
 	if (!channels.value) return { healthy: 0, degraded: 0, down: 0 };
 	const list = channels.value;
 	return {
-		healthy: list.filter((c) => c.isEnabled && (!c.healthStatus || c.healthStatus === 'healthy')).length,
+		healthy: list.filter((c) => c.isEnabled && (!c.healthStatus || c.healthStatus === 'healthy'))
+			.length,
 		degraded: list.filter((c) => c.isEnabled && c.healthStatus === 'degraded').length,
 		down: list.filter((c) => c.isEnabled && c.healthStatus === 'down').length,
 	};
@@ -89,14 +94,17 @@ const handleChannelError = (message: string) => {
 				<div>
 					<h1 class="text-2xl font-semibold text-text-primary">Messaging channels</h1>
 					<p class="text-text-secondary mt-1 max-w-xl">
-						Connect and monitor the messaging integrations — SMS, WhatsApp, and
-						webchat/webhooks — that reach your contacts beyond email. Once enabled, send a
-						message to a contact from their Unified Timeline, and AI agent replies dispatch
-						through them too. Email and team chat are built in and need no setup here; to
-						configure email sending, set up your
-						<NuxtLink to="/dashboard/settings/delivery" class="text-brand hover:underline">delivery provider</NuxtLink>
+						Connect and monitor the messaging integrations — SMS, WhatsApp, and webchat/webhooks —
+						that reach your contacts beyond email. Once enabled, send a message to a contact from
+						their Unified Timeline, and AI agent replies dispatch through them too. Email and team
+						chat are built in and need no setup here; to configure email sending, set up your
+						<NuxtLink to="/dashboard/delivery/config" class="text-brand hover:underline"
+							>delivery provider</NuxtLink
+						>
 						and a verified
-						<NuxtLink to="/dashboard/settings/domains" class="text-brand hover:underline">sending domain</NuxtLink>.
+						<NuxtLink to="/dashboard/delivery/domains" class="text-brand hover:underline"
+							>sending domain</NuxtLink
+						>.
 					</p>
 				</div>
 			</div>
@@ -151,12 +159,7 @@ const handleChannelError = (message: string) => {
 					<!-- Empty State -->
 					<UiCard v-if="!channels?.length">
 						<div class="py-8 text-center">
-							<UiIconBox
-								icon="lucide:radio"
-								size="lg"
-								variant="surface"
-								class="mx-auto mb-4"
-							/>
+							<UiIconBox icon="lucide:radio" size="lg" variant="surface" class="mx-auto mb-4" />
 							<h3 class="text-base font-medium text-text-primary mb-2">No channels configured</h3>
 							<p class="text-sm text-text-tertiary mb-4 max-w-sm mx-auto">
 								<template v-if="canManageChannels">
@@ -164,8 +167,8 @@ const handleChannelError = (message: string) => {
 									above to configure a communication channel for your organization.
 								</template>
 								<template v-else>
-									Communication channels will appear here once an owner or admin has
-									configured them for your organization.
+									Communication channels will appear here once an owner or admin has configured them
+									for your organization.
 								</template>
 							</p>
 						</div>
@@ -195,21 +198,27 @@ const handleChannelError = (message: string) => {
 									<span class="w-2 h-2 rounded-full bg-success shrink-0" />
 									<span class="text-sm text-text-secondary">Healthy</span>
 								</div>
-								<span class="text-sm font-semibold text-text-primary">{{ healthyCounts.healthy }}</span>
+								<span class="text-sm font-semibold text-text-primary">{{
+									healthyCounts.healthy
+								}}</span>
 							</div>
 							<div class="flex items-center justify-between py-2 border-b border-border-subtle">
 								<div class="flex items-center gap-2">
 									<span class="w-2 h-2 rounded-full bg-warning shrink-0" />
 									<span class="text-sm text-text-secondary">Degraded</span>
 								</div>
-								<span class="text-sm font-semibold text-text-primary">{{ healthyCounts.degraded }}</span>
+								<span class="text-sm font-semibold text-text-primary">{{
+									healthyCounts.degraded
+								}}</span>
 							</div>
 							<div class="flex items-center justify-between py-2">
 								<div class="flex items-center gap-2">
 									<span class="w-2 h-2 rounded-full bg-error shrink-0" />
 									<span class="text-sm text-text-secondary">Down</span>
 								</div>
-								<span class="text-sm font-semibold text-text-primary">{{ healthyCounts.down }}</span>
+								<span class="text-sm font-semibold text-text-primary">{{
+									healthyCounts.down
+								}}</span>
 							</div>
 						</div>
 					</UiCard>
@@ -222,20 +231,44 @@ const handleChannelError = (message: string) => {
 						</div>
 						<div class="space-y-3 text-sm text-text-secondary">
 							<div class="flex gap-3">
-								<span class="shrink-0 w-5 h-5 rounded-full bg-brand-subtle text-brand text-xs font-semibold flex items-center justify-center">1</span>
-								<p>Each channel is an external messaging medium (SMS, WhatsApp, or a generic webhook).</p>
+								<span
+									class="shrink-0 w-5 h-5 rounded-full bg-brand-subtle text-brand text-xs font-semibold flex items-center justify-center"
+									>1</span
+								>
+								<p>
+									Each channel is an external messaging medium (SMS, WhatsApp, or a generic
+									webhook).
+								</p>
 							</div>
 							<div class="flex gap-3">
-								<span class="shrink-0 w-5 h-5 rounded-full bg-brand-subtle text-brand text-xs font-semibold flex items-center justify-center">2</span>
-								<p>Channels use adapters to connect to their providers. Configure each channel's credentials below.</p>
+								<span
+									class="shrink-0 w-5 h-5 rounded-full bg-brand-subtle text-brand text-xs font-semibold flex items-center justify-center"
+									>2</span
+								>
+								<p>
+									Channels use adapters to connect to their providers. Configure each channel's
+									credentials below.
+								</p>
 							</div>
 							<div class="flex gap-3">
-								<span class="shrink-0 w-5 h-5 rounded-full bg-brand-subtle text-brand text-xs font-semibold flex items-center justify-center">3</span>
-								<p>Health monitoring runs automatically and reports status for each enabled channel.</p>
+								<span
+									class="shrink-0 w-5 h-5 rounded-full bg-brand-subtle text-brand text-xs font-semibold flex items-center justify-center"
+									>3</span
+								>
+								<p>
+									Health monitoring runs automatically and reports status for each enabled channel.
+								</p>
 							</div>
 							<div class="flex gap-3">
-								<span class="shrink-0 w-5 h-5 rounded-full bg-brand-subtle text-brand text-xs font-semibold flex items-center justify-center">4</span>
-								<p>Inbound messages flow into the unified pipeline for every channel. Once a channel is enabled, send outbound from a contact's Unified Timeline — SMS, WhatsApp, and generic dispatch through their configured providers, alongside AI agent replies.</p>
+								<span
+									class="shrink-0 w-5 h-5 rounded-full bg-brand-subtle text-brand text-xs font-semibold flex items-center justify-center"
+									>4</span
+								>
+								<p>
+									Inbound messages flow into the unified pipeline for every channel. Once a channel
+									is enabled, send outbound from a contact's Unified Timeline — SMS, WhatsApp, and
+									generic dispatch through their configured providers, alongside AI agent replies.
+								</p>
 							</div>
 						</div>
 					</UiCard>
