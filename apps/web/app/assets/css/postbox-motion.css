@@ -92,6 +92,31 @@
 	transform: translateY(6px);
 }
 
+/* Focused task-flow card-stack: the completed card confirms and exits UPWARD
+   (slow tier, plain ease-exit); the next card enters from below on the bouncy
+   spring. Motion is the information here — it says "that one's done, here's the
+   next". Used with <Transition name="pbx-cardstack"> keyed on the card id. */
+.pbx-cardstack-enter-active {
+	transition:
+		opacity var(--pbx-motion-panel) var(--ease-spring-bounce),
+		transform var(--pbx-motion-panel) var(--ease-spring-bounce);
+}
+.pbx-cardstack-leave-active {
+	transition:
+		opacity var(--pbx-motion-panel-exit) var(--pbx-motion-ease-exit),
+		transform var(--pbx-motion-panel-exit) var(--pbx-motion-ease-exit);
+	position: absolute;
+	inset-inline: 0;
+}
+.pbx-cardstack-enter-from {
+	opacity: 0;
+	transform: translateY(12px);
+}
+.pbx-cardstack-leave-to {
+	opacity: 0;
+	transform: translateY(-16px);
+}
+
 /*
  * Hover-action reveal in list rows moved to the shared micro-interaction kit:
  * use `.ui-hover-reveal` (packages/ui/assets/css/motion.css). Same recipe —
@@ -107,14 +132,18 @@
 	.pbx-popup-enter-active,
 	.pbx-popup-leave-active,
 	.pbx-toast-enter-active,
-	.pbx-toast-leave-active {
+	.pbx-toast-leave-active,
+	.pbx-cardstack-enter-active,
+	.pbx-cardstack-leave-active {
 		transition-property: opacity;
 	}
 	.pbx-reader-enter-from,
 	.pbx-popup-enter-from,
 	.pbx-popup-leave-to,
 	.pbx-toast-enter-from,
-	.pbx-toast-leave-to {
+	.pbx-toast-leave-to,
+	.pbx-cardstack-enter-from,
+	.pbx-cardstack-leave-to {
 		transform: none;
 	}
 }
