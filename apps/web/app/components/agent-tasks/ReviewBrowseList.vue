@@ -129,29 +129,40 @@ function rowWhy(message: ReviewRow['message']): string | undefined {
 // subscription confirms it; a failed action restores the row (usePostboxOptimisticHide).
 const { visible: visibleRows, hide: hideRow, unhide: unhideRow } = usePostboxOptimisticHide(rows);
 
-const onApproveClick = async (messageId: Id<'inboundMessages'>) => {
+// Server refused because a teammate just replied — toast the collision and
+// report it handled so callers stop before claiming a false success.
+function handledReplyCollision(result: unknown): boolean {
+	if (!isReplyCollision(result)) return false;
+	showToast(replyCollisionToast(result.heldByName ?? GENERIC_TEAMMATE_NAME), 'error');
+	return true;
+}
+
+// Shared optimistic row action: hide the row, run the mutation, restore it on a
+// no-op or soft collision (reject never collides), else confirm with successMsg.
+async function runOptimistic(
+	messageId: Id<'inboundMessages'>,
+	send: () => Promise<unknown>,
+	successMsg = 'Draft approved and queued for sending'
+) {
 	actionInProgress.value = messageId;
 	hideRow(messageId);
 	try {
-		const result = await onApprove(messageId);
-		if (result === undefined) {
+		const result = await send();
+		if (result === undefined || handledReplyCollision(result)) {
 			unhideRow(messageId);
 			return;
 		}
-		// Server refused because a teammate just replied — restore the row + toast.
-		if (isReplyCollision(result)) {
-			unhideRow(messageId);
-			showToast(replyCollisionToast(result.heldByName ?? GENERIC_TEAMMATE_NAME), 'error');
-			return;
-		}
-		showToast('Draft approved and queued for sending');
+		showToast(successMsg);
 	} finally {
 		actionInProgress.value = null;
 	}
-};
+}
 
-// Approve the currently-selected draft option (multi-option cards). Falls back
-// to the plain approve when no options were offered — same undo-guarded send.
+const onApproveClick = (messageId: Id<'inboundMessages'>) =>
+	runOptimistic(messageId, () => onApprove(messageId));
+
+// Approve the selected draft option (multi-option cards); falls back to the
+// plain approve when no options were offered — same undo-guarded send.
 const onApproveOptionClick = async (
 	messageId: Id<'inboundMessages'>,
 	options: readonly string[] | undefined,
@@ -162,40 +173,11 @@ const onApproveOptionClick = async (
 		return;
 	}
 	const chosen = options[selectedOption[messageId] ?? 0] ?? options[0]!;
-	actionInProgress.value = messageId;
-	hideRow(messageId);
-	try {
-		const result = await approveOption(messageId, chosen, currentDraft);
-		if (result === undefined) {
-			unhideRow(messageId);
-			return;
-		}
-		// Server refused because a teammate just replied — restore the row + toast.
-		if (isReplyCollision(result)) {
-			unhideRow(messageId);
-			showToast(replyCollisionToast(result.heldByName ?? GENERIC_TEAMMATE_NAME), 'error');
-			return;
-		}
-		showToast('Draft approved and queued for sending');
-	} finally {
-		actionInProgress.value = null;
-	}
+	await runOptimistic(messageId, () => approveOption(messageId, chosen, currentDraft));
 };
 
-const onRejectClick = async (messageId: Id<'inboundMessages'>) => {
-	actionInProgress.value = messageId;
-	hideRow(messageId);
-	try {
-		const result = await onReject(messageId);
-		if (result === undefined) {
-			unhideRow(messageId);
-			return;
-		}
-		showToast('Draft rejected');
-	} finally {
-		actionInProgress.value = null;
-	}
-};
+const onRejectClick = (messageId: Id<'inboundMessages'>) =>
+	runOptimistic(messageId, () => onReject(messageId), 'Draft rejected');
 
 // Keyboard-first triage: j/k move, Enter opens the thread, a approves (through
 // the SAME undo-guarded send the button calls), e edits, x/# rejects. Built by
@@ -247,12 +229,7 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 	actionInProgress.value = messageId;
 	try {
 		const result = await composeAndSend(messageId, body, composeSubject[messageId]);
-		if (result === undefined) return;
-		// Server refused because a teammate just replied — keep the draft + toast.
-		if (isReplyCollision(result)) {
-			showToast(replyCollisionToast(result.heldByName ?? GENERIC_TEAMMATE_NAME), 'error');
-			return;
-		}
+		if (result === undefined || handledReplyCollision(result)) return; // no-op or collision
 		delete composeBody[messageId];
 		delete composeSubject[messageId];
 		showToast('Reply sent');
