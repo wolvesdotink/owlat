@@ -16,6 +16,7 @@ import { transition as threadTransition } from './threads/module';
 import type { CancelAutoSendOutcome } from './processingLifecycle';
 import { getOrThrow, throwNotFound, throwInvalidState } from '../_utils/errors';
 import { extractEmail } from '../lib/emailAddress';
+import { getActiveReplierOtherThan } from './presence';
 
 /**
  * Feed a human verification-queue decision back into the graduated-autonomy
@@ -72,6 +73,24 @@ export const approveDraft = adminMutation({
 		const message = await getOrThrow(ctx, args.inboundMessageId, 'Message');
 		if (!message.draftResponse) throwInvalidState('No draft to approve');
 
+		// Collision soft-hold (belt-and-braces): if ANOTHER teammate is actively
+		// replying to this thread at execution time, don't quietly double-answer.
+		// Return a soft error the UI turns into a toast ("… just sent a reply —
+		// review the thread") rather than sending. Advisory only: last-writer
+		// still wins if two callers race past the held button — this is not a
+		// lock/transaction system, just a guard against the common collision.
+		if (message.threadId) {
+			const otherReplier = await getActiveReplierOtherThan(ctx, message.threadId, userId);
+			if (otherReplier) {
+				const profile = await ctx.db
+					.query('userProfiles')
+					.withIndex('by_auth_user_id', (q) => q.eq('authUserId', otherReplier.userId))
+					.first();
+				const heldByName = profile?.name || profile?.email || 'A teammate';
+				return { success: false as const, reason: 'reply_in_progress' as const, heldByName };
+			}
+		}
+
 		await ctx.runMutation(internal.inbox.processingLifecycle.transition, {
 			inboundMessageId: args.inboundMessageId,
 			input: {
@@ -110,7 +129,7 @@ export const approveDraft = adminMutation({
 			resourceId: args.inboundMessageId,
 		});
 
-		return { success: true };
+		return { success: true as const };
 	},
 });
 

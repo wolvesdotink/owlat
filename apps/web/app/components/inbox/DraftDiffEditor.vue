@@ -24,11 +24,22 @@ const props = withDefaults(
 		saving?: boolean;
 		/** Label for the primary commit button. */
 		applyLabel?: string;
+		/**
+		 * Soft-hold: a teammate is actively replying to this thread, so Apply
+		 * (save & approve) is HELD — disabled-styled but visible, with
+		 * {@link heldReason} shown beneath. Discard stays enabled. Releases on its
+		 * own when their presence drops (UX piece b3b).
+		 */
+		held?: boolean;
+		/** Plain-language reason shown under the row while `held`. */
+		heldReason?: string;
 	}>(),
 	{
 		saving: false,
 		applyLabel: 'Save & Approve',
-	},
+		held: false,
+		heldReason: undefined,
+	}
 );
 
 const emit = defineEmits<{
@@ -76,9 +87,7 @@ function onDiscard() {
 			>
 				{{ original }}
 			</p>
-			<p class="mb-1 text-[11px] font-medium uppercase tracking-wide text-brand">
-				Your edit
-			</p>
+			<p class="mb-1 text-[11px] font-medium uppercase tracking-wide text-brand">Your edit</p>
 			<p
 				class="max-h-40 overflow-auto whitespace-pre-wrap text-sm text-text-primary"
 				data-testid="draft-diff-edited"
@@ -90,8 +99,9 @@ function onDiscard() {
 		<div class="flex items-center gap-2">
 			<button
 				type="button"
-				class="btn btn-primary btn-sm gap-1"
-				:disabled="saving"
+				class="btn btn-primary btn-sm gap-1 disabled:cursor-not-allowed"
+				:disabled="saving || held"
+				:aria-disabled="held ? 'true' : undefined"
 				data-testid="draft-diff-apply"
 				@click="emit('apply')"
 			>
@@ -108,5 +118,16 @@ function onDiscard() {
 				Discard
 			</button>
 		</div>
+
+		<!-- Soft-hold reason: a teammate is replying; releases on its own. -->
+		<p
+			v-if="held && heldReason"
+			class="inline-flex items-center gap-1.5 text-[11px] text-text-tertiary"
+			data-testid="draft-diff-held-reason"
+			role="status"
+		>
+			<Icon name="lucide:pencil-line" class="w-3 h-3 text-warning shrink-0" aria-hidden="true" />
+			<span>{{ heldReason }}</span>
+		</p>
 	</div>
 </template>
