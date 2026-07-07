@@ -24,6 +24,11 @@ const folderIdRef = computed(() => props.folderId);
 // self-contained in PostboxFolderRail.
 const { customFolders } = usePostboxFolders(mailboxIdRef);
 
+// Register Postbox as the app command palette's "current surface" while mounted
+// (reader actions + the folders/searches the sidebar doesn't list). Extracted to
+// a composable to keep this layout under the file-size cap.
+usePostboxCommandSurface(mailboxIdRef);
+
 // List/reader density → applied as a single data-density attribute on the
 // Postbox root; all compact styling lives in CSS keyed off it (postbox-density.css).
 // viewMode → which of the three inbox list renderers is active (Flat /
@@ -427,7 +432,6 @@ const showReplyQueueStrip = computed(
 			</div>
 		</Transition>
 
-		<PostboxCommandPalette :mailbox-id="mailboxId" />
 		<PostboxShortcutHelp />
 	</div>
 </template>
