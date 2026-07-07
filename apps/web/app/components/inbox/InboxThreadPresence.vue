@@ -51,7 +51,7 @@ const replyingVerb = computed(() => (repliers.value.length === 1 ? 'is replying'
 				<span
 					v-for="person in shownPeople"
 					:key="person.userId"
-					class="presence-ring rounded-full"
+					class="ui-presence-ring"
 					:title="`${person.name} is ${person.mode === 'replying' ? 'replying' : 'viewing'}`"
 				>
 					<UiAvatar :name="person.name" :image="person.image" size="sm" deterministic-color />
@@ -85,40 +85,10 @@ const replyingVerb = computed(() => (repliers.value.length === 1 ? 'is replying'
 
 <style scoped>
 /*
- * Softly-pulsing success ring on each present-teammate avatar. Box-shadow only,
- * so it adds ZERO layout shift and doesn't nudge the neighbouring avatars in the
- * overlap stack. Two beats fade in/out an outer glow atop a steady 1.5px ring.
+ * The pulsing "here now" avatar ring is the shared `.ui-presence-ring` utility
+ * (packages/ui motion.css) so this surface and the team-inbox row never drift.
  */
-.presence-ring {
-	display: inline-flex;
-	border-radius: 9999px;
-	box-shadow: 0 0 0 1.5px var(--color-success);
-	animation: presence-pulse 2s var(--ease-spring, ease-in-out) infinite;
-}
-
-@keyframes presence-pulse {
-	0%,
-	100% {
-		box-shadow:
-			0 0 0 1.5px var(--color-success),
-			0 0 0 3px color-mix(in srgb, var(--color-success) 40%, transparent);
-	}
-	50% {
-		box-shadow:
-			0 0 0 1.5px var(--color-success),
-			0 0 0 3px color-mix(in srgb, var(--color-success) 0%, transparent);
-	}
-}
-
 .presence-banner {
 	background-color: var(--color-warning-subtle);
-}
-
-/* Motion is information, not decoration — hold a static ring when reduced. */
-@media (prefers-reduced-motion: reduce) {
-	.presence-ring {
-		animation: none;
-		box-shadow: 0 0 0 1.5px var(--color-success);
-	}
 }
 </style>
