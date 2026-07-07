@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ADDABLE_CHANNEL_KINDS, availableChannelKinds } from '../channelKinds';
+import { ADDABLE_CHANNEL_KINDS, availableChannelKinds, channelHealthDot } from '../channelKinds';
 
 describe('ADDABLE_CHANNEL_KINDS', () => {
 	it('excludes the built-in email and chat kinds', () => {
@@ -28,5 +28,25 @@ describe('availableChannelKinds', () => {
 		const kinds = availableChannelKinds(existing).map((c) => c.kind);
 		expect(kinds).not.toContain('email');
 		expect(kinds).not.toContain('chat');
+	});
+});
+
+describe('channelHealthDot', () => {
+	it('maps healthy → success, degraded → warning, down → error', () => {
+		expect(channelHealthDot('healthy').variant).toBe('success');
+		expect(channelHealthDot('degraded').variant).toBe('warning');
+		expect(channelHealthDot('down').variant).toBe('error');
+	});
+
+	it('treats an absent status as healthy', () => {
+		expect(channelHealthDot(undefined).variant).toBe('success');
+		expect(channelHealthDot(null).variant).toBe('success');
+	});
+
+	it('uses design-token dot classes and human labels (no enum strings)', () => {
+		expect(channelHealthDot('down').dotClass).toBe('bg-error');
+		expect(channelHealthDot('down').label).toBe('Down');
+		expect(channelHealthDot('degraded').dotClass).toBe('bg-warning');
+		expect(channelHealthDot('healthy').dotClass).toBe('bg-success');
 	});
 });
