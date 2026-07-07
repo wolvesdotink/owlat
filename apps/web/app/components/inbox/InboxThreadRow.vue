@@ -187,7 +187,6 @@ function rowAction(event: MouseEvent, action: 'resolve' | 'snooze') {
 						class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-brand"
 						title="Assign"
 						aria-label="Assign thread"
-						@click.stop.prevent
 					>
 						<Icon name="lucide:user-plus" class="w-4 h-4" />
 					</button>
