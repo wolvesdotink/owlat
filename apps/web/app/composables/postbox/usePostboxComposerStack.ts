@@ -59,6 +59,20 @@ const MAX_COMPOSERS = 3;
 
 export function usePostboxComposerStack() {
 	const state = useState<ComposerSpec[]>('postbox:composer-stack', () => []);
+	// Id of the composer currently promoted to the centered focus surface, or
+	// null when every composer is in its normal popup/dock frame. Only one
+	// composer can hold focus at a time.
+	const focusedId = useState<string | null>('postbox:composer-focused', () => null);
+
+	// The composer a "focus compose" chord acts on: the newest still-open
+	// (non-minimized) composer, or null when none is expanded.
+	const activeComposerId = computed<string | null>(() => {
+		for (let i = state.value.length - 1; i >= 0; i--) {
+			const c = state.value[i]!;
+			if (!c.minimized) return c.id;
+		}
+		return null;
+	});
 
 	function open(spec: Omit<ComposerSpec, 'id' | 'minimized'>): string {
 		if (state.value.length >= MAX_COMPOSERS) {
@@ -76,10 +90,13 @@ export function usePostboxComposerStack() {
 	}
 
 	function close(id: string) {
+		if (focusedId.value === id) focusedId.value = null;
 		state.value = state.value.filter((c) => c.id !== id);
 	}
 
 	function minimize(id: string) {
+		// Minimizing docks the composer, so it can no longer hold the focus surface.
+		if (focusedId.value === id) focusedId.value = null;
 		state.value = state.value.map((c) => (c.id === id ? { ...c, minimized: true } : c));
 	}
 
@@ -87,5 +104,53 @@ export function usePostboxComposerStack() {
 		state.value = state.value.map((c) => (c.id === id ? { ...c, minimized: false } : c));
 	}
 
-	return { state, open, close, minimize, restore };
+	/**
+	 * Bring a docked composer back to a floating popup: un-minimize it AND move
+	 * it to the end of the stack so it counts as one of the newest (and so wins a
+	 * popup slot back from an overflow it had been pushed into). Used by the dock
+	 * chip restore.
+	 */
+	function bringToFront(id: string) {
+		const spec = state.value.find((c) => c.id === id);
+		if (!spec) return;
+		state.value = [...state.value.filter((c) => c.id !== id), { ...spec, minimized: false }];
+	}
+
+	/** Promote a composer to the centered distraction-free surface. */
+	function focus(id: string) {
+		const spec = state.value.find((c) => c.id === id);
+		if (!spec || spec.minimized) return;
+		focusedId.value = id;
+	}
+
+	/** Demote the focused composer back to its popup frame. */
+	function unfocus() {
+		focusedId.value = null;
+	}
+
+	/**
+	 * Toggle the focus surface for the active composer (the Cmd-Shift-F chord).
+	 * Focusing an already-focused composer demotes it; otherwise the newest open
+	 * composer is promoted. No-op when nothing is open.
+	 */
+	function toggleFocusActive() {
+		const id = activeComposerId.value;
+		if (!id) return;
+		if (focusedId.value === id) unfocus();
+		else focus(id);
+	}
+
+	return {
+		state,
+		focusedId,
+		activeComposerId,
+		open,
+		close,
+		minimize,
+		restore,
+		bringToFront,
+		focus,
+		unfocus,
+		toggleFocusActive,
+	};
 }
