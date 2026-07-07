@@ -1,19 +1,58 @@
 import { api } from '@owlat/api';
+import {
+	DEFAULT_INBOX_SORT,
+	inboxFilterToQuery,
+	parseInboxFilter,
+	type InboxFilter,
+	type InboxSort,
+} from '~/utils/inboxFilters';
 
-export type ThreadStatus = 'open' | 'waiting' | 'resolved' | 'closed';
+const SORT_STORAGE_KEY = 'inbox-thread-sort';
 
 export function useInbox() {
-	// Filter state
-	const statusFilter = ref<ThreadStatus | undefined>(undefined);
-	const assignedToMe = ref(false);
-	const threadCursor = ref<string | undefined>(undefined);
+	const route = useRoute();
+	const router = useRouter();
 
-	// Fetch threads (keyset pagination — the args choose the backend index).
+	// ── Filter state, mirrored in the URL (`?filter=`) ──
+	// Reads seed from the current query; writes replace the query (shareable,
+	// bookmarkable, back/forward works, and the default view stays bare).
+	const filter = ref<InboxFilter>(parseInboxFilter(route.query['filter']));
+
+	watch(
+		() => route.query['filter'],
+		(raw) => {
+			const next = parseInboxFilter(raw);
+			if (next !== filter.value) filter.value = next;
+		}
+	);
+	watch(filter, (next) => {
+		const desired = inboxFilterToQuery(next);
+		const raw = route.query['filter'];
+		const current = Array.isArray(raw) ? raw[0] : raw;
+		if ((current ?? undefined) === desired) return;
+		const query = { ...route.query };
+		if (desired === undefined) delete query['filter'];
+		else query['filter'] = desired;
+		void router.replace({ query });
+	});
+
+	// ── Sort preference, persisted per user (a6 mechanism = useLocalStorage) ──
+	const { data: storedSort, set: setStoredSort } = useLocalStorage<InboxSort>(
+		SORT_STORAGE_KEY,
+		DEFAULT_INBOX_SORT
+	);
+	const sort = computed<InboxSort>(() => storedSort.value);
+	const toggleSort = () => {
+		setStoredSort(storedSort.value === 'needs-attention' ? 'newest' : 'needs-attention');
+	};
+
+	// ── Thread list (keyset pagination; the args pick the backend index) ──
+	const threadCursor = ref<string | undefined>(undefined);
 	const { data: threadsData, isLoading: threadsLoading } = useConvexQuery(
 		api.inbox.queries.listThreads,
 		() => ({
-			status: statusFilter.value,
-			assignedToMe: assignedToMe.value || undefined,
+			filter: filter.value,
+			sort: sort.value,
 			limit: 25,
 			cursor: threadCursor.value,
 		})
@@ -21,9 +60,8 @@ export function useInbox() {
 
 	type Thread = NonNullable<typeof threadsData.value>['threads'][number];
 
-	// Accumulate pages instead of replacing the visible list on each cursor
-	// advance: the first page (cursor undefined) replaces; each subsequent page
-	// appends (deduped by _id). Mirrors useActivityTimeline.
+	// Accumulate pages: the first page (cursor undefined) replaces; each
+	// subsequent page appends (deduped by _id). Mirrors useActivityTimeline.
 	const accumulatedThreads = ref<Thread[]>([]);
 	watch(
 		threadsData,
@@ -42,12 +80,11 @@ export function useInbox() {
 		{ immediate: true }
 	);
 
-	// A filter change selects a DIFFERENT backend index (by_assigned_to /
-	// by_status / by_last_message_at), so a keyset cursor minted for the prior
-	// index is invalid. Reset to a fresh first page synchronously — before the
-	// query re-subscribes — whenever a filter changes.
+	// A filter OR sort change selects a different backend index/order, so a
+	// keyset cursor minted for the prior view is invalid. Reset to a fresh first
+	// page synchronously — before the query re-subscribes.
 	watch(
-		[statusFilter, assignedToMe],
+		[filter, sort],
 		() => {
 			threadCursor.value = undefined;
 			accumulatedThreads.value = [];
@@ -58,45 +95,38 @@ export function useInbox() {
 	const threads = computed(() => accumulatedThreads.value);
 	const hasMoreThreads = computed(() => !!threadsData.value?.nextCursor);
 
-	// Stats
-	const { data: stats, isLoading: statsLoading } = useConvexQuery(
-		api.inbox.queries.getInboundStats,
+	// ── Filter-pill counts (bounded reads; a slice at the cap renders "99+") ──
+	const { data: filterCounts } = useConvexQuery(
+		api.inbox.queries.getThreadFilterCounts,
 		() => ({})
 	);
 
-	// Load more
+	// Review-queue badge count (drafts ready) — a real pipeline counter, retained
+	// even though the old 8-cell stats grid is gone.
+	const { data: stats } = useConvexQuery(api.inbox.queries.getInboundStats, () => ({}));
+
+	// ── Actions ──
 	const loadMoreThreads = () => {
 		if (threadsData.value?.nextCursor) {
 			threadCursor.value = threadsData.value.nextCursor;
 		}
 	};
 
-	// Reset filters
-	const resetFilters = () => {
-		statusFilter.value = undefined;
-		assignedToMe.value = false;
-		threadCursor.value = undefined;
-		accumulatedThreads.value = [];
-	};
-
-	// Status is rendered by the shared `<InboxStatusChip>` / `threadStatusChip`
-	// vocabulary — no per-composable colour/icon helpers (single source of truth).
-
 	// Compact relative time ("Just now", "5m ago", "3h ago", short date past 7d).
 	const formatRelativeTime = (timestamp: number) => formatCompactRelativeTime(timestamp);
 
 	return {
 		// State
-		statusFilter,
-		assignedToMe,
+		filter,
+		sort,
+		toggleSort,
+		filterCounts,
 		threads,
 		threadsLoading,
 		hasMoreThreads,
 		stats,
-		statsLoading,
 		// Actions
 		loadMoreThreads,
-		resetFilters,
 		// Helpers
 		formatRelativeTime,
 	};

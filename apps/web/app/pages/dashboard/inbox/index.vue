@@ -2,6 +2,7 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { InboxThreadRowThread } from '~/components/inbox/InboxThreadRow.vue';
+import { INBOX_FILTER_META } from '~/utils/inboxFilters';
 
 useHead({ title: 'Team Inbox — Owlat' });
 
@@ -12,27 +13,17 @@ definePageMeta({
 });
 
 const {
-	statusFilter,
-	assignedToMe,
+	filter,
+	sort,
+	toggleSort,
+	filterCounts,
 	threads,
 	threadsLoading,
 	hasMoreThreads,
 	stats,
-	statsLoading,
 	loadMoreThreads,
-	resetFilters,
 	formatRelativeTime,
 } = useInbox();
-
-// `closed` is merged into `resolved` in the UI (single "Resolved" state); the
-// filter no longer offers Closed. Legacy closed threads still read "Resolved"
-// via the shared status chip.
-const statusOptions: { value: string; label: string }[] = [
-	{ value: '', label: 'All Statuses' },
-	{ value: 'open', label: 'Open' },
-	{ value: 'waiting', label: 'Waiting' },
-	{ value: 'resolved', label: 'Resolved' },
-];
 
 // ── Row triage mutations (shared with the thread detail view) ──
 const { user } = useAuth();
@@ -73,24 +64,26 @@ async function onSnoozeConfirm(timestamp: number) {
 	if (id) await snoozeThread({ threadId: id, until: timestamp });
 }
 
-// ── List keyboard: j/k move, Enter opens, i assigns-to-me (b4 fills the
-// popover). Shares the Postbox listbox composable so the conventions match. ──
-const filterKey = computed(() => `${statusFilter.value ?? ''}:${assignedToMe.value}`);
+// ── List keyboard: j/k move, Enter opens, i assigns-to-me. Shares the Postbox
+// listbox composable so the conventions match. Reset focus on filter/sort. ──
+const listKey = computed(() => `${filter.value}:${sort.value}`);
 const { focusedIndex, activeId, onKeydown } = usePostboxListKeyboard<TeamThread>({
 	items: threads as Ref<TeamThread[]>,
-	resetKey: filterKey,
+	resetKey: listKey,
 	rowDomId: (t) => `inbox-row-${t._id}`,
 	onActivate: (t) => navigateTo(`/dashboard/inbox/${t._id}`),
 	onAction: (key, t) => {
 		if (key === 'i') void assignToMe(t);
 	},
 });
+
+const emptyMessage = computed(() => INBOX_FILTER_META[filter.value].empty);
 </script>
 
 <template>
 	<div class="p-6 lg:p-8">
 		<!-- Header -->
-		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
 			<div>
 				<h1 class="text-2xl font-semibold text-text-primary">Team Inbox</h1>
 				<p class="text-text-secondary mt-1">Customer conversations your team handles together.</p>
@@ -110,103 +103,40 @@ const { focusedIndex, activeId, onKeydown } = usePostboxListKeyboard<TeamThread>
 			</div>
 		</div>
 
-		<!-- Stats Grid -->
-		<div v-if="stats" class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-4 mb-8">
-			<div class="card !p-4 text-center">
-				<p class="text-2xl font-semibold text-text-primary">{{ stats.total }}</p>
-				<p class="text-xs text-text-tertiary mt-1">Total</p>
-			</div>
-			<div class="card !p-4 text-center">
-				<p class="text-2xl font-semibold text-brand">{{ stats.openThreads }}</p>
-				<p class="text-xs text-text-tertiary mt-1">Open Threads</p>
-			</div>
-			<div class="card !p-4 text-center">
-				<p class="text-2xl font-semibold text-warning">{{ stats.draftReady }}</p>
-				<p class="text-xs text-text-tertiary mt-1">Drafts Ready</p>
-			</div>
-			<div class="card !p-4 text-center">
-				<p class="text-2xl font-semibold text-text-secondary">{{ stats.processing }}</p>
-				<p class="text-xs text-text-tertiary mt-1">Processing</p>
-			</div>
-			<div class="card !p-4 text-center">
-				<p class="text-2xl font-semibold text-success">{{ stats.approved }}</p>
-				<p class="text-xs text-text-tertiary mt-1">Approved</p>
-			</div>
-			<div class="card !p-4 text-center">
-				<p class="text-2xl font-semibold text-success">{{ stats.sent }}</p>
-				<p class="text-xs text-text-tertiary mt-1">Sent</p>
-			</div>
-			<NuxtLink
-				to="/dashboard/inbox/quarantine"
-				class="card !p-4 text-center hover:border-error/30 transition-colors"
-			>
-				<p class="text-2xl font-semibold text-error">{{ stats.quarantined }}</p>
-				<p class="text-xs text-text-tertiary mt-1">Quarantined</p>
-			</NuxtLink>
-			<NuxtLink
-				to="/dashboard/inbox/failed"
-				class="card !p-4 text-center hover:border-error/30 transition-colors"
-			>
-				<p class="text-2xl font-semibold text-error">{{ stats.failed }}</p>
-				<p class="text-xs text-text-tertiary mt-1">Failed</p>
-			</NuxtLink>
-		</div>
-
-		<!-- Filters -->
-		<div class="flex flex-wrap items-center gap-3 mb-6">
-			<select
-				:value="statusFilter ?? ''"
-				class="input w-auto"
-				@change="
-					statusFilter =
-						(($event.target as HTMLSelectElement).value as 'open' | 'waiting' | 'resolved') ||
-						undefined
-				"
-			>
-				<option v-for="opt in statusOptions" :key="opt.value" :value="opt.value">
-					{{ opt.label }}
-				</option>
-			</select>
-
-			<label class="flex items-center gap-2 text-sm text-text-secondary cursor-pointer">
-				<input v-model="assignedToMe" type="checkbox" class="rounded border-border-subtle" />
-				Assigned to me
-			</label>
+		<!-- Filter pills (live counts) + needs-attention sort chip -->
+		<div class="flex flex-wrap items-center justify-between gap-3 mb-6">
+			<InboxFilterPills v-model="filter" :counts="filterCounts" />
 
 			<button
-				v-if="statusFilter || assignedToMe"
-				class="text-sm text-text-tertiary hover:text-text-primary transition-colors"
-				@click="resetFilters"
+				type="button"
+				class="inline-flex items-center gap-1.5 text-xs text-text-tertiary hover:text-text-primary transition-colors duration-[--motion-fast] outline-none focus-visible:ring-1 focus-visible:ring-brand/50 rounded px-1.5 py-1"
+				:title="
+					sort === 'needs-attention'
+						? 'Sorted by needs-attention — switch to newest first'
+						: 'Sorted newest first — switch to needs-attention'
+				"
+				@click="toggleSort"
 			>
-				Clear filters
+				<Icon
+					:name="sort === 'needs-attention' ? 'lucide:sparkles' : 'lucide:arrow-down-wide-narrow'"
+					class="w-3.5 h-3.5"
+				/>
+				<span>{{ sort === 'needs-attention' ? 'Sorted by needs-attention' : 'Newest first' }}</span>
 			</button>
 		</div>
 
-		<!-- Loading -->
-		<div
-			v-if="threadsLoading && threads.length === 0"
-			class="flex items-center justify-center py-16"
-		>
-			<div class="flex flex-col items-center gap-3">
-				<UiSpinner />
-				<p class="text-text-secondary text-sm">Loading threads...</p>
-			</div>
+		<!-- Loading — Postbox list skeleton geometry -->
+		<div v-if="threadsLoading && threads.length === 0">
+			<PostboxThreadListSkeleton :rows="8" />
 		</div>
 
-		<!-- Empty State -->
+		<!-- Empty state — copy per active pill -->
 		<div
 			v-else-if="threads.length === 0"
 			class="flex flex-col items-center justify-center py-16 text-center"
 		>
 			<UiIconBox icon="lucide:inbox" size="xl" variant="surface" rounded="full" class="mb-4" />
-			<p class="text-text-secondary font-medium">No threads found</p>
-			<p class="text-sm text-text-tertiary mt-1">
-				{{
-					statusFilter || assignedToMe
-						? 'Try adjusting your filters.'
-						: 'Inbound messages will appear here when they arrive.'
-				}}
-			</p>
+			<p class="text-text-secondary font-medium">{{ emptyMessage }}</p>
 		</div>
 
 		<!-- Thread List — Postbox row DNA: single column, weight-based unread,
