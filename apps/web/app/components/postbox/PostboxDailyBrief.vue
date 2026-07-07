@@ -49,16 +49,25 @@ const { data } = useConvexQuery(api.mail.brief.getBriefCard, () => ({
 }));
 
 // Stale-while-revalidate: a stale read triggers ONE background refresh per
-// (mailbox, day, generation) — the key guard keeps the subscription's
-// re-emission from looping the write. Fail-soft: a refresh failure is
+// (mailbox, day). The key deliberately excludes generatedAt — a refresh that
+// leaves the card stale (cold cache) re-emits with a NEW generation, and
+// keying on it would re-fire the write in a loop. A genuinely fresh read
+// re-arms the guard, so a later same-day fresh→stale transition (≥5 new
+// items) still refreshes exactly once. Fail-soft: a refresh failure is
 // swallowed; whatever is cached keeps rendering (or nothing does).
 const client = useConvex();
 const lastRefreshKey = ref<string | null>(null);
 watch(
 	() => data.value,
 	(res) => {
-		if (!res?.isStale) return;
-		const key = `${props.mailboxId}:${localDay.value}:${res.card?.generatedAt ?? 0}`;
+		if (!res) return;
+		if (!res.isStale) {
+			// Fresh read: re-arm so the NEXT staleness (new day or ≥5 new
+			// items later today) triggers its own single refresh.
+			lastRefreshKey.value = null;
+			return;
+		}
+		const key = `${props.mailboxId}:${localDay.value}`;
 		if (lastRefreshKey.value === key) return;
 		lastRefreshKey.value = key;
 		client
