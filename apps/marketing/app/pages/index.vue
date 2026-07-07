@@ -23,7 +23,6 @@ useSchemaOrg([
 <template>
 	<div>
 		<HeroSection />
-		<TrustBar />
 		<FeatureBento />
 		<OpenSourceSection />
 		<DeveloperSection />
