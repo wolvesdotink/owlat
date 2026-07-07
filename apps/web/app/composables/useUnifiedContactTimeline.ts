@@ -22,7 +22,10 @@ export const UNIFIED_TIMELINE_CHANNELS: UnifiedTimelineChannel[] = [
 	'generic',
 ];
 
-const CHANNEL_CONFIG: Record<UnifiedTimelineChannel, { icon: string; label: string; color: string }> = {
+const CHANNEL_CONFIG: Record<
+	UnifiedTimelineChannel,
+	{ icon: string; label: string; color: string }
+> = {
 	email: { icon: 'lucide:mail', label: 'Email', color: 'text-blue-500' },
 	sms: { icon: 'lucide:smartphone', label: 'SMS', color: 'text-green-500' },
 	whatsapp: { icon: 'lucide:message-circle', label: 'WhatsApp', color: 'text-emerald-500' },
@@ -57,7 +60,11 @@ export const formatTimelineTime = (ts: number): string => {
 		return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 	}
 	if (diffHours < 24 * 7) {
-		return date.toLocaleDateString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+		return date.toLocaleDateString('en-US', {
+			weekday: 'short',
+			hour: 'numeric',
+			minute: '2-digit',
+		});
 	}
 	return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 };
@@ -67,11 +74,51 @@ export const truncateTimelineText = (text: string, max = 120): string => {
 	return text.length > max ? text.slice(0, max) + '…' : text;
 };
 
+export interface DeliveryStatusMeta {
+	icon: string;
+	/** Design-token text color for the mark. */
+	class: string;
+	/** Human label for the icon's `title`/aria (no enum strings in the UI). */
+	label: string;
+}
+
+/**
+ * Collapse an outbound message's delivery state into a single small status
+ * icon (one-chip rule): the direction + channel chips carry the roll-up, so
+ * delivery detail rides on a recessive mark whose `title` spells it out.
+ * Returns null for states that need no mark — inbound `received` and the
+ * neutral `sent`-only case where the channel chip already implies it.
+ */
+export const deliveryStatusMeta = (
+	status: string | null | undefined
+): DeliveryStatusMeta | null => {
+	switch (status) {
+		case 'read':
+			return { icon: 'lucide:check-check', class: 'text-success', label: 'Read' };
+		case 'delivered':
+			return { icon: 'lucide:check-check', class: 'text-success', label: 'Delivered' };
+		case 'queued':
+		case 'sending':
+		case 'processing':
+			return { icon: 'lucide:clock', class: 'text-text-tertiary', label: 'Sending' };
+		case 'failed':
+			return { icon: 'lucide:alert-circle', class: 'text-error', label: 'Failed' };
+		case 'bounced':
+			return { icon: 'lucide:alert-triangle', class: 'text-error', label: 'Bounced' };
+		default:
+			return null;
+	}
+};
+
 export function useUnifiedContactTimeline(contactId: Ref<Id<'contacts'>>) {
-	const { data: messages, isLoading, error } = useConvexQuery(
-		api.unifiedMessages.getContactTimeline,
-		() => ({ contactId: contactId.value, limit: 50 }),
-	);
+	const {
+		data: messages,
+		isLoading,
+		error,
+	} = useConvexQuery(api.unifiedMessages.getContactTimeline, () => ({
+		contactId: contactId.value,
+		limit: 50,
+	}));
 
 	// Channel filter (null = all channels)
 	const channelFilter = ref<UnifiedTimelineChannel | null>(null);
@@ -88,7 +135,7 @@ export function useUnifiedContactTimeline(contactId: Ref<Id<'contacts'>>) {
 	// chat (`unifiedMessages.sendChatMessage`) is keyed to a thread, so chat
 	// compose is only offered once the contact has at least one thread.
 	const latestThreadId = computed<Id<'conversationThreads'> | null>(
-		() => timeline.value[0]?.threadId ?? null,
+		() => timeline.value[0]?.threadId ?? null
 	);
 
 	return {
