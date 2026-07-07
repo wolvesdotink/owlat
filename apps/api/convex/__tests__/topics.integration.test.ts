@@ -2,7 +2,12 @@ import { convexTest } from 'convex-test';
 import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
-import { createTestTopic, createTestContact, createTestCampaign, createTestEmailSend } from './factories';
+import {
+	createTestTopic,
+	createTestContact,
+	createTestCampaign,
+	createTestEmailSend,
+} from './factories';
 import type { Id } from '../_generated/dataModel';
 
 vi.mock('../lib/sessionOrganization', async () => {
@@ -14,7 +19,13 @@ vi.mock('../lib/sessionOrganization', async () => {
 		getUserIdFromSession: vi.fn().mockResolvedValue('test-user'),
 		getMutationContext: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
 		requireOrgPermission: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
-		requireAuthenticatedIdentity: vi.fn().mockResolvedValue({ subject: 'test-user', issuer: 'test', tokenIdentifier: 'test|test-user' }),
+		requireAuthenticatedIdentity: vi
+			.fn()
+			.mockResolvedValue({
+				subject: 'test-user',
+				issuer: 'test',
+				tokenIdentifier: 'test|test-user',
+			}),
 	};
 });
 
@@ -102,11 +113,14 @@ describe('topics.update', () => {
 		let topicId: Id<'topics'>;
 
 		await t.run(async (ctx) => {
-			topicId = await ctx.db.insert('topics', createTestTopic({
-				name: 'Original',
-				description: 'Original desc',
-				requireDoubleOptIn: false,
-			}));
+			topicId = await ctx.db.insert(
+				'topics',
+				createTestTopic({
+					name: 'Original',
+					description: 'Original desc',
+					requireDoubleOptIn: false,
+				})
+			);
 		});
 
 		// Partial update: only name
@@ -239,9 +253,9 @@ describe('topics.remove', () => {
 			await ctx.db.delete(topicId);
 		});
 
-		await expect(
-			t.mutation(api.topics.topics.remove, { topicId: topicId! })
-		).rejects.toThrow(/Topic not found/);
+		await expect(t.mutation(api.topics.topics.remove, { topicId: topicId! })).rejects.toThrow(
+			/Topic not found/
+		);
 	});
 });
 
@@ -334,11 +348,14 @@ describe('topics.addContact', () => {
 		await t.run(async (ctx) => {
 			_topicId1 = await ctx.db.insert('topics', createTestTopic({ requireDoubleOptIn: true }));
 			topicId2 = await ctx.db.insert('topics', createTestTopic({ requireDoubleOptIn: true }));
-			contactId = await ctx.db.insert('contacts', createTestContact({
-				doiStatus: 'pending',
-				doiConfirmationToken: 'existing-token',
-				doiTokenExpiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
-			}));
+			contactId = await ctx.db.insert(
+				'contacts',
+				createTestContact({
+					doiStatus: 'pending',
+					doiConfirmationToken: 'existing-token',
+					doiTokenExpiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
+				})
+			);
 		});
 
 		// Adding to a second DOI topic should not change the existing pending token
@@ -362,10 +379,13 @@ describe('topics.addContact', () => {
 
 		await t.run(async (ctx) => {
 			topicId = await ctx.db.insert('topics', createTestTopic({ requireDoubleOptIn: true }));
-			contactId = await ctx.db.insert('contacts', createTestContact({
-				doiStatus: 'confirmed',
-				doiConfirmedAt: Date.now(),
-			}));
+			contactId = await ctx.db.insert(
+				'contacts',
+				createTestContact({
+					doiStatus: 'confirmed',
+					doiConfirmedAt: Date.now(),
+				})
+			);
 		});
 
 		const result = await t.mutation(api.topics.topics.addContact, {
@@ -621,12 +641,15 @@ describe('topics.confirmDoi', () => {
 		await t.run(async (ctx) => {
 			topicId1 = await ctx.db.insert('topics', createTestTopic({ requireDoubleOptIn: true }));
 			topicId2 = await ctx.db.insert('topics', createTestTopic({ requireDoubleOptIn: true }));
-			contactId = await ctx.db.insert('contacts', createTestContact({
-				email: 'doi@example.com',
-				doiStatus: 'pending',
-				doiConfirmationToken: 'test-doi-token-123',
-				doiTokenExpiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
-			}));
+			contactId = await ctx.db.insert(
+				'contacts',
+				createTestContact({
+					email: 'doi@example.com',
+					doiStatus: 'pending',
+					doiConfirmationToken: 'test-doi-token-123',
+					doiTokenExpiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
+				})
+			);
 			// Subscribe contact to both DOI topics
 			await ctx.db.insert('contactTopics', {
 				contactId,
@@ -662,11 +685,14 @@ describe('topics.confirmDoi', () => {
 		const t = convexTest(schema, modules);
 
 		await t.run(async (ctx) => {
-			await ctx.db.insert('contacts', createTestContact({
-				doiStatus: 'confirmed',
-				doiConfirmationToken: 'already-confirmed-token',
-				doiConfirmedAt: Date.now(),
-			}));
+			await ctx.db.insert(
+				'contacts',
+				createTestContact({
+					doiStatus: 'confirmed',
+					doiConfirmationToken: 'already-confirmed-token',
+					doiConfirmedAt: Date.now(),
+				})
+			);
 		});
 
 		const result = await t.mutation(internal.topics.topics.confirmDoi, {
@@ -697,13 +723,16 @@ describe('topics.getContactByDoiToken', () => {
 		const t = convexTest(schema, modules);
 
 		await t.run(async (ctx) => {
-			await ctx.db.insert('contacts', createTestContact({
-				email: 'token-test@example.com',
-				firstName: 'Token',
-				doiStatus: 'pending',
-				doiConfirmationToken: 'valid-doi-token',
-				doiTokenExpiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
-			}));
+			await ctx.db.insert(
+				'contacts',
+				createTestContact({
+					email: 'token-test@example.com',
+					firstName: 'Token',
+					doiStatus: 'pending',
+					doiConfirmationToken: 'valid-doi-token',
+					doiTokenExpiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
+				})
+			);
 		});
 
 		const result = await t.query(internal.topics.topics.getContactByDoiToken, {
@@ -737,10 +766,13 @@ describe('topics.getContacts', () => {
 
 		await t.run(async (ctx) => {
 			topicId = await ctx.db.insert('topics', createTestTopic());
-			const contactId = await ctx.db.insert('contacts', createTestContact({
-				email: 'member@example.com',
-				firstName: 'Test',
-			}));
+			const contactId = await ctx.db.insert(
+				'contacts',
+				createTestContact({
+					email: 'member@example.com',
+					firstName: 'Test',
+				})
+			);
 			await ctx.db.insert('contactTopics', {
 				contactId,
 				topicId: topicId,
@@ -765,8 +797,14 @@ describe('topics.getContacts', () => {
 
 		await t.run(async (ctx) => {
 			topicId = await ctx.db.insert('topics', createTestTopic());
-			const activeContact = await ctx.db.insert('contacts', createTestContact({ email: 'active@example.com' }));
-			const deletedContact = await ctx.db.insert('contacts', createTestContact({ email: 'deleted@example.com' }));
+			const activeContact = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'active@example.com' })
+			);
+			const deletedContact = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'deleted@example.com' })
+			);
 
 			await ctx.db.insert('contactTopics', {
 				contactId: activeContact,
@@ -838,15 +876,21 @@ describe('topics.getContactInTopicDetails', () => {
 		const now = Date.now();
 
 		await t.run(async (ctx) => {
-			topicId = await ctx.db.insert('topics', createTestTopic({
-				name: 'Analytics List',
-				description: 'For testing',
-			}));
-			contactId = await ctx.db.insert('contacts', createTestContact({
-				email: 'analytics@example.com',
-				firstName: 'Ana',
-				lastName: 'Lytics',
-			}));
+			topicId = await ctx.db.insert(
+				'topics',
+				createTestTopic({
+					name: 'Analytics List',
+					description: 'For testing',
+				})
+			);
+			contactId = await ctx.db.insert(
+				'contacts',
+				createTestContact({
+					email: 'analytics@example.com',
+					firstName: 'Ana',
+					lastName: 'Lytics',
+				})
+			);
 			await ctx.db.insert('contactTopics', {
 				contactId,
 				topicId: topicId,
@@ -854,32 +898,44 @@ describe('topics.getContactInTopicDetails', () => {
 			});
 
 			// Create a campaign targeting this topic
-			const campaignId = await ctx.db.insert('campaigns', createTestCampaign({
-				name: 'Test Campaign',
-				subject: 'Hello',
-				audience: { kind: 'topic', topicId },
-				status: 'sent',
-			}));
-
-			// Create email sends: 2 sent, 1 opened, 1 clicked
-			await ctx.db.insert('emailSends', createTestEmailSend({
-				campaignId,
-				contactId,
-				status: 'delivered',
-				sentAt: now - 200000,
-			}));
-			await ctx.db.insert('emailSends', createTestEmailSend({
-				campaignId: await ctx.db.insert('campaigns', createTestCampaign({
-					name: 'Campaign 2',
+			const campaignId = await ctx.db.insert(
+				'campaigns',
+				createTestCampaign({
+					name: 'Test Campaign',
+					subject: 'Hello',
 					audience: { kind: 'topic', topicId },
 					status: 'sent',
-				})),
-				contactId,
-				status: 'opened',
-				sentAt: now - 100000,
-				openedAt: now - 50000,
-				openCount: 2,
-			}));
+				})
+			);
+
+			// Create email sends: 2 sent, 1 opened, 1 clicked
+			await ctx.db.insert(
+				'emailSends',
+				createTestEmailSend({
+					campaignId,
+					contactId,
+					status: 'delivered',
+					sentAt: now - 200000,
+				})
+			);
+			await ctx.db.insert(
+				'emailSends',
+				createTestEmailSend({
+					campaignId: await ctx.db.insert(
+						'campaigns',
+						createTestCampaign({
+							name: 'Campaign 2',
+							audience: { kind: 'topic', topicId },
+							status: 'sent',
+						})
+					),
+					contactId,
+					status: 'opened',
+					sentAt: now - 100000,
+					openedAt: now - 50000,
+					openCount: 2,
+				})
+			);
 		});
 
 		const details = await t.query(api.topics.topics.getContactInTopicDetails, {
@@ -936,23 +992,29 @@ describe('topics.getContactInTopicDetails', () => {
 				name: string,
 				status: string,
 				openedAt?: number,
-				clickedAt?: number,
+				clickedAt?: number
 			) => {
-				const campaignId = await ctx.db.insert('campaigns', createTestCampaign({
-					name,
-					audience: { kind: 'topic', topicId },
-					status: 'sent',
-				}));
-				await ctx.db.insert('emailSends', createTestEmailSend({
-					campaignId,
-					contactId,
-					status,
-					sentAt: now - 300000,
-					openedAt,
-					clickedAt,
-					openCount: openedAt ? 1 : 0,
-					clickedLinks: clickedAt ? [{ url: 'https://example.com', clickedAt }] : undefined,
-				}));
+				const campaignId = await ctx.db.insert(
+					'campaigns',
+					createTestCampaign({
+						name,
+						audience: { kind: 'topic', topicId },
+						status: 'sent',
+					})
+				);
+				await ctx.db.insert(
+					'emailSends',
+					createTestEmailSend({
+						campaignId,
+						contactId,
+						status,
+						sentAt: now - 300000,
+						openedAt,
+						clickedAt,
+						openCount: openedAt ? 1 : 0,
+						clickedLinks: clickedAt ? [{ url: 'https://example.com', clickedAt }] : undefined,
+					})
+				);
 			};
 
 			// 4 sends: 2 opened, 1 clicked

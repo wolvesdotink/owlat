@@ -71,7 +71,9 @@ export const listByTransactionalEmail = authedQuery({
 		const paginatedSends = sends.slice(offset, offset + limit);
 
 		// Batch-fetch contacts to avoid N+1
-		const contactIds = [...new Set(paginatedSends.filter((s) => s.contactId).map((s) => s.contactId!))];
+		const contactIds = [
+			...new Set(paginatedSends.filter((s) => s.contactId).map((s) => s.contactId!)),
+		];
 		const contacts = await Promise.all(contactIds.map((id) => ctx.db.get(id)));
 		const contactMap = new Map(contacts.filter(Boolean).map((c) => [c!._id, c!]));
 
@@ -80,7 +82,12 @@ export const listByTransactionalEmail = authedQuery({
 			return {
 				...send,
 				contact: contactData
-					? { _id: contactData._id, email: contactData.email, firstName: contactData.firstName, lastName: contactData.lastName }
+					? {
+							_id: contactData._id,
+							email: contactData.email,
+							firstName: contactData.firstName,
+							lastName: contactData.lastName,
+						}
 					: null,
 			};
 		});
@@ -121,12 +128,12 @@ export const listAll = authedQuery({
 		// transactional template, so filter out the absent ids.
 		const templateIds = [
 			...new Set(
-				paginatedSends.flatMap((s) =>
-					s.transactionalEmailId ? [s.transactionalEmailId] : []
-				)
+				paginatedSends.flatMap((s) => (s.transactionalEmailId ? [s.transactionalEmailId] : []))
 			),
 		];
-		const contactIds = [...new Set(paginatedSends.filter((s) => s.contactId).map((s) => s.contactId!))];
+		const contactIds = [
+			...new Set(paginatedSends.filter((s) => s.contactId).map((s) => s.contactId!)),
+		];
 
 		const [templates, contacts] = await Promise.all([
 			Promise.all(templateIds.map((id) => ctx.db.get(id))),
@@ -147,7 +154,12 @@ export const listAll = authedQuery({
 					? { name: transactionalEmail.name, slug: transactionalEmail.slug }
 					: null,
 				contact: contactData
-					? { _id: contactData._id, email: contactData.email, firstName: contactData.firstName, lastName: contactData.lastName }
+					? {
+							_id: contactData._id,
+							email: contactData.email,
+							firstName: contactData.firstName,
+							lastName: contactData.lastName,
+						}
 					: null,
 			};
 		});
@@ -210,9 +222,7 @@ export const getCounts = authedQuery({
 	args: {},
 	handler: async (ctx) => {
 		await getUserIdFromSession(ctx);
-		const transactionalEmails = await ctx.db
-			.query('transactionalEmails')
-			.collect(); // bounded: per-deployment template set is small
+		const transactionalEmails = await ctx.db.query('transactionalEmails').collect(); // bounded: per-deployment template set is small
 
 		const counts: Record<string, number> = {};
 		for (const email of transactionalEmails) {

@@ -14,7 +14,13 @@ vi.mock('../lib/sessionOrganization', async () => {
 		getUserIdFromSession: vi.fn().mockResolvedValue('test-user'),
 		getMutationContext: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
 		requireOrgPermission: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
-		requireAuthenticatedIdentity: vi.fn().mockResolvedValue({ subject: 'test-user', issuer: 'test', tokenIdentifier: 'test|test-user' }),
+		requireAuthenticatedIdentity: vi
+			.fn()
+			.mockResolvedValue({
+				subject: 'test-user',
+				issuer: 'test',
+				tokenIdentifier: 'test|test-user',
+			}),
 	};
 });
 
@@ -379,10 +385,13 @@ describe('webhooks.update', () => {
 		const t = convexTest(schema, modules);
 
 		const webhookId = await t.run(async (ctx) => {
-			return await ctx.db.insert('webhooks', createTestWebhook({
-				name: 'Original Name',
-				url: 'https://example.com/hook',
-			}));
+			return await ctx.db.insert(
+				'webhooks',
+				createTestWebhook({
+					name: 'Original Name',
+					url: 'https://example.com/hook',
+				})
+			);
 		});
 
 		await t.mutation(api.webhooks.endpoints.update, {
@@ -401,10 +410,13 @@ describe('webhooks.update', () => {
 		const t = convexTest(schema, modules);
 
 		const webhookId = await t.run(async (ctx) => {
-			return await ctx.db.insert('webhooks', createTestWebhook({
-				name: 'My Webhook',
-				url: 'https://old.example.com/hook',
-			}));
+			return await ctx.db.insert(
+				'webhooks',
+				createTestWebhook({
+					name: 'My Webhook',
+					url: 'https://old.example.com/hook',
+				})
+			);
 		});
 
 		await t.mutation(api.webhooks.endpoints.update, {
@@ -423,9 +435,12 @@ describe('webhooks.update', () => {
 		const t = convexTest(schema, modules);
 
 		const webhookId = await t.run(async (ctx) => {
-			return await ctx.db.insert('webhooks', createTestWebhook({
-				events: ['email.sent'],
-			}));
+			return await ctx.db.insert(
+				'webhooks',
+				createTestWebhook({
+					events: ['email.sent'],
+				})
+			);
 		});
 
 		await t.mutation(api.webhooks.endpoints.update, {
@@ -466,9 +481,12 @@ describe('webhooks.update', () => {
 
 		const originalUpdatedAt = Date.now() - 10000;
 		const webhookId = await t.run(async (ctx) => {
-			return await ctx.db.insert('webhooks', createTestWebhook({
-				updatedAt: originalUpdatedAt,
-			}));
+			return await ctx.db.insert(
+				'webhooks',
+				createTestWebhook({
+					updatedAt: originalUpdatedAt,
+				})
+			);
 		});
 
 		await t.mutation(api.webhooks.endpoints.update, {
@@ -648,10 +666,13 @@ describe('webhooks.enable', () => {
 
 		const originalTime = Date.now() - 10000;
 		const webhookId = await t.run(async (ctx) => {
-			return await ctx.db.insert('webhooks', createTestWebhook({
-				isActive: true,
-				updatedAt: originalTime,
-			}));
+			return await ctx.db.insert(
+				'webhooks',
+				createTestWebhook({
+					isActive: true,
+					updatedAt: originalTime,
+				})
+			);
 		});
 
 		const result = await t.mutation(api.webhooks.endpoints.enable, { webhookId });
@@ -688,10 +709,13 @@ describe('webhooks.disable', () => {
 
 		const originalTime = Date.now() - 10000;
 		const webhookId = await t.run(async (ctx) => {
-			return await ctx.db.insert('webhooks', createTestWebhook({
-				isActive: false,
-				updatedAt: originalTime,
-			}));
+			return await ctx.db.insert(
+				'webhooks',
+				createTestWebhook({
+					isActive: false,
+					updatedAt: originalTime,
+				})
+			);
 		});
 
 		const result = await t.mutation(api.webhooks.endpoints.disable, { webhookId });
@@ -843,9 +867,7 @@ describe('webhooks.remove', () => {
 			return id;
 		});
 
-		await expect(
-			t.mutation(api.webhooks.endpoints.remove, { webhookId })
-		).rejects.toThrow();
+		await expect(t.mutation(api.webhooks.endpoints.remove, { webhookId })).rejects.toThrow();
 	});
 });
 
@@ -862,8 +884,7 @@ describe('webhooks.listByOrganization', () => {
 			await ctx.db.insert('webhooks', createTestWebhook({ name: 'Inactive', isActive: false }));
 		});
 
-		const result = await t.query(api.webhooks.endpoints.listByOrganization, {
-		});
+		const result = await t.query(api.webhooks.endpoints.listByOrganization, {});
 
 		expect(result).toHaveLength(2);
 		expect(result.every((w) => w.isActive)).toBe(true);
@@ -889,8 +910,7 @@ describe('webhooks.listByOrganization', () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['webhooks']);
 
-		const result = await t.query(api.webhooks.endpoints.listByOrganization, {
-		});
+		const result = await t.query(api.webhooks.endpoints.listByOrganization, {});
 
 		expect(result).toEqual([]);
 	});
@@ -906,8 +926,7 @@ describe('webhooks.listByOrganization', () => {
 			await ctx.db.insert('webhooks', createTestWebhook({ name: 'Mid', createdAt: now - 1000 }));
 		});
 
-		const result = await t.query(api.webhooks.endpoints.listByOrganization, {
-		});
+		const result = await t.query(api.webhooks.endpoints.listByOrganization, {});
 
 		expect(result[0]!.name).toBe('New');
 		expect(result[1]!.name).toBe('Mid');
@@ -919,16 +938,22 @@ describe('webhooks.listByOrganization', () => {
 		await enableFeatures(t, ['webhooks']);
 
 		await t.run(async (ctx) => {
-			await ctx.db.insert('webhooks', createTestWebhook({
-				name: 'Active',
-				isActive: true,
-				secret: 'whsec_ActiveSecretValue1234567890',
-			}));
-			await ctx.db.insert('webhooks', createTestWebhook({
-				name: 'Inactive',
-				isActive: false,
-				secret: 'whsec_InactiveSecretValue123456789',
-			}));
+			await ctx.db.insert(
+				'webhooks',
+				createTestWebhook({
+					name: 'Active',
+					isActive: true,
+					secret: 'whsec_ActiveSecretValue1234567890',
+				})
+			);
+			await ctx.db.insert(
+				'webhooks',
+				createTestWebhook({
+					name: 'Inactive',
+					isActive: false,
+					secret: 'whsec_InactiveSecretValue123456789',
+				})
+			);
 		});
 
 		const active = await t.query(api.webhooks.endpoints.listByOrganization, {});
@@ -980,10 +1005,13 @@ describe('webhooks.get', () => {
 		const t = convexTest(schema, modules);
 
 		const webhookId = await t.run(async (ctx) => {
-			return await ctx.db.insert('webhooks', createTestWebhook({
-				name: 'My Hook',
-				secret: 'whsec_GetSecretValue12345678901234',
-			}));
+			return await ctx.db.insert(
+				'webhooks',
+				createTestWebhook({
+					name: 'My Hook',
+					secret: 'whsec_GetSecretValue12345678901234',
+				})
+			);
 		});
 
 		const result = await t.query(api.webhooks.endpoints.get, { webhookId });
@@ -1008,8 +1036,7 @@ describe('webhooks.countByOrganization', () => {
 			await ctx.db.insert('webhooks', createTestWebhook({ isActive: false }));
 		});
 
-		const result = await t.query(api.webhooks.endpoints.countByOrganization, {
-		});
+		const result = await t.query(api.webhooks.endpoints.countByOrganization, {});
 
 		expect(result.total).toBe(3);
 		expect(result.active).toBe(2);
@@ -1018,8 +1045,7 @@ describe('webhooks.countByOrganization', () => {
 	it('should return zeros when no webhooks exist', async () => {
 		const t = convexTest(schema, modules);
 
-		const result = await t.query(api.webhooks.endpoints.countByOrganization, {
-		});
+		const result = await t.query(api.webhooks.endpoints.countByOrganization, {});
 
 		expect(result.total).toBe(0);
 		expect(result.active).toBe(0);
@@ -1033,8 +1059,7 @@ describe('webhooks.countByOrganization', () => {
 			await ctx.db.insert('webhooks', createTestWebhook({ isActive: true }));
 		});
 
-		const result = await t.query(api.webhooks.endpoints.countByOrganization, {
-		});
+		const result = await t.query(api.webhooks.endpoints.countByOrganization, {});
 
 		expect(result.total).toBe(2);
 		expect(result.active).toBe(2);
@@ -1111,24 +1136,49 @@ describe('webhooks.getDeliveryStats', () => {
 
 			// 2 success, 1 failed, 1 pending, 1 retrying
 			await ctx.db.insert('webhookDeliveryLogs', {
-				webhookId: wId, event: 'email.sent',
-				payload: { event: 'email.sent', timestamp: new Date(now).toISOString(), data: {} }, attemptNumber: 1, maxAttempts: 3, status: 'success', scheduledAt: now,
+				webhookId: wId,
+				event: 'email.sent',
+				payload: { event: 'email.sent', timestamp: new Date(now).toISOString(), data: {} },
+				attemptNumber: 1,
+				maxAttempts: 3,
+				status: 'success',
+				scheduledAt: now,
 			});
 			await ctx.db.insert('webhookDeliveryLogs', {
-				webhookId: wId, event: 'email.delivered',
-				payload: { event: 'email.sent', timestamp: new Date(now).toISOString(), data: {} }, attemptNumber: 1, maxAttempts: 3, status: 'success', scheduledAt: now,
+				webhookId: wId,
+				event: 'email.delivered',
+				payload: { event: 'email.sent', timestamp: new Date(now).toISOString(), data: {} },
+				attemptNumber: 1,
+				maxAttempts: 3,
+				status: 'success',
+				scheduledAt: now,
 			});
 			await ctx.db.insert('webhookDeliveryLogs', {
-				webhookId: wId, event: 'email.bounced',
-				payload: { event: 'email.bounced', timestamp: new Date(now).toISOString(), data: {} }, attemptNumber: 3, maxAttempts: 3, status: 'failed', scheduledAt: now,
+				webhookId: wId,
+				event: 'email.bounced',
+				payload: { event: 'email.bounced', timestamp: new Date(now).toISOString(), data: {} },
+				attemptNumber: 3,
+				maxAttempts: 3,
+				status: 'failed',
+				scheduledAt: now,
 			});
 			await ctx.db.insert('webhookDeliveryLogs', {
-				webhookId: wId, event: 'contact.created',
-				payload: { event: 'contact.created', timestamp: new Date(now).toISOString(), data: {} }, attemptNumber: 1, maxAttempts: 3, status: 'pending', scheduledAt: now,
+				webhookId: wId,
+				event: 'contact.created',
+				payload: { event: 'contact.created', timestamp: new Date(now).toISOString(), data: {} },
+				attemptNumber: 1,
+				maxAttempts: 3,
+				status: 'pending',
+				scheduledAt: now,
 			});
 			await ctx.db.insert('webhookDeliveryLogs', {
-				webhookId: wId, event: 'email.opened',
-				payload: { event: 'email.opened', timestamp: new Date(now).toISOString(), data: {} }, attemptNumber: 2, maxAttempts: 3, status: 'retrying', scheduledAt: now,
+				webhookId: wId,
+				event: 'email.opened',
+				payload: { event: 'email.opened', timestamp: new Date(now).toISOString(), data: {} },
+				attemptNumber: 2,
+				maxAttempts: 3,
+				status: 'retrying',
+				scheduledAt: now,
 			});
 
 			return wId;
@@ -1186,16 +1236,22 @@ describe('webhooks.getDeliveryStats', () => {
 
 			// Old log (before filter)
 			await ctx.db.insert('webhookDeliveryLogs', {
-				webhookId: wId, event: 'email.sent',
+				webhookId: wId,
+				event: 'email.sent',
 				payload: { event: 'email.sent', timestamp: new Date(now - 100000).toISOString(), data: {} },
-				attemptNumber: 1, maxAttempts: 3, status: 'success',
+				attemptNumber: 1,
+				maxAttempts: 3,
+				status: 'success',
 				scheduledAt: now - 100000,
 			});
 			// Recent log (after filter)
 			await ctx.db.insert('webhookDeliveryLogs', {
-				webhookId: wId, event: 'email.sent',
+				webhookId: wId,
+				event: 'email.sent',
 				payload: { event: 'email.sent', timestamp: new Date(now).toISOString(), data: {} },
-				attemptNumber: 1, maxAttempts: 3, status: 'failed',
+				attemptNumber: 1,
+				maxAttempts: 3,
+				status: 'failed',
 				scheduledAt: now,
 			});
 
@@ -1220,17 +1276,32 @@ describe('webhooks.getDeliveryStats', () => {
 			const now = Date.now();
 
 			await ctx.db.insert('webhookDeliveryLogs', {
-				webhookId: wId, event: 'email.sent',
-				payload: { event: 'email.sent', timestamp: new Date(now).toISOString(), data: {} }, attemptNumber: 1, maxAttempts: 3, status: 'success', scheduledAt: now,
+				webhookId: wId,
+				event: 'email.sent',
+				payload: { event: 'email.sent', timestamp: new Date(now).toISOString(), data: {} },
+				attemptNumber: 1,
+				maxAttempts: 3,
+				status: 'success',
+				scheduledAt: now,
 			});
 			await ctx.db.insert('webhookDeliveryLogs', {
-				webhookId: wId, event: 'email.sent',
-				payload: { event: 'email.sent', timestamp: new Date(now).toISOString(), data: {} }, attemptNumber: 1, maxAttempts: 3, status: 'success', scheduledAt: now,
+				webhookId: wId,
+				event: 'email.sent',
+				payload: { event: 'email.sent', timestamp: new Date(now).toISOString(), data: {} },
+				attemptNumber: 1,
+				maxAttempts: 3,
+				status: 'success',
+				scheduledAt: now,
 			});
 			// pending doesn't count toward rate
 			await ctx.db.insert('webhookDeliveryLogs', {
-				webhookId: wId, event: 'email.sent',
-				payload: { event: 'contact.created', timestamp: new Date(now).toISOString(), data: {} }, attemptNumber: 1, maxAttempts: 3, status: 'pending', scheduledAt: now,
+				webhookId: wId,
+				event: 'email.sent',
+				payload: { event: 'contact.created', timestamp: new Date(now).toISOString(), data: {} },
+				attemptNumber: 1,
+				maxAttempts: 3,
+				status: 'pending',
+				scheduledAt: now,
 			});
 
 			return wId;

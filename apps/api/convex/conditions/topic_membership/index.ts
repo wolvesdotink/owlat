@@ -1,8 +1,5 @@
 import type { Id } from '../../_generated/dataModel';
-import type {
-	ConditionTypeModule,
-	TopicMembershipCondition,
-} from '../types';
+import type { ConditionTypeModule, TopicMembershipCondition } from '../types';
 
 export interface TopicMembershipLookup {
 	/** Map of topicId → set of contactIds in the topic. */
@@ -74,7 +71,7 @@ export const topicMembershipConditionModule: ConditionTypeModule<
 				const membership = await ctx.db
 					.query('contactTopics')
 					.withIndex('by_contact_and_topic', (q) =>
-						q.eq('contactId', contact._id).eq('topicId', topicId as Id<'topics'>),
+						q.eq('contactId', contact._id).eq('topicId', topicId as Id<'topics'>)
 					)
 					.unique();
 				if (membership) lookup.membersByTopic.get(topicId)!.add(contact._id as string);
