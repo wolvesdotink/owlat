@@ -52,9 +52,47 @@ const isSnoozed = computed(
 
 // Org members for the assignee picker (shared-inbox team triage).
 const { members, fetchMembers } = useOrganization();
+const { user } = useAuth();
 onMounted(() => {
 	void fetchMembers();
 });
+
+// Members projected for the avatar picker.
+const assignMembers = computed(() =>
+	members.value.map((m) => ({
+		userId: m.userId,
+		name: m.user.name,
+		email: m.user.email,
+		image: m.user.image,
+	}))
+);
+const onAssign = (assignedTo: string | undefined) => {
+	void handleAssign(assignedTo);
+};
+// `i` anywhere on the thread claims it for me — mirrors the list shortcut.
+const assignToMe = () => {
+	const me = user.value?.id;
+	if (me) void handleAssign(me);
+};
+function onThreadKeydown(event: KeyboardEvent) {
+	if (event.key !== 'i' && event.key !== 'I') return;
+	if (event.metaKey || event.ctrlKey || event.altKey) return;
+	const target = event.target as HTMLElement | null;
+	// Never hijack typing in an input / textarea / contenteditable.
+	if (
+		target &&
+		(target.isContentEditable ||
+			target.tagName === 'INPUT' ||
+			target.tagName === 'TEXTAREA' ||
+			target.tagName === 'SELECT')
+	) {
+		return;
+	}
+	event.preventDefault();
+	assignToMe();
+}
+onMounted(() => window.addEventListener('keydown', onThreadKeydown));
+onBeforeUnmount(() => window.removeEventListener('keydown', onThreadKeydown));
 
 // Mark the thread seen for THIS user (per-user unread, mirroring chat's
 // lastReadAt) on open and whenever we navigate to another thread. Best-effort:
@@ -314,6 +352,35 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 							Discuss in channel
 						</button>
 					</div>
+					<!-- Assignee picker — avatar popover (Me / members / Unassign). -->
+					<InboxAssignPopover
+						:members="assignMembers"
+						:current-user-id="user?.id ?? null"
+						:assigned-to="thread.assignedTo ?? null"
+						position="right"
+						@assign="onAssign"
+					>
+						<template #trigger>
+							<button
+								type="button"
+								class="btn btn-secondary btn-sm gap-1.5"
+								:aria-label="
+									assignedMemberName ? `Assigned to ${assignedMemberName}` : 'Assign thread'
+								"
+							>
+								<UiAvatar
+									v-if="thread.assignedTo"
+									:name="assignedMemberName ?? undefined"
+									deterministic-color
+									size="sm"
+								/>
+								<Icon v-else name="lucide:user-plus" class="w-4 h-4" />
+								<span class="max-w-[10rem] truncate">
+									{{ assignedMemberName ?? 'Assign' }}
+								</span>
+							</button>
+						</template>
+					</InboxAssignPopover>
 					<!-- Snooze / unsnooze — reuses the Postbox snooze presets. -->
 					<button v-if="isSnoozed" class="btn btn-secondary btn-sm gap-1.5" @click="onUnsnooze">
 						<Icon name="lucide:alarm-clock-off" class="w-4 h-4" />
@@ -579,23 +646,36 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 							</div>
 							<div>
 								<p class="text-xs text-text-tertiary mb-1">Assigned To</p>
-								<select
-									class="w-full text-sm border border-border-subtle rounded-lg px-2 py-1.5 bg-bg-surface text-text-primary"
-									:value="thread.assignedTo ?? ''"
-									aria-label="Assign thread to a teammate"
-									@change="(e) => handleAssign((e.target as HTMLSelectElement).value || undefined)"
+								<InboxAssignPopover
+									:members="assignMembers"
+									:current-user-id="user?.id ?? null"
+									:assigned-to="thread.assignedTo ?? null"
+									position="left"
+									@assign="onAssign"
 								>
-									<option value="">Unassigned</option>
-									<option v-for="m in members" :key="m.userId" :value="m.userId">
-										{{ m.user.name || m.user.email }}
-									</option>
-								</select>
-								<p
-									v-if="assignedMemberName && !members.length"
-									class="text-text-tertiary text-xs mt-1"
-								>
-									Currently: {{ assignedMemberName }}
-								</p>
+									<template #trigger>
+										<button
+											type="button"
+											class="w-full flex items-center gap-2 text-sm border border-border-subtle rounded-lg px-2 py-1.5 bg-bg-surface text-text-primary hover:bg-(--surface-1-hover) transition-colors duration-(--motion-fast) focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/50"
+											aria-label="Assign thread to a teammate"
+										>
+											<UiAvatar
+												v-if="thread.assignedTo"
+												:name="assignedMemberName ?? undefined"
+												deterministic-color
+												size="sm"
+											/>
+											<Icon v-else name="lucide:user-plus" class="w-4 h-4 text-text-tertiary" />
+											<span class="flex-1 truncate text-left">
+												{{ assignedMemberName ?? 'Unassigned' }}
+											</span>
+											<Icon
+												name="lucide:chevron-down"
+												class="w-3.5 h-3.5 text-text-tertiary shrink-0"
+											/>
+										</button>
+									</template>
+								</InboxAssignPopover>
 							</div>
 							<div v-if="thread.lastMessageAt">
 								<p class="text-xs text-text-tertiary">Last Message</p>
