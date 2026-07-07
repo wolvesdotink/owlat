@@ -1088,4 +1088,43 @@ export const mailTables = {
 		}),
 		createdAt: v.number(),
 	}).index('by_mailbox_and_generated', ['mailboxId', 'generatedAt']),
+
+	// Daily Brief CARD cache (mail/brief.ts) — the small per-owner greeting card
+	// at the top of the Today view: a <=3-sentence template summary of what
+	// happened while the owner was away (new mail since local midnight, drafts
+	// the agent prepared, open questions blocking the agent). One row per
+	// mailbox + viewer, upserted in place; regenerated at most once per local
+	// morning or when >=5 new messages arrived since the cached card
+	// (stale-while-revalidate — the read query serves the cache instantly and
+	// flags staleness for a background refresh). Deterministic counts only —
+	// no LLM output is persisted here. Distinct from `mailDailyBriefs` (the
+	// ranked "needs you" digest snapshot); this is only the greeting card.
+	mailBriefCards: defineTable({
+		mailboxId: v.id('mailboxes'),
+		// BetterAuth user id of the viewer the card belongs to (dismissal and
+		// the "your morning" framing are personal, not mailbox-global).
+		userId: v.string(),
+		// Viewer-local calendar day (YYYY-MM-DD) the card was generated for —
+		// supplied by the client, since the server has no timezone. Only ever
+		// affects the caller's own card.
+		localDay: v.string(),
+		generatedAt: v.number(),
+		counts: v.object({
+			// Inbox messages received since the viewer's local midnight.
+			newMail: v.number(),
+			// Reply drafts the agent prepared in the overnight window.
+			drafted: v.number(),
+			// Open clarification questions blocking the agent on the owner.
+			questions: v.number(),
+			// Low-signal mail (newsletter/notification/receipt) auto-filed in
+			// the overnight window.
+			autoFiled: v.number(),
+		}),
+		// Set to the viewer-local day the owner dismissed the card; the card is
+		// hidden while this matches the viewer's current local day and comes
+		// back the next morning.
+		dismissedDay: v.optional(v.string()),
+		createdAt: v.number(),
+		updatedAt: v.number(),
+	}).index('by_mailbox_and_user', ['mailboxId', 'userId']),
 };
