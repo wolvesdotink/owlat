@@ -1,8 +1,32 @@
+import { v } from 'convex/values';
 import { internalMutation } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { AUDIT_LOG_RETENTION_MS } from '../lib/constants';
 
 const CLEANUP_BATCH_SIZE = 100;
+
+// Drain a deleted webhook's delivery logs in batches. `webhooks.remove` deletes
+// the webhook (and audit-logs the action) synchronously, then schedules this to
+// clear the potentially-large log history without blowing the mutation's
+// document limit. The orphaned logs are keyed by `webhookId`; nothing reads a
+// deleted webhook's logs (getDeliveryStats early-returns on the missing webhook).
+export const deleteWebhookLogs = internalMutation({
+	args: { webhookId: v.id('webhooks') },
+	handler: async (ctx, args) => {
+		const batch = await ctx.db
+			.query('webhookDeliveryLogs')
+			.withIndex('by_webhook', (q) => q.eq('webhookId', args.webhookId))
+			.take(CLEANUP_BATCH_SIZE);
+
+		for (const log of batch) {
+			await ctx.db.delete(log._id);
+		}
+
+		if (batch.length === CLEANUP_BATCH_SIZE) {
+			await ctx.scheduler.runAfter(0, internal.webhooks.cleanup.deleteWebhookLogs, args);
+		}
+	},
+});
 
 // Clean up webhook delivery logs older than retention period in batches
 export const cleanupOldLogs = internalMutation({

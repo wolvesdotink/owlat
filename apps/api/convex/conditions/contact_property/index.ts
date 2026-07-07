@@ -115,13 +115,14 @@ export const contactPropertyConditionModule: ConditionTypeModule<
 			if (property) lookup.propertyIds.set(key, property._id);
 		}
 
-		// Preload all values for those properties.
+		// Preload all values for those properties. Streamed via `for await` so the
+		// value map builds without materializing an unbounded `.collect()`; this
+		// whole-base preload feeds one Convex-limited segment scan (the paginated
+		// match paths use `preloadLookupForContacts` and point-reads instead).
 		for (const [, propertyId] of lookup.propertyIds) {
-			const values = await ctx.db
+			for await (const v of ctx.db
 				.query('contactPropertyValues')
-				.withIndex('by_property', (q) => q.eq('propertyId', propertyId))
-				.collect();
-			for (const v of values) {
+				.withIndex('by_property', (q) => q.eq('propertyId', propertyId))) {
 				lookup.values.set(`${v.contactId}:${propertyId}`, v.value);
 			}
 		}

@@ -189,6 +189,47 @@ describe('topics.remove', () => {
 		});
 	});
 
+	it('should drain memberships beyond one batch, then delete the topic', async () => {
+		// More memberships than TOPIC_CASCADE_BATCH (200) so `remove` hands off to
+		// the self-rescheduling `finishRemoveTopic` continuation. The topic must
+		// survive until every membership is gone (never a dangling membership),
+		// then be deleted once drained.
+		const t = convexTest(schema, modules);
+		let topicId: Id<'topics'>;
+		const MEMBERS = 450;
+
+		await t.run(async (ctx) => {
+			topicId = await ctx.db.insert('topics', createTestTopic());
+			for (let i = 0; i < MEMBERS; i++) {
+				const contactId = await ctx.db.insert('contacts', createTestContact());
+				await ctx.db.insert('contactTopics', {
+					contactId,
+					topicId: topicId,
+					addedAt: Date.now(),
+				});
+			}
+		});
+
+		vi.useFakeTimers();
+		try {
+			await t.mutation(api.topics.topics.remove, { topicId: topicId! });
+			// Topic still present while the continuation drains the remaining pages.
+			expect(await t.run(async (ctx) => ctx.db.get(topicId!))).not.toBeNull();
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+		} finally {
+			vi.useRealTimers();
+		}
+
+		await t.run(async (ctx) => {
+			expect(await ctx.db.get(topicId!)).toBeNull();
+			const remaining = await ctx.db
+				.query('contactTopics')
+				.withIndex('by_topic', (q) => q.eq('topicId', topicId!))
+				.collect();
+			expect(remaining).toHaveLength(0);
+		});
+	});
+
 	it('should throw for non-existent topic', async () => {
 		const t = convexTest(schema, modules);
 		let topicId: Id<'topics'>;

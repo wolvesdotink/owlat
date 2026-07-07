@@ -144,6 +144,13 @@ export const remove = authedMutation({
 	},
 });
 
+// Powers the "used by N contacts" warning on the delete-property dialog. The
+// value count for one property fans out across every contact that has it, so an
+// exact `.collect().length` is unbounded. This is a confirmation warning, not an
+// analytic — a bounded read capped at USAGE_COUNT_CAP (reported as "N+") answers
+// "is this heavily used?" without scanning the whole column.
+const USAGE_COUNT_CAP = 1000;
+
 // Query to count how many contacts have values for a given property
 export const countByProperty = authedQuery({
 	args: { propertyId: v.id('contactProperties') },
@@ -159,8 +166,9 @@ export const countByProperty = authedQuery({
 		const values = await ctx.db
 			.query('contactPropertyValues')
 			.withIndex('by_property', (q) => q.eq('propertyId', args.propertyId))
-			.collect();
-		return values.length;
+			.take(USAGE_COUNT_CAP + 1); // bounded: capped usage probe, not an exact count
+		const isCapped = values.length > USAGE_COUNT_CAP;
+		return { count: isCapped ? USAGE_COUNT_CAP : values.length, isCapped };
 	},
 });
 

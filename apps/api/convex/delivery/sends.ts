@@ -369,23 +369,6 @@ export const createBatch = internalMutation({
 // SendRef `{ kind: 'campaign', id }` and a typed transition input. See
 // CONTEXT.md "Send lifecycle".
 
-// Delete email sends for a campaign (used when deleting a campaign)
-export const deleteByCampaign = internalMutation({
-	args: { campaignId: v.id('campaigns') },
-	handler: async (ctx, args) => {
-		const sends = await ctx.db
-			.query('emailSends')
-			.withIndex('by_campaign', (q) => q.eq('campaignId', args.campaignId))
-			.collect();
-
-		for (const send of sends) {
-			await ctx.db.delete(send._id);
-		}
-
-		return sends.length;
-	},
-});
-
 // Get opens timeline data for a campaign (grouped by hour)
 // Limits to first 10,000 sends to avoid unbounded reads
 export const getOpensTimeline = authedQuery({

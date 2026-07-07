@@ -813,7 +813,15 @@ describe('webhooks.remove', () => {
 			return { webhookId: wId, logIds: ids };
 		});
 
-		await t.mutation(api.webhooks.endpoints.remove, { webhookId });
+		// `remove` deletes the webhook synchronously and drains its delivery logs
+		// via a `runAfter(0)` internal mutation — flush it before asserting.
+		vi.useFakeTimers();
+		try {
+			await t.mutation(api.webhooks.endpoints.remove, { webhookId });
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+		} finally {
+			vi.useRealTimers();
+		}
 
 		await t.run(async (ctx) => {
 			const webhook = await ctx.db.get(webhookId);

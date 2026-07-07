@@ -42,15 +42,18 @@ export const topicMembershipConditionModule: ConditionTypeModule<
 		const topicIds = new Set<string>();
 		for (const c of conditions) topicIds.add(c.topicId as string);
 
+		// Streamed via `for await` so each topic's member set builds without
+		// materializing an unbounded `.collect()`; this whole-base preload feeds
+		// one Convex-limited segment scan (the paginated match paths use
+		// `preloadLookupForContacts` and point-reads instead).
 		for (const topicId of topicIds) {
-			const memberships = await ctx.db
+			const members = new Set<string>();
+			for await (const m of ctx.db
 				.query('contactTopics')
-				.withIndex('by_topic', (q) => q.eq('topicId', topicId as Id<'topics'>))
-				.collect();
-			lookup.membersByTopic.set(
-				topicId,
-				new Set(memberships.map((m) => m.contactId as string))
-			);
+				.withIndex('by_topic', (q) => q.eq('topicId', topicId as Id<'topics'>))) {
+				members.add(m.contactId as string);
+			}
+			lookup.membersByTopic.set(topicId, members);
 		}
 
 		return lookup;

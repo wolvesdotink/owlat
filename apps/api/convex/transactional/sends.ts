@@ -1,5 +1,4 @@
 import { v } from 'convex/values';
-import { internalMutation } from '../_generated/server';
 import { authedQuery } from '../lib/authedFunctions';
 import { getUserIdFromSession } from '../lib/sessionOrganization';
 import { throwNotFound } from '../_utils/errors';
@@ -234,25 +233,6 @@ export const getCounts = authedQuery({
 // / markAsComplained) flow through `internal.delivery.sendLifecycle.transition`
 // with a SendRef `{ kind: 'transactional', id }`. See CONTEXT.md
 // "Send lifecycle".
-
-// Delete sends for a transactional email (used when deleting the email template)
-export const deleteByTransactionalEmail = internalMutation({
-	args: { transactionalEmailId: v.id('transactionalEmails') },
-	handler: async (ctx, args) => {
-		const sends = await ctx.db
-			.query('transactionalSends')
-			.withIndex('by_transactional_email', (q) =>
-				q.eq('transactionalEmailId', args.transactionalEmailId)
-			)
-			.collect();
-
-		for (const send of sends) {
-			await ctx.db.delete(send._id);
-		}
-
-		return sends.length;
-	},
-});
 
 // Get recent sends for a recipient email
 export const getByEmail = authedQuery({
