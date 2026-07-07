@@ -48,8 +48,7 @@ export async function resolveSendRouteFromDb(
 		.withIndex('by_message_type', (q) => q.eq('messageType', messageType))
 		.first();
 
-	// bounded: providerHealth has one row per provider kind (3 today)
-	const healthRecords = await ctx.db.query('providerHealth').collect();
+	const healthRecords = await ctx.db.query('providerHealth').collect(); // bounded: providerHealth has one row per provider kind (3 today)
 	const healthStatuses: ProviderHealthStatus[] = healthRecords.map((h) => ({
 		providerType: h.providerType,
 		status: h.status,

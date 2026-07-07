@@ -575,12 +575,14 @@ export const getDeliveryStats = authedQuery({
 		// Limit to a recent window to bound the read on a high-volume table.
 		// If the caller didn't specify a window, default to the past 30 days.
 		const since = args.since ?? Date.now() - 30 * 24 * 60 * 60 * 1000;
-		const logs = await ctx.db
+		// bounded: range-scans one webhook's logs within the `since` window via the
+		// compound index, rather than collecting the webhook's entire history.
+		const filteredLogs = await ctx.db
 			.query('webhookDeliveryLogs')
-			.withIndex('by_webhook', (q) => q.eq('webhookId', args.webhookId))
-			.collect(); // bounded by webhook-scoped index; further capped by `since`
-
-		const filteredLogs = logs.filter((log) => log.scheduledAt >= since);
+			.withIndex('by_webhook_and_scheduled_at', (q) =>
+				q.eq('webhookId', args.webhookId).gte('scheduledAt', since)
+			)
+			.collect(); // bounded: one webhook's logs within the `since` window (index range)
 
 		const total = filteredLogs.length;
 		const success = filteredLogs.filter((l) => l.status === 'success').length;

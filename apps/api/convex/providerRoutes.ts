@@ -91,7 +91,7 @@ export const listRoutes = authedQuery({
 	handler: async (ctx) => {
 		return await ctx.db
 			.query('providerRoutes')
-			.collect();
+			.collect(); // bounded: configured provider routes (few)
 	},
 });
 

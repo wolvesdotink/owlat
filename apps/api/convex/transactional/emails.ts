@@ -40,7 +40,7 @@ export const list = authedQuery({
 		await assertFeatureEnabled(ctx, 'transactional');
 		let transactionalEmails = await ctx.db
 			.query('transactionalEmails')
-			.collect();
+			.collect(); // bounded: transactional-email templates (org-scale library)
 
 		if (args.status) {
 			transactionalEmails = transactionalEmails.filter((e) => e.status === args.status);
@@ -111,7 +111,7 @@ export const countByStatus = authedQuery({
 	handler: async (ctx) => {
 		const allEmails = await ctx.db
 			.query('transactionalEmails')
-			.collect();
+			.collect(); // bounded: transactional-email templates (org-scale library)
 
 		return {
 			total: allEmails.length,

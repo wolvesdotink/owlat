@@ -72,7 +72,7 @@ export const run = internalMutation({
 		let alreadyNew = 0;
 		let skipped = 0;
 
-		const rows = await ctx.db.query('mailMessages').collect();
+		const rows = await ctx.db.query('mailMessages').collect(); // bounded: one-shot pre-prod migration (see header)
 		for (const row of rows) {
 			const ob = row.outbound as unknown as LegacyOutbound | undefined;
 			if (!ob) continue;

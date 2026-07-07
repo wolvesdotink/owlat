@@ -354,7 +354,7 @@ export async function deleteIdentitiesForContact(
 	const identities = await ctx.db
 		.query('contactIdentities')
 		.withIndex('by_contact', (q) => q.eq('contactId', contactId))
-		.collect();
+		.collect(); // bounded: one contact's identities
 
 	for (const identity of identities) {
 		await ctx.db.delete(identity._id);

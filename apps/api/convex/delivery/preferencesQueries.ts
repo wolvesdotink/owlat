@@ -17,13 +17,13 @@ export const getContactPreferences = internalQuery({
 		// Get all topics
 		const topics = await ctx.db
 			.query('topics')
-			.collect();
+			.collect(); // bounded: org topics (org-scale config)
 
 		// Get the contact's topic memberships
 		const memberships = await ctx.db
 			.query('contactTopics')
 			.withIndex('by_contact', (q) => q.eq('contactId', args.contactId))
-			.collect();
+			.collect(); // bounded: one contact's topic memberships
 
 		const subscribedTopicIds = new Set(memberships.map((m) => m.topicId));
 

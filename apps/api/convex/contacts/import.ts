@@ -144,7 +144,7 @@ interface PropertyCatalog {
 }
 
 async function loadPropertyCatalog(ctx: MutationCtx): Promise<PropertyCatalog> {
-	const rows = await ctx.db.query('contactProperties').collect();
+	const rows = await ctx.db.query('contactProperties').collect(); // bounded: custom property definitions (org-scale, few)
 	const byKey = new Map<string, Id<'contactProperties'>>();
 	for (const row of rows) {
 		byKey.set(row.key, row._id);

@@ -211,7 +211,7 @@ export async function summarize(
 	// bounded: the cleanup cron prunes >60-day buckets, so one scope holds at
 	// most ~60 days × SHARD_COUNT shard rows. Summing across shards here is what
 	// makes the write-side shard split invisible to readers.
-	const buckets = await scopedBucketQuery(db, scope).collect();
+	const buckets = await scopedBucketQuery(db, scope).collect(); // bounded: one scope's ≤60-day × shard buckets (cron-pruned)
 	return summarizeBuckets(buckets, cutoff);
 }
 
@@ -229,7 +229,7 @@ export async function summarizeDomains(
 	const buckets = await db
 		.query('sendingReputation')
 		.withIndex('by_scope_domain_period_shard', (q) => q.eq('scope', 'domain'))
-		.collect();
+		.collect(); // bounded: one scope's ≤60-day × shard buckets (cron-pruned)
 
 	const byDomain = new Map<string, ReputationBucket[]>();
 	for (const b of buckets) {
@@ -447,11 +447,11 @@ export const recalculateAll = internalMutation({
 		const orgBuckets = await ctx.db
 			.query('sendingReputation')
 			.withIndex('by_scope_domain_period_shard', (q) => q.eq('scope', 'org'))
-			.collect();
+			.collect(); // bounded: one scope's ≤60-day × shard buckets (cron-pruned)
 		const domainBuckets = await ctx.db
 			.query('sendingReputation')
 			.withIndex('by_scope_domain_period_shard', (q) => q.eq('scope', 'domain'))
-			.collect();
+			.collect(); // bounded: one scope's ≤60-day × shard buckets (cron-pruned)
 
 		for (const bucket of [...orgBuckets, ...domainBuckets]) {
 			if (bucket.periodStart < cutoff) {

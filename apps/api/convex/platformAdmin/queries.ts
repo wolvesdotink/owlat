@@ -338,7 +338,7 @@ export const listAllUsers = authedQuery({
 		// bounded: single-org membership; in a real deployment this is dozens.
 		// If a deployment scales to thousands of users we should switch to
 		// pagination at the UI layer.
-		let users = await ctx.db.query('userProfiles').order('desc').collect();
+		let users = await ctx.db.query('userProfiles').order('desc').collect(); // bounded: org member roster (single-org deployment: tiny)
 
 		if (args.search) {
 			const searchLower = args.search.toLowerCase();
@@ -455,9 +455,9 @@ export const listAllDomains = authedQuery({
 			domains = await ctx.db
 				.query('domains')
 				.withIndex('by_status', (q) => q.eq('status', args.statusFilter as typeof statusValues[number]))
-				.collect();
+				.collect(); // bounded: domains in one status (org-scale, few)
 		} else {
-			domains = await ctx.db.query('domains').collect();
+			domains = await ctx.db.query('domains').collect(); // bounded: verified sending domains (few per org)
 		}
 
 		if (args.search) {
@@ -609,7 +609,7 @@ export const getAdminAuditLog = authedQuery({
 		}
 
 		// Get admin emails for display
-		const admins = await ctx.db.query('platformAdmins').collect();
+		const admins = await ctx.db.query('platformAdmins').collect(); // bounded: platform admins (tiny)
 		const adminEmailMap = new Map(admins.map((a) => [a.authUserId, a.email]));
 
 		return logs.map((l) => ({

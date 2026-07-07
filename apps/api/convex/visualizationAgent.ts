@@ -99,7 +99,7 @@ export const listPinned = adminQuery({
 		return await ctx.db
 			.query('visualizations')
 			.withIndex('by_pinned', (q) => q.eq('pinned', true))
-			.collect();
+			.collect(); // bounded: pinned visualizations (few)
 	},
 });
 

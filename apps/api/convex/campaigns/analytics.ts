@@ -165,7 +165,7 @@ export const listABTestCampaignDocs = internalQuery({
 	handler: async (ctx) =>
 		ctx.db
 			.query('campaigns')
-			.filter((q) => q.eq(q.field('isABTest'), true))
+			.withIndex('by_is_ab_test', (q) => q.eq('isABTest', true))
 			.take(AB_LIST_LIMIT),
 });
 

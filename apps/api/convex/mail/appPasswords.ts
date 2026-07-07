@@ -150,7 +150,7 @@ export const list = publicQuery({
 		const all = await ctx.db
 			.query('mailAppPasswords')
 			.withIndex('by_mailbox', (q) => q.eq('mailboxId', args.mailboxId))
-			.collect();
+			.collect(); // bounded: one mailbox's app passwords
 		// Hide the hash from the wire format
 		return all.map((row) => ({
 			_id: row._id,
@@ -185,7 +185,7 @@ export const revokeAll = authedMutation({
 		const all = await ctx.db
 			.query('mailAppPasswords')
 			.withIndex('by_mailbox', (q) => q.eq('mailboxId', args.mailboxId))
-			.collect();
+			.collect(); // bounded: one mailbox's app passwords
 		const now = Date.now();
 		for (const row of all) {
 			if (row.revokedAt) continue;
@@ -290,7 +290,7 @@ export const _candidatesByAddressAndPrefix = internalQuery({
 		const rows = await ctx.db
 			.query('mailAppPasswords')
 			.withIndex('by_prefix', (q) => q.eq('passwordPrefix', args.passwordPrefix))
-			.collect();
+			.collect(); // bounded: app passwords sharing one prefix (few)
 
 		// Narrow further by mailbox + scope
 		const filtered = rows.filter(

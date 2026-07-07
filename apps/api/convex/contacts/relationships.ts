@@ -24,12 +24,12 @@ export const listByContact = authedQuery({
 		const outgoing = await ctx.db
 			.query('contactRelationships')
 			.withIndex('by_from', (q) => q.eq('fromContactId', args.contactId))
-			.collect();
+			.collect(); // bounded: one contact's outgoing relationships
 
 		const incoming = await ctx.db
 			.query('contactRelationships')
 			.withIndex('by_to', (q) => q.eq('toContactId', args.contactId))
-			.collect();
+			.collect(); // bounded: one contact's incoming relationships
 
 		// Resolve contact details for display
 		const relationships = [];
@@ -91,12 +91,12 @@ export const getGraph = authedQuery({
 			const outgoing = await ctx.db
 				.query('contactRelationships')
 				.withIndex('by_from', (q) => q.eq('fromContactId', contactId))
-				.collect();
+				.collect(); // bounded: one contact's outgoing relationships
 
 			const incoming = await ctx.db
 				.query('contactRelationships')
 				.withIndex('by_to', (q) => q.eq('toContactId', contactId))
-				.collect();
+				.collect(); // bounded: one contact's incoming relationships
 
 			for (const rel of outgoing) {
 				edges.push(rel);
@@ -142,7 +142,7 @@ export const create = authedMutation({
 		const existing = await ctx.db
 			.query('contactRelationships')
 			.withIndex('by_from', (q) => q.eq('fromContactId', args.fromContactId))
-			.collect();
+			.collect(); // bounded: one contact's outgoing relationships
 
 		const duplicate = existing.find(
 			(r) => r.toContactId === args.toContactId && r.relationship === args.relationship

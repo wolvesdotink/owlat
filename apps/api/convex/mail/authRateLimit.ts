@@ -51,7 +51,7 @@ export const isThrottled = internalQuery({
 			.withIndex('by_address_and_time', (q) =>
 				q.eq('address', lower).gte('occurredAt', cutoff)
 			)
-			.collect();
+			.collect(); // bounded: one address's auth failures in the time window
 		if (byAddr.length >= PER_ADDRESS_LIMIT) return true;
 
 		if (args.ip) {
@@ -60,7 +60,7 @@ export const isThrottled = internalQuery({
 				.withIndex('by_ip_and_time', (q) =>
 					q.eq('ip', args.ip).gte('occurredAt', cutoff)
 				)
-				.collect();
+				.collect(); // bounded: one IP's auth failures in the time window
 			if (byIp.length >= PER_IP_LIMIT) return true;
 		}
 

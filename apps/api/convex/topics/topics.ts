@@ -90,7 +90,7 @@ async function getTopicsForContactImpl(ctx: QueryCtx, contactId: Id<'contacts'>)
 	const memberships = await ctx.db
 		.query('contactTopics')
 		.withIndex('by_contact', (q) => q.eq('contactId', contactId))
-		.collect();
+		.collect(); // bounded: one contact's topic memberships
 
 	// Batch-load all topics at once
 	const topicIds = memberships.map((membership) => membership.topicId);

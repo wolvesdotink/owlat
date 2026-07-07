@@ -177,11 +177,11 @@ export const list = publicQuery({
 			ctx.db
 				.query('mailboxes')
 				.withIndex('by_status', (q) => q.eq('status', 'active'))
-				.collect(),
+				.collect(), // bounded: active mailboxes (single-org: member roster, few)
 			ctx.db
 				.query('mailboxes')
 				.withIndex('by_status', (q) => q.eq('status', 'suspended'))
-				.collect(),
+				.collect(), // bounded: suspended mailboxes (single-org: member roster, few)
 		]);
 		const visible = [...active, ...suspended];
 		if (session.role === 'owner' || session.role === 'admin') {
@@ -425,7 +425,7 @@ export const listFolders = publicQuery({
 		return ctx.db
 			.query('mailFolders')
 			.withIndex('by_mailbox', (q) => q.eq('mailboxId', args.mailboxId))
-			.collect();
+			.collect(); // bounded: one mailbox's folders
 	},
 });
 
@@ -641,12 +641,12 @@ export const listThreadMessages = publicQuery({
 		const siblings = await ctx.db
 			.query('mailMessages')
 			.withIndex('by_thread', (q) => q.eq('threadId', seed.threadId))
-			.collect();
+			.collect(); // bounded: one thread's messages
 		siblings.sort((a, b) => a.receivedAt - b.receivedAt);
 		const labels = await ctx.db
 			.query('mailLabels')
 			.withIndex('by_mailbox', (q) => q.eq('mailboxId', seed.mailboxId))
-			.collect();
+			.collect(); // bounded: one mailbox's labels
 		const labelMap = new Map(labels.map((l) => [l._id, l]));
 		const thread = await ctx.db.get(seed.threadId);
 		return {

@@ -55,7 +55,7 @@ export const runReset = internalMutation({
 
 		// 1. Wipe all tenant tables.
 		for (const table of TENANT_TABLES) {
-			const rows = await ctx.db.query(table).collect(); // dev-only, bounded
+			const rows = await ctx.db.query(table).collect(); // bounded: dev-only full wipe of each tenant table
 			for (const row of rows) {
 				await ctx.db.delete(row._id);
 				counts.tenantRows++;
@@ -70,19 +70,19 @@ export const runReset = internalMutation({
 		counts.users = await wipeBetterAuthModel(ctx, 'user');
 
 		// 3. Wipe Owlat-local auth tables.
-		const profiles = await ctx.db.query('userProfiles').collect(); // tiny on dev
+		const profiles = await ctx.db.query('userProfiles').collect(); // bounded: dev-only; org member roster (tiny)
 		for (const p of profiles) {
 			await ctx.db.delete(p._id);
 			counts.userProfiles++;
 		}
 
-		const settings = await ctx.db.query('instanceSettings').collect(); // singleton
+		const settings = await ctx.db.query('instanceSettings').collect(); // bounded: dev-only; singleton instance-settings row
 		for (const s of settings) {
 			await ctx.db.delete(s._id);
 			counts.instanceSettings++;
 		}
 
-		const onboarding = await ctx.db.query('onboardingProgress').collect(); // 1-per-user
+		const onboarding = await ctx.db.query('onboardingProgress').collect(); // bounded: dev-only; one row per user
 		for (const o of onboarding) {
 			await ctx.db.delete(o._id);
 			counts.onboardingProgress++;

@@ -54,7 +54,7 @@ const LIFECYCLE_USER_PUBLIC_MUTATION = 'user';
 export const listByOrganization = authedQuery({
 	args: {},
 	handler: async (ctx) => {
-		const domains = await ctx.db.query('domains').collect();
+		const domains = await ctx.db.query('domains').collect(); // bounded: verified sending domains (few per org)
 
 		return domains.map(serializeDomainRow);
 	},

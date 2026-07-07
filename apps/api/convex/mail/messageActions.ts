@@ -53,7 +53,7 @@ export async function rebuildThreadAggregates(
 	const messages = await ctx.db
 		.query('mailMessages')
 		.withIndex('by_thread', (q) => q.eq('threadId', threadId))
-		.collect();
+		.collect(); // bounded: one thread's messages
 
 	if (messages.length === 0) {
 		await ctx.db.delete(threadId);
@@ -171,7 +171,7 @@ export const markThreadRead = authedMutation({
 		const messages = await ctx.db
 			.query('mailMessages')
 			.withIndex('by_thread', (q) => q.eq('threadId', args.threadId))
-			.collect();
+			.collect(); // bounded: one thread's messages
 		for (const m of messages) {
 			if (m.flagSeen === args.seen) continue;
 			await applyFlagDelta(ctx, m, { seen: args.seen });

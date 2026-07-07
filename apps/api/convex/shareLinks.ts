@@ -111,7 +111,7 @@ export const listShareLinks = authedQuery({
 			links = await ctx.db
 				.query('shareLinks')
 				.withIndex('by_email_template', (q) => q.eq('emailTemplateId', args.emailTemplateId))
-				.collect();
+				.collect(); // bounded: share links for one template (few)
 		} else if (args.transactionalEmailId) {
 			const email = await ctx.db.get(args.transactionalEmailId);
 			if (!email) return [];
@@ -121,7 +121,7 @@ export const listShareLinks = authedQuery({
 				.withIndex('by_transactional_email', (q) =>
 					q.eq('transactionalEmailId', args.transactionalEmailId)
 				)
-				.collect();
+				.collect(); // bounded: share links for one template (few)
 		} else {
 			return [];
 		}

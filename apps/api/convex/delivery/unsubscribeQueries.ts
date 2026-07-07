@@ -24,7 +24,7 @@ export const getContactForUnsubscribe = internalQuery({
 		const memberships = await ctx.db
 			.query('contactTopics')
 			.withIndex('by_contact', (q) => q.eq('contactId', args.contactId))
-			.collect();
+			.collect(); // bounded: one contact's topic memberships
 
 		const hasActiveSubscriptions = memberships.length > 0;
 

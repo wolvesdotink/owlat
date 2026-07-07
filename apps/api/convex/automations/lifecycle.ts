@@ -302,7 +302,7 @@ async function dispatch(
 		const stepCount = await ctx.db
 			.query('automationSteps')
 			.withIndex('by_automation', (q) => q.eq('automationId', automation._id))
-			.collect()
+			.collect() // bounded: one automation's steps
 			.then((steps) => steps.length);
 		if (stepCount === 0) {
 			return { ok: false, reason: 'no_steps', from, to: input.to };

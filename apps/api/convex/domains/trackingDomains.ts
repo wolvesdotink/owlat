@@ -110,7 +110,7 @@ export const listTrackingDomains = authedQuery({
 	handler: async (ctx) => {
 		return await ctx.db
 			.query('trackingDomains')
-			.collect();
+			.collect(); // bounded: tracking domains (few per org)
 	},
 });
 
@@ -140,7 +140,7 @@ export const getActiveTrackingDomain = internalQuery({
 	handler: async (ctx) => {
 		const domains = await ctx.db
 			.query('trackingDomains')
-			.collect();
+			.collect(); // bounded: tracking domains (few per org)
 
 		// Return first verified domain, or null
 		return domains.find((d) => d.isVerified) ?? null;

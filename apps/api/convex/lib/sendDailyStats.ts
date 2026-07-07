@@ -93,7 +93,7 @@ export async function readDailyStats(
 	const rows = await db
 		.query('sendDailyStats')
 		.withIndex('by_date', (q) => q.gte('date', cutoff))
-		.collect();
+		.collect(); // bounded: days × shard rows within the date window
 
 	const byDate = new Map<string, DailyStatRow>();
 	for (const r of rows) {

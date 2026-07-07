@@ -161,7 +161,7 @@ async function walkConsumers(
 	// bounded: emailTemplates is intrinsically small (one row per saved
 	// template). Convex doesn't natively index array fields; an
 	// `emailBlockConsumers` sidecar is listed as follow-up in ADR-0023.
-	const templates = await ctx.db.query('emailTemplates').collect();
+	const templates = await ctx.db.query('emailTemplates').collect(); // bounded: email templates (org-scale library)
 	for (const template of templates) {
 		const linkedBlockIds = template.linkedBlockIds ?? [];
 		if (!linkedBlockIds.includes(blockId)) continue;
@@ -181,7 +181,7 @@ async function walkConsumers(
 
 	// bounded: transactionalEmails is intrinsically small (one row per
 	// per-instance transactional template).
-	const transactionalEmails = await ctx.db.query('transactionalEmails').collect();
+	const transactionalEmails = await ctx.db.query('transactionalEmails').collect(); // bounded: transactional-email templates (org-scale library)
 	for (const email of transactionalEmails) {
 		const linkedBlockIds = email.linkedBlockIds ?? [];
 		if (!linkedBlockIds.includes(blockId)) continue;

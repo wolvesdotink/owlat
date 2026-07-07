@@ -107,7 +107,7 @@ export const getChannelConfigs = authedQuery({
 		// The encrypted credential envelope (config) is admin-only — members
 		// get the row WITHOUT it; the settings page (admin) gets it for the
 		// edit form.
-		const rows = await ctx.db.query('channelConfigs').collect();
+		const rows = await ctx.db.query('channelConfigs').collect(); // bounded: ≤5 channel-config rows (schema literal union)
 		const session = await getBetterAuthSessionWithRole(ctx);
 		const isAdmin = session?.role != null && hasPermission(session.role, 'organization:manage');
 		if (isAdmin) return rows;

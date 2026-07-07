@@ -102,7 +102,7 @@ export const get = authedQuery({
 		const steps = await ctx.db
 			.query('automationSteps')
 			.withIndex('by_automation', (q) => q.eq('automationId', automation._id))
-			.collect();
+			.collect(); // bounded: one automation's steps
 
 		// Sort steps by stepIndex
 		const sortedSteps = steps.sort((a, b) => a.stepIndex - b.stepIndex);
@@ -126,7 +126,7 @@ export const getWithRelations = authedQuery({
 		const steps = await ctx.db
 			.query('automationSteps')
 			.withIndex('by_automation', (q) => q.eq('automationId', automation._id))
-			.collect();
+			.collect(); // bounded: one automation's steps
 
 		const sortedSteps = steps.sort((a, b) => a.stepIndex - b.stepIndex);
 
@@ -375,7 +375,7 @@ export const duplicate = authedMutation({
 		const steps = await ctx.db
 			.query('automationSteps')
 			.withIndex('by_automation', (q) => q.eq('automationId', args.automationId))
-			.collect();
+			.collect(); // bounded: one automation's steps
 
 		for (const step of steps) {
 			await ctx.db.insert('automationSteps', {
@@ -410,7 +410,7 @@ export const remove = authedMutation({
 		const steps = await ctx.db
 			.query('automationSteps')
 			.withIndex('by_automation', (q) => q.eq('automationId', args.automationId))
-			.collect();
+			.collect(); // bounded: one automation's steps
 
 		for (const step of steps) {
 			await ctx.db.delete(step._id);

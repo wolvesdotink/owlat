@@ -191,7 +191,7 @@ export const list = publicQuery({
 		return ctx.db
 			.query('mailLabels')
 			.withIndex('by_mailbox', (q) => q.eq('mailboxId', args.mailboxId))
-			.collect();
+			.collect(); // bounded: one mailbox's labels
 	},
 });
 
@@ -245,7 +245,7 @@ export const toggleOnMessage = authedMutation({
 				const siblings = await ctx.db
 					.query('mailMessages')
 					.withIndex('by_thread', (q) => q.eq('threadId', message.threadId))
-					.collect();
+					.collect(); // bounded: one thread's messages
 				const stillUsed = siblings.some(
 					(m) => m._id !== args.messageId && m.labelIds.includes(args.labelId)
 				);
@@ -280,7 +280,7 @@ export const toggleOnThread = authedMutation({
 		const messages = await ctx.db
 			.query('mailMessages')
 			.withIndex('by_thread', (q) => q.eq('threadId', args.threadId))
-			.collect();
+			.collect(); // bounded: one thread's messages
 
 		const now = Date.now();
 		const folderModseqBumps = new Map<Id<'mailFolders'>, number>();

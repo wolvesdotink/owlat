@@ -30,7 +30,7 @@ export const listByContact = authedQuery({
 		return await ctx.db
 			.query('contactIdentities')
 			.withIndex('by_contact', (q) => q.eq('contactId', args.contactId))
-			.collect();
+			.collect(); // bounded: one contact's identities
 	},
 });
 
@@ -70,7 +70,7 @@ export const getMergeSuggestions = authedQuery({
 		const identities = await ctx.db
 			.query('contactIdentities')
 			.withIndex('by_contact', (q) => q.eq('contactId', args.contactId))
-			.collect();
+			.collect(); // bounded: one contact's identities
 
 		const candidateIds = new Set<string>();
 		const suggestions: Array<{
@@ -86,7 +86,7 @@ export const getMergeSuggestions = authedQuery({
 				.withIndex('by_identifier', (q) =>
 					q.eq('channel', identity.channel).eq('identifier', identity.identifier)
 				)
-				.collect();
+				.collect(); // bounded: identities for one identifier (≈1 row)
 
 			for (const match of matches) {
 				if (match.contactId === args.contactId) continue;
@@ -101,7 +101,7 @@ export const getMergeSuggestions = authedQuery({
 				const candidateIdentities = await ctx.db
 					.query('contactIdentities')
 					.withIndex('by_contact', (q) => q.eq('contactId', match.contactId))
-					.collect();
+					.collect(); // bounded: one contact's identities
 
 				const shared = candidateIdentities.filter((ci) =>
 					identities.some((i) => i.channel === ci.channel && i.identifier === ci.identifier)
@@ -160,7 +160,7 @@ export const addIdentity = authedMutation({
 			const contactIdentities = await ctx.db
 				.query('contactIdentities')
 				.withIndex('by_contact', (q) => q.eq('contactId', args.contactId))
-				.collect();
+				.collect(); // bounded: one contact's identities
 
 			for (const ci of contactIdentities) {
 				if (ci.channel === args.channel && ci.isPrimary) {
@@ -342,7 +342,7 @@ export const autoMergeDuplicates = internalMutation({
 			const rows = await ctx.db
 				.query('contactIdentities')
 				.withIndex('by_identifier', (q) => q.eq('channel', channel))
-				.collect();
+				.collect(); // bounded: identities for one identifier (≈1 row)
 			for (const row of rows) {
 				const key = `${row.channel} ${row.identifier}`;
 				const bucket = seen.get(key);

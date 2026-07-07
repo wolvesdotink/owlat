@@ -9,7 +9,7 @@ export const listByOrganization = authedQuery({
 	handler: async (ctx) => {
 		return await ctx.db
 			.query('contactProperties')
-			.collect();
+			.collect(); // bounded: custom property definitions (org-scale, few)
 	},
 });
 

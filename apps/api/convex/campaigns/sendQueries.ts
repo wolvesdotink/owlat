@@ -23,7 +23,7 @@ export const getTestSendAllowedRecipients = internalQuery({
 	handler: async (ctx): Promise<{ allowed: string[]; callerUserId: string }> => {
 		const session = await requireOrgMember(ctx);
 		// 1-per-user on a single-org instance — the member roster, bounded.
-		const profiles = await ctx.db.query('userProfiles').collect();
+		const profiles = await ctx.db.query('userProfiles').collect(); // bounded: org member roster (single-org deployment: tiny)
 		const allowed = profiles
 			.map((p) => p.email?.toLowerCase())
 			.filter((e): e is string => typeof e === 'string' && e.length > 0);
@@ -249,7 +249,7 @@ export const getDueScheduledCampaigns = internalQuery({
 			.withIndex('by_status_and_scheduled_at', (q) =>
 				q.eq('status', 'scheduled').lte('scheduledAt', now)
 			)
-			.collect();
+			.collect(); // bounded: scheduled campaigns due this tick (drained each cron run)
 
 		return campaigns;
 	},

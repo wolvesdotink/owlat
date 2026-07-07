@@ -68,7 +68,7 @@ export const shouldCoalesce = internalMutation({
 		const existing = await ctx.db
 			.query('coalesceBatches')
 			.withIndex('by_thread', (q) => q.eq('threadId', args.threadId))
-			.collect();
+			.collect(); // bounded: one thread's coalesce batches
 
 		// Preserve the burst's start across debounce restarts so the hard cap is
 		// measured from the FIRST message, not the latest. A fresh burst (no
@@ -116,7 +116,7 @@ export const processCoalescedBatch = internalMutation({
 		const batches = await ctx.db
 			.query('coalesceBatches')
 			.withIndex('by_thread', (q) => q.eq('threadId', args.threadId))
-			.collect();
+			.collect(); // bounded: one thread's coalesce batches
 		for (const batch of batches) await ctx.db.delete(batch._id);
 
 		// All messages on this thread still waiting at the gate.
@@ -124,7 +124,7 @@ export const processCoalescedBatch = internalMutation({
 			await ctx.db
 				.query('inboundMessages')
 				.withIndex('by_thread', (q) => q.eq('threadId', args.threadId))
-				.collect()
+				.collect() // bounded: one thread's inbound messages
 		).filter((m) => m.processingStatus === 'received');
 
 		if (pending.length === 0) return;

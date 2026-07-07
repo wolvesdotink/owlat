@@ -53,7 +53,7 @@ export const run = internalMutation({
 		let errorsRenamed = 0;
 		let skipped = 0;
 
-		const rows = await ctx.db.query('domains').collect();
+		const rows = await ctx.db.query('domains').collect(); // bounded: one-shot pre-prod migration
 		for (const row of rows) {
 			const legacy = row as unknown as LegacyDomain;
 			const providerType: string | undefined =

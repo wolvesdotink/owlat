@@ -29,7 +29,7 @@ export const list = publicQuery({
 		return ctx.db
 			.query('mailFilters')
 			.withIndex('by_mailbox_and_priority', (q) => q.eq('mailboxId', args.mailboxId))
-			.collect();
+			.collect(); // bounded: one mailbox's filters
 	},
 });
 
@@ -119,7 +119,7 @@ export const create = authedMutation({
 				.withIndex('by_mailbox_and_priority', (q) =>
 					q.eq('mailboxId', args.mailboxId)
 				)
-				.collect();
+				.collect(); // bounded: one mailbox's filters
 			priority = existing.length === 0 ? 100 : Math.max(...existing.map((f) => f.priority)) + 100;
 		}
 		return ctx.db.insert('mailFilters', {

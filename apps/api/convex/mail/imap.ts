@@ -32,7 +32,7 @@ export const listFolders = internalQuery({
 		const folders = await ctx.db
 			.query('mailFolders')
 			.withIndex('by_mailbox', (q) => q.eq('mailboxId', args.mailboxId))
-			.collect();
+			.collect(); // bounded: one mailbox's folders
 		return folders.map((f) => ({
 			_id: f._id,
 			name: f.name,
@@ -78,7 +78,7 @@ export const selectFolder = internalQuery({
 				.withIndex('by_folder_and_uid', (q) =>
 					q.eq('folderId', args.folderId).lt('uid', firstUnseen.uid),
 				)
-				.collect();
+				.collect(); // bounded: one folder's messages in a UID range
 			firstUnseenSeq = earlier.length + 1;
 		}
 		return {
@@ -115,7 +115,7 @@ export const fetchEnvelopes = internalQuery({
 					.gte('uid', args.uidLow)
 					.lte('uid', args.uidHigh)
 			)
-			.collect();
+			.collect(); // bounded: one folder's messages in a UID range
 
 		const filtered = args.modseqSince
 			? messages.filter((m) => m.modseq > (args.modseqSince ?? 0))
@@ -164,7 +164,7 @@ export const listFolderUids = internalQuery({
 		const messages = await ctx.db
 			.query('mailMessages')
 			.withIndex('by_folder_and_uid', (q) => q.eq('folderId', args.folderId))
-			.collect();
+			.collect(); // bounded: one folder's messages in a UID range
 		return messages.map((m) => m.uid).sort((a, b) => a - b);
 	},
 });
@@ -567,7 +567,7 @@ export const expungeFolder = internalMutation({
 		const allMessages = await ctx.db
 			.query('mailMessages')
 			.withIndex('by_folder_and_uid', (q) => q.eq('folderId', args.folderId))
-			.collect();
+			.collect(); // bounded: one folder's messages in a UID range
 		allMessages.sort((a, b) => a.uid - b.uid);
 
 		const uidFilter = args.uidSet ? new Set(args.uidSet) : null;
@@ -780,7 +780,7 @@ export const resolveMessageIdsByUid = internalQuery({
 					.gte('uid', args.uidLow)
 					.lte('uid', args.uidHigh)
 			)
-			.collect();
+			.collect(); // bounded: one folder's messages in a UID range
 		return messages
 			.sort((a, b) => a.uid - b.uid)
 			.map((m) => ({

@@ -29,12 +29,12 @@ export const getAudienceStats = authedQuery({
 		// Get topics count
 		const topics = await ctx.db
 			.query('topics')
-			.collect();
+			.collect(); // bounded: org topics (org-scale config)
 
 		// Get segments count
 		const segments = await ctx.db
 			.query('segments')
-			.collect();
+			.collect(); // bounded: org segments (org-scale config)
 
 		return {
 			totalContacts,
@@ -125,7 +125,7 @@ export const getTopTopics = authedQuery({
 
 		const lists = await ctx.db
 			.query('topics')
-			.collect();
+			.collect(); // bounded: org topics (org-scale config)
 
 		// Reuse the shared topic listing enrichment for the contact count so
 		// this dashboard path and the entity's list/get cannot drift. It reads

@@ -182,7 +182,7 @@ async function latestInboundMessage(
 	const all = await ctx.db
 		.query('mailMessages')
 		.withIndex('by_thread', (q) => q.eq('threadId', thread._id))
-		.collect();
+		.collect(); // bounded: one thread's messages
 	const ordered = all.sort((a, b) => a.receivedAt - b.receivedAt);
 
 	let latestInbound: Doc<'mailMessages'> | undefined;
@@ -207,7 +207,7 @@ export const getThreadCategoryContext = internalQuery({
 		const all = await ctx.db
 			.query('mailMessages')
 			.withIndex('by_thread', (q) => q.eq('threadId', args.threadId))
-			.collect();
+			.collect(); // bounded: one thread's messages
 		const ordered = all.sort((a, b) => a.receivedAt - b.receivedAt);
 
 		const senderEmail = latestInbound.fromAddress.toLowerCase();

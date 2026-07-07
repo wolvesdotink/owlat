@@ -30,7 +30,7 @@ export const listByContact = authedQuery({
 		return await ctx.db
 			.query('contactPropertyValues')
 			.withIndex('by_contact', (q) => q.eq('contactId', args.contactId))
-			.collect();
+			.collect(); // bounded: one contact's property values
 	},
 });
 

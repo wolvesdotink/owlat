@@ -66,7 +66,7 @@ export async function isDeliveryConfigured(
 	ctx: QueryCtx | MutationCtx,
 	messageType?: DeliveryMessageType,
 ): Promise<boolean> {
-	const routes = await ctx.db.query('providerRoutes').collect();
+	const routes = await ctx.db.query('providerRoutes').collect(); // bounded: configured provider routes (few)
 	for (const route of routes) {
 		if (messageType && route.messageType !== messageType) continue;
 		const hasUsableProvider = route.providers.some(

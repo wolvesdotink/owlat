@@ -22,7 +22,7 @@ export const getWebhooksForEvent = internalQuery({
 			.withIndex('by_active', (q) =>
 				q.eq('isActive', true)
 			)
-			.collect();
+			.collect(); // bounded: active webhooks (org-scale config)
 
 		return webhooks.filter((webhook) => webhook.events.includes(args.event));
 	},

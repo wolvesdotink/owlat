@@ -563,7 +563,7 @@ export async function deleteAccountForRequest(
 	const onboardingRecords = await ctx.db
 		.query('onboardingProgress')
 		.withIndex('by_user', (q) => q.eq('userId', userProfile.authUserId))
-		.collect();
+		.collect(); // bounded: one user's onboarding row (≈1)
 	for (const record of onboardingRecords) {
 		await ctx.db.delete(record._id);
 	}

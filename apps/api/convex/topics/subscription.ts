@@ -362,7 +362,7 @@ async function clearFormSubmissionConfirmations(
 		.query('formSubmissions')
 		.withIndex('by_contact', (q) => q.eq('contactId', contactId))
 		.filter((q) => q.neq(q.field('confirmedAt'), undefined))
-		.collect();
+		.collect(); // bounded: one contact's form submissions
 
 	for (const submission of formSubmissions) {
 		await ctx.db.patch(submission._id, {
@@ -753,7 +753,7 @@ export const unsubscribeAllForContact = internalMutation({
 		const memberships = await ctx.db
 			.query('contactTopics')
 			.withIndex('by_contact', (q) => q.eq('contactId', args.contactId))
-			.collect();
+			.collect(); // bounded: one contact's topic memberships
 
 		// Filter to one topic if requested.
 		const inScope = args.topicId

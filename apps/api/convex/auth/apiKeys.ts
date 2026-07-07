@@ -22,7 +22,7 @@ export const listByTeam = authedQuery({
 
 		let keys = await ctx.db
 			.query('apiKeys')
-			.collect();
+			.collect(); // bounded: per-org API keys (few)
 
 		if (!includeRevoked) {
 			keys = keys.filter((k) => k.isActive);
@@ -55,7 +55,7 @@ export const countByTeam = authedQuery({
 		await requireOrgPermission(ctx, 'organization:manage', 'Only owners and admins can view API keys');
 		const allKeys = await ctx.db
 			.query('apiKeys')
-			.collect();
+			.collect(); // bounded: per-org API keys (few)
 		const activeKeys = allKeys.filter((k) => k.isActive);
 
 		return {

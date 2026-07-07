@@ -72,7 +72,7 @@ export const getStepAnalytics = authedQuery({
 		const steps = await ctx.db
 			.query('automationSteps')
 			.withIndex('by_automation', (q) => q.eq('automationId', args.automationId))
-			.collect();
+			.collect(); // bounded: one automation's steps
 
 		// Read the funnel counts off each step's denormalized per-status counters
 		// (maintained by the step-run transition mutations) instead of collecting

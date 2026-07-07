@@ -137,7 +137,7 @@ export const addStep = authedMutation({
 		const existingSteps = await ctx.db
 			.query('automationSteps')
 			.withIndex('by_automation', (q) => q.eq('automationId', args.automationId))
-			.collect();
+			.collect(); // bounded: one automation's steps
 
 		const now = Date.now();
 		let stepIndex: number;
@@ -261,7 +261,7 @@ export const removeStep = authedMutation({
 		const remainingSteps = await ctx.db
 			.query('automationSteps')
 			.withIndex('by_automation', (q) => q.eq('automationId', automationId))
-			.collect();
+			.collect(); // bounded: one automation's steps
 
 		const now = Date.now();
 

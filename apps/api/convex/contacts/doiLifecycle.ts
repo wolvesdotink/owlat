@@ -400,7 +400,7 @@ async function loadDoiRequiredMemberships(
 	const memberships = await ctx.db
 		.query('contactTopics')
 		.withIndex('by_contact', (q) => q.eq('contactId', contactId))
-		.collect();
+		.collect(); // bounded: one contact's topic memberships
 	const topics: Array<DoiRequiredTopic> = [];
 	const clearMembershipIds: Array<Id<'contactTopics'>> = [];
 	for (const m of memberships) {

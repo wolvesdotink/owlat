@@ -37,7 +37,7 @@ function junctionLinksForContact(
 	return ctx.db
 		.query(junctionTable)
 		.withIndex('by_contact', (q) => q.eq('contactId', contactId))
-		.collect();
+		.collect(); // bounded: one contact's junction rows
 }
 
 /** Strip / rewrite a contact id in a parent row's mirrored `contactIds` array. */

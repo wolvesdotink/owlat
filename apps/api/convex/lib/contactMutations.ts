@@ -51,7 +51,7 @@ export async function repointSimpleContactRefs(
 		const rows = await ctx.db
 			.query(table)
 			.withIndex('by_contact', (q) => q.eq('contactId', sourceContactId))
-			.collect();
+			.collect(); // bounded: one contact's rows in each repoint table
 		for (const row of rows) {
 			await ctx.db.patch(row._id, { contactId: targetContactId });
 		}
@@ -88,7 +88,7 @@ export async function mergeContactRelations(
 	const sourceIdentities = await ctx.db
 		.query('contactIdentities')
 		.withIndex('by_contact', (q) => q.eq('contactId', sourceContactId))
-		.collect();
+		.collect(); // bounded: one contact's identities
 	for (const identity of sourceIdentities) {
 		const conflict = await ctx.db
 			.query('contactIdentities')
@@ -110,14 +110,14 @@ export async function mergeContactRelations(
 	const fromRelations = await ctx.db
 		.query('contactRelationships')
 		.withIndex('by_from', (q) => q.eq('fromContactId', sourceContactId))
-		.collect();
+		.collect(); // bounded: one contact's outgoing relationships
 	for (const rel of fromRelations) {
 		await ctx.db.patch(rel._id, { fromContactId: targetContactId });
 	}
 	const toRelations = await ctx.db
 		.query('contactRelationships')
 		.withIndex('by_to', (q) => q.eq('toContactId', sourceContactId))
-		.collect();
+		.collect(); // bounded: one contact's incoming relationships
 	for (const rel of toRelations) {
 		await ctx.db.patch(rel._id, { toContactId: targetContactId });
 	}
@@ -126,12 +126,12 @@ export async function mergeContactRelations(
 	const targetTopics = await ctx.db
 		.query('contactTopics')
 		.withIndex('by_contact', (q) => q.eq('contactId', targetContactId))
-		.collect();
+		.collect(); // bounded: one contact's topic memberships
 	const targetTopicIds = new Set(targetTopics.map((m) => m.topicId as string));
 	const sourceTopics = await ctx.db
 		.query('contactTopics')
 		.withIndex('by_contact', (q) => q.eq('contactId', sourceContactId))
-		.collect();
+		.collect(); // bounded: one contact's topic memberships
 	for (const membership of sourceTopics) {
 		if (targetTopicIds.has(membership.topicId as string)) {
 			await ctx.db.delete(membership._id);
@@ -145,14 +145,14 @@ export async function mergeContactRelations(
 	const targetValues = await ctx.db
 		.query('contactPropertyValues')
 		.withIndex('by_contact', (q) => q.eq('contactId', targetContactId))
-		.collect();
+		.collect(); // bounded: one contact's property values
 	const targetValueByProperty = new Map(
 		targetValues.map((value) => [value.propertyId as string, value]),
 	);
 	const sourceValues = await ctx.db
 		.query('contactPropertyValues')
 		.withIndex('by_contact', (q) => q.eq('contactId', sourceContactId))
-		.collect();
+		.collect(); // bounded: one contact's property values
 	for (const value of sourceValues) {
 		const existing = targetValueByProperty.get(value.propertyId as string);
 		if (existing) {
@@ -245,7 +245,7 @@ export async function permanentlyDeleteContactWithRelations(
 	const memberships = await ctx.db
 		.query('contactTopics')
 		.withIndex('by_contact', (q) => q.eq('contactId', contactId))
-		.collect();
+		.collect(); // bounded: one contact's topic memberships
 	for (const membership of memberships) {
 		await ctx.db.delete(membership._id);
 	}
@@ -253,7 +253,7 @@ export async function permanentlyDeleteContactWithRelations(
 	const propertyValues = await ctx.db
 		.query('contactPropertyValues')
 		.withIndex('by_contact', (q) => q.eq('contactId', contactId))
-		.collect();
+		.collect(); // bounded: one contact's property values
 	for (const value of propertyValues) {
 		await ctx.db.delete(value._id);
 	}
@@ -261,7 +261,7 @@ export async function permanentlyDeleteContactWithRelations(
 	const activities = await ctx.db
 		.query('contactActivities')
 		.withIndex('by_contact', (q) => q.eq('contactId', contactId))
-		.collect();
+		.collect(); // bounded: one contact's activities (cascade)
 	for (const activity of activities) {
 		await ctx.db.delete(activity._id);
 	}
@@ -269,7 +269,7 @@ export async function permanentlyDeleteContactWithRelations(
 	const identities = await ctx.db
 		.query('contactIdentities')
 		.withIndex('by_contact', (q) => q.eq('contactId', contactId))
-		.collect();
+		.collect(); // bounded: one contact's identities
 	for (const identity of identities) {
 		await ctx.db.delete(identity._id);
 	}
@@ -277,14 +277,14 @@ export async function permanentlyDeleteContactWithRelations(
 	const relationshipsFrom = await ctx.db
 		.query('contactRelationships')
 		.withIndex('by_from', (q) => q.eq('fromContactId', contactId))
-		.collect();
+		.collect(); // bounded: one contact's outgoing relationships
 	for (const rel of relationshipsFrom) {
 		await ctx.db.delete(rel._id);
 	}
 	const relationshipsTo = await ctx.db
 		.query('contactRelationships')
 		.withIndex('by_to', (q) => q.eq('toContactId', contactId))
-		.collect();
+		.collect(); // bounded: one contact's incoming relationships
 	for (const rel of relationshipsTo) {
 		await ctx.db.delete(rel._id);
 	}
@@ -294,7 +294,7 @@ export async function permanentlyDeleteContactWithRelations(
 	const automationRuns = await ctx.db
 		.query('automationRuns')
 		.withIndex('by_contact', (q) => q.eq('contactId', contactId))
-		.collect();
+		.collect(); // bounded: one contact's automation runs (cascade)
 	for (const run of automationRuns) {
 		await ctx.db.delete(run._id);
 	}
@@ -305,7 +305,7 @@ export async function permanentlyDeleteContactWithRelations(
 	const emailSends = await ctx.db
 		.query('emailSends')
 		.withIndex('by_contact', (q) => q.eq('contactId', contactId))
-		.collect();
+		.collect(); // bounded: one contact's sends (GDPR cascade)
 	for (const send of emailSends) {
 		await ctx.db.patch(send._id, {
 			deletedAt: Date.now(),
@@ -319,7 +319,7 @@ export async function permanentlyDeleteContactWithRelations(
 	const transactionalSends = await ctx.db
 		.query('transactionalSends')
 		.withIndex('by_contact', (q) => q.eq('contactId', contactId))
-		.collect();
+		.collect(); // bounded: one contact's transactional sends (cascade)
 	for (const send of transactionalSends) {
 		await ctx.db.patch(send._id, {
 			deletedAt: Date.now(),
@@ -338,12 +338,12 @@ export async function permanentlyDeleteContactWithRelations(
 	const threads = await ctx.db
 		.query('conversationThreads')
 		.withIndex('by_contact', (q) => q.eq('contactId', contactId))
-		.collect();
+		.collect(); // bounded: one contact's threads (cascade)
 	for (const thread of threads) {
 		const threadMessages = await ctx.db
 			.query('unifiedMessages')
 			.withIndex('by_thread', (q) => q.eq('threadId', thread._id))
-			.collect();
+			.collect(); // bounded: one thread's unified messages
 		for (const msg of threadMessages) {
 			await ctx.db.delete(msg._id);
 		}
@@ -353,7 +353,7 @@ export async function permanentlyDeleteContactWithRelations(
 		const rows = await ctx.db
 			.query(table)
 			.withIndex('by_contact', (q) => q.eq('contactId', contactId))
-			.collect();
+			.collect(); // bounded: one contact's unified messages (cascade)
 		for (const row of rows) {
 			await ctx.db.delete(row._id);
 		}
@@ -365,7 +365,7 @@ export async function permanentlyDeleteContactWithRelations(
 	const entryLinks = await ctx.db
 		.query('knowledgeEntryContacts')
 		.withIndex('by_contact', (q) => q.eq('contactId', contactId))
-		.collect();
+		.collect(); // bounded: one contact's knowledge links (cascade)
 	for (const link of entryLinks) {
 		const entry = await ctx.db.get(link.entryId);
 		await ctx.db.delete(link._id);
@@ -375,18 +375,18 @@ export async function permanentlyDeleteContactWithRelations(
 			const outgoing = await ctx.db
 				.query('knowledgeRelations')
 				.withIndex('by_from', (q) => q.eq('fromEntryId', entry._id))
-				.collect();
+				.collect(); // bounded: one node's outgoing graph edges
 			const incoming = await ctx.db
 				.query('knowledgeRelations')
 				.withIndex('by_to', (q) => q.eq('toEntryId', entry._id))
-				.collect();
+				.collect(); // bounded: one node's incoming graph edges
 			for (const rel of [...outgoing, ...incoming]) {
 				await ctx.db.delete(rel._id);
 			}
 			const otherLinks = await ctx.db
 				.query('knowledgeEntryContacts')
 				.withIndex('by_entry', (q) => q.eq('entryId', entry._id))
-				.collect();
+				.collect(); // bounded: one knowledge entry's contact links
 			for (const other of otherLinks) {
 				await ctx.db.delete(other._id);
 			}

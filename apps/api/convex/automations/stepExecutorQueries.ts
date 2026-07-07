@@ -96,7 +96,7 @@ export const getAutomationSteps = internalQuery({
 		const steps = await ctx.db
 			.query('automationSteps')
 			.withIndex('by_automation', (q) => q.eq('automationId', args.automationId))
-			.collect();
+			.collect(); // bounded: one automation's steps
 
 		return steps.sort((a, b) => a.stepIndex - b.stepIndex);
 	},
