@@ -548,7 +548,7 @@ const sendEstimate = computed(() => {
 										</div>
 									</div>
 									<NuxtLink
-										:to="`/dashboard/emails/${selectedTemplate._id}/edit`"
+										:to="`/dashboard/send/emails/${selectedTemplate._id}/edit`"
 										class="text-brand hover:text-brand-hover flex items-center gap-1 text-sm"
 										target="_blank"
 									>

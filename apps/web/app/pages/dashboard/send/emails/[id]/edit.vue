@@ -1,5 +1,10 @@
 <script setup lang="ts">
-import { EmailBuilder, UnsavedChangesDialog, useFocusMode, type Variable } from '@owlat/email-builder';
+import {
+	EmailBuilder,
+	UnsavedChangesDialog,
+	useFocusMode,
+	type Variable,
+} from '@owlat/email-builder';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 
@@ -31,7 +36,9 @@ const { run: updateTemplate } = useBackendOperation(api.emailTemplates.emails.up
 const { emailTheme } = useEmailTheme();
 
 // Fetch contact properties for personalization variables
-const { data: contactProperties } = useOrganizationQuery(api.contacts.properties.listByOrganization);
+const { data: contactProperties } = useOrganizationQuery(
+	api.contacts.properties.listByOrganization
+);
 
 // Built-in contact variables (always available)
 const builtInVariables: Variable[] = [
@@ -114,17 +121,17 @@ const {
 
 // Back handler
 const handleBack = () => {
-	router.push('/dashboard/mail/marketing');
+	router.push('/dashboard/send/marketing');
 };
 
 // Settings handler
 const handleSettings = () => {
-	router.push(`/dashboard/emails/${templateId}/settings`);
+	router.push(`/dashboard/send/emails/${templateId}/settings`);
 };
 
 // Translations handler
 const handleTranslations = () => {
-	router.push(`/dashboard/emails/${templateId}/translations`);
+	router.push(`/dashboard/send/emails/${templateId}/translations`);
 };
 </script>
 
@@ -174,10 +181,7 @@ const handleTranslations = () => {
 			>
 				<!-- Toolbar actions -->
 				<template #toolbar-actions>
-					<ShareLinksPopover
-						:email-template-id="templateId"
-						:has-unsaved-changes="hasChanges"
-					/>
+					<ShareLinksPopover :email-template-id="templateId" :has-unsaved-changes="hasChanges" />
 					<UiButton
 						variant="outline"
 						size="sm"

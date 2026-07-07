@@ -225,7 +225,7 @@ const handleSave = async () => {
 
 // Navigation
 const handleBack = () => {
-	router.push(`/dashboard/emails/${templateId}/edit`);
+	router.push(`/dashboard/send/emails/${templateId}/edit`);
 };
 </script>
 
@@ -280,7 +280,7 @@ const handleBack = () => {
 				<p class="text-text-secondary mb-6">
 					This email template doesn't exist or has been deleted.
 				</p>
-				<UiButton @click="router.push('/dashboard/mail/marketing')">Back to Emails</UiButton>
+				<UiButton @click="router.push('/dashboard/send/marketing')">Back to Emails</UiButton>
 			</div>
 		</div>
 

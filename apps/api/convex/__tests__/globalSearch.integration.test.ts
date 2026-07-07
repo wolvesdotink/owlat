@@ -48,7 +48,11 @@ describe('globalSearch.search', () => {
 			);
 			const templateId = await ctx.db.insert(
 				'emailTemplates',
-				createTestEmailTemplate({ searchableText: TOKEN, name: 'Spring Promo', subject: 'Big sale' })
+				createTestEmailTemplate({
+					searchableText: TOKEN,
+					name: 'Spring Promo',
+					subject: 'Big sale',
+				})
 			);
 			const txId = await ctx.db.insert(
 				'transactionalEmails',
@@ -64,7 +68,10 @@ describe('globalSearch.search', () => {
 				createTestCampaign({ searchableText: TOKEN, name: 'June Blast', subject: 'Newsletter' })
 			);
 			// Noise rows that must NOT match.
-			await ctx.db.insert('emailTemplates', createTestEmailTemplate({ searchableText: 'unrelated' }));
+			await ctx.db.insert(
+				'emailTemplates',
+				createTestEmailTemplate({ searchableText: 'unrelated' })
+			);
 			await ctx.db.insert('campaigns', createTestCampaign({ searchableText: 'unrelated' }));
 			return { contactId, templateId, txId, campaignId };
 		});
@@ -87,14 +94,14 @@ describe('globalSearch.search', () => {
 			type: 'email',
 			title: 'Spring Promo',
 			subtitle: 'Big sale',
-			url: `/dashboard/emails/${ids.templateId}/edit`,
+			url: `/dashboard/send/emails/${ids.templateId}/edit`,
 		});
 		const tx = res.emails.find((e) => e.id === ids.txId);
 		expect(tx).toMatchObject({
 			type: 'email',
 			title: 'Welcome Email',
 			subtitle: 'Hi there (welcome-email)',
-			url: `/dashboard/transactional/${ids.txId}/edit`,
+			url: `/dashboard/send/transactional/${ids.txId}/edit`,
 		});
 
 		// Campaign
@@ -131,7 +138,12 @@ describe('globalSearch.search', () => {
 		await t.run(async (ctx) => {
 			await ctx.db.insert(
 				'campaigns',
-				createTestCampaign({ searchableText: TOKEN, name: 'Draft Blast', subject: undefined, status: 'draft' })
+				createTestCampaign({
+					searchableText: TOKEN,
+					name: 'Draft Blast',
+					subject: undefined,
+					status: 'draft',
+				})
 			);
 		});
 
@@ -153,7 +165,10 @@ describe('globalSearch.search', () => {
 		const t = convexTest(schema, modules);
 		await t.run(async (ctx) => {
 			for (let i = 0; i < 4; i++) {
-				await ctx.db.insert('campaigns', createTestCampaign({ searchableText: TOKEN, name: `Blast ${i}` }));
+				await ctx.db.insert(
+					'campaigns',
+					createTestCampaign({ searchableText: TOKEN, name: `Blast ${i}` })
+				);
 			}
 		});
 

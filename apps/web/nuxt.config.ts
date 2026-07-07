@@ -151,6 +151,15 @@ export default defineNuxtConfig({
 		// see better-auth's originCheckMiddleware), and the proxy forwards the
 		// browser's Origin header verbatim.
 		'/api/auth/**': { csurf: false },
+
+		// IA restructure: the Mail + Campaigns sidebar sections merged into one
+		// "Send" section and the email surfaces moved under /dashboard/send/*.
+		// Redirect the old paths so bookmarks and deep links keep working. Splat
+		// forwarding preserves the trailing path (e.g. an editor's [id]/edit).
+		'/dashboard/mail': { redirect: '/dashboard/send' },
+		'/dashboard/mail/**': { redirect: '/dashboard/send/**' },
+		'/dashboard/emails/**': { redirect: '/dashboard/send/emails/**' },
+		'/dashboard/transactional/**': { redirect: '/dashboard/send/transactional/**' },
 	},
 
 	icon: {

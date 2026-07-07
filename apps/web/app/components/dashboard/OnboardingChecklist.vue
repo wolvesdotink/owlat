@@ -10,9 +10,12 @@ const config = useRuntimeConfig();
 const isSelfHost = config.public.deploymentMode === 'selfhost';
 
 // Fetch onboarding progress with actual data
-const { data: progress, isLoading } = useOrganizationQuery(api.auth.onboarding.getWithActualProgress, () => ({
-	userId: props.userId,
-}));
+const { data: progress, isLoading } = useOrganizationQuery(
+	api.auth.onboarding.getWithActualProgress,
+	() => ({
+		userId: props.userId,
+	})
+);
 
 // Dismiss mutation
 const { run: dismiss } = useBackendOperation(api.auth.onboarding.dismiss, {
@@ -31,7 +34,8 @@ const steps = computed(() => [
 	{
 		id: 'sendPathReady',
 		title: 'Configure a sending provider',
-		description: 'Set up a delivery provider so this instance can actually send email — then send a test',
+		description:
+			'Set up a delivery provider so this instance can actually send email — then send a test',
 		icon: 'lucide:send',
 		completed: progress.value?.sendPathReady ?? false,
 		href: '/dashboard/settings/delivery',
@@ -52,7 +56,7 @@ const steps = computed(() => [
 		description: 'Build an email template you can send',
 		icon: 'lucide:file-text',
 		completed: progress.value?.createdEmail ?? false,
-		href: '/dashboard/mail/marketing',
+		href: '/dashboard/send/marketing',
 		cta: 'Create Email',
 	},
 	{
@@ -67,7 +71,8 @@ const steps = computed(() => [
 	{
 		id: 'createdApiKey',
 		title: 'Create an API key',
-		description: 'Send transactional email (receipts, password resets) programmatically via the API',
+		description:
+			'Send transactional email (receipts, password resets) programmatically via the API',
 		icon: 'lucide:key',
 		completed: progress.value?.createdApiKey ?? false,
 		href: '/dashboard/settings/api',
@@ -96,7 +101,7 @@ const shouldShow = computed(() =>
 		isComplete: progress.value?.isComplete ?? false,
 		isSelfHost,
 		sendPathReady: progress.value?.sendPathReady ?? false,
-	}),
+	})
 );
 
 // Progress percentage for visual indicator

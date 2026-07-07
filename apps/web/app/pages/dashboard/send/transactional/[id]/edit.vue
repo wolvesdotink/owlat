@@ -226,12 +226,12 @@ const handleTogglePublish = async () => {
 
 // Back handler
 const handleBack = () => {
-	router.push('/dashboard/mail/transactional');
+	router.push('/dashboard/send/transactional');
 };
 
 // Translations handler
 const handleTranslations = () => {
-	router.push(`/dashboard/transactional/${emailId}/translations`);
+	router.push(`/dashboard/send/transactional/${emailId}/translations`);
 };
 
 const handleCreateVariable = async (variable: { key: string; type?: string }) => {

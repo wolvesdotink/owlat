@@ -23,20 +23,19 @@ describe('pathRule — path-derived feature gate', () => {
 		expect(pathRule('/dashboard/campaigns/new')?.required).toBe('campaigns');
 		expect(pathRule('/dashboard/automations/123/edit')?.required).toBe('automations');
 		expect(pathRule('/dashboard/visualizations')?.required).toBe('ai.visualizations');
-		expect(pathRule('/dashboard/mail/marketing')?.required).toBe('campaigns');
-		expect(pathRule('/dashboard/mail/transactional/x')?.required).toBe('transactional');
+		expect(pathRule('/dashboard/send/marketing')?.required).toBe('campaigns');
+		expect(pathRule('/dashboard/send/transactional/x')?.required).toBe('transactional');
 		expect(pathRule('/dashboard/knowledge/abc')?.required).toBe('ai.knowledge');
 	});
 
-	it('gates the transactional editor tree (lives outside /dashboard/mail)', () => {
-		// The editor at /dashboard/transactional/[id]/{edit,sends,translations}
-		// must be gated by `transactional`, not just the list at /dashboard/mail/transactional.
-		expect(pathRule('/dashboard/transactional/x/edit')?.required).toBe('transactional');
-		expect(pathRule('/dashboard/transactional/x/sends/y')?.required).toBe('transactional');
-		expect(pathRule('/dashboard/transactional/x/translations')?.required).toBe('transactional');
-		// The original list mapping under /dashboard/mail still holds.
-		expect(pathRule('/dashboard/mail/transactional')?.required).toBe('transactional');
-		expect(pathRule('/dashboard/mail/transactional/x')?.required).toBe('transactional');
+	it('gates the transactional list AND editor tree under /dashboard/send', () => {
+		// List + editor now share one prefix: /dashboard/send/transactional.
+		expect(pathRule('/dashboard/send/transactional')?.required).toBe('transactional');
+		expect(pathRule('/dashboard/send/transactional/x/edit')?.required).toBe('transactional');
+		expect(pathRule('/dashboard/send/transactional/x/sends/y')?.required).toBe('transactional');
+		expect(pathRule('/dashboard/send/transactional/x/translations')?.required).toBe(
+			'transactional'
+		);
 	});
 
 	it('keeps the already-gated sections', () => {
@@ -46,29 +45,29 @@ describe('pathRule — path-derived feature gate', () => {
 	});
 
 	it('leaves always-on built-ins ungated', () => {
-		// Email editor surfaces, media, files, audience/contacts, settings, root.
+		// Send overview, email editor surfaces, blocks, media, files, audience/contacts, settings, root.
 		expect(pathRule('/dashboard')).toBeUndefined();
-		expect(pathRule('/dashboard/mail')).toBeUndefined();
-		expect(pathRule('/dashboard/mail/blocks')).toBeUndefined();
-		expect(pathRule('/dashboard/mail/media')).toBeUndefined();
+		expect(pathRule('/dashboard/send')).toBeUndefined();
+		expect(pathRule('/dashboard/send/blocks')).toBeUndefined();
+		expect(pathRule('/dashboard/send/media')).toBeUndefined();
+		expect(pathRule('/dashboard/send/emails/abc/edit')).toBeUndefined();
 		expect(pathRule('/dashboard/files/abc')).toBeUndefined();
 		expect(pathRule('/dashboard/audience/contacts')).toBeUndefined();
 		expect(pathRule('/dashboard/settings/api')).toBeUndefined();
 	});
 
 	it('does not match a prefix that is only a partial path segment', () => {
-		// '/dashboard/mail/marketing' must not be matched by a hypothetical
-		// '/dashboard/mail' rule, and a path that merely starts with the string
-		// but is a different segment must not match.
+		// A path that merely starts with the string but is a different segment
+		// must not match.
 		expect(pathRule('/dashboard/campaignsX')).toBeUndefined();
 		expect(pathRule('/dashboard/inboxes')).toBeUndefined();
 	});
 
-	it('picks the longest matching prefix (mail/marketing over any mail rule)', () => {
-		// mail/marketing is gated by campaigns even though /dashboard/mail itself
+	it('picks the longest matching prefix (send/marketing over any send rule)', () => {
+		// send/marketing is gated by campaigns even though /dashboard/send itself
 		// is an ungated built-in — the specific prefix wins.
-		const rule = pathRule('/dashboard/mail/marketing/anything');
-		expect(rule?.prefix).toBe('/dashboard/mail/marketing');
+		const rule = pathRule('/dashboard/send/marketing/anything');
+		expect(rule?.prefix).toBe('/dashboard/send/marketing');
 		expect(rule?.required).toBe('campaigns');
 	});
 

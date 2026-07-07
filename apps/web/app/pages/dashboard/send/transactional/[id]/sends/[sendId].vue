@@ -13,10 +13,9 @@ const route = useRoute();
 const emailId = computed(() => route.params['id'] as Id<'transactionalEmails'>);
 const sendId = computed(() => route.params['sendId'] as Id<'transactionalSends'>);
 
-const { data: send, isLoading } = useConvexQuery(
-	api.transactional.sends.get,
-	() => ({ id: sendId.value })
-);
+const { data: send, isLoading } = useConvexQuery(api.transactional.sends.get, () => ({
+	id: sendId.value,
+}));
 
 const statusConfig: Record<string, { icon: string; color: string; bg: string }> = {
 	sent: { icon: 'lucide:send', color: 'text-brand', bg: 'bg-brand/10' },
@@ -50,7 +49,7 @@ const getStatusConfig = (status: string) => (statusConfig[status] ?? statusConfi
 			<p class="text-sm text-text-tertiary mt-1">
 				This email send may have been deleted or you don't have access to it.
 			</p>
-			<NuxtLink :to="'/dashboard/mail/transactional'" class="btn btn-secondary mt-6">
+			<NuxtLink :to="'/dashboard/send/transactional'" class="btn btn-secondary mt-6">
 				Back to Transactional Emails
 			</NuxtLink>
 		</div>
@@ -60,7 +59,7 @@ const getStatusConfig = (status: string) => (statusConfig[status] ?? statusConfi
 			<!-- Header -->
 			<div class="mb-8">
 				<NuxtLink
-					:to="'/dashboard/mail/transactional'"
+					:to="'/dashboard/send/transactional'"
 					class="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary text-sm mb-4 transition-colors"
 				>
 					<Icon name="lucide:arrow-left" class="w-4 h-4" />
@@ -74,7 +73,10 @@ const getStatusConfig = (status: string) => (statusConfig[status] ?? statusConfi
 							{{ send.contact?.lastName || '' }}
 						</h1>
 						<p class="mt-1 text-text-secondary">{{ send.email }}</p>
-						<div v-if="send.transactionalEmail" class="mt-2 flex items-center gap-2 text-sm text-text-tertiary">
+						<div
+							v-if="send.transactionalEmail"
+							class="mt-2 flex items-center gap-2 text-sm text-text-tertiary"
+						>
 							<Icon name="lucide:zap" class="w-4 h-4" />
 							<span>{{ send.transactionalEmail.name }}</span>
 							<span class="font-mono text-xs bg-bg-surface px-1.5 py-0.5 rounded">

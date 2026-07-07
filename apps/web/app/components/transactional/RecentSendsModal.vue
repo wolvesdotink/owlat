@@ -10,7 +10,7 @@ const props = defineProps<{
 const isOpen = defineModel<boolean>('open', { default: false });
 
 const { data, isLoading } = useConvexQuery(api.transactional.sends.listByTransactionalEmail, () =>
-	isOpen.value && props.emailId ? { transactionalEmailId: props.emailId, limit: 25 } : 'skip',
+	isOpen.value && props.emailId ? { transactionalEmailId: props.emailId, limit: 25 } : 'skip'
 );
 
 const sends = computed(() => data.value?.sends ?? []);
@@ -40,7 +40,7 @@ const statusStyles: Record<string, string> = {
 		<ul v-else class="divide-y divide-border-subtle -mx-2">
 			<li v-for="send in sends" :key="send._id">
 				<NuxtLink
-					:to="`/dashboard/transactional/${emailId}/sends/${send._id}`"
+					:to="`/dashboard/send/transactional/${emailId}/sends/${send._id}`"
 					class="flex items-center justify-between gap-3 px-2 py-2.5 rounded hover:bg-bg-surface transition-colors"
 					@click="isOpen = false"
 				>
@@ -48,7 +48,9 @@ const statusStyles: Record<string, string> = {
 						<p class="text-sm text-text-primary truncate">
 							{{ send.contact?.email ?? send.email ?? 'Unknown recipient' }}
 						</p>
-						<p class="text-xs text-text-tertiary mt-0.5">{{ formatDateTime(send.sentAt ?? send.queuedAt ?? send._creationTime) }}</p>
+						<p class="text-xs text-text-tertiary mt-0.5">
+							{{ formatDateTime(send.sentAt ?? send.queuedAt ?? send._creationTime) }}
+						</p>
 					</div>
 					<span
 						:class="[

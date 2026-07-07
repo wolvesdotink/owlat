@@ -40,7 +40,11 @@ watch(searchQuery, (value) => {
 });
 
 // Fetch blocks with real-time updates (uses session-based organization context)
-const { data: blocks, isLoading: blocksLoading, error: blocksError } = useConvexQuery(api.emailBlocks.blocks.list, () => ({
+const {
+	data: blocks,
+	isLoading: blocksLoading,
+	error: blocksError,
+} = useConvexQuery(api.emailBlocks.blocks.list, () => ({
 	search: debouncedSearch.value || undefined,
 	sortBy: selectedSort.value,
 }));
@@ -149,7 +153,7 @@ const handleCreate = async () => {
 
 		closeCreateModal();
 		// Navigate directly to the editor to add content
-		router.push(`/dashboard/mail/blocks/${blockId}/edit`);
+		router.push(`/dashboard/send/blocks/${blockId}/edit`);
 	} finally {
 		isCreating.value = false;
 	}
@@ -174,11 +178,7 @@ const { run: updateBlock } = useBackendOperation(api.emailBlocks.blocks.update, 
 	label: 'Update block',
 });
 
-const openEditModal = (block: {
-	_id: Id<'emailBlocks'>;
-	name: string;
-	description?: string;
-}) => {
+const openEditModal = (block: { _id: Id<'emailBlocks'>; name: string; description?: string }) => {
 	blockToEdit.value = {
 		id: block._id,
 		name: block.name,
@@ -226,7 +226,7 @@ const handleEdit = async () => {
 
 // Navigate to the full edit page for content editing
 const navigateToEditPage = (blockId: Id<'emailBlocks'>) => {
-	router.push(`/dashboard/mail/blocks/${blockId}/edit`);
+	router.push(`/dashboard/send/blocks/${blockId}/edit`);
 };
 </script>
 
@@ -294,164 +294,169 @@ const navigateToEditPage = (blockId: Id<'emailBlocks'>) => {
 					</div>
 				</template>
 
-			<!-- Empty State (no organization) -->
-			<UiEmptyState
-				v-if="!hasActiveOrganization"
-				title="No organization selected"
-				description="Create or select an organization to start managing reusable blocks."
-			>
-				<template #icon>
-					<Icon name="lucide:blocks" class="w-8 h-8 text-text-tertiary" />
-				</template>
-			</UiEmptyState>
-
-			<!-- Empty State (no blocks) -->
-			<UiEmptyState
-				v-else-if="!isLoading && (!blocks || blocks.length === 0) && !debouncedSearch"
-				title="No saved blocks yet"
-				description="Save blocks from your email templates to reuse across multiple emails."
-			>
-				<template #icon>
-					<Icon name="lucide:blocks" class="w-8 h-8 text-text-tertiary" />
-				</template>
-				<template #action>
-					<UiButton @click="openCreateModal">
-						<template #iconLeft>
-							<Icon name="lucide:plus" class="w-4 h-4" />
-						</template>
-						Create Block
-					</UiButton>
-				</template>
-			</UiEmptyState>
-
-			<!-- Empty State (no search results) -->
-			<UiEmptyState
-				v-else-if="!isLoading && (!blocks || blocks.length === 0) && debouncedSearch"
-				title="No results found"
-				:description="`No blocks match &quot;${debouncedSearch}&quot;. Try a different search term.`"
-			>
-				<template #icon>
-					<Icon name="lucide:search" class="w-8 h-8 text-text-tertiary" />
-				</template>
-				<template #action>
-					<UiButton
-						variant="secondary"
-						@click="
-							searchQuery = '';
-							debouncedSearch = '';
-						"
-					>
-						Clear search
-					</UiButton>
-				</template>
-			</UiEmptyState>
-
-			<!-- Grid View -->
-			<div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-				<UiCard
-					v-for="block in blocks"
-					:key="block._id"
-					padding="none"
-					overflow="hidden"
-					hoverable
-					clickable
-					class="group"
-					@click="navigateToEditPage(block._id)"
+				<!-- Empty State (no organization) -->
+				<UiEmptyState
+					v-if="!hasActiveOrganization"
+					title="No organization selected"
+					description="Create or select an organization to start managing reusable blocks."
 				>
-					<!-- Thumbnail Area -->
-					<div class="aspect-[4/3] bg-bg-surface flex items-center justify-center relative">
-						<Icon name="lucide:blocks" class="w-12 h-12 text-text-tertiary/30" />
-						<!-- Hover Overlay -->
-						<div
-							class="absolute inset-0 bg-bg-deep/80 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2"
+					<template #icon>
+						<Icon name="lucide:blocks" class="w-8 h-8 text-text-tertiary" />
+					</template>
+				</UiEmptyState>
+
+				<!-- Empty State (no blocks) -->
+				<UiEmptyState
+					v-else-if="!isLoading && (!blocks || blocks.length === 0) && !debouncedSearch"
+					title="No saved blocks yet"
+					description="Save blocks from your email templates to reuse across multiple emails."
+				>
+					<template #icon>
+						<Icon name="lucide:blocks" class="w-8 h-8 text-text-tertiary" />
+					</template>
+					<template #action>
+						<UiButton @click="openCreateModal">
+							<template #iconLeft>
+								<Icon name="lucide:plus" class="w-4 h-4" />
+							</template>
+							Create Block
+						</UiButton>
+					</template>
+				</UiEmptyState>
+
+				<!-- Empty State (no search results) -->
+				<UiEmptyState
+					v-else-if="!isLoading && (!blocks || blocks.length === 0) && debouncedSearch"
+					title="No results found"
+					:description="`No blocks match &quot;${debouncedSearch}&quot;. Try a different search term.`"
+				>
+					<template #icon>
+						<Icon name="lucide:search" class="w-8 h-8 text-text-tertiary" />
+					</template>
+					<template #action>
+						<UiButton
+							variant="secondary"
+							@click="
+								searchQuery = '';
+								debouncedSearch = '';
+							"
 						>
-							<button
-								class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-brand hover:text-text-inverse transition-colors"
-								title="Edit Content"
-								@click.stop="navigateToEditPage(block._id)"
-							>
-								<Icon name="lucide:file-edit" class="w-4 h-4" />
-							</button>
-							<button
-								class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-brand hover:text-text-inverse transition-colors"
-								title="Quick Settings"
-								@click.stop="openEditModal(block)"
-							>
-								<Icon name="lucide:settings" class="w-4 h-4" />
-							</button>
-							<button
-								class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-brand hover:text-text-inverse transition-colors"
-								title="Duplicate"
-								@click.stop="handleDuplicate(block._id)"
-							>
-								<Icon name="lucide:copy" class="w-4 h-4" />
-							</button>
-							<button
-								class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-error hover:text-white transition-colors"
-								title="Delete"
-								@click.stop="openDeleteModal(block._id, block.name, block.usageCount)"
-							>
-								<Icon name="lucide:trash-2" class="w-4 h-4" />
-							</button>
-						</div>
-					</div>
+							Clear search
+						</UiButton>
+					</template>
+				</UiEmptyState>
 
-					<!-- Info -->
-					<div class="p-4">
-						<div class="flex items-start justify-between gap-2">
-							<div class="min-w-0 flex-1">
-								<h3 class="font-medium text-text-primary truncate">{{ block.name }}</h3>
-								<p class="text-sm text-text-tertiary truncate mt-0.5">
-									{{ block.description || 'No description' }}
-								</p>
-							</div>
-							<!-- Dropdown Menu -->
-							<UiDropdownMenu v-model:open="dropdownOpenStates[block._id]" @click.stop>
-								<template #trigger>
-									<UiButton variant="ghost" size="sm">
-										<Icon name="lucide:more-vertical" class="w-4 h-4" />
-									</UiButton>
-								</template>
-								<UiDropdownMenuItem icon="lucide:file-edit" @click="navigateToEditPage(block._id)">
-									Edit Content
-								</UiDropdownMenuItem>
-								<UiDropdownMenuItem icon="lucide:settings" @click="openEditModal(block)">
-									Settings
-								</UiDropdownMenuItem>
-								<UiDropdownMenuItem icon="lucide:copy" @click="handleDuplicate(block._id)">
-									Duplicate
-								</UiDropdownMenuItem>
-								<UiDropdownDivider />
-								<UiDropdownMenuItem
-									icon="lucide:trash-2"
-									danger
-									@click="openDeleteModal(block._id, block.name, block.usageCount)"
+				<!-- Grid View -->
+				<div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+					<UiCard
+						v-for="block in blocks"
+						:key="block._id"
+						padding="none"
+						overflow="hidden"
+						hoverable
+						clickable
+						class="group"
+						@click="navigateToEditPage(block._id)"
+					>
+						<!-- Thumbnail Area -->
+						<div class="aspect-[4/3] bg-bg-surface flex items-center justify-center relative">
+							<Icon name="lucide:blocks" class="w-12 h-12 text-text-tertiary/30" />
+							<!-- Hover Overlay -->
+							<div
+								class="absolute inset-0 bg-bg-deep/80 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2"
+							>
+								<button
+									class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-brand hover:text-text-inverse transition-colors"
+									title="Edit Content"
+									@click.stop="navigateToEditPage(block._id)"
 								>
-									Delete
-								</UiDropdownMenuItem>
-							</UiDropdownMenu>
+									<Icon name="lucide:file-edit" class="w-4 h-4" />
+								</button>
+								<button
+									class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-brand hover:text-text-inverse transition-colors"
+									title="Quick Settings"
+									@click.stop="openEditModal(block)"
+								>
+									<Icon name="lucide:settings" class="w-4 h-4" />
+								</button>
+								<button
+									class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-brand hover:text-text-inverse transition-colors"
+									title="Duplicate"
+									@click.stop="handleDuplicate(block._id)"
+								>
+									<Icon name="lucide:copy" class="w-4 h-4" />
+								</button>
+								<button
+									class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-error hover:text-white transition-colors"
+									title="Delete"
+									@click.stop="openDeleteModal(block._id, block.name, block.usageCount)"
+								>
+									<Icon name="lucide:trash-2" class="w-4 h-4" />
+								</button>
+							</div>
 						</div>
 
-						<!-- Meta Info -->
-						<div class="flex items-center gap-2 mt-3">
-							<span
-								v-if="block.blockCount && block.blockCount > 1"
-								class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-brand/10 text-brand"
-							>
-								{{ block.blockCount }} blocks
-							</span>
-							<span
-								class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-bg-surface text-text-tertiary"
-							>
-								<Icon name="lucide:bar-chart" class="w-3 h-3" />
-								{{ block.usageCount }} uses
-							</span>
-						</div>
+						<!-- Info -->
+						<div class="p-4">
+							<div class="flex items-start justify-between gap-2">
+								<div class="min-w-0 flex-1">
+									<h3 class="font-medium text-text-primary truncate">{{ block.name }}</h3>
+									<p class="text-sm text-text-tertiary truncate mt-0.5">
+										{{ block.description || 'No description' }}
+									</p>
+								</div>
+								<!-- Dropdown Menu -->
+								<UiDropdownMenu v-model:open="dropdownOpenStates[block._id]" @click.stop>
+									<template #trigger>
+										<UiButton variant="ghost" size="sm">
+											<Icon name="lucide:more-vertical" class="w-4 h-4" />
+										</UiButton>
+									</template>
+									<UiDropdownMenuItem
+										icon="lucide:file-edit"
+										@click="navigateToEditPage(block._id)"
+									>
+										Edit Content
+									</UiDropdownMenuItem>
+									<UiDropdownMenuItem icon="lucide:settings" @click="openEditModal(block)">
+										Settings
+									</UiDropdownMenuItem>
+									<UiDropdownMenuItem icon="lucide:copy" @click="handleDuplicate(block._id)">
+										Duplicate
+									</UiDropdownMenuItem>
+									<UiDropdownDivider />
+									<UiDropdownMenuItem
+										icon="lucide:trash-2"
+										danger
+										@click="openDeleteModal(block._id, block.name, block.usageCount)"
+									>
+										Delete
+									</UiDropdownMenuItem>
+								</UiDropdownMenu>
+							</div>
 
-						<p class="text-xs text-text-tertiary mt-3">Updated {{ formatDate(block.updatedAt) }}</p>
-					</div>
-				</UiCard>
-			</div>
+							<!-- Meta Info -->
+							<div class="flex items-center gap-2 mt-3">
+								<span
+									v-if="block.blockCount && block.blockCount > 1"
+									class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-brand/10 text-brand"
+								>
+									{{ block.blockCount }} blocks
+								</span>
+								<span
+									class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-bg-surface text-text-tertiary"
+								>
+									<Icon name="lucide:bar-chart" class="w-3 h-3" />
+									{{ block.usageCount }} uses
+								</span>
+							</div>
+
+							<p class="text-xs text-text-tertiary mt-3">
+								Updated {{ formatDate(block.updatedAt) }}
+							</p>
+						</div>
+					</UiCard>
+				</div>
 			</UiQueryBoundary>
 		</div>
 
@@ -562,6 +567,5 @@ const navigateToEditPage = (blockId: Id<'emailBlocks'>) => {
 				</UiButton>
 			</template>
 		</UiModal>
-
 	</div>
 </template>
