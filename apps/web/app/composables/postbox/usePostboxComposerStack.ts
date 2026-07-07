@@ -100,10 +100,6 @@ export function usePostboxComposerStack() {
 		state.value = state.value.map((c) => (c.id === id ? { ...c, minimized: true } : c));
 	}
 
-	function restore(id: string) {
-		state.value = state.value.map((c) => (c.id === id ? { ...c, minimized: false } : c));
-	}
-
 	/**
 	 * Bring a docked composer back to a floating popup: un-minimize it AND move
 	 * it to the end of the stack so it counts as one of the newest (and so wins a
@@ -147,7 +143,6 @@ export function usePostboxComposerStack() {
 		open,
 		close,
 		minimize,
-		restore,
 		bringToFront,
 		focus,
 		unfocus,
