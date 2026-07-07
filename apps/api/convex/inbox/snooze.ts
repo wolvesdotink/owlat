@@ -19,9 +19,9 @@
 import { v } from 'convex/values';
 import { internalMutation } from '../_generated/server';
 import { adminMutation } from '../lib/authedFunctions';
-import type { Id } from '../_generated/dataModel';
 import { getOrThrow, throwInvalidInput } from '../_utils/errors';
 import { recordAuditLog } from '../lib/auditLog';
+import { getMutationContext } from '../lib/sessionOrganization';
 
 /**
  * Snooze a thread until a future timestamp. Admin-only (shared inbox), audited.
@@ -32,7 +32,8 @@ export const snoozeThread = adminMutation({
 		until: v.number(),
 	},
 	handler: async (ctx, args) => {
-		const thread = await getOrThrow(ctx, args.threadId, 'Thread');
+		const { userId } = await getMutationContext(ctx);
+		await getOrThrow(ctx, args.threadId, 'Thread');
 		if (args.until <= Date.now()) {
 			throwInvalidInput('Snooze time must be in the future');
 		}
@@ -42,7 +43,7 @@ export const snoozeThread = adminMutation({
 			snoozeReturnedAt: undefined,
 		});
 		await recordAuditLog(ctx, {
-			userId: 'system',
+			userId,
 			action: 'thread.snoozed',
 			resource: 'conversation_thread',
 			resourceId: args.threadId,
@@ -61,6 +62,7 @@ export const unsnoozeThread = adminMutation({
 		threadId: v.id('conversationThreads'),
 	},
 	handler: async (ctx, args) => {
+		const { userId } = await getMutationContext(ctx);
 		const thread = await getOrThrow(ctx, args.threadId, 'Thread');
 		if (thread.snoozedUntil === undefined) {
 			return { success: true };
@@ -70,7 +72,7 @@ export const unsnoozeThread = adminMutation({
 			snoozeReturnedAt: undefined,
 		});
 		await recordAuditLog(ctx, {
-			userId: 'system',
+			userId,
 			action: 'thread.unsnoozed',
 			resource: 'conversation_thread',
 			resourceId: args.threadId,
