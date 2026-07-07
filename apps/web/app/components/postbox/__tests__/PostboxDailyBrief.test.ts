@@ -10,11 +10,18 @@
  * Convex wiring is stubbed at the composable seam (useConvexQuery/useConvex),
  * mirroring the PostboxTodayView test setup.
  */
-import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { describe, it, expect, vi, afterEach, beforeAll, beforeEach } from 'vitest';
+import { enableAutoUnmount, mount } from '@vue/test-utils';
 import { ref } from 'vue';
 
 import PostboxDailyBrief from '../PostboxDailyBrief.vue';
+
+// Every test shares the module-level `briefRead` ref; without unmounting,
+// watchers from previously mounted components stay alive and each fires its
+// own (correctly deduped) refresh when a later test flips the ref to stale —
+// inflating the mutation count. Auto-unmount keeps exactly one live component
+// per test.
+enableAutoUnmount(afterEach);
 
 vi.mock('@owlat/api', () => {
 	const anyPath: unknown = new Proxy(function () {}, {
