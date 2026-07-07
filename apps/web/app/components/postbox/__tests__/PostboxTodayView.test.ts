@@ -67,6 +67,8 @@ const overlayStub = {
 	template: '<div class="reader-overlay" :data-id="message._id" />',
 };
 const skeletonStub = { template: '<div class="skeleton" />' };
+// The Daily Brief card owns its own Convex wiring — covered by its own tests.
+const dailyBriefStub = { props: ['mailboxId'], template: '<div class="daily-brief" />' };
 
 function todayMsg(id: string, overrides: Record<string, unknown> = {}) {
 	return {
@@ -89,6 +91,7 @@ function mountView(extraProps: Record<string, unknown> = {}) {
 			components: {
 				Icon: iconStub,
 				NuxtLink: nuxtLinkStub,
+				PostboxDailyBrief: dailyBriefStub,
 				PostboxThreadList: threadListStub,
 				PostboxThreadListSkeleton: skeletonStub,
 				PostboxTodayReaderOverlay: overlayStub,

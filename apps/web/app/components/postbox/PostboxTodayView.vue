@@ -178,13 +178,13 @@ function closeOverlay() {
 				</button>
 			</header>
 
-			<!-- Brief slot: reserved region the Daily Brief renders into (a2).
-			     Intentionally empty this release — it must not add a competing
-			     focal point until the Brief exists. -->
-			<section data-postbox-brief-slot class="empty:hidden" />
+			<!-- Brief slot: the Daily Brief greeting card (fail-soft — renders
+			     nothing while there is no cached brief, so the list below stays
+			     the focal point). Its counts deep-link to the sections below. -->
+			<PostboxDailyBrief :mailbox-id="mailboxId" />
 
 			<!-- FOR YOU: what the agent queued for the owner, why in one muted line. -->
-			<section v-if="forYouCount > 0" aria-label="For you">
+			<section v-if="forYouCount > 0" id="postbox-for-you" aria-label="For you">
 				<h2
 					class="text-[11px] font-semibold uppercase tracking-wider text-text-tertiary tabular-nums"
 				>
@@ -224,7 +224,7 @@ function closeOverlay() {
 			</section>
 
 			<!-- TODAY: the day's mail, same rows/shortcuts as the browse list. -->
-			<section aria-label="Today">
+			<section id="postbox-today" aria-label="Today">
 				<h2 class="text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">Today</h2>
 				<div
 					v-if="todayRows.length > 0"
