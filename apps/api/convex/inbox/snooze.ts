@@ -98,13 +98,14 @@ export const internalSweep = internalMutation({
 			.query('conversationThreads')
 			.withIndex('by_snoozed_until', (q) => q.gt('snoozedUntil', 0).lte('snoozedUntil', now))
 			.take(100);
-		const due = dueRows.filter((t) => t.snoozedUntil != null);
-		for (const t of due) {
+		// No post-filter needed: the `gt(0)` lower bound above already excludes
+		// every never-snoozed (`undefined`) row, so every returned row is due.
+		for (const t of dueRows) {
 			await ctx.db.patch(t._id, {
 				snoozedUntil: undefined,
 				snoozeReturnedAt: now,
 			});
 		}
-		return { woken: due.length };
+		return { woken: dueRows.length };
 	},
 });
