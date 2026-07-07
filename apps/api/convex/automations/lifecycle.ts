@@ -48,11 +48,7 @@ export type AutomationTransitionOutcome =
 	  }
 	| {
 			ok: false;
-			reason:
-				| 'automation_not_found'
-				| 'illegal_edge'
-				| 'no_steps'
-				| 'invalid_trigger_config';
+			reason: 'automation_not_found' | 'illegal_edge' | 'no_steps' | 'invalid_trigger_config';
 			from?: AutomationStatus;
 			to?: AutomationStatus;
 	  };
@@ -62,7 +58,7 @@ export type AutomationTransitionOutcome =
 const transitionInputValidator = v.union(
 	v.object({ to: v.literal('active'), at: v.number() }),
 	v.object({ to: v.literal('paused'), at: v.number() }),
-	v.object({ to: v.literal('draft'), at: v.number() }),
+	v.object({ to: v.literal('draft'), at: v.number() })
 );
 
 // ─── Legal-edges graph ──────────────────────────────────────────────────────
@@ -107,7 +103,7 @@ type ReducerResult = {
 export function reduce(
 	automation: Doc<'automations'>,
 	input: AutomationTransitionInput,
-	userId: string,
+	userId: string
 ): ReducerResult {
 	const from = automation.status as AutomationStatus;
 	const action = auditActionFor(input.to, from);
@@ -157,10 +153,7 @@ export function reduce(
 	return { patch, effects, applied: 'transitioned' };
 }
 
-function auditActionFor(
-	to: AutomationStatus,
-	from: AutomationStatus,
-): AuditAction {
+function auditActionFor(to: AutomationStatus, from: AutomationStatus): AuditAction {
 	switch (to) {
 		case 'active':
 			// draft → active and paused → active both map to dedicated actions.
@@ -172,10 +165,7 @@ function auditActionFor(
 	}
 }
 
-function trackEventFor(
-	to: AutomationStatus,
-	from: AutomationStatus,
-): TrackEventName {
+function trackEventFor(to: AutomationStatus, from: AutomationStatus): TrackEventName {
 	switch (to) {
 		case 'active':
 			return from === 'paused' ? 'automation_resumed' : 'automation_activated';
@@ -188,7 +178,7 @@ function trackEventFor(
 
 function buildPatch(
 	input: AutomationTransitionInput,
-	from: AutomationStatus,
+	from: AutomationStatus
 ): Record<string, unknown> {
 	const updatedAt = input.at;
 	switch (input.to) {
@@ -236,7 +226,7 @@ function buildPatch(
  * closing the resume-skips-validation drift.
  */
 export function validateTriggerConfig(
-	automation: Doc<'automations'>,
+	automation: Doc<'automations'>
 ): 'invalid_trigger_config' | null {
 	if (automation.triggerType === 'contact_updated' && !automation.triggerConfig) {
 		return 'invalid_trigger_config';
@@ -252,10 +242,7 @@ export function validateTriggerConfig(
 
 // ─── Effect runner ──────────────────────────────────────────────────────────
 
-async function applyEffects(
-	ctx: MutationCtx,
-	effects: ReadonlyArray<Effect>,
-): Promise<void> {
+async function applyEffects(ctx: MutationCtx, effects: ReadonlyArray<Effect>): Promise<void> {
 	for (const effect of effects) {
 		switch (effect.kind) {
 			case 'audit_log': {
@@ -286,7 +273,7 @@ async function dispatch(
 	ctx: MutationCtx,
 	automation: Doc<'automations'>,
 	input: AutomationTransitionInput,
-	userId: string,
+	userId: string
 ): Promise<AutomationTransitionOutcome> {
 	const from = automation.status as AutomationStatus;
 	const isLegal = LEGAL_EDGES[from].has(input.to);
@@ -302,7 +289,7 @@ async function dispatch(
 		const stepCount = await ctx.db
 			.query('automationSteps')
 			.withIndex('by_automation', (q) => q.eq('automationId', automation._id))
-			.collect()
+			.collect() // bounded: one automation's steps
 			.then((steps) => steps.length);
 		if (stepCount === 0) {
 			return { ok: false, reason: 'no_steps', from, to: input.to };
@@ -316,10 +303,7 @@ async function dispatch(
 	const result = reduce(automation, input, userId);
 
 	if (Object.keys(result.patch).length > 0) {
-		await ctx.db.patch(
-			automation._id,
-			result.patch as Partial<Doc<'automations'>>,
-		);
+		await ctx.db.patch(automation._id, result.patch as Partial<Doc<'automations'>>);
 	}
 	await applyEffects(ctx, result.effects);
 

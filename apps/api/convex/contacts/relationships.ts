@@ -24,12 +24,12 @@ export const listByContact = authedQuery({
 		const outgoing = await ctx.db
 			.query('contactRelationships')
 			.withIndex('by_from', (q) => q.eq('fromContactId', args.contactId))
-			.collect();
+			.collect(); // bounded: one contact's outgoing relationships
 
 		const incoming = await ctx.db
 			.query('contactRelationships')
 			.withIndex('by_to', (q) => q.eq('toContactId', args.contactId))
-			.collect();
+			.collect(); // bounded: one contact's incoming relationships
 
 		// Resolve contact details for display
 		const relationships = [];
@@ -91,12 +91,12 @@ export const getGraph = authedQuery({
 			const outgoing = await ctx.db
 				.query('contactRelationships')
 				.withIndex('by_from', (q) => q.eq('fromContactId', contactId))
-				.collect();
+				.collect(); // bounded: one contact's outgoing relationships
 
 			const incoming = await ctx.db
 				.query('contactRelationships')
 				.withIndex('by_to', (q) => q.eq('toContactId', contactId))
-				.collect();
+				.collect(); // bounded: one contact's incoming relationships
 
 			for (const rel of outgoing) {
 				edges.push(rel);
@@ -132,7 +132,11 @@ export const create = authedMutation({
 		confidence: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'contacts:manage', 'Only owners and admins can manage contacts');
+		await requireOrgPermission(
+			ctx,
+			'contacts:manage',
+			'Only owners and admins can manage contacts'
+		);
 
 		if (args.fromContactId === args.toContactId) {
 			throwInvalidInput('Cannot create a relationship between a contact and itself');
@@ -142,7 +146,7 @@ export const create = authedMutation({
 		const existing = await ctx.db
 			.query('contactRelationships')
 			.withIndex('by_from', (q) => q.eq('fromContactId', args.fromContactId))
-			.collect();
+			.collect(); // bounded: one contact's outgoing relationships
 
 		const duplicate = existing.find(
 			(r) => r.toContactId === args.toContactId && r.relationship === args.relationship
@@ -176,7 +180,11 @@ export const updateConfidence = authedMutation({
 		confidence: v.number(),
 	},
 	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'contacts:manage', 'Only owners and admins can manage contacts');
+		await requireOrgPermission(
+			ctx,
+			'contacts:manage',
+			'Only owners and admins can manage contacts'
+		);
 
 		await ctx.db.patch(args.relationshipId, { confidence: args.confidence });
 	},
@@ -188,7 +196,11 @@ export const updateConfidence = authedMutation({
 export const remove = authedMutation({
 	args: { relationshipId: v.id('contactRelationships') },
 	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'contacts:manage', 'Only owners and admins can manage contacts');
+		await requireOrgPermission(
+			ctx,
+			'contacts:manage',
+			'Only owners and admins can manage contacts'
+		);
 
 		await ctx.db.delete(args.relationshipId);
 	},

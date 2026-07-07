@@ -11,7 +11,7 @@ type StepRunStatus = Doc<'automationStepRuns'>['status'];
 function statDelta(
 	step: Doc<'automationSteps'>,
 	status: StepRunStatus,
-	delta: number,
+	delta: number
 ): Partial<Doc<'automationSteps'>> {
 	switch (status) {
 		case 'pending':
@@ -37,7 +37,7 @@ async function applyStepStatusTransition(
 	ctx: MutationCtx,
 	automationStepId: Id<'automationSteps'>,
 	from: StepRunStatus | null,
-	to: StepRunStatus | null,
+	to: StepRunStatus | null
 ): Promise<void> {
 	if (from === to) return;
 	const step = await ctx.db.get(automationStepId);
@@ -96,7 +96,7 @@ export const getAutomationSteps = internalQuery({
 		const steps = await ctx.db
 			.query('automationSteps')
 			.withIndex('by_automation', (q) => q.eq('automationId', args.automationId))
-			.collect();
+			.collect(); // bounded: one automation's steps
 
 		return steps.sort((a, b) => a.stepIndex - b.stepIndex);
 	},
@@ -116,9 +116,7 @@ export const getEmailTemplateForStep = internalQuery({
 export const getInstanceSettings = internalQuery({
 	args: {},
 	handler: async (ctx) => {
-		const settings = await ctx.db
-			.query('instanceSettings')
-			.first();
+		const settings = await ctx.db.query('instanceSettings').first();
 		return settings;
 	},
 });

@@ -14,11 +14,7 @@
  */
 
 import { v } from 'convex/values';
-import {
-	internalMutation,
-	internalQuery,
-	internalAction,
-} from '../_generated/server';
+import { internalMutation, internalQuery, internalAction } from '../_generated/server';
 import { authedMutation, publicQuery } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
@@ -61,13 +57,9 @@ function hexToBytes(hex: string): Uint8Array {
 
 async function pbkdf2(password: string, salt: Uint8Array): Promise<Uint8Array> {
 	const enc = new TextEncoder();
-	const key = await crypto.subtle.importKey(
-		'raw',
-		enc.encode(password),
-		'PBKDF2',
-		false,
-		['deriveBits']
-	);
+	const key = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, [
+		'deriveBits',
+	]);
 	const bits = await crypto.subtle.deriveBits(
 		{
 			name: 'PBKDF2',
@@ -113,9 +105,7 @@ export const generate = authedMutation({
 	args: {
 		mailboxId: v.id('mailboxes'),
 		label: v.string(),
-		scopes: v.optional(
-			v.array(v.union(v.literal('imap'), v.literal('smtp')))
-		),
+		scopes: v.optional(v.array(v.union(v.literal('imap'), v.literal('smtp')))),
 	},
 	handler: async (ctx, args) => {
 		const owned = await loadOwnedMailbox(ctx, args.mailboxId);
@@ -150,7 +140,7 @@ export const list = publicQuery({
 		const all = await ctx.db
 			.query('mailAppPasswords')
 			.withIndex('by_mailbox', (q) => q.eq('mailboxId', args.mailboxId))
-			.collect();
+			.collect(); // bounded: one mailbox's app passwords
 		// Hide the hash from the wire format
 		return all.map((row) => ({
 			_id: row._id,
@@ -185,7 +175,7 @@ export const revokeAll = authedMutation({
 		const all = await ctx.db
 			.query('mailAppPasswords')
 			.withIndex('by_mailbox', (q) => q.eq('mailboxId', args.mailboxId))
-			.collect();
+			.collect(); // bounded: one mailbox's app passwords
 		const now = Date.now();
 		for (const row of all) {
 			if (row.revokedAt) continue;
@@ -226,10 +216,10 @@ export const verify = internalAction({
 		// Cross-path throttle. The IMAP server has its own Redis sliding
 		// window; this is the SMTP submission's equivalent — also catches
 		// any future caller (e.g. the HMAC verify endpoint).
-		const throttled = await ctx.runQuery(
-			internal.mail.authRateLimit.isThrottled,
-			{ address: lowerAddress, ip: args.ip }
-		);
+		const throttled = await ctx.runQuery(internal.mail.authRateLimit.isThrottled, {
+			address: lowerAddress,
+			ip: args.ip,
+		});
 		if (throttled) {
 			// Throttled callers look just like wrong-password failures.
 			return null;
@@ -290,14 +280,11 @@ export const _candidatesByAddressAndPrefix = internalQuery({
 		const rows = await ctx.db
 			.query('mailAppPasswords')
 			.withIndex('by_prefix', (q) => q.eq('passwordPrefix', args.passwordPrefix))
-			.collect();
+			.collect(); // bounded: app passwords sharing one prefix (few)
 
 		// Narrow further by mailbox + scope
 		const filtered = rows.filter(
-			(r) =>
-				r.mailboxId === mailbox._id &&
-				r.scopes.includes(args.scope) &&
-				!r.revokedAt
+			(r) => r.mailboxId === mailbox._id && r.scopes.includes(args.scope) && !r.revokedAt
 		);
 
 		return {

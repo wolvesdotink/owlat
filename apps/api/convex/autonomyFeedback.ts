@@ -77,7 +77,7 @@ export const getFeedbackStats = adminQuery({
 		const feedback = await ctx.db
 			.query('autonomyFeedback')
 			.withIndex('by_created_at', (q) => q.gte('createdAt', since))
-			.collect();
+			.collect(); // bounded: feedback within the recent hours window
 
 		const stats: Record<string, { approved: number; rejected: number; edited: number }> = {};
 

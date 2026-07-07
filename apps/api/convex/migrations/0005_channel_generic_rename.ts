@@ -17,6 +17,7 @@ export const run = internalMutation({
 		let channelConfigsUpdated = 0;
 
 		for (const msg of await ctx.db.query('unifiedMessages').collect()) {
+			// bounded: one-shot pre-prod migration (see header)
 			if ((msg.channel as string) === 'webhook') {
 				await ctx.db.patch(msg._id, { channel: 'generic' });
 				unifiedMessagesUpdated++;
@@ -24,6 +25,7 @@ export const run = internalMutation({
 		}
 
 		for (const cfg of await ctx.db.query('channelConfigs').collect()) {
+			// bounded: one-shot pre-prod migration (see header)
 			if ((cfg.channel as string) === 'webhook') {
 				await ctx.db.patch(cfg._id, { channel: 'generic' });
 				channelConfigsUpdated++;

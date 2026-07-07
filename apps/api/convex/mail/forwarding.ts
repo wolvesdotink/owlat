@@ -24,7 +24,7 @@ export const list = publicQuery({
 		return ctx.db
 			.query('mailForwarding')
 			.withIndex('by_mailbox', (q) => q.eq('mailboxId', args.mailboxId))
-			.collect();
+			.collect(); // bounded: one mailbox's forwarding rules
 	},
 });
 
@@ -96,7 +96,7 @@ export const internalListForMailbox = internalQuery({
 		const rows = await ctx.db
 			.query('mailForwarding')
 			.withIndex('by_mailbox', (q) => q.eq('mailboxId', args.mailboxId))
-			.collect();
+			.collect(); // bounded: one mailbox's forwarding rules
 		return rows.filter((r) => r.isEnabled);
 	},
 });

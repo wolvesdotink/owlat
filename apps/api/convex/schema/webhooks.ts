@@ -1,10 +1,7 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { webhookPayloadValidator } from '../lib/convexValidators';
-import {
-	webhookEventValidator,
-	subscribableWebhookEventValidator,
-} from '../webhooks/events';
+import { webhookEventValidator, subscribableWebhookEventValidator } from '../webhooks/events';
 
 /**
  * Webhook tables — outbound notifications + delivery log + raw inbound payloads.
@@ -32,8 +29,7 @@ export const webhookTables = {
 		// Timestamps
 		createdAt: v.number(),
 		updatedAt: v.number(),
-	})
-		.index('by_active', ['isActive']),
+	}).index('by_active', ['isActive']),
 
 	// Webhook Delivery Logs - tracks webhook delivery attempts for debugging
 	webhookDeliveryLogs: defineTable({
@@ -68,8 +64,16 @@ export const webhookTables = {
 		durationMs: v.optional(v.number()),
 	})
 		.index('by_webhook', ['webhookId'])
+		// Delivery-stats reads one webhook's logs over a recent window; the
+		// compound index range-scans that window instead of collecting every
+		// log the webhook ever produced and filtering in memory.
+		.index('by_webhook_and_scheduled_at', ['webhookId', 'scheduledAt'])
 		.index('by_status', ['status'])
 		.index('by_webhook_and_status', ['webhookId', 'status'])
+		// Retention cleanup range-scans one status for rows older than a cutoff;
+		// the compound index seeks straight to the old tail instead of scanning
+		// every row of that status.
+		.index('by_status_and_completed_at', ['status', 'completedAt'])
 		.index('by_event', ['event']),
 
 	// Webhook Payloads - raw webhook payloads for audit and dispute resolution

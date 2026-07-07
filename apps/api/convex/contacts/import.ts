@@ -40,12 +40,7 @@ import { jsonPrimitiveValue } from '../lib/convexValidators';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-export const IMPORT_SOURCE_LITERALS = [
-	'csv',
-	'api',
-	'mailchimp',
-	'stripe',
-] as const;
+export const IMPORT_SOURCE_LITERALS = ['csv', 'api', 'mailchimp', 'stripe'] as const;
 
 export type ImportSource = (typeof IMPORT_SOURCE_LITERALS)[number];
 
@@ -81,9 +76,7 @@ export type ImportOutcome = {
 
 // ─── Validators ─────────────────────────────────────────────────────────────
 
-const importSourceValidator = v.union(
-	...IMPORT_SOURCE_LITERALS.map((l) => v.literal(l)),
-);
+const importSourceValidator = v.union(...IMPORT_SOURCE_LITERALS.map((l) => v.literal(l)));
 
 const importRowValidator = v.object({
 	email: v.string(),
@@ -101,7 +94,7 @@ const topicAssignmentsValidator = v.union(
 	v.object({
 		kind: v.literal('per_row'),
 		map: v.record(v.string(), v.array(v.id('topics'))),
-	}),
+	})
 );
 
 const doiAttestValidator = v.object({
@@ -144,7 +137,7 @@ interface PropertyCatalog {
 }
 
 async function loadPropertyCatalog(ctx: MutationCtx): Promise<PropertyCatalog> {
-	const rows = await ctx.db.query('contactProperties').collect();
+	const rows = await ctx.db.query('contactProperties').collect(); // bounded: custom property definitions (org-scale, few)
 	const byKey = new Map<string, Id<'contactProperties'>>();
 	for (const row of rows) {
 		byKey.set(row.key, row._id);
@@ -157,7 +150,7 @@ async function autoRegisterProperty(
 	catalog: PropertyCatalog,
 	key: string,
 	value: string | number | boolean,
-	source: ImportSource,
+	source: ImportSource
 ): Promise<Id<'contactProperties'>> {
 	const propertyId = await ctx.db.insert('contactProperties', {
 		key,
@@ -180,12 +173,12 @@ async function upsertPropertyValue(
 	ctx: MutationCtx,
 	contactId: Id<'contacts'>,
 	propertyId: Id<'contactProperties'>,
-	value: string,
+	value: string
 ): Promise<void> {
 	const existing = await ctx.db
 		.query('contactPropertyValues')
 		.withIndex('by_contact_and_property', (q) =>
-			q.eq('contactId', contactId).eq('propertyId', propertyId),
+			q.eq('contactId', contactId).eq('propertyId', propertyId)
 		)
 		.first();
 	const now = Date.now();
@@ -213,7 +206,7 @@ async function applyRowProperties(
 	contactId: Id<'contacts'>,
 	properties: Record<string, string | number | boolean | null> | undefined,
 	source: ImportSource,
-	catalog: PropertyCatalog,
+	catalog: PropertyCatalog
 ): Promise<RowPropertyWriteSummary> {
 	const summary: RowPropertyWriteSummary = {
 		written: 0,
@@ -228,7 +221,11 @@ async function applyRowProperties(
 		if (rawValue === undefined || rawValue === null || rawValue === '') {
 			continue;
 		}
-		if (typeof rawValue !== 'string' && typeof rawValue !== 'number' && typeof rawValue !== 'boolean') {
+		if (
+			typeof rawValue !== 'string' &&
+			typeof rawValue !== 'number' &&
+			typeof rawValue !== 'boolean'
+		) {
 			continue;
 		}
 		const key = rawKey.trim();
@@ -268,7 +265,7 @@ async function applyRowProperties(
  */
 function buildPerTopicLists(
 	assignments: TopicAssignments,
-	contactEmailById: ReadonlyMap<Id<'contacts'>, string>,
+	contactEmailById: ReadonlyMap<Id<'contacts'>, string>
 ): Map<Id<'topics'>, Id<'contacts'>[]> {
 	const perTopic = new Map<Id<'topics'>, Id<'contacts'>[]>();
 	if (assignments.kind === 'single') {
@@ -312,7 +309,7 @@ export const importBatch = internalMutation({
 	handler: async (ctx, args): Promise<ImportOutcome> => {
 		if (args.rows.length > IMPORT_BATCH_MAX_ROWS) {
 			throw new Error(
-				`Cannot import more than ${IMPORT_BATCH_MAX_ROWS} contacts at once. Please split into smaller batches.`,
+				`Cannot import more than ${IMPORT_BATCH_MAX_ROWS} contacts at once. Please split into smaller batches.`
 			);
 		}
 
@@ -355,9 +352,7 @@ export const importBatch = internalMutation({
 			if (!normalizedEmail || !isValidEmail(normalizedEmail)) {
 				outcome.failed++;
 				if (outcome.errors.length < ERROR_CAP) {
-					outcome.errors.push(
-						`Invalid email: ${row.email ?? '(empty)'}`,
-					);
+					outcome.errors.push(`Invalid email: ${row.email ?? '(empty)'}`);
 				}
 				continue;
 			}
@@ -385,10 +380,10 @@ export const importBatch = internalMutation({
 				// this, automations watching firstName/lastName/language never run
 				// on CSV/integration imports.
 				if (action === 'updated' && changedProperties && changedProperties.length > 0) {
-					await ctx.runMutation(
-						internal.automations.triggers.fireContactUpdatedTrigger,
-						{ contactId, changedProperties },
-					);
+					await ctx.runMutation(internal.automations.triggers.fireContactUpdatedTrigger, {
+						contactId,
+						changedProperties,
+					});
 				}
 
 				resolvedByEmail.set(contactId, normalizedEmail);
@@ -398,7 +393,7 @@ export const importBatch = internalMutation({
 					contactId,
 					row.properties,
 					source,
-					catalog,
+					catalog
 				);
 				outcome.propertiesSet += propertySummary.written;
 				outcome.propertiesAutoRegistered += propertySummary.autoRegistered;
@@ -424,11 +419,10 @@ export const importBatch = internalMutation({
 					// the activity row's metadata — the row is summary-level,
 					// not per-property.
 					const firstKey =
-						Object.keys(row.properties ?? {})
-							.find((k) => {
-								const v = row.properties?.[k];
-								return v !== null && v !== undefined && v !== '';
-							}) ?? 'properties';
+						Object.keys(row.properties ?? {}).find((k) => {
+							const v = row.properties?.[k];
+							return v !== null && v !== undefined && v !== '';
+						}) ?? 'properties';
 					await recordContactActivity(ctx, {
 						literal: 'property_updated',
 						contactId,
@@ -444,30 +438,22 @@ export const importBatch = internalMutation({
 				// DOI attest — must precede topic subscription (post-loop) so
 				// the contact is `'confirmed'` before subscribeMany runs.
 				if (args.doiAttest) {
-					await ctx.runMutation(
-						internal.contacts.doiLifecycle.transition,
-						{
-							contactId,
-							input: {
-								to: 'confirmed',
-								at: now,
-								source: 'admin_attest',
-								attestSource: args.doiAttest.attestSource,
-								...(args.doiAttest.triggeredBy
-									? { triggeredBy: args.doiAttest.triggeredBy }
-									: {}),
-							},
+					await ctx.runMutation(internal.contacts.doiLifecycle.transition, {
+						contactId,
+						input: {
+							to: 'confirmed',
+							at: now,
+							source: 'admin_attest',
+							attestSource: args.doiAttest.attestSource,
+							...(args.doiAttest.triggeredBy ? { triggeredBy: args.doiAttest.triggeredBy } : {}),
 						},
-					);
+					});
 				}
 			} catch (error) {
 				outcome.failed++;
 				if (outcome.errors.length < ERROR_CAP) {
-					const message =
-						error instanceof Error ? error.message : 'Unknown error';
-					outcome.errors.push(
-						`Failed to process ${row.email ?? '(unknown)'}: ${message}`,
-					);
+					const message = error instanceof Error ? error.message : 'Unknown error';
+					outcome.errors.push(`Failed to process ${row.email ?? '(unknown)'}: ${message}`);
 				}
 			}
 		}
@@ -476,7 +462,7 @@ export const importBatch = internalMutation({
 		for (const [key, count] of skippedKeyCounts.entries()) {
 			if (outcome.errors.length >= ERROR_CAP) break;
 			outcome.errors.push(
-				`Property '${key}' is not registered; values dropped for ${count} row(s).`,
+				`Property '${key}' is not registered; values dropped for ${count} row(s).`
 			);
 		}
 
@@ -485,29 +471,22 @@ export const importBatch = internalMutation({
 			const perTopic = buildPerTopicLists(args.topicAssignments, resolvedByEmail);
 			for (const [topicId, contactIds] of perTopic.entries()) {
 				try {
-					const result = await ctx.runMutation(
-						internal.topics.subscription.subscribeMany,
-						{
-							topicId,
-							contactIds,
-							source: 'import',
-							...(args.siteUrl ? { siteUrl: args.siteUrl } : {}),
-						},
-					);
+					const result = await ctx.runMutation(internal.topics.subscription.subscribeMany, {
+						topicId,
+						contactIds,
+						source: 'import',
+						...(args.siteUrl ? { siteUrl: args.siteUrl } : {}),
+					});
 					for (const sub of result.outcomes) {
-						if (
-							sub.ok &&
-							(sub.action === 'subscribed' || sub.action === 'pending_doi')
-						) {
+						if (sub.ok && (sub.action === 'subscribed' || sub.action === 'pending_doi')) {
 							outcome.addedToTopics++;
 						}
 					}
 				} catch (error) {
 					if (outcome.errors.length < ERROR_CAP) {
-						const message =
-							error instanceof Error ? error.message : 'Unknown error';
+						const message = error instanceof Error ? error.message : 'Unknown error';
 						outcome.errors.push(
-							`Failed to subscribe ${contactIds.length} contact(s) to topic: ${message}`,
+							`Failed to subscribe ${contactIds.length} contact(s) to topic: ${message}`
 						);
 					}
 				}

@@ -32,12 +32,18 @@ export type ContactJunctionSpec = {
 function junctionLinksForContact(
 	ctx: MutationCtx,
 	junctionTable: JunctionTableName,
-	contactId: Id<'contacts'>,
-): Promise<Array<{ _id: Id<JunctionTableName>; entryId?: Id<'knowledgeEntries'>; fileId?: Id<'semanticFiles'> }>> {
+	contactId: Id<'contacts'>
+): Promise<
+	Array<{
+		_id: Id<JunctionTableName>;
+		entryId?: Id<'knowledgeEntries'>;
+		fileId?: Id<'semanticFiles'>;
+	}>
+> {
 	return ctx.db
 		.query(junctionTable)
 		.withIndex('by_contact', (q) => q.eq('contactId', contactId))
-		.collect();
+		.collect(); // bounded: one contact's junction rows
 }
 
 /** Strip / rewrite a contact id in a parent row's mirrored `contactIds` array. */
@@ -45,7 +51,7 @@ async function rewriteMirrorArray(
 	ctx: MutationCtx,
 	spec: ContactJunctionSpec,
 	parentId: Id<JunctionParentTable>,
-	rewrite: (ids: Id<'contacts'>[] | undefined) => Id<'contacts'>[] | undefined,
+	rewrite: (ids: Id<'contacts'>[] | undefined) => Id<'contacts'>[] | undefined
 ): Promise<void> {
 	const parent = (await ctx.db.get(parentId)) as { contactIds?: Id<'contacts'>[] } | null;
 	if (!parent) return;
@@ -66,7 +72,7 @@ export async function repointContactJunction(
 	ctx: MutationCtx,
 	spec: ContactJunctionSpec,
 	targetContactId: Id<'contacts'>,
-	sourceContactId: Id<'contacts'>,
+	sourceContactId: Id<'contacts'>
 ): Promise<void> {
 	const targetLinks = await junctionLinksForContact(ctx, spec.junctionTable, targetContactId);
 	const targetParentIds = new Set(targetLinks.map((l) => l[spec.parentIdField] as string));
@@ -78,13 +84,13 @@ export async function repointContactJunction(
 			// and strip the source from the parent's mirror array.
 			await ctx.db.delete(link._id);
 			await rewriteMirrorArray(ctx, spec, parentId, (ids) =>
-				ids?.filter((c) => c !== sourceContactId),
+				ids?.filter((c) => c !== sourceContactId)
 			);
 		} else {
 			await ctx.db.patch(link._id, { contactId: targetContactId });
 			targetParentIds.add(parentId as string);
 			await rewriteMirrorArray(ctx, spec, parentId, (ids) =>
-				ids?.map((c) => (c === sourceContactId ? targetContactId : c)),
+				ids?.map((c) => (c === sourceContactId ? targetContactId : c))
 			);
 		}
 	}
@@ -99,15 +105,13 @@ export async function repointContactJunction(
 export async function detachContactJunction(
 	ctx: MutationCtx,
 	spec: ContactJunctionSpec,
-	contactId: Id<'contacts'>,
+	contactId: Id<'contacts'>
 ): Promise<void> {
 	const links = await junctionLinksForContact(ctx, spec.junctionTable, contactId);
 	for (const link of links) {
 		const parentId = link[spec.parentIdField] as Id<JunctionParentTable>;
 		await ctx.db.delete(link._id);
-		await rewriteMirrorArray(ctx, spec, parentId, (ids) =>
-			ids?.filter((c) => c !== contactId),
-		);
+		await rewriteMirrorArray(ctx, spec, parentId, (ids) => ids?.filter((c) => c !== contactId));
 	}
 }
 

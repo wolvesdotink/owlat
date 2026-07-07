@@ -47,7 +47,7 @@ const campaignSendJobs = defineTable({
 	// Optional for forward-compat with rows written before this field existed;
 	// absent ⇒ treated as `plain`.
 	variantMode: v.optional(
-		v.union(v.literal('plain'), v.literal('ab_test'), v.literal('ab_winner')),
+		v.union(v.literal('plain'), v.literal('ab_test'), v.literal('ab_winner'))
 	),
 	// Fraction of the audience that forms the A/B test cohort (`2 × split / 100`).
 	// Set for the `ab_test` / `ab_winner` modes; the cohort/remainder partition
@@ -171,6 +171,9 @@ export const campaignTables = {
 		.index('by_status_and_updated_at', ['status', 'updatedAt'])
 		.index('by_status_and_scheduled_at', ['status', 'scheduledAt'])
 		.index('by_status_sent_at', ['status', 'sentAt'])
+		// A/B analytics lists only the A/B campaigns; index the flag so the
+		// query seeks them directly instead of scanning the campaigns table.
+		.index('by_is_ab_test', ['isABTest'])
 		.index('by_archive_token', ['archiveToken'])
 		.searchIndex('search_campaigns', {
 			searchField: 'searchableText',

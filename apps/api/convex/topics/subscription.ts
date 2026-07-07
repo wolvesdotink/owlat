@@ -43,9 +43,7 @@ export const SUBSCRIBE_SOURCE_LITERALS = [
 
 export type SubscribeSource = (typeof SUBSCRIBE_SOURCE_LITERALS)[number];
 
-const subscribeSourceValidator = v.union(
-	...SUBSCRIBE_SOURCE_LITERALS.map((l) => v.literal(l)),
-);
+const subscribeSourceValidator = v.union(...SUBSCRIBE_SOURCE_LITERALS.map((l) => v.literal(l)));
 
 export const UNSUBSCRIBE_SOURCE_LITERALS = [
 	'admin',
@@ -56,9 +54,7 @@ export const UNSUBSCRIBE_SOURCE_LITERALS = [
 
 export type UnsubscribeSource = (typeof UNSUBSCRIBE_SOURCE_LITERALS)[number];
 
-const unsubscribeSourceValidator = v.union(
-	...UNSUBSCRIBE_SOURCE_LITERALS.map((l) => v.literal(l)),
-);
+const unsubscribeSourceValidator = v.union(...UNSUBSCRIBE_SOURCE_LITERALS.map((l) => v.literal(l)));
 
 // ─── Outcome types ──────────────────────────────────────────────────────────
 
@@ -77,10 +73,7 @@ export type SubscribeOutcome =
 	| { ok: true; action: 'already_member'; membershipId: Id<'contactTopics'> }
 	| {
 			ok: false;
-			reason:
-				| 'contact_not_found'
-				| 'topic_not_found'
-				| 'contact_soft_deleted';
+			reason: 'contact_not_found' | 'topic_not_found' | 'contact_soft_deleted';
 	  };
 
 export type UnsubscribeOutcome =
@@ -103,9 +96,7 @@ interface UnsubscribeEffectFlags {
 	fireTopicUnsubscribedWebhook: boolean;
 }
 
-function effectFlagsForUnsubscribeSource(
-	source: UnsubscribeSource,
-): UnsubscribeEffectFlags {
+function effectFlagsForUnsubscribeSource(source: UnsubscribeSource): UnsubscribeEffectFlags {
 	switch (source) {
 		case 'public_email_link':
 			return {
@@ -167,7 +158,7 @@ async function subscribeOne(
 		forceDoi?: boolean;
 		siteUrl: string | undefined;
 		now: number;
-	},
+	}
 ): Promise<SubscribeOneResult> {
 	const contact = await ctx.db.get(args.contactId);
 	if (!contact) {
@@ -186,7 +177,7 @@ async function subscribeOne(
 	const existing = await ctx.db
 		.query('contactTopics')
 		.withIndex('by_contact_and_topic', (q) =>
-			q.eq('contactId', args.contactId).eq('topicId', args.topic._id),
+			q.eq('contactId', args.contactId).eq('topicId', args.topic._id)
 		)
 		.first();
 
@@ -208,8 +199,7 @@ async function subscribeOne(
 	});
 
 	const requiresDoi =
-		(args.topic.requireDoubleOptIn === true || args.forceDoi === true) &&
-		args.skipDoi !== true;
+		(args.topic.requireDoubleOptIn === true || args.forceDoi === true) && args.skipDoi !== true;
 
 	if (!requiresDoi || contact.doiStatus === 'confirmed') {
 		// A completed opt-in (DOI not required, or the contact already
@@ -229,13 +219,10 @@ async function subscribeOne(
 		}
 
 		// DOI is not in the way — fire the trigger now.
-		await ctx.runMutation(
-			internal.automations.triggers.fireTopicSubscribedTrigger,
-			{
-				contactId: args.contactId,
-				topicId: args.topic._id,
-			},
-		);
+		await ctx.runMutation(internal.automations.triggers.fireTopicSubscribedTrigger, {
+			contactId: args.contactId,
+			topicId: args.topic._id,
+		});
 		return {
 			outcome: { ok: true, action: 'subscribed', membershipId },
 			insertedCount: 1,
@@ -285,7 +272,7 @@ async function patchCachedMemberCountDelta(
 	ctx: MutationCtx,
 	topic: Doc<'topics'>,
 	delta: number,
-	now: number,
+	now: number
 ): Promise<void> {
 	if (delta === 0) return;
 	const current = topic.cachedMemberCount ?? 0;
@@ -318,12 +305,12 @@ async function unsubscribeOne(
 		source: UnsubscribeSource;
 		reason: string;
 		now: number;
-	},
+	}
 ): Promise<UnsubscribeOneResult> {
 	const membership = await ctx.db
 		.query('contactTopics')
 		.withIndex('by_contact_and_topic', (q) =>
-			q.eq('contactId', args.contactId).eq('topicId', args.topic._id),
+			q.eq('contactId', args.contactId).eq('topicId', args.topic._id)
 		)
 		.first();
 
@@ -356,13 +343,13 @@ async function unsubscribeOne(
 
 async function clearFormSubmissionConfirmations(
 	ctx: MutationCtx,
-	contactId: Id<'contacts'>,
+	contactId: Id<'contacts'>
 ): Promise<void> {
 	const formSubmissions = await ctx.db
 		.query('formSubmissions')
 		.withIndex('by_contact', (q) => q.eq('contactId', contactId))
 		.filter((q) => q.neq(q.field('confirmedAt'), undefined))
-		.collect();
+		.collect(); // bounded: one contact's form submissions
 
 	for (const submission of formSubmissions) {
 		await ctx.db.patch(submission._id, {
@@ -403,7 +390,7 @@ async function fireTopicUnsubscribedWebhook(
 		contactId: Id<'contacts'>;
 		removedTopics: Array<{ topicId: Id<'topics'>; topicName: string }>;
 		now: number;
-	},
+	}
 ): Promise<void> {
 	if (args.removedTopics.length === 0) return;
 	const contact = await ctx.db.get(args.contactId);
@@ -436,7 +423,7 @@ async function applyUnsubscribeCallEffects(
 		removedTopics: Array<{ topicId: Id<'topics'>; topicName: string }>;
 		source: UnsubscribeSource;
 		now: number;
-	},
+	}
 ): Promise<void> {
 	if (args.removedTopics.length === 0) return;
 
@@ -522,15 +509,12 @@ const subscribeManyArgsValidator = {
  */
 export const subscribeMany = internalMutation({
 	args: subscribeManyArgsValidator,
-	handler: async (
-		ctx,
-		args,
-	): Promise<{ outcomes: SubscribeOutcome[] }> => {
+	handler: async (ctx, args): Promise<{ outcomes: SubscribeOutcome[] }> => {
 		const topic = await ctx.db.get(args.topicId);
 		if (!topic) {
 			return {
 				outcomes: args.contactIds.map(
-					(): SubscribeOutcome => ({ ok: false, reason: 'topic_not_found' }),
+					(): SubscribeOutcome => ({ ok: false, reason: 'topic_not_found' })
 				),
 			};
 		}
@@ -636,10 +620,7 @@ const unsubscribeManyArgsValidator = {
  */
 export const unsubscribeMany = internalMutation({
 	args: unsubscribeManyArgsValidator,
-	handler: async (
-		ctx,
-		args,
-	): Promise<{ outcomes: UnsubscribeOutcome[] }> => {
+	handler: async (ctx, args): Promise<{ outcomes: UnsubscribeOutcome[] }> => {
 		const topic = await ctx.db.get(args.topicId);
 		if (!topic) {
 			return {
@@ -648,7 +629,7 @@ export const unsubscribeMany = internalMutation({
 						ok: false,
 						reason: 'topic_not_found',
 						topicId: args.topicId,
-					}),
+					})
 				),
 			};
 		}
@@ -720,10 +701,7 @@ const unsubscribeAllForContactArgsValidator = {
  */
 export const unsubscribeAllForContact = internalMutation({
 	args: unsubscribeAllForContactArgsValidator,
-	handler: async (
-		ctx,
-		args,
-	): Promise<{ outcomes: UnsubscribeOutcome[] }> => {
+	handler: async (ctx, args): Promise<{ outcomes: UnsubscribeOutcome[] }> => {
 		const contact = await ctx.db.get(args.contactId);
 		if (!contact) {
 			return {
@@ -753,7 +731,7 @@ export const unsubscribeAllForContact = internalMutation({
 		const memberships = await ctx.db
 			.query('contactTopics')
 			.withIndex('by_contact', (q) => q.eq('contactId', args.contactId))
-			.collect();
+			.collect(); // bounded: one contact's topic memberships
 
 		// Filter to one topic if requested.
 		const inScope = args.topicId
@@ -762,9 +740,7 @@ export const unsubscribeAllForContact = internalMutation({
 
 		if (inScope.length === 0) {
 			return {
-				outcomes: args.topicId
-					? [{ ok: true, action: 'not_member', topicId: args.topicId }]
-					: [],
+				outcomes: args.topicId ? [{ ok: true, action: 'not_member', topicId: args.topicId }] : [],
 			};
 		}
 
@@ -803,7 +779,7 @@ export const unsubscribeAllForContact = internalMutation({
 				removedContexts.push(result.context);
 				perTopicDeletions.set(
 					membership.topicId,
-					(perTopicDeletions.get(membership.topicId) ?? 0) + 1,
+					(perTopicDeletions.get(membership.topicId) ?? 0) + 1
 				);
 			}
 		}

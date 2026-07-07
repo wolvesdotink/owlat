@@ -10,12 +10,15 @@ import { v } from 'convex/values';
 import { internalQuery, internalMutation, internalAction } from './_generated/server';
 import type { MutationCtx } from './_generated/server';
 import { authedQuery, adminQuery, authedMutation } from './lib/authedFunctions';
-import { requireOrgPermission, getBetterAuthSessionWithRole, hasPermission } from './lib/sessionOrganization';
+import {
+	requireOrgPermission,
+	getBetterAuthSessionWithRole,
+	hasPermission,
+} from './lib/sessionOrganization';
 import { internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
 import { unifiedMessageChannelValidator, outboundChannelValidator } from './lib/convexValidators';
 import { applyOpenThreadDelta } from './lib/inboxStats';
-
 
 // ============================================================
 // Queries
@@ -82,9 +85,7 @@ export const listRecent = adminQuery({
 				.query('unifiedMessages')
 				.withIndex('by_channel', (q2) => q2.eq('channel', args.channel!));
 		} else {
-			q = ctx.db
-				.query('unifiedMessages')
-				.withIndex('by_created_at');
+			q = ctx.db.query('unifiedMessages').withIndex('by_created_at');
 		}
 
 		const messages = await q.order('desc').take(args.limit ?? 50);
@@ -107,7 +108,7 @@ export const getChannelConfigs = authedQuery({
 		// The encrypted credential envelope (config) is admin-only — members
 		// get the row WITHOUT it; the settings page (admin) gets it for the
 		// edit form.
-		const rows = await ctx.db.query('channelConfigs').collect();
+		const rows = await ctx.db.query('channelConfigs').collect(); // bounded: ≤5 channel-config rows (schema literal union)
 		const session = await getBetterAuthSessionWithRole(ctx);
 		const isAdmin = session?.role != null && hasPermission(session.role, 'organization:manage');
 		if (isAdmin) return rows;
@@ -162,12 +163,9 @@ export const recordOutbound = internalMutation({
 		memberId: v.optional(v.string()),
 		content: v.string(),
 		externalMessageId: v.optional(v.string()),
-		status: v.optional(v.union(
-			v.literal('queued'),
-			v.literal('sent'),
-			v.literal('delivered'),
-			v.literal('failed')
-		)),
+		status: v.optional(
+			v.union(v.literal('queued'), v.literal('sent'), v.literal('delivered'), v.literal('failed'))
+		),
 		metadata: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
@@ -246,7 +244,7 @@ export const listPendingDeliveryStatus = internalQuery({
 		const rows = await ctx.db
 			.query('unifiedMessages')
 			.withIndex('by_direction_status_and_created_at', (q) =>
-				q.eq('direction', 'outbound').eq('status', 'sent').gte('createdAt', cutoff),
+				q.eq('direction', 'outbound').eq('status', 'sent').gte('createdAt', cutoff)
 			)
 			.order('desc')
 			.take(args.limit);
@@ -328,7 +326,11 @@ export const updateChannelConfig = authedMutation({
 		config: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'organization:manage', 'Only owners and admins can configure channels');
+		await requireOrgPermission(
+			ctx,
+			'organization:manage',
+			'Only owners and admins can configure channels'
+		);
 		const existing = await ctx.db
 			.query('channelConfigs')
 			.withIndex('by_channel', (q) => q.eq('channel', args.channel))
@@ -389,7 +391,9 @@ export const setChannelConfigSecret = internalMutation({
 		// dropping the credential (which would leave the channel un-sendable
 		// with no signal).
 		if (!existing) {
-			throw new Error(`setChannelConfigSecret: no channelConfigs row for channel '${args.channel}' — encrypted credential was not persisted`);
+			throw new Error(
+				`setChannelConfigSecret: no channelConfigs row for channel '${args.channel}' — encrypted credential was not persisted`
+			);
 		}
 		await ctx.db.patch(existing._id, { config: args.config, updatedAt: Date.now() });
 	},
@@ -465,7 +469,7 @@ export const resolveOutboundThread = internalMutation({
 			.first();
 		if (!config || !config.isEnabled) {
 			throw new Error(
-				`The ${args.channel} channel is not enabled. Configure and enable it in Settings → Channels first.`,
+				`The ${args.channel} channel is not enabled. Configure and enable it in Settings → Channels first.`
 			);
 		}
 
@@ -531,11 +535,7 @@ export const resolveOutboundThread = internalMutation({
 export const updateChannelHealth = internalMutation({
 	args: {
 		channel: unifiedMessageChannelValidator,
-		healthStatus: v.union(
-			v.literal('healthy'),
-			v.literal('degraded'),
-			v.literal('down')
-		),
+		healthStatus: v.union(v.literal('healthy'), v.literal('degraded'), v.literal('down')),
 		lastError: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
@@ -670,7 +670,7 @@ export const getEnabledChannels = internalQuery({
 async function stampChannelLastSuccessfulSend(
 	ctx: MutationCtx,
 	channel: Doc<'channelConfigs'>['channel'],
-	now: number,
+	now: number
 ): Promise<void> {
 	const config = await ctx.db
 		.query('channelConfigs')
@@ -694,7 +694,7 @@ async function findMirroredEmail(
 		externalMessageId: string | undefined;
 		channel: Doc<'unifiedMessages'>['channel'];
 		direction: Doc<'unifiedMessages'>['direction'];
-	},
+	}
 ): Promise<Doc<'unifiedMessages'> | null> {
 	if (!args.externalMessageId) return null;
 	const id = args.externalMessageId;
@@ -702,11 +702,7 @@ async function findMirroredEmail(
 		.query('unifiedMessages')
 		.withIndex('by_external_message_id', (q) => q.eq('externalMessageId', id))
 		.take(10); // bounded: a provider message id maps to one mirror row per (channel, direction)
-	return (
-		matches.find(
-			(m) => m.channel === args.channel && m.direction === args.direction,
-		) ?? null
-	);
+	return matches.find((m) => m.channel === args.channel && m.direction === args.direction) ?? null;
 }
 
 /**
@@ -725,7 +721,7 @@ export async function recordInboundMirror(
 		content: string;
 		externalMessageId?: string;
 		metadata?: string;
-	},
+	}
 ): Promise<Id<'unifiedMessages'>> {
 	// Idempotent on the provider message id: a re-delivered inbound (the
 	// MTA/provider re-POSTs the same Message-ID) must not produce a second
@@ -768,7 +764,7 @@ export async function mirrorEmailSendWrite(
 		htmlBody?: string;
 		externalMessageId?: string;
 		status?: Doc<'unifiedMessages'>['status'];
-	},
+	}
 ): Promise<Id<'unifiedMessages'>> {
 	const existing = await findMirroredEmail(ctx, {
 		externalMessageId: args.externalMessageId,

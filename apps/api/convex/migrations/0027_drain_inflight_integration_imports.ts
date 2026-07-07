@@ -17,8 +17,7 @@
 
 import { internalMutation } from '../_generated/server';
 
-const DRAIN_MESSAGE =
-	'Migration to integration-import walker (ADR-0027); please retry.';
+const DRAIN_MESSAGE = 'Migration to integration-import walker (ADR-0027); please retry.';
 
 export const run = internalMutation({
 	args: {},
@@ -26,7 +25,7 @@ export const run = internalMutation({
 		const running = await ctx.db
 			.query('integrationImports')
 			.withIndex('by_status', (q) => q.eq('status', 'running'))
-			.collect();
+			.collect(); // bounded: one-shot pre-prod migration
 
 		const now = Date.now();
 		for (const row of running) {

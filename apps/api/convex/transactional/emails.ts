@@ -38,9 +38,7 @@ export const list = authedQuery({
 	},
 	handler: async (ctx, args) => {
 		await assertFeatureEnabled(ctx, 'transactional');
-		let transactionalEmails = await ctx.db
-			.query('transactionalEmails')
-			.collect();
+		let transactionalEmails = await ctx.db.query('transactionalEmails').collect(); // bounded: transactional-email templates (org-scale library)
 
 		if (args.status) {
 			transactionalEmails = transactionalEmails.filter((e) => e.status === args.status);
@@ -96,9 +94,7 @@ export const getBySlug = authedQuery({
 	handler: async (ctx, args) => {
 		return await ctx.db
 			.query('transactionalEmails')
-			.withIndex('by_slug', (q) =>
-				q.eq('slug', args.slug)
-			)
+			.withIndex('by_slug', (q) => q.eq('slug', args.slug))
 			.first();
 	},
 });
@@ -109,9 +105,7 @@ export const getBySlug = authedQuery({
 export const countByStatus = authedQuery({
 	args: {},
 	handler: async (ctx) => {
-		const allEmails = await ctx.db
-			.query('transactionalEmails')
-			.collect();
+		const allEmails = await ctx.db.query('transactionalEmails').collect(); // bounded: transactional-email templates (org-scale library)
 
 		return {
 			total: allEmails.length,
@@ -135,7 +129,11 @@ export const create = authedMutation({
 		defaultLanguage: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<Id<'transactionalEmails'>> => {
-		await requireOrgPermission(ctx, 'templates:manage', 'Only owners and admins can create transactional emails');
+		await requireOrgPermission(
+			ctx,
+			'templates:manage',
+			'Only owners and admins can create transactional emails'
+		);
 		const outcome = await ctx.runMutation(internal.transactional.lifecycle.create, {
 			name: args.name,
 			slug: args.slug,
@@ -192,7 +190,11 @@ export const update = authedMutation({
 	},
 	handler: async (ctx, args) => {
 		await assertFeatureEnabled(ctx, 'transactional');
-		await requireOrgPermission(ctx, 'templates:manage', 'Only owners and admins can update transactional emails');
+		await requireOrgPermission(
+			ctx,
+			'templates:manage',
+			'Only owners and admins can update transactional emails'
+		);
 		const email = await getOrThrow(ctx, args.id, 'Transactional email');
 
 		assertEditableForPublishableChange(email, args.forceWhilePublished);
@@ -201,9 +203,7 @@ export const update = authedMutation({
 		if (args.slug && args.slug !== email.slug) {
 			const existing = await ctx.db
 				.query('transactionalEmails')
-				.withIndex('by_slug', (q) =>
-					q.eq('slug', args.slug!)
-				)
+				.withIndex('by_slug', (q) => q.eq('slug', args.slug!))
 				.first();
 
 			if (existing) {
@@ -286,7 +286,11 @@ export const publish = authedMutation({
 	},
 	handler: async (ctx, args) => {
 		await assertFeatureEnabled(ctx, 'transactional');
-		await requireOrgPermission(ctx, 'templates:manage', 'Only owners and admins can publish transactional emails');
+		await requireOrgPermission(
+			ctx,
+			'templates:manage',
+			'Only owners and admins can publish transactional emails'
+		);
 		const email = await getOrThrow(ctx, args.id, 'Transactional email');
 
 		if (email.status === 'published') {
@@ -322,7 +326,11 @@ export const unpublish = authedMutation({
 	args: { id: v.id('transactionalEmails') },
 	handler: async (ctx, args) => {
 		await assertFeatureEnabled(ctx, 'transactional');
-		await requireOrgPermission(ctx, 'templates:manage', 'Only owners and admins can unpublish transactional emails');
+		await requireOrgPermission(
+			ctx,
+			'templates:manage',
+			'Only owners and admins can unpublish transactional emails'
+		);
 		const email = await getOrThrow(ctx, args.id, 'Transactional email');
 
 		if (email.status === 'draft') {
@@ -353,7 +361,11 @@ export const duplicate = authedMutation({
 	args: { id: v.id('transactionalEmails') },
 	handler: async (ctx, args): Promise<Id<'transactionalEmails'>> => {
 		await assertFeatureEnabled(ctx, 'transactional');
-		await requireOrgPermission(ctx, 'templates:manage', 'Only owners and admins can duplicate transactional emails');
+		await requireOrgPermission(
+			ctx,
+			'templates:manage',
+			'Only owners and admins can duplicate transactional emails'
+		);
 		const outcome = await ctx.runMutation(internal.transactional.lifecycle.duplicate, {
 			emailId: args.id,
 			userId: 'system:transactional_api',
@@ -377,7 +389,11 @@ export const remove = authedMutation({
 	args: { id: v.id('transactionalEmails') },
 	handler: async (ctx, args) => {
 		await assertFeatureEnabled(ctx, 'transactional');
-		await requireOrgPermission(ctx, 'templates:manage', 'Only owners and admins can delete transactional emails');
+		await requireOrgPermission(
+			ctx,
+			'templates:manage',
+			'Only owners and admins can delete transactional emails'
+		);
 		const outcome = await ctx.runMutation(internal.transactional.lifecycle.remove, {
 			emailId: args.id,
 			userId: 'system:transactional_api',
@@ -401,7 +417,11 @@ export const updateSchema = authedMutation({
 	},
 	handler: async (ctx, args) => {
 		await assertFeatureEnabled(ctx, 'transactional');
-		await requireOrgPermission(ctx, 'templates:manage', 'Only owners and admins can update transactional email schema');
+		await requireOrgPermission(
+			ctx,
+			'templates:manage',
+			'Only owners and admins can update transactional email schema'
+		);
 		const email = await getOrThrow(ctx, args.id, 'Transactional email');
 
 		assertEditableForPublishableChange(email, args.forceWhilePublished);

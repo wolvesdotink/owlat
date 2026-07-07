@@ -699,7 +699,7 @@ export const deliverToMailbox = internalMutation({
 		const filters = await ctx.db
 			.query('mailFilters')
 			.withIndex('by_mailbox_and_priority', (q) => q.eq('mailboxId', mailbox._id))
-			.collect();
+			.collect(); // bounded: one mailbox's filters
 		const evalResult = evaluateFilters(filters, {
 			from: fromAddress,
 			to: args.to.map(extractEmail),

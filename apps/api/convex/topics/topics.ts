@@ -1,5 +1,10 @@
 import { v } from 'convex/values';
-import { internalQuery, internalMutation, type MutationCtx, type QueryCtx } from '../_generated/server';
+import {
+	internalQuery,
+	internalMutation,
+	type MutationCtx,
+	type QueryCtx,
+} from '../_generated/server';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { paginationOptsValidator } from 'convex/server';
 import { internal } from '../_generated/api';
@@ -90,7 +95,7 @@ async function getTopicsForContactImpl(ctx: QueryCtx, contactId: Id<'contacts'>)
 	const memberships = await ctx.db
 		.query('contactTopics')
 		.withIndex('by_contact', (q) => q.eq('contactId', contactId))
-		.collect();
+		.collect(); // bounded: one contact's topic memberships
 
 	// Batch-load all topics at once
 	const topicIds = memberships.map((membership) => membership.topicId);
@@ -135,14 +140,22 @@ export const update = authedMutation({
 		await requireOrgPermission(ctx, 'topics:manage', 'Only owners and admins can manage topics');
 		// Validate input lengths
 		if (args.name) validateStringLength(args.name, STRING_LIMITS.NAME, 'Name');
-		if (args.description) validateStringLength(args.description, STRING_LIMITS.DESCRIPTION, 'Description');
+		if (args.description)
+			validateStringLength(args.description, STRING_LIMITS.DESCRIPTION, 'Description');
 
 		const topic = await ctx.db.get(args.topicId);
 		if (!topic) {
 			throwNotFound('Topic');
 		}
 
-		const updates: { name?: string; description?: string; requireDoubleOptIn?: boolean; displayOrder?: number; isDefault?: boolean; updatedAt: number } = {
+		const updates: {
+			name?: string;
+			description?: string;
+			requireDoubleOptIn?: boolean;
+			displayOrder?: number;
+			isDefault?: boolean;
+			updatedAt: number;
+		} = {
 			updatedAt: Date.now(),
 		};
 		if (args.name !== undefined) {
@@ -211,18 +224,15 @@ const addContactArgs = {
 
 async function addContactImpl(
 	ctx: MutationCtx,
-	args: { topicId: Id<'topics'>; contactId: Id<'contacts'>; skipDoi?: boolean; siteUrl?: string },
+	args: { topicId: Id<'topics'>; contactId: Id<'contacts'>; skipDoi?: boolean; siteUrl?: string }
 ): Promise<AddContactResult> {
-	const outcome: SubscribeOutcome = await ctx.runMutation(
-		internal.topics.subscription.subscribe,
-		{
-			topicId: args.topicId,
-			contactId: args.contactId,
-			source: 'public_api',
-			...(args.skipDoi === true ? { skipDoi: true } : {}),
-			...(args.siteUrl ? { siteUrl: args.siteUrl } : {}),
-		},
-	);
+	const outcome: SubscribeOutcome = await ctx.runMutation(internal.topics.subscription.subscribe, {
+		topicId: args.topicId,
+		contactId: args.contactId,
+		source: 'public_api',
+		...(args.skipDoi === true ? { skipDoi: true } : {}),
+		...(args.siteUrl ? { siteUrl: args.siteUrl } : {}),
+	});
 
 	if (!outcome.ok) {
 		// `throwNotFound` is typed `never` — single tail call gives TS
@@ -265,7 +275,11 @@ const addContactSessionArgs = {
 export const addContact = authedMutation({
 	args: addContactSessionArgs,
 	handler: async (ctx, args): Promise<AddContactResult> => {
-		await requireOrgPermission(ctx, 'topics:manage', 'Only owners and admins can manage topic membership');
+		await requireOrgPermission(
+			ctx,
+			'topics:manage',
+			'Only owners and admins can manage topic membership'
+		);
 		return addContactImpl(ctx, { ...args, siteUrl: getOptional('SITE_URL') || '' });
 	},
 });
@@ -286,7 +300,7 @@ const removeContactArgs = {
 
 async function removeContactImpl(
 	ctx: MutationCtx,
-	args: { topicId: Id<'topics'>; contactId: Id<'contacts'> },
+	args: { topicId: Id<'topics'>; contactId: Id<'contacts'> }
 ): Promise<void> {
 	await ctx.runMutation(internal.topics.subscription.unsubscribe, {
 		topicId: args.topicId,
@@ -298,7 +312,11 @@ async function removeContactImpl(
 export const removeContact = authedMutation({
 	args: removeContactArgs,
 	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'topics:manage', 'Only owners and admins can manage topic membership');
+		await requireOrgPermission(
+			ctx,
+			'topics:manage',
+			'Only owners and admins can manage topic membership'
+		);
 		await removeContactImpl(ctx, args);
 	},
 });
@@ -337,7 +355,7 @@ export const confirmDoi = internalMutation({
 			{
 				token: args.token,
 				input: { to: 'confirmed', at: Date.now() },
-			},
+			}
 		);
 
 		if (!outcome.ok) {
@@ -416,13 +434,11 @@ export const getContactInTopicDetails = authedQuery({
 		// so filter in JS after a bounded scan.
 		const scanned = await ctx.db.query('campaigns').take(1000); // bounded: topic-detail lookup
 		const campaigns = scanned.filter(
-			(c) => c.audience?.kind === 'topic' && c.audience.topicId === args.topicId,
+			(c) => c.audience?.kind === 'topic' && c.audience.topicId === args.topicId
 		);
 
 		// Limit to most recent campaigns for email history lookup
-		const topicCampaigns = campaigns
-			.sort((a, b) => b.updatedAt - a.updatedAt)
-			.slice(0, 50);
+		const topicCampaigns = campaigns.sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 50);
 
 		// Get email sends for this contact from these campaigns
 		const emailHistory = await Promise.all(
@@ -505,7 +521,11 @@ export const resendDoiConfirmation = authedMutation({
 		contactId: v.id('contacts'),
 	},
 	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'topics:manage', 'Only owners and admins can resend confirmations');
+		await requireOrgPermission(
+			ctx,
+			'topics:manage',
+			'Only owners and admins can resend confirmations'
+		);
 		// Resolve the confirmation-link host server-side from SITE_URL — never
 		// from a client-supplied value. The token-bearing `${siteUrl}/confirm`
 		// link is sent from the org's verified MTA, so a client-controlled host
@@ -519,7 +539,7 @@ export const resendDoiConfirmation = authedMutation({
 				token: nanoid(32),
 				ttlMs: DOI_TOKEN_TTL_MS,
 				siteUrl: getOptional('SITE_URL') || '',
-			},
+			}
 		);
 		if (!outcome.ok) {
 			if (outcome.reason === 'contact_not_found') {
@@ -562,9 +582,14 @@ export const create = authedMutation({
 	handler: async (ctx, args) => {
 		// Validate input lengths
 		validateStringLength(args.name, STRING_LIMITS.NAME, 'Name');
-		if (args.description) validateStringLength(args.description, STRING_LIMITS.DESCRIPTION, 'Description');
+		if (args.description)
+			validateStringLength(args.description, STRING_LIMITS.DESCRIPTION, 'Description');
 
-		const session = await requireOrgPermission(ctx, 'topics:manage', 'Only owners and admins can create topics');
+		const session = await requireOrgPermission(
+			ctx,
+			'topics:manage',
+			'Only owners and admins can create topics'
+		);
 
 		const topicId = await ctx.db.insert('topics', {
 			name: args.name,
@@ -613,19 +638,14 @@ export const reconcileMemberCounts = internalMutation({
 		cursor: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		const result = await ctx.db
-			.query('topics')
-			.paginate({
-				cursor: toPaginationCursor(args.cursor),
-				numItems: 20,
-			});
+		const result = await ctx.db.query('topics').paginate({
+			cursor: toPaginationCursor(args.cursor),
+			numItems: 20,
+		});
 
 		for (const topic of result.page) {
-			const actualCount = await countWithPagination(
-				ctx.db,
-				'contactTopics',
-				'by_topic',
-				(q) => q.eq('topicId', topic._id)
+			const actualCount = await countWithPagination(ctx.db, 'contactTopics', 'by_topic', (q) =>
+				q.eq('topicId', topic._id)
 			);
 
 			if (topic.cachedMemberCount !== actualCount) {

@@ -10,20 +10,16 @@ export const getContactPreferences = internalQuery({
 		if (!contact) return null;
 
 		// Get instance display name from settings
-		const settings = await ctx.db
-			.query('instanceSettings')
-			.first();
+		const settings = await ctx.db.query('instanceSettings').first();
 
 		// Get all topics
-		const topics = await ctx.db
-			.query('topics')
-			.collect();
+		const topics = await ctx.db.query('topics').collect(); // bounded: org topics (org-scale config)
 
 		// Get the contact's topic memberships
 		const memberships = await ctx.db
 			.query('contactTopics')
 			.withIndex('by_contact', (q) => q.eq('contactId', args.contactId))
-			.collect();
+			.collect(); // bounded: one contact's topic memberships
 
 		const subscribedTopicIds = new Set(memberships.map((m) => m.topicId));
 
@@ -97,24 +93,18 @@ export const updateContactPreferences = internalMutation({
 		if (args.topicUpdates) {
 			for (const update of args.topicUpdates) {
 				if (update.subscribed) {
-					await ctx.runMutation(
-						internal.topics.subscription.subscribe,
-						{
-							topicId: update.topicId,
-							contactId: args.contactId,
-							source: 'preferences_page',
-							skipDoi: true,
-						},
-					);
+					await ctx.runMutation(internal.topics.subscription.subscribe, {
+						topicId: update.topicId,
+						contactId: args.contactId,
+						source: 'preferences_page',
+						skipDoi: true,
+					});
 				} else {
-					await ctx.runMutation(
-						internal.topics.subscription.unsubscribe,
-						{
-							topicId: update.topicId,
-							contactId: args.contactId,
-							source: 'preferences_page',
-						},
-					);
+					await ctx.runMutation(internal.topics.subscription.unsubscribe, {
+						topicId: update.topicId,
+						contactId: args.contactId,
+						source: 'preferences_page',
+					});
 				}
 			}
 		}
