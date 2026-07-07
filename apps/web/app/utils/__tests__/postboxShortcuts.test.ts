@@ -2,9 +2,34 @@ import { describe, it, expect } from 'vitest';
 import {
 	resolvePostboxShortcut,
 	isEditableTarget,
+	isFocusComposeChord,
 	settlePendingCompose,
 	POSTBOX_SHORTCUT_GROUPS,
 } from '../postboxShortcuts';
+
+describe('isFocusComposeChord', () => {
+	const chord = (over: Record<string, unknown>) => ({
+		key: 'f',
+		metaKey: false,
+		ctrlKey: false,
+		shiftKey: false,
+		altKey: false,
+		...over,
+	});
+
+	it('matches Cmd/Ctrl + Shift + F (either case)', () => {
+		expect(isFocusComposeChord(chord({ metaKey: true, shiftKey: true }))).toBe(true);
+		expect(isFocusComposeChord(chord({ ctrlKey: true, shiftKey: true }))).toBe(true);
+		expect(isFocusComposeChord(chord({ metaKey: true, shiftKey: true, key: 'F' }))).toBe(true);
+	});
+
+	it('rejects the chord without Shift, without a modifier, with Alt, or a different key', () => {
+		expect(isFocusComposeChord(chord({ metaKey: true }))).toBe(false);
+		expect(isFocusComposeChord(chord({ shiftKey: true }))).toBe(false);
+		expect(isFocusComposeChord(chord({ metaKey: true, shiftKey: true, altKey: true }))).toBe(false);
+		expect(isFocusComposeChord(chord({ metaKey: true, shiftKey: true, key: 'g' }))).toBe(false);
+	});
+});
 
 describe('resolvePostboxShortcut', () => {
 	it('maps the triage keys to their actions', () => {
