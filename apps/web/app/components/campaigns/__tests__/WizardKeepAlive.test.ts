@@ -10,8 +10,11 @@
  * the test proves the behaviour comes from KeepAlive, not from luck.
  */
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { defineComponent, h, ref, KeepAlive } from 'vue';
 import { mount } from '@vue/test-utils';
+import { parse } from '@vue/compiler-sfc';
 
 // A stand-in "step" that carries local state (like the A/B expander's
 // abTestExpanded / config refs). It resets to its initial value on remount.
@@ -56,5 +59,33 @@ describe('campaign wizard KeepAlive persistence', () => {
 
 	it('control: the same flow WITHOUT KeepAlive resets the step', async () => {
 		expect(await roundTrip(false)).toBe('');
+	});
+
+	it('keeps the campaign creation KeepAlive slot free of direct comments', () => {
+		const pagePath = resolve(__dirname, '../../../pages/dashboard/campaigns/new.vue');
+		const source = readFileSync(pagePath, 'utf8');
+		const ast = parse(source, { filename: pagePath }).descriptor.template?.ast;
+
+		function findKeepAlive(node: { type: number; tag?: string; children?: unknown[] }): {
+			children?: { type: number }[];
+		} | null {
+			if (node.type === 1 && node.tag === 'KeepAlive') {
+				return node as { children?: { type: number }[] };
+			}
+
+			for (const child of node.children ?? []) {
+				const found = findKeepAlive(child as { type: number; tag?: string; children?: unknown[] });
+				if (found) return found;
+			}
+
+			return null;
+		}
+
+		const keepAlive = ast ? findKeepAlive(ast) : null;
+		expect(keepAlive).not.toBeNull();
+
+		const directComments = keepAlive?.children?.filter((child) => child.type === 3) ?? [];
+
+		expect(directComments).toEqual([]);
 	});
 });

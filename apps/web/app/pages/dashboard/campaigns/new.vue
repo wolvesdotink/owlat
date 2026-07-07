@@ -190,7 +190,6 @@ const reviewData = computed(() => {
 		<!-- Content -->
 		<div class="max-w-4xl mx-auto px-6 py-8">
 			<KeepAlive>
-				<!-- Step 1: Setup (basics + audience + optional A/B test) -->
 				<CampaignsStepsSetupStep
 					v-if="currentStep === 'setup'"
 					ref="setupStepRef"
@@ -199,7 +198,6 @@ const reviewData = computed(() => {
 					@cancel="handleCancel"
 				/>
 
-				<!-- Step 2: Content -->
 				<CampaignsStepsContentStep
 					v-else-if="currentStep === 'content' && campaignId"
 					ref="contentStepRef"
@@ -208,7 +206,6 @@ const reviewData = computed(() => {
 					@back="goToPrevious"
 				/>
 
-				<!-- Step 3: Review -->
 				<CampaignsStepsReviewStep
 					v-else-if="currentStep === 'review' && campaignId"
 					:data="reviewData"
