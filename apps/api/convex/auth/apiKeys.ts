@@ -17,12 +17,14 @@ export const listByTeam = authedQuery({
 		includeRevoked: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'organization:manage', 'Only owners and admins can view API keys');
+		await requireOrgPermission(
+			ctx,
+			'organization:manage',
+			'Only owners and admins can view API keys'
+		);
 		const { includeRevoked = false } = args;
 
-		let keys = await ctx.db
-			.query('apiKeys')
-			.collect(); // bounded: per-org API keys (few)
+		let keys = await ctx.db.query('apiKeys').collect(); // bounded: per-org API keys (few)
 
 		if (!includeRevoked) {
 			keys = keys.filter((k) => k.isActive);
@@ -41,7 +43,11 @@ export const get = authedQuery({
 		keyId: v.id('apiKeys'),
 	},
 	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'organization:manage', 'Only owners and admins can view API keys');
+		await requireOrgPermission(
+			ctx,
+			'organization:manage',
+			'Only owners and admins can view API keys'
+		);
 		return await ctx.db.get(args.keyId);
 	},
 });
@@ -52,10 +58,12 @@ export const get = authedQuery({
 export const countByTeam = authedQuery({
 	args: {},
 	handler: async (ctx) => {
-		await requireOrgPermission(ctx, 'organization:manage', 'Only owners and admins can view API keys');
-		const allKeys = await ctx.db
-			.query('apiKeys')
-			.collect(); // bounded: per-org API keys (few)
+		await requireOrgPermission(
+			ctx,
+			'organization:manage',
+			'Only owners and admins can view API keys'
+		);
+		const allKeys = await ctx.db.query('apiKeys').collect(); // bounded: per-org API keys (few)
 		const activeKeys = allKeys.filter((k) => k.isActive);
 
 		return {
@@ -76,7 +84,11 @@ export const create = authedMutation({
 		scopes: v.optional(v.array(v.string())),
 	},
 	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'organization:manage', 'Only owners and admins can create API keys');
+		await requireOrgPermission(
+			ctx,
+			'organization:manage',
+			'Only owners and admins can create API keys'
+		);
 		// Validate input lengths
 		validateStringLength(args.name, STRING_LIMITS.NAME, 'Name');
 
@@ -95,13 +107,13 @@ export const create = authedMutation({
 		// already deny-all at enforcement via `key.scopes ?? []`.)
 		if (!scopes || scopes.length === 0) {
 			throwInvalidInput(
-				`At least one API scope is required. Valid scopes: ${API_SCOPES.join(', ')}`,
+				`At least one API scope is required. Valid scopes: ${API_SCOPES.join(', ')}`
 			);
 		}
 		const bad = unknownScopes(scopes);
 		if (bad.length > 0) {
 			throwInvalidInput(
-				`Unknown API scope(s): ${bad.join(', ')}. Valid scopes: ${API_SCOPES.join(', ')}`,
+				`Unknown API scope(s): ${bad.join(', ')}. Valid scopes: ${API_SCOPES.join(', ')}`
 			);
 		}
 		// De-dupe while preserving order.
@@ -148,14 +160,17 @@ export const updateName = authedMutation({
 		name: v.string(),
 	},
 	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'organization:manage', 'Only owners and admins can manage API keys');
+		await requireOrgPermission(
+			ctx,
+			'organization:manage',
+			'Only owners and admins can manage API keys'
+		);
 		const { keyId, name } = args;
 
 		const key = await ctx.db.get(keyId);
 		if (!key) {
 			throwNotFound('API key');
 		}
-
 
 		if (!name.trim()) {
 			throwInvalidInput('API key name is required');
@@ -178,12 +193,15 @@ export const revoke = authedMutation({
 		keyId: v.id('apiKeys'),
 	},
 	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'organization:manage', 'Only owners and admins can revoke API keys');
+		await requireOrgPermission(
+			ctx,
+			'organization:manage',
+			'Only owners and admins can revoke API keys'
+		);
 		const key = await ctx.db.get(args.keyId);
 		if (!key) {
 			throwNotFound('API key');
 		}
-
 
 		if (!key.isActive) {
 			throwInvalidState('API key is already revoked');
@@ -209,12 +227,15 @@ export const remove = authedMutation({
 		keyId: v.id('apiKeys'),
 	},
 	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'organization:manage', 'Only owners and admins can delete API keys');
+		await requireOrgPermission(
+			ctx,
+			'organization:manage',
+			'Only owners and admins can delete API keys'
+		);
 		const key = await ctx.db.get(args.keyId);
 		if (!key) {
 			throwNotFound('API key');
 		}
-
 
 		await ctx.db.delete(args.keyId);
 

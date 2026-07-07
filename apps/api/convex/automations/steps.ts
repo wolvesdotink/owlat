@@ -132,7 +132,12 @@ export const addStep = authedMutation({
 		// authz: requireDraftAutomation enforces automations:manage
 		// Structure edits are draft-only — editing steps on a live automation
 		// would desync in-flight runs that resolve steps by index.
-		await requireDraftAutomation(ctx, args.automationId, 'add automation steps', 'Steps can only be added while the automation is a draft');
+		await requireDraftAutomation(
+			ctx,
+			args.automationId,
+			'add automation steps',
+			'Steps can only be added while the automation is a draft'
+		);
 
 		const existingSteps = await ctx.db
 			.query('automationSteps')
@@ -191,7 +196,12 @@ export const updateStep = authedMutation({
 		const step = await ctx.db.get(args.stepId);
 		if (!step) throwNotFound('Automation step');
 		// authz: requireDraftAutomation enforces automations:manage
-		await requireDraftAutomation(ctx, step.automationId, 'update automation steps', 'Steps can only be edited while the automation is a draft');
+		await requireDraftAutomation(
+			ctx,
+			step.automationId,
+			'update automation steps',
+			'Steps can only be edited while the automation is a draft'
+		);
 
 		const now = Date.now();
 		const updates: Partial<Doc<'automationSteps'>> = { updatedAt: now };
@@ -211,7 +221,12 @@ export const reorderSteps = authedMutation({
 	},
 	handler: async (ctx, args) => {
 		// authz: requireDraftAutomation enforces automations:manage
-		await requireDraftAutomation(ctx, args.automationId, 'reorder automation steps', 'Steps can only be reordered while the automation is a draft');
+		await requireDraftAutomation(
+			ctx,
+			args.automationId,
+			'reorder automation steps',
+			'Steps can only be reordered while the automation is a draft'
+		);
 
 		const now = Date.now();
 
@@ -251,7 +266,12 @@ export const removeStep = authedMutation({
 		const step = await ctx.db.get(args.stepId);
 		if (!step) throwNotFound('Automation step');
 		// authz: requireDraftAutomation enforces automations:manage
-		await requireDraftAutomation(ctx, step.automationId, 'remove automation steps', 'Steps can only be removed while the automation is a draft');
+		await requireDraftAutomation(
+			ctx,
+			step.automationId,
+			'remove automation steps',
+			'Steps can only be removed while the automation is a draft'
+		);
 
 		const automationId = step.automationId;
 		const deletedIndex = step.stepIndex;

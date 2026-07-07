@@ -58,9 +58,7 @@ export const getOrganizationDetail = authedQuery({
 		await requirePlatformAdmin(ctx);
 
 		// Get instance settings
-		const settings = await ctx.db
-			.query('instanceSettings')
-			.first();
+		const settings = await ctx.db.query('instanceSettings').first();
 
 		if (!settings) return null;
 
@@ -75,10 +73,7 @@ export const getOrganizationDetail = authedQuery({
 			.first();
 
 		// Get recent content scan results
-		const scanResults = await ctx.db
-			.query('contentScanResults')
-			.order('desc')
-			.take(20);
+		const scanResults = await ctx.db.query('contentScanResults').order('desc').take(20);
 
 		// Get blocked email counts via `by_reason` index. Each .collect() is
 		// bounded to one reason class — far smaller than the global table.
@@ -105,10 +100,7 @@ export const getOrganizationDetail = authedQuery({
 		};
 
 		// Get recent campaigns
-		const recentCampaigns = await ctx.db
-			.query('campaigns')
-			.order('desc')
-			.take(10);
+		const recentCampaigns = await ctx.db.query('campaigns').order('desc').take(10);
 
 		return {
 			settings: {
@@ -117,21 +109,21 @@ export const getOrganizationDetail = authedQuery({
 				abuseStatusChangedAt: settings.abuseStatusChangedAt,
 				abuseStatusChangedBy: settings.abuseStatusChangedBy,
 				dailySendCount: settings.dailySendCount || 0,
-		createdAt: settings.createdAt,
+				createdAt: settings.createdAt,
 				contactCount: settings.contactCount || 0,
 			},
 			reputation: latestBucket
 				? {
-					riskLevel: reputationSummary.riskLevel,
-					bounceRate: reputationSummary.bounceRate,
-					complaintRate: reputationSummary.complaintRate,
-					totalSent: reputationSummary.totalSent,
-					totalDelivered: reputationSummary.totalDelivered,
-					totalBounced: reputationSummary.totalBounced,
-					totalHardBounced: reputationSummary.totalHardBounced,
-					totalComplaints: reputationSummary.totalComplaints,
-					lastCalculatedAt: latestBucket.lastCalculatedAt,
-				}
+						riskLevel: reputationSummary.riskLevel,
+						bounceRate: reputationSummary.bounceRate,
+						complaintRate: reputationSummary.complaintRate,
+						totalSent: reputationSummary.totalSent,
+						totalDelivered: reputationSummary.totalDelivered,
+						totalBounced: reputationSummary.totalBounced,
+						totalHardBounced: reputationSummary.totalHardBounced,
+						totalComplaints: reputationSummary.totalComplaints,
+						lastCalculatedAt: latestBucket.lastCalculatedAt,
+					}
 				: null,
 			blockedCounts,
 			scanResults: scanResults.map((r) => ({
@@ -164,10 +156,7 @@ export const listRecentAbuse = authedQuery({
 		await requirePlatformAdmin(ctx);
 
 		// Get recent content scan results that are suspicious or blocked
-		const recentScans = await ctx.db
-			.query('contentScanResults')
-			.order('desc')
-			.take(50);
+		const recentScans = await ctx.db.query('contentScanResults').order('desc').take(50);
 
 		const flaggedScans = recentScans.filter(
 			(s) => s.level === 'suspicious' || s.level === 'blocked'
@@ -454,7 +443,9 @@ export const listAllDomains = authedQuery({
 		if (args.statusFilter && (statusValues as readonly string[]).includes(args.statusFilter)) {
 			domains = await ctx.db
 				.query('domains')
-				.withIndex('by_status', (q) => q.eq('status', args.statusFilter as typeof statusValues[number]))
+				.withIndex('by_status', (q) =>
+					q.eq('status', args.statusFilter as (typeof statusValues)[number])
+				)
 				.collect(); // bounded: domains in one status (org-scale, few)
 		} else {
 			domains = await ctx.db.query('domains').collect(); // bounded: verified sending domains (few per org)
@@ -462,9 +453,7 @@ export const listAllDomains = authedQuery({
 
 		if (args.search) {
 			const searchLower = args.search.toLowerCase();
-			domains = domains.filter(
-				(d) => d.domain.toLowerCase().includes(searchLower)
-			);
+			domains = domains.filter((d) => d.domain.toLowerCase().includes(searchLower));
 		}
 
 		return domains
@@ -504,10 +493,7 @@ export const getContentReviewQueue = authedQuery({
 			.collect(); // bounded: review queue only
 
 		// Get content scan results for context
-		const scanResults = await ctx.db
-			.query('contentScanResults')
-			.order('desc')
-			.take(100);
+		const scanResults = await ctx.db.query('contentScanResults').order('desc').take(100);
 		const scanMap = new Map<string, (typeof scanResults)[0]>();
 		for (const s of scanResults) {
 			const key = `${s.resourceType}:${s.resourceId}`;

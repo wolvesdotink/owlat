@@ -293,8 +293,7 @@ export const toggleOnThread = authedMutation({
 				: m.labelIds.filter((id) => id !== args.labelId);
 			const folder = await ctx.db.get(m.folderId);
 			if (!folder) continue;
-			const nextModseq =
-				folderModseqBumps.get(folder._id) ?? folder.highestModseq + 1;
+			const nextModseq = folderModseqBumps.get(folder._id) ?? folder.highestModseq + 1;
 			folderModseqBumps.set(folder._id, nextModseq + 1);
 			await ctx.db.patch(folder._id, { highestModseq: nextModseq, updatedAt: now });
 			await ctx.db.patch(m._id, {

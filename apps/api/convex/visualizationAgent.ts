@@ -9,7 +9,12 @@
 
 import { v } from 'convex/values';
 import { escapeHtml } from '@owlat/shared/html';
-import { internalAction, internalMutation, internalQuery, type ActionCtx } from './_generated/server';
+import {
+	internalAction,
+	internalMutation,
+	internalQuery,
+	type ActionCtx,
+} from './_generated/server';
 import { adminQuery, authedMutation } from './lib/authedFunctions';
 import { requireAdminContext } from './lib/sessionOrganization';
 import { internal } from './_generated/api';
@@ -48,7 +53,7 @@ const datasetKeyValidator = v.union(
 	v.literal('email_delivery_30d'),
 	v.literal('agent_health'),
 	v.literal('contact_growth'),
-	v.literal('campaign_performance'),
+	v.literal('campaign_performance')
 );
 
 function isDatasetKey(value: string): value is DatasetKey {
@@ -256,9 +261,7 @@ export const generate = internalAction({
 			// Step 3: Generate the visualization HTML. Real data flips the
 			// system prompt from "illustrative only" to "use these exact
 			// numbers"; the iframe sandbox model is unchanged either way.
-			const system = liveData
-				? buildLiveSystemPrompt(liveData)
-				: ILLUSTRATIVE_SYSTEM_PROMPT;
+			const system = liveData ? buildLiveSystemPrompt(liveData) : ILLUSTRATIVE_SYSTEM_PROMPT;
 
 			const result = await runLlmText({
 				model: getLLMProvider('draft'),
@@ -301,7 +304,12 @@ Respond with ONLY the title, no quotes or explanation.`,
 				tokenUsage: titleResult.tokenUsage,
 				modelUsed: titleResult.modelUsed,
 			});
-			await recordLlmSpend(ctx, 'visualization_title', titleResult.tokenUsage, titleResult.modelUsed);
+			await recordLlmSpend(
+				ctx,
+				'visualization_title',
+				titleResult.tokenUsage,
+				titleResult.modelUsed
+			);
 
 			const title = titleResult.text.trim().slice(0, 100);
 
@@ -313,7 +321,7 @@ Respond with ONLY the title, no quotes or explanation.`,
 				id: args.visualizationId,
 				title,
 				html,
-				dataQuery: liveData ? datasetKey ?? undefined : undefined,
+				dataQuery: liveData ? (datasetKey ?? undefined) : undefined,
 			});
 		} catch (error) {
 			// Update with error state

@@ -11,7 +11,7 @@ import { throwNotFound, throwInvalidInput } from '../_utils/errors';
  */
 async function verifyContactExists(
 	ctx: Pick<QueryCtx | MutationCtx, 'db'>,
-	contactId: Id<'contacts'>,
+	contactId: Id<'contacts'>
 ) {
 	const contact = await ctx.db.get(contactId);
 	if (!contact) {
@@ -61,7 +61,11 @@ export const set = authedMutation({
 		value: v.string(),
 	},
 	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'contacts:manage', 'Only owners and admins can modify contact properties');
+		await requireOrgPermission(
+			ctx,
+			'contacts:manage',
+			'Only owners and admins can modify contact properties'
+		);
 
 		// Validate input length
 		validateStringLength(args.value, STRING_LIMITS.FORM_FIELD_VALUE, 'Property value');
@@ -112,7 +116,11 @@ export const remove = authedMutation({
 		propertyId: v.id('contactProperties'),
 	},
 	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'contacts:manage', 'Only owners and admins can modify contact properties');
+		await requireOrgPermission(
+			ctx,
+			'contacts:manage',
+			'Only owners and admins can modify contact properties'
+		);
 
 		// Verify contact exists
 		await verifyContactExists(ctx, args.contactId);
@@ -168,7 +176,11 @@ export const bulkSet = authedMutation({
 		),
 	},
 	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'contacts:manage', 'Only owners and admins can modify contact properties');
+		await requireOrgPermission(
+			ctx,
+			'contacts:manage',
+			'Only owners and admins can modify contact properties'
+		);
 
 		// Enforce array size limit
 		if (args.values.length > 50) {

@@ -93,9 +93,7 @@ export const run = internalMutation({
 			const mapped = mapLegacyState(legacyState);
 			const primaryAddress = row.toAddresses[0] ?? '';
 			const mtaJobId =
-				typeof ob.mtaJobId === 'string' && ob.mtaJobId.length > 0
-					? ob.mtaJobId
-					: `pb-${row._id}-0`;
+				typeof ob.mtaJobId === 'string' && ob.mtaJobId.length > 0 ? ob.mtaJobId : `pb-${row._id}-0`;
 
 			await ctx.db.patch(row._id, {
 				outbound: {
@@ -107,9 +105,7 @@ export const run = internalMutation({
 							mtaJobId,
 							state: mapped,
 							...(typeof ob.sentAt === 'number' ? { sentAt: ob.sentAt } : {}),
-							...(typeof ob.bounceMessage === 'string'
-								? { bounceMessage: ob.bounceMessage }
-								: {}),
+							...(typeof ob.bounceMessage === 'string' ? { bounceMessage: ob.bounceMessage } : {}),
 						},
 					],
 				},

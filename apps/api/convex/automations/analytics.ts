@@ -143,8 +143,7 @@ export const getAutomationStats = authedQuery({
 		}
 
 		// Calculate completion rate
-		const completionRate =
-			totalEntered > 0 ? ((completed / totalEntered) * 100).toFixed(1) : '0.0';
+		const completionRate = totalEntered > 0 ? ((completed / totalEntered) * 100).toFixed(1) : '0.0';
 
 		return {
 			totalEntered,

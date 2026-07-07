@@ -17,8 +17,7 @@
 
 import { internalMutation } from '../_generated/server';
 
-const DRAIN_MESSAGE =
-	'Migration to integration-import walker (ADR-0027); please retry.';
+const DRAIN_MESSAGE = 'Migration to integration-import walker (ADR-0027); please retry.';
 
 export const run = internalMutation({
 	args: {},

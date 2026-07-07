@@ -263,7 +263,12 @@ export const getDueScheduledCampaigns = internalQuery({
 // Internal mutation to store content scan results
 export const storeContentScanResult = internalMutation({
 	args: {
-		resourceType: v.union(v.literal('campaign'), v.literal('transactional'), v.literal('attachment'), v.literal('media_upload')),
+		resourceType: v.union(
+			v.literal('campaign'),
+			v.literal('transactional'),
+			v.literal('attachment'),
+			v.literal('media_upload')
+		),
 		resourceId: v.string(),
 		score: v.number(),
 		level: v.union(v.literal('clean'), v.literal('suspicious'), v.literal('blocked')),

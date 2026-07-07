@@ -17,7 +17,11 @@ export const createShareLink = authedMutation({
 		transactionalEmailId: v.optional(v.id('transactionalEmails')),
 	},
 	handler: async (ctx, args) => {
-		const session = await requireOrgPermission(ctx, 'shareLinks:manage', 'Only owners and admins can create share links');
+		const session = await requireOrgPermission(
+			ctx,
+			'shareLinks:manage',
+			'Only owners and admins can create share links'
+		);
 
 		// Exactly one must be set
 		if (!args.emailTemplateId && !args.transactionalEmailId) {
@@ -33,7 +37,9 @@ export const createShareLink = authedMutation({
 
 		if (args.emailTemplateId) {
 			const template = await ctx.db.get(args.emailTemplateId);
-			if (!template) { throwNotFound('Email template'); }
+			if (!template) {
+				throwNotFound('Email template');
+			}
 			if (!template.htmlContent) {
 				throwInvalidState('Template must be saved at least once before sharing');
 			}
@@ -42,7 +48,9 @@ export const createShareLink = authedMutation({
 			previewText = template.previewText;
 		} else {
 			const email = await ctx.db.get(args.transactionalEmailId!);
-			if (!email) { throwNotFound('Transactional email'); }
+			if (!email) {
+				throwNotFound('Transactional email');
+			}
 			if (!email.htmlContent) {
 				throwInvalidState('Email must be saved at least once before sharing');
 			}
@@ -84,9 +92,15 @@ export const revokeShareLink = authedMutation({
 		shareLinkId: v.id('shareLinks'),
 	},
 	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'shareLinks:manage', 'Only owners and admins can revoke share links');
+		await requireOrgPermission(
+			ctx,
+			'shareLinks:manage',
+			'Only owners and admins can revoke share links'
+		);
 		const shareLink = await ctx.db.get(args.shareLinkId);
-		if (!shareLink) { throwNotFound('Share link'); }
+		if (!shareLink) {
+			throwNotFound('Share link');
+		}
 
 		await ctx.db.patch(args.shareLinkId, {
 			revokedAt: Date.now(),

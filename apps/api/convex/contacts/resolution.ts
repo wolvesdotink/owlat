@@ -49,9 +49,7 @@ export const CHANNEL_KIND_LITERALS = [
 
 export type ChannelKind = (typeof CHANNEL_KIND_LITERALS)[number];
 
-export const channelKindValidator = v.union(
-	...CHANNEL_KIND_LITERALS.map((l) => v.literal(l)),
-);
+export const channelKindValidator = v.union(...CHANNEL_KIND_LITERALS.map((l) => v.literal(l)));
 
 export const CONTACT_SOURCE_LITERALS = [
 	'api',
@@ -63,9 +61,7 @@ export const CONTACT_SOURCE_LITERALS = [
 
 export type ContactSource = (typeof CONTACT_SOURCE_LITERALS)[number];
 
-export const contactSourceValidator = v.union(
-	...CONTACT_SOURCE_LITERALS.map((l) => v.literal(l)),
-);
+export const contactSourceValidator = v.union(...CONTACT_SOURCE_LITERALS.map((l) => v.literal(l)));
 
 // Sources a caller may set when CREATING a contact. 'inbound' is excluded — it
 // is assigned only internally the first time a contact appears via an inbound
@@ -73,16 +69,14 @@ export const contactSourceValidator = v.union(
 export const CONTACT_CREATE_SOURCE_LITERALS = ['api', 'import', 'form', 'transactional'] as const;
 
 export const contactCreateSourceValidator = v.union(
-	...CONTACT_CREATE_SOURCE_LITERALS.map((l) => v.literal(l)),
+	...CONTACT_CREATE_SOURCE_LITERALS.map((l) => v.literal(l))
 );
 
 export const RESOLVE_MODE_LITERALS = ['strict', 'upsert', 'merge'] as const;
 
 export type ResolveMode = (typeof RESOLVE_MODE_LITERALS)[number];
 
-export const resolveModeValidator = v.union(
-	...RESOLVE_MODE_LITERALS.map((l) => v.literal(l)),
-);
+export const resolveModeValidator = v.union(...RESOLVE_MODE_LITERALS.map((l) => v.literal(l)));
 
 /**
  * Optional Contact fields that may be set at create time and (in `merge` mode)
@@ -131,13 +125,11 @@ export interface ResolveResult {
 export async function findContactByIdentifier(
 	ctx: MutationCtx,
 	channel: ChannelKind,
-	identifier: string,
+	identifier: string
 ): Promise<{ contact: Doc<'contacts'>; identity: Doc<'contactIdentities'> } | null> {
 	const identity = await ctx.db
 		.query('contactIdentities')
-		.withIndex('by_identifier', (q) =>
-			q.eq('channel', channel).eq('identifier', identifier),
-		)
+		.withIndex('by_identifier', (q) => q.eq('channel', channel).eq('identifier', identifier))
 		.first();
 
 	if (!identity) return null;
@@ -167,24 +159,18 @@ export interface ResolveSignal {
  */
 export async function resolveContact(
 	ctx: MutationCtx,
-	signal: ResolveSignal,
+	signal: ResolveSignal
 ): Promise<ResolveResult> {
 	const identifier = normalizeIdentifier(signal.channel, signal.identifier);
 	const match = await findContactByIdentifier(ctx, signal.channel, identifier);
 
 	if (match) {
 		if (signal.mode === 'strict') {
-			throwAlreadyExists(
-				`A contact with ${signal.channel}:${identifier} already exists`,
-			);
+			throwAlreadyExists(`A contact with ${signal.channel}:${identifier} already exists`);
 		}
 
 		if (signal.mode === 'merge') {
-			const changedProperties = await mergeFields(
-				ctx,
-				match.contact,
-				signal.contactFields,
-			);
+			const changedProperties = await mergeFields(ctx, match.contact, signal.contactFields);
 			return {
 				contactId: match.contact._id,
 				action: changedProperties.length > 0 ? 'updated' : 'matched',
@@ -218,7 +204,7 @@ function normalizeIdentifier(channel: ChannelKind, identifier: string): string {
 async function mergeFields(
 	ctx: MutationCtx,
 	existing: Doc<'contacts'>,
-	contactFields: ContactFields | undefined,
+	contactFields: ContactFields | undefined
 ): Promise<string[]> {
 	if (!contactFields) return [];
 
@@ -256,7 +242,7 @@ async function mergeFields(
 		patch.searchableText = buildSearchableText(
 			existing.email,
 			patch.firstName ?? existing.firstName,
-			patch.lastName ?? existing.lastName,
+			patch.lastName ?? existing.lastName
 		);
 	}
 
@@ -268,7 +254,7 @@ async function mergeFields(
 async function insertContactRow(
 	ctx: MutationCtx,
 	signal: ResolveSignal,
-	identifier: string,
+	identifier: string
 ): Promise<Id<'contacts'>> {
 	const now = Date.now();
 	const fields = signal.contactFields ?? {};
@@ -349,7 +335,7 @@ export const resolve = internalMutation({
  */
 export async function deleteIdentitiesForContact(
 	ctx: MutationCtx,
-	contactId: Id<'contacts'>,
+	contactId: Id<'contacts'>
 ): Promise<void> {
 	const identities = await ctx.db
 		.query('contactIdentities')

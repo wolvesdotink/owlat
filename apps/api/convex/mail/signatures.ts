@@ -148,4 +148,3 @@ export const remove = authedMutation({
 		await ctx.db.delete(args.signatureId);
 	},
 });
-

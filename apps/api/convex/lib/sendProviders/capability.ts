@@ -31,7 +31,9 @@ export function providerKindConfigured(kind: SendProviderKind): boolean {
 		case 'resend':
 			return Boolean(getOptional('RESEND_API_KEY'));
 		case 'ses':
-			return Boolean(getOptional('AWS_SES_ACCESS_KEY_ID') && getOptional('AWS_SES_SECRET_ACCESS_KEY'));
+			return Boolean(
+				getOptional('AWS_SES_ACCESS_KEY_ID') && getOptional('AWS_SES_SECRET_ACCESS_KEY')
+			);
 	}
 }
 
@@ -64,13 +66,14 @@ export type DeliveryMessageType = 'campaign' | 'transactional' | 'automation';
  */
 export async function isDeliveryConfigured(
 	ctx: QueryCtx | MutationCtx,
-	messageType?: DeliveryMessageType,
+	messageType?: DeliveryMessageType
 ): Promise<boolean> {
 	const routes = await ctx.db.query('providerRoutes').collect(); // bounded: configured provider routes (few)
 	for (const route of routes) {
 		if (messageType && route.messageType !== messageType) continue;
 		const hasUsableProvider = route.providers.some(
-			(p) => p.isEnabled && isSendProviderKind(p.providerType) && providerKindConfigured(p.providerType),
+			(p) =>
+				p.isEnabled && isSendProviderKind(p.providerType) && providerKindConfigured(p.providerType)
 		);
 		if (hasUsableProvider) return true;
 	}

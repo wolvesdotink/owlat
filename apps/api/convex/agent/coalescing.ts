@@ -75,7 +75,7 @@ export const shouldCoalesce = internalMutation({
 		// existing batch) starts at `now`.
 		const firstReceivedAt = existing.reduce<number>(
 			(min, b) => Math.min(min, b.firstReceivedAt ?? b.createdAt),
-			now,
+			now
 		);
 
 		for (const batch of existing) {
@@ -90,7 +90,7 @@ export const shouldCoalesce = internalMutation({
 		const jobId = await ctx.scheduler.runAfter(
 			capped ? 0 : windowMs,
 			internal.agent.coalescing.processCoalescedBatch,
-			{ threadId: args.threadId },
+			{ threadId: args.threadId }
 		);
 		await ctx.db.insert('coalesceBatches', {
 			threadId: args.threadId,
@@ -124,8 +124,9 @@ export const processCoalescedBatch = internalMutation({
 			await ctx.db
 				.query('inboundMessages')
 				.withIndex('by_thread', (q) => q.eq('threadId', args.threadId))
-				.collect() // bounded: one thread's inbound messages
-		).filter((m) => m.processingStatus === 'received');
+				.collect()
+		) // bounded: one thread's inbound messages
+			.filter((m) => m.processingStatus === 'received');
 
 		if (pending.length === 0) return;
 

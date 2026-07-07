@@ -116,9 +116,7 @@ export const create = authedMutation({
 		if (priority === undefined) {
 			const existing = await ctx.db
 				.query('mailFilters')
-				.withIndex('by_mailbox_and_priority', (q) =>
-					q.eq('mailboxId', args.mailboxId)
-				)
+				.withIndex('by_mailbox_and_priority', (q) => q.eq('mailboxId', args.mailboxId))
 				.collect(); // bounded: one mailbox's filters
 			priority = existing.length === 0 ? 100 : Math.max(...existing.map((f) => f.priority)) + 100;
 		}
@@ -189,14 +187,7 @@ export interface EvalMessage {
 }
 
 export interface EvalResultAction {
-	type:
-		| 'moveToFolder'
-		| 'addLabel'
-		| 'markRead'
-		| 'markFlagged'
-		| 'forward'
-		| 'delete'
-		| 'discard';
+	type: 'moveToFolder' | 'addLabel' | 'markRead' | 'markFlagged' | 'forward' | 'delete' | 'discard';
 	folderId?: Id<'mailFolders'>;
 	labelId?: Id<'mailLabels'>;
 	forwardTo?: string;
@@ -273,13 +264,8 @@ function conditionMatches(
  * Evaluate a filter list against an inbound message. Pure function — safe
  * to call from inside an internalMutation.
  */
-export function evaluateFilters(
-	filters: Doc<'mailFilters'>[],
-	message: EvalMessage
-): EvalResult {
-	const ordered = [...filters]
-		.filter((f) => f.isEnabled)
-		.sort((a, b) => a.priority - b.priority);
+export function evaluateFilters(filters: Doc<'mailFilters'>[], message: EvalMessage): EvalResult {
+	const ordered = [...filters].filter((f) => f.isEnabled).sort((a, b) => a.priority - b.priority);
 
 	const matched: Id<'mailFilters'>[] = [];
 	const actions: EvalResultAction[] = [];

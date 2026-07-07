@@ -129,11 +129,7 @@ export const run = internalMutation({
 
 			// Skip count includes rows where there's nothing to migrate (already
 			// migrated or never had provider-specific data).
-			if (
-				providerType !== 'mta' &&
-				providerType !== 'ses' &&
-				!patched
-			) {
+			if (providerType !== 'mta' && providerType !== 'ses' && !patched) {
 				skipped++;
 			}
 		}

@@ -102,4 +102,3 @@ export const remove = authedMutation({
 		});
 	},
 });
-

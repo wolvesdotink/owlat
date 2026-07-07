@@ -21,20 +21,14 @@ export const getAudienceStats = authedQuery({
 
 		// Fallback to pagination count if no cache
 		if (totalContacts === null) {
-			totalContacts = await countWithPagination(ctx.db, 'contacts', 'by_created_at', (q) =>
-				q
-			);
+			totalContacts = await countWithPagination(ctx.db, 'contacts', 'by_created_at', (q) => q);
 		}
 
 		// Get topics count
-		const topics = await ctx.db
-			.query('topics')
-			.collect(); // bounded: org topics (org-scale config)
+		const topics = await ctx.db.query('topics').collect(); // bounded: org topics (org-scale config)
 
 		// Get segments count
-		const segments = await ctx.db
-			.query('segments')
-			.collect(); // bounded: org segments (org-scale config)
+		const segments = await ctx.db.query('segments').collect(); // bounded: org segments (org-scale config)
 
 		return {
 			totalContacts,
@@ -60,9 +54,7 @@ export const getSubscriberGrowth = authedQuery({
 		// this scale a per-day new-contact roll-up counter would be warranted.
 		const scanned = await ctx.db
 			.query('contacts')
-			.withIndex('by_created_at', (q) =>
-				q.gte('createdAt', thirtyDaysAgo)
-			)
+			.withIndex('by_created_at', (q) => q.gte('createdAt', thirtyDaysAgo))
 			.order('desc')
 			.take(GROWTH_SCAN_CAP + 1);
 		const truncated = scanned.length > GROWTH_SCAN_CAP;
@@ -107,11 +99,7 @@ export const getRecent = authedQuery({
 		const limit = args.limit ?? 5;
 
 		// Use the createdAt index for efficient ordering and limiting
-		return await ctx.db
-			.query('contacts')
-			.withIndex('by_created_at')
-			.order('desc')
-			.take(limit);
+		return await ctx.db.query('contacts').withIndex('by_created_at').order('desc').take(limit);
 	},
 });
 
@@ -123,9 +111,7 @@ export const getTopTopics = authedQuery({
 	handler: async (ctx, args) => {
 		const limit = args.limit ?? 5;
 
-		const lists = await ctx.db
-			.query('topics')
-			.collect(); // bounded: org topics (org-scale config)
+		const lists = await ctx.db.query('topics').collect(); // bounded: org topics (org-scale config)
 
 		// Reuse the shared topic listing enrichment for the contact count so
 		// this dashboard path and the entity's list/get cannot drift. It reads

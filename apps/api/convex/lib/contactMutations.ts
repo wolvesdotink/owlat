@@ -45,7 +45,7 @@ const CONTACT_REPOINT_TABLES = [
 export async function repointSimpleContactRefs(
 	ctx: MutationCtx,
 	targetContactId: Id<'contacts'>,
-	sourceContactId: Id<'contacts'>,
+	sourceContactId: Id<'contacts'>
 ): Promise<void> {
 	for (const table of CONTACT_REPOINT_TABLES) {
 		const rows = await ctx.db
@@ -82,7 +82,7 @@ export async function repointSimpleContactRefs(
 export async function mergeContactRelations(
 	ctx: MutationCtx,
 	targetContactId: Id<'contacts'>,
-	sourceContactId: Id<'contacts'>,
+	sourceContactId: Id<'contacts'>
 ): Promise<void> {
 	// Identities — dedupe by (channel, identifier), keep target's primary.
 	const sourceIdentities = await ctx.db
@@ -147,7 +147,7 @@ export async function mergeContactRelations(
 		.withIndex('by_contact', (q) => q.eq('contactId', targetContactId))
 		.collect(); // bounded: one contact's property values
 	const targetValueByProperty = new Map(
-		targetValues.map((value) => [value.propertyId as string, value]),
+		targetValues.map((value) => [value.propertyId as string, value])
 	);
 	const sourceValues = await ctx.db
 		.query('contactPropertyValues')
@@ -193,7 +193,7 @@ export async function mergeContactRelations(
 export async function softDeleteContact(
 	ctx: MutationCtx,
 	contactId: Id<'contacts'>,
-	deletedBy: string,
+	deletedBy: string
 ): Promise<void> {
 	const existing = await ctx.db.get(contactId);
 	if (!existing || existing.deletedAt !== undefined) return;
@@ -207,7 +207,6 @@ export async function softDeleteContact(
 	await deleteIdentitiesForContact(ctx, contactId);
 	await decrementContactCount(ctx, 1);
 }
-
 
 /**
  * Hard-delete a contact and cascade to children. Used by the cleanup cron after
@@ -239,7 +238,7 @@ export async function softDeleteContact(
 export async function permanentlyDeleteContactWithRelations(
 	ctx: MutationCtx,
 	contactId: Id<'contacts'>,
-	options?: { decrementCount?: boolean },
+	options?: { decrementCount?: boolean }
 ): Promise<void> {
 	// Cascade deletes — children that only make sense alongside the parent contact.
 	const memberships = await ctx.db
@@ -407,4 +406,3 @@ export async function permanentlyDeleteContactWithRelations(
 		await decrementContactCount(ctx, 1);
 	}
 }
-

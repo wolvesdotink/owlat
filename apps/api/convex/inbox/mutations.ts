@@ -393,8 +393,8 @@ export const retryFailedMessage = adminMutation({
 			await ctx.db
 				.query('agentActions')
 				.withIndex('by_inbound_message', (q) => q.eq('inboundMessageId', args.inboundMessageId))
-				.collect() // bounded: one message's pipeline actions (~1 per step)
-		)
+				.collect()
+		) // bounded: one message's pipeline actions (~1 per step)
 			.filter((a) => a.status === 'failed' || a.status === 'abandoned')
 			.sort((a, b) => b.createdAt - a.createdAt)[0];
 

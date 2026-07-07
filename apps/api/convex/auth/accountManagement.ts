@@ -13,10 +13,7 @@ import {
 	hasPermission,
 } from '../lib/sessionOrganization';
 import type { OrganizationRole } from '../lib/sessionOrganization';
-import {
-	throwNotFound,
-	throwInvalidState,
-} from '../_utils/errors';
+import { throwNotFound, throwInvalidState } from '../_utils/errors';
 
 // Type for organization data export
 interface OrganizationExport {
@@ -202,10 +199,7 @@ export const exportUserData = authedQuery({
  * loudly" rationale as the org sections (these are per-user, far smaller).
  * Credential ciphertext and raw storage-blob handles are stripped.
  */
-async function collectPersonalData(
-	ctx: QueryCtx,
-	authUserId: string,
-): Promise<PersonalDataExport> {
+async function collectPersonalData(ctx: QueryCtx, authUserId: string): Promise<PersonalDataExport> {
 	const mailboxes = await ctx.db
 		.query('mailboxes')
 		.withIndex('by_user', (q) => q.eq('userId', authUserId))
@@ -242,7 +236,7 @@ async function collectPersonalData(
 		.collect(); // bounded: account-export, a user connects a handful of accounts
 	// Redact the encrypted credential envelope (same posture as webhook secrets).
 	const externalMailAccounts = rawExternalAccounts.map(
-		({ secretCiphertext: _ct, secretIv: _iv, secretAuthTag: _tag, ...account }) => account,
+		({ secretCiphertext: _ct, secretIv: _iv, secretAuthTag: _tag, ...account }) => account
 	);
 
 	const chatMessages = await ctx.db
@@ -266,7 +260,7 @@ export const exportContactsForOrganization = authedQuery({
 		await requireOrgPermission(
 			ctx,
 			'contacts:manage',
-			'Only owners and admins can export contacts',
+			'Only owners and admins can export contacts'
 		);
 		// Get all live contacts — soft-deleted (GDPR-erased) contacts must never
 		// re-surface in a CSV export; ride the soft-delete browse index.
@@ -276,9 +270,7 @@ export const exportContactsForOrganization = authedQuery({
 			.collect(); // bounded: csv-export
 
 		// Get all contact properties
-		const properties = await ctx.db
-			.query('contactProperties')
-			.collect(); // bounded: csv-export
+		const properties = await ctx.db.query('contactProperties').collect(); // bounded: csv-export
 
 		// Get all property values for all contacts
 		const contactIds = contacts.map((c) => c._id);
@@ -297,9 +289,7 @@ export const exportContactsForOrganization = authedQuery({
 		}
 
 		// Get topic memberships
-		const topics = await ctx.db
-			.query('topics')
-			.collect(); // bounded: csv-export
+		const topics = await ctx.db.query('topics').collect(); // bounded: csv-export
 
 		const listMemberships: Record<string, string[]> = {};
 		for (const list of topics) {
@@ -498,7 +488,7 @@ export const cancelAccountDeletion = publicMutation({
  */
 export async function deleteAccountForRequest(
 	ctx: MutationCtx,
-	request: Doc<'accountDeletionRequests'>,
+	request: Doc<'accountDeletionRequests'>
 ): Promise<void> {
 	const now = Date.now();
 
@@ -586,4 +576,3 @@ export async function deleteAccountForRequest(
 		});
 	}
 }
-

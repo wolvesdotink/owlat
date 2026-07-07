@@ -102,7 +102,7 @@ const transitionInputValidator = v.union(
 	v.object({
 		to: v.literal('confirmed'),
 		at: v.number(),
-	}),
+	})
 );
 
 // ─── Legal-edges graph ──────────────────────────────────────────────────────
@@ -170,7 +170,7 @@ type ReducerResult = {
 
 function reducePending(
 	contact: Doc<'contacts'>,
-	args: Extract<TransitionInput, { to: 'pending' }>,
+	args: Extract<TransitionInput, { to: 'pending' }>
 ): ReducerResult {
 	const from = (contact.doiStatus ?? 'not_required') as DoiStatus;
 	if (from === 'pending') {
@@ -197,7 +197,7 @@ function reducePending(
 		logWarn(
 			`DOI set to pending for contact ${contact._id} but no siteUrl was provided; ` +
 				`no confirmation email sent — the contact will stay pending. ` +
-				`Set SITE_URL if this is a public double-opt-in flow.`,
+				`Set SITE_URL if this is a public double-opt-in flow.`
 		);
 	}
 	return {
@@ -227,7 +227,7 @@ function isAdminAttest(input: ConfirmedInput): input is AdminAttestInput {
 function reduceConfirmed(
 	contact: Doc<'contacts'>,
 	args: ConfirmedInput,
-	doiRequiredTopics: ReadonlyArray<DoiRequiredTopic>,
+	doiRequiredTopics: ReadonlyArray<DoiRequiredTopic>
 ): ReducerResult {
 	const from = (contact.doiStatus ?? 'not_required') as DoiStatus;
 	if (from === 'confirmed') {
@@ -305,34 +305,24 @@ function reduceConfirmed(
 
 // ─── Runner ─────────────────────────────────────────────────────────────────
 
-async function applyEffects(
-	ctx: MutationCtx,
-	effects: ReadonlyArray<Effect>,
-): Promise<void> {
+async function applyEffects(ctx: MutationCtx, effects: ReadonlyArray<Effect>): Promise<void> {
 	for (const effect of effects) {
 		switch (effect.kind) {
 			case 'send_confirmation_email': {
-				await ctx.scheduler.runAfter(
-					0,
-					internal.confirmationEmail.sendConfirmationEmail,
-					{
-						email: effect.email,
-						firstName: effect.firstName,
-						confirmationToken: effect.token,
-						siteUrl: effect.siteUrl,
-					},
-				);
+				await ctx.scheduler.runAfter(0, internal.confirmationEmail.sendConfirmationEmail, {
+					email: effect.email,
+					firstName: effect.firstName,
+					confirmationToken: effect.token,
+					siteUrl: effect.siteUrl,
+				});
 				break;
 			}
 			case 'fire_topic_subscribed_triggers': {
 				for (const topicId of effect.topicIds) {
-					await ctx.runMutation(
-						internal.automations.triggers.fireTopicSubscribedTrigger,
-						{
-							contactId: effect.contactId,
-							topicId,
-						},
-					);
+					await ctx.runMutation(internal.automations.triggers.fireTopicSubscribedTrigger, {
+						contactId: effect.contactId,
+						topicId,
+					});
 				}
 				break;
 			}
@@ -374,13 +364,11 @@ async function applyEffects(
  */
 export async function findContactByConfirmationToken(
 	ctx: QueryCtx | MutationCtx,
-	token: string,
+	token: string
 ): Promise<Doc<'contacts'> | null> {
 	return await ctx.db
 		.query('contacts')
-		.withIndex('by_doi_confirmation_token', (q) =>
-			q.eq('doiConfirmationToken', token),
-		)
+		.withIndex('by_doi_confirmation_token', (q) => q.eq('doiConfirmationToken', token))
 		.first();
 }
 
@@ -392,7 +380,7 @@ export async function findContactByConfirmationToken(
 
 async function loadDoiRequiredMemberships(
 	ctx: MutationCtx,
-	contactId: Id<'contacts'>,
+	contactId: Id<'contacts'>
 ): Promise<{
 	topics: Array<DoiRequiredTopic>;
 	clearMembershipIds: Array<Id<'contactTopics'>>;
@@ -421,7 +409,7 @@ async function loadDoiRequiredMemberships(
 async function dispatch(
 	ctx: MutationCtx,
 	contact: Doc<'contacts'>,
-	input: TransitionInput,
+	input: TransitionInput
 ): Promise<TransitionOutcome> {
 	const from = (contact.doiStatus ?? 'not_required') as DoiStatus;
 	const isLegalEdge = LEGAL_EDGES[from].has(input.to);
@@ -448,10 +436,7 @@ async function dispatch(
 			result = reducePending(contact, input);
 			break;
 		case 'confirmed': {
-			const { topics, clearMembershipIds } = await loadDoiRequiredMemberships(
-				ctx,
-				contact._id,
-			);
+			const { topics, clearMembershipIds } = await loadDoiRequiredMemberships(ctx, contact._id);
 			result = reduceConfirmed(contact, input, topics);
 			// Clear the form-DOI deferral flags only when the fanout actually
 			// fires (not on an idempotent re-confirm), so a later confirm can't
@@ -519,10 +504,7 @@ export const transitionByConfirmationToken = internalMutation({
 	handler: async (ctx, args): Promise<TransitionOutcome> => {
 		const contact = await findContactByConfirmationToken(ctx, args.token);
 		if (!contact) return { ok: false, reason: 'token_not_found' };
-		if (
-			contact.doiTokenExpiresAt !== undefined &&
-			contact.doiTokenExpiresAt < args.input.at
-		) {
+		if (contact.doiTokenExpiresAt !== undefined && contact.doiTokenExpiresAt < args.input.at) {
 			return { ok: false, reason: 'token_expired' };
 		}
 		return await dispatch(ctx, contact, args.input);
@@ -573,16 +555,12 @@ export const refreshPendingToken = internalMutation({
 			updatedAt: args.at,
 		});
 		if (contact.email) {
-			await ctx.scheduler.runAfter(
-				0,
-				internal.confirmationEmail.sendConfirmationEmail,
-				{
-					email: contact.email,
-					firstName: contact.firstName,
-					confirmationToken: args.token,
-					siteUrl: args.siteUrl,
-				},
-			);
+			await ctx.scheduler.runAfter(0, internal.confirmationEmail.sendConfirmationEmail, {
+				email: contact.email,
+				firstName: contact.firstName,
+				confirmationToken: args.token,
+				siteUrl: args.siteUrl,
+			});
 		}
 		return { ok: true, from, contactId: args.contactId };
 	},

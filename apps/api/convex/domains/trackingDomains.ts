@@ -108,9 +108,7 @@ export const verifyTrackingDomain = authedMutation({
 export const listTrackingDomains = authedQuery({
 	args: {},
 	handler: async (ctx) => {
-		return await ctx.db
-			.query('trackingDomains')
-			.collect(); // bounded: tracking domains (few per org)
+		return await ctx.db.query('trackingDomains').collect(); // bounded: tracking domains (few per org)
 	},
 });
 
@@ -138,9 +136,7 @@ export const removeTrackingDomain = authedMutation({
 export const getActiveTrackingDomain = internalQuery({
 	args: {},
 	handler: async (ctx) => {
-		const domains = await ctx.db
-			.query('trackingDomains')
-			.collect(); // bounded: tracking domains (few per org)
+		const domains = await ctx.db.query('trackingDomains').collect(); // bounded: tracking domains (few per org)
 
 		// Return first verified domain, or null
 		return domains.find((d) => d.isVerified) ?? null;
@@ -184,7 +180,9 @@ export const verifyTrackingDomainDns = internalAction({
 
 			if (!response.ok) {
 				// eslint-disable-next-line no-console
-				console.warn(`[Tracking Domain DNS] DNS query failed for ${args.domain}: ${response.status}`);
+				console.warn(
+					`[Tracking Domain DNS] DNS query failed for ${args.domain}: ${response.status}`
+				);
 				return { verified: false, error: 'DNS query failed' };
 			}
 

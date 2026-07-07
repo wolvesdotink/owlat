@@ -47,7 +47,7 @@ const campaignSendJobs = defineTable({
 	// Optional for forward-compat with rows written before this field existed;
 	// absent ⇒ treated as `plain`.
 	variantMode: v.optional(
-		v.union(v.literal('plain'), v.literal('ab_test'), v.literal('ab_winner')),
+		v.union(v.literal('plain'), v.literal('ab_test'), v.literal('ab_winner'))
 	),
 	// Fraction of the audience that forms the A/B test cohort (`2 × split / 100`).
 	// Set for the `ab_test` / `ab_winner` modes; the cohort/remainder partition

@@ -1,10 +1,7 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { webhookPayloadValidator } from '../lib/convexValidators';
-import {
-	webhookEventValidator,
-	subscribableWebhookEventValidator,
-} from '../webhooks/events';
+import { webhookEventValidator, subscribableWebhookEventValidator } from '../webhooks/events';
 
 /**
  * Webhook tables — outbound notifications + delivery log + raw inbound payloads.
@@ -32,8 +29,7 @@ export const webhookTables = {
 		// Timestamps
 		createdAt: v.number(),
 		updatedAt: v.number(),
-	})
-		.index('by_active', ['isActive']),
+	}).index('by_active', ['isActive']),
 
 	// Webhook Delivery Logs - tracks webhook delivery attempts for debugging
 	webhookDeliveryLogs: defineTable({

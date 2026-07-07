@@ -10,12 +10,7 @@ import { contactCreatedTrigger } from './triggers/contact_created';
 import { contactUpdatedTrigger } from './triggers/contact_updated';
 import { eventReceivedTrigger } from './triggers/event_received';
 import { topicSubscribedTrigger } from './triggers/topic_subscribed';
-import type {
-	FireInputFor,
-	TriggerKind,
-	TriggerModule,
-	TriggerData,
-} from './triggers/types';
+import type { FireInputFor, TriggerKind, TriggerModule, TriggerData } from './triggers/types';
 import { createContact } from '../contacts/creation';
 import { throwNotFound } from '../_utils/errors';
 

@@ -1,9 +1,6 @@
 import { v } from 'convex/values';
 import type { Doc } from './_generated/dataModel';
-import {
-	type MutationCtx,
-	type QueryCtx,
-} from './_generated/server';
+import { type MutationCtx, type QueryCtx } from './_generated/server';
 import { authedQuery, authedMutation } from './lib/authedFunctions';
 import { requireOrgPermission } from './lib/sessionOrganization';
 import { messageTypeValidator } from './lib/sendProviders/route';
@@ -25,7 +22,7 @@ type MessageType = Doc<'providerRoutes'>['messageType'];
  */
 async function getRouteByType(
 	ctx: QueryCtx | MutationCtx,
-	messageType: MessageType,
+	messageType: MessageType
 ): Promise<Doc<'providerRoutes'> | null> {
 	return await ctx.db
 		.query('providerRoutes')
@@ -44,7 +41,7 @@ async function upsertRoute(
 		strategy: Doc<'providerRoutes'>['strategy'];
 		providers: Doc<'providerRoutes'>['providers'];
 		ipPool?: string;
-	},
+	}
 ): Promise<Doc<'providerRoutes'>['_id']> {
 	const now = Date.now();
 	const existing = await getRouteByType(ctx, messageType);
@@ -89,9 +86,7 @@ const strategyValidator = v.union(
 export const listRoutes = authedQuery({
 	args: {},
 	handler: async (ctx) => {
-		return await ctx.db
-			.query('providerRoutes')
-			.collect(); // bounded: configured provider routes (few)
+		return await ctx.db.query('providerRoutes').collect(); // bounded: configured provider routes (few)
 	},
 });
 
@@ -126,7 +121,11 @@ export const setRoute = authedMutation({
 		ipPool: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'organization:manage', 'Only owners and admins can change provider routing');
+		await requireOrgPermission(
+			ctx,
+			'organization:manage',
+			'Only owners and admins can change provider routing'
+		);
 
 		return await upsertRoute(ctx, args.messageType, {
 			strategy: args.strategy,
@@ -144,7 +143,11 @@ export const removeRoute = authedMutation({
 		messageType: messageTypeValidator,
 	},
 	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'organization:manage', 'Only owners and admins can change provider routing');
+		await requireOrgPermission(
+			ctx,
+			'organization:manage',
+			'Only owners and admins can change provider routing'
+		);
 		const existing = await getRouteByType(ctx, args.messageType);
 
 		if (existing) {
@@ -157,4 +160,3 @@ export const removeRoute = authedMutation({
 		return { success: true };
 	},
 });
-

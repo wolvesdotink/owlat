@@ -245,7 +245,7 @@ export const updateTrigger = authedMutation({
 			ctx,
 			args.automationId,
 			'update automation triggers',
-			'Cannot update trigger on active or paused automations',
+			'Cannot update trigger on active or paused automations'
 		);
 
 		await ctx.db.patch(args.automationId, {
@@ -259,7 +259,7 @@ export const updateTrigger = authedMutation({
 // Translate the lifecycle's typed `reason` to a human-facing message. The
 // lifecycle owns the typed contract; the human string is shell-local.
 function reasonToMessage(
-	reason: Extract<AutomationTransitionOutcome, { ok: false }>['reason'],
+	reason: Extract<AutomationTransitionOutcome, { ok: false }>['reason']
 ): string {
 	switch (reason) {
 		case 'automation_not_found':
@@ -420,4 +420,3 @@ export const remove = authedMutation({
 		await ctx.db.delete(args.automationId);
 	},
 });
-

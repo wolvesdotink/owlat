@@ -103,7 +103,7 @@ export const runReset = internalMutation({
  */
 async function wipeBetterAuthModel(
 	ctx: MutationCtx,
-	model: 'user' | 'account' | 'organization' | 'member',
+	model: 'user' | 'account' | 'organization' | 'member'
 ): Promise<number> {
 	let total = 0;
 	const MAX_ITERATIONS = 200;

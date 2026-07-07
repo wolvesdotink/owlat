@@ -62,9 +62,7 @@ export const selectFolder = internalQuery({
 		// IMAP command).
 		const firstUnseen = await ctx.db
 			.query('mailMessages')
-			.withIndex('by_folder_and_seen', (q) =>
-				q.eq('folderId', args.folderId).eq('flagSeen', false),
-			)
+			.withIndex('by_folder_and_seen', (q) => q.eq('folderId', args.folderId).eq('flagSeen', false))
 			.order('asc')
 			.first();
 		// RFC 3501 §7.1: `* OK [UNSEEN n]` reports the *message sequence
@@ -76,7 +74,7 @@ export const selectFolder = internalQuery({
 			const earlier = await ctx.db
 				.query('mailMessages')
 				.withIndex('by_folder_and_uid', (q) =>
-					q.eq('folderId', args.folderId).lt('uid', firstUnseen.uid),
+					q.eq('folderId', args.folderId).lt('uid', firstUnseen.uid)
 				)
 				.collect(); // bounded: one folder's messages in a UID range
 			firstUnseenSeq = earlier.length + 1;
@@ -110,10 +108,7 @@ export const fetchEnvelopes = internalQuery({
 		const messages = await ctx.db
 			.query('mailMessages')
 			.withIndex('by_folder_and_uid', (q) =>
-				q
-					.eq('folderId', args.folderId)
-					.gte('uid', args.uidLow)
-					.lte('uid', args.uidHigh)
+				q.eq('folderId', args.folderId).gte('uid', args.uidLow).lte('uid', args.uidHigh)
 			)
 			.collect(); // bounded: one folder's messages in a UID range
 
@@ -258,10 +253,7 @@ const IMAP_FLAG_TO_FIELD: Record<string, keyof Doc<'mailMessages'>> = {
 	'\\deleted': 'flagDeleted',
 };
 
-async function bumpFolderModseq(
-	ctx: MutationCtx,
-	folderId: Id<'mailFolders'>
-): Promise<number> {
+async function bumpFolderModseq(ctx: MutationCtx, folderId: Id<'mailFolders'>): Promise<number> {
 	const folder = await ctx.db.get(folderId);
 	if (!folder) throw new Error('Folder not found');
 	const next = folder.highestModseq + 1;
@@ -274,15 +266,14 @@ function isImapSystemFlag(flag: string): boolean {
 }
 
 interface FlagDelta {
-	systemFlags: Partial<Record<'flagSeen' | 'flagFlagged' | 'flagAnswered' | 'flagDraft' | 'flagDeleted', boolean>>;
+	systemFlags: Partial<
+		Record<'flagSeen' | 'flagFlagged' | 'flagAnswered' | 'flagDraft' | 'flagDeleted', boolean>
+	>;
 	customFlagsAdd: string[];
 	customFlagsRemove: string[];
 }
 
-function buildFlagDelta(
-	rawFlags: string[],
-	mode: 'set' | 'add' | 'remove'
-): FlagDelta {
+function buildFlagDelta(rawFlags: string[], mode: 'set' | 'add' | 'remove'): FlagDelta {
 	const delta: FlagDelta = {
 		systemFlags: {},
 		customFlagsAdd: [],
@@ -334,10 +325,7 @@ export const storeFlags = internalMutation({
 
 			// CONDSTORE: skip messages that have changed since the requested
 			// baseline. The IMAP server reports them in the MODIFIED response.
-			if (
-				args.unchangedSinceModseq !== undefined &&
-				message.modseq > args.unchangedSinceModseq
-			) {
+			if (args.unchangedSinceModseq !== undefined && message.modseq > args.unchangedSinceModseq) {
 				unchanged.push({ messageId: message._id, uid: message.uid });
 				continue;
 			}
@@ -354,10 +342,14 @@ export const storeFlags = internalMutation({
 				patch.customFlags = delta.customFlagsAdd;
 			} else {
 				if (delta.systemFlags.flagSeen !== undefined) patch.flagSeen = delta.systemFlags.flagSeen;
-				if (delta.systemFlags.flagFlagged !== undefined) patch.flagFlagged = delta.systemFlags.flagFlagged;
-				if (delta.systemFlags.flagAnswered !== undefined) patch.flagAnswered = delta.systemFlags.flagAnswered;
-				if (delta.systemFlags.flagDraft !== undefined) patch.flagDraft = delta.systemFlags.flagDraft;
-				if (delta.systemFlags.flagDeleted !== undefined) patch.flagDeleted = delta.systemFlags.flagDeleted;
+				if (delta.systemFlags.flagFlagged !== undefined)
+					patch.flagFlagged = delta.systemFlags.flagFlagged;
+				if (delta.systemFlags.flagAnswered !== undefined)
+					patch.flagAnswered = delta.systemFlags.flagAnswered;
+				if (delta.systemFlags.flagDraft !== undefined)
+					patch.flagDraft = delta.systemFlags.flagDraft;
+				if (delta.systemFlags.flagDeleted !== undefined)
+					patch.flagDeleted = delta.systemFlags.flagDeleted;
 				if (delta.customFlagsAdd.length > 0 || delta.customFlagsRemove.length > 0) {
 					const next = new Set(message.customFlags);
 					for (const f of delta.customFlagsAdd) next.add(f);
@@ -446,8 +438,23 @@ export const copyMessages = internalMutation({
 			totalDelta += 1;
 			if (!m.flagSeen) unseenDelta += 1;
 
-			const { _id, _creationTime, folderId, uid, modseq: _ms, createdAt: _ca, updatedAt: _ua, ...rest } = m;
-			void _id; void _creationTime; void folderId; void uid; void _ms; void _ca; void _ua;
+			const {
+				_id,
+				_creationTime,
+				folderId,
+				uid,
+				modseq: _ms,
+				createdAt: _ca,
+				updatedAt: _ua,
+				...rest
+			} = m;
+			void _id;
+			void _creationTime;
+			void folderId;
+			void uid;
+			void _ms;
+			void _ca;
+			void _ua;
 			await ctx.db.insert('mailMessages', {
 				...rest,
 				folderId: target._id,
@@ -775,10 +782,7 @@ export const resolveMessageIdsByUid = internalQuery({
 		const messages = await ctx.db
 			.query('mailMessages')
 			.withIndex('by_folder_and_uid', (q) =>
-				q
-					.eq('folderId', args.folderId)
-					.gte('uid', args.uidLow)
-					.lte('uid', args.uidHigh)
+				q.eq('folderId', args.folderId).gte('uid', args.uidLow).lte('uid', args.uidHigh)
 			)
 			.collect(); // bounded: one folder's messages in a UID range
 		return messages
