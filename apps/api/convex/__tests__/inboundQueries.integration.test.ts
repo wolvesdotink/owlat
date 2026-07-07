@@ -54,11 +54,11 @@ const modules = Object.fromEntries(
 			!path.includes('agentClassifier') &&
 			!path.includes('agentDrafter') &&
 			!path.includes('agentRouter') &&
-		!path.includes('agent/walker') &&
-		!path.includes('agent/steps/index') &&
-		!path.includes('agent/steps/shared') &&
-		!path.includes('agent/steps/classify') &&
-		!path.includes('agent/steps/draft') &&
+			!path.includes('agent/walker') &&
+			!path.includes('agent/steps/index') &&
+			!path.includes('agent/steps/shared') &&
+			!path.includes('agent/steps/classify') &&
+			!path.includes('agent/steps/draft') &&
 			!path.includes('knowledgeExtraction') &&
 			!path.includes('semanticFileProcessing') &&
 			!path.includes('visualizationAgent') &&
@@ -101,9 +101,18 @@ describe('inboundQueries.listThreads', () => {
 
 		await t.run(async (ctx) => {
 			const contactId = await ctx.db.insert('contacts', createTestContact());
-			await ctx.db.insert('conversationThreads', threadData({ contactId, subject: 'Older', lastMessageAt: now - 2000 }));
-			await ctx.db.insert('conversationThreads', threadData({ contactId, subject: 'Newer', lastMessageAt: now }));
-			await ctx.db.insert('conversationThreads', threadData({ contactId, subject: 'Middle', lastMessageAt: now - 1000 }));
+			await ctx.db.insert(
+				'conversationThreads',
+				threadData({ contactId, subject: 'Older', lastMessageAt: now - 2000 })
+			);
+			await ctx.db.insert(
+				'conversationThreads',
+				threadData({ contactId, subject: 'Newer', lastMessageAt: now })
+			);
+			await ctx.db.insert(
+				'conversationThreads',
+				threadData({ contactId, subject: 'Middle', lastMessageAt: now - 1000 })
+			);
 		});
 
 		const result = await t.withIdentity(testIdentity).query(api.inbox.queries.listThreads, {});
@@ -124,10 +133,9 @@ describe('inboundQueries.listThreads', () => {
 			await ctx.db.insert('conversationThreads', threadData({ contactId, status: 'open' }));
 		});
 
-		const result = await t.withIdentity(testIdentity).query(
-			api.inbox.queries.listThreads,
-			{ status: 'open' }
-		);
+		const result = await t
+			.withIdentity(testIdentity)
+			.query(api.inbox.queries.listThreads, { status: 'open' });
 
 		expect(result.threads).toHaveLength(2);
 		expect(result.threads.every((t) => t.status === 'open')).toBe(true);
@@ -140,14 +148,16 @@ describe('inboundQueries.listThreads', () => {
 		await t.run(async (ctx) => {
 			const contactId = await ctx.db.insert('contacts', createTestContact());
 			for (let i = 0; i < 5; i++) {
-				await ctx.db.insert('conversationThreads', threadData({ contactId, lastMessageAt: Date.now() - i * 1000 }));
+				await ctx.db.insert(
+					'conversationThreads',
+					threadData({ contactId, lastMessageAt: Date.now() - i * 1000 })
+				);
 			}
 		});
 
-		const result = await t.withIdentity(testIdentity).query(
-			api.inbox.queries.listThreads,
-			{ limit: 2 }
-		);
+		const result = await t
+			.withIdentity(testIdentity)
+			.query(api.inbox.queries.listThreads, { limit: 2 });
 
 		expect(result.threads).toHaveLength(2);
 	});
@@ -158,15 +168,20 @@ describe('inboundQueries.listThreads', () => {
 
 		await t.run(async (ctx) => {
 			const contactId = await ctx.db.insert('contacts', createTestContact());
-			await ctx.db.insert('conversationThreads', threadData({ contactId, assignedTo: 'test-user-123' }));
-			await ctx.db.insert('conversationThreads', threadData({ contactId, assignedTo: 'other-user' }));
+			await ctx.db.insert(
+				'conversationThreads',
+				threadData({ contactId, assignedTo: 'test-user-123' })
+			);
+			await ctx.db.insert(
+				'conversationThreads',
+				threadData({ contactId, assignedTo: 'other-user' })
+			);
 			await ctx.db.insert('conversationThreads', threadData({ contactId }));
 		});
 
-		const result = await t.withIdentity(testIdentity).query(
-			api.inbox.queries.listThreads,
-			{ assignedToMe: true }
-		);
+		const result = await t
+			.withIdentity(testIdentity)
+			.query(api.inbox.queries.listThreads, { assignedToMe: true });
 
 		expect(result.threads).toHaveLength(1);
 		expect(result.threads[0]!.assignedTo).toBe('test-user-123');
@@ -194,16 +209,21 @@ describe('inboundQueries.getThread', () => {
 
 		let threadId!: Id<'conversationThreads'>;
 		await t.run(async (ctx) => {
-			const contactId = await ctx.db.insert('contacts', createTestContact({ email: 'sender@example.com' }));
-			threadId = await ctx.db.insert('conversationThreads', threadData({ contactId, messageCount: 2 }));
+			const contactId = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'sender@example.com' })
+			);
+			threadId = await ctx.db.insert(
+				'conversationThreads',
+				threadData({ contactId, messageCount: 2 })
+			);
 			await ctx.db.insert('inboundMessages', msgData({ threadId, contactId, subject: 'First' }));
 			await ctx.db.insert('inboundMessages', msgData({ threadId, contactId, subject: 'Second' }));
 		});
 
-		const result = await t.withIdentity(testIdentity).query(
-			api.inbox.queries.getThread,
-			{ threadId }
-		);
+		const result = await t
+			.withIdentity(testIdentity)
+			.query(api.inbox.queries.getThread, { threadId });
 
 		expect(result).toBeDefined();
 		expect(result!.thread._id).toBe(threadId);
@@ -223,10 +243,9 @@ describe('inboundQueries.getThread', () => {
 			fakeThreadId = id;
 		});
 
-		const result = await t.withIdentity(testIdentity).query(
-			api.inbox.queries.getThread,
-			{ threadId: fakeThreadId }
-		);
+		const result = await t
+			.withIdentity(testIdentity)
+			.query(api.inbox.queries.getThread, { threadId: fakeThreadId });
 
 		expect(result).toBeNull();
 	});
@@ -245,21 +264,30 @@ describe('inboundQueries.getReviewQueue', () => {
 		const t = convexTest(schema, modules);
 
 		await t.run(async (ctx) => {
-			const contactId = await ctx.db.insert('contacts', createTestContact({ email: 'customer@example.com' }));
+			const contactId = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'customer@example.com' })
+			);
 			const threadId = await ctx.db.insert('conversationThreads', threadData({ contactId }));
 			// draft_ready message
-			await ctx.db.insert('inboundMessages', msgData({
-				threadId,
-				contactId,
-				processingStatus: 'draft_ready',
-				draftResponse: 'Auto-generated reply',
-			}));
+			await ctx.db.insert(
+				'inboundMessages',
+				msgData({
+					threadId,
+					contactId,
+					processingStatus: 'draft_ready',
+					draftResponse: 'Auto-generated reply',
+				})
+			);
 			// Non-draft_ready message (should be excluded)
-			await ctx.db.insert('inboundMessages', msgData({
-				threadId,
-				contactId,
-				processingStatus: 'received',
-			}));
+			await ctx.db.insert(
+				'inboundMessages',
+				msgData({
+					threadId,
+					contactId,
+					processingStatus: 'received',
+				})
+			);
 		});
 
 		const result = await t.withIdentity(testIdentity).query(api.inbox.queries.getReviewQueue, {});
@@ -278,19 +306,21 @@ describe('inboundQueries.getReviewQueue', () => {
 			const contactId = await ctx.db.insert('contacts', createTestContact());
 			const threadId = await ctx.db.insert('conversationThreads', threadData({ contactId }));
 			for (let i = 0; i < 5; i++) {
-				await ctx.db.insert('inboundMessages', msgData({
-					threadId,
-					contactId,
-					processingStatus: 'draft_ready',
-					draftResponse: `Draft ${i}`,
-				}));
+				await ctx.db.insert(
+					'inboundMessages',
+					msgData({
+						threadId,
+						contactId,
+						processingStatus: 'draft_ready',
+						draftResponse: `Draft ${i}`,
+					})
+				);
 			}
 		});
 
-		const result = await t.withIdentity(testIdentity).query(
-			api.inbox.queries.getReviewQueue,
-			{ limit: 2 }
-		);
+		const result = await t
+			.withIdentity(testIdentity)
+			.query(api.inbox.queries.getReviewQueue, { limit: 2 });
 
 		expect(result).toHaveLength(2);
 	});
@@ -309,14 +339,17 @@ describe('inboundQueries.getQuarantined', () => {
 		const t = convexTest(schema, modules);
 
 		await t.run(async (ctx) => {
-			await ctx.db.insert('inboundMessages', msgData({
-				processingStatus: 'quarantined',
-				securityFlags: {
-					injectionDetected: true,
-					confidence: 0.95,
-					scanTimestamp: Date.now(),
-				},
-			}));
+			await ctx.db.insert(
+				'inboundMessages',
+				msgData({
+					processingStatus: 'quarantined',
+					securityFlags: {
+						injectionDetected: true,
+						confidence: 0.95,
+						scanTimestamp: Date.now(),
+					},
+				})
+			);
 			await ctx.db.insert('inboundMessages', msgData({ processingStatus: 'received' }));
 		});
 
@@ -335,10 +368,9 @@ describe('inboundQueries.getQuarantined', () => {
 			}
 		});
 
-		const result = await t.withIdentity(testIdentity).query(
-			api.inbox.queries.getQuarantined,
-			{ limit: 3 }
-		);
+		const result = await t
+			.withIdentity(testIdentity)
+			.query(api.inbox.queries.getQuarantined, { limit: 3 });
 
 		expect(result).toHaveLength(3);
 	});
@@ -357,10 +389,13 @@ describe('inboundQueries.getFailed', () => {
 		const t = convexTest(schema, modules);
 
 		await t.run(async (ctx) => {
-			await ctx.db.insert('inboundMessages', msgData({
-				processingStatus: 'failed',
-				errorMessage: 'draft step exhausted retries',
-			}));
+			await ctx.db.insert(
+				'inboundMessages',
+				msgData({
+					processingStatus: 'failed',
+					errorMessage: 'draft step exhausted retries',
+				})
+			);
 			await ctx.db.insert('inboundMessages', msgData({ processingStatus: 'received' }));
 			await ctx.db.insert('inboundMessages', msgData({ processingStatus: 'sent' }));
 		});
@@ -381,10 +416,9 @@ describe('inboundQueries.getFailed', () => {
 			}
 		});
 
-		const result = await t.withIdentity(testIdentity).query(
-			api.inbox.queries.getFailed,
-			{ limit: 3 }
-		);
+		const result = await t
+			.withIdentity(testIdentity)
+			.query(api.inbox.queries.getFailed, { limit: 3 });
 
 		expect(result).toHaveLength(3);
 	});
@@ -417,16 +451,43 @@ describe('inboundQueries.getInboundStats', () => {
 
 		await t.run(async (ctx) => {
 			const contactId = await ctx.db.insert('contacts', createTestContact());
-			const threadId = await ctx.db.insert('conversationThreads', threadData({ contactId, status: 'open' }));
+			const threadId = await ctx.db.insert(
+				'conversationThreads',
+				threadData({ contactId, status: 'open' })
+			);
 
-			await ctx.db.insert('inboundMessages', msgData({ threadId, contactId, processingStatus: 'received' }));
-			await ctx.db.insert('inboundMessages', msgData({ threadId, contactId, processingStatus: 'received' }));
-			await ctx.db.insert('inboundMessages', msgData({ threadId, contactId, processingStatus: 'classifying' }));
-			await ctx.db.insert('inboundMessages', msgData({ threadId, contactId, processingStatus: 'draft_ready', draftResponse: 'draft' }));
-			await ctx.db.insert('inboundMessages', msgData({ threadId, contactId, processingStatus: 'approved' }));
-			await ctx.db.insert('inboundMessages', msgData({ threadId, contactId, processingStatus: 'sent' }));
-			await ctx.db.insert('inboundMessages', msgData({ threadId, contactId, processingStatus: 'quarantined' }));
-			await ctx.db.insert('inboundMessages', msgData({ threadId, contactId, processingStatus: 'failed' }));
+			await ctx.db.insert(
+				'inboundMessages',
+				msgData({ threadId, contactId, processingStatus: 'received' })
+			);
+			await ctx.db.insert(
+				'inboundMessages',
+				msgData({ threadId, contactId, processingStatus: 'received' })
+			);
+			await ctx.db.insert(
+				'inboundMessages',
+				msgData({ threadId, contactId, processingStatus: 'classifying' })
+			);
+			await ctx.db.insert(
+				'inboundMessages',
+				msgData({ threadId, contactId, processingStatus: 'draft_ready', draftResponse: 'draft' })
+			);
+			await ctx.db.insert(
+				'inboundMessages',
+				msgData({ threadId, contactId, processingStatus: 'approved' })
+			);
+			await ctx.db.insert(
+				'inboundMessages',
+				msgData({ threadId, contactId, processingStatus: 'sent' })
+			);
+			await ctx.db.insert(
+				'inboundMessages',
+				msgData({ threadId, contactId, processingStatus: 'quarantined' })
+			);
+			await ctx.db.insert(
+				'inboundMessages',
+				msgData({ threadId, contactId, processingStatus: 'failed' })
+			);
 
 			// Additional threads
 			await ctx.db.insert('conversationThreads', threadData({ contactId, status: 'open' }));
@@ -498,13 +559,16 @@ describe('inboundQueries.getInboundStats', () => {
 
 		// Resolve one → 1.
 		await t.run(async (ctx) =>
-			transition(ctx, { threadId, input: { kind: 'status_change', to: 'resolved', source: 'user' } }),
+			transition(ctx, {
+				threadId,
+				input: { kind: 'status_change', to: 'resolved', source: 'user' },
+			})
 		);
 		expect(await read()).toBe(1);
 
 		// Reopen the resolved thread via inbound activity → 2.
 		await t.run(async (ctx) =>
-			transition(ctx, { threadId, input: { kind: 'inbound_activity', occurredAt: 2000 } }),
+			transition(ctx, { threadId, input: { kind: 'inbound_activity', occurredAt: 2000 } })
 		);
 		expect(await read()).toBe(2);
 	});
@@ -561,12 +625,83 @@ describe('inboundQueries.getMessageActions', () => {
 			);
 		});
 
-		const result = await t.withIdentity(testIdentity).query(
-			api.inbox.queries.getMessageActions,
-			{ inboundMessageId: messageId }
-		);
+		const result = await t
+			.withIdentity(testIdentity)
+			.query(api.inbox.queries.getMessageActions, { inboundMessageId: messageId });
 
 		expect(result).toHaveLength(2);
 		expect(result.map((a) => a.actionType).sort()).toEqual(['classify', 'security_scan']);
+	});
+});
+
+// ============ per-user thread reads (unread) ============
+
+describe('inbox.reads.markThreadSeen + listThreads unread', () => {
+	it('upserts one read marker per user instead of duplicating rows', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['inbox']);
+
+		const threadId = await t.run(async (ctx) => {
+			const contactId = await ctx.db.insert('contacts', createTestContact());
+			return await ctx.db.insert('conversationThreads', threadData({ contactId }));
+		});
+
+		await t.withIdentity(testIdentity).mutation(api.inbox.reads.markThreadSeen, { threadId });
+		const first = await t.run(async (ctx) =>
+			ctx.db
+				.query('threadReads')
+				.withIndex('by_user_thread', (q) => q.eq('userId', 'test-user').eq('threadId', threadId))
+				.collect()
+		);
+		expect(first).toHaveLength(1);
+		const firstSeenAt = first[0]!.lastSeenAt;
+
+		// Re-open advances the timestamp on the SAME row (upsert, not insert).
+		await t.withIdentity(testIdentity).mutation(api.inbox.reads.markThreadSeen, { threadId });
+		const second = await t.run(async (ctx) =>
+			ctx.db
+				.query('threadReads')
+				.withIndex('by_user_thread', (q) => q.eq('userId', 'test-user').eq('threadId', threadId))
+				.collect()
+		);
+		expect(second).toHaveLength(1);
+		expect(second[0]!.lastSeenAt).toBeGreaterThanOrEqual(firstSeenAt);
+	});
+
+	it('marks a thread unread until the viewer has seen it, and again after new activity', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['inbox']);
+		const now = Date.now();
+
+		const threadId = await t.run(async (ctx) => {
+			const contactId = await ctx.db.insert('contacts', createTestContact());
+			return await ctx.db.insert(
+				'conversationThreads',
+				threadData({ contactId, lastMessageAt: now })
+			);
+		});
+
+		// No read marker yet → unread.
+		const before = await t.withIdentity(testIdentity).query(api.inbox.queries.listThreads, {});
+		expect(before.threads[0]!.unread).toBe(true);
+
+		// Seen after the last message → read. (The list viewer id is the
+		// identity subject, so write the marker for that id.)
+		await t.run(async (ctx) => {
+			await ctx.db.insert('threadReads', {
+				threadId,
+				userId: testIdentity.subject,
+				lastSeenAt: now + 1000,
+			});
+		});
+		const seen = await t.withIdentity(testIdentity).query(api.inbox.queries.listThreads, {});
+		expect(seen.threads[0]!.unread).toBe(false);
+
+		// New activity after lastSeen → unread again.
+		await t.run(async (ctx) => {
+			await ctx.db.patch(threadId, { lastMessageAt: now + 5000 });
+		});
+		const after = await t.withIdentity(testIdentity).query(api.inbox.queries.listThreads, {});
+		expect(after.threads[0]!.unread).toBe(true);
 	});
 });
