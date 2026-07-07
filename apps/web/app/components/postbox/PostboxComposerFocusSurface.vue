@@ -41,16 +41,20 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown, true));
 </script>
 
 <template>
+	<!-- Scrim + frame sit at z-50, one level above every floating popup and the
+	     dock (z-40), so promoting one composer while others are open cleanly
+	     covers them: the distraction-free surface keeps a single focal point
+	     (brief rule 1) instead of other popups/chips bleeding over the scrim. -->
 	<Transition name="pbx-focus-scrim">
 		<div
 			v-if="focusedId"
-			class="fixed inset-0 z-40 bg-bg-deep/80 backdrop-blur-sm"
+			class="fixed inset-0 z-50 bg-bg-deep/80 backdrop-blur-sm"
 			aria-hidden="true"
 			@click="stack.unfocus()"
 		/>
 	</Transition>
 	<div
-		class="pbx-focus-frame fixed inset-0 z-40 flex items-start justify-center overflow-y-auto p-6 sm:p-10 pointer-events-none"
+		class="pbx-focus-frame fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-6 sm:p-10 pointer-events-none"
 		:class="{ 'is-focused': focusedId }"
 	>
 		<div id="pbx-focus-mount" class="w-full max-w-2xl pointer-events-auto" />
