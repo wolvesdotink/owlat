@@ -331,7 +331,13 @@ export const inboxTables = {
 	})
 		.index('by_thread', ['threadId'])
 		.index('by_user', ['userId'])
-		.index('by_heartbeat', ['heartbeatAt']),
+		.index('by_heartbeat', ['heartbeatAt'])
+		// One row per (user, thread) — point-read the caller's own presence on
+		// heartbeat/leave via `.unique()` instead of scanning all their rows.
+		.index('by_user_thread', ['userId', 'threadId'])
+		// Range-scan a thread's ACTIVE rows (heartbeatAt within the window)
+		// directly on the index — no in-memory window predicate.
+		.index('by_thread_heartbeat', ['threadId', 'heartbeatAt']),
 
 	// Coalesce Batches - one in-flight debounce window per thread. When rapid
 	// messages arrive on the same thread, the pending batch's scheduled job is

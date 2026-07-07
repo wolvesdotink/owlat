@@ -54,13 +54,11 @@ export const heartbeat = adminMutation({
 		await getOrThrow(ctx, args.threadId, 'Thread');
 
 		const now = Date.now();
-		// One row per user; a user rarely has more than a couple of threads open,
-		// so scanning their own rows is cheap.
-		const mine = await ctx.db
+		// One row per (user, thread) — point-read the caller's own presence.
+		const existing = await ctx.db
 			.query('threadPresence')
-			.withIndex('by_user', (q) => q.eq('userId', userId))
-			.collect();
-		const existing = mine.find((r) => r.threadId === args.threadId);
+			.withIndex('by_user_thread', (q) => q.eq('userId', userId).eq('threadId', args.threadId))
+			.unique();
 
 		if (existing) {
 			await ctx.db.patch(existing._id, { mode: args.mode, heartbeatAt: now });
@@ -86,13 +84,12 @@ export const leave = adminMutation({
 	},
 	handler: async (ctx, args) => {
 		const { userId } = await getMutationContext(ctx);
-		const mine = await ctx.db
+		// One row per (user, thread) — point-read and drop it if present.
+		const existing = await ctx.db
 			.query('threadPresence')
-			.withIndex('by_user', (q) => q.eq('userId', userId))
-			.collect();
-		for (const row of mine) {
-			if (row.threadId === args.threadId) await ctx.db.delete(row._id);
-		}
+			.withIndex('by_user_thread', (q) => q.eq('userId', userId).eq('threadId', args.threadId))
+			.unique();
+		if (existing) await ctx.db.delete(existing._id);
 		return { success: true };
 	},
 });
@@ -113,14 +110,16 @@ export const list = publicQuery({
 		if (!session || (session.role !== 'owner' && session.role !== 'admin')) return [];
 
 		const cutoff = Date.now() - PRESENCE_ACTIVE_WINDOW_MS;
+		// Range-scan only the ACTIVE rows for this thread (heartbeat within the
+		// window) via the compound index — no in-memory window filter.
 		const rows = await ctx.db
 			.query('threadPresence')
-			.withIndex('by_thread', (q) => q.eq('threadId', args.threadId))
-			.collect();
+			.withIndex('by_thread_heartbeat', (q) =>
+				q.eq('threadId', args.threadId).gt('heartbeatAt', cutoff)
+			)
+			.collect(); // bounded: one row per (thread, present team member), capped by team size
 
-		return rows
-			.filter((r) => r.heartbeatAt > cutoff)
-			.map((r) => ({ userId: r.userId, mode: r.mode, heartbeatAt: r.heartbeatAt }));
+		return rows.map((r) => ({ userId: r.userId, mode: r.mode, heartbeatAt: r.heartbeatAt }));
 	},
 });
 
