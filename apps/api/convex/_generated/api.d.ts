@@ -165,6 +165,7 @@ import type * as contacts_timeline from "../contacts/timeline.js";
 import type * as crons from "../crons.js";
 import type * as delivery_contactToken from "../delivery/contactToken.js";
 import type * as delivery_enqueue from "../delivery/enqueue.js";
+import type * as delivery_health from "../delivery/health.js";
 import type * as delivery_messageIdRouting from "../delivery/messageIdRouting.js";
 import type * as delivery_preferences from "../delivery/preferences.js";
 import type * as delivery_preferencesHttp from "../delivery/preferencesHttp.js";
@@ -708,6 +709,7 @@ declare const fullApi: ApiFromModules<{
   crons: typeof crons;
   "delivery/contactToken": typeof delivery_contactToken;
   "delivery/enqueue": typeof delivery_enqueue;
+  "delivery/health": typeof delivery_health;
   "delivery/messageIdRouting": typeof delivery_messageIdRouting;
   "delivery/preferences": typeof delivery_preferences;
   "delivery/preferencesHttp": typeof delivery_preferencesHttp;
