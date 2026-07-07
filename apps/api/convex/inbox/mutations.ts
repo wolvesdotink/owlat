@@ -260,6 +260,8 @@ export const assignThread = adminMutation({
 		assignedTo: v.optional(v.string()), // omit to unassign
 	},
 	handler: async (ctx, args) => {
+		const { userId: actorId } = await getMutationContext(ctx);
+
 		// Validate the assignee is a real instance user — assignedTo is a
 		// free-form string, so without this an admin could assign a thread to a
 		// bogus or foreign id that no member-facing UI could ever surface or
@@ -279,6 +281,27 @@ export const assignThread = adminMutation({
 			input: { kind: 'assignment_change', assignedTo: args.assignedTo, source: 'user' },
 		});
 		if (!outcome.ok) throwNotFound('Thread');
+
+		// Notify the new assignee, but never on self-assign (claiming a thread for
+		// yourself). One append-only notice row per cross-user assignment; the
+		// assignee's session surfaces it via `queries.pendingAssignments` (in-app
+		// toast + desktop notification, coalesced client-side). Best-effort: a
+		// missing thread/profile just skips the notice, it never fails the assign.
+		if (args.assignedTo !== undefined && args.assignedTo !== actorId) {
+			const thread = await ctx.db.get(args.threadId);
+			const actorProfile = await ctx.db
+				.query('userProfiles')
+				.withIndex('by_auth_user_id', (q) => q.eq('authUserId', actorId))
+				.first();
+			const assignedByName = actorProfile?.name?.trim() || actorProfile?.email || 'A teammate';
+			await ctx.db.insert('inboxAssignmentNotices', {
+				userId: args.assignedTo,
+				threadId: args.threadId,
+				subject: thread?.subject ?? 'No subject',
+				assignedByName,
+				createdAt: Date.now(),
+			});
+		}
 
 		return { success: true };
 	},

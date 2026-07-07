@@ -33,6 +33,7 @@ export type OrganizationDeletionTable =
 	| 'contentScanResults'
 	| 'threadPresence'
 	| 'threadReads'
+	| 'inboxAssignmentNotices'
 	| 'inboundMessages'
 	| 'conversationThreads'
 	| 'mailAliases'
@@ -162,6 +163,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('contentScanResults'),
 	v.literal('threadPresence'),
 	v.literal('threadReads'),
+	v.literal('inboxAssignmentNotices'),
 	v.literal('inboundMessages'),
 	v.literal('conversationThreads'),
 	v.literal('mailAliases'),

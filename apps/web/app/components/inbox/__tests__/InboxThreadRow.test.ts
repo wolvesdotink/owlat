@@ -25,6 +25,15 @@ const UiAvatarStub = {
 	template: '<span class="ui-avatar-stub">{{ name || email }}</span>',
 };
 const NuxtLinkStub = { props: ['to'], template: '<a :href="to"><slot /></a>' };
+// The avatar picker is exercised in AssignPopover.test.ts; here it is stubbed to
+// render its trigger slot plus a hook that fires the `assign` selection so we can
+// assert the row forwards it.
+const AssignPopoverStub = {
+	props: ['members', 'currentUserId', 'assignedTo', 'open', 'position'],
+	emits: ['assign', 'update:open'],
+	template:
+		'<div><slot name="trigger" /><button class="assign-pick" @click="$emit(\'assign\', \'picked-user\')" /></div>',
+};
 
 function mountRow(thread: Partial<InboxThreadRowThread>) {
 	const full: InboxThreadRowThread = {
@@ -40,7 +49,12 @@ function mountRow(thread: Partial<InboxThreadRowThread>) {
 		props: { thread: full, focused: false, formatRelativeTime: () => '5m' },
 		global: {
 			components: { PostboxRowCore, InboxStatusChip: StatusChip },
-			stubs: { Icon: true, UiAvatar: UiAvatarStub, NuxtLink: NuxtLinkStub },
+			stubs: {
+				Icon: true,
+				UiAvatar: UiAvatarStub,
+				NuxtLink: NuxtLinkStub,
+				InboxAssignPopover: AssignPopoverStub,
+			},
 		},
 	});
 }
@@ -97,10 +111,11 @@ describe('InboxThreadRow', () => {
 
 	it('emits triage intents from the hover quick actions', async () => {
 		const w = mountRow({ unread: true });
-		await w.get('[aria-label="Assign to me"]').trigger('click');
+		// Assign is forwarded from the picker's selection (carrying the chosen id).
+		await w.get('.assign-pick').trigger('click');
 		await w.get('[aria-label="Resolve"]').trigger('click');
 		await w.get('[aria-label="Snooze"]').trigger('click');
-		expect(w.emitted('assign')).toHaveLength(1);
+		expect(w.emitted('assign')).toEqual([['picked-user']]);
 		expect(w.emitted('resolve')).toHaveLength(1);
 		expect(w.emitted('snooze')).toHaveLength(1);
 	});
