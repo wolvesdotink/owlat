@@ -110,29 +110,21 @@ const navigationSections = computed(() => {
 		{ name: 'Quarantine', href: '/dashboard/inbox/quarantine', icon: 'lucide:shield-alert' },
 	];
 
-	const mailItems = [
-		{ name: 'Overview', href: '/dashboard/mail', icon: 'lucide:layout-dashboard' },
+	// Unified "Send" section: everything you send from, in one place. Campaigns,
+	// Automations and Transactional are the top-level destinations; the email
+	// template surfaces (marketing/transactional templates, saved blocks, media,
+	// files) fold under the "Templates & blocks" landing at /dashboard/send.
+	const sendItems = [
 		...(isFeatureEnabled('campaigns')
-			? [{ name: 'Marketing', href: '/dashboard/mail/marketing', icon: 'lucide:megaphone' }]
+			? [{ name: 'Campaigns', href: '/dashboard/campaigns', icon: 'lucide:megaphone' }]
 			: []),
-		...(isFeatureEnabled('transactional')
-			? [{ name: 'Transactional', href: '/dashboard/mail/transactional', icon: 'lucide:send' }]
-			: []),
-		{ name: 'Blocks', href: '/dashboard/mail/blocks', icon: 'lucide:blocks' },
-		{ name: 'Media', href: '/dashboard/mail/media', icon: 'lucide:image' },
-		...(isFeatureEnabled('ai.visualizations')
-			? [{ name: 'Visualizations', href: '/dashboard/visualizations', icon: 'lucide:bar-chart-3' }]
-			: []),
-		{ name: 'Files', href: '/dashboard/files', icon: 'lucide:file-search' },
-	];
-
-	const campaignsItems = [
-		{ name: 'All Campaigns', href: '/dashboard/campaigns', icon: 'lucide:megaphone' },
 		...(isFeatureEnabled('automations')
 			? [{ name: 'Automations', href: '/dashboard/automations', icon: 'lucide:zap' }]
 			: []),
-		{ name: 'Reports', href: '/dashboard/campaigns/reports', icon: 'lucide:bar-chart-3' },
-		{ name: 'A/B Results', href: '/dashboard/campaigns/ab-results', icon: 'lucide:flask-conical' },
+		...(isFeatureEnabled('transactional')
+			? [{ name: 'Transactional', href: '/dashboard/send/transactional', icon: 'lucide:file-code' }]
+			: []),
+		{ name: 'Templates & blocks', href: '/dashboard/send', icon: 'lucide:layout-grid' },
 	];
 
 	const sections: Array<{
@@ -180,7 +172,7 @@ const navigationSections = computed(() => {
 		});
 	}
 
-	sections.push({ key: 'mail', name: 'Mail', icon: 'lucide:mail', items: mailItems });
+	sections.push({ key: 'send', name: 'Send', icon: 'lucide:send', items: sendItems });
 
 	if (isFeatureEnabled('ai.knowledge')) {
 		sections.push({
@@ -195,15 +187,6 @@ const navigationSections = computed(() => {
 					? [{ name: 'Graph', href: '/dashboard/knowledge/graph', icon: 'lucide:share-2' }]
 					: []),
 			],
-		});
-	}
-
-	if (isFeatureEnabled('campaigns')) {
-		sections.push({
-			key: 'campaigns',
-			name: 'Campaigns',
-			icon: 'lucide:megaphone',
-			items: campaignsItems,
 		});
 	}
 
@@ -232,20 +215,15 @@ const navigationSections = computed(() => {
 // Check if a route is active (exact or prefix match)
 const isActiveRoute = (href: string) => {
 	// For overview/index pages, use exact match
-	if (
-		href === '/dashboard/mail' ||
-		href === '/dashboard/audience' ||
-		href === '/dashboard/settings'
-	) {
+	if (href === '/dashboard/audience' || href === '/dashboard/settings') {
 		return route.path === href;
 	}
-	if (href === '/dashboard/campaigns') {
-		// Campaigns overview: exact match or specific campaign pages, but not reports/ab-results
+	if (href === '/dashboard/send') {
+		// "Templates & blocks" owns the Send overview + template/blocks/media
+		// surfaces, but NOT the transactional subtree (its own "Transactional" item).
 		return (
 			route.path === href ||
-			(route.path.startsWith(href) &&
-				!route.path.startsWith('/dashboard/campaigns/reports') &&
-				!route.path.startsWith('/dashboard/campaigns/ab-results'))
+			(route.path.startsWith(href + '/') && !route.path.startsWith('/dashboard/send/transactional'))
 		);
 	}
 	if (href === '/dashboard/knowledge') {
@@ -269,9 +247,8 @@ const getSectionOverviewRoute = (sectionKey: string) => {
 		inbox: '/dashboard/inbox',
 		chat: '/dashboard/chat',
 		assistant: '/dashboard/assistant',
-		mail: '/dashboard/mail',
+		send: '/dashboard/send',
 		knowledge: '/dashboard/knowledge',
-		campaigns: '/dashboard/campaigns',
 		audience: '/dashboard/audience',
 		settings: '/dashboard/settings',
 	};

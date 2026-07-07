@@ -5,9 +5,8 @@ export interface SectionState {
 	postbox: boolean;
 	chat: boolean;
 	assistant: boolean;
-	mail: boolean;
+	send: boolean;
 	knowledge: boolean;
-	campaigns: boolean;
 	audience: boolean;
 	settings: boolean;
 }
@@ -19,9 +18,8 @@ const defaultSectionState: SectionState = {
 	postbox: true,
 	chat: true,
 	assistant: true,
-	mail: true,
+	send: true,
 	knowledge: true,
-	campaigns: true,
 	audience: true,
 	settings: true,
 };
