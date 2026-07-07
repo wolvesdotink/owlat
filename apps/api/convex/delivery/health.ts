@@ -104,6 +104,7 @@ export function rollUpDeliveryHealth(inputs: DeliveryHealthInputs): DeliveryHeal
  * routes) — cheap enough to subscribe to from the nav. Member-level: it returns
  * only a level + a human reason string, never a credential or a raw metric.
  */
+// all-members: delivery health is org-wide operational status, member-visible — a coarse ok/warn/error level + human reason string, no credentials or raw metrics.
 export const getDeliveryHealth = authedQuery({
 	args: {},
 	handler: async (ctx): Promise<DeliveryHealthRollup> => {
