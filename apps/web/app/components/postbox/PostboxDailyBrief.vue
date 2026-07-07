@@ -90,6 +90,18 @@ function dismiss() {
 const sentences = computed<BriefSentence[]>(() =>
 	data.value?.card ? composeBriefSentences(data.value.card.counts) : []
 );
+
+/**
+ * Same-page anchors (#postbox-today / #postbox-for-you) live inside the Today
+ * view's own scroll container, which router hash navigation (window-scoped)
+ * misses — scroll the section into view directly. Reduced motion jumps.
+ */
+function scrollToAnchor(hash: string) {
+	const el = document.querySelector(hash);
+	if (!el) return;
+	const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+	el.scrollIntoView({ block: 'start', behavior: reduced ? 'auto' : 'smooth' });
+}
 const isVisible = computed(
 	() =>
 		!!data.value?.card &&
@@ -124,8 +136,15 @@ const isVisible = computed(
 			<p class="mt-1.5 text-[13px] leading-relaxed text-text-secondary">
 				<template v-for="(sentence, si) in sentences" :key="si">
 					<template v-for="(seg, gi) in sentence" :key="`${si}-${gi}`">
+						<a
+							v-if="seg.to && seg.to.startsWith('#')"
+							:href="seg.to"
+							class="font-semibold text-text-primary tabular-nums hover:text-brand hover:underline focus-visible:ring-1 focus-visible:ring-brand/40 rounded outline-none"
+							@click.prevent="scrollToAnchor(seg.to)"
+							>{{ seg.text }}</a
+						>
 						<NuxtLink
-							v-if="seg.to"
+							v-else-if="seg.to"
 							:to="seg.to"
 							class="font-semibold text-text-primary tabular-nums hover:text-brand hover:underline focus-visible:ring-1 focus-visible:ring-brand/40 rounded outline-none"
 							>{{ seg.text }}</NuxtLink
