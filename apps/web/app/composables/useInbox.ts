@@ -16,7 +16,7 @@ export function useInbox() {
 			assignedToMe: assignedToMe.value || undefined,
 			limit: 25,
 			cursor: threadCursor.value,
-		}),
+		})
 	);
 
 	type Thread = NonNullable<typeof threadsData.value>['threads'][number];
@@ -39,7 +39,7 @@ export function useInbox() {
 				];
 			}
 		},
-		{ immediate: true },
+		{ immediate: true }
 	);
 
 	// A filter change selects a DIFFERENT backend index (by_assigned_to /
@@ -52,7 +52,7 @@ export function useInbox() {
 			threadCursor.value = undefined;
 			accumulatedThreads.value = [];
 		},
-		{ flush: 'sync' },
+		{ flush: 'sync' }
 	);
 
 	const threads = computed(() => accumulatedThreads.value);
@@ -61,7 +61,7 @@ export function useInbox() {
 	// Stats
 	const { data: stats, isLoading: statsLoading } = useConvexQuery(
 		api.inbox.queries.getInboundStats,
-		() => ({}),
+		() => ({})
 	);
 
 	// Load more
@@ -79,26 +79,8 @@ export function useInbox() {
 		accumulatedThreads.value = [];
 	};
 
-	// Status helpers
-	const getStatusColor = (status: string) => {
-		const colors: Record<string, string> = {
-			open: 'text-brand bg-brand-subtle',
-			waiting: 'text-warning bg-warning/10',
-			resolved: 'text-success bg-success-subtle',
-			closed: 'text-text-tertiary bg-bg-surface',
-		};
-		return colors[status] || 'text-text-tertiary bg-bg-surface';
-	};
-
-	const getStatusIcon = (status: string) => {
-		const icons: Record<string, string> = {
-			open: 'lucide:circle-dot',
-			waiting: 'lucide:clock',
-			resolved: 'lucide:check-circle',
-			closed: 'lucide:archive',
-		};
-		return icons[status] || 'lucide:circle';
-	};
+	// Status is rendered by the shared `<InboxStatusChip>` / `threadStatusChip`
+	// vocabulary — no per-composable colour/icon helpers (single source of truth).
 
 	// Compact relative time ("Just now", "5m ago", "3h ago", short date past 7d).
 	const formatRelativeTime = (timestamp: number) => formatCompactRelativeTime(timestamp);
@@ -116,8 +98,6 @@ export function useInbox() {
 		loadMoreThreads,
 		resetFilters,
 		// Helpers
-		getStatusColor,
-		getStatusIcon,
 		formatRelativeTime,
 	};
 }

@@ -88,7 +88,7 @@ const NOOP: ReducerResult = { patch: {}, effects: [], applied: 'noop' };
 
 function reduceInboundActivity(
 	thread: Doc<'conversationThreads'>,
-	occurredAt: number,
+	occurredAt: number
 ): ReducerResult {
 	// Reopen any non-open thread on inbound activity. This preserves the email
 	// path's original unconditional `status: 'open'` reopen (resolved/closed/
@@ -97,11 +97,17 @@ function reduceInboundActivity(
 	// reopen edge — never on inbound to an already-open thread — to avoid
 	// timeline noise.
 	const reopened = thread.status !== 'open';
+	// An inbound reply on a snoozed thread resurfaces it immediately: clear the
+	// snooze and stamp `snoozeReturnedAt` so the row shows the same "returned"
+	// marker the wake cron uses. `snoozedUntil` is only ever a future value, so a
+	// simple presence check is the snoozed signal.
+	const wasSnoozed = thread.snoozedUntil !== undefined;
 	return {
 		patch: {
 			messageCount: thread.messageCount + 1,
 			lastMessageAt: occurredAt,
 			...(reopened ? { status: 'open' as const } : {}),
+			...(wasSnoozed ? { snoozedUntil: undefined, snoozeReturnedAt: occurredAt } : {}),
 		},
 		effects: reopened
 			? [
@@ -119,7 +125,7 @@ function reduceInboundActivity(
 
 function reduceStatusChange(
 	thread: Doc<'conversationThreads'>,
-	input: Extract<TransitionInput, { kind: 'status_change' }>,
+	input: Extract<TransitionInput, { kind: 'status_change' }>
 ): ReducerResult {
 	if (thread.status === input.to) return NOOP;
 	return {
@@ -138,7 +144,7 @@ function reduceStatusChange(
 
 function reduceAssignmentChange(
 	thread: Doc<'conversationThreads'>,
-	input: Extract<TransitionInput, { kind: 'assignment_change' }>,
+	input: Extract<TransitionInput, { kind: 'assignment_change' }>
 ): ReducerResult {
 	// Treat absent + absent (and same-user + same-user) as a no-op so a
 	// redundant re-assign doesn't spam the audit trail.
@@ -164,7 +170,7 @@ function reduceAssignmentChange(
 
 function reduceDraftStatusChange(
 	thread: Doc<'conversationThreads'>,
-	input: Extract<TransitionInput, { kind: 'draft_status_change' }>,
+	input: Extract<TransitionInput, { kind: 'draft_status_change' }>
 ): ReducerResult {
 	if (thread.latestDraftStatus === input.latestDraftStatus) return NOOP;
 	return {
@@ -181,10 +187,7 @@ function reduceDraftStatusChange(
 	};
 }
 
-function reduce(
-	thread: Doc<'conversationThreads'>,
-	input: TransitionInput,
-): ReducerResult {
+function reduce(thread: Doc<'conversationThreads'>, input: TransitionInput): ReducerResult {
 	switch (input.kind) {
 		case 'inbound_activity':
 			return reduceInboundActivity(thread, input.occurredAt);
@@ -199,10 +202,7 @@ function reduce(
 
 // ─── Runner ─────────────────────────────────────────────────────────────────
 
-async function applyEffects(
-	ctx: MutationCtx,
-	effects: ReadonlyArray<Effect>,
-): Promise<void> {
+async function applyEffects(ctx: MutationCtx, effects: ReadonlyArray<Effect>): Promise<void> {
 	for (const effect of effects) {
 		switch (effect.kind) {
 			case 'audit_log': {
@@ -222,7 +222,7 @@ async function applyEffects(
 async function applyTransition(
 	ctx: MutationCtx,
 	thread: Doc<'conversationThreads'>,
-	input: TransitionInput,
+	input: TransitionInput
 ): Promise<TransitionOutcome> {
 	const result = reduce(thread, input);
 	if (Object.keys(result.patch).length > 0) {
@@ -258,7 +258,7 @@ export async function findOrCreateForEmail(
 		inReplyTo?: string;
 		references?: string;
 		occurredAt: number;
-	},
+	}
 ): Promise<{ threadId: Id<'conversationThreads'>; action: 'matched' | 'created' }> {
 	let threadId: Id<'conversationThreads'> | undefined;
 
@@ -307,7 +307,7 @@ export async function findOrCreateForEmail(
 			.withIndex('by_normalized_subject_and_contact', (q) =>
 				q
 					.eq('normalizedSubject', args.normalizedSubject)
-					.eq('contactIdentifier', args.contactIdentifier),
+					.eq('contactIdentifier', args.contactIdentifier)
 			)
 			.first();
 		if (existing) threadId = existing._id;
@@ -343,7 +343,7 @@ export async function findOrCreateForChannel(
 		subject: string;
 		normalizedSubject: string;
 		occurredAt: number;
-	},
+	}
 ): Promise<{ threadId: Id<'conversationThreads'>; action: 'matched' | 'created' }> {
 	// Single strategy — the contact's most-recent thread, STATUS-AGNOSTIC.
 	// The matcher no longer skips closed threads (the §1 behaviour change):
@@ -387,7 +387,7 @@ export async function findOrCreateForChannel(
 async function runInboundActivity(
 	ctx: MutationCtx,
 	threadId: Id<'conversationThreads'>,
-	occurredAt: number,
+	occurredAt: number
 ): Promise<void> {
 	const thread = await ctx.db.get(threadId);
 	if (!thread) return;
@@ -406,7 +406,7 @@ async function runInboundActivity(
  */
 async function cancelStalePendingAutoSends(
 	ctx: MutationCtx,
-	threadId: Id<'conversationThreads'>,
+	threadId: Id<'conversationThreads'>
 ): Promise<void> {
 	// Bounded scan on the intake hot path: a thread realistically holds at most
 	// one `approved`+pending message, and the cancel is best-effort, so cap the
@@ -417,11 +417,10 @@ async function cancelStalePendingAutoSends(
 		.take(200);
 	for (const message of messages) {
 		if (message.processingStatus === 'approved' && message.pendingAutoSend) {
-			await ctx.scheduler.runAfter(
-				0,
-				internal.inbox.processingLifecycle.cancelAutoSend,
-				{ inboundMessageId: message._id, reason: 'thread_reply' },
-			);
+			await ctx.scheduler.runAfter(0, internal.inbox.processingLifecycle.cancelAutoSend, {
+				inboundMessageId: message._id,
+				reason: 'thread_reply',
+			});
 		}
 	}
 }
@@ -435,7 +434,7 @@ async function cancelStalePendingAutoSends(
  */
 export async function transition(
 	ctx: MutationCtx,
-	args: { threadId: Id<'conversationThreads'>; input: TransitionInput },
+	args: { threadId: Id<'conversationThreads'>; input: TransitionInput }
 ): Promise<TransitionOutcome> {
 	const thread = await ctx.db.get(args.threadId);
 	if (!thread) return { ok: false, reason: 'thread_not_found' };

@@ -6,7 +6,7 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 	// Fetch thread with messages
 	const { data: threadData, isLoading: threadLoading } = useConvexQuery(
 		api.inbox.queries.getThread,
-		() => ({ threadId: threadId.value }),
+		() => ({ threadId: threadId.value })
 	);
 
 	const thread = computed(() => threadData.value?.thread ?? null);
@@ -37,6 +37,12 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 	const { run: retryFailedMessage } = useBackendOperation(api.inbox.mutations.retryFailedMessage, {
 		label: 'Retry message',
 	});
+	const { run: snoozeThread } = useBackendOperation(api.inbox.snooze.snoozeThread, {
+		label: 'Snooze thread',
+	});
+	const { run: unsnoozeThread } = useBackendOperation(api.inbox.snooze.unsnoozeThread, {
+		label: 'Unsnooze thread',
+	});
 
 	// Actions
 	// Return the run result so callers can show a success toast only on a real
@@ -54,7 +60,10 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 		return await retryFailedMessage({ inboundMessageId: messageId });
 	};
 
-	const startEditDraft = (message: { draftResponse?: string | null; draftSubject?: string | null }) => {
+	const startEditDraft = (message: {
+		draftResponse?: string | null;
+		draftSubject?: string | null;
+	}) => {
 		editedDraftResponse.value = message.draftResponse ?? '';
 		editedDraftSubject.value = message.draftSubject ?? '';
 		isEditingDraft.value = true;
@@ -93,6 +102,16 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 
 	const handleStatusChange = async (status: 'open' | 'waiting' | 'resolved' | 'closed') => {
 		await updateThreadStatus({ threadId: threadId.value, status });
+	};
+
+	// Snooze the thread until `until` (ms epoch); it leaves the Open filter and
+	// the wake cron floats it back with a "returned" marker at that time.
+	const handleSnooze = async (until: number) => {
+		return await snoozeThread({ threadId: threadId.value, until });
+	};
+
+	const handleUnsnooze = async () => {
+		return await unsnoozeThread({ threadId: threadId.value });
 	};
 
 	// Processing status helpers
@@ -149,6 +168,8 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 		saveEditedDraft,
 		handleAssign,
 		handleStatusChange,
+		handleSnooze,
+		handleUnsnooze,
 		// Helpers
 		getProcessingStatusColor,
 		getProcessingStatusLabel,
