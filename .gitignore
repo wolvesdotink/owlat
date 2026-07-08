@@ -70,5 +70,7 @@ previews/
 /*_REVIEW_*.md
 /*_AUDIT_*.md
 
+# AI
 .planning/
 .claude/
+.agents/
