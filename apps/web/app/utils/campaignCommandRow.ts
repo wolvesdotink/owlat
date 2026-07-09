@@ -3,36 +3,21 @@
  * (attention roll-up + headline rates precomputed once) and the row component
  * renders them, so the type lives here where both can import it.
  */
-import type { Doc } from '@owlat/api/dataModel';
+import { api } from '@owlat/api';
+import type { FunctionReturnType } from 'convex/server';
 import type { CampaignAttentionReason } from '~/utils/campaignAttention';
 
 /**
- * The exact campaign fields the command center's row + classifier read. The
- * attention query (`campaigns.organization.listAttentionCandidates`) projects a
- * campaign down to precisely these, and a full `Doc<'campaigns'>` from the
- * paginated list is structurally assignable to it — so one row model serves
- * both data sources without dragging the heavy per-campaign payload to the client.
+ * The exact campaign fields the command center's row + classifier read, derived
+ * directly from the attention query's projected return shape
+ * (`campaigns.organization.listAttentionCandidates`) so the two can never drift.
+ * A full `Doc<'campaigns'>` from the paginated list is structurally assignable
+ * to it — so one row model serves both data sources without dragging the heavy
+ * per-campaign payload to the client.
  */
-export type CampaignRowFields = Pick<
-	Doc<'campaigns'>,
-	| '_id'
-	| 'name'
-	| 'subject'
-	| 'status'
-	| 'scheduledAt'
-	| 'sentAt'
-	| 'isABTest'
-	| 'abTestStatus'
-	| 'abWinner'
-	| 'contentBlockReason'
-	| 'updatedAt'
-	| 'statsSent'
-	| 'statsDelivered'
-	| 'statsOpened'
-	| 'statsClicked'
-	| 'abVariantBSent'
-	| 'abVariantBOpened'
->;
+export type CampaignRowFields = FunctionReturnType<
+	typeof api.campaigns.organization.listAttentionCandidates
+>[number];
 
 /** One roll-up attention chip: its label + status-dot utility class. */
 export interface ReasonChip {
