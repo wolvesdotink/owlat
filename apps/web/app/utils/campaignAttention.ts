@@ -46,11 +46,43 @@ export interface CampaignAttention {
 	actionLabel: string | null;
 }
 
+/** How one attention reason presents in the UI. */
+export interface CampaignAttentionDisplay {
+	/** Roll-up chip label shown on the row (the state). */
+	chipLabel: string;
+	/** Status-dot utility class for the chip. */
+	dot: string;
+	/** Inline primary-action label (the verb), or null when the row is view-only. */
+	actionLabel: string | null;
+}
+
+/**
+ * The single reason → copy map. Chip label (state) and action label (verb) live
+ * together so they can't drift into a near-duplicate ("Pick a winner" chip next
+ * to a "Pick winner" button); the classifier and the row both read from here.
+ */
+export const CAMPAIGN_ATTENTION_DISPLAY: Record<CampaignAttentionReason, CampaignAttentionDisplay> =
+	{
+		ab_decision: { chipLabel: 'Winner pending', dot: 'bg-brand', actionLabel: 'Pick winner' },
+		needs_review: { chipLabel: 'Needs review', dot: 'bg-warning', actionLabel: 'Review' },
+		send_stopped: { chipLabel: 'Send stopped', dot: 'bg-error', actionLabel: 'Resume' },
+		scheduled_today: { chipLabel: 'Going out today', dot: 'bg-brand', actionLabel: null },
+	};
+
 const NOT_NEEDED: CampaignAttention = {
 	needsAttention: false,
 	reason: null,
 	actionLabel: null,
 };
+
+/** Build the attention verdict for a reason, taking its action label from the map. */
+function needing(reason: CampaignAttentionReason): CampaignAttention {
+	return {
+		needsAttention: true,
+		reason,
+		actionLabel: CAMPAIGN_ATTENTION_DISPLAY[reason].actionLabel,
+	};
+}
 
 /** Exclusive upper bound (ms epoch) of the calendar day containing `now`. */
 function endOfLocalDay(now: number): number {
@@ -74,7 +106,7 @@ export function classifyCampaignAttention(input: CampaignAttentionInput): Campai
 		input.abWinner == null &&
 		input.status !== 'draft'
 	) {
-		return { needsAttention: true, reason: 'ab_decision', actionLabel: 'Pick winner' };
+		return needing('ab_decision');
 	}
 
 	// 2. Held for review, or content the scanner blocked — a decision either way.
@@ -85,12 +117,12 @@ export function classifyCampaignAttention(input: CampaignAttentionInput): Campai
 			input.status !== 'sent' &&
 			input.status !== 'sending')
 	) {
-		return { needsAttention: true, reason: 'needs_review', actionLabel: 'Review' };
+		return needing('needs_review');
 	}
 
 	// 3. A stopped/failed send the operator may want to revive.
 	if (input.status === 'cancelled') {
-		return { needsAttention: true, reason: 'send_stopped', actionLabel: 'Resume' };
+		return needing('send_stopped');
 	}
 
 	// 4. Scheduled for today, or overdue and still scheduled (the cron hasn't
@@ -100,7 +132,7 @@ export function classifyCampaignAttention(input: CampaignAttentionInput): Campai
 		input.scheduledAt != null &&
 		input.scheduledAt <= endOfLocalDay(now)
 	) {
-		return { needsAttention: true, reason: 'scheduled_today', actionLabel: null };
+		return needing('scheduled_today');
 	}
 
 	return NOT_NEEDED;
