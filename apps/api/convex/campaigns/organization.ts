@@ -1,5 +1,6 @@
 import type { Doc } from '../_generated/dataModel';
 import { authedQuery } from '../lib/authedFunctions';
+import { assertFeatureEnabled } from '../lib/featureFlags';
 import { countFacet } from '../lib/listing';
 import { campaignListing } from './listing';
 
@@ -28,13 +29,64 @@ const ATTENTION_CANDIDATE_STATUSES = [
 	'pending_review',
 ] as const;
 
-// Return the full candidate set the client's attention classifier
+// Only the fields the command center's attention classifier + row actually
+// read. Projecting keeps the live subscription off the heavy per-campaign
+// payload (archiveHtmlContent, the frozen `audience` snapshot, abTestConfig),
+// so a large cancelled backlog carrying archived HTML can't push the result
+// toward Convex's function-result cap.
+export type AttentionCandidate = Pick<
+	Doc<'campaigns'>,
+	| '_id'
+	| 'name'
+	| 'subject'
+	| 'status'
+	| 'scheduledAt'
+	| 'sentAt'
+	| 'isABTest'
+	| 'abTestStatus'
+	| 'abWinner'
+	| 'contentBlockReason'
+	| 'updatedAt'
+	| 'statsSent'
+	| 'statsDelivered'
+	| 'statsOpened'
+	| 'statsClicked'
+	| 'abVariantBSent'
+	| 'abVariantBOpened'
+>;
+
+function projectCandidate(c: Doc<'campaigns'>): AttentionCandidate {
+	return {
+		_id: c._id,
+		name: c.name,
+		subject: c.subject,
+		status: c.status,
+		scheduledAt: c.scheduledAt,
+		sentAt: c.sentAt,
+		isABTest: c.isABTest,
+		abTestStatus: c.abTestStatus,
+		abWinner: c.abWinner,
+		contentBlockReason: c.contentBlockReason,
+		updatedAt: c.updatedAt,
+		statsSent: c.statsSent,
+		statsDelivered: c.statsDelivered,
+		statsOpened: c.statsOpened,
+		statsClicked: c.statsClicked,
+		abVariantBSent: c.abVariantBSent,
+		abVariantBOpened: c.abVariantBOpened,
+	};
+}
+
+// Return the projected candidate set the client's attention classifier
 // (utils/campaignAttention.ts, the source of truth) then filters over.
-// all-members: org-wide, same visibility as the campaign list.
+// all-members: org-wide, same visibility as the campaign list. Gated on the
+// `campaigns` feature for parity with the sibling `campaigns.campaigns.list`
+// that serves the same surface's browse pills.
 export const listAttentionCandidates = authedQuery({
 	args: {},
 	handler: async (ctx) => {
-		const out: Doc<'campaigns'>[] = [];
+		await assertFeatureEnabled(ctx, 'campaigns');
+		const out: AttentionCandidate[] = [];
 		for (const status of ATTENTION_CANDIDATE_STATUSES) {
 			// bounded: each attention state is transient/small; capped well above
 			// any real count so the scan can never run unbounded.
@@ -42,7 +94,7 @@ export const listAttentionCandidates = authedQuery({
 				.query('campaigns')
 				.withIndex('by_status', (q) => q.eq('status', status))
 				.take(1000);
-			out.push(...batch);
+			out.push(...batch.map(projectCandidate));
 		}
 		return out;
 	},
