@@ -2,7 +2,12 @@ import { v } from 'convex/values';
 import { authedQuery } from '../lib/authedFunctions';
 import { getUserIdFromSession } from '../lib/sessionOrganization';
 import { getDailySendVolume } from '../lib/sendingLimits';
-import { summarize, summarizeDomains, type ReputationSummary } from './sendingReputation';
+import {
+	summarize,
+	summarizeDomains,
+	type ReputationSummary,
+	type RiskLevel,
+} from './sendingReputation';
 
 /** The reputation card's UI shape, or `null` when there's no in-window activity. */
 type ReputationDto = {
@@ -216,6 +221,17 @@ export interface DeliveryDomainRow {
 	/** Record names still failing/missing verification (e.g. ['DKIM','DMARC']). */
 	missing: string[];
 	sent30d: number;
+	/**
+	 * Rolling 30-day reputation risk for this domain, or `null` when it has no
+	 * in-window sending activity (so the health dot can read neutral instead of a
+	 * misleading green). This drives the row's health dot; verification drives the
+	 * chip — two distinct signals, not the same status twice.
+	 */
+	riskLevel: RiskLevel | null;
+	/** Rolling bounce rate (0–1), `null` when the domain has no in-window activity. */
+	bounceRate: number | null;
+	/** Rolling complaint rate (0–1), `null` when the domain has no in-window activity. */
+	complaintRate: number | null;
 }
 
 /**
@@ -266,17 +282,25 @@ export const getDeliveryDomainTable = authedQuery({
 
 		const domains = await ctx.db.query('domains').collect(); // bounded: org-curated sending domains, low-tens at most
 		const summaries = await summarizeDomains(ctx.db);
-		const volumeByDomain = new Map<string, number>();
-		for (const s of summaries) volumeByDomain.set(s.domain, s.totalSent);
+		// Keep the whole per-domain reputation summary, not just the volume, so the
+		// row can show a health dot from real risk plus bounce/complaint detail.
+		const summaryByDomain = new Map<string, (typeof summaries)[number]>();
+		for (const s of summaries) summaryByDomain.set(s.domain, s);
 
 		const rows: DeliveryDomainRow[] = domains.map((d) => {
 			const auth = domainAuthState(d.verificationResults);
+			const summary = summaryByDomain.get(d.domain);
 			return {
 				domain: d.domain,
 				status: d.status,
 				auth,
 				missing: missingAuthRecords(auth),
-				sent30d: volumeByDomain.get(d.domain) ?? 0,
+				sent30d: summary?.totalSent ?? 0,
+				// `summarizeDomains` only returns domains with in-window activity, so a
+				// missing entry means no reputation signal yet → null, not zero.
+				riskLevel: summary?.riskLevel ?? null,
+				bounceRate: summary?.bounceRate ?? null,
+				complaintRate: summary?.complaintRate ?? null,
 			};
 		});
 
