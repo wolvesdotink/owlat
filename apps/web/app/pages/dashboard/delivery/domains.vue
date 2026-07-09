@@ -131,6 +131,30 @@ const verifyingDomainId = ref<Id<'domains'> | null>(null);
 // Expanded domain (showing DNS records)
 const expandedDomainId = ref<Id<'domains'> | null>(null);
 
+// Deep link from the Delivery health page's "Fix →": `?domain=<name>` opens
+// that domain's setup panel straight away and scrolls it into view, so the user
+// lands on the exact record they came to fix rather than a generic list. Runs
+// once the (real-time) domain list resolves, then clears the query so a manual
+// collapse isn't fought by the watcher.
+const route = useRoute();
+const router = useRouter();
+watch(
+	() => [route.query['domain'], domainsData.value] as const,
+	([queryDomain]) => {
+		if (typeof queryDomain !== 'string' || !queryDomain) return;
+		const match = (domainsData.value ?? []).find((d) => d.domain === queryDomain);
+		if (!match) return;
+		expandedDomainId.value = match._id;
+		void router.replace({ query: {} });
+		void nextTick(() => {
+			document
+				.getElementById(`domain-${match._id}`)
+				?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+		});
+	},
+	{ immediate: true }
+);
+
 // Handle add domain
 const handleAddDomain = async () => {
 	if (!hasActiveOrganization.value) return;
@@ -533,7 +557,12 @@ const readinessSummary = (domain: DomainWithVerification) =>
 
 			<!-- Domains List -->
 			<div v-else-if="domainsData && domainsData.length > 0" class="space-y-4">
-				<div v-for="domain in domainsData" :key="domain._id" class="card p-0 overflow-hidden">
+				<div
+					v-for="domain in domainsData"
+					:id="`domain-${domain._id}`"
+					:key="domain._id"
+					class="card p-0 overflow-hidden"
+				>
 					<!-- Domain Header -->
 					<div
 						class="px-6 py-4 flex items-center justify-between cursor-pointer hover:bg-bg-surface/50 transition-colors"

@@ -7,46 +7,42 @@
  * domain setup panel. A browsing surface, not a doing-surface: no second focal
  * point, weight-based emphasis, terracotta reserved for the fix link.
  */
-import { formatNumber } from '~/utils/formatters';
+import type { FunctionReturnType } from 'convex/server';
+import { api } from '@owlat/api';
+import { formatNumber, formatPercentage } from '~/utils/formatters';
+import { healthChipClass, healthDotClass, type HealthTone } from '~/utils/healthTone';
 
-interface DomainRow {
-	domain: string;
-	status: 'registering' | 'pending' | 'verified' | 'failed';
-	auth: { spf: boolean; dkim: boolean; dmarc: boolean };
-	missing: string[];
-	sent30d: number;
-}
+// Derive the row type straight from the query's return so the two shapes can't
+// drift — this is exactly what `getDeliveryDomainTable` yields per domain.
+type DomainRow = FunctionReturnType<
+	typeof api.analytics.reputationQueries.getDeliveryDomainTable
+>[number];
+type DomainStatus = DomainRow['status'];
 
 defineProps<{ rows: DomainRow[] }>();
 
 const DOMAIN_SETUP_ROUTE = '/dashboard/delivery/domains';
 
-const statusLabel: Record<DomainRow['status'], string> = {
-	registering: 'Registering',
-	pending: 'Not verified',
-	verified: 'Verified',
-	failed: 'Failed',
+/** One lookup keyed off status: the chip's human label + its verification tone. */
+const STATUS_META: Record<DomainStatus, { label: string; tone: HealthTone }> = {
+	registering: { label: 'Registering', tone: 'warning' },
+	pending: { label: 'Not verified', tone: 'warning' },
+	verified: { label: 'Verified', tone: 'success' },
+	failed: { label: 'Failed', tone: 'error' },
 };
 
-// Semantic dot/chip tone per status — success/warning/error tokens, never the
-// terracotta brand fill (reserved for actions/links).
-function statusTone(status: DomainRow['status']): 'success' | 'warning' | 'error' {
-	if (status === 'verified') return 'success';
-	if (status === 'failed') return 'error';
-	return 'warning';
+// The health DOT reflects reputation risk (a distinct signal from verification);
+// no in-window activity → neutral, not a misleading green. The CHIP keeps
+// encoding verification. Both use the shared tone→class maps.
+const RISK_TONE: Record<NonNullable<DomainRow['riskLevel']>, HealthTone> = {
+	low: 'success',
+	medium: 'warning',
+	high: 'error',
+	critical: 'error',
+};
+function riskTone(riskLevel: DomainRow['riskLevel']): HealthTone {
+	return riskLevel ? RISK_TONE[riskLevel] : 'neutral';
 }
-
-const dotClass: Record<'success' | 'warning' | 'error', string> = {
-	success: 'bg-success',
-	warning: 'bg-warning',
-	error: 'bg-error',
-};
-
-const chipClass: Record<'success' | 'warning' | 'error', string> = {
-	success: 'bg-success/10 text-success',
-	warning: 'bg-warning/10 text-warning',
-	error: 'bg-error/10 text-error',
-};
 </script>
 
 <template>
@@ -86,22 +82,23 @@ const chipClass: Record<'success' | 'warning' | 'error', string> = {
 				>
 					<div class="min-w-0 flex-1">
 						<div class="flex items-center gap-2">
+							<!-- Reputation-health dot (distinct from the verification chip). -->
 							<span
 								class="w-2 h-2 rounded-full shrink-0"
-								:class="dotClass[statusTone(row.status)]"
+								:class="healthDotClass[riskTone(row.riskLevel)]"
 								aria-hidden="true"
 							/>
 							<p
 								class="truncate text-text-primary"
-								:class="row.status === 'verified' ? 'font-medium' : 'font-[550]'"
+								:class="row.status === 'verified' ? 'font-medium' : 'font-semibold'"
 							>
 								{{ row.domain }}
 							</p>
 							<span
 								class="text-xs px-2 py-0.5 rounded-full font-medium shrink-0"
-								:class="chipClass[statusTone(row.status)]"
+								:class="healthChipClass[STATUS_META[row.status].tone]"
 							>
-								{{ statusLabel[row.status] }}
+								{{ STATUS_META[row.status].label }}
 							</span>
 						</div>
 						<!-- Auth roll-up: one clean line when all pass, else name the gap + fix link -->
@@ -112,7 +109,7 @@ const chipClass: Record<'success' | 'warning' | 'error', string> = {
 							<template v-else>
 								<span class="text-text-tertiary"> Missing {{ row.missing.join(', ') }} </span>
 								<NuxtLink
-									:to="DOMAIN_SETUP_ROUTE"
+									:to="{ path: DOMAIN_SETUP_ROUTE, query: { domain: row.domain } }"
 									class="inline-flex items-center gap-0.5 text-brand font-medium hover:underline focus-visible:underline focus-visible:outline-none rounded-sm transition-colors duration-(--motion-fast)"
 								>
 									Fix
@@ -121,10 +118,17 @@ const chipClass: Record<'success' | 'warning' | 'error', string> = {
 							</template>
 						</div>
 					</div>
-					<p class="text-xs text-text-tertiary tabular-nums shrink-0 text-right">
-						{{ formatNumber(row.sent30d) }} sent
-						<span class="block text-[11px]">30d</span>
-					</p>
+					<div class="text-xs text-text-tertiary tabular-nums shrink-0 text-right">
+						<p>
+							{{ formatNumber(row.sent30d) }} sent
+							<span class="block text-[11px]">30d</span>
+						</p>
+						<!-- Per-domain reputation detail (only when there's in-window activity). -->
+						<p v-if="row.bounceRate !== null" class="mt-1">
+							{{ formatPercentage(row.bounceRate, 2) }} bounced ·
+							{{ formatPercentage(row.complaintRate ?? 0, 2) }} complaints
+						</p>
+					</div>
 				</div>
 			</div>
 		</div>

@@ -1,4 +1,5 @@
 import { api } from '@owlat/api';
+import { healthDotClass, levelTone } from '~/utils/healthTone';
 
 export type DeliveryHealthLevel = 'ok' | 'warn' | 'error';
 
@@ -18,18 +19,10 @@ export function useDeliveryHealth() {
 	// stays quiet (no green dot cluttering the nav).
 	const isVisible = computed(() => level.value !== 'ok');
 
-	// Background-color token per level. Terracotta is reserved for actions, so
-	// the dot uses the semantic success/warning/error tokens instead.
-	const dotClass = computed(() => {
-		switch (level.value) {
-			case 'error':
-				return 'bg-error';
-			case 'warn':
-				return 'bg-warning';
-			default:
-				return 'bg-success';
-		}
-	});
+	// Background-color token per level, via the shared health tone→class map so
+	// the dot, the page verdict chip, and the domain table can't drift apart.
+	// Terracotta is reserved for actions, so this uses semantic tokens instead.
+	const dotClass = computed(() => healthDotClass[levelTone(level.value)]);
 
 	return { level, reason, isVisible, dotClass };
 }

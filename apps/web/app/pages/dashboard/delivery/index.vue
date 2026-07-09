@@ -2,6 +2,8 @@
 import { api } from '@owlat/api';
 import type { ChartDatum } from '@owlat/ui/utils/chart';
 import { deliveryVerdict, warmupSentence, deliveryStatTiles } from '~/utils/deliveryHub';
+import { healthChipClass, levelTone } from '~/utils/healthTone';
+import { formatDate } from '~/utils/formatters';
 
 useHead({ title: 'Delivery health — Owlat' });
 
@@ -70,6 +72,15 @@ const abuseWarning = computed(() => {
 });
 
 // --- Stat tiles ---
+// Yesterday's rolling rates — the point just before the newest snapshot — so the
+// bounce/complaint tiles can show a real day-over-day delta direction instead of
+// a hardcoded one. `null` until at least two days of history exist.
+const previousRates = computed(() => {
+	const points = snapshots.value ?? [];
+	const prev = points[points.length - 2];
+	return prev ? { bounceRate: prev.bounceRate, complaintRate: prev.complaintRate } : null;
+});
+
 const statTiles = computed(() => {
 	const overview = sendingOverview.value;
 	const reputation = overview?.reputation
@@ -85,7 +96,7 @@ const statTiles = computed(() => {
 				remainingToday: overview.warming.remainingToday,
 			}
 		: null;
-	return deliveryStatTiles(reputation, budget);
+	return deliveryStatTiles(reputation, budget, previousRates.value);
 });
 
 const tileValueTone: Record<'ok' | 'warn' | 'error', 'default' | 'warning' | 'error'> = {
@@ -95,9 +106,11 @@ const tileValueTone: Record<'ok' | 'warn' | 'error', 'default' | 'warning' | 'er
 };
 
 // --- Trend chart ---
+// The query already bounds itself to the last 30 daily points, so the chart is a
+// true 30-day window (it can't silently grow to the 90-day retention horizon).
 const trendData = computed<ChartDatum[]>(() =>
 	(snapshots.value ?? []).map((s) => ({
-		label: new Date(s.periodStart).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+		label: formatDate(s.periodStart, 'short'),
 		value: s.deliveryRate,
 	}))
 );
@@ -117,12 +130,16 @@ const suppressionParts = computed(() => {
 	return { total: c.total, breakdown: parts.join(' · ') };
 });
 
-// Verdict chip tone → semantic token classes (weight-based, no brand fill).
-const chipToneClass: Record<'ok' | 'warn' | 'error', string> = {
-	ok: 'bg-success/10 text-success',
-	warn: 'bg-warning/10 text-warning',
-	error: 'bg-error/10 text-error',
-};
+// Verdict chip tone → semantic token classes, via the shared health tone map so
+// the chip and the sidebar dot (which reads the same query) can't drift apart.
+const verdictChipClass = computed(() => healthChipClass[levelTone(verdict.value.tone)]);
+
+// Warm-up detail for the depth-on-demand disclosure — only when the MTA has
+// synced warming state (volume rides along so both are one narrowed object).
+const sendingDetail = computed(() => {
+	const o = sendingOverview.value;
+	return o && o.warming ? { warming: o.warming, volume: o.volume } : null;
+});
 </script>
 
 <template>
@@ -136,14 +153,18 @@ const chipToneClass: Record<'ok' | 'warn' | 'error', string> = {
 						<h1 class="text-2xl font-semibold text-text-primary">Delivery health</h1>
 						<span
 							class="px-2.5 py-1 rounded-full text-xs font-medium shrink-0"
-							:class="chipToneClass[verdict.tone]"
-							:title="reason"
+							:class="verdictChipClass"
 						>
 							{{ verdict.label }}
 						</span>
 					</div>
+					<!-- When the verdict isn't Healthy, surface the reason as a visible
+						 line (not just a mouse-only tooltip) so keyboard/touch users see it. -->
+					<p v-if="level !== 'ok' && reason" class="mt-1 text-sm text-text-secondary">
+						{{ reason }}
+					</p>
 					<p v-if="warmup" class="mt-1 text-sm text-text-secondary">{{ warmup }}</p>
-					<p v-else class="mt-1 text-sm text-text-secondary">
+					<p v-else-if="level === 'ok'" class="mt-1 text-sm text-text-secondary">
 						Your sending reputation, delivery trend, and domains at a glance
 					</p>
 				</div>
@@ -189,7 +210,8 @@ const chipToneClass: Record<'ok' | 'warn' | 'error', string> = {
 				<p class="text-sm">{{ abuseWarning.message }}</p>
 			</div>
 
-			<!-- Stat tiles: bounce / complaint / send budget, each with its threshold -->
+			<!-- Stat tiles: bounce / complaint / send budget — each with a real
+				 day-over-day delta direction and its threshold as a muted hint. -->
 			<UiCard>
 				<div class="grid grid-cols-1 sm:grid-cols-3 gap-6">
 					<UiStatTile
@@ -197,12 +219,21 @@ const chipToneClass: Record<'ok' | 'warn' | 'error', string> = {
 						:key="tile.key"
 						:label="tile.label"
 						:value="tile.value"
-						:delta="tile.threshold"
-						delta-direction="flat"
+						:delta="tile.delta"
+						:delta-direction="tile.deltaDirection"
+						:delta-tone="tile.deltaTone"
+						:hint="tile.threshold"
 						:value-tone="tileValueTone[tile.tone]"
 					/>
 				</div>
 			</UiCard>
+
+			<!-- Depth-on-demand: per-IP warm-up, total volume, last sync. -->
+			<DeliverySendingDetails
+				v-if="sendingDetail"
+				:warming="sendingDetail.warming"
+				:volume="sendingDetail.volume"
+			/>
 
 			<!-- 30-day delivery-rate trend -->
 			<UiCard>

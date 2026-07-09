@@ -54,6 +54,11 @@ export function warmupSentence(warming: WarmupInput | null): string | null {
 	return `Warming up — day ${day} of ${WARMUP_DAYS} · ${pct}% of full sending volume`;
 }
 
+/** Glyph direction for a day-over-day delta. */
+export type StatDeltaDirection = 'up' | 'down' | 'flat';
+/** Whether a delta reads as good/bad/neutral (decoupled from the glyph). */
+export type StatDeltaTone = 'positive' | 'negative' | 'neutral';
+
 /** A single stat tile on the health hub, threshold copy included. */
 export interface DeliveryStatTile {
 	key: 'bounce' | 'complaint' | 'budget';
@@ -62,6 +67,12 @@ export interface DeliveryStatTile {
 	/** Threshold reminder shown under the value ("limit 2%", "cap 50,000"). */
 	threshold: string;
 	tone: DeliveryTone;
+	/** Signed day-over-day change text ("0.30%"), or `undefined` with no prior day. */
+	delta?: string;
+	/** Which way the value moved since the previous snapshot. */
+	deltaDirection: StatDeltaDirection;
+	/** Whether that movement is good/bad for this metric (bounce ↓ is good). */
+	deltaTone: StatDeltaTone;
 }
 
 /** Reputation subset the tiles read. `null` = no in-window sending activity. */
@@ -84,6 +95,29 @@ function rateTone(rate: number, thresholds: { medium: number; high: number }): D
 	return 'ok';
 }
 
+/** No-movement default when there is no prior day to compare against. */
+const NO_DELTA = {
+	deltaDirection: 'flat' as StatDeltaDirection,
+	deltaTone: 'neutral' as StatDeltaTone,
+};
+
+/**
+ * Day-over-day delta for a "lower is better" rate (bounce/complaint): a fall is
+ * `positive` (green ↓), a rise is `negative` (red ↑). Returns just the direction
+ * + tone default when there's no prior day so the tile shows no delta line.
+ */
+function lowerIsBetterDelta(
+	current: number,
+	prev: number | null | undefined
+): { delta?: string; deltaDirection: StatDeltaDirection; deltaTone: StatDeltaTone } {
+	if (prev === null || prev === undefined) return { ...NO_DELTA };
+	const diff = current - prev;
+	const delta = formatPercentage(Math.abs(diff), 2);
+	if (diff > 0) return { delta, deltaDirection: 'up', deltaTone: 'negative' };
+	if (diff < 0) return { delta, deltaDirection: 'down', deltaTone: 'positive' };
+	return { delta, deltaDirection: 'flat', deltaTone: 'neutral' };
+}
+
 /**
  * Build the three stat tiles — Bounce rate, Complaint rate, Today's send budget
  * — each carrying its threshold copy and a tone derived from the SAME shared
@@ -92,7 +126,8 @@ function rateTone(rate: number, thresholds: { medium: number; high: number }): D
  */
 export function deliveryStatTiles(
 	reputation: StatReputation | null,
-	budget: StatBudget | null
+	budget: StatBudget | null,
+	previous?: StatReputation | null
 ): DeliveryStatTile[] {
 	const bounceLimit = REPUTATION_THRESHOLDS.bounce.medium;
 	const complaintLimit = REPUTATION_THRESHOLDS.complaint.medium;
@@ -103,6 +138,9 @@ export function deliveryStatTiles(
 		value: reputation ? formatPercentage(reputation.bounceRate, 2) : '—',
 		threshold: `limit ${formatPercentage(bounceLimit, 0)}`,
 		tone: reputation ? rateTone(reputation.bounceRate, REPUTATION_THRESHOLDS.bounce) : 'ok',
+		...(reputation
+			? lowerIsBetterDelta(reputation.bounceRate, previous?.bounceRate ?? null)
+			: NO_DELTA),
 	};
 
 	const complaint: DeliveryStatTile = {
@@ -111,6 +149,9 @@ export function deliveryStatTiles(
 		value: reputation ? formatPercentage(reputation.complaintRate, 2) : '—',
 		threshold: `limit ${formatPercentage(complaintLimit, 1)}`,
 		tone: reputation ? rateTone(reputation.complaintRate, REPUTATION_THRESHOLDS.complaint) : 'ok',
+		...(reputation
+			? lowerIsBetterDelta(reputation.complaintRate, previous?.complaintRate ?? null)
+			: NO_DELTA),
 	};
 
 	let budgetTile: DeliveryStatTile;
@@ -124,6 +165,9 @@ export function deliveryStatTiles(
 			value: formatNumber(budget.remainingToday),
 			threshold: `cap ${formatNumber(budget.totalDailyCap)}`,
 			tone: budgetTone,
+			// Today's budget is a live counter, not a persisted daily snapshot, so
+			// there's no meaningful day-over-day delta to draw.
+			...NO_DELTA,
 		};
 	} else {
 		budgetTile = {
@@ -132,6 +176,7 @@ export function deliveryStatTiles(
 			value: '—',
 			threshold: 'cap not synced yet',
 			tone: 'ok',
+			...NO_DELTA,
 		};
 	}
 
