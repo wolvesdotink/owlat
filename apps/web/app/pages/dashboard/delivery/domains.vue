@@ -145,11 +145,13 @@ watch(
 		const match = (domainsData.value ?? []).find((d) => d.domain === queryDomain);
 		if (!match) return;
 		expandedDomainId.value = match._id;
-		void router.replace({ query: {} });
+		const { domain: _handled, ...rest } = route.query;
+		void router.replace({ query: rest });
 		void nextTick(() => {
+			const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 			document
 				.getElementById(`domain-${match._id}`)
-				?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+				?.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' });
 		});
 	},
 	{ immediate: true }

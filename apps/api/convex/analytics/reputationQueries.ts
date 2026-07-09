@@ -275,6 +275,7 @@ export function missingAuthRecords(auth: DomainAuthState): string[] {
  * link, alongside health + volume — one table replacing the old split between
  * the domain reputation table and the separate verification view.
  */
+// all-members: domain names, verification state and coarse 30d volumes/rates are org-wide operational status, member-visible — no credentials or per-recipient data.
 export const getDeliveryDomainTable = authedQuery({
 	args: {},
 	handler: async (ctx): Promise<DeliveryDomainRow[]> => {
