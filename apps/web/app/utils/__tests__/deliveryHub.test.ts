@@ -90,3 +90,44 @@ describe('deliveryStatTiles — threshold copy + tone', () => {
 		expect(budget.threshold).toMatch(/not synced/i);
 	});
 });
+
+describe('deliveryStatTiles — day-over-day delta', () => {
+	it('shows no delta when there is no prior day to compare against', () => {
+		const bounce = deliveryStatTiles({ bounceRate: 0.01, complaintRate: 0.001 }, null).find(
+			(t) => t.key === 'bounce'
+		)!;
+		expect(bounce.delta).toBeUndefined();
+		expect(bounce.deltaDirection).toBe('flat');
+		expect(bounce.deltaTone).toBe('neutral');
+	});
+
+	it('reads a falling bounce rate as a positive (good) down-delta', () => {
+		// bounce fell 0.02 → 0.01: glyph points down, tone is positive (green).
+		const bounce = deliveryStatTiles({ bounceRate: 0.01, complaintRate: 0.001 }, null, {
+			bounceRate: 0.02,
+			complaintRate: 0.001,
+		}).find((t) => t.key === 'bounce')!;
+		expect(bounce.deltaDirection).toBe('down');
+		expect(bounce.deltaTone).toBe('positive');
+		expect(bounce.delta).toBe('1.00%');
+	});
+
+	it('reads a rising complaint rate as a negative (bad) up-delta', () => {
+		const complaint = deliveryStatTiles({ bounceRate: 0.01, complaintRate: 0.003 }, null, {
+			bounceRate: 0.01,
+			complaintRate: 0.001,
+		}).find((t) => t.key === 'complaint')!;
+		expect(complaint.deltaDirection).toBe('up');
+		expect(complaint.deltaTone).toBe('negative');
+	});
+
+	it('never draws a delta on the budget tile (no persisted history)', () => {
+		const budget = deliveryStatTiles(
+			{ bounceRate: 0.01, complaintRate: 0.001 },
+			{ totalSentToday: 10, totalDailyCap: 100, remainingToday: 90 },
+			{ bounceRate: 0.02, complaintRate: 0.002 }
+		).find((t) => t.key === 'budget')!;
+		expect(budget.delta).toBeUndefined();
+		expect(budget.deltaDirection).toBe('flat');
+	});
+});
