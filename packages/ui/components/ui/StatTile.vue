@@ -6,6 +6,8 @@
  * surface or sits next to sparklines/trend charts.
  */
 type DeltaDirection = 'up' | 'down' | 'flat';
+/** Semantic tint for the value numeral. Default keeps the primary text colour. */
+type ValueTone = 'default' | 'success' | 'warning' | 'error';
 
 interface Props {
 	label: string;
@@ -15,12 +17,21 @@ interface Props {
 	// delta-bearing peers; a string renders the directional delta.
 	delta?: string | null;
 	deltaDirection?: DeltaDirection;
+	valueTone?: ValueTone;
 }
 
 const props = withDefaults(defineProps<Props>(), {
 	delta: undefined,
 	deltaDirection: 'flat',
+	valueTone: 'default',
 });
+
+const valueToneClass: Record<ValueTone, string> = {
+	default: 'text-text-primary',
+	success: 'text-success',
+	warning: 'text-warning',
+	error: 'text-error',
+};
 
 const deltaGlyph: Record<DeltaDirection, string> = {
 	up: '↑',
@@ -46,7 +57,7 @@ const deltaLineClass = computed(() =>
 <template>
 	<div>
 		<p class="text-[11px] uppercase tracking-wide text-text-tertiary">{{ label }}</p>
-		<p class="mt-1 font-display text-3xl text-text-primary tabular-nums leading-none">
+		<p :class="['mt-1 font-display text-3xl tabular-nums leading-none', valueToneClass[valueTone]]">
 			{{ value }}
 		</p>
 		<p v-if="delta !== undefined" :class="['mt-1.5 text-xs tabular-nums', deltaLineClass]">
