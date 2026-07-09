@@ -6,6 +6,34 @@
 import type { Doc } from '@owlat/api/dataModel';
 import type { CampaignAttentionReason } from '~/utils/campaignAttention';
 
+/**
+ * The exact campaign fields the command center's row + classifier read. The
+ * attention query (`campaigns.organization.listAttentionCandidates`) projects a
+ * campaign down to precisely these, and a full `Doc<'campaigns'>` from the
+ * paginated list is structurally assignable to it — so one row model serves
+ * both data sources without dragging the heavy per-campaign payload to the client.
+ */
+export type CampaignRowFields = Pick<
+	Doc<'campaigns'>,
+	| '_id'
+	| 'name'
+	| 'subject'
+	| 'status'
+	| 'scheduledAt'
+	| 'sentAt'
+	| 'isABTest'
+	| 'abTestStatus'
+	| 'abWinner'
+	| 'contentBlockReason'
+	| 'updatedAt'
+	| 'statsSent'
+	| 'statsDelivered'
+	| 'statsOpened'
+	| 'statsClicked'
+	| 'abVariantBSent'
+	| 'abVariantBOpened'
+>;
+
 /** One roll-up attention chip: its label + status-dot utility class. */
 export interface ReasonChip {
 	label: string;
@@ -20,7 +48,7 @@ export interface RowStatusBadge {
 }
 
 export interface DecoratedRow {
-	campaign: Doc<'campaigns'>;
+	campaign: CampaignRowFields;
 	needsAttention: boolean;
 	reason: CampaignAttentionReason | null;
 	/** Precomputed chip for the reason (or null) — keeps the template out of a

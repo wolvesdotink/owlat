@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
-import type { Doc, Id } from '@owlat/api/dataModel';
+import type { Id } from '@owlat/api/dataModel';
 import type { CampaignStatus } from '~/composables/useCampaignStatusBadge';
 import { CAMPAIGN_ATTENTION_DISPLAY, classifyCampaignAttention } from '~/utils/campaignAttention';
-import type { DecoratedRow } from '~/utils/campaignCommandRow';
+import type { CampaignRowFields, DecoratedRow } from '~/utils/campaignCommandRow';
 
 useHead({ title: 'Campaigns — Owlat' });
 
@@ -139,7 +139,7 @@ const { getStatusBadge } = useCampaignStatusBadge();
 // The row TYPE + row COMPONENT live in siblings (utils/campaignCommandRow +
 // components/campaigns/CommandRow) so this page stays a controller; here we only
 // DERIVE the rows.
-type CampaignRow = Doc<'campaigns'>;
+type CampaignRow = CampaignRowFields;
 
 function rate(numer: number | undefined, denom: number | undefined): number | null {
 	if (!denom || denom <= 0) return null;
@@ -188,12 +188,23 @@ function byAttentionThenRecency(a: DecoratedRow, b: DecoratedRow): number {
 
 // Attention rows come from the org-wide candidate scan, then the client
 // classifier (the source of truth) keeps only the ones genuinely waiting.
-const attentionRows = computed<DecoratedRow[]>(() =>
-	(attentionCandidates.value ?? [])
+// The browse pills search server-side, but the attention set is fetched
+// unsearched, so we apply the same debounced query here (case-insensitive
+// name/subject over the bounded candidate set) — otherwise typing on the
+// default pill would silently no-op and the "No results" empty state would
+// lie about a search that never ran.
+const attentionRows = computed<DecoratedRow[]>(() => {
+	const q = debouncedSearch.value.toLowerCase();
+	return (attentionCandidates.value ?? [])
 		.map(decorate)
 		.filter((r) => r.needsAttention)
-		.sort((a, b) => b.campaign.updatedAt - a.campaign.updatedAt)
-);
+		.filter((r) => {
+			if (!q) return true;
+			const c = r.campaign;
+			return c.name.toLowerCase().includes(q) || (c.subject?.toLowerCase().includes(q) ?? false);
+		})
+		.sort((a, b) => b.campaign.updatedAt - a.campaign.updatedAt);
+});
 
 const attentionCount = computed(() => attentionRows.value.length);
 
@@ -250,10 +261,9 @@ function runAttentionAction(row: DecoratedRow) {
 			openAbResults();
 			break;
 		case 'needs_review':
-			// The review surface is the editor's pending-review panel — NOT the
-			// report (which shows zeros for an unsent campaign).
-			router.push(`/dashboard/campaigns/${id}/edit`);
-			break;
+		// The review surface is the editor's pending-review panel — NOT the
+		// report (which shows zeros for an unsent campaign). A stopped send is
+		// resumed from the same editor, so both land there.
 		case 'send_stopped':
 			router.push(`/dashboard/campaigns/${id}/edit`);
 			break;
