@@ -100,11 +100,17 @@ bun run build    # runs `generate:desktop` then bundles per the host platform
 Requires:
 
 1. **Icons** — `src-tauri/icons/` must contain `32x32.png`, `128x128.png`,
-   `128x128@2x.png`, `icon.icns`, `icon.ico`, `icon.png`. Generate from a 1024×1024
-   brand PNG:
+   `128x128@2x.png`, `icon.icns`, `icon.ico`, `icon.png`. The master source is
+   `src-tauri/icons/icon.svg` (terracotta owl on the dark brand plate); regenerate
+   all platform icons from it:
    ```sh
-   cd apps/desktop && bunx tauri icon path/to/owlat-1024.png
+   rsvg-convert -w 1024 -h 1024 src-tauri/icons/icon.svg -o /tmp/owlat-1024.png
+   cd apps/desktop && bunx tauri icon /tmp/owlat-1024.png
    ```
+   `tauri icon` also emits `icons/android/` and `icons/ios/` — delete those (we
+   don't ship mobile). `icons/tray.png` is separate and must stay a transparent
+   black glyph: it's the macOS menu-bar **template** icon (rendered from the alpha
+   channel), so an opaque plate would show as a solid square.
 2. **Updater signing key** (for auto-update):
    ```sh
    bunx tauri signer generate -w ~/.owlat/desktop-updater.key
