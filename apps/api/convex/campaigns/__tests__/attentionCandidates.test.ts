@@ -86,10 +86,31 @@ describe('campaigns.organization.listAttentionCandidates', () => {
 		expect(candidates).toHaveLength(1);
 		const row = candidates[0]!;
 		expect(row.name).toBe('Heavy cancelled');
-		// The heavy per-campaign payload never crosses the wire.
-		expect('archiveHtmlContent' in row).toBe(false);
-		expect('audience' in row).toBe(false);
-		expect('abTestConfig' in row).toBe(false);
+		// Exact-shape assertion: the row carries precisely the projected field
+		// set — no more (so no heavy `archiveHtmlContent` / `audience` /
+		// `abTestConfig` payload crosses the wire) and no less. Any leaked or
+		// dropped field fails here, unlike a handful of `in` checks that pass
+		// vacuously when the factory omits the field to begin with.
+		const expectedProjectedFields = [
+			'_id',
+			'name',
+			'subject',
+			'status',
+			'scheduledAt',
+			'sentAt',
+			'isABTest',
+			'abTestStatus',
+			'abWinner',
+			'contentBlockReason',
+			'updatedAt',
+			'statsSent',
+			'statsDelivered',
+			'statsOpened',
+			'statsClicked',
+			'abVariantBSent',
+			'abVariantBOpened',
+		];
+		expect(Object.keys(row).sort()).toEqual([...expectedProjectedFields].sort());
 	});
 
 	it('returns an empty list when nothing sits in a candidate status', async () => {
