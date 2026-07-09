@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
-import type { Id } from '@owlat/api/dataModel';
+import type { Doc, Id } from '@owlat/api/dataModel';
 import type { CampaignStatus } from '~/composables/useCampaignStatusBadge';
-import { classifyCampaignAttention, type CampaignAttentionReason } from '~/utils/campaignAttention';
+import { CAMPAIGN_ATTENTION_DISPLAY, classifyCampaignAttention } from '~/utils/campaignAttention';
+import type { DecoratedRow } from '~/utils/campaignCommandRow';
 
 useHead({ title: 'Campaigns — Owlat' });
 
@@ -67,33 +68,64 @@ function clearSearch() {
 	debouncedSearch.value = '';
 }
 
-// Keyboard: 'n' opens the new-campaign wizard (kept from the old all-list).
-const { registerNewShortcut, unregisterShortcut } = useKeyboardShortcuts();
+// Keyboard: 'n' opens the new-campaign wizard (kept from the old all-list);
+// Escape closes the delete-confirm modal (kept from the old all-list).
+const { registerNewShortcut, registerEscapeHandler, unregisterShortcut } = useKeyboardShortcuts();
 onMounted(() => {
-	registerNewShortcut(() => router.push('/dashboard/campaigns/new'));
+	registerNewShortcut(() => {
+		if (!isDeleteModalOpen.value) router.push('/dashboard/campaigns/new');
+	});
+	registerEscapeHandler(() => {
+		if (isDeleteModalOpen.value && !isDeleting.value) closeDeleteModal();
+	});
 });
 onUnmounted(() => {
 	unregisterShortcut('n');
+	unregisterShortcut('escape');
+});
+
+// The active pill drives a SERVER-SIDE status filter for the browse pills so the
+// list can never disagree with the org-wide count badge (e.g. "Sent 250" while
+// only a windowful shows). Attention / All browse the full table unfiltered.
+const serverStatus = computed<CampaignStatus | undefined>(() => {
+	switch (selectedPill.value) {
+		case 'draft':
+		case 'scheduled':
+		case 'sent':
+			return selectedPill.value;
+		default:
+			return undefined;
+	}
 });
 
 // ONE paginated query returns rows WITH their denormalized headline stats (no
-// per-row fan-out / N+1). Status filter + attention classification run
-// client-side over the loaded window; search stays server-side; pill numeric
-// badges come from the exact org-wide count facet.
+// per-row fan-out / N+1). Search + status filter are server-side; the pill
+// numeric badges come from the exact org-wide count facet.
 const {
 	results: rows,
 	status: paginationStatus,
 	loadMore,
 	isLoading,
+	error: listError,
 } = usePaginatedQuery(
 	api.campaigns.campaigns.list,
-	() => ({ search: debouncedSearch.value || undefined }),
+	() => ({ status: serverStatus.value, search: debouncedSearch.value || undefined }),
 	{ initialNumItems: 100 }
 );
 
 const { data: statusCounts } = useOrganizationQuery(
 	api.campaigns.organization.countByStatusByOrganization
 );
+
+// Attention is classified over ALL candidate campaigns (a bounded org-wide scan
+// of the transient statuses), NOT the loaded window — so "Nothing needs you."
+// can never be a false negative for an undecided A/B test or a stopped send that
+// happens to sit past the first page.
+const {
+	data: attentionCandidates,
+	isLoading: attentionLoading,
+	error: attentionError,
+} = useOrganizationQuery(api.campaigns.organization.listAttentionCandidates);
 
 const canLoadMore = computed(() => paginationStatus.value === 'CanLoadMore');
 const isLoadingMore = computed(() => paginationStatus.value === 'LoadingMore');
@@ -104,95 +136,84 @@ function handleLoadMore() {
 const { getStatusBadge } = useCampaignStatusBadge();
 
 // --- Row model: campaign + its attention roll-up + derived rates ------------
-type CampaignRow = NonNullable<typeof rows.value>[number];
-
-interface ReasonChip {
-	label: string;
-	dot: string;
-}
-
-interface DecoratedRow {
-	campaign: CampaignRow;
-	needsAttention: boolean;
-	reason: CampaignAttentionReason | null;
-	/** Precomputed chip for the reason (or null) — keeps the template out of a
-	 * possibly-null index access. */
-	reasonChip: ReasonChip | null;
-	actionLabel: string | null;
-	openRate: number | null;
-	clickRate: number | null;
-	/** Variant open-rate mini-trend for A/B sends; empty ⇒ sparkline hidden. */
-	spark: number[];
-}
-
-const REASON_CHIP: Record<CampaignAttentionReason, ReasonChip> = {
-	ab_decision: { label: 'Pick a winner', dot: 'bg-brand' },
-	needs_review: { label: 'Needs review', dot: 'bg-warning' },
-	send_stopped: { label: 'Send stopped', dot: 'bg-error' },
-	scheduled_today: { label: 'Going out today', dot: 'bg-brand' },
-};
+// The row TYPE + row COMPONENT live in siblings (utils/campaignCommandRow +
+// components/campaigns/CommandRow) so this page stays a controller; here we only
+// DERIVE the rows.
+type CampaignRow = Doc<'campaigns'>;
 
 function rate(numer: number | undefined, denom: number | undefined): number | null {
 	if (!denom || denom <= 0) return null;
 	return ((numer ?? 0) / denom) * 100;
 }
 
-const decorated = computed<DecoratedRow[]>(() =>
-	(rows.value ?? []).map((campaign): DecoratedRow => {
-		const attention = classifyCampaignAttention({
-			status: campaign.status,
-			scheduledAt: campaign.scheduledAt,
-			isABTest: campaign.isABTest,
-			abTestStatus: campaign.abTestStatus,
-			abWinner: campaign.abWinner,
-			contentBlockReason: campaign.contentBlockReason,
-		});
-		const openRate = rate(campaign.statsOpened, campaign.statsDelivered);
-		const clickRate = rate(campaign.statsClicked, campaign.statsDelivered);
-		// A/B campaigns carry two comparable sends (variant A = main stats,
-		// variant B = abVariantB* fields) — a genuine two-point open-rate trend.
-		const variantA = rate(campaign.statsOpened, campaign.statsDelivered);
-		const variantB = rate(campaign.abVariantBOpened, campaign.abVariantBSent);
-		const spark =
-			campaign.isABTest === true && variantA != null && variantB != null
-				? [variantA, variantB]
-				: [];
-		return {
-			campaign,
-			needsAttention: attention.needsAttention,
-			reason: attention.reason,
-			reasonChip: attention.reason ? REASON_CHIP[attention.reason] : null,
-			actionLabel: attention.actionLabel,
-			openRate,
-			clickRate,
-			spark,
-		};
-	})
-);
-
-const attentionCount = computed(() => decorated.value.filter((r) => r.needsAttention).length);
-
-// Client-side pill filter over the loaded rows.
-function matchesPill(row: DecoratedRow, pill: PillKey): boolean {
-	switch (pill) {
-		case 'attention':
-			return row.needsAttention;
-		case 'all':
-			return true;
-		default:
-			return row.campaign.status === pill;
-	}
+function decorate(campaign: CampaignRow): DecoratedRow {
+	const attention = classifyCampaignAttention({
+		status: campaign.status,
+		scheduledAt: campaign.scheduledAt,
+		isABTest: campaign.isABTest,
+		abTestStatus: campaign.abTestStatus,
+		abWinner: campaign.abWinner,
+		contentBlockReason: campaign.contentBlockReason,
+	});
+	const display = attention.reason ? CAMPAIGN_ATTENTION_DISPLAY[attention.reason] : null;
+	const openRate = rate(campaign.statsOpened, campaign.statsDelivered);
+	const clickRate = rate(campaign.statsClicked, campaign.statsDelivered);
+	// A/B campaigns carry two comparable sends (variant A = main stats,
+	// variant B = abVariantB* fields) — a genuine two-point open-rate trend.
+	const variantA = openRate;
+	const variantB = rate(campaign.abVariantBOpened, campaign.abVariantBSent);
+	const spark =
+		campaign.isABTest === true && variantA != null && variantB != null ? [variantA, variantB] : [];
+	return {
+		campaign,
+		needsAttention: attention.needsAttention,
+		reason: attention.reason,
+		reasonChip: display ? { label: display.chipLabel, dot: display.dot } : null,
+		statusBadge: getStatusBadge(campaign.status as CampaignStatus),
+		actionLabel: attention.actionLabel,
+		openRate,
+		clickRate,
+		variantA,
+		variantB,
+		spark,
+	};
 }
 
-// Sort: attention first, then most-recent (updatedAt) — the design brief's
-// "surface what needs a decision, then the freshest work".
-const visibleRows = computed(() => {
-	const filtered = decorated.value.filter((r) => matchesPill(r, selectedPill.value));
-	return [...filtered].sort((a, b) => {
-		if (a.needsAttention !== b.needsAttention) return a.needsAttention ? -1 : 1;
-		return b.campaign.updatedAt - a.campaign.updatedAt;
-	});
-});
+// Sort helper: attention first, then most-recent (updatedAt) — the design
+// brief's "surface what needs a decision, then the freshest work".
+function byAttentionThenRecency(a: DecoratedRow, b: DecoratedRow): number {
+	if (a.needsAttention !== b.needsAttention) return a.needsAttention ? -1 : 1;
+	return b.campaign.updatedAt - a.campaign.updatedAt;
+}
+
+// Attention rows come from the org-wide candidate scan, then the client
+// classifier (the source of truth) keeps only the ones genuinely waiting.
+const attentionRows = computed<DecoratedRow[]>(() =>
+	(attentionCandidates.value ?? [])
+		.map(decorate)
+		.filter((r) => r.needsAttention)
+		.sort((a, b) => b.campaign.updatedAt - a.campaign.updatedAt)
+);
+
+const attentionCount = computed(() => attentionRows.value.length);
+
+// Browse rows come from the paginated (optionally status-filtered) window.
+const browseRows = computed<DecoratedRow[]>(() =>
+	(rows.value ?? []).map(decorate).sort(byAttentionThenRecency)
+);
+
+const visibleRows = computed(() =>
+	selectedPill.value === 'attention' ? attentionRows.value : browseRows.value
+);
+
+// Surface the right loading / error signal for whichever data source the active
+// pill reads from.
+const activeError = computed(() =>
+	selectedPill.value === 'attention' ? attentionError.value : listError.value
+);
+const activeLoading = computed(() =>
+	selectedPill.value === 'attention' ? attentionLoading.value : isLoading.value
+);
 
 interface Pill {
 	key: PillKey;
@@ -212,32 +233,6 @@ const pills = computed<Pill[]>(() => {
 
 // --- Presentational helpers -------------------------------------------------
 
-/** Meta line under the campaign name — one human sentence per state. */
-function metaLine(row: DecoratedRow): string {
-	const c = row.campaign;
-	if (row.reason === 'ab_decision') {
-		const a = rate(c.statsOpened, c.statsDelivered);
-		const b = rate(c.abVariantBOpened, c.abVariantBSent);
-		if (a != null && b != null) {
-			const diff = Math.abs(a - b);
-			const leader = b >= a ? 'B' : 'A';
-			if (diff >= 0.1) return `Variant ${leader} leads by ${diff.toFixed(1)} pts`;
-			return 'Variants are running even';
-		}
-		return 'A/B test in progress';
-	}
-	if (c.status === 'scheduled') {
-		return c.scheduledAt ? `Scheduled for ${formatDateTime(c.scheduledAt)}` : 'Scheduled';
-	}
-	if (c.status === 'sending') return 'Sending now';
-	if (c.status === 'cancelled') return 'Send was stopped';
-	if (c.status === 'sent') {
-		const recipients = c.statsDelivered ?? c.statsSent ?? 0;
-		return `Sent ${formatDate(c.sentAt)} · ${recipients.toLocaleString()} recipients`;
-	}
-	return `Draft · updated ${formatCompactRelativeTime(c.updatedAt)}`;
-}
-
 /** Row click opens the report for sent/sending campaigns, else the editor. */
 function openCampaign(campaign: CampaignRow) {
 	if (campaign.status === 'sent' || campaign.status === 'sending') {
@@ -252,10 +247,12 @@ function runAttentionAction(row: DecoratedRow) {
 	const id = row.campaign._id;
 	switch (row.reason) {
 		case 'ab_decision':
-			router.push('/dashboard/campaigns/ab-results');
+			openAbResults();
 			break;
 		case 'needs_review':
-			openReport(id);
+			// The review surface is the editor's pending-review panel — NOT the
+			// report (which shows zeros for an unsent campaign).
+			router.push(`/dashboard/campaigns/${id}/edit`);
 			break;
 		case 'send_stopped':
 			router.push(`/dashboard/campaigns/${id}/edit`);
@@ -264,14 +261,59 @@ function runAttentionAction(row: DecoratedRow) {
 			openCampaign(row.campaign);
 	}
 }
-function openReport(id: Id<'campaigns'>) {
-	router.push(`/dashboard/campaigns/${id}/report`);
+/** The A/B results surface (kept discoverable until c3b folds it in). */
+function openAbResults() {
+	router.push('/dashboard/campaigns/ab-results');
 }
 function handleNewCampaign() {
 	router.push('/dashboard/campaigns/new');
 }
 
-const showEmptyState = computed(() => !isLoading.value && visibleRows.value.length === 0);
+// --- Row-level actions: Duplicate + Delete (preserved from the old all-list) -
+const { showToast } = useToast();
+
+const { run: duplicateCampaign } = useBackendOperation(api.campaigns.campaigns.duplicate, {
+	label: 'Duplicate campaign',
+});
+const { run: deleteCampaign } = useBackendOperation(api.campaigns.campaigns.remove, {
+	label: 'Delete campaign',
+});
+
+async function handleDuplicate(id: Id<'campaigns'>) {
+	const newId = await duplicateCampaign({ campaignId: id });
+	if (newId === undefined) return;
+	showToast('Campaign duplicated');
+	router.push(`/dashboard/campaigns/${newId}/edit`);
+}
+
+const isDeleteModalOpen = ref(false);
+const campaignToDelete = ref<{ id: Id<'campaigns'>; name: string } | null>(null);
+const isDeleting = ref(false);
+
+function openDeleteModal(id: Id<'campaigns'>, name: string) {
+	campaignToDelete.value = { id, name };
+	isDeleteModalOpen.value = true;
+}
+function closeDeleteModal() {
+	isDeleteModalOpen.value = false;
+	campaignToDelete.value = null;
+}
+async function handleDelete() {
+	if (!campaignToDelete.value) return;
+	isDeleting.value = true;
+	try {
+		const result = await deleteCampaign({ campaignId: campaignToDelete.value.id });
+		if (result === undefined) return;
+		showToast('Campaign deleted');
+		closeDeleteModal();
+	} finally {
+		isDeleting.value = false;
+	}
+}
+
+const showEmptyState = computed(
+	() => !activeLoading.value && !activeError.value && visibleRows.value.length === 0
+);
 </script>
 
 <template>
@@ -325,12 +367,22 @@ const showEmptyState = computed(() => !isLoading.value && visibleRows.value.leng
 			</div>
 		</div>
 
-		<div v-if="isLoading && !rows" class="flex items-center justify-center py-16">
+		<div
+			v-if="activeLoading && visibleRows.length === 0"
+			class="flex items-center justify-center py-16"
+		>
 			<div class="flex flex-col items-center gap-3">
 				<UiSpinner />
 				<p class="text-text-secondary text-sm">Loading campaigns…</p>
 			</div>
 		</div>
+
+		<UiErrorAlert
+			v-else-if="activeError"
+			title="Couldn't load campaigns"
+			message="We hit an error loading your campaigns. Reload the page to try again."
+			class="my-8"
+		/>
 
 		<UiCard
 			v-else-if="showEmptyState && selectedPill === 'attention' && !debouncedSearch"
@@ -378,106 +430,20 @@ const showEmptyState = computed(() => !isLoading.value && visibleRows.value.leng
 
 		<UiCard v-else padding="none" overflow="hidden">
 			<ul class="divide-y divide-border-subtle">
-				<li
+				<CampaignsCommandRow
 					v-for="row in visibleRows"
 					:key="row.campaign._id"
-					class="group flex items-center gap-4 px-4 sm:px-6 py-4 hover:bg-bg-surface transition-colors duration-(--motion-moderate) ease-spring cursor-pointer"
-					@click="openCampaign(row.campaign)"
-				>
-					<div class="min-w-0 flex-1">
-						<div class="flex items-center gap-2 min-w-0">
-							<span
-								:class="[
-									'truncate text-text-primary',
-									row.needsAttention ? 'font-semibold' : 'font-medium',
-								]"
-							>
-								{{ row.campaign.name }}
-							</span>
-							<span
-								v-if="row.campaign.isABTest"
-								class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium text-text-secondary bg-bg-elevated shrink-0"
-								title="A/B test"
-							>
-								<Icon name="lucide:split" class="w-3 h-3" />
-								A/B
-							</span>
-						</div>
-
-						<div class="flex items-center gap-2 mt-1 min-w-0">
-							<!-- One roll-up chip: attention reason when present, else status -->
-							<span
-								v-if="row.reasonChip"
-								class="inline-flex items-center gap-1.5 text-xs text-text-secondary shrink-0"
-							>
-								<span :class="['w-1.5 h-1.5 rounded-full', row.reasonChip.dot]" />
-								{{ row.reasonChip.label }}
-							</span>
-							<span
-								v-else
-								:class="[
-									'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium shrink-0',
-									getStatusBadge(row.campaign.status as CampaignStatus).color,
-								]"
-							>
-								<Icon
-									:name="getStatusBadge(row.campaign.status as CampaignStatus).icon"
-									:class="['w-3 h-3', row.campaign.status === 'sending' ? 'animate-spin' : '']"
-								/>
-								{{ getStatusBadge(row.campaign.status as CampaignStatus).label }}
-							</span>
-							<span class="text-xs text-text-tertiary truncate">{{ metaLine(row) }}</span>
-						</div>
-					</div>
-
-					<!-- Sparkline (A/B variant open-rate trend; hidden otherwise) -->
-					<UiSparkline
-						v-if="row.spark.length >= 2"
-						:data="row.spark"
-						:aria-label="`Variant open-rate trend for ${row.campaign.name}`"
-						class="hidden md:inline-block shrink-0"
-					/>
-
-					<div class="hidden sm:flex items-center gap-6 shrink-0">
-						<div class="text-right w-16">
-							<p class="text-sm font-semibold tabular-nums text-text-primary">
-								{{ row.openRate != null ? `${row.openRate.toFixed(1)}%` : '—' }}
-							</p>
-							<p class="text-[11px] text-text-tertiary">Open</p>
-						</div>
-						<div class="text-right w-16">
-							<p class="text-sm font-semibold tabular-nums text-text-primary">
-								{{ row.clickRate != null ? `${row.clickRate.toFixed(1)}%` : '—' }}
-							</p>
-							<p class="text-[11px] text-text-tertiary">Click</p>
-						</div>
-					</div>
-
-					<!-- Inline primary action for attention rows -->
-					<div class="shrink-0 w-24 flex justify-end" @click.stop>
-						<UiButton
-							v-if="row.actionLabel"
-							size="sm"
-							variant="secondary"
-							@click="runAttentionAction(row)"
-						>
-							{{ row.actionLabel }}
-						</UiButton>
-						<button
-							v-else
-							class="ui-hover-reveal p-2 rounded-lg text-text-tertiary hover:text-brand transition-colors duration-(--motion-fast) ease-spring focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand"
-							title="View campaign"
-							aria-label="View campaign"
-							@click="openCampaign(row.campaign)"
-						>
-							<Icon name="lucide:arrow-right" class="w-4 h-4" />
-						</button>
-					</div>
-				</li>
+					:row="row"
+					@open="openCampaign(row.campaign)"
+					@run-action="runAttentionAction(row)"
+					@ab-results="openAbResults()"
+					@duplicate="handleDuplicate(row.campaign._id)"
+					@delete="openDeleteModal(row.campaign._id, row.campaign.name)"
+				/>
 			</ul>
 
 			<div
-				v-if="canLoadMore || paginationStatus === 'Exhausted'"
+				v-if="selectedPill !== 'attention' && (canLoadMore || paginationStatus === 'Exhausted')"
 				class="flex items-center justify-center px-6 py-4 border-t border-border-subtle"
 			>
 				<UiButton
@@ -491,5 +457,31 @@ const showEmptyState = computed(() => !isLoading.value && visibleRows.value.leng
 				<span v-else class="text-sm text-text-tertiary">All campaigns loaded</span>
 			</div>
 		</UiCard>
+
+		<!-- Delete confirmation -->
+		<UiModal v-model:open="isDeleteModalOpen" title="Delete campaign" :persistent="isDeleting">
+			<div class="flex items-start gap-4">
+				<div class="p-3 rounded-full bg-error/10 shrink-0 flex items-center justify-center">
+					<Icon name="lucide:trash-2" class="w-6 h-6 text-error" />
+				</div>
+				<div>
+					<p class="text-text-primary">
+						Are you sure you want to delete
+						<span class="font-semibold">"{{ campaignToDelete?.name }}"</span>?
+					</p>
+					<p class="text-sm text-text-secondary mt-2">
+						This action cannot be undone. The campaign and its data will be permanently deleted.
+					</p>
+				</div>
+			</div>
+			<template #footer>
+				<UiButton variant="secondary" :disabled="isDeleting" @click="closeDeleteModal">
+					Cancel
+				</UiButton>
+				<UiButton variant="danger" :loading="isDeleting" @click="handleDelete">
+					{{ isDeleting ? 'Deleting…' : 'Delete campaign' }}
+				</UiButton>
+			</template>
+		</UiModal>
 	</div>
 </template>
