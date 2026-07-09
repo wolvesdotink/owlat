@@ -23,14 +23,8 @@ const { showToast } = useToast();
 // page. Email/name have no such index (a post-filter would drop rows), so they
 // stay plain headers rather than offering a misleading partial-page sort.
 type SortField = 'createdAt';
-const { searchQuery, debouncedSearch, sortBy, sortOrder, toggleSort, pageSize } =
-	useDataTable<SortField>({ defaultSort: 'createdAt' });
-
-// Sort indicator for the Created column (mirrors the topics/segments idiom).
-const getSortIcon = (field: SortField): string | null => {
-	if (sortBy.value !== field) return null;
-	return sortOrder.value === 'asc' ? 'lucide:chevron-up' : 'lucide:chevron-down';
-};
+const { searchQuery, debouncedSearch, sortBy, sortOrder, toggleSort, getSortIcon, pageSize } =
+	useDataTable<SortField>({ defaultSort: 'createdAt', sortableFields: ['createdAt'] });
 
 // Bulk selection
 const bulkSelection = useBulkSelection<Id<'contacts'>>();

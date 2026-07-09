@@ -12,7 +12,10 @@ definePageMeta({
 // Get the current user's organization
 const { hasActiveOrganization, isLoading: organizationLoading } = useOrganizationContext();
 
-// Fetch topics with cursor-based pagination (uses session-based organization context)
+// Fetch topics with cursor-based pagination (uses session-based organization
+// context). The list sorts/filters client-side, so — like Segments — eagerly
+// pull every page: otherwise a client sort would only reorder the loaded rows
+// (a misleading partial-set sort) and an org with >50 topics would be capped.
 const {
 	results: topics,
 	status: paginationStatus,
@@ -20,32 +23,35 @@ const {
 	isLoading: topicsLoading,
 } = usePaginatedQuery(api.topics.topics.list, () => ({}), { initialNumItems: 50 });
 
+watch(
+	paginationStatus,
+	(s) => {
+		if (s === 'CanLoadMore') loadMore(50);
+	},
+	{ immediate: true }
+);
+
 const isLoading = computed(() => organizationLoading.value || topicsLoading.value);
-const canLoadMore = computed(() => paginationStatus.value === 'CanLoadMore');
-const isLoadingMore = computed(() => paginationStatus.value === 'LoadingMore');
 
-const handleLoadMore = () => {
-	if (canLoadMore.value) {
-		loadMore(50);
-	}
-};
-
-// Data table controls (search and sort)
+// Data table controls (search and sort) — shared contract with the other
+// audience list pages: identical debounced search + sort affordance.
 type SortField = 'name' | 'contactCount' | 'createdAt';
-const { searchQuery, sortBy, sortOrder, toggleSort } = useDataTable<SortField>({
-	defaultSort: 'createdAt',
-	defaultOrder: 'desc',
-});
+const { searchQuery, debouncedSearch, sortBy, sortOrder, toggleSort, getSortIcon } =
+	useDataTable<SortField>({
+		defaultSort: 'createdAt',
+		defaultOrder: 'desc',
+		sortableFields: ['name', 'contactCount', 'createdAt'],
+	});
 
-// Filtered and sorted topics (client-side filtering)
+// Filtered and sorted topics (client-side over the fully-loaded set)
 const filteredTopics = computed(() => {
 	if (!topics.value) return [];
 
 	let items = [...topics.value];
 
 	// Filter by search
-	if (searchQuery.value) {
-		const query = searchQuery.value.toLowerCase();
+	if (debouncedSearch.value) {
+		const query = debouncedSearch.value.toLowerCase();
 		items = items.filter(
 			(topic) =>
 				topic.name.toLowerCase().includes(query) ||
@@ -68,12 +74,6 @@ const filteredTopics = computed(() => {
 
 	return items;
 });
-
-// Get sort icon for column
-const getSortIcon = (field: SortField): string | null => {
-	if (sortBy.value !== field) return null;
-	return sortOrder.value === 'asc' ? 'lucide:chevron-up' : 'lucide:chevron-down';
-};
 
 // ============================================
 // Create Modal State (using useFormModal)
@@ -345,11 +345,7 @@ onMounted(() => {
 								>
 									<div class="flex items-center gap-1">
 										Name
-										<Icon
-											v-if="getSortIcon('name')"
-											:name="getSortIcon('name')!"
-											class="w-4 h-4"
-										/>
+										<Icon v-if="getSortIcon('name')" :name="getSortIcon('name')!" class="w-4 h-4" />
 									</div>
 								</th>
 								<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
@@ -434,24 +430,11 @@ onMounted(() => {
 					</table>
 				</div>
 
-				<!-- Load More / Footer -->
-				<div
-					class="flex items-center justify-between px-6 py-4 border-t border-border-subtle"
-				>
+				<!-- Count footer -->
+				<div class="px-6 py-4 border-t border-border-subtle">
 					<p class="text-sm text-text-tertiary">
-						{{ filteredTopics.length }} topic{{ filteredTopics.length !== 1 ? 's' : '' }} loaded
+						{{ filteredTopics.length }} topic{{ filteredTopics.length !== 1 ? 's' : '' }}
 					</p>
-					<UiButton
-						v-if="canLoadMore"
-						variant="secondary"
-						:loading="isLoadingMore"
-						@click="handleLoadMore"
-					>
-						{{ isLoadingMore ? 'Loading...' : 'Load More' }}
-					</UiButton>
-					<span v-else-if="paginationStatus === 'Exhausted'" class="text-sm text-text-tertiary">
-						All topics loaded
-					</span>
 				</div>
 			</div>
 		</UiCard>
@@ -593,7 +576,9 @@ onMounted(() => {
 					Cancel
 				</UiButton>
 				<UiButton variant="danger" :loading="isDeleting" @click="handleDelete">
-					<template v-if="!isDeleting" #iconLeft><Icon name="lucide:trash-2" class="w-4 h-4" /></template>
+					<template v-if="!isDeleting" #iconLeft
+						><Icon name="lucide:trash-2" class="w-4 h-4"
+					/></template>
 					{{ isDeleting ? 'Deleting...' : 'Delete Topic' }}
 				</UiButton>
 			</template>
