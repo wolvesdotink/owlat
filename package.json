@@ -46,7 +46,7 @@
 			},
 			"convex": {
 				"convex": "^1.36.1",
-				"better-auth": "~1.6.9",
+				"better-auth": ">=1.6.13 <1.6.16",
 				"@convex-dev/better-auth": "^0.12.0"
 			},
 			"ai": {
