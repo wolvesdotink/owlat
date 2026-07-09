@@ -3,7 +3,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { isValidEmail, normalizeEmail } from '~/utils/validation';
 
-useHead({ title: 'Blocklist — Owlat' });
+useHead({ title: 'Suppressions — Owlat' });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -121,7 +121,7 @@ const handleAddBlockedEmail = async () => {
 
 	if (result === undefined) return;
 
-	showNotification('Email address added to blocklist');
+	showNotification('Address suppressed');
 	addModal.close();
 };
 
@@ -138,7 +138,7 @@ const handleDeleteBlockedEmail = async () => {
 
 	if (result === undefined) return;
 
-	showNotification('Email address removed from blocklist');
+	showNotification('Suppression removed');
 	emailToDelete.value = null;
 };
 
@@ -166,18 +166,17 @@ const getReasonIcon = (reason: string) => {
 	}
 };
 
-// Get reason label
+// Get reason label — plain language, no jargon. Explains WHY in the label itself.
 const getReasonLabel = (reason: string) => {
 	switch (reason) {
 		case 'bounced':
-			return 'Hard Bounce';
+			return "Bounced — mailbox doesn't exist";
 		case 'complained':
-			return 'Spam Complaint';
+			return 'Complained — marked a send as spam';
 		default: // manual
-			return 'Manual';
+			return 'Manually suppressed';
 	}
 };
-
 </script>
 
 <template>
@@ -185,17 +184,17 @@ const getReasonLabel = (reason: string) => {
 		<!-- Header -->
 		<div class="mb-6">
 			<NuxtLink
-				to="/dashboard/settings"
+				to="/dashboard/audience"
 				class="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary mb-4"
 			>
 				<Icon name="lucide:arrow-left" class="w-4 h-4" />
-				Back to Settings
+				Back to Audience
 			</NuxtLink>
 			<div class="flex items-center justify-between">
 				<div>
-					<h1 class="text-2xl font-semibold text-text-primary">Email Blocklist</h1>
+					<h1 class="text-2xl font-semibold text-text-primary">Suppressions</h1>
 					<p class="mt-1 text-text-secondary">
-						Manage blocked email addresses to protect your sender reputation
+						Addresses that no longer receive mail — so a bounce or complaint never happens twice
 					</p>
 				</div>
 				<div class="flex items-center gap-2">
@@ -205,7 +204,7 @@ const getReasonLabel = (reason: string) => {
 					</button>
 					<button class="btn btn-primary gap-2" @click="addModal.open()">
 						<Icon name="lucide:plus" class="w-4 h-4" />
-						Add to Blocklist
+						Add suppression
 					</button>
 				</div>
 			</div>
@@ -215,7 +214,7 @@ const getReasonLabel = (reason: string) => {
 		<div v-if="isLoading && !blockedEmailsData" class="flex items-center justify-center py-16">
 			<div class="flex flex-col items-center gap-3">
 				<UiSpinner />
-				<p class="text-text-secondary text-sm">Loading blocklist...</p>
+				<p class="text-text-secondary text-sm">Loading suppressions...</p>
 			</div>
 		</div>
 
@@ -227,7 +226,7 @@ const getReasonLabel = (reason: string) => {
 			<UiIconBox icon="lucide:ban" size="xl" variant="surface" rounded="full" class="mb-4" />
 			<p class="text-text-secondary font-medium">No organization selected</p>
 			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-				Create or select an organization to manage your email blocklist.
+				Create or select an organization to manage your suppressions.
 			</p>
 		</div>
 
@@ -238,12 +237,12 @@ const getReasonLabel = (reason: string) => {
 				<div class="flex gap-4">
 					<UiIconBox icon="lucide:alert-triangle" size="sm" variant="warning" rounded="lg" />
 					<div>
-						<h3 class="font-medium text-text-primary mb-1">What is the blocklist?</h3>
+						<h3 class="font-medium text-text-primary mb-1">What are suppressions?</h3>
 						<p class="text-sm text-text-secondary">
-							Blocked email addresses will not receive any emails from your campaigns or
-							automations. Emails are automatically added when they hard bounce or when recipients
-							mark your emails as spam. You can also manually add addresses to prevent sending to
-							specific recipients.
+							Suppressed addresses stop receiving mail from your campaigns and automations. An
+							address is added automatically when it bounces (the mailbox doesn't exist) or when
+							someone marks a send as spam — so you never send to it again. You can also suppress an
+							address by hand to stop sending to a specific recipient.
 						</p>
 					</div>
 				</div>
@@ -252,7 +251,7 @@ const getReasonLabel = (reason: string) => {
 			<!-- Stats Cards -->
 			<div v-if="countsData" class="grid grid-cols-2 md:grid-cols-4 gap-4">
 				<div class="card p-4">
-					<p class="text-sm text-text-secondary">Total Blocked</p>
+					<p class="text-sm text-text-secondary">Total suppressed</p>
 					<p class="text-2xl font-semibold text-text-primary mt-1">{{ countsData.total }}</p>
 				</div>
 				<div class="card p-4">
@@ -265,7 +264,7 @@ const getReasonLabel = (reason: string) => {
 				<div class="card p-4">
 					<div class="flex items-center gap-2">
 						<Icon name="lucide:message-square-warning" class="w-4 h-4 text-warning" />
-						<p class="text-sm text-text-secondary">Spam Complaints</p>
+						<p class="text-sm text-text-secondary">Complained</p>
 					</div>
 					<p class="text-2xl font-semibold text-text-primary mt-1">{{ countsData.complained }}</p>
 				</div>
@@ -282,7 +281,10 @@ const getReasonLabel = (reason: string) => {
 			<div class="flex flex-col sm:flex-row gap-4">
 				<!-- Search -->
 				<div class="relative flex-1">
-					<Icon name="lucide:search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary" />
+					<Icon
+						name="lucide:search"
+						class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary"
+					/>
 					<input
 						v-model="searchQuery"
 						type="text"
@@ -295,10 +297,10 @@ const getReasonLabel = (reason: string) => {
 				<div class="flex items-center gap-2">
 					<Icon name="lucide:filter" class="w-4 h-4 text-text-tertiary" />
 					<select v-model="reasonFilter" class="input w-40">
-						<option value="all">All Reasons</option>
+						<option value="all">All reasons</option>
 						<option value="bounced">Bounced</option>
-						<option value="complained">Spam Complaints</option>
-						<option value="manual">Manual</option>
+						<option value="complained">Complained</option>
+						<option value="manual">Manually suppressed</option>
 					</select>
 				</div>
 			</div>
@@ -309,14 +311,14 @@ const getReasonLabel = (reason: string) => {
 				class="card flex flex-col items-center justify-center py-16 text-center px-6"
 			>
 				<UiIconBox icon="lucide:ban" size="xl" variant="surface" rounded="full" class="mb-4" />
-				<p class="text-text-secondary font-medium">No blocked emails</p>
+				<p class="text-text-secondary font-medium">No suppressions</p>
 				<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-					Your blocklist is empty. Emails will be added automatically when they bounce or when
-					recipients report spam.
+					Nothing is suppressed. Addresses are added automatically when they bounce or when someone
+					marks a send as spam.
 				</p>
 				<button class="btn btn-primary gap-2 mt-4" @click="addModal.open()">
 					<Icon name="lucide:plus" class="w-4 h-4" />
-					Add Email Manually
+					Add suppression
 				</button>
 			</div>
 
@@ -328,7 +330,7 @@ const getReasonLabel = (reason: string) => {
 				<UiIconBox icon="lucide:search" size="xl" variant="surface" rounded="full" class="mb-4" />
 				<p class="text-text-secondary font-medium">No results found</p>
 				<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-					No blocked emails match "{{ searchQuery }}". Try a different search term.
+					No suppressions match "{{ searchQuery }}". Try a different search term.
 				</p>
 			</div>
 
@@ -410,7 +412,7 @@ const getReasonLabel = (reason: string) => {
 							<td class="px-6 py-4 text-right">
 								<button
 									class="btn btn-ghost p-2 text-error hover:bg-error/10"
-									title="Remove from blocklist"
+									title="Remove suppression"
 									@click="emailToDelete = blockedEmail"
 								>
 									<Icon name="lucide:trash-2" class="w-4 h-4" />
@@ -422,8 +424,8 @@ const getReasonLabel = (reason: string) => {
 			</div>
 		</div>
 
-		<!-- Add to Blocklist Modal -->
-		<UiModal v-model:open="addModal.isOpen.value" title="Add to Blocklist">
+		<!-- Add suppression Modal -->
+		<UiModal v-model:open="addModal.isOpen.value" title="Add suppression">
 			<form @submit.prevent="handleAddBlockedEmail">
 				<div class="space-y-4">
 					<!-- Email Input -->
@@ -444,12 +446,12 @@ const getReasonLabel = (reason: string) => {
 							id="blocked-notes"
 							v-model="addModal.form.notes"
 							rows="3"
-							placeholder="Why is this email being blocked?"
+							placeholder="Why suppress this address?"
 							class="input resize-none"
 							:disabled="addModal.isSubmitting.value"
 						/>
 						<p class="mt-1 text-xs text-text-tertiary">
-							Add a note to help you remember why this email was blocked.
+							Add a note to help you remember why this address was suppressed.
 						</p>
 					</div>
 				</div>
@@ -467,7 +469,7 @@ const getReasonLabel = (reason: string) => {
 					<template #iconLeft>
 						<Icon v-if="!addModal.isSubmitting.value" name="lucide:plus" class="w-4 h-4" />
 					</template>
-					{{ addModal.isSubmitting.value ? 'Adding...' : 'Add to Blocklist' }}
+					{{ addModal.isSubmitting.value ? 'Adding...' : 'Add suppression' }}
 				</UiButton>
 			</template>
 		</UiModal>
@@ -476,11 +478,15 @@ const getReasonLabel = (reason: string) => {
 		<UiConfirmationDialog
 			:open="!!emailToDelete"
 			variant="danger"
-			title="Remove from Blocklist"
-			:description="`Removing &quot;${emailToDelete?.email ?? ''}&quot; from the blocklist will allow them to receive your emails again.`"
-			confirm-text="Remove from Blocklist"
+			title="Remove suppression"
+			:description="`Removing the suppression on &quot;${emailToDelete?.email ?? ''}&quot; lets them receive your mail again.`"
+			confirm-text="Remove suppression"
 			:is-loading="isDeleting"
-			@update:open="(v: boolean) => { if (!v) emailToDelete = null; }"
+			@update:open="
+				(v: boolean) => {
+					if (!v) emailToDelete = null;
+				}
+			"
 			@confirm="handleDeleteBlockedEmail"
 		/>
 

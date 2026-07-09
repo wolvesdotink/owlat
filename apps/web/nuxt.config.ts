@@ -175,6 +175,9 @@ export default defineNuxtConfig({
 		'/dashboard/settings/delivery': { redirect: '/dashboard/delivery/config' },
 		// Technical hub dissolved: its non-delivery cards re-home under Settings.
 		'/dashboard/settings/technical': { redirect: '/dashboard/settings' },
+		// Blocklist re-homed as "Suppressions" under Audience (it is audience data,
+		// not delivery config). Redirect the old Settings path so bookmarks work.
+		'/dashboard/settings/blocklist': { redirect: '/dashboard/audience/suppressions' },
 	},
 
 	icon: {

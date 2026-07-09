@@ -169,6 +169,7 @@ export function useDashboardNavigation() {
 				{ name: 'Contacts', href: '/dashboard/audience/contacts', icon: 'lucide:users' },
 				{ name: 'Topics', href: '/dashboard/audience/topics', icon: 'lucide:list-filter' },
 				{ name: 'Segments', href: '/dashboard/audience/segments', icon: 'lucide:user-plus' },
+				{ name: 'Suppressions', href: '/dashboard/audience/suppressions', icon: 'lucide:ban' },
 			],
 		});
 
