@@ -78,13 +78,12 @@ export const writeDailySnapshot = internalMutation({
 			await ctx.db.insert('deliverySnapshots', { periodStart, ...metrics, createdAt: now });
 		}
 
-		// Prune old points. bounded: ~90 days of daily rows, so this stays a small
-		// scan even when the cutoff sweeps several stale rows at once.
+		// Prune old points beyond the retention horizon.
 		const cutoff = now - SNAPSHOT_RETENTION_MS;
 		const stale = await ctx.db
 			.query('deliverySnapshots')
 			.withIndex('by_period', (q) => q.lt('periodStart', cutoff))
-			.collect();
+			.collect(); // bounded: ~90 days of daily rows, so at most a handful of stale points per run
 		for (const row of stale) {
 			await ctx.db.delete(row._id);
 		}
@@ -96,11 +95,16 @@ export interface DeliverySnapshotPoint extends SnapshotMetrics {
 	periodStart: number;
 }
 
+/** How many trailing daily points the delivery-rate trend chart plots. */
+const TREND_WINDOW_DAYS = 30;
+
 /**
- * The Delivery health page's trend source — up to ~90 days of daily snapshots,
- * oldest first, so the client can render the delivery-rate line and gate its
- * "collecting history" copy on how many points exist. Member-visible: coarse
- * org-wide operational rates, no credentials.
+ * The Delivery health page's trend source — the last 30 daily snapshots, oldest
+ * first, so the client can render the 30-day delivery-rate line and gate its
+ * "collecting history" copy on how many points exist. The cron retains ~90 days,
+ * but the chart is a fixed 30-day window, so the query bounds itself rather than
+ * shipping the whole retention window and letting the page silently grow to 90.
+ * Member-visible: coarse org-wide operational rates, no credentials.
  */
 // all-members: delivery-rate history is org-wide operational status, member-visible — coarse daily rates, no credentials or per-recipient data.
 export const getDeliverySnapshots = authedQuery({
@@ -108,12 +112,12 @@ export const getDeliverySnapshots = authedQuery({
 	handler: async (ctx): Promise<DeliverySnapshotPoint[]> => {
 		await getUserIdFromSession(ctx);
 
-		// bounded: the cron prunes >90-day rows, so at most ~90 daily points.
 		const rows = await ctx.db
 			.query('deliverySnapshots')
 			.withIndex('by_period')
-			.order('asc')
-			.collect();
+			.order('desc')
+			.take(TREND_WINDOW_DAYS); // bounded: the fixed 30-day trend window, newest first
+		rows.reverse(); // → oldest-first for the chart's left-to-right axis
 
 		return rows.map((r) => ({
 			periodStart: r.periodStart,
