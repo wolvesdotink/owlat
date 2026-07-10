@@ -31,6 +31,30 @@ const { isDesktop, isMac } = useDesktopContext();
 const { activeId, active } = useDesktopWorkspaces();
 const { badgeFor } = useWorkspaceBadges();
 const { isMounted: paletteMounted, open: openSearch } = useCommandPalette();
+const { themePreference } = useAppTheme();
+
+// Mirror the workspace identity + app theme into the native window: the window
+// title feeds Mission Control / the App Switcher / the Dock's window list on
+// macOS (where the in-frame title stays hidden — this bar is the visible one)
+// and the taskbar / Alt-Tab on Windows/Linux; the theme pins the NSWindow
+// appearance (traffic-light hovers, native menus) to the app's when it is
+// forced away from the OS one. Reactive deps are read synchronously so the
+// watcher re-fires; the bridge import stays lazy — a no-op outside Tauri.
+watchEffect(() => {
+	if (!isDesktop.value) return;
+	const label = active.value?.label ?? null;
+	const mac = isMac.value;
+	const theme = themePreference.value;
+	void (async () => {
+		try {
+			const mod = await import('@owlat/desktop/src/window');
+			await mod.setWindowTitle(mod.windowTitleFor(label, mac));
+			await mod.setWindowTheme(theme === 'system' ? null : theme);
+		} catch {
+			// Not running inside Tauri.
+		}
+	})();
+});
 
 const unreadCount = computed(() => {
 	const id = activeId.value;

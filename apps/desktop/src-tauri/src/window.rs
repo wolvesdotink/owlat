@@ -72,6 +72,143 @@ pub fn open_compose(app: AppHandle, path: Option<String>) {
     open_compose_window(&app, &path.unwrap_or_else(|| "/compose".to_string()));
 }
 
+/// Width of the native identity-frame ring, in points — mirrors the retired
+/// CSS `--ws-frame-width` (assets/css/desktop.css).
+#[cfg(target_os = "macos")]
+const ACCENT_FRAME_WIDTH: f64 = 5.0;
+/// Ring opacity — mirrors the CSS `color-mix(in srgb, accent 55%, transparent)`.
+#[cfg(target_os = "macos")]
+const ACCENT_FRAME_ALPHA: f64 = 0.55;
+/// Outer-radius fallback when the theme frame's layer radius can't be read —
+/// the value the CSS ring used to hard-code.
+#[cfg(target_os = "macos")]
+const ACCENT_FRAME_RADIUS_FALLBACK: f64 = 10.0;
+
+/// `"#rrggbb"` → sRGB components. Workspace accents are always 6-digit hex
+/// (see WORKSPACE_ACCENTS in apps/web); anything else is ignored.
+#[cfg(target_os = "macos")]
+fn parse_hex_color(hex: &str) -> Option<(f64, f64, f64)> {
+    let hex = hex.trim().strip_prefix('#')?;
+    if hex.len() != 6 {
+        return None;
+    }
+    let n = u32::from_str_radix(hex, 16).ok()?;
+    Some((
+        ((n >> 16) & 0xff) as f64 / 255.0,
+        ((n >> 8) & 0xff) as f64 / 255.0,
+        (n & 0xff) as f64 / 255.0,
+    ))
+}
+
+/// Draw the per-workspace identity frame in the NATIVE window instead of the
+/// page (the way Arc's chrome is native rather than painted by the web view).
+///
+/// The ring is a `CALayer` border added above the webview's layer on the
+/// window's content view. Only AppKit knows the window's true rounded-corner
+/// radius — the CSS ring this replaces hard-coded 10px and visibly drifted from
+/// the OS shape — so the outer curvature is read off the theme frame's layer at
+/// apply time. A layer border draws its inner edge at `radius − width` by
+/// construction, which is exactly the "inner radius matches the outer minus the
+/// border width" rule. Layers receive no events, so clicks, drags and the
+/// traffic lights (siblings above the content view) are untouched.
+///
+/// `color: None` leaves the current border color alone (visibility-only calls,
+/// e.g. the fullscreen collapse); a color that fails to parse is ignored. The
+/// layer is created lazily on the first call that carries a color.
+#[cfg(target_os = "macos")]
+fn apply_accent_frame(window: &WebviewWindow, color: Option<&str>, visible: bool) {
+    use objc2_app_kit::{NSColor, NSWindow};
+    use objc2_foundation::NSString;
+    use objc2_quartz_core::{CAAutoresizingMask, CALayer};
+
+    let Ok(ptr) = window.ns_window() else {
+        return;
+    };
+    if ptr.is_null() {
+        return;
+    }
+    // SAFETY: same contract as `apply_traffic_lights` below — the pointer is
+    // this window's NSWindow, valid for the window's lifetime, main thread only.
+    let ns_window: &NSWindow = unsafe { &*(ptr as *const NSWindow) };
+    let Some(content) = ns_window.contentView() else {
+        return;
+    };
+    content.setWantsLayer(true);
+    let Some(root) = content.layer() else {
+        return;
+    };
+
+    let layer_name = NSString::from_str("owlat-accent-frame");
+    // SAFETY: `sublayers` is a plain CALayer property read.
+    let existing = unsafe { root.sublayers() }.and_then(|subs| {
+        subs.iter()
+            .find(|l| l.name().is_some_and(|n| n == layer_name))
+    });
+
+    let layer = match existing {
+        Some(layer) => layer,
+        // Nothing drawn yet and nothing to draw — visibility toggles are moot.
+        None if color.is_none() => return,
+        None => {
+            let layer = CALayer::new();
+            layer.setName(Some(&layer_name));
+            layer.setFrame(root.bounds());
+            // Track window resizes without re-entering Rust: the content view
+            // resizes its root layer, which autoresizes this sublayer.
+            layer.setAutoresizingMask(
+                CAAutoresizingMask::LayerWidthSizable | CAAutoresizingMask::LayerHeightSizable,
+            );
+            layer.setBorderWidth(ACCENT_FRAME_WIDTH);
+            // Above the webview's layer (z 0), below nothing that matters —
+            // the traffic lights live outside the content view entirely.
+            layer.setZPosition(1_000.0);
+            let radius = unsafe { content.superview() }
+                .and_then(|frame| frame.layer())
+                .map(|frame_layer| frame_layer.cornerRadius())
+                .filter(|radius| *radius > 0.0)
+                .unwrap_or(ACCENT_FRAME_RADIUS_FALLBACK);
+            layer.setCornerRadius(radius);
+            layer.setMasksToBounds(true);
+            root.addSublayer(&layer);
+            layer
+        }
+    };
+
+    if let Some((r, g, b)) = color.and_then(parse_hex_color) {
+        let ns_color = NSColor::colorWithSRGBRed_green_blue_alpha(r, g, b, ACCENT_FRAME_ALPHA);
+        layer.setBorderColor(Some(&ns_color.CGColor()));
+    }
+    layer.setHidden(!visible);
+}
+
+/// Command: paint / recolor / toggle the native workspace identity frame. The
+/// webview mirrors every accent change through here (lib/desktop/
+/// workspaceAccent.ts) and collapses the ring in native fullscreen (the boot
+/// plugin's fullscreen watcher). No-op on Windows/Linux, where the frame is
+/// still painted by CSS (those windows are undecorated — no OS radius to chase).
+#[cfg(target_os = "macos")]
+#[command]
+pub fn set_accent_frame(
+    window: WebviewWindow,
+    color: Option<String>,
+    visible: bool,
+) -> Result<(), String> {
+    let win = window.clone();
+    window
+        .run_on_main_thread(move || apply_accent_frame(&win, color.as_deref(), visible))
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(not(target_os = "macos"))]
+#[command]
+pub fn set_accent_frame(
+    _window: WebviewWindow,
+    _color: Option<String>,
+    _visible: bool,
+) -> Result<(), String> {
+    Ok(())
+}
+
 /// Show or hide the three native window buttons (close / miniaturize / zoom) on
 /// the given window's NSWindow. Must run on the main thread.
 ///

@@ -6,9 +6,15 @@
  *   - the workspace chip opens the switcher menu; picking a row switches
  *   - the unread pill renders the active workspace's badge count and deep-links
  *     to the Postbox Today view's "For you" section
+ *   - the workspace label + app theme are mirrored into the native window
+ *     (Mission Control / taskbar title, NSWindow appearance) via the window.ts
+ *     bridge
  *
  * The desktop composables are stubbed at the auto-import seam (same approach as
- * the Postbox component tests). Icon / NuxtLink are stubbed globals.
+ * the Postbox component tests). Icon / NuxtLink are stubbed globals. The
+ * `@owlat/desktop/src/window` bridge is module-mocked with the REAL
+ * `windowTitleFor` mapping kept, so the title assertions cover the production
+ * label→title rule rather than a local re-derivation.
  */
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
 import { enableAutoUnmount, mount } from '@vue/test-utils';
@@ -16,6 +22,20 @@ import { ref, computed } from 'vue';
 
 import DesktopTitlebar from '../DesktopTitlebar.vue';
 import { WORKSPACE_ACCENTS } from '~/lib/desktop/workspaceTypes';
+
+const { setWindowTitleMock, setWindowThemeMock } = vi.hoisted(() => ({
+	setWindowTitleMock: vi.fn().mockResolvedValue(undefined),
+	setWindowThemeMock: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('@owlat/desktop/src/window', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('@owlat/desktop/src/window')>();
+	return {
+		...actual,
+		setWindowTitle: setWindowTitleMock,
+		setWindowTheme: setWindowThemeMock,
+	};
+});
 
 enableAutoUnmount(afterEach);
 
@@ -27,13 +47,22 @@ const workspaces = ref<Ws[]>([
 	{ id: 'w2', label: 'Globex', accentColor: accent },
 ]);
 const activeId = ref<string | null>('w1');
+// Default platform is win/linux; the macOS title-sync suite flips this.
+const isMac = ref(false);
+const themePreference = ref<'dark' | 'light' | 'system'>('system');
 const switchTo = vi.fn();
 const setWorkspaceAccent = vi.fn();
 const navigateToMock = vi.fn().mockResolvedValue(undefined);
 const badges: Record<string, number> = { w1: 3, w2: 0 };
 
-beforeAll(() => {
-	vi.stubGlobal('useDesktopContext', () => ({ isDesktop: ref(true), isMac: ref(true) }));
+beforeAll(async () => {
+	// Warm the (mocked) bridge module. The component reaches it via dynamic
+	// import inside its watcher; the FIRST resolution pays the transform cost and
+	// can land a test or two late, leaking a stale setWindowTitle call across
+	// test boundaries. Pre-importing makes every later import resolve within the
+	// test that triggered it.
+	await import('@owlat/desktop/src/window');
+	vi.stubGlobal('useDesktopContext', () => ({ isDesktop: ref(true), isMac }));
 	vi.stubGlobal('useDesktopWorkspaces', () => ({
 		workspaces,
 		activeId,
@@ -48,13 +77,18 @@ beforeAll(() => {
 		open: vi.fn(),
 		registerMounted: () => () => {},
 	}));
+	vi.stubGlobal('useAppTheme', () => ({ themePreference }));
 	vi.stubGlobal('navigateTo', navigateToMock);
 });
 
 beforeEach(() => {
 	switchTo.mockClear();
 	navigateToMock.mockClear();
+	setWindowTitleMock.mockClear();
+	setWindowThemeMock.mockClear();
 	activeId.value = 'w1';
+	isMac.value = false;
+	themePreference.value = 'system';
 });
 
 const iconStub = { props: ['name'], template: '<span class="icon" :data-name="name" />' };
@@ -142,5 +176,52 @@ describe('DesktopTitlebar', () => {
 		expect(strip?.getAttribute('data-tauri-drag-region')).not.toBeNull();
 		const label = w.get('.font-display');
 		expect(label.attributes('data-tauri-drag-region')).toBeDefined();
+	});
+});
+
+describe('DesktopTitlebar native window-title sync on macOS', () => {
+	beforeEach(() => {
+		isMac.value = true;
+	});
+
+	it('keeps the workspace chip — the in-frame native title stays hidden', () => {
+		const w = mountBar();
+		expect(w.find('[aria-label="Switch workspace"]').exists()).toBe(true);
+	});
+
+	it('mirrors the workspace label bare (Mission Control names windows, the menu bar names the app)', async () => {
+		mountBar();
+		await vi.waitFor(() => expect(setWindowTitleMock).toHaveBeenCalledWith('Acme'));
+	});
+
+	it('re-syncs the native title when the active workspace changes', async () => {
+		mountBar();
+		await vi.waitFor(() => expect(setWindowTitleMock).toHaveBeenCalledWith('Acme'));
+		activeId.value = 'w2';
+		await vi.waitFor(() => expect(setWindowTitleMock).toHaveBeenCalledWith('Globex'));
+	});
+
+	it('falls back to the plain app name when no workspace is connected', async () => {
+		activeId.value = null;
+		mountBar();
+		await vi.waitFor(() => expect(setWindowTitleMock).toHaveBeenCalledWith('Owlat'));
+	});
+});
+
+describe('DesktopTitlebar native-chrome sync (all platforms)', () => {
+	it('qualifies the taskbar title with the app name on win/linux', async () => {
+		mountBar();
+		await vi.waitFor(() => expect(setWindowTitleMock).toHaveBeenCalledWith('Acme — Owlat'));
+	});
+
+	it('follows the OS theme when the app preference is system', async () => {
+		mountBar();
+		await vi.waitFor(() => expect(setWindowThemeMock).toHaveBeenCalledWith(null));
+	});
+
+	it('pins the native chrome when the app theme is forced', async () => {
+		themePreference.value = 'dark';
+		mountBar();
+		await vi.waitFor(() => expect(setWindowThemeMock).toHaveBeenCalledWith('dark'));
 	});
 });

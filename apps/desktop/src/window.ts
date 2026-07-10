@@ -49,6 +49,59 @@ export async function clearVibrancy(): Promise<void> {
 }
 
 /**
+ * The native window title for the active workspace. The in-frame title stays
+ * hidden (the HTML titlebar is the visible one), but the string still names the
+ * window in Mission Control, the App Switcher and the Dock's window list on
+ * macOS — where the app name would be noise (the menu bar already says Owlat),
+ * so it carries the bare workspace label. Windows/Linux run without a native
+ * frame (decorations off), so the title only feeds the taskbar / Alt-Tab —
+ * surfaces where the app name is the anchor and the workspace the qualifier.
+ *
+ * Pure and exported so the titlebar's watcher and its tests share one mapping
+ * (same pattern as `trafficLightsVisibleFor`).
+ */
+export function windowTitleFor(label: string | null, isMac: boolean): string {
+	if (!label) return 'Owlat';
+	return isMac ? label : `${label} — Owlat`;
+}
+
+/** Set the native window title (Mission Control / App Switcher / taskbar). */
+export async function setWindowTitle(title: string): Promise<void> {
+	await getCurrentWindow().setTitle(title);
+}
+
+/**
+ * Pin the native window chrome to the app's theme, or follow the OS with
+ * `null`. Without this, forcing the app light while the OS is dark (or vice
+ * versa) leaves the native chrome (traffic-light hovers, context menus) in the
+ * OS palette while the page renders the app's.
+ */
+export async function setWindowTheme(theme: 'light' | 'dark' | null): Promise<void> {
+	await getCurrentWindow().setTheme(theme);
+}
+
+/**
+ * Paint (or clear, with null) the native macOS identity frame: the workspace
+ * accent ring AppKit draws around the window edge (a CALayer border — see
+ * src-tauri/src/window.rs::apply_accent_frame). Native because only AppKit
+ * knows the window's true rounded-corner radius: the CSS ring this replaces
+ * hard-coded 10px and visibly drifted from the OS window shape. No-op on
+ * Windows/Linux, whose undecorated windows keep the CSS ring.
+ */
+export async function setAccentFrame(color: string | null): Promise<void> {
+	await invoke('set_accent_frame', { color, visible: color !== null });
+}
+
+/**
+ * Collapse / restore the native identity frame without touching its color —
+ * the fullscreen choreography (a rounded ring on a square fullscreen window
+ * would float mid-screen).
+ */
+export async function setAccentFrameVisible(visible: boolean): Promise<void> {
+	await invoke('set_accent_frame', { color: null, visible });
+}
+
+/**
  * Show or hide the native macOS traffic-light window buttons so they can follow
  * the sidebar's visibility (hidden when the rail is fully hidden and not
  * peeking; shown otherwise). No-op on Windows/Linux — their custom titlebar
