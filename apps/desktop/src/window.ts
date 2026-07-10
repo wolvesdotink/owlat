@@ -9,6 +9,7 @@
  *
  * Mirrors the thin try/catch bridge style of notifications.ts. No-op outside Tauri.
  */
+import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow, Effect } from '@tauri-apps/api/window';
 
 export async function startDragging(): Promise<void> {
@@ -45,6 +46,17 @@ export async function applyVibrancy(material: 'sidebar' | 'mica'): Promise<void>
 
 export async function clearVibrancy(): Promise<void> {
 	await getCurrentWindow().clearEffects();
+}
+
+/**
+ * Show or hide the native macOS traffic-light window buttons so they can follow
+ * the sidebar's visibility (hidden when the rail is fully hidden and not
+ * peeking; shown otherwise). No-op on Windows/Linux — their custom titlebar
+ * buttons are unaffected — and macOS owns the buttons in fullscreen, so the
+ * native side guards that case.
+ */
+export async function setTrafficLightsVisible(visible: boolean): Promise<void> {
+	await invoke('set_traffic_lights_visible', { visible });
 }
 
 /**
