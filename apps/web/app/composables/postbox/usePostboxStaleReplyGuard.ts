@@ -14,8 +14,14 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { isReplyStale, type ReplyStateSnapshot } from '~/utils/postboxStaleReply';
 
+interface StaleReplyGuardOptions {
+	/** Re-run the send once the user confirms past the collision warning. */
+	onConfirm: (opts?: { scheduledSendAt?: number }) => void;
+}
+
 export function usePostboxStaleReplyGuard(
-	inReplyToMessageId: MaybeRefOrGetter<Id<'mailMessages'> | undefined>
+	inReplyToMessageId: MaybeRefOrGetter<Id<'mailMessages'> | undefined>,
+	options: StaleReplyGuardOptions
 ) {
 	const messageId = computed(() => toValue(inReplyToMessageId));
 
@@ -51,5 +57,30 @@ export function usePostboxStaleReplyGuard(
 	// Who to name in the warning; null when no other teammate reply is known.
 	const staleReplyByName = computed(() => data.value?.byName ?? null);
 
-	return { isStale, staleReplyByName };
+	// Confirm-dialog orchestration lives here so the composer only wires the
+	// dialog and calls `blockSend`. Asked once per composer: after the user
+	// confirms, `acknowledged` short-circuits the guard so they aren't re-blocked.
+	const confirmOpen = ref(false);
+	let acknowledged = false;
+	let pendingOpts: { scheduledSendAt?: number } | undefined;
+
+	/**
+	 * Returns true when the send must pause for confirmation (a teammate replied
+	 * since this reply opened and the user hasn't acknowledged it yet) — the
+	 * caller returns early. Returns false when the send may proceed.
+	 */
+	function blockSend(opts?: { scheduledSendAt?: number }): boolean {
+		if (!isStale.value || acknowledged) return false;
+		pendingOpts = opts;
+		confirmOpen.value = true;
+		return true;
+	}
+
+	function confirm() {
+		confirmOpen.value = false;
+		acknowledged = true;
+		options.onConfirm(pendingOpts);
+	}
+
+	return { staleReplyByName, confirmOpen, blockSend, confirm };
 }

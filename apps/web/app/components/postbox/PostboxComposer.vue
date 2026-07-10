@@ -100,28 +100,6 @@ const { ghostSuggestionsEnabled } = usePostboxGhostGate();
 const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 const aiRewriteEnabled = computed(() => isFeatureEnabled('ai'));
 
-// Plain-text flatten of the live draft for "Coach my draft" — the self-check
-// critiques prose, not HTML tags. Client-only (the composer never SSRs); empty
-// on the server so nothing renders until hydration.
-const coachDraftText = computed(() => {
-	const html = bodyHtml.value ?? '';
-	if (!html || typeof window === 'undefined') return '';
-	const doc = new DOMParser().parseFromString(html, 'text/html');
-	return (doc.body.textContent ?? '').trim();
-});
-
-// Apply a freeform whole-draft revision (from AiReviseBox) into the composer.
-// The revise returns plain text; escape it and preserve line breaks so the
-// rewritten draft replaces the body without injecting markup. Advisory: only
-// runs when the user clicks Apply on a shown revision.
-function applyRevisedBody(text: string) {
-	const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-	bodyHtml.value = escaped
-		.split(/\n/)
-		.map((line) => (line.length ? line : '<br>'))
-		.join('<br>');
-}
-
 // Formatting-toolbar preference. Default is the Apple-minimal floating bar (only
 // on selection); the footer "Aa" affordance flips back to the classic persistent
 // toolbar and persists the choice per user.
@@ -186,24 +164,18 @@ const sending = ref(false);
 const scheduleOpen = ref(false);
 const { showToast } = useToast();
 
-// Team-inbox collision safety: warn once if a teammate replied to this thread
-// after this reply was opened (shared inboxes only; inert on personal mail and
-// fresh composes). Reactive via mailbox.latestReplyState — no presence infra.
-const { isStale, staleReplyByName } = usePostboxStaleReplyGuard(() => props.inReplyToMessageId);
-const staleConfirmOpen = ref(false);
-let staleAcknowledged = false;
-let pendingStaleOpts: { scheduledSendAt?: number } | undefined;
-const staleReplyWarning = computed(() =>
-	staleReplyByName.value
-		? `${staleReplyByName.value} replied to this thread after you opened it. Send your reply anyway?`
-		: 'Someone on your team replied to this thread after you opened it. Send your reply anyway?'
-);
-
-function confirmStaleSend() {
-	staleConfirmOpen.value = false;
-	staleAcknowledged = true;
-	void handleSend(pendingStaleOpts);
-}
+// Team-inbox collision safety: the guard warns once if a teammate replied to this
+// thread after this reply opened (shared inboxes only; inert on personal mail and
+// fresh composes). It owns the confirm dialog's open state and retries the send
+// via `onConfirm` once acknowledged. Reactive via mailbox.latestReplyState.
+const {
+	staleReplyByName,
+	confirmOpen: staleConfirmOpen,
+	blockSend: blockStaleSend,
+	confirm: confirmStaleSend,
+} = usePostboxStaleReplyGuard(() => props.inReplyToMessageId, {
+	onConfirm: (opts) => void handleSend(opts),
+});
 
 async function handleSend(opts?: { scheduledSendAt?: number }) {
 	// Explain *why* Send is inert while an upload is in flight (Send is disabled
@@ -224,13 +196,8 @@ async function handleSend(opts?: { scheduledSendAt?: number }) {
 		return;
 	}
 	// A teammate replied to this shared-inbox thread after this reply opened —
-	// confirm before sending a duplicate. Asked once; `confirmStaleSend` retries
-	// with `staleAcknowledged` set so the user isn't blocked.
-	if (isStale.value && !staleAcknowledged) {
-		pendingStaleOpts = opts;
-		staleConfirmOpen.value = true;
-		return;
-	}
+	// pause for confirmation before sending a duplicate (asked once).
+	if (blockStaleSend(opts)) return;
 	sending.value = true;
 	try {
 		// `send()` throws on a backend reject (no_recipients, from_revoked,
@@ -259,18 +226,19 @@ async function handleDiscard() {
 // SAME draft id — no content loss. The live field values ride along so the
 // popup seeds instantly instead of waiting for hydration. `focusBody` is
 // exposed so the reader's r/a keys can re-focus an already-open inline box.
-const { promoting, basicEditor, focusBody, handlePromote } = usePostboxComposerInline({
-	inline: props.inline ?? false,
-	flush,
-	snapshot: () => ({
-		toAddresses: [...toAddresses.value],
-		ccAddresses: [...ccAddresses.value],
-		bccAddresses: [...bccAddresses.value],
-		subject: subject.value,
-		bodyHtml: bodyHtml.value,
-	}),
-	emitPromote: (payload) => emit('promote', payload),
-});
+const { promoting, basicEditor, focusBody, handlePromote } =
+	usePostboxComposerInline({
+		inline: props.inline ?? false,
+		flush,
+		snapshot: () => ({
+			toAddresses: [...toAddresses.value],
+			ccAddresses: [...ccAddresses.value],
+			bccAddresses: [...bccAddresses.value],
+			subject: subject.value,
+			bodyHtml: bodyHtml.value,
+		}),
+		emitPromote: (payload) => emit('promote', payload),
+	});
 defineExpose({ focusBody });
 
 const unscheduling = ref(false);
@@ -287,7 +255,7 @@ async function handleUnschedule() {
 }
 
 const scheduledLabel = computed(() =>
-	scheduledSendAt.value ? formatDateTime(scheduledSendAt.value) : ''
+	scheduledSendAt.value ? formatDateTime(scheduledSendAt.value) : '',
 );
 
 const lastSavedLabel = computed(() => {
@@ -317,18 +285,19 @@ function onPaste(event: ClipboardEvent) {
 // bound on the composer root (capture) so each stacked popup composer only
 // handles its own keys.
 const rootEl = ref<HTMLElement | null>(null);
-const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostboxComposerKeys({
-	rootEl,
-	canSend,
-	sending,
-	isScheduled,
-	scheduleOpen,
-	onSend: () => void handleSend(),
-	onSchedule: () => {
-		scheduleOpen.value = true;
-	},
-	onMinimize: () => emit('minimize'),
-});
+const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } =
+	usePostboxComposerKeys({
+		rootEl,
+		canSend,
+		sending,
+		isScheduled,
+		scheduleOpen,
+		onSend: () => void handleSend(),
+		onSchedule: () => {
+			scheduleOpen.value = true;
+		},
+		onMinimize: () => emit('minimize'),
+	});
 </script>
 
 <template>
@@ -345,11 +314,11 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 			v-if="dragActive"
 			class="absolute inset-0 z-10 flex items-center justify-center bg-brand/10 border-2 border-dashed border-brand rounded pointer-events-none"
 		>
-			<span class="text-sm font-medium text-brand"> Drop to attach · drop in text to embed </span>
+			<span class="text-sm font-medium text-brand">
+				Drop to attach · drop in text to embed
+			</span>
 		</div>
-		<header
-			class="flex items-center justify-between px-3 py-2 bg-bg-surface border-b border-border-subtle"
-		>
+		<header class="flex items-center justify-between px-3 py-2 bg-bg-surface border-b border-border-subtle">
 			<span class="text-sm font-semibold">
 				{{ subject || 'New message' }}
 			</span>
@@ -412,7 +381,11 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 				:disabled="unscheduling"
 				@click="handleUnschedule"
 			>
-				<Icon v-if="unscheduling" name="lucide:loader-2" class="w-3.5 h-3.5 mr-1 animate-spin" />
+				<Icon
+					v-if="unscheduling"
+					name="lucide:loader-2"
+					class="w-3.5 h-3.5 mr-1 animate-spin"
+				/>
 				Unschedule to edit
 			</button>
 		</div>
@@ -461,25 +434,13 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 			@retry="retryUpload"
 		/>
 
-		<!-- "Coach my draft": advisory self-check of the user's OWN wording for
-		     high-stakes mail. Never rewrites; hidden when AI is off / draft short. -->
-		<PostboxCoachPanel
-			:draft-text="coachDraftText"
-			:enabled="aiRewriteEnabled"
-			:message-id="inReplyToMessageId"
-		/>
-
-		<!-- Freeform whole-draft revise ("make it half the length", "add that the
-		     invoice is attached"), streamed progressively. Advisory: replaces the
-		     body only on Apply; hidden when AI is off or the draft is empty. -->
-		<AiReviseBox
-			v-if="aiRewriteEnabled && coachDraftText"
-			class="px-3 pb-2"
-			surface="compose"
+		<!-- Advisory AI cluster: "Coach my draft" self-check + freeform whole-draft
+		     revise. Advisory only — never sends; hidden when AI is off / draft empty. -->
+		<PostboxComposerAdvisory
+			v-model:body-html="bodyHtml"
 			:ai-enabled="aiRewriteEnabled"
-			:current-draft="coachDraftText"
 			:mailbox-id="mailboxId"
-			@apply="applyRevisedBody"
+			:in-reply-to-message-id="inReplyToMessageId"
 		/>
 
 		<PostboxComposerFooter
@@ -510,17 +471,9 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 		/>
 		<!-- Team-inbox collision safety: a teammate replied to this thread after
 		     this reply was opened. Confirm before sending a duplicate. -->
-		<UiConfirmationDialog
-			:open="staleConfirmOpen"
-			title="A teammate already replied"
-			:description="staleReplyWarning"
-			confirm-text="Send anyway"
-			cancel-text="Keep editing"
-			@update:open="
-				(v: boolean) => {
-					if (!v) staleConfirmOpen = false;
-				}
-			"
+		<PostboxStaleReplyDialog
+			v-model:open="staleConfirmOpen"
+			:reply-by-name="staleReplyByName"
 			@confirm="confirmStaleSend"
 		/>
 	</div>
