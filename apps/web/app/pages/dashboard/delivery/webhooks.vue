@@ -155,9 +155,9 @@ const {
 				class="card flex flex-col items-center justify-center py-16 text-center px-6"
 			>
 				<UiIconBox icon="lucide:webhook" size="xl" variant="surface" rounded="full" class="mb-4" />
-				<p class="text-text-secondary font-medium">No organization selected</p>
+				<p class="text-text-secondary font-medium">No workspace selected</p>
 				<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-					Create or select an organization to manage webhooks.
+					Create or select a workspace to manage webhooks.
 				</p>
 			</div>
 

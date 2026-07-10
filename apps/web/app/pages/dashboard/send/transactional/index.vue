@@ -207,8 +207,8 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 			<!-- Empty State (no organization) -->
 			<UiEmptyState
 				v-else-if="!hasActiveOrganization"
-				title="No organization selected"
-				description="Create or select an organization to start creating transactional emails."
+				title="No workspace selected"
+				description="Create or select a workspace to start creating transactional emails."
 			>
 				<template #icon>
 					<Icon name="lucide:send" class="w-8 h-8 text-text-tertiary" />

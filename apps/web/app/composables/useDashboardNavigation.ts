@@ -26,7 +26,7 @@ export function useDashboardNavigation() {
 	const navigationSections = computed<NavigationSection[]>(() => {
 		const settingsItems: NavigationItem[] = [
 			{ name: 'Overview', href: '/dashboard/settings', icon: 'lucide:settings' },
-			{ name: 'Organization', href: '/dashboard/settings/organization', icon: 'lucide:building-2' },
+			{ name: 'Workspace', href: '/dashboard/settings/workspace', icon: 'lucide:building-2' },
 			{ name: 'Properties', href: '/dashboard/settings/properties', icon: 'lucide:tags' },
 			{ name: 'Features', href: '/dashboard/settings/features', icon: 'lucide:toggle-right' },
 			...(isFeatureEnabled('ai.agent')

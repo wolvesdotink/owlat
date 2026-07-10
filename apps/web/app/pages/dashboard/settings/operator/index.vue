@@ -37,7 +37,7 @@ const { data: allUsers } = useConvexQuery(api.platformAdmin.queries.listAllUsers
 const tabs = computed(() => [
 	{ value: 'overview', label: 'Overview' },
 	{ value: 'review', label: 'Content Review', count: reviewQueue.value?.pendingCount ?? 0 },
-	{ value: 'organizations', label: 'Organizations', count: flaggedOrgs.value?.length ?? 0 },
+	{ value: 'organizations', label: 'Workspaces', count: flaggedOrgs.value?.length ?? 0 },
 	{ value: 'admins', label: 'Admins', count: admins.value?.length ?? 0 },
 ]);
 
@@ -56,7 +56,7 @@ const { run: rejectContent, isLoading: rejecting } = useBackendOperation(
 );
 const { run: setOrganizationStatus, isLoading: settingStatus } = useBackendOperation(
 	api.platformAdmin.mutations.setOrganizationStatus,
-	{ label: 'Set organization status' },
+	{ label: 'Set workspace status' },
 );
 const { run: addPlatformAdmin, isLoading: addingAdmin } = useBackendOperation(
 	api.platformAdmin.mutations.addPlatformAdmin,
@@ -146,7 +146,7 @@ async function confirmStatus() {
 		reason: statusReason.value.trim(),
 	});
 	if (r) {
-		showToast(`Organization status set to "${statusTargetValue.value}".`);
+		showToast(`Workspace status set to "${statusTargetValue.value}".`);
 		statusModalOpen.value = false;
 	}
 }
@@ -231,7 +231,7 @@ const anyMutationLoading = computed(
 				<div>
 					<h1 class="text-2xl font-semibold text-text-primary">Operator Console</h1>
 					<p class="mt-1 text-text-secondary">
-						Platform-admin controls: review held content, manage organization sending status, and curate admins.
+						Platform-admin controls: review held content, manage workspace sending status, and curate admins.
 					</p>
 				</div>
 			</div>
@@ -426,9 +426,9 @@ const anyMutationLoading = computed(
 
 			<!-- Flagged organizations -->
 			<div class="rounded-xl border border-border-default bg-bg-elevated p-6">
-				<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider mb-4">Flagged organizations</h3>
+				<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider mb-4">Flagged workspaces</h3>
 				<div v-if="!flaggedOrgs || flaggedOrgs.length === 0" class="text-[0.8125rem] text-text-tertiary">
-					No organizations are flagged for abuse.
+					No workspaces are flagged for abuse.
 				</div>
 				<ul v-else class="space-y-3">
 					<li
@@ -451,7 +451,7 @@ const anyMutationLoading = computed(
 
 			<!-- All organizations -->
 			<div class="rounded-xl border border-border-default bg-bg-elevated p-6">
-				<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider mb-4">Organizations</h3>
+				<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider mb-4">Workspaces</h3>
 				<table class="w-full text-[0.8125rem]">
 					<thead>
 						<tr class="border-b border-border-subtle text-text-tertiary">

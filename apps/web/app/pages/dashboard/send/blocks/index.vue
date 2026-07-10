@@ -297,8 +297,8 @@ const navigateToEditPage = (blockId: Id<'emailBlocks'>) => {
 				<!-- Empty State (no organization) -->
 				<UiEmptyState
 					v-if="!hasActiveOrganization"
-					title="No organization selected"
-					description="Create or select an organization to start managing reusable blocks."
+					title="No workspace selected"
+					description="Create or select a workspace to start managing reusable blocks."
 				>
 					<template #icon>
 						<Icon name="lucide:blocks" class="w-8 h-8 text-text-tertiary" />

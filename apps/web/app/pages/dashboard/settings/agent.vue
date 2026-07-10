@@ -400,7 +400,7 @@ const confidencePercent = computed(() => Math.round(form.confidenceThreshold * 1
 				<div class="card">
 					<h2 class="text-lg font-medium text-text-primary mb-1">Tone & Signature</h2>
 					<p class="text-sm text-text-secondary mb-6">
-						Define how the agent communicates on behalf of your organization.
+						Define how the agent communicates on behalf of your workspace.
 					</p>
 
 					<div class="space-y-6">

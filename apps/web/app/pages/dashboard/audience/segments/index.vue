@@ -149,8 +149,8 @@ onMounted(() => {
 			<UiEmptyState
 				v-else-if="!hasActiveOrganization"
 				icon="lucide:filter"
-				title="No organization selected"
-				description="Create or select an organization to start managing your segments."
+				title="No workspace selected"
+				description="Create or select a workspace to start managing your segments."
 			/>
 
 			<!-- Empty State (no segments) -->

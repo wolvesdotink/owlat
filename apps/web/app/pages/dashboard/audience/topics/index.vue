@@ -302,8 +302,8 @@ onMounted(() => {
 			<UiEmptyState
 				v-else-if="!hasActiveOrganization"
 				icon="lucide:list"
-				title="No organization selected"
-				description="Create or select an organization to start managing your topics."
+				title="No workspace selected"
+				description="Create or select a workspace to start managing your topics."
 			/>
 
 			<!-- Empty State (no lists) -->

@@ -254,7 +254,7 @@ const showDeleteOrgModal = ref(false);
 const deleteOrgConfirmText = ref('');
 const isDeletingOrg = ref(false);
 const { run: removeOrganization } = useBackendOperation(api.organizations.settings.remove, {
-	label: 'Delete organization',
+	label: 'Delete workspace',
 });
 
 // Toast notification using global composable
@@ -468,7 +468,7 @@ const handleDeleteOrganization = async () => {
 		return;
 	}
 
-	showToast('Organization deletion started');
+	showToast('Workspace deletion started');
 	showDeleteOrgModal.value = false;
 	deleteOrgConfirmText.value = '';
 
@@ -880,9 +880,9 @@ const formatExpiryTime = (expiresAt: Date) => {
 					<div class="flex items-center gap-3">
 						<UiIconBox icon="lucide:trash-2" size="sm" variant="error" rounded="lg" />
 						<div>
-							<h2 class="text-lg font-semibold text-error">Delete Organization</h2>
+							<h2 class="text-lg font-semibold text-error">Delete Workspace</h2>
 							<p class="text-sm text-error/80">
-								Permanently delete this organization and all of its data
+								Permanently delete this workspace and all of its data
 							</p>
 						</div>
 					</div>
@@ -890,14 +890,14 @@ const formatExpiryTime = (expiresAt: Date) => {
 
 				<div class="p-6">
 					<p class="text-text-secondary text-sm mb-4">
-						Deleting the organization permanently removes every team member, all contacts,
+						Deleting the workspace permanently removes every team member, all contacts,
 						campaigns, automations, mailboxes, and analytics. This action cannot be undone.
 					</p>
 					<UiButton variant="danger" @click="showDeleteOrgModal = true">
 						<template #iconLeft>
 							<Icon name="lucide:trash-2" class="w-4 h-4" />
 						</template>
-						Delete Organization
+						Delete Workspace
 					</UiButton>
 				</div>
 			</UiCard>
@@ -1147,7 +1147,7 @@ const formatExpiryTime = (expiresAt: Date) => {
 						memberToPromote.user.name || memberToPromote.user.email
 					}}</span>
 					will become the new <strong class="text-text-primary">Owner</strong> with full control of
-					this organization, including billing, settings, and the ability to delete it. You will be
+					this workspace, including billing, settings, and the ability to delete it. You will be
 					demoted to <strong>Admin</strong>. This cannot be undone by you — only the new owner can
 					transfer it back.
 				</p>
@@ -1237,7 +1237,7 @@ const formatExpiryTime = (expiresAt: Date) => {
 			<div class="flex items-center gap-3 mb-6">
 				<UiIconBox icon="lucide:alert-triangle" size="sm" variant="error" rounded="lg" />
 				<div>
-					<h2 class="text-lg font-semibold text-text-primary">Delete Organization</h2>
+					<h2 class="text-lg font-semibold text-text-primary">Delete Workspace</h2>
 					<p class="text-sm text-text-secondary">This cannot be undone</p>
 				</div>
 			</div>
@@ -1286,7 +1286,7 @@ const formatExpiryTime = (expiresAt: Date) => {
 					<template #iconLeft>
 						<Icon v-if="!isDeletingOrg" name="lucide:trash-2" class="w-4 h-4" />
 					</template>
-					{{ isDeletingOrg ? 'Deleting...' : 'Delete Organization' }}
+					{{ isDeletingOrg ? 'Deleting...' : 'Delete Workspace' }}
 				</UiButton>
 			</template>
 		</UiModal>

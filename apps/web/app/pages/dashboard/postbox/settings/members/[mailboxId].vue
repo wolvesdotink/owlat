@@ -185,7 +185,7 @@ const busy = computed(
 			<section v-if="canManage" class="card mt-6 p-5">
 				<h2 class="font-semibold mb-3">Add a member</h2>
 				<div v-if="addableMembers.length === 0" class="text-sm text-text-secondary">
-					Everyone in your organization is already a member.
+					Everyone in your workspace is already a member.
 				</div>
 				<div v-else class="flex items-center gap-2">
 					<select v-model="memberToAdd" class="input flex-1" :disabled="busy">
@@ -293,7 +293,7 @@ const busy = computed(
 			</section>
 
 			<p v-if="!canManage" class="text-xs text-text-tertiary mt-3">
-				Only inbox owners and organization admins can change who's a member.
+				Only inbox owners and workspace admins can change who's a member.
 			</p>
 		</template>
 
@@ -301,7 +301,7 @@ const busy = computed(
 		<UiConfirmationDialog
 			:open="!!transferTarget"
 			title="Transfer inbox ownership?"
-			:description="`${transferTarget?.label ?? 'This member'} will become the owner and you'll be demoted to a member. Only an organization admin can transfer it back.`"
+			:description="`${transferTarget?.label ?? 'This member'} will become the owner and you'll be demoted to a member. Only a workspace admin can transfer it back.`"
 			confirm-text="Make owner"
 			:is-loading="transferOwnership.isLoading.value"
 			@update:open="
