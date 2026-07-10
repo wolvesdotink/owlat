@@ -339,43 +339,46 @@ onMounted(() => {
 					<table class="w-full">
 						<thead>
 							<tr class="border-b border-border-subtle">
-								<th
-									class="text-left px-6 py-4 text-sm font-medium text-text-secondary cursor-pointer hover:text-text-primary transition-colors"
-									@click="toggleSort('name')"
-								>
-									<div class="flex items-center gap-1">
+								<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
+									<button
+										type="button"
+										class="flex items-center gap-1 rounded hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
+										@click="toggleSort('name')"
+									>
 										Name
 										<Icon v-if="getSortIcon('name')" :name="getSortIcon('name')!" class="w-4 h-4" />
-									</div>
+									</button>
 								</th>
 								<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
 									Description
 								</th>
-								<th
-									class="text-left px-6 py-4 text-sm font-medium text-text-secondary cursor-pointer hover:text-text-primary transition-colors"
-									@click="toggleSort('contactCount')"
-								>
-									<div class="flex items-center gap-1">
+								<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
+									<button
+										type="button"
+										class="flex items-center gap-1 rounded hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
+										@click="toggleSort('contactCount')"
+									>
 										Contacts
 										<Icon
 											v-if="getSortIcon('contactCount')"
 											:name="getSortIcon('contactCount')!"
 											class="w-4 h-4"
 										/>
-									</div>
+									</button>
 								</th>
-								<th
-									class="text-left px-6 py-4 text-sm font-medium text-text-secondary cursor-pointer hover:text-text-primary transition-colors"
-									@click="toggleSort('createdAt')"
-								>
-									<div class="flex items-center gap-1">
+								<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
+									<button
+										type="button"
+										class="flex items-center gap-1 rounded hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
+										@click="toggleSort('createdAt')"
+									>
 										Created
 										<Icon
 											v-if="getSortIcon('createdAt')"
 											:name="getSortIcon('createdAt')!"
 											class="w-4 h-4"
 										/>
-									</div>
+									</button>
 								</th>
 								<th class="text-right px-6 py-4 text-sm font-medium text-text-secondary">
 									Actions
