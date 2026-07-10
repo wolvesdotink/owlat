@@ -417,7 +417,7 @@ onMounted(() => {
   border-radius: 9999px;
   font-size: 0.6875rem;
   font-family: var(--font-mono);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   letter-spacing: 0.02em;
   color: var(--color-text-disabled);
   transition: all var(--motion-slow) var(--ease-spring);
@@ -675,7 +675,7 @@ onMounted(() => {
 
 .smtp-header-key {
   color: var(--color-accent);
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
 }
 
 .smtp-header-val {
@@ -797,7 +797,7 @@ onMounted(() => {
   background: var(--color-bg-elevated);
   border-bottom: 1px solid var(--color-border-subtle);
   font-size: 0.6875rem;
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   color: var(--color-text-tertiary);
 }
 
@@ -806,7 +806,7 @@ onMounted(() => {
   padding: 1px 7px;
   border-radius: 9999px;
   font-size: 0.5625rem;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   font-family: var(--font-mono);
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -842,7 +842,7 @@ onMounted(() => {
 .smtp-preview-label {
   font-size: 0.5625rem;
   font-family: var(--font-mono);
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--color-text-disabled);
@@ -862,7 +862,7 @@ onMounted(() => {
 }
 
 .smtp-preview-subject {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   color: var(--color-text-primary);
 }
 

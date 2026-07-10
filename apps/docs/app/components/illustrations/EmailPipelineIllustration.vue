@@ -130,7 +130,7 @@ const props = withDefaults(defineProps<{ class?: string }>(), { class: '' })
 				</g>
 
 				<!-- Label -->
-				<text x="113" y="237" fill="var(--color-text-primary)" font-size="10" font-weight="600" font-family="var(--font-sans, sans-serif)" text-anchor="middle">Email Builder</text>
+				<text x="113" y="237" fill="var(--color-text-primary)" font-size="10" font-weight="550" font-family="var(--font-sans, sans-serif)" text-anchor="middle">Email Builder</text>
 				<!-- Subtitle -->
 				<text x="113" y="250" fill="var(--color-text-tertiary)" font-size="8" font-family="var(--font-mono, monospace)" text-anchor="middle">18 block types</text>
 			</g>
@@ -139,10 +139,10 @@ const props = withDefaults(defineProps<{ class?: string }>(), { class: '' })
 			<g class="email-node email-node-json">
 				<rect x="248" y="168" width="62" height="44" rx="8" fill="var(--color-bg-surface)" stroke="var(--color-border-default)" stroke-width="1" />
 				<!-- JSON brackets -->
-				<text x="258" y="186" fill="var(--color-accent)" font-size="11" font-weight="600" font-family="var(--font-mono, monospace)">{</text>
+				<text x="258" y="186" fill="var(--color-accent)" font-size="11" font-weight="550" font-family="var(--font-mono, monospace)">{</text>
 				<rect x="268" y="180" width="22" height="3" rx="1" fill="var(--color-text-tertiary)" opacity="0.3" />
 				<rect x="268" y="186" width="16" height="3" rx="1" fill="var(--color-brand)" opacity="0.3" />
-				<text x="292" y="200" fill="var(--color-accent)" font-size="11" font-weight="600" font-family="var(--font-mono, monospace)">}</text>
+				<text x="292" y="200" fill="var(--color-accent)" font-size="11" font-weight="550" font-family="var(--font-mono, monospace)">}</text>
 				<text x="279" y="224" fill="var(--color-text-tertiary)" font-size="7" font-family="var(--font-mono, monospace)" text-anchor="middle">JSON</text>
 			</g>
 
@@ -162,7 +162,7 @@ const props = withDefaults(defineProps<{ class?: string }>(), { class: '' })
 					<line x1="1" y1="8" x2="3" y2="8" stroke="var(--color-brand)" stroke-width="1.2" />
 					<line x1="13" y1="8" x2="15" y2="8" stroke="var(--color-brand)" stroke-width="1.2" />
 				</g>
-				<text x="400" y="174" fill="var(--color-text-primary)" font-size="10" font-weight="600" font-family="var(--font-sans, sans-serif)">Renderer</text>
+				<text x="400" y="174" fill="var(--color-text-primary)" font-size="10" font-weight="550" font-family="var(--font-sans, sans-serif)">Renderer</text>
 
 				<!-- Features list -->
 				<g transform="translate(370, 186)">
@@ -185,7 +185,7 @@ const props = withDefaults(defineProps<{ class?: string }>(), { class: '' })
 				<rect x="555" y="164" width="95" height="52" rx="10" fill="url(#email-surface-grad)" stroke="var(--color-brand)" stroke-width="1" stroke-opacity="0.5" />
 				<!-- HTML tag icon -->
 				<text x="570" y="186" fill="var(--color-brand)" font-size="10" font-family="var(--font-mono, monospace)" font-weight="700">&lt;/&gt;</text>
-				<text x="600" y="186" fill="var(--color-text-primary)" font-size="10" font-weight="600" font-family="var(--font-sans, sans-serif)">HTML</text>
+				<text x="600" y="186" fill="var(--color-text-primary)" font-size="10" font-weight="550" font-family="var(--font-sans, sans-serif)">HTML</text>
 				<text x="602" y="202" fill="var(--color-text-tertiary)" font-size="7" font-family="var(--font-mono, monospace)" text-anchor="middle">primary</text>
 			</g>
 
@@ -217,13 +217,13 @@ const props = withDefaults(defineProps<{ class?: string }>(), { class: '' })
 					<circle cx="14" cy="3.5" r="1.5" fill="var(--color-brand)" opacity="0.6" />
 					<circle cx="14" cy="9.5" r="1.5" fill="var(--color-brand)" opacity="0.6" />
 				</g>
-				<text x="596" y="308" fill="var(--color-text-primary)" font-size="10" font-weight="600" font-family="var(--font-sans, sans-serif)">Delivery</text>
+				<text x="596" y="308" fill="var(--color-text-primary)" font-size="10" font-weight="550" font-family="var(--font-sans, sans-serif)">Delivery</text>
 
 				<!-- MTA (default) -->
 				<g transform="translate(572, 322)">
 					<rect width="170" height="22" rx="4" fill="var(--color-brand)" fill-opacity="0.08" stroke="var(--color-brand)" stroke-width="0.5" stroke-opacity="0.3" />
 					<circle cx="10" cy="11" r="3" fill="var(--color-brand)" opacity="0.8" />
-					<text x="20" y="14" fill="var(--color-text-primary)" font-size="8" font-weight="600" font-family="var(--font-mono, monospace)">Owlat MTA</text>
+					<text x="20" y="14" fill="var(--color-text-primary)" font-size="8" font-weight="550" font-family="var(--font-mono, monospace)">Owlat MTA</text>
 					<text x="88" y="14" fill="var(--color-brand)" font-size="6" font-family="var(--font-mono, monospace)">default</text>
 				</g>
 
@@ -255,20 +255,20 @@ const props = withDefaults(defineProps<{ class?: string }>(), { class: '' })
 					<path d="M 8 0 L 16 4 L 16 10 C 16 14 12 17 8 18 C 4 17 0 14 0 10 L 0 4 Z" fill="none" stroke="var(--color-success)" stroke-width="1" />
 					<path d="M 5 9 L 7 11 L 11 7" fill="none" stroke="var(--color-success)" stroke-width="1" stroke-linecap="round" />
 				</g>
-				<text x="72" y="326" fill="var(--color-text-primary)" font-size="10" font-weight="600" font-family="var(--font-sans, sans-serif)">Domain Verification</text>
+				<text x="72" y="326" fill="var(--color-text-primary)" font-size="10" font-weight="550" font-family="var(--font-sans, sans-serif)">Domain Verification</text>
 
 				<!-- DNS records -->
 				<g transform="translate(48, 340)">
 					<rect width="42" height="14" rx="3" fill="var(--color-success)" fill-opacity="0.1" />
-					<text x="6" y="10" fill="var(--color-success)" font-size="7" font-weight="600" font-family="var(--font-mono, monospace)">SPF</text>
+					<text x="6" y="10" fill="var(--color-success)" font-size="7" font-weight="550" font-family="var(--font-mono, monospace)">SPF</text>
 				</g>
 				<g transform="translate(96, 340)">
 					<rect width="46" height="14" rx="3" fill="var(--color-info)" fill-opacity="0.1" />
-					<text x="6" y="10" fill="var(--color-info)" font-size="7" font-weight="600" font-family="var(--font-mono, monospace)">DKIM</text>
+					<text x="6" y="10" fill="var(--color-info)" font-size="7" font-weight="550" font-family="var(--font-mono, monospace)">DKIM</text>
 				</g>
 				<g transform="translate(148, 340)">
 					<rect width="64" height="14" rx="3" fill="var(--color-accent)" fill-opacity="0.1" />
-					<text x="6" y="10" fill="var(--color-accent)" font-size="7" font-weight="600" font-family="var(--font-mono, monospace)">DMARC</text>
+					<text x="6" y="10" fill="var(--color-accent)" font-size="7" font-weight="550" font-family="var(--font-mono, monospace)">DMARC</text>
 				</g>
 
 				<!-- Status flow -->

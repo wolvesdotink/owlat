@@ -103,7 +103,7 @@ const props = withDefaults(defineProps<{ class?: string }>(), { class: '' })
 				<circle cx="79.5" cy="145.5" r="1" fill="var(--color-warning)" />
 				<circle cx="83" cy="145.5" r="1" fill="var(--color-success)" />
 				<!-- Label -->
-				<text x="96" y="153" fill="var(--color-text-primary)" font-size="11" font-weight="600" font-family="var(--font-sans, sans-serif)">Frontend</text>
+				<text x="96" y="153" fill="var(--color-text-primary)" font-size="11" font-weight="550" font-family="var(--font-sans, sans-serif)">Frontend</text>
 				<!-- useAuth badge -->
 				<rect x="72" y="166" width="120" height="18" rx="4" fill="var(--color-brand)" fill-opacity="0.1" stroke="var(--color-brand)" stroke-width="0.5" stroke-opacity="0.25" />
 				<text x="82" y="178" fill="var(--color-brand)" font-size="9" font-family="var(--font-mono, monospace)">useAuth()</text>
@@ -124,7 +124,7 @@ const props = withDefaults(defineProps<{ class?: string }>(), { class: '' })
 					<path d="M 5.5 9 L 7 10.5 L 10.5 7" fill="none" stroke="var(--color-success)" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
 				</g>
 				<!-- Label -->
-				<text x="400" y="186" fill="var(--color-text-primary)" font-size="11" font-weight="600" font-family="var(--font-sans, sans-serif)" text-anchor="middle">BetterAuth</text>
+				<text x="400" y="186" fill="var(--color-text-primary)" font-size="11" font-weight="550" font-family="var(--font-sans, sans-serif)" text-anchor="middle">BetterAuth</text>
 				<!-- Subtitle -->
 				<text x="400" y="199" fill="var(--color-text-tertiary)" font-size="8" font-family="var(--font-mono, monospace)" text-anchor="middle">Convex Adapter</text>
 				<!-- Org plugin badge -->
@@ -140,7 +140,7 @@ const props = withDefaults(defineProps<{ class?: string }>(), { class: '' })
 				<ellipse cx="594" cy="144" rx="7" ry="3.5" stroke="var(--color-accent)" stroke-width="0.9" fill="none" />
 				<path d="M 587 144 L 587 153 C 587 155 590 157 594 157 C 598 157 601 155 601 153 L 601 144" stroke="var(--color-accent)" stroke-width="0.9" fill="none" />
 				<!-- Label -->
-				<text x="610" y="153" fill="var(--color-text-primary)" font-size="11" font-weight="600" font-family="var(--font-sans, sans-serif)">Tables</text>
+				<text x="610" y="153" fill="var(--color-text-primary)" font-size="11" font-weight="550" font-family="var(--font-sans, sans-serif)">Tables</text>
 				<!-- Table rows -->
 				<g transform="translate(590, 166)">
 					<rect width="140" height="20" rx="4" fill="var(--color-bg-soft)" />
@@ -171,15 +171,15 @@ const props = withDefaults(defineProps<{ class?: string }>(), { class: '' })
 			<!-- ═══ Role badges (under database) ═══ -->
 			<g transform="translate(590, 296)">
 				<rect width="44" height="18" rx="9" fill="var(--color-brand)" fill-opacity="0.12" stroke="var(--color-brand)" stroke-width="0.6" stroke-opacity="0.35" />
-				<text x="22" y="9" fill="var(--color-brand)" font-size="7.5" font-weight="600" font-family="var(--font-mono, monospace)" text-anchor="middle" dominant-baseline="central">owner</text>
+				<text x="22" y="9" fill="var(--color-brand)" font-size="7.5" font-weight="550" font-family="var(--font-mono, monospace)" text-anchor="middle" dominant-baseline="central">owner</text>
 			</g>
 			<g transform="translate(642, 296)">
 				<rect width="44" height="18" rx="9" fill="var(--color-accent)" fill-opacity="0.1" stroke="var(--color-accent)" stroke-width="0.6" stroke-opacity="0.3" />
-				<text x="22" y="9" fill="var(--color-accent)" font-size="7.5" font-weight="600" font-family="var(--font-mono, monospace)" text-anchor="middle" dominant-baseline="central">admin</text>
+				<text x="22" y="9" fill="var(--color-accent)" font-size="7.5" font-weight="550" font-family="var(--font-mono, monospace)" text-anchor="middle" dominant-baseline="central">admin</text>
 			</g>
 			<g transform="translate(694, 296)">
 				<rect width="44" height="18" rx="9" fill="var(--color-info)" fill-opacity="0.1" stroke="var(--color-info)" stroke-width="0.6" stroke-opacity="0.3" />
-				<text x="22" y="9" fill="var(--color-info)" font-size="7.5" font-weight="600" font-family="var(--font-mono, monospace)" text-anchor="middle" dominant-baseline="central">editor</text>
+				<text x="22" y="9" fill="var(--color-info)" font-size="7.5" font-weight="550" font-family="var(--font-mono, monospace)" text-anchor="middle" dominant-baseline="central">editor</text>
 			</g>
 
 			<!-- ═══ API Keys Node ═══ -->
@@ -192,7 +192,7 @@ const props = withDefaults(defineProps<{ class?: string }>(), { class: '' })
 					<line x1="15" y1="5" x2="15" y2="8" stroke="var(--color-accent)" stroke-width="1" />
 					<line x1="18" y1="5" x2="18" y2="8" stroke="var(--color-accent)" stroke-width="1" />
 				</g>
-				<text x="360" y="347" fill="var(--color-text-primary)" font-size="10" font-weight="600" font-family="var(--font-sans, sans-serif)">API Keys</text>
+				<text x="360" y="347" fill="var(--color-text-primary)" font-size="10" font-weight="550" font-family="var(--font-sans, sans-serif)">API Keys</text>
 				<!-- Key format -->
 				<rect x="334" y="355" width="132" height="12" rx="2" fill="var(--color-bg-soft)" />
 				<text x="342" y="364" fill="var(--color-text-tertiary)" font-size="7" font-family="var(--font-mono, monospace)">lm_live_...</text>

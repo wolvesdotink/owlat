@@ -185,7 +185,7 @@ const props = withDefaults(defineProps<{ class?: string }>(), { class: '' })
 					<rect width="24" height="18" rx="3" stroke="var(--color-accent)" stroke-width="1.2" fill="none" />
 					<path d="M 0 3 L 12 12 L 24 3" stroke="var(--color-accent)" stroke-width="1" fill="none" />
 				</g>
-				<text x="81" y="156" fill="var(--color-text-primary)" font-size="10" font-weight="600" font-family="var(--font-sans, sans-serif)" text-anchor="middle">API Request</text>
+				<text x="81" y="156" fill="var(--color-text-primary)" font-size="10" font-weight="550" font-family="var(--font-sans, sans-serif)" text-anchor="middle">API Request</text>
 
 				<!-- Endpoint badges -->
 				<g transform="translate(38, 168)">
@@ -210,7 +210,7 @@ const props = withDefaults(defineProps<{ class?: string }>(), { class: '' })
 					<path d="M 12 0 L 24 8 L 12 16 L 0 8 Z" fill="var(--color-error)" fill-opacity="0.2" stroke="var(--color-error)" stroke-width="0.8" />
 					<path d="M 12 4 L 18 8 L 12 12 L 6 8 Z" fill="var(--color-error)" fill-opacity="0.4" />
 				</g>
-				<text x="264" y="152" fill="var(--color-text-primary)" font-size="10" font-weight="600" font-family="var(--font-sans, sans-serif)" text-anchor="middle">GroupMQ / Redis</text>
+				<text x="264" y="152" fill="var(--color-text-primary)" font-size="10" font-weight="550" font-family="var(--font-sans, sans-serif)" text-anchor="middle">GroupMQ / Redis</text>
 
 				<!-- Group key badge -->
 				<g transform="translate(212, 162)">
@@ -240,7 +240,7 @@ const props = withDefaults(defineProps<{ class?: string }>(), { class: '' })
 				<rect x="388" y="90" width="170" height="190" rx="14" fill="url(#mta-surface-grad)" stroke="var(--color-brand)" stroke-width="1" stroke-opacity="0.4" />
 
 				<!-- Header -->
-				<text x="473" y="114" fill="var(--color-text-primary)" font-size="10" font-weight="600" font-family="var(--font-sans, sans-serif)" text-anchor="middle">Intelligence Pipeline</text>
+				<text x="473" y="114" fill="var(--color-text-primary)" font-size="10" font-weight="550" font-family="var(--font-sans, sans-serif)" text-anchor="middle">Intelligence Pipeline</text>
 
 				<!-- 6 check rows -->
 				<g transform="translate(400, 124)">
@@ -291,7 +291,7 @@ const props = withDefaults(defineProps<{ class?: string }>(), { class: '' })
 					<path d="M 22 4 L 30 4" stroke="var(--color-brand)" stroke-width="1.2" />
 					<path d="M 27 1 L 30 4 L 27 7" fill="none" stroke="var(--color-brand)" stroke-width="1" />
 				</g>
-				<text x="683" y="152" fill="var(--color-text-primary)" font-size="10" font-weight="600" font-family="var(--font-sans, sans-serif)" text-anchor="middle">SMTP Delivery</text>
+				<text x="683" y="152" fill="var(--color-text-primary)" font-size="10" font-weight="550" font-family="var(--font-sans, sans-serif)" text-anchor="middle">SMTP Delivery</text>
 
 				<!-- Feature badges -->
 				<g transform="translate(632, 162)">
@@ -319,21 +319,21 @@ const props = withDefaults(defineProps<{ class?: string }>(), { class: '' })
 			<g class="mta-node mta-node-delivered">
 				<rect x="810" y="106" width="86" height="38" rx="8" fill="var(--color-bg-surface)" stroke="var(--color-success)" stroke-width="0.8" stroke-opacity="0.5" />
 				<circle cx="826" cy="125" r="4" fill="var(--color-success)" opacity="0.5" class="mta-pulse" />
-				<text x="836" y="129" fill="var(--color-success)" font-size="8" font-weight="600" font-family="var(--font-mono, monospace)">Delivered</text>
+				<text x="836" y="129" fill="var(--color-success)" font-size="8" font-weight="550" font-family="var(--font-mono, monospace)">Delivered</text>
 			</g>
 
 			<!-- Bounced -->
 			<g class="mta-node mta-node-bounced">
 				<rect x="810" y="152" width="86" height="38" rx="8" fill="var(--color-bg-surface)" stroke="var(--color-error)" stroke-width="0.8" stroke-opacity="0.5" />
 				<circle cx="826" cy="171" r="4" fill="var(--color-error)" opacity="0.5" />
-				<text x="836" y="175" fill="var(--color-error)" font-size="8" font-weight="600" font-family="var(--font-mono, monospace)">Bounced</text>
+				<text x="836" y="175" fill="var(--color-error)" font-size="8" font-weight="550" font-family="var(--font-mono, monospace)">Bounced</text>
 			</g>
 
 			<!-- Deferred -->
 			<g class="mta-node mta-node-deferred">
 				<rect x="810" y="198" width="86" height="38" rx="8" fill="var(--color-bg-surface)" stroke="var(--color-warning)" stroke-width="0.8" stroke-opacity="0.5" />
 				<circle cx="826" cy="217" r="4" fill="var(--color-warning)" opacity="0.5" />
-				<text x="836" y="221" fill="var(--color-warning)" font-size="8" font-weight="600" font-family="var(--font-mono, monospace)">Deferred</text>
+				<text x="836" y="221" fill="var(--color-warning)" font-size="8" font-weight="550" font-family="var(--font-mono, monospace)">Deferred</text>
 			</g>
 
 			<!-- Retry label on deferred loop -->
@@ -347,7 +347,7 @@ const props = withDefaults(defineProps<{ class?: string }>(), { class: '' })
 				<rect x="558" y="378" width="134" height="2.5" rx="1.2" fill="var(--color-accent)" opacity="0.4" />
 
 				<!-- Header row: icon + title centered -->
-				<text x="625" y="400" fill="var(--color-text-primary)" font-size="10" font-weight="600" font-family="var(--font-sans, sans-serif)" text-anchor="middle">Webhook</text>
+				<text x="625" y="400" fill="var(--color-text-primary)" font-size="10" font-weight="550" font-family="var(--font-sans, sans-serif)" text-anchor="middle">Webhook</text>
 
 				<!-- Destination badge -->
 				<g transform="translate(588, 406)">
@@ -382,21 +382,21 @@ const props = withDefaults(defineProps<{ class?: string }>(), { class: '' })
 					<path d="M 7 -6 L 7 -1" stroke="var(--color-brand)" stroke-width="1" opacity="0.6" />
 					<path d="M 4.5 -3 L 7 -0.5 L 9.5 -3" fill="none" stroke="var(--color-brand)" stroke-width="0.8" opacity="0.6" />
 				</g>
-				<text x="84" y="427" fill="var(--color-text-primary)" font-size="8" font-weight="600" font-family="var(--font-sans, sans-serif)">Inbound SMTP</text>
+				<text x="84" y="427" fill="var(--color-text-primary)" font-size="8" font-weight="550" font-family="var(--font-sans, sans-serif)">Inbound SMTP</text>
 				<text x="84" y="440" fill="var(--color-text-tertiary)" font-size="6.5" font-family="var(--font-mono, monospace)">VERP decode</text>
 			</g>
 
 			<!-- DSN Parse -->
 			<g class="mta-node mta-node-parse">
 				<rect x="228" y="405" width="120" height="50" rx="8" fill="var(--color-bg-surface)" stroke="var(--color-border-default)" stroke-width="0.7" />
-				<text x="288" y="425" fill="var(--color-text-primary)" font-size="8" font-weight="600" font-family="var(--font-sans, sans-serif)" text-anchor="middle">DSN Parse</text>
+				<text x="288" y="425" fill="var(--color-text-primary)" font-size="8" font-weight="550" font-family="var(--font-sans, sans-serif)" text-anchor="middle">DSN Parse</text>
 				<text x="288" y="440" fill="var(--color-text-tertiary)" font-size="6.5" font-family="var(--font-mono, monospace)" text-anchor="middle">RFC 3464 + ARF</text>
 			</g>
 
 			<!-- Classify -->
 			<g class="mta-node mta-node-classify">
 				<rect x="408" y="405" width="120" height="50" rx="8" fill="var(--color-bg-surface)" stroke="var(--color-border-default)" stroke-width="0.7" />
-				<text x="468" y="425" fill="var(--color-text-primary)" font-size="8" font-weight="600" font-family="var(--font-sans, sans-serif)" text-anchor="middle">Classify</text>
+				<text x="468" y="425" fill="var(--color-text-primary)" font-size="8" font-weight="550" font-family="var(--font-sans, sans-serif)" text-anchor="middle">Classify</text>
 				<text x="468" y="440" fill="var(--color-text-tertiary)" font-size="6.5" font-family="var(--font-mono, monospace)" text-anchor="middle">hard / soft / complaint</text>
 			</g>
 
