@@ -44,8 +44,8 @@ const props = defineProps<{
 	thread: InboxThreadRowThread;
 	/** Keyboard-focused row (drives the focus ring + aria-selected). */
 	focused: boolean;
-	/** Shared relative-time formatter from useInbox. */
-	formatRelativeTime: (timestamp: number) => string;
+	/** Compact relative-time formatter ("5m ago", short date past 7d). */
+	formatCompactRelativeTime: (timestamp: number) => string;
 	/** Org members for the hover assignee picker. */
 	members?: { userId: string; name?: string | null; email: string; image?: string | null }[];
 	/** Current viewer's user id — drives the picker's "Me" row + the `i` shortcut. */
@@ -113,7 +113,7 @@ function rowAction(event: MouseEvent, action: 'resolve' | 'snooze') {
 
 				<PostboxRowCore :unread="thread.unread">
 					<template #identifier>{{ thread.subject || 'No subject' }}</template>
-					<template #meta>{{ formatRelativeTime(timestamp) }}</template>
+					<template #meta>{{ formatCompactRelativeTime(timestamp) }}</template>
 
 					<!-- Detail row: sender + the single status chip + optional channel chip. -->
 					<div class="flex items-center gap-2 mt-0.5 min-w-0">

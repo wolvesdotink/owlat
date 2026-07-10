@@ -23,7 +23,6 @@ const {
 	hasMoreThreads,
 	stats,
 	loadMoreThreads,
-	formatRelativeTime,
 } = useInbox();
 
 // ── Row triage mutations (shared with the thread detail view) ──
@@ -175,7 +174,7 @@ const emptyMessage = computed(() => INBOX_FILTER_META[filter.value].empty);
 					:key="thread._id"
 					:thread="thread"
 					:focused="index === focusedIndex"
-					:format-relative-time="formatRelativeTime"
+					:format-compact-relative-time="formatCompactRelativeTime"
 					:members="assignMembers"
 					:current-user-id="user?.id ?? null"
 					@assign="assignThreadTo(thread, $event)"
