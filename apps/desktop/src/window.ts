@@ -60,6 +60,18 @@ export async function setTrafficLightsVisible(visible: boolean): Promise<void> {
 }
 
 /**
+ * The spec's state→visibility mapping for the macOS traffic lights: they stay on
+ * screen whenever the sidebar rail is present or its transient peek overlay is
+ * open, and hide only when the rail is fully hidden and not peeking. Exported as
+ * a pure function so the layout's watch and the mapping test share one source of
+ * truth (the invariant "lights are never visible without sidebar or peek visible"
+ * is enforced here, not re-derived at each call site).
+ */
+export function trafficLightsVisibleFor(sidebarHidden: boolean, isPeeking: boolean): boolean {
+	return !sidebarHidden || isPeeking;
+}
+
+/**
  * Watch native window fullscreen state and invoke `onChange` whenever it flips.
  * Native (green-button) fullscreen does not fire the DOM `:fullscreen` event, so
  * the desktop chrome relies on this to collapse the identity frame. Fires once
