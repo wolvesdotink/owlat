@@ -37,7 +37,9 @@ vi.mock('../../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual<typeof import('../../lib/sessionOrganization')>(
 		'../../lib/sessionOrganization'
 	);
+	const { realPermissionGate } = await import('../../__tests__/helpers/permissionGateMock');
 	const session = () => ({ userId: 'admin-a', role: roleMock.role });
+	const gate = realPermissionGate(actual, () => roleMock.role);
 	return {
 		...actual,
 		requireOrgMember: vi.fn().mockImplementation(async () => session()),
@@ -47,13 +49,7 @@ vi.mock('../../lib/sessionOrganization', async () => {
 		requireOrgPermission: vi
 			.fn()
 			.mockImplementation(async (_ctx: unknown, permission: string, message?: string) => {
-				actual.requirePermission(
-					actual.hasPermission(
-						roleMock.role as Parameters<typeof actual.hasPermission>[0],
-						permission as Parameters<typeof actual.hasPermission>[1]
-					),
-					message
-				);
+				gate(permission, message);
 				return session();
 			}),
 	};
