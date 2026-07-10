@@ -4,16 +4,9 @@ import { internalAction, internalQuery } from '../_generated/server';
 import type { QueryCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
-import {
-	getUserIdFromSession,
-	requireOrgPermission,
-} from '../lib/sessionOrganization';
+import { getUserIdFromSession, requireOrgPermission } from '../lib/sessionOrganization';
 import { requireDraftCampaign } from './guards';
-import {
-	throwNotFound,
-	throwInvalidState,
-	throwInvalidInput,
-} from '../_utils/errors';
+import { throwNotFound, throwInvalidState, throwInvalidInput } from '../_utils/errors';
 
 /**
  * Per-variant A/B stats from a variant's `emailSends` rows. opened/clicked are
@@ -21,8 +14,8 @@ import {
  * counts as opened — counting by current `status` dropped them), and the rate
  * denominator is "ever delivered", consistent with the main campaign report.
  * `delivered` is guaranteed ≥ opened ≥ clicked, so the rates never exceed 100%.
- * Shared by `getABTestStats` and `analytics.getABTestCampaignsByOrganization`
- * so the two A/B surfaces can't drift.
+ * Reduced shape behind the `getABTestStats` query that powers the report's A/B
+ * fold-in.
  */
 export function computeAbVariantStats(sends: ReadonlyArray<Doc<'emailSends'>>): {
 	sent: number;
@@ -60,14 +53,12 @@ const AB_VARIANT_SCAN_LIMIT = 10000;
 
 /**
  * Load both A/B variants' `emailSends` for a campaign and reduce each to the
- * shared `computeAbVariantStats` shape. Single source of truth behind both the
- * `getABTestStats` query and the `getABTestCampaignsByOrganization` HTTP
- * surface so the two A/B reads can't drift in either the load bound or the
- * stat math.
+ * shared `computeAbVariantStats` shape. Single source of truth behind the
+ * `getABTestStats` query so the load bound and stat math stay in one place.
  */
 export async function loadAbTestStats(
 	ctx: QueryCtx,
-	campaignId: Id<'campaigns'>,
+	campaignId: Id<'campaigns'>
 ): Promise<{
 	variantA: ReturnType<typeof computeAbVariantStats>;
 	variantB: ReturnType<typeof computeAbVariantStats>;
@@ -76,13 +67,13 @@ export async function loadAbTestStats(
 		ctx.db
 			.query('emailSends')
 			.withIndex('by_campaign_and_variant', (q) =>
-				q.eq('campaignId', campaignId).eq('abVariant', 'A'),
+				q.eq('campaignId', campaignId).eq('abVariant', 'A')
 			)
 			.take(AB_VARIANT_SCAN_LIMIT),
 		ctx.db
 			.query('emailSends')
 			.withIndex('by_campaign_and_variant', (q) =>
-				q.eq('campaignId', campaignId).eq('abVariant', 'B'),
+				q.eq('campaignId', campaignId).eq('abVariant', 'B')
 			)
 			.take(AB_VARIANT_SCAN_LIMIT),
 	]);
@@ -111,7 +102,7 @@ export const enableABTest = authedMutation({
 			ctx,
 			args.campaignId,
 			'enable A/B testing',
-			'A/B testing can only be enabled on draft campaigns',
+			'A/B testing can only be enabled on draft campaigns'
 		);
 
 		// Validate split percentage
@@ -159,14 +150,11 @@ export const enableABTest = authedMutation({
 			abTestConfig.testDuration = args.testDuration;
 		}
 
-		const outcome = await ctx.runMutation(
-			internal.campaigns.abTestLifecycle.transition,
-			{
-				campaignId: args.campaignId,
-				input: { to: 'pending', at: Date.now(), config: abTestConfig },
-				userId: session.userId,
-			},
-		);
+		const outcome = await ctx.runMutation(internal.campaigns.abTestLifecycle.transition, {
+			campaignId: args.campaignId,
+			input: { to: 'pending', at: Date.now(), config: abTestConfig },
+			userId: session.userId,
+		});
 
 		if (!outcome.ok) {
 			throwInvalidState(`Cannot enable AB test: ${outcome.reason}`);
@@ -188,17 +176,14 @@ export const disableABTest = authedMutation({
 			ctx,
 			args.campaignId,
 			'disable A/B testing',
-			'A/B testing can only be disabled on draft campaigns',
+			'A/B testing can only be disabled on draft campaigns'
 		);
 
-		const outcome = await ctx.runMutation(
-			internal.campaigns.abTestLifecycle.transition,
-			{
-				campaignId: args.campaignId,
-				input: { to: 'none', at: Date.now() },
-				userId: session.userId,
-			},
-		);
+		const outcome = await ctx.runMutation(internal.campaigns.abTestLifecycle.transition, {
+			campaignId: args.campaignId,
+			input: { to: 'none', at: Date.now() },
+			userId: session.userId,
+		});
 
 		if (!outcome.ok) {
 			throwInvalidState(`Cannot disable AB test: ${outcome.reason}`);
@@ -215,7 +200,11 @@ export const declareABTestWinner = authedMutation({
 		winner: v.union(v.literal('A'), v.literal('B')),
 	},
 	handler: async (ctx, args) => {
-		const session = await requireOrgPermission(ctx, 'campaigns:manage', 'Only owners and admins can declare A/B test winners');
+		const session = await requireOrgPermission(
+			ctx,
+			'campaigns:manage',
+			'Only owners and admins can declare A/B test winners'
+		);
 
 		const campaign = await ctx.db.get(args.campaignId);
 		if (!campaign) {
@@ -230,14 +219,11 @@ export const declareABTestWinner = authedMutation({
 			throwInvalidState('A/B test is not in testing phase');
 		}
 
-		const outcome = await ctx.runMutation(
-			internal.campaigns.abTestLifecycle.transition,
-			{
-				campaignId: args.campaignId,
-				input: { to: 'winner_selected', at: Date.now(), winner: args.winner },
-				userId: session.userId,
-			},
-		);
+		const outcome = await ctx.runMutation(internal.campaigns.abTestLifecycle.transition, {
+			campaignId: args.campaignId,
+			input: { to: 'winner_selected', at: Date.now(), winner: args.winner },
+			userId: session.userId,
+		});
 
 		if (!outcome.ok) {
 			throwInvalidState(`Cannot declare AB test winner: ${outcome.reason}`);
@@ -258,13 +244,13 @@ export const getAbTestWinnerInputs = internalQuery({
 		const variantASends = await ctx.db
 			.query('emailSends')
 			.withIndex('by_campaign_and_variant', (q) =>
-				q.eq('campaignId', args.campaignId).eq('abVariant', 'A'),
+				q.eq('campaignId', args.campaignId).eq('abVariant', 'A')
 			)
 			.take(10000);
 		const variantBSends = await ctx.db
 			.query('emailSends')
 			.withIndex('by_campaign_and_variant', (q) =>
-				q.eq('campaignId', args.campaignId).eq('abVariant', 'B'),
+				q.eq('campaignId', args.campaignId).eq('abVariant', 'B')
 			)
 			.take(10000);
 
@@ -285,10 +271,7 @@ export const getAbTestWinnerInputs = internalQuery({
 // existed, those campaigns sat in `testing` forever.
 export const autoDeclareWinner = internalAction({
 	args: { campaignId: v.id('campaigns') },
-	handler: async (
-		ctx,
-		args,
-	): Promise<{ skipped: boolean; winner?: 'A' | 'B' }> => {
+	handler: async (ctx, args): Promise<{ skipped: boolean; winner?: 'A' | 'B' }> => {
 		const data = await ctx.runQuery(internal.campaigns.abTest.getAbTestWinnerInputs, {
 			campaignId: args.campaignId,
 		});
