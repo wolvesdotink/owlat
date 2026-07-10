@@ -201,7 +201,9 @@ const emptyState = computed(() => {
 		return {
 			icon: 'lucide:check-circle-2',
 			title: 'All clear',
-			hint: undefined,
+			// Teach the two moves a new member reaches for first: compose and the
+			// command palette. Quiet enough to stay welcome once the inbox fills.
+			hint: 'Press C to write a message, or ⌘K to search and jump anywhere.',
 			showFilterAction: false,
 		};
 	}

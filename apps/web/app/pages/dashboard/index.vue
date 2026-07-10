@@ -9,9 +9,12 @@ definePageMeta({
 });
 
 const { user } = useAuth();
-const { hasActiveOrganization } = useOrganizationContext();
+const { hasActiveOrganization, role } = useOrganizationContext();
 
 const userId = computed(() => user.value?.id ?? null);
+// Admins/owners see open mailbox requests from teammates stuck at the
+// fresh-start dead-end (see components/dashboard/MailboxRequests.vue).
+const isAdmin = computed(() => role.value === 'owner' || role.value === 'admin');
 
 const { cards, availableCards, savedRules, isLoading, isEditing, saveLayout } =
 	useAdaptiveDashboard();
@@ -76,6 +79,7 @@ async function handleSave(
 			  non-self-host mode) for the remaining go-live steps. It suppresses
 			  itself while the banner owns the pre-send phase.
 		-->
+		<DashboardMailboxRequests v-if="hasActiveOrganization && isAdmin" />
 		<DashboardSelfHostOnboardingBanner v-if="hasActiveOrganization && userId" :user-id="userId" />
 		<DashboardOnboardingChecklist v-if="hasActiveOrganization && userId" :user-id="userId" />
 

@@ -49,17 +49,13 @@ const userId = computed(() => user.value?.id ?? null);
 				class="max-w-md"
 			/>
 		</div>
-		<div v-else-if="!mailboxesLoading" class="flex-1 flex items-center justify-center p-12">
-			<div class="w-full max-w-md text-center">
-				<Icon name="lucide:mailbox" class="w-12 h-12 mx-auto text-text-tertiary" />
-				<h2 class="text-xl font-semibold mt-4">No mailbox yet</h2>
-				<p class="text-text-secondary mt-2">
-					Provision your first personal mailbox to start receiving mail.
-				</p>
-				<NuxtLink to="/dashboard/postbox/settings/add-account" class="btn btn-primary mt-6">
-					Add mail account
-				</NuxtLink>
-				<OnboardingUserChecklist v-if="userId" :user-id="userId" class="mt-8 text-left" />
+		<div v-else-if="!mailboxesLoading" class="flex-1 overflow-y-auto">
+			<!-- Honest, next-step-aware no-mailbox state (reserved / connect an
+			     external account / ask an admin) instead of a mute wall. -->
+			<PostboxMailboxGuard :mailbox-id="null" :loading="false" />
+			<!-- Resumable per-user onboarding checklist so setup can be picked back up here. -->
+			<div v-if="userId" class="mx-auto max-w-md px-6 pb-12">
+				<OnboardingUserChecklist :user-id="userId" class="text-left" />
 			</div>
 		</div>
 		<div v-else class="flex-1 flex items-center justify-center">
