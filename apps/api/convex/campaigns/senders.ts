@@ -16,7 +16,12 @@
 
 import { v } from 'convex/values';
 import type { Doc } from '../_generated/dataModel';
-import { internalQuery, type MutationCtx, type QueryCtx } from '../_generated/server';
+import {
+	internalMutation,
+	internalQuery,
+	type MutationCtx,
+	type QueryCtx,
+} from '../_generated/server';
 import { authedMutation, authedQuery } from '../lib/authedFunctions';
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import { checkEmailDomainVerification } from '../domains/domains';
@@ -30,6 +35,13 @@ type Ctx = QueryCtx | MutationCtx;
  * which runs on the send path as any member rather than as a specific admin.
  */
 const SYSTEM_SEED_CREATED_BY = 'system';
+
+/**
+ * Upper bound on a full-table scan of the curated list. The list is intentionally
+ * tiny (a handful of addresses), so a single bounded `take` covers both the `list`
+ * query and the default-clearing sweep without pagination.
+ */
+const MAX_CAMPAIGN_SENDERS = 200;
 
 /**
  * Gate every campaign-sender management surface (the `list` query and the CRUD
@@ -106,8 +118,9 @@ export const checkSenderAllowed = internalQuery({
 
 /**
  * Validate that a would-be curated sender sits on a verified sending domain.
- * Shared by `create` and `update`. Throws `invalid_input` when the address is
- * malformed or its domain is not verified. Never let an unverified domain onto
+ * Called only from `create`; `update` never changes the address (remove + re-add
+ * to change it, which re-verifies here). Throws `invalid_input` when the address
+ * is malformed or its domain is not verified. Never let an unverified domain onto
  * the curated list — that would create a hole in the send-time floor.
  */
 async function assertVerifiedSenderDomain(ctx: MutationCtx, email: string): Promise<void> {
@@ -132,8 +145,7 @@ export const list = authedQuery({
 	args: {},
 	handler: async (ctx): Promise<Doc<'campaignSenders'>[]> => {
 		await requireCampaignSendersManage(ctx);
-		// bounded: curated list is intentionally tiny (a handful of addresses).
-		return await ctx.db.query('campaignSenders').take(200);
+		return await ctx.db.query('campaignSenders').take(MAX_CAMPAIGN_SENDERS);
 	},
 });
 
@@ -285,12 +297,26 @@ export async function seedDefaultSenderIfNeeded(ctx: MutationCtx): Promise<boole
 }
 
 /**
+ * InternalMutation wrapper so the test-send ACTIONS (`campaigns/testSend.ts`),
+ * which have no db handle, can run the same idempotent bootstrap seed before the
+ * curated-sender gate. Without this, an upgraded deployment (empty list, toggle
+ * OFF, no management UI until d2/d3) would reject a test send from the org's own
+ * default address — the normal test-first flow — with no recovery an admin can
+ * click. The mutation send path calls the plain helper directly instead.
+ */
+export const seedDefaultSender = internalMutation({
+	args: {},
+	handler: async (ctx): Promise<boolean> => {
+		return await seedDefaultSenderIfNeeded(ctx);
+	},
+});
+
+/**
  * Clear the current default flag (at most one row carries it). Bounded scan —
  * the curated list is tiny.
  */
 async function clearDefault(ctx: MutationCtx): Promise<void> {
-	// bounded: curated list is intentionally tiny (a handful of addresses).
-	const all = await ctx.db.query('campaignSenders').take(200);
+	const all = await ctx.db.query('campaignSenders').take(MAX_CAMPAIGN_SENDERS);
 	for (const s of all) {
 		if (s.isDefault) {
 			await ctx.db.patch(s._id, { isDefault: false, updatedAt: Date.now() });

@@ -56,9 +56,14 @@ async function guardTestSend(
  * `forbidden` with the shared `senderNotAllowedMessage` copy on violation.
  */
 async function assertCampaignSenderAllowed(
-	ctx: Pick<ActionCtx, 'runQuery'>,
+	ctx: Pick<ActionCtx, 'runQuery' | 'runMutation'>,
 	fromEmail: string
 ): Promise<void> {
+	// Self-heal the common post-upgrade case (empty curated list, toggle OFF, no
+	// management UI until d2/d3) before gating: seed the org default sender so a
+	// test send from the org's own default address keeps working. Idempotent — a
+	// no-op read once any sender exists.
+	await ctx.runMutation(internal.campaigns.senders.seedDefaultSender, {});
 	const allowed = await ctx.runQuery(internal.campaigns.senders.checkSenderAllowed, { fromEmail });
 	if (!allowed) {
 		throwForbidden(senderNotAllowedMessage(fromEmail));
