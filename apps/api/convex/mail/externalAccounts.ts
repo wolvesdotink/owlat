@@ -26,7 +26,7 @@ import { authedMutation, publicQuery } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 import { assertFeatureEnabled } from '../lib/featureFlags';
-import { provisionMailbox, canonicalAddress } from './mailbox';
+import { provisionMailbox, canonicalAddress, resolveDeliverableMailbox } from './mailbox';
 import { markOnboardingStep } from '../auth/userOnboarding';
 import { checkEmailDomainVerification } from '../domains/domains';
 import { getMtaConfig } from './mtaClient';
@@ -251,12 +251,11 @@ export const _connectInternal = internalMutation({
 				'You already have a connected external mail account. Disconnect it before connecting another.'
 			);
 		}
-		// The address must not collide with an existing active mailbox.
-		const existingMailbox = await ctx.db
-			.query('mailboxes')
-			.withIndex('by_address', (q) => q.eq('address', address))
-			.first();
-		if (existingMailbox && existingMailbox.status === 'active') {
+		// The address must not collide with any existing active mailbox (hosted or
+		// an external archive left by a completed move) — resolve deterministically
+		// rather than trusting whichever row is oldest.
+		const existingMailbox = await resolveDeliverableMailbox(ctx, address);
+		if (existingMailbox) {
 			throwAlreadyExists(`A mailbox for ${address} already exists.`);
 		}
 
