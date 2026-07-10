@@ -33,6 +33,7 @@ import { internalMutation } from '../_generated/server';
 import { adminQuery, authedMutation } from '../lib/authedFunctions';
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import { findContactByIdentifier } from '../contacts/resolution';
+import { normalizeEmail } from '@owlat/shared';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
 import { normalizeQuestionKey, matchStandingAnswers } from './clarificationMemoryMatch';
@@ -54,7 +55,7 @@ async function resolveScopeContactId(
 ): Promise<Id<'contacts'> | undefined> {
 	if (contactId) return contactId;
 	if (!fromAddress) return undefined;
-	const identifier = fromAddress.trim().toLowerCase();
+	const identifier = normalizeEmail(fromAddress);
 	if (identifier.length === 0) return undefined;
 	const found = await findContactByIdentifier(ctx, 'email', identifier);
 	return found?.contact._id;

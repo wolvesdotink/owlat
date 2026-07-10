@@ -28,6 +28,7 @@ import {
 	throwNotFound,
 } from '../_utils/errors';
 import { getActiveMailboxForUser } from './mailbox';
+import { normalizeEmail } from '@owlat/shared';
 
 /** Max length of the free-text note a member can attach to a mailbox request. */
 const MAX_NOTE_LENGTH = 500;
@@ -136,7 +137,7 @@ export const freshStartStatus = authedQuery({
 			.query('userProfiles')
 			.withIndex('by_auth_user_id', (q) => q.eq('authUserId', session.userId))
 			.first();
-		const email = profile?.email?.trim().toLowerCase();
+		const email = profile?.email ? normalizeEmail(profile.email) : undefined;
 
 		let reservedAddress: string | null = null;
 		if (email) {

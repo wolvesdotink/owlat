@@ -27,14 +27,6 @@ import { requireMailboxAccess } from './permissions';
 
 const LOCALPART_PATTERN = /^[a-z0-9._-]+$/;
 
-function normalizeLocalpart(raw: string): string {
-	return raw.trim().toLowerCase();
-}
-
-function normalizeDomain(raw: string): string {
-	return raw.trim().toLowerCase();
-}
-
 export const setForInvitation = authedMutation({
 	args: {
 		invitationId: v.string(),
@@ -50,11 +42,11 @@ export const setForInvitation = authedMutation({
 			throwForbidden('No active organization');
 		}
 
-		const localpart = normalizeLocalpart(args.localpart);
+		const localpart = normalizeEmail(args.localpart);
 		if (!LOCALPART_PATTERN.test(localpart)) {
 			throwInvalidInput('Invalid local part. Use letters, digits, dots, hyphens, or underscores.');
 		}
-		const domain = normalizeDomain(args.domain);
+		const domain = normalizeEmail(args.domain);
 		if (!domain) {
 			throwInvalidInput('Domain is required');
 		}
@@ -95,7 +87,7 @@ export const setForInvitation = authedMutation({
 
 		const id = await ctx.db.insert('pendingMailboxes', {
 			invitationId: args.invitationId,
-			inviteeEmail: args.inviteeEmail.trim().toLowerCase(),
+			inviteeEmail: normalizeEmail(args.inviteeEmail),
 			organizationId: sessionWithOrg.activeOrganizationId,
 			localpart,
 			domain,
@@ -161,7 +153,7 @@ export const claimForInvitation = authedMutation({
 			.query('userProfiles')
 			.withIndex('by_auth_user_id', (q) => q.eq('authUserId', session.userId))
 			.first();
-		const callerEmail = profile?.email?.trim().toLowerCase();
+		const callerEmail = profile?.email ? normalizeEmail(profile.email) : undefined;
 		if (!callerEmail || callerEmail !== pending.inviteeEmail) {
 			return { created: false as const, error: 'invitee_mismatch' as const };
 		}
