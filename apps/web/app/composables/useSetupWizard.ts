@@ -20,12 +20,16 @@ import {
 	type FeatureFlagState,
 	type FeatureFlagKey,
 } from '@owlat/shared/featureFlags';
-import { SMTP_RELAY_PRESETS, type SmtpRelayPreset } from '@owlat/shared/setupSendingPresets';
+import {
+	PROVIDER_ENV_KEYS,
+	SMTP_RELAY_PRESETS,
+	type SmtpRelayPreset,
+} from '@owlat/shared/setupSendingPresets';
 
 // Re-export the shared preset table and its key type so the setup step (and its
 // tests) keep importing them from this composable; the single source of truth
 // lives in `@owlat/shared/setupSendingPresets`, shared with the setup CLI.
-export { SMTP_RELAY_PRESETS };
+export { SMTP_RELAY_PRESETS, PROVIDER_ENV_KEYS };
 export type SmtpPreset = SmtpRelayPreset;
 
 // ── Steps ────────────────────────────────────────────────────────────────────
@@ -168,23 +172,6 @@ export function validateEmailStep(draft: EmailStepDraft): EmailStepErrors {
 export function emailStepIsValid(draft: EmailStepDraft): boolean {
 	return Object.keys(validateEmailStep(draft)).length === 0;
 }
-
-// All env keys this step owns — cleared before re-applying so flipping provider
-// or clearing the From-identity never leaves a stale credential behind.
-const PROVIDER_ENV_KEYS = [
-	'EMAIL_PROVIDER',
-	'RESEND_API_KEY',
-	'AWS_SES_REGION',
-	'AWS_SES_ACCESS_KEY_ID',
-	'AWS_SES_SECRET_ACCESS_KEY',
-	'SMTP_RELAY_HOST',
-	'SMTP_RELAY_PORT',
-	'SMTP_RELAY_SECURE',
-	'SMTP_RELAY_USERNAME',
-	'SMTP_RELAY_PASSWORD',
-	'DEFAULT_FROM_EMAIL',
-	'DEFAULT_FROM_NAME',
-] as const;
 
 /**
  * Build the env patch for the email step from the current draft, starting from
