@@ -25,10 +25,12 @@ type Phase = 'idle' | 'applying' | 'finalizing';
 const phase = ref<Phase>('idle');
 const error = ref('');
 const redirectTarget = ref('/auth/login?postSetup=1');
-const slowRestart = ref(false);
+// Poll state drives the phased RestartProgress readout — number of readiness
+// probes elapsed since apply, and whether the probe has cleared.
+const pollCount = ref(0);
+const restartReady = ref(false);
 
 let pollTimer: ReturnType<typeof setTimeout> | null = null;
-let pollCount = 0;
 
 // After apply, the still-running web process keeps OWLAT_SETUP_MODE=true until it
 // restarts with the freshly-written .env — so a naive redirect to /auth/login is
@@ -59,13 +61,14 @@ function stopPolling() {
 async function pollUntilReady() {
 	if (await probeSetupCleared()) {
 		stopPolling();
+		restartReady.value = true;
 		window.location.href = redirectTarget.value;
 		return;
 	}
-	pollCount += 1;
-	// ~24s in: tell the operator a manual restart may be needed, but keep polling
-	// so a managed restart still auto-advances them.
-	if (pollCount >= 12) slowRestart.value = true;
+	pollCount.value += 1;
+	// Keep polling regardless — a managed restart auto-advances; the phased
+	// readout (and, past ~24s, the manual-restart affordance) is derived from
+	// pollCount by RestartProgress.
 	pollTimer = setTimeout(pollUntilReady, 2000);
 }
 
@@ -88,7 +91,8 @@ async function apply() {
 		// Server response could be tampered with; clamp to a same-origin path.
 		redirectTarget.value = safeRedirect(res.redirectTo, '/auth/login?postSetup=1');
 		phase.value = 'finalizing';
-		pollCount = 0;
+		pollCount.value = 0;
+		restartReady.value = false;
 		pollUntilReady();
 	} catch (e) {
 		error.value = (e as Error).message;
@@ -198,21 +202,20 @@ onUnmounted(stopPolling);
 				<UiErrorAlert
 					variant="success"
 					title="Setup applied"
-					message="Finishing up — the app is restarting to load your configuration, then we'll take you to sign in. This usually takes a few seconds."
+					message="Finishing up — the app is loading your configuration, then we'll take you to sign in. This usually takes a few seconds."
 				/>
-				<div
-					v-if="slowRestart"
-					class="rounded-lg border border-border-subtle bg-bg-elevated p-4 text-sm text-text-secondary"
-				>
-					Still waiting for the app to come back. On a managed install this finishes on its own. If
-					you're running a manual <code class="font-mono text-text-primary">docker compose</code>
-					stack, restart the web container — we'll continue automatically the moment it's back.
-					<div class="mt-3">
-						<UiButton variant="outline" size="sm" @click="continueNow"
-							>Continue to sign in</UiButton
-						>
-					</div>
-				</div>
+				<RestartProgress :poll-count="pollCount" :ready="restartReady">
+					<template #timeout>
+						On a managed install this finishes on its own. If you're running a manual
+						<code class="font-mono text-text-primary">docker compose</code> stack, restart the web
+						container — we'll continue automatically the moment it's back.
+						<div class="mt-3">
+							<UiButton variant="outline" size="sm" @click="continueNow"
+								>Continue to sign in</UiButton
+							>
+						</div>
+					</template>
+				</RestartProgress>
 			</div>
 
 			<footer class="mt-8 flex items-center justify-between border-t border-border-subtle pt-6">
