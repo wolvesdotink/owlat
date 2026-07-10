@@ -53,7 +53,7 @@ async function copyInstall() {
 						Self-host in 5 minutes
 					</a>
 					<div
-						class="inline-flex items-center gap-3 max-w-[420px] rounded-lg bg-surface-2 border border-border-subtle pl-4 pr-2 py-2 font-mono text-[0.8125rem]"
+						class="inline-flex items-center gap-3 max-w-[420px] rounded-lg bg-surface-2 border border-border-subtle pl-4 pr-2 py-2 font-mono text-caption"
 					>
 						<span class="text-text-tertiary shrink-0 select-none" aria-hidden="true">$</span>
 						<code
@@ -99,7 +99,7 @@ async function copyInstall() {
 					</div>
 				</div>
 
-				<p class="text-[0.75rem] text-text-tertiary mt-4">
+				<p class="text-xs text-text-tertiary mt-4">
 					<a
 						href="/waitlist"
 						class="text-text-tertiary hover:text-brand transition-colors duration-(--motion-fast) underline decoration-dotted underline-offset-[3px]"
@@ -120,7 +120,7 @@ async function copyInstall() {
 						<span class="w-[7px] h-[7px] rounded-full bg-border-strong" />
 						<span class="w-[7px] h-[7px] rounded-full bg-border-strong" />
 						<span
-							class="ml-auto font-mono text-[0.6875rem] font-medium uppercase tracking-[0.06em] text-text-tertiary"
+							class="ml-auto font-mono text-2xs font-medium uppercase tracking-[0.06em] text-text-tertiary"
 							>Email Builder</span
 						>
 					</div>

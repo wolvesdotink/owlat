@@ -61,7 +61,7 @@ const hostedFeatures = [
 				<div class="price-card price-card-highlight" style="--i: 3">
 					<p class="text-xs text-text-tertiary mb-3">Available today</p>
 					<h3 class="text-lg font-[550] text-text-primary mb-1">Self-Host</h3>
-					<p class="text-[0.8125rem] text-text-tertiary mb-5">
+					<p class="text-caption text-text-tertiary mb-5">
 						Run on your own VPS. No limits. No billing.
 					</p>
 
@@ -74,7 +74,7 @@ const hostedFeatures = [
 						<li
 							v-for="feature in selfHostFeatures"
 							:key="feature"
-							class="flex items-start gap-2.5 text-[0.8125rem] text-text-secondary leading-snug"
+							class="flex items-start gap-2.5 text-caption text-text-secondary leading-snug"
 						>
 							<svg
 								class="w-[15px] h-[15px] text-text-tertiary shrink-0 mt-[3px]"
@@ -104,7 +104,7 @@ const hostedFeatures = [
 				<div class="price-card" style="--i: 4">
 					<p class="text-xs text-text-tertiary mb-3">Coming soon</p>
 					<h3 class="text-lg font-[550] text-text-primary mb-1">Hosted Cloud</h3>
-					<p class="text-[0.8125rem] text-text-tertiary mb-5">We run it for you. Launch in Q3.</p>
+					<p class="text-caption text-text-tertiary mb-5">We run it for you. Launch in Q3.</p>
 
 					<p class="mb-6">
 						<span class="text-4xl font-[550] text-text-secondary tracking-tight">€—</span>
@@ -115,7 +115,7 @@ const hostedFeatures = [
 						<li
 							v-for="feature in hostedFeatures"
 							:key="feature"
-							class="flex items-start gap-2.5 text-[0.8125rem] text-text-tertiary leading-snug"
+							class="flex items-start gap-2.5 text-caption text-text-tertiary leading-snug"
 						>
 							<svg
 								class="w-[15px] h-[15px] text-text-tertiary shrink-0 mt-[3px]"
@@ -145,9 +145,9 @@ const hostedFeatures = [
 			<!-- Resource requirements -->
 			<div class="price-card" style="--i: 5">
 				<h3 class="text-base font-[550] text-text-primary mb-1">Resource requirements</h3>
-				<p class="text-[0.8125rem] text-text-tertiary mb-5">What your VPS needs to run Owlat.</p>
+				<p class="text-caption text-text-tertiary mb-5">What your VPS needs to run Owlat.</p>
 				<div class="rounded-(--radius-card) border border-border-subtle overflow-x-auto">
-					<table class="w-full text-[0.8125rem]">
+					<table class="w-full text-caption">
 						<thead>
 							<tr class="border-b border-border-subtle">
 								<th class="px-3.5 py-2.5 text-left text-text-tertiary font-medium" />
