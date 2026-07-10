@@ -9,7 +9,7 @@ repository = "https://github.com/wolvesdotink/owlat"
 [dependencies]
 # `macos-private-api` is required for transparent windows on macOS (used for the
 # sidebar vibrancy material); it pairs with `macOSPrivateApi: true` in tauri.conf.json.
-tauri = { version = "2", features = ["tray-icon", "macos-private-api"] }
+tauri = { version = "2", features = ["macos-private-api"] }
 tauri-plugin-notification = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-deep-link = "2"

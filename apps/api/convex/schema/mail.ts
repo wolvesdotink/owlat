@@ -977,7 +977,7 @@ export const mailTables = {
 		// otherwise (a fresh deploy without the classifier still notifies for all).
 		notifyAbout: v.optional(mailNotifyAboutValidator),
 		// Sub-setting of notifyAbout: whether non-`person` mail still increments the
-		// dock/tray unread badge (the toast can be quiet while the badge stays
+		// dock/taskbar unread badge (the toast can be quiet while the badge stays
 		// truthful). Optional so existing rows read as undefined; the reader defaults
 		// it ON (badge counts everything — the pre-existing behavior).
 		isBadgeNonPeopleOn: v.optional(v.boolean()),

@@ -5,16 +5,17 @@
 //! App submenu and roles) attached to the main window. Either way the events are
 //! delivered through the app-global `app.on_menu_event` handler wired in `main.rs`.
 //!
-//! Navigation items reuse `window::navigate_to` (same JS-injection trick as
-//! `tray.rs`); app-level actions emit `menu://…` events the SPA listens for (see
-//! apps/web `useDesktopMenu.ts`). The Edit submenu uses predefined roles so
+//! Navigation items reuse `window::navigate_to` (a small JS-injection helper);
+//! app-level actions emit `menu://…` events the SPA listens for (see apps/web
+//! `useDesktopMenu.ts`). The Edit submenu uses predefined roles so
 //! Cut/Copy/Paste/Select-All work inside the webview — essential on macOS.
 //!
 //! NB: Tauri 2.10 exposes no dock-menu API — the macOS dock menu is provided
 //! only through the `NSApplicationDelegate.applicationDockMenu:` hook, which tao
 //! owns, so we can't attach one without swizzling the delegate. The quick verbs
-//! it would carry (Compose / Open Inbox) instead live on the system tray and in
-//! this File menu, which are the native surfaces Owlat actually reaches today.
+//! it would carry (Compose / Open Inbox) instead live in this File menu, the
+//! native surface Owlat actually reaches today; the macOS dock right-click menu
+//! falls back to the OS default (Show / Quit).
 
 use tauri::{
     menu::{AboutMetadataBuilder, Menu, MenuItem, PredefinedMenuItem, SubmenuBuilder},

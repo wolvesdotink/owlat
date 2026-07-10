@@ -7,10 +7,7 @@
  * Nothing here touches the DOM, Tauri, or the network — the composable feeds it
  * plain data and executes the returned plan.
  */
-import type {
-	PostboxMailCategory,
-	PostboxNotifyAbout,
-} from '~/utils/postboxNotify';
+import type { PostboxMailCategory, PostboxNotifyAbout } from '~/utils/postboxNotify';
 
 /** One unread inbox message as returned by `mail.mailbox.newestUnreadInbox`. */
 export interface UnreadPeekMessage {
@@ -34,7 +31,7 @@ export interface UnreadPeekMessage {
  */
 export function shouldNotify(
 	category: PostboxMailCategory | undefined,
-	setting: PostboxNotifyAbout,
+	setting: PostboxNotifyAbout
 ): boolean {
 	if (setting === 'nothing') return false;
 	if (setting === 'everything') return true;
@@ -52,12 +49,10 @@ export function shouldNotify(
 export function badgeCount(
 	total: number,
 	messages: UnreadPeekMessage[],
-	badgeNonPeople: boolean,
+	badgeNonPeople: boolean
 ): number {
 	if (badgeNonPeople) return total;
-	const people = messages.filter(
-		(m) => m.category === undefined || m.category === 'person',
-	).length;
+	const people = messages.filter((m) => m.category === undefined || m.category === 'person').length;
 	return Math.min(people, total);
 }
 
@@ -67,7 +62,7 @@ export function badgeCount(
  */
 export function newlyArrived(
 	current: UnreadPeekMessage[],
-	seen: ReadonlySet<string>,
+	seen: ReadonlySet<string>
 ): UnreadPeekMessage[] {
 	return current.filter((m) => !seen.has(m.messageId));
 }
@@ -119,7 +114,7 @@ export function planNotifications(
 	newMessages: UnreadPeekMessage[],
 	threadWindows: ReadonlyMap<string, ThreadWindowEntry>,
 	now: number,
-	windowMs: number,
+	windowMs: number
 ): PlanResult {
 	// Preserve prior entries so a still-open window keeps accumulating; prune
 	// stale ones so memory can't grow unbounded.
@@ -163,33 +158,4 @@ export const NOTIFICATION_GROUP_WINDOW_MS = 30_000;
  */
 export function groupBody(count: number, sender: string): string {
 	return `${count} new messages from ${sender}`;
-}
-
-/** One row in the tray quick-peek dropdown. Plain text only. */
-export interface TrayPeekItem {
-	messageId: string;
-	folderRole: string;
-	title: string;
-}
-
-function truncate(s: string, max: number): string {
-	const t = s.trim();
-	return t.length > max ? `${t.slice(0, max - 1)}…` : t;
-}
-
-/**
- * Map the newest-unread peek window to tray menu rows: "Sender — Subject",
- * clamped to `limit` (≈5) and to a short label length so the native menu stays
- * compact. Clicking a row opens that thread in the inbox via the existing
- * action routing (folderRole 'inbox').
- */
-export function trayPeekItems(
-	messages: UnreadPeekMessage[],
-	limit = 5,
-): TrayPeekItem[] {
-	return messages.slice(0, limit).map((m) => {
-		const sender = truncate(senderOf(m), 28);
-		const subject = truncate(m.subject || '(no subject)', 40);
-		return { messageId: m.messageId, folderRole: 'inbox', title: `${sender} — ${subject}` };
-	});
 }

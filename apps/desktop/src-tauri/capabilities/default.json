@@ -1,7 +1,7 @@
 {
 	"$schema": "../gen/schemas/desktop-schema.json",
 	"identifier": "default",
-	"description": "Core capability for the main + compose windows: tray/window control, notifications, deep links, updater, shell-open, and the workspace store. App-defined commands (secret_*, update_tray_badge, …) are not ACL-gated.",
+	"description": "Core capability for the main + compose windows: window control, notifications, deep links, updater, shell-open, and the workspace store. App-defined commands (secret_*, update_unread_badge, …) are not ACL-gated.",
 	"windows": ["main", "compose"],
 	"permissions": [
 		"core:default",

@@ -25,7 +25,8 @@ export async function toggleMaximizeWindow(): Promise<void> {
 }
 
 export async function closeWindow(): Promise<void> {
-	// Hits the Rust CloseRequested handler → hides to tray (window.rs).
+	// Closes the window. There is no close-to-tray handler: closing the main
+	// window quits the app (the menu-bar tray was removed).
 	await getCurrentWindow().close();
 }
 

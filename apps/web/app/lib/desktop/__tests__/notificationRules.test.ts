@@ -5,7 +5,6 @@ import {
 	newlyArrived,
 	planNotifications,
 	shouldNotify,
-	trayPeekItems,
 	NOTIFICATION_GROUP_WINDOW_MS,
 	type ThreadWindowEntry,
 	type UnreadPeekMessage,
@@ -91,7 +90,7 @@ describe('planNotifications grouping window', () => {
 			[msg({ messageId: 'a', threadId: 't1' })],
 			new Map(),
 			now,
-			win,
+			win
 		);
 		expect(notifications).toEqual([
 			{ kind: 'single', message: expect.objectContaining({ messageId: 'a' }) },
@@ -107,7 +106,7 @@ describe('planNotifications grouping window', () => {
 			],
 			new Map(),
 			now,
-			win,
+			win
 		);
 		expect(notifications).toHaveLength(1);
 		const n = notifications[0]!;
@@ -126,18 +125,13 @@ describe('planNotifications grouping window', () => {
 			[msg({ messageId: 'a', threadId: 't1' }), msg({ messageId: 'b', threadId: 't2' })],
 			new Map(),
 			now,
-			win,
+			win
 		);
 		expect(notifications).toHaveLength(2);
 	});
 
 	it('cumulates a later arrival within the window into an updated group', () => {
-		const first = planNotifications(
-			[msg({ messageId: 'a', threadId: 't1' })],
-			new Map(),
-			now,
-			win,
-		);
+		const first = planNotifications([msg({ messageId: 'a', threadId: 't1' })], new Map(), now, win);
 		expect(first.notifications[0]!.kind).toBe('single');
 
 		// A second message in the same thread 5s later — still within the window.
@@ -145,7 +139,7 @@ describe('planNotifications grouping window', () => {
 			[msg({ messageId: 'b', threadId: 't1' })],
 			first.threadWindows,
 			now + 5_000,
-			win,
+			win
 		);
 		const n = second.notifications[0]!;
 		expect(n.kind).toBe('group');
@@ -153,17 +147,12 @@ describe('planNotifications grouping window', () => {
 	});
 
 	it('starts a fresh count once the window has elapsed', () => {
-		const first = planNotifications(
-			[msg({ messageId: 'a', threadId: 't1' })],
-			new Map(),
-			now,
-			win,
-		);
+		const first = planNotifications([msg({ messageId: 'a', threadId: 't1' })], new Map(), now, win);
 		const later = planNotifications(
 			[msg({ messageId: 'b', threadId: 't1' })],
 			first.threadWindows,
 			now + win + 1,
-			win,
+			win
 		);
 		expect(later.notifications[0]!.kind).toBe('single');
 		// Stale thread memory is pruned.
@@ -179,39 +168,9 @@ describe('planNotifications grouping window', () => {
 			[msg({ messageId: 'a', threadId: 't1' })],
 			seed,
 			win + 1, // well past the window relative to the entry at lastAt=0
-			win,
+			win
 		);
 		expect(threadWindows.has('old')).toBe(false);
-	});
-});
-
-describe('trayPeekItems', () => {
-	it('maps up to `limit` newest unread to plain-text inbox rows', () => {
-		const items = trayPeekItems(
-			[
-				msg({ messageId: 'a', fromName: 'Anna', subject: 'Lunch?' }),
-				msg({ messageId: 'b', fromName: 'Bob', subject: 'Report' }),
-			],
-			5,
-		);
-		expect(items).toEqual([
-			{ messageId: 'a', folderRole: 'inbox', title: 'Anna — Lunch?' },
-			{ messageId: 'b', folderRole: 'inbox', title: 'Bob — Report' },
-		]);
-	});
-
-	it('caps to the limit', () => {
-		const many = Array.from({ length: 10 }, (_, i) => msg({ messageId: `m${i}` }));
-		expect(trayPeekItems(many, 5)).toHaveLength(5);
-	});
-
-	it('truncates long sender/subject and falls back on empty subject', () => {
-		const [item] = trayPeekItems(
-			[msg({ messageId: 'a', fromName: 'x'.repeat(40), subject: '' })],
-			5,
-		);
-		expect(item!.title.startsWith('x'.repeat(27))).toBe(true);
-		expect(item!.title).toContain('(no subject)');
 	});
 });
 

@@ -9,7 +9,7 @@
  * count for the workspace you are NOT currently in. See
  * `lib/desktop/workspaceBadgeClient.ts`.
  *
- * The tray/dock total stays owned by useDesktopNotifications to avoid duplicate
+ * The dock/taskbar total stays owned by useDesktopNotifications to avoid duplicate
  * badge writers. `badgeFor(id)` is the read accessor for the rail.
  */
 import { api } from '@owlat/api';
@@ -33,9 +33,7 @@ function setBadge(id: string, count: number): void {
 
 /** Reconcile background clients to exactly the connected, inactive workspaces. */
 function syncBackgroundClients(workspaces: readonly WorkspaceConfig[], activeId: string | null) {
-	const wantedIds = new Set(
-		workspaces.filter((w) => w.id !== activeId).map((w) => w.id),
-	);
+	const wantedIds = new Set(workspaces.filter((w) => w.id !== activeId).map((w) => w.id));
 
 	// Tear down clients for workspaces that are gone or now active.
 	for (const [id, client] of backgroundClients) {
@@ -50,7 +48,7 @@ function syncBackgroundClients(workspaces: readonly WorkspaceConfig[], activeId:
 		if (ws.id === activeId || backgroundClients.has(ws.id)) continue;
 		backgroundClients.set(
 			ws.id,
-			createWorkspaceBadgeClient(ws, (count) => setBadge(ws.id, count)),
+			createWorkspaceBadgeClient(ws, (count) => setBadge(ws.id, count))
 		);
 	}
 }
@@ -65,10 +63,10 @@ export function useWorkspaceBadges() {
 	const { isEnabled } = useFeatureFlag();
 
 	const { data: inboundStats } = useConvexQuery(api.inbox.queries.getInboundStats, () =>
-		isEnabled('inbox') ? {} : 'skip',
+		isEnabled('inbox') ? {} : 'skip'
 	);
 	const { data: mentionCount } = useConvexQuery(api.chat.mentions.countMyUnreadMentions, () =>
-		isEnabled('chat') ? {} : 'skip',
+		isEnabled('chat') ? {} : 'skip'
 	);
 
 	// Active workspace: fed by the global client (already authed against it).
@@ -83,11 +81,10 @@ export function useWorkspaceBadges() {
 	// Inactive workspaces: one background client each (desktop only).
 	if (isDesktopRuntime()) {
 		backgroundOwners += 1;
-		watch(
-			[workspaces, activeId],
-			([list, active]) => syncBackgroundClients(list, active),
-			{ immediate: true, deep: true },
-		);
+		watch([workspaces, activeId], ([list, active]) => syncBackgroundClients(list, active), {
+			immediate: true,
+			deep: true,
+		});
 		if (getCurrentScope()) {
 			onScopeDispose(() => {
 				backgroundOwners -= 1;

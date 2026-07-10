@@ -507,11 +507,11 @@ export const inboxUnreadCount = publicQuery({
 
 /**
  * The newest unread, not-snoozed inbox messages across the user's mailboxes
- * (plus the exact total unread count), for the desktop tray "quick peek"
- * dropdown, notification-rule filtering, and per-thread grouping. `total`
+ * (plus the exact total unread count), for the desktop unread badge,
+ * notification-rule filtering, and per-thread grouping. `total`
  * is the O(1) denormalized unread count (same source as `inboxUnreadCount`);
- * `messages` is a bounded, best-effort newest-first window used only for the
- * peek list and category-aware toast decisions — it never drives `total`.
+ * `messages` is a bounded, best-effort newest-first window used only for
+ * category-aware toast decisions — it never drives `total`.
  * Minimal, plain-text fields only.
  */
 // public: soft-auth — returns an empty peek for anonymous; ownership via by_user

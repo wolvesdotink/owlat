@@ -42,9 +42,8 @@ function onSenderScreenerChange(event: Event) {
 					Notify me about
 				</label>
 				<p class="text-xs text-text-tertiary mt-0.5">
-					Which new mail pops a desktop notification. "People &amp; important
-					only" uses smart categories to stay quiet about newsletters and
-					automated mail.
+					Which new mail pops a desktop notification. "People &amp; important only" uses smart
+					categories to stay quiet about newsletters and automated mail.
 				</p>
 			</div>
 			<select
@@ -54,26 +53,19 @@ function onSenderScreenerChange(event: Event) {
 				:disabled="isSaving"
 				@change="onNotifyAboutChange"
 			>
-				<option
-					v-for="opt in POSTBOX_NOTIFY_ABOUT_OPTIONS"
-					:key="opt.value"
-					:value="opt.value"
-				>
+				<option v-for="opt in POSTBOX_NOTIFY_ABOUT_OPTIONS" :key="opt.value" :value="opt.value">
 					{{ opt.label }}
 				</option>
 			</select>
 		</div>
-		<div
-			class="px-5 py-4 flex items-center justify-between gap-4 border-t border-border-subtle"
-		>
+		<div class="px-5 py-4 flex items-center justify-between gap-4 border-t border-border-subtle">
 			<div class="min-w-0">
 				<label for="postbox-badge-nonpeople" class="font-medium text-sm block">
 					Count all mail in the badge
 				</label>
 				<p class="text-xs text-text-tertiary mt-0.5">
-					When off, the dock/tray unread badge counts only people &amp;
-					important mail — keeping the number focused even when notifications
-					are quiet. On by default.
+					When off, the dock/taskbar unread badge counts only people &amp; important mail — keeping
+					the number focused even when notifications are quiet. On by default.
 				</p>
 			</div>
 			<input
@@ -85,18 +77,15 @@ function onSenderScreenerChange(event: Event) {
 				@change="onBadgeNonPeopleChange"
 			/>
 		</div>
-		<div
-			class="px-5 py-4 flex items-center justify-between gap-4 border-t border-border-subtle"
-		>
+		<div class="px-5 py-4 flex items-center justify-between gap-4 border-t border-border-subtle">
 			<div class="min-w-0">
 				<label for="postbox-sender-screener" class="font-medium text-sm block">
 					Screen first-time senders
 				</label>
 				<p class="text-xs text-text-tertiary mt-0.5">
-					When on, mail from someone you've never corresponded with is held out
-					of the Reply Queue until you accept the sender — their mail still
-					lands in the inbox. Keeps triage focused on people you know. Off by
-					default.
+					When on, mail from someone you've never corresponded with is held out of the Reply Queue
+					until you accept the sender — their mail still lands in the inbox. Keeps triage focused on
+					people you know. Off by default.
 				</p>
 			</div>
 			<input

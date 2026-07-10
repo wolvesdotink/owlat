@@ -108,9 +108,7 @@ Requires:
    cd apps/desktop && bunx tauri icon /tmp/owlat-1024.png
    ```
    `tauri icon` also emits `icons/android/` and `icons/ios/` — delete those (we
-   don't ship mobile). `icons/tray.png` is separate and must stay a transparent
-   black glyph: it's the macOS menu-bar **template** icon (rendered from the alpha
-   channel), so an opaque plate would show as a solid square.
+   don't ship mobile).
 2. **Updater signing key** (for auto-update):
    ```sh
    bunx tauri signer generate -w ~/.owlat/desktop-updater.key
