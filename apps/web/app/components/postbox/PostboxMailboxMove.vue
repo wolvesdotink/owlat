@@ -62,7 +62,7 @@ const mxRecordLine = computed(() =>
 	mxHost.value ? `${domain.value}.\t\tIN\tMX\t${mxPriority.value}\t${mxHost.value}.` : ''
 );
 
-function formatSync(ts: number | null | undefined): string {
+function formatTimestamp(ts: number | null | undefined): string {
 	if (!ts) return 'never';
 	return new Date(ts).toLocaleString();
 }
@@ -278,7 +278,7 @@ async function onCancel() {
 									</span>
 									<span v-else-if="mxCheck" class="text-xs text-text-tertiary">
 										Not pointing here yet — DNS can take a while to propagate. Checked
-										{{ formatSync(mxCheck.checkedAt) }}.
+										{{ formatTimestamp(mxCheck.checkedAt) }}.
 									</span>
 								</div>
 								<p class="text-xs text-text-tertiary">
@@ -319,7 +319,7 @@ async function onCancel() {
 							<p class="text-xs text-text-secondary">
 								Stop syncing from your old provider and keep everything it already brought in as a
 								read-only archive. Your old mail stays fully searchable — nothing is deleted. Last
-								synced: {{ formatSync(data.lastSyncAt) }}.
+								synced: {{ formatTimestamp(data.lastSyncAt) }}.
 							</p>
 							<p class="text-xs text-text-tertiary">
 								Do this only after mail for <code>{{ domain }}</code> points at Owlat, so no message
