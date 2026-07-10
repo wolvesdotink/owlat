@@ -19,6 +19,31 @@ const { data: status, isLoading, error } = useOrganizationQuery(api.delivery.sta
 
 const canSend = computed(() => status.value?.canSend === true);
 
+// SES feedback loop --------------------------------------------------------
+// Only relevant when SES is the active provider. The webhook URL and the live
+// "last event received" line let an admin wire up and confirm the SNS topic.
+const isSes = computed(() => status.value?.provider === 'ses');
+
+const runtimeConfig = useRuntimeConfig();
+// Absolute HTTPS endpoint SNS subscribes to. When the site URL is unknown we
+// return '' (never a relative path — an SNS HTTPS subscription can't use one)
+// so the copy block hides behind a "site URL not configured" hint instead of
+// handing the operator a broken value. Mirrors the useFormSettings precedent.
+const sesWebhookUrl = computed(() => {
+	const base = runtimeConfig.public.convexSiteUrl || runtimeConfig.public.convexUrl;
+	return base ? `${base.replace(/\/$/, '')}/webhooks/ses` : '';
+});
+
+// Live "last event received" — enabled only for SES so we don't poll otherwise.
+const { data: lastSesEventAt } = useOrganizationQuery(api.delivery.status.getLastSesEventAt, () =>
+	isSes.value ? {} : undefined
+);
+const lastSesEventLabel = computed(() => {
+	const at = lastSesEventAt.value;
+	if (!at) return null;
+	return new Date(at).toLocaleString();
+});
+
 // Names of the required env vars the active provider is MISSING. Names only —
 // `getStatus` never returns credential values, so nothing secret reaches here.
 const missingEnvNames = computed(() =>
@@ -322,6 +347,100 @@ async function handleSendTest() {
 						<Icon name="lucide:check" class="w-3.5 h-3.5" />
 						Last successful test: {{ lastTestLabel }}
 					</p>
+				</div>
+			</UiCard>
+
+			<!-- SES bounce & complaint feedback (only when SES is the provider) -->
+			<UiCard v-if="isSes" padding="none" overflow="hidden">
+				<template #header>
+					<div class="flex items-center gap-3">
+						<UiIconBox icon="lucide:radio" size="sm" variant="surface" rounded="lg" />
+						<div>
+							<h2 class="text-lg font-semibold text-text-primary">
+								SES bounce &amp; complaint feedback
+							</h2>
+							<p class="text-sm text-text-secondary">
+								Let SES tell Owlat when mail bounces or is marked as spam, so those addresses are
+								suppressed automatically
+							</p>
+						</div>
+					</div>
+				</template>
+
+				<div class="p-6 space-y-5">
+					<p class="text-sm text-text-secondary">
+						SES delivers this feedback through an Amazon SNS topic. Point an HTTPS subscription at
+						the endpoint below — Owlat verifies each message&rsquo;s signature and confirms the
+						subscription for you.
+					</p>
+
+					<!-- Webhook endpoint -->
+					<div v-if="sesWebhookUrl">
+						<div class="flex items-center justify-between mb-2">
+							<p class="text-xs font-medium text-text-primary">SNS subscription endpoint</p>
+							<button
+								type="button"
+								class="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-text-secondary transition-colors hover:bg-bg-surface hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+								:title="isCopied('ses-url') ? 'Copied' : 'Copy endpoint URL'"
+								@click="copy(sesWebhookUrl, 'ses-url')"
+							>
+								<Icon
+									:name="isCopied('ses-url') ? 'lucide:check' : 'lucide:copy'"
+									class="w-3.5 h-3.5"
+									:class="isCopied('ses-url') ? 'text-success' : ''"
+								/>
+								{{ isCopied('ses-url') ? 'Copied' : 'Copy' }}
+							</button>
+						</div>
+						<pre
+							class="select-all overflow-x-auto rounded-lg bg-bg-surface px-3 py-2 font-mono text-xs text-text-primary"
+							>{{ sesWebhookUrl }}</pre
+						>
+					</div>
+					<p v-else class="text-xs text-text-tertiary">
+						Set your site URL to see the endpoint SNS should subscribe to.
+					</p>
+
+					<!-- Setup steps -->
+					<ol class="space-y-2 text-sm text-text-secondary list-decimal pl-5">
+						<li>
+							In the SNS console, create a topic (e.g.
+							<code class="text-text-primary">owlat-ses-feedback</code>) and add an
+							<span class="text-text-primary">HTTPS</span> subscription with the endpoint above.
+						</li>
+						<li>
+							Set <code class="text-text-primary">SES_SNS_TOPIC_ARN</code> to that topic&rsquo;s
+							ARN. Owlat only accepts feedback from this exact topic, so the endpoint stays closed
+							until it&rsquo;s set.
+						</li>
+						<li>
+							In the SES console, create a
+							<span class="text-text-primary">Configuration Set</span> with an event destination
+							publishing <code class="text-text-primary">Bounce</code>,
+							<code class="text-text-primary">Complaint</code> and
+							<code class="text-text-primary">Delivery</code> events to that topic.
+						</li>
+						<li>
+							Set <code class="text-text-primary">SES_CONFIGURATION_SET</code> to the set&rsquo;s
+							name so every send is attributed. Changes take effect on the next send — no restart
+							needed.
+						</li>
+					</ol>
+
+					<!-- Live "last event received" line -->
+					<div class="flex items-center gap-2 text-xs">
+						<template v-if="lastSesEventLabel">
+							<Icon name="lucide:check-circle-2" class="w-3.5 h-3.5 text-success" />
+							<span class="text-success">Last event received: {{ lastSesEventLabel }}</span>
+						</template>
+						<template v-else>
+							<Icon name="lucide:clock" class="w-3.5 h-3.5 text-text-tertiary" />
+							<span class="text-text-tertiary">
+								No feedback received yet. Once the subscription is confirmed and a message bounces
+								or is delivered, it appears here.
+							</span>
+						</template>
+					</div>
 				</div>
 			</UiCard>
 		</div>

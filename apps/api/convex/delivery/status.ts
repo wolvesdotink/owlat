@@ -72,6 +72,26 @@ export const getStatus = adminQuery({
 });
 
 /**
+ * Timestamp (ms) of the most recent SNS message received on `/webhooks/ses`, or
+ * null if none. Powers the Delivery page's live "last event received" line so an
+ * admin can confirm the SES → SNS feedback loop is actually delivering to this
+ * instance. Reads only the audit-store's newest `ses` row via the
+ * `by_source_and_received_at` index — never the payload body, so nothing
+ * sensitive leaves the backend. Admin-gated (operational config).
+ */
+export const getLastSesEventAt = adminQuery({
+	args: {},
+	handler: async (ctx): Promise<number | null> => {
+		const latest = await ctx.db
+			.query('webhookPayloads')
+			.withIndex('by_source_and_received_at', (q) => q.eq('source', 'ses'))
+			.order('desc')
+			.first();
+		return latest?.receivedAt ?? null;
+	},
+});
+
+/**
  * Record a successful delivery test on the singleton instanceSettings row.
  * Internal: only `sendTest` (after a real send succeeds) writes this.
  */

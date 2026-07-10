@@ -20,6 +20,7 @@ import { verifyPreferenceToken, updatePreferences } from './delivery/preferences
 import { submitForm, handleFormCors } from './forms/apiHttp';
 import { handleResendWebhook } from './resendWebhook';
 import { handleMtaWebhook } from './mtaWebhook';
+import { handleSesWebhook } from './sesWebhook';
 import { handleMailWebhook } from './mail/webhook';
 import { handleVerifyCredential } from './mail/authHttp';
 import { handleSmsWebhook, handleWhatsAppWebhook, handleGenericWebhook } from './webhooks/channels';
@@ -243,6 +244,13 @@ http.route({
 	path: '/webhooks/mta',
 	method: 'POST',
 	handler: handleMtaWebhook,
+});
+
+// POST /webhooks/ses - Handle AWS SES feedback via SNS (bounce, complaint, delivery)
+http.route({
+	path: '/webhooks/ses',
+	method: 'POST',
+	handler: handleSesWebhook,
 });
 
 // POST /webhooks/mta-mailbox - Personal-mail (Postbox) inbound delivery from MTA

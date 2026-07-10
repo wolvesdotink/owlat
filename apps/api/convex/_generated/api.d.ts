@@ -497,6 +497,7 @@ import type * as segments from "../segments.js";
 import type * as segments_listing from "../segments/listing.js";
 import type * as semanticFileProcessing from "../semanticFileProcessing.js";
 import type * as semanticFiles from "../semanticFiles.js";
+import type * as sesWebhook from "../sesWebhook.js";
 import type * as shareLinkHttp from "../shareLinkHttp.js";
 import type * as shareLinkQueries from "../shareLinkQueries.js";
 import type * as shareLinks from "../shareLinks.js";
@@ -523,6 +524,7 @@ import type * as webhooks_adapters_generic from "../webhooks/adapters/generic.js
 import type * as webhooks_adapters_meta from "../webhooks/adapters/meta.js";
 import type * as webhooks_adapters_mta from "../webhooks/adapters/mta.js";
 import type * as webhooks_adapters_resend from "../webhooks/adapters/resend.js";
+import type * as webhooks_adapters_ses from "../webhooks/adapters/ses.js";
 import type * as webhooks_adapters_twilio from "../webhooks/adapters/twilio.js";
 import type * as webhooks_channels from "../webhooks/channels.js";
 import type * as webhooks_cleanup from "../webhooks/cleanup.js";
@@ -1045,6 +1047,7 @@ declare const fullApi: ApiFromModules<{
   "segments/listing": typeof segments_listing;
   semanticFileProcessing: typeof semanticFileProcessing;
   semanticFiles: typeof semanticFiles;
+  sesWebhook: typeof sesWebhook;
   shareLinkHttp: typeof shareLinkHttp;
   shareLinkQueries: typeof shareLinkQueries;
   shareLinks: typeof shareLinks;
@@ -1071,6 +1074,7 @@ declare const fullApi: ApiFromModules<{
   "webhooks/adapters/meta": typeof webhooks_adapters_meta;
   "webhooks/adapters/mta": typeof webhooks_adapters_mta;
   "webhooks/adapters/resend": typeof webhooks_adapters_resend;
+  "webhooks/adapters/ses": typeof webhooks_adapters_ses;
   "webhooks/adapters/twilio": typeof webhooks_adapters_twilio;
   "webhooks/channels": typeof webhooks_channels;
   "webhooks/cleanup": typeof webhooks_cleanup;
