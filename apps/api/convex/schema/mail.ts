@@ -287,6 +287,51 @@ export const mailTables = {
 		// query (e.g. an ops sweep) needs it.
 		.index('by_account', ['accountId']),
 
+	// Staged "move my mailbox here" job — the full move of a connected external
+	// mailbox onto an Owlat-hosted mailbox on the SAME address, ending with the
+	// external account demoted to a READ-ONLY ARCHIVE. Distinct from
+	// `mailboxMigrations` (a one-time HISTORICAL import that leaves the external
+	// account live and syncing): a move stops sync at the end, points inbound MX
+	// at this deployment, and keeps the old mailbox's history queryable — nothing
+	// is deleted. 1:1 with the external account being moved.
+	//
+	// Stages advance one way — provisioning → cutover_pending → archived — but
+	// each transition is IDEMPOTENT (re-running the current stage is a no-op) and
+	// the whole job is PAUSABLE (`paused`) so a member can stop between DNS steps
+	// and resume later without losing place. Rollback = cancel the job before it
+	// reaches `archived` (mail/mailboxMove.ts:cancel): the archive demotion is the
+	// only irreversible step and it never runs until the final stage, so repointing
+	// MX back loses nothing.
+	mailboxMoves: defineTable({
+		userId: v.string(), // BetterAuth user (mailbox owner running the move)
+		organizationId: v.string(),
+		accountId: v.id('externalMailAccounts'), // the external account being moved
+		sourceMailboxId: v.id('mailboxes'), // the external mailbox (becomes the archive)
+		address: v.string(), // canonical address kept through the move
+		domain: v.string(), // domain part — the one whose MX must point here
+		stage: v.union(
+			v.literal('provisioning'), // waiting for a hosted mailbox on this address
+			v.literal('cutover_pending'), // hosted mailbox exists; waiting on MX cutover
+			v.literal('archived') // external demoted to read-only archive; move done
+		),
+		paused: v.boolean(),
+		// Hosted mailbox provisioned on the same address (set at the
+		// provisioning → cutover_pending transition; the live inbox after cutover).
+		hostedMailboxId: v.optional(v.id('mailboxes')),
+		// The admin mailbox request raised when the mover can't create a hosted
+		// mailbox themselves (hosted creation is admin-only) — surfaced, never
+		// bypassed. Resolved once an admin provisions. Absent when the mover is an
+		// admin who provisioned directly.
+		provisionRequestId: v.optional(v.id('mailboxRequests')),
+		createdAt: v.number(),
+		updatedAt: v.number(),
+		archivedAt: v.optional(v.number()),
+	})
+		// The mover reads/advances their own move (at most one live per user).
+		.index('by_user', ['userId'])
+		// 1:1 lookup from the external account (idempotent start).
+		.index('by_account', ['accountId']),
+
 	// IMAP-visible folders. System folders carry a `role`; user folders
 	// have role=undefined and arbitrary names.
 	mailFolders: defineTable({
