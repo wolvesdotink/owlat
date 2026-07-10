@@ -24,7 +24,7 @@ import { adminQuery, authedAction } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import { internalMutation } from '../_generated/server';
 import { getOptional, type EnvKey } from '../lib/env';
-import { isSendProviderKind } from '../lib/sendProviders';
+import { isSendProviderKind } from '../lib/sendProviders/types';
 import { providerKindConfigured, isDeliveryConfigured } from '../lib/sendProviders/capability';
 
 /**

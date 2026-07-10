@@ -13,6 +13,7 @@ describe('Send provider registry', () => {
 		expect(providerFor('mta').kind).toBe('mta');
 		expect(providerFor('ses').kind).toBe('ses');
 		expect(providerFor('resend').kind).toBe('resend');
+		expect(providerFor('smtp').kind).toBe('smtp');
 	});
 
 	it('providerFor throws on unknown kinds', () => {
@@ -21,7 +22,7 @@ describe('Send provider registry', () => {
 
 	it('SEND_PROVIDERS keys match the SendProviderKind union exactly', () => {
 		const keys = Object.keys(SEND_PROVIDERS).sort();
-		expect(keys).toEqual(['mta', 'resend', 'ses']);
+		expect(keys).toEqual(['mta', 'resend', 'ses', 'smtp']);
 	});
 });
 
@@ -30,6 +31,7 @@ describe('isSendProviderKind', () => {
 		expect(isSendProviderKind('mta')).toBe(true);
 		expect(isSendProviderKind('ses')).toBe(true);
 		expect(isSendProviderKind('resend')).toBe(true);
+		expect(isSendProviderKind('smtp')).toBe(true);
 	});
 
 	it('returns false for unknown / nullish kinds', () => {
@@ -63,11 +65,14 @@ describe('EmailErrorCode + isRetryableErrorCode', () => {
 });
 
 describe('Adapter contracts (post-Phase-2)', () => {
-	it.each(['mta', 'ses', 'resend'] as const)('%s declares a non-empty retryDelays', (kind) => {
-		expect(providerFor(kind).retryDelays.length).toBeGreaterThan(0);
-	});
+	it.each(['mta', 'ses', 'resend', 'smtp'] as const)(
+		'%s declares a non-empty retryDelays',
+		(kind) => {
+			expect(providerFor(kind).retryDelays.length).toBeGreaterThan(0);
+		}
+	);
 
-	it.each(['mta', 'ses', 'resend'] as const)('%s categorizeError is callable', (kind) => {
+	it.each(['mta', 'ses', 'resend', 'smtp'] as const)('%s categorizeError is callable', (kind) => {
 		// Returns a code without throwing; defaults to UNKNOWN for empty input.
 		expect(providerFor(kind).categorizeError('')).toBe(EmailErrorCode.UNKNOWN);
 	});

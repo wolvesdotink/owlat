@@ -557,7 +557,7 @@ export function needsDeliveryProvider(
  * browser-safe and dependency-free; it mirrors the backend `SendProviderKind`
  * (`apps/api/convex/lib/sendProviders/types.ts`).
  */
-export const DELIVERY_PROVIDER_KINDS = ['mta', 'resend', 'ses'] as const;
+export const DELIVERY_PROVIDER_KINDS = ['mta', 'resend', 'ses', 'smtp'] as const;
 export type DeliveryProviderKind = (typeof DELIVERY_PROVIDER_KINDS)[number];
 
 /** True iff `value` names a known delivery provider (no implicit MTA default). */
@@ -587,6 +587,11 @@ export function getSendPathRequiredEnv(provider: string | undefined): string[] {
 			return ['RESEND_API_KEY'];
 		case 'ses':
 			return ['AWS_SES_REGION', 'AWS_SES_ACCESS_KEY_ID', 'AWS_SES_SECRET_ACCESS_KEY'];
+		case 'smtp':
+			// Host + the credentials this deployment authenticates to the relay
+			// with. Port/TLS have safe defaults (587 / STARTTLS), so they are not
+			// required to send.
+			return ['SMTP_RELAY_HOST', 'SMTP_RELAY_USERNAME', 'SMTP_RELAY_PASSWORD'];
 		default:
 			return [];
 	}

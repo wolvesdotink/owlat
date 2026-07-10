@@ -56,19 +56,34 @@ describe('featureFlags — dependency cascade', () => {
 	});
 
 	it('disables inbox.codeTasks when either inbox or ai.agent is off', () => {
-		const noInbox: FeatureFlagState = { 'inbox.codeTasks': true, inbox: false, 'ai.agent': true, ai: true };
+		const noInbox: FeatureFlagState = {
+			'inbox.codeTasks': true,
+			inbox: false,
+			'ai.agent': true,
+			ai: true,
+		};
 		expect(resolveFlags(noInbox)['inbox.codeTasks']).toBe(false);
 
 		const noAgent: FeatureFlagState = { 'inbox.codeTasks': true, inbox: true, 'ai.agent': false };
 		expect(resolveFlags(noAgent)['inbox.codeTasks']).toBe(false);
 
-		const both: FeatureFlagState = { 'inbox.codeTasks': true, inbox: true, 'ai.agent': true, ai: true };
+		const both: FeatureFlagState = {
+			'inbox.codeTasks': true,
+			inbox: true,
+			'ai.agent': true,
+			ai: true,
+		};
 		expect(resolveFlags(both)['inbox.codeTasks']).toBe(true);
 	});
 
 	it('cascades through chains: codeTasks requires ai.agent which requires inbox + ai', () => {
 		// AI master off → ai.agent off → codeTasks off
-		const stored: FeatureFlagState = { ai: false, 'ai.agent': true, inbox: true, 'inbox.codeTasks': true };
+		const stored: FeatureFlagState = {
+			ai: false,
+			'ai.agent': true,
+			inbox: true,
+			'inbox.codeTasks': true,
+		};
 		const resolved = resolveFlags(stored);
 		expect(resolved.ai).toBe(false);
 		expect(resolved['ai.agent']).toBe(false);
@@ -78,7 +93,12 @@ describe('featureFlags — dependency cascade', () => {
 
 describe('featureFlags — applyToggle', () => {
 	it('cascades off when turning off a parent', () => {
-		const stored: FeatureFlagState = { ai: true, 'ai.agent': true, inbox: true, 'ai.autonomy': true };
+		const stored: FeatureFlagState = {
+			ai: true,
+			'ai.agent': true,
+			inbox: true,
+			'ai.autonomy': true,
+		};
 		const { next, cascaded } = applyToggle(stored, 'inbox', false);
 		expect(next.inbox).toBe(false);
 		expect(next['ai.agent']).toBe(false);
@@ -147,7 +167,13 @@ describe('featureFlags — env vars and docker profiles', () => {
 	});
 
 	it('aggregates docker profiles from active flags', () => {
-		const stored: FeatureFlagState = { ai: true, automations: true, webhooks: true, inbox: true, postbox: true };
+		const stored: FeatureFlagState = {
+			ai: true,
+			automations: true,
+			webhooks: true,
+			inbox: true,
+			postbox: true,
+		};
 		const profiles = getActiveProfiles(stored);
 		expect(profiles).toContain('ai');
 		expect(profiles).toContain('personal-mail');
@@ -185,7 +211,10 @@ describe('featureFlags — registry sanity', () => {
 				expect(FEATURE_FLAGS[dep], `${def.key} requires unknown flag ${dep}`).toBeDefined();
 			}
 			for (const target of def.cascadesOff ?? []) {
-				expect(FEATURE_FLAGS[target], `${def.key} cascadesOff unknown flag ${target}`).toBeDefined();
+				expect(
+					FEATURE_FLAGS[target],
+					`${def.key} cascadesOff unknown flag ${target}`
+				).toBeDefined();
 			}
 		}
 	});
@@ -201,7 +230,10 @@ describe('featureFlags — feature packs', () => {
 	it('every pack member is a registered flag', () => {
 		for (const pack of Object.values(FEATURE_PACKS)) {
 			for (const flag of pack.flags) {
-				expect(FEATURE_FLAGS[flag], `pack ${pack.key} references unknown flag ${flag}`).toBeDefined();
+				expect(
+					FEATURE_FLAGS[flag],
+					`pack ${pack.key} references unknown flag ${flag}`
+				).toBeDefined();
 			}
 		}
 	});
@@ -371,22 +403,48 @@ describe('featureFlags — needsDeliveryProvider', () => {
 	});
 
 	it('is true when any bulk sending flag is on', () => {
-		expect(needsDeliveryProvider({ campaigns: true, transactional: false, automations: false })).toBe(true);
-		expect(needsDeliveryProvider({ campaigns: false, transactional: true, automations: false })).toBe(true);
-		expect(needsDeliveryProvider({ campaigns: false, transactional: false, automations: true })).toBe(true);
+		expect(
+			needsDeliveryProvider({ campaigns: true, transactional: false, automations: false })
+		).toBe(true);
+		expect(
+			needsDeliveryProvider({ campaigns: false, transactional: true, automations: false })
+		).toBe(true);
+		expect(
+			needsDeliveryProvider({ campaigns: false, transactional: false, automations: true })
+		).toBe(true);
 	});
 
 	it('is false for receiving-only / IMAP-only postures', () => {
-		const imapOnly: FeatureFlagState = { campaigns: false, 'campaigns.archive': false, transactional: false, automations: false, 'mail.external': true };
+		const imapOnly: FeatureFlagState = {
+			campaigns: false,
+			'campaigns.archive': false,
+			transactional: false,
+			automations: false,
+			'mail.external': true,
+		};
 		expect(needsDeliveryProvider(imapOnly)).toBe(false);
 		// mail.external is a receiving flag — it must never imply a delivery provider.
-		expect(needsDeliveryProvider({ 'mail.external': true, campaigns: false, transactional: false, automations: false })).toBe(false);
+		expect(
+			needsDeliveryProvider({
+				'mail.external': true,
+				campaigns: false,
+				transactional: false,
+				automations: false,
+			})
+		).toBe(false);
 	});
 
 	it('honors the resolveFlags cascade (campaigns.archive alone cannot force a provider)', () => {
 		// campaigns.archive requires campaigns; with campaigns off it resolves off,
 		// and archive is not itself a delivery-requiring flag.
-		expect(needsDeliveryProvider({ campaigns: false, 'campaigns.archive': true, transactional: false, automations: false })).toBe(false);
+		expect(
+			needsDeliveryProvider({
+				campaigns: false,
+				'campaigns.archive': true,
+				transactional: false,
+				automations: false,
+			})
+		).toBe(false);
 	});
 });
 
@@ -407,6 +465,14 @@ describe('featureFlags — getSendPathRequiredEnv', () => {
 		]);
 	});
 
+	it('returns the relay host + creds for provider=smtp', () => {
+		expect(getSendPathRequiredEnv('smtp')).toEqual([
+			'SMTP_RELAY_HOST',
+			'SMTP_RELAY_USERNAME',
+			'SMTP_RELAY_PASSWORD',
+		]);
+	});
+
 	it('returns [] for an unset or unrecognized provider (no implicit default)', () => {
 		expect(getSendPathRequiredEnv(undefined)).toEqual([]);
 		expect(getSendPathRequiredEnv('')).toEqual([]);
@@ -419,10 +485,11 @@ describe('featureFlags — getSendPathRequiredEnv', () => {
 		}
 	});
 
-	it('isDeliveryProviderKind recognizes only mta|resend|ses', () => {
+	it('isDeliveryProviderKind recognizes only mta|resend|ses|smtp', () => {
 		expect(isDeliveryProviderKind('mta')).toBe(true);
 		expect(isDeliveryProviderKind('resend')).toBe(true);
 		expect(isDeliveryProviderKind('ses')).toBe(true);
+		expect(isDeliveryProviderKind('smtp')).toBe(true);
 		expect(isDeliveryProviderKind('sendgrid')).toBe(false);
 		expect(isDeliveryProviderKind(undefined)).toBe(false);
 	});
@@ -438,7 +505,7 @@ describe('featureFlags — getRequiredEnvVars folds in the send path', () => {
 	it('does not add send-path creds when no sending feature is active', () => {
 		const vars = getRequiredEnvVars(
 			{ campaigns: false, transactional: false, automations: false, 'mail.external': true },
-			{ deliveryProvider: 'mta' },
+			{ deliveryProvider: 'mta' }
 		);
 		expect(vars).not.toContain('MTA_API_URL');
 	});
@@ -451,7 +518,13 @@ describe('featureFlags — getRequiredEnvVars folds in the send path', () => {
 
 	it('folds the SES creds in for provider=ses', () => {
 		const vars = getRequiredEnvVars({ transactional: true }, { deliveryProvider: 'ses' });
-		expect(vars).toEqual(expect.arrayContaining(['AWS_SES_REGION', 'AWS_SES_ACCESS_KEY_ID', 'AWS_SES_SECRET_ACCESS_KEY']));
+		expect(vars).toEqual(
+			expect.arrayContaining([
+				'AWS_SES_REGION',
+				'AWS_SES_ACCESS_KEY_ID',
+				'AWS_SES_SECRET_ACCESS_KEY',
+			])
+		);
 	});
 });
 
@@ -460,7 +533,10 @@ describe('featureFlags — infra templates stay in sync', () => {
 		new RegExp(`(^|[^A-Za-z0-9_])${needle}([^A-Za-z0-9_]|$)`).test(haystack);
 
 	it('every dockerProfiles value appears in the VPS compose template', () => {
-		const compose = readFileSync(resolve(REPO_ROOT, 'infra/templates/docker-compose.vps.yml'), 'utf-8');
+		const compose = readFileSync(
+			resolve(REPO_ROOT, 'infra/templates/docker-compose.vps.yml'),
+			'utf-8'
+		);
 		const missing = Object.values(FEATURE_FLAGS)
 			.flatMap((def) => def.dockerProfiles ?? [])
 			.filter((profile) => !word(compose, profile))

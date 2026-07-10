@@ -10,7 +10,7 @@
  */
 
 import { getOptional } from '../env';
-import { isSendProviderKind } from './index';
+import { isSendProviderKind } from './types';
 import type { SendProviderKind } from './types';
 import { strategyFor } from './strategies';
 import type {
@@ -38,11 +38,7 @@ export interface ProviderRouteConfig {
 }
 
 function isStrategyKind(value: string): value is SendRouteStrategyKind {
-	return (
-		value === 'single' ||
-		value === 'priority_failover' ||
-		value === 'workload_split'
-	);
+	return value === 'single' || value === 'priority_failover' || value === 'workload_split';
 }
 
 /**
@@ -56,7 +52,7 @@ function isStrategyKind(value: string): value is SendRouteStrategyKind {
  */
 export function resolveRoute(
 	routeConfig: ProviderRouteConfig | null,
-	healthStatuses?: readonly ProviderHealthStatus[],
+	healthStatuses?: readonly ProviderHealthStatus[]
 ): ResolvedRoute | null {
 	if (!routeConfig) return fallback();
 

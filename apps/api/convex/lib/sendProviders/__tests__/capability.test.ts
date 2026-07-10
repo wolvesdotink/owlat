@@ -1,7 +1,11 @@
 import { convexTest } from 'convex-test';
 import { describe, it, expect, afterEach } from 'vitest';
 import schema from '../../../schema';
-import { deliveryConfiguredFromEnv, isDeliveryConfigured, providerKindConfigured } from '../capability';
+import {
+	deliveryConfiguredFromEnv,
+	isDeliveryConfigured,
+	providerKindConfigured,
+} from '../capability';
 
 // convex-test derives its module root from the glob keys; this test lives one
 // level deeper than the convex/ root, so the glob walks up three directories.
@@ -14,6 +18,9 @@ const ENV_KEYS = [
 	'RESEND_API_KEY',
 	'AWS_SES_ACCESS_KEY_ID',
 	'AWS_SES_SECRET_ACCESS_KEY',
+	'SMTP_RELAY_HOST',
+	'SMTP_RELAY_USERNAME',
+	'SMTP_RELAY_PASSWORD',
 ] as const;
 
 const original: Record<string, string | undefined> = {};
@@ -63,7 +70,29 @@ describe('deliveryConfiguredFromEnv — fail-closed', () => {
 	it('ses: requires access key id and secret', () => {
 		setEnv({ EMAIL_PROVIDER: 'ses', AWS_SES_ACCESS_KEY_ID: 'AKIA' });
 		expect(deliveryConfiguredFromEnv()).toBe(false);
-		setEnv({ EMAIL_PROVIDER: 'ses', AWS_SES_ACCESS_KEY_ID: 'AKIA', AWS_SES_SECRET_ACCESS_KEY: 'sk' });
+		setEnv({
+			EMAIL_PROVIDER: 'ses',
+			AWS_SES_ACCESS_KEY_ID: 'AKIA',
+			AWS_SES_SECRET_ACCESS_KEY: 'sk',
+		});
+		expect(deliveryConfiguredFromEnv()).toBe(true);
+	});
+
+	it('smtp: requires host, username and password (fail-closed on any missing)', () => {
+		setEnv({ EMAIL_PROVIDER: 'smtp', SMTP_RELAY_HOST: 'smtp.mailgun.org' });
+		expect(deliveryConfiguredFromEnv()).toBe(false);
+		setEnv({
+			EMAIL_PROVIDER: 'smtp',
+			SMTP_RELAY_HOST: 'smtp.mailgun.org',
+			SMTP_RELAY_USERNAME: 'postmaster',
+		});
+		expect(deliveryConfiguredFromEnv()).toBe(false);
+		setEnv({
+			EMAIL_PROVIDER: 'smtp',
+			SMTP_RELAY_HOST: 'smtp.mailgun.org',
+			SMTP_RELAY_USERNAME: 'postmaster',
+			SMTP_RELAY_PASSWORD: 'pw',
+		});
 		expect(deliveryConfiguredFromEnv()).toBe(true);
 	});
 

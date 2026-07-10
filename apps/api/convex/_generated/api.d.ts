@@ -343,6 +343,7 @@ import type * as lib_sendProviders_resend_index from "../lib/sendProviders/resen
 import type * as lib_sendProviders_route from "../lib/sendProviders/route.js";
 import type * as lib_sendProviders_routing from "../lib/sendProviders/routing.js";
 import type * as lib_sendProviders_ses_index from "../lib/sendProviders/ses/index.js";
+import type * as lib_sendProviders_smtp_index from "../lib/sendProviders/smtp/index.js";
 import type * as lib_sendProviders_strategies_index from "../lib/sendProviders/strategies/index.js";
 import type * as lib_sendProviders_strategies_priority_failover_index from "../lib/sendProviders/strategies/priority_failover/index.js";
 import type * as lib_sendProviders_strategies_single_index from "../lib/sendProviders/strategies/single/index.js";
@@ -896,6 +897,7 @@ declare const fullApi: ApiFromModules<{
   "lib/sendProviders/route": typeof lib_sendProviders_route;
   "lib/sendProviders/routing": typeof lib_sendProviders_routing;
   "lib/sendProviders/ses/index": typeof lib_sendProviders_ses_index;
+  "lib/sendProviders/smtp/index": typeof lib_sendProviders_smtp_index;
   "lib/sendProviders/strategies/index": typeof lib_sendProviders_strategies_index;
   "lib/sendProviders/strategies/priority_failover/index": typeof lib_sendProviders_strategies_priority_failover_index;
   "lib/sendProviders/strategies/single/index": typeof lib_sendProviders_strategies_single_index;

@@ -1,15 +1,34 @@
 /**
  * Send provider adapter (module) — shared types.
  *
- * Per ADR-0020 — the per-provider Send-side surface. Three adapters today:
- * `mta`, `ses`, `resend`. The **Send dispatch (helper)** in `./dispatch.ts`
- * owns the retry loop and post-attempt orchestration; per-provider modules
- * own single-attempt sends and per-provider error categorization.
+ * Per ADR-0020 — the per-provider Send-side surface. Four adapters today:
+ * `mta`, `ses`, `resend`, `smtp`. The **Send dispatch (helper)** in
+ * `./dispatch.ts` owns the retry loop and post-attempt orchestration;
+ * per-provider modules own single-attempt sends and per-provider error
+ * categorization.
  *
  * See CONTEXT.md "Send provider adapter (module)".
  */
 
-export type SendProviderKind = 'mta' | 'ses' | 'resend';
+/**
+ * The provider kinds, as a runtime tuple so both the `SendProviderKind` type
+ * and the `isSendProviderKind` guard derive from one source. Lives in this
+ * pure, isolate-safe module (no `nodemailer`/`'use node'` deps) so the isolate
+ * function modules that only need the guard — `delivery/enqueue.ts`,
+ * `delivery/status.ts`, `routing.ts`, `capability.ts` — can import it without
+ * pulling the `SEND_PROVIDERS` registry (and thus `nodemailer`) into a
+ * non-`'use node'` bundle.
+ */
+export const SEND_PROVIDER_KINDS = ['mta', 'ses', 'resend', 'smtp'] as const;
+
+export type SendProviderKind = (typeof SEND_PROVIDER_KINDS)[number];
+
+/**
+ * Type guard: is the given string a recognized provider kind?
+ */
+export function isSendProviderKind(kind: string | undefined | null): kind is SendProviderKind {
+	return kind != null && (SEND_PROVIDER_KINDS as readonly string[]).includes(kind);
+}
 
 /**
  * Canonical IP-pool names the built-in MTA routes through. Single source of
@@ -79,13 +98,21 @@ export interface ResendExtras {
 	idempotencyKey?: string;
 }
 
+/**
+ * A generic SMTP relay (nodemailer transport) has no per-send provider knobs —
+ * the connection (host/port/TLS/auth) is instance-level config, not per-message.
+ */
+export type SmtpExtras = Record<string, never>;
+
 export type ExtrasFor<K extends SendProviderKind> = K extends 'mta'
 	? MtaExtras
 	: K extends 'ses'
 		? SesExtras
 		: K extends 'resend'
 			? ResendExtras
-			: never;
+			: K extends 'smtp'
+				? SmtpExtras
+				: never;
 
 // ─── Single-attempt result ─────────────────────────────────────────────────
 
@@ -153,19 +180,19 @@ export interface SendProviderModule<K extends SendProviderKind> {
 	 * the module's typed `EmailErrorCode`. The dispatch helper decides
 	 * retry based on the code.
 	 */
-	sendEmail(
-		params: EmailSendParams,
-		extras?: ExtrasFor<K>,
-	): Promise<EmailSendAttempt>;
+	sendEmail(params: EmailSendParams, extras?: ExtrasFor<K>): Promise<EmailSendAttempt>;
 
 	/**
-	 * Per-provider error-response parsing. The dispatch helper passes
-	 * the raw error string + optional HTTP status; the module returns
-	 * its typed code. Replaces the pre-deepening global `categorizeError`
-	 * that pretended to be generic but had to know every provider's
-	 * error format.
+	 * Per-provider error-response parsing. The dispatch helper passes the raw
+	 * error string + an optional transport status — an HTTP status (mta) or an
+	 * SMTP reply code (smtp) — and the module returns its typed code. Each
+	 * adapter interprets `statusCode` in its own transport's terms (an HTTP-only
+	 * adapter routes it through `httpStatusToErrorCode`; the smtp adapter maps
+	 * SMTP reply codes directly). Replaces the pre-deepening global
+	 * `categorizeError` that pretended to be generic but had to know every
+	 * provider's error format.
 	 */
-	categorizeError(message: string, httpStatus?: number): EmailErrorCode;
+	categorizeError(message: string, statusCode?: number): EmailErrorCode;
 }
 
 /**
