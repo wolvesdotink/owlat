@@ -149,11 +149,7 @@ function resetInviteForm() {
 // Postbox); the admin can uncheck it.
 function openInviteModal() {
 	openInviteFormModal();
-	inviteFormErrors.email = '';
-	inviteFormErrors.mailbox = '';
-	localpartEdited.value = false;
-	mailboxTouched.value = false;
-	inviteSuccess.value = null;
+	resetInviteForm();
 	inviteForm.addMailbox = canOfferMailbox.value;
 }
 
@@ -178,7 +174,6 @@ watch(isInviteModalOpen, (open) => {
 // open, re-applying the default mailbox reservation.
 function startAnotherInvite() {
 	resetInviteForm();
-	mailboxTouched.value = false;
 	inviteForm.addMailbox = canOfferMailbox.value;
 }
 
