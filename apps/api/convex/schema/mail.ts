@@ -89,7 +89,7 @@ export const mailTables = {
 	//
 	// Org membership alone grants nothing here — access is either org
 	// owner/admin acting on behalf, the mailbox's own `userId`, or an explicit
-	// row in this table (see mail/permissions.ts::loadOwnedMailbox).
+	// row in this table (see mail/permissions.ts::requireMailboxAccess).
 	//
 	// Wiped by the org-deletion walker and the dev reset (registered in
 	// lib/tenantTables.ts before `mailboxes`, so members go before the parent).
@@ -101,10 +101,11 @@ export const mailTables = {
 		createdAt: v.number(),
 	})
 		// Access checks look up (mailbox, user) → membership; the compound index
-		// is the hot path (one point read per authz decision).
+		// is the hot path (one point read per authz decision). It also serves
+		// "every member of a mailbox" (member management, cascade delete) as a
+		// prefix query — `q.eq('mailboxId', …)` only — so no separate
+		// `by_mailbox` single-column index is needed.
 		.index('by_mailbox_user', ['mailboxId', 'authUserId'])
-		// List every member of a mailbox (member management, cascade delete).
-		.index('by_mailbox', ['mailboxId'])
 		// List every mailbox a user belongs to (identity resolution / inbox list).
 		.index('by_user', ['authUserId']),
 

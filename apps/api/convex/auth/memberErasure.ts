@@ -154,7 +154,7 @@ export const eraseMemberData = internalMutation({
 
 			for (const row of await ctx.db
 				.query('mailboxMembers')
-				.withIndex('by_mailbox', (q) => q.eq('mailboxId', mailbox._id))
+				.withIndex('by_mailbox_user', (q) => q.eq('mailboxId', mailbox._id))
 				.collect()) {
 				await ctx.db.delete(row._id); // bounded: members of one mailbox
 			}
