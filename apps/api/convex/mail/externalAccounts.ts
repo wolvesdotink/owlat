@@ -203,6 +203,15 @@ export const _purgeChunk = internalMutation({
 			.collect(); // bounded: per-account folder cursors (≤ a handful)
 		for (const sr of syncRows) await ctx.db.delete(sr._id);
 
+		// A staged "move my mailbox here" job points at this account — drop it too,
+		// or its now-dangling accountId would shadow (via by_user + .first()) any
+		// fresh move the user starts after reconnecting.
+		const moves = await ctx.db
+			.query('mailboxMoves')
+			.withIndex('by_account', (q) => q.eq('accountId', args.accountId))
+			.collect(); // bounded: ≤ 1 move per account
+		for (const mv of moves) await ctx.db.delete(mv._id);
+
 		await ctx.db.delete(args.accountId);
 		await ctx.db.delete(args.mailboxId);
 	},
