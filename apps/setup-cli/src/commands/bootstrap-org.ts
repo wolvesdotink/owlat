@@ -19,6 +19,7 @@ import pc from 'picocolors';
 import { hashPassword } from '../lib/passwordHash';
 import { loadBackendContext, postJson } from '../lib/backend';
 import { loadFlagState } from '../lib/flagState';
+import { isValidEmail } from '../lib/validators';
 import { resolveFlags } from '@owlat/shared/featureFlags';
 
 import type { CliOptions as RunOptions } from '../lib/cliOptions';
@@ -136,5 +137,5 @@ async function askPassword(defaultValue?: string): Promise<string | null> {
 }
 
 function validateEmail(v: string): string | undefined {
-	return /^.+@.+\..+$/.test(v) ? undefined : 'Enter a valid email';
+	return isValidEmail(v) ? undefined : 'Enter a valid email';
 }

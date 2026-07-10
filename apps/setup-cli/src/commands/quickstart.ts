@@ -44,6 +44,7 @@ import { createReporter, progressSpinner, SetupStep, type Reporter } from '../li
 import { resolveLocalUrls } from '../lib/localHost';
 import { parseSetupConfig, type SetupConfig } from '../lib/setupConfig';
 import { buildCaddyfile } from '../lib/caddyfile';
+import { isValidEmail } from '../lib/validators';
 import { runSetup } from './setup';
 import { bootstrap } from './bootstrap-org';
 import { runSeed } from './seed';
@@ -572,7 +573,7 @@ async function askYesNo(message: string, initial: boolean, assumeYes: boolean): 
 async function promptEmail(): Promise<string | undefined> {
 	const result = await text({
 		message: 'Admin email',
-		validate: (v) => (/^.+@.+\..+$/.test(v ?? '') ? undefined : 'Enter a valid email'),
+		validate: (v) => (isValidEmail(v ?? '') ? undefined : 'Enter a valid email'),
 	});
 	if (isCancel(result)) return undefined;
 	return result;

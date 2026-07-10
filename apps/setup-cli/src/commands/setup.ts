@@ -48,6 +48,7 @@ import {
 	validateOpenRouterKey,
 	validatePostHogHost,
 	validateGoogleSafeBrowsingKey,
+	isValidEmail,
 } from '../lib/validators';
 
 import type { CliOptions } from '../lib/cliOptions';
@@ -402,7 +403,7 @@ async function collectAdmin(): Promise<{ email: string; name: string; password: 
 		email: () =>
 			text({
 				message: 'Admin email',
-				validate: (v) => (/^.+@.+\..+$/.test(v ?? '') ? undefined : 'Enter a valid email'),
+				validate: (v) => (isValidEmail(v ?? '') ? undefined : 'Enter a valid email'),
 			}),
 		name: () => text({ message: 'Admin display name' }),
 		password: () => password({ message: 'Admin password (min 12 chars)', mask: '•' }),
