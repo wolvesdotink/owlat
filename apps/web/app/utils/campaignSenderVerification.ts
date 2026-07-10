@@ -40,19 +40,29 @@ export interface SenderVerification {
  * Advisory for the "Add sender" address field.
  *
  * - No address / malformed → neutral prompt, cannot add yet.
+ * - Check failed (query error/timeout) → warning, retry hint, cannot add.
  * - Domain not registered → warning, link to Domains, cannot add.
  * - Domain registered but unverified → warning, link to Domains, cannot add.
- * - Domain verified (even if stale) → success, can add. Stale is not a blocker
- *   for adding a curated sender; it only nudges a re-check.
+ * - Domain verified → success, can add. Staleness is ignored here: a verified
+ *   domain is enough to curate a sender, so it is not surfaced in this advisory.
  */
 export function mapSenderVerification(
 	status: SenderDomainStatus | null | undefined,
-	hasValidEmail: boolean
+	hasValidEmail: boolean,
+	checkFailed = false
 ): SenderVerification {
 	if (!hasValidEmail) {
 		return {
 			tone: 'neutral',
 			message: 'Enter an address on one of your verified sending domains.',
+			canAdd: false,
+			showDomainsLink: false,
+		};
+	}
+	if (checkFailed) {
+		return {
+			tone: 'warning',
+			message: "Couldn't check this domain — clear the field and try again.",
 			canAdd: false,
 			showDomainsLink: false,
 		};

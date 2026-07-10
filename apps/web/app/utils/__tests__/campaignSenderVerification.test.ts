@@ -22,6 +22,14 @@ describe('mapSenderVerification', () => {
 		expect(result.canAdd).toBe(false);
 	});
 
+	it('warns and blocks add when the domain check fails', () => {
+		const result = mapSenderVerification(undefined, true, true);
+		expect(result.tone).toBe('warning');
+		expect(result.canAdd).toBe(false);
+		expect(result.showDomainsLink).toBe(false);
+		expect(result.message).toContain('try again');
+	});
+
 	it('warns and links to Domains when the domain is not registered', () => {
 		const result = mapSenderVerification(
 			{ domain: 'acme.com', exists: false, verified: false, stale: false },
