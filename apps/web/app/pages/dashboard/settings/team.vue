@@ -10,7 +10,7 @@ import {
 	ROLE_DEFINITIONS,
 	roleDefinition,
 	mailboxStatusMeta,
-	type MemberMailboxStatus,
+	type MailboxStatusMeta,
 } from '~/utils/teamRoles';
 import { formatShortDate } from '~/utils/formatters';
 
@@ -46,9 +46,10 @@ const {
 // backend gate on the migration-mode toggle.
 const canManageSettings = computed(() => isOwner.value || currentMemberRole.value === 'admin');
 
-// Roles the owner may assign inline — ownership is handed off through its own
-// confirmed transfer flow, never picked from the role menu.
-const assignableRoles = ROLE_DEFINITIONS.filter((r) => r.role !== 'owner');
+// Roles an admin may invite into (never owner — ownership is transferred, not
+// invited). Copy is the single ROLE_DEFINITIONS source so the invite modal and
+// the role legend never diverge.
+const inviteRoleOptions = ROLE_DEFINITIONS.filter((r) => r.role !== 'owner');
 
 // Search box above the members table. Filters by name or email, case-insensitive.
 const memberSearch = ref('');
@@ -63,11 +64,31 @@ const filteredMembers = computed(() => {
 // Per-member mailbox status (hosted / external / none) for the Mailbox column.
 // Keyed by BetterAuth user id; absent ⇒ no mailbox. Any org member may read it.
 const memberUserIds = computed(() => members.value.map((m) => m.userId));
-const { data: mailboxStatusData } = useConvexQuery(api.mail.memberMailboxStatus.byMembers, () => ({
-	userIds: memberUserIds.value,
-}));
-function mailboxStatusFor(userId: string): MemberMailboxStatus {
-	return mailboxStatusData.value?.[userId] ?? 'none';
+const { data: mailboxStatusData, isLoading: isLoadingMailboxStatus } = useConvexQuery(
+	api.mail.memberMailboxStatus.byMembers,
+	() => ({
+		userIds: memberUserIds.value,
+	})
+);
+
+// While the status query is still resolving we don't yet know if a member has a
+// mailbox — render a neutral placeholder instead of a definitive "No mailbox".
+const isMailboxStatusPending = computed(
+	() => isLoadingMailboxStatus.value && mailboxStatusData.value === undefined
+);
+
+// Precompute the presentable Mailbox cell once per member so the four reads a
+// row needs (tone/icon/label/description) don't each re-run the mapping.
+const mailboxMetaByUserId = computed<Record<string, MailboxStatusMeta>>(() => {
+	const map: Record<string, MailboxStatusMeta> = {};
+	for (const member of members.value) {
+		map[member.userId] = mailboxStatusMeta(mailboxStatusData.value?.[member.userId] ?? 'none');
+	}
+	return map;
+});
+
+function mailboxMetaFor(userId: string): MailboxStatusMeta {
+	return mailboxMetaByUserId.value[userId] ?? mailboxStatusMeta('none');
 }
 
 // Copyable accept links. Every invitation exposes an accept URL of the form
@@ -458,17 +479,6 @@ const handleDeleteOrganization = async () => {
 	}
 };
 
-// Role badge tone (owner/admin share the brand accent; editor is neutral).
-const getRoleBadgeClass = (role: string) => {
-	switch (role) {
-		case 'owner':
-		case 'admin':
-			return 'bg-brand/20 text-brand border-brand/30';
-		default:
-			return 'bg-bg-surface text-text-secondary border-border-subtle';
-	}
-};
-
 // Format relative time for invite expiry
 const formatExpiryTime = (expiresAt: Date) => {
 	const now = Date.now();
@@ -609,6 +619,18 @@ const formatExpiryTime = (expiresAt: Date) => {
 					</template>
 				</UiEmptyState>
 
+				<!-- Empty: nobody on the roster yet (no search term) -->
+				<UiEmptyState
+					v-else-if="filteredMembers.length === 0"
+					icon="lucide:users"
+					title="No team members yet"
+					description="Invite teammates to collaborate on campaigns and shared inboxes."
+				>
+					<template v-if="canManageMembers" #action>
+						<UiButton size="sm" @click="openInviteModal()">Invite a teammate</UiButton>
+					</template>
+				</UiEmptyState>
+
 				<!-- Members table -->
 				<div v-else class="overflow-x-auto">
 					<table class="w-full min-w-[36rem] text-sm">
@@ -657,14 +679,13 @@ const formatExpiryTime = (expiresAt: Date) => {
 									<SettingsTeamRoleMenu
 										v-if="isOwner && member.role !== 'owner'"
 										:role="member.role"
-										:options="assignableRoles"
 										:member-label="member.user.name || member.user.email"
 										@change="(role) => handleRoleChange(member.id, role)"
 									/>
 									<span
 										v-else
 										class="inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium"
-										:class="getRoleBadgeClass(member.role)"
+										:class="roleDefinition(member.role).badgeToneClass"
 									>
 										<Icon :name="roleDefinition(member.role).icon" class="w-3 h-3" />
 										{{ roleDefinition(member.role).label }}
@@ -674,15 +695,25 @@ const formatExpiryTime = (expiresAt: Date) => {
 								<!-- Mailbox: hosted / external / none -->
 								<td class="px-4 py-4">
 									<span
-										class="inline-flex items-center gap-1.5 text-sm"
-										:class="mailboxStatusMeta(mailboxStatusFor(member.userId)).toneClass"
-										:title="mailboxStatusMeta(mailboxStatusFor(member.userId)).description"
+										v-if="isMailboxStatusPending"
+										class="inline-flex items-center gap-1.5 text-sm text-text-tertiary"
+										title="Checking mailbox status…"
 									>
 										<Icon
-											:name="mailboxStatusMeta(mailboxStatusFor(member.userId)).icon"
-											class="w-3.5 h-3.5"
+											name="lucide:loader-circle"
+											class="w-3.5 h-3.5 animate-spin motion-reduce:animate-none"
 										/>
-										{{ mailboxStatusMeta(mailboxStatusFor(member.userId)).label }}
+										<span class="sr-only">Loading mailbox status</span>
+										<span aria-hidden="true">—</span>
+									</span>
+									<span
+										v-else
+										class="inline-flex items-center gap-1.5 text-sm"
+										:class="mailboxMetaFor(member.userId).toneClass"
+										:title="mailboxMetaFor(member.userId).description"
+									>
+										<Icon :name="mailboxMetaFor(member.userId).icon" class="w-3.5 h-3.5" />
+										{{ mailboxMetaFor(member.userId).label }}
 									</span>
 								</td>
 
@@ -771,7 +802,7 @@ const formatExpiryTime = (expiresAt: Date) => {
 									<span
 										:class="[
 											'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border',
-											getRoleBadgeClass(invite.role),
+											roleDefinition(invite.role).badgeToneClass,
 										]"
 									>
 										<Icon :name="roleDefinition(invite.role).icon" class="w-3 h-3" />
@@ -887,43 +918,30 @@ const formatExpiryTime = (expiresAt: Date) => {
 						:required="true"
 					/>
 
-					<!-- Role -->
+					<!-- Role — copy comes from the single ROLE_DEFINITIONS source so it
+					     stays honest to the permission map (owner is never invitable). -->
 					<div>
 						<label class="label">Role</label>
 						<div class="grid grid-cols-2 gap-3">
 							<button
+								v-for="def in inviteRoleOptions"
+								:key="def.role"
 								type="button"
 								:class="[
 									'p-3 rounded-xl border text-left transition-all',
-									inviteForm.role === 'editor'
+									inviteForm.role === def.role
 										? 'border-brand bg-brand/10'
 										: 'border-border-subtle hover:border-border-default',
 								]"
 								:disabled="isInviting"
-								@click="inviteForm.role = 'editor'"
+								@click="inviteForm.role = def.role"
 							>
 								<div class="flex items-center gap-2 mb-1">
-									<Icon name="lucide:user" class="w-4 h-4 text-text-secondary" />
-									<span class="font-medium text-text-primary text-sm">Editor</span>
+									<Icon :name="def.icon" class="w-4 h-4 text-text-secondary" />
+									<span class="font-medium text-text-primary text-sm">{{ def.label }}</span>
 								</div>
-								<p class="text-xs text-text-secondary">Create and edit emails, view contacts</p>
-							</button>
-							<button
-								type="button"
-								:class="[
-									'p-3 rounded-xl border text-left transition-all',
-									inviteForm.role === 'admin'
-										? 'border-brand bg-brand/10'
-										: 'border-border-subtle hover:border-border-default',
-								]"
-								:disabled="isInviting"
-								@click="inviteForm.role = 'admin'"
-							>
-								<div class="flex items-center gap-2 mb-1">
-									<Icon name="lucide:shield" class="w-4 h-4 text-brand" />
-									<span class="font-medium text-text-primary text-sm">Admin</span>
-								</div>
-								<p class="text-xs text-text-secondary">Send campaigns, manage contacts and team</p>
+								<p class="text-xs text-text-secondary">{{ def.summary }}</p>
+								<p class="mt-0.5 text-xs text-text-tertiary">{{ def.detail }}</p>
 							</button>
 						</div>
 					</div>
