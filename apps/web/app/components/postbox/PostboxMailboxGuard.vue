@@ -26,10 +26,12 @@ const props = defineProps<{
 }>();
 
 // Self-fetched no-mailbox signals. Cheap self-scoped read; the reservation /
-// open-request fields only matter in the no-mailbox branches.
+// open-request fields only matter in the no-mailbox branches, so skip the live
+// subscription entirely whenever a mailbox exists (the common case). A later
+// mailbox loss flips the args back to `{}` and resubscribes.
 const { data: freshStatus, isLoading: freshLoading } = useConvexQuery(
 	api.mail.mailboxRequest.freshStartStatus,
-	() => ({})
+	() => (props.mailboxId ? 'skip' : {})
 );
 const { isEnabled } = useFeatureFlag();
 const externalAllowed = computed(() => isEnabled('mail.external'));
