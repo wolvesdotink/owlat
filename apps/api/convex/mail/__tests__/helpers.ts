@@ -53,6 +53,7 @@ export type MailboxSeed = {
 	address?: string;
 	status?: 'active' | 'suspended' | 'deleted';
 	scope?: 'personal' | 'shared';
+	kind?: 'hosted' | 'external';
 };
 
 /** Insert a `mailboxes` row and return its id. */
@@ -69,6 +70,7 @@ export async function seedMailbox(
 			address: seed.address ?? 'a@hinterland.camp',
 			domain: 'hinterland.camp',
 			...(seed.scope ? { scope: seed.scope } : {}),
+			...(seed.kind ? { kind: seed.kind } : {}),
 			status: seed.status ?? 'active',
 			usedBytes: 0,
 			uidValidity: now,
