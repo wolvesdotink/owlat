@@ -24,6 +24,16 @@ describe('deriveMigrationStep', () => {
 		expect(deriveMigrationStep(undefined, true)).toBe('ready');
 	});
 
+	it('resumes an in-flight import after the wizard is closed and reopened', () => {
+		// The wizard is stateless across reloads: on reopen it reads the persisted
+		// migration status and lands the user back on the live step, never on the
+		// provider picker mid-import.
+		expect(deriveMigrationStep('importing', true, 'connected')).toBe('importing');
+		expect(deriveMigrationStep('indexing', true, 'connected')).toBe('indexing');
+		// Even if the account query hasn't resolved yet on reopen, status wins.
+		expect(deriveMigrationStep('importing', false)).toBe('importing');
+	});
+
 	it('steers to reconnect when the connected account is in auth_error', () => {
 		// The worker won't connect an auth_error account, so a fresh migration would
 		// wedge — surface a reconnect prompt instead of a green "ready" Start button.
