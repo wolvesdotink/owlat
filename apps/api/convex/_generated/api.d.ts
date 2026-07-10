@@ -402,6 +402,7 @@ import type * as mail_mailbox from "../mail/mailbox.js";
 import type * as mail_mailboxActions from "../mail/mailboxActions.js";
 import type * as mail_mailboxMembers from "../mail/mailboxMembers.js";
 import type * as mail_mailboxQueries from "../mail/mailboxQueries.js";
+import type * as mail_mailboxRequest from "../mail/mailboxRequest.js";
 import type * as mail_memberMailboxStatus from "../mail/memberMailboxStatus.js";
 import type * as mail_messageActions from "../mail/messageActions.js";
 import type * as mail_migration from "../mail/migration.js";
@@ -959,6 +960,7 @@ declare const fullApi: ApiFromModules<{
   "mail/mailboxActions": typeof mail_mailboxActions;
   "mail/mailboxMembers": typeof mail_mailboxMembers;
   "mail/mailboxQueries": typeof mail_mailboxQueries;
+  "mail/mailboxRequest": typeof mail_mailboxRequest;
   "mail/memberMailboxStatus": typeof mail_memberMailboxStatus;
   "mail/messageActions": typeof mail_messageActions;
   "mail/migration": typeof mail_migration;

@@ -98,6 +98,7 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'externalMailAccounts',
 	'mailboxMigrations',
 	'pendingMailboxes',
+	'mailboxRequests',
 
 	// Postbox configuration before mailboxes
 	'mailAliases',
@@ -318,6 +319,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	externalMailFolderSync: makeSweepStep('externalMailFolderSync'),
 	externalMailAccounts: makeSweepStep('externalMailAccounts'),
 	pendingMailboxes: makeSweepStep('pendingMailboxes'),
+	mailboxRequests: makeSweepStep('mailboxRequests'),
 	webhookPayloads: makeSweepStep('webhookPayloads'),
 	automationStatShards: makeSweepStep('automationStatShards'),
 	campaignSendJobs: makeSweepStep('campaignSendJobs'),

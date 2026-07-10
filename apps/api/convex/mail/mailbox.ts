@@ -31,6 +31,25 @@ import {
 import { isMessageSnoozed } from '../lib/mailSnooze';
 import { normalizeEmail, parseAddress } from '@owlat/shared';
 
+/**
+ * The caller-visible personal mailbox for a member: their single `active`
+ * mailbox, or null. Shared by the fresh-start surfaces (`mailboxRequest.request`,
+ * `mailboxRequest.freshStartStatus`, `userOnboarding.completeFreshStart`) so
+ * "does this member have a mailbox" means the SAME thing everywhere — an active
+ * row, never a suspended/deleted one. A member whose only mailbox is suspended
+ * still reaches the honest "ask an admin" escape hatch.
+ */
+export async function getActiveMailboxForUser(
+	ctx: QueryCtx | MutationCtx,
+	userId: string
+): Promise<Doc<'mailboxes'> | null> {
+	return await ctx.db
+		.query('mailboxes')
+		.withIndex('by_user', (q) => q.eq('userId', userId))
+		.filter((q) => q.eq(q.field('status'), 'active'))
+		.first();
+}
+
 const SYSTEM_FOLDER_ROLES = ['inbox', 'sent', 'drafts', 'trash', 'spam', 'archive'] as const;
 type FolderRole = (typeof SYSTEM_FOLDER_ROLES)[number];
 

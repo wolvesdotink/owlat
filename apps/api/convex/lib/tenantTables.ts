@@ -147,6 +147,7 @@ export const TENANT_TABLES = [
 	'pendingMailboxMembers',
 	'mailboxes',
 	'pendingMailboxes',
+	'mailboxRequests',
 
 	// ── Chat (children first) ──
 	'chatMentions',

@@ -133,19 +133,9 @@ onMounted(async () => {
 					</div>
 				</template>
 
-				<!-- FRESH START (default): flow straight into the Postbox -->
+				<!-- FRESH START (default): a two-minute setup that lands in Postbox. -->
 				<template v-else>
-					<div class="mt-8 flex flex-col items-center gap-4">
-						<NuxtLink to="/dashboard/postbox" class="btn btn-primary w-full sm:w-auto">
-							Go to my inbox
-						</NuxtLink>
-						<NuxtLink
-							to="/dashboard"
-							class="text-sm text-text-tertiary transition-colors hover:text-text-secondary"
-						>
-							Take me to the dashboard
-						</NuxtLink>
-					</div>
+					<OnboardingFreshStart />
 				</template>
 			</div>
 		</div>

@@ -190,6 +190,14 @@ export const eraseMemberData = internalMutation({
 			.first(); // bounded: at most one row per user
 		if (onboarding) await ctx.db.delete(onboarding._id);
 
+		// Open/resolved mailbox requests carry the member's email + name; drop
+		// them so no PII survives on the admin dashboard.
+		const mailboxRequests = await ctx.db
+			.query('mailboxRequests')
+			.withIndex('by_auth_user_id', (q) => q.eq('authUserId', args.authUserId))
+			.collect(); // bounded: one open request per user, rarely more
+		for (const req of mailboxRequests) await ctx.db.delete(req._id);
+
 		// Drop this user's memberships on OTHER users' shared mailboxes (their
 		// own owned mailbox's rows went in phase 1 alongside the mailbox).
 		const sharedMemberships = await ctx.db
