@@ -1,11 +1,15 @@
 /**
  * LLM provider resolution for the agent pipeline.
  *
- * Resolves an OpenAI-compatible language/embedding model from environment
- * variables and exposes it through `getLLMProvider(task)` /
- * `getEmbeddingModel()` / `getLLMConfig()`. "OpenAI-compatible" covers OpenAI,
- * OpenRouter, and Ollama — plus any Claude/other endpoint that speaks the
- * OpenAI shape via an explicit `LLM_BASE_URL`.
+ * Resolves a language/embedding model from environment variables and exposes it
+ * through `getLLMProvider(task)` / `getEmbeddingModel()` / `getLLMConfig()`.
+ *
+ * The env path resolves THROUGH the provider-adapter registry
+ * (`./llmProviders`): it selects the `openai` adapter and builds the client via
+ * that adapter — which covers OpenAI, OpenRouter, and Ollama, plus any endpoint
+ * that speaks the OpenAI shape via an explicit `LLM_BASE_URL`. Stored per-org
+ * config (a later plan piece) will route to other adapters through the same
+ * registry; this module is the single env-fallback resolution point.
  *
  * Environment:
  *   LLM_PROVIDER        openai (default) | openrouter | ollama
@@ -15,7 +19,7 @@
  *   LLM_EMBEDDING_MODEL embedding model (default text-embedding-3-small)
  */
 
-import { createOpenAI } from '@ai-sdk/openai';
+import type { LanguageModel } from 'ai';
 import { getOptional } from './env';
 import {
 	isTrivialUserText,
@@ -23,6 +27,11 @@ import {
 	type ClassificationSignals,
 } from './llm/complexity';
 import { CURRENT_EMBEDDING_MODEL, EMBEDDING_DIMENSIONS } from './constants';
+import {
+	embeddingProviderFor,
+	languageProviderFor,
+	type ProviderClientConfig,
+} from './llmProviders';
 
 /**
  * Task types map to a model tier:
@@ -33,8 +42,6 @@ export type LLMTask = 'classify' | 'extract' | 'guard' | 'summarize' | 'draft' |
 /** Model tiers exposed to callers. */
 export type LLMTier = 'fast' | 'capable';
 
-const DEFAULT_MODEL_FAST = 'gpt-4o-mini';
-const DEFAULT_MODEL_CAPABLE = 'gpt-4o';
 // The default embedding model is the one stamped on rows as provenance
 // (CURRENT_EMBEDDING_MODEL). Single-sourcing it here keeps the resolved model
 // and the stamped model from drifting, preserving the schema's "re-embed when
@@ -64,10 +71,20 @@ function resolveBaseURL(): string | undefined {
 	}
 }
 
-// Cached per process; tests reset module state via vi.resetModules().
-let cachedClient: ReturnType<typeof createOpenAI> | null = null;
+// The env fallback always resolves to the `openai` adapter — it covers OpenAI,
+// OpenRouter, and Ollama via a resolved base URL, matching this module's prior
+// single-`createOpenAI`-client behavior. Per-org stored config (a later plan
+// piece) selects other adapters through the same registry.
+const ENV_LANGUAGE_KIND = 'openai' as const;
+const ENV_EMBEDDING_KIND = 'openai' as const;
 
-function getClient() {
+/**
+ * Resolve the env client config (key + base URL) for the language/embedding
+ * planes, throwing the same "not configured" error as before when no key is set
+ * and the provider isn't the keyless Ollama. The `'ollama'` placeholder key is
+ * only ever used for that keyless case (matching prior behavior).
+ */
+function resolveEnvClientConfig(): ProviderClientConfig {
 	const apiKey = resolveApiKey();
 	const isOllama = getOptional('LLM_PROVIDER') === 'ollama';
 	if (!apiKey && !isOllama) {
@@ -75,21 +92,24 @@ function getClient() {
 			'LLM API not configured. Set LLM_API_KEY, OPENROUTER_API_KEY, or OPENAI_API_KEY in Convex environment variables.'
 		);
 	}
-	if (!cachedClient) {
-		cachedClient = createOpenAI({ apiKey: apiKey ?? 'ollama', baseURL: resolveBaseURL() });
-	}
-	return cachedClient;
+	return { apiKey: apiKey ?? 'ollama', baseUrl: resolveBaseURL() };
 }
 
 function modelIdForTier(tier: LLMTier): string {
+	const defaults = languageProviderFor(ENV_LANGUAGE_KIND).defaultModels;
 	return tier === 'fast'
-		? (getOptional('LLM_MODEL_FAST') ?? getOptional('LLM_MODEL') ?? DEFAULT_MODEL_FAST)
-		: (getOptional('LLM_MODEL_CAPABLE') ?? getOptional('LLM_MODEL') ?? DEFAULT_MODEL_CAPABLE);
+		? (getOptional('LLM_MODEL_FAST') ?? getOptional('LLM_MODEL') ?? defaults.fast)
+		: (getOptional('LLM_MODEL_CAPABLE') ?? getOptional('LLM_MODEL') ?? defaults.capable);
+}
+
+/** Build the resolved language model for a concrete model id via the registry. */
+function buildLanguageModel(modelId: string): LanguageModel {
+	return languageProviderFor(ENV_LANGUAGE_KIND).buildChatModel(resolveEnvClientConfig(), modelId);
 }
 
 /** Resolve the language model for a given task (plugs into the AI SDK helpers). */
-export function getLLMProvider(task: LLMTask = 'draft') {
-	return getClient()(modelIdForTier(taskTier(task)));
+export function getLLMProvider(task: LLMTask = 'draft'): LanguageModel {
+	return buildLanguageModel(modelIdForTier(taskTier(task)));
 }
 
 /**
@@ -100,12 +120,12 @@ export function getLLMProvider(task: LLMTask = 'draft') {
  * capable model so quality never silently drops. `userText` must be the
  * user-controlled text ONLY (never the system prompt / assembled context).
  */
-export function getLLMProviderForUserText(task: LLMTask, userText: string) {
+export function getLLMProviderForUserText(task: LLMTask, userText: string): LanguageModel {
 	const downgrade =
 		getOptional('LLM_COMPLEXITY_ROUTING') === '1' &&
 		taskTier(task) === 'capable' &&
 		isTrivialUserText(userText);
-	return getClient()(modelIdForTier(downgrade ? 'fast' : taskTier(task)));
+	return buildLanguageModel(modelIdForTier(downgrade ? 'fast' : taskTier(task)));
 }
 
 /**
@@ -118,10 +138,10 @@ export function getLLMProviderForUserText(task: LLMTask, userText: string) {
  * draft. Ambiguous / important / low-confidence messages keep the capable tier,
  * and when routing is off this is exactly today's single-tier behaviour.
  */
-export function getLLMProviderForClassifiedDraft(signals: ClassificationSignals) {
+export function getLLMProviderForClassifiedDraft(signals: ClassificationSignals): LanguageModel {
 	const downgrade =
 		getOptional('LLM_COMPLEXITY_ROUTING') === '1' && isTrivialClassifiedMessage(signals);
-	return getClient()(modelIdForTier(downgrade ? 'fast' : 'capable'));
+	return buildLanguageModel(modelIdForTier(downgrade ? 'fast' : 'capable'));
 }
 
 // Known embedding models and their native output width. Used to fail fast when
@@ -145,7 +165,10 @@ export function getEmbeddingModel() {
 				`embedding model (e.g. text-embedding-3-small) or change the schema vectorIndex dimensions.`
 		);
 	}
-	return getClient().embedding(modelId);
+	return embeddingProviderFor(ENV_EMBEDDING_KIND).buildEmbeddingModel({
+		...resolveEnvClientConfig(),
+		modelId,
+	});
 }
 
 /**

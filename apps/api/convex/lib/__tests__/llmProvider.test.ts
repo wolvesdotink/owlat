@@ -13,6 +13,12 @@ vi.mock('@ai-sdk/openai', () => ({
 	createOpenAI: mockCreateOpenAI,
 }));
 
+// The `openaiCompatible` adapter is imported via the registry but never invoked
+// on the env path — stub its SDK so the test doesn't depend on the real package.
+vi.mock('@ai-sdk/openai-compatible', () => ({
+	createOpenAICompatible: vi.fn(() => vi.fn()),
+}));
+
 describe('llmProvider', () => {
 	beforeEach(() => {
 		vi.resetModules();
@@ -128,6 +134,47 @@ describe('llmProvider', () => {
 			const { getLLMProvider } = await import('../llmProvider');
 			getLLMProvider();
 			expect(mockOpenAIFactory).toHaveBeenCalledWith('gpt-4o');
+		});
+	});
+
+	// ============ keyed-client cache ============
+
+	describe('keyed provider-client cache', () => {
+		it('builds the client once and reuses it across calls and tiers for the same env', async () => {
+			vi.stubEnv('OPENAI_API_KEY', 'stable-key');
+			const { getLLMProvider } = await import('../llmProvider');
+			getLLMProvider('classify');
+			getLLMProvider('classify');
+			getLLMProvider('draft'); // different tier, same (kind, baseUrl, key)
+			// createOpenAI (the client factory) is invoked once; only the per-call
+			// model selection re-runs.
+			expect(mockCreateOpenAI).toHaveBeenCalledTimes(1);
+		});
+
+		it('shares one client between the language and embedding planes', async () => {
+			vi.stubEnv('OPENAI_API_KEY', 'stable-key');
+			const { getLLMProvider, getEmbeddingModel } = await import('../llmProvider');
+			getLLMProvider('classify');
+			getEmbeddingModel();
+			expect(mockCreateOpenAI).toHaveBeenCalledTimes(1);
+		});
+
+		it('rebuilds the client when the API key changes (key-fingerprint keying)', async () => {
+			vi.stubEnv('OPENAI_API_KEY', 'key-one');
+			const { getLLMProvider } = await import('../llmProvider');
+			getLLMProvider('classify');
+			vi.stubEnv('OPENAI_API_KEY', 'key-two');
+			getLLMProvider('classify');
+			expect(mockCreateOpenAI).toHaveBeenCalledTimes(2);
+		});
+
+		it('rebuilds the client when the base URL changes', async () => {
+			vi.stubEnv('OPENAI_API_KEY', 'stable-key');
+			const { getLLMProvider } = await import('../llmProvider');
+			getLLMProvider('classify');
+			vi.stubEnv('LLM_BASE_URL', 'https://proxy.example.test/v1');
+			getLLMProvider('classify');
+			expect(mockCreateOpenAI).toHaveBeenCalledTimes(2);
 		});
 	});
 
