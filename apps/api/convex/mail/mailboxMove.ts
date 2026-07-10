@@ -47,7 +47,7 @@ import {
 	requireCallerMove,
 	buildMovePayload,
 } from './mailboxMoveResolve';
-import type { Id } from '../_generated/dataModel';
+import type { Doc, Id } from '../_generated/dataModel';
 
 /**
  * Standard priority for a single inbound MX host. A deployment with one MTA
@@ -90,44 +90,51 @@ export const moveStatus = publicQuery({
 		// Owners/admins can provision a hosted mailbox themselves; anyone else must
 		// wait for an admin to act on the request `start` raised.
 		const isAdmin = hasPermission(session.role, 'organization:manage');
-		// The MX target + record to publish (null host ⇒ send-only install with no
-		// inbound MTA; the UI omits the guidance and the move can't complete).
 		const resolved = await getCallerExternalMailbox(ctx);
+
+		// Resolve the address/domain, last-sync truth and paired move from whichever
+		// source is authoritative; the payload shape is identical either way, so
+		// build it once below (a divergent shape here is exactly the drift risk).
+		let address: string;
+		let domain: string;
+		let lastSyncAt: number | null;
+		let accountStatus: Doc<'externalMailAccounts'>['status'];
+		let move: Doc<'mailboxMoves'> | null;
 
 		if (!resolved) {
 			// No live mailbox to move. Still surface the newest completed move so the
 			// archived terminal state (and its confirmation) doesn't vanish.
-			const move = await getLatestCallerMove(ctx, session.userId);
-			if (!move) return { eligible: false as const };
-			const account = await ctx.db.get(move.accountId);
-			return {
-				eligible: true as const,
-				address: move.address,
-				domain: move.domain,
-				// The mover's own last-sync truth (fail-soft: shown as-is, never assumed).
-				lastSyncAt: account?.lastSyncAt ?? null,
-				accountStatus: account?.status ?? ('disconnected' as const),
-				canProvisionSelf: isAdmin,
-				mxHost: mailHost,
-				mxPriority: MX_PRIORITY,
-				move: buildMovePayload(move),
-			};
+			const latest = await getLatestCallerMove(ctx, session.userId);
+			if (!latest) return { eligible: false as const };
+			const account = await ctx.db.get(latest.accountId);
+			address = latest.address;
+			domain = latest.domain;
+			lastSyncAt = account?.lastSyncAt ?? null;
+			accountStatus = account?.status ?? 'disconnected';
+			move = latest;
+		} else {
+			const { account, mailbox } = resolved;
+			// Pair the move with the account it operates on — NOT the caller's oldest
+			// move. A completed move on an earlier address leaves an archived row
+			// forever; keying `by_account` means a freshly-connected mailbox correctly
+			// shows the "start a move" pitch (null move) instead of that stale truth.
+			address = mailbox.address;
+			domain = mailbox.domain;
+			lastSyncAt = account.lastSyncAt ?? null;
+			accountStatus = account.status;
+			move = await getMoveForAccount(ctx, account._id);
 		}
 
-		const { account, mailbox } = resolved;
-		// Pair the move with the account it operates on — NOT the caller's oldest
-		// move. A completed move on an earlier address leaves an archived row
-		// forever; keying `by_account` means a freshly-connected mailbox correctly
-		// shows the "start a move" pitch (null move) instead of that stale truth.
-		const move = await getMoveForAccount(ctx, account._id);
 		return {
 			eligible: true as const,
-			address: mailbox.address,
-			domain: mailbox.domain,
+			address,
+			domain,
 			// The mover's own last-sync truth (fail-soft: shown as-is, never assumed).
-			lastSyncAt: account.lastSyncAt ?? null,
-			accountStatus: account.status,
+			lastSyncAt,
+			accountStatus,
 			canProvisionSelf: isAdmin,
+			// The MX target + record to publish (null host ⇒ send-only install with no
+			// inbound MTA; the UI omits the guidance and the move can't complete).
 			mxHost: mailHost,
 			mxPriority: MX_PRIORITY,
 			move: buildMovePayload(move),

@@ -67,10 +67,16 @@ export async function getMoveForAccount(
 }
 
 /**
- * The caller's newest move row, used ONLY to surface the terminal (archived)
- * truth when no live external account remains. `.order('desc')` picks the most
- * recent move so a stale terminal row can't shadow a newer one; a move for a
- * still-live account is paired via `getMoveForAccount` instead.
+ * The caller's newest move row — the fallback used whenever no LIVE external
+ * account remains. Two distinct states reach it, and both must keep rendering:
+ *   1. a COMPLETED move (its account was demoted to `disconnected` by `archive`)
+ *      — the terminal (archived) truth and its confirmation;
+ *   2. a MID-FLIGHT move whose account the user has since disconnected — the
+ *      stepper stays visible so the mover can still cancel or finish (fail-soft).
+ * Because case 2 is legitimate, this deliberately does NOT filter by stage — a
+ * stage filter would strand an in-progress move unreachable. `.order('desc')`
+ * picks the most recent move so a stale terminal row can't shadow a newer one;
+ * a move for a still-live account is paired via `getMoveForAccount` instead.
  */
 export async function getLatestCallerMove(
 	ctx: QueryCtx | MutationCtx,
