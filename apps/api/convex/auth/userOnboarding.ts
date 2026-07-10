@@ -3,6 +3,7 @@ import type { MutationCtx } from '../_generated/server';
 import { authedMutation, authedQuery } from '../lib/authedFunctions';
 import { requireSelf } from '../lib/sessionOrganization';
 import { throwInvalidState } from '../_utils/errors';
+import { getActiveMailboxForUser } from '../mail/mailbox';
 
 /**
  * Per-user first-login onboarding state.
@@ -161,11 +162,7 @@ export const completeFreshStart = authedMutation({
 	},
 	handler: async (ctx, args) => {
 		await requireSelf(ctx, args.userId);
-		const mailbox = await ctx.db
-			.query('mailboxes')
-			.withIndex('by_user', (q) => q.eq('userId', args.userId))
-			.filter((q) => q.eq(q.field('status'), 'active'))
-			.first();
+		const mailbox = await getActiveMailboxForUser(ctx, args.userId);
 		if (!mailbox) throwInvalidState('No mailbox yet');
 		await markOnboardingStep(ctx, args.userId, 'mailboxReady');
 	},

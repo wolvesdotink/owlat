@@ -15,8 +15,21 @@
 
 import { v } from 'convex/values';
 import { authedMutation, authedQuery } from '../lib/authedFunctions';
-import { getBetterAuthSessionWithRole, requireAdminContext } from '../lib/sessionOrganization';
-import { throwForbidden, throwInvalidState, throwNotFound } from '../_utils/errors';
+import {
+	getBetterAuthSessionWithRole,
+	requireAdminContext,
+	requireAuthenticatedIdentity,
+} from '../lib/sessionOrganization';
+import {
+	throwForbidden,
+	throwInvalidInput,
+	throwInvalidState,
+	throwNotFound,
+} from '../_utils/errors';
+import { getActiveMailboxForUser } from './mailbox';
+
+/** Max length of the free-text note a member can attach to a mailbox request. */
+const MAX_NOTE_LENGTH = 500;
 
 /**
  * Ask an admin to set up a mailbox. Self-authed; reuses the caller's open
@@ -33,15 +46,18 @@ export const request = authedMutation({
 		if (!session) throwForbidden('Not signed in');
 		if (!session.activeOrganizationId) throwForbidden('No active organization');
 
-		// Nothing to request if the caller already has a live mailbox.
-		const existingMailbox = await ctx.db
-			.query('mailboxes')
-			.withIndex('by_user', (q) => q.eq('userId', session.userId))
-			.first();
+		// Nothing to request if the caller already has a live mailbox. Use the same
+		// active-only predicate the dead-end guard (`freshStartStatus`) uses, so the
+		// member who most needs the escape hatch — one whose only mailbox is
+		// suspended/deleted — is never refused.
+		const existingMailbox = await getActiveMailboxForUser(ctx, session.userId);
 		if (existingMailbox) {
 			throwInvalidState('You already have a mailbox');
 		}
 
+		if (args.note !== undefined && args.note.length > MAX_NOTE_LENGTH) {
+			throwInvalidInput(`Note must be ${MAX_NOTE_LENGTH} characters or fewer`);
+		}
 		const note = args.note?.trim() || undefined;
 
 		// One open request per member: refresh the note instead of stacking.
@@ -60,10 +76,22 @@ export const request = authedMutation({
 			.withIndex('by_auth_user_id', (q) => q.eq('authUserId', session.userId))
 			.first();
 
+		// The admin card is only useful if it names who is asking. Prefer the
+		// profile email, but fall back to the session identity's email rather than
+		// inserting a blank identity that renders as an empty card.
+		let requesterEmail = profile?.email?.trim();
+		if (!requesterEmail) {
+			const identity = await requireAuthenticatedIdentity(ctx);
+			requesterEmail = typeof identity.email === 'string' ? identity.email.trim() : '';
+		}
+		if (!requesterEmail) {
+			throwInvalidState('Your account has no email address to share with admins');
+		}
+
 		const requestId = await ctx.db.insert('mailboxRequests', {
 			authUserId: session.userId,
 			organizationId: session.activeOrganizationId,
-			requesterEmail: profile?.email ?? '',
+			requesterEmail,
 			requesterName: profile?.name,
 			note,
 			status: 'open',
@@ -98,11 +126,7 @@ export const freshStartStatus = authedQuery({
 			return { hasMailbox: false, reservedAddress: null, hasOpenRequest: false };
 		}
 
-		const mailbox = await ctx.db
-			.query('mailboxes')
-			.withIndex('by_user', (q) => q.eq('userId', session.userId))
-			.filter((q) => q.eq(q.field('status'), 'active'))
-			.first();
+		const mailbox = await getActiveMailboxForUser(ctx, session.userId);
 		if (mailbox) {
 			return { hasMailbox: true, reservedAddress: null, hasOpenRequest: false };
 		}
@@ -147,6 +171,8 @@ export const listPending = authedQuery({
 				q.eq('organizationId', session.activeOrganizationId!).eq('status', 'open')
 			)
 			.collect();
+		// bounded: open requests per org are bounded by member count (one open row
+		// per member, refreshed not stacked), and the org is single-tenant.
 
 		return rows.map((r) => ({
 			id: r._id,
