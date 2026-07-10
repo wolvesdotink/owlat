@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
-import { resolveFlags, type FeatureFlagState } from '@owlat/shared/featureFlags';
 
 /**
  * Instance-level "moving from another platform" switch (Settings → Team).
@@ -28,10 +27,9 @@ const { data: settings, isLoading: isLoadingSettings } = useConvexQuery(
 const { data: liveFlags } = useConvexQuery(api.organizations.featureFlags.getFeatureFlags, {});
 
 const isMigrationMode = computed<boolean>(() => settings.value?.isMigrationMode ?? false);
-const mailExternalEnabled = computed<boolean>(() => {
-	const resolved = resolveFlags((liveFlags.value ?? {}) as FeatureFlagState);
-	return resolved['mail.external'] === true;
-});
+// getFeatureFlags returns the already-resolved flag map, so read the effective
+// value directly.
+const mailExternalEnabled = computed<boolean>(() => liveFlags.value?.['mail.external'] === true);
 
 const { run: updateSettings, isLoading: isSavingSettings } = useBackendOperation(
 	api.organizations.settings.update,
