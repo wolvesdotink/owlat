@@ -49,53 +49,8 @@ const { data: runs, isLoading: runsLoading } = useConvexQuery(
 
 const isLoading = computed(() => automationLoading.value || statsLoading.value);
 
-// Get trigger type display
-const getTriggerDisplay = (
-	triggerType: 'contact_created' | 'contact_updated' | 'event_received' | 'topic_subscribed'
-) => {
-	switch (triggerType) {
-		case 'contact_created':
-			return {
-				label: 'Contact Created',
-				icon: 'lucide:user-plus',
-				color: 'text-brand',
-				bgColor: 'bg-brand/10',
-			};
-		case 'contact_updated':
-			return {
-				label: 'Contact Updated',
-				icon: 'lucide:user-cog',
-				color: 'text-brand',
-				bgColor: 'bg-brand/10',
-			};
-		case 'event_received':
-			return {
-				label: 'Event Received',
-				icon: 'lucide:radio',
-				color: 'text-warning',
-				bgColor: 'bg-warning/10',
-			};
-		case 'topic_subscribed':
-			return {
-				label: 'Subscribed to Topic',
-				icon: 'lucide:list-plus',
-				color: 'text-success',
-				bgColor: 'bg-success/10',
-			};
-	}
-};
-
-// Get status badge configuration
-const getStatusBadge = (status: 'draft' | 'active' | 'paused') => {
-	switch (status) {
-		case 'draft':
-			return { color: 'bg-text-tertiary/10 text-text-tertiary', icon: 'lucide:pencil', label: 'Draft' };
-		case 'active':
-			return { color: 'bg-success/10 text-success', icon: 'lucide:play', label: 'Active' };
-		case 'paused':
-			return { color: 'bg-warning/10 text-warning', icon: 'lucide:pause', label: 'Paused' };
-	}
-};
+// Status + trigger badges (shared with the automations overview)
+const { getStatusBadge, getTriggerDisplay } = useAutomationBadges();
 
 // Get run status badge configuration
 const getRunStatusBadge = (status: 'running' | 'completed' | 'cancelled') => {
@@ -140,10 +95,12 @@ const getStepLabel = (stepType: StepKind, config: string | Record<string, unknow
 	const module = stepEditorModuleFor(stepType);
 	try {
 		const raw = typeof config === 'string' ? JSON.parse(config) : config;
-		return (module.getDescription as (c: unknown, ctx: { emailTemplates: Doc<'emailTemplates'>[] }) => string)(
-			module.parseConfig(raw),
-			{ emailTemplates: stepEmailTemplates.value }
-		);
+		return (
+			module.getDescription as (
+				c: unknown,
+				ctx: { emailTemplates: Doc<'emailTemplates'>[] }
+			) => string
+		)(module.parseConfig(raw), { emailTemplates: stepEmailTemplates.value });
 	} catch {
 		return module.label;
 	}
@@ -336,7 +293,11 @@ const handleEdit = () => {
 					<h3 class="text-lg font-medium text-text-primary">Completion Rate</h3>
 					<span class="text-3xl font-semibold text-brand">{{ stats?.completionRate || 0 }}%</span>
 				</div>
-				<UiProgressBar size="sm" :value="Math.min(stats?.completionRate || 0, 100)" aria-label="Automation completion rate" />
+				<UiProgressBar
+					size="sm"
+					:value="Math.min(stats?.completionRate || 0, 100)"
+					aria-label="Automation completion rate"
+				/>
 				<p class="text-sm text-text-tertiary mt-3">
 					{{ stats?.completed || 0 }} of {{ stats?.totalEntered || 0 }} contacts completed all steps
 				</p>
@@ -541,7 +502,8 @@ const handleEdit = () => {
 										{{ getRunStatusBadge(run.status).label }}
 									</span>
 									<div class="text-xs text-text-tertiary mt-1">
-										Step {{ run.currentStepIndex + 1 }} · {{ formatCompactRelativeTime(run.startedAt, { emptyLabel: '—' }) }}
+										Step {{ run.currentStepIndex + 1 }} ·
+										{{ formatCompactRelativeTime(run.startedAt, { emptyLabel: '—' }) }}
 									</div>
 								</div>
 								<NuxtLink
