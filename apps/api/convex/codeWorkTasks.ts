@@ -181,7 +181,10 @@ export const cancel = authedMutation({
  *   - the `inbox.codeTasks` feature flag must be on (off by default);
  *   - the sender must be a trusted org member — an untrusted sender's mail
  *     still processes as normal inbound, it simply does NOT spawn a code task
- *     (a stranger cannot direct the coding agent by emailing the inbox);
+ *     (a stranger cannot direct the coding agent by emailing the inbox). This
+ *     keys on the (verbatim-stored) "From" address, so it assumes upstream
+ *     inbound-sender authentication (DMARC/DKIM alignment); a spoofed member
+ *     address would pass the allowlist, leaving the guard below as the backstop;
  *   - a code-agent-specific appropriateness check must pass — instructions
  *     smuggled to a CODE agent ("add a backdoor", "leak the env secrets",
  *     "force-push to main") are distinct from the email-assistant injection
