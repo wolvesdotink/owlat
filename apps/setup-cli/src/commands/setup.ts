@@ -49,16 +49,12 @@ import {
 	validateOpenRouterKey,
 	validatePostHogHost,
 	validateGoogleSafeBrowsingKey,
+	isValidEmail,
 } from '../lib/validators';
 
-interface RunOptions {
-	web: boolean;
-	terminal: boolean;
-	assumeYes: boolean;
-	owlatDir: string;
-	configFile?: string;
-	positional: string[];
-}
+import type { CliOptions } from '../lib/cliOptions';
+
+type RunOptions = Omit<CliOptions, 'args'>;
 
 export async function runSetup(opts: RunOptions): Promise<number> {
 	const envPath = join(opts.owlatDir, '.env');
@@ -408,7 +404,7 @@ async function collectAdmin(): Promise<{ email: string; name: string; password: 
 		email: () =>
 			text({
 				message: 'Admin email',
-				validate: (v) => (/^.+@.+\..+$/.test(v ?? '') ? undefined : 'Enter a valid email'),
+				validate: (v) => (isValidEmail(v ?? '') ? undefined : 'Enter a valid email'),
 			}),
 		name: () => text({ message: 'Admin display name' }),
 		password: () => password({ message: 'Admin password (min 12 chars)', mask: '•' }),

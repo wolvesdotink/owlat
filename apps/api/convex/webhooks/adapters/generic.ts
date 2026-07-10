@@ -13,7 +13,7 @@
  */
 
 import { getOptional } from '../../lib/env';
-import { constantTimeEqual } from '../security';
+import { constantTimeEqual, missingSecretResult } from '../security';
 import type { InboundAdapter } from '../pipeline';
 import type { InboundEvent } from '../types';
 
@@ -44,12 +44,7 @@ export const genericAdapter: InboundAdapter = {
 	async verifySignature(request) {
 		const secret = getOptional('GENERIC_WEBHOOK_SECRET');
 		if (!secret) {
-			return {
-				ok: false,
-				status: 503,
-				reason:
-					'Webhook endpoint is not configured securely (missing GENERIC_WEBHOOK_SECRET)',
-			};
+			return missingSecretResult('GENERIC_WEBHOOK_SECRET');
 		}
 
 		const provided = extractHeaderSecret(request);
@@ -57,8 +52,7 @@ export const genericAdapter: InboundAdapter = {
 			return {
 				ok: false,
 				status: 401,
-				reason:
-					'Missing authentication (x-webhook-secret or Authorization header)',
+				reason: 'Missing authentication (x-webhook-secret or Authorization header)',
 			};
 		}
 
@@ -73,15 +67,14 @@ export const genericAdapter: InboundAdapter = {
 		const payload = JSON.parse(rawBody) as GenericPayload;
 
 		const from = payload.from ?? payload.sender ?? 'webhook';
-		const text =
-			payload.text ?? payload.message ?? payload.content?.text ?? '';
+		const text = payload.text ?? payload.message ?? payload.content?.text ?? '';
 		const externalId = payload.id ?? payload.messageId;
 		const html = payload.html ?? payload.content?.html;
 		const subject = payload.subject ?? payload.content?.subject;
 
-		const content: NonNullable<
-			Extract<InboundEvent, { kind: 'channel.received' }>['content']
-		> = { text };
+		const content: NonNullable<Extract<InboundEvent, { kind: 'channel.received' }>['content']> = {
+			text,
+		};
 		if (html) content.html = html;
 		if (subject) content.subject = subject;
 

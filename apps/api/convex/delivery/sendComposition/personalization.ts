@@ -5,8 +5,8 @@ import { escapeHtml } from '@owlat/shared/html';
  * Single `replaceVariables` implementation across every send producer, with
  * the escape policy declared explicitly per call site. Replaces the three
  * pre-deepening `replaceVariables` implementations that diverged silently on
- * HTML escaping (`lib/emailHelpers.ts`, `automations/steps/shared/personalize.ts`,
- * `emailWorker.ts`).
+ * HTML escaping. The escape itself is the shared `escapeHtml`
+ * (`@owlat/shared/html`), so every producer now escapes identically.
  *
  * Runs in V8 (no Node-only APIs).
  */
@@ -54,7 +54,7 @@ function applyEscape(value: string, escape: EscapePolicy): string {
 export function personalize(
 	content: string,
 	variables: Record<string, unknown>,
-	options: { escape: EscapePolicy },
+	options: { escape: EscapePolicy }
 ): string {
 	return content.replace(/\{\{(\w+)(?:\|'([^']*)')?\}\}/g, (_match, variable, fallback) => {
 		const value = variables[variable as keyof typeof variables];
@@ -71,10 +71,7 @@ export function personalize(
  * during the deepening migration. New call sites should call `personalize`
  * directly with an explicit `escape` argument.
  */
-export function replaceVariablesPlain(
-	content: string,
-	variables: Record<string, unknown>,
-): string {
+export function replaceVariablesPlain(content: string, variables: Record<string, unknown>): string {
 	return personalize(content, variables, { escape: 'plain' });
 }
 
@@ -84,9 +81,6 @@ export function replaceVariablesPlain(
  * sites should call `personalize` directly with an explicit `escape`
  * argument.
  */
-export function replaceVariablesHtml(
-	content: string,
-	variables: Record<string, unknown>,
-): string {
+export function replaceVariablesHtml(content: string, variables: Record<string, unknown>): string {
 	return personalize(content, variables, { escape: 'html' });
 }

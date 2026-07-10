@@ -99,7 +99,7 @@ const getStatusConfig = (status: string) => (statusConfig[status] ?? statusConfi
 							]"
 						>
 							<Icon :name="getStatusConfig(send.status).icon" class="w-3 h-3" />
-							{{ send.status.charAt(0).toUpperCase() + send.status.slice(1) }}
+							{{ capitalize(send.status) }}
 						</span>
 					</div>
 				</div>

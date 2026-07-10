@@ -956,12 +956,7 @@ export const search = publicQuery({
 			const folder = await ctx.db
 				.query('mailFolders')
 				.withIndex('by_mailbox_and_role', (q) =>
-					q
-						.eq('mailboxId', args.mailboxId)
-						.eq(
-							'role',
-							args.folderRole as 'inbox' | 'sent' | 'drafts' | 'trash' | 'spam' | 'archive'
-						)
+					q.eq('mailboxId', args.mailboxId).eq('role', args.folderRole as FolderRole)
 				)
 				.first();
 			folderId = folder?._id;

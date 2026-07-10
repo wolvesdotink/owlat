@@ -15,7 +15,7 @@
 
 import { getInboundChannelAdapter } from '@owlat/channels';
 import { getOptional } from '../../lib/env';
-import { constantTimeEqual, hmacSha256Hex } from '../security';
+import { constantTimeEqual, hmacSha256Hex, missingSecretResult } from '../security';
 import type { InboundAdapter } from '../pipeline';
 import type { InboundEvent } from '../types';
 
@@ -93,12 +93,7 @@ export const mtaAdapter: InboundAdapter = {
 	async verifySignature(request, rawBody) {
 		const secret = getOptional('MTA_WEBHOOK_SECRET');
 		if (!secret) {
-			return {
-				ok: false,
-				status: 503,
-				reason:
-					'Webhook endpoint is not configured securely (missing MTA_WEBHOOK_SECRET)',
-			};
+			return missingSecretResult('MTA_WEBHOOK_SECRET');
 		}
 
 		const signature = request.headers.get('x-mta-signature');
@@ -177,9 +172,7 @@ export const mtaAdapter: InboundAdapter = {
 				return {
 					kind: 'internal.circuit_breaker_tripped',
 					message: payload.message ?? 'high bounce rate',
-					...(payload.bounceRate !== undefined
-						? { bounceRate: payload.bounceRate }
-						: {}),
+					...(payload.bounceRate !== undefined ? { bounceRate: payload.bounceRate } : {}),
 				};
 			}
 			case 'dkim.rotated': {
@@ -204,9 +197,7 @@ export const mtaAdapter: InboundAdapter = {
 					kind: 'internal.campaign_complaint_rate',
 					message: payload.message ?? 'campaign complaint rate exceeded threshold',
 					...(payload.campaignId ? { campaignId: payload.campaignId } : {}),
-					...(payload.complaintRate !== undefined
-						? { complaintRate: payload.complaintRate }
-						: {}),
+					...(payload.complaintRate !== undefined ? { complaintRate: payload.complaintRate } : {}),
 				};
 			}
 			case 'ip.blocklisted':

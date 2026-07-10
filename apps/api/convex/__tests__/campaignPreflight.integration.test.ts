@@ -265,7 +265,7 @@ describe('validateReadyToSend pre-flight', () => {
 		expect(result.ok).toBe(true);
 	});
 
-	it('no_template (unknown campaign) — campaign not found path', async () => {
+	it('not_found (unknown campaign) — campaign not found path', async () => {
 		const t = convexTest(schema, modules);
 		let campaignId: Id<'campaigns'>;
 		await t.run(async (ctx) => {
@@ -279,8 +279,8 @@ describe('validateReadyToSend pre-flight', () => {
 
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
-		// The wrapper translates the not-found case via the no_template
-		// reason (campaign with no template literally can't send).
-		expect(result.reason).toBe('no_template');
+		// A missing campaign row is reported as not_found rather than being
+		// mislabelled as a missing template.
+		expect(result.reason).toBe('not_found');
 	});
 });
