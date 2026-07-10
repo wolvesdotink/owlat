@@ -1,3 +1,4 @@
+import { type DeliveryProviderKind, isDeliveryProviderKind } from '@owlat/shared';
 import type { HealthTone } from '~/utils/healthTone';
 
 /**
@@ -14,30 +15,25 @@ import type { HealthTone } from '~/utils/healthTone';
  * surface (see `healthTone.ts`).
  */
 
-/** The provider kinds a deployment can send through (mirrors the backend). */
-export type TransportKind = 'mta' | 'ses' | 'resend' | 'smtp';
-
 /** Rolling health snapshot for the active provider (from `providerHealth`). */
 export interface TransportHealthInput {
 	status: 'healthy' | 'degraded' | 'down';
-	successRate: number;
-	avgLatencyMs: number;
 	lastCheckedAt: number;
-	lastErrorAt: number | null;
 }
 
 /** Non-secret transport summary — mirrors `api.delivery.status.getTransportSummary`. */
 export interface TransportSummaryInput {
 	provider: string | null;
-	isKnownProvider: boolean;
 	canSend: boolean;
 	advancedRoutingActive: boolean;
 	health: TransportHealthInput | null;
-	lastTestSucceededAt: number | null;
 }
 
-/** Human name for each transport kind — what the operator picked, in their words. */
-const TRANSPORT_LABEL: Record<TransportKind, string> = {
+/**
+ * Human name for each transport kind — what the operator picked, in their words.
+ * Exported so the per-transport DNS guidance names each kind the same way.
+ */
+export const TRANSPORT_LABEL: Record<DeliveryProviderKind, string> = {
 	mta: 'Owlat mail server',
 	ses: 'Amazon SES',
 	resend: 'Resend',
@@ -45,7 +41,7 @@ const TRANSPORT_LABEL: Record<TransportKind, string> = {
 };
 
 /** One-line description of how each transport delivers mail. */
-const TRANSPORT_DESCRIPTION: Record<TransportKind, string> = {
+const TRANSPORT_DESCRIPTION: Record<DeliveryProviderKind, string> = {
 	mta: 'Owlat’s built-in mail server sends your mail directly and manages IP warm-up.',
 	ses: 'Mail goes out through your Amazon SES account.',
 	resend: 'Mail goes out through your Resend account.',
@@ -67,12 +63,6 @@ export interface TransportDisplay {
 	/** Health chip tone + label (neutral before the first send). */
 	healthTone: HealthTone;
 	healthLabel: string;
-	/** True when the active kind is unrecognized (e.g. a typo'd EMAIL_PROVIDER). */
-	isUnknownProvider: boolean;
-}
-
-function isTransportKind(value: string | null): value is TransportKind {
-	return value === 'mta' || value === 'ses' || value === 'resend' || value === 'smtp';
 }
 
 /** Map a `providerHealth.status` to the shared health tone + human label. */
@@ -97,9 +87,8 @@ function healthDisplay(health: TransportHealthInput | null): {
  * `isConfigured: false` / neutral-health path.
  */
 export function deriveTransportDisplay(summary: TransportSummaryInput): TransportDisplay {
-	const kind = summary.provider;
-	const known = isTransportKind(kind);
-	const isUnknownProvider = kind !== null && !known;
+	const kind = summary.provider ?? undefined;
+	const known = isDeliveryProviderKind(kind);
 
 	const label = known
 		? TRANSPORT_LABEL[kind]
@@ -122,6 +111,5 @@ export function deriveTransportDisplay(summary: TransportSummaryInput): Transpor
 		configuredLabel: summary.canSend ? 'Ready to send' : 'Not ready',
 		healthTone: health.tone,
 		healthLabel: health.label,
-		isUnknownProvider,
 	};
 }

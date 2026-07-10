@@ -66,11 +66,7 @@ const lastCheckedLabel = computed(() => {
 				</div>
 				<span
 					class="px-2.5 py-1 rounded-full text-xs font-medium shrink-0"
-					:class="
-						display.configuredTone === 'success'
-							? 'bg-success/10 text-success'
-							: 'bg-error/10 text-error'
-					"
+					:class="healthChipClass[display.configuredTone]"
 				>
 					{{ display.configuredLabel }}
 				</span>

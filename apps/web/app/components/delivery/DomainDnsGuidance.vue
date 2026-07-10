@@ -9,22 +9,24 @@
  * actually live — no new DNS machinery, just the right pointer. Reads the
  * member-safe `getTransportSummary` for the active kind.
  */
+import { type DeliveryProviderKind, isDeliveryProviderKind } from '@owlat/shared';
 import { api } from '@owlat/api';
+import { TRANSPORT_LABEL } from '~/utils/transportState';
 
 const { data: summary } = useOrganizationQuery(api.delivery.status.getTransportSummary);
 
 interface Guidance {
-	label: string;
 	lead: string;
 	points: string[];
 }
 
 // Copy keyed by transport kind. Static, plain-language, deliberately no DNS
 // generation — the records themselves live in the table below (MTA) or in the
-// provider’s own console (SES / SMTP / Resend).
-const GUIDANCE: Record<string, Guidance> = {
+// provider’s own console (SES / SMTP / Resend). Keyed by DeliveryProviderKind so
+// a new transport is a compile error here, not a silently missing entry; the
+// human name comes from the shared TRANSPORT_LABEL.
+const GUIDANCE: Record<DeliveryProviderKind, Guidance> = {
 	mta: {
-		label: 'Owlat mail server',
 		lead: 'Owlat manages the DNS for you.',
 		points: [
 			'The SPF, DKIM, and DMARC records shown for each domain below are the managed records — add them exactly as displayed, then verify.',
@@ -32,7 +34,6 @@ const GUIDANCE: Record<string, Guidance> = {
 		],
 	},
 	ses: {
-		label: 'Amazon SES',
 		lead: 'SES signs your mail with its own DKIM identity tokens.',
 		points: [
 			'In the SES console, open Verified identities → your domain → and add the three DKIM CNAME records SES generates for the identity.',
@@ -40,7 +41,6 @@ const GUIDANCE: Record<string, Guidance> = {
 		],
 	},
 	smtp: {
-		label: 'SMTP relay',
 		lead: 'Your relay provider handles SPF and DKIM for you.',
 		points: [
 			'Follow your provider’s setup guide to add their SPF include and DKIM records for this domain.',
@@ -48,7 +48,6 @@ const GUIDANCE: Record<string, Guidance> = {
 		],
 	},
 	resend: {
-		label: 'Resend',
 		lead: 'Resend signs your mail once your domain is verified there.',
 		points: [
 			'In the Resend dashboard, add the SPF and DKIM records it shows for this domain.',
@@ -57,10 +56,10 @@ const GUIDANCE: Record<string, Guidance> = {
 	},
 };
 
-const guidance = computed<Guidance | null>(() => {
-	const kind = summary.value?.provider;
-	if (!kind) return null;
-	return GUIDANCE[kind] ?? null;
+const guidance = computed<{ label: string; lead: string; points: string[] } | null>(() => {
+	const kind = summary.value?.provider ?? undefined;
+	if (!isDeliveryProviderKind(kind)) return null;
+	return { label: TRANSPORT_LABEL[kind], ...GUIDANCE[kind] };
 });
 
 const open = ref(false);
