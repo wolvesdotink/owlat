@@ -303,6 +303,171 @@ describe('mailboxRequest.listPending / resolve', () => {
 	});
 });
 
+describe('mailboxRequest.provisionFromRequest', () => {
+	it('provisions a hosted mailbox from the request, fulfils it, and notifies the requester', async () => {
+		setMemberSession('member-a');
+		const t = convexTest(schema, modules);
+		await seedUserProfile(t, 'member-a', 'member-a@example.com', 'Member A');
+		const created = await t.mutation(api.mail.mailboxRequest.request, {});
+
+		setAdminSession();
+		const result = await t.mutation(api.mail.mailboxRequest.provisionFromRequest, {
+			requestId: created.requestId,
+		});
+		expect(result.fulfilled).toBe(true);
+
+		// A live mailbox now exists for the requester at their own address.
+		await t.run(async (ctx) => {
+			const mailboxes = await ctx.db
+				.query('mailboxes')
+				.withIndex('by_user', (q) => q.eq('userId', 'member-a'))
+				.collect();
+			expect(mailboxes).toHaveLength(1);
+			expect(mailboxes[0]?.address).toBe('member-a@example.com');
+			expect(mailboxes[0]?.status).toBe('active');
+			expect(mailboxes[0]?.kind ?? 'hosted').toBe('hosted');
+
+			// The request is FULFILLED (not merely acknowledged), audit-stamped.
+			const request = await ctx.db.get(created.requestId);
+			expect(request?.status).toBe('fulfilled');
+			expect(request?.fulfilledMailboxId).toBe(result.mailboxId);
+			expect(request?.resolvedByUserId).toBe('admin-user');
+			expect(request?.resolvedAt).toBeTypeOf('number');
+
+			// The requester is notified in-app: onboarding flips to mailbox-ready.
+			const onboarding = await ctx.db
+				.query('userOnboarding')
+				.withIndex('by_auth_user_id', (q) => q.eq('authUserId', 'member-a'))
+				.first();
+			expect(onboarding?.mailboxReady).toBeTypeOf('number');
+		});
+
+		// It's off the admin's open list, and the requester's fresh-start guard now
+		// admits them to the inbox.
+		const stillOpen = await t.query(api.mail.mailboxRequest.listPending, {});
+		expect(stillOpen).toHaveLength(0);
+
+		setMemberSession('member-a');
+		const status = await t.query(api.mail.mailboxRequest.freshStartStatus, {});
+		expect(status.hasMailbox).toBe(true);
+	});
+
+	it('is idempotent: a redelivered provision returns the same mailbox, no second one', async () => {
+		setMemberSession('member-a');
+		const t = convexTest(schema, modules);
+		await seedUserProfile(t, 'member-a', 'member-a@example.com');
+		const created = await t.mutation(api.mail.mailboxRequest.request, {});
+
+		setAdminSession();
+		const first = await t.mutation(api.mail.mailboxRequest.provisionFromRequest, {
+			requestId: created.requestId,
+		});
+		const second = await t.mutation(api.mail.mailboxRequest.provisionFromRequest, {
+			requestId: created.requestId,
+		});
+		expect(second.mailboxId).toBe(first.mailboxId);
+
+		await t.run(async (ctx) => {
+			const mailboxes = await ctx.db
+				.query('mailboxes')
+				.withIndex('by_user', (q) => q.eq('userId', 'member-a'))
+				.collect();
+			expect(mailboxes).toHaveLength(1);
+		});
+	});
+
+	it('fulfils against an existing live mailbox instead of standing up a second one', async () => {
+		setMemberSession('member-a');
+		const t = convexTest(schema, modules);
+		await seedUserProfile(t, 'member-a', 'member-a@example.com');
+		// An open request coexisting with a live mailbox (e.g. the requester claimed
+		// a reservation after asking): the provision must fulfil against it.
+		await seedMailbox(t, 'member-a', 'member-a@hinterland.camp', 'active');
+		const requestId = await t.run(async (ctx) =>
+			ctx.db.insert('mailboxRequests', {
+				authUserId: 'member-a',
+				organizationId: 'test-org',
+				requesterEmail: 'member-a@example.com',
+				status: 'open',
+				createdAt: Date.now(),
+			})
+		);
+
+		setAdminSession();
+		const result = await t.mutation(api.mail.mailboxRequest.provisionFromRequest, { requestId });
+
+		await t.run(async (ctx) => {
+			const mailboxes = await ctx.db
+				.query('mailboxes')
+				.withIndex('by_user', (q) => q.eq('userId', 'member-a'))
+				.collect();
+			expect(mailboxes).toHaveLength(1);
+			expect(result.mailboxId).toBe(mailboxes[0]?._id);
+			const request = await ctx.db.get(requestId);
+			expect(request?.status).toBe('fulfilled');
+		});
+	});
+
+	it('honours a reservation: provisions the reserved address and consumes it', async () => {
+		setMemberSession('member-a');
+		const t = convexTest(schema, modules);
+		await seedUserProfile(t, 'member-a', 'member-a@example.com');
+		const created = await t.mutation(api.mail.mailboxRequest.request, {});
+		await t.run(async (ctx) => {
+			await ctx.db.insert('pendingMailboxes', {
+				invitationId: 'inv-1',
+				inviteeEmail: 'member-a@example.com',
+				organizationId: 'test-org',
+				localpart: 'member-a',
+				domain: 'hinterland.camp',
+				address: 'member-a@hinterland.camp',
+				createdAt: Date.now(),
+				createdByUserId: 'admin-user',
+			});
+		});
+
+		setAdminSession();
+		const result = await t.mutation(api.mail.mailboxRequest.provisionFromRequest, {
+			requestId: created.requestId,
+		});
+
+		await t.run(async (ctx) => {
+			const mailbox = await ctx.db.get(result.mailboxId);
+			expect(mailbox?.address).toBe('member-a@hinterland.camp');
+			// The reservation was consumed, not orphaned.
+			const remaining = await ctx.db
+				.query('pendingMailboxes')
+				.withIndex('by_invitee_email', (q) => q.eq('inviteeEmail', 'member-a@example.com'))
+				.collect();
+			expect(remaining).toHaveLength(0);
+		});
+	});
+
+	it('is admin-gated: a member cannot provision from a request (fails closed)', async () => {
+		setMemberSession('member-a');
+		const t = convexTest(schema, modules);
+		await seedUserProfile(t, 'member-a', 'member-a@example.com');
+		const created = await t.mutation(api.mail.mailboxRequest.request, {});
+
+		// Still a member: the admin-gated provision must refuse.
+		await expect(
+			t.mutation(api.mail.mailboxRequest.provisionFromRequest, { requestId: created.requestId })
+		).rejects.toThrow(/owners and admins/i);
+	});
+
+	it('rejects provisioning a request from a different organization', async () => {
+		setMemberSession('member-a', 'org-1');
+		const t = convexTest(schema, modules);
+		await seedUserProfile(t, 'member-a', 'member-a@example.com');
+		const created = await t.mutation(api.mail.mailboxRequest.request, {});
+
+		setAdminSession('admin-user', 'org-2');
+		await expect(
+			t.mutation(api.mail.mailboxRequest.provisionFromRequest, { requestId: created.requestId })
+		).rejects.toThrow(/not accessible/i);
+	});
+});
+
 describe('userOnboarding.completeFreshStart', () => {
 	it("refuses with 'No mailbox yet' when the caller has no mailbox", async () => {
 		setMemberSession('member-a');
