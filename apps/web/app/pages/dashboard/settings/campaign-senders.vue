@@ -11,9 +11,12 @@ definePageMeta({
 	middleware: 'auth',
 });
 
-// Curated campaign senders are an admin surface (campaigns:manage today; d4 later
-// widens it to editors). Gate the whole page on the same owner/admin floor the
-// backend enforces, and avoid flashing the gate before the role resolves.
+// Curating the campaign-sender list is an admin surface (backend floor:
+// settings:manage). Editors can build and send campaigns FROM this list but do
+// not decide what is on it, so this page stays owner/admin-only even though d4
+// opened the campaign pipeline to editors. Gate the whole page on the same
+// owner/admin floor the backend enforces, and avoid flashing the gate before
+// the role resolves.
 const { showAdminGate } = usePermissions();
 const { hasActiveOrganization } = useOrganizationContext();
 

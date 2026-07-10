@@ -45,14 +45,18 @@ const MAX_CAMPAIGN_SENDERS = 200;
 
 /**
  * Gate every campaign-sender management surface (the `list` query and the CRUD
- * mutations) on ONE permission, so brief decision 8's d4 remap of
- * `campaigns:manage` to editors moves all of them together. Extracted so the
- * identical call can't drift across the five call sites.
+ * mutations) on ONE admin-only permission. Curating the curated list stays an
+ * admin surface even though d4 opened `campaigns:manage` to editors (2026-07-10
+ * experience plan, decision 8): editors send FROM the list via the wizard
+ * (`listForPicker`, member-level) but do not decide WHAT is on it. Gating on
+ * `settings:manage` — the same owner/admin floor as the custom-senders policy
+ * toggle on the settings page — keeps the whole surface admin-only in one place.
+ * Extracted so the identical call can't drift across the five call sites.
  */
 async function requireCampaignSendersManage(ctx: QueryCtx | MutationCtx) {
 	return await requireOrgPermission(
 		ctx,
-		'campaigns:manage',
+		'settings:manage',
 		'Only owners and admins can manage campaign senders'
 	);
 }
@@ -151,12 +155,14 @@ export const list = authedQuery({
 
 /**
  * Wizard-facing source for the campaign sender PICKER. Unlike `list` (the
- * management surface, gated on `campaigns:manage`), this floors only on org
+ * management surface, gated on `settings:manage`), this floors only on org
  * membership: a campaign-builder who cannot themselves curate senders still needs
  * to READ the enabled list to pick one, and to learn whether they may add one
  * (`canManage`) so the empty-state can choose between the admin deep link and the
- * "ask your admin" copy. Returns only the fields the picker renders — enabled
- * senders, the custom-address toggle, and the caller's manage capability.
+ * "ask your admin" copy. Editors (who can build and send campaigns but not curate
+ * the list) get `canManage: false` and see the "ask your admin" branch. Returns
+ * only the fields the picker renders — enabled senders, the custom-address
+ * toggle, and the caller's manage capability.
  */
 export const listForPicker = authedQuery({
 	args: {},
@@ -177,7 +183,7 @@ export const listForPicker = authedQuery({
 					isDefault: s.isDefault,
 				})),
 			isCustomAllowed: settings?.isCustomCampaignSendersAllowed === true,
-			canManage: hasPermission(session.role, 'campaigns:manage'),
+			canManage: hasPermission(session.role, 'settings:manage'),
 		};
 	},
 });

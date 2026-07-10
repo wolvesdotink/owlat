@@ -25,19 +25,33 @@ import {
  */
 
 // Mock the session floor so the authed wrappers (`authedQuery`/`authedMutation`
-// membership floor, `authedAction`'s `assertOrgMember`, and the CRUD
-// `campaigns:manage` check) run as an owner. Domain verification stays REAL
-// (reads seeded `domains` rows).
+// membership floor and `authedAction`'s `assertOrgMember`) run as a member.
+// `requireOrgPermission` runs the REAL `hasPermission` check against a mutable
+// role (default owner) so the sender-management re-gate onto `settings:manage`
+// is actually enforced — an editor must be REJECTED, which pins the gate and
+// makes a revert to `campaigns:manage` fail loudly instead of silently handing
+// editors sender curation. Domain verification stays REAL (reads seeded rows).
+const roleMock = vi.hoisted(() => ({ role: 'owner' as 'owner' | 'admin' | 'editor' }));
+
 vi.mock('../../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual('../../lib/sessionOrganization');
-	const admin = { userId: 'admin-a', role: 'owner' as const };
+	const actual = await vi.importActual<typeof import('../../lib/sessionOrganization')>(
+		'../../lib/sessionOrganization'
+	);
+	const { realPermissionGate } = await import('../../__tests__/helpers/permissionGateMock');
+	const session = () => ({ userId: 'admin-a', role: roleMock.role });
+	const gate = realPermissionGate(actual, () => roleMock.role);
 	return {
 		...actual,
-		requireOrgMember: vi.fn().mockResolvedValue(admin),
+		requireOrgMember: vi.fn().mockImplementation(async () => session()),
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
 		getUserIdFromSession: vi.fn().mockResolvedValue('admin-a'),
-		getMutationContext: vi.fn().mockResolvedValue(admin),
-		requireOrgPermission: vi.fn().mockResolvedValue(admin),
+		getMutationContext: vi.fn().mockImplementation(async () => session()),
+		requireOrgPermission: vi
+			.fn()
+			.mockImplementation(async (_ctx: unknown, permission: string, message?: string) => {
+				gate(permission, message);
+				return session();
+			}),
 	};
 });
 
@@ -74,6 +88,7 @@ const modules = Object.fromEntries(
 // The pre-flight refuses to send when no delivery provider is configured, so
 // the sender gate (which runs after that check) is only reached with one set.
 beforeEach(() => {
+	roleMock.role = 'owner';
 	process.env['EMAIL_PROVIDER'] = 'mta';
 	process.env['MTA_API_URL'] = 'http://mta:3100';
 	process.env['MTA_API_KEY'] = 'test-key';
@@ -178,6 +193,30 @@ describe('campaigns.senders CRUD — verified-domain guard', () => {
 		await expect(
 			t.mutation(api.campaigns.senders.create, { email: 'NEWS@acme.com' })
 		).rejects.toThrow(/already/i);
+	});
+});
+
+describe('campaigns.senders — sender curation stays admin-only (d4 re-gate)', () => {
+	// d4 opened `campaigns:manage` to editors, but curating the sender LIST is
+	// re-gated onto `settings:manage`. An editor holds the former and NOT the
+	// latter, so both `list` and `create` must reject an editor. This pins the
+	// gate: a revert to `campaigns:manage` would make these assertions fail.
+	it('rejects an editor on the list query', async () => {
+		const t = convexTest(schema, modules);
+		await seedInstance(t);
+		roleMock.role = 'editor';
+		await expect(t.query(api.campaigns.senders.list, {})).rejects.toThrow(
+			/owners and admins can manage campaign senders/i
+		);
+	});
+
+	it('rejects an editor on the create mutation', async () => {
+		const t = convexTest(schema, modules);
+		await seedInstance(t);
+		roleMock.role = 'editor';
+		await expect(
+			t.mutation(api.campaigns.senders.create, { email: 'news@acme.com' })
+		).rejects.toThrow(/owners and admins can manage campaign senders/i);
 	});
 });
 

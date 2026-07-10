@@ -5,7 +5,9 @@
  * Roles hierarchy:
  * - owner: Full access, can delete organization
  * - admin: Most access except organization deletion
- * - editor: Can create/edit content but cannot send campaigns or manage organization/settings
+ * - editor: Runs the campaign pipeline — create, edit, schedule, and send
+ *   campaigns (from the curated sender list) — but cannot manage the
+ *   organization, settings, contacts, or curate campaign senders
  */
 export function usePermissions() {
 	const { role: orgRole } = useOrganizationContext();
@@ -28,9 +30,11 @@ export function usePermissions() {
 	const canSendTestEmails = computed(() => role.value !== null);
 
 	/**
-	 * Only owner and admin can send campaigns
+	 * Editors, admins, and owners can send campaigns. Editors are limited to the
+	 * curated sender list; the verified-domain gate and custom-sender toggle are
+	 * enforced on the backend (2026-07-10 experience plan, decision 8).
 	 */
-	const canSendCampaigns = computed(() => isAdmin.value);
+	const canSendCampaigns = computed(() => role.value !== null);
 
 	/**
 	 * Only owner and admin can manage organization members

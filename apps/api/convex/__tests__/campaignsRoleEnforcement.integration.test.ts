@@ -7,41 +7,38 @@ import type { Id } from '../_generated/dataModel';
 import type { OrganizationRole } from '../lib/sessionOrganization';
 
 /**
- * Role-enforcement integration tests for the four campaign-edit mutations
- * (updateBasics, updateAudience, updateContent, duplicate).
+ * Role-enforcement integration tests for the campaign-edit + send mutations
+ * (updateBasics, updateAudience, updateContent, duplicate, sendNow).
  *
- * Before the C3 fix, these mutations called `getMutationContext(ctx)` and
- * discarded the result under `_session`, leaving role unchecked. They are now
- * gated by `requirePermission(hasPermission(session.role, 'campaigns:manage'), ...)`,
- * so an `editor` role must be rejected while `owner` / `admin` succeed.
+ * These mutations are gated by
+ * `requirePermission(hasPermission(session.role, 'campaigns:manage' | 'campaigns:send'), ...)`.
+ * The 2026-07-10 experience plan (decision 8, piece d4) opened the campaign
+ * pipeline to editors now that the curated-sender guardrail exists: an `editor`
+ * role must therefore be ACCEPTED on the manage/send gate, alongside owner and
+ * admin. (Curating the sender list stays admin-only — asserted separately in
+ * `campaigns/__tests__/senders.test.ts` and the permission-map unit test.)
  */
 
 let mockRole: OrganizationRole = 'owner';
 
 vi.mock('../lib/sessionOrganization', async () => {
-	const actual =
-		await vi.importActual<typeof import('../lib/sessionOrganization')>(
-			'../lib/sessionOrganization'
-		);
+	const actual = await vi.importActual<typeof import('../lib/sessionOrganization')>(
+		'../lib/sessionOrganization'
+	);
+	const { realPermissionGate } = await import('./helpers/permissionGateMock');
+	const gate = realPermissionGate(actual, () => mockRole);
 	return {
 		...actual,
 		requireOrgMember: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
 		getUserIdFromSession: vi.fn().mockResolvedValue('test-user'),
 		getMutationContext: vi.fn(async () => ({ userId: 'test-user', role: mockRole })),
-		requireOrgPermission: vi.fn().mockImplementation(
-			async (_ctx: unknown, permission: string, message?: string) => {
-				const mod: typeof import('../lib/sessionOrganization') = actual as typeof import('../lib/sessionOrganization');
-				mod.requirePermission(
-					mod.hasPermission(
-						mockRole as Parameters<typeof mod.hasPermission>[0],
-						permission as Parameters<typeof mod.hasPermission>[1],
-					),
-					message,
-				);
+		requireOrgPermission: vi
+			.fn()
+			.mockImplementation(async (_ctx: unknown, permission: string, message?: string) => {
+				gate(permission, message);
 				return { userId: 'test-user', role: mockRole };
-			},
-		),
+			}),
 	};
 });
 
@@ -63,7 +60,7 @@ async function seedCampaign(t: ReturnType<typeof convexTest>): Promise<Id<'campa
 }
 
 describe('campaigns.updateBasics — role enforcement', () => {
-	it('rejects editor role', async () => {
+	it('allows editor role (d4: editors run the campaign pipeline)', async () => {
 		const t = convexTest(schema, modules);
 		const campaignId = await seedCampaign(t);
 
@@ -71,9 +68,9 @@ describe('campaigns.updateBasics — role enforcement', () => {
 		await expect(
 			t.mutation(api.campaigns.campaigns.updateBasics, {
 				campaignId,
-				name: 'Hacked',
+				name: 'Renamed by editor',
 			})
-		).rejects.toThrow(/owners and admins/);
+		).resolves.toBe(campaignId);
 	});
 
 	it('allows admin role', async () => {
@@ -104,7 +101,7 @@ describe('campaigns.updateBasics — role enforcement', () => {
 });
 
 describe('campaigns.updateAudience — role enforcement', () => {
-	it('rejects editor role', async () => {
+	it('allows editor role', async () => {
 		const t = convexTest(schema, modules);
 		const campaignId = await seedCampaign(t);
 		let topicId!: Id<'topics'>;
@@ -123,12 +120,12 @@ describe('campaigns.updateAudience — role enforcement', () => {
 				campaignId,
 				audience: { kind: 'topic', topicId },
 			})
-		).rejects.toThrow(/owners and admins/);
+		).resolves.toBe(campaignId);
 	});
 });
 
 describe('campaigns.updateContent — role enforcement', () => {
-	it('rejects editor role', async () => {
+	it('allows editor role', async () => {
 		const t = convexTest(schema, modules);
 		const campaignId = await seedCampaign(t);
 		let templateId!: Id<'emailTemplates'>;
@@ -141,9 +138,9 @@ describe('campaigns.updateContent — role enforcement', () => {
 			t.mutation(api.campaigns.campaigns.updateContent, {
 				campaignId,
 				emailTemplateId: templateId,
-				subject: 'Hacked subject',
+				subject: 'Edited by editor',
 			})
-		).rejects.toThrow(/owners and admins/);
+		).resolves.toBe(campaignId);
 	});
 
 	it('allows owner role', async () => {
@@ -166,14 +163,14 @@ describe('campaigns.updateContent — role enforcement', () => {
 });
 
 describe('campaigns.duplicate — role enforcement', () => {
-	it('rejects editor role', async () => {
+	it('allows editor role', async () => {
 		const t = convexTest(schema, modules);
 		const campaignId = await seedCampaign(t);
 
 		mockRole = 'editor';
-		await expect(
-			t.mutation(api.campaigns.campaigns.duplicate, { campaignId })
-		).rejects.toThrow(/owners and admins/);
+		const newId = await t.mutation(api.campaigns.campaigns.duplicate, { campaignId });
+		expect(newId).toBeTruthy();
+		expect(newId).not.toBe(campaignId);
 	});
 
 	it('allows admin role', async () => {
@@ -184,5 +181,21 @@ describe('campaigns.duplicate — role enforcement', () => {
 		const newId = await t.mutation(api.campaigns.campaigns.duplicate, { campaignId });
 		expect(newId).toBeTruthy();
 		expect(newId).not.toBe(campaignId);
+	});
+});
+
+describe('campaigns.sendNow — role enforcement', () => {
+	// Editors hold `campaigns:send`, so the permission gate no longer rejects
+	// them. A bare draft (no template) still fails the downstream
+	// `validateReadyToSend` pre-flight — asserting that SPECIFIC message
+	// positively proves the editor cleared the role gate and reached pre-flight.
+	it('accepts an editor on the role gate; a bare draft fails downstream pre-flight', async () => {
+		const t = convexTest(schema, modules);
+		const campaignId = await seedCampaign(t);
+
+		mockRole = 'editor';
+		await expect(t.mutation(api.campaigns.campaigns.sendNow, { campaignId })).rejects.toThrow(
+			/must have an email template/i
+		);
 	});
 });

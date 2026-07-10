@@ -18,7 +18,7 @@ export const cancel = authedMutation({
 		const session = await requireOrgPermission(
 			ctx,
 			'campaigns:schedule',
-			'Only owners and admins can cancel campaigns'
+			'You do not have permission to cancel campaigns'
 		);
 
 		const campaign = await ctx.db.get(args.campaignId);
@@ -59,7 +59,7 @@ export const reschedule = authedMutation({
 		const session = await requireOrgPermission(
 			ctx,
 			'campaigns:schedule',
-			'Only owners and admins can reschedule campaigns'
+			'You do not have permission to reschedule campaigns'
 		);
 
 		const campaign = await ctx.db.get(args.campaignId);
@@ -119,7 +119,7 @@ export const unschedule = authedMutation({
 		const session = await requireOrgPermission(
 			ctx,
 			'campaigns:schedule',
-			'Only owners and admins can unschedule campaigns'
+			'You do not have permission to unschedule campaigns'
 		);
 
 		const campaign = await ctx.db.get(args.campaignId);
@@ -159,7 +159,7 @@ export const schedule = authedMutation({
 		const session = await requireOrgPermission(
 			ctx,
 			'campaigns:schedule',
-			'Only owners and admins can schedule campaigns'
+			'You do not have permission to schedule campaigns'
 		);
 
 		const campaign = await ctx.db.get(args.campaignId);

@@ -28,8 +28,10 @@ describe('ROLE_DEFINITIONS', () => {
 		expect(owner.detail.toLowerCase()).toContain('delet');
 		// Admins run the workspace but cannot delete it.
 		expect(admin.detail.toLowerCase()).toContain('cannot delete');
-		// Editors are view-only and cannot send campaigns.
-		expect(editor.detail.toLowerCase()).toContain('cannot send campaigns');
+		// Editors now run the campaign pipeline (send from the curated list) but
+		// cannot curate senders or change settings.
+		expect(editor.detail.toLowerCase()).toContain('send campaigns');
+		expect(editor.detail.toLowerCase()).toContain('cannot curate senders');
 	});
 });
 
