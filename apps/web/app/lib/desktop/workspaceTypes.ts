@@ -70,8 +70,8 @@ export function accentLabel(color: string): string {
 
 /**
  * Up-to-two-letter avatar initials for a workspace label. Strips a leading
- * protocol so a raw instance URL still yields sane letters. Shared by every
- * surface that paints a workspace swatch (titlebar chip, switcher menu).
+ * protocol so a raw instance URL still yields sane letters. Used by the
+ * Slack-style workspace rail (WorkspaceSwitcher) to paint each tile's swatch.
  */
 export function initials(label: string): string {
 	return label
