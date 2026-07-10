@@ -2,6 +2,7 @@
 import type { MailProvider } from '~/utils/mailAutodiscover';
 import { GENERIC_IMAP_PROVIDER, MAIL_PROVIDERS } from '~/utils/mailAutodiscover';
 import { api } from '@owlat/api';
+import type { Id } from '@owlat/api/dataModel';
 
 useHead({ title: 'Import your mail — Owlat' });
 
@@ -105,6 +106,39 @@ async function handlePurge() {
 	const res = await purgeOp.run({});
 	showPurge.value = false;
 	if (res !== undefined) showToast('Mailbox and all synced data are being deleted.', 'success');
+}
+
+// ── Detected signature (completion nice-touch) ──────────────────────────────
+// After the import finishes we scan the imported Sent mail for a repeated
+// trailing block and offer it pre-filled, so replies look like they did before.
+const completedMailboxId = computed<Id<'mailboxes'> | null>(() =>
+	step.value === 'completed' && account.value?.configured ? account.value.mailboxId : null
+);
+const { data: suggestedSignature } = useConvexQuery(api.mail.signatures.suggestFromImport, () =>
+	completedMailboxId.value ? { mailboxId: completedMailboxId.value } : 'skip'
+);
+const createSignatureOp = useBackendOperation(api.mail.signatures.create, {
+	label: 'Save signature',
+});
+const signatureSaved = ref(false);
+function detectedSignatureHtml(text: string): string {
+	const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+	return `<div>${escaped.replace(/\n/g, '<br>')}</div>`;
+}
+async function saveDetectedSignature() {
+	const mailboxId = completedMailboxId.value;
+	const text = suggestedSignature.value;
+	if (!mailboxId || !text) return;
+	const res = await createSignatureOp.run({
+		mailboxId,
+		name: 'Imported signature',
+		html: detectedSignatureHtml(text),
+		isDefault: true,
+	});
+	if (res !== undefined) {
+		signatureSaved.value = true;
+		showToast('Saved as your default signature.', 'success');
+	}
 }
 
 // ── Cancel migration ────────────────────────────────────────────────────────
@@ -440,7 +474,45 @@ const steps = computed(() =>
 							</UiButton>
 						</div>
 
-						<p class="text-xs text-text-tertiary mt-6">
+						<!-- Detected signature: offer the block we found in imported sent mail. -->
+						<div
+							v-if="suggestedSignature && !signatureSaved"
+							class="mt-7 text-left rounded-xl border border-border-subtle bg-bg-surface p-4"
+						>
+							<p class="text-sm font-medium">We found your email signature</p>
+							<p class="text-xs text-text-tertiary mt-0.5">
+								Spotted this at the end of your sent mail. Save it and Owlat will add it to your
+								replies, just like before.
+							</p>
+							<pre
+								class="mt-3 text-xs text-text-secondary whitespace-pre-wrap font-sans bg-text-tertiary/5 rounded-lg p-3"
+								>{{ suggestedSignature }}</pre
+							>
+							<div class="mt-3 flex items-center gap-3">
+								<UiButton
+									size="sm"
+									variant="secondary"
+									:loading="createSignatureOp.isLoading.value"
+									@click="saveDetectedSignature"
+								>
+									Use this signature
+								</UiButton>
+								<NuxtLink
+									to="/dashboard/postbox/settings/signatures"
+									class="text-xs text-text-tertiary hover:text-text-primary"
+								>
+									Edit it first
+								</NuxtLink>
+							</div>
+						</div>
+						<p
+							v-else-if="signatureSaved"
+							class="text-xs text-success mt-6 inline-flex items-center gap-1"
+						>
+							<Icon name="lucide:check" class="w-3.5 h-3.5" />
+							Signature saved — it'll be added to your replies.
+						</p>
+						<p v-else class="text-xs text-text-tertiary mt-6">
 							Tip: check your
 							<NuxtLink
 								to="/dashboard/postbox/settings/signatures"
