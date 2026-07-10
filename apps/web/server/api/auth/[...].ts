@@ -58,15 +58,20 @@ export default defineEventHandler(async (event) => {
 		headers.set('cookie', cookieHeader);
 	}
 
-	// Behave like a proper reverse proxy: append the connecting peer to
-	// X-Forwarded-For. BetterAuth's rate limiter keys on the FIRST entry of
-	// this header — behind Caddy that stays the real client IP (we only extend
-	// the chain); with nothing in front (local dev) this supplies the IP the
-	// limiter would otherwise lack, skipping every request with a WARN.
+	// BetterAuth's rate limiter keys on the FIRST (leftmost) entry of
+	// X-Forwarded-For. A client-supplied X-Forwarded-For puts an
+	// attacker-controlled value there, so appending the peer IP after it would
+	// let an attacker rotate the leftmost entry per request and mint a fresh
+	// rate-limit bucket, defeating sign-in / forget-password / sign-up limits.
+	// Overwrite the header with the trusted connecting peer IP only, dropping any
+	// client-supplied value. Behind a trusted reverse proxy (e.g. Caddy) the peer
+	// is that proxy, which forwards the real client IP; with nothing in front
+	// (local dev) this supplies the peer IP the limiter would otherwise lack.
 	const peerIp = getRequestIP(event);
 	if (peerIp) {
-		const prior = getHeader(event, 'x-forwarded-for');
-		headers.set('x-forwarded-for', prior ? `${prior}, ${peerIp}` : peerIp);
+		headers.set('x-forwarded-for', peerIp);
+	} else {
+		headers.delete('x-forwarded-for');
 	}
 
 	// Make the proxied request to Convex
