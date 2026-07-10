@@ -408,8 +408,17 @@ const settingsSections = computed(() => {
 									Default Sender Information
 								</h3>
 								<p class="text-xs text-text-tertiary mb-4">
-									These values will be used as defaults when creating new campaigns.
+									These values are the default the app sends system mail from (verifications,
+									password resets) and prefill new campaigns.
 								</p>
+								<NuxtLink
+									to="/dashboard/settings/campaign-senders"
+									class="inline-flex items-center gap-1.5 text-xs text-brand hover:underline"
+								>
+									<Icon name="lucide:at-sign" class="w-3.5 h-3.5" />
+									Manage the addresses campaigns can send from
+									<Icon name="lucide:arrow-right" class="w-3.5 h-3.5" />
+								</NuxtLink>
 							</div>
 
 							<!-- Default From Name -->

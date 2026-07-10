@@ -163,6 +163,11 @@ const routeConfigs: Record<string, RouteConfig> = {
 		sectionHref: '/dashboard/settings',
 		page: 'API Keys',
 	},
+	'/dashboard/settings/campaign-senders': {
+		section: 'Settings',
+		sectionHref: '/dashboard/settings',
+		page: 'Campaign senders',
+	},
 	'/dashboard/settings/forms': {
 		section: 'Settings',
 		sectionHref: '/dashboard/settings',
