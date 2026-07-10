@@ -26,10 +26,7 @@ function getDisplayName(contact: Contact): string {
 }
 
 function getInitials(contact: Contact): string {
-	if (contact.firstName || contact.lastName) {
-		return [contact.firstName?.[0], contact.lastName?.[0]].filter(Boolean).join('').toUpperCase();
-	}
-	return (contact.email?.[0] ?? '?').toUpperCase();
+	return personInitials(contact.firstName, contact.lastName, contact.email);
 }
 </script>
 

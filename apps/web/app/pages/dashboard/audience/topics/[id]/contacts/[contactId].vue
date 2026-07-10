@@ -157,13 +157,7 @@ const contactName = computed(() => {
 const contactInitials = computed(() => {
 	if (!details.value) return '';
 	const { firstName, lastName, email } = details.value.contact;
-	if (firstName && lastName) {
-		return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
-	}
-	if (firstName) {
-		return firstName.charAt(0).toUpperCase();
-	}
-	return email?.charAt(0).toUpperCase() ?? '?';
+	return personInitials(firstName, lastName, email);
 });
 </script>
 
