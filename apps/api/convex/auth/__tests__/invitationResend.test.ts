@@ -1,15 +1,24 @@
 /**
- * Coverage for auth/invitationResend.throttleResend:
- *   - first resend for an invitation is allowed and records the send time
- *   - a second resend within the cooldown window is rejected (rate limited)
- *   - a resend after the cooldown window elapses is allowed again
- *   - non-admin callers are rejected
+ * Coverage for the invitation-email resend throttle.
+ *
+ * `enforceResendThrottle` is the real choke point (the `sendInvitationEmail` hook
+ * calls it for every send — first invite and every resend, from any client):
+ *   - the first send stamps the row (so "1/min" counts the initial send)
+ *   - a second send within the cooldown window throws (rate limited)
+ *   - a send after the cooldown elapses is allowed again, reusing the row
+ *   - each invitation is throttled independently
+ *
+ * `throttleResend` is the client-facing, READ-ONLY pre-check:
+ *   - reports "allowed" when no send is on record or the cooldown elapsed
+ *   - throws inside the cooldown (friendly "wait Ns")
+ *   - never writes rows (the hook owns the stamp)
+ *   - rejects non-admin callers
  */
 
 import { convexTest } from 'convex-test';
 import { describe, it, expect, vi } from 'vitest';
 import schema from '../../schema';
-import { api } from '../../_generated/api';
+import { api, internal } from '../../_generated/api';
 
 const sessionMocks = vi.hoisted(() => ({
 	getBetterAuthSessionWithRole: vi.fn(),
@@ -67,15 +76,14 @@ const modules = Object.fromEntries(
 	)
 );
 
-describe('invitationResend.throttleResend', () => {
-	it('allows the first resend and records the send time', async () => {
-		setAdminSession();
+describe('invitationResend.enforceResendThrottle (send-path choke point)', () => {
+	it('stamps the row on the first send (the initial send counts)', async () => {
 		const t = convexTest(schema, modules);
 
-		const result = await t.mutation(api.auth.invitationResend.throttleResend, {
+		await t.mutation(internal.auth.invitationResend.enforceResendThrottle, {
 			invitationId: 'inv-1',
+			organizationId: 'test-org',
 		});
-		expect(result.ok).toBe(true);
 
 		await t.run(async (ctx) => {
 			const row = await ctx.db
@@ -87,12 +95,102 @@ describe('invitationResend.throttleResend', () => {
 		});
 	});
 
-	it('rejects a second resend within the cooldown window', async () => {
+	it('throws on a second send within the cooldown window', async () => {
+		const t = convexTest(schema, modules);
+
+		await t.mutation(internal.auth.invitationResend.enforceResendThrottle, {
+			invitationId: 'inv-1',
+			organizationId: 'test-org',
+		});
+
+		await expect(
+			t.mutation(internal.auth.invitationResend.enforceResendThrottle, {
+				invitationId: 'inv-1',
+				organizationId: 'test-org',
+			})
+		).rejects.toThrow(/wait/i);
+	});
+
+	it('allows a send again once the cooldown window has elapsed, reusing the row', async () => {
+		const t = convexTest(schema, modules);
+
+		await t.run(async (ctx) => {
+			await ctx.db.insert('invitationResends', {
+				invitationId: 'inv-1',
+				organizationId: 'test-org',
+				lastSentAt: Date.now() - 5 * 60_000,
+			});
+		});
+
+		await t.mutation(internal.auth.invitationResend.enforceResendThrottle, {
+			invitationId: 'inv-1',
+			organizationId: 'test-org',
+		});
+
+		await t.run(async (ctx) => {
+			const rows = await ctx.db
+				.query('invitationResends')
+				.withIndex('by_invitation', (q) => q.eq('invitationId', 'inv-1'))
+				.collect();
+			// The single row is patched, not duplicated.
+			expect(rows).toHaveLength(1);
+			expect(rows[0]?.lastSentAt).toBeGreaterThan(Date.now() - 60_000);
+		});
+	});
+
+	it('throttles each invitation independently', async () => {
+		const t = convexTest(schema, modules);
+
+		await t.mutation(internal.auth.invitationResend.enforceResendThrottle, {
+			invitationId: 'inv-a',
+			organizationId: 'test-org',
+		});
+		// A different invitation is not affected by inv-a's cooldown.
+		await expect(
+			t.mutation(internal.auth.invitationResend.enforceResendThrottle, {
+				invitationId: 'inv-b',
+				organizationId: 'test-org',
+			})
+		).resolves.not.toThrow();
+	});
+});
+
+describe('invitationResend.throttleResend (client pre-check)', () => {
+	it('reports allowed when nothing is on record', async () => {
+		setAdminSession();
+		const t = convexTest(schema, modules);
+
+		const result = await t.mutation(api.auth.invitationResend.throttleResend, {
+			invitationId: 'inv-1',
+		});
+		expect(result.ok).toBe(true);
+	});
+
+	it('is read-only — it never writes a resend row', async () => {
 		setAdminSession();
 		const t = convexTest(schema, modules);
 
 		await t.mutation(api.auth.invitationResend.throttleResend, {
 			invitationId: 'inv-1',
+		});
+
+		await t.run(async (ctx) => {
+			const row = await ctx.db
+				.query('invitationResends')
+				.withIndex('by_invitation', (q) => q.eq('invitationId', 'inv-1'))
+				.first();
+			expect(row).toBeNull();
+		});
+	});
+
+	it('throws inside the cooldown once the hook has stamped a send', async () => {
+		setAdminSession();
+		const t = convexTest(schema, modules);
+
+		// Simulate the enforced send having just stamped the invitation.
+		await t.mutation(internal.auth.invitationResend.enforceResendThrottle, {
+			invitationId: 'inv-1',
+			organizationId: 'test-org',
 		});
 
 		await expect(
@@ -102,11 +200,10 @@ describe('invitationResend.throttleResend', () => {
 		).rejects.toThrow(/wait/i);
 	});
 
-	it('allows a resend again once the cooldown window has elapsed', async () => {
+	it('reports allowed again once the cooldown has elapsed', async () => {
 		setAdminSession();
 		const t = convexTest(schema, modules);
 
-		// Seed a stale resend row (last sent well over the cooldown ago).
 		await t.run(async (ctx) => {
 			await ctx.db.insert('invitationResends', {
 				invitationId: 'inv-1',
@@ -119,30 +216,6 @@ describe('invitationResend.throttleResend', () => {
 			invitationId: 'inv-1',
 		});
 		expect(result.ok).toBe(true);
-
-		await t.run(async (ctx) => {
-			const rows = await ctx.db
-				.query('invitationResends')
-				.withIndex('by_invitation', (q) => q.eq('invitationId', 'inv-1'))
-				.collect();
-			// The single row is reused (patched), not duplicated.
-			expect(rows).toHaveLength(1);
-			expect(rows[0]?.lastSentAt).toBeGreaterThan(Date.now() - 60_000);
-		});
-	});
-
-	it('throttles each invitation independently', async () => {
-		setAdminSession();
-		const t = convexTest(schema, modules);
-
-		const a = await t.mutation(api.auth.invitationResend.throttleResend, {
-			invitationId: 'inv-a',
-		});
-		const b = await t.mutation(api.auth.invitationResend.throttleResend, {
-			invitationId: 'inv-b',
-		});
-		expect(a.ok).toBe(true);
-		expect(b.ok).toBe(true);
 	});
 
 	it('rejects non-admin callers', async () => {
