@@ -325,17 +325,17 @@ const shouldShow = computed(() => {
 						>
 							<div class="flex items-center gap-2">
 								<span
-									class="w-5 h-5 rounded-full bg-brand/15 text-brand text-[0.6875rem] font-semibold flex items-center justify-center"
+									class="w-5 h-5 rounded-full bg-brand/15 text-brand text-xs font-semibold flex items-center justify-center"
 									>5</span
 								>
-								<span class="text-[0.8125rem] font-medium text-text-primary">Set up backups</span>
+								<span class="text-sm font-medium text-text-primary">Set up backups</span>
 							</div>
-							<span class="text-[0.75rem] text-text-tertiary pl-7"
+							<span class="text-xs text-text-tertiary pl-7"
 								>Nothing is backed up until you turn it on — do this before you store real
 								data</span
 							>
 							<span
-								class="text-[0.75rem] text-brand font-medium group-hover:translate-x-0.5 transition-transform mt-1 pl-7"
+								class="text-xs text-brand font-medium group-hover:translate-x-0.5 transition-transform mt-1 pl-7"
 							>
 								Set up backups →
 							</span>
