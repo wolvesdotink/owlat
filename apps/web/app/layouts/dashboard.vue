@@ -115,6 +115,8 @@ const onPeekPointerEnter = () => {
 	openPeek();
 };
 const onPeekPointerLeave = () => {
+	// Only meaningful while a peek is open; ignore ordinary visible/collapsed leaves.
+	if (!isPeeking.value) return;
 	schedulePeekClose();
 };
 // Focus leaving the peeked rail (Tab out / click away) closes it.
@@ -221,6 +223,13 @@ watch(
 		isSidebarOpen.value = false;
 	}
 );
+
+// Focus mode forces the rail off-screen; close any open peek so it can't be
+// left stranded (the hot-zone unmounts and the off-screen aside never fires
+// mouseleave to run the close timer).
+watch(isFocusMode, (active) => {
+	if (active) closePeek();
+});
 
 // Close dropdowns when clicking outside
 const handleClickOutside = (event: MouseEvent) => {
@@ -365,7 +374,7 @@ const sidebarDesktopClass = computed(() => {
 		<!-- Left-edge hot-zone: opens the peek overlay while the sidebar is hidden.
 		     Invisible 6px strip, desktop-only (only rendered when effectively hidden). -->
 		<div
-			v-if="effectiveHidden && !isPeeking"
+			v-if="effectiveHidden && !isPeeking && !isFocusMode"
 			class="hidden lg:block fixed top-0 left-0 z-40 w-1.5 h-full"
 			aria-hidden="true"
 			@mouseenter="onPeekPointerEnter"
