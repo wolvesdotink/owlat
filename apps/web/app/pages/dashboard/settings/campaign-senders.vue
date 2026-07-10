@@ -66,11 +66,25 @@ async function onToggleEnabled(id: Id<'campaignSenders'>, value: boolean) {
 	await updateSender({ id, isEnabled: value });
 }
 
-const removingId = ref<Id<'campaignSenders'> | null>(null);
-async function onRemove(id: Id<'campaignSenders'>) {
-	removingId.value = id;
-	await removeSender({ id });
-	removingId.value = null;
+// Removal is destructive (and dropping the default leaves no default), so it goes
+// through a confirmation dialog — matching the API-key revoke precedent.
+type SenderRow = NonNullable<typeof senders.value>[number];
+const senderPendingRemoval = ref<SenderRow | null>(null);
+const isRemoving = ref(false);
+
+function requestRemove(sender: SenderRow) {
+	senderPendingRemoval.value = sender;
+}
+
+async function confirmRemove() {
+	const sender = senderPendingRemoval.value;
+	if (!sender) return;
+	isRemoving.value = true;
+	const result = await removeSender({ id: sender._id });
+	isRemoving.value = false;
+	if (result !== undefined) {
+		senderPendingRemoval.value = null;
+	}
 }
 
 // --- Add-sender modal --------------------------------------------------------
@@ -92,7 +106,7 @@ function openAdd() {
 
 const hasValidEmail = computed(() => isValidEmail(addForm.email.trim()));
 
-const { data: domainStatus } = useOrganizationQuery(
+const { data: domainStatus, error: domainStatusError } = useOrganizationQuery(
 	api.domains.domains.getEmailDomainVerificationStatus,
 	() => {
 		const email = addForm.email.trim();
@@ -101,7 +115,9 @@ const { data: domainStatus } = useOrganizationQuery(
 	}
 );
 
-const verification = computed(() => mapSenderVerification(domainStatus.value, hasValidEmail.value));
+const verification = computed(() =>
+	mapSenderVerification(domainStatus.value, hasValidEmail.value, domainStatusError.value !== null)
+);
 
 async function onSubmitAdd() {
 	addError.value = null;
@@ -168,7 +184,7 @@ async function onSubmitAdd() {
 		<!-- Error -->
 		<UiErrorAlert
 			v-else-if="sendersError"
-			:message="'Could not load campaign senders. Please try again.'"
+			message="Could not load campaign senders. Please try again."
 		/>
 
 		<template v-else>
@@ -256,10 +272,9 @@ async function onSubmitAdd() {
 
 						<button
 							type="button"
-							class="text-text-tertiary hover:text-error transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error rounded p-1 disabled:opacity-50"
-							:disabled="removingId === sender._id"
+							class="text-text-tertiary hover:text-error transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error rounded p-1"
 							:aria-label="`Remove ${sender.email}`"
-							@click="onRemove(sender._id)"
+							@click="requestRemove(sender)"
 						>
 							<Icon name="lucide:trash-2" class="w-4 h-4" />
 						</button>
@@ -370,5 +385,25 @@ async function onSubmitAdd() {
 				</UiButton>
 			</template>
 		</UiModal>
+
+		<!-- Remove-sender confirmation -->
+		<UiConfirmationDialog
+			:open="senderPendingRemoval !== null"
+			variant="danger"
+			title="Remove campaign sender"
+			:description="
+				senderPendingRemoval?.isDefault
+					? `Remove &quot;${senderPendingRemoval?.email}&quot;? It's the default sender, so new campaigns will have no default until you pick another.`
+					: `Remove &quot;${senderPendingRemoval?.email}&quot;? Your team will no longer be able to send campaigns from it.`
+			"
+			confirm-text="Remove sender"
+			:is-loading="isRemoving"
+			@update:open="
+				(v) => {
+					if (!v) senderPendingRemoval = null;
+				}
+			"
+			@confirm="confirmRemove"
+		/>
 	</div>
 </template>
