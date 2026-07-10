@@ -68,13 +68,17 @@ pub fn open_compose(app: AppHandle, path: Option<String>) {
 /// Show or hide the three native window buttons (close / miniaturize / zoom) on
 /// the given window's NSWindow. Must run on the main thread.
 ///
-/// In fullscreen macOS owns the buttons (they live behind the menu-bar reveal),
-/// so we leave them alone rather than fight the system.
+/// We only refuse the *hide* direction while fullscreen: there macOS owns the
+/// buttons (they live behind the menu-bar reveal bar) and hiding them would
+/// strand the fullscreen exit affordance. Restoring them to visible matches the
+/// native fullscreen state, so it is safe — and it is what keeps the buttons
+/// from being permanently lost when the sidebar-owning layout tears down while
+/// fullscreen.
 #[cfg(target_os = "macos")]
 fn apply_traffic_lights(window: &WebviewWindow, visible: bool) {
     use objc2_app_kit::{NSWindow, NSWindowButton};
 
-    if window.is_fullscreen().unwrap_or(false) {
+    if !visible && window.is_fullscreen().unwrap_or(false) {
         return;
     }
     let Ok(ptr) = window.ns_window() else {
