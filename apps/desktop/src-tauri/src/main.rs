@@ -8,9 +8,11 @@ mod shortcuts;
 mod ssh;
 mod window;
 
-// `Manager` brings `get_webview_window` (used in the non-macOS menu wiring) into
-// scope; `handle()`/`set_menu()`/`on_menu_event()` are inherent on `App`.
-#[allow(unused_imports)]
+// `Manager` brings `get_webview_window` (used only in the non-macOS menu wiring)
+// into scope; `handle()`/`set_menu()`/`on_menu_event()` are inherent on `App`, so
+// on macOS the trait is genuinely unused — gate the import to the one platform
+// that needs it instead of blanket-silencing the warning everywhere.
+#[cfg(not(target_os = "macos"))]
 use tauri::Manager;
 
 fn main() {
