@@ -216,7 +216,7 @@ const dateRangeOptions = [
 			<UiIconBox icon="lucide:lock" size="xl" variant="surface" rounded="full" class="mb-4" />
 			<p class="text-text-secondary font-medium">Admins only</p>
 			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-				The audit log is available to organization owners and admins only.
+				The audit log is available to workspace owners and admins only.
 			</p>
 		</div>
 
@@ -234,9 +234,9 @@ const dateRangeOptions = [
 			class="card flex flex-col items-center justify-center py-16 text-center px-6"
 		>
 			<UiIconBox icon="lucide:clipboard-list" size="xl" variant="surface" rounded="full" class="mb-4" />
-			<p class="text-text-secondary font-medium">No organization selected</p>
+			<p class="text-text-secondary font-medium">No workspace selected</p>
 			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-				Create or select an organization to view the audit log.
+				Create or select a workspace to view the audit log.
 			</p>
 		</div>
 

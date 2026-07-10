@@ -164,11 +164,11 @@ const handleChannelError = (message: string) => {
 							<p class="text-sm text-text-tertiary mb-4 max-w-sm mx-auto">
 								<template v-if="canManageChannels">
 									Use <span class="font-medium text-text-secondary">Add channel</span>
-									above to configure a communication channel for your organization.
+									above to configure a communication channel for your workspace.
 								</template>
 								<template v-else>
 									Communication channels will appear here once an owner or admin has configured them
-									for your organization.
+									for your workspace.
 								</template>
 							</p>
 						</div>
