@@ -33,11 +33,24 @@ import {
 	throwNotFound,
 } from '../_utils/errors';
 import { markOnboardingStep } from '../auth/userOnboarding';
-import { createProvisionedMailbox, getActiveMailboxForUser, provisionMailbox } from './mailbox';
+import { canonicalAddress, createProvisionedMailbox, getActiveMailboxForUser } from './mailbox';
+import { claimReservedMailbox } from './pendingMailbox';
 import type { Id } from '../_generated/dataModel';
 
 /** Max length of the free-text note a member can attach to a mailbox request. */
 const MAX_NOTE_LENGTH = 500;
+
+/**
+ * Derive a hosted local-part from the requester's (usually external) login
+ * email: take the part before `@`, lowercase it, and drop anything outside the
+ * mailbox local-part charset so the result is a valid `localpart@<domain>`
+ * (mirrors `pendingMailbox`'s `LOCALPART_PATTERN`). Returns '' when nothing
+ * usable remains — the caller refuses rather than build a bad address.
+ */
+function localpartFromEmail(email: string): string {
+	const local = email.trim().toLowerCase().split('@')[0] ?? '';
+	return local.replace(/[^a-z0-9._-]/g, '');
+}
 
 /**
  * Ask an admin to set up a mailbox. Self-authed; reuses the caller's open
@@ -197,16 +210,29 @@ export const listPending = authedQuery({
  * `fulfilled` — closing the loop instead of leaving a plain acknowledgement.
  *
  * The mailbox is stood up through the SAME shared provisioning path the admin
- * members flow uses (`createProvisionedMailbox` / `provisionMailbox`): the admin
- * scope is never bypassed and the reservation/claim machinery is honoured — if a
- * hosted mailbox was already reserved for the requester (via an invitation), we
- * provision THAT reserved address and consume the reservation rather than
- * orphaning it. The requester is notified in-app: their onboarding flips to
- * mailbox-ready and their fresh-start guard now admits them to the inbox.
+ * members flow uses (`createProvisionedMailbox` / `claimReservedMailbox`): the
+ * admin scope is never bypassed and the reservation/claim machinery is honoured
+ * — if a hosted mailbox was already reserved for the requester (via an
+ * invitation), we provision THAT reserved address and consume the reservation
+ * rather than orphaning it. Otherwise a fresh mailbox is stood up at
+ * `localpart@<verified sending domain>` — NEVER at the requester's external
+ * login address (that domain's MX doesn't point here, so the inbox could never
+ * receive mail; principle #5, honesty). A verified sending domain is required —
+ * the UI disable is an affordance, this is the fence.
+ *
+ * The requester is notified in-app: their onboarding flips to mailbox-ready and
+ * their fresh-start guard now admits them to the inbox.
+ *
+ * Move-linked requests (raised by `mailboxMove.start` for a non-admin mover) are
+ * NOT provisioned here — they belong to the move state machine
+ * (`mailboxMove.provisionHosted`, which bypasses the address dup-check and
+ * advances the move). Provisioning them here would strand the move, so we refuse
+ * with a pointer to the move card.
  *
  * Idempotent / redelivery-safe: a second call on an already-fulfilled request
  * returns the same mailbox, and a request whose requester already has a live
- * mailbox is fulfilled against that mailbox instead of standing up a second one.
+ * HOSTED mailbox is fulfilled against that mailbox instead of standing up a
+ * second one.
  */
 // authz: admin — requireAdminContext gates hosted-mailbox provisioning.
 export const provisionFromRequest = authedMutation({
@@ -217,10 +243,11 @@ export const provisionFromRequest = authedMutation({
 		await requireAdminContext(ctx);
 		const session = await getBetterAuthSessionWithRole(ctx);
 		if (!session?.activeOrganizationId) throwForbidden('No active organization');
+		const organizationId = session.activeOrganizationId;
 
 		const row = await ctx.db.get(args.requestId);
 		if (!row) throwNotFound('Request');
-		if (row.organizationId !== session.activeOrganizationId) {
+		if (row.organizationId !== organizationId) {
 			throwForbidden('Request not accessible');
 		}
 
@@ -231,71 +258,99 @@ export const provisionFromRequest = authedMutation({
 			return { fulfilled: true as const, mailboxId: row.fulfilledMailboxId };
 		}
 
-		// Redelivery-safe: the requester may already have a live mailbox (claimed a
-		// reservation, or a concurrent provision won). Fulfil against it rather
-		// than standing up a second one.
-		const existing = await getActiveMailboxForUser(ctx, row.authUserId);
-		if (existing) {
+		// The fulfil stamp: mark the row fulfilled (audit-stamped) and notify the
+		// requester in-app — onboarding flips to mailbox-ready and their fresh-start
+		// guard (freshStartStatus) now admits them to the inbox.
+		const fulfil = async (mailboxId: Id<'mailboxes'>) => {
 			await ctx.db.patch(row._id, {
 				status: 'fulfilled',
-				fulfilledMailboxId: existing._id,
+				fulfilledMailboxId: mailboxId,
 				resolvedByUserId: session.userId,
 				resolvedAt: now,
 			});
 			await markOnboardingStep(ctx, row.authUserId, 'mailboxReady');
-			return { fulfilled: true as const, mailboxId: existing._id };
+			return { fulfilled: true as const, mailboxId };
+		};
+
+		// Move-linked request: `mailboxMove.start` raises a request for a non-admin
+		// mover whose external mailbox stays live throughout the move. Its lifecycle
+		// belongs to the move (mailboxMove.provisionHosted advances the move AND
+		// resolves the request); fulfilling it here would strand the move at
+		// `provisioning`. Point the admin at the move card instead.
+		const linkedMove = await ctx.db
+			.query('mailboxMoves')
+			.withIndex('by_user', (q) => q.eq('userId', row.authUserId))
+			.filter((q) => q.eq(q.field('provisionRequestId'), args.requestId))
+			.first();
+		if (linkedMove) {
+			throwInvalidState(
+				'This request is part of a mailbox move — provision it from the move instead.'
+			);
+		}
+
+		// Redelivery-safe: the requester may already have a live HOSTED mailbox
+		// (claimed a reservation, or a concurrent provision won). Fulfil against it
+		// rather than standing up a second one. Only a hosted mailbox counts — an
+		// external/connected mailbox is not what this request asks for (and a mover's
+		// external mailbox must never be mistaken for a fulfilled hosted one).
+		const existingHosted = await ctx.db
+			.query('mailboxes')
+			.withIndex('by_user', (q) => q.eq('userId', row.authUserId))
+			.filter((q) => q.eq(q.field('status'), 'active'))
+			.filter((q) => q.neq(q.field('kind'), 'external'))
+			.first();
+		if (existingHosted) {
+			return fulfil(existingHosted._id);
 		}
 
 		// Honour the reservation/claim machinery: if a hosted mailbox was already
-		// reserved for this requester (an invitation set one up), provision THAT
-		// reserved address and consume the reservation — never orphan it by
-		// standing up a mailbox at a different address.
+		// reserved for this requester (an invitation set one up) IN THIS ORG,
+		// provision THAT reserved address and consume the reservation — never orphan
+		// it by standing up a mailbox at a different address. Scope the lookup to the
+		// caller's org so a foreign-org reservation first in the index can't shadow
+		// a same-org one.
 		const reserved = await ctx.db
 			.query('pendingMailboxes')
 			.withIndex('by_invitee_email', (q) =>
 				q.eq('inviteeEmail', row.requesterEmail.trim().toLowerCase())
 			)
+			.filter((q) => q.eq(q.field('organizationId'), organizationId))
 			.first();
 
-		let mailboxId: Id<'mailboxes'>;
-		if (reserved && reserved.organizationId === session.activeOrganizationId) {
-			// Same live-collision guard the invitee claim path uses.
-			const collision = await ctx.db
-				.query('mailboxes')
-				.withIndex('by_address', (q) => q.eq('address', reserved.address))
-				.first();
-			if (collision) {
+		if (reserved) {
+			const claim = await claimReservedMailbox(ctx, reserved, row.authUserId);
+			if (!claim.ok) {
 				throwInvalidState(`A mailbox already exists at ${reserved.address}`);
 			}
-			mailboxId = await provisionMailbox(ctx, {
-				userId: row.authUserId,
-				organizationId: reserved.organizationId,
-				address: reserved.address,
-				domain: reserved.domain,
-				displayName: reserved.displayName,
-			});
-			await ctx.db.delete(reserved._id);
-		} else {
-			// No reservation: provision a fresh hosted mailbox at the requester's own
-			// address, through the shared admin provisioning path (dup-checked).
-			mailboxId = await createProvisionedMailbox(ctx, {
-				userId: row.authUserId,
-				organizationId: session.activeOrganizationId,
-				address: row.requesterEmail,
-			});
+			return fulfil(claim.mailboxId);
 		}
 
-		await ctx.db.patch(row._id, {
-			status: 'fulfilled',
-			fulfilledMailboxId: mailboxId,
-			resolvedByUserId: session.userId,
-			resolvedAt: now,
-		});
-		// Notify the requester in-app: onboarding flips to mailbox-ready and their
-		// fresh-start guard (freshStartStatus) now admits them to the inbox.
-		await markOnboardingStep(ctx, row.authUserId, 'mailboxReady');
+		// No reservation: stand up a fresh hosted mailbox. Hosted mail requires a
+		// verified sending domain — the mailbox must live on a domain this
+		// deployment actually hosts, or inbound mail can never arrive and marking
+		// the request fulfilled would be a lie (principle #5). Build the address as
+		// `localpart@<verified domain>` (mirroring the reservation / add-mailbox
+		// shape), never at the requester's external login address.
+		const verifiedDomain = await ctx.db
+			.query('domains')
+			.withIndex('by_status', (q) => q.eq('status', 'verified'))
+			.first();
+		if (!verifiedDomain) {
+			throwInvalidState('Verify a sending domain before provisioning a hosted mailbox.');
+		}
 
-		return { fulfilled: true as const, mailboxId };
+		const localpart = localpartFromEmail(row.requesterEmail);
+		if (!localpart) {
+			throwInvalidState('This requester has no usable mailbox name — provision one manually.');
+		}
+
+		const mailboxId = await createProvisionedMailbox(ctx, {
+			userId: row.authUserId,
+			organizationId,
+			address: canonicalAddress(`${localpart}@${verifiedDomain.domain}`),
+		});
+
+		return fulfil(mailboxId);
 	},
 });
 
@@ -319,6 +374,13 @@ export const resolve = authedMutation({
 		if (!row) throwNotFound('Request');
 		if (row.organizationId !== session.activeOrganizationId) {
 			throwForbidden('Request not accessible');
+		}
+
+		// Idempotent, and never downgrade a decided row: a stale 'Mark done' racing
+		// another admin's 'Provision now' must not turn `fulfilled` back into
+		// `resolved` and erase the fulfilment distinction. Only open rows resolve.
+		if (row.status !== 'open') {
+			return { resolved: true as const };
 		}
 
 		await ctx.db.patch(args.requestId, {
