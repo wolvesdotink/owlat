@@ -75,10 +75,40 @@ export const listForOwnedMailbox = publicQuery({
 //
 // The allow-set is NEVER bypassed — it is EXTENDED to exactly the sanctioned
 // cross-mailbox identities (a teammate's own mailboxes), and everything else is
-// still rejected. `resolveSendAsIdentitiesForCtx` is the single source of truth
-// the setIdentity mutation and the dispatch-time re-check both derive from.
+// still rejected. The offer (`resolveSendAsIdentitiesForCtx`, feeding setIdentity)
+// and the dispatch-time re-check (`isSanctionedSendAsForUser`) apply the SAME
+// thread-access predicate (`hasExplicitSharedThreadAccess`), so the set of
+// personal identities offered is provably identical to the set sanctioned at
+// send — no pick can be accepted by the composer and then revoked after Send.
 
 export type SendAsIdentityKind = 'team' | 'own' | 'personal';
+
+/**
+ * Explicit access to a SHARED thread mailbox for send-as purposes: the mailbox's
+ * own `userId`, or an explicit `mailboxMembers` row. The org owner/admin
+ * role-bypass that `requireMailboxAccess` grants for READS does NOT count here —
+ * cross-mailbox personal send-as requires explicit membership (the brief's
+ * "membership is explicit; org membership alone grants nothing").
+ *
+ * This is the single predicate BOTH the offer (`resolveSendAsIdentitiesForCtx`)
+ * and the dispatch-time re-check (`isSanctionedSendAsForUser`) call, so the set
+ * of personal identities offered is provably identical to the set sanctioned at
+ * send — an admin without a membership row is never offered (nor allowed) a
+ * personal send-as that would later revert `from_revoked` after they hit Send.
+ */
+async function hasExplicitSharedThreadAccess(
+	ctx: QueryCtx,
+	thread: Doc<'mailboxes'>,
+	userId: string
+): Promise<boolean> {
+	if (!userId) return false;
+	if (thread.userId === userId) return true;
+	const membership = await ctx.db
+		.query('mailboxMembers')
+		.withIndex('by_mailbox_user', (q) => q.eq('mailboxId', thread._id).eq('authUserId', userId))
+		.unique();
+	return membership !== null;
+}
 
 export interface SendAsIdentity {
 	address: string; // canonical lowercase
@@ -109,6 +139,14 @@ export async function resolveSendAsIdentitiesForCtx(
 	// shows its own identities, and offering another mailbox there would be a
 	// cross-identity leak with no team context to justify it.
 	if (threadMailbox.scope !== 'shared') return out;
+
+	// Cross-mailbox personal send-as requires EXPLICIT access to the team thread
+	// (own user or membership) — not the org owner/admin role-bypass that
+	// `requireMailboxAccess` grants for the read. An admin without a membership
+	// row still gets the team identities above (the classic path dispatch allows
+	// unconditionally), but never a personal identity that dispatch would revoke.
+	// This keeps the offered set provably identical to `isSanctionedSendAsForUser`.
+	if (!(await hasExplicitSharedThreadAccess(ctx, threadMailbox, userId))) return out;
 
 	const ownMailboxes = await ctx.db
 		.query('mailboxes')
@@ -161,15 +199,9 @@ export async function isSanctionedSendAsForUser(
 	if (sending.scope === 'shared') return false; // only personal identities
 	if (thread.scope !== 'shared') return false; // send-as only exists in a team inbox
 	if (sending.organizationId !== thread.organizationId) return false;
-	// Explicit access to the thread mailbox: its own user, or a membership row.
-	if (thread.userId === params.userId) return true;
-	const membership = await ctx.db
-		.query('mailboxMembers')
-		.withIndex('by_mailbox_user', (q) =>
-			q.eq('mailboxId', params.threadMailboxId).eq('authUserId', params.userId)
-		)
-		.unique();
-	return membership !== null;
+	// Explicit access to the thread mailbox — the SAME predicate the offer path
+	// uses, so the sanctioned set can never drift from the offered set.
+	return hasExplicitSharedThreadAccess(ctx, thread, params.userId);
 }
 
 /** Public query for the web composer's send-as picker (team + personal identities). */
