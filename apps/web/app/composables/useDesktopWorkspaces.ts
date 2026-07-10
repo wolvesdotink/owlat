@@ -27,7 +27,12 @@ import {
 	workspaceTokenRef,
 } from '~/lib/desktop/workspaceTypes';
 import { applyWorkspaceAccent } from '~/lib/desktop/workspaceAccent';
-import { showSwitchSkeleton, writeSwitchFlag } from '~/lib/desktop/workspaceSwitch';
+import {
+	hideSwitchSkeleton,
+	showSwitchSkeleton,
+	SWITCH_FLAG_TTL_MS,
+	writeSwitchFlag,
+} from '~/lib/desktop/workspaceSwitch';
 
 // ---- module-level reactive state (shared across all callers) ----
 const workspaces = ref<WorkspaceConfig[]>([]);
@@ -230,7 +235,19 @@ async function switchTo(id: string): Promise<void> {
 			label: ws.label,
 			at: Date.now(),
 		});
-		showSwitchSkeleton(ws.accentColor, ws.label);
+		const skeleton = showSwitchSkeleton(ws.accentColor, ws.label);
+		// Stale-skeleton guard on the INITIATING document (mirrors the fresh
+		// document's boot-plugin TTL). The skeleton is a full-window,
+		// pointer-events-blocking overlay; if location.assign below stalls or the
+		// webview navigation fails, this document keeps it forever and the app is
+		// stuck behind an opaque sheet. After the same TTL, drop the skeleton and
+		// fall back to a plain reload — which still re-seeds into the (already
+		// persisted) new active workspace. A successful navigation unloads this
+		// document first, so the timer never fires on the happy path.
+		window.setTimeout(() => {
+			hideSwitchSkeleton(skeleton);
+			window.location.reload();
+		}, SWITCH_FLAG_TTL_MS);
 	}
 	window.location.assign('/dashboard');
 }
