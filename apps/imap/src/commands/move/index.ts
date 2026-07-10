@@ -28,9 +28,7 @@ export const moveModule: ImapCommandModule<MoveArgs> = {
 	},
 	start({ deps, state, args, tag, send }) {
 		const fail =
-			requireAuth(state, tag) ??
-			requireSelect(state, tag) ??
-			requireWritableSelect(state, tag);
+			requireAuth(state, tag) ?? requireSelect(state, tag) ?? requireWritableSelect(state, tag);
 		if (fail) {
 			send(fail);
 			return syncSession();
@@ -60,7 +58,7 @@ export const moveModule: ImapCommandModule<MoveArgs> = {
 					}
 					send(`${tag} OK ${label} completed`);
 				},
-			}),
+			})
 		);
 	},
 };

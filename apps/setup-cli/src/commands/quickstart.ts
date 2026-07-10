@@ -98,14 +98,18 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 	reporter.step(SetupStep.Preflight, 'Checking prerequisites');
 	if (!verifyMonorepo(opts.owlatDir)) {
 		reporter.fail(`No turbo.json at ${opts.owlatDir}`);
-		log.error(`No turbo.json found at ${opts.owlatDir}. Run from the monorepo root or pass --owlat-dir.`);
+		log.error(
+			`No turbo.json found at ${opts.owlatDir}. Run from the monorepo root or pass --owlat-dir.`
+		);
 		reporter.done(false);
 		return 1;
 	}
 
 	if (!(await dockerReachable())) {
 		reporter.fail('Docker daemon is not reachable');
-		log.error('Docker daemon is not reachable. Start Docker Desktop (or the daemon) and try again.');
+		log.error(
+			'Docker daemon is not reachable. Start Docker Desktop (or the daemon) and try again.'
+		);
 		reporter.done(false);
 		return 1;
 	}
@@ -143,7 +147,7 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 				? 'Local build mode: stack images will be built from this source tree (OWLAT_VERSION=dev).'
 				: opts.localImages
 					? 'Local images mode: using pre-pushed dev images (OWLAT_VERSION=dev).'
-					: `Pinned stack images to the signed release ${versionPin} (OWLAT_VERSION=${versionPin}).`,
+					: `Pinned stack images to the signed release ${versionPin} (OWLAT_VERSION=${versionPin}).`
 		);
 	}
 
@@ -165,8 +169,13 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 			return 0;
 		}
 		mode = picked;
-		shouldBootstrap = mode !== 'blank' && (mode === 'populated' || (await askYesNo('Bootstrap an admin user?', true, opts.assumeYes)));
-		shouldSeed = mode !== 'blank' && !flags.skipSeed && (mode === 'populated' || (await askYesNo('Seed demo data?', true, opts.assumeYes)));
+		shouldBootstrap =
+			mode !== 'blank' &&
+			(mode === 'populated' || (await askYesNo('Bootstrap an admin user?', true, opts.assumeYes)));
+		shouldSeed =
+			mode !== 'blank' &&
+			!flags.skipSeed &&
+			(mode === 'populated' || (await askYesNo('Seed demo data?', true, opts.assumeYes)));
 	}
 
 	// Step 3c: edge TLS — when public URLs are configured, generate a Caddyfile
@@ -208,10 +217,17 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 		.filter(Boolean);
 	const composeProfilesUnion = Array.from(new Set([...existingProfiles, ...composeProfiles]));
 	if (composeProfilesUnion.length) {
-		await writeEnv(envPath, mergeEnv(envForProfiles, { COMPOSE_PROFILES: composeProfilesUnion.join(',') }));
+		await writeEnv(
+			envPath,
+			mergeEnv(envForProfiles, { COMPOSE_PROFILES: composeProfilesUnion.join(',') })
+		);
 	}
 	reporter.step(SetupStep.ComposeUp, 'Starting containers');
-	const upCode = await dockerComposeUp(opts.owlatDir, composeProfilesUnion, opts.buildLocal ?? false);
+	const upCode = await dockerComposeUp(
+		opts.owlatDir,
+		composeProfilesUnion,
+		opts.buildLocal ?? false
+	);
 	if (upCode !== 0) {
 		reporter.fail(`docker compose up failed (exit ${upCode})`);
 		reporter.done(false);
@@ -253,7 +269,13 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 	// backend boots EMPTY — without this, no app functions exist, BetterAuth has
 	// no secret, and the /seed/* routes 404. This is the step the old CLI was
 	// missing entirely.
-	const deployCode = await deployBackend(opts.owlatDir, envPath, shouldSeed, reporter, opts.buildLocal ?? false);
+	const deployCode = await deployBackend(
+		opts.owlatDir,
+		envPath,
+		shouldSeed,
+		reporter,
+		opts.buildLocal ?? false
+	);
 	if (deployCode !== 0) {
 		reporter.done(false);
 		return deployCode;
@@ -275,26 +297,39 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 	let adminEmail: string | undefined;
 	reporter.step(SetupStep.BootstrapAdmin, 'Creating the admin account');
 	if (shouldBootstrap) {
-		const email = config?.admin.email ?? flags.email ?? (opts.assumeYes ? 'dev@example.com' : await promptEmail());
+		const email =
+			config?.admin.email ??
+			flags.email ??
+			(opts.assumeYes ? 'dev@example.com' : await promptEmail());
 		if (!email) {
 			reporter.fail('No admin email provided');
 			reporter.done(false);
 			return 1;
 		}
-		const name = config?.admin.name ?? flags.name ?? (opts.assumeYes ? 'Dev Admin' : await promptText('Admin display name'));
+		const name =
+			config?.admin.name ??
+			flags.name ??
+			(opts.assumeYes ? 'Dev Admin' : await promptText('Admin display name'));
 		if (!name) {
 			reporter.fail('No admin name provided');
 			reporter.done(false);
 			return 1;
 		}
-		const password = config?.admin.password ?? flags.password ?? (opts.assumeYes ? 'devpassword12345' : await promptPassword());
+		const password =
+			config?.admin.password ??
+			flags.password ??
+			(opts.assumeYes ? 'devpassword12345' : await promptPassword());
 		if (!password) {
 			reporter.fail('No admin password provided');
 			reporter.done(false);
 			return 1;
 		}
 
-		const exit = await bootstrap({ email, name, password }, opts, config?.network ? localSite : undefined);
+		const exit = await bootstrap(
+			{ email, name, password },
+			opts,
+			config?.network ? localSite : undefined
+		);
 		if (exit !== 0) {
 			reporter.fail('Admin bootstrap failed');
 			reporter.done(false);
@@ -308,7 +343,10 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 
 	reporter.step(SetupStep.SeedDemo, 'Seeding demo data');
 	if (shouldSeed) {
-		const exit = await runSeed({ ...opts, positional: [] }, config?.network ? localSite : undefined);
+		const exit = await runSeed(
+			{ ...opts, positional: [] },
+			config?.network ? localSite : undefined
+		);
 		if (exit !== 0) {
 			reporter.fail('Demo seed failed');
 			reporter.done(false);
@@ -348,12 +386,14 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
  */
 export function dnsInstructions(config: SetupConfig): string[] {
 	if (!config.network) return [];
-	const hosts = [config.network.siteUrl, config.network.convexUrl, config.network.convexSiteUrl].map(
-		(u) => new URL(u).hostname,
-	);
+	const hosts = [
+		config.network.siteUrl,
+		config.network.convexUrl,
+		config.network.convexSiteUrl,
+	].map((u) => new URL(u).hostname);
 	const pad = Math.max(...hosts.map((h) => h.length)) + 2;
 	const lines = [
-		'DNS records required for public access (point them at this server\'s public IP):',
+		"DNS records required for public access (point them at this server's public IP):",
 		...hosts.map((h) => `  ${h.padEnd(pad)}A    <server IP>`),
 	];
 	if (config.sending?.provider === 'mta' && config.domain) {
@@ -361,10 +401,12 @@ export function dnsInstructions(config: SetupConfig): string[] {
 			`  ${config.domain.ehloHostname.padEnd(pad)}A    <server IP>  (+ matching PTR via your host)`,
 			...(config.domain.bounceDomain
 				? [`  ${config.domain.bounceDomain.padEnd(pad)}MX   ${config.domain.ehloHostname}`]
-				: []),
+				: [])
 		);
 	}
-	lines.push('TLS certificates are issued automatically once DNS resolves; keep ports 80/443 open.');
+	lines.push(
+		'TLS certificates are issued automatically once DNS resolves; keep ports 80/443 open.'
+	);
 	return lines;
 }
 
@@ -383,7 +425,7 @@ async function deployBackend(
 	envPath: string,
 	seeding: boolean,
 	reporter: Reporter,
-	buildLocal = false,
+	buildLocal = false
 ): Promise<number> {
 	const s = progressSpinner();
 
@@ -419,7 +461,7 @@ async function deployBackend(
 				s.message(line.slice(0, 80));
 				reporter.log(line);
 			},
-			buildLocal,
+			buildLocal
 		);
 		s.stop(pc.green('Convex functions deployed'));
 		reporter.ok();
@@ -486,7 +528,8 @@ export function parseFlags(args: string[]): ParsedFlags {
 		if (!arg.startsWith('--')) continue;
 		const eq = arg.indexOf('=');
 		const [k, raw] = eq === -1 ? [arg, args[i + 1]] : [arg.slice(0, eq), arg.slice(eq + 1)];
-		if (k === '--mode' && (raw === 'populated' || raw === 'blank' || raw === 'custom')) out.mode = raw;
+		if (k === '--mode' && (raw === 'populated' || raw === 'blank' || raw === 'custom'))
+			out.mode = raw;
 		else if (k === '--email') out.email = raw;
 		else if (k === '--name') out.name = raw;
 		else if (k === '--password') out.password = raw;
@@ -508,17 +551,27 @@ async function dockerReachable(): Promise<boolean> {
 	});
 }
 
-async function dockerComposeUp(cwd: string, profiles: string[] = [], build = false): Promise<number> {
+async function dockerComposeUp(
+	cwd: string,
+	profiles: string[] = [],
+	build = false
+): Promise<number> {
 	const s = progressSpinner();
 	s.start(
 		build
 			? 'Running `docker compose up -d --build` (building images from source — this can take several minutes)'
-			: 'Running `docker compose up -d` (this may take a minute on first run)',
+			: 'Running `docker compose up -d` (this may take a minute on first run)'
 	);
 	// COMPOSE_PROFILES activates optional services (e.g. `tls` for the Caddy edge
 	// proxy on a domain install) for this bring-up.
-	const env = profiles.length ? { ...process.env, COMPOSE_PROFILES: profiles.join(',') } : undefined;
-	const code = await spawnExitCode('docker', ['compose', 'up', '-d', ...(build ? ['--build'] : [])], { cwd, env });
+	const env = profiles.length
+		? { ...process.env, COMPOSE_PROFILES: profiles.join(',') }
+		: undefined;
+	const code = await spawnExitCode(
+		'docker',
+		['compose', 'up', '-d', ...(build ? ['--build'] : [])],
+		{ cwd, env }
+	);
 	if (code !== 0) {
 		s.stop(pc.red(`docker compose up failed with exit code ${code}`));
 		return code;
@@ -527,7 +580,11 @@ async function dockerComposeUp(cwd: string, profiles: string[] = [], build = fal
 	return 0;
 }
 
-function spawnExitCode(cmd: string, args: string[], opts: { cwd: string; env?: NodeJS.ProcessEnv }): Promise<number> {
+function spawnExitCode(
+	cmd: string,
+	args: string[],
+	opts: { cwd: string; env?: NodeJS.ProcessEnv }
+): Promise<number> {
 	return new Promise((resolve) => {
 		const proc = spawn(cmd, args, { cwd: opts.cwd, env: opts.env, stdio: 'inherit' });
 		proc.on('close', (code) => resolve(code ?? 1));
@@ -588,7 +645,8 @@ async function promptText(message: string): Promise<string | undefined> {
 async function promptPassword(): Promise<string | undefined> {
 	const result = await passwordPrompt({
 		message: 'Admin password (min 12 chars)',
-		validate: (v) => ((v ?? '').length < 12 ? 'Password must be at least 12 characters' : undefined),
+		validate: (v) =>
+			(v ?? '').length < 12 ? 'Password must be at least 12 characters' : undefined,
 		mask: '•',
 	});
 	if (isCancel(result)) return undefined;
@@ -613,9 +671,19 @@ export function formatSummary(args: { mode: Mode; adminEmail?: string; baseUrl: 
 	// spell out the command and what it protects. This block must stay even in
 	// blank mode — a fresh install finishing with no backup plan is the gap.
 	lines.push('');
-	lines.push(pc.bold('Back up your data — nothing is backed up automatically until you turn it on:'));
-	lines.push(`  ${pc.cyan('owlat backup')}                  one-off snapshot of the Convex data volume (your database), Redis + .env`);
-	lines.push(`  ${pc.cyan('owlat backup-schedule enable')}  schedule automatic backups (daily; systemd timer, cron fallback)`);
-	lines.push(pc.dim('  Recommended: run "owlat backup-schedule enable" for daily backups before you put real data in.'));
+	lines.push(
+		pc.bold('Back up your data — nothing is backed up automatically until you turn it on:')
+	);
+	lines.push(
+		`  ${pc.cyan('owlat backup')}                  one-off snapshot of the Convex data volume (your database), Redis + .env`
+	);
+	lines.push(
+		`  ${pc.cyan('owlat backup-schedule enable')}  schedule automatic backups (daily; systemd timer, cron fallback)`
+	);
+	lines.push(
+		pc.dim(
+			'  Recommended: run "owlat backup-schedule enable" for daily backups before you put real data in.'
+		)
+	);
 	return lines.join('\n');
 }

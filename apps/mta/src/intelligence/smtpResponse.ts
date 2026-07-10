@@ -152,7 +152,10 @@ export async function recordResponse(
 /**
  * Get domain health status for monitoring
  */
-export async function getDomainHealth(redis: Redis, domain: string): Promise<{
+export async function getDomainHealth(
+	redis: Redis,
+	domain: string
+): Promise<{
 	status: SmtpDomainStatus;
 	totalSent: number;
 	total2xx: number;

@@ -57,11 +57,14 @@ export async function runCopyOrMove(params: RunCopyOrMoveParams): Promise<void> 
 			return;
 		}
 
-		const result = (await deps.convex.mutation(mutation as never, {
-			sourceFolderId: state.selected!.folderId,
-			targetFolderId: targetFolder._id,
-			messageIds,
-		} as never)) as CopyMoveResult;
+		const result = (await deps.convex.mutation(
+			mutation as never,
+			{
+				sourceFolderId: state.selected!.folderId,
+				targetFolderId: targetFolder._id,
+				messageIds,
+			} as never
+		)) as CopyMoveResult;
 
 		emit(result);
 	} catch (err) {

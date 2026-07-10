@@ -31,7 +31,7 @@ export const statusModule: ImapCommandModule<StatusArgs> = {
 				const target = await resolveFolderByName(
 					deps.convex,
 					state.auth!.mailboxId,
-					args.mailboxName,
+					args.mailboxName
 				);
 
 				if (!target) {

@@ -26,7 +26,7 @@ export interface RecipientResult {
 
 export async function sendViaExternal(
 	creds: WorkerCredentials,
-	params: { from: string; recipients: string[]; raw: Buffer },
+	params: { from: string; recipients: string[]; raw: Buffer }
 ): Promise<{ recipients: RecipientResult[] }> {
 	const transport = nodemailer.createTransport({
 		host: creds.smtpHost,
@@ -46,13 +46,13 @@ export async function sendViaExternal(
 	const recipients: RecipientResult[] = params.recipients.map((address) =>
 		rejected.has(address.toLowerCase())
 			? { address, status: 'bounced', error: 'Rejected by SMTP server' }
-			: { address, status: 'sent' },
+			: { address, status: 'sent' }
 	);
 
 	// Best-effort Sent filing. A later sync re-ingests it, but the Message-ID
 	// dedup skips it against the lifecycle-inserted Sent row.
 	await appendToSent(creds, params.raw).catch((err) =>
-		logger.warn({ err }, 'append-to-Sent failed (non-fatal)'),
+		logger.warn({ err }, 'append-to-Sent failed (non-fatal)')
 	);
 
 	return { recipients };

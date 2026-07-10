@@ -21,9 +21,7 @@ export const copyModule: ImapCommandModule<CopyArgs> = {
 	},
 	start({ deps, state, args, tag, send }) {
 		const fail =
-			requireAuth(state, tag) ??
-			requireSelect(state, tag) ??
-			requireWritableSelect(state, tag);
+			requireAuth(state, tag) ?? requireSelect(state, tag) ?? requireWritableSelect(state, tag);
 		if (fail) {
 			send(fail);
 			return syncSession();
@@ -46,12 +44,14 @@ export const copyModule: ImapCommandModule<CopyArgs> = {
 					if (result.pairs.length > 0) {
 						const sources = result.pairs.map((p) => p.sourceUid).join(',');
 						const targets = result.pairs.map((p) => p.targetUid).join(',');
-						send(`${tag} OK [COPYUID ${result.uidValidity} ${sources} ${targets}] ${label} completed`);
+						send(
+							`${tag} OK [COPYUID ${result.uidValidity} ${sources} ${targets}] ${label} completed`
+						);
 						return;
 					}
 					send(`${tag} OK ${label} completed`);
 				},
-			}),
+			})
 		);
 	},
 };

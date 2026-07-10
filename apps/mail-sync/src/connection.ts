@@ -84,7 +84,7 @@ export class AccountConnection {
 	constructor(
 		private readonly account: ConnectableAccount,
 		private readonly convex: ConvexClient,
-		private readonly config: MailSyncConfig,
+		private readonly config: MailSyncConfig
 	) {}
 
 	async start(): Promise<void> {
@@ -119,7 +119,7 @@ export class AccountConnection {
 				if (isAuthError(err)) {
 					logger.warn(
 						{ accountId: this.account.accountId },
-						'auth error — pausing until credentials are updated',
+						'auth error — pausing until credentials are updated'
 					);
 					await this.setStatus('auth_error', message);
 					this.stopped = true;
@@ -144,9 +144,12 @@ export class AccountConnection {
 	}
 
 	private async connectOnce(): Promise<void> {
-		const creds = (await this.convex.action(fn.getCredentialsForWorker as never, {
-			accountId: this.account.accountId,
-		} as never)) as WorkerCredentials | null;
+		const creds = (await this.convex.action(
+			fn.getCredentialsForWorker as never,
+			{
+				accountId: this.account.accountId,
+			} as never
+		)) as WorkerCredentials | null;
 		if (!creds) throw new Error('credentials unavailable');
 
 		const client = new ImapFlow({
@@ -182,7 +185,7 @@ export class AccountConnection {
 		await client.mailboxOpen('INBOX');
 		client.on('exists', () => {
 			void this.pollFolder('INBOX', 'inbox').catch((err) =>
-				logger.warn({ accountId: this.account.accountId, err }, 'inbox poll (exists) failed'),
+				logger.warn({ accountId: this.account.accountId, err }, 'inbox poll (exists) failed')
 			);
 		});
 
@@ -197,18 +200,24 @@ export class AccountConnection {
 				// Re-check for a migration started after connect.
 				.then(() => this.maybeRunBackfill())
 				.catch((err) =>
-					logger.warn({ accountId: this.account.accountId, err }, 'periodic poll failed'),
+					logger.warn({ accountId: this.account.accountId, err }, 'periodic poll failed')
 				);
 		}, this.config.folderPollIntervalMs);
 	}
 
 	private async loadCursors(): Promise<void> {
-		const rows = (await this.convex.query(fn.getSyncState as never, {
-			accountId: this.account.accountId,
-		} as never)) as FolderCursor[];
+		const rows = (await this.convex.query(
+			fn.getSyncState as never,
+			{
+				accountId: this.account.accountId,
+			} as never
+		)) as FolderCursor[];
 		this.cursors.clear();
 		for (const r of rows) {
-			this.cursors.set(r.remoteName, { uidValidity: r.remoteUidValidity, lastSeenUid: r.lastSeenUid });
+			this.cursors.set(r.remoteName, {
+				uidValidity: r.remoteUidValidity,
+				lastSeenUid: r.lastSeenUid,
+			});
 		}
 	}
 
@@ -269,13 +278,16 @@ export class AccountConnection {
 			// high-water mark so v1 only syncs NEW mail going forward.
 			if (!cursor || cursor.uidValidity !== uidValidity) {
 				const initial = Math.max(0, uidNext - 1);
-				await this.convex.mutation(fn.recordFolderMapping as never, {
-					accountId: this.account.accountId,
-					folderRole: role,
-					remoteName,
-					remoteUidValidity: uidValidity,
-					initialLastSeenUid: initial,
-				} as never);
+				await this.convex.mutation(
+					fn.recordFolderMapping as never,
+					{
+						accountId: this.account.accountId,
+						folderRole: role,
+						remoteName,
+						remoteUidValidity: uidValidity,
+						initialLastSeenUid: initial,
+					} as never
+				);
 				this.cursors.set(remoteName, { uidValidity, lastSeenUid: initial });
 				return;
 			}
@@ -286,7 +298,7 @@ export class AccountConnection {
 			for await (const msg of client.fetch(
 				`${cursor.lastSeenUid + 1}:*`,
 				{ uid: true, source: true, flags: true },
-				{ uid: true },
+				{ uid: true }
 			)) {
 				if (this.stopped) break;
 				const uid = Number(msg.uid);
@@ -310,7 +322,7 @@ export class AccountConnection {
 					// upstream IMAP server regardless; this only affects the local copy.
 					logger.warn(
 						{ accountId: this.account.accountId, remoteName, uid, err },
-						'ingest failed; skipping message',
+						'ingest failed; skipping message'
 					);
 				}
 				// Advance even on failure so the cursor never sticks on one message.
@@ -334,9 +346,12 @@ export class AccountConnection {
 
 		let work: BackfillWork;
 		try {
-			work = (await this.convex.query(fn.getBackfillWork as never, {
-				accountId: this.account.accountId,
-			} as never)) as BackfillWork;
+			work = (await this.convex.query(
+				fn.getBackfillWork as never,
+				{
+					accountId: this.account.accountId,
+				} as never
+			)) as BackfillWork;
 		} catch (err) {
 			logger.warn({ accountId: this.account.accountId, err }, 'getBackfillWork failed');
 			return;
@@ -366,9 +381,12 @@ export class AccountConnection {
 			if (!this.stopped) {
 				// A clean pass clears the streak (covers transient blips that healed).
 				this.backfillFailures = 0;
-				await this.convex.mutation(fn.completeBackfillImport as never, {
-					migrationId,
-				} as never);
+				await this.convex.mutation(
+					fn.completeBackfillImport as never,
+					{
+						migrationId,
+					} as never
+				);
 				logger.info({ accountId: this.account.accountId }, 'historical backfill complete');
 			}
 		} catch (err) {
@@ -379,25 +397,28 @@ export class AccountConnection {
 				this.backfillFailures += 1;
 				logger.warn(
 					{ accountId: this.account.accountId, err, failures: this.backfillFailures },
-					'backfill failed',
+					'backfill failed'
 				);
 				// Transient drops self-heal on the next poll pass; only a sustained,
 				// deterministic failure surfaces the wizard's 'failed → Try again'.
 				if (this.backfillFailures >= MAX_BACKFILL_FAILURES) {
 					const message = err instanceof Error ? err.message : String(err);
 					try {
-						await this.convex.mutation(fn.markImportFailed as never, {
-							migrationId,
-							errorMessage: message,
-						} as never);
+						await this.convex.mutation(
+							fn.markImportFailed as never,
+							{
+								migrationId,
+								errorMessage: message,
+							} as never
+						);
 						logger.warn(
 							{ accountId: this.account.accountId, migrationId },
-							'backfill failed repeatedly; marking migration import as failed',
+							'backfill failed repeatedly; marking migration import as failed'
 						);
 					} catch (markErr) {
 						logger.warn(
 							{ accountId: this.account.accountId, err: markErr },
-							'markImportFailed failed',
+							'markImportFailed failed'
 						);
 					}
 				}
@@ -410,7 +431,7 @@ export class AccountConnection {
 
 	/** Read a folder's high-water UID, message count, and UIDVALIDITY. */
 	private async readFolderMeta(
-		remoteName: string,
+		remoteName: string
 	): Promise<{ ceilingUid: number; messageCount: number; uidValidity: number } | null> {
 		const client = this.client;
 		if (!client) return null;
@@ -434,13 +455,16 @@ export class AccountConnection {
 		return {
 			batchSize: this.config.backfillBatchSize,
 			initFolder: async (remoteName, ceilingUid, messageCount) =>
-				(await this.convex.mutation(fn.initFolderBackfill as never, {
-					accountId,
-					migrationId,
-					remoteName,
-					ceilingUid,
-					messageCount,
-				} as never)) as { startCursor: number } | null,
+				(await this.convex.mutation(
+					fn.initFolderBackfill as never,
+					{
+						accountId,
+						migrationId,
+						remoteName,
+						ceilingUid,
+						messageCount,
+					} as never
+				)) as { startCursor: number } | null,
 			fetchBatch: async (remoteName, start, end) => {
 				const client = this.client;
 				if (!client) return [];
@@ -450,7 +474,7 @@ export class AccountConnection {
 					for await (const msg of client.fetch(
 						`${start}:${end}`,
 						{ uid: true, source: true, flags: true },
-						{ uid: true },
+						{ uid: true }
 					)) {
 						out.push({
 							uid: Number(msg.uid),
@@ -474,13 +498,16 @@ export class AccountConnection {
 					flags,
 				}),
 			recordProgress: async (remoteName, newCursor, importedDelta) => {
-				const res = (await this.convex.mutation(fn.recordBackfillProgress as never, {
-					accountId,
-					migrationId,
-					remoteName,
-					newCursor,
-					importedDelta,
-				} as never)) as { stillImporting: boolean };
+				const res = (await this.convex.mutation(
+					fn.recordBackfillProgress as never,
+					{
+						accountId,
+						migrationId,
+						remoteName,
+						newCursor,
+						importedDelta,
+					} as never
+				)) as { stillImporting: boolean };
 				return res.stillImporting;
 			},
 			isStopped: () => this.stopped,
@@ -490,15 +517,18 @@ export class AccountConnection {
 	private async setStatus(
 		status: 'pending' | 'connected' | 'auth_error' | 'error' | 'disconnected',
 		lastError?: string,
-		markSynced?: boolean,
+		markSynced?: boolean
 	): Promise<void> {
 		try {
-			await this.convex.mutation(fn.setSyncStatus as never, {
-				accountId: this.account.accountId,
-				status,
-				lastError,
-				markSynced,
-			} as never);
+			await this.convex.mutation(
+				fn.setSyncStatus as never,
+				{
+					accountId: this.account.accountId,
+					status,
+					lastError,
+					markSynced,
+				} as never
+			);
 		} catch (err) {
 			logger.warn({ accountId: this.account.accountId, err }, 'setSyncStatus failed');
 		}

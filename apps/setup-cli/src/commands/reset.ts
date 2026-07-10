@@ -51,13 +51,17 @@ export async function runReset(opts: RunOptions): Promise<number> {
 	s.stop(pc.green('Instance reset to blank slate'));
 	const deleted = response.body.deleted ?? {};
 	log.info(`Deleted: ${formatCounts(deleted)}`);
-	outro(`${pc.green('Done.')} Visit ${pc.cyan('http://localhost:3000')} — it will redirect to /auth/register.`);
+	outro(
+		`${pc.green('Done.')} Visit ${pc.cyan('http://localhost:3000')} — it will redirect to /auth/register.`
+	);
 	return 0;
 }
 
 function formatCounts(counts: Record<string, number>): string {
-	return Object.entries(counts)
-		.filter(([, n]) => n > 0)
-		.map(([k, n]) => `${pc.cyan(String(n))} ${k}`)
-		.join(', ') || pc.dim('nothing (instance was already blank)');
+	return (
+		Object.entries(counts)
+			.filter(([, n]) => n > 0)
+			.map(([k, n]) => `${pc.cyan(String(n))} ${k}`)
+			.join(', ') || pc.dim('nothing (instance was already blank)')
+	);
 }

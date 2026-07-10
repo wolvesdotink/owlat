@@ -64,9 +64,7 @@ export const storeModule: ImapCommandModule<StoreArgs> = {
 	},
 	start({ deps, state, args, tag, send }) {
 		const fail =
-			requireAuth(state, tag) ??
-			requireSelect(state, tag) ??
-			requireWritableSelect(state, tag);
+			requireAuth(state, tag) ?? requireSelect(state, tag) ?? requireWritableSelect(state, tag);
 		if (fail) {
 			send(fail);
 			return syncSession();
@@ -82,7 +80,7 @@ export const storeModule: ImapCommandModule<StoreArgs> = {
 				// reused below to emit each updated row's true sequence number.
 				const folderUids = (await deps.convex.query(
 					fn.listFolderUids as never,
-					{ folderId: state.selected!.folderId } as never,
+					{ folderId: state.selected!.folderId } as never
 				)) as number[];
 				const seqMap = buildSeqMap(folderUids);
 				const resolved = resolveSet(seqMap, args.set, args.byUid);
@@ -101,7 +99,7 @@ export const storeModule: ImapCommandModule<StoreArgs> = {
 					deps.convex,
 					state.selected!.folderId,
 					Math.min(...uids),
-					Math.max(...uids),
+					Math.max(...uids)
 				);
 				const messageIds: string[] = [];
 				for (const uid of uids) {
@@ -113,19 +111,20 @@ export const storeModule: ImapCommandModule<StoreArgs> = {
 					return;
 				}
 
-				const result = (await deps.convex.mutation(fn.storeFlags as never, {
-					messageIds,
-					flags: flagList,
-					mode: args.mode,
-					unchangedSinceModseq: args.unchangedSince,
-				} as never)) as StoreFlagsResult;
+				const result = (await deps.convex.mutation(
+					fn.storeFlags as never,
+					{
+						messageIds,
+						flags: flagList,
+						mode: args.mode,
+						unchangedSinceModseq: args.unchangedSince,
+					} as never
+				)) as StoreFlagsResult;
 
 				if (!args.silent) {
 					for (const u of result.updated) {
 						const seq = seqForUid(seqMap, u.uid) ?? 0;
-						send(
-							`* ${seq} FETCH (UID ${u.uid} MODSEQ (${u.modseq}) FLAGS (${u.flags.join(' ')}))`,
-						);
+						send(`* ${seq} FETCH (UID ${u.uid} MODSEQ (${u.modseq}) FLAGS (${u.flags.join(' ')}))`);
 					}
 				}
 

@@ -14,7 +14,9 @@ export type RiskLevel = 'low' | 'medium' | 'high' | 'critical' | string;
 export type ScanLevel = 'safe' | 'suspicious' | 'blocked' | string;
 
 /** UiBadge variant for an org abuse status. */
-export function abuseStatusVariant(status: string | undefined): 'success' | 'warning' | 'error' | 'neutral' {
+export function abuseStatusVariant(
+	status: string | undefined
+): 'success' | 'warning' | 'error' | 'neutral' {
 	switch (status) {
 		case 'clean':
 			return 'success';
@@ -40,7 +42,9 @@ export function isBlockingAbuseStatus(status: string | undefined): boolean {
 }
 
 /** UiBadge variant for a reputation risk level. */
-export function riskLevelVariant(level: string | undefined): 'success' | 'warning' | 'error' | 'neutral' {
+export function riskLevelVariant(
+	level: string | undefined
+): 'success' | 'warning' | 'error' | 'neutral' {
 	switch (level) {
 		case 'low':
 			return 'success';
@@ -55,7 +59,9 @@ export function riskLevelVariant(level: string | undefined): 'success' | 'warnin
 }
 
 /** UiBadge variant for a content-scan level. */
-export function scanLevelVariant(level: string | undefined): 'success' | 'warning' | 'error' | 'neutral' {
+export function scanLevelVariant(
+	level: string | undefined
+): 'success' | 'warning' | 'error' | 'neutral' {
 	switch (level) {
 		case 'safe':
 			return 'success';

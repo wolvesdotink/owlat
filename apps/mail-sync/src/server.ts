@@ -65,13 +65,21 @@ export function startServer(config: MailSyncConfig, convex: ConvexClient): Serve
 
 	app.post('/send', async (c) => {
 		const body = (await c.req.json().catch(() => null)) as SendBody | null;
-		if (!body?.externalAccountId || !body.from || !Array.isArray(body.recipients) || !body.rawEmlUrl) {
+		if (
+			!body?.externalAccountId ||
+			!body.from ||
+			!Array.isArray(body.recipients) ||
+			!body.rawEmlUrl
+		) {
 			return c.json({ error: 'externalAccountId, from, recipients, rawEmlUrl required' }, 400);
 		}
 
-		const creds = (await convex.action(fn.getCredentialsForWorker as never, {
-			accountId: body.externalAccountId,
-		} as never)) as WorkerCredentials | null;
+		const creds = (await convex.action(
+			fn.getCredentialsForWorker as never,
+			{
+				accountId: body.externalAccountId,
+			} as never
+		)) as WorkerCredentials | null;
 		if (!creds) return c.json({ error: 'account credentials unavailable' }, 404);
 
 		// SSRF guard: the only legitimate rawEmlUrl is a Convex storage URL.

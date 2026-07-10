@@ -14,7 +14,7 @@ import { languageSelectOptions, timezoneOptions } from '~/data/languageOptions';
 export function diffPropertyValues(
 	propertyIds: string[],
 	edited: Record<string, string>,
-	current: Record<string, string>,
+	current: Record<string, string>
 ): {
 	toSet: { propertyId: string; value: string }[];
 	toRemove: string[];
@@ -65,15 +65,21 @@ export function useContactDetail(contactId: ComputedRef<Id<'contacts'>>) {
 	const router = useRouter();
 
 	// DATA: Convex queries
-	const { data: contact, isLoading: contactLoading } = useConvexQuery(api.contacts.contacts.get, () => ({
-		contactId: contactId.value,
-	}));
+	const { data: contact, isLoading: contactLoading } = useConvexQuery(
+		api.contacts.contacts.get,
+		() => ({
+			contactId: contactId.value,
+		})
+	);
 
 	const { data: properties } = useOrganizationQuery(api.contacts.properties.listByOrganization);
 
-	const { data: propertyValues } = useConvexQuery(api.contacts.propertyValues.listByContact, () => ({
-		contactId: contactId.value,
-	}));
+	const { data: propertyValues } = useConvexQuery(
+		api.contacts.propertyValues.listByContact,
+		() => ({
+			contactId: contactId.value,
+		})
+	);
 
 	// FORM STATE
 	const isEditing = ref(false);
@@ -98,10 +104,9 @@ export function useContactDetail(contactId: ComputedRef<Id<'contacts'>>) {
 	const { run: deleteContact } = useBackendOperation(api.contacts.contacts.remove, {
 		label: 'Delete contact',
 	});
-	const { run: resendConfirmation } = useBackendOperation(
-		api.topics.topics.resendDoiConfirmation,
-		{ label: 'Resend confirmation email' },
-	);
+	const { run: resendConfirmation } = useBackendOperation(api.topics.topics.resendDoiConfirmation, {
+		label: 'Resend confirmation email',
+	});
 
 	// Resend the double-opt-in confirmation email to a contact still in the
 	// `pending` state — refreshes the token and re-schedules the email via the

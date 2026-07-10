@@ -31,9 +31,7 @@ export const expungeModule: ImapCommandModule<ExpungeArgs> = {
 	},
 	start({ deps, state, args, tag, send }) {
 		const fail =
-			requireAuth(state, tag) ??
-			requireSelect(state, tag) ??
-			requireWritableSelect(state, tag);
+			requireAuth(state, tag) ?? requireSelect(state, tag) ?? requireWritableSelect(state, tag);
 		if (fail) {
 			send(fail);
 			return syncSession();
@@ -52,10 +50,13 @@ export const expungeModule: ImapCommandModule<ExpungeArgs> = {
 
 		return asyncSession(async () => {
 			try {
-				const result = (await deps.convex.mutation(fn.expungeFolder as never, {
-					folderId: state.selected!.folderId,
-					uidSet,
-				} as never)) as ExpungeResult;
+				const result = (await deps.convex.mutation(
+					fn.expungeFolder as never,
+					{
+						folderId: state.selected!.folderId,
+						uidSet,
+					} as never
+				)) as ExpungeResult;
 
 				// IMAP wants EXPUNGE responses in DESCENDING sequence order so
 				// the client's local seq map stays valid across iterations.
@@ -66,10 +67,7 @@ export const expungeModule: ImapCommandModule<ExpungeArgs> = {
 
 				const updatedSelected: SelectedState = {
 					...state.selected!,
-					totalCount: Math.max(
-						0,
-						state.selected!.totalCount - result.sequenceNumbers.length,
-					),
+					totalCount: Math.max(0, state.selected!.totalCount - result.sequenceNumbers.length),
 					highestModseq: result.modseq,
 				};
 				deps.commit({ ...state, selected: updatedSelected });

@@ -35,13 +35,18 @@ export async function runBootstrapOrg(opts: RunOptions): Promise<number> {
 
 	const fromArgs = parseArgs(opts.args);
 
-	const email = fromArgs.email ?? await ask('Admin email', validateEmail, opts.assumeYes ? 'dev@example.com' : undefined);
+	const email =
+		fromArgs.email ??
+		(await ask('Admin email', validateEmail, opts.assumeYes ? 'dev@example.com' : undefined));
 	if (email === null) return 1;
 
-	const name = fromArgs.name ?? await ask('Admin display name', () => undefined, opts.assumeYes ? 'Dev Admin' : undefined);
+	const name =
+		fromArgs.name ??
+		(await ask('Admin display name', () => undefined, opts.assumeYes ? 'Dev Admin' : undefined));
 	if (name === null) return 1;
 
-	const password = fromArgs.password ?? await askPassword(opts.assumeYes ? 'devpassword12345' : undefined);
+	const password =
+		fromArgs.password ?? (await askPassword(opts.assumeYes ? 'devpassword12345' : undefined));
 	if (password === null) return 1;
 
 	const exitCode = await bootstrap({ email, name, password }, opts);
@@ -51,7 +56,7 @@ export async function runBootstrapOrg(opts: RunOptions): Promise<number> {
 export async function bootstrap(
 	input: Required<BootstrapInput>,
 	opts: RunOptions,
-	baseUrlOverride?: string,
+	baseUrlOverride?: string
 ): Promise<number> {
 	const s = progressSpinner();
 	s.start('Hashing password (scrypt)');
@@ -80,13 +85,17 @@ export async function bootstrap(
 
 	if (response.status === 201) {
 		s.stop(pc.green('Admin created'));
-		outro(`${pc.green('Bootstrap complete!')} Sign in at http://localhost:3000 as ${pc.cyan(input.email)}.`);
+		outro(
+			`${pc.green('Bootstrap complete!')} Sign in at http://localhost:3000 as ${pc.cyan(input.email)}.`
+		);
 		return 0;
 	}
 
 	if (response.status === 409) {
 		s.stop(pc.yellow('Admin already exists — nothing to do.'));
-		outro(`${pc.dim('Tip:')} run ${pc.cyan('bunx owlat-setup reset')} to wipe the instance back to blank.`);
+		outro(
+			`${pc.dim('Tip:')} run ${pc.cyan('bunx owlat-setup reset')} to wipe the instance back to blank.`
+		);
 		return 0;
 	}
 
@@ -111,7 +120,11 @@ function parseArgs(args: string[]): BootstrapInput {
 
 type Validator = (v: string) => string | undefined;
 
-async function ask(message: string, validate: Validator, defaultValue?: string): Promise<string | null> {
+async function ask(
+	message: string,
+	validate: Validator,
+	defaultValue?: string
+): Promise<string | null> {
 	if (defaultValue !== undefined) {
 		const err = validate(defaultValue);
 		if (err) {
@@ -129,7 +142,8 @@ async function askPassword(defaultValue?: string): Promise<string | null> {
 	if (defaultValue !== undefined) return defaultValue;
 	const result = await passwordPrompt({
 		message: 'Admin password (min 12 chars)',
-		validate: (v) => ((v ?? '').length < 12 ? 'Password must be at least 12 characters' : undefined),
+		validate: (v) =>
+			(v ?? '').length < 12 ? 'Password must be at least 12 characters' : undefined,
 		mask: '•',
 	});
 	if (isCancel(result)) return null;
