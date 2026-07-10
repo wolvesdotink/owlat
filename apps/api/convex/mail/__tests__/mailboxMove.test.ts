@@ -541,8 +541,16 @@ describe('externalAccounts resolves the LIVE account after a move + reconnect', 
 
 		// purge targets the LIVE account (the one the migrate page renders for), NOT
 		// the caller's oldest row (the archive) — the archive's history is never deleted.
-		await t.mutation(api.mail.externalAccounts.purge, {});
-		await t.finishInProgressScheduledFunctions();
+		// purge schedules a runAfter(0) `_purgeChunk` drain; fake timers + runAllTimers
+		// is convex-test's pattern for chained scheduled functions (finishInProgress
+		// only awaits callbacks that have already fired, so the chunk never runs).
+		vi.useFakeTimers();
+		try {
+			await t.mutation(api.mail.externalAccounts.purge, {});
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+		} finally {
+			vi.useRealTimers();
+		}
 
 		await t.run(async (ctx) => {
 			// The live account + its mailbox are gone (purged).
