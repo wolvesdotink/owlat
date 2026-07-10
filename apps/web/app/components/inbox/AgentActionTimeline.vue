@@ -14,34 +14,23 @@ const { data: actions } = useConvexQuery(
 	() => (open.value ? { inboundMessageId: props.inboundMessageId } : 'skip'),
 );
 
-function statusIcon(status: string): string {
-	switch (status) {
-		case 'completed':
-			return 'lucide:check-circle-2';
-		case 'failed':
-		case 'abandoned':
-			return 'lucide:x-circle';
-		case 'running':
-			return 'lucide:loader-2';
-		case 'skipped':
-			return 'lucide:minus-circle';
-		default:
-			return 'lucide:circle';
-	}
+interface AgentActionBadge {
+	icon: string;
+	color: string;
 }
 
-function statusColor(status: string): string {
-	switch (status) {
-		case 'completed':
-			return 'text-success';
-		case 'failed':
-		case 'abandoned':
-			return 'text-error';
-		case 'skipped':
-			return 'text-text-tertiary';
-		default:
-			return 'text-text-secondary';
-	}
+const STATUS_BADGES: Record<string, AgentActionBadge> = {
+	completed: { icon: 'lucide:check-circle-2', color: 'text-success' },
+	failed: { icon: 'lucide:x-circle', color: 'text-error' },
+	abandoned: { icon: 'lucide:x-circle', color: 'text-error' },
+	running: { icon: 'lucide:loader-2', color: 'text-text-secondary' },
+	skipped: { icon: 'lucide:minus-circle', color: 'text-text-tertiary' },
+};
+
+const STATUS_BADGE_DEFAULT: AgentActionBadge = { icon: 'lucide:circle', color: 'text-text-secondary' };
+
+function statusBadge(status: string): AgentActionBadge {
+	return STATUS_BADGES[status] ?? STATUS_BADGE_DEFAULT;
 }
 
 const ACTION_LABELS: Record<string, string> = {
@@ -69,8 +58,12 @@ const ACTION_LABELS: Record<string, string> = {
 			</div>
 			<div v-for="a in actions" :key="a._id" class="flex items-center gap-2 text-xs">
 				<Icon
-					:name="statusIcon(a.status)"
-					:class="['w-3.5 h-3.5 shrink-0', statusColor(a.status), a.status === 'running' ? 'animate-spin' : '']"
+					:name="statusBadge(a.status).icon"
+					:class="[
+						'w-3.5 h-3.5 shrink-0',
+						statusBadge(a.status).color,
+						a.status === 'running' ? 'animate-spin' : '',
+					]"
 				/>
 				<span class="text-text-primary">{{ ACTION_LABELS[a.actionType] ?? a.actionType }}</span>
 				<span class="text-text-tertiary">· {{ a.status }}</span>
