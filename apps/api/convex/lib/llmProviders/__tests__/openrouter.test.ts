@@ -123,7 +123,7 @@ describe('openrouterLanguageAdapter.listModels', () => {
 });
 
 describe('OpenRouter pricing degrades gracefully', () => {
-	const usage = { promptTokens: 1000, completionTokens: 1000 };
+	const usage = { promptTokens: 1000, completionTokens: 1000, totalTokens: 2000 };
 
 	it('flags an unknown free-text model as estimated, never throwing', () => {
 		const result = estimateCost('some-brand-new/model-nobody-priced', usage);
