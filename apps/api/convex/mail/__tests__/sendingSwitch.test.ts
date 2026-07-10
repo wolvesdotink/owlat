@@ -13,9 +13,10 @@
  *   - dispatch honours the preference: `resolveOutboundTransport` returns the
  *     external SMTP path by default and the hosted/instance path once switched.
  *
- * `isDeliveryConfigured` is mocked to a hoisted flag so "transport configured"
- * is controllable; the verified-domain gate is exercised with real `domains`
- * rows.
+ * `getMtaConfig` is mocked to a hoisted flag so "transport configured" is
+ * controllable (the switch gates on the hosted MTA path, not the broader
+ * `isDeliveryConfigured`); the verified-domain gate is exercised with real
+ * `domains` rows.
  */
 
 import { convexTest } from 'convex-test';
@@ -24,14 +25,15 @@ import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import { markOnboardingStep } from '../../auth/userOnboarding';
 import type { Id } from '../../_generated/dataModel';
+import { modules } from './helpers';
 
 const sessionMocks = vi.hoisted(() => ({
 	userId: 'user-A',
 	role: 'editor' as 'owner' | 'admin' | 'editor',
 }));
 
-const capabilityMocks = vi.hoisted(() => ({
-	deliveryConfigured: true,
+const mtaMocks = vi.hoisted(() => ({
+	configured: true,
 }));
 
 vi.mock('../../lib/sessionOrganization', async () => {
@@ -52,42 +54,15 @@ vi.mock('../../lib/sessionOrganization', async () => {
 	};
 });
 
-vi.mock('../../lib/sendProviders/capability', async () => {
-	const actual = await vi.importActual('../../lib/sendProviders/capability');
+vi.mock('../mtaClient', async () => {
+	const actual = await vi.importActual('../mtaClient');
 	return {
 		...actual,
-		isDeliveryConfigured: vi.fn(async () => capabilityMocks.deliveryConfigured),
+		getMtaConfig: vi.fn(() =>
+			mtaMocks.configured ? { baseUrl: 'https://mta.example', apiKey: 'k' } : null
+		),
 	};
 });
-
-const allModules = import.meta.glob('../../**/*.*s');
-const modules = Object.fromEntries(
-	Object.entries(allModules)
-		.filter(
-			([path]) =>
-				!path.includes('sesActions') &&
-				!path.includes('agentSecurity') &&
-				!path.includes('agentContext') &&
-				!path.includes('agentClassifier') &&
-				!path.includes('agentDrafter') &&
-				!path.includes('agentRouter') &&
-				!path.includes('agent/walker') &&
-				!path.includes('agent/steps/index') &&
-				!path.includes('agent/steps/shared') &&
-				!path.includes('agent/steps/classify') &&
-				!path.includes('agent/steps/draft') &&
-				!path.includes('agent/steps/clarify') &&
-				!path.includes('knowledgeExtraction') &&
-				!path.includes('semanticFileProcessing') &&
-				!path.includes('visualizationAgent') &&
-				!path.includes('llmProvider')
-		)
-		.map(([key, val]) =>
-			key.startsWith('../') && !key.startsWith('../../')
-				? (['../../mail/' + key.slice(3), val] as const)
-				: ([key, val] as const)
-		)
-);
 
 /** IMAP/SMTP credentials for `_connectInternal` (ciphertext bytes are dummy). */
 const CREDS = {
@@ -142,6 +117,17 @@ async function connectMailbox(t: Ctx): Promise<Id<'mailboxes'>> {
 	});
 }
 
+/** Read the `sendingSwitched` onboarding stamp for user-A straight from the row. */
+async function readSendingSwitchedStamp(t: Ctx): Promise<number | undefined> {
+	return await t.run(async (ctx) => {
+		const row = await ctx.db
+			.query('userOnboarding')
+			.withIndex('by_auth_user_id', (q) => q.eq('authUserId', sessionMocks.userId))
+			.first();
+		return row?.sendingSwitched;
+	});
+}
+
 /** Mark import + knowledge indexing complete for the current user. */
 async function markImportAndIndexingDone(t: Ctx): Promise<void> {
 	await t.run(async (ctx) => {
@@ -153,7 +139,7 @@ async function markImportAndIndexingDone(t: Ctx): Promise<void> {
 beforeEach(() => {
 	sessionMocks.userId = 'user-A';
 	sessionMocks.role = 'editor';
-	capabilityMocks.deliveryConfigured = true;
+	mtaMocks.configured = true;
 });
 
 describe('sendingSwitchStatus — prompt gating matrix', () => {
@@ -164,7 +150,7 @@ describe('sendingSwitchStatus — prompt gating matrix', () => {
 		await markImportAndIndexingDone(t);
 		await seedVerifiedDomain(t, 'example.com');
 
-		const status = await t.query(api.mail.externalAccounts.sendingSwitchStatus, {});
+		const status = await t.query(api.mail.sendingSwitch.sendingSwitchStatus, {});
 		expect(status.configured).toBe(true);
 		if (!status.configured) return;
 		expect(status.preference).toBe('external');
@@ -180,7 +166,7 @@ describe('sendingSwitchStatus — prompt gating matrix', () => {
 		await markImportAndIndexingDone(t);
 		// No verified `domains` row for example.com.
 
-		const status = await t.query(api.mail.externalAccounts.sendingSwitchStatus, {});
+		const status = await t.query(api.mail.sendingSwitch.sendingSwitchStatus, {});
 		expect(status.configured).toBe(true);
 		if (!status.configured) return;
 		expect(status.domainVerified).toBe(false);
@@ -189,13 +175,13 @@ describe('sendingSwitchStatus — prompt gating matrix', () => {
 
 	it('does not offer the switch when no transport is configured', async () => {
 		const t = convexTest(schema, modules);
-		capabilityMocks.deliveryConfigured = false;
+		mtaMocks.configured = false;
 		await enableFlags(t, { 'mail.external': true });
 		await connectMailbox(t);
 		await markImportAndIndexingDone(t);
 		await seedVerifiedDomain(t, 'example.com');
 
-		const status = await t.query(api.mail.externalAccounts.sendingSwitchStatus, {});
+		const status = await t.query(api.mail.sendingSwitch.sendingSwitchStatus, {});
 		expect(status.configured).toBe(true);
 		if (!status.configured) return;
 		expect(status.transportConfigured).toBe(false);
@@ -209,7 +195,7 @@ describe('sendingSwitchStatus — prompt gating matrix', () => {
 		await seedVerifiedDomain(t, 'example.com');
 		// importDone / knowledgeIndexed intentionally unset.
 
-		const status = await t.query(api.mail.externalAccounts.sendingSwitchStatus, {});
+		const status = await t.query(api.mail.sendingSwitch.sendingSwitchStatus, {});
 		expect(status.configured).toBe(true);
 		if (!status.configured) return;
 		expect(status.domainVerified).toBe(true);
@@ -225,7 +211,7 @@ describe('setSendingPreference — round-trips and gating', () => {
 		const mailboxId = await connectMailbox(t);
 		await seedVerifiedDomain(t, 'example.com');
 
-		const toInstance = await t.mutation(api.mail.externalAccounts.setSendingPreference, {
+		const toInstance = await t.mutation(api.mail.sendingSwitch.setSendingPreference, {
 			preference: 'instance',
 		});
 		expect(toInstance.preference).toBe('instance');
@@ -233,10 +219,11 @@ describe('setSendingPreference — round-trips and gating', () => {
 			const mb = await ctx.db.get(mailboxId);
 			expect(mb?.outboundPreference).toBe('instance');
 		});
-		let onboarding = await t.query(api.auth.userOnboarding.get, { userId: 'user-A' });
-		expect(typeof onboarding.sendingSwitched).toBe('number');
+		// Read the onboarding row directly (the session mock doesn't cover the
+		// authed `userOnboarding.get` query's identity resolution).
+		expect(typeof (await readSendingSwitchedStamp(t))).toBe('number');
 
-		const toExternal = await t.mutation(api.mail.externalAccounts.setSendingPreference, {
+		const toExternal = await t.mutation(api.mail.sendingSwitch.setSendingPreference, {
 			preference: 'external',
 		});
 		expect(toExternal.preference).toBe('external');
@@ -245,8 +232,7 @@ describe('setSendingPreference — round-trips and gating', () => {
 			expect(mb?.outboundPreference).toBe('external');
 		});
 		// Reverting leaves the checklist decision recorded.
-		onboarding = await t.query(api.auth.userOnboarding.get, { userId: 'user-A' });
-		expect(typeof onboarding.sendingSwitched).toBe('number');
+		expect(typeof (await readSendingSwitchedStamp(t))).toBe('number');
 	});
 
 	it('refuses the instance switch for an unverified domain', async () => {
@@ -256,19 +242,19 @@ describe('setSendingPreference — round-trips and gating', () => {
 		// No verified domain row.
 
 		await expect(
-			t.mutation(api.mail.externalAccounts.setSendingPreference, { preference: 'instance' })
+			t.mutation(api.mail.sendingSwitch.setSendingPreference, { preference: 'instance' })
 		).rejects.toThrow();
 	});
 
 	it('refuses the instance switch when no transport is configured', async () => {
 		const t = convexTest(schema, modules);
-		capabilityMocks.deliveryConfigured = false;
+		mtaMocks.configured = false;
 		await enableFlags(t, { 'mail.external': true });
 		await connectMailbox(t);
 		await seedVerifiedDomain(t, 'example.com');
 
 		await expect(
-			t.mutation(api.mail.externalAccounts.setSendingPreference, { preference: 'instance' })
+			t.mutation(api.mail.sendingSwitch.setSendingPreference, { preference: 'instance' })
 		).rejects.toThrow();
 	});
 });
@@ -290,7 +276,7 @@ describe('resolveOutboundTransport — dispatch honours the preference', () => {
 		await enableFlags(t, { 'mail.external': true });
 		const mailboxId = await connectMailbox(t);
 		await seedVerifiedDomain(t, 'example.com');
-		await t.mutation(api.mail.externalAccounts.setSendingPreference, { preference: 'instance' });
+		await t.mutation(api.mail.sendingSwitch.setSendingPreference, { preference: 'instance' });
 
 		const transport = await t.query(internal.mail.externalAccounts.resolveOutboundTransport, {
 			mailboxId,
