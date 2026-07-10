@@ -6,9 +6,11 @@ mod notifications;
 mod secrets;
 mod shortcuts;
 mod ssh;
-mod tray;
 mod window;
 
+// `Manager` brings `get_webview_window` (used in the non-macOS menu wiring) into
+// scope; `handle()`/`set_menu()`/`on_menu_event()` are inherent on `App`.
+#[allow(unused_imports)]
 use tauri::Manager;
 
 fn main() {
@@ -27,10 +29,10 @@ fn main() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_window_state::Builder::new().build())
-        // Launch-at-login. `--minimized` (passed on autostart) starts hidden to tray.
+        // Launch-at-login: opens the app un-minimized like any other launch.
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
-            Some(vec!["--minimized"]),
+            None::<Vec<&str>>,
         ))
         // System-wide shortcuts: quick-compose, quick-switcher, show/hide.
         .plugin(
@@ -44,10 +46,9 @@ fn main() {
         .manage(ssh::SshState::default())
         // Register Tauri commands
         .invoke_handler(tauri::generate_handler![
-            notifications::update_tray_badge,
+            notifications::update_unread_badge,
             notifications::send_native_notification,
             notifications::send_actionable_notification,
-            tray::update_tray_peek,
             secrets::secret_set,
             secrets::secret_get,
             secrets::secret_delete,
@@ -64,13 +65,6 @@ fn main() {
             ssh::ssh_disconnect,
         ])
         .setup(|app| {
-            // Initialize system tray
-            tray::create_tray(app)?;
-
-            // Set up close-to-tray behavior
-            let handle = app.handle().clone();
-            window::setup_close_handler(&handle);
-
             // Register global keyboard shortcuts
             shortcuts::register_global_shortcuts(app.handle());
 
@@ -87,13 +81,6 @@ fn main() {
                 w.set_menu(app_menu)?;
             }
             app.on_menu_event(|app, event| menu::handle_menu_event(app, event.id.as_ref()));
-
-            // Launched at login with --minimized → start hidden to the tray.
-            if std::env::args().any(|a| a == "--minimized") {
-                if let Some(w) = app.get_webview_window("main") {
-                    let _ = w.hide();
-                }
-            }
 
             Ok(())
         })

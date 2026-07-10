@@ -1,23 +1,11 @@
 use tauri::{command, AppHandle, Manager};
 
-/// Tauri command: Update the tray icon tooltip with unread count.
-/// On macOS, also updates the dock badge.
+/// Tauri command: reflect the unread count on the app icon's badge — the macOS
+/// dock badge, the Windows taskbar overlay, and the Linux Unity launcher count.
+/// A count of 0 clears the badge. `set_badge_count` lives on the window in Tauri
+/// 2.x (the AppHandle has no `set_badge_label` in 2.10).
 #[command]
-pub fn update_tray_badge(app: AppHandle, count: u32) {
-    let tooltip = if count > 0 {
-        format!("Owlat ({} unread)", count)
-    } else {
-        "Owlat".to_string()
-    };
-
-    // Update tray tooltip
-    if let Some(tray) = app.tray_by_id("main-tray") {
-        let _ = tray.set_tooltip(Some(&tooltip));
-    }
-
-    // Set the OS badge (macOS dock count, Windows taskbar overlay, Linux Unity).
-    // `set_badge_count` lives on the window in Tauri 2.x (AppHandle has no
-    // `set_badge_label` in 2.10).
+pub fn update_unread_badge(app: AppHandle, count: u32) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.set_badge_count(if count > 0 { Some(count as i64) } else { None });
     }
@@ -105,7 +93,7 @@ fn notify_with_actions(
         // A macOS notification renders a SINGLE main button. We spend it on an
         // inline reply text field (the headline "answer from the notification"
         // moment) and keep Archive reachable as the alternate (close) button.
-        // Mark-read isn't offered here — it's a tap away in-app / from the tray.
+        // Mark-read isn't offered here — it's a tap away in-app.
         options.main_button(MainButton::Response("Reply"));
         options.close_button("Archive");
         match send_notification(&title, None, &body, Some(&options)) {
