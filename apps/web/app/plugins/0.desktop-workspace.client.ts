@@ -11,14 +11,35 @@
 import { getActiveWorkspace, isDesktopRuntime } from '~/lib/desktop/activeWorkspace';
 import { loadWorkspaces } from '~/composables/useDesktopWorkspaces';
 import { applyWorkspaceAccent } from '~/lib/desktop/workspaceAccent';
+import {
+	clearSwitchFlag,
+	hideSwitchSkeleton,
+	readSwitchFlag,
+	showSwitchSkeleton,
+	SWITCH_FLAG_TTL_MS,
+} from '~/lib/desktop/workspaceSwitch';
 import { setupDeepLinks } from '~/lib/desktop/deepLink.client';
 import { setupUpdateChecks } from '~/lib/desktop/updater.client';
 
 export default defineNuxtPlugin({
 	name: 'owlat:desktop-workspace',
 	enforce: 'pre',
-	async setup() {
+	async setup(nuxtApp) {
 		if (!isDesktopRuntime()) return;
+
+		// Perceived-instant switch (piece d4): if we arrived here via a workspace
+		// switch, re-paint its skeleton FIRST — before Nuxt mounts — so the reload
+		// replaces like with like instead of flashing bg-base. A stale flag (reload
+		// that never landed within the TTL) is discarded rather than shown. The
+		// skeleton crossfades away on first app paint, with a hard TTL fallback so
+		// it can never get stuck if that hook never fires.
+		const pendingSwitch = readSwitchFlag(sessionStorage, Date.now());
+		clearSwitchFlag(sessionStorage);
+		if (pendingSwitch) {
+			const skeleton = showSwitchSkeleton(pendingSwitch.accent, pendingSwitch.label);
+			nuxtApp.hook('app:mounted', () => hideSwitchSkeleton(skeleton));
+			window.setTimeout(() => hideSwitchSkeleton(skeleton), SWITCH_FLAG_TTL_MS);
+		}
 
 		// Platform hooks on <html> for native-chrome CSS (titlebar, vibrancy).
 		// Complements the .dark/.light color-mode class; kept consistent with
