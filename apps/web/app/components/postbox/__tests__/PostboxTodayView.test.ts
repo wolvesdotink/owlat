@@ -43,6 +43,7 @@ beforeAll(() => {
 	vi.stubGlobal('usePostboxThreads', () => feed);
 	vi.stubGlobal('usePostboxReplyQueue', () => queue);
 	vi.stubGlobal('useConvexQuery', () => ({ data: threads, isLoading: ref(false) }));
+	vi.stubGlobal('useRoute', () => ({ hash: '' }));
 });
 
 const iconStub = { props: ['name'], template: '<span class="icon" :data-name="name" />' };

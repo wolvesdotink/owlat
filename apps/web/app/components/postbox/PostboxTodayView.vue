@@ -99,6 +99,27 @@ const FOR_YOU_CAP = 5;
 const { items: forYouItems, count: forYouCount } = usePostboxReplyQueue(mailboxIdRef);
 const forYouVisible = computed(() => forYouItems.value.slice(0, FOR_YOU_CAP));
 
+// Deep link target for the desktop titlebar unread pill
+// (/dashboard/postbox/inbox#postbox-for-you). The section renders only once the
+// reply-queue feed resolves, so scroll to it when it actually mounts — a watch
+// on the count + hash rather than a fire-and-forget scroll at navigation time,
+// which would no-op on a cold load where the section is not in the DOM yet.
+const route = useRoute();
+const forYouSection = ref<HTMLElement | null>(null);
+watch(
+	[forYouCount, () => route.hash],
+	([count]) => {
+		if (!import.meta.client || route.hash !== '#postbox-for-you' || count <= 0) return;
+		void nextTick(() => {
+			const el = forYouSection.value;
+			if (!el) return;
+			const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+			el.scrollIntoView({ block: 'start', behavior: reduced ? 'auto' : 'smooth' });
+		});
+	},
+	{ immediate: true }
+);
+
 /** One muted line of context under the ask: who it is + what they wrote. */
 function forYouDetail(item: ReplyQueueItem): string {
 	const who = item.fromName?.trim() || item.fromAddress;
@@ -184,7 +205,7 @@ function closeOverlay() {
 			<PostboxDailyBrief :mailbox-id="mailboxId" />
 
 			<!-- FOR YOU: what the agent queued for the owner, why in one muted line. -->
-			<section v-if="forYouCount > 0" id="postbox-for-you" aria-label="For you">
+			<section v-if="forYouCount > 0" id="postbox-for-you" ref="forYouSection" aria-label="For you">
 				<h2
 					class="text-[11px] font-semibold uppercase tracking-wider text-text-tertiary tabular-nums"
 				>
