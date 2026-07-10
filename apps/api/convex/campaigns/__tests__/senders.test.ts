@@ -26,7 +26,7 @@ import {
 
 // Mock the session floor so the authed wrappers (`authedQuery`/`authedMutation`
 // membership floor, `authedAction`'s `assertOrgMember`, and the CRUD
-// `campaigns:manage` check) run as an owner. Domain verification stays REAL
+// `settings:manage` check) run as an owner. Domain verification stays REAL
 // (reads seeded `domains` rows).
 vi.mock('../../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../../lib/sessionOrganization');
