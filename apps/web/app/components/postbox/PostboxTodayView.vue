@@ -104,17 +104,32 @@ const forYouVisible = computed(() => forYouItems.value.slice(0, FOR_YOU_CAP));
 // reply-queue feed resolves, so scroll to it when it actually mounts — a watch
 // on the count + hash rather than a fire-and-forget scroll at navigation time,
 // which would no-op on a cold load where the section is not in the DOM yet.
+//
+// One-shot: the deep link is CONSUMED once. We arm a pending flag when the hash
+// is present (at mount, or when a later navigation re-sets it — e.g. re-clicking
+// the pill from another section) and disarm it after the first successful
+// scroll. Otherwise a live reply-queue count change (a new item arrives, or the
+// user answers one) would re-fire scrollIntoView and yank the viewport back to
+// the For-you section mid-read — live subscriptions must never move the user.
 const route = useRoute();
 const forYouSection = ref<HTMLElement | null>(null);
+const pendingForYouScroll = ref(route.hash === '#postbox-for-you');
 watch(
-	[forYouCount, () => route.hash],
-	([count]) => {
-		if (!import.meta.client || route.hash !== '#postbox-for-you' || count <= 0) return;
+	() => route.hash,
+	(hash) => {
+		if (hash === '#postbox-for-you') pendingForYouScroll.value = true;
+	}
+);
+watch(
+	[forYouCount, pendingForYouScroll],
+	([count, pending]) => {
+		if (!import.meta.client || !pending || count <= 0) return;
 		void nextTick(() => {
 			const el = forYouSection.value;
 			if (!el) return;
 			const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 			el.scrollIntoView({ block: 'start', behavior: reduced ? 'auto' : 'smooth' });
+			pendingForYouScroll.value = false;
 		});
 	},
 	{ immediate: true }

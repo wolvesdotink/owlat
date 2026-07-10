@@ -38,12 +38,14 @@ const queue = {
 	isLoading: ref(false),
 };
 const threads = ref<{ threads: Array<Record<string, unknown>> } | undefined>({ threads: [] });
+// Mutable route hash so deep-link tests can arm the For-you scroll at mount.
+const routeState = { hash: '' };
 
 beforeAll(() => {
 	vi.stubGlobal('usePostboxThreads', () => feed);
 	vi.stubGlobal('usePostboxReplyQueue', () => queue);
 	vi.stubGlobal('useConvexQuery', () => ({ data: threads, isLoading: ref(false) }));
-	vi.stubGlobal('useRoute', () => ({ hash: '' }));
+	vi.stubGlobal('useRoute', () => routeState);
 });
 
 const iconStub = { props: ['name'], template: '<span class="icon" :data-name="name" />' };
@@ -222,6 +224,36 @@ describe('PostboxTodayView', () => {
 		expect(w.find('.reader-overlay').exists()).toBe(false);
 		expect(w.find('.thread-list').exists()).toBe(true);
 		expect(w.emitted('reader-closed')).toHaveLength(1);
+	});
+
+	it('consumes the For-you deep link once and never re-scrolls on live count changes', async () => {
+		const scrollSpy = vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(() => {});
+		routeState.hash = '#postbox-for-you';
+		feed.messages.value = [];
+		threads.value = { threads: [] };
+		queue.items.value = [
+			{ threadId: 't1', messageId: 'q1', fromAddress: 'a@example.com', receivedAt: Date.now() },
+		];
+		try {
+			const w = mountView();
+			// The section mounts once the queue resolves → exactly one deep-link scroll.
+			await nextTick();
+			await nextTick();
+			expect(w.find('#postbox-for-you').exists()).toBe(true);
+			expect(scrollSpy).toHaveBeenCalledTimes(1);
+
+			// A live reply-queue update (count 1 → 2) must NOT yank the viewport back.
+			queue.items.value = [
+				...queue.items.value,
+				{ threadId: 't2', messageId: 'q2', fromAddress: 'b@example.com', receivedAt: Date.now() },
+			];
+			await nextTick();
+			await nextTick();
+			expect(scrollSpy).toHaveBeenCalledTimes(1);
+		} finally {
+			routeState.hash = '';
+			scrollSpy.mockRestore();
+		}
 	});
 
 	it('seeds the overlay from a deep-linked message id', () => {
