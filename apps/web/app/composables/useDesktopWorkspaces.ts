@@ -20,6 +20,7 @@ import {
 } from '~/lib/desktop/keychainStorage';
 import {
 	type InstanceInfo,
+	type WorkspaceAccent,
 	type WorkspaceConfig,
 	type WorkspaceStoreShape,
 	pickAccentColor,
@@ -194,7 +195,11 @@ export async function completeConnection(params: { ott: string; state: string })
 		tokenRef,
 		addedAt: now,
 		lastActiveAt: now,
-		accentColor: pickAccentColor(workspaces.value.filter((w) => w.id !== id).length),
+		// Preserve a user-chosen accent when re-authing an already-connected
+		// workspace; only assign round-robin for a genuinely new one.
+		accentColor:
+			workspaces.value.find((w) => w.id === id)?.accentColor ??
+			pickAccentColor(workspaces.value.filter((w) => w.id !== id).length),
 	};
 	workspaces.value = [...workspaces.value.filter((w) => w.id !== id), ws];
 	activeId.value = id;
@@ -217,7 +222,7 @@ async function switchTo(id: string): Promise<void> {
  * when the recolored workspace is the active one (no reload needed) and
  * persists the choice so it survives restart.
  */
-async function setWorkspaceAccent(id: string, color: string): Promise<void> {
+async function setWorkspaceAccent(id: string, color: WorkspaceAccent): Promise<void> {
 	const ws = workspaces.value.find((w) => w.id === id);
 	if (!ws || ws.accentColor === color) return;
 	ws.accentColor = color;
