@@ -363,6 +363,10 @@ async function handleDelete() {
 		     mailbox (own SMTP vs this instance). Self-hides for hosted-only users. -->
 		<PostboxSendingSettings />
 
+		<!-- Move my mailbox here: the staged full move of a connected external
+		     mailbox onto a hosted one. Self-hides for hosted-only users. -->
+		<PostboxMailboxMove />
+
 		<!-- On this device: offline read cache (device-local, never synced). -->
 		<PostboxOfflineSettings />
 

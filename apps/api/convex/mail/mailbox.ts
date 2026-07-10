@@ -50,6 +50,31 @@ export async function getActiveMailboxForUser(
 		.first();
 }
 
+/**
+ * Resolve the single authoritative mailbox that owns an address for inbound
+ * delivery and IMAP/SMTP auth. A "move" (mail/mailboxMove.ts) intentionally
+ * leaves TWO active rows on one address: the old external one — now a read-only
+ * archive, `kind='external'` — and the new live `kind='hosted'` mailbox. A bare
+ * `by_address` + `.first()` returns the OLDEST row, i.e. the archive, which
+ * would silently swallow all post-cutover inbound mail. Prefer the non-external
+ * (hosted/local) row so the live mailbox always wins; fall back to the sole
+ * active row otherwise. Returns `null` when no active mailbox claims the address.
+ */
+export async function resolveDeliverableMailbox(
+	ctx: QueryCtx | MutationCtx,
+	address: string
+): Promise<Doc<'mailboxes'> | null> {
+	const rows = await ctx.db
+		.query('mailboxes')
+		.withIndex('by_address', (q) => q.eq('address', address))
+		.collect(); // bounded: at most an external archive + its hosted successor
+	const active = rows.filter((m) => m.status === 'active');
+	if (active.length === 0) return null;
+	// The hosted/local mailbox is authoritative on the MTA; the external row is a
+	// read-only archive that must never receive new mail.
+	return active.find((m) => m.kind !== 'external') ?? active[0] ?? null;
+}
+
 const SYSTEM_FOLDER_ROLES = ['inbox', 'sent', 'drafts', 'trash', 'spam', 'archive'] as const;
 type FolderRole = (typeof SYSTEM_FOLDER_ROLES)[number];
 

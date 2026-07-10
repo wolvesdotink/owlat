@@ -38,6 +38,7 @@ import { scanContent } from '@owlat/email-scanner';
 import { enqueueNeedsReplyCheck } from './needsReply';
 import { enqueueCategoryCheck } from './category';
 import { clearThreadFollowUp } from './followUps';
+import { resolveDeliverableMailbox } from './mailbox';
 import { clearSnoozeUntilReplyForThread } from './snooze';
 
 const INLINE_BODY_THRESHOLD_BYTES = 64 * 1024;
@@ -651,12 +652,11 @@ export const deliverToMailbox = internalMutation({
 		const fromAddress = extractEmail(args.from);
 		const rfc822MessageId = stripBrackets(args.messageId) ?? args.messageId;
 
-		// 1. Resolve mailbox by address
-		const mailbox = await ctx.db
-			.query('mailboxes')
-			.withIndex('by_address', (q) => q.eq('address', recipient))
-			.first();
-		if (!mailbox || mailbox.status !== 'active') {
+		// 1. Resolve mailbox by address. Prefer the live hosted mailbox over an
+		// external read-only archive when a move has left both on this address —
+		// otherwise post-cutover inbound mail lands in the archive forever.
+		const mailbox = await resolveDeliverableMailbox(ctx, recipient);
+		if (!mailbox) {
 			return { skipped: true };
 		}
 

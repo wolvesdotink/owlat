@@ -68,21 +68,28 @@ const LIFECYCLE_USER_VERIFIER = 'system:verifier';
 function classifyDnsError(
 	error: unknown,
 	now: number,
-	notFoundMessage: string,
+	notFoundMessage: string
 ): VerificationResult {
 	const errorMessage = error instanceof Error ? error.message : 'Unknown DNS error';
 	if (errorMessage.includes('ENOTFOUND') || errorMessage.includes('ENODATA')) {
 		return { verified: false, lastChecked: now, error: notFoundMessage };
 	}
 	if (errorMessage.includes('SERVFAIL')) {
-		return { verified: false, lastChecked: now, error: 'DNS server error - please try again later' };
+		return {
+			verified: false,
+			lastChecked: now,
+			error: 'DNS server error - please try again later',
+		};
 	}
 	return { verified: false, lastChecked: now, error: `DNS lookup failed: ${errorMessage}` };
 }
 
 // ─── DNS lookup helpers ─────────────────────────────────────────────────────
 
-async function verifyTxtRecord(hostname: string, expectedValue: string): Promise<VerificationResult> {
+async function verifyTxtRecord(
+	hostname: string,
+	expectedValue: string
+): Promise<VerificationResult> {
 	const now = Date.now();
 	try {
 		const records = await dns.resolveTxt(hostname);
@@ -147,13 +154,16 @@ async function verifyTxtRecord(hostname: string, expectedValue: string): Promise
 	}
 }
 
-async function verifyCnameRecord(hostname: string, expectedValue: string): Promise<VerificationResult> {
+async function verifyCnameRecord(
+	hostname: string,
+	expectedValue: string
+): Promise<VerificationResult> {
 	const now = Date.now();
 	try {
 		const records = await dns.resolveCname(hostname);
 		const normalizedExpected = expectedValue.toLowerCase().replace(/\.$/, '');
 		const matchingRecord = records.find(
-			(value) => value.toLowerCase().replace(/\.$/, '') === normalizedExpected,
+			(value) => value.toLowerCase().replace(/\.$/, '') === normalizedExpected
 		);
 		if (matchingRecord) {
 			return { verified: true, lastChecked: now, foundValue: matchingRecord };
@@ -169,10 +179,10 @@ async function verifyCnameRecord(hostname: string, expectedValue: string): Promi
 	}
 }
 
-async function verifyMxRecord(
+export async function verifyMxRecord(
 	hostname: string,
 	expectedValue: string,
-	expectedPriority?: number,
+	expectedPriority?: number
 ): Promise<VerificationResult> {
 	const now = Date.now();
 	try {
@@ -197,7 +207,8 @@ async function verifyMxRecord(
 			verified: false,
 			lastChecked: now,
 			error: 'No matching MX record found',
-			foundValue: records.length > 0 ? `${records[0]?.priority} ${records[0]?.exchange}` : undefined,
+			foundValue:
+				records.length > 0 ? `${records[0]?.priority} ${records[0]?.exchange}` : undefined,
 		};
 	} catch (error) {
 		return classifyDnsError(error, now, 'No MX record found at this hostname');
@@ -218,7 +229,7 @@ type ResolvedTlsaRecord = {
 async function resolveTlsa(hostname: string): Promise<ResolvedTlsaRecord[]> {
 	const resolve = dns.resolve as unknown as (
 		host: string,
-		rrtype: 'TLSA',
+		rrtype: 'TLSA'
 	) => Promise<ResolvedTlsaRecord[]>;
 	return resolve(hostname, 'TLSA');
 }
@@ -273,7 +284,7 @@ async function verifyTlsaRecord(hostname: string, record: DnsRecord): Promise<Ve
 				tlsa.certUsage === expected.usage &&
 				tlsa.selector === expected.selector &&
 				tlsa.match === expected.matchingType &&
-				tlsa.data.toString('hex').toLowerCase() === expected.data,
+				tlsa.data.toString('hex').toLowerCase() === expected.data
 		);
 		if (matching) {
 			return {
@@ -304,7 +315,7 @@ async function runDnsLookups(
 		dmarc?: DnsRecord;
 		mailFrom?: DnsRecord[];
 		tlsRpt?: DnsRecord;
-	},
+	}
 ): Promise<VerificationResults> {
 	const results: VerificationResults = {};
 
@@ -341,7 +352,7 @@ async function runDnsLookups(
 				: `${mailFromRecord.host}.${domain}`;
 			if (mailFromRecord.type === 'MX') {
 				results.mailFrom.push(
-					await verifyMxRecord(mailFromHostname, mailFromRecord.value, mailFromRecord.priority),
+					await verifyMxRecord(mailFromHostname, mailFromRecord.value, mailFromRecord.priority)
 				);
 			} else {
 				results.mailFrom.push(await verifyTxtRecord(mailFromHostname, mailFromRecord.value));
@@ -378,7 +389,7 @@ export const verifyDomain = authedAction({
 	},
 	handler: async (
 		ctx,
-		args,
+		args
 	): Promise<{ success: boolean; allVerified: boolean; results: VerificationResults }> => {
 		const domain = await ctx.runQuery(internal.domains.queries.getDomainForRegistration, {
 			domainId: args.domainId,

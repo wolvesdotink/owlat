@@ -141,6 +141,7 @@ export const TENANT_TABLES = [
 	'mailAuditLog',
 	'mailAuthFailures',
 	'mailboxMigrations',
+	'mailboxMoves',
 	'externalMailFolderSync',
 	'externalMailAccounts',
 	'mailboxMembers',

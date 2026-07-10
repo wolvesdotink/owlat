@@ -26,7 +26,7 @@ import { authedMutation, publicQuery } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 import { assertFeatureEnabled } from '../lib/featureFlags';
-import { provisionMailbox, canonicalAddress } from './mailbox';
+import { provisionMailbox, canonicalAddress, resolveDeliverableMailbox } from './mailbox';
 import { markOnboardingStep } from '../auth/userOnboarding';
 import { checkEmailDomainVerification } from '../domains/domains';
 import { getMtaConfig } from './mtaClient';
@@ -36,8 +36,31 @@ import {
 	throwAlreadyExists,
 	throwNotFound,
 } from '../_utils/errors';
+import type { QueryCtx, MutationCtx } from '../_generated/server';
+import type { Doc } from '../_generated/dataModel';
 
 const PURGE_CHUNK = 200;
+
+/**
+ * The user's single LIVE external account — the one still connected/syncing.
+ *
+ * A user has at most one non-`disconnected` account (the connect guard enforces
+ * it), but a completed "move my mailbox here" leaves a `disconnected` archive
+ * row behind that COEXISTS with a freshly-connected account. `by_user` +
+ * `.first()` returns the OLDEST row, so after a move it hands back the archive
+ * and the live account is missed. Resolve by state instead: skip `disconnected`
+ * rows and return the (unique) live one, or `null` when none is live.
+ */
+export async function getLiveExternalAccountForUser(
+	ctx: QueryCtx | MutationCtx,
+	userId: string
+): Promise<Doc<'externalMailAccounts'> | null> {
+	const accounts = await ctx.db
+		.query('externalMailAccounts')
+		.withIndex('by_user', (q) => q.eq('userId', userId))
+		.collect(); // bounded: ≤ 1 live + at most a handful of archived rows per user
+	return accounts.find((a) => a.status !== 'disconnected') ?? null;
+}
 
 const accountStatusValidator = v.union(
 	v.literal('pending'),
@@ -60,11 +83,10 @@ export const getForCurrentUser = publicQuery({
 		await assertFeatureEnabled(ctx, 'mail.external');
 		const s = await getBetterAuthSessionWithRole(ctx);
 		if (!s || !s.role) return { configured: false as const };
-		const account = await ctx.db
-			.query('externalMailAccounts')
-			.withIndex('by_user', (q) => q.eq('userId', s.userId))
-			.first();
-		if (!account || account.status === 'disconnected') return { configured: false as const };
+		// The LIVE account, not the caller's oldest row: a completed move leaves a
+		// disconnected archive that would otherwise mask the reconnected account.
+		const account = await getLiveExternalAccountForUser(ctx, s.userId);
+		if (!account) return { configured: false as const };
 		const mailbox = await ctx.db.get(account.mailboxId);
 		return {
 			configured: true as const,
@@ -97,12 +119,20 @@ export const disconnect = authedMutation({
 		await assertFeatureEnabled(ctx, 'mail.external');
 		const s = await getBetterAuthSessionWithRole(ctx);
 		if (!s || !s.role) throwForbidden('Not authenticated');
-		const account = await ctx.db
-			.query('externalMailAccounts')
-			.withIndex('by_user', (q) => q.eq('userId', s.userId))
-			.first();
-		if (!account) throwNotFound('External mail account');
-		if (account.status === 'disconnected') return { ok: true };
+		// Disconnect the LIVE account, not the caller's oldest row — otherwise a
+		// completed move's disconnected archive would swallow the call while the
+		// reconnected account keeps syncing.
+		const account = await getLiveExternalAccountForUser(ctx, s.userId);
+		if (!account) {
+			// Nothing live to disconnect. Idempotent when an archived/disconnected row
+			// already exists; a genuine miss (no account at all) is a not-found.
+			const existing = await ctx.db
+				.query('externalMailAccounts')
+				.withIndex('by_user', (q) => q.eq('userId', s.userId))
+				.first();
+			if (existing) return { ok: true };
+			throwNotFound('External mail account');
+		}
 		const now = Date.now();
 		await ctx.db.patch(account._id, { status: 'disconnected', updatedAt: now });
 		// Hide from the inbox UI (requireMailboxAccess refuses non-active rows).
@@ -122,17 +152,26 @@ export const disconnect = authedMutation({
  * and mailbox rows). Runs in self-scheduling chunks so a large mailbox does not
  * exceed a single mutation's limits.
  */
-// authz: self — purges only the caller's own external account (by_user on s.userId).
+// authz: self — purges only the caller's own external account (resolved by userId).
 export const purge = authedMutation({
 	args: {},
 	handler: async (ctx) => {
 		await assertFeatureEnabled(ctx, 'mail.external');
 		const s = await getBetterAuthSessionWithRole(ctx);
 		if (!s || !s.role) throwForbidden('Not authenticated');
-		const account = await ctx.db
-			.query('externalMailAccounts')
-			.withIndex('by_user', (q) => q.eq('userId', s.userId))
-			.first();
+		// Purge the LIVE account (the one the migrate page renders for), not the
+		// oldest row: after a completed move the oldest row is the read-only archive,
+		// and purging that would irreversibly delete the moved-mailbox history this
+		// piece promises to keep. Only when NO account is live (purging a lone archive)
+		// do we fall back to the newest by_user row so a deliberate archive purge stays
+		// possible.
+		const account =
+			(await getLiveExternalAccountForUser(ctx, s.userId)) ??
+			(await ctx.db
+				.query('externalMailAccounts')
+				.withIndex('by_user', (q) => q.eq('userId', s.userId))
+				.order('desc')
+				.first());
 		if (!account) throwNotFound('External mail account');
 		const now = Date.now();
 		// Mark disconnected first so the worker stops syncing into a draining mailbox.
@@ -203,6 +242,15 @@ export const _purgeChunk = internalMutation({
 			.collect(); // bounded: per-account folder cursors (≤ a handful)
 		for (const sr of syncRows) await ctx.db.delete(sr._id);
 
+		// A staged "move my mailbox here" job points at this account — drop it too,
+		// so its move row (and the terminal truth getLatestCallerMove surfaces from
+		// it) doesn't linger as the newest move after the account is gone.
+		const moves = await ctx.db
+			.query('mailboxMoves')
+			.withIndex('by_account', (q) => q.eq('accountId', args.accountId))
+			.collect(); // bounded: ≤ 1 move per account
+		for (const mv of moves) await ctx.db.delete(mv._id);
+
 		await ctx.db.delete(args.accountId);
 		await ctx.db.delete(args.mailboxId);
 	},
@@ -241,22 +289,21 @@ export const _connectInternal = internalMutation({
 		const [, domain] = address.split('@');
 		if (!domain) throwInvalidInput('Invalid email address');
 
-		// One external account per user (v1).
-		const existingForUser = await ctx.db
-			.query('externalMailAccounts')
-			.withIndex('by_user', (q) => q.eq('userId', s.userId))
-			.first();
-		if (existingForUser && existingForUser.status !== 'disconnected') {
+		// One LIVE external account per user (v1). A completed move's disconnected
+		// archive row doesn't count — check for a live account by state, not the
+		// oldest row, so a reconnect after a move isn't blocked by (nor slips past)
+		// the archive.
+		const liveAccount = await getLiveExternalAccountForUser(ctx, s.userId);
+		if (liveAccount) {
 			throwAlreadyExists(
 				'You already have a connected external mail account. Disconnect it before connecting another.'
 			);
 		}
-		// The address must not collide with an existing active mailbox.
-		const existingMailbox = await ctx.db
-			.query('mailboxes')
-			.withIndex('by_address', (q) => q.eq('address', address))
-			.first();
-		if (existingMailbox && existingMailbox.status === 'active') {
+		// The address must not collide with any existing active mailbox (hosted or
+		// an external archive left by a completed move) — resolve deterministically
+		// rather than trusting whichever row is oldest.
+		const existingMailbox = await resolveDeliverableMailbox(ctx, address);
+		if (existingMailbox) {
 			throwAlreadyExists(`A mailbox for ${address} already exists.`);
 		}
 
@@ -308,10 +355,13 @@ export const _updateCredentialsInternal = internalMutation({
 	handler: async (ctx, args) => {
 		const s = await getBetterAuthSessionWithRole(ctx);
 		if (!s || !s.role) throwForbidden('Not authenticated');
-		const account = await ctx.db
-			.query('externalMailAccounts')
-			.withIndex('by_user', (q) => q.eq('userId', s.userId))
-			.first();
+		// Re-enter credentials for the LIVE account only. Post-move, the oldest row
+		// is the read-only archive — patching it (new host/username/ciphertext + a
+		// reset to 'pending') would make listConnectableAccounts resume syncing into
+		// the demoted mailbox, cross-contaminating archived history. Re-entering
+		// credentials for an archive is meaningless (reconnect is the path), so a
+		// missing live account is a not-found.
+		const account = await getLiveExternalAccountForUser(ctx, s.userId);
 		if (!account) throwNotFound('External mail account');
 		const now = Date.now();
 		await ctx.db.patch(account._id, {

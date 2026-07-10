@@ -20,6 +20,7 @@ import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { requireAdminContext } from '../lib/sessionOrganization';
 import { requireMailboxAccess } from './permissions';
+import { resolveDeliverableMailbox } from './mailbox';
 import { throwForbidden, throwInvalidInput } from '../_utils/errors';
 
 const PBKDF2_ITERATIONS = 100_000;
@@ -274,11 +275,10 @@ export const _candidatesByAddressAndPrefix = internalQuery({
 		scope: v.union(v.literal('imap'), v.literal('smtp')),
 	},
 	handler: async (ctx, args) => {
-		const mailbox = await ctx.db
-			.query('mailboxes')
-			.withIndex('by_address', (q) => q.eq('address', args.address))
-			.first();
-		if (!mailbox || mailbox.status !== 'active') return null;
+		// Bind auth to the live hosted mailbox, not an external read-only archive
+		// that a move may have left on the same address.
+		const mailbox = await resolveDeliverableMailbox(ctx, args.address);
+		if (!mailbox) return null;
 
 		const rows = await ctx.db
 			.query('mailAppPasswords')
