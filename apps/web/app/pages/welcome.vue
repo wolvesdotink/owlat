@@ -42,9 +42,17 @@ const firstName = computed<string>(() => {
 	return name.split(/\s+/)[0] ?? '';
 });
 
+// Reaching this screen makes the member "returning" for the rest of the session:
+// flip the session-scoped flag the first-login middleware reads BEFORE the exit
+// links can fire. Both exits ("I'll do this later" → /dashboard, "Go to my inbox"
+// → /dashboard/postbox) land on trigger paths, so without this a fast click could
+// beat the fire-and-forget mutation below and bounce the member back to /welcome.
+const firstLoginResolved = useState('first-login-resolved', () => false);
+firstLoginResolved.value = true;
+
 // Record that this member has now seen the welcome — best-effort and idempotent,
-// so a failure here simply means the middleware may route them once more; it must
-// never surface an error on the welcome screen itself.
+// so a failure here simply means the middleware may route them once more in a
+// LATER session; it must never surface an error on the welcome screen itself.
 onMounted(async () => {
 	const userId = user.value?.id;
 	if (!userId || !$convex) return;
@@ -90,7 +98,7 @@ onMounted(async () => {
 								Import your existing inbox so nothing is left behind.
 							</p>
 							<span
-								class="mt-4 inline-flex items-center gap-1 text-sm text-brand opacity-0 transition-opacity group-hover:opacity-100"
+								class="mt-4 inline-flex items-center gap-1 text-sm text-brand opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
 							>
 								Start import
 								<Icon name="lucide:chevron-right" class="h-4 w-4" />
@@ -107,7 +115,7 @@ onMounted(async () => {
 								Skip the import and begin with a clean inbox.
 							</p>
 							<span
-								class="mt-4 inline-flex items-center gap-1 text-sm text-brand opacity-0 transition-opacity group-hover:opacity-100"
+								class="mt-4 inline-flex items-center gap-1 text-sm text-brand opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
 							>
 								Go to my inbox
 								<Icon name="lucide:chevron-right" class="h-4 w-4" />
