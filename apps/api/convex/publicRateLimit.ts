@@ -2,6 +2,7 @@ import { v, type Infer } from 'convex/values';
 import { internalMutation } from './_generated/server';
 import { rateLimiter } from './rateLimiter';
 import { getOptional } from './lib/env';
+import { logWarn } from './lib/runtimeLog';
 
 /**
  * Rate limit types for public endpoints. The validator is the single source —
@@ -12,7 +13,7 @@ export const publicRateLimitTypeValidator = v.union(
 	v.literal('emailTracking'),
 	v.literal('subscriptionManagement'),
 	v.literal('doiConfirmation'),
-	v.literal('webhookIngestion'),
+	v.literal('webhookIngestion')
 );
 export type PublicRateLimitType = Infer<typeof publicRateLimitTypeValidator>;
 
@@ -37,8 +38,10 @@ export type PublicRateLimitType = Infer<typeof publicRateLimitTypeValidator>;
  *
  * When unset (or unrecognised), no header is trusted and all callers share a
  * single bucket ('unknown'): coarser, but a spoofed header can never multiply
- * the allowed volume. Deployments behind a known proxy SHOULD set this for
- * per-client limiting.
+ * the allowed volume. This collapses the per-IP form-submission limit to one
+ * shared window, so a config WARN is emitted once per warm instance to flag
+ * that `RATE_LIMIT_TRUSTED_PROXY` is required for per-IP form limits.
+ * Deployments behind a known proxy SHOULD set this for per-client limiting.
  *
  * TRUST CAVEAT — `cloudflare` and `xrealip` trust their header UNCONDITIONALLY
  * (there's no socket-peer attribution in a Convex httpAction, so we can't verify
@@ -50,9 +53,21 @@ export type PublicRateLimitType = Infer<typeof publicRateLimitTypeValidator>;
  * the proxy-appended entry from the right and is the bypass-resistant default for
  * a single trusted reverse proxy (e.g. Caddy).
  */
+// Emit the "no trusted proxy configured" advisory at most once per warm
+// instance so a busy endpoint doesn't flood the logs.
+let warnedMissingTrustedProxy = false;
+
 export function getClientIp(request: Request): string {
 	const mode = getOptional('RATE_LIMIT_TRUSTED_PROXY')?.trim().toLowerCase();
-	if (!mode) return 'unknown';
+	if (!mode) {
+		if (!warnedMissingTrustedProxy) {
+			warnedMissingTrustedProxy = true;
+			logWarn(
+				"[publicRateLimit] RATE_LIMIT_TRUSTED_PROXY is not set — every caller shares one rate-limit bucket ('unknown'), so per-IP form-submission limits cannot isolate clients. Set RATE_LIMIT_TRUSTED_PROXY (cloudflare | xforwarded[:hops] | xrealip) to match your reverse proxy to restore per-IP limiting."
+			);
+		}
+		return 'unknown';
+	}
 
 	if (mode === 'cloudflare') {
 		return request.headers.get('CF-Connecting-IP')?.trim() || 'unknown';
