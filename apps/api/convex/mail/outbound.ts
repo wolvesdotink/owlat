@@ -403,8 +403,13 @@ export const dispatchDraft = internalAction({
 
 		if (!sentOutcome.ok) {
 			if (sentOutcome.reason === 'from_revoked') {
+				// With send-as, the allow-set that refused belongs to the SENDING
+				// mailbox (the teammate's personal mailbox on a personal send-as),
+				// not the thread mailbox — log the sending id so an operator debugging
+				// a blocked send isn't pointed at the wrong mailbox.
+				const revokedSendingMailboxId = draft.sendAsMailboxId ?? draft.mailboxId;
 				logError(
-					`[Outbound] Refusing to dispatch draft ${args.draftId}: from-address "${draft.fromAddress}" is not in the allowed set for mailbox ${draft.mailboxId}`
+					`[Outbound] Refusing to dispatch draft ${args.draftId}: from-address "${draft.fromAddress}" is not in the allowed set for sending mailbox ${revokedSendingMailboxId} (thread mailbox ${draft.mailboxId})`
 				);
 				// The cascade did not run; clean up the raw .eml we just stored
 				// and revert the draft so the user can edit and retry.
