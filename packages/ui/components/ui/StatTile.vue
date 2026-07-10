@@ -31,8 +31,14 @@ const deltaClass: Record<DeltaDirection, string> = {
 	flat: 'text-text-tertiary',
 };
 
+// When no delta is available (e.g. no comparable prior send) render a muted,
+// glyph-less em dash so the tile row still aligns with its delta-bearing peers.
 const deltaText = computed(() =>
-	props.delta === undefined ? null : `${deltaGlyph[props.deltaDirection]} ${props.delta}`
+	props.delta === undefined ? '—' : `${deltaGlyph[props.deltaDirection]} ${props.delta}`
+);
+
+const deltaLineClass = computed(() =>
+	props.delta === undefined ? 'text-text-tertiary' : deltaClass[props.deltaDirection]
 );
 </script>
 
@@ -42,7 +48,7 @@ const deltaText = computed(() =>
 		<p class="mt-1 font-display text-3xl text-text-primary tabular-nums leading-none">
 			{{ value }}
 		</p>
-		<p v-if="deltaText" :class="['mt-1.5 text-xs tabular-nums', deltaClass[deltaDirection]]">
+		<p :class="['mt-1.5 text-xs tabular-nums', deltaLineClass]">
 			{{ deltaText }}
 		</p>
 	</div>

@@ -93,6 +93,18 @@ function pointDelta(currentRate: number, previousRate: number, higherIsBetter: b
 const noDelta: StatDelta = { text: null, direction: 'flat' };
 
 /**
+ * The all-empty delta set — every metric has no prior send to compare against.
+ * Returned by `computeStatDeltas` when there is no previous comparable send, and
+ * usable directly (e.g. before the current send's stats have loaded).
+ */
+export const NO_DELTAS: CampaignStatDeltas = {
+	delivered: noDelta,
+	opened: noDelta,
+	clicked: noDelta,
+	bounced: noDelta,
+};
+
+/**
  * Per-metric deltas of the current send vs the previous comparable send. When
  * `previous` is null (no prior comparable send) every delta is empty.
  */
@@ -101,7 +113,7 @@ export function computeStatDeltas(
 	previous: CampaignStatSnapshot | null
 ): CampaignStatDeltas {
 	if (previous === null) {
-		return { delivered: noDelta, opened: noDelta, clicked: noDelta, bounced: noDelta };
+		return NO_DELTAS;
 	}
 	return {
 		delivered: pointDelta(

@@ -3,7 +3,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import ClickHeatmap from '~/components/dashboard/ClickHeatmap.vue';
 import CampaignAbComparison from '~/components/dashboard/CampaignAbComparison.vue';
-import { selectPreviousComparable, computeStatDeltas } from '~/utils/campaignReport';
+import { selectPreviousComparable, computeStatDeltas, NO_DELTAS } from '~/utils/campaignReport';
 
 useHead({ title: 'Campaign Report — Owlat' });
 
@@ -167,7 +167,7 @@ const previousComparable = computed(() => {
 
 const deltas = computed(() => {
 	if (!stats.value) {
-		return computeStatDeltas({ sent: 0, delivered: 0, opened: 0, clicked: 0, bounced: 0 }, null);
+		return NO_DELTAS;
 	}
 	return computeStatDeltas(
 		{
@@ -317,20 +317,14 @@ const loadPrevClicked = () => {
 			<!-- Hero stat tiles -->
 			<div class="card p-6 mb-8">
 				<div class="grid grid-cols-2 lg:grid-cols-4 gap-6">
-					<div v-for="tile in heroTiles" :key="tile.key">
-						<UiStatTile
-							:label="tile.label"
-							:value="tile.value.toLocaleString()"
-							:delta="tile.delta.text ?? undefined"
-							:delta-direction="tile.delta.direction"
-						/>
-						<p
-							v-if="tile.delta.text === null"
-							class="mt-1.5 text-xs tabular-nums text-text-tertiary"
-						>
-							—
-						</p>
-					</div>
+					<UiStatTile
+						v-for="tile in heroTiles"
+						:key="tile.key"
+						:label="tile.label"
+						:value="tile.value.toLocaleString()"
+						:delta="tile.delta.text ?? undefined"
+						:delta-direction="tile.delta.direction"
+					/>
 				</div>
 				<p class="mt-4 text-xs text-text-tertiary">
 					<template v-if="previousComparable">
