@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { smtpSendProvider, smtpReplyCodeToErrorCode } from '../index';
+import { smtpSendProvider, smtpReplyCodeToErrorCode, classifySmtpError } from '../index';
 import { EmailErrorCode, isRetryableErrorCode } from '../../types';
 
 describe('smtpReplyCodeToErrorCode — SMTP reply code taxonomy (RFC 5321 §4.2)', () => {
@@ -90,5 +90,84 @@ describe('smtpSendProvider.categorizeError — nodemailer string codes + text', 
 	it('declares a non-empty retry schedule and the smtp kind', () => {
 		expect(provider.kind).toBe('smtp');
 		expect(provider.retryDelays.length).toBeGreaterThan(0);
+	});
+});
+
+describe('classifySmtpError — catch-side classification (retry vs. terminal)', () => {
+	type Input = Parameters<typeof classifySmtpError>[0];
+	const cases: Array<[string, Input, EmailErrorCode]> = [
+		// A definitive 4xx reply that merely mentions "timeout" (e.g. Postfix's
+		// "421 4.4.2 Error: timeout exceeded") is the server's verdict — the
+		// message was NOT accepted, so there is no double-delivery ambiguity. It
+		// must be a retryable SERVER_ERROR, never terminal AMBIGUOUS_TIMEOUT.
+		[
+			'421 reply mentioning "timeout" is a retryable server error, not ambiguous',
+			{ responseCode: 421, message: '4.4.2 Error: timeout exceeded', command: 'DATA' },
+			EmailErrorCode.SERVER_ERROR,
+		],
+		// No reply code arrived (the outer withTimeout sentinel) → genuinely
+		// ambiguous: the relay may already have accepted the message.
+		[
+			'withTimeout sentinel with no reply code is AMBIGUOUS_TIMEOUT',
+			{ message: 'SMTP relay send timed out' },
+			EmailErrorCode.AMBIGUOUS_TIMEOUT,
+		],
+		// Socket-level ETIMEDOUT with no reply code is likewise ambiguous.
+		[
+			'socket ETIMEDOUT with no reply code is AMBIGUOUS_TIMEOUT',
+			{ code: 'ETIMEDOUT', message: 'Connection timed out' },
+			EmailErrorCode.AMBIGUOUS_TIMEOUT,
+		],
+		// A pre-acceptance connection/greeting failure (command CONN) never
+		// reached the wire, so it is always retryable — even a connect timeout.
+		[
+			'CONN-phase ETIMEDOUT (connection timeout) is a retryable server error',
+			{ command: 'CONN', code: 'ETIMEDOUT', message: 'Connection timeout' },
+			EmailErrorCode.SERVER_ERROR,
+		],
+		[
+			'CONN-phase greeting failure is a retryable server error',
+			{ command: 'CONN', code: 'ETIMEDOUT', message: 'Greeting never received' },
+			EmailErrorCode.SERVER_ERROR,
+		],
+		// A connection loss during DATA may mean the final dot was sent and the
+		// 250 lost — the same on-the-wire ambiguity a timeout carries ⇒ terminal.
+		[
+			'DATA-phase connection loss is AMBIGUOUS_TIMEOUT (final dot may be on the wire)',
+			{ command: 'DATA', code: 'ESOCKET', message: 'Connection closed unexpectedly' },
+			EmailErrorCode.AMBIGUOUS_TIMEOUT,
+		],
+		[
+			'DATA-phase socket hang up is AMBIGUOUS_TIMEOUT',
+			{ command: 'DATA', message: 'socket hang up' },
+			EmailErrorCode.AMBIGUOUS_TIMEOUT,
+		],
+		// Connection losses BEFORE data — EHLO/MAIL/RCPT — leave the server with
+		// an incomplete transaction it discards, so they stay retryable.
+		[
+			'RCPT-phase connection loss stays a retryable server error',
+			{ command: 'RCPT', code: 'ESOCKET', message: 'Connection closed unexpectedly' },
+			EmailErrorCode.SERVER_ERROR,
+		],
+		[
+			'MAIL-phase connection loss stays a retryable server error',
+			{ command: 'MAIL', code: 'ECONNECTION', message: 'Connection closed' },
+			EmailErrorCode.SERVER_ERROR,
+		],
+		// Reply-code path still authoritative through the classifier.
+		[
+			'550 reply → permanent INVALID_RECIPIENT',
+			{ responseCode: 550, code: 'EENVELOPE', message: '5.1.1 User unknown', command: 'RCPT' },
+			EmailErrorCode.INVALID_RECIPIENT,
+		],
+		[
+			'535 reply → permanent AUTH_FAILED',
+			{ responseCode: 535, code: 'EAUTH', message: '5.7.8 auth failed' },
+			EmailErrorCode.AUTH_FAILED,
+		],
+	];
+
+	it.each(cases)('%s', (_name, input, expected) => {
+		expect(classifySmtpError(input)).toBe(expected);
 	});
 });
