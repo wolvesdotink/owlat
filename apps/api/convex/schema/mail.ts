@@ -56,6 +56,13 @@ export const mailTables = {
 		address: v.string(), // canonical lowercase
 		domain: v.string(), // domain part for filtering
 		displayName: v.optional(v.string()),
+		// Sharing model. undefined ⇒ 'personal' (a single user's mailbox;
+		// back-compat for all pre-shared-inbox rows). 'shared' ⇒ a team inbox
+		// whose access is governed by explicit `mailboxMembers` rows rather than
+		// by the owning `userId` alone. NOTE: distinct from `kind` below, which
+		// discriminates the *transport* (hosted vs external), not the sharing
+		// model — the two are orthogonal.
+		scope: v.optional(v.union(v.literal('personal'), v.literal('shared'))),
 		// Transport discriminator. undefined ⇒ 'hosted' (Owlat-hosted mailbox;
 		// back-compat for pre-external rows). 'external' ⇒ backed by a
 		// user-connected IMAP/SMTP account (see externalMailAccounts).
@@ -73,6 +80,33 @@ export const mailTables = {
 		.index('by_user', ['userId'])
 		.index('by_domain', ['domain'])
 		.index('by_status', ['status']),
+
+	// Explicit membership on a mailbox — the access-control source of truth for
+	// shared (team) inboxes. A personal mailbox carries exactly one row: an
+	// 'owner' membership for its `mailboxes.userId` (created by the backfill in
+	// migrations/0034 and, going forward, at provision time). A shared mailbox
+	// adds 'member' (and further 'owner') rows for the teammates who may use it.
+	//
+	// Org membership alone grants nothing here — access is either org
+	// owner/admin acting on behalf, the mailbox's own `userId`, or an explicit
+	// row in this table (see mail/permissions.ts::loadOwnedMailbox).
+	//
+	// Wiped by the org-deletion walker and the dev reset (registered in
+	// lib/tenantTables.ts before `mailboxes`, so members go before the parent).
+	mailboxMembers: defineTable({
+		mailboxId: v.id('mailboxes'),
+		authUserId: v.string(), // BetterAuth user ID of the member
+		role: v.union(v.literal('owner'), v.literal('member')),
+		addedBy: v.string(), // BetterAuth user ID that granted the membership (audit)
+		createdAt: v.number(),
+	})
+		// Access checks look up (mailbox, user) → membership; the compound index
+		// is the hot path (one point read per authz decision).
+		.index('by_mailbox_user', ['mailboxId', 'authUserId'])
+		// List every member of a mailbox (member management, cascade delete).
+		.index('by_mailbox', ['mailboxId'])
+		// List every mailbox a user belongs to (identity resolution / inbox list).
+		.index('by_user', ['authUserId']),
 
 	// External mailbox connection (BYO IMAP/SMTP). Per-user link to an EXISTING
 	// external mailbox (Gmail, Fastmail, a company server). 1:1 with a `mailboxes`
