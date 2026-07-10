@@ -70,6 +70,28 @@ onMounted(() => {
 	initFromStorage();
 });
 
+// Native macOS traffic lights follow the sidebar (desktop + macOS only). They
+// stay visible whenever the rail — or its transient peek overlay — is on screen,
+// and hide only when the sidebar is fully hidden and not peeking. Wired at mount
+// (after the webview is ready) with an immediate sync, so the buttons are never
+// stranded: a fresh launch with a persisted-hidden sidebar re-hides them, and
+// un-hiding the rail always brings them back. Fullscreen is guarded natively.
+onMounted(() => {
+	if (!isDesktop.value || !isMac.value) return;
+	watch(
+		[effectiveHidden, isPeeking],
+		async ([hidden, peeking]) => {
+			try {
+				const { setTrafficLightsVisible } = await import('@owlat/desktop/src/window');
+				await setTrafficLightsVisible(!hidden || peeking);
+			} catch {
+				// Tauri unavailable — native buttons stay as-is.
+			}
+		},
+		{ immediate: true }
+	);
+});
+
 // Keep the sidebar's desktop-viewport flag in sync with the `lg` breakpoint so
 // the hidden/peek behavior stays desktop-only (mobile keeps its off-canvas
 // drawer). Mirrors Tailwind's `lg` = 1024px.
