@@ -46,7 +46,10 @@ export const mailTables = {
 		createdByUserId: v.string(), // inviter — audit only
 	})
 		.index('by_invitation', ['invitationId'])
-		.index('by_address', ['address']),
+		.index('by_address', ['address'])
+		// Look up an invitee's reservation by their email at first login (the
+		// fresh-start welcome shows "your mailbox X is reserved — claim it").
+		.index('by_invitee_email', ['inviteeEmail']),
 
 	// Per-user mailbox identity (e.g. marcel@hinterland.camp).
 	// One BetterAuth user can own multiple mailboxes.
@@ -1218,4 +1221,27 @@ export const mailTables = {
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	}).index('by_mailbox_and_user', ['mailboxId', 'userId']),
+
+	// A member who lands in the fresh-start flow with no mailbox and no way to
+	// connect one (no reserved hosted mailbox AND external accounts disabled)
+	// can ask an admin to set one up. This is the honest dead-end escape hatch —
+	// a single in-app request per member that admins resolve. Idempotent per
+	// member: one open row at a time (see mail/mailboxRequest.ts).
+	mailboxRequests: defineTable({
+		// BetterAuth user id of the member asking for a mailbox.
+		authUserId: v.string(),
+		organizationId: v.string(),
+		// Denormalised for the admin list so it needn't join userProfiles.
+		requesterEmail: v.string(),
+		requesterName: v.optional(v.string()),
+		// Optional free-text note ("I need marcel@…").
+		note: v.optional(v.string()),
+		status: v.union(v.literal('open'), v.literal('resolved')),
+		createdAt: v.number(),
+		// Admin who resolved it + when (audit; unset while open).
+		resolvedByUserId: v.optional(v.string()),
+		resolvedAt: v.optional(v.number()),
+	})
+		.index('by_auth_user_id', ['authUserId'])
+		.index('by_org_and_status', ['organizationId', 'status']),
 };
