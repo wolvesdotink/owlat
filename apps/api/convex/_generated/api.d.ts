@@ -533,6 +533,7 @@ import type * as topics_subscription from "../topics/subscription.js";
 import type * as topics_topics from "../topics/topics.js";
 import type * as transactional_api from "../transactional/api.js";
 import type * as transactional_dispatch from "../transactional/dispatch.js";
+import type * as transactional_dispatchContent from "../transactional/dispatchContent.js";
 import type * as transactional_emails from "../transactional/emails.js";
 import type * as transactional_lifecycle from "../transactional/lifecycle.js";
 import type * as transactional_sends from "../transactional/sends.js";
@@ -1103,6 +1104,7 @@ declare const fullApi: ApiFromModules<{
   "topics/topics": typeof topics_topics;
   "transactional/api": typeof transactional_api;
   "transactional/dispatch": typeof transactional_dispatch;
+  "transactional/dispatchContent": typeof transactional_dispatchContent;
   "transactional/emails": typeof transactional_emails;
   "transactional/lifecycle": typeof transactional_lifecycle;
   "transactional/sends": typeof transactional_sends;
