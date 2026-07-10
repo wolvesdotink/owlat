@@ -269,7 +269,7 @@ const settingsSections = computed(() => {
 	const sections = [
 		{
 			name: 'Workspace',
-			description: 'Members, workspace name, email theme, and connected workspaces',
+			description: 'Members and email theme',
 			href: '/dashboard/settings/workspace',
 			icon: 'lucide:building-2',
 		},
