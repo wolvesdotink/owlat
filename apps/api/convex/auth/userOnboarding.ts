@@ -2,6 +2,7 @@ import { v } from 'convex/values';
 import type { MutationCtx } from '../_generated/server';
 import { authedMutation, authedQuery } from '../lib/authedFunctions';
 import { requireSelf } from '../lib/sessionOrganization';
+import { throwInvalidState } from '../_utils/errors';
 
 /**
  * Per-user first-login onboarding state.
@@ -142,6 +143,31 @@ export const get = authedQuery({
 		state.dismissedAt = row.dismissedAt ?? null;
 		state.welcomedAt = row.welcomedAt ?? null;
 		return state;
+	},
+});
+
+/**
+ * Finish the fresh-start welcome: mark the caller's `mailboxReady` step once a
+ * live personal mailbox actually exists. The welcome flow provisions/claims the
+ * mailbox through its own flows (which already mark the step), so this is the
+ * belt-and-suspenders write that guarantees "completed the welcome ⇒
+ * mailboxReady" even for a mailbox that was provisioned at invite-accept time.
+ * Refuses when the caller has no mailbox — the step must never be a lie.
+ */
+// authz: self — requireSelf asserts args.userId is the caller.
+export const completeFreshStart = authedMutation({
+	args: {
+		userId: v.string(),
+	},
+	handler: async (ctx, args) => {
+		await requireSelf(ctx, args.userId);
+		const mailbox = await ctx.db
+			.query('mailboxes')
+			.withIndex('by_user', (q) => q.eq('userId', args.userId))
+			.filter((q) => q.eq(q.field('status'), 'active'))
+			.first();
+		if (!mailbox) throwInvalidState('No mailbox yet');
+		await markOnboardingStep(ctx, args.userId, 'mailboxReady');
 	},
 });
 

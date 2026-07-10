@@ -22,6 +22,7 @@ import { requireMailboxAccess } from './permissions';
 import { resolveAllowedFromAddressesForCtx } from './identities';
 import { getOrThrow, throwForbidden, throwInvalidState, throwNotFound } from '../_utils/errors';
 import { assertStateIs, type TransitionOutcome as DraftTransitionOutcome } from './draftLifecycle';
+import { markOnboardingStep } from '../auth/userOnboarding';
 
 export const create = authedMutation({
 	args: {
@@ -310,6 +311,12 @@ export const send = authedMutation({
 					throwInvalidState(`Cannot send draft: ${outcome.reason}`);
 			}
 		}
+
+		// First send from this instance completes the member's onboarding
+		// "firstSendDone" step (idempotent — only the first send ever writes it).
+		// This is what the fresh-start welcome's optional "email yourself" step
+		// rides on, but it fires for every send so the step can never be a lie.
+		await markOnboardingStep(ctx, owned.userId, 'firstSendDone');
 
 		return { undoToken: outcome.undoToken!, sendAt: outcome.sendAt! };
 	},
