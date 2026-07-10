@@ -81,7 +81,7 @@ export const mailTables = {
 		// settings → Sending. Switching to 'instance' is gated: the from-domain
 		// must be a VERIFIED sending domain on the instance (DKIM alignment) AND
 		// an instance transport must be configured — enforced in
-		// externalAccounts.ts::setSendingPreference, never assumed here.
+		// mail/sendingSwitch.ts::setSendingPreference, never assumed here.
 		outboundPreference: v.optional(v.union(v.literal('external'), v.literal('instance'))),
 		status: v.union(v.literal('active'), v.literal('suspended'), v.literal('deleted')),
 		quotaBytes: v.optional(v.number()), // null = unlimited (always unset for external)

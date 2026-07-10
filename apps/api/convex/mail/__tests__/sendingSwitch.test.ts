@@ -1,8 +1,9 @@
 /**
  * Post-import "switch your sending" (outbound-only, gated).
  *
- * End-to-end over a real (convex-test) datastore for the piece c4 surface on
- * `mail/externalAccounts`:
+ * End-to-end over a real (convex-test) datastore for the piece c4 surface. The
+ * switch query/mutation live on `mail/sendingSwitch` (`api.mail.sendingSwitch.*`);
+ * `resolveOutboundTransport` stays internal on `mail/externalAccounts`:
  *   - the prompt gating matrix (`sendingSwitchStatus`): a switch is offered ONLY
  *     when import + knowledge indexing are done, the from-domain is a VERIFIED
  *     sending domain on this instance, and a transport is configured. Missing
@@ -19,7 +20,7 @@
  * `domains` rows.
  */
 
-import { convexTest } from 'convex-test';
+import { convexTest, type TestConvex } from 'convex-test';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
@@ -81,7 +82,7 @@ const CREDS = {
 	secretEnvelopeVersion: 1,
 };
 
-type Ctx = ReturnType<typeof convexTest>;
+type Ctx = TestConvex<typeof schema>;
 
 async function enableFlags(t: Ctx, flags: Record<string, boolean>): Promise<void> {
 	await t.run(async (ctx) => {
@@ -282,5 +283,43 @@ describe('resolveOutboundTransport — dispatch honours the preference', () => {
 			mailboxId,
 		});
 		expect(transport.kind).toBe('hosted');
+	});
+
+	it('falls back to the external SMTP path when the MTA is torn down after switching', async () => {
+		const t = convexTest(schema, modules);
+		await enableFlags(t, { 'mail.external': true });
+		const mailboxId = await connectMailbox(t);
+		await seedVerifiedDomain(t, 'example.com');
+		await t.mutation(api.mail.sendingSwitch.setSendingPreference, { preference: 'instance' });
+
+		// The MTA is removed after the switch — dispatch must not route onto a
+		// hosted path that would silently drop the message.
+		mtaMocks.configured = false;
+		const transport = await t.query(internal.mail.externalAccounts.resolveOutboundTransport, {
+			mailboxId,
+		});
+		expect(transport.kind).toBe('external');
+	});
+
+	it('falls back to the external SMTP path when the from-domain is unverified after switching', async () => {
+		const t = convexTest(schema, modules);
+		await enableFlags(t, { 'mail.external': true });
+		const mailboxId = await connectMailbox(t);
+		await seedVerifiedDomain(t, 'example.com');
+		await t.mutation(api.mail.sendingSwitch.setSendingPreference, { preference: 'instance' });
+
+		// The domain is deleted/unverified after the switch — the instance can no
+		// longer sign this from-domain, so DKIM alignment forces the external path.
+		await t.run(async (ctx) => {
+			const row = await ctx.db
+				.query('domains')
+				.withIndex('by_domain', (q) => q.eq('domain', 'example.com'))
+				.first();
+			if (row) await ctx.db.delete(row._id);
+		});
+		const transport = await t.query(internal.mail.externalAccounts.resolveOutboundTransport, {
+			mailboxId,
+		});
+		expect(transport.kind).toBe('external');
 	});
 });
