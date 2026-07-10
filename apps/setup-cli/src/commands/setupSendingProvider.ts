@@ -138,17 +138,19 @@ export async function pickSendingProvider(): Promise<EnvMap | null> {
 		);
 		if (!ok) return null;
 
-		const env: EnvMap = {
+		// Always write the port. setup.ts applies this patch with
+		// mergeEnv(existing, patch) = { ...existing, ...patch }, and re-running
+		// setup over an existing install is supported — omitting the key on the
+		// default would let a stale SMTP_RELAY_PORT (e.g. 465) survive and diverge
+		// from the port the handshake just validated.
+		return {
 			EMAIL_PROVIDER: 'smtp',
 			SMTP_RELAY_HOST: result.host,
+			SMTP_RELAY_PORT: String(port),
 			SMTP_RELAY_USERNAME: result.username,
 			SMTP_RELAY_PASSWORD: result.password,
 			SMTP_RELAY_SECURE: result.secure ? 'true' : 'false',
 		};
-		if (port !== 587) {
-			env['SMTP_RELAY_PORT'] = String(port);
-		}
-		return env;
 	}
 
 	return null;

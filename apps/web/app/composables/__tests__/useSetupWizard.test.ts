@@ -190,7 +190,7 @@ describe('buildProviderEnv', () => {
 		expect(env['AWS_SES_REGION']).toBeUndefined();
 	});
 
-	it('writes the SMTP relay env from a preset draft, omitting the default port', () => {
+	it('writes the SMTP relay env from a preset draft, defaulting a blank port to 587', () => {
 		const env = buildProviderEnv(
 			{ RESEND_API_KEY: 'old' },
 			emailDraft({ provider: 'smtp', smtp: smtpRelay({ port: '' }) })
@@ -200,8 +200,9 @@ describe('buildProviderEnv', () => {
 		expect(env['SMTP_RELAY_USERNAME']).toBe('postmaster@mg.acme.test');
 		expect(env['SMTP_RELAY_PASSWORD']).toBe('relay-secret');
 		expect(env['SMTP_RELAY_SECURE']).toBe('false');
-		// Blank port ⇒ omit the key so the backend default (587) applies.
-		expect(env['SMTP_RELAY_PORT']).toBeUndefined();
+		// Blank port ⇒ write the default 587 explicitly so a stale on-disk value
+		// (apply.post.ts merges over .env) can't survive and diverge.
+		expect(env['SMTP_RELAY_PORT']).toBe('587');
 		// Stale credentials from another provider are cleared.
 		expect(env['RESEND_API_KEY']).toBeUndefined();
 	});

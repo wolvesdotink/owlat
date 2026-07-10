@@ -24,7 +24,7 @@ import { SMTP_RELAY_PRESETS, type SmtpRelayPreset } from '@owlat/shared/setupSen
 
 // Re-export the shared preset table and its key type so the setup step (and its
 // tests) keep importing them from this composable; the single source of truth
-// lives in `@owlat/shared/setupValidators`, shared with the setup CLI.
+// lives in `@owlat/shared/setupSendingPresets`, shared with the setup CLI.
 export { SMTP_RELAY_PRESETS };
 export type SmtpPreset = SmtpRelayPreset;
 
@@ -212,10 +212,12 @@ export function buildProviderEnv(
 		if (draft.provider === 'smtp') {
 			const { host, port, secure, username, password } = draft.smtp;
 			next['SMTP_RELAY_HOST'] = host.trim();
-			// Port/TLS have safe backend defaults (587 / STARTTLS), so only emit the
-			// port when the operator set one; always record the TLS mode explicitly.
+			// Always emit the port (and TLS mode) explicitly. apply.post.ts merges the
+			// patch over the on-disk .env, so omitting the key on a blank field would
+			// let a stale SMTP_RELAY_PORT from a prior install survive and diverge from
+			// the validated value — write the default 587 rather than leave a gap.
 			const trimmedPort = port.trim();
-			if (trimmedPort) next['SMTP_RELAY_PORT'] = trimmedPort;
+			next['SMTP_RELAY_PORT'] = trimmedPort || '587';
 			next['SMTP_RELAY_SECURE'] = secure ? 'true' : 'false';
 			next['SMTP_RELAY_USERNAME'] = username;
 			next['SMTP_RELAY_PASSWORD'] = password;
