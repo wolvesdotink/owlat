@@ -88,6 +88,18 @@ export async function provisionMailbox(
 		updatedAt: now,
 	});
 
+	// The implicit 'owner' membership — the access model's single source of
+	// truth (mail/permissions.ts). Every mailbox carries exactly this one row
+	// at provision time; shared mailboxes add further rows later. Mirrors the
+	// backfill in migrations/0034 so new and pre-existing mailboxes agree.
+	await ctx.db.insert('mailboxMembers', {
+		mailboxId,
+		authUserId: args.userId,
+		role: 'owner',
+		addedBy: args.userId, // self — the implicit owner predates member management
+		createdAt: now,
+	});
+
 	for (const role of SYSTEM_FOLDER_ROLES) {
 		await ctx.db.insert('mailFolders', {
 			mailboxId,

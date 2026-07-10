@@ -17,6 +17,7 @@ import schema from '../../schema';
 import type { Id } from '../../_generated/dataModel';
 import { api, internal } from '../../_generated/api';
 import { requireMailboxAccess } from '../permissions';
+import { provisionMailbox } from '../mailbox';
 import { modules, seedMailbox } from './helpers';
 
 const sessionMocks = vi.hoisted(() => ({
@@ -198,6 +199,44 @@ describe('requireMailboxAccess — personal mailbox behaviour is unchanged', () 
 		const result = await t.run((ctx) => requireMailboxAccess(ctx, id, 'owner'));
 		if (!result.ok) throw new Error('expected owner to be granted');
 		expect(result.userId).toBe('user-A');
+	});
+});
+
+describe('provisionMailbox — writes the implicit owner membership row', () => {
+	it('a freshly provisioned mailbox carries exactly one owner row for its user', async () => {
+		const t = convexTest(schema, modules);
+		const id = await t.run((ctx) =>
+			provisionMailbox(ctx, {
+				userId: 'user-A',
+				organizationId: 'org-1',
+				address: 'fresh@hinterland.camp',
+				domain: 'hinterland.camp',
+			})
+		);
+
+		const rows = await t.run((ctx) =>
+			ctx.db
+				.query('mailboxMembers')
+				.withIndex('by_mailbox_user', (q) => q.eq('mailboxId', id).eq('authUserId', 'user-A'))
+				.collect()
+		);
+		expect(rows).toHaveLength(1);
+		expect(rows[0]?.role).toBe('owner');
+		expect(rows[0]?.addedBy).toBe('user-A');
+	});
+
+	it('the owner-row invariant makes the backfill a no-op for provisioned mailboxes', async () => {
+		const t = convexTest(schema, modules);
+		await t.run((ctx) =>
+			provisionMailbox(ctx, {
+				userId: 'user-A',
+				organizationId: 'org-1',
+				address: 'fresh@hinterland.camp',
+				domain: 'hinterland.camp',
+			})
+		);
+		const result = await t.mutation(internal.migrations['0034_mailbox_owner_membership'].run, {});
+		expect(result.created).toBe(0);
 	});
 });
 
