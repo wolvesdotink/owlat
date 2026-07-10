@@ -97,6 +97,7 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'externalMailFolderSync',
 	'externalMailAccounts',
 	'mailboxMigrations',
+	'mailboxMoves',
 	'pendingMailboxes',
 	'mailboxRequests',
 
@@ -316,6 +317,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	mailAuditLog: makeSweepStep('mailAuditLog'),
 	mailAuthFailures: makeSweepStep('mailAuthFailures'),
 	mailboxMigrations: makeSweepStep('mailboxMigrations'),
+	mailboxMoves: makeSweepStep('mailboxMoves'),
 	externalMailFolderSync: makeSweepStep('externalMailFolderSync'),
 	externalMailAccounts: makeSweepStep('externalMailAccounts'),
 	pendingMailboxes: makeSweepStep('pendingMailboxes'),
