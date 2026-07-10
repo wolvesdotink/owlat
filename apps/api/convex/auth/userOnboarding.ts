@@ -17,14 +17,51 @@ import { requireSelf } from '../lib/sessionOrganization';
  * read path here. The consuming UI (piece c1) subscribes to `get`.
  */
 
-/** The onboarding steps that can be marked complete from product flows. */
-export type OnboardingStep =
-	| 'mailboxReady'
-	| 'importStarted'
-	| 'importDone'
-	| 'knowledgeIndexed'
-	| 'sendingSwitched'
-	| 'firstSendDone';
+/**
+ * The onboarding steps that can be marked complete from product flows. Single
+ * source of truth: the union type, the empty-state, and the `get` response are
+ * all derived from this list, so adding `sendingSwitched`/`firstSendDone` write
+ * points (or a new step) is a one-place change here plus the schema field.
+ */
+export const ONBOARDING_STEPS = [
+	'mailboxReady',
+	'importStarted',
+	'importDone',
+	'knowledgeIndexed',
+	'sendingSwitched',
+	'firstSendDone',
+] as const;
+
+export type OnboardingStep = (typeof ONBOARDING_STEPS)[number];
+
+/**
+ * Upsert the caller's onboarding row with `patch`, stamping `createdAt` on the
+ * first write and refreshing `updatedAt` on every write. Shared by
+ * {@link markOnboardingStep} and {@link dismiss}; neither the step guard nor the
+ * authz check live here — callers apply those before calling.
+ */
+async function upsertOnboardingRow(
+	ctx: MutationCtx,
+	authUserId: string,
+	patch: Partial<Record<OnboardingStep | 'dismissedAt', number>>
+): Promise<void> {
+	const now = Date.now();
+	const existing = await ctx.db
+		.query('userOnboarding')
+		.withIndex('by_auth_user_id', (q) => q.eq('authUserId', authUserId))
+		.first();
+
+	if (!existing) {
+		await ctx.db.insert('userOnboarding', {
+			authUserId,
+			...patch,
+			createdAt: now,
+			updatedAt: now,
+		});
+		return;
+	}
+	await ctx.db.patch(existing._id, { ...patch, updatedAt: now });
+}
 
 /**
  * Idempotently record that `authUserId` reached `step`, stamping the completion
@@ -42,49 +79,25 @@ export async function markOnboardingStep(
 	authUserId: string,
 	step: OnboardingStep
 ): Promise<void> {
-	const now = Date.now();
-	const stepPatch: Partial<Record<OnboardingStep, number>> = { [step]: now };
 	const existing = await ctx.db
 		.query('userOnboarding')
 		.withIndex('by_auth_user_id', (q) => q.eq('authUserId', authUserId))
 		.first();
 
-	if (!existing) {
-		await ctx.db.insert('userOnboarding', {
-			authUserId,
-			...stepPatch,
-			createdAt: now,
-			updatedAt: now,
-		});
-		return;
-	}
-
 	// Preserve the first-completion timestamp: only the initial write for a step
 	// counts, later flow replays are no-ops for that field.
-	if (existing[step] !== undefined) return;
-	await ctx.db.patch(existing._id, { ...stepPatch, updatedAt: now });
+	if (existing && existing[step] !== undefined) return;
+
+	const patch: Partial<Record<OnboardingStep, number>> = { [step]: Date.now() };
+	await upsertOnboardingRow(ctx, authUserId, patch);
 }
 
 /** Shape returned to the consuming UI — always a concrete object, never null. */
-type OnboardingState = {
-	mailboxReady: number | null;
-	importStarted: number | null;
-	importDone: number | null;
-	knowledgeIndexed: number | null;
-	sendingSwitched: number | null;
-	firstSendDone: number | null;
-	dismissedAt: number | null;
-};
+type OnboardingState = Record<OnboardingStep | 'dismissedAt', number | null>;
 
-const EMPTY_STATE: OnboardingState = {
-	mailboxReady: null,
-	importStarted: null,
-	importDone: null,
-	knowledgeIndexed: null,
-	sendingSwitched: null,
-	firstSendDone: null,
-	dismissedAt: null,
-};
+const EMPTY_STATE: OnboardingState = Object.fromEntries(
+	[...ONBOARDING_STEPS, 'dismissedAt' as const].map((key) => [key, null] as const)
+) as OnboardingState;
 
 /**
  * Read the caller's own onboarding checklist. Returns a fully-populated object
@@ -105,15 +118,10 @@ export const get = authedQuery({
 			.first();
 		if (!row) return { ...EMPTY_STATE };
 
-		return {
-			mailboxReady: row.mailboxReady ?? null,
-			importStarted: row.importStarted ?? null,
-			importDone: row.importDone ?? null,
-			knowledgeIndexed: row.knowledgeIndexed ?? null,
-			sendingSwitched: row.sendingSwitched ?? null,
-			firstSendDone: row.firstSendDone ?? null,
-			dismissedAt: row.dismissedAt ?? null,
-		};
+		const state = { ...EMPTY_STATE };
+		for (const step of ONBOARDING_STEPS) state[step] = row[step] ?? null;
+		state.dismissedAt = row.dismissedAt ?? null;
+		return state;
 	},
 });
 
@@ -129,22 +137,6 @@ export const dismiss = authedMutation({
 	},
 	handler: async (ctx, args) => {
 		await requireSelf(ctx, args.userId);
-
-		const now = Date.now();
-		const existing = await ctx.db
-			.query('userOnboarding')
-			.withIndex('by_auth_user_id', (q) => q.eq('authUserId', args.userId))
-			.first();
-
-		if (!existing) {
-			await ctx.db.insert('userOnboarding', {
-				authUserId: args.userId,
-				dismissedAt: now,
-				createdAt: now,
-				updatedAt: now,
-			});
-			return;
-		}
-		await ctx.db.patch(existing._id, { dismissedAt: now, updatedAt: now });
+		await upsertOnboardingRow(ctx, args.userId, { dismissedAt: Date.now() });
 	},
 });
