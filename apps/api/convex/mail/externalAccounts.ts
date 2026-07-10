@@ -27,7 +27,13 @@ import { internal } from '../_generated/api';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 import { assertFeatureEnabled } from '../lib/featureFlags';
 import { provisionMailbox, canonicalAddress } from './mailbox';
-import { throwForbidden, throwInvalidInput, throwAlreadyExists, throwNotFound } from '../_utils/errors';
+import { markOnboardingStep } from '../auth/userOnboarding';
+import {
+	throwForbidden,
+	throwInvalidInput,
+	throwAlreadyExists,
+	throwNotFound,
+} from '../_utils/errors';
 
 const PURGE_CHUNK = 200;
 
@@ -36,7 +42,7 @@ const accountStatusValidator = v.union(
 	v.literal('connected'),
 	v.literal('auth_error'),
 	v.literal('error'),
-	v.literal('disconnected'),
+	v.literal('disconnected')
 );
 
 // ── Public: the connecting user's own account ─────────────────────────────
@@ -240,7 +246,7 @@ export const _connectInternal = internalMutation({
 			.first();
 		if (existingForUser && existingForUser.status !== 'disconnected') {
 			throwAlreadyExists(
-				'You already have a connected external mail account. Disconnect it before connecting another.',
+				'You already have a connected external mail account. Disconnect it before connecting another.'
 			);
 		}
 		// The address must not collide with an existing active mailbox.
@@ -283,6 +289,7 @@ export const _connectInternal = internalMutation({
 			updatedAt: now,
 		});
 		await ctx.db.patch(mailboxId, { externalAccountId: accountId, updatedAt: now });
+		await markOnboardingStep(ctx, s.userId, 'mailboxReady');
 		await ctx.db.insert('mailAuditLog', {
 			mailboxId,
 			event: 'external_account.connected',
@@ -350,12 +357,13 @@ export const listConnectableAccounts = internalQuery({
 	args: {},
 	handler: async (ctx) => {
 		const groups = await Promise.all(
-			(['pending', 'connected', 'error'] as const).map((status) =>
-				ctx.db
-					.query('externalMailAccounts')
-					.withIndex('by_status', (q) => q.eq('status', status))
-					.collect(), // bounded: connectable accounts per single-org deployment (tens)
-			),
+			(['pending', 'connected', 'error'] as const).map(
+				(status) =>
+					ctx.db
+						.query('externalMailAccounts')
+						.withIndex('by_status', (q) => q.eq('status', status))
+						.collect() // bounded: connectable accounts per single-org deployment (tens)
+			)
 		);
 		return groups.flat().map((a) => ({
 			accountId: a._id,

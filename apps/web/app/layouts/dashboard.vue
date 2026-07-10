@@ -467,6 +467,9 @@ const sidebarDesktopClass = computed(() => {
 			@focusout="onPeekFocusOut"
 			@keydown="onPeekKeydown"
 		>
+			<!-- Desktop-only: Slack-style workspace switcher -->
+			<DesktopWorkspaceSwitcher v-if="isDesktop" />
+
 			<!-- Logo -->
 			<div class="h-16 flex items-center justify-between px-4 border-b border-border-subtle">
 				<NuxtLink

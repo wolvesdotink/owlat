@@ -59,27 +59,12 @@ const routeConfigs: Record<string, RouteConfig> = {
 	'/dashboard/campaigns': {
 		section: 'Campaigns',
 		sectionHref: '/dashboard/campaigns',
-		page: 'All Campaigns',
-	},
-	'/dashboard/campaigns/all': {
-		section: 'Campaigns',
-		sectionHref: '/dashboard/campaigns',
-		page: 'All Campaigns',
+		page: 'Campaigns',
 	},
 	'/dashboard/campaigns/new': {
 		section: 'Campaigns',
 		sectionHref: '/dashboard/campaigns',
 		page: 'New Campaign',
-	},
-	'/dashboard/campaigns/reports': {
-		section: 'Campaigns',
-		sectionHref: '/dashboard/campaigns',
-		page: 'Reports',
-	},
-	'/dashboard/campaigns/ab-results': {
-		section: 'Campaigns',
-		sectionHref: '/dashboard/campaigns',
-		page: 'A/B Results',
 	},
 
 	// Audience section
@@ -102,6 +87,11 @@ const routeConfigs: Record<string, RouteConfig> = {
 		section: 'Audience',
 		sectionHref: '/dashboard/audience',
 		page: 'Segments',
+	},
+	'/dashboard/audience/suppressions': {
+		section: 'Audience',
+		sectionHref: '/dashboard/audience',
+		page: 'Suppressions',
 	},
 
 	// Settings section
@@ -178,11 +168,6 @@ const routeConfigs: Record<string, RouteConfig> = {
 		sectionHref: '/dashboard/settings',
 		page: 'Form Endpoints',
 	},
-	'/dashboard/settings/blocklist': {
-		section: 'Settings',
-		sectionHref: '/dashboard/settings',
-		page: 'Email Blocklist',
-	},
 	'/dashboard/settings/audit': {
 		section: 'Settings',
 		sectionHref: '/dashboard/settings',
@@ -250,8 +235,6 @@ const patternConfigs: PatternConfig[] = [
 		getConfig: () => ({
 			section: 'Campaigns',
 			sectionHref: '/dashboard/campaigns',
-			subsection: 'Reports',
-			subsectionHref: '/dashboard/campaigns/reports',
 			page: 'Campaign Report',
 		}),
 	},

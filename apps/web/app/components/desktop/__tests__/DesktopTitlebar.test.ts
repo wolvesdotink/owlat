@@ -66,7 +66,16 @@ const nuxtLinkStub = {
 function mountBar() {
 	return mount(DesktopTitlebar, {
 		global: {
-			components: { Icon: iconStub, NuxtLink: nuxtLinkStub },
+			components: {
+				Icon: iconStub,
+				NuxtLink: nuxtLinkStub,
+				// Rendered inside the shared WorkspaceMenu rows; count display is
+				// covered by that component's own concerns, not this bar's.
+				DesktopWorkspaceUnreadBadge: {
+					props: ['count'],
+					template: '<span class="unread-badge" />',
+				},
+			},
 			stubs: { transition: true },
 		},
 	});
@@ -79,7 +88,9 @@ describe('DesktopTitlebar', () => {
 		expect(bar.attributes('data-tauri-drag-region')).toBeDefined();
 
 		// Interactive controls must NOT carry the drag attribute.
-		expect(w.get('.tb-chip').attributes('data-tauri-drag-region')).toBeUndefined();
+		expect(
+			w.get('[aria-label="Switch workspace"]').attributes('data-tauri-drag-region')
+		).toBeUndefined();
 		expect(w.get('.tb-search').attributes('data-tauri-drag-region')).toBeUndefined();
 	});
 
@@ -87,8 +98,8 @@ describe('DesktopTitlebar', () => {
 		const w = mountBar();
 		expect(w.find('[role="menu"]').exists()).toBe(false);
 
-		await w.get('.tb-chip').trigger('click');
-		expect(w.get('.tb-chip').attributes('aria-expanded')).toBe('true');
+		await w.get('[aria-label="Switch workspace"]').trigger('click');
+		expect(w.get('[aria-label="Switch workspace"]').attributes('aria-expanded')).toBe('true');
 		const menu = w.get('[role="menu"]');
 		expect(menu.exists()).toBe(true);
 
@@ -119,7 +130,7 @@ describe('DesktopTitlebar', () => {
 		const w = mountBar();
 
 		// No workspace-scoped controls in the fallback branch.
-		expect(w.find('.tb-chip').exists()).toBe(false);
+		expect(w.find('[aria-label="Switch workspace"]').exists()).toBe(false);
 		expect(w.find('.tb-search').exists()).toBe(false);
 		expect(w.find('.tb-unread').exists()).toBe(false);
 

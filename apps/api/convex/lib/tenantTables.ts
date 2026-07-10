@@ -73,6 +73,8 @@ export const TENANT_TABLES = [
 	'sendingDomainSesIdentities',
 	'trackingDomains',
 	'sendingReputation',
+	// Derived from sendingReputation (tenant data), so a tenant wipe must delete the org's delivery history too.
+	'deliverySnapshots',
 	'sendDailyStats',
 	'contentScanResults',
 	'domains',
@@ -185,6 +187,10 @@ export const NON_TENANT_TABLES = [
 	// betterAuth component schema, not here).
 	'userProfiles',
 	'onboardingProgress',
+	// Per-user first-login checklist, keyed by authUserId like userProfiles.
+	// Deleted with the departing user in the member-erasure path and cleared by
+	// the dev reset step; never org-scoped, so not swept by the tenant walker.
+	'userOnboarding',
 	'platformAdmins',
 	// The deletion-tracking table itself — account deletion patches the request
 	// row to `completed`, so it must survive the wipe.

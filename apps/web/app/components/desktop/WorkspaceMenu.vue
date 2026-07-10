@@ -1,304 +1,198 @@
 <script setup lang="ts">
 /**
- * Workspace chip + switcher menu for the desktop titlebar. The chip shows the
- * active workspace's accent swatch, name and a chevron; clicking it opens a
- * lightweight menu to switch workspace, recolour its accent (right-click / the
- * context-menu key on a row) or add another. Split out of `DesktopTitlebar.vue`
- * so the bar stays under the file-size ratchet and this menu is the single home
- * for workspace switching on desktop (the old sidebar rail is retired).
+ * Shared workspace-switcher menu for the desktop app.
  *
- * The chip and menu are interactive controls, so they deliberately omit
- * `data-tauri-drag-region` — clicks land on them instead of dragging the window.
+ * A compact dropdown alternative to the Slack-style rail: the active workspace's
+ * accent dot + label acts as the trigger (used as the titlebar chip), and the
+ * menu lists every connected workspace with its accent, unread badge and a check
+ * on the active one — click to switch (through the same perceived-instant
+ * switchTo choreography the rail uses). A footer links to the add-workspace flow.
+ *
+ * Keyboard: ArrowUp/Down + Home/End move between items, Escape closes and
+ * restores focus to the trigger (never dropping to <body>) — mirroring the house
+ * DropdownMenu / this desktop rail's accent picker (brief rule 8).
+ *
+ * Rendered only on desktop; the parent (titlebar) already gates with isDesktop.
+ * The trigger deliberately omits `data-tauri-drag-region` so clicks open the
+ * menu instead of starting a window drag.
  */
-import {
-	WORKSPACE_ACCENTS,
-	type WorkspaceAccent,
-	accentLabel,
-	formatBadgeCount,
-	initials,
-} from '~/lib/desktop/workspaceTypes';
-
-const { workspaces, activeId, active, switchTo, setWorkspaceAccent } = useDesktopWorkspaces();
+const { workspaces, activeId, active, switchTo } = useDesktopWorkspaces();
 const { badgeFor } = useWorkspaceBadges();
 
-const workspaceName = computed(() => active.value?.label ?? 'Owlat');
-const workspaceAccent = computed(() => active.value?.accentColor ?? null);
-
-const menuOpen = ref(false);
+const open = ref(false);
+const rootRef = ref<HTMLElement | null>(null);
+const triggerRef = ref<HTMLElement | null>(null);
 const menuRef = ref<HTMLElement | null>(null);
-const chipRef = ref<HTMLElement | null>(null);
-// The workspace whose accent picker is expanded inline within the menu.
-const recoloring = ref<string | null>(null);
 
+const title = computed(() => active.value?.label ?? 'Owlat');
+
+/** Every focusable row in the menu, in DOM (visual) order. */
 function menuItems(): HTMLElement[] {
-	return Array.from(menuRef.value?.querySelectorAll<HTMLElement>('[data-menu-item]') ?? []);
+	return Array.from(
+		menuRef.value?.querySelectorAll<HTMLElement>('[role="menuitem"],[role="menuitemradio"]') ?? []
+	);
 }
 
-function openMenu(): void {
-	menuOpen.value = true;
-	void nextTick(() => menuItems()[0]?.focus());
+function moveFocus(delta: number, to?: 'first' | 'last'): void {
+	const items = menuItems();
+	const len = items.length;
+	if (!len) return;
+	let next: number;
+	if (to === 'first') next = 0;
+	else if (to === 'last') next = len - 1;
+	else {
+		const found = items.findIndex((el) => el === document.activeElement);
+		next = ((found < 0 ? 0 : found) + delta + len) % len;
+	}
+	items[next]?.focus();
 }
 
 function closeMenu(opts?: { restoreFocus?: boolean }): void {
-	menuOpen.value = false;
-	recoloring.value = null;
-	if (opts?.restoreFocus !== false) chipRef.value?.focus();
+	open.value = false;
+	// Return focus to the chip on keyboard-dismiss paths (Escape / choosing) so a
+	// keyboard user is never stranded on <body>; leave it alone on outside-click,
+	// where the user is already interacting with another element.
+	if (opts?.restoreFocus !== false) triggerRef.value?.focus();
 }
 
-function toggleMenu(): void {
-	if (menuOpen.value) closeMenu();
-	else openMenu();
+function toggle(): void {
+	if (open.value) {
+		closeMenu();
+		return;
+	}
+	open.value = true;
+	void nextTick(() => menuItems()[0]?.focus());
 }
 
-function pickWorkspace(id: string): void {
-	closeMenu({ restoreFocus: false });
-	void switchTo(id);
+function choose(id: string): void {
+	closeMenu();
+	if (id !== activeId.value) void switchTo(id);
 }
 
-function chooseAccent(id: string | null, color: WorkspaceAccent): void {
-	if (!id) return;
-	void setWorkspaceAccent(id, color);
-	recoloring.value = null;
-}
-
-function focusMenuItem(index: number): void {
-	const items = menuItems();
-	if (!items.length) return;
-	const clamped = ((index % items.length) + items.length) % items.length;
-	items[clamped]?.focus();
-}
-
-function moveMenuFocus(delta: number): void {
-	const items = menuItems();
-	if (!items.length) return;
-	const found = items.findIndex((el) => el === document.activeElement);
-	focusMenuItem(Math.max(0, found) + delta);
-}
-
-function onMenuKeydown(e: KeyboardEvent): void {
+function onKeydown(e: KeyboardEvent): void {
 	switch (e.key) {
 		case 'Escape':
-			e.preventDefault();
 			closeMenu();
 			break;
 		case 'ArrowDown':
 			e.preventDefault();
-			moveMenuFocus(1);
+			moveFocus(1);
 			break;
 		case 'ArrowUp':
 			e.preventDefault();
-			moveMenuFocus(-1);
+			moveFocus(-1);
 			break;
 		case 'Home':
 			e.preventDefault();
-			focusMenuItem(0);
+			moveFocus(0, 'first');
 			break;
 		case 'End':
 			e.preventDefault();
-			focusMenuItem(-1);
+			moveFocus(0, 'last');
 			break;
 	}
 }
 
 function onClickOutside(e: MouseEvent): void {
-	const target = e.target as Node;
-	if (menuRef.value?.contains(target) || chipRef.value?.contains(target)) return;
-	closeMenu({ restoreFocus: false });
+	if (rootRef.value && !rootRef.value.contains(e.target as Node))
+		closeMenu({ restoreFocus: false });
 }
 
-watch(menuOpen, (open) => {
-	if (!import.meta.client) return;
-	if (open) {
-		document.addEventListener('keydown', onMenuKeydown);
+watch(open, (isOpen) => {
+	if (isOpen) {
+		document.addEventListener('keydown', onKeydown);
 		document.addEventListener('click', onClickOutside, true);
 	} else {
-		document.removeEventListener('keydown', onMenuKeydown);
+		document.removeEventListener('keydown', onKeydown);
 		document.removeEventListener('click', onClickOutside, true);
 	}
 });
 
 onUnmounted(() => {
-	if (!import.meta.client) return;
-	document.removeEventListener('keydown', onMenuKeydown);
+	document.removeEventListener('keydown', onKeydown);
 	document.removeEventListener('click', onClickOutside, true);
 });
 </script>
 
 <template>
-	<div class="relative flex items-center min-w-0">
+	<div v-if="workspaces.length" ref="rootRef" class="relative flex items-center min-w-0">
 		<button
-			ref="chipRef"
+			ref="triggerRef"
 			type="button"
-			class="tb-chip"
+			class="flex items-center gap-2 min-w-0 rounded-md px-1.5 py-1 -mx-1.5 hover:bg-bg-surface-hover transition-colors duration-(--motion-fast) ease-spring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 			aria-haspopup="menu"
-			:aria-expanded="menuOpen"
-			:title="workspaceName"
-			@click="toggleMenu"
+			:aria-expanded="open"
+			aria-label="Switch workspace"
+			@click="toggle"
 		>
 			<span
-				class="tb-swatch"
-				:style="workspaceAccent ? { backgroundColor: workspaceAccent } : undefined"
+				v-if="active"
+				class="h-2.5 w-2.5 rounded-full shrink-0"
+				:style="{ backgroundColor: active.accentColor }"
 			/>
-			<span class="hidden min-[480px]:inline truncate max-w-[180px] text-[13px] leading-none">
-				{{ workspaceName }}
+			<span
+				class="font-display text-[13px] leading-none truncate"
+				:class="open ? 'text-text-primary' : 'text-text-secondary'"
+			>
+				{{ title }}
 			</span>
-			<Icon name="lucide:chevron-down" class="w-3.5 h-3.5 shrink-0 text-text-tertiary" />
+			<Icon name="lucide:chevrons-up-down" class="w-3 h-3 text-text-tertiary shrink-0" />
 		</button>
 
-		<!-- Switcher menu -->
 		<Transition
 			enter-active-class="duration-(--motion-moderate) ease-spring"
-			enter-from-class="opacity-0 scale-95"
-			enter-to-class="opacity-100 scale-100"
+			enter-from-class="opacity-0 -translate-y-1"
+			enter-to-class="opacity-100 translate-y-0"
 			leave-active-class="duration-(--motion-moderate-exit) ease-exit"
-			leave-from-class="opacity-100 scale-100"
-			leave-to-class="opacity-0 scale-95"
+			leave-from-class="opacity-100 translate-y-0"
+			leave-to-class="opacity-0 -translate-y-1"
 		>
 			<div
-				v-if="menuOpen"
+				v-if="open"
 				ref="menuRef"
 				role="menu"
-				aria-label="Switch workspace"
-				class="absolute top-full left-0 mt-1 min-w-[240px] max-w-[320px] origin-top-left rounded-lg border border-border-subtle bg-bg-elevated p-1 shadow-lg z-[80]"
+				aria-label="Workspaces"
+				class="absolute top-full left-0 mt-1 z-[80] min-w-56 max-w-72 rounded-lg border border-border-subtle bg-bg-elevated p-1 shadow-lg"
 			>
 				<button
 					v-for="ws in workspaces"
 					:key="ws.id"
-					data-menu-item
 					type="button"
 					role="menuitemradio"
 					:aria-checked="ws.id === activeId"
-					class="tb-menu-item"
-					@click="pickWorkspace(ws.id)"
-					@contextmenu.prevent="recoloring = recoloring === ws.id ? null : ws.id"
+					class="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left hover:bg-bg-surface-hover transition-colors duration-(--motion-fast) ease-spring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+					@click="choose(ws.id)"
 				>
 					<span
-						class="tb-swatch"
-						:style="ws.accentColor ? { backgroundColor: ws.accentColor } : undefined"
-					>
-						<span class="text-[9px] font-[550] text-white leading-none">{{
-							initials(ws.label)
-						}}</span>
-					</span>
+						class="h-2.5 w-2.5 rounded-full shrink-0"
+						:style="{ backgroundColor: ws.accentColor }"
+					/>
 					<span
-						class="flex-1 min-w-0 truncate text-left"
-						:class="{ 'font-[550]': ws.id === activeId }"
+						class="flex-1 min-w-0 truncate text-sm"
+						:class="ws.id === activeId ? 'font-semibold text-text-primary' : 'text-text-secondary'"
 					>
 						{{ ws.label }}
 					</span>
-					<span
-						v-if="badgeFor(ws.id) > 0"
-						class="shrink-0 min-w-[18px] h-[18px] px-1 rounded-full bg-brand text-[10px] tabular-nums text-white inline-flex items-center justify-center"
-					>
-						{{ formatBadgeCount(badgeFor(ws.id)) }}
-					</span>
+					<DesktopWorkspaceUnreadBadge :count="badgeFor(ws.id)" />
 					<Icon
 						v-if="ws.id === activeId"
 						name="lucide:check"
-						class="w-3.5 h-3.5 shrink-0 text-brand"
+						class="w-3.5 h-3.5 text-brand shrink-0"
 					/>
 				</button>
 
-				<!-- Inline accent picker (right-click / context-menu key on a row). -->
-				<div
-					v-if="recoloring"
-					class="flex items-center gap-1 px-2 py-1.5 mt-0.5 border-t border-border-subtle"
-				>
-					<button
-						v-for="color in WORKSPACE_ACCENTS"
-						:key="color"
-						type="button"
-						:aria-label="accentLabel(color)"
-						:title="accentLabel(color)"
-						class="grid h-6 w-6 place-items-center rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-						@click="chooseAccent(recoloring, color)"
-					>
-						<span class="h-4 w-4 rounded-full" :style="{ backgroundColor: color }" />
-					</button>
-				</div>
-
-				<div class="my-1 border-t border-border-subtle" />
+				<div class="my-1 h-px bg-border-subtle" />
 
 				<NuxtLink
 					to="/desktop/welcome"
-					data-menu-item
 					role="menuitem"
-					class="tb-menu-item"
+					class="flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm text-text-secondary hover:bg-bg-surface-hover hover:text-text-primary transition-colors duration-(--motion-fast) ease-spring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 					@click="closeMenu({ restoreFocus: false })"
 				>
-					<span class="tb-swatch tb-swatch-add">
-						<Icon name="lucide:plus" class="w-3.5 h-3.5 text-text-secondary" />
-					</span>
-					<span class="flex-1 text-left">Add workspace</span>
+					<Icon name="lucide:plus" class="w-3.5 h-3.5 shrink-0" />
+					Add workspace
 				</NuxtLink>
 			</div>
 		</Transition>
 	</div>
 </template>
-
-<style scoped>
-/* Workspace chip. */
-.tb-chip {
-	display: inline-flex;
-	align-items: center;
-	gap: 0.5rem;
-	min-width: 0;
-	height: 26px;
-	padding: 0 0.5rem;
-	border-radius: 0.5rem;
-	color: var(--color-text-secondary);
-	transition:
-		background-color var(--motion-fast) var(--ease-spring),
-		color var(--motion-fast) var(--ease-spring);
-}
-.tb-chip:hover {
-	background-color: var(--color-bg-surface-hover);
-	color: var(--color-text-primary);
-}
-.tb-chip:focus-visible {
-	outline: 2px solid var(--color-brand);
-	outline-offset: 1px;
-}
-
-.tb-swatch {
-	display: inline-grid;
-	place-items: center;
-	width: 18px;
-	height: 18px;
-	flex-shrink: 0;
-	border-radius: 0.375rem;
-	background-color: var(--color-brand);
-}
-.tb-swatch-add {
-	background-color: var(--color-bg-base);
-	border: 1px solid var(--color-border-subtle);
-}
-
-/* Menu rows. */
-.tb-menu-item {
-	display: flex;
-	align-items: center;
-	gap: 0.5rem;
-	width: 100%;
-	padding: 0.375rem 0.5rem;
-	border-radius: 0.375rem;
-	font-size: 13px;
-	color: var(--color-text-primary);
-	transition: background-color var(--motion-fast) var(--ease-spring);
-}
-.tb-menu-item:hover {
-	background-color: var(--color-bg-surface-hover);
-}
-.tb-menu-item:focus-visible {
-	outline: none;
-	background-color: var(--color-bg-surface-hover);
-	box-shadow: inset 0 0 0 2px var(--color-brand);
-}
-
-@media (prefers-reduced-motion: reduce) {
-	.tb-chip,
-	.tb-menu-item {
-		transition: none;
-	}
-}
-</style>

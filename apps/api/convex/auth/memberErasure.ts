@@ -176,6 +176,13 @@ export const eraseMemberData = internalMutation({
 			.collect(); // bounded: a user's own app passwords
 		for (const pw of userPasswords) await ctx.db.delete(pw._id);
 
+		// Per-user onboarding checklist row (keyed by authUserId).
+		const onboarding = await ctx.db
+			.query('userOnboarding')
+			.withIndex('by_auth_user_id', (q) => q.eq('authUserId', args.authUserId))
+			.first(); // bounded: at most one row per user
+		if (onboarding) await ctx.db.delete(onboarding._id);
+
 		// ── Phase 3: chat — anonymize authorship page by page ──
 		const page = await ctx.db
 			.query('chatMessages')

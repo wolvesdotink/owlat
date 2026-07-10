@@ -52,7 +52,7 @@ const RISK_THRESHOLDS = {
 	BOUNCE_CRITICAL: REPUTATION_THRESHOLDS.bounce.critical,
 } as const;
 
-type RiskLevel = 'low' | 'medium' | 'high' | 'critical';
+export type RiskLevel = 'low' | 'medium' | 'high' | 'critical';
 
 /**
  * Calculate risk level from bounce and complaint rates.

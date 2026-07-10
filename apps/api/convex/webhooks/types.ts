@@ -119,14 +119,21 @@ export type InboundEvent =
 			selector: string;
 			dnsRecord: string;
 			phase: 'pending' | 'activated';
+	  }
+	| {
+			// Amazon SNS one-time subscription handshake for the SES feedback
+			// topic. SNS POSTs a `SubscriptionConfirmation` whose `SubscribeURL`
+			// must be GET-ed to activate the HTTPS subscription. The adapter has
+			// no network/ctx, so it emits this event and the dispatcher performs
+			// the (host-pinned) confirm fetch. `subscribeUrl` is already pinned to
+			// an SNS host by the adapter before this event is produced.
+			kind: 'internal.sns_subscription_confirm';
+			subscribeUrl: string;
 	  };
 
 export type InboundEventKind = InboundEvent['kind'];
 
-export type InboundEventOf<K extends InboundEventKind> = Extract<
-	InboundEvent,
-	{ kind: K }
->;
+export type InboundEventOf<K extends InboundEventKind> = Extract<InboundEvent, { kind: K }>;
 
 // ─── Outbound side ─────────────────────────────────────────────────────────
 

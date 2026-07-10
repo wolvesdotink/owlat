@@ -157,6 +157,25 @@ useClickOutside(addToTopicDropdownRef, () => {
 
 // Toast notifications (global)
 const { showToast } = useToast();
+
+// Suppression state — inline answer to "why isn't this contact getting mail?".
+// The address is on the suppression list (blockedEmails) when getByEmail returns
+// a record. Removal is permission-gated in the UI (contacts:manage) and
+// re-checked on the backend.
+const { canManageContacts } = usePermissions();
+const { data: suppression } = useConvexQuery(api.blockedEmails.getByEmail, () =>
+	contact.value?.email ? { email: contact.value.email } : 'skip'
+);
+const { run: removeSuppression, isLoading: isRemovingSuppression } = useBackendOperation(
+	api.blockedEmails.remove,
+	{ label: 'Remove suppression' }
+);
+async function handleRemoveSuppression() {
+	if (!suppression.value) return;
+	const result = await removeSuppression({ blockedEmailId: suppression.value._id });
+	if (result === undefined) return;
+	showToast('Suppression removed');
+}
 </script>
 
 <template>
@@ -201,6 +220,17 @@ const { showToast } = useToast();
 
 		<!-- Contact Content -->
 		<template v-else-if="contact">
+			<!-- Suppression notice — inline answer to "why no mail?" -->
+			<ContactsSuppressionNotice
+				v-if="suppression"
+				:reason="suppression.reason"
+				:date-label="formatShortDate(suppression.createdAt)"
+				:can-manage="canManageContacts"
+				:removing="isRemovingSuppression"
+				class="mb-6"
+				@remove="handleRemoveSuppression"
+			/>
+
 			<!-- Header -->
 			<div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-8">
 				<div class="flex items-center gap-4">

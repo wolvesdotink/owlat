@@ -166,6 +166,23 @@ crons.interval(
 	{}
 );
 
+// Write one daily reputation snapshot (delivery/bounce/complaint rate + sent
+// count of the rolling window) so the Delivery health page has a history to
+// draw its 30-day delivery-rate trend from, and prune points older than ~90
+// days in the same run. `summarize` only derives the current window, so without
+// this cron there is no time series to chart.
+//
+// Anchored to a fixed 00:05 UTC rather than a 24h interval: `crons.interval`
+// re-anchors to deploy/edit time, so a redeploy that drifts across midnight UTC
+// could skip a calendar day and leave a gap in the trend. A fixed daily slot
+// keeps exactly one snapshot per UTC day.
+crons.daily(
+	'write delivery snapshot',
+	{ hourUTC: 0, minuteUTC: 5 },
+	internal.analytics.reputationSnapshots.writeDailySnapshot,
+	{}
+);
+
 // Daily knowledge graph confidence decay and expiration cleanup
 crons.interval(
 	'knowledge graph maintenance',

@@ -5,7 +5,7 @@ import { auditActionValidator, auditResourceValidator } from '../auditActions/ca
 
 /**
  * Auth + instance-admin tables — userProfiles, instanceSettings, apiKeys, platformAdmins,
- * accountDeletionRequests, onboardingProgress, auditLogs, systemUpdates.
+ * accountDeletionRequests, onboardingProgress, userOnboarding, auditLogs, systemUpdates.
  *
  * Spread into `defineSchema()` from schema.ts via `...authTables`.
  */
@@ -44,6 +44,11 @@ export const authTables = {
 				baseWidth: v.optional(v.number()), // Base content width in px (default: 600)
 			})
 		),
+		// Instance is moving from another email platform. DEFAULT FALSE — Owlat is
+		// its own platform by default. When true, first-login onboarding offers a
+		// mail import; when false the welcome flow is a pure fresh-start and exposes
+		// no import surface. Admin-gated write, member-readable via `settings.get`.
+		isMigrationMode: v.optional(v.boolean()),
 		// Feature toggles (see packages/shared/src/featureFlags.ts for the schema).
 		// Unset keys fall back to FEATURE_FLAGS[key].default at resolution time.
 		// Includes `campaigns.archive` — there is no separate `archiveEnabled` column.
@@ -196,6 +201,32 @@ export const authTables = {
 		.index('by_user', ['userId'])
 		.index('by_dismissed', ['dismissed']),
 
+	// Per-user first-login onboarding state — PER-USER (keyed by BetterAuth
+	// authUserId), deliberately separate from the instance-wide admin surface
+	// above (`onboardingProgress` / auth/onboarding.ts). This tracks where an
+	// individual member is in their personal "get set up" journey: their
+	// mailbox, their optional import, their first send. Each step is stored as a
+	// completion TIMESTAMP (unset ⇒ not done, set ⇒ done at that instant); the
+	// timestamps are written idempotently from the real product flows (mailbox
+	// claim/connect, migration start/complete, knowledge indexing complete,
+	// post-import sending switch, first send) — never polled. `dismissedAt`
+	// records the member hiding their own checklist; it does not affect anyone
+	// else. One row per user, upserted on first write.
+	userOnboarding: defineTable({
+		authUserId: v.string(), // BetterAuth user ID this checklist belongs to
+		// Step completion timestamps (epoch ms). Unset ⇒ step not completed.
+		mailboxReady: v.optional(v.number()), // a personal/external mailbox is live
+		importStarted: v.optional(v.number()), // a mailbox migration was kicked off
+		importDone: v.optional(v.number()), // the migration import phase finished
+		knowledgeIndexed: v.optional(v.number()), // AI knowledge indexing finished
+		sendingSwitched: v.optional(v.number()), // outbound switched to this instance
+		firstSendDone: v.optional(v.number()), // first message sent from this instance
+		// The member dismissed their own onboarding checklist (per-user only).
+		dismissedAt: v.optional(v.number()),
+		createdAt: v.number(),
+		updatedAt: v.number(),
+	}).index('by_auth_user_id', ['authUserId']),
+
 	// Audit Logs - tracks organization member actions for accountability and debugging.
 	// Action and resource literal unions live in `auditActions/catalog.ts` —
 	// adding a new action is a one-place change there.
@@ -233,30 +264,21 @@ export const authTables = {
 	//   - kind='latestCheck'   — cached result of the last GitHub release poll
 	//   - kind='updateRun'     — one row per update attempt (success or failure)
 	systemUpdates: defineTable({
-		kind: v.union(
-			v.literal('latestCheck'),
-			v.literal('updateRun'),
-		),
+		kind: v.union(v.literal('latestCheck'), v.literal('updateRun')),
 
 		// ── Fields for kind='latestCheck' ──
-		latestVersion: v.optional(v.string()),   // e.g. "0.2.1"
-		releaseNotes: v.optional(v.string()),    // markdown body from GitHub
-		publishedAt: v.optional(v.number()),     // release publish time (epoch ms)
-		checkedAt: v.optional(v.number()),       // when we last polled (epoch ms)
-		error: v.optional(v.string()),           // populated if poll/update failed
+		latestVersion: v.optional(v.string()), // e.g. "0.2.1"
+		releaseNotes: v.optional(v.string()), // markdown body from GitHub
+		publishedAt: v.optional(v.number()), // release publish time (epoch ms)
+		checkedAt: v.optional(v.number()), // when we last polled (epoch ms)
+		error: v.optional(v.string()), // populated if poll/update failed
 
 		// ── Fields for kind='updateRun' ──
 		versionFrom: v.optional(v.string()),
 		versionTo: v.optional(v.string()),
 		startedAt: v.optional(v.number()),
 		finishedAt: v.optional(v.number()),
-		status: v.optional(
-			v.union(
-				v.literal('running'),
-				v.literal('success'),
-				v.literal('failed'),
-			),
-		),
+		status: v.optional(v.union(v.literal('running'), v.literal('success'), v.literal('failed'))),
 		// Per-step result blob returned by the updater sidecar.
 		steps: v.optional(updateStepResultValidator),
 		// User who initiated the update (auth user ID)

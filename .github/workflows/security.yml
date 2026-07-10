@@ -85,6 +85,15 @@ jobs:
               // @nuxtjs/og-image prerendering in the docs + marketing builds, so we
               // hold on it; revisit when og-image is compatible with Nuxt 4.4.7+.
               'GHSA-mm7m-92g8-7m47': 'nuxt routeRules bypass: owlat defines no routeRules; 4.4.7+ fix regresses og-image builds',
+              // better-auth <1.6.13: stored XSS via a `javascript:` redirect_uri
+              // in the oidc-provider and mcp plugins. owlat's better-auth config
+              // (apps/api/convex/auth/auth.ts) enables only the organization /
+              // oneTimeToken / access / convex / crossDomain plugins — never
+              // oidc-provider or mcp — so no code path parses an OAuth/MCP
+              // redirect_uri and the sink is unreachable. Fix is the in-range
+              // (~1.6.9) 1.6.13 bump; take it on the next lockfile refresh (a
+              // lockfile change is out of scope for a UI PR).
+              'GHSA-86j7-9j95-vpqj': 'better-auth oidc/mcp redirect_uri XSS: those plugins are not enabled here; 1.6.13 is an in-range bump pending a lockfile refresh',
             };
             // bun emits the npm bulk-advisory shape: { pkgName: Advisory[] }
             const data = JSON.parse(raw);

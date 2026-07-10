@@ -152,7 +152,7 @@ const PROVIDER_ENV_KEYS = [
  */
 export function buildProviderEnv(
 	existing: Record<string, string>,
-	draft: EmailStepDraft,
+	draft: EmailStepDraft
 ): Record<string, string> {
 	const next: Record<string, string> = { ...existing };
 	for (const key of PROVIDER_ENV_KEYS) delete next[key];
@@ -205,14 +205,16 @@ const PROVIDER_LABELS: Record<ProviderChoice, string> = {
 export function buildSetupSummary(
 	flags: FeatureFlagState,
 	env: Record<string, string>,
-	admin: AdminDraft,
+	admin: AdminDraft
 ): SetupSummary {
 	const resolved = resolveFlags(flags);
 	const activeFeatures = (Object.keys(resolved) as FeatureFlagKey[]).filter((k) => resolved[k]);
 
 	const rawProvider = env['EMAIL_PROVIDER'];
 	const provider: ProviderChoice =
-		rawProvider === 'mta' || rawProvider === 'resend' || rawProvider === 'ses' ? rawProvider : 'none';
+		rawProvider === 'mta' || rawProvider === 'resend' || rawProvider === 'ses'
+			? rawProvider
+			: 'none';
 
 	const fromEmail = env['DEFAULT_FROM_EMAIL'];
 	const fromName = env['DEFAULT_FROM_NAME'];
@@ -227,6 +229,32 @@ export function buildSetupSummary(
 		adminName: admin.name,
 		missingProvider: needsDeliveryProvider(resolved) && provider === 'none',
 	};
+}
+
+// ── Apply body ───────────────────────────────────────────────────────────────
+
+export interface SetupApplyBody {
+	flags: FeatureFlagState;
+	env: Record<string, string>;
+	admin: AdminDraft;
+	/** Answer to the wizard's "moving from another platform?" question. */
+	isMigrationMode: boolean;
+}
+
+/**
+ * Assemble the POST body for `/api/setup/apply` from the collected draft. Pure so
+ * a test can assert the migration-mode question flows into the apply contract
+ * without mounting Nuxt. `isMigrationMode` is the one field the wizard collects
+ * that is neither a feature flag nor an env var — it lands on
+ * `instanceSettings.isMigrationMode` via the seed path.
+ */
+export function buildApplyBody(
+	flags: FeatureFlagState,
+	env: Record<string, string>,
+	admin: AdminDraft,
+	isMigrationMode: boolean
+): SetupApplyBody {
+	return { flags, env, admin, isMigrationMode };
 }
 
 // ── Post-apply readiness ─────────────────────────────────────────────────────
@@ -251,6 +279,8 @@ export function useSetupWizard() {
 	const flags = useState<FeatureFlagState>('setupFlags', () => getDefaultFlags());
 	const env = useState<Record<string, string>>('setupEnv', () => ({}));
 	const admin = useState<AdminDraft>('setupAdmin', () => ({ email: '', name: '', password: '' }));
+	// "Moving from another platform, or starting fresh?" — default fresh (false).
+	const isMigrationMode = useState<boolean>('setupMigrationMode', () => false);
 
 	const resolved = computed(() => resolveFlags(flags.value));
 	const requiresProvider = computed(() => needsDeliveryProvider(flags.value));
@@ -260,6 +290,7 @@ export function useSetupWizard() {
 		flags,
 		env,
 		admin,
+		isMigrationMode,
 		resolved,
 		requiresProvider,
 		summary,

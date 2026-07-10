@@ -75,6 +75,19 @@ export type EnvKey =
 	| 'AWS_SES_ACCESS_KEY_ID'
 	| 'AWS_SES_REGION'
 	| 'AWS_SES_SECRET_ACCESS_KEY'
+	// SES Configuration Set applied to every send. When set, SES tags each
+	// message with the set so its event-publishing (bounce/complaint/delivery
+	// via the SNS topic behind /webhooks/ses) carries attribution back to the
+	// originating send. Unset ⇒ sends omit the set (feedback still works via a
+	// topic subscribed to the identity, but per-send attribution is weaker).
+	| 'SES_CONFIGURATION_SET'
+	// The exact SNS topic ARN authorized to deliver SES feedback to
+	// `/webhooks/ses`. REQUIRED to enable the endpoint: a valid SNS signature
+	// only proves AWS authorship, not that the message came from THIS topic, so
+	// the adapter rejects any envelope whose `TopicArn` differs (and only
+	// auto-confirms subscriptions for this topic). Unset ⇒ the endpoint returns
+	// 503, exactly like an unconfigured provider.
+	| 'SES_SNS_TOPIC_ARN'
 	// LLM
 	| 'LLM_PROVIDER'
 	| 'LLM_API_KEY'
