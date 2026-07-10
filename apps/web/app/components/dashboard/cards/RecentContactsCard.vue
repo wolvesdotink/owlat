@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 
-const { data: contacts, isLoading } = useOrganizationQuery(
-	api.contacts.analytics.getRecent,
-	{ limit: 5 }
-);
+const { data: contacts, isLoading } = useOrganizationQuery(api.contacts.analytics.getRecent, {
+	limit: 5,
+});
 
 interface Contact {
 	_id: string;

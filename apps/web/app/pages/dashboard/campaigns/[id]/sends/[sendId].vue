@@ -13,11 +13,9 @@ const route = useRoute();
 const campaignId = computed(() => route.params['id'] as Id<'campaigns'>);
 const sendId = computed(() => route.params['sendId'] as Id<'emailSends'>);
 
-const { data: send, isLoading } = useConvexQuery(
-	api.delivery.sends.get,
-	() => ({ id: sendId.value })
-);
-
+const { data: send, isLoading } = useConvexQuery(api.delivery.sends.get, () => ({
+	id: sendId.value,
+}));
 </script>
 
 <template>
@@ -64,7 +62,10 @@ const { data: send, isLoading } = useConvexQuery(
 							{{ send.contactLastName || '' }}
 						</h1>
 						<p class="mt-1 text-text-secondary">{{ send.contactEmail }}</p>
-						<div v-if="send.campaign" class="mt-2 flex items-center gap-2 text-sm text-text-tertiary">
+						<div
+							v-if="send.campaign"
+							class="mt-2 flex items-center gap-2 text-sm text-text-tertiary"
+						>
 							<Icon name="lucide:megaphone" class="w-4 h-4" />
 							<span>{{ send.campaign.name }}</span>
 							<span v-if="send.personalizedSubject" class="text-text-tertiary">

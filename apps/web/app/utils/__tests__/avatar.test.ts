@@ -117,8 +117,9 @@ describe('initialsAndColorForAddress', () => {
 
 	it('spreads distinct inputs across the palette', () => {
 		const tokens = new Set(
-			Array.from({ length: 40 }, (_, i) =>
-				initialsAndColorForAddress(`user${i}@example${i % 7}.com`).colorToken
+			Array.from(
+				{ length: 40 },
+				(_, i) => initialsAndColorForAddress(`user${i}@example${i % 7}.com`).colorToken
 			)
 		);
 		// 40 distinct addresses over a 10-token palette must hit most tokens.

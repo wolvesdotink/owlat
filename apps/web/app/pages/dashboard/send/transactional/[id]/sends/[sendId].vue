@@ -16,7 +16,6 @@ const sendId = computed(() => route.params['sendId'] as Id<'transactionalSends'>
 const { data: send, isLoading } = useConvexQuery(api.transactional.sends.get, () => ({
 	id: sendId.value,
 }));
-
 </script>
 
 <template>
