@@ -10,11 +10,18 @@ pub fn show_main_window(app: &AppHandle) {
 }
 
 /// Navigate the main window to a specific path.
-/// Uses window.location.pathname assignment for Nuxt's file-based routing.
+///
+/// Prefers the in-page SPA router (`window.__NUXT_ROUTER__`, exposed by the
+/// desktop boot plugin once Nuxt has mounted) so a menu navigation is an
+/// instant client-side route change — no full document reload, no cold
+/// re-boot. Before the app has hydrated (router absent) it falls back to a
+/// `location.pathname` assignment so the navigation still lands. The path is
+/// sanitised of quote/backslash bytes before interpolation — menu paths are
+/// static literals today, but this keeps the injected JS well-formed.
 pub fn navigate_to(window: &WebviewWindow, path: &str) {
+    let safe = path.replace(['\\', '\''], "");
     let js = format!(
-        "if (window.__NUXT_ROUTER__) {{ window.__NUXT_ROUTER__.push('{}') }} else {{ window.location.pathname = '{}' }}",
-        path, path
+        "if (window.__NUXT_ROUTER__) {{ window.__NUXT_ROUTER__.push('{safe}') }} else {{ window.location.pathname = '{safe}' }}"
     );
     let _ = window.eval(&js);
 }

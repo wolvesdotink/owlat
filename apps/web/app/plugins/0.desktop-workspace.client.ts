@@ -20,12 +20,32 @@ import {
 } from '~/lib/desktop/workspaceSwitch';
 import { setupDeepLinks } from '~/lib/desktop/deepLink.client';
 import { setupUpdateChecks } from '~/lib/desktop/updater.client';
+import type { Router } from 'vue-router';
+
+declare global {
+	interface Window {
+		/**
+		 * The SPA router, exposed on the desktop runtime so the native application
+		 * menu (src-tauri `window::navigate_to`) can push routes client-side
+		 * instead of forcing a full document reload. Undefined on the web and
+		 * before the desktop boot plugin runs.
+		 */
+		__NUXT_ROUTER__?: Router;
+	}
+}
 
 export default defineNuxtPlugin({
 	name: 'owlat:desktop-workspace',
 	enforce: 'pre',
 	async setup(nuxtApp) {
 		if (!isDesktopRuntime()) return;
+
+		// Expose the SPA router to the native side. The application menu
+		// (src-tauri window::navigate_to) prefers `window.__NUXT_ROUTER__.push(...)`
+		// so File → Inbox / Chat is an instant client-side route change instead of a
+		// full document reload; without this the native menu falls back to a
+		// location assignment (a cold re-boot). Desktop-only — never touches web.
+		window.__NUXT_ROUTER__ = nuxtApp['$router'] as Router;
 
 		// Perceived-instant switch (piece d4): if we arrived here via a workspace
 		// switch, re-paint its skeleton FIRST — before Nuxt mounts — so the reload

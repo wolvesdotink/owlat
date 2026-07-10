@@ -125,7 +125,19 @@ export async function replyFromNotification(
 	await deps.openComposer(composePathForReply(message, text));
 }
 
-async function runEffect(effect: NonNullable<NotifEffect>, convex: ConvexClient): Promise<void> {
+/**
+ * Route a thread open through the SPA router (Nuxt `navigateTo`) rather than a
+ * full document load. Injected so the `open` path is unit-testable without a
+ * live Nuxt/router context — mirrors the {@link ReplyDeps.openComposer}
+ * injection the reply path already uses.
+ */
+export type NavigateFn = (path: string) => void;
+
+export async function runEffect(
+	effect: NonNullable<NotifEffect>,
+	convex: ConvexClient,
+	navigate: NavigateFn
+): Promise<void> {
 	// The Archive / Mark-read actions triage in place WITHOUT navigating away —
 	// they should not steal the user's current view. Only an explicit open
 	// (clicking the notification body) focuses + deep-links.
@@ -162,8 +174,10 @@ async function runEffect(effect: NonNullable<NotifEffect>, convex: ConvexClient)
 		});
 		return;
 	}
+	// Clicking the notification body focuses the window and deep-links to the
+	// thread through the SPA router (no full document reload).
 	await focusMainWindow();
-	window.location.assign(`/dashboard/postbox/${effect.folderRole}/${effect.messageId}`);
+	navigate(`/dashboard/postbox/${effect.folderRole}/${effect.messageId}`);
 }
 
 /** Subscribe to notification action events + route them. Call once (desktop). */
@@ -172,7 +186,10 @@ export async function setupNotificationActionRouting(convex: ConvexClient): Prom
 		const { onNotificationAction } = await import('@owlat/desktop/src/notifications');
 		await onNotificationAction((payload) => {
 			const effect = resolveNotificationEffect(payload);
-			if (effect) void runEffect(effect, convex);
+			// `navigateTo` is captured here (Nuxt context is live at setup time) and
+			// used by the deferred callback — the same global singleton the rest of
+			// the app navigates through.
+			if (effect) void runEffect(effect, convex, (path) => void navigateTo(path));
 		});
 	} catch {
 		// Not running under Tauri.
