@@ -291,7 +291,7 @@ export async function parseBody(request: Request, mode: BodyParser): Promise<unk
 				totalBytes += value.length;
 				data[key] = value;
 			} else {
-				totalBytes += value.size;
+				totalBytes += (value as { size: number }).size;
 			}
 			if (totalBytes > MAX_BODY_BYTES) {
 				throw new Error('Request body too large');
