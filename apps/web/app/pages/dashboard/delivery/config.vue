@@ -15,7 +15,12 @@ const { showToast } = useToast();
 
 // Admin-gated send-path status. Booleans only — the query never returns a
 // credential value, just the presence of each required env var.
-const { data: status, isLoading, error } = useOrganizationQuery(api.delivery.status.getStatus);
+const {
+	data: status,
+	isLoading,
+	error,
+	refetch: refetchStatus,
+} = useOrganizationQuery(api.delivery.status.getStatus);
 
 const canSend = computed(() => status.value?.canSend === true);
 
@@ -237,6 +242,11 @@ async function handleSendTest() {
 					</div>
 				</div>
 			</UiCard>
+
+			<!-- Editable transport editor — change provider / rotate credentials in
+			     place, tested and applied through the same env-patch the setup wizard
+			     uses. The status cards above stay the read-only at-a-glance summary. -->
+			<DeliveryTransportEditor :current-provider="status.provider" @applied="refetchStatus" />
 
 			<!-- Provider + required env presence -->
 			<UiCard padding="none" overflow="hidden">
