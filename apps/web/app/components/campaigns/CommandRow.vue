@@ -124,7 +124,12 @@ const metaLine = computed(() => {
 		</div>
 
 		<!-- Primary action (attention verb / A/B results / view) + overflow -->
-		<div class="shrink-0 flex items-center justify-end gap-1" @click.stop @keydown.stop>
+		<div
+			class="shrink-0 flex items-center justify-end gap-1"
+			@click.stop
+			@keydown.enter.stop
+			@keydown.space.stop
+		>
 			<UiButton v-if="row.actionLabel" size="sm" variant="secondary" @click="emit('runAction')">
 				{{ row.actionLabel }}
 			</UiButton>
