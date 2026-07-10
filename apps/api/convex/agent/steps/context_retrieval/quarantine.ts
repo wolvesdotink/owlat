@@ -20,8 +20,8 @@
 
 import { z } from 'zod';
 import { v } from 'convex/values';
-import { internalAction } from '../../../_generated/server';
-import { getLLMProvider } from '../../../lib/llmProvider';
+import { internalAction, type ActionCtx } from '../../../_generated/server';
+import { resolveLanguageModel } from '../../../lib/llmProvider';
 import { runLlmObject } from '../../../lib/llm/dispatch';
 import { stripHiddenContent } from '../security_scan/patterns';
 
@@ -107,11 +107,14 @@ export function renderStructuredExtraction(x: StructuredExtraction): string {
  * Exported (plain async) so a unit test can mock the dispatch seam without a
  * live backend. Never throws.
  */
-export async function runQuarantinedExtraction(text: string): Promise<string | null> {
+export async function runQuarantinedExtraction(
+	ctx: ActionCtx,
+	text: string
+): Promise<string | null> {
 	const sample = stripHiddenContent(text).trim().slice(0, EXTRACTION_MAX_CHARS);
 	if (!sample) return null;
 	try {
-		const model = getLLMProvider('guard');
+		const model = await resolveLanguageModel(ctx, 'guard');
 		const { object } = await runLlmObject({
 			model,
 			schema: structuredExtractionSchema,
@@ -132,5 +135,5 @@ export async function runQuarantinedExtraction(text: string): Promise<string | n
  */
 export const extract = internalAction({
 	args: { text: v.string() },
-	handler: async (_ctx, { text }): Promise<string | null> => runQuarantinedExtraction(text),
+	handler: async (ctx, { text }): Promise<string | null> => runQuarantinedExtraction(ctx, text),
 });

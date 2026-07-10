@@ -24,7 +24,7 @@ import type { ActionCtx } from '../_generated/server';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { runLlmStream, DEFAULT_MAX_TOOL_STEPS } from '../lib/llm/dispatch';
-import { getLLMProviderForUserText } from '../lib/llmProvider';
+import { resolveLanguageModelForUserText } from '../lib/llmProvider';
 import { recordLlmSpend } from '../analytics/llmUsage';
 import { buildAssistantTools } from './tools';
 import { buildAssistantSystemPrompt, clampText, type AssistantSurface } from './prompt';
@@ -50,7 +50,9 @@ function safeJson(value: unknown, max: number): string {
 }
 
 function toModelMessage(m: { role: 'user' | 'assistant'; text: string }): ModelMessage {
-	return m.role === 'user' ? { role: 'user', content: m.text } : { role: 'assistant', content: m.text };
+	return m.role === 'user'
+		? { role: 'user', content: m.text }
+		: { role: 'assistant', content: m.text };
 }
 
 interface FinalizeArgs {
@@ -78,7 +80,7 @@ async function streamAssistantTurn(
 		feature: string;
 		patch: (text: string, toolCalls: ToolCall[] | undefined) => Promise<{ stop: boolean }>;
 		finalize: (args: FinalizeArgs) => Promise<void>;
-	},
+	}
 ): Promise<void> {
 	const tools = buildAssistantTools(ctx);
 	const controller = new AbortController();
@@ -100,7 +102,7 @@ async function streamAssistantTurn(
 
 	try {
 		const result = await runLlmStream({
-			model: getLLMProviderForUserText('draft', opts.lastUserText),
+			model: await resolveLanguageModelForUserText(ctx, 'draft', opts.lastUserText),
 			system: opts.system,
 			messages: opts.messages,
 			tools,

@@ -21,7 +21,7 @@ const sess = vi.hoisted(() => ({ user: { userId: 'user-a', role: 'owner' as cons
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual<typeof import('../lib/sessionOrganization')>(
-		'../lib/sessionOrganization',
+		'../lib/sessionOrganization'
 	);
 	return {
 		...actual,
@@ -29,25 +29,29 @@ vi.mock('../lib/sessionOrganization', async () => {
 		isActiveOrgMember: vi.fn(async () => true),
 		getUserIdFromSession: vi.fn(async () => sess.user.userId),
 		getMutationContext: vi.fn(async () => sess.user),
-		requireOrgPermission: vi.fn().mockImplementation(
-			async (_ctx: unknown, permission: string, message?: string) => {
+		requireOrgPermission: vi
+			.fn()
+			.mockImplementation(async (_ctx: unknown, permission: string, message?: string) => {
 				const mod: typeof import('../lib/sessionOrganization') = actual;
 				mod.requirePermission(
 					mod.hasPermission(
 						sess.user.role as Parameters<typeof mod.hasPermission>[0],
-						permission as Parameters<typeof mod.hasPermission>[1],
+						permission as Parameters<typeof mod.hasPermission>[1]
 					),
-					message,
+					message
 				);
 				return sess.user;
-			},
-		),
+			}),
 	};
 });
 
 vi.mock('../lib/llmProvider', async () => {
 	const actual = await vi.importActual<typeof import('../lib/llmProvider')>('../lib/llmProvider');
-	return { ...actual, getLLMProvider: vi.fn(() => 'test-model'), getLLMProviderForUserText: vi.fn(() => 'test-model') };
+	return {
+		...actual,
+		resolveLanguageModel: vi.fn(() => 'test-model'),
+		resolveLanguageModelForUserText: vi.fn(() => 'test-model'),
+	};
 });
 
 vi.mock('../lib/llm/dispatch', async () => {
@@ -161,7 +165,7 @@ describe('chat @assistant — trigger', () => {
 		expect(assistantsAfter).toBe(30); // assistant reply skipped
 		expect(humansAfter).toBe(31); // human message still posted
 		expect(after.messages.some((m) => !m.isAssistant && m.text.includes('one too many'))).toBe(
-			true,
+			true
 		);
 	});
 });

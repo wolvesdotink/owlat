@@ -40,8 +40,8 @@ vi.mock('../lib/llmProvider', async () => {
 	const actual = await vi.importActual<typeof import('../lib/llmProvider')>('../lib/llmProvider');
 	return {
 		...actual,
-		getLLMProvider: vi.fn(() => 'test-model'),
-		getLLMProviderForUserText: vi.fn(() => 'test-model'),
+		resolveLanguageModel: vi.fn(() => 'test-model'),
+		resolveLanguageModelForUserText: vi.fn(() => 'test-model'),
 	};
 });
 

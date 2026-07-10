@@ -12,7 +12,11 @@ import { v } from 'convex/values';
 import { internalAction } from './_generated/server';
 import { internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
-import { getLLMProvider, getEmbeddingModel, assertEmbeddingDimension } from './lib/llmProvider';
+import {
+	resolveLanguageModel,
+	getEmbeddingModel,
+	assertEmbeddingDimension,
+} from './lib/llmProvider';
 import { CURRENT_EMBEDDING_MODEL } from './lib/constants';
 import { embed } from 'ai';
 import { z } from 'zod';
@@ -74,7 +78,7 @@ export const processFile = internalAction({
 		if (textForAI.length > 50) {
 			try {
 				const result = await runLlmObject({
-					model: getLLMProvider('summarize'),
+					model: await resolveLanguageModel(ctx, 'summarize'),
 					schema: z.object({
 						title: z.string().describe('Short descriptive title for the file'),
 						summary: z.string().describe('2-3 sentence summary of the file content'),
@@ -88,7 +92,10 @@ MIME type: ${file.mimeType}${fileCtx.threadSubject ? `\nShared in conversation: 
 Content:
 ${textForAI}`,
 				});
-				logInfo('[semantic_file] llm call', { tokenUsage: result.tokenUsage, modelUsed: result.modelUsed });
+				logInfo('[semantic_file] llm call', {
+					tokenUsage: result.tokenUsage,
+					modelUsed: result.modelUsed,
+				});
 				await recordLlmSpend(ctx, 'semantic_file', result.tokenUsage, result.modelUsed);
 
 				title = title || result.object.title;
@@ -227,7 +234,10 @@ export const semanticSearch = internalAction({
 		// Required: 'org-wide' is the explicit member-path opt-out.
 		scopeToContact: v.union(v.id('contacts'), v.literal('org-general-only'), v.literal('org-wide')),
 	},
-	handler: async (ctx, args): Promise<Array<Doc<'semanticFiles'> & { url: string | null; _score: number }>> => {
+	handler: async (
+		ctx,
+		args
+	): Promise<Array<Doc<'semanticFiles'> & { url: string | null; _score: number }>> => {
 		const queryText = args.queryText?.trim();
 
 		let vector = args.embedding;
@@ -280,12 +290,17 @@ export const semanticSearch = internalAction({
 
 		// Hydrate in fused order (getByIds preserves input order, drops deleted).
 		const files = await ctx.runQuery(internal.semanticFiles.getByIds, { ids: fusedIds });
-		const scored = files.map((file) => ({ ...file, _score: scoreById.get(file._id as string) ?? 0 }));
+		const scored = files.map((file) => ({
+			...file,
+			_score: scoreById.get(file._id as string) ?? 0,
+		}));
 
 		// Contact scoping AFTER fusion (over-fetched above so this doesn't starve
 		// the result set).
 		const visible =
-			scope === 'org-wide' ? scored : scored.filter((file) => isContactScopeVisible(file.contactIds, scope));
+			scope === 'org-wide'
+				? scored
+				: scored.filter((file) => isContactScopeVisible(file.contactIds, scope));
 		return visible.slice(0, limit);
 	},
 });

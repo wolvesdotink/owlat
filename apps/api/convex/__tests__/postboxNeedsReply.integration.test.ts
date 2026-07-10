@@ -50,7 +50,7 @@ const runLlmObjectMock = vi.hoisted(() => vi.fn());
 // dispatch so we control the refinement result.
 vi.mock('../lib/llmProvider', async () => {
 	const actual = await vi.importActual<typeof import('../lib/llmProvider')>('../lib/llmProvider');
-	return { ...actual, getLLMProvider: vi.fn(() => 'test-model') };
+	return { ...actual, resolveLanguageModel: vi.fn(() => 'test-model') };
 });
 
 vi.mock('../lib/llm/dispatch', async () => {
@@ -65,8 +65,8 @@ const modules = Object.fromEntries(
 		([path]) =>
 			!path.includes('sesActions') &&
 			!path.includes('visualizationAgent') &&
-			!path.includes('semanticFileProcessing'),
-	),
+			!path.includes('semanticFileProcessing')
+	)
 );
 
 beforeEach(() => {
@@ -127,7 +127,7 @@ async function seedThreadWithMessage(
 		toAddresses?: string[];
 		ccAddresses?: string[];
 		needsReplyPendingAt?: number;
-	} = {},
+	} = {}
 ): Promise<{ threadId: Id<'mailThreads'>; messageId: Id<'mailMessages'> }> {
 	return await t.run(async (ctx) => {
 		const now = Date.now();
@@ -189,7 +189,7 @@ async function seedThreadWithMessage(
 
 async function getThread(
 	t: ReturnType<typeof convexTest>,
-	threadId: Id<'mailThreads'>,
+	threadId: Id<'mailThreads'>
 ): Promise<Doc<'mailThreads'> | null> {
 	return await t.run(async (ctx) => ctx.db.get(threadId));
 }
@@ -197,7 +197,7 @@ async function getThread(
 async function setNeedsReply(
 	t: ReturnType<typeof convexTest>,
 	threadId: Id<'mailThreads'>,
-	messageId: Id<'mailMessages'>,
+	messageId: Id<'mailMessages'>
 ): Promise<void> {
 	await t.run(async (ctx) => {
 		await ctx.db.patch(threadId, {
@@ -522,7 +522,7 @@ describe('mail.needsReply.listQueue', () => {
 		expect(items).toEqual([]);
 	});
 
-	it("returns an empty list for an editor who does not own the mailbox", async () => {
+	it('returns an empty list for an editor who does not own the mailbox', async () => {
 		const t = convexTest(schema, modules);
 		const seeded = await seedMailbox(t); // mailbox.userId === 'test-user'
 		const { threadId, messageId } = await seedThreadWithMessage(t, seeded);

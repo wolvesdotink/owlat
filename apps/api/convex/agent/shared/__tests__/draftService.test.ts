@@ -39,8 +39,8 @@ vi.mock('../../../lib/llm/dispatch', () => ({
 	runLlmObject: (a: unknown) => runLlmObjectMock(a as never),
 }));
 vi.mock('../../../lib/llmProvider', () => ({
-	getLLMProvider: () => ({}) as never,
-	getLLMProviderForClassifiedDraft: () => ({}) as never,
+	resolveLanguageModel: () => ({}) as never,
+	resolveLanguageModelForClassifiedDraft: () => ({}) as never,
 }));
 const generateReplyOptionsMock = vi.fn(async (_a: unknown) => ({
 	replies: ['ALT ONE', 'ALT TWO'],

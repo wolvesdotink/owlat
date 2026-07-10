@@ -23,7 +23,7 @@ import { z } from 'zod';
 import { v } from 'convex/values';
 import { authedAction } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
-import { getLLMProvider } from '../lib/llmProvider';
+import { resolveLanguageModel } from '../lib/llmProvider';
 import { runLlmObject } from '../lib/llm/dispatch';
 import { recordLlmSpend } from '../analytics/llmUsage';
 import { throwInvalidInput } from '../_utils/errors';
@@ -142,7 +142,7 @@ export const compile = authedAction({
 		// Flag / budget / rate-limit gate, shared with the advisory Postbox AI.
 		await ctx.runMutation(internal.mail.aiGate.assertAiAllowed, {});
 
-		const model = getLLMProvider('classify'); // cheap tier — this is a light extraction
+		const model = await resolveLanguageModel(ctx, 'classify'); // cheap tier — this is a light extraction
 		const { object, tokenUsage, modelUsed } = await runLlmObject({
 			model,
 			schema: compiledRuleSchema,

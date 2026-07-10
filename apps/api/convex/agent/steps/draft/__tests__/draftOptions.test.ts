@@ -24,7 +24,7 @@ import { getFunctionName } from 'convex/server';
 const mocks = vi.hoisted(() => ({
 	runLlmText: vi.fn(),
 	runLlmObject: vi.fn(),
-	getLLMProvider: vi.fn(() => 'mock-model'),
+	resolveLanguageModel: vi.fn(() => 'mock-model'),
 }));
 
 vi.mock('../../../../lib/llm/dispatch', () => ({
@@ -34,8 +34,8 @@ vi.mock('../../../../lib/llm/dispatch', () => ({
 	runLlmObject: mocks.runLlmObject,
 }));
 vi.mock('../../../../lib/llmProvider', () => ({
-	getLLMProvider: mocks.getLLMProvider,
-	getLLMProviderForClassifiedDraft: mocks.getLLMProvider,
+	resolveLanguageModel: mocks.resolveLanguageModel,
+	resolveLanguageModelForClassifiedDraft: mocks.resolveLanguageModel,
 }));
 
 import {
@@ -93,8 +93,8 @@ function makeCtx() {
 beforeEach(() => {
 	mocks.runLlmText.mockReset();
 	mocks.runLlmObject.mockReset();
-	mocks.getLLMProvider.mockReset();
-	mocks.getLLMProvider.mockReturnValue('mock-model');
+	mocks.resolveLanguageModel.mockReset();
+	mocks.resolveLanguageModel.mockReturnValue('mock-model');
 	mocks.runLlmText.mockResolvedValue({
 		text: DRAFT_TEXT,
 		tokenUsage: undefined,

@@ -15,7 +15,11 @@ import type { Id } from '../_generated/dataModel';
 import { CURRENT_EMBEDDING_MODEL } from '../lib/constants';
 import { embed } from 'ai';
 import { z } from 'zod';
-import { getLLMProvider, getEmbeddingModel, assertEmbeddingDimension } from '../lib/llmProvider';
+import {
+	resolveLanguageModel,
+	getEmbeddingModel,
+	assertEmbeddingDimension,
+} from '../lib/llmProvider';
 import { logInfo } from '../lib/runtimeLog';
 import { runLlmObject } from '../lib/llm/dispatch';
 import { recordLlmSpend } from '../analytics/llmUsage';
@@ -45,15 +49,19 @@ export function injectionRisk(text: string, html?: string): string | null {
 type ExtractedEntry = z.infer<typeof extractionSchema>['entries'][number];
 
 const extractionSchema = z.object({
-	entries: z.array(z.object({
-		// Derived from the same ENTRY_TYPES tuple the Convex entryTypeValidator is
-		// built from, so the LLM-facing enum can't drift from the stored column.
-		type: z.enum(ENTRY_TYPES),
-		title: z.string().describe('Brief title for this piece of knowledge'),
-		content: z.string().describe('Detailed description of the knowledge'),
-		confidence: z.number().min(0).max(1).describe('How confident you are this is accurate'),
-		tags: z.array(z.string()).optional().describe('Relevant tags for categorization'),
-	})).describe('Knowledge entries extracted from the message'),
+	entries: z
+		.array(
+			z.object({
+				// Derived from the same ENTRY_TYPES tuple the Convex entryTypeValidator is
+				// built from, so the LLM-facing enum can't drift from the stored column.
+				type: z.enum(ENTRY_TYPES),
+				title: z.string().describe('Brief title for this piece of knowledge'),
+				content: z.string().describe('Detailed description of the knowledge'),
+				confidence: z.number().min(0).max(1).describe('How confident you are this is accurate'),
+				tags: z.array(z.string()).optional().describe('Relevant tags for categorization'),
+			})
+		)
+		.describe('Knowledge entries extracted from the message'),
 });
 
 /**
@@ -72,7 +80,7 @@ async function persistExtractedEntries(
 		sourceId: string;
 		contactIds?: Id<'contacts'>[];
 		threadId?: Id<'conversationThreads'>;
-	},
+	}
 ): Promise<void> {
 	const entryIds: Id<'knowledgeEntries'>[] = [];
 	for (const entry of entries) {
@@ -153,9 +161,13 @@ export const extractFromMessage = internalAction({
 
 		try {
 			// ── Step 1: Extract knowledge using LLM ──
-			const model = getLLMProvider('extract');
+			const model = await resolveLanguageModel(ctx, 'extract');
 
-			const { object: extraction, tokenUsage, modelUsed } = await runLlmObject({
+			const {
+				object: extraction,
+				tokenUsage,
+				modelUsed,
+			} = await runLlmObject({
 				model,
 				schema: extractionSchema,
 				prompt: `Extract organizational knowledge from this email message. Only extract information that would be useful for future reference.
@@ -231,8 +243,12 @@ export const extractFromFile = internalAction({
 		if (already > 0) return;
 
 		try {
-			const model = getLLMProvider('extract');
-			const { object: extraction, tokenUsage, modelUsed } = await runLlmObject({
+			const model = await resolveLanguageModel(ctx, 'extract');
+			const {
+				object: extraction,
+				tokenUsage,
+				modelUsed,
+			} = await runLlmObject({
 				model,
 				schema: extractionSchema,
 				prompt: `Extract organizational knowledge from this document. Only extract information that would be useful for future reference.
@@ -300,10 +316,9 @@ export const extractFromMailMessage = internalAction({
 		contactIds: v.optional(v.array(v.id('contacts'))),
 	},
 	handler: async (ctx, args) => {
-		const msg = await ctx.runQuery(
-			internal.mail.migrationIndexing.getMessageForExtraction,
-			{ mailMessageId: args.mailMessageId },
-		);
+		const msg = await ctx.runQuery(internal.mail.migrationIndexing.getMessageForExtraction, {
+			mailMessageId: args.mailMessageId,
+		});
 		if (!msg) return;
 
 		let textContent = msg.textInline ?? '';
@@ -333,8 +348,12 @@ export const extractFromMailMessage = internalAction({
 		if (already > 0) return;
 
 		try {
-			const model = getLLMProvider('extract');
-			const { object: extraction, tokenUsage, modelUsed } = await runLlmObject({
+			const model = await resolveLanguageModel(ctx, 'extract');
+			const {
+				object: extraction,
+				tokenUsage,
+				modelUsed,
+			} = await runLlmObject({
 				model,
 				schema: extractionSchema,
 				prompt: `Extract organizational knowledge from this email message. Only extract information that would be useful for future reference.

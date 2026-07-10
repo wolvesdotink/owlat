@@ -18,7 +18,7 @@ const sess = vi.hoisted(() => ({ user: { userId: 'user-a', role: 'owner' as cons
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual<typeof import('../lib/sessionOrganization')>(
-		'../lib/sessionOrganization',
+		'../lib/sessionOrganization'
 	);
 	return {
 		...actual,
@@ -35,8 +35,8 @@ vi.mock('../lib/llmProvider', async () => {
 	const actual = await vi.importActual<typeof import('../lib/llmProvider')>('../lib/llmProvider');
 	return {
 		...actual,
-		getLLMProvider: vi.fn(() => 'test-model'),
-		getLLMProviderForUserText: vi.fn(() => 'test-model'),
+		resolveLanguageModel: vi.fn(() => 'test-model'),
+		resolveLanguageModelForUserText: vi.fn(() => 'test-model'),
 	};
 });
 
@@ -73,8 +73,16 @@ describe('assistant runner', () => {
 		const { conversationId, assistantMessageId } = await startTurn(t);
 
 		vi.mocked(runLlmStream).mockImplementation(async (opts) => {
-			await opts.onToolCall?.({ toolCallId: 'tc1', toolName: 'searchKnowledge', input: { query: 'welcome campaign' } });
-			await opts.onToolResult?.({ toolCallId: 'tc1', toolName: 'searchKnowledge', output: { results: [{ title: 'Welcome' }] } });
+			await opts.onToolCall?.({
+				toolCallId: 'tc1',
+				toolName: 'searchKnowledge',
+				input: { query: 'welcome campaign' },
+			});
+			await opts.onToolResult?.({
+				toolCallId: 'tc1',
+				toolName: 'searchKnowledge',
+				output: { results: [{ title: 'Welcome' }] },
+			});
 			await opts.onTextDelta?.('The open', 'The open');
 			await opts.onTextDelta?.('The open rate was 42%.', ' rate was 42%.');
 			return {
@@ -99,7 +107,10 @@ describe('assistant runner', () => {
 		expect(assistant?.model).toBe('test-model');
 		expect(assistant?.tokenUsage?.totalTokens).toBe(20);
 		expect(assistant?.toolCalls).toHaveLength(1);
-		expect(assistant?.toolCalls?.[0]).toMatchObject({ toolName: 'searchKnowledge', status: 'done' });
+		expect(assistant?.toolCalls?.[0]).toMatchObject({
+			toolName: 'searchKnowledge',
+			status: 'done',
+		});
 
 		// Spend recorded under the conversation feature tag.
 		const spend = await t.run(async (ctx) => ctx.db.query('llmUsageEvents').collect());
@@ -115,7 +126,11 @@ describe('assistant runner', () => {
 			throw new Error('model overloaded');
 		});
 
-		await t.action(internal.assistant.runner.run, { conversationId, assistantMessageId, ownerId: 'user-a' });
+		await t.action(internal.assistant.runner.run, {
+			conversationId,
+			assistantMessageId,
+			ownerId: 'user-a',
+		});
 
 		const msgs = await t.query(api.assistant.conversations.listMessages, { conversationId });
 		const assistant = msgs.find((m) => m._id === assistantMessageId);
@@ -130,10 +145,20 @@ describe('assistant runner', () => {
 
 		vi.mocked(runLlmStream).mockImplementation(async (opts) => {
 			await opts.onTextDelta?.('Starting…', 'Starting…');
-			return { text: 'Starting…', tokenUsage: undefined, modelUsed: 'test-model', finishReason: undefined, aborted: true };
+			return {
+				text: 'Starting…',
+				tokenUsage: undefined,
+				modelUsed: 'test-model',
+				finishReason: undefined,
+				aborted: true,
+			};
 		});
 
-		await t.action(internal.assistant.runner.run, { conversationId, assistantMessageId, ownerId: 'user-a' });
+		await t.action(internal.assistant.runner.run, {
+			conversationId,
+			assistantMessageId,
+			ownerId: 'user-a',
+		});
 
 		const msgs = await t.query(api.assistant.conversations.listMessages, { conversationId });
 		expect(msgs.find((m) => m._id === assistantMessageId)?.status).toBe('stopped');

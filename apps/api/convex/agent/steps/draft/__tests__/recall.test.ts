@@ -126,7 +126,7 @@ describe('buildRecallKnowledgeTool', () => {
 const mocks = vi.hoisted(() => ({
 	runLlmTextWithTools: vi.fn(),
 	runLlmObject: vi.fn(),
-	getLLMProvider: vi.fn(() => 'mock-model'),
+	resolveLanguageModel: vi.fn(() => 'mock-model'),
 }));
 
 vi.mock('../../../../lib/llm/dispatch', () => ({
@@ -135,8 +135,8 @@ vi.mock('../../../../lib/llm/dispatch', () => ({
 	runLlmObject: mocks.runLlmObject,
 }));
 vi.mock('../../../../lib/llmProvider', () => ({
-	getLLMProvider: mocks.getLLMProvider,
-	getLLMProviderForClassifiedDraft: mocks.getLLMProvider,
+	resolveLanguageModel: mocks.resolveLanguageModel,
+	resolveLanguageModelForClassifiedDraft: mocks.resolveLanguageModel,
 }));
 
 import { draftStep, type DraftInput } from '../index';
@@ -158,8 +158,8 @@ describe('draftStep.execute — recall wiring', () => {
 	beforeEach(() => {
 		mocks.runLlmTextWithTools.mockReset();
 		mocks.runLlmObject.mockReset();
-		mocks.getLLMProvider.mockReset();
-		mocks.getLLMProvider.mockReturnValue('mock-model');
+		mocks.resolveLanguageModel.mockReset();
+		mocks.resolveLanguageModel.mockReturnValue('mock-model');
 		mocks.runLlmObject.mockResolvedValue({
 			object: { score: 0.9, complete: true, grounded: true, flags: [] },
 			tokenUsage: undefined,

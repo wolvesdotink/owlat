@@ -16,7 +16,7 @@
 import { v } from 'convex/values';
 import { authedAction } from '../lib/authedFunctions';
 import { api, internal } from '../_generated/api';
-import { getLLMProvider } from '../lib/llmProvider';
+import { resolveLanguageModel } from '../lib/llmProvider';
 import { runLlmObject } from '../lib/llm/dispatch';
 import {
 	buildSelfCheckPrompt,
@@ -145,7 +145,7 @@ export const coachDraft = authedAction({
 				}
 			}
 			const { object, tokenUsage, modelUsed } = await runLlmObject({
-				model: getLLMProvider('classify'), // cheap / fast tier, same as the agent self-check
+				model: await resolveLanguageModel(ctx, 'classify'), // cheap / fast tier, same as the agent self-check
 				schema: draftQualitySchema,
 				prompt: buildSelfCheckPrompt({
 					context,

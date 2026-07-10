@@ -22,7 +22,7 @@ import { z } from 'zod';
 import type { ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { runLlmText } from '../lib/llm/dispatch';
-import { getLLMProviderForUserText } from '../lib/llmProvider';
+import { resolveLanguageModelForUserText } from '../lib/llmProvider';
 import { recordLlmSpend } from '../analytics/llmUsage';
 import { scrubForInjection, clampText } from './prompt';
 
@@ -52,7 +52,7 @@ export function buildAssistantTools(ctx: ActionCtx): ToolSet {
 				// path); the flag is the KILL SWITCH so off ⇒ flat, no relatedTo.
 				const graphRetrieval = await ctx.runQuery(
 					internal.knowledge.graphTraversal.isGraphRetrievalEnabled,
-					{},
+					{}
 				);
 				const entries = await ctx.runAction(internal.knowledge.retrieval.semanticSearch, {
 					queryText: query,
@@ -109,17 +109,30 @@ export function buildAssistantTools(ctx: ActionCtx): ToolSet {
 				'Full-text search across contacts, email templates, transactional emails, and campaigns by name/subject. Use to locate a specific record (e.g. "find the contact Jane Doe" or "the welcome campaign").',
 			inputSchema: z.object({
 				query: z.string().describe('Name, email, subject, or keyword to look up.'),
-				limit: z.number().int().min(1).max(15).optional().describe('Max results per category (default 5).'),
+				limit: z
+					.number()
+					.int()
+					.min(1)
+					.max(15)
+					.optional()
+					.describe('Max results per category (default 5).'),
 			}),
 			execute: async ({ query, limit }) => {
 				const r = await ctx.runQuery(internal.globalSearch.searchInternal, {
 					query,
 					limit: clampInt(limit, 1, 15, 5),
 				});
-				const scrub = (
-					arr: Array<{ title: string; subtitle: string; url: string }>,
-				) => arr.map((x) => ({ title: scrubForInjection(x.title), subtitle: scrubForInjection(x.subtitle), url: x.url }));
-				return { contacts: scrub(r.contacts), emails: scrub(r.emails), campaigns: scrub(r.campaigns) };
+				const scrub = (arr: Array<{ title: string; subtitle: string; url: string }>) =>
+					arr.map((x) => ({
+						title: scrubForInjection(x.title),
+						subtitle: scrubForInjection(x.subtitle),
+						url: x.url,
+					}));
+				return {
+					contacts: scrub(r.contacts),
+					emails: scrub(r.emails),
+					campaigns: scrub(r.campaigns),
+				};
 			},
 		}),
 
@@ -130,7 +143,9 @@ export function buildAssistantTools(ctx: ActionCtx): ToolSet {
 				campaign: z.string().describe('Campaign name, subject, or keyword.'),
 			}),
 			execute: async ({ campaign }) => {
-				const r = await ctx.runQuery(internal.assistant.insights.campaignStats, { query: campaign });
+				const r = await ctx.runQuery(internal.assistant.insights.campaignStats, {
+					query: campaign,
+				});
 				return {
 					campaigns: r.campaigns.map((c) => ({
 						...c,
@@ -145,7 +160,13 @@ export function buildAssistantTools(ctx: ActionCtx): ToolSet {
 			description:
 				'Aggregate marketing email performance across all campaigns sent in the last N days (default 30): total sends, deliveries, opens, clicks, bounces, unsubscribes, and overall open/click rates.',
 			inputSchema: z.object({
-				days: z.number().int().min(1).max(90).optional().describe('Window in days (default 30, max 90).'),
+				days: z
+					.number()
+					.int()
+					.min(1)
+					.max(90)
+					.optional()
+					.describe('Window in days (default 30, max 90).'),
 			}),
 			execute: async ({ days }) => {
 				return ctx.runQuery(internal.assistant.insights.emailStats, { days });
@@ -160,10 +181,12 @@ export function buildAssistantTools(ctx: ActionCtx): ToolSet {
 				intent: z.string().describe('What the email should say or accomplish.'),
 			}),
 			execute: async ({ contact, intent }) => {
-				const found = await ctx.runQuery(internal.assistant.insights.findContact, { query: contact });
+				const found = await ctx.runQuery(internal.assistant.insights.findContact, {
+					query: contact,
+				});
 				const recipient = found ? `${found.name ?? found.email} <${found.email}>` : contact;
 				const result = await runLlmText({
-					model: getLLMProviderForUserText('draft', intent),
+					model: await resolveLanguageModelForUserText(ctx, 'draft', intent),
 					system:
 						'You draft a single professional email reply. Output ONLY the email body — no preamble, no commentary, no subject line unless explicitly asked. Keep it concise and ready for the user to review and edit.',
 					prompt: `Recipient: ${recipient}\n\nWrite an email that accomplishes: ${clampText(intent, 1500)}`,
@@ -183,7 +206,7 @@ export function buildAssistantTools(ctx: ActionCtx): ToolSet {
 			}),
 			execute: async ({ brief, audience }) => {
 				const result = await runLlmText({
-					model: getLLMProviderForUserText('draft', brief),
+					model: await resolveLanguageModelForUserText(ctx, 'draft', brief),
 					system:
 						'You are an expert email-marketing copywriter. Draft compelling campaign email copy from the brief. Output Markdown: a "**Subject:**" line, then the email body. Keep it ready for the user to review and edit.',
 					prompt: `Brief: ${clampText(brief, 2000)}${audience ? `\n\nAudience: ${clampText(audience, 500)}` : ''}`,

@@ -21,7 +21,7 @@ import { v } from 'convex/values';
 import { z } from 'zod';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
-import { getLLMProvider } from '../lib/llmProvider';
+import { resolveLanguageModel } from '../lib/llmProvider';
 import { runLlmObject } from '../lib/llm/dispatch';
 import { recordLlmSpend } from '../analytics/llmUsage';
 import { clampDescription, dueHintToTimestamp } from './commitments';
@@ -66,7 +66,7 @@ export const extractCommitment = internalAction({
 					: `The mailbox owner is ${context.ownerAddress}. Extract the single most concrete DEADLINE the sender imposes on the owner (e.g. "please reply by Friday").`;
 
 			const { object, tokenUsage, modelUsed } = await runLlmObject({
-				model: getLLMProvider('summarize'),
+				model: await resolveLanguageModel(ctx, 'summarize'),
 				schema: commitmentSchema,
 				prompt:
 					`${SYSTEM_GUARD}\n\n${who} Set hasCommitment=false when the message states ` +

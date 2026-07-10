@@ -33,8 +33,8 @@ vi.mock('../../lib/llm/dispatch', () => ({
 	runLlmObject: (a: unknown) => runLlmObjectMock(a as never),
 }));
 vi.mock('../../lib/llmProvider', () => ({
-	getLLMProvider: () => ({}) as never,
-	getLLMProviderForClassifiedDraft: () => ({}) as never,
+	resolveLanguageModel: () => ({}) as never,
+	resolveLanguageModelForClassifiedDraft: () => ({}) as never,
 }));
 vi.mock('../replyOptions', () => ({
 	MAX_REPLY_OPTIONS: 3,

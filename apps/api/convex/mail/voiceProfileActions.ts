@@ -16,7 +16,7 @@ import { v } from 'convex/values';
 import { z } from 'zod';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
-import { getLLMProvider } from '../lib/llmProvider';
+import { resolveLanguageModel } from '../lib/llmProvider';
 import { runLlmObject } from '../lib/llm/dispatch';
 import { recordLlmSpend } from '../analytics/llmUsage';
 
@@ -63,7 +63,7 @@ export const refresh = internalAction({
 
 			const { object, tokenUsage, modelUsed } = await runLlmObject({
 				// Cheap/fast tier: style extraction, not reply drafting.
-				model: getLLMProvider('extract'),
+				model: await resolveLanguageModel(ctx, 'extract'),
 				schema: profileSchema,
 				temperature: 0.2,
 				prompt:

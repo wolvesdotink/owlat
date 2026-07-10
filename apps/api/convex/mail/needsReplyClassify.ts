@@ -21,7 +21,7 @@ import { v } from 'convex/values';
 import { z } from 'zod';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
-import { getLLMProvider } from '../lib/llmProvider';
+import { resolveLanguageModel } from '../lib/llmProvider';
 import { runLlmObject, runLlmText } from '../lib/llm/dispatch';
 import { recordLlmSpend } from '../analytics/llmUsage';
 import { evaluateNeedsReplyCandidate } from './needsReply';
@@ -159,7 +159,7 @@ export const classifyThread = internalAction({
 
 			const { object, tokenUsage, modelUsed } = await runLlmObject({
 				// High-volume background classification → cheap "summarize" tier.
-				model: getLLMProvider('summarize'),
+				model: await resolveLanguageModel(ctx, 'summarize'),
 				schema: refinementSchema,
 				prompt:
 					`${SYSTEM_GUARD}\n\nThe reader is ${context.ownerAddress}. Decide whether the LAST inbound message ` +
@@ -262,9 +262,9 @@ interface ClarificationFlag {
  *
  * REUSES the shared slot taxonomy + prompt module (inbox/clarificationSlots.ts)
  * that the inbound agent `clarify` step uses — no fork. Two stages:
- *   1. cheap-tier slot extraction (getLLMProvider('summarize')) → candidate
+ *   1. cheap-tier slot extraction (the 'summarize' tier) → candidate
  *      slots that are BOTH unanswerable from context AND decision-relevant.
- *   2. capable-tier divergence confirmation (getLLMProvider('draft')), run ONLY
+ *   2. capable-tier divergence confirmation (the 'draft' tier), run ONLY
  *      when stage 1 flagged a candidate: sample a few independent replies and
  *      keep only the slots they genuinely disagree on. A converging slot is a
  *      safe assumption and is dropped.
@@ -279,7 +279,7 @@ export async function refineClarification(
 	try {
 		// Stage 1 — cheap-tier reply-slot extraction (shared prompt module).
 		const slotsResult = await runLlmObject({
-			model: getLLMProvider('summarize'),
+			model: await resolveLanguageModel(ctx, 'summarize'),
 			schema: replySlotsSchema,
 			prompt: buildSlotPrompt(opts.transcript),
 			temperature: 0.2,
@@ -304,7 +304,7 @@ export async function refineClarification(
 		for (let i = 0; i < DIVERGENCE_SAMPLES; i++) {
 			try {
 				const draft = await runLlmText({
-					model: getLLMProvider('draft'),
+					model: await resolveLanguageModel(ctx, 'draft'),
 					prompt: buildCandidatePrompt(opts.transcript),
 					temperature: 0.9,
 				});
@@ -320,7 +320,7 @@ export async function refineClarification(
 		if (drafts.length < MIN_SAMPLES_FOR_JUDGMENT) return undefined;
 
 		const divergenceResult = await runLlmObject({
-			model: getLLMProvider('draft'),
+			model: await resolveLanguageModel(ctx, 'draft'),
 			schema: divergenceSchema,
 			prompt: buildDivergencePrompt(candidateSlots, drafts),
 			temperature: 0.1,
@@ -390,7 +390,7 @@ export const draftWithAnswers = internalAction({
 			const confirmed = context.answers.map((a) => `- ${a.question}\n  ${a.answer}`).join('\n');
 
 			const { text, tokenUsage, modelUsed } = await runLlmText({
-				model: getLLMProvider('draft'),
+				model: await resolveLanguageModel(ctx, 'draft'),
 				prompt:
 					`${SYSTEM_GUARD}\n\n` +
 					`Draft a short, ready-to-send reply the recipient could send. Use the ` +
@@ -424,7 +424,7 @@ export const draftWithAnswers = internalAction({
 						// Same prompt, minus the confirmed-answers block — what Owlat
 						// would have drafted WITHOUT asking.
 						const baseline = await runLlmText({
-							model: getLLMProvider('draft'),
+							model: await resolveLanguageModel(ctx, 'draft'),
 							prompt:
 								`${SYSTEM_GUARD}\n\n` +
 								`Draft a short, ready-to-send reply the recipient could send.${voiceSection}\n\n` +

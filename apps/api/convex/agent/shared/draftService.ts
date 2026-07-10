@@ -23,7 +23,7 @@ import { z } from 'zod';
 import type { ToolSet, ModelMessage, LanguageModel } from 'ai';
 import { cacheableSystemMessage } from '../../lib/llm/promptCache';
 import { runLlmObject, runLlmText, runLlmTextWithTools } from '../../lib/llm/dispatch';
-import { getLLMProvider } from '../../lib/llmProvider';
+import { resolveLanguageModel } from '../../lib/llmProvider';
 import { generateReplyOptions, MAX_REPLY_OPTIONS } from '../../mail/replyOptions';
 import { recordLlmSpend } from '../../analytics/llmUsage';
 import { detectInjection, INJECTION_CONFIDENCE_THRESHOLD } from '../steps/security_scan/patterns';
@@ -106,7 +106,7 @@ export async function runDraftSelfCheck(
 	args: { context: string; draft: string; spendLabel: string }
 ): Promise<DraftQuality | null> {
 	try {
-		const model = getLLMProvider('classify'); // cheap / fast tier
+		const model = await resolveLanguageModel(ctx, 'classify'); // cheap / fast tier
 		const { object, tokenUsage, modelUsed } = await runLlmObject({
 			model,
 			schema: draftQualitySchema,
@@ -220,7 +220,7 @@ export async function generateDraftOptions(
 	args: { context: string; voiceSection: string; primaryDraft: string; spendLabel: string }
 ): Promise<string[]> {
 	try {
-		const { replies, tokenUsage, modelUsed } = await generateReplyOptions({
+		const { replies, tokenUsage, modelUsed } = await generateReplyOptions(ctx, {
 			prompt: buildDraftOptionsPrompt({ context: args.context, voiceSection: args.voiceSection }),
 		});
 		try {

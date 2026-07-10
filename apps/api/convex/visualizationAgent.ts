@@ -18,7 +18,7 @@ import {
 import { adminQuery, authedMutation } from './lib/authedFunctions';
 import { requireAdminContext } from './lib/sessionOrganization';
 import { internal } from './_generated/api';
-import { getLLMProvider } from './lib/llmProvider';
+import { resolveLanguageModel } from './lib/llmProvider';
 import { logInfo, logWarn } from './lib/runtimeLog';
 import { runLlmText } from './lib/llm/dispatch';
 import { recordLlmSpend } from './analytics/llmUsage';
@@ -264,7 +264,7 @@ export const generate = internalAction({
 			const system = liveData ? buildLiveSystemPrompt(liveData) : ILLUSTRATIVE_SYSTEM_PROMPT;
 
 			const result = await runLlmText({
-				model: getLLMProvider('draft'),
+				model: await resolveLanguageModel(ctx, 'draft'),
 				system,
 				prompt: args.prompt,
 			});
@@ -296,7 +296,7 @@ export const generate = internalAction({
 
 			// Generate a proper title from the prompt
 			const titleResult = await runLlmText({
-				model: getLLMProvider('summarize'),
+				model: await resolveLanguageModel(ctx, 'summarize'),
 				prompt: `Generate a short (3-8 word) title for this visualization request: "${args.prompt}"
 Respond with ONLY the title, no quotes or explanation.`,
 			});

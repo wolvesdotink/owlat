@@ -46,7 +46,7 @@
  */
 
 import { internal } from '../../../_generated/api';
-import { getLLMProvider } from '../../../lib/llmProvider';
+import { resolveLanguageModel } from '../../../lib/llmProvider';
 import { runLlmObject, runLlmText } from '../../../lib/llm/dispatch';
 import type { Id } from '../../../_generated/dataModel';
 import type { Infer } from 'convex/values';
@@ -276,7 +276,7 @@ export const clarifyStep: AgentStepModule<'clarify', ClarifyInput, ClarifyOutput
 				}
 			}
 
-			const model = getLLMProvider('classify'); // cheap / fast tier
+			const model = await resolveLanguageModel(ctx, 'classify'); // cheap / fast tier
 			let tokenUsage: TokenUsage | undefined;
 			let modelUsed: string | undefined;
 
