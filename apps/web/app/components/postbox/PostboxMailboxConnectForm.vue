@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { FunctionReturnType } from 'convex/server';
-import type { MailProvider } from '~/utils/mailAutodiscover';
+import type { MailPreset, MailProvider } from '~/utils/mailAutodiscover';
 import { presetForEmail, resolveMailPreset } from '~/utils/mailAutodiscover';
 
 /**
@@ -28,6 +28,11 @@ const props = defineProps<{
 		imapUsername: string;
 		status?: string;
 	} | null;
+	/**
+	 * Hide the Cancel/Back button. The reconnect step renders this form as the
+	 * only way forward, so a cancel action there would do nothing — hide it.
+	 */
+	hideCancel?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -57,30 +62,29 @@ const showAdvanced = ref(props.provider.manualServer || props.mode === 'update')
 type TestResult = FunctionReturnType<typeof api.mail.externalAccountsActions.testConnection>;
 const testResult = ref<TestResult | null>(null);
 
-// Seed the form: the provider preset first, then the existing account's real
-// settings when editing (those win, and never get clobbered by autodiscover).
-function applyProviderPreset() {
-	const preset = props.provider.preset;
-	if (!preset) return;
+// Copy the six IMAP/SMTP server fields from a preset (or an existing account,
+// which shares the same shape) into the form. The single source of truth for
+// the preset → form field mapping, reused by every seed/autofill site below.
+function fillServerFields(preset: MailPreset) {
 	form.imapHost = preset.imapHost;
 	form.imapPort = preset.imapPort;
 	form.isImapSecure = preset.isImapSecure;
 	form.smtpHost = preset.smtpHost;
 	form.smtpPort = preset.smtpPort;
 	form.isSmtpSecure = preset.isSmtpSecure;
+}
+
+// Seed the form: the provider preset first, then the existing account's real
+// settings when editing (those win, and never get clobbered by autodiscover).
+if (props.provider.preset) {
+	fillServerFields(props.provider.preset);
 	serverFieldsTouched.value = true;
 }
-applyProviderPreset();
 
 const a = props.account;
 if (props.mode === 'update' && a) {
 	form.emailAddress = a.emailAddress;
-	form.imapHost = a.imapHost;
-	form.imapPort = a.imapPort;
-	form.isImapSecure = a.isImapSecure;
-	form.smtpHost = a.smtpHost;
-	form.smtpPort = a.smtpPort;
-	form.isSmtpSecure = a.isSmtpSecure;
+	fillServerFields(a);
 	form.username = a.imapUsername;
 	serverFieldsTouched.value = true;
 }
@@ -101,24 +105,14 @@ watch(
 		if (!props.provider.manualServer || serverFieldsTouched.value) return;
 		const known = presetForEmail(email);
 		if (known) {
-			form.imapHost = known.imapHost;
-			form.imapPort = known.imapPort;
-			form.isImapSecure = known.isImapSecure;
-			form.smtpHost = known.smtpHost;
-			form.smtpPort = known.smtpPort;
-			form.isSmtpSecure = known.isSmtpSecure;
+			fillServerFields(known);
 			return;
 		}
 		const seq = ++autodiscoverSeq;
 		autodiscoverTimer = setTimeout(() => {
 			void resolveMailPreset(email).then((preset) => {
 				if (seq !== autodiscoverSeq || serverFieldsTouched.value || !preset) return;
-				form.imapHost = preset.imapHost;
-				form.imapPort = preset.imapPort;
-				form.isImapSecure = preset.isImapSecure;
-				form.smtpHost = preset.smtpHost;
-				form.smtpPort = preset.smtpPort;
-				form.isSmtpSecure = preset.isSmtpSecure;
+				fillServerFields(preset);
 			});
 		}, 500);
 	}
@@ -351,7 +345,13 @@ const submitLabel = computed(() =>
 			>
 				Test connection
 			</UiButton>
-			<UiButton type="button" variant="ghost" :disabled="busy" @click="emit('cancel')">
+			<UiButton
+				v-if="!hideCancel"
+				type="button"
+				variant="ghost"
+				:disabled="busy"
+				@click="emit('cancel')"
+			>
 				{{ mode === 'update' ? 'Cancel' : 'Back' }}
 			</UiButton>
 		</div>
