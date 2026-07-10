@@ -1,12 +1,14 @@
 use tauri::{command, AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
 /// Sets up close-to-tray behavior: hides the window instead of quitting.
-/// On macOS, this also hides the dock icon when the window is not visible.
+/// On macOS, this also re-asserts the traffic-light layout on resize/focus —
+/// the safety net for AppKit re-layouts that the synchronous observer can't
+/// see (see `setup_traffic_lights`).
 pub fn setup_close_handler(app: &AppHandle) {
     let app_handle = app.clone();
     if let Some(window) = app_handle.get_webview_window("main") {
-        window.on_window_event(move |event| {
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+        window.on_window_event(move |event| match event {
+            tauri::WindowEvent::CloseRequested { api, .. } => {
                 // Prevent the window from being destroyed
                 api.prevent_close();
                 // Hide the window instead
@@ -14,6 +16,13 @@ pub fn setup_close_handler(app: &AppHandle) {
                     let _ = win.hide();
                 }
             }
+            #[cfg(target_os = "macos")]
+            tauri::WindowEvent::Resized(_) | tauri::WindowEvent::Focused(_) => {
+                if let Some(win) = app_handle.get_webview_window("main") {
+                    relayout_traffic_lights(&win);
+                }
+            }
+            _ => {}
         });
     }
 }
@@ -81,10 +90,10 @@ const TITLEBAR_HEIGHT: f64 = 44.0;
 #[cfg(target_os = "macos")]
 const TRAFFIC_LIGHTS_X: f64 = 19.0;
 
-/// Re-entrancy guard for `layout_traffic_lights`: our own `setFrame` calls
-/// post the very notification that invokes us (synchronously, on this same
-/// stack), so without a hard gate any read-back drift would recurse to a stack
-/// overflow. Main-thread only, so a thread-local Cell suffices.
+// Re-entrancy guard for `layout_traffic_lights`: our own `setFrame` calls
+// post the very notification that invokes us (synchronously, on this same
+// stack), so without a hard gate any read-back drift would recurse to a stack
+// overflow. Main-thread only, so a thread-local Cell suffices.
 #[cfg(target_os = "macos")]
 thread_local! {
     static IN_TRAFFIC_LIGHT_LAYOUT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
@@ -153,16 +162,22 @@ fn layout_traffic_lights(ns_window: &objc2_app_kit::NSWindow) {
         container.setFrame(container_rect);
     }
 
-    // Center each button vertically in the strip; keep AppKit's own spacing.
-    let button_height = close.frame().size.height;
-    let spacing = miniaturize.frame().origin.x - close.frame().origin.x;
+    // Center each button vertically in the strip. Electron's redraw math
+    // (window_buttons_proxy.mm): gap-based padding between buttons, then
+    // `x += width + padding` — robust against a half-reset row.
+    let close_frame = close.frame();
+    let button_width = close_frame.size.width;
+    let button_height = close_frame.size.height;
+    let padding =
+        (miniaturize.frame().origin.x - (close_frame.origin.x + button_width)).clamp(0.0, 20.0);
     let button_y = (TITLEBAR_HEIGHT - button_height) / 2.0;
-    for (i, button) in [&close, &miniaturize, &zoom].into_iter().enumerate() {
+    let mut x = TRAFFIC_LIGHTS_X;
+    for button in [&close, &miniaturize, &zoom] {
         let rect = button.frame();
-        let x = TRAFFIC_LIGHTS_X + (i as f64) * spacing;
         if !roughly(rect.origin.x, x) || !roughly(rect.origin.y, button_y) {
             button.setFrameOrigin(objc2_foundation::NSPoint::new(x, button_y));
         }
+        x += button_width + padding;
     }
 }
 
@@ -182,17 +197,27 @@ fn layout_traffic_lights(ns_window: &objc2_app_kit::NSWindow) {
 ///   the band height is AppKit's choice (40pt compact / 66pt unified on
 ///   current macOS) — not the 44px strip this chrome wants.
 ///
-/// The mechanism that works at any strip height is correcting the layout
-/// *inside* AppKit's own pass: the titlebar container posts
-/// `NSViewFrameDidChangeNotification` synchronously from within `setFrame:`,
-/// before anything is committed to the screen. Re-applying our layout in that
-/// notification means the reset frame never becomes visible — no flicker, no
-/// race.
+/// The mechanism that works at any strip height (modeled on Electron's
+/// `WindowButtonsProxy`, the production-proven implementation of this):
+/// - Correct the layout *inside* AppKit's own pass: the titlebar container
+///   posts `NSViewFrameDidChangeNotification` synchronously from within
+///   `setFrame:`, before anything is committed to the screen, so AppKit's
+///   per-frame resets during live resize are never visible.
+/// - Observe ONLY the container, never the buttons: macOS can remove and
+///   re-add the standard buttons on the fly (Electron: "we should not cache
+///   them" — the zoom button in particular is recreated by the macOS 15+
+///   window-tiling hover machinery), which silently orphans per-button
+///   observers. Buttons are re-looked-up fresh on every layout instead.
+/// - Re-apply as a safety net from window-level moments where AppKit is known
+///   to re-layout without a container frame change: window focus changes and
+///   resize events (`main.rs`), and visibility toggles (Electron's macOS 26
+///   note: toggling the buttons' hidden state re-layouts the titlebar — see
+///   `apply_traffic_lights`). All calls are idempotent no-ops when the frames
+///   are already right.
 #[cfg(target_os = "macos")]
 pub fn setup_traffic_lights(window: &WebviewWindow) {
     use core::ptr::NonNull;
     use objc2::rc::Retained;
-    use objc2::ClassType;
     use objc2_app_kit::{
         NSTitlebarSeparatorStyle, NSViewFrameDidChangeNotification, NSWindow, NSWindowButton,
     };
@@ -212,19 +237,13 @@ pub fn setup_traffic_lights(window: &WebviewWindow) {
     layout_traffic_lights(ns_window);
 
     // SAFETY: button/superview walk as in layout_traffic_lights.
-    let (Some(close), Some(miniaturize), Some(zoom)) = (unsafe {
-        (
-            ns_window.standardWindowButton(NSWindowButton::CloseButton),
-            ns_window.standardWindowButton(NSWindowButton::MiniaturizeButton),
-            ns_window.standardWindowButton(NSWindowButton::ZoomButton),
-        )
-    }) else {
-        return;
-    };
-    let Some(container) = (unsafe { close.superview() }).and_then(|v| unsafe { v.superview() })
+    let Some(container) = (unsafe { ns_window.standardWindowButton(NSWindowButton::CloseButton) })
+        .and_then(|b| unsafe { b.superview() })
+        .and_then(|v| unsafe { v.superview() })
     else {
         return;
     };
+    container.setPostsFrameChangedNotifications(true);
 
     // SAFETY: retaining the NSWindow for the observer block; the main window
     // lives for the app's lifetime (close hides it), so no dangling risk.
@@ -234,30 +253,38 @@ pub fn setup_traffic_lights(window: &WebviewWindow) {
     let block = block2::RcBlock::new(move |_note: NonNull<NSNotification>| {
         layout_traffic_lights(&retained_window);
     });
-    // Watch the container AND each button: the container catches window
-    // resizes; the buttons catch Auto Layout re-placing them inside an
-    // unchanged container (which posts no container notification).
-    let center = unsafe { NSNotificationCenter::defaultCenter() };
-    for view in [
-        &*container,
-        close.as_super().as_super(),
-        miniaturize.as_super().as_super(),
-        zoom.as_super().as_super(),
-    ] {
-        view.setPostsFrameChangedNotifications(true);
-        // SAFETY: registered and delivered on the main thread; the center
-        // copies the block. The token is deliberately leaked — the observation
-        // must live as long as the window, i.e. the whole app.
-        let token = unsafe {
-            center.addObserverForName_object_queue_usingBlock(
-                Some(NSViewFrameDidChangeNotification),
-                Some(view),
-                None,
-                &block,
-            )
-        };
-        std::mem::forget(token);
+    // SAFETY: registered and delivered on the main thread; the center copies
+    // the block. The token is deliberately leaked — the observation must live
+    // as long as the window, i.e. the whole app.
+    let token = unsafe {
+        NSNotificationCenter::defaultCenter().addObserverForName_object_queue_usingBlock(
+            Some(NSViewFrameDidChangeNotification),
+            Some(&container),
+            None,
+            &block,
+        )
+    };
+    std::mem::forget(token);
+}
+
+/// Safety-net re-layout, callable from tauri window events (Resized/Focused in
+/// `main.rs`). Catches AppKit re-layouts that change no container frame — most
+/// notably the macOS 15+ recreation of the zoom button for the window-tiling
+/// hover menu, which otherwise leaves the fresh button at AppKit's default
+/// spot. Idempotent, so calling it often is free.
+#[cfg(target_os = "macos")]
+pub fn relayout_traffic_lights(window: &WebviewWindow) {
+    use objc2_app_kit::NSWindow;
+
+    let Ok(ptr) = window.ns_window() else {
+        return;
+    };
+    if ptr.is_null() {
+        return;
     }
+    // SAFETY: same contract as `apply_traffic_lights` below.
+    let ns_window: &NSWindow = unsafe { &*(ptr as *const NSWindow) };
+    layout_traffic_lights(ns_window);
 }
 
 /// Width of the native identity-frame ring, in points — mirrors the retired
@@ -470,6 +497,10 @@ fn apply_traffic_lights(window: &WebviewWindow, visible: bool) {
             unsafe { button.setHidden(hidden) };
         }
     }
+    // On macOS 26 toggling the buttons' hidden state can make AppKit re-layout
+    // the titlebar container back to its defaults (same finding as Electron's
+    // WindowButtonsProxy) — re-apply our geometry after every toggle.
+    layout_traffic_lights(ns_window);
 }
 
 /// Command: toggle the native macOS traffic-light buttons so they can follow the
