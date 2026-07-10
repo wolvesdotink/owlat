@@ -42,6 +42,12 @@ beforeAll(() => {
 		setWorkspaceAccent,
 	}));
 	vi.stubGlobal('useWorkspaceBadges', () => ({ badgeFor: (id: string) => badges[id] ?? 0 }));
+	// A palette is "mounted" so the search pill's palette-ready handshake passes.
+	vi.stubGlobal('useCommandPalette', () => ({
+		isMounted: ref(true),
+		open: vi.fn(),
+		registerMounted: () => () => {},
+	}));
 	vi.stubGlobal('navigateTo', navigateToMock);
 });
 
@@ -106,5 +112,24 @@ describe('DesktopTitlebar', () => {
 		activeId.value = 'w2';
 		const w = mountBar();
 		expect(w.find('.tb-unread').exists()).toBe(false);
+	});
+
+	it('falls back to a draggable brand strip with no chip/search/pill when no workspace is active', () => {
+		activeId.value = null;
+		const w = mountBar();
+
+		// No workspace-scoped controls in the fallback branch.
+		expect(w.find('.tb-chip').exists()).toBe(false);
+		expect(w.find('.tb-search').exists()).toBe(false);
+		expect(w.find('.tb-unread').exists()).toBe(false);
+
+		// The fallback brand strip (img + label) must stay draggable: every
+		// non-interactive element carries the drag-region attribute.
+		const img = w.get('img');
+		expect(img.attributes('data-tauri-drag-region')).toBeDefined();
+		const strip = img.element.parentElement;
+		expect(strip?.getAttribute('data-tauri-drag-region')).not.toBeNull();
+		const label = w.get('.font-display');
+		expect(label.attributes('data-tauri-drag-region')).toBeDefined();
 	});
 });
