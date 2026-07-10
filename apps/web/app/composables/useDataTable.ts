@@ -12,6 +12,14 @@ export interface DataTableOptions<TSortField extends string = string> {
 	pageSize?: number;
 	/** Debounce delay for search in ms (defaults to 300) */
 	searchDebounceDelay?: number;
+	/**
+	 * The columns that actually offer a sort affordance. Declaring them here is
+	 * the single source of truth the list pages share: a header is rendered
+	 * sortable if and only if `isSortable(field)` is true, so "sortable columns
+	 * declared" can never drift from "sortable columns rendered". When omitted,
+	 * every field is treated as sortable (back-compat).
+	 */
+	sortableFields?: readonly TSortField[];
 }
 
 export function useDataTable<TSortField extends string = string>(
@@ -19,8 +27,19 @@ export function useDataTable<TSortField extends string = string>(
 ) {
 	const { defaultSort, defaultOrder = 'desc', pageSize = 25, searchDebounceDelay = 300 } = options;
 
+	// Sortable-column contract (see DataTableOptions.sortableFields).
+	const declaredSortable = options.sortableFields ?? [];
+	const sortableSet = new Set<TSortField>(declaredSortable);
+	const isSortable = (field: TSortField): boolean =>
+		declaredSortable.length === 0 || sortableSet.has(field);
+
 	// Integrate useDebouncedSearch
-	const { searchQuery, debouncedSearch, clear: clearSearch, setImmediate: setSearchImmediate } = useDebouncedSearch(searchDebounceDelay);
+	const {
+		searchQuery,
+		debouncedSearch,
+		clear: clearSearch,
+		setImmediate: setSearchImmediate,
+	} = useDebouncedSearch(searchDebounceDelay);
 
 	// Sort state
 	const sortBy = ref<TSortField>(defaultSort) as Ref<TSortField>;
@@ -40,6 +59,8 @@ export function useDataTable<TSortField extends string = string>(
 	 * but 'desc' for date/timestamp fields (when field name includes 'date', 'At', or 'time')
 	 */
 	const toggleSort = (field: TSortField) => {
+		// Undeclared columns can never sort — keeps "declared sortable" load-bearing.
+		if (!isSortable(field)) return;
 		if (sortBy.value === field) {
 			sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc';
 		} else {
@@ -48,6 +69,15 @@ export function useDataTable<TSortField extends string = string>(
 			const isDateField = /date|At$|time/i.test(field);
 			sortOrder.value = isDateField ? 'desc' : 'asc';
 		}
+	};
+
+	/**
+	 * The chevron for a column header: null unless the field is the active sort,
+	 * then up/down for asc/desc. Shared so every list renders the same affordance.
+	 */
+	const getSortIcon = (field: TSortField): string | null => {
+		if (sortBy.value !== field) return null;
+		return sortOrder.value === 'asc' ? 'lucide:chevron-up' : 'lucide:chevron-down';
 	};
 
 	/**
@@ -107,6 +137,8 @@ export function useDataTable<TSortField extends string = string>(
 		sortBy: readonly(sortBy) as Readonly<Ref<TSortField>>,
 		sortOrder: readonly(sortOrder),
 		toggleSort,
+		getSortIcon,
+		isSortable,
 
 		// Pagination
 		currentPage,

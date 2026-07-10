@@ -165,8 +165,8 @@ export default defineNuxtConfig({
 		// Settings → Technical hub into its own first-class "Delivery" section at
 		// /dashboard/delivery/*. Redirect the old settings paths so bookmarks and
 		// deep links keep working; splat forwarding preserves trailing paths.
-		// (settings/blocklist stays put — it moves in a later piece; settings/api
-		// stays under Settings, it's app-level and only cross-linked from here.)
+		// (settings/api stays under Settings — it's app-level and only cross-linked
+		// from here. settings/blocklist re-homes under Audience; see below.)
 		'/dashboard/settings/reputation': { redirect: '/dashboard/delivery' },
 		'/dashboard/settings/domains': { redirect: '/dashboard/delivery/domains' },
 		'/dashboard/settings/domains/**': { redirect: '/dashboard/delivery/domains/**' },
@@ -175,6 +175,9 @@ export default defineNuxtConfig({
 		'/dashboard/settings/delivery': { redirect: '/dashboard/delivery/config' },
 		// Technical hub dissolved: its non-delivery cards re-home under Settings.
 		'/dashboard/settings/technical': { redirect: '/dashboard/settings' },
+		// Blocklist re-homed as "Suppressions" under Audience (it is audience data,
+		// not delivery config). Redirect the old Settings path so bookmarks work.
+		'/dashboard/settings/blocklist': { redirect: '/dashboard/audience/suppressions' },
 	},
 
 	icon: {

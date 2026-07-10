@@ -23,14 +23,8 @@ const { showToast } = useToast();
 // page. Email/name have no such index (a post-filter would drop rows), so they
 // stay plain headers rather than offering a misleading partial-page sort.
 type SortField = 'createdAt';
-const { searchQuery, debouncedSearch, sortBy, sortOrder, toggleSort, pageSize } =
-	useDataTable<SortField>({ defaultSort: 'createdAt' });
-
-// Sort indicator for the Created column (mirrors the topics/segments idiom).
-const getSortIcon = (field: SortField): string | null => {
-	if (sortBy.value !== field) return null;
-	return sortOrder.value === 'asc' ? 'lucide:chevron-up' : 'lucide:chevron-down';
-};
+const { searchQuery, debouncedSearch, sortBy, sortOrder, toggleSort, getSortIcon, pageSize } =
+	useDataTable<SortField>({ defaultSort: 'createdAt', sortableFields: ['createdAt'] });
 
 // Bulk selection
 const bulkSelection = useBulkSelection<Id<'contacts'>>();
@@ -634,18 +628,19 @@ onUnmounted(() => {
 									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
 										Last Name
 									</th>
-									<th
-										class="text-left px-6 py-4 text-sm font-medium text-text-secondary cursor-pointer hover:text-text-primary transition-colors"
-										@click="toggleSort('createdAt')"
-									>
-										<div class="flex items-center gap-1">
+									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
+										<button
+											type="button"
+											class="flex items-center gap-1 py-4 -my-4 px-1 -mx-1 rounded hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
+											@click="toggleSort('createdAt')"
+										>
 											Created
 											<Icon
 												v-if="getSortIcon('createdAt')"
 												:name="getSortIcon('createdAt')!"
 												class="w-4 h-4"
 											/>
-										</div>
+										</button>
 									</th>
 								</tr>
 							</thead>
