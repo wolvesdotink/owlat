@@ -6,6 +6,10 @@
  *   - freshStartStatus: active-only mailbox derivation, reservation surfacing,
  *     open-request flag
  *   - listPending / resolve: admin gating and org isolation
+ *
+ * Also covers auth/userOnboarding.completeFreshStart's refuse-without-mailbox
+ * rule (the fresh-path completion mapping), which lost its only test when the
+ * freshPathOnboardingEffects seam was deleted.
  */
 
 import { convexTest } from 'convex-test';
@@ -18,6 +22,11 @@ const sessionMocks = vi.hoisted(() => ({
 	getBetterAuthSessionWithRole: vi.fn(),
 	requireOrgMember: vi.fn(),
 	requireAdminContext: vi.fn(),
+	// listPending gates reads via requireOrgPermission; completeFreshStart via
+	// requireSelf. Both are called internally in sessionOrganization.ts, so the
+	// export mock is what the consuming module actually invokes.
+	requireOrgPermission: vi.fn(),
+	requireSelf: vi.fn(),
 }));
 
 vi.mock('../lib/sessionOrganization', async () => {
@@ -28,6 +37,8 @@ vi.mock('../lib/sessionOrganization', async () => {
 		getBetterAuthSessionWithRole: sessionMocks.getBetterAuthSessionWithRole,
 		requireOrgMember: sessionMocks.requireOrgMember,
 		requireAdminContext: sessionMocks.requireAdminContext,
+		requireOrgPermission: sessionMocks.requireOrgPermission,
+		requireSelf: sessionMocks.requireSelf,
 	};
 });
 
@@ -42,6 +53,12 @@ function setMemberSession(userId: string, orgId = 'test-org') {
 	sessionMocks.requireAdminContext.mockImplementation(async () => {
 		throw new Error('Only owners and admins can perform this action');
 	});
+	// A member (editor) fails the admin-gated read closed.
+	sessionMocks.requireOrgPermission.mockImplementation(async () => {
+		throw new Error("You don't have permission to perform this action");
+	});
+	// requireSelf resolves to the caller's own id (the flows only touch self).
+	sessionMocks.requireSelf.mockImplementation(async (_ctx: unknown, uid: string) => uid);
 }
 
 function setAdminSession(userId = 'admin-user', orgId = 'test-org') {
@@ -53,6 +70,8 @@ function setAdminSession(userId = 'admin-user', orgId = 'test-org') {
 	});
 	sessionMocks.requireOrgMember.mockResolvedValue({ userId, role: 'owner' });
 	sessionMocks.requireAdminContext.mockResolvedValue({ userId, role: 'owner' });
+	sessionMocks.requireOrgPermission.mockResolvedValue({ userId, role: 'owner' });
+	sessionMocks.requireSelf.mockImplementation(async (_ctx: unknown, uid: string) => uid);
 }
 
 async function seedUserProfile(
@@ -271,5 +290,55 @@ describe('mailboxRequest.listPending / resolve', () => {
 		await expect(
 			t.mutation(api.mail.mailboxRequest.resolve, { requestId: created.requestId })
 		).rejects.toThrow(/not accessible/i);
+	});
+
+	it('a non-admin member cannot list pending requests (fails closed)', async () => {
+		setMemberSession('member-a');
+		const t = convexTest(schema, modules);
+		await seedUserProfile(t, 'member-a', 'member-a@example.com');
+		await t.mutation(api.mail.mailboxRequest.request, {});
+
+		// Still a member: the admin-gated read must refuse.
+		await expect(t.query(api.mail.mailboxRequest.listPending, {})).rejects.toThrow(/permission/i);
+	});
+});
+
+describe('userOnboarding.completeFreshStart', () => {
+	it("refuses with 'No mailbox yet' when the caller has no mailbox", async () => {
+		setMemberSession('member-a');
+		const t = convexTest(schema, modules);
+		await seedUserProfile(t, 'member-a', 'member-a@example.com');
+
+		await expect(
+			t.mutation(api.auth.userOnboarding.completeFreshStart, { userId: 'member-a' })
+		).rejects.toThrow(/No mailbox yet/i);
+	});
+
+	it("refuses when the caller's only mailbox is suspended", async () => {
+		setMemberSession('member-a');
+		const t = convexTest(schema, modules);
+		await seedUserProfile(t, 'member-a', 'member-a@example.com');
+		await seedMailbox(t, 'member-a', 'member-a@hinterland.camp', 'suspended');
+
+		await expect(
+			t.mutation(api.auth.userOnboarding.completeFreshStart, { userId: 'member-a' })
+		).rejects.toThrow(/No mailbox yet/i);
+	});
+
+	it('marks mailboxReady when the caller has an active mailbox', async () => {
+		setMemberSession('member-a');
+		const t = convexTest(schema, modules);
+		await seedUserProfile(t, 'member-a', 'member-a@example.com');
+		await seedMailbox(t, 'member-a', 'member-a@hinterland.camp', 'active');
+
+		await t.mutation(api.auth.userOnboarding.completeFreshStart, { userId: 'member-a' });
+
+		await t.run(async (ctx) => {
+			const row = await ctx.db
+				.query('userOnboarding')
+				.withIndex('by_auth_user_id', (q) => q.eq('authUserId', 'member-a'))
+				.first();
+			expect(row?.mailboxReady).toBeTypeOf('number');
+		});
 	});
 });
