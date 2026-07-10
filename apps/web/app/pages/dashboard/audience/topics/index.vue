@@ -342,7 +342,7 @@ onMounted(() => {
 								<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
 									<button
 										type="button"
-										class="flex items-center gap-1 rounded hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
+										class="flex items-center gap-1 py-4 -my-4 px-1 -mx-1 rounded hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
 										@click="toggleSort('name')"
 									>
 										Name
@@ -355,7 +355,7 @@ onMounted(() => {
 								<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
 									<button
 										type="button"
-										class="flex items-center gap-1 rounded hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
+										class="flex items-center gap-1 py-4 -my-4 px-1 -mx-1 rounded hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
 										@click="toggleSort('contactCount')"
 									>
 										Contacts
@@ -369,7 +369,7 @@ onMounted(() => {
 								<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
 									<button
 										type="button"
-										class="flex items-center gap-1 rounded hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
+										class="flex items-center gap-1 py-4 -my-4 px-1 -mx-1 rounded hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
 										@click="toggleSort('createdAt')"
 									>
 										Created
