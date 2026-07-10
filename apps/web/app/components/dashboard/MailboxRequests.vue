@@ -1,12 +1,20 @@
 <script setup lang="ts">
 /**
- * Admin surfacing point for mailbox requests (piece c3).
+ * Admin surfacing point for mailbox requests (pieces c3 + a4).
  *
  * A member who hits the fresh-start dead-end (no mailbox, nothing they can do
  * alone) asks an admin in-app via `mail.mailboxRequest.request`. Those open
  * requests land here on the dashboard — where every admin already looks — so the
- * ask isn't lost in an email. Resolving a row is a plain acknowledgement (the
- * admin provisions the mailbox in the members/mailboxes flow).
+ * ask isn't lost in an email.
+ *
+ * Each row closes the loop two ways:
+ *   - "Provision now" stands the hosted mailbox up straight from the request
+ *     (`provisionFromRequest`) through the shared admin provisioning path and
+ *     resolves the request as FULFILLED — the requester is admitted to their
+ *     inbox. Disabled with a one-line reason when hosted mail isn't configured.
+ *   - "Mark done" is the plain acknowledge/decline for the cases where no hosted
+ *     mailbox is provisioned here (the requester connects an external account,
+ *     or the admin handled it elsewhere).
  *
  * Only rendered for admins by the parent; the backend also gates every read and
  * write on `requireAdminContext`, so this is defence-in-depth, not the fence.
@@ -19,22 +27,46 @@ const { data: requests, isLoading } = useConvexQuery(
 	() => ({})
 );
 
+// Hosted mailboxes can only be provisioned once at least one sending domain is
+// verified — the same signal the "add mailbox" flow keys off. No verified
+// domain ⇒ hosted mail isn't configured, so "Provision now" is disabled.
+const { data: verifiedDomains } = useConvexQuery(api.domains.domains.listVerified, () => ({}));
+// `undefined` = query not loaded yet: don't flash the disabled button + reason
+// on every mount before we know whether verified domains exist. Only decide once
+// the query has resolved.
+const domainsLoaded = computed(() => verifiedDomains.value !== undefined);
+const hostedConfigured = computed(() => (verifiedDomains.value?.length ?? 0) > 0);
+
+const { run: provisionRequest } = useBackendOperation(
+	api.mail.mailboxRequest.provisionFromRequest,
+	{ label: 'Provision mailbox' }
+);
 const { run: resolveRequest } = useBackendOperation(api.mail.mailboxRequest.resolve, {
 	label: 'Resolve mailbox request',
 });
 
 const openRequests = computed(() => requests.value ?? []);
 
-// Which row is mid-resolve, so only that button spins (not every row's).
-const resolvingId = ref<Id<'mailboxRequests'> | null>(null);
+// Which row is mid-action, and which action, so only that button spins.
+const busy = ref<{ id: Id<'mailboxRequests'>; action: 'provision' | 'resolve' } | null>(null);
+
+async function provision(requestId: Id<'mailboxRequests'>) {
+	if (busy.value || !hostedConfigured.value) return;
+	busy.value = { id: requestId, action: 'provision' };
+	try {
+		await provisionRequest({ requestId });
+	} finally {
+		busy.value = null;
+	}
+}
 
 async function resolve(requestId: Id<'mailboxRequests'>) {
-	if (resolvingId.value) return;
-	resolvingId.value = requestId;
+	if (busy.value) return;
+	busy.value = { id: requestId, action: 'resolve' };
 	try {
 		await resolveRequest({ requestId });
 	} finally {
-		resolvingId.value = null;
+		busy.value = null;
 	}
 }
 </script>
@@ -47,7 +79,8 @@ async function resolve(requestId: Id<'mailboxRequests'>) {
 				<h2 class="text-lg font-semibold text-text-primary">Mailbox requests</h2>
 				<p class="text-sm text-text-secondary mt-0.5">
 					{{ openRequests.length }} teammate{{ openRequests.length === 1 ? '' : 's' }} need a
-					mailbox set up. Provision one, then mark the request done.
+					mailbox. Provision one straight from the request, or mark it done if you've handled it
+					another way.
 				</p>
 			</div>
 		</div>
@@ -64,15 +97,34 @@ async function resolve(requestId: Id<'mailboxRequests'>) {
 						{{ req.name ? req.email : '' }}<span v-if="req.note"> — “{{ req.note }}”</span>
 					</p>
 				</div>
-				<UiButton
-					variant="outline"
-					size="sm"
-					:loading="resolvingId === req.id"
-					:disabled="resolvingId !== null && resolvingId !== req.id"
-					@click="resolve(req.id)"
-				>
-					Mark done
-				</UiButton>
+				<div class="flex shrink-0 items-center gap-2">
+					<div class="flex flex-col items-end gap-1">
+						<UiButton
+							variant="primary"
+							size="sm"
+							:loading="busy?.id === req.id && busy?.action === 'provision'"
+							:disabled="
+								!hostedConfigured ||
+								(busy !== null && !(busy.id === req.id && busy.action === 'provision'))
+							"
+							@click="provision(req.id)"
+						>
+							Provision now
+						</UiButton>
+						<p v-if="domainsLoaded && !hostedConfigured" class="text-xs text-text-tertiary">
+							Verify a sending domain first
+						</p>
+					</div>
+					<UiButton
+						variant="ghost"
+						size="sm"
+						:loading="busy?.id === req.id && busy?.action === 'resolve'"
+						:disabled="busy !== null && !(busy.id === req.id && busy.action === 'resolve')"
+						@click="resolve(req.id)"
+					>
+						Mark done
+					</UiButton>
+				</div>
 			</li>
 		</ul>
 	</div>
