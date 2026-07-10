@@ -192,15 +192,16 @@ describe('campaigns.duplicate — role enforcement', () => {
 
 describe('campaigns.sendNow — role enforcement', () => {
 	// Editors hold `campaigns:send`, so the permission gate no longer rejects
-	// them. A bare draft still fails downstream pre-flight (no verified sender /
-	// audience) — the point here is that it does NOT fail on the ROLE gate.
-	it('does not reject an editor on the permission gate', async () => {
+	// them. A bare draft (no template) still fails the downstream
+	// `validateReadyToSend` pre-flight — asserting that SPECIFIC message
+	// positively proves the editor cleared the role gate and reached pre-flight.
+	it('accepts an editor on the role gate; a bare draft fails downstream pre-flight', async () => {
 		const t = convexTest(schema, modules);
 		const campaignId = await seedCampaign(t);
 
 		mockRole = 'editor';
-		await expect(t.mutation(api.campaigns.campaigns.sendNow, { campaignId })).rejects.not.toThrow(
-			/owners and admins can send/i
+		await expect(t.mutation(api.campaigns.campaigns.sendNow, { campaignId })).rejects.toThrow(
+			/must have an email template/i
 		);
 	});
 });

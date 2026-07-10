@@ -40,28 +40,30 @@ vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
 	return {
 		...actual,
-		requireOrgMember: vi
-			.fn()
-			.mockImplementation(async () => ({ userId: sessionMock.user.id, role: sessionMock.user.role })),
+		requireOrgMember: vi.fn().mockImplementation(async () => ({
+			userId: sessionMock.user.id,
+			role: sessionMock.user.role,
+		})),
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
 		getUserIdFromSession: vi.fn().mockImplementation(async () => sessionMock.user.id),
 		getMutationContext: vi.fn().mockImplementation(async () => ({
 			userId: sessionMock.user.id,
 			role: sessionMock.user.role,
 		})),
-		requireOrgPermission: vi.fn().mockImplementation(
-			async (_ctx: unknown, permission: string, message?: string) => {
-				const mod: typeof import('../lib/sessionOrganization') = actual as typeof import('../lib/sessionOrganization');
+		requireOrgPermission: vi
+			.fn()
+			.mockImplementation(async (_ctx: unknown, permission: string, message?: string) => {
+				const mod: typeof import('../lib/sessionOrganization') =
+					actual as typeof import('../lib/sessionOrganization');
 				mod.requirePermission(
 					mod.hasPermission(
 						sessionMock.user.role as Parameters<typeof mod.hasPermission>[0],
-						permission as Parameters<typeof mod.hasPermission>[1],
+						permission as Parameters<typeof mod.hasPermission>[1]
 					),
-					message,
+					message
 				);
 				return { userId: sessionMock.user.id, role: sessionMock.user.role };
-			},
-		),
+			}),
 	};
 });
 
@@ -83,8 +85,8 @@ const modules = Object.fromEntries(
 			!path.includes('knowledgeExtraction') &&
 			!path.includes('semanticFileProcessing') &&
 			!path.includes('visualizationAgent') &&
-			!path.includes('llmProvider'),
-	),
+			!path.includes('llmProvider')
+	)
 );
 
 const setUser = (id: string, role: 'owner' | 'admin' | 'editor' = 'owner') => {
@@ -108,10 +110,10 @@ beforeEach(() => {
 // pre-flight, which require a verified domain + audience + template).
 async function seedCampaign(
 	t: TestConvex<typeof schema>,
-	overrides: Record<string, unknown> = {},
+	overrides: Record<string, unknown> = {}
 ): Promise<Id<'campaigns'>> {
 	return await t.run(async (ctx) =>
-		ctx.db.insert('campaigns', createTestCampaign(overrides) as never),
+		ctx.db.insert('campaigns', createTestCampaign(overrides) as never)
 	);
 }
 
@@ -145,7 +147,7 @@ describe('campaigns.scheduling.reschedule', () => {
 			ctx.db
 				.query('auditLogs')
 				.filter((q) => q.eq(q.field('action'), 'campaign.scheduled'))
-				.collect(),
+				.collect()
 		);
 		expect(audits.length).toBe(1);
 		expect(audits[0]!.resourceId).toBe(campaignId);
@@ -232,7 +234,7 @@ describe('campaigns.scheduling.reschedule', () => {
 			t.mutation(api.campaigns.scheduling.reschedule, {
 				campaignId,
 				scheduledAt: Date.now() - HOUR,
-			}),
+			})
 		).rejects.toThrow();
 	});
 
@@ -244,11 +246,11 @@ describe('campaigns.scheduling.reschedule', () => {
 			t.mutation(api.campaigns.scheduling.reschedule, {
 				campaignId,
 				scheduledAt: Date.now() + 24 * HOUR,
-			}),
+			})
 		).rejects.toThrow();
 	});
 
-	it('rejects an editor (lacks campaigns:schedule)', async () => {
+	it('accepts an editor (holds campaigns:schedule under the d4 map)', async () => {
 		const t = setupTest();
 		const campaignId = await seedCampaign(t, {
 			status: 'scheduled',
@@ -256,21 +258,26 @@ describe('campaigns.scheduling.reschedule', () => {
 		});
 
 		setUser('editor-user', 'editor');
+		const newAt = Date.now() + 24 * HOUR;
 		await expect(
 			t.mutation(api.campaigns.scheduling.reschedule, {
 				campaignId,
-				scheduledAt: Date.now() + 24 * HOUR,
-			}),
-		).rejects.toThrow();
+				scheduledAt: newAt,
+			})
+		).resolves.toBe(campaignId);
 
-		// And no audit row was written for the denied attempt.
+		// The reschedule landed: scheduledAt moved and the audit row was written
+		// under the editor's id — positively proving they cleared the role gate.
+		const campaign = await t.run(async (ctx) => ctx.db.get(campaignId));
+		expect(campaign?.scheduledAt).toBe(newAt);
 		const audits = await t.run(async (ctx) =>
 			ctx.db
 				.query('auditLogs')
 				.filter((q) => q.eq(q.field('action'), 'campaign.scheduled'))
-				.collect(),
+				.collect()
 		);
-		expect(audits.length).toBe(0);
+		expect(audits.length).toBe(1);
+		expect(audits[0]!.userId).toBe('editor-user');
 	});
 });
 
@@ -296,12 +303,10 @@ describe('campaigns.scheduling.cancel', () => {
 		const t = setupTest();
 		const campaignId = await seedCampaign(t, { status: 'draft' });
 
-		await expect(
-			t.mutation(api.campaigns.scheduling.cancel, { campaignId }),
-		).rejects.toThrow();
+		await expect(t.mutation(api.campaigns.scheduling.cancel, { campaignId })).rejects.toThrow();
 	});
 
-	it('rejects an editor (lacks campaigns:schedule)', async () => {
+	it('accepts an editor (holds campaigns:schedule under the d4 map)', async () => {
 		const t = setupTest();
 		const campaignId = await seedCampaign(t, {
 			status: 'scheduled',
@@ -309,9 +314,12 @@ describe('campaigns.scheduling.cancel', () => {
 		});
 
 		setUser('editor-user', 'editor');
-		await expect(
-			t.mutation(api.campaigns.scheduling.cancel, { campaignId }),
-		).rejects.toThrow();
+		await expect(t.mutation(api.campaigns.scheduling.cancel, { campaignId })).resolves.toBe(
+			campaignId
+		);
+
+		const campaign = await t.run(async (ctx) => ctx.db.get(campaignId));
+		expect(campaign?.status).toBe('cancelled');
 	});
 
 	it('404s on a missing campaign', async () => {
@@ -320,7 +328,7 @@ describe('campaigns.scheduling.cancel', () => {
 		await t.run(async (ctx) => ctx.db.delete(ghost));
 
 		await expect(
-			t.mutation(api.campaigns.scheduling.cancel, { campaignId: ghost }),
+			t.mutation(api.campaigns.scheduling.cancel, { campaignId: ghost })
 		).rejects.toThrow();
 	});
 });
@@ -348,12 +356,10 @@ describe('campaigns.scheduling.unschedule', () => {
 		const t = setupTest();
 		const campaignId = await seedCampaign(t, { status: 'draft' });
 
-		await expect(
-			t.mutation(api.campaigns.scheduling.unschedule, { campaignId }),
-		).rejects.toThrow();
+		await expect(t.mutation(api.campaigns.scheduling.unschedule, { campaignId })).rejects.toThrow();
 	});
 
-	it('rejects an editor (lacks campaigns:schedule)', async () => {
+	it('accepts an editor (holds campaigns:schedule under the d4 map)', async () => {
 		const t = setupTest();
 		const campaignId = await seedCampaign(t, {
 			status: 'scheduled',
@@ -361,9 +367,13 @@ describe('campaigns.scheduling.unschedule', () => {
 		});
 
 		setUser('editor-user', 'editor');
-		await expect(
-			t.mutation(api.campaigns.scheduling.unschedule, { campaignId }),
-		).rejects.toThrow();
+		await expect(t.mutation(api.campaigns.scheduling.unschedule, { campaignId })).resolves.toBe(
+			campaignId
+		);
+
+		const campaign = await t.run(async (ctx) => ctx.db.get(campaignId));
+		expect(campaign?.status).toBe('draft');
+		expect(campaign?.scheduledAt).toBeUndefined();
 	});
 });
 
@@ -372,8 +382,11 @@ describe('campaigns.scheduling.unschedule', () => {
 // ============================================================================
 
 describe('campaigns.scheduling.schedule', () => {
-	it('rejects an editor before any preflight runs (lacks campaigns:schedule)', async () => {
+	it('does not reject an editor on the role gate — a bare draft fails downstream preflight', async () => {
 		const t = setupTest();
+		// Bare draft: no template/audience, so validateReadyToSend fails. Under the
+		// d4 map the editor holds campaigns:schedule, so the rejection is the
+		// preflight failure, NOT the role gate — proving the editor cleared it.
 		const campaignId = await seedCampaign(t, { status: 'draft' });
 
 		setUser('editor-user', 'editor');
@@ -381,8 +394,8 @@ describe('campaigns.scheduling.schedule', () => {
 			t.mutation(api.campaigns.scheduling.schedule, {
 				campaignId,
 				scheduledAt: Date.now() + 24 * HOUR,
-			}),
-		).rejects.toThrow();
+			})
+		).rejects.toThrow(/must have an email template/i);
 	});
 
 	it('rejects scheduling a non-draft campaign', async () => {
@@ -396,7 +409,7 @@ describe('campaigns.scheduling.schedule', () => {
 			t.mutation(api.campaigns.scheduling.schedule, {
 				campaignId,
 				scheduledAt: Date.now() + 24 * HOUR,
-			}),
+			})
 		).rejects.toThrow();
 	});
 
@@ -415,7 +428,7 @@ describe('campaigns.scheduling.schedule', () => {
 			t.mutation(api.campaigns.scheduling.schedule, {
 				campaignId,
 				scheduledAt: Date.now() + 24 * HOUR,
-			}),
+			})
 		).rejects.toThrow();
 	});
 });
@@ -447,7 +460,7 @@ describe('campaigns.testSend.sendTestEmailFromTemplate (recipient allowlist)', (
 				subject: 'Preview',
 				testEmails: ['attacker@evil.test'],
 				fromEmail: 'sender@owlat.test',
-			}),
+			})
 		).rejects.toThrow();
 	});
 
@@ -459,7 +472,7 @@ describe('campaigns.testSend.sendTestEmailFromTemplate (recipient allowlist)', (
 				subject: 'Preview',
 				testEmails: ['not-an-email'],
 				fromEmail: 'sender@owlat.test',
-			}),
+			})
 		).rejects.toThrow();
 	});
 
@@ -471,7 +484,7 @@ describe('campaigns.testSend.sendTestEmailFromTemplate (recipient allowlist)', (
 				subject: 'Preview',
 				testEmails: [],
 				fromEmail: 'sender@owlat.test',
-			}),
+			})
 		).rejects.toThrow();
 	});
 });
@@ -485,7 +498,7 @@ describe('GET /archive/:token (archiveHttp)', () => {
 
 	async function seedArchivedCampaign(
 		t: TestConvex<typeof schema>,
-		overrides: Record<string, unknown> = {},
+		overrides: Record<string, unknown> = {}
 	): Promise<{ token: string }> {
 		const token = `arch_${Math.random().toString(36).slice(2)}`;
 		await t.run(async (ctx) => {
@@ -499,7 +512,7 @@ describe('GET /archive/:token (archiveHttp)', () => {
 					archiveSubject: 'Archived subject',
 					sentAt: Date.now(),
 					...overrides,
-				}) as never,
+				}) as never
 			);
 		});
 		return { token };
@@ -565,7 +578,7 @@ describe('campaigns.create (campaign.created audit)', () => {
 			ctx.db
 				.query('auditLogs')
 				.filter((q) => q.eq(q.field('action'), 'campaign.created'))
-				.collect(),
+				.collect()
 		);
 		expect(audits.length).toBe(1);
 		expect(audits[0]!.resourceId).toBe(campaignId);
@@ -573,22 +586,23 @@ describe('campaigns.create (campaign.created audit)', () => {
 		expect(audits[0]!.userId).toBe('test-user');
 	});
 
-	it('rejects an editor (lacks campaigns:manage) with no audit row', async () => {
+	it('accepts an editor (holds campaigns:manage under the d4 map) and writes the audit row', async () => {
 		const t = setupTest();
 		await enableFeatures(t, ['campaigns']);
 
 		setUser('editor-user', 'editor');
-		await expect(
-			t.mutation(api.campaigns.campaigns.create, { name: 'Nope' }),
-		).rejects.toThrow();
+		const campaignId = await t.mutation(api.campaigns.campaigns.create, { name: 'Editor Launch' });
+		expect(campaignId).toBeDefined();
 
 		const audits = await t.run(async (ctx) =>
 			ctx.db
 				.query('auditLogs')
 				.filter((q) => q.eq(q.field('action'), 'campaign.created'))
-				.collect(),
+				.collect()
 		);
-		expect(audits.length).toBe(0);
+		expect(audits.length).toBe(1);
+		expect(audits[0]!.resourceId).toBe(campaignId);
+		expect(audits[0]!.userId).toBe('editor-user');
 	});
 });
 
@@ -606,7 +620,7 @@ describe('campaigns.remove (campaign.deleted audit)', () => {
 			ctx.db
 				.query('auditLogs')
 				.filter((q) => q.eq(q.field('action'), 'campaign.deleted'))
-				.collect(),
+				.collect()
 		);
 		expect(audits.length).toBe(1);
 		expect(audits[0]!.resourceId).toBe(campaignId);
@@ -617,22 +631,21 @@ describe('campaigns.remove (campaign.deleted audit)', () => {
 		const t = setupTest();
 		const campaignId = await seedCampaign(t, { status: 'sending' });
 
-		await expect(
-			t.mutation(api.campaigns.campaigns.remove, { campaignId }),
-		).rejects.toThrow();
+		await expect(t.mutation(api.campaigns.campaigns.remove, { campaignId })).rejects.toThrow();
 
 		// Still present; no deletion audit row.
 		const stillThere = await t.run(async (ctx) => ctx.db.get(campaignId));
 		expect(stillThere).not.toBeNull();
 	});
 
-	it('rejects an editor (lacks campaigns:manage)', async () => {
+	it('accepts an editor (holds campaigns:manage under the d4 map)', async () => {
 		const t = setupTest();
 		const campaignId = await seedCampaign(t, { status: 'draft' });
 
 		setUser('editor-user', 'editor');
-		await expect(
-			t.mutation(api.campaigns.campaigns.remove, { campaignId }),
-		).rejects.toThrow();
+		await t.mutation(api.campaigns.campaigns.remove, { campaignId });
+
+		const gone = await t.run(async (ctx) => ctx.db.get(campaignId));
+		expect(gone).toBeNull();
 	});
 });
