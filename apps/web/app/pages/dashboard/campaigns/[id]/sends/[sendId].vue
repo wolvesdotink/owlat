@@ -18,17 +18,6 @@ const { data: send, isLoading } = useConvexQuery(
 	() => ({ id: sendId.value })
 );
 
-const statusConfig: Record<string, { icon: string; color: string; bg: string }> = {
-	queued: { icon: 'lucide:clock', color: 'text-text-secondary', bg: 'bg-bg-surface' },
-	sent: { icon: 'lucide:send', color: 'text-brand', bg: 'bg-brand/10' },
-	delivered: { icon: 'lucide:check-circle-2', color: 'text-success', bg: 'bg-success/10' },
-	opened: { icon: 'lucide:eye', color: 'text-brand', bg: 'bg-brand/10' },
-	clicked: { icon: 'lucide:mouse-pointer-click', color: 'text-warning', bg: 'bg-warning/10' },
-	bounced: { icon: 'lucide:x-circle', color: 'text-error', bg: 'bg-error/10' },
-	complained: { icon: 'lucide:alert-triangle', color: 'text-error', bg: 'bg-error/10' },
-};
-
-const getStatusConfig = (status: string) => (statusConfig[status] ?? statusConfig['queued'])!;
 </script>
 
 <template>
@@ -91,16 +80,7 @@ const getStatusConfig = (status: string) => (statusConfig[status] ?? statusConfi
 						>
 							Variant {{ send.abVariant }}
 						</span>
-						<span
-							:class="[
-								'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium',
-								getStatusConfig(send.status).bg,
-								getStatusConfig(send.status).color,
-							]"
-						>
-							<Icon :name="getStatusConfig(send.status).icon" class="w-3 h-3" />
-							{{ capitalize(send.status) }}
-						</span>
+						<DashboardSendStatusBadge :status="send.status" fallback="queued" />
 					</div>
 				</div>
 			</div>
