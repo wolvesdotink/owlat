@@ -46,7 +46,7 @@ const reasonPhrase = computed(() => {
 			<button
 				v-if="canManage"
 				type="button"
-				class="font-medium text-brand hover:underline disabled:opacity-60"
+				class="-my-2 -mx-1 px-1 py-2 font-medium text-brand hover:underline disabled:opacity-60"
 				:disabled="removing"
 				@click="emit('remove')"
 			>

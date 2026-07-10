@@ -166,15 +166,13 @@ const { canManageContacts } = usePermissions();
 const { data: suppression } = useConvexQuery(api.blockedEmails.getByEmail, () =>
 	contact.value?.email ? { email: contact.value.email } : 'skip'
 );
-const isRemovingSuppression = ref(false);
-const { run: removeSuppression } = useBackendOperation(api.blockedEmails.remove, {
-	label: 'Remove suppression',
-});
+const { run: removeSuppression, isLoading: isRemovingSuppression } = useBackendOperation(
+	api.blockedEmails.remove,
+	{ label: 'Remove suppression' }
+);
 async function handleRemoveSuppression() {
 	if (!suppression.value) return;
-	isRemovingSuppression.value = true;
 	const result = await removeSuppression({ blockedEmailId: suppression.value._id });
-	isRemovingSuppression.value = false;
 	if (result === undefined) return;
 	showToast('Suppression removed');
 }
@@ -226,7 +224,7 @@ async function handleRemoveSuppression() {
 			<ContactsSuppressionNotice
 				v-if="suppression"
 				:reason="suppression.reason"
-				:date-label="formatDate(suppression.createdAt)"
+				:date-label="formatShortDate(suppression.createdAt)"
 				:can-manage="canManageContacts"
 				:removing="isRemovingSuppression"
 				class="mb-6"
