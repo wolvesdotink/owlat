@@ -17,6 +17,10 @@ cd "$(dirname "$0")/.."
 # Files permitted to call authedIdentityMutation (signup-bootstrap path only).
 ALLOWLIST=(
 	"convex/auth/userProfiles.ts"
+	# Access request: a signed-in but orgless user asking admins for an invite.
+	# Pre-org by definition (they are not a member), and the handler only writes
+	# its own accessRequests row — it never grants membership.
+	"convex/auth/accessRequest.ts"
 )
 
 # Call sites: `= authedIdentityMutation({` / `authedIdentityMutation(`. The
