@@ -34,12 +34,17 @@
 
 import { v } from 'convex/values';
 import { internal } from '../_generated/api';
-import { authedMutation, publicQuery } from '../lib/authedFunctions';
-import { getBetterAuthSessionWithRole, requireAdminContext } from '../lib/sessionOrganization';
+import { authedMutation, adminMutation, publicQuery } from '../lib/authedFunctions';
+import { getBetterAuthSessionWithRole, hasPermission } from '../lib/sessionOrganization';
 import { assertFeatureEnabled } from '../lib/featureFlags';
 import { provisionMailbox } from './mailbox';
 import { getOptional } from '../lib/env';
-import { throwForbidden, throwInvalidState, throwNotFound } from '../_utils/errors';
+import {
+	throwForbidden,
+	throwInvalidState,
+	throwNotFound,
+	throwUnauthenticated,
+} from '../_utils/errors';
 import type { QueryCtx, MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 
@@ -51,20 +56,24 @@ import type { Doc, Id } from '../_generated/dataModel';
 const MX_PRIORITY = 10;
 
 /** The public EHLO/MX hostname mail servers deliver to for this deployment. */
-export function inboundMailHost(): string | null {
+function inboundMailHost(): string | null {
 	return getOptional('EHLO_HOSTNAME')?.trim() || null;
 }
 
 type SessionWithRole = NonNullable<Awaited<ReturnType<typeof getBetterAuthSessionWithRole>>>;
+/** A session narrowed to a real org member — `role` is guaranteed non-null. */
+type MoverSession = SessionWithRole & { role: NonNullable<SessionWithRole['role']> };
 
 /**
- * Resolve the caller's own active external mailbox — the thing a move operates
+ * Resolve the caller's own movable external mailbox — the thing a move operates
  * on. Returns `null` when the caller is anonymous/role-less, has no external
- * account, or the account/mailbox isn't in a movable state, letting each caller
- * pick its own failure mode.
+ * account, or the account/mailbox isn't in a movable state: a `disconnected`
+ * account (whose mailbox was demoted) or a non-`active` mailbox has nothing to
+ * move. Mirrors `externalAccounts.getForCurrentUser`. Each caller picks its own
+ * failure mode from the `null`.
  */
 async function getCallerExternalMailbox(ctx: QueryCtx | MutationCtx): Promise<{
-	session: SessionWithRole;
+	session: MoverSession;
 	account: Doc<'externalMailAccounts'>;
 	mailbox: Doc<'mailboxes'>;
 } | null> {
@@ -74,10 +83,12 @@ async function getCallerExternalMailbox(ctx: QueryCtx | MutationCtx): Promise<{
 		.query('externalMailAccounts')
 		.withIndex('by_user', (q) => q.eq('userId', session.userId))
 		.first();
-	if (!account) return null;
+	// A disconnected account is dead (its mailbox was set to 'deleted' on
+	// disconnect) — there's nothing live to move.
+	if (!account || account.status === 'disconnected') return null;
 	const mailbox = await ctx.db.get(account.mailboxId);
-	if (!mailbox) return null;
-	return { session, account, mailbox };
+	if (!mailbox || mailbox.status !== 'active') return null;
+	return { session: session as MoverSession, account, mailbox };
 }
 
 /** The caller's own move job, if any (at most one live per user). */
@@ -89,6 +100,21 @@ async function getCallerMove(
 		.query('mailboxMoves')
 		.withIndex('by_user', (q) => q.eq('userId', userId))
 		.first();
+}
+
+/**
+ * Shared preamble for the self-scoped move mutations (archive/pause/resume/
+ * cancel): require an authenticated org member and load their own move, or
+ * throw. Folds the repeated auth + not-found block into one call.
+ */
+async function requireCallerMove(
+	ctx: MutationCtx
+): Promise<{ session: SessionWithRole; move: Doc<'mailboxMoves'> }> {
+	const session = await getBetterAuthSessionWithRole(ctx);
+	if (!session || !session.role) throwUnauthenticated();
+	const move = await getCallerMove(ctx, session.userId);
+	if (!move) throwNotFound('Mailbox move');
+	return { session, move };
 }
 
 /**
@@ -113,7 +139,7 @@ export const moveStatus = publicQuery({
 		const move = await getCallerMove(ctx, session.userId);
 		// Owners/admins can provision a hosted mailbox themselves; anyone else must
 		// wait for an admin to act on the request `start` raised.
-		const isAdmin = session.role === 'owner' || session.role === 'admin';
+		const isAdmin = hasPermission(session.role, 'organization:manage');
 
 		return {
 			eligible: true as const,
@@ -131,7 +157,7 @@ export const moveStatus = publicQuery({
 				? {
 						id: move._id,
 						stage: move.stage,
-						paused: move.paused,
+						isPaused: move.isPaused,
 						hostedMailboxId: move.hostedMailboxId ?? null,
 						awaitingAdminProvision:
 							move.stage === 'provisioning' && move.provisionRequestId != null,
@@ -171,7 +197,7 @@ export const start = authedMutation({
 		}
 
 		const now = Date.now();
-		const isAdmin = session.role === 'owner' || session.role === 'admin';
+		const isAdmin = hasPermission(session.role, 'organization:manage');
 
 		// Non-admins can't provision hosted mailboxes — surface a request rather
 		// than bypassing the admin-only gate.
@@ -201,7 +227,7 @@ export const start = authedMutation({
 			address: mailbox.address,
 			domain: mailbox.domain,
 			stage: 'provisioning',
-			paused: false,
+			isPaused: false,
 			provisionRequestId,
 			createdAt: now,
 			updatedAt: now,
@@ -219,12 +245,15 @@ export const start = authedMutation({
  * then it sits empty and the external account keeps delivering, so provisioning
  * is safe to do early.
  */
-// authz: admin — requireAdminContext gates hosted-mailbox creation.
-export const provisionHosted = authedMutation({
+// authz: admin — the adminMutation wrapper gates hosted-mailbox creation.
+export const provisionHosted = adminMutation({
 	args: { moveId: v.id('mailboxMoves') },
 	handler: async (ctx, args) => {
 		await assertFeatureEnabled(ctx, 'mail.external');
-		const session = await requireAdminContext(ctx);
+		// The wrapper already enforced the admin floor; we still need the session
+		// for the acting user + org scope.
+		const session = await getBetterAuthSessionWithRole(ctx);
+		if (!session?.activeOrganizationId) throwForbidden('No active organization');
 
 		const move = await ctx.db.get(args.moveId);
 		if (!move) throwNotFound('Mailbox move');
@@ -252,7 +281,6 @@ export const provisionHosted = authedMutation({
 			organizationId: move.organizationId,
 			address: move.address,
 			domain: move.domain,
-			displayName: undefined,
 			kind: 'hosted',
 			scope: 'personal',
 		});
@@ -298,11 +326,7 @@ export const archive = authedMutation({
 	args: {},
 	handler: async (ctx) => {
 		await assertFeatureEnabled(ctx, 'mail.external');
-		const session = await getBetterAuthSessionWithRole(ctx);
-		if (!session || !session.role) throwForbidden('Not authenticated');
-
-		const move = await getCallerMove(ctx, session.userId);
-		if (!move) throwNotFound('Mailbox move');
+		const { move } = await requireCallerMove(ctx);
 
 		// Idempotent terminal state.
 		if (move.stage === 'archived') {
@@ -329,7 +353,7 @@ export const archive = authedMutation({
 
 		await ctx.db.patch(move._id, {
 			stage: 'archived',
-			paused: false,
+			isPaused: false,
 			archivedAt: now,
 			updatedAt: now,
 		});
@@ -343,15 +367,12 @@ export const pause = authedMutation({
 	args: {},
 	handler: async (ctx) => {
 		await assertFeatureEnabled(ctx, 'mail.external');
-		const session = await getBetterAuthSessionWithRole(ctx);
-		if (!session || !session.role) throwForbidden('Not authenticated');
-		const move = await getCallerMove(ctx, session.userId);
-		if (!move) throwNotFound('Mailbox move');
-		if (move.stage === 'archived' || move.paused) {
-			return { paused: move.paused };
+		const { move } = await requireCallerMove(ctx);
+		if (move.stage === 'archived' || move.isPaused) {
+			return { isPaused: move.isPaused };
 		}
-		await ctx.db.patch(move._id, { paused: true, updatedAt: Date.now() });
-		return { paused: true };
+		await ctx.db.patch(move._id, { isPaused: true, updatedAt: Date.now() });
+		return { isPaused: true };
 	},
 });
 
@@ -361,15 +382,12 @@ export const resume = authedMutation({
 	args: {},
 	handler: async (ctx) => {
 		await assertFeatureEnabled(ctx, 'mail.external');
-		const session = await getBetterAuthSessionWithRole(ctx);
-		if (!session || !session.role) throwForbidden('Not authenticated');
-		const move = await getCallerMove(ctx, session.userId);
-		if (!move) throwNotFound('Mailbox move');
-		if (!move.paused) {
-			return { paused: false };
+		const { move } = await requireCallerMove(ctx);
+		if (!move.isPaused) {
+			return { isPaused: false };
 		}
-		await ctx.db.patch(move._id, { paused: false, updatedAt: Date.now() });
-		return { paused: false };
+		await ctx.db.patch(move._id, { isPaused: false, updatedAt: Date.now() });
+		return { isPaused: false };
 	},
 });
 
@@ -380,27 +398,40 @@ export const resume = authedMutation({
  * cache, so inbound routing falls back to the external provider once MX is
  * repointed — nothing is lost. The external account is untouched (still live and
  * syncing). Self.
+ *
+ * The clean rollback only holds while the hosted mailbox is still empty. Cancel
+ * is allowed all through `cutover_pending`, i.e. exactly when MX may already
+ * point here and real mail may have landed in the hosted mailbox. Tearing it
+ * down then would orphan that mail, so we refuse and tell the user to repoint MX
+ * back (or archive) first — honoring the in-flow "nothing is lost" promise.
  */
 // authz: self — cancels only the caller's own move.
 export const cancel = authedMutation({
 	args: {},
 	handler: async (ctx) => {
 		await assertFeatureEnabled(ctx, 'mail.external');
-		const session = await getBetterAuthSessionWithRole(ctx);
-		if (!session || !session.role) throwForbidden('Not authenticated');
-		const move = await getCallerMove(ctx, session.userId);
-		if (!move) throwNotFound('Mailbox move');
+		const { session, move } = await requireCallerMove(ctx);
 		if (move.stage === 'archived') {
 			throwInvalidState("This move is already complete and can't be cancelled");
 		}
 
 		const now = Date.now();
 
-		// Tear down the hosted mailbox we stood up (it holds no real mail yet — MX
-		// never cut over — so soft-delete + un-cache is a clean rollback).
+		// Tear down the hosted mailbox we stood up — but only if it's still empty.
+		// Once inbound mail has landed in it (MX already cut over), a soft-delete
+		// would orphan real mail; refuse and point the user back at MX/archive.
 		if (move.hostedMailboxId != null) {
 			const hosted = await ctx.db.get(move.hostedMailboxId);
 			if (hosted && hosted.status !== 'deleted') {
+				const anyMessage = await ctx.db
+					.query('mailMessages')
+					.withIndex('by_mailbox_and_received', (q) => q.eq('mailboxId', hosted._id))
+					.first();
+				if (anyMessage) {
+					throwInvalidState(
+						'Mail has already arrived in your Owlat mailbox. Point your MX record back at your old provider first, then archive — cancelling now would lose that mail.'
+					);
+				}
 				await ctx.db.patch(move.hostedMailboxId, { status: 'deleted', updatedAt: now });
 				await ctx.scheduler.runAfter(0, internal.mail.mailboxActions.removeFromCache, {
 					address: hosted.address,

@@ -297,7 +297,7 @@ export const mailTables = {
 	//
 	// Stages advance one way — provisioning → cutover_pending → archived — but
 	// each transition is IDEMPOTENT (re-running the current stage is a no-op) and
-	// the whole job is PAUSABLE (`paused`) so a member can stop between DNS steps
+	// the whole job is PAUSABLE (`isPaused`) so a member can stop between DNS steps
 	// and resume later without losing place. Rollback = cancel the job before it
 	// reaches `archived` (mail/mailboxMove.ts:cancel): the archive demotion is the
 	// only irreversible step and it never runs until the final stage, so repointing
@@ -314,7 +314,7 @@ export const mailTables = {
 			v.literal('cutover_pending'), // hosted mailbox exists; waiting on MX cutover
 			v.literal('archived') // external demoted to read-only archive; move done
 		),
-		paused: v.boolean(),
+		isPaused: v.boolean(),
 		// Hosted mailbox provisioned on the same address (set at the
 		// provisioning → cutover_pending transition; the live inbox after cutover).
 		hostedMailboxId: v.optional(v.id('mailboxes')),
