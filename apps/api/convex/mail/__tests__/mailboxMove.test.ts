@@ -334,6 +334,40 @@ describe('archive — stops sync without data loss', () => {
 		});
 	});
 
+	it('a completed move does not shadow a fresh move on a newly-connected account', async () => {
+		const t = convexTest(schema, modules);
+		await provisioned(t); // move on me@example.com, provisioned + about to archive
+		await t.mutation(api.mail.mailboxMove.archive, {});
+
+		// The old account is now 'disconnected', so connecting a second external
+		// account on a DIFFERENT address is allowed.
+		await t.mutation(internal.mail.externalAccounts._connectInternal, {
+			...CREDS,
+			emailAddress: 'other@example.org',
+			imapUsername: 'other@example.org',
+		});
+
+		// moveStatus must pair the move with the live account, not the caller's
+		// oldest (archived) row: the new address shows the "start a move" pitch,
+		// with no move and the address that actually lives on the external account.
+		const status = await t.query(api.mail.mailboxMove.moveStatus, {});
+		expect(status.eligible).toBe(true);
+		if (!status.eligible) throw new Error('expected eligible');
+		expect(status.address).toBe('other@example.org');
+		expect(status.move).toBeNull();
+
+		// A fresh start is reachable — it creates a move on the new account, and
+		// moveStatus/requireCallerMove now surface THAT move, not the archived one.
+		const started = await t.mutation(api.mail.mailboxMove.start, {});
+		expect(started.stage).toBe('provisioning');
+		const after = await t.query(api.mail.mailboxMove.moveStatus, {});
+		expect(after.eligible).toBe(true);
+		if (!after.eligible) throw new Error('expected eligible');
+		expect(after.address).toBe('other@example.org');
+		expect(after.move?.id).toBe(started.moveId);
+		expect(after.move?.stage).toBe('provisioning');
+	});
+
 	it('archiving is idempotent', async () => {
 		const t = convexTest(schema, modules);
 		await provisioned(t);
