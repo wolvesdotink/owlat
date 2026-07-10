@@ -26,10 +26,23 @@ describe('renderSystemEmail', () => {
 
 describe('system email generators', () => {
 	it('invitation escapes interpolated values and sets the title', () => {
-		const html = generateInvitationEmailHtml('Acme & Co', "O'Brien", 'o@acme.com', 'https://x/a', 'admin');
+		const html = generateInvitationEmailHtml(
+			'Acme & Co',
+			"O'Brien",
+			'o@acme.com',
+			'https://x/a',
+			'admin'
+		);
 		expect(html).toContain("<title>You're invited to join Acme &amp; Co</title>");
 		expect(html).toContain('O&#39;Brien');
 		expect(html).toContain('Accept Invitation');
+		expect(html).toContain('as an <strong style="color: #c4785a;">Admin</strong>');
+	});
+
+	it('invitation maps the BetterAuth "member" wire role to the "Editor" app label', () => {
+		const html = generateInvitationEmailHtml('Acme', 'Sam', 's@acme.com', 'https://x/a', 'member');
+		expect(html).toContain('as an <strong style="color: #c4785a;">Editor</strong>');
+		expect(html).not.toContain('Member');
 	});
 
 	it('password reset escapes the name', () => {
@@ -71,13 +84,13 @@ describe('system email generators', () => {
 		const html = generatePasswordResetEmailHtml('Jo', 'https://x/reset?t=42');
 		// Button: the styled <a> carrying the label.
 		expect(html).toContain(
-			'<a href="https://x/reset?t=42" style="display: inline-block; padding: 14px 32px;',
+			'<a href="https://x/reset?t=42" style="display: inline-block; padding: 14px 32px;'
 		);
 		expect(html).toContain('Reset Password');
 		// Fallback: the verbatim instruction + the bare URL rendered as a link.
 		expect(html).toContain('Or copy and paste this link into your browser:');
 		expect(html).toContain(
-			'<a href="https://x/reset?t=42" style="color: #c4785a; text-decoration: underline;">',
+			'<a href="https://x/reset?t=42" style="color: #c4785a; text-decoration: underline;">'
 		);
 		// The URL appears twice (button href + fallback href + fallback text).
 		expect(html.split('https://x/reset?t=42').length - 1).toBe(3);
@@ -99,7 +112,7 @@ describe('system email generators', () => {
 		const html = generateConfirmationEmailHtml(
 			'<img src=x onerror=alert(1)>"><script>bad</script>',
 			'https://app.test/confirm?token=abc',
-			'Acme & <b>Co</b>',
+			'Acme & <b>Co</b>'
 		);
 
 		// The injected markup is present only in escaped form.
@@ -114,7 +127,9 @@ describe('system email generators', () => {
 		expect(html).not.toContain('<img');
 		// Defensive: the only "onerror=" occurrence is the escaped one; assert the
 		// greeting line carries the escaped form so the policy can't silently flip.
-		expect(html).toContain('Hi &lt;img src=x onerror=alert(1)&gt;&quot;&gt;&lt;script&gt;bad&lt;/script&gt;,');
+		expect(html).toContain(
+			'Hi &lt;img src=x onerror=alert(1)&gt;&quot;&gt;&lt;script&gt;bad&lt;/script&gt;,'
+		);
 
 		// teamName is escaped everywhere it appears (subtitle + footer).
 		expect(html).toContain('Acme &amp; &lt;b&gt;Co&lt;/b&gt;');
@@ -124,9 +139,21 @@ describe('system email generators', () => {
 	// Byte-length regression guard: these exact sizes were verified byte-identical
 	// to the pre-refactor per-template generators for the same fixed inputs.
 	it('output is byte-length-stable for fixed inputs (faithful extraction)', () => {
-		expect(generateInvitationEmailHtml('Acme & Co', "O'Brien", 'o@acme.com', 'https://x/accept?t=1', 'admin')).toHaveLength(3317);
+		expect(
+			generateInvitationEmailHtml(
+				'Acme & Co',
+				"O'Brien",
+				'o@acme.com',
+				'https://x/accept?t=1',
+				'admin'
+			)
+		).toHaveLength(3317);
 		expect(generatePasswordResetEmailHtml('Jo <test>', 'https://x/reset?t=2')).toHaveLength(2987);
-		expect(generateDeletionEmailHtml('u@x.com', 'Monday, June 1, 2026', 'https://x/cancel?t=3')).toHaveLength(4733);
-		expect(generateConfirmationEmailHtml('Anne & Bob', 'https://x/confirm?t=4', 'Team <b>')).toHaveLength(3175);
+		expect(
+			generateDeletionEmailHtml('u@x.com', 'Monday, June 1, 2026', 'https://x/cancel?t=3')
+		).toHaveLength(4733);
+		expect(
+			generateConfirmationEmailHtml('Anne & Bob', 'https://x/confirm?t=4', 'Team <b>')
+		).toHaveLength(3175);
 	});
 });
