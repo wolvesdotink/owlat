@@ -161,6 +161,10 @@ export default defineNuxtConfig({
 		'/dashboard/emails/**': { redirect: '/dashboard/send/emails/**' },
 		'/dashboard/transactional/**': { redirect: '/dashboard/send/transactional/**' },
 
+		// A/B results folded into each campaign's report (piece c3b). The
+		// standalone list is gone; send its old deep link to the command center.
+		'/dashboard/campaigns/ab-results': { redirect: '/dashboard/campaigns' },
+
 		// IA restructure (part 2): deliverability is promoted out of the hidden
 		// Settings → Technical hub into its own first-class "Delivery" section at
 		// /dashboard/delivery/*. Redirect the old settings paths so bookmarks and
