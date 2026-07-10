@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
 	buildSnsCanonicalString,
+	extractSpkiDer,
 	isAllowedSnsHost,
+	pemToDer,
 	sesAdapter,
 	verifySnsMessage,
 	type SnsPublicKeyResolver,
@@ -113,12 +115,15 @@ describe('verifySnsMessage', () => {
 		SignatureVersion: '2',
 		SigningCertURL: 'https://sns.us-east-1.amazonaws.com/cert.pem',
 	};
+	// Freshness is checked against a fixed "now" equal to the envelope's
+	// Timestamp so these signature tests stay deterministic.
+	const now = Date.parse(base.Timestamp);
 
 	it('accepts a correctly signed message', async () => {
 		const { sign, resolver } = await makeSigner();
 		const canonical = buildSnsCanonicalString(base)!;
 		const msg = { ...base, Signature: await sign(canonical) };
-		expect(await verifySnsMessage(msg, resolver)).toBe(true);
+		expect(await verifySnsMessage(msg, resolver, now)).toBe(true);
 	});
 
 	it('rejects a tampered message body', async () => {
@@ -129,7 +134,7 @@ describe('verifySnsMessage', () => {
 			Message: '{"notificationType":"Bounce"}',
 			Signature: await sign(canonical),
 		};
-		expect(await verifySnsMessage(msg, resolver)).toBe(false);
+		expect(await verifySnsMessage(msg, resolver, now)).toBe(false);
 	});
 
 	it('rejects a SigningCertURL that is not an SNS host (never fetches it)', async () => {
@@ -137,15 +142,76 @@ describe('verifySnsMessage', () => {
 		const evil = { ...base, SigningCertURL: 'https://evil.com/cert.pem' };
 		const canonical = buildSnsCanonicalString(evil)!;
 		const msg = { ...evil, Signature: await sign(canonical) };
-		expect(await verifySnsMessage(msg, resolver)).toBe(false);
+		expect(await verifySnsMessage(msg, resolver, now)).toBe(false);
 	});
 
 	it('rejects a missing signature and an unknown signature version', async () => {
 		const { resolver } = await makeSigner();
-		expect(await verifySnsMessage({ ...base, Signature: undefined }, resolver)).toBe(false);
+		expect(await verifySnsMessage({ ...base, Signature: undefined }, resolver, now)).toBe(false);
 		expect(
-			await verifySnsMessage({ ...base, SignatureVersion: '9', Signature: 'x' }, resolver)
+			await verifySnsMessage({ ...base, SignatureVersion: '9', Signature: 'x' }, resolver, now)
 		).toBe(false);
+	});
+
+	it('rejects a stale envelope outside the freshness window (replay)', async () => {
+		const { sign, resolver } = await makeSigner();
+		const canonical = buildSnsCanonicalString(base)!;
+		const msg = { ...base, Signature: await sign(canonical) };
+		// 10 minutes after the signed Timestamp — beyond the 5-minute tolerance.
+		expect(await verifySnsMessage(msg, resolver, now + 10 * 60 * 1000)).toBe(false);
+	});
+
+	it('rejects an envelope with a missing or unparseable Timestamp', async () => {
+		const { sign, resolver } = await makeSigner();
+		const canonical = buildSnsCanonicalString(base)!;
+		const signature = await sign(canonical);
+		expect(
+			await verifySnsMessage({ ...base, Timestamp: undefined, Signature: signature }, resolver, now)
+		).toBe(false);
+	});
+});
+
+// ─── SPKI extraction from a real X.509 certificate ───────────────────────────
+
+// Self-signed RSA-2048 certificate (CN=sns.amazonaws.com) — a fixture standing
+// in for the X.509 cert SNS serves at SigningCertURL. Exercises the hand-rolled
+// DER walker end-to-end (the signature tests above bypass it via the resolver).
+const TEST_CERT_PEM = `-----BEGIN CERTIFICATE-----
+MIIDGTCCAgGgAwIBAgIUNuPW6To8Gvajq/3ty18LtWuQYlcwDQYJKoZIhvcNAQEL
+BQAwHDEaMBgGA1UEAwwRc25zLmFtYXpvbmF3cy5jb20wHhcNMjYwNzEwMDYxMjI5
+WhcNMzYwNzA3MDYxMjI5WjAcMRowGAYDVQQDDBFzbnMuYW1hem9uYXdzLmNvbTCC
+ASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAKOktnnsEqhctbjx/jYpPtQE
+pRlKRSs3JHdCkV0c1qMMgfDHXtR/aLI1cUzs54I4bdm50RlYrKnlQjG9J48IMorr
++BNLyM3aWb5aSuMi7RXQHosRO21P0aDt8JmIRG9E8Brf5n2IK5tjR13xD6jt2l77
+RTMgI2CLUygDvQ1YPSrpjgimBE1HoC4oqr7yZ5aYvjpSS9gz18rR9gqaUzK0i1gO
+Ovp25usR17mMrDtHzuYmc12LvVgY3XAlWCs8pXE566kSdEdq5cvTRuN4ho/oYpEb
+YxBLzbixaiAOHmmxnWpp7T7mr02O2HfgaHdg2BYz9WXLAKQUj4SaAYEaj5yjTiMC
+AwEAAaNTMFEwHQYDVR0OBBYEFNxWxccYJMTjN/Broud0H8B7m7qSMB8GA1UdIwQY
+MBaAFNxWxccYJMTjN/Broud0H8B7m7qSMA8GA1UdEwEB/wQFMAMBAf8wDQYJKoZI
+hvcNAQELBQADggEBAFYJBZ1T3ug+np7LjVemyaqjlM7IteNCKCYGgDdW+ccFcGD1
+mtnorqIGWnr2/RUbcZz7/1akWOXCJCzVV4l/jOSO9yhx2ad+pHXmO/aQBmJ9NTR0
+XeiddLimhqq2cI5OoDza1t9A/so8A+q9eioOaqCXIUhZC1t6AhZhRt0H1SE8hInD
+LVUqi6BXGZ/zDMWUe8TywVkDFB1TcHYQ/bbglgTxvzu33mSTb2sBGmKKVQD42s4j
+ZQVCCox/DxcBN2GiaYIFOxqF4rykrlsMbjQVVQeFKGLDQOEapEjCWKspYIOkRfXP
+Ve9/VDVu8IEHV8wCbPNy8dIueoYUMyAc/O5aZ8g=
+-----END CERTIFICATE-----`;
+
+describe('extractSpkiDer', () => {
+	it('extracts an SPKI that Web Crypto can import as an RSA verify key', async () => {
+		const spki = extractSpkiDer(pemToDer(TEST_CERT_PEM));
+		const key = await crypto.subtle.importKey(
+			'spki',
+			spki as BufferSource,
+			{ name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+			false,
+			['verify']
+		);
+		expect(key.type).toBe('public');
+		expect(key.algorithm.name).toBe('RSASSA-PKCS1-v1_5');
+	});
+
+	it('throws on truncated / malformed certificate DER', () => {
+		expect(() => extractSpkiDer(new Uint8Array([0x30, 0x02, 0x01, 0x00]))).toThrow();
 	});
 });
 
