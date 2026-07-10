@@ -1,7 +1,8 @@
 /**
  * Pure-helper coverage for the members-table mailbox-status derivation
  * (mail/memberMailboxStatus.ts): `deriveMemberMailboxStatus` maps a user's
- * mailbox rows to a single 'hosted' | 'external' | 'none' discriminator.
+ * mailbox rows to a single
+ * 'hosted' | 'external' | 'external-instance' | 'none' discriminator.
  */
 import { describe, it, expect } from 'vitest';
 import { deriveMemberMailboxStatus } from '../memberMailboxStatus';
@@ -39,6 +40,18 @@ describe('deriveMemberMailboxStatus', () => {
 
 	it('reports external when the only mailbox is a connected external account', () => {
 		expect(deriveMemberMailboxStatus([mailbox({ kind: 'external' })])).toBe('external');
+	});
+
+	it('reports external-instance for an external mailbox switched to instance sending', () => {
+		expect(
+			deriveMemberMailboxStatus([mailbox({ kind: 'external', outboundPreference: 'instance' })])
+		).toBe('external-instance');
+	});
+
+	it('keeps plain external when the external mailbox still sends through its own server', () => {
+		expect(
+			deriveMemberMailboxStatus([mailbox({ kind: 'external', outboundPreference: 'external' })])
+		).toBe('external');
 	});
 
 	it('lets a hosted mailbox win over an external one regardless of order', () => {

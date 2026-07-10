@@ -119,7 +119,16 @@ export function mailboxStatusMeta(
 			label: 'External',
 			icon: 'lucide:link',
 			toneClass: 'text-text-secondary',
-			description: 'Uses a connected external mailbox (IMAP/SMTP).',
+			description: 'Reads and sends through a connected external mailbox (IMAP/SMTP).',
+		};
+	}
+	if (status === 'external-instance') {
+		return {
+			label: 'External, sends here',
+			icon: 'lucide:send',
+			toneClass: 'text-text-secondary',
+			description:
+				'Reads from a connected external mailbox but sends outgoing mail through this workspace.',
 		};
 	}
 	return {
