@@ -44,6 +44,11 @@ export const authTables = {
 				baseWidth: v.optional(v.number()), // Base content width in px (default: 600)
 			})
 		),
+		// Instance is moving from another email platform. DEFAULT FALSE — Owlat is
+		// its own platform by default. When true, first-login onboarding offers a
+		// mail import; when false the welcome flow is a pure fresh-start and exposes
+		// no import surface. Admin-gated write, member-readable via `settings.get`.
+		migrationMode: v.optional(v.boolean()),
 		// Feature toggles (see packages/shared/src/featureFlags.ts for the schema).
 		// Unset keys fall back to FEATURE_FLAGS[key].default at resolution time.
 		// Includes `campaigns.archive` — there is no separate `archiveEnabled` column.
@@ -233,30 +238,21 @@ export const authTables = {
 	//   - kind='latestCheck'   — cached result of the last GitHub release poll
 	//   - kind='updateRun'     — one row per update attempt (success or failure)
 	systemUpdates: defineTable({
-		kind: v.union(
-			v.literal('latestCheck'),
-			v.literal('updateRun'),
-		),
+		kind: v.union(v.literal('latestCheck'), v.literal('updateRun')),
 
 		// ── Fields for kind='latestCheck' ──
-		latestVersion: v.optional(v.string()),   // e.g. "0.2.1"
-		releaseNotes: v.optional(v.string()),    // markdown body from GitHub
-		publishedAt: v.optional(v.number()),     // release publish time (epoch ms)
-		checkedAt: v.optional(v.number()),       // when we last polled (epoch ms)
-		error: v.optional(v.string()),           // populated if poll/update failed
+		latestVersion: v.optional(v.string()), // e.g. "0.2.1"
+		releaseNotes: v.optional(v.string()), // markdown body from GitHub
+		publishedAt: v.optional(v.number()), // release publish time (epoch ms)
+		checkedAt: v.optional(v.number()), // when we last polled (epoch ms)
+		error: v.optional(v.string()), // populated if poll/update failed
 
 		// ── Fields for kind='updateRun' ──
 		versionFrom: v.optional(v.string()),
 		versionTo: v.optional(v.string()),
 		startedAt: v.optional(v.number()),
 		finishedAt: v.optional(v.number()),
-		status: v.optional(
-			v.union(
-				v.literal('running'),
-				v.literal('success'),
-				v.literal('failed'),
-			),
-		),
+		status: v.optional(v.union(v.literal('running'), v.literal('success'), v.literal('failed'))),
 		// Per-step result blob returned by the updater sidecar.
 		steps: v.optional(updateStepResultValidator),
 		// User who initiated the update (auth user ID)

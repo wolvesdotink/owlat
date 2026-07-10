@@ -1,7 +1,7 @@
 /**
  * Organization settings (module) — sole writer of the singleton
  * `instanceSettings` row's *settings columns* (`emailTheme`, `timezone`,
- * `defaultFromName`, `defaultFromEmail`, `updatedAt`). Sibling of
+ * `defaultFromName`, `defaultFromEmail`, `migrationMode`, `updatedAt`). Sibling of
  * **Feature flags (module)** (which owns the `featureFlags` map),
  * **Abuse status (module)** (which owns the abuse-status columns), and
  * the **Organization deletion (module)** walker scheduled by `remove`.
@@ -44,6 +44,7 @@ export const update = authedMutation({
 		timezone: v.optional(v.string()),
 		defaultFromName: v.optional(v.string()),
 		defaultFromEmail: v.optional(v.string()),
+		migrationMode: v.optional(v.boolean()),
 		emailTheme: v.optional(
 			v.object({
 				primaryColor: v.string(),
@@ -54,7 +55,11 @@ export const update = authedMutation({
 		),
 	},
 	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'settings:manage', 'Only owners and admins can update organization settings');
+		await requireOrgPermission(
+			ctx,
+			'settings:manage',
+			'Only owners and admins can update organization settings'
+		);
 		const now = Date.now();
 		const existing = await ctx.db.query('instanceSettings').first();
 		if (existing) {
@@ -73,15 +78,8 @@ export const remove = authedMutation({
 	args: {},
 	handler: async (ctx) => {
 		const session = await getMutationContext(ctx);
-		requirePermission(
-			session.role === 'owner',
-			'Only the owner can delete the organization'
-		);
-		await ctx.scheduler.runAfter(
-			0,
-			internal.organizations.deletion.walker.start,
-			{},
-		);
+		requirePermission(session.role === 'owner', 'Only the owner can delete the organization');
+		await ctx.scheduler.runAfter(0, internal.organizations.deletion.walker.start, {});
 		return { success: true, message: 'Organization deletion started' };
 	},
 });
@@ -90,6 +88,8 @@ export const createInternal = internalMutation({
 	args: {
 		timezone: v.optional(v.string()),
 		defaultFromName: v.optional(v.string()),
+		// Seeded by the setup wizard's "moving from another platform?" question.
+		migrationMode: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
 		const existing = await ctx.db.query('instanceSettings').first();
@@ -98,6 +98,7 @@ export const createInternal = internalMutation({
 		return await ctx.db.insert('instanceSettings', {
 			timezone: args.timezone || 'UTC',
 			defaultFromName: args.defaultFromName,
+			migrationMode: args.migrationMode ?? false,
 			createdAt: now,
 		});
 	},
