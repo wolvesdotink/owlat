@@ -53,20 +53,11 @@ watch(
 	}
 );
 
-// Search — debounced 300ms, server-side (preserved from the old all-list).
-const searchQuery = ref('');
-const debouncedSearch = ref('');
-let searchTimeout: ReturnType<typeof setTimeout> | null = null;
-watch(searchQuery, (value) => {
-	if (searchTimeout) clearTimeout(searchTimeout);
-	searchTimeout = setTimeout(() => {
-		debouncedSearch.value = value.trim();
-	}, 300);
-});
-function clearSearch() {
-	searchQuery.value = '';
-	debouncedSearch.value = '';
-}
+// Search — debounced 300ms, server-side (preserved from the old all-list). The
+// shared composable also clears its timer on unmount, so a late tick can't fire
+// after the page is gone.
+const { searchQuery, debouncedSearch: rawSearch, clear: clearSearch } = useDebouncedSearch(300);
+const debouncedSearch = computed(() => rawSearch.value.trim());
 
 // Keyboard: 'n' opens the new-campaign wizard (kept from the old all-list);
 // Escape closes the delete-confirm modal (kept from the old all-list).
@@ -139,14 +130,13 @@ const { getStatusBadge } = useCampaignStatusBadge();
 // The row TYPE + row COMPONENT live in siblings (utils/campaignCommandRow +
 // components/campaigns/CommandRow) so this page stays a controller; here we only
 // DERIVE the rows.
-type CampaignRow = CampaignRowFields;
 
 function rate(numer: number | undefined, denom: number | undefined): number | null {
 	if (!denom || denom <= 0) return null;
 	return ((numer ?? 0) / denom) * 100;
 }
 
-function decorate(campaign: CampaignRow): DecoratedRow {
+function decorate(campaign: CampaignRowFields): DecoratedRow {
 	const attention = classifyCampaignAttention({
 		status: campaign.status,
 		scheduledAt: campaign.scheduledAt,
@@ -169,7 +159,7 @@ function decorate(campaign: CampaignRow): DecoratedRow {
 		needsAttention: attention.needsAttention,
 		reason: attention.reason,
 		reasonChip: display ? { label: display.chipLabel, dot: display.dot } : null,
-		statusBadge: getStatusBadge(campaign.status as CampaignStatus),
+		statusBadge: getStatusBadge(campaign.status),
 		actionLabel: attention.actionLabel,
 		openRate,
 		clickRate,
@@ -245,7 +235,7 @@ const pills = computed<Pill[]>(() => {
 // --- Presentational helpers -------------------------------------------------
 
 /** Row click opens the report for sent/sending campaigns, else the editor. */
-function openCampaign(campaign: CampaignRow) {
+function openCampaign(campaign: CampaignRowFields) {
 	if (campaign.status === 'sent' || campaign.status === 'sending') {
 		router.push(`/dashboard/campaigns/${campaign._id}/report`);
 	} else {
