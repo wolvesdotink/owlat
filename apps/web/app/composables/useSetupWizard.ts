@@ -20,6 +20,13 @@ import {
 	type FeatureFlagState,
 	type FeatureFlagKey,
 } from '@owlat/shared/featureFlags';
+import { SMTP_RELAY_PRESETS, type SmtpRelayPreset } from '@owlat/shared/setupSendingPresets';
+
+// Re-export the shared preset table and its key type so the setup step (and its
+// tests) keep importing them from this composable; the single source of truth
+// lives in `@owlat/shared/setupValidators`, shared with the setup CLI.
+export { SMTP_RELAY_PRESETS };
+export type SmtpPreset = SmtpRelayPreset;
 
 // ── Steps ────────────────────────────────────────────────────────────────────
 
@@ -52,15 +59,6 @@ export interface SesCredentials {
 	secretAccessKey: string;
 }
 
-/**
- * Which well-known relay a "SMTP relay" install points at. Choosing a preset
- * prefills host/port/TLS (see {@link SMTP_RELAY_PRESETS}); `custom` leaves them
- * for the operator. There is deliberately no per-provider API adapter — every
- * one of these speaks plain SMTP submission, so a single set of relay env vars
- * (`SMTP_RELAY_*`) drives them all.
- */
-export type SmtpPreset = 'mailgun' | 'postmark' | 'sendgrid' | 'brevo' | 'custom';
-
 export interface SmtpRelayDraft {
 	preset: SmtpPreset;
 	host: string;
@@ -71,23 +69,6 @@ export interface SmtpRelayDraft {
 	username: string;
 	password: string;
 }
-
-/**
- * Connection defaults for each relay preset. Ports/TLS mirror each provider's
- * documented submission endpoint; every one defaults to STARTTLS on 587, which
- * the backend `smtp` adapter upgrades and enforces (`requireTLS`). `custom`
- * carries the same safe default so the fields are never empty.
- */
-export const SMTP_RELAY_PRESETS: Record<
-	SmtpPreset,
-	{ label: string; host: string; port: string; secure: boolean }
-> = {
-	mailgun: { label: 'Mailgun', host: 'smtp.mailgun.org', port: '587', secure: false },
-	postmark: { label: 'Postmark', host: 'smtp.postmarkapp.com', port: '587', secure: false },
-	sendgrid: { label: 'SendGrid', host: 'smtp.sendgrid.net', port: '587', secure: false },
-	brevo: { label: 'Brevo', host: 'smtp-relay.brevo.com', port: '587', secure: false },
-	custom: { label: 'Custom SMTP server', host: '', port: '587', secure: false },
-};
 
 export interface EmailStepDraft {
 	provider: ProviderChoice;
