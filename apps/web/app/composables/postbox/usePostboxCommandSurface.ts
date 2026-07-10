@@ -18,13 +18,17 @@ export function usePostboxCommandSurface(mailboxId: Ref<Id<'mailboxes'>>) {
 	const composerStack = usePostboxComposerStack();
 	const { isDesktop: isDesktopSurface } = useDesktopContext();
 	const paletteSurface = useCommandPaletteSurface();
+	// Accessible mailboxes → palette "switch mailbox" entries (personal when
+	// there's a choice, plus every team inbox). Reactive so entries appear the
+	// instant a shared inbox's membership resolves.
+	const { sections, switchToMailbox } = usePostboxMailbox();
 
 	function dispatchReaderAction(action: string) {
 		window.dispatchEvent(new CustomEvent('owlat:postbox-reader-action', { detail: { action } }));
 	}
 
 	function buildSurfaceGroups(): PaletteGroup[] {
-		return [
+		const groups: PaletteGroup[] = [
 			{
 				key: 'postbox-actions',
 				heading: 'Mailbox',
@@ -112,10 +116,37 @@ export function usePostboxCommandSurface(mailboxId: Ref<Id<'mailboxes'>>) {
 				],
 			},
 		];
-	}
 
-	onMounted(() => {
-		const groups = buildSurfaceGroups();
+		// "Switch mailbox" — personal mailboxes (only when there's a real choice)
+		// plus every shared team inbox. Both blocks share one descriptor list (icon
+		// + label suffix are the only differences). Empty for a lone personal
+		// mailbox, so the palette is unchanged for single-mailbox users.
+		const { personal, team } = sections.value;
+		const switchGroups = [
+			{
+				items: personal.length > 1 || team.length > 0 ? personal : [],
+				icon: 'lucide:mail',
+				suffix: '',
+			},
+			{ items: team, icon: 'lucide:users', suffix: ' (team inbox)' },
+		];
+		const switchItems = switchGroups.flatMap((group) =>
+			group.items.map((mb) => ({
+				id: `postbox:switch-${mb.mailboxId}`,
+				label: `Go to ${mb.label}${group.suffix}`,
+				icon: group.icon,
+				run: () => switchToMailbox(mb.mailboxId),
+			}))
+		);
+		if (switchItems.length > 0) {
+			groups.push({
+				key: 'postbox-switch-mailbox',
+				heading: 'Switch mailbox',
+				order: 24,
+				items: switchItems,
+			});
+		}
+
 		if (isDesktopSurface.value) {
 			groups[0]?.items.push({
 				id: 'postbox:check-updates',
@@ -124,8 +155,11 @@ export function usePostboxCommandSurface(mailboxId: Ref<Id<'mailboxes'>>) {
 				run: () => window.dispatchEvent(new Event('owlat:check-updates')),
 			});
 		}
-		paletteSurface.value = groups;
-	});
+		return groups;
+	}
+
+	// Rebuild reactively so team-inbox entries appear as membership resolves.
+	watch(sections, () => (paletteSurface.value = buildSurfaceGroups()), { immediate: true });
 	onBeforeUnmount(() => {
 		paletteSurface.value = [];
 	});

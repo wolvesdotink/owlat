@@ -353,6 +353,13 @@ export const mailTables = {
 		// monitor-only `p=none` fail from one the domain owner asked us to act on.
 		dmarcPolicy: v.optional(v.string()),
 
+		// Team-inbox attribution: on an outbound message, the BetterAuth user id of
+		// the teammate who fired the send (copied from the draft at dispatch). Lets
+		// a shared inbox attribute "who replied" per message. Optional — inbound
+		// mail and legacy sent rows carry no sender, and the from-address alone can
+		// never distinguish two teammates sending as the same shared address.
+		sentByUserId: v.optional(v.string()),
+
 		// Outbound tracking (sent path). Per-recipient state lives in
 		// `recipients[]`; `state` is a denormalized aggregate derived by
 		// the Postbox outbound lifecycle module (the only writer). See
@@ -435,6 +442,19 @@ export const mailTables = {
 		latestSubject: v.string(),
 		// Newest message in the thread — the row a conversation list links to.
 		latestMessageId: v.optional(v.id('mailMessages')),
+		// Team-inbox collision safety. Set whenever an outbound reply is committed
+		// to the thread; carries WHO (a BetterAuth user id) replied last so a
+		// shared (team) inbox can show "last reply by …" and warn a second teammate
+		// before they send a duplicate reply. `byUserId` is optional so pre-existing
+		// rows and legacy dispatch paths that never recorded a sender still validate.
+		// Undefined on threads with no outbound reply yet — the guard is inert then.
+		latestReply: v.optional(
+			v.object({
+				messageId: v.id('mailMessages'),
+				byUserId: v.optional(v.string()),
+				at: v.number(),
+			})
+		),
 		folderRoles: v.array(v.string()),
 		labelIds: v.array(v.id('mailLabels')),
 		// Reply Queue (advisory AI): set when the latest inbound message looks like
@@ -734,6 +754,12 @@ export const mailTables = {
 		// client did not record a baseline) → no learning happens, exactly today's
 		// behaviour. Snapshotted ONCE and never overwritten.
 		aiDraftBaseline: v.optional(v.object({ text: v.string(), capturedAt: v.number() })),
+
+		// Team-inbox attribution: the BetterAuth user id of the teammate who fired
+		// the send, stamped by `drafts.send` from the acting session. Copied onto
+		// the resulting sent message + the thread's `latestReply` so a shared inbox
+		// can attribute the reply. Undefined until send (and on legacy rows).
+		sentByUserId: v.optional(v.string()),
 
 		// Scheduled send / undo-send window
 		scheduledSendAt: v.optional(v.number()),

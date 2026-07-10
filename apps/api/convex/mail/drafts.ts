@@ -272,6 +272,13 @@ export const send = authedMutation({
 		const owned = await requireMailboxAccess(ctx, draft.mailboxId);
 		if (!owned.ok) throwForbidden('Draft not accessible');
 
+		// Record WHO is sending (team-inbox attribution). The dispatch runs later
+		// in a session-less scheduled action, so the acting user must be captured
+		// here; the sent-effects reducer copies it onto the message + thread.
+		if (draft.sentByUserId !== owned.userId) {
+			await ctx.db.patch(args.draftId, { sentByUserId: owned.userId });
+		}
+
 		const now = Date.now();
 		const outcome: DraftTransitionOutcome = await ctx.runMutation(
 			internal.mail.draftLifecycle.transition,
