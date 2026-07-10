@@ -43,7 +43,7 @@ export type OnboardingStep = (typeof ONBOARDING_STEPS)[number];
 async function upsertOnboardingRow(
 	ctx: MutationCtx,
 	authUserId: string,
-	patch: Partial<Record<OnboardingStep | 'dismissedAt', number>>
+	patch: Partial<Record<OnboardingStep | 'dismissedAt' | 'welcomedAt', number>>
 ): Promise<void> {
 	const now = Date.now();
 	const existing = await ctx.db
@@ -64,6 +64,33 @@ async function upsertOnboardingRow(
 }
 
 /**
+ * Idempotently stamp a single timestamp `field` on the caller's onboarding row,
+ * writing `Date.now()` only the first time and leaving an already-set value
+ * untouched (so the first-occurrence instant is preserved across replays /
+ * retries). Upserts the row on first write.
+ *
+ * Shared by {@link markOnboardingStep} (per-step completion) and
+ * {@link markWelcomed} (the welcome-seen stamp); neither the step guard nor the
+ * authz check live here — callers apply those before calling.
+ */
+async function stampOnce(
+	ctx: MutationCtx,
+	authUserId: string,
+	field: OnboardingStep | 'welcomedAt'
+): Promise<void> {
+	const existing = await ctx.db
+		.query('userOnboarding')
+		.withIndex('by_auth_user_id', (q) => q.eq('authUserId', authUserId))
+		.first();
+
+	// Preserve the first-occurrence timestamp: only the initial write for a field
+	// counts, later replays are no-ops for that field.
+	if (existing && existing[field] !== undefined) return;
+
+	await upsertOnboardingRow(ctx, authUserId, { [field]: Date.now() });
+}
+
+/**
  * Idempotently record that `authUserId` reached `step`, stamping the completion
  * time on first occurrence and leaving an already-set timestamp untouched (so
  * the first-completion instant is preserved across replays / retries). Upserts
@@ -79,24 +106,16 @@ export async function markOnboardingStep(
 	authUserId: string,
 	step: OnboardingStep
 ): Promise<void> {
-	const existing = await ctx.db
-		.query('userOnboarding')
-		.withIndex('by_auth_user_id', (q) => q.eq('authUserId', authUserId))
-		.first();
-
-	// Preserve the first-completion timestamp: only the initial write for a step
-	// counts, later flow replays are no-ops for that field.
-	if (existing && existing[step] !== undefined) return;
-
-	const patch: Partial<Record<OnboardingStep, number>> = { [step]: Date.now() };
-	await upsertOnboardingRow(ctx, authUserId, patch);
+	await stampOnce(ctx, authUserId, step);
 }
 
 /** Shape returned to the consuming UI — always a concrete object, never null. */
-type OnboardingState = Record<OnboardingStep | 'dismissedAt', number | null>;
+type OnboardingState = Record<OnboardingStep | 'dismissedAt' | 'welcomedAt', number | null>;
 
 const EMPTY_STATE: OnboardingState = Object.fromEntries(
-	[...ONBOARDING_STEPS, 'dismissedAt' as const].map((key) => [key, null] as const)
+	[...ONBOARDING_STEPS, 'dismissedAt' as const, 'welcomedAt' as const].map(
+		(key) => [key, null] as const
+	)
 ) as OnboardingState;
 
 /**
@@ -121,6 +140,7 @@ export const get = authedQuery({
 		const state = { ...EMPTY_STATE };
 		for (const step of ONBOARDING_STEPS) state[step] = row[step] ?? null;
 		state.dismissedAt = row.dismissedAt ?? null;
+		state.welcomedAt = row.welcomedAt ?? null;
 		return state;
 	},
 });
@@ -138,5 +158,24 @@ export const dismiss = authedMutation({
 	handler: async (ctx, args) => {
 		await requireSelf(ctx, args.userId);
 		await upsertOnboardingRow(ctx, args.userId, { dismissedAt: Date.now() });
+	},
+});
+
+/**
+ * Record that the caller has seen the first-login welcome screen. Written once,
+ * the first time the member lands on `/welcome`; the timestamp is preserved on
+ * replays so the first-seen instant is stable. This is what flips a member from
+ * "new" to "returning" for the welcome middleware — a returning user (any row
+ * with `welcomedAt` set) is never routed to `/welcome` again. Upserts the row on
+ * first write. Per-user only.
+ */
+// authz: self — requireSelf asserts args.userId is the caller.
+export const markWelcomed = authedMutation({
+	args: {
+		userId: v.string(),
+	},
+	handler: async (ctx, args) => {
+		await requireSelf(ctx, args.userId);
+		await stampOnce(ctx, args.userId, 'welcomedAt');
 	},
 });

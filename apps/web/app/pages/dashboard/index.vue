@@ -13,14 +13,8 @@ const { hasActiveOrganization } = useOrganizationContext();
 
 const userId = computed(() => user.value?.id ?? null);
 
-const {
-	cards,
-	availableCards,
-	savedRules,
-	isLoading,
-	isEditing,
-	saveLayout,
-} = useAdaptiveDashboard();
+const { cards, availableCards, savedRules, isLoading, isEditing, saveLayout } =
+	useAdaptiveDashboard();
 
 // Default cards to show when no adaptive layout is available
 const defaultCards = [
@@ -48,7 +42,7 @@ function closeEditor() {
 
 async function handleSave(
 	pinnedCards: Array<{ type: string; size: 'small' | 'medium' | 'large'; config?: string }>,
-	rules: SavedRule[],
+	rules: SavedRule[]
 ) {
 	await saveLayout(pinnedCards, rules);
 }
@@ -82,13 +76,20 @@ async function handleSave(
 			  non-self-host mode) for the remaining go-live steps. It suppresses
 			  itself while the banner owns the pre-send phase.
 		-->
-		<DashboardSelfHostOnboardingBanner
+		<DashboardSelfHostOnboardingBanner v-if="hasActiveOrganization && userId" :user-id="userId" />
+		<DashboardOnboardingChecklist v-if="hasActiveOrganization && userId" :user-id="userId" />
+
+		<!--
+			Persistent, resumable per-user onboarding checklist (piece c1). Distinct
+			from the instance-wide admin checklist above: this tracks THIS member's
+			personal setup journey (mailbox, optional import, first send) and its
+			steps adapt to migration vs fresh-start mode. Dismissible; gone for good
+			once complete.
+		-->
+		<OnboardingUserChecklist
 			v-if="hasActiveOrganization && userId"
 			:user-id="userId"
-		/>
-		<DashboardOnboardingChecklist
-			v-if="hasActiveOrganization && userId"
-			:user-id="userId"
+			class="mb-8"
 		/>
 
 		<!-- Loading State -->

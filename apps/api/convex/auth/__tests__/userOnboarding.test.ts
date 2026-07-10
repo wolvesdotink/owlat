@@ -276,4 +276,41 @@ describe('userOnboarding', () => {
 		const after = await t.query(api.auth.userOnboarding.get, { userId: 'user-A' });
 		expect(typeof after.dismissedAt).toBe('number');
 	});
+
+	it('markWelcomed stamps welcomedAt, which the welcome middleware reads back', async () => {
+		const t = convexTest(schema, modules);
+
+		sessionMocks.userId = 'user-A';
+		// A brand-new member has no stamp — the middleware routes them to /welcome.
+		const before = await t.query(api.auth.userOnboarding.get, { userId: 'user-A' });
+		expect(before.welcomedAt).toBeNull();
+
+		await t.mutation(api.auth.userOnboarding.markWelcomed, { userId: 'user-A' });
+
+		const after = await t.query(api.auth.userOnboarding.get, { userId: 'user-A' });
+		expect(typeof after.welcomedAt).toBe('number');
+	});
+
+	it('markWelcomed preserves the first-seen instant on replay', async () => {
+		const t = convexTest(schema, modules);
+
+		sessionMocks.userId = 'user-A';
+		await t.mutation(api.auth.userOnboarding.markWelcomed, { userId: 'user-A' });
+		const first = await t.query(api.auth.userOnboarding.get, { userId: 'user-A' });
+		const firstTs = first.welcomedAt;
+		expect(typeof firstTs).toBe('number');
+
+		await t.mutation(api.auth.userOnboarding.markWelcomed, { userId: 'user-A' });
+		const second = await t.query(api.auth.userOnboarding.get, { userId: 'user-A' });
+		expect(second.welcomedAt).toBe(firstTs);
+	});
+
+	it("rejects marking another user's welcome state", async () => {
+		const t = convexTest(schema, modules);
+
+		sessionMocks.userId = 'user-A';
+		await expect(
+			t.mutation(api.auth.userOnboarding.markWelcomed, { userId: 'user-B' })
+		).rejects.toThrow();
+	});
 });
