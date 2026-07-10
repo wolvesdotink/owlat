@@ -11,6 +11,8 @@
  * campaigns). When the permission map changes, this copy must change with it.
  */
 
+import type { FunctionReturnType } from 'convex/server';
+import { api } from '@owlat/api';
 import type { OrganizationRole } from '~/composables/useOrganization';
 
 export interface RoleDefinition {
@@ -21,7 +23,13 @@ export interface RoleDefinition {
 	summary: string;
 	/** Second line — the concrete boundary of the role. */
 	detail: string;
+	/** Design-token badge tone for the role chip (owner/admin share the brand
+	 * accent; editor is neutral). No hardcoded colors — token classes only. */
+	badgeToneClass: string;
 }
+
+const BRAND_BADGE = 'bg-brand/20 text-brand border-brand/30';
+const NEUTRAL_BADGE = 'bg-bg-surface text-text-secondary border-border-subtle';
 
 /**
  * Role descriptions in privilege order (owner → admin → editor). Two lines each
@@ -39,6 +47,7 @@ export const ROLE_DEFINITIONS: readonly RoleDefinition[] = [
 		icon: 'lucide:crown',
 		summary: 'Full control of the workspace.',
 		detail: 'Everything an admin can do, plus transferring ownership and deleting the workspace.',
+		badgeToneClass: BRAND_BADGE,
 	},
 	{
 		role: 'admin',
@@ -47,6 +56,7 @@ export const ROLE_DEFINITIONS: readonly RoleDefinition[] = [
 		summary: 'Runs the workspace day to day.',
 		detail:
 			'Send campaigns, manage contacts and settings, and invite members. Cannot delete the workspace.',
+		badgeToneClass: BRAND_BADGE,
 	},
 	{
 		role: 'editor',
@@ -55,14 +65,14 @@ export const ROLE_DEFINITIONS: readonly RoleDefinition[] = [
 		summary: 'Works on content, does not send.',
 		detail:
 			'View campaigns and contacts, send test emails, and join team chat. Cannot send campaigns or change settings.',
+		badgeToneClass: NEUTRAL_BADGE,
 	},
 ];
 
-const ROLE_BY_KEY: Record<OrganizationRole, RoleDefinition> = {
-	owner: ROLE_DEFINITIONS[0]!,
-	admin: ROLE_DEFINITIONS[1]!,
-	editor: ROLE_DEFINITIONS[2]!,
-};
+const ROLE_BY_KEY = Object.fromEntries(ROLE_DEFINITIONS.map((def) => [def.role, def])) as Record<
+	OrganizationRole,
+	RoleDefinition
+>;
 
 /** Look up a single role's definition, falling back to the editor floor for any
  * unexpected value so the UI never renders a blank label. */
@@ -70,7 +80,11 @@ export function roleDefinition(role: string): RoleDefinition {
 	return ROLE_BY_KEY[role as OrganizationRole] ?? ROLE_BY_KEY.editor;
 }
 
-export type MemberMailboxStatus = 'hosted' | 'external' | 'none';
+/** Derived from the backend query so a schema change can't silently diverge
+ * (the query returns a record keyed by user id). */
+export type MemberMailboxStatus = FunctionReturnType<
+	typeof api.mail.memberMailboxStatus.byMembers
+>[string];
 
 export interface MailboxStatusMeta {
 	/** Human label for the Mailbox column (no enum strings in the UI). */
