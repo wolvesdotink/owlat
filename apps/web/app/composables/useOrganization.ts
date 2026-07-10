@@ -137,6 +137,9 @@ export function useOrganization() {
 	const members = useState<OrganizationMember[]>('org-members', () => []);
 	const invitations = useState<OrganizationInvitation[]>('org-invitations', () => []);
 	const isLoadingMembers = useState<boolean>('org-loading-members', () => false);
+	// Non-null once a members/invitations fetch fails, so the team page can render
+	// an explicit error state (with a retry) instead of an ambiguous empty list.
+	const membersError = useState<string | null>('org-members-error', () => null);
 	const currentMemberRole = useState<OrganizationRole | null>('org-current-role', () => null);
 
 	// Computed values - BetterAuth hooks return refs with nested data/isPending
@@ -220,6 +223,7 @@ export function useOrganization() {
 		}
 
 		isLoadingMembers.value = true;
+		membersError.value = null;
 
 		const doFetch = async () => {
 			try {
@@ -264,8 +268,12 @@ export function useOrganization() {
 
 				lastMembersFetchAt = Date.now();
 				lastMembersFetchOrgId = orgId;
-			} catch {
-				// Fetch failed silently - members will remain empty
+			} catch (error) {
+				// Surface a fixed, human message so the team page shows a retryable
+				// error state instead of an ambiguous empty list — never leak a raw
+				// "Failed to fetch"-grade string into user-facing copy.
+				console.error('[useOrganization] failed to load team members', error);
+				membersError.value = 'Could not load team members';
 			} finally {
 				isLoadingMembers.value = false;
 				inflightFetch = null;
@@ -598,6 +606,7 @@ export function useOrganization() {
 		currentMemberRole,
 		isLoading,
 		isLoadingMembers,
+		membersError,
 
 		// Permission checks
 		canManageMembers,
