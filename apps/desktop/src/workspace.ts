@@ -6,7 +6,9 @@
  * keychain.ts), referenced only by `tokenRef`.
  *
  * Deals in plain JSON so this module stays decoupled from the web app's types
- * (the web side casts to WorkspaceStoreShape).
+ * (the web side casts to WorkspaceStoreShape). Each persisted workspace record
+ * carries an `accentColor` (hex) identity accent alongside its metadata; it
+ * flows through this pass-through store untouched.
  */
 import { load } from '@tauri-apps/plugin-store';
 

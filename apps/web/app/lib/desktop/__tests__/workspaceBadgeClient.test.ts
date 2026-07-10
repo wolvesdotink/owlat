@@ -38,6 +38,7 @@ const ws: WorkspaceConfig = {
 	tokenRef: 'owlat-ws:ws-1',
 	addedAt: 0,
 	lastActiveAt: 0,
+	accentColor: '#c4785a',
 };
 
 describe('cookieStringFromBlob', () => {
@@ -98,11 +99,16 @@ describe('createWorkspaceBadgeClient', () => {
 		const success: Record<string, (v: unknown) => void> = {};
 		const error: Record<string, (e: Error) => void> = {};
 		onUpdate.mockImplementation(
-			(ref: { _ref: string }, _args, onSuccess: (v: unknown) => void, onError: (e: Error) => void) => {
+			(
+				ref: { _ref: string },
+				_args,
+				onSuccess: (v: unknown) => void,
+				onError: (e: Error) => void
+			) => {
 				success[ref._ref] = onSuccess;
 				error[ref._ref] = onError;
 				return () => {};
-			},
+			}
 		);
 
 		createWorkspaceBadgeClient(ws, (c) => counts.push(c));
