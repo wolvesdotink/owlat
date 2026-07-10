@@ -142,7 +142,6 @@ export function useSidebarState() {
 		effectiveHidden,
 		sidebarMode,
 		isPeeking,
-		isDesktopViewport,
 		sectionStates,
 		toggleCollapsed,
 		setCollapsed,
