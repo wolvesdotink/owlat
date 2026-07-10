@@ -205,6 +205,9 @@ export const NON_TENANT_TABLES = [
 	// Instance configuration singleton — recreated by setup; reset clears it in a
 	// dedicated step.
 	'instanceSettings',
+	// Per-org AI provider selection + encrypted key envelope — an admin-recreated
+	// config singleton like instanceSettings, not org business data.
+	'aiProviderConfig',
 	// Instance infrastructure / regenerable caches — not org business data.
 	'systemUpdates',
 	'backupState',
