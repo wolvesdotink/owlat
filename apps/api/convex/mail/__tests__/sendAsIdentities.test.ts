@@ -18,6 +18,7 @@ import schema from '../../schema';
 import type { Id } from '../../_generated/dataModel';
 import { api } from '../../_generated/api';
 import { modules, seedMailbox } from './helpers';
+import { internal } from '../../_generated/api';
 import { resolveSendAsIdentitiesForCtx, isSanctionedSendAsForUser } from '../identities';
 
 // One mutable hoisted session drives both the authedMutation wrapper floor
@@ -104,6 +105,207 @@ async function seedDraft(
 	return id;
 }
 
+async function seedSentFolder(
+	t: TestConvex<typeof schema>,
+	mailboxId: Id<'mailboxes'>
+): Promise<Id<'mailFolders'>> {
+	let id!: Id<'mailFolders'>;
+	await t.run(async (ctx) => {
+		const now = Date.now();
+		id = await ctx.db.insert('mailFolders', {
+			mailboxId,
+			name: 'Sent',
+			role: 'sent',
+			uidValidity: now,
+			uidNext: 1,
+			highestModseq: 0,
+			totalCount: 0,
+			unseenCount: 0,
+			subscribed: true,
+			createdAt: now,
+			updatedAt: now,
+		});
+	});
+	return id;
+}
+
+async function seedThread(
+	t: TestConvex<typeof schema>,
+	mailboxId: Id<'mailboxes'>,
+	opts: { needsReplyPendingAt?: number } = {}
+): Promise<Id<'mailThreads'>> {
+	let id!: Id<'mailThreads'>;
+	await t.run(async (ctx) => {
+		const now = Date.now();
+		id = await ctx.db.insert('mailThreads', {
+			mailboxId,
+			normalizedSubject: 'hi',
+			participants: ['out@example.com'],
+			messageCount: 1,
+			unreadCount: 0,
+			hasFlagged: false,
+			hasAttachments: false,
+			lastMessageAt: now,
+			firstMessageAt: now,
+			latestSnippet: 'prior',
+			latestFromAddress: 'out@example.com',
+			latestSubject: 'hi',
+			folderRoles: ['inbox'],
+			labelIds: [],
+			...(opts.needsReplyPendingAt !== undefined
+				? { needsReplyPendingAt: opts.needsReplyPendingAt }
+				: {}),
+			createdAt: now,
+			updatedAt: now,
+		});
+	});
+	return id;
+}
+
+/** Seed a queued (`pending_send`) draft ready to transition to `sent`. */
+async function seedPendingDraft(
+	t: TestConvex<typeof schema>,
+	fields: {
+		mailboxId: Id<'mailboxes'>;
+		fromAddress: string;
+		threadId?: Id<'mailThreads'>;
+		sendAsMailboxId?: Id<'mailboxes'>;
+		sentByUserId?: string;
+	}
+): Promise<Id<'mailDrafts'>> {
+	let id!: Id<'mailDrafts'>;
+	await t.run(async (ctx) => {
+		const now = Date.now();
+		id = await ctx.db.insert('mailDrafts', {
+			mailboxId: fields.mailboxId,
+			threadId: fields.threadId,
+			sendAsMailboxId: fields.sendAsMailboxId,
+			sentByUserId: fields.sentByUserId,
+			toAddresses: ['out@example.com'],
+			ccAddresses: [],
+			bccAddresses: [],
+			fromAddress: fields.fromAddress,
+			subject: 'hi',
+			bodyHtml: '<p>hi</p>',
+			bodyText: 'hi',
+			attachments: [],
+			state: 'pending_send',
+			lastEditedAt: now,
+			createdAt: now,
+		});
+	});
+	return id;
+}
+
+const RAW_SIZE = 321;
+
+async function transitionToSent(
+	t: TestConvex<typeof schema>,
+	draftId: Id<'mailDrafts'>
+): Promise<void> {
+	const rawStorageId = await t.run((ctx) => ctx.storage.store(new Blob(['raw .eml bytes'])));
+	await t.mutation(internal.mail.draftLifecycle.transition, {
+		draftId,
+		input: {
+			to: 'sent' as const,
+			at: Date.now(),
+			context: {
+				rawStorageId,
+				rawSize: RAW_SIZE,
+				rfc822MessageId: 'msg-1@hinterland.camp',
+				references: [],
+				bodyHtml: '<p>hi</p>',
+				bodyText: 'hi',
+				attachmentsMeta: [],
+			},
+		},
+	});
+}
+
+describe('runSentEffects — sent-copy placement', () => {
+	it('classic path: sent copy lands in the thread mailbox’s Sent folder on the existing thread', async () => {
+		const t = convexTest(schema, modules);
+		const team = await seedMailbox(t, {
+			userId: 'owner-user',
+			address: 'team@hinterland.camp',
+			scope: 'shared',
+		});
+		const sentFolder = await seedSentFolder(t, team);
+		const teamThread = await seedThread(t, team);
+		const draftId = await seedPendingDraft(t, {
+			mailboxId: team,
+			fromAddress: 'team@hinterland.camp',
+			threadId: teamThread,
+			sentByUserId: 'owner-user',
+		});
+
+		await transitionToSent(t, draftId);
+
+		const messages = await t.run((ctx) => ctx.db.query('mailMessages').collect());
+		expect(messages).toHaveLength(1);
+		const sent = messages[0]!;
+		expect(sent.mailboxId).toBe(team);
+		expect(sent.folderId).toBe(sentFolder);
+		// Reuses the existing team thread — no fresh thread is opened.
+		expect(sent.threadId).toBe(teamThread);
+		const threads = await t.run((ctx) => ctx.db.query('mailThreads').collect());
+		expect(threads).toHaveLength(1);
+		// Byte usage is charged to the team mailbox.
+		const teamMb = await t.run((ctx) => ctx.db.get(team));
+		expect(teamMb?.usedBytes).toBe(RAW_SIZE);
+	});
+
+	it('personal send-as: sent copy lands in the personal mailbox on a fresh thread; team thread gets the marker', async () => {
+		const t = convexTest(schema, modules);
+		const team = await seedMailbox(t, {
+			userId: 'owner-user',
+			address: 'team@hinterland.camp',
+			scope: 'shared',
+		});
+		const personal = await seedMailbox(t, { userId: 'user-B', address: 'b@hinterland.camp' });
+		await addMember(t, team, 'user-B');
+		const teamSent = await seedSentFolder(t, team);
+		const personalSent = await seedSentFolder(t, personal);
+		// The team thread is in the Reply Queue; sending must clear it.
+		const teamThread = await seedThread(t, team, { needsReplyPendingAt: Date.now() });
+
+		const draftId = await seedPendingDraft(t, {
+			mailboxId: team, // the THREAD mailbox
+			fromAddress: 'b@hinterland.camp',
+			threadId: teamThread,
+			sendAsMailboxId: personal, // routed through the personal mailbox
+			sentByUserId: 'user-B',
+		});
+
+		await transitionToSent(t, draftId);
+
+		const messages = await t.run((ctx) => ctx.db.query('mailMessages').collect());
+		expect(messages).toHaveLength(1);
+		const sent = messages[0]!;
+		// Sent copy lives in the PERSONAL mailbox's Sent folder…
+		expect(sent.mailboxId).toBe(personal);
+		expect(sent.folderId).toBe(personalSent);
+		expect(sent.folderId).not.toBe(teamSent);
+		// …on a FRESH thread owned by the personal mailbox (not the team thread).
+		expect(sent.threadId).not.toBe(teamThread);
+		const freshThread = await t.run((ctx) => ctx.db.get(sent.threadId!));
+		expect(freshThread?.mailboxId).toBe(personal);
+
+		// usedBytes is charged to the PERSONAL mailbox, not the team mailbox.
+		const personalMb = await t.run((ctx) => ctx.db.get(personal));
+		const teamMb = await t.run((ctx) => ctx.db.get(team));
+		expect(personalMb?.usedBytes).toBe(RAW_SIZE);
+		expect(teamMb?.usedBytes).toBe(0);
+
+		// The ORIGINAL team thread is stamped with the personal-address marker and
+		// drops out of the Reply Queue — context never silently forks.
+		const stampedTeamThread = await t.run((ctx) => ctx.db.get(teamThread));
+		expect(stampedTeamThread?.latestReply?.isFromPersonalAddress).toBe(true);
+		expect(stampedTeamThread?.latestReply?.byUserId).toBe('user-B');
+		expect(stampedTeamThread?.needsReplyPendingAt).toBeUndefined();
+	});
+});
+
 describe('resolveSendAsIdentitiesForCtx — resolution matrix', () => {
 	it('personal inbox offers only its own identity (no send-as extras)', async () => {
 		const t = convexTest(schema, modules);
@@ -151,6 +353,31 @@ describe('resolveSendAsIdentitiesForCtx — resolution matrix', () => {
 		});
 		expect(result).toHaveLength(1);
 		expect(result[0]).toMatchObject({ mailboxId: shared, kind: 'team' });
+	});
+
+	it('shared inbox — an org admin WITHOUT a membership row is offered only the team identity', async () => {
+		// Regression: the offer path reaches the shared mailbox via
+		// requireMailboxAccess, whose org owner/admin role-bypass grants access with
+		// no mailboxMembers row. Offering that admin their personal identity would
+		// let setIdentity accept a pick the dispatch re-check then revokes
+		// (from_revoked after Send). The offered set must match the sanctioned set:
+		// no membership ⇒ no personal send-as, only the team identity.
+		const t = convexTest(schema, modules);
+		const shared = await seedMailbox(t, {
+			userId: 'owner-user',
+			address: 'team@hinterland.camp',
+			scope: 'shared',
+		});
+		// admin-user owns a personal mailbox but is NOT a member of the shared inbox.
+		await seedMailbox(t, { userId: 'admin-user', address: 'admin@hinterland.camp' });
+
+		const result = await t.run(async (ctx) => {
+			const mb = await ctx.db.get(shared);
+			return resolveSendAsIdentitiesForCtx(ctx, mb!, 'admin-user');
+		});
+		expect(result).toHaveLength(1);
+		expect(result[0]).toMatchObject({ mailboxId: shared, kind: 'team' });
+		expect(result.some((r) => r.mailboxId !== shared)).toBe(false);
 	});
 
 	it('shared inbox does NOT offer another org member’s shared mailbox as personal', async () => {
@@ -247,6 +474,32 @@ describe('isSanctionedSendAsForUser — dispatch-time re-check', () => {
 				sendingMailboxId: personal,
 				fromAddress: 'b@hinterland.camp',
 				userId: 'user-B',
+			})
+		);
+		expect(ok).toBe(false);
+	});
+
+	it('blocks personal send-as for an org admin who is not a member of the shared thread', async () => {
+		// The dispatch check knows nothing about org roles — it requires the
+		// mailbox's own user or an explicit membership row. This pins the admin case
+		// so the offer restriction above and the dispatch refusal stay in lockstep.
+		const t = convexTest(schema, modules);
+		const shared = await seedMailbox(t, {
+			userId: 'owner-user',
+			address: 'team@hinterland.camp',
+			scope: 'shared',
+		});
+		const adminPersonal = await seedMailbox(t, {
+			userId: 'admin-user',
+			address: 'admin@hinterland.camp',
+		});
+		// admin-user has NO membership row on the shared mailbox.
+		const ok = await t.run((ctx) =>
+			isSanctionedSendAsForUser(ctx, {
+				threadMailboxId: shared,
+				sendingMailboxId: adminPersonal,
+				fromAddress: 'admin@hinterland.camp',
+				userId: 'admin-user',
 			})
 		);
 		expect(ok).toBe(false);
