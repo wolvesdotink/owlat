@@ -241,24 +241,15 @@ export const getAbTestWinnerInputs = internalQuery({
 		const campaign = await ctx.db.get(args.campaignId);
 		if (!campaign || !campaign.isABTest) return null;
 
-		const variantASends = await ctx.db
-			.query('emailSends')
-			.withIndex('by_campaign_and_variant', (q) =>
-				q.eq('campaignId', args.campaignId).eq('abVariant', 'A')
-			)
-			.take(10000);
-		const variantBSends = await ctx.db
-			.query('emailSends')
-			.withIndex('by_campaign_and_variant', (q) =>
-				q.eq('campaignId', args.campaignId).eq('abVariant', 'B')
-			)
-			.take(10000);
+		// Shared bounded load + reduce (same index, limit, and stat math as
+		// getABTestStats) so the winner decision can't drift from the report.
+		const { variantA, variantB } = await loadAbTestStats(ctx, args.campaignId);
 
 		return {
 			abTestStatus: campaign.abTestStatus ?? null,
 			winnerCriteria: campaign.abTestConfig?.winnerCriteria ?? 'manual',
-			variantA: computeAbVariantStats(variantASends),
-			variantB: computeAbVariantStats(variantBSends),
+			variantA,
+			variantB,
 		};
 	},
 });
