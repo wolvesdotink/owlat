@@ -18,7 +18,7 @@ import { internalQuery } from '../_generated/server';
 import { authedMutation, publicQuery } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import { loadOwnedMailbox } from './permissions';
+import { requireMailboxAccess } from './permissions';
 import { resolveAllowedFromAddressesForCtx } from './identities';
 import { getOrThrow, throwForbidden, throwInvalidState, throwNotFound } from '../_utils/errors';
 import { assertStateIs, type TransitionOutcome as DraftTransitionOutcome } from './draftLifecycle';
@@ -29,7 +29,7 @@ export const create = authedMutation({
 		inReplyToMessageId: v.optional(v.id('mailMessages')),
 	},
 	handler: async (ctx, args) => {
-		const owned = await loadOwnedMailbox(ctx, args.mailboxId);
+		const owned = await requireMailboxAccess(ctx, args.mailboxId);
 		if (!owned.ok) throwForbidden('Mailbox not accessible');
 		const mailbox = owned.mailbox;
 
@@ -96,7 +96,7 @@ export const update = authedMutation({
 	},
 	handler: async (ctx, args) => {
 		const draft = await getOrThrow(ctx, args.draftId, 'Draft');
-		const owned = await loadOwnedMailbox(ctx, draft.mailboxId);
+		const owned = await requireMailboxAccess(ctx, draft.mailboxId);
 		if (!owned.ok) throwForbidden('Draft not accessible');
 		assertStateIs(draft, 'draft');
 
@@ -141,7 +141,7 @@ export const setIdentity = authedMutation({
 	},
 	handler: async (ctx, args) => {
 		const draft = await getOrThrow(ctx, args.draftId, 'Draft');
-		const owned = await loadOwnedMailbox(ctx, draft.mailboxId);
+		const owned = await requireMailboxAccess(ctx, draft.mailboxId);
 		if (!owned.ok) throwForbidden('Draft not accessible');
 		assertStateIs(draft, 'draft');
 
@@ -170,7 +170,7 @@ export const addAttachment = authedMutation({
 	},
 	handler: async (ctx, args) => {
 		const draft = await getOrThrow(ctx, args.draftId, 'Draft');
-		const owned = await loadOwnedMailbox(ctx, draft.mailboxId);
+		const owned = await requireMailboxAccess(ctx, draft.mailboxId);
 		if (!owned.ok) throwForbidden('Draft not accessible');
 
 		await ctx.db.patch(args.draftId, {
@@ -198,7 +198,7 @@ export const removeAttachment = authedMutation({
 	handler: async (ctx, args) => {
 		const draft = await ctx.db.get(args.draftId);
 		if (!draft) return;
-		const owned = await loadOwnedMailbox(ctx, draft.mailboxId);
+		const owned = await requireMailboxAccess(ctx, draft.mailboxId);
 		if (!owned.ok) return;
 
 		const toDelete = draft.attachments.find((a) => a.storageId === args.storageId);
@@ -218,7 +218,7 @@ export const discard = authedMutation({
 	handler: async (ctx, args) => {
 		const draft = await ctx.db.get(args.draftId);
 		if (!draft) return;
-		const owned = await loadOwnedMailbox(ctx, draft.mailboxId);
+		const owned = await requireMailboxAccess(ctx, draft.mailboxId);
 		if (!owned.ok) return;
 		for (const att of draft.attachments) {
 			await ctx.storage.delete(att.storageId);
@@ -227,23 +227,23 @@ export const discard = authedMutation({
 	},
 });
 
-// public: soft-auth — returns empty for anonymous; mailbox ownership is still enforced in-handler
+// public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
 export const get = publicQuery({
 	args: { draftId: v.id('mailDrafts') },
 	handler: async (ctx, args) => {
 		const draft = await ctx.db.get(args.draftId);
 		if (!draft) return null;
-		const owned = await loadOwnedMailbox(ctx, draft.mailboxId);
+		const owned = await requireMailboxAccess(ctx, draft.mailboxId);
 		if (!owned.ok) return null;
 		return draft;
 	},
 });
 
-// public: soft-auth — returns empty for anonymous; mailbox ownership is still enforced in-handler
+// public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
 export const listForMailbox = publicQuery({
 	args: { mailboxId: v.id('mailboxes') },
 	handler: async (ctx, args) => {
-		const owned = await loadOwnedMailbox(ctx, args.mailboxId);
+		const owned = await requireMailboxAccess(ctx, args.mailboxId);
 		if (!owned.ok) return [];
 		return ctx.db
 			.query('mailDrafts')
@@ -269,7 +269,7 @@ export const send = authedMutation({
 	},
 	handler: async (ctx, args): Promise<{ undoToken: string; sendAt: number }> => {
 		const draft = await getOrThrow(ctx, args.draftId, 'Draft');
-		const owned = await loadOwnedMailbox(ctx, draft.mailboxId);
+		const owned = await requireMailboxAccess(ctx, draft.mailboxId);
 		if (!owned.ok) throwForbidden('Draft not accessible');
 
 		const now = Date.now();
@@ -323,7 +323,7 @@ export const cancelPendingSend = authedMutation({
 			.withIndex('by_undo_token', (q) => q.eq('undoToken', args.undoToken))
 			.first();
 		if (!draft) return { ok: false };
-		const owned = await loadOwnedMailbox(ctx, draft.mailboxId);
+		const owned = await requireMailboxAccess(ctx, draft.mailboxId);
 		if (!owned.ok) return { ok: false };
 
 		const outcome: DraftTransitionOutcome = await ctx.runMutation(
@@ -354,7 +354,7 @@ export const cancelScheduledSend = authedMutation({
 	args: { draftId: v.id('mailDrafts') },
 	handler: async (ctx, args): Promise<{ ok: false } | { ok: true; draftId: Id<'mailDrafts'> }> => {
 		const draft = await getOrThrow(ctx, args.draftId, 'Draft');
-		const owned = await loadOwnedMailbox(ctx, draft.mailboxId);
+		const owned = await requireMailboxAccess(ctx, draft.mailboxId);
 		if (!owned.ok) throwForbidden('Draft not accessible');
 
 		const outcome: DraftTransitionOutcome = await ctx.runMutation(

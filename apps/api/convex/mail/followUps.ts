@@ -27,7 +27,7 @@ import { authedMutation } from '../lib/authedFunctions';
 import type { Doc, Id } from '../_generated/dataModel';
 import { throwForbidden, throwInvalidInput, throwNotFound } from '../_utils/errors';
 import { isMessageSnoozed } from '../lib/mailSnooze';
-import { loadOwnedMailbox, loadOwnedMessage } from './permissions';
+import { requireMailboxAccess, loadOwnedMessage } from './permissions';
 import { adjustFolderUnseen } from './folders';
 import { rebuildThreadAggregates } from './messageActions';
 
@@ -48,7 +48,7 @@ export async function armThreadFollowUp(
 		messageId: Id<'mailMessages'>;
 		remindAt: number;
 		waitingOn?: string;
-	},
+	}
 ): Promise<void> {
 	const now = Date.now();
 	await ctx.db.patch(opts.threadId, {
@@ -70,7 +70,7 @@ export async function armThreadFollowUp(
  */
 export async function clearThreadFollowUp(
 	ctx: MutationCtx,
-	threadId: Id<'mailThreads'>,
+	threadId: Id<'mailThreads'>
 ): Promise<void> {
 	const thread = await ctx.db.get(threadId);
 	if (!thread) return;
@@ -120,14 +120,14 @@ export const arm = authedMutation({
 });
 
 /** Cancel an armed (or dismiss a due) follow-up watch. */
-// authz: thread → mailbox ownership via loadOwnedMailbox; org membership via
+// authz: thread → mailbox access via requireMailboxAccess; org membership via
 // authedMutation.
 export const cancel = authedMutation({
 	args: { threadId: v.id('mailThreads') },
 	handler: async (ctx, args) => {
 		const thread = await ctx.db.get(args.threadId);
 		if (!thread) throwNotFound('Thread');
-		const owned = await loadOwnedMailbox(ctx, thread.mailboxId);
+		const owned = await requireMailboxAccess(ctx, thread.mailboxId);
 		if (!owned.ok) throwForbidden('Thread not accessible');
 		await clearThreadFollowUp(ctx, args.threadId);
 	},
@@ -150,12 +150,12 @@ export const internalSweep = internalMutation({
 		const dueRows = await ctx.db
 			.query('mailThreads')
 			.withIndex('by_follow_up_remind', (q) =>
-				q.gt('followUpRemindAt', 0).lte('followUpRemindAt', now),
+				q.gt('followUpRemindAt', 0).lte('followUpRemindAt', now)
 			)
 			.take(100);
 		const due = dueRows.filter(
 			(t): t is Doc<'mailThreads'> & { followUp: NonNullable<Doc<'mailThreads'>['followUp']> } =>
-				t.followUpRemindAt != null && t.followUp !== undefined,
+				t.followUpRemindAt != null && t.followUp !== undefined
 		);
 		let resurfaced = 0;
 		for (const thread of due) {
@@ -176,7 +176,7 @@ export const internalSweep = internalMutation({
 			const inbox = await ctx.db
 				.query('mailFolders')
 				.withIndex('by_mailbox_and_role', (q) =>
-					q.eq('mailboxId', thread.mailboxId).eq('role', 'inbox'),
+					q.eq('mailboxId', thread.mailboxId).eq('role', 'inbox')
 				)
 				.first();
 			if (inbox && message.folderId !== inbox._id) {

@@ -32,6 +32,7 @@
  */
 
 import type { Doc, Id } from '../_generated/dataModel';
+import type { QueryCtx } from '../_generated/server';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 
 /** Membership role on a mailbox. `owner` is a superset of `member`. */
@@ -49,7 +50,7 @@ export type MailboxAccessOutcome =
 			reason: 'no_session' | 'mailbox_missing' | 'mailbox_inactive' | 'forbidden';
 	  };
 
-export async function loadOwnedMailbox(
+export async function requireMailboxAccess(
 	ctx: Parameters<typeof getBetterAuthSessionWithRole>[0],
 	mailboxId: Id<'mailboxes'>,
 	minRole: MailboxMemberRole = 'member'
@@ -67,6 +68,14 @@ export async function loadOwnedMailbox(
 	// Everyone else needs an explicit membership row meeting `minRole`. This is
 	// the only path that reaches a shared mailbox; personal mailboxes never
 	// carry non-owner members, so their behaviour is unchanged.
+	//
+	// Defense-in-depth: a membership row may only grant access inside the
+	// caller's active organization, so a stale or mis-seeded row can never
+	// reach a mailbox in another org. The owner/admin/self branch above is
+	// unaffected, keeping personal-mailbox behaviour bit-for-bit.
+	if (mailbox.organizationId !== s.activeOrganizationId) {
+		return { ok: false, reason: 'forbidden' };
+	}
 	const membership = await ctx.db
 		.query('mailboxMembers')
 		.withIndex('by_mailbox_user', (q) => q.eq('mailboxId', mailboxId).eq('authUserId', s.userId))
@@ -78,7 +87,7 @@ export async function loadOwnedMailbox(
 }
 
 /**
- * Read-side counterpart to {@link loadOwnedMailbox}: same ownership +
+ * Read-side counterpart to {@link requireMailboxAccess}: same ownership +
  * `status === 'active'` policy, but collapsed to a plain
  * `Doc<'mailboxes'> | null` for the query soft-fail pattern (a `publicQuery`
  * that returns an empty/null result for anonymous, non-owner, or
@@ -93,7 +102,7 @@ export async function loadReadableMailbox(
 	ctx: Parameters<typeof getBetterAuthSessionWithRole>[0],
 	mailboxId: Id<'mailboxes'>
 ): Promise<Doc<'mailboxes'> | null> {
-	const owned = await loadOwnedMailbox(ctx, mailboxId);
+	const owned = await requireMailboxAccess(ctx, mailboxId);
 	return owned.ok ? owned.mailbox : null;
 }
 
@@ -114,14 +123,50 @@ export type MessageAccessOutcome =
 				| 'forbidden';
 	  };
 
-/** Same policy as {@link loadOwnedMailbox}, keyed by a message id. */
+/** Same policy as {@link requireMailboxAccess}, keyed by a message id. */
 export async function loadOwnedMessage(
 	ctx: Parameters<typeof getBetterAuthSessionWithRole>[0],
 	messageId: Id<'mailMessages'>
 ): Promise<MessageAccessOutcome> {
 	const message = await ctx.db.get(messageId);
 	if (!message) return { ok: false, reason: 'message_missing' };
-	const owned = await loadOwnedMailbox(ctx, message.mailboxId);
+	const owned = await requireMailboxAccess(ctx, message.mailboxId);
 	if (!owned.ok) return owned;
 	return { ok: true, userId: owned.userId, mailbox: owned.mailbox, message };
+}
+
+/**
+ * Every mailbox the caller can see in their own inbox surfaces: the mailboxes
+ * they own (`mailboxes.by_user`) unioned with any shared mailbox they are an
+ * explicit member of (`mailboxMembers.by_user`). Deduped by id; the caller
+ * applies its own `status` filtering (this returns rows in every status).
+ *
+ * This is the enumeration counterpart to {@link requireMailboxAccess}: the
+ * point read gates access to one mailbox, this lists the caller's set. For a
+ * personal mailbox the only membership row is the mailbox's own backfilled
+ * owner (already covered by the `by_user` query), so the union is a no-op and
+ * inbox enumeration stays bit-for-bit unchanged.
+ */
+export async function loadAccessibleMailboxes(
+	ctx: QueryCtx,
+	userId: string
+): Promise<Array<Doc<'mailboxes'>>> {
+	const owned = await ctx.db
+		.query('mailboxes')
+		.withIndex('by_user', (q) => q.eq('userId', userId))
+		.collect(); // bounded: one user's own mailboxes (typically 1)
+	const seen = new Set<Id<'mailboxes'>>(owned.map((m) => m._id));
+	const out = [...owned];
+	const memberships = await ctx.db
+		.query('mailboxMembers')
+		.withIndex('by_user', (q) => q.eq('authUserId', userId))
+		.collect(); // bounded: shared mailboxes one user belongs to
+	for (const row of memberships) {
+		if (seen.has(row.mailboxId)) continue;
+		const mailbox = await ctx.db.get(row.mailboxId);
+		if (!mailbox) continue;
+		seen.add(mailbox._id);
+		out.push(mailbox);
+	}
+	return out;
 }

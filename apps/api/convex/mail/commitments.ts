@@ -34,7 +34,7 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { throwForbidden, throwNotFound } from '../_utils/errors';
 import { isBulkOrNoReplySender } from './needsReply';
 import { armThreadFollowUp, followUpWaitingOn } from './followUps';
-import { loadOwnedMailbox, loadReadableMailbox } from './permissions';
+import { requireMailboxAccess, loadReadableMailbox } from './permissions';
 
 // ─── Pure helpers ────────────────────────────────────────────────────────────
 
@@ -363,14 +363,14 @@ async function listMailboxCommitments(
 }
 
 /** Mark a commitment done (the owner fulfilled or dismissed it). */
-// authz: commitment → mailbox ownership via loadOwnedMailbox; org membership via
+// authz: commitment → mailbox access via requireMailboxAccess; org membership via
 // authedMutation.
 export const resolveCommitment = authedMutation({
 	args: { commitmentId: v.id('mailCommitments') },
 	handler: async (ctx, args) => {
 		const commitment = await ctx.db.get(args.commitmentId);
 		if (!commitment) throwNotFound('Commitment');
-		const owned = await loadOwnedMailbox(ctx, commitment.mailboxId);
+		const owned = await requireMailboxAccess(ctx, commitment.mailboxId);
 		if (!owned.ok) throwForbidden('Commitment not accessible');
 		await ctx.db.patch(args.commitmentId, { status: 'done', updatedAt: Date.now() });
 	},

@@ -3,7 +3,7 @@
  *
  * The single-org deployment shares one organization, so the security boundary
  * for personal mail is NOT org-id filtering — it is PER-USER ownership,
- * enforced by `loadOwnedMailbox` / `loadOwnedMessage` (mail/permissions.ts):
+ * enforced by `requireMailboxAccess` / `loadOwnedMessage` (mail/permissions.ts):
  *   - role 'owner'/'admin' can act on any user's mailbox (org-admin override);
  *   - role 'editor' can act only on a mailbox whose `userId` equals theirs.
  *
@@ -20,7 +20,7 @@
  *   - folder/label/filter create cross-mailbox-target rejection.
  *
  * Session mocking: mail reads the session via `getBetterAuthSessionWithRole`
- * (inside `loadOwnedMailbox`); the `authedMutation`/`authedQuery` wrappers floor
+ * (inside `requireMailboxAccess`); the `authedMutation`/`authedQuery` wrappers floor
  * on `getMutationContext` / `requireOrgMember`. All of these are routed through
  * one mutable hoisted session so `setUser(...)` flips the acting identity.
  */
@@ -44,7 +44,7 @@ vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
 	return {
 		...actual,
-		// `loadOwnedMailbox` reads ownership through this.
+		// `requireMailboxAccess` reads ownership through this.
 		getBetterAuthSessionWithRole: vi.fn().mockImplementation(async () => ({
 			userId: sessionMock.user.id,
 			role: sessionMock.user.role,
@@ -55,13 +55,22 @@ vi.mock('../lib/sessionOrganization', async () => {
 		// the floor while the in-handler ownership check does the real work.
 		requireOrgMember: vi
 			.fn()
-			.mockImplementation(async () => ({ userId: sessionMock.user.id, role: sessionMock.user.role })),
+			.mockImplementation(async () => ({
+				userId: sessionMock.user.id,
+				role: sessionMock.user.role,
+			})),
 		getMutationContext: vi
 			.fn()
-			.mockImplementation(async () => ({ userId: sessionMock.user.id, role: sessionMock.user.role })),
+			.mockImplementation(async () => ({
+				userId: sessionMock.user.id,
+				role: sessionMock.user.role,
+			})),
 		requireOrgPermission: vi
 			.fn()
-			.mockImplementation(async () => ({ userId: sessionMock.user.id, role: sessionMock.user.role })),
+			.mockImplementation(async () => ({
+				userId: sessionMock.user.id,
+				role: sessionMock.user.role,
+			})),
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
 	};
 });
@@ -84,8 +93,8 @@ const modules = Object.fromEntries(
 			!path.includes('knowledgeExtraction') &&
 			!path.includes('semanticFileProcessing') &&
 			!path.includes('visualizationAgent') &&
-			!path.includes('llmProvider'),
-	),
+			!path.includes('llmProvider')
+	)
 );
 
 const setUser = (id: string, role: 'owner' | 'admin' | 'editor' = 'editor') => {
@@ -109,7 +118,7 @@ type MailboxParts = {
 async function seedMailbox(
 	t: TestConvex<typeof schema>,
 	ownerUserId: string,
-	address: string,
+	address: string
 ): Promise<MailboxParts> {
 	return t.run(async (ctx) => {
 		const now = Date.now();
@@ -150,7 +159,7 @@ async function seedMessage(
 	t: TestConvex<typeof schema>,
 	mailboxId: Id<'mailboxes'>,
 	folderId: Id<'mailFolders'>,
-	opts: { unread?: boolean; snoozedUntil?: number } = {},
+	opts: { unread?: boolean; snoozedUntil?: number } = {}
 ): Promise<{ messageId: Id<'mailMessages'>; threadId: Id<'mailThreads'> }> {
 	return t.run(async (ctx) => {
 		const now = Date.now();
@@ -275,9 +284,7 @@ describe('mail.drafts ownership', () => {
 		const a = await seedMailbox(t, 'user-alice', 'alice@hinterland.camp');
 
 		setUser('user-bob', 'editor');
-		await expect(
-			t.mutation(api.mail.drafts.create, { mailboxId: a.mailboxId }),
-		).rejects.toThrow();
+		await expect(t.mutation(api.mail.drafts.create, { mailboxId: a.mailboxId })).rejects.toThrow();
 	});
 
 	it('hides another user’s draft from get and refuses update', async () => {
@@ -294,7 +301,7 @@ describe('mail.drafts ownership', () => {
 		const seen = await t.query(api.mail.drafts.get, { draftId });
 		expect(seen).toBeNull();
 		await expect(
-			t.mutation(api.mail.drafts.update, { draftId, subject: 'hijacked' }),
+			t.mutation(api.mail.drafts.update, { draftId, subject: 'hijacked' })
 		).rejects.toThrow();
 
 		// And the draft is unchanged.
@@ -386,9 +393,7 @@ describe('mail.drafts.send + cancelPendingSend ownership', () => {
 		});
 
 		setUser('user-bob', 'editor');
-		await expect(
-			t.mutation(api.mail.drafts.send, { draftId }),
-		).rejects.toThrow();
+		await expect(t.mutation(api.mail.drafts.send, { draftId })).rejects.toThrow();
 	});
 
 	it('cancelPendingSend with a valid token but wrong user is a no-op (ok:false)', async () => {
@@ -472,7 +477,7 @@ describe('mail.drafts.cancelScheduledSend ownership', () => {
 
 		// While scheduled, update is rejected by the state guard.
 		await expect(
-			t.mutation(api.mail.drafts.update, { draftId, subject: 'edited' }),
+			t.mutation(api.mail.drafts.update, { draftId, subject: 'edited' })
 		).rejects.toThrow();
 
 		await t.mutation(api.mail.drafts.cancelScheduledSend, { draftId });
@@ -501,9 +506,7 @@ describe('mail.drafts.cancelScheduledSend ownership', () => {
 		});
 
 		setUser('user-bob', 'editor');
-		await expect(
-			t.mutation(api.mail.drafts.cancelScheduledSend, { draftId }),
-		).rejects.toThrow();
+		await expect(t.mutation(api.mail.drafts.cancelScheduledSend, { draftId })).rejects.toThrow();
 
 		const still = await t.run(async (ctx) => ctx.db.get(draftId));
 		expect(still?.state).toBe('scheduled');
@@ -561,7 +564,7 @@ describe('mail.messageActions ownership', () => {
 
 		setUser('user-bob', 'editor');
 		await expect(
-			t.mutation(api.mail.messageActions.archive, { messageIds: [messageId] }),
+			t.mutation(api.mail.messageActions.archive, { messageIds: [messageId] })
 		).rejects.toThrow();
 
 		// Message did not move.
@@ -715,7 +718,7 @@ describe('mail.snooze ownership + counter math', () => {
 			t.mutation(api.mail.snooze.snooze, {
 				messageId,
 				until: Date.now() + 60_000,
-			}),
+			})
 		).rejects.toThrow();
 	});
 
@@ -731,7 +734,7 @@ describe('mail.snooze ownership + counter math', () => {
 			t.mutation(api.mail.snooze.snooze, {
 				messageId,
 				until: Date.now() - 1,
-			}),
+			})
 		).rejects.toThrow();
 	});
 });
@@ -757,7 +760,7 @@ describe('mail.folders ownership', () => {
 			t.mutation(api.mail.folders.create, {
 				mailboxId: a.mailboxId,
 				name: 'Sneaky',
-			}),
+			})
 		).rejects.toThrow();
 	});
 
@@ -774,7 +777,7 @@ describe('mail.folders ownership', () => {
 				mailboxId: a.mailboxId,
 				name: 'Nested',
 				parentId: b.inboxId,
-			}),
+			})
 		).rejects.toThrow();
 	});
 
@@ -816,7 +819,7 @@ describe('mail.labels ownership', () => {
 			t.mutation(api.mail.labels.create, {
 				mailboxId: a.mailboxId,
 				name: 'Foreign',
-			}),
+			})
 		).rejects.toThrow();
 	});
 
@@ -842,7 +845,7 @@ describe('mail.labels ownership', () => {
 				messageId,
 				labelId: bobLabel as Id<'mailLabels'>,
 				add: true,
-			}),
+			})
 		).rejects.toThrow();
 	});
 
@@ -894,7 +897,7 @@ describe('mail.filters ownership', () => {
 				name: 'Sneaky',
 				conditions: [{ field: 'from', op: 'contains', value: 'x@example.com' }],
 				actions: [{ type: 'markRead' }],
-			}),
+			})
 		).rejects.toThrow();
 	});
 
@@ -911,7 +914,7 @@ describe('mail.filters ownership', () => {
 				conditions: [{ field: 'from', op: 'contains', value: 'x@example.com' }],
 				// Target folder lives in Bob's mailbox.
 				actions: [{ type: 'moveToFolder', folderId: b.inboxId }],
-			}),
+			})
 		).rejects.toThrow();
 	});
 
@@ -961,7 +964,7 @@ describe('mail.mailbox.setDisplayName ownership', () => {
 			t.mutation(api.mail.mailbox.setDisplayName, {
 				mailboxId: a.mailboxId,
 				displayName: 'Hijacked',
-			}),
+			})
 		).rejects.toThrow();
 	});
 });
