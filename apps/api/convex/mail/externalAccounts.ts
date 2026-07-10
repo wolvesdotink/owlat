@@ -152,17 +152,26 @@ export const disconnect = authedMutation({
  * and mailbox rows). Runs in self-scheduling chunks so a large mailbox does not
  * exceed a single mutation's limits.
  */
-// authz: self — purges only the caller's own external account (by_user on s.userId).
+// authz: self — purges only the caller's own external account (resolved by userId).
 export const purge = authedMutation({
 	args: {},
 	handler: async (ctx) => {
 		await assertFeatureEnabled(ctx, 'mail.external');
 		const s = await getBetterAuthSessionWithRole(ctx);
 		if (!s || !s.role) throwForbidden('Not authenticated');
-		const account = await ctx.db
-			.query('externalMailAccounts')
-			.withIndex('by_user', (q) => q.eq('userId', s.userId))
-			.first();
+		// Purge the LIVE account (the one the migrate page renders for), not the
+		// oldest row: after a completed move the oldest row is the read-only archive,
+		// and purging that would irreversibly delete the moved-mailbox history this
+		// piece promises to keep. Only when NO account is live (purging a lone archive)
+		// do we fall back to the newest by_user row so a deliberate archive purge stays
+		// possible.
+		const account =
+			(await getLiveExternalAccountForUser(ctx, s.userId)) ??
+			(await ctx.db
+				.query('externalMailAccounts')
+				.withIndex('by_user', (q) => q.eq('userId', s.userId))
+				.order('desc')
+				.first());
 		if (!account) throwNotFound('External mail account');
 		const now = Date.now();
 		// Mark disconnected first so the worker stops syncing into a draining mailbox.
@@ -346,10 +355,13 @@ export const _updateCredentialsInternal = internalMutation({
 	handler: async (ctx, args) => {
 		const s = await getBetterAuthSessionWithRole(ctx);
 		if (!s || !s.role) throwForbidden('Not authenticated');
-		const account = await ctx.db
-			.query('externalMailAccounts')
-			.withIndex('by_user', (q) => q.eq('userId', s.userId))
-			.first();
+		// Re-enter credentials for the LIVE account only. Post-move, the oldest row
+		// is the read-only archive — patching it (new host/username/ciphertext + a
+		// reset to 'pending') would make listConnectableAccounts resume syncing into
+		// the demoted mailbox, cross-contaminating archived history. Re-entering
+		// credentials for an archive is meaningless (reconnect is the path), so a
+		// missing live account is a not-found.
+		const account = await getLiveExternalAccountForUser(ctx, s.userId);
 		if (!account) throwNotFound('External mail account');
 		const now = Date.now();
 		await ctx.db.patch(account._id, {
