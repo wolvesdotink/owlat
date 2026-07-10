@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
-import { formatDateTime } from '~/utils/formatters';
+import { capitalize, formatDateTime } from '~/utils/formatters';
 
 interface WebhookDeliveryLog {
 	_id: Id<'webhookDeliveryLogs'>;
