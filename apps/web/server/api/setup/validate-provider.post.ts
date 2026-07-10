@@ -49,9 +49,15 @@ export default defineEventHandler(async (event): Promise<{ ok: boolean; message:
 				message: 'smtp.host, smtp.username, and smtp.password are required.',
 			});
 		}
+		// A present-but-non-numeric port must fail loudly rather than being
+		// silently coerced to 587 — otherwise the endpoint could report success
+		// for a different port than the caller asked about. Absent ⇒ backend 587.
+		if (smtp.port !== undefined && typeof smtp.port !== 'number') {
+			throw createError({ statusCode: 400, message: 'smtp.port must be a number.' });
+		}
 		return validateSmtpRelay({
 			host: smtp.host,
-			port: typeof smtp.port === 'number' ? smtp.port : 587,
+			port: smtp.port ?? 587,
 			secure: smtp.secure === true,
 			username: smtp.username,
 			password: smtp.password,
