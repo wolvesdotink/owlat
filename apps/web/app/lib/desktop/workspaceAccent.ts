@@ -9,17 +9,19 @@
  * active workspace. Content surfaces (cards / reader / composer) get no tint.
  */
 
+import type { WorkspaceAccent } from '~/lib/desktop/workspaceTypes';
+
 /** The CSS custom property the desktop chrome derives all accent tints from. */
 export const WS_ACCENT_VAR = '--ws-accent';
 
 /** Set (or clear, when null) the active workspace accent on the given element. */
-export function applyWorkspaceAccent(el: HTMLElement, accent: string | null): void {
+export function applyWorkspaceAccent(el: HTMLElement, accent: WorkspaceAccent | null): void {
 	if (accent) el.style.setProperty(WS_ACCENT_VAR, accent);
 	else el.style.removeProperty(WS_ACCENT_VAR);
 }
 
 /**
- * Derive the accent-tint color-mix() expressions the desktop chrome paints from
+ * Derive the accent tint color-mix() expressions the desktop chrome paints from
  * a given accent. Kept as a pure function purely so the recipe (which surface,
  * which percentage) is unit-testable and documented in one place; the live
  * paint is done by the mirrored CSS in assets/css/desktop.css. Both themes are

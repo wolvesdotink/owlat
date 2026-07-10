@@ -32,31 +32,54 @@ export interface WorkspaceConfig {
 	 * from {@link WORKSPACE_ACCENTS} when the workspace is added; user-editable
 	 * from the workspace switcher's accent picker.
 	 */
-	accentColor: string;
+	accentColor: WorkspaceAccent;
 }
 
 /**
- * Curated workspace identity accents (hex). Assigned round-robin as workspaces
- * are added so each connected instance gets a distinct, on-brand frame color.
- * Order: moss, terracotta, slate, plum, gold, graphite.
+ * Curated workspace identity accents — value + human label colocated so a
+ * palette change can never desync the swatch labels from the hexes. Assigned
+ * round-robin as workspaces are added so each connected instance gets a
+ * distinct, on-brand frame color.
  */
-export const WORKSPACE_ACCENTS = [
-	'#7a8c5a', // moss
-	'#c4785a', // terracotta (matches the FF brand hue)
-	'#5a7a9b', // slate
-	'#8c5a7a', // plum
-	'#b8935a', // gold
-	'#3d3d3d', // graphite
+export const WORKSPACE_ACCENT_OPTIONS = [
+	{ value: '#7a8c5a', label: 'Moss' },
+	{ value: '#c4785a', label: 'Terracotta' }, // matches the FF brand hue
+	{ value: '#5a7a9b', label: 'Slate' },
+	{ value: '#8c5a7a', label: 'Plum' },
+	{ value: '#b8935a', label: 'Gold' },
+	{ value: '#3d3d3d', label: 'Graphite' },
 ] as const;
 
+/**
+ * Curated workspace identity accents (hex), derived from
+ * {@link WORKSPACE_ACCENT_OPTIONS}. Order: moss, terracotta, slate, plum, gold,
+ * graphite.
+ */
+export const WORKSPACE_ACCENTS = WORKSPACE_ACCENT_OPTIONS.map((o) => o.value) as [
+	'#7a8c5a',
+	'#c4785a',
+	'#5a7a9b',
+	'#8c5a7a',
+	'#b8935a',
+	'#3d3d3d',
+];
+
+/** One of the curated workspace accent hexes. */
+export type WorkspaceAccent = (typeof WORKSPACE_ACCENTS)[number];
+
+/** Human label for a curated accent hex, or a generic fallback. */
+export function accentLabel(color: string): string {
+	return WORKSPACE_ACCENT_OPTIONS.find((o) => o.value === color)?.label ?? 'Accent';
+}
+
 /** Fallback accent when none has been assigned yet (the terracotta brand hue). */
-export const DEFAULT_WORKSPACE_ACCENT = WORKSPACE_ACCENTS[1];
+export const DEFAULT_WORKSPACE_ACCENT: WorkspaceAccent = WORKSPACE_ACCENTS[1];
 
 /**
  * Round-robin pick from the curated accents for the Nth added workspace.
  * Handles negative and out-of-range indices defensively.
  */
-export function pickAccentColor(index: number): string {
+export function pickAccentColor(index: number): WorkspaceAccent {
 	const len = WORKSPACE_ACCENTS.length;
 	const i = ((Math.trunc(index) % len) + len) % len;
 	return WORKSPACE_ACCENTS[i] ?? DEFAULT_WORKSPACE_ACCENT;
