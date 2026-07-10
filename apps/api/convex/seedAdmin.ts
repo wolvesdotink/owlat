@@ -14,12 +14,15 @@ import { safeCompare } from './lib/safeCompare';
  *
  * POST /seed/admin
  * Headers: X-Instance-Secret: <instance secret>
- * Body: { email: string, name: string, passwordHash: string, flags?: Record<string, boolean> }
+ * Body: { email: string, name: string, passwordHash: string, flags?: Record<string, boolean>, isMigrationMode?: boolean }
  *
  * `flags` (optional) carries the setup wizard's resolved feature-flag map; when
  * present it is persisted onto instanceSettings.featureFlags so the wizard's
  * selections actually take effect at runtime. Omitted by the bare VPS-provision
  * path, which then falls back to the compiled-in flag defaults.
+ *
+ * `isMigrationMode` (optional) carries the wizard's "moving from another platform?"
+ * answer onto instanceSettings.isMigrationMode. Defaults to false (fresh start).
  */
 
 export const seedAdmin = httpAction(async (ctx, request) => {
@@ -35,9 +38,21 @@ export const seedAdmin = httpAction(async (ctx, request) => {
 	}
 
 	// Parse request body
-	let body: { email: string; name: string; passwordHash: string; flags?: Record<string, boolean> };
+	let body: {
+		email: string;
+		name: string;
+		passwordHash: string;
+		flags?: Record<string, boolean>;
+		isMigrationMode?: boolean;
+	};
 	try {
-		body = await request.json() as { email: string; name: string; passwordHash: string; flags?: Record<string, boolean> };
+		body = (await request.json()) as {
+			email: string;
+			name: string;
+			passwordHash: string;
+			flags?: Record<string, boolean>;
+			isMigrationMode?: boolean;
+		};
 	} catch {
 		return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
 			status: 400,
@@ -46,10 +61,13 @@ export const seedAdmin = httpAction(async (ctx, request) => {
 	}
 
 	if (!body.email || !body.name || !body.passwordHash) {
-		return new Response(JSON.stringify({ error: 'Missing required fields: email, name, passwordHash' }), {
-			status: 400,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return new Response(
+			JSON.stringify({ error: 'Missing required fields: email, name, passwordHash' }),
+			{
+				status: 400,
+				headers: { 'Content-Type': 'application/json' },
+			}
+		);
 	}
 
 	// One-shot check: refuse if any user already exists
@@ -60,10 +78,13 @@ export const seedAdmin = httpAction(async (ctx, request) => {
 	});
 
 	if (existingUser && existingUser.page && existingUser.page.length > 0) {
-		return new Response(JSON.stringify({ error: 'Users already exist. Seed endpoint is one-shot only.' }), {
-			status: 409,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return new Response(
+			JSON.stringify({ error: 'Users already exist. Seed endpoint is one-shot only.' }),
+			{
+				status: 409,
+				headers: { 'Content-Type': 'application/json' },
+			}
+		);
 	}
 
 	try {
@@ -109,7 +130,11 @@ export const seedAdmin = httpAction(async (ctx, request) => {
 		// Create BetterAuth organization
 		// Collapse runs of `-` and strip leading/trailing `-` so an email local
 		// part like `+++@x.com` doesn't yield the all-dashes slug `---`.
-		const slugBase = body.email.split('@')[0]?.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+		const slugBase = body.email
+			.split('@')[0]
+			?.toLowerCase()
+			.replace(/[^a-z0-9]+/g, '-')
+			.replace(/^-+|-+$/g, '');
 		const orgSlug = slugBase && slugBase.length > 0 ? slugBase : 'org';
 		const orgName = `${body.name}'s Team`;
 
@@ -149,6 +174,7 @@ export const seedAdmin = httpAction(async (ctx, request) => {
 		await ctx.runMutation(internal.organizations.settings.createInternal, {
 			timezone: 'UTC',
 			defaultFromName: orgName,
+			isMigrationMode: body.isMigrationMode ?? false,
 		});
 
 		// Persist the wizard's chosen feature flags (if provided) so the
