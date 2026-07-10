@@ -36,26 +36,99 @@ export type MailPreset = {
  */
 const DOMAIN_PRESETS: Record<string, MailPreset> = {
 	// Gmail / Google Workspace consumer domains.
-	'gmail.com': { imapHost: 'imap.gmail.com', imapPort: 993, isImapSecure: true, smtpHost: 'smtp.gmail.com', smtpPort: 465, isSmtpSecure: true },
-	'googlemail.com': { imapHost: 'imap.gmail.com', imapPort: 993, isImapSecure: true, smtpHost: 'smtp.gmail.com', smtpPort: 465, isSmtpSecure: true },
+	'gmail.com': {
+		imapHost: 'imap.gmail.com',
+		imapPort: 993,
+		isImapSecure: true,
+		smtpHost: 'smtp.gmail.com',
+		smtpPort: 465,
+		isSmtpSecure: true,
+	},
+	'googlemail.com': {
+		imapHost: 'imap.gmail.com',
+		imapPort: 993,
+		isImapSecure: true,
+		smtpHost: 'smtp.gmail.com',
+		smtpPort: 465,
+		isSmtpSecure: true,
+	},
 	// Microsoft consumer domains.
-	'outlook.com': { imapHost: 'outlook.office365.com', imapPort: 993, isImapSecure: true, smtpHost: 'smtp-mail.outlook.com', smtpPort: 587, isSmtpSecure: false },
-	'hotmail.com': { imapHost: 'outlook.office365.com', imapPort: 993, isImapSecure: true, smtpHost: 'smtp-mail.outlook.com', smtpPort: 587, isSmtpSecure: false },
-	'live.com': { imapHost: 'outlook.office365.com', imapPort: 993, isImapSecure: true, smtpHost: 'smtp-mail.outlook.com', smtpPort: 587, isSmtpSecure: false },
+	'outlook.com': {
+		imapHost: 'outlook.office365.com',
+		imapPort: 993,
+		isImapSecure: true,
+		smtpHost: 'smtp-mail.outlook.com',
+		smtpPort: 587,
+		isSmtpSecure: false,
+	},
+	'hotmail.com': {
+		imapHost: 'outlook.office365.com',
+		imapPort: 993,
+		isImapSecure: true,
+		smtpHost: 'smtp-mail.outlook.com',
+		smtpPort: 587,
+		isSmtpSecure: false,
+	},
+	'live.com': {
+		imapHost: 'outlook.office365.com',
+		imapPort: 993,
+		isImapSecure: true,
+		smtpHost: 'smtp-mail.outlook.com',
+		smtpPort: 587,
+		isSmtpSecure: false,
+	},
 	// Apple iCloud domains.
-	'icloud.com': { imapHost: 'imap.mail.me.com', imapPort: 993, isImapSecure: true, smtpHost: 'smtp.mail.me.com', smtpPort: 587, isSmtpSecure: false },
-	'me.com': { imapHost: 'imap.mail.me.com', imapPort: 993, isImapSecure: true, smtpHost: 'smtp.mail.me.com', smtpPort: 587, isSmtpSecure: false },
-	'mac.com': { imapHost: 'imap.mail.me.com', imapPort: 993, isImapSecure: true, smtpHost: 'smtp.mail.me.com', smtpPort: 587, isSmtpSecure: false },
+	'icloud.com': {
+		imapHost: 'imap.mail.me.com',
+		imapPort: 993,
+		isImapSecure: true,
+		smtpHost: 'smtp.mail.me.com',
+		smtpPort: 587,
+		isSmtpSecure: false,
+	},
+	'me.com': {
+		imapHost: 'imap.mail.me.com',
+		imapPort: 993,
+		isImapSecure: true,
+		smtpHost: 'smtp.mail.me.com',
+		smtpPort: 587,
+		isSmtpSecure: false,
+	},
+	'mac.com': {
+		imapHost: 'imap.mail.me.com',
+		imapPort: 993,
+		isImapSecure: true,
+		smtpHost: 'smtp.mail.me.com',
+		smtpPort: 587,
+		isSmtpSecure: false,
+	},
 	// Fastmail (and its common aliases).
-	'fastmail.com': { imapHost: 'imap.fastmail.com', imapPort: 993, isImapSecure: true, smtpHost: 'smtp.fastmail.com', smtpPort: 465, isSmtpSecure: true },
-	'fastmail.fm': { imapHost: 'imap.fastmail.com', imapPort: 993, isImapSecure: true, smtpHost: 'smtp.fastmail.com', smtpPort: 465, isSmtpSecure: true },
+	'fastmail.com': {
+		imapHost: 'imap.fastmail.com',
+		imapPort: 993,
+		isImapSecure: true,
+		smtpHost: 'smtp.fastmail.com',
+		smtpPort: 465,
+		isSmtpSecure: true,
+	},
+	'fastmail.fm': {
+		imapHost: 'imap.fastmail.com',
+		imapPort: 993,
+		isImapSecure: true,
+		smtpHost: 'smtp.fastmail.com',
+		smtpPort: 465,
+		isSmtpSecure: true,
+	},
 };
 
 /** Extract the lower-cased domain part of an email address, or `null`. */
 export function domainOfEmail(email: string): string | null {
 	const at = email.lastIndexOf('@');
 	if (at <= 0 || at === email.length - 1) return null;
-	const domain = email.slice(at + 1).trim().toLowerCase();
+	const domain = email
+		.slice(at + 1)
+		.trim()
+		.toLowerCase();
 	// Reject anything that isn't a plausible dotted hostname.
 	if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(domain)) return null;
 	return domain;
@@ -93,20 +166,66 @@ export type AppPasswordHelp = {
  */
 const APP_PASSWORD_PROVIDERS: Record<string, AppPasswordHelp> = {
 	// Google — requires 2-Step Verification, then a generated app password.
-	'gmail.com': { provider: 'Gmail', url: 'https://myaccount.google.com/apppasswords', steps: 'Turn on 2-Step Verification, then generate a 16-character app password and paste it here.' },
-	'googlemail.com': { provider: 'Gmail', url: 'https://myaccount.google.com/apppasswords', steps: 'Turn on 2-Step Verification, then generate a 16-character app password and paste it here.' },
+	'gmail.com': {
+		provider: 'Gmail',
+		url: 'https://myaccount.google.com/apppasswords',
+		steps:
+			'Turn on 2-Step Verification, then generate a 16-character app password and paste it here.',
+	},
+	'googlemail.com': {
+		provider: 'Gmail',
+		url: 'https://myaccount.google.com/apppasswords',
+		steps:
+			'Turn on 2-Step Verification, then generate a 16-character app password and paste it here.',
+	},
 	// Microsoft consumer accounts.
-	'outlook.com': { provider: 'Outlook', url: 'https://account.live.com/proofs/AppPassword', steps: 'Turn on two-step verification, create an app password and paste it here.' },
-	'hotmail.com': { provider: 'Outlook', url: 'https://account.live.com/proofs/AppPassword', steps: 'Turn on two-step verification, create an app password and paste it here.' },
-	'live.com': { provider: 'Outlook', url: 'https://account.live.com/proofs/AppPassword', steps: 'Turn on two-step verification, create an app password and paste it here.' },
+	'outlook.com': {
+		provider: 'Outlook',
+		url: 'https://account.live.com/proofs/AppPassword',
+		steps: 'Turn on two-step verification, create an app password and paste it here.',
+	},
+	'hotmail.com': {
+		provider: 'Outlook',
+		url: 'https://account.live.com/proofs/AppPassword',
+		steps: 'Turn on two-step verification, create an app password and paste it here.',
+	},
+	'live.com': {
+		provider: 'Outlook',
+		url: 'https://account.live.com/proofs/AppPassword',
+		steps: 'Turn on two-step verification, create an app password and paste it here.',
+	},
 	// Apple iCloud Mail.
-	'icloud.com': { provider: 'iCloud', url: 'https://appleid.apple.com/account/manage', steps: 'Under Sign-In & Security → App-Specific Passwords, generate one and paste it here.' },
-	'me.com': { provider: 'iCloud', url: 'https://appleid.apple.com/account/manage', steps: 'Under Sign-In & Security → App-Specific Passwords, generate one and paste it here.' },
-	'mac.com': { provider: 'iCloud', url: 'https://appleid.apple.com/account/manage', steps: 'Under Sign-In & Security → App-Specific Passwords, generate one and paste it here.' },
+	'icloud.com': {
+		provider: 'iCloud',
+		url: 'https://appleid.apple.com/account/manage',
+		steps: 'Under Sign-In & Security → App-Specific Passwords, generate one and paste it here.',
+	},
+	'me.com': {
+		provider: 'iCloud',
+		url: 'https://appleid.apple.com/account/manage',
+		steps: 'Under Sign-In & Security → App-Specific Passwords, generate one and paste it here.',
+	},
+	'mac.com': {
+		provider: 'iCloud',
+		url: 'https://appleid.apple.com/account/manage',
+		steps: 'Under Sign-In & Security → App-Specific Passwords, generate one and paste it here.',
+	},
 	// Yahoo Mail.
-	'yahoo.com': { provider: 'Yahoo', url: 'https://login.yahoo.com/account/security/app-passwords', steps: 'Generate an app password under Account Security and paste it here.' },
-	'ymail.com': { provider: 'Yahoo', url: 'https://login.yahoo.com/account/security/app-passwords', steps: 'Generate an app password under Account Security and paste it here.' },
-	'yahoo.co.uk': { provider: 'Yahoo', url: 'https://login.yahoo.com/account/security/app-passwords', steps: 'Generate an app password under Account Security and paste it here.' },
+	'yahoo.com': {
+		provider: 'Yahoo',
+		url: 'https://login.yahoo.com/account/security/app-passwords',
+		steps: 'Generate an app password under Account Security and paste it here.',
+	},
+	'ymail.com': {
+		provider: 'Yahoo',
+		url: 'https://login.yahoo.com/account/security/app-passwords',
+		steps: 'Generate an app password under Account Security and paste it here.',
+	},
+	'yahoo.co.uk': {
+		provider: 'Yahoo',
+		url: 'https://login.yahoo.com/account/security/app-passwords',
+		steps: 'Generate an app password under Account Security and paste it here.',
+	},
 };
 
 /**
@@ -118,6 +237,118 @@ export function appPasswordHelpForEmail(email: string): AppPasswordHelp | null {
 	const domain = domainOfEmail(email);
 	if (!domain) return null;
 	return APP_PASSWORD_PROVIDERS[domain] ?? null;
+}
+
+/**
+ * A mail provider the unified import wizard offers as a one-click starting
+ * point. A provider with a `preset` fills the IMAP/SMTP servers for the user;
+ * the generic `imap` provider has none, so the user types the server settings
+ * themselves. `appPassword` carries the same actionable guidance surfaced by
+ * {@link appPasswordHelpForEmail}, keyed by provider rather than by domain so a
+ * company Gmail (you@acme.com) still gets Gmail's app-password steps.
+ */
+export type MailProviderId = 'gmail' | 'outlook' | 'fastmail' | 'icloud' | 'yahoo' | 'imap';
+
+export type MailProvider = {
+	id: MailProviderId;
+	/** Human name shown on the picker card. */
+	name: string;
+	/** Lucide icon name for the picker card. */
+	icon: string;
+	/** One concise line under the name (the server, or a plain hint). */
+	hint: string;
+	/** Server preset, or `null` for the generic IMAP provider (manual entry). */
+	preset: MailPreset | null;
+	/** App-password guidance, or `null` when the provider needs no app password. */
+	appPassword: AppPasswordHelp | null;
+	/** Whether the user must fill in the IMAP/SMTP servers by hand. */
+	manualServer: boolean;
+};
+
+const YAHOO_PRESET: MailPreset = {
+	imapHost: 'imap.mail.yahoo.com',
+	imapPort: 993,
+	isImapSecure: true,
+	smtpHost: 'smtp.mail.yahoo.com',
+	smtpPort: 465,
+	isSmtpSecure: true,
+};
+
+/**
+ * The curated provider list the import wizard shows, in the order they appear.
+ * Presets reuse the domain table above so the picker and autodiscover never
+ * disagree; the generic IMAP entry is always last.
+ */
+export const MAIL_PROVIDERS: readonly MailProvider[] = [
+	{
+		id: 'gmail',
+		name: 'Gmail',
+		icon: 'lucide:mail',
+		hint: 'Gmail or Google Workspace',
+		preset: DOMAIN_PRESETS['gmail.com'] ?? null,
+		appPassword: APP_PASSWORD_PROVIDERS['gmail.com'] ?? null,
+		manualServer: false,
+	},
+	{
+		id: 'outlook',
+		name: 'Outlook',
+		icon: 'lucide:mail',
+		hint: 'Outlook.com, Hotmail or Microsoft 365',
+		preset: DOMAIN_PRESETS['outlook.com'] ?? null,
+		appPassword: APP_PASSWORD_PROVIDERS['outlook.com'] ?? null,
+		manualServer: false,
+	},
+	{
+		id: 'fastmail',
+		name: 'Fastmail',
+		icon: 'lucide:mail',
+		hint: 'imap.fastmail.com',
+		preset: DOMAIN_PRESETS['fastmail.com'] ?? null,
+		appPassword: {
+			provider: 'Fastmail',
+			url: 'https://app.fastmail.com/settings/security/apppasswords',
+			steps:
+				'Create an app password under Settings → Privacy & Security → App Passwords and paste it here.',
+		},
+		manualServer: false,
+	},
+	{
+		id: 'icloud',
+		name: 'iCloud Mail',
+		icon: 'lucide:mail',
+		hint: 'icloud.com, me.com or mac.com',
+		preset: DOMAIN_PRESETS['icloud.com'] ?? null,
+		appPassword: APP_PASSWORD_PROVIDERS['icloud.com'] ?? null,
+		manualServer: false,
+	},
+	{
+		id: 'yahoo',
+		name: 'Yahoo Mail',
+		icon: 'lucide:mail',
+		hint: 'imap.mail.yahoo.com',
+		preset: YAHOO_PRESET,
+		appPassword: APP_PASSWORD_PROVIDERS['yahoo.com'] ?? null,
+		manualServer: false,
+	},
+	{
+		id: 'imap',
+		name: 'Any IMAP mailbox',
+		icon: 'lucide:server',
+		hint: 'Your own server, or any other provider',
+		preset: null,
+		appPassword: null,
+		manualServer: true,
+	},
+];
+
+/** Look up a provider by id, or `undefined` for an unknown id. */
+export function providerById(id: string): MailProvider | undefined {
+	return MAIL_PROVIDERS.find((p) => p.id === id);
+}
+
+/** The IMAP/SMTP preset for a provider id, or `null` (generic IMAP / unknown). */
+export function providerPreset(id: string): MailPreset | null {
+	return providerById(id)?.preset ?? null;
 }
 
 /** Autoconfig `socketType` values that mean "implicit TLS". */
@@ -136,7 +367,7 @@ function parseAutoconfigXml(xml: string): MailPreset | null {
 		if (doc.querySelector('parsererror')) return null;
 
 		const incoming = Array.from(doc.querySelectorAll('incomingServer')).find(
-			(el) => el.getAttribute('type')?.toLowerCase() === 'imap',
+			(el) => el.getAttribute('type')?.toLowerCase() === 'imap'
 		);
 		const outgoing = doc.querySelector('outgoingServer[type="smtp"]');
 		if (!incoming || !outgoing) return null;
@@ -218,7 +449,7 @@ export async function autodiscover(email: string, timeoutMs = 3000): Promise<Mai
  */
 export async function resolveMailPreset(
 	email: string,
-	timeoutMs = 3000,
+	timeoutMs = 3000
 ): Promise<MailPreset | null> {
 	return presetForEmail(email) ?? (await autodiscover(email, timeoutMs));
 }
