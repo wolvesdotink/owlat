@@ -28,9 +28,12 @@ import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 import { assertFeatureEnabled } from '../lib/featureFlags';
 import { provisionMailbox, canonicalAddress } from './mailbox';
 import { markOnboardingStep } from '../auth/userOnboarding';
+import { checkEmailDomainVerification } from '../domains/domains';
+import { isDeliveryConfigured } from '../lib/sendProviders/capability';
 import {
 	throwForbidden,
 	throwInvalidInput,
+	throwInvalidState,
 	throwAlreadyExists,
 	throwNotFound,
 } from '../_utils/errors';
@@ -82,6 +85,130 @@ export const getForCurrentUser = publicQuery({
 			lastSyncAt: account.lastSyncAt,
 			lastConnectedAt: account.lastConnectedAt,
 		};
+	},
+});
+
+// ── Post-import "switch your sending" (outbound-only, gated) ───────────────
+
+/**
+ * Prompt + settings state for the caller's own external mailbox's outbound
+ * transport. After an import a mailbox sends through the user's own SMTP
+ * (`preference: 'external'`); once their from-domain is verified on THIS
+ * instance and a transport is configured, they can flip to `'instance'` so mail
+ * ships from Owlat's reputation instead.
+ *
+ * `promptEligible` is true ONLY when every gate holds — import + knowledge
+ * indexing complete, the from-domain is a VERIFIED sending domain here (so DKIM
+ * aligns), and an instance transport is configured — and the mailbox is still on
+ * its own SMTP. We NEVER offer the switch for an unverified domain (no spoofing
+ * gmail.com). The Postbox → Sending section reuses this to render the reversible
+ * toggle even after the prompt is gone.
+ */
+// public: soft-auth — returns { configured:false } for anonymous or hosted-only users.
+export const sendingSwitchStatus = publicQuery({
+	args: {},
+	handler: async (ctx) => {
+		await assertFeatureEnabled(ctx, 'mail.external');
+		const s = await getBetterAuthSessionWithRole(ctx);
+		if (!s || !s.role) return { configured: false as const };
+		const account = await ctx.db
+			.query('externalMailAccounts')
+			.withIndex('by_user', (q) => q.eq('userId', s.userId))
+			.first();
+		if (!account || account.status === 'disconnected') return { configured: false as const };
+		const mailbox = await ctx.db.get(account.mailboxId);
+		if (!mailbox || mailbox.status !== 'active') return { configured: false as const };
+
+		const preference = mailbox.outboundPreference ?? 'external';
+		const [domainCheck, transportConfigured, onboarding] = await Promise.all([
+			checkEmailDomainVerification(ctx, mailbox.address),
+			isDeliveryConfigured(ctx),
+			ctx.db
+				.query('userOnboarding')
+				.withIndex('by_auth_user_id', (q) => q.eq('authUserId', s.userId))
+				.first(),
+		]);
+		const domainVerified = domainCheck.verified;
+		// "import + knowledge indexing complete" — both stamps present.
+		const importAndIndexingDone =
+			!!onboarding && onboarding.importDone != null && onboarding.knowledgeIndexed != null;
+
+		const promptEligible =
+			preference === 'external' && importAndIndexingDone && domainVerified && transportConfigured;
+
+		return {
+			configured: true as const,
+			mailboxId: mailbox._id,
+			address: mailbox.address,
+			domain: domainCheck.domain || mailbox.domain,
+			preference,
+			domainVerified,
+			transportConfigured,
+			promptEligible,
+		};
+	},
+});
+
+/**
+ * Flip the caller's external mailbox between sending through their own SMTP
+ * (`'external'`) and this deployment's transport (`'instance'`). Reversible any
+ * time from Postbox → Sending. Switching TO `'instance'` is hard-gated: the
+ * from-domain must be a verified sending domain on this instance (asserting the
+ * MTA/SES identity exists so DKIM aligns) AND a transport must be configured. We
+ * refuse an unverified domain outright. The switch to instance completes the
+ * `sendingSwitched` onboarding step; reverting leaves it (the decision was made).
+ */
+// authz: self — operates on the caller's own external mailbox (by_user on s.userId).
+export const setSendingPreference = authedMutation({
+	args: { preference: v.union(v.literal('external'), v.literal('instance')) },
+	handler: async (ctx, args) => {
+		await assertFeatureEnabled(ctx, 'mail.external');
+		const s = await getBetterAuthSessionWithRole(ctx);
+		if (!s || !s.role) throwForbidden('Not authenticated');
+		const account = await ctx.db
+			.query('externalMailAccounts')
+			.withIndex('by_user', (q) => q.eq('userId', s.userId))
+			.first();
+		if (!account) throwNotFound('External mail account');
+		const mailbox = await ctx.db.get(account.mailboxId);
+		if (!mailbox || mailbox.status !== 'active') throwNotFound('Mailbox');
+
+		if (args.preference === 'instance') {
+			// Gate 1 — verified from-domain. Never let mail ship from an identity
+			// the instance can't DKIM-sign; this also blocks spoofing a domain we
+			// don't control (e.g. gmail.com).
+			const domainCheck = await checkEmailDomainVerification(ctx, mailbox.address);
+			if (!domainCheck.verified) {
+				throwInvalidInput(
+					`Can't send "${mailbox.address}" from this instance yet — the domain "${domainCheck.domain || mailbox.domain}" isn't a verified sending domain here. Verify it under Settings → Domains first.`
+				);
+			}
+			// Gate 2 — a transport actually exists to send through.
+			if (!(await isDeliveryConfigured(ctx))) {
+				throwInvalidState(
+					"This instance has no outbound transport configured yet, so it can't send on your behalf. Set one up under Delivery first."
+				);
+			}
+		}
+
+		if ((mailbox.outboundPreference ?? 'external') === args.preference) {
+			return { ok: true as const, preference: args.preference };
+		}
+
+		const now = Date.now();
+		await ctx.db.patch(mailbox._id, { outboundPreference: args.preference, updatedAt: now });
+		await ctx.db.insert('mailAuditLog', {
+			mailboxId: mailbox._id,
+			event:
+				args.preference === 'instance'
+					? 'sending.switched_to_instance'
+					: 'sending.switched_to_external',
+			occurredAt: now,
+		});
+		if (args.preference === 'instance') {
+			await markOnboardingStep(ctx, s.userId, 'sendingSwitched');
+		}
+		return { ok: true as const, preference: args.preference };
 	},
 });
 
@@ -414,6 +541,14 @@ export const resolveOutboundTransport = internalQuery({
 	handler: async (ctx, args) => {
 		const mailbox = await ctx.db.get(args.mailboxId);
 		if (!mailbox || mailbox.kind !== 'external' || !mailbox.externalAccountId) {
+			return { kind: 'hosted' as const };
+		}
+		// Post-import "switch your sending": an external mailbox whose owner opted
+		// into the instance transport ships through the MTA/SES path instead of
+		// their own SMTP. The switch was gated on a verified from-domain +
+		// configured transport (setSendingPreference), so the hosted path's DKIM
+		// alignment holds. undefined preference keeps the original external SMTP.
+		if (mailbox.outboundPreference === 'instance') {
 			return { kind: 'hosted' as const };
 		}
 		const account = await ctx.db.get(mailbox.externalAccountId);
