@@ -32,6 +32,9 @@ const pickerRef = ref<HTMLElement | null>(null);
 // popover has been measured (below the avatar by default; above / shifted-left
 // when it would otherwise overflow — e.g. the last avatar in a tall list).
 let triggerRect: DOMRect | null = null;
+// Trigger element kept so keyboard focus returns to it on close (matching the
+// house DropdownMenu pattern), instead of falling through to <body>.
+let triggerEl: HTMLElement | null = null;
 
 const pickerWs = computed(() => workspaces.value.find((w) => w.id === pickerId.value) ?? null);
 
@@ -52,7 +55,8 @@ function positionPicker(): void {
 }
 
 function openPicker(id: string, ev: MouseEvent): void {
-	triggerRect = (ev.currentTarget as HTMLElement).getBoundingClientRect();
+	triggerEl = ev.currentTarget as HTMLElement;
+	triggerRect = triggerEl.getBoundingClientRect();
 	// Provisional position; refined once the popover is measured.
 	pickerPos.value = { top: triggerRect.bottom + 6, left: triggerRect.left };
 	pickerId.value = id;
@@ -65,6 +69,10 @@ function openPicker(id: string, ev: MouseEvent): void {
 function closePicker(): void {
 	pickerId.value = null;
 	triggerRect = null;
+	// Return focus to the avatar that opened the picker (house DropdownMenu
+	// parity) so a keyboard user is never left focused on <body>.
+	triggerEl?.focus();
+	triggerEl = null;
 }
 
 function chooseAccent(color: WorkspaceAccent): void {
