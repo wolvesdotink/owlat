@@ -154,20 +154,15 @@ export const setFeatureFlag = authedMutation({
 		const aiAgentExplicitlyTurningOn =
 			flag === 'ai.agent' && args.value === true && stored['ai.agent'] !== true;
 		if (aiAgentExplicitlyTurningOn) {
-			const alreadyHasJob = await ctx.runQuery(
-				internal.agent.knowledgeBackfill.hasAnyJob,
-				{}
-			);
+			const alreadyHasJob = await ctx.runQuery(internal.agent.knowledgeBackfill.hasAnyJob, {});
 			if (!alreadyHasJob) {
-				const jobId = await ctx.runMutation(
-					internal.agent.knowledgeBackfill.createJob,
-					{ triggeredBy: session.userId }
-				);
-				await ctx.scheduler.runAfter(
-					0,
-					internal.agent.knowledgeBackfill.runChunk,
-					{ jobId, chunkSize: 30 }
-				);
+				const jobId = await ctx.runMutation(internal.agent.knowledgeBackfill.createJob, {
+					triggeredBy: session.userId,
+				});
+				await ctx.scheduler.runAfter(0, internal.agent.knowledgeBackfill.runChunk, {
+					jobId,
+					chunkSize: 30,
+				});
 				await recordAuditLog(ctx, {
 					userId: session.userId,
 					action: 'agent.backfill_started',
@@ -188,20 +183,12 @@ export const setFeatureFlag = authedMutation({
 			args.value === true &&
 			stored['ai.knowledge.autoLink'] !== true;
 		if (autoLinkExplicitlyTurningOn) {
-			const alreadyHasJob = await ctx.runQuery(
-				internal.knowledge.edgeBackfill.hasAnyJob,
-				{}
-			);
+			const alreadyHasJob = await ctx.runQuery(internal.knowledge.edgeBackfill.hasAnyJob, {});
 			if (!alreadyHasJob) {
-				const jobId = await ctx.runMutation(
-					internal.knowledge.edgeBackfill.createJob,
-					{ triggeredBy: session.userId }
-				);
-				await ctx.scheduler.runAfter(
-					0,
-					internal.knowledge.edgeBackfill.runEdgeBackfill,
-					{ jobId }
-				);
+				const jobId = await ctx.runMutation(internal.knowledge.edgeBackfill.createJob, {
+					triggeredBy: session.userId,
+				});
+				await ctx.scheduler.runAfter(0, internal.knowledge.edgeBackfill.runEdgeBackfill, { jobId });
 				await recordAuditLog(ctx, {
 					userId: session.userId,
 					action: 'knowledge.edge_backfill_started',

@@ -43,22 +43,23 @@ vi.mock('../lib/contactCountHelpers', async () => {
 // excluded modules are never loaded.
 const allModules = import.meta.glob('../**/*.*s');
 const modules = Object.fromEntries(
-	Object.entries(allModules).filter(([path]) =>
-		!path.includes('sesActions') &&
-		!path.includes('agentSecurity') &&
-		!path.includes('agentContext') &&
-		!path.includes('agentClassifier') &&
-		!path.includes('agentDrafter') &&
-		!path.includes('agentRouter') &&
-		!path.includes('agent/walker') &&
-		!path.includes('agent/steps/index') &&
-		!path.includes('agent/steps/shared') &&
-		!path.includes('agent/steps/classify') &&
-		!path.includes('agent/steps/draft') &&
-		!path.includes('knowledgeExtraction') &&
-		!path.includes('semanticFileProcessing') &&
-		!path.includes('visualizationAgent') &&
-		!path.includes('llmProvider')
+	Object.entries(allModules).filter(
+		([path]) =>
+			!path.includes('sesActions') &&
+			!path.includes('agentSecurity') &&
+			!path.includes('agentContext') &&
+			!path.includes('agentClassifier') &&
+			!path.includes('agentDrafter') &&
+			!path.includes('agentRouter') &&
+			!path.includes('agent/walker') &&
+			!path.includes('agent/steps/index') &&
+			!path.includes('agent/steps/shared') &&
+			!path.includes('agent/steps/classify') &&
+			!path.includes('agent/steps/draft') &&
+			!path.includes('knowledgeExtraction') &&
+			!path.includes('semanticFileProcessing') &&
+			!path.includes('visualizationAgent') &&
+			!path.includes('llmProvider')
 	)
 );
 
@@ -69,10 +70,7 @@ const testIdentity = {
 };
 
 /** Count pending scheduled functions whose name mentions `needle`. */
-async function countScheduled(
-	t: ReturnType<typeof convexTest>,
-	needle: string,
-): Promise<number> {
+async function countScheduled(t: ReturnType<typeof convexTest>, needle: string): Promise<number> {
 	return await t.run(async (ctx) => {
 		const jobs = await ctx.db.system.query('_scheduled_functions').collect();
 		return jobs.filter((j) => (j.name ?? '').includes(needle)).length;
@@ -93,10 +91,10 @@ describe('featureFlags.setFeatureFlag — ai.knowledge.autoLink edge backfill ki
 			await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({ sourceType: 'manual' }));
 		});
 
-		await t.withIdentity(testIdentity).mutation(
-			api.organizations.featureFlags.setFeatureFlag,
-			{ flag: 'ai.knowledge.autoLink', value: true }
-		);
+		await t.withIdentity(testIdentity).mutation(api.workspaces.featureFlags.setFeatureFlag, {
+			flag: 'ai.knowledge.autoLink',
+			value: true,
+		});
 
 		await t.run(async (ctx) => {
 			const jobs = await ctx.db.query('knowledgeEdgeBackfillJobs').collect();
@@ -140,10 +138,10 @@ describe('featureFlags.setFeatureFlag — ai.knowledge.autoLink edge backfill ki
 			});
 		});
 
-		await t.withIdentity(testIdentity).mutation(
-			api.organizations.featureFlags.setFeatureFlag,
-			{ flag: 'ai.knowledge.autoLink', value: true }
-		);
+		await t.withIdentity(testIdentity).mutation(api.workspaces.featureFlags.setFeatureFlag, {
+			flag: 'ai.knowledge.autoLink',
+			value: true,
+		});
 
 		await t.run(async (ctx) => {
 			const jobs = await ctx.db.query('knowledgeEdgeBackfillJobs').collect();
@@ -162,10 +160,10 @@ describe('featureFlags.setFeatureFlag — ai.knowledge.autoLink edge backfill ki
 			});
 		});
 
-		await t.withIdentity(testIdentity).mutation(
-			api.organizations.featureFlags.setFeatureFlag,
-			{ flag: 'ai.knowledge.autoLink', value: true }
-		);
+		await t.withIdentity(testIdentity).mutation(api.workspaces.featureFlags.setFeatureFlag, {
+			flag: 'ai.knowledge.autoLink',
+			value: true,
+		});
 
 		await t.run(async (ctx) => {
 			const jobs = await ctx.db.query('knowledgeEdgeBackfillJobs').collect();
@@ -183,10 +181,10 @@ describe('featureFlags.setFeatureFlag — ai.knowledge.autoLink edge backfill ki
 			});
 		});
 
-		await t.withIdentity(testIdentity).mutation(
-			api.organizations.featureFlags.setFeatureFlag,
-			{ flag: 'ai.knowledge.autoLink', value: false }
-		);
+		await t.withIdentity(testIdentity).mutation(api.workspaces.featureFlags.setFeatureFlag, {
+			flag: 'ai.knowledge.autoLink',
+			value: false,
+		});
 
 		await t.run(async (ctx) => {
 			const jobs = await ctx.db.query('knowledgeEdgeBackfillJobs').collect();
@@ -335,10 +333,9 @@ describe('knowledgeEdgeBackfill.cancel', () => {
 			});
 		});
 
-		const result = await t.withIdentity(testIdentity).mutation(
-			api.knowledge.edgeBackfill.cancel,
-			{}
-		);
+		const result = await t
+			.withIdentity(testIdentity)
+			.mutation(api.knowledge.edgeBackfill.cancel, {});
 		expect(result).toBe(true);
 
 		await t.run(async (ctx) => {
@@ -356,10 +353,9 @@ describe('knowledgeEdgeBackfill.cancel', () => {
 
 	it('returns false when there is no active job', async () => {
 		const t = convexTest(schema, modules);
-		const result = await t.withIdentity(testIdentity).mutation(
-			api.knowledge.edgeBackfill.cancel,
-			{}
-		);
+		const result = await t
+			.withIdentity(testIdentity)
+			.mutation(api.knowledge.edgeBackfill.cancel, {});
 		expect(result).toBe(false);
 	});
 });

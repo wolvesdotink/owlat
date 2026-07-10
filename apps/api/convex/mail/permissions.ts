@@ -2,7 +2,7 @@
  * Mailbox gate (helper).
  *
  * One canonical permission predicate for every `mail/*` mutation and query
- * operating on a `mailboxes` row. Mirrors `organizations/abuseGate.ts` in
+ * operating on a `mailboxes` row. Mirrors `workspaces/abuseGate.ts` in
  * role — a read-side check co-located with the area it gates — but is a
  * single function rather than a sibling-paired module family.
  *

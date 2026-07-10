@@ -19,9 +19,9 @@ import type { OrganizationRole } from '../../lib/sessionOrganization';
 let mockRole: OrganizationRole = 'owner';
 
 vi.mock('../../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<
-		typeof import('../../lib/sessionOrganization')
-	>('../../lib/sessionOrganization');
+	const actual = await vi.importActual<typeof import('../../lib/sessionOrganization')>(
+		'../../lib/sessionOrganization'
+	);
 	return {
 		...actual,
 		requireOrgMember: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
@@ -43,7 +43,7 @@ vi.mock('../../lib/sessionOrganization', async () => {
 // resolve the backfill chunk runner.
 //
 // Vite canonicalizes glob keys for files in this same subtree: a sibling at
-// convex/organizations/X is keyed as '../X' rather than '../../organizations/X'.
+// convex/workspaces/X is keyed as '../X' rather than '../../workspaces/X'.
 // convex-test computes its lookup prefix from '../../_generated/...', so the
 // canonicalized keys would never match. Re-prefix the canonicalized half.
 const allModules = import.meta.glob('../../**/*.*s');
@@ -51,7 +51,7 @@ const modules = Object.fromEntries(
 	Object.entries(allModules)
 		.map(([key, val]) => {
 			if (key.startsWith('../') && !key.startsWith('../../')) {
-				return ['../../organizations/' + key.slice(3), val] as const;
+				return ['../../workspaces/' + key.slice(3), val] as const;
 			}
 			return [key, val] as const;
 		})
@@ -71,8 +71,8 @@ const modules = Object.fromEntries(
 				!path.includes('knowledgeExtraction') &&
 				!path.includes('semanticFileProcessing') &&
 				!path.includes('visualizationAgent') &&
-				!path.includes('llmProvider'),
-		),
+				!path.includes('llmProvider')
+		)
 );
 
 beforeEach(() => {
@@ -107,10 +107,7 @@ beforeEach(() => {
 describe('organizations.featureFlags.getFeatureFlags', () => {
 	it('returns defaults when no settings row exists', async () => {
 		const t = convexTest(schema, modules);
-		const flags = await t.query(
-			api.organizations.featureFlags.getFeatureFlags,
-			{},
-		);
+		const flags = await t.query(api.workspaces.featureFlags.getFeatureFlags, {});
 		// Some default ON flags (campaigns/transactional/...) should be true.
 		expect(flags.campaigns).toBe(true);
 		expect(flags['ai.agent']).toBe(false);
@@ -125,10 +122,7 @@ describe('organizations.featureFlags.getFeatureFlags', () => {
 			});
 		});
 
-		const flags = await t.query(
-			api.organizations.featureFlags.getFeatureFlags,
-			{},
-		);
+		const flags = await t.query(api.workspaces.featureFlags.getFeatureFlags, {});
 		expect(flags['ai.agent']).toBe(true);
 	});
 });
@@ -143,14 +137,8 @@ describe('organizations.featureFlags.getResolvedFlags (internal)', () => {
 			});
 		});
 
-		const publicFlags = await t.query(
-			api.organizations.featureFlags.getFeatureFlags,
-			{},
-		);
-		const internalFlags = await t.query(
-			internal.organizations.featureFlags.getResolvedFlags,
-			{},
-		);
+		const publicFlags = await t.query(api.workspaces.featureFlags.getFeatureFlags, {});
+		const internalFlags = await t.query(internal.workspaces.featureFlags.getResolvedFlags, {});
 		expect(internalFlags).toEqual(publicFlags);
 	});
 });
@@ -163,7 +151,7 @@ describe('organizations.featureFlags.setFeatureFlag', () => {
 	it('writes the flag value and bumps updatedAt', async () => {
 		const t = convexTest(schema, modules);
 
-		await t.mutation(api.organizations.featureFlags.setFeatureFlag, {
+		await t.mutation(api.workspaces.featureFlags.setFeatureFlag, {
 			flag: 'webhooks',
 			value: true,
 		});
@@ -179,10 +167,10 @@ describe('organizations.featureFlags.setFeatureFlag', () => {
 		const t = convexTest(schema, modules);
 
 		await expect(
-			t.mutation(api.organizations.featureFlags.setFeatureFlag, {
+			t.mutation(api.workspaces.featureFlags.setFeatureFlag, {
 				flag: 'not.a.real.flag',
 				value: true,
-			}),
+			})
 		).rejects.toThrow(/Unknown feature flag/);
 	});
 
@@ -201,10 +189,10 @@ describe('organizations.featureFlags.setFeatureFlag', () => {
 		});
 
 		// Disabling `ai` should cascade off `ai.agent` and `ai.autonomy`.
-		const res = await t.mutation(
-			api.organizations.featureFlags.setFeatureFlag,
-			{ flag: 'ai', value: false },
-		);
+		const res = await t.mutation(api.workspaces.featureFlags.setFeatureFlag, {
+			flag: 'ai',
+			value: false,
+		});
 		expect(res.cascaded).toContain('ai.agent');
 		expect(res.cascaded).toContain('ai.autonomy');
 	});
@@ -218,7 +206,7 @@ describe('organizations.featureFlags.setFeatureFlag — ai.agent backfill', () =
 	it('explicit false→true toggle triggers backfill + audit log', async () => {
 		const t = convexTest(schema, modules);
 
-		await t.mutation(api.organizations.featureFlags.setFeatureFlag, {
+		await t.mutation(api.workspaces.featureFlags.setFeatureFlag, {
 			flag: 'ai.agent',
 			value: true,
 		});
@@ -231,9 +219,7 @@ describe('organizations.featureFlags.setFeatureFlag — ai.agent backfill', () =
 
 			const auditLogs = await ctx.db
 				.query('auditLogs')
-				.withIndex('by_action', (q) =>
-					q.eq('action', 'agent.backfill_started'),
-				)
+				.withIndex('by_action', (q) => q.eq('action', 'agent.backfill_started'))
 				.collect();
 			expect(auditLogs).toHaveLength(1);
 		});
@@ -248,7 +234,7 @@ describe('organizations.featureFlags.setFeatureFlag — ai.agent backfill', () =
 			});
 		});
 
-		await t.mutation(api.organizations.featureFlags.setFeatureFlag, {
+		await t.mutation(api.workspaces.featureFlags.setFeatureFlag, {
 			flag: 'ai.agent',
 			value: true,
 		});
@@ -268,7 +254,7 @@ describe('organizations.featureFlags.setFeatureFlag — ai.agent backfill', () =
 			});
 		});
 
-		await t.mutation(api.organizations.featureFlags.setFeatureFlag, {
+		await t.mutation(api.workspaces.featureFlags.setFeatureFlag, {
 			flag: 'ai.agent',
 			value: false,
 		});
@@ -300,7 +286,7 @@ describe('organizations.featureFlags.setFeatureFlag — ai.agent backfill', () =
 			});
 		});
 
-		await t.mutation(api.organizations.featureFlags.setFeatureFlag, {
+		await t.mutation(api.workspaces.featureFlags.setFeatureFlag, {
 			flag: 'ai.agent',
 			value: true,
 		});
@@ -320,7 +306,7 @@ describe('organizations.featureFlags.setFeatureFlag — ai.agent backfill', () =
 		// explicit-only semantic must hold.
 		const t = convexTest(schema, modules);
 
-		await t.mutation(api.organizations.featureFlags.setFeaturePack, {
+		await t.mutation(api.workspaces.featureFlags.setFeaturePack, {
 			pack: 'ai',
 			value: true,
 		});
@@ -337,9 +323,7 @@ describe('organizations.featureFlags.setFeatureFlag — ai.agent backfill', () =
 			// And no audit log row either.
 			const auditLogs = await ctx.db
 				.query('auditLogs')
-				.withIndex('by_action', (q) =>
-					q.eq('action', 'agent.backfill_started'),
-				)
+				.withIndex('by_action', (q) => q.eq('action', 'agent.backfill_started'))
 				.collect();
 			expect(auditLogs).toHaveLength(0);
 		});
@@ -348,7 +332,7 @@ describe('organizations.featureFlags.setFeatureFlag — ai.agent backfill', () =
 	it('setAllFeatureFlags-driven enable does NOT trigger the backfill', async () => {
 		const t = convexTest(schema, modules);
 
-		await t.mutation(api.organizations.featureFlags.setAllFeatureFlags, {
+		await t.mutation(api.workspaces.featureFlags.setAllFeatureFlags, {
 			flags: { ai: true, 'ai.agent': true, inbox: true },
 		});
 
@@ -367,7 +351,7 @@ describe('organizations.featureFlags.setFeaturePack', () => {
 	it('enables every flag in the pack', async () => {
 		const t = convexTest(schema, modules);
 
-		await t.mutation(api.organizations.featureFlags.setFeaturePack, {
+		await t.mutation(api.workspaces.featureFlags.setFeaturePack, {
 			pack: 'marketing',
 			value: true,
 		});
@@ -384,10 +368,10 @@ describe('organizations.featureFlags.setFeaturePack', () => {
 		const t = convexTest(schema, modules);
 
 		await expect(
-			t.mutation(api.organizations.featureFlags.setFeaturePack, {
+			t.mutation(api.workspaces.featureFlags.setFeaturePack, {
 				pack: 'not-a-real-pack',
 				value: true,
-			}),
+			})
 		).rejects.toThrow(/Unknown feature pack/);
 	});
 });
@@ -406,7 +390,7 @@ describe('organizations.featureFlags.setAllFeatureFlags', () => {
 			});
 		});
 
-		await t.mutation(api.organizations.featureFlags.setAllFeatureFlags, {
+		await t.mutation(api.workspaces.featureFlags.setAllFeatureFlags, {
 			flags: { campaigns: false, inbox: true },
 		});
 
@@ -421,9 +405,9 @@ describe('organizations.featureFlags.setAllFeatureFlags', () => {
 		const t = convexTest(schema, modules);
 
 		await expect(
-			t.mutation(api.organizations.featureFlags.setAllFeatureFlags, {
+			t.mutation(api.workspaces.featureFlags.setAllFeatureFlags, {
 				flags: { 'not.a.real.flag': true },
-			}),
+			})
 		).rejects.toThrow(/Unknown feature flag/);
 	});
 });
@@ -436,7 +420,7 @@ describe('organizations.featureFlags.setAllInternal', () => {
 	it('persists the wizard flags onto a fresh instanceSettings row', async () => {
 		const t = convexTest(schema, modules);
 
-		await t.mutation(internal.organizations.featureFlags.setAllInternal, {
+		await t.mutation(internal.workspaces.featureFlags.setAllInternal, {
 			flags: { campaigns: true, inbox: true },
 		});
 
@@ -450,9 +434,9 @@ describe('organizations.featureFlags.setAllInternal', () => {
 	it('rejects an unknown flag key', async () => {
 		const t = convexTest(schema, modules);
 		await expect(
-			t.mutation(internal.organizations.featureFlags.setAllInternal, {
+			t.mutation(internal.workspaces.featureFlags.setAllInternal, {
 				flags: { 'not.a.real.flag': true },
-			}),
+			})
 		).rejects.toThrow(/Unknown feature flag/);
 	});
 });
@@ -492,10 +476,7 @@ describe('organizations.featureFlags.getFlagsConfigStatus', () => {
 
 	it('reports missing env vars for an env-gated flag', async () => {
 		const t = convexTest(schema, modules);
-		const status = await t.query(
-			api.organizations.featureFlags.getFlagsConfigStatus,
-			{},
-		);
+		const status = await t.query(api.workspaces.featureFlags.getFlagsConfigStatus, {});
 		expect(status['ai']).toEqual(['LLM_PROVIDER', 'LLM_API_KEY']);
 	});
 
@@ -504,19 +485,13 @@ describe('organizations.featureFlags.getFlagsConfigStatus', () => {
 		process.env['LLM_API_KEY'] = 'sk-test';
 
 		const t = convexTest(schema, modules);
-		const status = await t.query(
-			api.organizations.featureFlags.getFlagsConfigStatus,
-			{},
-		);
+		const status = await t.query(api.workspaces.featureFlags.getFlagsConfigStatus, {});
 		expect(status['ai']).toBeUndefined();
 	});
 
 	it('reports a missing delivery provider for sending flags', async () => {
 		const t = convexTest(schema, modules);
-		const status = await t.query(
-			api.organizations.featureFlags.getFlagsConfigStatus,
-			{},
-		);
+		const status = await t.query(api.workspaces.featureFlags.getFlagsConfigStatus, {});
 		expect(status['campaigns']).toContain('A configured delivery provider');
 		expect(status['transactional']).toContain('A configured delivery provider');
 		expect(status['automations']).toContain('A configured delivery provider');
@@ -528,10 +503,7 @@ describe('organizations.featureFlags.getFlagsConfigStatus', () => {
 		process.env['MTA_API_KEY'] = 'mta-key';
 
 		const t = convexTest(schema, modules);
-		const status = await t.query(
-			api.organizations.featureFlags.getFlagsConfigStatus,
-			{},
-		);
+		const status = await t.query(api.workspaces.featureFlags.getFlagsConfigStatus, {});
 		expect(status['campaigns']).toBeUndefined();
 		expect(status['transactional']).toBeUndefined();
 	});

@@ -46,7 +46,7 @@ const {
 	data: organizationSettings,
 	isLoading: organizationSettingsLoading,
 	error: organizationSettingsError,
-} = useOrganizationQuery(api.organizations.settings.get);
+} = useOrganizationQuery(api.workspaces.settings.get);
 
 // Verified sending domains — used to warn when the Default From Email's domain
 // is not one this deployment is authorized to send from.
@@ -55,10 +55,10 @@ const { data: verifiedDomains } = useOrganizationQuery(api.domains.domains.listV
 const isLoading = computed(() => organizationLoading.value || organizationSettingsLoading.value);
 
 // Mutations
-const { run: updateOrganizationSettings } = useBackendOperation(api.organizations.settings.update, {
+const { run: updateOrganizationSettings } = useBackendOperation(api.workspaces.settings.update, {
 	label: 'Save settings',
 });
-const { run: setFeatureFlag } = useBackendOperation(api.organizations.featureFlags.setFeatureFlag, {
+const { run: setFeatureFlag } = useBackendOperation(api.workspaces.featureFlags.setFeatureFlag, {
 	label: 'Toggle campaign archives',
 });
 
