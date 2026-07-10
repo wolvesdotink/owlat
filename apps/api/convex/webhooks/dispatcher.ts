@@ -16,14 +16,15 @@
 
 import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
+import { isAllowedSnsHost } from './adapters/ses';
 import { isPostboxMessageId } from '../delivery/messageIdRouting';
 import type { TransitionOutcome } from '../delivery/sendLifecycle';
+import { withTimeout } from '../lib/inputGuards';
 import { logError, logWarn } from '../lib/runtimeLog';
-import type {
-	InboundEvent,
-	InboundEventKind,
-	InboundEventOf,
-} from './types';
+import type { InboundEvent, InboundEventKind, InboundEventOf } from './types';
+
+/** Max time to wait for the SNS subscription-confirm GET before giving up. */
+const SNS_CONFIRM_FETCH_TIMEOUT_MS = 10_000;
 
 /**
  * Unresolved-bounce observability (M3AAWG "measure unattributable feedback").
@@ -68,38 +69,29 @@ type DispatchTable = { [K in InboundEventKind]: Handler<K> };
 const DISPATCH: DispatchTable = {
 	'email.sent': async (ctx, e) => {
 		if (isPostboxMessageId(e.providerMessageId)) {
-			await ctx.runMutation(
-				internal.mail.postboxOutboundLifecycle.transitionByMtaMessageId,
-				{
-					rawProviderMessageId: e.providerMessageId,
-					input: { to: 'sent', at: e.at },
-				}
-			);
+			await ctx.runMutation(internal.mail.postboxOutboundLifecycle.transitionByMtaMessageId, {
+				rawProviderMessageId: e.providerMessageId,
+				input: { to: 'sent', at: e.at },
+			});
 			return;
 		}
-		await ctx.runMutation(
-			internal.delivery.sendLifecycle.transitionByProviderMessageId,
-			{
+		await ctx.runMutation(internal.delivery.sendLifecycle.transitionByProviderMessageId, {
+			providerMessageId: e.providerMessageId,
+			transition: {
+				to: 'sent',
+				at: e.at,
 				providerMessageId: e.providerMessageId,
-				transition: {
-					to: 'sent',
-					at: e.at,
-					providerMessageId: e.providerMessageId,
-					...(e.providerType ? { providerType: e.providerType } : {}),
-				},
-			}
-		);
+				...(e.providerType ? { providerType: e.providerType } : {}),
+			},
+		});
 	},
 	'email.delivered': async (ctx, e) => {
 		// Postbox dispatches have no separate delivered confirmation today.
 		if (isPostboxMessageId(e.providerMessageId)) return;
-		await ctx.runMutation(
-			internal.delivery.sendLifecycle.transitionByProviderMessageId,
-			{
-				providerMessageId: e.providerMessageId,
-				transition: { to: 'delivered', at: e.at },
-			}
-		);
+		await ctx.runMutation(internal.delivery.sendLifecycle.transitionByProviderMessageId, {
+			providerMessageId: e.providerMessageId,
+			transition: { to: 'delivered', at: e.at },
+		});
 	},
 	'email.bounced': async (ctx, e) => {
 		if (isPostboxMessageId(e.providerMessageId)) {
@@ -107,17 +99,14 @@ const DISPATCH: DispatchTable = {
 			// the Send lifecycle's `bounceType` is a campaign-side concern (drives
 			// blocklist insert + reputation). Personal mail discards the
 			// classification per ADR-0012.
-			await ctx.runMutation(
-				internal.mail.postboxOutboundLifecycle.transitionByMtaMessageId,
-				{
-					rawProviderMessageId: e.providerMessageId,
-					input: {
-						to: 'bounced',
-						at: e.at,
-						...(e.bounceMessage ? { bounceMessage: e.bounceMessage } : {}),
-					},
-				}
-			);
+			await ctx.runMutation(internal.mail.postboxOutboundLifecycle.transitionByMtaMessageId, {
+				rawProviderMessageId: e.providerMessageId,
+				input: {
+					to: 'bounced',
+					at: e.at,
+					...(e.bounceMessage ? { bounceMessage: e.bounceMessage } : {}),
+				},
+			});
 			return;
 		}
 		const outcome = (await ctx.runMutation(
@@ -155,32 +144,21 @@ const DISPATCH: DispatchTable = {
 				transition: { to: 'complained', at: e.at },
 			}
 		)) as TransitionOutcome;
-		recordUnresolvedBounce(
-			'email.complained',
-			e.providerMessageId,
-			e.at,
-			outcome
-		);
+		recordUnresolvedBounce('email.complained', e.providerMessageId, e.at, outcome);
 	},
 	'email.opened': async (ctx, e) => {
 		if (isPostboxMessageId(e.providerMessageId)) return;
-		await ctx.runMutation(
-			internal.delivery.sendLifecycle.transitionByProviderMessageId,
-			{
-				providerMessageId: e.providerMessageId,
-				transition: { to: 'opened', at: e.at },
-			}
-		);
+		await ctx.runMutation(internal.delivery.sendLifecycle.transitionByProviderMessageId, {
+			providerMessageId: e.providerMessageId,
+			transition: { to: 'opened', at: e.at },
+		});
 	},
 	'email.clicked': async (ctx, e) => {
 		if (isPostboxMessageId(e.providerMessageId)) return;
-		await ctx.runMutation(
-			internal.delivery.sendLifecycle.transitionByProviderMessageId,
-			{
-				providerMessageId: e.providerMessageId,
-				transition: { to: 'clicked', at: e.at, url: e.url },
-			}
-		);
+		await ctx.runMutation(internal.delivery.sendLifecycle.transitionByProviderMessageId, {
+			providerMessageId: e.providerMessageId,
+			transition: { to: 'clicked', at: e.at, url: e.url },
+		});
 	},
 	'inbound.received': async (ctx, e) => {
 		const m = e.mail;
@@ -194,8 +172,7 @@ const DISPATCH: DispatchTable = {
 			messageId: m.messageId,
 			inReplyTo: m.inReplyTo,
 			references: m.references,
-			attachmentMeta:
-				m.attachments.length > 0 ? JSON.stringify(m.attachments) : undefined,
+			attachmentMeta: m.attachments.length > 0 ? JSON.stringify(m.attachments) : undefined,
 			timestamp: m.timestamp,
 		});
 	},
@@ -216,37 +193,54 @@ const DISPATCH: DispatchTable = {
 			// circuit-breaker signal re-targets to `warned` (no operational
 			// behavior change — `throttled` never gated sends in the Abuse
 			// gate; both `warned` and the old `throttled` are advisory).
-			await ctx.runMutation(
-				internal.organizations.abuseStatus.transition,
-				{
-					input: {
-						to: 'warned',
-						at: Date.now(),
-						reason: `MTA circuit breaker: ${e.message}${
-							e.bounceRate ? ` (bounce rate: ${e.bounceRate}%)` : ''
-						}`,
-						changedBy: 'mta_circuit_breaker',
-					},
-				}
-			);
+			await ctx.runMutation(internal.organizations.abuseStatus.transition, {
+				input: {
+					to: 'warned',
+					at: Date.now(),
+					reason: `MTA circuit breaker: ${e.message}${
+						e.bounceRate ? ` (bounce rate: ${e.bounceRate}%)` : ''
+					}`,
+					changedBy: 'mta_circuit_breaker',
+				},
+			});
 		} catch (err) {
+			logError('[Webhook Dispatcher] Failed to set abuse status for circuit breaker:', err);
+		}
+	},
+	'internal.sns_subscription_confirm': async (_ctx, e) => {
+		// Activate the SES feedback subscription by GET-ing SubscribeURL. The
+		// adapter already pinned the host and the whole envelope's signature was
+		// verified upstream; re-check the host here as defense-in-depth against a
+		// future caller (SSRF: never fetch an un-pinned URL).
+		if (!isAllowedSnsHost(e.subscribeUrl)) {
 			logError(
-				'[Webhook Dispatcher] Failed to set abuse status for circuit breaker:',
-				err
+				`[Webhook Dispatcher] Refusing SNS subscription confirm for non-SNS host: ${e.subscribeUrl}`
 			);
+			return;
+		}
+		try {
+			const res = await withTimeout(
+				fetch(e.subscribeUrl),
+				SNS_CONFIRM_FETCH_TIMEOUT_MS,
+				'SNS subscription confirm timed out'
+			);
+			if (!res.ok) {
+				logError(
+					`[Webhook Dispatcher] SNS subscription confirm returned ${res.status} for ${e.subscribeUrl}`
+				);
+			}
+		} catch (err) {
+			logError('[Webhook Dispatcher] SNS subscription confirm fetch failed:', err);
 		}
 	},
 	'internal.dkim_rotated': async (ctx, e) => {
-		const outcome = await ctx.runMutation(
-			internal.domains.lifecycle.recordDkimRotation,
-			{
-				domain: e.domain,
-				selector: e.selector,
-				dnsRecord: e.dnsRecord,
-				phase: e.phase,
-				userId: 'system:dkim_rotation',
-			}
-		);
+		const outcome = await ctx.runMutation(internal.domains.lifecycle.recordDkimRotation, {
+			domain: e.domain,
+			selector: e.selector,
+			dnsRecord: e.dnsRecord,
+			phase: e.phase,
+			userId: 'system:dkim_rotation',
+		});
 		if (outcome && !outcome.ok) {
 			logError(
 				`[Webhook Dispatcher] DKIM rotation for ${e.domain} (${e.selector}) not propagated: ${outcome.reason}`
@@ -260,13 +254,9 @@ const DISPATCH: DispatchTable = {
 		// sends) with a campaign-specific reason + audit entry so the alert is
 		// persisted and operator-visible instead of being a dead drop.
 		// eslint-disable-next-line no-console
-		console.warn(
-			`[Webhook Dispatcher] Campaign complaint rate alert: ${e.message}`
-		);
+		console.warn(`[Webhook Dispatcher] Campaign complaint rate alert: ${e.message}`);
 		const ratePct =
-			e.complaintRate !== undefined
-				? ` (${(e.complaintRate * 100).toFixed(2)}%)`
-				: '';
+			e.complaintRate !== undefined ? ` (${(e.complaintRate * 100).toFixed(2)}%)` : '';
 		const campaignSuffix = e.campaignId ? ` [campaign ${e.campaignId}]` : '';
 		try {
 			await ctx.runMutation(internal.organizations.abuseStatus.transition, {
@@ -278,10 +268,7 @@ const DISPATCH: DispatchTable = {
 				},
 			});
 		} catch (err) {
-			logError(
-				'[Webhook Dispatcher] Failed to set abuse status for campaign complaint rate:',
-				err
-			);
+			logError('[Webhook Dispatcher] Failed to set abuse status for campaign complaint rate:', err);
 		}
 	},
 	'internal.ip_event': async (ctx, e) => {
@@ -293,11 +280,7 @@ const DISPATCH: DispatchTable = {
 			e.subkind === 'delisted'
 		) {
 			try {
-				await ctx.scheduler.runAfter(
-					0,
-					internal.delivery.warmingSync.syncWarmingState,
-					{}
-				);
+				await ctx.scheduler.runAfter(0, internal.delivery.warmingSync.syncWarmingState, {});
 			} catch (err) {
 				// eslint-disable-next-line no-console
 				console.error('[Webhook Dispatcher] Failed to trigger warming sync:', err);
@@ -306,10 +289,7 @@ const DISPATCH: DispatchTable = {
 	},
 };
 
-export async function dispatchInboundEvent(
-	ctx: ActionCtx,
-	event: InboundEvent
-): Promise<void> {
+export async function dispatchInboundEvent(ctx: ActionCtx, event: InboundEvent): Promise<void> {
 	const handler = DISPATCH[event.kind] as Handler<InboundEventKind>;
 	await handler(ctx, event as InboundEventOf<InboundEventKind>);
 }
