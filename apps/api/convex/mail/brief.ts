@@ -30,7 +30,7 @@ import { v } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { authedMutation, publicQuery } from '../lib/authedFunctions';
-import { loadOwnedMailbox } from './permissions';
+import { requireMailboxAccess } from './permissions';
 import { isBundledCategory } from './dailyBrief';
 
 // ─── Freshness rules (pure, unit-tested) ─────────────────────────────────────
@@ -172,8 +172,8 @@ async function loadCard(
  * tells the client to trigger a background `refresh`. Fail-soft: null for
  * anonymous / non-owner / inactive mailbox — the card simply doesn't render.
  */
-// public: soft-auth — returns null for anonymous; mailbox ownership is enforced
-// in-handler via loadOwnedMailbox (null for a non-owner).
+// public: soft-auth — returns null for anonymous; mailbox access is enforced
+// in-handler via requireMailboxAccess (null for a non-owner).
 export const getBriefCard = publicQuery({
 	args: {
 		mailboxId: v.id('mailboxes'),
@@ -181,7 +181,7 @@ export const getBriefCard = publicQuery({
 		localDay: v.string(),
 	},
 	handler: async (ctx, args) => {
-		const access = await loadOwnedMailbox(ctx, args.mailboxId);
+		const access = await requireMailboxAccess(ctx, args.mailboxId);
 		if (!access.ok) return null;
 		const card = await loadCard(ctx, args.mailboxId, access.userId);
 		if (!card) return { card: null, isStale: true, isDismissed: false };
@@ -215,7 +215,7 @@ export const getBriefCard = publicQuery({
  * never loop the write. Deterministic template data only (counts from existing
  * rows); a mutation rather than an action because there is no LLM step.
  */
-// authz: per-user mailbox ownership via loadOwnedMailbox; writes only the
+// authz: per-user mailbox access via requireMailboxAccess; writes only the
 // caller's own card row.
 export const refresh = authedMutation({
 	args: {
@@ -225,7 +225,7 @@ export const refresh = authedMutation({
 		dayStartTs: v.number(),
 	},
 	handler: async (ctx, args) => {
-		const access = await loadOwnedMailbox(ctx, args.mailboxId);
+		const access = await requireMailboxAccess(ctx, args.mailboxId);
 		// Fail-soft (never an error card): no access simply means no brief.
 		if (!access.ok) return null;
 
@@ -281,7 +281,7 @@ export const refresh = authedMutation({
  * with the next morning's regeneration. Persisted next to the cache so the
  * dismissal follows the owner across devices.
  */
-// authz: per-user mailbox ownership via loadOwnedMailbox; writes only the
+// authz: per-user mailbox access via requireMailboxAccess; writes only the
 // caller's own card row.
 export const dismiss = authedMutation({
 	args: {
@@ -290,7 +290,7 @@ export const dismiss = authedMutation({
 		localDay: v.string(),
 	},
 	handler: async (ctx, args) => {
-		const access = await loadOwnedMailbox(ctx, args.mailboxId);
+		const access = await requireMailboxAccess(ctx, args.mailboxId);
 		if (!access.ok) return null;
 		const card = await loadCard(ctx, args.mailboxId, access.userId);
 		// Nothing rendered means nothing to dismiss — a silent no-op.

@@ -5,7 +5,7 @@
 #
 # Why this is a hard gate, not a style ratchet: the ownership check on a
 # `mailboxes` row is also the active-status check. The canonical helpers
-# loadOwnedMailbox / loadReadableMailbox in mail/permissions.ts enforce BOTH
+# requireMailboxAccess / loadReadableMailbox in mail/permissions.ts enforce BOTH
 # `mailbox.userId === session.userId` (or owner/admin acting on behalf) AND
 # `mailbox.status === 'active'`. The pre-deepening read handlers (mailbox.get /
 # listMessages / listThreads / listFolders / search / identities.listForOwnedMailbox)
@@ -15,9 +15,9 @@
 # `mailbox.userId !== session.userId` would re-introduce that drift.
 #
 # All mailbox ownership / readability MUST go through mail/permissions.ts:
-#   - loadOwnedMailbox(ctx, mailboxId)     — write paths (throw-on-fail)
-#   - loadReadableMailbox(ctx, mailboxId)  — read paths (null-on-fail soft auth)
-#   - loadOwnedMessage / loadReadableMessage — message-keyed variants
+#   - requireMailboxAccess(ctx, mailboxId)  — write paths (throw-on-fail)
+#   - loadReadableMailbox(ctx, mailboxId)   — read paths (null-on-fail soft auth)
+#   - requireMessageAccess / loadReadableMessage — message-keyed variants
 # all of which apply the ownership + active-status policy in one place.
 
 cd "$(dirname "$0")/.."
@@ -46,9 +46,9 @@ if [ "$count" -gt 0 ]; then
 	echo "Do not hand-roll \`mailbox.userId !== session.userId\` — it drops the"
 	echo "\`status === 'active'\` clause and lets a soft-deleted/suspended mailbox stay"
 	echo "readable by id. Route through mail/permissions.ts:"
-	echo "  loadOwnedMailbox    (write paths, throws on fail)"
+	echo "  requireMailboxAccess (write paths, throws on fail)"
 	echo "  loadReadableMailbox (read paths, returns null on fail)"
-	echo "  loadOwnedMessage / loadReadableMessage (message-keyed)"
+	echo "  requireMessageAccess / loadReadableMessage (message-keyed)"
 	exit 1
 fi
 

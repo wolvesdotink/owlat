@@ -29,7 +29,7 @@ import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { throwForbidden, throwNotFound } from '../_utils/errors';
 import { isMessageSnoozed } from '../lib/mailSnooze';
-import { loadOwnedMailbox, loadReadableMailbox } from './permissions';
+import { requireMailboxAccess, loadReadableMailbox } from './permissions';
 import { urgencyFallbackScore } from './priorityScore';
 import { scoreAndScreenResult } from './needsReplyScoring';
 import { isFeatureEnabled } from '../lib/featureFlags';
@@ -346,7 +346,7 @@ const QUEUE_LIMIT = 100;
  * client-side comparator so it stays unit-testable; this returns newest-first
  * up to the cap.
  */
-// public: soft-auth — returns empty for anonymous; mailbox ownership is still enforced in-handler
+// public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
 export const listQueue = publicQuery({
 	args: { mailboxId: v.id('mailboxes') },
 	handler: async (ctx, args) => {
@@ -443,14 +443,14 @@ export const listQueue = publicQuery({
 });
 
 /** Manual clear for the UI ("mark as done" on the Reply Queue). */
-// authz: thread → mailbox ownership via loadOwnedMailbox; org membership via
+// authz: thread → mailbox access via requireMailboxAccess; org membership via
 // authedMutation.
 export const clear = authedMutation({
 	args: { threadId: v.id('mailThreads') },
 	handler: async (ctx, args) => {
 		const thread = await ctx.db.get(args.threadId);
 		if (!thread) throwNotFound('Thread');
-		const owned = await loadOwnedMailbox(ctx, thread.mailboxId);
+		const owned = await requireMailboxAccess(ctx, thread.mailboxId);
 		if (!owned.ok) throwForbidden('Thread not accessible');
 		await clearThreadNeedsReply(ctx, args.threadId);
 	},

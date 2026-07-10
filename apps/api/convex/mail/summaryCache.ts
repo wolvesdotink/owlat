@@ -23,8 +23,8 @@ import { internalMutation } from '../_generated/server';
 import { publicQuery } from '../lib/authedFunctions';
 import { loadReadableMailbox } from './permissions';
 
-// public: soft-auth — returns null for anonymous; mailbox ownership is enforced
-// in-handler via loadReadableMailbox (returns null for a non-owner). The cache is
+// public: soft-auth — returns null for anonymous; mailbox access is enforced
+// in-handler via loadReadableMailbox (returns null for a non-member). The cache is
 // served only while it matches the live messageCount, so a stale entry reads as
 // null and the strip regenerates.
 export const getThreadSummary = publicQuery({

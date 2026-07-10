@@ -11,7 +11,7 @@ import { authedMutation, publicQuery } from '../lib/authedFunctions';
 import { internalMutation, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import { loadOwnedMailbox } from './permissions';
+import { requireMailboxAccess } from './permissions';
 import {
 	throwAlreadyExists,
 	throwForbidden,
@@ -49,7 +49,7 @@ export const create = authedMutation({
 		parentId: v.optional(v.id('mailFolders')),
 	},
 	handler: async (ctx, args) => {
-		const owned = await loadOwnedMailbox(ctx, args.mailboxId);
+		const owned = await requireMailboxAccess(ctx, args.mailboxId);
 		if (!owned.ok) throwForbidden('Mailbox not accessible');
 
 		const trimmed = args.name.trim();
@@ -95,7 +95,7 @@ export const rename = authedMutation({
 		const folder = await ctx.db.get(args.folderId);
 		if (!folder) throwNotFound('Folder');
 		if (folder.role) throwInvalidState('System folders cannot be renamed');
-		const owned = await loadOwnedMailbox(ctx, folder.mailboxId);
+		const owned = await requireMailboxAccess(ctx, folder.mailboxId);
 		if (!owned.ok) throwForbidden('Folder not accessible');
 
 		const trimmed = args.name.trim();
@@ -122,7 +122,7 @@ export const remove = authedMutation({
 		const folder = await ctx.db.get(args.folderId);
 		if (!folder) return;
 		if (folder.role) throwInvalidState('System folders cannot be deleted');
-		const owned = await loadOwnedMailbox(ctx, folder.mailboxId);
+		const owned = await requireMailboxAccess(ctx, folder.mailboxId);
 		if (!owned.ok) throwForbidden('Folder not accessible');
 
 		// Move any messages to INBOX before deleting. Relocation runs in scheduled
@@ -212,7 +212,7 @@ export const setSubscribed = authedMutation({
 	handler: async (ctx, args) => {
 		const folder = await ctx.db.get(args.folderId);
 		if (!folder) return;
-		const owned = await loadOwnedMailbox(ctx, folder.mailboxId);
+		const owned = await requireMailboxAccess(ctx, folder.mailboxId);
 		if (!owned.ok) return;
 		await ctx.db.patch(args.folderId, {
 			subscribed: args.subscribed,
@@ -221,11 +221,11 @@ export const setSubscribed = authedMutation({
 	},
 });
 
-// public: soft-auth — returns empty for anonymous; mailbox ownership is still enforced in-handler
+// public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
 export const list = publicQuery({
 	args: { mailboxId: v.id('mailboxes') },
 	handler: async (ctx, args) => {
-		const owned = await loadOwnedMailbox(ctx, args.mailboxId);
+		const owned = await requireMailboxAccess(ctx, args.mailboxId);
 		if (!owned.ok) return [];
 		return ctx.db
 			.query('mailFolders')
