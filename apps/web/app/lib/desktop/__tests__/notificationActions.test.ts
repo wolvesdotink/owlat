@@ -1,6 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { ConvexClient } from 'convex/browser';
-import { replyFromNotification, resolveNotificationEffect } from '../notificationActions.client';
+import {
+	replyFromNotification,
+	resolveNotificationEffect,
+	runEffect,
+} from '../notificationActions.client';
 
 describe('resolveNotificationEffect', () => {
 	it('routes a click (open) to the thread', () => {
@@ -52,6 +56,38 @@ describe('resolveNotificationEffect', () => {
 		expect(resolveNotificationEffect({ action: 'open' })).toBeNull();
 		expect(resolveNotificationEffect({})).toBeNull();
 		expect(resolveNotificationEffect({ action: 'archive', messageId: 123 })).toBeNull();
+	});
+});
+
+describe('runEffect open → SPA router (no full document reload)', () => {
+	it('navigates to the thread through the injected router', async () => {
+		const navigate = vi.fn((_path: string) => {});
+		const convex = { query: vi.fn(), mutation: vi.fn() } as unknown as ConvexClient;
+
+		await runEffect({ type: 'open', folderRole: 'inbox', messageId: 'm1' }, convex, navigate);
+
+		expect(navigate).toHaveBeenCalledTimes(1);
+		expect(navigate).toHaveBeenCalledWith('/dashboard/postbox/inbox/m1');
+	});
+
+	it('preserves the folder role in the deep link', async () => {
+		const navigate = vi.fn((_path: string) => {});
+		const convex = { query: vi.fn(), mutation: vi.fn() } as unknown as ConvexClient;
+
+		await runEffect({ type: 'open', folderRole: 'archive', messageId: 'm9' }, convex, navigate);
+
+		expect(navigate).toHaveBeenCalledWith('/dashboard/postbox/archive/m9');
+	});
+
+	it('does not navigate for the in-place triage actions (archive / read)', async () => {
+		const navigate = vi.fn((_path: string) => {});
+		const mutation = vi.fn(async () => ({}));
+		const convex = { query: vi.fn(), mutation } as unknown as ConvexClient;
+
+		await runEffect({ type: 'archive', messageId: 'm1' }, convex, navigate);
+		await runEffect({ type: 'read', messageId: 'm1' }, convex, navigate);
+
+		expect(navigate).not.toHaveBeenCalled();
 	});
 });
 
