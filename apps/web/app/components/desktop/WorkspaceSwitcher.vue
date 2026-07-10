@@ -9,17 +9,18 @@
  * context-menu key) any avatar opens an accent picker to recolour it.
  */
 import { WORKSPACE_ACCENTS, type WorkspaceAccent, accentLabel } from '~/lib/desktop/workspaceTypes';
+import { AVATAR_INK } from '~/utils/avatar';
 
 const { workspaces, activeId, switchTo, setWorkspaceAccent } = useDesktopWorkspaces();
 const { badgeFor } = useWorkspaceBadges();
-// While ⌘ is held, reveal the ⌘1–9 switch hints on the first nine tiles so the
-// (already-wired) useWorkspaceHotkeys shortcut is discoverable. Opacity-only, so
-// no layout shift; the hint text stays in the DOM.
+// While ⌘ is held (Ctrl on Windows/Linux), reveal the ⌘1–9 switch hints on the
+// first nine tiles so the (already-wired) useWorkspaceHotkeys shortcut is
+// discoverable. Opacity-only, so no layout shift; the hint text stays in the DOM.
 const { held: metaHeld } = useMetaHold();
 
-/** Tile-face text colour — the warm off-white used across the avatar palette
- * for readable initials on a saturated accent fill. */
-const TILE_INK = '#f5f1ea';
+/** Tile-face text colour — the warm off-white the avatar palette uses for
+ * readable initials on a saturated accent fill (shared literal, see avatar.ts). */
+const TILE_INK = AVATAR_INK;
 
 /** Number hint for the Nth tile, or empty past the ⌘1–9 range. */
 function hintFor(index: number): string {
@@ -201,12 +202,7 @@ onUnmounted(() => {
 			>
 				{{ hintFor(i) }}
 			</span>
-			<span
-				v-if="badgeFor(ws.id) > 0"
-				class="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-red-500 text-[10px] text-white flex items-center justify-center"
-			>
-				{{ badgeFor(ws.id) > 99 ? '99+' : badgeFor(ws.id) }}
-			</span>
+			<DesktopWorkspaceUnreadBadge :count="badgeFor(ws.id)" class="absolute -top-1 -right-1" />
 		</button>
 
 		<NuxtLink
