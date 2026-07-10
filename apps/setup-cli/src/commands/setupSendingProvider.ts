@@ -37,6 +37,14 @@ function requireNonEmpty(label: string): (value: string | undefined) => string |
 	return (value) => ((value ?? '').trim() === '' ? `${label} is required.` : undefined);
 }
 
+/** `group()` without an `onCancel` keeps running the remaining prompts on Ctrl-C
+ * and stores the cancel symbol in the results, so downstream `.trim()` on a
+ * symbol would throw. Detect a cancel in any field so the caller can bail out
+ * cleanly (`return null`), matching every single-prompt path. */
+function groupCancelled(results: Record<string, unknown>): boolean {
+	return Object.values(results).some((value) => isCancel(value));
+}
+
 export async function pickSendingProvider(): Promise<EnvMap | null> {
 	const provider = await select({
 		message: 'Email sending provider',
@@ -76,6 +84,7 @@ export async function pickSendingProvider(): Promise<EnvMap | null> {
 			accessKey: () => password({ message: 'AWS_ACCESS_KEY_ID' }),
 			secretKey: () => password({ message: 'AWS_SECRET_ACCESS_KEY' }),
 		});
+		if (groupCancelled(result)) return null;
 		return {
 			EMAIL_PROVIDER: 'ses',
 			AWS_SES_REGION: result.region,
@@ -120,6 +129,7 @@ export async function pickSendingProvider(): Promise<EnvMap | null> {
 			password: () =>
 				password({ message: 'SMTP password', validate: requireNonEmpty('SMTP password') }),
 		});
+		if (groupCancelled(result)) return null;
 
 		// The port that gets validated is the port that gets persisted: the prompt
 		// already guaranteed digits in range (or blank ⇒ 587), so parse once and
