@@ -810,14 +810,15 @@ const sidebarDesktopClass = computed(() => {
  * Desktop native chrome: inset the layout below the fixed <DesktopTitlebar>.
  * The titlebar is position:fixed, so the root gets top padding and the fixed
  * sidebar is pushed down to sit beneath it. Web (no .has-desktop-chrome) is
- * untouched.
+ * untouched. `--titlebar-h` is inherited from <html> (default in desktop.css;
+ * on macOS the boot plugin overwrites it with the measured native height) —
+ * deliberately NOT re-declared here, which would shadow that override.
  */
 .has-desktop-chrome {
-	--titlebar-h: 44px;
-	padding-top: var(--titlebar-h);
+	padding-top: var(--titlebar-h, 44px);
 }
 .has-desktop-chrome aside {
-	top: var(--titlebar-h);
-	height: calc(100% - var(--titlebar-h));
+	top: var(--titlebar-h, 44px);
+	height: calc(100% - var(--titlebar-h, 44px));
 }
 </style>

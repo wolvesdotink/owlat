@@ -59,6 +59,17 @@ export default defineNuxtPlugin({
 		// tint from this one custom property via color-mix in desktop.css.
 		applyWorkspaceAccent(root, getActiveWorkspace()?.accentColor ?? null);
 
+		// Align the webview titlebar strip with the native macOS titlebar band
+		// (AppKit centers the traffic lights in it — its height is AppKit's to
+		// choose, so measure rather than guess). 0 means "no native titlebar"
+		// (win/linux): keep the CSS default.
+		void import('@owlat/desktop/src/window')
+			.then(async ({ titlebarHeight }) => {
+				const px = await titlebarHeight();
+				if (px > 0) root.style.setProperty('--titlebar-h', `${Math.round(px)}px`);
+			})
+			.catch(() => {});
+
 		// Collapse the identity frame in native fullscreen — both the CSS ring
 		// (win/linux, via the class) and the native macOS ring (out of CSS reach,
 		// via the bridge). Best-effort: if the window bridge is unavailable the

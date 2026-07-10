@@ -2,7 +2,9 @@
 /**
  * Native-feel window titlebar for the desktop app. Renders nothing on web.
  *
- * The bar earns its 44px: it carries the chrome the page used to duplicate.
+ * The bar earns its height (`--titlebar-h` — on macOS the measured native
+ * titlebar band, elsewhere the CSS default): it carries the chrome the page
+ * used to duplicate.
  *   - LEFT (after the mac traffic-light gutter / before the win+linux window
  *     buttons): a workspace chip — accent swatch + name + chevron — that opens
  *     the switcher menu (see `WorkspaceMenu.vue`).

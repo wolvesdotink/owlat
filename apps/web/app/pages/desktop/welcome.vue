@@ -77,7 +77,7 @@ function startOver() {
 <template>
 	<div
 		class="min-h-screen bg-bg-deep flex flex-col items-center justify-center px-4 text-text-primary"
-		:class="{ 'pt-[44px]': isDesktop }"
+		:style="isDesktop ? { paddingTop: 'var(--titlebar-h, 44px)' } : undefined"
 	>
 		<!-- Native window titlebar (this page renders inside the Tauri webview). -->
 		<DesktopTitlebar />

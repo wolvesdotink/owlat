@@ -54,6 +54,7 @@ fn main() {
             window::open_compose,
             window::set_traffic_lights_visible,
             window::set_accent_frame,
+            window::titlebar_height,
             ssh::ssh_connect,
             ssh::ssh_accept_host_key,
             ssh::ssh_authenticate,
@@ -82,12 +83,12 @@ fn main() {
             let app_menu = menu::build_menu(app.handle())?;
             #[cfg(target_os = "macos")]
             app.set_menu(app_menu)?;
-            // macOS: center the traffic lights in the titlebar strip once the
-            // window-state plugin has restored geometry; resizes re-apply via
-            // the window-event handler above.
+            // macOS: hand the traffic lights a toolbar-height native titlebar
+            // (flicker-free — AppKit owns the layout; see
+            // window::setup_native_titlebar).
             #[cfg(target_os = "macos")]
             if let Some(w) = app.get_webview_window("main") {
-                window::apply_traffic_light_layout(&w);
+                window::setup_native_titlebar(&w);
             }
             #[cfg(not(target_os = "macos"))]
             if let Some(w) = app.get_webview_window("main") {

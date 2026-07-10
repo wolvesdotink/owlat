@@ -48,7 +48,7 @@ mac-notification-sys = "0.6"
 # paint the native workspace identity frame (NSColor → CALayer border — see
 # window.rs::apply_accent_frame). These objc2 crates are already in the tree
 # transitively via tauri 2.x, pinned to the same lines so no second copy is built.
-objc2-app-kit = { version = "0.3", features = ["NSWindow", "NSButton", "NSControl", "NSView", "NSResponder", "NSColor", "objc2-quartz-core", "objc2-core-graphics"] }
+objc2-app-kit = { version = "0.3", features = ["NSWindow", "NSButton", "NSControl", "NSView", "NSResponder", "NSColor", "NSToolbar", "objc2-quartz-core", "objc2-core-graphics"] }
 objc2-quartz-core = { version = "0.3", features = ["CALayer"] }
 objc2-foundation = { version = "0.3", features = ["NSString", "NSArray"] }
 # msg_send! for the guarded private `-_cornerRadius` probe (window_corner_radius).

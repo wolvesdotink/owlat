@@ -1,15 +1,12 @@
 use tauri::{command, AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
 /// Sets up close-to-tray behavior: hides the window instead of quitting.
-/// On macOS, this also hides the dock icon when the window is not visible, and
-/// keeps the traffic lights centered in the titlebar strip across resizes
-/// (AppKit re-lays the buttons out to their defaults on window resize — see
-/// `apply_traffic_light_layout`).
+/// On macOS, this also hides the dock icon when the window is not visible.
 pub fn setup_close_handler(app: &AppHandle) {
     let app_handle = app.clone();
     if let Some(window) = app_handle.get_webview_window("main") {
-        window.on_window_event(move |event| match event {
-            tauri::WindowEvent::CloseRequested { api, .. } => {
+        window.on_window_event(move |event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 // Prevent the window from being destroyed
                 api.prevent_close();
                 // Hide the window instead
@@ -17,13 +14,6 @@ pub fn setup_close_handler(app: &AppHandle) {
                     let _ = win.hide();
                 }
             }
-            #[cfg(target_os = "macos")]
-            tauri::WindowEvent::Resized(_) => {
-                if let Some(win) = app_handle.get_webview_window("main") {
-                    apply_traffic_light_layout(&win);
-                }
-            }
-            _ => {}
         });
     }
 }
@@ -82,79 +72,100 @@ pub fn open_compose(app: AppHandle, path: Option<String>) {
     open_compose_window(&app, &path.unwrap_or_else(|| "/compose".to_string()));
 }
 
-/// The webview titlebar strip's height, in points — MUST match `--titlebar-h`
-/// (apps/web layouts/dashboard.vue) so the native traffic lights center in it.
-#[cfg(target_os = "macos")]
-const TITLEBAR_HEIGHT: f64 = 44.0;
-/// Leading inset of the close button (the other two follow at AppKit's own
-/// spacing).
-#[cfg(target_os = "macos")]
-const TRAFFIC_LIGHTS_X: f64 = 19.0;
-
-/// Center the native traffic lights in the webview's titlebar strip.
+/// Let AppKit lay out the traffic lights in a toolbar-height titlebar — the
+/// flicker-free way to move them off the cramped default.
 ///
-/// This deliberately replaces tauri.conf.json's `trafficLightPosition`: tao
-/// implements that by nudging the buttons once at creation and again on the
-/// content view's `drawRect:` — but a WKWebView-backed window essentially never
-/// redraws that view, and the window-state plugin's restore (any resize, zoom,
-/// or theme pass) makes AppKit re-layout the titlebar back to its defaults. Net
-/// effect: whether the lights sat where configured was a race. We own the
-/// layout instead — same technique (grow the titlebar container to the strip
-/// height, then place the buttons), but *centered* by measurement rather than
-/// offset by magic numbers, re-applied from `main.rs` on every `Resized` event.
+/// History, so nobody retries the dead ends: `trafficLightPosition`
+/// (tauri.conf.json) nudges the buttons once at creation and again on the
+/// content view's `drawRect:` — which a WKWebView-backed window essentially
+/// never triggers — and AppKit re-lays the buttons out to their defaults on
+/// every resize (including the window-state restore at launch), so the
+/// configured position was a race. Re-applying frames from a `Resized` handler
+/// fixes the position at rest but *fights AppKit frame-by-frame during live
+/// resize*: visible flicker. The only stable owner of button layout is AppKit
+/// itself, so we give it a reason to use a taller titlebar: an empty
+/// `NSToolbar` in the unified style. The toolbar is invisible under the
+/// transparent overlay titlebar (`titleBarStyle: Overlay`), the window title
+/// stays hidden (`hiddenTitle: true`), and the buttons sit natively centered —
+/// same chrome recipe as Finder/Safari, zero custom positioning to flicker.
 ///
-/// No-op in fullscreen, where macOS owns the buttons; leaving fullscreen fires
-/// a resize, which re-applies the layout.
+/// The webview's titlebar strip must match whatever height AppKit chose; the
+/// boot plugin reads it via the `titlebar_height` command below and sets the
+/// `--titlebar-h` CSS variable accordingly.
 #[cfg(target_os = "macos")]
-pub fn apply_traffic_light_layout(window: &WebviewWindow) {
-    use objc2_app_kit::{NSWindow, NSWindowButton};
+pub fn setup_native_titlebar(window: &WebviewWindow) {
+    use objc2::MainThreadMarker;
+    use objc2_app_kit::{NSTitlebarSeparatorStyle, NSToolbar, NSWindow, NSWindowToolbarStyle};
 
-    if window.is_fullscreen().unwrap_or(false) {
+    // NSToolbar is main-thread-only. Setup runs on the main thread; this only
+    // bails if a future caller moves it off.
+    let Some(mtm) = MainThreadMarker::new() else {
         return;
-    }
+    };
     let Ok(ptr) = window.ns_window() else {
         return;
     };
     if ptr.is_null() {
         return;
     }
-    // SAFETY: same contract as `apply_traffic_lights` below.
+    // SAFETY: same contract as `apply_traffic_lights` below — the pointer is
+    // this window's NSWindow, valid for the window's lifetime, main thread only.
     let ns_window: &NSWindow = unsafe { &*(ptr as *const NSWindow) };
 
-    // SAFETY: `standardWindowButton` returns the window-owned buttons;
-    // `superview` walks to the titlebar container view that hosts them.
-    let (Some(close), Some(miniaturize), Some(zoom)) = (unsafe {
-        (
-            ns_window.standardWindowButton(NSWindowButton::CloseButton),
-            ns_window.standardWindowButton(NSWindowButton::MiniaturizeButton),
-            ns_window.standardWindowButton(NSWindowButton::ZoomButton),
-        )
-    }) else {
-        return;
-    };
-    let Some(container) = (unsafe { close.superview() }).and_then(|v| unsafe { v.superview() })
-    else {
-        return;
-    };
+    let toolbar = NSToolbar::new(mtm);
+    ns_window.setToolbar(Some(&toolbar));
+    ns_window.setToolbarStyle(NSWindowToolbarStyle::UnifiedCompact);
+    // The webview strip draws its own hairline; the native one would double it.
+    ns_window.setTitlebarSeparatorStyle(NSTitlebarSeparatorStyle::None);
+    eprintln!(
+        "[owlat] native titlebar after toolbar attach: {}pt (toolbar visible: {})",
+        measure_titlebar_height(window),
+        toolbar.isVisible()
+    );
+}
 
-    // Grow the titlebar container to the strip height, pinned to the top edge
-    // (AppKit view coords are bottom-up).
-    let window_height = ns_window.frame().size.height;
-    let mut container_rect = container.frame();
-    container_rect.size.height = TITLEBAR_HEIGHT;
-    container_rect.origin.y = window_height - TITLEBAR_HEIGHT;
-    container.setFrame(container_rect);
+/// Measure the native titlebar height (the toolbar-unified area above the
+/// content layout rect), in CSS px. The webview mirrors it into `--titlebar-h`
+/// so the HTML strip and the native button row are exactly the same band.
+/// Returns 0 where there is no native titlebar (Windows/Linux run undecorated).
+#[cfg(target_os = "macos")]
+fn measure_titlebar_height(window: &WebviewWindow) -> f64 {
+    use objc2_app_kit::NSWindow;
 
-    // Center each button vertically in the strip; keep AppKit's own spacing.
-    let button_height = close.frame().size.height;
-    let spacing = miniaturize.frame().origin.x - close.frame().origin.x;
-    let button_y = (TITLEBAR_HEIGHT - button_height) / 2.0;
-    for (i, button) in [&close, &miniaturize, &zoom].into_iter().enumerate() {
-        let mut rect = button.frame();
-        rect.origin.x = TRAFFIC_LIGHTS_X + (i as f64) * spacing;
-        rect.origin.y = button_y;
-        button.setFrameOrigin(rect.origin);
+    let Ok(ptr) = window.ns_window() else {
+        return 0.0;
+    };
+    if ptr.is_null() {
+        return 0.0;
     }
+    // SAFETY: same contract as `apply_traffic_lights` below.
+    let ns_window: &NSWindow = unsafe { &*(ptr as *const NSWindow) };
+    // With fullSizeContentView the content view spans the whole window;
+    // contentLayoutRect is the part below the titlebar/toolbar band.
+    let frame_height = ns_window.frame().size.height;
+    let content_height = ns_window.contentLayoutRect().size.height;
+    (frame_height - content_height).max(0.0)
+}
+
+/// Command: the native titlebar height in CSS px (0 off-macOS). Read once at
+/// boot by the desktop plugin to align the webview strip with the native band.
+#[cfg(target_os = "macos")]
+#[command]
+pub fn titlebar_height(window: WebviewWindow) -> Result<f64, String> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let win = window.clone();
+    window
+        .run_on_main_thread(move || {
+            let _ = tx.send(measure_titlebar_height(&win));
+        })
+        .map_err(|e| e.to_string())?;
+    rx.recv().map_err(|e| e.to_string())
+}
+
+#[cfg(not(target_os = "macos"))]
+#[command]
+pub fn titlebar_height(_window: WebviewWindow) -> Result<f64, String> {
+    Ok(0.0)
 }
 
 /// Width of the native identity-frame ring, in points — mirrors the retired

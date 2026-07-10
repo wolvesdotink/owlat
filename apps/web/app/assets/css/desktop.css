@@ -32,6 +32,12 @@ html.is-desktop body {
  */
 html.is-desktop {
 	--ws-accent: var(--color-brand); /* fallback until the plugin sets it */
+	/* Titlebar strip height. On macOS the boot plugin overwrites this inline
+	 * with the MEASURED native titlebar height (the toolbar-unified band that
+	 * AppKit centers the traffic lights in — see src-tauri/src/window.rs
+	 * ::setup_native_titlebar), so the HTML strip and the native button row are
+	 * always the exact same band. Windows/Linux keep this default. */
+	--titlebar-h: 44px;
 	--ws-frame-width: 5px;
 	/* Approximate the OS rounded-window radius so the ring hugs the corners.
 	 * Degrades gracefully to a subtle rounding on square (maximized) windows. */
