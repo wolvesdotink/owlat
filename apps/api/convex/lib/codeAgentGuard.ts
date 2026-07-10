@@ -44,7 +44,9 @@ const CODE_AGENT_MALICIOUS_PATTERNS: readonly RegExp[] = [
 	/\bdrop\s+(table|database|schema)\b/i,
 	/\btruncate\s+table\b/i,
 	// Secret / credential exfiltration.
-	/\b(exfiltrate|leak|steal|dump|upload|send|post|email)\b[\s\S]{0,40}\b(env|environment|secret|secrets|credential|credentials|api[-\s]?key|token|password|\.env|private\s+key)\b/i,
+	// `\benv\b` already covers ".env" (the word boundary sits between "." and
+	// "env"), so no separate "\.env" alternative is needed here.
+	/\b(exfiltrate|leak|steal|dump|upload|send|post|email)\b[\s\S]{0,40}\b(env|environment|secret|secrets|credential|credentials|api[-\s]?key|token|password|private\s+key)\b/i,
 	/\bprint\b[\s\S]{0,30}\b(env|environment)\s+(variable|var)s?\b/i,
 	/\bprocess\.env\b/i,
 	/\bprintenv\b/i,
