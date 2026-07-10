@@ -28,6 +28,14 @@ import type { Id } from '@owlat/api/dataModel';
 import { partitionTodayMessages, formatAutoFiledLine } from '~/utils/postboxTodayPartition';
 import { replyQueueHeadline, type ReplyQueueItem } from '~/utils/postboxReplyQueue';
 
+/**
+ * Client detection that is both SSR-safe (no `window` on the server) and
+ * test-friendly (happy-dom provides `window`), unlike Nuxt's compile-time
+ * `import.meta.client` which is undefined under vitest — the same pattern as
+ * usePostboxOfflineCache.
+ */
+const IS_CLIENT = typeof window !== 'undefined';
+
 const props = defineProps<{
 	mailboxId: Id<'mailboxes'>;
 	/** Deep-link seed (/dashboard/postbox/inbox/<id> in Today mode): open this
@@ -124,7 +132,7 @@ watch(
 watch(
 	[forYouCount, pendingForYouScroll],
 	([count, pending]) => {
-		if (!import.meta.client || !pending || count <= 0) return;
+		if (!IS_CLIENT || !pending || count <= 0) return;
 		void nextTick(() => {
 			const el = forYouSection.value;
 			if (!el) return;
