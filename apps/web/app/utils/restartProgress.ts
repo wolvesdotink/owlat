@@ -10,18 +10,19 @@
  * whether the probe has cleared — into an honest, phased status the UI can show
  * as it happens: applying config → restarting services → waiting for the app to
  * come back → done (or, if it drags on, a timeout affordance offering a manual
- * nudge). Kept DOM- and Nuxt-free so the mapping is unit-testable on its own,
- * and shared by both the setup review page and the transport-editor apply flow.
+ * nudge). Kept DOM- and Nuxt-free so the mapping is unit-testable on its own.
+ * Mounted by the setup review page; built for reuse by the A1 transport-editor
+ * apply flow.
  */
 
 /** The status of the restart, derived purely from the readiness poll. */
 export type RestartPhase = 'applying' | 'restarting' | 'waiting' | 'done' | 'timeout';
 
-/** The three sequential work phases shown as a stepper, in order. */
-export const RESTART_PHASE_ORDER = ['applying', 'restarting', 'waiting'] as const;
+/** The three sequential work steps shown as a stepper, in order. */
+export const RESTART_STEP_ORDER = ['applying', 'restarting', 'waiting'] as const;
 
-/** One of the three stepper phases (excludes the terminal `done`/`timeout`). */
-export type RestartStep = (typeof RESTART_PHASE_ORDER)[number];
+/** One of the three stepper steps (excludes the terminal `done`/`timeout`). */
+export type RestartStep = (typeof RESTART_STEP_ORDER)[number];
 
 /** State of the readiness poll, the only inputs the phase derives from. */
 export interface RestartProgressInput {
@@ -56,7 +57,7 @@ export interface RestartPhaseCopy {
 	detail: string;
 }
 
-export const RESTART_PHASE_COPY: Record<RestartPhase, RestartPhaseCopy> = {
+export const RESTART_PHASE_COPY: Record<Exclude<RestartPhase, 'done'>, RestartPhaseCopy> = {
 	applying: {
 		label: 'Applying your configuration',
 		detail: 'Writing your settings to the server.',
@@ -68,10 +69,6 @@ export const RESTART_PHASE_COPY: Record<RestartPhase, RestartPhaseCopy> = {
 	waiting: {
 		label: 'Waiting for the app to come back',
 		detail: 'Almost there — reconnecting as soon as it’s online.',
-	},
-	done: {
-		label: 'Ready',
-		detail: 'The app is back.',
 	},
 	timeout: {
 		label: 'Taking longer than usual',
@@ -91,8 +88,8 @@ export type RestartStepStatus = 'complete' | 'active' | 'pending';
 export function restartStepStatus(step: RestartStep, phase: RestartPhase): RestartStepStatus {
 	if (phase === 'done') return 'complete';
 	const activeStep: RestartStep = phase === 'timeout' ? 'waiting' : phase;
-	const stepIdx = RESTART_PHASE_ORDER.indexOf(step);
-	const activeIdx = RESTART_PHASE_ORDER.indexOf(activeStep);
+	const stepIdx = RESTART_STEP_ORDER.indexOf(step);
+	const activeIdx = RESTART_STEP_ORDER.indexOf(activeStep);
 	if (stepIdx < activeIdx) return 'complete';
 	if (stepIdx === activeIdx) return 'active';
 	return 'pending';

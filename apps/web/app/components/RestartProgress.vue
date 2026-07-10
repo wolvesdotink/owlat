@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import {
-	RESTART_PHASE_ORDER,
+	RESTART_STEP_ORDER,
 	RESTART_PHASE_COPY,
 	restartProgressPhase,
 	restartStepStatus,
@@ -9,8 +9,9 @@ import {
 
 /**
  * Live, phased progress for a config-apply restart, derived from the caller's
- * readiness poll. Both the setup review page and the transport-editor apply flow
- * mount this so the final "restarting…" moment never reads as a silent hang.
+ * readiness poll. Mounted by the setup review page and built for reuse by the A1
+ * transport-editor apply flow, so the final "restarting…" moment never reads as
+ * a silent hang.
  *
  * The caller owns the poll and passes its state down; this component only
  * renders it. When the restart drags past its expected window (`timeout`) the
@@ -29,11 +30,22 @@ const phase = computed<RestartPhase>(() =>
 );
 
 const steps = computed(() =>
-	RESTART_PHASE_ORDER.map((step) => ({
-		id: step,
-		copy: RESTART_PHASE_COPY[step],
-		status: restartStepStatus(step, phase.value),
-	}))
+	RESTART_STEP_ORDER.map((step) => {
+		const status = restartStepStatus(step, phase.value);
+		// While timed out, the active row is honest about the wait rather than
+		// reassuring "almost there" — its own copy would contradict the recovery
+		// notice below it.
+		const detail =
+			status === 'active' && phase.value === 'timeout'
+				? RESTART_PHASE_COPY.timeout.detail
+				: RESTART_PHASE_COPY[step].detail;
+		return {
+			id: step,
+			label: RESTART_PHASE_COPY[step].label,
+			detail,
+			status,
+		};
+	})
 );
 </script>
 
@@ -65,10 +77,10 @@ const steps = computed(() =>
 						class="block text-sm font-medium"
 						:class="step.status === 'pending' ? 'text-text-tertiary' : 'text-text-primary'"
 					>
-						{{ step.copy.label }}
+						{{ step.label }}
 					</span>
 					<span v-if="step.status === 'active'" class="block text-sm text-text-secondary">
-						{{ step.copy.detail }}
+						{{ step.detail }}
 					</span>
 				</span>
 			</li>
