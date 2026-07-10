@@ -25,6 +25,7 @@ import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { modules } from './helpers';
+import { resolveDeliverableMailbox } from '../mailbox';
 
 const sessionMocks = vi.hoisted(() => ({
 	userId: 'user-A',
@@ -42,6 +43,16 @@ vi.mock('../../lib/sessionOrganization', async () => {
 			role: sessionMocks.role,
 			activeOrganizationId: 'org-1',
 		})),
+		// `provisionHosted` uses the `adminMutation` wrapper, which calls
+		// `requireAdminContext` (the module-internal `getMutationContext` it wraps is
+		// not reachable through the export-level mock). Gate it on the mocked role so
+		// the admin path succeeds and non-admins are genuinely rejected.
+		requireAdminContext: vi.fn(async () => {
+			if (sessionMocks.role !== 'owner' && sessionMocks.role !== 'admin') {
+				throw new Error('Only owners and admins can perform this action');
+			}
+			return { userId: sessionMocks.userId, role: sessionMocks.role };
+		}),
 		getBetterAuthSessionWithRole: vi.fn(async () => ({
 			userId: sessionMocks.userId,
 			role: sessionMocks.role,
@@ -326,13 +337,13 @@ describe('pause / resume — the job is pausable', () => {
 		await connectMailbox(t);
 		await t.mutation(api.mail.mailboxMove.start, {});
 
-		expect((await t.mutation(api.mail.mailboxMove.pause, {})).paused).toBe(true);
-		expect((await t.mutation(api.mail.mailboxMove.pause, {})).paused).toBe(true);
+		expect((await t.mutation(api.mail.mailboxMove.pause, {})).isPaused).toBe(true);
+		expect((await t.mutation(api.mail.mailboxMove.pause, {})).isPaused).toBe(true);
 		const status = await t.query(api.mail.mailboxMove.moveStatus, {});
-		expect(status.eligible && status.move?.paused).toBe(true);
+		expect(status.eligible && status.move?.isPaused).toBe(true);
 
-		expect((await t.mutation(api.mail.mailboxMove.resume, {})).paused).toBe(false);
-		expect((await t.mutation(api.mail.mailboxMove.resume, {})).paused).toBe(false);
+		expect((await t.mutation(api.mail.mailboxMove.resume, {})).isPaused).toBe(false);
+		expect((await t.mutation(api.mail.mailboxMove.resume, {})).isPaused).toBe(false);
 	});
 });
 
@@ -377,5 +388,54 @@ describe('cancel — clean rollback before archive', () => {
 		await t.mutation(api.mail.mailboxMove.archive, {});
 
 		await expect(t.mutation(api.mail.mailboxMove.cancel, {})).rejects.toThrow();
+	});
+
+	it('refuses the clean rollback once mail has landed in the hosted mailbox', async () => {
+		const t = convexTest(schema, modules);
+		await enableExternal(t);
+		await connectMailbox(t);
+		const { moveId } = await t.mutation(api.mail.mailboxMove.start, {});
+		sessionMocks.role = 'admin';
+		const { hostedMailboxId } = await t.mutation(api.mail.mailboxMove.provisionHosted, { moveId });
+		sessionMocks.role = 'editor';
+		// MX already cut over: real inbound mail is now in the hosted mailbox.
+		await seedMessage(t, hostedMailboxId);
+
+		await expect(t.mutation(api.mail.mailboxMove.cancel, {})).rejects.toThrow();
+
+		// Nothing orphaned: the hosted mailbox and the move both survive.
+		await t.run(async (ctx) => {
+			const hosted = await ctx.db.get(hostedMailboxId);
+			expect(hosted?.status).toBe('active');
+			const move = await ctx.db
+				.query('mailboxMoves')
+				.withIndex('by_user', (q) => q.eq('userId', 'user-A'))
+				.first();
+			expect(move).not.toBeNull();
+		});
+	});
+});
+
+describe('routing — post-archive inbound resolves to the hosted mailbox', () => {
+	it('resolves the live hosted mailbox, not the external archive, on the shared address', async () => {
+		const t = convexTest(schema, modules);
+		await enableExternal(t);
+		const { mailboxId: externalMailboxId } = await connectMailbox(t);
+		const { moveId } = await t.mutation(api.mail.mailboxMove.start, {});
+		sessionMocks.role = 'admin';
+		const { hostedMailboxId } = await t.mutation(api.mail.mailboxMove.provisionHosted, { moveId });
+		sessionMocks.role = 'editor';
+		await t.mutation(api.mail.mailboxMove.archive, {});
+
+		// After archive BOTH rows stay 'active' (the archive must remain readable),
+		// so a naive by_address .first() would return the older external one. The
+		// deterministic resolver inbound delivery + IMAP/SMTP auth use must return
+		// the live hosted mailbox instead.
+		await t.run(async (ctx) => {
+			const resolved = await resolveDeliverableMailbox(ctx, 'me@example.com');
+			expect(resolved?._id).toBe(hostedMailboxId);
+			expect(resolved?._id).not.toBe(externalMailboxId);
+			expect(resolved?.kind).toBe('hosted');
+		});
 	});
 });
