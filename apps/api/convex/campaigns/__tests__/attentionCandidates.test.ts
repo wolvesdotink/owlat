@@ -78,6 +78,17 @@ describe('campaigns.organization.listAttentionCandidates', () => {
 					name: 'Heavy cancelled',
 					status: 'cancelled',
 					archiveHtmlContent: '<html>a very large archived body</html>',
+					// Every OPTIONAL projected field is populated: Convex strips
+					// `undefined` fields from returned rows, so the exact-shape
+					// assertion below can only observe all 17 keys when the stored
+					// row defines all 17. Fixed values keep the test deterministic.
+					scheduledAt: 1_700_000_000_000,
+					sentAt: 1_700_000_100_000,
+					abTestStatus: 'winner_selected' as const,
+					abWinner: 'A' as const,
+					contentBlockReason: 'flagged during pre-send content scan',
+					abVariantBSent: 10,
+					abVariantBOpened: 4,
 				})
 			);
 		});
