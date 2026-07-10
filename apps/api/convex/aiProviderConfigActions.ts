@@ -25,6 +25,7 @@ import { authedAction } from './lib/authedFunctions';
 import { decryptSecret, encryptSecret } from './lib/credentialCrypto';
 import { languageProviderFor } from './lib/llmProviders';
 import { rateLimiter } from './rateLimiter';
+import { throwUnauthenticated } from './_utils/errors';
 import {
 	embeddingProviderKindValidator,
 	languageProviderKindValidator,
@@ -112,9 +113,13 @@ export const saveConfig = authedAction({
 export const testConnection = authedAction({
 	args: {},
 	handler: async (ctx): Promise<{ ok: boolean; error?: string }> => {
+		// `authedAction` has already asserted org membership, so an identity is
+		// guaranteed here; narrow it (rather than an unreachable 'anonymous'
+		// fallback) so distinct callers never collapse onto one rate-limit bucket.
 		const identity = await ctx.auth.getUserIdentity();
+		if (!identity) throwUnauthenticated();
 		const rl = await rateLimiter.limit(ctx, 'aiProviderConfigTest', {
-			key: identity?.subject ?? 'anonymous',
+			key: identity.subject,
 		});
 		if (!rl.ok) {
 			return { ok: false, error: 'Too many connection tests — try again in a moment.' };
