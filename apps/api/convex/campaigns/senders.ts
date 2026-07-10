@@ -161,6 +161,9 @@ export const list = authedQuery({
 export const listForPicker = authedQuery({
 	args: {},
 	handler: async (ctx) => {
+		// all-members: any campaign builder needs to read the enabled sender list to
+		// pick one (and learn via canManage whether they may add one); rows expose
+		// only email/displayName/isDefault, never the full curated record.
 		const session = await requireOrgMember(ctx);
 		const all = await ctx.db.query('campaignSenders').take(MAX_CAMPAIGN_SENDERS);
 		const settings = await ctx.db.query('instanceSettings').first();
