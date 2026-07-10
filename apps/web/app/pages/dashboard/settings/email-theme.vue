@@ -13,13 +13,13 @@ const { hasActiveOrganization, isLoading: organizationLoading } = useOrganizatio
 
 // Get organization settings with real-time updates
 const { data: organizationSettings, isLoading: organizationSettingsLoading } = useOrganizationQuery(
-	api.organizations.settings.get
+	api.workspaces.settings.get
 );
 
 const isLoading = computed(() => organizationLoading.value || organizationSettingsLoading.value);
 
 // Mutations
-const { run: updateOrganizationSettings } = useBackendOperation(api.organizations.settings.update, {
+const { run: updateOrganizationSettings } = useBackendOperation(api.workspaces.settings.update, {
 	label: 'Save email theme',
 });
 

@@ -411,7 +411,7 @@ export const autoEnforceReputation = internalMutation({
 				? 'Auto-suspended: complaint rate or bounce rate exceeded critical thresholds'
 				: 'Auto-warned: complaint rate or bounce rate exceeding safe thresholds';
 
-		await ctx.runMutation(internal.organizations.abuseStatus.transition, {
+		await ctx.runMutation(internal.workspaces.abuseStatus.transition, {
 			input: {
 				to: target,
 				at: Date.now(),

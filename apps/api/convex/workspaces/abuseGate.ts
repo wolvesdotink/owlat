@@ -29,9 +29,7 @@ import type { AbuseStatus } from './abuseStatus';
  * `null` / `undefined` are treated as `clean` (deployments early enough
  * that no status was ever written).
  */
-export function isSendingAllowed(
-	status: AbuseStatus | string | null | undefined,
-): boolean {
+export function isSendingAllowed(status: AbuseStatus | string | null | undefined): boolean {
 	if (!status) return true;
 	return status !== 'suspended' && status !== 'banned';
 }
@@ -50,13 +48,13 @@ export async function requireSendingAllowed(ctx: MutationCtx): Promise<void> {
 
 	if (status === 'suspended') {
 		throwInvalidState(
-			'Your account has been suspended due to policy violations. Please contact support for assistance.',
+			'Your account has been suspended due to policy violations. Please contact support for assistance.'
 		);
 	}
 
 	if (status === 'banned') {
 		throwInvalidState(
-			'Your account has been permanently disabled. Please contact support for more information.',
+			'Your account has been permanently disabled. Please contact support for more information.'
 		);
 	}
 }

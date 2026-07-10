@@ -23,7 +23,7 @@ import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { nanoid } from 'nanoid';
 import { createContact } from '../contacts/creation';
-import { isSendingAllowed } from '../organizations/abuseGate';
+import { isSendingAllowed } from '../workspaces/abuseGate';
 import { checkEmailDomainVerification } from '../domains/domains';
 import { resolveSendRouteFromDb } from '../lib/sendProviders/route';
 import { isDeliveryConfigured } from '../lib/sendProviders/capability';
@@ -68,7 +68,7 @@ export type DispatchOutcome =
 // from the HTTP shell without re-validating which was provided.
 const templateLookupValidator = v.union(
 	v.object({ kind: v.literal('id'), id: v.id('transactionalEmails') }),
-	v.object({ kind: v.literal('slug'), slug: v.string() }),
+	v.object({ kind: v.literal('slug'), slug: v.string() })
 );
 
 const attachmentRefValidator = v.object({
@@ -101,7 +101,7 @@ export type AttachmentRef = {
  */
 export function validateDataVariables(
 	variables: Record<string, unknown> | undefined,
-	schema: Record<string, string> | undefined,
+	schema: Record<string, string> | undefined
 ): { valid: boolean; error?: string } {
 	if (!schema) return { valid: true };
 	if (!variables) return { valid: true };
@@ -156,7 +156,7 @@ export function resolveLanguage(
 	requestLanguage: string | undefined,
 	contactLanguage: string | undefined,
 	templateDefaultLanguage: string | undefined,
-	availableLanguages: string[],
+	availableLanguages: string[]
 ): string {
 	const fallback = templateDefaultLanguage ?? 'en';
 	const candidate = requestLanguage ?? contactLanguage ?? fallback;
@@ -174,7 +174,7 @@ export function selectContent(
 	templateDefaultLanguage: string,
 	defaultHtmlContent: string,
 	defaultSubject: string,
-	htmlTranslationsJson: string | undefined,
+	htmlTranslationsJson: string | undefined
 ): { html: string; subject: string; resolvedLanguage: string } {
 	if (language === templateDefaultLanguage || !htmlTranslationsJson) {
 		return {
@@ -216,7 +216,7 @@ export function selectContent(
  */
 export function mergeAttachments(
 	templateAttachmentsJson: string | undefined,
-	requestAttachments: AttachmentRef[] | undefined,
+	requestAttachments: AttachmentRef[] | undefined
 ): { filename: string; contentType?: string; url: string }[] | undefined {
 	let templateAttachments: { filename: string; contentType?: string; url: string }[] = [];
 
@@ -269,7 +269,12 @@ export const dispatch = internalMutation({
 
 		// 1b. Reject at intake (HTTP 4xx, no row) when no delivery provider is set.
 		if (!(await isDeliveryConfigured(ctx, 'transactional'))) {
-			return { ok: false, reason: 'no_delivery_provider', detail: 'No email delivery provider is configured. Set EMAIL_PROVIDER (+ credentials) or a provider route before sending transactional email.' };
+			return {
+				ok: false,
+				reason: 'no_delivery_provider',
+				detail:
+					'No email delivery provider is configured. Set EMAIL_PROVIDER (+ credentials) or a provider route before sending transactional email.',
+			};
 		}
 		// 2. Blocklist. The shared `isSuppressed` owns the normalization +
 		//    `by_email` point read (the HTTP shell already lowercases + trims,
@@ -325,9 +330,7 @@ export const dispatch = internalMutation({
 		// saved-block edit propagated to the consumer's content JSON but the
 		// rerender pool has not yet caught up. Cached `htmlContent` is used.
 		if (template.htmlRenderState?.stale) {
-			logWarn(
-				`htmlRenderState.stale at send time for ${template._id}; using cached htmlContent`,
-			);
+			logWarn(`htmlRenderState.stale at send time for ${template._id}; using cached htmlContent`);
 		}
 
 		// 4. Sender + domain verification. Resolve `defaultFromEmail` from
@@ -352,7 +355,7 @@ export const dispatch = internalMutation({
 		// 5. Validate `dataVariables` shape against the template's declared schema.
 		const variableValidation = validateDataVariables(
 			args.dataVariables,
-			template.dataVariablesSchema,
+			template.dataVariablesSchema
 		);
 		if (!variableValidation.valid) {
 			return {
@@ -382,15 +385,19 @@ export const dispatch = internalMutation({
 			args.language,
 			contact?.language,
 			template.defaultLanguage,
-			supportedLanguages,
+			supportedLanguages
 		);
 
-		const { html: htmlContentToSend, subject: subjectToSend, resolvedLanguage } = selectContent(
+		const {
+			html: htmlContentToSend,
+			subject: subjectToSend,
+			resolvedLanguage,
+		} = selectContent(
 			language,
 			template.defaultLanguage ?? 'en',
 			template.htmlContent,
 			template.subject,
-			template.htmlTranslations,
+			template.htmlTranslations
 		);
 
 		// 8. Provider route resolution. Reads the route config + health
@@ -419,9 +426,7 @@ export const dispatch = internalMutation({
 			queuedAt: now,
 			...(resolvedRoute ? { providerType: resolvedRoute.providerType } : {}),
 			correlationId,
-			...(attachmentStorageIds && attachmentStorageIds.length > 0
-				? { attachmentStorageIds }
-				: {}),
+			...(attachmentStorageIds && attachmentStorageIds.length > 0 ? { attachmentStorageIds } : {}),
 		});
 
 		// 11. Counter increments — all atomic with the row insert.
@@ -450,7 +455,7 @@ export const dispatch = internalMutation({
 		// Feedback-ID SenderId the worker's transactional composer emits.
 		const organizationId = await ctx.runQuery(
 			internal.campaigns.sendQueries.getSingletonOrganizationId,
-			{},
+			{}
 		);
 		await transactionalEmailPool.enqueueAction(
 			ctx,
@@ -485,7 +490,7 @@ export const dispatch = internalMutation({
 				context: {
 					sendRef: { kind: 'transactional' as const, id: sendId },
 				},
-			},
+			}
 		);
 
 		return {

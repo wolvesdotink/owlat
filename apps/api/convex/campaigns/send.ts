@@ -6,10 +6,7 @@ import { internal } from '../_generated/api';
 import type { CampaignRecipient } from './audienceResolution';
 import type { Id } from '../_generated/dataModel';
 import { getOptional } from '../lib/env';
-import {
-	resolveNextSendTime,
-	isValidTimeZone,
-} from '../lib/emailHelpers';
+import { resolveNextSendTime, isValidTimeZone } from '../lib/emailHelpers';
 import { composeForSend, personalizeSubject } from '../delivery/sendComposition';
 import { getListIdHeader } from '../delivery/sendComposition/listId';
 import { nanoid } from 'nanoid';
@@ -51,27 +48,23 @@ function makeUrlReputationCache(ctx: ActionCtx): UrlReputationCache {
 	return {
 		async get(urlHash) {
 			try {
-				return await ctx.runQuery(
-					internal.campaigns.sendQueries.getUrlReputationVerdict,
-					{ urlHash },
-				);
+				return await ctx.runQuery(internal.campaigns.sendQueries.getUrlReputationVerdict, {
+					urlHash,
+				});
 			} catch {
 				return null;
 			}
 		},
 		async set(urlHash, verdict) {
 			try {
-				await ctx.runMutation(
-					internal.campaigns.sendQueries.upsertUrlReputationVerdict,
-					{
-						urlHash,
-						verdict: verdict.verdict,
-						source: verdict.source,
-						threats: verdict.threats,
-						checkedAt: verdict.checkedAt,
-						expiresAt: verdict.expiresAt,
-					},
-				);
+				await ctx.runMutation(internal.campaigns.sendQueries.upsertUrlReputationVerdict, {
+					urlHash,
+					verdict: verdict.verdict,
+					source: verdict.source,
+					threats: verdict.threats,
+					checkedAt: verdict.checkedAt,
+					expiresAt: verdict.expiresAt,
+				});
 			} catch {
 				// Best-effort cache write — ignore.
 			}
@@ -246,9 +239,7 @@ export const startCampaignSend = internalAction({
 		// a saved-block edit propagated to the consumer's content JSON but the
 		// rerender pool has not yet caught up. Cached `htmlContent` is used.
 		if (template.htmlRenderState?.stale) {
-			logWarn(
-				`htmlRenderState.stale at send time for ${template._id}; using cached htmlContent`,
-			);
+			logWarn(`htmlRenderState.stale at send time for ${template._id}; using cached htmlContent`);
 		}
 
 		// Content scanning: check for spam, phishing, and prohibited content
@@ -330,7 +321,7 @@ export const startCampaignSend = internalAction({
 		// `archiveToken`, so PREP only writes the snapshot here.
 		const siteUrl = getOptional('SITE_URL');
 
-		const resolvedFlags = await ctx.runQuery(internal.organizations.featureFlags.getResolvedFlags, {});
+		const resolvedFlags = await ctx.runQuery(internal.workspaces.featureFlags.getResolvedFlags, {});
 		const orgArchiveDefault = resolvedFlags['campaigns.archive'] ?? false;
 		const archiveEnabled = campaign.archiveEnabled ?? orgArchiveDefault;
 
@@ -357,10 +348,9 @@ export const startCampaignSend = internalAction({
 		// Freeze the segment snapshot at send time (ADR-0033) so this Campaign
 		// reproduces the exact Segment it targeted even if the Segment is later
 		// edited; topic Audiences and already-frozen segments pass through.
-		const audience = await ctx.runMutation(
-			internal.campaigns.sendQueries.freezeCampaignAudience,
-			{ campaignId: args.campaignId },
-		);
+		const audience = await ctx.runMutation(internal.campaigns.sendQueries.freezeCampaignAudience, {
+			campaignId: args.campaignId,
+		});
 		if (!audience) {
 			throw new Error('Campaign has no audience');
 		}
@@ -445,10 +435,7 @@ type EnqueueVariantArgs = {
 // Create emailSends rows for a batch (one variant, one language) and
 // schedule enqueueCampaignEmails. Handles both the timezone-grouped and
 // the standard chunk-of-50 paths. The orchestrator's only enqueue site.
-async function enqueueVariantBatch(
-	ctx: ActionCtx,
-	args: EnqueueVariantArgs,
-): Promise<number> {
+async function enqueueVariantBatch(ctx: ActionCtx, args: EnqueueVariantArgs): Promise<number> {
 	if (args.recipients.length === 0) return 0;
 
 	const sendsToCreate = args.recipients.map((r) => ({
@@ -478,7 +465,7 @@ async function enqueueVariantBatch(
 		sends: sendsToCreate,
 	});
 	const sendIdByContact = new Map<string, Id<'emailSends'>>(
-		created.map((c) => [String(c.contactId), c.emailSendId]),
+		created.map((c) => [String(c.contactId), c.emailSendId])
 	);
 
 	type EmailEnqueueData = {
@@ -525,64 +512,56 @@ async function enqueueVariantBatch(
 		for (const [zone, recipientsForZone] of recipientsByZone) {
 			const target = resolveNextSendTime(zone, args.scheduledHour!, args.scheduledMinute!, now);
 			const delayMs = Math.max(0, target - now);
-			await ctx.scheduler.runAfter(
-				delayMs,
-				internal.delivery.enqueue.enqueueCampaignEmails,
-				{
-					campaignId: args.campaignId,
-					emails: recipientsForZone.map((r) => ({
-						emailSendId: r.emailSendId,
-						contactId: r.contactId,
-						email: r.email,
-						firstName: r.firstName,
-						lastName: r.lastName,
-					})),
-					from: args.from,
-					replyTo: args.replyTo,
-					subject: args.subject,
-					htmlContent: args.htmlContent,
-					convexSiteUrl: args.convexSiteUrl,
-					siteUrl: args.siteUrl,
-					audienceType: args.audienceType,
-					viewInBrowserUrl: args.viewInBrowserUrl,
-					providerType: args.providerType,
-					trackingBaseUrl: args.trackingBaseUrl,
-					organizationId: args.organizationId,
-					listId: args.listId,
-				},
-			);
+			await ctx.scheduler.runAfter(delayMs, internal.delivery.enqueue.enqueueCampaignEmails, {
+				campaignId: args.campaignId,
+				emails: recipientsForZone.map((r) => ({
+					emailSendId: r.emailSendId,
+					contactId: r.contactId,
+					email: r.email,
+					firstName: r.firstName,
+					lastName: r.lastName,
+				})),
+				from: args.from,
+				replyTo: args.replyTo,
+				subject: args.subject,
+				htmlContent: args.htmlContent,
+				convexSiteUrl: args.convexSiteUrl,
+				siteUrl: args.siteUrl,
+				audienceType: args.audienceType,
+				viewInBrowserUrl: args.viewInBrowserUrl,
+				providerType: args.providerType,
+				trackingBaseUrl: args.trackingBaseUrl,
+				organizationId: args.organizationId,
+				listId: args.listId,
+			});
 			totalEnqueued += recipientsForZone.length;
 		}
 	} else {
 		const CHUNK_SIZE = 50;
 		for (let i = 0; i < emailsToEnqueue.length; i += CHUNK_SIZE) {
 			const chunk = emailsToEnqueue.slice(i, i + CHUNK_SIZE);
-			await ctx.scheduler.runAfter(
-				0,
-				internal.delivery.enqueue.enqueueCampaignEmails,
-				{
-					campaignId: args.campaignId,
-					emails: chunk.map((r) => ({
-						emailSendId: r.emailSendId,
-						contactId: r.contactId,
-						email: r.email,
-						firstName: r.firstName,
-						lastName: r.lastName,
-					})),
-					from: args.from,
-					replyTo: args.replyTo,
-					subject: args.subject,
-					htmlContent: args.htmlContent,
-					convexSiteUrl: args.convexSiteUrl,
-					siteUrl: args.siteUrl,
-					audienceType: args.audienceType,
-					viewInBrowserUrl: args.viewInBrowserUrl,
-					providerType: args.providerType,
-					trackingBaseUrl: args.trackingBaseUrl,
-					organizationId: args.organizationId,
-					listId: args.listId,
-				},
-			);
+			await ctx.scheduler.runAfter(0, internal.delivery.enqueue.enqueueCampaignEmails, {
+				campaignId: args.campaignId,
+				emails: chunk.map((r) => ({
+					emailSendId: r.emailSendId,
+					contactId: r.contactId,
+					email: r.email,
+					firstName: r.firstName,
+					lastName: r.lastName,
+				})),
+				from: args.from,
+				replyTo: args.replyTo,
+				subject: args.subject,
+				htmlContent: args.htmlContent,
+				convexSiteUrl: args.convexSiteUrl,
+				siteUrl: args.siteUrl,
+				audienceType: args.audienceType,
+				viewInBrowserUrl: args.viewInBrowserUrl,
+				providerType: args.providerType,
+				trackingBaseUrl: args.trackingBaseUrl,
+				organizationId: args.organizationId,
+				listId: args.listId,
+			});
 		}
 		totalEnqueued += emailsToEnqueue.length;
 	}
@@ -642,10 +621,10 @@ export const resolveCampaignPage = internalAction({
 
 		// Resolve ONE page at the job cursor — the bounded read that replaces the
 		// whole-audience resolve.
-		const page = await ctx.runQuery(
-			internal.campaigns.audienceResolution.resolveRecipientPage,
-			{ audience: job.audience, cursor: job.cursor },
-		);
+		const page = await ctx.runQuery(internal.campaigns.audienceResolution.resolveRecipientPage, {
+			audience: job.audience,
+			cursor: job.cursor,
+		});
 
 		const audienceType = job.audience.kind;
 		const from = campaign.fromName
@@ -662,10 +641,9 @@ export const resolveCampaignPage = internalAction({
 				? `${siteUrl}/archive?token=${campaign.archiveToken}`
 				: undefined;
 
-		const resolvedRoute = await ctx.runQuery(
-			internal.lib.sendProviders.route.resolveSendRoute,
-			{ messageType: 'campaign' },
-		);
+		const resolvedRoute = await ctx.runQuery(internal.lib.sendProviders.route.resolveSendRoute, {
+			messageType: 'campaign',
+		});
 		if (!resolvedRoute) {
 			// Fail-closed: the campaign pre-flight already requires a configured
 			// delivery provider, so a null route here means one was removed between
@@ -685,7 +663,7 @@ export const resolveCampaignPage = internalAction({
 			// true backstop: it only re-drives once the row goes stale again, i.e. once
 			// this self-reschedule chain has actually died.
 			logWarn(
-				`Campaign send hop deferred for ${args.campaignId}: no delivery provider configured; retrying in ${NO_PROVIDER_RETRY_MS}ms`,
+				`Campaign send hop deferred for ${args.campaignId}: no delivery provider configured; retrying in ${NO_PROVIDER_RETRY_MS}ms`
 			);
 			await ctx.runMutation(internal.campaigns.sendJob.touchSendJob, {
 				campaignId: args.campaignId,
@@ -693,14 +671,14 @@ export const resolveCampaignPage = internalAction({
 			await ctx.scheduler.runAfter(
 				NO_PROVIDER_RETRY_MS,
 				internal.campaigns.send.resolveCampaignPage,
-				{ campaignId: args.campaignId },
+				{ campaignId: args.campaignId }
 			);
 			return { done: false, pageEnqueued: 0 };
 		}
 
 		const activeTrackingDomain = await ctx.runQuery(
 			internal.domains.trackingDomains.getActiveTrackingDomain,
-			{},
+			{}
 		);
 		const trackingBaseUrl = activeTrackingDomain?.domain
 			? `https://${activeTrackingDomain.domain}`
@@ -710,10 +688,8 @@ export const resolveCampaignPage = internalAction({
 		// Feedback-ID SenderId across the campaign mail stream. Resolved once per
 		// hop in this system (no-session) context.
 		const organizationId =
-			(await ctx.runQuery(
-				internal.campaigns.sendQueries.getSingletonOrganizationId,
-				{},
-			)) ?? undefined;
+			(await ctx.runQuery(internal.campaigns.sendQueries.getSingletonOrganizationId, {})) ??
+			undefined;
 
 		// RFC 2919 List-Id — a stable mailing-list handle for TOPIC campaigns,
 		// derived from the topic id/name + the sending domain (host of the From
@@ -801,7 +777,8 @@ export const resolveCampaignPage = internalAction({
 				if (variant === null) continue; // belongs to the other phase — skip
 				const language = recipient.language ?? tmplDefaultLanguage;
 				const key = `${language} ${variant ?? '-'}`;
-				if (!byBucket.has(key)) byBucket.set(key, { bucket: { language, variant }, recipients: [] });
+				if (!byBucket.has(key))
+					byBucket.set(key, { bucket: { language, variant }, recipients: [] });
 				byBucket.get(key)!.recipients.push(recipient);
 			}
 
@@ -817,7 +794,7 @@ export const resolveCampaignPage = internalAction({
 					if (variantBTemplateId) {
 						const bContent = await ctx.runQuery(
 							internal.campaigns.sendQueries.getEmailTemplateForLanguage,
-							{ templateId: variantBTemplateId, language: bucket.language },
+							{ templateId: variantBTemplateId, language: bucket.language }
 						);
 						if (!bContent) continue;
 						subject = bContent.subject;
@@ -826,7 +803,7 @@ export const resolveCampaignPage = internalAction({
 						// Subject test — variant B reuses A's html with the alt subject.
 						const aContent = await ctx.runQuery(
 							internal.campaigns.sendQueries.getEmailTemplateForLanguage,
-							{ templateId: campaign.emailTemplateId, language: bucket.language },
+							{ templateId: campaign.emailTemplateId, language: bucket.language }
 						);
 						if (!aContent) continue;
 						subject = variantBSubject ?? campaignSubjectOverride ?? aContent.subject;
@@ -835,7 +812,7 @@ export const resolveCampaignPage = internalAction({
 				} else {
 					const aContent = await ctx.runQuery(
 						internal.campaigns.sendQueries.getEmailTemplateForLanguage,
-						{ templateId: campaign.emailTemplateId, language: bucket.language },
+						{ templateId: campaign.emailTemplateId, language: bucket.language }
 					);
 					if (!aContent) continue;
 					subject = campaignSubjectOverride ?? aContent.subject;
@@ -910,9 +887,7 @@ export const resolveCampaignPage = internalAction({
 		// blocks now that phase === 'done').
 		const emptyAudienceComplete =
 			advanced &&
-			(variantMode === 'ab_test'
-				? advanced.totalCandidates === 0
-				: advanced.enqueuedCount === 0);
+			(variantMode === 'ab_test' ? advanced.totalCandidates === 0 : advanced.enqueuedCount === 0);
 		if (emptyAudienceComplete) {
 			await ctx.runMutation(internal.campaigns.lifecycle.transition, {
 				campaignId: args.campaignId,
@@ -985,10 +960,9 @@ export const sendCampaignWinnerToRemainder = internalAction({
 		// immutable `splitPercentage`, so the `h >= testFraction` remainder
 		// partition is IDENTICAL to the `h < testFraction` cohort phase 1 sent —
 		// the two phases are provably disjoint and exhaustive.
-		const audience = await ctx.runMutation(
-			internal.campaigns.sendQueries.freezeCampaignAudience,
-			{ campaignId: args.campaignId },
-		);
+		const audience = await ctx.runMutation(internal.campaigns.sendQueries.freezeCampaignAudience, {
+			campaignId: args.campaignId,
+		});
 		if (!audience) {
 			return { scheduled: false, skipped: true, reason: 'Campaign has no audience' };
 		}
@@ -1008,4 +982,3 @@ export const sendCampaignWinnerToRemainder = internalAction({
 		return { scheduled: true };
 	},
 });
-

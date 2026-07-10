@@ -14,7 +14,7 @@
  * table, schedule one fire-and-forget action per entry, self-reschedule the next
  * page in its own transaction, finalize at the tail. Tracked by a one-shot
  * `knowledgeEdgeBackfillJobs` row (first-run gated by the toggle handler in
- * `organizations/featureFlags.ts`; admin-cancellable mid-walk; idempotent —
+ * `workspaces/featureFlags.ts`; admin-cancellable mid-walk; idempotent —
  * re-running merges via `upsertEdge`).
  *
  * SECURITY (leak surface #2 — edge CONSTRUCTION): each entry is scheduled as its
@@ -131,12 +131,10 @@ export const runEdgeBackfill = internalMutation({
 			return;
 		}
 
-		const page = await ctx.db
-			.query('knowledgeEntries')
-			.paginate({
-				cursor: args.cursor ?? null,
-				numItems: args.pageSize ?? EDGE_BACKFILL_PAGE,
-			});
+		const page = await ctx.db.query('knowledgeEntries').paginate({
+			cursor: args.cursor ?? null,
+			numItems: args.pageSize ?? EDGE_BACKFILL_PAGE,
+		});
 
 		// SECURITY: one single-entry batch per anchor keeps the candidate search
 		// contact-scoped (never 'org-wide'); see the file header.

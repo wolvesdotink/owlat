@@ -29,7 +29,7 @@ const { organization } = useOrganizationContext();
 const { $convex } = useNuxtApp();
 
 const { data: settings, isLoading: isLoadingSettings } = useConvexQuery(
-	api.organizations.settings.get,
+	api.workspaces.settings.get,
 	{}
 );
 
