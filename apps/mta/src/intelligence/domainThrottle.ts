@@ -13,8 +13,12 @@
  */
 
 import type Redis from 'ioredis';
-import { getProfile as getRuntimeProfile } from '../config/ispProfiles.js';
-import type { DomainProfile } from '../types.js';
+// Reads the runtime profile from Redis (seeded from config.ts ISP_PROFILES on
+// startup, then overridable via the admin API) so that operator changes — e.g.
+// lowering gmail.com's rate during a deliverability incident — take effect on
+// the throttle hot path without a redeploy. Falls back to the hardcoded
+// defaults when Redis has no profile (e.g. before seeding).
+import { getProfile } from '../config/ispProfiles.js';
 import { logger } from '../monitoring/logger.js';
 
 const THROTTLE_PREFIX = 'mta:throttle:';
@@ -22,19 +26,6 @@ const WINDOW_PREFIX = 'mta:throttle:window:';
 const WINDOW_SECONDS = 60;
 const RECOVERY_THRESHOLD = 20; // consecutive successes before rate increase
 const HASH_TTL = 86400; // 24h TTL for throttle state
-
-/**
- * Get the ISP profile for a domain.
- *
- * Reads the runtime profile from Redis (seeded from config.ts ISP_PROFILES on
- * startup, then overridable via the admin API) so that operator changes — e.g.
- * lowering gmail.com's rate during a deliverability incident — take effect on
- * the throttle hot path without a redeploy. Falls back to the hardcoded
- * defaults when Redis has no profile (e.g. before seeding).
- */
-async function getProfile(redis: Redis, domain: string): Promise<DomainProfile> {
-	return getRuntimeProfile(redis, domain);
-}
 
 /**
  * Build Redis keys scoped to a specific IP + domain pair
