@@ -33,6 +33,11 @@ const canClose = computed(() => props.csvImport.step.value !== 'importing');
 
 const showValidationDetails = ref(false);
 
+// Local handle on the validation result so the warnings panel reads its fields
+// without a non-null assertion on every line; the panel's v-if narrows this to
+// non-null before any field is touched.
+const validationSummary = computed(() => props.csvImport.validation.value);
+
 const getRowValidationStatus = (rowNum: number): 'valid' | 'warning' | 'error' => {
 	const v = props.csvImport.validation.value;
 	if (!v) return 'valid';
@@ -368,37 +373,37 @@ const topicAssignmentSummary = computed(() => {
 									/>
 									View issue details
 								</button>
-								<div v-if="showValidationDetails" class="mt-2 space-y-3">
-									<div v-if="csvImport.validation.value!.invalidEmails.length > 0" class="p-3 rounded-lg bg-warning/5 border border-warning/20">
+								<div v-if="showValidationDetails && validationSummary" class="mt-2 space-y-3">
+									<div v-if="validationSummary.invalidEmails.length > 0" class="p-3 rounded-lg bg-warning/5 border border-warning/20">
 										<h5 class="text-sm font-medium text-warning mb-1">Invalid Emails</h5>
 										<ul class="text-xs text-text-secondary space-y-0.5">
-											<li v-for="entry in csvImport.validation.value!.invalidEmails.slice(0, 10)" :key="entry.row">
+											<li v-for="entry in validationSummary.invalidEmails.slice(0, 10)" :key="entry.row">
 												Row {{ entry.row }}: <span class="text-text-primary">{{ entry.email }}</span>
 											</li>
-											<li v-if="csvImport.validation.value!.invalidEmails.length > 10" class="text-text-tertiary">
-												...and {{ csvImport.validation.value!.invalidEmails.length - 10 }} more
+											<li v-if="validationSummary.invalidEmails.length > 10" class="text-text-tertiary">
+												...and {{ validationSummary.invalidEmails.length - 10 }} more
 											</li>
 										</ul>
 									</div>
-									<div v-if="csvImport.validation.value!.duplicateEmails.length > 0" class="p-3 rounded-lg bg-warning/5 border border-warning/20">
+									<div v-if="validationSummary.duplicateEmails.length > 0" class="p-3 rounded-lg bg-warning/5 border border-warning/20">
 										<h5 class="text-sm font-medium text-warning mb-1">Duplicate Emails</h5>
 										<ul class="text-xs text-text-secondary space-y-0.5">
-											<li v-for="entry in csvImport.validation.value!.duplicateEmails.slice(0, 10)" :key="entry.row">
+											<li v-for="entry in validationSummary.duplicateEmails.slice(0, 10)" :key="entry.row">
 												Row {{ entry.row }}: <span class="text-text-primary">{{ entry.email }}</span>
 											</li>
-											<li v-if="csvImport.validation.value!.duplicateEmails.length > 10" class="text-text-tertiary">
-												...and {{ csvImport.validation.value!.duplicateEmails.length - 10 }} more
+											<li v-if="validationSummary.duplicateEmails.length > 10" class="text-text-tertiary">
+												...and {{ validationSummary.duplicateEmails.length - 10 }} more
 											</li>
 										</ul>
 									</div>
-									<div v-if="csvImport.validation.value!.missingEmails.length > 0" class="p-3 rounded-lg bg-error-subtle border border-error/20">
+									<div v-if="validationSummary.missingEmails.length > 0" class="p-3 rounded-lg bg-error-subtle border border-error/20">
 										<h5 class="text-sm font-medium text-error mb-1">Missing Emails</h5>
 										<ul class="text-xs text-text-secondary space-y-0.5">
-											<li v-for="rowNum in csvImport.validation.value!.missingEmails.slice(0, 10)" :key="rowNum">
+											<li v-for="rowNum in validationSummary.missingEmails.slice(0, 10)" :key="rowNum">
 												Row {{ rowNum }}: <span class="text-text-tertiary">(empty)</span>
 											</li>
-											<li v-if="csvImport.validation.value!.missingEmails.length > 10" class="text-text-tertiary">
-												...and {{ csvImport.validation.value!.missingEmails.length - 10 }} more
+											<li v-if="validationSummary.missingEmails.length > 10" class="text-text-tertiary">
+												...and {{ validationSummary.missingEmails.length - 10 }} more
 											</li>
 										</ul>
 									</div>
