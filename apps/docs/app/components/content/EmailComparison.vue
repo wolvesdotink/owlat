@@ -80,7 +80,7 @@ const dimensions = [
   gap: 8px;
   padding: 8px 12px;
   border-radius: 8px;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   font-size: 0.8125rem;
   color: var(--color-text-primary);
 }
@@ -130,7 +130,7 @@ const dimensions = [
   display: flex;
   align-items: center;
   font-size: 0.6875rem;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--color-text-tertiary);
@@ -183,7 +183,7 @@ const dimensions = [
 
   .ec-mobile-label {
     display: inline;
-    font-weight: 600;
+    font-weight: var(--font-weight-semibold);
     font-size: 0.625rem;
     text-transform: uppercase;
     letter-spacing: 0.04em;

@@ -279,7 +279,7 @@ function typeColor(type: string) {
 }
 
 .ej-label {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   font-size: 0.8125rem;
   color: var(--color-text-primary);
   line-height: 1.4;
@@ -290,7 +290,7 @@ function typeColor(type: string) {
   border-radius: 9999px;
   font-size: 0.625rem;
   font-family: var(--font-mono);
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   letter-spacing: 0.03em;
   text-transform: uppercase;
 }

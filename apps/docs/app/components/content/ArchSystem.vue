@@ -258,7 +258,7 @@ const analytics = { name: 'PostHog', detail: 'Analytics & Errors', lines: ['Clie
 }
 
 .arch-layer-label {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   font-size: 0.9375rem;
   color: var(--color-text-primary);
   letter-spacing: -0.01em;
@@ -347,7 +347,7 @@ const analytics = { name: 'PostHog', detail: 'Analytics & Errors', lines: ['Clie
 }
 
 .arch-item-name {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   font-size: 0.8125rem;
   color: var(--color-text-primary);
   white-space: nowrap;
@@ -661,7 +661,7 @@ const analytics = { name: 'PostHog', detail: 'Analytics & Errors', lines: ['Clie
 }
 
 .arch-analytics-name {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   font-size: 0.875rem;
   color: var(--color-text-primary);
 }

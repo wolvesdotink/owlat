@@ -474,7 +474,7 @@ const briefing = 'Customer X has been on the Pro plan since 2024, upgraded in Ja
 .kg-node--goal .kg-node-type { color: var(--color-success); }
 
 .kg-node-label {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   font-size: 0.6875rem;
   color: var(--color-text-primary);
   line-height: 1.3;
@@ -536,7 +536,7 @@ const briefing = 'Customer X has been on the Pro plan since 2024, upgraded in Ja
   background: var(--color-bg-surface);
   border: 1px solid var(--color-border-subtle);
   font-size: 0.6875rem;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   transition: border-color var(--motion-moderate);
 }
 
@@ -586,7 +586,7 @@ const briefing = 'Customer X has been on the Pro plan since 2024, upgraded in Ja
 }
 
 .kg-retrieval-title {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   font-size: 0.8125rem;
   color: var(--color-text-primary);
 }
@@ -648,7 +648,7 @@ const briefing = 'Customer X has been on the Pro plan since 2024, upgraded in Ja
 }
 
 .kg-method-name {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   font-size: 0.75rem;
   color: var(--color-text-primary);
 }
@@ -715,7 +715,7 @@ const briefing = 'Customer X has been on the Pro plan since 2024, upgraded in Ja
 }
 
 .kg-briefing-title {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   font-size: 0.75rem;
   color: var(--color-brand);
 }

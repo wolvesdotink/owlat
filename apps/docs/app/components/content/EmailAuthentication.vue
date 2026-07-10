@@ -219,7 +219,7 @@ const layers = [
 
 .ea-cell-label {
   font-size: 0.625rem;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--color-text-tertiary);
@@ -239,7 +239,7 @@ const layers = [
 .ea-record-label {
   display: block;
   font-size: 0.625rem;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--color-text-tertiary);
@@ -274,7 +274,7 @@ const layers = [
 
 .ea-verdict-label {
   font-size: 0.625rem;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--color-text-tertiary);

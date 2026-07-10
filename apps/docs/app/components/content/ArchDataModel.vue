@@ -452,7 +452,7 @@ const legendTypes = [
 .dm-entity--success .dm-entity-type { color: var(--color-success); }
 
 .dm-entity-label {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   font-size: 0.75rem;
   color: var(--color-text-primary);
   line-height: 1.3;
@@ -505,7 +505,7 @@ const legendTypes = [
   background: var(--color-bg-surface);
   border: 1px solid var(--color-border-subtle);
   font-size: 0.6875rem;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   transition: border-color var(--motion-moderate);
 }
 
@@ -560,7 +560,7 @@ const legendTypes = [
 }
 
 .dm-principles-title {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   font-size: 0.75rem;
   color: var(--color-brand);
 }
@@ -590,7 +590,7 @@ const legendTypes = [
 }
 
 .dm-principle-label {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   font-size: 0.75rem;
   color: var(--color-text-primary);
 }
