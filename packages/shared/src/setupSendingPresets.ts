@@ -17,8 +17,9 @@ export type SmtpRelayPreset = 'mailgun' | 'postmark' | 'sendgrid' | 'brevo' | 'c
 
 export interface SmtpRelayPresetConfig {
 	label: string;
+	/** Blank for `custom` ⇒ the operator fills it in. */
 	host: string;
-	/** String because it feeds a form field; blank host ⇒ operator fills it in. */
+	/** String because it feeds a form field. */
 	port: string;
 	secure: boolean;
 }
