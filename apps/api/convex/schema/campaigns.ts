@@ -171,9 +171,6 @@ export const campaignTables = {
 		.index('by_status_and_updated_at', ['status', 'updatedAt'])
 		.index('by_status_and_scheduled_at', ['status', 'scheduledAt'])
 		.index('by_status_sent_at', ['status', 'sentAt'])
-		// A/B analytics lists only the A/B campaigns; index the flag so the
-		// query seeks them directly instead of scanning the campaigns table.
-		.index('by_is_ab_test', ['isABTest'])
 		.index('by_archive_token', ['archiveToken'])
 		.searchIndex('search_campaigns', {
 			searchField: 'searchableText',
