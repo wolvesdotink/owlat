@@ -64,3 +64,61 @@ pub fn open_compose_window(app: &AppHandle, path: &str) {
 pub fn open_compose(app: AppHandle, path: Option<String>) {
     open_compose_window(&app, &path.unwrap_or_else(|| "/compose".to_string()));
 }
+
+/// Show or hide the three native window buttons (close / miniaturize / zoom) on
+/// the given window's NSWindow. Must run on the main thread.
+///
+/// We only refuse the *hide* direction while fullscreen: there macOS owns the
+/// buttons (they live behind the menu-bar reveal bar) and hiding them would
+/// strand the fullscreen exit affordance. Restoring them to visible matches the
+/// native fullscreen state, so it is safe — and it is what keeps the buttons
+/// from being permanently lost when the sidebar-owning layout tears down while
+/// fullscreen.
+#[cfg(target_os = "macos")]
+fn apply_traffic_lights(window: &WebviewWindow, visible: bool) {
+    use objc2_app_kit::{NSWindow, NSWindowButton};
+
+    if !visible && window.is_fullscreen().unwrap_or(false) {
+        return;
+    }
+    let Ok(ptr) = window.ns_window() else {
+        return;
+    };
+    if ptr.is_null() {
+        return;
+    }
+    // SAFETY: `ns_window()` returns this webview window's NSWindow pointer on
+    // macOS; it stays valid for the window's lifetime and we only touch it here
+    // on the main thread.
+    let ns_window: &NSWindow = unsafe { &*(ptr as *const NSWindow) };
+    let hidden = !visible;
+    for kind in [
+        NSWindowButton::CloseButton,
+        NSWindowButton::MiniaturizeButton,
+        NSWindowButton::ZoomButton,
+    ] {
+        // SAFETY: `standardWindowButton` returns the window-owned NSButton (or
+        // None); `setHidden` is a plain NSView setter.
+        if let Some(button) = unsafe { ns_window.standardWindowButton(kind) } {
+            unsafe { button.setHidden(hidden) };
+        }
+    }
+}
+
+/// Command: toggle the native macOS traffic-light buttons so they can follow the
+/// sidebar's hidden state. Runs the NSWindow work on the main thread. No-op on
+/// Windows/Linux (their custom titlebar buttons are unaffected).
+#[cfg(target_os = "macos")]
+#[command]
+pub fn set_traffic_lights_visible(window: WebviewWindow, visible: bool) -> Result<(), String> {
+    let win = window.clone();
+    window
+        .run_on_main_thread(move || apply_traffic_lights(&win, visible))
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(not(target_os = "macos"))]
+#[command]
+pub fn set_traffic_lights_visible(_window: WebviewWindow, _visible: bool) -> Result<(), String> {
+    Ok(())
+}
