@@ -57,6 +57,13 @@ const reserveInboxMembership = useBackendOperation(api.mail.pendingMailbox.reser
 	label: 'Invite to team inbox',
 	inlineTarget: error,
 });
+// Rollback for a reserve-succeeded-but-invite-failed partial: without this the
+// grant would be orphaned (no invitation attached) yet still materialize on a
+// later join.
+const cancelInboxMembership = useBackendOperation(
+	api.mail.pendingMailbox.cancelInboxMembershipsForEmail,
+	{ label: 'Undo team-inbox reservation' }
+);
 
 const memberToAdd = ref('');
 
@@ -80,7 +87,14 @@ async function handleInvite() {
 		});
 		// `run` already surfaced the failure inline; stop before issuing the invite.
 		if (reserved === undefined) return;
-		await invite(email, 'editor');
+		try {
+			await invite(email, 'editor');
+		} catch (inviteErr) {
+			// The reservation landed but the invite didn't — roll the grant back so it
+			// isn't orphaned (best-effort; the sweep is org+email-scoped).
+			await cancelInboxMembership.run({ inviteeEmail: email });
+			throw inviteErr;
+		}
 		inviteNotice.value = `Invitation sent to ${email}. They'll land in this inbox once they accept.`;
 		inviteEmail.value = '';
 	} catch (err) {

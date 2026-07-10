@@ -353,7 +353,7 @@ const handleCancelInvite = async () => {
 	isCancelling.value = true;
 
 	try {
-		await cancelInvite(inviteToCancel.value.id);
+		await cancelInvite(inviteToCancel.value.id, inviteToCancel.value.email);
 
 		showToast('Invitation cancelled');
 		inviteToCancel.value = null;
