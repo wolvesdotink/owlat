@@ -8,7 +8,7 @@
  * colour that paints the window frame). Right-clicking (or the keyboard
  * context-menu key) any avatar opens an accent picker to recolour it.
  */
-import { WORKSPACE_ACCENTS } from '~/lib/desktop/workspaceTypes';
+import { WORKSPACE_ACCENTS, type WorkspaceAccent, accentLabel } from '~/lib/desktop/workspaceTypes';
 
 const { workspaces, activeId, switchTo, setWorkspaceAccent } = useDesktopWorkspaces();
 const { badgeFor } = useWorkspaceBadges();
@@ -24,45 +24,100 @@ function initials(label: string): string {
 		.slice(0, 2);
 }
 
-const ACCENT_LABELS: Record<string, string> = {
-	'#7a8c5a': 'Moss',
-	'#c4785a': 'Terracotta',
-	'#5a7a9b': 'Slate',
-	'#8c5a7a': 'Plum',
-	'#b8935a': 'Gold',
-	'#3d3d3d': 'Graphite',
-};
-
-function accentLabel(color: string): string {
-	return ACCENT_LABELS[color] ?? 'Accent';
-}
-
 // ---- accent picker popover ----
 const pickerId = ref<string | null>(null);
 const pickerPos = ref({ top: 0, left: 0 });
 const pickerRef = ref<HTMLElement | null>(null);
+// Trigger rect kept so the position can flip against the viewport once the
+// popover has been measured (below the avatar by default; above / shifted-left
+// when it would otherwise overflow — e.g. the last avatar in a tall list).
+let triggerRect: DOMRect | null = null;
 
 const pickerWs = computed(() => workspaces.value.find((w) => w.id === pickerId.value) ?? null);
 
+function positionPicker(): void {
+	const el = pickerRef.value;
+	const rect = triggerRect;
+	if (!el || !rect) return;
+	const gap = 6;
+	const { offsetWidth: w, offsetHeight: h } = el;
+	const vw = window.innerWidth;
+	const vh = window.innerHeight;
+	// Vertical: below by default, flip above when it would clip the bottom.
+	let top = rect.bottom + gap;
+	if (top + h > vh && rect.top - gap - h >= 0) top = rect.top - gap - h;
+	// Horizontal: align to the trigger, clamp within the viewport.
+	const left = Math.max(gap, Math.min(rect.left, vw - w - gap));
+	pickerPos.value = { top, left };
+}
+
 function openPicker(id: string, ev: MouseEvent): void {
-	const rect = (ev.currentTarget as HTMLElement).getBoundingClientRect();
-	pickerPos.value = { top: rect.bottom + 6, left: rect.left };
+	triggerRect = (ev.currentTarget as HTMLElement).getBoundingClientRect();
+	// Provisional position; refined once the popover is measured.
+	pickerPos.value = { top: triggerRect.bottom + 6, left: triggerRect.left };
 	pickerId.value = id;
-	void nextTick(() => pickerRef.value?.querySelector<HTMLElement>('button')?.focus());
+	void nextTick(() => {
+		positionPicker();
+		swatchButtons()[0]?.focus();
+	});
 }
 
 function closePicker(): void {
 	pickerId.value = null;
+	triggerRect = null;
 }
 
-function chooseAccent(color: string): void {
+function chooseAccent(color: WorkspaceAccent): void {
 	const id = pickerId.value;
 	if (id) void setWorkspaceAccent(id, color);
 	closePicker();
 }
 
+function swatchButtons(): HTMLButtonElement[] {
+	return Array.from(pickerRef.value?.querySelectorAll<HTMLButtonElement>('button') ?? []);
+}
+
+function moveFocus(delta: number, to?: 'first' | 'last'): void {
+	const buttons = swatchButtons();
+	const len = buttons.length;
+	if (!len) return;
+	let next: number;
+	if (to === 'first') {
+		next = 0;
+	} else if (to === 'last') {
+		next = len - 1;
+	} else {
+		const found = buttons.findIndex((b) => b === document.activeElement);
+		const current = found < 0 ? 0 : found;
+		next = (current + delta + len) % len;
+	}
+	buttons[next]?.focus();
+}
+
 function onKeydown(e: KeyboardEvent): void {
-	if (e.key === 'Escape') closePicker();
+	switch (e.key) {
+		case 'Escape':
+			closePicker();
+			break;
+		case 'ArrowRight':
+		case 'ArrowDown':
+			e.preventDefault();
+			moveFocus(1);
+			break;
+		case 'ArrowLeft':
+		case 'ArrowUp':
+			e.preventDefault();
+			moveFocus(-1);
+			break;
+		case 'Home':
+			e.preventDefault();
+			moveFocus(0, 'first');
+			break;
+		case 'End':
+			e.preventDefault();
+			moveFocus(0, 'last');
+			break;
+	}
 }
 
 function onClickOutside(e: MouseEvent): void {
@@ -122,10 +177,10 @@ onUnmounted(() => {
 		<!-- Accent picker (right-click / context-menu key on an avatar). -->
 		<Teleport to="body">
 			<Transition
-				enter-active-class="duration-(--motion-fast) ease-spring"
+				enter-active-class="duration-(--motion-moderate) ease-spring"
 				enter-from-class="opacity-0 scale-95"
 				enter-to-class="opacity-100 scale-100"
-				leave-active-class="duration-(--motion-fast-exit) ease-exit"
+				leave-active-class="duration-(--motion-moderate-exit) ease-exit"
 				leave-from-class="opacity-100 scale-100"
 				leave-to-class="opacity-0 scale-95"
 			>
@@ -134,7 +189,7 @@ onUnmounted(() => {
 					ref="pickerRef"
 					role="menu"
 					aria-label="Workspace accent colour"
-					class="fixed z-[80] flex items-center gap-1.5 rounded-lg border border-border-subtle bg-bg-elevated p-2 shadow-lg"
+					class="fixed z-[80] flex items-center gap-1 rounded-lg border border-border-subtle bg-bg-elevated p-1.5 shadow-lg"
 					:style="{ top: `${pickerPos.top}px`, left: `${pickerPos.left}px` }"
 				>
 					<button
@@ -145,11 +200,19 @@ onUnmounted(() => {
 						:aria-checked="pickerWs?.accentColor === color"
 						:aria-label="accentLabel(color)"
 						:title="accentLabel(color)"
-						class="h-5 w-5 rounded-full transition-transform duration-(--motion-fast) hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-						:class="pickerWs?.accentColor === color ? 'ring-2 ring-text-primary' : ''"
-						:style="{ backgroundColor: color }"
+						class="grid h-8 w-8 place-items-center rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 						@click="chooseAccent(color)"
-					/>
+					>
+						<span
+							class="h-5 w-5 rounded-full transition-transform duration-(--motion-fast) ease-spring hover:scale-110"
+							:class="
+								pickerWs?.accentColor === color
+									? 'ring-2 ring-text-primary ring-offset-2 ring-offset-bg-elevated'
+									: ''
+							"
+							:style="{ backgroundColor: color }"
+						/>
+					</button>
 				</div>
 			</Transition>
 		</Teleport>
