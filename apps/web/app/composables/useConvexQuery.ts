@@ -14,6 +14,13 @@ export interface ConvexQueryResult<T> {
 	isLoading: Ref<boolean>;
 	/** True while re-subscribing with `keepPreviousData` and prior data is still shown. */
 	isRefetching: Ref<boolean>;
+	/**
+	 * Force a fresh read by re-subscribing with the current args, keeping the
+	 * prior data visible in the background. Needed when the query's result derives
+	 * from state Convex can't invalidate reactively (e.g. `delivery.status`, which
+	 * reads deployment env — an env change won't self-invalidate the subscription).
+	 */
+	refetch: () => void;
 }
 
 /**
@@ -31,7 +38,9 @@ export function useConvexQuery<Query extends FunctionReference<'query'>>(
 	options?: { timeout?: number; keepPreviousData?: boolean }
 ): ConvexQueryResult<FunctionReturnType<Query>> {
 	const client = useConvex();
-	const data = ref<FunctionReturnType<Query> | undefined>(undefined) as Ref<FunctionReturnType<Query> | undefined>;
+	const data = ref<FunctionReturnType<Query> | undefined>(undefined) as Ref<
+		FunctionReturnType<Query> | undefined
+	>;
 	const error = ref<Error | null>(null);
 	const isLoading = ref(true);
 	const isRefetching = ref(false);
@@ -50,7 +59,7 @@ export function useConvexQuery<Query extends FunctionReference<'query'>>(
 
 	const resolvedArgs = computed(() => resolveArgs(args));
 
-	const subscribe = () => {
+	const subscribe = (opts?: { background?: boolean }) => {
 		// Clean up previous subscription and timeout
 		if (unsubscribe) {
 			unsubscribe();
@@ -73,10 +82,11 @@ export function useConvexQuery<Query extends FunctionReference<'query'>>(
 			return;
 		}
 
-		// Stale-while-revalidate: when keepPreviousData is set and we already
-		// have data (e.g. switching folders), keep showing it and flag a
-		// background refetch instead of blanking to a full-pane spinner.
-		if (options?.keepPreviousData && data.value !== undefined) {
+		// Stale-while-revalidate: when keepPreviousData is set (or this is an
+		// explicit background refetch) and we already have data (e.g. switching
+		// folders), keep showing it and flag a background refetch instead of
+		// blanking to a full-pane spinner.
+		if ((options?.keepPreviousData || opts?.background) && data.value !== undefined) {
 			isRefetching.value = true;
 		} else {
 			isLoading.value = true;
@@ -114,7 +124,10 @@ export function useConvexQuery<Query extends FunctionReference<'query'>>(
 	};
 
 	// Watch for args changes
-	watch(resolvedArgs, subscribe, { immediate: true, deep: true });
+	watch(resolvedArgs, () => subscribe(), { immediate: true, deep: true });
+
+	// Force a fresh read with the current args, keeping prior data visible.
+	const refetch = () => subscribe({ background: true });
 
 	// Clean up on unmount
 	if (getCurrentScope()) {
@@ -126,5 +139,5 @@ export function useConvexQuery<Query extends FunctionReference<'query'>>(
 		});
 	}
 
-	return { data, error, isLoading, isRefetching };
+	return { data, error, isLoading, isRefetching, refetch };
 }

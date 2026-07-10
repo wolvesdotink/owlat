@@ -15,7 +15,12 @@ const { showToast } = useToast();
 
 // Admin-gated send-path status. Booleans only — the query never returns a
 // credential value, just the presence of each required env var.
-const { data: status, isLoading, error } = useOrganizationQuery(api.delivery.status.getStatus);
+const {
+	data: status,
+	isLoading,
+	error,
+	refetch: refetchStatus,
+} = useOrganizationQuery(api.delivery.status.getStatus);
 
 const canSend = computed(() => status.value?.canSend === true);
 
@@ -191,7 +196,8 @@ async function handleSendTest() {
 								</div>
 								<pre
 									class="select-all overflow-x-auto rounded-lg bg-bg-surface px-3 py-2 font-mono text-xs text-text-primary"
-									>{{ envSnippet }}</pre>
+									>{{ envSnippet }}</pre
+								>
 								<p class="text-xs text-text-tertiary mt-1.5">
 									Values are left blank — fill in your real credentials. They are never displayed
 									here.
@@ -218,7 +224,8 @@ async function handleSendTest() {
 								</div>
 								<pre
 									class="select-all overflow-x-auto rounded-lg bg-bg-surface px-3 py-2 font-mono text-xs text-text-primary"
-									>{{ envSetCommand }}</pre>
+									>{{ envSetCommand }}</pre
+								>
 								<p class="text-xs text-text-tertiary mt-1.5">
 									Run <code class="text-text-primary">owlat-setup env --show</code> to list every
 									variable your current configuration needs. See the
@@ -239,7 +246,7 @@ async function handleSendTest() {
 			<!-- Editable transport editor — change provider / rotate credentials in
 			     place, tested and applied through the same env-patch the setup wizard
 			     uses. The status cards above stay the read-only at-a-glance summary. -->
-			<DeliveryTransportEditor :current-provider="status.provider" />
+			<DeliveryTransportEditor :current-provider="status.provider" @applied="refetchStatus" />
 
 			<!-- Provider + required env presence -->
 			<UiCard padding="none" overflow="hidden">
@@ -397,7 +404,8 @@ async function handleSendTest() {
 						</div>
 						<pre
 							class="select-all overflow-x-auto rounded-lg bg-bg-surface px-3 py-2 font-mono text-xs text-text-primary"
-							>{{ sesWebhookUrl }}</pre>
+							>{{ sesWebhookUrl }}</pre
+						>
 					</div>
 					<p v-else class="text-xs text-text-tertiary">
 						Set your site URL to see the endpoint SNS should subscribe to.
