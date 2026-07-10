@@ -3,18 +3,30 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // Stub both SDK boundaries: the factories return a callable client whose call
 // (and `.embedding`) yield a tagged model so we can assert what was built
 // without any real provider construction or network.
-const mockOpenAIClient = Object.assign(
-	vi.fn((id: string) => ({ modelId: id, provider: 'openai' })),
-	{ embedding: vi.fn((id: string) => ({ modelId: id, provider: 'openai-embedding' })) }
-);
-const mockCreateOpenAI = vi.fn(() => mockOpenAIClient);
-vi.mock('@ai-sdk/openai', () => ({ createOpenAI: mockCreateOpenAI }));
+//
+// The mock handles are created via `vi.hoisted` so they are initialized before
+// vitest hoists the `vi.mock` factories (and the static `../index` import that
+// triggers the mocked-module load) — otherwise the factories would close over
+// not-yet-initialized consts and throw "Cannot access … before initialization".
+const { mockOpenAIClient, mockCreateOpenAI, mockCompatibleClient, mockCreateOpenAICompatible } =
+	vi.hoisted(() => {
+		const openAIClient = Object.assign(
+			vi.fn((id: string) => ({ modelId: id, provider: 'openai' })),
+			{ embedding: vi.fn((id: string) => ({ modelId: id, provider: 'openai-embedding' })) }
+		);
+		const compatibleClient = vi.fn((id: string) => ({
+			modelId: id,
+			provider: 'openai-compatible',
+		}));
+		return {
+			mockOpenAIClient: openAIClient,
+			mockCreateOpenAI: vi.fn(() => openAIClient),
+			mockCompatibleClient: compatibleClient,
+			mockCreateOpenAICompatible: vi.fn(() => compatibleClient),
+		};
+	});
 
-const mockCompatibleClient = vi.fn((id: string) => ({
-	modelId: id,
-	provider: 'openai-compatible',
-}));
-const mockCreateOpenAICompatible = vi.fn(() => mockCompatibleClient);
+vi.mock('@ai-sdk/openai', () => ({ createOpenAI: mockCreateOpenAI }));
 vi.mock('@ai-sdk/openai-compatible', () => ({
 	createOpenAICompatible: mockCreateOpenAICompatible,
 }));
