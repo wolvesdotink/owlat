@@ -52,15 +52,26 @@ pub fn send_native_notification(app: AppHandle, title: String, body: String) -> 
 #[derive(Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct NotificationActionEvent {
-    /// "open" (notification clicked), "archive" (Archive button), or
-    /// "read" (Mark read button).
+    /// "open" (notification clicked), "archive" (Archive button), "read"
+    /// (Mark read button), or "reply" (text typed into the inline reply field).
     action: String,
     message_id: String,
     folder_role: String,
+    /// The text the user typed into the inline reply field (macOS only). `None`
+    /// for every other action so the webview can route reply → send without a
+    /// second round trip.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reply: Option<String>,
 }
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
-fn emit_notification_action(app: &AppHandle, action: &str, message_id: &str, folder_role: &str) {
+fn emit_notification_action(
+    app: &AppHandle,
+    action: &str,
+    message_id: &str,
+    folder_role: &str,
+    reply: Option<String>,
+) {
     use tauri::Emitter;
     let _ = app.emit(
         "notification-action",
@@ -68,6 +79,7 @@ fn emit_notification_action(app: &AppHandle, action: &str, message_id: &str, fol
             action: action.to_string(),
             message_id: message_id.to_string(),
             folder_role: folder_role.to_string(),
+            reply,
         },
     );
 }
@@ -90,23 +102,31 @@ fn notify_with_actions(
         // "already set" error is fine — it just has to be set before sending.
         let _ = set_application(&bundle);
         let mut options = Notification::new();
-        // A dropdown lets us offer BOTH Archive and Mark read (macOS notifications
-        // render a single main button, whose long-press/expand reveals the list).
-        options.main_button(MainButton::DropdownActions(
-            "Actions",
-            &["Archive", "Mark read"],
-        ));
+        // A macOS notification renders a SINGLE main button. We spend it on an
+        // inline reply text field (the headline "answer from the notification"
+        // moment) and keep Archive reachable as the alternate (close) button.
+        // Mark-read isn't offered here — it's a tap away in-app / from the tray.
+        options.main_button(MainButton::Response("Reply"));
+        options.close_button("Archive");
         match send_notification(&title, None, &body, Some(&options)) {
+            Ok(NotificationResponse::Reply(text)) => {
+                emit_notification_action(&app, "reply", &message_id, &folder_role, Some(text))
+            }
+            Ok(NotificationResponse::CloseButton(_)) => {
+                emit_notification_action(&app, "archive", &message_id, &folder_role, None)
+            }
+            // Defensive: an explicit action button (should not occur without a
+            // dropdown) still maps to a sensible triage effect.
             Ok(NotificationResponse::ActionButton(label)) => {
                 let action = if label == "Mark read" {
                     "read"
                 } else {
                     "archive"
                 };
-                emit_notification_action(&app, action, &message_id, &folder_role)
+                emit_notification_action(&app, action, &message_id, &folder_role, None)
             }
             Ok(NotificationResponse::Click) => {
-                emit_notification_action(&app, "open", &message_id, &folder_role)
+                emit_notification_action(&app, "open", &message_id, &folder_role, None)
             }
             _ => {}
         }
@@ -138,7 +158,9 @@ fn notify_with_actions(
                     "default" => "open",
                     _ => return,
                 };
-                emit_notification_action(&app, mapped, &message_id, &folder_role);
+                // Linux (notify-rust/zbus) has no inline text-input capability,
+                // so reply is macOS-only; these actions never carry reply text.
+                emit_notification_action(&app, mapped, &message_id, &folder_role, None);
             });
         }
     });
@@ -162,9 +184,11 @@ fn notify_with_actions(
         .show();
 }
 
-/// Tauri command: send a per-message notification with an Archive action
-/// (macOS/Linux). A click → "open", the button → "archive", delivered to the
-/// webview via the `notification-action` event.
+/// Tauri command: send a per-message notification with inline actions
+/// (macOS/Linux). macOS offers an inline **Reply** field (→ "reply" + text)
+/// plus an Archive alternate button (→ "archive"); Linux offers Open / Archive
+/// / Mark read. A click → "open". All are delivered to the webview via the
+/// `notification-action` event.
 #[command]
 pub fn send_actionable_notification(
     app: AppHandle,
