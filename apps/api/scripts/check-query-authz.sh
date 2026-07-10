@@ -55,7 +55,7 @@ violations=$(find convex -name "*.ts" \
 			gate = block_optout
 			block_optout = 0
 		}
-		in_fn && $0 ~ /(requirePermission|requireAdminContext|requireOwnerContext|requireOrgPermission|loadOwnedMailbox|loadOwnedMessage|assertCanReadRoom|assertCanWriteRoom|assertCanAdministerRoom|requirePlatformAdmin)/ { gate = 1 }
+		in_fn && $0 ~ /(requirePermission|requireAdminContext|requireOwnerContext|requireOrgPermission|requireCampaignSendersManage|loadOwnedMailbox|loadOwnedMessage|assertCanReadRoom|assertCanWriteRoom|assertCanAdministerRoom|requirePlatformAdmin)/ { gate = 1 }
 		in_fn && is_optout { gate = 1 }
 		in_fn && /^\}\)/ {
 			if (!gate) print FILENAME ":" name
