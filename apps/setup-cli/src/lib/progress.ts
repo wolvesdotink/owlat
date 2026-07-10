@@ -16,6 +16,7 @@
  */
 
 import { spinner as clackSpinner } from '@clack/prompts';
+import pc from 'picocolors';
 import {
 	PROGRESS_SENTINEL,
 	type ProgressEvent,
@@ -184,4 +185,20 @@ export function progressSpinner(): {
 		return { start() {}, stop() {}, message() {} };
 	}
 	return clackSpinner();
+}
+
+/**
+ * Run an async credential check under a clack spinner, stopping it with a green
+ * ✓ / red ✗ line. Returns whether the check passed. Shared by every provider
+ * picker (sending, AI, integrations) so the live-validation UX is identical.
+ */
+export async function validateWithSpinner(
+	label: string,
+	run: () => Promise<{ ok: boolean; message: string }>
+): Promise<boolean> {
+	const s = progressSpinner();
+	s.start(label);
+	const result = await run();
+	s.stop(result.ok ? pc.green(`✓ ${result.message}`) : pc.red(`✗ ${result.message}`));
+	return result.ok;
 }

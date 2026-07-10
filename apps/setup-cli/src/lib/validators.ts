@@ -8,10 +8,12 @@
 export {
 	type ValidationResult,
 	type SetupProvider,
+	type SmtpRelayInput,
 	validateOpenAIKey,
 	validateOpenRouterKey,
 	validateResendKey,
 	validatePostHogHost,
 	validateGoogleSafeBrowsingKey,
+	validateSmtpRelay,
 	validateProvider,
 } from '@owlat/shared/setupValidators';

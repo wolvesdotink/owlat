@@ -41,7 +41,10 @@ describe('parseSetupConfig — happy path', () => {
 			features: { flags: { ai: true }, packs: { marketing: true } },
 			sending: { provider: 'resend', apiKey: 're_123' },
 			ai: { provider: 'openrouter', apiKey: 'sk-or-1' },
-			integrations: { googleSafeBrowsingKey: 'gsb', posthog: { host: 'https://ph', apiKey: 'phc_1' } },
+			integrations: {
+				googleSafeBrowsingKey: 'gsb',
+				posthog: { host: 'https://ph', apiKey: 'phc_1' },
+			},
 			domain: { ehloHostname: 'mail.example.com', bounceDomain: 'bounces.example.com' },
 			seedDemo: true,
 		};
@@ -64,11 +67,32 @@ describe('parseSetupConfig — rejections (field-named errors)', () => {
 		['bad sending provider', (c) => (c['sending'] = { provider: 'mailgun' })],
 		['resend without apiKey', (c) => (c['sending'] = { provider: 'resend' })],
 		['ses missing keys', (c) => (c['sending'] = { provider: 'ses', region: 'us-east-1' })],
+		[
+			'smtp missing host',
+			(c) => (c['sending'] = { provider: 'smtp', username: 'u', password: 'p' }),
+		],
+		[
+			'smtp non-numeric port',
+			(c) =>
+				(c['sending'] = {
+					provider: 'smtp',
+					host: 'smtp.x',
+					port: '587',
+					username: 'u',
+					password: 'p',
+				}),
+		],
 		['bad ai provider', (c) => (c['ai'] = { provider: 'gemini' })],
-		['custom ai missing models', (c) => (c['ai'] = { provider: 'custom', baseUrl: 'x', apiKey: 'y' })],
+		[
+			'custom ai missing models',
+			(c) => (c['ai'] = { provider: 'custom', baseUrl: 'x', apiKey: 'y' }),
+		],
 		['posthog missing apiKey', (c) => (c['integrations'] = { posthog: { host: 'https://ph' } })],
 		['domain missing bounce', (c) => (c['domain'] = { ehloHostname: 'mail.x' })],
-		['network missing convexUrl', (c) => (c['network'] = { siteUrl: 'https://x', convexSiteUrl: 'https://y' })],
+		[
+			'network missing convexUrl',
+			(c) => (c['network'] = { siteUrl: 'https://x', convexSiteUrl: 'https://y' }),
+		],
 		['non-boolean seedDemo', (c) => (c['seedDemo'] = 'true')],
 	];
 
@@ -134,11 +158,50 @@ describe('buildEnvPatchFromConfig', () => {
 	});
 
 	it('maps ses sending to region + credentials', () => {
-		expect(patch({ sending: { provider: 'ses', region: 'eu-west-1', accessKeyId: 'AK', secretAccessKey: 'SK' } })).toEqual({
+		expect(
+			patch({
+				sending: { provider: 'ses', region: 'eu-west-1', accessKeyId: 'AK', secretAccessKey: 'SK' },
+			})
+		).toEqual({
 			EMAIL_PROVIDER: 'ses',
 			AWS_SES_REGION: 'eu-west-1',
 			AWS_SES_ACCESS_KEY_ID: 'AK',
 			AWS_SES_SECRET_ACCESS_KEY: 'SK',
+		});
+	});
+
+	it('maps an SMTP relay to host + credentials, omitting default port/TLS', () => {
+		expect(
+			patch({
+				sending: { provider: 'smtp', host: 'smtp.mailgun.org', username: 'u', password: 'p' },
+			})
+		).toEqual({
+			EMAIL_PROVIDER: 'smtp',
+			SMTP_RELAY_HOST: 'smtp.mailgun.org',
+			SMTP_RELAY_USERNAME: 'u',
+			SMTP_RELAY_PASSWORD: 'p',
+		});
+	});
+
+	it('maps an SMTP relay port + implicit-TLS flag when provided', () => {
+		expect(
+			patch({
+				sending: {
+					provider: 'smtp',
+					host: 'smtp.example.com',
+					port: 465,
+					secure: true,
+					username: 'u',
+					password: 'p',
+				},
+			})
+		).toEqual({
+			EMAIL_PROVIDER: 'smtp',
+			SMTP_RELAY_HOST: 'smtp.example.com',
+			SMTP_RELAY_PORT: '465',
+			SMTP_RELAY_SECURE: 'true',
+			SMTP_RELAY_USERNAME: 'u',
+			SMTP_RELAY_PASSWORD: 'p',
 		});
 	});
 
@@ -153,7 +216,15 @@ describe('buildEnvPatchFromConfig', () => {
 
 	it('maps custom ai to base url + models', () => {
 		expect(
-			patch({ ai: { provider: 'custom', baseUrl: 'https://api/v1', apiKey: 'k', modelFast: 'fast', modelCapable: 'cap' } }),
+			patch({
+				ai: {
+					provider: 'custom',
+					baseUrl: 'https://api/v1',
+					apiKey: 'k',
+					modelFast: 'fast',
+					modelCapable: 'cap',
+				},
+			})
 		).toEqual({
 			EMAIL_PROVIDER: 'mta',
 			LLM_PROVIDER: 'custom',
@@ -167,9 +238,12 @@ describe('buildEnvPatchFromConfig', () => {
 	it('maps integrations + domain', () => {
 		expect(
 			patch({
-				integrations: { googleSafeBrowsingKey: 'gsb', posthog: { host: 'https://ph', apiKey: 'phc' } },
+				integrations: {
+					googleSafeBrowsingKey: 'gsb',
+					posthog: { host: 'https://ph', apiKey: 'phc' },
+				},
 				domain: { ehloHostname: 'mail.x', bounceDomain: 'bounces.x' },
-			}),
+			})
 		).toEqual({
 			EMAIL_PROVIDER: 'mta',
 			GOOGLE_SAFE_BROWSING_API_KEY: 'gsb',
@@ -188,7 +262,13 @@ describe('buildEnvPatchFromConfig', () => {
 
 	it('maps the public network URLs', () => {
 		expect(
-			patch({ network: { siteUrl: 'https://owlat.x.com', convexUrl: 'https://convex.x.com', convexSiteUrl: 'https://convex-site.x.com' } }),
+			patch({
+				network: {
+					siteUrl: 'https://owlat.x.com',
+					convexUrl: 'https://convex.x.com',
+					convexSiteUrl: 'https://convex-site.x.com',
+				},
+			})
 		).toEqual({
 			EMAIL_PROVIDER: 'mta',
 			SITE_URL: 'https://owlat.x.com',
@@ -252,7 +332,11 @@ describe('buildSetupFromConfig', () => {
 	it('public network URLs override the localhost defaults', () => {
 		const cfg = parseSetupConfig({
 			...base(),
-			network: { siteUrl: 'https://owlat.x.com', convexUrl: 'https://convex.x.com', convexSiteUrl: 'https://convex-site.x.com' },
+			network: {
+				siteUrl: 'https://owlat.x.com',
+				convexUrl: 'https://convex.x.com',
+				convexSiteUrl: 'https://convex-site.x.com',
+			},
 		});
 		const out = buildSetupFromConfig(cfg, {});
 		expect(out.env['SITE_URL']).toBe('https://owlat.x.com');
@@ -273,7 +357,10 @@ describe('buildSetupFromConfig', () => {
 describe('send-path env reaches the Convex runtime', () => {
 	/** Build the env a config would produce and keep only the runtime keys that
 	 * `selectRuntimeEnvVars` would actually push into the deployment. */
-	function runtimeEnv(extra: Record<string, unknown>, existing: Record<string, string> = {}): Record<string, string> {
+	function runtimeEnv(
+		extra: Record<string, unknown>,
+		existing: Record<string, string> = {}
+	): Record<string, string> {
 		const out = buildSetupFromConfig(parseSetupConfig({ ...base(), ...extra }), existing).env;
 		return Object.fromEntries(selectRuntimeEnvVars(out));
 	}
@@ -304,19 +391,27 @@ describe('send-path env reaches the Convex runtime', () => {
 	});
 
 	it('derives DEFAULT_FROM_* off the configured EHLO domain and pushes them', () => {
-		const runtime = runtimeEnv({ domain: { ehloHostname: 'mail.example.com', bounceDomain: 'bounces.example.com' } });
+		const runtime = runtimeEnv({
+			domain: { ehloHostname: 'mail.example.com', bounceDomain: 'bounces.example.com' },
+		});
 		expect(runtime['DEFAULT_FROM_DOMAIN']).toBe('mail.example.com');
 		expect(runtime['DEFAULT_FROM_EMAIL']).toBe('noreply@mail.example.com');
 		expect(runtime['DEFAULT_FROM_NAME']).toBe('Owlat');
 	});
 
 	it('passes an operator-supplied DEFAULT_FROM_DOMAIN through to the runtime', () => {
-		const runtime = runtimeEnv({ sending: { provider: 'mta' } }, { DEFAULT_FROM_DOMAIN: 'mail.acme.test' });
+		const runtime = runtimeEnv(
+			{ sending: { provider: 'mta' } },
+			{ DEFAULT_FROM_DOMAIN: 'mail.acme.test' }
+		);
 		expect(runtime['DEFAULT_FROM_DOMAIN']).toBe('mail.acme.test');
 	});
 
 	it('never clobbers an operator-supplied MTA_API_URL', () => {
-		const runtime = runtimeEnv({ sending: { provider: 'mta' } }, { MTA_API_URL: 'http://mta.internal:9100' });
+		const runtime = runtimeEnv(
+			{ sending: { provider: 'mta' } },
+			{ MTA_API_URL: 'http://mta.internal:9100' }
+		);
 		expect(runtime['MTA_API_URL']).toBe('http://mta.internal:9100');
 	});
 
@@ -339,7 +434,7 @@ describe('send-path env reaches the Convex runtime', () => {
 	it('never clobbers an operator-supplied MAIL_SYNC_API_URL', () => {
 		const runtime = runtimeEnv(
 			{ features: { flags: { 'mail.external': true } } },
-			{ MAIL_SYNC_API_URL: 'http://mail-sync.internal:9200' },
+			{ MAIL_SYNC_API_URL: 'http://mail-sync.internal:9200' }
 		);
 		expect(runtime['MAIL_SYNC_API_URL']).toBe('http://mail-sync.internal:9200');
 	});

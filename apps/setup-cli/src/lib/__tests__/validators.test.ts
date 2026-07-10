@@ -5,11 +5,14 @@ import {
 	validateResendKey,
 	validatePostHogHost,
 	validateGoogleSafeBrowsingKey,
+	validateSmtpRelay,
 } from '../validators';
 
 /** Stub global fetch with a Response carrying just the status these validators read. */
 function stubStatus(status: number) {
-	const fn = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(null, { status }));
+	const fn = vi.fn(
+		async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(null, { status })
+	);
 	vi.stubGlobal('fetch', fn);
 	return fn;
 }
@@ -174,6 +177,43 @@ describe('validatePostHogHost', () => {
 	});
 });
 
+describe('validateSmtpRelay — input guards (no socket opened)', () => {
+	const base = {
+		host: 'smtp.mailgun.org',
+		port: 587,
+		secure: false,
+		username: 'postmaster@mg.acme.test',
+		password: 'relay-secret',
+	};
+
+	it('requires a host', async () => {
+		const res = await validateSmtpRelay({ ...base, host: '   ' });
+		expect(res.ok).toBe(false);
+		expect(res.message).toMatch(/host is required/i);
+	});
+
+	it('blocks private/loopback/link-local hosts (SSRF guard)', async () => {
+		for (const host of ['127.0.0.1', '169.254.169.254', '10.0.0.5', '192.168.1.1', 'localhost']) {
+			const res = await validateSmtpRelay({ ...base, host });
+			expect(res.ok).toBe(false);
+			expect(res.message).toMatch(/public address/i);
+		}
+	});
+
+	it('rejects an out-of-range port', async () => {
+		for (const port of [0, 70000, -1]) {
+			const res = await validateSmtpRelay({ ...base, port });
+			expect(res.ok).toBe(false);
+			expect(res.message).toMatch(/between 1 and 65535/i);
+		}
+	});
+
+	it('requires username and password', async () => {
+		expect((await validateSmtpRelay({ ...base, username: '' })).ok).toBe(false);
+		expect((await validateSmtpRelay({ ...base, password: '' })).ok).toBe(false);
+	});
+});
+
 describe('validateGoogleSafeBrowsingKey', () => {
 	it('accepts a 200 response', async () => {
 		const fetchMock = stubStatus(200);
@@ -182,7 +222,7 @@ describe('validateGoogleSafeBrowsingKey', () => {
 		expect(res.message).toMatch(/accepted/i);
 		// Key is URL-encoded into the query string.
 		expect(fetchMock.mock.calls[0]![0]).toBe(
-			'https://safebrowsing.googleapis.com/v4/threatLists?key=gsb-key',
+			'https://safebrowsing.googleapis.com/v4/threatLists?key=gsb-key'
 		);
 	});
 

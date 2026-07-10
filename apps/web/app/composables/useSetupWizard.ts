@@ -20,6 +20,13 @@ import {
 	type FeatureFlagState,
 	type FeatureFlagKey,
 } from '@owlat/shared/featureFlags';
+import { SMTP_RELAY_PRESETS, type SmtpRelayPreset } from '@owlat/shared/setupSendingPresets';
+
+// Re-export the shared preset table and its key type so the setup step (and its
+// tests) keep importing them from this composable; the single source of truth
+// lives in `@owlat/shared/setupSendingPresets`, shared with the setup CLI.
+export { SMTP_RELAY_PRESETS };
+export type SmtpPreset = SmtpRelayPreset;
 
 // ── Steps ────────────────────────────────────────────────────────────────────
 
@@ -38,7 +45,7 @@ export const SETUP_WIZARD_STEPS = SETUP_STEPS.map((s) => ({ ...s }));
 
 // ── Shared draft types ───────────────────────────────────────────────────────
 
-export type ProviderChoice = 'mta' | 'resend' | 'ses' | 'none';
+export type ProviderChoice = 'mta' | 'resend' | 'ses' | 'smtp' | 'none';
 
 export interface AdminDraft {
 	email: string;
@@ -52,12 +59,24 @@ export interface SesCredentials {
 	secretAccessKey: string;
 }
 
+export interface SmtpRelayDraft {
+	preset: SmtpPreset;
+	host: string;
+	/** Kept as a string because it's a form field; blank ⇒ backend default 587. */
+	port: string;
+	/** true ⇒ implicit TLS (usually 465); false ⇒ STARTTLS upgrade (587). */
+	secure: boolean;
+	username: string;
+	password: string;
+}
+
 export interface EmailStepDraft {
 	provider: ProviderChoice;
 	/** Whether the chosen features force a real delivery provider (no "none"). */
 	requiresProvider: boolean;
 	resendKey: string;
 	ses: SesCredentials;
+	smtp: SmtpRelayDraft;
 	/** Optional From-identity — flows into the apply contract's `env`. */
 	fromEmail: string;
 	fromName: string;
@@ -101,7 +120,17 @@ export interface EmailStepErrors {
 	provider?: string;
 	resendKey?: string;
 	ses?: string;
+	smtp?: string;
 	fromEmail?: string;
+}
+
+/** A relay port is optional (defaults to 587), but if given must be a real port. */
+function isValidSmtpPort(port: string): boolean {
+	const trimmed = port.trim();
+	if (trimmed === '') return true;
+	if (!/^\d+$/.test(trimmed)) return false;
+	const n = Number.parseInt(trimmed, 10);
+	return n >= 1 && n <= 65535;
 }
 
 export function validateEmailStep(draft: EmailStepDraft): EmailStepErrors {
@@ -109,7 +138,7 @@ export function validateEmailStep(draft: EmailStepDraft): EmailStepErrors {
 
 	if (draft.provider === 'none' && draft.requiresProvider) {
 		errors.provider =
-			'A delivery provider is required because campaigns, transactional, or automations are enabled. Pick MTA, Resend, or SES — or disable bulk sending.';
+			'A delivery provider is required because campaigns, transactional, or automations are enabled. Pick your own MTA, Amazon SES, or an SMTP relay — or disable bulk sending.';
 	}
 	if (draft.provider === 'resend' && draft.resendKey.trim() === '') {
 		errors.resendKey = 'Enter your Resend API key.';
@@ -118,6 +147,14 @@ export function validateEmailStep(draft: EmailStepDraft): EmailStepErrors {
 		const { region, accessKeyId, secretAccessKey } = draft.ses;
 		if (!region.trim() || !accessKeyId.trim() || !secretAccessKey.trim()) {
 			errors.ses = 'Region, access key ID, and secret access key are all required for SES.';
+		}
+	}
+	if (draft.provider === 'smtp') {
+		const { host, port, username, password } = draft.smtp;
+		if (!host.trim() || !username.trim() || !password.trim()) {
+			errors.smtp = 'Server host, username, and password are all required for an SMTP relay.';
+		} else if (!isValidSmtpPort(port)) {
+			errors.smtp = 'Port must be a whole number between 1 and 65535 (leave blank for 587).';
 		}
 	}
 	// From-identity is optional, but if supplied it must be a real address.
@@ -140,6 +177,11 @@ const PROVIDER_ENV_KEYS = [
 	'AWS_SES_REGION',
 	'AWS_SES_ACCESS_KEY_ID',
 	'AWS_SES_SECRET_ACCESS_KEY',
+	'SMTP_RELAY_HOST',
+	'SMTP_RELAY_PORT',
+	'SMTP_RELAY_SECURE',
+	'SMTP_RELAY_USERNAME',
+	'SMTP_RELAY_PASSWORD',
 	'DEFAULT_FROM_EMAIL',
 	'DEFAULT_FROM_NAME',
 ] as const;
@@ -166,6 +208,19 @@ export function buildProviderEnv(
 			next['AWS_SES_REGION'] = draft.ses.region;
 			next['AWS_SES_ACCESS_KEY_ID'] = draft.ses.accessKeyId;
 			next['AWS_SES_SECRET_ACCESS_KEY'] = draft.ses.secretAccessKey;
+		}
+		if (draft.provider === 'smtp') {
+			const { host, port, secure, username, password } = draft.smtp;
+			next['SMTP_RELAY_HOST'] = host.trim();
+			// Always emit the port (and TLS mode) explicitly. apply.post.ts merges the
+			// patch over the on-disk .env, so omitting the key on a blank field would
+			// let a stale SMTP_RELAY_PORT from a prior install survive and diverge from
+			// the validated value — write the default 587 rather than leave a gap.
+			const trimmedPort = port.trim();
+			next['SMTP_RELAY_PORT'] = trimmedPort || '587';
+			next['SMTP_RELAY_SECURE'] = secure ? 'true' : 'false';
+			next['SMTP_RELAY_USERNAME'] = username;
+			next['SMTP_RELAY_PASSWORD'] = password;
 		}
 	}
 
@@ -194,6 +249,7 @@ const PROVIDER_LABELS: Record<ProviderChoice, string> = {
 	mta: 'Owlat MTA (self-hosted)',
 	resend: 'Resend',
 	ses: 'Amazon SES',
+	smtp: 'SMTP relay',
 	none: 'None (receive-only)',
 };
 
@@ -212,7 +268,10 @@ export function buildSetupSummary(
 
 	const rawProvider = env['EMAIL_PROVIDER'];
 	const provider: ProviderChoice =
-		rawProvider === 'mta' || rawProvider === 'resend' || rawProvider === 'ses'
+		rawProvider === 'mta' ||
+		rawProvider === 'resend' ||
+		rawProvider === 'ses' ||
+		rawProvider === 'smtp'
 			? rawProvider
 			: 'none';
 

@@ -33,13 +33,29 @@ export type DeploymentMode = 'selfhost' | 'dev' | 'hosted';
 export type SendingConfig =
 	| { provider: 'mta' }
 	| { provider: 'resend'; apiKey: string }
-	| { provider: 'ses'; region: string; accessKeyId: string; secretAccessKey: string };
+	| { provider: 'ses'; region: string; accessKeyId: string; secretAccessKey: string }
+	| {
+			provider: 'smtp';
+			host: string;
+			/** Optional — defaults to 587 (STARTTLS) in the backend adapter. */
+			port?: number;
+			/** true ⇒ implicit TLS (usually 465); default false ⇒ STARTTLS (587). */
+			secure?: boolean;
+			username: string;
+			password: string;
+	  };
 
 export type AiConfig =
 	| { provider: 'openrouter'; apiKey: string }
 	| { provider: 'openai'; apiKey: string }
 	| { provider: 'ollama' }
-	| { provider: 'custom'; baseUrl: string; apiKey: string; modelFast: string; modelCapable: string };
+	| {
+			provider: 'custom';
+			baseUrl: string;
+			apiKey: string;
+			modelFast: string;
+			modelCapable: string;
+	  };
 
 export interface SetupConfig {
 	version: 1;
@@ -105,11 +121,17 @@ export function parseSetupConfig(raw: unknown): SetupConfig {
 	}
 
 	const deploymentMode = root['deploymentMode'];
-	if (typeof deploymentMode !== 'string' || !DEPLOYMENT_MODES.includes(deploymentMode as DeploymentMode)) {
-		throw new SetupConfigError(`config.deploymentMode must be one of ${DEPLOYMENT_MODES.join(', ')}`);
+	if (
+		typeof deploymentMode !== 'string' ||
+		!DEPLOYMENT_MODES.includes(deploymentMode as DeploymentMode)
+	) {
+		throw new SetupConfigError(
+			`config.deploymentMode must be one of ${DEPLOYMENT_MODES.join(', ')}`
+		);
 	}
 
-	const features = root['features'] === undefined ? {} : asObject(root['features'], 'config.features');
+	const features =
+		root['features'] === undefined ? {} : asObject(root['features'], 'config.features');
 	if (features['flags'] !== undefined) {
 		const flags = asObject(features['flags'], 'config.features.flags');
 		for (const [key, value] of Object.entries(flags)) {
@@ -178,7 +200,10 @@ export function parseSetupConfig(raw: unknown): SetupConfig {
 
 	// Shape verified above. Normalize `features` so callers can always read
 	// `config.features.flags/packs` without an undefined check.
-	const config: SetupConfig = { ...(raw as SetupConfig), features: features as SetupConfig['features'] };
+	const config: SetupConfig = {
+		...(raw as SetupConfig),
+		features: features as SetupConfig['features'],
+	};
 
 	// Cross-field invariant: bulk sending (campaigns / transactional / automations)
 	// dispatches through a delivery provider, so `sending` must be present when any
@@ -186,7 +211,7 @@ export function parseSetupConfig(raw: unknown): SetupConfig {
 	// Closes the silent "campaigns:true but no provider" CI/SSH path.
 	if (config.sending === undefined && needsDeliveryProvider(resolveSetupFlags(config))) {
 		throw new SetupConfigError(
-			'config.sending is required when campaigns, transactional, or automations are enabled. Set sending.provider to mta, resend, or ses, or disable bulk sending.',
+			'config.sending is required when campaigns, transactional, or automations are enabled. Set sending.provider to mta, resend, ses, or smtp, or disable bulk sending.'
 		);
 	}
 
@@ -206,8 +231,19 @@ function parseSending(value: unknown): void {
 			asString(sending['accessKeyId'], 'config.sending.accessKeyId');
 			asString(sending['secretAccessKey'], 'config.sending.secretAccessKey');
 			return;
+		case 'smtp':
+			asString(sending['host'], 'config.sending.host');
+			asString(sending['username'], 'config.sending.username');
+			asString(sending['password'], 'config.sending.password');
+			if (sending['port'] !== undefined && typeof sending['port'] !== 'number') {
+				throw new SetupConfigError('config.sending.port must be a number');
+			}
+			if (sending['secure'] !== undefined && typeof sending['secure'] !== 'boolean') {
+				throw new SetupConfigError('config.sending.secure must be a boolean');
+			}
+			return;
 		default:
-			throw new SetupConfigError('config.sending.provider must be one of mta, resend, ses');
+			throw new SetupConfigError('config.sending.provider must be one of mta, resend, ses, smtp');
 	}
 }
 
@@ -227,7 +263,9 @@ function parseAi(value: unknown): void {
 			asString(ai['modelCapable'], 'config.ai.modelCapable');
 			return;
 		default:
-			throw new SetupConfigError('config.ai.provider must be one of openrouter, openai, ollama, custom');
+			throw new SetupConfigError(
+				'config.ai.provider must be one of openrouter, openai, ollama, custom'
+			);
 	}
 }
 
@@ -271,6 +309,20 @@ export function buildEnvPatchFromConfig(config: SetupConfig): EnvMap {
 				patch['AWS_SES_REGION'] = config.sending.region;
 				patch['AWS_SES_ACCESS_KEY_ID'] = config.sending.accessKeyId;
 				patch['AWS_SES_SECRET_ACCESS_KEY'] = config.sending.secretAccessKey;
+				break;
+			case 'smtp':
+				// Generic relay: host + credentials are required; port/TLS have safe
+				// backend defaults (587 / STARTTLS), so only emit them when set.
+				patch['EMAIL_PROVIDER'] = 'smtp';
+				patch['SMTP_RELAY_HOST'] = config.sending.host;
+				patch['SMTP_RELAY_USERNAME'] = config.sending.username;
+				patch['SMTP_RELAY_PASSWORD'] = config.sending.password;
+				if (config.sending.port !== undefined) {
+					patch['SMTP_RELAY_PORT'] = String(config.sending.port);
+				}
+				if (config.sending.secure !== undefined) {
+					patch['SMTP_RELAY_SECURE'] = config.sending.secure ? 'true' : 'false';
+				}
 				break;
 		}
 	}
@@ -349,7 +401,7 @@ export function buildEnvPatchFromConfig(config: SetupConfig): EnvMap {
 export function applySetupDefaults(
 	env: EnvMap,
 	deploymentMode: DeploymentMode,
-	flags?: Partial<Record<FeatureFlagKey, boolean>>,
+	flags?: Partial<Record<FeatureFlagKey, boolean>>
 ): void {
 	const defaults: Record<string, string> = {
 		SITE_URL: 'http://localhost:3000',

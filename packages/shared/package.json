@@ -41,6 +41,10 @@
 			"types": "./src/setupValidators.ts",
 			"import": "./src/setupValidators.ts"
 		},
+		"./setupSendingPresets": {
+			"types": "./src/setupSendingPresets.ts",
+			"import": "./src/setupSendingPresets.ts"
+		},
 		"./setupEnv": {
 			"types": "./src/setupEnv.ts",
 			"import": "./src/setupEnv.ts"
