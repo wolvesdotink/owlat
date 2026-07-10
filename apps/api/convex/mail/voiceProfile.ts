@@ -244,7 +244,7 @@ export const getGuidanceForRecipient = internalMutation({
 
 /**
  * The derived profile summary for the settings page. Soft-auth: returns null
- * for anonymous / non-owner callers (mailbox ownership enforced in-handler).
+ * for anonymous / non-owner callers (mailbox access enforced in-handler).
  */
 // public: soft-auth — access enforced via requireMailboxAccess; returns null otherwise.
 export const get = publicQuery({

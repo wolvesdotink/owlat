@@ -3,7 +3,7 @@
  *
  * The single-org deployment shares one organization, so the security boundary
  * for personal mail is NOT org-id filtering — it is PER-USER ownership,
- * enforced by `requireMailboxAccess` / `loadOwnedMessage` (mail/permissions.ts):
+ * enforced by `requireMailboxAccess` / `requireMessageAccess` (mail/permissions.ts):
  *   - role 'owner'/'admin' can act on any user's mailbox (org-admin override);
  *   - role 'editor' can act only on a mailbox whose `userId` equals theirs.
  *
@@ -53,24 +53,18 @@ vi.mock('../lib/sessionOrganization', async () => {
 		// Wrapper floors (authedMutation / authedQuery). They only need a member;
 		// route them through the same mutable session so a set user never trips
 		// the floor while the in-handler ownership check does the real work.
-		requireOrgMember: vi
-			.fn()
-			.mockImplementation(async () => ({
-				userId: sessionMock.user.id,
-				role: sessionMock.user.role,
-			})),
-		getMutationContext: vi
-			.fn()
-			.mockImplementation(async () => ({
-				userId: sessionMock.user.id,
-				role: sessionMock.user.role,
-			})),
-		requireOrgPermission: vi
-			.fn()
-			.mockImplementation(async () => ({
-				userId: sessionMock.user.id,
-				role: sessionMock.user.role,
-			})),
+		requireOrgMember: vi.fn().mockImplementation(async () => ({
+			userId: sessionMock.user.id,
+			role: sessionMock.user.role,
+		})),
+		getMutationContext: vi.fn().mockImplementation(async () => ({
+			userId: sessionMock.user.id,
+			role: sessionMock.user.role,
+		})),
+		requireOrgPermission: vi.fn().mockImplementation(async () => ({
+			userId: sessionMock.user.id,
+			role: sessionMock.user.role,
+		})),
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
 	};
 });

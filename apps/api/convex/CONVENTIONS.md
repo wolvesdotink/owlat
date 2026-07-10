@@ -175,7 +175,7 @@ three ways:
   these for admin-only writes.
 - **In-handler gate** — `requirePermission(hasPermission(role, '<scope>:<verb>'))`
   (or `requireAdminContext` / `requireOrgPermission`, or the per-user
-  `requireMailboxAccess` / `loadOwnedMessage`, chat `assertCan*Room`,
+  `requireMailboxAccess` / `requireMessageAccess`, chat `assertCan*Room`,
   `requirePlatformAdmin`). Prefer the specific `<scope>:<verb>` permission where
   one fits the capability.
 - **Explicit opt-out comment** — `// authz: <reason>` when the gate genuinely

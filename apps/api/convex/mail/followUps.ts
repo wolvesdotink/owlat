@@ -27,7 +27,7 @@ import { authedMutation } from '../lib/authedFunctions';
 import type { Doc, Id } from '../_generated/dataModel';
 import { throwForbidden, throwInvalidInput, throwNotFound } from '../_utils/errors';
 import { isMessageSnoozed } from '../lib/mailSnooze';
-import { requireMailboxAccess, loadOwnedMessage } from './permissions';
+import { requireMailboxAccess, requireMessageAccess } from './permissions';
 import { adjustFolderUnseen } from './folders';
 import { rebuildThreadAggregates } from './messageActions';
 
@@ -89,7 +89,7 @@ export async function clearThreadFollowUp(
  * composer path stores `followUpRemindAt` on the draft instead and the
  * sent-effects reducer arms the watch at send time).
  */
-// authz: message → mailbox ownership via loadOwnedMessage; org membership via
+// authz: message → mailbox ownership via requireMessageAccess; org membership via
 // authedMutation.
 export const arm = authedMutation({
 	args: {
@@ -97,7 +97,7 @@ export const arm = authedMutation({
 		remindAt: v.number(),
 	},
 	handler: async (ctx, args) => {
-		const owned = await loadOwnedMessage(ctx, args.messageId);
+		const owned = await requireMessageAccess(ctx, args.messageId);
 		if (!owned.ok) throwForbidden('Message not accessible');
 		if (args.remindAt <= Date.now()) {
 			throwInvalidInput('Reminder time must be in the future');

@@ -35,8 +35,12 @@ import type { Doc, Id } from '../_generated/dataModel';
 import type { QueryCtx } from '../_generated/server';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 
-/** Membership role on a mailbox. `owner` is a superset of `member`. */
-export type MailboxMemberRole = 'owner' | 'member';
+/**
+ * Membership role on a mailbox. `owner` is a superset of `member`. Derived
+ * from the schema so the `'owner' | 'member'` union has a single source of
+ * truth (`mailboxMembers.role`) and the two can never drift.
+ */
+export type MailboxMemberRole = Doc<'mailboxMembers'>['role'];
 
 /** Does `role` satisfy the required `minRole`? `owner` satisfies both. */
 function roleSatisfies(role: MailboxMemberRole, minRole: MailboxMemberRole): boolean {
@@ -124,7 +128,7 @@ export type MessageAccessOutcome =
 	  };
 
 /** Same policy as {@link requireMailboxAccess}, keyed by a message id. */
-export async function loadOwnedMessage(
+export async function requireMessageAccess(
 	ctx: Parameters<typeof getBetterAuthSessionWithRole>[0],
 	messageId: Id<'mailMessages'>
 ): Promise<MessageAccessOutcome> {
