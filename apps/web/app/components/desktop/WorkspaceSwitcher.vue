@@ -8,7 +8,12 @@
  * colour that paints the window frame). Right-clicking (or the keyboard
  * context-menu key) any avatar opens an accent picker to recolour it.
  */
-import { WORKSPACE_ACCENTS, type WorkspaceAccent, accentLabel } from '~/lib/desktop/workspaceTypes';
+import {
+	WORKSPACE_ACCENTS,
+	type WorkspaceAccent,
+	accentLabel,
+	initials,
+} from '~/lib/desktop/workspaceTypes';
 import { AVATAR_INK } from '~/utils/avatar';
 
 const { workspaces, activeId, switchTo, setWorkspaceAccent } = useDesktopWorkspaces();
@@ -25,17 +30,6 @@ const TILE_INK = AVATAR_INK;
 /** Number hint for the Nth tile, or empty past the ⌘1–9 range. */
 function hintFor(index: number): string {
 	return index < 9 ? String(index + 1) : '';
-}
-
-function initials(label: string): string {
-	return label
-		.replace(/^https?:\/\//, '')
-		.split(/[\s.]+/)
-		.map((p) => p[0])
-		.filter(Boolean)
-		.join('')
-		.toUpperCase()
-		.slice(0, 2);
 }
 
 // ---- accent picker popover ----

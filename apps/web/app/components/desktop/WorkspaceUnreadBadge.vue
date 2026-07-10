@@ -5,6 +5,8 @@
  * count markup + the >99 clamp live in one place. Styled on the FF --color-error
  * token (never a raw Tailwind palette colour); the caller positions it.
  */
+import { formatBadgeCount } from '~/lib/desktop/workspaceTypes';
+
 interface Props {
 	/** Unread count; the badge renders nothing when this is <= 0. */
 	count: number;
@@ -12,7 +14,7 @@ interface Props {
 const props = defineProps<Props>();
 
 /** Clamp large counts to a fixed-width label so the pill never grows unbounded. */
-const label = computed(() => (props.count > 99 ? '99+' : String(props.count)));
+const label = computed(() => formatBadgeCount(props.count));
 </script>
 
 <template>

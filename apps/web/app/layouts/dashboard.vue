@@ -328,8 +328,10 @@ const userInitials = computed(() => {
 		.slice(0, 2);
 });
 
-// Global search ref (single instance)
-const globalSearchRef = ref<{ openSearch: () => void } | null>(null);
+// Search opens the app command palette. Desktop hides the header GlobalSearch in
+// favour of the titlebar pill; the mobile button opens the palette through the
+// shared control so the event name lives in one place.
+const { open: openCommandPalette } = useCommandPalette();
 
 // Quick Query panel state
 const isQuickQueryOpen = ref(false);
@@ -760,8 +762,10 @@ const sidebarDesktopClass = computed(() => {
 				<div class="flex-1 min-w-0 mr-4">
 					<Breadcrumbs />
 				</div>
-				<div class="flex-shrink-0">
-					<GlobalSearch ref="globalSearchRef" />
+				<!-- On desktop the native titlebar owns the ⌘K search affordance, so the
+				     duplicate header search is dropped there; web keeps it. -->
+				<div v-if="!isDesktop" class="flex-shrink-0">
+					<GlobalSearch />
 				</div>
 			</header>
 
@@ -792,7 +796,7 @@ const sidebarDesktopClass = computed(() => {
 					<button
 						class="p-2 text-text-secondary hover:text-text-primary"
 						aria-label="Search"
-						@click="globalSearchRef?.openSearch()"
+						@click="openCommandPalette()"
 					>
 						<Icon name="lucide:search" class="w-5 h-5" />
 					</button>
