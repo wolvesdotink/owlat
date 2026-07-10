@@ -56,6 +56,15 @@ const verifiedDomains = computed(() =>
 );
 const canOfferMailbox = computed(() => postboxEnabled.value && verifiedDomains.value.length > 0);
 
+// Whether an outbound transport is actually configured. The invite/resend API
+// calls succeed even when it isn't (the send hook fails closed and BetterAuth
+// swallows the error), so we only claim "we emailed them" when a transport
+// exists — otherwise the accept link is the real (and only) way in.
+const { data: emailConfigured } = useConvexQuery(
+	api.organizations.featureFlags.deliveryConfigured,
+	() => ({})
+);
+
 // Invite modal state (shared form-modal primitive for the open/close/form/
 // submitting state). The two error slots stay in a dedicated reactive because
 // `mailbox` is a cross-field error, not a form field.
@@ -90,6 +99,11 @@ const inviteSuccess = ref<{
 // Once the admin hand-edits the mailbox local part we stop auto-deriving it
 // from the invitee's email address.
 const localpartEdited = ref(false);
+
+// True once the admin manually toggles the "Reserve a mailbox" checkbox. Until
+// then the form is pristine, so the default-on watcher below may still apply the
+// reserved-by-default rule when hosted mail resolves after the modal is open.
+const mailboxTouched = ref(false);
 
 // Pre-select the first verified domain when the user opts into the mailbox section.
 watch(
@@ -126,6 +140,7 @@ function resetInviteForm() {
 	inviteFormErrors.email = '';
 	inviteFormErrors.mailbox = '';
 	localpartEdited.value = false;
+	mailboxTouched.value = false;
 	inviteSuccess.value = null;
 }
 
@@ -137,9 +152,22 @@ function openInviteModal() {
 	inviteFormErrors.email = '';
 	inviteFormErrors.mailbox = '';
 	localpartEdited.value = false;
+	mailboxTouched.value = false;
 	inviteSuccess.value = null;
 	inviteForm.addMailbox = canOfferMailbox.value;
 }
+
+// Reserved-by-default (locked decision #4): if the modal opens before the
+// verified-domains query resolves, `canOfferMailbox` is briefly false and the
+// checkbox snapshots unchecked. Re-apply the default the moment hosted mail
+// becomes available — but only while the form is still pristine (modal open, not
+// on the success panel, checkbox untouched) so we never override a deliberate
+// uncheck.
+watch(canOfferMailbox, (canOffer) => {
+	if (canOffer && isInviteModalOpen.value && !inviteSuccess.value && !mailboxTouched.value) {
+		inviteForm.addMailbox = true;
+	}
+});
 
 // Reset the form whenever the modal is dismissed so the next open starts clean.
 watch(isInviteModalOpen, (open) => {
@@ -150,6 +178,7 @@ watch(isInviteModalOpen, (open) => {
 // open, re-applying the default mailbox reservation.
 function startAnotherInvite() {
 	resetInviteForm();
+	mailboxTouched.value = false;
 	inviteForm.addMailbox = canOfferMailbox.value;
 }
 
@@ -244,8 +273,7 @@ const handleInvite = async () => {
 		: undefined;
 
 	try {
-		const data = await invite(inviteForm.email.trim(), inviteForm.role, mailbox);
-		const invitationId = (data as { id?: string } | null | undefined)?.id ?? null;
+		const { invitationId } = await invite(inviteForm.email.trim(), inviteForm.role, mailbox);
 
 		if (invitationId) {
 			// Keep the modal open on the success panel so the admin can copy the
@@ -305,8 +333,14 @@ const resendingId = ref<string | null>(null);
 async function handleResend(inv: OrganizationInvitation) {
 	resendingId.value = inv.id;
 	try {
-		const sent = await resendInvite(inv.id, inv.email, inv.role);
-		if (sent) showToast(`Invitation re-sent to ${inv.email}`);
+		const sent = await resendInvite(inv);
+		if (sent) {
+			showToast(
+				emailConfigured.value
+					? `Invitation re-sent to ${inv.email}`
+					: `Email delivery isn't set up — copy the accept link for ${inv.email} instead.`
+			);
+		}
 	} catch (error) {
 		const msg = error instanceof Error ? error.message : 'Failed to resend invitation';
 		showToast(msg, 'error');
@@ -811,6 +845,7 @@ const formatExpiryTime = (expiresAt: Date) => {
 								type="checkbox"
 								class="mt-0.5"
 								:disabled="isInviting || !canOfferMailbox"
+								@change="mailboxTouched = true"
 							/>
 							<span>
 								<span class="font-medium text-text-primary text-sm">
@@ -882,8 +917,12 @@ const formatExpiryTime = (expiresAt: Date) => {
 					<UiIconBox icon="lucide:check" size="sm" variant="brand" rounded="lg" />
 					<div>
 						<p class="font-medium text-text-primary">Invitation ready</p>
-						<p class="text-sm text-text-secondary">
+						<p v-if="emailConfigured" class="text-sm text-text-secondary">
 							We emailed {{ inviteSuccess?.email }} — you can also share the accept link directly.
+						</p>
+						<p v-else class="text-sm text-text-secondary">
+							Share the accept link below with {{ inviteSuccess?.email }} — email delivery isn't set
+							up yet, so this is how they get in.
 						</p>
 					</div>
 				</div>

@@ -288,9 +288,10 @@ export function useOrganization() {
 			label: 'Cancel reserved mailbox',
 		}
 	);
-	// Server-enforced 1/min resend throttle. `run` toasts the rate-limit message
-	// and returns undefined when the cooldown hasn't elapsed, so `resendInvite`
-	// can bail out before hitting BetterAuth's resend.
+	// Read-only pre-check for the 1/min resend floor (the floor itself is enforced
+	// server-side in the send hook). `run` toasts the rate-limit message and
+	// returns undefined when the cooldown hasn't elapsed, so `resendInvite` can
+	// bail out before hitting BetterAuth's resend.
 	const { run: throttleResend } = useBackendOperation(api.auth.invitationResend.throttleResend, {
 		label: 'Resend invitation',
 	});
@@ -316,7 +317,8 @@ export function useOrganization() {
 			throw new Error(result.error.message || 'Failed to send invitation');
 		}
 
-		const invitationId = (result.data as { id?: string } | null | undefined)?.id ?? null;
+		const invitationId: string | null =
+			(result.data as { id?: string } | null | undefined)?.id ?? null;
 
 		if (mailbox && invitationId) {
 			// `run` toasts the categorized mailbox failure itself; we still throw a
@@ -340,7 +342,7 @@ export function useOrganization() {
 		// Refresh members list
 		await fetchMembers({ force: true });
 
-		return result.data;
+		return { invitationId };
 	}
 
 	/**
@@ -464,22 +466,21 @@ export function useOrganization() {
 	 * Re-send the invitation email for a still-pending invite. The actual send
 	 * goes through BetterAuth's `inviteMember({ resend: true })`, which reuses the
 	 * existing pending invitation and re-triggers the system-mail path — so no new
-	 * invite (or accept link) is created. A server-side throttle (`throttleResend`)
-	 * enforces a 1-per-minute floor first; when the cooldown hasn't elapsed the
-	 * throttle op toasts the wait message and this returns `false` without sending.
+	 * invite (or accept link) is created. The 1-per-minute floor is enforced
+	 * server-side inside the send hook; `throttleResend` is a read-only pre-check
+	 * so we can toast the friendly wait message and skip the round-trip when the
+	 * cooldown hasn't elapsed, returning `false` without sending.
 	 *
 	 * @returns `true` when the email was re-sent, `false` when it was throttled.
 	 */
 	async function resendInvite(
-		invitationId: string,
-		email: string,
-		role: OrganizationRole
+		invitation: Pick<OrganizationInvitation, 'id' | 'email' | 'role'>
 	): Promise<boolean> {
 		if (!organizationId.value) {
 			throw new Error('No active organization');
 		}
 
-		const allowed = await throttleResend({ invitationId });
+		const allowed = await throttleResend({ invitationId: invitation.id });
 		if (allowed === undefined) {
 			// Throttled (or the throttle mutation failed) — `run` already toasted.
 			return false;
@@ -487,8 +488,8 @@ export function useOrganization() {
 
 		const result = await inviteOrgMember({
 			organizationId: organizationId.value,
-			email,
-			role: mapToBetterAuthRole(role),
+			email: invitation.email,
+			role: mapToBetterAuthRole(invitation.role),
 			resend: true,
 		});
 
