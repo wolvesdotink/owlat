@@ -14,7 +14,7 @@
  * on them instead of starting a window drag.
  */
 const { isDesktop, isMac } = useDesktopContext();
-const { active } = useDesktopWorkspaces();
+const { active, workspaces } = useDesktopWorkspaces();
 
 const title = computed(() => active.value?.label ?? 'Owlat');
 
@@ -35,10 +35,14 @@ async function control(fn: 'minimizeWindow' | 'toggleMaximizeWindow' | 'closeWin
 		class="desktop-titlebar fixed top-0 inset-x-0 z-[70] flex items-center h-[38px] border-b border-border-subtle bg-bg-elevated select-none"
 		:class="isMac ? 'pl-[88px] pr-3' : 'pl-3'"
 	>
-		<!-- Brand + active workspace (draggable) -->
+		<!-- Brand + active-workspace switcher chip (draggable gutter, interactive
+		     chip). The chip mounts the shared WorkspaceMenu; when no workspace is
+		     connected yet it falls back to a plain, draggable label. -->
 		<div class="flex items-center gap-2 min-w-0" data-tauri-drag-region>
 			<img src="/owlat.svg" alt="" class="w-4 h-4 shrink-0" data-tauri-drag-region />
+			<DesktopWorkspaceMenu v-if="workspaces.length" />
 			<span
+				v-else
 				class="font-display text-[13px] leading-none text-text-secondary truncate"
 				data-tauri-drag-region
 			>

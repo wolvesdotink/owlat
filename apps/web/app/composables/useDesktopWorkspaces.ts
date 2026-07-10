@@ -27,6 +27,12 @@ import {
 	workspaceTokenRef,
 } from '~/lib/desktop/workspaceTypes';
 import { applyWorkspaceAccent } from '~/lib/desktop/workspaceAccent';
+import {
+	hideSwitchSkeleton,
+	showSwitchSkeleton,
+	SWITCH_FLAG_TTL_MS,
+	writeSwitchFlag,
+} from '~/lib/desktop/workspaceSwitch';
 
 // ---- module-level reactive state (shared across all callers) ----
 const workspaces = ref<WorkspaceConfig[]>([]);
@@ -211,9 +217,38 @@ export async function completeConnection(params: { ott: string; state: string })
 async function switchTo(id: string): Promise<void> {
 	if (id === activeId.value) return;
 	const ws = workspaces.value.find((w) => w.id === id);
-	if (ws) ws.lastActiveAt = Date.now();
+	if (!ws) return;
+	ws.lastActiveAt = Date.now();
 	activeId.value = id;
 	await persistStore();
+
+	// Perceived-instant switch (piece d4): before the (unavoidable) reload,
+	// repaint the destination accent and drop a skeleton washed in it so the eye
+	// sees the target workspace's colour immediately. A sessionStorage flag hands
+	// the same skeleton to the fresh document (consumed by the boot plugin), which
+	// crossfades it out on first paint. Purely paint-order choreography — the
+	// reload below still does all the real re-seeding.
+	if (typeof document !== 'undefined') {
+		applyWorkspaceAccent(document.documentElement, ws.accentColor);
+		writeSwitchFlag(sessionStorage, {
+			accent: ws.accentColor,
+			label: ws.label,
+			at: Date.now(),
+		});
+		const skeleton = showSwitchSkeleton(ws.accentColor, ws.label);
+		// Stale-skeleton guard on the INITIATING document (mirrors the fresh
+		// document's boot-plugin TTL). The skeleton is a full-window,
+		// pointer-events-blocking overlay; if location.assign below stalls or the
+		// webview navigation fails, this document keeps it forever and the app is
+		// stuck behind an opaque sheet. After the same TTL, drop the skeleton and
+		// fall back to a plain reload — which still re-seeds into the (already
+		// persisted) new active workspace. A successful navigation unloads this
+		// document first, so the timer never fires on the happy path.
+		window.setTimeout(() => {
+			hideSwitchSkeleton(skeleton);
+			window.location.reload();
+		}, SWITCH_FLAG_TTL_MS);
+	}
 	window.location.assign('/dashboard');
 }
 
