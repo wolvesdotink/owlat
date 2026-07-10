@@ -50,22 +50,18 @@ export const WORKSPACE_ACCENT_OPTIONS = [
 	{ value: '#3d3d3d', label: 'Graphite' },
 ] as const;
 
+/** One of the curated workspace accent hexes — derived from the options so a
+ * new option can never desync the union from the runtime palette. */
+export type WorkspaceAccent = (typeof WORKSPACE_ACCENT_OPTIONS)[number]['value'];
+
 /**
  * Curated workspace identity accents (hex), derived from
  * {@link WORKSPACE_ACCENT_OPTIONS}. Order: moss, terracotta, slate, plum, gold,
  * graphite.
  */
-export const WORKSPACE_ACCENTS = WORKSPACE_ACCENT_OPTIONS.map((o) => o.value) as [
-	'#7a8c5a',
-	'#c4785a',
-	'#5a7a9b',
-	'#8c5a7a',
-	'#b8935a',
-	'#3d3d3d',
-];
-
-/** One of the curated workspace accent hexes. */
-export type WorkspaceAccent = (typeof WORKSPACE_ACCENTS)[number];
+export const WORKSPACE_ACCENTS: readonly WorkspaceAccent[] = WORKSPACE_ACCENT_OPTIONS.map(
+	(o) => o.value
+);
 
 /** Human label for a curated accent hex, or a generic fallback. */
 export function accentLabel(color: string): string {
@@ -73,7 +69,7 @@ export function accentLabel(color: string): string {
 }
 
 /** Fallback accent when none has been assigned yet (the terracotta brand hue). */
-export const DEFAULT_WORKSPACE_ACCENT: WorkspaceAccent = WORKSPACE_ACCENTS[1];
+export const DEFAULT_WORKSPACE_ACCENT: WorkspaceAccent = WORKSPACE_ACCENT_OPTIONS[1].value;
 
 /**
  * Round-robin pick from the curated accents for the Nth added workspace.
