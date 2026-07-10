@@ -65,6 +65,7 @@ import type * as auth_config from "../auth/config.js";
 import type * as auth_memberErasure from "../auth/memberErasure.js";
 import type * as auth_membership from "../auth/membership.js";
 import type * as auth_onboarding from "../auth/onboarding.js";
+import type * as auth_userOnboarding from "../auth/userOnboarding.js";
 import type * as auth_userProfiles from "../auth/userProfiles.js";
 import type * as automations_analytics from "../automations/analytics.js";
 import type * as automations_automations from "../automations/automations.js";
@@ -612,6 +613,7 @@ declare const fullApi: ApiFromModules<{
   "auth/memberErasure": typeof auth_memberErasure;
   "auth/membership": typeof auth_membership;
   "auth/onboarding": typeof auth_onboarding;
+  "auth/userOnboarding": typeof auth_userOnboarding;
   "auth/userProfiles": typeof auth_userProfiles;
   "automations/analytics": typeof automations_analytics;
   "automations/automations": typeof automations_automations;
