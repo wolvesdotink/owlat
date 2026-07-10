@@ -206,6 +206,7 @@ export const NON_TENANT_TABLES = [
 	'instanceSettings',
 	// Instance infrastructure / regenerable caches — not org business data.
 	'systemUpdates',
+	'backupState',
 	'urlReputationCache',
 	'providerRoutes',
 	'providerHealth',
