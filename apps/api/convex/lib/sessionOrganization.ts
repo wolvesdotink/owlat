@@ -321,7 +321,9 @@ export async function getMutationContext(ctx: MutationCtx): Promise<MutationSess
  *
  * @throws unauthenticated if no session; forbidden if no active org / not a member.
  */
-export async function requireOrgMember(ctx: QueryCtx | MutationCtx): Promise<MutationSessionContext> {
+export async function requireOrgMember(
+	ctx: QueryCtx | MutationCtx
+): Promise<MutationSessionContext> {
 	const sessionWithRole = await getBetterAuthSessionWithRole(ctx);
 
 	if (!sessionWithRole) {
@@ -406,11 +408,19 @@ export type Permission =
 
 const isAdmin = (role: OrganizationRole) => role === 'owner' || role === 'admin';
 const isOwner = (role: OrganizationRole) => role === 'owner';
+// Any org member (owner, admin, or editor). Editors run the marketing send
+// pipeline end-to-end now that the campaign-sender guardrail exists (2026-07-10
+// experience plan, decision 8): they may create/edit/schedule/send campaigns,
+// but only from the curated `campaignSenders` list (or, if an admin has enabled
+// the custom-senders toggle, any verified sending domain). Curating that list
+// and flipping the toggle stay admin-only — see `campaigns/senders.ts`.
+const isEditorOrAbove = (role: OrganizationRole) =>
+	role === 'owner' || role === 'admin' || role === 'editor';
 
 const PERMISSION_MAP: Record<Permission, (role: OrganizationRole) => boolean> = {
-	'campaigns:send': isAdmin,
-	'campaigns:manage': isAdmin,
-	'campaigns:schedule': isAdmin,
+	'campaigns:send': isEditorOrAbove,
+	'campaigns:manage': isEditorOrAbove,
+	'campaigns:schedule': isEditorOrAbove,
 	'templates:manage': isAdmin,
 	'automations:manage': isAdmin,
 	'topics:manage': isAdmin,
@@ -501,4 +511,3 @@ export async function requireOrgPermission(
 	requirePermission(hasPermission(session.role, permission), message);
 	return { userId: session.userId, role: session.role };
 }
-
