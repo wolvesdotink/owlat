@@ -2794,6 +2794,7 @@ dependencies = [
  "keyring",
  "mac-notification-sys",
  "notify-rust",
+ "objc2-app-kit",
  "serde",
  "serde_json",
  "ssh2",
