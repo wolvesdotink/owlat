@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ref } from 'vue';
 import { ConvexError } from 'convex/values';
 import { useOptimisticMutation } from '../useOptimisticMutation';
+import { useBackendOperation } from '../useBackendOperation';
 
 const fakeOp = 'api.test.update' as unknown as Parameters<typeof useOptimisticMutation>[0];
 
@@ -18,6 +19,10 @@ describe('useOptimisticMutation', () => {
 		vi.stubGlobal('useToast', () => ({ showToast }));
 		vi.stubGlobal('usePostHog', () => ({ captureError }));
 		vi.stubGlobal('navigateTo', vi.fn());
+		// Stub the REAL useBackendOperation (consumed via Nuxt auto-import) so the
+		// assertions keep exercising its actual error chain — the categorized
+		// 'No access' toast and the undefined-on-failure sentinel come from here.
+		vi.stubGlobal('useBackendOperation', useBackendOperation);
 	});
 
 	it('applies optimistically and keeps the change when the write succeeds', async () => {
