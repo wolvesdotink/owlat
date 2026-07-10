@@ -23,7 +23,7 @@ import {
 	type QueryCtx,
 } from '../_generated/server';
 import { authedMutation, authedQuery } from '../lib/authedFunctions';
-import { requireOrgPermission } from '../lib/sessionOrganization';
+import { hasPermission, requireOrgMember, requireOrgPermission } from '../lib/sessionOrganization';
 import { checkEmailDomainVerification } from '../domains/domains';
 import { isValidEmail } from '../lib/inputGuards';
 import { throwInvalidInput, throwNotFound, throwAlreadyExists } from '../_utils/errors';
@@ -146,6 +146,36 @@ export const list = authedQuery({
 	handler: async (ctx): Promise<Doc<'campaignSenders'>[]> => {
 		await requireCampaignSendersManage(ctx);
 		return await ctx.db.query('campaignSenders').take(MAX_CAMPAIGN_SENDERS);
+	},
+});
+
+/**
+ * Wizard-facing source for the campaign sender PICKER. Unlike `list` (the
+ * management surface, gated on `campaigns:manage`), this floors only on org
+ * membership: a campaign-builder who cannot themselves curate senders still needs
+ * to READ the enabled list to pick one, and to learn whether they may add one
+ * (`canManage`) so the empty-state can choose between the admin deep link and the
+ * "ask your admin" copy. Returns only the fields the picker renders — enabled
+ * senders, the custom-address toggle, and the caller's manage capability.
+ */
+export const listForPicker = authedQuery({
+	args: {},
+	handler: async (ctx) => {
+		const session = await requireOrgMember(ctx);
+		const all = await ctx.db.query('campaignSenders').take(MAX_CAMPAIGN_SENDERS);
+		const settings = await ctx.db.query('instanceSettings').first();
+		return {
+			senders: all
+				.filter((s) => s.isEnabled)
+				.map((s) => ({
+					_id: s._id,
+					email: s.email,
+					displayName: s.displayName,
+					isDefault: s.isDefault,
+				})),
+			isCustomAllowed: settings?.isCustomCampaignSendersAllowed === true,
+			canManage: hasPermission(session.role, 'campaigns:manage'),
+		};
 	},
 });
 
