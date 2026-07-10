@@ -6,6 +6,7 @@
  * are delegated up (the identity swap is a server round-trip).
  */
 import type { Id } from '@owlat/api/dataModel';
+import type { SendAsIdentity } from '~/composables/postbox/usePostboxCompose';
 import {
 	ownDomainsFromIdentities,
 	recipientLabel,
@@ -17,7 +18,12 @@ type RecipientField = 'to' | 'cc' | 'bcc';
 const props = defineProps<{
 	mailboxId: Id<'mailboxes'>;
 	fromAddress: string;
-	availableIdentities: string[];
+	/**
+	 * Every identity this composer may send as: the mailbox's own addresses
+	 * (kind 'team'/'own') and, in a shared inbox, the acting teammate's personal
+	 * addresses (kind 'personal'). The picker groups them by their mailbox label.
+	 */
+	availableIdentities: SendAsIdentity[];
 	/** Extra recipients Reply-All would add (raw addresses); drives the gap hint. */
 	replyAllRecipients?: string[];
 }>();
@@ -32,9 +38,28 @@ const ccAddresses = defineModel<string[]>('ccAddresses', { required: true });
 const bccAddresses = defineModel<string[]>('bccAddresses', { required: true });
 const subject = defineModel<string>('subject', { required: true });
 
-// Show the From dropdown only when the mailbox actually has aliases —
-// otherwise the single-identity case is implicit and we'd just add noise.
+// Show the From picker only when there's an actual choice (aliases and/or a
+// send-as personal identity) — otherwise the single-identity case is implicit
+// and the control would just add noise.
 const showFromDropdown = computed(() => props.availableIdentities.length > 1);
+
+// Group identities by their owning mailbox so the picker reads as "the team
+// inbox" vs "your personal addresses". Order is preserved from the server (the
+// thread mailbox first, personal mailboxes after); `hasPersonal` decides whether
+// to show group headings at all.
+const identityGroups = computed(() => {
+	const groups: Array<{ mailboxId: string; label: string; items: SendAsIdentity[] }> = [];
+	for (const identity of props.availableIdentities) {
+		const existing = groups.find((g) => g.mailboxId === identity.mailboxId);
+		if (existing) existing.items.push(identity);
+		else groups.push({ mailboxId: identity.mailboxId, label: identity.label, items: [identity] });
+	}
+	return groups;
+});
+const hasPersonalIdentity = computed(() =>
+	props.availableIdentities.some((i) => i.kind === 'personal')
+);
+const firstIdentityAddress = computed(() => props.availableIdentities[0]?.address ?? '');
 
 function onFromChange(event: Event) {
 	const target = event.target as HTMLSelectElement;
@@ -50,7 +75,7 @@ const showBcc = ref(bccAddresses.value.length > 0);
 const ownDomains = computed(() =>
 	ownDomainsFromIdentities([
 		...(props.fromAddress ? [props.fromAddress] : []),
-		...props.availableIdentities,
+		...props.availableIdentities.map((i) => i.address),
 	])
 );
 
@@ -62,9 +87,7 @@ const ownDomains = computed(() =>
 // dismissible gap hint: `replyAllRecipients` is only ever populated on a plain
 // reply, so the two never render together — the toggle is the single affordance.
 const convertedToReplyAll = ref(false);
-const showReplyModeToggle = computed(
-	() => (props.replyAllRecipients?.length ?? 0) > 0
-);
+const showReplyModeToggle = computed(() => (props.replyAllRecipients?.length ?? 0) > 0);
 const replyAllExtraNames = computed(() =>
 	(props.replyAllRecipients ?? []).map(recipientLabel).join(', ')
 );
@@ -101,17 +124,36 @@ function moveRecipient(payload: { email: string; from: RecipientField }, to: Rec
 		<div v-if="showFromDropdown" class="flex items-baseline gap-2">
 			<label class="text-text-tertiary w-12">From</label>
 			<select
-				:value="fromAddress || availableIdentities[0]"
+				:value="fromAddress || firstIdentityAddress"
 				class="flex-1 bg-transparent outline-none font-medium border-0"
+				data-testid="postbox-from-select"
+				aria-label="Send as"
 				@change="onFromChange"
 			>
-				<option
-					v-for="addr in availableIdentities"
-					:key="addr"
-					:value="addr"
-				>
-					{{ addr }}
-				</option>
+				<!-- When personal send-as identities are present, group them under
+				     their mailbox so the choice reads as "the team" vs "you". With a
+				     single mailbox (aliases only) the headings would be noise, so the
+				     options render flat. -->
+				<template v-if="hasPersonalIdentity">
+					<optgroup v-for="group in identityGroups" :key="group.mailboxId" :label="group.label">
+						<option
+							v-for="identity in group.items"
+							:key="identity.address"
+							:value="identity.address"
+						>
+							{{ identity.address }}
+						</option>
+					</optgroup>
+				</template>
+				<template v-else>
+					<option
+						v-for="identity in availableIdentities"
+						:key="identity.address"
+						:value="identity.address"
+					>
+						{{ identity.address }}
+					</option>
+				</template>
 			</select>
 		</div>
 		<div class="flex items-start gap-2">
@@ -129,13 +171,17 @@ function moveRecipient(payload: { email: string; from: RecipientField }, to: Rec
 					type="button"
 					class="text-text-tertiary hover:text-text-primary"
 					@click="showCc = true"
-				>Cc</button>
+				>
+					Cc
+				</button>
 				<button
 					v-if="!showBcc"
 					type="button"
 					class="text-text-tertiary hover:text-text-primary"
 					@click="showBcc = true"
-				>Bcc</button>
+				>
+					Bcc
+				</button>
 			</div>
 		</div>
 		<div
@@ -151,7 +197,9 @@ function moveRecipient(payload: { email: string; from: RecipientField }, to: Rec
 					class="text-brand hover:underline"
 					:title="`Also include ${replyAllExtraNames}`"
 					@click="switchToReplyAll"
-				>switch to all</button>
+				>
+					switch to all
+				</button>
 			</template>
 			<template v-else>
 				<Icon name="lucide:reply-all" class="w-3 h-3" />
@@ -178,7 +226,8 @@ function moveRecipient(payload: { email: string; from: RecipientField }, to: Rec
 		/>
 		<div class="flex items-baseline gap-2">
 			<label for="subject" class="text-text-tertiary w-12">Subject</label>
-			<input id="subject"
+			<input
+				id="subject"
 				v-model="subject"
 				type="text"
 				class="flex-1 bg-transparent outline-none font-medium"

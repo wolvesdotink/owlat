@@ -18,6 +18,19 @@ const AUTOSAVE_DEBOUNCE_MS = 1500;
 
 export type ComposerMode = 'simple' | 'full';
 
+/**
+ * A From identity the composer may send as. Mirrors the backend
+ * `SendAsIdentity` shape returned by `mail.identities.listSendAsIdentities`.
+ * `kind` drives the picker grouping: 'team'/'own' is the current mailbox's own
+ * identity; 'personal' is a teammate's own address offered inside a team inbox.
+ */
+export interface SendAsIdentity {
+	address: string;
+	mailboxId: Id<'mailboxes'>;
+	kind: 'team' | 'own' | 'personal';
+	label: string;
+}
+
 interface DraftSeed {
 	mailboxId: Id<'mailboxes'>;
 	/** Reopen an existing draft (continue editing / after undo-send). */
@@ -45,7 +58,7 @@ export function usePostboxCompose(seed: DraftSeed) {
 	const subject = ref<string>(seed.prefillSubject ?? '');
 	// A reply/forward seeds the quoted original here; the user types above it.
 	const bodyHtml = ref<string>(seed.prefillBodyHtml ?? '');
-	const bodyBlocks = ref<EditorBlock[]>([]);          // EditorBlock[] in 'full' mode
+	const bodyBlocks = ref<EditorBlock[]>([]); // EditorBlock[] in 'full' mode
 	const composerMode = ref<ComposerMode>(seed.initialMode ?? 'simple');
 	const fromAddress = ref<string>('');
 	// Lifecycle state of the saved row. A reopened draft can be 'scheduled'
@@ -95,11 +108,11 @@ export function usePostboxCompose(seed: DraftSeed) {
 		addInlineImage,
 		removeInlineImage,
 	} = usePostboxComposeAttachments({
-			ensureDraft,
-			draftId,
-			attachPendingKey: seed.attachPendingKey,
-			forwardAttachmentsFromMessageId: seed.forwardAttachmentsFromMessageId,
-		});
+		ensureDraft,
+		draftId,
+		attachPendingKey: seed.attachPendingKey,
+		forwardAttachmentsFromMessageId: seed.forwardAttachmentsFromMessageId,
+	});
 
 	// Reopen an existing draft: hydrate the editor fields from the saved row.
 	if (seed.draftId) {
@@ -166,13 +179,16 @@ export function usePostboxCompose(seed: DraftSeed) {
 		);
 	}
 
-	// Allowed-from set for this mailbox: canonical address + active aliases.
-	// The server is the source of truth — the dropdown is just UI.
-	const identitiesQuery = useConvexQuery(api.mail.identities.listForOwnedMailbox, () => ({
+	// Send-as identities for this mailbox: the mailbox's own allowed-from set
+	// (canonical address + active aliases) and, in a shared (team) inbox, the
+	// acting teammate's personal identities from their own mailboxes. The server
+	// is the source of truth — the picker is just UI, and every candidate is
+	// re-validated on setIdentity + at dispatch.
+	const identitiesQuery = useConvexQuery(api.mail.identities.listSendAsIdentities, () => ({
 		mailboxId: seed.mailboxId,
 	}));
-	const availableIdentities = computed<string[]>(
-		() => (identitiesQuery.data.value as string[] | undefined) ?? []
+	const availableIdentities = computed<SendAsIdentity[]>(
+		() => (identitiesQuery.data.value as SendAsIdentity[] | undefined) ?? []
 	);
 
 	async function setIdentity(address: string) {
@@ -204,9 +220,7 @@ export function usePostboxCompose(seed: DraftSeed) {
 
 	/** Swap the in-body signature block to the chosen signature (or none). */
 	function applySignature(signatureId: Id<'mailSignatures'> | null) {
-		const sig = signatureId
-			? signatures.value.find((s) => s._id === signatureId)
-			: null;
+		const sig = signatureId ? signatures.value.find((s) => s._id === signatureId) : null;
 		bodyHtml.value = applySignatureToBody(bodyHtml.value, sig?.html ?? '');
 		activeSignatureId.value = sig?._id ?? null;
 	}
@@ -288,10 +302,7 @@ export function usePostboxCompose(seed: DraftSeed) {
 				bodyHtml: bodyHtml.value,
 				// Only persist blocks when in 'full' mode — keeps simple-mode
 				// drafts small and unambiguous on the wire.
-				bodyBlocks:
-					composerMode.value === 'full'
-						? JSON.stringify(bodyBlocks.value)
-						: undefined,
+				bodyBlocks: composerMode.value === 'full' ? JSON.stringify(bodyBlocks.value) : undefined,
 				composerMode: composerMode.value,
 				// Always sent: a timestamp arms, explicit null clears server-side.
 				followUpRemindAt: followUpRemindAt.value,
@@ -324,7 +335,16 @@ export function usePostboxCompose(seed: DraftSeed) {
 
 	// Watch for any field change
 	watch(
-		[toAddresses, ccAddresses, bccAddresses, subject, bodyHtml, bodyBlocks, composerMode, followUpRemindAt],
+		[
+			toAddresses,
+			ccAddresses,
+			bccAddresses,
+			subject,
+			bodyHtml,
+			bodyBlocks,
+			composerMode,
+			followUpRemindAt,
+		],
 		() => {
 			schedulePersist();
 		},
