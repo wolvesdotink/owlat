@@ -227,6 +227,10 @@ export const authTables = {
 		knowledgeIndexed: v.optional(v.number()), // AI knowledge indexing finished
 		sendingSwitched: v.optional(v.number()), // outbound switched to this instance
 		firstSendDone: v.optional(v.number()), // first message sent from this instance
+		// The member has seen the first-login welcome screen. Set once, the first
+		// time they land on /welcome; drives the middleware "returning users never
+		// see the welcome" check. Independent of dismissedAt.
+		welcomedAt: v.optional(v.number()),
 		// The member dismissed their own onboarding checklist (per-user only).
 		dismissedAt: v.optional(v.number()),
 		createdAt: v.number(),

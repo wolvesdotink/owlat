@@ -43,7 +43,7 @@ export type OnboardingStep = (typeof ONBOARDING_STEPS)[number];
 async function upsertOnboardingRow(
 	ctx: MutationCtx,
 	authUserId: string,
-	patch: Partial<Record<OnboardingStep | 'dismissedAt', number>>
+	patch: Partial<Record<OnboardingStep | 'dismissedAt' | 'welcomedAt', number>>
 ): Promise<void> {
 	const now = Date.now();
 	const existing = await ctx.db
@@ -93,10 +93,12 @@ export async function markOnboardingStep(
 }
 
 /** Shape returned to the consuming UI — always a concrete object, never null. */
-type OnboardingState = Record<OnboardingStep | 'dismissedAt', number | null>;
+type OnboardingState = Record<OnboardingStep | 'dismissedAt' | 'welcomedAt', number | null>;
 
 const EMPTY_STATE: OnboardingState = Object.fromEntries(
-	[...ONBOARDING_STEPS, 'dismissedAt' as const].map((key) => [key, null] as const)
+	[...ONBOARDING_STEPS, 'dismissedAt' as const, 'welcomedAt' as const].map(
+		(key) => [key, null] as const
+	)
 ) as OnboardingState;
 
 /**
@@ -121,6 +123,7 @@ export const get = authedQuery({
 		const state = { ...EMPTY_STATE };
 		for (const step of ONBOARDING_STEPS) state[step] = row[step] ?? null;
 		state.dismissedAt = row.dismissedAt ?? null;
+		state.welcomedAt = row.welcomedAt ?? null;
 		return state;
 	},
 });
@@ -138,5 +141,30 @@ export const dismiss = authedMutation({
 	handler: async (ctx, args) => {
 		await requireSelf(ctx, args.userId);
 		await upsertOnboardingRow(ctx, args.userId, { dismissedAt: Date.now() });
+	},
+});
+
+/**
+ * Record that the caller has seen the first-login welcome screen. Written once,
+ * the first time the member lands on `/welcome`; the timestamp is preserved on
+ * replays so the first-seen instant is stable. This is what flips a member from
+ * "new" to "returning" for the welcome middleware — a returning user (any row
+ * with `welcomedAt` set) is never routed to `/welcome` again. Upserts the row on
+ * first write. Per-user only.
+ */
+// authz: self — requireSelf asserts args.userId is the caller.
+export const markWelcomed = authedMutation({
+	args: {
+		userId: v.string(),
+	},
+	handler: async (ctx, args) => {
+		await requireSelf(ctx, args.userId);
+		const existing = await ctx.db
+			.query('userOnboarding')
+			.withIndex('by_auth_user_id', (q) => q.eq('authUserId', args.userId))
+			.first();
+		// Preserve the first-seen instant: only the initial write counts.
+		if (existing && existing.welcomedAt !== undefined) return;
+		await upsertOnboardingRow(ctx, args.userId, { welcomedAt: Date.now() });
 	},
 });
