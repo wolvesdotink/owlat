@@ -25,12 +25,20 @@ import type { EmbeddingModel, LanguageModel } from 'ai';
 /**
  * The language provider kinds, as a runtime tuple so both the
  * `LanguageProviderKind` type and the registry's completeness guard derive from
- * one source. Three adapters today: `openai` (hosted OpenAI, plus any endpoint
- * that speaks the OpenAI shape via an explicit base URL), `anthropic` (hosted
- * native Claude), and `openaiCompatible` (local / custom OpenAI-compatible
- * servers: Ollama, vLLM, llama.cpp).
+ * one source. Adapters today: `openai` (hosted OpenAI, plus any endpoint that
+ * speaks the OpenAI shape via an explicit base URL), `anthropic` (hosted native
+ * Claude), `google` (hosted native Gemini), `openrouter` (hosted aggregator
+ * fronting many upstream models via free-text, provider-prefixed ids), and
+ * `openaiCompatible` (local / custom OpenAI-compatible servers: Ollama, vLLM,
+ * llama.cpp).
  */
-export const LANGUAGE_PROVIDER_KINDS = ['openai', 'anthropic', 'openaiCompatible'] as const;
+export const LANGUAGE_PROVIDER_KINDS = [
+	'openai',
+	'anthropic',
+	'google',
+	'openrouter',
+	'openaiCompatible',
+] as const;
 export type LanguageProviderKind = (typeof LANGUAGE_PROVIDER_KINDS)[number];
 
 /** The embedding provider kinds. One adapter today: `openai`. */

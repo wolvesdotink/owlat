@@ -14,6 +14,8 @@
 
 import { openaiEmbeddingAdapter, openaiLanguageAdapter } from './openai';
 import { anthropicLanguageAdapter } from './anthropic';
+import { googleLanguageAdapter } from './google';
+import { openrouterLanguageAdapter } from './openrouter';
 import { openaiCompatibleLanguageAdapter } from './openaiCompatible';
 import type {
 	EmbeddingProviderAdapter,
@@ -37,6 +39,8 @@ export { EMBEDDING_PROVIDER_KINDS, LANGUAGE_PROVIDER_KINDS } from './types';
 export const LANGUAGE_PROVIDERS = {
 	openai: openaiLanguageAdapter,
 	anthropic: anthropicLanguageAdapter,
+	google: googleLanguageAdapter,
+	openrouter: openrouterLanguageAdapter,
 	openaiCompatible: openaiCompatibleLanguageAdapter,
 } as const;
 

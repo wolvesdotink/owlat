@@ -11,14 +11,11 @@
  * non-reversible hash of the key, never a slice of the raw secret.
  */
 
-import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import type { LanguageModel } from 'ai';
-import { keyFingerprint, memoizeClient } from './clientCache';
+import { type OpenAICompatibleClient, openAICompatibleClient } from './clientCache';
 import type { LanguageProviderAdapter, ProviderClientConfig } from './types';
 
-type CompatibleClient = ReturnType<typeof createOpenAICompatible>;
-
-const clientCache = new Map<string, CompatibleClient>();
+const clientCache = new Map<string, OpenAICompatibleClient>();
 
 function requireBaseUrl(cfg: ProviderClientConfig): string {
 	if (!cfg.baseUrl) {
@@ -27,16 +24,8 @@ function requireBaseUrl(cfg: ProviderClientConfig): string {
 	return cfg.baseUrl;
 }
 
-function compatibleClient(cfg: ProviderClientConfig): CompatibleClient {
-	const baseURL = requireBaseUrl(cfg);
-	const cacheKey = `${baseURL}::${keyFingerprint(cfg.apiKey)}`;
-	return memoizeClient(clientCache, cacheKey, () =>
-		createOpenAICompatible({
-			name: 'openai-compatible',
-			baseURL,
-			...(cfg.apiKey ? { apiKey: cfg.apiKey } : {}),
-		})
-	);
+function compatibleClient(cfg: ProviderClientConfig): OpenAICompatibleClient {
+	return openAICompatibleClient(clientCache, 'openai-compatible', requireBaseUrl(cfg), cfg.apiKey);
 }
 
 export const openaiCompatibleLanguageAdapter: LanguageProviderAdapter<'openaiCompatible'> = {

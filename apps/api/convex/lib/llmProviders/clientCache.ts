@@ -8,7 +8,11 @@
  * caching for free. Pure and isolate-safe (no `'use node'`).
  */
 
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import type { ProviderClientConfig } from './types';
+
+/** The client the `@ai-sdk/openai-compatible` provider factory returns. */
+export type OpenAICompatibleClient = ReturnType<typeof createOpenAICompatible>;
 
 /**
  * A stable, non-reversible fingerprint of an API key for cache keying. No slice
@@ -46,4 +50,29 @@ export function memoizeClient<T>(cache: Map<string, T>, cacheKey: string, build:
 	const client = build();
 	cache.set(cacheKey, client);
 	return client;
+}
+
+/**
+ * Build (or return the cached) `@ai-sdk/openai-compatible` client for
+ * `(baseURL, key-fingerprint)`. The single place the `createOpenAICompatible`
+ * construction shape lives: the openai-compatible (local) and openrouter
+ * adapters differ only in the provider `name` and their base-URL policy
+ * (required vs. defaulted) — both of which the caller resolves before calling.
+ * The cache key stores only a non-reversible hash of the key, never a slice of
+ * the raw secret.
+ */
+export function openAICompatibleClient(
+	cache: Map<string, OpenAICompatibleClient>,
+	name: string,
+	baseURL: string,
+	apiKey: string | undefined
+): OpenAICompatibleClient {
+	const cacheKey = `${baseURL}::${keyFingerprint(apiKey)}`;
+	return memoizeClient(cache, cacheKey, () =>
+		createOpenAICompatible({
+			name,
+			baseURL,
+			...(apiKey ? { apiKey } : {}),
+		})
+	);
 }
