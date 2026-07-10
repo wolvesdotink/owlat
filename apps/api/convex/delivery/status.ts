@@ -102,15 +102,17 @@ export const getLastSesEventAt = adminQuery({
  * can see the state without being able to change it.
  *
  * `health` mirrors the active provider's `providerHealth` row (or null before
- * the first send). `advancedRoutingActive` is true when a `providerRoutes` row
- * has at least one enabled provider — the signal that the instance-level
- * transport is being overridden by the advanced escape hatch.
+ * the first send) — only the fields the card renders (`status` + when it was
+ * last checked). `advancedRoutingActive` is true when a `providerRoutes` row has
+ * at least one enabled provider — the signal that the instance-level transport
+ * is being overridden by the advanced escape hatch.
  */
+// all-members: non-secret transport state (kind, canSend, routing flag, rolling
+// health); credentials/env-presence stay behind admin-gated getStatus.
 export const getTransportSummary = authedQuery({
 	args: {},
 	handler: async (ctx) => {
 		const provider = getOptional('EMAIL_PROVIDER') ?? null;
-		const isKnownProvider = isDeliveryProviderKind(provider ?? undefined);
 		const canSend = await isDeliveryConfigured(ctx);
 
 		// Advanced routing is "active" when any configured route enables a provider.
@@ -118,12 +120,10 @@ export const getTransportSummary = authedQuery({
 		const advancedRoutingActive = routes.some((route) => route.providers.some((p) => p.isEnabled));
 
 		// Rolling health for the active provider kind (null before the first send).
+		// Only the two fields the transport card renders — status + last-checked.
 		let health: {
 			status: 'healthy' | 'degraded' | 'down';
-			successRate: number;
-			avgLatencyMs: number;
 			lastCheckedAt: number;
-			lastErrorAt: number | null;
 		} | null = null;
 		if (isSendProviderKind(provider)) {
 			const record = await ctx.db
@@ -133,22 +133,16 @@ export const getTransportSummary = authedQuery({
 			if (record) {
 				health = {
 					status: record.status,
-					successRate: record.successRate,
-					avgLatencyMs: record.avgLatencyMs,
 					lastCheckedAt: record.lastCheckedAt,
-					lastErrorAt: record.lastErrorAt ?? null,
 				};
 			}
 		}
 
-		const settings = await ctx.db.query('instanceSettings').first(); // bounded: singleton row
 		return {
 			provider,
-			isKnownProvider,
 			canSend,
 			advancedRoutingActive,
 			health,
-			lastTestSucceededAt: settings?.deliveryTestLastSucceededAt ?? null,
 		};
 	},
 });
