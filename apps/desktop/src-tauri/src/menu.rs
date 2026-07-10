@@ -10,8 +10,11 @@
 //! apps/web `useDesktopMenu.ts`). The Edit submenu uses predefined roles so
 //! Cut/Copy/Paste/Select-All work inside the webview — essential on macOS.
 //!
-//! NB: Tauri 2.10 exposes no dock-menu API, so the macOS dock right-click menu is
-//! intentionally left to the existing system tray (Show / Inbox / Chat / Quit).
+//! NB: Tauri 2.10 exposes no dock-menu API — the macOS dock menu is provided
+//! only through the `NSApplicationDelegate.applicationDockMenu:` hook, which tao
+//! owns, so we can't attach one without swizzling the delegate. The quick verbs
+//! it would carry (Compose / Open Inbox) instead live on the system tray and in
+//! this File menu, which are the native surfaces Owlat actually reaches today.
 
 use tauri::{
     menu::{AboutMetadataBuilder, Menu, MenuItem, PredefinedMenuItem, SubmenuBuilder},
@@ -32,6 +35,13 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         .build();
 
     // Custom (handled) items, shared across platforms.
+    let compose = MenuItem::with_id(
+        app,
+        "compose",
+        "New Message",
+        true,
+        Some("CmdOrCtrl+Shift+M"),
+    )?;
     let new_ws = MenuItem::with_id(
         app,
         "new_workspace",
@@ -95,6 +105,7 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             .item(&quit)
             .build()?;
         let file = SubmenuBuilder::new(app, "File")
+            .item(&compose)
             .item(&new_ws)
             .separator()
             .item(&close)
@@ -126,6 +137,7 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         )?;
 
         let file = SubmenuBuilder::new(app, "File")
+            .item(&compose)
             .item(&new_ws)
             .item(&close)
             .separator()
@@ -153,6 +165,9 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
 #[allow(deprecated)]
 pub fn handle_menu_event(app: &AppHandle, id: &str) {
     match id {
+        "compose" => {
+            window::open_compose_window(app, "/compose");
+        }
         "inbox" => {
             window::show_main_window(app);
             if let Some(win) = app.get_webview_window("main") {
