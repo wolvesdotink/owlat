@@ -6,9 +6,10 @@
  * role menu and in the invite modal — so an admin never has to guess what a role
  * grants. Every line here is kept HONEST to the current permission map in
  * apps/api/convex/lib/sessionOrganization.ts (PERMISSION_MAP): admins can do
- * everything except delete the organization, and editors are view-only across
- * campaigns/contacts (they can send test emails and join team chat, but not send
- * campaigns). When the permission map changes, this copy must change with it.
+ * everything except delete the organization; editors run the campaign pipeline
+ * (create, edit, schedule, and send campaigns from the curated sender list) but
+ * cannot curate senders, manage contacts, or change settings. When the
+ * permission map changes, this copy must change with it.
  */
 
 import type { FunctionReturnType } from 'convex/server';
@@ -37,8 +38,9 @@ const NEUTRAL_BADGE = 'bg-bg-surface text-text-secondary border-border-subtle';
  *  - owner  = admin powers + delete the organization + transfer ownership.
  *  - admin  = send campaigns, manage contacts/settings, invite members; cannot
  *             delete the organization.
- *  - editor = view-only across campaigns and contacts; can send test emails and
- *             join team chat, but cannot send campaigns or change settings.
+ *  - editor = build and send campaigns from the curated sender list; view
+ *             contacts; send test emails and join team chat. Cannot curate
+ *             campaign senders, manage contacts, or change settings.
  */
 export const ROLE_DEFINITIONS: readonly RoleDefinition[] = [
 	{
@@ -62,9 +64,9 @@ export const ROLE_DEFINITIONS: readonly RoleDefinition[] = [
 		role: 'editor',
 		label: 'Editor',
 		icon: 'lucide:user',
-		summary: 'Works on content, does not send.',
+		summary: 'Builds and sends campaigns.',
 		detail:
-			'View campaigns and contacts, send test emails, and join team chat. Cannot send campaigns or change settings.',
+			'Create, edit, schedule, and send campaigns from the curated sender list. View contacts, send test emails, and join team chat. Cannot curate senders, manage contacts, or change settings.',
 		badgeToneClass: NEUTRAL_BADGE,
 	},
 ];
