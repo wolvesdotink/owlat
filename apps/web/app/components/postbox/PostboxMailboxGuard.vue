@@ -11,40 +11,41 @@
  *   - dead-end         — nothing they can do alone; one click asks an admin
  *                        (self-contained request, surfaced to admins in-app).
  *
- * The three no-mailbox signals are OPTIONAL props so the simple callers (label /
- * search / contacts pages) that only pass `mailboxId` + `loading` still get a
- * correct dead-end state, and the primary Postbox surface can pass the richer
- * signals from `mail.mailboxRequest.freshStartStatus`.
+ * The no-mailbox signals (reservation, external-account flag, open request) are
+ * fetched HERE from `mail.mailboxRequest.freshStartStatus` + the `mail.external`
+ * feature flag, so every caller — the primary Postbox surface and the simple
+ * label / search / contacts pages alike — gets the SAME correct next-step state
+ * from just `mailboxId` + `loading`. No caller can wire a wrong dead-end.
  */
 import { api } from '@owlat/api';
 import { deriveMailboxGuardState } from '~/utils/freshStart';
 
-const props = withDefaults(
-	defineProps<{
-		mailboxId: string | null;
-		loading: boolean;
-		/** Address of an unclaimed hosted reservation for this member, if any. */
-		reservedAddress?: string | null;
-		/** Connecting an external IMAP/SMTP account is enabled on this instance. */
-		externalAllowed?: boolean;
-		/** The member already has an open mailbox request (don't offer twice). */
-		hasOpenRequest?: boolean;
-	}>(),
-	{
-		reservedAddress: null,
-		externalAllowed: false,
-		hasOpenRequest: false,
-	}
+const props = defineProps<{
+	mailboxId: string | null;
+	loading: boolean;
+}>();
+
+// Self-fetched no-mailbox signals. Cheap self-scoped read; the reservation /
+// open-request fields only matter in the no-mailbox branches.
+const { data: freshStatus, isLoading: freshLoading } = useConvexQuery(
+	api.mail.mailboxRequest.freshStartStatus,
+	() => ({})
 );
+const { isEnabled } = useFeatureFlag();
+const externalAllowed = computed(() => isEnabled('mail.external'));
 
 const state = computed(() =>
 	deriveMailboxGuardState({
-		loading: props.loading,
+		// Keep showing the spinner until the fresh-start signals resolve too, so the
+		// dead-end never flashes before flipping to reserved / external.
+		loading: props.loading || (!props.mailboxId && freshLoading.value),
 		hasMailbox: Boolean(props.mailboxId),
-		reservedAddress: props.reservedAddress,
-		externalAllowed: props.externalAllowed,
+		reservedAddress: freshStatus.value?.reservedAddress ?? null,
+		externalAllowed: externalAllowed.value,
 	})
 );
+
+const reservedAddress = computed(() => freshStatus.value?.reservedAddress ?? null);
 
 const requested = ref(false);
 const { run: requestMailbox, isLoading: requesting } = useBackendOperation(
@@ -53,11 +54,13 @@ const { run: requestMailbox, isLoading: requesting } = useBackendOperation(
 );
 
 async function askAdmin() {
-	await requestMailbox({});
-	requested.value = true;
+	// run() resolves undefined on failure (error already toasted); only confirm
+	// when the request actually landed, so no false "we've let your admins know".
+	const res = await requestMailbox({});
+	if (res) requested.value = true;
 }
 
-const alreadyAsked = computed(() => props.hasOpenRequest || requested.value);
+const alreadyAsked = computed(() => Boolean(freshStatus.value?.hasOpenRequest) || requested.value);
 </script>
 
 <template>
@@ -82,7 +85,7 @@ const alreadyAsked = computed(() => props.hasOpenRequest || requested.value);
 			<h2 class="text-lg font-semibold text-text-primary mt-4">Your mailbox is being set up</h2>
 			<p class="text-sm text-text-secondary mt-2">
 				<span class="font-medium text-text-primary">{{ reservedAddress }}</span> is reserved for
-				you. It'll appear here as soon as it's ready — reload in a moment.
+				you. It'll appear here automatically as soon as it's ready.
 			</p>
 		</div>
 	</div>

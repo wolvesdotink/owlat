@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
-import { api } from '@owlat/api';
 
 useHead({ title: 'Mail — Owlat' });
 
@@ -32,14 +31,6 @@ const mailboxId = computed(() => currentMailbox.value?._id ?? null);
 // checklist so a member who has no mailbox yet can pick their setup back up here.
 const { user } = useAuth();
 const userId = computed(() => user.value?.id ?? null);
-
-// Fresh-start signals for the no-mailbox guard: is a hosted mailbox reserved,
-// have they already asked an admin, and is connecting an external account even
-// allowed on this instance? These turn a mute "no mailbox" wall into an honest
-// "here's what you can do next".
-const { data: freshStatus } = useConvexQuery(api.mail.mailboxRequest.freshStartStatus, () => ({}));
-const { isEnabled } = useFeatureFlag();
-const externalAllowed = computed(() => isEnabled('mail.external'));
 </script>
 
 <template>
@@ -61,13 +52,7 @@ const externalAllowed = computed(() => isEnabled('mail.external'));
 		<div v-else-if="!mailboxesLoading" class="flex-1 overflow-y-auto">
 			<!-- Honest, next-step-aware no-mailbox state (reserved / connect an
 			     external account / ask an admin) instead of a mute wall. -->
-			<PostboxMailboxGuard
-				:mailbox-id="null"
-				:loading="false"
-				:reserved-address="freshStatus?.reservedAddress ?? null"
-				:external-allowed="externalAllowed"
-				:has-open-request="freshStatus?.hasOpenRequest ?? false"
-			/>
+			<PostboxMailboxGuard :mailbox-id="null" :loading="false" />
 			<!-- Resumable per-user onboarding checklist so setup can be picked back up here. -->
 			<div v-if="userId" class="mx-auto max-w-md px-6 pb-12">
 				<OnboardingUserChecklist :user-id="userId" class="text-left" />
