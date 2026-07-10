@@ -6,9 +6,10 @@
  * for the chosen feature profiles, and the CLI-side flag store.
  *
  * Provisioning happens BEFORE any file is written so that a failure leaves the
- * instance in setup mode and the wizard retryable. Only callable when
- * OWLAT_SETUP_MODE=true; on success the .env flips OWLAT_SETUP_MODE=false so a
- * restart drops the setup-mode middleware.
+ * instance in setup mode and the wizard retryable. Callable only when
+ * OWLAT_SETUP_MODE=true AND the caller echoes the one-time setup token in the
+ * X-Setup-Token header (see server/utils/setupToken.ts); on success the .env
+ * flips OWLAT_SETUP_MODE=false so a restart drops the setup-mode middleware.
  */
 
 import { resolve } from 'node:path';
@@ -44,6 +45,10 @@ export default defineEventHandler(
 		if (process.env['OWLAT_SETUP_MODE'] !== 'true') {
 			throw createError({ statusCode: 403, message: 'Setup mode is not active.' });
 		}
+		// Setup mode is a precondition, not authorization: require the one-time
+		// setup token so only the operator who ran `owlat setup` can seed the admin
+		// and rewrite .env. Missing/wrong token -> 401.
+		requireSetupToken(event);
 
 		const body = await readBody<ApplyBody>(event);
 		if (!body?.flags || !body?.admin?.email) {
