@@ -28,7 +28,15 @@ async function seedInbound(
 	await t.run(async (ctx) => {
 		id = await ctx.db.insert(
 			'inboundMessages',
-			createTestInboundMessage({ processingStatus: 'drafting', ...overrides })
+			// threadId/contactId default to placeholder test IDs that fail convex's
+			// id-reference validation on insert; null them out (this factory's
+			// standard usage) — createFromInbound never reads them.
+			createTestInboundMessage({
+				processingStatus: 'drafting',
+				threadId: undefined,
+				contactId: undefined,
+				...overrides,
+			})
 		);
 	});
 	return id;
@@ -43,13 +51,11 @@ vi.mock('../lib/sessionOrganization', async () => {
 		getUserIdFromSession: vi.fn().mockResolvedValue('test-user'),
 		getMutationContext: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
 		requireOrgPermission: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
-		requireAuthenticatedIdentity: vi
-			.fn()
-			.mockResolvedValue({
-				subject: 'test-user',
-				issuer: 'test',
-				tokenIdentifier: 'test|test-user',
-			}),
+		requireAuthenticatedIdentity: vi.fn().mockResolvedValue({
+			subject: 'test-user',
+			issuer: 'test',
+			tokenIdentifier: 'test|test-user',
+		}),
 	};
 });
 
