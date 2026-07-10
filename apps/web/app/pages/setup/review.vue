@@ -1,11 +1,15 @@
 <script setup lang="ts">
-import { SETUP_WIZARD_STEPS, interpretSetupModeProbe } from '~/composables/useSetupWizard';
+import {
+	SETUP_WIZARD_STEPS,
+	interpretSetupModeProbe,
+	buildApplyBody,
+} from '~/composables/useSetupWizard';
 
 definePageMeta({ layout: false });
 useHead({ title: 'Owlat setup — Review' });
 
 const router = useRouter();
-const { flags, env, admin, summary } = useSetupWizard();
+const { flags, env, admin, migrationMode, summary } = useSetupWizard();
 const { getStepStatus, isConnectorHighlighted } = useWizard(SETUP_WIZARD_STEPS, 'review');
 
 const GENERATED_SECRETS = [
@@ -69,10 +73,13 @@ async function apply() {
 	phase.value = 'applying';
 	error.value = '';
 	try {
-		const res = await $fetch<{ ok: boolean; message?: string; redirectTo?: string }>('/api/setup/apply', {
-			method: 'POST',
-			body: { flags: flags.value, env: env.value, admin: admin.value },
-		});
+		const res = await $fetch<{ ok: boolean; message?: string; redirectTo?: string }>(
+			'/api/setup/apply',
+			{
+				method: 'POST',
+				body: buildApplyBody(flags.value, env.value, admin.value, migrationMode.value),
+			}
+		);
 		if (!res.ok) {
 			error.value = res.message ?? 'Setup failed for an unknown reason.';
 			phase.value = 'idle';
@@ -102,15 +109,15 @@ onUnmounted(stopPolling);
 		<div class="mx-auto max-w-2xl px-6 py-12">
 			<div class="flex items-center gap-3 mb-8">
 				<UiIconBox icon="lucide:feather" size="md" variant="brand" rounded="xl" />
-				<span class="text-sm font-medium text-text-secondary tracking-wide uppercase">Owlat setup</span>
+				<span class="text-sm font-medium text-text-secondary tracking-wide uppercase"
+					>Owlat setup</span
+				>
 			</div>
 
 			<UiStepIndicator
 				class="mb-10"
 				:steps="SETUP_WIZARD_STEPS"
-				:get-step-status="
-					getStepStatus as (stepId: string) => 'completed' | 'current' | 'upcoming'
-				"
+				:get-step-status="getStepStatus as (stepId: string) => 'completed' | 'current' | 'upcoming'"
 				:is-connector-highlighted="isConnectorHighlighted"
 			/>
 
@@ -128,7 +135,9 @@ onUnmounted(stopPolling);
 						<dt class="text-sm font-medium text-text-secondary">Active features</dt>
 						<dd>
 							<div v-if="summary.activeFeatures.length" class="flex flex-wrap gap-1.5">
-								<UiBadge v-for="f in summary.activeFeatures" :key="f" variant="default">{{ f }}</UiBadge>
+								<UiBadge v-for="f in summary.activeFeatures" :key="f" variant="default">{{
+									f
+								}}</UiBadge>
 							</div>
 							<span v-else class="text-sm text-text-tertiary">None enabled</span>
 						</dd>
@@ -148,7 +157,9 @@ onUnmounted(stopPolling);
 						<dt class="text-sm font-medium text-text-secondary">Admin account</dt>
 						<dd class="text-sm text-text-primary">
 							{{ summary.adminEmail || '(not set)' }}
-							<span v-if="summary.adminName" class="text-text-tertiary">({{ summary.adminName }})</span>
+							<span v-if="summary.adminName" class="text-text-tertiary"
+								>({{ summary.adminName }})</span
+							>
 						</dd>
 					</div>
 
@@ -179,12 +190,17 @@ onUnmounted(stopPolling);
 					title="Setup applied"
 					message="Finishing up — the app is restarting to load your configuration, then we'll take you to sign in. This usually takes a few seconds."
 				/>
-				<div v-if="slowRestart" class="rounded-lg border border-border-subtle bg-bg-elevated p-4 text-sm text-text-secondary">
+				<div
+					v-if="slowRestart"
+					class="rounded-lg border border-border-subtle bg-bg-elevated p-4 text-sm text-text-secondary"
+				>
 					Still waiting for the app to come back. On a managed install this finishes on its own. If
 					you're running a manual <code class="font-mono text-text-primary">docker compose</code>
 					stack, restart the web container — we'll continue automatically the moment it's back.
 					<div class="mt-3">
-						<UiButton variant="outline" size="sm" @click="continueNow">Continue to sign in</UiButton>
+						<UiButton variant="outline" size="sm" @click="continueNow"
+							>Continue to sign in</UiButton
+						>
 					</div>
 				</div>
 			</div>
@@ -199,8 +215,16 @@ onUnmounted(stopPolling);
 					:disabled="phase !== 'idle' || summary.missingProvider"
 					@click="apply"
 				>
-					{{ phase === 'applying' ? 'Applying…' : phase === 'finalizing' ? 'Finishing…' : 'Launch Owlat' }}
-					<template v-if="phase === 'idle'" #iconRight><Icon name="lucide:rocket" class="w-4 h-4 ml-2" /></template>
+					{{
+						phase === 'applying'
+							? 'Applying…'
+							: phase === 'finalizing'
+								? 'Finishing…'
+								: 'Launch Owlat'
+					}}
+					<template v-if="phase === 'idle'" #iconRight
+						><Icon name="lucide:rocket" class="w-4 h-4 ml-2"
+					/></template>
 				</UiButton>
 			</footer>
 		</div>
