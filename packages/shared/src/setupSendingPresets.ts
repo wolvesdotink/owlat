@@ -61,3 +61,90 @@ export const PROVIDER_ENV_KEYS = [
 ] as const;
 
 export type ProviderEnvKey = (typeof PROVIDER_ENV_KEYS)[number];
+
+/**
+ * The From-identity keys within `PROVIDER_ENV_KEYS`. Unlike a credential, the
+ * transport editor never shows the current value and treats a blank field as
+ * "leave unchanged" — so these must be PRESERVED when a patch omits them, never
+ * cleared. Wiping them would destroy the operator's configured system/campaign
+ * From address on an unrelated change (e.g. rotating an API key). Everything
+ * else is a credential, cleared-then-set so a dropped credential never stays
+ * live.
+ */
+export type FromIdentityEnvKey = 'DEFAULT_FROM_EMAIL' | 'DEFAULT_FROM_NAME';
+
+function isFromIdentityKey(key: string): key is FromIdentityEnvKey {
+	return key === 'DEFAULT_FROM_EMAIL' || key === 'DEFAULT_FROM_NAME';
+}
+
+/** Thrown by `planTransportEnvChange` when a patch carries a non-transport key. */
+export class UnexpectedTransportEnvKeyError extends Error {
+	constructor(readonly key: string) {
+		super(`Unexpected env key: ${key}.`);
+		this.name = 'UnexpectedTransportEnvKeyError';
+	}
+}
+
+export interface TransportEnvPlan {
+	/**
+	 * The full env to persist to `.env`: credentials replaced (dropped ones
+	 * removed), From identity preserved when the patch omits it.
+	 */
+	merged: Record<string, string>;
+	/**
+	 * The `[key, value]` pairs to push into the LIVE deployment env: credentials
+	 * cleared-or-set (a dropped credential is pushed as `''` to unset it); From
+	 * identity is pushed ONLY when the patch supplies it, so an omitted (blank)
+	 * From field leaves the current default untouched.
+	 */
+	changes: Array<[ProviderEnvKey, string]>;
+}
+
+/**
+ * Compute the env change for an in-app transport swap from the current `.env`
+ * (`existing`) and the provider-key `patch` the editor built with
+ * `buildProviderEnv` (SET keys only).
+ *
+ *  - Only `PROVIDER_ENV_KEYS` may appear in the patch — any other key throws
+ *    `UnexpectedTransportEnvKeyError`, so a browser request can never inject an
+ *    unrelated env var such as `INSTANCE_SECRET`.
+ *  - CREDENTIALS are clear-then-set: each is unset first (pushed as `''` live)
+ *    so a dropped credential never stays live, then the patch re-applies the
+ *    supplied ones.
+ *  - FROM-IDENTITY keys are preserved when the patch omits them (blank means
+ *    "keep the current default"); they are written only when the patch sets one.
+ */
+export function planTransportEnvChange(
+	existing: Record<string, string>,
+	patch: Record<string, string>
+): TransportEnvPlan {
+	for (const key of Object.keys(patch)) {
+		if (!(PROVIDER_ENV_KEYS as readonly string[]).includes(key)) {
+			throw new UnexpectedTransportEnvKeyError(key);
+		}
+	}
+
+	const merged: Record<string, string> = { ...existing };
+	const changes: Array<[ProviderEnvKey, string]> = [];
+
+	for (const key of PROVIDER_ENV_KEYS) {
+		const supplied = patch[key];
+		if (isFromIdentityKey(key)) {
+			// Preserve on omission; only touch when the patch sets it.
+			if (supplied !== undefined) {
+				merged[key] = supplied;
+				changes.push([key, supplied]);
+			}
+			continue;
+		}
+		// Credential: clear-then-set.
+		if (supplied !== undefined) {
+			merged[key] = supplied;
+		} else {
+			delete merged[key];
+		}
+		changes.push([key, supplied ?? '']);
+	}
+
+	return { merged, changes };
+}
