@@ -15,6 +15,9 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { escapeHtmlWithBreaks } from '@owlat/shared/html';
 import type { ConvexClient } from 'convex/browser';
+import type { FunctionReturnType } from 'convex/server';
+
+type NotifMessage = FunctionReturnType<typeof api.mail.mailbox.getMessage>;
 
 export interface NotificationActionPayload {
 	action?: unknown;
@@ -42,9 +45,9 @@ export function resolveNotificationEffect(payload: NotificationActionPayload): N
 	if (payload.action === 'read') return { type: 'read', messageId };
 	if (payload.action === 'reply') {
 		const text = str(payload?.reply);
-		// An empty reply submission carries no words to preserve — fall through
-		// to opening the thread rather than sending a blank message.
-		if (text) return { type: 'reply', messageId, text };
+		// A blank or whitespace-only submission carries no words to preserve —
+		// fall through to opening the thread rather than sending a blank message.
+		if (text?.trim()) return { type: 'reply', messageId, text };
 	}
 	return { type: 'open', folderRole: str(payload?.folderRole) ?? 'inbox', messageId };
 }
@@ -66,24 +69,16 @@ export interface ReplyDeps {
 	openComposer: (path: string) => Promise<void>;
 }
 
-/** Build the `/compose?to=…&subject=…&body=…` fallback path, preserving the
- * user's typed text even when the original message can't be re-read. */
-async function composePathForReply(
-	convex: ConvexClient,
-	messageId: Id<'mailMessages'>,
-	text: string
-): Promise<string> {
+/** Pure: build the `/compose?to=…&subject=…&body=…` fallback path from an
+ * already-loaded message (or null when it couldn't be read), always preserving
+ * the user's typed text. No I/O — the single fetch lives in the caller. */
+function composePathForReply(message: NotifMessage, text: string): string {
 	const params = new URLSearchParams();
-	try {
-		const message = await convex.query(api.mail.mailbox.getMessage, { messageId });
-		if (message) {
-			const to = message.replyToAddress ?? message.fromAddress;
-			if (to) params.set('to', to);
-			const subject = /^re\s*:/i.test(message.subject) ? message.subject : `Re: ${message.subject}`;
-			params.set('subject', subject);
-		}
-	} catch {
-		// Best-effort — the body below is the part we must never lose.
+	if (message) {
+		const to = message.replyToAddress ?? message.fromAddress;
+		if (to) params.set('to', to);
+		const subject = /^re\s*:/i.test(message.subject) ? message.subject : `Re: ${message.subject}`;
+		params.set('subject', subject);
 	}
 	if (text) params.set('body', text);
 	const qs = params.toString();
@@ -102,23 +97,32 @@ export async function replyFromNotification(
 	deps: ReplyDeps
 ): Promise<void> {
 	const id = messageId as Id<'mailMessages'>;
+	// One fetch of the original — reused for both the send and the fallback path
+	// so an unreadable original never triggers a second doomed round trip.
+	let message: NotifMessage = null;
 	try {
-		const message = await convex.query(api.mail.mailbox.getMessage, { messageId: id });
-		if (!message) throw new Error('message unavailable');
-		const { draftId } = await convex.mutation(api.mail.drafts.create, {
-			mailboxId: message.mailboxId,
-			inReplyToMessageId: id,
-		});
-		await convex.mutation(api.mail.drafts.update, {
-			draftId,
-			bodyHtml: escapeHtmlWithBreaks(text),
-			bodyText: text,
-		});
-		await convex.mutation(api.mail.drafts.send, { draftId });
+		message = await convex.query(api.mail.mailbox.getMessage, { messageId: id });
 	} catch (e) {
-		console.warn('[desktop] notification reply failed; opening composer', e);
-		await deps.openComposer(await composePathForReply(convex, id, text));
+		console.warn('[desktop] notification reply: could not read original', e);
 	}
+	if (message) {
+		try {
+			const { draftId } = await convex.mutation(api.mail.drafts.create, {
+				mailboxId: message.mailboxId,
+				inReplyToMessageId: id,
+			});
+			await convex.mutation(api.mail.drafts.update, {
+				draftId,
+				bodyHtml: escapeHtmlWithBreaks(text),
+				bodyText: text,
+			});
+			await convex.mutation(api.mail.drafts.send, { draftId });
+			return;
+		} catch (e) {
+			console.warn('[desktop] notification reply failed; opening composer', e);
+		}
+	}
+	await deps.openComposer(composePathForReply(message, text));
 }
 
 async function runEffect(effect: NonNullable<NotifEffect>, convex: ConvexClient): Promise<void> {

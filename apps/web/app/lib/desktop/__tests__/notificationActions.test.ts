@@ -30,6 +30,16 @@ describe('resolveNotificationEffect', () => {
 		});
 	});
 
+	it('treats a whitespace-only reply as an open (no blank message)', () => {
+		expect(
+			resolveNotificationEffect({ action: 'reply', messageId: 'm1', reply: '  \n\t ' })
+		).toEqual({
+			type: 'open',
+			folderRole: 'inbox',
+			messageId: 'm1',
+		});
+	});
+
 	it('defaults folderRole to inbox and treats unknown actions as open', () => {
 		expect(resolveNotificationEffect({ action: 'whatever', messageId: 'm1' })).toEqual({
 			type: 'open',
