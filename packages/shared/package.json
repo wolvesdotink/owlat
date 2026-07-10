@@ -136,6 +136,10 @@
 		"./spf": {
 			"types": "./src/spf.ts",
 			"import": "./src/spf.ts"
+		},
+		"./composeVerify": {
+			"types": "./src/composeVerify.ts",
+			"import": "./src/composeVerify.ts"
 		}
 	},
 	"peerDependencies": {
