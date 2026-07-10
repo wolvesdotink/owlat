@@ -207,13 +207,10 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 			<!-- Empty State (no organization) -->
 			<UiEmptyState
 				v-else-if="!hasActiveOrganization"
+				icon="lucide:send"
 				title="No workspace selected"
 				description="Create or select a workspace to start creating transactional emails."
-			>
-				<template #icon>
-					<Icon name="lucide:send" class="w-8 h-8 text-text-tertiary" />
-				</template>
-			</UiEmptyState>
+			/>
 
 			<!-- Empty State (no transactional emails) -->
 			<UiEmptyState
@@ -222,12 +219,10 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 					(!transactionalEmails || transactionalEmails.length === 0) &&
 					!debouncedSearch
 				"
+				icon="lucide:send"
 				title="No transactional emails yet"
 				description="Transactional emails are triggered by your application via API. Create your first one to get started."
 			>
-				<template #icon>
-					<Icon name="lucide:send" class="w-8 h-8 text-text-tertiary" />
-				</template>
 				<template #action>
 					<UiButton @click="openCreateModal">
 						<template #iconLeft>
@@ -245,12 +240,10 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 					(!transactionalEmails || transactionalEmails.length === 0) &&
 					debouncedSearch
 				"
+				icon="lucide:search"
 				title="No results found"
 				:description="`No transactional emails match &quot;${debouncedSearch}&quot;. Try a different search term.`"
 			>
-				<template #icon>
-					<Icon name="lucide:search" class="w-8 h-8 text-text-tertiary" />
-				</template>
 				<template #action>
 					<UiButton
 						variant="secondary"

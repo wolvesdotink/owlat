@@ -398,31 +398,31 @@ const showEmptyState = computed(
 			</p>
 		</UiCard>
 
-		<UiCard
-			v-else-if="showEmptyState && debouncedSearch"
-			class="flex flex-col items-center justify-center py-16 text-center px-6"
-		>
-			<UiIconBox icon="lucide:search" size="xl" variant="surface" rounded="full" class="mb-4" />
-			<p class="text-text-primary font-semibold">No results found</p>
-			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-				No campaigns match "{{ debouncedSearch }}". Try a different search term.
-			</p>
-			<UiButton variant="secondary" class="mt-6" @click="clearSearch">Clear search</UiButton>
+		<UiCard v-else-if="showEmptyState && debouncedSearch" padding="none" overflow="hidden">
+			<UiEmptyState
+				icon="lucide:search"
+				title="No results found"
+				:description="`No campaigns match &quot;${debouncedSearch}&quot;. Try a different search term.`"
+			>
+				<template #action>
+					<UiButton variant="secondary" @click="clearSearch">Clear search</UiButton>
+				</template>
+			</UiEmptyState>
 		</UiCard>
 
-		<UiCard
-			v-else-if="showEmptyState"
-			class="flex flex-col items-center justify-center py-16 text-center px-6"
-		>
-			<UiIconBox icon="lucide:send" size="xl" variant="surface" rounded="full" class="mb-4" />
-			<p class="text-text-primary font-semibold">No campaigns here yet</p>
-			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-				Create your first campaign to start reaching your audience.
-			</p>
-			<UiButton class="mt-6" @click="handleNewCampaign">
-				<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
-				New campaign
-			</UiButton>
+		<UiCard v-else-if="showEmptyState" padding="none" overflow="hidden">
+			<UiEmptyState
+				icon="lucide:send"
+				title="No campaigns here yet"
+				description="Create your first campaign to start reaching your audience."
+			>
+				<template #action>
+					<UiButton @click="handleNewCampaign">
+						<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
+						New campaign
+					</UiButton>
+				</template>
+			</UiEmptyState>
 		</UiCard>
 
 		<UiCard v-else padding="none" overflow="hidden">

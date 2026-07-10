@@ -340,23 +340,18 @@ onUnmounted(() => {
 			<!-- Empty State (no team) -->
 			<UiEmptyState
 				v-else-if="!hasActiveOrganization"
+				icon="lucide:mail"
 				title="No team selected"
 				description="Create or select a team to start creating email templates."
-			>
-				<template #icon>
-					<Icon name="lucide:mail" class="w-8 h-8 text-text-tertiary" />
-				</template>
-			</UiEmptyState>
+			/>
 
 			<!-- Empty State (no templates) -->
 			<UiEmptyState
 				v-else-if="!isLoading && (!templates || templates.length === 0) && !debouncedSearch"
+				icon="lucide:megaphone"
 				title="No marketing templates yet"
 				description="Create your first marketing template to start sending campaigns and newsletters."
 			>
-				<template #icon>
-					<Icon name="lucide:megaphone" class="w-8 h-8 text-text-tertiary" />
-				</template>
 				<template #action>
 					<UiButton @click="openCreateModal">
 						<template #iconLeft>
@@ -370,12 +365,10 @@ onUnmounted(() => {
 			<!-- Empty State (no search results) -->
 			<UiEmptyState
 				v-else-if="!isLoading && (!templates || templates.length === 0) && debouncedSearch"
+				icon="lucide:search"
 				title="No results found"
 				:description="`No templates match &quot;${debouncedSearch}&quot;. Try a different search term.`"
 			>
-				<template #icon>
-					<Icon name="lucide:search" class="w-8 h-8 text-text-tertiary" />
-				</template>
 				<template #action>
 					<UiButton variant="secondary" @click="clearSearch()"> Clear search </UiButton>
 				</template>

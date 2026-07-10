@@ -297,23 +297,18 @@ const navigateToEditPage = (blockId: Id<'emailBlocks'>) => {
 				<!-- Empty State (no organization) -->
 				<UiEmptyState
 					v-if="!hasActiveOrganization"
+					icon="lucide:blocks"
 					title="No workspace selected"
 					description="Create or select a workspace to start managing reusable blocks."
-				>
-					<template #icon>
-						<Icon name="lucide:blocks" class="w-8 h-8 text-text-tertiary" />
-					</template>
-				</UiEmptyState>
+				/>
 
 				<!-- Empty State (no blocks) -->
 				<UiEmptyState
 					v-else-if="!isLoading && (!blocks || blocks.length === 0) && !debouncedSearch"
+					icon="lucide:blocks"
 					title="No saved blocks yet"
 					description="Save blocks from your email templates to reuse across multiple emails."
 				>
-					<template #icon>
-						<Icon name="lucide:blocks" class="w-8 h-8 text-text-tertiary" />
-					</template>
 					<template #action>
 						<UiButton @click="openCreateModal">
 							<template #iconLeft>
@@ -327,12 +322,10 @@ const navigateToEditPage = (blockId: Id<'emailBlocks'>) => {
 				<!-- Empty State (no search results) -->
 				<UiEmptyState
 					v-else-if="!isLoading && (!blocks || blocks.length === 0) && debouncedSearch"
+					icon="lucide:search"
 					title="No results found"
 					:description="`No blocks match &quot;${debouncedSearch}&quot;. Try a different search term.`"
 				>
-					<template #icon>
-						<Icon name="lucide:search" class="w-8 h-8 text-text-tertiary" />
-					</template>
 					<template #action>
 						<UiButton
 							variant="secondary"
