@@ -25,9 +25,13 @@ const canSend = computed(() => status.value?.canSend === true);
 const isSes = computed(() => status.value?.provider === 'ses');
 
 const runtimeConfig = useRuntimeConfig();
+// Absolute HTTPS endpoint SNS subscribes to. When the site URL is unknown we
+// return '' (never a relative path — an SNS HTTPS subscription can't use one)
+// so the copy block hides behind a "site URL not configured" hint instead of
+// handing the operator a broken value. Mirrors the useFormSettings precedent.
 const sesWebhookUrl = computed(() => {
-	const base = runtimeConfig.public.convexSiteUrl || runtimeConfig.public.convexUrl || '';
-	return base ? `${String(base).replace(/\/$/, '')}/webhooks/ses` : '/webhooks/ses';
+	const base = runtimeConfig.public.convexSiteUrl || runtimeConfig.public.convexUrl;
+	return base ? `${base.replace(/\/$/, '')}/webhooks/ses` : '';
 });
 
 // Live "last event received" — enabled only for SES so we don't poll otherwise.
@@ -371,7 +375,7 @@ async function handleSendTest() {
 					</p>
 
 					<!-- Webhook endpoint -->
-					<div>
+					<div v-if="sesWebhookUrl">
 						<div class="flex items-center justify-between mb-2">
 							<p class="text-xs font-medium text-text-primary">SNS subscription endpoint</p>
 							<button
@@ -393,6 +397,9 @@ async function handleSendTest() {
 							>{{ sesWebhookUrl }}</pre
 						>
 					</div>
+					<p v-else class="text-xs text-text-tertiary">
+						Set your site URL to see the endpoint SNS should subscribe to.
+					</p>
 
 					<!-- Setup steps -->
 					<ol class="space-y-2 text-sm text-text-secondary list-decimal pl-5">
@@ -400,6 +407,11 @@ async function handleSendTest() {
 							In the SNS console, create a topic (e.g.
 							<code class="text-text-primary">owlat-ses-feedback</code>) and add an
 							<span class="text-text-primary">HTTPS</span> subscription with the endpoint above.
+						</li>
+						<li>
+							Set <code class="text-text-primary">SES_SNS_TOPIC_ARN</code> to that topic&rsquo;s
+							ARN. Owlat only accepts feedback from this exact topic, so the endpoint stays closed
+							until it&rsquo;s set.
 						</li>
 						<li>
 							In the SES console, create a
@@ -410,7 +422,8 @@ async function handleSendTest() {
 						</li>
 						<li>
 							Set <code class="text-text-primary">SES_CONFIGURATION_SET</code> to the set&rsquo;s
-							name so every send is attributed, then restart the instance.
+							name so every send is attributed. Changes take effect on the next send — no restart
+							needed.
 						</li>
 					</ol>
 
