@@ -67,6 +67,14 @@ export async function provisionMailbox(
 		quotaBytes?: number;
 		/** undefined ⇒ 'hosted'. 'external' skips the MTA cache push (see below). */
 		kind?: 'hosted' | 'external';
+		/**
+		 * Sharing model. undefined ⇒ 'personal' (a single user's mailbox).
+		 * 'shared' marks a team inbox whose access is governed by explicit
+		 * `mailboxMembers` rows (see mail/mailboxMembers.ts). The creator's
+		 * implicit 'owner' membership is inserted here regardless of scope; a
+		 * shared mailbox layers further member rows on top.
+		 */
+		scope?: 'personal' | 'shared';
 		externalAccountId?: Id<'externalMailAccounts'>;
 	}
 ): Promise<Id<'mailboxes'>> {
@@ -79,6 +87,7 @@ export async function provisionMailbox(
 		domain: args.domain,
 		displayName: args.displayName,
 		kind,
+		scope: args.scope,
 		externalAccountId: args.externalAccountId,
 		status: 'active',
 		quotaBytes: args.quotaBytes,
