@@ -4,7 +4,7 @@ import { internal } from '../_generated/api';
 import { campaignEmailPool, transactionalEmailPool } from './workpool';
 import { isSuppressed } from '../lib/suppression';
 import { deliveryConfiguredFromEnv, providerKindConfigured } from '../lib/sendProviders/capability';
-import { isSendProviderKind } from '../lib/sendProviders';
+import { isSendProviderKind } from '../lib/sendProviders/types';
 
 /**
  * Error thrown by `enqueueNonCampaignSend` when the recipient is on the
@@ -176,7 +176,9 @@ export const enqueueNonCampaignSend = internalMutation({
 		// External-mailbox 1:1 replies use the user's own SMTP via a different path
 		// and never reach this producer.
 		const envelopeProviderOk =
-			args.providerType !== undefined && isSendProviderKind(args.providerType) && providerKindConfigured(args.providerType);
+			args.providerType !== undefined &&
+			isSendProviderKind(args.providerType) &&
+			providerKindConfigured(args.providerType);
 		if (!envelopeProviderOk && !deliveryConfiguredFromEnv()) {
 			throw new Error(NO_DELIVERY_PROVIDER_ERROR);
 		}
@@ -198,12 +200,8 @@ export const enqueueNonCampaignSend = internalMutation({
 			subject: args.subject,
 			...(args.contactId ? { contactId: args.contactId } : {}),
 			...(args.automationId ? { automationId: args.automationId } : {}),
-			...(args.inboundMessageId
-				? { inboundMessageId: args.inboundMessageId }
-				: {}),
-			...(args.transactionalEmailId
-				? { transactionalEmailId: args.transactionalEmailId }
-				: {}),
+			...(args.inboundMessageId ? { inboundMessageId: args.inboundMessageId } : {}),
+			...(args.transactionalEmailId ? { transactionalEmailId: args.transactionalEmailId } : {}),
 			...(args.providerType ? { providerType: args.providerType } : {}),
 		});
 
@@ -211,7 +209,7 @@ export const enqueueNonCampaignSend = internalMutation({
 		// Feedback-ID SenderId for automation + agent-reply sends.
 		const organizationId = await ctx.runQuery(
 			internal.campaigns.sendQueries.getSingletonOrganizationId,
-			{},
+			{}
 		);
 
 		await transactionalEmailPool.enqueueAction(
@@ -235,9 +233,7 @@ export const enqueueNonCampaignSend = internalMutation({
 					// reply to a message → they keep the composer's default
 					// `auto-generated`. Both values are `!= no`, so isAutomatedMail
 					// classifies either as automated and the message stays loop-safe.
-					...(args.kind === 'agent_reply'
-						? { autoSubmittedType: 'auto-replied' as const }
-						: {}),
+					...(args.kind === 'agent_reply' ? { autoSubmittedType: 'auto-replied' as const } : {}),
 					...(organizationId ? { organizationId } : {}),
 					...(args.headers ? { headers: args.headers } : {}),
 					...(args.contactId ? { contactId: args.contactId } : {}),
