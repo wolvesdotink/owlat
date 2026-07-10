@@ -158,7 +158,11 @@ export const create = authedMutation({
 async function readSession(ctx: Parameters<typeof getBetterAuthSessionWithRole>[0]) {
 	const s = await getBetterAuthSessionWithRole(ctx);
 	if (!s || !s.activeOrganizationId || !s.role) return null;
-	return { userId: s.userId, role: s.role };
+	return {
+		userId: s.userId,
+		role: s.role,
+		activeOrganizationId: s.activeOrganizationId,
+	};
 }
 
 // public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
@@ -462,7 +466,11 @@ export const latestInboxUnread = publicQuery({
 		const now = Date.now();
 		// The caller's own mailboxes plus any shared mailbox they belong to; the
 		// per-mailbox `status !== 'active'` guard below keeps the status filtering.
-		const mailboxes = await loadAccessibleMailboxes(ctx, session.userId);
+		const mailboxes = await loadAccessibleMailboxes(
+			ctx,
+			session.userId,
+			session.activeOrganizationId
+		);
 		let best: {
 			messageId: Id<'mailMessages'>;
 			fromName?: string;
@@ -505,7 +513,11 @@ export const inboxUnreadCount = publicQuery({
 		if (!session) return 0;
 		// The caller's own mailboxes plus any shared mailbox they belong to; the
 		// per-mailbox `status !== 'active'` guard below keeps the status filtering.
-		const mailboxes = await loadAccessibleMailboxes(ctx, session.userId);
+		const mailboxes = await loadAccessibleMailboxes(
+			ctx,
+			session.userId,
+			session.activeOrganizationId
+		);
 		let unread = 0;
 		for (const mb of mailboxes) {
 			if (mb.status !== 'active') continue;
@@ -551,7 +563,11 @@ export const newestUnreadInbox = publicQuery({
 		const now = Date.now();
 		// The caller's own mailboxes plus any shared mailbox they belong to; the
 		// per-mailbox `status !== 'active'` guard below keeps the status filtering.
-		const mailboxes = await loadAccessibleMailboxes(ctx, session.userId);
+		const mailboxes = await loadAccessibleMailboxes(
+			ctx,
+			session.userId,
+			session.activeOrganizationId
+		);
 		let total = 0;
 		const collected: (typeof empty)['messages'] = [];
 		for (const mb of mailboxes) {

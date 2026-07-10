@@ -150,10 +150,17 @@ export async function requireMessageAccess(
  * personal mailbox the only membership row is the mailbox's own backfilled
  * owner (already covered by the `by_user` query), so the union is a no-op and
  * inbox enumeration stays bit-for-bit unchanged.
+ *
+ * Defense-in-depth mirrors {@link requireMailboxAccess}: a membership-derived
+ * mailbox is only surfaced when its `organizationId` matches the caller's
+ * active organization, so a stale or mis-seeded membership row can never leak
+ * another org's unread counts or sender/subject peeks. The owned side
+ * (`mailboxes.by_user`) is untouched, keeping personal mailboxes bit-for-bit.
  */
 export async function loadAccessibleMailboxes(
 	ctx: QueryCtx,
-	userId: string
+	userId: string,
+	activeOrganizationId: string
 ): Promise<Array<Doc<'mailboxes'>>> {
 	const owned = await ctx.db
 		.query('mailboxes')
@@ -169,6 +176,8 @@ export async function loadAccessibleMailboxes(
 		if (seen.has(row.mailboxId)) continue;
 		const mailbox = await ctx.db.get(row.mailboxId);
 		if (!mailbox) continue;
+		// A membership row may only reach a mailbox in the caller's own org.
+		if (mailbox.organizationId !== activeOrganizationId) continue;
 		seen.add(mailbox._id);
 		out.push(mailbox);
 	}
