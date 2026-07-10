@@ -18,9 +18,9 @@ import type { OrganizationRole } from '../../lib/sessionOrganization';
 let mockRole: OrganizationRole = 'owner';
 
 vi.mock('../../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<
-		typeof import('../../lib/sessionOrganization')
-	>('../../lib/sessionOrganization');
+	const actual = await vi.importActual<typeof import('../../lib/sessionOrganization')>(
+		'../../lib/sessionOrganization'
+	);
 	return {
 		...actual,
 		requireOrgMember: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
@@ -33,19 +33,19 @@ vi.mock('../../lib/sessionOrganization', async () => {
 		// settings.update now gates via requireOrgPermission; run the real
 		// role→permission map against the mocked role so the editor rejection
 		// and owner/admin acceptance gates are exercised end-to-end.
-		requireOrgPermission: vi.fn().mockImplementation(
-			async (_ctx: unknown, permission: string, message?: string) => {
+		requireOrgPermission: vi
+			.fn()
+			.mockImplementation(async (_ctx: unknown, permission: string, message?: string) => {
 				const mod: typeof import('../../lib/sessionOrganization') = actual;
 				mod.requirePermission(
 					mod.hasPermission(
 						mockRole as Parameters<typeof mod.hasPermission>[0],
-						permission as Parameters<typeof mod.hasPermission>[1],
+						permission as Parameters<typeof mod.hasPermission>[1]
 					),
-					message,
+					message
 				);
 				return { userId: 'test-user', role: mockRole };
-			},
-		),
+			}),
 	};
 });
 
@@ -60,7 +60,7 @@ const modules = Object.fromEntries(
 			return ['../../organizations/' + key.slice(3), val];
 		}
 		return [key, val];
-	}),
+	})
 );
 
 beforeEach(() => {
@@ -107,7 +107,7 @@ describe('organizations.settings.update — permission rule', () => {
 		await expect(
 			t.mutation(api.organizations.settings.update, {
 				timezone: 'UTC',
-			}),
+			})
 		).rejects.toThrow(/owners and admins/);
 	});
 
@@ -204,6 +204,84 @@ describe('organizations.settings.update — write semantics', () => {
 });
 
 // ============================================================
+// migrationMode — instance-level "moving from another platform" flag
+// ============================================================
+
+describe('organizations.settings — migrationMode', () => {
+	it('is absent by default (fresh-start) when no row exists', async () => {
+		const t = convexTest(schema, modules);
+		const result = await t.query(api.organizations.settings.get, {});
+		expect(result).toBeNull();
+	});
+
+	it('is member-readable via get (the welcome flow reads it)', async () => {
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('instanceSettings', {
+				migrationMode: true,
+				createdAt: Date.now(),
+			});
+		});
+
+		// getUserIdFromSession is mocked to a plain member — no admin gate on read.
+		const result = await t.query(api.organizations.settings.get, {});
+		expect(result?.migrationMode).toBe(true);
+	});
+
+	it('rejects an editor writing migrationMode', async () => {
+		const t = convexTest(schema, modules);
+
+		mockRole = 'editor';
+		await expect(
+			t.mutation(api.organizations.settings.update, {
+				migrationMode: true,
+			})
+		).rejects.toThrow(/owners and admins/);
+	});
+
+	it('lets an admin turn migrationMode on', async () => {
+		const t = convexTest(schema, modules);
+
+		mockRole = 'admin';
+		await t.mutation(api.organizations.settings.update, {
+			migrationMode: true,
+		});
+
+		await t.run(async (ctx) => {
+			const row = await ctx.db.query('instanceSettings').first();
+			expect(row?.migrationMode).toBe(true);
+		});
+	});
+
+	it('createInternal defaults migrationMode to false', async () => {
+		const t = convexTest(schema, modules);
+
+		const id = await t.mutation(internal.organizations.settings.createInternal, {
+			timezone: 'UTC',
+		});
+
+		await t.run(async (ctx) => {
+			const row = await ctx.db.get(id);
+			expect(row?.migrationMode).toBe(false);
+		});
+	});
+
+	it('createInternal persists migrationMode when the wizard seeds it', async () => {
+		const t = convexTest(schema, modules);
+
+		const id = await t.mutation(internal.organizations.settings.createInternal, {
+			timezone: 'UTC',
+			migrationMode: true,
+		});
+
+		await t.run(async (ctx) => {
+			const row = await ctx.db.get(id);
+			expect(row?.migrationMode).toBe(true);
+		});
+	});
+});
+
+// ============================================================
 // remove — owner-only, schedules walker
 // ============================================================
 
@@ -212,24 +290,17 @@ describe('organizations.settings.remove', () => {
 		const t = convexTest(schema, modules);
 
 		mockRole = 'admin';
-		await expect(
-			t.mutation(api.organizations.settings.remove, {}),
-		).rejects.toThrow(/owner/);
+		await expect(t.mutation(api.organizations.settings.remove, {})).rejects.toThrow(/owner/);
 
 		mockRole = 'editor';
-		await expect(
-			t.mutation(api.organizations.settings.remove, {}),
-		).rejects.toThrow(/owner/);
+		await expect(t.mutation(api.organizations.settings.remove, {})).rejects.toThrow(/owner/);
 	});
 
 	it('returns success message and schedules the deletion walker for owner', async () => {
 		const t = convexTest(schema, modules);
 
 		mockRole = 'owner';
-		const outcome = await t.mutation(
-			api.organizations.settings.remove,
-			{},
-		);
+		const outcome = await t.mutation(api.organizations.settings.remove, {});
 		expect(outcome.success).toBe(true);
 		expect(outcome.message).toContain('deletion');
 
@@ -246,13 +317,10 @@ describe('organizations.settings.createInternal', () => {
 	it('inserts the row when none exists', async () => {
 		const t = convexTest(schema, modules);
 
-		const id = await t.mutation(
-			internal.organizations.settings.createInternal,
-			{
-				timezone: 'UTC',
-				defaultFromName: 'Bootstrap',
-			},
-		);
+		const id = await t.mutation(internal.organizations.settings.createInternal, {
+			timezone: 'UTC',
+			defaultFromName: 'Bootstrap',
+		});
 
 		expect(id).toBeDefined();
 		await t.run(async (ctx) => {
@@ -273,13 +341,10 @@ describe('organizations.settings.createInternal', () => {
 			});
 		});
 
-		const id = await t.mutation(
-			internal.organizations.settings.createInternal,
-			{
-				timezone: 'UTC',
-				defaultFromName: 'second',
-			},
-		);
+		const id = await t.mutation(internal.organizations.settings.createInternal, {
+			timezone: 'UTC',
+			defaultFromName: 'second',
+		});
 
 		expect(id).toBe(existingId!);
 		await t.run(async (ctx) => {
@@ -292,10 +357,7 @@ describe('organizations.settings.createInternal', () => {
 	it('defaults timezone to UTC when omitted', async () => {
 		const t = convexTest(schema, modules);
 
-		const id = await t.mutation(
-			internal.organizations.settings.createInternal,
-			{},
-		);
+		const id = await t.mutation(internal.organizations.settings.createInternal, {});
 
 		await t.run(async (ctx) => {
 			const row = await ctx.db.get(id);

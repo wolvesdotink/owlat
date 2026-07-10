@@ -8,6 +8,7 @@ import {
 	emailStepIsValid,
 	buildProviderEnv,
 	buildSetupSummary,
+	buildApplyBody,
 	interpretSetupModeProbe,
 	type AdminDraft,
 	type EmailStepDraft,
@@ -50,10 +51,10 @@ describe('useSetupWizard step model', () => {
 describe('email validation helper', () => {
 	it.each(['admin@example.com', 'a.b@sub.example.co', '  trimmed@example.com  '])(
 		'accepts %s',
-		(value) => expect(isSetupEmailValid(value)).toBe(true),
+		(value) => expect(isSetupEmailValid(value)).toBe(true)
 	);
 	it.each(['', 'no-at-sign', 'missing@tld', '@nolocal.com'])('rejects %s', (value) =>
-		expect(isSetupEmailValid(value)).toBe(false),
+		expect(isSetupEmailValid(value)).toBe(false)
 	);
 });
 
@@ -115,7 +116,7 @@ describe('buildProviderEnv', () => {
 	it('writes the provider and its credentials, clearing stale keys', () => {
 		const env = buildProviderEnv(
 			{ AWS_SES_REGION: 'eu-west-1', RESEND_API_KEY: 'old' },
-			emailDraft({ provider: 'resend', resendKey: 're_live_123' }),
+			emailDraft({ provider: 'resend', resendKey: 're_live_123' })
 		);
 		expect(env['EMAIL_PROVIDER']).toBe('resend');
 		expect(env['RESEND_API_KEY']).toBe('re_live_123');
@@ -125,7 +126,7 @@ describe('buildProviderEnv', () => {
 	it('clears the provider entirely for "none"', () => {
 		const env = buildProviderEnv(
 			{ EMAIL_PROVIDER: 'mta' },
-			emailDraft({ provider: 'none', requiresProvider: false }),
+			emailDraft({ provider: 'none', requiresProvider: false })
 		);
 		expect(env['EMAIL_PROVIDER']).toBeUndefined();
 	});
@@ -133,7 +134,7 @@ describe('buildProviderEnv', () => {
 	it('flows the optional From-identity into the apply env', () => {
 		const env = buildProviderEnv(
 			{},
-			emailDraft({ provider: 'mta', fromEmail: 'hello@acme.test', fromName: 'Acme' }),
+			emailDraft({ provider: 'mta', fromEmail: 'hello@acme.test', fromName: 'Acme' })
 		);
 		expect(env['DEFAULT_FROM_EMAIL']).toBe('hello@acme.test');
 		expect(env['DEFAULT_FROM_NAME']).toBe('Acme');
@@ -142,7 +143,7 @@ describe('buildProviderEnv', () => {
 	it('drops a previously-set From-identity when cleared', () => {
 		const env = buildProviderEnv(
 			{ DEFAULT_FROM_EMAIL: 'old@acme.test', DEFAULT_FROM_NAME: 'Old' },
-			emailDraft({ provider: 'mta', fromEmail: '', fromName: '' }),
+			emailDraft({ provider: 'mta', fromEmail: '', fromName: '' })
 		);
 		expect(env['DEFAULT_FROM_EMAIL']).toBeUndefined();
 		expect(env['DEFAULT_FROM_NAME']).toBeUndefined();
@@ -153,7 +154,12 @@ describe('review step renders the collected config', () => {
 	it('summarizes enabled features, provider, From-identity, and admin', () => {
 		const env = buildProviderEnv(
 			{},
-			emailDraft({ provider: 'resend', resendKey: 're_1', fromEmail: 'team@acme.test', fromName: 'Acme' }),
+			emailDraft({
+				provider: 'resend',
+				resendKey: 're_1',
+				fromEmail: 'team@acme.test',
+				fromName: 'Acme',
+			})
 		);
 		const summary = buildSetupSummary(getDefaultFlags(), env, validAdmin);
 
@@ -183,9 +189,24 @@ describe('review step renders the collected config', () => {
 		const summary = buildSetupSummary(
 			getDefaultFlags(),
 			{ EMAIL_PROVIDER: 'mta', DEFAULT_FROM_EMAIL: 'solo@acme.test' },
-			validAdmin,
+			validAdmin
 		);
 		expect(summary.fromIdentity).toBe('solo@acme.test');
+	});
+});
+
+describe('migration-mode question writes the apply body', () => {
+	it('defaults to a fresh start (migrationMode false)', () => {
+		const body = buildApplyBody(getDefaultFlags(), {}, validAdmin, false);
+		expect(body.migrationMode).toBe(false);
+	});
+
+	it('carries the "moving from another platform" answer into the apply contract', () => {
+		const body = buildApplyBody(getDefaultFlags(), {}, validAdmin, true);
+		expect(body.migrationMode).toBe(true);
+		// The rest of the collected draft still flows through untouched.
+		expect(body.admin).toEqual(validAdmin);
+		expect(body.flags).toEqual(getDefaultFlags());
 	});
 });
 
