@@ -106,37 +106,8 @@ const { run: resumeAutomation } = useBackendOperation(api.automations.automation
 	label: 'Resume automation',
 });
 
-// Get trigger type display
-const getTriggerDisplay = (
-	triggerType: 'contact_created' | 'contact_updated' | 'event_received' | 'topic_subscribed'
-) => {
-	switch (triggerType) {
-		case 'contact_created':
-			return { label: 'Contact Created', icon: 'lucide:user-plus' };
-		case 'contact_updated':
-			return { label: 'Contact Updated', icon: 'lucide:user-cog' };
-		case 'event_received':
-			return { label: 'Event Received', icon: 'lucide:radio' };
-		case 'topic_subscribed':
-			return { label: 'Subscribed to Topic', icon: 'lucide:list-plus' };
-	}
-};
-
-// Get status badge configuration
-const getStatusBadge = (status: 'draft' | 'active' | 'paused') => {
-	switch (status) {
-		case 'draft':
-			return {
-				color: 'bg-text-tertiary/10 text-text-tertiary',
-				icon: 'lucide:pencil',
-				label: 'Draft',
-			};
-		case 'active':
-			return { color: 'bg-success/10 text-success', icon: 'lucide:play', label: 'Active' };
-		case 'paused':
-			return { color: 'bg-warning/10 text-warning', icon: 'lucide:pause', label: 'Paused' };
-	}
-};
+// Status + trigger badges (shared with the automation detail page)
+const { getStatusBadge, getTriggerDisplay } = useAutomationBadges();
 
 // Action dropdown state
 const openDropdownId = ref<Id<'automations'> | null>(null);
