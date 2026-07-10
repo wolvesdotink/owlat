@@ -7,6 +7,8 @@
  * module only decides how its values are rendered.
  */
 
+import { formatPercentage } from '~/utils/formatters';
+
 export type AbuseStatus = 'clean' | 'warned' | 'suspended' | 'banned';
 export type RiskLevel = 'low' | 'medium' | 'high' | 'critical' | string;
 export type ScanLevel = 'safe' | 'suspicious' | 'blocked' | string;
@@ -69,7 +71,7 @@ export function scanLevelVariant(level: string | undefined): 'success' | 'warnin
 /** Format a 0–1 rate as a percentage string (e.g. 0.0123 → "1.23%"). */
 export function formatRate(rate: number | undefined): string {
 	if (rate === undefined || Number.isNaN(rate)) return '—';
-	return `${(rate * 100).toFixed(2)}%`;
+	return formatPercentage(rate, 2, true);
 }
 
 /** Human label for a platform-admin audit action. */
