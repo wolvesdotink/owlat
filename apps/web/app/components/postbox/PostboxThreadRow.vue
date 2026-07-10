@@ -30,6 +30,8 @@ export type PostboxThreadRowMessage = {
  * semantic emits (its `<li>` is the v-for element root). Splitting the row out
  * keeps PostboxThreadList.vue under the file-size ratchet.
  */
+import type { ContextMenuItem } from '@owlat/ui/components/ui/ContextMenu.vue';
+
 const props = defineProps<{
 	msg: PostboxThreadRowMessage;
 	selectable?: boolean;
@@ -59,12 +61,15 @@ function onCheckboxClick(event: MouseEvent) {
 	emit('toggle-select');
 }
 
-/** Stop a hover-action button from following the row's NuxtLink. */
-function rowAction(event: MouseEvent, e: 'toggle-star' | 'toggle-read' | 'archive' | 'trash') {
-	event.stopPropagation();
-	event.preventDefault();
-	// Narrow to a literal per branch: Vue types `emit` as an intersection of
-	// per-event call signatures, so a union-typed argument matches no overload.
+/**
+ * Emit one of the row's triage verbs. Both the hover-action buttons and the
+ * right-click context menu route through here, so there is ONE action source
+ * (the list's mutation handlers) with two entry points.
+ *
+ * Narrow to a literal per branch: Vue types `emit` as an intersection of
+ * per-event call signatures, so a union-typed argument matches no overload.
+ */
+function triage(e: 'toggle-star' | 'toggle-read' | 'archive' | 'trash') {
 	switch (e) {
 		case 'toggle-star':
 			emit('toggle-star');
@@ -80,14 +85,56 @@ function rowAction(event: MouseEvent, e: 'toggle-star' | 'toggle-read' | 'archiv
 			break;
 	}
 }
+
+/** Stop a hover-action button from following the row's NuxtLink, then triage. */
+function rowAction(event: MouseEvent, e: 'toggle-star' | 'toggle-read' | 'archive' | 'trash') {
+	event.stopPropagation();
+	event.preventDefault();
+	triage(e);
+}
+
+// Right-click / context-menu-key items — the same triage verbs as the hover
+// row-actions (one action source, two entry points).
+const contextItems = computed<ContextMenuItem[]>(() => [
+	{
+		id: 'star',
+		label: props.msg.flagFlagged ? 'Unstar' : 'Star',
+		icon: 'lucide:star',
+		run: () => triage('toggle-star'),
+	},
+	{
+		id: 'read',
+		label: props.msg.flagSeen ? 'Mark as unread' : 'Mark as read',
+		icon: props.msg.flagSeen ? 'lucide:mail' : 'lucide:mail-open',
+		run: () => triage('toggle-read'),
+	},
+	{
+		id: 'archive',
+		label: 'Archive',
+		icon: 'lucide:archive',
+		run: () => triage('archive'),
+	},
+	{
+		id: 'trash',
+		label: 'Delete',
+		icon: 'lucide:trash',
+		danger: true,
+		separatorBefore: true,
+		run: () => triage('trash'),
+	},
+]);
 </script>
 
 <template>
-	<li
-		class="group relative"
-		:class="{ 'pbx-virtual-row': virtualize }"
-		style="content-visibility: auto; contain-intrinsic-size: auto var(--pbx-row-intrinsic, 76px)"
-	>
+	<UiContextMenu :items="contextItems">
+		<template #default="{ onContextmenu, onKeydown }">
+			<li
+				class="group relative"
+				:class="{ 'pbx-virtual-row': virtualize }"
+				style="content-visibility: auto; contain-intrinsic-size: auto var(--pbx-row-intrinsic, 76px)"
+				@contextmenu="onContextmenu"
+				@keydown="onKeydown"
+			>
 		<component
 			:is="selectable ? 'div' : (resolveComponent('NuxtLink') as 'div')"
 			:id="rowId"
@@ -207,6 +254,8 @@ function rowAction(event: MouseEvent, e: 'toggle-star' | 'toggle-read' | 'archiv
 			>
 				<Icon name="lucide:trash" class="w-4 h-4" />
 			</button>
-		</div>
-	</li>
+				</div>
+			</li>
+		</template>
+	</UiContextMenu>
 </template>

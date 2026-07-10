@@ -67,6 +67,11 @@ beforeAll(() => {
 const iconStub = { props: ['name'], template: '<span />' };
 const nuxtLinkStub = { props: ['to'], template: '<a :href="to"><slot /></a>' };
 const dialogStub = { template: '<span />' };
+// Renderless: exposes the scoped-slot handlers the row binds, no popover.
+const contextMenuStub = {
+	props: ['items'],
+	template: '<slot :on-contextmenu="() => {}" :on-keydown="() => {}" />',
+};
 
 function makeMessage(i: number) {
 	return {
@@ -105,6 +110,7 @@ function mountList(opts: {
 				UiSkeleton,
 				Icon: iconStub,
 				NuxtLink: nuxtLinkStub,
+				UiContextMenu: contextMenuStub,
 				PostboxSnoozeDialog: dialogStub,
 				PostboxLabelPickerDialog: dialogStub,
 				PostboxMovePickerDialog: dialogStub,

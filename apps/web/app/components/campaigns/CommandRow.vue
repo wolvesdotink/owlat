@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { ContextMenuItem } from '@owlat/ui/components/ui/ContextMenu.vue';
 import type { DecoratedRow } from '~/utils/campaignCommandRow';
 
 const props = defineProps<{ row: DecoratedRow }>();
@@ -12,6 +13,27 @@ const emit = defineEmits<{
 }>();
 
 const dropdownOpen = ref(false);
+
+// Right-click menu — the same verbs as the row's overflow dropdown + primary
+// action (one action source, two entry points; Delete is withheld mid-send,
+// mirroring the dropdown).
+const contextItems = computed<ContextMenuItem[]>(() => {
+	const items: ContextMenuItem[] = [
+		{ id: 'open', label: 'Open', icon: 'lucide:arrow-right', run: () => emit('open') },
+		{ id: 'duplicate', label: 'Duplicate', icon: 'lucide:copy', run: () => emit('duplicate') },
+	];
+	if (props.row.campaign.status !== 'sending') {
+		items.push({
+			id: 'delete',
+			label: 'Delete',
+			icon: 'lucide:trash-2',
+			danger: true,
+			separatorBefore: true,
+			run: () => emit('delete'),
+		});
+	}
+	return items;
+});
 
 /** Meta line under the campaign name — one human sentence per state. */
 const metaLine = computed(() => {
@@ -45,15 +67,19 @@ const metaLine = computed(() => {
 </script>
 
 <template>
-	<li
-		class="group flex items-center gap-4 px-4 sm:px-6 py-4 hover:bg-bg-surface transition-colors duration-(--motion-fast) ease-spring cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-inset"
-		tabindex="0"
-		role="link"
-		:aria-label="`Open ${row.campaign.name}`"
-		@click="emit('open')"
-		@keydown.enter="emit('open')"
-		@keydown.space.prevent="emit('open')"
-	>
+	<UiContextMenu :items="contextItems">
+		<template #default="{ onContextmenu, onKeydown }">
+			<li
+				class="group flex items-center gap-4 px-4 sm:px-6 py-4 hover:bg-bg-surface transition-colors duration-(--motion-fast) ease-spring cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-inset"
+				tabindex="0"
+				role="link"
+				:aria-label="`Open ${row.campaign.name}`"
+				@click="emit('open')"
+				@keydown.enter="emit('open')"
+				@keydown.space.prevent="emit('open')"
+				@contextmenu="onContextmenu"
+				@keydown="onKeydown"
+			>
 		<div class="min-w-0 flex-1">
 			<div class="flex items-center gap-2 min-w-0">
 				<span
@@ -174,6 +200,8 @@ const metaLine = computed(() => {
 					Delete
 				</UiDropdownMenuItem>
 			</UiDropdownMenu>
-		</div>
-	</li>
+			</div>
+			</li>
+		</template>
+	</UiContextMenu>
 </template>
