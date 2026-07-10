@@ -285,6 +285,15 @@ export const remove = authedMutation({
 			status: 'deleted',
 			updatedAt: Date.now(),
 		});
+		// Cascade-clean any un-claimed team-inbox membership grants pointing at this
+		// inbox: the mailbox is gone, so an accept would only drop them anyway.
+		const pendingGrants = await ctx.db
+			.query('pendingMailboxMembers')
+			.withIndex('by_mailbox', (q) => q.eq('mailboxId', args.mailboxId))
+			.collect(); // bounded: a handful of pending invitees per inbox at most
+		for (const grant of pendingGrants) {
+			await ctx.db.delete(grant._id);
+		}
 		if (mailbox) {
 			await ctx.scheduler.runAfter(0, internal.mail.mailboxActions.removeFromCache, {
 				address: mailbox.address,

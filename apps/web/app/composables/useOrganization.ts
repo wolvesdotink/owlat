@@ -296,6 +296,15 @@ export function useOrganization() {
 			label: 'Cancel reserved mailbox',
 		}
 	);
+	// Grants are keyed by invitee email (not invitation id), so cancelling an
+	// invite must also sweep any pending team-inbox membership reserved for them —
+	// otherwise the inbox would silently materialize if they ever joined later.
+	const { run: cancelPendingInboxMemberships } = useBackendOperation(
+		api.mail.pendingMailbox.cancelInboxMembershipsForEmail,
+		{
+			label: 'Cancel reserved inbox access',
+		}
+	);
 	// Read-only pre-check for the 1/min resend floor (the floor itself is enforced
 	// server-side in the send hook). `run` toasts the rate-limit message and
 	// returns undefined when the cooldown hasn't elapsed, so `resendInvite` can
@@ -443,10 +452,11 @@ export function useOrganization() {
 	}
 
 	/**
-	 * Cancel a pending invitation. Also clears any reserved mailbox
-	 * attached to it (best-effort).
+	 * Cancel a pending invitation. Also clears any reserved mailbox attached to it
+	 * and — when the invitee email is known — any pending team-inbox membership
+	 * grant reserved for them (both best-effort).
 	 */
-	async function cancelInvite(invitationId: string) {
+	async function cancelInvite(invitationId: string, inviteeEmail?: string) {
 		if (!organizationId.value) {
 			throw new Error('No active organization');
 		}
@@ -463,6 +473,12 @@ export function useOrganization() {
 		// swallows the throw (returning undefined), so the cancellation proceeds
 		// regardless of whether the reserved mailbox could be cleared.
 		await cancelPendingMailbox({ invitationId });
+
+		// Grants are bound to the email, so sweep them too when we have it. A
+		// grant left behind would silently grant inbox access on a later join.
+		if (inviteeEmail) {
+			await cancelPendingInboxMemberships({ inviteeEmail });
+		}
 
 		// Refresh members list
 		await fetchMembers({ force: true });

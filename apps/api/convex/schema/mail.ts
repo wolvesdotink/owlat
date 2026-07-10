@@ -109,6 +109,36 @@ export const mailTables = {
 		// List every mailbox a user belongs to (identity resolution / inbox list).
 		.index('by_user', ['authUserId']),
 
+	// Pending team-inbox membership grant — the shared-inbox analogue of
+	// `pendingMailboxes`. When an owner adds an email that is NOT yet an org
+	// member to a team inbox, we reserve a grant here (and issue the org
+	// invite); the grant is consumed into a real `mailboxMembers` row when that
+	// person accepts and we finally have their `userId`.
+	//
+	// The grant is BOUND to `inviteeEmail` (canonical lowercase): the claim only
+	// matches the accepting user's own login email, so another org member who
+	// learned the invite can't take over someone else's inbox access (same
+	// anti-hijack property as `pendingMailboxes`). `mailboxAddress` is
+	// denormalized so the invitation email — sent by the auth hook before we
+	// have a mailbox join — can name the inbox without a lookup.
+	//
+	// Wiped by the org-deletion walker and the dev reset (registered in
+	// lib/tenantTables.ts before `mailboxes`, so grants go before the parent).
+	pendingMailboxMembers: defineTable({
+		organizationId: v.string(),
+		inviteeEmail: v.string(), // canonical lowercase — claim is bound to this identity
+		mailboxId: v.id('mailboxes'),
+		mailboxAddress: v.string(), // denormalized team-inbox address (for the invite email)
+		invitedByUserId: v.string(), // inviter — audit only
+		createdAt: v.number(),
+	})
+		// Claim (accepting user's email) and the auth-hook email lookup both key
+		// on (org, email); a person may be pre-added to several inboxes at once,
+		// so this is a prefix range, not a point read.
+		.index('by_org_email', ['organizationId', 'inviteeEmail'])
+		// Cascade-clean grants when a team inbox is deleted (mail/mailbox.ts:remove).
+		.index('by_mailbox', ['mailboxId']),
+
 	// External mailbox connection (BYO IMAP/SMTP). Per-user link to an EXISTING
 	// external mailbox (Gmail, Fastmail, a company server). 1:1 with a `mailboxes`
 	// row whose kind='external'. Credentials are encrypted at rest (AES-256-GCM);
