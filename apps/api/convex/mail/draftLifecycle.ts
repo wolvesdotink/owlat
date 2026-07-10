@@ -556,6 +556,21 @@ async function runSentEffects(
 		updatedAt: now,
 	});
 
+	// Shared thread-summary shape applied by BOTH the sending thread's patch and
+	// the team-thread send-as marker below, so the two can never drift: a reply
+	// bumps the conversation's newest-message summary and answers the Reply Queue.
+	const threadSummaryPatch = {
+		lastMessageAt: now,
+		latestSnippet: snippet,
+		latestFromAddress: draft.fromAddress,
+		latestSubject: draft.subject || '(no subject)',
+		// Any outbound in the thread answers the Reply Queue signal — clear the
+		// needs-reply flag and any in-flight classification marker.
+		needsReply: undefined,
+		needsReplyPendingAt: undefined,
+		updatedAt: now,
+	} as const;
+
 	// patch_thread effect
 	const thread = await ctx.db.get(threadId);
 	if (thread) {
@@ -570,22 +585,15 @@ async function runSentEffects(
 				? draft.followUpRemindAt
 				: undefined;
 		await ctx.db.patch(threadId, {
+			...threadSummaryPatch,
 			messageCount: thread.messageCount + 1,
 			hasAttachments: thread.hasAttachments || context.attachmentsMeta.length > 0,
-			lastMessageAt: now,
-			latestSnippet: snippet,
-			latestFromAddress: draft.fromAddress,
-			latestSubject: draft.subject || '(no subject)',
 			latestMessageId: messageId,
 			// Team-inbox collision safety: record this reply as the thread's newest
 			// outbound so a second teammate who opened the thread earlier is warned
 			// before sending a duplicate (see mail/mailbox.ts::latestReplyState).
 			latestReply: { messageId, byUserId: draft.sentByUserId, at: now },
 			folderRoles: Array.from(folderRoles),
-			// Any outbound in the thread answers the Reply Queue signal — clear
-			// the needs-reply flag and any in-flight classification marker.
-			needsReply: undefined,
-			needsReplyPendingAt: undefined,
 			...(followUpRemindAt !== undefined
 				? {
 						followUp: {
@@ -597,7 +605,6 @@ async function runSentEffects(
 						followUpRemindAt,
 					}
 				: {}),
-			updatedAt: now,
 		});
 	}
 
@@ -611,19 +618,13 @@ async function runSentEffects(
 		const teamThread = await ctx.db.get(draft.threadId);
 		if (teamThread) {
 			await ctx.db.patch(draft.threadId, {
-				lastMessageAt: now,
-				latestSnippet: snippet,
-				latestFromAddress: draft.fromAddress,
-				latestSubject: draft.subject || '(no subject)',
+				...threadSummaryPatch,
 				latestReply: {
 					messageId,
 					byUserId: draft.sentByUserId,
 					at: now,
 					isFromPersonalAddress: true,
 				},
-				needsReply: undefined,
-				needsReplyPendingAt: undefined,
-				updatedAt: now,
 			});
 		}
 	}
