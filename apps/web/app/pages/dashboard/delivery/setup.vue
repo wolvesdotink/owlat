@@ -8,8 +8,8 @@ definePageMeta({
 
 // Delivery-infrastructure config surfaces. API keys are app-level (they live
 // under Settings) but are cross-linked here because they authenticate the send
-// API. Blocklist is intentionally NOT here — it moves under its own home in a
-// later piece.
+// API. Suppressions live under Audience (they are audience data) but are
+// cross-linked here because they directly protect deliverability.
 const sections = [
 	{
 		name: 'Delivery provider',
@@ -40,6 +40,13 @@ const sections = [
 		description: 'Manage API keys that authenticate your send and API requests',
 		href: '/dashboard/settings/api',
 		icon: 'lucide:key',
+	},
+	{
+		name: 'Suppressions',
+		description:
+			'Addresses that no longer receive mail after a bounce, complaint, or manual suppression',
+		href: '/dashboard/audience/suppressions',
+		icon: 'lucide:ban',
 	},
 ];
 </script>

@@ -55,6 +55,26 @@ export function formatDate(
 }
 
 /**
+ * Format a date as a short human label mid-sentence: month + day, adding the
+ * year only when it is not the current year (e.g. "Mar 3", or "Mar 3, 2024").
+ * @param date - Date object, timestamp, or ISO string
+ * @param locale - Locale string (defaults to 'en-US')
+ */
+export function formatShortDate(
+	date: Date | number | string | undefined | null,
+	locale = 'en-US'
+): string {
+	if (date === undefined || date === null) return 'Never';
+
+	const d = date instanceof Date ? date : new Date(date);
+
+	if (isNaN(d.getTime())) return 'Invalid date';
+
+	const isCurrentYear = d.getFullYear() === new Date().getFullYear();
+	return formatDate(d, isCurrentYear ? 'short' : 'medium', locale);
+}
+
+/**
  * Format a date with time
  * @param date - Date object, timestamp, or ISO string
  * @param locale - Locale string (defaults to 'en-US')

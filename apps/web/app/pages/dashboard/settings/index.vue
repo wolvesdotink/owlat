@@ -292,12 +292,6 @@ const settingsSections = computed(() => {
 			icon: 'lucide:file-text',
 		},
 		{
-			name: 'Email Blocklist',
-			description: 'Manage blocked email addresses to protect sender reputation',
-			href: '/dashboard/settings/blocklist',
-			icon: 'lucide:ban',
-		},
-		{
 			name: 'Audit Log',
 			description: 'Track team member actions and changes',
 			href: '/dashboard/settings/audit',

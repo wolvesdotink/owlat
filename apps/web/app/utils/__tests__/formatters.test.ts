@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
 	formatDate,
+	formatShortDate,
 	formatDateTime,
 	formatTime,
 	formatRelativeTime,
@@ -69,6 +70,39 @@ describe('formatDate', () => {
 	it('accepts ISO string', () => {
 		const result = formatDate('2024-01-15T00:00:00.000Z', 'medium');
 		expect(result).toContain('2024');
+	});
+});
+
+describe('formatShortDate', () => {
+	beforeEach(() => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date(2025, 0, 15, 12, 0, 0)); // Jan 15, 2025
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it('returns "Never" for null', () => {
+		expect(formatShortDate(null)).toBe('Never');
+	});
+
+	it('returns "Never" for undefined', () => {
+		expect(formatShortDate(undefined)).toBe('Never');
+	});
+
+	it('returns "Invalid date" for invalid input', () => {
+		expect(formatShortDate('not a date')).toBe('Invalid date');
+	});
+
+	it('omits the year for a current-year date', () => {
+		const result = formatShortDate(new Date(2025, 2, 3));
+		expect(result).toBe('Mar 3');
+	});
+
+	it('appends the year for a prior-year date', () => {
+		const result = formatShortDate(new Date(2024, 2, 3));
+		expect(result).toBe('Mar 3, 2024');
 	});
 });
 

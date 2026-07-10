@@ -103,6 +103,11 @@ const routeConfigs: Record<string, RouteConfig> = {
 		sectionHref: '/dashboard/audience',
 		page: 'Segments',
 	},
+	'/dashboard/audience/suppressions': {
+		section: 'Audience',
+		sectionHref: '/dashboard/audience',
+		page: 'Suppressions',
+	},
 
 	// Settings section
 	'/dashboard/settings': {
@@ -177,11 +182,6 @@ const routeConfigs: Record<string, RouteConfig> = {
 		section: 'Settings',
 		sectionHref: '/dashboard/settings',
 		page: 'Form Endpoints',
-	},
-	'/dashboard/settings/blocklist': {
-		section: 'Settings',
-		sectionHref: '/dashboard/settings',
-		page: 'Email Blocklist',
 	},
 	'/dashboard/settings/audit': {
 		section: 'Settings',
