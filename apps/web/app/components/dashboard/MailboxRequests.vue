@@ -19,15 +19,23 @@ const { data: requests, isLoading } = useConvexQuery(
 	() => ({})
 );
 
-const { run: resolveRequest, isLoading: resolving } = useBackendOperation(
-	api.mail.mailboxRequest.resolve,
-	{ label: 'Resolve mailbox request' }
-);
+const { run: resolveRequest } = useBackendOperation(api.mail.mailboxRequest.resolve, {
+	label: 'Resolve mailbox request',
+});
 
 const openRequests = computed(() => requests.value ?? []);
 
+// Which row is mid-resolve, so only that button spins (not every row's).
+const resolvingId = ref<Id<'mailboxRequests'> | null>(null);
+
 async function resolve(requestId: Id<'mailboxRequests'>) {
-	await resolveRequest({ requestId });
+	if (resolvingId.value) return;
+	resolvingId.value = requestId;
+	try {
+		await resolveRequest({ requestId });
+	} finally {
+		resolvingId.value = null;
+	}
 }
 </script>
 
@@ -56,7 +64,13 @@ async function resolve(requestId: Id<'mailboxRequests'>) {
 						{{ req.name ? req.email : '' }}<span v-if="req.note"> — “{{ req.note }}”</span>
 					</p>
 				</div>
-				<UiButton variant="outline" size="sm" :loading="resolving" @click="resolve(req.id)">
+				<UiButton
+					variant="outline"
+					size="sm"
+					:loading="resolvingId === req.id"
+					:disabled="resolvingId !== null && resolvingId !== req.id"
+					@click="resolve(req.id)"
+				>
 					Mark done
 				</UiButton>
 			</li>
