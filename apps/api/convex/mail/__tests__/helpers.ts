@@ -10,8 +10,9 @@
  * exports no session helpers.
  */
 
-import type { convexTest } from 'convex-test';
+import type { TestConvex } from 'convex-test';
 import type { Id } from '../../_generated/dataModel';
+import schema from '../../schema';
 
 // The node-only / agent modules can't load in the test isolate; filter them
 // out. Sibling `mail/*` modules glob in as `../foo.ts` (this dir is
@@ -53,11 +54,12 @@ export type MailboxSeed = {
 	address?: string;
 	status?: 'active' | 'suspended' | 'deleted';
 	scope?: 'personal' | 'shared';
+	kind?: 'hosted' | 'external';
 };
 
 /** Insert a `mailboxes` row and return its id. */
 export async function seedMailbox(
-	t: ReturnType<typeof convexTest>,
+	t: TestConvex<typeof schema>,
 	seed: MailboxSeed = {}
 ): Promise<Id<'mailboxes'>> {
 	let id!: Id<'mailboxes'>;
@@ -69,6 +71,7 @@ export async function seedMailbox(
 			address: seed.address ?? 'a@hinterland.camp',
 			domain: 'hinterland.camp',
 			...(seed.scope ? { scope: seed.scope } : {}),
+			...(seed.kind ? { kind: seed.kind } : {}),
 			status: seed.status ?? 'active',
 			usedBytes: 0,
 			uidValidity: now,
