@@ -1,7 +1,7 @@
 /**
  * Mailbox gate (helper) — outcome coverage.
  *
- * Replaces the eleven copies of `loadOwnedMailbox` that used to live in
+ * Replaces the eleven copies of `requireMailboxAccess` that used to live in
  * each `mail/*.ts` file. The four `reason` branches plus the three
  * owner/admin/same-user paths into `{ ok: true, ... }` are all asserted
  * here so per-file tests no longer need to repeat them.
@@ -12,7 +12,8 @@ import { describe, it, expect, vi } from 'vitest';
 import schema from '../../schema';
 import type { Id } from '../../_generated/dataModel';
 import { api } from '../../_generated/api';
-import { loadOwnedMailbox, loadReadableMailbox } from '../permissions';
+import { requireMailboxAccess, loadReadableMailbox } from '../permissions';
+import { modules, seedMailbox } from './helpers';
 
 const sessionMocks = vi.hoisted(() => ({
 	getBetterAuthSessionWithRole: vi.fn(),
@@ -28,71 +29,7 @@ vi.mock('../../lib/sessionOrganization', async () => {
 	};
 });
 
-const allModules = import.meta.glob('../../**/*.*s');
-const modules = Object.fromEntries(
-	Object.entries(allModules)
-		.filter(([path]) =>
-			!path.includes('sesActions') &&
-			!path.includes('agentSecurity') &&
-			!path.includes('agentContext') &&
-			!path.includes('agentClassifier') &&
-			!path.includes('agentDrafter') &&
-			!path.includes('agentRouter') &&
-			!path.includes('agent/walker') &&
-			!path.includes('agent/steps/index') &&
-			!path.includes('agent/steps/shared') &&
-			!path.includes('agent/steps/classify') &&
-			!path.includes('agent/steps/draft') &&
-			!path.includes('knowledgeExtraction') &&
-			!path.includes('semanticFileProcessing') &&
-			!path.includes('visualizationAgent') &&
-			!path.includes('llmProvider')
-		)
-		// Sibling `mail/*` modules glob in as `../foo.ts` (this file lives in
-		// `mail/__tests__/`); convex-test resolves function paths from the
-		// convex root, so re-root them to `../../mail/foo.ts` — otherwise
-		// `t.query(api.mail.mailbox.get)` can't find the module.
-		.map(([key, val]) =>
-			key.startsWith('../') && !key.startsWith('../../')
-				? (['../../mail/' + key.slice(3), val] as const)
-				: ([key, val] as const)
-		)
-);
-
-type MailboxSeed = {
-	userId?: string;
-	organizationId?: string;
-	address?: string;
-	status?: 'active' | 'suspended' | 'deleted';
-};
-
-async function seedMailbox(
-	t: ReturnType<typeof convexTest>,
-	seed: MailboxSeed = {}
-): Promise<Id<'mailboxes'>> {
-	let id!: Id<'mailboxes'>;
-	await t.run(async (ctx) => {
-		const now = Date.now();
-		id = await ctx.db.insert('mailboxes', {
-			userId: seed.userId ?? 'user-A',
-			organizationId: seed.organizationId ?? 'org-1',
-			address: seed.address ?? 'a@hinterland.camp',
-			domain: 'hinterland.camp',
-			status: seed.status ?? 'active',
-			usedBytes: 0,
-			uidValidity: now,
-			createdAt: now,
-			updatedAt: now,
-		});
-	});
-	return id;
-}
-
-function setSession(
-	userId: string,
-	role: 'owner' | 'admin' | 'editor' | null,
-	orgId = 'org-1'
-) {
+function setSession(userId: string, role: 'owner' | 'admin' | 'editor' | null, orgId = 'org-1') {
 	if (role === null) {
 		sessionMocks.getBetterAuthSessionWithRole.mockResolvedValue(null);
 		return;
@@ -104,12 +41,12 @@ function setSession(
 	});
 }
 
-describe('loadOwnedMailbox', () => {
+describe('requireMailboxAccess', () => {
 	it('returns no_session when no BetterAuth session is present', async () => {
 		setSession('', null);
 		const t = convexTest(schema, modules);
 		const id = await seedMailbox(t);
-		const result = await t.run((ctx) => loadOwnedMailbox(ctx, id));
+		const result = await t.run((ctx) => requireMailboxAccess(ctx, id));
 		expect(result).toEqual({ ok: false, reason: 'no_session' });
 	});
 
@@ -119,7 +56,7 @@ describe('loadOwnedMailbox', () => {
 		// seed something so the table exists, then ask for a different id
 		const realId = await seedMailbox(t);
 		const fakeId = ('fake-' + realId) as unknown as Id<'mailboxes'>;
-		const result = await t.run((ctx) => loadOwnedMailbox(ctx, fakeId));
+		const result = await t.run((ctx) => requireMailboxAccess(ctx, fakeId));
 		expect(result).toEqual({ ok: false, reason: 'mailbox_missing' });
 	});
 
@@ -127,7 +64,7 @@ describe('loadOwnedMailbox', () => {
 		setSession('user-A', 'editor');
 		const t = convexTest(schema, modules);
 		const id = await seedMailbox(t, { userId: 'user-A', status: 'suspended' });
-		const result = await t.run((ctx) => loadOwnedMailbox(ctx, id));
+		const result = await t.run((ctx) => requireMailboxAccess(ctx, id));
 		expect(result).toEqual({ ok: false, reason: 'mailbox_inactive' });
 	});
 
@@ -135,7 +72,7 @@ describe('loadOwnedMailbox', () => {
 		setSession('user-A', 'editor');
 		const t = convexTest(schema, modules);
 		const id = await seedMailbox(t, { userId: 'user-A', status: 'deleted' });
-		const result = await t.run((ctx) => loadOwnedMailbox(ctx, id));
+		const result = await t.run((ctx) => requireMailboxAccess(ctx, id));
 		expect(result).toEqual({ ok: false, reason: 'mailbox_inactive' });
 	});
 
@@ -143,7 +80,7 @@ describe('loadOwnedMailbox', () => {
 		setSession('user-B', 'editor');
 		const t = convexTest(schema, modules);
 		const id = await seedMailbox(t, { userId: 'user-A' });
-		const result = await t.run((ctx) => loadOwnedMailbox(ctx, id));
+		const result = await t.run((ctx) => requireMailboxAccess(ctx, id));
 		expect(result).toEqual({ ok: false, reason: 'forbidden' });
 	});
 
@@ -151,7 +88,7 @@ describe('loadOwnedMailbox', () => {
 		setSession('user-A', 'editor');
 		const t = convexTest(schema, modules);
 		const id = await seedMailbox(t, { userId: 'user-A' });
-		const result = await t.run((ctx) => loadOwnedMailbox(ctx, id));
+		const result = await t.run((ctx) => requireMailboxAccess(ctx, id));
 		if (!result.ok) throw new Error('expected ok');
 		expect(result.userId).toBe('user-A');
 		expect(result.mailbox.address).toBe('a@hinterland.camp');
@@ -162,7 +99,7 @@ describe('loadOwnedMailbox', () => {
 		setSession('user-B', 'owner');
 		const t = convexTest(schema, modules);
 		const id = await seedMailbox(t, { userId: 'user-A' });
-		const result = await t.run((ctx) => loadOwnedMailbox(ctx, id));
+		const result = await t.run((ctx) => requireMailboxAccess(ctx, id));
 		if (!result.ok) throw new Error('expected ok');
 		expect(result.userId).toBe('user-B');
 		expect(result.mailbox.userId).toBe('user-A');
@@ -172,7 +109,7 @@ describe('loadOwnedMailbox', () => {
 		setSession('user-B', 'admin');
 		const t = convexTest(schema, modules);
 		const id = await seedMailbox(t, { userId: 'user-A' });
-		const result = await t.run((ctx) => loadOwnedMailbox(ctx, id));
+		const result = await t.run((ctx) => requireMailboxAccess(ctx, id));
 		if (!result.ok) throw new Error('expected ok');
 		expect(result.userId).toBe('user-B');
 	});

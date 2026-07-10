@@ -16,7 +16,7 @@ import { authedMutation } from '../lib/authedFunctions';
 import type { Id } from '../_generated/dataModel';
 import { throwForbidden, throwInvalidInput } from '../_utils/errors';
 import { isMessageSnoozed } from '../lib/mailSnooze';
-import { loadOwnedMessage } from './permissions';
+import { requireMessageAccess } from './permissions';
 import { adjustFolderUnseen } from './folders';
 
 export const snooze = authedMutation({
@@ -25,7 +25,7 @@ export const snooze = authedMutation({
 		until: v.number(),
 	},
 	handler: async (ctx, args) => {
-		const owned = await loadOwnedMessage(ctx, args.messageId);
+		const owned = await requireMessageAccess(ctx, args.messageId);
 		if (!owned.ok) throwForbidden('Message not accessible');
 		if (args.until <= Date.now()) {
 			throwInvalidInput('Snooze time must be in the future');
@@ -54,7 +54,7 @@ export const snooze = authedMutation({
  * Reuses the resurface-on-no-reply idea from mail/followUps.ts, applied to
  * inbound deferral rather than sent-mail follow-ups.
  */
-// authz: message → mailbox ownership via loadOwnedMessage; org membership via
+// authz: message → mailbox ownership via requireMessageAccess; org membership via
 // authedMutation.
 export const snoozeUntilReply = authedMutation({
 	args: {
@@ -63,7 +63,7 @@ export const snoozeUntilReply = authedMutation({
 		capUntil: v.number(),
 	},
 	handler: async (ctx, args) => {
-		const owned = await loadOwnedMessage(ctx, args.messageId);
+		const owned = await requireMessageAccess(ctx, args.messageId);
 		if (!owned.ok) throwForbidden('Message not accessible');
 		if (args.capUntil <= Date.now()) {
 			throwInvalidInput('Snooze cap must be in the future');
@@ -116,7 +116,7 @@ export async function clearSnoozeUntilReplyForThread(
 export const unsnooze = authedMutation({
 	args: { messageId: v.id('mailMessages') },
 	handler: async (ctx, args) => {
-		const owned = await loadOwnedMessage(ctx, args.messageId);
+		const owned = await requireMessageAccess(ctx, args.messageId);
 		if (!owned.ok) throwForbidden('Message not accessible');
 		const message = owned.message;
 		const wasSnoozed = isMessageSnoozed(message, Date.now());

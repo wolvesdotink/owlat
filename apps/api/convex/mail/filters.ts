@@ -15,16 +15,16 @@
 import { v } from 'convex/values';
 import { authedMutation, publicQuery } from '../lib/authedFunctions';
 import type { Doc, Id } from '../_generated/dataModel';
-import { loadOwnedMailbox } from './permissions';
+import { requireMailboxAccess } from './permissions';
 import { throwForbidden, throwInvalidInput, throwNotFound } from '../_utils/errors';
 
 // ── Public CRUD ───────────────────────────────────────────────────
 
-// public: soft-auth — returns empty for anonymous; mailbox ownership is still enforced in-handler
+// public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
 export const list = publicQuery({
 	args: { mailboxId: v.id('mailboxes') },
 	handler: async (ctx, args) => {
-		const owned = await loadOwnedMailbox(ctx, args.mailboxId);
+		const owned = await requireMailboxAccess(ctx, args.mailboxId);
 		if (!owned.ok) return [];
 		return ctx.db
 			.query('mailFilters')
@@ -84,7 +84,9 @@ export const create = authedMutation({
 		stopProcessing: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
-		const owned = await loadOwnedMailbox(ctx, args.mailboxId);
+		// Mail filters change how a mailbox routes/labels incoming mail for
+		// everyone who uses it — owner-grade.
+		const owned = await requireMailboxAccess(ctx, args.mailboxId, 'owner');
 		if (!owned.ok) throwForbidden('Mailbox not accessible');
 		const trimmed = args.name.trim();
 		if (!trimmed) throwInvalidInput('Filter name required');
@@ -147,7 +149,7 @@ export const update = authedMutation({
 	handler: async (ctx, args) => {
 		const filter = await ctx.db.get(args.filterId);
 		if (!filter) throwNotFound('Filter');
-		const owned = await loadOwnedMailbox(ctx, filter.mailboxId);
+		const owned = await requireMailboxAccess(ctx, filter.mailboxId, 'owner');
 		if (!owned.ok) throwForbidden('Filter not accessible');
 
 		const patch: Record<string, unknown> = { updatedAt: Date.now() };
@@ -166,7 +168,7 @@ export const remove = authedMutation({
 	handler: async (ctx, args) => {
 		const filter = await ctx.db.get(args.filterId);
 		if (!filter) return;
-		const owned = await loadOwnedMailbox(ctx, filter.mailboxId);
+		const owned = await requireMailboxAccess(ctx, filter.mailboxId, 'owner');
 		if (!owned.ok) throwForbidden('Filter not accessible');
 		await ctx.db.delete(args.filterId);
 	},

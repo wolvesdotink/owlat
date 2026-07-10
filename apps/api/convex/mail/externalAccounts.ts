@@ -51,7 +51,7 @@ const accountStatusValidator = v.union(
  * The current user's connected external account, or `{ configured: false }`.
  * NEVER returns the encrypted credential fields.
  */
-// public: soft-auth — returns empty for anonymous; mailbox ownership is still enforced in-handler
+// public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
 export const getForCurrentUser = publicQuery({
 	args: {},
 	handler: async (ctx) => {
@@ -103,7 +103,7 @@ export const disconnect = authedMutation({
 		if (account.status === 'disconnected') return { ok: true };
 		const now = Date.now();
 		await ctx.db.patch(account._id, { status: 'disconnected', updatedAt: now });
-		// Hide from the inbox UI (loadOwnedMailbox refuses non-active rows).
+		// Hide from the inbox UI (requireMailboxAccess refuses non-active rows).
 		await ctx.db.patch(account.mailboxId, { status: 'deleted', updatedAt: now });
 		await ctx.db.insert('mailAuditLog', {
 			mailboxId: account.mailboxId,

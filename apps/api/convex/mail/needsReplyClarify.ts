@@ -21,7 +21,7 @@ import { internalMutation, internalQuery } from '../_generated/server';
 import { authedMutation } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import { throwForbidden, throwInvalidInput, throwNotFound } from '../_utils/errors';
-import { loadOwnedMailbox } from './permissions';
+import { requireMailboxAccess } from './permissions';
 import { NEEDS_REPLY_CONTEXT_MESSAGES } from './needsReply';
 import { captureStandingAnswers } from '../inbox/clarificationMemory';
 
@@ -37,7 +37,7 @@ import { captureStandingAnswers } from '../inbox/clarificationMemory';
  * answers to produce the starter reply. Fail-soft: if the draft never lands the
  * answer is still recorded and the plain "Draft reply" button keeps working.
  */
-// authz: thread → mailbox ownership via loadOwnedMailbox; org membership via
+// authz: thread → mailbox access via requireMailboxAccess; org membership via
 // authedMutation.
 export const answerClarification = authedMutation({
 	args: {
@@ -47,7 +47,7 @@ export const answerClarification = authedMutation({
 	handler: async (ctx, args) => {
 		const thread = await ctx.db.get(args.threadId);
 		if (!thread) throwNotFound('Thread');
-		const owned = await loadOwnedMailbox(ctx, thread.mailboxId);
+		const owned = await requireMailboxAccess(ctx, thread.mailboxId);
 		if (!owned.ok) throwForbidden('Thread not accessible');
 
 		const flag = thread.needsReply;

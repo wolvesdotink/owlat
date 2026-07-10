@@ -9,7 +9,7 @@
 import { v } from 'convex/values';
 import { internalMutation } from '../_generated/server';
 import { authedMutation, publicQuery } from '../lib/authedFunctions';
-import { loadOwnedMailbox } from './permissions';
+import { requireMailboxAccess } from './permissions';
 import { throwForbidden, throwInvalidInput } from '../_utils/errors';
 
 function canonical(addr: string): string {
@@ -87,11 +87,11 @@ export function rankContacts<T extends RankableContact>(
 		.map((x) => x.c);
 }
 
-// public: soft-auth — returns empty for anonymous; mailbox ownership is still enforced in-handler
+// public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
 export const list = publicQuery({
 	args: { mailboxId: v.id('mailboxes'), limit: v.optional(v.number()) },
 	handler: async (ctx, args) => {
-		const owned = await loadOwnedMailbox(ctx, args.mailboxId);
+		const owned = await requireMailboxAccess(ctx, args.mailboxId);
 		if (!owned.ok) return [];
 		const limit = Math.min(args.limit ?? 100, 500);
 		return ctx.db
@@ -107,7 +107,7 @@ export const list = publicQuery({
  * contacts whose email or display name starts with the prefix, ordered
  * by frecency (lastUsedAt desc).
  */
-// public: soft-auth — returns empty for anonymous; mailbox ownership is still enforced in-handler
+// public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
 export const autocomplete = publicQuery({
 	args: {
 		mailboxId: v.id('mailboxes'),
@@ -115,7 +115,7 @@ export const autocomplete = publicQuery({
 		limit: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		const owned = await loadOwnedMailbox(ctx, args.mailboxId);
+		const owned = await requireMailboxAccess(ctx, args.mailboxId);
 		if (!owned.ok) return [];
 		const prefix = args.prefix.trim().toLowerCase();
 		if (!prefix) return [];
@@ -145,7 +145,7 @@ export const autocomplete = publicQuery({
  * "Accept sender" button. Soft-auth: anonymous / non-owner reads return a safe
  * empty state (no flags, screener off) so nothing renders.
  */
-// public: soft-auth — returns empty state for anonymous; mailbox ownership is still enforced in-handler
+// public: soft-auth — returns empty state for anonymous; mailbox access is still enforced in-handler
 export const senderState = publicQuery({
 	args: { mailboxId: v.id('mailboxes'), email: v.string() },
 	handler: async (ctx, args) => {
@@ -155,7 +155,7 @@ export const senderState = publicQuery({
 			isScreenerAccepted: false,
 			isScreenerEnabled: false,
 		};
-		const owned = await loadOwnedMailbox(ctx, args.mailboxId);
+		const owned = await requireMailboxAccess(ctx, args.mailboxId);
 		if (!owned.ok) return empty;
 		const email = canonical(args.email);
 		const settings = await ctx.db
@@ -189,7 +189,7 @@ export const upsert = authedMutation({
 		organization: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		const owned = await loadOwnedMailbox(ctx, args.mailboxId);
+		const owned = await requireMailboxAccess(ctx, args.mailboxId);
 		if (!owned.ok) throwForbidden('Mailbox not accessible');
 		const email = canonical(args.email);
 		if (!email.includes('@')) throwInvalidInput('Invalid email');
@@ -227,7 +227,7 @@ export const remove = authedMutation({
 	handler: async (ctx, args) => {
 		const row = await ctx.db.get(args.contactId);
 		if (!row) return;
-		const owned = await loadOwnedMailbox(ctx, row.mailboxId);
+		const owned = await requireMailboxAccess(ctx, row.mailboxId);
 		if (!owned.ok) throwForbidden('Not accessible');
 		await ctx.db.delete(args.contactId);
 	},
@@ -239,11 +239,11 @@ export const remove = authedMutation({
  * Queue priority score (mail/priorityScore.ts) — the owner's transparent,
  * easy-to-correct override of the deterministic frecency baseline.
  */
-// authz: mailbox ownership via loadOwnedMailbox; org membership via authedMutation.
+// authz: mailbox access via requireMailboxAccess; org membership via authedMutation.
 export const setVip = authedMutation({
 	args: { mailboxId: v.id('mailboxes'), email: v.string(), isVip: v.boolean() },
 	handler: async (ctx, args) => {
-		const owned = await loadOwnedMailbox(ctx, args.mailboxId);
+		const owned = await requireMailboxAccess(ctx, args.mailboxId);
 		if (!owned.ok) throwForbidden('Mailbox not accessible');
 		const email = canonical(args.email);
 		if (!email.includes('@')) throwInvalidInput('Invalid email');
@@ -278,11 +278,11 @@ export const setVip = authedMutation({
  * Queue / clarification loop from now on. No-op payload beyond the accept flag;
  * `screener` gating itself is toggled via mail/settings.update.
  */
-// authz: mailbox ownership via loadOwnedMailbox; org membership via authedMutation.
+// authz: mailbox access via requireMailboxAccess; org membership via authedMutation.
 export const acceptSender = authedMutation({
 	args: { mailboxId: v.id('mailboxes'), email: v.string() },
 	handler: async (ctx, args) => {
-		const owned = await loadOwnedMailbox(ctx, args.mailboxId);
+		const owned = await requireMailboxAccess(ctx, args.mailboxId);
 		if (!owned.ok) throwForbidden('Mailbox not accessible');
 		const email = canonical(args.email);
 		if (!email.includes('@')) throwInvalidInput('Invalid email');

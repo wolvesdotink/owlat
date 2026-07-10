@@ -438,6 +438,7 @@ import type * as migrations_0018_sending_domain_identity_sibling from "../migrat
 import type * as migrations_0027_drain_inflight_integration_imports from "../migrations/0027_drain_inflight_integration_imports.js";
 import type * as migrations_0032_thread_contact_identifier from "../migrations/0032_thread_contact_identifier.js";
 import type * as migrations_0033_campaign_audience from "../migrations/0033_campaign_audience.js";
+import type * as migrations_0034_mailbox_owner_membership from "../migrations/0034_mailbox_owner_membership.js";
 import type * as mtaWebhook from "../mtaWebhook.js";
 import type * as organizations_abuseGate from "../organizations/abuseGate.js";
 import type * as organizations_abuseStatus from "../organizations/abuseStatus.js";
@@ -992,6 +993,7 @@ declare const fullApi: ApiFromModules<{
   "migrations/0027_drain_inflight_integration_imports": typeof migrations_0027_drain_inflight_integration_imports;
   "migrations/0032_thread_contact_identifier": typeof migrations_0032_thread_contact_identifier;
   "migrations/0033_campaign_audience": typeof migrations_0033_campaign_audience;
+  "migrations/0034_mailbox_owner_membership": typeof migrations_0034_mailbox_owner_membership;
   mtaWebhook: typeof mtaWebhook;
   "organizations/abuseGate": typeof organizations_abuseGate;
   "organizations/abuseStatus": typeof organizations_abuseStatus;

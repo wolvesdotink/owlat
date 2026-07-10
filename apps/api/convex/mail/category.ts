@@ -37,7 +37,7 @@ import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { throwForbidden, throwNotFound } from '../_utils/errors';
 import { isBulkOrNoReplySender } from './needsReply';
-import { loadOwnedMailbox } from './permissions';
+import { requireMailboxAccess } from './permissions';
 
 // ─── Pure deterministic classifier ───────────────────────────────────────────
 
@@ -294,7 +294,7 @@ export const applyCategory = internalMutation({
  * is remembered for future mail from that sender, and stamps the thread
  * immediately (source `user`).
  */
-// authz: thread → mailbox ownership via loadOwnedMailbox; org membership via
+// authz: thread → mailbox access via requireMailboxAccess; org membership via
 // authedMutation.
 export const recategorize = authedMutation({
 	args: {
@@ -310,7 +310,7 @@ export const recategorize = authedMutation({
 	handler: async (ctx, args) => {
 		const thread = await ctx.db.get(args.threadId);
 		if (!thread) throwNotFound('Thread');
-		const owned = await loadOwnedMailbox(ctx, thread.mailboxId);
+		const owned = await requireMailboxAccess(ctx, thread.mailboxId);
 		if (!owned.ok) throwForbidden('Thread not accessible');
 
 		// Remember the choice per sender, keyed on the latest INBOUND sender — the

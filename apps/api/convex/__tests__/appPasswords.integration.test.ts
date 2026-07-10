@@ -17,7 +17,7 @@
  *
  * We drive the public mutations through `t.mutation`/`t.query` and mock
  * `getBetterAuthSessionWithRole` (the single session choke point that both
- * `loadOwnedMailbox` and `requireAdminContext` resolve through) so the REAL
+ * `requireMailboxAccess` and `requireAdminContext` resolve through) so the REAL
  * permission logic runs against a parameterized session. `verify` needs no
  * session; it runs the real internal query/mutation against seeded rows, so
  * we register the rate-limiter component it shares with the throttle table.
@@ -56,7 +56,7 @@ vi.mock('../lib/sessionOrganization', async () => {
 	// drives them. We mock the public choke points the code actually imports —
 	// note `requireOrgMember`'s INTERNAL call to `getBetterAuthSessionWithRole`
 	// is not interceptable, so the wrapper's `getMutationContext` and
-	// `loadOwnedMailbox`'s `getBetterAuthSessionWithRole` must both be stubbed.
+	// `requireMailboxAccess`'s `getBetterAuthSessionWithRole` must both be stubbed.
 	const ctxFromSession = () => {
 		const s = sessionMock.value;
 		if (!s || !s.role || !s.activeOrganizationId) errors.throwUnauthenticated();
@@ -64,10 +64,8 @@ vi.mock('../lib/sessionOrganization', async () => {
 	};
 	return {
 		...actual,
-		// Used by loadOwnedMailbox (permissions.ts) — needs the full shape.
-		getBetterAuthSessionWithRole: vi
-			.fn()
-			.mockImplementation(async () => sessionMock.value),
+		// Used by requireMailboxAccess (permissions.ts) — needs the full shape.
+		getBetterAuthSessionWithRole: vi.fn().mockImplementation(async () => sessionMock.value),
 		// Used by the authedMutation wrapper. Floors on membership only.
 		getMutationContext: vi.fn().mockImplementation(async () => ctxFromSession()),
 		requireOrgMember: vi.fn().mockImplementation(async () => ctxFromSession()),
@@ -100,8 +98,8 @@ const modules = Object.fromEntries(
 			!p.includes('knowledgeExtraction') &&
 			!p.includes('semanticFileProcessing') &&
 			!p.includes('visualizationAgent') &&
-			!p.includes('llmProvider'),
-	),
+			!p.includes('llmProvider')
+	)
 );
 
 function setupTest() {
@@ -113,12 +111,10 @@ function setupTest() {
 const setSession = (
 	userId: string,
 	role: 'owner' | 'admin' | 'editor' | null,
-	activeOrganizationId: string | null = 'org-1',
+	activeOrganizationId: string | null = 'org-1'
 ) => {
 	sessionMock.value =
-		role === null && userId === ''
-			? null
-			: { userId, activeOrganizationId, role };
+		role === null && userId === '' ? null : { userId, activeOrganizationId, role };
 };
 
 // Seed a mailbox; returns its id (and the owning userId for convenience).
@@ -129,7 +125,7 @@ async function seedMailbox(
 		address?: string;
 		organizationId?: string;
 		status?: 'active' | 'suspended' | 'deleted';
-	} = {},
+	} = {}
 ) {
 	const userId = overrides.userId ?? 'user-owner';
 	const address = overrides.address ?? 'mailbox@example.com';
@@ -146,7 +142,7 @@ async function seedMailbox(
 			uidValidity: Date.now(),
 			createdAt: Date.now(),
 			updatedAt: Date.now(),
-		}),
+		})
 	);
 	return { mailboxId, userId, address, organizationId };
 }
@@ -252,7 +248,7 @@ describe('appPasswords.generate', () => {
 			t.mutation(api.mail.appPasswords.generate, {
 				mailboxId,
 				label: '   ',
-			}),
+			})
 		).rejects.toThrow();
 	});
 
@@ -267,7 +263,7 @@ describe('appPasswords.generate', () => {
 			t.mutation(api.mail.appPasswords.generate, {
 				mailboxId,
 				label: 'Should fail',
-			}),
+			})
 		).rejects.toThrow(/not accessible/i);
 	});
 
@@ -283,7 +279,7 @@ describe('appPasswords.generate', () => {
 		expect(result.cleartext).toHaveLength(16);
 		await t.run(async (ctx) => {
 			const row = await ctx.db.get(result.id);
-			// Bound to the acting (admin) user per loadOwnedMailbox.userId.
+			// Bound to the acting (admin) user per requireMailboxAccess.userId.
 			expect(row!.userId).toBe('user-admin');
 		});
 	});
@@ -296,7 +292,7 @@ describe('appPasswords.generate', () => {
 			t.mutation(api.mail.appPasswords.generate, {
 				mailboxId,
 				label: 'Suspended',
-			}),
+			})
 		).rejects.toThrow(/not accessible/i);
 	});
 });
@@ -307,7 +303,7 @@ describe('appPasswords.verify', () => {
 	// Generate a credential and hand back the cleartext + ids.
 	async function provision(
 		t: ReturnType<typeof setupTest>,
-		opts: { scopes?: ('imap' | 'smtp')[]; address?: string } = {},
+		opts: { scopes?: ('imap' | 'smtp')[]; address?: string } = {}
 	) {
 		const address = opts.address ?? 'mailbox@example.com';
 		const { mailboxId, userId, organizationId } = await seedMailbox(t, { address });
@@ -489,8 +485,8 @@ describe('appPasswords.verify', () => {
 		const t = setupTest();
 		const f = await provision(t);
 
-		const before = await t.run(async (ctx) =>
-			(await ctx.db.query('mailAuthFailures').collect()).length,
+		const before = await t.run(
+			async (ctx) => (await ctx.db.query('mailAuthFailures').collect()).length
 		);
 
 		await t.action(internal.mail.appPasswords.verify, {
@@ -500,8 +496,8 @@ describe('appPasswords.verify', () => {
 			ip: '203.0.113.7',
 		});
 
-		const after = await t.run(async (ctx) =>
-			(await ctx.db.query('mailAuthFailures').collect()).length,
+		const after = await t.run(
+			async (ctx) => (await ctx.db.query('mailAuthFailures').collect()).length
 		);
 		expect(after).toBe(before + 1);
 	});
@@ -521,7 +517,7 @@ describe('appPasswords.touch', () => {
 				passwordPrefix: 'abcd',
 				scopes: ['imap', 'smtp'],
 				createdAt: Date.now(),
-			}),
+			})
 		);
 		return { mailboxId, appPasswordId };
 	}
@@ -590,10 +586,7 @@ describe('appPasswords.touch', () => {
 // ─── revoke ──────────────────────────────────────────────────────────────
 
 describe('appPasswords.revoke', () => {
-	async function seedCredential(
-		t: ReturnType<typeof setupTest>,
-		mailboxOwner = 'user-owner',
-	) {
+	async function seedCredential(t: ReturnType<typeof setupTest>, mailboxOwner = 'user-owner') {
 		const { mailboxId } = await seedMailbox(t, { userId: mailboxOwner });
 		const appPasswordId = await t.run(async (ctx) =>
 			ctx.db.insert('mailAppPasswords', {
@@ -604,7 +597,7 @@ describe('appPasswords.revoke', () => {
 				passwordPrefix: 'abcd',
 				scopes: ['imap', 'smtp'],
 				createdAt: Date.now(),
-			}),
+			})
 		);
 		return { mailboxId, appPasswordId };
 	}
@@ -642,9 +635,9 @@ describe('appPasswords.revoke', () => {
 		// Editor who is neither owner/admin nor the mailbox owner.
 		setSession('user-editor', 'editor');
 
-		await expect(
-			t.mutation(api.mail.appPasswords.revoke, { appPasswordId }),
-		).rejects.toThrow(/not accessible/i);
+		await expect(t.mutation(api.mail.appPasswords.revoke, { appPasswordId })).rejects.toThrow(
+			/not accessible/i
+		);
 
 		await t.run(async (ctx) => {
 			const row = await ctx.db.get(appPasswordId);
@@ -662,9 +655,7 @@ describe('appPasswords.revoke', () => {
 
 		// `revoke` returns early (no throw); Convex serializes the void return
 		// to null.
-		await expect(
-			t.mutation(api.mail.appPasswords.revoke, { appPasswordId }),
-		).resolves.toBeNull();
+		await expect(t.mutation(api.mail.appPasswords.revoke, { appPasswordId })).resolves.toBeNull();
 	});
 });
 
@@ -743,9 +734,7 @@ describe('appPasswords.revokeAll', () => {
 		const { mailboxId, ids } = await seedMany(t);
 		setSession('user-editor', 'editor');
 
-		await expect(
-			t.mutation(api.mail.appPasswords.revokeAll, { mailboxId }),
-		).rejects.toThrow();
+		await expect(t.mutation(api.mail.appPasswords.revokeAll, { mailboxId })).rejects.toThrow();
 
 		// Nothing got revoked.
 		await t.run(async (ctx) => {

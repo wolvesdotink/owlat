@@ -18,7 +18,7 @@ import { v } from 'convex/values';
 import sanitizeHtml from 'sanitize-html';
 import { POSTBOX_SANITIZE_CONFIG } from '@owlat/shared/postboxSanitize';
 import { authedMutation, publicQuery } from '../lib/authedFunctions';
-import { loadOwnedMailbox } from './permissions';
+import { requireMailboxAccess } from './permissions';
 import { throwForbidden, throwInvalidInput, throwNotFound } from '../_utils/errors';
 
 /**
@@ -39,11 +39,11 @@ function sanitizeSnippet(html: string): string {
 	return cleaned;
 }
 
-// public: soft-auth — returns empty for anonymous; mailbox ownership is still enforced in-handler
+// public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
 export const list = publicQuery({
 	args: { mailboxId: v.id('mailboxes') },
 	handler: async (ctx, args) => {
-		const owned = await loadOwnedMailbox(ctx, args.mailboxId);
+		const owned = await requireMailboxAccess(ctx, args.mailboxId);
 		if (!owned.ok) return [];
 		// bounded: snippets per mailbox are naturally small; cap defensively
 		return ctx.db
@@ -61,7 +61,7 @@ export const create = authedMutation({
 		bodyHtml: v.string(),
 	},
 	handler: async (ctx, args) => {
-		const owned = await loadOwnedMailbox(ctx, args.mailboxId);
+		const owned = await requireMailboxAccess(ctx, args.mailboxId);
 		if (!owned.ok) throwForbidden('Mailbox not accessible');
 
 		const name = args.name.trim();
@@ -90,7 +90,7 @@ export const update = authedMutation({
 	handler: async (ctx, args) => {
 		const snippet = await ctx.db.get(args.snippetId);
 		if (!snippet) throwNotFound('Snippet');
-		const owned = await loadOwnedMailbox(ctx, snippet.mailboxId);
+		const owned = await requireMailboxAccess(ctx, snippet.mailboxId);
 		if (!owned.ok) throwForbidden('Not accessible');
 
 		const patch: Record<string, unknown> = { updatedAt: Date.now() };
@@ -110,7 +110,7 @@ export const remove = authedMutation({
 	handler: async (ctx, args) => {
 		const snippet = await ctx.db.get(args.snippetId);
 		if (!snippet) return;
-		const owned = await loadOwnedMailbox(ctx, snippet.mailboxId);
+		const owned = await requireMailboxAccess(ctx, snippet.mailboxId);
 		if (!owned.ok) throwForbidden('Not accessible');
 		await ctx.db.delete(args.snippetId);
 	},

@@ -22,7 +22,7 @@ import { authedMutation, publicQuery } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { isFeatureEnabled } from '../lib/featureFlags';
-import { loadOwnedMailbox } from './permissions';
+import { requireMailboxAccess } from './permissions';
 import { throwForbidden } from '../_utils/errors';
 import { extractEmail } from '../lib/emailAddress';
 import {
@@ -244,13 +244,13 @@ export const getGuidanceForRecipient = internalMutation({
 
 /**
  * The derived profile summary for the settings page. Soft-auth: returns null
- * for anonymous / non-owner callers (mailbox ownership enforced in-handler).
+ * for anonymous / non-owner callers (mailbox access enforced in-handler).
  */
-// public: soft-auth — ownership enforced via loadOwnedMailbox; returns null otherwise.
+// public: soft-auth — access enforced via requireMailboxAccess; returns null otherwise.
 export const get = publicQuery({
 	args: { mailboxId: v.id('mailboxes') },
 	handler: async (ctx, args) => {
-		const owned = await loadOwnedMailbox(ctx, args.mailboxId);
+		const owned = await requireMailboxAccess(ctx, args.mailboxId);
 		if (!owned.ok) return null;
 		const row = await findRow(ctx, args.mailboxId);
 		if (!row) {
@@ -296,9 +296,9 @@ export const MAX_STANDING_INSTRUCTION_CHARS = 200;
  */
 export const setStandingInstructions = authedMutation({
 	args: { mailboxId: v.id('mailboxes'), instructions: v.array(v.string()) },
-	// authz: ownership enforced via loadOwnedMailbox.
+	// authz: access enforced via requireMailboxAccess.
 	handler: async (ctx, args) => {
-		const owned = await loadOwnedMailbox(ctx, args.mailboxId);
+		const owned = await requireMailboxAccess(ctx, args.mailboxId);
 		if (!owned.ok) throwForbidden('Mailbox not found');
 		const seen = new Set<string>();
 		const cleaned: string[] = [];
@@ -336,9 +336,9 @@ export const setStandingInstructions = authedMutation({
  */
 export const removeDerivedAdjustment = authedMutation({
 	args: { mailboxId: v.id('mailboxes'), kind: v.string() },
-	// authz: ownership enforced via loadOwnedMailbox.
+	// authz: access enforced via requireMailboxAccess.
 	handler: async (ctx, args) => {
-		const owned = await loadOwnedMailbox(ctx, args.mailboxId);
+		const owned = await requireMailboxAccess(ctx, args.mailboxId);
 		if (!owned.ok) throwForbidden('Mailbox not found');
 		const row = await findRow(ctx, args.mailboxId);
 		if (!row || !row.derivedAdjustments) return null;
@@ -354,9 +354,9 @@ export const removeDerivedAdjustment = authedMutation({
 /** Toggle "Personalize AI drafts" for a mailbox (creates the row on first use). */
 export const setEnabled = authedMutation({
 	args: { mailboxId: v.id('mailboxes'), enabled: v.boolean() },
-	// authz: ownership enforced via loadOwnedMailbox.
+	// authz: access enforced via requireMailboxAccess.
 	handler: async (ctx, args) => {
-		const owned = await loadOwnedMailbox(ctx, args.mailboxId);
+		const owned = await requireMailboxAccess(ctx, args.mailboxId);
 		if (!owned.ok) throwForbidden('Mailbox not found');
 		const now = Date.now();
 		const row = await findRow(ctx, args.mailboxId);
@@ -383,9 +383,9 @@ export const setEnabled = authedMutation({
  */
 export const requestRefresh = authedMutation({
 	args: { mailboxId: v.id('mailboxes') },
-	// authz: ownership enforced via loadOwnedMailbox.
+	// authz: access enforced via requireMailboxAccess.
 	handler: async (ctx, args) => {
-		const owned = await loadOwnedMailbox(ctx, args.mailboxId);
+		const owned = await requireMailboxAccess(ctx, args.mailboxId);
 		if (!owned.ok) throwForbidden('Mailbox not found');
 		if (!(await isFeatureEnabled(ctx, 'ai'))) throwForbidden('AI features are disabled');
 		const now = Date.now();

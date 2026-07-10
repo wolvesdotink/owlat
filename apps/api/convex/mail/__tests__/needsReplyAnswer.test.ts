@@ -5,7 +5,7 @@
  * Asserts the mutation persists each answer onto
  * `needsReply.clarification.questions[].answer`, stamps `answeredAt`, marks the
  * clarification no longer `needed`, and schedules `draftWithAnswers` (the path
- * that produces the starter reply). Ownership is enforced by loadOwnedMailbox.
+ * that produces the starter reply). Ownership is enforced by requireMailboxAccess.
  */
 
 import { convexTest } from 'convex-test';

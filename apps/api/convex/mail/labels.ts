@@ -11,7 +11,7 @@ import { authedMutation, publicQuery } from '../lib/authedFunctions';
 import { internalMutation } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import { loadOwnedMailbox } from './permissions';
+import { requireMailboxAccess } from './permissions';
 
 /** Per-batch row cap for the scheduled label-reference cleanup. */
 const LABEL_CLEANUP_BATCH = 256;
@@ -31,7 +31,7 @@ export const create = authedMutation({
 		color: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		const owned = await loadOwnedMailbox(ctx, args.mailboxId);
+		const owned = await requireMailboxAccess(ctx, args.mailboxId);
 		if (!owned.ok) throwForbidden('Mailbox not accessible');
 
 		const trimmed = args.name.trim();
@@ -66,7 +66,7 @@ export const update = authedMutation({
 	handler: async (ctx, args) => {
 		const label = await ctx.db.get(args.labelId);
 		if (!label) throwNotFound('Label');
-		const owned = await loadOwnedMailbox(ctx, label.mailboxId);
+		const owned = await requireMailboxAccess(ctx, label.mailboxId);
 		if (!owned.ok) throwForbidden('Label not accessible');
 
 		const patch: Record<string, unknown> = {};
@@ -101,7 +101,7 @@ export const remove = authedMutation({
 	handler: async (ctx, args) => {
 		const label = await ctx.db.get(args.labelId);
 		if (!label) return;
-		const owned = await loadOwnedMailbox(ctx, label.mailboxId);
+		const owned = await requireMailboxAccess(ctx, label.mailboxId);
 		if (!owned.ok) throwForbidden('Label not accessible');
 
 		// Delete the label row immediately — read paths ignore unresolved labelIds,
@@ -182,11 +182,11 @@ export const stripLabelReferences = internalMutation({
 	},
 });
 
-// public: soft-auth — returns empty for anonymous; mailbox ownership is still enforced in-handler
+// public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
 export const list = publicQuery({
 	args: { mailboxId: v.id('mailboxes') },
 	handler: async (ctx, args) => {
-		const owned = await loadOwnedMailbox(ctx, args.mailboxId);
+		const owned = await requireMailboxAccess(ctx, args.mailboxId);
 		if (!owned.ok) return [];
 		return ctx.db
 			.query('mailLabels')
@@ -205,7 +205,7 @@ export const toggleOnMessage = authedMutation({
 	handler: async (ctx, args) => {
 		const message = await ctx.db.get(args.messageId);
 		if (!message) throwNotFound('Message');
-		const owned = await loadOwnedMailbox(ctx, message.mailboxId);
+		const owned = await requireMailboxAccess(ctx, message.mailboxId);
 		if (!owned.ok) throwForbidden('Message not accessible');
 
 		const label = await ctx.db.get(args.labelId);
@@ -269,7 +269,7 @@ export const toggleOnThread = authedMutation({
 	handler: async (ctx, args) => {
 		const thread = await ctx.db.get(args.threadId);
 		if (!thread) throwNotFound('Thread');
-		const owned = await loadOwnedMailbox(ctx, thread.mailboxId);
+		const owned = await requireMailboxAccess(ctx, thread.mailboxId);
 		if (!owned.ok) throwForbidden('Thread not accessible');
 
 		const label = await ctx.db.get(args.labelId);

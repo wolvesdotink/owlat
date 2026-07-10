@@ -11,7 +11,7 @@ import { v } from 'convex/values';
 import { authedMutation } from '../lib/authedFunctions';
 import type { Id, Doc } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
-import { loadOwnedMailbox } from './permissions';
+import { requireMailboxAccess } from './permissions';
 import { isMessageSnoozed } from '../lib/mailSnooze';
 import { adjustFolderUnseen } from './folders';
 import { clearThreadNeedsReply } from './needsReply';
@@ -146,7 +146,7 @@ export const setFlags = authedMutation({
 		for (const id of args.messageIds) {
 			const message = await ctx.db.get(id);
 			if (!message) continue;
-			const owned = await loadOwnedMailbox(ctx, message.mailboxId);
+			const owned = await requireMailboxAccess(ctx, message.mailboxId);
 			if (!owned.ok) continue;
 			await applyFlagDelta(ctx, message, flagDeltas);
 			touchedThreads.add(message.threadId);
@@ -162,7 +162,7 @@ export const markThreadRead = authedMutation({
 	handler: async (ctx, args) => {
 		const thread = await ctx.db.get(args.threadId);
 		if (!thread) return;
-		const owned = await loadOwnedMailbox(ctx, thread.mailboxId);
+		const owned = await requireMailboxAccess(ctx, thread.mailboxId);
 		if (!owned.ok) return;
 
 		const messages = await ctx.db
@@ -186,7 +186,7 @@ export const move = authedMutation({
 	handler: async (ctx, args): Promise<MoveResult> => {
 		const target = await ctx.db.get(args.targetFolderId);
 		if (!target) throwNotFound('Target folder');
-		const owned = await loadOwnedMailbox(ctx, target.mailboxId);
+		const owned = await requireMailboxAccess(ctx, target.mailboxId);
 		if (!owned.ok) throwForbidden('Folder not accessible');
 
 		const now = Date.now();
@@ -269,7 +269,7 @@ export const move = authedMutation({
 });
 
 /** Archive: move to the Archive system folder. */
-// authz: ownership enforced by mail.messageActions.move (loadOwnedMailbox per
+// authz: access enforced by mail.messageActions.move (requireMailboxAccess per
 // message); this is a thin folder-routing wrapper.
 export const archive = authedMutation({
 	args: { messageIds: v.array(v.id('mailMessages')) },
@@ -293,7 +293,7 @@ export const archive = authedMutation({
 });
 
 /** Soft-delete: move to Trash. */
-// authz: ownership enforced by mail.messageActions.move (loadOwnedMailbox per
+// authz: access enforced by mail.messageActions.move (requireMailboxAccess per
 // message); this is a thin folder-routing wrapper.
 export const trash = authedMutation({
 	args: { messageIds: v.array(v.id('mailMessages')) },
@@ -325,7 +325,7 @@ export const purge = authedMutation({
 		for (const id of args.messageIds) {
 			const message = await ctx.db.get(id);
 			if (!message) continue;
-			const owned = await loadOwnedMailbox(ctx, message.mailboxId);
+			const owned = await requireMailboxAccess(ctx, message.mailboxId);
 			if (!owned.ok) continue;
 
 			const folder = await ctx.db.get(message.folderId);
@@ -379,7 +379,7 @@ export const purge = authedMutation({
 });
 
 /** Mark a single message read/unread (convenience wrapper). */
-// authz: ownership enforced by mail.messageActions.setFlags (loadOwnedMailbox).
+// authz: access enforced by mail.messageActions.setFlags (requireMailboxAccess).
 export const markRead = authedMutation({
 	args: { messageId: v.id('mailMessages'), seen: v.boolean() },
 	handler: async (ctx, args): Promise<void> => {
@@ -391,7 +391,7 @@ export const markRead = authedMutation({
 });
 
 /** Star/unstar a single message. */
-// authz: ownership enforced by mail.messageActions.setFlags (loadOwnedMailbox).
+// authz: access enforced by mail.messageActions.setFlags (requireMailboxAccess).
 export const setStar = authedMutation({
 	args: { messageId: v.id('mailMessages'), starred: v.boolean() },
 	handler: async (ctx, args): Promise<void> => {
@@ -413,7 +413,7 @@ async function moveToRoleWithVerdict(
 	if (!firstId) return { ok: true, moved: [] };
 	const first = await ctx.db.get(firstId);
 	if (!first) return { ok: true, moved: [] };
-	const owned = await loadOwnedMailbox(ctx, first.mailboxId);
+	const owned = await requireMailboxAccess(ctx, first.mailboxId);
 	if (!owned.ok) throwForbidden('Messages not accessible');
 	const folder = await ctx.db
 		.query('mailFolders')
@@ -423,7 +423,7 @@ async function moveToRoleWithVerdict(
 	for (const id of messageIds) {
 		const m = await ctx.db.get(id);
 		if (!m) continue;
-		const o = await loadOwnedMailbox(ctx, m.mailboxId);
+		const o = await requireMailboxAccess(ctx, m.mailboxId);
 		if (!o.ok) continue;
 		await ctx.db.patch(id, { spamVerdict: verdict, updatedAt: Date.now() });
 	}
@@ -434,7 +434,7 @@ async function moveToRoleWithVerdict(
 }
 
 /** Report as spam: move to Spam and record the verdict. */
-// authz: moveToRoleWithVerdict enforces ownership (loadOwnedMailbox per message).
+// authz: moveToRoleWithVerdict enforces ownership (requireMailboxAccess per message).
 export const reportSpam = authedMutation({
 	args: { messageIds: v.array(v.id('mailMessages')) },
 	handler: async (ctx, args): Promise<MoveResult> => {
@@ -443,7 +443,7 @@ export const reportSpam = authedMutation({
 });
 
 /** Not spam: rescue to the Inbox and clear the spam verdict. */
-// authz: moveToRoleWithVerdict enforces ownership (loadOwnedMailbox per message).
+// authz: moveToRoleWithVerdict enforces ownership (requireMailboxAccess per message).
 export const notSpam = authedMutation({
 	args: { messageIds: v.array(v.id('mailMessages')) },
 	handler: async (ctx, args): Promise<MoveResult> => {
@@ -461,7 +461,7 @@ export const blockSender = authedMutation({
 	handler: async (ctx, args): Promise<void> => {
 		const message = await ctx.db.get(args.messageId);
 		if (!message) return;
-		const owned = await loadOwnedMailbox(ctx, message.mailboxId);
+		const owned = await requireMailboxAccess(ctx, message.mailboxId);
 		if (!owned.ok) throwForbidden('Message not accessible');
 
 		const spam = await ctx.db

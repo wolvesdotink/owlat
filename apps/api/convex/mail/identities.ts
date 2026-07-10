@@ -55,7 +55,7 @@ export const resolveAllowedFromAddresses = internalQuery({
 });
 
 /** Public query for the web composer's identity dropdown. */
-// public: soft-auth — returns empty for anonymous; mailbox ownership is still enforced in-handler
+// public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
 export const listForOwnedMailbox = publicQuery({
 	args: { mailboxId: v.id('mailboxes') },
 	handler: async (ctx, args): Promise<string[]> => {

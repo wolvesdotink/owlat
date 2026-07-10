@@ -1,7 +1,7 @@
 /**
  * Per-mailbox snippets (mail/snippets) — CRUD + mailbox ownership.
  *
- * Ownership is enforced by `loadOwnedMailbox`: a non-owner (different userId,
+ * Ownership is enforced by `requireMailboxAccess`: a non-owner (different userId,
  * non-admin role) must not read or mutate another mailbox's snippets.
  */
 

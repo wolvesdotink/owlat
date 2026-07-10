@@ -10,7 +10,7 @@ import { v } from 'convex/values';
 import sanitizeHtml from 'sanitize-html';
 import { POSTBOX_SANITIZE_CONFIG } from '@owlat/shared/postboxSanitize';
 import { authedMutation, publicQuery } from '../lib/authedFunctions';
-import { loadOwnedMailbox } from './permissions';
+import { requireMailboxAccess } from './permissions';
 import { throwForbidden, throwInvalidInput, throwNotFound } from '../_utils/errors';
 
 /**
@@ -39,11 +39,11 @@ function sanitizeSignature(html: string): string {
 	return cleaned;
 }
 
-// public: soft-auth — returns empty for anonymous; mailbox ownership is still enforced in-handler
+// public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
 export const list = publicQuery({
 	args: { mailboxId: v.id('mailboxes') },
 	handler: async (ctx, args) => {
-		const owned = await loadOwnedMailbox(ctx, args.mailboxId);
+		const owned = await requireMailboxAccess(ctx, args.mailboxId);
 		if (!owned.ok) return [];
 		return ctx.db
 			.query('mailSignatures')
@@ -52,11 +52,11 @@ export const list = publicQuery({
 	},
 });
 
-// public: soft-auth — returns empty for anonymous; mailbox ownership is still enforced in-handler
+// public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
 export const getDefault = publicQuery({
 	args: { mailboxId: v.id('mailboxes') },
 	handler: async (ctx, args) => {
-		const owned = await loadOwnedMailbox(ctx, args.mailboxId);
+		const owned = await requireMailboxAccess(ctx, args.mailboxId);
 		if (!owned.ok) return null;
 		return ctx.db
 			.query('mailSignatures')
@@ -75,7 +75,7 @@ export const create = authedMutation({
 		isDefault: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
-		const owned = await loadOwnedMailbox(ctx, args.mailboxId);
+		const owned = await requireMailboxAccess(ctx, args.mailboxId);
 		if (!owned.ok) throwForbidden('Mailbox not accessible');
 		const trimmed = args.name.trim();
 		if (!trimmed) throwInvalidInput('Signature name required');
@@ -115,7 +115,7 @@ export const update = authedMutation({
 	handler: async (ctx, args) => {
 		const sig = await ctx.db.get(args.signatureId);
 		if (!sig) throwNotFound('Signature');
-		const owned = await loadOwnedMailbox(ctx, sig.mailboxId);
+		const owned = await requireMailboxAccess(ctx, sig.mailboxId);
 		if (!owned.ok) throwForbidden('Not accessible');
 
 		if (args.isDefault === true) {
@@ -143,7 +143,7 @@ export const remove = authedMutation({
 	handler: async (ctx, args) => {
 		const sig = await ctx.db.get(args.signatureId);
 		if (!sig) return;
-		const owned = await loadOwnedMailbox(ctx, sig.mailboxId);
+		const owned = await requireMailboxAccess(ctx, sig.mailboxId);
 		if (!owned.ok) throwForbidden('Not accessible');
 		await ctx.db.delete(args.signatureId);
 	},
