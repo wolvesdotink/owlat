@@ -91,10 +91,14 @@ export const throttleResend = adminMutation({
 			throwForbidden('No active organization');
 		}
 
-		const existing = await ctx.db
+		const row = await ctx.db
 			.query('invitationResends')
 			.withIndex('by_invitation', (q) => q.eq('invitationId', args.invitationId))
 			.first();
+
+		// Scope the read to the caller's org: a row for another organization is
+		// treated the same as "no row", so the cooldown never leaks across tenants.
+		const existing = row?.organizationId === session.activeOrganizationId ? row : null;
 
 		if (existing) {
 			const retryAfter = cooldownRemaining(existing.lastSentAt, Date.now());
