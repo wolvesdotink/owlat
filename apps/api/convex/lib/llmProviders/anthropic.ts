@@ -14,7 +14,7 @@
 
 import { createAnthropic } from '@ai-sdk/anthropic';
 import type { LanguageModel } from 'ai';
-import { keyFingerprint, memoizeClient } from './clientCache';
+import { hostedCacheKey, memoizeClient } from './clientCache';
 import type { LanguageProviderAdapter, ProviderClientConfig } from './types';
 
 type AnthropicClient = ReturnType<typeof createAnthropic>;
@@ -22,8 +22,7 @@ type AnthropicClient = ReturnType<typeof createAnthropic>;
 const clientCache = new Map<string, AnthropicClient>();
 
 function anthropicClient(cfg: ProviderClientConfig): AnthropicClient {
-	const cacheKey = `${cfg.baseUrl ?? ''}::${keyFingerprint(cfg.apiKey)}`;
-	return memoizeClient(clientCache, cacheKey, () =>
+	return memoizeClient(clientCache, hostedCacheKey(cfg), () =>
 		createAnthropic({ apiKey: cfg.apiKey, baseURL: cfg.baseUrl })
 	);
 }
