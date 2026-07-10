@@ -39,7 +39,7 @@ const runLlmTextMock = vi.hoisted(() => vi.fn());
 
 vi.mock('../lib/llmProvider', async () => {
 	const actual = await vi.importActual<typeof import('../lib/llmProvider')>('../lib/llmProvider');
-	return { ...actual, getLLMProvider: vi.fn(() => 'test-model') };
+	return { ...actual, resolveLanguageModel: vi.fn(() => 'test-model') };
 });
 
 vi.mock('../lib/llm/dispatch', async () => {
@@ -54,8 +54,8 @@ const modules = Object.fromEntries(
 		([path]) =>
 			!path.includes('sesActions') &&
 			!path.includes('visualizationAgent') &&
-			!path.includes('semanticFileProcessing'),
-	),
+			!path.includes('semanticFileProcessing')
+	)
 );
 
 beforeEach(() => {
@@ -99,7 +99,7 @@ async function seedMailbox(t: TestConvex<typeof schema>): Promise<Id<'mailboxes'
 async function seedThread(
 	t: TestConvex<typeof schema>,
 	mailboxId: Id<'mailboxes'>,
-	count: number,
+	count: number
 ): Promise<{ threadId: Id<'mailThreads'>; latestMessageId: Id<'mailMessages'> }> {
 	return await t.run(async (ctx) => {
 		const now = Date.now();
@@ -167,7 +167,7 @@ async function seedThread(
 
 async function getThread(
 	t: TestConvex<typeof schema>,
-	threadId: Id<'mailThreads'>,
+	threadId: Id<'mailThreads'>
 ): Promise<Doc<'mailThreads'> | null> {
 	return await t.run(async (ctx) => ctx.db.get(threadId));
 }
@@ -285,7 +285,7 @@ describe('mail.summaryCache.getThreadSummary', () => {
 
 		// No cache yet → null.
 		expect(
-			await t.query(api.mail.summaryCache.getThreadSummary, { messageId: latestMessageId }),
+			await t.query(api.mail.summaryCache.getThreadSummary, { messageId: latestMessageId })
 		).toBeNull();
 
 		// Fresh cache → served.
@@ -295,7 +295,7 @@ describe('mail.summaryCache.getThreadSummary', () => {
 			});
 		});
 		expect(
-			await t.query(api.mail.summaryCache.getThreadSummary, { messageId: latestMessageId }),
+			await t.query(api.mail.summaryCache.getThreadSummary, { messageId: latestMessageId })
 		).toEqual({ summary: 'fresh', messageCount: 5, generatedAt: 42 });
 
 		// Stale cache (count mismatch) → null.
@@ -305,7 +305,7 @@ describe('mail.summaryCache.getThreadSummary', () => {
 			});
 		});
 		expect(
-			await t.query(api.mail.summaryCache.getThreadSummary, { messageId: latestMessageId }),
+			await t.query(api.mail.summaryCache.getThreadSummary, { messageId: latestMessageId })
 		).toBeNull();
 	});
 });

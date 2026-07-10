@@ -29,7 +29,7 @@ const runLlmObjectMock = vi.hoisted(() => vi.fn());
 // dispatch so we feed it a deterministic relations array.
 vi.mock('../lib/llmProvider', async () => {
 	const actual = await vi.importActual<typeof import('../lib/llmProvider')>('../lib/llmProvider');
-	return { ...actual, getLLMProvider: vi.fn(() => 'test-model') };
+	return { ...actual, resolveLanguageModel: vi.fn(() => 'test-model') };
 });
 
 vi.mock('../lib/llm/dispatch', async () => {
@@ -44,8 +44,8 @@ const modules = Object.fromEntries(
 		([path]) =>
 			!path.includes('sesActions') &&
 			!path.includes('visualizationAgent') &&
-			!path.includes('semanticFileProcessing'),
-	),
+			!path.includes('semanticFileProcessing')
+	)
 );
 
 const DIM = 1536;
@@ -72,7 +72,7 @@ function mockRelations(relations: MockRelation[]): void {
 }
 
 async function allRelations(
-	t: ReturnType<typeof convexTest>,
+	t: ReturnType<typeof convexTest>
 ): Promise<Doc<'knowledgeRelations'>[]> {
 	return await t.run(async (ctx) => ctx.db.query('knowledgeRelations').collect());
 }
@@ -87,9 +87,18 @@ describe('knowledge.edgeInference.inferRelations', () => {
 		await enableFeatures(t, ['ai.knowledge.autoLink']);
 
 		const [a0, a1, a2] = await t.run(async (ctx) => {
-			const x = await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({ title: 'A0', embedding: unit(5) }));
-			const y = await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({ title: 'A1', embedding: unit(5) }));
-			const z = await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({ title: 'A2', embedding: unit(5) }));
+			const x = await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({ title: 'A0', embedding: unit(5) })
+			);
+			const y = await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({ title: 'A1', embedding: unit(5) })
+			);
+			const z = await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({ title: 'A2', embedding: unit(5) })
+			);
 			return [x, y, z];
 		});
 
@@ -125,8 +134,14 @@ describe('knowledge.edgeInference.inferRelations', () => {
 		await enableFeatures(t, ['ai.knowledge.autoLink']);
 
 		const [a0, a1] = await t.run(async (ctx) => {
-			const x = await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({ title: 'A0', embedding: unit(5) }));
-			const y = await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({ title: 'A1', embedding: unit(5) }));
+			const x = await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({ title: 'A0', embedding: unit(5) })
+			);
+			const y = await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({ title: 'A1', embedding: unit(5) })
+			);
 			return [x, y];
 		});
 
@@ -144,8 +159,14 @@ describe('knowledge.edgeInference.inferRelations', () => {
 		await enableFeatures(t, ['ai.knowledge.autoLink']);
 
 		const [a0, a1] = await t.run(async (ctx) => {
-			const x = await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({ title: 'A0', embedding: unit(5) }));
-			const y = await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({ title: 'A1', embedding: unit(5) }));
+			const x = await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({ title: 'A0', embedding: unit(5) })
+			);
+			const y = await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({ title: 'A1', embedding: unit(5) })
+			);
 			// A pre-existing deterministic edge for the same directed pair.
 			await ctx.db.insert(
 				'knowledgeRelations',
@@ -156,7 +177,7 @@ describe('knowledge.edgeInference.inferRelations', () => {
 					provenance: 'deterministic',
 					confidenceTag: 'extracted',
 					confidence: 1.0,
-				}),
+				})
 			);
 			return [x, y];
 		});
@@ -175,8 +196,14 @@ describe('knowledge.edgeInference.inferRelations', () => {
 		await enableFeatures(t, ['ai.knowledge']); // autoLink stays off (its own flag, default off)
 
 		const [a0, a1] = await t.run(async (ctx) => {
-			const x = await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({ title: 'A0', embedding: unit(5) }));
-			const y = await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({ title: 'A1', embedding: unit(5) }));
+			const x = await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({ title: 'A0', embedding: unit(5) })
+			);
+			const y = await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({ title: 'A1', embedding: unit(5) })
+			);
 			return [x, y];
 		});
 
@@ -192,8 +219,14 @@ describe('knowledge.edgeInference.inferRelations', () => {
 		await enableFeatures(t, ['ai.knowledge.autoLink']);
 
 		const [a0, a1] = await t.run(async (ctx) => {
-			const x = await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({ title: 'A0', embedding: unit(5) }));
-			const y = await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({ title: 'A1', embedding: unit(5) }));
+			const x = await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({ title: 'A0', embedding: unit(5) })
+			);
+			const y = await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({ title: 'A1', embedding: unit(5) })
+			);
 			return [x, y];
 		});
 
@@ -203,7 +236,7 @@ describe('knowledge.edgeInference.inferRelations', () => {
 		// Resolves (does not reject) — the error is swallowed. Convex marshals the
 		// handler's void return to null over the wire.
 		await expect(
-			t.action(internal.knowledge.edgeInference.inferRelations, { entryIds: [a0, a1] }),
+			t.action(internal.knowledge.edgeInference.inferRelations, { entryIds: [a0, a1] })
 		).resolves.toBeNull();
 		expect(await allRelations(t)).toHaveLength(0);
 
@@ -221,17 +254,21 @@ describe('knowledge.edgeInference.inferRelations', () => {
 			// vector search ALONE would surface every one of them.
 			const anchor = await ctx.db.insert(
 				'knowledgeEntries',
-				createTestKnowledgeEntry({ title: 'anchorA', embedding: unit(5), contactIds: [contactA] }),
+				createTestKnowledgeEntry({ title: 'anchorA', embedding: unit(5), contactIds: [contactA] })
 			);
 			// Org-general entry — legitimately visible under contact A's scope.
 			const legit = await ctx.db.insert(
 				'knowledgeEntries',
-				createTestKnowledgeEntry({ title: 'orgGeneral', embedding: unit(5) }),
+				createTestKnowledgeEntry({ title: 'orgGeneral', embedding: unit(5) })
 			);
 			// Contact B's private entry — MUST NOT be reachable from a contact-A anchor.
 			const other = await ctx.db.insert(
 				'knowledgeEntries',
-				createTestKnowledgeEntry({ title: 'contactBsecret', embedding: unit(5), contactIds: [contactB] }),
+				createTestKnowledgeEntry({
+					title: 'contactBsecret',
+					embedding: unit(5),
+					contactIds: [contactB],
+				})
 			);
 			return { anchor, legit, other };
 		});
@@ -269,16 +306,16 @@ describe('knowledge.edgeInference.inferRelations', () => {
 			const contactB = await ctx.db.insert('contacts', createTestContact());
 			const anchorA = await ctx.db.insert(
 				'knowledgeEntries',
-				createTestKnowledgeEntry({ title: 'anchorA', embedding: unit(5), contactIds: [contactA] }),
+				createTestKnowledgeEntry({ title: 'anchorA', embedding: unit(5), contactIds: [contactA] })
 			);
 			const anchorB = await ctx.db.insert(
 				'knowledgeEntries',
-				createTestKnowledgeEntry({ title: 'anchorB', embedding: unit(5), contactIds: [contactB] }),
+				createTestKnowledgeEntry({ title: 'anchorB', embedding: unit(5), contactIds: [contactB] })
 			);
 			// Org-general entry: visible to BOTH contacts, so each anchor may link to it.
 			const shared = await ctx.db.insert(
 				'knowledgeEntries',
-				createTestKnowledgeEntry({ title: 'orgGeneral', embedding: unit(5) }),
+				createTestKnowledgeEntry({ title: 'orgGeneral', embedding: unit(5) })
 			);
 			return { anchorA, anchorB, shared };
 		});
@@ -291,7 +328,9 @@ describe('knowledge.edgeInference.inferRelations', () => {
 			{ from: 1, to: 2, relationType: 'supports', confidence: 0.9 }, // B → org-general: ok
 		]);
 
-		await t.action(internal.knowledge.edgeInference.inferRelations, { entryIds: [anchorA, anchorB] });
+		await t.action(internal.knowledge.edgeInference.inferRelations, {
+			entryIds: [anchorA, anchorB],
+		});
 
 		const rels = await allRelations(t);
 		// No edge in either direction between the two disjoint-contact anchors.
@@ -299,8 +338,8 @@ describe('knowledge.edgeInference.inferRelations', () => {
 			rels.some(
 				(r) =>
 					(r.fromEntryId === anchorA && r.toEntryId === anchorB) ||
-					(r.fromEntryId === anchorB && r.toEntryId === anchorA),
-			),
+					(r.fromEntryId === anchorB && r.toEntryId === anchorA)
+			)
 		).toBe(false);
 		// Both org-general links survive — the guard only blocks the disjoint pair.
 		expect(rels.some((r) => r.fromEntryId === anchorA && r.toEntryId === shared)).toBe(true);
