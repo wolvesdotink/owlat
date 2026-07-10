@@ -15,6 +15,7 @@ import { resolve } from 'node:path';
 import { writeFile } from 'node:fs/promises';
 import {
 	getActiveProfiles,
+	isDeliveryProviderKind,
 	needsDeliveryProvider,
 	resolveFlags,
 	type FeatureFlagState,
@@ -69,16 +70,15 @@ export default defineEventHandler(
 		// Authoritative floor for the "sending needs a delivery provider" invariant.
 		// The client gates this too, but the server must refuse to persist a config
 		// where bulk sending is on without a REAL provider (otherwise every send
-		// would fail at dispatch). Require one of mta|resend|ses, not just a truthy
-		// value — an external IMAP mailbox is not a delivery provider.
+		// would fail at dispatch). Require a known delivery-provider kind, not just a
+		// truthy value — an external IMAP mailbox is not a delivery provider.
 		const chosenProvider = body.env?.['EMAIL_PROVIDER'];
-		const hasRealProvider =
-			chosenProvider === 'mta' || chosenProvider === 'resend' || chosenProvider === 'ses';
+		const hasRealProvider = isDeliveryProviderKind(chosenProvider);
 		if (needsDeliveryProvider(resolved) && !hasRealProvider) {
 			return {
 				ok: false,
 				message:
-					'Campaigns, transactional, or automations are enabled but no delivery provider is configured. Choose MTA, Resend, or SES, or disable bulk sending.',
+					'Campaigns, transactional, or automations are enabled but no delivery provider is configured. Choose MTA, Resend, SES, or an SMTP relay, or disable bulk sending.',
 			};
 		}
 

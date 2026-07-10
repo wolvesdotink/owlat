@@ -2,6 +2,13 @@
  * SPF policy — shared shape + record builder/inspector for the **Sending
  * domain** provider adapters and the DNS verifier.
  *
+ * Relay note: when the outbound transport is a generic SMTP relay
+ * (`EMAIL_PROVIDER=smtp`, see `lib/sendProviders/smtp`), the sending IPs and
+ * DKIM signing belong to the RELAY provider, so SPF/DKIM authentication is set
+ * up in that provider's dashboard against the From-domain — not through this
+ * built-in-MTA record bundle. The operator-facing transport UX for this lands
+ * in the Sending-transport settings surface (plan piece a4).
+ *
  * Three concerns live here, all pure (no Convex / no DNS I/O):
  *
  *  1. **Record generation** — `buildSpfRecordValue` emits a `v=spf1 …` record.
@@ -36,11 +43,7 @@
  * domains callers.
  */
 
-export {
-	type AlignmentMode,
-	isSpfAligned,
-	emailDomain,
-} from '@owlat/shared/spfAlignment';
+export { type AlignmentMode, isSpfAligned, emailDomain } from '@owlat/shared/spfAlignment';
 
 // SPF merge is shared with the web clients (the DNS-panel coexistence hint), so
 // backend generation/verification and the FE fold our mechanisms into an
@@ -110,7 +113,7 @@ export function buildSpfRecordValue(parts: SpfRecordParts): string {
  */
 export function buildReturnPathSpfRecord(
 	ip4: readonly string[],
-	qualifier: SpfQualifier = DEFAULT_SPF_QUALIFIER,
+	qualifier: SpfQualifier = DEFAULT_SPF_QUALIFIER
 ): string {
 	return buildSpfRecordValue({ ip4, qualifier });
 }
@@ -143,7 +146,7 @@ export function detectMultipleSpf(txtValues: readonly string[]): boolean {
  */
 export function mergeSpfIncludeGuidance(
 	existingTxtValues: readonly string[],
-	include: string,
+	include: string
 ): string | null {
 	const existing = existingTxtValues.find((value) => isSpfRecord(value));
 	if (!existing) return null;

@@ -34,13 +34,21 @@ export function providerKindConfigured(kind: SendProviderKind): boolean {
 			return Boolean(
 				getOptional('AWS_SES_ACCESS_KEY_ID') && getOptional('AWS_SES_SECRET_ACCESS_KEY')
 			);
+		case 'smtp':
+			// A generic relay needs the endpoint plus the credentials this
+			// deployment authenticates with. Fail-closed when any are unset.
+			return Boolean(
+				getOptional('SMTP_RELAY_HOST') &&
+				getOptional('SMTP_RELAY_USERNAME') &&
+				getOptional('SMTP_RELAY_PASSWORD')
+			);
 	}
 }
 
 /**
  * Env-only capability check: `EMAIL_PROVIDER` names a real kind AND its
  * credentials are present. Returns false when `EMAIL_PROVIDER` is unset or not
- * one of `mta|resend|ses` (no implicit MTA default).
+ * one of `mta|resend|ses|smtp` (no implicit MTA default).
  */
 export function deliveryConfiguredFromEnv(): boolean {
 	const provider = getOptional('EMAIL_PROVIDER');

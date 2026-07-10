@@ -55,8 +55,8 @@ export function evaluateSendPath(flags: FeatureFlagState, env: EnvMap): SendPath
 			{
 				ok: false,
 				message: provider
-					? `a sending feature is enabled but EMAIL_PROVIDER="${provider}" is not a delivery provider (mta|resend|ses)`
-					: 'a sending feature is enabled but EMAIL_PROVIDER is unset — set mta|resend|ses and its credentials, or this install cannot send mail',
+					? `a sending feature is enabled but EMAIL_PROVIDER="${provider}" is not a delivery provider (mta|resend|ses|smtp)`
+					: 'a sending feature is enabled but EMAIL_PROVIDER is unset — set mta|resend|ses|smtp and its credentials, or this install cannot send mail',
 			},
 		];
 	}
@@ -79,7 +79,10 @@ async function probeMtaHealth(baseUrl: string): Promise<{ reachable: boolean; de
 	try {
 		const resp = await fetch(url, { signal: ctrl.signal });
 		// Any HTTP answer below 500 means the MTA process is up and routing.
-		return { reachable: resp.status >= 200 && resp.status < 500, detail: `${url} → HTTP ${resp.status}` };
+		return {
+			reachable: resp.status >= 200 && resp.status < 500,
+			detail: `${url} → HTTP ${resp.status}`,
+		};
 	} catch (err) {
 		return { reachable: false, detail: `${url} unreachable (${(err as Error).message})` };
 	} finally {
@@ -128,7 +131,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<number> {
 		console.log(
 			`${health.reachable ? pc.green('✓') : pc.yellow('!')} SEND PATH: MTA ${
 				health.reachable ? 'reachable' : 'not reachable (non-fatal)'
-			} — ${health.detail}`,
+			} — ${health.detail}`
 		);
 	}
 
@@ -152,7 +155,14 @@ export async function runDoctor(opts: DoctorOptions): Promise<number> {
 
 	console.log();
 	if (failures === 0) {
-		console.log(pc.green(`All checks passed. Active features: ${Object.entries(resolved).filter(([, v]) => v).map(([k]) => k).join(', ')}`));
+		console.log(
+			pc.green(
+				`All checks passed. Active features: ${Object.entries(resolved)
+					.filter(([, v]) => v)
+					.map(([k]) => k)
+					.join(', ')}`
+			)
+		);
 	} else {
 		console.log(pc.red(`${failures} check(s) failed. Run \`owlat-setup config\` to fix.`));
 	}

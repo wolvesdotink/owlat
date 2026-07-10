@@ -1,15 +1,16 @@
 /**
  * Send provider adapter (module) — shared types.
  *
- * Per ADR-0020 — the per-provider Send-side surface. Three adapters today:
- * `mta`, `ses`, `resend`. The **Send dispatch (helper)** in `./dispatch.ts`
- * owns the retry loop and post-attempt orchestration; per-provider modules
- * own single-attempt sends and per-provider error categorization.
+ * Per ADR-0020 — the per-provider Send-side surface. Four adapters today:
+ * `mta`, `ses`, `resend`, `smtp`. The **Send dispatch (helper)** in
+ * `./dispatch.ts` owns the retry loop and post-attempt orchestration;
+ * per-provider modules own single-attempt sends and per-provider error
+ * categorization.
  *
  * See CONTEXT.md "Send provider adapter (module)".
  */
 
-export type SendProviderKind = 'mta' | 'ses' | 'resend';
+export type SendProviderKind = 'mta' | 'ses' | 'resend' | 'smtp';
 
 /**
  * Canonical IP-pool names the built-in MTA routes through. Single source of
@@ -79,13 +80,21 @@ export interface ResendExtras {
 	idempotencyKey?: string;
 }
 
+/**
+ * A generic SMTP relay (nodemailer transport) has no per-send provider knobs —
+ * the connection (host/port/TLS/auth) is instance-level config, not per-message.
+ */
+export type SmtpExtras = Record<string, never>;
+
 export type ExtrasFor<K extends SendProviderKind> = K extends 'mta'
 	? MtaExtras
 	: K extends 'ses'
 		? SesExtras
 		: K extends 'resend'
 			? ResendExtras
-			: never;
+			: K extends 'smtp'
+				? SmtpExtras
+				: never;
 
 // ─── Single-attempt result ─────────────────────────────────────────────────
 
@@ -153,10 +162,7 @@ export interface SendProviderModule<K extends SendProviderKind> {
 	 * the module's typed `EmailErrorCode`. The dispatch helper decides
 	 * retry based on the code.
 	 */
-	sendEmail(
-		params: EmailSendParams,
-		extras?: ExtrasFor<K>,
-	): Promise<EmailSendAttempt>;
+	sendEmail(params: EmailSendParams, extras?: ExtrasFor<K>): Promise<EmailSendAttempt>;
 
 	/**
 	 * Per-provider error-response parsing. The dispatch helper passes
