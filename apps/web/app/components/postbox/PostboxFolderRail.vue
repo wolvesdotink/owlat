@@ -109,6 +109,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 		class="border-r border-border-subtle bg-bg-elevated flex flex-col"
 		:class="railCollapsed ? 'w-12 p-2 gap-1.5 items-center' : 'w-56 p-3 gap-2'"
 	>
+		<!-- Mailbox switcher: personal mailbox(es) + shared (team) inboxes with
+		     unread badges. Renders nothing for a lone personal mailbox, so a
+		     single-mailbox user's rail is unchanged. -->
+		<PostboxMailboxSwitcher :mailbox-id="mailboxId" :collapsed="railCollapsed" />
+
 		<!-- Search: full box expanded; a single icon collapsed (opens the
 		     search page, which hosts the palette/query UI). -->
 		<PostboxSearchBar

@@ -1,13 +1,17 @@
 /**
- * Current mailbox + accounts list, persisted to localStorage.
+ * Current mailbox + accounts list, with the active selection shared across the
+ * whole Postbox surface.
  *
- * For P1 we assume one mailbox per user; this composable just picks the
- * first available mailbox by default. P3+ will introduce explicit
- * account switching.
+ * A user reaches their own personal mailbox(es) plus any shared (team) inbox
+ * they belong to (LOCKED decision 7 of the 2026-07-10 experience plan). The
+ * active selection is held in shared `useState` (seeded from localStorage) so
+ * switching mailboxes in the sidebar switcher reactively re-renders the layout
+ * everywhere — every consumer reads the same selection, and it survives reload.
  */
 
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { derivePostboxSidebarSections } from '~/utils/postboxMailboxSections';
 
 const STORAGE_KEY = 'owlat:postbox:active-mailbox';
 
@@ -15,8 +19,10 @@ export function usePostboxMailbox() {
 	const { data, isLoading, error } = useConvexQuery(api.mail.mailbox.list, () => ({}));
 	const mailboxes = computed(() => data.value ?? []);
 
-	const persistedId = ref<Id<'mailboxes'> | null>(
-		(import.meta.client && (localStorage.getItem(STORAGE_KEY) as Id<'mailboxes'> | null)) || null
+	// Shared across every consumer so a switch in the sidebar reaches the page,
+	// reader, and composer at once. Seeded once from localStorage on the client.
+	const persistedId = useState<Id<'mailboxes'> | null>('postbox:active-mailbox', () =>
+		import.meta.client ? (localStorage.getItem(STORAGE_KEY) as Id<'mailboxes'> | null) : null
 	);
 
 	const currentMailbox = computed(() => {
@@ -36,8 +42,12 @@ export function usePostboxMailbox() {
 		}
 	};
 
+	// Personal mailbox(es) vs shared (team) inboxes, for the sidebar switcher.
+	const sections = computed(() => derivePostboxSidebarSections(mailboxes.value));
+
 	return {
 		mailboxes,
+		sections,
 		currentMailbox,
 		setCurrentMailbox,
 		isLoading,
