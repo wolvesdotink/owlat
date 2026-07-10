@@ -98,6 +98,35 @@ interface StoredEnvelope {
 }
 
 /**
+ * Map the stored envelope columns of one plane off an existing config row. The
+ * language and embedding planes use identically-shaped column sets that differ
+ * only by the `embedding` prefix, so this single mapper feeds both
+ * `resolveSecret({ existing })` call sites. Returns `undefined` when there is no
+ * row yet.
+ */
+function storedEnvelopeOf(
+	row: Doc<'aiProviderConfig'> | null,
+	plane: 'language' | 'embedding'
+): StoredEnvelope | undefined {
+	if (!row) return undefined;
+	return plane === 'language'
+		? {
+				ciphertext: row.secretCiphertext,
+				iv: row.secretIv,
+				authTag: row.secretAuthTag,
+				version: row.secretEnvelopeVersion,
+				keyPreview: row.keyPreview,
+			}
+		: {
+				ciphertext: row.embeddingSecretCiphertext,
+				iv: row.embeddingSecretIv,
+				authTag: row.embeddingSecretAuthTag,
+				version: row.embeddingSecretEnvelopeVersion,
+				keyPreview: row.embeddingKeyPreview,
+			};
+}
+
+/**
  * Decide the final stored key envelope for one plane. A freshly-entered key
  * wins; otherwise the stored envelope is kept (secrets never round-trip through
  * the client, so an unchanged key is re-persisted from disk). A local, keyless
@@ -159,29 +188,13 @@ export const _persistConfig = internalMutation({
 		const language = resolveSecret({
 			isLocal: args.isLanguageLocal,
 			envelope: args.languageEnvelope,
-			existing: existing
-				? {
-						ciphertext: existing.secretCiphertext,
-						iv: existing.secretIv,
-						authTag: existing.secretAuthTag,
-						version: existing.secretEnvelopeVersion,
-						keyPreview: existing.keyPreview,
-					}
-				: undefined,
+			existing: storedEnvelopeOf(existing, 'language'),
 			label: 'language',
 		});
 		const embedding = resolveSecret({
 			isLocal: args.isEmbeddingLocal,
 			envelope: args.embeddingEnvelope,
-			existing: existing
-				? {
-						ciphertext: existing.embeddingSecretCiphertext,
-						iv: existing.embeddingSecretIv,
-						authTag: existing.embeddingSecretAuthTag,
-						version: existing.embeddingSecretEnvelopeVersion,
-						keyPreview: existing.embeddingKeyPreview,
-					}
-				: undefined,
+			existing: storedEnvelopeOf(existing, 'embedding'),
 			label: 'embedding',
 		});
 
