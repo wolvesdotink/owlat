@@ -52,6 +52,7 @@ fn main() {
             secrets::secret_get,
             secrets::secret_delete,
             window::open_compose,
+            window::set_traffic_lights_visible,
             ssh::ssh_connect,
             ssh::ssh_accept_host_key,
             ssh::ssh_authenticate,

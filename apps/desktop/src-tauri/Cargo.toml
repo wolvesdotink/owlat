@@ -43,6 +43,11 @@ ignore = "0.4"
 # equivalent here and falls back to a plain notification.
 [target.'cfg(target_os = "macos")'.dependencies]
 mac-notification-sys = "0.6"
+# Toggle the native traffic-light buttons (close/miniaturize/zoom) so they can
+# follow the sidebar's hidden state (macos-private-api is already enabled). This
+# objc2-app-kit crate is already in the tree transitively via tauri 2.x, pinned
+# to the same 0.3 line so no second copy is built.
+objc2-app-kit = { version = "0.3", features = ["NSWindow", "NSButton", "NSControl", "NSView", "NSResponder"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 notify-rust = "4"
