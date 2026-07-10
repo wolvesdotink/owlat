@@ -43,7 +43,8 @@ const sections = [
 	},
 	{
 		name: 'Suppressions',
-		description: 'Addresses that no longer receive mail after a bounce, complaint, or manual block',
+		description:
+			'Addresses that no longer receive mail after a bounce, complaint, or manual suppression',
 		href: '/dashboard/audience/suppressions',
 		icon: 'lucide:ban',
 	},
