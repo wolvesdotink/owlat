@@ -491,7 +491,7 @@ const getReasonLabel = (reason: string) => {
 		/>
 
 		<!-- Bulk Import Modal -->
-		<SettingsBlocklistImportModal
+		<AudienceSuppressionsImportModal
 			:blocklist-import="blocklistImport"
 			@import="handleImportBlocklist"
 		/>

@@ -31,13 +31,17 @@ const canClose = computed(() => props.blocklistImport.step.value !== 'importing'
 		size="lg"
 		:closable="canClose"
 		:persistent="!canClose"
-		@update:open="(v) => { if (!v) blocklistImport.close(); }"
+		@update:open="
+			(v) => {
+				if (!v) blocklistImport.close();
+			}
+		"
 	>
 		<!-- Header -->
 		<div class="flex items-center gap-3 mb-6">
 			<UiIconBox icon="lucide:file-up" size="sm" variant="surface" rounded="lg" />
 			<div>
-				<h2 class="text-lg font-semibold text-text-primary">Import Blocklist</h2>
+				<h2 class="text-lg font-semibold text-text-primary">Import suppressions</h2>
 				<p class="text-sm text-text-tertiary">{{ stepDescription }}</p>
 			</div>
 		</div>
@@ -56,7 +60,11 @@ const canClose = computed(() => props.blocklistImport.step.value !== 'importing'
 			<!-- Step 1: Upload -->
 			<div v-if="blocklistImport.step.value === 'upload'">
 				<input
-					:ref="(el) => { blocklistImport.fileInputRef.value = el as HTMLInputElement | null }"
+					:ref="
+						(el) => {
+							blocklistImport.fileInputRef.value = el as HTMLInputElement | null;
+						}
+					"
 					type="file"
 					accept=".csv,.txt"
 					class="hidden"
@@ -79,9 +87,7 @@ const canClose = computed(() => props.blocklistImport.step.value !== 'importing'
 							<Icon name="lucide:upload" class="w-8 h-8 text-text-tertiary" />
 						</div>
 						<div>
-							<p class="text-text-primary font-medium">
-								Drop your file here or click to browse
-							</p>
+							<p class="text-text-primary font-medium">Drop your file here or click to browse</p>
 							<p class="text-sm text-text-tertiary mt-1">Supports .csv and .txt files</p>
 						</div>
 					</div>
@@ -92,7 +98,7 @@ const canClose = computed(() => props.blocklistImport.step.value !== 'importing'
 						<li>One email address per line, or the first column of a CSV</li>
 						<li>A leading "email" header row is ignored</li>
 						<li>Invalid and duplicate addresses are skipped automatically</li>
-						<li>Imported addresses are added as manual blocks</li>
+						<li>Imported addresses are added as manual suppressions</li>
 					</ul>
 				</div>
 			</div>
@@ -167,8 +173,11 @@ const canClose = computed(() => props.blocklistImport.step.value !== 'importing'
 				</div>
 
 				<p class="text-sm text-text-secondary mb-2">
-					Preview of first {{ Math.min(10, blocklistImport.validation.value.valid.length) }}
-					addresses ({{ blocklistImport.validation.value.valid.length }} total)
+					Preview of first
+					{{ Math.min(10, blocklistImport.validation.value.valid.length) }} addresses ({{
+						blocklistImport.validation.value.valid.length
+					}}
+					total)
 				</p>
 				<div class="rounded-lg border border-border-subtle divide-y divide-border-subtle">
 					<div
@@ -237,7 +246,9 @@ const canClose = computed(() => props.blocklistImport.step.value !== 'importing'
 					/>
 				</div>
 				<div
-					v-if="blocklistImport.results.value?.errors && blocklistImport.results.value.errors.length > 0"
+					v-if="
+						blocklistImport.results.value?.errors && blocklistImport.results.value.errors.length > 0
+					"
 					class="p-4 rounded-lg bg-error-subtle border border-error/20"
 				>
 					<h4 class="text-sm font-medium text-error mb-2">
