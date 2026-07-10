@@ -25,11 +25,11 @@ import {
  */
 async function guardTestSend(
 	ctx: Pick<ActionCtx, 'runQuery' | 'runMutation'>,
-	recipients: string[],
+	recipients: string[]
 ): Promise<void> {
 	const { allowed, callerUserId } = await ctx.runQuery(
 		internal.campaigns.sendQueries.getTestSendAllowedRecipients,
-		{},
+		{}
 	);
 	const rl = await ctx.runMutation(internal.campaigns.sendQueries.checkTestSendRateLimit, {
 		userId: callerUserId,
@@ -41,7 +41,7 @@ async function guardTestSend(
 	for (const email of recipients) {
 		if (!allowedSet.has(email.trim().toLowerCase())) {
 			throwForbidden(
-				`Test emails can only be sent to your organization's own member addresses. "${email}" is not a member of this organization.`,
+				`Test emails can only be sent to your organization's own member addresses. "${email}" is not a member of this organization.`
 			);
 		}
 	}
@@ -94,15 +94,31 @@ export const sendTestEmail = authedAction({
 			);
 		}
 
+		// Curated-sender gate (2026-07-10 plan, decision 8): a test send uses the
+		// same from-address a real send would, so hold it to the same list/toggle
+		// rule. The verified-domain check above remains the floor.
+		if (
+			!(await ctx.runQuery(internal.campaigns.senders.checkSenderAllowed, {
+				fromEmail: campaign.fromEmail,
+			}))
+		) {
+			throwForbidden(
+				`"${campaign.fromEmail}" is not an approved campaign sender. Add it under Campaign senders, or allow custom senders in Settings.`
+			);
+		}
+
 		// Rate-limit + restrict the recipient to an org-member inbox so the
 		// preview action can't be used to relay mail to arbitrary addresses.
 		await guardTestSend(ctx, [args.testEmail]);
 
 		// Get email template content for specified language (or default)
-		const langContent = await ctx.runQuery(internal.campaigns.sendQueries.getEmailTemplateForLanguage, {
-			templateId: campaign.emailTemplateId,
-			language: args.language,
-		});
+		const langContent = await ctx.runQuery(
+			internal.campaigns.sendQueries.getEmailTemplateForLanguage,
+			{
+				templateId: campaign.emailTemplateId,
+				language: args.language,
+			}
+		);
 
 		if (!langContent) {
 			throwNotFound('Email template');
@@ -139,10 +155,9 @@ export const sendTestEmail = authedAction({
 		// Send the test email through the Send dispatch helper. Test sends
 		// previously bypassed the workpool → Send completion → health chain;
 		// routing through the helper closes that drift.
-		const resolved = await ctx.runQuery(
-			internal.lib.sendProviders.route.resolveSendRoute,
-			{ messageType: 'transactional' },
-		);
+		const resolved = await ctx.runQuery(internal.lib.sendProviders.route.resolveSendRoute, {
+			messageType: 'transactional',
+		});
 		if (!resolved) {
 			throwInternal('Cannot send test email: no delivery provider is configured.');
 		}
@@ -188,7 +203,6 @@ export const sendTestEmailFromTemplate = authedAction({
 		dataVariables: v.optional(v.record(v.string(), v.string())),
 	},
 	handler: async (ctx, args) => {
-
 		// Validate test emails
 		if (args.testEmails.length === 0) {
 			throwInvalidInput('At least one test email address is required');
@@ -222,6 +236,19 @@ export const sendTestEmailFromTemplate = authedAction({
 			);
 		}
 
+		// Curated-sender gate (2026-07-10 plan, decision 8): a test send uses the
+		// same from-address a real send would, so hold it to the same list/toggle
+		// rule. The verified-domain check above remains the floor.
+		if (
+			!(await ctx.runQuery(internal.campaigns.senders.checkSenderAllowed, {
+				fromEmail: args.fromEmail,
+			}))
+		) {
+			throwForbidden(
+				`"${args.fromEmail}" is not an approved campaign sender. Add it under Campaign senders, or allow custom senders in Settings.`
+			);
+		}
+
 		// Build from address
 		const from = formatFromAddress(args.fromEmail, args.fromName);
 
@@ -243,10 +270,9 @@ export const sendTestEmailFromTemplate = authedAction({
 		const personalizedHtml = composed.html;
 
 		// Resolve provider route once for the batch.
-		const resolved = await ctx.runQuery(
-			internal.lib.sendProviders.route.resolveSendRoute,
-			{ messageType: 'transactional' },
-		);
+		const resolved = await ctx.runQuery(internal.lib.sendProviders.route.resolveSendRoute, {
+			messageType: 'transactional',
+		});
 		if (!resolved) {
 			throwInternal('Cannot send test emails: no delivery provider is configured.');
 		}
