@@ -348,7 +348,7 @@ const props = withDefaults(defineProps<{ class?: string }>(), { class: '' })
 /* ── Node entrance ── */
 .email-node {
 	opacity: 0;
-	animation: email-node-in var(--motion-choreo, 800ms) var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1)) forwards;
+	animation: email-node-in var(--motion-choreo) var(--ease-spring) forwards;
 }
 .email-node-builder { animation-delay: 0.1s; }
 .email-node-json { animation-delay: 0.2s; }

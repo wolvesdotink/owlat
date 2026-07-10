@@ -251,7 +251,7 @@ const props = withDefaults(defineProps<{ class?: string }>(), { class: '' })
 /* ── Node entrance ── */
 .auth-node {
 	opacity: 0;
-	animation: auth-node-in 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+	animation: auth-node-in var(--motion-choreo) var(--ease-spring) forwards;
 }
 .auth-node-frontend { animation-delay: 0.1s; }
 .auth-node-center { animation-delay: 0.2s; }
