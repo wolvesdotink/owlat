@@ -244,7 +244,7 @@ function cancel() {
 						v-model="provider"
 						type="radio"
 						:value="opt.value"
-						class="mt-1 h-4 w-4 border-border-default bg-bg-deep text-brand focus:ring-brand"
+						class="mt-1 h-4 w-4 border-border-default bg-bg-deep text-brand focus-visible:ring-1 focus-visible:ring-brand"
 					/>
 					<UiIconBox
 						:icon="opt.icon"
@@ -325,7 +325,7 @@ function cancel() {
 						label="Default From address"
 						placeholder="noreply@yourdomain.com"
 						autocomplete="off"
-						:error="errors.fromEmail"
+						:error="showErrors ? errors.fromEmail : undefined"
 					/>
 					<UiInput v-model="fromName" label="From name" placeholder="Owlat" autocomplete="off" />
 				</div>
