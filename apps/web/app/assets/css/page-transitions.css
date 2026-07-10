@@ -1,0 +1,62 @@
+/* Route / layout transitions — a subtle Fluid Functionalism spring fade so
+ * navigations read as continuous motion instead of a hard cut to a blank pane.
+ * Consumes the shared motion tokens (packages/ui tokens.css): enters use the
+ * critically-damped --ease-spring on the --motion-moderate tier; exits use the
+ * crisp --ease-exit on the fast-exit tier. Both `page` and `layout` transitions
+ * run `mode: out-in` (nuxt.config), so only one pane is ever moving — that keeps
+ * a transient `transform` from establishing a containing block under two full
+ * panes at once. Pairs with <NuxtLoadingIndicator> for slow, Convex-backed
+ * routes where even an out-in swap would otherwise wait on data. */
+
+.page-enter-active {
+	transition:
+		opacity var(--motion-moderate) var(--ease-spring),
+		transform var(--motion-moderate) var(--ease-spring);
+}
+
+.page-leave-active {
+	transition: opacity var(--motion-fast-exit) var(--ease-exit);
+}
+
+.page-enter-from {
+	opacity: 0;
+	transform: translateY(6px);
+}
+
+.page-leave-to {
+	opacity: 0;
+}
+
+.layout-enter-active {
+	transition: opacity var(--motion-moderate) var(--ease-spring);
+}
+
+.layout-leave-active {
+	transition: opacity var(--motion-fast-exit) var(--ease-exit);
+}
+
+.layout-enter-from,
+.layout-leave-to {
+	opacity: 0;
+}
+
+/* Motion is information, not decoration: reduced-motion users get an instant,
+ * static swap (no fade, no lift). This mirrors the explicit component-level
+ * rules elsewhere (packages/ui motion.css) on top of the global duration floor
+ * in base.css, so the intent is legible at the point of use. */
+@media (prefers-reduced-motion: reduce) {
+	.page-enter-active,
+	.page-leave-active,
+	.layout-enter-active,
+	.layout-leave-active {
+		transition: none;
+	}
+
+	.page-enter-from,
+	.page-leave-to,
+	.layout-enter-from,
+	.layout-leave-to {
+		opacity: 1;
+		transform: none;
+	}
+}
