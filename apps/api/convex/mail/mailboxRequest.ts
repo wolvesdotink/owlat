@@ -19,6 +19,7 @@ import {
 	getBetterAuthSessionWithRole,
 	requireAdminContext,
 	requireAuthenticatedIdentity,
+	requireOrgPermission,
 } from '../lib/sessionOrganization';
 import {
 	throwForbidden,
@@ -157,11 +158,11 @@ export const freshStartStatus = authedQuery({
 });
 
 /** Admin-only: the open mailbox requests for the caller's organization. */
-// authz: admin — requireAdminContext gates the whole handler.
+// authz: admin — requireOrgPermission('organization:manage') gates the read.
 export const listPending = authedQuery({
 	args: {},
 	handler: async (ctx) => {
-		await requireAdminContext(ctx);
+		await requireOrgPermission(ctx, 'organization:manage');
 		const session = await getBetterAuthSessionWithRole(ctx);
 		if (!session?.activeOrganizationId) return [];
 
