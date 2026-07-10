@@ -7,23 +7,18 @@
  * openai-compatible provider — not an OpenAI client pointed at another URL — so
  * it carries the compatible provider's own request behavior.
  *
- * The client is memoized per `(baseUrl, key-fingerprint)`; the cache key stores
- * only a short non-secret fingerprint of the key.
+ * The client is memoized per `(baseUrl, key-hash)`; the cache key stores only a
+ * non-reversible hash of the key, never a slice of the raw secret.
  */
 
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import type { LanguageModel } from 'ai';
+import { keyFingerprint, memoizeClient } from './clientCache';
 import type { LanguageProviderAdapter, ProviderClientConfig } from './types';
 
 type CompatibleClient = ReturnType<typeof createOpenAICompatible>;
 
 const clientCache = new Map<string, CompatibleClient>();
-
-/** Short, non-secret fingerprint of an API key for cache keying. */
-function keyFingerprint(apiKey: string | undefined): string {
-	if (!apiKey) return 'nokey';
-	return `${apiKey.length}:${apiKey.slice(0, 4)}:${apiKey.slice(-4)}`;
-}
 
 function requireBaseUrl(cfg: ProviderClientConfig): string {
 	if (!cfg.baseUrl) {
@@ -35,15 +30,13 @@ function requireBaseUrl(cfg: ProviderClientConfig): string {
 function compatibleClient(cfg: ProviderClientConfig): CompatibleClient {
 	const baseURL = requireBaseUrl(cfg);
 	const cacheKey = `${baseURL}::${keyFingerprint(cfg.apiKey)}`;
-	const cached = clientCache.get(cacheKey);
-	if (cached) return cached;
-	const client = createOpenAICompatible({
-		name: 'openai-compatible',
-		baseURL,
-		...(cfg.apiKey ? { apiKey: cfg.apiKey } : {}),
-	});
-	clientCache.set(cacheKey, client);
-	return client;
+	return memoizeClient(clientCache, cacheKey, () =>
+		createOpenAICompatible({
+			name: 'openai-compatible',
+			baseURL,
+			...(cfg.apiKey ? { apiKey: cfg.apiKey } : {}),
+		})
+	);
 }
 
 export const openaiCompatibleLanguageAdapter: LanguageProviderAdapter<'openaiCompatible'> = {
