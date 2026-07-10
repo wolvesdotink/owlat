@@ -326,6 +326,12 @@ const settingsSections = computed(() => {
 			href: '/dashboard/settings/system',
 			icon: 'lucide:cpu',
 		});
+		sections.push({
+			name: 'Backups',
+			description: 'Schedule daily backups, run one now, and find the restore command',
+			href: '/dashboard/settings/backups',
+			icon: 'lucide:database-backup',
+		});
 	}
 
 	return sections;
