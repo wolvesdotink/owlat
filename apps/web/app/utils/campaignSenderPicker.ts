@@ -69,17 +69,25 @@ export function defaultSenderValue(senders: PickerSender[], isCustomAllowed: boo
 }
 
 /**
- * Submit guard for the sender selection. A curated selection is always complete;
- * the custom branch additionally needs a from name and a syntactically valid
- * from address — mirroring the server-side gate.
+ * Why a sender selection cannot be submitted, or `null` when it is complete.
+ * The single source of truth for both the submit guard (`isSenderReady`) and the
+ * validation messages the Setup step renders, so the two never drift.
  */
-export function isSenderSelectionComplete(
+type SenderSelectionProblem = 'none-selected' | 'missing-name' | 'invalid-email';
+
+/**
+ * Diagnose the sender selection. A curated selection is always complete; the
+ * custom branch additionally needs a from name and a syntactically valid from
+ * address — mirroring the server-side gate.
+ */
+export function senderSelectionProblem(
 	value: string,
 	custom: { fromName: string; fromEmail: string }
-): boolean {
-	if (!value) return false;
+): SenderSelectionProblem | null {
+	if (!value) return 'none-selected';
 	if (value === CUSTOM_SENDER_VALUE) {
-		return custom.fromName.trim().length > 0 && isValidEmail(custom.fromEmail.trim());
+		if (custom.fromName.trim().length === 0) return 'missing-name';
+		if (!isValidEmail(custom.fromEmail.trim())) return 'invalid-email';
 	}
-	return true;
+	return null;
 }

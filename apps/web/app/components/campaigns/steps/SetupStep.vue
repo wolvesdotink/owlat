@@ -8,7 +8,7 @@ import {
 	buildSenderOptions,
 	defaultSenderValue,
 	isCustomSender,
-	isSenderSelectionComplete,
+	senderSelectionProblem,
 } from '~/utils/campaignSenderPicker';
 
 type AudienceType = 'topic' | 'segment';
@@ -64,6 +64,10 @@ const canManageSenders = computed(() => senderPicker.value?.canManage === true);
 
 const selectedSenderId = ref<string>('');
 const senderError = ref<string | null>(null);
+// Which custom field the current senderError flags (drives the input-error ring
+// on the matching From Name / From Email input); null when the error is not
+// field-specific (e.g. nothing selected).
+const senderErrorField = ref<'name' | 'email' | null>(null);
 
 const senderOptions = computed(() => buildSenderOptions(senders.value, isCustomAllowed.value));
 const isCustomSelected = computed(() => isCustomSender(selectedSenderId.value));
@@ -72,16 +76,18 @@ const isCustomSelected = computed(() => isCustomSender(selectedSenderId.value));
 // an empty-state (admin deep link vs. "ask your admin") instead of a picker.
 const showSenderEmptyState = computed(() => senders.value.length === 0 && !isCustomAllowed.value);
 
-const isSenderReady = computed(() =>
-	isSenderSelectionComplete(selectedSenderId.value, {
-		fromName: form.fromName,
-		fromEmail: form.fromEmail,
-	})
+const isSenderReady = computed(
+	() =>
+		senderSelectionProblem(selectedSenderId.value, {
+			fromName: form.fromName,
+			fromEmail: form.fromEmail,
+		}) === null
 );
 
 function onSelectSender(value: string | null) {
 	selectedSenderId.value = value ?? '';
 	senderError.value = null;
+	senderErrorField.value = null;
 }
 
 // A curated selection is the source of truth for the from name/address; keep the
@@ -262,22 +268,29 @@ const validate = (): boolean => {
 	setError('');
 	audienceError.value = null;
 	senderError.value = null;
+	senderErrorField.value = null;
 
 	if (!basicsValidation.validate(form)) return false;
 
-	if (!selectedSenderId.value) {
+	// One source of truth for the guard AND the messages: map the util's
+	// discriminated reason to human copy (the util already mirrors the server gate).
+	const problem = senderSelectionProblem(selectedSenderId.value, {
+		fromName: form.fromName,
+		fromEmail: form.fromEmail,
+	});
+	if (problem === 'none-selected') {
 		senderError.value = 'Choose who this campaign sends from';
 		return false;
 	}
-	if (isCustomSelected.value) {
-		if (!form.fromName.trim()) {
-			senderError.value = 'Enter a from name';
-			return false;
-		}
-		if (!isValidEmail(form.fromEmail.trim())) {
-			senderError.value = 'Enter a valid from address';
-			return false;
-		}
+	if (problem === 'missing-name') {
+		senderError.value = 'Enter a from name';
+		senderErrorField.value = 'name';
+		return false;
+	}
+	if (problem === 'invalid-email') {
+		senderError.value = 'Enter a valid from address';
+		senderErrorField.value = 'email';
+		return false;
 	}
 
 	if (audienceType.value === 'topic' && !selectedTopicId.value) {
@@ -404,7 +417,7 @@ defineExpose({
 				</div>
 
 				<div>
-					<label id="senderLabel" class="label flex items-center gap-2">
+					<label for="senderPicker" class="label flex items-center gap-2">
 						<Icon name="lucide:user" class="w-4 h-4 text-text-tertiary" />
 						Send from <span class="text-error">*</span>
 					</label>
@@ -443,11 +456,12 @@ defineExpose({
 					<!-- Picker -->
 					<template v-else>
 						<UiSelect
+							id="senderPicker"
 							class="mt-1.5"
 							:options="senderOptions"
 							:model-value="selectedSenderId"
 							placeholder="Choose a sender"
-							aria-labelledby="senderLabel"
+							:error="senderError ?? undefined"
 							@update:model-value="onSelectSender"
 						/>
 						<p v-if="!isCustomSelected && !senderError" class="mt-1.5 text-sm text-text-tertiary">
@@ -466,7 +480,7 @@ defineExpose({
 									v-model="form.fromName"
 									type="text"
 									placeholder="e.g., John from Acme Inc"
-									class="input mt-1.5"
+									:class="['input mt-1.5', senderErrorField === 'name' ? 'input-error' : '']"
 								/>
 								<p class="mt-1.5 text-sm text-text-tertiary">
 									The name recipients will see when they receive your email.
@@ -483,7 +497,7 @@ defineExpose({
 									v-model="form.fromEmail"
 									type="email"
 									placeholder="e.g., hello@acme.com"
-									class="input mt-1.5"
+									:class="['input mt-1.5', senderErrorField === 'email' ? 'input-error' : '']"
 								/>
 								<p
 									v-if="domainVerificationWarning"
@@ -504,8 +518,6 @@ defineExpose({
 								</p>
 							</div>
 						</div>
-
-						<p v-if="senderError" class="mt-1.5 text-sm text-error">{{ senderError }}</p>
 					</template>
 				</div>
 

@@ -5,7 +5,7 @@ import {
 	defaultSenderValue,
 	formatSenderLabel,
 	isCustomSender,
-	isSenderSelectionComplete,
+	senderSelectionProblem,
 	type PickerSender,
 } from '../campaignSenderPicker';
 
@@ -88,33 +88,33 @@ describe('isCustomSender', () => {
 	});
 });
 
-describe('isSenderSelectionComplete — submit guard', () => {
-	it('is false when nothing is selected', () => {
-		expect(isSenderSelectionComplete('', { fromName: '', fromEmail: '' })).toBe(false);
+describe('senderSelectionProblem — submit guard + validation reason', () => {
+	it('reports none-selected when nothing is chosen', () => {
+		expect(senderSelectionProblem('', { fromName: '', fromEmail: '' })).toBe('none-selected');
 	});
 
-	it('is true for any curated selection regardless of the custom fields', () => {
-		expect(isSenderSelectionComplete('s1', { fromName: '', fromEmail: '' })).toBe(true);
+	it('is null for any curated selection regardless of the custom fields', () => {
+		expect(senderSelectionProblem('s1', { fromName: '', fromEmail: '' })).toBeNull();
 	});
 
-	it('requires a from name AND a valid address in the custom branch', () => {
+	it('reports missing-name then invalid-email in the custom branch', () => {
 		expect(
-			isSenderSelectionComplete(CUSTOM_SENDER_VALUE, { fromName: '', fromEmail: 'a@acme.com' })
-		).toBe(false);
+			senderSelectionProblem(CUSTOM_SENDER_VALUE, { fromName: '', fromEmail: 'a@acme.com' })
+		).toBe('missing-name');
 		expect(
-			isSenderSelectionComplete(CUSTOM_SENDER_VALUE, { fromName: 'Me', fromEmail: 'not-an-email' })
-		).toBe(false);
+			senderSelectionProblem(CUSTOM_SENDER_VALUE, { fromName: 'Me', fromEmail: 'not-an-email' })
+		).toBe('invalid-email');
 		expect(
-			isSenderSelectionComplete(CUSTOM_SENDER_VALUE, { fromName: 'Me', fromEmail: 'me@acme.com' })
-		).toBe(true);
+			senderSelectionProblem(CUSTOM_SENDER_VALUE, { fromName: 'Me', fromEmail: 'me@acme.com' })
+		).toBeNull();
 	});
 
 	it('trims custom fields before checking', () => {
 		expect(
-			isSenderSelectionComplete(CUSTOM_SENDER_VALUE, {
+			senderSelectionProblem(CUSTOM_SENDER_VALUE, {
 				fromName: '  Me  ',
 				fromEmail: '  me@acme.com  ',
 			})
-		).toBe(true);
+		).toBeNull();
 	});
 });
