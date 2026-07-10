@@ -79,6 +79,7 @@ async function handleSave(
 			  non-self-host mode) for the remaining go-live steps. It suppresses
 			  itself while the banner owns the pre-send phase.
 		-->
+		<DashboardAccessRequests v-if="hasActiveOrganization && isAdmin" />
 		<DashboardMailboxRequests v-if="hasActiveOrganization && isAdmin" />
 		<DashboardSelfHostOnboardingBanner v-if="hasActiveOrganization && userId" :user-id="userId" />
 		<DashboardOnboardingChecklist v-if="hasActiveOrganization && userId" :user-id="userId" />

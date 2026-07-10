@@ -56,6 +56,7 @@ import type * as assistant_runner from "../assistant/runner.js";
 import type * as assistant_tools from "../assistant/tools.js";
 import type * as auditActions_catalog from "../auditActions/catalog.js";
 import type * as auditLogs from "../auditLogs.js";
+import type * as auth_accessRequest from "../auth/accessRequest.js";
 import type * as auth_accountDeletion from "../auth/accountDeletion.js";
 import type * as auth_accountManagement from "../auth/accountManagement.js";
 import type * as auth_apiAuth from "../auth/apiAuth.js";
@@ -624,6 +625,7 @@ declare const fullApi: ApiFromModules<{
   "assistant/tools": typeof assistant_tools;
   "auditActions/catalog": typeof auditActions_catalog;
   auditLogs: typeof auditLogs;
+  "auth/accessRequest": typeof auth_accessRequest;
   "auth/accountDeletion": typeof auth_accountDeletion;
   "auth/accountManagement": typeof auth_accountManagement;
   "auth/apiAuth": typeof auth_apiAuth;
