@@ -3,7 +3,7 @@ import { logger } from '../../logger.js';
 import { parseList } from '../../parser.js';
 import type { ImapCommandModule } from '../types.js';
 import { asyncSession, syncSession } from '../helpers/session.js';
-import { requireAuth, requireSelect } from '../helpers/auth.js';
+import { requireAuth, requireSelect, requireWritableSelect } from '../helpers/auth.js';
 import { collectMessageIdsByUid } from '../helpers/uidSet.js';
 import { buildSeqMap, resolveSet, seqForUid } from '../helpers/seqMap.js';
 
@@ -63,13 +63,12 @@ export const storeModule: ImapCommandModule<StoreArgs> = {
 		};
 	},
 	start({ deps, state, args, tag, send }) {
-		const fail = requireAuth(state, tag) ?? requireSelect(state, tag);
+		const fail =
+			requireAuth(state, tag) ??
+			requireSelect(state, tag) ??
+			requireWritableSelect(state, tag);
 		if (fail) {
 			send(fail);
-			return syncSession();
-		}
-		if (state.selected!.readOnly) {
-			send(`${tag} NO Mailbox is read-only`);
 			return syncSession();
 		}
 

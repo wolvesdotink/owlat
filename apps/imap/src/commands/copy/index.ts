@@ -3,7 +3,7 @@ import { logger } from '../../logger.js';
 import { parseUidSet } from '../../parser.js';
 import type { ImapCommandModule } from '../types.js';
 import { asyncSession, syncSession } from '../helpers/session.js';
-import { requireAuth, requireSelect } from '../helpers/auth.js';
+import { requireAuth, requireSelect, requireWritableSelect } from '../helpers/auth.js';
 import { resolveFolderByName } from '../helpers/folders.js';
 import { collectMessageIds } from '../helpers/uidSet.js';
 
@@ -28,13 +28,12 @@ export const copyModule: ImapCommandModule<CopyArgs> = {
 		return { ok: true, args: { set, target, byUid: false } };
 	},
 	start({ deps, state, args, tag, send }) {
-		const fail = requireAuth(state, tag) ?? requireSelect(state, tag);
+		const fail =
+			requireAuth(state, tag) ??
+			requireSelect(state, tag) ??
+			requireWritableSelect(state, tag);
 		if (fail) {
 			send(fail);
-			return syncSession();
-		}
-		if (state.selected!.readOnly) {
-			send(`${tag} NO Mailbox is read-only`);
 			return syncSession();
 		}
 
