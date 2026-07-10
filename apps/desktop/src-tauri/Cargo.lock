@@ -2870,6 +2870,7 @@ dependencies = [
 name = "owlat-desktop"
 version = "0.2.1"
 dependencies = [
+ "block2",
  "flate2",
  "ignore",
  "keyring",

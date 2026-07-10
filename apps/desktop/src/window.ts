@@ -102,17 +102,6 @@ export async function setAccentFrameVisible(visible: boolean): Promise<void> {
 }
 
 /**
- * The native macOS titlebar height in CSS px (0 on Windows/Linux, whose
- * windows run undecorated). AppKit owns the traffic-light layout inside that
- * band (src-tauri/src/window.rs::setup_native_titlebar); the boot plugin
- * mirrors this value into `--titlebar-h` so the webview strip is the exact
- * same band.
- */
-export async function titlebarHeight(): Promise<number> {
-	return await invoke('titlebar_height');
-}
-
-/**
  * Show or hide the native macOS traffic-light window buttons so they can follow
  * the sidebar's visibility (hidden when the rail is fully hidden and not
  * peeking; shown otherwise). No-op on Windows/Linux — their custom titlebar

@@ -26,7 +26,6 @@ import {
 	setTrafficLightsVisible,
 	setWindowTheme,
 	setWindowTitle,
-	titlebarHeight,
 	trafficLightsVisibleFor,
 	windowTitleFor,
 } from '../window';
@@ -115,14 +114,6 @@ describe('setAccentFrame / setAccentFrameVisible bridges', () => {
 			['set_accent_frame', { color: null, visible: false }],
 			['set_accent_frame', { color: null, visible: true }],
 		]);
-	});
-});
-
-describe('titlebarHeight bridge', () => {
-	it('returns the native titlebar height from the desktop side', async () => {
-		invokeMock.mockResolvedValueOnce(52);
-		await expect(titlebarHeight()).resolves.toBe(52);
-		expect(invokeMock).toHaveBeenCalledWith('titlebar_height');
 	});
 });
 
