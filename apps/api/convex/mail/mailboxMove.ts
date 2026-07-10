@@ -39,14 +39,15 @@ import { getBetterAuthSessionWithRole, hasPermission } from '../lib/sessionOrgan
 import { assertFeatureEnabled } from '../lib/featureFlags';
 import { provisionMailbox } from './mailbox';
 import { getOptional } from '../lib/env';
+import { throwForbidden, throwInvalidState, throwNotFound } from '../_utils/errors';
 import {
-	throwForbidden,
-	throwInvalidState,
-	throwNotFound,
-	throwUnauthenticated,
-} from '../_utils/errors';
-import type { QueryCtx, MutationCtx } from '../_generated/server';
-import type { Doc, Id } from '../_generated/dataModel';
+	getCallerExternalMailbox,
+	getMoveForAccount,
+	getLatestCallerMove,
+	requireCallerMove,
+	buildMovePayload,
+} from './mailboxMoveResolve';
+import type { Id } from '../_generated/dataModel';
 
 /**
  * Standard priority for a single inbound MX host. A deployment with one MTA
@@ -58,111 +59,6 @@ const MX_PRIORITY = 10;
 /** The public EHLO/MX hostname mail servers deliver to for this deployment. */
 function inboundMailHost(): string | null {
 	return getOptional('EHLO_HOSTNAME')?.trim() || null;
-}
-
-type SessionWithRole = NonNullable<Awaited<ReturnType<typeof getBetterAuthSessionWithRole>>>;
-/** A session narrowed to a real org member — `role` is guaranteed non-null. */
-type MoverSession = SessionWithRole & { role: NonNullable<SessionWithRole['role']> };
-
-/**
- * Resolve the caller's own movable external mailbox — the thing a move operates
- * on. Returns `null` when the caller is anonymous/role-less, has no external
- * account, or the account/mailbox isn't in a movable state: a `disconnected`
- * account (whose mailbox was demoted) or a non-`active` mailbox has nothing to
- * move. Mirrors `externalAccounts.getForCurrentUser`. Each caller picks its own
- * failure mode from the `null`.
- */
-async function getCallerExternalMailbox(ctx: QueryCtx | MutationCtx): Promise<{
-	session: MoverSession;
-	account: Doc<'externalMailAccounts'>;
-	mailbox: Doc<'mailboxes'>;
-} | null> {
-	const session = await getBetterAuthSessionWithRole(ctx);
-	if (!session || !session.role) return null;
-	const account = await ctx.db
-		.query('externalMailAccounts')
-		.withIndex('by_user', (q) => q.eq('userId', session.userId))
-		.first();
-	// A disconnected account is dead (its mailbox was set to 'deleted' on
-	// disconnect) — there's nothing live to move.
-	if (!account || account.status === 'disconnected') return null;
-	const mailbox = await ctx.db.get(account.mailboxId);
-	if (!mailbox || mailbox.status !== 'active') return null;
-	return { session: session as MoverSession, account, mailbox };
-}
-
-/**
- * The move belonging to a specific external account — the correct pairing when
- * the caller has a live account. A move row is keyed to the account it operates
- * on (`by_account`), so this returns the move for exactly *this* mailbox, never
- * a stale archived move left by a different (earlier) account.
- */
-async function getMoveForAccount(
-	ctx: QueryCtx | MutationCtx,
-	accountId: Id<'externalMailAccounts'>
-): Promise<Doc<'mailboxMoves'> | null> {
-	return ctx.db
-		.query('mailboxMoves')
-		.withIndex('by_account', (q) => q.eq('accountId', accountId))
-		.first();
-}
-
-/**
- * The caller's newest move row, used ONLY to surface the terminal (archived)
- * truth when no live external account remains. `.order('desc')` picks the most
- * recent move so a stale terminal row can't shadow a newer one; a move for a
- * still-live account is paired via `getMoveForAccount` instead.
- */
-async function getLatestCallerMove(
-	ctx: QueryCtx | MutationCtx,
-	userId: string
-): Promise<Doc<'mailboxMoves'> | null> {
-	return ctx.db
-		.query('mailboxMoves')
-		.withIndex('by_user', (q) => q.eq('userId', userId))
-		.order('desc')
-		.first();
-}
-
-/**
- * Shared preamble for the self-scoped move mutations (archive/pause/resume/
- * cancel): require an authenticated org member and load their own move, or
- * throw. Folds the repeated auth + not-found block into one call.
- *
- * Pairs the move with the account it belongs to: when the caller still has a
- * live external account, the move is loaded `by_account` on that account — so a
- * terminal move left by an *earlier* account never shadows a fresh one. Only
- * when no live account remains (a completed move demoted it to `disconnected`)
- * do we fall back to the caller's newest move, which surfaces that archived
- * truth.
- */
-async function requireCallerMove(
-	ctx: MutationCtx
-): Promise<{ session: SessionWithRole; move: Doc<'mailboxMoves'> }> {
-	const session = await getBetterAuthSessionWithRole(ctx);
-	if (!session || !session.role) throwUnauthenticated();
-	const resolved = await getCallerExternalMailbox(ctx);
-	const move = resolved
-		? await getMoveForAccount(ctx, resolved.account._id)
-		: await getLatestCallerMove(ctx, session.userId);
-	if (!move) throwNotFound('Mailbox move');
-	return { session, move };
-}
-
-/** Serialize a move row for the settings surface (null when there's no move). */
-function buildMovePayload(move: Doc<'mailboxMoves'> | null) {
-	return move
-		? {
-				id: move._id,
-				stage: move.stage,
-				isPaused: move.isPaused,
-				hostedMailboxId: move.hostedMailboxId ?? null,
-				awaitingAdminProvision: move.stage === 'provisioning' && move.provisionRequestId != null,
-				createdAt: move.createdAt,
-				updatedAt: move.updatedAt,
-				archivedAt: move.archivedAt ?? null,
-			}
-		: null;
 }
 
 /**
