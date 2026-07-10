@@ -22,14 +22,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
 	runLlmObject: vi.fn(),
-	getLLMProvider: vi.fn(() => 'mock-model'),
+	resolveLanguageModel: vi.fn(() => 'mock-model'),
 }));
 
 vi.mock('../lib/llm/dispatch', () => ({
 	runLlmObject: mocks.runLlmObject,
 }));
 vi.mock('../lib/llmProvider', () => ({
-	getLLMProvider: mocks.getLLMProvider,
+	resolveLanguageModel: mocks.resolveLanguageModel,
 }));
 
 import { convexTest } from 'convex-test';
@@ -70,8 +70,8 @@ function objectResult(object: unknown) {
 
 beforeEach(() => {
 	mocks.runLlmObject.mockReset();
-	mocks.getLLMProvider.mockReset();
-	mocks.getLLMProvider.mockReturnValue('mock-model');
+	mocks.resolveLanguageModel.mockReset();
+	mocks.resolveLanguageModel.mockReturnValue('mock-model');
 });
 
 /** Insert an auto-approved message that reached `sent` on a fresh thread. */

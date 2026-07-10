@@ -21,7 +21,7 @@ import { v } from 'convex/values';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import { getLLMProvider } from '../lib/llmProvider';
+import { resolveLanguageModel } from '../lib/llmProvider';
 import { buildReplySubject } from '../lib/emailAddress';
 import { logError } from '../lib/runtimeLog';
 import { buildConfirmedContext, runSharedDraft } from '../agent/shared/draftService';
@@ -81,7 +81,7 @@ export async function generateDraftOnArrival(
 
 	try {
 		const result = await runSharedDraft(ctx, {
-			model: getLLMProvider('draft'), // capable tier
+			model: await resolveLanguageModel(ctx, 'draft'), // capable tier
 			audience: 'the mailbox owner',
 			styleReference: "the owner's",
 			context: loaded.context,

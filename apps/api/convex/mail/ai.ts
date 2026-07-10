@@ -12,7 +12,7 @@ import { v } from 'convex/values';
 import { authedAction } from '../lib/authedFunctions';
 import { api, internal } from '../_generated/api';
 import type { Doc } from '../_generated/dataModel';
-import { getLLMProvider, getLLMProviderForUserText } from '../lib/llmProvider';
+import { resolveLanguageModel, resolveLanguageModelForUserText } from '../lib/llmProvider';
 import { runLlmText } from '../lib/llm/dispatch';
 import { recordLlmSpend } from '../analytics/llmUsage';
 import { stripHtml } from './rfc822';
@@ -56,7 +56,7 @@ async function runThreadSummary(
 	messages: Doc<'mailMessages'>[]
 ): Promise<string> {
 	const { text, tokenUsage, modelUsed } = await runLlmText({
-		model: getLLMProvider('summarize'),
+		model: await resolveLanguageModel(ctx, 'summarize'),
 		system: SUMMARIZE_SYSTEM,
 		prompt: `Summarize this email thread:\n\n${threadToText(messages)}`,
 		temperature: 0.2,
@@ -234,7 +234,7 @@ export const suggestReplies = authedAction({
 				? await buildSchedulingReplyInstruction(args.proposedTimes ?? [])
 				: `Suggest up to 3 short, distinct reply options the recipient could send ` +
 					`(1–2 sentences each, ready to send, varied in stance).`;
-		const { replies, tokenUsage, modelUsed } = await generateReplyOptions({
+		const { replies, tokenUsage, modelUsed } = await generateReplyOptions(ctx, {
 			prompt: `${SYSTEM_GUARD}\n\n${instruction}${voiceSection}\n\nThread:\n\n${threadToText(thread.messages)}`,
 		});
 		await recordLlmSpend(ctx, 'postbox_suggest_replies', tokenUsage, modelUsed);
@@ -309,7 +309,7 @@ export const askThread = authedAction({
 			history: args.history,
 		});
 		const { text, tokenUsage, modelUsed } = await runLlmText({
-			model: getLLMProvider('draft'),
+			model: await resolveLanguageModel(ctx, 'draft'),
 			system,
 			prompt,
 			temperature: 0.2,
@@ -341,7 +341,7 @@ export const completeDraft = authedAction({
 		const { text, tokenUsage, modelUsed } = await runLlmText({
 			// Fast/cheap tier: inline completions are high-volume and must be cheap;
 			// 'summarize' maps to the fast tier in the task router.
-			model: getLLMProvider('summarize'),
+			model: await resolveLanguageModel(ctx, 'summarize'),
 			system,
 			prompt,
 			temperature: 0.3,
@@ -480,7 +480,7 @@ export const rewriteSelection = authedAction({
 			// a clearly-trivial selection may downgrade to the fast tier when
 			// complexity routing is enabled. FAIL-SOFT: routing off / any
 			// non-trivial selection keeps the capable tier (today's behaviour).
-			model: getLLMProviderForUserText('draft', args.selection),
+			model: await resolveLanguageModelForUserText(ctx, 'draft', args.selection),
 			system,
 			prompt,
 			temperature: 0.4,

@@ -20,6 +20,7 @@
 
 import { v } from 'convex/values';
 import { internal } from './_generated/api';
+import { internalAction } from './_generated/server';
 import type { Id } from './_generated/dataModel';
 import { authedAction } from './lib/authedFunctions';
 import { decryptSecret, encryptSecret } from './lib/credentialCrypto';
@@ -157,4 +158,29 @@ export const testConnection = authedAction({
 			return { ok: false, error: e instanceof Error ? e.message : 'Connection test failed.' };
 		}
 	},
+});
+
+/**
+ * Decrypt a stored language-key envelope for `lib/llmProvider.resolveAiConfig`.
+ * The ONLY call-time decryption point for the pluggable-provider resolver: the
+ * v8-safe resolver can't touch `node:crypto`, so it hands the (already-read)
+ * envelope columns to this Node action, which returns the plaintext key for
+ * immediate model construction. Internal-only — never exposed to the client,
+ * and the caller who can invoke it already holds the envelope from the row.
+ */
+export const _decryptLanguageKey = internalAction({
+	args: {
+		ciphertext: v.string(),
+		iv: v.string(),
+		authTag: v.string(),
+		version: v.number(),
+	},
+	returns: v.string(),
+	handler: async (_ctx, args): Promise<string> =>
+		decryptSecret({
+			ciphertext: args.ciphertext,
+			iv: args.iv,
+			authTag: args.authTag,
+			version: args.version,
+		}),
 });

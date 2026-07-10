@@ -6,7 +6,7 @@ import { authedAction } from './lib/authedFunctions';
 import { logInfo } from './lib/runtimeLog';
 import { runLlmObject } from './lib/llm/dispatch';
 import { recordLlmSpend } from './analytics/llmUsage';
-import { getLLMProvider } from './lib/llmProvider';
+import { resolveLanguageModel } from './lib/llmProvider';
 import { requireAuthenticatedIdentity } from './lib/sessionOrganization';
 
 interface TranslationItem {
@@ -29,7 +29,7 @@ const translationSchema = z.object({
 		z.object({
 			index: z.number().int().describe('Zero-based index of the input item this translates'),
 			translatedText: z.string().describe('The translated text content'),
-		}),
+		})
 	),
 });
 
@@ -63,7 +63,7 @@ export const translateBatch = authedAction({
 		// throws through runLlmObject's normal path instead of silently yielding
 		// zero translations the way the old fence-stripping parser did.
 		const { object, tokenUsage, modelUsed } = await runLlmObject({
-			model: getLLMProvider('summarize'), // Translation is a fast-tier task
+			model: await resolveLanguageModel(ctx, 'summarize'), // Translation is a fast-tier task
 			schema: translationSchema,
 			prompt,
 			temperature: 0.3,

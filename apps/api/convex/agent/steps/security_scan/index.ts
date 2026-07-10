@@ -30,7 +30,7 @@ import type { ActionCtx } from '../../../_generated/server';
 import type { AgentStepModule } from '../types';
 import type { securityFlagsValidator } from '../../../lib/convexValidators';
 import { getOptional } from '../../../lib/env';
-import { getLLMProvider } from '../../../lib/llmProvider';
+import { resolveLanguageModel } from '../../../lib/llmProvider';
 import { runLlmObject } from '../../../lib/llm/dispatch';
 import {
 	detectInjection,
@@ -131,9 +131,12 @@ type GuardScanResult = {
  * caller records the window as unclassified rather than throwing into the
  * pipeline.
  */
-async function classifyGuardWindow(sample: string): Promise<InjectionGuardVerdict | undefined> {
+async function classifyGuardWindow(
+	ctx: ActionCtx,
+	sample: string
+): Promise<InjectionGuardVerdict | undefined> {
 	try {
-		const model = getLLMProvider('guard');
+		const model = await resolveLanguageModel(ctx, 'guard');
 		const { object } = await runLlmObject({
 			model,
 			schema: injectionGuardSchema,
@@ -164,7 +167,7 @@ ${sample}
  * pattern-only verdict) but fails CLOSED for auto-send (`incomplete` marks a
  * partial/total scan so `guardUnavailable` blocks the auto-send path).
  */
-async function classifyInjectionLLM(text: string): Promise<GuardScanResult> {
+async function classifyInjectionLLM(ctx: ActionCtx, text: string): Promise<GuardScanResult> {
 	const windows = chunkForGuard(text);
 	if (windows.length === 0) return { verdict: undefined, incomplete: false };
 
@@ -173,7 +176,7 @@ async function classifyInjectionLLM(text: string): Promise<GuardScanResult> {
 	let flagged: InjectionGuardVerdict | undefined;
 	let strongest: InjectionGuardVerdict | undefined;
 	for (const window of windows) {
-		const verdict = await classifyGuardWindow(window);
+		const verdict = await classifyGuardWindow(ctx, window);
 		if (verdict === undefined) {
 			// This window's call failed — the guard did not fully see the message.
 			incomplete = true;
@@ -323,7 +326,7 @@ export const securityScanStep: AgentStepModule<
 		]
 			.filter((part): part is string => typeof part === 'string' && part.trim().length > 0)
 			.join('\n\n');
-		const guardScan = await classifyInjectionLLM(guardSample);
+		const guardScan = await classifyInjectionLLM(ctx, guardSample);
 		const llmVerdict = guardScan.verdict;
 
 		// ── Layer 5: URL reputation (Google Safe Browsing, key-gated, fails open) ──

@@ -27,8 +27,8 @@ vi.mock('../../../../lib/llm/dispatch', () => ({
 	runLlmTextWithTools: (args: unknown) => runLlmTextMock(args as never),
 }));
 vi.mock('../../../../lib/llmProvider', () => ({
-	getLLMProvider: () => ({}) as never,
-	getLLMProviderForClassifiedDraft: () => ({}) as never,
+	resolveLanguageModel: () => ({}) as never,
+	resolveLanguageModelForClassifiedDraft: () => ({}) as never,
 }));
 
 // Import AFTER mocks are registered.

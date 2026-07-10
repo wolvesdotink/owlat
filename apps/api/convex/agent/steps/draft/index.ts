@@ -15,7 +15,7 @@
  */
 
 import { internal } from '../../../_generated/api';
-import { getLLMProviderForClassifiedDraft } from '../../../lib/llmProvider';
+import { resolveLanguageModelForClassifiedDraft } from '../../../lib/llmProvider';
 import { buildReplySubject } from '../../../lib/emailAddress';
 import type { Id } from '../../../_generated/dataModel';
 import type { AgentStepModule } from '../types';
@@ -133,7 +133,7 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 		// email body): a clearly-trivial, high-confidence, low-stakes message may
 		// draft on the fast tier when complexity routing is enabled. FAIL-SOFT:
 		// routing off / any ambiguity keeps the capable tier — today's behaviour.
-		const model = getLLMProviderForClassifiedDraft({
+		const model = await resolveLanguageModelForClassifiedDraft(ctx, {
 			category: safeCategory,
 			intent: safeIntent,
 			priority: safePriority,

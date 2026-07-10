@@ -29,7 +29,7 @@
 import { v } from 'convex/values';
 import { authedAction } from '../lib/authedFunctions';
 import { api, internal } from '../_generated/api';
-import { getLLMProviderForUserText } from '../lib/llmProvider';
+import { resolveLanguageModelForUserText } from '../lib/llmProvider';
 import { runLlmStream } from '../lib/llm/dispatch';
 import { recordLlmSpend } from '../analytics/llmUsage';
 import {
@@ -155,7 +155,7 @@ export const reviseDraft = authedAction({
 				// The draft + instruction are the caller's OWN trusted text, a safe
 				// complexity signal; fail-soft routing keeps the capable 'draft'
 				// tier for anything non-trivial (today's quality).
-				model: getLLMProviderForUserText('draft', args.instruction),
+				model: await resolveLanguageModelForUserText(ctx, 'draft', args.instruction),
 				system,
 				messages: [{ role: 'user', content: prompt }],
 				temperature: 0.4,

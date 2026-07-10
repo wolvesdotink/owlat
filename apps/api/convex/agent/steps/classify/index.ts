@@ -15,7 +15,7 @@
  */
 
 import { z } from 'zod';
-import { getLLMProvider } from '../../../lib/llmProvider';
+import { resolveLanguageModel } from '../../../lib/llmProvider';
 import { internal } from '../../../_generated/api';
 import type { Id } from '../../../_generated/dataModel';
 import type { AgentStepModule } from '../types';
@@ -75,7 +75,7 @@ export const classifyStep: AgentStepModule<'classify', ClassifyInput, ClassifyOu
 	llm: { tier: 'fast' },
 
 	async execute(ctx, input) {
-		const model = getLLMProvider('classify');
+		const model = await resolveLanguageModel(ctx, 'classify');
 
 		const { object, tokenUsage, modelUsed } = await runLlmObject({
 			model,

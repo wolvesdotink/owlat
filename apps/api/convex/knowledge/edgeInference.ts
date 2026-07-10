@@ -30,7 +30,7 @@ import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { z } from 'zod';
-import { getLLMProvider } from '../lib/llmProvider';
+import { resolveLanguageModel } from '../lib/llmProvider';
 import { runLlmObject } from '../lib/llm/dispatch';
 import { recordLlmSpend } from '../analytics/llmUsage';
 import { logInfo } from '../lib/runtimeLog';
@@ -77,7 +77,7 @@ const inferenceSchema = z.object({
 					.max(200)
 					.optional()
 					.describe('Brief reason the relation holds (<= 200 chars)'),
-			}),
+			})
 		)
 		.describe('Typed relations inferred between the numbered knowledge nodes'),
 });
@@ -153,7 +153,7 @@ export const inferRelations = internalAction({
 		const existing = new Set(
 			await ctx.runQuery(internal.knowledge.edges.existingEdgePairs, {
 				ids: nodes.map((n) => n._id),
-			}),
+			})
 		);
 
 		// Defense in depth: never feed prompt-injected content into the inference LLM.
@@ -168,7 +168,7 @@ export const inferRelations = internalAction({
 				.map((n, i) => `[${i}] (${n.entryType}) ${n.title}: ${n.content}`)
 				.join('\n');
 
-			const model = getLLMProvider('extract');
+			const model = await resolveLanguageModel(ctx, 'extract');
 			const { object, tokenUsage, modelUsed } = await runLlmObject({
 				model,
 				schema: inferenceSchema,
