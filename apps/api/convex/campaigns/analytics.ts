@@ -1,24 +1,6 @@
 import { v } from 'convex/values';
-import { internalQuery } from '../_generated/server';
-import { internal } from '../_generated/api';
 import type { Doc } from '../_generated/dataModel';
-import { authedQuery, authedAction } from '../lib/authedFunctions';
-import { loadAbTestStats, computeAbVariantStats } from './abTest';
-
-type AbVariantStats = ReturnType<typeof computeAbVariantStats>;
-type AbCampaignWithStats = Doc<'campaigns'> & {
-	abStats: {
-		status: Doc<'campaigns'>['abTestStatus'];
-		winner: Doc<'campaigns'>['abWinner'];
-		winnerSelectedAt: Doc<'campaigns'>['abWinnerSelectedAt'];
-		config: NonNullable<Doc<'campaigns'>['abTestConfig']> | null;
-		variantA: AbVariantStats;
-		variantB: AbVariantStats;
-	};
-};
-
-/** Safety cap on the A/B campaign list (the `.filter` scan can't use an index). */
-const AB_LIST_LIMIT = 200;
+import { authedQuery } from '../lib/authedFunctions';
 
 // Query to get active campaigns (scheduled, sending) for dashboard (for HTTP API)
 export const getActiveByOrganization = authedQuery({
@@ -148,66 +130,38 @@ export const getRecentlySentByOrganization = authedQuery({
 	},
 });
 
-/** The ≤200 A/B campaign docs — bounded scan of `campaigns`, no per-variant
- * `emailSends` reads. Internal half of the action below. */
-export const listABTestCampaignDocs = internalQuery({
+/** Safety cap on the comparable-send window (index-ordered take, no scan). */
+const COMPARABLE_SENDS_LIMIT = 100;
+
+// Recent sent campaigns as lightweight comparison snapshots — powers the
+// "delta vs previous comparable send" line under each report hero tile. Returns
+// only the aggregated `stats*` counts + `isABTest`/`sentAt` needed to pick the
+// prior comparable send and diff its rates; the report page runs the pure
+// selection (`selectPreviousComparable`) and delta math client-side so the
+// choice is unit-testable without Convex. Bounded by the index-ordered take, so
+// no `emailSends` are read here.
+// all-members: aggregated campaign send stats, same member-visible surface as getRecentlySentByOrganization
+export const getComparableSentCampaigns = authedQuery({
 	args: {},
-	handler: async (ctx) =>
-		ctx.db
+	handler: async (ctx) => {
+		const sentCampaigns = await ctx.db
 			.query('campaigns')
-			.withIndex('by_is_ab_test', (q) => q.eq('isABTest', true))
-			.take(AB_LIST_LIMIT),
-});
+			.withIndex('by_status_sent_at', (q) => q.eq('status', 'sent'))
+			.order('desc')
+			.take(COMPARABLE_SENDS_LIMIT);
 
-/** One campaign's per-variant stats — a single bounded `emailSends` read
- * (≤2×AB_VARIANT_SCAN_LIMIT) via `loadAbTestStats`. Internal half of the
- * action below. */
-export const getAbVariantStatsForCampaign = internalQuery({
-	args: { campaignId: v.id('campaigns') },
-	handler: async (ctx, args): Promise<{ variantA: AbVariantStats; variantB: AbVariantStats }> =>
-		loadAbTestStats(ctx, args.campaignId),
-});
-
-/**
- * All A/B test campaigns with per-variant stats. An ACTION, not a reactive
- * query: the per-variant breakdown only exists in the `emailSends` rows, so a
- * reactive query fanned out up to ~200 campaigns × two 10k scans = millions of
- * reads in ONE subscription that re-executed on every `emailSends` write. The
- * action loads the bounded campaign list once, then each campaign's variant
- * stats in its OWN bounded internal query (≤20k reads each — never the whole
- * fan-out in one transaction), and does not re-run on Contacts/sends writes.
- * The web caller loads it on mount.
- */
-// all-members: read-only A/B analytics for the org's own campaigns.
-export const getABTestCampaignsByOrganization = authedAction({
-	args: {},
-	handler: async (ctx): Promise<AbCampaignWithStats[]> => {
-		const campaigns: Doc<'campaigns'>[] = await ctx.runQuery(
-			internal.campaigns.analytics.listABTestCampaignDocs,
-			{}
-		);
-
-		const campaignsWithStats: AbCampaignWithStats[] = await Promise.all(
-			campaigns.map(async (campaign): Promise<AbCampaignWithStats> => {
-				const { variantA, variantB } = await ctx.runQuery(
-					internal.campaigns.analytics.getAbVariantStatsForCampaign,
-					{ campaignId: campaign._id }
-				);
-				return {
-					...campaign,
-					abStats: {
-						status: campaign.abTestStatus,
-						winner: campaign.abWinner,
-						winnerSelectedAt: campaign.abWinnerSelectedAt,
-						config: campaign.abTestConfig ?? null,
-						variantA,
-						variantB,
-					},
-				};
-			})
-		);
-
-		// Sort by updatedAt descending (most recent first)
-		return campaignsWithStats.sort((a, b) => b.updatedAt - a.updatedAt);
+		return sentCampaigns
+			.filter((c): c is Doc<'campaigns'> & { sentAt: number } => c.sentAt !== undefined)
+			.map((c) => ({
+				id: c._id,
+				name: c.name,
+				sentAt: c.sentAt,
+				isABTest: c.isABTest ?? false,
+				sent: c.statsSent ?? 0,
+				delivered: c.statsDelivered ?? 0,
+				opened: c.statsOpened ?? 0,
+				clicked: c.statsClicked ?? 0,
+				bounced: c.statsBounced ?? 0,
+			}));
 	},
 });

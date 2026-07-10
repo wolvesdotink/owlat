@@ -2,6 +2,8 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import ClickHeatmap from '~/components/dashboard/ClickHeatmap.vue';
+import CampaignAbComparison from '~/components/dashboard/CampaignAbComparison.vue';
+import { selectPreviousComparable, computeStatDeltas, NO_DELTAS } from '~/utils/campaignReport';
 
 useHead({ title: 'Campaign Report — Owlat' });
 
@@ -22,7 +24,6 @@ const { run: declareWinner } = useBackendOperation(api.campaigns.abTest.declareA
 	label: 'Declare A/B test winner',
 });
 
-// Toast notifications (global)
 const { showToast: showNotification } = useToast();
 
 // Handle duplicate
@@ -36,7 +37,6 @@ const handleDuplicate = async () => {
 		return;
 	}
 	showNotification('Campaign duplicated successfully');
-	// Redirect to the new campaign editor
 	router.push(`/dashboard/campaigns/${newCampaignId}/edit`);
 };
 
@@ -57,6 +57,14 @@ const { data: opensTimeline } = useConvexQuery(api.delivery.sends.getOpensTimeli
 	campaignId: campaignId.value,
 }));
 
+// Recent sent-campaign snapshots — used to diff this send against the prior
+// comparable send (same kind) for the hero-tile deltas. Cheap (index take, no
+// emailSends read); the pure selection + delta math runs client-side.
+const { data: comparableSends } = useConvexQuery(
+	api.campaigns.analytics.getComparableSentCampaigns,
+	() => ({})
+);
+
 // Fetch A/B test stats — only for A/B campaigns. getABTestStats scans both
 // variants' emailSends (2×10k); skipping it for the common non-A/B case avoids
 // that scan re-running on every emailSends write while the report is open.
@@ -75,10 +83,7 @@ const handleSelectWinner = async (winner: 'A' | 'B') => {
 	if (isSelectingWinner.value) return;
 	isSelectingWinner.value = true;
 	try {
-		const result = await declareWinner({
-			campaignId: campaignId.value,
-			winner,
-		});
+		const result = await declareWinner({ campaignId: campaignId.value, winner });
 		if (result === undefined) return;
 		showNotification(`Variant ${winner} declared as winner!`);
 	} finally {
@@ -131,118 +136,90 @@ const copyArchiveLink = async () => {
 	await copyToClipboard(archiveUrl.value, ARCHIVE_LINK_COPY_KEY);
 };
 
-// Calculate rates
+// Everything dispatched to the provider (the delivery-rate denominator).
+const sentCount = computed(() => {
+	if (!stats.value) return 0;
+	return stats.value.total - stats.value.queued - stats.value.failed;
+});
+
+// Rates
 const openRate = computed(() => {
-	if (!stats.value || !stats.value.delivered || stats.value.delivered === 0) return 0;
+	if (!stats.value || !stats.value.delivered) return 0;
 	return (stats.value.uniqueOpens / stats.value.delivered) * 100;
 });
 
 const clickRate = computed(() => {
-	if (!stats.value || !stats.value.delivered || stats.value.delivered === 0) return 0;
+	if (!stats.value || !stats.value.delivered) return 0;
 	return (stats.value.uniqueClicks / stats.value.delivered) * 100;
 });
 
-// Stats cards configuration
-const statsCards = computed(() => {
+// Delta vs previous comparable send ---------------------------------------
+const previousComparable = computed(() => {
+	const list = comparableSends.value;
+	const sentAt = campaign.value?.sentAt;
+	if (!list || sentAt === undefined) return null;
+	return selectPreviousComparable(list, {
+		id: campaignId.value,
+		sentAt,
+		isABTest: campaign.value?.isABTest ?? false,
+	});
+});
+
+const deltas = computed(() => {
+	if (!stats.value) {
+		return NO_DELTAS;
+	}
+	return computeStatDeltas(
+		{
+			sent: sentCount.value,
+			delivered: stats.value.delivered,
+			opened: stats.value.uniqueOpens,
+			clicked: stats.value.uniqueClicks,
+			bounced: stats.value.bounced,
+		},
+		previousComparable.value
+	);
+});
+
+// Hero stat tiles — Delivered / Opened / Clicked / Bounced.
+const heroTiles = computed(() => {
 	if (!stats.value) return [];
+	const s = stats.value;
 	return [
-		{
-			// Everything that left the queue (was dispatched to the provider).
-			// delivered/opened/clicked now overlap (they're "ever reached"
-			// counts), so summing them — the old workaround — would over-count.
-			label: 'Sent',
-			value: stats.value.total - stats.value.queued - stats.value.failed,
-			icon: 'lucide:send',
-			color: 'text-brand',
-			bgColor: 'bg-brand/10',
-		},
-		{
-			// stats.delivered already counts every recipient who ever reached
-			// delivered (incl. those who went on to open/click).
-			label: 'Delivered',
-			value: stats.value.delivered,
-			icon: 'lucide:check-circle-2',
-			color: 'text-success',
-			bgColor: 'bg-success/10',
-		},
-		{
-			label: 'Opened',
-			value: stats.value.uniqueOpens,
-			icon: 'lucide:eye',
-			color: 'text-brand',
-			bgColor: 'bg-brand/10',
-			rate: openRate.value,
-		},
-		{
-			label: 'Clicked',
-			value: stats.value.uniqueClicks,
-			icon: 'lucide:mouse-pointer-click',
-			color: 'text-warning',
-			bgColor: 'bg-warning/10',
-			rate: clickRate.value,
-		},
-		{
-			label: 'Bounced',
-			value: stats.value.bounced,
-			icon: 'lucide:x-circle',
-			color: 'text-error',
-			bgColor: 'bg-error/10',
-			subStats: [
-				{ label: 'Hard', value: stats.value.hardBounced },
-				{ label: 'Soft', value: stats.value.softBounced },
-			],
-		},
+		{ key: 'delivered', label: 'Delivered', value: s.delivered, delta: deltas.value.delivered },
+		{ key: 'opened', label: 'Opened', value: s.uniqueOpens, delta: deltas.value.opened },
+		{ key: 'clicked', label: 'Clicked', value: s.uniqueClicks, delta: deltas.value.clicked },
+		{ key: 'bounced', label: 'Bounced', value: s.bounced, delta: deltas.value.bounced },
 	];
 });
 
-// Timeline chart data
-const chartData = computed(() => {
-	if (!opensTimeline.value || opensTimeline.value.length === 0) {
-		return { labels: [] as string[], data: [] as number[], maxValue: 0 };
-	}
-
-	// Get max value for scaling
-	const maxValue = Math.max(
-		...opensTimeline.value.map((d: { timestamp: number; count: number }) => d.count),
-		1
-	);
-
-	// Format labels
-	const labels = opensTimeline.value.map((d: { timestamp: number; count: number }) => {
-		const date = new Date(d.timestamp);
-		return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-	});
-
-	return {
-		labels,
-		data: opensTimeline.value.map((d: { timestamp: number; count: number }) => d.count),
-		maxValue,
-	};
+// Opens timeline → first-48h curve for UiTrendChart. Labels are hours since
+// the first recorded open; the peak is direct-labeled by the chart.
+const timelineData = computed<{ label: string; value: number }[]>(() => {
+	const raw = opensTimeline.value;
+	if (!raw || raw.length === 0) return [];
+	const start = raw[0]!.timestamp;
+	const cutoff = start + 48 * 60 * 60 * 1000;
+	return raw
+		.filter((d) => d.timestamp <= cutoff)
+		.map((d) => ({
+			label: `${Math.round((d.timestamp - start) / (60 * 60 * 1000))}h`,
+			value: d.count,
+		}));
 });
 
 // Pagination handlers
 const loadMoreOpened = () => {
-	if (openedContacts.value?.hasMore) {
-		openedOffset.value += pageSize;
-	}
+	if (openedContacts.value?.hasMore) openedOffset.value += pageSize;
 };
-
 const loadMoreClicked = () => {
-	if (clickedContacts.value?.hasMore) {
-		clickedOffset.value += pageSize;
-	}
+	if (clickedContacts.value?.hasMore) clickedOffset.value += pageSize;
 };
-
 const loadPrevOpened = () => {
-	if (openedOffset.value > 0) {
-		openedOffset.value = Math.max(0, openedOffset.value - pageSize);
-	}
+	if (openedOffset.value > 0) openedOffset.value = Math.max(0, openedOffset.value - pageSize);
 };
-
 const loadPrevClicked = () => {
-	if (clickedOffset.value > 0) {
-		clickedOffset.value = Math.max(0, clickedOffset.value - pageSize);
-	}
+	if (clickedOffset.value > 0) clickedOffset.value = Math.max(0, clickedOffset.value - pageSize);
 };
 </script>
 
@@ -283,7 +260,7 @@ const loadPrevClicked = () => {
 			<div class="mb-8">
 				<NuxtLink
 					to="/dashboard/campaigns"
-					class="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary text-sm mb-4 transition-colors"
+					class="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary text-sm mb-4 transition-colors duration-(--motion-fast)"
 				>
 					<Icon name="lucide:arrow-left" class="w-4 h-4" />
 					Back to Campaigns
@@ -291,9 +268,13 @@ const loadPrevClicked = () => {
 				<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
 					<div>
 						<h1 class="text-2xl font-semibold text-text-primary">{{ campaign.name }}</h1>
-						<p class="mt-1 text-text-secondary flex items-center gap-2">
-							<Icon name="lucide:clock" class="w-4 h-4" />
-							Sent {{ formatDateTime(campaign.sentAt) }}
+						<p class="mt-1 text-text-secondary text-sm flex flex-wrap items-center gap-x-2 gap-y-1">
+							<span class="inline-flex items-center gap-1.5">
+								<Icon name="lucide:clock" class="w-4 h-4" />
+								Sent {{ formatDateTime(campaign.sentAt) }}
+							</span>
+							<span class="text-text-tertiary">·</span>
+							<span class="tabular-nums">{{ sentCount.toLocaleString() }} recipients</span>
 						</p>
 					</div>
 					<div class="flex items-center gap-3">
@@ -333,328 +314,103 @@ const loadPrevClicked = () => {
 				</div>
 			</div>
 
-			<!-- Stats Cards -->
-			<div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
-				<div v-for="stat in statsCards" :key="stat.label" class="card p-4">
-					<div class="flex items-center gap-3 mb-3">
-						<div :class="['w-8 h-8 flex items-center justify-center rounded-lg', stat.bgColor]">
-							<Icon :name="stat.icon" :class="['w-4 h-4', stat.color]" />
-						</div>
-						<span class="text-sm text-text-secondary">{{ stat.label }}</span>
-					</div>
-					<div class="flex items-baseline gap-2">
-						<span class="text-2xl font-semibold text-text-primary">
-							{{ stat.value.toLocaleString() }}
-						</span>
-						<span v-if="stat.rate !== undefined" class="text-sm text-text-tertiary">
-							({{ stat.rate.toFixed(1) }}%)
-						</span>
-					</div>
-					<div v-if="stat.subStats" class="flex gap-3 mt-1">
-						<span v-for="sub in stat.subStats" :key="sub.label" class="text-xs text-text-tertiary">
-							{{ sub.label }}: {{ sub.value }}
-						</span>
-					</div>
+			<!-- Hero stat tiles -->
+			<div class="card p-6 mb-8">
+				<div class="grid grid-cols-2 lg:grid-cols-4 gap-6">
+					<UiStatTile
+						v-for="tile in heroTiles"
+						:key="tile.key"
+						:label="tile.label"
+						:value="tile.value.toLocaleString()"
+						:delta="tile.delta.text"
+						:delta-direction="tile.delta.direction"
+					/>
 				</div>
+				<p class="mt-4 text-xs text-text-tertiary">
+					<template v-if="previousComparable">
+						Change vs your previous {{ campaign.isABTest ? 'A/B ' : '' }}send ·
+						{{ previousComparable.name }}
+					</template>
+					<template v-else> No comparable prior send to compare against yet. </template>
+				</p>
 			</div>
 
-			<!-- A/B Test Results (if applicable) -->
-			<div v-if="campaign.isABTest && abTestStats" class="card p-6 mb-8">
-				<div class="flex items-center justify-between mb-6">
-					<div class="flex items-center gap-3">
-						<UiIconBox icon="lucide:split" size="sm" rounded="lg" />
-						<div>
-							<h3 class="text-lg font-medium text-text-primary">A/B Test Results</h3>
-							<p class="text-sm text-text-secondary">
-								Testing
-								{{ abTestStats.config?.testType === 'subject' ? 'Subject Lines' : 'Email Content' }}
-							</p>
-						</div>
-					</div>
-					<div
-						v-if="abTestStats.winner"
-						class="flex items-center gap-2 px-3 py-1.5 bg-success/10 rounded-full"
-					>
-						<Icon name="lucide:trophy" class="w-4 h-4 text-success" />
-						<span class="text-sm font-medium text-success"
-							>Variant {{ abTestStats.winner }} won!</span
-						>
-					</div>
-					<div
-						v-else-if="abTestStats.status === 'testing'"
-						class="flex items-center gap-2 px-3 py-1.5 bg-warning/10 rounded-full"
-					>
-						<Icon name="lucide:clock" class="w-4 h-4 text-warning" />
-						<span class="text-sm font-medium text-warning">Testing in progress</span>
-					</div>
-				</div>
-
-				<!-- Variant Comparison -->
-				<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-					<!-- Variant A -->
-					<div
-						:class="[
-							'p-4 border rounded-lg transition-colors',
-							abTestStats.winner === 'A' ? 'border-brand bg-brand/5' : 'border-border-subtle',
-						]"
-					>
-						<div class="flex items-center justify-between mb-4">
-							<div class="flex items-center gap-2">
-								<div
-									class="w-8 h-8 rounded-full bg-brand/20 text-brand flex items-center justify-center font-bold"
-								>
-									A
-								</div>
-								<span class="font-medium text-text-primary">Variant A</span>
-								<Icon
-									v-if="abTestStats.winner === 'A'"
-									name="lucide:trophy"
-									class="w-4 h-4 text-success"
-								/>
-							</div>
-						</div>
-						<div class="space-y-3">
-							<div class="flex justify-between items-center">
-								<span class="text-sm text-text-secondary">Sent</span>
-								<span class="font-medium text-text-primary">{{
-									abTestStats.variantA.sent.toLocaleString()
-								}}</span>
-							</div>
-							<div class="flex justify-between items-center">
-								<span class="text-sm text-text-secondary">Open Rate</span>
-								<span class="font-medium text-brand"
-									>{{ abTestStats.variantA.openRate.toFixed(1) }}%</span
-								>
-							</div>
-							<div class="h-1.5 bg-bg-surface rounded-full overflow-hidden">
-								<div
-									class="h-full bg-brand rounded-full transition-all"
-									:style="{ width: `${Math.min(abTestStats.variantA.openRate, 100)}%` }"
-								/>
-							</div>
-							<div class="flex justify-between items-center">
-								<span class="text-sm text-text-secondary">Click Rate</span>
-								<span class="font-medium text-warning"
-									>{{ abTestStats.variantA.clickRate.toFixed(1) }}%</span
-								>
-							</div>
-							<div class="h-1.5 bg-bg-surface rounded-full overflow-hidden">
-								<div
-									class="h-full bg-warning rounded-full transition-all"
-									:style="{ width: `${Math.min(abTestStats.variantA.clickRate, 100)}%` }"
-								/>
-							</div>
-						</div>
-					</div>
-
-					<!-- Variant B -->
-					<div
-						:class="[
-							'p-4 border rounded-lg transition-colors',
-							abTestStats.winner === 'B' ? 'border-brand bg-brand/5' : 'border-border-subtle',
-						]"
-					>
-						<div class="flex items-center justify-between mb-4">
-							<div class="flex items-center gap-2">
-								<div
-									class="w-8 h-8 rounded-full bg-brand/20 text-brand flex items-center justify-center font-bold"
-								>
-									B
-								</div>
-								<span class="font-medium text-text-primary">Variant B</span>
-								<Icon
-									v-if="abTestStats.winner === 'B'"
-									name="lucide:trophy"
-									class="w-4 h-4 text-success"
-								/>
-							</div>
-						</div>
-						<div class="space-y-3">
-							<div class="flex justify-between items-center">
-								<span class="text-sm text-text-secondary">Sent</span>
-								<span class="font-medium text-text-primary">{{
-									abTestStats.variantB.sent.toLocaleString()
-								}}</span>
-							</div>
-							<div class="flex justify-between items-center">
-								<span class="text-sm text-text-secondary">Open Rate</span>
-								<span class="font-medium text-brand"
-									>{{ abTestStats.variantB.openRate.toFixed(1) }}%</span
-								>
-							</div>
-							<div class="h-1.5 bg-bg-surface rounded-full overflow-hidden">
-								<div
-									class="h-full bg-brand rounded-full transition-all"
-									:style="{ width: `${Math.min(abTestStats.variantB.openRate, 100)}%` }"
-								/>
-							</div>
-							<div class="flex justify-between items-center">
-								<span class="text-sm text-text-secondary">Click Rate</span>
-								<span class="font-medium text-warning"
-									>{{ abTestStats.variantB.clickRate.toFixed(1) }}%</span
-								>
-							</div>
-							<div class="h-1.5 bg-bg-surface rounded-full overflow-hidden">
-								<div
-									class="h-full bg-warning rounded-full transition-all"
-									:style="{ width: `${Math.min(abTestStats.variantB.clickRate, 100)}%` }"
-								/>
-							</div>
-						</div>
-					</div>
-				</div>
-
-				<!-- Manual Winner Selection (if criteria is manual and no winner yet) -->
-				<div
-					v-if="
-						abTestStats.config?.winnerCriteria === 'manual' &&
-						!abTestStats.winner &&
-						abTestStats.status === 'testing'
-					"
-					class="border-t border-border-subtle pt-4"
-				>
-					<p class="text-sm text-text-secondary mb-3">
-						Select the winning variant to send to the remaining audience:
-					</p>
-					<div class="flex gap-3">
-						<button
-							class="btn btn-secondary gap-2 flex-1"
-							:disabled="isSelectingWinner"
-							@click="handleSelectWinner('A')"
-						>
-							<Icon v-if="isSelectingWinner" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
-							<Icon v-else name="lucide:trophy" class="w-4 h-4" />
-							Choose Variant A
-						</button>
-						<button
-							class="btn btn-secondary gap-2 flex-1"
-							:disabled="isSelectingWinner"
-							@click="handleSelectWinner('B')"
-						>
-							<Icon v-if="isSelectingWinner" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
-							<Icon v-else name="lucide:trophy" class="w-4 h-4" />
-							Choose Variant B
-						</button>
-					</div>
-				</div>
-
-				<!-- Winner Info -->
-				<div
-					v-if="abTestStats.winner"
-					class="border-t border-border-subtle pt-4 text-sm text-text-secondary"
-				>
-					Winner selected
-					{{
-						abTestStats.winnerSelectedAt ? formatDateTime(abTestStats.winnerSelectedAt) : ''
-					}}
-					based on
-					{{
-						abTestStats.config?.winnerCriteria === 'open_rate'
-							? 'best open rate'
-							: abTestStats.config?.winnerCriteria === 'click_rate'
-								? 'best click rate'
-								: 'manual selection'
-					}}
-				</div>
+			<!-- A/B Test fold-in -->
+			<div v-if="campaign.isABTest && abTestStats" class="mb-8">
+				<CampaignAbComparison
+					:stats="abTestStats"
+					:is-selecting-winner="isSelectingWinner"
+					@select-winner="handleSelectWinner"
+				/>
 			</div>
 
-			<!-- Open Rate & Click Rate Summary -->
+			<!-- Open & Click rate (progress bars read better than a bare number vs a 100% target) -->
 			<div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-				<!-- Open Rate Card -->
 				<div class="card p-6">
-					<div class="flex items-center justify-between mb-4">
-						<h3 class="text-lg font-medium text-text-primary">Open Rate</h3>
-						<span class="text-3xl font-semibold text-brand">{{ openRate.toFixed(1) }}%</span>
+					<div class="flex items-baseline justify-between mb-4">
+						<h3 class="text-base font-medium text-text-primary">Open rate</h3>
+						<span class="font-display text-3xl text-text-primary tabular-nums leading-none"
+							>{{ openRate.toFixed(1) }}%</span
+						>
 					</div>
 					<div class="h-2 bg-bg-surface rounded-full overflow-hidden">
 						<div
-							class="h-full bg-brand rounded-full transition-all duration-(--motion-slow)"
+							class="h-full bg-brand rounded-full transition-all duration-(--motion-slow) ease-(--ease-spring)"
 							:style="{ width: `${Math.min(openRate, 100)}%` }"
 						/>
 					</div>
-					<p class="text-sm text-text-tertiary mt-3">
-						{{ stats?.uniqueOpens || 0 }} of {{ stats?.delivered || 0 }} delivered emails were
-						opened
+					<p class="text-sm text-text-tertiary mt-3 tabular-nums">
+						{{ (stats?.uniqueOpens ?? 0).toLocaleString() }} of
+						{{ (stats?.delivered ?? 0).toLocaleString() }} delivered opened
 					</p>
 				</div>
 
-				<!-- Click Rate Card -->
 				<div class="card p-6">
-					<div class="flex items-center justify-between mb-4">
-						<h3 class="text-lg font-medium text-text-primary">Click Rate</h3>
-						<span class="text-3xl font-semibold text-warning">{{ clickRate.toFixed(1) }}%</span>
+					<div class="flex items-baseline justify-between mb-4">
+						<h3 class="text-base font-medium text-text-primary">Click rate</h3>
+						<span class="font-display text-3xl text-text-primary tabular-nums leading-none"
+							>{{ clickRate.toFixed(1) }}%</span
+						>
 					</div>
 					<div class="h-2 bg-bg-surface rounded-full overflow-hidden">
 						<div
-							class="h-full bg-warning rounded-full transition-all duration-(--motion-slow)"
+							class="h-full bg-brand rounded-full transition-all duration-(--motion-slow) ease-(--ease-spring)"
 							:style="{ width: `${Math.min(clickRate, 100)}%` }"
 						/>
 					</div>
-					<p class="text-sm text-text-tertiary mt-3">
-						{{ stats?.uniqueClicks || 0 }} of {{ stats?.delivered || 0 }} delivered emails had link
-						clicks
+					<p class="text-sm text-text-tertiary mt-3 tabular-nums">
+						{{ (stats?.uniqueClicks ?? 0).toLocaleString() }} of
+						{{ (stats?.delivered ?? 0).toLocaleString() }} delivered clicked a link
 					</p>
 				</div>
 			</div>
 
-			<!-- Opens Timeline Chart -->
+			<!-- Opens Timeline -->
 			<div class="card p-6 mb-8">
-				<h3 class="text-lg font-medium text-text-primary mb-6">Opens Over Time</h3>
+				<div class="flex items-baseline justify-between mb-6">
+					<h3 class="text-base font-medium text-text-primary">Opens over time</h3>
+					<span class="text-xs text-text-tertiary">First 48 hours</span>
+				</div>
 
 				<!-- Empty state -->
 				<div
-					v-if="!opensTimeline || opensTimeline.length === 0"
+					v-if="timelineData.length === 0"
 					class="flex flex-col items-center justify-center py-12 text-center"
 				>
-					<Icon name="lucide:eye" class="w-12 h-12 text-text-tertiary mb-3" />
+					<Icon name="lucide:eye" class="w-10 h-10 text-text-tertiary mb-3" />
 					<p class="text-text-secondary">No opens recorded yet</p>
 					<p class="text-sm text-text-tertiary mt-1">
-						Opens will appear here as recipients view your email
+						Opens will appear here as recipients view your email.
 					</p>
 				</div>
 
-				<!-- Chart -->
-				<div v-else class="relative">
-					<!-- Y-axis labels -->
-					<div
-						class="absolute left-0 top-0 bottom-8 w-8 flex flex-col justify-between text-xs text-text-tertiary"
-					>
-						<span>{{ chartData.maxValue }}</span>
-						<span>{{ Math.floor(chartData.maxValue / 2) }}</span>
-						<span>0</span>
-					</div>
-
-					<!-- Chart area -->
-					<div class="ml-10">
-						<div class="flex items-end gap-1 h-48">
-							<div
-								v-for="(value, index) in chartData.data"
-								:key="index"
-								class="flex-1 flex flex-col items-center"
-							>
-								<div
-									class="w-full bg-brand/80 hover:bg-brand rounded-t transition-all cursor-pointer"
-									:style="{
-										height: `${(value / chartData.maxValue) * 100}%`,
-										minHeight: value > 0 ? '4px' : '0',
-									}"
-									:title="`${value} opens`"
-								/>
-							</div>
-						</div>
-
-						<!-- X-axis labels -->
-						<div class="flex justify-between mt-2 text-xs text-text-tertiary overflow-hidden">
-							<span v-if="chartData.labels.length > 0">{{ chartData.labels[0] }}</span>
-							<span v-if="chartData.labels.length > 1">{{
-								chartData.labels[Math.floor(chartData.labels.length / 2)]
-							}}</span>
-							<span v-if="chartData.labels.length > 1">{{
-								chartData.labels[chartData.labels.length - 1]
-							}}</span>
-						</div>
-					</div>
-				</div>
+				<UiTrendChart
+					v-else
+					:data="timelineData"
+					label-peak
+					:format-value="(v: number) => v.toLocaleString()"
+					aria-label="Opens over the first 48 hours"
+				/>
 			</div>
 
 			<!-- Click Heatmap -->
@@ -662,7 +418,7 @@ const loadPrevClicked = () => {
 				<div class="flex items-center gap-3 mb-6">
 					<UiIconBox icon="lucide:flame" size="sm" variant="warning" rounded="lg" />
 					<div>
-						<h3 class="text-lg font-medium text-text-primary">Link Click Heatmap</h3>
+						<h3 class="text-base font-medium text-text-primary">Link click heatmap</h3>
 						<p class="text-sm text-text-secondary">Visual representation of link engagement</p>
 					</div>
 				</div>
@@ -680,10 +436,10 @@ const loadPrevClicked = () => {
 				<div class="flex border-b border-border-subtle">
 					<button
 						:class="[
-							'flex-1 px-6 py-4 text-sm font-medium transition-colors flex items-center justify-center gap-2',
+							'flex-1 px-6 py-4 text-sm transition-colors duration-(--motion-fast) flex items-center justify-center gap-2',
 							selectedTab === 'opened'
-								? 'text-brand border-b-2 border-brand bg-brand/5'
-								: 'text-text-secondary hover:text-text-primary',
+								? 'text-text-primary font-semibold border-b-2 border-brand'
+								: 'text-text-secondary font-medium hover:text-text-primary',
 						]"
 						@click="selectedTab = 'opened'"
 					>
@@ -692,10 +448,10 @@ const loadPrevClicked = () => {
 					</button>
 					<button
 						:class="[
-							'flex-1 px-6 py-4 text-sm font-medium transition-colors flex items-center justify-center gap-2',
+							'flex-1 px-6 py-4 text-sm transition-colors duration-(--motion-fast) flex items-center justify-center gap-2',
 							selectedTab === 'clicked'
-								? 'text-warning border-b-2 border-warning bg-warning/5'
-								: 'text-text-secondary hover:text-text-primary',
+								? 'text-text-primary font-semibold border-b-2 border-brand'
+								: 'text-text-secondary font-medium hover:text-text-primary',
 						]"
 						@click="selectedTab = 'clicked'"
 					>
@@ -706,12 +462,10 @@ const loadPrevClicked = () => {
 
 				<!-- Opened Contacts Tab -->
 				<div v-if="selectedTab === 'opened'">
-					<!-- Loading -->
 					<div v-if="openedLoading && !openedContacts" class="p-8 flex justify-center">
 						<Icon name="lucide:loader-2" class="w-6 h-6 text-brand animate-spin" />
 					</div>
 
-					<!-- Empty state -->
 					<div
 						v-else-if="!openedContacts || openedContacts.sends.length === 0"
 						class="py-12 text-center"
@@ -720,13 +474,12 @@ const loadPrevClicked = () => {
 						<p class="text-text-secondary">No contacts have opened this email yet</p>
 					</div>
 
-					<!-- List -->
 					<div v-else>
 						<div class="divide-y divide-border-subtle">
 							<div
 								v-for="send in openedContacts.sends"
 								:key="send._id"
-								class="px-6 py-4 flex items-center justify-between hover:bg-bg-surface transition-colors"
+								class="px-6 py-4 flex items-center justify-between hover:bg-bg-surface transition-colors duration-(--motion-fast)"
 							>
 								<div class="flex items-center gap-3 min-w-0">
 									<UiIconBox icon="lucide:users" size="sm" rounded="full" />
@@ -747,13 +500,13 @@ const loadPrevClicked = () => {
 										<div class="text-sm text-text-secondary">
 											{{ formatCompactRelativeTime(send.openedAt, { emptyLabel: '—' }) }}
 										</div>
-										<div v-if="send.openCount > 1" class="text-xs text-text-tertiary">
+										<div v-if="send.openCount > 1" class="text-xs text-text-tertiary tabular-nums">
 											{{ send.openCount }} opens
 										</div>
 									</div>
 									<NuxtLink
 										:to="`/dashboard/campaigns/${campaignId}/sends/${send._id}`"
-										class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors"
+										class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast)"
 										title="View send details"
 									>
 										<Icon name="lucide:chevron-right" class="w-4 h-4" />
@@ -762,7 +515,6 @@ const loadPrevClicked = () => {
 							</div>
 						</div>
 
-						<!-- Pagination -->
 						<div
 							v-if="openedContacts.total > pageSize"
 							class="px-6 py-4 border-t border-border-subtle flex items-center justify-between"
@@ -774,7 +526,7 @@ const loadPrevClicked = () => {
 							>
 								Previous
 							</button>
-							<span class="text-sm text-text-tertiary">
+							<span class="text-sm text-text-tertiary tabular-nums">
 								{{ openedOffset + 1 }}-{{
 									Math.min(openedOffset + pageSize, openedContacts.total)
 								}}
@@ -793,12 +545,10 @@ const loadPrevClicked = () => {
 
 				<!-- Clicked Contacts Tab -->
 				<div v-if="selectedTab === 'clicked'">
-					<!-- Loading -->
 					<div v-if="clickedLoading && !clickedContacts" class="p-8 flex justify-center">
 						<Icon name="lucide:loader-2" class="w-6 h-6 text-brand animate-spin" />
 					</div>
 
-					<!-- Empty state -->
 					<div
 						v-else-if="!clickedContacts || clickedContacts.sends.length === 0"
 						class="py-12 text-center"
@@ -810,13 +560,12 @@ const loadPrevClicked = () => {
 						<p class="text-text-secondary">No contacts have clicked links in this email yet</p>
 					</div>
 
-					<!-- List -->
 					<div v-else>
 						<div class="divide-y divide-border-subtle">
 							<div
 								v-for="send in clickedContacts.sends"
 								:key="send._id"
-								class="px-6 py-4 hover:bg-bg-surface transition-colors"
+								class="px-6 py-4 hover:bg-bg-surface transition-colors duration-(--motion-fast)"
 							>
 								<div class="flex items-center justify-between">
 									<div class="flex items-center gap-3 min-w-0">
@@ -838,7 +587,10 @@ const loadPrevClicked = () => {
 											<div class="text-sm text-text-secondary">
 												{{ formatCompactRelativeTime(send.clickedAt, { emptyLabel: '—' }) }}
 											</div>
-											<div v-if="send.clickedLinks.length > 0" class="text-xs text-text-tertiary">
+											<div
+												v-if="send.clickedLinks.length > 0"
+												class="text-xs text-text-tertiary tabular-nums"
+											>
 												{{ send.clickedLinks.length }} link{{
 													send.clickedLinks.length !== 1 ? 's' : ''
 												}}
@@ -846,14 +598,13 @@ const loadPrevClicked = () => {
 										</div>
 										<NuxtLink
 											:to="`/dashboard/campaigns/${campaignId}/sends/${send._id}`"
-											class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors"
+											class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast)"
 											title="View send details"
 										>
 											<Icon name="lucide:chevron-right" class="w-4 h-4" />
 										</NuxtLink>
 									</div>
 								</div>
-								<!-- Clicked links -->
 								<div v-if="send.clickedLinks.length > 0" class="ml-13 mt-2 space-y-1">
 									<div
 										v-for="(link, linkIndex) in send.clickedLinks.slice(0, 3)"
@@ -870,7 +621,6 @@ const loadPrevClicked = () => {
 							</div>
 						</div>
 
-						<!-- Pagination -->
 						<div
 							v-if="clickedContacts.total > pageSize"
 							class="px-6 py-4 border-t border-border-subtle flex items-center justify-between"
@@ -882,7 +632,7 @@ const loadPrevClicked = () => {
 							>
 								Previous
 							</button>
-							<span class="text-sm text-text-tertiary">
+							<span class="text-sm text-text-tertiary tabular-nums">
 								{{ clickedOffset + 1 }}-{{
 									Math.min(clickedOffset + pageSize, clickedContacts.total)
 								}}

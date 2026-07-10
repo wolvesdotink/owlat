@@ -248,7 +248,8 @@ function runAttentionAction(row: DecoratedRow) {
 	const id = row.campaign._id;
 	switch (row.reason) {
 		case 'ab_decision':
-			openAbResults();
+			// A/B results are folded into the campaign report (piece c3b).
+			router.push(`/dashboard/campaigns/${id}/report`);
 			break;
 		case 'needs_review':
 		// The review surface is the editor's pending-review panel — NOT the
@@ -260,10 +261,6 @@ function runAttentionAction(row: DecoratedRow) {
 		default:
 			openCampaign(row.campaign);
 	}
-}
-/** The A/B results surface (kept discoverable until c3b folds it in). */
-function openAbResults() {
-	router.push('/dashboard/campaigns/ab-results');
 }
 function handleNewCampaign() {
 	router.push('/dashboard/campaigns/new');
@@ -436,7 +433,7 @@ const showEmptyState = computed(
 					:row="row"
 					@open="openCampaign(row.campaign)"
 					@run-action="runAttentionAction(row)"
-					@ab-results="openAbResults()"
+					@ab-results="openCampaign(row.campaign)"
 					@duplicate="handleDuplicate(row.campaign._id)"
 					@delete="openDeleteModal(row.campaign._id, row.campaign.name)"
 				/>

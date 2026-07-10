@@ -20,6 +20,10 @@ interface Props {
 	showArea?: boolean;
 	formatValue?: (value: number) => string;
 	ariaLabel?: string;
+	/** Direct-label the peak (max-value) point with its value — selective
+	 * direct labeling per the chart-kit rules. Hidden while the crosshair is
+	 * active so the two labels never collide. */
+	labelPeak?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -27,6 +31,7 @@ const props = withDefaults(defineProps<Props>(), {
 	showArea: true,
 	formatValue: formatChartValue,
 	ariaLabel: 'Trend chart',
+	labelPeak: false,
 });
 
 const viewWidth = 320;
@@ -45,6 +50,25 @@ const points = computed(() =>
 const linePoints = computed(() => buildLinePoints(points.value));
 const areaPath = computed(() => buildAreaPath(points.value, baselineY));
 const endpoint = computed(() => points.value[points.value.length - 1]);
+
+// Peak (max-value) point for optional direct labeling. Ties resolve to the
+// first occurrence, matching how the eye reads a rising-then-falling curve.
+const peakPoint = computed(() => {
+	if (!props.labelPeak || points.value.length === 0) return null;
+	let peak = points.value[0]!;
+	for (const p of points.value) {
+		if (p.value > peak.value) peak = p;
+	}
+	return peak;
+});
+
+// Clamp the peak label's x so it never overflows the plot horizontally.
+const peakLabelX = computed(() => {
+	if (!peakPoint.value) return 0;
+	const min = padding.left + 14;
+	const max = padding.left + innerWidth - 14;
+	return Math.min(Math.max(peakPoint.value.x, min), max);
+});
 
 const yLabels = computed(() => {
 	const { min, max } = computeYBounds(props.data.map((d) => d.value));
@@ -171,6 +195,21 @@ function onPointerLeave() {
 					stroke="var(--color-bg-elevated)"
 					stroke-width="1.5"
 				/>
+
+				<!-- Peak direct label (opacity-only hide while crosshair is active) -->
+				<g v-if="peakPoint" :opacity="hoverPoint ? 0 : 1">
+					<circle :cx="peakPoint.x" :cy="peakPoint.y" r="2.5" :fill="color" />
+					<text
+						:x="peakLabelX"
+						:y="peakPoint.y - 6"
+						text-anchor="middle"
+						class="fill-text-secondary tabular-nums"
+						font-size="9"
+						font-weight="550"
+					>
+						{{ formatValue(peakPoint.value) }}
+					</text>
+				</g>
 
 				<!-- Y-axis labels (max/mid/min) -->
 				<text

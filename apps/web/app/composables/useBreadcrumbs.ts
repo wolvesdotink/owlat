@@ -66,11 +66,6 @@ const routeConfigs: Record<string, RouteConfig> = {
 		sectionHref: '/dashboard/campaigns',
 		page: 'New Campaign',
 	},
-	'/dashboard/campaigns/ab-results': {
-		section: 'Campaigns',
-		sectionHref: '/dashboard/campaigns',
-		page: 'A/B Results',
-	},
 
 	// Audience section
 	'/dashboard/audience': {
