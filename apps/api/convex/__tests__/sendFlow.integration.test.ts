@@ -11,6 +11,7 @@ import {
 	createTestEmailSend,
 	createTestBlockedEmail,
 	createTestSegment,
+	createTestCampaignSender,
 } from './factories';
 import type { Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
@@ -114,23 +115,37 @@ async function setupSendFlowData(t: TestConvex<typeof schema>): Promise<SendFlow
 		);
 
 		// Topic (requires DOI so we can test DOI filtering)
-		result.topicId = await ctx.db.insert(
-			'topics',
-			createTestTopic({ requireDoubleOptIn: true })
-		);
+		result.topicId = await ctx.db.insert('topics', createTestTopic({ requireDoubleOptIn: true }));
 
 		// Contacts: alice and bob are DOI-confirmed (eligible), charlie has pending DOI
 		result.aliceId = await ctx.db.insert(
 			'contacts',
-			createTestContact({ email: 'alice@example.com', firstName: 'Alice', lastName: 'Smith', doiStatus: 'confirmed', doiConfirmedAt: Date.now() })
+			createTestContact({
+				email: 'alice@example.com',
+				firstName: 'Alice',
+				lastName: 'Smith',
+				doiStatus: 'confirmed',
+				doiConfirmedAt: Date.now(),
+			})
 		);
 		result.bobId = await ctx.db.insert(
 			'contacts',
-			createTestContact({ email: 'bob@example.com', firstName: 'Bob', lastName: 'Jones', doiStatus: 'confirmed', doiConfirmedAt: Date.now() })
+			createTestContact({
+				email: 'bob@example.com',
+				firstName: 'Bob',
+				lastName: 'Jones',
+				doiStatus: 'confirmed',
+				doiConfirmedAt: Date.now(),
+			})
 		);
 		result.charlieId = await ctx.db.insert(
 			'contacts',
-			createTestContact({ email: 'charlie@example.com', firstName: 'Charlie', lastName: 'Brown', doiStatus: 'pending' })
+			createTestContact({
+				email: 'charlie@example.com',
+				firstName: 'Charlie',
+				lastName: 'Brown',
+				doiStatus: 'pending',
+			})
 		);
 
 		// Topic memberships (no DOI fields — DOI is on the contact)
@@ -149,6 +164,12 @@ async function setupSendFlowData(t: TestConvex<typeof schema>): Promise<SendFlow
 			topicId: result.topicId,
 			addedAt: Date.now(),
 		});
+
+		// Curated sender so the send-time gate accepts `sender@example.com`.
+		await ctx.db.insert(
+			'campaignSenders',
+			createTestCampaignSender({ email: 'sender@example.com' })
+		);
 
 		// Campaign
 		result.campaignId = await ctx.db.insert(
@@ -357,10 +378,7 @@ describe('resolveRecipients (Audience resolution)', () => {
 
 		// Block alice
 		await t.run(async (ctx) => {
-			await ctx.db.insert(
-				'blockedEmails',
-				createTestBlockedEmail({ email: 'alice@example.com' })
-			);
+			await ctx.db.insert('blockedEmails', createTestBlockedEmail({ email: 'alice@example.com' }));
 		});
 
 		const recipients = await t.query(internal.campaigns.audienceResolution.resolveRecipients, {
@@ -376,10 +394,7 @@ describe('resolveRecipients (Audience resolution)', () => {
 		let emptyTopicId: Id<'topics'>;
 
 		await t.run(async (ctx) => {
-			emptyTopicId = await ctx.db.insert(
-				'topics',
-				createTestTopic()
-			);
+			emptyTopicId = await ctx.db.insert('topics', createTestTopic());
 		});
 
 		const recipients = await t.query(internal.campaigns.audienceResolution.resolveRecipients, {
@@ -446,10 +461,9 @@ describe('freezeCampaignAudience (ADR-0033 segment snapshot)', () => {
 		});
 
 		// Resolution against the stored (frozen) audience ignores the edit.
-		const recipients = await t.query(
-			internal.campaigns.audienceResolution.resolveRecipients,
-			{ audience: frozen! }
-		);
+		const recipients = await t.query(internal.campaigns.audienceResolution.resolveRecipients, {
+			audience: frozen!,
+		});
 		expect(recipients.map((r) => r.email)).toEqual(['a@frozen.com']);
 	});
 
@@ -469,7 +483,9 @@ describe('freezeCampaignAudience (ADR-0033 segment snapshot)', () => {
 			);
 		});
 
-		await t.mutation(internal.campaigns.sendQueries.freezeCampaignAudience, { campaignId: campaignId! });
+		await t.mutation(internal.campaigns.sendQueries.freezeCampaignAudience, {
+			campaignId: campaignId!,
+		});
 		await t.run(async (ctx) => {
 			await ctx.db.patch(segmentId!, { filters: segmentFilters('@other.com') });
 		});
@@ -731,13 +747,15 @@ describe('full campaign send lifecycle', () => {
 
 		// Step 3: createBatch — create emailSend records
 		const created = await t.mutation(internal.delivery.sends.createBatch, {
-			sends: recipients.map((r: { _id: Id<'contacts'>; email: string; firstName?: string; lastName?: string }) => ({
-				campaignId: data.campaignId,
-				contactId: r._id,
-				contactEmail: r.email,
-				contactFirstName: r.firstName,
-				contactLastName: r.lastName,
-			})),
+			sends: recipients.map(
+				(r: { _id: Id<'contacts'>; email: string; firstName?: string; lastName?: string }) => ({
+					campaignId: data.campaignId,
+					contactId: r._id,
+					contactEmail: r.email,
+					contactFirstName: r.firstName,
+					contactLastName: r.lastName,
+				})
+			),
 		});
 
 		expect(created).toHaveLength(2);

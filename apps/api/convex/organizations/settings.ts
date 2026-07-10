@@ -45,6 +45,9 @@ export const update = authedMutation({
 		defaultFromName: v.optional(v.string()),
 		defaultFromEmail: v.optional(v.string()),
 		isMigrationMode: v.optional(v.boolean()),
+		// When on, campaign sends may use any from-address on a verified sending
+		// domain, not just the curated `campaignSenders` list. Defaults OFF.
+		isCustomCampaignSendersAllowed: v.optional(v.boolean()),
 		emailTheme: v.optional(
 			v.object({
 				primaryColor: v.string(),

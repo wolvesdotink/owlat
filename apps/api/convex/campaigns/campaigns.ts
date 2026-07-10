@@ -10,13 +10,11 @@ import { buildSearchableText } from '../lib/queryHelpers';
 import { validateStringLength, STRING_LIMITS, sanitizeEmailHeaderValue } from '../lib/inputGuards';
 import { trackEvent } from '../lib/posthogHelpers';
 import { recordAuditLog } from '../lib/auditLog';
-import {
-	throwNotFound,
-	throwInvalidState,
-} from '../_utils/errors';
+import { throwNotFound, throwInvalidState } from '../_utils/errors';
 import { campaignStatusValidator } from '../lib/convexValidators';
 import { audienceValidator } from './audience';
 import { validateReadyToSend } from './preflight';
+import { seedDefaultSenderIfNeeded } from './senders';
 import { assertTransitioned } from './lifecycle';
 import { requireDraftCampaign } from './guards';
 
@@ -188,7 +186,11 @@ export const updateContent = authedMutation({
 export const duplicate = authedMutation({
 	args: { campaignId: v.id('campaigns') },
 	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'campaigns:manage', 'Only owners and admins can duplicate campaigns');
+		await requireOrgPermission(
+			ctx,
+			'campaigns:manage',
+			'Only owners and admins can duplicate campaigns'
+		);
 
 		const campaign = await ctx.db.get(args.campaignId);
 		if (!campaign) {
@@ -221,7 +223,11 @@ export const duplicate = authedMutation({
 export const remove = authedMutation({
 	args: { campaignId: v.id('campaigns') },
 	handler: async (ctx, args) => {
-		const session = await requireOrgPermission(ctx, 'campaigns:manage', 'Only owners and admins can delete campaigns');
+		const session = await requireOrgPermission(
+			ctx,
+			'campaigns:manage',
+			'Only owners and admins can delete campaigns'
+		);
 
 		const campaign = await ctx.db.get(args.campaignId);
 		if (!campaign) {
@@ -282,7 +288,11 @@ export const create = authedMutation({
 		validateStringLength(args.name, STRING_LIMITS.NAME, 'Name');
 
 		// Get full mutation context (userId, role)
-		const session = await requireOrgPermission(ctx, 'campaigns:manage', 'Only owners and admins can create campaigns');
+		const session = await requireOrgPermission(
+			ctx,
+			'campaigns:manage',
+			'Only owners and admins can create campaigns'
+		);
 
 		const now = Date.now();
 		const name = args.name.trim();
@@ -322,7 +332,11 @@ export const sendNow = authedMutation({
 		campaignId: v.id('campaigns'),
 	},
 	handler: async (ctx, args) => {
-		const session = await requireOrgPermission(ctx, 'campaigns:send', 'Only owners and admins can send campaigns');
+		const session = await requireOrgPermission(
+			ctx,
+			'campaigns:send',
+			'Only owners and admins can send campaigns'
+		);
 
 		const campaign = await ctx.db.get(args.campaignId);
 		if (!campaign) {
@@ -332,6 +346,11 @@ export const sendNow = authedMutation({
 		if (campaign.status !== 'draft' && campaign.status !== 'scheduled') {
 			throwInvalidState('Only draft or scheduled campaigns can be sent');
 		}
+
+		// Bootstrap the curated list from the org default before pre-flight so an
+		// upgraded deployment (empty list, toggle off) can still send from its own
+		// default address instead of failing `sender_not_allowed`.
+		await seedDefaultSenderIfNeeded(ctx);
 
 		const preflight = await validateReadyToSend(ctx, campaign);
 		if (!preflight.ok) {

@@ -5,6 +5,7 @@ import { internal } from '../_generated/api';
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import { throwInvalidState, throwNotFound } from '../_utils/errors';
 import { validateReadyToSend } from './preflight';
+import { seedDefaultSenderIfNeeded } from './senders';
 import { assertTransitioned } from './lifecycle';
 import { recordAuditLog } from '../lib/auditLog';
 
@@ -14,7 +15,11 @@ export const cancel = authedMutation({
 		campaignId: v.id('campaigns'),
 	},
 	handler: async (ctx, args) => {
-		const session = await requireOrgPermission(ctx, 'campaigns:schedule', 'Only owners and admins can cancel campaigns');
+		const session = await requireOrgPermission(
+			ctx,
+			'campaigns:schedule',
+			'Only owners and admins can cancel campaigns'
+		);
 
 		const campaign = await ctx.db.get(args.campaignId);
 		if (!campaign) {
@@ -51,7 +56,11 @@ export const reschedule = authedMutation({
 		scheduledMinute: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		const session = await requireOrgPermission(ctx, 'campaigns:schedule', 'Only owners and admins can reschedule campaigns');
+		const session = await requireOrgPermission(
+			ctx,
+			'campaigns:schedule',
+			'Only owners and admins can reschedule campaigns'
+		);
 
 		const campaign = await ctx.db.get(args.campaignId);
 		if (!campaign) {
@@ -77,12 +86,8 @@ export const reschedule = authedMutation({
 			...(args.useRecipientTimezone !== undefined
 				? { useRecipientTimezone: args.useRecipientTimezone }
 				: {}),
-			...(args.scheduledHour !== undefined
-				? { scheduledHour: args.scheduledHour }
-				: {}),
-			...(args.scheduledMinute !== undefined
-				? { scheduledMinute: args.scheduledMinute }
-				: {}),
+			...(args.scheduledHour !== undefined ? { scheduledHour: args.scheduledHour } : {}),
+			...(args.scheduledMinute !== undefined ? { scheduledMinute: args.scheduledMinute } : {}),
 			updatedAt: Date.now(),
 		});
 
@@ -111,7 +116,11 @@ export const unschedule = authedMutation({
 		campaignId: v.id('campaigns'),
 	},
 	handler: async (ctx, args) => {
-		const session = await requireOrgPermission(ctx, 'campaigns:schedule', 'Only owners and admins can unschedule campaigns');
+		const session = await requireOrgPermission(
+			ctx,
+			'campaigns:schedule',
+			'Only owners and admins can unschedule campaigns'
+		);
 
 		const campaign = await ctx.db.get(args.campaignId);
 		if (!campaign) {
@@ -147,7 +156,11 @@ export const schedule = authedMutation({
 		// Deliberately NOT requireDraftCampaign: scheduling is gated on the
 		// distinct campaigns:schedule permission, while the guard hard-codes
 		// campaigns:manage. Same shape, different authz decision.
-		const session = await requireOrgPermission(ctx, 'campaigns:schedule', 'Only owners and admins can schedule campaigns');
+		const session = await requireOrgPermission(
+			ctx,
+			'campaigns:schedule',
+			'Only owners and admins can schedule campaigns'
+		);
 
 		const campaign = await ctx.db.get(args.campaignId);
 		if (!campaign) {
@@ -157,6 +170,11 @@ export const schedule = authedMutation({
 		if (campaign.status !== 'draft') {
 			throwInvalidState('Only draft campaigns can be scheduled');
 		}
+
+		// Bootstrap the curated list from the org default before pre-flight so an
+		// upgraded deployment (empty list, toggle off) can still schedule from its
+		// own default address instead of failing `sender_not_allowed`.
+		await seedDefaultSenderIfNeeded(ctx);
 
 		const preflight = await validateReadyToSend(ctx, campaign, {
 			scheduledAt: args.scheduledAt,
@@ -174,12 +192,8 @@ export const schedule = authedMutation({
 				...(args.useRecipientTimezone !== undefined
 					? { useRecipientTimezone: args.useRecipientTimezone }
 					: {}),
-				...(args.scheduledHour !== undefined
-					? { scheduledHour: args.scheduledHour }
-					: {}),
-				...(args.scheduledMinute !== undefined
-					? { scheduledMinute: args.scheduledMinute }
-					: {}),
+				...(args.scheduledHour !== undefined ? { scheduledHour: args.scheduledHour } : {}),
+				...(args.scheduledMinute !== undefined ? { scheduledMinute: args.scheduledMinute } : {}),
 			},
 			userId: session.userId,
 		});

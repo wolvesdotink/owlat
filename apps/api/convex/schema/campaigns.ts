@@ -271,4 +271,32 @@ export const campaignTables = {
 		statsHardBounced: v.optional(v.number()),
 		statsSoftBounced: v.optional(v.number()),
 	}).index('by_campaign_and_shard', ['campaignId', 'shardKey']),
+
+	// Curated campaign sender addresses. A campaign may send from one of these
+	// enabled addresses; a custom (off-list) from-address is allowed only when
+	// `instanceSettings.isCustomCampaignSendersAllowed` is on. In BOTH branches the
+	// address must sit on a verified sending domain — the write path
+	// (`campaigns/senders.ts`) rejects unverified domains at insert/update time,
+	// and the send-time preflight keeps the verified-domain gate as the floor.
+	// Single-org-per-deployment: no `organizationId` column (mirrors `campaigns`
+	// and the `instanceSettings` singleton). `email` is stored lowercased for
+	// case-insensitive lookup.
+	campaignSenders: defineTable({
+		// Lowercased sender email address (e.g. "news@acme.com").
+		email: v.string(),
+		// Human-facing display name shown in the From header (e.g. "Acme News").
+		displayName: v.optional(v.string()),
+		// Whether this sender may currently be used. Disabled rows stay for
+		// history but are rejected at send time.
+		isEnabled: v.boolean(),
+		// The sender pre-selected for new campaigns. At most one row is the
+		// default; setting a new default clears the previous one.
+		isDefault: v.boolean(),
+		// Auth user id of the admin who created the row (audit trail).
+		createdBy: v.string(),
+		createdAt: v.number(),
+		updatedAt: v.number(),
+	})
+		// Case-insensitive lookup / uniqueness guard by lowercased address.
+		.index('by_email', ['email']),
 };

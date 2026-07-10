@@ -112,6 +112,7 @@ export type OrganizationDeletionTable =
 	| 'automationStatShards'
 	| 'campaignSendJobs'
 	| 'campaignStatShards'
+	| 'campaignSenders'
 	| 'sendDailyStats'
 	| 'contactTopics'
 	| 'contactPropertyValues'
@@ -243,6 +244,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('automationStatShards'),
 	v.literal('campaignSendJobs'),
 	v.literal('campaignStatShards'),
+	v.literal('campaignSenders'),
 	v.literal('sendDailyStats'),
 	v.literal('contactTopics'),
 	v.literal('contactPropertyValues'),

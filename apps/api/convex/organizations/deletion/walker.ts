@@ -132,6 +132,7 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	// Campaign machinery before the campaign parents
 	'campaignSendJobs',
 	'campaignStatShards',
+	'campaignSenders',
 	'sendDailyStats',
 
 	// Campaign + template parents
@@ -313,6 +314,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	automationStatShards: makeSweepStep('automationStatShards'),
 	campaignSendJobs: makeSweepStep('campaignSendJobs'),
 	campaignStatShards: makeSweepStep('campaignStatShards'),
+	campaignSenders: makeSweepStep('campaignSenders'),
 	sendDailyStats: makeSweepStep('sendDailyStats'),
 	contactTopics: makeSweepStep('contactTopics'),
 	contactPropertyValues: makeSweepStep('contactPropertyValues'),
