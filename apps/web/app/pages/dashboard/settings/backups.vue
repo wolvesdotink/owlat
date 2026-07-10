@@ -10,7 +10,6 @@ definePageMeta({
 });
 
 const { showToast } = useToast();
-const { copy, isCopied } = useCopyToClipboard();
 
 // Recorded backup plan (operator attestation — NOT a live host reading; see
 // apps/api/convex/backups.ts for why the app can't introspect the host).
@@ -24,23 +23,25 @@ const { run: logRun, isLoading: loggingRun } = useBackendOperation(api.backups.l
 	label: 'Log backup run',
 });
 
-// The exact commands the operator runs on their server. These are the source
-// of truth — the panel records what you did, it does not run anything for you.
+// The exact commands the operator runs on their server. These match the CLI
+// vocabulary the quickstart summary and `scripts/owlat` dispatcher teach
+// (`owlat backup`, `owlat restore <archive>`, `owlat backup-schedule …`), so
+// there is one command spelling to learn — the panel records what you ran, it
+// does not run anything for you.
 const CMD_ENABLE = 'owlat backup-schedule enable';
 const CMD_DISABLE = 'owlat backup-schedule disable';
 const CMD_STATUS = 'owlat backup-schedule status';
-const CMD_RUN = 'bash scripts/backup.sh';
-const CMD_RESTORE = 'bash scripts/restore.sh ./backups/owlat-YYYYMMDD-HHMMSS.tar.gz';
+const CMD_RUN = 'owlat backup';
+const CMD_RESTORE = 'owlat restore ./backups/owlat-YYYYMMDD-HHMMSS.tar.gz';
 
-const scheduleEnabled = computed(() => state.value?.scheduleEnabled ?? false);
+const isScheduleEnabled = computed(() => state.value?.isScheduleEnabled ?? false);
 
-async function copyCmd(text: string, key: string) {
-	const ok = await copy(text, key);
-	showToast(
-		ok ? 'Command copied' : 'Could not copy — select and copy manually',
-		ok ? 'success' : 'error'
-	);
-}
+// Commands shown under the schedule section: the toggle command for the state
+// you are moving to, then the status check.
+const scheduleCommands = computed(() => [
+	isScheduleEnabled.value ? CMD_DISABLE : CMD_ENABLE,
+	CMD_STATUS,
+]);
 
 async function toggleSchedule(next: boolean) {
 	// Attest what you set up on the host. Run the shown command first.
@@ -92,12 +93,7 @@ async function recordRun(status: 'success' | 'failed') {
 			</p>
 		</div>
 
-		<UiQueryBoundary
-			:loading="isLoading"
-			:error="error"
-			:empty="false"
-			error-title="Couldn't load backup status"
-		>
+		<UiQueryBoundary :loading="isLoading" :error="error" error-title="Couldn't load backup status">
 			<template #loading>
 				<div class="space-y-4">
 					<UiSkeleton class="h-28 w-full" />
@@ -125,11 +121,11 @@ async function recordRun(status: 'success' | 'failed') {
 							<div>
 								<p class="text-sm text-text-secondary">Daily schedule</p>
 								<p class="text-lg font-semibold text-text-primary">
-									{{ scheduleEnabled ? 'Scheduled' : 'Not scheduled' }}
+									{{ isScheduleEnabled ? 'Scheduled' : 'Not scheduled' }}
 								</p>
 							</div>
-							<UiBadge :variant="scheduleEnabled ? 'success' : 'warning'">
-								{{ scheduleEnabled ? 'Protected' : 'At risk' }}
+							<UiBadge :variant="isScheduleEnabled ? 'success' : 'warning'">
+								{{ isScheduleEnabled ? 'Protected' : 'At risk' }}
 							</UiBadge>
 						</div>
 
@@ -166,7 +162,7 @@ async function recordRun(status: 'success' | 'failed') {
 							</p>
 						</div>
 						<UiSwitch
-							:model-value="scheduleEnabled"
+							:model-value="isScheduleEnabled"
 							:disabled="savingSchedule"
 							label="Daily backups scheduled"
 							@update:model-value="toggleSchedule"
@@ -174,20 +170,7 @@ async function recordRun(status: 'success' | 'failed') {
 					</div>
 
 					<div class="space-y-3">
-						<div
-							v-for="cmd in [scheduleEnabled ? CMD_DISABLE : CMD_ENABLE, CMD_STATUS]"
-							:key="cmd"
-							class="flex items-center justify-between gap-3 rounded-lg border border-border-subtle bg-bg-surface px-3 py-2"
-						>
-							<code class="truncate font-mono text-sm text-text-primary">{{ cmd }}</code>
-							<button
-								type="button"
-								class="shrink-0 text-sm text-text-tertiary hover:text-brand transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded"
-								@click="copyCmd(cmd, cmd)"
-							>
-								{{ isCopied(cmd) ? 'Copied' : 'Copy' }}
-							</button>
-						</div>
+						<BackupCommandRow v-for="cmd in scheduleCommands" :key="cmd" :command="cmd" />
 					</div>
 				</section>
 
@@ -202,18 +185,7 @@ async function recordRun(status: 'success' | 'failed') {
 						</p>
 					</div>
 
-					<div
-						class="flex items-center justify-between gap-3 rounded-lg border border-border-subtle bg-bg-surface px-3 py-2"
-					>
-						<code class="truncate font-mono text-sm text-text-primary">{{ CMD_RUN }}</code>
-						<button
-							type="button"
-							class="shrink-0 text-sm text-text-tertiary hover:text-brand transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded"
-							@click="copyCmd(CMD_RUN, CMD_RUN)"
-						>
-							{{ isCopied(CMD_RUN) ? 'Copied' : 'Copy' }}
-						</button>
-					</div>
+					<BackupCommandRow :command="CMD_RUN" />
 
 					<div class="flex flex-wrap items-center gap-3">
 						<UiButton
@@ -241,18 +213,7 @@ async function recordRun(status: 'success' | 'failed') {
 						</p>
 					</div>
 
-					<div
-						class="flex items-center justify-between gap-3 rounded-lg border border-border-subtle bg-bg-surface px-3 py-2"
-					>
-						<code class="truncate font-mono text-sm text-text-primary">{{ CMD_RESTORE }}</code>
-						<button
-							type="button"
-							class="shrink-0 text-sm text-text-tertiary hover:text-brand transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded"
-							@click="copyCmd(CMD_RESTORE, CMD_RESTORE)"
-						>
-							{{ isCopied(CMD_RESTORE) ? 'Copied' : 'Copy' }}
-						</button>
-					</div>
+					<BackupCommandRow :command="CMD_RESTORE" />
 
 					<p class="text-xs text-text-tertiary">
 						Restoring replaces current data with the snapshot — stop the stack and confirm the
