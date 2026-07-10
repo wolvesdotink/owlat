@@ -6,6 +6,13 @@ import type {
 	OrganizationInvitation,
 } from '~/composables/useOrganization';
 import { isValidEmail } from '~/utils/validation';
+import {
+	ROLE_DEFINITIONS,
+	roleDefinition,
+	mailboxStatusMeta,
+	type MemberMailboxStatus,
+} from '~/utils/teamRoles';
+import { formatShortDate } from '~/utils/formatters';
 
 useHead({ title: 'Team Management — Owlat' });
 
@@ -23,6 +30,7 @@ const {
 	currentMemberRole,
 	isLoading,
 	isLoadingMembers,
+	membersError,
 	canManageMembers,
 	isOwner,
 	fetchMembers,
@@ -37,6 +45,30 @@ const {
 // Owner/admin may change instance settings (settings:manage). Mirrors the
 // backend gate on the migration-mode toggle.
 const canManageSettings = computed(() => isOwner.value || currentMemberRole.value === 'admin');
+
+// Roles the owner may assign inline — ownership is handed off through its own
+// confirmed transfer flow, never picked from the role menu.
+const assignableRoles = ROLE_DEFINITIONS.filter((r) => r.role !== 'owner');
+
+// Search box above the members table. Filters by name or email, case-insensitive.
+const memberSearch = ref('');
+const filteredMembers = computed(() => {
+	const q = memberSearch.value.trim().toLowerCase();
+	if (!q) return members.value;
+	return members.value.filter(
+		(m) => m.user.name.toLowerCase().includes(q) || m.user.email.toLowerCase().includes(q)
+	);
+});
+
+// Per-member mailbox status (hosted / external / none) for the Mailbox column.
+// Keyed by BetterAuth user id; absent ⇒ no mailbox. Any org member may read it.
+const memberUserIds = computed(() => members.value.map((m) => m.userId));
+const { data: mailboxStatusData } = useConvexQuery(api.mail.memberMailboxStatus.byMembers, () => ({
+	userIds: memberUserIds.value,
+}));
+function mailboxStatusFor(userId: string): MemberMailboxStatus {
+	return mailboxStatusData.value?.[userId] ?? 'none';
+}
 
 // Copyable accept links. Every invitation exposes an accept URL of the form
 // SITE_URL/invite/accept?id=<id>; this is the path that works even when
@@ -426,33 +458,15 @@ const handleDeleteOrganization = async () => {
 	}
 };
 
-// Get role icon component
-const getRoleIcon = (role: string) => {
-	switch (role) {
-		case 'owner':
-			return 'lucide:crown';
-		case 'admin':
-			return 'lucide:shield';
-		default:
-			return 'lucide:user';
-	}
-};
-
-// Get role badge class
+// Role badge tone (owner/admin share the brand accent; editor is neutral).
 const getRoleBadgeClass = (role: string) => {
 	switch (role) {
 		case 'owner':
-			return 'bg-brand/20 text-brand border-brand/30';
 		case 'admin':
 			return 'bg-brand/20 text-brand border-brand/30';
 		default:
 			return 'bg-bg-surface text-text-secondary border-border-subtle';
 	}
-};
-
-// Get display role name
-const getDisplayRoleName = (role: string) => {
-	return role.charAt(0).toUpperCase() + role.slice(1);
 };
 
 // Format relative time for invite expiry
@@ -500,125 +514,226 @@ const formatExpiryTime = (expiresAt: Date) => {
 		<div v-if="isLoading && members.length === 0" class="flex items-center justify-center py-16">
 			<div class="flex flex-col items-center gap-3">
 				<UiSpinner />
-				<p class="text-text-secondary text-sm">Loading team members...</p>
+				<p class="text-text-secondary text-sm">Loading team members…</p>
 			</div>
 		</div>
+
+		<!-- Error State — the members fetch failed and we have nothing to show -->
+		<UiCard v-else-if="membersError && members.length === 0" padding="none" overflow="hidden">
+			<UiEmptyState
+				icon="lucide:alert-circle"
+				title="Couldn't load your team"
+				:description="membersError"
+			>
+				<template #action>
+					<UiButton :loading="isLoadingMembers" @click="fetchMembers({ force: true })">
+						<template #iconLeft>
+							<Icon v-if="!isLoadingMembers" name="lucide:refresh-cw" class="w-4 h-4" />
+						</template>
+						Try again
+					</UiButton>
+				</template>
+			</UiEmptyState>
+		</UiCard>
 
 		<!-- Content -->
 		<div v-else class="space-y-8">
 			<!-- Onboarding: migration mode (offer new users a mail import at first login) -->
 			<SettingsMigrationModeCard :can-manage="canManageSettings" />
 
+			<!-- Non-blocking refresh error: we have a (possibly stale) roster, but the
+			     latest refetch failed. Offer a retry without hiding the table. -->
+			<div
+				v-if="membersError"
+				class="flex items-center justify-between gap-3 rounded-(--radius-card) border border-warning/20 bg-warning/5 px-4 py-3"
+				role="alert"
+			>
+				<p class="flex items-center gap-2 text-sm text-text-secondary">
+					<Icon name="lucide:alert-triangle" class="w-4 h-4 shrink-0 text-warning" />
+					<span>This list may be out of date — {{ membersError }}.</span>
+				</p>
+				<UiButton
+					variant="ghost"
+					size="sm"
+					:loading="isLoadingMembers"
+					@click="fetchMembers({ force: true })"
+				>
+					Retry
+				</UiButton>
+			</div>
+
 			<!-- Team Members Section -->
-			<UiCard padding="none" overflow="hidden">
+			<UiCard padding="none">
 				<template #header>
-					<div class="flex items-center gap-3">
-						<UiIconBox icon="lucide:users" size="sm" variant="surface" rounded="lg" />
-						<div>
-							<h2 class="text-lg font-semibold text-text-primary">Members</h2>
-							<p class="text-sm text-text-secondary">
-								{{ members.length }} team member{{ members.length !== 1 ? 's' : '' }}
-							</p>
+					<div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+						<div class="flex items-center gap-3">
+							<UiIconBox icon="lucide:users" size="sm" variant="surface" rounded="lg" />
+							<div>
+								<h2 class="text-lg font-semibold text-text-primary">Members</h2>
+								<p class="text-sm text-text-secondary">
+									{{ members.length }} team member{{ members.length !== 1 ? 's' : '' }}
+								</p>
+							</div>
+						</div>
+						<!-- Search box above the table -->
+						<div class="sm:w-64">
+							<label for="team-member-search" class="sr-only"
+								>Search members by name or email</label
+							>
+							<UiInput
+								id="team-member-search"
+								v-model="memberSearch"
+								type="text"
+								size="sm"
+								placeholder="Search name or email"
+							>
+								<template #iconLeft>
+									<Icon name="lucide:search" class="w-4 h-4 text-text-tertiary" />
+								</template>
+							</UiInput>
 						</div>
 					</div>
 				</template>
 
-				<div class="divide-y divide-border-subtle">
-					<div
-						v-for="member in members"
-						:key="member.id"
-						class="px-6 py-4 flex items-center justify-between"
-					>
-						<div class="flex items-center gap-4">
-							<!-- Avatar -->
-							<div class="relative">
-								<div
-									v-if="member.user.image"
-									class="w-10 h-10 rounded-full bg-cover bg-center"
-									:style="{ backgroundImage: `url(${member.user.image})` }"
-								/>
-								<div
-									v-else
-									class="w-10 h-10 rounded-full bg-bg-surface flex items-center justify-center"
-								>
-									<span class="text-lg font-medium text-text-secondary">
-										{{ (member.user.name || member.user.email).charAt(0).toUpperCase() }}
-									</span>
-								</div>
-							</div>
+				<!-- Empty: no members match the search -->
+				<UiEmptyState
+					v-if="filteredMembers.length === 0 && memberSearch.trim()"
+					icon="lucide:search-x"
+					title="No matches"
+					:description="`No members match “${memberSearch.trim()}”.`"
+				>
+					<template #action>
+						<UiButton variant="secondary" size="sm" @click="memberSearch = ''">
+							Clear search
+						</UiButton>
+					</template>
+				</UiEmptyState>
 
-							<!-- Name and Email -->
-							<div>
-								<div class="flex items-center gap-2">
-									<p class="font-medium text-text-primary">
-										{{ member.user.name || 'No name' }}
-									</p>
-									<!-- Role Badge -->
+				<!-- Members table -->
+				<div v-else class="overflow-x-auto">
+					<table class="w-full min-w-[36rem] text-sm">
+						<thead>
+							<tr
+								class="border-b border-border-subtle text-left text-xs font-medium text-text-tertiary"
+							>
+								<th scope="col" class="px-6 py-3 font-medium">Member</th>
+								<th scope="col" class="px-4 py-3 font-medium">Role</th>
+								<th scope="col" class="px-4 py-3 font-medium">Mailbox</th>
+								<th scope="col" class="px-4 py-3 font-medium">Joined</th>
+								<th scope="col" class="px-6 py-3">
+									<span class="sr-only">Actions</span>
+								</th>
+							</tr>
+						</thead>
+						<tbody class="divide-y divide-border-subtle">
+							<tr v-for="member in filteredMembers" :key="member.id" class="align-middle">
+								<!-- Member: avatar + name/email -->
+								<td class="px-6 py-4">
+									<div class="flex items-center gap-3">
+										<div
+											v-if="member.user.image"
+											class="h-9 w-9 shrink-0 rounded-full bg-cover bg-center"
+											:style="{ backgroundImage: `url(${member.user.image})` }"
+										/>
+										<div
+											v-else
+											class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-bg-surface"
+										>
+											<span class="text-sm font-medium text-text-secondary">
+												{{ (member.user.name || member.user.email).charAt(0).toUpperCase() }}
+											</span>
+										</div>
+										<div class="min-w-0">
+											<p class="truncate font-medium text-text-primary">
+												{{ member.user.name || 'No name' }}
+											</p>
+											<p class="truncate text-sm text-text-secondary">{{ member.user.email }}</p>
+										</div>
+									</div>
+								</td>
+
+								<!-- Role: inline change menu (owner only, non-owner members) -->
+								<td class="px-4 py-4">
+									<SettingsTeamRoleMenu
+										v-if="isOwner && member.role !== 'owner'"
+										:role="member.role"
+										:options="assignableRoles"
+										:member-label="member.user.name || member.user.email"
+										@change="(role) => handleRoleChange(member.id, role)"
+									/>
 									<span
-										:class="[
-											'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border',
-											getRoleBadgeClass(member.role),
-										]"
+										v-else
+										class="inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium"
+										:class="getRoleBadgeClass(member.role)"
 									>
-										<Icon :name="getRoleIcon(member.role)" class="w-3 h-3" />
-										{{ getDisplayRoleName(member.role) }}
+										<Icon :name="roleDefinition(member.role).icon" class="w-3 h-3" />
+										{{ roleDefinition(member.role).label }}
 									</span>
-								</div>
-								<p class="text-sm text-text-secondary">{{ member.user.email }}</p>
-							</div>
-						</div>
+								</td>
 
-						<!-- Actions -->
-						<div class="flex items-center gap-2">
-							<!-- Role change dropdown (only for non-owners, only visible to owner) -->
-							<UiDropdownMenu
-								v-if="isOwner && member.role !== 'owner'"
-								v-model:open="dropdownOpenStates[member.id]"
-							>
-								<template #trigger>
-									<UiButton variant="ghost" size="sm">
-										<Icon name="lucide:more-horizontal" class="w-4 h-4" />
+								<!-- Mailbox: hosted / external / none -->
+								<td class="px-4 py-4">
+									<span
+										class="inline-flex items-center gap-1.5 text-sm"
+										:class="mailboxStatusMeta(mailboxStatusFor(member.userId)).toneClass"
+										:title="mailboxStatusMeta(mailboxStatusFor(member.userId)).description"
+									>
+										<Icon
+											:name="mailboxStatusMeta(mailboxStatusFor(member.userId)).icon"
+											class="w-3.5 h-3.5"
+										/>
+										{{ mailboxStatusMeta(mailboxStatusFor(member.userId)).label }}
+									</span>
+								</td>
+
+								<!-- Joined date -->
+								<td class="px-4 py-4 text-text-secondary whitespace-nowrap">
+									{{ formatShortDate(member.createdAt) }}
+								</td>
+
+								<!-- Overflow menu: destructive + ownership actions -->
+								<td class="px-6 py-4 text-right">
+									<UiDropdownMenu
+										v-if="isOwner && member.role !== 'owner'"
+										v-model:open="dropdownOpenStates[member.id]"
+									>
+										<template #trigger>
+											<UiButton
+												variant="ghost"
+												size="sm"
+												:aria-label="`Actions for ${member.user.name || member.user.email}`"
+											>
+												<Icon name="lucide:more-horizontal" class="w-4 h-4" />
+											</UiButton>
+										</template>
+										<UiDropdownMenuItem icon="lucide:crown" @click="memberToPromote = member">
+											Transfer ownership
+										</UiDropdownMenuItem>
+										<UiDropdownDivider />
+										<UiDropdownMenuItem
+											icon="lucide:trash-2"
+											danger
+											@click="openRemoveMemberModal(member)"
+										>
+											Remove from team
+										</UiDropdownMenuItem>
+									</UiDropdownMenu>
+
+									<!-- Admins (non-owners) may remove editors -->
+									<UiButton
+										v-else-if="canManageMembers && member.role === 'editor'"
+										variant="ghost"
+										size="sm"
+										class="text-error"
+										:aria-label="`Remove ${member.user.name || member.user.email}`"
+										@click="memberToRemove = member"
+									>
+										<Icon name="lucide:trash-2" class="w-4 h-4" />
 									</UiButton>
-								</template>
-								<UiDropdownMenuItem
-									v-if="member.role !== 'admin'"
-									icon="lucide:shield"
-									@click="handleRoleChange(member.id, 'admin')"
-								>
-									Make Admin
-								</UiDropdownMenuItem>
-								<UiDropdownMenuItem
-									v-if="member.role !== 'editor'"
-									icon="lucide:user"
-									@click="handleRoleChange(member.id, 'editor')"
-								>
-									Make Editor
-								</UiDropdownMenuItem>
-								<UiDropdownDivider />
-								<UiDropdownMenuItem icon="lucide:crown" @click="memberToPromote = member">
-									Transfer ownership
-								</UiDropdownMenuItem>
-								<UiDropdownDivider />
-								<UiDropdownMenuItem
-									icon="lucide:trash-2"
-									danger
-									@click="openRemoveMemberModal(member)"
-								>
-									Remove from team
-								</UiDropdownMenuItem>
-							</UiDropdownMenu>
-
-							<!-- Remove button for admins (non-owners can remove editors) -->
-							<button
-								v-else-if="canManageMembers && member.role === 'editor'"
-								class="btn btn-ghost p-2 text-error hover:bg-error/10"
-								title="Remove member"
-								@click="memberToRemove = member"
-							>
-								<Icon name="lucide:trash-2" class="w-4 h-4" />
-							</button>
-						</div>
-					</div>
+								</td>
+							</tr>
+						</tbody>
+					</table>
 				</div>
 			</UiCard>
 
@@ -659,8 +774,8 @@ const formatExpiryTime = (expiresAt: Date) => {
 											getRoleBadgeClass(invite.role),
 										]"
 									>
-										<Icon :name="getRoleIcon(invite.role)" class="w-3 h-3" />
-										{{ getDisplayRoleName(invite.role) }}
+										<Icon :name="roleDefinition(invite.role).icon" class="w-3 h-3" />
+										{{ roleDefinition(invite.role).label }}
 									</span>
 								</div>
 								<div class="flex items-center gap-2 text-sm text-text-tertiary">
@@ -707,36 +822,22 @@ const formatExpiryTime = (expiresAt: Date) => {
 				</div>
 			</UiCard>
 
-			<!-- Role Permissions Info -->
+			<!-- Role Permissions Info — single source of truth (ROLE_DEFINITIONS), the
+			     same copy surfaced in the inline role menu. -->
 			<UiCard>
-				<h3 class="text-sm font-medium text-text-primary mb-4">Role Permissions</h3>
+				<h3 class="text-sm font-medium text-text-primary mb-4">What each role can do</h3>
 				<div class="grid gap-4 sm:grid-cols-3">
-					<div class="flex items-start gap-3">
-						<UiIconBox icon="lucide:crown" size="sm" variant="brand" rounded="lg" />
+					<div v-for="def in ROLE_DEFINITIONS" :key="def.role" class="flex items-start gap-3">
+						<UiIconBox
+							:icon="def.icon"
+							size="sm"
+							:variant="def.role === 'editor' ? 'surface' : 'brand'"
+							rounded="lg"
+						/>
 						<div>
-							<p class="font-medium text-text-primary text-sm">Owner</p>
-							<p class="text-xs text-text-secondary mt-0.5">
-								Full access. Can delete team, manage billing, settings, and all members.
-							</p>
-						</div>
-					</div>
-					<div class="flex items-start gap-3">
-						<UiIconBox icon="lucide:shield" size="sm" variant="brand" rounded="lg" />
-						<div>
-							<p class="font-medium text-text-primary text-sm">Admin</p>
-							<p class="text-xs text-text-secondary mt-0.5">
-								Can send campaigns, manage contacts, settings, and invite members.
-							</p>
-						</div>
-					</div>
-					<div class="flex items-start gap-3">
-						<UiIconBox icon="lucide:user" size="sm" variant="surface" rounded="lg" />
-						<div>
-							<p class="font-medium text-text-primary text-sm">Editor</p>
-							<p class="text-xs text-text-secondary mt-0.5">
-								View-only access to campaigns, contacts, and analytics. Can send test emails and
-								participate in chat.
-							</p>
+							<p class="font-medium text-text-primary text-sm">{{ def.label }}</p>
+							<p class="text-xs text-text-secondary mt-0.5">{{ def.summary }}</p>
+							<p class="text-xs text-text-tertiary mt-0.5">{{ def.detail }}</p>
 						</div>
 					</div>
 				</div>
