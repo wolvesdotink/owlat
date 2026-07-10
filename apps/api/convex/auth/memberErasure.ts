@@ -152,6 +152,13 @@ export const eraseMemberData = internalMutation({
 				.collect(); // bounded: threads of one (already message-drained) mailbox
 			for (const thread of threads) await ctx.db.delete(thread._id);
 
+			for (const row of await ctx.db
+				.query('mailboxMembers')
+				.withIndex('by_mailbox', (q) => q.eq('mailboxId', mailbox._id))
+				.collect()) {
+				await ctx.db.delete(row._id); // bounded: members of one mailbox
+			}
+
 			await ctx.db.delete(mailbox._id);
 			await reschedule();
 			return;
@@ -182,6 +189,14 @@ export const eraseMemberData = internalMutation({
 			.withIndex('by_auth_user_id', (q) => q.eq('authUserId', args.authUserId))
 			.first(); // bounded: at most one row per user
 		if (onboarding) await ctx.db.delete(onboarding._id);
+
+		// Drop this user's memberships on OTHER users' shared mailboxes (their
+		// own owned mailbox's rows went in phase 1 alongside the mailbox).
+		const sharedMemberships = await ctx.db
+			.query('mailboxMembers')
+			.withIndex('by_user', (q) => q.eq('authUserId', args.authUserId))
+			.collect(); // bounded: shared mailboxes one user belongs to
+		for (const row of sharedMemberships) await ctx.db.delete(row._id);
 
 		// ── Phase 3: chat — anonymize authorship page by page ──
 		const page = await ctx.db

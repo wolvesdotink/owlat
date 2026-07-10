@@ -143,6 +143,7 @@ export const TENANT_TABLES = [
 	'mailboxMigrations',
 	'externalMailFolderSync',
 	'externalMailAccounts',
+	'mailboxMembers',
 	'mailboxes',
 	'pendingMailboxes',
 
