@@ -322,23 +322,8 @@ describe('updateBasics — wizard curated-sender enforcement site', () => {
 		t: ReturnType<typeof convexTest>,
 		opts: { allowCustom?: boolean; defaultFromEmail?: string } = {}
 	): Promise<Id<'campaigns'>> {
-		let campaignId: Id<'campaigns'>;
-		await t.run(async (ctx) => {
-			await ctx.db.insert(
-				'domains',
-				createTestDomain({ domain: 'acme.com', status: 'verified', lastVerifiedAt: Date.now() })
-			);
-			await ctx.db.insert(
-				'instanceSettings',
-				createTestInstanceSettings({
-					isCustomCampaignSendersAllowed: opts.allowCustom ?? false,
-					defaultFromName: 'Acme News',
-					defaultFromEmail: opts.defaultFromEmail ?? 'news@acme.com',
-				})
-			);
-			campaignId = await ctx.db.insert('campaigns', createTestCampaign({ status: 'draft' }));
-		});
-		return campaignId!;
+		await seedInstance(t, opts);
+		return t.run((ctx) => ctx.db.insert('campaigns', createTestCampaign({ status: 'draft' })));
 	}
 
 	it('rejects an off-list from-address when custom senders are off', async () => {
