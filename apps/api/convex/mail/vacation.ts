@@ -18,16 +18,16 @@
 import { v } from 'convex/values';
 import { internalQuery, internalMutation } from '../_generated/server';
 import { authedMutation, publicQuery } from '../lib/authedFunctions';
-import { loadOwnedMailbox } from './permissions';
+import { requireMailboxAccess } from './permissions';
 import { throwForbidden, throwInvalidInput } from '../_utils/errors';
 
 const DEFAULT_REPLY_INTERVAL_DAYS = 7;
 
-// public: soft-auth — returns empty for anonymous; mailbox ownership is still enforced in-handler
+// public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
 export const get = publicQuery({
 	args: { mailboxId: v.id('mailboxes') },
 	handler: async (ctx, args) => {
-		const owned = await loadOwnedMailbox(ctx, args.mailboxId);
+		const owned = await requireMailboxAccess(ctx, args.mailboxId);
 		if (!owned.ok) return null;
 		return ctx.db
 			.query('mailVacationResponders')
@@ -48,7 +48,8 @@ export const upsert = authedMutation({
 		replyIntervalDays: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		const owned = await loadOwnedMailbox(ctx, args.mailboxId);
+		// Vacation auto-reply is a mailbox-wide setting — owner-grade.
+		const owned = await requireMailboxAccess(ctx, args.mailboxId, 'owner');
 		if (!owned.ok) throwForbidden('Mailbox not accessible');
 
 		const trimmedSubject = args.subject.trim();
@@ -91,7 +92,7 @@ export const upsert = authedMutation({
 export const remove = authedMutation({
 	args: { mailboxId: v.id('mailboxes') },
 	handler: async (ctx, args) => {
-		const owned = await loadOwnedMailbox(ctx, args.mailboxId);
+		const owned = await requireMailboxAccess(ctx, args.mailboxId, 'owner');
 		if (!owned.ok) throwForbidden('Not accessible');
 		const existing = await ctx.db
 			.query('mailVacationResponders')

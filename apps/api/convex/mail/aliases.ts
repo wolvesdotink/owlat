@@ -11,7 +11,7 @@
 import { v } from 'convex/values';
 import { authedMutation, publicQuery } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
-import { loadOwnedMailbox } from './permissions';
+import { requireMailboxAccess } from './permissions';
 import {
 	throwForbidden,
 	throwInvalidInput,
@@ -23,11 +23,11 @@ function canonical(addr: string): string {
 	return addr.trim().toLowerCase();
 }
 
-// public: soft-auth — returns empty for anonymous; mailbox ownership is still enforced in-handler
+// public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
 export const list = publicQuery({
 	args: { mailboxId: v.id('mailboxes') },
 	handler: async (ctx, args) => {
-		const owned = await loadOwnedMailbox(ctx, args.mailboxId);
+		const owned = await requireMailboxAccess(ctx, args.mailboxId);
 		if (!owned.ok) return [];
 		return ctx.db
 			.query('mailAliases')
@@ -42,7 +42,9 @@ export const create = authedMutation({
 		alias: v.string(),
 	},
 	handler: async (ctx, args) => {
-		const owned = await loadOwnedMailbox(ctx, args.mailboxId);
+		// Aliases change MTA routing and expand the send-as allow-list
+		// (resolveAllowedFromAddresses), so creating one is owner-grade.
+		const owned = await requireMailboxAccess(ctx, args.mailboxId, 'owner');
 		if (!owned.ok) throwForbidden('Mailbox not accessible');
 
 		const alias = canonical(args.alias);
@@ -94,7 +96,8 @@ export const remove = authedMutation({
 	handler: async (ctx, args) => {
 		const row = await ctx.db.get(args.aliasId);
 		if (!row) return;
-		const owned = await loadOwnedMailbox(ctx, row.targetMailboxId);
+		// Removing an alias changes MTA routing / the send-as set — owner-grade.
+		const owned = await requireMailboxAccess(ctx, row.targetMailboxId, 'owner');
 		if (!owned.ok) throwForbidden('Alias not accessible');
 		await ctx.db.delete(args.aliasId);
 		await ctx.scheduler.runAfter(0, internal.mail.aliasesActions.removeAliasFromCache, {
