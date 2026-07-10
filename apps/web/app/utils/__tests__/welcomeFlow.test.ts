@@ -4,7 +4,6 @@ import {
 	isChecklistComplete,
 	isWelcomeTriggerPath,
 	shouldRouteToWelcome,
-	shouldShowUserChecklist,
 	visibleChecklistSteps,
 	type ChecklistStepId,
 } from '../welcomeFlow';
@@ -100,25 +99,5 @@ describe('isChecklistComplete — completeness is per visible step', () => {
 
 	it('an empty set is never complete', () => {
 		expect(isChecklistComplete('fresh', new Set())).toBe(false);
-	});
-});
-
-describe('shouldShowUserChecklist — visibility gating', () => {
-	const base = { isLoading: false, dismissed: false, isComplete: false };
-
-	it('shows when loaded, not dismissed, and incomplete', () => {
-		expect(shouldShowUserChecklist(base)).toBe(true);
-	});
-
-	it('hides while loading', () => {
-		expect(shouldShowUserChecklist({ ...base, isLoading: true })).toBe(false);
-	});
-
-	it('hides once dismissed', () => {
-		expect(shouldShowUserChecklist({ ...base, dismissed: true })).toBe(false);
-	});
-
-	it('hides for good once complete', () => {
-		expect(shouldShowUserChecklist({ ...base, isComplete: true })).toBe(false);
 	});
 });
