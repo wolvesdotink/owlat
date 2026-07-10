@@ -31,3 +31,33 @@ export const SMTP_RELAY_PRESETS: Record<SmtpRelayPreset, SmtpRelayPresetConfig> 
 	brevo: { label: 'Brevo', host: 'smtp-relay.brevo.com', port: '587', secure: false },
 	custom: { label: 'Custom SMTP server', host: '', port: '587', secure: false },
 };
+
+/**
+ * The env keys the delivery-transport configuration owns — the provider kind,
+ * every per-provider credential, and the optional From-identity. This is the
+ * single source of truth for two callers that must never drift:
+ *
+ *  - the setup wizard / in-app transport editor's `buildProviderEnv`, which
+ *    CLEARS all of these before re-applying so flipping provider never leaves a
+ *    stale credential behind; and
+ *  - the admin `/api/delivery/apply-transport` endpoint, which uses it as the
+ *    ALLOWLIST of keys a client is permitted to patch (so a transport change can
+ *    never inject an unrelated env var such as `INSTANCE_SECRET`) and as the set
+ *    of keys to clear in the Convex deployment when they are dropped.
+ */
+export const PROVIDER_ENV_KEYS = [
+	'EMAIL_PROVIDER',
+	'RESEND_API_KEY',
+	'AWS_SES_REGION',
+	'AWS_SES_ACCESS_KEY_ID',
+	'AWS_SES_SECRET_ACCESS_KEY',
+	'SMTP_RELAY_HOST',
+	'SMTP_RELAY_PORT',
+	'SMTP_RELAY_SECURE',
+	'SMTP_RELAY_USERNAME',
+	'SMTP_RELAY_PASSWORD',
+	'DEFAULT_FROM_EMAIL',
+	'DEFAULT_FROM_NAME',
+] as const;
+
+export type ProviderEnvKey = (typeof PROVIDER_ENV_KEYS)[number];
