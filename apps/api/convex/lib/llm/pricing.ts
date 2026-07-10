@@ -24,6 +24,13 @@ const PRICING: Price[] = [
 	{ prefix: 'o4-mini', inputPerM: 1.1, outputPerM: 4.4 },
 	{ prefix: 'o3-mini', inputPerM: 1.1, outputPerM: 4.4 },
 	// Anthropic (Claude) — covers both OpenAI-compat proxy ids and native ids.
+	// Current-generation native ids first (most-specific-first): their exact
+	// list prices differ from the generic `claude-*` fallbacks below — e.g.
+	// claude-opus-4-8 is $5/$25, not the older Opus $15/$75 — so they must
+	// match before the generic prefixes.
+	{ prefix: 'claude-opus-4-8', inputPerM: 5, outputPerM: 25 },
+	{ prefix: 'claude-sonnet-4-5', inputPerM: 3, outputPerM: 15 },
+	{ prefix: 'claude-haiku-4-5', inputPerM: 1, outputPerM: 5 },
 	{ prefix: 'claude-3-5-haiku', inputPerM: 0.8, outputPerM: 4 },
 	{ prefix: 'claude-3-haiku', inputPerM: 0.25, outputPerM: 1.25 },
 	{ prefix: 'claude-3-5-sonnet', inputPerM: 3, outputPerM: 15 },
@@ -43,18 +50,27 @@ export interface CostEstimate {
 	estimated: boolean;
 }
 
-export function estimateCost(modelUsed: string | undefined, usage: TokenUsage | undefined): CostEstimate {
+export function estimateCost(
+	modelUsed: string | undefined,
+	usage: TokenUsage | undefined
+): CostEstimate {
 	if (!usage) return { costUsd: 0, estimated: modelUsed === undefined };
 	const id = (modelUsed ?? '').toLowerCase();
-	const match = id ? PRICING.find((p) => id.startsWith(p.prefix) || id.includes(p.prefix)) : undefined;
+	const match = id
+		? PRICING.find((p) => id.startsWith(p.prefix) || id.includes(p.prefix))
+		: undefined;
 	const inputPerM = match?.inputPerM ?? DEFAULT_INPUT_PER_M;
 	const outputPerM = match?.outputPerM ?? DEFAULT_OUTPUT_PER_M;
 	const costUsd =
-		(usage.promptTokens / 1_000_000) * inputPerM + (usage.completionTokens / 1_000_000) * outputPerM;
+		(usage.promptTokens / 1_000_000) * inputPerM +
+		(usage.completionTokens / 1_000_000) * outputPerM;
 	return { costUsd, estimated: match === undefined };
 }
 
 /** Convenience: just the dollar figure. */
-export function estimateCostUsd(modelUsed: string | undefined, usage: TokenUsage | undefined): number {
+export function estimateCostUsd(
+	modelUsed: string | undefined,
+	usage: TokenUsage | undefined
+): number {
 	return estimateCost(modelUsed, usage).costUsd;
 }

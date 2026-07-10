@@ -13,6 +13,7 @@
  */
 
 import { openaiEmbeddingAdapter, openaiLanguageAdapter } from './openai';
+import { anthropicLanguageAdapter } from './anthropic';
 import { openaiCompatibleLanguageAdapter } from './openaiCompatible';
 import type {
 	EmbeddingProviderAdapter,
@@ -35,6 +36,7 @@ export { EMBEDDING_PROVIDER_KINDS, LANGUAGE_PROVIDER_KINDS } from './types';
 
 export const LANGUAGE_PROVIDERS = {
 	openai: openaiLanguageAdapter,
+	anthropic: anthropicLanguageAdapter,
 	openaiCompatible: openaiCompatibleLanguageAdapter,
 } as const;
 

@@ -51,6 +51,7 @@
 			},
 			"ai": {
 				"ai": "^6.0.168",
+				"@ai-sdk/anthropic": "3.0.71",
 				"@ai-sdk/openai": "^3.0.53",
 				"@ai-sdk/openai-compatible": "2.0.40"
 			}

@@ -12,7 +12,7 @@
 import { createOpenAI } from '@ai-sdk/openai';
 import type { EmbeddingModel, LanguageModel } from 'ai';
 import { EMBEDDING_DIMENSIONS } from '../constants';
-import { keyFingerprint, memoizeClient } from './clientCache';
+import { hostedCacheKey, memoizeClient } from './clientCache';
 import type {
 	EmbeddingClientConfig,
 	EmbeddingProviderAdapter,
@@ -25,8 +25,7 @@ type OpenAIClient = ReturnType<typeof createOpenAI>;
 const clientCache = new Map<string, OpenAIClient>();
 
 function openaiClient(cfg: ProviderClientConfig): OpenAIClient {
-	const cacheKey = `${cfg.baseUrl ?? ''}::${keyFingerprint(cfg.apiKey)}`;
-	return memoizeClient(clientCache, cacheKey, () =>
+	return memoizeClient(clientCache, hostedCacheKey(cfg), () =>
 		createOpenAI({ apiKey: cfg.apiKey, baseURL: cfg.baseUrl })
 	);
 }
