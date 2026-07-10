@@ -46,3 +46,20 @@ export async function applyVibrancy(material: 'sidebar' | 'mica'): Promise<void>
 export async function clearVibrancy(): Promise<void> {
 	await getCurrentWindow().clearEffects();
 }
+
+/**
+ * Watch native window fullscreen state and invoke `onChange` whenever it flips.
+ * Native (green-button) fullscreen does not fire the DOM `:fullscreen` event, so
+ * the desktop chrome relies on this to collapse the identity frame. Fires once
+ * immediately with the current state, then re-checks on every resize (fullscreen
+ * toggles emit a resize). Returns an unlisten fn. No-op safety outside Tauri.
+ */
+export async function watchFullscreen(
+	onChange: (fullscreen: boolean) => void
+): Promise<() => void> {
+	const win = getCurrentWindow();
+	onChange(await win.isFullscreen());
+	return win.onResized(async () => {
+		onChange(await win.isFullscreen());
+	});
+}
