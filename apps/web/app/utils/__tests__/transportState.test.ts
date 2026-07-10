@@ -8,11 +8,9 @@ import {
 function summary(overrides: Partial<TransportSummaryInput> = {}): TransportSummaryInput {
 	return {
 		provider: 'mta',
-		isKnownProvider: true,
 		canSend: true,
 		advancedRoutingActive: false,
 		health: null,
-		lastTestSucceededAt: null,
 		...overrides,
 	};
 }
@@ -20,10 +18,7 @@ function summary(overrides: Partial<TransportSummaryInput> = {}): TransportSumma
 function health(status: TransportHealthInput['status']): TransportHealthInput {
 	return {
 		status,
-		successRate: status === 'healthy' ? 1 : 0.4,
-		avgLatencyMs: 120,
 		lastCheckedAt: 1_700_000_000_000,
-		lastErrorAt: status === 'healthy' ? null : 1_700_000_000_000,
 	};
 }
 
@@ -36,19 +31,13 @@ describe('deriveTransportDisplay — labels', () => {
 	});
 
 	it('handles no transport selected', () => {
-		const d = deriveTransportDisplay(
-			summary({ provider: null, canSend: false, isKnownProvider: false })
-		);
+		const d = deriveTransportDisplay(summary({ provider: null, canSend: false }));
 		expect(d.label).toBe('No transport selected');
-		expect(d.isUnknownProvider).toBe(false);
 		expect(d.isConfigured).toBe(false);
 	});
 
 	it('flags an unrecognized EMAIL_PROVIDER value', () => {
-		const d = deriveTransportDisplay(
-			summary({ provider: 'sendgrid', isKnownProvider: false, canSend: false })
-		);
-		expect(d.isUnknownProvider).toBe(true);
+		const d = deriveTransportDisplay(summary({ provider: 'sendgrid', canSend: false }));
 		expect(d.label).toContain('sendgrid');
 	});
 });
