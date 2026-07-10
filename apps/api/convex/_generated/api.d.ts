@@ -63,6 +63,7 @@ import type * as auth_apiKeys from "../auth/apiKeys.js";
 import type * as auth_apiScopes from "../auth/apiScopes.js";
 import type * as auth_auth from "../auth/auth.js";
 import type * as auth_config from "../auth/config.js";
+import type * as auth_invitationResend from "../auth/invitationResend.js";
 import type * as auth_memberErasure from "../auth/memberErasure.js";
 import type * as auth_membership from "../auth/membership.js";
 import type * as auth_onboarding from "../auth/onboarding.js";
@@ -614,6 +615,7 @@ declare const fullApi: ApiFromModules<{
   "auth/apiScopes": typeof auth_apiScopes;
   "auth/auth": typeof auth_auth;
   "auth/config": typeof auth_config;
+  "auth/invitationResend": typeof auth_invitationResend;
   "auth/memberErasure": typeof auth_memberErasure;
   "auth/membership": typeof auth_membership;
   "auth/onboarding": typeof auth_onboarding;
