@@ -309,4 +309,26 @@ export const authTables = {
 		organizationId: v.string(),
 		lastSentAt: v.number(),
 	}).index('by_invitation', ['invitationId']),
+
+	// Operator-recorded backup plan for a self-hosted deployment. The Convex
+	// backend runs in a container and cannot introspect the host's systemd
+	// timer / cron entry (installed by `owlat backup-schedule enable`) or the
+	// ./backups directory, so it CANNOT truthfully claim to have read the live
+	// schedule. Instead this deployment-wide singleton records the operator's
+	// own attestation of the daily-backup schedule plus any manual run they log
+	// after running `scripts/backup.sh`. The Settings → Backups panel reads it
+	// back and always shows the exact CLI commands to run on the host, so the
+	// state here is honest ("recorded by you"), never a fabricated live reading.
+	// Populated by apps/api/convex/backups.ts. One row per deployment.
+	backupState: defineTable({
+		// Whether the operator confirms the daily backup schedule is installed
+		// on the host. Drives the "Getting started" reminder (dismissed once true).
+		scheduleEnabled: v.boolean(),
+		// Last manual backup the operator logged after running scripts/backup.sh.
+		lastRunAt: v.optional(v.number()),
+		lastRunStatus: v.optional(v.union(v.literal('success'), v.literal('failed'))),
+		// Audit: who last changed this record (auth user email) and when.
+		updatedAt: v.number(),
+		updatedBy: v.optional(v.string()),
+	}),
 };
