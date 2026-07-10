@@ -178,6 +178,12 @@ const sendingDetail = computed(() => {
 			</NuxtLink>
 		</div>
 
+		<!-- The one transport card leads the hub: which transport is live, whether
+			 it's ready, recent health, and a single "Change transport" action. It
+			 carries its own loading/error states and stays visible even before any
+			 reputation history exists, so "how do I send?" is always answered first. -->
+		<DeliveryTransportCard class="mb-6" />
+
 		<!-- Loading -->
 		<div v-if="isLoading" class="flex items-center justify-center py-16">
 			<Icon name="lucide:loader-2" class="w-8 h-8 animate-spin text-text-tertiary" />

@@ -482,6 +482,10 @@ const readinessSummary = (domain: DomainWithVerification) =>
 			</div>
 		</div>
 
+		<!-- Per-transport DNS guidance: what to check depends on how this instance
+			 sends (managed MTA records vs SES/relay/Resend that sign on your behalf). -->
+		<DeliveryDomainDnsGuidance />
+
 		<!-- Loading State -->
 		<div v-if="isLoading && !domainsData" class="flex items-center justify-center py-16">
 			<div class="flex flex-col items-center gap-3">
