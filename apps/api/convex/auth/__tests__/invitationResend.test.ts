@@ -56,24 +56,34 @@ function setEditorSession(userId = 'editor-user', orgId = 'test-org') {
 
 const allModules = import.meta.glob('../../**/*.*s');
 const modules = Object.fromEntries(
-	Object.entries(allModules).filter(
-		([path]) =>
-			!path.includes('sesActions') &&
-			!path.includes('agentSecurity') &&
-			!path.includes('agentContext') &&
-			!path.includes('agentClassifier') &&
-			!path.includes('agentDrafter') &&
-			!path.includes('agentRouter') &&
-			!path.includes('agent/walker') &&
-			!path.includes('agent/steps/index') &&
-			!path.includes('agent/steps/shared') &&
-			!path.includes('agent/steps/classify') &&
-			!path.includes('agent/steps/draft') &&
-			!path.includes('knowledgeExtraction') &&
-			!path.includes('semanticFileProcessing') &&
-			!path.includes('visualizationAgent') &&
-			!path.includes('llmProvider')
-	)
+	Object.entries(allModules)
+		.filter(
+			([path]) =>
+				!path.includes('sesActions') &&
+				!path.includes('agentSecurity') &&
+				!path.includes('agentContext') &&
+				!path.includes('agentClassifier') &&
+				!path.includes('agentDrafter') &&
+				!path.includes('agentRouter') &&
+				!path.includes('agent/walker') &&
+				!path.includes('agent/steps/index') &&
+				!path.includes('agent/steps/shared') &&
+				!path.includes('agent/steps/classify') &&
+				!path.includes('agent/steps/draft') &&
+				!path.includes('knowledgeExtraction') &&
+				!path.includes('semanticFileProcessing') &&
+				!path.includes('visualizationAgent') &&
+				!path.includes('llmProvider')
+		)
+		// Vite collapses `import.meta.glob` keys for sibling modules to the shortest
+		// relative path (e.g. `../invitationResend.ts`), but convex-test derives its
+		// module prefix from `../../_generated/api.d.ts` and looks them up under
+		// `../../auth/…`. Remap the short keys back so every auth module resolves.
+		.map(([key, val]) =>
+			key.startsWith('../') && !key.startsWith('../../')
+				? (['../../auth/' + key.slice(3), val] as const)
+				: ([key, val] as const)
+		)
 );
 
 describe('invitationResend.enforceResendThrottle (send-path choke point)', () => {
