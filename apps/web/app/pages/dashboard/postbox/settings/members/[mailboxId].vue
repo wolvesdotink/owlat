@@ -90,9 +90,14 @@ async function handleInvite() {
 		try {
 			await invite(email, 'editor');
 		} catch (inviteErr) {
-			// The reservation landed but the invite didn't — roll the grant back so it
-			// isn't orphaned (best-effort; the sweep is org+email-scoped).
-			await cancelInboxMembership.run({ inviteeEmail: email });
+			// Roll back only the grant THIS attempt created, and only this inbox's.
+			// Skip when the grant already existed (`alreadyReserved`) — it belongs to
+			// a prior, still-live invitation, so deleting it would strand that invite's
+			// promised inbox. And scope the sweep to this mailbox so a duplicate-invite
+			// throw here can't destroy the invitee's grants on other team inboxes.
+			if (!reserved.alreadyReserved) {
+				await cancelInboxMembership.run({ inviteeEmail: email, mailboxId: mailboxId.value });
+			}
 			throw inviteErr;
 		}
 		inviteNotice.value = `Invitation sent to ${email}. They'll land in this inbox once they accept.`;
