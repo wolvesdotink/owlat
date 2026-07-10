@@ -26,15 +26,9 @@ import type { ConvexClient, WorkerCredentials } from './convex.js';
 import { fn } from './convex.js';
 import type { MailSyncConfig } from './config.js';
 import { sendViaExternal, testConnection } from './send.js';
+import type { ProtocolCreds } from './send.js';
 import { logger } from './logger.js';
 
-interface ProtocolCreds {
-	host: string;
-	port: number;
-	secure: boolean;
-	username: string;
-	password: string;
-}
 interface TestBody {
 	imap: ProtocolCreds;
 	smtp: ProtocolCreds;

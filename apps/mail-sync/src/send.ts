@@ -77,7 +77,7 @@ async function appendToSent(creds: WorkerCredentials, raw: Buffer): Promise<void
 	}
 }
 
-interface ProtocolCreds {
+export interface ProtocolCreds {
 	host: string;
 	port: number;
 	secure: boolean;
