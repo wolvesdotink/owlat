@@ -1,6 +1,7 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
 	clearSwitchFlag,
+	CROSSFADE_SLOW_MS,
 	hideSwitchSkeleton,
 	readSwitchFlag,
 	showSwitchSkeleton,
@@ -9,6 +10,22 @@ import {
 	writeSwitchFlag,
 	type WorkspaceSwitchFlag,
 } from '../workspaceSwitch';
+
+const SKELETON_SELECTOR = '[data-owlat-switch-skeleton]';
+
+/** Stub prefers-reduced-motion for the duration of a test. */
+function stubReducedMotion(reduce: boolean): void {
+	vi.stubGlobal(
+		'matchMedia',
+		(query: string) =>
+			({
+				matches: query.includes('reduce') ? reduce : false,
+				media: query,
+				addEventListener: () => {},
+				removeEventListener: () => {},
+			}) as unknown as MediaQueryList
+	);
+}
 
 /** Minimal in-memory Storage stand-in (deterministic, no jsdom coupling). */
 function fakeStorage(): Storage {
@@ -65,6 +82,23 @@ describe('workspace switch flag lifecycle', () => {
 		storage.setItem(SWITCH_FLAG_KEY, JSON.stringify({ accent: 1, label: 2 }));
 		expect(readSwitchFlag(storage, flag.at)).toBeNull();
 	});
+
+	it('rejects a flag whose accent is not a #rrggbb hex colour', () => {
+		const storage = fakeStorage();
+		// A corrupted accent that would otherwise be interpolated into the
+		// skeleton's color-mix()/box-shadow style strings.
+		storage.setItem(
+			SWITCH_FLAG_KEY,
+			JSON.stringify({ accent: 'red);--x', label: 'Acme', at: flag.at })
+		);
+		expect(readSwitchFlag(storage, flag.at)).toBeNull();
+		// Shorthand / malformed hex is rejected too.
+		storage.setItem(
+			SWITCH_FLAG_KEY,
+			JSON.stringify({ accent: '#fff', label: 'Acme', at: flag.at })
+		);
+		expect(readSwitchFlag(storage, flag.at)).toBeNull();
+	});
 });
 
 describe('switch skeleton DOM', () => {
@@ -82,5 +116,45 @@ describe('switch skeleton DOM', () => {
 
 	it('hideSwitchSkeleton is safe to call with no skeleton present', () => {
 		expect(() => hideSwitchSkeleton()).not.toThrow();
+	});
+});
+
+describe('hideSwitchSkeleton removal paths', () => {
+	afterEach(() => {
+		vi.useRealTimers();
+		vi.unstubAllGlobals();
+		document.querySelectorAll(SKELETON_SELECTOR).forEach((el) => el.remove());
+	});
+
+	it('cuts immediately under reduced motion', () => {
+		stubReducedMotion(true);
+		const node = showSwitchSkeleton('#c4785a', 'Acme');
+		hideSwitchSkeleton(node);
+		expect(document.querySelector(SKELETON_SELECTOR)).toBeNull();
+	});
+
+	it('removes via the timeout fallback when transitionend never fires', () => {
+		vi.useFakeTimers();
+		stubReducedMotion(false);
+		const node = showSwitchSkeleton('#c4785a', 'Acme');
+		hideSwitchSkeleton(node);
+		// Fade started but the node is still mounted until the fallback elapses.
+		expect(node.style.opacity).toBe('0');
+		expect(document.querySelector(SKELETON_SELECTOR)).toBe(node);
+		// happy-dom can't resolve --motion-slow, so the fallback uses the constant.
+		vi.advanceTimersByTime(CROSSFADE_SLOW_MS + 20);
+		expect(document.querySelector(SKELETON_SELECTOR)).toBeNull();
+	});
+
+	it('marks the node leaving so a second call is a no-op', () => {
+		vi.useFakeTimers();
+		stubReducedMotion(false);
+		const node = showSwitchSkeleton('#c4785a', 'Acme');
+		hideSwitchSkeleton(node);
+		expect(node.dataset['leaving']).toBe('1');
+		// A concurrent second call must not schedule another teardown or throw.
+		expect(() => hideSwitchSkeleton(node)).not.toThrow();
+		vi.advanceTimersByTime(CROSSFADE_SLOW_MS + 20);
+		expect(document.querySelector(SKELETON_SELECTOR)).toBeNull();
 	});
 });

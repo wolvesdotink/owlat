@@ -20,8 +20,22 @@
  * failed navigation) — a stale flag is discarded rather than shown.
  */
 
+import { workspaceAccentTints } from '~/lib/desktop/workspaceAccent';
+
 /** sessionStorage key carrying the pending-switch skeleton descriptor. */
 export const SWITCH_FLAG_KEY = 'owlat:ws-switch';
+
+/**
+ * The skeleton crossfade duration, mirroring the `--motion-slow` token (240ms).
+ * The live transition still reads the token via CSS var; this constant is the
+ * documented fallback used when the resolved duration can't be measured, so both
+ * derive from the same number and a token change can't silently truncate the
+ * crossfade or leave the fallback timer lagging.
+ */
+export const CROSSFADE_SLOW_MS = 240;
+
+/** A 6-digit hex colour (`#rrggbb`) — the only accent shape the skeleton paints. */
+const HEX6 = /^#[0-9a-f]{6}$/i;
 
 /**
  * How long a switch flag stays valid. If the fresh document reads a flag older
@@ -48,7 +62,14 @@ function isSwitchFlag(value: unknown): value is WorkspaceSwitchFlag {
 	if (typeof value !== 'object' || value === null) return false;
 	const v = value as Record<string, unknown>;
 	return (
-		typeof v['accent'] === 'string' && typeof v['label'] === 'string' && typeof v['at'] === 'number'
+		typeof v['accent'] === 'string' &&
+		// Validate the accent shape: it is interpolated into color-mix()/box-shadow
+		// style strings, so a corrupted flag from sessionStorage must not render a
+		// broken skeleton. (Style assignment can't escape the property, so this is
+		// cheap hardening rather than an injection fix.)
+		HEX6.test(v['accent']) &&
+		typeof v['label'] === 'string' &&
+		typeof v['at'] === 'number'
 	);
 }
 
@@ -112,8 +133,9 @@ function styled(tag: string, styles: Partial<CSSStyleDeclaration>): HTMLElement 
  * never inject markup.
  */
 function buildSkeleton(accent: string, label: string): HTMLElement {
-	const titlebarBg = `color-mix(in srgb, ${accent} 7%, var(--color-bg-elevated))`;
-	const sidebarBg = `color-mix(in srgb, ${accent} 5%, var(--color-bg-elevated))`;
+	// Derive the titlebar / sidebar / frame tints from the same SSOT the live
+	// chrome uses (workspaceAccentTints), so the skeleton can never drift from it.
+	const tints = workspaceAccentTints(accent);
 	const shimmer = 'color-mix(in srgb, var(--color-text-tertiary) 22%, transparent)';
 
 	const root = styled('div', {
@@ -127,9 +149,11 @@ function buildSkeleton(accent: string, label: string): HTMLElement {
 	});
 	root.setAttribute(SKELETON_ATTR, '');
 	root.setAttribute('aria-hidden', 'true');
-	// Identity frame ring, matching the live body::after accent ring.
-	root.style.boxShadow = `inset 0 0 0 5px color-mix(in srgb, ${accent} 55%, transparent)`;
-	root.style.borderRadius = '10px';
+	// Identity frame ring, matching the live body::after accent ring — width and
+	// radius read from the same desktop.css custom properties (fallbacks mirror
+	// their defaults) so the ring geometry can't drift from the live chrome.
+	root.style.boxShadow = `inset 0 0 0 var(--ws-frame-width, 5px) ${tints.frame}`;
+	root.style.borderRadius = 'var(--ws-frame-radius, 10px)';
 
 	// Titlebar strip with the destination label chip.
 	const titlebar = styled('div', {
@@ -140,7 +164,7 @@ function buildSkeleton(accent: string, label: string): HTMLElement {
 		gap: '8px',
 		paddingLeft: '88px',
 		paddingRight: '12px',
-		backgroundColor: titlebarBg,
+		backgroundColor: tints.titlebar,
 		borderBottom: '1px solid var(--color-border-subtle)',
 	});
 	const dot = styled('span', {
@@ -166,7 +190,7 @@ function buildSkeleton(accent: string, label: string): HTMLElement {
 	const sidebar = styled('div', {
 		width: '240px',
 		flex: '0 0 auto',
-		backgroundColor: sidebarBg,
+		backgroundColor: tints.sidebar,
 		borderRight: '1px solid var(--color-border-subtle)',
 		padding: '16px 12px',
 		display: 'flex',
@@ -231,7 +255,24 @@ export function hideSwitchSkeleton(el?: HTMLElement | null): void {
 	node.style.transition = 'opacity var(--motion-slow) var(--ease-exit)';
 	node.style.opacity = '0';
 	node.addEventListener('transitionend', finish, { once: true });
-	// Fallback if transitionend never fires (e.g. element hidden): 260ms >
-	// --motion-slow (240ms).
-	window.setTimeout(finish, 260);
+	// Fallback if transitionend never fires (e.g. the element is display:none):
+	// wait the real resolved --motion-slow duration (or the documented constant
+	// when it can't be measured) plus a small buffer, so a token change can never
+	// truncate the crossfade or leave this timer lagging behind it.
+	window.setTimeout(finish, resolvedTransitionMs(node) + 20);
+}
+
+/**
+ * Best-effort read of a node's resolved transition-duration in ms (first
+ * component only). Falls back to {@link CROSSFADE_SLOW_MS} when the value is
+ * missing / zero / unparseable (e.g. jsdom-style environments that don't resolve
+ * CSS custom properties).
+ */
+function resolvedTransitionMs(node: HTMLElement): number {
+	if (typeof getComputedStyle !== 'function') return CROSSFADE_SLOW_MS;
+	const first = (getComputedStyle(node).transitionDuration || '').split(',')[0]?.trim() ?? '';
+	let ms = 0;
+	if (first.endsWith('ms')) ms = Number.parseFloat(first);
+	else if (first.endsWith('s')) ms = Number.parseFloat(first) * 1000;
+	return Number.isFinite(ms) && ms > 0 ? ms : CROSSFADE_SLOW_MS;
 }
