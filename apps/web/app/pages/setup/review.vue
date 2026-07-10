@@ -143,6 +143,16 @@ onUnmounted(stopPolling);
 						</dd>
 					</div>
 
+					<!-- When "moving from another platform" is chosen the server enables the
+					     external-mailbox import before persisting, so reflect it here — the
+					     operator confirms exactly what gets applied. -->
+					<div v-if="isMigrationMode" class="grid grid-cols-[10rem_1fr] gap-4 py-3">
+						<dt class="text-sm font-medium text-text-secondary">Mailbox import</dt>
+						<dd class="text-sm text-text-primary">
+							Enabled — new users can import mail from your old platform at first login.
+						</dd>
+					</div>
+
 					<div class="grid grid-cols-[10rem_1fr] gap-4 py-3">
 						<dt class="text-sm font-medium text-text-secondary">Email provider</dt>
 						<dd class="text-sm text-text-primary">{{ summary.providerLabel }}</dd>
