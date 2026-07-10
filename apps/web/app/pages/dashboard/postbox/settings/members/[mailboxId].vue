@@ -32,7 +32,7 @@ const members = computed(() => membersData.value ?? []);
 const canManage = computed(() => myRole.value === 'owner');
 
 // Org roster for the "add member" picker.
-const { members: orgMembers, fetchMembers } = useOrganization();
+const { members: orgMembers, fetchMembers, invite, canManageMembers } = useOrganization();
 onMounted(() => void fetchMembers());
 
 const memberIds = computed(() => new Set(members.value.map((m) => m.authUserId)));
@@ -53,8 +53,42 @@ const transferOwnership = useBackendOperation(api.mail.mailboxMembers.transferOw
 	label: 'Transfer ownership',
 	inlineTarget: error,
 });
+const reserveInboxMembership = useBackendOperation(api.mail.pendingMailbox.reserveInboxMembership, {
+	label: 'Invite to team inbox',
+	inlineTarget: error,
+});
 
 const memberToAdd = ref('');
+
+// Invite-someone-new-by-email flow: reserve the team-inbox membership, then
+// send the org invite. Reserving first lets the invitation email name the inbox
+// and guarantees the membership is waiting when they accept.
+const inviteEmail = ref('');
+const inviteNotice = ref('');
+const inviting = ref(false);
+
+async function handleInvite() {
+	const email = inviteEmail.value.trim();
+	if (!email) return;
+	error.value = null;
+	inviteNotice.value = '';
+	inviting.value = true;
+	try {
+		const reserved = await reserveInboxMembership.run({
+			mailboxId: mailboxId.value,
+			inviteeEmail: email,
+		});
+		// `run` already surfaced the failure inline; stop before issuing the invite.
+		if (reserved === undefined) return;
+		await invite(email, 'editor');
+		inviteNotice.value = `Invitation sent to ${email}. They'll land in this inbox once they accept.`;
+		inviteEmail.value = '';
+	} catch (err) {
+		error.value = err instanceof Error ? err.message : 'Could not send the invitation.';
+	} finally {
+		inviting.value = false;
+	}
+}
 
 async function handleAdd() {
 	if (!memberToAdd.value) return;
@@ -148,6 +182,31 @@ const busy = computed(
 					>
 						Add
 					</UiButton>
+				</div>
+
+				<!-- Invite someone who isn't in the organization yet. Requires the
+				     org-admin permission that issuing an invite needs. -->
+				<div v-if="canManageMembers" class="mt-5 pt-5 border-t border-border-subtle">
+					<h3 class="text-sm font-medium mb-1">Not on the team yet?</h3>
+					<p class="text-xs text-text-tertiary mb-3">
+						Invite them by email. They'll get an invitation naming this inbox, and it'll be in their
+						sidebar the moment they accept.
+					</p>
+					<form class="flex items-center gap-2" @submit.prevent="handleInvite">
+						<input
+							v-model="inviteEmail"
+							type="email"
+							required
+							placeholder="name@company.com"
+							class="input flex-1"
+							:disabled="inviting"
+							aria-label="Email address to invite"
+						/>
+						<UiButton type="submit" :loading="inviting" :disabled="!inviteEmail.trim()">
+							Send invite
+						</UiButton>
+					</form>
+					<p v-if="inviteNotice" class="mt-2 text-sm text-success">{{ inviteNotice }}</p>
 				</div>
 			</section>
 
