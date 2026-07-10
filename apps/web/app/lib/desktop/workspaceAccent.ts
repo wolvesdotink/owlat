@@ -14,10 +14,19 @@ import type { WorkspaceAccent } from '~/lib/desktop/workspaceTypes';
 /** The CSS custom property the desktop chrome derives all accent tints from. */
 export const WS_ACCENT_VAR = '--ws-accent';
 
-/** Set (or clear, when null) the active workspace accent on the given element. */
+/**
+ * Set (or clear, when null) the active workspace accent on the given element,
+ * and mirror it into the native macOS window frame — there the identity ring is
+ * drawn by AppKit, not CSS, so it can hug the window's true rounded corners
+ * (see src-tauri/src/window.rs::apply_accent_frame). The mirror is
+ * fire-and-forget: a no-op outside Tauri and on Windows/Linux.
+ */
 export function applyWorkspaceAccent(el: HTMLElement, accent: WorkspaceAccent | null): void {
 	if (accent) el.style.setProperty(WS_ACCENT_VAR, accent);
 	else el.style.removeProperty(WS_ACCENT_VAR);
+	void import('@owlat/desktop/src/window')
+		.then((mod) => mod.setAccentFrame(accent))
+		.catch(() => {});
 }
 
 /**

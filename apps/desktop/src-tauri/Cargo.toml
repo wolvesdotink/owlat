@@ -44,10 +44,18 @@ ignore = "0.4"
 [target.'cfg(target_os = "macos")'.dependencies]
 mac-notification-sys = "0.6"
 # Toggle the native traffic-light buttons (close/miniaturize/zoom) so they can
-# follow the sidebar's hidden state (macos-private-api is already enabled). This
-# objc2-app-kit crate is already in the tree transitively via tauri 2.x, pinned
-# to the same 0.3 line so no second copy is built.
-objc2-app-kit = { version = "0.3", features = ["NSWindow", "NSButton", "NSControl", "NSView", "NSResponder"] }
+# follow the sidebar's hidden state (macos-private-api is already enabled), and
+# paint the native workspace identity frame (NSColor → CALayer border — see
+# window.rs::apply_accent_frame). These objc2 crates are already in the tree
+# transitively via tauri 2.x, pinned to the same lines so no second copy is built.
+objc2-app-kit = { version = "0.3", features = ["NSWindow", "NSButton", "NSControl", "NSView", "NSResponder", "NSColor", "objc2-quartz-core", "objc2-core-graphics"] }
+objc2-quartz-core = { version = "0.3", features = ["CALayer"] }
+objc2-foundation = { version = "0.3", features = ["NSString", "NSArray", "NSNotification", "NSOperation", "block2"] }
+# msg_send! for the guarded private `-_cornerRadius` probe (window_corner_radius),
+# Retained for the frame-change observer's window handle.
+objc2 = "0.6"
+# The synchronous frame-change observer block (setup_traffic_lights).
+block2 = "0.6"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 notify-rust = "4"

@@ -8,11 +8,8 @@ mod shortcuts;
 mod ssh;
 mod window;
 
-// `Manager` brings `get_webview_window` (used only in the non-macOS menu wiring)
-// into scope; `handle()`/`set_menu()`/`on_menu_event()` are inherent on `App`, so
-// on macOS the trait is genuinely unused — gate the import to the one platform
-// that needs it instead of blanket-silencing the warning everywhere.
-#[cfg(not(target_os = "macos"))]
+// `Manager` brings `get_webview_window` into scope — used by the macOS
+// traffic-light setup and the non-macOS menu wiring below.
 use tauri::Manager;
 
 fn main() {
@@ -56,6 +53,7 @@ fn main() {
             secrets::secret_delete,
             window::open_compose,
             window::set_traffic_lights_visible,
+            window::set_accent_frame,
             ssh::ssh_connect,
             ssh::ssh_accept_host_key,
             ssh::ssh_authenticate,
@@ -77,6 +75,13 @@ fn main() {
             let app_menu = menu::build_menu(app.handle())?;
             #[cfg(target_os = "macos")]
             app.set_menu(app_menu)?;
+            // macOS: center the traffic lights in the 44px titlebar strip and
+            // keep them there via a synchronous frame-change observer (see
+            // window::setup_traffic_lights for why nothing else works).
+            #[cfg(target_os = "macos")]
+            if let Some(w) = app.get_webview_window("main") {
+                window::setup_traffic_lights(&w);
+            }
             #[cfg(not(target_os = "macos"))]
             if let Some(w) = app.get_webview_window("main") {
                 let _ = w.set_decorations(false);

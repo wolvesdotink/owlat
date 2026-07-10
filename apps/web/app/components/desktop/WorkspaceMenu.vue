@@ -119,7 +119,8 @@ onUnmounted(() => {
 		<button
 			ref="triggerRef"
 			type="button"
-			class="flex items-center gap-2 min-w-0 rounded-md px-1.5 py-1 -mx-1.5 hover:bg-bg-surface-hover transition-colors duration-(--motion-fast) ease-spring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+			class="flex items-center h-[30px] gap-2 min-w-0 rounded-[10px] px-2.5 -mx-1 hover:bg-bg-surface-hover transition-colors duration-(--motion-fast) ease-spring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+			:class="{ 'bg-bg-surface-hover': open }"
 			aria-haspopup="menu"
 			:aria-expanded="open"
 			aria-label="Switch workspace"
@@ -127,16 +128,13 @@ onUnmounted(() => {
 		>
 			<span
 				v-if="active"
-				class="h-2.5 w-2.5 rounded-full shrink-0"
+				class="h-2.5 w-2.5 rounded-full shrink-0 ring-1 ring-inset ring-black/10"
 				:style="{ backgroundColor: active.accentColor }"
 			/>
-			<span
-				class="font-display text-[13px] leading-none truncate"
-				:class="open ? 'text-text-primary' : 'text-text-secondary'"
-			>
+			<span class="font-display text-[13px] font-[550] leading-none truncate text-text-primary">
 				{{ title }}
 			</span>
-			<Icon name="lucide:chevrons-up-down" class="w-3 h-3 text-text-tertiary shrink-0" />
+			<Icon name="lucide:chevrons-up-down" class="w-3.5 h-3.5 text-text-tertiary shrink-0" />
 		</button>
 
 		<Transition

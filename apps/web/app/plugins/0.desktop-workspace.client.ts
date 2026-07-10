@@ -59,11 +59,16 @@ export default defineNuxtPlugin({
 		// tint from this one custom property via color-mix in desktop.css.
 		applyWorkspaceAccent(root, getActiveWorkspace()?.accentColor ?? null);
 
-		// Collapse the identity frame in native fullscreen. Best-effort: if the
-		// window bridge is unavailable the frame simply stays painted.
+		// Collapse the identity frame in native fullscreen — both the CSS ring
+		// (win/linux, via the class) and the native macOS ring (out of CSS reach,
+		// via the bridge). Best-effort: if the window bridge is unavailable the
+		// frame simply stays painted.
 		void import('@owlat/desktop/src/window')
-			.then(({ watchFullscreen }) =>
-				watchFullscreen((fullscreen) => root.classList.toggle('ws-fullscreen', fullscreen))
+			.then(({ watchFullscreen, setAccentFrameVisible }) =>
+				watchFullscreen((fullscreen) => {
+					root.classList.toggle('ws-fullscreen', fullscreen);
+					void setAccentFrameVisible(!fullscreen).catch(() => {});
+				})
 			)
 			.catch(() => {});
 
