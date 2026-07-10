@@ -193,20 +193,27 @@ interface SmtpReply {
 	code: number;
 	/** Whole reply, lines joined by spaces — used only for error strings. */
 	text: string;
-	/** Each raw reply line (code prefix intact) — parsed for AUTH mechanisms. */
+	/** Raw reply lines (code prefix intact) — parsed for advertised AUTH mechs. */
 	lines: string[];
 }
 
-/** Per-step read/connect bound so a hung relay can't stall setup indefinitely. */
+// Per-step read/connect bound so a hung relay can't stall setup indefinitely.
 const SMTP_PROBE_TIMEOUT_MS = 10_000;
 
-/**
- * A minimal SMTP client that drives just enough of the submission handshake to
- * prove a relay's host/port/TLS/credentials are usable: greeting → EHLO →
- * (STARTTLS →) EHLO → AUTH. It never sends a message. The `net`/`tls` socket is
- * swapped in place on the STARTTLS upgrade, so the reader re-binds to the TLS
- * socket after the upgrade.
- */
+/** Bound and strip control chars from a raw remote reply before echoing it, so a
+ * hostile/non-SMTP server can't inject its unbounded banner into the setup reply. */
+function sanitizeReplyText(text: string): string {
+	let out = '';
+	for (const ch of text) {
+		const code = ch.codePointAt(0) ?? 0;
+		out += code < 0x20 || code === 0x7f ? ' ' : ch;
+	}
+	out = out.trim();
+	return out.length > 120 ? `${out.slice(0, 120)}…` : out;
+}
+
+/** A minimal SMTP client that drives just enough of the submission handshake to
+ * prove a relay is usable (greeting/EHLO/STARTTLS/AUTH); it never sends a message. */
 class SmtpProbe {
 	private buffer = '';
 	private pendingLines: string[] = [];
@@ -325,7 +332,9 @@ class SmtpProbe {
 
 	private async expect(ok: (code: number) => boolean, context: string): Promise<SmtpReply> {
 		const reply = await this.read();
-		if (!ok(reply.code)) throw new Error(`${context}: ${reply.code} ${reply.text}`.trim());
+		if (!ok(reply.code)) {
+			throw new Error(`${context}: ${reply.code} ${sanitizeReplyText(reply.text)}`.trim());
+		}
 		return reply;
 	}
 
@@ -347,11 +356,22 @@ class SmtpProbe {
 		this.unbind(this.socket);
 		const raw = this.socket as Socket;
 		const tlsSocket = await new Promise<TLSSocket>((resolve, reject) => {
+			// Bound the upgrade: a relay that answers 220 to STARTTLS but never finishes
+			// the TLS handshake would otherwise hang the setup endpoint / CLI forever.
+			const timer = setTimeout(() => {
+				s.destroy();
+				reject(new Error('timeout'));
+			}, SMTP_PROBE_TIMEOUT_MS);
+			const onErr = (e: Error): void => {
+				clearTimeout(timer);
+				s.destroy();
+				reject(e);
+			};
 			const s = tlsConnect({ socket: raw, servername: host }, () => {
+				clearTimeout(timer);
 				s.removeListener('error', onErr);
 				resolve(s);
 			});
-			const onErr = (e: Error): void => reject(e);
 			s.once('error', onErr);
 		});
 		this.socket = tlsSocket;
@@ -385,7 +405,10 @@ class SmtpProbe {
 		if (reply.code === 530 || reply.code === 534 || reply.code === 535 || reply.code === 538) {
 			return { ok: false, message: 'The SMTP relay rejected the username or password.' };
 		}
-		return { ok: false, message: `SMTP relay authentication failed: ${reply.code} ${reply.text}` };
+		return {
+			ok: false,
+			message: `SMTP relay authentication failed: ${reply.code} ${sanitizeReplyText(reply.text)}`,
+		};
 	}
 
 	async run(input: SmtpRelayInput): Promise<ValidationResult> {
@@ -428,13 +451,8 @@ function describeSmtpError(e: unknown): string {
 	return `Could not reach the SMTP relay: ${msg}`;
 }
 
-/**
- * Validate a generic SMTP relay by opening a real connection and running the
- * submission handshake through AUTH — no message is sent. SSRF-guarded (the host
- * is caller-supplied and the connection is server-side) and bounded by
- * `SMTP_PROBE_TIMEOUT_MS`, so an operator finds a bad host/port/credential here
- * rather than at first send.
- */
+/** Validate a generic SMTP relay by driving a real handshake through AUTH (no
+ * message sent). SSRF-guarded and time-bounded, so bad creds surface here. */
 export async function validateSmtpRelay(input: SmtpRelayInput): Promise<ValidationResult> {
 	if (!input.host.trim()) return { ok: false, message: 'SMTP relay host is required.' };
 	if (isBlockedSsrfHost(input.host)) {
