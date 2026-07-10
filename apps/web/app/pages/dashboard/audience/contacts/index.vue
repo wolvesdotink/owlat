@@ -139,8 +139,9 @@ async function copyEmail(email: string) {
 	}
 }
 
-function contactContextItems(contact: { _id: Id<'contacts'>; email: string }): ContextMenuItem[] {
+function contactContextItems(contact: { _id: Id<'contacts'>; email?: string }): ContextMenuItem[] {
 	const selected = bulkSelection.selectedIds.value.has(contact._id);
+	const email = contact.email;
 	return [
 		{
 			id: 'open',
@@ -152,7 +153,10 @@ function contactContextItems(contact: { _id: Id<'contacts'>; email: string }): C
 			id: 'copy-email',
 			label: 'Copy email address',
 			icon: 'lucide:copy',
-			run: () => void copyEmail(contact.email),
+			disabled: !email,
+			run: () => {
+				if (email) void copyEmail(email);
+			},
 		},
 		{
 			id: 'select',
@@ -688,46 +692,46 @@ onUnmounted(() => {
 									:items="contactContextItems(contact)"
 									v-slot="{ onContextmenu, onKeydown }"
 								>
-								<tr
-									class="border-b border-border-subtle last:border-b-0 hover:bg-bg-surface transition-colors cursor-pointer"
-									:class="{ 'bg-brand/5': bulkSelection.selectedIds.value.has(contact._id) }"
-									@click="router.push(`/dashboard/audience/contacts/${contact._id}`)"
-									@contextmenu="onContextmenu"
-									@keydown="onKeydown"
-								>
-									<td class="w-12 px-4 py-4">
-										<button
-											class="w-5 h-5 rounded border flex items-center justify-center transition-colors"
-											:class="[
-												bulkSelection.selectedIds.value.has(contact._id)
-													? 'bg-brand border-brand text-text-inverse'
-													: 'border-border-default hover:border-border-strong',
-											]"
-											@click.stop="toggleContactSelection(contact._id)"
-											:aria-label="`${bulkSelection.selectedIds.value.has(contact._id) ? 'Deselect' : 'Select'} ${contact.email}`"
-										>
-											<Icon
-												v-if="bulkSelection.selectedIds.value.has(contact._id)"
-												name="lucide:check"
-												class="w-3 h-3"
-											/>
-										</button>
-									</td>
-									<td class="px-6 py-4">
-										<span class="text-text-primary font-medium">{{ contact.email }}</span>
-									</td>
-									<td class="px-6 py-4">
-										<span class="text-text-secondary">{{ contact.firstName || '-' }}</span>
-									</td>
-									<td class="px-6 py-4">
-										<span class="text-text-secondary">{{ contact.lastName || '-' }}</span>
-									</td>
-									<td class="px-6 py-4">
-										<span class="text-text-tertiary text-sm">{{
-											formatDate(contact.createdAt)
-										}}</span>
-									</td>
-								</tr>
+									<tr
+										class="border-b border-border-subtle last:border-b-0 hover:bg-bg-surface transition-colors cursor-pointer"
+										:class="{ 'bg-brand/5': bulkSelection.selectedIds.value.has(contact._id) }"
+										@click="router.push(`/dashboard/audience/contacts/${contact._id}`)"
+										@contextmenu="onContextmenu"
+										@keydown="onKeydown"
+									>
+										<td class="w-12 px-4 py-4">
+											<button
+												class="w-5 h-5 rounded border flex items-center justify-center transition-colors"
+												:class="[
+													bulkSelection.selectedIds.value.has(contact._id)
+														? 'bg-brand border-brand text-text-inverse'
+														: 'border-border-default hover:border-border-strong',
+												]"
+												@click.stop="toggleContactSelection(contact._id)"
+												:aria-label="`${bulkSelection.selectedIds.value.has(contact._id) ? 'Deselect' : 'Select'} ${contact.email}`"
+											>
+												<Icon
+													v-if="bulkSelection.selectedIds.value.has(contact._id)"
+													name="lucide:check"
+													class="w-3 h-3"
+												/>
+											</button>
+										</td>
+										<td class="px-6 py-4">
+											<span class="text-text-primary font-medium">{{ contact.email }}</span>
+										</td>
+										<td class="px-6 py-4">
+											<span class="text-text-secondary">{{ contact.firstName || '-' }}</span>
+										</td>
+										<td class="px-6 py-4">
+											<span class="text-text-secondary">{{ contact.lastName || '-' }}</span>
+										</td>
+										<td class="px-6 py-4">
+											<span class="text-text-tertiary text-sm">{{
+												formatDate(contact.createdAt)
+											}}</span>
+										</td>
+									</tr>
 								</UiContextMenu>
 							</tbody>
 						</table>
