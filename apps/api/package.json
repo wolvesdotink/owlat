@@ -41,6 +41,7 @@
 	},
 	"dependencies": {
 		"@ai-sdk/openai": "catalog:ai",
+		"@ai-sdk/openai-compatible": "catalog:ai",
 		"@aws-sdk/client-ses": "^3.1014.0",
 		"@convex-dev/better-auth": "catalog:convex",
 		"@convex-dev/rate-limiter": "^0.3.2",
