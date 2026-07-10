@@ -201,6 +201,9 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	// UI / onboarding state
 	'onboardingProgress',
 
+	// Invitation resend throttle rows — pure org data, no dependents.
+	'invitationResends',
+
 	// Audit logs LAST (accumulates from delegated lifecycle calls above)
 	'auditLogs',
 
@@ -275,6 +278,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	providerRoutes: makeSweepStep('providerRoutes'),
 	domains: domainsStep,
 	onboardingProgress: makeSweepStep('onboardingProgress'),
+	invitationResends: makeSweepStep('invitationResends'),
 	auditLogs: makeSweepStep('auditLogs'),
 	instanceSettings: makeSweepStep('instanceSettings'),
 	threadPresence: makeSweepStep('threadPresence'),

@@ -31,11 +31,21 @@ const {
 	updateRole,
 	transferOwnership,
 	cancelInvite,
+	resendInvite,
 } = useOrganization();
 
 // Owner/admin may change instance settings (settings:manage). Mirrors the
 // backend gate on the migration-mode toggle.
 const canManageSettings = computed(() => isOwner.value || currentMemberRole.value === 'admin');
+
+// Copyable accept links. Every invitation exposes an accept URL of the form
+// SITE_URL/invite/accept?id=<id>; this is the path that works even when
+// outbound email delivery isn't configured yet.
+const { copy } = useCopyToClipboard();
+const requestUrl = useRequestURL();
+function buildAcceptUrl(invitationId: string): string {
+	return `${requestUrl.origin}/invite/accept?id=${encodeURIComponent(invitationId)}`;
+}
 
 // Postbox feature + verified domain lookup for the optional mailbox slot.
 const { isEnabled } = useFeatureFlag();
@@ -45,6 +55,15 @@ const verifiedDomains = computed(() =>
 	(domainsData.value ?? []).filter((d) => d.status === 'verified')
 );
 const canOfferMailbox = computed(() => postboxEnabled.value && verifiedDomains.value.length > 0);
+
+// Whether an outbound transport is actually configured. The invite/resend API
+// calls succeed even when it isn't (the send hook fails closed and BetterAuth
+// swallows the error), so we only claim "we emailed them" when a transport
+// exists — otherwise the accept link is the real (and only) way in.
+const { data: emailConfigured } = useConvexQuery(
+	api.organizations.featureFlags.deliveryConfigured,
+	() => ({})
+);
 
 // Invite modal state (shared form-modal primitive for the open/close/form/
 // submitting state). The two error slots stay in a dedicated reactive because
@@ -68,6 +87,24 @@ const inviteFormErrors = reactive({
 	mailbox: '',
 });
 
+// After a successful invite we keep the modal open on a success panel that
+// surfaces the copyable accept link. Cleared when the modal closes and on
+// "Invite another".
+const inviteSuccess = ref<{
+	email: string;
+	acceptUrl: string;
+	mailboxAddress?: string;
+} | null>(null);
+
+// Once the admin hand-edits the mailbox local part we stop auto-deriving it
+// from the invitee's email address.
+const localpartEdited = ref(false);
+
+// True once the admin manually toggles the "Reserve a mailbox" checkbox. Until
+// then the form is pristine, so the default-on watcher below may still apply the
+// reserved-by-default rule when hosted mail resolves after the modal is open.
+const mailboxTouched = ref(false);
+
 // Pre-select the first verified domain when the user opts into the mailbox section.
 watch(
 	() => [inviteForm.addMailbox, verifiedDomains.value.length] as const,
@@ -84,17 +121,60 @@ const mailboxPreviewAddress = computed(() => {
 	return `${lp}@${inviteForm.mailboxDomain}`;
 });
 
+// Suggest a mailbox local part from the invitee's email until the admin edits it.
+function deriveLocalpart(email: string): string {
+	const local = email.split('@')[0] ?? '';
+	return local.toLowerCase().replace(/[^a-z0-9._-]/g, '');
+}
+watch(
+	() => inviteForm.email,
+	(email) => {
+		if (!localpartEdited.value) {
+			inviteForm.mailboxLocalpart = deriveLocalpart(email);
+		}
+	}
+);
+
 function resetInviteForm() {
 	resetInviteFormState();
 	inviteFormErrors.email = '';
 	inviteFormErrors.mailbox = '';
+	localpartEdited.value = false;
+	mailboxTouched.value = false;
+	inviteSuccess.value = null;
 }
 
-// Open the invite modal with a fresh form + cleared errors.
+// Open the invite modal with a fresh form + cleared errors. A personal mailbox
+// is reserved by default whenever hosted mail is configured (verified domain +
+// Postbox); the admin can uncheck it.
 function openInviteModal() {
 	openInviteFormModal();
-	inviteFormErrors.email = '';
-	inviteFormErrors.mailbox = '';
+	resetInviteForm();
+	inviteForm.addMailbox = canOfferMailbox.value;
+}
+
+// Reserved-by-default (locked decision #4): if the modal opens before the
+// verified-domains query resolves, `canOfferMailbox` is briefly false and the
+// checkbox snapshots unchecked. Re-apply the default the moment hosted mail
+// becomes available — but only while the form is still pristine (modal open, not
+// on the success panel, checkbox untouched) so we never override a deliberate
+// uncheck.
+watch(canOfferMailbox, (canOffer) => {
+	if (canOffer && isInviteModalOpen.value && !inviteSuccess.value && !mailboxTouched.value) {
+		inviteForm.addMailbox = true;
+	}
+});
+
+// Reset the form whenever the modal is dismissed so the next open starts clean.
+watch(isInviteModalOpen, (open) => {
+	if (!open) resetInviteForm();
+});
+
+// "Invite another" from the success panel: clear the form but keep the modal
+// open, re-applying the default mailbox reservation.
+function startAnotherInvite() {
+	resetInviteForm();
+	inviteForm.addMailbox = canOfferMailbox.value;
 }
 
 // Role change dropdown state (using reactive object for AppDropdownMenu v-model:open per member)
@@ -144,6 +224,15 @@ const validateInviteForm = (): boolean => {
 		return false;
 	}
 
+	// Warn before submit if this address already has a pending invite — resending
+	// or copying the existing link is what the admin actually wants here.
+	const emailNorm = inviteForm.email.trim().toLowerCase();
+	if (invitations.value.some((inv) => inv.email.toLowerCase() === emailNorm)) {
+		inviteFormErrors.email =
+			'There is already a pending invite for this address. Resend or copy its link from the list below.';
+		return false;
+	}
+
 	if (inviteForm.addMailbox) {
 		const lp = inviteForm.mailboxLocalpart.trim();
 		if (!lp) {
@@ -179,14 +268,23 @@ const handleInvite = async () => {
 		: undefined;
 
 	try {
-		await invite(inviteForm.email.trim(), inviteForm.role, mailbox);
+		const { invitationId } = await invite(inviteForm.email.trim(), inviteForm.role, mailbox);
 
-		const successMsg = mailbox
-			? `Invitation sent to ${inviteForm.email}. Mailbox ${mailbox.localpart}@${mailbox.domain} will be created when they accept.`
-			: `Invitation sent to ${inviteForm.email}`;
-		showToast(successMsg);
-		isInviteModalOpen.value = false;
-		resetInviteForm();
+		if (invitationId) {
+			// Keep the modal open on the success panel so the admin can copy the
+			// accept link — the always-works path when email delivery isn't set up.
+			inviteSuccess.value = {
+				email: inviteForm.email.trim(),
+				acceptUrl: buildAcceptUrl(invitationId),
+				mailboxAddress: mailbox ? `${mailbox.localpart}@${mailbox.domain}` : undefined,
+			};
+		} else {
+			const successMsg = mailbox
+				? `Invitation sent to ${inviteForm.email}. Mailbox ${mailbox.localpart}@${mailbox.domain} will be created when they accept.`
+				: `Invitation sent to ${inviteForm.email}`;
+			showToast(successMsg);
+			isInviteModalOpen.value = false;
+		}
 	} catch (error) {
 		const errorMessage = error instanceof Error ? error.message : 'Failed to send invitation';
 		showToast(errorMessage, 'error');
@@ -213,6 +311,38 @@ const handleCancelInvite = async () => {
 		isCancelling.value = false;
 	}
 };
+
+// Copy an invite's accept link to the clipboard.
+async function copyLinkText(url: string) {
+	const ok = await copy(url);
+	showToast(ok ? 'Invite link copied' : 'Could not copy the link', ok ? 'success' : 'error');
+}
+function copyInviteLink(invitationId: string) {
+	return copyLinkText(buildAcceptUrl(invitationId));
+}
+
+// Re-send the invitation email for a pending invite (server-side throttled to
+// 1/min). resendInvite returns false — without throwing — when throttled, in
+// which case the throttle message was already surfaced.
+const resendingId = ref<string | null>(null);
+async function handleResend(inv: OrganizationInvitation) {
+	resendingId.value = inv.id;
+	try {
+		const sent = await resendInvite(inv);
+		if (sent) {
+			showToast(
+				emailConfigured.value
+					? `Invitation re-sent to ${inv.email}`
+					: `Email delivery isn't set up — copy the accept link for ${inv.email} instead.`
+			);
+		}
+	} catch (error) {
+		const msg = error instanceof Error ? error.message : 'Failed to resend invitation';
+		showToast(msg, 'error');
+	} finally {
+		resendingId.value = null;
+	}
+}
 
 // Handle role change
 const handleRoleChange = async (memberId: string, newRole: OrganizationRole) => {
@@ -540,16 +670,39 @@ const formatExpiryTime = (expiresAt: Date) => {
 							</div>
 						</div>
 
-						<!-- Cancel Button -->
-						<UiButton
-							v-if="canManageMembers"
-							variant="ghost"
-							size="sm"
-							title="Cancel invitation"
-							@click="inviteToCancel = invite"
-						>
-							<Icon name="lucide:x" class="w-4 h-4 text-text-secondary hover:text-error" />
-						</UiButton>
+						<!-- Row actions: copy link / resend / revoke -->
+						<div v-if="canManageMembers" class="flex items-center gap-1">
+							<UiButton
+								variant="ghost"
+								size="sm"
+								title="Copy invite link"
+								@click="copyInviteLink(invite.id)"
+							>
+								<Icon name="lucide:link" class="w-4 h-4 text-text-secondary" />
+							</UiButton>
+							<UiButton
+								variant="ghost"
+								size="sm"
+								title="Resend invitation email"
+								:loading="resendingId === invite.id"
+								:disabled="resendingId === invite.id"
+								@click="handleResend(invite)"
+							>
+								<Icon
+									v-if="resendingId !== invite.id"
+									name="lucide:send"
+									class="w-4 h-4 text-text-secondary"
+								/>
+							</UiButton>
+							<UiButton
+								variant="ghost"
+								size="sm"
+								title="Revoke invitation"
+								@click="inviteToCancel = invite"
+							>
+								<Icon name="lucide:x" class="w-4 h-4 text-text-secondary hover:text-error" />
+							</UiButton>
+						</div>
 					</div>
 				</div>
 			</UiCard>
@@ -620,7 +773,7 @@ const formatExpiryTime = (expiresAt: Date) => {
 
 		<!-- Invite Member Modal -->
 		<UiModal v-model:open="isInviteModalOpen" title="Invite Team Member">
-			<form @submit.prevent="handleInvite">
+			<form v-if="!inviteSuccess" @submit.prevent="handleInvite">
 				<div class="space-y-4">
 					<!-- Email -->
 					<UiInput
@@ -674,26 +827,37 @@ const formatExpiryTime = (expiresAt: Date) => {
 						</div>
 					</div>
 
-					<!-- Optional: reserve a personal mailbox (Postbox) -->
-					<div v-if="canOfferMailbox" class="space-y-3 pt-2 border-t border-border-subtle">
-						<label class="flex items-start gap-2 cursor-pointer">
+					<!-- Reserve a personal mailbox (Postbox). On by default when hosted
+					     mail is configured; shown disabled with an explanation when it
+					     isn't, rather than hidden. -->
+					<div class="space-y-3 pt-2 border-t border-border-subtle">
+						<label
+							class="flex items-start gap-2"
+							:class="canOfferMailbox ? 'cursor-pointer' : 'cursor-not-allowed opacity-70'"
+						>
 							<input
 								v-model="inviteForm.addMailbox"
 								type="checkbox"
 								class="mt-0.5"
-								:disabled="isInviting"
+								:disabled="isInviting || !canOfferMailbox"
+								@change="mailboxTouched = true"
 							/>
 							<span>
 								<span class="font-medium text-text-primary text-sm">
-									Also reserve a personal mailbox for this user
+									Reserve a personal mailbox for this user
 								</span>
-								<span class="block text-xs text-text-secondary mt-0.5">
-									We'll create the mailbox automatically when they accept.
+								<span v-if="canOfferMailbox" class="block text-xs text-text-secondary mt-0.5">
+									We'll create the mailbox automatically when they accept. On by default — uncheck
+									to invite without one.
+								</span>
+								<span v-else class="block text-xs text-text-secondary mt-0.5">
+									Set up hosted mail — a verified sending domain and the Postbox — to reserve
+									mailboxes for new members.
 								</span>
 							</span>
 						</label>
 
-						<div v-if="inviteForm.addMailbox" class="space-y-3 pl-6">
+						<div v-if="canOfferMailbox && inviteForm.addMailbox" class="space-y-3 pl-6">
 							<div>
 								<label class="text-sm font-medium block mb-1">Address</label>
 								<div class="flex items-center gap-2">
@@ -704,6 +868,7 @@ const formatExpiryTime = (expiresAt: Date) => {
 										class="input flex-1"
 										:disabled="isInviting"
 										pattern="[a-zA-Z0-9.\-_]+"
+										@input="localpartEdited = true"
 									/>
 									<span class="text-text-tertiary">@</span>
 									<select v-model="inviteForm.mailboxDomain" class="input" :disabled="isInviting">
@@ -740,16 +905,70 @@ const formatExpiryTime = (expiresAt: Date) => {
 				</div>
 			</form>
 
+			<!-- Success state: surface the copyable accept link. This link works even
+			     when outbound email delivery isn't configured yet. -->
+			<div v-else class="space-y-4">
+				<div class="flex items-start gap-3">
+					<UiIconBox icon="lucide:check" size="sm" variant="brand" rounded="lg" />
+					<div>
+						<p class="font-medium text-text-primary">Invitation ready</p>
+						<p v-if="emailConfigured" class="text-sm text-text-secondary">
+							We emailed {{ inviteSuccess?.email }} — you can also share the accept link directly.
+						</p>
+						<p v-else class="text-sm text-text-secondary">
+							Share the accept link below with {{ inviteSuccess?.email }} — email delivery isn't set
+							up yet, so this is how they get in.
+						</p>
+					</div>
+				</div>
+
+				<p v-if="inviteSuccess?.mailboxAddress" class="text-sm text-text-secondary">
+					Mailbox <code>{{ inviteSuccess.mailboxAddress }}</code> will be created when they accept.
+				</p>
+
+				<div>
+					<label class="text-sm font-medium block mb-1">Accept link</label>
+					<div class="flex items-center gap-2">
+						<input
+							:value="inviteSuccess?.acceptUrl"
+							readonly
+							class="input flex-1 font-mono text-xs"
+							@focus="($event.target as HTMLInputElement).select()"
+						/>
+						<UiButton variant="secondary" @click="copyLinkText(inviteSuccess?.acceptUrl ?? '')">
+							<template #iconLeft>
+								<Icon name="lucide:copy" class="w-4 h-4" />
+							</template>
+							Copy
+						</UiButton>
+					</div>
+					<p class="text-xs text-text-tertiary mt-1">
+						Works even if email delivery isn't set up yet.
+					</p>
+				</div>
+			</div>
+
 			<template #footer>
-				<UiButton variant="secondary" :disabled="isInviting" @click="isInviteModalOpen = false">
-					Cancel
-				</UiButton>
-				<UiButton :loading="isInviting" @click="handleInvite">
-					<template #iconLeft>
-						<Icon v-if="!isInviting" name="lucide:user-plus" class="w-4 h-4" />
-					</template>
-					{{ isInviting ? 'Sending...' : 'Send Invitation' }}
-				</UiButton>
+				<template v-if="inviteSuccess">
+					<UiButton variant="secondary" @click="startAnotherInvite()">
+						<template #iconLeft>
+							<Icon name="lucide:user-plus" class="w-4 h-4" />
+						</template>
+						Invite another
+					</UiButton>
+					<UiButton @click="isInviteModalOpen = false">Done</UiButton>
+				</template>
+				<template v-else>
+					<UiButton variant="secondary" :disabled="isInviting" @click="isInviteModalOpen = false">
+						Cancel
+					</UiButton>
+					<UiButton :loading="isInviting" @click="handleInvite">
+						<template #iconLeft>
+							<Icon v-if="!isInviting" name="lucide:user-plus" class="w-4 h-4" />
+						</template>
+						{{ isInviting ? 'Sending...' : 'Send Invitation' }}
+					</UiButton>
+				</template>
 			</template>
 		</UiModal>
 

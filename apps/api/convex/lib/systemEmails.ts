@@ -86,9 +86,13 @@ export function generateInvitationEmailHtml(
 	inviterName: string,
 	inviterEmail: string,
 	acceptUrl: string,
-	role: string,
+	role: string
 ): string {
-	const roleLabel = role.charAt(0).toUpperCase() + role.slice(1);
+	// BetterAuth's wire role is 'member', but every product surface calls that
+	// role 'Editor' — map to the app label so the email matches what the team page
+	// (and the accept screen) show. Other roles use their capitalized wire name.
+	const roleLabel = role === 'member' ? 'Editor' : role.charAt(0).toUpperCase() + role.slice(1);
+	const article = /^[aeiou]/i.test(roleLabel) ? 'an' : 'a';
 	const safeOrgName = escapeHtml(organizationName);
 	const safeInviterName = escapeHtml(inviterName);
 	const safeInviterEmail = escapeHtml(inviterEmail);
@@ -104,7 +108,7 @@ export function generateInvitationEmailHtml(
 
               <!-- Message -->
               <p style="margin: 0 0 16px 0; font-size: 16px; line-height: 1.6; color: #a09890;">
-                <strong style="color: #f5f2ef;">${safeInviterName}</strong> (${safeInviterEmail}) has invited you to join <strong style="color: #f5f2ef;">${safeOrgName}</strong> as a${role.toLowerCase().startsWith('a') ? 'n' : ''} <strong style="color: #c4785a;">${safeRoleLabel}</strong>.
+                <strong style="color: #f5f2ef;">${safeInviterName}</strong> (${safeInviterEmail}) has invited you to join <strong style="color: #f5f2ef;">${safeOrgName}</strong> as ${article} <strong style="color: #c4785a;">${safeRoleLabel}</strong>.
               </p>
 
               <p style="margin: 0 0 32px 0; font-size: 16px; line-height: 1.6; color: #a09890;">
@@ -156,7 +160,7 @@ ${ctaWithFallback(resetUrl, 'Reset Password')}
 export function generateChangeEmailVerificationHtml(
 	userName: string,
 	newEmail: string,
-	verifyUrl: string,
+	verifyUrl: string
 ): string {
 	const safeName = escapeHtml(userName);
 	const safeNewEmail = escapeHtml(newEmail);
@@ -196,7 +200,7 @@ ${ctaWithFallback(verifyUrl, 'Approve email change')}
 export function generateNewEmailVerificationHtml(
 	userName: string,
 	newEmail: string,
-	verifyUrl: string,
+	verifyUrl: string
 ): string {
 	const safeName = escapeHtml(userName);
 	const safeNewEmail = escapeHtml(newEmail);
@@ -228,7 +232,11 @@ ${ctaWithFallback(verifyUrl, 'Verify new email')}
 }
 
 /** Account-deletion confirmation (carries the cancel link). */
-export function generateDeletionEmailHtml(email: string, scheduledDate: string, cancelUrl: string): string {
+export function generateDeletionEmailHtml(
+	email: string,
+	scheduledDate: string,
+	cancelUrl: string
+): string {
 	const body = `              <!-- Header with warning -->
               <div style="margin: 0 0 24px 0; padding: 16px; background-color: #1e1514; border-radius: 12px; border: 1px solid #c46b5a;">
                 <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: #c46b5a;">
@@ -287,7 +295,7 @@ ${ctaWithFallback(cancelUrl, 'Cancel Account Deletion')}
 export function generateConfirmationEmailHtml(
 	firstName: string | undefined,
 	confirmationUrl: string,
-	teamName: string,
+	teamName: string
 ): string {
 	const safeTeamName = escapeHtml(teamName);
 	const greeting = firstName ? `Hi ${escapeHtml(firstName)},` : 'Hi,';

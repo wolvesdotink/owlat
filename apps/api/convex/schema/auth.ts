@@ -292,4 +292,17 @@ export const authTables = {
 	})
 		.index('by_kind_and_checkedAt', ['kind', 'checkedAt'])
 		.index('by_kind_and_startedAt', ['kind', 'startedAt']),
+
+	// Resend throttle for organization invitations. One row per BetterAuth
+	// invitationId records when its invite email was last (re)sent. The
+	// `sendInvitationEmail` hook stamps and checks this via
+	// `auth/invitationResend.enforceResendThrottle` on every send path, enforcing a
+	// 1-per-minute floor regardless of how many times "Resend" is clicked (or how
+	// often the API is hit directly). The copyable accept link is always available,
+	// so this only rate-limits the email resend, never access to the invite itself.
+	invitationResends: defineTable({
+		invitationId: v.string(), // BetterAuth invitation ID (string format)
+		organizationId: v.string(),
+		lastSentAt: v.number(),
+	}).index('by_invitation', ['invitationId']),
 };
