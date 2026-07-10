@@ -8,6 +8,10 @@
  * on the active one — click to switch (through the same perceived-instant
  * switchTo choreography the rail uses). A footer links to the add-workspace flow.
  *
+ * Keyboard: ArrowUp/Down + Home/End move between items, Escape closes and
+ * restores focus to the trigger (never dropping to <body>) — mirroring the house
+ * DropdownMenu / this desktop rail's accent picker (brief rule 8).
+ *
  * Rendered only on desktop; the parent (titlebar) already gates with isDesktop.
  * The trigger deliberately omits `data-tauri-drag-region` so clicks open the
  * menu instead of starting a window drag.
@@ -17,24 +21,81 @@ const { badgeFor } = useWorkspaceBadges();
 
 const open = ref(false);
 const rootRef = ref<HTMLElement | null>(null);
+const triggerRef = ref<HTMLElement | null>(null);
+const menuRef = ref<HTMLElement | null>(null);
 
 const title = computed(() => active.value?.label ?? 'Owlat');
 
+/** Every focusable row in the menu, in DOM (visual) order. */
+function menuItems(): HTMLElement[] {
+	return Array.from(
+		menuRef.value?.querySelectorAll<HTMLElement>('[role="menuitem"],[role="menuitemradio"]') ?? []
+	);
+}
+
+function moveFocus(delta: number, to?: 'first' | 'last'): void {
+	const items = menuItems();
+	const len = items.length;
+	if (!len) return;
+	let next: number;
+	if (to === 'first') next = 0;
+	else if (to === 'last') next = len - 1;
+	else {
+		const found = items.findIndex((el) => el === document.activeElement);
+		next = ((found < 0 ? 0 : found) + delta + len) % len;
+	}
+	items[next]?.focus();
+}
+
+function closeMenu(opts?: { restoreFocus?: boolean }): void {
+	open.value = false;
+	// Return focus to the chip on keyboard-dismiss paths (Escape / choosing) so a
+	// keyboard user is never stranded on <body>; leave it alone on outside-click,
+	// where the user is already interacting with another element.
+	if (opts?.restoreFocus !== false) triggerRef.value?.focus();
+}
+
 function toggle(): void {
-	open.value = !open.value;
+	if (open.value) {
+		closeMenu();
+		return;
+	}
+	open.value = true;
+	void nextTick(() => menuItems()[0]?.focus());
 }
 
 function choose(id: string): void {
-	open.value = false;
+	closeMenu();
 	if (id !== activeId.value) void switchTo(id);
 }
 
 function onKeydown(e: KeyboardEvent): void {
-	if (e.key === 'Escape') open.value = false;
+	switch (e.key) {
+		case 'Escape':
+			closeMenu();
+			break;
+		case 'ArrowDown':
+			e.preventDefault();
+			moveFocus(1);
+			break;
+		case 'ArrowUp':
+			e.preventDefault();
+			moveFocus(-1);
+			break;
+		case 'Home':
+			e.preventDefault();
+			moveFocus(0, 'first');
+			break;
+		case 'End':
+			e.preventDefault();
+			moveFocus(0, 'last');
+			break;
+	}
 }
 
 function onClickOutside(e: MouseEvent): void {
-	if (rootRef.value && !rootRef.value.contains(e.target as Node)) open.value = false;
+	if (rootRef.value && !rootRef.value.contains(e.target as Node))
+		closeMenu({ restoreFocus: false });
 }
 
 watch(open, (isOpen) => {
@@ -56,6 +117,7 @@ onUnmounted(() => {
 <template>
 	<div v-if="workspaces.length" ref="rootRef" class="relative flex items-center min-w-0">
 		<button
+			ref="triggerRef"
 			type="button"
 			class="flex items-center gap-2 min-w-0 rounded-md px-1.5 py-1 -mx-1.5 hover:bg-bg-surface-hover transition-colors duration-(--motion-fast) ease-spring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 			aria-haspopup="menu"
@@ -87,6 +149,7 @@ onUnmounted(() => {
 		>
 			<div
 				v-if="open"
+				ref="menuRef"
 				role="menu"
 				aria-label="Workspaces"
 				class="absolute top-full left-0 mt-1 z-[80] min-w-56 max-w-72 rounded-lg border border-border-subtle bg-bg-elevated p-1 shadow-lg"
@@ -110,12 +173,7 @@ onUnmounted(() => {
 					>
 						{{ ws.label }}
 					</span>
-					<span
-						v-if="badgeFor(ws.id) > 0"
-						class="min-w-4 h-4 px-1 rounded-full bg-red-500 text-[10px] text-white flex items-center justify-center shrink-0"
-					>
-						{{ badgeFor(ws.id) > 99 ? '99+' : badgeFor(ws.id) }}
-					</span>
+					<DesktopWorkspaceUnreadBadge :count="badgeFor(ws.id)" />
 					<Icon
 						v-if="ws.id === activeId"
 						name="lucide:check"
@@ -128,8 +186,8 @@ onUnmounted(() => {
 				<NuxtLink
 					to="/desktop/welcome"
 					role="menuitem"
-					class="flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm text-text-secondary hover:bg-bg-surface-hover hover:text-text-primary transition-colors duration-(--motion-fast) ease-spring"
-					@click="open = false"
+					class="flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm text-text-secondary hover:bg-bg-surface-hover hover:text-text-primary transition-colors duration-(--motion-fast) ease-spring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+					@click="closeMenu({ restoreFocus: false })"
 				>
 					<Icon name="lucide:plus" class="w-3.5 h-3.5 shrink-0" />
 					Add workspace
