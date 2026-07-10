@@ -248,10 +248,12 @@ async function handleDelete() {
 			</div>
 			<div class="px-5 py-4 flex items-center justify-between gap-4 border-t border-border-subtle">
 				<div class="min-w-0">
-					<label for="postbox-density" class="font-medium text-sm block"> Density </label>
+					<label for="postbox-density" class="font-medium text-sm block">
+						Density
+					</label>
 					<p class="text-xs text-text-tertiary mt-0.5">
-						How tightly the message list and reader are packed. Compact drops the snippet line for
-						single-line rows.
+						How tightly the message list and reader are packed. Compact drops the
+						snippet line for single-line rows.
 					</p>
 				</div>
 				<select
@@ -276,8 +278,8 @@ async function handleDelete() {
 						Default reply behavior
 					</label>
 					<p class="text-xs text-text-tertiary mt-0.5">
-						What the Reply button and the <kbd>r</kbd> shortcut do. <kbd>a</kbd> always replies to
-						everyone; you can switch a reply to all while composing.
+						What the Reply button and the <kbd>r</kbd> shortcut do. <kbd>a</kbd> always
+						replies to everyone; you can switch a reply to all while composing.
 					</p>
 				</div>
 				<select
@@ -326,8 +328,8 @@ async function handleDelete() {
 						Auto-summarize long threads
 					</label>
 					<p class="text-xs text-text-tertiary mt-0.5">
-						Show a one-line AI summary at the top of long conversations. Click it to expand the key
-						points.
+						Show a one-line AI summary at the top of long conversations. Click it to
+						expand the key points.
 					</p>
 				</div>
 				<input
@@ -339,7 +341,9 @@ async function handleDelete() {
 					@change="onAutoSummarizeChange"
 				/>
 			</div>
-			<div class="px-5 py-4 flex items-center justify-between gap-4 border-t border-border-subtle">
+			<div
+				class="px-5 py-4 flex items-center justify-between gap-4 border-t border-border-subtle"
+			>
 				<div class="min-w-0">
 					<label for="postbox-send-sound" class="font-medium text-sm block">
 						Play sound when sending
@@ -396,8 +400,7 @@ async function handleDelete() {
 									? 'bg-success-subtle text-success'
 									: 'bg-bg-surface text-text-tertiary'
 							"
-							>{{ mb.status }}</span
-						>
+						>{{ mb.status }}</span>
 						<NuxtLink
 							v-if="mb.scope === 'shared'"
 							:to="`/dashboard/postbox/settings/members/${mb._id}`"
@@ -435,19 +438,17 @@ async function handleDelete() {
 			size="sm"
 			:persistent="setDisplayName.isLoading.value"
 			:closable="!setDisplayName.isLoading.value"
-			@update:open="
-				(v: boolean) => {
-					if (!v) renameTarget = null;
-				}
-			"
+			@update:open="(v: boolean) => { if (!v) renameTarget = null; }"
 		>
 			<form class="space-y-3" @submit.prevent="handleRename">
 				<p class="text-sm text-text-secondary">
-					Display name for <code>{{ renameTarget?.address }}</code
-					>. The address itself can't be changed.
+					Display name for <code>{{ renameTarget?.address }}</code>. The address itself
+					can't be changed.
 				</p>
 				<div>
-					<label for="mb-display-name" class="text-sm font-medium block mb-1"> Display name </label>
+					<label for="mb-display-name" class="text-sm font-medium block mb-1">
+						Display name
+					</label>
 					<input
 						id="mb-display-name"
 						v-model="renameValue"
@@ -467,7 +468,9 @@ async function handleDelete() {
 				>
 					Cancel
 				</UiButton>
-				<UiButton :loading="setDisplayName.isLoading.value" @click="handleRename"> Save </UiButton>
+				<UiButton :loading="setDisplayName.isLoading.value" @click="handleRename">
+					Save
+				</UiButton>
 			</template>
 		</UiModal>
 
@@ -479,11 +482,7 @@ async function handleDelete() {
 			:description="`Deleting &quot;${deleteTarget?.address ?? ''}&quot; stops it from receiving new mail. Existing messages stay on the server but the address is removed from routing.`"
 			confirm-text="Delete mailbox"
 			:is-loading="removeMailbox.isLoading.value"
-			@update:open="
-				(v: boolean) => {
-					if (!v) deleteTarget = null;
-				}
-			"
+			@update:open="(v: boolean) => { if (!v) deleteTarget = null; }"
 			@confirm="handleDelete"
 		/>
 	</div>
