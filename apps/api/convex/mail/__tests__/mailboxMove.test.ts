@@ -495,3 +495,110 @@ describe('routing — post-archive inbound resolves to the hosted mailbox', () =
 		});
 	});
 });
+
+describe('externalAccounts resolves the LIVE account after a move + reconnect', () => {
+	/** Provision + archive a move on me@example.com, then connect a second live
+	 * account on other@example.org. Returns both accounts' ids and the archive's
+	 * mailbox + message so a test can assert the archive is left untouched. */
+	async function movedThenReconnected(t: Ctx): Promise<{
+		archiveAccountId: Id<'externalMailAccounts'>;
+		archiveMailboxId: Id<'mailboxes'>;
+		archiveMessageId: Id<'mailMessages'>;
+		liveAccountId: Id<'externalMailAccounts'>;
+		liveMailboxId: Id<'mailboxes'>;
+	}> {
+		await enableExternal(t);
+		const { mailboxId: archiveMailboxId, accountId: archiveAccountId } = await connectMailbox(t);
+		const archiveMessageId = await seedMessage(t, archiveMailboxId);
+		const { moveId } = await t.mutation(api.mail.mailboxMove.start, {});
+		sessionMocks.role = 'admin';
+		await t.mutation(api.mail.mailboxMove.provisionHosted, { moveId });
+		sessionMocks.role = 'editor';
+		await t.mutation(api.mail.mailboxMove.archive, {});
+
+		// The old account is 'disconnected'; connect a second, LIVE account.
+		await t.mutation(internal.mail.externalAccounts._connectInternal, {
+			...CREDS,
+			emailAddress: 'other@example.org',
+			imapUsername: 'other@example.org',
+		});
+		const live = await t.run(async (ctx) => {
+			const account = await ctx.db
+				.query('externalMailAccounts')
+				.withIndex('by_user', (q) => q.eq('userId', sessionMocks.userId))
+				.filter((q) => q.neq(q.field('_id'), archiveAccountId))
+				.first();
+			if (!account) throw new Error('live account not created');
+			return { liveAccountId: account._id, liveMailboxId: account.mailboxId };
+		});
+		return { archiveAccountId, archiveMailboxId, archiveMessageId, ...live };
+	}
+
+	it('purge drains the live account and leaves the archive mailbox intact', async () => {
+		const t = convexTest(schema, modules);
+		const { archiveAccountId, archiveMailboxId, archiveMessageId, liveAccountId, liveMailboxId } =
+			await movedThenReconnected(t);
+
+		// purge targets the LIVE account (the one the migrate page renders for), NOT
+		// the caller's oldest row (the archive) — the archive's history is never deleted.
+		await t.mutation(api.mail.externalAccounts.purge, {});
+		await t.finishInProgressScheduledFunctions();
+
+		await t.run(async (ctx) => {
+			// The live account + its mailbox are gone (purged).
+			expect(await ctx.db.get(liveAccountId)).toBeNull();
+			expect(await ctx.db.get(liveMailboxId)).toBeNull();
+			// The archive account stays 'disconnected' and its mailbox stays 'active'
+			// with its message intact — "history stays, nothing is deleted".
+			const archiveAccount = await ctx.db.get(archiveAccountId);
+			expect(archiveAccount?.status).toBe('disconnected');
+			const archiveMailbox = await ctx.db.get(archiveMailboxId);
+			expect(archiveMailbox?.status).toBe('active');
+			const message = await ctx.db.get(archiveMessageId);
+			expect(message).not.toBeNull();
+			expect(message?.mailboxId).toBe(archiveMailboxId);
+		});
+	});
+
+	it('re-entering credentials patches the live account, never the archive', async () => {
+		const t = convexTest(schema, modules);
+		const { archiveAccountId, liveAccountId } = await movedThenReconnected(t);
+
+		// Re-enter credentials (as the migrate page's edit form does, pre-filled from
+		// the live account) with a changed host.
+		await t.mutation(internal.mail.externalAccounts._updateCredentialsInternal, {
+			...CREDS,
+			emailAddress: 'other@example.org',
+			imapUsername: 'other@example.org',
+			imapHost: 'imap.changed.example',
+		});
+
+		await t.run(async (ctx) => {
+			// The LIVE account got the new host + a 'pending' re-validation.
+			const live = await ctx.db.get(liveAccountId);
+			expect(live?.imapHost).toBe('imap.changed.example');
+			expect(live?.status).toBe('pending');
+			// The ARCHIVE account is untouched — no resumed sync into read-only history.
+			const archive = await ctx.db.get(archiveAccountId);
+			expect(archive?.imapHost).toBe(CREDS.imapHost);
+			expect(archive?.status).toBe('disconnected');
+		});
+	});
+
+	it('re-entering credentials with no live account is a not-found', async () => {
+		const t = convexTest(schema, modules);
+		// Archive a move but do NOT reconnect — only a disconnected archive remains.
+		await enableExternal(t);
+		await connectMailbox(t);
+		const { moveId } = await t.mutation(api.mail.mailboxMove.start, {});
+		sessionMocks.role = 'admin';
+		await t.mutation(api.mail.mailboxMove.provisionHosted, { moveId });
+		sessionMocks.role = 'editor';
+		await t.mutation(api.mail.mailboxMove.archive, {});
+
+		// Re-entering credentials for an archive is meaningless — reconnect is the path.
+		await expect(
+			t.mutation(internal.mail.externalAccounts._updateCredentialsInternal, CREDS)
+		).rejects.toThrow();
+	});
+});
