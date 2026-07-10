@@ -1306,9 +1306,18 @@ export const mailTables = {
 		requesterName: v.optional(v.string()),
 		// Optional free-text note ("I need marcel@…").
 		note: v.optional(v.string()),
-		status: v.union(v.literal('open'), v.literal('resolved')),
+		// - open      — awaiting an admin.
+		// - fulfilled — an admin provisioned the hosted mailbox straight from the
+		//   request (the requester now has a live inbox).
+		// - resolved  — a plain acknowledgement/decline (external account, or the
+		//   admin handled it some other way); no mailbox was provisioned here.
+		status: v.union(v.literal('open'), v.literal('fulfilled'), v.literal('resolved')),
 		createdAt: v.number(),
-		// Admin who resolved it + when (audit; unset while open).
+		// The hosted mailbox provisioned from this request. Set only on the
+		// `fulfilled` path; makes the fulfilment idempotent (a redelivered
+		// provision returns this instead of standing up a second mailbox).
+		fulfilledMailboxId: v.optional(v.id('mailboxes')),
+		// Admin who resolved/fulfilled it + when (audit; unset while open).
 		resolvedByUserId: v.optional(v.string()),
 		resolvedAt: v.optional(v.number()),
 	})

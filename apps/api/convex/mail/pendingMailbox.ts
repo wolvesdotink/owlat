@@ -11,6 +11,8 @@
 
 import { v } from 'convex/values';
 import { internalQuery } from '../_generated/server';
+import type { MutationCtx } from '../_generated/server';
+import type { Doc, Id } from '../_generated/dataModel';
 import { authedMutation, adminMutation } from '../lib/authedFunctions';
 import { markOnboardingStep } from '../auth/userOnboarding';
 import { requireAdminContext, getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
@@ -33,6 +35,46 @@ function normalizeLocalpart(raw: string): string {
 
 function normalizeDomain(raw: string): string {
 	return raw.trim().toLowerCase();
+}
+
+/**
+ * Consume a pending reservation into a live mailbox for `userId` — the shared
+ * claim shape behind both the invitee self-claim (`claimForInvitation`) and the
+ * admin provision-from-request path (`mail.mailboxRequest.provisionFromRequest`)
+ * so the collision guard and the provision → delete-reservation → mark-ready
+ * sequence can never drift between them.
+ *
+ * Returns `{ ok: false }` when a live mailbox already holds the reserved address
+ * (the reservation is left in place — the caller decides whether to clear it or
+ * surface the collision); otherwise provisions the mailbox at the reserved
+ * address, deletes the reservation, marks the user's onboarding mailbox-ready,
+ * and returns the new mailbox id.
+ */
+export async function claimReservedMailbox(
+	ctx: MutationCtx,
+	pending: Doc<'pendingMailboxes'>,
+	userId: string
+): Promise<{ ok: true; mailboxId: Id<'mailboxes'> } | { ok: false }> {
+	const liveCollision = await ctx.db
+		.query('mailboxes')
+		.withIndex('by_address', (q) => q.eq('address', pending.address))
+		.first();
+	if (liveCollision) {
+		return { ok: false as const };
+	}
+
+	const mailboxId = await provisionMailbox(ctx, {
+		userId,
+		organizationId: pending.organizationId,
+		address: pending.address,
+		domain: pending.domain,
+		displayName: pending.displayName,
+	});
+
+	await ctx.db.delete(pending._id);
+	await markOnboardingStep(ctx, userId, 'mailboxReady');
+
+	return { ok: true as const, mailboxId };
 }
 
 export const setForInvitation = authedMutation({
@@ -166,30 +208,17 @@ export const claimForInvitation = authedMutation({
 			return { created: false as const, error: 'invitee_mismatch' as const };
 		}
 
-		const liveCollision = await ctx.db
-			.query('mailboxes')
-			.withIndex('by_address', (q) => q.eq('address', pending.address))
-			.first();
-		if (liveCollision) {
+		const claim = await claimReservedMailbox(ctx, pending, session.userId);
+		if (!claim.ok) {
+			// A live mailbox already holds the reserved address — the reservation is
+			// stale, so clear it (the invitee will land in the fresh-start flow).
 			await ctx.db.delete(pending._id);
 			return { created: false as const, error: 'address_taken' as const };
 		}
 
-		const mailboxId = await provisionMailbox(ctx, {
-			userId: session.userId,
-			organizationId: pending.organizationId,
-			address: pending.address,
-			domain: pending.domain,
-			displayName: pending.displayName,
-		});
-
-		await ctx.db.delete(pending._id);
-
-		await markOnboardingStep(ctx, session.userId, 'mailboxReady');
-
 		return {
 			created: true as const,
-			mailboxId,
+			mailboxId: claim.mailboxId,
 			address: pending.address,
 		};
 	},

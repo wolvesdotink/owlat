@@ -114,6 +114,24 @@ async function seedMailbox(
 	});
 }
 
+async function seedVerifiedDomain(t: ReturnType<typeof convexTest>, domain = 'hinterland.camp') {
+	await t.run(async (ctx) => {
+		const now = Date.now();
+		await ctx.db.insert('domains', {
+			domain,
+			status: 'verified',
+			dnsRecords: {
+				spf: { type: 'TXT' as const, host: '@', value: 'v=spf1 -all' },
+				dkim: [],
+				dmarc: { type: 'TXT' as const, host: '_dmarc', value: 'v=DMARC1; p=none' },
+				mailFrom: [],
+			},
+			createdAt: now,
+			updatedAt: now,
+		});
+	});
+}
+
 const allModules = import.meta.glob('../**/*.*s');
 const modules = Object.fromEntries(
 	Object.entries(allModules).filter(
@@ -300,6 +318,311 @@ describe('mailboxRequest.listPending / resolve', () => {
 
 		// Still a member: the admin-gated read must refuse.
 		await expect(t.query(api.mail.mailboxRequest.listPending, {})).rejects.toThrow(/permission/i);
+	});
+});
+
+describe('mailboxRequest.provisionFromRequest', () => {
+	it('provisions a hosted mailbox on a verified domain, fulfils it, and notifies the requester', async () => {
+		setMemberSession('member-a');
+		const t = convexTest(schema, modules);
+		await seedUserProfile(t, 'member-a', 'member-a@example.com', 'Member A');
+		// The requester's login email is external (example.com); the hosted mailbox
+		// must be stood up on the deployment's VERIFIED sending domain, not there.
+		await seedVerifiedDomain(t, 'hinterland.camp');
+		const created = await t.mutation(api.mail.mailboxRequest.request, {});
+
+		setAdminSession();
+		const result = await t.mutation(api.mail.mailboxRequest.provisionFromRequest, {
+			requestId: created.requestId,
+		});
+		expect(result.fulfilled).toBe(true);
+
+		// A live hosted mailbox now exists at localpart@<verified domain> — never at
+		// the requester's external login address.
+		await t.run(async (ctx) => {
+			const mailboxes = await ctx.db
+				.query('mailboxes')
+				.withIndex('by_user', (q) => q.eq('userId', 'member-a'))
+				.collect();
+			expect(mailboxes).toHaveLength(1);
+			expect(mailboxes[0]?.address).toBe('member-a@hinterland.camp');
+			expect(mailboxes[0]?.status).toBe('active');
+			expect(mailboxes[0]?.kind ?? 'hosted').toBe('hosted');
+
+			// The request is FULFILLED (not merely acknowledged), audit-stamped.
+			const request = await ctx.db.get(created.requestId);
+			expect(request?.status).toBe('fulfilled');
+			expect(request?.fulfilledMailboxId).toBe(result.mailboxId);
+			expect(request?.resolvedByUserId).toBe('admin-user');
+			expect(request?.resolvedAt).toBeTypeOf('number');
+
+			// The requester is notified in-app: onboarding flips to mailbox-ready.
+			const onboarding = await ctx.db
+				.query('userOnboarding')
+				.withIndex('by_auth_user_id', (q) => q.eq('authUserId', 'member-a'))
+				.first();
+			expect(onboarding?.mailboxReady).toBeTypeOf('number');
+		});
+
+		// It's off the admin's open list, and the requester's fresh-start guard now
+		// admits them to the inbox.
+		const stillOpen = await t.query(api.mail.mailboxRequest.listPending, {});
+		expect(stillOpen).toHaveLength(0);
+
+		setMemberSession('member-a');
+		const status = await t.query(api.mail.mailboxRequest.freshStartStatus, {});
+		expect(status.hasMailbox).toBe(true);
+	});
+
+	it('is idempotent: a redelivered provision returns the same mailbox, no second one', async () => {
+		setMemberSession('member-a');
+		const t = convexTest(schema, modules);
+		await seedUserProfile(t, 'member-a', 'member-a@example.com');
+		await seedVerifiedDomain(t, 'hinterland.camp');
+		const created = await t.mutation(api.mail.mailboxRequest.request, {});
+
+		setAdminSession();
+		const first = await t.mutation(api.mail.mailboxRequest.provisionFromRequest, {
+			requestId: created.requestId,
+		});
+		const second = await t.mutation(api.mail.mailboxRequest.provisionFromRequest, {
+			requestId: created.requestId,
+		});
+		expect(second.mailboxId).toBe(first.mailboxId);
+
+		await t.run(async (ctx) => {
+			const mailboxes = await ctx.db
+				.query('mailboxes')
+				.withIndex('by_user', (q) => q.eq('userId', 'member-a'))
+				.collect();
+			expect(mailboxes).toHaveLength(1);
+		});
+	});
+
+	it('fulfils against an existing live mailbox instead of standing up a second one', async () => {
+		setMemberSession('member-a');
+		const t = convexTest(schema, modules);
+		await seedUserProfile(t, 'member-a', 'member-a@example.com');
+		// An open request coexisting with a live mailbox (e.g. the requester claimed
+		// a reservation after asking): the provision must fulfil against it.
+		await seedMailbox(t, 'member-a', 'member-a@hinterland.camp', 'active');
+		const requestId = await t.run(async (ctx) =>
+			ctx.db.insert('mailboxRequests', {
+				authUserId: 'member-a',
+				organizationId: 'test-org',
+				requesterEmail: 'member-a@example.com',
+				status: 'open',
+				createdAt: Date.now(),
+			})
+		);
+
+		setAdminSession();
+		const result = await t.mutation(api.mail.mailboxRequest.provisionFromRequest, { requestId });
+
+		await t.run(async (ctx) => {
+			const mailboxes = await ctx.db
+				.query('mailboxes')
+				.withIndex('by_user', (q) => q.eq('userId', 'member-a'))
+				.collect();
+			expect(mailboxes).toHaveLength(1);
+			expect(result.mailboxId).toBe(mailboxes[0]?._id);
+			const request = await ctx.db.get(requestId);
+			expect(request?.status).toBe('fulfilled');
+		});
+	});
+
+	it('honours a reservation: provisions the reserved address and consumes it', async () => {
+		setMemberSession('member-a');
+		const t = convexTest(schema, modules);
+		await seedUserProfile(t, 'member-a', 'member-a@example.com');
+		const created = await t.mutation(api.mail.mailboxRequest.request, {});
+		await t.run(async (ctx) => {
+			await ctx.db.insert('pendingMailboxes', {
+				invitationId: 'inv-1',
+				inviteeEmail: 'member-a@example.com',
+				organizationId: 'test-org',
+				localpart: 'member-a',
+				domain: 'hinterland.camp',
+				address: 'member-a@hinterland.camp',
+				createdAt: Date.now(),
+				createdByUserId: 'admin-user',
+			});
+		});
+
+		setAdminSession();
+		const result = await t.mutation(api.mail.mailboxRequest.provisionFromRequest, {
+			requestId: created.requestId,
+		});
+
+		await t.run(async (ctx) => {
+			const mailbox = await ctx.db.get(result.mailboxId);
+			expect(mailbox?.address).toBe('member-a@hinterland.camp');
+			// The reservation was consumed, not orphaned.
+			const remaining = await ctx.db
+				.query('pendingMailboxes')
+				.withIndex('by_invitee_email', (q) => q.eq('inviteeEmail', 'member-a@example.com'))
+				.collect();
+			expect(remaining).toHaveLength(0);
+		});
+	});
+
+	it('refuses to provision when no sending domain is verified (no dead inbox)', async () => {
+		setMemberSession('member-a');
+		const t = convexTest(schema, modules);
+		await seedUserProfile(t, 'member-a', 'member-a@example.com');
+		const created = await t.mutation(api.mail.mailboxRequest.request, {});
+
+		// No verified domain seeded: standing up a hosted mailbox at the requester's
+		// external login address would be a dead inbox, so the server refuses.
+		setAdminSession();
+		await expect(
+			t.mutation(api.mail.mailboxRequest.provisionFromRequest, { requestId: created.requestId })
+		).rejects.toThrow(/verify a sending domain/i);
+
+		await t.run(async (ctx) => {
+			const mailboxes = await ctx.db
+				.query('mailboxes')
+				.withIndex('by_user', (q) => q.eq('userId', 'member-a'))
+				.collect();
+			expect(mailboxes).toHaveLength(0);
+			const request = await ctx.db.get(created.requestId);
+			expect(request?.status).toBe('open');
+		});
+	});
+
+	it('refuses a move-raised request and leaves the move untouched', async () => {
+		setMemberSession('member-a');
+		const t = convexTest(schema, modules);
+		await seedUserProfile(t, 'member-a', 'member-a@example.com');
+		await seedVerifiedDomain(t, 'hinterland.camp');
+
+		// A move-raised request: the mover's ACTIVE EXTERNAL mailbox stays live and a
+		// mailboxMoves row links to the request. Provisioning here would strand the
+		// move, so the admin is pointed at the move flow instead.
+		const { requestId, moveId } = await t.run(async (ctx) => {
+			const now = Date.now();
+			const mailboxId = await ctx.db.insert('mailboxes', {
+				userId: 'member-a',
+				organizationId: 'test-org',
+				address: 'member-a@gmail.com',
+				domain: 'gmail.com',
+				kind: 'external',
+				status: 'active',
+				usedBytes: 0,
+				uidValidity: now,
+				createdAt: now,
+				updatedAt: now,
+			});
+			const accountId = await ctx.db.insert('externalMailAccounts', {
+				userId: 'member-a',
+				organizationId: 'test-org',
+				mailboxId,
+				imapHost: 'imap.gmail.com',
+				imapPort: 993,
+				isImapSecure: true,
+				smtpHost: 'smtp.gmail.com',
+				smtpPort: 465,
+				isSmtpSecure: true,
+				authMethod: 'password',
+				imapUsername: 'member-a@gmail.com',
+				secretCiphertext: 'x',
+				secretIv: 'x',
+				secretAuthTag: 'x',
+				secretEnvelopeVersion: 1,
+				status: 'connected',
+				createdAt: now,
+				updatedAt: now,
+			});
+			const requestId = await ctx.db.insert('mailboxRequests', {
+				authUserId: 'member-a',
+				organizationId: 'test-org',
+				requesterEmail: 'member-a@gmail.com',
+				status: 'open',
+				createdAt: now,
+			});
+			const moveId = await ctx.db.insert('mailboxMoves', {
+				userId: 'member-a',
+				organizationId: 'test-org',
+				accountId,
+				sourceMailboxId: mailboxId,
+				address: 'member-a@gmail.com',
+				domain: 'gmail.com',
+				stage: 'provisioning',
+				isPaused: false,
+				provisionRequestId: requestId,
+				createdAt: now,
+				updatedAt: now,
+			});
+			return { requestId, moveId };
+		});
+
+		setAdminSession();
+		await expect(
+			t.mutation(api.mail.mailboxRequest.provisionFromRequest, { requestId })
+		).rejects.toThrow(/mailbox move/i);
+
+		await t.run(async (ctx) => {
+			// The request is still open, the move still at 'provisioning', and no
+			// hosted mailbox was stood up against the external address.
+			const request = await ctx.db.get(requestId);
+			expect(request?.status).toBe('open');
+			const move = await ctx.db.get(moveId);
+			expect(move?.stage).toBe('provisioning');
+			expect(move?.hostedMailboxId).toBeUndefined();
+			const mailboxes = await ctx.db
+				.query('mailboxes')
+				.withIndex('by_user', (q) => q.eq('userId', 'member-a'))
+				.collect();
+			expect(mailboxes).toHaveLength(1);
+			expect(mailboxes[0]?.kind).toBe('external');
+		});
+	});
+
+	it('resolve does not downgrade an already-fulfilled request', async () => {
+		setMemberSession('member-a');
+		const t = convexTest(schema, modules);
+		await seedUserProfile(t, 'member-a', 'member-a@example.com');
+		await seedVerifiedDomain(t, 'hinterland.camp');
+		const created = await t.mutation(api.mail.mailboxRequest.request, {});
+
+		setAdminSession();
+		await t.mutation(api.mail.mailboxRequest.provisionFromRequest, {
+			requestId: created.requestId,
+		});
+
+		// A stale 'Mark done' racing the provision must be a no-op, not a downgrade.
+		const result = await t.mutation(api.mail.mailboxRequest.resolve, {
+			requestId: created.requestId,
+		});
+		expect(result.resolved).toBe(true);
+		await t.run(async (ctx) => {
+			const request = await ctx.db.get(created.requestId);
+			expect(request?.status).toBe('fulfilled');
+		});
+	});
+
+	it('is admin-gated: a member cannot provision from a request (fails closed)', async () => {
+		setMemberSession('member-a');
+		const t = convexTest(schema, modules);
+		await seedUserProfile(t, 'member-a', 'member-a@example.com');
+		const created = await t.mutation(api.mail.mailboxRequest.request, {});
+
+		// Still a member: the admin-gated provision must refuse.
+		await expect(
+			t.mutation(api.mail.mailboxRequest.provisionFromRequest, { requestId: created.requestId })
+		).rejects.toThrow(/owners and admins/i);
+	});
+
+	it('rejects provisioning a request from a different organization', async () => {
+		setMemberSession('member-a', 'org-1');
+		const t = convexTest(schema, modules);
+		await seedUserProfile(t, 'member-a', 'member-a@example.com');
+		const created = await t.mutation(api.mail.mailboxRequest.request, {});
+
+		setAdminSession('admin-user', 'org-2');
+		await expect(
+			t.mutation(api.mail.mailboxRequest.provisionFromRequest, { requestId: created.requestId })
+		).rejects.toThrow(/not accessible/i);
 	});
 });
 
