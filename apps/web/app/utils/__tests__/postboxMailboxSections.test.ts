@@ -2,56 +2,53 @@ import { describe, it, expect } from 'vitest';
 import {
 	derivePostboxSidebarSections,
 	isSharedMailbox,
-	mailboxLabel,
-	type PostboxSidebarMailbox,
+	type PostboxAccessibleMailbox,
 } from '../postboxMailboxSections';
 
-const personalA: PostboxSidebarMailbox = { _id: 'm1', address: 'me@x.com' };
-const personalUndefinedScope: PostboxSidebarMailbox = {
-	_id: 'm2',
-	address: 'other@x.com',
+const personalA: PostboxAccessibleMailbox = {
+	mailboxId: 'm1',
+	label: 'me@x.com',
 	scope: 'personal',
+	unread: 0,
 };
-const teamSales: PostboxSidebarMailbox = {
-	_id: 'm3',
-	address: 'sales@x.com',
-	displayName: 'Sales',
-	scope: 'shared',
+const personalB: PostboxAccessibleMailbox = {
+	mailboxId: 'm2',
+	label: 'other@x.com',
+	scope: 'personal',
+	unread: 2,
 };
-const teamSupport: PostboxSidebarMailbox = {
-	_id: 'm4',
-	address: 'support@x.com',
-	displayName: 'Support',
+const teamSales: PostboxAccessibleMailbox = {
+	mailboxId: 'm3',
+	label: 'Sales',
 	scope: 'shared',
+	unread: 5,
+};
+const teamSupport: PostboxAccessibleMailbox = {
+	mailboxId: 'm4',
+	label: 'Support',
+	scope: 'shared',
+	unread: 0,
 };
 
 describe('isSharedMailbox', () => {
 	it('is true only for scope=shared', () => {
 		expect(isSharedMailbox(teamSales)).toBe(true);
 		expect(isSharedMailbox(personalA)).toBe(false);
-		expect(isSharedMailbox(personalUndefinedScope)).toBe(false);
-	});
-});
-
-describe('mailboxLabel', () => {
-	it('prefers the display name, falls back to the address', () => {
-		expect(mailboxLabel(teamSales)).toBe('Sales');
-		expect(mailboxLabel(personalA)).toBe('me@x.com');
-		expect(mailboxLabel({ _id: 'x', address: 'a@x.com', displayName: '  ' })).toBe('a@x.com');
 	});
 });
 
 describe('derivePostboxSidebarSections', () => {
-	it('splits personal (incl. undefined scope) from shared team inboxes', () => {
+	it('splits personal from shared team inboxes, each sorted by label', () => {
 		const { personal, team } = derivePostboxSidebarSections([
 			teamSupport,
-			personalA,
+			personalB,
 			teamSales,
-			personalUndefinedScope,
+			personalA,
 		]);
-		expect(personal.map((m) => m._id)).toEqual(['m1', 'm2']);
+		// Personal sorted by label: me@x.com before other@x.com.
+		expect(personal.map((m) => m.mailboxId)).toEqual(['m1', 'm2']);
 		// Team sorted by label: Sales before Support.
-		expect(team.map((m) => m._id)).toEqual(['m3', 'm4']);
+		expect(team.map((m) => m.mailboxId)).toEqual(['m3', 'm4']);
 	});
 
 	it('yields an empty team list for a personal-only user', () => {
@@ -63,6 +60,6 @@ describe('derivePostboxSidebarSections', () => {
 	it('does not mutate the input array', () => {
 		const input = [teamSupport, teamSales];
 		derivePostboxSidebarSections(input);
-		expect(input.map((m) => m._id)).toEqual(['m4', 'm3']);
+		expect(input.map((m) => m.mailboxId)).toEqual(['m4', 'm3']);
 	});
 });

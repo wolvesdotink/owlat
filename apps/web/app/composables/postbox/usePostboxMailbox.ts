@@ -42,14 +42,32 @@ export function usePostboxMailbox() {
 		}
 	};
 
+	// Switch to a mailbox and land on its inbox rather than a folder/message id
+	// that only exists in the previous mailbox. Shared by the sidebar switcher and
+	// the Cmd-K palette so the switch behaviour lives in one place.
+	const switchToMailbox = (id: Id<'mailboxes'>) => {
+		setCurrentMailbox(id);
+		void navigateTo('/dashboard/postbox/inbox');
+	};
+
+	// The caller's accessible+active mailboxes (own + explicit shared memberships),
+	// each with its label, scope, and inbox unread. This — NOT `list`, which
+	// returns every org mailbox for owners/admins — drives the sidebar switcher and
+	// Cmd-K entries, so an admin never sees a teammate's private inbox or a shared
+	// inbox they don't belong to advertised as a switch target, and the badges
+	// always match the listed mailboxes.
+	const { data: accessibleData } = useConvexQuery(api.mail.mailbox.accessible, () => ({}));
+	const accessible = computed(() => accessibleData.value ?? []);
+
 	// Personal mailbox(es) vs shared (team) inboxes, for the sidebar switcher.
-	const sections = computed(() => derivePostboxSidebarSections(mailboxes.value));
+	const sections = computed(() => derivePostboxSidebarSections(accessible.value));
 
 	return {
 		mailboxes,
 		sections,
 		currentMailbox,
 		setCurrentMailbox,
+		switchToMailbox,
 		isLoading,
 		error,
 	};
