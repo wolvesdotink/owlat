@@ -24,6 +24,7 @@ const shortcuts = {
 		{ keys: ['n'], description: 'New item (context-aware)' },
 		{ keys: ['s'], description: 'Save (when editing)' },
 		{ keys: ['⌘', 'K'], description: 'Open search' },
+		{ keys: ['⌘', '\\'], description: 'Hide / show sidebar' },
 	],
 	general: [
 		{ keys: ['?'], description: 'Show keyboard shortcuts' },
