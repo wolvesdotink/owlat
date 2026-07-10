@@ -117,11 +117,35 @@ async function requireCallerMove(
 	return { session, move };
 }
 
+/** Serialize a move row for the settings surface (null when there's no move). */
+function buildMovePayload(move: Doc<'mailboxMoves'> | null) {
+	return move
+		? {
+				id: move._id,
+				stage: move.stage,
+				isPaused: move.isPaused,
+				hostedMailboxId: move.hostedMailboxId ?? null,
+				awaitingAdminProvision: move.stage === 'provisioning' && move.provisionRequestId != null,
+				createdAt: move.createdAt,
+				updatedAt: move.updatedAt,
+				archivedAt: move.archivedAt ?? null,
+			}
+		: null;
+}
+
 /**
  * Everything the settings surface needs to render the move flow for the caller's
  * own mailbox: eligibility, the move's current stage/truth, and the exact MX
  * record to hand a DNS admin. Soft-auth — returns `{ eligible: false }` for an
- * anonymous caller or one with no external mailbox to move.
+ * anonymous caller or one with no external mailbox AND no move to show.
+ *
+ * A move outlives its live external mailbox: `archive` demotes the account to
+ * `disconnected`, so `getCallerExternalMailbox` returns null for a completed
+ * move — but the flow must keep showing its terminal (archived) truth. When the
+ * live mailbox is gone we surface the move from its own row (it carries
+ * `address`/`domain`), fetching `lastSyncAt` via the now-disconnected account.
+ * The strict movable gate lives only in `start`, which is what may *create* a
+ * move.
  */
 // public: soft-auth — reads only the caller's own external mailbox + move rows.
 export const moveStatus = publicQuery({
@@ -130,17 +154,39 @@ export const moveStatus = publicQuery({
 		await assertFeatureEnabled(ctx, 'mail.external');
 		const mailHost = inboundMailHost();
 
-		const resolved = await getCallerExternalMailbox(ctx);
-		if (!resolved) {
+		const session = await getBetterAuthSessionWithRole(ctx);
+		if (!session || !session.role) {
 			return { eligible: false as const };
 		}
-		const { session, account, mailbox } = resolved;
 
 		const move = await getCallerMove(ctx, session.userId);
 		// Owners/admins can provision a hosted mailbox themselves; anyone else must
 		// wait for an admin to act on the request `start` raised.
 		const isAdmin = hasPermission(session.role, 'organization:manage');
+		// The MX target + record to publish (null host ⇒ send-only install with no
+		// inbound MTA; the UI omits the guidance and the move can't complete).
+		const resolved = await getCallerExternalMailbox(ctx);
 
+		if (!resolved) {
+			// No live mailbox to move. Still surface an in-flight/completed move so
+			// the archived terminal state (and its confirmation) doesn't vanish.
+			if (!move) return { eligible: false as const };
+			const account = await ctx.db.get(move.accountId);
+			return {
+				eligible: true as const,
+				address: move.address,
+				domain: move.domain,
+				// The mover's own last-sync truth (fail-soft: shown as-is, never assumed).
+				lastSyncAt: account?.lastSyncAt ?? null,
+				accountStatus: account?.status ?? ('disconnected' as const),
+				canProvisionSelf: isAdmin,
+				mxHost: mailHost,
+				mxPriority: MX_PRIORITY,
+				move: buildMovePayload(move),
+			};
+		}
+
+		const { account, mailbox } = resolved;
 		return {
 			eligible: true as const,
 			address: mailbox.address,
@@ -149,23 +195,9 @@ export const moveStatus = publicQuery({
 			lastSyncAt: account.lastSyncAt ?? null,
 			accountStatus: account.status,
 			canProvisionSelf: isAdmin,
-			// The MX target + record to publish (null host ⇒ send-only install with
-			// no inbound MTA; the UI omits the guidance and the move can't complete).
 			mxHost: mailHost,
 			mxPriority: MX_PRIORITY,
-			move: move
-				? {
-						id: move._id,
-						stage: move.stage,
-						isPaused: move.isPaused,
-						hostedMailboxId: move.hostedMailboxId ?? null,
-						awaitingAdminProvision:
-							move.stage === 'provisioning' && move.provisionRequestId != null,
-						createdAt: move.createdAt,
-						updatedAt: move.updatedAt,
-						archivedAt: move.archivedAt ?? null,
-					}
-				: null,
+			move: buildMovePayload(move),
 		};
 	},
 });
