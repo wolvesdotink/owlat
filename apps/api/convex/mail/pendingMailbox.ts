@@ -11,9 +11,10 @@
 
 import { v } from 'convex/values';
 import { internalQuery } from '../_generated/server';
-import { authedMutation } from '../lib/authedFunctions';
+import { authedMutation, adminMutation } from '../lib/authedFunctions';
 import { markOnboardingStep } from '../auth/userOnboarding';
 import { requireAdminContext, getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
+import { normalizeEmail, isValidEmail } from '../lib/inputGuards';
 import {
 	throwForbidden,
 	throwUnauthenticated,
@@ -31,10 +32,6 @@ function normalizeLocalpart(raw: string): string {
 }
 
 function normalizeDomain(raw: string): string {
-	return raw.trim().toLowerCase();
-}
-
-function normalizeEmail(raw: string): string {
 	return raw.trim().toLowerCase();
 }
 
@@ -216,13 +213,12 @@ export const claimForInvitation = authedMutation({
  * mailbox itself. Idempotent per (org, email, mailbox): a repeat call returns
  * the existing reservation rather than stacking duplicates.
  */
-export const reserveInboxMembership = authedMutation({
+export const reserveInboxMembership = adminMutation({
 	args: {
 		mailboxId: v.id('mailboxes'),
 		inviteeEmail: v.string(),
 	},
 	handler: async (ctx, args) => {
-		await requireAdminContext(ctx);
 		const access = await requireMailboxAccess(ctx, args.mailboxId, 'owner');
 		if (!access.ok) {
 			throwForbidden('You do not have permission to manage this inbox.');
@@ -232,7 +228,7 @@ export const reserveInboxMembership = authedMutation({
 		}
 
 		const inviteeEmail = normalizeEmail(args.inviteeEmail);
-		if (!inviteeEmail || !inviteeEmail.includes('@')) {
+		if (!isValidEmail(inviteeEmail)) {
 			throwInvalidInput('Enter a valid email address.');
 		}
 
@@ -253,7 +249,7 @@ export const reserveInboxMembership = authedMutation({
 			.withIndex('by_org_email', (q) =>
 				q.eq('organizationId', access.mailbox.organizationId).eq('inviteeEmail', inviteeEmail)
 			)
-			.collect();
+			.collect(); // bounded: a person is pre-added to at most a handful of inboxes
 		const already = existing.find((row) => row.mailboxId === args.mailboxId);
 		if (already) {
 			return { id: already._id, address: access.mailbox.address, alreadyReserved: true as const };
@@ -287,6 +283,9 @@ export const reserveInboxMembership = authedMutation({
 export const claimInboxMemberships = authedMutation({
 	args: {},
 	handler: async (ctx) => {
+		// all-members: every member may claim, but ONLY grants bound to their own
+		// login email — the email match below is the per-row authorization, so a
+		// caller can never materialize a teammate's inbox access.
 		const session = await getBetterAuthSessionWithRole(ctx);
 		if (!session) {
 			throwUnauthenticated();
@@ -294,12 +293,13 @@ export const claimInboxMemberships = authedMutation({
 		if (!session.activeOrganizationId) {
 			throwForbidden('No active organization');
 		}
+		const organizationId = session.activeOrganizationId;
 
 		const profile = await ctx.db
 			.query('userProfiles')
 			.withIndex('by_auth_user_id', (q) => q.eq('authUserId', session.userId))
 			.first();
-		const callerEmail = profile?.email?.trim().toLowerCase();
+		const callerEmail = profile?.email ? normalizeEmail(profile.email) : undefined;
 		if (!callerEmail) {
 			return { claimed: [] as string[] };
 		}
@@ -307,9 +307,9 @@ export const claimInboxMemberships = authedMutation({
 		const grants = await ctx.db
 			.query('pendingMailboxMembers')
 			.withIndex('by_org_email', (q) =>
-				q.eq('organizationId', session.activeOrganizationId).eq('inviteeEmail', callerEmail)
+				q.eq('organizationId', organizationId).eq('inviteeEmail', callerEmail)
 			)
-			.collect();
+			.collect(); // bounded: a person is pre-added to at most a handful of inboxes
 
 		const claimed: string[] = [];
 		for (const grant of grants) {
@@ -320,7 +320,7 @@ export const claimInboxMemberships = authedMutation({
 				!mailbox ||
 				mailbox.status !== 'active' ||
 				mailbox.scope !== 'shared' ||
-				mailbox.organizationId !== session.activeOrganizationId
+				mailbox.organizationId !== organizationId
 			) {
 				await ctx.db.delete(grant._id);
 				continue;
@@ -346,6 +346,46 @@ export const claimInboxMemberships = authedMutation({
 		}
 
 		return { claimed };
+	},
+});
+
+/**
+ * Sweep every un-claimed team-inbox grant reserved for `inviteeEmail` in the
+ * caller's active org. Called when an admin cancels the org invitation (grants
+ * are keyed by email, not invitation id, so cancelling the invite must also
+ * clear the pending membership — otherwise it would silently materialize inbox
+ * access if that email ever joined later, contradicting the 7-day-expiry the
+ * invitation email promises) and as best-effort rollback when reserving succeeds
+ * but the invite send fails. Mirrors `cancelForInvitation` for `pendingMailboxes`.
+ *
+ * Admin-gated (the wrapper) and org-scoped: only grants in the caller's active
+ * org are touched, so one org can never clear another's reservations.
+ */
+export const cancelInboxMembershipsForEmail = adminMutation({
+	args: {
+		inviteeEmail: v.string(),
+	},
+	handler: async (ctx, args) => {
+		const session = await getBetterAuthSessionWithRole(ctx);
+		if (!session?.activeOrganizationId) {
+			throwForbidden('No active organization');
+		}
+		const organizationId = session.activeOrganizationId;
+		const inviteeEmail = normalizeEmail(args.inviteeEmail);
+		if (!inviteeEmail) {
+			return { canceled: 0 };
+		}
+
+		const grants = await ctx.db
+			.query('pendingMailboxMembers')
+			.withIndex('by_org_email', (q) =>
+				q.eq('organizationId', organizationId).eq('inviteeEmail', inviteeEmail)
+			)
+			.collect(); // bounded: a person is pre-added to at most a handful of inboxes
+		for (const grant of grants) {
+			await ctx.db.delete(grant._id);
+		}
+		return { canceled: grants.length };
 	},
 });
 

@@ -136,7 +136,7 @@ export const mailTables = {
 		// on (org, email); a person may be pre-added to several inboxes at once,
 		// so this is a prefix range, not a point read.
 		.index('by_org_email', ['organizationId', 'inviteeEmail'])
-		// Cascade-clean grants when a team inbox is deleted.
+		// Cascade-clean grants when a team inbox is deleted (mail/mailbox.ts:remove).
 		.index('by_mailbox', ['mailboxId']),
 
 	// External mailbox connection (BYO IMAP/SMTP). Per-user link to an EXISTING
