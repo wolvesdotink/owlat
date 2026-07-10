@@ -170,11 +170,11 @@ function formatDuration(start?: number, end?: number) {
 	<div class="max-w-[960px] mx-auto p-8 space-y-6">
 		<!-- Page header -->
 		<div>
-			<NuxtLink to="/dashboard/settings" class="text-[0.8125rem] text-text-tertiary hover:text-brand transition-colors">
+			<NuxtLink to="/dashboard/settings" class="text-caption text-text-tertiary hover:text-brand transition-colors">
 				← Settings
 			</NuxtLink>
 			<h1 class="mt-2 text-2xl font-semibold text-text-primary">System &amp; Updates</h1>
-			<p class="mt-1 text-text-secondary text-[0.9375rem]">
+			<p class="mt-1 text-text-secondary text-md">
 				Current Owlat version, container health, and in-app update history.
 			</p>
 		</div>
@@ -188,18 +188,18 @@ function formatDuration(start?: number, end?: number) {
 				<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider">Container health</h3>
 				<button
 					type="button"
-					class="text-[0.75rem] text-text-tertiary hover:text-brand transition-colors"
+					class="text-xs text-text-tertiary hover:text-brand transition-colors"
 					@click="fetchContainerHealth"
 				>
 					Refresh
 				</button>
 			</div>
 
-			<div v-if="!containerHealth" class="text-[0.8125rem] text-text-tertiary">
+			<div v-if="!containerHealth" class="text-caption text-text-tertiary">
 				Loading container status…
 			</div>
 
-			<table v-else-if="Array.isArray(containerHealth.containers)" class="w-full text-[0.8125rem]">
+			<table v-else-if="Array.isArray(containerHealth.containers)" class="w-full text-caption">
 				<thead>
 					<tr class="border-b border-border-subtle text-text-tertiary">
 						<th class="text-left py-2 font-medium">Service</th>
@@ -216,7 +216,7 @@ function formatDuration(start?: number, end?: number) {
 						<td class="py-2 text-text-primary font-medium">{{ c.service }}</td>
 						<td class="py-2">
 							<span
-								class="inline-flex items-center gap-1.5 text-[0.75rem] font-medium px-2 py-0.5 rounded-full"
+								class="inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full"
 								:class="c.state?.includes('running') ? 'bg-success/10 text-success' : 'bg-warning/10 text-warning'"
 							>
 								<span class="w-1.5 h-1.5 rounded-full" :class="c.state?.includes('running') ? 'bg-success' : 'bg-warning'" />
@@ -228,7 +228,7 @@ function formatDuration(start?: number, end?: number) {
 				</tbody>
 			</table>
 
-			<pre v-else class="text-[0.75rem] text-text-tertiary whitespace-pre-wrap break-words">{{ containerHealth.containers }}</pre>
+			<pre v-else class="text-xs text-text-tertiary whitespace-pre-wrap break-words">{{ containerHealth.containers }}</pre>
 		</div>
 
 		<!-- LLM spend card -->
@@ -258,7 +258,7 @@ function formatDuration(start?: number, end?: number) {
 					<h4 class="text-xs font-medium text-text-tertiary uppercase tracking-wider">Spend budget</h4>
 					<span
 						v-if="spendBudget.state !== 'ok'"
-						class="text-[0.6875rem] font-medium px-2 py-0.5 rounded-full"
+						class="text-2xs font-medium px-2 py-0.5 rounded-full"
 						:class="spendBudget.state === 'exceeded'
 							? 'bg-red-500/15 text-red-500'
 							: 'bg-amber-500/15 text-amber-500'"
@@ -297,11 +297,11 @@ function formatDuration(start?: number, end?: number) {
 							<span class="text-lg font-semibold text-brand">
 								v{{ latestRelease.latestVersion }}
 							</span>
-							<span class="text-[0.8125rem] text-text-tertiary">
+							<span class="text-caption text-text-tertiary">
 								available (current: v{{ currentVersion }})
 							</span>
 						</div>
-						<p class="mt-1 text-[0.8125rem] text-text-tertiary">
+						<p class="mt-1 text-caption text-text-tertiary">
 							Released {{ formatDateTime(latestRelease.publishedAt) }}
 						</p>
 					</template>
@@ -311,7 +311,7 @@ function formatDuration(start?: number, end?: number) {
 							<Icon name="lucide:check-circle-2" class="w-5 h-5 text-success" />
 							<span class="text-text-primary font-medium">You're on the latest version.</span>
 						</div>
-						<p class="mt-1 text-[0.8125rem] text-text-tertiary">
+						<p class="mt-1 text-caption text-text-tertiary">
 							Latest: v{{ latestRelease.latestVersion }} · Last checked {{ formatDateTime(latestRelease.checkedAt) }}
 						</p>
 					</template>
@@ -325,7 +325,7 @@ function formatDuration(start?: number, end?: number) {
 					<button
 						type="button"
 						:disabled="checking"
-						class="inline-flex items-center gap-2 px-4 py-2 text-[0.8125rem] font-medium text-text-primary bg-transparent border border-border-default rounded-lg transition-colors hover:border-brand hover:text-brand disabled:opacity-50"
+						class="inline-flex items-center gap-2 px-4 py-2 text-caption font-medium text-text-primary bg-transparent border border-border-default rounded-lg transition-colors hover:border-brand hover:text-brand disabled:opacity-50"
 						@click="checkNow"
 					>
 						<Icon v-if="checking" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
@@ -336,7 +336,7 @@ function formatDuration(start?: number, end?: number) {
 					<button
 						v-if="updateAvailable"
 						type="button"
-						class="inline-flex items-center gap-2 px-4 py-2 text-[0.8125rem] font-semibold text-text-inverse bg-brand rounded-lg transition-all hover:bg-brand-hover hover:-translate-y-px hover:shadow-brand-hover"
+						class="inline-flex items-center gap-2 px-4 py-2 text-caption font-semibold text-text-inverse bg-brand rounded-lg transition-all hover:bg-brand-hover hover:-translate-y-px hover:shadow-brand-hover"
 						@click="startUpdate"
 					>
 						<Icon name="lucide:download" class="w-4 h-4" />
@@ -350,13 +350,13 @@ function formatDuration(start?: number, end?: number) {
 				v-if="updateAvailable && latestRelease?.releaseNotes"
 				class="mt-4 pt-4 border-t border-border-subtle"
 			>
-				<summary class="text-[0.8125rem] font-medium text-text-primary cursor-pointer hover:text-brand">
+				<summary class="text-caption font-medium text-text-primary cursor-pointer hover:text-brand">
 					Release notes
 				</summary>
-				<pre class="mt-3 text-[0.8125rem] text-text-secondary whitespace-pre-wrap font-sans leading-relaxed">{{ latestRelease.releaseNotes }}</pre>
+				<pre class="mt-3 text-caption text-text-secondary whitespace-pre-wrap font-sans leading-relaxed">{{ latestRelease.releaseNotes }}</pre>
 			</details>
 
-			<div v-if="latestRelease?.error" class="mt-3 text-[0.75rem] text-warning">
+			<div v-if="latestRelease?.error" class="mt-3 text-xs text-warning">
 				Last check had an error: {{ latestRelease.error }}
 			</div>
 		</div>
@@ -369,7 +369,7 @@ function formatDuration(start?: number, end?: number) {
 			<h3 class="text-base font-semibold text-text-primary mb-2">
 				Confirm update to v{{ pendingTargetVersion }}
 			</h3>
-			<p class="text-[0.875rem] text-text-secondary mb-4">
+			<p class="text-sm text-text-secondary mb-4">
 				This will download the pinned compose template, pull new images, redeploy Convex functions, and recreate containers. The web app may restart mid-flight.
 				<br><br>
 				<strong>Back up before updating.</strong> Data volumes persist across normal updates, but a release with breaking schema changes may migrate or reset data — check the release notes first.
@@ -377,14 +377,14 @@ function formatDuration(start?: number, end?: number) {
 			<div class="flex gap-3">
 				<button
 					type="button"
-					class="px-4 py-2 text-[0.8125rem] font-semibold text-text-inverse bg-warning rounded-lg hover:bg-warning/90"
+					class="px-4 py-2 text-caption font-semibold text-text-inverse bg-warning rounded-lg hover:bg-warning/90"
 					@click="confirmUpdate"
 				>
 					Yes, update now
 				</button>
 				<button
 					type="button"
-					class="px-4 py-2 text-[0.8125rem] font-medium text-text-primary border border-border-default rounded-lg hover:border-brand"
+					class="px-4 py-2 text-caption font-medium text-text-primary border border-border-default rounded-lg hover:border-brand"
 					@click="cancelConfirm"
 				>
 					Cancel
@@ -407,7 +407,7 @@ function formatDuration(start?: number, end?: number) {
 				<Icon name="lucide:check-circle-2" class="w-6 h-6 text-success shrink-0" />
 				<div>
 					<h3 class="font-semibold text-text-primary">Update complete.</h3>
-					<p class="mt-1 text-[0.875rem] text-text-secondary">
+					<p class="mt-1 text-sm text-text-secondary">
 						Now running v{{ pendingTargetVersion }}. Reloading this page…
 					</p>
 				</div>
@@ -419,11 +419,11 @@ function formatDuration(start?: number, end?: number) {
 				<Icon name="lucide:x-circle" class="w-6 h-6 text-error shrink-0" />
 				<div class="flex-1 min-w-0">
 					<h3 class="font-semibold text-text-primary">Update failed</h3>
-					<p class="mt-1 text-[0.875rem] text-error break-words">{{ updateError }}</p>
-					<p class="mt-3 text-[0.8125rem] text-text-secondary">
+					<p class="mt-1 text-sm text-error break-words">{{ updateError }}</p>
+					<p class="mt-3 text-caption text-text-secondary">
 						See the
 						<a href="https://docs.owlat.app/developer/self-hosting-maintenance#recovering-from-a-failed-update" target="_blank" rel="noopener" class="text-brand underline">recovery guide</a>
-						or run <code class="font-mono text-[0.75rem] bg-bg-surface px-1.5 py-0.5 rounded">owlat doctor</code> on the host.
+						or run <code class="font-mono text-xs bg-bg-surface px-1.5 py-0.5 rounded">owlat doctor</code> on the host.
 					</p>
 				</div>
 			</div>
@@ -433,11 +433,11 @@ function formatDuration(start?: number, end?: number) {
 		<div class="rounded-xl border border-border-default bg-bg-elevated p-6">
 			<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider mb-4">Update history</h3>
 
-			<div v-if="!history || history.length === 0" class="text-[0.8125rem] text-text-tertiary">
+			<div v-if="!history || history.length === 0" class="text-caption text-text-tertiary">
 				No updates applied yet.
 			</div>
 
-			<table v-else class="w-full text-[0.8125rem]">
+			<table v-else class="w-full text-caption">
 				<thead>
 					<tr class="border-b border-border-subtle text-text-tertiary">
 						<th class="text-left py-2 font-medium">From → To</th>
@@ -459,7 +459,7 @@ function formatDuration(start?: number, end?: number) {
 						<td class="py-2 text-text-secondary">{{ formatDuration(row.startedAt, row.finishedAt) }}</td>
 						<td class="py-2">
 							<span
-								class="inline-flex items-center gap-1.5 text-[0.75rem] font-medium px-2 py-0.5 rounded-full"
+								class="inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full"
 								:class="{
 									'bg-success/10 text-success': row.status === 'success',
 									'bg-error/10 text-error': row.status === 'failed',
