@@ -28,6 +28,14 @@ import type { Id } from '@owlat/api/dataModel';
 import { partitionTodayMessages, formatAutoFiledLine } from '~/utils/postboxTodayPartition';
 import { replyQueueHeadline, type ReplyQueueItem } from '~/utils/postboxReplyQueue';
 
+/**
+ * Client detection that is both SSR-safe (no `window` on the server) and
+ * test-friendly (happy-dom provides `window`), unlike Nuxt's compile-time
+ * `import.meta.client` which is undefined under vitest — the same pattern as
+ * usePostboxOfflineCache.
+ */
+const IS_CLIENT = typeof window !== 'undefined';
+
 const props = defineProps<{
 	mailboxId: Id<'mailboxes'>;
 	/** Deep-link seed (/dashboard/postbox/inbox/<id> in Today mode): open this
@@ -98,6 +106,47 @@ const autoFiledLine = computed(() => formatAutoFiledLine(partition.value.autoFil
 const FOR_YOU_CAP = 5;
 const { items: forYouItems, count: forYouCount } = usePostboxReplyQueue(mailboxIdRef);
 const forYouVisible = computed(() => forYouItems.value.slice(0, FOR_YOU_CAP));
+
+// Deep link target for the desktop titlebar unread pill
+// (/dashboard/postbox/inbox#postbox-for-you). The section renders only once the
+// reply-queue feed resolves, so scroll to it when it actually mounts — a watch
+// on the count + hash rather than a fire-and-forget scroll at navigation time,
+// which would no-op on a cold load where the section is not in the DOM yet.
+//
+// One-shot: the deep link is CONSUMED once. We arm a pending flag when the hash
+// is present (at mount, or when a later navigation re-sets it — e.g. re-clicking
+// the pill from another section) and disarm it after the first successful
+// scroll. Otherwise a live reply-queue count change (a new item arrives, or the
+// user answers one) would re-fire scrollIntoView and yank the viewport back to
+// the For-you section mid-read — live subscriptions must never move the user.
+const route = useRoute();
+const router = useRouter();
+const forYouSection = ref<HTMLElement | null>(null);
+const pendingForYouScroll = ref(route.hash === '#postbox-for-you');
+watch(
+	() => route.hash,
+	(hash) => {
+		if (hash === '#postbox-for-you') pendingForYouScroll.value = true;
+	}
+);
+watch(
+	[forYouCount, pendingForYouScroll],
+	([count, pending]) => {
+		if (!IS_CLIENT || !pending || count <= 0) return;
+		void nextTick(() => {
+			const el = forYouSection.value;
+			if (!el) return;
+			const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+			el.scrollIntoView({ block: 'start', behavior: reduced ? 'auto' : 'smooth' });
+			pendingForYouScroll.value = false;
+			// Strip the consumed fragment so re-clicking the titlebar pill (which
+			// navigates to the same URL) re-sets the hash → re-arms the flag →
+			// re-scrolls. Without this the second click is a no-op duplicate nav.
+			void router.replace({ query: route.query, hash: '' });
+		});
+	},
+	{ immediate: true }
+);
 
 /** One muted line of context under the ask: who it is + what they wrote. */
 function forYouDetail(item: ReplyQueueItem): string {
@@ -184,7 +233,7 @@ function closeOverlay() {
 			<PostboxDailyBrief :mailbox-id="mailboxId" />
 
 			<!-- FOR YOU: what the agent queued for the owner, why in one muted line. -->
-			<section v-if="forYouCount > 0" id="postbox-for-you" aria-label="For you">
+			<section v-if="forYouCount > 0" id="postbox-for-you" ref="forYouSection" aria-label="For you">
 				<h2
 					class="text-[11px] font-semibold uppercase tracking-wider text-text-tertiary tabular-nums"
 				>

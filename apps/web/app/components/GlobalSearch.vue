@@ -2,18 +2,10 @@
 /**
  * Header search entry point. The search + command experience itself lives in the
  * app-wide `AppCommandPalette` (Cmd/Ctrl-K, mounted once in the dashboard
- * layout); this button just opens it. Kept as a component so the desktop + mobile
- * headers keep a visible affordance and their existing `openSearch()` call sites
- * (mobile search button) keep working.
+ * layout); this button just opens it via the shared `useCommandPalette` control
+ * (web only — desktop uses the titlebar pill instead).
  */
-const openSearch = () => {
-	if (import.meta.client) {
-		window.dispatchEvent(new Event('owlat:command-palette-open'));
-	}
-};
-
-// Preserved for the mobile header button (`globalSearchRef?.openSearch()`).
-defineExpose({ openSearch });
+const { open: openSearch } = useCommandPalette();
 </script>
 
 <template>
