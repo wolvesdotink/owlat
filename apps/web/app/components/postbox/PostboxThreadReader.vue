@@ -823,6 +823,9 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 				:latest-outbound-id="latestOutboundId"
 				class="mt-2"
 			/>
+			<!-- Team-inbox collision safety: who replied last (shared inboxes only;
+			     renders nothing for a personal mailbox). -->
+			<PostboxTeamReplyBadge :message-id="messageId" class="mt-2" />
 			<div v-if="threadLabels.length > 0" class="mt-2 flex flex-wrap items-center gap-1.5">
 				<span
 					v-for="labelId in threadLabels"

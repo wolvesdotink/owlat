@@ -115,10 +115,7 @@ const coachDraftText = computed(() => {
 // rewritten draft replaces the body without injecting markup. Advisory: only
 // runs when the user clicks Apply on a shown revision.
 function applyRevisedBody(text: string) {
-	const escaped = text
-		.replace(/&/g, '&amp;')
-		.replace(/</g, '&lt;')
-		.replace(/>/g, '&gt;');
+	const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 	bodyHtml.value = escaped
 		.split(/\n/)
 		.map((line) => (line.length ? line : '<br>'))
@@ -189,6 +186,25 @@ const sending = ref(false);
 const scheduleOpen = ref(false);
 const { showToast } = useToast();
 
+// Team-inbox collision safety: warn once if a teammate replied to this thread
+// after this reply was opened (shared inboxes only; inert on personal mail and
+// fresh composes). Reactive via mailbox.latestReplyState — no presence infra.
+const { isStale, staleReplyByName } = usePostboxStaleReplyGuard(() => props.inReplyToMessageId);
+const staleConfirmOpen = ref(false);
+let staleAcknowledged = false;
+let pendingStaleOpts: { scheduledSendAt?: number } | undefined;
+const staleReplyWarning = computed(() =>
+	staleReplyByName.value
+		? `${staleReplyByName.value} replied to this thread after you opened it. Send your reply anyway?`
+		: 'Someone on your team replied to this thread after you opened it. Send your reply anyway?'
+);
+
+function confirmStaleSend() {
+	staleConfirmOpen.value = false;
+	staleAcknowledged = true;
+	void handleSend(pendingStaleOpts);
+}
+
 async function handleSend(opts?: { scheduledSendAt?: number }) {
 	// Explain *why* Send is inert while an upload is in flight (Send is disabled
 	// via `canSend`, and Cmd/Ctrl+Enter routes here too) so the user waits rather
@@ -205,6 +221,14 @@ async function handleSend(opts?: { scheduledSendAt?: number }) {
 		mentionsAttachment(subject.value, bodyHtml.value) &&
 		!window.confirm('Your message mentions an attachment, but none is attached. Send anyway?')
 	) {
+		return;
+	}
+	// A teammate replied to this shared-inbox thread after this reply opened —
+	// confirm before sending a duplicate. Asked once; `confirmStaleSend` retries
+	// with `staleAcknowledged` set so the user isn't blocked.
+	if (isStale.value && !staleAcknowledged) {
+		pendingStaleOpts = opts;
+		staleConfirmOpen.value = true;
 		return;
 	}
 	sending.value = true;
@@ -235,19 +259,18 @@ async function handleDiscard() {
 // SAME draft id — no content loss. The live field values ride along so the
 // popup seeds instantly instead of waiting for hydration. `focusBody` is
 // exposed so the reader's r/a keys can re-focus an already-open inline box.
-const { promoting, basicEditor, focusBody, handlePromote } =
-	usePostboxComposerInline({
-		inline: props.inline ?? false,
-		flush,
-		snapshot: () => ({
-			toAddresses: [...toAddresses.value],
-			ccAddresses: [...ccAddresses.value],
-			bccAddresses: [...bccAddresses.value],
-			subject: subject.value,
-			bodyHtml: bodyHtml.value,
-		}),
-		emitPromote: (payload) => emit('promote', payload),
-	});
+const { promoting, basicEditor, focusBody, handlePromote } = usePostboxComposerInline({
+	inline: props.inline ?? false,
+	flush,
+	snapshot: () => ({
+		toAddresses: [...toAddresses.value],
+		ccAddresses: [...ccAddresses.value],
+		bccAddresses: [...bccAddresses.value],
+		subject: subject.value,
+		bodyHtml: bodyHtml.value,
+	}),
+	emitPromote: (payload) => emit('promote', payload),
+});
 defineExpose({ focusBody });
 
 const unscheduling = ref(false);
@@ -264,7 +287,7 @@ async function handleUnschedule() {
 }
 
 const scheduledLabel = computed(() =>
-	scheduledSendAt.value ? formatDateTime(scheduledSendAt.value) : '',
+	scheduledSendAt.value ? formatDateTime(scheduledSendAt.value) : ''
 );
 
 const lastSavedLabel = computed(() => {
@@ -294,19 +317,18 @@ function onPaste(event: ClipboardEvent) {
 // bound on the composer root (capture) so each stacked popup composer only
 // handles its own keys.
 const rootEl = ref<HTMLElement | null>(null);
-const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } =
-	usePostboxComposerKeys({
-		rootEl,
-		canSend,
-		sending,
-		isScheduled,
-		scheduleOpen,
-		onSend: () => void handleSend(),
-		onSchedule: () => {
-			scheduleOpen.value = true;
-		},
-		onMinimize: () => emit('minimize'),
-	});
+const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostboxComposerKeys({
+	rootEl,
+	canSend,
+	sending,
+	isScheduled,
+	scheduleOpen,
+	onSend: () => void handleSend(),
+	onSchedule: () => {
+		scheduleOpen.value = true;
+	},
+	onMinimize: () => emit('minimize'),
+});
 </script>
 
 <template>
@@ -323,11 +345,11 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } =
 			v-if="dragActive"
 			class="absolute inset-0 z-10 flex items-center justify-center bg-brand/10 border-2 border-dashed border-brand rounded pointer-events-none"
 		>
-			<span class="text-sm font-medium text-brand">
-				Drop to attach · drop in text to embed
-			</span>
+			<span class="text-sm font-medium text-brand"> Drop to attach · drop in text to embed </span>
 		</div>
-		<header class="flex items-center justify-between px-3 py-2 bg-bg-surface border-b border-border-subtle">
+		<header
+			class="flex items-center justify-between px-3 py-2 bg-bg-surface border-b border-border-subtle"
+		>
 			<span class="text-sm font-semibold">
 				{{ subject || 'New message' }}
 			</span>
@@ -390,11 +412,7 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } =
 				:disabled="unscheduling"
 				@click="handleUnschedule"
 			>
-				<Icon
-					v-if="unscheduling"
-					name="lucide:loader-2"
-					class="w-3.5 h-3.5 mr-1 animate-spin"
-				/>
+				<Icon v-if="unscheduling" name="lucide:loader-2" class="w-3.5 h-3.5 mr-1 animate-spin" />
 				Unschedule to edit
 			</button>
 		</div>
@@ -489,6 +507,21 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } =
 			:open="scheduleOpen"
 			@update:open="scheduleOpen = $event"
 			@confirm="(ts) => handleSend({ scheduledSendAt: ts })"
+		/>
+		<!-- Team-inbox collision safety: a teammate replied to this thread after
+		     this reply was opened. Confirm before sending a duplicate. -->
+		<UiConfirmationDialog
+			:open="staleConfirmOpen"
+			title="A teammate already replied"
+			:description="staleReplyWarning"
+			confirm-text="Send anyway"
+			cancel-text="Keep editing"
+			@update:open="
+				(v: boolean) => {
+					if (!v) staleConfirmOpen = false;
+				}
+			"
+			@confirm="confirmStaleSend"
 		/>
 	</div>
 </template>
