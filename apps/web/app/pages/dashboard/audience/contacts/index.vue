@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import type { ContextMenuItem } from '@owlat/ui/components/ui/ContextMenu.vue';
 import { languageOptionsWithUnset, formatLanguageLabel } from '~/data/languageOptions';
 import { isValidEmail } from '~/utils/validation';
 
@@ -126,6 +127,42 @@ const toggleSelectAll = () => {
 const toggleContactSelection = (contactId: Id<'contacts'>) => {
 	bulkSelection.toggleSelection(contactId);
 };
+
+// Right-click row menu — reuses the row's existing affordances (open + select)
+// plus a native copy. No new mutation path: one action source, two entry points.
+async function copyEmail(email: string) {
+	try {
+		await navigator.clipboard.writeText(email);
+		showToast('Email address copied', 'success');
+	} catch {
+		showToast('Could not copy to clipboard', 'error');
+	}
+}
+
+function contactContextItems(contact: { _id: Id<'contacts'>; email: string }): ContextMenuItem[] {
+	const selected = bulkSelection.selectedIds.value.has(contact._id);
+	return [
+		{
+			id: 'open',
+			label: 'Open contact',
+			icon: 'lucide:arrow-right',
+			run: () => void router.push(`/dashboard/audience/contacts/${contact._id}`),
+		},
+		{
+			id: 'copy-email',
+			label: 'Copy email address',
+			icon: 'lucide:copy',
+			run: () => void copyEmail(contact.email),
+		},
+		{
+			id: 'select',
+			label: selected ? 'Deselect' : 'Select',
+			icon: selected ? 'lucide:square' : 'lucide:check-square',
+			separatorBefore: true,
+			run: () => toggleContactSelection(contact._id),
+		},
+	];
+}
 
 // ============================================
 // Add Contact Modal
@@ -645,12 +682,18 @@ onUnmounted(() => {
 								</tr>
 							</thead>
 							<tbody>
-								<tr
+								<UiContextMenu
 									v-for="contact in contacts"
 									:key="contact._id"
+									:items="contactContextItems(contact)"
+									v-slot="{ onContextmenu, onKeydown }"
+								>
+								<tr
 									class="border-b border-border-subtle last:border-b-0 hover:bg-bg-surface transition-colors cursor-pointer"
 									:class="{ 'bg-brand/5': bulkSelection.selectedIds.value.has(contact._id) }"
 									@click="router.push(`/dashboard/audience/contacts/${contact._id}`)"
+									@contextmenu="onContextmenu"
+									@keydown="onKeydown"
 								>
 									<td class="w-12 px-4 py-4">
 										<button
@@ -685,6 +728,7 @@ onUnmounted(() => {
 										}}</span>
 									</td>
 								</tr>
+								</UiContextMenu>
 							</tbody>
 						</table>
 					</div>
