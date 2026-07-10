@@ -20,7 +20,7 @@
 
 import nodemailer from 'nodemailer';
 import type { Transporter } from 'nodemailer';
-import { getOptional, getRequired } from '../../env';
+import { getBoolean, getOptional, getRequired } from '../../env';
 import { withTimeout } from '../../inputGuards';
 import {
 	EmailErrorCode,
@@ -45,6 +45,14 @@ const SMTP_SEND_TIMEOUT_MESSAGE = 'SMTP relay send timed out';
 /** Default submission port when `SMTP_RELAY_PORT` is unset (STARTTLS on 587). */
 const DEFAULT_SMTP_PORT = 587;
 
+/**
+ * Bound the pre-acceptance phase (TCP connect + server greeting) well under
+ * `SMTP_SEND_TIMEOUT_MS` so an unreachable relay fails as a nodemailer `CONN`
+ * error — which is retryable (nothing reached the wire) — rather than tripping
+ * the ambiguous outer `withTimeout` that has to be treated as terminal.
+ */
+const SMTP_CONNECTION_TIMEOUT_MS = 15_000;
+
 let cachedTransport: Transporter | null = null;
 
 /**
@@ -61,13 +69,20 @@ function getTransport(): Transporter {
 	if (!Number.isFinite(port) || port <= 0) {
 		throw new Error(`Invalid SMTP_RELAY_PORT: ${portRaw}`);
 	}
-	const secureRaw = getOptional('SMTP_RELAY_SECURE')?.toLowerCase();
-	const secure =
-		secureRaw === 'true' || secureRaw === '1' || secureRaw === 'yes' || secureRaw === 'on';
+	const secure = getBoolean('SMTP_RELAY_SECURE');
 	cachedTransport = nodemailer.createTransport({
 		host,
 		port,
 		secure,
+		// On the STARTTLS path (secure=false) demand an upgrade to TLS: without
+		// this nodemailer treats STARTTLS as opportunistic, so a relay that omits
+		// it — or an active MITM doing STARTTLS stripping — silently downgrades to
+		// cleartext and the AUTH credentials + message body go over the wire in the
+		// clear. `requireTLS` makes the send fail closed instead.
+		requireTLS: !secure,
+		// Fail a merely-unreachable relay fast and retryably (see the constant).
+		connectionTimeout: SMTP_CONNECTION_TIMEOUT_MS,
+		greetingTimeout: SMTP_CONNECTION_TIMEOUT_MS,
 		auth: {
 			user: getRequired('SMTP_RELAY_USERNAME'),
 			pass: getRequired('SMTP_RELAY_PASSWORD'),
@@ -87,6 +102,21 @@ function isAmbiguousSmtpTimeout(code: string | undefined, message: string): bool
 	if (upperCode === 'ETIMEDOUT') return true;
 	const lower = message.toLowerCase();
 	return lower.includes('timed out') || lower.includes('timeout');
+}
+
+/**
+ * Does the (lowercased) error/reply text name a rate-limit / throttling
+ * condition? Single matcher shared by both the reply-code path
+ * (`smtpReplyCodeToErrorCode`) and the text-fallback path (`categorizeError`)
+ * so a 4xx "rate exceeded" classifies identically no matter which reaches it.
+ */
+function mentionsRateLimit(lowerMessage: string): boolean {
+	return (
+		lowerMessage.includes('rate limit') ||
+		lowerMessage.includes('rate-limit') ||
+		lowerMessage.includes('too many') ||
+		lowerMessage.includes('throttl')
+	);
 }
 
 export const smtpSendProvider: SendProviderModule<'smtp'> = {
@@ -133,10 +163,23 @@ export const smtpSendProvider: SendProviderModule<'smtp'> = {
 			// nodemailer errors carry a string `code` (e.g. `EAUTH`, `ECONNECTION`)
 			// and, for SMTP-level rejections, a numeric `responseCode` (the reply
 			// code). Pull both off defensively — they are untyped on the base Error.
-			const errorObj = error as { code?: unknown; responseCode?: unknown };
+			const errorObj = error as { code?: unknown; responseCode?: unknown; command?: unknown };
 			const code = typeof errorObj.code === 'string' ? errorObj.code : undefined;
+			const command = typeof errorObj.command === 'string' ? errorObj.command : undefined;
 			const responseCode =
 				typeof errorObj.responseCode === 'number' ? errorObj.responseCode : undefined;
+
+			// A pre-acceptance connection failure — nodemailer tags TCP-connect and
+			// greeting errors (incl. connectionTimeout/greetingTimeout) with
+			// `command === 'CONN'`. Nothing reached the wire, so unlike a
+			// post-dispatch timeout this is unambiguously safe to retry.
+			if (command === 'CONN') {
+				return {
+					success: false,
+					errorMessage,
+					errorCode: EmailErrorCode.SERVER_ERROR,
+				};
+			}
 
 			// A post-dispatch timeout is AMBIGUOUS: the relay may already have
 			// accepted and queued the message. No idempotency surface ⇒ TERMINAL.
@@ -173,12 +216,7 @@ export const smtpSendProvider: SendProviderModule<'smtp'> = {
 
 		// Rate limiting is usually surfaced as a 4xx with wording, before a reply
 		// code is parsed — catch it by text too.
-		if (
-			lower.includes('rate limit') ||
-			lower.includes('rate-limit') ||
-			lower.includes('too many') ||
-			lower.includes('throttl')
-		) {
+		if (mentionsRateLimit(lower)) {
 			return EmailErrorCode.RATE_LIMIT;
 		}
 		// nodemailer transport/connection failures — never reached acceptance, so
@@ -231,7 +269,7 @@ export function smtpReplyCodeToErrorCode(
 	// 4xx — transient. 421/450/451/452 mean "try again later"; classify as a
 	// retryable server error, unless the text names a rate limit.
 	if (code >= 400 && code < 500) {
-		if (lower.includes('rate') || lower.includes('too many') || lower.includes('throttl')) {
+		if (mentionsRateLimit(lower)) {
 			return EmailErrorCode.RATE_LIMIT;
 		}
 		return EmailErrorCode.SERVER_ERROR;
@@ -255,9 +293,4 @@ export function smtpReplyCodeToErrorCode(
 	}
 
 	return undefined;
-}
-
-// Exported for tests that need to bypass the lazy-init cache between cases.
-export function _resetSmtpTransportCacheForTests(): void {
-	cachedTransport = null;
 }
