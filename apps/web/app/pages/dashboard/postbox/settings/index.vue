@@ -410,6 +410,12 @@ async function handleDelete() {
 									: 'bg-bg-surface text-text-tertiary'
 							"
 						>{{ mb.status }}</span>
+						<NuxtLink
+							v-if="mb.scope === 'shared'"
+							:to="`/dashboard/postbox/settings/members/${mb._id}`"
+							class="text-xs px-2 py-0.5 rounded bg-brand-subtle text-brand hover:underline"
+							>Team · manage</NuxtLink
+						>
 						<button
 							type="button"
 							class="p-1.5 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface"
