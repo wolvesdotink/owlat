@@ -17,6 +17,7 @@ import authConfig from './config';
 import { isDevDeployment } from '../devShortcuts/_guard';
 import {
 	generateInvitationEmailHtml,
+	generateInboxInviteEmailHtml,
 	generatePasswordResetEmailHtml,
 	generateChangeEmailVerificationHtml,
 	generateNewEmailVerificationHtml,
@@ -257,18 +258,37 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 					// Build accept URL - BetterAuth uses the invitation ID
 					const acceptUrl = `${siteUrl}/invite/accept?id=${encodeURIComponent(invitation.id)}`;
 
-					const html = generateInvitationEmailHtml(
-						org.name,
-						inviter.user.name || inviter.user.email,
-						inviter.user.email,
-						acceptUrl,
-						invitation.role
+					// If this invitee was pre-added to a team inbox (reserved before the
+					// invite was issued), name the inbox in the email and waiting
+					// membership; otherwise send the generic org invite.
+					const inboxContext = await ctx.runQuery(
+						internal.mail.pendingMailbox.inboxInviteContextForEmail,
+						{ organizationId: org.id, email }
 					);
+
+					const inviterDisplayName = inviter.user.name || inviter.user.email;
+					const html = inboxContext
+						? generateInboxInviteEmailHtml(
+								org.name,
+								inviterDisplayName,
+								inviter.user.email,
+								inboxContext.inboxAddress,
+								acceptUrl
+							)
+						: generateInvitationEmailHtml(
+								org.name,
+								inviterDisplayName,
+								inviter.user.email,
+								acceptUrl,
+								invitation.role
+							);
 
 					await sendViaMta({
 						to: email,
 						from: `Owlat <noreply@${fromDomain}>`,
-						subject: `You're invited to join ${org.name} on Owlat`,
+						subject: inboxContext
+							? `${inviterDisplayName} invited you to ${inboxContext.inboxAddress}`
+							: `You're invited to join ${org.name} on Owlat`,
 						html,
 					});
 				},
