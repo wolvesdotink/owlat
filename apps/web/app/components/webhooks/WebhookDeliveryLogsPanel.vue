@@ -40,14 +40,15 @@ const emit = defineEmits<{
 	sendTest: [];
 }>();
 
+const STATUS_COLORS: Record<string, string> = {
+	success: 'bg-success/10 text-success',
+	failed: 'bg-error/10 text-error',
+	retrying: 'bg-warning/10 text-warning',
+	pending: 'bg-brand-subtle text-brand',
+};
+
 function statusColor(status: string) {
-	switch (status) {
-		case 'success': return 'bg-success/10 text-success';
-		case 'failed': return 'bg-error/10 text-error';
-		case 'retrying': return 'bg-warning/10 text-warning';
-		case 'pending': return 'bg-brand-subtle text-brand';
-		default: return 'bg-bg-surface text-text-tertiary';
-	}
+	return STATUS_COLORS[status] ?? 'bg-bg-surface text-text-tertiary';
 }
 
 function formatDuration(ms: number | undefined) {
