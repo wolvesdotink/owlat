@@ -19,31 +19,21 @@
  * only a non-reversible hash of the key, never a slice of the raw secret.
  */
 
-import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import type { LanguageModel } from 'ai';
-import { hostedCacheKey, memoizeClient } from './clientCache';
+import { type OpenAICompatibleClient, openAICompatibleClient } from './clientCache';
 import type { LanguageProviderAdapter, ProviderClientConfig } from './types';
 
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 
-type OpenRouterClient = ReturnType<typeof createOpenAICompatible>;
-
-const clientCache = new Map<string, OpenRouterClient>();
+const clientCache = new Map<string, OpenAICompatibleClient>();
 
 /** The endpoint to reach: an explicit override, else OpenRouter's hosted URL. */
 function openrouterBaseUrl(cfg: ProviderClientConfig): string {
 	return cfg.baseUrl ?? OPENROUTER_BASE_URL;
 }
 
-function openrouterClient(cfg: ProviderClientConfig): OpenRouterClient {
-	const baseURL = openrouterBaseUrl(cfg);
-	return memoizeClient(clientCache, hostedCacheKey({ apiKey: cfg.apiKey, baseUrl: baseURL }), () =>
-		createOpenAICompatible({
-			name: 'openrouter',
-			baseURL,
-			...(cfg.apiKey ? { apiKey: cfg.apiKey } : {}),
-		})
-	);
+function openrouterClient(cfg: ProviderClientConfig): OpenAICompatibleClient {
+	return openAICompatibleClient(clientCache, 'openrouter', openrouterBaseUrl(cfg), cfg.apiKey);
 }
 
 /**
