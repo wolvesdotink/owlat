@@ -26,6 +26,40 @@ export interface WorkspaceConfig {
 	addedAt: number;
 	/** Epoch ms when the workspace was last made active. */
 	lastActiveAt: number;
+	/**
+	 * Curated identity accent (hex) that paints this workspace's desktop frame,
+	 * titlebar wash, sidebar tint and active-nav highlight. Assigned round-robin
+	 * from {@link WORKSPACE_ACCENTS} when the workspace is added; user-editable
+	 * from the workspace switcher's accent picker.
+	 */
+	accentColor: string;
+}
+
+/**
+ * Curated workspace identity accents (hex). Assigned round-robin as workspaces
+ * are added so each connected instance gets a distinct, on-brand frame color.
+ * Order: moss, terracotta, slate, plum, gold, graphite.
+ */
+export const WORKSPACE_ACCENTS = [
+	'#7a8c5a', // moss
+	'#c4785a', // terracotta (matches the FF brand hue)
+	'#5a7a9b', // slate
+	'#8c5a7a', // plum
+	'#b8935a', // gold
+	'#3d3d3d', // graphite
+] as const;
+
+/** Fallback accent when none has been assigned yet (the terracotta brand hue). */
+export const DEFAULT_WORKSPACE_ACCENT = WORKSPACE_ACCENTS[1];
+
+/**
+ * Round-robin pick from the curated accents for the Nth added workspace.
+ * Handles negative and out-of-range indices defensively.
+ */
+export function pickAccentColor(index: number): string {
+	const len = WORKSPACE_ACCENTS.length;
+	const i = ((Math.trunc(index) % len) + len) % len;
+	return WORKSPACE_ACCENTS[i] ?? DEFAULT_WORKSPACE_ACCENT;
 }
 
 /** Shape persisted to `workspaces.json` via tauri-plugin-store. */

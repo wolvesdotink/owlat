@@ -22,8 +22,10 @@ import {
 	type InstanceInfo,
 	type WorkspaceConfig,
 	type WorkspaceStoreShape,
+	pickAccentColor,
 	workspaceTokenRef,
 } from '~/lib/desktop/workspaceTypes';
+import { applyWorkspaceAccent } from '~/lib/desktop/workspaceAccent';
 
 // ---- module-level reactive state (shared across all callers) ----
 const workspaces = ref<WorkspaceConfig[]>([]);
@@ -71,6 +73,17 @@ export async function loadWorkspaces(): Promise<void> {
 	const state = (await loadWorkspaceStore()) as unknown as WorkspaceStoreShape;
 	workspaces.value = Array.isArray(state.workspaces) ? state.workspaces : [];
 	activeId.value = state.activeWorkspaceId ?? workspaces.value[0]?.id ?? null;
+
+	// Backfill identity accents for workspaces persisted before this field
+	// existed, round-robin by position so each still gets a distinct color.
+	let backfilled = false;
+	workspaces.value.forEach((w, i) => {
+		if (!w.accentColor) {
+			w.accentColor = pickAccentColor(i);
+			backfilled = true;
+		}
+	});
+	if (backfilled) await persistStore();
 
 	const active = workspaces.value.find((w) => w.id === activeId.value) ?? null;
 	setActiveWorkspace(active);
@@ -181,6 +194,7 @@ export async function completeConnection(params: { ott: string; state: string })
 		tokenRef,
 		addedAt: now,
 		lastActiveAt: now,
+		accentColor: pickAccentColor(workspaces.value.filter((w) => w.id !== id).length),
 	};
 	workspaces.value = [...workspaces.value.filter((w) => w.id !== id), ws];
 	activeId.value = id;
@@ -196,6 +210,21 @@ async function switchTo(id: string): Promise<void> {
 	activeId.value = id;
 	await persistStore();
 	window.location.assign('/dashboard');
+}
+
+/**
+ * Recolor a workspace's identity accent. Repaints the live chrome immediately
+ * when the recolored workspace is the active one (no reload needed) and
+ * persists the choice so it survives restart.
+ */
+async function setWorkspaceAccent(id: string, color: string): Promise<void> {
+	const ws = workspaces.value.find((w) => w.id === id);
+	if (!ws || ws.accentColor === color) return;
+	ws.accentColor = color;
+	if (id === activeId.value && typeof document !== 'undefined') {
+		applyWorkspaceAccent(document.documentElement, color);
+	}
+	await persistStore();
 }
 
 async function removeWorkspace(id: string): Promise<void> {
@@ -232,6 +261,7 @@ export function useDesktopWorkspaces() {
 		completeConnection,
 		switchTo,
 		removeWorkspace,
+		setWorkspaceAccent,
 		signOutWorkspace: removeWorkspace,
 	};
 }
