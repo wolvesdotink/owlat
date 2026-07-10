@@ -31,6 +31,21 @@ const dismissed = computed(() => progress.value?.dismissed ?? false);
 // same gate the send path itself uses (`isDeliveryConfigured`).
 const canSend = computed(() => progress.value?.sendPathReady ?? false);
 
+// Backups pointer (platform-admin only): a fresh install finishing with no
+// backup plan is a real gap, so surface "Set up backups" here until the admin
+// records the daily schedule. getBackupState is platform-admin gated on the
+// server, so only subscribe once we know this viewer is an admin.
+const { data: isPlatformAdmin } = useConvexQuery(
+	api.platformAdmin.platformAdmin.isPlatformAdmin,
+	() => ({})
+);
+const { data: backupState } = useConvexQuery(api.backups.getBackupState, () =>
+	isPlatformAdmin.value === true ? {} : 'skip'
+);
+const showBackupsStep = computed(
+	() => isPlatformAdmin.value === true && backupState.value?.isScheduleEnabled !== true
+);
+
 const { run: dismissOnboarding } = useBackendOperation(api.auth.onboarding.dismiss, {
 	label: 'Dismiss onboarding',
 });
@@ -301,6 +316,30 @@ const shouldShow = computed(() => {
 								Open docs ↗
 							</span>
 						</a>
+
+						<!-- 5. Set up backups (admin only, until a schedule is recorded) -->
+						<NuxtLink
+							v-if="showBackupsStep"
+							to="/dashboard/settings/backups"
+							class="group flex flex-col gap-1 rounded-lg border border-border-default bg-bg-elevated p-3 hover:border-brand/40 hover:-translate-y-px transition-all"
+						>
+							<div class="flex items-center gap-2">
+								<span
+									class="w-5 h-5 rounded-full bg-brand/15 text-brand text-xs font-semibold flex items-center justify-center"
+									>5</span
+								>
+								<span class="text-sm font-medium text-text-primary">Set up backups</span>
+							</div>
+							<span class="text-xs text-text-tertiary pl-7"
+								>Nothing is backed up until you turn it on — do this before you store real
+								data</span
+							>
+							<span
+								class="text-xs text-brand font-medium group-hover:translate-x-0.5 transition-transform mt-1 pl-7"
+							>
+								Set up backups →
+							</span>
+						</NuxtLink>
 					</div>
 				</div>
 			</div>
