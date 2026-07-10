@@ -62,6 +62,23 @@ export const deliveryTables = {
 		lastCalculatedAt: v.number(),
 	}).index('by_scope_domain_period_shard', ['scope', 'domain', 'periodStart', 'shardKey']),
 
+	// Delivery snapshots — one per-day roll-up of the org's rolling sending
+	// reputation, written by the daily `write delivery snapshot` cron
+	// (analytics/reputationSnapshots.ts). Gives the Delivery health page a
+	// history to draw its 30-day delivery-rate trend from; `summarize` derives
+	// only the *current* rolling window, so without these persisted points there
+	// is no time series to chart. Single-deployment = single org, so no org key
+	// (mirrors `warmingState`). The cron prunes rows older than ~90 days, keeping
+	// this table bounded to a small, chartable window.
+	deliverySnapshots: defineTable({
+		periodStart: v.number(), // UTC start-of-day bucket (epoch ms) — one row per day
+		deliveryRate: v.number(), // delivered / sent over the rolling window (0..1)
+		bounceRate: v.number(), // bounced / sent (0..1)
+		complaintRate: v.number(), // complaints / sent (0..1)
+		sentCount: v.number(), // total sent in the rolling window at snapshot time
+		createdAt: v.number(),
+	}).index('by_period', ['periodStart']),
+
 	// Content Scan Results - audit trail for pre-send content scanning
 	contentScanResults: defineTable({
 		resourceType: v.union(
@@ -91,8 +108,7 @@ export const deliveryTables = {
 		threats: v.optional(v.array(v.string())),
 		checkedAt: v.number(),
 		expiresAt: v.number(), // 24h for clean, 1h for flagged
-	})
-		.index('by_url_hash', ['urlHash']),
+	}).index('by_url_hash', ['urlHash']),
 
 	// Provider Routes - email provider routing configuration
 	// Determines which email provider (mta, ses, resend) to use per message type
@@ -120,17 +136,12 @@ export const deliveryTables = {
 		// Timestamps
 		createdAt: v.number(),
 		updatedAt: v.number(),
-	})
-		.index('by_message_type', ['messageType']),
+	}).index('by_message_type', ['messageType']),
 
 	// Provider Health - tracks email provider health for failover decisions
 	providerHealth: defineTable({
 		providerType: v.string(), // 'mta' | 'ses' | 'resend'
-		status: v.union(
-			v.literal('healthy'),
-			v.literal('degraded'),
-			v.literal('down')
-		),
+		status: v.union(v.literal('healthy'), v.literal('degraded'), v.literal('down')),
 		// Rolling metrics
 		recentSuccesses: v.number(),
 		recentFailures: v.number(),
@@ -144,21 +155,23 @@ export const deliveryTables = {
 
 	// IP warming state — cached from MTA's /ip-reputation endpoint every 5 minutes
 	warmingState: defineTable({
-		phase: v.string(),              // overall: 'ramp' | 'plateau' | 'graduated'
-		totalDailyCap: v.number(),      // sum across campaign IPs
+		phase: v.string(), // overall: 'ramp' | 'plateau' | 'graduated'
+		totalDailyCap: v.number(), // sum across campaign IPs
 		totalSentToday: v.number(),
 		ipCount: v.number(),
-		ips: v.array(v.object({
-			ip: v.string(),
-			phase: v.string(),
-			currentDay: v.number(),
-			dailyCap: v.number(),
-			sentToday: v.number(),
-			bounceRate: v.number(),
-			deferralRate: v.number(),
-			pool: v.string(),
-			active: v.boolean(),
-		})),
+		ips: v.array(
+			v.object({
+				ip: v.string(),
+				phase: v.string(),
+				currentDay: v.number(),
+				dailyCap: v.number(),
+				sentToday: v.number(),
+				bounceRate: v.number(),
+				deferralRate: v.number(),
+				pool: v.string(),
+				active: v.boolean(),
+			})
+		),
 		syncedAt: v.number(),
 	}),
 };

@@ -31,6 +31,7 @@ export type OrganizationDeletionTable =
 	| 'emailSends'
 	| 'agentActions'
 	| 'contentScanResults'
+	| 'deliverySnapshots'
 	| 'threadPresence'
 	| 'threadReads'
 	| 'inboxAssignmentNotices'
@@ -161,6 +162,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('emailSends'),
 	v.literal('agentActions'),
 	v.literal('contentScanResults'),
+	v.literal('deliverySnapshots'),
 	v.literal('threadPresence'),
 	v.literal('threadReads'),
 	v.literal('inboxAssignmentNotices'),

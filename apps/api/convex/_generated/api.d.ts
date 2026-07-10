@@ -46,6 +46,7 @@ import type * as analytics_llmUsage from "../analytics/llmUsage.js";
 import type * as analytics_qualityMetrics from "../analytics/qualityMetrics.js";
 import type * as analytics_reporter from "../analytics/reporter.js";
 import type * as analytics_reputationQueries from "../analytics/reputationQueries.js";
+import type * as analytics_reputationSnapshots from "../analytics/reputationSnapshots.js";
 import type * as analytics_sendingReputation from "../analytics/sendingReputation.js";
 import type * as analytics_spendBudget from "../analytics/spendBudget.js";
 import type * as assistant_conversations from "../assistant/conversations.js";
@@ -596,6 +597,7 @@ declare const fullApi: ApiFromModules<{
   "analytics/qualityMetrics": typeof analytics_qualityMetrics;
   "analytics/reporter": typeof analytics_reporter;
   "analytics/reputationQueries": typeof analytics_reputationQueries;
+  "analytics/reputationSnapshots": typeof analytics_reputationSnapshots;
   "analytics/sendingReputation": typeof analytics_sendingReputation;
   "analytics/spendBudget": typeof analytics_spendBudget;
   "assistant/conversations": typeof assistant_conversations;

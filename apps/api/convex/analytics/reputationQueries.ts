@@ -2,7 +2,12 @@ import { v } from 'convex/values';
 import { authedQuery } from '../lib/authedFunctions';
 import { getUserIdFromSession } from '../lib/sessionOrganization';
 import { getDailySendVolume } from '../lib/sendingLimits';
-import { summarize, summarizeDomains, type ReputationSummary } from './sendingReputation';
+import {
+	summarize,
+	summarizeDomains,
+	type ReputationSummary,
+	type RiskLevel,
+} from './sendingReputation';
 
 /** The reputation card's UI shape, or `null` when there's no in-window activity. */
 type ReputationDto = {
@@ -53,9 +58,7 @@ export const getSendingOverview = authedQuery({
 		await getUserIdFromSession(ctx);
 
 		// Get instance settings
-		const settings = await ctx.db
-			.query('instanceSettings')
-			.first();
+		const settings = await ctx.db.query('instanceSettings').first();
 
 		if (!settings) {
 			return null;
@@ -65,10 +68,7 @@ export const getSendingOverview = authedQuery({
 		const warmingState = await ctx.db.query('warmingState').first();
 
 		// Compute volume tracking
-		const volume = getDailySendVolume(
-			settings.dailySendCount ?? 0,
-			settings.dailySendCountResetAt,
-		);
+		const volume = getDailySendVolume(settings.dailySendCount ?? 0, settings.dailySendCountResetAt);
 
 		// Rolling 30-day org reputation, derived on read through the single
 		// summarizer, then shaped for the card (`null` on no in-window
@@ -79,14 +79,14 @@ export const getSendingOverview = authedQuery({
 		return {
 			warming: warmingState
 				? {
-					phase: warmingState.phase,
-					totalDailyCap: warmingState.totalDailyCap,
-					totalSentToday: warmingState.totalSentToday,
-					remainingToday: Math.max(0, warmingState.totalDailyCap - warmingState.totalSentToday),
-					ipCount: warmingState.ipCount,
-					ips: warmingState.ips,
-					syncedAt: warmingState.syncedAt,
-				}
+						phase: warmingState.phase,
+						totalDailyCap: warmingState.totalDailyCap,
+						totalSentToday: warmingState.totalSentToday,
+						remainingToday: Math.max(0, warmingState.totalDailyCap - warmingState.totalSentToday),
+						ipCount: warmingState.ipCount,
+						ips: warmingState.ips,
+						syncedAt: warmingState.syncedAt,
+					}
 				: null,
 			volume,
 			reputation,
@@ -157,9 +157,10 @@ export const getCampaignSendEstimate = authedQuery({
 			remaining -= projectedDailyCap;
 		}
 
-		const message = days >= 30
-			? 'Campaign will take approximately 30+ days based on current warmup progress.'
-			: `Based on your IP warmup progress, this campaign will take approximately ${days} day${days === 1 ? '' : 's'} to complete.`;
+		const message =
+			days >= 30
+				? 'Campaign will take approximately 30+ days based on current warmup progress.'
+				: `Based on your IP warmup progress, this campaign will take approximately ${days} day${days === 1 ? '' : 's'} to complete.`;
 
 		return {
 			totalDailyCap,
@@ -184,9 +185,7 @@ export const getDomainReputations = authedQuery({
 		const summaries = await summarizeDomains(ctx.db);
 
 		// Join verification status from the domains table.
-		const domains = await ctx.db
-			.query('domains')
-			.collect(); // bounded: org-curated sending domains, low-tens at most
+		const domains = await ctx.db.query('domains').collect(); // bounded: org-curated sending domains, low-tens at most
 
 		const domainStatusMap = new Map<string, string>();
 		for (const d of domains) {
@@ -208,5 +207,106 @@ export const getDomainReputations = authedQuery({
 		results.sort((a, b) => b.totalSent - a.totalSent);
 
 		return results;
+	},
+});
+
+/** Per-record email-auth verification state for a sending domain. */
+export type DomainAuthState = { spf: boolean; dkim: boolean; dmarc: boolean };
+
+/** One row of the Delivery health page's domain table. */
+export interface DeliveryDomainRow {
+	domain: string;
+	status: 'registering' | 'pending' | 'verified' | 'failed';
+	auth: DomainAuthState;
+	/** Record names still failing/missing verification (e.g. ['DKIM','DMARC']). */
+	missing: string[];
+	sent30d: number;
+	/**
+	 * Rolling 30-day reputation risk for this domain, or `null` when it has no
+	 * in-window sending activity (so the health dot can read neutral instead of a
+	 * misleading green). This drives the row's health dot; verification drives the
+	 * chip — two distinct signals, not the same status twice.
+	 */
+	riskLevel: RiskLevel | null;
+	/** Rolling bounce rate (0–1), `null` when the domain has no in-window activity. */
+	bounceRate: number | null;
+	/** Rolling complaint rate (0–1), `null` when the domain has no in-window activity. */
+	complaintRate: number | null;
+}
+
+/**
+ * Whether a domain's SPF / DKIM / DMARC records are each verified, read from the
+ * domain's `verificationResults`. DKIM is an array (one entry per selector); it
+ * counts as verified only when every selector is present and verified. Pure —
+ * unit-testable, and the single place the "is this record good?" rule lives.
+ */
+export function domainAuthState(
+	results:
+		| {
+				spf?: { verified: boolean } | undefined;
+				dkim?: Array<{ verified: boolean }> | undefined;
+				dmarc?: { verified: boolean } | undefined;
+		  }
+		| undefined
+): DomainAuthState {
+	const spf = results?.spf?.verified === true;
+	const dkimEntries = results?.dkim;
+	const dkim = Array.isArray(dkimEntries)
+		? dkimEntries.length > 0 && dkimEntries.every((r) => r.verified)
+		: false;
+	const dmarc = results?.dmarc?.verified === true;
+	return { spf, dkim, dmarc };
+}
+
+/** The record names in `auth` that are not yet verified, in display order. */
+export function missingAuthRecords(auth: DomainAuthState): string[] {
+	const missing: string[] = [];
+	if (!auth.spf) missing.push('SPF');
+	if (!auth.dkim) missing.push('DKIM');
+	if (!auth.dmarc) missing.push('DMARC');
+	return missing;
+}
+
+/**
+ * The Delivery health page's domain table: every configured sending domain (not
+ * just the ones with in-window activity) joined with its email-auth
+ * verification summary and its 30-day send volume. This is what lets the page
+ * show "SPF · DKIM · DMARC ✓" or name the specific missing record with a fix
+ * link, alongside health + volume — one table replacing the old split between
+ * the domain reputation table and the separate verification view.
+ */
+// all-members: domain names, verification state and coarse 30d volumes/rates are org-wide operational status, member-visible — no credentials or per-recipient data.
+export const getDeliveryDomainTable = authedQuery({
+	args: {},
+	handler: async (ctx): Promise<DeliveryDomainRow[]> => {
+		await getUserIdFromSession(ctx);
+
+		const domains = await ctx.db.query('domains').collect(); // bounded: org-curated sending domains, low-tens at most
+		const summaries = await summarizeDomains(ctx.db);
+		// Keep the whole per-domain reputation summary, not just the volume, so the
+		// row can show a health dot from real risk plus bounce/complaint detail.
+		const summaryByDomain = new Map<string, (typeof summaries)[number]>();
+		for (const s of summaries) summaryByDomain.set(s.domain, s);
+
+		const rows: DeliveryDomainRow[] = domains.map((d) => {
+			const auth = domainAuthState(d.verificationResults);
+			const summary = summaryByDomain.get(d.domain);
+			return {
+				domain: d.domain,
+				status: d.status,
+				auth,
+				missing: missingAuthRecords(auth),
+				sent30d: summary?.totalSent ?? 0,
+				// `summarizeDomains` only returns domains with in-window activity, so a
+				// missing entry means no reputation signal yet → null, not zero.
+				riskLevel: summary?.riskLevel ?? null,
+				bounceRate: summary?.bounceRate ?? null,
+				complaintRate: summary?.complaintRate ?? null,
+			};
+		});
+
+		// Most-active domains first, then alphabetically for a stable order.
+		rows.sort((a, b) => b.sent30d - a.sent30d || a.domain.localeCompare(b.domain));
+		return rows;
 	},
 });
