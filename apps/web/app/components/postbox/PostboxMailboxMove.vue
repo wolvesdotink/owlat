@@ -23,8 +23,6 @@ import type { Id } from '@owlat/api/dataModel';
 
 type MoveMxCheck = {
 	verified: boolean;
-	expectedHost: string;
-	records: Array<{ priority: number; exchange: string }>;
 	checkedAt: number;
 } | null;
 
@@ -46,7 +44,7 @@ const { copy, isCopied } = useCopyToClipboard();
 const data = computed(() => (status.value?.eligible ? status.value : null));
 const move = computed(() => data.value?.move ?? null);
 const stage = computed(() => move.value?.stage ?? null);
-const paused = computed(() => move.value?.paused ?? false);
+const paused = computed(() => move.value?.isPaused ?? false);
 
 const showSection = computed(
 	() => flagEnabled.value && (isLoading.value || data.value !== null || error.value !== null)
@@ -55,7 +53,7 @@ const showSection = computed(
 const address = computed(() => data.value?.address ?? '');
 const domain = computed(() => data.value?.domain ?? '');
 const mxHost = computed(() => data.value?.mxHost ?? null);
-const mxPriority = computed(() => data.value?.mxPriority ?? 10);
+const mxPriority = computed(() => data.value?.mxPriority);
 const canProvisionSelf = computed(() => data.value?.canProvisionSelf ?? false);
 const awaitingAdmin = computed(() => move.value?.awaitingAdminProvision ?? false);
 
@@ -88,7 +86,7 @@ const cancelMove = useBackendOperation(api.mail.mailboxMove.cancel, {
 	label: 'Cancel move',
 	inlineTarget: opError,
 });
-const checkMx = useBackendOperation(api.mail.mailboxMove.checkCutoverMx, {
+const checkMx = useBackendOperation(api.mail.mailboxMoveActions.checkCutoverMx, {
 	label: 'Check MX',
 	type: 'action',
 });
@@ -111,12 +109,18 @@ async function onCheckMx() {
 }
 async function onArchive() {
 	opError.value = null;
+	// A stale "points at Owlat" verdict must not survive into the archived state.
+	mxCheck.value = null;
 	await archiveMove.run({});
 }
 async function onCancel() {
 	opError.value = null;
 	const res = await cancelMove.run({});
-	if (res !== undefined) showCancel.value = false;
+	if (res !== undefined) {
+		// Clear the verdict so a fresh move doesn't resurface the old result.
+		mxCheck.value = null;
+		showCancel.value = false;
+	}
 }
 </script>
 
