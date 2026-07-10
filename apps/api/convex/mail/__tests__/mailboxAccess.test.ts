@@ -20,30 +20,46 @@ import { requireMailboxAccess } from '../permissions';
 import { provisionMailbox } from '../mailbox';
 import { modules, seedMailbox } from './helpers';
 
-const sessionMocks = vi.hoisted(() => ({
-	getBetterAuthSessionWithRole: vi.fn(),
+// One mutable hoisted session drives BOTH the `authedMutation`/`authedQuery`
+// wrapper floors (`getMutationContext` / `requireOrgMember`) AND the in-handler
+// mailbox gate (`getBetterAuthSessionWithRole`). Mocking only the latter would
+// leave the wrapper floor calling the real `requireOrgMember`, which throws an
+// unauthenticated error before the owner-floor gate ever runs — making the
+// endpoint-level owner-floor evidence vacuous. `setSession` flips all three.
+const sessionMock = vi.hoisted(() => ({
+	userId: 'test-user',
+	role: 'owner' as 'owner' | 'admin' | 'editor' | null,
+	orgId: 'org-1',
 }));
 
 vi.mock('../../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../../lib/sessionOrganization');
 	return {
 		...actual,
-		requireOrgMember: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
+		requireOrgMember: vi.fn(async () => {
+			if (sessionMock.role === null) throw new Error('Not authenticated');
+			return { userId: sessionMock.userId, role: sessionMock.role };
+		}),
+		getMutationContext: vi.fn(async () => {
+			if (sessionMock.role === null) throw new Error('Not authenticated');
+			return { userId: sessionMock.userId, role: sessionMock.role };
+		}),
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
-		getBetterAuthSessionWithRole: sessionMocks.getBetterAuthSessionWithRole,
+		getBetterAuthSessionWithRole: vi.fn(async () => {
+			if (sessionMock.role === null) return null;
+			return {
+				userId: sessionMock.userId,
+				role: sessionMock.role,
+				activeOrganizationId: sessionMock.orgId,
+			};
+		}),
 	};
 });
 
 function setSession(userId: string, role: 'owner' | 'admin' | 'editor' | null, orgId = 'org-1') {
-	if (role === null) {
-		sessionMocks.getBetterAuthSessionWithRole.mockResolvedValue(null);
-		return;
-	}
-	sessionMocks.getBetterAuthSessionWithRole.mockResolvedValue({
-		userId,
-		role,
-		activeOrganizationId: orgId,
-	});
+	sessionMock.userId = userId;
+	sessionMock.role = role;
+	sessionMock.orgId = orgId;
 }
 
 async function addMember(
@@ -156,7 +172,7 @@ describe('owner-grade endpoints enforce the owner floor for shared-mailbox membe
 		setSession('user-B', 'editor');
 		await expect(
 			t.mutation(api.mail.appPasswords.generate, { mailboxId: id, label: 'imap' })
-		).rejects.toThrow();
+		).rejects.toThrow('Mailbox not accessible');
 	});
 
 	it('aliases.create refuses a plain member', async () => {
@@ -165,7 +181,7 @@ describe('owner-grade endpoints enforce the owner floor for shared-mailbox membe
 		setSession('user-B', 'editor');
 		await expect(
 			t.mutation(api.mail.aliases.create, { mailboxId: id, alias: 'sales@hinterland.camp' })
-		).rejects.toThrow();
+		).rejects.toThrow('Mailbox not accessible');
 	});
 
 	it('aliases.create is allowed for an owner-role member', async () => {
