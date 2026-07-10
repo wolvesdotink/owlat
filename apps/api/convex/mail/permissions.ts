@@ -11,18 +11,36 @@
  * mapping can dispatch on the failure mode (no_session / mailbox_missing
  * / mailbox_inactive / forbidden).
  *
- * Policy (preserved from the eleven pre-deepening clones):
+ * Policy (preserved from the eleven pre-deepening clones, extended for
+ * shared mailboxes):
  *   - Session must exist with a role.
  *   - Mailbox must exist and `status === 'active'` — read paths refuse on
  *     suspended/deleted alongside writes.
- *   - Caller must be 'owner' / 'admin' (acting on behalf of any user in
- *     the org) or `mailbox.userId === s.userId`.
+ *   - Caller must be one of:
+ *       · org 'owner' / 'admin' (acting on behalf of any user in the org),
+ *       · `mailbox.userId === s.userId` (the mailbox's own user — always
+ *         owner-level access), or
+ *       · a member of the mailbox via a `mailboxMembers` row whose `role`
+ *         meets the requested `minRole` (this is what grants a teammate
+ *         access to a *shared* inbox; org membership alone grants nothing).
+ *
+ * Personal mailboxes carry only a single implicit 'owner' membership for
+ * their own `userId`, which the `mailbox.userId === s.userId` clause already
+ * covers — so this leaves personal-mailbox behaviour bit-for-bit unchanged.
  *
  * See `CONTEXT.md` § Postbox mailbox for terminology.
  */
 
 import type { Doc, Id } from '../_generated/dataModel';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
+
+/** Membership role on a mailbox. `owner` is a superset of `member`. */
+export type MailboxMemberRole = 'owner' | 'member';
+
+/** Does `role` satisfy the required `minRole`? `owner` satisfies both. */
+function roleSatisfies(role: MailboxMemberRole, minRole: MailboxMemberRole): boolean {
+	return minRole === 'member' || role === 'owner';
+}
 
 export type MailboxAccessOutcome =
 	| { ok: true; userId: string; mailbox: Doc<'mailboxes'> }
@@ -33,17 +51,30 @@ export type MailboxAccessOutcome =
 
 export async function loadOwnedMailbox(
 	ctx: Parameters<typeof getBetterAuthSessionWithRole>[0],
-	mailboxId: Id<'mailboxes'>
+	mailboxId: Id<'mailboxes'>,
+	minRole: MailboxMemberRole = 'member'
 ): Promise<MailboxAccessOutcome> {
 	const s = await getBetterAuthSessionWithRole(ctx);
 	if (!s || !s.role) return { ok: false, reason: 'no_session' };
 	const mailbox = await ctx.db.get(mailboxId);
 	if (!mailbox) return { ok: false, reason: 'mailbox_missing' };
 	if (mailbox.status !== 'active') return { ok: false, reason: 'mailbox_inactive' };
-	if (s.role !== 'owner' && s.role !== 'admin' && mailbox.userId !== s.userId) {
-		return { ok: false, reason: 'forbidden' };
+	// Org owner/admin act on behalf of any user in the org, and the mailbox's
+	// own user always has owner-level access — both bypass the membership read.
+	if (s.role === 'owner' || s.role === 'admin' || mailbox.userId === s.userId) {
+		return { ok: true, userId: s.userId, mailbox };
 	}
-	return { ok: true, userId: s.userId, mailbox };
+	// Everyone else needs an explicit membership row meeting `minRole`. This is
+	// the only path that reaches a shared mailbox; personal mailboxes never
+	// carry non-owner members, so their behaviour is unchanged.
+	const membership = await ctx.db
+		.query('mailboxMembers')
+		.withIndex('by_mailbox_user', (q) => q.eq('mailboxId', mailboxId).eq('authUserId', s.userId))
+		.unique();
+	if (membership && roleSatisfies(membership.role, minRole)) {
+		return { ok: true, userId: s.userId, mailbox };
+	}
+	return { ok: false, reason: 'forbidden' };
 }
 
 /**
