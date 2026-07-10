@@ -310,61 +310,55 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 			</div>
 
 			<!-- Empty State (no team) -->
-			<div
+			<UiEmptyState
 				v-else-if="!hasActiveOrganization"
-				class="card flex flex-col items-center justify-center py-16 text-center px-6"
-			>
-				<UiIconBox icon="lucide:zap" size="xl" variant="surface" rounded="full" class="mb-4" />
-				<p class="text-text-secondary font-medium">No team selected</p>
-				<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-					Create or select a team to start creating automations.
-				</p>
-			</div>
+				icon="lucide:zap"
+				title="No team selected"
+				description="Create or select a team to start creating automations."
+			/>
 
 			<!-- Empty State (no automations) -->
-			<div
+			<UiEmptyState
 				v-else-if="
 					!isLoading &&
 					(!filteredAutomations || filteredAutomations.length === 0) &&
 					!debouncedSearch
 				"
-				class="card flex flex-col items-center justify-center py-16 text-center px-6"
+				icon="lucide:zap"
+				title="No automations yet"
+				description="Create your first automation to send emails automatically when a contact signs up, subscribes, or triggers an event."
 			>
-				<UiIconBox icon="lucide:zap" size="xl" variant="surface" rounded="full" class="mb-4" />
-				<p class="text-text-secondary font-medium">No automations yet</p>
-				<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-					Create your first automation to start sending emails automatically based on triggers.
-				</p>
-				<UiButton size="sm" class="mt-6" @click="handleNewAutomation">
-					<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
-					Create Automation
-				</UiButton>
-			</div>
+				<template #action>
+					<UiButton @click="handleNewAutomation">
+						<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
+						Create Automation
+					</UiButton>
+				</template>
+			</UiEmptyState>
 
 			<!-- Empty State (no search results) -->
-			<div
+			<UiEmptyState
 				v-else-if="
 					!isLoading &&
 					(!filteredAutomations || filteredAutomations.length === 0) &&
 					debouncedSearch
 				"
-				class="card flex flex-col items-center justify-center py-16 text-center px-6"
+				icon="lucide:search"
+				title="No results found"
+				:description="`No automations match &quot;${debouncedSearch}&quot;. Try a different search term.`"
 			>
-				<UiIconBox icon="lucide:search" size="xl" variant="surface" rounded="full" class="mb-4" />
-				<p class="text-text-secondary font-medium">No results found</p>
-				<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-					No automations match "{{ debouncedSearch }}". Try a different search term.
-				</p>
-				<button
-					class="btn btn-secondary mt-6"
-					@click="
-						searchQuery = '';
-						debouncedSearch = '';
-					"
-				>
-					Clear search
-				</button>
-			</div>
+				<template #action>
+					<UiButton
+						variant="secondary"
+						@click="
+							searchQuery = '';
+							debouncedSearch = '';
+						"
+					>
+						Clear search
+					</UiButton>
+				</template>
+			</UiEmptyState>
 
 			<!-- Automations Table -->
 			<div v-else class="card p-0 overflow-hidden">

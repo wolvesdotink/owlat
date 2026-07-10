@@ -219,16 +219,12 @@ const getReasonLabel = (reason: string) => {
 		</div>
 
 		<!-- No Organization State -->
-		<div
+		<UiEmptyState
 			v-else-if="!hasActiveOrganization"
-			class="card flex flex-col items-center justify-center py-16 text-center px-6"
-		>
-			<UiIconBox icon="lucide:ban" size="xl" variant="surface" rounded="full" class="mb-4" />
-			<p class="text-text-secondary font-medium">No organization selected</p>
-			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-				Create or select an organization to manage your suppressions.
-			</p>
-		</div>
+			icon="lucide:ban"
+			title="No organization selected"
+			description="Create or select an organization to manage your suppressions."
+		/>
 
 		<!-- Content -->
 		<div v-else class="space-y-6">
@@ -306,33 +302,27 @@ const getReasonLabel = (reason: string) => {
 			</div>
 
 			<!-- Empty State -->
-			<div
+			<UiEmptyState
 				v-if="blockedEmailsData && blockedEmailsData.length === 0"
-				class="card flex flex-col items-center justify-center py-16 text-center px-6"
+				icon="lucide:ban"
+				title="No suppressions"
+				description="Nothing is suppressed. Addresses are added automatically when they bounce or when someone marks a send as spam."
 			>
-				<UiIconBox icon="lucide:ban" size="xl" variant="surface" rounded="full" class="mb-4" />
-				<p class="text-text-secondary font-medium">No suppressions</p>
-				<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-					Nothing is suppressed. Addresses are added automatically when they bounce or when someone
-					marks a send as spam.
-				</p>
-				<button class="btn btn-primary gap-2 mt-4" @click="addModal.open()">
-					<Icon name="lucide:plus" class="w-4 h-4" />
-					Add suppression
-				</button>
-			</div>
+				<template #action>
+					<UiButton @click="addModal.open()">
+						<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
+						Add suppression
+					</UiButton>
+				</template>
+			</UiEmptyState>
 
 			<!-- No Search Results -->
-			<div
+			<UiEmptyState
 				v-else-if="filteredBlockedEmails.length === 0 && searchQuery.trim()"
-				class="card flex flex-col items-center justify-center py-16 text-center px-6"
-			>
-				<UiIconBox icon="lucide:search" size="xl" variant="surface" rounded="full" class="mb-4" />
-				<p class="text-text-secondary font-medium">No results found</p>
-				<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-					No suppressions match "{{ searchQuery }}". Try a different search term.
-				</p>
-			</div>
+				icon="lucide:search"
+				title="No results found"
+				:description="`No suppressions match &quot;${searchQuery}&quot;. Try a different search term.`"
+			/>
 
 			<!-- Blocked Emails List -->
 			<div v-else-if="filteredBlockedEmails.length > 0" class="card p-0 overflow-hidden">
