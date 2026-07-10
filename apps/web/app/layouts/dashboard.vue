@@ -813,7 +813,7 @@ const sidebarDesktopClass = computed(() => {
  * untouched.
  */
 .has-desktop-chrome {
-	--titlebar-h: 38px;
+	--titlebar-h: 44px;
 	padding-top: var(--titlebar-h);
 }
 .has-desktop-chrome aside {

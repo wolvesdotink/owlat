@@ -1,12 +1,15 @@
 use tauri::{command, AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
 /// Sets up close-to-tray behavior: hides the window instead of quitting.
-/// On macOS, this also hides the dock icon when the window is not visible.
+/// On macOS, this also hides the dock icon when the window is not visible, and
+/// keeps the traffic lights centered in the titlebar strip across resizes
+/// (AppKit re-lays the buttons out to their defaults on window resize — see
+/// `apply_traffic_light_layout`).
 pub fn setup_close_handler(app: &AppHandle) {
     let app_handle = app.clone();
     if let Some(window) = app_handle.get_webview_window("main") {
-        window.on_window_event(move |event| {
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+        window.on_window_event(move |event| match event {
+            tauri::WindowEvent::CloseRequested { api, .. } => {
                 // Prevent the window from being destroyed
                 api.prevent_close();
                 // Hide the window instead
@@ -14,6 +17,13 @@ pub fn setup_close_handler(app: &AppHandle) {
                     let _ = win.hide();
                 }
             }
+            #[cfg(target_os = "macos")]
+            tauri::WindowEvent::Resized(_) => {
+                if let Some(win) = app_handle.get_webview_window("main") {
+                    apply_traffic_light_layout(&win);
+                }
+            }
+            _ => {}
         });
     }
 }
@@ -70,6 +80,81 @@ pub fn open_compose_window(app: &AppHandle, path: &str) {
 #[command]
 pub fn open_compose(app: AppHandle, path: Option<String>) {
     open_compose_window(&app, &path.unwrap_or_else(|| "/compose".to_string()));
+}
+
+/// The webview titlebar strip's height, in points — MUST match `--titlebar-h`
+/// (apps/web layouts/dashboard.vue) so the native traffic lights center in it.
+#[cfg(target_os = "macos")]
+const TITLEBAR_HEIGHT: f64 = 44.0;
+/// Leading inset of the close button (the other two follow at AppKit's own
+/// spacing).
+#[cfg(target_os = "macos")]
+const TRAFFIC_LIGHTS_X: f64 = 19.0;
+
+/// Center the native traffic lights in the webview's titlebar strip.
+///
+/// This deliberately replaces tauri.conf.json's `trafficLightPosition`: tao
+/// implements that by nudging the buttons once at creation and again on the
+/// content view's `drawRect:` — but a WKWebView-backed window essentially never
+/// redraws that view, and the window-state plugin's restore (any resize, zoom,
+/// or theme pass) makes AppKit re-layout the titlebar back to its defaults. Net
+/// effect: whether the lights sat where configured was a race. We own the
+/// layout instead — same technique (grow the titlebar container to the strip
+/// height, then place the buttons), but *centered* by measurement rather than
+/// offset by magic numbers, re-applied from `main.rs` on every `Resized` event.
+///
+/// No-op in fullscreen, where macOS owns the buttons; leaving fullscreen fires
+/// a resize, which re-applies the layout.
+#[cfg(target_os = "macos")]
+pub fn apply_traffic_light_layout(window: &WebviewWindow) {
+    use objc2_app_kit::{NSWindow, NSWindowButton};
+
+    if window.is_fullscreen().unwrap_or(false) {
+        return;
+    }
+    let Ok(ptr) = window.ns_window() else {
+        return;
+    };
+    if ptr.is_null() {
+        return;
+    }
+    // SAFETY: same contract as `apply_traffic_lights` below.
+    let ns_window: &NSWindow = unsafe { &*(ptr as *const NSWindow) };
+
+    // SAFETY: `standardWindowButton` returns the window-owned buttons;
+    // `superview` walks to the titlebar container view that hosts them.
+    let (Some(close), Some(miniaturize), Some(zoom)) = (unsafe {
+        (
+            ns_window.standardWindowButton(NSWindowButton::CloseButton),
+            ns_window.standardWindowButton(NSWindowButton::MiniaturizeButton),
+            ns_window.standardWindowButton(NSWindowButton::ZoomButton),
+        )
+    }) else {
+        return;
+    };
+    let Some(container) = (unsafe { close.superview() }).and_then(|v| unsafe { v.superview() })
+    else {
+        return;
+    };
+
+    // Grow the titlebar container to the strip height, pinned to the top edge
+    // (AppKit view coords are bottom-up).
+    let window_height = ns_window.frame().size.height;
+    let mut container_rect = container.frame();
+    container_rect.size.height = TITLEBAR_HEIGHT;
+    container_rect.origin.y = window_height - TITLEBAR_HEIGHT;
+    container.setFrame(container_rect);
+
+    // Center each button vertically in the strip; keep AppKit's own spacing.
+    let button_height = close.frame().size.height;
+    let spacing = miniaturize.frame().origin.x - close.frame().origin.x;
+    let button_y = (TITLEBAR_HEIGHT - button_height) / 2.0;
+    for (i, button) in [&close, &miniaturize, &zoom].into_iter().enumerate() {
+        let mut rect = button.frame();
+        rect.origin.x = TRAFFIC_LIGHTS_X + (i as f64) * spacing;
+        rect.origin.y = button_y;
+        button.setFrameOrigin(rect.origin);
+    }
 }
 
 /// Width of the native identity-frame ring, in points — mirrors the retired

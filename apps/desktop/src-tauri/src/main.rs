@@ -82,6 +82,13 @@ fn main() {
             let app_menu = menu::build_menu(app.handle())?;
             #[cfg(target_os = "macos")]
             app.set_menu(app_menu)?;
+            // macOS: center the traffic lights in the titlebar strip once the
+            // window-state plugin has restored geometry; resizes re-apply via
+            // the window-event handler above.
+            #[cfg(target_os = "macos")]
+            if let Some(w) = app.get_webview_window("main") {
+                window::apply_traffic_light_layout(&w);
+            }
             #[cfg(not(target_os = "macos"))]
             if let Some(w) = app.get_webview_window("main") {
                 let _ = w.set_decorations(false);
