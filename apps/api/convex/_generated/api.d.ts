@@ -318,6 +318,7 @@ import type * as lib_llm_dispatch from "../lib/llm/dispatch.js";
 import type * as lib_llm_pricing from "../lib/llm/pricing.js";
 import type * as lib_llm_promptCache from "../lib/llm/promptCache.js";
 import type * as lib_llmProvider from "../lib/llmProvider.js";
+import type * as lib_llmProviders_anthropic from "../lib/llmProviders/anthropic.js";
 import type * as lib_llmProviders_clientCache from "../lib/llmProviders/clientCache.js";
 import type * as lib_llmProviders_index from "../lib/llmProviders/index.js";
 import type * as lib_llmProviders_openai from "../lib/llmProviders/openai.js";
@@ -882,6 +883,7 @@ declare const fullApi: ApiFromModules<{
   "lib/llm/pricing": typeof lib_llm_pricing;
   "lib/llm/promptCache": typeof lib_llm_promptCache;
   "lib/llmProvider": typeof lib_llmProvider;
+  "lib/llmProviders/anthropic": typeof lib_llmProviders_anthropic;
   "lib/llmProviders/clientCache": typeof lib_llmProviders_clientCache;
   "lib/llmProviders/index": typeof lib_llmProviders_index;
   "lib/llmProviders/openai": typeof lib_llmProviders_openai;
