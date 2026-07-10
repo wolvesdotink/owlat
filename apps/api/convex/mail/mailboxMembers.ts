@@ -24,12 +24,13 @@
  */
 
 import { v } from 'convex/values';
+import type { MutationCtx } from '../_generated/server';
 import { authedMutation, authedQuery } from '../lib/authedFunctions';
 import type { Id } from '../_generated/dataModel';
 import { requireAdminContext, getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
-import { throwForbidden, throwInvalidInput, throwAlreadyExists } from '../_utils/errors';
+import { throwForbidden, throwInvalidInput } from '../_utils/errors';
 import { requireMailboxAccess } from './permissions';
-import { provisionMailbox, canonicalAddress } from './mailbox';
+import { createProvisionedMailbox, canonicalAddress } from './mailbox';
 
 /** Resolve a member's display fields from their `userProfiles` row. */
 async function loadMemberProfile(
@@ -45,6 +46,43 @@ async function loadMemberProfile(
 		email: row?.email ?? null,
 		image: row?.image ?? null,
 	};
+}
+
+/**
+ * Assert `authUserId` is a live member of this deployment's organization — a
+ * non-deleted `userProfiles` row exists for them (single-org-per-deployment, so
+ * a profile row IS org membership; see project memory "Single Org Per
+ * Deployment"). The write-side floor under the members picker: without it,
+ * `createShared` / `addMember` / `transferOwnership` would accept an arbitrary
+ * user-id string, and `transferOwnership` would point canonical ownership at a
+ * nonexistent id — bricking the inbox for its owner. `requireMailboxAccess`
+ * already blocks cross-org READS; this blocks bogus WRITES.
+ */
+async function assertOrgMemberUser(ctx: MutationCtx, authUserId: string): Promise<void> {
+	const profile = await ctx.db
+		.query('userProfiles')
+		.withIndex('by_auth_user_id', (q) => q.eq('authUserId', authUserId))
+		.first();
+	if (!profile || profile.deletedAt !== undefined) {
+		throwInvalidInput('That person is not a member of your organization.');
+	}
+}
+
+/**
+ * Assert the address sits on a VERIFIED instance sending domain. A team inbox is
+ * hosted on a domain this deployment controls; mirrors the UI's `listVerified`
+ * restriction on the server so the "created on a verified domain" guarantee
+ * holds regardless of caller (and can never route a hosted inbox onto a domain
+ * the instance hasn't proven it owns).
+ */
+async function assertVerifiedDomain(ctx: MutationCtx, domain: string): Promise<void> {
+	const record = await ctx.db
+		.query('domains')
+		.withIndex('by_domain', (q) => q.eq('domain', domain))
+		.first();
+	if (!record || record.status !== 'verified') {
+		throwInvalidInput('Choose an address on one of your verified domains.');
+	}
 }
 
 /**
@@ -70,29 +108,26 @@ export const createShared = authedMutation({
 		if (!domain) {
 			throwInvalidInput('Enter a valid email address for the team inbox.');
 		}
+		await assertVerifiedDomain(ctx, domain);
 
-		const existing = await ctx.db
-			.query('mailboxes')
-			.withIndex('by_address', (q) => q.eq('address', address))
-			.first();
-		if (existing) {
-			throwAlreadyExists(`A mailbox for ${address} already exists.`);
+		// Validate every initial member (deduped, creator excluded) is a real org
+		// member up front, so a bogus id fails the whole create rather than
+		// silently seeding a dangling membership row.
+		const memberIds = [...new Set(args.memberUserIds)].filter((id) => id !== session.userId);
+		for (const memberUserId of memberIds) {
+			await assertOrgMemberUser(ctx, memberUserId);
 		}
 
-		const mailboxId = await provisionMailbox(ctx, {
+		const mailboxId = await createProvisionedMailbox(ctx, {
 			userId: session.userId,
 			organizationId: session.activeOrganizationId,
 			address,
-			domain,
 			displayName: args.displayName,
 			scope: 'shared',
 		});
 
 		const now = Date.now();
-		const added = new Set<string>([session.userId]);
-		for (const memberUserId of args.memberUserIds) {
-			if (added.has(memberUserId)) continue;
-			added.add(memberUserId);
+		for (const memberUserId of memberIds) {
 			await ctx.db.insert('mailboxMembers', {
 				mailboxId,
 				authUserId: memberUserId,
@@ -148,22 +183,12 @@ export const members = authedQuery({
 export const myRole = authedQuery({
 	args: { mailboxId: v.id('mailboxes') },
 	handler: async (ctx, args) => {
-		const s = await getBetterAuthSessionWithRole(ctx);
-		if (!s || !s.role) return null;
+		// The effective role is derived once, at the choke point
+		// (`requireMailboxAccess`), so this query can never drift from the policy
+		// that actually gates access (org owner/admin + mailbox userId ⇒ owner;
+		// everyone else's explicit membership role).
 		const access = await requireMailboxAccess(ctx, args.mailboxId);
-		if (!access.ok) return null;
-		// Org owner/admin (or the mailbox's own userId) get owner-level access
-		// without a membership row; everyone else has an explicit row.
-		if (s.role === 'owner' || s.role === 'admin' || access.mailbox.userId === s.userId) {
-			return 'owner' as const;
-		}
-		const row = await ctx.db
-			.query('mailboxMembers')
-			.withIndex('by_mailbox_user', (q) =>
-				q.eq('mailboxId', args.mailboxId).eq('authUserId', s.userId)
-			)
-			.unique();
-		return row?.role ?? null;
+		return access.ok ? access.role : null;
 	},
 });
 
@@ -188,6 +213,7 @@ export const addMember = authedMutation({
 	handler: async (ctx, args) => {
 		// authz: requireSharedOwnerAccess → requireMailboxAccess(owner) + shared-scope gate.
 		const access = await requireSharedOwnerAccess(ctx, args.mailboxId);
+		await assertOrgMemberUser(ctx, args.authUserId);
 		const existing = await ctx.db
 			.query('mailboxMembers')
 			.withIndex('by_mailbox_user', (q) =>
@@ -209,8 +235,11 @@ export const addMember = authedMutation({
 /**
  * Remove a member. Takes effect immediately — the target's reactive access
  * queries (`myRole`, `members`, `mail/mailbox.get`) return nothing on the next
- * tick. Cannot remove the mailbox's own `userId` (transfer ownership first),
- * nor the last remaining owner.
+ * tick. The mailbox's own `userId` (its canonical owner) cannot be removed;
+ * ownership must be transferred first. That guard also protects the last owner:
+ * `provisionMailbox` and `transferOwnership` keep the single `owner`-role row in
+ * lock-step with `mailboxes.userId`, so the only `owner` row is always the
+ * canonical owner rejected here — hence no separate last-owner branch.
  */
 export const removeMember = authedMutation({
 	args: { mailboxId: v.id('mailboxes'), authUserId: v.string() },
@@ -227,18 +256,6 @@ export const removeMember = authedMutation({
 			)
 			.unique();
 		if (!row) return { success: true };
-		if (row.role === 'owner') {
-			const owners = (
-				await ctx.db
-					.query('mailboxMembers')
-					.withIndex('by_mailbox_user', (q) => q.eq('mailboxId', args.mailboxId))
-					.collect()
-			) // bounded: one shared inbox's roster
-				.filter((m) => m.role === 'owner');
-			if (owners.length <= 1) {
-				throwInvalidInput('A team inbox must keep at least one owner.');
-			}
-		}
 		await ctx.db.delete(row._id);
 		return { success: true };
 	},
@@ -259,6 +276,9 @@ export const transferOwnership = authedMutation({
 		if (args.authUserId === previousOwnerId) {
 			return { success: true, alreadyOwner: true };
 		}
+		// The new owner becomes the mailbox's canonical `userId`, so a bogus id
+		// here would brick ownership — validate before any write.
+		await assertOrgMemberUser(ctx, args.authUserId);
 		const now = Date.now();
 
 		// Promote (or add) the new owner.

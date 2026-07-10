@@ -48,7 +48,7 @@ function roleSatisfies(role: MailboxMemberRole, minRole: MailboxMemberRole): boo
 }
 
 export type MailboxAccessOutcome =
-	| { ok: true; userId: string; mailbox: Doc<'mailboxes'> }
+	| { ok: true; userId: string; mailbox: Doc<'mailboxes'>; role: MailboxMemberRole }
 	| {
 			ok: false;
 			reason: 'no_session' | 'mailbox_missing' | 'mailbox_inactive' | 'forbidden';
@@ -66,8 +66,10 @@ export async function requireMailboxAccess(
 	if (mailbox.status !== 'active') return { ok: false, reason: 'mailbox_inactive' };
 	// Org owner/admin act on behalf of any user in the org, and the mailbox's
 	// own user always has owner-level access — both bypass the membership read.
+	// Their effective role on the mailbox is `owner` (the single source of truth
+	// the `myRole` query consumes so effective-role policy never drifts).
 	if (s.role === 'owner' || s.role === 'admin' || mailbox.userId === s.userId) {
-		return { ok: true, userId: s.userId, mailbox };
+		return { ok: true, userId: s.userId, mailbox, role: 'owner' };
 	}
 	// Everyone else needs an explicit membership row meeting `minRole`. This is
 	// the only path that reaches a shared mailbox; personal mailboxes never
@@ -85,7 +87,7 @@ export async function requireMailboxAccess(
 		.withIndex('by_mailbox_user', (q) => q.eq('mailboxId', mailboxId).eq('authUserId', s.userId))
 		.unique();
 	if (membership && roleSatisfies(membership.role, minRole)) {
-		return { ok: true, userId: s.userId, mailbox };
+		return { ok: true, userId: s.userId, mailbox, role: membership.role };
 	}
 	return { ok: false, reason: 'forbidden' };
 }

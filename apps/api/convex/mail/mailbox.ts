@@ -138,6 +138,49 @@ export async function provisionMailbox(
 	return mailboxId;
 }
 
+/**
+ * Canonicalize + validate an address, reject a duplicate mailbox, and provision
+ * the row. The shared body behind the admin `create` (personal) path and
+ * `mailboxMembers.createShared` (team) path so the two never drift on address
+ * normalization, the `by_address` dup-check, or the provisioning call. Callers
+ * own their own auth gate and any scope-specific checks (e.g. verified-domain).
+ */
+export async function createProvisionedMailbox(
+	ctx: MutationCtx,
+	args: {
+		userId: string;
+		organizationId: string;
+		address: string;
+		displayName?: string;
+		quotaBytes?: number;
+		scope?: 'personal' | 'shared';
+	}
+): Promise<Id<'mailboxes'>> {
+	const address = canonicalAddress(args.address);
+	const [, domain] = address.split('@');
+	if (!domain) {
+		throwInvalidInput('Invalid email address');
+	}
+
+	const existing = await ctx.db
+		.query('mailboxes')
+		.withIndex('by_address', (q) => q.eq('address', address))
+		.first();
+	if (existing) {
+		throwAlreadyExists(`Mailbox ${address} already exists`);
+	}
+
+	return provisionMailbox(ctx, {
+		userId: args.userId,
+		organizationId: args.organizationId,
+		address,
+		domain,
+		displayName: args.displayName,
+		quotaBytes: args.quotaBytes,
+		scope: args.scope,
+	});
+}
+
 export const create = authedMutation({
 	args: {
 		userId: v.string(),
@@ -151,25 +194,10 @@ export const create = authedMutation({
 		if (!sessionWithOrg?.activeOrganizationId) {
 			throwForbidden('No active organization');
 		}
-		const address = canonicalAddress(args.address);
-		const [, domain] = address.split('@');
-		if (!domain) {
-			throwInvalidInput('Invalid email address');
-		}
-
-		const existing = await ctx.db
-			.query('mailboxes')
-			.withIndex('by_address', (q) => q.eq('address', address))
-			.first();
-		if (existing) {
-			throwAlreadyExists(`Mailbox ${address} already exists`);
-		}
-
-		return provisionMailbox(ctx, {
+		return createProvisionedMailbox(ctx, {
 			userId: args.userId,
 			organizationId: sessionWithOrg.activeOrganizationId,
-			address,
-			domain,
+			address: args.address,
 			displayName: args.displayName,
 			quotaBytes: args.quotaBytes,
 		});
