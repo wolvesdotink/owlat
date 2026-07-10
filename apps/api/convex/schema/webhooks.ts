@@ -81,5 +81,9 @@ export const webhookTables = {
 		source: v.string(), // 'resend' | 'mta' | 'ses'
 		rawPayload: v.string(), // JSON string of the raw webhook body
 		receivedAt: v.number(),
-	}).index('by_received_at', ['receivedAt']),
+	})
+		.index('by_received_at', ['receivedAt'])
+		// Newest payload for one provider — powers the Delivery page's live
+		// "last SES event received" line without scanning every source's rows.
+		.index('by_source_and_received_at', ['source', 'receivedAt']),
 };

@@ -75,6 +75,12 @@ export type EnvKey =
 	| 'AWS_SES_ACCESS_KEY_ID'
 	| 'AWS_SES_REGION'
 	| 'AWS_SES_SECRET_ACCESS_KEY'
+	// SES Configuration Set applied to every send. When set, SES tags each
+	// message with the set so its event-publishing (bounce/complaint/delivery
+	// via the SNS topic behind /webhooks/ses) carries attribution back to the
+	// originating send. Unset ⇒ sends omit the set (feedback still works via a
+	// topic subscribed to the identity, but per-send attribution is weaker).
+	| 'SES_CONFIGURATION_SET'
 	// LLM
 	| 'LLM_PROVIDER'
 	| 'LLM_API_KEY'

@@ -13,6 +13,7 @@
 
 import { SESClient, SendEmailCommand, SendRawEmailCommand } from '@aws-sdk/client-ses';
 import { resolveSesClient } from '../../emailProviders/sesIdentity';
+import { getOptional } from '../../env';
 import { withTimeout } from '../../inputGuards';
 import {
 	EmailErrorCode,
@@ -87,9 +88,7 @@ export function escapeHeader(value: string): string {
  * malformed RFC 2231 parameter.
  */
 export function safeAttachmentFilename(filename: string): string {
-	return escapeHeader(filename)
-		.replace(/\\/g, '\\\\')
-		.replace(/"/g, '\\"');
+	return escapeHeader(filename).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
 
 /**
@@ -177,10 +176,7 @@ export const sesSendProvider: SendProviderModule<'ses'> = {
 	kind: 'ses',
 	retryDelays: RETRY_DELAYS_MS,
 
-	async sendEmail(
-		params: EmailSendParams,
-		_extras?: SesExtras,
-	): Promise<EmailSendAttempt> {
+	async sendEmail(params: EmailSendParams, _extras?: SesExtras): Promise<EmailSendAttempt> {
 		let client: SESClient;
 		try {
 			client = getSesClient();
@@ -206,6 +202,11 @@ export const sesSendProvider: SendProviderModule<'ses'> = {
 			// can classify TERMINAL below (SES cannot dedup a retry). The send is
 			// kept inside each branch so the AWS SDK `send` overload narrows to the
 			// concrete command type. Both outputs expose `MessageId`.
+			// Tag every send with the Configuration Set (when configured) so SES
+			// event-publishing attributes the resulting bounce/complaint/delivery
+			// feedback back to this send. Undefined ⇒ the field is omitted.
+			const configurationSetName = getOptional('SES_CONFIGURATION_SET');
+
 			let messageId: string | undefined;
 			if (hasAttachments || hasHeaders) {
 				const command = new SendRawEmailCommand({
@@ -219,14 +220,15 @@ export const sesSendProvider: SendProviderModule<'ses'> = {
 								replyTo: params.replyTo,
 								headers: params.headers,
 								attachments: params.attachments ?? [],
-							}),
+							})
 						),
 					},
+					...(configurationSetName ? { ConfigurationSetName: configurationSetName } : {}),
 				});
 				const response = await withTimeout(
 					client.send(command),
 					SES_SEND_TIMEOUT_MS,
-					SES_SEND_TIMEOUT_MESSAGE,
+					SES_SEND_TIMEOUT_MESSAGE
 				);
 				messageId = response.MessageId;
 			} else {
@@ -240,11 +242,12 @@ export const sesSendProvider: SendProviderModule<'ses'> = {
 						},
 					},
 					ReplyToAddresses: params.replyTo ? [params.replyTo] : undefined,
+					...(configurationSetName ? { ConfigurationSetName: configurationSetName } : {}),
 				});
 				const response = await withTimeout(
 					client.send(command),
 					SES_SEND_TIMEOUT_MS,
-					SES_SEND_TIMEOUT_MESSAGE,
+					SES_SEND_TIMEOUT_MESSAGE
 				);
 				messageId = response.MessageId;
 			}
@@ -331,10 +334,17 @@ export const sesSendProvider: SendProviderModule<'ses'> = {
 		) {
 			return EmailErrorCode.AUTH_FAILED;
 		}
-		if (lower.includes('messagerejected') || lower.includes('content rejected') || lower.includes('spam')) {
+		if (
+			lower.includes('messagerejected') ||
+			lower.includes('content rejected') ||
+			lower.includes('spam')
+		) {
 			return EmailErrorCode.CONTENT_REJECTED;
 		}
-		if (lower.includes('invalidparameter') && (lower.includes('destination') || lower.includes('recipient'))) {
+		if (
+			lower.includes('invalidparameter') &&
+			(lower.includes('destination') || lower.includes('recipient'))
+		) {
 			return EmailErrorCode.INVALID_RECIPIENT;
 		}
 
