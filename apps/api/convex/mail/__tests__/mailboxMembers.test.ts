@@ -7,7 +7,7 @@
  * guarantee that a removed member loses access on the next reactive tick.
  */
 
-import { convexTest } from 'convex-test';
+import { convexTest, type TestConvex } from 'convex-test';
 import { describe, it, expect, vi } from 'vitest';
 import schema from '../../schema';
 import type { Id } from '../../_generated/dataModel';
@@ -39,6 +39,20 @@ vi.mock('../../lib/sessionOrganization', async () => {
 				activeOrganizationId: sessionMock.orgId,
 			};
 		}),
+		// `requireAdminContext` normally chains through `getMutationContext` →
+		// `requireOrgMember` → real BetterAuth, which the exported mocks above don't
+		// intercept (same-module bindings). Mock it directly so the admin gate
+		// reflects `sessionMock.role`.
+		requireAdminContext: vi.fn(async () => {
+			if (sessionMock.role !== 'owner' && sessionMock.role !== 'admin') {
+				throw new Error('Only owners and admins can perform this action');
+			}
+			return {
+				userId: sessionMock.userId,
+				role: sessionMock.role,
+				activeOrganizationId: sessionMock.orgId,
+			};
+		}),
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
 		getBetterAuthSessionWithRole: vi.fn(async () => {
 			if (sessionMock.role === null) return null;
@@ -59,7 +73,7 @@ function setSession(userId: string, role: 'owner' | 'admin' | 'editor' | null, o
 
 /** All membership rows on a mailbox, keyed by member id → role. */
 async function roles(
-	t: ReturnType<typeof convexTest>,
+	t: TestConvex<typeof schema>,
 	mailboxId: Id<'mailboxes'>
 ): Promise<Map<string, 'owner' | 'member'>> {
 	const rows = await t.run((ctx) =>
@@ -71,8 +85,48 @@ async function roles(
 	return new Map(rows.map((r) => [r.authUserId, r.role]));
 }
 
+/**
+ * Seed `userProfiles` rows for the given auth-user ids — the server-side
+ * org-membership floor (`assertOrgMemberUser`) requires a live profile before a
+ * user can be added to / made owner of a shared inbox.
+ */
+async function seedUsers(t: TestConvex<typeof schema>, ...authUserIds: string[]): Promise<void> {
+	await t.run(async (ctx) => {
+		const now = Date.now();
+		for (const authUserId of authUserIds) {
+			await ctx.db.insert('userProfiles', {
+				authUserId,
+				email: `${authUserId}@hinterland.camp`,
+				createdAt: now,
+				updatedAt: now,
+			});
+		}
+	});
+}
+
+/**
+ * Seed a `verified` sending domain — `createShared` requires the team-inbox
+ * address to sit on one (the server-side mirror of the UI's `listVerified`
+ * restriction).
+ */
+async function seedVerifiedDomain(
+	t: TestConvex<typeof schema>,
+	domain = 'hinterland.camp'
+): Promise<void> {
+	await t.run(async (ctx) => {
+		const now = Date.now();
+		await ctx.db.insert('domains', {
+			domain,
+			status: 'verified',
+			dnsRecords: {},
+			createdAt: now,
+			updatedAt: now,
+		});
+	});
+}
+
 /** Seed a shared, externally-backed team inbox with its owner membership row. */
-async function seedSharedExternal(t: ReturnType<typeof convexTest>): Promise<Id<'mailboxes'>> {
+async function seedSharedExternal(t: TestConvex<typeof schema>): Promise<Id<'mailboxes'>> {
 	const id = await seedMailbox(t, {
 		userId: 'admin-user',
 		scope: 'shared',
@@ -95,6 +149,8 @@ describe('createShared — hosted team inbox', () => {
 	it('provisions a shared mailbox with the creator as owner and the initial members', async () => {
 		const t = convexTest(schema, modules);
 		setSession('admin-user', 'admin');
+		await seedVerifiedDomain(t);
+		await seedUsers(t, 'user-B', 'user-C');
 		const id = await t.mutation(api.mail.mailboxMembers.createShared, {
 			address: 'Sales <sales@hinterland.camp>',
 			displayName: 'Sales',
@@ -113,7 +169,7 @@ describe('createShared — hosted team inbox', () => {
 		expect(map.size).toBe(3);
 	});
 
-	it('rejects a non-admin creator', async () => {
+	it('rejects a non-admin creator with a permission error', async () => {
 		const t = convexTest(schema, modules);
 		setSession('editor-user', 'editor');
 		await expect(
@@ -121,12 +177,36 @@ describe('createShared — hosted team inbox', () => {
 				address: 'sales@hinterland.camp',
 				memberUserIds: [],
 			})
-		).rejects.toThrow();
+		).rejects.toThrow(/owners and admins/i);
+	});
+
+	it('rejects an address on an unverified domain', async () => {
+		const t = convexTest(schema, modules);
+		setSession('admin-user', 'admin');
+		await expect(
+			t.mutation(api.mail.mailboxMembers.createShared, {
+				address: 'sales@not-verified.example',
+				memberUserIds: [],
+			})
+		).rejects.toThrow(/verified/i);
+	});
+
+	it('rejects an initial member who is not an org member', async () => {
+		const t = convexTest(schema, modules);
+		setSession('admin-user', 'admin');
+		await seedVerifiedDomain(t);
+		await expect(
+			t.mutation(api.mail.mailboxMembers.createShared, {
+				address: 'sales@hinterland.camp',
+				memberUserIds: ['ghost-user'],
+			})
+		).rejects.toThrow(/not a member/i);
 	});
 
 	it('rejects a duplicate address', async () => {
 		const t = convexTest(schema, modules);
 		setSession('admin-user', 'admin');
+		await seedVerifiedDomain(t);
 		await seedMailbox(t, { address: 'taken@hinterland.camp' });
 		await expect(
 			t.mutation(api.mail.mailboxMembers.createShared, {
@@ -141,6 +221,8 @@ describe('members roster', () => {
 	it('lists members for a member and hides the roster from a non-member', async () => {
 		const t = convexTest(schema, modules);
 		setSession('admin-user', 'admin');
+		await seedVerifiedDomain(t);
+		await seedUsers(t, 'user-B');
 		const id = await t.mutation(api.mail.mailboxMembers.createShared, {
 			address: 'support@hinterland.camp',
 			memberUserIds: ['user-B'],
@@ -163,6 +245,7 @@ describe('addMember / removeMember', () => {
 		const t = convexTest(schema, modules);
 		setSession('admin-user', 'admin');
 		const id = await seedSharedExternal(t);
+		await seedUsers(t, 'user-B');
 
 		await t.mutation(api.mail.mailboxMembers.addMember, { mailboxId: id, authUserId: 'user-B' });
 		const again = await t.mutation(api.mail.mailboxMembers.addMember, {
@@ -182,6 +265,7 @@ describe('addMember / removeMember', () => {
 		const t = convexTest(schema, modules);
 		setSession('admin-user', 'admin');
 		const id = await seedSharedExternal(t);
+		await seedUsers(t, 'user-B');
 		await t.mutation(api.mail.mailboxMembers.addMember, { mailboxId: id, authUserId: 'user-B' });
 
 		setSession('user-B', 'editor');
@@ -193,6 +277,8 @@ describe('addMember / removeMember', () => {
 	it('removing a member revokes access immediately — their reactive queries return nothing', async () => {
 		const t = convexTest(schema, modules);
 		setSession('admin-user', 'admin');
+		await seedVerifiedDomain(t);
+		await seedUsers(t, 'user-B');
 		const id = await t.mutation(api.mail.mailboxMembers.createShared, {
 			address: 'ops@hinterland.camp',
 			memberUserIds: ['user-B'],
@@ -215,7 +301,7 @@ describe('addMember / removeMember', () => {
 		expect(list.map((m) => m._id)).not.toContain(id);
 	});
 
-	it('refuses to remove the mailbox owner (transfer first) and the last owner', async () => {
+	it("refuses to remove the mailbox's canonical owner (transfer ownership first)", async () => {
 		const t = convexTest(schema, modules);
 		setSession('admin-user', 'admin');
 		const id = await seedSharedExternal(t);
@@ -232,6 +318,8 @@ describe('transferOwnership', () => {
 	it('promotes the new owner, updates the canonical userId, and demotes the old owner', async () => {
 		const t = convexTest(schema, modules);
 		setSession('admin-user', 'admin');
+		await seedVerifiedDomain(t);
+		await seedUsers(t, 'user-B');
 		const id = await t.mutation(api.mail.mailboxMembers.createShared, {
 			address: 'billing@hinterland.camp',
 			memberUserIds: ['user-B'],

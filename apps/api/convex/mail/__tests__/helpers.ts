@@ -10,8 +10,9 @@
  * exports no session helpers.
  */
 
-import type { convexTest } from 'convex-test';
+import type { TestConvex } from 'convex-test';
 import type { Id } from '../../_generated/dataModel';
+import schema from '../../schema';
 
 // The node-only / agent modules can't load in the test isolate; filter them
 // out. Sibling `mail/*` modules glob in as `../foo.ts` (this dir is
@@ -58,7 +59,7 @@ export type MailboxSeed = {
 
 /** Insert a `mailboxes` row and return its id. */
 export async function seedMailbox(
-	t: ReturnType<typeof convexTest>,
+	t: TestConvex<typeof schema>,
 	seed: MailboxSeed = {}
 ): Promise<Id<'mailboxes'>> {
 	let id!: Id<'mailboxes'>;
