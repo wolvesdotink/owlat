@@ -279,3 +279,14 @@ export function formatDateForCsv(timestamp: number | undefined): string {
 	if (!timestamp) return '';
 	return new Date(timestamp).toISOString();
 }
+
+/**
+ * Turn a snake_case enum value into a human "Title Case" label
+ * ("circuit_open" -> "Circuit Open"). Single home for the fallback formatting
+ * previously copy-pasted across enum-driven labels.
+ *
+ * @param value - The snake_case enum value
+ */
+export function titleCaseEnum(value: string): string {
+	return value.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}

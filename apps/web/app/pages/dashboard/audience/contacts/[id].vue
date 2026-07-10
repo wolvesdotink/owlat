@@ -69,7 +69,6 @@ const {
 	getTimezoneLabel,
 	getLanguageLabel,
 	getPropertyValue,
-	formatDate,
 	getDoiStatusLabel,
 	getDoiStatusColor,
 	getDoiStatusIcon,
@@ -617,7 +616,7 @@ async function handleRemoveSuppression() {
 								<p class="text-sm text-text-tertiary">Created</p>
 								<div class="flex items-center gap-2 text-text-primary">
 									<Icon name="lucide:calendar" class="w-4 h-4 text-text-tertiary" />
-									{{ formatDate(contact.createdAt) }}
+									{{ formatDateTime(contact.createdAt) }}
 								</div>
 							</div>
 
@@ -625,7 +624,7 @@ async function handleRemoveSuppression() {
 								<p class="text-sm text-text-tertiary">Last Updated</p>
 								<div class="flex items-center gap-2 text-text-primary">
 									<Icon name="lucide:calendar" class="w-4 h-4 text-text-tertiary" />
-									{{ formatDate(contact.updatedAt) }}
+									{{ formatDateTime(contact.updatedAt) }}
 								</div>
 							</div>
 						</div>

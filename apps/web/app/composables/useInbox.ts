@@ -112,9 +112,6 @@ export function useInbox() {
 		}
 	};
 
-	// Compact relative time ("Just now", "5m ago", "3h ago", short date past 7d).
-	const formatRelativeTime = (timestamp: number) => formatCompactRelativeTime(timestamp);
-
 	return {
 		// State
 		filter,
@@ -127,7 +124,5 @@ export function useInbox() {
 		stats,
 		// Actions
 		loadMoreThreads,
-		// Helpers
-		formatRelativeTime,
 	};
 }

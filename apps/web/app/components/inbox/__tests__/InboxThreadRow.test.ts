@@ -46,7 +46,7 @@ function mountRow(thread: Partial<InboxThreadRowThread>) {
 		...thread,
 	};
 	return mount(InboxThreadRow, {
-		props: { thread: full, focused: false, formatRelativeTime: () => '5m' },
+		props: { thread: full, focused: false, formatCompactRelativeTime: () => '5m' },
 		global: {
 			components: { PostboxRowCore, InboxStatusChip: StatusChip },
 			stubs: {

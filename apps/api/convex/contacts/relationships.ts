@@ -7,7 +7,7 @@
 
 import { v } from 'convex/values';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
-import { requireOrgPermission } from '../lib/sessionOrganization';
+import { requireContactsManage } from './guards';
 import type { Id, Doc } from '../_generated/dataModel';
 import { throwInvalidInput } from '../_utils/errors';
 
@@ -132,11 +132,7 @@ export const create = authedMutation({
 		confidence: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'contacts:manage',
-			'Only owners and admins can manage contacts'
-		);
+		await requireContactsManage(ctx);
 
 		if (args.fromContactId === args.toContactId) {
 			throwInvalidInput('Cannot create a relationship between a contact and itself');
@@ -180,11 +176,7 @@ export const updateConfidence = authedMutation({
 		confidence: v.number(),
 	},
 	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'contacts:manage',
-			'Only owners and admins can manage contacts'
-		);
+		await requireContactsManage(ctx);
 
 		await ctx.db.patch(args.relationshipId, { confidence: args.confidence });
 	},
@@ -196,11 +188,7 @@ export const updateConfidence = authedMutation({
 export const remove = authedMutation({
 	args: { relationshipId: v.id('contactRelationships') },
 	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'contacts:manage',
-			'Only owners and admins can manage contacts'
-		);
+		await requireContactsManage(ctx);
 
 		await ctx.db.delete(args.relationshipId);
 	},

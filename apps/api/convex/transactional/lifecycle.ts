@@ -28,18 +28,12 @@
  */
 
 import { v } from 'convex/values';
-import {
-	internalMutation,
-	type MutationCtx,
-} from '../_generated/server';
+import { internalMutation, type MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { recordAuditLog, type AuditAction } from '../lib/auditLog';
 import { applyUsageCountDelta } from '../emailBlocks/module';
 import { buildSearchableText } from '../lib/queryHelpers';
-import {
-	CURRENT_CONTENT_BLOCK_VERSION,
-	CURRENT_RENDERER_VERSION,
-} from '../lib/constants';
+import { CURRENT_CONTENT_BLOCK_VERSION, CURRENT_RENDERER_VERSION } from '../lib/constants';
 import { dataVariablesSchemaValidator } from '../lib/convexValidators';
 import { scanContent } from '@owlat/email-scanner';
 import { throwAlreadyExists, throwInvalidInput, throwInvalidState } from '../_utils/errors';
@@ -106,7 +100,7 @@ const transitionInputValidator = v.union(
 	}),
 	v.object({ to: v.literal('draft'), at: v.number() }),
 	v.object({ to: v.literal('approved'), at: v.number() }),
-	v.object({ to: v.literal('rejected'), at: v.number() }),
+	v.object({ to: v.literal('rejected'), at: v.number() })
 );
 
 // ─── Legal-edges graph ──────────────────────────────────────────────────────
@@ -124,9 +118,7 @@ export const LEGAL_EDGES: Record<
 };
 
 // Map the input.to (admin actions) to the resolved persisted status.
-function resolvedTargetStatus(
-	input: TransactionalEmailTransitionInput,
-): TransactionalEmailStatus {
+function resolvedTargetStatus(input: TransactionalEmailTransitionInput): TransactionalEmailStatus {
 	switch (input.to) {
 		case 'published':
 			return 'published';
@@ -175,7 +167,7 @@ type ReducerResult = {
 function reduce(
 	email: Doc<'transactionalEmails'>,
 	input: TransactionalEmailTransitionInput,
-	userId: string,
+	userId: string
 ): ReducerResult {
 	const from = email.status as TransactionalEmailStatus;
 	const resolvedTo = resolvedTargetStatus(input);
@@ -191,7 +183,7 @@ function reduce(
 			effects: [
 				{
 					kind: 'audit_log',
-					action: auditActionFor(input, from),
+					action: auditActionFor(input),
 					emailId: email._id,
 					userId,
 					details: {
@@ -219,7 +211,7 @@ function reduce(
 				`Content blocked by our content scanner (score: ${scanResult.score}/100). ` +
 					`Issues: ${scanResult.flags.map((f) => f.description).join('; ')}. ` +
 					'Please review and update your content before publishing.',
-				{ scanScore: scanResult.score },
+				{ scanScore: scanResult.score }
 			);
 		}
 
@@ -291,7 +283,7 @@ function reduce(
 		effects: [
 			{
 				kind: 'audit_log',
-				action: auditActionFor(input, from),
+				action: auditActionFor(input),
 				emailId: email._id,
 				userId,
 				details: {
@@ -306,20 +298,13 @@ function reduce(
 	};
 }
 
-function auditActionFor(
-	input: TransactionalEmailTransitionInput,
-	from: TransactionalEmailStatus,
-): AuditAction {
+function auditActionFor(input: TransactionalEmailTransitionInput): AuditAction {
 	switch (input.to) {
 		case 'published':
 			return 'transactional_email.published';
 		case 'draft':
-			// `published → draft` is the unpublish edge.
-			// `pending_review → draft` is admin reject (handled via `rejected`).
-			// Plain `→ draft` when not from pending_review is a normal unpublish.
-			if (from === 'pending_review') {
-				return 'transactional_email.unpublished';
-			}
+			// Any `→ draft` edge is an unpublish (admin reject is a distinct
+			// `→ rejected` transition, never routed here).
 			return 'transactional_email.unpublished';
 		case 'approved':
 			return 'transactional_email.approved';
@@ -330,7 +315,7 @@ function auditActionFor(
 
 function buildPatch(
 	input: TransactionalEmailTransitionInput,
-	resolvedTo: TransactionalEmailStatus,
+	resolvedTo: TransactionalEmailStatus
 ): Record<string, unknown> {
 	switch (input.to) {
 		case 'published': {
@@ -369,10 +354,7 @@ function buildPatch(
 
 // ─── Effect runner ──────────────────────────────────────────────────────────
 
-async function applyEffects(
-	ctx: MutationCtx,
-	effects: ReadonlyArray<Effect>,
-): Promise<void> {
+async function applyEffects(ctx: MutationCtx, effects: ReadonlyArray<Effect>): Promise<void> {
 	for (const effect of effects) {
 		switch (effect.kind) {
 			case 'audit_log': {
@@ -410,7 +392,7 @@ async function dispatch(
 	ctx: MutationCtx,
 	email: Doc<'transactionalEmails'>,
 	input: TransactionalEmailTransitionInput,
-	userId: string,
+	userId: string
 ): Promise<TransactionalEmailTransitionOutcome> {
 	const from = email.status as TransactionalEmailStatus;
 	const resolvedTo = resolvedTargetStatus(input);
@@ -424,10 +406,7 @@ async function dispatch(
 	const result = reduce(email, input, userId);
 
 	if (Object.keys(result.patch).length > 0) {
-		await ctx.db.patch(
-			email._id,
-			result.patch as Partial<Doc<'transactionalEmails'>>,
-		);
+		await ctx.db.patch(email._id, result.patch as Partial<Doc<'transactionalEmails'>>);
 	}
 	await applyEffects(ctx, result.effects);
 
@@ -534,10 +513,7 @@ export const transition = internalMutation({
 		input: transitionInputValidator,
 		userId: v.string(),
 	},
-	handler: async (
-		ctx,
-		args,
-	): Promise<TransactionalEmailTransitionOutcome> => {
+	handler: async (ctx, args): Promise<TransactionalEmailTransitionOutcome> => {
 		const email = await ctx.db.get(args.emailId);
 		if (!email) return { ok: false, reason: 'email_not_found' };
 		return await dispatch(ctx, email, args.input, args.userId);
@@ -553,10 +529,7 @@ export const duplicate = internalMutation({
 		emailId: v.id('transactionalEmails'),
 		userId: v.string(),
 	},
-	handler: async (
-		ctx,
-		args,
-	): Promise<TransactionalEmailDuplicateOutcome> => {
+	handler: async (ctx, args): Promise<TransactionalEmailDuplicateOutcome> => {
 		const email = await ctx.db.get(args.emailId);
 		if (!email) return { ok: false, reason: 'email_not_found' };
 
@@ -588,8 +561,7 @@ export const duplicate = internalMutation({
 			supportedLanguages: email.supportedLanguages,
 			translations: email.translations,
 			linkedBlockIds: email.linkedBlockIds,
-			contentBlockVersion:
-				email.contentBlockVersion ?? CURRENT_CONTENT_BLOCK_VERSION,
+			contentBlockVersion: email.contentBlockVersion ?? CURRENT_CONTENT_BLOCK_VERSION,
 			rendererVersion: email.rendererVersion ?? CURRENT_RENDERER_VERSION,
 			searchableText,
 			createdAt: now,
@@ -632,10 +604,7 @@ export const remove = internalMutation({
 		emailId: v.id('transactionalEmails'),
 		userId: v.string(),
 	},
-	handler: async (
-		ctx,
-		args,
-	): Promise<TransactionalEmailRemoveOutcome> => {
+	handler: async (ctx, args): Promise<TransactionalEmailRemoveOutcome> => {
 		const email = await ctx.db.get(args.emailId);
 		if (!email) return { ok: false, reason: 'email_not_found' };
 
@@ -674,12 +643,12 @@ export const remove = internalMutation({
  */
 export function assertEditableForPublishableChange(
 	email: Doc<'transactionalEmails'>,
-	force?: boolean,
+	force?: boolean
 ): void {
 	if (email.status === 'published' && !force) {
 		throwInvalidState(
 			'Transactional email is published. Pass forceWhilePublished: true or unpublish first.',
-			{ action: 'unpublish' },
+			{ action: 'unpublish' }
 		);
 	}
 }

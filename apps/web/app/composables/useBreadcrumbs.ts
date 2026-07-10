@@ -346,7 +346,7 @@ export function useBreadcrumbs() {
 					const label = segment
 						? segment
 								.split('-')
-								.map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+								.map((word) => capitalize(word))
 								.join(' ')
 						: '';
 					items.push({ label });

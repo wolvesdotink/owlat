@@ -28,29 +28,28 @@ import {
 } from '../contacts/doiLifecycle';
 import type { SubscribeOutcome } from './subscription';
 
-// Query to get a single topic by ID. Reuses the descriptor's `contactCount`
-// enrichment so list and get can no longer drift.
+// Load a single topic by ID, enriched with the descriptor's `contactCount` so
+// list and get can no longer drift. Shared by the session-gated `get` and the
+// API-key `getInternal` variant.
+async function getTopicImpl(ctx: QueryCtx, topicId: Id<'topics'>) {
+	const topic = await ctx.db.get(topicId);
+	if (!topic) return null;
+
+	const enriched = topicListing.enrich ? await topicListing.enrich(ctx.db, topic) : {};
+	return { ...topic, ...enriched } as Doc<'topics'> & { contactCount: number };
+}
+
+// Query to get a single topic by ID.
 export const get = authedQuery({
 	args: { topicId: v.id('topics') },
-	handler: async (ctx, args) => {
-		const topic = await ctx.db.get(args.topicId);
-		if (!topic) return null;
-
-		const enriched = topicListing.enrich ? await topicListing.enrich(ctx.db, topic) : {};
-		return { ...topic, ...enriched } as Doc<'topics'> & { contactCount: number };
-	},
+	handler: async (ctx, args) => getTopicImpl(ctx, args.topicId),
 });
 
 // Internal variant for the API-key REST route (topics/apiHttp.ts), which has
 // no Convex session and so cannot call the session-gated `get` above.
 export const getInternal = internalQuery({
 	args: { topicId: v.id('topics') },
-	handler: async (ctx, args) => {
-		const topic = await ctx.db.get(args.topicId);
-		if (!topic) return null;
-		const enriched = topicListing.enrich ? await topicListing.enrich(ctx.db, topic) : {};
-		return { ...topic, ...enriched } as Doc<'topics'> & { contactCount: number };
-	},
+	handler: async (ctx, args) => getTopicImpl(ctx, args.topicId),
 });
 
 // Query to get contacts in a topic (paginated)

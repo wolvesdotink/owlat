@@ -586,7 +586,7 @@ const readinessSummary = (domain: DomainWithVerification) =>
 											:name="getStatusIcon(domain.status)"
 											:class="['w-3 h-3', domain.status === 'registering' && 'animate-spin']"
 										/>
-										{{ domain.status.charAt(0).toUpperCase() + domain.status.slice(1) }}
+										{{ capitalize(domain.status) }}
 									</span>
 								</div>
 								<p class="text-sm text-text-tertiary mt-0.5">

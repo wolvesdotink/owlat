@@ -27,6 +27,7 @@ import {
 } from '@owlat/shared/featureFlags';
 import { ensureSecrets } from './secrets';
 import { mergeEnv, type EnvMap } from './env';
+import { isValidEmail } from './validators';
 
 export type DeploymentMode = 'selfhost' | 'dev' | 'hosted';
 
@@ -172,7 +173,7 @@ export function parseSetupConfig(raw: unknown): SetupConfig {
 
 	const admin = asObject(root['admin'], 'config.admin');
 	const email = asString(admin['email'], 'config.admin.email');
-	if (!/^.+@.+\..+$/.test(email)) {
+	if (!isValidEmail(email)) {
 		throw new SetupConfigError('config.admin.email must be a valid email address');
 	}
 	asString(admin['name'], 'config.admin.name');

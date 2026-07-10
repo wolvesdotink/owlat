@@ -30,27 +30,8 @@ export const SURPRISE_W_DISSIMILARITY = 0.6;
 export const SURPRISE_W_CROSS_COMMUNITY = 0.25;
 export const SURPRISE_W_TAG_DISJOINT = 0.15;
 
-/**
- * Cosine similarity of two equal-length vectors. Returns 0 when either vector is
- * empty or has zero magnitude (an entry without a real embedding), so a missing
- * embedding contributes no (mis)information to the surprise score rather than
- * masquerading as maximally dissimilar.
- */
-export function cosineSimilarity(a: readonly number[], b: readonly number[]): number {
-	if (a.length === 0 || b.length === 0 || a.length !== b.length) return 0;
-	let dot = 0;
-	let magA = 0;
-	let magB = 0;
-	for (let i = 0; i < a.length; i++) {
-		const x = a[i]!;
-		const y = b[i]!;
-		dot += x * y;
-		magA += x * x;
-		magB += y * y;
-	}
-	if (magA === 0 || magB === 0) return 0;
-	return dot / (Math.sqrt(magA) * Math.sqrt(magB));
-}
+// Re-exported so graph analytics consumers keep importing it from this module.
+export { cosineSimilarity } from './vectorMath';
 
 export interface ConfidenceStats {
 	/** Per-bucket counts over [0,1]; length === CONFIDENCE_BUCKET_COUNT; sums to values.length. */
@@ -74,14 +55,16 @@ export function confidenceStats(values: readonly number[]): ConfidenceStats {
 	for (const v of values) {
 		const clamped = v < 0 ? 0 : v > 1 ? 1 : v;
 		sum += clamped;
-		const idx = Math.min(CONFIDENCE_BUCKET_COUNT - 1, Math.floor(clamped * CONFIDENCE_BUCKET_COUNT));
+		const idx = Math.min(
+			CONFIDENCE_BUCKET_COUNT - 1,
+			Math.floor(clamped * CONFIDENCE_BUCKET_COUNT)
+		);
 		buckets[idx] = (buckets[idx] ?? 0) + 1;
 	}
 
 	const sorted = [...values].map((v) => (v < 0 ? 0 : v > 1 ? 1 : v)).sort((a, b) => a - b);
 	const mid = Math.floor(sorted.length / 2);
-	const median =
-		sorted.length % 2 === 0 ? (sorted[mid - 1]! + sorted[mid]!) / 2 : sorted[mid]!;
+	const median = sorted.length % 2 === 0 ? (sorted[mid - 1]! + sorted[mid]!) / 2 : sorted[mid]!;
 
 	return { buckets, mean: sum / values.length, median };
 }
@@ -103,7 +86,7 @@ export function confidenceStats(values: readonly number[]): ConfidenceStats {
 export function labelPropagation(
 	nodeIds: readonly string[],
 	adjacency: ReadonlyMap<string, ReadonlySet<string>>,
-	iterations: number,
+	iterations: number
 ): Map<string, string> {
 	const order = [...nodeIds].sort();
 	const labels = new Map<string, string>();
@@ -160,7 +143,10 @@ export function communitySizesFromLabels(labels: ReadonlyMap<string, string>): n
  * two differently-tagged nodes is more surprising. Returns false when either node
  * is untagged (absence of tags is not evidence of a topic jump).
  */
-export function tagsDisjoint(a: readonly string[] | undefined, b: readonly string[] | undefined): boolean {
+export function tagsDisjoint(
+	a: readonly string[] | undefined,
+	b: readonly string[] | undefined
+): boolean {
 	if (!a || a.length === 0 || !b || b.length === 0) return false;
 	const bset = new Set(b);
 	return !a.some((t) => bset.has(t));

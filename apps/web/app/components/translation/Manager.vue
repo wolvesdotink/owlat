@@ -323,20 +323,14 @@ const getTranslationValue = (row: TranslatableRow, language: string): string => 
 		return translation.previewText || '';
 	}
 
-	// Block content
+	// Block content — the fieldType name matches the block-content property.
 	const blockTranslation = translation.blocks?.[row.id];
 	if (!blockTranslation) return '';
 
-	switch (row.fieldType) {
-		case 'html':
-			return blockTranslation.html || '';
-		case 'buttonText':
-			return blockTranslation.buttonText || '';
-		case 'alt':
-			return blockTranslation.alt || '';
-		default:
-			return '';
+	if (row.fieldType === 'html' || row.fieldType === 'buttonText' || row.fieldType === 'alt') {
+		return blockTranslation[row.fieldType] ?? '';
 	}
+	return '';
 };
 
 // Update translation value
@@ -368,16 +362,9 @@ const updateTranslationValue = async (row: TranslatableRow, language: string, va
 			}
 
 			const blockTrans = trans.blocks[row.blockId]!;
-			switch (row.fieldType) {
-				case 'html':
-					blockTrans.html = value;
-					break;
-				case 'buttonText':
-					blockTrans.buttonText = value;
-					break;
-				case 'alt':
-					blockTrans.alt = value;
-					break;
+			// The fieldType name matches the block-content property to write.
+			if (row.fieldType === 'html' || row.fieldType === 'buttonText' || row.fieldType === 'alt') {
+				blockTrans[row.fieldType] = value;
 			}
 		}
 

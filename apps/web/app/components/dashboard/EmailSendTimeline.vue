@@ -115,7 +115,7 @@ const timelineEvents = computed<TimelineEvent[]>(() => {
 
 		events.push({
 			key,
-			label: key.charAt(0).toUpperCase() + key.slice(1),
+			label: capitalize(key),
 			icon: cfg.icon,
 			colorClasses: cfg.color,
 			timestamp: ts,
@@ -141,7 +141,7 @@ const timelineEvents = computed<TimelineEvent[]>(() => {
 			}
 			events.push({
 				key: errKey,
-				label: errKey.charAt(0).toUpperCase() + errKey.slice(1),
+				label: capitalize(errKey),
 				icon: cfg.icon,
 				colorClasses: cfg.color,
 				timestamp: ts,

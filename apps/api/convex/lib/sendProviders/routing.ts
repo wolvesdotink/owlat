@@ -12,13 +12,8 @@
 import { getOptional } from '../env';
 import { isSendProviderKind } from './types';
 import type { SendProviderKind } from './types';
-import { strategyFor } from './strategies';
-import type {
-	ProviderEntry,
-	ProviderHealthStatus,
-	ResolvedRoute,
-	SendRouteStrategyKind,
-} from './strategies/types';
+import { strategyFor, isSendRouteStrategyKind } from './strategies';
+import type { ProviderEntry, ProviderHealthStatus, ResolvedRoute } from './strategies/types';
 
 export type { ProviderHealthStatus, ResolvedRoute } from './strategies/types';
 
@@ -37,10 +32,6 @@ export interface ProviderRouteConfig {
 	ipPool?: string;
 }
 
-function isStrategyKind(value: string): value is SendRouteStrategyKind {
-	return value === 'single' || value === 'priority_failover' || value === 'workload_split';
-}
-
 /**
  * Resolve a route from an org's `providerRoutes` config. Falls through to the
  * `EMAIL_PROVIDER` env var when no config is present, no providers are enabled,
@@ -56,7 +47,7 @@ export function resolveRoute(
 ): ResolvedRoute | null {
 	if (!routeConfig) return fallback();
 
-	if (!isStrategyKind(routeConfig.strategy)) return fallback();
+	if (!isSendRouteStrategyKind(routeConfig.strategy)) return fallback();
 
 	const enabledEntries: ProviderEntry[] = routeConfig.providers
 		.filter((p) => p.isEnabled && isSendProviderKind(p.providerType))

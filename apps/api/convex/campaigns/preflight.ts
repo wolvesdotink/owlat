@@ -19,6 +19,7 @@ export type PreflightResult =
 	| {
 			ok: false;
 			reason:
+				| 'not_found'
 				| 'no_template'
 				| 'no_audience'
 				| 'no_from_email'
@@ -172,7 +173,7 @@ export const validateReadyToSendQuery = internalQuery({
 		if (!campaign) {
 			return {
 				ok: false,
-				reason: 'no_template',
+				reason: 'not_found',
 				message: 'Campaign not found',
 			};
 		}

@@ -7,12 +7,16 @@
  * module only decides how its values are rendered.
  */
 
+import { formatPercentage } from '~/utils/formatters';
+
 export type AbuseStatus = 'clean' | 'warned' | 'suspended' | 'banned';
 export type RiskLevel = 'low' | 'medium' | 'high' | 'critical' | string;
 export type ScanLevel = 'safe' | 'suspicious' | 'blocked' | string;
 
 /** UiBadge variant for an org abuse status. */
-export function abuseStatusVariant(status: string | undefined): 'success' | 'warning' | 'error' | 'neutral' {
+export function abuseStatusVariant(
+	status: string | undefined
+): 'success' | 'warning' | 'error' | 'neutral' {
 	switch (status) {
 		case 'clean':
 			return 'success';
@@ -38,7 +42,9 @@ export function isBlockingAbuseStatus(status: string | undefined): boolean {
 }
 
 /** UiBadge variant for a reputation risk level. */
-export function riskLevelVariant(level: string | undefined): 'success' | 'warning' | 'error' | 'neutral' {
+export function riskLevelVariant(
+	level: string | undefined
+): 'success' | 'warning' | 'error' | 'neutral' {
 	switch (level) {
 		case 'low':
 			return 'success';
@@ -53,7 +59,9 @@ export function riskLevelVariant(level: string | undefined): 'success' | 'warnin
 }
 
 /** UiBadge variant for a content-scan level. */
-export function scanLevelVariant(level: string | undefined): 'success' | 'warning' | 'error' | 'neutral' {
+export function scanLevelVariant(
+	level: string | undefined
+): 'success' | 'warning' | 'error' | 'neutral' {
 	switch (level) {
 		case 'safe':
 			return 'success';
@@ -69,7 +77,7 @@ export function scanLevelVariant(level: string | undefined): 'success' | 'warnin
 /** Format a 0–1 rate as a percentage string (e.g. 0.0123 → "1.23%"). */
 export function formatRate(rate: number | undefined): string {
 	if (rate === undefined || Number.isNaN(rate)) return '—';
-	return `${(rate * 100).toFixed(2)}%`;
+	return formatPercentage(rate, 2, true);
 }
 
 /** Human label for a platform-admin audit action. */

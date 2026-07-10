@@ -139,7 +139,7 @@ const RETENTION_MS = 60 * DAY_MS; // cleanup horizon
 const SHARD_COUNT = 8;
 
 /** Start-of-day timestamp (midnight UTC) for a given time. */
-function startOfDayUtc(epochMs: number): number {
+export function startOfDayUtc(epochMs: number): number {
 	const d = new Date(epochMs);
 	d.setUTCHours(0, 0, 0, 0);
 	return d.getTime();

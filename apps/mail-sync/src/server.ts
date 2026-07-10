@@ -26,15 +26,9 @@ import type { ConvexClient, WorkerCredentials } from './convex.js';
 import { fn } from './convex.js';
 import type { MailSyncConfig } from './config.js';
 import { sendViaExternal, testConnection } from './send.js';
+import type { ProtocolCreds } from './send.js';
 import { logger } from './logger.js';
 
-interface ProtocolCreds {
-	host: string;
-	port: number;
-	secure: boolean;
-	username: string;
-	password: string;
-}
 interface TestBody {
 	imap: ProtocolCreds;
 	smtp: ProtocolCreds;
@@ -71,13 +65,21 @@ export function startServer(config: MailSyncConfig, convex: ConvexClient): Serve
 
 	app.post('/send', async (c) => {
 		const body = (await c.req.json().catch(() => null)) as SendBody | null;
-		if (!body?.externalAccountId || !body.from || !Array.isArray(body.recipients) || !body.rawEmlUrl) {
+		if (
+			!body?.externalAccountId ||
+			!body.from ||
+			!Array.isArray(body.recipients) ||
+			!body.rawEmlUrl
+		) {
 			return c.json({ error: 'externalAccountId, from, recipients, rawEmlUrl required' }, 400);
 		}
 
-		const creds = (await convex.action(fn.getCredentialsForWorker as never, {
-			accountId: body.externalAccountId,
-		} as never)) as WorkerCredentials | null;
+		const creds = (await convex.action(
+			fn.getCredentialsForWorker as never,
+			{
+				accountId: body.externalAccountId,
+			} as never
+		)) as WorkerCredentials | null;
 		if (!creds) return c.json({ error: 'account credentials unavailable' }, 404);
 
 		// SSRF guard: the only legitimate rawEmlUrl is a Convex storage URL.

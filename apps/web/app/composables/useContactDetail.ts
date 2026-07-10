@@ -14,7 +14,7 @@ import { languageSelectOptions, timezoneOptions } from '~/data/languageOptions';
 export function diffPropertyValues(
 	propertyIds: string[],
 	edited: Record<string, string>,
-	current: Record<string, string>,
+	current: Record<string, string>
 ): {
 	toSet: { propertyId: string; value: string }[];
 	toRemove: string[];
@@ -41,6 +41,23 @@ export function diffPropertyValues(
 const commonTimezones = timezoneOptions;
 const commonLanguages = languageSelectOptions;
 
+interface DoiStatusBadge {
+	label: string;
+	color: string;
+	icon: string | null;
+}
+
+// Single source of truth for double-opt-in status presentation (label + colour + icon).
+const DOI_STATUS_BADGES: Record<string, DoiStatusBadge> = {
+	confirmed: { label: 'Confirmed', color: 'text-success', icon: 'lucide:check-circle' },
+	pending: { label: 'Pending', color: 'text-warning', icon: 'lucide:clock' },
+};
+
+const DOI_STATUS_DEFAULT: DoiStatusBadge = { label: '', color: 'text-text-tertiary', icon: null };
+
+const getDoiStatusBadge = (status: string | undefined): DoiStatusBadge =>
+	(status ? DOI_STATUS_BADGES[status] : undefined) ?? DOI_STATUS_DEFAULT;
+
 /**
  * Composable for contact detail page: edit form state, save/cancel handlers, display helpers.
  */
@@ -48,15 +65,21 @@ export function useContactDetail(contactId: ComputedRef<Id<'contacts'>>) {
 	const router = useRouter();
 
 	// DATA: Convex queries
-	const { data: contact, isLoading: contactLoading } = useConvexQuery(api.contacts.contacts.get, () => ({
-		contactId: contactId.value,
-	}));
+	const { data: contact, isLoading: contactLoading } = useConvexQuery(
+		api.contacts.contacts.get,
+		() => ({
+			contactId: contactId.value,
+		})
+	);
 
 	const { data: properties } = useOrganizationQuery(api.contacts.properties.listByOrganization);
 
-	const { data: propertyValues } = useConvexQuery(api.contacts.propertyValues.listByContact, () => ({
-		contactId: contactId.value,
-	}));
+	const { data: propertyValues } = useConvexQuery(
+		api.contacts.propertyValues.listByContact,
+		() => ({
+			contactId: contactId.value,
+		})
+	);
 
 	// FORM STATE
 	const isEditing = ref(false);
@@ -81,10 +104,9 @@ export function useContactDetail(contactId: ComputedRef<Id<'contacts'>>) {
 	const { run: deleteContact } = useBackendOperation(api.contacts.contacts.remove, {
 		label: 'Delete contact',
 	});
-	const { run: resendConfirmation } = useBackendOperation(
-		api.topics.topics.resendDoiConfirmation,
-		{ label: 'Resend confirmation email' },
-	);
+	const { run: resendConfirmation } = useBackendOperation(api.topics.topics.resendDoiConfirmation, {
+		label: 'Resend confirmation email',
+	});
 
 	// Resend the double-opt-in confirmation email to a contact still in the
 	// `pending` state — refreshes the token and re-schedules the email via the
@@ -257,44 +279,11 @@ export function useContactDetail(contactId: ComputedRef<Id<'contacts'>>) {
 		return value?.value ?? null;
 	};
 
-	// Delegates to the canonical formatDateTime ("Jun 4, 2025, 03:20 AM").
-	const formatDate = (timestamp: number) => formatDateTime(timestamp);
-
-	// DOI Status helpers
-	const getDoiStatusLabel = (status: string | undefined) => {
-		switch (status) {
-			case 'confirmed':
-				return 'Confirmed';
-			case 'pending':
-				return 'Pending';
-			case 'not_required':
-				return '';
-			default:
-				return '';
-		}
-	};
-
-	const getDoiStatusColor = (status: string | undefined) => {
-		switch (status) {
-			case 'confirmed':
-				return 'text-success';
-			case 'pending':
-				return 'text-warning';
-			default:
-				return 'text-text-tertiary';
-		}
-	};
-
-	const getDoiStatusIcon = (status: string | undefined): string | null => {
-		switch (status) {
-			case 'confirmed':
-				return 'lucide:check-circle';
-			case 'pending':
-				return 'lucide:clock';
-			default:
-				return null;
-		}
-	};
+	// DOI Status helpers — derived from the shared DOI_STATUS_BADGES map.
+	const getDoiStatusLabel = (status: string | undefined) => getDoiStatusBadge(status).label;
+	const getDoiStatusColor = (status: string | undefined) => getDoiStatusBadge(status).color;
+	const getDoiStatusIcon = (status: string | undefined): string | null =>
+		getDoiStatusBadge(status).icon;
 
 	return {
 		// Data
@@ -326,7 +315,6 @@ export function useContactDetail(contactId: ComputedRef<Id<'contacts'>>) {
 		getTimezoneLabel,
 		getLanguageLabel,
 		getPropertyValue,
-		formatDate,
 		getDoiStatusLabel,
 		getDoiStatusColor,
 		getDoiStatusIcon,

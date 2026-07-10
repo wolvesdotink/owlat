@@ -17,7 +17,10 @@
 import { internalMutation } from '../_generated/server';
 import { authedQuery } from '../lib/authedFunctions';
 import { getUserIdFromSession } from '../lib/sessionOrganization';
-import { summarize, type ReputationSummary } from './sendingReputation';
+import { summarize, startOfDayUtc, type ReputationSummary } from './sendingReputation';
+
+// Re-exported so existing importers (and tests) keep resolving it from here.
+export { startOfDayUtc };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** How much snapshot history to keep. ~90 days of daily points. */
@@ -29,13 +32,6 @@ export interface SnapshotMetrics {
 	bounceRate: number;
 	complaintRate: number;
 	sentCount: number;
-}
-
-/** Start-of-day timestamp (midnight UTC) for a given time. */
-export function startOfDayUtc(epochMs: number): number {
-	const d = new Date(epochMs);
-	d.setUTCHours(0, 0, 0, 0);
-	return d.getTime();
 }
 
 /**

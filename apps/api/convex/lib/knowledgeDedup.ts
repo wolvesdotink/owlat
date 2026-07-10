@@ -8,26 +8,16 @@
  * relation repointing, deletion) lives in knowledge/maintenance.ts.
  */
 
+import { cosineSimilarity } from './vectorMath';
+
 /** Cosine threshold above which two entries are considered the same fact. */
 export const DEDUP_SIMILARITY_THRESHOLD = 0.95;
 
 /** Cap on merged-content length so a runaway cluster can't bloat one row. */
 export const MAX_MERGED_CONTENT_CHARS = 4000;
 
-/** Cosine similarity; 0 for empty / mismatched-length / zero-norm vectors. */
-export function cosineSimilarity(a: readonly number[], b: readonly number[]): number {
-	if (a.length === 0 || a.length !== b.length) return 0;
-	let dot = 0;
-	let normA = 0;
-	let normB = 0;
-	for (let i = 0; i < a.length; i++) {
-		dot += a[i]! * b[i]!;
-		normA += a[i]! * a[i]!;
-		normB += b[i]! * b[i]!;
-	}
-	if (normA === 0 || normB === 0) return 0;
-	return dot / (Math.sqrt(normA) * Math.sqrt(normB));
-}
+// Re-exported so callers and tests keep importing it from this module.
+export { cosineSimilarity };
 
 /**
  * Group items into near-duplicate clusters by pairwise cosine >= threshold
@@ -37,7 +27,7 @@ export function cosineSimilarity(a: readonly number[], b: readonly number[]): nu
 export function clusterBySimilarity<T>(
 	items: readonly T[],
 	embeddingOf: (item: T) => readonly number[],
-	threshold: number,
+	threshold: number
 ): T[][] {
 	const parent = items.map((_, i) => i);
 	const find = (x: number): number => {
@@ -77,9 +67,13 @@ export function clusterBySimilarity<T>(
  * break to the lexicographically smaller id. Determinism guarantees a re-run
  * picks the same survivor and converges instead of ping-ponging.
  */
-export function chooseSurvivor<T extends { confidence: number; id: string }>(cluster: readonly T[]): T {
+export function chooseSurvivor<T extends { confidence: number; id: string }>(
+	cluster: readonly T[]
+): T {
 	return cluster.reduce((best, e) =>
-		e.confidence > best.confidence || (e.confidence === best.confidence && e.id < best.id) ? e : best,
+		e.confidence > best.confidence || (e.confidence === best.confidence && e.id < best.id)
+			? e
+			: best
 	);
 }
 
@@ -87,9 +81,16 @@ export function chooseSurvivor<T extends { confidence: number; id: string }>(clu
  * Merge a loser's content into the survivor's: skip when the survivor already
  * subsumes it, else append, capped. Keeps the survivor when re-merged.
  */
-export function mergeContent(survivor: string, loser: string, cap = MAX_MERGED_CONTENT_CHARS): string {
+export function mergeContent(
+	survivor: string,
+	loser: string,
+	cap = MAX_MERGED_CONTENT_CHARS
+): string {
 	const trimmedLoser = loser.trim();
-	const base = trimmedLoser === '' || survivor.includes(trimmedLoser) ? survivor : `${survivor}\n${trimmedLoser}`;
+	const base =
+		trimmedLoser === '' || survivor.includes(trimmedLoser)
+			? survivor
+			: `${survivor}\n${trimmedLoser}`;
 	return base.length <= cap ? base : base.slice(0, cap);
 }
 

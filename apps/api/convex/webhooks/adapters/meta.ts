@@ -14,7 +14,7 @@
  */
 
 import { getOptional } from '../../lib/env';
-import { constantTimeEqual, hmacSha256Hex } from '../security';
+import { constantTimeEqual, hmacSha256Hex, missingSecretResult } from '../security';
 import { logError } from '../../lib/runtimeLog';
 import type { InboundAdapter } from '../pipeline';
 import type { InboundEvent } from '../types';
@@ -60,12 +60,7 @@ export const metaAdapter: InboundAdapter = {
 	async verifySignature(request, rawBody) {
 		const appSecret = getOptional('META_APP_SECRET');
 		if (!appSecret) {
-			return {
-				ok: false,
-				status: 503,
-				reason:
-					'Webhook endpoint is not configured securely (missing META_APP_SECRET)',
-			};
+			return missingSecretResult('META_APP_SECRET');
 		}
 
 		const signature = request.headers.get('x-hub-signature-256');
@@ -132,13 +127,11 @@ export const metaAdapter: InboundAdapter = {
 export function handleMetaChallenge(request: Request): Response {
 	const verifyToken = getOptional('META_VERIFY_TOKEN');
 	if (!verifyToken) {
-		logError(
-			'[Meta Webhook] handleMetaChallenge: META_VERIFY_TOKEN is not set'
-		);
-		return new Response(
-			JSON.stringify({ error: 'Webhook endpoint is not configured securely' }),
-			{ status: 503, headers: { 'Content-Type': 'application/json' } }
-		);
+		logError('[Meta Webhook] handleMetaChallenge: META_VERIFY_TOKEN is not set');
+		return new Response(JSON.stringify({ error: 'Webhook endpoint is not configured securely' }), {
+			status: 503,
+			headers: { 'Content-Type': 'application/json' },
+		});
 	}
 
 	const url = new URL(request.url);
@@ -146,11 +139,7 @@ export function handleMetaChallenge(request: Request): Response {
 	const token = url.searchParams.get('hub.verify_token') ?? '';
 	const challenge = url.searchParams.get('hub.challenge');
 
-	if (
-		mode === 'subscribe' &&
-		challenge &&
-		constantTimeEqual(token, verifyToken)
-	) {
+	if (mode === 'subscribe' && challenge && constantTimeEqual(token, verifyToken)) {
 		return new Response(challenge, { status: 200 });
 	}
 	return new Response('Verification failed', { status: 403 });

@@ -11,15 +11,7 @@ import { progressSpinner } from '../lib/progress';
 import pc from 'picocolors';
 import { loadBackendContext, postJson } from '../lib/backend';
 
-interface RunOptions {
-	web: boolean;
-	terminal: boolean;
-	assumeYes: boolean;
-	owlatDir: string;
-	configFile?: string;
-	positional: string[];
-	args: string[];
-}
+import type { CliOptions as RunOptions } from '../lib/cliOptions';
 
 interface SeedSummary {
 	inserted?: Record<string, number>;
@@ -70,8 +62,10 @@ export async function runSeed(opts: RunOptions, baseUrlOverride?: string): Promi
 }
 
 function formatCounts(counts: Record<string, number>): string {
-	return Object.entries(counts)
-		.filter(([, n]) => n > 0)
-		.map(([k, n]) => `${pc.cyan(String(n))} ${k}`)
-		.join(', ') || pc.dim('none');
+	return (
+		Object.entries(counts)
+			.filter(([, n]) => n > 0)
+			.map(([k, n]) => `${pc.cyan(String(n))} ${k}`)
+			.join(', ') || pc.dim('none')
+	);
 }

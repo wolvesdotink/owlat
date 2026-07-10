@@ -12,10 +12,7 @@
  */
 
 import { getOptional } from '../../lib/env';
-import {
-	constantTimeEqual,
-	hmacSha256Base64,
-} from '../security';
+import { constantTimeEqual, hmacSha256Base64, missingSecretResult } from '../security';
 import { classifyBounceMessage } from '@owlat/shared/bounceClassification';
 import type { InboundAdapter } from '../pipeline';
 import type { InboundEvent } from '../types';
@@ -82,10 +79,7 @@ export async function verifySvixHeaders(
 		return false;
 	}
 
-	const expectedSignature = await hmacSha256Base64(
-		secretBinary,
-		signedContent
-	);
+	const expectedSignature = await hmacSha256Base64(secretBinary, signedContent);
 
 	// The svix-signature header may carry multiple signatures
 	// ("v1,<sig1> v1,<sig2>") — accept the request if any one matches.
@@ -108,12 +102,7 @@ export const resendAdapter: InboundAdapter = {
 	async verifySignature(request, rawBody) {
 		const secret = getOptional('RESEND_WEBHOOK_SECRET');
 		if (!secret) {
-			return {
-				ok: false,
-				status: 503,
-				reason:
-					'Webhook endpoint is not configured securely (missing RESEND_WEBHOOK_SECRET)',
-			};
+			return missingSecretResult('RESEND_WEBHOOK_SECRET');
 		}
 
 		const svixId = request.headers.get('svix-id');
@@ -128,13 +117,7 @@ export const resendAdapter: InboundAdapter = {
 			};
 		}
 
-		const isValid = await verifySvixHeaders(
-			rawBody,
-			svixId,
-			svixTimestamp,
-			svixSignature,
-			secret
-		);
+		const isValid = await verifySvixHeaders(rawBody, svixId, svixTimestamp, svixSignature, secret);
 		if (!isValid) {
 			return { ok: false, status: 401, reason: 'Invalid webhook signature' };
 		}

@@ -12,6 +12,11 @@
 import { v } from 'convex/values';
 import { internalQuery } from '../_generated/server';
 
+/** Rate as a percentage to one decimal place, or null when the denominator is 0. */
+function pct(num: number, den: number): number | null {
+	return den > 0 ? Math.round((num / den) * 1000) / 10 : null;
+}
+
 /** Per-campaign performance snapshot returned to the model. */
 function campaignSnapshot(c: {
 	_id: unknown;
@@ -31,7 +36,6 @@ function campaignSnapshot(c: {
 	const delivered = c.statsDelivered ?? 0;
 	const opened = c.statsOpened ?? 0;
 	const clicked = c.statsClicked ?? 0;
-	const pct = (num: number, den: number) => (den > 0 ? Math.round((num / den) * 1000) / 10 : null);
 	return {
 		id: c._id as string,
 		name: c.name,
@@ -95,9 +99,8 @@ export const emailStats = internalQuery({
 				acc.unsubscribed += c.statsUnsubscribed ?? 0;
 				return acc;
 			},
-			{ sent: 0, delivered: 0, opened: 0, clicked: 0, bounced: 0, unsubscribed: 0 },
+			{ sent: 0, delivered: 0, opened: 0, clicked: 0, bounced: 0, unsubscribed: 0 }
 		);
-		const pct = (num: number, den: number) => (den > 0 ? Math.round((num / den) * 1000) / 10 : null);
 		return {
 			windowDays: days,
 			campaignsSent: rows.length,
@@ -121,7 +124,7 @@ export const findContact = internalQuery({
 		const match = await ctx.db
 			.query('contacts')
 			.withSearchIndex('search_contacts', (s) =>
-				s.search('searchableText', q).eq('deletedAt', undefined),
+				s.search('searchableText', q).eq('deletedAt', undefined)
 			)
 			.first();
 		if (!match) return null;

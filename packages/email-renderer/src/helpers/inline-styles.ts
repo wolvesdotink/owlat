@@ -1,15 +1,14 @@
-export const buildInlineStyle = (styles: Record<string, string | number | undefined>): string => {
-	return Object.entries(styles)
-		.filter(([, value]) => value !== undefined && value !== '')
-		.map(([key, value]) => `${key}:${value}`)
-		.join(';');
-};
-
 export const buildInlineStyleFromPairs = (pairs: [string, string | undefined][]): string => {
 	return pairs
 		.filter(([, value]) => value !== undefined && value !== '')
 		.map(([key, value]) => `${key}:${value}`)
 		.join(';');
+};
+
+export const buildInlineStyle = (styles: Record<string, string | number | undefined>): string => {
+	// Numbers interpolate to the same string the old inline `.map` produced;
+	// the cast just satisfies the pair helper's string-valued signature.
+	return buildInlineStyleFromPairs(Object.entries(styles) as [string, string | undefined][]);
 };
 
 /**
@@ -26,10 +25,11 @@ export const backgroundImageCss = (
 	escapedUrl: string,
 	position: string,
 	size: string,
-	order: 'position-size' | 'size-position' = 'position-size',
+	order: 'position-size' | 'size-position' = 'position-size'
 ): string => {
 	const positionDecl = `background-position:${position};`;
 	const sizeDecl = `background-size:${size};`;
-	const ordered = order === 'position-size' ? `${positionDecl}${sizeDecl}` : `${sizeDecl}${positionDecl}`;
+	const ordered =
+		order === 'position-size' ? `${positionDecl}${sizeDecl}` : `${sizeDecl}${positionDecl}`;
 	return `background-image:url('${escapedUrl}');${ordered}background-repeat:no-repeat;`;
 };

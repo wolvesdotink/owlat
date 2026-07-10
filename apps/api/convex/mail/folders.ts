@@ -37,6 +37,18 @@ export async function adjustFolderUnseen(
 	});
 }
 
+/** Bump folder modseq atomically; return the assigned value. */
+export async function bumpFolderModseq(
+	ctx: MutationCtx,
+	folderId: Id<'mailFolders'>
+): Promise<number> {
+	const folder = await ctx.db.get(folderId);
+	if (!folder) throw new Error('Folder not found');
+	const next = folder.highestModseq + 1;
+	await ctx.db.patch(folderId, { highestModseq: next, updatedAt: Date.now() });
+	return next;
+}
+
 /** Per-batch cap for the scheduled folder-deletion message relocation. */
 const FOLDER_RELOCATE_BATCH = 256;
 

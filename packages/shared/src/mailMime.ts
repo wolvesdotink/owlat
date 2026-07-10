@@ -59,7 +59,10 @@ function getParam(headerValue: string | undefined, name: string): string | undef
 	if (!headerValue) return undefined;
 	const continued: string[] = [];
 	// `(?:^|[;\s])` so `getParam(..., 'name')` can't match inside `filename`.
-	const contRe = new RegExp(`(?:^|[;\\s])${name}\\*(\\d+)\\*?\\s*=\\s*("([^"]*)"|([^;\\r\\n]+))`, 'gi');
+	const contRe = new RegExp(
+		`(?:^|[;\\s])${name}\\*(\\d+)\\*?\\s*=\\s*("([^"]*)"|([^;\\r\\n]+))`,
+		'gi'
+	);
 	let cm: RegExpExecArray | null;
 	while ((cm = contRe.exec(headerValue))) {
 		continued[Number.parseInt(cm[1]!, 10)] = (cm[3] ?? cm[4] ?? '').trim();
@@ -72,6 +75,17 @@ function getParam(headerValue: string | undefined, name: string): string | undef
 }
 
 /**
+ * Decode `=HH` hex escapes (quoted-printable / RFC 2047 Q-encoding) into their
+ * raw bytes-as-chars. Callers apply their own pre-step first: Q-encoding maps
+ * `_`→space, the QP body strips soft line breaks (`=\r?\n`).
+ */
+function decodeQpHexEscapes(s: string): string {
+	return s.replace(/=([0-9A-Fa-f]{2})/g, (_m, h: string) =>
+		String.fromCharCode(Number.parseInt(h, 16))
+	);
+}
+
+/**
  * Decode RFC 2047 encoded-words (`=?charset?B|Q?payload?=`), honoring the
  * DECLARED charset — a previous version always decoded as UTF-8, which
  * mangled ISO-8859-1 / Shift_JIS subjects. Falls back utf-8 → raw payload
@@ -79,30 +93,29 @@ function getParam(headerValue: string | undefined, name: string): string | undef
  * had its own charset-aware copy; both now live here.
  */
 export function decodeEncodedWords(s: string): string {
-	return s.replace(/=\?([^?]+)\?([bBqQ])\?([^?]*)\?=/g, (whole, charset: string, enc: string, text: string) => {
-		try {
-			let bin: string;
-			if (enc.toUpperCase() === 'B') {
-				bin = atob(text);
-			} else {
-				bin = text
-					.replace(/_/g, ' ')
-					.replace(/=([0-9A-Fa-f]{2})/g, (_x: string, h: string) =>
-						String.fromCharCode(Number.parseInt(h, 16))
-					);
-			}
-			const bytes = new Uint8Array(bin.length);
-			for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i) & 0xff;
-			const cs = charset.toLowerCase() === 'utf8' ? 'utf-8' : charset;
+	return s.replace(
+		/=\?([^?]+)\?([bBqQ])\?([^?]*)\?=/g,
+		(whole, charset: string, enc: string, text: string) => {
 			try {
-				return new TextDecoder(cs).decode(bytes);
+				let bin: string;
+				if (enc.toUpperCase() === 'B') {
+					bin = atob(text);
+				} else {
+					bin = decodeQpHexEscapes(text.replace(/_/g, ' '));
+				}
+				const bytes = new Uint8Array(bin.length);
+				for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i) & 0xff;
+				const cs = charset.toLowerCase() === 'utf8' ? 'utf-8' : charset;
+				try {
+					return new TextDecoder(cs).decode(bytes);
+				} catch {
+					return new TextDecoder('utf-8').decode(bytes);
+				}
 			} catch {
-				return new TextDecoder('utf-8').decode(bytes);
+				return whole;
 			}
-		} catch {
-			return whole;
 		}
-	});
+	);
 }
 
 function getBoundary(contentType: string): string | null {
@@ -125,9 +138,7 @@ function decodeBody(body: string, encoding: string): Uint8Array {
 		return out;
 	}
 	if (enc === 'quoted-printable') {
-		const decoded = body
-			.replace(/=\r?\n/g, '')
-			.replace(/=([0-9A-Fa-f]{2})/g, (_m, h: string) => String.fromCharCode(Number.parseInt(h, 16)));
+		const decoded = decodeQpHexEscapes(body.replace(/=\r?\n/g, ''));
 		const out = new Uint8Array(decoded.length);
 		for (let i = 0; i < decoded.length; i++) out[i] = decoded.charCodeAt(i) & 0xff;
 		return out;

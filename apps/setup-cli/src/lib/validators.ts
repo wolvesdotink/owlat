@@ -17,3 +17,8 @@ export {
 	validateSmtpRelay,
 	validateProvider,
 } from '@owlat/shared/setupValidators';
+
+/** Loose email-shape check: `something@something.something`. */
+export function isValidEmail(v: string): boolean {
+	return /^.+@.+\..+$/.test(v);
+}

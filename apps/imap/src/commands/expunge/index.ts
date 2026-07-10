@@ -3,7 +3,7 @@ import { logger } from '../../logger.js';
 import { parseUidSet } from '../../parser.js';
 import type { ImapCommandModule, SelectedState } from '../types.js';
 import { asyncSession, syncSession } from '../helpers/session.js';
-import { requireAuth, requireSelect } from '../helpers/auth.js';
+import { requireAuth, requireSelect, requireWritableSelect } from '../helpers/auth.js';
 
 export interface ExpungeArgs {
 	/** Present iff this is UID EXPUNGE. */
@@ -30,13 +30,10 @@ export const expungeModule: ImapCommandModule<ExpungeArgs> = {
 		return { ok: true, args: { uidSpec: rawArgs[0] } };
 	},
 	start({ deps, state, args, tag, send }) {
-		const fail = requireAuth(state, tag) ?? requireSelect(state, tag);
+		const fail =
+			requireAuth(state, tag) ?? requireSelect(state, tag) ?? requireWritableSelect(state, tag);
 		if (fail) {
 			send(fail);
-			return syncSession();
-		}
-		if (state.selected!.readOnly) {
-			send(`${tag} NO Mailbox is read-only`);
 			return syncSession();
 		}
 
@@ -53,10 +50,13 @@ export const expungeModule: ImapCommandModule<ExpungeArgs> = {
 
 		return asyncSession(async () => {
 			try {
-				const result = (await deps.convex.mutation(fn.expungeFolder as never, {
-					folderId: state.selected!.folderId,
-					uidSet,
-				} as never)) as ExpungeResult;
+				const result = (await deps.convex.mutation(
+					fn.expungeFolder as never,
+					{
+						folderId: state.selected!.folderId,
+						uidSet,
+					} as never
+				)) as ExpungeResult;
 
 				// IMAP wants EXPUNGE responses in DESCENDING sequence order so
 				// the client's local seq map stays valid across iterations.
@@ -67,10 +67,7 @@ export const expungeModule: ImapCommandModule<ExpungeArgs> = {
 
 				const updatedSelected: SelectedState = {
 					...state.selected!,
-					totalCount: Math.max(
-						0,
-						state.selected!.totalCount - result.sequenceNumbers.length,
-					),
+					totalCount: Math.max(0, state.selected!.totalCount - result.sequenceNumbers.length),
 					highestModseq: result.modseq,
 				};
 				deps.commit({ ...state, selected: updatedSelected });

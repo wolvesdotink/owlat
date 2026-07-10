@@ -1,7 +1,7 @@
 import type { ImapCommandModule } from '../types.js';
 import { asyncSession, syncSession } from '../helpers/session.js';
 import { requireAuth } from '../helpers/auth.js';
-import { listFolders } from '../helpers/folders.js';
+import { resolveFolderByName } from '../helpers/folders.js';
 import { parseList } from '../../parser.js';
 import { logger } from '../../logger.js';
 
@@ -28,13 +28,11 @@ export const statusModule: ImapCommandModule<StatusArgs> = {
 
 		return asyncSession(async () => {
 			try {
-				const folders = await listFolders(deps.convex, state.auth!.mailboxId);
-				const lower = args.mailboxName.toLowerCase();
-				const target =
-					folders.find((f) => f.name.toLowerCase() === lower) ??
-					(lower === 'inbox'
-						? folders.find((f) => f.role === 'inbox')
-						: undefined);
+				const target = await resolveFolderByName(
+					deps.convex,
+					state.auth!.mailboxId,
+					args.mailboxName
+				);
 
 				if (!target) {
 					send(`${tag} NO Mailbox not found`);
