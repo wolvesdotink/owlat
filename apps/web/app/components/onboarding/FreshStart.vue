@@ -22,10 +22,6 @@ const userId = computed(() => user.value?.id ?? null);
 const { currentMailbox, isLoading: mailboxLoading } = usePostboxMailbox();
 const mailbox = computed(() => currentMailbox.value);
 
-const { data: freshStatus } = useConvexQuery(api.mail.mailboxRequest.freshStartStatus, () => ({}));
-const { isEnabled } = useFeatureFlag();
-const externalAllowed = computed(() => isEnabled('mail.external'));
-
 // ── Two-minute setup fields ──
 const displayName = ref('');
 const signatureText = ref('');
@@ -41,9 +37,17 @@ watchEffect(() => {
 	}
 });
 
-const { notifyAbout, setNotifyAbout } = usePostboxSettings();
+const { notifyAbout, setNotifyAbout, isLoading: settingsLoading } = usePostboxSettings();
+const seededNotify = ref(false);
+
+// Seed the notification choice ONCE, from the RESOLVED settings value. Without
+// the guard, a late resolution or any live update of the subscription would
+// overwrite the member's in-progress selection mid-setup; seeding before the
+// query resolves would lock in the placeholder default.
 watchEffect(() => {
+	if (seededNotify.value || settingsLoading.value) return;
 	notifyChoice.value = notifyAbout.value;
+	seededNotify.value = true;
 });
 
 // ── Operations ──
@@ -78,13 +82,16 @@ async function sendTestEmail() {
 	try {
 		const created = await createDraftOp.run({ mailboxId: mb._id });
 		if (!created) return;
-		await updateDraftOp.run({
+		const updated = await updateDraftOp.run({
 			draftId: created.draftId,
 			toAddresses: [mb.address],
 			subject: 'Hello from Owlat',
 			bodyText: 'This is my first message from Owlat — everything works.',
 			bodyHtml: '<p>This is my first message from Owlat — everything works.</p>',
 		});
+		// Bail if the update failed (error already toasted): sending a
+		// recipient-less draft would only produce a second "No recipients" toast.
+		if (!updated) return;
 		const sent = await sendDraftOp.run({ draftId: created.draftId });
 		// send() marks firstSendDone server-side; reflect it locally.
 		if (sent) testSent.value = true;
@@ -143,13 +150,7 @@ function skipToInbox() {
 			v-else-if="!mailbox"
 			class="overflow-hidden rounded-xl border border-border-subtle bg-bg-surface/50"
 		>
-			<PostboxMailboxGuard
-				:mailbox-id="null"
-				:loading="false"
-				:reserved-address="freshStatus?.reservedAddress ?? null"
-				:external-allowed="externalAllowed"
-				:has-open-request="freshStatus?.hasOpenRequest ?? false"
-			/>
+			<PostboxMailboxGuard :mailbox-id="null" :loading="false" />
 		</div>
 
 		<!-- Two-minute setup for a member who has a mailbox. -->
