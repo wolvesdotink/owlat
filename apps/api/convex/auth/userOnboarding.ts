@@ -64,6 +64,33 @@ async function upsertOnboardingRow(
 }
 
 /**
+ * Idempotently stamp a single timestamp `field` on the caller's onboarding row,
+ * writing `Date.now()` only the first time and leaving an already-set value
+ * untouched (so the first-occurrence instant is preserved across replays /
+ * retries). Upserts the row on first write.
+ *
+ * Shared by {@link markOnboardingStep} (per-step completion) and
+ * {@link markWelcomed} (the welcome-seen stamp); neither the step guard nor the
+ * authz check live here — callers apply those before calling.
+ */
+async function stampOnce(
+	ctx: MutationCtx,
+	authUserId: string,
+	field: OnboardingStep | 'welcomedAt'
+): Promise<void> {
+	const existing = await ctx.db
+		.query('userOnboarding')
+		.withIndex('by_auth_user_id', (q) => q.eq('authUserId', authUserId))
+		.first();
+
+	// Preserve the first-occurrence timestamp: only the initial write for a field
+	// counts, later replays are no-ops for that field.
+	if (existing && existing[field] !== undefined) return;
+
+	await upsertOnboardingRow(ctx, authUserId, { [field]: Date.now() });
+}
+
+/**
  * Idempotently record that `authUserId` reached `step`, stamping the completion
  * time on first occurrence and leaving an already-set timestamp untouched (so
  * the first-completion instant is preserved across replays / retries). Upserts
@@ -79,17 +106,7 @@ export async function markOnboardingStep(
 	authUserId: string,
 	step: OnboardingStep
 ): Promise<void> {
-	const existing = await ctx.db
-		.query('userOnboarding')
-		.withIndex('by_auth_user_id', (q) => q.eq('authUserId', authUserId))
-		.first();
-
-	// Preserve the first-completion timestamp: only the initial write for a step
-	// counts, later flow replays are no-ops for that field.
-	if (existing && existing[step] !== undefined) return;
-
-	const patch: Partial<Record<OnboardingStep, number>> = { [step]: Date.now() };
-	await upsertOnboardingRow(ctx, authUserId, patch);
+	await stampOnce(ctx, authUserId, step);
 }
 
 /** Shape returned to the consuming UI — always a concrete object, never null. */
@@ -159,12 +176,6 @@ export const markWelcomed = authedMutation({
 	},
 	handler: async (ctx, args) => {
 		await requireSelf(ctx, args.userId);
-		const existing = await ctx.db
-			.query('userOnboarding')
-			.withIndex('by_auth_user_id', (q) => q.eq('authUserId', args.userId))
-			.first();
-		// Preserve the first-seen instant: only the initial write counts.
-		if (existing && existing.welcomedAt !== undefined) return;
-		await upsertOnboardingRow(ctx, args.userId, { welcomedAt: Date.now() });
+		await stampOnce(ctx, args.userId, 'welcomedAt');
 	},
 });
