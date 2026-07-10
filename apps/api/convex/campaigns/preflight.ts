@@ -12,7 +12,7 @@ import type { Doc } from '../_generated/dataModel';
 import { api } from '../_generated/api';
 import { internalQuery, type MutationCtx, type QueryCtx } from '../_generated/server';
 import { isDeliveryConfigured } from '../lib/sendProviders/capability';
-import { isCampaignSenderAllowed } from './senders';
+import { isCampaignSenderAllowed, senderNotAllowedMessage } from './senders';
 
 export type PreflightResult =
 	| { ok: true }
@@ -136,9 +136,7 @@ export async function validateReadyToSend(
 		return {
 			ok: false,
 			reason: 'sender_not_allowed',
-			message:
-				`Cannot send campaign: "${campaign.fromEmail}" is not an approved campaign sender. ` +
-				'Add it under Campaign senders, or allow custom senders in Settings.',
+			message: `Cannot send campaign: ${senderNotAllowedMessage(campaign.fromEmail)}`,
 		};
 	}
 

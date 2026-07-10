@@ -7,6 +7,7 @@ import { internal, api } from '../_generated/api';
 import { sendProviderDispatch } from '../lib/sendProviders/dispatch';
 import { composeForSend } from '../delivery/sendComposition';
 import { formatFromAddress } from '../lib/emailProviders/domainVerification';
+import { senderNotAllowedMessage } from './senders';
 import { isValidEmail } from '../lib/inputGuards';
 import {
 	throwNotFound,
@@ -44,6 +45,23 @@ async function guardTestSend(
 				`Test emails can only be sent to your organization's own member addresses. "${email}" is not a member of this organization.`
 			);
 		}
+	}
+}
+
+/**
+ * Curated-sender gate for the test/preview actions (2026-07-10 plan, decision
+ * 8): a test send uses the same from-address a real send would, so hold it to
+ * the same list/toggle rule the campaign pre-flight enforces. The dedicated
+ * verified-domain check each caller runs first stays the floor. Throws
+ * `forbidden` with the shared `senderNotAllowedMessage` copy on violation.
+ */
+async function assertCampaignSenderAllowed(
+	ctx: Pick<ActionCtx, 'runQuery'>,
+	fromEmail: string
+): Promise<void> {
+	const allowed = await ctx.runQuery(internal.campaigns.senders.checkSenderAllowed, { fromEmail });
+	if (!allowed) {
+		throwForbidden(senderNotAllowedMessage(fromEmail));
 	}
 }
 
@@ -94,18 +112,7 @@ export const sendTestEmail = authedAction({
 			);
 		}
 
-		// Curated-sender gate (2026-07-10 plan, decision 8): a test send uses the
-		// same from-address a real send would, so hold it to the same list/toggle
-		// rule. The verified-domain check above remains the floor.
-		if (
-			!(await ctx.runQuery(internal.campaigns.senders.checkSenderAllowed, {
-				fromEmail: campaign.fromEmail,
-			}))
-		) {
-			throwForbidden(
-				`"${campaign.fromEmail}" is not an approved campaign sender. Add it under Campaign senders, or allow custom senders in Settings.`
-			);
-		}
+		await assertCampaignSenderAllowed(ctx, campaign.fromEmail);
 
 		// Rate-limit + restrict the recipient to an org-member inbox so the
 		// preview action can't be used to relay mail to arbitrary addresses.
@@ -236,18 +243,7 @@ export const sendTestEmailFromTemplate = authedAction({
 			);
 		}
 
-		// Curated-sender gate (2026-07-10 plan, decision 8): a test send uses the
-		// same from-address a real send would, so hold it to the same list/toggle
-		// rule. The verified-domain check above remains the floor.
-		if (
-			!(await ctx.runQuery(internal.campaigns.senders.checkSenderAllowed, {
-				fromEmail: args.fromEmail,
-			}))
-		) {
-			throwForbidden(
-				`"${args.fromEmail}" is not an approved campaign sender. Add it under Campaign senders, or allow custom senders in Settings.`
-			);
-		}
+		await assertCampaignSenderAllowed(ctx, args.fromEmail);
 
 		// Build from address
 		const from = formatFromAddress(args.fromEmail, args.fromName);
