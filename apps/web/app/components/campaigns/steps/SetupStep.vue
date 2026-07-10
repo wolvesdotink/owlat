@@ -2,16 +2,16 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { rules } from '~/composables/useFormValidation';
-import { isValidEmail } from '~/utils/validation';
-import {
-	CUSTOM_SENDER_VALUE,
-	buildSenderOptions,
-	defaultSenderValue,
-	isCustomSender,
-	senderSelectionProblem,
-} from '~/utils/campaignSenderPicker';
 
 type AudienceType = 'topic' | 'segment';
+
+// The exposed API of the extracted sender picker: a validate() that sets its own
+// error state and returns a human message (or null), plus a readiness flag for
+// the submit button.
+interface SenderPickerApi {
+	validate: () => string | null;
+	isReady: boolean;
+}
 
 interface Props {
 	campaignId: Id<'campaigns'> | null;
@@ -49,116 +49,10 @@ const { data: campaignDetails } = useConvexQuery(api.campaigns.campaigns.getWith
 );
 
 // --- Sender picker ----------------------------------------------------------
-// Enabled curated senders + the custom-address toggle + whether this user may
-// manage the list (drives the empty-state copy). Any org member who reaches the
-// wizard can read this.
-const {
-	data: senderPicker,
-	isLoading: senderPickerLoading,
-	error: senderPickerError,
-} = useOrganizationQuery(api.campaigns.senders.listForPicker);
-
-const senders = computed(() => senderPicker.value?.senders ?? []);
-const isCustomAllowed = computed(() => senderPicker.value?.isCustomAllowed === true);
-const canManageSenders = computed(() => senderPicker.value?.canManage === true);
-
-const selectedSenderId = ref<string>('');
-const senderError = ref<string | null>(null);
-// Which custom field the current senderError flags (drives the input-error ring
-// on the matching From Name / From Email input); null when the error is not
-// field-specific (e.g. nothing selected).
-const senderErrorField = ref<'name' | 'email' | null>(null);
-
-const senderOptions = computed(() => buildSenderOptions(senders.value, isCustomAllowed.value));
-const isCustomSelected = computed(() => isCustomSender(selectedSenderId.value));
-
-// No curated senders AND no custom escape hatch: nothing is selectable, so show
-// an empty-state (admin deep link vs. "ask your admin") instead of a picker.
-const showSenderEmptyState = computed(() => senders.value.length === 0 && !isCustomAllowed.value);
-
-const isSenderReady = computed(
-	() =>
-		senderSelectionProblem(selectedSenderId.value, {
-			fromName: form.fromName,
-			fromEmail: form.fromEmail,
-		}) === null
-);
-
-function onSelectSender(value: string | null) {
-	selectedSenderId.value = value ?? '';
-	senderError.value = null;
-	senderErrorField.value = null;
-}
-
-// A curated selection is the source of truth for the from name/address; keep the
-// form fields (read by defineExpose / the review summary) in sync. The custom
-// branch leaves the fields for the user to edit.
-watch(selectedSenderId, (value) => {
-	if (value === CUSTOM_SENDER_VALUE || !value) return;
-	const sender = senders.value.find((s) => s._id === value);
-	if (sender) {
-		form.fromName = sender.displayName ?? '';
-		form.fromEmail = sender.email;
-	}
-});
-
-// One-shot preselect once the picker (and, when editing, the persisted campaign)
-// has loaded: reuse the campaign's saved sender if it still matches a curated
-// row, fall back to the custom branch when allowed, else the default sender.
-let senderInitialized = false;
-watch(
-	[senders, isCustomAllowed, campaignDetails],
-	() => {
-		if (senderInitialized || !senderPicker.value) return;
-		if (props.campaignId && campaignDetails.value === undefined) return;
-		senderInitialized = true;
-
-		const existingEmail = campaignDetails.value?.fromEmail?.trim().toLowerCase();
-		if (existingEmail) {
-			const match = senders.value.find((s) => s.email === existingEmail);
-			if (match) {
-				selectedSenderId.value = match._id;
-				return;
-			}
-			if (isCustomAllowed.value) {
-				selectedSenderId.value = CUSTOM_SENDER_VALUE;
-				form.fromName = campaignDetails.value?.fromName ?? '';
-				form.fromEmail = campaignDetails.value?.fromEmail ?? '';
-				return;
-			}
-		}
-		selectedSenderId.value = defaultSenderValue(senders.value, isCustomAllowed.value);
-	},
-	{ immediate: true }
-);
-
-// Advisory only — curated senders are already domain-verified, so the wizard's
-// live domain check applies to the custom branch. The server keeps the hard
-// verified-domain floor at send time.
-const { data: domainVerificationStatus } = useOrganizationQuery(
-	api.domains.domains.getEmailDomainVerificationStatus,
-	() => {
-		if (!isCustomSelected.value) return undefined;
-		const email = form.fromEmail.trim();
-		if (!email || !isValidEmail(email)) return undefined;
-		return { email };
-	}
-);
-
-const domainVerificationWarning = computed(() => {
-	const status = domainVerificationStatus.value;
-	if (!status) return null;
-	if (!status.exists) {
-		return `Domain "${status.domain}" is not registered. You can continue editing, but sending is disabled until you add and verify this domain in Settings > Domains.`;
-	}
-	if (!status.verified) {
-		return `Domain "${status.domain}" is not verified. You can continue editing, but sending is disabled until DNS verification completes in Settings > Domains.`;
-	}
-	if (status.stale) {
-		return `Domain verification is stale (last checked ${status.lastVerifiedAt ? new Date(status.lastVerifiedAt).toLocaleDateString() : 'never'}). Consider re-verifying.`;
-	}
-	return null;
-});
+// The curated-sender select (query, state, watchers, custom-branch fields and
+// the advisory domain check) lives in SetupSenderPicker; it v-models the from
+// name/address back into `form` and exposes validate() + isReady through here.
+const senderPickerRef = ref<SenderPickerApi | null>(null);
 
 // --- Audience ---------------------------------------------------------------
 const audienceType = ref<AudienceType>('topic');
@@ -267,31 +161,13 @@ const { isLoading, error, setError, setLoading } = useModal();
 const validate = (): boolean => {
 	setError('');
 	audienceError.value = null;
-	senderError.value = null;
-	senderErrorField.value = null;
 
 	if (!basicsValidation.validate(form)) return false;
 
-	// One source of truth for the guard AND the messages: map the util's
-	// discriminated reason to human copy (the util already mirrors the server gate).
-	const problem = senderSelectionProblem(selectedSenderId.value, {
-		fromName: form.fromName,
-		fromEmail: form.fromEmail,
-	});
-	if (problem === 'none-selected') {
-		senderError.value = 'Choose who this campaign sends from';
-		return false;
-	}
-	if (problem === 'missing-name') {
-		senderError.value = 'Enter a from name';
-		senderErrorField.value = 'name';
-		return false;
-	}
-	if (problem === 'invalid-email') {
-		senderError.value = 'Enter a valid from address';
-		senderErrorField.value = 'email';
-		return false;
-	}
+	// The sender picker owns its own validation/error copy and writes fromName /
+	// fromEmail back into `form`; a non-null message means the selection is
+	// incomplete (mirrors the server gate).
+	if (senderPickerRef.value?.validate() != null) return false;
 
 	if (audienceType.value === 'topic' && !selectedTopicId.value) {
 		audienceError.value = 'Please select a topic';
@@ -354,7 +230,7 @@ const handleSubmit = async () => {
 
 const canSubmit = computed(() => {
 	if (isLoading.value) return false;
-	if (!isSenderReady.value) return false;
+	if (!senderPickerRef.value?.isReady) return false;
 	if (audienceType.value === 'topic' && !selectedTopicId.value) return false;
 	if (audienceType.value === 'segment' && !selectedSegmentId.value) return false;
 	return true;
@@ -416,110 +292,13 @@ defineExpose({
 					</p>
 				</div>
 
-				<div>
-					<label for="senderPicker" class="label flex items-center gap-2">
-						<Icon name="lucide:user" class="w-4 h-4 text-text-tertiary" />
-						Send from <span class="text-error">*</span>
-					</label>
-
-					<!-- Loading -->
-					<p v-if="senderPickerLoading && !senderPicker" class="mt-1.5 text-sm text-text-tertiary">
-						Loading senders…
-					</p>
-
-					<!-- Error -->
-					<UiErrorAlert
-						v-else-if="senderPickerError"
-						class="mt-1.5"
-						message="Could not load campaign senders. Please try again."
-					/>
-
-					<!-- Empty: no curated senders and custom addresses aren't allowed -->
-					<div
-						v-else-if="showSenderEmptyState"
-						class="mt-1.5 rounded-lg border border-border-subtle bg-bg-surface p-4 text-sm"
-					>
-						<p class="text-text-secondary">No campaign senders have been set up yet.</p>
-						<NuxtLink
-							v-if="canManageSenders"
-							to="/dashboard/settings/campaign-senders"
-							class="mt-2 inline-flex items-center gap-1.5 font-medium text-brand hover:opacity-80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand rounded"
-						>
-							<Icon name="lucide:plus" class="w-4 h-4" />
-							Add a campaign sender
-						</NuxtLink>
-						<p v-else class="mt-1 text-text-tertiary">
-							Ask your admin to add a campaign sender before you can send.
-						</p>
-					</div>
-
-					<!-- Picker -->
-					<template v-else>
-						<UiSelect
-							id="senderPicker"
-							class="mt-1.5"
-							:options="senderOptions"
-							:model-value="selectedSenderId"
-							placeholder="Choose a sender"
-							:error="senderError ?? undefined"
-							@update:model-value="onSelectSender"
-						/>
-						<p v-if="!isCustomSelected && !senderError" class="mt-1.5 text-sm text-text-tertiary">
-							Recipients see this name and address. Manage the list in Settings → Campaign senders.
-						</p>
-
-						<!-- Custom address (only reachable when the instance allows custom senders) -->
-						<div v-if="isCustomSelected" class="mt-4 space-y-4">
-							<div>
-								<label for="fromName" class="label flex items-center gap-2">
-									<Icon name="lucide:user" class="w-4 h-4 text-text-tertiary" />
-									From Name <span class="text-error">*</span>
-								</label>
-								<input
-									id="fromName"
-									v-model="form.fromName"
-									type="text"
-									placeholder="e.g., John from Acme Inc"
-									:class="['input mt-1.5', senderErrorField === 'name' ? 'input-error' : '']"
-								/>
-								<p class="mt-1.5 text-sm text-text-tertiary">
-									The name recipients will see when they receive your email.
-								</p>
-							</div>
-
-							<div>
-								<label for="fromEmail" class="label flex items-center gap-2">
-									<Icon name="lucide:mail" class="w-4 h-4 text-text-tertiary" />
-									From Email <span class="text-error">*</span>
-								</label>
-								<input
-									id="fromEmail"
-									v-model="form.fromEmail"
-									type="email"
-									placeholder="e.g., hello@acme.com"
-									:class="['input mt-1.5', senderErrorField === 'email' ? 'input-error' : '']"
-								/>
-								<p
-									v-if="domainVerificationWarning"
-									class="mt-1.5 text-sm text-warning flex items-center gap-1.5"
-								>
-									<Icon name="lucide:alert-circle" class="w-4 h-4 shrink-0" />
-									{{ domainVerificationWarning }}
-								</p>
-								<p
-									v-else-if="domainVerificationStatus?.verified"
-									class="mt-1.5 text-sm text-success flex items-center gap-1.5"
-								>
-									<Icon name="lucide:check-circle" class="w-4 h-4 shrink-0" />
-									Domain "{{ domainVerificationStatus.domain }}" is verified
-								</p>
-								<p v-else class="mt-1.5 text-sm text-text-tertiary">
-									The email address your campaign will be sent from.
-								</p>
-							</div>
-						</div>
-					</template>
-				</div>
+				<CampaignsStepsSetupSenderPicker
+					ref="senderPickerRef"
+					v-model:from-name="form.fromName"
+					v-model:from-email="form.fromEmail"
+					:campaign-id="campaignId"
+					:campaign-details="campaignDetails"
+				/>
 
 				<div>
 					<label for="replyTo" class="label flex items-center gap-2">
