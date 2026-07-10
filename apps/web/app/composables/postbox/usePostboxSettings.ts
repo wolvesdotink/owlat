@@ -92,7 +92,7 @@ export function usePostboxSettings() {
 		resolvePostboxNotifyAbout(data.value?.notifyAbout, categoriesLive.value)
 	);
 
-	// Whether non-`person` mail still increments the dock/tray badge. Default ON
+	// Whether non-`person` mail still increments the dock/taskbar badge. Default ON
 	// (unset => badge counts everything, the pre-existing behavior).
 	const badgeNonPeople = computed<boolean>(() => data.value?.isBadgeNonPeopleOn ?? true);
 

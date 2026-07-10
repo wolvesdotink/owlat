@@ -128,7 +128,7 @@ export async function replyFromNotification(
 async function runEffect(effect: NonNullable<NotifEffect>, convex: ConvexClient): Promise<void> {
 	// The Archive / Mark-read actions triage in place WITHOUT navigating away —
 	// they should not steal the user's current view. Only an explicit open
-	// (notification body / tray peek) focuses + deep-links.
+	// (clicking the notification body) focuses + deep-links.
 	if (effect.type === 'archive') {
 		await focusMainWindow();
 		try {

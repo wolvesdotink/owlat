@@ -31,7 +31,10 @@ const defaultAppOs = computed<'macos' | 'windows' | 'linux' | 'other'>(() => {
 			Settings for the Owlat desktop app on this device.
 		</p>
 
-		<div v-if="!isDesktop" class="rounded-lg border border-border-subtle p-4 text-sm text-text-secondary">
+		<div
+			v-if="!isDesktop"
+			class="rounded-lg border border-border-subtle p-4 text-sm text-text-secondary"
+		>
 			These settings are only available in the desktop app.
 		</div>
 
@@ -40,7 +43,7 @@ const defaultAppOs = computed<'macos' | 'windows' | 'linux' | 'other'>(() => {
 				<span>
 					<span class="block text-sm font-medium text-text-primary">Launch at login</span>
 					<span class="block text-xs text-text-secondary">
-						Start Owlat automatically (minimized to the tray) when you log in.
+						Start Owlat automatically when you log in.
 					</span>
 				</span>
 				<input
@@ -55,8 +58,8 @@ const defaultAppOs = computed<'macos' | 'windows' | 'linux' | 'other'>(() => {
 			<div class="p-4">
 				<span class="block text-sm font-medium text-text-primary">Default email app</span>
 				<span class="block text-xs text-text-secondary mb-2">
-					Make Owlat open when you click a <code>mailto:</code> link. Your operating
-					system controls the default mail app, so this is a one-time step you take there:
+					Make Owlat open when you click a <code>mailto:</code> link. Your operating system controls
+					the default mail app, so this is a one-time step you take there:
 				</span>
 				<ul class="list-disc pl-5 text-xs text-text-secondary space-y-1">
 					<li v-if="defaultAppOs === 'macos'">
@@ -64,17 +67,17 @@ const defaultAppOs = computed<'macos' | 'windows' | 'linux' | 'other'>(() => {
 						<strong>Default email reader</strong> to Owlat.
 					</li>
 					<li v-else-if="defaultAppOs === 'windows'">
-						Open <strong>Settings &gt; Apps &gt; Default apps</strong>, search for
-						Owlat, and set it as the handler for <code>mailto</code>.
+						Open <strong>Settings &gt; Apps &gt; Default apps</strong>, search for Owlat, and set it
+						as the handler for <code>mailto</code>.
 					</li>
 					<li v-else-if="defaultAppOs === 'linux'">
-						Set Owlat as your <code>x-scheme-handler/mailto</code> default (for example
-						with <code>xdg-mime default owlat.desktop x-scheme-handler/mailto</code>, or
-						via your desktop environment's default-applications settings).
+						Set Owlat as your <code>x-scheme-handler/mailto</code> default (for example with
+						<code>xdg-mime default owlat.desktop x-scheme-handler/mailto</code>, or via your desktop
+						environment's default-applications settings).
 					</li>
 					<li v-else>
-						Set Owlat as the <code>mailto:</code> handler in your operating system's
-						default-apps settings.
+						Set Owlat as the <code>mailto:</code> handler in your operating system's default-apps
+						settings.
 					</li>
 				</ul>
 			</div>

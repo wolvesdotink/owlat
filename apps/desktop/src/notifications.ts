@@ -2,7 +2,7 @@
  * Desktop notification bridge.
  *
  * Wraps @tauri-apps/plugin-notification and Tauri invoke commands
- * for sending native OS notifications and updating the tray badge.
+ * for sending native OS notifications and updating the app-icon unread badge.
  */
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
@@ -59,32 +59,13 @@ export async function onNotificationAction(
 }
 
 /**
- * Update the system tray badge with the current unread count.
+ * Update the app-icon unread badge (macOS dock, Windows taskbar, Linux Unity)
+ * with the current unread count. A count of 0 clears the badge.
  */
-export async function updateTrayBadge(count: number): Promise<void> {
+export async function updateUnreadBadge(count: number): Promise<void> {
 	try {
-		await invoke('update_tray_badge', { count: Math.max(0, Math.round(count)) });
+		await invoke('update_unread_badge', { count: Math.max(0, Math.round(count)) });
 	} catch (e) {
-		console.warn('[desktop] Failed to update tray badge:', e);
-	}
-}
-
-/** One row in the tray quick-peek dropdown (plain text). */
-export interface TrayPeekItem {
-	messageId: string;
-	folderRole: string;
-	title: string;
-}
-
-/**
- * Replace the tray menu's "quick peek" section with the newest unread messages.
- * Clicking a row focuses the main window and deep-links to that thread. Pass an
- * empty array to clear the peek (e.g. inbox is all read).
- */
-export async function updateTrayPeek(items: TrayPeekItem[]): Promise<void> {
-	try {
-		await invoke('update_tray_peek', { items });
-	} catch (e) {
-		console.warn('[desktop] Failed to update tray peek:', e);
+		console.warn('[desktop] Failed to update unread badge:', e);
 	}
 }

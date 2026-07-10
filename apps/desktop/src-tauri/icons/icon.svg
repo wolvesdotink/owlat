@@ -2,8 +2,7 @@
   <!-- Owlat desktop app icon (master source).
        Regenerate all platform icons from this file:
          rsvg-convert -w 1024 -h 1024 icon.svg -o /tmp/owlat-icon.png
-         bun tauri icon /tmp/owlat-icon.png   (from apps/desktop)
-       Keep tray.png transparent — it is a macOS template icon. -->
+         bun tauri icon /tmp/owlat-icon.png   (from apps/desktop) -->
   <defs>
     <linearGradient id="plate" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#221c18"/>
