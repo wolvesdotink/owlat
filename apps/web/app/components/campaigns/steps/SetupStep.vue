@@ -2,9 +2,16 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { rules } from '~/composables/useFormValidation';
-import { isValidEmail } from '~/utils/validation';
 
 type AudienceType = 'topic' | 'segment';
+
+// The exposed API of the extracted sender picker: a validate() that sets its own
+// error state and returns a human message (or null), plus a readiness flag for
+// the submit button.
+interface SenderPickerApi {
+	validate: () => string | null;
+	isReady: boolean;
+}
 
 interface Props {
 	campaignId: Id<'campaigns'> | null;
@@ -27,39 +34,25 @@ const form = reactive({
 	replyTo: '',
 });
 
+// From-name / from-email are chosen through the sender picker (curated senders
+// carry their own identity; the custom branch validates below), so the base
+// schema only owns the two always-free-text fields.
 const basicsValidation = useFormValidation({
 	campaignName: [rules.required('Campaign name is required')],
-	fromName: [rules.required('From name is required')],
-	fromEmail: [
-		rules.required('From email is required'),
-		rules.email('Please enter a valid email address'),
-	],
 	replyTo: [rules.email('Please enter a valid email address')],
 });
 
-const { data: domainVerificationStatus } = useOrganizationQuery(
-	api.domains.domains.getEmailDomainVerificationStatus,
-	() => {
-		const email = form.fromEmail.trim();
-		if (!email || !isValidEmail(email)) return undefined;
-		return { email };
-	}
+// The persisted campaign backs the sender preselect (below) and the A/B
+// expander (further down); declared here so the sender init watcher can read it.
+const { data: campaignDetails } = useConvexQuery(api.campaigns.campaigns.getWithRelations, () =>
+	props.campaignId ? { campaignId: props.campaignId } : 'skip'
 );
 
-const domainVerificationWarning = computed(() => {
-	const status = domainVerificationStatus.value;
-	if (!status) return null;
-	if (!status.exists) {
-		return `Domain "${status.domain}" is not registered. You can continue editing, but sending is disabled until you add and verify this domain in Settings > Domains.`;
-	}
-	if (!status.verified) {
-		return `Domain "${status.domain}" is not verified. You can continue editing, but sending is disabled until DNS verification completes in Settings > Domains.`;
-	}
-	if (status.stale) {
-		return `Domain verification is stale (last checked ${status.lastVerifiedAt ? new Date(status.lastVerifiedAt).toLocaleDateString() : 'never'}). Consider re-verifying.`;
-	}
-	return null;
-});
+// --- Sender picker ----------------------------------------------------------
+// The curated-sender select (query, state, watchers, custom-branch fields and
+// the advisory domain check) lives in SetupSenderPicker; it v-models the from
+// name/address back into `form` and exposes validate() + isReady through here.
+const senderPickerRef = ref<SenderPickerApi | null>(null);
 
 // --- Audience ---------------------------------------------------------------
 const audienceType = ref<AudienceType>('topic');
@@ -102,10 +95,6 @@ const selectedSegment = computed(() => {
 // --- A/B test (optional, progressive-disclosure expander) -------------------
 const abTest = useCampaignABTest();
 const abTestExpanded = ref(false);
-
-const { data: campaignDetails } = useConvexQuery(api.campaigns.campaigns.getWithRelations, () =>
-	props.campaignId ? { campaignId: props.campaignId } : 'skip'
-);
 
 const { results: emailTemplates } = usePaginatedQuery(
 	api.emailTemplates.emails.list,
@@ -175,6 +164,11 @@ const validate = (): boolean => {
 
 	if (!basicsValidation.validate(form)) return false;
 
+	// The sender picker owns its own validation/error copy and writes fromName /
+	// fromEmail back into `form`; a non-null message means the selection is
+	// incomplete (mirrors the server gate).
+	if (senderPickerRef.value?.validate() != null) return false;
+
 	if (audienceType.value === 'topic' && !selectedTopicId.value) {
 		audienceError.value = 'Please select a topic';
 		return false;
@@ -236,6 +230,7 @@ const handleSubmit = async () => {
 
 const canSubmit = computed(() => {
 	if (isLoading.value) return false;
+	if (!senderPickerRef.value?.isReady) return false;
 	if (audienceType.value === 'topic' && !selectedTopicId.value) return false;
 	if (audienceType.value === 'segment' && !selectedSegmentId.value) return false;
 	return true;
@@ -297,59 +292,13 @@ defineExpose({
 					</p>
 				</div>
 
-				<div>
-					<label for="fromName" class="label flex items-center gap-2">
-						<Icon name="lucide:user" class="w-4 h-4 text-text-tertiary" />
-						From Name <span class="text-error">*</span>
-					</label>
-					<input
-						id="fromName"
-						v-model="form.fromName"
-						type="text"
-						placeholder="e.g., John from Acme Inc"
-						:class="['input mt-1.5', basicsValidation.hasError('fromName') ? 'input-error' : '']"
-					/>
-					<p v-if="basicsValidation.getError('fromName', true)" class="mt-1.5 text-sm text-error">
-						{{ basicsValidation.getError('fromName', true) }}
-					</p>
-					<p v-else class="mt-1.5 text-sm text-text-tertiary">
-						The name recipients will see when they receive your email.
-					</p>
-				</div>
-
-				<div>
-					<label for="fromEmail" class="label flex items-center gap-2">
-						<Icon name="lucide:mail" class="w-4 h-4 text-text-tertiary" />
-						From Email <span class="text-error">*</span>
-					</label>
-					<input
-						id="fromEmail"
-						v-model="form.fromEmail"
-						type="email"
-						placeholder="e.g., hello@acme.com"
-						:class="['input mt-1.5', basicsValidation.hasError('fromEmail') ? 'input-error' : '']"
-					/>
-					<p v-if="basicsValidation.getError('fromEmail', true)" class="mt-1.5 text-sm text-error">
-						{{ basicsValidation.getError('fromEmail', true) }}
-					</p>
-					<p
-						v-else-if="domainVerificationWarning"
-						class="mt-1.5 text-sm text-warning flex items-center gap-1.5"
-					>
-						<Icon name="lucide:alert-circle" class="w-4 h-4 shrink-0" />
-						{{ domainVerificationWarning }}
-					</p>
-					<p
-						v-else-if="domainVerificationStatus?.verified"
-						class="mt-1.5 text-sm text-success flex items-center gap-1.5"
-					>
-						<Icon name="lucide:check-circle" class="w-4 h-4 shrink-0" />
-						Domain "{{ domainVerificationStatus.domain }}" is verified
-					</p>
-					<p v-else class="mt-1.5 text-sm text-text-tertiary">
-						The email address your campaign will be sent from.
-					</p>
-				</div>
+				<CampaignsStepsSetupSenderPicker
+					ref="senderPickerRef"
+					v-model:from-name="form.fromName"
+					v-model:from-email="form.fromEmail"
+					:campaign-id="campaignId"
+					:campaign-details="campaignDetails"
+				/>
 
 				<div>
 					<label for="replyTo" class="label flex items-center gap-2">

@@ -311,3 +311,74 @@ describe('sendTestEmail — curated-sender enforcement site', () => {
 		).rejects.toThrow(/not an approved campaign sender/i);
 	});
 });
+
+/**
+ * updateBasics is the wizard's write path (piece d3). It must refuse an off-list
+ * from-address so the API cannot persist what the picker never offers — the
+ * "no way to submit an off-list address from the UI or the API" guarantee.
+ */
+describe('updateBasics — wizard curated-sender enforcement site', () => {
+	async function seedDraftCampaign(
+		t: ReturnType<typeof convexTest>,
+		opts: { allowCustom?: boolean; defaultFromEmail?: string } = {}
+	): Promise<Id<'campaigns'>> {
+		await seedInstance(t, opts);
+		return t.run((ctx) => ctx.db.insert('campaigns', createTestCampaign({ status: 'draft' })));
+	}
+
+	it('rejects an off-list from-address when custom senders are off', async () => {
+		const t = convexTest(schema, modules);
+		// The seed self-heals news@acme.com (the verified org default); submitting a
+		// DIFFERENT, non-curated address must still be refused.
+		const campaignId = await seedDraftCampaign(t, { defaultFromEmail: 'news@acme.com' });
+		await expect(
+			t.mutation(api.campaigns.campaigns.updateBasics, {
+				campaignId,
+				fromName: 'Support',
+				fromEmail: 'support@acme.com',
+			})
+		).rejects.toThrow(/not an approved campaign sender/i);
+	});
+
+	it('accepts the org default address via the self-healed seed with the toggle off', async () => {
+		const t = convexTest(schema, modules);
+		const campaignId = await seedDraftCampaign(t, { defaultFromEmail: 'news@acme.com' });
+		const result = await t.mutation(api.campaigns.campaigns.updateBasics, {
+			campaignId,
+			fromName: 'Acme News',
+			fromEmail: 'news@acme.com',
+		});
+		expect(result).toBe(campaignId);
+	});
+
+	it('accepts an enabled curated sender with the toggle off', async () => {
+		const t = convexTest(schema, modules);
+		const campaignId = await seedDraftCampaign(t, { defaultFromEmail: 'news@acme.com' });
+		await t.run(async (ctx) => {
+			await ctx.db.insert(
+				'campaignSenders',
+				createTestCampaignSender({ email: 'support@acme.com', isEnabled: true })
+			);
+		});
+		const result = await t.mutation(api.campaigns.campaigns.updateBasics, {
+			campaignId,
+			fromName: 'Support',
+			fromEmail: 'support@acme.com',
+		});
+		expect(result).toBe(campaignId);
+	});
+
+	it('accepts an off-list address when custom senders are on', async () => {
+		const t = convexTest(schema, modules);
+		const campaignId = await seedDraftCampaign(t, {
+			allowCustom: true,
+			defaultFromEmail: 'news@acme.com',
+		});
+		const result = await t.mutation(api.campaigns.campaigns.updateBasics, {
+			campaignId,
+			fromName: 'Anyone',
+			fromEmail: 'anyone@acme.com',
+		});
+		expect(result).toBe(campaignId);
+	});
+});
