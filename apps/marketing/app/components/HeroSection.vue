@@ -48,7 +48,7 @@ async function copyInstall() {
 				<div class="mt-10 flex items-center gap-3.5 flex-wrap">
 					<a
 						href="https://docs.owlat.app/developer/self-hosting"
-						class="inline-flex items-center px-6 py-3 text-[0.9375rem] font-semibold text-text-inverse bg-brand rounded-lg no-underline transition-colors duration-(--motion-fast) hover:bg-brand-hover btn-press focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-bg-base"
+						class="btn btn-primary px-6 text-md font-semibold no-underline"
 					>
 						Self-host in 5 minutes
 					</a>
@@ -62,7 +62,7 @@ async function copyInstall() {
 						>
 						<button
 							type="button"
-							class="shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-[0.6875rem] font-semibold uppercase tracking-wider text-text-tertiary hover:text-brand transition-colors duration-(--motion-fast) btn-press"
+							class="shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-2xs font-semibold uppercase tracking-wider text-text-tertiary hover:text-brand transition-colors duration-(--motion-fast) ui-press"
 							:aria-label="copied ? 'Copied' : 'Copy install command'"
 							@click="copyInstall"
 						>

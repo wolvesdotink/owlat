@@ -94,7 +94,7 @@ const hostedFeatures = [
 
 					<a
 						href="https://docs.owlat.app/developer/self-hosting"
-						class="block w-full text-center px-4 py-2.5 text-[0.8125rem] font-semibold rounded-[10px] no-underline transition-colors duration-(--motion-fast) btn-press bg-brand text-text-inverse hover:bg-brand-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-bg-base"
+						class="btn btn-primary w-full px-4 py-2.5 text-caption font-semibold no-underline"
 					>
 						Start self-hosting →
 					</a>
@@ -135,7 +135,7 @@ const hostedFeatures = [
 
 					<a
 						href="/waitlist"
-						class="block w-full text-center px-4 py-2.5 text-[0.8125rem] font-semibold rounded-[10px] no-underline transition-colors duration-(--motion-fast) btn-press bg-bg-surface text-text-primary border border-border-default hover:border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-bg-base"
+						class="btn btn-secondary w-full px-4 py-2.5 text-caption font-semibold no-underline"
 					>
 						Join waitlist
 					</a>
