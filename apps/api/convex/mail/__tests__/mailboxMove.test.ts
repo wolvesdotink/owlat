@@ -312,6 +312,28 @@ describe('archive — stops sync without data loss', () => {
 		});
 	});
 
+	it('moveStatus keeps surfacing the archived move after the account is demoted', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId } = await provisioned(t);
+		const res = await t.mutation(api.mail.mailboxMove.archive, {});
+		expect(res.stage).toBe('archived');
+
+		// The live external mailbox is gone (account 'disconnected'), but the flow
+		// must still show its terminal truth — not self-hide the whole section.
+		const status = await t.query(api.mail.mailboxMove.moveStatus, {});
+		expect(status.eligible).toBe(true);
+		if (!status.eligible) throw new Error('expected eligible');
+		expect(status.move?.stage).toBe('archived');
+		expect(status.move?.archivedAt).not.toBeNull();
+		expect(status.address).toBeTruthy();
+		expect(status.accountStatus).toBe('disconnected');
+		// The archive mailbox stays readable.
+		await t.run(async (ctx) => {
+			const mailbox = await ctx.db.get(mailboxId);
+			expect(mailbox?.status).toBe('active');
+		});
+	});
+
 	it('archiving is idempotent', async () => {
 		const t = convexTest(schema, modules);
 		await provisioned(t);
