@@ -126,7 +126,7 @@ const files = [
 
 .af-file-name {
   font-size: 0.8125rem;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   font-family: var(--font-mono);
   color: var(--color-text-primary);
   white-space: nowrap;

@@ -37,7 +37,7 @@ const { data: allUsers } = useConvexQuery(api.platformAdmin.queries.listAllUsers
 const tabs = computed(() => [
 	{ value: 'overview', label: 'Overview' },
 	{ value: 'review', label: 'Content Review', count: reviewQueue.value?.pendingCount ?? 0 },
-	{ value: 'organizations', label: 'Organizations', count: flaggedOrgs.value?.length ?? 0 },
+	{ value: 'organizations', label: 'Workspaces', count: flaggedOrgs.value?.length ?? 0 },
 	{ value: 'admins', label: 'Admins', count: admins.value?.length ?? 0 },
 ]);
 
@@ -56,7 +56,7 @@ const { run: rejectContent, isLoading: rejecting } = useBackendOperation(
 );
 const { run: setOrganizationStatus, isLoading: settingStatus } = useBackendOperation(
 	api.platformAdmin.mutations.setOrganizationStatus,
-	{ label: 'Set organization status' },
+	{ label: 'Set workspace status' },
 );
 const { run: addPlatformAdmin, isLoading: addingAdmin } = useBackendOperation(
 	api.platformAdmin.mutations.addPlatformAdmin,
@@ -146,7 +146,7 @@ async function confirmStatus() {
 		reason: statusReason.value.trim(),
 	});
 	if (r) {
-		showToast(`Organization status set to "${statusTargetValue.value}".`);
+		showToast(`Workspace status set to "${statusTargetValue.value}".`);
 		statusModalOpen.value = false;
 	}
 }
@@ -231,7 +231,7 @@ const anyMutationLoading = computed(
 				<div>
 					<h1 class="text-2xl font-semibold text-text-primary">Operator Console</h1>
 					<p class="mt-1 text-text-secondary">
-						Platform-admin controls: review held content, manage organization sending status, and curate admins.
+						Platform-admin controls: review held content, manage workspace sending status, and curate admins.
 					</p>
 				</div>
 			</div>
@@ -269,7 +269,7 @@ const anyMutationLoading = computed(
 				<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider mb-4">Recent abuse signals</h3>
 				<div
 					v-if="!recentAbuse || (recentAbuse.flaggedScans.length === 0 && recentAbuse.pendingReview.length === 0)"
-					class="text-[0.8125rem] text-text-tertiary"
+					class="text-caption text-text-tertiary"
 				>
 					No flagged content or pending reviews.
 				</div>
@@ -280,7 +280,7 @@ const anyMutationLoading = computed(
 							<li
 								v-for="c in recentAbuse.pendingReview"
 								:key="c.id"
-								class="flex items-center justify-between text-[0.8125rem] text-text-primary"
+								class="flex items-center justify-between text-caption text-text-primary"
 							>
 								<span>{{ c.name }}</span>
 								<span class="text-text-tertiary">{{ formatRelativeTime(c.updatedAt) }}</span>
@@ -293,7 +293,7 @@ const anyMutationLoading = computed(
 							<li
 								v-for="(s, i) in recentAbuse.flaggedScans"
 								:key="`${s.resourceType}-${s.resourceId}-${i}`"
-								class="flex items-center justify-between text-[0.8125rem]"
+								class="flex items-center justify-between text-caption"
 							>
 								<span class="text-text-primary">{{ s.resourceType }} · score {{ s.score }}</span>
 								<UiBadge :variant="scanLevelVariant(s.level)">{{ s.level }}</UiBadge>
@@ -332,7 +332,7 @@ const anyMutationLoading = computed(
 									{{ item.scan.level }} · {{ item.scan.score }}
 								</UiBadge>
 							</div>
-							<p v-if="item.subject" class="mt-1 text-[0.8125rem] text-text-secondary truncate">
+							<p v-if="item.subject" class="mt-1 text-caption text-text-secondary truncate">
 								{{ item.subject }}
 							</p>
 							<p class="mt-1 text-xs text-text-tertiary">
@@ -372,7 +372,7 @@ const anyMutationLoading = computed(
 					<li
 						v-for="(a, i) in reviewQueue.recentlyReviewed"
 						:key="i"
-						class="flex items-center justify-between text-[0.8125rem]"
+						class="flex items-center justify-between text-caption"
 					>
 						<span class="text-text-primary">{{ auditActionLabel(a.action) }}</span>
 						<span class="text-text-tertiary">{{ formatRelativeTime(a.createdAt) }}</span>
@@ -390,14 +390,14 @@ const anyMutationLoading = computed(
 						<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider mb-2">Sending status</h3>
 						<div class="flex items-center gap-2">
 							<UiBadge :variant="abuseStatusVariant(currentAbuseStatus)" size="md">{{ currentAbuseStatus }}</UiBadge>
-							<span v-if="isBlockingAbuseStatus(currentAbuseStatus)" class="text-[0.8125rem] text-error">
+							<span v-if="isBlockingAbuseStatus(currentAbuseStatus)" class="text-caption text-error">
 								All sending is currently blocked.
 							</span>
-							<span v-else-if="isWarnedAbuseStatus" class="text-[0.8125rem] text-warning">
+							<span v-else-if="isWarnedAbuseStatus" class="text-caption text-warning">
 								Flagged — sending still allowed.
 							</span>
 						</div>
-						<p v-if="orgDetail?.settings.abuseStatusReason" class="mt-2 text-[0.8125rem] text-text-secondary">
+						<p v-if="orgDetail?.settings.abuseStatusReason" class="mt-2 text-caption text-text-secondary">
 							Reason: {{ orgDetail.settings.abuseStatusReason }}
 						</p>
 					</div>
@@ -426,9 +426,9 @@ const anyMutationLoading = computed(
 
 			<!-- Flagged organizations -->
 			<div class="rounded-xl border border-border-default bg-bg-elevated p-6">
-				<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider mb-4">Flagged organizations</h3>
-				<div v-if="!flaggedOrgs || flaggedOrgs.length === 0" class="text-[0.8125rem] text-text-tertiary">
-					No organizations are flagged for abuse.
+				<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider mb-4">Flagged workspaces</h3>
+				<div v-if="!flaggedOrgs || flaggedOrgs.length === 0" class="text-caption text-text-tertiary">
+					No workspaces are flagged for abuse.
 				</div>
 				<ul v-else class="space-y-3">
 					<li
@@ -451,8 +451,8 @@ const anyMutationLoading = computed(
 
 			<!-- All organizations -->
 			<div class="rounded-xl border border-border-default bg-bg-elevated p-6">
-				<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider mb-4">Organizations</h3>
-				<table class="w-full text-[0.8125rem]">
+				<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider mb-4">Workspaces</h3>
+				<table class="w-full text-caption">
 					<thead>
 						<tr class="border-b border-border-subtle text-text-tertiary">
 							<th class="text-left py-2 font-medium">Sender</th>
@@ -490,7 +490,7 @@ const anyMutationLoading = computed(
 					</UiButton>
 				</div>
 
-				<table class="w-full text-[0.8125rem]">
+				<table class="w-full text-caption">
 					<thead>
 						<tr class="border-b border-border-subtle text-text-tertiary">
 							<th class="text-left py-2 font-medium">Email</th>
@@ -528,7 +528,7 @@ const anyMutationLoading = computed(
 		<!-- Reject modal -->
 		<UiModal v-model:open="rejectModalOpen" title="Reject content">
 			<div class="space-y-3">
-				<p class="text-[0.875rem] text-text-secondary">
+				<p class="text-sm text-text-secondary">
 					Rejecting returns "{{ rejectTarget?.name }}" to draft. The reason is recorded in the audit log.
 				</p>
 				<UiTextarea v-model="rejectReason" label="Reason" placeholder="Why is this being rejected?" :rows="3" />

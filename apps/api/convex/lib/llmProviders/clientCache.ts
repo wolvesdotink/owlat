@@ -8,6 +8,8 @@
  * caching for free. Pure and isolate-safe (no `'use node'`).
  */
 
+import type { ProviderClientConfig } from './types';
+
 /**
  * A stable, non-reversible fingerprint of an API key for cache keying. No slice
  * of the raw secret is retained — only a hash — so nothing sensitive lives in
@@ -22,6 +24,16 @@ export function keyFingerprint(apiKey: string | undefined): string {
 		hash = Math.imul(hash, 0x01000193);
 	}
 	return (hash >>> 0).toString(16).padStart(8, '0');
+}
+
+/**
+ * The cache key for a hosted adapter's client: the (optional) base-URL override
+ * plus a non-reversible fingerprint of the API key. Two configs share a client
+ * iff they target the same endpoint with the same key. Every hosted adapter
+ * keys its client Map with this, so the key shape lives in one place.
+ */
+export function hostedCacheKey(cfg: ProviderClientConfig): string {
+	return `${cfg.baseUrl ?? ''}::${keyFingerprint(cfg.apiKey)}`;
 }
 
 /**

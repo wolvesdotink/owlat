@@ -222,8 +222,8 @@ const getReasonLabel = (reason: string) => {
 		<div v-else-if="!hasActiveOrganization" class="card p-0 overflow-hidden">
 			<UiEmptyState
 				icon="lucide:ban"
-				title="No organization selected"
-				description="Create or select an organization to manage your suppressions."
+				title="No workspace selected"
+				description="Create or select a workspace to manage your suppressions."
 			/>
 		</div>
 

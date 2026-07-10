@@ -40,22 +40,32 @@ watch(
 	{ immediate: true }
 );
 
-const { run: saveSettings, isLoading: savingSettings } = useBackendOperation(
+// The switch flips instantly (optimistic apply) and rolls back only if the
+// write fails — the shared helper owns the categorized failure toast.
+const { run: saveAllowCustom, isLoading: savingSettings } = useOptimisticMutation(
 	api.organizations.settings.update,
 	{ label: 'Update campaign sender policy' }
 );
 
 async function onToggleAllowCustom(value: boolean) {
-	allowCustom.value = value;
-	const result = await saveSettings({ isCustomCampaignSendersAllowed: value });
-	// Revert the optimistic flip if the write failed (mutation returns undefined).
-	if (result === undefined) {
-		allowCustom.value = !value;
-	}
+	await saveAllowCustom(
+		{ isCustomCampaignSendersAllowed: value },
+		{
+			apply: () => {
+				const previous = allowCustom.value;
+				allowCustom.value = value;
+				return () => {
+					allowCustom.value = previous;
+				};
+			},
+		}
+	);
 }
 
 // --- Per-sender enable / default / remove -----------------------------------
-const { run: updateSender } = useBackendOperation(api.campaigns.senders.update, {
+type SenderRow = NonNullable<typeof senders.value>[number];
+
+const { run: toggleSenderEnabled } = useOptimisticMutation(api.campaigns.senders.update, {
 	label: 'Update campaign sender',
 });
 const { run: setDefaultSender } = useBackendOperation(api.campaigns.senders.setDefault, {
@@ -65,13 +75,53 @@ const { run: removeSender } = useBackendOperation(api.campaigns.senders.remove, 
 	label: 'Remove campaign sender',
 });
 
-async function onToggleEnabled(id: Id<'campaignSenders'>, value: boolean) {
-	await updateSender({ id, isEnabled: value });
+// Local optimistic overrides for the per-sender enable switch, keyed by id, so
+// the toggle feels DONE on click instead of waiting a round-trip. The live query
+// re-emits the authoritative value; an override is pruned once the server agrees.
+const enabledOverrides = ref<Record<Id<'campaignSenders'>, boolean>>({});
+
+function isSenderEnabled(sender: SenderRow): boolean {
+	return enabledOverrides.value[sender._id] ?? sender.isEnabled;
+}
+
+watch(senders, (list) => {
+	if (!list || Object.keys(enabledOverrides.value).length === 0) return;
+	const next: Record<Id<'campaignSenders'>, boolean> = {};
+	for (const [id, value] of Object.entries(enabledOverrides.value)) {
+		const senderId = id as Id<'campaignSenders'>;
+		const server = list.find((s) => s._id === senderId);
+		// Keep the override only while the server has not yet caught up to it.
+		if (server && server.isEnabled !== value) next[senderId] = value;
+	}
+	enabledOverrides.value = next;
+});
+
+async function onToggleEnabled(sender: SenderRow, value: boolean) {
+	const id = sender._id;
+	await toggleSenderEnabled(
+		{ id, isEnabled: value },
+		{
+			apply: () => {
+				const previous = enabledOverrides.value[id];
+				enabledOverrides.value = { ...enabledOverrides.value, [id]: value };
+				return () => {
+					// Supersede-aware revert: only roll back if OUR optimistic value is
+					// still the current override. If a newer toggle for the same sender
+					// has since applied a different value, that newer intent wins and
+					// this failed write's revert must not clobber it.
+					if (enabledOverrides.value[id] !== value) return;
+					const next = { ...enabledOverrides.value };
+					if (previous === undefined) delete next[id];
+					else next[id] = previous;
+					enabledOverrides.value = next;
+				};
+			},
+		}
+	);
 }
 
 // Removal is destructive (and dropping the default leaves no default), so it goes
 // through a confirmation dialog — matching the API-key revoke precedent.
-type SenderRow = NonNullable<typeof senders.value>[number];
 const senderPendingRemoval = ref<SenderRow | null>(null);
 const isRemoving = ref(false);
 
@@ -160,7 +210,7 @@ async function onSubmitAdd() {
 			<UiIconBox icon="lucide:lock" size="xl" variant="surface" rounded="full" class="mb-4" />
 			<p class="text-text-secondary font-medium">Admins only</p>
 			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-				Campaign senders can be managed by organization owners and admins.
+				Campaign senders can be managed by workspace owners and admins.
 			</p>
 		</div>
 
@@ -170,9 +220,9 @@ async function onSubmitAdd() {
 			class="card flex flex-col items-center justify-center py-16 text-center px-6"
 		>
 			<UiIconBox icon="lucide:mail" size="xl" variant="surface" rounded="full" class="mb-4" />
-			<p class="text-text-secondary font-medium">No organization selected</p>
+			<p class="text-text-secondary font-medium">No workspace selected</p>
 			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-				Create or select an organization to manage campaign senders.
+				Create or select a workspace to manage campaign senders.
 			</p>
 		</div>
 
@@ -268,9 +318,9 @@ async function onSubmitAdd() {
 						</button>
 
 						<UiSwitch
-							:model-value="sender.isEnabled"
+							:model-value="isSenderEnabled(sender)"
 							:label="`Enable ${sender.email}`"
-							@update:model-value="(v) => onToggleEnabled(sender._id, v)"
+							@update:model-value="(v) => onToggleEnabled(sender, v)"
 						/>
 
 						<button

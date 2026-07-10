@@ -164,7 +164,7 @@ function redirectToRegister() {
 					</div>
 					<h1 class="text-xl font-semibold text-text-primary mb-2">Welcome to the Team!</h1>
 					<p class="text-text-secondary mb-2">
-						You've successfully joined {{ organizationName || 'the organization' }}.
+						You've successfully joined {{ organizationName || 'the workspace' }}.
 					</p>
 					<p v-if="claimedMailboxAddress" class="text-text-secondary mb-2">
 						Your mailbox at
