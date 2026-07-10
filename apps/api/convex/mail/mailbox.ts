@@ -22,7 +22,7 @@ import {
 	throwAlreadyExists,
 	throwNotFound,
 } from '../_utils/errors';
-import { loadOwnedMailbox, loadReadableMailbox } from './permissions';
+import { requireMailboxAccess, loadReadableMailbox, loadAccessibleMailboxes } from './permissions';
 import { isMessageSnoozed } from '../lib/mailSnooze';
 import { normalizeEmail, parseAddress } from '@owlat/shared';
 
@@ -161,7 +161,7 @@ async function readSession(ctx: Parameters<typeof getBetterAuthSessionWithRole>[
 	return { userId: s.userId, role: s.role };
 }
 
-// public: soft-auth — returns empty for anonymous; mailbox ownership is still enforced in-handler
+// public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
 export const list = publicQuery({
 	args: {},
 	handler: async (ctx) => {
@@ -184,11 +184,25 @@ export const list = publicQuery({
 		if (session.role === 'owner' || session.role === 'admin') {
 			return visible;
 		}
-		return visible.filter((m) => m.userId === session.userId);
+		// An editor sees their own mailboxes plus any shared mailbox they are an
+		// explicit member of (org membership alone grants nothing). Filtering the
+		// already-loaded `visible` set keeps the `by_status` (active/suspended)
+		// filtering intact; personal mailboxes carry no non-owner members, so
+		// this is bit-for-bit the old owner-only filter for them.
+		const memberIds = new Set(
+			(
+				await ctx.db
+					.query('mailboxMembers')
+					.withIndex('by_user', (q) => q.eq('authUserId', session.userId))
+					.collect()
+			) // bounded: shared mailboxes one user belongs to
+				.map((row) => row.mailboxId)
+		);
+		return visible.filter((m) => m.userId === session.userId || memberIds.has(m._id));
 	},
 });
 
-// public: soft-auth — returns empty for anonymous; mailbox ownership is still enforced in-handler
+// public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
 export const get = publicQuery({
 	args: { mailboxId: v.id('mailboxes') },
 	handler: async (ctx, args) => {
@@ -215,11 +229,13 @@ export const remove = authedMutation({
 });
 
 /**
- * Edit a provisioned mailbox's display name after creation. Ownership-scoped
- * via `loadOwnedMailbox` (owner/admin, or the mailbox owner) — mirrors
- * `labels.update`. The address is immutable (it's the routing key pushed to the
- * MTA cache); only the human-facing `displayName` can change. An empty/blank
- * value clears it back to "(no display name)".
+ * Edit a provisioned mailbox's display name after creation. Gated by
+ * `requireMailboxAccess` at the `owner` floor (org owner/admin, the mailbox's
+ * own user, or an explicit owner-role member) — the display name is a
+ * mailbox-wide setting, so a plain shared-mailbox member cannot change it.
+ * The address is immutable (it's the routing key pushed to the MTA cache);
+ * only the human-facing `displayName` can change. An empty/blank value clears
+ * it back to "(no display name)".
  */
 export const setDisplayName = authedMutation({
 	args: {
@@ -227,7 +243,7 @@ export const setDisplayName = authedMutation({
 		displayName: v.string(),
 	},
 	handler: async (ctx, args) => {
-		const owned = await loadOwnedMailbox(ctx, args.mailboxId);
+		const owned = await requireMailboxAccess(ctx, args.mailboxId, 'owner');
 		if (!owned.ok) {
 			if (owned.reason === 'mailbox_missing') throwNotFound('Mailbox');
 			throwForbidden('Mailbox not accessible');
@@ -277,7 +293,7 @@ async function attachThreadFollowUps(
 }
 
 /** List messages in a mailbox (most-recent first), for the webmail UI. */
-// public: soft-auth — returns empty for anonymous; mailbox ownership is still enforced in-handler
+// public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
 export const listMessages = publicQuery({
 	args: {
 		mailboxId: v.id('mailboxes'),
@@ -377,7 +393,7 @@ export const listMessages = publicQuery({
  * used for the inbox view (where most threads live), with the flat
  * `listMessages` serving other folders.
  */
-// public: soft-auth — returns empty for anonymous; mailbox ownership is still enforced in-handler
+// public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
 export const listThreads = publicQuery({
 	args: {
 		mailboxId: v.id('mailboxes'),
@@ -412,7 +428,7 @@ export const listThreads = publicQuery({
 });
 
 /** List folders for a mailbox (for sidebar with unread counts). */
-// public: soft-auth — returns empty for anonymous; mailbox ownership is still enforced in-handler
+// public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
 export const listFolders = publicQuery({
 	args: { mailboxId: v.id('mailboxes') },
 	handler: async (ctx, args) => {
@@ -444,10 +460,9 @@ export const latestInboxUnread = publicQuery({
 		const session = await readSession(ctx);
 		if (!session) return null;
 		const now = Date.now();
-		const mailboxes = await ctx.db
-			.query('mailboxes')
-			.withIndex('by_user', (q) => q.eq('userId', session.userId))
-			.collect(); // bounded: one user's mailboxes (typically 1)
+		// The caller's own mailboxes plus any shared mailbox they belong to; the
+		// per-mailbox `status !== 'active'` guard below keeps the status filtering.
+		const mailboxes = await loadAccessibleMailboxes(ctx, session.userId);
 		let best: {
 			messageId: Id<'mailMessages'>;
 			fromName?: string;
@@ -488,10 +503,9 @@ export const inboxUnreadCount = publicQuery({
 	handler: async (ctx) => {
 		const session = await readSession(ctx);
 		if (!session) return 0;
-		const mailboxes = await ctx.db
-			.query('mailboxes')
-			.withIndex('by_user', (q) => q.eq('userId', session.userId))
-			.collect(); // bounded: one user's mailboxes (typically 1)
+		// The caller's own mailboxes plus any shared mailbox they belong to; the
+		// per-mailbox `status !== 'active'` guard below keeps the status filtering.
+		const mailboxes = await loadAccessibleMailboxes(ctx, session.userId);
 		let unread = 0;
 		for (const mb of mailboxes) {
 			if (mb.status !== 'active') continue;
@@ -535,10 +549,9 @@ export const newestUnreadInbox = publicQuery({
 		// Clamp the window so a caller can't force an unbounded scan.
 		const limit = Math.max(1, Math.min(50, Math.round(args.limit ?? 5)));
 		const now = Date.now();
-		const mailboxes = await ctx.db
-			.query('mailboxes')
-			.withIndex('by_user', (q) => q.eq('userId', session.userId))
-			.collect(); // bounded: one user's mailboxes (typically 1)
+		// The caller's own mailboxes plus any shared mailbox they belong to; the
+		// per-mailbox `status !== 'active'` guard below keeps the status filtering.
+		const mailboxes = await loadAccessibleMailboxes(ctx, session.userId);
 		let total = 0;
 		const collected: (typeof empty)['messages'] = [];
 		for (const mb of mailboxes) {
@@ -611,7 +624,7 @@ async function loadReadableMessage(
  * fallback: opening a bookmark/notification/search link to a message that
  * isn't in the currently-loaded list page would otherwise render blank.
  */
-// public: soft-auth — returns null for anonymous; mailbox ownership is still enforced in-handler
+// public: soft-auth — returns null for anonymous; mailbox access is still enforced in-handler
 export const getMessage = publicQuery({
 	args: { messageId: v.id('mailMessages') },
 	handler: async (ctx, args) => {
@@ -620,7 +633,7 @@ export const getMessage = publicQuery({
 });
 
 /** Fetch all messages in a thread (oldest first). Used by the conversation view. */
-// public: soft-auth — returns empty for anonymous; mailbox ownership is still enforced in-handler
+// public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
 export const listThreadMessages = publicQuery({
 	args: { messageId: v.id('mailMessages') },
 	handler: async (ctx, args) => {
@@ -654,7 +667,7 @@ export const listThreadMessages = publicQuery({
  * and are fetched lazily via the returned signed URLs — previously they had no
  * inline value and rendered blank.
  */
-// public: soft-auth — returns null for anonymous; mailbox ownership is still enforced in-handler
+// public: soft-auth — returns null for anonymous; mailbox access is still enforced in-handler
 export const getMessageBody = publicQuery({
 	args: { messageId: v.id('mailMessages') },
 	handler: async (ctx, args) => {
@@ -678,7 +691,7 @@ export const getMessageBody = publicQuery({
  * attachment client-side (the attachment bytes live in the raw MIME) and for
  * "download original". Ownership-checked.
  */
-// public: soft-auth — returns null for anonymous; mailbox ownership is still enforced in-handler
+// public: soft-auth — returns null for anonymous; mailbox access is still enforced in-handler
 export const getMessageRawUrl = publicQuery({
 	args: { messageId: v.id('mailMessages') },
 	handler: async (ctx, args) => {
@@ -689,7 +702,7 @@ export const getMessageRawUrl = publicQuery({
 });
 
 /** Free-text + structured search across messages in a mailbox. */
-// public: soft-auth — returns empty for anonymous; mailbox ownership is still enforced in-handler
+// public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
 export const search = publicQuery({
 	args: {
 		mailboxId: v.id('mailboxes'),
