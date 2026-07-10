@@ -12,9 +12,11 @@
  *   1. Rejects any key outside `PROVIDER_ENV_KEYS` — a transport change can
  *      never inject an unrelated env var (e.g. `INSTANCE_SECRET`).
  *   2. Pushes the change into the Convex deployment's env store (the live source
- *      the send path reads via `getOptional`), setting supplied keys and CLEARING
- *      the dropped ones — so flipping provider leaves no stale credential live.
- *      This takes effect immediately; no restart is needed for sends to switch.
+ *      the send path reads via `getOptional`), setting supplied CREDENTIALS and
+ *      CLEARING dropped ones — so flipping provider leaves no stale credential
+ *      live — while PRESERVING the From-identity keys the patch omits (a blank
+ *      From field means "keep the current default", never "clear it"). This takes
+ *      effect immediately; no restart is needed for sends to switch.
  *   3. Persists the same patch to `.env` (mode preserved by `writeEnvFile`) so
  *      the choice survives a container recreate.
  *
@@ -29,7 +31,11 @@
  */
 
 import { resolve } from 'node:path';
-import { PROVIDER_ENV_KEYS, type ProviderEnvKey } from '@owlat/shared/setupSendingPresets';
+import {
+	planTransportEnvChange,
+	UnexpectedTransportEnvKeyError,
+	type TransportEnvPlan,
+} from '@owlat/shared/setupSendingPresets';
 import { isDeliveryProviderKind } from '@owlat/shared/featureFlags';
 import { readEnvFile, writeEnvFile } from '@owlat/shared/setupEnv';
 import { deriveConvexAdminUrl, pushConvexRuntimeEnv } from '@owlat/shared/convexRuntimeEnv';
@@ -49,7 +55,6 @@ interface ApplyResult {
 }
 
 const OWLAT_DIR = process.env['OWLAT_DIR'] || '/opt/owlat';
-const ALLOWED = new Set<string>(PROVIDER_ENV_KEYS);
 
 export default defineEventHandler(async (event): Promise<ApplyResult> => {
 	await requireOrgAdmin(event);
@@ -60,12 +65,9 @@ export default defineEventHandler(async (event): Promise<ApplyResult> => {
 		throw createError({ statusCode: 400, message: 'providerEnv is required.' });
 	}
 
-	// Allowlist: only transport keys, only string values. Nothing else may be
-	// written to the deployment env from a browser request.
+	// Only string values may be written (the allowlist itself is enforced by
+	// `planTransportEnvChange` below, which rejects any non-transport key).
 	for (const [key, value] of Object.entries(patch)) {
-		if (!ALLOWED.has(key)) {
-			throw createError({ statusCode: 400, message: `Unexpected env key: ${key}.` });
-		}
 		if (typeof value !== 'string') {
 			throw createError({ statusCode: 400, message: `Env value for ${key} must be a string.` });
 		}
@@ -91,20 +93,21 @@ export default defineEventHandler(async (event): Promise<ApplyResult> => {
 		existing = {};
 	}
 
-	// Rebuild the merged env: drop every transport key, then apply the patch. This
-	// mirrors `buildProviderEnv`'s clear-then-set so a dropped credential is gone
-	// from `.env` after a restart.
-	const merged: Record<string, string> = { ...existing };
-	for (const key of PROVIDER_ENV_KEYS) delete merged[key];
-	for (const [key, value] of Object.entries(patch)) merged[key] = value;
-
-	// The live push clears dropped keys too: for every transport key send its new
-	// value, or '' to unset it in the deployment store (getOptional treats '' as
-	// absent, so `providerKindConfigured` fails-closed on a cleared credential).
-	const changes: Array<[string, string]> = PROVIDER_ENV_KEYS.map((key: ProviderEnvKey) => [
-		key,
-		patch[key] ?? '',
-	]);
+	// Compute the env change: credentials are clear-then-set (a dropped credential
+	// is gone from `.env` and pushed as '' live so `providerKindConfigured`
+	// fails-closed), but the From-identity keys are PRESERVED when the patch omits
+	// them — the editor shows a blank From meaning "keep the current default", so a
+	// blank must never wipe DEFAULT_FROM_EMAIL/DEFAULT_FROM_NAME.
+	let plan: TransportEnvPlan;
+	try {
+		plan = planTransportEnvChange(existing, patch);
+	} catch (e) {
+		if (e instanceof UnexpectedTransportEnvKeyError) {
+			throw createError({ statusCode: 400, message: e.message });
+		}
+		throw e;
+	}
+	const { merged, changes } = plan;
 
 	const adminKey = existing['CONVEX_ADMIN_KEY'];
 	if (!adminKey) {
