@@ -2,7 +2,7 @@
  * Shared-mailbox membership — authz matrix + backfill.
  *
  * Covers the membership extension to the mailbox choke point
- * (`mail/permissions.ts::loadOwnedMailbox`) and the idempotent owner-row
+ * (`mail/permissions.ts::requireMailboxAccess`) and the idempotent owner-row
  * backfill (`migrations/0034_mailbox_owner_membership`).
  *
  * The matrix asserts owner / member / non-member callers against the
@@ -15,8 +15,9 @@ import { convexTest } from 'convex-test';
 import { describe, it, expect, vi } from 'vitest';
 import schema from '../../schema';
 import type { Id } from '../../_generated/dataModel';
-import { internal } from '../../_generated/api';
-import { loadOwnedMailbox } from '../permissions';
+import { api, internal } from '../../_generated/api';
+import { requireMailboxAccess } from '../permissions';
+import { modules, seedMailbox } from './helpers';
 
 const sessionMocks = vi.hoisted(() => ({
 	getBetterAuthSessionWithRole: vi.fn(),
@@ -32,34 +33,6 @@ vi.mock('../../lib/sessionOrganization', async () => {
 	};
 });
 
-const allModules = import.meta.glob('../../**/*.*s');
-const modules = Object.fromEntries(
-	Object.entries(allModules)
-		.filter(
-			([path]) =>
-				!path.includes('sesActions') &&
-				!path.includes('agentSecurity') &&
-				!path.includes('agentContext') &&
-				!path.includes('agentClassifier') &&
-				!path.includes('agentDrafter') &&
-				!path.includes('agentRouter') &&
-				!path.includes('agent/walker') &&
-				!path.includes('agent/steps/index') &&
-				!path.includes('agent/steps/shared') &&
-				!path.includes('agent/steps/classify') &&
-				!path.includes('agent/steps/draft') &&
-				!path.includes('knowledgeExtraction') &&
-				!path.includes('semanticFileProcessing') &&
-				!path.includes('visualizationAgent') &&
-				!path.includes('llmProvider')
-		)
-		.map(([key, val]) =>
-			key.startsWith('../') && !key.startsWith('../../')
-				? (['../../mail/' + key.slice(3), val] as const)
-				: ([key, val] as const)
-		)
-);
-
 function setSession(userId: string, role: 'owner' | 'admin' | 'editor' | null, orgId = 'org-1') {
 	if (role === null) {
 		sessionMocks.getBetterAuthSessionWithRole.mockResolvedValue(null);
@@ -70,29 +43,6 @@ function setSession(userId: string, role: 'owner' | 'admin' | 'editor' | null, o
 		role,
 		activeOrganizationId: orgId,
 	});
-}
-
-async function seedMailbox(
-	t: ReturnType<typeof convexTest>,
-	opts: { userId: string; scope?: 'personal' | 'shared'; address?: string }
-): Promise<Id<'mailboxes'>> {
-	let id!: Id<'mailboxes'>;
-	await t.run(async (ctx) => {
-		const now = Date.now();
-		id = await ctx.db.insert('mailboxes', {
-			userId: opts.userId,
-			organizationId: 'org-1',
-			address: opts.address ?? 'team@hinterland.camp',
-			domain: 'hinterland.camp',
-			...(opts.scope ? { scope: opts.scope } : {}),
-			status: 'active',
-			usedBytes: 0,
-			uidValidity: now,
-			createdAt: now,
-			updatedAt: now,
-		});
-	});
-	return id;
 }
 
 async function addMember(
@@ -112,7 +62,7 @@ async function addMember(
 	});
 }
 
-describe('loadOwnedMailbox — shared mailbox membership matrix', () => {
+describe('requireMailboxAccess — shared mailbox membership matrix', () => {
 	// A shared mailbox provisioned by user-A, with user-B as a plain member and
 	// user-C as a member with owner role. user-D belongs to nothing.
 	async function seedShared(t: ReturnType<typeof convexTest>): Promise<Id<'mailboxes'>> {
@@ -127,7 +77,7 @@ describe('loadOwnedMailbox — shared mailbox membership matrix', () => {
 		setSession('user-B', 'editor');
 		const t = convexTest(schema, modules);
 		const id = await seedShared(t);
-		const result = await t.run((ctx) => loadOwnedMailbox(ctx, id));
+		const result = await t.run((ctx) => requireMailboxAccess(ctx, id));
 		if (!result.ok) throw new Error('expected member to be granted');
 		expect(result.userId).toBe('user-B');
 	});
@@ -136,7 +86,7 @@ describe('loadOwnedMailbox — shared mailbox membership matrix', () => {
 		setSession('user-B', 'editor');
 		const t = convexTest(schema, modules);
 		const id = await seedShared(t);
-		const result = await t.run((ctx) => loadOwnedMailbox(ctx, id, 'owner'));
+		const result = await t.run((ctx) => requireMailboxAccess(ctx, id, 'owner'));
 		expect(result).toEqual({ ok: false, reason: 'forbidden' });
 	});
 
@@ -144,8 +94,8 @@ describe('loadOwnedMailbox — shared mailbox membership matrix', () => {
 		setSession('user-C', 'editor');
 		const t = convexTest(schema, modules);
 		const id = await seedShared(t);
-		const asMember = await t.run((ctx) => loadOwnedMailbox(ctx, id, 'member'));
-		const asOwner = await t.run((ctx) => loadOwnedMailbox(ctx, id, 'owner'));
+		const asMember = await t.run((ctx) => requireMailboxAccess(ctx, id, 'member'));
+		const asOwner = await t.run((ctx) => requireMailboxAccess(ctx, id, 'owner'));
 		expect(asMember.ok).toBe(true);
 		expect(asOwner.ok).toBe(true);
 	});
@@ -154,7 +104,7 @@ describe('loadOwnedMailbox — shared mailbox membership matrix', () => {
 		setSession('user-D', 'editor');
 		const t = convexTest(schema, modules);
 		const id = await seedShared(t);
-		const result = await t.run((ctx) => loadOwnedMailbox(ctx, id));
+		const result = await t.run((ctx) => requireMailboxAccess(ctx, id));
 		expect(result).toEqual({ ok: false, reason: 'forbidden' });
 	});
 
@@ -162,7 +112,7 @@ describe('loadOwnedMailbox — shared mailbox membership matrix', () => {
 		setSession('user-D', 'owner');
 		const t = convexTest(schema, modules);
 		const id = await seedShared(t);
-		const result = await t.run((ctx) => loadOwnedMailbox(ctx, id, 'owner'));
+		const result = await t.run((ctx) => requireMailboxAccess(ctx, id, 'owner'));
 		if (!result.ok) throw new Error('expected org owner to be granted');
 		expect(result.userId).toBe('user-D');
 	});
@@ -171,17 +121,73 @@ describe('loadOwnedMailbox — shared mailbox membership matrix', () => {
 		setSession('user-A', 'editor');
 		const t = convexTest(schema, modules);
 		const id = await seedShared(t);
-		const result = await t.run((ctx) => loadOwnedMailbox(ctx, id, 'owner'));
+		const result = await t.run((ctx) => requireMailboxAccess(ctx, id, 'owner'));
 		expect(result.ok).toBe(true);
+	});
+
+	it('denies a member whose session active org differs from the mailbox org', async () => {
+		// Defense-in-depth: a membership row can only grant inside the caller's
+		// active org, so a stale row can't cross an org boundary.
+		setSession('user-B', 'editor', 'org-OTHER');
+		const t = convexTest(schema, modules);
+		const id = await seedShared(t); // mailbox is in org-1
+		const result = await t.run((ctx) => requireMailboxAccess(ctx, id));
+		expect(result).toEqual({ ok: false, reason: 'forbidden' });
 	});
 });
 
-describe('loadOwnedMailbox — personal mailbox behaviour is unchanged', () => {
+// The helper's owner/member floors are only load-bearing if the real endpoints
+// pass the right `minRole`. These drive two owner-grade operations end-to-end
+// and assert a plain shared-mailbox member is refused while an owner-role
+// member is allowed.
+describe('owner-grade endpoints enforce the owner floor for shared-mailbox members', () => {
+	async function seedSharedTeamMailbox(t: ReturnType<typeof convexTest>): Promise<Id<'mailboxes'>> {
+		const id = await seedMailbox(t, { userId: 'user-A', scope: 'shared' });
+		await addMember(t, id, 'user-A', 'owner');
+		await addMember(t, id, 'user-B', 'member'); // plain member
+		await addMember(t, id, 'user-C', 'owner'); // owner-role member
+		return id;
+	}
+
+	it('appPasswords.generate refuses a plain member', async () => {
+		const t = convexTest(schema, modules);
+		const id = await seedSharedTeamMailbox(t);
+		setSession('user-B', 'editor');
+		await expect(
+			t.mutation(api.mail.appPasswords.generate, { mailboxId: id, label: 'imap' })
+		).rejects.toThrow();
+	});
+
+	it('aliases.create refuses a plain member', async () => {
+		const t = convexTest(schema, modules);
+		const id = await seedSharedTeamMailbox(t);
+		setSession('user-B', 'editor');
+		await expect(
+			t.mutation(api.mail.aliases.create, { mailboxId: id, alias: 'sales@hinterland.camp' })
+		).rejects.toThrow();
+	});
+
+	it('aliases.create is allowed for an owner-role member', async () => {
+		const t = convexTest(schema, modules);
+		const id = await seedSharedTeamMailbox(t);
+		setSession('user-C', 'editor');
+		await t.mutation(api.mail.aliases.create, { mailboxId: id, alias: 'sales@hinterland.camp' });
+		const aliases = await t.run((ctx) =>
+			ctx.db
+				.query('mailAliases')
+				.withIndex('by_target', (q) => q.eq('targetMailboxId', id))
+				.collect()
+		);
+		expect(aliases.map((a) => a.alias)).toContain('sales@hinterland.camp');
+	});
+});
+
+describe('requireMailboxAccess — personal mailbox behaviour is unchanged', () => {
 	it('a non-owner editor with no membership is forbidden at member level', async () => {
 		setSession('user-B', 'editor');
 		const t = convexTest(schema, modules);
 		const id = await seedMailbox(t, { userId: 'user-A', scope: 'personal' });
-		const result = await t.run((ctx) => loadOwnedMailbox(ctx, id));
+		const result = await t.run((ctx) => requireMailboxAccess(ctx, id));
 		expect(result).toEqual({ ok: false, reason: 'forbidden' });
 	});
 
@@ -189,7 +195,7 @@ describe('loadOwnedMailbox — personal mailbox behaviour is unchanged', () => {
 		setSession('user-A', 'editor');
 		const t = convexTest(schema, modules);
 		const id = await seedMailbox(t, { userId: 'user-A', scope: 'personal' });
-		const result = await t.run((ctx) => loadOwnedMailbox(ctx, id, 'owner'));
+		const result = await t.run((ctx) => requireMailboxAccess(ctx, id, 'owner'));
 		if (!result.ok) throw new Error('expected owner to be granted');
 		expect(result.userId).toBe('user-A');
 	});
@@ -220,13 +226,13 @@ describe('migrations/0034 — implicit owner backfill', () => {
 		expect(after).toHaveLength(2);
 	});
 
-	it('backfilled owner grants the owner access via loadOwnedMailbox', async () => {
+	it('backfilled owner grants the owner access via requireMailboxAccess', async () => {
 		const t = convexTest(schema, modules);
 		const id = await seedMailbox(t, { userId: 'user-A' });
 		await t.mutation(internal.migrations['0034_mailbox_owner_membership'].run, {});
 
 		setSession('user-A', 'editor');
-		const result = await t.run((ctx) => loadOwnedMailbox(ctx, id, 'owner'));
+		const result = await t.run((ctx) => requireMailboxAccess(ctx, id, 'owner'));
 		expect(result.ok).toBe(true);
 	});
 });
