@@ -8,6 +8,7 @@
  *     (which schedules dispatch after undoSendDelayMs)
  */
 
+import type { FunctionReturnType } from 'convex/server';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { EditorBlock } from '@owlat/email-builder';
@@ -19,17 +20,14 @@ const AUTOSAVE_DEBOUNCE_MS = 1500;
 export type ComposerMode = 'simple' | 'full';
 
 /**
- * A From identity the composer may send as. Mirrors the backend
- * `SendAsIdentity` shape returned by `mail.identities.listSendAsIdentities`.
+ * A From identity the composer may send as. Derived straight from the backend
+ * query's return so the client shape can never drift from the server's.
  * `kind` drives the picker grouping: 'team'/'own' is the current mailbox's own
  * identity; 'personal' is a teammate's own address offered inside a team inbox.
  */
-export interface SendAsIdentity {
-	address: string;
-	mailboxId: Id<'mailboxes'>;
-	kind: 'team' | 'own' | 'personal';
-	label: string;
-}
+export type SendAsIdentity = FunctionReturnType<
+	typeof api.mail.identities.listSendAsIdentities
+>[number];
 
 interface DraftSeed {
 	mailboxId: Id<'mailboxes'>;
@@ -187,9 +185,7 @@ export function usePostboxCompose(seed: DraftSeed) {
 	const identitiesQuery = useConvexQuery(api.mail.identities.listSendAsIdentities, () => ({
 		mailboxId: seed.mailboxId,
 	}));
-	const availableIdentities = computed<SendAsIdentity[]>(
-		() => (identitiesQuery.data.value as SendAsIdentity[] | undefined) ?? []
-	);
+	const availableIdentities = computed<SendAsIdentity[]>(() => identitiesQuery.data.value ?? []);
 
 	async function setIdentity(address: string) {
 		const id = await ensureDraft();
