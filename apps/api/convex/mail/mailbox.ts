@@ -22,7 +22,12 @@ import {
 	throwAlreadyExists,
 	throwNotFound,
 } from '../_utils/errors';
-import { requireMailboxAccess, loadReadableMailbox, loadAccessibleMailboxes } from './permissions';
+import {
+	requireMailboxAccess,
+	requireMessageAccess,
+	loadReadableMailbox,
+	loadAccessibleMailboxes,
+} from './permissions';
 import { isMessageSnoozed } from '../lib/mailSnooze';
 import { normalizeEmail, parseAddress } from '@owlat/shared';
 
@@ -589,16 +594,21 @@ export const inboxUnreadCount = publicQuery({
 });
 
 /**
- * Per-mailbox inbox unread counts across every mailbox the caller can reach
- * (their own personal mailbox(es) plus any shared/team inbox they belong to).
- * Backs the Postbox sidebar's mailbox switcher badges — one row per accessible
- * mailbox so a shared inbox shows its own unread total distinctly. O(1) per
- * mailbox: reads the denormalized `mailFolders.unseenCount`, same source as
- * `inboxUnreadCount`. Read state is a single shared truth per message, so every
- * member of a shared inbox sees the same count.
+ * Every mailbox the caller can actually reach — their own personal mailbox(es)
+ * plus any shared/team inbox they explicitly belong to — with its label, scope,
+ * and inbox unread total. This is the SINGLE source for the Postbox sidebar
+ * switcher and the Cmd-K "switch mailbox" entries: sections, labels, and badges
+ * all derive from one accessible+active set, so an admin never sees a teammate's
+ * private inbox or a shared inbox they don't belong to advertised as a switch
+ * target (unlike `list`, which returns every org mailbox for owners/admins).
+ * Suspended/deleted rows are filtered out here, so there are no dead-end targets.
+ *
+ * O(1) per mailbox: reads the denormalized `mailFolders.unseenCount`, same
+ * source as `inboxUnreadCount`. Read state is a single shared truth per message,
+ * so every member of a shared inbox sees the same count.
  */
 // public: soft-auth — returns empty for anonymous; access via loadAccessibleMailboxes (own + shared memberships)
-export const unreadByMailbox = publicQuery({
+export const accessible = publicQuery({
 	args: {},
 	handler: async (ctx) => {
 		const session = await readSession(ctx);
@@ -608,14 +618,25 @@ export const unreadByMailbox = publicQuery({
 			session.userId,
 			session.activeOrganizationId
 		);
-		const rows: Array<{ mailboxId: Id<'mailboxes'>; unread: number }> = [];
+		const rows: Array<{
+			mailboxId: Id<'mailboxes'>;
+			label: string;
+			scope: 'personal' | 'shared';
+			unread: number;
+		}> = [];
 		for (const mb of mailboxes) {
 			if (mb.status !== 'active') continue;
 			const inbox = await ctx.db
 				.query('mailFolders')
 				.withIndex('by_mailbox_and_role', (q) => q.eq('mailboxId', mb._id).eq('role', 'inbox'))
 				.first();
-			rows.push({ mailboxId: mb._id, unread: inbox?.unseenCount ?? 0 });
+			const displayName = mb.displayName?.trim();
+			rows.push({
+				mailboxId: mb._id,
+				label: displayName && displayName.length > 0 ? displayName : mb.address,
+				scope: mb.scope === 'shared' ? 'shared' : 'personal',
+				unread: inbox?.unseenCount ?? 0,
+			});
 		}
 		return rows;
 	},
@@ -780,30 +801,29 @@ export const listThreadMessages = publicQuery({
 export const latestReplyState = publicQuery({
 	args: { messageId: v.id('mailMessages') },
 	handler: async (ctx, args) => {
-		const session = await readSession(ctx);
-		const seed = await ctx.db.get(args.messageId);
-		if (!seed) return null;
-		const mailbox = await loadReadableMailbox(ctx, seed.mailboxId);
-		if (!mailbox) return null;
+		// One message-keyed access check — yields the mailbox, the message, and the
+		// caller's userId (for `byIsYou`) at the single choke point.
+		const access = await requireMessageAccess(ctx, args.messageId);
+		if (!access.ok) return null;
 		// Personal mailbox → no team collisions to guard against.
-		if (mailbox.scope !== 'shared') return null;
-		const thread = await ctx.db.get(seed.threadId);
+		if (access.mailbox.scope !== 'shared') return null;
+		const thread = await ctx.db.get(access.message.threadId);
 		const latest = thread?.latestReply;
 		if (!latest) return null;
 		let byName: string | null = null;
 		if (latest.byUserId) {
+			const byUserId = latest.byUserId;
 			const profile = await ctx.db
 				.query('userProfiles')
-				.withIndex('by_auth_user_id', (q) => q.eq('authUserId', latest.byUserId as string))
+				.withIndex('by_auth_user_id', (q) => q.eq('authUserId', byUserId))
 				.first();
 			byName = profile?.name ?? profile?.email ?? null;
 		}
 		return {
 			messageId: latest.messageId,
 			at: latest.at,
-			byUserId: latest.byUserId ?? null,
 			byName,
-			byIsYou: !!session && !!latest.byUserId && latest.byUserId === session.userId,
+			byIsYou: !!latest.byUserId && latest.byUserId === access.userId,
 		};
 	},
 });

@@ -3,7 +3,7 @@
  *
  * When one member marks a shared-inbox message read, every other member sees it
  * read on the next reactive tick — the honest model for a support queue (LOCKED
- * decision 7 of the 2026-07-10 experience plan). Covers `mailbox.unreadByMailbox`
+ * decision 7 of the 2026-07-10 experience plan). Covers `mailbox.accessible`
  * and `mailbox.inboxUnreadCount` across two members and the shared
  * `messageActions.setFlags` mark-read path.
  */
@@ -168,7 +168,7 @@ describe('shared inbox unread is one shared truth across members', () => {
 		expect(await t.query(api.mail.mailbox.inboxUnreadCount, {})).toBe(1);
 		setSession('user-B', 'editor');
 		expect(await t.query(api.mail.mailbox.inboxUnreadCount, {})).toBe(1);
-		expect(unreadFor(await t.query(api.mail.mailbox.unreadByMailbox, {}), mailboxId)).toBe(1);
+		expect(unreadFor(await t.query(api.mail.mailbox.accessible, {}), mailboxId)).toBe(1);
 
 		// user-A reads it via the shared, access-gated mark-read path.
 		setSession('user-A', 'editor');
@@ -180,13 +180,13 @@ describe('shared inbox unread is one shared truth across members', () => {
 		// user-B now sees it read too — the read state is shared, not per-user.
 		setSession('user-B', 'editor');
 		expect(await t.query(api.mail.mailbox.inboxUnreadCount, {})).toBe(0);
-		expect(unreadFor(await t.query(api.mail.mailbox.unreadByMailbox, {}), mailboxId)).toBe(0);
+		expect(unreadFor(await t.query(api.mail.mailbox.accessible, {}), mailboxId)).toBe(0);
 	});
 
-	it('unreadByMailbox returns nothing for a user with no accessible mailbox', async () => {
+	it('accessible returns nothing for a user with no accessible mailbox', async () => {
 		const t = convexTest(schema, modules);
 		await seedSharedInboxWithUnread(t);
 		setSession('stranger', 'editor');
-		expect(await t.query(api.mail.mailbox.unreadByMailbox, {})).toEqual([]);
+		expect(await t.query(api.mail.mailbox.accessible, {})).toEqual([]);
 	});
 });
