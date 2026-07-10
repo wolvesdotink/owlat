@@ -17,7 +17,7 @@
  */
 
 import { getOptional } from '../../lib/env';
-import { constantTimeEqual, hmacSha1Base64 } from '../security';
+import { constantTimeEqual, hmacSha1Base64, missingSecretResult } from '../security';
 import type { InboundAdapter } from '../pipeline';
 import type { InboundEvent } from '../types';
 
@@ -26,10 +26,7 @@ import type { InboundEvent } from '../types';
  * followed by every form param concatenated in alphabetical order (key
  * immediately followed by value, no separator).
  */
-export function twilioValidationString(
-	url: string,
-	params: Record<string, string>
-): string {
+export function twilioValidationString(url: string, params: Record<string, string>): string {
 	const keys = Object.keys(params).sort();
 	let s = url;
 	for (const k of keys) s += k + params[k];
@@ -57,15 +54,11 @@ export async function verifyTwilioRequest(
 	authToken: string
 ): Promise<boolean> {
 	const params = parseFormParams(rawBody);
-	const expected = await hmacSha1Base64(
-		authToken,
-		twilioValidationString(url, params)
-	);
+	const expected = await hmacSha1Base64(authToken, twilioValidationString(url, params));
 	return constantTimeEqual(expected, headerSignature);
 }
 
-const TWIML_SUCCESS_BODY =
-	'<?xml version="1.0" encoding="UTF-8"?><Response></Response>';
+const TWIML_SUCCESS_BODY = '<?xml version="1.0" encoding="UTF-8"?><Response></Response>';
 
 export const twilioAdapter: InboundAdapter = {
 	source: 'twilio',
@@ -73,12 +66,7 @@ export const twilioAdapter: InboundAdapter = {
 	async verifySignature(request, rawBody) {
 		const authToken = getOptional('TWILIO_AUTH_TOKEN');
 		if (!authToken) {
-			return {
-				ok: false,
-				status: 503,
-				reason:
-					'Webhook endpoint is not configured securely (missing TWILIO_AUTH_TOKEN)',
-			};
+			return missingSecretResult('TWILIO_AUTH_TOKEN');
 		}
 
 		const signature = request.headers.get('x-twilio-signature');
@@ -90,12 +78,7 @@ export const twilioAdapter: InboundAdapter = {
 			};
 		}
 
-		const valid = await verifyTwilioRequest(
-			request.url,
-			rawBody,
-			signature,
-			authToken
-		);
+		const valid = await verifyTwilioRequest(request.url, rawBody, signature, authToken);
 		if (!valid) {
 			return { ok: false, status: 401, reason: 'Invalid Twilio signature' };
 		}
@@ -110,9 +93,7 @@ export const twilioAdapter: InboundAdapter = {
 		const messageSid = params['MessageSid'] ?? '';
 
 		if (!from || !text) {
-			throw new Error(
-				'Twilio payload missing required fields: From and Body must both be present'
-			);
+			throw new Error('Twilio payload missing required fields: From and Body must both be present');
 		}
 
 		return {
