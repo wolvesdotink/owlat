@@ -12,8 +12,7 @@ definePageMeta({
 const { currentMailbox, isLoading: mailboxesLoading } = usePostboxMailbox();
 const mailboxId = computed(() => currentMailbox.value?._id ?? null);
 
-const { signatures, isLoading, create, update, remove } =
-	usePostboxSignatures(mailboxId);
+const { signatures, isLoading, create, update, remove } = usePostboxSignatures(mailboxId);
 
 interface Editor {
 	id: Id<'mailSignatures'> | null;
@@ -87,8 +86,8 @@ async function makeDefault(id: Id<'mailSignatures'>) {
 			<div>
 				<h1 class="text-2xl font-semibold">Signatures</h1>
 				<p class="text-text-secondary mt-1">
-					Default signature is appended to new drafts. Pick a different one
-					per message via the composer toolbar.
+					Default signature is appended to new drafts. Pick a different one per message via the
+					composer toolbar.
 				</p>
 			</div>
 			<button
@@ -109,24 +108,14 @@ async function makeDefault(id: Id<'mailSignatures'>) {
 				class="input w-full"
 				placeholder="Signature name (e.g. Work)"
 			/>
-			<PostboxBasicEditor
-				v-model="editor.html"
-				placeholder="— Marcel"
-			/>
+			<PostboxBasicEditor v-model="editor.html" placeholder="— Marcel" />
 			<label class="flex items-center gap-2 text-sm">
 				<input v-model="editor.isDefault" type="checkbox" />
 				Use as the default signature for new drafts
 			</label>
 			<div class="flex items-center justify-end gap-2">
-				<button type="button" class="btn btn-ghost" @click="editor = null">
-					Cancel
-				</button>
-				<button
-					type="button"
-					class="btn btn-primary"
-					:disabled="!editor.name.trim()"
-					@click="save"
-				>
+				<button type="button" class="btn btn-ghost" @click="editor = null">Cancel</button>
+				<button type="button" class="btn btn-primary" :disabled="!editor.name.trim()" @click="save">
 					{{ editor.id ? 'Save changes' : 'Create' }}
 				</button>
 			</div>
@@ -139,10 +128,7 @@ async function makeDefault(id: Id<'mailSignatures'>) {
 			<div v-if="isLoading" class="p-8 flex justify-center">
 				<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin text-text-tertiary" />
 			</div>
-			<div
-				v-else-if="signatures.length === 0"
-				class="p-8 text-center text-text-secondary"
-			>
+			<div v-else-if="signatures.length === 0" class="p-8 text-center text-text-secondary">
 				No signatures yet.
 			</div>
 			<ul v-else class="divide-y divide-border-subtle">
@@ -157,11 +143,13 @@ async function makeDefault(id: Id<'mailSignatures'>) {
 							<span
 								v-if="s.isDefault"
 								class="text-xs px-1.5 py-0.5 rounded bg-brand-subtle text-brand"
-							>Default</span>
+								>Default</span
+							>
 						</div>
+						<!-- rendered outside the reader iframe → sanitize the stored HTML -->
 						<div
 							class="text-xs text-text-tertiary mt-1 line-clamp-2"
-							v-html="s.html"
+							v-html="sanitizePostboxHtml(s.html)"
 						/>
 					</div>
 					<button
@@ -172,14 +160,8 @@ async function makeDefault(id: Id<'mailSignatures'>) {
 					>
 						Make default
 					</button>
-					<button type="button" class="btn btn-ghost" @click="startEdit(s)">
-						Edit
-					</button>
-					<button
-						type="button"
-						class="btn btn-ghost text-error"
-						@click="signatureToRemove = s._id"
-					>
+					<button type="button" class="btn btn-ghost" @click="startEdit(s)">Edit</button>
+					<button type="button" class="btn btn-ghost text-error" @click="signatureToRemove = s._id">
 						Delete
 					</button>
 				</li>

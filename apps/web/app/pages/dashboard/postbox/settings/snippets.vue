@@ -15,8 +15,7 @@ const mailboxId = computed(() => currentMailbox.value?._id ?? null);
 // literal token shown in copy; kept out of the template to avoid a `}}` mustache clash
 const firstNamePlaceholder = '{{firstName}}';
 
-const { snippets, isLoading, create, update, remove } =
-	usePostboxSnippets(mailboxId);
+const { snippets, isLoading, create, update, remove } = usePostboxSnippets(mailboxId);
 
 interface Editor {
 	id: Id<'mailSnippets'> | null;
@@ -111,27 +110,15 @@ async function confirmRemove() {
 					class="input flex-1"
 					placeholder="Snippet name (e.g. Thanks)"
 				/>
-				<input
-					v-model="editor.shortcut"
-					type="text"
-					class="input w-40"
-					placeholder="shortcut"
-				/>
+				<input v-model="editor.shortcut" type="text" class="input w-40" placeholder="shortcut" />
 			</div>
 			<PostboxBasicEditor
 				v-model="editor.bodyHtml"
 				placeholder="Hi {{firstName}}, thanks for reaching out…"
 			/>
 			<div class="flex items-center justify-end gap-2">
-				<button type="button" class="btn btn-ghost" @click="editor = null">
-					Cancel
-				</button>
-				<button
-					type="button"
-					class="btn btn-primary"
-					:disabled="!editor.name.trim()"
-					@click="save"
-				>
+				<button type="button" class="btn btn-ghost" @click="editor = null">Cancel</button>
+				<button type="button" class="btn btn-primary" :disabled="!editor.name.trim()" @click="save">
 					{{ editor.id ? 'Save changes' : 'Create' }}
 				</button>
 			</div>
@@ -144,10 +131,7 @@ async function confirmRemove() {
 			<div v-if="isLoading" class="p-8 flex justify-center">
 				<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin text-text-tertiary" />
 			</div>
-			<div
-				v-else-if="snippets.length === 0"
-				class="p-8 text-center text-text-secondary"
-			>
+			<div v-else-if="snippets.length === 0" class="p-8 text-center text-text-secondary">
 				No snippets yet.
 			</div>
 			<ul v-else class="divide-y divide-border-subtle">
@@ -162,21 +146,17 @@ async function confirmRemove() {
 							<span
 								v-if="s.shortcut"
 								class="text-xs px-1.5 py-0.5 rounded bg-bg-surface text-text-tertiary font-mono"
-							>/{{ s.shortcut }}</span>
+								>/{{ s.shortcut }}</span
+							>
 						</div>
+						<!-- rendered outside the reader iframe → sanitize the stored HTML -->
 						<div
 							class="text-xs text-text-tertiary mt-1 line-clamp-2"
-							v-html="s.bodyHtml"
+							v-html="sanitizePostboxHtml(s.bodyHtml)"
 						/>
 					</div>
-					<button type="button" class="btn btn-ghost" @click="startEdit(s)">
-						Edit
-					</button>
-					<button
-						type="button"
-						class="btn btn-ghost text-error"
-						@click="snippetToRemove = s._id"
-					>
+					<button type="button" class="btn btn-ghost" @click="startEdit(s)">Edit</button>
+					<button type="button" class="btn btn-ghost text-error" @click="snippetToRemove = s._id">
 						Delete
 					</button>
 				</li>
