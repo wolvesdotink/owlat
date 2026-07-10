@@ -183,13 +183,16 @@ export interface SendProviderModule<K extends SendProviderKind> {
 	sendEmail(params: EmailSendParams, extras?: ExtrasFor<K>): Promise<EmailSendAttempt>;
 
 	/**
-	 * Per-provider error-response parsing. The dispatch helper passes
-	 * the raw error string + optional HTTP status; the module returns
-	 * its typed code. Replaces the pre-deepening global `categorizeError`
-	 * that pretended to be generic but had to know every provider's
-	 * error format.
+	 * Per-provider error-response parsing. The dispatch helper passes the raw
+	 * error string + an optional transport status — an HTTP status (mta) or an
+	 * SMTP reply code (smtp) — and the module returns its typed code. Each
+	 * adapter interprets `statusCode` in its own transport's terms (an HTTP-only
+	 * adapter routes it through `httpStatusToErrorCode`; the smtp adapter maps
+	 * SMTP reply codes directly). Replaces the pre-deepening global
+	 * `categorizeError` that pretended to be generic but had to know every
+	 * provider's error format.
 	 */
-	categorizeError(message: string, httpStatus?: number): EmailErrorCode;
+	categorizeError(message: string, statusCode?: number): EmailErrorCode;
 }
 
 /**

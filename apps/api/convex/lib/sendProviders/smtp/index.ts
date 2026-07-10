@@ -92,16 +92,71 @@ function getTransport(): Transporter {
 }
 
 /**
- * Is this a timeout that happened AFTER the message may have been accepted?
- * These are TERMINAL for a generic relay because a retry cannot be de-duped and
- * would risk a second delivery (mirrors the SES adapter's stance).
+ * Does this error look like a timeout (the outer `withTimeout` sentinel, a
+ * socket-level `ETIMEDOUT`, or "timed out" wording)? Timeout classification is
+ * only AMBIGUOUS when no SMTP reply arrived — see `classifySmtpError`.
  */
-function isAmbiguousSmtpTimeout(code: string | undefined, message: string): boolean {
+function isTimeoutError(code: string | undefined, message: string): boolean {
 	if (message === SMTP_SEND_TIMEOUT_MESSAGE) return true;
 	const upperCode = (code ?? '').toUpperCase();
 	if (upperCode === 'ETIMEDOUT') return true;
 	const lower = message.toLowerCase();
 	return lower.includes('timed out') || lower.includes('timeout');
+}
+
+/**
+ * Does this error represent a mid-session TCP/TLS connection loss (as opposed to
+ * an SMTP-level rejection)? Matched by nodemailer's `ESOCKET`/`ECONNECTION`
+ * codes and the "connection closed" / "socket hang up" wording.
+ */
+function isConnectionLoss(code: string | undefined, message: string): boolean {
+	const upperCode = (code ?? '').toUpperCase();
+	if (upperCode === 'ESOCKET' || upperCode === 'ECONNECTION') return true;
+	const lower = message.toLowerCase();
+	return lower.includes('connection closed') || lower.includes('socket hang up');
+}
+
+/**
+ * Catch-side classification for a nodemailer send failure. Pure and exported so
+ * the branch logic (which decides retry vs. terminal, and — critically — which
+ * failures are double-delivery-ambiguous) is pinned by table-driven tests
+ * rather than living only inside the network path.
+ *
+ * Order matters:
+ *  1. `command === 'CONN'` — TCP connect / greeting failure (incl. the
+ *     connection/greeting timeouts). Nothing reached the wire ⇒ retryable.
+ *  2. A timeout is AMBIGUOUS only when NO SMTP reply arrived
+ *     (`responseCode === undefined`). A numeric reply code is the server's
+ *     definitive verdict — even a `421 4.4.2 Error: timeout exceeded` means the
+ *     message was rejected, not accepted — so it falls through to the reply-code
+ *     path and is classified as the retryable/permanent code it deserves.
+ *  3. A `command === 'DATA'` connection loss is AMBIGUOUS: the final dot may
+ *     have been sent and the `250` lost — the same on-the-wire ambiguity a
+ *     post-dispatch timeout carries. Connection losses at EHLO/MAIL/RCPT stay
+ *     retryable because the server discards an incomplete transaction.
+ *  4. Everything else falls back to the reply-code + message-text taxonomy.
+ */
+export function classifySmtpError(input: {
+	code?: string;
+	command?: string;
+	responseCode?: number;
+	message: string;
+}): EmailErrorCode {
+	const { code, command, responseCode, message } = input;
+
+	if (command === 'CONN') {
+		return EmailErrorCode.SERVER_ERROR;
+	}
+
+	if (responseCode === undefined && isTimeoutError(code, message)) {
+		return EmailErrorCode.AMBIGUOUS_TIMEOUT;
+	}
+
+	if (command === 'DATA' && responseCode === undefined && isConnectionLoss(code, message)) {
+		return EmailErrorCode.AMBIGUOUS_TIMEOUT;
+	}
+
+	return categorizeSmtpError(`${code ?? ''}: ${message}`, responseCode);
 }
 
 /**
@@ -169,90 +224,74 @@ export const smtpSendProvider: SendProviderModule<'smtp'> = {
 			const responseCode =
 				typeof errorObj.responseCode === 'number' ? errorObj.responseCode : undefined;
 
-			// A pre-acceptance connection failure — nodemailer tags TCP-connect and
-			// greeting errors (incl. connectionTimeout/greetingTimeout) with
-			// `command === 'CONN'`. Nothing reached the wire, so unlike a
-			// post-dispatch timeout this is unambiguously safe to retry.
-			if (command === 'CONN') {
-				return {
-					success: false,
-					errorMessage,
-					errorCode: EmailErrorCode.SERVER_ERROR,
-				};
-			}
-
-			// A post-dispatch timeout is AMBIGUOUS: the relay may already have
-			// accepted and queued the message. No idempotency surface ⇒ TERMINAL.
-			if (isAmbiguousSmtpTimeout(code, errorMessage)) {
-				return {
-					success: false,
-					errorMessage,
-					errorCode: EmailErrorCode.AMBIGUOUS_TIMEOUT,
-				};
-			}
-
 			return {
 				success: false,
 				errorMessage,
-				errorCode: this.categorizeError(`${code ?? ''}: ${errorMessage}`, responseCode),
+				errorCode: classifySmtpError({ code, command, responseCode, message: errorMessage }),
 			};
 		}
 	},
 
-	/**
-	 * Classify an SMTP-relay failure. When a numeric SMTP reply code is present
-	 * it is authoritative (note: unlike HTTP, an SMTP 5xx is a PERMANENT reject,
-	 * not a retryable server error — so this maps reply codes directly rather
-	 * than through the shared `httpStatusToErrorCode`). Otherwise it falls back
-	 * to nodemailer's string `code` + message text.
-	 */
 	categorizeError(message: string, smtpReplyCode?: number): EmailErrorCode {
-		if (smtpReplyCode !== undefined) {
-			const byCode = smtpReplyCodeToErrorCode(smtpReplyCode, message);
-			if (byCode !== undefined) return byCode;
-		}
-
-		const lower = message.toLowerCase();
-
-		// Rate limiting is usually surfaced as a 4xx with wording, before a reply
-		// code is parsed — catch it by text too.
-		if (mentionsRateLimit(lower)) {
-			return EmailErrorCode.RATE_LIMIT;
-		}
-		// nodemailer transport/connection failures — never reached acceptance, so
-		// safe to retry.
-		if (
-			lower.includes('econnection') ||
-			lower.includes('econnrefused') ||
-			lower.includes('esocket') ||
-			lower.includes('edns') ||
-			lower.includes('connection refused') ||
-			lower.includes('greeting never received') ||
-			lower.includes('connection closed')
-		) {
-			return EmailErrorCode.SERVER_ERROR;
-		}
-		if (
-			lower.includes('eauth') ||
-			lower.includes('authentication') ||
-			lower.includes('invalid login')
-		) {
-			return EmailErrorCode.AUTH_FAILED;
-		}
-		if (lower.includes('emessage') || lower.includes('spam') || lower.includes('blocked')) {
-			return EmailErrorCode.CONTENT_REJECTED;
-		}
-		if (
-			lower.includes('eenvelope') ||
-			lower.includes('no recipients') ||
-			lower.includes('invalid recipient')
-		) {
-			return EmailErrorCode.INVALID_RECIPIENT;
-		}
-
-		return EmailErrorCode.UNKNOWN;
+		return categorizeSmtpError(message, smtpReplyCode);
 	},
 };
+
+/**
+ * Classify an SMTP-relay failure from its message text (and optional reply
+ * code). When a numeric SMTP reply code is present it is authoritative (note:
+ * unlike HTTP, an SMTP 5xx is a PERMANENT reject, not a retryable server error —
+ * so this maps reply codes directly rather than through the shared
+ * `httpStatusToErrorCode`). Otherwise it falls back to nodemailer's string
+ * `code` + message text. Kept standalone (and reused by `classifySmtpError`) so
+ * both the module method and the catch-side classifier share one taxonomy.
+ */
+export function categorizeSmtpError(message: string, smtpReplyCode?: number): EmailErrorCode {
+	if (smtpReplyCode !== undefined) {
+		const byCode = smtpReplyCodeToErrorCode(smtpReplyCode, message);
+		if (byCode !== undefined) return byCode;
+	}
+
+	const lower = message.toLowerCase();
+
+	// Rate limiting is usually surfaced as a 4xx with wording, before a reply
+	// code is parsed — catch it by text too.
+	if (mentionsRateLimit(lower)) {
+		return EmailErrorCode.RATE_LIMIT;
+	}
+	// nodemailer transport/connection failures — never reached acceptance, so
+	// safe to retry.
+	if (
+		lower.includes('econnection') ||
+		lower.includes('econnrefused') ||
+		lower.includes('esocket') ||
+		lower.includes('edns') ||
+		lower.includes('connection refused') ||
+		lower.includes('greeting never received') ||
+		lower.includes('connection closed')
+	) {
+		return EmailErrorCode.SERVER_ERROR;
+	}
+	if (
+		lower.includes('eauth') ||
+		lower.includes('authentication') ||
+		lower.includes('invalid login')
+	) {
+		return EmailErrorCode.AUTH_FAILED;
+	}
+	if (lower.includes('emessage') || lower.includes('spam') || lower.includes('blocked')) {
+		return EmailErrorCode.CONTENT_REJECTED;
+	}
+	if (
+		lower.includes('eenvelope') ||
+		lower.includes('no recipients') ||
+		lower.includes('invalid recipient')
+	) {
+		return EmailErrorCode.INVALID_RECIPIENT;
+	}
+
+	return EmailErrorCode.UNKNOWN;
+}
 
 /**
  * Map a raw SMTP reply code (RFC 5321 §4.2) to the typed error taxonomy.
