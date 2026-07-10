@@ -88,6 +88,15 @@ export type EnvKey =
 	// auto-confirms subscriptions for this topic). Unset ⇒ the endpoint returns
 	// 503, exactly like an unconfigured provider.
 	| 'SES_SNS_TOPIC_ARN'
+	// Provider: generic SMTP relay (Mailgun/Postmark/SendGrid/Brevo/custom).
+	// The instance-level outbound transport when `EMAIL_PROVIDER=smtp`.
+	// SMTP_RELAY_SECURE=true opens an implicit-TLS connection on port 465,
+	// while unset/false connects and upgrades via STARTTLS on the default 587.
+	| 'SMTP_RELAY_HOST'
+	| 'SMTP_RELAY_PORT'
+	| 'SMTP_RELAY_SECURE'
+	| 'SMTP_RELAY_USERNAME'
+	| 'SMTP_RELAY_PASSWORD'
 	// LLM
 	| 'LLM_PROVIDER'
 	| 'LLM_API_KEY'

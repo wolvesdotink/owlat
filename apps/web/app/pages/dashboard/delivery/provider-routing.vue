@@ -68,6 +68,7 @@ const SUPPORTED_PROVIDERS: { value: string; label: string }[] = [
 	{ value: 'mta', label: 'Built-in MTA' },
 	{ value: 'ses', label: 'Amazon SES' },
 	{ value: 'resend', label: 'Resend' },
+	{ value: 'smtp', label: 'SMTP relay' },
 ];
 
 const providerLabel = (providerType: string): string =>

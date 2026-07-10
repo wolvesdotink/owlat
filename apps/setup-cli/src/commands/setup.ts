@@ -12,8 +12,19 @@
  * wizard cannot run inside the containerized installer.
  */
 
-import { intro, outro, select, multiselect, text, password, confirm, isCancel, log, group } from '@clack/prompts';
-import { progressSpinner } from '../lib/progress';
+import {
+	intro,
+	outro,
+	select,
+	multiselect,
+	text,
+	password,
+	confirm,
+	isCancel,
+	log,
+	group,
+} from '@clack/prompts';
+import { progressSpinner, validateWithSpinner } from '../lib/progress';
 import pc from 'picocolors';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -31,10 +42,10 @@ import { writeComposeOverride } from '../lib/override';
 import { saveFlagState } from '../lib/flagState';
 import { applySetupDefaults, type DeploymentMode } from '../lib/setupConfig';
 import { applyAssumeYes, applyConfigFile } from './setupNonInteractive';
+import { pickSendingProvider } from './setupSendingProvider';
 import {
 	validateOpenAIKey,
 	validateOpenRouterKey,
-	validateResendKey,
 	validatePostHogHost,
 	validateGoogleSafeBrowsingKey,
 } from '../lib/validators';
@@ -56,7 +67,12 @@ export async function runSetup(opts: RunOptions): Promise<number> {
 	// app driving a remote install over SSH). `--config` was previously accepted
 	// by the CLI entry point but never read; this is where it finally takes effect.
 	if (opts.configFile) {
-		return await applyConfigFile({ configFile: opts.configFile, owlatDir: opts.owlatDir, envPath, overridePath });
+		return await applyConfigFile({
+			configFile: opts.configFile,
+			owlatDir: opts.owlatDir,
+			envPath,
+			overridePath,
+		});
 	}
 
 	const existingEnv = await readEnv(envPath);
@@ -177,11 +193,16 @@ export async function runSetup(opts: RunOptions): Promise<number> {
 	// (without it they recompute from defaults and silently drop selections).
 	await saveFlagState(opts.owlatDir, flags);
 
-	s.stop(`Wrote ${pc.cyan(envPath)} and ${pc.cyan(overridePath)} (profiles: ${profiles.join(', ') || 'none'})`);
+	s.stop(
+		`Wrote ${pc.cyan(envPath)} and ${pc.cyan(overridePath)} (profiles: ${profiles.join(', ') || 'none'})`
+	);
 
 	log.info(
 		`${pc.bold('Admin user:')} ${admin.email}\n` +
-			`${pc.bold('Active features:')} ${Object.entries(flags).filter(([, v]) => v).map(([k]) => k).join(', ')}\n`
+			`${pc.bold('Active features:')} ${Object.entries(flags)
+				.filter(([, v]) => v)
+				.map(([k]) => k)
+				.join(', ')}\n`
 	);
 
 	outro(
@@ -233,7 +254,9 @@ async function pickFeatures(hosted: boolean): Promise<FeatureFlagState | null> {
 
 	// Surface implicit cascade so the user can confirm.
 	const resolved = resolveFlags(result, { hosted });
-	const droppedByCascade = Object.entries(result).filter(([key, v]) => v && !resolved[key as FeatureFlagKey]);
+	const droppedByCascade = Object.entries(result).filter(
+		([key, v]) => v && !resolved[key as FeatureFlagKey]
+	);
 	if (droppedByCascade.length > 0) {
 		log.warn(
 			`The following flags were turned off because a dependency was disabled:\n` +
@@ -262,47 +285,6 @@ function categoryLabel(cat: string): string {
 	return map[cat] ?? cat;
 }
 
-async function pickSendingProvider(): Promise<EnvMap | null> {
-	const provider = await select({
-		message: 'Email sending provider',
-		options: [
-			{ label: 'Owlat MTA (self-hosted)', value: 'mta', hint: 'no third-party' },
-			{ label: 'Resend', value: 'resend' },
-			{ label: 'Amazon SES', value: 'ses' },
-		],
-	});
-	if (isCancel(provider)) return null;
-
-	if (provider === 'mta') {
-		return { EMAIL_PROVIDER: 'mta' };
-	}
-
-	if (provider === 'resend') {
-		const apiKey = await password({ message: 'Resend API key (re_...)' });
-		if (isCancel(apiKey)) return null;
-		if (!(await validateWithSpinner('Validating Resend key', () => validateResendKey(apiKey as string)))) {
-			return null;
-		}
-		return { EMAIL_PROVIDER: 'resend', RESEND_API_KEY: apiKey as string };
-	}
-
-	if (provider === 'ses') {
-		const result = await group({
-			region: () => text({ message: 'AWS SES region', placeholder: 'us-east-1' }),
-			accessKey: () => password({ message: 'AWS_ACCESS_KEY_ID' }),
-			secretKey: () => password({ message: 'AWS_SECRET_ACCESS_KEY' }),
-		});
-		return {
-			EMAIL_PROVIDER: 'ses',
-			AWS_SES_REGION: result.region,
-			AWS_SES_ACCESS_KEY_ID: result.accessKey,
-			AWS_SES_SECRET_ACCESS_KEY: result.secretKey,
-		};
-	}
-
-	return null;
-}
-
 async function pickAIProvider(): Promise<EnvMap | null> {
 	const provider = await select({
 		message: 'AI provider',
@@ -318,7 +300,11 @@ async function pickAIProvider(): Promise<EnvMap | null> {
 	if (provider === 'openrouter') {
 		const apiKey = await password({ message: 'OpenRouter API key (sk-or-...)' });
 		if (isCancel(apiKey)) return null;
-		if (!(await validateWithSpinner('Validating OpenRouter key', () => validateOpenRouterKey(apiKey as string)))) {
+		if (
+			!(await validateWithSpinner('Validating OpenRouter key', () =>
+				validateOpenRouterKey(apiKey as string)
+			))
+		) {
 			return null;
 		}
 		return {
@@ -331,7 +317,11 @@ async function pickAIProvider(): Promise<EnvMap | null> {
 	if (provider === 'openai') {
 		const apiKey = await password({ message: 'OpenAI API key (sk-...)' });
 		if (isCancel(apiKey)) return null;
-		if (!(await validateWithSpinner('Validating OpenAI key', () => validateOpenAIKey(apiKey as string)))) {
+		if (
+			!(await validateWithSpinner('Validating OpenAI key', () =>
+				validateOpenAIKey(apiKey as string)
+			))
+		) {
 			return null;
 		}
 		return {
@@ -358,7 +348,11 @@ async function pickAIProvider(): Promise<EnvMap | null> {
 
 	if (provider === 'custom') {
 		const result = await group({
-			baseUrl: () => text({ message: 'OpenAI-compatible base URL', placeholder: 'https://api.anthropic.com/v1' }),
+			baseUrl: () =>
+				text({
+					message: 'OpenAI-compatible base URL',
+					placeholder: 'https://api.anthropic.com/v1',
+				}),
 			apiKey: () => password({ message: 'API key' }),
 			fast: () => text({ message: 'Fast model name', placeholder: 'claude-3-5-haiku' }),
 			capable: () => text({ message: 'Capable model name', placeholder: 'claude-3-5-sonnet' }),
@@ -375,25 +369,14 @@ async function pickAIProvider(): Promise<EnvMap | null> {
 	return null;
 }
 
-/**
- * Run an async credential check under a clack spinner, stopping it with a green
- * ✓ / red ✗ line. Returns whether the check passed.
- */
-async function validateWithSpinner(
-	label: string,
-	run: () => Promise<{ ok: boolean; message: string }>,
-): Promise<boolean> {
-	const s = progressSpinner();
-	s.start(label);
-	const result = await run();
-	s.stop(result.ok ? pc.green(`✓ ${result.message}`) : pc.red(`✗ ${result.message}`));
-	return result.ok;
-}
-
 async function collectGoogleSafeBrowsing(): Promise<EnvMap | null> {
 	const apiKey = await password({ message: 'Google Safe Browsing API key' });
 	if (isCancel(apiKey)) return null;
-	if (!(await validateWithSpinner('Validating Google Safe Browsing key', () => validateGoogleSafeBrowsingKey(apiKey as string)))) {
+	if (
+		!(await validateWithSpinner('Validating Google Safe Browsing key', () =>
+			validateGoogleSafeBrowsingKey(apiKey as string)
+		))
+	) {
 		return null;
 	}
 	return { GOOGLE_SAFE_BROWSING_API_KEY: apiKey as string };
@@ -404,7 +387,11 @@ async function collectPostHog(): Promise<EnvMap | null> {
 		host: () => text({ message: 'PostHog host', placeholder: 'https://app.posthog.com' }),
 		apiKey: () => password({ message: 'PostHog API key (phc_...)' }),
 	});
-	if (!(await validateWithSpinner('Checking PostHog reachability', () => validatePostHogHost(result.host, result.apiKey)))) {
+	if (
+		!(await validateWithSpinner('Checking PostHog reachability', () =>
+			validatePostHogHost(result.host, result.apiKey)
+		))
+	) {
 		return null;
 	}
 	return {
@@ -417,7 +404,11 @@ async function collectPostHog(): Promise<EnvMap | null> {
 
 async function collectAdmin(): Promise<{ email: string; name: string; password: string } | null> {
 	const result = await group({
-		email: () => text({ message: 'Admin email', validate: (v) => (/^.+@.+\..+$/.test(v ?? '') ? undefined : 'Enter a valid email') }),
+		email: () =>
+			text({
+				message: 'Admin email',
+				validate: (v) => (/^.+@.+\..+$/.test(v ?? '') ? undefined : 'Enter a valid email'),
+			}),
 		name: () => text({ message: 'Admin display name' }),
 		password: () => password({ message: 'Admin password (min 12 chars)', mask: '•' }),
 	});
@@ -431,7 +422,8 @@ async function collectAdmin(): Promise<{ email: string; name: string; password: 
 async function collectDomain(): Promise<EnvMap | null> {
 	const result = await group({
 		ehlo: () => text({ message: 'EHLO hostname', placeholder: 'mail.example.com' }),
-		bounceDomain: () => text({ message: 'Bounce / Return-Path domain', placeholder: 'bounces.example.com' }),
+		bounceDomain: () =>
+			text({ message: 'Bounce / Return-Path domain', placeholder: 'bounces.example.com' }),
 	});
 	return {
 		EHLO_HOSTNAME: result.ehlo,
@@ -441,8 +433,12 @@ async function collectDomain(): Promise<EnvMap | null> {
 
 async function launchWebWizard(opts: RunOptions): Promise<number> {
 	log.info(`Booting the web wizard at ${pc.cyan('http://localhost:3000/setup')}…`);
-	log.info(`Run ${pc.cyan('cd ' + opts.owlatDir + ' && owlat start')} in another shell, then visit the URL.`);
-	log.info(`For SSH installs without a local browser, re-run with ${pc.cyan('--terminal')} to use the terminal wizard instead.`);
+	log.info(
+		`Run ${pc.cyan('cd ' + opts.owlatDir + ' && owlat start')} in another shell, then visit the URL.`
+	);
+	log.info(
+		`For SSH installs without a local browser, re-run with ${pc.cyan('--terminal')} to use the terminal wizard instead.`
+	);
 
 	// The actual bootstrap (docker compose up with profile=setup) is handled by
 	// `owlat start` — this CLI's job is to prepare .env so apps/web can boot in
@@ -457,7 +453,12 @@ async function launchWebWizard(opts: RunOptions): Promise<number> {
 	// Optionally try to open the browser when DISPLAY is available.
 	if (process.env['DISPLAY'] || process.platform === 'darwin' || process.platform === 'win32') {
 		try {
-			const cmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open';
+			const cmd =
+				process.platform === 'darwin'
+					? 'open'
+					: process.platform === 'win32'
+						? 'start'
+						: 'xdg-open';
 			spawn(cmd, ['http://localhost:3000/setup'], { stdio: 'ignore', detached: true }).unref();
 		} catch {
 			// Best-effort.

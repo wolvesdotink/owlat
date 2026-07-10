@@ -110,6 +110,8 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'mailSnippets',
 	'mailUserSettings',
 	'mailAppPasswords',
+	'mailboxMembers',
+	'pendingMailboxMembers',
 	'mailboxes',
 
 	// Delivery reputation history — standalone daily snapshots, no dependents
@@ -132,6 +134,7 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	// Campaign machinery before the campaign parents
 	'campaignSendJobs',
 	'campaignStatShards',
+	'campaignSenders',
 	'sendDailyStats',
 
 	// Campaign + template parents
@@ -200,6 +203,9 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	// UI / onboarding state
 	'onboardingProgress',
 
+	// Invitation resend throttle rows — pure org data, no dependents.
+	'invitationResends',
+
 	// Audit logs LAST (accumulates from delegated lifecycle calls above)
 	'auditLogs',
 
@@ -244,6 +250,8 @@ export const ORGANIZATION_DELETION_STEPS = {
 	mailSnippets: makeSweepStep('mailSnippets'),
 	mailUserSettings: makeSweepStep('mailUserSettings'),
 	mailAppPasswords: makeSweepStep('mailAppPasswords'),
+	mailboxMembers: makeSweepStep('mailboxMembers'),
+	pendingMailboxMembers: makeSweepStep('pendingMailboxMembers'),
 	mailboxes: makeSweepStep('mailboxes'),
 	deliverySnapshots: makeSweepStep('deliverySnapshots'),
 	webhookDeliveryLogs: makeSweepStep('webhookDeliveryLogs'),
@@ -274,6 +282,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	providerRoutes: makeSweepStep('providerRoutes'),
 	domains: domainsStep,
 	onboardingProgress: makeSweepStep('onboardingProgress'),
+	invitationResends: makeSweepStep('invitationResends'),
 	auditLogs: makeSweepStep('auditLogs'),
 	instanceSettings: makeSweepStep('instanceSettings'),
 	threadPresence: makeSweepStep('threadPresence'),
@@ -313,6 +322,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	automationStatShards: makeSweepStep('automationStatShards'),
 	campaignSendJobs: makeSweepStep('campaignSendJobs'),
 	campaignStatShards: makeSweepStep('campaignStatShards'),
+	campaignSenders: makeSweepStep('campaignSenders'),
 	sendDailyStats: makeSweepStep('sendDailyStats'),
 	contactTopics: makeSweepStep('contactTopics'),
 	contactPropertyValues: makeSweepStep('contactPropertyValues'),

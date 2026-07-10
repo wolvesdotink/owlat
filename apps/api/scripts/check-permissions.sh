@@ -26,7 +26,7 @@
 #   * calls a recognized authorization gate inside the handler:
 #       requirePermission / requireAdminContext / requireOwnerContext /
 #       requireOrgPermission   (org-role RBAC, lib/sessionOrganization.ts)
-#       loadOwnedMailbox / loadOwnedMessage   (per-user mail ownership, mail/*)
+#       requireMailboxAccess / requireMessageAccess   (per-user mail access, mail/*)
 #       assertCanReadRoom / assertCanWriteRoom / assertCanAdministerRoom
 #                              (team-chat membership, chat/_helpers.ts)
 #       requirePlatformAdmin   (platform operator, platformAdmin/platformAdmin.ts)
@@ -67,7 +67,7 @@ violations=$(find convex -name "*.ts" \
 			gate = block_optout
 			block_optout = 0
 		}
-		in_fn && $0 ~ /(requirePermission|requireAdminContext|requireOwnerContext|requireOrgPermission|loadOwnedMailbox|loadOwnedMessage|assertCanReadRoom|assertCanWriteRoom|assertCanAdministerRoom|requirePlatformAdmin)/ { gate = 1 }
+		in_fn && $0 ~ /(requirePermission|requireAdminContext|requireOwnerContext|requireOrgPermission|requireCampaignSendersManage|requireMailboxAccess|requireMessageAccess|assertCanReadRoom|assertCanWriteRoom|assertCanAdministerRoom|requirePlatformAdmin)/ { gate = 1 }
 		in_fn && is_optout { gate = 1 }
 		in_fn && /^\}\)/ {
 			if (!gate) print FILENAME ":" start ":" name
@@ -87,7 +87,7 @@ if [ "$count" -gt 0 ]; then
 	echo "role). A state-changing public function must also decide WHO may run it:"
 	echo "  - use adminMutation / ownerMutation (role baked into the wrapper), or"
 	echo "  - call requirePermission(hasPermission(role, '<scope>:<verb>')) / "
-	echo "    requireAdminContext / requireOrgPermission / loadOwnedMailbox / etc., or"
+	echo "    requireAdminContext / requireOrgPermission / requireMailboxAccess / etc., or"
 	echo "  - add a '// authz: <reason>' (gate lives elsewhere) or"
 	echo "    '// all-members: <reason>' (intentionally open to every member) comment."
 	exit 1

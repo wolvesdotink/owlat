@@ -17,6 +17,7 @@ import authConfig from './config';
 import { isDevDeployment } from '../devShortcuts/_guard';
 import {
 	generateInvitationEmailHtml,
+	generateInboxInviteEmailHtml,
 	generatePasswordResetEmailHtml,
 	generateChangeEmailVerificationHtml,
 	generateNewEmailVerificationHtml,
@@ -241,24 +242,53 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 				invitationExpiresIn: 60 * 60 * 24 * 7,
 				// Email invitation handler - sends invitation emails via own MTA
 				sendInvitationEmail: async ({ email, organization: org, inviter, invitation }) => {
+					// Single enforcement choke point for the 1/min-per-invite floor.
+					// Every send path — first invite, cooperating-client resend, and a
+					// raw `invite-member` API call with resend:true — routes through
+					// this hook, so the throttle can't be bypassed. Throws (and thus
+					// skips the send) when inside the cooldown; stamps otherwise.
+					await ctx.runMutation(internal.auth.invitationResend.enforceResendThrottle, {
+						invitationId: invitation.id,
+						organizationId: org.id,
+					});
+
 					const siteUrl = getOptional('SITE_URL') || 'http://localhost:3000';
 					const fromDomain = getOptional('DEFAULT_FROM_DOMAIN') || 'mail.owlat.app';
 
 					// Build accept URL - BetterAuth uses the invitation ID
 					const acceptUrl = `${siteUrl}/invite/accept?id=${encodeURIComponent(invitation.id)}`;
 
-					const html = generateInvitationEmailHtml(
-						org.name,
-						inviter.user.name || inviter.user.email,
-						inviter.user.email,
-						acceptUrl,
-						invitation.role
+					// If this invitee was pre-added to a team inbox (reserved before the
+					// invite was issued), name the inbox in the email and waiting
+					// membership; otherwise send the generic org invite.
+					const inboxContext = await ctx.runQuery(
+						internal.mail.pendingMailbox.inboxInviteContextForEmail,
+						{ organizationId: org.id, email }
 					);
+
+					const inviterDisplayName = inviter.user.name || inviter.user.email;
+					const html = inboxContext
+						? generateInboxInviteEmailHtml(
+								org.name,
+								inviterDisplayName,
+								inviter.user.email,
+								inboxContext.inboxAddress,
+								acceptUrl
+							)
+						: generateInvitationEmailHtml(
+								org.name,
+								inviterDisplayName,
+								inviter.user.email,
+								acceptUrl,
+								invitation.role
+							);
 
 					await sendViaMta({
 						to: email,
 						from: `Owlat <noreply@${fromDomain}>`,
-						subject: `You're invited to join ${org.name} on Owlat`,
+						subject: inboxContext
+							? `${inviterDisplayName} invited you to ${inboxContext.inboxAddress}`
+							: `You're invited to join ${org.name} on Owlat`,
 						html,
 					});
 				},

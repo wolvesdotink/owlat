@@ -503,6 +503,8 @@ async function runSentEffects(
 		htmlBodyInline: context.bodyHtml.length <= 64 * 1024 ? context.bodyHtml : undefined,
 		attachments: context.attachmentsMeta,
 		hasAttachments: context.attachmentsMeta.length > 0,
+		// Team-inbox attribution: WHO fired this send (captured by drafts.send).
+		sentByUserId: draft.sentByUserId,
 		flagSeen: true,
 		flagFlagged: false,
 		flagAnswered: false,
@@ -561,6 +563,10 @@ async function runSentEffects(
 			latestFromAddress: draft.fromAddress,
 			latestSubject: draft.subject || '(no subject)',
 			latestMessageId: messageId,
+			// Team-inbox collision safety: record this reply as the thread's newest
+			// outbound so a second teammate who opened the thread earlier is warned
+			// before sending a duplicate (see mail/mailbox.ts::latestReplyState).
+			latestReply: { messageId, byUserId: draft.sentByUserId, at: now },
 			folderRoles: Array.from(folderRoles),
 			// Any outbound in the thread answers the Reply Queue signal — clear
 			// the needs-reply flag and any in-flight classification marker.

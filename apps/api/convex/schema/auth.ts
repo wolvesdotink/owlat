@@ -35,6 +35,12 @@ export const authTables = {
 		// Default sender information
 		defaultFromName: v.optional(v.string()),
 		defaultFromEmail: v.optional(v.string()),
+		// Campaign senders are a curated list (see `campaignSenders`). When this
+		// is on, campaign sends may also use any from-address on a VERIFIED
+		// sending domain, not just the curated list. Defaults to OFF for everyone
+		// (admins included) — the curated list is the safe default. The
+		// verified-domain hard gate still applies in both branches.
+		isCustomCampaignSendersAllowed: v.optional(v.boolean()),
 		// Email theme settings
 		emailTheme: v.optional(
 			v.object({
@@ -221,6 +227,10 @@ export const authTables = {
 		knowledgeIndexed: v.optional(v.number()), // AI knowledge indexing finished
 		sendingSwitched: v.optional(v.number()), // outbound switched to this instance
 		firstSendDone: v.optional(v.number()), // first message sent from this instance
+		// The member has seen the first-login welcome screen. Set once, the first
+		// time they land on /welcome; drives the middleware "returning users never
+		// see the welcome" check. Independent of dismissedAt.
+		welcomedAt: v.optional(v.number()),
 		// The member dismissed their own onboarding checklist (per-user only).
 		dismissedAt: v.optional(v.number()),
 		createdAt: v.number(),
@@ -286,4 +296,17 @@ export const authTables = {
 	})
 		.index('by_kind_and_checkedAt', ['kind', 'checkedAt'])
 		.index('by_kind_and_startedAt', ['kind', 'startedAt']),
+
+	// Resend throttle for organization invitations. One row per BetterAuth
+	// invitationId records when its invite email was last (re)sent. The
+	// `sendInvitationEmail` hook stamps and checks this via
+	// `auth/invitationResend.enforceResendThrottle` on every send path, enforcing a
+	// 1-per-minute floor regardless of how many times "Resend" is clicked (or how
+	// often the API is hit directly). The copyable accept link is always available,
+	// so this only rate-limits the email resend, never access to the invite itself.
+	invitationResends: defineTable({
+		invitationId: v.string(), // BetterAuth invitation ID (string format)
+		organizationId: v.string(),
+		lastSentAt: v.number(),
+	}).index('by_invitation', ['invitationId']),
 };

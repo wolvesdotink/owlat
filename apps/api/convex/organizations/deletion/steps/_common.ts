@@ -47,6 +47,8 @@ export type OrganizationDeletionTable =
 	| 'mailSnippets'
 	| 'mailUserSettings'
 	| 'mailAppPasswords'
+	| 'mailboxMembers'
+	| 'pendingMailboxMembers'
 	| 'mailCommitments'
 	| 'mailDailyBriefs'
 	| 'mailBriefCards'
@@ -80,6 +82,7 @@ export type OrganizationDeletionTable =
 	| 'domains'
 	| 'onboardingProgress'
 	| 'auditLogs'
+	| 'invitationResends'
 	| 'instanceSettings'
 	| 'unifiedMessages'
 	| 'channelConfigs'
@@ -112,6 +115,7 @@ export type OrganizationDeletionTable =
 	| 'automationStatShards'
 	| 'campaignSendJobs'
 	| 'campaignStatShards'
+	| 'campaignSenders'
 	| 'sendDailyStats'
 	| 'contactTopics'
 	| 'contactPropertyValues'
@@ -178,6 +182,8 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('mailSnippets'),
 	v.literal('mailUserSettings'),
 	v.literal('mailAppPasswords'),
+	v.literal('mailboxMembers'),
+	v.literal('pendingMailboxMembers'),
 	v.literal('mailCommitments'),
 	v.literal('mailDailyBriefs'),
 	v.literal('mailBriefCards'),
@@ -211,6 +217,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('domains'),
 	v.literal('onboardingProgress'),
 	v.literal('auditLogs'),
+	v.literal('invitationResends'),
 	v.literal('instanceSettings'),
 	v.literal('unifiedMessages'),
 	v.literal('channelConfigs'),
@@ -243,6 +250,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('automationStatShards'),
 	v.literal('campaignSendJobs'),
 	v.literal('campaignStatShards'),
+	v.literal('campaignSenders'),
 	v.literal('sendDailyStats'),
 	v.literal('contactTopics'),
 	v.literal('contactPropertyValues'),

@@ -27,6 +27,7 @@ import {
 	createTestEmailTemplate,
 	createTestTopic,
 	createTestDomain,
+	createTestCampaignSender,
 } from './factories';
 import type { Id } from '../_generated/dataModel';
 
@@ -72,8 +73,8 @@ const modules = Object.fromEntries(
 			!path.includes('posthog') &&
 			!path.includes('delivery/worker.ts') &&
 			!path.includes('campaigns/testSend') &&
-			!path.includes('delivery/workpool'),
-	),
+			!path.includes('delivery/workpool')
+	)
 );
 
 interface Setup {
@@ -88,7 +89,7 @@ async function setupSendableCampaign(t: TestConvex<typeof schema>): Promise<Setu
 	return await t.run(async (ctx) => {
 		await ctx.db.insert(
 			'domains',
-			createTestDomain({ domain: 'example.com', status: 'verified', lastVerifiedAt: Date.now() }),
+			createTestDomain({ domain: 'example.com', status: 'verified', lastVerifiedAt: Date.now() })
 		);
 		const template = await ctx.db.insert(
 			'emailTemplates',
@@ -97,14 +98,18 @@ async function setupSendableCampaign(t: TestConvex<typeof schema>): Promise<Setu
 				subject: 'Hello {{firstName}}',
 				htmlContent: '<p>Body for {{firstName}}</p>',
 				defaultLanguage: 'en',
-			}),
+			})
 		);
 		const topicId = await ctx.db.insert('topics', createTestTopic({ requireDoubleOptIn: false }));
 		const cid = await ctx.db.insert(
 			'contacts',
-			createTestContact({ email: 'r0@example.com', firstName: 'First0', doiStatus: 'not_required' }),
+			createTestContact({ email: 'r0@example.com', firstName: 'First0', doiStatus: 'not_required' })
 		);
 		await ctx.db.insert('contactTopics', { contactId: cid, topicId, addedAt: Date.now() });
+		await ctx.db.insert(
+			'campaignSenders',
+			createTestCampaignSender({ email: 'sender@example.com' })
+		);
 
 		const campaignId = await ctx.db.insert(
 			'campaigns',
@@ -117,20 +122,21 @@ async function setupSendableCampaign(t: TestConvex<typeof schema>): Promise<Setu
 				audience: { kind: 'topic', topicId },
 				subject: undefined,
 				isABTest: false,
-			}),
+			})
 		);
 		return { campaignId, topicId };
 	});
 }
 
 async function countSends(t: TestConvex<typeof schema>, campaignId: Id<'campaigns'>) {
-	return await t.run(async (ctx) =>
-		(
-			await ctx.db
-				.query('emailSends')
-				.withIndex('by_campaign', (q) => q.eq('campaignId', campaignId))
-				.collect()
-		).length,
+	return await t.run(
+		async (ctx) =>
+			(
+				await ctx.db
+					.query('emailSends')
+					.withIndex('by_campaign', (q) => q.eq('campaignId', campaignId))
+					.collect()
+			).length
 	);
 }
 
@@ -224,7 +230,7 @@ describe('Campaign send orchestrator — pre-send content scan gate', () => {
 			ctx.db
 				.query('campaignSendJobs')
 				.withIndex('by_campaign', (q) => q.eq('campaignId', campaignId))
-				.first(),
+				.first()
 		);
 		expect(job?.phase).toBe('resolving');
 	});

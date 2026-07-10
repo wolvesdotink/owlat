@@ -56,6 +56,13 @@ export const mailTables = {
 		address: v.string(), // canonical lowercase
 		domain: v.string(), // domain part for filtering
 		displayName: v.optional(v.string()),
+		// Sharing model. undefined ⇒ 'personal' (a single user's mailbox;
+		// back-compat for all pre-shared-inbox rows). 'shared' ⇒ a team inbox
+		// whose access is governed by explicit `mailboxMembers` rows rather than
+		// by the owning `userId` alone. NOTE: distinct from `kind` below, which
+		// discriminates the *transport* (hosted vs external), not the sharing
+		// model — the two are orthogonal.
+		scope: v.optional(v.union(v.literal('personal'), v.literal('shared'))),
 		// Transport discriminator. undefined ⇒ 'hosted' (Owlat-hosted mailbox;
 		// back-compat for pre-external rows). 'external' ⇒ backed by a
 		// user-connected IMAP/SMTP account (see externalMailAccounts).
@@ -73,6 +80,64 @@ export const mailTables = {
 		.index('by_user', ['userId'])
 		.index('by_domain', ['domain'])
 		.index('by_status', ['status']),
+
+	// Explicit membership on a mailbox — the access-control source of truth for
+	// shared (team) inboxes. A personal mailbox carries exactly one row: an
+	// 'owner' membership for its `mailboxes.userId` (created by the backfill in
+	// migrations/0034 and, going forward, at provision time). A shared mailbox
+	// adds 'member' (and further 'owner') rows for the teammates who may use it.
+	//
+	// Org membership alone grants nothing here — access is either org
+	// owner/admin acting on behalf, the mailbox's own `userId`, or an explicit
+	// row in this table (see mail/permissions.ts::requireMailboxAccess).
+	//
+	// Wiped by the org-deletion walker and the dev reset (registered in
+	// lib/tenantTables.ts before `mailboxes`, so members go before the parent).
+	mailboxMembers: defineTable({
+		mailboxId: v.id('mailboxes'),
+		authUserId: v.string(), // BetterAuth user ID of the member
+		role: v.union(v.literal('owner'), v.literal('member')),
+		addedBy: v.string(), // BetterAuth user ID that granted the membership (audit)
+		createdAt: v.number(),
+	})
+		// Access checks look up (mailbox, user) → membership; the compound index
+		// is the hot path (one point read per authz decision). It also serves
+		// "every member of a mailbox" (member management, cascade delete) as a
+		// prefix query — `q.eq('mailboxId', …)` only — so no separate
+		// `by_mailbox` single-column index is needed.
+		.index('by_mailbox_user', ['mailboxId', 'authUserId'])
+		// List every mailbox a user belongs to (identity resolution / inbox list).
+		.index('by_user', ['authUserId']),
+
+	// Pending team-inbox membership grant — the shared-inbox analogue of
+	// `pendingMailboxes`. When an owner adds an email that is NOT yet an org
+	// member to a team inbox, we reserve a grant here (and issue the org
+	// invite); the grant is consumed into a real `mailboxMembers` row when that
+	// person accepts and we finally have their `userId`.
+	//
+	// The grant is BOUND to `inviteeEmail` (canonical lowercase): the claim only
+	// matches the accepting user's own login email, so another org member who
+	// learned the invite can't take over someone else's inbox access (same
+	// anti-hijack property as `pendingMailboxes`). `mailboxAddress` is
+	// denormalized so the invitation email — sent by the auth hook before we
+	// have a mailbox join — can name the inbox without a lookup.
+	//
+	// Wiped by the org-deletion walker and the dev reset (registered in
+	// lib/tenantTables.ts before `mailboxes`, so grants go before the parent).
+	pendingMailboxMembers: defineTable({
+		organizationId: v.string(),
+		inviteeEmail: v.string(), // canonical lowercase — claim is bound to this identity
+		mailboxId: v.id('mailboxes'),
+		mailboxAddress: v.string(), // denormalized team-inbox address (for the invite email)
+		invitedByUserId: v.string(), // inviter — audit only
+		createdAt: v.number(),
+	})
+		// Claim (accepting user's email) and the auth-hook email lookup both key
+		// on (org, email); a person may be pre-added to several inboxes at once,
+		// so this is a prefix range, not a point read.
+		.index('by_org_email', ['organizationId', 'inviteeEmail'])
+		// Cascade-clean grants when a team inbox is deleted (mail/mailbox.ts:remove).
+		.index('by_mailbox', ['mailboxId']),
 
 	// External mailbox connection (BYO IMAP/SMTP). Per-user link to an EXISTING
 	// external mailbox (Gmail, Fastmail, a company server). 1:1 with a `mailboxes`
@@ -318,6 +383,13 @@ export const mailTables = {
 		// monitor-only `p=none` fail from one the domain owner asked us to act on.
 		dmarcPolicy: v.optional(v.string()),
 
+		// Team-inbox attribution: on an outbound message, the BetterAuth user id of
+		// the teammate who fired the send (copied from the draft at dispatch). Lets
+		// a shared inbox attribute "who replied" per message. Optional — inbound
+		// mail and legacy sent rows carry no sender, and the from-address alone can
+		// never distinguish two teammates sending as the same shared address.
+		sentByUserId: v.optional(v.string()),
+
 		// Outbound tracking (sent path). Per-recipient state lives in
 		// `recipients[]`; `state` is a denormalized aggregate derived by
 		// the Postbox outbound lifecycle module (the only writer). See
@@ -400,6 +472,19 @@ export const mailTables = {
 		latestSubject: v.string(),
 		// Newest message in the thread — the row a conversation list links to.
 		latestMessageId: v.optional(v.id('mailMessages')),
+		// Team-inbox collision safety. Set whenever an outbound reply is committed
+		// to the thread; carries WHO (a BetterAuth user id) replied last so a
+		// shared (team) inbox can show "last reply by …" and warn a second teammate
+		// before they send a duplicate reply. `byUserId` is optional so pre-existing
+		// rows and legacy dispatch paths that never recorded a sender still validate.
+		// Undefined on threads with no outbound reply yet — the guard is inert then.
+		latestReply: v.optional(
+			v.object({
+				messageId: v.id('mailMessages'),
+				byUserId: v.optional(v.string()),
+				at: v.number(),
+			})
+		),
 		folderRoles: v.array(v.string()),
 		labelIds: v.array(v.id('mailLabels')),
 		// Reply Queue (advisory AI): set when the latest inbound message looks like
@@ -700,6 +785,12 @@ export const mailTables = {
 		// behaviour. Snapshotted ONCE and never overwritten.
 		aiDraftBaseline: v.optional(v.object({ text: v.string(), capturedAt: v.number() })),
 
+		// Team-inbox attribution: the BetterAuth user id of the teammate who fired
+		// the send, stamped by `drafts.send` from the acting session. Copied onto
+		// the resulting sent message + the thread's `latestReply` so a shared inbox
+		// can attribute the reply. Undefined until send (and on legacy rows).
+		sentByUserId: v.optional(v.string()),
+
 		// Scheduled send / undo-send window
 		scheduledSendAt: v.optional(v.number()),
 		undoToken: v.optional(v.string()), // opaque cancel handle, returned to client
@@ -977,7 +1068,7 @@ export const mailTables = {
 		// otherwise (a fresh deploy without the classifier still notifies for all).
 		notifyAbout: v.optional(mailNotifyAboutValidator),
 		// Sub-setting of notifyAbout: whether non-`person` mail still increments the
-		// dock/tray unread badge (the toast can be quiet while the badge stays
+		// dock/taskbar unread badge (the toast can be quiet while the badge stays
 		// truthful). Optional so existing rows read as undefined; the reader defaults
 		// it ON (badge counts everything — the pre-existing behavior).
 		isBadgeNonPeopleOn: v.optional(v.boolean()),

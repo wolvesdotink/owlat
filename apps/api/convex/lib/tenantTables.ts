@@ -62,6 +62,7 @@ export const TENANT_TABLES = [
 	// ── Campaigns (children first) ──
 	'campaignSendJobs',
 	'campaignStatShards',
+	'campaignSenders',
 	'campaigns',
 
 	// ── Topics & segments ──
@@ -142,6 +143,8 @@ export const TENANT_TABLES = [
 	'mailboxMigrations',
 	'externalMailFolderSync',
 	'externalMailAccounts',
+	'mailboxMembers',
+	'pendingMailboxMembers',
 	'mailboxes',
 	'pendingMailboxes',
 
@@ -174,6 +177,7 @@ export const TENANT_TABLES = [
 	'apiKeys',
 	'blockedEmails',
 	'auditLogs',
+	'invitationResends',
 ] as const satisfies readonly TableNames[];
 
 /**

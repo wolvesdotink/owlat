@@ -14,26 +14,24 @@ import {
 	newlyArrived,
 	planNotifications,
 	shouldNotify,
-	trayPeekItems,
 	NOTIFICATION_GROUP_WINDOW_MS,
 	type ThreadWindowEntry,
 	type UnreadPeekMessage,
 } from '~/lib/desktop/notificationRules';
 
 /**
- * Desktop-only native notifications, dock/taskbar badge, and tray quick-peek.
+ * Desktop-only native notifications and the app-icon unread badge.
  *
  * Driven by `mail.mailbox.newestUnreadInbox`, which returns the exact unread
  * `total` plus a bounded newest-first window of unread messages. From that we:
  *
- *   - keep the dock/tray **badge** truthful (the affordance every native mail
+ *   - keep the dock/taskbar **badge** truthful (the affordance every native mail
  *     client exposes) — optionally counting only `person` mail when the user
  *     opts non-people mail out of the badge;
  *   - fire a native **toast** for genuinely new mail, honoring the user's
  *     "Notify me about" scope (Everything / People & important / Nothing) and
  *     **grouping** repeat arrivals in one thread within a short window into a
- *     single "N new messages from X" toast instead of a stack;
- *   - refresh the **tray quick-peek** dropdown listing the ~5 newest unread.
+ *     single "N new messages from X" toast instead of a stack.
  *
  * The AI shared-inbox review queue is surfaced as a *separate*, clearly-labeled
  * notification — it never drives the badge or the peek. All notification
@@ -59,7 +57,7 @@ export function useDesktopNotifications() {
 	let threadWindows = new Map<string, ThreadWindowEntry>();
 	const previousReviewQueue = ref<number | null>(null);
 
-	// Personal inbox unread window → badge + toast + tray peek.
+	// Personal inbox unread window → badge + toast.
 	const { data: unreadData } = useConvexQuery(api.mail.mailbox.newestUnreadInbox, () =>
 		isDesktop.value ? { limit: 5 } : 'skip'
 	);
@@ -129,8 +127,7 @@ export function useDesktopNotifications() {
 			const now = Date.now();
 			try {
 				const notif = await loadDesktopNotifications();
-				await notif.updateTrayBadge(badgeCount(total, messages, badgeNonPeople.value));
-				await notif.updateTrayPeek(trayPeekItems(messages));
+				await notif.updateUnreadBadge(badgeCount(total, messages, badgeNonPeople.value));
 				if (loadedOnce) await firePlanned(notif, messages, now);
 			} catch {
 				// Tauri modules unavailable — running in the browser.

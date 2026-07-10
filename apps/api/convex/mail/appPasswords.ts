@@ -19,7 +19,7 @@ import { authedMutation, publicQuery } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { requireAdminContext } from '../lib/sessionOrganization';
-import { loadOwnedMailbox } from './permissions';
+import { requireMailboxAccess } from './permissions';
 import { throwForbidden, throwInvalidInput } from '../_utils/errors';
 
 const PBKDF2_ITERATIONS = 100_000;
@@ -108,7 +108,9 @@ export const generate = authedMutation({
 		scopes: v.optional(v.array(v.union(v.literal('imap'), v.literal('smtp')))),
 	},
 	handler: async (ctx, args) => {
-		const owned = await loadOwnedMailbox(ctx, args.mailboxId);
+		// Minting standing IMAP/SMTP credentials is an owner-grade action: they
+		// survive membership removal until revoked, so a plain member must not.
+		const owned = await requireMailboxAccess(ctx, args.mailboxId, 'owner');
 		if (!owned.ok) throwForbidden('Mailbox not accessible');
 		const trimmed = args.label.trim();
 		if (!trimmed) throwInvalidInput('Label required');
@@ -131,11 +133,11 @@ export const generate = authedMutation({
 	},
 });
 
-// public: soft-auth — returns empty for anonymous; mailbox ownership is still enforced in-handler
+// public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
 export const list = publicQuery({
 	args: { mailboxId: v.id('mailboxes') },
 	handler: async (ctx, args) => {
-		const owned = await loadOwnedMailbox(ctx, args.mailboxId);
+		const owned = await requireMailboxAccess(ctx, args.mailboxId);
 		if (!owned.ok) return [];
 		const all = await ctx.db
 			.query('mailAppPasswords')
@@ -161,7 +163,8 @@ export const revoke = authedMutation({
 	handler: async (ctx, args) => {
 		const row = await ctx.db.get(args.appPasswordId);
 		if (!row) return;
-		const owned = await loadOwnedMailbox(ctx, row.mailboxId);
+		// Revoking credentials is owner-grade (same floor as minting them).
+		const owned = await requireMailboxAccess(ctx, row.mailboxId, 'owner');
 		if (!owned.ok) throwForbidden('Not accessible');
 		await ctx.db.patch(args.appPasswordId, { revokedAt: Date.now() });
 	},

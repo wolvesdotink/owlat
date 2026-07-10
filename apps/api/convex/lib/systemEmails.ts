@@ -86,9 +86,13 @@ export function generateInvitationEmailHtml(
 	inviterName: string,
 	inviterEmail: string,
 	acceptUrl: string,
-	role: string,
+	role: string
 ): string {
-	const roleLabel = role.charAt(0).toUpperCase() + role.slice(1);
+	// BetterAuth's wire role is 'member', but every product surface calls that
+	// role 'Editor' — map to the app label so the email matches what the team page
+	// (and the accept screen) show. Other roles use their capitalized wire name.
+	const roleLabel = role === 'member' ? 'Editor' : role.charAt(0).toUpperCase() + role.slice(1);
+	const article = /^[aeiou]/i.test(roleLabel) ? 'an' : 'a';
 	const safeOrgName = escapeHtml(organizationName);
 	const safeInviterName = escapeHtml(inviterName);
 	const safeInviterEmail = escapeHtml(inviterEmail);
@@ -104,7 +108,7 @@ export function generateInvitationEmailHtml(
 
               <!-- Message -->
               <p style="margin: 0 0 16px 0; font-size: 16px; line-height: 1.6; color: #a09890;">
-                <strong style="color: #f5f2ef;">${safeInviterName}</strong> (${safeInviterEmail}) has invited you to join <strong style="color: #f5f2ef;">${safeOrgName}</strong> as a${role.toLowerCase().startsWith('a') ? 'n' : ''} <strong style="color: #c4785a;">${safeRoleLabel}</strong>.
+                <strong style="color: #f5f2ef;">${safeInviterName}</strong> (${safeInviterEmail}) has invited you to join <strong style="color: #f5f2ef;">${safeOrgName}</strong> as ${article} <strong style="color: #c4785a;">${safeRoleLabel}</strong>.
               </p>
 
               <p style="margin: 0 0 32px 0; font-size: 16px; line-height: 1.6; color: #a09890;">
@@ -119,6 +123,51 @@ ${ctaWithFallback(acceptUrl, 'Accept Invitation')}
               </p>`;
 
 	return renderSystemEmail({ title: `You're invited to join ${safeOrgName}`, body });
+}
+
+/**
+ * Invitation to join an organization AND a specific team inbox. Sent instead of
+ * the generic org invite when the invitee has a reserved team-inbox membership
+ * (see `mail/pendingMailbox.ts`) — it names the inbox so the person knows what
+ * they're joining, and the membership is waiting for them the moment they accept.
+ */
+export function generateInboxInviteEmailHtml(
+	organizationName: string,
+	inviterName: string,
+	inviterEmail: string,
+	inboxAddress: string,
+	acceptUrl: string
+): string {
+	const safeOrgName = escapeHtml(organizationName);
+	const safeInviterName = escapeHtml(inviterName);
+	const safeInviterEmail = escapeHtml(inviterEmail);
+	const safeInbox = escapeHtml(inboxAddress);
+
+	const body = `              <!-- Header -->
+              <h1 style="margin: 0 0 8px 0; font-size: 24px; font-weight: 600; color: #f5f2ef;">
+                You're invited to a team inbox
+              </h1>
+              <p style="margin: 0 0 32px 0; color: #a09890; font-size: 14px;">
+                Join ${safeOrgName} on Owlat
+              </p>
+
+              <!-- Message -->
+              <p style="margin: 0 0 16px 0; font-size: 16px; line-height: 1.6; color: #a09890;">
+                <strong style="color: #f5f2ef;">${safeInviterName}</strong> (${safeInviterEmail}) invited you to the shared inbox <strong style="color: #c4785a;">${safeInbox}</strong> in <strong style="color: #f5f2ef;">${safeOrgName}</strong>.
+              </p>
+
+              <p style="margin: 0 0 32px 0; font-size: 16px; line-height: 1.6; color: #a09890;">
+                Accept below to create your account. The inbox will be ready and waiting in your sidebar.
+              </p>
+
+${ctaWithFallback(acceptUrl, 'Accept & join the inbox')}
+
+              <!-- Footer note -->
+              <p style="margin: 0; font-size: 13px; color: #6b635a;">
+                This invitation will expire in 7 days. If you didn't expect this invitation, you can safely ignore this email.
+              </p>`;
+
+	return renderSystemEmail({ title: `You're invited to ${safeInbox} on Owlat`, body });
 }
 
 /** Password reset. */
@@ -156,7 +205,7 @@ ${ctaWithFallback(resetUrl, 'Reset Password')}
 export function generateChangeEmailVerificationHtml(
 	userName: string,
 	newEmail: string,
-	verifyUrl: string,
+	verifyUrl: string
 ): string {
 	const safeName = escapeHtml(userName);
 	const safeNewEmail = escapeHtml(newEmail);
@@ -196,7 +245,7 @@ ${ctaWithFallback(verifyUrl, 'Approve email change')}
 export function generateNewEmailVerificationHtml(
 	userName: string,
 	newEmail: string,
-	verifyUrl: string,
+	verifyUrl: string
 ): string {
 	const safeName = escapeHtml(userName);
 	const safeNewEmail = escapeHtml(newEmail);
@@ -228,7 +277,11 @@ ${ctaWithFallback(verifyUrl, 'Verify new email')}
 }
 
 /** Account-deletion confirmation (carries the cancel link). */
-export function generateDeletionEmailHtml(email: string, scheduledDate: string, cancelUrl: string): string {
+export function generateDeletionEmailHtml(
+	email: string,
+	scheduledDate: string,
+	cancelUrl: string
+): string {
 	const body = `              <!-- Header with warning -->
               <div style="margin: 0 0 24px 0; padding: 16px; background-color: #1e1514; border-radius: 12px; border: 1px solid #c46b5a;">
                 <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: #c46b5a;">
@@ -287,7 +340,7 @@ ${ctaWithFallback(cancelUrl, 'Cancel Account Deletion')}
 export function generateConfirmationEmailHtml(
 	firstName: string | undefined,
 	confirmationUrl: string,
-	teamName: string,
+	teamName: string
 ): string {
 	const safeTeamName = escapeHtml(teamName);
 	const greeting = firstName ? `Hi ${escapeHtml(firstName)},` : 'Hi,';

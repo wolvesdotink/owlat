@@ -20,11 +20,11 @@
 
 import { v } from 'convex/values';
 import { getSendPathRequiredEnv, isDeliveryProviderKind } from '@owlat/shared';
-import { adminQuery, authedAction } from '../lib/authedFunctions';
+import { adminQuery, authedAction, authedQuery } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import { internalMutation } from '../_generated/server';
 import { getOptional, type EnvKey } from '../lib/env';
-import { isSendProviderKind } from '../lib/sendProviders';
+import { isSendProviderKind } from '../lib/sendProviders/types';
 import { providerKindConfigured, isDeliveryConfigured } from '../lib/sendProviders/capability';
 
 /**
@@ -88,6 +88,62 @@ export const getLastSesEventAt = adminQuery({
 			.order('desc')
 			.first();
 		return latest?.receivedAt ?? null;
+	},
+});
+
+/**
+ * Non-secret transport summary for the Delivery hub's single transport card and
+ * the per-transport DNS guidance on the domains page. Member-readable
+ * (`authedQuery`): it exposes only which transport kind is active, whether the
+ * instance can send, whether advanced provider-routing is in use, and the active
+ * provider's rolling health — never a credential value or env-var presence map
+ * (those stay behind the admin-gated `getStatus`). Editing the transport is
+ * still admin-only (the config page it links to enforces the floor), so members
+ * can see the state without being able to change it.
+ *
+ * `health` mirrors the active provider's `providerHealth` row (or null before
+ * the first send) — only the fields the card renders (`status` + when it was
+ * last checked). `advancedRoutingActive` is true when a `providerRoutes` row has
+ * at least one enabled provider — the signal that the instance-level transport
+ * is being overridden by the advanced escape hatch.
+ */
+// all-members: non-secret transport state (kind, canSend, routing flag, rolling
+// health); credentials/env-presence stay behind admin-gated getStatus.
+export const getTransportSummary = authedQuery({
+	args: {},
+	handler: async (ctx) => {
+		const provider = getOptional('EMAIL_PROVIDER') ?? null;
+		const canSend = await isDeliveryConfigured(ctx);
+
+		// Advanced routing is "active" when any configured route enables a provider.
+		const routes = await ctx.db.query('providerRoutes').collect(); // bounded: one row per message type
+		const advancedRoutingActive = routes.some((route) => route.providers.some((p) => p.isEnabled));
+
+		// Rolling health for the active provider kind (null before the first send).
+		// Only the two fields the transport card renders — status + last-checked.
+		let health: {
+			status: 'healthy' | 'degraded' | 'down';
+			lastCheckedAt: number;
+		} | null = null;
+		if (isSendProviderKind(provider)) {
+			const record = await ctx.db
+				.query('providerHealth')
+				.withIndex('by_provider_type', (q) => q.eq('providerType', provider))
+				.first();
+			if (record) {
+				health = {
+					status: record.status,
+					lastCheckedAt: record.lastCheckedAt,
+				};
+			}
+		}
+
+		return {
+			provider,
+			canSend,
+			advancedRoutingActive,
+			health,
+		};
 	},
 });
 

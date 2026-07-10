@@ -23,13 +23,10 @@ import {
 	createTestTopic,
 	createTestDomain,
 	createTestBlockedEmail,
+	createTestCampaignSender,
 } from './factories';
 import type { Id } from '../_generated/dataModel';
-import {
-	hashFraction,
-	testFractionForSplit,
-	variantForHash,
-} from '../campaigns/sendVariantSplit';
+import { hashFraction, testFractionForSplit, variantForHash } from '../campaigns/sendVariantSplit';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -52,8 +49,8 @@ const modules = Object.fromEntries(
 			!path.includes('posthog') &&
 			!path.includes('delivery/worker.ts') &&
 			!path.includes('campaigns/testSend') &&
-			!path.includes('delivery/workpool'),
-	),
+			!path.includes('delivery/workpool')
+	)
 );
 
 const suppressedErrors: Error[] = [];
@@ -93,7 +90,7 @@ async function setupAbFlow(
 		testType?: 'subject' | 'content';
 		isABTest?: boolean;
 		abTestStatus?: 'pending' | 'testing' | 'winner_selected';
-	},
+	}
 ): Promise<ABFlowData> {
 	const data: Partial<ABFlowData> & { contactIds: Id<'contacts'>[] } = {
 		contactIds: [],
@@ -106,7 +103,7 @@ async function setupAbFlow(
 				domain: 'example.com',
 				status: 'verified',
 				lastVerifiedAt: Date.now(),
-			}),
+			})
 		);
 
 		const templateA = await ctx.db.insert(
@@ -116,7 +113,7 @@ async function setupAbFlow(
 				subject: 'Variant A subject {{firstName}}',
 				htmlContent: '<p>Variant A body for {{firstName}}</p>',
 				defaultLanguage: 'en',
-			}),
+			})
 		);
 		const templateB = await ctx.db.insert(
 			'emailTemplates',
@@ -125,13 +122,10 @@ async function setupAbFlow(
 				subject: 'Variant B subject {{firstName}}',
 				htmlContent: '<p>Variant B body for {{firstName}}</p>',
 				defaultLanguage: 'en',
-			}),
+			})
 		);
 
-		const topicId = await ctx.db.insert(
-			'topics',
-			createTestTopic({ requireDoubleOptIn: false }),
-		);
+		const topicId = await ctx.db.insert('topics', createTestTopic({ requireDoubleOptIn: false }));
 
 		for (let i = 0; i < opts.recipientCount; i++) {
 			const cid = await ctx.db.insert(
@@ -141,7 +135,7 @@ async function setupAbFlow(
 					firstName: `First${i}`,
 					lastName: `Last${i}`,
 					doiStatus: 'not_required',
-				}),
+				})
 			);
 			data.contactIds.push(cid);
 			await ctx.db.insert('contactTopics', {
@@ -168,6 +162,10 @@ async function setupAbFlow(
 							winnerCriteria: 'manual' as const,
 						};
 
+		await ctx.db.insert(
+			'campaignSenders',
+			createTestCampaignSender({ email: 'sender@example.com' })
+		);
 		data.campaignId = await ctx.db.insert(
 			'campaigns',
 			createTestCampaign({
@@ -183,7 +181,7 @@ async function setupAbFlow(
 				isABTest: opts.isABTest ?? true,
 				abTestConfig,
 				abTestStatus: opts.isABTest === false ? undefined : (opts.abTestStatus ?? 'testing'),
-			}),
+			})
 		);
 	});
 
@@ -209,7 +207,7 @@ async function drainWalker(t: TestConvex<typeof schema>, campaignId: Id<'campaig
 function expectedPhase1Variant(
 	campaignId: Id<'campaigns'>,
 	contactId: Id<'contacts'>,
-	splitPercentage: number,
+	splitPercentage: number
 ): 'A' | 'B' | null {
 	const tf = testFractionForSplit(splitPercentage);
 	return variantForHash(hashFraction(String(campaignId), String(contactId)), tf);
@@ -218,7 +216,7 @@ function expectedPhase1Variant(
 function isExpectedRemainder(
 	campaignId: Id<'campaigns'>,
 	contactId: Id<'contacts'>,
-	splitPercentage: number,
+	splitPercentage: number
 ): boolean {
 	const tf = testFractionForSplit(splitPercentage);
 	return hashFraction(String(campaignId), String(contactId)) >= tf;
@@ -229,7 +227,7 @@ async function getSends(t: TestConvex<typeof schema>, campaignId: Id<'campaigns'
 		ctx.db
 			.query('emailSends')
 			.withIndex('by_campaign', (q) => q.eq('campaignId', campaignId))
-			.collect(),
+			.collect()
 	);
 }
 
@@ -276,10 +274,10 @@ describe('Campaign send orchestrator — first-phase A/B variant fanout (hash-bu
 		// EXACT membership: each enqueued send matches the hash-derived variant,
 		// and every cohort member (and only cohort members) was enqueued.
 		const expectedA = data.contactIds.filter(
-			(c) => expectedPhase1Variant(data.campaignId, c, splitPercentage) === 'A',
+			(c) => expectedPhase1Variant(data.campaignId, c, splitPercentage) === 'A'
 		);
 		const expectedB = data.contactIds.filter(
-			(c) => expectedPhase1Variant(data.campaignId, c, splitPercentage) === 'B',
+			(c) => expectedPhase1Variant(data.campaignId, c, splitPercentage) === 'B'
 		);
 		const expectedCohort = expectedA.length + expectedB.length;
 
@@ -435,9 +433,7 @@ describe('Campaign send orchestrator — sendCampaignWinnerToRemainder', () => {
 		// Phase 1: stream the test cohort.
 		await t.action(internal.campaigns.send.startCampaignSend, { campaignId: data.campaignId });
 		await drainWalker(t, data.campaignId);
-		const phase1Ids = new Set(
-			(await getSends(t, data.campaignId)).map((s) => String(s.contactId)),
-		);
+		const phase1Ids = new Set((await getSends(t, data.campaignId)).map((s) => String(s.contactId)));
 
 		// Operator declares winner B.
 		await t.run(async (ctx) => {
@@ -463,7 +459,7 @@ describe('Campaign send orchestrator — sendCampaignWinnerToRemainder', () => {
 		expect(sends).toHaveLength(N);
 
 		const expectedRemainder = data.contactIds.filter((c) =>
-			isExpectedRemainder(data.campaignId, c, splitPercentage),
+			isExpectedRemainder(data.campaignId, c, splitPercentage)
 		);
 		// Phase-2 rows are exactly the remainder, carrying winner B.
 		const winnerSends = sends.filter((s) => !phase1Ids.has(String(s.contactId)));
@@ -495,13 +491,17 @@ describe('Campaign send orchestrator — sendCampaignWinnerToRemainder', () => {
 			});
 		});
 
-		await t.action(internal.campaigns.send.sendCampaignWinnerToRemainder, { campaignId: data.campaignId });
+		await t.action(internal.campaigns.send.sendCampaignWinnerToRemainder, {
+			campaignId: data.campaignId,
+		});
 		await drainWalker(t, data.campaignId);
 		const afterFirst = (await getSends(t, data.campaignId)).length;
 		expect(afterFirst).toBe(300); // whole audience now sent across both phases
 
 		// Re-invoke phase 2 — createBatch guard makes it a no-op.
-		await t.action(internal.campaigns.send.sendCampaignWinnerToRemainder, { campaignId: data.campaignId });
+		await t.action(internal.campaigns.send.sendCampaignWinnerToRemainder, {
+			campaignId: data.campaignId,
+		});
 		await drainWalker(t, data.campaignId);
 		expect((await getSends(t, data.campaignId)).length).toBe(afterFirst);
 
@@ -549,7 +549,7 @@ interface WalkerSetup {
 async function setupWalker(
 	t: TestConvex<typeof schema>,
 	n: number,
-	emailMaker: (i: number) => string = (i) => `w${i}@example.com`,
+	emailMaker: (i: number) => string = (i) => `w${i}@example.com`
 ): Promise<WalkerSetup> {
 	const data: Partial<WalkerSetup> & { contactIds: Id<'contacts'>[] } = {
 		contactIds: [],
@@ -557,7 +557,7 @@ async function setupWalker(
 	await t.run(async (ctx) => {
 		await ctx.db.insert(
 			'domains',
-			createTestDomain({ domain: 'example.com', status: 'verified', lastVerifiedAt: Date.now() }),
+			createTestDomain({ domain: 'example.com', status: 'verified', lastVerifiedAt: Date.now() })
 		);
 		const template = await ctx.db.insert(
 			'emailTemplates',
@@ -566,18 +566,26 @@ async function setupWalker(
 				subject: 'Hello {{firstName}}',
 				htmlContent: '<p>Body for {{firstName}}</p>',
 				defaultLanguage: 'en',
-			}),
+			})
 		);
 		const topicId = await ctx.db.insert('topics', createTestTopic({ requireDoubleOptIn: false }));
 		data.topicId = topicId;
 		for (let i = 0; i < n; i++) {
 			const cid = await ctx.db.insert(
 				'contacts',
-				createTestContact({ email: emailMaker(i), firstName: `First${i}`, doiStatus: 'not_required' }),
+				createTestContact({
+					email: emailMaker(i),
+					firstName: `First${i}`,
+					doiStatus: 'not_required',
+				})
 			);
 			data.contactIds.push(cid);
 			await ctx.db.insert('contactTopics', { contactId: cid, topicId, addedAt: Date.now() });
 		}
+		await ctx.db.insert(
+			'campaignSenders',
+			createTestCampaignSender({ email: 'sender@example.com' })
+		);
 		data.campaignId = await ctx.db.insert(
 			'campaigns',
 			createTestCampaign({
@@ -589,7 +597,7 @@ async function setupWalker(
 				audience: { kind: 'topic', topicId },
 				subject: undefined,
 				isABTest: false,
-			}),
+			})
 		);
 	});
 	return data as WalkerSetup;
@@ -600,18 +608,19 @@ async function getJob(t: TestConvex<typeof schema>, campaignId: Id<'campaigns'>)
 		ctx.db
 			.query('campaignSendJobs')
 			.withIndex('by_campaign', (q) => q.eq('campaignId', campaignId))
-			.first(),
+			.first()
 	);
 }
 
 async function countSends(t: TestConvex<typeof schema>, campaignId: Id<'campaigns'>) {
-	return await t.run(async (ctx) =>
-		(
-			await ctx.db
-				.query('emailSends')
-				.withIndex('by_campaign', (q) => q.eq('campaignId', campaignId))
-				.collect()
-		).length,
+	return await t.run(
+		async (ctx) =>
+			(
+				await ctx.db
+					.query('emailSends')
+					.withIndex('by_campaign', (q) => q.eq('campaignId', campaignId))
+					.collect()
+			).length
 	);
 }
 
@@ -846,10 +855,7 @@ describe('Campaign send walker — suppression mid-run', () => {
 
 		// Block contact index 550 (on page 2). Its email is `w550@example.com`.
 		await t.run(async (ctx) => {
-			await ctx.db.insert(
-				'blockedEmails',
-				createTestBlockedEmail({ email: 'w550@example.com' }),
-			);
+			await ctx.db.insert('blockedEmails', createTestBlockedEmail({ email: 'w550@example.com' }));
 		});
 
 		// Page 2 resolves with the suppression applied → 99 of the remaining 100.

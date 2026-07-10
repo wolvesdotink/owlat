@@ -1,6 +1,6 @@
 /**
- * Coverage for mail.mailbox.newestUnreadInbox — the bounded peek window behind
- * the desktop tray/menubar peek and category-aware toast decisions. The
+ * Coverage for mail.mailbox.newestUnreadInbox — the bounded unread window behind
+ * the desktop unread badge and category-aware toast decisions. The
  * smart-inbox `category` object lives on the THREAD (mailThreads.category), not
  * on the message, so this asserts the query sources the label from the thread —
  * the wiring the pure notificationRules unit tests can't reach.
@@ -26,10 +26,11 @@ vi.mock('../lib/sessionOrganization', async () => {
 
 const allModules = import.meta.glob('../**/*.*s');
 const modules = Object.fromEntries(
-	Object.entries(allModules).filter(([path]) =>
-		!path.includes('sesActions') &&
-		!path.includes('agentSecurity') &&
-		!path.includes('llmProvider')
+	Object.entries(allModules).filter(
+		([path]) =>
+			!path.includes('sesActions') &&
+			!path.includes('agentSecurity') &&
+			!path.includes('llmProvider')
 	)
 );
 
@@ -147,9 +148,7 @@ describe('mail.mailbox.newestUnreadInbox', () => {
 
 		const peek = await t.query(api.mail.mailbox.newestUnreadInbox, {});
 		expect(peek.total).toBe(2);
-		const bySubject = Object.fromEntries(
-			peek.messages.map((m) => [m.subject, m.category])
-		);
+		const bySubject = Object.fromEntries(peek.messages.map((m) => [m.subject, m.category]));
 		// Category is sourced from the thread, not the (category-less) message.
 		expect(bySubject['From a person']).toBe('person');
 		// Thread with no category falls open to undefined (the fail-open path).

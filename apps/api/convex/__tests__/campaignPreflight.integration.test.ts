@@ -4,6 +4,7 @@ import schema from '../schema';
 import { internal } from '../_generated/api';
 import {
 	createTestCampaign,
+	createTestCampaignSender,
 	createTestDomain,
 	createTestEmailTemplate,
 } from './factories';
@@ -18,7 +19,11 @@ vi.mock('../lib/sessionOrganization', async () => {
 		getUserIdFromSession: vi.fn().mockResolvedValue('test-user'),
 		getMutationContext: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
 		requireOrgPermission: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
-		requireAuthenticatedIdentity: vi.fn().mockResolvedValue({ subject: 'test-user', issuer: 'test', tokenIdentifier: 'test|test-user' }),
+		requireAuthenticatedIdentity: vi.fn().mockResolvedValue({
+			subject: 'test-user',
+			issuer: 'test',
+			tokenIdentifier: 'test|test-user',
+		}),
 	};
 });
 
@@ -56,7 +61,7 @@ async function seedVerifiedDomain(t: TestRunner, domain: string): Promise<void> 
 				domain,
 				status: 'verified',
 				lastVerifiedAt: Date.now(),
-			}),
+			})
 		);
 	});
 }
@@ -81,14 +86,13 @@ describe('validateReadyToSend pre-flight', () => {
 		await t.run(async (ctx) => {
 			campaignId = await ctx.db.insert(
 				'campaigns',
-				createTestCampaign({ status: 'draft', emailTemplateId: undefined }),
+				createTestCampaign({ status: 'draft', emailTemplateId: undefined })
 			);
 		});
 
-		const result = await t.query(
-			internal.campaigns.preflight.validateReadyToSendQuery,
-			{ campaignId: campaignId! },
-		);
+		const result = await t.query(internal.campaigns.preflight.validateReadyToSendQuery, {
+			campaignId: campaignId!,
+		});
 
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
@@ -106,14 +110,13 @@ describe('validateReadyToSend pre-flight', () => {
 					status: 'draft',
 					emailTemplateId: templateId,
 					// no audience configured
-				}),
+				})
 			);
 		});
 
-		const result = await t.query(
-			internal.campaigns.preflight.validateReadyToSendQuery,
-			{ campaignId: campaignId! },
-		);
+		const result = await t.query(internal.campaigns.preflight.validateReadyToSendQuery, {
+			campaignId: campaignId!,
+		});
 
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
@@ -133,14 +136,13 @@ describe('validateReadyToSend pre-flight', () => {
 					emailTemplateId: templateId,
 					fromEmail: undefined,
 					audience: { kind: 'topic', topicId },
-				}),
+				})
 			);
 		});
 
-		const result = await t.query(
-			internal.campaigns.preflight.validateReadyToSendQuery,
-			{ campaignId: campaignId! },
-		);
+		const result = await t.query(internal.campaigns.preflight.validateReadyToSendQuery, {
+			campaignId: campaignId!,
+		});
 
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
@@ -165,14 +167,13 @@ describe('validateReadyToSend pre-flight', () => {
 					emailTemplateId: templateId,
 					fromEmail: 'sender@example.com',
 					audience: { kind: 'topic', topicId },
-				}),
+				})
 			);
 		});
 
-		const result = await t.query(
-			internal.campaigns.preflight.validateReadyToSendQuery,
-			{ campaignId: campaignId! },
-		);
+		const result = await t.query(internal.campaigns.preflight.validateReadyToSendQuery, {
+			campaignId: campaignId!,
+		});
 
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
@@ -192,14 +193,13 @@ describe('validateReadyToSend pre-flight', () => {
 					emailTemplateId: templateId,
 					fromEmail: 'sender@unverified.example.com',
 					audience: { kind: 'topic', topicId },
-				}),
+				})
 			);
 		});
 
-		const result = await t.query(
-			internal.campaigns.preflight.validateReadyToSendQuery,
-			{ campaignId: campaignId! },
-		);
+		const result = await t.query(internal.campaigns.preflight.validateReadyToSendQuery, {
+			campaignId: campaignId!,
+		});
 
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
@@ -223,14 +223,13 @@ describe('validateReadyToSend pre-flight', () => {
 					emailTemplateId: templateId,
 					fromEmail: 'sender@unverified.example.com',
 					audience: { kind: 'topic', topicId },
-				}),
+				})
 			);
 		});
 
-		const result = await t.query(
-			internal.campaigns.preflight.validateReadyToSendQuery,
-			{ campaignId: campaignId! },
-		);
+		const result = await t.query(internal.campaigns.preflight.validateReadyToSendQuery, {
+			campaignId: campaignId!,
+		});
 
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
@@ -244,6 +243,10 @@ describe('validateReadyToSend pre-flight', () => {
 		await seedVerifiedDomain(t, 'verified.example.com');
 		let campaignId: Id<'campaigns'>;
 		await t.run(async (ctx) => {
+			await ctx.db.insert(
+				'campaignSenders',
+				createTestCampaignSender({ email: 'sender@verified.example.com' })
+			);
 			campaignId = await ctx.db.insert(
 				'campaigns',
 				createTestCampaign({
@@ -251,14 +254,13 @@ describe('validateReadyToSend pre-flight', () => {
 					emailTemplateId: templateId,
 					fromEmail: 'sender@verified.example.com',
 					audience: { kind: 'topic', topicId },
-				}),
+				})
 			);
 		});
 
-		const result = await t.query(
-			internal.campaigns.preflight.validateReadyToSendQuery,
-			{ campaignId: campaignId! },
-		);
+		const result = await t.query(internal.campaigns.preflight.validateReadyToSendQuery, {
+			campaignId: campaignId!,
+		});
 
 		expect(result.ok).toBe(true);
 	});
@@ -271,10 +273,9 @@ describe('validateReadyToSend pre-flight', () => {
 			await ctx.db.delete(campaignId);
 		});
 
-		const result = await t.query(
-			internal.campaigns.preflight.validateReadyToSendQuery,
-			{ campaignId: campaignId! },
-		);
+		const result = await t.query(internal.campaigns.preflight.validateReadyToSendQuery, {
+			campaignId: campaignId!,
+		});
 
 		expect(result.ok).toBe(false);
 		if (result.ok) return;

@@ -23,12 +23,10 @@ const sections = [
 		href: '/dashboard/delivery/domains',
 		icon: 'lucide:globe',
 	},
-	{
-		name: 'Provider routing',
-		description: 'Route message types across email providers with failover and workload-split',
-		href: '/dashboard/delivery/provider-routing',
-		icon: 'lucide:route',
-	},
+	// Provider routing is demoted to the "Advanced routing" link on the Delivery
+	// hub's transport card — the escape hatch, not a peer top-level section — so
+	// it no longer competes with the one instance-level transport for attention.
+	// The route itself is unchanged and still reachable from that link.
 	{
 		name: 'Webhooks',
 		description: 'Receive real-time notifications when delivery events happen',

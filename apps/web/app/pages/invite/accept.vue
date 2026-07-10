@@ -19,10 +19,15 @@ const status = ref<'loading' | 'accepting' | 'success' | 'error' | 'login-requir
 const errorMessage = ref('');
 const organizationName = ref('');
 const claimedMailboxAddress = ref('');
+const claimedInboxAddresses = ref<string[]>([]);
 
 const { run: claimPendingMailbox } = useBackendOperation(
 	api.mail.pendingMailbox.claimForInvitation,
-	{ label: 'Claim mailbox' },
+	{ label: 'Claim mailbox' }
+);
+const { run: claimInboxMemberships } = useBackendOperation(
+	api.mail.pendingMailbox.claimInboxMemberships,
+	{ label: 'Join team inbox' }
 );
 
 // Check authentication and handle invitation on mount
@@ -74,11 +79,21 @@ async function handleAcceptInvitation() {
 			claimedMailboxAddress.value = claim.address;
 		}
 
+		// Best-effort: materialize any team-inbox memberships reserved for this
+		// person, so the shared inbox is already in their sidebar on arrival.
+		const inbox = await claimInboxMemberships({});
+		if (inbox?.claimed?.length) {
+			claimedInboxAddresses.value = inbox.claimed;
+		}
+
 		status.value = 'success';
 
-		// Redirect to dashboard after a short delay
+		// Send freshly-joined members into the first-login welcome flow rather than
+		// the bare dashboard, so they get the product welcome + resumable onboarding
+		// checklist. The welcome middleware would route them there anyway; going
+		// straight there avoids a visible bounce.
 		setTimeout(() => {
-			router.push('/dashboard');
+			router.push('/welcome');
 		}, 2000);
 	} catch (err) {
 		status.value = 'error';
@@ -106,7 +121,9 @@ function redirectToRegister() {
 			<div class="card text-center">
 				<!-- Loading State -->
 				<template v-if="status === 'loading' || status === 'accepting'">
-					<div class="p-4 rounded-2xl bg-bg-surface mx-auto w-fit mb-6 flex items-center justify-center">
+					<div
+						class="p-4 rounded-2xl bg-bg-surface mx-auto w-fit mb-6 flex items-center justify-center"
+					>
 						<Icon name="lucide:loader-2" class="w-8 h-8 text-brand animate-spin" />
 					</div>
 					<h1 class="text-xl font-semibold text-text-primary mb-2">
@@ -119,7 +136,9 @@ function redirectToRegister() {
 
 				<!-- Login Required State -->
 				<template v-else-if="status === 'login-required'">
-					<div class="p-4 rounded-2xl bg-bg-surface mx-auto w-fit mb-6 flex items-center justify-center">
+					<div
+						class="p-4 rounded-2xl bg-bg-surface mx-auto w-fit mb-6 flex items-center justify-center"
+					>
 						<Icon name="lucide:users" class="w-8 h-8 text-brand" />
 					</div>
 					<h1 class="text-xl font-semibold text-text-primary mb-2">You're Invited!</h1>
@@ -138,7 +157,9 @@ function redirectToRegister() {
 
 				<!-- Success State -->
 				<template v-else-if="status === 'success'">
-					<div class="p-4 rounded-2xl bg-success/10 mx-auto w-fit mb-6 flex items-center justify-center">
+					<div
+						class="p-4 rounded-2xl bg-success/10 mx-auto w-fit mb-6 flex items-center justify-center"
+					>
 						<Icon name="lucide:check" class="w-8 h-8 text-success" />
 					</div>
 					<h1 class="text-xl font-semibold text-text-primary mb-2">Welcome to the Team!</h1>
@@ -150,13 +171,20 @@ function redirectToRegister() {
 						<code class="text-text-primary">{{ claimedMailboxAddress }}</code>
 						is ready.
 					</p>
-					<p class="text-text-tertiary text-sm mb-6">Redirecting to dashboard...</p>
-					<NuxtLink to="/dashboard" class="btn btn-primary w-full"> Go to Dashboard </NuxtLink>
+					<p v-for="addr in claimedInboxAddresses" :key="addr" class="text-text-secondary mb-2">
+						The team inbox
+						<code class="text-text-primary">{{ addr }}</code>
+						is in your sidebar.
+					</p>
+					<p class="text-text-tertiary text-sm mb-6">Taking you in...</p>
+					<NuxtLink to="/welcome" class="btn btn-primary w-full"> Get started </NuxtLink>
 				</template>
 
 				<!-- Error State -->
 				<template v-else-if="status === 'error'">
-					<div class="p-4 rounded-2xl bg-error/10 mx-auto w-fit mb-6 flex items-center justify-center">
+					<div
+						class="p-4 rounded-2xl bg-error/10 mx-auto w-fit mb-6 flex items-center justify-center"
+					>
 						<Icon name="lucide:alert-circle" class="w-8 h-8 text-error" />
 					</div>
 					<h1 class="text-xl font-semibold text-text-primary mb-2">Invitation Error</h1>
