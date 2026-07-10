@@ -47,13 +47,11 @@ import { buildCaddyfile } from '../lib/caddyfile';
 import { runSetup } from './setup';
 import { bootstrap } from './bootstrap-org';
 import { runSeed } from './seed';
+import type { CliOptions } from '../lib/cliOptions';
 
 export type Mode = 'populated' | 'blank' | 'custom';
 
-interface RunOptions {
-	web: boolean;
-	terminal: boolean;
-	assumeYes: boolean;
+interface RunOptions extends CliOptions {
 	/** Build the stack images from this source tree instead of pulling published tags. */
 	buildLocal?: boolean;
 	/** Use pre-pushed `dev`-tagged images as-is (built on the developer machine). */
@@ -65,10 +63,6 @@ interface RunOptions {
 	 * (`ghcr.io/.../<svc>:X.Y.Z`) instead of the never-pushed `:dev` sentinel.
 	 */
 	owlatVersion?: string;
-	owlatDir: string;
-	configFile?: string;
-	positional: string[];
-	args: string[];
 }
 
 export interface ParsedFlags {

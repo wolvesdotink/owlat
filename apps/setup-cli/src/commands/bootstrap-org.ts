@@ -21,15 +21,7 @@ import { loadBackendContext, postJson } from '../lib/backend';
 import { loadFlagState } from '../lib/flagState';
 import { resolveFlags } from '@owlat/shared/featureFlags';
 
-interface RunOptions {
-	web: boolean;
-	terminal: boolean;
-	assumeYes: boolean;
-	owlatDir: string;
-	configFile?: string;
-	positional: string[];
-	args: string[];
-}
+import type { CliOptions as RunOptions } from '../lib/cliOptions';
 
 export interface BootstrapInput {
 	email?: string;

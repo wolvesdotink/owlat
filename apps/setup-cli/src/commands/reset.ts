@@ -10,15 +10,7 @@ import { intro, outro, confirm, isCancel, log, spinner } from '@clack/prompts';
 import pc from 'picocolors';
 import { loadBackendContext, postJson } from '../lib/backend';
 
-interface RunOptions {
-	web: boolean;
-	terminal: boolean;
-	assumeYes: boolean;
-	owlatDir: string;
-	configFile?: string;
-	positional: string[];
-	args: string[];
-}
+import type { CliOptions as RunOptions } from '../lib/cliOptions';
 
 interface ResetResponse {
 	deleted?: Record<string, number>;

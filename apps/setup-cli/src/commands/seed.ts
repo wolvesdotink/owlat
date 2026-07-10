@@ -11,15 +11,7 @@ import { progressSpinner } from '../lib/progress';
 import pc from 'picocolors';
 import { loadBackendContext, postJson } from '../lib/backend';
 
-interface RunOptions {
-	web: boolean;
-	terminal: boolean;
-	assumeYes: boolean;
-	owlatDir: string;
-	configFile?: string;
-	positional: string[];
-	args: string[];
-}
+import type { CliOptions as RunOptions } from '../lib/cliOptions';
 
 interface SeedSummary {
 	inserted?: Record<string, number>;

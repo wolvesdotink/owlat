@@ -50,14 +50,9 @@ import {
 	validateGoogleSafeBrowsingKey,
 } from '../lib/validators';
 
-interface RunOptions {
-	web: boolean;
-	terminal: boolean;
-	assumeYes: boolean;
-	owlatDir: string;
-	configFile?: string;
-	positional: string[];
-}
+import type { CliOptions } from '../lib/cliOptions';
+
+type RunOptions = Omit<CliOptions, 'args'>;
 
 export async function runSetup(opts: RunOptions): Promise<number> {
 	const envPath = join(opts.owlatDir, '.env');
