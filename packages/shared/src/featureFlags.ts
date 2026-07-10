@@ -117,6 +117,15 @@ export const FEATURE_FLAGS: Record<FeatureFlagKey, FeatureFlagDefinition> = {
 		// shared inbox needs it running to receive mail.
 		dockerProfiles: ['mta'],
 	},
+	// TRUST ASSUMPTION: when on, a feature-request email is turned into an
+	// autonomous coding-agent task built from the (attacker-controllable) email
+	// body. Only mail from a TRUSTED sender — an org member on this single-org
+	// instance — spawns a task; untrusted senders process as normal inbound but
+	// never reach the coding agent, and a code-agent-specific appropriateness
+	// check rejects destructive/exfiltrating instructions even from members.
+	// See apps/api/convex/codeWorkTasks.ts (createFromInbound) +
+	// lib/codeAgentGuard.ts. Default OFF — leave it off unless you trust your
+	// org members to drive a coding agent by email.
 	'inbox.codeTasks': {
 		key: 'inbox.codeTasks',
 		category: 'receiving',
