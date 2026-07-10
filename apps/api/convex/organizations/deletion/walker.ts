@@ -111,6 +111,7 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'mailUserSettings',
 	'mailAppPasswords',
 	'mailboxMembers',
+	'pendingMailboxMembers',
 	'mailboxes',
 
 	// Delivery reputation history — standalone daily snapshots, no dependents
@@ -250,6 +251,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	mailUserSettings: makeSweepStep('mailUserSettings'),
 	mailAppPasswords: makeSweepStep('mailAppPasswords'),
 	mailboxMembers: makeSweepStep('mailboxMembers'),
+	pendingMailboxMembers: makeSweepStep('pendingMailboxMembers'),
 	mailboxes: makeSweepStep('mailboxes'),
 	deliverySnapshots: makeSweepStep('deliverySnapshots'),
 	webhookDeliveryLogs: makeSweepStep('webhookDeliveryLogs'),

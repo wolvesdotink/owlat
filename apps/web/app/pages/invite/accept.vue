@@ -19,10 +19,15 @@ const status = ref<'loading' | 'accepting' | 'success' | 'error' | 'login-requir
 const errorMessage = ref('');
 const organizationName = ref('');
 const claimedMailboxAddress = ref('');
+const claimedInboxAddresses = ref<string[]>([]);
 
 const { run: claimPendingMailbox } = useBackendOperation(
 	api.mail.pendingMailbox.claimForInvitation,
 	{ label: 'Claim mailbox' }
+);
+const { run: claimInboxMemberships } = useBackendOperation(
+	api.mail.pendingMailbox.claimInboxMemberships,
+	{ label: 'Join team inbox' }
 );
 
 // Check authentication and handle invitation on mount
@@ -72,6 +77,13 @@ async function handleAcceptInvitation() {
 		});
 		if (claim?.created) {
 			claimedMailboxAddress.value = claim.address;
+		}
+
+		// Best-effort: materialize any team-inbox memberships reserved for this
+		// person, so the shared inbox is already in their sidebar on arrival.
+		const inbox = await claimInboxMemberships({});
+		if (inbox?.claimed?.length) {
+			claimedInboxAddresses.value = inbox.claimed;
 		}
 
 		status.value = 'success';
@@ -158,6 +170,11 @@ function redirectToRegister() {
 						Your mailbox at
 						<code class="text-text-primary">{{ claimedMailboxAddress }}</code>
 						is ready.
+					</p>
+					<p v-for="addr in claimedInboxAddresses" :key="addr" class="text-text-secondary mb-2">
+						The team inbox
+						<code class="text-text-primary">{{ addr }}</code>
+						is in your sidebar.
 					</p>
 					<p class="text-text-tertiary text-sm mb-6">Taking you in...</p>
 					<NuxtLink to="/welcome" class="btn btn-primary w-full"> Get started </NuxtLink>

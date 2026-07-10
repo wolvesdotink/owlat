@@ -125,6 +125,51 @@ ${ctaWithFallback(acceptUrl, 'Accept Invitation')}
 	return renderSystemEmail({ title: `You're invited to join ${safeOrgName}`, body });
 }
 
+/**
+ * Invitation to join an organization AND a specific team inbox. Sent instead of
+ * the generic org invite when the invitee has a reserved team-inbox membership
+ * (see `mail/pendingMailbox.ts`) — it names the inbox so the person knows what
+ * they're joining, and the membership is waiting for them the moment they accept.
+ */
+export function generateInboxInviteEmailHtml(
+	organizationName: string,
+	inviterName: string,
+	inviterEmail: string,
+	inboxAddress: string,
+	acceptUrl: string
+): string {
+	const safeOrgName = escapeHtml(organizationName);
+	const safeInviterName = escapeHtml(inviterName);
+	const safeInviterEmail = escapeHtml(inviterEmail);
+	const safeInbox = escapeHtml(inboxAddress);
+
+	const body = `              <!-- Header -->
+              <h1 style="margin: 0 0 8px 0; font-size: 24px; font-weight: 600; color: #f5f2ef;">
+                You're invited to a team inbox
+              </h1>
+              <p style="margin: 0 0 32px 0; color: #a09890; font-size: 14px;">
+                Join ${safeOrgName} on Owlat
+              </p>
+
+              <!-- Message -->
+              <p style="margin: 0 0 16px 0; font-size: 16px; line-height: 1.6; color: #a09890;">
+                <strong style="color: #f5f2ef;">${safeInviterName}</strong> (${safeInviterEmail}) invited you to the shared inbox <strong style="color: #c4785a;">${safeInbox}</strong> in <strong style="color: #f5f2ef;">${safeOrgName}</strong>.
+              </p>
+
+              <p style="margin: 0 0 32px 0; font-size: 16px; line-height: 1.6; color: #a09890;">
+                Accept below to create your account. The inbox will be ready and waiting in your sidebar.
+              </p>
+
+${ctaWithFallback(acceptUrl, 'Accept & join the inbox')}
+
+              <!-- Footer note -->
+              <p style="margin: 0; font-size: 13px; color: #6b635a;">
+                This invitation will expire in 7 days. If you didn't expect this invitation, you can safely ignore this email.
+              </p>`;
+
+	return renderSystemEmail({ title: `You're invited to ${safeInbox} on Owlat`, body });
+}
+
 /** Password reset. */
 export function generatePasswordResetEmailHtml(userName: string, resetUrl: string): string {
 	const safeName = escapeHtml(userName);
