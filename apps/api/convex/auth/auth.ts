@@ -241,6 +241,16 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 				invitationExpiresIn: 60 * 60 * 24 * 7,
 				// Email invitation handler - sends invitation emails via own MTA
 				sendInvitationEmail: async ({ email, organization: org, inviter, invitation }) => {
+					// Single enforcement choke point for the 1/min-per-invite floor.
+					// Every send path — first invite, cooperating-client resend, and a
+					// raw `invite-member` API call with resend:true — routes through
+					// this hook, so the throttle can't be bypassed. Throws (and thus
+					// skips the send) when inside the cooldown; stamps otherwise.
+					await ctx.runMutation(internal.auth.invitationResend.enforceResendThrottle, {
+						invitationId: invitation.id,
+						organizationId: org.id,
+					});
+
 					const siteUrl = getOptional('SITE_URL') || 'http://localhost:3000';
 					const fromDomain = getOptional('DEFAULT_FROM_DOMAIN') || 'mail.owlat.app';
 

@@ -36,7 +36,7 @@ export type OrganizationRole = 'owner' | 'admin' | 'editor';
 export function planOwnershipTransfer(
 	members: Pick<OrganizationMember, 'id' | 'userId' | 'role'>[],
 	currentUserId: string | null | undefined,
-	newOwnerMemberId: string,
+	newOwnerMemberId: string
 ): Array<{ memberId: string; role: OrganizationRole }> {
 	const currentOwner = currentUserId
 		? members.find((m) => m.userId === currentUserId && m.role === 'owner')
@@ -168,7 +168,10 @@ export function useOrganization() {
 
 	const isOwner = computed(() => currentMemberRole.value === 'owner');
 
-	async function waitForActiveOrganization(orgId: string, timeoutMs = ORGANIZATION_SYNC_TIMEOUT_MS) {
+	async function waitForActiveOrganization(
+		orgId: string,
+		timeoutMs = ORGANIZATION_SYNC_TIMEOUT_MS
+	) {
 		if (organizationId.value === orgId) {
 			return;
 		}
@@ -279,8 +282,18 @@ export function useOrganization() {
 	const { run: setPendingMailbox } = useBackendOperation(api.mail.pendingMailbox.setForInvitation, {
 		label: 'Reserve invitation mailbox',
 	});
-	const { run: cancelPendingMailbox } = useBackendOperation(api.mail.pendingMailbox.cancelForInvitation, {
-		label: 'Cancel reserved mailbox',
+	const { run: cancelPendingMailbox } = useBackendOperation(
+		api.mail.pendingMailbox.cancelForInvitation,
+		{
+			label: 'Cancel reserved mailbox',
+		}
+	);
+	// Read-only pre-check for the 1/min resend floor (the floor itself is enforced
+	// server-side in the send hook). `run` toasts the rate-limit message and
+	// returns undefined when the cooldown hasn't elapsed, so `resendInvite` can
+	// bail out before hitting BetterAuth's resend.
+	const { run: throttleResend } = useBackendOperation(api.auth.invitationResend.throttleResend, {
+		label: 'Resend invitation',
 	});
 
 	/**
@@ -288,11 +301,7 @@ export function useOrganization() {
 	 * also reserve a pending mailbox at `localpart@domain` that will be
 	 * auto-provisioned when the invitee accepts.
 	 */
-	async function invite(
-		email: string,
-		role: OrganizationRole,
-		mailbox?: PendingMailboxInput
-	) {
+	async function invite(email: string, role: OrganizationRole, mailbox?: PendingMailboxInput) {
 		if (!organizationId.value) {
 			throw new Error('No active organization');
 		}
@@ -308,7 +317,7 @@ export function useOrganization() {
 			throw new Error(result.error.message || 'Failed to send invitation');
 		}
 
-		const invitationId =
+		const invitationId: string | null =
 			(result.data as { id?: string } | null | undefined)?.id ?? null;
 
 		if (mailbox && invitationId) {
@@ -333,7 +342,7 @@ export function useOrganization() {
 		// Refresh members list
 		await fetchMembers({ force: true });
 
-		return result.data;
+		return { invitationId };
 	}
 
 	/**
@@ -402,11 +411,7 @@ export function useOrganization() {
 		}
 
 		const { user } = useAuth();
-		const steps = planOwnershipTransfer(
-			members.value,
-			user.value?.id,
-			newOwnerMemberId,
-		);
+		const steps = planOwnershipTransfer(members.value, user.value?.id, newOwnerMemberId);
 
 		// Step 1 promotes the new owner; step 2 demotes the previous owner. The
 		// order matters — by promoting first the org always has at least one
@@ -455,6 +460,44 @@ export function useOrganization() {
 		await fetchMembers({ force: true });
 
 		return result.data;
+	}
+
+	/**
+	 * Re-send the invitation email for a still-pending invite. The actual send
+	 * goes through BetterAuth's `inviteMember({ resend: true })`, which reuses the
+	 * existing pending invitation and re-triggers the system-mail path — so no new
+	 * invite (or accept link) is created. The 1-per-minute floor is enforced
+	 * server-side inside the send hook; `throttleResend` is a read-only pre-check
+	 * so we can toast the friendly wait message and skip the round-trip when the
+	 * cooldown hasn't elapsed, returning `false` without sending.
+	 *
+	 * @returns `true` when the email was re-sent, `false` when it was throttled.
+	 */
+	async function resendInvite(
+		invitation: Pick<OrganizationInvitation, 'id' | 'email' | 'role'>
+	): Promise<boolean> {
+		if (!organizationId.value) {
+			throw new Error('No active organization');
+		}
+
+		const allowed = await throttleResend({ invitationId: invitation.id });
+		if (allowed === undefined) {
+			// Throttled (or the throttle mutation failed) — `run` already toasted.
+			return false;
+		}
+
+		const result = await inviteOrgMember({
+			organizationId: organizationId.value,
+			email: invitation.email,
+			role: mapToBetterAuthRole(invitation.role),
+			resend: true,
+		});
+
+		if (result.error) {
+			throw new Error(result.error.message || 'Failed to resend invitation');
+		}
+
+		return true;
 	}
 
 	/**
@@ -567,6 +610,7 @@ export function useOrganization() {
 		updateRole,
 		transferOwnership,
 		cancelInvite,
+		resendInvite,
 		setActive,
 		update,
 		getFullOrganization,

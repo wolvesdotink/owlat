@@ -175,6 +175,7 @@ export const TENANT_TABLES = [
 	'apiKeys',
 	'blockedEmails',
 	'auditLogs',
+	'invitationResends',
 ] as const satisfies readonly TableNames[];
 
 /**

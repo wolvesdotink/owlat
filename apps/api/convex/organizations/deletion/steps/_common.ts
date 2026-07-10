@@ -80,6 +80,7 @@ export type OrganizationDeletionTable =
 	| 'domains'
 	| 'onboardingProgress'
 	| 'auditLogs'
+	| 'invitationResends'
 	| 'instanceSettings'
 	| 'unifiedMessages'
 	| 'channelConfigs'
@@ -212,6 +213,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('domains'),
 	v.literal('onboardingProgress'),
 	v.literal('auditLogs'),
+	v.literal('invitationResends'),
 	v.literal('instanceSettings'),
 	v.literal('unifiedMessages'),
 	v.literal('channelConfigs'),
