@@ -27,6 +27,16 @@ const DEGRADED_DEFER_MS = 120_000; // 2 minutes
 const BLOCKING_DEFER_MS = 300_000; // 5 minutes
 
 /**
+ * Bucket an SMTP status code into its response class.
+ */
+function codeClass(code: number): '2xx' | '4xx' | '5xx' | 'other' {
+	if (code >= 200 && code < 300) return '2xx';
+	if (code >= 400 && code < 500) return '4xx';
+	if (code >= 500 && code < 600) return '5xx';
+	return 'other';
+}
+
+/**
  * Check if sends to a domain should be deferred based on recent SMTP patterns
  * Returns the number of milliseconds to defer, or 0 if sending is OK
  */
@@ -61,11 +71,12 @@ export async function recordResponse(
 	await redis.expire(`${hashKey}:codes`, TTL_SECONDS);
 
 	// Increment counters
-	if (code >= 200 && code < 300) {
+	const cls = codeClass(code);
+	if (cls === '2xx') {
 		await redis.hincrby(hashKey, 'total2xx', 1);
-	} else if (code >= 400 && code < 500) {
+	} else if (cls === '4xx') {
 		await redis.hincrby(hashKey, 'total4xx', 1);
-	} else if (code >= 500 && code < 600) {
+	} else if (cls === '5xx') {
 		await redis.hincrby(hashKey, 'total5xx', 1);
 	}
 	await redis.hincrby(hashKey, 'totalSent', 1);
@@ -82,9 +93,10 @@ export async function recordResponse(
 	for (const raw of recentCodes) {
 		try {
 			const parsed = JSON.parse(raw) as { code: number };
-			if (parsed.code >= 200 && parsed.code < 300) count2xx++;
-			else if (parsed.code >= 400 && parsed.code < 500) count4xx++;
-			else if (parsed.code >= 500 && parsed.code < 600) count5xx++;
+			const parsedClass = codeClass(parsed.code);
+			if (parsedClass === '2xx') count2xx++;
+			else if (parsedClass === '4xx') count4xx++;
+			else if (parsedClass === '5xx') count5xx++;
 		} catch {
 			continue;
 		}
@@ -116,7 +128,7 @@ export async function recordResponse(
 		const allRecent4xx = lastFive.every((raw) => {
 			try {
 				const p = JSON.parse(raw) as { code: number };
-				return p.code >= 400 && p.code < 500;
+				return codeClass(p.code) === '4xx';
 			} catch {
 				return false;
 			}
