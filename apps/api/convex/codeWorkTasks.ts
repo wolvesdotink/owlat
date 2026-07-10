@@ -7,11 +7,42 @@
  */
 
 import { v } from 'convex/values';
+import { normalizeEmail } from '@owlat/shared';
 import { internalMutation, internalQuery } from './_generated/server';
+import type { MutationCtx } from './_generated/server';
 import { authedQuery, authedMutation } from './lib/authedFunctions';
 import { requireOrgPermission } from './lib/sessionOrganization';
 import { assertFeatureEnabled, isFeatureEnabled } from './lib/featureFlags';
 import { throwInvalidState, throwNotFound } from './_utils/errors';
+import { extractEmail } from './lib/emailAddress';
+import { checkCodeAgentSafety } from './lib/codeAgentGuard';
+
+/**
+ * Is the inbound sender a trusted org member?
+ *
+ * A code-work task hands an attacker-controllable email body to an autonomous
+ * coding agent, so ONLY mail from an org member (a real, provisioned account on
+ * this single-org instance) may spawn one. Membership is resolved from
+ * `userProfiles` — the org member table — matched on the normalized sender
+ * address. The table is small (one org per deployment), so a bounded scan is
+ * both cheap and casing-robust regardless of how BetterAuth stored the address.
+ * Soft-deleted profiles are excluded.
+ */
+async function isTrustedInboundSender(ctx: MutationCtx, fromField: string): Promise<boolean> {
+	const sender = extractEmail(fromField);
+	if (!sender) return false;
+
+	// Fast path: exact match on the by_email index (emails commonly stored
+	// lowercased). Falls through to a bounded normalized scan otherwise.
+	const exact = await ctx.db
+		.query('userProfiles')
+		.withIndex('by_email', (q) => q.eq('email', sender))
+		.first();
+	if (exact && !exact.deletedAt) return true;
+
+	const profiles = await ctx.db.query('userProfiles').take(1000);
+	return profiles.some((p) => !p.deletedAt && normalizeEmail(p.email) === sender);
+}
 
 // ============================================================
 // Queries
@@ -98,7 +129,11 @@ export const create = authedMutation({
 		inboundMessageId: v.optional(v.id('inboundMessages')),
 	},
 	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'organization:manage', 'Only owners and admins can manage code tasks');
+		await requireOrgPermission(
+			ctx,
+			'organization:manage',
+			'Only owners and admins can manage code tasks'
+		);
 		const now = Date.now();
 		return await ctx.db.insert('codeWorkTasks', {
 			description: args.description,
@@ -116,7 +151,11 @@ export const create = authedMutation({
 export const cancel = authedMutation({
 	args: { taskId: v.id('codeWorkTasks') },
 	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'organization:manage', 'Only owners and admins can manage code tasks');
+		await requireOrgPermission(
+			ctx,
+			'organization:manage',
+			'Only owners and admins can manage code tasks'
+		);
 		const task = await ctx.db.get(args.taskId);
 		if (!task) throwNotFound('Task');
 		if (task.status === 'merged') throwInvalidState('Cannot cancel a merged task');
@@ -137,9 +176,18 @@ export const cancel = authedMutation({
  * Create a code work task from an inbound feature-request message.
  *
  * Called by the inbox processing lifecycle when a message is classified as a
- * feature request. Fails safe: when the `inbox.codeTasks` feature flag is off
- * we return without creating anything, and we never create a second task for
- * the same inbound message (idempotent on `inboundMessageId`).
+ * feature request. Fails safe on several fronts before anything reaches the
+ * coding agent:
+ *   - the `inbox.codeTasks` feature flag must be on (off by default);
+ *   - the sender must be a trusted org member — an untrusted sender's mail
+ *     still processes as normal inbound, it simply does NOT spawn a code task
+ *     (a stranger cannot direct the coding agent by emailing the inbox);
+ *   - a code-agent-specific appropriateness check must pass — instructions
+ *     smuggled to a CODE agent ("add a backdoor", "leak the env secrets",
+ *     "force-push to main") are distinct from the email-assistant injection
+ *     the upstream `security_scan` step guards, so they get their own gate.
+ * We never create a second task for the same inbound message (idempotent on
+ * `inboundMessageId`).
  */
 export const createFromInbound = internalMutation({
 	args: { inboundMessageId: v.id('inboundMessages') },
@@ -160,6 +208,25 @@ export const createFromInbound = internalMutation({
 
 		const message = await ctx.db.get(args.inboundMessageId);
 		if (!message) {
+			return null;
+		}
+
+		// Trust gate: only org members may spawn code-work tasks. Untrusted
+		// senders are processed as normal inbound (already done upstream); they
+		// just don't reach the coding agent.
+		if (!(await isTrustedInboundSender(ctx, message.from))) {
+			return null;
+		}
+
+		// Code-agent appropriateness check — distinct from the email-assistant
+		// injection guard. Rejects destructive / exfiltrating / backdoor
+		// instructions before a task is ever queued.
+		const safety = checkCodeAgentSafety({
+			subject: message.subject ?? '',
+			textBody: message.textBody,
+			htmlBody: message.htmlBody,
+		});
+		if (!safety.safe) {
 			return null;
 		}
 
