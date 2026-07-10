@@ -57,6 +57,10 @@
 			"types": "./src/setupSecrets.ts",
 			"import": "./src/setupSecrets.ts"
 		},
+		"./setupToken": {
+			"types": "./src/setupToken.ts",
+			"import": "./src/setupToken.ts"
+		},
 		"./passwordHash": {
 			"types": "./src/passwordHash.ts",
 			"import": "./src/passwordHash.ts"
