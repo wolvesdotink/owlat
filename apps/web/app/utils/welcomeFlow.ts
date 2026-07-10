@@ -82,7 +82,7 @@ export const CHECKLIST_STEPS: readonly ChecklistStepMeta[] = [
 		id: 'sendingSwitched',
 		title: 'Switch sending to this instance',
 		description: 'Start sending outbound mail from Owlat once your domain is verified.',
-		href: '/dashboard/delivery/config',
+		href: '/dashboard/postbox/settings#postbox-sending-heading',
 		cta: 'Switch',
 		icon: 'lucide:refresh-cw',
 		migrationOnly: true,
