@@ -61,12 +61,10 @@ export default defineEventHandler(
 		// are moving from another platform, align the plumbing by enabling it before
 		// the cascade resolves. A fresh-start install leaves the flag untouched.
 		const isMigrationMode = body.isMigrationMode === true;
-		if (isMigrationMode) {
-			body.flags = { ...body.flags, 'mail.external': true };
-		}
+		const flags = isMigrationMode ? { ...body.flags, 'mail.external': true } : body.flags;
 
 		// Resolve dependency cascade so we never persist an inconsistent flag set.
-		const resolved = resolveFlags(body.flags);
+		const resolved = resolveFlags(flags);
 
 		// Authoritative floor for the "sending needs a delivery provider" invariant.
 		// The client gates this too, but the server must refuse to persist a config
@@ -86,7 +84,7 @@ export default defineEventHandler(
 
 		// The built-in MTA is opt-in: it runs only when it is the delivery provider
 		// or when postbox/inbox need it, so pass the chosen provider through.
-		const profiles = getActiveProfiles(body.flags, {
+		const profiles = getActiveProfiles(flags, {
 			deliveryProvider: body.env?.['EMAIL_PROVIDER'],
 		});
 
