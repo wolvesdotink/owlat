@@ -319,16 +319,24 @@ function onExternalOpen() {
 	if (!open.value) void openPalette();
 }
 
+// Palette-ready handshake: opener affordances (e.g. the desktop titlebar pill)
+// feature-detect whether a palette is mounted on the current surface.
+const { registerMounted } = useCommandPalette();
+let unregisterPalette: (() => void) | null = null;
+
 onMounted(() => {
 	loadRecent();
+	unregisterPalette = registerMounted();
 	window.addEventListener('keydown', onGlobalKey);
 	window.addEventListener('owlat:quick-switcher', onExternalOpen);
-	window.addEventListener('owlat:command-palette-open', onExternalOpen);
+	window.addEventListener(COMMAND_PALETTE_OPEN_EVENT, onExternalOpen);
 });
 onBeforeUnmount(() => {
+	unregisterPalette?.();
+	unregisterPalette = null;
 	window.removeEventListener('keydown', onGlobalKey);
 	window.removeEventListener('owlat:quick-switcher', onExternalOpen);
-	window.removeEventListener('owlat:command-palette-open', onExternalOpen);
+	window.removeEventListener(COMMAND_PALETTE_OPEN_EVENT, onExternalOpen);
 });
 </script>
 

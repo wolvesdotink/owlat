@@ -329,11 +329,9 @@ const userInitials = computed(() => {
 });
 
 // Search opens the app command palette. Desktop hides the header GlobalSearch in
-// favour of the titlebar pill, and the mobile button dispatches the palette
-// event directly, so no component ref is needed here anymore.
-function openCommandPalette() {
-	if (import.meta.client) window.dispatchEvent(new Event('owlat:command-palette-open'));
-}
+// favour of the titlebar pill; the mobile button opens the palette through the
+// shared control so the event name lives in one place.
+const { open: openCommandPalette } = useCommandPalette();
 
 // Quick Query panel state
 const isQuickQueryOpen = ref(false);
@@ -469,9 +467,6 @@ const sidebarDesktopClass = computed(() => {
 			@focusout="onPeekFocusOut"
 			@keydown="onPeekKeydown"
 		>
-			<!-- Desktop-only: Slack-style workspace switcher -->
-			<DesktopWorkspaceSwitcher v-if="isDesktop" />
-
 			<!-- Logo -->
 			<div class="h-16 flex items-center justify-between px-4 border-b border-border-subtle">
 				<NuxtLink
