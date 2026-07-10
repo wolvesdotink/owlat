@@ -35,6 +35,12 @@ export const authTables = {
 		// Default sender information
 		defaultFromName: v.optional(v.string()),
 		defaultFromEmail: v.optional(v.string()),
+		// Campaign senders are a curated list (see `campaignSenders`). When this
+		// is on, campaign sends may also use any from-address on a VERIFIED
+		// sending domain, not just the curated list. Defaults to OFF for everyone
+		// (admins included) — the curated list is the safe default. The
+		// verified-domain hard gate still applies in both branches.
+		isCustomCampaignSendersAllowed: v.optional(v.boolean()),
 		// Email theme settings
 		emailTheme: v.optional(
 			v.object({

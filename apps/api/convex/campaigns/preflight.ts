@@ -10,12 +10,9 @@
 import { v } from 'convex/values';
 import type { Doc } from '../_generated/dataModel';
 import { api } from '../_generated/api';
-import {
-	internalQuery,
-	type MutationCtx,
-	type QueryCtx,
-} from '../_generated/server';
+import { internalQuery, type MutationCtx, type QueryCtx } from '../_generated/server';
 import { isDeliveryConfigured } from '../lib/sendProviders/capability';
+import { isCampaignSenderAllowed, senderNotAllowedMessage } from './senders';
 
 export type PreflightResult =
 	| { ok: true }
@@ -27,6 +24,7 @@ export type PreflightResult =
 				| 'no_from_email'
 				| 'no_delivery_provider'
 				| 'domain_not_verified'
+				| 'sender_not_allowed'
 				| 'sending_not_allowed'
 				| 'scheduled_in_past';
 			message: string;
@@ -57,7 +55,7 @@ type Ctx = MutationCtx | QueryCtx;
 export async function validateReadyToSend(
 	ctx: Ctx,
 	campaign: Doc<'campaigns'>,
-	options: PreflightOptions = {},
+	options: PreflightOptions = {}
 ): Promise<PreflightResult> {
 	if (!campaign.emailTemplateId) {
 		return {
@@ -116,10 +114,9 @@ export async function validateReadyToSend(
 		};
 	}
 
-	const domainStatus = await ctx.runQuery(
-		api.domains.domains.getEmailDomainVerificationStatus,
-		{ email: campaign.fromEmail },
-	);
+	const domainStatus = await ctx.runQuery(api.domains.domains.getEmailDomainVerificationStatus, {
+		email: campaign.fromEmail,
+	});
 
 	if (!domainStatus.verified) {
 		return {
@@ -128,6 +125,18 @@ export async function validateReadyToSend(
 			message:
 				domainStatus.error ??
 				`Cannot send campaign: domain "${domainStatus.domain}" is not verified. Please verify this domain in Settings > Domains.`,
+		};
+	}
+
+	// Curated-sender gate (2026-07-10 plan, decision 8). The from-address must be
+	// an ENABLED campaign sender, OR custom senders must be allowed org-wide. The
+	// verified-domain check above stays the floor for BOTH branches, so a custom
+	// sender still cannot spoof an unverified domain.
+	if (!(await isCampaignSenderAllowed(ctx, campaign.fromEmail))) {
+		return {
+			ok: false,
+			reason: 'sender_not_allowed',
+			message: `Cannot send campaign: ${senderNotAllowedMessage(campaign.fromEmail)}`,
 		};
 	}
 
