@@ -279,7 +279,7 @@ function setStep(i: number) {
 
 .pipe-trigger-label {
   font-size: 0.6875rem;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--color-info);
@@ -413,7 +413,7 @@ function setStep(i: number) {
 
 .pipe-nav-name {
   font-size: 0.75rem;
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   color: var(--color-text-tertiary);
   transition: color var(--motion-moderate);
 }
@@ -566,7 +566,7 @@ function setStep(i: number) {
 }
 
 .pipe-panel-title {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   font-size: 0.9375rem;
   color: var(--color-text-primary);
   letter-spacing: -0.01em;
@@ -633,7 +633,7 @@ function setStep(i: number) {
   padding: 5px 12px;
   border-radius: 6px;
   font-size: 0.75rem;
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   background: var(--color-bg-surface);
   border: 1px solid var(--color-border-subtle);
   color: var(--color-text-tertiary);
@@ -644,7 +644,7 @@ function setStep(i: number) {
   background: color-mix(in oklab, var(--color-info) 10%, var(--color-bg-surface));
   border-color: color-mix(in oklab, var(--color-info) 30%, var(--color-border-default));
   color: var(--color-info);
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
 }
 
 /* Step 3: Action items */
@@ -696,7 +696,7 @@ function setStep(i: number) {
   border-radius: 3px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
 }
 
 .pipe-action-type--api {
@@ -730,7 +730,7 @@ function setStep(i: number) {
 
 .pipe-draft-subject {
   font-size: 0.75rem;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   color: var(--color-text-primary);
 }
 
@@ -801,7 +801,7 @@ function setStep(i: number) {
 
 .pipe-route-label {
   font-size: 0.75rem;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   color: var(--color-text-primary);
 }
 

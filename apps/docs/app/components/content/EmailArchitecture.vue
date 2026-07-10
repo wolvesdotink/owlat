@@ -244,14 +244,14 @@ const providerFeatures = [
 }
 
 .ea-label {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   font-size: 0.9375rem;
   color: var(--color-text-primary);
 }
 
 .ea-sublabel {
   font-size: 0.6875rem;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--color-text-tertiary);
@@ -323,7 +323,7 @@ const providerFeatures = [
 }
 
 .ea-feature-name {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   font-size: 0.75rem;
   color: var(--color-text-primary);
   white-space: nowrap;
@@ -467,7 +467,7 @@ const providerFeatures = [
 .ea-connector-badge span {
   font-size: 0.625rem;
   font-family: var(--font-mono);
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   color: var(--color-text-tertiary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -517,7 +517,7 @@ const providerFeatures = [
   background: color-mix(in oklab, var(--color-brand) 15%, var(--color-bg-surface));
   color: var(--color-brand);
   font-size: 0.6875rem;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   flex-shrink: 0;
 }
 
@@ -580,7 +580,7 @@ const providerFeatures = [
 }
 
 .ea-provider-name {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   font-size: 0.8125rem;
   color: var(--color-text-primary);
 }

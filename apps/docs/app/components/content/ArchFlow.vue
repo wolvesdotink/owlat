@@ -83,7 +83,7 @@ function getIcon(type?: string) {
 }
 
 .arch-flow-title {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   font-size: 0.8125rem;
   color: var(--color-text-secondary);
   text-transform: uppercase;
@@ -205,7 +205,7 @@ function getIcon(type?: string) {
 }
 
 .arch-flow-label {
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   font-size: 0.8125rem;
   color: var(--color-text-primary);
   line-height: 1.4;

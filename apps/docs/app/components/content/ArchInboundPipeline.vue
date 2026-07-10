@@ -178,7 +178,7 @@ const outcomes = [
 }
 
 .ip-step-label {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   font-size: 0.8125rem;
   color: var(--color-text-primary);
   line-height: 1.3;
@@ -232,7 +232,7 @@ const outcomes = [
   background: var(--color-bg-soft);
   border-bottom: 1px solid var(--color-border-subtle);
   font-size: 0.75rem;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   color: var(--color-text-secondary);
 }
 
@@ -275,7 +275,7 @@ const outcomes = [
 
 .ip-outcome-label {
   font-size: 0.75rem;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   color: var(--color-text-primary);
 }
 

@@ -200,7 +200,7 @@ const steps = [
 }
 
 .df-label {
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   font-size: 0.8125rem;
   color: var(--color-text-primary);
 }
@@ -216,7 +216,7 @@ const steps = [
   border-radius: 9999px;
   font-size: 0.625rem;
   font-family: var(--font-mono);
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   white-space: nowrap;
 }
 
@@ -299,7 +299,7 @@ const steps = [
 
 .df-branch-label {
   font-size: 0.75rem;
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   color: var(--color-text-secondary);
 }
 

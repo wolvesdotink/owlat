@@ -164,7 +164,7 @@ const betterAuthTables = [
 }
 
 .aa-label {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   font-size: 0.9375rem;
   color: var(--color-text-primary);
 }
@@ -237,7 +237,7 @@ const betterAuthTables = [
 
 .aa-composable-name {
   font-size: 0.8125rem;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   font-family: var(--font-mono);
   color: var(--color-brand);
 }
@@ -364,7 +364,7 @@ const betterAuthTables = [
 }
 
 .aa-table-name {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   font-size: 0.8125rem;
   color: var(--color-text-primary);
 }

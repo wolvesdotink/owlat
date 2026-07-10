@@ -404,7 +404,7 @@ function statusText(s: string) {
 }
 
 .rm-title {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   font-size: 0.875rem;
   color: var(--color-text-primary);
   line-height: 1.3;
@@ -420,7 +420,7 @@ function statusText(s: string) {
 
 .rm-status {
   font-size: 0.5625rem;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   font-family: var(--font-mono);
   text-transform: uppercase;
   letter-spacing: 0.04em;

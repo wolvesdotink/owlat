@@ -155,7 +155,7 @@ const adapterFeatures = [
 }
 
 .auth-layer-label {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   font-size: 0.9375rem;
   color: var(--color-text-primary);
 }
@@ -223,7 +223,7 @@ const adapterFeatures = [
 }
 
 .auth-item-name {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   font-size: 0.8125rem;
   color: var(--color-text-primary);
 }

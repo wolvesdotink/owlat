@@ -183,7 +183,7 @@ const timeline = [
   border-radius: 9999px;
   font-size: 0.6875rem;
   font-family: var(--font-mono);
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   border: 1px solid var(--color-border-subtle);
 }
 
@@ -215,7 +215,7 @@ const timeline = [
 
 .sr-cell-label {
   font-size: 0.625rem;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--color-text-tertiary);
@@ -246,7 +246,7 @@ const timeline = [
 
 .sr-timeline-label {
   font-size: 0.625rem;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--color-text-tertiary);
@@ -337,7 +337,7 @@ const timeline = [
 
 .sr-timeline-milestone {
   font-size: 0.6875rem;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   color: var(--color-text-secondary);
 }
 

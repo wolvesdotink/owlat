@@ -170,7 +170,7 @@ const tree: TreeNode[] = [
 .ct-path {
   font-size: 0.875rem;
   font-family: var(--font-mono);
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   color: var(--color-text-primary);
 }
 
@@ -222,13 +222,13 @@ const tree: TreeNode[] = [
 .ct-node-name {
   font-size: 0.8125rem;
   font-family: var(--font-mono);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   color: var(--color-text-primary);
 }
 
 .ct-node--dir > .ct-node-main > .ct-node-name,
 .ct-child--dir > .ct-child-main > .ct-node-name {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
 }
 
 .ct-node-detail {

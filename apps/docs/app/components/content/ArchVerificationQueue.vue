@@ -357,7 +357,7 @@ const stats = [
   align-items: center;
   gap: 4px;
   font-size: 0.625rem;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--color-text-tertiary);
@@ -378,7 +378,7 @@ const stats = [
 }
 
 .vq-item-subject {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   font-size: 0.8125rem;
   color: var(--color-text-primary);
   line-height: 1.4;
@@ -464,7 +464,7 @@ const stats = [
 
 .vq-auto-badge span {
   font-size: 0.6875rem;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   color: var(--color-success);
   white-space: nowrap;
 }
@@ -508,7 +508,7 @@ const stats = [
 
 .vq-legend-label {
   font-size: 0.6875rem;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   color: var(--color-text-secondary);
 }
 

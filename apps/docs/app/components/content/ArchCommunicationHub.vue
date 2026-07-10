@@ -382,7 +382,7 @@ const queueActions = [
 }
 
 .hub-channel-name {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   font-size: 0.8125rem;
   color: var(--color-text-primary);
 }
@@ -747,7 +747,7 @@ const queueActions = [
 }
 
 .hub-card-title {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   font-size: 0.875rem;
   color: var(--color-text-primary);
   letter-spacing: -0.01em;
@@ -816,7 +816,7 @@ const queueActions = [
   position: absolute;
   left: 0;
   color: var(--color-accent-muted);
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
 }
 
 /* Bidirectional label between knowledge and pipeline */
@@ -948,7 +948,7 @@ const queueActions = [
 }
 
 .hub-pipeline-step-name {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   font-size: 0.75rem;
   color: var(--color-text-primary);
   line-height: 1.3;
@@ -1096,7 +1096,7 @@ const queueActions = [
 
 .hub-filter-layer-name {
   font-size: 0.75rem;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   color: var(--color-text-primary);
 }
 
@@ -1210,7 +1210,7 @@ const queueActions = [
   background: var(--color-bg-surface);
   border: 1px solid var(--color-border-subtle);
   font-size: 0.6875rem;
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   color: var(--color-text-secondary);
   transition: border-color var(--motion-moderate), color var(--motion-moderate), background var(--motion-moderate);
   cursor: default;

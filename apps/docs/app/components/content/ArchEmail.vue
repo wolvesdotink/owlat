@@ -245,7 +245,7 @@ const pipelineFeatures = [
 }
 
 .email-section-label {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   font-size: 0.9375rem;
   color: var(--color-text-primary);
 }
@@ -271,7 +271,7 @@ const pipelineFeatures = [
   border-radius: 8px;
   background: var(--color-bg-surface);
   font-size: 0.8125rem;
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   color: var(--color-text-primary);
   border: 1px solid transparent;
   transition: border-color var(--motion-moderate), background var(--motion-moderate), transform var(--motion-moderate) var(--ease-spring);
@@ -435,13 +435,13 @@ const pipelineFeatures = [
   background: color-mix(in oklab, var(--color-brand) 15%, var(--color-bg-surface));
   color: var(--color-brand);
   font-size: 0.6875rem;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   flex-shrink: 0;
 }
 
 .email-alt-label {
   font-size: 0.6875rem;
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   color: var(--color-text-tertiary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -514,7 +514,7 @@ const pipelineFeatures = [
 }
 
 .email-provider-name {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   font-size: 0.8125rem;
   color: var(--color-text-primary);
 }
@@ -550,7 +550,7 @@ const pipelineFeatures = [
   display: flex;
   align-items: center;
   gap: 8px;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   font-size: 0.8125rem;
   color: var(--color-text-primary);
   margin-bottom: 8px;
@@ -592,7 +592,7 @@ const pipelineFeatures = [
   position: absolute;
   left: 4px;
   color: var(--color-warning);
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
 }
 
 /* ── Pipeline features ── */
