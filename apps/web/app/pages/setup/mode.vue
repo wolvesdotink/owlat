@@ -68,8 +68,7 @@ function custom() {
 				<div class="mt-2 grid gap-3 sm:grid-cols-2">
 					<button
 						type="button"
-						role="radio"
-						:aria-checked="!isMigrationMode"
+						:aria-pressed="!isMigrationMode"
 						class="rounded-lg border p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 						:class="
 							!isMigrationMode
@@ -88,11 +87,12 @@ function custom() {
 					</button>
 					<button
 						type="button"
-						role="radio"
-						:aria-checked="isMigrationMode"
+						:aria-pressed="isMigrationMode"
 						class="rounded-lg border p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 						:class="
-							isMigrationMode ? 'border-brand bg-brand/5' : 'border-border-default hover:border-brand'
+							isMigrationMode
+								? 'border-brand bg-brand/5'
+								: 'border-border-default hover:border-brand'
 						"
 						@click="isMigrationMode = true"
 					>
