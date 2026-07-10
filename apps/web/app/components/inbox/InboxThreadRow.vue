@@ -76,7 +76,7 @@ const channelLabel = computed(() => {
 	const c = props.thread.channel ?? '';
 	if (c === 'sms') return 'SMS';
 	if (c === 'whatsapp') return 'WhatsApp';
-	return c.charAt(0).toUpperCase() + c.slice(1);
+	return capitalize(c);
 });
 
 const assigneeName = computed(() => {

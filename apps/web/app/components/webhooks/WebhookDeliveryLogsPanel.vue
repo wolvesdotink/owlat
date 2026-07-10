@@ -60,7 +60,7 @@ function formatEventLabel(event: string) {
 	if (event === 'test') return 'Test';
 	return event
 		.split('.')
-		.map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+		.map((s) => capitalize(s))
 		.join(' ');
 }
 

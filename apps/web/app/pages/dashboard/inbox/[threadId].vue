@@ -401,7 +401,7 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 						"
 					>
 						<option v-for="s in statusOptions" :key="s" :value="s">
-							{{ s.charAt(0).toUpperCase() + s.slice(1) }}
+							{{ capitalize(s) }}
 						</option>
 					</select>
 				</div>

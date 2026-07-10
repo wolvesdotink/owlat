@@ -28,5 +28,5 @@ export {
 // Email lookup-key normalization (trim + lowercase)
 export { normalizeEmail } from '@owlat/shared';
 
-// Re-export truncate from shared strings (for backwards compatibility)
-export { truncate } from '@owlat/shared';
+// Re-export string helpers from shared strings (for backwards compatibility)
+export { truncate, capitalize } from '@owlat/shared';
