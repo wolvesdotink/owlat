@@ -1,26 +1,26 @@
 <script setup lang="ts">
 import type { OrganizationRole } from '~/composables/useOrganization';
-import { ROLE_DEFINITIONS, roleDefinition, type RoleDefinition } from '~/utils/teamRoles';
+import { ROLE_DEFINITIONS, roleDefinition } from '~/utils/teamRoles';
 
 /**
  * Inline role picker for a team member row. Shows the member's current role as a
  * button; opening it reveals every assignable role with a two-line description
  * so the meaning is surfaced at the point of choice. Fully keyboard- and
- * screen-reader-navigable (roving focus, Escape, arrow keys, Home/End).
+ * screen-reader-navigable (roving focus, Escape, arrow keys, Home/End, Tab).
+ *
+ * The panel is teleported to <body> and anchored to the trigger with fixed
+ * positioning so it is never clipped by the members table's horizontal scroll
+ * container (overflow-x forces overflow-y, which would otherwise cut it off).
  */
 const props = withDefaults(
 	defineProps<{
 		role: OrganizationRole;
 		disabled?: boolean;
-		/** Roles the actor may assign. Defaults to the non-owner roles — ownership
-		 * is transferred through its own confirmed flow, never picked here. */
-		options?: readonly RoleDefinition[];
 		/** Accessible name for the trigger, e.g. the member's display name. */
 		memberLabel?: string;
 	}>(),
 	{
 		disabled: false,
-		options: () => ROLE_DEFINITIONS.filter((r) => r.role !== 'owner'),
 		memberLabel: '',
 	}
 );
@@ -29,12 +29,41 @@ const emit = defineEmits<{
 	change: [role: OrganizationRole];
 }>();
 
+// Ownership is transferred through its own confirmed flow, never picked here.
+const options = ROLE_DEFINITIONS.filter((r) => r.role !== 'owner');
+
+const PANEL_WIDTH = 288; // w-72 (18rem)
+const PANEL_GAP = 4; // gap between trigger and panel
+
 const isOpen = ref(false);
 const rootRef = ref<HTMLElement | null>(null);
 const triggerRef = ref<HTMLButtonElement | null>(null);
 const menuRef = ref<HTMLElement | null>(null);
+const panelPosition = ref({ top: 0, left: 0, bottom: 0 });
+const openDirection = ref<'down' | 'up'>('down');
 
 const current = computed(() => roleDefinition(props.role));
+
+function updatePosition() {
+	const trigger = triggerRef.value;
+	if (!trigger) return;
+	const rect = trigger.getBoundingClientRect();
+	const panelHeight = menuRef.value?.offsetHeight ?? 260;
+	const spaceBelow = window.innerHeight - rect.bottom;
+	const spaceAbove = rect.top;
+	// Right-align the panel to the trigger, clamped into the viewport.
+	const left = Math.max(
+		PANEL_GAP,
+		Math.min(rect.right - PANEL_WIDTH, window.innerWidth - PANEL_WIDTH - PANEL_GAP)
+	);
+	if (spaceBelow < panelHeight && spaceAbove > spaceBelow) {
+		openDirection.value = 'up';
+		panelPosition.value = { top: 0, left, bottom: window.innerHeight - rect.top + PANEL_GAP };
+	} else {
+		openDirection.value = 'down';
+		panelPosition.value = { top: rect.bottom + PANEL_GAP, left, bottom: 0 };
+	}
+}
 
 function focusItemAt(index: number) {
 	const items = menuRef.value?.querySelectorAll<HTMLElement>('[role="menuitemradio"]');
@@ -47,8 +76,9 @@ async function openMenu() {
 	if (props.disabled) return;
 	isOpen.value = true;
 	await nextTick();
+	updatePosition();
 	// Land focus on the currently-selected role so arrow keys move relative to it.
-	const idx = props.options.findIndex((o) => o.role === props.role);
+	const idx = options.findIndex((o) => o.role === props.role);
 	focusItemAt(idx >= 0 ? idx : 0);
 }
 
@@ -80,6 +110,11 @@ function onMenuKeydown(event: KeyboardEvent) {
 			event.preventDefault();
 			closeMenu();
 			break;
+		case 'Tab':
+			// Let focus move on naturally, but don't leave an orphaned open menu
+			// (stale aria-expanded + dangling document listeners) behind.
+			closeMenu(false);
+			break;
 		case 'ArrowDown':
 			event.preventDefault();
 			focusItemAt(currentIndex + 1);
@@ -109,17 +144,34 @@ function onTriggerKeydown(event: KeyboardEvent) {
 }
 
 function handlePointerDown(event: PointerEvent) {
-	if (rootRef.value && !rootRef.value.contains(event.target as Node)) {
+	const target = event.target as Node;
+	// The panel is teleported outside rootRef, so an in-panel click must be
+	// treated as inside (otherwise selecting a role would close before the click).
+	const insideRoot = rootRef.value?.contains(target) ?? false;
+	const insideMenu = menuRef.value?.contains(target) ?? false;
+	if (!insideRoot && !insideMenu) {
 		closeMenu(false);
 	}
 }
 
+function addListeners() {
+	document.addEventListener('pointerdown', handlePointerDown);
+	window.addEventListener('scroll', updatePosition, true);
+	window.addEventListener('resize', updatePosition);
+}
+
+function removeListeners() {
+	document.removeEventListener('pointerdown', handlePointerDown);
+	window.removeEventListener('scroll', updatePosition, true);
+	window.removeEventListener('resize', updatePosition);
+}
+
 watch(isOpen, (open) => {
-	if (open) document.addEventListener('pointerdown', handlePointerDown);
-	else document.removeEventListener('pointerdown', handlePointerDown);
+	if (open) addListeners();
+	else removeListeners();
 });
 
-onUnmounted(() => document.removeEventListener('pointerdown', handlePointerDown));
+onUnmounted(removeListeners);
 </script>
 
 <template>
@@ -142,48 +194,56 @@ onUnmounted(() => document.removeEventListener('pointerdown', handlePointerDown)
 			<Icon v-if="!disabled" name="lucide:chevron-down" class="w-3 h-3 text-text-tertiary" />
 		</button>
 
-		<Transition
-			enter-active-class="duration-(--motion-fast) ease-spring"
-			enter-from-class="opacity-0 scale-95"
-			enter-to-class="opacity-100 scale-100"
-			leave-active-class="duration-(--motion-fast) ease-exit"
-			leave-from-class="opacity-100 scale-100"
-			leave-to-class="opacity-0 scale-95"
-		>
-			<div
-				v-if="isOpen"
-				ref="menuRef"
-				role="menu"
-				aria-label="Assign role"
-				class="absolute right-0 z-50 mt-1 w-72 origin-top-right rounded-xl border border-border-subtle bg-bg-elevated py-1 shadow-lg"
-				@keydown="onMenuKeydown"
+		<Teleport to="body">
+			<Transition
+				enter-active-class="duration-(--motion-fast) ease-spring"
+				enter-from-class="opacity-0 scale-95"
+				enter-to-class="opacity-100 scale-100"
+				leave-active-class="duration-(--motion-fast) ease-exit"
+				leave-from-class="opacity-100 scale-100"
+				leave-to-class="opacity-0 scale-95"
 			>
-				<button
-					v-for="option in options"
-					:key="option.role"
-					type="button"
-					role="menuitemradio"
-					:aria-checked="option.role === role"
-					tabindex="-1"
-					class="flex w-full items-start gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-bg-surface focus-visible:bg-bg-surface focus-visible:outline-none"
-					@click="selectRole(option.role)"
+				<div
+					v-if="isOpen"
+					ref="menuRef"
+					role="menu"
+					aria-label="Assign role"
+					class="fixed z-50 w-72 rounded-xl border border-border-subtle bg-bg-elevated py-1 shadow-lg"
+					:style="{
+						top: openDirection === 'up' ? 'auto' : `${panelPosition.top}px`,
+						bottom: openDirection === 'up' ? `${panelPosition.bottom}px` : 'auto',
+						left: `${panelPosition.left}px`,
+						transformOrigin: openDirection === 'up' ? 'bottom right' : 'top right',
+					}"
+					@keydown="onMenuKeydown"
 				>
-					<Icon :name="option.icon" class="mt-0.5 w-4 h-4 shrink-0 text-text-secondary" />
-					<span class="min-w-0 flex-1">
-						<span class="flex items-center gap-1.5">
-							<span class="text-sm font-medium text-text-primary">{{ option.label }}</span>
-							<Icon
-								v-if="option.role === role"
-								name="lucide:check"
-								class="w-3.5 h-3.5 text-brand"
-								aria-hidden="true"
-							/>
+					<button
+						v-for="option in options"
+						:key="option.role"
+						type="button"
+						role="menuitemradio"
+						:aria-checked="option.role === role"
+						tabindex="-1"
+						class="flex w-full items-start gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-bg-surface focus-visible:bg-bg-surface focus-visible:outline-none"
+						@click="selectRole(option.role)"
+					>
+						<Icon :name="option.icon" class="mt-0.5 w-4 h-4 shrink-0 text-text-secondary" />
+						<span class="min-w-0 flex-1">
+							<span class="flex items-center gap-1.5">
+								<span class="text-sm font-medium text-text-primary">{{ option.label }}</span>
+								<Icon
+									v-if="option.role === role"
+									name="lucide:check"
+									class="w-3.5 h-3.5 text-brand"
+									aria-hidden="true"
+								/>
+							</span>
+							<span class="mt-0.5 block text-xs text-text-secondary">{{ option.summary }}</span>
+							<span class="mt-0.5 block text-xs text-text-tertiary">{{ option.detail }}</span>
 						</span>
-						<span class="mt-0.5 block text-xs text-text-secondary">{{ option.summary }}</span>
-						<span class="mt-0.5 block text-xs text-text-tertiary">{{ option.detail }}</span>
-					</span>
-				</button>
-			</div>
-		</Transition>
+					</button>
+				</div>
+			</Transition>
+		</Teleport>
 	</div>
 </template>
