@@ -75,6 +75,24 @@
 	--font-weight-semibold: 550;
 	--font-weight-bold: 700;
 
+	/* === FLUID FUNCTIONALISM: NAMED TYPE SCALE (sub-body steps) ===
+	 * The body ladder stays Tailwind's default (text-xs 12 · text-sm 14 ·
+	 * text-base 16 · text-lg 18 · text-xl 20 · text-2xl 24 …). These three named
+	 * steps fill the in-between sizes that the app's ~380 arbitrary `text-[Npx]`
+	 * utilities were reaching for OUTSIDE any scale — so nothing needs a bracket
+	 * size again. Map an arbitrary size to the nearest step; use text-xs / text-sm
+	 * for the 12px / 14px cases.
+	 *   text-2xs     11px — kbd keys, pill badges, micro-metadata
+	 *   text-caption 13px — dense UI copy: table cells, compact controls, captions
+	 *   text-md      15px — lead / intro paragraphs (native system-body size)
+	 * Line-heights pair with the nearest body step so swaps carry no regression. */
+	--text-2xs: 0.6875rem;
+	--text-2xs--line-height: 1rem;
+	--text-caption: 0.8125rem;
+	--text-caption--line-height: 1.25rem;
+	--text-md: 0.9375rem;
+	--text-md--line-height: 1.5rem;
+
 	/* === FLUID FUNCTIONALISM: MOTION EASINGS ===
 	 * ease-spring: critically damped spring approximation — fast + moderate enters.
 	 * ease-spring-bounce: slow enters (dialogs/panels), bounce ≈ 0.12.
