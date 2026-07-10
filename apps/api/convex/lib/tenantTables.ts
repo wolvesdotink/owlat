@@ -180,6 +180,7 @@ export const TENANT_TABLES = [
 	'blockedEmails',
 	'auditLogs',
 	'invitationResends',
+	'accessRequests',
 ] as const satisfies readonly TableNames[];
 
 /**

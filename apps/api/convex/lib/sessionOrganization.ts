@@ -127,11 +127,29 @@ export async function assertSingletonOrgInvariant(
 	ctx: QueryCtx | MutationCtx,
 	activeOrganizationId: string
 ): Promise<void> {
+	const singletonId = await getSingletonOrganizationId(ctx);
+	if (singletonId !== activeOrganizationId) {
+		throwForbidden('Active organization does not match the deployment singleton');
+	}
+}
+
+/**
+ * Resolve the id of the single deployment organization WITHOUT requiring the
+ * caller to be a member of it.
+ *
+ * Owlat is single-org-per-deployment (see `assertSingletonOrgInvariant`). Most
+ * callers reach the org via their session's active org, but the access-request
+ * flow (auth/accessRequest.ts) is invoked by a signed-in user who belongs to no
+ * organization yet — they have no active org to key off, so they need the one
+ * org's id directly to address their request to its admins.
+ *
+ * Asserts exactly one organization exists (throwing on zero or many), and
+ * caches the validated id per isolate — the same cache `assertSingletonOrgInvariant`
+ * relies on, so the two helpers can never disagree.
+ */
+export async function getSingletonOrganizationId(ctx: QueryCtx | MutationCtx): Promise<string> {
 	if (cachedSingletonOrgId !== null) {
-		if (cachedSingletonOrgId !== activeOrganizationId) {
-			throwForbidden('Active organization does not match the deployment singleton');
-		}
-		return;
+		return cachedSingletonOrgId;
 	}
 
 	const result = (await ctx.runQuery(components.betterAuth.adapter.findMany, {
@@ -150,10 +168,11 @@ export async function assertSingletonOrgInvariant(
 		);
 	}
 	const singletonId = orgs[0]?.id;
-	if (singletonId !== activeOrganizationId) {
-		throwForbidden('Active organization does not match the deployment singleton');
+	if (!singletonId) {
+		throwForbidden('No organization configured on this Owlat instance');
 	}
-	cachedSingletonOrgId = singletonId ?? null;
+	cachedSingletonOrgId = singletonId;
+	return singletonId;
 }
 
 /**

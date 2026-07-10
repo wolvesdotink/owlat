@@ -237,6 +237,34 @@ export const authTables = {
 		updatedAt: v.number(),
 	}).index('by_auth_user_id', ['authUserId']),
 
+	// Access requests — the door out of the "invitation required" dead-end.
+	//
+	// A signed-in user who belongs to no organization (they authenticated but
+	// were never invited) can ask the admins for access instead of only being
+	// able to sign out. This row is a NOTIFICATION, never a grant: creating it
+	// never adds the user to the org — an admin still invites them through the
+	// normal members flow. Mirrors `mailboxRequests` (mail/mailboxRequest.ts):
+	// one open row per user (refreshed, not stacked), surfaced to admins on the
+	// dashboard, resolved by acknowledgement.
+	accessRequests: defineTable({
+		// BetterAuth user id of the orgless requester.
+		authUserId: v.string(),
+		// The single deployment organization the request is addressed to.
+		organizationId: v.string(),
+		// Denormalised for the admin list so it needn't join userProfiles.
+		requesterEmail: v.string(),
+		requesterName: v.optional(v.string()),
+		// Optional free-text note ("I'm on the marketing team").
+		note: v.optional(v.string()),
+		status: v.union(v.literal('open'), v.literal('resolved')),
+		createdAt: v.number(),
+		// Admin who resolved it + when (audit; unset while open).
+		resolvedByUserId: v.optional(v.string()),
+		resolvedAt: v.optional(v.number()),
+	})
+		.index('by_auth_user_id', ['authUserId'])
+		.index('by_org_and_status', ['organizationId', 'status']),
+
 	// Audit Logs - tracks organization member actions for accountability and debugging.
 	// Action and resource literal unions live in `auditActions/catalog.ts` —
 	// adding a new action is a one-place change there.
