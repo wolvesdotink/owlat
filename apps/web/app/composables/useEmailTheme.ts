@@ -8,7 +8,7 @@ import { api } from '@owlat/api';
  * rendered or sent email.
  */
 export function useEmailTheme() {
-	const { data: organizationSettings } = useOrganizationQuery(api.organizations.settings.get);
+	const { data: organizationSettings } = useOrganizationQuery(api.workspaces.settings.get);
 	const emailTheme = computed(() => {
 		const theme = organizationSettings.value?.emailTheme;
 		return {

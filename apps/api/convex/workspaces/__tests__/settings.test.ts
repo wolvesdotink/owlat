@@ -50,14 +50,14 @@ vi.mock('../../lib/sessionOrganization', async () => {
 });
 
 // Vite canonicalizes glob keys for files in this same subtree: a sibling
-// at convex/organizations/X is keyed as '../X' rather than '../../organizations/X'.
+// at convex/workspaces/X is keyed as '../X' rather than '../../workspaces/X'.
 // convex-test computes its lookup prefix from '../../_generated/...', so the
 // canonicalized keys would never match. Re-prefix the canonicalized half.
 const allModules = import.meta.glob('../../**/*.*s');
 const modules = Object.fromEntries(
 	Object.entries(allModules).map(([key, val]) => {
 		if (key.startsWith('../') && !key.startsWith('../../')) {
-			return ['../../organizations/' + key.slice(3), val];
+			return ['../../workspaces/' + key.slice(3), val];
 		}
 		return [key, val];
 	})
@@ -74,7 +74,7 @@ beforeEach(() => {
 describe('organizations.settings.get', () => {
 	it('returns null when no settings row exists', async () => {
 		const t = convexTest(schema, modules);
-		const result = await t.query(api.organizations.settings.get, {});
+		const result = await t.query(api.workspaces.settings.get, {});
 		expect(result).toBeNull();
 	});
 
@@ -88,7 +88,7 @@ describe('organizations.settings.get', () => {
 			});
 		});
 
-		const result = await t.query(api.organizations.settings.get, {});
+		const result = await t.query(api.workspaces.settings.get, {});
 		expect(result).not.toBeNull();
 		expect(result?.timezone).toBe('America/New_York');
 		expect(result?.defaultFromName).toBe('Acme');
@@ -105,7 +105,7 @@ describe('organizations.settings.update — permission rule', () => {
 
 		mockRole = 'editor';
 		await expect(
-			t.mutation(api.organizations.settings.update, {
+			t.mutation(api.workspaces.settings.update, {
 				timezone: 'UTC',
 			})
 		).rejects.toThrow(/owners and admins/);
@@ -115,7 +115,7 @@ describe('organizations.settings.update — permission rule', () => {
 		const t = convexTest(schema, modules);
 
 		mockRole = 'admin';
-		await t.mutation(api.organizations.settings.update, {
+		await t.mutation(api.workspaces.settings.update, {
 			timezone: 'Europe/Berlin',
 		});
 
@@ -129,7 +129,7 @@ describe('organizations.settings.update — permission rule', () => {
 		const t = convexTest(schema, modules);
 
 		mockRole = 'owner';
-		await t.mutation(api.organizations.settings.update, {
+		await t.mutation(api.workspaces.settings.update, {
 			defaultFromName: 'Wolves',
 		});
 
@@ -148,7 +148,7 @@ describe('organizations.settings.update — write semantics', () => {
 	it('creates the singleton row on first write', async () => {
 		const t = convexTest(schema, modules);
 
-		await t.mutation(api.organizations.settings.update, {
+		await t.mutation(api.workspaces.settings.update, {
 			timezone: 'UTC',
 			defaultFromName: 'first',
 		});
@@ -166,11 +166,11 @@ describe('organizations.settings.update — write semantics', () => {
 	it('patches the existing row on subsequent writes', async () => {
 		const t = convexTest(schema, modules);
 
-		await t.mutation(api.organizations.settings.update, {
+		await t.mutation(api.workspaces.settings.update, {
 			timezone: 'UTC',
 			defaultFromName: 'one',
 		});
-		await t.mutation(api.organizations.settings.update, {
+		await t.mutation(api.workspaces.settings.update, {
 			defaultFromName: 'two',
 		});
 
@@ -186,7 +186,7 @@ describe('organizations.settings.update — write semantics', () => {
 	it('persists emailTheme', async () => {
 		const t = convexTest(schema, modules);
 
-		await t.mutation(api.organizations.settings.update, {
+		await t.mutation(api.workspaces.settings.update, {
 			emailTheme: {
 				primaryColor: '#ff0000',
 				fontFamily: 'Arial, sans-serif',
@@ -210,7 +210,7 @@ describe('organizations.settings.update — write semantics', () => {
 describe('organizations.settings — isMigrationMode', () => {
 	it('is absent by default (fresh-start) when no row exists', async () => {
 		const t = convexTest(schema, modules);
-		const result = await t.query(api.organizations.settings.get, {});
+		const result = await t.query(api.workspaces.settings.get, {});
 		expect(result).toBeNull();
 	});
 
@@ -224,7 +224,7 @@ describe('organizations.settings — isMigrationMode', () => {
 		});
 
 		// getUserIdFromSession is mocked to a plain member — no admin gate on read.
-		const result = await t.query(api.organizations.settings.get, {});
+		const result = await t.query(api.workspaces.settings.get, {});
 		expect(result?.isMigrationMode).toBe(true);
 	});
 
@@ -233,7 +233,7 @@ describe('organizations.settings — isMigrationMode', () => {
 
 		mockRole = 'editor';
 		await expect(
-			t.mutation(api.organizations.settings.update, {
+			t.mutation(api.workspaces.settings.update, {
 				isMigrationMode: true,
 			})
 		).rejects.toThrow(/owners and admins/);
@@ -243,7 +243,7 @@ describe('organizations.settings — isMigrationMode', () => {
 		const t = convexTest(schema, modules);
 
 		mockRole = 'admin';
-		await t.mutation(api.organizations.settings.update, {
+		await t.mutation(api.workspaces.settings.update, {
 			isMigrationMode: true,
 		});
 
@@ -256,7 +256,7 @@ describe('organizations.settings — isMigrationMode', () => {
 	it('createInternal defaults isMigrationMode to false', async () => {
 		const t = convexTest(schema, modules);
 
-		const id = await t.mutation(internal.organizations.settings.createInternal, {
+		const id = await t.mutation(internal.workspaces.settings.createInternal, {
 			timezone: 'UTC',
 		});
 
@@ -269,7 +269,7 @@ describe('organizations.settings — isMigrationMode', () => {
 	it('createInternal persists isMigrationMode when the wizard seeds it', async () => {
 		const t = convexTest(schema, modules);
 
-		const id = await t.mutation(internal.organizations.settings.createInternal, {
+		const id = await t.mutation(internal.workspaces.settings.createInternal, {
 			timezone: 'UTC',
 			isMigrationMode: true,
 		});
@@ -290,17 +290,17 @@ describe('organizations.settings.remove', () => {
 		const t = convexTest(schema, modules);
 
 		mockRole = 'admin';
-		await expect(t.mutation(api.organizations.settings.remove, {})).rejects.toThrow(/owner/);
+		await expect(t.mutation(api.workspaces.settings.remove, {})).rejects.toThrow(/owner/);
 
 		mockRole = 'editor';
-		await expect(t.mutation(api.organizations.settings.remove, {})).rejects.toThrow(/owner/);
+		await expect(t.mutation(api.workspaces.settings.remove, {})).rejects.toThrow(/owner/);
 	});
 
 	it('returns success message and schedules the deletion walker for owner', async () => {
 		const t = convexTest(schema, modules);
 
 		mockRole = 'owner';
-		const outcome = await t.mutation(api.organizations.settings.remove, {});
+		const outcome = await t.mutation(api.workspaces.settings.remove, {});
 		expect(outcome.success).toBe(true);
 		expect(outcome.message).toContain('deletion');
 
@@ -317,7 +317,7 @@ describe('organizations.settings.createInternal', () => {
 	it('inserts the row when none exists', async () => {
 		const t = convexTest(schema, modules);
 
-		const id = await t.mutation(internal.organizations.settings.createInternal, {
+		const id = await t.mutation(internal.workspaces.settings.createInternal, {
 			timezone: 'UTC',
 			defaultFromName: 'Bootstrap',
 		});
@@ -341,7 +341,7 @@ describe('organizations.settings.createInternal', () => {
 			});
 		});
 
-		const id = await t.mutation(internal.organizations.settings.createInternal, {
+		const id = await t.mutation(internal.workspaces.settings.createInternal, {
 			timezone: 'UTC',
 			defaultFromName: 'second',
 		});
@@ -357,7 +357,7 @@ describe('organizations.settings.createInternal', () => {
 	it('defaults timezone to UTC when omitted', async () => {
 		const t = convexTest(schema, modules);
 
-		const id = await t.mutation(internal.organizations.settings.createInternal, {});
+		const id = await t.mutation(internal.workspaces.settings.createInternal, {});
 
 		await t.run(async (ctx) => {
 			const row = await ctx.db.get(id);

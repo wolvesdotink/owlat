@@ -171,7 +171,7 @@ export const seedAdmin = httpAction(async (ctx, request) => {
 		});
 
 		// Create instanceSettings record
-		await ctx.runMutation(internal.organizations.settings.createInternal, {
+		await ctx.runMutation(internal.workspaces.settings.createInternal, {
 			timezone: 'UTC',
 			defaultFromName: orgName,
 			isMigrationMode: body.isMigrationMode ?? false,
@@ -180,7 +180,7 @@ export const seedAdmin = httpAction(async (ctx, request) => {
 		// Persist the wizard's chosen feature flags (if provided) so the
 		// selections take effect at runtime instead of falling back to defaults.
 		if (body.flags && Object.keys(body.flags).length > 0) {
-			await ctx.runMutation(internal.organizations.featureFlags.setAllInternal, {
+			await ctx.runMutation(internal.workspaces.featureFlags.setAllInternal, {
 				flags: body.flags,
 			});
 		}

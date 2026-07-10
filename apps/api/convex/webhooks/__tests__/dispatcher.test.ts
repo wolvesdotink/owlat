@@ -96,9 +96,7 @@ beforeEach(() => {
 });
 
 describe('dispatchInboundEvent — Send-lifecycle email events', () => {
-	const SEND_LIFECYCLE = ref(
-		internal.delivery.sendLifecycle.transitionByProviderMessageId
-	);
+	const SEND_LIFECYCLE = ref(internal.delivery.sendLifecycle.transitionByProviderMessageId);
 
 	it('routes email.sent to sendLifecycle with a "sent" transition', async () => {
 		const { ctx, runMutationCalls } = makeCtx();
@@ -289,12 +287,8 @@ describe('dispatchInboundEvent — Send-lifecycle email events', () => {
 });
 
 describe('dispatchInboundEvent — Postbox message-id routing (pb- prefix)', () => {
-	const POSTBOX = ref(
-		internal.mail.postboxOutboundLifecycle.transitionByMtaMessageId
-	);
-	const SEND_LIFECYCLE = ref(
-		internal.delivery.sendLifecycle.transitionByProviderMessageId
-	);
+	const POSTBOX = ref(internal.mail.postboxOutboundLifecycle.transitionByMtaMessageId);
+	const SEND_LIFECYCLE = ref(internal.delivery.sendLifecycle.transitionByProviderMessageId);
 
 	it('routes a pb- prefixed email.sent to the postbox lifecycle, not sendLifecycle', async () => {
 		const { ctx, runMutationCalls } = makeCtx();
@@ -419,17 +413,13 @@ describe('dispatchInboundEvent — inbound + channel ingestion', () => {
 				references: ['<root@example.com>'],
 				attachments: [],
 				timestamp: 7000,
-			} as InboundEvent extends { kind: 'inbound.received'; mail: infer M }
-				? M
-				: never,
+			} as InboundEvent extends { kind: 'inbound.received'; mail: infer M } ? M : never,
 		};
 
 		await dispatchInboundEvent(ctx, event);
 
 		expect(runMutationCalls).toHaveLength(1);
-		expect(runMutationCalls[0]?.ref).toBe(
-			ref(internal.inbox.messages.receiveMessage)
-		);
+		expect(runMutationCalls[0]?.ref).toBe(ref(internal.inbox.messages.receiveMessage));
 		const args = runMutationCalls[0]?.args as Record<string, unknown>;
 		expect(args['from']).toBe('sender@example.com');
 		expect(args['headers']).toBe(JSON.stringify({ 'x-custom': 'v' }));
@@ -477,9 +467,7 @@ describe('dispatchInboundEvent — inbound + channel ingestion', () => {
 		await dispatchInboundEvent(ctx, event);
 
 		expect(runMutationCalls).toHaveLength(1);
-		expect(runMutationCalls[0]?.ref).toBe(
-			ref(internal.webhooks.channels.processInboundChannel)
-		);
+		expect(runMutationCalls[0]?.ref).toBe(ref(internal.webhooks.channels.processInboundChannel));
 		expect(runMutationCalls[0]?.args).toEqual({
 			channel: 'sms',
 			from: '+15551234567',
@@ -518,9 +506,7 @@ describe('dispatchInboundEvent — internal signals', () => {
 		await dispatchInboundEvent(ctx, event);
 
 		expect(runMutationCalls).toHaveLength(1);
-		expect(runMutationCalls[0]?.ref).toBe(
-			ref(internal.organizations.abuseStatus.transition)
-		);
+		expect(runMutationCalls[0]?.ref).toBe(ref(internal.workspaces.abuseStatus.transition));
 		const args = runMutationCalls[0]?.args as {
 			input: { to: string; reason: string; changedBy: string };
 		};
@@ -553,9 +539,7 @@ describe('dispatchInboundEvent — internal signals', () => {
 		await dispatchInboundEvent(ctx, event);
 
 		expect(runMutationCalls).toHaveLength(1);
-		expect(runMutationCalls[0]?.ref).toBe(
-			ref(internal.organizations.abuseStatus.transition)
-		);
+		expect(runMutationCalls[0]?.ref).toBe(ref(internal.workspaces.abuseStatus.transition));
 		const args = runMutationCalls[0]?.args as {
 			input: { to: string; reason: string; changedBy: string };
 		};
@@ -593,9 +577,7 @@ describe('dispatchInboundEvent — internal signals', () => {
 		expect(runMutationCalls).toHaveLength(0);
 		expect(schedulerCalls).toHaveLength(1);
 		expect(schedulerCalls[0]?.delayMs).toBe(0);
-		expect(schedulerCalls[0]?.ref).toBe(
-			ref(internal.delivery.warmingSync.syncWarmingState)
-		);
+		expect(schedulerCalls[0]?.ref).toBe(ref(internal.delivery.warmingSync.syncWarmingState));
 	});
 
 	it('schedules a warming sync for ip_event subkind=warming_complete', async () => {
@@ -608,9 +590,7 @@ describe('dispatchInboundEvent — internal signals', () => {
 		await dispatchInboundEvent(ctx, event);
 
 		expect(schedulerCalls).toHaveLength(1);
-		expect(schedulerCalls[0]?.ref).toBe(
-			ref(internal.delivery.warmingSync.syncWarmingState)
-		);
+		expect(schedulerCalls[0]?.ref).toBe(ref(internal.delivery.warmingSync.syncWarmingState));
 	});
 
 	it('does NOT schedule a warming sync for ip_event subkind=all_blocked', async () => {
@@ -704,9 +684,7 @@ describe('dispatchInboundEvent — unresolved-bounce observability', () => {
 
 		await dispatchInboundEvent(ctx, event);
 
-		expect(warnMessages().some((m) => m.includes('unresolved_bounce'))).toBe(
-			false
-		);
+		expect(warnMessages().some((m) => m.includes('unresolved_bounce'))).toBe(false);
 	});
 
 	it('does NOT emit an unresolved_bounce signal for a non-negative event (email.delivered)', async () => {
@@ -722,9 +700,7 @@ describe('dispatchInboundEvent — unresolved-bounce observability', () => {
 
 		await dispatchInboundEvent(ctx, event);
 
-		expect(warnMessages().some((m) => m.includes('unresolved_bounce'))).toBe(
-			false
-		);
+		expect(warnMessages().some((m) => m.includes('unresolved_bounce'))).toBe(false);
 	});
 });
 
@@ -761,7 +737,11 @@ describe('dispatchInboundEvent — DKIM rotation propagation', () => {
 describe('dispatchInboundEvent — unknown event kinds', () => {
 	it('rejects an unknown event kind (no handler in the dispatch table)', async () => {
 		const { ctx } = makeCtx();
-		const event = { kind: 'email.exploded', providerMessageId: 'x', at: 1 } as unknown as InboundEvent;
+		const event = {
+			kind: 'email.exploded',
+			providerMessageId: 'x',
+			at: 1,
+		} as unknown as InboundEvent;
 
 		// No handler => `handler` is undefined => calling it throws a TypeError.
 		await expect(dispatchInboundEvent(ctx, event)).rejects.toThrow(TypeError);

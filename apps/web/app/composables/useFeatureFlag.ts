@@ -19,7 +19,9 @@ import {
 	type FeatureFlagState,
 } from '@owlat/shared/featureFlags';
 
-let inflight: ReturnType<typeof useConvexQuery<typeof api.organizations.featureFlags.getFeatureFlags>> | null = null;
+let inflight: ReturnType<
+	typeof useConvexQuery<typeof api.workspaces.featureFlags.getFeatureFlags>
+> | null = null;
 
 export function useFeatureFlag() {
 	// Single shared subscription for the whole app. Own it in a DETACHED
@@ -29,7 +31,7 @@ export function useFeatureFlag() {
 	if (!inflight) {
 		const scope = effectScope(true);
 		scope.run(() => {
-			inflight = useConvexQuery(api.organizations.featureFlags.getFeatureFlags, {});
+			inflight = useConvexQuery(api.workspaces.featureFlags.getFeatureFlags, {});
 		});
 	}
 

@@ -43,7 +43,7 @@
 #                                      expired/merged nodes (rule a, system).
 #   - convex/lib/contactMutations.ts   contact merge/delete cascade prunes
 #                                      orphaned edges (rule a, member mutation).
-#   - convex/organizations/deletion/   org-deletion sweep of the table (rule a).
+#   - convex/workspaces/deletion/   org-deletion sweep of the table (rule a).
 #
 # Pre-allowlisted future seams (files do not exist yet; grep -v on a missing
 # path matches nothing, so this is harmless until they land):
@@ -79,7 +79,7 @@ filter() {
 		| grep -v "convex/knowledge/edges.ts" \
 		| grep -v "convex/knowledge/maintenance.ts" \
 		| grep -v "convex/lib/contactMutations.ts" \
-		| grep -v "convex/organizations/deletion/" \
+		| grep -v "convex/workspaces/deletion/" \
 		| grep -v "convex/knowledge/graphTraversal.ts" \
 		| grep -v "convex/knowledge/graphAnalytics.ts" \
 		| grep -v "convex/knowledge/relationDecay.ts"

@@ -526,7 +526,7 @@ export async function deleteAccountForRequest(
 		// is batched, storage-aware, and covers all of TENANT_TABLES.
 		if (membership.role === 'owner') {
 			isOwner = true;
-			await ctx.scheduler.runAfter(0, internal.organizations.deletion.walker.start, {});
+			await ctx.scheduler.runAfter(0, internal.workspaces.deletion.walker.start, {});
 
 			// Delete the organization itself from BetterAuth's organization table
 			await ctx.runMutation(components.betterAuth.adapter.deleteOne, {

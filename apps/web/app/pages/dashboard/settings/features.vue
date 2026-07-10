@@ -23,18 +23,18 @@ const {
 	data: liveFlags,
 	isLoading,
 	error: flagsError,
-} = useConvexQuery(api.organizations.featureFlags.getFeatureFlags, {});
+} = useConvexQuery(api.workspaces.featureFlags.getFeatureFlags, {});
 // Whether a real delivery provider is configured — drives the "needs a provider"
 // hint for sending flags, which carry no requiredEnvVars of their own.
 const { data: deliveryConfigured } = useConvexQuery(
-	api.organizations.featureFlags.deliveryConfigured,
+	api.workspaces.featureFlags.deliveryConfigured,
 	{}
 );
 // Per-flag configuration gaps (missing env vars / no delivery provider). Joined
 // against the resolved on/off state to badge flags that are ENABLED but not yet
 // configured.
 const { data: flagsConfigStatus } = useConvexQuery(
-	api.organizations.featureFlags.getFlagsConfigStatus,
+	api.workspaces.featureFlags.getFlagsConfigStatus,
 	{}
 );
 const { showToast } = useToast();
@@ -43,11 +43,11 @@ const { showToast } = useToast();
 // toasted + telemetry'd automatically and `run` resolves to `undefined`; we only
 // add the success / cascade-info toasts here.
 const { run: setFeatureFlag, isLoading: isSavingFlag } = useBackendOperation(
-	api.organizations.featureFlags.setFeatureFlag,
+	api.workspaces.featureFlags.setFeatureFlag,
 	{ label: 'Toggle feature flag' }
 );
 const { run: setFeaturePack, isLoading: isSavingPack } = useBackendOperation(
-	api.organizations.featureFlags.setFeaturePack,
+	api.workspaces.featureFlags.setFeaturePack,
 	{ label: 'Toggle feature pack' }
 );
 

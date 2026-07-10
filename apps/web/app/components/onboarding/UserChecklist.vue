@@ -29,7 +29,7 @@ const { data: onboarding, isLoading: isLoadingOnboarding } = useConvexQuery(
 	() => ({ userId: props.userId })
 );
 const { data: settings, isLoading: isLoadingSettings } = useConvexQuery(
-	api.organizations.settings.get,
+	api.workspaces.settings.get,
 	{}
 );
 

@@ -30,7 +30,7 @@ vi.mock('../../lib/sessionOrganization', async () => {
 	};
 });
 
-// See organizations/__tests__/settings.test.ts: re-prefix Vite's canonicalized
+// See workspaces/__tests__/settings.test.ts: re-prefix Vite's canonicalized
 // sibling glob keys so convex-test's lookup prefix matches.
 const allModules = import.meta.glob('../../**/*.*s');
 const modules = Object.fromEntries(

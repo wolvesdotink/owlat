@@ -3,11 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import {
-	createTestInboundMessage,
-	createTestKnowledgeEntry,
-	enableFeatures,
-} from './factories';
+import { createTestInboundMessage, createTestKnowledgeEntry, enableFeatures } from './factories';
 
 const sessionMocks = vi.hoisted(() => ({
 	getUserIdFromSession: vi.fn(),
@@ -60,11 +56,11 @@ const modules = Object.fromEntries(
 			!path.includes('agentClassifier') &&
 			!path.includes('agentDrafter') &&
 			!path.includes('agentRouter') &&
-		!path.includes('agent/walker') &&
-		!path.includes('agent/steps/index') &&
-		!path.includes('agent/steps/shared') &&
-		!path.includes('agent/steps/classify') &&
-		!path.includes('agent/steps/draft') &&
+			!path.includes('agent/walker') &&
+			!path.includes('agent/steps/index') &&
+			!path.includes('agent/steps/shared') &&
+			!path.includes('agent/steps/classify') &&
+			!path.includes('agent/steps/draft') &&
 			!path.includes('knowledgeExtraction') &&
 			!path.includes('semanticFileProcessing') &&
 			!path.includes('visualizationAgent') &&
@@ -130,10 +126,9 @@ describe('featureFlags.setFeatureFlag — ai.agent backfill kick-off', () => {
 			await ctx.db.insert('inboundMessages', msgData({ receivedAt: 2000 }));
 		});
 
-		await t.withIdentity(testIdentity).mutation(
-			api.organizations.featureFlags.setFeatureFlag,
-			{ flag: 'ai.agent', value: true }
-		);
+		await t
+			.withIdentity(testIdentity)
+			.mutation(api.workspaces.featureFlags.setFeatureFlag, { flag: 'ai.agent', value: true });
 
 		await t.run(async (ctx) => {
 			const jobs = await ctx.db.query('knowledgeBackfillJobs').collect();
@@ -148,10 +143,9 @@ describe('featureFlags.setFeatureFlag — ai.agent backfill kick-off', () => {
 	it('writes an agent.backfill_started audit log on first kick-off', async () => {
 		const t = convexTest(schema, modules);
 
-		await t.withIdentity(testIdentity).mutation(
-			api.organizations.featureFlags.setFeatureFlag,
-			{ flag: 'ai.agent', value: true }
-		);
+		await t
+			.withIdentity(testIdentity)
+			.mutation(api.workspaces.featureFlags.setFeatureFlag, { flag: 'ai.agent', value: true });
 
 		await t.run(async (ctx) => {
 			const logs = await ctx.db
@@ -188,10 +182,9 @@ describe('featureFlags.setFeatureFlag — ai.agent backfill kick-off', () => {
 			});
 		});
 
-		await t.withIdentity(testIdentity).mutation(
-			api.organizations.featureFlags.setFeatureFlag,
-			{ flag: 'ai.agent', value: true }
-		);
+		await t
+			.withIdentity(testIdentity)
+			.mutation(api.workspaces.featureFlags.setFeatureFlag, { flag: 'ai.agent', value: true });
 
 		await t.run(async (ctx) => {
 			const jobs = await ctx.db.query('knowledgeBackfillJobs').collect();
@@ -210,10 +203,9 @@ describe('featureFlags.setFeatureFlag — ai.agent backfill kick-off', () => {
 			});
 		});
 
-		await t.withIdentity(testIdentity).mutation(
-			api.organizations.featureFlags.setFeatureFlag,
-			{ flag: 'ai.agent', value: true }
-		);
+		await t
+			.withIdentity(testIdentity)
+			.mutation(api.workspaces.featureFlags.setFeatureFlag, { flag: 'ai.agent', value: true });
 
 		await t.run(async (ctx) => {
 			const jobs = await ctx.db.query('knowledgeBackfillJobs').collect();
@@ -231,10 +223,9 @@ describe('featureFlags.setFeatureFlag — ai.agent backfill kick-off', () => {
 			});
 		});
 
-		await t.withIdentity(testIdentity).mutation(
-			api.organizations.featureFlags.setFeatureFlag,
-			{ flag: 'ai.agent', value: false }
-		);
+		await t
+			.withIdentity(testIdentity)
+			.mutation(api.workspaces.featureFlags.setFeatureFlag, { flag: 'ai.agent', value: false });
 
 		await t.run(async (ctx) => {
 			const jobs = await ctx.db.query('knowledgeBackfillJobs').collect();
@@ -493,10 +484,9 @@ describe('knowledgeBackfill.cancel', () => {
 			});
 		});
 
-		const result = await t.withIdentity(testIdentity).mutation(
-			api.agent.knowledgeBackfill.cancel,
-			{}
-		);
+		const result = await t
+			.withIdentity(testIdentity)
+			.mutation(api.agent.knowledgeBackfill.cancel, {});
 
 		expect(result).toBe(true);
 
@@ -524,10 +514,7 @@ describe('knowledgeBackfill.cancel', () => {
 			});
 		});
 
-		await t.withIdentity(testIdentity).mutation(
-			api.agent.knowledgeBackfill.cancel,
-			{}
-		);
+		await t.withIdentity(testIdentity).mutation(api.agent.knowledgeBackfill.cancel, {});
 
 		await t.run(async (ctx) => {
 			const logs = await ctx.db
@@ -541,10 +528,9 @@ describe('knowledgeBackfill.cancel', () => {
 	it('returns false when there is no active job', async () => {
 		const t = convexTest(schema, modules);
 
-		const result = await t.withIdentity(testIdentity).mutation(
-			api.agent.knowledgeBackfill.cancel,
-			{}
-		);
+		const result = await t
+			.withIdentity(testIdentity)
+			.mutation(api.agent.knowledgeBackfill.cancel, {});
 		expect(result).toBe(false);
 	});
 
@@ -590,11 +576,14 @@ describe('knowledgeBackfill.cancel', () => {
 		try {
 			const t = convexTest(schema, modules);
 
-			await expect(
-				t.mutation(api.agent.knowledgeBackfill.cancel, {})
-			).rejects.toThrow('Not authenticated');
+			await expect(t.mutation(api.agent.knowledgeBackfill.cancel, {})).rejects.toThrow(
+				'Not authenticated'
+			);
 		} finally {
-			sessionMocks.requireAdminContext.mockResolvedValue({ userId: 'test-user-123', role: 'owner' });
+			sessionMocks.requireAdminContext.mockResolvedValue({
+				userId: 'test-user-123',
+				role: 'owner',
+			});
 		}
 	});
 });
@@ -633,10 +622,9 @@ describe('knowledgeBackfill.getStatus', () => {
 			});
 		});
 
-		const status = await t.withIdentity(testIdentity).query(
-			api.agent.knowledgeBackfill.getStatus,
-			{}
-		);
+		const status = await t
+			.withIdentity(testIdentity)
+			.query(api.agent.knowledgeBackfill.getStatus, {});
 
 		expect(status).toBeDefined();
 		expect(status!.triggeredBy).toBe('new');
@@ -669,10 +657,9 @@ describe('knowledgeBackfill.getStatus', () => {
 	it('returns null when no job exists', async () => {
 		const t = convexTest(schema, modules);
 
-		const status = await t.withIdentity(testIdentity).query(
-			api.agent.knowledgeBackfill.getStatus,
-			{}
-		);
+		const status = await t
+			.withIdentity(testIdentity)
+			.query(api.agent.knowledgeBackfill.getStatus, {});
 		expect(status).toBeNull();
 	});
 });

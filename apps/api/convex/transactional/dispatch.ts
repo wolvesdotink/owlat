@@ -23,7 +23,7 @@ import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { nanoid } from 'nanoid';
 import { createContact } from '../contacts/creation';
-import { isSendingAllowed } from '../organizations/abuseGate';
+import { isSendingAllowed } from '../workspaces/abuseGate';
 import { checkEmailDomainVerification } from '../domains/domains';
 import { resolveSendRouteFromDb } from '../lib/sendProviders/route';
 import { isDeliveryConfigured } from '../lib/sendProviders/capability';
@@ -34,6 +34,12 @@ import { jsonPrimitiveValue } from '../lib/convexValidators';
 import { getOptional } from '../lib/env';
 import { logWarn } from '../lib/runtimeLog';
 import { isSuppressed } from '../lib/suppression';
+import {
+	validateDataVariables,
+	resolveLanguage,
+	selectContent,
+	mergeAttachments,
+} from './dispatchContent';
 
 // ============================================================
 // Public types
@@ -68,7 +74,7 @@ export type DispatchOutcome =
 // from the HTTP shell without re-validating which was provided.
 const templateLookupValidator = v.union(
 	v.object({ kind: v.literal('id'), id: v.id('transactionalEmails') }),
-	v.object({ kind: v.literal('slug'), slug: v.string() }),
+	v.object({ kind: v.literal('slug'), slug: v.string() })
 );
 
 const attachmentRefValidator = v.object({
@@ -78,174 +84,12 @@ const attachmentRefValidator = v.object({
 	storageId: v.optional(v.string()),
 });
 
-export type AttachmentRef = {
-	filename: string;
-	contentType?: string;
-	url: string;
-	storageId?: string;
-};
-
-// ============================================================
-// Helpers (exported for unit testing)
-// ============================================================
-
-/**
- * Validate request `dataVariables` against the template's declared
- * `dataVariablesSchema`. Returns `{ valid: true }` when no schema is
- * declared or all provided values match; `{ valid: false, error }` on
- * type mismatch. Ported from the pre-deepening `transactionalApiHttp.ts`.
- *
- * Returns a plain shape `{ valid: boolean; error?: string }` (rather than a
- * strict discriminated union) so callers and tests can read `result.error`
- * without TypeScript narrowing ceremony.
- */
-export function validateDataVariables(
-	variables: Record<string, unknown> | undefined,
-	schema: Record<string, string> | undefined,
-): { valid: boolean; error?: string } {
-	if (!schema) return { valid: true };
-	if (!variables) return { valid: true };
-
-	for (const [key, expectedType] of Object.entries(schema)) {
-		const value = variables[key];
-		if (value === undefined || value === null) continue;
-
-		const actualType = typeof value;
-		let isValid = false;
-
-		switch (expectedType) {
-			case 'string':
-				isValid = actualType === 'string';
-				break;
-			case 'number':
-				isValid = actualType === 'number' && !isNaN(value as number);
-				break;
-			case 'boolean':
-				isValid = actualType === 'boolean';
-				break;
-			case 'date':
-				isValid =
-					(actualType === 'string' || actualType === 'number') &&
-					!isNaN(new Date(value as string | number).getTime());
-				break;
-			default:
-				isValid = true;
-		}
-
-		if (!isValid) {
-			return {
-				valid: false,
-				error: `Variable "${key}" should be of type "${expectedType}", got "${actualType}"`,
-			};
-		}
-	}
-
-	return { valid: true };
-}
-
-/**
- * Resolve which language the send should use. Fallback chain:
- *   request → contact → template default → 'en'
- *
- * The resolved language is then used to pick `htmlContent` + `subject`
- * from `htmlTranslations[lang]` (via {@link selectContent}). If the
- * picked language has no translation, the template's default
- * content is used and the resolved language drops back to the default.
- */
-export function resolveLanguage(
-	requestLanguage: string | undefined,
-	contactLanguage: string | undefined,
-	templateDefaultLanguage: string | undefined,
-	availableLanguages: string[],
-): string {
-	const fallback = templateDefaultLanguage ?? 'en';
-	const candidate = requestLanguage ?? contactLanguage ?? fallback;
-	if (candidate === fallback) return fallback;
-	return availableLanguages.includes(candidate) ? candidate : fallback;
-}
-
-/**
- * Pick `htmlContent` + `subject` for the resolved language from the
- * template's `htmlTranslations` JSON (or fall back to the default
- * top-level fields). Invalid JSON is treated as no translations.
- */
-export function selectContent(
-	language: string,
-	templateDefaultLanguage: string,
-	defaultHtmlContent: string,
-	defaultSubject: string,
-	htmlTranslationsJson: string | undefined,
-): { html: string; subject: string; resolvedLanguage: string } {
-	if (language === templateDefaultLanguage || !htmlTranslationsJson) {
-		return {
-			html: defaultHtmlContent,
-			subject: defaultSubject,
-			resolvedLanguage: templateDefaultLanguage,
-		};
-	}
-
-	try {
-		const translations = JSON.parse(htmlTranslationsJson) as Record<
-			string,
-			{ htmlContent: string; subject: string }
-		>;
-		const picked = translations[language];
-		if (picked) {
-			return {
-				html: picked.htmlContent,
-				subject: picked.subject,
-				resolvedLanguage: language,
-			};
-		}
-	} catch {
-		// Invalid JSON in translations — fall through to the default content.
-	}
-
-	return {
-		html: defaultHtmlContent,
-		subject: defaultSubject,
-		resolvedLanguage: templateDefaultLanguage,
-	};
-}
-
-/**
- * Merge template-side attachments (parsed from the template's `attachments`
- * JSON blob) with request-side attachments (already resolved by the HTTP
- * shell). Template attachments come first; request attachments are appended.
- * Invalid JSON on the template side is treated as no template attachments.
- */
-export function mergeAttachments(
-	templateAttachmentsJson: string | undefined,
-	requestAttachments: AttachmentRef[] | undefined,
-): { filename: string; contentType?: string; url: string }[] | undefined {
-	let templateAttachments: { filename: string; contentType?: string; url: string }[] = [];
-
-	if (templateAttachmentsJson) {
-		try {
-			const parsed = JSON.parse(templateAttachmentsJson) as {
-				filename: string;
-				contentType?: string;
-				url: string;
-			}[];
-			templateAttachments = parsed.map((a) => ({
-				filename: a.filename,
-				contentType: a.contentType,
-				url: a.url,
-			}));
-		} catch {
-			// Invalid JSON — ignore template attachments.
-		}
-	}
-
-	const requestStripped = (requestAttachments ?? []).map((a) => ({
-		filename: a.filename,
-		contentType: a.contentType,
-		url: a.url,
-	}));
-
-	const merged = [...templateAttachments, ...requestStripped];
-	return merged.length > 0 ? merged : undefined;
-}
+// The pure content/variable helpers + the AttachmentRef type live in
+// ./dispatchContent (kept out of this file so it stays under the file-size
+// ratchet). They're re-exported here so existing importers — transactional/api.ts
+// and the unit tests — keep a stable path.
+export { validateDataVariables, resolveLanguage, selectContent, mergeAttachments };
+export type { AttachmentRef } from './dispatchContent';
 
 // ============================================================
 // Internal mutation — the intake entry point
@@ -269,7 +113,12 @@ export const dispatch = internalMutation({
 
 		// 1b. Reject at intake (HTTP 4xx, no row) when no delivery provider is set.
 		if (!(await isDeliveryConfigured(ctx, 'transactional'))) {
-			return { ok: false, reason: 'no_delivery_provider', detail: 'No email delivery provider is configured. Set EMAIL_PROVIDER (+ credentials) or a provider route before sending transactional email.' };
+			return {
+				ok: false,
+				reason: 'no_delivery_provider',
+				detail:
+					'No email delivery provider is configured. Set EMAIL_PROVIDER (+ credentials) or a provider route before sending transactional email.',
+			};
 		}
 		// 2. Blocklist. The shared `isSuppressed` owns the normalization +
 		//    `by_email` point read (the HTTP shell already lowercases + trims,
@@ -325,9 +174,7 @@ export const dispatch = internalMutation({
 		// saved-block edit propagated to the consumer's content JSON but the
 		// rerender pool has not yet caught up. Cached `htmlContent` is used.
 		if (template.htmlRenderState?.stale) {
-			logWarn(
-				`htmlRenderState.stale at send time for ${template._id}; using cached htmlContent`,
-			);
+			logWarn(`htmlRenderState.stale at send time for ${template._id}; using cached htmlContent`);
 		}
 
 		// 4. Sender + domain verification. Resolve `defaultFromEmail` from
@@ -352,7 +199,7 @@ export const dispatch = internalMutation({
 		// 5. Validate `dataVariables` shape against the template's declared schema.
 		const variableValidation = validateDataVariables(
 			args.dataVariables,
-			template.dataVariablesSchema,
+			template.dataVariablesSchema
 		);
 		if (!variableValidation.valid) {
 			return {
@@ -382,15 +229,19 @@ export const dispatch = internalMutation({
 			args.language,
 			contact?.language,
 			template.defaultLanguage,
-			supportedLanguages,
+			supportedLanguages
 		);
 
-		const { html: htmlContentToSend, subject: subjectToSend, resolvedLanguage } = selectContent(
+		const {
+			html: htmlContentToSend,
+			subject: subjectToSend,
+			resolvedLanguage,
+		} = selectContent(
 			language,
 			template.defaultLanguage ?? 'en',
 			template.htmlContent,
 			template.subject,
-			template.htmlTranslations,
+			template.htmlTranslations
 		);
 
 		// 8. Provider route resolution. Reads the route config + health
@@ -419,9 +270,7 @@ export const dispatch = internalMutation({
 			queuedAt: now,
 			...(resolvedRoute ? { providerType: resolvedRoute.providerType } : {}),
 			correlationId,
-			...(attachmentStorageIds && attachmentStorageIds.length > 0
-				? { attachmentStorageIds }
-				: {}),
+			...(attachmentStorageIds && attachmentStorageIds.length > 0 ? { attachmentStorageIds } : {}),
 		});
 
 		// 11. Counter increments — all atomic with the row insert.
@@ -450,7 +299,7 @@ export const dispatch = internalMutation({
 		// Feedback-ID SenderId the worker's transactional composer emits.
 		const organizationId = await ctx.runQuery(
 			internal.campaigns.sendQueries.getSingletonOrganizationId,
-			{},
+			{}
 		);
 		await transactionalEmailPool.enqueueAction(
 			ctx,
@@ -485,7 +334,7 @@ export const dispatch = internalMutation({
 				context: {
 					sendRef: { kind: 'transactional' as const, id: sendId },
 				},
-			},
+			}
 		);
 
 		return {

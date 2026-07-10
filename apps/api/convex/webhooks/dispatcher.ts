@@ -193,7 +193,7 @@ const DISPATCH: DispatchTable = {
 			// circuit-breaker signal re-targets to `warned` (no operational
 			// behavior change — `throttled` never gated sends in the Abuse
 			// gate; both `warned` and the old `throttled` are advisory).
-			await ctx.runMutation(internal.organizations.abuseStatus.transition, {
+			await ctx.runMutation(internal.workspaces.abuseStatus.transition, {
 				input: {
 					to: 'warned',
 					at: Date.now(),
@@ -259,7 +259,7 @@ const DISPATCH: DispatchTable = {
 			e.complaintRate !== undefined ? ` (${(e.complaintRate * 100).toFixed(2)}%)` : '';
 		const campaignSuffix = e.campaignId ? ` [campaign ${e.campaignId}]` : '';
 		try {
-			await ctx.runMutation(internal.organizations.abuseStatus.transition, {
+			await ctx.runMutation(internal.workspaces.abuseStatus.transition, {
 				input: {
 					to: 'warned',
 					at: Date.now(),

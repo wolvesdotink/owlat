@@ -5,7 +5,7 @@ import type { Id } from '../_generated/dataModel';
 import { requirePlatformAdmin } from './platformAdmin';
 import { throwNotFound, throwInvalidInput, throwInvalidState } from '../_utils/errors';
 import { recordAuditLog } from '../lib/auditLog';
-import { abuseStatusValidator } from '../organizations/abuseStatus';
+import { abuseStatusValidator } from '../workspaces/abuseStatus';
 
 // Authorization model: every mutation here is an `authedMutation` (session
 // floor) whose handler first calls `requirePlatformAdmin(ctx)` — FORBIDDEN
@@ -37,9 +37,7 @@ export const setOrganizationStatus = authedMutation({
 	handler: async (ctx, args) => {
 		const admin = await requirePlatformAdmin(ctx);
 
-		const settings = await ctx.db
-			.query('instanceSettings')
-			.first();
+		const settings = await ctx.db.query('instanceSettings').first();
 
 		if (!settings) {
 			throwNotFound('Organization');
@@ -47,17 +45,14 @@ export const setOrganizationStatus = authedMutation({
 
 		const previousStatus = settings.abuseStatus || 'clean';
 
-		const outcome = await ctx.runMutation(
-			internal.organizations.abuseStatus.adminOverride,
-			{
-				input: {
-					to: args.abuseStatus,
-					at: Date.now(),
-					reason: args.reason,
-					changedBy: admin.authUserId,
-				},
+		const outcome = await ctx.runMutation(internal.workspaces.abuseStatus.adminOverride, {
+			input: {
+				to: args.abuseStatus,
+				at: Date.now(),
+				reason: args.reason,
+				changedBy: admin.authUserId,
 			},
-		);
+		});
 
 		if (!outcome.ok) {
 			throwInvalidState(`Cannot set abuse status: ${outcome.reason}`);

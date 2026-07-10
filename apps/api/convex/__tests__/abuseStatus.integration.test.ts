@@ -13,7 +13,7 @@ import { convexTest } from 'convex-test';
 import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { internal } from '../_generated/api';
-import { isSendingAllowed } from '../organizations/abuseGate';
+import { isSendingAllowed } from '../workspaces/abuseGate';
 
 vi.mock('../lib/contactCountHelpers', async () => {
 	const actual = await vi.importActual('../lib/contactCountHelpers');
@@ -28,22 +28,23 @@ vi.mock('../lib/contactCountHelpers', async () => {
 
 const allModules = import.meta.glob('../**/*.*s');
 const modules = Object.fromEntries(
-	Object.entries(allModules).filter(([path]) =>
-		!path.includes('sesActions') &&
-		!path.includes('agentSecurity') &&
-		!path.includes('agentContext') &&
-		!path.includes('agentClassifier') &&
-		!path.includes('agentDrafter') &&
-		!path.includes('agentRouter') &&
-		!path.includes('agent/walker') &&
-		!path.includes('agent/steps/index') &&
-		!path.includes('agent/steps/shared') &&
-		!path.includes('agent/steps/classify') &&
-		!path.includes('agent/steps/draft') &&
-		!path.includes('knowledgeExtraction') &&
-		!path.includes('semanticFileProcessing') &&
-		!path.includes('visualizationAgent') &&
-		!path.includes('llmProvider')
+	Object.entries(allModules).filter(
+		([path]) =>
+			!path.includes('sesActions') &&
+			!path.includes('agentSecurity') &&
+			!path.includes('agentContext') &&
+			!path.includes('agentClassifier') &&
+			!path.includes('agentDrafter') &&
+			!path.includes('agentRouter') &&
+			!path.includes('agent/walker') &&
+			!path.includes('agent/steps/index') &&
+			!path.includes('agent/steps/shared') &&
+			!path.includes('agent/steps/classify') &&
+			!path.includes('agent/steps/draft') &&
+			!path.includes('knowledgeExtraction') &&
+			!path.includes('semanticFileProcessing') &&
+			!path.includes('visualizationAgent') &&
+			!path.includes('llmProvider')
 	)
 );
 
@@ -69,7 +70,7 @@ describe('abuseStatus.transition — severity rules', () => {
 		const t = convexTest(schema, modules);
 		await seedSettings(t);
 
-		const outcome = await t.mutation(internal.organizations.abuseStatus.transition, {
+		const outcome = await t.mutation(internal.workspaces.abuseStatus.transition, {
 			input: {
 				to: 'warned',
 				at: Date.now(),
@@ -97,7 +98,7 @@ describe('abuseStatus.transition — severity rules', () => {
 		const t = convexTest(schema, modules);
 		await seedSettings(t, { abuseStatus: 'warned' });
 
-		const outcome = await t.mutation(internal.organizations.abuseStatus.transition, {
+		const outcome = await t.mutation(internal.workspaces.abuseStatus.transition, {
 			input: { to: 'warned', at: Date.now(), reason: 'repeat', changedBy: 'mta' },
 		});
 
@@ -106,9 +107,7 @@ describe('abuseStatus.transition — severity rules', () => {
 
 		// Audit log fires on recorded too — observability captures the attempt.
 		await t.run(async (ctx) => {
-			const logs = await ctx.db
-				.query('auditLogs')
-				.collect();
+			const logs = await ctx.db.query('auditLogs').collect();
 			expect(logs.some((l) => l.action === 'abuse_status_changed')).toBe(true);
 		});
 	});
@@ -118,7 +117,7 @@ describe('abuseStatus.transition — severity rules', () => {
 		const t = convexTest(schema, modules);
 		await seedSettings(t, { abuseStatus: 'warned' });
 
-		const outcome = await t.mutation(internal.organizations.abuseStatus.transition, {
+		const outcome = await t.mutation(internal.workspaces.abuseStatus.transition, {
 			input: { to: 'clean', at: Date.now(), reason: 'recover', changedBy: 'system' },
 		});
 
@@ -130,7 +129,7 @@ describe('abuseStatus.transition — severity rules', () => {
 		const t = convexTest(schema, modules);
 		await seedSettings(t, { abuseStatus: 'suspended' });
 
-		const outcome = await t.mutation(internal.organizations.abuseStatus.transition, {
+		const outcome = await t.mutation(internal.workspaces.abuseStatus.transition, {
 			input: { to: 'warned', at: Date.now(), reason: 'wrong', changedBy: 'system' },
 		});
 
@@ -147,7 +146,7 @@ describe('abuseStatus.transition — severity rules', () => {
 		const t = convexTest(schema, modules);
 		await seedSettings(t, { abuseStatus: 'banned' });
 
-		const outcome = await t.mutation(internal.organizations.abuseStatus.transition, {
+		const outcome = await t.mutation(internal.workspaces.abuseStatus.transition, {
 			input: { to: 'clean', at: Date.now(), reason: 'try', changedBy: 'system' },
 		});
 
@@ -158,7 +157,7 @@ describe('abuseStatus.transition — severity rules', () => {
 	it('returns no_settings_row when the singleton is missing', async () => {
 		const t = convexTest(schema, modules);
 
-		const outcome = await t.mutation(internal.organizations.abuseStatus.transition, {
+		const outcome = await t.mutation(internal.workspaces.abuseStatus.transition, {
 			input: { to: 'warned', at: Date.now(), reason: 'x', changedBy: 'system' },
 		});
 
@@ -176,7 +175,7 @@ describe('abuseStatus.adminOverride — bypass', () => {
 		const t = convexTest(schema, modules);
 		await seedSettings(t, { abuseStatus: 'banned' });
 
-		const outcome = await t.mutation(internal.organizations.abuseStatus.adminOverride, {
+		const outcome = await t.mutation(internal.workspaces.abuseStatus.adminOverride, {
 			input: {
 				to: 'clean',
 				at: Date.now(),
@@ -201,7 +200,7 @@ describe('abuseStatus.adminOverride — bypass', () => {
 		const t = convexTest(schema, modules);
 		await seedSettings(t, { abuseStatus: 'suspended' });
 
-		const outcome = await t.mutation(internal.organizations.abuseStatus.adminOverride, {
+		const outcome = await t.mutation(internal.workspaces.abuseStatus.adminOverride, {
 			input: { to: 'warned', at: Date.now(), reason: 'override', changedBy: 'admin-1' },
 		});
 
@@ -222,7 +221,7 @@ describe('abuseStatus — audit_log effect', () => {
 		const t = convexTest(schema, modules);
 		await seedSettings(t);
 
-		await t.mutation(internal.organizations.abuseStatus.transition, {
+		await t.mutation(internal.workspaces.abuseStatus.transition, {
 			input: {
 				to: 'suspended',
 				at: Date.now(),
@@ -232,9 +231,7 @@ describe('abuseStatus — audit_log effect', () => {
 		});
 
 		await t.run(async (ctx) => {
-			const logs = await ctx.db
-				.query('auditLogs')
-				.collect();
+			const logs = await ctx.db.query('auditLogs').collect();
 			const abuseLog = logs.find((l) => l.action === 'abuse_status_changed');
 			expect(abuseLog).toBeDefined();
 			expect(abuseLog?.userId).toBe('system');
@@ -249,7 +246,7 @@ describe('abuseStatus — audit_log effect', () => {
 		const t = convexTest(schema, modules);
 		await seedSettings(t, { abuseStatus: 'banned' });
 
-		await t.mutation(internal.organizations.abuseStatus.adminOverride, {
+		await t.mutation(internal.workspaces.abuseStatus.adminOverride, {
 			input: {
 				to: 'clean',
 				at: Date.now(),
@@ -270,7 +267,7 @@ describe('abuseStatus — audit_log effect', () => {
 		const t = convexTest(schema, modules);
 		await seedSettings(t, { abuseStatus: 'banned' });
 
-		await t.mutation(internal.organizations.abuseStatus.transition, {
+		await t.mutation(internal.workspaces.abuseStatus.transition, {
 			input: { to: 'clean', at: Date.now(), reason: 'try', changedBy: 'system' },
 		});
 
@@ -309,7 +306,7 @@ describe('abuseGate.requireSendingAllowed', () => {
 		// MutationCtx. The assertion is "does not throw".
 		await expect(
 			t.run(async (ctx) => {
-				const { requireSendingAllowed } = await import('../organizations/abuseGate');
+				const { requireSendingAllowed } = await import('../workspaces/abuseGate');
 				await requireSendingAllowed(ctx);
 				return 'ok';
 			})
@@ -322,7 +319,7 @@ describe('abuseGate.requireSendingAllowed', () => {
 
 		await expect(
 			t.run(async (ctx) => {
-				const { requireSendingAllowed } = await import('../organizations/abuseGate');
+				const { requireSendingAllowed } = await import('../workspaces/abuseGate');
 				await requireSendingAllowed(ctx);
 				return 'ok';
 			})
@@ -335,7 +332,7 @@ describe('abuseGate.requireSendingAllowed', () => {
 
 		await expect(
 			t.run(async (ctx) => {
-				const { requireSendingAllowed } = await import('../organizations/abuseGate');
+				const { requireSendingAllowed } = await import('../workspaces/abuseGate');
 				await requireSendingAllowed(ctx);
 			})
 		).rejects.toThrow(/suspended/);
@@ -347,7 +344,7 @@ describe('abuseGate.requireSendingAllowed', () => {
 
 		await expect(
 			t.run(async (ctx) => {
-				const { requireSendingAllowed } = await import('../organizations/abuseGate');
+				const { requireSendingAllowed } = await import('../workspaces/abuseGate');
 				await requireSendingAllowed(ctx);
 			})
 		).rejects.toThrow(/permanently disabled/);

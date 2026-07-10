@@ -48,11 +48,7 @@ export type TransitionOutcome =
 	  }
 	| {
 			ok: false;
-			reason:
-				| 'no_settings_row'
-				| 'illegal_edge'
-				| 'terminal'
-				| 'severity_downgrade';
+			reason: 'no_settings_row' | 'illegal_edge' | 'terminal' | 'severity_downgrade';
 			from?: AbuseStatus;
 			to?: AbuseStatus;
 	  };
@@ -63,7 +59,7 @@ export const abuseStatusValidator = v.union(
 	v.literal('clean'),
 	v.literal('warned'),
 	v.literal('suspended'),
-	v.literal('banned'),
+	v.literal('banned')
 );
 
 const transitionInputValidator = v.object({
@@ -80,10 +76,7 @@ type ReducerResult = {
 	applied: 'transitioned' | 'recorded';
 };
 
-function reduce(
-	settings: Doc<'instanceSettings'>,
-	input: TransitionInput,
-): ReducerResult {
+function reduce(settings: Doc<'instanceSettings'>, input: TransitionInput): ReducerResult {
 	const from = (settings.abuseStatus ?? 'clean') as AbuseStatus;
 
 	if (from === input.to) {
@@ -108,7 +101,7 @@ async function dispatch(
 	ctx: MutationCtx,
 	settings: Doc<'instanceSettings'>,
 	input: TransitionInput,
-	options: { adminOverride: boolean },
+	options: { adminOverride: boolean }
 ): Promise<TransitionOutcome> {
 	const from = (settings.abuseStatus ?? 'clean') as AbuseStatus;
 

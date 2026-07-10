@@ -38,7 +38,7 @@ const isSending = ref(false);
 const sendResult = ref<{ success: boolean; message: string } | null>(null);
 
 // Instance settings for from email
-const { data: orgSettings } = useOrganizationQuery(api.organizations.settings.get);
+const { data: orgSettings } = useOrganizationQuery(api.workspaces.settings.get);
 
 // Verified domains for the organization
 const { data: domains } = useOrganizationQuery(api.domains.domains.listByOrganization);

@@ -82,7 +82,7 @@ export const remove = authedMutation({
 	handler: async (ctx) => {
 		const session = await getMutationContext(ctx);
 		requirePermission(session.role === 'owner', 'Only the owner can delete the organization');
-		await ctx.scheduler.runAfter(0, internal.organizations.deletion.walker.start, {});
+		await ctx.scheduler.runAfter(0, internal.workspaces.deletion.walker.start, {});
 		return { success: true, message: 'Organization deletion started' };
 	},
 });

@@ -15,20 +15,15 @@ import type { OrganizationRole } from './useOrganization';
  */
 export function useOrganizationContext() {
 	const { isPending: authPending, activeOrganizationId, user } = useAuth();
-	const {
-		organization,
-		organizations,
-		isLoadingMembers,
-		currentMemberRole,
-		setActive,
-	} = useOrganization();
+	const { organization, organizations, isLoadingMembers, currentMemberRole, setActive } =
+		useOrganization();
 
 	// Get instance settings from Convex (timezone, email theme, etc.)
 	const {
 		data: settings,
 		isLoading: settingsLoading,
 		error,
-	} = useConvexQuery(api.organizations.settings.get, () => {
+	} = useConvexQuery(api.workspaces.settings.get, () => {
 		if (authPending.value) {
 			return 'skip';
 		}

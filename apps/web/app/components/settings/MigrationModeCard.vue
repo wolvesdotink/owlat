@@ -21,10 +21,10 @@ const props = defineProps<{
 const { showToast } = useToast();
 
 const { data: settings, isLoading: isLoadingSettings } = useConvexQuery(
-	api.organizations.settings.get,
+	api.workspaces.settings.get,
 	{}
 );
-const { data: liveFlags } = useConvexQuery(api.organizations.featureFlags.getFeatureFlags, {});
+const { data: liveFlags } = useConvexQuery(api.workspaces.featureFlags.getFeatureFlags, {});
 
 const isMigrationMode = computed<boolean>(() => settings.value?.isMigrationMode ?? false);
 // getFeatureFlags returns the already-resolved flag map, so read the effective
@@ -32,11 +32,11 @@ const isMigrationMode = computed<boolean>(() => settings.value?.isMigrationMode 
 const mailExternalEnabled = computed<boolean>(() => liveFlags.value?.['mail.external'] === true);
 
 const { run: updateSettings, isLoading: isSavingSettings } = useBackendOperation(
-	api.organizations.settings.update,
+	api.workspaces.settings.update,
 	{ label: 'Update migration mode' }
 );
 const { run: setFeatureFlag, isLoading: isSavingFlag } = useBackendOperation(
-	api.organizations.featureFlags.setFeatureFlag,
+	api.workspaces.featureFlags.setFeatureFlag,
 	{ label: 'Enable external mailbox import' }
 );
 

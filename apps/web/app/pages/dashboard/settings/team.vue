@@ -114,7 +114,7 @@ const canOfferMailbox = computed(() => postboxEnabled.value && verifiedDomains.v
 // swallows the error), so we only claim "we emailed them" when a transport
 // exists — otherwise the accept link is the real (and only) way in.
 const { data: emailConfigured } = useConvexQuery(
-	api.organizations.featureFlags.deliveryConfigured,
+	api.workspaces.featureFlags.deliveryConfigured,
 	() => ({})
 );
 
@@ -253,7 +253,7 @@ const { signOut } = useAuth();
 const showDeleteOrgModal = ref(false);
 const deleteOrgConfirmText = ref('');
 const isDeletingOrg = ref(false);
-const { run: removeOrganization } = useBackendOperation(api.organizations.settings.remove, {
+const { run: removeOrganization } = useBackendOperation(api.workspaces.settings.remove, {
 	label: 'Delete workspace',
 });
 

@@ -13,7 +13,7 @@ definePageMeta({
 
 // Agent on/off is the `ai.agent` feature flag — not a column on agentConfig.
 const { flags } = useFeatureFlag();
-const { run: setFeatureFlag } = useBackendOperation(api.organizations.featureFlags.setFeatureFlag, {
+const { run: setFeatureFlag } = useBackendOperation(api.workspaces.featureFlags.setFeatureFlag, {
 	label: 'Toggle agent',
 });
 

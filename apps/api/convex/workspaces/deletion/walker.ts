@@ -377,7 +377,7 @@ export function nextTable(table: OrganizationDeletionTable): OrganizationDeletio
 export const start = internalMutation({
 	args: {},
 	handler: async (ctx) => {
-		await ctx.scheduler.runAfter(0, internal.organizations.deletion.walker.runStep, {
+		await ctx.scheduler.runAfter(0, internal.workspaces.deletion.walker.runStep, {
 			table: STEPS[0],
 		});
 	},
@@ -399,14 +399,14 @@ export const runStep = internalMutation({
 		const { hasMore } = await mod.deleteBatch(ctx);
 
 		if (hasMore) {
-			await ctx.scheduler.runAfter(0, internal.organizations.deletion.walker.runStep, { table });
+			await ctx.scheduler.runAfter(0, internal.workspaces.deletion.walker.runStep, { table });
 			return;
 		}
 
 		const next = nextTable(table);
 		if (next === null) return;
 
-		await ctx.scheduler.runAfter(0, internal.organizations.deletion.walker.runStep, {
+		await ctx.scheduler.runAfter(0, internal.workspaces.deletion.walker.runStep, {
 			table: next,
 		});
 	},

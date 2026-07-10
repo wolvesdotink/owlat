@@ -5,7 +5,7 @@ import type { TableNames } from '../_generated/dataModel';
  *
  * Two full-wipe paths consume this list:
  *   - `devShortcuts/reset.ts` — wipes the instance back to a blank slate.
- *   - the organization-deletion walker (organizations/deletion) — GDPR wipe
+ *   - the organization-deletion walker (workspaces/deletion) — GDPR wipe
  *     for an owner's account deletion and 'Delete organization', with a
  *     compile-time guard that every table here has a walker step.
  *

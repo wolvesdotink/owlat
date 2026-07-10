@@ -66,11 +66,11 @@ const credentialArgs = {
 
 /** Actions can't read `ctx.db`; resolve flags via the internal mirror query. */
 async function assertExternalEnabled(ctx: ActionCtx): Promise<void> {
-	const flags = await ctx.runQuery(internal.organizations.featureFlags.getResolvedFlags, {});
+	const flags = await ctx.runQuery(internal.workspaces.featureFlags.getResolvedFlags, {});
 	if (!flags['mail.external']) {
 		throwForbidden(
 			'Feature "mail.external" is disabled on this Owlat instance. An admin can enable it from Settings → Features.',
-			{ feature: 'mail.external' },
+			{ feature: 'mail.external' }
 		);
 	}
 }
@@ -89,7 +89,9 @@ function validateShape(args: { emailAddress: string; imapHost: string; smtpHost:
 }
 
 function encodeEnvelope(password: string, smtpPassword?: string) {
-	const envelope = encryptSecret(JSON.stringify({ imapPassword: password, smtpPassword: smtpPassword ?? password }));
+	const envelope = encryptSecret(
+		JSON.stringify({ imapPassword: password, smtpPassword: smtpPassword ?? password })
+	);
 	return {
 		secretCiphertext: envelope.ciphertext,
 		secretIv: envelope.iv,
@@ -105,7 +107,7 @@ export const connect = authedAction({
 	args: credentialArgs,
 	handler: async (
 		ctx,
-		args,
+		args
 	): Promise<{ mailboxId: Id<'mailboxes'>; externalAccountId: Id<'externalMailAccounts'> }> => {
 		await assertExternalEnabled(ctx);
 		validateShape(args);
@@ -132,7 +134,7 @@ export const updateCredentials = authedAction({
 	args: credentialArgs,
 	handler: async (
 		ctx,
-		args,
+		args
 	): Promise<{ mailboxId: Id<'mailboxes'>; externalAccountId: Id<'externalMailAccounts'> }> => {
 		await assertExternalEnabled(ctx);
 		validateShape(args);
@@ -225,7 +227,7 @@ export const getCredentialsForWorker = internalAction({
 					iv: row.secretIv,
 					authTag: row.secretAuthTag,
 					version: row.secretEnvelopeVersion,
-				}),
+				})
 			);
 		} catch {
 			return null;
