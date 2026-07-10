@@ -17,13 +17,45 @@
 import { v } from 'convex/values';
 import type { Doc } from '../_generated/dataModel';
 import { internalQuery, type MutationCtx, type QueryCtx } from '../_generated/server';
-import { authedMutation, adminQuery } from '../lib/authedFunctions';
+import { authedMutation, authedQuery } from '../lib/authedFunctions';
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import { checkEmailDomainVerification } from '../domains/domains';
 import { isValidEmail } from '../lib/inputGuards';
 import { throwInvalidInput, throwNotFound, throwAlreadyExists } from '../_utils/errors';
 
 type Ctx = QueryCtx | MutationCtx;
+
+/**
+ * `createdBy` sentinel for the bootstrap seed row (`seedDefaultSenderIfNeeded`),
+ * which runs on the send path as any member rather than as a specific admin.
+ */
+const SYSTEM_SEED_CREATED_BY = 'system';
+
+/**
+ * Gate every campaign-sender management surface (the `list` query and the CRUD
+ * mutations) on ONE permission, so brief decision 8's d4 remap of
+ * `campaigns:manage` to editors moves all of them together. Extracted so the
+ * identical call can't drift across the five call sites.
+ */
+async function requireCampaignSendersManage(ctx: QueryCtx | MutationCtx) {
+	return await requireOrgPermission(
+		ctx,
+		'campaigns:manage',
+		'Only owners and admins can manage campaign senders'
+	);
+}
+
+/**
+ * The single user-facing sentence shown when a from-address is neither an
+ * enabled curated sender nor covered by the custom-senders toggle. Exported so
+ * the campaign preflight and both test-send actions surface identical copy.
+ */
+export function senderNotAllowedMessage(fromEmail: string): string {
+	return (
+		`"${fromEmail}" is not an approved campaign sender. ` +
+		'Add it under Campaign senders, or allow custom senders in Settings.'
+	);
+}
 
 /**
  * Normalize a from-address for storage / lookup: trimmed + lowercased. Callers
@@ -92,13 +124,14 @@ async function assertVerifiedSenderDomain(ctx: MutationCtx, email: string): Prom
 }
 
 /**
- * List every curated campaign sender. Admin-gated: the sender list is an
- * org-configuration surface, so it stays behind the same floor as the settings
- * that manage it.
+ * List every curated campaign sender. Gated on `campaigns:manage` (not merely a
+ * role) so it moves with the four mutations when d4 remaps that permission to
+ * editors — otherwise one surface would split across two auth models.
  */
-export const list = adminQuery({
+export const list = authedQuery({
 	args: {},
 	handler: async (ctx): Promise<Doc<'campaignSenders'>[]> => {
+		await requireCampaignSendersManage(ctx);
 		// bounded: curated list is intentionally tiny (a handful of addresses).
 		return await ctx.db.query('campaignSenders').take(200);
 	},
@@ -116,11 +149,7 @@ export const create = authedMutation({
 		isDefault: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
-		const session = await requireOrgPermission(
-			ctx,
-			'campaigns:manage',
-			'Only owners and admins can manage campaign senders'
-		);
+		const session = await requireCampaignSendersManage(ctx);
 		const email = normalizeEmail(args.email);
 		await assertVerifiedSenderDomain(ctx, email);
 
@@ -160,11 +189,7 @@ export const update = authedMutation({
 		isEnabled: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'campaigns:manage',
-			'Only owners and admins can manage campaign senders'
-		);
+		await requireCampaignSendersManage(ctx);
 		const sender = await ctx.db.get(args.id);
 		if (!sender) {
 			throwNotFound('Campaign sender');
@@ -187,11 +212,7 @@ export const update = authedMutation({
 export const setDefault = authedMutation({
 	args: { id: v.id('campaignSenders') },
 	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'campaigns:manage',
-			'Only owners and admins can manage campaign senders'
-		);
+		await requireCampaignSendersManage(ctx);
 		const sender = await ctx.db.get(args.id);
 		if (!sender) {
 			throwNotFound('Campaign sender');
@@ -210,11 +231,7 @@ export const setDefault = authedMutation({
 export const remove = authedMutation({
 	args: { id: v.id('campaignSenders') },
 	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'campaigns:manage',
-			'Only owners and admins can manage campaign senders'
-		);
+		await requireCampaignSendersManage(ctx);
 		const sender = await ctx.db.get(args.id);
 		if (!sender) {
 			throwNotFound('Campaign sender');
@@ -225,48 +242,47 @@ export const remove = authedMutation({
 });
 
 /**
- * Idempotent seed: if no curated senders exist yet and the org has a
- * `defaultFromEmail` set on a verified domain, create one enabled default row
- * from `defaultFromName`/`defaultFromEmail`. Mirrors the
- * `organizations.settings.createInternal` bootstrap precedent — safe to call
- * repeatedly; a no-op once any sender exists.
+ * Idempotent bootstrap seed, run FROM THE SEND PATH (`campaigns/campaigns.ts`
+ * sendNow, `campaigns/scheduling.ts` schedule) right before pre-flight: if no
+ * curated senders exist yet and the org has a `defaultFromEmail` on a verified
+ * domain, create one enabled default row from `defaultFromName`/`defaultFromEmail`.
+ *
+ * Without this, upgrading an existing deployment (toggle OFF, list empty, no
+ * management UI until d2/d3) would brick every campaign send with
+ * `sender_not_allowed` and no admin-clickable recovery. Wiring it into the
+ * mutation send path (not a query — a query can't write) means the first send
+ * self-heals the common case where the campaign uses the org default address.
+ *
+ * A plain helper rather than a mutation: it runs as whichever member is sending
+ * (`campaigns:send`), so it must NOT require `campaigns:manage`. Safe to call
+ * repeatedly — a no-op once any sender exists. Returns whether it inserted.
  */
-export const ensureDefaultSeeded = authedMutation({
-	args: {},
-	handler: async (ctx): Promise<{ seeded: boolean }> => {
-		const session = await requireOrgPermission(
-			ctx,
-			'campaigns:manage',
-			'Only owners and admins can manage campaign senders'
-		);
-		const existing = await ctx.db.query('campaignSenders').first();
-		if (existing) {
-			return { seeded: false };
-		}
-		const settings = await ctx.db.query('instanceSettings').first();
-		const email = settings?.defaultFromEmail
-			? normalizeEmail(settings.defaultFromEmail)
-			: undefined;
-		if (!email || !isValidEmail(email)) {
-			return { seeded: false };
-		}
-		const status = await checkEmailDomainVerification(ctx, email);
-		if (!status.verified) {
-			return { seeded: false };
-		}
-		const now = Date.now();
-		await ctx.db.insert('campaignSenders', {
-			email,
-			displayName: settings?.defaultFromName?.trim() || undefined,
-			isEnabled: true,
-			isDefault: true,
-			createdBy: session.userId,
-			createdAt: now,
-			updatedAt: now,
-		});
-		return { seeded: true };
-	},
-});
+export async function seedDefaultSenderIfNeeded(ctx: MutationCtx): Promise<boolean> {
+	const existing = await ctx.db.query('campaignSenders').first();
+	if (existing) {
+		return false;
+	}
+	const settings = await ctx.db.query('instanceSettings').first();
+	const email = settings?.defaultFromEmail ? normalizeEmail(settings.defaultFromEmail) : undefined;
+	if (!email || !isValidEmail(email)) {
+		return false;
+	}
+	const status = await checkEmailDomainVerification(ctx, email);
+	if (!status.verified) {
+		return false;
+	}
+	const now = Date.now();
+	await ctx.db.insert('campaignSenders', {
+		email,
+		displayName: settings?.defaultFromName?.trim() || undefined,
+		isEnabled: true,
+		isDefault: true,
+		createdBy: SYSTEM_SEED_CREATED_BY,
+		createdAt: now,
+		updatedAt: now,
+	});
+	return true;
+}
 
 /**
  * Clear the current default flag (at most one row carries it). Bounded scan —
