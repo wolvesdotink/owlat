@@ -1,5 +1,6 @@
 import { ConvexHttpClient } from 'convex/browser';
 import type { H3Event } from 'h3';
+import { buildInternalTokenUrl } from './internalTokenUrl';
 
 /**
  * Exchange the better-auth session cookie for a Convex JWT and return an
@@ -27,9 +28,12 @@ export async function authedConvexClient(event: H3Event): Promise<ConvexHttpClie
 		throw createError({ statusCode: 401, message: 'Not authenticated' });
 	}
 
-	const host = getRequestHost(event);
-	const proto = getRequestProtocol(event);
-	const tokenResp = await fetch(`${proto}://${host}/api/auth/convex/token`, {
+	// Build the internal token-exchange URL from the TRUSTED configured origin,
+	// never from the request `Host` header — forwarding the caller's cookie to a
+	// spoofable host is a credential-leaking SSRF. `siteUrl` always has a
+	// non-empty default (see nuxt.config.ts runtimeConfig).
+	const siteUrl = config.public.siteUrl as string;
+	const tokenResp = await fetch(buildInternalTokenUrl(siteUrl), {
 		method: 'GET',
 		headers: { cookie: cookieHeader },
 	});
