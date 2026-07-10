@@ -37,14 +37,22 @@ const metaLine = computed(() => {
 		const recipients = c.statsDelivered ?? c.statsSent ?? 0;
 		return `Sent ${formatDate(c.sentAt)} · ${recipients.toLocaleString()} recipients`;
 	}
+	if (c.status === 'pending_review') {
+		return `Awaiting review · updated ${formatCompactRelativeTime(c.updatedAt)}`;
+	}
 	return `Draft · updated ${formatCompactRelativeTime(c.updatedAt)}`;
 });
 </script>
 
 <template>
 	<li
-		class="group flex items-center gap-4 px-4 sm:px-6 py-4 hover:bg-bg-surface transition-colors duration-(--motion-moderate) ease-spring cursor-pointer"
+		class="group flex items-center gap-4 px-4 sm:px-6 py-4 hover:bg-bg-surface transition-colors duration-(--motion-fast) ease-spring cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-inset"
+		tabindex="0"
+		role="link"
+		:aria-label="`Open ${row.campaign.name}`"
 		@click="emit('open')"
+		@keydown.enter="emit('open')"
+		@keydown.space.prevent="emit('open')"
 	>
 		<div class="min-w-0 flex-1">
 			<div class="flex items-center gap-2 min-w-0">
@@ -116,7 +124,7 @@ const metaLine = computed(() => {
 		</div>
 
 		<!-- Primary action (attention verb / A/B results / view) + overflow -->
-		<div class="shrink-0 flex items-center justify-end gap-1" @click.stop>
+		<div class="shrink-0 flex items-center justify-end gap-1" @click.stop @keydown.stop>
 			<UiButton v-if="row.actionLabel" size="sm" variant="secondary" @click="emit('runAction')">
 				{{ row.actionLabel }}
 			</UiButton>
