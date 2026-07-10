@@ -19,8 +19,18 @@ const folderRole = computed(() => (isCustomFolder.value ? '' : folderParam.value
 const customFolderId = computed(() =>
 	isCustomFolder.value ? (folderParam.value as Id<'mailFolders'>) : undefined
 );
-const { mailboxes, currentMailbox, isLoading: mailboxesLoading, error: mailboxError } = usePostboxMailbox();
+const {
+	mailboxes,
+	currentMailbox,
+	isLoading: mailboxesLoading,
+	error: mailboxError,
+} = usePostboxMailbox();
 const mailboxId = computed(() => currentMailbox.value?._id ?? null);
+
+// For the Postbox empty state: surface the resumable per-user onboarding
+// checklist so a member who has no mailbox yet can pick their setup back up here.
+const { user } = useAuth();
+const userId = computed(() => user.value?.id ?? null);
 </script>
 
 <template>
@@ -40,18 +50,16 @@ const mailboxId = computed(() => currentMailbox.value?._id ?? null);
 			/>
 		</div>
 		<div v-else-if="!mailboxesLoading" class="flex-1 flex items-center justify-center p-12">
-			<div class="text-center max-w-md">
+			<div class="w-full max-w-md text-center">
 				<Icon name="lucide:mailbox" class="w-12 h-12 mx-auto text-text-tertiary" />
 				<h2 class="text-xl font-semibold mt-4">No mailbox yet</h2>
 				<p class="text-text-secondary mt-2">
 					Provision your first personal mailbox to start receiving mail.
 				</p>
-				<NuxtLink
-					to="/dashboard/postbox/settings/add-account"
-					class="btn btn-primary mt-6"
-				>
+				<NuxtLink to="/dashboard/postbox/settings/add-account" class="btn btn-primary mt-6">
 					Add mail account
 				</NuxtLink>
+				<OnboardingUserChecklist v-if="userId" :user-id="userId" class="mt-8 text-left" />
 			</div>
 		</div>
 		<div v-else class="flex-1 flex items-center justify-center">
