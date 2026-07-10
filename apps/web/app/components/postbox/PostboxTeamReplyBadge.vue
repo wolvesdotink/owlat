@@ -18,6 +18,14 @@ const label = computed(() => {
 	const reply = data.value;
 	if (!reply) return null;
 	const when = formatRelativeTime(reply.at);
+	// Send-as marker: the reply went out under the teammate's PERSONAL address, so
+	// its copy lives in their own mailbox — not this team thread. Say so plainly so
+	// a teammate knows the reply happened even though it isn't here (no silent fork).
+	if (reply.isFromPersonalAddress) {
+		if (reply.byIsYou) return `You replied from your personal address · ${when}`;
+		if (reply.byName) return `${reply.byName} replied from their personal address · ${when}`;
+		return `A teammate replied from their personal address · ${when}`;
+	}
 	if (reply.byIsYou) return `You replied last · ${when}`;
 	if (reply.byName) return `${reply.byName} replied last · ${when}`;
 	return `A teammate replied last · ${when}`;
