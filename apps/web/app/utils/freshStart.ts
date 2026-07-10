@@ -1,10 +1,9 @@
 /**
  * Pure logic for the default (non-migration) fresh-start onboarding path.
  *
- * Kept framework-free so the two decisions the flow hinges on are unit-testable
- * without a Convex client or a mounted component:
- *   - what the Postbox mailbox guard should show, and
- *   - which onboarding steps completing the welcome should mark.
+ * Kept framework-free so the decision the flow hinges on is unit-testable
+ * without a Convex client or a mounted component: what the Postbox mailbox guard
+ * should show for a member with no open mailbox.
  */
 
 /**
@@ -41,33 +40,4 @@ export function deriveMailboxGuardState(input: MailboxGuardInput): MailboxGuardS
 	if (input.reservedAddress) return 'reserved';
 	if (input.externalAllowed) return 'external-allowed';
 	return 'dead-end';
-}
-
-export interface FreshPathCompletion {
-	/** The member finished the welcome with a live personal mailbox. */
-	hasMailbox: boolean;
-	/** They sent the optional "email yourself" test message. */
-	testEmailSent: boolean;
-}
-
-export interface FreshPathOnboardingEffects {
-	/** Mark `userOnboarding.mailboxReady` (via `completeFreshStart`). */
-	markMailboxReady: boolean;
-	/** `firstSendDone` — set by the send flow itself, mirrored here for callers. */
-	markFirstSendDone: boolean;
-}
-
-/**
- * Map what the member actually did in the welcome to the onboarding steps that
- * become complete. `mailboxReady` follows from finishing with a live mailbox;
- * `firstSendDone` follows from the optional test send (the send mutation writes
- * it server-side — this mirror lets the client reason about the same fact).
- */
-export function freshPathOnboardingEffects(
-	completion: FreshPathCompletion
-): FreshPathOnboardingEffects {
-	return {
-		markMailboxReady: completion.hasMailbox,
-		markFirstSendDone: completion.testEmailSent,
-	};
 }

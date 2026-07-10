@@ -1,9 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-	deriveMailboxGuardState,
-	freshPathOnboardingEffects,
-	type MailboxGuardInput,
-} from '../freshStart';
+import { deriveMailboxGuardState, type MailboxGuardInput } from '../freshStart';
 
 const base: MailboxGuardInput = {
 	loading: false,
@@ -63,28 +59,5 @@ describe('deriveMailboxGuardState — reserved / external-allowed / dead-end', (
 
 	it('treats an empty reservation string as no reservation', () => {
 		expect(deriveMailboxGuardState({ ...base, reservedAddress: '' })).toBe('dead-end');
-	});
-});
-
-describe('freshPathOnboardingEffects — welcome completion → onboarding steps', () => {
-	it('marks mailboxReady when the member finished with a live mailbox', () => {
-		expect(freshPathOnboardingEffects({ hasMailbox: true, testEmailSent: false })).toEqual({
-			markMailboxReady: true,
-			markFirstSendDone: false,
-		});
-	});
-
-	it('marks firstSendDone when the test email was sent', () => {
-		expect(freshPathOnboardingEffects({ hasMailbox: true, testEmailSent: true })).toEqual({
-			markMailboxReady: true,
-			markFirstSendDone: true,
-		});
-	});
-
-	it('marks nothing when the member finished without a mailbox and sent nothing', () => {
-		expect(freshPathOnboardingEffects({ hasMailbox: false, testEmailSent: false })).toEqual({
-			markMailboxReady: false,
-			markFirstSendDone: false,
-		});
 	});
 });
