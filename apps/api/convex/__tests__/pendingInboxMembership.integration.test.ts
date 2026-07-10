@@ -322,6 +322,44 @@ describe('pendingMailbox.cancelInboxMembershipsForEmail', () => {
 		});
 	});
 
+	it('scopes the sweep to one inbox when mailboxId is given, leaving siblings live', async () => {
+		setAdminSession();
+		const t = convexTest(schema, modules);
+		const supportId = await seedSharedMailbox(t, 'support@hinterland.camp');
+		const salesId = await seedSharedMailbox(t, 'sales@hinterland.camp');
+		await t.mutation(api.mail.pendingMailbox.reserveInboxMembership, {
+			mailboxId: supportId,
+			inviteeEmail: 'newbie@example.com',
+		});
+		await t.mutation(api.mail.pendingMailbox.reserveInboxMembership, {
+			mailboxId: salesId,
+			inviteeEmail: 'newbie@example.com',
+		});
+
+		// Roll back only the sales grant (the reserve-failed-invite rollback path).
+		const result = await t.mutation(api.mail.pendingMailbox.cancelInboxMembershipsForEmail, {
+			inviteeEmail: 'newbie@example.com',
+			mailboxId: salesId,
+		});
+		expect(result.canceled).toBe(1);
+
+		// The support grant survives and still materializes on accept.
+		setInviteeSession('newbie-user');
+		await seedUserProfile(t, 'newbie-user', 'newbie@example.com');
+		const claimed = await t.mutation(api.mail.pendingMailbox.claimInboxMemberships, {});
+		expect(claimed.claimed).toEqual(['support@hinterland.camp']);
+
+		await t.run(async (ctx) => {
+			const membership = await ctx.db
+				.query('mailboxMembers')
+				.withIndex('by_mailbox_user', (q) =>
+					q.eq('mailboxId', supportId).eq('authUserId', 'newbie-user')
+				)
+				.unique();
+			expect(membership?.role).toBe('member');
+		});
+	});
+
 	it('leaves a subsequent accept with no membership to claim', async () => {
 		setAdminSession();
 		const t = convexTest(schema, modules);

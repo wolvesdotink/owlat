@@ -364,6 +364,11 @@ export const claimInboxMemberships = authedMutation({
 export const cancelInboxMembershipsForEmail = adminMutation({
 	args: {
 		inviteeEmail: v.string(),
+		// When present, narrow the sweep to this one inbox's grant. The invite-cancel
+		// path leaves it off (the whole invitation is gone, so every grant it carried
+		// should go too); the reserve-failed-invite rollback passes it so it deletes
+		// only the grant this attempt created, never a sibling inbox's live grant.
+		mailboxId: v.optional(v.id('mailboxes')),
 	},
 	handler: async (ctx, args) => {
 		const session = await getBetterAuthSessionWithRole(ctx);
@@ -382,10 +387,15 @@ export const cancelInboxMembershipsForEmail = adminMutation({
 				q.eq('organizationId', organizationId).eq('inviteeEmail', inviteeEmail)
 			)
 			.collect(); // bounded: a person is pre-added to at most a handful of inboxes
-		for (const grant of grants) {
+		const targetMailboxId = args.mailboxId;
+		const toCancel =
+			targetMailboxId === undefined
+				? grants
+				: grants.filter((grant) => grant.mailboxId === targetMailboxId);
+		for (const grant of toCancel) {
 			await ctx.db.delete(grant._id);
 		}
-		return { canceled: grants.length };
+		return { canceled: toCancel.length };
 	},
 });
 
