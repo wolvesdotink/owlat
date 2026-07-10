@@ -12,6 +12,19 @@ import { WORKSPACE_ACCENTS, type WorkspaceAccent, accentLabel } from '~/lib/desk
 
 const { workspaces, activeId, switchTo, setWorkspaceAccent } = useDesktopWorkspaces();
 const { badgeFor } = useWorkspaceBadges();
+// While ⌘ is held, reveal the ⌘1–9 switch hints on the first nine tiles so the
+// (already-wired) useWorkspaceHotkeys shortcut is discoverable. Opacity-only, so
+// no layout shift; the hint text stays in the DOM.
+const { held: metaHeld } = useMetaHold();
+
+/** Tile-face text colour — the warm off-white used across the avatar palette
+ * for readable initials on a saturated accent fill. */
+const TILE_INK = '#f5f1ea';
+
+/** Number hint for the Nth tile, or empty past the ⌘1–9 range. */
+function hintFor(index: number): string {
+	return index < 9 ? String(index + 1) : '';
+}
 
 function initials(label: string): string {
 	return label
@@ -159,18 +172,35 @@ onUnmounted(() => {
 		class="flex items-center gap-2 overflow-x-auto px-3 py-2 border-b border-border-subtle"
 	>
 		<button
-			v-for="ws in workspaces"
+			v-for="(ws, i) in workspaces"
 			:key="ws.id"
 			:title="ws.label"
-			class="relative h-9 w-9 flex-shrink-0 rounded-lg text-xs font-semibold flex items-center justify-center transition-colors"
-			:class="
-				ws.id === activeId ? 'text-white' : 'bg-bg-base text-text-secondary hover:text-text-primary'
-			"
-			:style="ws.id === activeId ? { backgroundColor: ws.accentColor } : undefined"
+			:aria-current="ws.id === activeId ? 'true' : undefined"
+			class="ws-tile relative h-9 w-9 flex-shrink-0 rounded-lg text-xs font-semibold grid place-items-center transition-transform duration-(--motion-fast) ease-spring focus-visible:outline-none"
+			:class="ws.id === activeId ? 'ws-tile--active' : ''"
+			:style="{
+				backgroundColor: ws.accentColor,
+				color: TILE_INK,
+				'--ws-tile-accent': ws.accentColor,
+			}"
 			@click="switchTo(ws.id)"
 			@contextmenu.prevent="openPicker(ws.id, $event)"
 		>
-			{{ initials(ws.label) }}
+			<!-- Initials + ⌘-hint share one grid cell; opacity-only crossfade keeps
+			     zero layout shift and the hint text always in the DOM. -->
+			<span
+				class="col-start-1 row-start-1 transition-opacity duration-(--motion-fast) ease-spring"
+				:class="metaHeld && i < 9 ? 'opacity-0' : 'opacity-100'"
+			>
+				{{ initials(ws.label) }}
+			</span>
+			<span
+				aria-hidden="true"
+				class="col-start-1 row-start-1 text-sm font-bold tabular-nums pointer-events-none transition-opacity duration-(--motion-fast) ease-spring"
+				:class="metaHeld && i < 9 ? 'opacity-100' : 'opacity-0'"
+			>
+				{{ hintFor(i) }}
+			</span>
 			<span
 				v-if="badgeFor(ws.id) > 0"
 				class="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-red-500 text-[10px] text-white flex items-center justify-center"
@@ -231,3 +261,28 @@ onUnmounted(() => {
 		</Teleport>
 	</div>
 </template>
+
+<style scoped>
+/* Active workspace: an accent ring with a base-coloured gap so it reads on any
+ * tile hue. Uses the tile's own accent (set inline as --ws-tile-accent). */
+.ws-tile--active {
+	box-shadow:
+		0 0 0 2px var(--color-bg-base),
+		0 0 0 4px var(--ws-tile-accent);
+}
+.ws-tile:hover {
+	transform: translateY(-1px);
+}
+/* Keyboard focus gets the brand ring, distinct from the identity accent ring. */
+.ws-tile:focus-visible {
+	box-shadow:
+		0 0 0 2px var(--color-bg-base),
+		0 0 0 4px var(--color-brand);
+}
+@media (prefers-reduced-motion: reduce) {
+	.ws-tile,
+	.ws-tile:hover {
+		transform: none;
+	}
+}
+</style>
