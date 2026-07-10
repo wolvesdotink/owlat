@@ -2,17 +2,17 @@
  * useDataTable — the shared list-table contract the three Audience list pages
  * (Contacts, Topics, Segments) now converge on. The load-bearing guarantee this
  * suite locks in is HONESTY: the columns a page *declares* sortable are exactly
- * the columns that render a sort affordance. Because every page derives its
- * header affordance from `isSortable`/`getSortIcon`, "declared sortable" can
- * never drift from "rendered sortable".
+ * the columns that can sort. `toggleSort` no-ops on any field the page did not
+ * declare, so a header wired to a non-declared column simply does nothing —
+ * "declared sortable" can never drift into a silently-inert sort.
  */
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, vi } from 'vitest';
 import { useDebouncedSearch } from '../useDebouncedSearch';
 import { useDataTable } from '../useDataTable';
 
 // useDataTable composes useDebouncedSearch, which Nuxt auto-imports at runtime.
 beforeAll(() => {
-	(globalThis as Record<string, unknown>)['useDebouncedSearch'] = useDebouncedSearch;
+	vi.stubGlobal('useDebouncedSearch', useDebouncedSearch);
 });
 
 describe('useDataTable sortable-column contract', () => {
@@ -42,6 +42,19 @@ describe('useDataTable sortable-column contract', () => {
 		const { isSortable } = useDataTable<'a' | 'b'>({ defaultSort: 'a' });
 		expect(isSortable('a')).toBe(true);
 		expect(isSortable('b')).toBe(true);
+	});
+
+	it('toggleSort is a no-op for an undeclared column', () => {
+		const { sortBy, sortOrder, toggleSort } = useDataTable<'name' | 'createdAt'>({
+			defaultSort: 'createdAt',
+			defaultOrder: 'desc',
+			sortableFields: ['createdAt'],
+		});
+
+		// Attempting to sort by an undeclared column leaves sort state untouched.
+		toggleSort('name');
+		expect(sortBy.value).toBe('createdAt');
+		expect(sortOrder.value).toBe('desc');
 	});
 });
 

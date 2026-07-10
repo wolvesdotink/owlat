@@ -59,6 +59,8 @@ export function useDataTable<TSortField extends string = string>(
 	 * but 'desc' for date/timestamp fields (when field name includes 'date', 'At', or 'time')
 	 */
 	const toggleSort = (field: TSortField) => {
+		// Undeclared columns can never sort — keeps "declared sortable" load-bearing.
+		if (!isSortable(field)) return;
 		if (sortBy.value === field) {
 			sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc';
 		} else {
