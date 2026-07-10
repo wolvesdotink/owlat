@@ -19,7 +19,7 @@ import { authedMutation, publicQuery } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { requireMailboxAccess } from './permissions';
-import { resolveAllowedFromAddressesForCtx } from './identities';
+import { resolveSendAsIdentitiesForCtx } from './identities';
 import { getOrThrow, throwForbidden, throwInvalidState, throwNotFound } from '../_utils/errors';
 import { assertStateIs, type TransitionOutcome as DraftTransitionOutcome } from './draftLifecycle';
 
@@ -128,11 +128,18 @@ export const update = authedMutation({
 });
 
 /**
- * Switch the From identity for a draft. The address MUST be in the
- * mailbox's allowed-from set (canonical address or active alias). This
- * is the only user-facing path that sets `fromAddress`; `update` does
- * not accept it, and the dispatch-time check rejects mismatches if any
- * future path lets a foreign address slip through.
+ * Switch the From identity for a draft. The address MUST be one of the
+ * sanctioned send-as identities for this draft: the thread mailbox's own
+ * allowed-from set (canonical address or active alias) OR — in a shared (team)
+ * inbox — an allowed-from address of one of the acting teammate's OWN personal
+ * mailboxes. Picking a personal identity records `sendAsMailboxId` so dispatch
+ * routes through that mailbox's transport and lands the sent copy there.
+ *
+ * This is the only user-facing path that sets `fromAddress`/`sendAsMailboxId`;
+ * `update` does not accept them, and the dispatch-time re-check independently
+ * re-validates the binding if any future path lets a foreign address slip
+ * through. The allow-set is extended to sanctioned cross-mailbox identities,
+ * never bypassed — everything else is still rejected.
  */
 export const setIdentity = authedMutation({
 	args: {
@@ -146,13 +153,18 @@ export const setIdentity = authedMutation({
 		assertStateIs(draft, 'draft');
 
 		const candidate = args.fromAddress.trim().toLowerCase();
-		const allowed = await resolveAllowedFromAddressesForCtx(ctx, draft.mailboxId);
-		if (!allowed.includes(candidate)) {
+		const identities = await resolveSendAsIdentitiesForCtx(ctx, owned.mailbox, owned.userId);
+		const match = identities.find((i) => i.address === candidate);
+		if (!match) {
 			throwForbidden('From address not authorized for this mailbox');
 		}
 
 		await ctx.db.patch(args.draftId, {
 			fromAddress: candidate,
+			// Personal send-as ⇒ record the sending mailbox; team/own identity ⇒
+			// clear it so the classic path (transport + Sent copy on the thread
+			// mailbox) runs unchanged.
+			sendAsMailboxId: match.mailboxId === draft.mailboxId ? undefined : match.mailboxId,
 			lastEditedAt: Date.now(),
 		});
 	},

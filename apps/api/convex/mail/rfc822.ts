@@ -23,6 +23,10 @@ import type { Id } from '../_generated/dataModel';
 export interface DraftRow {
 	_id: Id<'mailDrafts'>;
 	mailboxId: Id<'mailboxes'>;
+	// Send-as choice: the mailbox the reply is sent FROM (a teammate's personal
+	// mailbox) when it differs from the thread's `mailboxId`. Unset ⇒ the team/own
+	// identity — the classic path. Drives transport + Sent-copy routing.
+	sendAsMailboxId?: Id<'mailboxes'>;
 	inReplyToMessageId?: Id<'mailMessages'>;
 	threadId?: Id<'mailThreads'>;
 	toAddresses: string[];
@@ -285,11 +289,16 @@ export function quotedPrintableEncode(input: string): string {
  * single-line render trivially exceeds the 998-octet line cap (RFC 5322
  * §2.1.1).
  */
-export function encodeTextBody(body: string): { cte: '7bit' | 'quoted-printable'; encoded: string } {
+export function encodeTextBody(body: string): {
+	cte: '7bit' | 'quoted-printable';
+	encoded: string;
+} {
 	const normalized = body.replace(/\r\n|\r|\n/g, '\r\n');
 	// eslint-disable-next-line no-control-regex
 	const isAscii = /^[\x00-\x7F]*$/.test(normalized);
-	const lineSafe = normalized.split('\r\n').every((line) => Buffer.byteLength(line, 'utf-8') <= 998);
+	const lineSafe = normalized
+		.split('\r\n')
+		.every((line) => Buffer.byteLength(line, 'utf-8') <= 998);
 	if (isAscii && lineSafe) {
 		return { cte: '7bit', encoded: normalized };
 	}
@@ -297,7 +306,12 @@ export function encodeTextBody(body: string): { cte: '7bit' | 'quoted-printable'
 }
 
 /** Render a single text MIME part: boundary, content-type, chosen CTE, encoded body. */
-function textPart(boundary: string, contentType: string, body: string, trailingCrlf: boolean): string {
+function textPart(
+	boundary: string,
+	contentType: string,
+	body: string,
+	trailingCrlf: boolean
+): string {
 	const { cte, encoded } = encodeTextBody(body);
 	const part =
 		`--${boundary}\r\nContent-Type: ${contentType}; charset=utf-8\r\n` +
@@ -319,10 +333,7 @@ interface MimeEntity {
 
 /** Emit an entity as a child part under `parentBoundary` (no trailing CRLF). */
 function asPart(parentBoundary: string, entity: MimeEntity): string {
-	return (
-		`--${parentBoundary}\r\n` +
-		`${entity.headerLines.join('\r\n')}\r\n\r\n${entity.body}`
-	);
+	return `--${parentBoundary}\r\n` + `${entity.headerLines.join('\r\n')}\r\n\r\n${entity.body}`;
 }
 
 /** Join child parts with CRLF and close the multipart with its `--boundary--`. */
@@ -351,7 +362,13 @@ function attachmentEntity(att: {
 
 export function buildRfc822(
 	draft: DraftRow,
-	attachmentBuffers: Array<{ filename: string; contentType: string; isInline: boolean; data: Buffer; contentId?: string }>,
+	attachmentBuffers: Array<{
+		filename: string;
+		contentType: string;
+		isInline: boolean;
+		data: Buffer;
+		contentId?: string;
+	}>,
 	rfc822MessageId: string,
 	inReplyToHeaderValue: string | undefined,
 	referencesHeaderValue: string | undefined
@@ -427,9 +444,7 @@ export function buildRfc822(
 			...inlineBuffers.map((att) => asPart(relBoundary, attachmentEntity(att))),
 		];
 		content = {
-			headerLines: [
-				`Content-Type: multipart/related; type="text/html"; boundary="${relBoundary}"`,
-			],
+			headerLines: [`Content-Type: multipart/related; type="text/html"; boundary="${relBoundary}"`],
 			body: closeMultipart(relBoundary, parts),
 		};
 	}
@@ -449,7 +464,7 @@ export function buildRfc822(
 
 	const raw = Buffer.from(
 		`${headers.join('\r\n')}\r\n${content.headerLines.join('\r\n')}\r\n\r\n${content.body}\r\n`,
-		'utf-8',
+		'utf-8'
 	);
 	return { raw, size: raw.length };
 }

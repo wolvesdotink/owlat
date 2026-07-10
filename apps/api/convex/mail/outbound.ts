@@ -24,12 +24,7 @@ import type { EditorBlock } from '@owlat/shared/types';
 import { getOptional } from '../lib/env';
 import { getMtaConfig, scanAttachmentBytes } from './mtaClient';
 import type { TransitionOutcome as DraftTransitionOutcome } from './draftLifecycle';
-import {
-	buildMessageId,
-	buildRfc822,
-	stripHtml,
-	type DraftRow,
-} from './rfc822';
+import { buildMessageId, buildRfc822, stripHtml, type DraftRow } from './rfc822';
 import { rewriteInlineImageCids, isInlineImageReferenced } from '@owlat/shared/inlineImages';
 
 /**
@@ -91,7 +86,10 @@ function renderDraftBodies(draft: DraftRow): { html: string; text: string; amp?:
  * the scanner entirely. This wires it in to match emailWorker.ts.
  */
 export class ScannedMalwareError extends Error {
-	constructor(public readonly filename: string, public readonly reason: string) {
+	constructor(
+		public readonly filename: string,
+		public readonly reason: string
+	) {
 		super(`Attachment "${filename}" blocked by malware scan: ${reason}`);
 		this.name = 'ScannedMalwareError';
 	}
@@ -129,13 +127,13 @@ async function dispatchViaExternalWorker(
 		recipients: string[];
 		rawStorageId: Id<'_storage'>;
 		rfc822MessageId: string;
-	},
+	}
 ): Promise<void> {
 	const transitionAll = async (
 		input:
 			| { to: 'sent'; at: number }
 			| { to: 'bounced'; at: number; bounceMessage?: string }
-			| { to: 'failed'; at: number; errorMessage: string; errorCode?: string },
+			| { to: 'failed'; at: number; errorMessage: string; errorCode?: string }
 	) => {
 		for (let i = 0; i < params.recipients.length; i++) {
 			await ctx.runMutation(internal.mail.postboxOutboundLifecycle.transition, {
@@ -154,7 +152,7 @@ async function dispatchViaExternalWorker(
 		// delivery failure on every recipient instead of silently leaving the
 		// message stuck in `queued` forever (the user sees nothing otherwise).
 		logError(
-			'[Outbound] MAIL_SYNC_API_URL/MAIL_SYNC_API_KEY not set — external message could not be dispatched. Enable the mail.external profile so setup pushes MAIL_SYNC_API_URL + MAIL_SYNC_API_KEY into the Convex runtime.',
+			'[Outbound] MAIL_SYNC_API_URL/MAIL_SYNC_API_KEY not set — external message could not be dispatched. Enable the mail.external profile so setup pushes MAIL_SYNC_API_URL + MAIL_SYNC_API_KEY into the Convex runtime.'
 		);
 		await transitionAll({
 			to: 'failed',
@@ -224,7 +222,11 @@ async function dispatchViaExternalWorker(
 			await ctx.runMutation(internal.mail.postboxOutboundLifecycle.transition, {
 				mailMessageId: params.mailMessageId,
 				recipientIdx: i,
-				input: { to: 'bounced', at: Date.now(), bounceMessage: r.error ?? 'Rejected by SMTP server' },
+				input: {
+					to: 'bounced',
+					at: Date.now(),
+					bounceMessage: r.error ?? 'Rejected by SMTP server',
+				},
 			});
 		} else {
 			await ctx.runMutation(internal.mail.postboxOutboundLifecycle.transition, {
@@ -383,9 +385,8 @@ export const dispatchDraft = internalAction({
 						rawSize: size,
 						rfc822MessageId: rfc822MessageId.replace(/^<|>$/g, ''),
 						inReplyToHeaderValue: inReplyToHeaderValue?.replace(/^<|>$/g, ''),
-						references: referencesHeaderValue
-							?.split(/\s+/)
-							.map((r) => r.replace(/^<|>$/g, '')) ?? [],
+						references:
+							referencesHeaderValue?.split(/\s+/).map((r) => r.replace(/^<|>$/g, '')) ?? [],
 						bodyHtml: draft.bodyHtml,
 						bodyText: draft.bodyText,
 						attachmentsMeta: draft.attachments.map((att, idx) => ({
@@ -397,13 +398,13 @@ export const dispatchDraft = internalAction({
 						})),
 					},
 				},
-			},
+			}
 		);
 
 		if (!sentOutcome.ok) {
 			if (sentOutcome.reason === 'from_revoked') {
 				logError(
-					`[Outbound] Refusing to dispatch draft ${args.draftId}: from-address "${draft.fromAddress}" is not in the allowed set for mailbox ${draft.mailboxId}`,
+					`[Outbound] Refusing to dispatch draft ${args.draftId}: from-address "${draft.fromAddress}" is not in the allowed set for mailbox ${draft.mailboxId}`
 				);
 				// The cascade did not run; clean up the raw .eml we just stored
 				// and revert the draft so the user can edit and retry.
@@ -418,9 +419,7 @@ export const dispatchDraft = internalAction({
 				});
 				return;
 			}
-			logError(
-				`[Outbound] Draft ${args.draftId} dispatch refused: ${sentOutcome.reason}`,
-			);
+			logError(`[Outbound] Draft ${args.draftId} dispatch refused: ${sentOutcome.reason}`);
 			await ctx.storage.delete(rawStorageId).catch(() => {});
 			return;
 		}
@@ -428,7 +427,7 @@ export const dispatchDraft = internalAction({
 		const mailMessageId = sentOutcome.messageId;
 		if (!mailMessageId) {
 			logError(
-				`[Outbound] Draft ${args.draftId} transitioned to sent but no messageId returned; skipping MTA dispatch`,
+				`[Outbound] Draft ${args.draftId} transitioned to sent but no messageId returned; skipping MTA dispatch`
 			);
 			return;
 		}
@@ -436,30 +435,36 @@ export const dispatchDraft = internalAction({
 		// POST to MTA /send for each recipient. We prefix the MTA messageId with
 		// "pb-<mailMessagesId>-" so the bounce/sent webhook can look the row back up.
 		const mta = getMtaConfig();
-		const recipients = [
-			...draft.toAddresses,
-			...draft.ccAddresses,
-			...draft.bccAddresses,
-		].filter((r, i, arr) => arr.indexOf(r) === i);
+		const recipients = [...draft.toAddresses, ...draft.ccAddresses, ...draft.bccAddresses].filter(
+			(r, i, arr) => arr.indexOf(r) === i
+		);
 
 		const dkimDomain = draft.fromAddress.split('@')[1] ?? 'localhost';
+
+		// Send-as choice: a shared-inbox reply sent from a teammate's personal
+		// identity routes through THAT mailbox's transport and allow-set (not the
+		// thread mailbox's). `sendAsMailboxId` is unset for the classic path, so
+		// `sendingMailboxId` collapses to `draft.mailboxId` and behaviour is
+		// unchanged. The reducer independently re-validates the binding.
+		const sendingMailboxId = draft.sendAsMailboxId ?? draft.mailboxId;
 
 		// Fetch the allowed-from set once and pass it into every MTA /send
 		// call. This gives the MTA a hard "is this From authorized?" check
 		// independent of Convex (defence-in-depth around the lifecycle's
-		// reducer-side check).
+		// reducer-side check). Keyed on the SENDING mailbox so the MTA-side
+		// allowlist covers the sanctioned cross-mailbox identity too.
 		const allowedFromAddresses = (await ctx.runQuery(
 			internal.mail.identities.resolveAllowedFromAddresses,
-			{ mailboxId: draft.mailboxId }
+			{ mailboxId: sendingMailboxId }
 		)) as string[];
 
 		// Branch transport on mailbox kind. External mailboxes send through the
 		// user's own SMTP via the mail-sync worker (single POST, synchronous
 		// per-recipient result); hosted mailboxes go per-recipient to the MTA.
-		const transport = await ctx.runQuery(
-			internal.mail.externalAccounts.resolveOutboundTransport,
-			{ mailboxId: draft.mailboxId },
-		);
+		// Resolved from the sending mailbox so each identity uses its OWN transport.
+		const transport = await ctx.runQuery(internal.mail.externalAccounts.resolveOutboundTransport, {
+			mailboxId: sendingMailboxId,
+		});
 		if (transport.kind === 'external') {
 			await dispatchViaExternalWorker(ctx, {
 				externalAccountId: transport.externalAccountId,
@@ -511,40 +516,36 @@ export const dispatchDraft = internalAction({
 						logError(`[Outbound] MTA /send failed for ${to}: ${res.status} ${body}`);
 						// Per-recipient synchronous bounce — record it now rather
 						// than waiting forever in `queued`. Per ADR-0012.
-						await ctx.runMutation(
-							internal.mail.postboxOutboundLifecycle.transition,
-							{
-								mailMessageId,
-								recipientIdx: i,
-								input: {
-									to: 'bounced',
-									at: Date.now(),
-									bounceMessage: `MTA POST ${res.status}: ${body.slice(0, 200)}`,
-								},
-							}
-						);
+						await ctx.runMutation(internal.mail.postboxOutboundLifecycle.transition, {
+							mailMessageId,
+							recipientIdx: i,
+							input: {
+								to: 'bounced',
+								at: Date.now(),
+								bounceMessage: `MTA POST ${res.status}: ${body.slice(0, 200)}`,
+							},
+						});
 					}
 				} catch (err) {
 					logError(`[Outbound] MTA /send error for ${to}:`, err);
 					// Per-recipient pre-MTA error (network failure, DNS, etc.).
 					// Recipient resolves to `failed` instead of staying `queued`.
-					await ctx.runMutation(
-						internal.mail.postboxOutboundLifecycle.transition,
-						{
-							mailMessageId,
-							recipientIdx: i,
-							input: {
-								to: 'failed',
-								at: Date.now(),
-								errorMessage: err instanceof Error ? err.message : String(err),
-								errorCode: 'MTA_POST_NETWORK',
-							},
-						}
-					);
+					await ctx.runMutation(internal.mail.postboxOutboundLifecycle.transition, {
+						mailMessageId,
+						recipientIdx: i,
+						input: {
+							to: 'failed',
+							at: Date.now(),
+							errorMessage: err instanceof Error ? err.message : String(err),
+							errorCode: 'MTA_POST_NETWORK',
+						},
+					});
 				}
 			}
 		} else {
-			logError('[Outbound] MTA_API_URL/MTA_API_KEY not set — message saved to Sent but not dispatched');
+			logError(
+				'[Outbound] MTA_API_URL/MTA_API_KEY not set — message saved to Sent but not dispatched'
+			);
 		}
 	},
 });
