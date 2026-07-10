@@ -300,7 +300,7 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 		</div>
 
 		<!-- Content -->
-		<div>
+		<div class="card p-0 overflow-hidden">
 			<!-- Loading State -->
 			<div v-if="isLoading && !automations" class="flex items-center justify-center py-16">
 				<div class="flex flex-col items-center gap-3">
@@ -361,7 +361,7 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 			</UiEmptyState>
 
 			<!-- Automations Table -->
-			<div v-else class="card p-0 overflow-hidden">
+			<div v-else>
 				<div class="overflow-x-auto">
 					<table class="w-full">
 						<thead>

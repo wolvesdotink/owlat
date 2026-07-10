@@ -219,12 +219,13 @@ const getReasonLabel = (reason: string) => {
 		</div>
 
 		<!-- No Organization State -->
-		<UiEmptyState
-			v-else-if="!hasActiveOrganization"
-			icon="lucide:ban"
-			title="No organization selected"
-			description="Create or select an organization to manage your suppressions."
-		/>
+		<div v-else-if="!hasActiveOrganization" class="card p-0 overflow-hidden">
+			<UiEmptyState
+				icon="lucide:ban"
+				title="No organization selected"
+				description="Create or select an organization to manage your suppressions."
+			/>
+		</div>
 
 		<!-- Content -->
 		<div v-else class="space-y-6">
@@ -302,27 +303,35 @@ const getReasonLabel = (reason: string) => {
 			</div>
 
 			<!-- Empty State -->
-			<UiEmptyState
+			<div
 				v-if="blockedEmailsData && blockedEmailsData.length === 0"
-				icon="lucide:ban"
-				title="No suppressions"
-				description="Nothing is suppressed. Addresses are added automatically when they bounce or when someone marks a send as spam."
+				class="card p-0 overflow-hidden"
 			>
-				<template #action>
-					<UiButton @click="addModal.open()">
-						<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
-						Add suppression
-					</UiButton>
-				</template>
-			</UiEmptyState>
+				<UiEmptyState
+					icon="lucide:ban"
+					title="No suppressions"
+					description="Nothing is suppressed. Addresses are added automatically when they bounce or when someone marks a send as spam."
+				>
+					<template #action>
+						<UiButton @click="addModal.open()">
+							<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
+							Add suppression
+						</UiButton>
+					</template>
+				</UiEmptyState>
+			</div>
 
 			<!-- No Search Results -->
-			<UiEmptyState
+			<div
 				v-else-if="filteredBlockedEmails.length === 0 && searchQuery.trim()"
-				icon="lucide:search"
-				title="No results found"
-				:description="`No suppressions match &quot;${searchQuery}&quot;. Try a different search term.`"
-			/>
+				class="card p-0 overflow-hidden"
+			>
+				<UiEmptyState
+					icon="lucide:search"
+					title="No results found"
+					:description="`No suppressions match &quot;${searchQuery}&quot;. Try a different search term.`"
+				/>
+			</div>
 
 			<!-- Blocked Emails List -->
 			<div v-else-if="filteredBlockedEmails.length > 0" class="card p-0 overflow-hidden">
