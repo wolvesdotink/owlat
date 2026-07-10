@@ -833,6 +833,9 @@ export const latestReplyState = publicQuery({
 			at: latest.at,
 			byName,
 			byIsYou: !!latest.byUserId && latest.byUserId === access.userId,
+			// Send-as marker: the latest reply went out under the teammate's own
+			// personal address (its copy lives in their mailbox, not this thread).
+			isFromPersonalAddress: latest.isFromPersonalAddress === true,
 		};
 	},
 });

@@ -24,7 +24,10 @@ vi.mock('@owlat/api', () => ({
 				cancelPendingSend: 'drafts.cancelPendingSend',
 				cancelScheduledSend: 'drafts.cancelScheduledSend',
 			},
-			identities: { listForOwnedMailbox: 'identities.list' },
+			identities: {
+				listForOwnedMailbox: 'identities.list',
+				listSendAsIdentities: 'identities.listSendAs',
+			},
 			signatures: { list: 'signatures.list' },
 		},
 	},

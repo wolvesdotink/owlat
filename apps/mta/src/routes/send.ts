@@ -46,6 +46,11 @@ interface SendRequest {
 	 * Convex computes this at dispatch time (`resolveAllowedFromAddresses`)
 	 * and passes it in so the MTA can refuse forged-From requests without
 	 * a Convex round-trip. Lowercase canonical addresses.
+	 *
+	 * Shared-inbox send-as (a teammate replying under their own personal
+	 * identity) is covered automatically: Convex keys this set on the SENDING
+	 * mailbox, so the sanctioned cross-mailbox identity is already present here
+	 * and every other address stays blocked. No MTA-side special-casing needed.
 	 */
 	allowedFromAddresses?: string[];
 }
@@ -125,18 +130,13 @@ export function createSendHandler(queue: Queue<EmailJob>, redis: Redis) {
 			// ("Alice <alice@example.com>") must still bind to the bare allowed
 			// address, while a forged address can't hide behind a display name.
 			const fromLower = parsedFrom.address;
-			const ok = body.allowedFromAddresses.some(
-				(allowed) => allowed.toLowerCase() === fromLower
-			);
+			const ok = body.allowedFromAddresses.some((allowed) => allowed.toLowerCase() === fromLower);
 			if (!ok) {
 				logger.warn(
 					{ messageId: body.messageId, from: body.from, allowed: body.allowedFromAddresses },
 					'Postbox /send rejected — From address not in allowed set'
 				);
-				return c.json(
-					{ error: 'From address not authorized for this mailbox' },
-					403
-				);
+				return c.json({ error: 'From address not authorized for this mailbox' }, 403);
 			}
 		}
 
