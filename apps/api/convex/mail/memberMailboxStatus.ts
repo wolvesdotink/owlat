@@ -16,7 +16,7 @@
 
 import { v } from 'convex/values';
 import { authedQuery } from '../lib/authedFunctions';
-import { requireOrgMember } from '../lib/sessionOrganization';
+import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 import type { Doc } from '../_generated/dataModel';
 
 export type MemberMailboxStatus = 'hosted' | 'external' | 'none';
@@ -53,22 +53,38 @@ export function deriveMemberMailboxStatus(mailboxes: Doc<'mailboxes'>[]): Member
  * 'none'. Any org member may read this (it is roster metadata, no contents),
  * mirroring the membership floor the team page already sits behind.
  */
+// all-members: member-visible roster metadata (mailbox transport discriminator
+// only, no mailbox contents); authedQuery already floors on requireOrgMember.
 export const byMembers = authedQuery({
 	args: { userIds: v.array(v.string()) },
 	handler: async (ctx, args): Promise<Record<string, MemberMailboxStatus>> => {
-		await requireOrgMember(ctx);
+		// authedQuery already enforced the org-member floor; re-read the session
+		// only to scope the fetched rows to the caller's active organization so
+		// this read can never reflect cross-org mailboxes (single-org today, but
+		// the invariant shouldn't rest on this one query).
+		const session = await getBetterAuthSessionWithRole(ctx);
+		const organizationId = session?.activeOrganizationId ?? null;
 
 		// De-duplicate and bound the batch before touching the DB.
 		const uniqueUserIds = [...new Set(args.userIds)].slice(0, MAX_USER_IDS);
 
-		const result: Record<string, MemberMailboxStatus> = {};
-		for (const userId of uniqueUserIds) {
-			const mailboxes = await ctx.db
-				.query('mailboxes')
-				.withIndex('by_user', (q) => q.eq('userId', userId))
-				.collect();
-			result[userId] = deriveMemberMailboxStatus(mailboxes);
-		}
-		return result;
+		// Fan the per-user index reads out concurrently rather than awaiting each
+		// in series (up to MAX_USER_IDS round trips otherwise).
+		const statuses = await Promise.all(
+			uniqueUserIds.map(async (userId) => {
+				const mailboxes = await ctx.db
+					.query('mailboxes')
+					.withIndex('by_user', (q) => q.eq('userId', userId))
+					.collect();
+				// bounded: a single user owns a handful of mailbox rows.
+				const ownRows =
+					organizationId === null
+						? mailboxes
+						: mailboxes.filter((m) => m.organizationId === organizationId);
+				return [userId, deriveMemberMailboxStatus(ownRows)] as const;
+			})
+		);
+
+		return Object.fromEntries(statuses);
 	},
 });
