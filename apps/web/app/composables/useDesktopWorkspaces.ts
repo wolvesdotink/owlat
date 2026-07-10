@@ -27,6 +27,7 @@ import {
 	workspaceTokenRef,
 } from '~/lib/desktop/workspaceTypes';
 import { applyWorkspaceAccent } from '~/lib/desktop/workspaceAccent';
+import { showSwitchSkeleton, writeSwitchFlag } from '~/lib/desktop/workspaceSwitch';
 
 // ---- module-level reactive state (shared across all callers) ----
 const workspaces = ref<WorkspaceConfig[]>([]);
@@ -211,9 +212,26 @@ export async function completeConnection(params: { ott: string; state: string })
 async function switchTo(id: string): Promise<void> {
 	if (id === activeId.value) return;
 	const ws = workspaces.value.find((w) => w.id === id);
-	if (ws) ws.lastActiveAt = Date.now();
+	if (!ws) return;
+	ws.lastActiveAt = Date.now();
 	activeId.value = id;
 	await persistStore();
+
+	// Perceived-instant switch (piece d4): before the (unavoidable) reload,
+	// repaint the destination accent and drop a skeleton washed in it so the eye
+	// sees the target workspace's colour immediately. A sessionStorage flag hands
+	// the same skeleton to the fresh document (consumed by the boot plugin), which
+	// crossfades it out on first paint. Purely paint-order choreography — the
+	// reload below still does all the real re-seeding.
+	if (typeof document !== 'undefined') {
+		applyWorkspaceAccent(document.documentElement, ws.accentColor);
+		writeSwitchFlag(sessionStorage, {
+			accent: ws.accentColor,
+			label: ws.label,
+			at: Date.now(),
+		});
+		showSwitchSkeleton(ws.accentColor, ws.label);
+	}
 	window.location.assign('/dashboard');
 }
 
