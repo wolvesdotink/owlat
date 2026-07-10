@@ -122,21 +122,21 @@ export const members = authedQuery({
 			.withIndex('by_mailbox_user', (q) => q.eq('mailboxId', args.mailboxId))
 			.collect(); // bounded: one shared inbox's roster (a team, not a crowd)
 		rows.sort((a, b) => b.createdAt - a.createdAt);
-		const out = [];
-		for (const row of rows) {
-			const profile = await loadMemberProfile(ctx, row.authUserId);
-			out.push({
-				_id: row._id,
-				authUserId: row.authUserId,
-				role: row.role,
-				createdAt: row.createdAt,
-				isYou: row.authUserId === access.userId,
-				name: profile.name,
-				email: profile.email,
-				image: profile.image,
-			});
-		}
-		return out;
+		return await Promise.all(
+			rows.map(async (row) => {
+				const profile = await loadMemberProfile(ctx, row.authUserId);
+				return {
+					_id: row._id,
+					authUserId: row.authUserId,
+					role: row.role,
+					createdAt: row.createdAt,
+					isYou: row.authUserId === access.userId,
+					name: profile.name,
+					email: profile.email,
+					image: profile.image,
+				};
+			})
+		);
 	},
 });
 
