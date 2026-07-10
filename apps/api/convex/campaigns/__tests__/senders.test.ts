@@ -41,7 +41,18 @@ vi.mock('../../lib/sessionOrganization', async () => {
 	};
 });
 
-const allModules = import.meta.glob('../../**/*.*s');
+// Vite's `import.meta.glob` excludes the directory chain it climbed up through
+// to reach the glob base, so `'../../**'` from this `campaigns/__tests__` file
+// omits the sibling `campaigns/*` modules (including `campaigns/senders.ts`, the
+// module under test). Merge a second glob rooted at `campaigns/` and re-prefix
+// its keys to the same `../../`-relative form so convex-test resolves every entry.
+const campaignsGlob = Object.fromEntries(
+	Object.entries(import.meta.glob('../**/*.*s')).map(([path, mod]) => [
+		path.replace(/^\.\.\//, '../../campaigns/'),
+		mod,
+	])
+);
+const allModules = { ...import.meta.glob('../../**/*.*s'), ...campaignsGlob };
 const modules = Object.fromEntries(
 	Object.entries(allModules).filter(
 		([path]) =>
@@ -106,14 +117,10 @@ describe('isCampaignSenderAllowed — list/toggle gate', () => {
 		const t = convexTest(schema, modules);
 		await seedInstance(t, { allowCustom: false });
 		await t.run(async (ctx) => {
-			await ctx.db.insert('campaignSenders', {
-				email: 'news@acme.com',
-				isEnabled: true,
-				isDefault: true,
-				createdBy: 'admin-a',
-				createdAt: Date.now(),
-				updatedAt: Date.now(),
-			});
+			await ctx.db.insert(
+				'campaignSenders',
+				createTestCampaignSender({ email: 'news@acme.com', isEnabled: true, isDefault: true })
+			);
 		});
 		const allowed = await t.run((ctx) => isCampaignSenderAllowed(ctx, 'NEWS@ACME.com'));
 		expect(allowed).toBe(true);
@@ -123,14 +130,10 @@ describe('isCampaignSenderAllowed — list/toggle gate', () => {
 		const t = convexTest(schema, modules);
 		await seedInstance(t, { allowCustom: false });
 		await t.run(async (ctx) => {
-			await ctx.db.insert('campaignSenders', {
-				email: 'news@acme.com',
-				isEnabled: false,
-				isDefault: false,
-				createdBy: 'admin-a',
-				createdAt: Date.now(),
-				updatedAt: Date.now(),
-			});
+			await ctx.db.insert(
+				'campaignSenders',
+				createTestCampaignSender({ email: 'news@acme.com', isEnabled: false, isDefault: false })
+			);
 		});
 		const allowed = await t.run((ctx) => isCampaignSenderAllowed(ctx, 'news@acme.com'));
 		expect(allowed).toBe(false);
