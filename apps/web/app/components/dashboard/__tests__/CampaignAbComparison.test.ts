@@ -4,15 +4,14 @@
  * c3b). Verifies the block renders correctly per test state: in-progress, a
  * manual test awaiting a pick, and a decided winner.
  */
-import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
+import type { FunctionReturnType } from 'convex/server';
+import type { api } from '@owlat/api';
 
 import CampaignAbComparison from '../CampaignAbComparison.vue';
 
-beforeAll(() => {
-	// Nuxt auto-import used inside the winner summary; not injected under vitest.
-	vi.stubGlobal('formatDateTime', () => 'Jan 1, 2026');
-});
+type AbStats = NonNullable<FunctionReturnType<typeof api.campaigns.abTest.getABTestStats>>;
 
 const stubs = {
 	Icon: { template: '<i />' },
@@ -28,7 +27,7 @@ const variant = (openRate: number, clickRate: number) => ({
 	clickRate,
 });
 
-function mountBlock(stats: Record<string, unknown>, isSelectingWinner = false) {
+function mountBlock(stats: AbStats, isSelectingWinner = false) {
 	return mount(CampaignAbComparison, {
 		props: { stats, isSelectingWinner },
 		global: { stubs },

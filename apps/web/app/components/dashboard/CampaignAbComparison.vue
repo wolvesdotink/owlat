@@ -7,28 +7,12 @@
  * `select-winner`. (Replaces the standalone /campaigns/ab-results surface.)
  */
 
-/** One variant's reduced stats (shape of `computeAbVariantStats`). */
-interface VariantStats {
-	sent: number;
-	delivered: number;
-	opened: number;
-	clicked: number;
-	openRate: number;
-	clickRate: number;
-}
+import type { FunctionReturnType } from 'convex/server';
+import { api } from '@owlat/api';
+import { formatDateTime } from '~/utils/formatters';
 
-/** A/B stats shape (mirror of `api.campaigns.abTest.getABTestStats`, non-null). */
-interface AbStats {
-	status: 'pending' | 'testing' | 'winner_selected' | undefined;
-	winner: 'A' | 'B' | undefined;
-	winnerSelectedAt: number | undefined;
-	config: {
-		testType?: 'subject' | 'content';
-		winnerCriteria?: 'open_rate' | 'click_rate' | 'manual';
-	} | null;
-	variantA: VariantStats;
-	variantB: VariantStats;
-}
+/** A/B stats shape — the non-null return of the query that feeds this block. */
+type AbStats = NonNullable<FunctionReturnType<typeof api.campaigns.abTest.getABTestStats>>;
 
 const props = defineProps<{
 	stats: AbStats;
