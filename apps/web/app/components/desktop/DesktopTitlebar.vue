@@ -6,14 +6,17 @@
  *   - LEFT (after the mac traffic-light gutter / before the win+linux window
  *     buttons): a workspace chip — accent swatch + name + chevron — that opens
  *     the switcher menu (see `WorkspaceMenu.vue`).
- *   - CENTER: a "⌘K  Search…" pill that focuses the app command palette. It is
- *     gated on a palette-ready handshake (`useCommandPalette().isMounted`), so it
- *     only shows on surfaces where a palette actually listens — never on
- *     /desktop/welcome, where it would dispatch into the void. It collapses to a
- *     bare icon on narrow windows so the drag region survives.
- *   - RIGHT: an unread pill (brand chip) fed by the badge composable, deep-linking
- *     to the Postbox Today view's "For you" section; on win/linux the custom
- *     minimize / maximize / close controls sit to its right.
+ *   - CENTER: a "⌘K  Search…" pill that focuses the app command palette. Gated
+ *     on the `show-search` prop: the mounting surface knows whether a palette
+ *     exists (the dashboard layout mounts one unconditionally and passes the
+ *     prop; /desktop/welcome has none and omits it), so the pill can never
+ *     dispatch into the void. It collapses to a bare icon on narrow windows so
+ *     the drag region survives.
+ *   - RIGHT: the Postbox notifications affordance — always present while a
+ *     workspace is active (quiet inbox icon at zero; brand count pill when
+ *     something awaits), deep-linking to the Postbox Today view's "For you"
+ *     section. On win/linux the custom minimize / maximize / close controls sit
+ *     to its right.
  *
  * macOS: the native traffic lights sit over the left gutter (see
  * tauri.conf.json titleBarStyle/trafficLightPosition). Windows/Linux: the native
@@ -27,10 +30,13 @@
 import { formatBadgeCount } from '~/lib/desktop/workspaceTypes';
 import DesktopWorkspaceMenu from './WorkspaceMenu.vue';
 
+/** `showSearch`: the mounting surface has a command palette listening. */
+const props = defineProps<{ showSearch?: boolean }>();
+
 const { isDesktop, isMac } = useDesktopContext();
 const { activeId, active } = useDesktopWorkspaces();
 const { badgeFor } = useWorkspaceBadges();
-const { isMounted: paletteMounted, open: openSearch } = useCommandPalette();
+const { open: openSearch } = useCommandPalette();
 const { themePreference } = useAppTheme();
 
 // Mirror the workspace identity + app theme into the native window: the window
@@ -106,10 +112,10 @@ function openForYou(): void {
 		</div>
 
 		<!-- CENTER — search pill (absolutely centered so side padding never skews it).
-		     Gated on a mounted command palette, so it never renders on surfaces
-		     (e.g. /desktop/welcome) where its event would go nowhere. -->
+		     Gated on the surface's `show-search` prop, so it never renders where
+		     (e.g. /desktop/welcome) its event would go nowhere. -->
 		<button
-			v-if="active && paletteMounted"
+			v-if="active && props.showSearch"
 			type="button"
 			class="tb-search absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2"
 			aria-label="Search"
@@ -124,19 +130,26 @@ function openForYou(): void {
 			</kbd>
 		</button>
 
-		<!-- RIGHT — unread pill + (win/linux) window controls. -->
+		<!-- RIGHT — notifications affordance + (win/linux) window controls. Always
+		     present while a workspace is active: a quiet inbox icon when nothing
+		     awaits, the brand count pill when something does. -->
 		<div class="ml-auto flex items-stretch self-stretch" data-tauri-drag-region>
 			<div class="flex items-center pr-1" data-tauri-drag-region>
 				<NuxtLink
-					v-if="unreadCount > 0"
+					v-if="active"
 					to="/dashboard/postbox/inbox#postbox-for-you"
-					class="tb-unread text-white"
-					:aria-label="`${unreadCount} awaiting you in Postbox`"
-					:title="`${unreadCount} awaiting you`"
+					class="tb-unread"
+					:class="unreadCount > 0 ? 'text-white' : 'tb-unread-idle'"
+					:aria-label="
+						unreadCount > 0 ? `${unreadCount} awaiting you in Postbox` : 'Open Postbox inbox'
+					"
+					:title="unreadCount > 0 ? `${unreadCount} awaiting you` : 'Postbox'"
 					@click.prevent="openForYou"
 				>
 					<Icon name="lucide:inbox" class="w-3.5 h-3.5" />
-					<span class="tabular-nums text-[11px] font-[550] leading-none">{{ unreadLabel }}</span>
+					<span v-if="unreadCount > 0" class="tabular-nums text-[11px] font-[550] leading-none">{{
+						unreadLabel
+					}}</span>
 				</NuxtLink>
 			</div>
 
@@ -215,6 +228,16 @@ function openForYou(): void {
 .tb-unread:focus-visible {
 	outline: 2px solid var(--color-brand);
 	outline-offset: 2px;
+}
+/* Nothing awaiting — same slot, quiet: no fill until there is something to say. */
+.tb-unread-idle {
+	background-color: transparent;
+	color: var(--color-text-secondary);
+}
+.tb-unread-idle:hover {
+	background-color: var(--color-bg-surface-hover);
+	color: var(--color-text-primary);
+	filter: none;
 }
 
 /* Windows/Linux caption controls. */

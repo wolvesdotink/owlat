@@ -90,6 +90,21 @@ export function useDashboardNavigation() {
 
 		const sections: NavigationSection[] = [];
 
+		// Audience leads (right after the fixed Dashboard link): who you're
+		// writing to comes before the tools that do the writing/sending.
+		sections.push({
+			key: 'audience',
+			name: 'Audience',
+			icon: 'lucide:users',
+			items: [
+				{ name: 'Overview', href: '/dashboard/audience', icon: 'lucide:layout-dashboard' },
+				{ name: 'Contacts', href: '/dashboard/audience/contacts', icon: 'lucide:users' },
+				{ name: 'Topics', href: '/dashboard/audience/topics', icon: 'lucide:list-filter' },
+				{ name: 'Segments', href: '/dashboard/audience/segments', icon: 'lucide:user-plus' },
+				{ name: 'Suppressions', href: '/dashboard/audience/suppressions', icon: 'lucide:ban' },
+			],
+		});
+
 		if (isFeatureEnabled('inbox')) {
 			sections.push({ key: 'inbox', name: 'Team Inbox', icon: 'lucide:inbox', items: inboxItems });
 		}
@@ -159,19 +174,6 @@ export function useDashboardNavigation() {
 				],
 			});
 		}
-
-		sections.push({
-			key: 'audience',
-			name: 'Audience',
-			icon: 'lucide:users',
-			items: [
-				{ name: 'Overview', href: '/dashboard/audience', icon: 'lucide:layout-dashboard' },
-				{ name: 'Contacts', href: '/dashboard/audience/contacts', icon: 'lucide:users' },
-				{ name: 'Topics', href: '/dashboard/audience/topics', icon: 'lucide:list-filter' },
-				{ name: 'Segments', href: '/dashboard/audience/segments', icon: 'lucide:user-plus' },
-				{ name: 'Suppressions', href: '/dashboard/audience/suppressions', icon: 'lucide:ban' },
-			],
-		});
 
 		sections.push({
 			key: 'settings',

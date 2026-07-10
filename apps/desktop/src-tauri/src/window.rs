@@ -115,11 +115,44 @@ fn parse_hex_color(hex: &str) -> Option<(f64, f64, f64)> {
 /// `color: None` leaves the current border color alone (visibility-only calls,
 /// e.g. the fullscreen collapse); a color that fails to parse is ignored. The
 /// layer is created lazily on the first call that carries a color.
+/// The window's rounded-corner radius, in points. Two probes, then a fallback:
+/// the theme frame's layer radius (public property read), then the theme
+/// frame's private `-_cornerRadius` (guarded by `respondsToSelector:`; the app
+/// already opts into `macOSPrivateApi`). Logged once at creation so a future
+/// macOS change is diagnosable from the dev console.
+#[cfg(target_os = "macos")]
+fn window_corner_radius(theme_frame: Option<&objc2_app_kit::NSView>) -> f64 {
+    use objc2::{msg_send, sel};
+
+    let Some(frame) = theme_frame else {
+        return ACCENT_FRAME_RADIUS_FALLBACK;
+    };
+    if let Some(radius) = frame.layer().map(|l| l.cornerRadius()).filter(|r| *r > 0.0) {
+        return radius;
+    }
+    // SAFETY: `respondsToSelector:` is safe on any NSObject; `_cornerRadius`
+    // (NSThemeFrame) takes no arguments and returns a CGFloat, and is only
+    // called when the probe confirms it exists.
+    let radius = unsafe {
+        let responds: bool = msg_send![frame, respondsToSelector: sel!(_cornerRadius)];
+        if responds {
+            msg_send![frame, _cornerRadius]
+        } else {
+            0.0f64
+        }
+    };
+    if radius > 0.0 {
+        radius
+    } else {
+        ACCENT_FRAME_RADIUS_FALLBACK
+    }
+}
+
 #[cfg(target_os = "macos")]
 fn apply_accent_frame(window: &WebviewWindow, color: Option<&str>, visible: bool) {
     use objc2_app_kit::{NSColor, NSWindow};
     use objc2_foundation::NSString;
-    use objc2_quartz_core::{CAAutoresizingMask, CALayer};
+    use objc2_quartz_core::{kCACornerCurveContinuous, CAAutoresizingMask, CALayer};
 
     let Ok(ptr) = window.ns_window() else {
         return;
@@ -162,12 +195,14 @@ fn apply_accent_frame(window: &WebviewWindow, color: Option<&str>, visible: bool
             // Above the webview's layer (z 0), below nothing that matters —
             // the traffic lights live outside the content view entirely.
             layer.setZPosition(1_000.0);
-            let radius = unsafe { content.superview() }
-                .and_then(|frame| frame.layer())
-                .map(|frame_layer| frame_layer.cornerRadius())
-                .filter(|radius| *radius > 0.0)
-                .unwrap_or(ACCENT_FRAME_RADIUS_FALLBACK);
+            let theme_frame = unsafe { content.superview() };
+            let radius = window_corner_radius(theme_frame.as_deref());
+            eprintln!("[owlat] accent frame corner radius: {radius}");
             layer.setCornerRadius(radius);
+            // macOS windows round with the continuous (squircle) curve, not a
+            // circular arc — a circular ring at the same radius still visibly
+            // mismatches the window corner.
+            layer.setCornerCurve(unsafe { kCACornerCurveContinuous });
             layer.setMasksToBounds(true);
             root.addSublayer(&layer);
             layer

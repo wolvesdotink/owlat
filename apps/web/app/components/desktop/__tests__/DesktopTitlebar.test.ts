@@ -71,12 +71,7 @@ beforeAll(async () => {
 		setWorkspaceAccent,
 	}));
 	vi.stubGlobal('useWorkspaceBadges', () => ({ badgeFor: (id: string) => badges[id] ?? 0 }));
-	// A palette is "mounted" so the search pill's palette-ready handshake passes.
-	vi.stubGlobal('useCommandPalette', () => ({
-		isMounted: ref(true),
-		open: vi.fn(),
-		registerMounted: () => () => {},
-	}));
+	vi.stubGlobal('useCommandPalette', () => ({ open: vi.fn() }));
 	vi.stubGlobal('useAppTheme', () => ({ themePreference }));
 	vi.stubGlobal('navigateTo', navigateToMock);
 });
@@ -97,8 +92,9 @@ const nuxtLinkStub = {
 	template: '<a class="nuxt-link" :href="to"><slot /></a>',
 };
 
-function mountBar() {
+function mountBar(props: { showSearch?: boolean } = { showSearch: true }) {
 	return mount(DesktopTitlebar, {
+		props,
 		global: {
 			components: {
 				Icon: iconStub,
@@ -146,17 +142,26 @@ describe('DesktopTitlebar', () => {
 		expect(switchTo).toHaveBeenCalledWith('w2');
 	});
 
-	it('renders the unread pill with the active workspace count and the For-you deep link', () => {
+	it('renders the notifications pill with the active workspace count and the For-you deep link', () => {
 		const w = mountBar();
 		const pill = w.get('.tb-unread');
 		expect(pill.text()).toContain('3');
+		expect(pill.classes()).not.toContain('tb-unread-idle');
 		expect(pill.attributes('href')).toBe('/dashboard/postbox/inbox#postbox-for-you');
 	});
 
-	it('hides the unread pill when there is nothing awaiting', () => {
+	it('keeps a quiet notifications affordance (no count) when nothing awaits', () => {
 		activeId.value = 'w2';
 		const w = mountBar();
-		expect(w.find('.tb-unread').exists()).toBe(false);
+		const pill = w.get('.tb-unread');
+		expect(pill.classes()).toContain('tb-unread-idle');
+		expect(pill.text()).toBe('');
+		expect(pill.attributes('href')).toBe('/dashboard/postbox/inbox#postbox-for-you');
+	});
+
+	it('renders no search pill on surfaces without a command palette (show-search omitted)', () => {
+		const w = mountBar({});
+		expect(w.find('.tb-search').exists()).toBe(false);
 	});
 
 	it('falls back to a draggable brand strip with no chip/search/pill when no workspace is active', () => {
