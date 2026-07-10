@@ -22,17 +22,99 @@ html.is-desktop body {
 }
 
 /*
+ * ── Per-workspace identity accent (piece d1) ────────────────────────────────
+ * `--ws-accent` is set on <html> by the desktop boot plugin for the active
+ * workspace (see lib/desktop/workspaceAccent.ts). All chrome tints derive from
+ * it via color-mix() against Fluid Functionalism surface tokens, so light and
+ * dark themes both resolve correctly with no extra vars. Content surfaces
+ * (cards / reader / composer) intentionally get ZERO accent — only the window
+ * frame, titlebar, sidebar and active-nav item carry identity.
+ */
+html.is-desktop {
+	--ws-accent: var(--color-brand); /* fallback until the plugin sets it */
+	--ws-frame-width: 5px;
+	/* Approximate the OS rounded-window radius so the ring hugs the corners.
+	 * Degrades gracefully to a subtle rounding on square (maximized) windows. */
+	--ws-frame-radius: 10px;
+}
+
+/*
+ * The identity frame: a soft inset ring hugging the rounded, vibrant window
+ * edge. Painted on a fixed pseudo-element so it never participates in layout
+ * and never shifts content; pointer-events:none keeps clicks/drags passing
+ * through to the titlebar and window beneath.
+ */
+html.is-desktop body::after {
+	content: '';
+	position: fixed;
+	inset: 0;
+	z-index: 90;
+	pointer-events: none;
+	border-radius: var(--ws-frame-radius);
+	box-shadow: inset 0 0 0 var(--ws-frame-width)
+		color-mix(in srgb, var(--ws-accent) 55%, transparent);
+	transition: opacity var(--motion-moderate) var(--ease-exit);
+}
+
+/* Fullscreen collapses the frame (native fullscreen → .ws-fullscreen from the
+ * boot plugin's watcher; DOM Fullscreen API → :fullscreen). */
+html.is-desktop.ws-fullscreen body::after,
+html.is-desktop:fullscreen body::after {
+	opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	html.is-desktop body::after {
+		transition: none;
+	}
+}
+
+/* Titlebar wash: 7% accent over the elevated surface (solid, non-vibrant). */
+html.is-desktop .desktop-titlebar {
+	background-color: color-mix(in srgb, var(--ws-accent) 7%, var(--color-bg-elevated));
+}
+
+/* Sidebar tint: 5% accent (solid, non-vibrant). Scoped to the layout sidebar —
+ * a DIRECT child of `.has-desktop-chrome` (dashboard.vue) — via the child
+ * combinator so it never leaks onto content-area asides (postbox folder rail,
+ * label/search list panes, assistant conversation list, onboarding banner).
+ * The higher-specificity vibrancy rules below win when vibrancy is on and fold
+ * the accent into the translucent material instead. */
+html.is-desktop .has-desktop-chrome > aside {
+	background-color: color-mix(in srgb, var(--ws-accent) 5%, var(--color-bg-elevated));
+}
+
+/* Active nav item: 14% accent highlight. Scoped to the sidebar nav (direct-child
+ * aside) so it only paints the app sidebar's active route, never exact-active
+ * links inside content navs (postbox folder list, settings grid, breadcrumbs).
+ * Overrides the `bg-brand-subtle` utility without !important via specificity;
+ * text colour (text-brand) is left to the utility — weight/accent, not fills. */
+html.is-desktop .has-desktop-chrome > aside nav a.router-link-exact-active {
+	background-color: color-mix(in srgb, var(--ws-accent) 14%, transparent);
+}
+
+/*
  * Vibrancy on → let the OS material show behind the sidebar, with a warm tint so
  * owlat identity stays present and text remains legible over bright wallpapers.
  * The high-specificity selector intentionally overrides the `bg-bg-elevated`
- * utility on the sidebar without needing !important.
+ * utility on the sidebar without needing !important. The workspace accent (5%)
+ * is folded into the translucent mix so identity survives under vibrancy too.
  */
-html.vibrancy-on.is-mac .has-desktop-chrome aside,
-html.vibrancy-on.is-win .has-desktop-chrome aside {
-	background-color: color-mix(in srgb, var(--color-bg-elevated) 55%, transparent);
+html.vibrancy-on.is-mac .has-desktop-chrome > aside,
+html.vibrancy-on.is-win .has-desktop-chrome > aside {
+	background-color: color-mix(
+		in srgb,
+		var(--ws-accent) 5%,
+		color-mix(in srgb, var(--color-bg-elevated) 55%, transparent)
+	);
 }
 
-/* macOS: run the material up into the titlebar (the traffic-light side). */
+/* macOS: run the material up into the titlebar (the traffic-light side), with
+ * the same 7% accent wash folded in. */
 html.vibrancy-on.is-mac .desktop-titlebar {
-	background-color: color-mix(in srgb, var(--color-bg-elevated) 55%, transparent);
+	background-color: color-mix(
+		in srgb,
+		var(--ws-accent) 7%,
+		color-mix(in srgb, var(--color-bg-elevated) 55%, transparent)
+	);
 }
