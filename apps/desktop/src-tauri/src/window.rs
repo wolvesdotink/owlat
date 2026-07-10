@@ -40,6 +40,13 @@ pub fn navigate_to(window: &WebviewWindow, path: &str) {
 /// Open (or focus) the dedicated compose window at `path` (e.g. "/compose" or
 /// "/compose?to=…&subject=…"). Reusing an existing window full-navigates it to
 /// the new path so a fresh mailto seed takes effect.
+///
+/// Size + position persist across launches: `tauri-plugin-window-state` (wired
+/// in `main.rs`) restores every window on creation via its `on_window_ready`
+/// hook and saves on move/resize/close, keyed by the window LABEL. This window's
+/// label is the stable `"compose"`, and it is not in the plugin's
+/// `skip_initial_state` set, so the geometry below is only the first-run default
+/// — the plugin overrides it with the user's last-left frame on subsequent opens.
 pub fn open_compose_window(app: &AppHandle, path: &str) {
     if let Some(win) = app.get_webview_window("compose") {
         let safe = path.replace('\'', "");

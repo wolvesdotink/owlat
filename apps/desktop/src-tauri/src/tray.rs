@@ -42,6 +42,7 @@ fn build_menu<R: Runtime, M: Manager<R>>(
     peek: &[TrayPeekItem],
 ) -> Result<Menu<R>, tauri::Error> {
     let show = MenuItem::with_id(manager, "show", "Show Owlat", true, None::<&str>)?;
+    let compose = MenuItem::with_id(manager, "compose", "New Message", true, None::<&str>)?;
     let inbox = MenuItem::with_id(manager, "inbox", "Open Inbox", true, None::<&str>)?;
     let chat = MenuItem::with_id(manager, "chat", "Open Chat", true, None::<&str>)?;
     let sep_top = MenuItem::with_id(manager, "sep-top", "---", false, None::<&str>)?;
@@ -49,6 +50,7 @@ fn build_menu<R: Runtime, M: Manager<R>>(
 
     let menu = Menu::new(manager)?;
     menu.append(&show)?;
+    menu.append(&compose)?;
     menu.append(&inbox)?;
     menu.append(&chat)?;
     menu.append(&sep_top)?;
@@ -88,6 +90,9 @@ fn on_menu_event(app: &AppHandle, id: &str) {
     match id {
         "show" => {
             window::show_main_window(app);
+        }
+        "compose" => {
+            window::open_compose_window(app, "/compose");
         }
         "inbox" => {
             window::show_main_window(app);

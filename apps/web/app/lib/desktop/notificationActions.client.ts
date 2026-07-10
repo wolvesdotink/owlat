@@ -1,24 +1,36 @@
 /**
- * Routing for desktop notification actions (D13). The Rust backend emits a
- * `notification-action` event ({ action: 'open' | 'archive', messageId,
- * folderRole }) when the user clicks a per-message notification or its Archive
- * button (macOS/Linux). The pure resolver maps that to an app effect; the
- * executor focuses the window and navigates / triages. No-op outside Tauri.
+ * Routing for desktop notification actions (D13 + D5). The Rust backend emits a
+ * `notification-action` event ({ action: 'open' | 'archive' | 'read' | 'reply',
+ * messageId, folderRole, reply? }) when the user interacts with a per-message
+ * notification (macOS/Linux). The pure resolver maps that to an app effect; the
+ * executor focuses the window and navigates / triages / sends the reply. No-op
+ * outside Tauri.
+ *
+ * The `reply` effect (macOS inline reply field) builds a reply spec through the
+ * EXISTING draft pipeline — create → set body → send — with NO new send path.
+ * If any step fails, the composer opens prefilled with the typed text so the
+ * user's words are never lost.
  */
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { escapeHtmlWithBreaks } from '@owlat/shared/html';
 import type { ConvexClient } from 'convex/browser';
+import type { FunctionReturnType } from 'convex/server';
+
+type NotifMessage = FunctionReturnType<typeof api.mail.mailbox.getMessage>;
 
 export interface NotificationActionPayload {
 	action?: unknown;
 	messageId?: unknown;
 	folderRole?: unknown;
+	reply?: unknown;
 }
 
 export type NotifEffect =
 	| { type: 'open'; folderRole: string; messageId: string }
 	| { type: 'archive'; messageId: string }
 	| { type: 'read'; messageId: string }
+	| { type: 'reply'; messageId: string; text: string }
 	| null;
 
 function str(v: unknown): string | undefined {
@@ -31,6 +43,12 @@ export function resolveNotificationEffect(payload: NotificationActionPayload): N
 	if (!messageId) return null;
 	if (payload.action === 'archive') return { type: 'archive', messageId };
 	if (payload.action === 'read') return { type: 'read', messageId };
+	if (payload.action === 'reply') {
+		const text = str(payload?.reply);
+		// A blank or whitespace-only submission carries no words to preserve —
+		// fall through to opening the thread rather than sending a blank message.
+		if (text?.trim()) return { type: 'reply', messageId, text };
+	}
 	return { type: 'open', folderRole: str(payload?.folderRole) ?? 'inbox', messageId };
 }
 
@@ -43,6 +61,68 @@ async function focusMainWindow(): Promise<void> {
 	} catch {
 		// Not running under Tauri.
 	}
+}
+
+/** Injected side-effect so the reply flow is unit-testable without Tauri. */
+export interface ReplyDeps {
+	/** Open the desktop composer window at the given app-relative path. */
+	openComposer: (path: string) => Promise<void>;
+}
+
+/** Pure: build the `/compose?to=…&subject=…&body=…` fallback path from an
+ * already-loaded message (or null when it couldn't be read), always preserving
+ * the user's typed text. No I/O — the single fetch lives in the caller. */
+function composePathForReply(message: NotifMessage, text: string): string {
+	const params = new URLSearchParams();
+	if (message) {
+		const to = message.replyToAddress ?? message.fromAddress;
+		if (to) params.set('to', to);
+		const subject = /^re\s*:/i.test(message.subject) ? message.subject : `Re: ${message.subject}`;
+		params.set('subject', subject);
+	}
+	if (text) params.set('body', text);
+	const qs = params.toString();
+	return qs ? `/compose?${qs}` : '/compose';
+}
+
+/**
+ * Send an inline reply through the existing draft pipeline (create → set body →
+ * send). On ANY failure, open the composer prefilled with the typed text so the
+ * user's words survive. Exported for unit testing the fallback path.
+ */
+export async function replyFromNotification(
+	convex: ConvexClient,
+	messageId: string,
+	text: string,
+	deps: ReplyDeps
+): Promise<void> {
+	const id = messageId as Id<'mailMessages'>;
+	// One fetch of the original — reused for both the send and the fallback path
+	// so an unreadable original never triggers a second doomed round trip.
+	let message: NotifMessage = null;
+	try {
+		message = await convex.query(api.mail.mailbox.getMessage, { messageId: id });
+	} catch (e) {
+		console.warn('[desktop] notification reply: could not read original', e);
+	}
+	if (message) {
+		try {
+			const { draftId } = await convex.mutation(api.mail.drafts.create, {
+				mailboxId: message.mailboxId,
+				inReplyToMessageId: id,
+			});
+			await convex.mutation(api.mail.drafts.update, {
+				draftId,
+				bodyHtml: escapeHtmlWithBreaks(text),
+				bodyText: text,
+			});
+			await convex.mutation(api.mail.drafts.send, { draftId });
+			return;
+		} catch (e) {
+			console.warn('[desktop] notification reply failed; opening composer', e);
+		}
+	}
+	await deps.openComposer(composePathForReply(message, text));
 }
 
 async function runEffect(effect: NonNullable<NotifEffect>, convex: ConvexClient): Promise<void> {
@@ -69,6 +149,17 @@ async function runEffect(effect: NonNullable<NotifEffect>, convex: ConvexClient)
 		} catch (e) {
 			console.warn('[desktop] mark-read from notification failed', e);
 		}
+		return;
+	}
+	if (effect.type === 'reply') {
+		// Reply-and-send stays in the background (no focus steal); only the
+		// fallback opens a window, which focuses itself.
+		await replyFromNotification(convex, effect.messageId, effect.text, {
+			openComposer: async (path) => {
+				const { openCompose } = await import('@owlat/desktop/src/compose');
+				await openCompose(path);
+			},
+		});
 		return;
 	}
 	await focusMainWindow();

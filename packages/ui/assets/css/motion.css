@@ -11,6 +11,7 @@
  *   .ui-stagger                                — staggered list entrance
  *   .ui-proximity                              — nearest-target hover emphasis
  *   .ui-presence-ring                          — pulsing "here now" avatar halo
+ *   .ui-window-enter                           — slow spring mount for a new window
  *
  * The matching NumberTicker component lives in components/ui/NumberTicker.vue.
  */
@@ -146,11 +147,38 @@
 	}
 }
 
+/*
+ * Window enter — the dedicated compose window's mount reveal. A subtle
+ * scale + fade on the slow tier with the bounce curve (the panel/card-advance
+ * pairing), so opening the quick-compose window springs into place instead of
+ * blinking on. One-shot; `backwards` holds the from-state until the first
+ * frame. Reduced motion swaps to the fade-only keyframe below.
+ */
+.ui-window-enter {
+	transform-origin: center;
+	animation: ui-window-enter var(--motion-slow) var(--ease-spring-bounce) backwards;
+}
+@keyframes ui-window-enter {
+	from {
+		opacity: 0;
+		transform: scale(0.97);
+	}
+}
+@keyframes ui-window-enter-fade {
+	from {
+		opacity: 0;
+	}
+}
+
 @media (prefers-reduced-motion: reduce) {
 	/* Opacity-only (hover-reveal already is); scale/translate emphasis and
 	 * entrance movement drop entirely. */
 	.ui-press:active {
 		scale: none;
+	}
+	/* Motion is information: keep the fade, drop the scale. */
+	.ui-window-enter {
+		animation-name: ui-window-enter-fade;
 	}
 	.ui-stagger > * {
 		animation: none;
