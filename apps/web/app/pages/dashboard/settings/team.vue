@@ -33,19 +33,18 @@ const {
 	cancelInvite,
 } = useOrganization();
 
+// Owner/admin may change instance settings (settings:manage). Mirrors the
+// backend gate on the migration-mode toggle.
+const canManageSettings = computed(() => isOwner.value || currentMemberRole.value === 'admin');
+
 // Postbox feature + verified domain lookup for the optional mailbox slot.
 const { isEnabled } = useFeatureFlag();
 const postboxEnabled = computed(() => isEnabled('postbox'));
-const { data: domainsData } = useConvexQuery(
-	api.domains.domains.listByOrganization,
-	() => ({}),
-);
+const { data: domainsData } = useConvexQuery(api.domains.domains.listByOrganization, () => ({}));
 const verifiedDomains = computed(() =>
-	(domainsData.value ?? []).filter((d) => d.status === 'verified'),
+	(domainsData.value ?? []).filter((d) => d.status === 'verified')
 );
-const canOfferMailbox = computed(
-	() => postboxEnabled.value && verifiedDomains.value.length > 0,
-);
+const canOfferMailbox = computed(() => postboxEnabled.value && verifiedDomains.value.length > 0);
 
 // Invite modal state (shared form-modal primitive for the open/close/form/
 // submitting state). The two error slots stay in a dedicated reactive because
@@ -73,14 +72,10 @@ const inviteFormErrors = reactive({
 watch(
 	() => [inviteForm.addMailbox, verifiedDomains.value.length] as const,
 	([addMailbox]) => {
-		if (
-			addMailbox &&
-			!inviteForm.mailboxDomain &&
-			verifiedDomains.value.length > 0
-		) {
+		if (addMailbox && !inviteForm.mailboxDomain && verifiedDomains.value.length > 0) {
 			inviteForm.mailboxDomain = verifiedDomains.value[0]!.domain;
 		}
-	},
+	}
 );
 
 const mailboxPreviewAddress = computed(() => {
@@ -156,8 +151,7 @@ const validateInviteForm = (): boolean => {
 			return false;
 		}
 		if (!localpartRegex.test(lp)) {
-			inviteFormErrors.mailbox =
-				'Use letters, digits, dots, hyphens, or underscores';
+			inviteFormErrors.mailbox = 'Use letters, digits, dots, hyphens, or underscores';
 			return false;
 		}
 		if (!inviteForm.mailboxDomain) {
@@ -271,8 +265,7 @@ const handleTransferOwnership = async () => {
 		memberToPromote.value = null;
 		transferConfirmText.value = '';
 	} catch (error) {
-		const errorMessage =
-			error instanceof Error ? error.message : 'Failed to transfer ownership';
+		const errorMessage = error instanceof Error ? error.message : 'Failed to transfer ownership';
 		showToast(errorMessage, 'error');
 	} finally {
 		isTransferring.value = false;
@@ -383,6 +376,9 @@ const formatExpiryTime = (expiresAt: Date) => {
 
 		<!-- Content -->
 		<div v-else class="space-y-8">
+			<!-- Onboarding: migration mode (offer new users a mail import at first login) -->
+			<SettingsMigrationModeCard :can-manage="canManageSettings" />
+
 			<!-- Team Members Section -->
 			<UiCard padding="none" overflow="hidden">
 				<template #header>
@@ -469,14 +465,15 @@ const formatExpiryTime = (expiresAt: Date) => {
 									Make Editor
 								</UiDropdownMenuItem>
 								<UiDropdownDivider />
-								<UiDropdownMenuItem
-									icon="lucide:crown"
-									@click="memberToPromote = member"
-								>
+								<UiDropdownMenuItem icon="lucide:crown" @click="memberToPromote = member">
 									Transfer ownership
 								</UiDropdownMenuItem>
 								<UiDropdownDivider />
-								<UiDropdownMenuItem icon="lucide:trash-2" danger @click="openRemoveMemberModal(member)">
+								<UiDropdownMenuItem
+									icon="lucide:trash-2"
+									danger
+									@click="openRemoveMemberModal(member)"
+								>
 									Remove from team
 								</UiDropdownMenuItem>
 							</UiDropdownMenu>
@@ -503,9 +500,7 @@ const formatExpiryTime = (expiresAt: Date) => {
 						<div>
 							<h2 class="text-lg font-semibold text-text-primary">Pending Invites</h2>
 							<p class="text-sm text-text-secondary">
-								{{ invitations.length }} pending invitation{{
-									invitations.length !== 1 ? 's' : ''
-								}}
+								{{ invitations.length }} pending invitation{{ invitations.length !== 1 ? 's' : '' }}
 							</p>
 						</div>
 					</div>
@@ -586,7 +581,8 @@ const formatExpiryTime = (expiresAt: Date) => {
 						<div>
 							<p class="font-medium text-text-primary text-sm">Editor</p>
 							<p class="text-xs text-text-secondary mt-0.5">
-								View-only access to campaigns, contacts, and analytics. Can send test emails and participate in chat.
+								View-only access to campaigns, contacts, and analytics. Can send test emails and
+								participate in chat.
 							</p>
 						</div>
 					</div>
@@ -609,9 +605,8 @@ const formatExpiryTime = (expiresAt: Date) => {
 
 				<div class="p-6">
 					<p class="text-text-secondary text-sm mb-4">
-						Deleting the organization permanently removes every team member, all
-						contacts, campaigns, automations, mailboxes, and analytics. This action
-						cannot be undone.
+						Deleting the organization permanently removes every team member, all contacts,
+						campaigns, automations, mailboxes, and analytics. This action cannot be undone.
 					</p>
 					<UiButton variant="danger" @click="showDeleteOrgModal = true">
 						<template #iconLeft>
@@ -711,25 +706,14 @@ const formatExpiryTime = (expiresAt: Date) => {
 										pattern="[a-zA-Z0-9.\-_]+"
 									/>
 									<span class="text-text-tertiary">@</span>
-									<select
-										v-model="inviteForm.mailboxDomain"
-										class="input"
-										:disabled="isInviting"
-									>
+									<select v-model="inviteForm.mailboxDomain" class="input" :disabled="isInviting">
 										<option value="">Select domain</option>
-										<option
-											v-for="d in verifiedDomains"
-											:key="d._id"
-											:value="d.domain"
-										>
+										<option v-for="d in verifiedDomains" :key="d._id" :value="d.domain">
 											{{ d.domain }}
 										</option>
 									</select>
 								</div>
-								<p
-									v-if="mailboxPreviewAddress"
-									class="text-xs text-text-tertiary mt-1"
-								>
+								<p v-if="mailboxPreviewAddress" class="text-xs text-text-tertiary mt-1">
 									Will be created as: <code>{{ mailboxPreviewAddress }}</code>
 								</p>
 							</div>
@@ -738,7 +722,8 @@ const formatExpiryTime = (expiresAt: Date) => {
 								<label for="inviteform-mailboxdisplayname" class="text-sm font-medium block mb-1">
 									Display name (optional)
 								</label>
-								<input id="inviteform-mailboxdisplayname"
+								<input
+									id="inviteform-mailboxdisplayname"
 									v-model="inviteForm.mailboxDisplayName"
 									type="text"
 									placeholder="Marcel Pfeifer"
@@ -801,7 +786,14 @@ const formatExpiryTime = (expiresAt: Date) => {
 			size="lg"
 			:closable="!isTransferring"
 			:persistent="isTransferring"
-			@update:open="(v: boolean) => { if (!v) { memberToPromote = null; transferConfirmText = ''; } }"
+			@update:open="
+				(v: boolean) => {
+					if (!v) {
+						memberToPromote = null;
+						transferConfirmText = '';
+					}
+				}
+			"
 		>
 			<div class="flex items-center gap-3 mb-6">
 				<UiIconBox icon="lucide:crown" size="sm" variant="brand" rounded="lg" />
@@ -816,10 +808,10 @@ const formatExpiryTime = (expiresAt: Date) => {
 					<span v-if="memberToPromote" class="font-medium text-text-primary">{{
 						memberToPromote.user.name || memberToPromote.user.email
 					}}</span>
-					will become the new <strong class="text-text-primary">Owner</strong> with
-					full control of this organization, including billing, settings, and the
-					ability to delete it. You will be demoted to <strong>Admin</strong>. This
-					cannot be undone by you — only the new owner can transfer it back.
+					will become the new <strong class="text-text-primary">Owner</strong> with full control of
+					this organization, including billing, settings, and the ability to delete it. You will be
+					demoted to <strong>Admin</strong>. This cannot be undone by you — only the new owner can
+					transfer it back.
 				</p>
 			</div>
 
@@ -842,7 +834,10 @@ const formatExpiryTime = (expiresAt: Date) => {
 				<UiButton
 					variant="secondary"
 					:disabled="isTransferring"
-					@click="memberToPromote = null; transferConfirmText = '';"
+					@click="
+						memberToPromote = null;
+						transferConfirmText = '';
+					"
 				>
 					Cancel
 				</UiButton>
@@ -892,7 +887,14 @@ const formatExpiryTime = (expiresAt: Date) => {
 			size="lg"
 			:closable="!isDeletingOrg"
 			:persistent="isDeletingOrg"
-			@update:open="(v: boolean) => { if (!v) { showDeleteOrgModal = false; deleteOrgConfirmText = ''; } }"
+			@update:open="
+				(v: boolean) => {
+					if (!v) {
+						showDeleteOrgModal = false;
+						deleteOrgConfirmText = '';
+					}
+				}
+			"
 		>
 			<div class="flex items-center gap-3 mb-6">
 				<UiIconBox icon="lucide:alert-triangle" size="sm" variant="error" rounded="lg" />
@@ -906,8 +908,8 @@ const formatExpiryTime = (expiresAt: Date) => {
 				<p class="text-sm text-error">
 					<strong>Warning:</strong> This permanently deletes
 					<span v-if="organization" class="font-medium">{{ organization.name }}</span>
-					and all of its data — team members, contacts, campaigns, automations,
-					mailboxes, and analytics. You will be signed out immediately.
+					and all of its data — team members, contacts, campaigns, automations, mailboxes, and
+					analytics. You will be signed out immediately.
 				</p>
 			</div>
 
@@ -930,7 +932,10 @@ const formatExpiryTime = (expiresAt: Date) => {
 				<UiButton
 					variant="secondary"
 					:disabled="isDeletingOrg"
-					@click="showDeleteOrgModal = false; deleteOrgConfirmText = '';"
+					@click="
+						showDeleteOrgModal = false;
+						deleteOrgConfirmText = '';
+					"
 				>
 					Cancel
 				</UiButton>
