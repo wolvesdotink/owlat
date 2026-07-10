@@ -41,6 +41,23 @@ export function diffPropertyValues(
 const commonTimezones = timezoneOptions;
 const commonLanguages = languageSelectOptions;
 
+interface DoiStatusBadge {
+	label: string;
+	color: string;
+	icon: string | null;
+}
+
+// Single source of truth for double-opt-in status presentation (label + colour + icon).
+const DOI_STATUS_BADGES: Record<string, DoiStatusBadge> = {
+	confirmed: { label: 'Confirmed', color: 'text-success', icon: 'lucide:check-circle' },
+	pending: { label: 'Pending', color: 'text-warning', icon: 'lucide:clock' },
+};
+
+const DOI_STATUS_DEFAULT: DoiStatusBadge = { label: '', color: 'text-text-tertiary', icon: null };
+
+const getDoiStatusBadge = (status: string | undefined): DoiStatusBadge =>
+	(status ? DOI_STATUS_BADGES[status] : undefined) ?? DOI_STATUS_DEFAULT;
+
 /**
  * Composable for contact detail page: edit form state, save/cancel handlers, display helpers.
  */
@@ -260,41 +277,11 @@ export function useContactDetail(contactId: ComputedRef<Id<'contacts'>>) {
 	// Delegates to the canonical formatDateTime ("Jun 4, 2025, 03:20 AM").
 	const formatDate = (timestamp: number) => formatDateTime(timestamp);
 
-	// DOI Status helpers
-	const getDoiStatusLabel = (status: string | undefined) => {
-		switch (status) {
-			case 'confirmed':
-				return 'Confirmed';
-			case 'pending':
-				return 'Pending';
-			case 'not_required':
-				return '';
-			default:
-				return '';
-		}
-	};
-
-	const getDoiStatusColor = (status: string | undefined) => {
-		switch (status) {
-			case 'confirmed':
-				return 'text-success';
-			case 'pending':
-				return 'text-warning';
-			default:
-				return 'text-text-tertiary';
-		}
-	};
-
-	const getDoiStatusIcon = (status: string | undefined): string | null => {
-		switch (status) {
-			case 'confirmed':
-				return 'lucide:check-circle';
-			case 'pending':
-				return 'lucide:clock';
-			default:
-				return null;
-		}
-	};
+	// DOI Status helpers — derived from the shared DOI_STATUS_BADGES map.
+	const getDoiStatusLabel = (status: string | undefined) => getDoiStatusBadge(status).label;
+	const getDoiStatusColor = (status: string | undefined) => getDoiStatusBadge(status).color;
+	const getDoiStatusIcon = (status: string | undefined): string | null =>
+		getDoiStatusBadge(status).icon;
 
 	return {
 		// Data
