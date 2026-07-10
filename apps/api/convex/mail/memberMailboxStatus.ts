@@ -8,10 +8,12 @@
  * table can show a "Mailbox" column without leaking any mailbox contents.
  *
  * Only the transport discriminator is derived: 'hosted' (an Owlat-hosted
- * mailbox), 'external' (a connected IMAP/SMTP account), or 'none'. Shared team
- * inboxes (scope='shared') are intentionally excluded — this column answers
- * "does this person have their own mailbox", not "which shared inboxes can they
- * reach".
+ * mailbox), 'external' (a connected IMAP/SMTP account still sending through its
+ * own server), 'external-instance' (a connected account that took the
+ * post-import switch, so it READS externally but SENDS through this instance),
+ * or 'none'. Shared team inboxes (scope='shared') are intentionally excluded —
+ * this column answers "does this person have their own mailbox", not "which
+ * shared inboxes can they reach".
  */
 
 import { v } from 'convex/values';
@@ -19,7 +21,7 @@ import { authedQuery } from '../lib/authedFunctions';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 import type { Doc } from '../_generated/dataModel';
 
-export type MemberMailboxStatus = 'hosted' | 'external' | 'none';
+export type MemberMailboxStatus = 'hosted' | 'external' | 'external-instance' | 'none';
 
 // Cap the batch so a caller can never fan a single query into an unbounded
 // number of index reads. The team page never renders more members than this.
@@ -32,19 +34,22 @@ const MAX_USER_IDS = 200;
  * Pure and total so the mapping is unit-testable in isolation.
  */
 export function deriveMemberMailboxStatus(mailboxes: Doc<'mailboxes'>[]): MemberMailboxStatus {
-	let hasExternal = false;
+	let externalStatus: 'external' | 'external-instance' | null = null;
 	for (const mailbox of mailboxes) {
 		if (mailbox.status !== 'active') continue;
 		// undefined scope ⇒ personal (back-compat for pre-shared-inbox rows).
 		if (mailbox.scope === 'shared') continue;
 		// undefined kind ⇒ hosted (back-compat for pre-external rows).
 		if (mailbox.kind === 'external') {
-			hasExternal = true;
+			// The post-import "switch your sending" flips outbound to this instance
+			// while the inbox still syncs externally — surface that so the team
+			// column doesn't mislabel it as a plain own-server external mailbox.
+			externalStatus = mailbox.outboundPreference === 'instance' ? 'external-instance' : 'external';
 			continue;
 		}
 		return 'hosted';
 	}
-	return hasExternal ? 'external' : 'none';
+	return externalStatus ?? 'none';
 }
 
 /**

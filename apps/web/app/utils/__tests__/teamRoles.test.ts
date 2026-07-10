@@ -51,6 +51,7 @@ describe('mailboxStatusMeta', () => {
 	it('labels each mailbox status', () => {
 		expect(mailboxStatusMeta('hosted').label).toBe('Hosted');
 		expect(mailboxStatusMeta('external').label).toBe('External');
+		expect(mailboxStatusMeta('external-instance').label).toBe('External, sends here');
 		expect(mailboxStatusMeta('none').label).toBe('No mailbox');
 	});
 
@@ -60,7 +61,7 @@ describe('mailboxStatusMeta', () => {
 	});
 
 	it('uses design-token tone classes, never raw colors', () => {
-		const statuses: MemberMailboxStatus[] = ['hosted', 'external', 'none'];
+		const statuses: MemberMailboxStatus[] = ['hosted', 'external', 'external-instance', 'none'];
 		for (const status of statuses) {
 			const meta = mailboxStatusMeta(status);
 			expect(meta.toneClass).toMatch(/^text-text-/);

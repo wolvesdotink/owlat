@@ -72,6 +72,17 @@ export const mailTables = {
 		kind: v.optional(v.union(v.literal('hosted'), v.literal('external'))),
 		// Set when kind='external'; links to the connection/credentials row.
 		externalAccountId: v.optional(v.id('externalMailAccounts')),
+		// Outbound transport preference for an EXTERNAL mailbox (ignored for
+		// hosted mailboxes). undefined ⇒ 'external' — send through the user's own
+		// SMTP via the mail-sync worker, the natural default after an import.
+		// 'instance' ⇒ route outbound through this deployment's transport (the MTA
+		// / SES the instance is configured with) so mail from an already-imported
+		// mailbox ships from Owlat's reputation. Reversible any time under Postbox
+		// settings → Sending. Switching to 'instance' is gated: the from-domain
+		// must be a VERIFIED sending domain on the instance (DKIM alignment) AND
+		// an instance transport must be configured — enforced in
+		// mail/sendingSwitch.ts::setSendingPreference, never assumed here.
+		outboundPreference: v.optional(v.union(v.literal('external'), v.literal('instance'))),
 		status: v.union(v.literal('active'), v.literal('suspended'), v.literal('deleted')),
 		quotaBytes: v.optional(v.number()), // null = unlimited (always unset for external)
 		usedBytes: v.number(),
