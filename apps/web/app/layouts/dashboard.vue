@@ -22,8 +22,19 @@ const router = useRouter();
 const { registerNavigationShortcuts } = useKeyboardShortcuts();
 
 // Sidebar state management
-const { isCollapsed, sectionStates, toggleCollapsed, toggleSection, initFromStorage } =
-	useSidebarState();
+const {
+	isCollapsed,
+	effectiveHidden,
+	isPeeking,
+	sectionStates,
+	toggleCollapsed,
+	toggleHidden,
+	toggleSection,
+	openPeek,
+	closePeek,
+	setDesktopViewport,
+	initFromStorage,
+} = useSidebarState();
 
 // Focus mode state for distraction-free editing
 const { isFocusMode } = useFocusMode();
@@ -58,6 +69,71 @@ onMounted(() => {
 	registerNavigationShortcuts();
 	initFromStorage();
 });
+
+// Keep the sidebar's desktop-viewport flag in sync with the `lg` breakpoint so
+// the hidden/peek behavior stays desktop-only (mobile keeps its off-canvas
+// drawer). Mirrors Tailwind's `lg` = 1024px.
+onMounted(() => {
+	const mql = window.matchMedia('(min-width: 1024px)');
+	const sync = () => setDesktopViewport(mql.matches);
+	sync();
+	mql.addEventListener('change', sync);
+	onUnmounted(() => mql.removeEventListener('change', sync));
+});
+
+// Cmd/Ctrl-\ toggles the sidebar's hidden mode (desktop only; the composable
+// guards the breakpoint). Registered alongside the other global shortcuts.
+onMounted(() => {
+	const handleToggleHidden = (e: KeyboardEvent) => {
+		if ((e.metaKey || e.ctrlKey) && e.key === '\\') {
+			e.preventDefault();
+			toggleHidden();
+		}
+	};
+	document.addEventListener('keydown', handleToggleHidden);
+	onUnmounted(() => document.removeEventListener('keydown', handleToggleHidden));
+});
+
+// Peek overlay: open on left-edge hover, close 300ms after the pointer leaves
+// (cancelled if it returns), or immediately on Esc / focus leaving the rail.
+const peekCloseTimer = ref<ReturnType<typeof setTimeout> | null>(null);
+const cancelPeekClose = () => {
+	if (peekCloseTimer.value !== null) {
+		clearTimeout(peekCloseTimer.value);
+		peekCloseTimer.value = null;
+	}
+};
+const schedulePeekClose = () => {
+	cancelPeekClose();
+	peekCloseTimer.value = setTimeout(() => {
+		closePeek();
+		peekCloseTimer.value = null;
+	}, 300);
+};
+const onPeekPointerEnter = () => {
+	cancelPeekClose();
+	openPeek();
+};
+const onPeekPointerLeave = () => {
+	// Only meaningful while a peek is open; ignore ordinary visible/collapsed leaves.
+	if (!isPeeking.value) return;
+	schedulePeekClose();
+};
+// Focus leaving the peeked rail (Tab out / click away) closes it.
+const onPeekFocusOut = (e: FocusEvent) => {
+	const next = e.relatedTarget as Node | null;
+	const current = e.currentTarget as HTMLElement | null;
+	if (!current || (next && current.contains(next))) return;
+	closePeek();
+};
+// Esc closes the peek without un-hiding the sidebar.
+const onPeekKeydown = (e: KeyboardEvent) => {
+	if (e.key === 'Escape' && isPeeking.value) {
+		e.stopPropagation();
+		closePeek();
+	}
+};
+onUnmounted(cancelPeekClose);
 
 // Mobile sidebar state
 const isSidebarOpen = ref(false);
@@ -148,6 +224,13 @@ watch(
 	}
 );
 
+// Focus mode forces the rail off-screen; close any open peek so it can't be
+// left stranded (the hot-zone unmounts and the off-screen aside never fires
+// mouseleave to run the close timer).
+watch(isFocusMode, (active) => {
+	if (active) closePeek();
+});
+
 // Close dropdowns when clicking outside
 const handleClickOutside = (event: MouseEvent) => {
 	if (userDropdownRef.value && !userDropdownRef.value.contains(event.target as Node)) {
@@ -227,13 +310,29 @@ onMounted(() => {
 	});
 });
 
-// Computed sidebar width class
+// Computed sidebar width class — a hidden sidebar peeks at its last width.
 const sidebarWidthClass = computed(() => {
 	return isCollapsed.value ? 'w-16' : 'w-64';
 });
 
+// Content padding reserves the rail's gutter. When hidden the content goes
+// full-bleed (no reflow when the peek floats over it).
 const mainPaddingClass = computed(() => {
+	if (effectiveHidden.value) return '';
 	return isCollapsed.value ? 'lg:pl-16' : 'lg:pl-64';
+});
+
+// Desktop transform for the aside. When hidden it slides off-screen; the peek
+// brings it back over the content (no reflow — padding stays removed). Enter
+// uses the spring-bounce at motion-slow; exit uses ease-exit. Reduced-motion is
+// handled by the global floor in base.css (durations collapse to ~0).
+const sidebarDesktopClass = computed(() => {
+	if (!effectiveHidden.value) {
+		return 'lg:translate-x-0 duration-(--motion-moderate)';
+	}
+	return isPeeking.value
+		? 'lg:translate-x-0 shadow-(--shadow-6) duration-(--motion-slow) ease-(--ease-spring-bounce)'
+		: 'lg:-translate-x-full duration-(--motion-slow-exit) ease-(--ease-exit)';
 });
 </script>
 
@@ -272,14 +371,28 @@ const mainPaddingClass = computed(() => {
 			/>
 		</Transition>
 
+		<!-- Left-edge hot-zone: opens the peek overlay while the sidebar is hidden.
+		     Invisible 6px strip, desktop-only (only rendered when effectively hidden). -->
+		<div
+			v-if="effectiveHidden && !isPeeking && !isFocusMode"
+			class="hidden lg:block fixed top-0 left-0 z-40 w-1.5 h-full"
+			aria-hidden="true"
+			@mouseenter="onPeekPointerEnter"
+		/>
+
 		<!-- Sidebar -->
 		<aside
 			:class="[
-				'fixed top-0 left-0 z-50 h-full bg-bg-elevated border-r border-border-subtle flex flex-col transition-all duration-(--motion-moderate) pt-[env(safe-area-inset-top)] lg:pt-0',
+				'fixed top-0 left-0 z-50 h-full bg-bg-elevated border-r border-border-subtle flex flex-col transition-all pt-[env(safe-area-inset-top)] lg:pt-0',
 				sidebarWidthClass,
 				isSidebarOpen ? 'translate-x-0' : '-translate-x-full',
-				isFocusMode ? '-translate-x-full' : 'lg:translate-x-0',
+				isFocusMode ? 'lg:-translate-x-full duration-(--motion-moderate)' : sidebarDesktopClass,
 			]"
+			:inert="effectiveHidden && !isPeeking ? true : undefined"
+			@mouseenter="onPeekPointerEnter"
+			@mouseleave="onPeekPointerLeave"
+			@focusout="onPeekFocusOut"
+			@keydown="onPeekKeydown"
 		>
 			<!-- Desktop-only: Slack-style workspace switcher -->
 			<DesktopWorkspaceSwitcher v-if="isDesktop" />
