@@ -128,19 +128,10 @@ async function handleDelete() {
 			>
 				<Icon name="lucide:mail" class="w-5 h-5 text-brand" />
 				<div>
-					<p class="font-medium text-sm">Migrate from Google</p>
-					<p class="text-xs text-text-tertiary">Import your Gmail history + teach your AI</p>
-				</div>
-			</NuxtLink>
-			<NuxtLink
-				v-if="isEnabled('mail.external')"
-				to="/dashboard/postbox/settings/external-account"
-				class="card !p-4 hover:bg-bg-surface flex items-center gap-3"
-			>
-				<Icon name="lucide:mail-plus" class="w-5 h-5 text-text-secondary" />
-				<div>
-					<p class="font-medium text-sm">External mailbox</p>
-					<p class="text-xs text-text-tertiary">Connect Gmail / Fastmail / your server</p>
+					<p class="font-medium text-sm">Import your mail</p>
+					<p class="text-xs text-text-tertiary">
+						Gmail, Fastmail, Outlook or any IMAP + teach your AI
+					</p>
 				</div>
 			</NuxtLink>
 			<NuxtLink

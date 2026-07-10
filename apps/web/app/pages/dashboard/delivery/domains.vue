@@ -535,10 +535,7 @@ const readinessSummary = (domain: DomainWithVerification) =>
 						Connect your existing mailbox (Gmail, Fastmail, a company server) over IMAP + SMTP to
 						send and receive personal mail without registering a domain.
 					</p>
-					<NuxtLink
-						to="/dashboard/postbox/settings/external-account"
-						class="btn btn-secondary btn-sm gap-2"
-					>
+					<NuxtLink to="/dashboard/postbox/migrate" class="btn btn-secondary btn-sm gap-2">
 						<Icon name="lucide:mail-plus" class="w-4 h-4" />
 						Connect external mailbox
 					</NuxtLink>
@@ -971,7 +968,7 @@ const readinessSummary = (domain: DomainWithVerification) =>
 								<strong class="text-text-primary">{{ addForm.domain.trim().toLowerCase() }}</strong>
 								— it's a shared mailbox provider you don't control. Use a domain you own, or
 								<NuxtLink
-									to="/dashboard/postbox/settings/external-account"
+									to="/dashboard/postbox/migrate"
 									class="text-brand hover:underline font-medium"
 									>connect an external mailbox</NuxtLink
 								>

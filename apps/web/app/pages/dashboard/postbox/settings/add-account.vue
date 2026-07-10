@@ -154,10 +154,7 @@ async function handleSubmit() {
 					</NuxtLink>
 					<div v-if="isEnabled('mail.external')" class="mt-4 pt-4 border-t border-border-subtle">
 						<p class="mb-2">No domain to verify? Connect your existing email account instead.</p>
-						<NuxtLink
-							to="/dashboard/postbox/settings/external-account"
-							class="btn btn-secondary btn-sm"
-						>
+						<NuxtLink to="/dashboard/postbox/migrate" class="btn btn-secondary btn-sm">
 							<Icon name="lucide:mail-plus" class="w-4 h-4 mr-1.5" />
 							Connect external mailbox
 						</NuxtLink>
