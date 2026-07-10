@@ -38,6 +38,17 @@ const PRICING: Price[] = [
 	{ prefix: 'claude-haiku', inputPerM: 0.8, outputPerM: 4 },
 	{ prefix: 'claude-sonnet', inputPerM: 3, outputPerM: 15 },
 	{ prefix: 'claude-opus', inputPerM: 15, outputPerM: 75 },
+	// Google (Gemini) — native ids, and the same ids appear provider-prefixed via
+	// OpenRouter (e.g. `google/gemini-2.5-flash`), where the `includes` fallback
+	// still matches. Most-specific-first: `-lite`/`-8b` variants before the base.
+	{ prefix: 'gemini-2.5-flash-lite', inputPerM: 0.1, outputPerM: 0.4 },
+	{ prefix: 'gemini-2.5-flash', inputPerM: 0.3, outputPerM: 2.5 },
+	{ prefix: 'gemini-2.5-pro', inputPerM: 1.25, outputPerM: 10 },
+	{ prefix: 'gemini-2.0-flash-lite', inputPerM: 0.075, outputPerM: 0.3 },
+	{ prefix: 'gemini-2.0-flash', inputPerM: 0.1, outputPerM: 0.4 },
+	{ prefix: 'gemini-1.5-flash-8b', inputPerM: 0.0375, outputPerM: 0.15 },
+	{ prefix: 'gemini-1.5-flash', inputPerM: 0.075, outputPerM: 0.3 },
+	{ prefix: 'gemini-1.5-pro', inputPerM: 1.25, outputPerM: 5 },
 ];
 
 // Conservative fallback (≈ a mid-tier model) — never price an unknown model $0.
