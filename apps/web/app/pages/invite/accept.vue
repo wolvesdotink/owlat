@@ -88,9 +88,12 @@ async function handleAcceptInvitation() {
 
 		status.value = 'success';
 
-		// Redirect to dashboard after a short delay
+		// Send freshly-joined members into the first-login welcome flow rather than
+		// the bare dashboard, so they get the product welcome + resumable onboarding
+		// checklist. The welcome middleware would route them there anyway; going
+		// straight there avoids a visible bounce.
 		setTimeout(() => {
-			router.push('/dashboard');
+			router.push('/welcome');
 		}, 2000);
 	} catch (err) {
 		status.value = 'error';
@@ -173,8 +176,8 @@ function redirectToRegister() {
 						<code class="text-text-primary">{{ addr }}</code>
 						is in your sidebar.
 					</p>
-					<p class="text-text-tertiary text-sm mb-6">Redirecting to dashboard...</p>
-					<NuxtLink to="/dashboard" class="btn btn-primary w-full"> Go to Dashboard </NuxtLink>
+					<p class="text-text-tertiary text-sm mb-6">Taking you in...</p>
+					<NuxtLink to="/welcome" class="btn btn-primary w-full"> Get started </NuxtLink>
 				</template>
 
 				<!-- Error State -->

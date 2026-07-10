@@ -10,11 +10,15 @@ import { buildSearchableText } from '../lib/queryHelpers';
 import { validateStringLength, STRING_LIMITS, sanitizeEmailHeaderValue } from '../lib/inputGuards';
 import { trackEvent } from '../lib/posthogHelpers';
 import { recordAuditLog } from '../lib/auditLog';
-import { throwNotFound, throwInvalidState } from '../_utils/errors';
+import { throwNotFound, throwInvalidState, throwForbidden } from '../_utils/errors';
 import { campaignStatusValidator } from '../lib/convexValidators';
 import { audienceValidator } from './audience';
 import { validateReadyToSend } from './preflight';
-import { seedDefaultSenderIfNeeded } from './senders';
+import {
+	seedDefaultSenderIfNeeded,
+	isCampaignSenderAllowed,
+	senderNotAllowedMessage,
+} from './senders';
 import { assertTransitioned } from './lifecycle';
 import { requireDraftCampaign } from './guards';
 
@@ -94,7 +98,20 @@ export const updateBasics = authedMutation({
 		}
 
 		if (args.fromEmail !== undefined) {
-			updates.fromEmail = args.fromEmail.trim();
+			const fromEmail = args.fromEmail.trim();
+			updates.fromEmail = fromEmail;
+			if (fromEmail) {
+				// Self-heal an upgraded deployment (empty curated list) so the org's own
+				// default address stays usable, then enforce the curated-sender gate so
+				// there is no way to persist an off-list address from the API — the
+				// wizard offers only on-list senders (or a custom one when the toggle is
+				// on). The verified-domain floor is enforced separately at send time
+				// (preflight / testSend), keeping its dedicated "domain not verified" copy.
+				await seedDefaultSenderIfNeeded(ctx);
+				if (!(await isCampaignSenderAllowed(ctx, fromEmail))) {
+					throwForbidden(senderNotAllowedMessage(fromEmail));
+				}
+			}
 		}
 
 		if (args.replyTo !== undefined) {
