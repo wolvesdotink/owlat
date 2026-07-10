@@ -239,13 +239,17 @@ export class AccountConnection {
 			await this.setStatus('connected', undefined, true);
 		} finally {
 			this.polling = false;
-			// Return to INBOX so IDLE resumes there for real-time delivery.
-			if (this.client && !this.stopped) {
-				try {
-					await this.client.mailboxOpen('INBOX');
-				} catch {
-					/* reconnect handler will recover */
-				}
+			await this.resumeInboxIdle();
+		}
+	}
+
+	/** Return to INBOX so IDLE resumes there for real-time delivery. */
+	private async resumeInboxIdle(): Promise<void> {
+		if (this.client && !this.stopped) {
+			try {
+				await this.client.mailboxOpen('INBOX');
+			} catch {
+				/* reconnect handler will recover */
 			}
 		}
 	}
@@ -400,14 +404,7 @@ export class AccountConnection {
 			}
 		} finally {
 			this.backfillRunning = false;
-			// Return to INBOX so IDLE resumes there for real-time delivery.
-			if (this.client && !this.stopped) {
-				try {
-					await this.client.mailboxOpen('INBOX');
-				} catch {
-					/* reconnect handler will recover */
-				}
-			}
+			await this.resumeInboxIdle();
 		}
 	}
 
