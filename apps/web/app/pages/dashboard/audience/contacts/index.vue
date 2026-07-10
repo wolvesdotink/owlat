@@ -597,12 +597,13 @@ onUnmounted(() => {
 		<div class="card p-0 overflow-hidden">
 			<UiQueryBoundary :error="contactsError">
 				<!-- Loading State -->
-				<div v-if="isLoading && !contacts" class="flex items-center justify-center py-16">
-					<div class="flex flex-col items-center gap-3">
-						<UiSpinner />
-						<p class="text-text-secondary text-sm">Loading contacts...</p>
-					</div>
-				</div>
+				<DashboardListSkeleton
+					v-if="isLoading && !contacts"
+					variant="table"
+					leading
+					:columns="4"
+					:rows="8"
+				/>
 
 				<!-- Empty States -->
 				<UiEmptyState

@@ -291,12 +291,7 @@ onMounted(() => {
 		<!-- Content -->
 		<UiCard padding="none" overflow="hidden">
 			<!-- Loading State -->
-			<div v-if="isLoading && !topics" class="flex items-center justify-center py-16">
-				<div class="flex flex-col items-center gap-3">
-					<UiSpinner />
-					<p class="text-text-secondary text-sm">Loading topics...</p>
-				</div>
-			</div>
+			<DashboardListSkeleton v-if="isLoading && !topics" variant="table" :columns="6" :rows="6" />
 
 			<!-- Empty State (no organization) -->
 			<UiEmptyState

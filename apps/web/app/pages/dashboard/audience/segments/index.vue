@@ -138,12 +138,7 @@ onMounted(() => {
 		<!-- Content -->
 		<UiCard padding="none" overflow="hidden">
 			<!-- Loading State -->
-			<div v-if="isLoading && !segments" class="flex items-center justify-center py-16">
-				<div class="flex flex-col items-center gap-3">
-					<UiSpinner />
-					<p class="text-text-secondary text-sm">Loading segments...</p>
-				</div>
-			</div>
+			<DashboardListSkeleton v-if="isLoading && !segments" variant="table" :columns="6" :rows="6" />
 
 			<!-- Empty State (no organization) -->
 			<UiEmptyState
