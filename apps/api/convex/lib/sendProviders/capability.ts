@@ -16,7 +16,7 @@
  */
 
 import { getOptional } from '../env';
-import { isSendProviderKind } from './index';
+import { isSendProviderKind } from './types';
 import type { SendProviderKind } from './types';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
 

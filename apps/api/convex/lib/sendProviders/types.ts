@@ -10,7 +10,25 @@
  * See CONTEXT.md "Send provider adapter (module)".
  */
 
-export type SendProviderKind = 'mta' | 'ses' | 'resend' | 'smtp';
+/**
+ * The provider kinds, as a runtime tuple so both the `SendProviderKind` type
+ * and the `isSendProviderKind` guard derive from one source. Lives in this
+ * pure, isolate-safe module (no `nodemailer`/`'use node'` deps) so the isolate
+ * function modules that only need the guard — `delivery/enqueue.ts`,
+ * `delivery/status.ts`, `routing.ts`, `capability.ts` — can import it without
+ * pulling the `SEND_PROVIDERS` registry (and thus `nodemailer`) into a
+ * non-`'use node'` bundle.
+ */
+export const SEND_PROVIDER_KINDS = ['mta', 'ses', 'resend', 'smtp'] as const;
+
+export type SendProviderKind = (typeof SEND_PROVIDER_KINDS)[number];
+
+/**
+ * Type guard: is the given string a recognized provider kind?
+ */
+export function isSendProviderKind(kind: string | undefined | null): kind is SendProviderKind {
+	return kind != null && (SEND_PROVIDER_KINDS as readonly string[]).includes(kind);
+}
 
 /**
  * Canonical IP-pool names the built-in MTA routes through. Single source of

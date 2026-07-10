@@ -30,7 +30,7 @@ export type {
 	EmailAttachment,
 	DispatchResult,
 } from './types';
-export { EmailErrorCode, isRetryableErrorCode } from './types';
+export { EmailErrorCode, isRetryableErrorCode, isSendProviderKind } from './types';
 
 // Registry — keyed by `SendProviderKind`. The dispatch helper calls
 // `providerFor(kind)` to get the adapter; no caller imports adapters directly.
@@ -56,11 +56,4 @@ export function providerFor<K extends SendProviderKind>(kind: K): SendProviderMo
 		throw new Error(`Unknown send provider: ${kind}`);
 	}
 	return mod as unknown as SendProviderModule<K>;
-}
-
-/**
- * Type guard: is the given string a recognized provider kind?
- */
-export function isSendProviderKind(kind: string | undefined | null): kind is SendProviderKind {
-	return kind === 'mta' || kind === 'ses' || kind === 'resend' || kind === 'smtp';
 }
