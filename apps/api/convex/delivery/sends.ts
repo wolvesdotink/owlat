@@ -2,10 +2,7 @@ import { v } from 'convex/values';
 import { internalMutation } from '../_generated/server';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import type { Doc, Id } from '../_generated/dataModel';
-import {
-	getUserIdFromSession,
-	requireOrgPermission,
-} from '../lib/sessionOrganization';
+import { getUserIdFromSession, requireOrgPermission } from '../lib/sessionOrganization';
 import { getOrThrow, throwInvalidInput } from '../_utils/errors';
 import { batchGet } from '../_utils/batchLoader';
 
@@ -200,9 +197,7 @@ export const getStatsByCampaign = authedQuery({
 			// keep that fallback so old rows still classify.
 			if (send.status === 'bounced') {
 				stats.bounced++;
-				const bounceClass =
-					send.bounceType ??
-					(send.errorCode === 'hard_bounce' ? 'hard' : 'soft');
+				const bounceClass = send.bounceType ?? (send.errorCode === 'hard_bounce' ? 'hard' : 'soft');
 				if (bounceClass === 'hard') {
 					stats.hardBounced++;
 				} else {
@@ -244,7 +239,11 @@ export const create = authedMutation({
 		personalizedSubject: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'campaigns:send', 'Only owners and admins can create email sends');
+		await requireOrgPermission(
+			ctx,
+			'campaigns:send',
+			'You do not have permission to create email sends'
+		);
 		await getOrThrow(ctx, args.campaignId, 'Campaign');
 
 		const now = Date.now();
@@ -302,7 +301,7 @@ export const createBatch = internalMutation({
 	},
 	handler: async (
 		ctx,
-		args,
+		args
 	): Promise<{ contactId: Id<'contacts'>; emailSendId: Id<'emailSends'> }[]> => {
 		const now = Date.now();
 		// (contactId → emailSendId) for the rows actually inserted THIS call.
@@ -317,7 +316,7 @@ export const createBatch = internalMutation({
 			const existing = await ctx.db
 				.query('emailSends')
 				.withIndex('by_campaign_and_contact', (q) =>
-					q.eq('campaignId', send.campaignId).eq('contactId', send.contactId),
+					q.eq('campaignId', send.campaignId).eq('contactId', send.contactId)
 				)
 				.first();
 			if (existing) continue;

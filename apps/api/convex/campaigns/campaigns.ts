@@ -206,7 +206,7 @@ export const duplicate = authedMutation({
 		await requireOrgPermission(
 			ctx,
 			'campaigns:manage',
-			'Only owners and admins can duplicate campaigns'
+			'You do not have permission to duplicate campaigns'
 		);
 
 		const campaign = await ctx.db.get(args.campaignId);
@@ -243,7 +243,7 @@ export const remove = authedMutation({
 		const session = await requireOrgPermission(
 			ctx,
 			'campaigns:manage',
-			'Only owners and admins can delete campaigns'
+			'You do not have permission to delete campaigns'
 		);
 
 		const campaign = await ctx.db.get(args.campaignId);
@@ -308,7 +308,7 @@ export const create = authedMutation({
 		const session = await requireOrgPermission(
 			ctx,
 			'campaigns:manage',
-			'Only owners and admins can create campaigns'
+			'You do not have permission to create campaigns'
 		);
 
 		const now = Date.now();
@@ -352,7 +352,7 @@ export const sendNow = authedMutation({
 		const session = await requireOrgPermission(
 			ctx,
 			'campaigns:send',
-			'Only owners and admins can send campaigns'
+			'You do not have permission to send campaigns'
 		);
 
 		const campaign = await ctx.db.get(args.campaignId);

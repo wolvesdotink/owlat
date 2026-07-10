@@ -49,7 +49,7 @@ describe('usePermissions', () => {
 	});
 
 	describe('editor role', () => {
-		it('can only send test emails', () => {
+		it('runs the campaign pipeline but stays out of admin surfaces', () => {
 			roleRef.value = 'editor';
 			const perms = usePermissions();
 
@@ -57,12 +57,15 @@ describe('usePermissions', () => {
 			expect(perms.isOwner.value).toBe(false);
 			expect(perms.isAdmin.value).toBe(false);
 			expect(perms.canSendTestEmails.value).toBe(true);
-			expect(perms.canSendCampaigns.value).toBe(false);
+			// d4: editors send campaigns from the curated sender list.
+			expect(perms.canSendCampaigns.value).toBe(true);
+			// Adjacent admin surfaces stay locked.
 			expect(perms.canManageOrganization.value).toBe(false);
 			expect(perms.canManageContacts.value).toBe(false);
 			expect(perms.canManageSettings.value).toBe(false);
 			expect(perms.canDeleteOrganization.value).toBe(false);
-			// A resolved non-admin member gets the "Admins only" gate.
+			// A resolved non-admin member still gets the "Admins only" gate on
+			// admin surfaces (settings, curating campaign senders, etc.).
 			expect(perms.showAdminGate.value).toBe(true);
 		});
 	});
@@ -92,7 +95,8 @@ describe('usePermissions', () => {
 			const perms = usePermissions();
 
 			expect(perms.isAdmin.value).toBe(false);
-			expect(perms.canSendCampaigns.value).toBe(false);
+			// Editors can send campaigns (d4).
+			expect(perms.canSendCampaigns.value).toBe(true);
 
 			roleRef.value = 'admin';
 			expect(perms.role.value).toBe('admin');
