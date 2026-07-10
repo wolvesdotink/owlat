@@ -1,11 +1,11 @@
 /**
- * Autodiscover IMAP/SMTP server settings from an email address
- * (Settings → Connect external mailbox).
+ * Autodiscover IMAP/SMTP server settings from an email address, for the unified
+ * mail-import wizard (`postbox/migrate.vue`).
  *
- * The external-account form already ships a handful of provider presets, but
- * the user has to know which button to click. This module derives the same
- * preset shape straight from the email DOMAIN so the server fields can be
- * pre-filled as the address is typed:
+ * The wizard's provider picker ({@link MAIL_PROVIDERS}) offers a handful of
+ * one-click providers, but for the generic IMAP path the user types a bare
+ * address. This module derives the same preset shape straight from the email
+ * DOMAIN so the server fields can be pre-filled as the address is typed:
  *
  *  - `presetForEmail` matches the domain against a small, curated table of the
  *    big consumer providers (Gmail, Outlook.com, iCloud, Fastmail) — instant,
@@ -20,7 +20,7 @@
  * fixed; the domain is only ever interpolated as an encoded path/query value.
  */
 
-/** The subset of the external-account form a preset fills. Mirrors PRESETS there. */
+/** The subset of connect-form server fields a preset fills. */
 export type MailPreset = {
 	imapHost: string;
 	imapPort: number;
@@ -31,8 +31,9 @@ export type MailPreset = {
 };
 
 /**
- * Curated domain → preset table for the big consumer providers. Values match
- * the manual PRESETS in external-account.vue so autofill and the buttons agree.
+ * Curated domain → preset table for the big consumer providers. The wizard's
+ * provider picker ({@link MAIL_PROVIDERS}) reuses these same entries, so the
+ * one-click cards and the type-ahead autodiscover can never disagree.
  */
 const DOMAIN_PRESETS: Record<string, MailPreset> = {
 	// Gmail / Google Workspace consumer domains.
@@ -116,6 +117,31 @@ const DOMAIN_PRESETS: Record<string, MailPreset> = {
 		imapPort: 993,
 		isImapSecure: true,
 		smtpHost: 'smtp.fastmail.com',
+		smtpPort: 465,
+		isSmtpSecure: true,
+	},
+	// Yahoo Mail (and its common aliases).
+	'yahoo.com': {
+		imapHost: 'imap.mail.yahoo.com',
+		imapPort: 993,
+		isImapSecure: true,
+		smtpHost: 'smtp.mail.yahoo.com',
+		smtpPort: 465,
+		isSmtpSecure: true,
+	},
+	'ymail.com': {
+		imapHost: 'imap.mail.yahoo.com',
+		imapPort: 993,
+		isImapSecure: true,
+		smtpHost: 'smtp.mail.yahoo.com',
+		smtpPort: 465,
+		isSmtpSecure: true,
+	},
+	'yahoo.co.uk': {
+		imapHost: 'imap.mail.yahoo.com',
+		imapPort: 993,
+		isImapSecure: true,
+		smtpHost: 'smtp.mail.yahoo.com',
 		smtpPort: 465,
 		isSmtpSecure: true,
 	},
@@ -229,23 +255,12 @@ const APP_PASSWORD_PROVIDERS: Record<string, AppPasswordHelp> = {
 };
 
 /**
- * Return app-password guidance for the email's domain, or `null` when the domain
- * is unknown / the address is malformed / the provider does not use app
- * passwords. Pure and synchronous — no network.
- */
-export function appPasswordHelpForEmail(email: string): AppPasswordHelp | null {
-	const domain = domainOfEmail(email);
-	if (!domain) return null;
-	return APP_PASSWORD_PROVIDERS[domain] ?? null;
-}
-
-/**
  * A mail provider the unified import wizard offers as a one-click starting
  * point. A provider with a `preset` fills the IMAP/SMTP servers for the user;
  * the generic `imap` provider has none, so the user types the server settings
- * themselves. `appPassword` carries the same actionable guidance surfaced by
- * {@link appPasswordHelpForEmail}, keyed by provider rather than by domain so a
- * company Gmail (you@acme.com) still gets Gmail's app-password steps.
+ * themselves. `appPassword` carries actionable app-password guidance keyed by
+ * provider rather than by domain, so a company Gmail (you@acme.com) still gets
+ * Gmail's app-password steps.
  */
 export type MailProviderId = 'gmail' | 'outlook' | 'fastmail' | 'icloud' | 'yahoo' | 'imap';
 
@@ -265,13 +280,20 @@ export type MailProvider = {
 	manualServer: boolean;
 };
 
-const YAHOO_PRESET: MailPreset = {
-	imapHost: 'imap.mail.yahoo.com',
-	imapPort: 993,
-	isImapSecure: true,
-	smtpHost: 'smtp.mail.yahoo.com',
-	smtpPort: 465,
-	isSmtpSecure: true,
+/**
+ * The generic "any IMAP mailbox" provider: no preset (the user types the server
+ * settings, autodiscovered from the domain), no app-password deep link. Exported
+ * so callers that need the always-present fallback provider don't reach for it
+ * via `providerById('imap')` with a non-null cast.
+ */
+export const GENERIC_IMAP_PROVIDER: MailProvider = {
+	id: 'imap',
+	name: 'Any IMAP mailbox',
+	icon: 'lucide:server',
+	hint: 'Your own server, or any other provider',
+	preset: null,
+	appPassword: null,
+	manualServer: true,
 };
 
 /**
@@ -326,19 +348,11 @@ export const MAIL_PROVIDERS: readonly MailProvider[] = [
 		name: 'Yahoo Mail',
 		icon: 'lucide:mail',
 		hint: 'imap.mail.yahoo.com',
-		preset: YAHOO_PRESET,
+		preset: DOMAIN_PRESETS['yahoo.com'] ?? null,
 		appPassword: APP_PASSWORD_PROVIDERS['yahoo.com'] ?? null,
 		manualServer: false,
 	},
-	{
-		id: 'imap',
-		name: 'Any IMAP mailbox',
-		icon: 'lucide:server',
-		hint: 'Your own server, or any other provider',
-		preset: null,
-		appPassword: null,
-		manualServer: true,
-	},
+	GENERIC_IMAP_PROVIDER,
 ];
 
 /** Look up a provider by id, or `undefined` for an unknown id. */
