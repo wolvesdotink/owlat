@@ -53,7 +53,7 @@ const handleImportBlocklist = async () => {
 	showNotification(
 		added > 0
 			? `Imported ${added} address${added === 1 ? '' : 'es'}${skipped > 0 ? ` (${skipped} skipped)` : ''}`
-			: 'No new addresses added — all were already blocked or invalid'
+			: 'No new addresses added — all were already suppressed or invalid'
 	);
 };
 
