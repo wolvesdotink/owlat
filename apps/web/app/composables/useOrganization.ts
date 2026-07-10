@@ -269,9 +269,11 @@ export function useOrganization() {
 				lastMembersFetchAt = Date.now();
 				lastMembersFetchOrgId = orgId;
 			} catch (error) {
-				// Surface the failure so the team page can show a retryable error
-				// state instead of an ambiguous empty list.
-				membersError.value = error instanceof Error ? error.message : 'Could not load team members';
+				// Surface a fixed, human message so the team page shows a retryable
+				// error state instead of an ambiguous empty list — never leak a raw
+				// "Failed to fetch"-grade string into user-facing copy.
+				console.error('[useOrganization] failed to load team members', error);
+				membersError.value = 'Could not load team members';
 			} finally {
 				isLoadingMembers.value = false;
 				inflightFetch = null;
