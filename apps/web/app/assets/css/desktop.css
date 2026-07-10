@@ -74,17 +74,22 @@ html.is-desktop .desktop-titlebar {
 	background-color: color-mix(in srgb, var(--ws-accent) 7%, var(--color-bg-elevated));
 }
 
-/* Sidebar tint: 5% accent (solid, non-vibrant). The higher-specificity vibrancy
- * rules below win when vibrancy is on and fold the accent into the translucent
- * material instead. */
-html.is-desktop .has-desktop-chrome aside {
+/* Sidebar tint: 5% accent (solid, non-vibrant). Scoped to the layout sidebar —
+ * a DIRECT child of `.has-desktop-chrome` (dashboard.vue) — via the child
+ * combinator so it never leaks onto content-area asides (postbox folder rail,
+ * label/search list panes, assistant conversation list, onboarding banner).
+ * The higher-specificity vibrancy rules below win when vibrancy is on and fold
+ * the accent into the translucent material instead. */
+html.is-desktop .has-desktop-chrome > aside {
 	background-color: color-mix(in srgb, var(--ws-accent) 5%, var(--color-bg-elevated));
 }
 
-/* Active nav item: 14% accent highlight. Overrides the `bg-brand-subtle` utility
- * on the exact-active route without !important via selector specificity. Text
- * colour (text-brand) is left to the utility — weight/accent, not large fills. */
-html.is-desktop .has-desktop-chrome nav a.router-link-exact-active {
+/* Active nav item: 14% accent highlight. Scoped to the sidebar nav (direct-child
+ * aside) so it only paints the app sidebar's active route, never exact-active
+ * links inside content navs (postbox folder list, settings grid, breadcrumbs).
+ * Overrides the `bg-brand-subtle` utility without !important via specificity;
+ * text colour (text-brand) is left to the utility — weight/accent, not fills. */
+html.is-desktop .has-desktop-chrome > aside nav a.router-link-exact-active {
 	background-color: color-mix(in srgb, var(--ws-accent) 14%, transparent);
 }
 
@@ -95,8 +100,8 @@ html.is-desktop .has-desktop-chrome nav a.router-link-exact-active {
  * utility on the sidebar without needing !important. The workspace accent (5%)
  * is folded into the translucent mix so identity survives under vibrancy too.
  */
-html.vibrancy-on.is-mac .has-desktop-chrome aside,
-html.vibrancy-on.is-win .has-desktop-chrome aside {
+html.vibrancy-on.is-mac .has-desktop-chrome > aside,
+html.vibrancy-on.is-win .has-desktop-chrome > aside {
 	background-color: color-mix(
 		in srgb,
 		var(--ws-accent) 5%,
