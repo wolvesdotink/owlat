@@ -214,7 +214,15 @@ export const list = publicQuery({
 			) // bounded: shared mailboxes one user belongs to
 				.map((row) => row.mailboxId)
 		);
-		return visible.filter((m) => m.userId === session.userId || memberIds.has(m._id));
+		// `visible` comes from the org-agnostic `by_status` index, so a membership
+		// row is only allowed to surface a mailbox inside the caller's active org —
+		// mirrors the org-boundary defense-in-depth on `requireMailboxAccess` /
+		// `loadAccessibleMailboxes` so a stale/mis-seeded row can't cross an org.
+		return visible.filter(
+			(m) =>
+				m.userId === session.userId ||
+				(memberIds.has(m._id) && m.organizationId === session.activeOrganizationId)
+		);
 	},
 });
 
@@ -469,7 +477,7 @@ export const listFolders = publicQuery({
  * mailboxes — for a desktop "new mail" notification that can deep-link/triage.
  * Minimal fields only.
  */
-// public: soft-auth — returns null for anonymous; ownership via by_user
+// public: soft-auth — returns null for anonymous; access via loadAccessibleMailboxes (own + shared memberships)
 export const latestInboxUnread = publicQuery({
 	args: {},
 	handler: async (ctx) => {
@@ -517,7 +525,7 @@ export const latestInboxUnread = publicQuery({
 	},
 });
 
-// public: soft-auth — returns 0 for anonymous; only sums the caller's own mailboxes
+// public: soft-auth — returns 0 for anonymous; access via loadAccessibleMailboxes (own + shared memberships)
 export const inboxUnreadCount = publicQuery({
 	args: {},
 	handler: async (ctx) => {
@@ -552,7 +560,7 @@ export const inboxUnreadCount = publicQuery({
  * category-aware toast decisions — it never drives `total`.
  * Minimal, plain-text fields only.
  */
-// public: soft-auth — returns an empty peek for anonymous; ownership via by_user
+// public: soft-auth — returns an empty peek for anonymous; access via loadAccessibleMailboxes (own + shared memberships)
 export const newestUnreadInbox = publicQuery({
 	args: { limit: v.optional(v.number()) },
 	handler: async (ctx, args) => {
