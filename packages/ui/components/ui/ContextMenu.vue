@@ -145,28 +145,30 @@ function onWindowPointerdown(event: MouseEvent) {
 	if (menuRef.value && !menuRef.value.contains(event.target as Node)) close();
 }
 
-watch(open, (isOpen) => {
-	if (typeof window === 'undefined') return;
-	if (isOpen) {
-		// `contextmenu` also opens on right-click, so listen on that too.
-		window.addEventListener('pointerdown', onWindowPointerdown, true);
-		window.addEventListener('contextmenu', onWindowPointerdown, true);
-		window.addEventListener('resize', close);
-		window.addEventListener('scroll', close, true);
-	} else {
-		window.removeEventListener('pointerdown', onWindowPointerdown, true);
-		window.removeEventListener('contextmenu', onWindowPointerdown, true);
-		window.removeEventListener('resize', close);
-		window.removeEventListener('scroll', close, true);
-	}
-});
+function bindWindowListeners() {
+	// `contextmenu` also opens on right-click, so listen on that too.
+	window.addEventListener('pointerdown', onWindowPointerdown, true);
+	window.addEventListener('contextmenu', onWindowPointerdown, true);
+	window.addEventListener('resize', close);
+	window.addEventListener('scroll', close, true);
+}
 
-onUnmounted(() => {
-	if (typeof window === 'undefined') return;
+function unbindWindowListeners() {
 	window.removeEventListener('pointerdown', onWindowPointerdown, true);
 	window.removeEventListener('contextmenu', onWindowPointerdown, true);
 	window.removeEventListener('resize', close);
 	window.removeEventListener('scroll', close, true);
+}
+
+watch(open, (isOpen) => {
+	if (typeof window === 'undefined') return;
+	if (isOpen) bindWindowListeners();
+	else unbindWindowListeners();
+});
+
+onUnmounted(() => {
+	if (typeof window === 'undefined') return;
+	unbindWindowListeners();
 });
 </script>
 
