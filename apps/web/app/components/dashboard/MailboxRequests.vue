@@ -31,6 +31,10 @@ const { data: requests, isLoading } = useConvexQuery(
 // verified — the same signal the "add mailbox" flow keys off. No verified
 // domain ⇒ hosted mail isn't configured, so "Provision now" is disabled.
 const { data: verifiedDomains } = useConvexQuery(api.domains.domains.listVerified, () => ({}));
+// `undefined` = query not loaded yet: don't flash the disabled button + reason
+// on every mount before we know whether verified domains exist. Only decide once
+// the query has resolved.
+const domainsLoaded = computed(() => verifiedDomains.value !== undefined);
 const hostedConfigured = computed(() => (verifiedDomains.value?.length ?? 0) > 0);
 
 const { run: provisionRequest } = useBackendOperation(
@@ -99,12 +103,15 @@ async function resolve(requestId: Id<'mailboxRequests'>) {
 							variant="primary"
 							size="sm"
 							:loading="busy?.id === req.id && busy?.action === 'provision'"
-							:disabled="!hostedConfigured || (busy !== null && busy.id !== req.id)"
+							:disabled="
+								!hostedConfigured ||
+								(busy !== null && !(busy.id === req.id && busy.action === 'provision'))
+							"
 							@click="provision(req.id)"
 						>
 							Provision now
 						</UiButton>
-						<p v-if="!hostedConfigured" class="text-xs text-text-tertiary">
+						<p v-if="domainsLoaded && !hostedConfigured" class="text-xs text-text-tertiary">
 							Verify a sending domain first
 						</p>
 					</div>
@@ -112,7 +119,7 @@ async function resolve(requestId: Id<'mailboxRequests'>) {
 						variant="ghost"
 						size="sm"
 						:loading="busy?.id === req.id && busy?.action === 'resolve'"
-						:disabled="busy !== null && busy.id !== req.id"
+						:disabled="busy !== null && !(busy.id === req.id && busy.action === 'resolve')"
 						@click="resolve(req.id)"
 					>
 						Mark done
