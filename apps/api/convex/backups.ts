@@ -20,7 +20,7 @@
  * Gating: all UI-facing functions are platform-admin only (requirePlatformAdmin).
  */
 import { v } from 'convex/values';
-import type { QueryCtx } from './_generated/server';
+import type { MutationCtx, QueryCtx } from './_generated/server';
 import type { Doc } from './_generated/dataModel';
 import { authedMutation, authedQuery } from './lib/authedFunctions';
 import { requirePlatformAdmin } from './platformAdmin/platformAdmin';
@@ -32,6 +32,33 @@ import { requirePlatformAdmin } from './platformAdmin/platformAdmin';
  */
 async function getState(ctx: QueryCtx): Promise<Doc<'backupState'> | null> {
 	return await ctx.db.query('backupState').first();
+}
+
+/**
+ * Upsert the singleton backupState row with the admin's attestation.
+ *
+ * Both mutations record a partial change (a schedule flip or a logged run) plus
+ * the same `updatedAt`/`updatedBy` audit stamp; this patches the existing row
+ * or inserts a fresh one, defaulting `isScheduleEnabled` to false when the
+ * first thing recorded is a manual run rather than a schedule attestation.
+ */
+async function upsertBackupState(
+	ctx: MutationCtx,
+	admin: { email: string },
+	patch: Partial<Pick<Doc<'backupState'>, 'isScheduleEnabled' | 'lastRunAt' | 'lastRunStatus'>>
+): Promise<void> {
+	const existing = await getState(ctx);
+	const now = Date.now();
+	if (existing) {
+		await ctx.db.patch(existing._id, { ...patch, updatedAt: now, updatedBy: admin.email });
+	} else {
+		await ctx.db.insert('backupState', {
+			isScheduleEnabled: patch.isScheduleEnabled ?? false,
+			...patch,
+			updatedAt: now,
+			updatedBy: admin.email,
+		});
+	}
 }
 
 /**
@@ -49,7 +76,7 @@ export const getBackupState = authedQuery({
 		if (!state) return null;
 
 		return {
-			scheduleEnabled: state.scheduleEnabled,
+			isScheduleEnabled: state.isScheduleEnabled,
 			lastRunAt: state.lastRunAt,
 			lastRunStatus: state.lastRunStatus,
 			updatedAt: state.updatedAt,
@@ -70,23 +97,9 @@ export const setScheduleEnabled = authedMutation({
 	handler: async (ctx, { enabled }) => {
 		const admin = await requirePlatformAdmin(ctx);
 
-		const existing = await getState(ctx);
-		const now = Date.now();
-		if (existing) {
-			await ctx.db.patch(existing._id, {
-				scheduleEnabled: enabled,
-				updatedAt: now,
-				updatedBy: admin.email,
-			});
-		} else {
-			await ctx.db.insert('backupState', {
-				scheduleEnabled: enabled,
-				updatedAt: now,
-				updatedBy: admin.email,
-			});
-		}
+		await upsertBackupState(ctx, admin, { isScheduleEnabled: enabled });
 
-		return { scheduleEnabled: enabled };
+		return { isScheduleEnabled: enabled };
 	},
 });
 
@@ -102,24 +115,8 @@ export const logManualRun = authedMutation({
 	handler: async (ctx, { status }) => {
 		const admin = await requirePlatformAdmin(ctx);
 
-		const existing = await getState(ctx);
 		const now = Date.now();
-		if (existing) {
-			await ctx.db.patch(existing._id, {
-				lastRunAt: now,
-				lastRunStatus: status,
-				updatedAt: now,
-				updatedBy: admin.email,
-			});
-		} else {
-			await ctx.db.insert('backupState', {
-				scheduleEnabled: false,
-				lastRunAt: now,
-				lastRunStatus: status,
-				updatedAt: now,
-				updatedBy: admin.email,
-			});
-		}
+		await upsertBackupState(ctx, admin, { lastRunAt: now, lastRunStatus: status });
 
 		return { lastRunAt: now, lastRunStatus: status };
 	},

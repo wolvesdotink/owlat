@@ -322,8 +322,9 @@ export const authTables = {
 	// Populated by apps/api/convex/backups.ts. One row per deployment.
 	backupState: defineTable({
 		// Whether the operator confirms the daily backup schedule is installed
-		// on the host. Drives the "Getting started" reminder (dismissed once true).
-		scheduleEnabled: v.boolean(),
+		// on the host. Drives the self-host onboarding "Set up backups" pointer
+		// (SelfHostOnboardingBanner.vue), which hides once this is true.
+		isScheduleEnabled: v.boolean(),
 		// Last manual backup the operator logged after running scripts/backup.sh.
 		lastRunAt: v.optional(v.number()),
 		lastRunStatus: v.optional(v.union(v.literal('success'), v.literal('failed'))),

@@ -114,13 +114,13 @@ describe('backups schedule round-trip', () => {
 
 		await t.mutation(api.backups.setScheduleEnabled, { enabled: true });
 		let state = await t.query(api.backups.getBackupState, {});
-		expect(state?.scheduleEnabled).toBe(true);
+		expect(state?.isScheduleEnabled).toBe(true);
 		expect(state?.updatedBy).toBe('admin@example.com');
 		expect(typeof state?.updatedAt).toBe('number');
 
 		await t.mutation(api.backups.setScheduleEnabled, { enabled: false });
 		state = await t.query(api.backups.getBackupState, {});
-		expect(state?.scheduleEnabled).toBe(false);
+		expect(state?.isScheduleEnabled).toBe(false);
 	});
 
 	it('does not create a second row on repeated writes (singleton)', async () => {
@@ -154,8 +154,8 @@ describe('backups.logManualRun round-trip', () => {
 
 		expect(state?.lastRunStatus).toBe('success');
 		expect(state?.lastRunAt).toBeGreaterThanOrEqual(before);
-		// Logging a run before any schedule attestation defaults scheduleEnabled to false.
-		expect(state?.scheduleEnabled).toBe(false);
+		// Logging a run before any schedule attestation defaults isScheduleEnabled to false.
+		expect(state?.isScheduleEnabled).toBe(false);
 	});
 
 	it('preserves a previously-recorded schedule when logging a run', async () => {
@@ -166,7 +166,7 @@ describe('backups.logManualRun round-trip', () => {
 		await t.mutation(api.backups.logManualRun, { status: 'failed' });
 
 		const state = await t.query(api.backups.getBackupState, {});
-		expect(state?.scheduleEnabled).toBe(true);
+		expect(state?.isScheduleEnabled).toBe(true);
 		expect(state?.lastRunStatus).toBe('failed');
 	});
 });
