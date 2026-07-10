@@ -24,15 +24,12 @@
 
 import { v } from 'convex/values';
 import { takeReceivedAtChunk } from '../lib/receivedAtCursor';
-import {
-	internalAction,
-	internalMutation,
-	internalQuery,
-} from '../_generated/server';
+import { internalAction, internalMutation, internalQuery } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { resolveContact } from '../contacts/resolution';
+import { markOnboardingStep } from '../auth/userOnboarding';
 
 // Tunables — kept in step with agent/knowledgeBackfill.ts.
 const INTER_MESSAGE_DELAY_MS = 150;
@@ -113,14 +110,14 @@ export const nextIndexChunk = internalQuery({
 				ctx.db
 					.query('mailMessages')
 					.withIndex('by_mailbox_and_received', (q) =>
-						q.eq('mailboxId', mailboxId).eq('receivedAt', receivedAt),
+						q.eq('mailboxId', mailboxId).eq('receivedAt', receivedAt)
 					)
 					.collect(), // bounded: messages sharing one exact-millisecond receivedAt
 			newer: (receivedAt, take) =>
 				ctx.db
 					.query('mailMessages')
 					.withIndex('by_mailbox_and_received', (q) =>
-						q.eq('mailboxId', mailboxId).gt('receivedAt', receivedAt),
+						q.eq('mailboxId', mailboxId).gt('receivedAt', receivedAt)
 					)
 					.order('asc')
 					.take(take),
@@ -196,11 +193,7 @@ export const patchIndexProgress = internalMutation({
 export const finalizeMigration = internalMutation({
 	args: {
 		migrationId: v.id('mailboxMigrations'),
-		status: v.union(
-			v.literal('completed'),
-			v.literal('failed'),
-			v.literal('cancelled'),
-		),
+		status: v.union(v.literal('completed'), v.literal('failed'), v.literal('cancelled')),
 		errorMessage: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
@@ -217,6 +210,11 @@ export const finalizeMigration = internalMutation({
 			updatedAt: now,
 			lastError: args.errorMessage ?? migration.lastError,
 		});
+		// Only a successful indexing run counts as knowledge indexed for the
+		// migration owner's onboarding checklist.
+		if (args.status === 'completed') {
+			await markOnboardingStep(ctx, migration.userId, 'knowledgeIndexed');
+		}
 	},
 });
 
@@ -241,18 +239,14 @@ export const runIndexChunk = internalAction({
 	handler: async (ctx, args) => {
 		const interChunkDelay = args.interChunkDelayMs ?? INTER_CHUNK_DELAY_MS;
 		try {
-			const migration = await ctx.runQuery(
-				internal.mail.migrationIndexing.loadMigration,
-				{ migrationId: args.migrationId },
-			);
+			const migration = await ctx.runQuery(internal.mail.migrationIndexing.loadMigration, {
+				migrationId: args.migrationId,
+			});
 			if (!migration) return;
 			if (migration.status !== 'indexing') return; // cancelled / already done
 
 			// Honor a mid-sweep feature disable: the import is kept, indexing stops.
-			const enabled = await ctx.runQuery(
-				internal.mail.migrationIndexing.isKnowledgeEnabled,
-				{},
-			);
+			const enabled = await ctx.runQuery(internal.mail.migrationIndexing.isKnowledgeEnabled, {});
 			if (!enabled) {
 				await ctx.runMutation(internal.mail.migrationIndexing.finalizeMigration, {
 					migrationId: args.migrationId,
@@ -268,7 +262,7 @@ export const runIndexChunk = internalAction({
 					cursorReceivedAt: migration.indexCursorReceivedAt,
 					cursorId: migration.indexCursorId,
 					limit: args.chunkSize,
-				},
+				}
 			);
 
 			let deltaIndexed = 0;
@@ -292,7 +286,7 @@ export const runIndexChunk = internalAction({
 				// Scope the knowledge to the sender (quiet find-or-create).
 				const { contactId } = await ctx.runMutation(
 					internal.mail.migrationIndexing.resolveSenderContact,
-					{ email: msg.fromAddress, fromName: msg.fromName ?? undefined },
+					{ email: msg.fromAddress, fromName: msg.fromName ?? undefined }
 				);
 
 				// An unresolvable sender (e.g. a malformed From header) would
@@ -302,13 +296,10 @@ export const runIndexChunk = internalAction({
 				if (!contactId) continue;
 
 				try {
-					await ctx.runAction(
-						internal.knowledge.extraction.extractFromMailMessage,
-						{
-							mailMessageId: msg._id,
-							contactIds: [contactId],
-						},
-					);
+					await ctx.runAction(internal.knowledge.extraction.extractFromMailMessage, {
+						mailMessageId: msg._id,
+						contactIds: [contactId],
+					});
 				} catch (err) {
 					// eslint-disable-next-line no-console
 					console.error('[mailMigration] extraction error', err);
@@ -335,7 +326,7 @@ export const runIndexChunk = internalAction({
 						migrationId: args.migrationId,
 						chunkSize: args.chunkSize,
 						interChunkDelayMs: args.interChunkDelayMs,
-					},
+					}
 				);
 			} else {
 				await ctx.runMutation(internal.mail.migrationIndexing.finalizeMigration, {
