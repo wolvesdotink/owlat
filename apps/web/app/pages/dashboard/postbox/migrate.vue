@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { MailProvider } from '~/utils/mailAutodiscover';
-import { MAIL_PROVIDERS, providerById } from '~/utils/mailAutodiscover';
+import { GENERIC_IMAP_PROVIDER, MAIL_PROVIDERS } from '~/utils/mailAutodiscover';
 import { api } from '@owlat/api';
 
 useHead({ title: 'Import your mail — Owlat' });
@@ -11,9 +11,13 @@ definePageMeta({
 });
 
 const { showToast } = useToast();
-const { isEnabled } = useFeatureFlag();
+const { isEnabled, isLoading: flagsLoading } = useFeatureFlag();
 // Gate inline rather than via requiresAnyFeature: when external mailboxes are
 // turned off the wizard explains itself instead of silently redirecting away.
+// While the flags subscription is still resolving, `isEnabled` returns the
+// default (false) — so on a hard reload / deep link (the c1 onboarding entry
+// path) we must show a loading state, not flash the "turned off" lock card at
+// users who actually have the feature enabled.
 const externalEnabled = computed(() => isEnabled('mail.external'));
 
 const {
@@ -40,12 +44,16 @@ function backToPicker() {
 }
 
 // Gmail maps to the 'google' backfill path; every other provider uses generic IMAP.
-function sourceForProvider(provider: MailProvider | null): 'google' | 'imap' {
-	return provider?.id === 'gmail' ? 'google' : 'imap';
+function sourceForProvider(provider: MailProvider): 'google' | 'imap' {
+	return provider.id === 'gmail' ? 'google' : 'imap';
 }
 
 async function handleConnected() {
 	const provider = selectedProvider.value;
+	// The connect form only fires `submitted` for the picked provider, so this
+	// should never be null — bail rather than silently defaulting a Gmail
+	// connection down the generic-IMAP import path.
+	if (!provider) return;
 	const started = await start(sourceForProvider(provider));
 	if (started === undefined) return;
 	showToast('Importing your mail history now.', 'success');
@@ -54,12 +62,10 @@ async function handleConnected() {
 // ── Ready step (already connected) ──────────────────────────────────────────
 // Derive the provider from the connected account's IMAP host so the edit form
 // keeps the right guidance; unknown hosts fall back to the generic IMAP form.
-// The generic IMAP provider always exists in the curated list.
-const genericImapProvider = providerById('imap') as MailProvider;
 const connectedProvider = computed<MailProvider>(() => {
 	const host = account.value?.configured ? account.value.imapHost.toLowerCase() : '';
 	const match = MAIL_PROVIDERS.find((p) => p.preset && host === p.preset.imapHost.toLowerCase());
-	return match ?? genericImapProvider;
+	return match ?? GENERIC_IMAP_PROVIDER;
 });
 const connectedSource = computed<'google' | 'imap'>(() =>
 	account.value?.configured && account.value.imapHost.includes('gmail') ? 'google' : 'imap'
@@ -69,22 +75,11 @@ async function handleStartImport() {
 	if (res !== undefined) showToast('Importing your mail history now.', 'success');
 }
 
-// The existing account, shaped for the edit form (never carries the password).
-const editAccount = computed(() =>
-	account.value?.configured
-		? {
-				emailAddress: account.value.emailAddress,
-				imapHost: account.value.imapHost,
-				imapPort: account.value.imapPort,
-				isImapSecure: account.value.isImapSecure,
-				smtpHost: account.value.smtpHost,
-				smtpPort: account.value.smtpPort,
-				isSmtpSecure: account.value.isSmtpSecure,
-				imapUsername: account.value.imapUsername,
-				status: account.value.status,
-			}
-		: null
-);
+// The existing account, for pre-filling the edit form. The connected account
+// already carries every field the form's `account` prop needs (plus a few it
+// ignores) and never includes the password — excess-property checks apply only
+// to object literals, so passing the whole object through type-checks cleanly.
+const editAccount = computed(() => (account.value?.configured ? account.value : null));
 
 // ── Manage: edit credentials / disconnect / purge ───────────────────────────
 const editing = ref(false);
@@ -176,8 +171,15 @@ const steps = computed(() =>
 			</div>
 		</header>
 
+		<!-- Wait for the feature-flag subscription before deciding what to show,
+		     so the lock card never flashes at users who have the feature on. -->
+		<div v-if="flagsLoading" class="mt-8 flex justify-center py-10" aria-live="polite">
+			<Icon name="lucide:loader-2" class="w-6 h-6 animate-spin text-text-tertiary" />
+			<span class="sr-only">Loading…</span>
+		</div>
+
 		<!-- ─────────────── Feature off: explain, don't vanish ─────────────── -->
-		<UiCard v-if="!externalEnabled" padding="lg" class="mt-8">
+		<UiCard v-else-if="!externalEnabled" padding="lg" class="mt-8">
 			<div class="flex items-start gap-3">
 				<UiIconBox icon="lucide:lock" size="md" variant="surface" rounded="xl" />
 				<div>
@@ -313,8 +315,8 @@ const steps = computed(() =>
 						:provider="connectedProvider"
 						mode="update"
 						:account="editAccount"
+						hide-cancel
 						@submitted="handleUpdated"
-						@cancel="editing = false"
 					/>
 				</UiCard>
 			</section>
