@@ -109,29 +109,13 @@ export function visibleChecklistSteps(mode: OnboardingMode): ChecklistStepMeta[]
 /**
  * Whether the checklist has nothing left to do: every VISIBLE step for the mode
  * is complete. A completed checklist disappears for good (see
- * {@link shouldShowUserChecklist}).
+ * `shouldShowUserChecklist` in `~/utils/onboarding`).
  */
 export function isChecklistComplete(
 	mode: OnboardingMode,
 	completed: ReadonlySet<ChecklistStepId>
 ): boolean {
 	return visibleChecklistSteps(mode).every((step) => completed.has(step.id));
-}
-
-/**
- * Whether the per-user checklist card should render. It hides while state is
- * still loading, once the member dismisses it, and forever once every visible
- * step is complete.
- */
-export function shouldShowUserChecklist(opts: {
-	isLoading: boolean;
-	dismissed: boolean;
-	isComplete: boolean;
-}): boolean {
-	if (opts.isLoading) return false;
-	if (opts.dismissed) return false;
-	if (opts.isComplete) return false;
-	return true;
 }
 
 /**

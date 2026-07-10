@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import { isInstanceOnboardingActive, shouldShowUserChecklist } from '~/utils/onboarding';
 import {
 	isChecklistComplete,
-	shouldShowUserChecklist,
 	visibleChecklistSteps,
 	type ChecklistStepId,
 	type OnboardingMode,
@@ -33,6 +33,26 @@ const { data: settings, isLoading: isLoadingSettings } = useConvexQuery(
 	{}
 );
 
+// Instance-scoped onboarding progress — the SAME record the self-host banner and
+// the go-live checklist read. The per-user checklist defers while either of
+// those instance surfaces still owns the onboarding phase, so a fresh admin
+// never sees two stacked checklists.
+const config = useRuntimeConfig();
+const isSelfHost = config.public.deploymentMode === 'selfhost';
+const { data: instanceProgress, isLoading: isLoadingInstance } = useOrganizationQuery(
+	api.auth.onboarding.getWithActualProgress,
+	() => ({ userId: props.userId })
+);
+const instanceOnboardingActive = computed(() =>
+	isInstanceOnboardingActive({
+		isLoading: isLoadingInstance.value,
+		dismissed: instanceProgress.value?.dismissed ?? false,
+		isComplete: instanceProgress.value?.isComplete ?? false,
+		isSelfHost,
+		sendPathReady: instanceProgress.value?.sendPathReady ?? false,
+	})
+);
+
 const mode = computed<OnboardingMode>(() =>
 	settings.value?.isMigrationMode ? 'migration' : 'fresh'
 );
@@ -52,13 +72,16 @@ const completedCount = computed(() => steps.value.filter((s) => s.completed).len
 
 const isComplete = computed(() => isChecklistComplete(mode.value, completedIds.value));
 
-const isLoading = computed(() => isLoadingOnboarding.value || isLoadingSettings.value);
+const isLoading = computed(
+	() => isLoadingOnboarding.value || isLoadingSettings.value || isLoadingInstance.value
+);
 
 const shouldShow = computed(() =>
 	shouldShowUserChecklist({
 		isLoading: isLoading.value,
 		dismissed: (onboarding.value?.dismissedAt ?? null) !== null,
 		isComplete: isComplete.value,
+		instanceOnboardingActive: instanceOnboardingActive.value,
 	})
 );
 

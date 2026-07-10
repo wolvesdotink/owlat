@@ -86,10 +86,12 @@ async function handleSave(
 
 		<!--
 			Persistent, resumable per-user onboarding checklist (piece c1). Distinct
-			from the instance-wide admin checklist above: this tracks THIS member's
+			from the instance-wide admin surfaces above: this tracks THIS member's
 			personal setup journey (mailbox, optional import, first send) and its
-			steps adapt to migration vs fresh-start mode. Dismissible; gone for good
-			once complete.
+			steps adapt to migration vs fresh-start mode. It DEFERS while either
+			instance surface still owns the onboarding phase, so a fresh admin never
+			sees two stacked checklists — only one onboarding affordance is ever
+			visible at a time. Dismissible; gone for good once complete.
 		-->
 		<OnboardingUserChecklist
 			v-if="hasActiveOrganization && userId"
