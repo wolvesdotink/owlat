@@ -1,28 +1,85 @@
 /**
  * Server-side throttle for re-sending organization invitation emails.
  *
- * The actual re-send goes through BetterAuth's own `inviteMember({ resend: true })`
- * hook, which routes to the existing system-mail path
- * (`auth/auth.ts` → `internal.systemMail.sendSystemEmail`). This module owns only
- * the abuse guard: a per-invitation cooldown so an admin cannot spam an invitee
- * by hammering "Resend". Enforced here on the server so the floor holds no matter
- * what the client does. The copyable accept link is always available regardless,
- * so this rate-limits the *email* only, never access to the invite.
+ * The choke point is `enforceResendThrottle` — an INTERNAL mutation invoked from
+ * the `sendInvitationEmail` hook in `auth/auth.ts`, so EVERY send path passes
+ * through it: the first invite, a cooperating-client resend, and a raw
+ * `POST /api/auth/organization/invite-member` with `resend: true`. It stamps the
+ * last-sent time on the initial send and throws inside the cooldown, so no client
+ * (or direct API loop) can spam an invitee below the 1-per-minute floor.
+ *
+ * `throttleResend` is the CLIENT-facing pre-check only: a read-only guard the UI
+ * calls before triggering BetterAuth's resend so it can surface a friendly
+ * "wait Ns" toast instead of a swallowed background failure. It never writes —
+ * the hook owns the stamp — so it can't desync the real cooldown.
+ *
+ * The copyable accept link is always available regardless, so this rate-limits
+ * the *email* only, never access to the invite.
  */
 
 import { v } from 'convex/values';
+import { internalMutation } from '../_generated/server';
 import { adminMutation } from '../lib/authedFunctions';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 import { throwForbidden, throwRateLimited } from '../_utils/errors';
 
-// A single invitation may trigger at most one resend email per minute.
+// A single invitation may trigger at most one send email (initial or resend) per
+// minute — the initial send counts, so a resend seconds later is refused.
 const RESEND_COOLDOWN_MS = 60_000;
 
+/** Seconds remaining before `lastSentAt` clears the cooldown, or 0 if elapsed. */
+function cooldownRemaining(lastSentAt: number, now: number): number {
+	const elapsed = now - lastSentAt;
+	if (elapsed >= RESEND_COOLDOWN_MS) return 0;
+	return Math.ceil((RESEND_COOLDOWN_MS - elapsed) / 1000);
+}
+
 /**
- * Record (and gate) an invitation-email resend. Throws `rateLimited` when the
- * same invitation was resent less than `RESEND_COOLDOWN_MS` ago; otherwise stamps
- * the send time and returns. The caller performs the actual BetterAuth resend
- * only after this resolves.
+ * THE enforcement choke point. Called from the `sendInvitationEmail` hook for
+ * every invitation email (initial + resend, from any client). Throws
+ * `rateLimited` when the same invitation was sent less than `RESEND_COOLDOWN_MS`
+ * ago; otherwise stamps the send time so the next send is measured from now.
+ *
+ * Internal-only: the BetterAuth hook hands us a real, existing invitation, so
+ * there is no unvalidated-id path here.
+ */
+export const enforceResendThrottle = internalMutation({
+	args: {
+		invitationId: v.string(),
+		organizationId: v.string(),
+	},
+	handler: async (ctx, args) => {
+		const now = Date.now();
+		const existing = await ctx.db
+			.query('invitationResends')
+			.withIndex('by_invitation', (q) => q.eq('invitationId', args.invitationId))
+			.first();
+
+		if (existing) {
+			const retryAfter = cooldownRemaining(existing.lastSentAt, now);
+			if (retryAfter > 0) {
+				throwRateLimited(
+					`Please wait ${retryAfter}s before resending this invitation.`,
+					retryAfter
+				);
+			}
+			await ctx.db.patch(existing._id, { lastSentAt: now });
+		} else {
+			await ctx.db.insert('invitationResends', {
+				invitationId: args.invitationId,
+				organizationId: args.organizationId,
+				lastSentAt: now,
+			});
+		}
+	},
+});
+
+/**
+ * Client-facing pre-check for the "Resend" button. READ-ONLY: it reports whether
+ * the cooldown has elapsed (throwing the friendly rate-limit error when it has
+ * not) without touching the stamp, so the actual send — which the hook gates and
+ * records — stays the single source of truth. Returns `{ ok: true }` when a
+ * resend is currently permitted.
  */
 export const throttleResend = adminMutation({
 	args: {
@@ -34,28 +91,19 @@ export const throttleResend = adminMutation({
 			throwForbidden('No active organization');
 		}
 
-		const now = Date.now();
 		const existing = await ctx.db
 			.query('invitationResends')
 			.withIndex('by_invitation', (q) => q.eq('invitationId', args.invitationId))
 			.first();
 
 		if (existing) {
-			const elapsed = now - existing.lastSentAt;
-			if (elapsed < RESEND_COOLDOWN_MS) {
-				const retryAfter = Math.ceil((RESEND_COOLDOWN_MS - elapsed) / 1000);
+			const retryAfter = cooldownRemaining(existing.lastSentAt, Date.now());
+			if (retryAfter > 0) {
 				throwRateLimited(
 					`Please wait ${retryAfter}s before resending this invitation.`,
 					retryAfter
 				);
 			}
-			await ctx.db.patch(existing._id, { lastSentAt: now });
-		} else {
-			await ctx.db.insert('invitationResends', {
-				invitationId: args.invitationId,
-				organizationId: session.activeOrganizationId,
-				lastSentAt: now,
-			});
 		}
 
 		return { ok: true as const };
