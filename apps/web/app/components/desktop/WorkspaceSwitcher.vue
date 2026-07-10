@@ -66,12 +66,16 @@ function openPicker(id: string, ev: MouseEvent): void {
 	});
 }
 
-function closePicker(): void {
+function closePicker(opts?: { restoreFocus?: boolean }): void {
 	pickerId.value = null;
 	triggerRect = null;
 	// Return focus to the avatar that opened the picker (house DropdownMenu
-	// parity) so a keyboard user is never left focused on <body>.
-	triggerEl?.focus();
+	// parity) so a keyboard user is never left focused on <body> — but only on
+	// the keyboard-dismiss paths (Escape / choosing a swatch). On an
+	// outside-click the user is already interacting with another element
+	// (search field, composer, control); yanking focus back to the avatar would
+	// steal their click target, and a subsequent Enter would fire switchTo.
+	if (opts?.restoreFocus !== false) triggerEl?.focus();
 	triggerEl = null;
 }
 
@@ -129,7 +133,8 @@ function onKeydown(e: KeyboardEvent): void {
 }
 
 function onClickOutside(e: MouseEvent): void {
-	if (pickerRef.value && !pickerRef.value.contains(e.target as Node)) closePicker();
+	if (pickerRef.value && !pickerRef.value.contains(e.target as Node))
+		closePicker({ restoreFocus: false });
 }
 
 watch(pickerId, (id) => {
