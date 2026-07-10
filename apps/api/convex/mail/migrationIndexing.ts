@@ -195,6 +195,10 @@ export const finalizeMigration = internalMutation({
 		migrationId: v.id('mailboxMigrations'),
 		status: v.union(v.literal('completed'), v.literal('failed'), v.literal('cancelled')),
 		errorMessage: v.optional(v.string()),
+		// True ONLY when the sweep reached its natural end (`!hasMore`). The
+		// feature-disable branch also finalizes with status 'completed' but passes
+		// false, so a cut-off sweep never counts as knowledge indexed.
+		indexingRanToCompletion: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
 		const migration = await ctx.db.get(args.migrationId);
@@ -210,9 +214,10 @@ export const finalizeMigration = internalMutation({
 			updatedAt: now,
 			lastError: args.errorMessage ?? migration.lastError,
 		});
-		// Only a successful indexing run counts as knowledge indexed for the
-		// migration owner's onboarding checklist.
-		if (args.status === 'completed') {
+		// Only a sweep that ran to its natural end counts as knowledge indexed for
+		// the migration owner's onboarding checklist — a mid-sweep feature disable
+		// finalizes with status 'completed' too, but leaves the step unmarked.
+		if (args.status === 'completed' && args.indexingRanToCompletion === true) {
 			await markOnboardingStep(ctx, migration.userId, 'knowledgeIndexed');
 		}
 	},
@@ -251,6 +256,8 @@ export const runIndexChunk = internalAction({
 				await ctx.runMutation(internal.mail.migrationIndexing.finalizeMigration, {
 					migrationId: args.migrationId,
 					status: 'completed',
+					// Sweep cut off mid-flight — import kept, but knowledge is incomplete.
+					indexingRanToCompletion: false,
 				});
 				return;
 			}
@@ -332,6 +339,7 @@ export const runIndexChunk = internalAction({
 				await ctx.runMutation(internal.mail.migrationIndexing.finalizeMigration, {
 					migrationId: args.migrationId,
 					status: 'completed',
+					indexingRanToCompletion: true,
 				});
 			}
 		} catch (err) {
