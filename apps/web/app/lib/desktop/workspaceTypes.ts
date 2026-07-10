@@ -63,27 +63,6 @@ export const WORKSPACE_ACCENTS: readonly WorkspaceAccent[] = WORKSPACE_ACCENT_OP
 	(o) => o.value
 );
 
-/** Human label for a curated accent hex, or a generic fallback. */
-export function accentLabel(color: string): string {
-	return WORKSPACE_ACCENT_OPTIONS.find((o) => o.value === color)?.label ?? 'Accent';
-}
-
-/**
- * Up-to-two-letter avatar initials for a workspace label. Strips a leading
- * protocol so a raw instance URL still yields sane letters. Used by the
- * Slack-style workspace rail (WorkspaceSwitcher) to paint each tile's swatch.
- */
-export function initials(label: string): string {
-	return label
-		.replace(/^https?:\/\//, '')
-		.split(/[\s.]+/)
-		.map((p) => p[0])
-		.filter(Boolean)
-		.join('')
-		.toUpperCase()
-		.slice(0, 2);
-}
-
 /** Clamp an unread badge count to the two-plus-glyph "99+" convention. */
 export function formatBadgeCount(count: number): string {
 	return count > 99 ? '99+' : String(count);

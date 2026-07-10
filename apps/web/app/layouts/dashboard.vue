@@ -2,19 +2,7 @@
 import { logError } from '~/lib/runtimeLog';
 
 const { user, signOut, isPending } = useAuth();
-const { organization, role: orgRole, isLoading: isOrgLoading } = useOrganizationContext();
 const { isEnabled: isFeatureEnabled } = useFeatureFlag();
-
-// Get organization initials for avatar
-const orgInitials = computed(() => {
-	if (!organization.value?.name) return '?';
-	return organization.value.name
-		.split(' ')
-		.map((n) => n[0])
-		.join('')
-		.toUpperCase()
-		.slice(0, 2);
-});
 const route = useRoute();
 const router = useRouter();
 
@@ -419,8 +407,10 @@ const sidebarDesktopClass = computed(() => {
 			Skip to main content
 		</a>
 
-		<!-- Native window titlebar (desktop only; no-op on web). -->
-		<DesktopTitlebar />
+		<!-- Native window titlebar (desktop only; no-op on web). `show-search`:
+		     this layout mounts <AppCommandPalette> below, so the pill has a
+		     listener. -->
+		<DesktopTitlebar show-search />
 
 		<!-- Fill the iOS notch / dynamic island area so scrolled content never peeks through above the header. -->
 		<div
@@ -467,11 +457,13 @@ const sidebarDesktopClass = computed(() => {
 			@focusout="onPeekFocusOut"
 			@keydown="onPeekKeydown"
 		>
-			<!-- Desktop-only: Slack-style workspace switcher -->
-			<DesktopWorkspaceSwitcher v-if="isDesktop" />
-
-			<!-- Logo -->
-			<div class="h-16 flex items-center justify-between px-4 border-b border-border-subtle">
+			<!-- Logo — web only. On desktop the app identity lives in the native
+			     window chrome and the titlebar; the workspace (org) switcher is the
+			     titlebar chip, so the sidebar carries navigation only. -->
+			<div
+				v-if="!isDesktop"
+				class="h-16 flex items-center justify-between px-4 border-b border-border-subtle"
+			>
 				<NuxtLink
 					to="/dashboard"
 					class="flex items-center gap-2"
@@ -492,40 +484,6 @@ const sidebarDesktopClass = computed(() => {
 				>
 					<Icon name="lucide:x" class="w-5 h-5" />
 				</button>
-			</div>
-
-			<!-- Organization Display -->
-			<div class="relative px-2 py-3 border-b border-border-subtle">
-				<div
-					:class="[
-						'flex items-center gap-3 px-3 py-2.5 rounded-lg',
-						'bg-bg-surface/50 border border-border-subtle',
-						{ 'justify-center': isCollapsed },
-					]"
-					:title="isCollapsed ? organization?.name || 'Organization' : undefined"
-				>
-					<!-- Organization Avatar -->
-					<div
-						class="w-8 h-8 rounded-lg bg-gradient-to-br from-brand/20 to-brand/5 border border-brand/20 flex items-center justify-center text-xs font-semibold text-brand flex-shrink-0"
-					>
-						<template v-if="isOrgLoading">
-							<span class="animate-pulse">...</span>
-						</template>
-						<template v-else>
-							{{ orgInitials }}
-						</template>
-					</div>
-
-					<!-- Organization info -->
-					<div v-if="!isCollapsed" class="flex-1 text-left min-w-0">
-						<p class="text-sm font-medium text-text-primary truncate">
-							{{ isOrgLoading ? 'Loading...' : organization?.name || 'Organization' }}
-						</p>
-						<p class="text-[11px] text-text-tertiary truncate capitalize">
-							{{ orgRole || 'editor' }}
-						</p>
-					</div>
-				</div>
 			</div>
 
 			<!-- Navigation with collapsible sections -->
@@ -852,14 +810,15 @@ const sidebarDesktopClass = computed(() => {
  * Desktop native chrome: inset the layout below the fixed <DesktopTitlebar>.
  * The titlebar is position:fixed, so the root gets top padding and the fixed
  * sidebar is pushed down to sit beneath it. Web (no .has-desktop-chrome) is
- * untouched.
+ * untouched. `--titlebar-h` is inherited from <html> (default in desktop.css;
+ * on macOS the boot plugin overwrites it with the measured native height) —
+ * deliberately NOT re-declared here, which would shadow that override.
  */
 .has-desktop-chrome {
-	--titlebar-h: 38px;
-	padding-top: var(--titlebar-h);
+	padding-top: var(--titlebar-h, 44px);
 }
 .has-desktop-chrome aside {
-	top: var(--titlebar-h);
-	height: calc(100% - var(--titlebar-h));
+	top: var(--titlebar-h, 44px);
+	height: calc(100% - var(--titlebar-h, 44px));
 }
 </style>

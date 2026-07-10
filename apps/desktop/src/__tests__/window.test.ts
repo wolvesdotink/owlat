@@ -3,24 +3,40 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // Mock the Tauri core bridge: invoke is a spy so we can assert the command name
 // and payload the bridge forwards. invokeMock is declared via vi.hoisted so it
 // exists when the hoisted vi.mock factory runs.
-const { invokeMock } = vi.hoisted(() => ({ invokeMock: vi.fn() }));
+const { invokeMock, setTitleMock, setThemeMock } = vi.hoisted(() => ({
+	invokeMock: vi.fn(),
+	setTitleMock: vi.fn(),
+	setThemeMock: vi.fn(),
+}));
 
 vi.mock('@tauri-apps/api/core', () => ({
 	invoke: (...args: unknown[]) => invokeMock(...args),
 }));
 
-// The window-controls half of window.ts (startDragging, applyVibrancy, …) pulls
-// in '@tauri-apps/api/window', which is not needed for these bridge assertions.
+// The window half of window.ts pulls in '@tauri-apps/api/window'; only the
+// title/theme setters are needed for these bridge assertions.
 vi.mock('@tauri-apps/api/window', () => ({
-	getCurrentWindow: () => ({}),
+	getCurrentWindow: () => ({ setTitle: setTitleMock, setTheme: setThemeMock }),
 	Effect: { Mica: 'mica', Sidebar: 'sidebar' },
 }));
 
-import { setTrafficLightsVisible, trafficLightsVisibleFor } from '../window';
+import {
+	setAccentFrame,
+	setAccentFrameVisible,
+	setTrafficLightsVisible,
+	setWindowTheme,
+	setWindowTitle,
+	trafficLightsVisibleFor,
+	windowTitleFor,
+} from '../window';
 
 beforeEach(() => {
 	invokeMock.mockReset();
 	invokeMock.mockResolvedValue(undefined);
+	setTitleMock.mockReset();
+	setTitleMock.mockResolvedValue(undefined);
+	setThemeMock.mockReset();
+	setThemeMock.mockResolvedValue(undefined);
 });
 
 describe('setTrafficLightsVisible bridge', () => {
@@ -45,6 +61,58 @@ describe('setTrafficLightsVisible bridge', () => {
 			true,
 			false,
 			true,
+		]);
+	});
+});
+
+describe('windowTitleFor mapping', () => {
+	it('uses the bare workspace label on macOS (the menu bar already names the app)', () => {
+		expect(windowTitleFor('Acme', true)).toBe('Acme');
+	});
+
+	it('qualifies the app name with the workspace on Windows/Linux (taskbar surfaces)', () => {
+		expect(windowTitleFor('Acme', false)).toBe('Acme — Owlat');
+	});
+
+	it('falls back to the plain app name when no workspace is connected', () => {
+		expect(windowTitleFor(null, true)).toBe('Owlat');
+		expect(windowTitleFor(null, false)).toBe('Owlat');
+	});
+});
+
+describe('setWindowTitle / setWindowTheme bridges', () => {
+	it('forwards the title to the native window', async () => {
+		await setWindowTitle('Acme');
+		expect(setTitleMock).toHaveBeenCalledWith('Acme');
+	});
+
+	it('pins the native chrome to the app theme and follows the OS on null', async () => {
+		await setWindowTheme('dark');
+		await setWindowTheme(null);
+		expect(setThemeMock.mock.calls).toEqual([['dark'], [null]]);
+	});
+});
+
+describe('setAccentFrame / setAccentFrameVisible bridges', () => {
+	it('paints the native ring visible when given an accent', async () => {
+		await setAccentFrame('#7c9c67');
+		expect(invokeMock).toHaveBeenCalledWith('set_accent_frame', {
+			color: '#7c9c67',
+			visible: true,
+		});
+	});
+
+	it('hides the ring when the accent is cleared', async () => {
+		await setAccentFrame(null);
+		expect(invokeMock).toHaveBeenCalledWith('set_accent_frame', { color: null, visible: false });
+	});
+
+	it('toggles visibility without touching the color (fullscreen choreography)', async () => {
+		await setAccentFrameVisible(false);
+		await setAccentFrameVisible(true);
+		expect(invokeMock.mock.calls).toEqual([
+			['set_accent_frame', { color: null, visible: false }],
+			['set_accent_frame', { color: null, visible: true }],
 		]);
 	});
 });
