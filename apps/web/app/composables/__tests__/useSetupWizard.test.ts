@@ -196,14 +196,14 @@ describe('review step renders the collected config', () => {
 });
 
 describe('migration-mode question writes the apply body', () => {
-	it('defaults to a fresh start (migrationMode false)', () => {
+	it('defaults to a fresh start (isMigrationMode false)', () => {
 		const body = buildApplyBody(getDefaultFlags(), {}, validAdmin, false);
-		expect(body.migrationMode).toBe(false);
+		expect(body.isMigrationMode).toBe(false);
 	});
 
 	it('carries the "moving from another platform" answer into the apply contract', () => {
 		const body = buildApplyBody(getDefaultFlags(), {}, validAdmin, true);
-		expect(body.migrationMode).toBe(true);
+		expect(body.isMigrationMode).toBe(true);
 		// The rest of the collected draft still flows through untouched.
 		expect(body.admin).toEqual(validAdmin);
 		expect(body.flags).toEqual(getDefaultFlags());

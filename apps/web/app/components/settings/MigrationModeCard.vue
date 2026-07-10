@@ -5,7 +5,7 @@ import { resolveFlags, type FeatureFlagState } from '@owlat/shared/featureFlags'
 /**
  * Instance-level "moving from another platform" switch (Settings → Team).
  *
- * Writes `instanceSettings.migrationMode` (admin-gated on the backend). When ON,
+ * Writes `instanceSettings.isMigrationMode` (admin-gated on the backend). When ON,
  * first-login onboarding offers new users a mail import; when OFF the welcome
  * flow is a pure fresh-start with no import surface.
  *
@@ -27,7 +27,7 @@ const { data: settings, isLoading: isLoadingSettings } = useConvexQuery(
 );
 const { data: liveFlags } = useConvexQuery(api.organizations.featureFlags.getFeatureFlags, {});
 
-const migrationMode = computed<boolean>(() => settings.value?.migrationMode ?? false);
+const isMigrationMode = computed<boolean>(() => settings.value?.isMigrationMode ?? false);
 const mailExternalEnabled = computed<boolean>(() => {
 	const resolved = resolveFlags((liveFlags.value ?? {}) as FeatureFlagState);
 	return resolved['mail.external'] === true;
@@ -49,7 +49,7 @@ const isSaving = computed(() => isSavingSettings.value || isSavingFlag.value);
 const confirmEnableImport = ref(false);
 
 async function onToggle(next: boolean) {
-	if (!props.canManage || next === migrationMode.value) return;
+	if (!props.canManage || next === isMigrationMode.value) return;
 
 	// Turning ON while the import capability is off: confirm before we enable both.
 	if (next && !mailExternalEnabled.value) {
@@ -61,7 +61,7 @@ async function onToggle(next: boolean) {
 }
 
 async function save(next: boolean) {
-	const res = await updateSettings({ migrationMode: next });
+	const res = await updateSettings({ isMigrationMode: next });
 	if (res === undefined) return; // failure already toasted by the operation module
 	showToast(
 		next
@@ -112,9 +112,9 @@ async function confirmAndEnable() {
 				</p>
 			</div>
 			<UiToggle
-				:model-value="migrationMode"
+				:model-value="isMigrationMode"
 				:disabled="!canManage || isSaving"
-				:label="migrationMode ? 'On' : 'Off'"
+				:label="isMigrationMode ? 'On' : 'Off'"
 				@update:model-value="onToggle"
 			/>
 		</div>

@@ -11,7 +11,7 @@ definePageMeta({ layout: false });
 useHead({ title: 'Owlat setup — Operating mode' });
 
 const router = useRouter();
-const { flags, migrationMode } = useSetupWizard();
+const { flags, isMigrationMode } = useSetupWizard();
 const { getStepStatus, isConnectorHighlighted } = useWizard(SETUP_WIZARD_STEPS, 'mode');
 
 // Pre-fill the flag set from a named mode, then continue to the fine-tune step.
@@ -69,14 +69,14 @@ function custom() {
 					<button
 						type="button"
 						role="radio"
-						:aria-checked="!migrationMode"
+						:aria-checked="!isMigrationMode"
 						class="rounded-lg border p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 						:class="
-							!migrationMode
+							!isMigrationMode
 								? 'border-brand bg-brand/5'
 								: 'border-border-default hover:border-brand'
 						"
-						@click="migrationMode = false"
+						@click="isMigrationMode = false"
 					>
 						<span class="flex items-center gap-2 font-medium text-text-primary">
 							<Icon name="lucide:sparkles" class="h-4 w-4" />
@@ -89,12 +89,12 @@ function custom() {
 					<button
 						type="button"
 						role="radio"
-						:aria-checked="migrationMode"
+						:aria-checked="isMigrationMode"
 						class="rounded-lg border p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 						:class="
-							migrationMode ? 'border-brand bg-brand/5' : 'border-border-default hover:border-brand'
+							isMigrationMode ? 'border-brand bg-brand/5' : 'border-border-default hover:border-brand'
 						"
-						@click="migrationMode = true"
+						@click="isMigrationMode = true"
 					>
 						<span class="flex items-center gap-2 font-medium text-text-primary">
 							<Icon name="lucide:import" class="h-4 w-4" />

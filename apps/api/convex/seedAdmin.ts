@@ -14,15 +14,15 @@ import { safeCompare } from './lib/safeCompare';
  *
  * POST /seed/admin
  * Headers: X-Instance-Secret: <instance secret>
- * Body: { email: string, name: string, passwordHash: string, flags?: Record<string, boolean>, migrationMode?: boolean }
+ * Body: { email: string, name: string, passwordHash: string, flags?: Record<string, boolean>, isMigrationMode?: boolean }
  *
  * `flags` (optional) carries the setup wizard's resolved feature-flag map; when
  * present it is persisted onto instanceSettings.featureFlags so the wizard's
  * selections actually take effect at runtime. Omitted by the bare VPS-provision
  * path, which then falls back to the compiled-in flag defaults.
  *
- * `migrationMode` (optional) carries the wizard's "moving from another platform?"
- * answer onto instanceSettings.migrationMode. Defaults to false (fresh start).
+ * `isMigrationMode` (optional) carries the wizard's "moving from another platform?"
+ * answer onto instanceSettings.isMigrationMode. Defaults to false (fresh start).
  */
 
 export const seedAdmin = httpAction(async (ctx, request) => {
@@ -43,7 +43,7 @@ export const seedAdmin = httpAction(async (ctx, request) => {
 		name: string;
 		passwordHash: string;
 		flags?: Record<string, boolean>;
-		migrationMode?: boolean;
+		isMigrationMode?: boolean;
 	};
 	try {
 		body = (await request.json()) as {
@@ -51,7 +51,7 @@ export const seedAdmin = httpAction(async (ctx, request) => {
 			name: string;
 			passwordHash: string;
 			flags?: Record<string, boolean>;
-			migrationMode?: boolean;
+			isMigrationMode?: boolean;
 		};
 	} catch {
 		return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
@@ -174,7 +174,7 @@ export const seedAdmin = httpAction(async (ctx, request) => {
 		await ctx.runMutation(internal.organizations.settings.createInternal, {
 			timezone: 'UTC',
 			defaultFromName: orgName,
-			migrationMode: body.migrationMode ?? false,
+			isMigrationMode: body.isMigrationMode ?? false,
 		});
 
 		// Persist the wizard's chosen feature flags (if provided) so the

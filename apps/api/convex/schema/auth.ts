@@ -48,7 +48,7 @@ export const authTables = {
 		// its own platform by default. When true, first-login onboarding offers a
 		// mail import; when false the welcome flow is a pure fresh-start and exposes
 		// no import surface. Admin-gated write, member-readable via `settings.get`.
-		migrationMode: v.optional(v.boolean()),
+		isMigrationMode: v.optional(v.boolean()),
 		// Feature toggles (see packages/shared/src/featureFlags.ts for the schema).
 		// Unset keys fall back to FEATURE_FLAGS[key].default at resolution time.
 		// Includes `campaigns.archive` — there is no separate `archiveEnabled` column.

@@ -238,23 +238,23 @@ export interface SetupApplyBody {
 	env: Record<string, string>;
 	admin: AdminDraft;
 	/** Answer to the wizard's "moving from another platform?" question. */
-	migrationMode: boolean;
+	isMigrationMode: boolean;
 }
 
 /**
  * Assemble the POST body for `/api/setup/apply` from the collected draft. Pure so
  * a test can assert the migration-mode question flows into the apply contract
- * without mounting Nuxt. `migrationMode` is the one field the wizard collects
+ * without mounting Nuxt. `isMigrationMode` is the one field the wizard collects
  * that is neither a feature flag nor an env var — it lands on
- * `instanceSettings.migrationMode` via the seed path.
+ * `instanceSettings.isMigrationMode` via the seed path.
  */
 export function buildApplyBody(
 	flags: FeatureFlagState,
 	env: Record<string, string>,
 	admin: AdminDraft,
-	migrationMode: boolean
+	isMigrationMode: boolean
 ): SetupApplyBody {
-	return { flags, env, admin, migrationMode };
+	return { flags, env, admin, isMigrationMode };
 }
 
 // ── Post-apply readiness ─────────────────────────────────────────────────────
@@ -280,7 +280,7 @@ export function useSetupWizard() {
 	const env = useState<Record<string, string>>('setupEnv', () => ({}));
 	const admin = useState<AdminDraft>('setupAdmin', () => ({ email: '', name: '', password: '' }));
 	// "Moving from another platform, or starting fresh?" — default fresh (false).
-	const migrationMode = useState<boolean>('setupMigrationMode', () => false);
+	const isMigrationMode = useState<boolean>('setupMigrationMode', () => false);
 
 	const resolved = computed(() => resolveFlags(flags.value));
 	const requiresProvider = computed(() => needsDeliveryProvider(flags.value));
@@ -290,7 +290,7 @@ export function useSetupWizard() {
 		flags,
 		env,
 		admin,
-		migrationMode,
+		isMigrationMode,
 		resolved,
 		requiresProvider,
 		summary,

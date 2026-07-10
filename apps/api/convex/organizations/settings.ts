@@ -1,7 +1,7 @@
 /**
  * Organization settings (module) — sole writer of the singleton
  * `instanceSettings` row's *settings columns* (`emailTheme`, `timezone`,
- * `defaultFromName`, `defaultFromEmail`, `migrationMode`, `updatedAt`). Sibling of
+ * `defaultFromName`, `defaultFromEmail`, `isMigrationMode`, `updatedAt`). Sibling of
  * **Feature flags (module)** (which owns the `featureFlags` map),
  * **Abuse status (module)** (which owns the abuse-status columns), and
  * the **Organization deletion (module)** walker scheduled by `remove`.
@@ -44,7 +44,7 @@ export const update = authedMutation({
 		timezone: v.optional(v.string()),
 		defaultFromName: v.optional(v.string()),
 		defaultFromEmail: v.optional(v.string()),
-		migrationMode: v.optional(v.boolean()),
+		isMigrationMode: v.optional(v.boolean()),
 		emailTheme: v.optional(
 			v.object({
 				primaryColor: v.string(),
@@ -89,7 +89,7 @@ export const createInternal = internalMutation({
 		timezone: v.optional(v.string()),
 		defaultFromName: v.optional(v.string()),
 		// Seeded by the setup wizard's "moving from another platform?" question.
-		migrationMode: v.optional(v.boolean()),
+		isMigrationMode: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
 		const existing = await ctx.db.query('instanceSettings').first();
@@ -98,7 +98,7 @@ export const createInternal = internalMutation({
 		return await ctx.db.insert('instanceSettings', {
 			timezone: args.timezone || 'UTC',
 			defaultFromName: args.defaultFromName,
-			migrationMode: args.migrationMode ?? false,
+			isMigrationMode: args.isMigrationMode ?? false,
 			createdAt: now,
 		});
 	},

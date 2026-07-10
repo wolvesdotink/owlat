@@ -32,8 +32,8 @@ interface ApplyBody {
 	flags: FeatureFlagState;
 	env: Record<string, string>;
 	admin: { email: string; name: string; password: string };
-	/** "Moving from another platform?" — persisted to instanceSettings.migrationMode. */
-	migrationMode?: boolean;
+	/** "Moving from another platform?" — persisted to instanceSettings.isMigrationMode. */
+	isMigrationMode?: boolean;
 }
 
 const OWLAT_DIR = process.env['OWLAT_DIR'] || '/opt/owlat';
@@ -60,8 +60,8 @@ export default defineEventHandler(
 		// import surface reads the `mail.external` flag, so when the operator says they
 		// are moving from another platform, align the plumbing by enabling it before
 		// the cascade resolves. A fresh-start install leaves the flag untouched.
-		const migrationMode = body.migrationMode === true;
-		if (migrationMode) {
+		const isMigrationMode = body.isMigrationMode === true;
+		if (isMigrationMode) {
 			body.flags = { ...body.flags, 'mail.external': true };
 		}
 
@@ -153,7 +153,7 @@ export default defineEventHandler(
 					name: body.admin.name,
 					passwordHash,
 					flags: resolved,
-					migrationMode,
+					isMigrationMode,
 				}),
 			});
 			seedStatus = seedRes.status;

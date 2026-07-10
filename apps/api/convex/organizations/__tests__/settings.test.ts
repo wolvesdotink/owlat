@@ -204,10 +204,10 @@ describe('organizations.settings.update — write semantics', () => {
 });
 
 // ============================================================
-// migrationMode — instance-level "moving from another platform" flag
+// isMigrationMode — instance-level "moving from another platform" flag
 // ============================================================
 
-describe('organizations.settings — migrationMode', () => {
+describe('organizations.settings — isMigrationMode', () => {
 	it('is absent by default (fresh-start) when no row exists', async () => {
 		const t = convexTest(schema, modules);
 		const result = await t.query(api.organizations.settings.get, {});
@@ -218,42 +218,42 @@ describe('organizations.settings — migrationMode', () => {
 		const t = convexTest(schema, modules);
 		await t.run(async (ctx) => {
 			await ctx.db.insert('instanceSettings', {
-				migrationMode: true,
+				isMigrationMode: true,
 				createdAt: Date.now(),
 			});
 		});
 
 		// getUserIdFromSession is mocked to a plain member — no admin gate on read.
 		const result = await t.query(api.organizations.settings.get, {});
-		expect(result?.migrationMode).toBe(true);
+		expect(result?.isMigrationMode).toBe(true);
 	});
 
-	it('rejects an editor writing migrationMode', async () => {
+	it('rejects an editor writing isMigrationMode', async () => {
 		const t = convexTest(schema, modules);
 
 		mockRole = 'editor';
 		await expect(
 			t.mutation(api.organizations.settings.update, {
-				migrationMode: true,
+				isMigrationMode: true,
 			})
 		).rejects.toThrow(/owners and admins/);
 	});
 
-	it('lets an admin turn migrationMode on', async () => {
+	it('lets an admin turn isMigrationMode on', async () => {
 		const t = convexTest(schema, modules);
 
 		mockRole = 'admin';
 		await t.mutation(api.organizations.settings.update, {
-			migrationMode: true,
+			isMigrationMode: true,
 		});
 
 		await t.run(async (ctx) => {
 			const row = await ctx.db.query('instanceSettings').first();
-			expect(row?.migrationMode).toBe(true);
+			expect(row?.isMigrationMode).toBe(true);
 		});
 	});
 
-	it('createInternal defaults migrationMode to false', async () => {
+	it('createInternal defaults isMigrationMode to false', async () => {
 		const t = convexTest(schema, modules);
 
 		const id = await t.mutation(internal.organizations.settings.createInternal, {
@@ -262,21 +262,21 @@ describe('organizations.settings — migrationMode', () => {
 
 		await t.run(async (ctx) => {
 			const row = await ctx.db.get(id);
-			expect(row?.migrationMode).toBe(false);
+			expect(row?.isMigrationMode).toBe(false);
 		});
 	});
 
-	it('createInternal persists migrationMode when the wizard seeds it', async () => {
+	it('createInternal persists isMigrationMode when the wizard seeds it', async () => {
 		const t = convexTest(schema, modules);
 
 		const id = await t.mutation(internal.organizations.settings.createInternal, {
 			timezone: 'UTC',
-			migrationMode: true,
+			isMigrationMode: true,
 		});
 
 		await t.run(async (ctx) => {
 			const row = await ctx.db.get(id);
-			expect(row?.migrationMode).toBe(true);
+			expect(row?.isMigrationMode).toBe(true);
 		});
 	});
 });

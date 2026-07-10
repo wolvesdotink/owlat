@@ -9,7 +9,7 @@ definePageMeta({ layout: false });
 useHead({ title: 'Owlat setup — Review' });
 
 const router = useRouter();
-const { flags, env, admin, migrationMode, summary } = useSetupWizard();
+const { flags, env, admin, isMigrationMode, summary } = useSetupWizard();
 const { getStepStatus, isConnectorHighlighted } = useWizard(SETUP_WIZARD_STEPS, 'review');
 
 const GENERATED_SECRETS = [
@@ -77,7 +77,7 @@ async function apply() {
 			'/api/setup/apply',
 			{
 				method: 'POST',
-				body: buildApplyBody(flags.value, env.value, admin.value, migrationMode.value),
+				body: buildApplyBody(flags.value, env.value, admin.value, isMigrationMode.value),
 			}
 		);
 		if (!res.ok) {
