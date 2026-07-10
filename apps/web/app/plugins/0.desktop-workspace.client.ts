@@ -45,7 +45,7 @@ export default defineNuxtPlugin({
 		// so File → Inbox / Chat is an instant client-side route change instead of a
 		// full document reload; without this the native menu falls back to a
 		// location assignment (a cold re-boot). Desktop-only — never touches web.
-		window.__NUXT_ROUTER__ = nuxtApp.$router;
+		window.__NUXT_ROUTER__ = nuxtApp['$router'] as Router;
 
 		// Perceived-instant switch (piece d4): if we arrived here via a workspace
 		// switch, re-paint its skeleton FIRST — before Nuxt mounts — so the reload
