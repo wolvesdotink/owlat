@@ -16,6 +16,7 @@ import { api } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 
 const sessionMocks = vi.hoisted(() => ({
+	getMutationContext: vi.fn(),
 	getBetterAuthSessionWithRole: vi.fn(),
 	requireAdminContext: vi.fn(),
 }));
@@ -26,12 +27,14 @@ vi.mock('../lib/sessionOrganization', async () => {
 		...actual,
 		requireOrgMember: vi.fn().mockResolvedValue({ userId: 'admin-user', role: 'owner' }),
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
+		getMutationContext: sessionMocks.getMutationContext,
 		getBetterAuthSessionWithRole: sessionMocks.getBetterAuthSessionWithRole,
 		requireAdminContext: sessionMocks.requireAdminContext,
 	};
 });
 
 function setAdminSession(userId = 'admin-user', orgId = 'test-org') {
+	sessionMocks.getMutationContext.mockResolvedValue({ userId, role: 'owner' });
 	sessionMocks.getBetterAuthSessionWithRole.mockResolvedValue({
 		userId,
 		role: 'owner',
@@ -41,6 +44,7 @@ function setAdminSession(userId = 'admin-user', orgId = 'test-org') {
 }
 
 function setInviteeSession(userId: string, orgId = 'test-org') {
+	sessionMocks.getMutationContext.mockResolvedValue({ userId, role: 'editor' });
 	sessionMocks.getBetterAuthSessionWithRole.mockResolvedValue({
 		userId,
 		role: 'editor',
@@ -288,6 +292,73 @@ describe('pendingMailbox.claimInboxMemberships', () => {
 				)
 				.collect();
 			expect(rows).toHaveLength(1);
+		});
+	});
+});
+
+describe('pendingMailbox.cancelInboxMembershipsForEmail', () => {
+	it('sweeps every un-claimed grant for the email in the caller org', async () => {
+		setAdminSession();
+		const t = convexTest(schema, modules);
+		const supportId = await seedSharedMailbox(t, 'support@hinterland.camp');
+		const salesId = await seedSharedMailbox(t, 'sales@hinterland.camp');
+		await t.mutation(api.mail.pendingMailbox.reserveInboxMembership, {
+			mailboxId: supportId,
+			inviteeEmail: 'newbie@example.com',
+		});
+		await t.mutation(api.mail.pendingMailbox.reserveInboxMembership, {
+			mailboxId: salesId,
+			inviteeEmail: 'newbie@example.com',
+		});
+
+		const result = await t.mutation(api.mail.pendingMailbox.cancelInboxMembershipsForEmail, {
+			inviteeEmail: 'Newbie@Example.com', // case-insensitive
+		});
+		expect(result.canceled).toBe(2);
+
+		await t.run(async (ctx) => {
+			const rows = await ctx.db.query('pendingMailboxMembers').collect();
+			expect(rows).toHaveLength(0);
+		});
+	});
+
+	it('leaves a subsequent accept with no membership to claim', async () => {
+		setAdminSession();
+		const t = convexTest(schema, modules);
+		const mailboxId = await seedSharedMailbox(t, 'support@hinterland.camp');
+		await t.mutation(api.mail.pendingMailbox.reserveInboxMembership, {
+			mailboxId,
+			inviteeEmail: 'newbie@example.com',
+		});
+		await t.mutation(api.mail.pendingMailbox.cancelInboxMembershipsForEmail, {
+			inviteeEmail: 'newbie@example.com',
+		});
+
+		setInviteeSession('newbie-user');
+		await seedUserProfile(t, 'newbie-user', 'newbie@example.com');
+		const claimed = await t.mutation(api.mail.pendingMailbox.claimInboxMemberships, {});
+		expect(claimed.claimed).toEqual([]);
+	});
+});
+
+describe('mail.mailbox.remove cascade', () => {
+	it('drops pending grants pointing at a deleted team inbox', async () => {
+		setAdminSession();
+		const t = convexTest(schema, modules);
+		const mailboxId = await seedSharedMailbox(t, 'support@hinterland.camp');
+		await t.mutation(api.mail.pendingMailbox.reserveInboxMembership, {
+			mailboxId,
+			inviteeEmail: 'newbie@example.com',
+		});
+
+		await t.mutation(api.mail.mailbox.remove, { mailboxId });
+
+		await t.run(async (ctx) => {
+			const grants = await ctx.db
+				.query('pendingMailboxMembers')
+				.withIndex('by_mailbox', (q) => q.eq('mailboxId', mailboxId))
+				.collect();
+			expect(grants).toHaveLength(0);
 		});
 	});
 });
