@@ -48,6 +48,7 @@ All inserts must go through `recordAuditLog(ctx, {...})` in
 | `automation.created` / `automation.updated` / `automation.deleted` | `automation` | `{ name }` |
 | `automation.activated` / `automation.paused` | `automation` | `{ name }` |
 | `settings.updated` | `settings` | `detailsBlob: { changes: {...} }` |
+| `ai_provider_config.updated` | `ai_provider_config` | `detailsBlob: { languageProviderKind, modelFast, modelCapable, embeddingProviderKind, embeddingModel, embeddingModelVersion, isLanguageKeySet, isEmbeddingKeySet }` (never the key) |
 | `team_member.invited` | `team_member` | `{ email, role }` |
 | `team_member.removed` | `team_member` | `{ email }` |
 | `team_member.role_changed` | `team_member` | `{ email, fromRole, toRole }` |

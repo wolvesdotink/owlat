@@ -98,6 +98,9 @@ export const AUDIT_ACTION_LITERALS = [
 	action('automation.reverted_to_draft'),
 	// Settings + team
 	action('settings.updated'),
+	// Pluggable AI providers — admin save of the per-org language/embedding
+	// backend config (bring-your-own-key). Fired by aiProviderConfig.
+	action('ai_provider_config.updated'),
 	action('team_member.invited'),
 	action('team_member.removed'),
 	action('team_member.role_changed'),
@@ -199,6 +202,7 @@ export const AUDIT_RESOURCE_LITERALS = [
 	'email_block',
 	'automation',
 	'settings',
+	'ai_provider_config',
 	'team_member',
 	'api_key',
 	'webhook',

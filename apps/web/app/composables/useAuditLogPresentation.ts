@@ -45,6 +45,7 @@ export const RESOURCE_FILTER_OPTIONS: ResourceFilterOption[] = [
 	{ value: 'domain', label: 'Domains' },
 	{ value: 'blocklist', label: 'Blocklist' },
 	{ value: 'segment', label: 'Segments' },
+	{ value: 'ai_provider_config', label: 'AI Providers' },
 ];
 
 /** A group of action literals shown as an `<optgroup>` in the action filter. */
@@ -86,6 +87,7 @@ const ACTION_GROUP_SPECS: readonly ActionGroupSpec[] = [
 	{ label: 'Knowledge Graph', prefixes: ['knowledge'] },
 	{ label: 'Platform Admin', prefixes: ['platform_admin'] },
 	{ label: 'Abuse', prefixes: ['abuse_status_changed'] },
+	{ label: 'AI Providers', prefixes: ['ai_provider_config'] },
 ];
 
 /** The prefix of an action literal: everything before the first `.`, or the
@@ -143,6 +145,7 @@ const RESOURCE_ICONS: Record<string, string> = {
 	domain: 'lucide:globe',
 	blocklist: 'lucide:ban',
 	segment: 'lucide:target',
+	ai_provider_config: 'lucide:sparkles',
 };
 
 const RESOURCE_LABELS: Record<string, string> = {
@@ -158,6 +161,7 @@ const RESOURCE_LABELS: Record<string, string> = {
 	domain: 'Domain',
 	blocklist: 'Blocklist',
 	segment: 'Segment',
+	ai_provider_config: 'AI Provider',
 };
 
 const ACTION_VERB_LABELS: Record<string, string> = {
@@ -235,8 +239,7 @@ export function getResourceLabel(resource: string): string {
 export function getActionLabel(action: string): string {
 	const verb = actionVerb(action);
 	return (
-		ACTION_VERB_LABELS[verb] ??
-		verb.charAt(0).toUpperCase() + verb.slice(1).replace(/_/g, ' ')
+		ACTION_VERB_LABELS[verb] ?? verb.charAt(0).toUpperCase() + verb.slice(1).replace(/_/g, ' ')
 	);
 }
 
@@ -299,7 +302,7 @@ export function formatFullDate(timestamp: number): string {
  * throws, which previously blanked every detail snippet.
  */
 export function parseDetails(
-	details: Record<string, unknown> | undefined,
+	details: Record<string, unknown> | undefined
 ): Record<string, unknown> {
 	return details ?? {};
 }
