@@ -160,7 +160,7 @@ async function onSubmitAdd() {
 			<UiIconBox icon="lucide:lock" size="xl" variant="surface" rounded="full" class="mb-4" />
 			<p class="text-text-secondary font-medium">Admins only</p>
 			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-				Campaign senders can be managed by organization owners and admins.
+				Campaign senders can be managed by workspace owners and admins.
 			</p>
 		</div>
 
@@ -170,9 +170,9 @@ async function onSubmitAdd() {
 			class="card flex flex-col items-center justify-center py-16 text-center px-6"
 		>
 			<UiIconBox icon="lucide:mail" size="xl" variant="surface" rounded="full" class="mb-4" />
-			<p class="text-text-secondary font-medium">No organization selected</p>
+			<p class="text-text-secondary font-medium">No workspace selected</p>
 			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-				Create or select an organization to manage campaign senders.
+				Create or select a workspace to manage campaign senders.
 			</p>
 		</div>
 

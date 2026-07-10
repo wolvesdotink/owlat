@@ -100,11 +100,11 @@ const routeConfigs: Record<string, RouteConfig> = {
 		sectionHref: '/dashboard/settings',
 		page: 'Overview',
 	},
-	'/dashboard/settings/organization': {
+	'/dashboard/settings/workspace': {
 		section: 'Settings',
 		sectionHref: '/dashboard/settings',
-		subsection: 'Organization',
-		subsectionHref: '/dashboard/settings/organization',
+		subsection: 'Workspace',
+		subsectionHref: '/dashboard/settings/workspace',
 	},
 	'/dashboard/delivery': {
 		section: 'Delivery',
@@ -147,15 +147,15 @@ const routeConfigs: Record<string, RouteConfig> = {
 	'/dashboard/settings/team': {
 		section: 'Settings',
 		sectionHref: '/dashboard/settings',
-		subsection: 'Organization',
-		subsectionHref: '/dashboard/settings/organization',
+		subsection: 'Workspace',
+		subsectionHref: '/dashboard/settings/workspace',
 		page: 'Team Members',
 	},
 	'/dashboard/settings/email-theme': {
 		section: 'Settings',
 		sectionHref: '/dashboard/settings',
-		subsection: 'Organization',
-		subsectionHref: '/dashboard/settings/organization',
+		subsection: 'Workspace',
+		subsectionHref: '/dashboard/settings/workspace',
 		page: 'Email Theme',
 	},
 	'/dashboard/settings/api': {

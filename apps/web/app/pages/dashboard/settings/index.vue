@@ -268,9 +268,9 @@ const { data: isPlatformAdmin } = useConvexQuery(
 const settingsSections = computed(() => {
 	const sections = [
 		{
-			name: 'Organization',
-			description: 'Team members, email theme, and organization settings',
-			href: '/dashboard/settings/organization',
+			name: 'Workspace',
+			description: 'Members, workspace name, email theme, and connected workspaces',
+			href: '/dashboard/settings/workspace',
 			icon: 'lucide:building-2',
 		},
 		{
@@ -316,7 +316,7 @@ const settingsSections = computed(() => {
 		sections.push({
 			name: 'Operator Console',
 			description:
-				'Review held content, manage organization sending status, and curate platform admins',
+				'Review held content, manage workspace sending status, and curate platform admins',
 			href: '/dashboard/settings/operator',
 			icon: 'lucide:shield-alert',
 		});
@@ -353,12 +353,12 @@ const settingsSections = computed(() => {
 				</div>
 			</template>
 
-			<!-- No Organization State -->
+			<!-- No Workspace State -->
 			<UiCard v-if="!hasActiveOrganization">
 				<UiEmptyState
 					icon="lucide:settings"
-					title="No organization selected"
-					description="Create or select an organization to manage settings."
+					title="No workspace selected"
+					description="Create or select a workspace to manage settings."
 				/>
 			</UiCard>
 

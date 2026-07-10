@@ -296,7 +296,7 @@ const sendingDetail = computed(() => {
 			v-else
 			icon="lucide:shield-check"
 			title="No data available"
-			description="Delivery health will appear once your organization's sending is configured."
+			description="Delivery health will appear once your workspace's sending is configured."
 		/>
 	</div>
 </template>

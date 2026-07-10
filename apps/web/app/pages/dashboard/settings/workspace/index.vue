@@ -1,13 +1,16 @@
 <script setup lang="ts">
+import { isDesktopRuntime } from '~/lib/desktop/activeWorkspace';
 
-useHead({ title: 'Organization Settings — Owlat' });
+useHead({ title: 'Workspace Settings — Owlat' });
 
 definePageMeta({
 	layout: 'dashboard',
 	middleware: 'auth',
 });
 
-// Organization settings sections
+const isDesktop = isDesktopRuntime();
+
+// Workspace settings sections
 const sections = [
 	{
 		name: 'Team Members',
@@ -39,8 +42,8 @@ const sections = [
 				<UiIconBox icon="lucide:building-2" size="lg" variant="brand" rounded="xl" />
 
 				<div>
-					<h1 class="text-2xl font-semibold text-text-primary">Organization</h1>
-					<p class="mt-1 text-text-secondary">Manage your team and organization settings</p>
+					<h1 class="text-2xl font-semibold text-text-primary">Workspace</h1>
+					<p class="mt-1 text-text-secondary">Manage your team and workspace settings</p>
 				</div>
 			</div>
 		</div>
@@ -67,6 +70,17 @@ const sections = [
 				</div>
 				<Icon name="lucide:chevron-right" class="w-5 h-5 text-text-tertiary group-hover:text-brand transition-colors" />
 			</NuxtLink>
+		</div>
+
+		<!-- Connected workspaces (desktop only) -->
+		<div v-if="isDesktop" class="mt-8">
+			<div class="mb-4">
+				<h2 class="text-lg font-medium text-text-primary">Connected workspaces</h2>
+				<p class="text-sm text-text-secondary mt-0.5">
+					Switch between the Owlat workspaces you've connected on this device, or connect another.
+				</p>
+			</div>
+			<SettingsConnectedWorkspaces />
 		</div>
 	</div>
 </template>
