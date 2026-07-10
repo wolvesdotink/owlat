@@ -322,7 +322,7 @@ const loadPrevClicked = () => {
 						:key="tile.key"
 						:label="tile.label"
 						:value="tile.value.toLocaleString()"
-						:delta="tile.delta.text ?? undefined"
+						:delta="tile.delta.text"
 						:delta-direction="tile.delta.direction"
 					/>
 				</div>
