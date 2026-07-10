@@ -36,8 +36,6 @@ const emit = defineEmits<{
 const mailboxIdRef = computed(() => props.mailboxId);
 const bulk = usePostboxBulkActions(mailboxIdRef);
 
-const mid = (id: string) => id as unknown as Id<'mailMessages'>;
-
 const archiveOp = useBackendOperation(api.mail.messageActions.archive, { label: 'Archive' });
 const trashOp = useBackendOperation(api.mail.messageActions.trash, { label: 'Move to trash' });
 const setStarOp = useBackendOperation(api.mail.messageActions.setStar, { label: 'Star' });
@@ -61,10 +59,10 @@ defineExpose({ visibleIds });
 // undoing also un-hides the optimistically hidden row.
 const triageUndo = usePostboxTriageUndo();
 
-async function archiveMsg(id: string) {
+async function archiveMsg(id: Id<'mailMessages'>) {
 	hideRow(id);
 	// archive/trash return { ok, moved } — restore the row if the mutation failed.
-	const result = await archiveOp.run({ messageIds: [mid(id)] });
+	const result = await archiveOp.run({ messageIds: [id] });
 	if (!result) {
 		unhideRow(id);
 		return;
@@ -78,9 +76,9 @@ async function archiveMsg(id: string) {
 		});
 	}
 }
-async function trashMsg(id: string) {
+async function trashMsg(id: Id<'mailMessages'>) {
 	hideRow(id);
-	const result = await trashOp.run({ messageIds: [mid(id)] });
+	const result = await trashOp.run({ messageIds: [id] });
 	if (!result) {
 		unhideRow(id);
 		return;
@@ -94,11 +92,11 @@ async function trashMsg(id: string) {
 		});
 	}
 }
-function toggleStar(id: string, starred: boolean) {
-	void setStarOp.run({ messageId: mid(id), starred });
+function toggleStar(id: Id<'mailMessages'>, starred: boolean) {
+	void setStarOp.run({ messageId: id, starred });
 }
-function toggleRead(id: string, seen: boolean) {
-	void markReadOp.run({ messageId: mid(id), seen });
+function toggleRead(id: Id<'mailMessages'>, seen: boolean) {
+	void markReadOp.run({ messageId: id, seen });
 }
 
 // Pending compose intent for r/a/f from the list: opening the composer needs the
@@ -118,11 +116,11 @@ function openMessageWithCompose(id: string, mode: PostboxComposeMode) {
 // h/l/v open a picker for the focused row; the target id is captured so a
 // focus change while the dialog is open can't retarget the action.
 const snoozeOpen = ref(false);
-const snoozeTargetId = ref<string | null>(null);
+const snoozeTargetId = ref<Id<'mailMessages'> | null>(null);
 const labelOpen = ref(false);
-const labelTargetId = ref<string | null>(null);
+const labelTargetId = ref<Id<'mailMessages'> | null>(null);
 const moveOpen = ref(false);
-const moveTargetId = ref<string | null>(null);
+const moveTargetId = ref<Id<'mailMessages'> | null>(null);
 
 const { labels, setOnMessage } = usePostboxLabels(mailboxIdRef);
 const { folders } = usePostboxFolders(mailboxIdRef);
@@ -154,14 +152,14 @@ async function snoozeFocused(until: number) {
 	snoozeTargetId.value = null;
 	if (!id) return;
 	hideRow(id);
-	if ((await snoozeOp.run({ messageId: mid(id), until })) === undefined) unhideRow(id);
+	if ((await snoozeOp.run({ messageId: id, until })) === undefined) unhideRow(id);
 }
 
 async function applyLabelToFocused(labelId: Id<'mailLabels'>) {
 	const id = labelTargetId.value;
 	labelOpen.value = false;
 	labelTargetId.value = null;
-	if (id) await setOnMessage(mid(id), labelId, true);
+	if (id) await setOnMessage(id, labelId, true);
 }
 
 async function moveFocusedTo(targetFolderId: Id<'mailFolders'>) {
@@ -170,7 +168,7 @@ async function moveFocusedTo(targetFolderId: Id<'mailFolders'>) {
 	moveTargetId.value = null;
 	if (!id) return;
 	hideRow(id);
-	const result = await moveOp.run({ messageIds: [mid(id)], targetFolderId });
+	const result = await moveOp.run({ messageIds: [id], targetFolderId });
 	if (result === undefined) {
 		unhideRow(id);
 		return;
@@ -251,7 +249,7 @@ const {
 				toggleRead(m._id, false);
 				break;
 			case 'toggleSelect':
-				bulk.toggle(mid(m._id));
+				bulk.toggle(m._id);
 				break;
 			case 'reply':
 				openMessageWithCompose(m._id, 'reply');
@@ -413,11 +411,11 @@ onMounted(async () => {
 					:selectable="selectable"
 					:folder-role="props.folderRole"
 					:virtualize="virtualize"
-					:selected="bulk.isSelected(msg._id as unknown as Id<'mailMessages'>)"
+					:selected="bulk.isSelected(msg._id)"
 					:focused="focusedIndex === windowStart + localI"
 					:active="activeMessageId === msg._id"
 					@select="emit('select', msg._id)"
-					@toggle-select="bulk.toggle(mid(msg._id))"
+					@toggle-select="bulk.toggle(msg._id)"
 					@toggle-star="toggleStar(msg._id, !msg.flagFlagged)"
 					@toggle-read="toggleRead(msg._id, !msg.flagSeen)"
 					@archive="archiveMsg(msg._id)"
