@@ -16,8 +16,10 @@
 
 import type { Id } from '@owlat/api/dataModel';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
+import { DEFAULT_OPTIMISTIC_UNDO_WINDOW_MS } from '~/composables/useOptimisticMutation';
 
-export const POSTBOX_TRIAGE_UNDO_WINDOW_MS = 8000;
+/** Alias of the shared optimistic undo window — one source of truth for "undo is 8s". */
+export const POSTBOX_TRIAGE_UNDO_WINDOW_MS = DEFAULT_OPTIMISTIC_UNDO_WINDOW_MS;
 
 interface TriageUndoState {
 	active: boolean;
