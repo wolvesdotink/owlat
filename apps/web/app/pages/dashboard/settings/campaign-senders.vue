@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import type { Id } from '@owlat/api/dataModel';
 import { isValidEmail } from '~/utils/validation';
 import { mapSenderVerification } from '~/utils/campaignSenderVerification';
 
@@ -77,7 +78,7 @@ const { run: removeSender } = useBackendOperation(api.campaigns.senders.remove, 
 // Local optimistic overrides for the per-sender enable switch, keyed by id, so
 // the toggle feels DONE on click instead of waiting a round-trip. The live query
 // re-emits the authoritative value; an override is pruned once the server agrees.
-const enabledOverrides = ref<Record<string, boolean>>({});
+const enabledOverrides = ref<Record<Id<'campaignSenders'>, boolean>>({});
 
 function isSenderEnabled(sender: SenderRow): boolean {
 	return enabledOverrides.value[sender._id] ?? sender.isEnabled;
@@ -85,11 +86,12 @@ function isSenderEnabled(sender: SenderRow): boolean {
 
 watch(senders, (list) => {
 	if (!list || Object.keys(enabledOverrides.value).length === 0) return;
-	const next: Record<string, boolean> = {};
+	const next: Record<Id<'campaignSenders'>, boolean> = {};
 	for (const [id, value] of Object.entries(enabledOverrides.value)) {
-		const server = list.find((s) => s._id === id);
+		const senderId = id as Id<'campaignSenders'>;
+		const server = list.find((s) => s._id === senderId);
 		// Keep the override only while the server has not yet caught up to it.
-		if (server && server.isEnabled !== value) next[id] = value;
+		if (server && server.isEnabled !== value) next[senderId] = value;
 	}
 	enabledOverrides.value = next;
 });
@@ -103,6 +105,11 @@ async function onToggleEnabled(sender: SenderRow, value: boolean) {
 				const previous = enabledOverrides.value[id];
 				enabledOverrides.value = { ...enabledOverrides.value, [id]: value };
 				return () => {
+					// Supersede-aware revert: only roll back if OUR optimistic value is
+					// still the current override. If a newer toggle for the same sender
+					// has since applied a different value, that newer intent wins and
+					// this failed write's revert must not clobber it.
+					if (enabledOverrides.value[id] !== value) return;
 					const next = { ...enabledOverrides.value };
 					if (previous === undefined) delete next[id];
 					else next[id] = previous;
