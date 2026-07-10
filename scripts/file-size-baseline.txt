@@ -64,7 +64,6 @@ apps/web/app/pages/dashboard/automations/index.vue
 apps/web/app/pages/dashboard/campaigns/[id]/edit.vue
 apps/web/app/pages/dashboard/campaigns/[id]/report.vue
 apps/web/app/pages/dashboard/campaigns/ab-results/index.vue
-apps/web/app/pages/dashboard/campaigns/all.vue
 apps/web/app/pages/dashboard/delivery/domains.vue
 apps/web/app/pages/dashboard/files/[id].vue
 apps/web/app/pages/dashboard/inbox/[threadId].vue

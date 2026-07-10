@@ -59,22 +59,12 @@ const routeConfigs: Record<string, RouteConfig> = {
 	'/dashboard/campaigns': {
 		section: 'Campaigns',
 		sectionHref: '/dashboard/campaigns',
-		page: 'All Campaigns',
-	},
-	'/dashboard/campaigns/all': {
-		section: 'Campaigns',
-		sectionHref: '/dashboard/campaigns',
-		page: 'All Campaigns',
+		page: 'Campaigns',
 	},
 	'/dashboard/campaigns/new': {
 		section: 'Campaigns',
 		sectionHref: '/dashboard/campaigns',
 		page: 'New Campaign',
-	},
-	'/dashboard/campaigns/reports': {
-		section: 'Campaigns',
-		sectionHref: '/dashboard/campaigns',
-		page: 'Reports',
 	},
 	'/dashboard/campaigns/ab-results': {
 		section: 'Campaigns',
@@ -250,8 +240,6 @@ const patternConfigs: PatternConfig[] = [
 		getConfig: () => ({
 			section: 'Campaigns',
 			sectionHref: '/dashboard/campaigns',
-			subsection: 'Reports',
-			subsectionHref: '/dashboard/campaigns/reports',
 			page: 'Campaign Report',
 		}),
 	},

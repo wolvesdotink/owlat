@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import type { CampaignStatus } from '~/composables/useCampaignStatusBadge';
+import { CAMPAIGN_ATTENTION_DISPLAY, classifyCampaignAttention } from '~/utils/campaignAttention';
+import type { CampaignRowFields, DecoratedRow } from '~/utils/campaignCommandRow';
 
 useHead({ title: 'Campaigns — Owlat' });
 
@@ -10,433 +13,475 @@ definePageMeta({
 });
 
 const router = useRouter();
+const route = useRoute();
 
-// Fetch campaign counts by status
-const { data: statusCounts, isLoading: countsLoading } = useOrganizationQuery(
+// One command center replaces the old overview / all-list / reports trio.
+// It opens on "Needs attention" — the campaigns genuinely waiting on a human —
+// and falls back to plain browsing for everything else.
+type PillKey = 'attention' | 'all' | 'draft' | 'scheduled' | 'sent';
+
+// ?status= deep-links from the retired routes map onto the pills, so existing
+// links (e.g. /dashboard/campaigns/all?status=scheduled) still land correctly.
+function pillFromQuery(raw: unknown): PillKey {
+	switch (raw) {
+		case 'draft':
+			return 'draft';
+		case 'scheduled':
+			return 'scheduled';
+		case 'sent':
+			return 'sent';
+		case 'all':
+			return 'all';
+		default:
+			return 'attention';
+	}
+}
+
+const selectedPill = ref<PillKey>(pillFromQuery(route.query['status']));
+
+// Keep the URL shareable: reflect the active pill into ?status= without adding
+// history entries, and mirror it back if the query changes underneath us.
+watch(selectedPill, (pill) => {
+	const status = pill === 'attention' ? undefined : pill;
+	router.replace({ query: { ...route.query, status } });
+});
+watch(
+	() => route.query['status'],
+	(raw) => {
+		const next = pillFromQuery(raw);
+		if (next !== selectedPill.value) selectedPill.value = next;
+	}
+);
+
+// Search — debounced 300ms, server-side (preserved from the old all-list). The
+// shared composable also clears its timer on unmount, so a late tick can't fire
+// after the page is gone.
+const { searchQuery, debouncedSearch: rawSearch, clear: clearSearch } = useDebouncedSearch(300);
+const debouncedSearch = computed(() => rawSearch.value.trim());
+
+// Keyboard: 'n' opens the new-campaign wizard (kept from the old all-list);
+// Escape closes the delete-confirm modal (kept from the old all-list).
+const { registerNewShortcut, registerEscapeHandler, unregisterShortcut } = useKeyboardShortcuts();
+onMounted(() => {
+	registerNewShortcut(() => {
+		if (!isDeleteModalOpen.value) router.push('/dashboard/campaigns/new');
+	});
+	registerEscapeHandler(() => {
+		if (isDeleteModalOpen.value && !isDeleting.value) closeDeleteModal();
+	});
+});
+onUnmounted(() => {
+	unregisterShortcut('n');
+	unregisterShortcut('escape');
+});
+
+// The active pill drives a SERVER-SIDE status filter for the browse pills so the
+// list can never disagree with the org-wide count badge (e.g. "Sent 250" while
+// only a windowful shows). Attention / All browse the full table unfiltered.
+const serverStatus = computed<CampaignStatus | undefined>(() => {
+	switch (selectedPill.value) {
+		case 'draft':
+		case 'scheduled':
+		case 'sent':
+			return selectedPill.value;
+		default:
+			return undefined;
+	}
+});
+
+// ONE paginated query returns rows WITH their denormalized headline stats (no
+// per-row fan-out / N+1). Search + status filter are server-side; the pill
+// numeric badges come from the exact org-wide count facet.
+const {
+	results: rows,
+	status: paginationStatus,
+	loadMore,
+	isLoading,
+	error: listError,
+} = usePaginatedQuery(
+	api.campaigns.campaigns.list,
+	() => ({ status: serverStatus.value, search: debouncedSearch.value || undefined }),
+	{ initialNumItems: 100 }
+);
+
+const { data: statusCounts } = useOrganizationQuery(
 	api.campaigns.organization.countByStatusByOrganization
 );
 
-// Fetch active campaigns (scheduled, sending)
+// Attention is classified over ALL candidate campaigns (a bounded org-wide scan
+// of the transient statuses), NOT the loaded window — so "Nothing needs you."
+// can never be a false negative for an undecided A/B test or a stopped send that
+// happens to sit past the first page.
 const {
-	data: activeCampaigns,
-	isLoading: activeLoading,
-	error: activeError,
-} = useOrganizationQuery(api.campaigns.analytics.getActiveByOrganization, { limit: 5 });
+	data: attentionCandidates,
+	isLoading: attentionLoading,
+	error: attentionError,
+} = useOrganizationQuery(api.campaigns.organization.listAttentionCandidates);
 
-// Fetch send volume by day
-const { data: sendVolume, isLoading: volumeLoading } = useOrganizationQuery(
-	api.campaigns.analytics.getSendVolumeByDayByOrganization
-);
-
-// Fetch top performing campaigns
-const {
-	data: topCampaigns,
-	isLoading: topLoading,
-	error: topError,
-} = useOrganizationQuery(api.campaigns.analytics.getTopPerformingByOrganization, { limit: 5 });
-
-// Stats for display
-const stats = computed(() => [
-	{
-		label: 'Total Campaigns',
-		value: statusCounts.value?.['total'] ?? 0,
-		icon: 'lucide:send',
-		color: 'brand',
-	},
-	{
-		label: 'Draft',
-		value: statusCounts.value?.['draft'] ?? 0,
-		icon: 'lucide:pencil',
-		color: 'text-tertiary',
-	},
-	{
-		label: 'Scheduled',
-		value: statusCounts.value?.['scheduled'] ?? 0,
-		icon: 'lucide:clock',
-		color: 'brand',
-	},
-	{
-		label: 'Sent',
-		value: statusCounts.value?.['sent'] ?? 0,
-		icon: 'lucide:check-circle',
-		color: 'success',
-	},
-]);
-
-// Quick actions
-const quickActions = [
-	{
-		label: 'New Campaign',
-		href: '/dashboard/campaigns/new',
-		icon: 'lucide:plus',
-		description: 'Create and send a new email campaign',
-	},
-	{
-		label: 'View All Campaigns',
-		href: '/dashboard/campaigns/all',
-		icon: 'lucide:file-text',
-		description: 'Browse all campaigns',
-	},
-	{
-		label: 'Campaign Reports',
-		href: '/dashboard/campaigns/reports',
-		icon: 'lucide:bar-chart-3',
-		description: 'View campaign analytics and reports',
-	},
-	{
-		label: 'A/B Results',
-		href: '/dashboard/campaigns/ab-results',
-		icon: 'lucide:flask-conical',
-		description: 'Compare A/B test variants and winners',
-	},
-];
-
-// Get status badge configuration
-const { getStatusBadge } = useCampaignStatusBadge();
-
-// Compact relative time ('3d ago' / 'in 3h'). Named distinctly from the
-// auto-imported verbose formatRelativeTime so it cannot shadow it.
-function formatCompactRelativeTime(timestamp: number): string {
-	const now = Date.now();
-	const diff = timestamp - now; // Future time
-
-	if (diff < 0) {
-		// Past time
-		const pastDiff = now - timestamp;
-		const days = Math.floor(pastDiff / (24 * 60 * 60 * 1000));
-		const hours = Math.floor(pastDiff / (60 * 60 * 1000));
-		const minutes = Math.floor(pastDiff / (60 * 1000));
-
-		if (days > 0) return `${days}d ago`;
-		if (hours > 0) return `${hours}h ago`;
-		if (minutes > 0) return `${minutes}m ago`;
-		return 'Just now';
-	}
-
-	// Future time
-	const days = Math.floor(diff / (24 * 60 * 60 * 1000));
-	const hours = Math.floor(diff / (60 * 60 * 1000));
-	const minutes = Math.floor(diff / (60 * 1000));
-
-	if (days > 0) return `in ${days}d`;
-	if (hours > 0) return `in ${hours}h`;
-	if (minutes > 0) return `in ${minutes}m`;
-	return 'Now';
+const canLoadMore = computed(() => paginationStatus.value === 'CanLoadMore');
+const isLoadingMore = computed(() => paginationStatus.value === 'LoadingMore');
+function handleLoadMore() {
+	if (canLoadMore.value) loadMore(100);
 }
 
-// Per-day bars for the send-volume chart (UiBars)
-const sendVolumeBars = computed(
-	() =>
-		sendVolume.value?.map((d: { label: string; count: number }) => ({
-			label: d.label,
-			value: d.count,
-		})) ?? []
-);
+const { getStatusBadge } = useCampaignStatusBadge();
 
-// Compute total sent in last 7 days
-const totalSentLast7Days = computed(() => {
-	if (!sendVolume.value) return 0;
-	return sendVolume.value.reduce((sum: number, d: { count: number }) => sum + d.count, 0);
+// --- Row model: campaign + its attention roll-up + derived rates ------------
+// The row TYPE + row COMPONENT live in siblings (utils/campaignCommandRow +
+// components/campaigns/CommandRow) so this page stays a controller; here we only
+// DERIVE the rows.
+
+function rate(numer: number | undefined, denom: number | undefined): number | null {
+	if (!denom || denom <= 0) return null;
+	return ((numer ?? 0) / denom) * 100;
+}
+
+function decorate(campaign: CampaignRowFields): DecoratedRow {
+	const attention = classifyCampaignAttention({
+		status: campaign.status,
+		scheduledAt: campaign.scheduledAt,
+		isABTest: campaign.isABTest,
+		abTestStatus: campaign.abTestStatus,
+		abWinner: campaign.abWinner,
+		contentBlockReason: campaign.contentBlockReason,
+	});
+	const display = attention.reason ? CAMPAIGN_ATTENTION_DISPLAY[attention.reason] : null;
+	const openRate = rate(campaign.statsOpened, campaign.statsDelivered);
+	const clickRate = rate(campaign.statsClicked, campaign.statsDelivered);
+	// A/B campaigns carry two comparable sends (variant A = main stats,
+	// variant B = abVariantB* fields) — a genuine two-point open-rate trend.
+	const variantA = openRate;
+	const variantB = rate(campaign.abVariantBOpened, campaign.abVariantBSent);
+	const spark =
+		campaign.isABTest === true && variantA != null && variantB != null ? [variantA, variantB] : [];
+	return {
+		campaign,
+		needsAttention: attention.needsAttention,
+		reason: attention.reason,
+		reasonChip: display ? { label: display.chipLabel, dot: display.dot } : null,
+		statusBadge: getStatusBadge(campaign.status),
+		actionLabel: attention.actionLabel,
+		openRate,
+		clickRate,
+		variantA,
+		variantB,
+		spark,
+	};
+}
+
+// Sort helper: attention first, then most-recent (updatedAt) — the design
+// brief's "surface what needs a decision, then the freshest work".
+function byAttentionThenRecency(a: DecoratedRow, b: DecoratedRow): number {
+	if (a.needsAttention !== b.needsAttention) return a.needsAttention ? -1 : 1;
+	return b.campaign.updatedAt - a.campaign.updatedAt;
+}
+
+// Attention rows come from the org-wide candidate scan, then the client
+// classifier (the source of truth) keeps only the ones genuinely waiting.
+// The browse pills search server-side, but the attention set is fetched
+// unsearched, so we apply the same debounced query here (case-insensitive
+// name/subject over the bounded candidate set) — otherwise typing on the
+// default pill would silently no-op and the "No results" empty state would
+// lie about a search that never ran.
+const attentionRows = computed<DecoratedRow[]>(() => {
+	const q = debouncedSearch.value.toLowerCase();
+	return (attentionCandidates.value ?? [])
+		.map(decorate)
+		.filter((r) => r.needsAttention)
+		.filter((r) => {
+			if (!q) return true;
+			const c = r.campaign;
+			return c.name.toLowerCase().includes(q) || (c.subject?.toLowerCase().includes(q) ?? false);
+		})
+		.sort((a, b) => b.campaign.updatedAt - a.campaign.updatedAt);
 });
 
-// Navigate handlers
-const handleNewCampaign = () => router.push('/dashboard/campaigns/new');
-const handleViewReport = (campaignId: Id<'campaigns'>) =>
-	router.push(`/dashboard/campaigns/${campaignId}/report`);
-const handleEditCampaign = (campaignId: Id<'campaigns'>) =>
-	router.push(`/dashboard/campaigns/${campaignId}/edit`);
+const attentionCount = computed(() => attentionRows.value.length);
+
+// Browse rows come from the paginated (optionally status-filtered) window.
+const browseRows = computed<DecoratedRow[]>(() =>
+	(rows.value ?? []).map(decorate).sort(byAttentionThenRecency)
+);
+
+const visibleRows = computed(() =>
+	selectedPill.value === 'attention' ? attentionRows.value : browseRows.value
+);
+
+// Surface the right loading / error signal for whichever data source the active
+// pill reads from.
+const activeError = computed(() =>
+	selectedPill.value === 'attention' ? attentionError.value : listError.value
+);
+const activeLoading = computed(() =>
+	selectedPill.value === 'attention' ? attentionLoading.value : isLoading.value
+);
+
+interface Pill {
+	key: PillKey;
+	label: string;
+	count: number | undefined;
+}
+const pills = computed<Pill[]>(() => {
+	const c = statusCounts.value;
+	return [
+		{ key: 'attention', label: 'Needs attention', count: attentionCount.value },
+		{ key: 'all', label: 'All', count: c?.['total'] },
+		{ key: 'draft', label: 'Drafts', count: c?.['draft'] },
+		{ key: 'scheduled', label: 'Scheduled', count: c?.['scheduled'] },
+		{ key: 'sent', label: 'Sent', count: c?.['sent'] },
+	];
+});
+
+// --- Presentational helpers -------------------------------------------------
+
+/** Row click opens the report for sent/sending campaigns, else the editor. */
+function openCampaign(campaign: CampaignRowFields) {
+	if (campaign.status === 'sent' || campaign.status === 'sending') {
+		router.push(`/dashboard/campaigns/${campaign._id}/report`);
+	} else {
+		router.push(`/dashboard/campaigns/${campaign._id}/edit`);
+	}
+}
+
+/** The inline attention action navigates only — no fake backend calls. */
+function runAttentionAction(row: DecoratedRow) {
+	const id = row.campaign._id;
+	switch (row.reason) {
+		case 'ab_decision':
+			openAbResults();
+			break;
+		case 'needs_review':
+		// The review surface is the editor's pending-review panel — NOT the
+		// report (which shows zeros for an unsent campaign). A stopped send is
+		// resumed from the same editor, so both land there.
+		case 'send_stopped':
+			router.push(`/dashboard/campaigns/${id}/edit`);
+			break;
+		default:
+			openCampaign(row.campaign);
+	}
+}
+/** The A/B results surface (kept discoverable until c3b folds it in). */
+function openAbResults() {
+	router.push('/dashboard/campaigns/ab-results');
+}
+function handleNewCampaign() {
+	router.push('/dashboard/campaigns/new');
+}
+
+// --- Row-level actions: Duplicate + Delete (preserved from the old all-list) -
+const { showToast } = useToast();
+
+const { run: duplicateCampaign } = useBackendOperation(api.campaigns.campaigns.duplicate, {
+	label: 'Duplicate campaign',
+});
+const { run: deleteCampaign } = useBackendOperation(api.campaigns.campaigns.remove, {
+	label: 'Delete campaign',
+});
+
+async function handleDuplicate(id: Id<'campaigns'>) {
+	const newId = await duplicateCampaign({ campaignId: id });
+	if (newId === undefined) return;
+	showToast('Campaign duplicated');
+	router.push(`/dashboard/campaigns/${newId}/edit`);
+}
+
+const isDeleteModalOpen = ref(false);
+const campaignToDelete = ref<{ id: Id<'campaigns'>; name: string } | null>(null);
+const isDeleting = ref(false);
+
+function openDeleteModal(id: Id<'campaigns'>, name: string) {
+	campaignToDelete.value = { id, name };
+	isDeleteModalOpen.value = true;
+}
+function closeDeleteModal() {
+	isDeleteModalOpen.value = false;
+	campaignToDelete.value = null;
+}
+async function handleDelete() {
+	if (!campaignToDelete.value) return;
+	isDeleting.value = true;
+	try {
+		const result = await deleteCampaign({ campaignId: campaignToDelete.value.id });
+		if (result === undefined) return;
+		showToast('Campaign deleted');
+		closeDeleteModal();
+	} finally {
+		isDeleting.value = false;
+	}
+}
+
+const showEmptyState = computed(
+	() => !activeLoading.value && !activeError.value && visibleRows.value.length === 0
+);
 </script>
 
 <template>
 	<div class="p-6 lg:p-8">
-		<!-- Header -->
-		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
 			<div>
 				<h1 class="text-2xl font-semibold text-text-primary">Campaigns</h1>
-				<p class="mt-1 text-text-secondary">Create, schedule, and track your email campaigns.</p>
+				<p class="mt-1 text-text-secondary">
+					Everything you've sent and everything waiting on you, in one place.
+				</p>
 			</div>
 			<UiButton @click="handleNewCampaign">
 				<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
-				New Campaign
+				New campaign
 			</UiButton>
 		</div>
 
-		<!-- Stats Cards -->
-		<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-			<UiCard v-for="stat in stats" :key="stat.label" hoverable>
-				<div class="flex items-start justify-between">
-					<div>
-						<p class="text-sm text-text-secondary">{{ stat.label }}</p>
-						<div class="flex items-center gap-2 mt-1">
-							<p v-if="countsLoading" class="text-3xl font-semibold text-text-tertiary">--</p>
-							<p v-else class="text-3xl font-semibold text-text-primary">
-								{{ stat.value }}
-							</p>
-							<Icon
-								v-if="countsLoading"
-								name="lucide:loader-2"
-								class="w-4 h-4 animate-spin text-text-tertiary"
-							/>
-						</div>
-					</div>
-					<UiIconBox
-						:icon="stat.icon"
-						:variant="
-							stat.color === 'success' ? 'success' : stat.color === 'brand' ? 'brand' : 'surface'
-						"
-					/>
-				</div>
-			</UiCard>
-		</div>
-
-		<!-- Quick Actions -->
-		<div class="mb-8">
-			<h2 class="text-lg font-semibold text-text-primary mb-4">Quick Actions</h2>
-			<div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-				<NuxtLink
-					v-for="action in quickActions"
-					:key="action.label"
-					:to="action.href"
-					class="group"
+		<div class="flex flex-col sm:flex-row sm:items-center gap-4 mb-6">
+			<div class="flex items-center gap-1 p-1 bg-bg-surface rounded-lg overflow-x-auto">
+				<button
+					v-for="pill in pills"
+					:key="pill.key"
+					:class="[
+						'px-3 py-1.5 rounded-md text-sm flex items-center gap-1.5 whitespace-nowrap transition-colors duration-(--motion-fast) ease-spring',
+						selectedPill === pill.key
+							? 'bg-bg-elevated text-text-primary font-semibold shadow-sm'
+							: 'text-text-secondary hover:text-text-primary font-medium',
+					]"
+					@click="selectedPill = pill.key"
 				>
-					<UiCard hoverable clickable>
-						<div class="flex items-center gap-4">
-							<UiIconBox
-								:icon="action.icon"
-								class="group-hover:bg-brand group-hover:text-text-inverse transition-colors"
-							/>
-							<div>
-								<p class="font-medium text-text-primary group-hover:text-brand transition-colors">
-									{{ action.label }}
-								</p>
-								<p class="text-sm text-text-tertiary">{{ action.description }}</p>
-							</div>
-						</div>
-					</UiCard>
-				</NuxtLink>
-			</div>
-		</div>
-
-		<!-- Two column layout -->
-		<div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-			<!-- Active Campaigns -->
-			<div>
-				<div class="flex items-center justify-between mb-4">
-					<h2 class="text-lg font-semibold text-text-primary flex items-center gap-2">
-						<Icon name="lucide:activity" class="w-5 h-5 text-brand" />
-						Active Campaigns
-					</h2>
-					<NuxtLink
-						to="/dashboard/campaigns/all?status=scheduled"
-						class="text-sm text-brand hover:text-brand-hover flex items-center gap-1"
-					>
-						View all
-						<Icon name="lucide:arrow-right" class="w-3 h-3" />
-					</NuxtLink>
-				</div>
-				<UiCard>
-					<UiQueryBoundary
-						:loading="activeLoading"
-						:error="activeError"
-						:empty="!activeCampaigns || activeCampaigns.length === 0"
-					>
-						<template #loading>
-							<div class="flex items-center justify-center py-8">
-								<Icon name="lucide:loader-2" class="w-6 h-6 animate-spin text-text-tertiary" />
-							</div>
-						</template>
-
-						<!-- Empty state -->
-						<template #empty>
-							<UiEmptyState
-								icon="lucide:calendar"
-								title="No active campaigns"
-								description="Schedule a campaign to see it here."
-							>
-								<template #action>
-									<UiButton size="sm" @click="handleNewCampaign">
-										<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
-										Create Campaign
-									</UiButton>
-								</template>
-							</UiEmptyState>
-						</template>
-
-						<!-- Campaigns list -->
-						<div class="divide-y divide-border-subtle">
-							<div
-								v-for="campaign in activeCampaigns"
-								:key="campaign._id"
-								class="flex items-center gap-4 py-3 first:pt-0 last:pb-0 cursor-pointer hover:bg-bg-surface -mx-4 px-4 transition-colors"
-								@click="handleEditCampaign(campaign._id)"
-							>
-								<div class="flex-1 min-w-0">
-									<p class="text-sm text-text-primary truncate font-medium">
-										{{ campaign.name }}
-									</p>
-									<div class="flex items-center gap-2 mt-0.5">
-										<span
-											:class="[
-												'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium',
-												getStatusBadge(campaign.status).color,
-											]"
-										>
-											<Icon
-												:name="getStatusBadge(campaign.status).icon"
-												:class="['w-3 h-3', campaign.status === 'sending' ? 'animate-spin' : '']"
-											/>
-											{{ getStatusBadge(campaign.status).label }}
-										</span>
-										<span class="text-xs text-text-tertiary">
-											{{
-												campaign.status === 'scheduled'
-													? formatCompactRelativeTime(campaign.scheduledAt!)
-													: 'Sending now'
-											}}
-										</span>
-									</div>
-								</div>
-								<span class="text-xs text-text-tertiary">
-									{{ formatDateTime(campaign.scheduledAt) }}
-								</span>
-							</div>
-						</div>
-					</UiQueryBoundary>
-				</UiCard>
-			</div>
-
-			<!-- Send Volume Chart (Last 7 Days) -->
-			<div>
-				<div class="flex items-center justify-between mb-4">
-					<h2 class="text-lg font-semibold text-text-primary flex items-center gap-2">
-						<Icon name="lucide:trending-up" class="w-5 h-5 text-brand" />
-						Send Volume (7 days)
-					</h2>
-					<span class="text-sm text-text-secondary">
-						{{ totalSentLast7Days.toLocaleString() }} emails
+					{{ pill.label }}
+					<span v-if="pill.count !== undefined" class="text-xs tabular-nums text-text-tertiary">
+						{{ pill.count }}
 					</span>
+				</button>
+			</div>
+
+			<div class="flex-1" />
+
+			<div class="relative">
+				<Icon
+					name="lucide:search"
+					class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary"
+				/>
+				<input
+					v-model="searchQuery"
+					type="text"
+					placeholder="Search campaigns…"
+					class="input pl-10 w-64"
+				/>
+			</div>
+		</div>
+
+		<div
+			v-if="activeLoading && visibleRows.length === 0"
+			class="flex items-center justify-center py-16"
+		>
+			<div class="flex flex-col items-center gap-3">
+				<UiSpinner />
+				<p class="text-text-secondary text-sm">Loading campaigns…</p>
+			</div>
+		</div>
+
+		<UiErrorAlert
+			v-else-if="activeError"
+			title="Couldn't load campaigns"
+			message="We hit an error loading your campaigns. Reload the page to try again."
+			class="my-8"
+		/>
+
+		<UiCard
+			v-else-if="showEmptyState && selectedPill === 'attention' && !debouncedSearch"
+			class="flex flex-col items-center justify-center py-16 text-center px-6"
+		>
+			<UiIconBox
+				icon="lucide:check-circle"
+				size="xl"
+				variant="success"
+				rounded="full"
+				class="mb-4"
+			/>
+			<p class="text-text-primary font-semibold">Nothing needs you.</p>
+			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
+				No campaigns are waiting on a decision right now.
+			</p>
+		</UiCard>
+
+		<UiCard
+			v-else-if="showEmptyState && debouncedSearch"
+			class="flex flex-col items-center justify-center py-16 text-center px-6"
+		>
+			<UiIconBox icon="lucide:search" size="xl" variant="surface" rounded="full" class="mb-4" />
+			<p class="text-text-primary font-semibold">No results found</p>
+			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
+				No campaigns match "{{ debouncedSearch }}". Try a different search term.
+			</p>
+			<UiButton variant="secondary" class="mt-6" @click="clearSearch">Clear search</UiButton>
+		</UiCard>
+
+		<UiCard
+			v-else-if="showEmptyState"
+			class="flex flex-col items-center justify-center py-16 text-center px-6"
+		>
+			<UiIconBox icon="lucide:send" size="xl" variant="surface" rounded="full" class="mb-4" />
+			<p class="text-text-primary font-semibold">No campaigns here yet</p>
+			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
+				Create your first campaign to start reaching your audience.
+			</p>
+			<UiButton class="mt-6" @click="handleNewCampaign">
+				<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
+				New campaign
+			</UiButton>
+		</UiCard>
+
+		<UiCard v-else padding="none" overflow="hidden">
+			<ul class="divide-y divide-border-subtle">
+				<CampaignsCommandRow
+					v-for="row in visibleRows"
+					:key="row.campaign._id"
+					:row="row"
+					@open="openCampaign(row.campaign)"
+					@run-action="runAttentionAction(row)"
+					@ab-results="openAbResults()"
+					@duplicate="handleDuplicate(row.campaign._id)"
+					@delete="openDeleteModal(row.campaign._id, row.campaign.name)"
+				/>
+			</ul>
+
+			<div
+				v-if="selectedPill !== 'attention' && (canLoadMore || paginationStatus === 'Exhausted')"
+				class="flex items-center justify-center px-6 py-4 border-t border-border-subtle"
+			>
+				<UiButton
+					v-if="canLoadMore"
+					variant="secondary"
+					:loading="isLoadingMore"
+					@click="handleLoadMore"
+				>
+					{{ isLoadingMore ? 'Loading…' : 'Load more' }}
+				</UiButton>
+				<span v-else class="text-sm text-text-tertiary">All campaigns loaded</span>
+			</div>
+		</UiCard>
+
+		<!-- Delete confirmation -->
+		<UiModal v-model:open="isDeleteModalOpen" title="Delete campaign" :persistent="isDeleting">
+			<div class="flex items-start gap-4">
+				<div class="p-3 rounded-full bg-error/10 shrink-0 flex items-center justify-center">
+					<Icon name="lucide:trash-2" class="w-6 h-6 text-error" />
 				</div>
-				<UiCard>
-					<!-- Loading state -->
-					<div v-if="volumeLoading" class="flex items-center justify-center py-8">
-						<Icon name="lucide:loader-2" class="w-6 h-6 animate-spin text-text-tertiary" />
-					</div>
-
-					<!-- Chart -->
-					<UiBars
-						v-else
-						:data="sendVolumeBars"
-						:height="132"
-						:label-every="1"
-						:format-value="(v: number) => `${v.toLocaleString()} emails`"
-						aria-label="Emails sent per day over the last 7 days"
-					/>
-				</UiCard>
+				<div>
+					<p class="text-text-primary">
+						Are you sure you want to delete
+						<span class="font-semibold">"{{ campaignToDelete?.name }}"</span>?
+					</p>
+					<p class="text-sm text-text-secondary mt-2">
+						This action cannot be undone. The campaign and its data will be permanently deleted.
+					</p>
+				</div>
 			</div>
-		</div>
-
-		<!-- Top Performing Campaigns -->
-		<div>
-			<div class="flex items-center justify-between mb-4">
-				<h2 class="text-lg font-semibold text-text-primary flex items-center gap-2">
-					<Icon name="lucide:bar-chart-3" class="w-5 h-5 text-brand" />
-					Top Performing Campaigns
-				</h2>
-				<NuxtLink
-					to="/dashboard/campaigns/reports"
-					class="text-sm text-brand hover:text-brand-hover flex items-center gap-1"
-				>
-					View reports
-					<Icon name="lucide:arrow-right" class="w-3 h-3" />
-				</NuxtLink>
-			</div>
-			<UiCard>
-				<UiQueryBoundary
-					:loading="topLoading"
-					:error="topError"
-					:empty="!topCampaigns || topCampaigns.length === 0"
-				>
-					<template #loading>
-						<div class="flex items-center justify-center py-8">
-							<Icon name="lucide:loader-2" class="w-6 h-6 animate-spin text-text-tertiary" />
-						</div>
-					</template>
-
-					<!-- Empty state -->
-					<template #empty>
-						<UiEmptyState
-							icon="lucide:bar-chart-3"
-							title="No sent campaigns yet"
-							description="Send your first campaign to see performance metrics here."
-						/>
-					</template>
-
-					<!-- Table -->
-					<div class="overflow-x-auto -mx-4 -mb-4 mt-0">
-						<table class="w-full">
-							<thead>
-								<tr class="border-b border-border-subtle">
-									<th class="text-left px-4 py-3 text-sm font-medium text-text-secondary">
-										Campaign
-									</th>
-									<th class="text-right px-4 py-3 text-sm font-medium text-text-secondary">
-										Delivered
-									</th>
-									<th class="text-right px-4 py-3 text-sm font-medium text-text-secondary">
-										Opened
-									</th>
-									<th class="text-right px-4 py-3 text-sm font-medium text-text-secondary">
-										Open Rate
-									</th>
-									<th class="text-right px-4 py-3 text-sm font-medium text-text-secondary" />
-								</tr>
-							</thead>
-							<tbody>
-								<tr
-									v-for="campaign in topCampaigns"
-									:key="campaign._id"
-									class="border-b border-border-subtle last:border-b-0 hover:bg-bg-surface transition-colors"
-								>
-									<td class="px-4 py-3">
-										<div class="min-w-0">
-											<p class="text-sm text-text-primary font-medium truncate">
-												{{ campaign.name }}
-											</p>
-											<p v-if="campaign.sentAt" class="text-xs text-text-tertiary mt-0.5">
-												Sent {{ formatCompactRelativeTime(campaign.sentAt) }}
-											</p>
-										</div>
-									</td>
-									<td class="px-4 py-3 text-right">
-										<span class="text-sm text-text-secondary">
-											{{ (campaign.statsDelivered || 0).toLocaleString() }}
-										</span>
-									</td>
-									<td class="px-4 py-3 text-right">
-										<span class="text-sm text-text-secondary">
-											{{ (campaign.statsOpened || 0).toLocaleString() }}
-										</span>
-									</td>
-									<td class="px-4 py-3 text-right">
-										<span class="text-sm font-medium text-brand">
-											{{ campaign.openRate.toFixed(1) }}%
-										</span>
-									</td>
-									<td class="px-4 py-3 text-right">
-										<button
-											class="p-2 rounded-lg text-text-tertiary hover:text-brand hover:bg-brand/10 transition-colors"
-											title="View Report"
-											@click="handleViewReport(campaign._id)"
-										>
-											<Icon name="lucide:bar-chart-3" class="w-4 h-4" />
-										</button>
-									</td>
-								</tr>
-							</tbody>
-						</table>
-					</div>
-				</UiQueryBoundary>
-			</UiCard>
-		</div>
+			<template #footer>
+				<UiButton variant="secondary" :disabled="isDeleting" @click="closeDeleteModal">
+					Cancel
+				</UiButton>
+				<UiButton variant="danger" :loading="isDeleting" @click="handleDelete">
+					{{ isDeleting ? 'Deleting…' : 'Delete campaign' }}
+				</UiButton>
+			</template>
+		</UiModal>
 	</div>
 </template>
