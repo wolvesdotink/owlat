@@ -112,6 +112,7 @@ const forYouVisible = computed(() => forYouItems.value.slice(0, FOR_YOU_CAP));
 // user answers one) would re-fire scrollIntoView and yank the viewport back to
 // the For-you section mid-read — live subscriptions must never move the user.
 const route = useRoute();
+const router = useRouter();
 const forYouSection = ref<HTMLElement | null>(null);
 const pendingForYouScroll = ref(route.hash === '#postbox-for-you');
 watch(
@@ -130,6 +131,10 @@ watch(
 			const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 			el.scrollIntoView({ block: 'start', behavior: reduced ? 'auto' : 'smooth' });
 			pendingForYouScroll.value = false;
+			// Strip the consumed fragment so re-clicking the titlebar pill (which
+			// navigates to the same URL) re-sets the hash → re-arms the flag →
+			// re-scrolls. Without this the second click is a no-op duplicate nav.
+			void router.replace({ query: route.query, hash: '' });
 		});
 	},
 	{ immediate: true }
