@@ -3,6 +3,8 @@ import { buildInternalTokenUrl } from '../internalTokenUrl';
 
 describe('buildInternalTokenUrl', () => {
 	it('builds the endpoint from the configured origin', () => {
+		// The builder only ever sees trusted config — it takes no Host parameter,
+		// so a spoofed request Host header cannot influence the resulting origin.
 		expect(buildInternalTokenUrl('https://acme.owlat.app')).toBe(
 			'https://acme.owlat.app/api/auth/convex/token'
 		);
@@ -24,13 +26,6 @@ describe('buildInternalTokenUrl', () => {
 		expect(buildInternalTokenUrl('https://acme.owlat.app/some/base')).toBe(
 			'https://acme.owlat.app/api/auth/convex/token'
 		);
-	});
-
-	it('is independent of any request Host header — an attacker-supplied host cannot influence it', () => {
-		// The builder only ever sees trusted config; a spoofed Host header is not
-		// an input here, so the resulting origin is always the configured one.
-		const trusted = 'https://acme.owlat.app';
-		expect(buildInternalTokenUrl(trusted)).toBe('https://acme.owlat.app/api/auth/convex/token');
 	});
 
 	it('throws on a malformed origin rather than emitting a relative URL', () => {
