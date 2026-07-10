@@ -196,6 +196,14 @@ export default defineNuxtConfig({
 			viewport: 'width=device-width, initial-scale=1, viewport-fit=cover',
 			link: [{ rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' }],
 		},
+		// Subtle FF-spring page/layout transitions so client-side navigations read
+		// as continuous motion, never a hard cut to a blank pane. `out-in` keeps a
+		// single pane moving at a time (styles in assets/css/page-transitions.css;
+		// reduced-motion collapses to an instant swap there). The desktop
+		// workspace switch reloads the whole document (window.location.assign) and
+		// never runs these SPA transitions, so its skeleton handoff is untouched.
+		pageTransition: { name: 'page', mode: 'out-in' },
+		layoutTransition: { name: 'layout', mode: 'out-in' },
 	},
 
 	colorMode: {

@@ -3,6 +3,7 @@
 @import './desktop.css';
 @import './postbox-motion.css';
 @import './postbox-density.css';
+@import './page-transitions.css';
 
 @source "../../../../../packages/email-builder/src/**/*.vue";
 @source "../../../../../packages/email-builder/src/**/*.ts";
