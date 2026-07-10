@@ -589,6 +589,39 @@ export const inboxUnreadCount = publicQuery({
 });
 
 /**
+ * Per-mailbox inbox unread counts across every mailbox the caller can reach
+ * (their own personal mailbox(es) plus any shared/team inbox they belong to).
+ * Backs the Postbox sidebar's mailbox switcher badges — one row per accessible
+ * mailbox so a shared inbox shows its own unread total distinctly. O(1) per
+ * mailbox: reads the denormalized `mailFolders.unseenCount`, same source as
+ * `inboxUnreadCount`. Read state is a single shared truth per message, so every
+ * member of a shared inbox sees the same count.
+ */
+// public: soft-auth — returns empty for anonymous; access via loadAccessibleMailboxes (own + shared memberships)
+export const unreadByMailbox = publicQuery({
+	args: {},
+	handler: async (ctx) => {
+		const session = await readSession(ctx);
+		if (!session) return [];
+		const mailboxes = await loadAccessibleMailboxes(
+			ctx,
+			session.userId,
+			session.activeOrganizationId
+		);
+		const rows: Array<{ mailboxId: Id<'mailboxes'>; unread: number }> = [];
+		for (const mb of mailboxes) {
+			if (mb.status !== 'active') continue;
+			const inbox = await ctx.db
+				.query('mailFolders')
+				.withIndex('by_mailbox_and_role', (q) => q.eq('mailboxId', mb._id).eq('role', 'inbox'))
+				.first();
+			rows.push({ mailboxId: mb._id, unread: inbox?.unseenCount ?? 0 });
+		}
+		return rows;
+	},
+});
+
+/**
  * The newest unread, not-snoozed inbox messages across the user's mailboxes
  * (plus the exact total unread count), for the desktop unread badge,
  * notification-rule filtering, and per-thread grouping. `total`
@@ -729,6 +762,48 @@ export const listThreadMessages = publicQuery({
 			thread,
 			messages: siblings,
 			labels: Array.from(labelMap.values()),
+		};
+	},
+});
+
+/**
+ * Team-inbox collision safety. Given any message in a thread, return the
+ * thread's newest OUTBOUND reply — who sent it and when — so the reader can
+ * show "last reply by …" and the composer can warn a second teammate before
+ * they send a duplicate. Returns null for a personal mailbox (scope !==
+ * 'shared'), so both the badge and the stale-reply guard are inert on personal
+ * mail and its behaviour is unchanged. Access is enforced via the shared
+ * readable-mailbox gate; the display name comes from the sender's `userProfiles`
+ * row (single-org-per-deployment).
+ */
+// public: soft-auth — returns null for anonymous; mailbox access is still enforced in-handler
+export const latestReplyState = publicQuery({
+	args: { messageId: v.id('mailMessages') },
+	handler: async (ctx, args) => {
+		const session = await readSession(ctx);
+		const seed = await ctx.db.get(args.messageId);
+		if (!seed) return null;
+		const mailbox = await loadReadableMailbox(ctx, seed.mailboxId);
+		if (!mailbox) return null;
+		// Personal mailbox → no team collisions to guard against.
+		if (mailbox.scope !== 'shared') return null;
+		const thread = await ctx.db.get(seed.threadId);
+		const latest = thread?.latestReply;
+		if (!latest) return null;
+		let byName: string | null = null;
+		if (latest.byUserId) {
+			const profile = await ctx.db
+				.query('userProfiles')
+				.withIndex('by_auth_user_id', (q) => q.eq('authUserId', latest.byUserId as string))
+				.first();
+			byName = profile?.name ?? profile?.email ?? null;
+		}
+		return {
+			messageId: latest.messageId,
+			at: latest.at,
+			byUserId: latest.byUserId ?? null,
+			byName,
+			byIsYou: !!session && !!latest.byUserId && latest.byUserId === session.userId,
 		};
 	},
 });
