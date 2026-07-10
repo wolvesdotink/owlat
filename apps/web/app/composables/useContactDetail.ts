@@ -274,9 +274,6 @@ export function useContactDetail(contactId: ComputedRef<Id<'contacts'>>) {
 		return value?.value ?? null;
 	};
 
-	// Delegates to the canonical formatDateTime ("Jun 4, 2025, 03:20 AM").
-	const formatDate = (timestamp: number) => formatDateTime(timestamp);
-
 	// DOI Status helpers — derived from the shared DOI_STATUS_BADGES map.
 	const getDoiStatusLabel = (status: string | undefined) => getDoiStatusBadge(status).label;
 	const getDoiStatusColor = (status: string | undefined) => getDoiStatusBadge(status).color;
@@ -313,7 +310,6 @@ export function useContactDetail(contactId: ComputedRef<Id<'contacts'>>) {
 		getTimezoneLabel,
 		getLanguageLabel,
 		getPropertyValue,
-		formatDate,
 		getDoiStatusLabel,
 		getDoiStatusColor,
 		getDoiStatusIcon,
