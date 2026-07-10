@@ -20,7 +20,7 @@
  * specifics.
  *
  * `resolveLanguageModel(ctx, task)` (async) replaces the former sync, env-only
- * `getLLMProvider(task)`. Embedding resolution still runs through the env-only
+ * per-task resolver. Embedding resolution still runs through the env-only
  * `getEmbeddingModel()` for now (the embedding-plane upgrade is a later plan
  * piece); the embedding selection is surfaced on the resolved config so that
  * piece can consume it.
@@ -197,9 +197,7 @@ const AI_CONFIG_CACHE_TTL_MS = 30_000;
 let configCache: { config: ResolvedProviderConfig; expiresAt: number } | null = null;
 
 /** True when a stored row carries a complete language-key envelope to decrypt. */
-function hasLanguageKeyEnvelope(
-	row: Doc<'aiProviderConfig'>
-): row is Doc<'aiProviderConfig'> & {
+function hasLanguageKeyEnvelope(row: Doc<'aiProviderConfig'>): row is Doc<'aiProviderConfig'> & {
 	secretCiphertext: string;
 	secretIv: string;
 	secretAuthTag: string;
