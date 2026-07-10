@@ -24,8 +24,20 @@
  */
 
 import { getOptional } from '../../lib/env';
+import { withTimeout } from '../../lib/inputGuards';
 import type { InboundAdapter } from '../pipeline';
 import type { InboundEvent } from '../types';
+
+/**
+ * Reject a signed SNS envelope whose `Timestamp` is more than this many seconds
+ * from now (either direction). A valid signature is otherwise replayable
+ * forever, so a captured envelope could re-suppress an address an admin
+ * deliberately unblocked. Mirrors `MTA_TIMESTAMP_TOLERANCE_SECONDS`.
+ */
+const SNS_TIMESTAMP_TOLERANCE_SECONDS = 300; // 5 minutes
+
+/** Max time to wait for the SNS signing-certificate fetch before failing closed. */
+const SNS_CERT_FETCH_TIMEOUT_MS = 10_000;
 
 /** SNS message envelope (only the fields we read are declared). */
 interface SnsEnvelope {
@@ -116,7 +128,7 @@ function base64ToBytes(b64: string): Uint8Array {
 }
 
 /** Decode a PEM-armored certificate into its DER bytes. */
-function pemToDer(pem: string): Uint8Array {
+export function pemToDer(pem: string): Uint8Array {
 	const body = pem
 		.replace(/-----BEGIN CERTIFICATE-----/g, '')
 		.replace(/-----END CERTIFICATE-----/g, '')
@@ -200,7 +212,11 @@ async function defaultGetSnsPublicKey(
 	const cached = certKeyCache.get(cacheKey);
 	if (cached) return cached;
 	try {
-		const res = await fetch(certUrl);
+		const res = await withTimeout(
+			fetch(certUrl),
+			SNS_CERT_FETCH_TIMEOUT_MS,
+			'SNS signing-certificate fetch timed out'
+		);
 		if (!res.ok) return null;
 		const pem = await res.text();
 		const spki = extractSpkiDer(pemToDer(pem));
@@ -236,12 +252,19 @@ export type SnsPublicKeyResolver = (
  */
 export async function verifySnsMessage(
 	msg: SnsEnvelope,
-	getPublicKey: SnsPublicKeyResolver = defaultGetSnsPublicKey
+	getPublicKey: SnsPublicKeyResolver = defaultGetSnsPublicKey,
+	nowMs: number = Date.now()
 ): Promise<boolean> {
 	const hash = hashForSignatureVersion(msg.SignatureVersion);
 	if (!hash) return false;
 	if (!msg.Signature || !msg.SigningCertURL) return false;
 	if (!isAllowedSnsHost(msg.SigningCertURL)) return false;
+
+	// Freshness: a valid signature is otherwise replayable forever. Reject an
+	// envelope whose Timestamp is missing, unparseable, or outside the tolerance.
+	const timestampMs = msg.Timestamp ? Date.parse(msg.Timestamp) : NaN;
+	if (Number.isNaN(timestampMs)) return false;
+	if (Math.abs(nowMs - timestampMs) > SNS_TIMESTAMP_TOLERANCE_SECONDS * 1000) return false;
 
 	const canonical = buildSnsCanonicalString(msg);
 	if (canonical === null) return false;
@@ -290,11 +313,29 @@ export const sesAdapter: InboundAdapter = {
 			};
 		}
 
+		// A valid SNS signature only proves the message came from AWS SNS — NOT
+		// that it came from our topic. Without this gate, any AWS account could
+		// subscribe our endpoint to its own topic (auto-confirmed) and inject
+		// validly-signed forged feedback (e.g. blocklist an org's whole audience).
+		// Require the operator's exact topic ARN and reject anything else.
+		const expectedTopicArn = getOptional('SES_SNS_TOPIC_ARN');
+		if (!expectedTopicArn) {
+			return {
+				ok: false,
+				status: 503,
+				reason: 'Webhook endpoint is not configured securely (SES_SNS_TOPIC_ARN is not set)',
+			};
+		}
+
 		let msg: SnsEnvelope;
 		try {
 			msg = JSON.parse(rawBody) as SnsEnvelope;
 		} catch {
 			return { ok: false, status: 400, reason: 'Invalid SNS payload' };
+		}
+
+		if (msg.TopicArn !== expectedTopicArn) {
+			return { ok: false, status: 403, reason: 'SNS topic is not authorized' };
 		}
 
 		const isValid = await verifySnsMessage(msg);

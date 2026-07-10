@@ -19,8 +19,12 @@ import type { ActionCtx } from '../_generated/server';
 import { isAllowedSnsHost } from './adapters/ses';
 import { isPostboxMessageId } from '../delivery/messageIdRouting';
 import type { TransitionOutcome } from '../delivery/sendLifecycle';
+import { withTimeout } from '../lib/inputGuards';
 import { logError, logWarn } from '../lib/runtimeLog';
 import type { InboundEvent, InboundEventKind, InboundEventOf } from './types';
+
+/** Max time to wait for the SNS subscription-confirm GET before giving up. */
+const SNS_CONFIRM_FETCH_TIMEOUT_MS = 10_000;
 
 /**
  * Unresolved-bounce observability (M3AAWG "measure unattributable feedback").
@@ -215,7 +219,11 @@ const DISPATCH: DispatchTable = {
 			return;
 		}
 		try {
-			const res = await fetch(e.subscribeUrl);
+			const res = await withTimeout(
+				fetch(e.subscribeUrl),
+				SNS_CONFIRM_FETCH_TIMEOUT_MS,
+				'SNS subscription confirm timed out'
+			);
 			if (!res.ok) {
 				logError(
 					`[Webhook Dispatcher] SNS subscription confirm returned ${res.status} for ${e.subscribeUrl}`
