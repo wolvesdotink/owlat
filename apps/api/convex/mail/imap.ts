@@ -11,9 +11,9 @@
 import { v } from 'convex/values';
 import { internalQuery, internalMutation } from '../_generated/server';
 import type { Id, Doc } from '../_generated/dataModel';
-import type { MutationCtx } from '../_generated/server';
 import { resolveAllowedFromAddressesForCtx } from './identities';
 import { rebuildThreadAggregates } from './messageActions';
+import { bumpFolderModseq } from './folders';
 import { normalizeSubject } from '../lib/emailAddress';
 
 /**
@@ -252,14 +252,6 @@ const IMAP_FLAG_TO_FIELD: Record<string, keyof Doc<'mailMessages'>> = {
 	'\\draft': 'flagDraft',
 	'\\deleted': 'flagDeleted',
 };
-
-async function bumpFolderModseq(ctx: MutationCtx, folderId: Id<'mailFolders'>): Promise<number> {
-	const folder = await ctx.db.get(folderId);
-	if (!folder) throw new Error('Folder not found');
-	const next = folder.highestModseq + 1;
-	await ctx.db.patch(folderId, { highestModseq: next, updatedAt: Date.now() });
-	return next;
-}
 
 function isImapSystemFlag(flag: string): boolean {
 	return flag.startsWith('\\');
