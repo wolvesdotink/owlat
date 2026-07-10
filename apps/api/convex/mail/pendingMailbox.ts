@@ -11,10 +11,8 @@
 
 import { v } from 'convex/values';
 import { authedMutation } from '../lib/authedFunctions';
-import {
-	requireAdminContext,
-	getBetterAuthSessionWithRole,
-} from '../lib/sessionOrganization';
+import { markOnboardingStep } from '../auth/userOnboarding';
+import { requireAdminContext, getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 import {
 	throwForbidden,
 	throwUnauthenticated,
@@ -51,9 +49,7 @@ export const setForInvitation = authedMutation({
 
 		const localpart = normalizeLocalpart(args.localpart);
 		if (!LOCALPART_PATTERN.test(localpart)) {
-			throwInvalidInput(
-				'Invalid local part. Use letters, digits, dots, hyphens, or underscores.'
-			);
+			throwInvalidInput('Invalid local part. Use letters, digits, dots, hyphens, or underscores.');
 		}
 		const domain = normalizeDomain(args.domain);
 		if (!domain) {
@@ -185,6 +181,8 @@ export const claimForInvitation = authedMutation({
 		});
 
 		await ctx.db.delete(pending._id);
+
+		await markOnboardingStep(ctx, session.userId, 'mailboxReady');
 
 		return {
 			created: true as const,

@@ -26,6 +26,7 @@ import { internal } from '../_generated/api';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 import { assertFeatureEnabled, isFeatureEnabled } from '../lib/featureFlags';
 import { throwForbidden, throwInvalidInput } from '../_utils/errors';
+import { markOnboardingStep } from '../auth/userOnboarding';
 
 // Chunk size for the post-import knowledge sweep (paced inside runIndexChunk).
 const INDEX_CHUNK_SIZE = 25;
@@ -126,7 +127,7 @@ export const start = authedMutation({
 		// back to re-entering credentials first.
 		if (account.status === 'auth_error') {
 			throwInvalidInput(
-				"Your mailbox connection isn't working — re-enter your credentials before starting a migration.",
+				"Your mailbox connection isn't working — re-enter your credentials before starting a migration."
 			);
 		}
 
@@ -177,6 +178,7 @@ export const start = authedMutation({
 			details: `source=${args.source ?? 'imap'} ai=${isAiIndexingEnabled}`,
 			occurredAt: now,
 		});
+		await markOnboardingStep(ctx, s.userId, 'importStarted');
 		return { migrationId, status: 'importing' as const };
 	},
 });
@@ -269,7 +271,7 @@ export const initFolderBackfill = internalMutation({
 		const row = await ctx.db
 			.query('externalMailFolderSync')
 			.withIndex('by_account_and_remote', (q) =>
-				q.eq('accountId', args.accountId).eq('remoteName', args.remoteName),
+				q.eq('accountId', args.accountId).eq('remoteName', args.remoteName)
 			)
 			.first();
 		if (!row) return null;
@@ -326,7 +328,7 @@ export const recordBackfillProgress = internalMutation({
 		const row = await ctx.db
 			.query('externalMailFolderSync')
 			.withIndex('by_account_and_remote', (q) =>
-				q.eq('accountId', args.accountId).eq('remoteName', args.remoteName),
+				q.eq('accountId', args.accountId).eq('remoteName', args.remoteName)
 			)
 			.first();
 		if (!row) return { stillImporting: false };
@@ -416,5 +418,6 @@ export const completeBackfillImport = internalMutation({
 			details: `imported=${migration.messagesImported} indexing=${wantsIndexing}`,
 			occurredAt: now,
 		});
+		await markOnboardingStep(ctx, migration.userId, 'importDone');
 	},
 });

@@ -11,7 +11,7 @@
  * Order of operations:
  *   1. Wipe all tenant tables (contacts/automations/templates/campaigns/…)
  *   2. Wipe BetterAuth tables (user/account/organization/member)
- *   3. Wipe Owlat-local auth tables (userProfiles/instanceSettings/onboardingProgress)
+ *   3. Wipe Owlat-local auth tables (userProfiles/instanceSettings/onboardingProgress/userOnboarding)
  *
  * Protected by:
  *   - X-Instance-Secret header (timing-safe compare)
@@ -36,6 +36,7 @@ interface ResetCounts {
 	userProfiles: number;
 	instanceSettings: number;
 	onboardingProgress: number;
+	userOnboarding: number;
 	tenantRows: number;
 }
 
@@ -50,6 +51,7 @@ export const runReset = internalMutation({
 			userProfiles: 0,
 			instanceSettings: 0,
 			onboardingProgress: 0,
+			userOnboarding: 0,
 			tenantRows: 0,
 		};
 
@@ -86,6 +88,12 @@ export const runReset = internalMutation({
 		for (const o of onboarding) {
 			await ctx.db.delete(o._id);
 			counts.onboardingProgress++;
+		}
+
+		const userOnboarding = await ctx.db.query('userOnboarding').collect(); // bounded: dev-only; one row per user
+		for (const o of userOnboarding) {
+			await ctx.db.delete(o._id);
+			counts.userOnboarding++;
 		}
 
 		return counts;

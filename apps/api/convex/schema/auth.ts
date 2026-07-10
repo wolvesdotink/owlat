@@ -5,7 +5,7 @@ import { auditActionValidator, auditResourceValidator } from '../auditActions/ca
 
 /**
  * Auth + instance-admin tables — userProfiles, instanceSettings, apiKeys, platformAdmins,
- * accountDeletionRequests, onboardingProgress, auditLogs, systemUpdates.
+ * accountDeletionRequests, onboardingProgress, userOnboarding, auditLogs, systemUpdates.
  *
  * Spread into `defineSchema()` from schema.ts via `...authTables`.
  */
@@ -200,6 +200,32 @@ export const authTables = {
 	})
 		.index('by_user', ['userId'])
 		.index('by_dismissed', ['dismissed']),
+
+	// Per-user first-login onboarding state — PER-USER (keyed by BetterAuth
+	// authUserId), deliberately separate from the instance-wide admin surface
+	// above (`onboardingProgress` / auth/onboarding.ts). This tracks where an
+	// individual member is in their personal "get set up" journey: their
+	// mailbox, their optional import, their first send. Each step is stored as a
+	// completion TIMESTAMP (unset ⇒ not done, set ⇒ done at that instant); the
+	// timestamps are written idempotently from the real product flows (mailbox
+	// claim/connect, migration start/complete, knowledge indexing complete,
+	// post-import sending switch, first send) — never polled. `dismissedAt`
+	// records the member hiding their own checklist; it does not affect anyone
+	// else. One row per user, upserted on first write.
+	userOnboarding: defineTable({
+		authUserId: v.string(), // BetterAuth user ID this checklist belongs to
+		// Step completion timestamps (epoch ms). Unset ⇒ step not completed.
+		mailboxReady: v.optional(v.number()), // a personal/external mailbox is live
+		importStarted: v.optional(v.number()), // a mailbox migration was kicked off
+		importDone: v.optional(v.number()), // the migration import phase finished
+		knowledgeIndexed: v.optional(v.number()), // AI knowledge indexing finished
+		sendingSwitched: v.optional(v.number()), // outbound switched to this instance
+		firstSendDone: v.optional(v.number()), // first message sent from this instance
+		// The member dismissed their own onboarding checklist (per-user only).
+		dismissedAt: v.optional(v.number()),
+		createdAt: v.number(),
+		updatedAt: v.number(),
+	}).index('by_auth_user_id', ['authUserId']),
 
 	// Audit Logs - tracks organization member actions for accountability and debugging.
 	// Action and resource literal unions live in `auditActions/catalog.ts` —
