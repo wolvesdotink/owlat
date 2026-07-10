@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import type { Id } from '@owlat/api/dataModel';
 
 useHead({ title: 'Add mail account — Owlat' });
 
@@ -16,7 +17,7 @@ const selectedDomain = ref('');
 const displayName = ref('');
 const provisioning = ref(false);
 const error = ref<string | null>(null);
-const createdMailboxId = ref<string | null>(null);
+const createdMailboxId = ref<Id<'mailboxes'> | null>(null);
 
 // Pull verified domains from existing domains query
 const {
@@ -71,7 +72,7 @@ async function handleSubmit() {
 		return;
 	}
 	provisioning.value = true;
-	let id: unknown;
+	let id: Id<'mailboxes'> | undefined;
 	if (isTeam.value) {
 		id = await createTeamInbox.run({
 			address: selectedAddress.value,
@@ -92,7 +93,7 @@ async function handleSubmit() {
 	}
 	provisioning.value = false;
 	if (id === undefined) return;
-	createdMailboxId.value = id as string;
+	createdMailboxId.value = id;
 	step.value = 4;
 }
 </script>
