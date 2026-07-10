@@ -35,7 +35,7 @@ import { internalMutation, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { recordAuditLog } from '../lib/auditLog';
-import { resolveAllowedFromAddressesForCtx } from './identities';
+import { isSanctionedSendAsForUser } from './identities';
 import { followUpWaitingOn } from './followUps';
 import { logError } from '../lib/runtimeLog';
 import { normalizeSubject } from '../lib/emailAddress';
@@ -433,12 +433,20 @@ async function runSentEffects(
 	draft: Doc<'mailDrafts'>,
 	context: SentInputContext
 ): Promise<SentRunnerOutput> {
-	const mailbox = await ctx.db.get(draft.mailboxId);
+	// Send-as choice: the sent copy lands in the mailbox the reply was sent FROM
+	// — the thread mailbox for the classic/team path, or the teammate's personal
+	// mailbox when they replied under their own identity. `sendAsMailboxId` is
+	// unset for the common case, so `sendingMailboxId` collapses to the thread
+	// mailbox and the placement below is byte-for-byte unchanged.
+	const sendingMailboxId = draft.sendAsMailboxId ?? draft.mailboxId;
+	const sentFromPersonal = sendingMailboxId !== draft.mailboxId;
+
+	const mailbox = await ctx.db.get(sendingMailboxId);
 	if (!mailbox) return { messageId: null };
 
 	const sentFolder = await ctx.db
 		.query('mailFolders')
-		.withIndex('by_mailbox_and_role', (q) => q.eq('mailboxId', draft.mailboxId).eq('role', 'sent'))
+		.withIndex('by_mailbox_and_role', (q) => q.eq('mailboxId', sendingMailboxId).eq('role', 'sent'))
 		.first();
 	if (!sentFolder) return { messageId: null };
 
@@ -451,10 +459,16 @@ async function runSentEffects(
 
 	// insert_mail_message effect — runs first so we have the new messageId
 	// for both the recipients[] patch and the audit-log details.
-	let threadId = draft.threadId;
+	//
+	// The sent copy's thread lives in the SENDING mailbox. For a personal
+	// send-as we never reuse `draft.threadId` (that thread belongs to the TEAM
+	// mailbox); we open a fresh thread in the personal mailbox instead. The
+	// on-the-wire In-Reply-To/References headers (built in mail/outbound.ts) keep
+	// the reply correctly threaded at the recipient regardless.
+	let threadId = sentFromPersonal ? undefined : draft.threadId;
 	if (!threadId) {
 		threadId = await ctx.db.insert('mailThreads', {
-			mailboxId: draft.mailboxId,
+			mailboxId: sendingMailboxId,
 			normalizedSubject,
 			participants: [draft.fromAddress, ...draft.toAddresses],
 			messageCount: 0,
@@ -479,7 +493,7 @@ async function runSentEffects(
 	const recipients = dedupedRecipients(draft);
 
 	const messageId = await ctx.db.insert('mailMessages', {
-		mailboxId: draft.mailboxId,
+		mailboxId: sendingMailboxId,
 		folderId: sentFolder._id,
 		uid,
 		modseq,
@@ -542,6 +556,21 @@ async function runSentEffects(
 		updatedAt: now,
 	});
 
+	// Shared thread-summary shape applied by BOTH the sending thread's patch and
+	// the team-thread send-as marker below, so the two can never drift: a reply
+	// bumps the conversation's newest-message summary and answers the Reply Queue.
+	const threadSummaryPatch = {
+		lastMessageAt: now,
+		latestSnippet: snippet,
+		latestFromAddress: draft.fromAddress,
+		latestSubject: draft.subject || '(no subject)',
+		// Any outbound in the thread answers the Reply Queue signal — clear the
+		// needs-reply flag and any in-flight classification marker.
+		needsReply: undefined,
+		needsReplyPendingAt: undefined,
+		updatedAt: now,
+	} as const;
+
 	// patch_thread effect
 	const thread = await ctx.db.get(threadId);
 	if (thread) {
@@ -556,22 +585,15 @@ async function runSentEffects(
 				? draft.followUpRemindAt
 				: undefined;
 		await ctx.db.patch(threadId, {
+			...threadSummaryPatch,
 			messageCount: thread.messageCount + 1,
 			hasAttachments: thread.hasAttachments || context.attachmentsMeta.length > 0,
-			lastMessageAt: now,
-			latestSnippet: snippet,
-			latestFromAddress: draft.fromAddress,
-			latestSubject: draft.subject || '(no subject)',
 			latestMessageId: messageId,
 			// Team-inbox collision safety: record this reply as the thread's newest
 			// outbound so a second teammate who opened the thread earlier is warned
 			// before sending a duplicate (see mail/mailbox.ts::latestReplyState).
 			latestReply: { messageId, byUserId: draft.sentByUserId, at: now },
 			folderRoles: Array.from(folderRoles),
-			// Any outbound in the thread answers the Reply Queue signal — clear
-			// the needs-reply flag and any in-flight classification marker.
-			needsReply: undefined,
-			needsReplyPendingAt: undefined,
 			...(followUpRemindAt !== undefined
 				? {
 						followUp: {
@@ -583,15 +605,37 @@ async function runSentEffects(
 						followUpRemindAt,
 					}
 				: {}),
-			updatedAt: now,
 		});
+	}
+
+	// Team-thread marker (send-as choice). When the reply went out under a
+	// teammate's PERSONAL identity from within a shared thread, the sent copy
+	// lives in their own mailbox — so stamp the ORIGINAL team thread with a
+	// lightweight marker: teammates see a reply happened, that it went out under
+	// a personal address, and the thread leaves the Reply Queue. Context never
+	// silently forks. Skipped for a fresh personal compose (no team thread).
+	if (sentFromPersonal && draft.threadId) {
+		const teamThread = await ctx.db.get(draft.threadId);
+		if (teamThread) {
+			await ctx.db.patch(draft.threadId, {
+				...threadSummaryPatch,
+				latestReply: {
+					messageId,
+					byUserId: draft.sentByUserId,
+					at: now,
+					isFromPersonalAddress: true,
+				},
+			});
+		}
 	}
 
 	// patch_in_reply_to_flag effect
 	// Defense-in-depth: only stamp flagAnswered when the referenced message is
-	// in the SAME mailbox as the draft. drafts.create already refuses to persist
-	// a cross-mailbox inReplyToMessageId, but re-check here so a stray linkage
-	// can never flip a flag in another user's mailbox (cross-mailbox IDOR).
+	// in the SAME (team/thread) mailbox as the draft. drafts.create already
+	// refuses to persist a cross-mailbox inReplyToMessageId, but re-check here so
+	// a stray linkage can never flip a flag in another user's mailbox
+	// (cross-mailbox IDOR). Note: `draft.mailboxId` is the THREAD mailbox even on
+	// a personal send-as, so the original team message is marked answered.
 	if (draft.inReplyToMessageId) {
 		const original = await ctx.db.get(draft.inReplyToMessageId);
 		if (original && original.mailboxId === draft.mailboxId) {
@@ -602,8 +646,8 @@ async function runSentEffects(
 		}
 	}
 
-	// patch_mailbox_bytes effect
-	await ctx.db.patch(draft.mailboxId, {
+	// patch_mailbox_bytes effect — the SENDING mailbox holds the sent copy.
+	await ctx.db.patch(sendingMailboxId, {
 		usedBytes: mailbox.usedBytes + context.rawSize,
 		updatedAt: now,
 	});
@@ -702,11 +746,19 @@ async function dispatch(
 	if (input.to === 'sent') {
 		// Re-check the from-address binding inside the reducer (not as an
 		// effect). If the address has been removed from the allowed set
-		// since the draft was queued, the kind is rejected — the caller
-		// (the dispatch action) must instead call transition({to:'draft',
-		// reason:'from_revoked'}). The reducer never silently downgrades.
-		const allowed = await resolveAllowedFromAddressesForCtx(ctx, draft.mailboxId);
-		if (!allowed.includes(draft.fromAddress.toLowerCase())) {
+		// since the draft was queued — or the send-as grant (a teammate's
+		// personal identity used in a shared inbox) no longer holds — the kind
+		// is rejected. The caller (the dispatch action) must instead call
+		// transition({to:'draft', reason:'from_revoked'}). The reducer never
+		// silently downgrades, and the send-as allow-set extension is
+		// re-validated here independently of the setIdentity-time check.
+		const sanctioned = await isSanctionedSendAsForUser(ctx, {
+			threadMailboxId: draft.mailboxId,
+			sendingMailboxId: draft.sendAsMailboxId ?? draft.mailboxId,
+			fromAddress: draft.fromAddress,
+			userId: draft.sentByUserId ?? '',
+		});
+		if (!sanctioned) {
 			return {
 				ok: false,
 				reason: 'from_revoked',

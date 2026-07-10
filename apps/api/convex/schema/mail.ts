@@ -483,6 +483,12 @@ export const mailTables = {
 				messageId: v.id('mailMessages'),
 				byUserId: v.optional(v.string()),
 				at: v.number(),
+				// Set when the reply was sent from the teammate's PERSONAL address
+				// (send-as choice): the sent copy lives in their own mailbox, so the
+				// team thread carries only this marker — teammates see the reply
+				// happened and that it went out under a personal identity, so context
+				// never silently forks. Undefined ⇒ replied as the team (classic).
+				isFromPersonalAddress: v.optional(v.boolean()),
 			})
 		),
 		folderRoles: v.array(v.string()),
@@ -760,6 +766,14 @@ export const mailTables = {
 		ccAddresses: v.array(v.string()),
 		bccAddresses: v.array(v.string()),
 		fromAddress: v.string(), // selected identity
+		// Send-as choice for a shared (team) inbox. When set, the reply is sent
+		// from one of the acting teammate's OWN personal mailboxes rather than the
+		// team identity: `fromAddress` belongs to THIS mailbox, and the sent copy,
+		// outbound transport, and allowed-from allow-set all resolve from it (not
+		// the thread's `mailboxId`). Unset (the common case) ⇒ the team/own
+		// identity — the classic path, unchanged. Only ever points at a personal
+		// mailbox the sender owns; the dispatch re-check re-validates this.
+		sendAsMailboxId: v.optional(v.id('mailboxes')),
 		subject: v.string(),
 		// Compose mode discriminator. 'simple' uses bodyHtml directly (Tiptap rich-text);
 		// 'full' uses bodyBlocks (block-based EmailBuilder, JSON-serialized EditorBlock[]).
