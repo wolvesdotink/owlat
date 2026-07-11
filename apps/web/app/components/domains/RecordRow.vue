@@ -15,7 +15,7 @@ import {
 
 type DomainRow = FunctionReturnType<typeof api.domains.domains.listByOrganization>[number];
 
-defineProps<{
+const props = defineProps<{
 	domain: DomainRow;
 	isExpanded: boolean;
 	canForceVerify: boolean;
@@ -40,6 +40,11 @@ const emit = defineEmits<{
 	delete: [];
 	dmarcChange: [policy: DmarcPolicy];
 }>();
+
+// Derive once per render rather than re-running on each of the several template
+// reads — rows re-render on the open-panel auto-recheck poll.
+const readiness = computed(() => readinessSummary(props.domain));
+const dmarcRecord = computed(() => normalizeDnsRecord(props.domain.dnsRecords.dmarc, 'TXT'));
 </script>
 
 <template>
@@ -216,12 +221,12 @@ const emit = defineEmits<{
 						<!-- One-line domain readiness summary derived purely from the
 						     verification data already on the domain. -->
 						<div
-							v-if="readinessSummary(domain).total > 0"
+							v-if="readiness.total > 0"
 							class="flex flex-wrap items-center gap-x-3 gap-y-2 mb-4 text-sm"
 						>
 							<div class="flex flex-wrap items-center gap-1.5">
 								<span
-									v-for="chip in readinessSummary(domain).chips"
+									v-for="chip in readiness.chips"
 									:key="chip.label"
 									class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-xs font-medium"
 									:class="
@@ -237,12 +242,8 @@ const emit = defineEmits<{
 									{{ chip.label }}
 								</span>
 							</div>
-							<span
-								:class="
-									readinessSummary(domain).allVerified ? 'text-success' : 'text-text-secondary'
-								"
-							>
-								{{ domainReadinessMessage(readinessSummary(domain)) }}
+							<span :class="readiness.allVerified ? 'text-success' : 'text-text-secondary'">
+								{{ domainReadinessMessage(readiness) }}
 							</span>
 						</div>
 
@@ -266,8 +267,8 @@ const emit = defineEmits<{
 							/>
 
 							<DomainsDNSRecordPanel
-								v-if="normalizeDnsRecord(domain.dnsRecords.dmarc, 'TXT')"
-								:record="normalizeDnsRecord(domain.dnsRecords.dmarc, 'TXT')!"
+								v-if="dmarcRecord"
+								:record="dmarcRecord"
 								label="DMARC"
 								:domain="domain.domain"
 								:verification="domain.verificationResults?.dmarc"
@@ -275,7 +276,7 @@ const emit = defineEmits<{
 
 							<!-- DMARC enforcement policy selector -->
 							<div
-								v-if="normalizeDnsRecord(domain.dnsRecords.dmarc, 'TXT')"
+								v-if="dmarcRecord"
 								class="p-4 bg-bg-surface rounded-xl border border-border-subtle"
 							>
 								<label
