@@ -80,7 +80,7 @@ vi.mock('../lib/llmProvider', async () => {
 	return {
 		...actual,
 		resolveLanguageModel: vi.fn(() => 'test-model'),
-		getEmbeddingModel: vi.fn(() => 'test-embedding-model'),
+		resolveEmbeddingModel: vi.fn(() => 'test-embedding-model'),
 	};
 });
 
