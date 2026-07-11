@@ -465,7 +465,7 @@ export const dispatchDraft = internalAction({
 		// user's own SMTP via the mail-sync worker (single POST, synchronous
 		// per-recipient result); hosted mailboxes go per-recipient to the MTA.
 		// Resolved from the sending mailbox so each identity uses its OWN transport.
-		const transport = await ctx.runQuery(internal.mail.externalAccounts.resolveOutboundTransport, {
+		const transport = await ctx.runQuery(internal.mail.outboundTransport.resolveOutboundTransport, {
 			mailboxId: sendingMailboxId,
 		});
 		if (transport.kind === 'external') {

@@ -437,6 +437,7 @@ import type * as mail_needsReplyScoring from "../mail/needsReplyScoring.js";
 import type * as mail_outbound from "../mail/outbound.js";
 import type * as mail_outboundCron from "../mail/outboundCron.js";
 import type * as mail_outboundQueries from "../mail/outboundQueries.js";
+import type * as mail_outboundTransport from "../mail/outboundTransport.js";
 import type * as mail_pendingInboxMembership from "../mail/pendingInboxMembership.js";
 import type * as mail_pendingMailbox from "../mail/pendingMailbox.js";
 import type * as mail_permissions from "../mail/permissions.js";
@@ -1021,6 +1022,7 @@ declare const fullApi: ApiFromModules<{
   "mail/outbound": typeof mail_outbound;
   "mail/outboundCron": typeof mail_outboundCron;
   "mail/outboundQueries": typeof mail_outboundQueries;
+  "mail/outboundTransport": typeof mail_outboundTransport;
   "mail/pendingInboxMembership": typeof mail_pendingInboxMembership;
   "mail/pendingMailbox": typeof mail_pendingMailbox;
   "mail/permissions": typeof mail_permissions;

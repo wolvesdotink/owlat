@@ -26,7 +26,7 @@ import { getOrThrow, throwForbidden, throwInvalidState, throwNotFound } from '..
 import { assertStateIs, type TransitionOutcome as DraftTransitionOutcome } from './draftLifecycle';
 import { markOnboardingStep } from '../auth/userOnboarding';
 import { getMailSyncConfig, getMtaConfig } from './mtaClient';
-import { resolveMailboxTransport } from './externalAccounts';
+import { resolveMailboxTransport } from './outboundTransport';
 
 /**
  * True iff this mailbox actually has an outbound transport to ship the message —

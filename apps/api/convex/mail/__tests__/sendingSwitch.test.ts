@@ -3,7 +3,7 @@
  *
  * End-to-end over a real (convex-test) datastore for the piece c4 surface. The
  * switch query/mutation live on `mail/sendingSwitch` (`api.mail.sendingSwitch.*`);
- * `resolveOutboundTransport` stays internal on `mail/externalAccounts`:
+ * `resolveOutboundTransport` stays internal on `mail/outboundTransport`:
  *   - the prompt gating matrix (`sendingSwitchStatus`): a switch is offered ONLY
  *     when import + knowledge indexing are done, the from-domain is a VERIFIED
  *     sending domain on this instance, and a transport is configured. Missing
@@ -266,7 +266,7 @@ describe('resolveOutboundTransport — dispatch honours the preference', () => {
 		await enableFlags(t, { 'mail.external': true });
 		const mailboxId = await connectMailbox(t);
 
-		const transport = await t.query(internal.mail.externalAccounts.resolveOutboundTransport, {
+		const transport = await t.query(internal.mail.outboundTransport.resolveOutboundTransport, {
 			mailboxId,
 		});
 		expect(transport.kind).toBe('external');
@@ -279,7 +279,7 @@ describe('resolveOutboundTransport — dispatch honours the preference', () => {
 		await seedVerifiedDomain(t, 'example.com');
 		await t.mutation(api.mail.sendingSwitch.setSendingPreference, { preference: 'instance' });
 
-		const transport = await t.query(internal.mail.externalAccounts.resolveOutboundTransport, {
+		const transport = await t.query(internal.mail.outboundTransport.resolveOutboundTransport, {
 			mailboxId,
 		});
 		expect(transport.kind).toBe('hosted');
@@ -295,7 +295,7 @@ describe('resolveOutboundTransport — dispatch honours the preference', () => {
 		// The MTA is removed after the switch — dispatch must not route onto a
 		// hosted path that would silently drop the message.
 		mtaMocks.configured = false;
-		const transport = await t.query(internal.mail.externalAccounts.resolveOutboundTransport, {
+		const transport = await t.query(internal.mail.outboundTransport.resolveOutboundTransport, {
 			mailboxId,
 		});
 		expect(transport.kind).toBe('external');
@@ -317,7 +317,7 @@ describe('resolveOutboundTransport — dispatch honours the preference', () => {
 				.first();
 			if (row) await ctx.db.delete(row._id);
 		});
-		const transport = await t.query(internal.mail.externalAccounts.resolveOutboundTransport, {
+		const transport = await t.query(internal.mail.outboundTransport.resolveOutboundTransport, {
 			mailboxId,
 		});
 		expect(transport.kind).toBe('external');
