@@ -28,14 +28,16 @@ export const languageProviderKindValidator = v.union(
 ) as unknown as Validator<LanguageProviderKind>;
 
 /**
- * Stored embedding-provider kind. The embedding plane is LOCAL BY DEFAULT (a
- * bundled local embedder resolved independently of the language provider), so
- * `'local'` is a valid stored kind alongside every registered hosted embedding
- * adapter. The bundled local embedder is wired into the embedding registry by a
- * later plan piece; storing the selection here is decoupled from resolving it.
+ * Stored embedding-provider kind — every registered embedding adapter. The
+ * embedding plane is LOCAL BY DEFAULT: `'local'` is the first registered kind
+ * (a local embedder resolved INDEPENDENTLY of the language provider), alongside
+ * the optional hosted overrides (`openai` / `google`) and a custom
+ * `openaiCompatible` server. Derived from the registry's kind tuple so the
+ * stored shape and the adapter registry stay a single source of truth. Retained
+ * as a named alias (rather than inlining `EmbeddingProviderKind`) so call sites
+ * read as "the kind as stored on `aiProviderConfig`".
  */
-export type StoredEmbeddingProviderKind = 'local' | EmbeddingProviderKind;
+export type StoredEmbeddingProviderKind = EmbeddingProviderKind;
 export const embeddingProviderKindValidator = v.union(
-	v.literal('local'),
 	...EMBEDDING_PROVIDER_KINDS.map((kind) => v.literal(kind))
 ) as unknown as Validator<StoredEmbeddingProviderKind>;
