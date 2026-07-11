@@ -28,7 +28,7 @@ const isLoading = computed(() => teamLoading.value || domainsLoading.value);
 
 // Offer the external-mailbox path (connect your own IMAP/SMTP) when no domain
 // is verified and the feature is enabled — the "no domain to send from" wall.
-const { isEnabled, flags } = useFeatureFlag();
+const { isEnabled, flags, isLoading: flagsLoading } = useFeatureFlag();
 const hasVerifiedDomain = computed(() =>
 	(domainsData.value ?? []).some((d) => d.status === 'verified')
 );
@@ -237,8 +237,16 @@ const { data: inboundMailConfig } = useConvexQuery(api.domains.domains.getInboun
 // the flag hid the MX instructions from the very admin trying to enable inbound
 // (chicken-and-egg); instead the section renders always and shows an honest
 // "not turned on yet — here's how" state when `inboundEnabled` is false.
+//
+// Hold the section until the feature-flag subscription has resolved: the app is
+// `ssr: false`, so `flags` starts at the all-off defaults and `inboundEnabled`
+// would compute false during the loading window — flashing a dishonest "not
+// turned on yet" banner on an inbound-enabled install before the live flags
+// arrive. Waiting on `flagsLoading` keeps the banner truthful.
 const inboundEnabled = computed(() => hasInboundFeature(flags.value));
-const showReceivingDns = computed(() => Boolean(inboundMailConfig.value?.mailHost));
+const showReceivingDns = computed(
+	() => Boolean(inboundMailConfig.value?.mailHost) && !flagsLoading.value
+);
 const dmarcPolicyOptions: { value: DmarcPolicy; label: string; hint: string }[] = [
 	{
 		value: 'none',

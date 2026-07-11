@@ -59,15 +59,24 @@ type ReverseDnsVerdict = Awaited<ReturnType<typeof runReverseDnsCheck>>;
 const reverseDns = ref<ReverseDnsVerdict>(undefined);
 const reverseDnsChecked = ref(false);
 
-onMounted(async () => {
-	// Only meaningful when there is a mail host to point at AND inbound is on;
-	// with inbound off there is nothing accepting mail, so a PTR verdict would be
-	// misleading. The parent gates on the mail host too — guard here so a
-	// send-only or not-yet-enabled render is a no-op.
-	if (!props.mailHost || !props.inboundEnabled) return;
-	reverseDns.value = await runReverseDnsCheck({});
-	reverseDnsChecked.value = true;
-});
+// Run the PTR preflight once both a mail host and inbound-enabled are true. A
+// `watch` (not `onMounted`) is required because the app is `ssr: false`: on a
+// cold boot / deep link `inboundEnabled` is false from the flag defaults until
+// the live subscription resolves, so a one-shot mount check would early-return
+// and never run the preflight when flags flip on. The `hasRun` guard keeps it a
+// single check; skipping while inbound is off avoids a misleading verdict and a
+// backend call for a deployment that isn't accepting mail yet.
+const hasRun = ref(false);
+watch(
+	() => Boolean(props.mailHost) && props.inboundEnabled,
+	async (ready) => {
+		if (!ready || hasRun.value) return;
+		hasRun.value = true;
+		reverseDns.value = await runReverseDnsCheck({});
+		reverseDnsChecked.value = true;
+	},
+	{ immediate: true }
+);
 </script>
 
 <template>
