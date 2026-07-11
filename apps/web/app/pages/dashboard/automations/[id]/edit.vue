@@ -178,6 +178,10 @@ const {
 } = useUnsavedChanges({
 	onSave: async () => {
 		await handleUpdateStepConfig();
+		// A failed step-config save keeps the panel dirty; throw so the guard
+		// stays put instead of clearing the flag and navigating away — mirrors
+		// the sibling saveStepSwitch and the campaign/settings surfaces.
+		if (isCurrentConfigDirty.value) throw new Error('Save failed');
 	},
 });
 watch(isCurrentConfigDirty, (dirty) => setHasChanges(dirty), { immediate: true });
