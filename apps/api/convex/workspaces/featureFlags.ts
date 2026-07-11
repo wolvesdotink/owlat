@@ -98,11 +98,21 @@ export const getFlagsConfigStatus = authedQuery({
 	args: {},
 	handler: async (ctx) => {
 		const deliveryConfigured = await isDeliveryConfigured(ctx);
+		// A stored per-org AI-provider config (a key saved via Settings → AI, or a
+		// keyless local provider) satisfies the `ai` flag's LLM_* requirement the
+		// same way `LLM_PROVIDER`/`LLM_API_KEY` in env do — env stays the fallback,
+		// a stored config also counts. Org-singleton ⇒ `first()` is bounded (≤1 row).
+		const aiConfigStored = (await ctx.db.query('aiProviderConfig').first()) !== null;
 		const status: Record<string, string[]> = {};
 		for (const def of Object.values(FEATURE_FLAGS)) {
 			const missing: string[] = [];
-			for (const envVar of def.requiredEnvVars ?? []) {
-				if (!isEnvPresent(envVar)) missing.push(envVar);
+			// The `ai` flag's env vars are considered met when either the env vars are
+			// present OR a provider config is stored — so "AI not configured" empty
+			// states clear once a key is saved through the UI, not only via env.
+			if (!(def.key === 'ai' && aiConfigStored)) {
+				for (const envVar of def.requiredEnvVars ?? []) {
+					if (!isEnvPresent(envVar)) missing.push(envVar);
+				}
 			}
 			if (
 				(SENDING_FLAGS_REQUIRING_DELIVERY as readonly string[]).includes(def.key) &&
