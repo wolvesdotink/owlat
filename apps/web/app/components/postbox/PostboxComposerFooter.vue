@@ -24,7 +24,7 @@ const followUpRemindAt = defineModel<number | null>('followUpRemindAt', {
 const emit = defineEmits<{
 	(e: 'send'): void;
 	(e: 'schedule'): void;
-	(e: 'add-files', files: FileList): void;
+	(e: 'add-files', files: FileList | File[]): void;
 	(e: 'signature-change', event: Event): void;
 	(e: 'toggle-toolbar'): void;
 	(e: 'switch-mode', mode: ComposerMode): void;
@@ -37,8 +37,20 @@ const sendTitle = computed(() =>
 );
 
 // The file input lives here alongside the attach button that triggers it; the
-// selected FileList is emitted to the composer, which owns the upload state.
+// selected files are emitted to the composer, which owns the upload state. On
+// desktop the attach button opens the native OS picker instead of the hidden
+// input, but the same files flow to the same upload path.
 const fileInput = ref<HTMLInputElement | null>(null);
+const { isDesktop, pickNativeFiles } = useNativeFilePicker();
+
+async function onAttachClick() {
+	if (isDesktop.value) {
+		const files = await pickNativeFiles({ title: 'Attach files', multiple: true });
+		if (files.length > 0) emit('add-files', files);
+		return;
+	}
+	fileInput.value?.click();
+}
 
 function onPickFiles(event: Event) {
 	const target = event.target as HTMLInputElement;
@@ -57,33 +69,15 @@ function onPickFiles(event: Event) {
 				:disabled="!canSend || sending || isScheduled"
 				@click="emit('send')"
 			>
-				<Icon
-					v-if="sending"
-					name="lucide:loader-2"
-					class="w-4 h-4 mr-1.5 animate-spin"
-				/>
+				<Icon v-if="sending" name="lucide:loader-2" class="w-4 h-4 mr-1.5 animate-spin" />
 				<Icon v-else name="lucide:send" class="w-4 h-4 mr-1.5" />
 				{{ sending ? 'Sending…' : 'Send' }}
 			</button>
-			<PostboxComposerFollowUp
-				v-model:remind-at="followUpRemindAt"
-				:disabled="isScheduled"
-			/>
-			<button
-				type="button"
-				class="btn btn-ghost"
-				title="Attach files"
-				@click="fileInput?.click()"
-			>
+			<PostboxComposerFollowUp v-model:remind-at="followUpRemindAt" :disabled="isScheduled" />
+			<button type="button" class="btn btn-ghost" title="Attach files" @click="onAttachClick">
 				<Icon name="lucide:paperclip" class="w-4 h-4" />
 			</button>
-			<input
-				ref="fileInput"
-				type="file"
-				multiple
-				class="hidden"
-				@change="onPickFiles"
-			>
+			<input ref="fileInput" type="file" multiple class="hidden" @change="onPickFiles" />
 			<label
 				v-if="showSignaturePicker"
 				class="inline-flex items-center gap-1 text-xs text-text-tertiary"
@@ -97,11 +91,7 @@ function onPickFiles(event: Event) {
 					@change="emit('signature-change', $event)"
 				>
 					<option value="">No signature</option>
-					<option
-						v-for="sig in signatures"
-						:key="sig._id"
-						:value="sig._id"
-					>
+					<option v-for="sig in signatures" :key="sig._id" :value="sig._id">
 						{{ sig.name }}
 					</option>
 				</select>
@@ -109,11 +99,7 @@ function onPickFiles(event: Event) {
 			<!-- Secondary controls (schedule send, Simple/Designer mode + the
 			     formatting-toolbar toggle) collapse behind ⋯ to keep the footer
 			     lean; the schedule shortcut (Cmd/Ctrl+Shift+Enter) still works. -->
-			<PostboxOverflowMenu
-				label="More compose options"
-				align="left"
-				direction="up"
-			>
+			<PostboxOverflowMenu label="More compose options" align="left" direction="up">
 				<template #default="{ close }">
 					<button
 						type="button"
@@ -121,7 +107,10 @@ function onPickFiles(event: Event) {
 						class="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface disabled:opacity-50"
 						:title="scheduleShortcutHint"
 						:disabled="!canSend || sending || isScheduled"
-						@click="emit('schedule'); close()"
+						@click="
+							emit('schedule');
+							close();
+						"
 					>
 						<Icon name="lucide:clock" class="w-4 h-4 text-text-tertiary" />
 						Schedule send…

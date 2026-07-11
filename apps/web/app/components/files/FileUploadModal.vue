@@ -28,13 +28,29 @@ const sourceType = ref<'upload' | 'email_attachment' | 'agent_generated'>('uploa
 // on their Files tab and in the file's Linked Contacts panel.
 const selectedContacts = ref<PickerContact[]>([]);
 
-// Drag state (shared drop-zone primitive)
+// Drag state (shared drop-zone primitive). On desktop, also accept OS-level
+// file drops from Finder/Explorer, scoped to the drop-zone element.
 const fileInputRef = ref<HTMLInputElement | null>(null);
-const { isDragOver, handleDragOver, handleDragLeave, handleDrop } = useDropZone((files) => {
+const dropZoneRef = ref<HTMLElement | null>(null);
+const onFilesPicked = (files: File[]) => {
 	if (files.length) {
 		selectedFile.value = files[0]!;
 	}
+};
+const { isDragOver, handleDragOver, handleDragLeave, handleDrop } = useDropZone(onFilesPicked, {
+	osFileDrop: true,
+	rootRef: dropZoneRef,
 });
+
+// Click-to-browse: the native OS picker on desktop, the HTML input on web.
+const { isDesktop, pickNativeFiles } = useNativeFilePicker();
+const browse = async () => {
+	if (isDesktop.value) {
+		onFilesPicked(await pickNativeFiles({ title: 'Choose a file' }));
+		return;
+	}
+	fileInputRef.value?.click();
+};
 
 const parsedTags = computed(() => {
 	return tagsInput.value
@@ -144,6 +160,7 @@ watch(
 					<!-- Drop zone -->
 					<div
 						v-if="!selectedFile"
+						ref="dropZoneRef"
 						class="border-2 border-dashed rounded-xl p-8 text-center transition-colors cursor-pointer"
 						:class="
 							isDragOver
@@ -153,7 +170,7 @@ watch(
 						@dragover="handleDragOver"
 						@dragleave="handleDragLeave"
 						@drop="handleDrop"
-						@click="fileInputRef?.click()"
+						@click="browse"
 					>
 						<Icon name="lucide:upload-cloud" class="w-10 h-10 text-text-tertiary mx-auto mb-3" />
 						<p class="text-sm font-medium text-text-primary">Drop a file here or click to browse</p>

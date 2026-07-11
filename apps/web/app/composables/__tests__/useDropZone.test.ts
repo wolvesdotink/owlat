@@ -1,4 +1,22 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { defineComponent, h, ref, type Ref } from 'vue';
+import { mount, flushPromises, type VueWrapper } from '@vue/test-utils';
+
+// The OS drop bridge and the desktop check are the two seams useDropZone pulls
+// in for `osFileDrop`. Mock both: `onWebviewFileDrop` captures the handlers so
+// the test can drive drag-over/drop with synthetic positions; `useDesktopContext`
+// forces the desktop branch on. (The plain HTML5-handler tests below don't set
+// `osFileDrop`, so they never touch either mock.)
+const onWebviewFileDrop = vi.fn();
+vi.mock('@owlat/desktop/src/dialog', () => ({
+	onWebviewFileDrop: (handlers: unknown) => onWebviewFileDrop(handlers),
+}));
+
+const isDesktop = ref(true);
+vi.mock('~/composables/useDesktopContext', () => ({
+	useDesktopContext: () => ({ isDesktop }),
+}));
+
 import { useDropZone } from '../useDropZone';
 
 /** Build a minimal DragEvent stand-in with a tracked preventDefault + files. */
@@ -94,5 +112,124 @@ describe('useDropZone', () => {
 			handleDrop(dragEvent([new File(['b'], 'b.csv')]));
 			expect(onFiles).toHaveBeenCalledOnce();
 		});
+	});
+});
+
+interface OsDropHandlers {
+	onOver?: (position: { x: number; y: number }) => void;
+	onLeave?: () => void;
+	onDrop: (files: File[], position: { x: number; y: number }) => void;
+}
+
+let wrapper: VueWrapper | null = null;
+
+/**
+ * Mount a host that wires `useDropZone` with `osFileDrop`, optionally scoping to
+ * a root element (rendered behind `show` so a test can leave it unmounted). The
+ * root is stubbed to occupy the CSS rectangle (0,0)-(100,100). Returns the
+ * captured OS-drop handlers plus the reactive state to assert on.
+ */
+async function mountHost(opts: { withRoot: boolean; show?: boolean }) {
+	const onFiles = vi.fn();
+	let isDragOver!: Ref<boolean>;
+	let rootRef!: Ref<HTMLElement | null>;
+	const show = ref(opts.show ?? true);
+
+	const Host = defineComponent({
+		setup() {
+			rootRef = ref<HTMLElement | null>(null);
+			const zone = useDropZone(
+				onFiles,
+				opts.withRoot ? { osFileDrop: true, rootRef } : { osFileDrop: true }
+			);
+			isDragOver = zone.isDragOver;
+			return () => h('div', [show.value ? h('div', { ref: rootRef, class: 'root' }) : null]);
+		},
+	});
+
+	wrapper = mount(Host, { attachTo: document.body });
+	await flushPromises();
+
+	if (rootRef.value) {
+		rootRef.value.getBoundingClientRect = () =>
+			({
+				left: 0,
+				top: 0,
+				right: 100,
+				bottom: 100,
+				width: 100,
+				height: 100,
+				x: 0,
+				y: 0,
+			}) as DOMRect;
+	}
+
+	const handlers = onWebviewFileDrop.mock.calls[0]?.[0] as OsDropHandlers | undefined;
+	return {
+		handlers,
+		onFiles,
+		get isDragOver() {
+			return isDragOver;
+		},
+	};
+}
+
+const droppedFile = () => new File(['x'], 'dropped.txt', { type: 'text/plain' });
+
+describe('useDropZone osFileDrop hit-testing', () => {
+	beforeEach(() => {
+		onWebviewFileDrop.mockReset();
+		onWebviewFileDrop.mockResolvedValue(vi.fn());
+		isDesktop.value = true;
+	});
+
+	afterEach(() => {
+		try {
+			wrapper?.unmount();
+		} catch {
+			// already unmounted
+		}
+		wrapper = null;
+	});
+
+	it('accepts a drop whose pointer is inside the scoped root', async () => {
+		const host = await mountHost({ withRoot: true });
+
+		host.handlers?.onOver?.({ x: 50, y: 50 });
+		expect(host.isDragOver.value).toBe(true);
+
+		host.handlers?.onDrop([droppedFile()], { x: 50, y: 50 });
+		expect(host.onFiles).toHaveBeenCalledTimes(1);
+		expect(host.isDragOver.value).toBe(false);
+	});
+
+	it('ignores a drop whose pointer is outside the scoped root', async () => {
+		const host = await mountHost({ withRoot: true });
+
+		host.handlers?.onOver?.({ x: 250, y: 250 });
+		expect(host.isDragOver.value).toBe(false);
+
+		host.handlers?.onDrop([droppedFile()], { x: 250, y: 250 });
+		expect(host.onFiles).not.toHaveBeenCalled();
+	});
+
+	it('rejects any drop when the scoped root is unmounted (v-if off)', async () => {
+		// rootRef was provided but its element never mounts — the CSV import case
+		// where the drop zone only exists on the upload step. A stray window drop
+		// on the mapping step (or while the modal is closed) must NOT re-ingest.
+		const host = await mountHost({ withRoot: true, show: false });
+
+		host.handlers?.onOver?.({ x: 50, y: 50 });
+		expect(host.isDragOver.value).toBe(false);
+
+		host.handlers?.onDrop([droppedFile()], { x: 50, y: 50 });
+		expect(host.onFiles).not.toHaveBeenCalled();
+	});
+
+	it('accepts a drop anywhere when no root is provided', async () => {
+		const host = await mountHost({ withRoot: false });
+
+		host.handlers?.onDrop([droppedFile()], { x: 999, y: 999 });
+		expect(host.onFiles).toHaveBeenCalledTimes(1);
 	});
 });

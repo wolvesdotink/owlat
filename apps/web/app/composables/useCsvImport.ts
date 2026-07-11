@@ -1,8 +1,15 @@
 import { normalizeEmail } from '@owlat/shared';
 import { parseCsvFile } from '~/utils/contactsCsv';
 import { useDropZone } from '~/composables/useDropZone';
+import { useNativeFilePicker } from '~/composables/useNativeFilePicker';
 
-export type ImportStep = 'upload' | 'mapping' | 'listMapping' | 'preview' | 'importing' | 'complete';
+export type ImportStep =
+	| 'upload'
+	| 'mapping'
+	| 'listMapping'
+	| 'preview'
+	| 'importing'
+	| 'complete';
 export type MappableField =
 	| 'email'
 	| 'firstName'
@@ -122,7 +129,17 @@ export function useCsvImport() {
 				mapping[index] = 'lastName';
 			} else if (['language', 'lang', 'locale', 'preferred_language'].includes(headerLower)) {
 				mapping[index] = 'language';
-			} else if (['list', 'topic', 'topics', 'mailing list', 'mailing_list', 'mailinglist', 'lists'].includes(headerLower)) {
+			} else if (
+				[
+					'list',
+					'topic',
+					'topics',
+					'mailing list',
+					'mailing_list',
+					'mailinglist',
+					'lists',
+				].includes(headerLower)
+			) {
 				mapping[index] = 'topic';
 			} else {
 				mapping[index] = 'ignore';
@@ -189,37 +206,47 @@ export function useCsvImport() {
 		step.value = 'mapping';
 	};
 
-	// Handle file selection
-	const handleFileSelect = async (event: Event) => {
-		const input = event.target as HTMLInputElement;
-		const file = input.files?.[0];
-
+	// Guard that a chosen/dropped file is a `.csv` before parsing it, setting
+	// `errorMessage` when it isn't. Shared by the `<input>`, the native picker
+	// and the drop zone so the "first file → `.csv` guard → error → ingest" flow
+	// lives in exactly one place.
+	const acceptCsvFile = (file: File | undefined, errorMessage: string) => {
 		if (!file) return;
-
 		if (!file.name.endsWith('.csv')) {
-			error.value = 'Please select a CSV file';
+			error.value = errorMessage;
 			return;
 		}
-
-		await ingestFile(file);
+		void ingestFile(file);
 	};
 
-	// Trigger file input
+	// Handle file selection
+	const handleFileSelect = (event: Event) => {
+		const input = event.target as HTMLInputElement;
+		acceptCsvFile(input.files?.[0], 'Please select a CSV file');
+	};
+
+	// Trigger file selection: the native OS picker (filtered to `.csv`) on
+	// desktop, the HTML `<input type=file>` on web.
+	const { isDesktop, pickNativeFiles } = useNativeFilePicker();
 	const triggerFileInput = () => {
+		if (isDesktop.value) {
+			void pickNativeFiles({
+				title: 'Choose a CSV file',
+				filters: [{ name: 'CSV', extensions: ['csv'] }],
+			}).then((files) => acceptCsvFile(files[0], 'Please select a CSV file'));
+			return;
+		}
 		fileInputRef.value?.click();
 	};
 
 	// Drag and drop handlers (shared zone primitive). The dropped file must be a
 	// `.csv`; the zone's `isDragOver` is mirrored to the existing `isDragging`
-	// flag so callers/templates keep their current binding.
-	const dropZone = useDropZone((files) => {
-		const file = files[0];
-		if (!file) return;
-		if (!file.name.endsWith('.csv')) {
-			error.value = 'Please drop a CSV file';
-			return;
-		}
-		void ingestFile(file);
+	// flag so callers/templates keep their current binding. On desktop, OS-level
+	// drops are accepted too, scoped to the drop element via `dropRootRef`.
+	const dropRootRef = ref<HTMLElement | null>(null);
+	const dropZone = useDropZone((files) => acceptCsvFile(files[0], 'Please drop a CSV file'), {
+		osFileDrop: true,
+		rootRef: dropRootRef,
 	});
 	const isDragging = dropZone.isDragOver;
 	const handleDragOver = dropZone.handleDragOver;
@@ -294,7 +321,10 @@ export function useCsvImport() {
 			if (!cellValue) continue;
 
 			// Support comma-separated list names
-			const names = cellValue.split(',').map((n) => n.trim()).filter(Boolean);
+			const names = cellValue
+				.split(',')
+				.map((n) => n.trim())
+				.filter(Boolean);
 			for (const name of names) {
 				namesSet.add(name);
 			}
@@ -452,7 +482,10 @@ export function useCsvImport() {
 			const cellValue = row[listIdx]?.trim();
 			if (!cellValue) continue;
 
-			const names = cellValue.split(',').map((n) => n.trim()).filter(Boolean);
+			const names = cellValue
+				.split(',')
+				.map((n) => n.trim())
+				.filter(Boolean);
 			const listIds: string[] = [];
 
 			for (const name of names) {
@@ -552,7 +585,8 @@ export function useCsvImport() {
 				aggregatedResults.skipped += batchResults.skipped;
 				aggregatedResults.failed += batchResults.failed;
 				aggregatedResults.errors.push(...batchResults.errors.slice(0, 10));
-				aggregatedResults.addedToList = (aggregatedResults.addedToList ?? 0) + (batchResults.addedToList ?? 0);
+				aggregatedResults.addedToList =
+					(aggregatedResults.addedToList ?? 0) + (batchResults.addedToList ?? 0);
 
 				progress.value = Math.round(((i + 1) / totalBatches) * 100);
 			}
@@ -586,6 +620,7 @@ export function useCsvImport() {
 		step,
 		error,
 		fileInputRef,
+		dropRootRef,
 		selectedFile,
 		parsedData,
 		csvHeaders,
