@@ -10,7 +10,7 @@
  */
 
 import { v } from 'convex/values';
-import { internalMutation, type ActionCtx } from '../_generated/server';
+import { internalMutation, type ActionCtx, type QueryCtx } from '../_generated/server';
 import { adminQuery } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import { tokenUsageValidator } from '../lib/convexValidators';
@@ -54,39 +54,53 @@ export async function recordLlmSpend(
 	await ctx.runMutation(internal.analytics.llmUsage.record, { feature, modelUsed, tokenUsage });
 }
 
+type SpendTotals = { totalTokens: number; costUsd: number; calls: number };
+
+/**
+ * Group priced usage events by a caller-chosen key, summing tokens/cost/calls
+ * and returning the groups sorted by cost (desc) plus the window total. The
+ * per-feature and per-provider spend queries share this shape and differ only in
+ * the grouping key, so both delegate here and rename `key` to their own label.
+ */
+function groupSpend<E extends SpendTotals>(
+	events: E[],
+	keyOf: (event: E) => string
+): { groups: Array<SpendTotals & { key: string }>; totalCostUsd: number } {
+	const byKey = new Map<string, SpendTotals & { key: string }>();
+	for (const event of events) {
+		const key = keyOf(event);
+		const acc = byKey.get(key) ?? { key, totalTokens: 0, costUsd: 0, calls: 0 };
+		acc.totalTokens += event.totalTokens;
+		acc.costUsd += event.costUsd;
+		acc.calls += 1;
+		byKey.set(key, acc);
+	}
+	const groups = [...byKey.values()].sort((a, b) => b.costUsd - a.costUsd);
+	const totalCostUsd = groups.reduce((sum, g) => sum + g.costUsd, 0);
+	return { groups, totalCostUsd };
+}
+
+/** The most-recent LLM usage events within a window, capped for a bounded scan. */
+async function recentUsageEvents(ctx: QueryCtx, hoursBack: number) {
+	const since = Date.now() - hoursBack * 60 * 60 * 1000;
+	return await ctx.db
+		.query('llmUsageEvents')
+		.withIndex('by_creation_time', (q) => q.gte('_creationTime', since))
+		.order('desc')
+		.take(5000);
+}
+
 /** Deployment AI spend grouped by feature over a recent window. */
 export const getSpendByFeature = adminQuery({
 	args: {
 		hoursBack: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		const since = Date.now() - (args.hoursBack ?? 24) * 60 * 60 * 1000;
-		// bounded: windowed scan capped at the most-recent 5000 usage events.
-		const events = await ctx.db
-			.query('llmUsageEvents')
-			.withIndex('by_creation_time', (q) => q.gte('_creationTime', since))
-			.order('desc')
-			.take(5000);
-
-		const byFeature = new Map<
-			string,
-			{ feature: string; totalTokens: number; costUsd: number; calls: number }
-		>();
-		for (const e of events) {
-			const acc = byFeature.get(e.feature) ?? {
-				feature: e.feature,
-				totalTokens: 0,
-				costUsd: 0,
-				calls: 0,
-			};
-			acc.totalTokens += e.totalTokens;
-			acc.costUsd += e.costUsd;
-			acc.calls += 1;
-			byFeature.set(e.feature, acc);
-		}
-		const features = [...byFeature.values()].sort((a, b) => b.costUsd - a.costUsd);
-		const totalCostUsd = features.reduce((sum, f) => sum + f.costUsd, 0);
-		return { features, totalCostUsd, hoursBack: args.hoursBack ?? 24 };
+		const hoursBack = args.hoursBack ?? 24;
+		const events = await recentUsageEvents(ctx, hoursBack);
+		const { groups, totalCostUsd } = groupSpend(events, (e) => e.feature);
+		const features = groups.map(({ key, ...totals }) => ({ feature: key, ...totals }));
+		return { features, totalCostUsd, hoursBack };
 	},
 });
 
@@ -103,33 +117,10 @@ export const getSpendByProvider = adminQuery({
 		hoursBack: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		const since = Date.now() - (args.hoursBack ?? 24) * 60 * 60 * 1000;
-		// bounded: windowed scan capped at the most-recent 5000 usage events.
-		const events = await ctx.db
-			.query('llmUsageEvents')
-			.withIndex('by_creation_time', (q) => q.gte('_creationTime', since))
-			.order('desc')
-			.take(5000);
-
-		const byProvider = new Map<
-			string,
-			{ provider: string; totalTokens: number; costUsd: number; calls: number }
-		>();
-		for (const e of events) {
-			const provider = providerLabelForModel(e.modelUsed);
-			const acc = byProvider.get(provider) ?? {
-				provider,
-				totalTokens: 0,
-				costUsd: 0,
-				calls: 0,
-			};
-			acc.totalTokens += e.totalTokens;
-			acc.costUsd += e.costUsd;
-			acc.calls += 1;
-			byProvider.set(provider, acc);
-		}
-		const providers = [...byProvider.values()].sort((a, b) => b.costUsd - a.costUsd);
-		const totalCostUsd = providers.reduce((sum, p) => sum + p.costUsd, 0);
-		return { providers, totalCostUsd, hoursBack: args.hoursBack ?? 24 };
+		const hoursBack = args.hoursBack ?? 24;
+		const events = await recentUsageEvents(ctx, hoursBack);
+		const { groups, totalCostUsd } = groupSpend(events, (e) => providerLabelForModel(e.modelUsed));
+		const providers = groups.map(({ key, ...totals }) => ({ provider: key, ...totals }));
+		return { providers, totalCostUsd, hoursBack };
 	},
 });
