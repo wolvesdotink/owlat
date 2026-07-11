@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ThemeOption } from '~/composables/useAppTheme';
 import { api } from '@owlat/api';
+import { UnsavedChangesDialog } from '@owlat/email-builder';
 import { isValidEmail } from '~/utils/validation';
 import { unverifiedFromDomainWarning } from '~/utils/fromEmailDomain';
 
@@ -213,11 +214,12 @@ const validateForm = (): boolean => {
 	return isValid;
 };
 
-// Save settings
-const handleSave = async () => {
-	if (!hasActiveOrganization.value) return;
+// Save settings. Resolves to whether the save succeeded so the unsaved-changes
+// guard can keep the user on the page (and keep their edits) when it fails.
+const handleSave = async (): Promise<boolean> => {
+	if (!hasActiveOrganization.value) return false;
 
-	if (!validateForm()) return;
+	if (!validateForm()) return false;
 
 	isSaving.value = true;
 
@@ -229,7 +231,7 @@ const handleSave = async () => {
 	});
 	if (settingsResult === undefined) {
 		isSaving.value = false;
-		return;
+		return false;
 	}
 
 	// Archive default is a feature flag, not an instanceSettings column
@@ -240,7 +242,7 @@ const handleSave = async () => {
 			undefined
 		) {
 			isSaving.value = false;
-			return;
+			return false;
 		}
 	}
 
@@ -256,7 +258,26 @@ const handleSave = async () => {
 	isSaving.value = false;
 	showToast('Settings saved successfully');
 	isFormDirty.value = false;
+	return true;
 };
+
+// Unsaved-changes guard: a sidebar click (or any in-app navigation) while the
+// General form is dirty prompts to save/discard instead of silently dropping
+// the edits. Reuses the shared composable + dialog (the same ones the email
+// editor uses). `onSave` throws on failure so a failed save keeps the user here.
+const {
+	showDialog: showUnsavedDialog,
+	confirmDiscard,
+	confirmSave,
+	cancelNavigation,
+	setHasChanges,
+} = useUnsavedChanges({
+	onSave: async () => {
+		if (!(await handleSave())) throw new Error('Save failed');
+	},
+});
+
+watch(isFormDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 
 // Check platform-admin status to conditionally show the System card
 const { data: isPlatformAdmin } = useConvexQuery(
@@ -644,5 +665,13 @@ const settingsSections = computed(() => {
 				</div>
 			</div>
 		</UiQueryBoundary>
+
+		<!-- Unsaved Changes Dialog -->
+		<UnsavedChangesDialog
+			:show="showUnsavedDialog"
+			@close="cancelNavigation"
+			@discard="confirmDiscard"
+			@save="confirmSave"
+		/>
 	</div>
 </template>
