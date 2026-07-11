@@ -124,7 +124,11 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 				<!-- Sort Dropdown -->
 				<div class="relative" data-sort-dropdown>
 					<button
-						class="flex items-center gap-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary bg-bg-surface border border-border-subtle rounded-lg transition-colors"
+						class="flex items-center gap-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary bg-bg-surface border border-border-subtle rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+						aria-haspopup="listbox"
+						:aria-expanded="isSortDropdownOpen"
+						aria-controls="transactional-sort-listbox"
+						aria-label="Sort emails"
 						@click="isSortDropdownOpen = !isSortDropdownOpen"
 					>
 						<Icon name="lucide:arrow-up-down" class="w-4 h-4" />
@@ -141,13 +145,18 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 					>
 						<div
 							v-if="isSortDropdownOpen"
+							id="transactional-sort-listbox"
+							role="listbox"
+							aria-label="Sort emails"
 							class="absolute right-0 top-full mt-1 w-44 bg-bg-elevated border border-border-subtle rounded-lg shadow-lg z-20 py-1"
 						>
 							<button
 								v-for="option in sortOptions"
 								:key="option.value"
+								role="option"
+								:aria-selected="currentSort.value === option.value"
 								:class="[
-									'w-full px-3 py-2 text-left text-sm transition-colors flex items-center justify-between',
+									'w-full px-3 py-2 text-left text-sm transition-colors flex items-center justify-between focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-inset',
 									currentSort.value === option.value
 										? 'text-brand bg-brand/5'
 										: 'text-text-primary hover:bg-bg-surface',
@@ -268,8 +277,13 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 						overflow="hidden"
 						hoverable
 						clickable
-						class="group"
+						class="group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+						role="button"
+						tabindex="0"
+						:aria-label="`Edit ${email.name}`"
 						@click="handleEdit(email._id)"
+						@keydown.enter.self="handleEdit(email._id)"
+						@keydown.space.self.prevent="handleEdit(email._id)"
 					>
 						<!-- Thumbnail Area -->
 						<div
@@ -288,6 +302,7 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 								<button
 									class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-brand hover:text-text-inverse transition-colors"
 									title="View API Code"
+									aria-label="View API Code"
 									@click.stop="openCodeSnippetModal(email._id, email.name, email.slug)"
 								>
 									<Icon name="lucide:code" class="w-4 h-4" />
@@ -408,8 +423,13 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 								<tr
 									v-for="email in transactionalEmails"
 									:key="email._id"
-									class="border-b border-border-subtle last:border-b-0 hover:bg-bg-surface transition-colors cursor-pointer"
+									class="border-b border-border-subtle last:border-b-0 hover:bg-bg-surface transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-inset"
+									role="button"
+									tabindex="0"
+									:aria-label="`Edit ${email.name}`"
 									@click="handleEdit(email._id)"
+									@keydown.enter.self="handleEdit(email._id)"
+									@keydown.space.self.prevent="handleEdit(email._id)"
 								>
 									<td class="px-6 py-4">
 										<div class="flex flex-col">
@@ -452,6 +472,7 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 											<button
 												class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors"
 												title="View API Code"
+												aria-label="View API Code"
 												@click="openCodeSnippetModal(email._id, email.name, email.slug)"
 											>
 												<Icon name="lucide:code" class="w-4 h-4" />
@@ -459,6 +480,7 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 											<button
 												class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors"
 												title="Edit"
+												aria-label="Edit"
 												@click="handleEdit(email._id)"
 											>
 												<Icon name="lucide:pencil" class="w-4 h-4" />
@@ -660,7 +682,8 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 								</div>
 								<pre
 									class="p-4 rounded-lg bg-bg-deep text-text-secondary text-sm font-mono overflow-x-auto whitespace-pre-wrap"
-									>{{ getCodeSnippet('curl') }}</pre>
+									>{{ getCodeSnippet('curl') }}</pre
+								>
 							</div>
 
 							<!-- JavaScript -->
@@ -682,7 +705,8 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 								</div>
 								<pre
 									class="p-4 rounded-lg bg-bg-deep text-text-secondary text-sm font-mono overflow-x-auto whitespace-pre-wrap"
-									>{{ getCodeSnippet('javascript') }}</pre>
+									>{{ getCodeSnippet('javascript') }}</pre
+								>
 							</div>
 
 							<!-- Python -->
@@ -704,7 +728,8 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 								</div>
 								<pre
 									class="p-4 rounded-lg bg-bg-deep text-text-secondary text-sm font-mono overflow-x-auto whitespace-pre-wrap"
-									>{{ getCodeSnippet('python') }}</pre>
+									>{{ getCodeSnippet('python') }}</pre
+								>
 							</div>
 
 							<div class="mt-4 p-4 rounded-lg bg-warning/10 border border-warning/20">

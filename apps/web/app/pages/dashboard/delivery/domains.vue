@@ -565,8 +565,15 @@ const readinessSummary = (domain: DomainWithVerification) =>
 				>
 					<!-- Domain Header -->
 					<div
-						class="px-6 py-4 flex items-center justify-between cursor-pointer hover:bg-bg-surface/50 transition-colors"
+						class="px-6 py-4 flex items-center justify-between cursor-pointer hover:bg-bg-surface/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-inset"
+						role="button"
+						tabindex="0"
+						:aria-expanded="expandedDomainId === domain._id"
+						:aria-controls="`domain-records-${domain._id}`"
+						:aria-label="`DNS records for ${domain.domain}`"
 						@click="toggleDomainExpansion(domain._id)"
+						@keydown.enter.self="toggleDomainExpansion(domain._id)"
+						@keydown.space.self.prevent="toggleDomainExpansion(domain._id)"
 					>
 						<div class="flex items-center gap-4">
 							<UiIconBox icon="lucide:globe" size="sm" variant="surface" rounded="lg" />
@@ -654,6 +661,7 @@ const readinessSummary = (domain: DomainWithVerification) =>
 							<button
 								class="btn btn-ghost p-2 text-error hover:bg-error/10"
 								title="Remove domain"
+								aria-label="Remove domain"
 								@click.stop="deleteModal.open(domain)"
 							>
 								<Icon name="lucide:trash-2" class="w-4 h-4" />
@@ -683,7 +691,11 @@ const readinessSummary = (domain: DomainWithVerification) =>
 
 					<!-- DNS Records (Expanded) -->
 					<Transition name="expand">
-						<div v-if="expandedDomainId === domain._id" class="border-t border-border-subtle">
+						<div
+							v-if="expandedDomainId === domain._id"
+							:id="`domain-records-${domain._id}`"
+							class="border-t border-border-subtle"
+						>
 							<div class="px-6 py-4 bg-bg-surface/30">
 								<!-- Registering state -->
 								<div
