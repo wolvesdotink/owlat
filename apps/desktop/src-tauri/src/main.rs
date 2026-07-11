@@ -44,6 +44,10 @@ fn main() {
         )
         // Hold live SSH sessions for the "set up a new server" flow.
         .manage(ssh::SshState::default())
+        // One-shot allowlist of paths the user authorized to read (native pick
+        // or OS drop). See files.rs — it keeps `read_authorized_file` from being
+        // an arbitrary-path read.
+        .manage(files::AllowedReads::default())
         // Register Tauri commands
         .invoke_handler(tauri::generate_handler![
             notifications::update_unread_badge,
@@ -52,7 +56,8 @@ fn main() {
             secrets::secret_set,
             secrets::secret_get,
             secrets::secret_delete,
-            files::read_file,
+            files::pick_files,
+            files::read_authorized_file,
             window::open_compose,
             window::set_traffic_lights_visible,
             window::set_accent_frame,
@@ -66,6 +71,16 @@ fn main() {
             ssh::local_exec_stream,
             ssh::ssh_disconnect,
         ])
+        // Capture OS-level file drops in Rust so `read_authorized_file` will
+        // serve their bytes. This runs synchronously in the event loop before
+        // the webview's drag-drop event is delivered, so by the time JS invokes
+        // the read command the dropped paths are already authorized.
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {
+                let allow = window.state::<files::AllowedReads>();
+                files::remember_dropped_paths(&allow, paths);
+            }
+        })
         .setup(|app| {
             // Register global keyboard shortcuts
             shortcuts::register_global_shortcuts(app.handle());
