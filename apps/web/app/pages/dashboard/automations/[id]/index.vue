@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
-import type { Id, Doc } from '@owlat/api/dataModel';
+import type { Doc } from '@owlat/api/dataModel';
 import { stepEditorModuleFor, type StepKind } from '~/composables/automations/steps';
 
 useHead({ title: 'Automation Details — Owlat' });
@@ -10,9 +10,8 @@ definePageMeta({
 	middleware: 'auth',
 });
 
-const route = useRoute();
 const router = useRouter();
-const automationId = computed(() => route.params['id'] as Id<'automations'>);
+const automationId = useRouteId<'automations'>();
 
 // Fetch automation with related data
 const { data: automation, isLoading: automationLoading } = useConvexQuery(

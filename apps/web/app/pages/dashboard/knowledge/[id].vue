@@ -10,10 +10,9 @@ definePageMeta({
 	middleware: 'auth',
 });
 
-const route = useRoute();
 const router = useRouter();
 const { showToast } = useToast();
-const entryId = computed(() => route.params['id'] as Id<'knowledgeEntries'>);
+const entryId = useRouteId<'knowledgeEntries'>();
 
 const {
 	typeVariant,

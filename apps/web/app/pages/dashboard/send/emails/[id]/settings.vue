@@ -4,7 +4,6 @@ import { UnsavedChangesDialog } from '@owlat/email-builder';
 import { languageOptions } from '~/data/languageOptions';
 import { emailSettingsSave } from '~/composables/emailSettingsSave';
 import { useEditorDirtyTracking } from '~/composables/useEmailEditorBridge';
-import type { Id } from '@owlat/api/dataModel';
 
 useHead({ title: 'Email Settings — Owlat' });
 
@@ -13,9 +12,8 @@ definePageMeta({
 	middleware: 'auth',
 });
 
-const route = useRoute();
 const router = useRouter();
-const templateId = route.params['id'] as Id<'emailTemplates'>;
+const templateId = useRouteId<'emailTemplates'>();
 const { showToast } = useToast();
 
 // Fetch template data
@@ -24,7 +22,7 @@ const {
 	isLoading: templateLoading,
 	error: templateError,
 	refetch: refetchTemplate,
-} = useConvexQuery(api.emailTemplates.emails.get, () => ({ templateId }));
+} = useConvexQuery(api.emailTemplates.emails.get, () => ({ templateId: templateId.value }));
 
 // Mutations
 const { run: updateTemplate } = useBackendOperation(api.emailTemplates.emails.update, {
@@ -189,8 +187,9 @@ const handleSave = async (): Promise<boolean> => {
 				supportedLanguages: form.supportedLanguages,
 				translations: buildTranslationsJson(),
 			},
-			update: (payload) => updateTemplate({ templateId, ...payload }),
-			setDefaultLanguage: ({ language }) => promoteDefaultLanguage({ templateId, language }),
+			update: (payload) => updateTemplate({ templateId: templateId.value, ...payload }),
+			setDefaultLanguage: ({ language }) =>
+				promoteDefaultLanguage({ templateId: templateId.value, language }),
 		});
 
 		switch (outcome.status) {
@@ -224,7 +223,7 @@ const handleSave = async (): Promise<boolean> => {
 
 // Navigation; `router.push` trips the unsaved-changes route guard when dirty.
 const handleBack = () => {
-	router.push(`/dashboard/send/emails/${templateId}/edit`);
+	router.push(`/dashboard/send/emails/${templateId.value}/edit`);
 };
 </script>
 

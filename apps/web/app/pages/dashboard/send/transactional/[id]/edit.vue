@@ -6,7 +6,6 @@ import {
 	type Variable,
 } from '@owlat/email-builder';
 import { api } from '@owlat/api';
-import type { Id } from '@owlat/api/dataModel';
 import type { StoredAttachment } from '~/components/AttachmentPanel.vue';
 
 useHead({ title: 'Edit Transactional Email — Owlat' });
@@ -16,9 +15,8 @@ definePageMeta({
 	middleware: 'auth',
 });
 
-const route = useRoute();
 const router = useRouter();
-const emailId = route.params['id'] as Id<'transactionalEmails'>;
+const emailId = useRouteId<'transactionalEmails'>();
 const { hasActiveOrganization } = useOrganizationContext();
 const { renderBlocksToHtml, buildHtmlTranslationsForEmail } = useEmailHtmlRendering();
 const { isFocusMode } = useFocusMode();
@@ -30,7 +28,7 @@ const {
 	isLoading: emailLoading,
 	error: emailError,
 	refetch: refetchEmail,
-} = useConvexQuery(api.transactional.emails.get, () => ({ id: emailId }));
+} = useConvexQuery(api.transactional.emails.get, () => ({ id: emailId.value }));
 
 // Mutations
 const { run: updateEmail } = useBackendOperation(api.transactional.emails.update, {
@@ -162,7 +160,7 @@ const {
 	},
 	save: async (ctx) => {
 		await publishableEmailSave({
-			identifier: { emailType: 'transactional', emailId },
+			identifier: { emailType: 'transactional', emailId: emailId.value },
 			blocks: ctx.blocks.value,
 			renderOptions: { theme: emailTheme.value, variableType: 'data' },
 			supportedLanguages: email.value?.supportedLanguages ?? [],
@@ -172,7 +170,7 @@ const {
 				// operation module has toasted any categorized failure; throw so the
 				// editor stays dirty instead of being marked clean on a failed save.
 				const result = await updateEmail({
-					id: emailId,
+					id: emailId.value,
 					name: ctx.name.value,
 					subject: ctx.subject.value,
 					content: JSON.stringify(ctx.blocks.value),
@@ -205,21 +203,21 @@ const handleTogglePublish = async () => {
 	isPublishing.value = true;
 	try {
 		if (email.value.status === 'published') {
-			await unpublishEmail({ id: emailId });
+			await unpublishEmail({ id: emailId.value });
 		} else {
 			// Generate HTML content before publishing
 			const htmlContent = await generateHtml();
 			const supported = email.value.supportedLanguages ?? [];
 			const defaultLanguage = email.value.defaultLanguage ?? 'en';
 			const translationsObject = await buildHtmlTranslationsForEmail(
-				{ emailType: 'transactional', emailId },
+				{ emailType: 'transactional', emailId: emailId.value },
 				supported,
 				defaultLanguage,
 				{ variableType: 'data' }
 			);
 			const htmlTranslations = JSON.stringify(translationsObject);
 
-			await publishEmail({ id: emailId, htmlContent, htmlTranslations });
+			await publishEmail({ id: emailId.value, htmlContent, htmlTranslations });
 		}
 	} finally {
 		isPublishing.value = false;
@@ -233,7 +231,7 @@ const handleBack = () => {
 
 // Translations handler
 const handleTranslations = () => {
-	router.push(`/dashboard/send/transactional/${emailId}/translations`);
+	router.push(`/dashboard/send/transactional/${emailId.value}/translations`);
 };
 
 const handleCreateVariable = async (variable: { key: string; type?: string }) => {
@@ -257,7 +255,7 @@ const handleCreateVariable = async (variable: { key: string; type?: string }) =>
 	dataVariables.value = nextVariables;
 
 	const result = await updateSchema({
-		id: emailId,
+		id: emailId.value,
 		dataVariablesSchema: buildDataVariablesSchema(nextVariables),
 	});
 	if (result === undefined) {

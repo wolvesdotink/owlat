@@ -7,11 +7,10 @@ definePageMeta({
 	requiresFeature: 'chat',
 });
 
-const route = useRoute();
 const router = useRouter();
 const { user } = useAuth();
 
-const roomId = computed(() => route.params['roomId'] as Id<'chatRooms'>);
+const roomId = useRouteId<'chatRooms'>('roomId');
 
 const { channels, archivedChannels, dms, isLoading: roomsLoading } = useChatRooms();
 // Count only here; the Mentions dialog opens the 50-row feed lazily on demand.
@@ -183,11 +182,7 @@ const handleLeave = async () => {
 						v-if="showMembers"
 						class="hidden lg:block w-72 flex-shrink-0 border-l border-border-subtle bg-bg-elevated"
 					>
-						<ChatMemberList
-							:room="room"
-							:members="members"
-							:current-user-id="currentUserId"
-						/>
+						<ChatMemberList :room="room" :members="members" :current-user-id="currentUserId" />
 					</div>
 				</div>
 			</template>
@@ -196,17 +191,24 @@ const handleLeave = async () => {
 		<ChatNewChannelDialog
 			v-if="showCreateChannel"
 			@close="showCreateChannel = false"
-			@created="(id) => { showCreateChannel = false; router.push(`/dashboard/chat/${id}`); }"
+			@created="
+				(id) => {
+					showCreateChannel = false;
+					router.push(`/dashboard/chat/${id}`);
+				}
+			"
 		/>
 		<ChatNewDmDialog
 			v-if="showNewDm"
 			@close="showNewDm = false"
-			@created="(id) => { showNewDm = false; router.push(`/dashboard/chat/${id}`); }"
+			@created="
+				(id) => {
+					showNewDm = false;
+					router.push(`/dashboard/chat/${id}`);
+				}
+			"
 		/>
-		<ChatChannelBrowser
-			v-if="showBrowseChannels"
-			@close="showBrowseChannels = false"
-		/>
+		<ChatChannelBrowser v-if="showBrowseChannels" @close="showBrowseChannels = false" />
 		<ChatMentionsDialog v-if="showMentions" @close="showMentions = false" />
 		<ChatLinkEmailDialog
 			v-if="showLinkEmail && room"

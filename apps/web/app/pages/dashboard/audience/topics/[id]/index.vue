@@ -9,14 +9,13 @@ definePageMeta({
 	middleware: 'auth',
 });
 
-const route = useRoute();
 const router = useRouter();
 
 // Breadcrumbs
 const { setDynamicBreadcrumbs, clearDynamicBreadcrumbs } = useBreadcrumbs();
 
 // Get the topic ID from the route
-const topicId = computed(() => route.params['id'] as Id<'topics'>);
+const topicId = useRouteId<'topics'>();
 
 // Get the current user's organization (organizationLoading used for loading state)
 const { isLoading: organizationLoading } = useOrganizationContext();
@@ -32,11 +31,9 @@ const {
 	isLoading: contactsLoading,
 	loadMore,
 	status: contactsPaginationStatus,
-} = usePaginatedQuery(
-	api.topics.topics.getContacts,
-	() => ({ topicId: topicId.value }),
-	{ initialNumItems: 50 }
-);
+} = usePaginatedQuery(api.topics.topics.getContacts, () => ({ topicId: topicId.value }), {
+	initialNumItems: 50,
+});
 
 const isLoading = computed(
 	() => organizationLoading.value || topicLoading.value || contactsLoading.value
@@ -322,9 +319,7 @@ const viewContact = (contactId: Id<'contacts'>) => {
 								<div class="flex items-center gap-1.5">
 									<Icon name="lucide:users" class="w-4 h-4" />
 									<span
-										>{{ topic.contactCount }} contact{{
-											topic.contactCount !== 1 ? 's' : ''
-										}}</span
+										>{{ topic.contactCount }} contact{{ topic.contactCount !== 1 ? 's' : '' }}</span
 									>
 								</div>
 								<div class="flex items-center gap-1.5">
@@ -347,7 +342,10 @@ const viewContact = (contactId: Id<'contacts'>) => {
 			<!-- Search Bar -->
 			<div class="mb-6">
 				<div class="relative max-w-md">
-					<Icon name="lucide:search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary" />
+					<Icon
+						name="lucide:search"
+						class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary"
+					/>
 					<input
 						v-model="searchQuery"
 						type="text"
@@ -474,7 +472,7 @@ const viewContact = (contactId: Id<'contacts'>) => {
 									<td class="px-6 py-4">
 										<span class="text-text-secondary">{{ contact.lastName || '—' }}</span>
 									</td>
-										<td class="px-6 py-4">
+									<td class="px-6 py-4">
 										<span class="text-text-tertiary text-sm">{{
 											formatDate(contact.addedAt)
 										}}</span>
@@ -507,7 +505,8 @@ const viewContact = (contactId: Id<'contacts'>) => {
 								class="p-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-bg-surface disabled:opacity-50 disabled:pointer-events-none transition-colors"
 								:disabled="!canGoPrev"
 								@click="goToPage(currentPage - 1)"
-							 aria-label="Previous">
+								aria-label="Previous"
+							>
 								<Icon name="lucide:chevron-left" class="w-4 h-4" />
 							</button>
 
@@ -531,7 +530,8 @@ const viewContact = (contactId: Id<'contacts'>) => {
 								class="p-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-bg-surface disabled:opacity-50 disabled:pointer-events-none transition-colors"
 								:disabled="!canGoNext"
 								@click="goToPage(currentPage + 1)"
-							 aria-label="Next">
+								aria-label="Next"
+							>
 								<Icon name="lucide:chevron-right" class="w-4 h-4" />
 							</button>
 						</div>
@@ -548,7 +548,11 @@ const viewContact = (contactId: Id<'contacts'>) => {
 			:description="`Remove &quot;${removeTarget?.email ?? ''}&quot; from this topic? The contact will not be deleted, only removed from &quot;${topic?.name ?? ''}&quot;.`"
 			confirm-text="Remove"
 			:is-loading="isRemoving"
-			@update:open="(v: boolean) => { if (!v) closeRemoveModal(); }"
+			@update:open="
+				(v: boolean) => {
+					if (!v) closeRemoveModal();
+				}
+			"
 			@confirm="handleRemove"
 		/>
 	</div>

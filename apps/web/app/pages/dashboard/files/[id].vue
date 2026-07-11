@@ -9,7 +9,6 @@ definePageMeta({
 	middleware: 'auth',
 });
 
-const route = useRoute();
 const router = useRouter();
 const { showToast } = useToast();
 
@@ -18,7 +17,7 @@ const { showToast } = useToast();
 // affordances for non-admin members.
 const { isAdmin } = usePermissions();
 
-const fileId = computed(() => route.params['id'] as Id<'semanticFiles'>);
+const fileId = useRouteId<'semanticFiles'>();
 
 // File data
 const { data: file, isLoading } = useConvexQuery(api.semanticFiles.get, () => ({
@@ -330,8 +329,7 @@ const sourceLabel = computed(() => {
 						<div v-if="showExtractedText" class="px-5 pb-4">
 							<pre
 								class="text-sm text-text-secondary leading-relaxed whitespace-pre-wrap font-mono bg-bg-surface rounded-lg p-4 max-h-96 overflow-y-auto"
-								>{{ file.extractedText }}</pre
-							>
+								>{{ file.extractedText }}</pre>
 						</div>
 					</div>
 

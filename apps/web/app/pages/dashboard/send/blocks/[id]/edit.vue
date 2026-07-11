@@ -7,7 +7,6 @@ import {
 	type EmailBuilderConfig,
 } from '@owlat/email-builder';
 import { api } from '@owlat/api';
-import type { Id } from '@owlat/api/dataModel';
 useHead({ title: 'Edit Email Block — Owlat' });
 
 definePageMeta({
@@ -15,16 +14,15 @@ definePageMeta({
 	middleware: 'auth',
 });
 
-const route = useRoute();
 const router = useRouter();
-const blockId = route.params['id'] as Id<'emailBlocks'>;
+const blockId = useRouteId<'emailBlocks'>();
 const { hasActiveOrganization } = useOrganizationContext();
 const { showToast } = useToast();
 const { isFocusMode } = useFocusMode();
 
 // Fetch block data
 const { data: block, isLoading: blockLoading } = useConvexQuery(api.emailBlocks.blocks.get, () => ({
-	blockId,
+	blockId: blockId.value,
 }));
 
 // Mutations
@@ -133,7 +131,7 @@ const {
 		// Save in multi-block format. The operation module toasts any categorized
 		// failure; throw so the bridge keeps the editor dirty on a failed save.
 		const result = await updateBlock({
-			blockId,
+			blockId: blockId.value,
 			name: ctx.name.value.trim(),
 			description: description.value.trim() || undefined,
 			content: JSON.stringify({

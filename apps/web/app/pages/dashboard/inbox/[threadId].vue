@@ -17,8 +17,7 @@ definePageMeta({
 	requiresFeature: 'inbox',
 });
 
-const route = useRoute();
-const threadId = computed(() => route.params['threadId'] as Id<'conversationThreads'>);
+const threadId = useRouteId<'conversationThreads'>('threadId');
 
 const {
 	thread,

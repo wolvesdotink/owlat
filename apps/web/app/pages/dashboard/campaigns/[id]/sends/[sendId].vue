@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
-import type { Id } from '@owlat/api/dataModel';
 
 useHead({ title: 'Send Details — Owlat' });
 
@@ -9,9 +8,8 @@ definePageMeta({
 	middleware: 'auth',
 });
 
-const route = useRoute();
-const campaignId = computed(() => route.params['id'] as Id<'campaigns'>);
-const sendId = computed(() => route.params['sendId'] as Id<'emailSends'>);
+const campaignId = useRouteId<'campaigns'>();
+const sendId = useRouteId<'emailSends'>('sendId');
 
 const {
 	data: send,

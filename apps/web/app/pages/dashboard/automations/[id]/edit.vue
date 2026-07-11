@@ -15,10 +15,9 @@ definePageMeta({
 	middleware: 'auth',
 });
 
-const route = useRoute();
 const router = useRouter();
 // Get automation ID from route
-const automationId = computed(() => route.params['id'] as Id<'automations'>);
+const automationId = useRouteId<'automations'>();
 
 // Fetch automation with steps
 const { data: automation, isLoading: isLoadingAutomation } = useConvexQuery(

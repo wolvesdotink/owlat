@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
-import type { Id } from '@owlat/api/dataModel';
 
 useHead({ title: 'Contact Details — Owlat' });
 
@@ -9,15 +8,14 @@ definePageMeta({
 	middleware: 'auth',
 });
 
-const route = useRoute();
 const router = useRouter();
 
 // Breadcrumbs
 const { setDynamicBreadcrumbs, clearDynamicBreadcrumbs } = useBreadcrumbs();
 
 // Get IDs from route
-const topicId = computed(() => route.params['id'] as Id<'topics'>);
-const contactId = computed(() => route.params['contactId'] as Id<'contacts'>);
+const topicId = useRouteId<'topics'>();
+const contactId = useRouteId<'contacts'>('contactId');
 
 // Fetch contact in topic details
 const { data: details, isLoading } = useConvexQuery(
