@@ -22,6 +22,7 @@ export type LanguageProviderKind =
 	| 'openai'
 	| 'anthropic'
 	| 'google'
+	| 'azure'
 	| 'openrouter'
 	| 'openaiCompatible';
 
@@ -45,6 +46,11 @@ export interface LanguageProviderMeta {
 	docsUrl?: string;
 	/** Default base URL a local provider ships with (an Ollama/vLLM endpoint). */
 	defaultBaseUrl?: string;
+	/**
+	 * Hosted provider that STILL needs an explicit base URL (e.g. Azure's resource
+	 * endpoint). The base-URL field is shown by default and required at save.
+	 */
+	requiresBaseUrl?: boolean;
 	/** Per-tier default model ids used when none is entered. */
 	defaultModels: { fast: string; capable: string };
 	/** Curated model ids offered in the dropdown before the free-text override. */
@@ -96,6 +102,17 @@ export const LANGUAGE_PROVIDERS: readonly LanguageProviderMeta[] = [
 		defaultModels: { fast: 'gemini-2.5-flash', capable: 'gemini-2.5-pro' },
 		curatedModels: ['gemini-2.5-pro', 'gemini-2.5-flash'],
 		hint: 'Hosted Gemini models. Paste a Google AI Studio key.',
+	},
+	{
+		kind: 'azure',
+		label: 'Azure OpenAI',
+		isLocal: false,
+		docsUrl: 'https://learn.microsoft.com/azure/ai-services/openai/',
+		requiresBaseUrl: true,
+		defaultBaseUrl: 'https://<resource>.openai.azure.com/openai',
+		defaultModels: { fast: 'gpt-4o-mini', capable: 'gpt-4o' },
+		curatedModels: ['gpt-4o', 'gpt-4o-mini'],
+		hint: 'GPT models from your Azure OpenAI resource. Model ids are your deployment names — paste your key and resource base URL.',
 	},
 	{
 		kind: 'openrouter',
@@ -222,17 +239,23 @@ export function resolveModelId(choice: string, custom: string): string {
 /**
  * Validate the language plane before save. A local provider never needs a key
  * (the field is hidden). A hosted provider needs either a stored key or a
- * freshly-typed one — otherwise saving would persist a config that can't run.
- * Returns a human error string, or `null` when the config is savable.
+ * freshly-typed one — otherwise saving would persist a config that can't run. A
+ * provider flagged `requiresBaseUrl` (Azure) additionally needs its resource
+ * base URL. Returns a human error string, or `null` when the config is savable.
  */
 export function validateLanguageConfig(input: {
 	kind: string;
 	hasStoredKey: boolean;
 	apiKey: string;
+	baseUrl?: string;
 }): string | null {
+	const meta = languageProviderMeta(input.kind);
+	const label = meta?.label ?? 'this provider';
+	if (meta?.requiresBaseUrl && !(input.baseUrl ?? '').trim()) {
+		return `${label} needs its resource base URL. Add it above to continue.`;
+	}
 	if (!languageProviderRequiresKey(input.kind)) return null;
 	if (input.hasStoredKey || input.apiKey.trim().length > 0) return null;
-	const label = languageProviderMeta(input.kind)?.label ?? 'this provider';
 	return `${label} needs an API key. Paste one above to continue.`;
 }
 

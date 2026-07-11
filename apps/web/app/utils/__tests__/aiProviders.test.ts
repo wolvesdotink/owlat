@@ -16,11 +16,12 @@ import {
 } from '../aiProviders';
 
 describe('provider catalog', () => {
-	it('exposes exactly the five language kinds and four embedding kinds', () => {
+	it('exposes exactly the six language kinds and four embedding kinds', () => {
 		expect(LANGUAGE_PROVIDERS.map((p) => p.kind)).toEqual([
 			'openai',
 			'anthropic',
 			'google',
+			'azure',
 			'openrouter',
 			'openaiCompatible',
 		]);
@@ -137,6 +138,27 @@ describe('validateLanguageConfig', () => {
 	it('passes a hosted provider when a key is freshly typed', () => {
 		expect(
 			validateLanguageConfig({ kind: 'google', hasStoredKey: false, apiKey: 'sk-abc' })
+		).toBeNull();
+	});
+
+	it('requires Azure to carry its resource base URL even with a key', () => {
+		const err = validateLanguageConfig({
+			kind: 'azure',
+			hasStoredKey: true,
+			apiKey: '',
+			baseUrl: '  ',
+		});
+		expect(err).toBe('Azure OpenAI needs its resource base URL. Add it above to continue.');
+	});
+
+	it('passes Azure when both a key and a base URL are present', () => {
+		expect(
+			validateLanguageConfig({
+				kind: 'azure',
+				hasStoredKey: false,
+				apiKey: 'k',
+				baseUrl: 'https://acme.openai.azure.com/openai',
+			})
 		).toBeNull();
 	});
 });

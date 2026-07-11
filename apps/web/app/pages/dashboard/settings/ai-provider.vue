@@ -115,6 +115,7 @@ const liveLanguageError = computed(() =>
 		kind: form.languageProviderKind,
 		hasStoredKey: storedLanguageKeySet.value,
 		apiKey: form.apiKey,
+		baseUrl: form.languageBaseUrl,
 	})
 );
 
@@ -131,6 +132,11 @@ function applyLanguageDefaults(kind: LanguageProviderKind) {
 	if (meta.isLocal) {
 		form.apiKey = '';
 		if (!form.languageBaseUrl.trim()) form.languageBaseUrl = meta.defaultBaseUrl ?? '';
+		showLanguageBaseUrl.value = true;
+	} else if (meta.requiresBaseUrl) {
+		// Azure's resource endpoint is required, not "advanced" — reveal it, but
+		// don't prefill the `<resource>` placeholder (the input's placeholder shows
+		// the expected shape).
 		showLanguageBaseUrl.value = true;
 	}
 }
@@ -187,7 +193,8 @@ function hydrate() {
 	form.embeddingModelChoice = c.embeddingModel || embMeta?.defaultModel || '';
 	form.embeddingModelCustom = '';
 	form.embeddingApiKey = '';
-	showLanguageBaseUrl.value = Boolean(c.languageBaseUrl) || langMeta?.isLocal === true;
+	showLanguageBaseUrl.value =
+		Boolean(c.languageBaseUrl) || langMeta?.isLocal === true || langMeta?.requiresBaseUrl === true;
 	showHostedEmbedder.value = embMeta?.isLocal === false;
 	hydrating.value = false;
 }
