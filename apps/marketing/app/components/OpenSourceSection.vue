@@ -95,7 +95,7 @@ const links = [
 						</svg>
 						<div class="min-w-0">
 							<span
-								class="flex items-center gap-1.5 text-[0.9375rem] font-[550] text-text-primary leading-[1.3] mb-1.5"
+								class="flex items-center gap-1.5 text-md font-[550] text-text-primary leading-[1.3] mb-1.5"
 							>
 								{{ link.title }}
 								<svg
@@ -114,7 +114,7 @@ const links = [
 									<path d="M7 7h10v10" />
 								</svg>
 							</span>
-							<span class="block text-[0.8125rem] text-text-secondary leading-[1.65]">
+							<span class="block text-caption text-text-secondary leading-[1.65]">
 								{{ link.desc }}
 							</span>
 						</div>

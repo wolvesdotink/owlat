@@ -39,7 +39,7 @@ async function copyInstall() {
 				</h1>
 
 				<!-- Tagline -->
-				<p class="mt-6 text-[1.0625rem] text-text-secondary leading-[1.75] max-w-prose">
+				<p class="mt-6 text-md text-text-secondary leading-[1.75] max-w-prose">
 					Owlat is open-source and self-hosted. Design emails visually, manage audiences, run
 					campaigns with A/B testing, and send transactional emails via API — all from one platform.
 				</p>
@@ -48,12 +48,12 @@ async function copyInstall() {
 				<div class="mt-10 flex items-center gap-3.5 flex-wrap">
 					<a
 						href="https://docs.owlat.app/developer/self-hosting"
-						class="inline-flex items-center px-6 py-3 text-[0.9375rem] font-semibold text-text-inverse bg-brand rounded-lg no-underline transition-colors duration-(--motion-fast) hover:bg-brand-hover btn-press focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-bg-base"
+						class="btn btn-primary px-6 text-md no-underline"
 					>
 						Self-host in 5 minutes
 					</a>
 					<div
-						class="inline-flex items-center gap-3 max-w-[420px] rounded-lg bg-surface-2 border border-border-subtle pl-4 pr-2 py-2 font-mono text-[0.8125rem]"
+						class="inline-flex items-center gap-3 max-w-[420px] rounded-lg bg-surface-2 border border-border-subtle pl-4 pr-2 py-2 font-mono text-caption"
 					>
 						<span class="text-text-tertiary shrink-0 select-none" aria-hidden="true">$</span>
 						<code
@@ -62,7 +62,7 @@ async function copyInstall() {
 						>
 						<button
 							type="button"
-							class="shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-[0.6875rem] font-semibold uppercase tracking-wider text-text-tertiary hover:text-brand transition-colors duration-(--motion-fast) btn-press"
+							class="shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-2xs font-semibold uppercase tracking-wider text-text-tertiary hover:text-brand ui-press"
 							:aria-label="copied ? 'Copied' : 'Copy install command'"
 							@click="copyInstall"
 						>
@@ -99,7 +99,7 @@ async function copyInstall() {
 					</div>
 				</div>
 
-				<p class="text-[0.75rem] text-text-tertiary mt-4">
+				<p class="text-xs text-text-tertiary mt-4">
 					<a
 						href="/waitlist"
 						class="text-text-tertiary hover:text-brand transition-colors duration-(--motion-fast) underline decoration-dotted underline-offset-[3px]"
@@ -120,7 +120,7 @@ async function copyInstall() {
 						<span class="w-[7px] h-[7px] rounded-full bg-border-strong" />
 						<span class="w-[7px] h-[7px] rounded-full bg-border-strong" />
 						<span
-							class="ml-auto font-mono text-[0.6875rem] font-medium uppercase tracking-[0.06em] text-text-tertiary"
+							class="ml-auto font-mono text-2xs font-medium uppercase tracking-[0.06em] text-text-tertiary"
 							>Email Builder</span
 						>
 					</div>
