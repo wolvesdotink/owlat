@@ -489,6 +489,31 @@ describe('organizations.featureFlags.getFlagsConfigStatus', () => {
 		expect(status['ai']).toBeUndefined();
 	});
 
+	it('clears the ai gap when a provider config is stored, even with no LLM_* env', async () => {
+		// No LLM_* env is set (the beforeEach cleared it); a stored per-org config
+		// must satisfy the `ai` flag's requirement on its own.
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('aiProviderConfig', {
+				languageProviderKind: 'anthropic',
+				modelFast: 'claude-3-5-haiku-latest',
+				modelCapable: 'claude-3-5-sonnet-latest',
+				embeddingProviderKind: 'local',
+				embeddingModelVersion: 1,
+				updatedAt: Date.now(),
+			});
+		});
+
+		const status = await t.query(api.workspaces.featureFlags.getFlagsConfigStatus, {});
+		expect(status['ai']).toBeUndefined();
+	});
+
+	it('still reports the ai gap when neither env nor a stored config is present', async () => {
+		const t = convexTest(schema, modules);
+		const status = await t.query(api.workspaces.featureFlags.getFlagsConfigStatus, {});
+		expect(status['ai']).toEqual(['LLM_PROVIDER', 'LLM_API_KEY']);
+	});
+
 	it('reports a missing delivery provider for sending flags', async () => {
 		const t = convexTest(schema, modules);
 		const status = await t.query(api.workspaces.featureFlags.getFlagsConfigStatus, {});
