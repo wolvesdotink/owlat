@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import { UnsavedChangesDialog } from '@owlat/email-builder';
 import type { Id } from '@owlat/api/dataModel';
 
 useHead({ title: 'Edit Campaign — Owlat' });
@@ -55,6 +56,13 @@ const {
 	isSaving,
 	saveError,
 
+	// Unsaved-changes guard
+	showUnsavedChangesDialog,
+	hasUnsavedChanges,
+	confirmDiscard,
+	confirmSave,
+	cancelNavigation,
+
 	// Actions
 	handleSave,
 	handleSendNow,
@@ -68,6 +76,32 @@ const {
 	getMinScheduleDate,
 	getLanguageLabel,
 } = useCampaignForm(campaignId, abTest);
+
+// Guard the "Edit Email" link. It opens the linked email editor in a NEW tab,
+// so the SPA route guard never fires — intercept the click and, when the
+// campaign form has unsaved edits, prompt to save them first (so the campaign
+// and its linked email stay consistent) before opening the editor.
+const showEditEmailPrompt = ref(false);
+const pendingEmailUrl = ref('');
+const onEditEmailClick = (event: MouseEvent, url: string) => {
+	if (!hasUnsavedChanges.value) return; // no edits — let it open the new tab
+	event.preventDefault();
+	pendingEmailUrl.value = url;
+	showEditEmailPrompt.value = true;
+};
+const openPendingEmail = () => {
+	if (pendingEmailUrl.value) window.open(pendingEmailUrl.value, '_blank', 'noopener');
+	pendingEmailUrl.value = '';
+	showEditEmailPrompt.value = false;
+};
+const discardAndOpenEmail = () => {
+	openPendingEmail();
+};
+const saveAndOpenEmail = async () => {
+	// handleSave clears the dirty flag on success; keep the prompt up (with the
+	// form's inline errors visible) if the save fails so nothing is lost.
+	if (await handleSave()) openPendingEmail();
+};
 
 // Test-email modal (shared CampaignsTestEmailModal owns the send flow)
 const isTestEmailModalOpen = ref(false);
@@ -553,6 +587,12 @@ const sendEstimate = computed(() => {
 											:to="`/dashboard/send/emails/${selectedTemplate._id}/edit`"
 											class="text-brand hover:text-brand-hover flex items-center gap-1 text-sm"
 											target="_blank"
+											@click="
+												onEditEmailClick(
+													$event,
+													`/dashboard/send/emails/${selectedTemplate._id}/edit`
+												)
+											"
 										>
 											<Icon name="lucide:eye" class="w-4 h-4" />
 											Edit Email
@@ -862,6 +902,22 @@ const sendEstimate = computed(() => {
 			:from-email="fromEmail"
 			:languages="templateLanguages"
 			:default-language="selectedTemplate?.defaultLanguage"
+		/>
+
+		<!-- Unsaved Changes Dialog — leaving the page (Back / any navigation) -->
+		<UnsavedChangesDialog
+			:show="showUnsavedChangesDialog"
+			@close="cancelNavigation"
+			@discard="confirmDiscard"
+			@save="confirmSave"
+		/>
+
+		<!-- Unsaved Changes Dialog — opening the linked email in a new tab -->
+		<UnsavedChangesDialog
+			:show="showEditEmailPrompt"
+			@close="showEditEmailPrompt = false"
+			@discard="discardAndOpenEmail"
+			@save="saveAndOpenEmail"
 		/>
 	</div>
 </template>
