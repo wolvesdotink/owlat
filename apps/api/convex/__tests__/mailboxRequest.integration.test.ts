@@ -274,6 +274,39 @@ describe('mailboxRequest.freshStartStatus', () => {
 		expect(status.hasMailbox).toBe(false);
 		expect(status.reservedAddress).toBe('member-a@hinterland.camp');
 		expect(status.hasOpenRequest).toBe(true);
+		// No verified domain row for hinterland.camp → the reservation is awaiting
+		// verification (early-instance invite).
+		expect(status.reservationAwaitingDomain).toBe(true);
+	});
+
+	it('clears reservationAwaitingDomain once the reserved domain is verified', async () => {
+		setMemberSession('member-a');
+		const t = convexTest(schema, modules);
+		await seedUserProfile(t, 'member-a', 'member-a@example.com');
+		await t.run(async (ctx) => {
+			const now = Date.now();
+			await ctx.db.insert('domains', {
+				domain: 'hinterland.camp',
+				status: 'verified',
+				dnsRecords: {},
+				createdAt: now,
+				updatedAt: now,
+			});
+			await ctx.db.insert('pendingMailboxes', {
+				invitationId: 'inv-1',
+				inviteeEmail: 'member-a@example.com',
+				organizationId: 'test-org',
+				localpart: 'member-a',
+				domain: 'hinterland.camp',
+				address: 'member-a@hinterland.camp',
+				createdAt: now,
+				createdByUserId: 'admin-user',
+			});
+		});
+
+		const status = await t.query(api.mail.mailboxRequest.freshStartStatus, {});
+		expect(status.reservedAddress).toBe('member-a@hinterland.camp');
+		expect(status.reservationAwaitingDomain).toBe(false);
 	});
 });
 
