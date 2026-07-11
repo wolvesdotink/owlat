@@ -1,11 +1,7 @@
-import { ref, watch, type Ref } from 'vue';
+import { ref, computed, watch, type Ref } from 'vue';
 import { api } from '@owlat/api';
 import type { Id, Doc } from '@owlat/api/dataModel';
-import {
-	stepEditorModuleFor,
-	type StepConfigByKind,
-	type StepKind,
-} from './automations/steps';
+import { stepEditorModuleFor, type StepConfigByKind, type StepKind } from './automations/steps';
 
 interface AutomationWithSteps {
 	steps?: Doc<'automationSteps'>[];
@@ -47,30 +43,48 @@ export function useAutomationStepConfig(
 
 	const currentConfig = ref<StepCurrentConfig>(null);
 
+	// The selected step's config as last derived from (or persisted to) the
+	// server, serialized for cheap comparison. `currentConfig` diverging from
+	// this is what "unsaved step edits" means — re-derived whenever the selection
+	// changes so switching to a step never starts out dirty.
+	const persistedConfigJson = ref<string | null>(null);
+
 	watch(
 		[selectedStepId, () => automation.value?.steps],
 		() => {
 			if (!selectedStepId.value || !automation.value?.steps) {
 				currentConfig.value = null;
+				persistedConfigJson.value = null;
 				return;
 			}
 			const step = automation.value.steps.find((s) => s._id === selectedStepId.value);
 			if (!step) {
 				currentConfig.value = null;
+				persistedConfigJson.value = null;
 				return;
 			}
 			const raw = parseStepConfigRaw(step);
 			const kind = step.stepType as StepKind;
 			const module = stepEditorModuleFor(kind);
-			currentConfig.value = {
+			const parsed = {
 				kind,
 				config: module.parseConfig(raw),
-			} as StepCurrentConfig;
+			} as NonNullable<StepCurrentConfig>;
+			currentConfig.value = parsed;
+			persistedConfigJson.value = JSON.stringify(parsed.config);
 		},
 		{ immediate: true }
 	);
 
-	const handleUpdateStepConfig = async () => {
+	// Whether the open step panel holds edits not yet persisted. Guards the
+	// step-switch (which re-derives currentConfig and would drop them) and the
+	// page's leave/back navigation.
+	const isCurrentConfigDirty = computed(() => {
+		if (!currentConfig.value || persistedConfigJson.value === null) return false;
+		return JSON.stringify(currentConfig.value.config) !== persistedConfigJson.value;
+	});
+
+	const handleUpdateStepConfig = async (options?: { silent?: boolean }) => {
 		if (!selectedStepId.value || !currentConfig.value) return;
 
 		isSaving.value = true;
@@ -81,7 +95,10 @@ export function useAutomationStepConfig(
 				config: currentConfig.value.config as never,
 			});
 			if (result === undefined) return;
-			showToast('Step updated');
+			// The step is now persisted; adopt it as the clean baseline so the
+			// dirty guard clears without waiting for the automation query to reload.
+			persistedConfigJson.value = JSON.stringify(currentConfig.value.config);
+			if (!options?.silent) showToast('Step updated');
 		} finally {
 			isSaving.value = false;
 		}
@@ -90,6 +107,7 @@ export function useAutomationStepConfig(
 	return {
 		isSaving,
 		currentConfig,
+		isCurrentConfigDirty,
 		parseStepConfig: parseStepConfigRaw,
 		handleUpdateStepConfig,
 	};

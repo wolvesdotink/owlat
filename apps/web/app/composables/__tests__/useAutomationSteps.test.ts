@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ref } from 'vue';
+import { ref, nextTick } from 'vue';
 import { useAutomationSteps } from '../useAutomationSteps';
 
 /**
@@ -31,13 +31,9 @@ describe('useAutomationSteps.handleDragEnd', () => {
 				name: 'A',
 				status: 'draft',
 				triggerType: 'contact_created',
-				steps: [
-					{ _id: 's1' },
-					{ _id: 's2' },
-					{ _id: 's3' },
-				],
+				steps: [{ _id: 's1' }, { _id: 's2' }, { _id: 's3' }],
 			}) as never,
-			ref([]) as never,
+			ref([]) as never
 		);
 
 	it('persists the reordered id list when an item is dragged down', async () => {
@@ -64,5 +60,66 @@ describe('useAutomationSteps.handleDragEnd', () => {
 		await handleDragEnd({});
 		await handleDragEnd(undefined);
 		expect(runCalls).toHaveLength(0);
+	});
+});
+
+/**
+ * The step panel's unsaved-changes guard hangs off `isCurrentConfigDirty`.
+ * Selecting a step must NOT report dirty (it merely loads the persisted config),
+ * and only a real edit to the open config may flip it — so a step-switch prompt
+ * fires only when there is genuine work to lose.
+ */
+describe('useAutomationSteps step-config dirty tracking', () => {
+	let updateArgs: unknown[];
+
+	beforeEach(() => {
+		updateArgs = [];
+		vi.stubGlobal('useBackendOperation', () => ({
+			run: (args: unknown) => {
+				updateArgs.push(args);
+				return Promise.resolve('ok');
+			},
+			isLoading: ref(false),
+			inlineError: ref(null),
+		}));
+		vi.stubGlobal('useToast', () => ({ showToast: vi.fn() }));
+	});
+
+	const makeDelayEditor = () =>
+		useAutomationSteps(
+			ref('auto1') as never,
+			ref({
+				_id: 'auto1',
+				name: 'A',
+				status: 'draft',
+				triggerType: 'contact_created',
+				steps: [{ _id: 's1', stepType: 'delay', config: { duration: 1, unit: 'days' } }],
+			}) as never,
+			ref([]) as never
+		);
+
+	it('is clean immediately after a step is selected (ignores load)', async () => {
+		const { selectedStepId, currentConfig, isCurrentConfigDirty } = makeDelayEditor();
+		selectedStepId.value = 's1' as never;
+		await nextTick();
+
+		expect(currentConfig.value).not.toBeNull();
+		expect(isCurrentConfigDirty.value).toBe(false);
+	});
+
+	it('flips dirty on a real edit and clears again after the step is saved', async () => {
+		const { selectedStepId, currentConfig, isCurrentConfigDirty, handleUpdateStepConfig } =
+			makeDelayEditor();
+		selectedStepId.value = 's1' as never;
+		await nextTick();
+
+		// Edit the open config (mirrors the panel's `update:current-config`).
+		currentConfig.value = { kind: 'delay', config: { duration: 5, unit: 'days' } };
+		expect(isCurrentConfigDirty.value).toBe(true);
+
+		await handleUpdateStepConfig();
+		expect(updateArgs).toHaveLength(1);
+		// Persisting adopts the edited config as the clean baseline.
+		expect(isCurrentConfigDirty.value).toBe(false);
 	});
 });

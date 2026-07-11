@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import { UnsavedChangesDialog } from '@owlat/email-builder';
 import type { Condition } from '~/composables/conditions';
 
 useHead({ title: 'Segments — Owlat' });
@@ -42,6 +43,7 @@ const {
 	segmentForm,
 	segmentErrors,
 	isSaving,
+	isSegmentFormDirty,
 	matchingCount,
 	countLoading,
 	openCreateModal,
@@ -101,6 +103,28 @@ const addCondition = () => addFilterCondition(segmentForm.filters);
 const removeCondition = (i: number) => removeFilterCondition(segmentForm.filters, i);
 const updateConditionAt = (i: number, next: Condition) => {
 	segmentForm.filters.conditions.splice(i, 1, next);
+};
+
+// Unsaved-changes guard for the builder modal. Dismissing via the backdrop or
+// the X while the form has edits prompts to save/discard instead of silently
+// dropping the segment being built. Reuses the shared UnsavedChangesDialog.
+const showSegmentDiscardDialog = ref(false);
+const requestCloseSegmentModal = () => {
+	if (isSegmentFormDirty.value) {
+		showSegmentDiscardDialog.value = true;
+		return;
+	}
+	closeSegmentModal();
+};
+const discardSegmentEdits = () => {
+	showSegmentDiscardDialog.value = false;
+	closeSegmentModal();
+};
+const saveSegmentEdits = async () => {
+	showSegmentDiscardDialog.value = false;
+	// handleSave validates and closes the modal on success; it keeps the modal
+	// open (with inline errors) when the form is invalid.
+	await handleSave();
 };
 
 // Auto-open the Create Segment modal when arriving via the audience overview
@@ -327,7 +351,7 @@ onMounted(() => {
 			:persistent="isSaving"
 			@update:open="
 				(v) => {
-					if (!v) closeSegmentModal();
+					if (!v) requestCloseSegmentModal();
 				}
 			"
 		>
@@ -528,6 +552,14 @@ onMounted(() => {
 				</UiButton>
 			</template>
 		</UiModal>
+
+		<!-- Unsaved Changes Dialog (builder dismissed with pending edits) -->
+		<UnsavedChangesDialog
+			:show="showSegmentDiscardDialog"
+			@close="showSegmentDiscardDialog = false"
+			@discard="discardSegmentEdits"
+			@save="saveSegmentEdits"
+		/>
 	</div>
 </template>
 

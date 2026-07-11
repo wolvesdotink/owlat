@@ -14,13 +14,28 @@ export interface CampaignActionsOptions {
 	validateForm: () => boolean;
 	/** Saves the form fields; resolves to whether all field-save mutations succeeded. */
 	handleSaveFields: () => Promise<boolean>;
+	/**
+	 * Called once a successful save/schedule/send has persisted the form, right
+	 * before any navigation away. Lets the caller clear its unsaved-changes flag
+	 * so the route guard doesn't prompt after a successful action.
+	 */
+	onSaved?: () => void;
 }
 
 /**
  * Composable for campaign action handlers: save, send, schedule, unschedule, cancel.
  */
 export function useCampaignActions(options: CampaignActionsOptions) {
-	const { campaignId, abTest, campaignData, isDraft, isScheduled, validateForm, handleSaveFields } = options;
+	const {
+		campaignId,
+		abTest,
+		campaignData,
+		isDraft,
+		isScheduled,
+		validateForm,
+		handleSaveFields,
+		onSaved,
+	} = options;
 	const router = useRouter();
 	const { showToast } = useToast();
 
@@ -59,10 +74,7 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 	// Honored by both the draft `schedule` and the `reschedule` path.
 	const useRecipientTimezone = ref(false);
 
-	const initializeSchedule = (
-		scheduledAt: number | undefined,
-		recipientTimezone?: boolean,
-	) => {
+	const initializeSchedule = (scheduledAt: number | undefined, recipientTimezone?: boolean) => {
 		if (scheduledAt) {
 			const date = new Date(scheduledAt);
 			scheduledDate.value = date.toISOString().slice(0, 10);
@@ -96,6 +108,7 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 			}
 
 			showToast('Campaign saved successfully!');
+			onSaved?.();
 			return true;
 		} finally {
 			isSaving.value = false;
@@ -123,6 +136,7 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 
 			showToast('Campaign is now sending!');
 
+			onSaved?.();
 			setTimeout(() => {
 				router.push('/dashboard/campaigns');
 			}, 1500);
@@ -153,9 +167,7 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 						campaignId: campaignId.value,
 						scheduledAt: scheduledDateTime.getTime(),
 						useRecipientTimezone: useRecipientTimezone.value,
-						scheduledHour: useRecipientTimezone.value
-							? scheduledDateTime.getHours()
-							: undefined,
+						scheduledHour: useRecipientTimezone.value ? scheduledDateTime.getHours() : undefined,
 						scheduledMinute: useRecipientTimezone.value
 							? scheduledDateTime.getMinutes()
 							: undefined,
@@ -169,9 +181,7 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 						campaignId: campaignId.value,
 						scheduledAt: scheduledDateTime.getTime(),
 						useRecipientTimezone: useRecipientTimezone.value,
-						scheduledHour: useRecipientTimezone.value
-							? scheduledDateTime.getHours()
-							: undefined,
+						scheduledHour: useRecipientTimezone.value ? scheduledDateTime.getHours() : undefined,
 						scheduledMinute: useRecipientTimezone.value
 							? scheduledDateTime.getMinutes()
 							: undefined,
@@ -184,9 +194,10 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 			showToast(
 				useRecipientTimezone.value
 					? `Campaign scheduled for ${scheduledTime.value} in each recipient's timezone!`
-					: 'Campaign scheduled successfully!',
+					: 'Campaign scheduled successfully!'
 			);
 
+			onSaved?.();
 			setTimeout(() => {
 				router.push('/dashboard/campaigns');
 			}, 1500);
@@ -240,6 +251,7 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 
 			showToast('Campaign cancelled.');
 
+			onSaved?.();
 			setTimeout(() => {
 				router.push('/dashboard/campaigns');
 			}, 1500);
