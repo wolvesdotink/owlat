@@ -15,7 +15,7 @@ function stubRouteParams(params: Record<string, string | string[] | undefined>) 
 describe('useRouteId', () => {
 	it('returns the string value of the default "id" param', () => {
 		stubRouteParams({ id: 'camp_123' });
-		const id = useRouteId('id');
+		const id = useRouteId();
 		expect(id.value).toBe('camp_123');
 	});
 
