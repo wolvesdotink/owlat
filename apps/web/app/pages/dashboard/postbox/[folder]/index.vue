@@ -55,7 +55,7 @@ const userId = computed(() => user.value?.id ?? null);
 			<PostboxMailboxGuard :mailbox-id="null" :loading="false" />
 			<!-- Resumable per-user onboarding checklist so setup can be picked back up here. -->
 			<div v-if="userId" class="mx-auto max-w-md px-6 pb-12">
-				<OnboardingUserChecklist :user-id="userId" class="text-left" />
+				<DashboardGettingStarted :user-id="userId" personal-only class="text-left" />
 			</div>
 		</div>
 		<div v-else class="flex-1 flex items-center justify-center">

@@ -70,33 +70,23 @@ async function handleSave(
 		</div>
 
 		<!--
-			Onboarding surface. Exactly one of these is ever visible at a time and
-			both share the same instance-scoped dismissal record:
-			- SelfHostOnboardingBanner owns the self-host pre-send phase (configure a
-			  delivery provider / verify a domain) and auto-hides once the instance
-			  can send.
-			- OnboardingChecklist takes over afterwards (and is the only surface in
-			  non-self-host mode) for the remaining go-live steps. It suppresses
-			  itself while the banner owns the pre-send phase.
+			Admin-only escalations from teammates stuck at a dead-end. These sit
+			above the unified "Getting started" surface as distinct concerns.
 		-->
 		<DashboardAccessRequests v-if="hasActiveOrganization && isAdmin" />
 		<DashboardMailboxRequests v-if="hasActiveOrganization && isAdmin" />
-		<DashboardSelfHostOnboardingBanner v-if="hasActiveOrganization && userId" :user-id="userId" />
-		<DashboardOnboardingChecklist v-if="hasActiveOrganization && userId" :user-id="userId" />
 
 		<!--
-			Persistent, resumable per-user onboarding checklist (piece c1). Distinct
-			from the instance-wide admin surfaces above: this tracks THIS member's
-			personal setup journey (mailbox, optional import, first send) and its
-			steps adapt to migration vs fresh-start mode. It DEFERS while either
-			instance surface still owns the onboarding phase, so a fresh admin never
-			sees two stacked checklists — only one onboarding affordance is ever
-			visible at a time. Dismissible; gone for good once complete.
+			The single, adaptive "Getting started" surface. It replaces the three
+			previously-stacked onboarding affordances (self-host banner + instance
+			go-live checklist + per-user checklist) with ONE card whose contents and
+			ONE dismissal action adapt to the viewer (admin vs member) and the
+			instance mode (fresh vs migration). See components/dashboard/GettingStarted.vue.
 		-->
-		<OnboardingUserChecklist
+		<DashboardGettingStarted
 			v-if="hasActiveOrganization && userId"
 			:user-id="userId"
-			class="mb-8"
+			:is-admin="isAdmin"
 		/>
 
 		<!-- Loading State -->
