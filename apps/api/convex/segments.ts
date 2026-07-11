@@ -4,7 +4,7 @@ import { internalMutation, internalQuery } from './_generated/server';
 import { authedQuery, authedMutation, authedAction } from './lib/authedFunctions';
 import { internal } from './_generated/api';
 import { requireOrgPermission } from './lib/sessionOrganization';
-import { throwNotFound } from './_utils/errors';
+import { getOrThrow } from './_utils/errors';
 import {
 	evaluateSegmentCount,
 	countLiveMatchesForSegments,
@@ -24,7 +24,10 @@ import { recordAuditLog } from './lib/auditLog';
 // Types for segment filter configuration — re-exported from the canonical
 // `Condition` union owned by `apps/api/convex/conditions/`.
 export type FilterLogic = 'AND' | 'OR';
-export type { Condition as FilterCondition, ConditionKind as FilterConditionKind } from './conditions/types';
+export type {
+	Condition as FilterCondition,
+	ConditionKind as FilterConditionKind,
+} from './conditions/types';
 
 export type { SegmentFilters } from './conditions';
 
@@ -71,7 +74,7 @@ export const listMembers = authedQuery({
 			ctx,
 			segment.filters,
 			args.paginationOpts.cursor,
-			args.paginationOpts.numItems > 0 ? args.paginationOpts.numItems : MEMBER_PAGE_SCAN,
+			args.paginationOpts.numItems > 0 ? args.paginationOpts.numItems : MEMBER_PAGE_SCAN
 		);
 
 		return {
@@ -132,10 +135,7 @@ export const listMembersForExport = authedAction({
 	args: {
 		id: v.id('segments'),
 	},
-	handler: async (
-		ctx,
-		args,
-	): Promise<{ members: Doc<'contacts'>[]; truncated: boolean }> => {
+	handler: async (ctx, args): Promise<{ members: Doc<'contacts'>[]; truncated: boolean }> => {
 		const segment = await ctx.runQuery(internal.segments.getInternal, { id: args.id });
 		if (!segment) return { members: [], truncated: false };
 
@@ -191,12 +191,16 @@ export const update = authedMutation({
 	handler: async (ctx, args) => {
 		// Validate input lengths
 		if (args.name) validateStringLength(args.name, STRING_LIMITS.NAME, 'Name');
-		if (args.description) validateStringLength(args.description, STRING_LIMITS.DESCRIPTION, 'Description');
+		if (args.description)
+			validateStringLength(args.description, STRING_LIMITS.DESCRIPTION, 'Description');
 
-		const session = await requireOrgPermission(ctx, 'segments:manage', 'Only owners and admins can update segments');
+		const session = await requireOrgPermission(
+			ctx,
+			'segments:manage',
+			'Only owners and admins can update segments'
+		);
 
-		const existing = await ctx.db.get(args.id);
-		if (!existing) { throwNotFound('Segment'); }
+		const existing = await getOrThrow(ctx, args.id, 'Segment');
 
 		await ctx.db.patch(args.id, {
 			...(args.name !== undefined && { name: args.name }),
@@ -226,10 +230,13 @@ export const update = authedMutation({
 export const remove = authedMutation({
 	args: { id: v.id('segments') },
 	handler: async (ctx, args) => {
-		const session = await requireOrgPermission(ctx, 'segments:manage', 'Only owners and admins can delete segments');
+		const session = await requireOrgPermission(
+			ctx,
+			'segments:manage',
+			'Only owners and admins can delete segments'
+		);
 
-		const existing = await ctx.db.get(args.id);
-		if (!existing) { throwNotFound('Segment'); }
+		const existing = await getOrThrow(ctx, args.id, 'Segment');
 
 		await ctx.db.delete(args.id);
 
@@ -273,9 +280,14 @@ export const create = authedMutation({
 	handler: async (ctx, args) => {
 		// Validate input lengths
 		validateStringLength(args.name, STRING_LIMITS.NAME, 'Name');
-		if (args.description) validateStringLength(args.description, STRING_LIMITS.DESCRIPTION, 'Description');
+		if (args.description)
+			validateStringLength(args.description, STRING_LIMITS.DESCRIPTION, 'Description');
 
-		const session = await requireOrgPermission(ctx, 'segments:manage', 'Only owners and admins can create segments');
+		const session = await requireOrgPermission(
+			ctx,
+			'segments:manage',
+			'Only owners and admins can create segments'
+		);
 
 		const now = Date.now();
 
@@ -355,7 +367,7 @@ export const countMatchingContacts = authedAction({
 		for (;;) {
 			const page: SegmentCountPage = await ctx.runQuery(
 				internal.segments.countMatchingContactsPage,
-				{ filters: args.filters, cursor },
+				{ filters: args.filters, cursor }
 			);
 			total += page.matched;
 			scanned += page.scanned;
@@ -384,12 +396,10 @@ export const refreshAllSegmentCounts = internalMutation({
 	},
 	handler: async (ctx, args) => {
 		// Use Convex pagination — each batch only reads its own page
-		const paginationResult = await ctx.db
-			.query('segments')
-			.paginate({
-				cursor: toPaginationCursor(args.cursor),
-				numItems: BATCH_SIZE,
-			});
+		const paginationResult = await ctx.db.query('segments').paginate({
+			cursor: toPaginationCursor(args.cursor),
+			numItems: BATCH_SIZE,
+		});
 
 		const batch = paginationResult.page;
 

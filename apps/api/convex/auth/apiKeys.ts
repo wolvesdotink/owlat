@@ -2,7 +2,7 @@ import { v } from 'convex/values';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import { validateStringLength, STRING_LIMITS } from '../lib/inputGuards';
-import { throwNotFound, throwInvalidInput, throwInvalidState } from '../_utils/errors';
+import { getOrThrow, throwInvalidInput, throwInvalidState } from '../_utils/errors';
 import { API_SCOPES, unknownScopes } from './apiScopes';
 import { hashApiKey } from './apiAuth';
 import { randomToken } from '../lib/randomToken';
@@ -177,10 +177,7 @@ export const updateName = authedMutation({
 		);
 		const { keyId, name } = args;
 
-		const key = await ctx.db.get(keyId);
-		if (!key) {
-			throwNotFound('API key');
-		}
+		await getOrThrow(ctx, keyId, 'API key');
 
 		if (!name.trim()) {
 			throwInvalidInput('API key name is required');
@@ -208,10 +205,7 @@ export const revoke = authedMutation({
 			'organization:manage',
 			'Only owners and admins can revoke API keys'
 		);
-		const key = await ctx.db.get(args.keyId);
-		if (!key) {
-			throwNotFound('API key');
-		}
+		const key = await getOrThrow(ctx, args.keyId, 'API key');
 
 		if (!key.isActive) {
 			throwInvalidState('API key is already revoked');
@@ -242,10 +236,7 @@ export const remove = authedMutation({
 			'organization:manage',
 			'Only owners and admins can delete API keys'
 		);
-		const key = await ctx.db.get(args.keyId);
-		if (!key) {
-			throwNotFound('API key');
-		}
+		await getOrThrow(ctx, args.keyId, 'API key');
 
 		await ctx.db.delete(args.keyId);
 

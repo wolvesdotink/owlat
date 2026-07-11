@@ -10,7 +10,7 @@ import { buildSearchableText } from '../lib/queryHelpers';
 import { validateStringLength, STRING_LIMITS, sanitizeEmailHeaderValue } from '../lib/inputGuards';
 import { trackEvent } from '../lib/posthogHelpers';
 import { recordAuditLog } from '../lib/auditLog';
-import { throwNotFound, throwInvalidState, throwForbidden } from '../_utils/errors';
+import { getOrThrow, throwInvalidState, throwForbidden } from '../_utils/errors';
 import { campaignStatusValidator } from '../lib/convexValidators';
 import { audienceValidator } from './audience';
 import { validateReadyToSend } from './preflight';
@@ -149,10 +149,7 @@ export const updateAudience = authedMutation({
 		// Validate the referenced segment exists (parity with the pre-ADR-0033
 		// behaviour, which loaded the segment to snapshot its filters).
 		if (args.audience.kind === 'segment') {
-			const segment = await ctx.db.get(args.audience.segmentId);
-			if (!segment) {
-				throwNotFound('Segment');
-			}
+			await getOrThrow(ctx, args.audience.segmentId, 'Segment');
 		}
 
 		await ctx.db.patch(args.campaignId, {
@@ -179,10 +176,7 @@ export const updateContent = authedMutation({
 		const { campaign } = await requireDraftCampaign(ctx, args.campaignId, 'edit campaign content');
 
 		// Verify template exists
-		const template = await ctx.db.get(args.emailTemplateId);
-		if (!template) {
-			throwNotFound('Email template');
-		}
+		await getOrThrow(ctx, args.emailTemplateId, 'Email template');
 
 		// Update searchableText if subject changed
 		const newSubject = args.subject?.trim() ?? campaign.subject ?? '';
@@ -209,10 +203,7 @@ export const duplicate = authedMutation({
 			'You do not have permission to duplicate campaigns'
 		);
 
-		const campaign = await ctx.db.get(args.campaignId);
-		if (!campaign) {
-			throwNotFound('Campaign');
-		}
+		const campaign = await getOrThrow(ctx, args.campaignId, 'Campaign');
 
 		const now = Date.now();
 		const newName = `Copy of ${campaign.name}`;
@@ -246,10 +237,7 @@ export const remove = authedMutation({
 			'You do not have permission to delete campaigns'
 		);
 
-		const campaign = await ctx.db.get(args.campaignId);
-		if (!campaign) {
-			throwNotFound('Campaign');
-		}
+		const campaign = await getOrThrow(ctx, args.campaignId, 'Campaign');
 
 		// Cannot delete campaigns that are sending
 		if (campaign.status === 'sending') {
@@ -355,10 +343,7 @@ export const sendNow = authedMutation({
 			'You do not have permission to send campaigns'
 		);
 
-		const campaign = await ctx.db.get(args.campaignId);
-		if (!campaign) {
-			throwNotFound('Campaign');
-		}
+		const campaign = await getOrThrow(ctx, args.campaignId, 'Campaign');
 
 		if (campaign.status !== 'draft' && campaign.status !== 'scheduled') {
 			throwInvalidState('Only draft or scheduled campaigns can be sent');

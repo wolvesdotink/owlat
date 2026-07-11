@@ -29,12 +29,7 @@ import {
 	getSingletonOrganizationId,
 	requireAuthenticatedIdentity,
 } from '../lib/sessionOrganization';
-import {
-	throwForbidden,
-	throwInvalidInput,
-	throwInvalidState,
-	throwNotFound,
-} from '../_utils/errors';
+import { getOrThrow, throwForbidden, throwInvalidInput, throwInvalidState } from '../_utils/errors';
 
 /** Max length of the free-text note a requester can attach. */
 const MAX_NOTE_LENGTH = 500;
@@ -154,8 +149,7 @@ export const resolve = adminMutation({
 		const session = await getBetterAuthSessionWithRole(ctx);
 		if (!session?.activeOrganizationId) throwForbidden('No active organization');
 
-		const row = await ctx.db.get(args.requestId);
-		if (!row) throwNotFound('Request');
+		const row = await getOrThrow(ctx, args.requestId, 'Request');
 		if (row.organizationId !== session.activeOrganizationId) {
 			throwForbidden('Request not accessible');
 		}

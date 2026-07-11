@@ -13,11 +13,11 @@ import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { requireMailboxAccess } from './permissions';
 import {
+	getOrThrow,
 	throwAlreadyExists,
 	throwForbidden,
 	throwInvalidInput,
 	throwInvalidState,
-	throwNotFound,
 } from '../_utils/errors';
 
 /**
@@ -104,8 +104,7 @@ export const create = authedMutation({
 export const rename = authedMutation({
 	args: { folderId: v.id('mailFolders'), name: v.string() },
 	handler: async (ctx, args) => {
-		const folder = await ctx.db.get(args.folderId);
-		if (!folder) throwNotFound('Folder');
+		const folder = await getOrThrow(ctx, args.folderId, 'Folder');
 		if (folder.role) throwInvalidState('System folders cannot be renamed');
 		const owned = await requireMailboxAccess(ctx, folder.mailboxId);
 		if (!owned.ok) throwForbidden('Folder not accessible');

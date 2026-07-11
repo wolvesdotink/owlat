@@ -10,7 +10,7 @@ import { internalQuery, internalMutation, internalAction } from '../_generated/s
 import { internal } from '../_generated/api';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { requireAdminContext } from '../lib/sessionOrganization';
-import { throwNotFound, throwAlreadyExists } from '../_utils/errors';
+import { getOrThrow, throwAlreadyExists } from '../_utils/errors';
 import { getOptional } from '../lib/env';
 
 /**
@@ -82,8 +82,7 @@ export const verifyTrackingDomain = authedMutation({
 	handler: async (ctx, args) => {
 		await requireAdminContext(ctx);
 
-		const td = await ctx.db.get(args.trackingDomainId);
-		if (!td) throwNotFound('Tracking domain');
+		const td = await getOrThrow(ctx, args.trackingDomainId, 'Tracking domain');
 
 		// Schedule DNS verification action
 		await ctx.scheduler.runAfter(0, internal.domains.trackingDomains.verifyTrackingDomainDns, {
@@ -120,8 +119,7 @@ export const removeTrackingDomain = authedMutation({
 	handler: async (ctx, args) => {
 		await requireAdminContext(ctx);
 
-		const td = await ctx.db.get(args.trackingDomainId);
-		if (!td) throwNotFound('Tracking domain');
+		await getOrThrow(ctx, args.trackingDomainId, 'Tracking domain');
 
 		await ctx.db.delete(args.trackingDomainId);
 

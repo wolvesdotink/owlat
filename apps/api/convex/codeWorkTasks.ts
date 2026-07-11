@@ -13,7 +13,7 @@ import type { MutationCtx } from './_generated/server';
 import { authedQuery, authedMutation } from './lib/authedFunctions';
 import { requireOrgPermission } from './lib/sessionOrganization';
 import { assertFeatureEnabled, isFeatureEnabled } from './lib/featureFlags';
-import { throwInvalidState, throwNotFound } from './_utils/errors';
+import { getOrThrow, throwInvalidState } from './_utils/errors';
 import { extractEmail } from './lib/emailAddress';
 import { checkCodeAgentSafety } from './lib/codeAgentGuard';
 
@@ -156,8 +156,7 @@ export const cancel = authedMutation({
 			'organization:manage',
 			'Only owners and admins can manage code tasks'
 		);
-		const task = await ctx.db.get(args.taskId);
-		if (!task) throwNotFound('Task');
+		const task = await getOrThrow(ctx, args.taskId, 'Task');
 		if (task.status === 'merged') throwInvalidState('Cannot cancel a merged task');
 
 		await ctx.db.patch(args.taskId, {
