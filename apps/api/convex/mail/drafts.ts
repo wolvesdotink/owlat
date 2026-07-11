@@ -15,15 +15,37 @@
 
 import { v } from 'convex/values';
 import { internalQuery } from '../_generated/server';
+import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { authedMutation, publicQuery } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
-import type { Id } from '../_generated/dataModel';
+import type { Doc, Id } from '../_generated/dataModel';
 import { normalizeEmail } from '@owlat/shared';
 import { requireMailboxAccess } from './permissions';
 import { resolveSendAsIdentitiesForCtx } from './identities';
 import { getOrThrow, throwForbidden, throwInvalidState, throwNotFound } from '../_utils/errors';
 import { assertStateIs, type TransitionOutcome as DraftTransitionOutcome } from './draftLifecycle';
 import { markOnboardingStep } from '../auth/userOnboarding';
+import { getOptional } from '../lib/env';
+import { isDeliveryConfigured } from '../lib/sendProviders/capability';
+
+/**
+ * True iff this mailbox actually has an outbound transport to ship the message —
+ * the honest gate behind the onboarding "first send" milestone. Hosted mailboxes
+ * dispatch through the instance delivery provider; a connected external mailbox
+ * dispatches through the mail-sync worker (the member's own SMTP). Stamping
+ * `firstSendDone` on an instance that can't dispatch would let a member
+ * "complete" a send that is silently dropped.
+ */
+async function mailboxHasSendTransport(
+	ctx: QueryCtx | MutationCtx,
+	mailbox: Doc<'mailboxes'>
+): Promise<boolean> {
+	// undefined kind ⇒ hosted (back-compat for pre-external rows).
+	if (mailbox.kind === 'external') {
+		return Boolean(getOptional('MAIL_SYNC_API_URL') && getOptional('MAIL_SYNC_API_KEY'));
+	}
+	return isDeliveryConfigured(ctx);
+}
 
 export const create = authedMutation({
 	args: {
@@ -328,8 +350,13 @@ export const send = authedMutation({
 		// First send from this instance completes the member's onboarding
 		// "firstSendDone" step (idempotent — only the first send ever writes it).
 		// This is what the fresh-start welcome's optional "email yourself" step
-		// rides on, but it fires for every send so the step can never be a lie.
-		await markOnboardingStep(ctx, owned.userId, 'firstSendDone');
+		// rides on. Gate it on a real transport: on an instance that can't
+		// dispatch this mailbox's mail the message is silently dropped, so
+		// recording a completion would be a lie. Every legitimate send (which by
+		// definition has a transport) still stamps it, for every send.
+		if (await mailboxHasSendTransport(ctx, owned.mailbox)) {
+			await markOnboardingStep(ctx, owned.userId, 'firstSendDone');
+		}
 
 		return { undoToken: outcome.undoToken!, sendAt: outcome.sendAt! };
 	},
