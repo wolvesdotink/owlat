@@ -17,7 +17,7 @@ import { describe, it, expect, vi } from 'vitest';
 import schema from '../../schema';
 import type { Id } from '../../_generated/dataModel';
 import { api } from '../../_generated/api';
-import { modules, seedMailbox } from './helpers';
+import { modules, seedMailbox } from './helpers.testlib';
 import { internal } from '../../_generated/api';
 import { resolveSendAsIdentitiesForCtx, isSanctionedSendAsForUser } from '../identities';
 
