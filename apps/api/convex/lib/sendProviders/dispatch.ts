@@ -1,3 +1,5 @@
+'use node';
+
 /**
  * Send dispatch (helper).
  *
@@ -39,7 +41,7 @@ export async function sendProviderDispatch<K extends SendProviderKind>(
 	ctx: ActionCtx,
 	kind: K,
 	params: EmailSendParams,
-	extras?: ExtrasFor<K>,
+	extras?: ExtrasFor<K>
 ): Promise<DispatchResult> {
 	const module = providerFor(kind);
 	const startTime = Date.now();
@@ -51,11 +53,11 @@ export async function sendProviderDispatch<K extends SendProviderKind>(
 
 		if (result.success) {
 			const latencyMs = Date.now() - startTime;
-			await ctx.scheduler.runAfter(
-				0,
-				internal.lib.sendProviders.health.recordSendResult,
-				{ providerType: kind, success: true, latencyMs },
-			);
+			await ctx.scheduler.runAfter(0, internal.lib.sendProviders.health.recordSendResult, {
+				providerType: kind,
+				success: true,
+				latencyMs,
+			});
 			return { result, providerType: kind, latencyMs, attempts };
 		}
 
@@ -64,11 +66,11 @@ export async function sendProviderDispatch<K extends SendProviderKind>(
 
 		if (!retryable || isLastAttempt) {
 			const latencyMs = Date.now() - startTime;
-			await ctx.scheduler.runAfter(
-				0,
-				internal.lib.sendProviders.health.recordSendResult,
-				{ providerType: kind, success: false, latencyMs },
-			);
+			await ctx.scheduler.runAfter(0, internal.lib.sendProviders.health.recordSendResult, {
+				providerType: kind,
+				success: false,
+				latencyMs,
+			});
 			return { result, providerType: kind, latencyMs, attempts };
 		}
 
@@ -77,7 +79,5 @@ export async function sendProviderDispatch<K extends SendProviderKind>(
 	}
 
 	// Unreachable — the loop returns at every iteration.
-	throw new Error(
-		'sendProviderDispatch: invariant violated — loop exhausted without returning',
-	);
+	throw new Error('sendProviderDispatch: invariant violated — loop exhausted without returning');
 }

@@ -30,6 +30,7 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { resolveContact } from '../contacts/resolution';
 import { markOnboardingStep } from '../auth/userOnboarding';
+import { normalizeEmail } from '@owlat/shared';
 
 // Tunables — kept in step with agent/knowledgeBackfill.ts.
 const INTER_MESSAGE_DELAY_MS = 150;
@@ -141,7 +142,7 @@ export const nextIndexChunk = internalQuery({
 export const resolveSenderContact = internalMutation({
 	args: { email: v.string(), fromName: v.optional(v.string()) },
 	handler: async (ctx, args): Promise<{ contactId: Id<'contacts'> | null }> => {
-		const email = args.email.trim().toLowerCase();
+		const email = normalizeEmail(args.email);
 		if (!email.includes('@')) return { contactId: null };
 		const { firstName, lastName } = splitDisplayName(args.fromName);
 		const { contactId } = await resolveContact(ctx, {

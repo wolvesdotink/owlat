@@ -26,6 +26,7 @@ import { authedMutation, authedQuery } from '../lib/authedFunctions';
 import { hasPermission, requireOrgMember, requireOrgPermission } from '../lib/sessionOrganization';
 import { checkEmailDomainVerification } from '../domains/domains';
 import { isValidEmail } from '../lib/inputGuards';
+import { normalizeEmail } from '@owlat/shared';
 import { throwInvalidInput, throwNotFound, throwAlreadyExists } from '../_utils/errors';
 
 type Ctx = QueryCtx | MutationCtx;
@@ -71,14 +72,6 @@ export function senderNotAllowedMessage(fromEmail: string): string {
 		`"${fromEmail}" is not an approved campaign sender. ` +
 		'Add it under Campaign senders, or allow custom senders in Settings.'
 	);
-}
-
-/**
- * Normalize a from-address for storage / lookup: trimmed + lowercased. Callers
- * that display the value keep the raw form in `displayName`, not here.
- */
-function normalizeEmail(email: string): string {
-	return email.trim().toLowerCase();
 }
 
 /**

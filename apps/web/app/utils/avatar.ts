@@ -20,6 +20,23 @@ export function avatarInitials(name?: string | null, email?: string | null): str
 	return (name ?? email ?? '?').slice(0, 2).toUpperCase();
 }
 
+/**
+ * Avatar initials for a contact split into first/last name fields. Takes the
+ * first letter of each present name part ("Ada", "Lovelace" -> "AL", "Ada" ->
+ * "A"), falling back to the first letter of the email, then to `?`. Single home
+ * for the contact-initials logic previously inlined in the recent-contacts card
+ * and the topic-contact detail page.
+ */
+export function personInitials(
+	firstName?: string | null,
+	lastName?: string | null,
+	email?: string | null
+): string {
+	const parts = [firstName?.trim()?.[0], lastName?.trim()?.[0]].filter(Boolean);
+	if (parts.length > 0) return parts.join('').toUpperCase();
+	return (email?.trim()?.[0] ?? '?').toUpperCase();
+}
+
 /** Diameter + text-size + text-colour classes per named size. */
 export const AVATAR_SIZE_CLASSES: Record<AvatarSize, string> = {
 	xs: 'w-5 h-5 text-[10px] text-text-tertiary',

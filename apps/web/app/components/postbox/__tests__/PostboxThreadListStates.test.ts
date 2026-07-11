@@ -14,6 +14,7 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { ref, computed, type Ref } from 'vue';
+import type { Id } from '@owlat/api/dataModel';
 
 import PostboxThreadList from '../PostboxThreadList.vue';
 import PostboxThreadRow from '../PostboxThreadRow.vue';
@@ -75,7 +76,7 @@ const contextMenuStub = {
 
 function makeMessage(i: number) {
 	return {
-		_id: `msg-${i}`,
+		_id: `msg-${i}` as Id<'mailMessages'>,
 		fromAddress: `sender${i}@example.com`,
 		fromName: `Sender ${i}`,
 		subject: `Subject ${i}`,

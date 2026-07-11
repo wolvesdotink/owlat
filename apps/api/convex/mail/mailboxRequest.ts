@@ -32,6 +32,7 @@ import {
 	throwInvalidState,
 	throwNotFound,
 } from '../_utils/errors';
+import { normalizeEmail } from '@owlat/shared';
 import { markOnboardingStep } from '../auth/userOnboarding';
 import {
 	canonicalAddress,
@@ -53,7 +54,7 @@ const MAX_NOTE_LENGTH = 500;
  * usable remains — the caller refuses rather than build a bad address.
  */
 function localpartFromEmail(email: string): string {
-	const local = email.trim().toLowerCase().split('@')[0] ?? '';
+	const local = normalizeEmail(email).split('@')[0] ?? '';
 	return local.replace(/[^a-z0-9._-]/g, '');
 }
 
@@ -176,7 +177,7 @@ export const freshStartStatus = authedQuery({
 			.query('userProfiles')
 			.withIndex('by_auth_user_id', (q) => q.eq('authUserId', session.userId))
 			.first();
-		const email = profile?.email?.trim().toLowerCase();
+		const email = profile?.email ? normalizeEmail(profile.email) : undefined;
 
 		let reservedAddress: string | null = null;
 		let reservationAwaitingDomain = false;
@@ -341,7 +342,7 @@ export const provisionFromRequest = authedMutation({
 		const reserved = await ctx.db
 			.query('pendingMailboxes')
 			.withIndex('by_invitee_email', (q) =>
-				q.eq('inviteeEmail', row.requesterEmail.trim().toLowerCase())
+				q.eq('inviteeEmail', normalizeEmail(row.requesterEmail))
 			)
 			.filter((q) => q.eq(q.field('organizationId'), organizationId))
 			.first();

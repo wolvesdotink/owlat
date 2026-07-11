@@ -29,6 +29,20 @@ export async function hashApiKey(key: string): Promise<string> {
 	return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+/**
+ * Whether a stored API key may still authenticate a request. A key is usable
+ * only while it is active AND (if a hard expiry is set) that expiry is still in
+ * the future. Extracted as a pure helper so the enforcement rule is testable
+ * without the rate-limiter component.
+ */
+export function isApiKeyUsable(
+	key: { isActive: boolean; expiresAt?: number },
+	now: number = Date.now()
+): boolean {
+	if (!key.isActive) return false;
+	if (key.expiresAt !== undefined && key.expiresAt <= now) return false;
+	return true;
+}
 
 /**
  * Rate limit headers to include in responses
@@ -101,7 +115,7 @@ export function errorResponse(
 		retryAfter?: number;
 		rateLimit?: RateLimitHeaders;
 		requestOrigin?: string | null;
-	},
+	}
 ): Response {
 	const { data, retryAfter, rateLimit, requestOrigin } = opts ?? {};
 	const composed: Record<string, string> = {
@@ -125,7 +139,7 @@ export function errorResponse(
  */
 export function methodNotAllowed(
 	message = 'Method not allowed',
-	requestOrigin?: string | null,
+	requestOrigin?: string | null
 ): Response {
 	return libMethodNotAllowed(message, sharedCorsHeaders(undefined, requestOrigin));
 }
@@ -158,7 +172,6 @@ interface AuthContext {
 	runMutation: <T>(mutation: unknown, args: unknown) => Promise<T>;
 }
 
-
 /**
  * Authenticate an API request using the provided API key
  * Returns team ID and key ID if successful, or error details
@@ -178,7 +191,11 @@ export async function authenticateApiRequest(
 	}
 
 	// Validate API key format (prefix + alphanumeric chars)
-	if (!apiKey.startsWith('lm_live_') || apiKey.length < 40 || !/^lm_live_[a-zA-Z0-9]+$/.test(apiKey)) {
+	if (
+		!apiKey.startsWith('lm_live_') ||
+		apiKey.length < 40 ||
+		!/^lm_live_[a-zA-Z0-9]+$/.test(apiKey)
+	) {
 		return {
 			success: false,
 			error: 'Invalid API key format',
@@ -191,21 +208,22 @@ export async function authenticateApiRequest(
 
 	// Validate key and check rate limit in a single mutation
 	// This ensures the rate limit is properly persisted in the database
-	const result = await ctx.runMutation<{
-		success: true;
-		keyId: Id<'apiKeys'>;
-		scopes: string[];
-	} | {
-		success: false;
-		error: 'invalid_key';
-	} | {
-		success: false;
-		error: 'rate_limited';
-		retryAfter: number;
-	}>(
-		internal.auth.apiAuth.validateAndCheckRateLimit,
-		{ keyHash }
-	);
+	const result = await ctx.runMutation<
+		| {
+				success: true;
+				keyId: Id<'apiKeys'>;
+				scopes: string[];
+		  }
+		| {
+				success: false;
+				error: 'invalid_key';
+		  }
+		| {
+				success: false;
+				error: 'rate_limited';
+				retryAfter: number;
+		  }
+	>(internal.auth.apiAuth.validateAndCheckRateLimit, { keyHash });
 
 	if (!result.success) {
 		if (result.error === 'invalid_key') {
@@ -232,9 +250,11 @@ export async function authenticateApiRequest(
 	}
 
 	// Update last used timestamp (fire and forget)
-	ctx.runMutation(internal.auth.apiAuth.updateKeyLastUsed, { keyId: result.keyId }).catch((error) => {
-		logError('[API Auth] Failed to update last used timestamp for key:', result.keyId, error);
-	});
+	ctx
+		.runMutation(internal.auth.apiAuth.updateKeyLastUsed, { keyId: result.keyId })
+		.catch((error) => {
+			logError('[API Auth] Failed to update last used timestamp for key:', result.keyId, error);
+		});
 
 	const now = Date.now();
 	const resetTime = now + 1000;
@@ -268,7 +288,7 @@ export const validateAndCheckRateLimit = internalMutation({
 			.withIndex('by_key_hash', (q) => q.eq('keyHash', args.keyHash))
 			.first();
 
-		if (!key || !key.isActive) {
+		if (!key || !isApiKeyUsable(key)) {
 			return { success: false as const, error: 'invalid_key' as const };
 		}
 
@@ -357,7 +377,7 @@ export interface AuthenticatedContext {
 export function requireScope(
 	auth: AuthenticatedContext,
 	scope: ApiScope,
-	requestOrigin?: string | null,
+	requestOrigin?: string | null
 ): Response | null {
 	if (auth.scopes.includes(scope)) return null;
 	return errorResponse('forbidden', `This API key is missing the required scope: ${scope}`, {

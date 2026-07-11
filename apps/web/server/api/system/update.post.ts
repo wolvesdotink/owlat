@@ -61,20 +61,19 @@ export default defineEventHandler(async (event) => {
 	//    `/api/self-update` so both routes stay in lock-step.
 	const composeTemplate = await resolveVerifiedComposeTemplate({ targetVersion, currentVersion });
 
-	// 2. Look up the current user for audit trail.
-	const identity = await client
-		.query(api.platformAdmin.platformAdmin.isPlatformAdmin, {})
-		.catch(() => null);
-	// isPlatformAdmin returned true already (from requirePlatformAdmin), so use
-	// a dedicated identity query if available — for now, we don't need the
-	// auth user id; use a generic tag.
-	void identity;
+	// 2. Look up the acting admin's user id for the audit trail. Falls back to
+	//    the generic 'platform-admin' tag only if the lookup fails (it won't
+	//    normally — requirePlatformAdmin already proved an admin session).
+	const initiatedBy =
+		(await client
+			.query(api.platformAdmin.platformAdmin.currentPlatformAdminUserId, {})
+			.catch(() => null)) ?? 'platform-admin';
 
 	// 3. Record the update start.
 	const runId = await client.mutation(asPublicMutation(internal.systemUpdates.recordUpdateStart), {
 		versionFrom: currentVersion,
 		versionTo: targetVersion,
-		initiatedBy: 'platform-admin', // TODO: surface actual user id
+		initiatedBy,
 	});
 
 	// 4. Dispatch to the updater sidecar.

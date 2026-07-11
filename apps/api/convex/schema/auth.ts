@@ -148,6 +148,9 @@ export const authTables = {
 		// Status
 		isActive: v.boolean(),
 		revokedAt: v.optional(v.number()),
+		// Optional hard expiry (epoch ms). When set and in the past, the key is
+		// rejected at verification even while `isActive` is still true.
+		expiresAt: v.optional(v.number()),
 		// Timestamps
 		createdAt: v.number(),
 		updatedAt: v.number(),
