@@ -125,7 +125,7 @@ export const createFromPrompt = authedMutation({
 		dataset: v.optional(datasetKeyValidator),
 	},
 	handler: async (ctx, args) => {
-		await requireAdminContext(ctx);
+		const session = await requireAdminContext(ctx);
 		// Bound the prompt — it feeds an LLM call, so an unbounded string is a
 		// (admin-only) cost/abuse vector.
 		validateStringLength(args.prompt, STRING_LIMITS.DESCRIPTION, 'Prompt');
@@ -137,7 +137,7 @@ export const createFromPrompt = authedMutation({
 			description: args.prompt,
 			html: '<div style="padding:20px;text-align:center;color:#666;">Generating visualization...</div>',
 			pinned: args.pinned ?? false,
-			createdBy: 'user', // Will be replaced with actual user ID when auth is wired
+			createdBy: session.userId, // Real creator: the admin session that issued the request.
 			createdAt: now,
 			updatedAt: now,
 		});

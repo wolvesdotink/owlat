@@ -26,8 +26,8 @@ const modules = Object.fromEntries(
 			!path.includes('sesActions') &&
 			!path.includes('semanticFileProcessing') &&
 			!path.includes('visualizationAgent') &&
-			!path.includes('llmProvider'),
-	),
+			!path.includes('llmProvider')
+	)
 );
 
 const testUser = { subject: 'admin-user', issuer: 'test', tokenIdentifier: 'test|admin-user' };
@@ -36,21 +36,21 @@ describe('apiKeys.create — least privilege', () => {
 	it('rejects creation with no scopes (no silent all-scopes default)', async () => {
 		const t = convexTest(schema, modules).withIdentity(testUser);
 		await expect(t.mutation(api.auth.apiKeys.create, { name: 'no-scopes' })).rejects.toThrow(
-			/At least one API scope is required/,
+			/At least one API scope is required/
 		);
 	});
 
 	it('rejects an empty scopes array', async () => {
 		const t = convexTest(schema, modules).withIdentity(testUser);
 		await expect(
-			t.mutation(api.auth.apiKeys.create, { name: 'empty', scopes: [] }),
+			t.mutation(api.auth.apiKeys.create, { name: 'empty', scopes: [] })
 		).rejects.toThrow(/At least one API scope is required/);
 	});
 
 	it('rejects unknown scopes', async () => {
 		const t = convexTest(schema, modules).withIdentity(testUser);
 		await expect(
-			t.mutation(api.auth.apiKeys.create, { name: 'typo', scopes: ['contacts:reed'] }),
+			t.mutation(api.auth.apiKeys.create, { name: 'typo', scopes: ['contacts:reed'] })
 		).rejects.toThrow(/Unknown API scope/);
 	});
 
@@ -72,5 +72,28 @@ describe('apiKeys.create — least privilege', () => {
 		});
 		const stored = await t.run(async (ctx) => ctx.db.get(result.keyId));
 		expect(stored?.scopes).toEqual(['contacts:read', 'events:write']);
+	});
+
+	it('rejects an expiry that is not in the future', async () => {
+		const t = convexTest(schema, modules).withIdentity(testUser);
+		await expect(
+			t.mutation(api.auth.apiKeys.create, {
+				name: 'past-expiry',
+				scopes: ['contacts:read'],
+				expiresAt: Date.now() - 1000,
+			})
+		).rejects.toThrow(/expiry must be in the future/i);
+	});
+
+	it('stores a future expiry on the key', async () => {
+		const t = convexTest(schema, modules).withIdentity(testUser);
+		const expiresAt = Date.now() + 60_000;
+		const result = await t.mutation(api.auth.apiKeys.create, {
+			name: 'expiring',
+			scopes: ['contacts:read'],
+			expiresAt,
+		});
+		const stored = await t.run(async (ctx) => ctx.db.get(result.keyId));
+		expect(stored?.expiresAt).toBe(expiresAt);
 	});
 });

@@ -82,6 +82,9 @@ export const create = authedMutation({
 	args: {
 		name: v.string(),
 		scopes: v.optional(v.array(v.string())),
+		// Optional hard expiry (epoch ms). Must be in the future when provided;
+		// past that instant the key is rejected at verification.
+		expiresAt: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
 		await requireOrgPermission(
@@ -92,7 +95,13 @@ export const create = authedMutation({
 		// Validate input lengths
 		validateStringLength(args.name, STRING_LIMITS.NAME, 'Name');
 
-		const { name, scopes } = args;
+		const { name, scopes, expiresAt } = args;
+
+		// A supplied expiry must be in the future — a past (or now) expiry would
+		// mint a key that is dead on arrival.
+		if (expiresAt !== undefined && expiresAt <= Date.now()) {
+			throwInvalidInput('API key expiry must be in the future');
+		}
 
 		// Validate name
 		if (!name.trim()) {
@@ -137,6 +146,7 @@ export const create = authedMutation({
 			keyPrefix,
 			scopes: resolvedScopes,
 			isActive: true,
+			...(expiresAt !== undefined ? { expiresAt } : {}),
 			createdAt: now,
 			updatedAt: now,
 		});

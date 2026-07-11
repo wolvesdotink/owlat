@@ -34,11 +34,7 @@
 
 import { httpAction } from '../_generated/server';
 import { internal } from '../_generated/api';
-import {
-	getClientIp,
-	rateLimitedResponse,
-	type PublicRateLimitType,
-} from '../publicRateLimit';
+import { getClientIp, rateLimitedResponse, type PublicRateLimitType } from '../publicRateLimit';
 import {
 	errorResponse,
 	jsonResponse,
@@ -275,18 +271,33 @@ export async function parseBody(request: Request, mode: BodyParser): Promise<unk
 		return data;
 	}
 	if (contentType.includes('multipart/form-data')) {
+		let formData: FormData;
 		try {
-			const formData = await request.formData();
-			const data: Record<string, string> = {};
-			formData.forEach((value, key) => {
-				if (typeof value === 'string') {
-					data[key] = value;
-				}
-			});
-			return data;
+			formData = await request.formData();
 		} catch {
 			throw new Error('Invalid form data');
 		}
+		// Enforce the body cap on the multipart path too. The Content-Length
+		// pre-check above is not sufficient — a chunked (unset Content-Length)
+		// multipart body slips past it, so bound the decoded parts here. String
+		// parts count their character length; file/blob parts count their byte
+		// size. Any part pushing the running total over the cap rejects the
+		// request before it is handed to a handler.
+		const data: Record<string, string> = {};
+		let totalBytes = 0;
+		for (const [key, value] of formData.entries()) {
+			totalBytes += key.length;
+			if (typeof value === 'string') {
+				totalBytes += value.length;
+				data[key] = value;
+			} else {
+				totalBytes += (value as { size: number }).size;
+			}
+			if (totalBytes > MAX_BODY_BYTES) {
+				throw new Error('Request body too large');
+			}
+		}
+		return data;
 	}
 	throw new Error('Unsupported content type. Use JSON or form-urlencoded.');
 }
@@ -317,10 +328,7 @@ function applyCors(response: Response, corsHeaders: Record<string, string> | nul
  */
 export function createShellHandler(
 	config: EndpointConfig,
-	handler: (
-		ctx: HandlerContext,
-		args: HandlerArgs,
-	) => Promise<ResultAction | ResultOutcome>,
+	handler: (ctx: HandlerContext, args: HandlerArgs) => Promise<ResultAction | ResultOutcome>
 ): (ctx: HandlerContext, request: Request) => Promise<Response> {
 	const matcher = compilePath(config.path);
 	const corsHeaders: Record<string, string> | null =
@@ -349,11 +357,10 @@ export function createShellHandler(
 		// bucket. IP-only endpoints (e.g. forms, whose token is a shared id) keep
 		// the plain IP key.
 		const ip = getClientIp(request);
-		const rateKey =
-			config.rateLimitKeyMode === 'ip+token' && tokenRaw ? `${ip}:${tokenRaw}` : ip;
+		const rateKey = config.rateLimitKeyMode === 'ip+token' && tokenRaw ? `${ip}:${tokenRaw}` : ip;
 		const { ok, retryAfter } = await ctx.runMutation<{ ok: boolean; retryAfter: number }>(
 			internal.publicRateLimit.checkPublicRateLimit,
-			{ limitType: config.rateLimit, key: rateKey },
+			{ limitType: config.rateLimit, key: rateKey }
 		);
 		if (!ok) {
 			return rateLimitedResponse(retryAfter, { corsHeaders: corsHeaders ?? undefined });
@@ -400,16 +407,14 @@ export function createShellHandler(
 			if ('raw' in action) {
 				return applyCors(action.raw, corsHeaders);
 			}
-			const combinedHeaders = action.headers
-				? { ...corsHeaders, ...action.headers }
-				: corsHeaders;
+			const combinedHeaders = action.headers ? { ...corsHeaders, ...action.headers } : corsHeaders;
 			return jsonResponse({ ok: true, data: action.data }, 200, combinedHeaders);
 		}
 		return errorResponse(
 			statusToCategory(action.status),
 			action.message ?? action.reason,
 			{ reason: action.reason },
-			corsHeaders,
+			corsHeaders
 		);
 	};
 }
@@ -429,10 +434,7 @@ export function createShellHandler(
  */
 export function publicTokenEndpoint(
 	config: EndpointConfig,
-	handler: (
-		ctx: HandlerContext,
-		args: HandlerArgs,
-	) => Promise<ResultAction | ResultOutcome>,
+	handler: (ctx: HandlerContext, args: HandlerArgs) => Promise<ResultAction | ResultOutcome>
 ) {
 	const inner = createShellHandler(config, handler);
 	return httpAction(async (ctx, request) => inner(ctx as unknown as HandlerContext, request));

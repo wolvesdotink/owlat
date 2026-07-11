@@ -6,6 +6,7 @@ import {
 	jsonResponse,
 	errorResponse,
 	authenticateApiRequest,
+	isApiKeyUsable,
 	requireScope,
 	type AuthenticatedContext,
 } from '../auth/apiAuth';
@@ -147,7 +148,64 @@ describe('errorResponse', () => {
 	});
 });
 
+describe('isApiKeyUsable', () => {
+	const now = 1_000_000;
+
+	it('accepts an active key with no expiry', () => {
+		expect(isApiKeyUsable({ isActive: true }, now)).toBe(true);
+	});
+
+	it('accepts an active key whose expiry is still in the future', () => {
+		expect(isApiKeyUsable({ isActive: true, expiresAt: now + 1 }, now)).toBe(true);
+	});
+
+	it('rejects an active key whose expiry has passed', () => {
+		expect(isApiKeyUsable({ isActive: true, expiresAt: now - 1 }, now)).toBe(false);
+	});
+
+	it('rejects an active key expiring exactly now (boundary is inclusive)', () => {
+		expect(isApiKeyUsable({ isActive: true, expiresAt: now }, now)).toBe(false);
+	});
+
+	it('rejects an inactive key even with a future expiry', () => {
+		expect(isApiKeyUsable({ isActive: false, expiresAt: now + 10_000 }, now)).toBe(false);
+	});
+});
+
 // ============ Integration tests with Convex DB ============
+
+describe('expiry enforcement (stored key round-trip)', () => {
+	it('rejects a stored active-but-expired key and accepts an unexpired one', async () => {
+		const t = convexTest(schema, modules);
+
+		await t.run(async (ctx) => {
+			const now = Date.now();
+			const expiredId = await ctx.db.insert('apiKeys', {
+				name: 'Expired',
+				keyHash: 'hash_expired',
+				keyPrefix: 'lm_live_',
+				isActive: true,
+				expiresAt: now - 1000,
+				createdAt: now,
+				updatedAt: now,
+			});
+			const liveId = await ctx.db.insert('apiKeys', {
+				name: 'Live',
+				keyHash: 'hash_live',
+				keyPrefix: 'lm_live_',
+				isActive: true,
+				expiresAt: now + 60_000,
+				createdAt: now,
+				updatedAt: now,
+			});
+
+			const expired = await ctx.db.get(expiredId);
+			const live = await ctx.db.get(liveId);
+			expect(isApiKeyUsable(expired!, now)).toBe(false);
+			expect(isApiKeyUsable(live!, now)).toBe(true);
+		});
+	});
+});
 
 describe('validateApiKey (handler logic)', () => {
 	it('returns null for non-existent key hash', async () => {
@@ -352,7 +410,8 @@ describe('authenticateApiRequest', () => {
 
 		const mockCtx = {
 			runQuery: vi.fn(),
-			runMutation: vi.fn()
+			runMutation: vi
+				.fn()
 				.mockResolvedValueOnce({
 					success: true,
 					keyId: 'key123',
@@ -378,7 +437,8 @@ describe('authenticateApiRequest', () => {
 
 		const mockCtx = {
 			runQuery: vi.fn(),
-			runMutation: vi.fn()
+			runMutation: vi
+				.fn()
 				.mockResolvedValueOnce({
 					success: true,
 					keyId: 'key123',
@@ -392,7 +452,6 @@ describe('authenticateApiRequest', () => {
 		expect(mockCtx.runMutation).toHaveBeenCalledTimes(2);
 	});
 });
-
 
 // ============ Scope enforcement ============
 

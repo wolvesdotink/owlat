@@ -94,6 +94,22 @@ export const isPlatformAdmin = publicQuery({
 });
 
 /**
+ * Public query returning the current platform admin's auth user id (or null
+ * when the caller is not a platform admin). Used by server routes that need to
+ * record the real actor in an audit trail — e.g. the in-app system-update flow
+ * stamps this id as `initiatedBy` instead of a generic 'platform-admin' tag.
+ */
+// public: returns the caller's own id only when they are already a platform
+// admin; anonymous / non-admin callers get null. No cross-user disclosure.
+export const currentPlatformAdminUserId = publicQuery({
+	args: {},
+	handler: async (ctx) => {
+		const admin = await getPlatformAdmin(ctx);
+		return admin?.authUserId ?? null;
+	},
+});
+
+/**
  * Internal query to check if a user is a platform admin (for HTTP handlers).
  */
 export const isPlatformAdminByUserId = internalQuery({
