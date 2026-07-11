@@ -22,18 +22,18 @@ export interface CampaignFormErrors {
  * Delegates action handlers to useCampaignActions and
  * test-email sending to the CampaignsTestEmailModal component.
  */
-export function useCampaignForm(
-	campaignId: Ref<Id<'campaigns'>>,
-	abTest: ABTest
-) {
+export function useCampaignForm(campaignId: Ref<Id<'campaigns'>>, abTest: ABTest) {
 	const { isPending: authPending, isAuthenticated } = useAuth();
 
 	// ─── Data Fetching ──────────────────────────────────────────────────
 
-	const { data: campaignData, isLoading: campaignLoading } = useConvexQuery(
-		api.campaigns.campaigns.getWithRelations,
-		() => ({ campaignId: campaignId.value })
-	);
+	const {
+		data: campaignData,
+		isLoading: campaignLoading,
+		error: campaignError,
+	} = useConvexQuery(api.campaigns.campaigns.getWithRelations, () => ({
+		campaignId: campaignId.value,
+	}));
 
 	const { results: topics } = useTopicsList();
 
@@ -229,7 +229,6 @@ export function useCampaignForm(
 
 	// ─── Test Email (delegated) ─────────────────────────────────────────
 
-
 	// ─── Form Initialization ────────────────────────────────────────────
 
 	watch(
@@ -282,11 +281,26 @@ export function useCampaignForm(
 
 	const getLanguageLabel = (code: string): string => {
 		const labels: Record<string, string> = {
-			en: 'English', de: 'German', fr: 'French', es: 'Spanish',
-			it: 'Italian', pt: 'Portuguese', nl: 'Dutch', pl: 'Polish',
-			ru: 'Russian', ja: 'Japanese', ko: 'Korean', zh: 'Chinese',
-			ar: 'Arabic', hi: 'Hindi', tr: 'Turkish', sv: 'Swedish',
-			da: 'Danish', no: 'Norwegian', fi: 'Finnish', cs: 'Czech',
+			en: 'English',
+			de: 'German',
+			fr: 'French',
+			es: 'Spanish',
+			it: 'Italian',
+			pt: 'Portuguese',
+			nl: 'Dutch',
+			pl: 'Polish',
+			ru: 'Russian',
+			ja: 'Japanese',
+			ko: 'Korean',
+			zh: 'Chinese',
+			ar: 'Arabic',
+			hi: 'Hindi',
+			tr: 'Turkish',
+			sv: 'Swedish',
+			da: 'Danish',
+			no: 'Norwegian',
+			fi: 'Finnish',
+			cs: 'Czech',
 		};
 		return labels[code] ?? code.toUpperCase();
 	};
@@ -295,6 +309,7 @@ export function useCampaignForm(
 		// Data
 		campaignData,
 		campaignLoading,
+		campaignError,
 		topics,
 		segments,
 		emailTemplates,

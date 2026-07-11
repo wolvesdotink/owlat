@@ -23,19 +23,18 @@ export function useSemanticFiles() {
 	// so the filter spans the whole table, not just one fetched page.
 	const list = usePaginatedQuery(
 		api.semanticFiles.list,
-		() => debouncedQuery.value
-			? 'skip'
-			: { sourceType: sourceFilter.value ?? undefined },
-		{ initialNumItems: PAGE_SIZE },
+		() => (debouncedQuery.value ? 'skip' : { sourceType: sourceFilter.value ?? undefined }),
+		{ initialNumItems: PAGE_SIZE }
 	);
 
 	// Search query (used when search is active)
 	const search = usePaginatedQuery(
 		api.semanticFiles.search,
-		() => debouncedQuery.value
-			? { query: debouncedQuery.value, sourceType: sourceFilter.value ?? undefined }
-			: 'skip',
-		{ initialNumItems: PAGE_SIZE },
+		() =>
+			debouncedQuery.value
+				? { query: debouncedQuery.value, sourceType: sourceFilter.value ?? undefined }
+				: 'skip',
+		{ initialNumItems: PAGE_SIZE }
 	);
 
 	const active = computed(() => (debouncedQuery.value ? search : list));
@@ -43,6 +42,7 @@ export function useSemanticFiles() {
 	const files = computed(() => active.value.results.value);
 	const status = computed(() => active.value.status.value);
 	const isLoading = computed(() => active.value.isLoading.value);
+	const error = computed(() => active.value.error.value);
 	const loadMore = () => active.value.loadMore(PAGE_SIZE);
 
 	// `sourceType` is applied as a POST-pagination filter by the backend, so a
@@ -84,14 +84,17 @@ export function useSemanticFiles() {
 	// Upload state
 	const isUploading = ref(false);
 
-	const upload = async (file: File, options?: {
-		title?: string;
-		tags?: string[];
-		sourceType?: SourceType;
-		contactIds?: Id<'contacts'>[];
-		threadId?: Id<'conversationThreads'>;
-		previousVersionId?: Id<'semanticFiles'>;
-	}) => {
+	const upload = async (
+		file: File,
+		options?: {
+			title?: string;
+			tags?: string[];
+			sourceType?: SourceType;
+			contactIds?: Id<'contacts'>[];
+			threadId?: Id<'conversationThreads'>;
+			previousVersionId?: Id<'semanticFiles'>;
+		}
+	) => {
 		// Guard the advertised size ceiling client-side so the user gets immediate
 		// feedback instead of consuming an upload slot before the server rejects it.
 		if (file.size > MAX_LIBRARY_FILE_BYTES) {
@@ -128,11 +131,14 @@ export function useSemanticFiles() {
 		}
 	};
 
-	const editFile = async (fileId: Id<'semanticFiles'>, patch: {
-		title?: string;
-		tags?: string[];
-		contactIds?: Id<'contacts'>[];
-	}) => {
+	const editFile = async (
+		fileId: Id<'semanticFiles'>,
+		patch: {
+			title?: string;
+			tags?: string[];
+			contactIds?: Id<'contacts'>[];
+		}
+	) => {
 		const result = await updateFile({ fileId, ...patch });
 		if (result === undefined) return;
 		showToast('File updated');
@@ -149,6 +155,7 @@ export function useSemanticFiles() {
 		files,
 		status,
 		isLoading,
+		error,
 		isUploading,
 		// Filters
 		searchQuery,
