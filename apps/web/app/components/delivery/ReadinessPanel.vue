@@ -15,8 +15,12 @@
  * each gate links to.
  */
 import { api } from '@owlat/api';
-import { deriveDeliveryReadiness, type ReadinessGateStatus } from '~/utils/deliveryReadiness';
-import { healthChipClass, type HealthTone } from '~/utils/healthTone';
+import {
+	deriveDeliveryReadiness,
+	readinessInputFromSources,
+	type ReadinessGateStatus,
+} from '~/utils/deliveryReadiness';
+import { healthChipClass, healthTextClass } from '~/utils/healthTone';
 
 const {
 	data: transport,
@@ -36,32 +40,15 @@ const hasError = computed(() => Boolean(transportError.value || domainsError.val
 const readiness = computed(() => {
 	const summary = transport.value;
 	if (!summary) return null;
-	const rows = domainRows.value ?? [];
-	const verified = rows.filter((row) => row.status === 'verified');
-	// Report authentication against the domain we'd actually send from: a verified
-	// domain first, else the most-active configured one (rows are sorted desc).
-	const primary = verified[0] ?? rows[0] ?? null;
-	return deriveDeliveryReadiness({
-		transportConfigured: summary.canSend,
-		hasDomains: rows.length > 0,
-		domainVerified: verified.length > 0,
-		authComplete: primary ? primary.missing.length === 0 : false,
-		authMissing: primary?.missing ?? [],
-	});
+	return deriveDeliveryReadiness(readinessInputFromSources(summary, domainRows.value ?? []));
 });
 
-// Per-gate glyph + text colour, drawn from the same tone vocabulary as the rest
-// of the delivery surface (never the brand terracotta for state).
+// Per-gate glyph; the text colour reuses the shared tone → class map so it can't
+// drift from the dot/chip renderings (never the brand terracotta for state).
 const GATE_ICON: Record<ReadinessGateStatus, string> = {
 	ready: 'lucide:check-circle-2',
 	attention: 'lucide:alert-circle',
 	pending: 'lucide:clock',
-};
-const TONE_TEXT: Record<HealthTone, string> = {
-	success: 'text-success',
-	warning: 'text-warning',
-	error: 'text-error',
-	neutral: 'text-text-tertiary',
 };
 </script>
 
@@ -120,7 +107,7 @@ const TONE_TEXT: Record<HealthTone, string> = {
 					<Icon
 						:name="GATE_ICON[g.status]"
 						class="w-5 h-5 mt-0.5 shrink-0"
-						:class="TONE_TEXT[g.tone]"
+						:class="healthTextClass[g.tone]"
 					/>
 					<div class="flex-1 min-w-0">
 						<p class="text-sm font-medium text-text-primary">{{ g.title }}</p>

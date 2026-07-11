@@ -79,6 +79,49 @@ export interface ReadinessInput {
 	authMissing: string[];
 }
 
+/**
+ * The transport half of the two go-live sources: the non-secret
+ * `getTransportSummary` — only `canSend` (the real send-path gate) matters here.
+ */
+export interface ReadinessTransportSummary {
+	canSend: boolean;
+}
+
+/**
+ * The domain half: one row of `getDeliveryDomainTable`, narrowed to the two
+ * facts readiness needs — whether it's verified and which auth records are still
+ * missing. Structural on purpose so this stays free of the Convex client.
+ */
+export interface ReadinessDomainRow {
+	status: 'registering' | 'pending' | 'verified' | 'failed';
+	missing: string[];
+}
+
+/**
+ * Fold the two live query results into the flat `ReadinessInput` the verdict is
+ * derived from. This is the small piece of real derivation the panel used to do
+ * inline: which domain we report authentication against.
+ *
+ * `getDeliveryDomainTable` returns rows already sorted most-active first, so we
+ * report auth against the most-active VERIFIED domain (the one mail actually
+ * sends from), falling back to the most-active configured domain before any has
+ * verified, and to nothing at all when there are no domains yet.
+ */
+export function readinessInputFromSources(
+	summary: ReadinessTransportSummary,
+	rows: readonly ReadinessDomainRow[]
+): ReadinessInput {
+	const verified = rows.filter((row) => row.status === 'verified');
+	const primary = verified[0] ?? rows[0] ?? null;
+	return {
+		transportConfigured: summary.canSend,
+		hasDomains: rows.length > 0,
+		domainVerified: verified.length > 0,
+		authComplete: primary ? primary.missing.length === 0 : false,
+		authMissing: primary?.missing ?? [],
+	};
+}
+
 const DOMAINS_HREF = '/dashboard/delivery/domains';
 const CONFIG_HREF = '/dashboard/delivery/config';
 
