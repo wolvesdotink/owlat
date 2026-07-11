@@ -1,6 +1,8 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import {
 	SETUP_STEPS,
+	SETUP_DRAFT_STORAGE_KEY,
+	readSetupDraft,
 	isSetupEmailValid,
 	validateAdmin,
 	adminIsValid,
@@ -383,6 +385,29 @@ describe('draft persistence round-trip', () => {
 	it('accepts a partial draft, surfacing only the well-typed fields', () => {
 		const restored = parseSetupDraft(JSON.stringify({ token: 'stk_x', isMigrationMode: false }));
 		expect(restored).toEqual({ token: 'stk_x', isMigrationMode: false });
+	});
+});
+
+describe('readSetupDraft — sessionStorage read the reload restore hinges on', () => {
+	const fullDraft: SetupDraft = {
+		flags: getDefaultFlags(),
+		env: { EMAIL_PROVIDER: 'resend', RESEND_API_KEY: 're_live_1' },
+		admin: validAdmin,
+		isMigrationMode: true,
+		token: 'stk_abc123',
+	};
+
+	beforeEach(() => {
+		sessionStorage.clear();
+	});
+
+	it('returns the persisted draft seeded under the namespaced key', () => {
+		sessionStorage.setItem(SETUP_DRAFT_STORAGE_KEY, serializeSetupDraft(fullDraft));
+		expect(readSetupDraft()).toEqual(fullDraft);
+	});
+
+	it('returns null when no draft has been persisted', () => {
+		expect(readSetupDraft()).toBeNull();
 	});
 });
 
