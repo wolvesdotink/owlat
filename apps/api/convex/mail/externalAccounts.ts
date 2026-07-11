@@ -13,8 +13,11 @@
  *   Public:   getForCurrentUser, disconnect, purge
  *   Internal: _connectInternal, _updateCredentialsInternal (called by the
  *             connect action after encryption), _getRowInternal,
- *             listConnectableAccounts, setSyncStatus, resolveOutboundTransport
- *             (the mail-sync worker / outbound dispatcher surface, admin-key only)
+ *             listConnectableAccounts, setSyncStatus
+ *
+ * The outbound transport decision for a mailbox (hosted MTA vs the user's own
+ * SMTP) lives in the sibling `mail/outboundTransport.ts`, not here — it is not
+ * external-account-specific and is shared with the onboarding "first send" gate.
  *
  * Read queries NEVER return the encrypted credential envelope — only the
  * mail-sync worker decrypts, via getCredentialsForWorker in the actions file.
@@ -28,8 +31,6 @@ import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 import { assertFeatureEnabled } from '../lib/featureFlags';
 import { provisionMailbox, canonicalAddress, resolveDeliverableMailbox } from './mailbox';
 import { markOnboardingStep } from '../auth/userOnboarding';
-import { checkEmailDomainVerification } from '../domains/domains';
-import { getMtaConfig } from './mtaClient';
 import {
 	throwForbidden,
 	throwInvalidInput,
@@ -453,46 +454,5 @@ export const setSyncStatus = internalMutation({
 		}
 		if (args.markSynced) patch['lastSyncAt'] = now;
 		await ctx.db.patch(args.accountId, patch);
-	},
-});
-
-/**
- * Outbound transport decision for a mailbox. Returns `{kind:'hosted'}` for
- * Owlat-hosted mailboxes (MTA path) or `{kind:'external', smtp…}` (mail-sync
- * worker path). Never returns the password.
- */
-export const resolveOutboundTransport = internalQuery({
-	args: { mailboxId: v.id('mailboxes') },
-	handler: async (ctx, args) => {
-		const mailbox = await ctx.db.get(args.mailboxId);
-		if (!mailbox || mailbox.kind !== 'external' || !mailbox.externalAccountId) {
-			return { kind: 'hosted' as const };
-		}
-		// Post-import "switch your sending": an external mailbox whose owner opted
-		// into the instance transport ships through the hosted MTA path instead of
-		// their own SMTP. The switch was gated on a verified from-domain + a
-		// configured MTA (setSendingPreference), but the domain could have been
-		// unverified/deleted or the transport removed since. Re-assert the gate
-		// HERE so the DKIM-alignment claim stays true over time: if the instance
-		// can no longer sign this from-domain, fall back to the user's own SMTP
-		// rather than ship misaligned (or, on a torn-down MTA, silently dropped)
-		// mail. undefined preference keeps the original external SMTP.
-		if (mailbox.outboundPreference === 'instance') {
-			const domainCheck = await checkEmailDomainVerification(ctx, mailbox.address);
-			if (domainCheck.verified && getMtaConfig() !== null) {
-				return { kind: 'hosted' as const };
-			}
-		}
-		const account = await ctx.db.get(mailbox.externalAccountId);
-		if (!account) return { kind: 'hosted' as const };
-		return {
-			kind: 'external' as const,
-			externalAccountId: account._id,
-			smtpHost: account.smtpHost,
-			smtpPort: account.smtpPort,
-			isSmtpSecure: account.isSmtpSecure,
-			smtpUsername: account.smtpUsername ?? account.imapUsername,
-			fromAddress: mailbox.address,
-		};
 	},
 });
