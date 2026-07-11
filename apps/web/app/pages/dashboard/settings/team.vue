@@ -116,7 +116,6 @@ const verifiedDomains = computed(() =>
 const reservableDomains = computed(() =>
 	(domainsData.value ?? [])
 		.filter((d) => d.status === 'verified' || d.status === 'pending' || d.status === 'registering')
-		.slice()
 		.sort((a, b) => Number(b.status === 'verified') - Number(a.status === 'verified'))
 );
 const canOfferMailbox = computed(() => postboxEnabled.value && reservableDomains.value.length > 0);
