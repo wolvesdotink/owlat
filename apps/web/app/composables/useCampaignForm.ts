@@ -1,9 +1,10 @@
-import { ref, computed, watch, type Ref } from 'vue';
+import { ref, computed, type Ref } from 'vue';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { emailRegex } from '@owlat/shared';
 import type { useCampaignABTest } from './useCampaignABTest';
 import { useCampaignActions } from './useCampaignActions';
+import { useEditorDirtyTracking } from './useEmailEditorBridge';
 
 type ABTest = ReturnType<typeof useCampaignABTest>;
 
@@ -215,6 +216,29 @@ export function useCampaignForm(campaignId: Ref<Id<'campaigns'>>, abTest: ABTest
 		() => ({ audience: audience.value ?? undefined })
 	);
 
+	// ─── Unsaved-changes Guard ──────────────────────────────────────────
+
+	// Reuses the shared composable + dialog. `onSave` closes over `actions`
+	// (assigned below) and only runs after the user confirms "Save", by which
+	// point it exists; it throws on a failed save so the user stays on the page.
+	const {
+		showDialog: showUnsavedChangesDialog,
+		hasUnsavedChanges,
+		confirmDiscard,
+		confirmSave,
+		cancelNavigation,
+		setHasChanges,
+	} = useUnsavedChanges({
+		onSave: async () => {
+			if (!(await actions.handleSave())) throw new Error('Save failed');
+		},
+	});
+
+	// Clears the dirty flag after a successful save/schedule/send so the route
+	// guard doesn't prompt on the action's own navigation. Bound below once the
+	// dirty tracker exists.
+	let markCleanForm: () => void = () => {};
+
 	// ─── Actions (delegated) ────────────────────────────────────────────
 
 	const actions = useCampaignActions({
@@ -225,37 +249,62 @@ export function useCampaignForm(campaignId: Ref<Id<'campaigns'>>, abTest: ABTest
 		isScheduled,
 		validateForm,
 		handleSaveFields,
+		onSaved: () => markCleanForm(),
 	});
 
-	// ─── Test Email (delegated) ─────────────────────────────────────────
+	// ─── Form Initialization + Dirty Tracking ───────────────────────────
 
-	// ─── Form Initialization ────────────────────────────────────────────
+	// Load → dirty loop. Initializes the form from the campaign once, then flags
+	// the form dirty on any subsequent field edit. The shared tracker defers its
+	// "initialized" flag by a tick so the initial writes don't count as edits
+	// (no false-positive "unsaved changes" on load).
+	const { markClean } = useEditorDirtyTracking({
+		source: campaignData,
+		initialize: (campaign) => {
+			if (isFormInitialized.value) return;
+			campaignName.value = campaign.name;
+			fromName.value = campaign.fromName ?? '';
+			fromEmail.value = campaign.fromEmail ?? '';
+			replyTo.value = campaign.replyTo ?? '';
+			audienceType.value = campaign.audience?.kind ?? 'topic';
+			selectedTopicId.value =
+				campaign.audience?.kind === 'topic' ? campaign.audience.topicId : null;
+			selectedSegmentId.value =
+				campaign.audience?.kind === 'segment' ? campaign.audience.segmentId : null;
+			selectedTemplateId.value = campaign.emailTemplateId ?? null;
+			campaignSubject.value = campaign.subject ?? campaign.emailTemplate?.subject ?? '';
+			archiveEnabled.value = campaign.archiveEnabled ?? flags.value['campaigns.archive'] === true;
 
-	watch(
-		campaignData,
-		(campaign) => {
-			if (campaign && !isFormInitialized.value) {
-				campaignName.value = campaign.name;
-				fromName.value = campaign.fromName ?? '';
-				fromEmail.value = campaign.fromEmail ?? '';
-				replyTo.value = campaign.replyTo ?? '';
-				audienceType.value = campaign.audience?.kind ?? 'topic';
-				selectedTopicId.value =
-					campaign.audience?.kind === 'topic' ? campaign.audience.topicId : null;
-				selectedSegmentId.value =
-					campaign.audience?.kind === 'segment' ? campaign.audience.segmentId : null;
-				selectedTemplateId.value = campaign.emailTemplateId ?? null;
-				campaignSubject.value = campaign.subject ?? campaign.emailTemplate?.subject ?? '';
-				archiveEnabled.value = campaign.archiveEnabled ?? flags.value['campaigns.archive'] === true;
+			actions.initializeSchedule(campaign.scheduledAt, campaign.useRecipientTimezone);
+			abTest.initializeFromCampaign(campaign);
 
-				actions.initializeSchedule(campaign.scheduledAt, campaign.useRecipientTimezone);
-				abTest.initializeFromCampaign(campaign);
-
-				isFormInitialized.value = true;
-			}
+			isFormInitialized.value = true;
 		},
-		{ immediate: true }
-	);
+		watchSources: [
+			() => campaignName.value,
+			() => fromName.value,
+			() => fromEmail.value,
+			() => replyTo.value,
+			() => audienceType.value,
+			() => selectedTopicId.value,
+			() => selectedSegmentId.value,
+			() => selectedTemplateId.value,
+			() => campaignSubject.value,
+			() => archiveEnabled.value,
+			() => actions.scheduledDate.value,
+			() => actions.scheduledTime.value,
+			() => actions.useRecipientTimezone.value,
+			() => abTest.abTestEnabled.value,
+			() => abTest.abTestType.value,
+			() => abTest.abVariantBSubject.value,
+			() => abTest.abVariantBTemplateId.value,
+			() => abTest.abSplitPercentage.value,
+			() => abTest.abWinnerCriteria.value,
+			() => abTest.abTestDuration.value,
+		],
+		onDirtyChange: setHasChanges,
+	});
+	markCleanForm = markClean;
 
 	// ─── Helpers ────────────────────────────────────────────────────────
 
@@ -343,7 +392,12 @@ export function useCampaignForm(campaignId: Ref<Id<'campaigns'>>, abTest: ABTest
 		isSaving: actions.isSaving,
 		saveError: actions.saveError,
 
-		// Test email
+		// Unsaved-changes guard
+		showUnsavedChangesDialog,
+		hasUnsavedChanges,
+		confirmDiscard,
+		confirmSave,
+		cancelNavigation,
 
 		// Actions
 		handleSave: actions.handleSave,

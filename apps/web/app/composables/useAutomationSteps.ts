@@ -3,11 +3,7 @@ import { api } from '@owlat/api';
 import type { Id, Doc } from '@owlat/api/dataModel';
 import type { TriggerConfig } from '../../../api/convex/lib/automationConfigTypes';
 import { useAutomationStepConfig } from './useAutomationStepConfig';
-import {
-	listStepEditorModules,
-	stepEditorModuleFor,
-	type StepKind,
-} from './automations/steps';
+import { listStepEditorModules, stepEditorModuleFor, type StepKind } from './automations/steps';
 
 interface AutomationWithSteps {
 	_id: Id<'automations'>;
@@ -75,10 +71,12 @@ export function useAutomationSteps(
 		if (kind === 'email' && step.emailTemplate) {
 			return step.emailTemplate.name;
 		}
-		return (module.getDescription as (c: unknown, ctx: { emailTemplates: Doc<'emailTemplates'>[] }) => string)(
-			config,
-			{ emailTemplates: emailTemplates.value ?? [] }
-		);
+		return (
+			module.getDescription as (
+				c: unknown,
+				ctx: { emailTemplates: Doc<'emailTemplates'>[] }
+			) => string
+		)(config, { emailTemplates: emailTemplates.value ?? [] });
 	};
 
 	const handleAddStep = async (stepType: StepKind, insertAtIndex?: number) => {
@@ -169,10 +167,7 @@ export function useAutomationSteps(
 			const module = stepEditorModuleFor(kind);
 			const config = module.parseConfig(stepConfig.parseStepConfig(step));
 			const error = (
-				module.validateForActivation as (
-					c: unknown,
-					ctx: { stepCount: number }
-				) => string | null
+				module.validateForActivation as (c: unknown, ctx: { stepCount: number }) => string | null
 			)(config, { stepCount: mutableSteps.value.length });
 			if (error) {
 				reasons.push(`Step ${i + 1}: ${error}`);
@@ -198,6 +193,7 @@ export function useAutomationSteps(
 		canActivate,
 
 		currentConfig: stepConfig.currentConfig,
+		isCurrentConfigDirty: stepConfig.isCurrentConfigDirty,
 
 		handleAddStep,
 		handleDeleteStep,

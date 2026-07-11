@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { VueDraggable } from 'vue-draggable-plus';
 import { api } from '@owlat/api';
+import { UnsavedChangesDialog } from '@owlat/email-builder';
 import type { Id } from '@owlat/api/dataModel';
 import { computed } from 'vue';
 import { provideConditionEditorContext } from '~/composables/conditions';
@@ -66,6 +67,7 @@ const {
 	stepTypes,
 	canActivate,
 	currentConfig,
+	isCurrentConfigDirty,
 
 	// Methods
 	handleAddStep,
@@ -157,18 +159,77 @@ const handleToggleStatus = async () => {
 	}
 };
 
-// Navigate back
+// Navigate back. `router.push` triggers the unsaved-changes route guard below
+// when the open step panel has edits, so Back prompts instead of dropping them.
 const handleBack = () => {
 	router.push('/dashboard/automations');
 };
 
-// Handle save draft (save automation name/description)
+// Unsaved-changes guard for the open step panel. Leaving the page (Back, the
+// trigger "Edit" link, or any in-app navigation) while the panel holds edits
+// prompts to save/discard. Reuses the shared composable + dialog. `onSave`
+// persists the open step config before navigating.
+const {
+	showDialog: showLeaveDialog,
+	confirmDiscard: confirmLeaveDiscard,
+	confirmSave: confirmLeaveSave,
+	cancelNavigation: cancelLeave,
+	setHasChanges,
+} = useUnsavedChanges({
+	onSave: async () => {
+		await handleUpdateStepConfig();
+		// A failed step-config save keeps the panel dirty; throw so the guard
+		// stays put instead of clearing the flag and navigating away — mirrors
+		// the sibling saveStepSwitch and the campaign/settings surfaces.
+		if (isCurrentConfigDirty.value) throw new Error('Save failed');
+	},
+});
+watch(isCurrentConfigDirty, (dirty) => setHasChanges(dirty), { immediate: true });
+
+// Guarded step selection: switching steps re-derives currentConfig from the
+// persisted step, which would silently drop unsaved panel edits. Prompt first.
+const pendingStepId = ref<Id<'automationSteps'> | null>(null);
+const showStepSwitchDialog = ref(false);
+const requestSelectStep = (stepId: Id<'automationSteps'>) => {
+	if (stepId === selectedStepId.value) return;
+	if (isCurrentConfigDirty.value) {
+		pendingStepId.value = stepId;
+		showStepSwitchDialog.value = true;
+		return;
+	}
+	selectedStepId.value = stepId;
+};
+const applyPendingStep = () => {
+	selectedStepId.value = pendingStepId.value;
+	pendingStepId.value = null;
+	showStepSwitchDialog.value = false;
+};
+const discardStepSwitch = () => {
+	applyPendingStep();
+};
+const saveStepSwitch = async () => {
+	await handleUpdateStepConfig();
+	// A failed save keeps the panel dirty — stay on the current step so edits
+	// aren't lost, leaving the dialog up.
+	if (isCurrentConfigDirty.value) return;
+	applyPendingStep();
+};
+const cancelStepSwitch = () => {
+	pendingStepId.value = null;
+	showStepSwitchDialog.value = false;
+};
+
+// Handle save draft (save automation name/description + the open step config)
 const handleSaveDraft = async () => {
 	if (!automation.value) return;
 
 	isSavingDraft.value = true;
 
 	try {
+		// Persist the open step's edits too, so Save Draft doesn't drop panel work.
+		if (selectedStepId.value && isCurrentConfigDirty.value) {
+			await handleUpdateStepConfig({ silent: true });
+		}
 		const result = await updateAutomation({
 			automationId: automationId.value,
 			name: automation.value.name,
@@ -497,7 +558,7 @@ onUnmounted(() => {
 											? 'ring-2 ring-brand border-brand'
 											: 'hover:border-border-default',
 									]"
-									@click="selectedStepId = step._id"
+									@click="requestSelectStep(step._id)"
 								>
 									<div class="flex items-center gap-3">
 										<!-- Drag Handle -->
@@ -792,5 +853,21 @@ onUnmounted(() => {
 				</div>
 			</Transition>
 		</Teleport>
+
+		<!-- Unsaved Changes Dialog — leaving the page with unsaved step edits -->
+		<UnsavedChangesDialog
+			:show="showLeaveDialog"
+			@close="cancelLeave"
+			@discard="confirmLeaveDiscard"
+			@save="confirmLeaveSave"
+		/>
+
+		<!-- Unsaved Changes Dialog — switching steps with unsaved step edits -->
+		<UnsavedChangesDialog
+			:show="showStepSwitchDialog"
+			@close="cancelStepSwitch"
+			@discard="discardStepSwitch"
+			@save="saveStepSwitch"
+		/>
 	</div>
 </template>
