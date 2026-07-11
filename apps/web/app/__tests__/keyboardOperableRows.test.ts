@@ -6,13 +6,14 @@
  * announced (role="button"), operable with Enter and Space, and — for the
  * expandable delivery rows — reflecting open/closed state via aria-expanded.
  *
- * This gate reads the REAL shipped page templates (not fabricated copies) and
- * pins the exact interactive markup, so a regression to a bare <div @click>
- * (keyboard-unreachable) fails CI. These four pages are Convex-backed Nuxt
- * `pages/` components with inline row markup — there is no extractable row
- * sub-component to mount, and mounting a full page in isolation would require
- * stubbing the entire Convex/Nuxt/UI surface, so we assert against the source
- * of truth directly. Each container's keydown handlers are additionally
+ * This gate reads the REAL shipped templates (not fabricated copies) and pins
+ * the exact interactive markup, so a regression to a bare <div @click>
+ * (keyboard-unreachable) fails CI. The webhooks/marketing/transactional rows are
+ * inline in their Convex-backed Nuxt `pages/` components; the domains row markup
+ * now lives in its extracted `components/domains/RecordRow.vue` sub-component.
+ * Either way, mounting the surface in isolation would require stubbing the
+ * entire Convex/Nuxt/UI surface, so we assert against the source of truth
+ * directly. Each container's keydown handlers are additionally
  * required to carry the `.self` modifier: without it, activating a nested
  * action button with the keyboard would bubble up and ALSO fire the row/card
  * default action, violating the "activating a row never fires a nested action"
@@ -25,7 +26,7 @@ import { fileURLToPath } from 'node:url';
 
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
 
-const domains = read('../pages/dashboard/delivery/domains.vue');
+const domainsRow = read('../components/domains/RecordRow.vue');
 const webhooks = read('../pages/dashboard/delivery/webhooks.vue');
 const marketing = read('../pages/dashboard/send/marketing/index.vue');
 const transactional = read('../pages/dashboard/send/transactional/index.vue');
@@ -81,14 +82,14 @@ function expectExpandableHeader(tag: string, panelIdPrefix: string) {
 
 describe('delivery expandable rows are keyboard-operable', () => {
 	it('domains: header is a labelled, non-bubbling toggle linked to its DNS panel', () => {
-		const header = pick(domains, '@click="toggleDomainExpansion(domain._id)"', 'div');
+		const header = pick(domainsRow, '@click="emit(\'toggle\')"', 'div');
 		expectExpandableHeader(header, 'domain-records-');
 		// Panel is programmatically linked back to the header.
-		expect(domains).toContain(':id="' + '`' + 'domain-records-');
+		expect(domainsRow).toContain(':id="' + '`' + 'domain-records-');
 		// The nested Remove control is named for screen readers, and nesting is
 		// real (@click.stop) — which is why the header keydown must be `.self`.
-		expect(domains).toMatch(/aria-label="Remove domain"/);
-		expect(domains).toMatch(/@click\.stop=/);
+		expect(domainsRow).toMatch(/aria-label="Remove domain"/);
+		expect(domainsRow).toMatch(/@click\.stop=/);
 	});
 
 	it('webhooks: header is a labelled, non-bubbling toggle linked to its detail panel', () => {
@@ -146,7 +147,7 @@ describe('parity with the components/campaigns/CommandRow.vue reference', () => 
 	});
 
 	it('no changed page reintroduces the inert @keydown.enter.prevent', () => {
-		for (const src of [domains, webhooks, marketing, transactional]) {
+		for (const src of [domainsRow, webhooks, marketing, transactional]) {
 			expect(src).not.toMatch(/@keydown\.enter\.prevent/);
 		}
 	});
