@@ -8,9 +8,8 @@
   of the FF design tokens exist yet (their stylesheet ships with the bundle).
   The custom properties below therefore MIRROR the Fluid Functionalism SSOT
   (packages/ui/assets/css/{dark,light}.css: --surface-1, --color-brand,
-  --color-text-{primary,tertiary}, --color-border-subtle) rather than inventing
-  new values, and resolve the theme via prefers-color-scheme since the
-  color-mode class is not on <html> this early.
+  --color-text-primary) rather than inventing new values, and resolve the theme
+  via prefers-color-scheme since the color-mode class is not on <html> this early.
 
   The owl glyph is the same path as public/favicon.svg, inlined so it needs no
   network fetch. On the desktop workspace switch the boot plugin paints its own
@@ -42,8 +41,6 @@
 		--spa-bg: #171717; /* --surface-1 (dark) */
 		--spa-brand: #c4785a; /* --color-brand (dark) */
 		--spa-ink: #ededed; /* --color-text-primary (dark) */
-		--spa-quiet: #9a9a9a; /* --color-text-tertiary (dark) */
-		--spa-line: #232323; /* --color-border-subtle (dark) */
 
 		position: fixed;
 		inset: 0;
@@ -52,9 +49,6 @@
 		justify-content: center;
 		background-color: var(--spa-bg);
 		color: var(--spa-ink);
-		font-family:
-			'Instrument Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui,
-			sans-serif;
 	}
 
 	@media (prefers-color-scheme: light) {
@@ -62,8 +56,6 @@
 			--spa-bg: #fafafa; /* --surface-1 (light) */
 			--spa-brand: #b86b4d; /* --color-brand (light) */
 			--spa-ink: #171717; /* --color-text-primary (light) */
-			--spa-quiet: #666666; /* --color-text-tertiary (light) */
-			--spa-line: #f0f0f0; /* --color-border-subtle (light) */
 		}
 	}
 
