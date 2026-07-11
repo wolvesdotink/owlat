@@ -9,6 +9,13 @@ const DEFAULT_SITE_URL = 'http://localhost:3000';
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
 	ssr: false,
+	// With ssr:false a cold launch is a blank window until the bundle + first
+	// subscription resolve. This FF-styled splash (app/spa-loading-template.html)
+	// paints the Owlat mark on the first frame instead. Fully self-contained
+	// (inline CSS/SVG, no external assets — the CSP forbids them); Nuxt removes it
+	// once the app mounts.
+	// Resolved relative to srcDir (app/, under compatibilityVersion 4).
+	spaLoadingTemplate: 'spa-loading-template.html',
 	extends: ['../../packages/ui'],
 
 	compatibilityDate: '2025-01-16',
