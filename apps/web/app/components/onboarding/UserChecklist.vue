@@ -2,6 +2,8 @@
 import { api } from '@owlat/api';
 import { isInstanceOnboardingActive, shouldShowUserChecklist } from '~/utils/onboarding';
 import {
+	AI_CONNECTED_STEP_ID,
+	isAiConnected,
 	isChecklistComplete,
 	visibleChecklistSteps,
 	type ChecklistStepId,
@@ -53,6 +55,24 @@ const instanceOnboardingActive = computed(() =>
 	})
 );
 
+// The `aiConnected` step is org-scoped, not a per-user stamp: it is done the
+// moment a provider is configured for the instance (env fallback OR a stored
+// key). Source it from the SAME env-OR-stored signal the backend gap computes —
+// `getFlagsConfigStatus` lists the `ai` flag ONLY while it is unconfigured, so
+// the step completes once the flag drops out of the gap map (whether config
+// came from LLM_* env or a stored key). Reading `getConfig().configured` would
+// instead miss env-only self-hosters, who have a working provider but no stored
+// row. This surface returns only env-var names / presence booleans — no secret.
+const { data: flagsConfigStatus, isLoading: isLoadingAiConfig } = useConvexQuery(
+	api.workspaces.featureFlags.getFlagsConfigStatus,
+	{}
+);
+
+// AI is configured for the instance exactly when the `ai` flag is absent from
+// the config-gap map (env OR stored). The loading-state guard lives in the pure
+// helper so it stays unit-tested.
+const aiConfigured = computed(() => isAiConnected(flagsConfigStatus.value));
+
 const mode = computed<OnboardingMode>(() =>
 	settings.value?.isMigrationMode ? 'migration' : 'fresh'
 );
@@ -60,7 +80,10 @@ const mode = computed<OnboardingMode>(() =>
 const steps = computed(() =>
 	visibleChecklistSteps(mode.value).map((step) => ({
 		...step,
-		completed: (onboarding.value?.[step.id] ?? null) !== null,
+		completed:
+			step.id === AI_CONNECTED_STEP_ID
+				? aiConfigured.value
+				: (onboarding.value?.[step.id] ?? null) !== null,
 	}))
 );
 
@@ -73,7 +96,11 @@ const completedCount = computed(() => steps.value.filter((s) => s.completed).len
 const isComplete = computed(() => isChecklistComplete(mode.value, completedIds.value));
 
 const isLoading = computed(
-	() => isLoadingOnboarding.value || isLoadingSettings.value || isLoadingInstance.value
+	() =>
+		isLoadingOnboarding.value ||
+		isLoadingSettings.value ||
+		isLoadingInstance.value ||
+		isLoadingAiConfig.value
 );
 
 const shouldShow = computed(() =>
