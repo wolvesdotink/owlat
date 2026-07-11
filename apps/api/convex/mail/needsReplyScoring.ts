@@ -14,6 +14,7 @@
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
 import { contactFrecencyScore } from './contacts';
+import { normalizeEmail } from '@owlat/shared';
 import {
 	computePriorityScore,
 	isScreenedOut,
@@ -35,7 +36,7 @@ async function loadSenderSignal(
 	const contact = await ctx.db
 		.query('mailContacts')
 		.withIndex('by_mailbox_and_email', (q) =>
-			q.eq('mailboxId', mailboxId).eq('email', email.trim().toLowerCase())
+			q.eq('mailboxId', mailboxId).eq('email', normalizeEmail(email))
 		)
 		.first();
 	if (!contact) return {};

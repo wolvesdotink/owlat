@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
+	capitalize,
 	formatDate,
 	formatShortDate,
 	formatDateTime,
@@ -11,6 +12,29 @@ import {
 	formatPercentage,
 	formatFileSize,
 } from '../formatters';
+
+describe('capitalize', () => {
+	it('upper-cases the first character and leaves the rest untouched', () => {
+		expect(capitalize('delivered')).toBe('Delivered');
+		expect(capitalize('sms')).toBe('Sms');
+	});
+
+	it('leaves an already-capitalized string unchanged', () => {
+		expect(capitalize('Delivered')).toBe('Delivered');
+	});
+
+	it('does not lower-case the remaining characters', () => {
+		expect(capitalize('bODY')).toBe('BODY');
+	});
+
+	it('handles a single-character string', () => {
+		expect(capitalize('a')).toBe('A');
+	});
+
+	it('returns an empty string unchanged', () => {
+		expect(capitalize('')).toBe('');
+	});
+});
 
 describe('formatDate', () => {
 	it('returns "Never" for null', () => {
