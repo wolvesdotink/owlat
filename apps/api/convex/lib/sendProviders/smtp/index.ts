@@ -1,3 +1,5 @@
+'use node';
+
 /**
  * Generic SMTP-relay Send provider adapter (module).
  *

@@ -26,7 +26,7 @@ import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import { markOnboardingStep } from '../../auth/userOnboarding';
 import type { Id } from '../../_generated/dataModel';
-import { modules } from './helpers';
+import { modules } from './helpers.testlib';
 
 const sessionMocks = vi.hoisted(() => ({
 	userId: 'user-A',

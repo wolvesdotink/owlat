@@ -18,7 +18,7 @@ import type { Id } from '../../_generated/dataModel';
 import { api, internal } from '../../_generated/api';
 import { requireMailboxAccess } from '../permissions';
 import { provisionMailbox } from '../mailbox';
-import { modules, seedMailbox } from './helpers';
+import { modules, seedMailbox } from './helpers.testlib';
 
 // One mutable hoisted session drives BOTH the `authedMutation`/`authedQuery`
 // wrapper floors (`getMutationContext` / `requireOrgMember`) AND the in-handler

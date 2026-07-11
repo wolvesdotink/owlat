@@ -8,6 +8,11 @@
  * The per-file `vi.mock('../../lib/sessionOrganization', …)` stays local to
  * each test (it hoists a file-scoped mock fn), so this module deliberately
  * exports no session helpers.
+ *
+ * The `.testlib.ts` (double-dot) name keeps Convex from bundling this file:
+ * its entry-point filter skips any basename with more than one dot, which is
+ * also how the sibling `*.test.ts` specs are excluded. A single-dot name would
+ * be pushed to the deployment, where `import.meta.glob` crashes the isolate.
  */
 
 import type { TestConvex } from 'convex-test';

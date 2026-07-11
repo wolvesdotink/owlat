@@ -24,7 +24,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
-import { modules } from './helpers';
+import { modules } from './helpers.testlib';
 import { resolveDeliverableMailbox } from '../mailbox';
 
 const sessionMocks = vi.hoisted(() => ({
