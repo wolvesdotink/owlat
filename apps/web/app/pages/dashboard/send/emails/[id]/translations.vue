@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import type { Id } from '@owlat/api/dataModel';
-
 useHead({ title: 'Email Translations — Owlat' });
 
 definePageMeta({
@@ -8,8 +6,7 @@ definePageMeta({
 	middleware: 'auth',
 });
 
-const route = useRoute();
-const emailId = route.params['id'] as Id<'emailTemplates'>;
+const emailId = useRouteId<'emailTemplates'>();
 </script>
 
 <template>

@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
-import type { Id } from '@owlat/api/dataModel';
 
 useHead({ title: 'Team inbox members — Owlat' });
 
@@ -10,8 +9,7 @@ definePageMeta({
 	requiresAnyFeature: ['postbox', 'mail.external'],
 });
 
-const route = useRoute();
-const mailboxId = computed(() => route.params['mailboxId'] as Id<'mailboxes'>);
+const mailboxId = useRouteId<'mailboxes'>('mailboxId');
 
 const { data: mailbox, isLoading: mailboxLoading } = useConvexQuery(api.mail.mailbox.get, () => ({
 	mailboxId: mailboxId.value,
