@@ -588,7 +588,16 @@ describe('pendingMailbox — early-instance (pre-verification) reservation', () 
 			localpart: 'marcel',
 			domain: 'verifying.example',
 		});
+
+		// The invitee ACCEPTS before verify: the claim parks in awaiting_domain and
+		// stamps the reservation with the accepting userId — that stamp (not an
+		// email match) is what the sweep keys on.
+		setAdminSession('invitee-user', 'test-org');
 		await seedUserProfile(t, 'invitee-user', 'invitee@example.com');
+		const parked = await t.mutation(api.mail.pendingMailbox.claimForInvitation, {
+			invitationId: 'inv-early',
+		});
+		expect(parked.created).toBe(false);
 
 		// The domain verifies → the lifecycle sweep provisions the parked mailbox.
 		await t.run(async (ctx) => {
@@ -623,7 +632,12 @@ describe('pendingMailbox — early-instance (pre-verification) reservation', () 
 			localpart: 'marcel',
 			domain: 'verifying.example',
 		});
-		// No userProfile seeded — the invitee hasn't signed up yet.
+		// A profile exists for the invitee email (they REGISTERED via the invite
+		// link — register.vue creates the profile before the accept step) but they
+		// never accepted, so the reservation carries no acceptedByUserId. The sweep
+		// must NOT provision them: acceptance is read from the stamp, never
+		// re-derived by matching the email against userProfiles.
+		await seedUserProfile(t, 'invitee-user', 'invitee@example.com');
 
 		await t.run(async (ctx) => {
 			await ctx.db.patch(domainId, { status: 'verified' });

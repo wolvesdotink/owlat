@@ -468,6 +468,10 @@ describe('mailboxRequest.provisionFromRequest', () => {
 		setMemberSession('member-a');
 		const t = convexTest(schema, modules);
 		await seedUserProfile(t, 'member-a', 'member-a@example.com');
+		// The reserved domain must be verified — the claim gate refuses to stand up
+		// a hosted mailbox on an unverified domain (also proves the verified path is
+		// unchanged for the admin provision-from-request flow).
+		await seedVerifiedDomain(t, 'hinterland.camp');
 		const created = await t.mutation(api.mail.mailboxRequest.request, {});
 		await t.run(async (ctx) => {
 			await ctx.db.insert('pendingMailboxes', {

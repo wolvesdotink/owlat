@@ -10,6 +10,7 @@
  */
 import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { mount } from '@vue/test-utils';
+import PostboxMailboxGuard from '../PostboxMailboxGuard.vue';
 
 type FreshStatus = {
 	hasMailbox: boolean;
@@ -35,8 +36,6 @@ beforeAll(() => {
 	vi.stubGlobal('useFeatureFlag', () => ({ isEnabled: () => false }));
 	vi.stubGlobal('useBackendOperation', () => ({ run: vi.fn(), isLoading: ref(false) }));
 });
-
-import PostboxMailboxGuard from '../PostboxMailboxGuard.vue';
 
 function mountGuard() {
 	return mount(PostboxMailboxGuard, {
