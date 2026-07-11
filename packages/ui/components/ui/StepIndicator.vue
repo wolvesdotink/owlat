@@ -11,9 +11,23 @@ interface Props {
 	steps: Step[];
 	getStepStatus: (stepId: Step['id']) => StepStatus;
 	isConnectorHighlighted: (index: number) => boolean;
+	/**
+	 * Optional. When provided, a *completed* step becomes a button that calls this
+	 * with the step id, letting the user jump back. Omitted ⇒ the indicator stays
+	 * a passive read-out (current behaviour for every other caller).
+	 */
+	onStepClick?: (stepId: Step['id']) => void;
 }
 
-defineProps<Props>();
+const props = defineProps<Props>();
+
+function stepIsClickable(stepId: Step['id']): boolean {
+	return !!props.onStepClick && props.getStepStatus(stepId) === 'completed';
+}
+
+function handleStepClick(stepId: Step['id']): void {
+	if (stepIsClickable(stepId)) props.onStepClick?.(stepId);
+}
 </script>
 
 <template>
@@ -25,7 +39,18 @@ defineProps<Props>();
 				class="flex items-center"
 				:class="index < steps.length - 1 ? 'flex-1' : ''"
 			>
-				<div class="flex items-center">
+				<component
+					:is="stepIsClickable(step.id) ? 'button' : 'div'"
+					:type="stepIsClickable(step.id) ? 'button' : undefined"
+					class="flex items-center rounded-md text-left"
+					:class="
+						stepIsClickable(step.id)
+							? 'cursor-pointer transition-opacity duration-(--motion-fast) hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand'
+							: ''
+					"
+					:aria-label="stepIsClickable(step.id) ? `Go back to ${step.label}` : undefined"
+					@click="handleStepClick(step.id)"
+				>
 					<!-- Step Circle -->
 					<div
 						:class="[
@@ -37,7 +62,11 @@ defineProps<Props>();
 									: 'bg-bg-surface text-text-tertiary border border-border-subtle',
 						]"
 					>
-						<Icon v-if="getStepStatus(step.id) === 'completed'" name="lucide:check" class="w-4 h-4" />
+						<Icon
+							v-if="getStepStatus(step.id) === 'completed'"
+							name="lucide:check"
+							class="w-4 h-4"
+						/>
 						<span v-else>{{ step.number }}</span>
 					</div>
 					<!-- Step Label -->
@@ -53,7 +82,7 @@ defineProps<Props>();
 					>
 						{{ step.label }}
 					</span>
-				</div>
+				</component>
 				<!-- Connector Line -->
 				<div
 					v-if="index < steps.length - 1"
