@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import { UnsavedChangesDialog } from '@owlat/email-builder';
 import { languageOptions } from '~/data/languageOptions';
 import { emailSettingsSave } from '~/composables/emailSettingsSave';
+import { useEditorDirtyTracking } from '~/composables/useEmailEditorBridge';
 import type { Id } from '@owlat/api/dataModel';
 
 useHead({ title: 'Email Settings — Owlat' });
@@ -55,7 +57,6 @@ const translations = ref<Record<string, { subject: string; previewText: string }
 const rawTranslations = ref<Record<string, Record<string, unknown>>>({});
 
 // Track changes
-const hasChanges = ref(false);
 const isSaving = ref(false);
 
 // The default language as last persisted. Changing the form's defaultLanguage
@@ -90,51 +91,56 @@ const getLanguageNativeLabel = (code: string) => {
 	return lang?.nativeLabel || code;
 };
 
-// Initialize from template
-watch(
-	template,
-	(t) => {
-		if (t) {
-			form.subject = t.subject || '';
-			form.previewText = t.previewText || '';
-			form.defaultLanguage = t.defaultLanguage || 'en';
-			persistedDefaultLanguage.value = t.defaultLanguage || 'en';
-			form.supportedLanguages = [...(t.supportedLanguages || [])];
+// Unsaved-changes guard. `onSave` closes over `handleSave` (declared below); it
+// is only invoked later from the navigation guard, by which point it exists.
+const {
+	showDialog: showUnsavedDialog,
+	confirmDiscard,
+	confirmSave,
+	cancelNavigation,
+	setHasChanges,
+} = useUnsavedChanges({
+	onSave: async () => {
+		if (!(await handleSave())) throw new Error('Save failed');
+	},
+});
 
-			// Parse translations
-			if (t.translations) {
-				try {
-					const parsed = JSON.parse(t.translations);
-					// Extract the editable fields, but retain the full payload per
-					// language so non-edited fields (e.g. `blocks`) survive a save.
-					for (const lang of Object.keys(parsed)) {
-						const entry = parsed[lang] && typeof parsed[lang] === 'object' ? parsed[lang] : {};
-						rawTranslations.value[lang] = { ...entry };
-						translations.value[lang] = {
-							subject: entry.subject || '',
-							previewText: entry.previewText || '',
-						};
-					}
-				} catch {
-					translations.value = {};
-					rawTranslations.value = {};
+// Load → dirty loop. Reuses the shared editor dirty tracker, which defers its
+// "initialized" flag by a tick so the writes `initialize` makes when the
+// template loads don't trip the change watcher. The old hand-rolled deep watch
+// fired synchronously during init and flashed a false-positive "Unsaved changes".
+const { hasChanges, markClean } = useEditorDirtyTracking({
+	source: template,
+	initialize: (t) => {
+		form.subject = t.subject || '';
+		form.previewText = t.previewText || '';
+		form.defaultLanguage = t.defaultLanguage || 'en';
+		persistedDefaultLanguage.value = t.defaultLanguage || 'en';
+		form.supportedLanguages = [...(t.supportedLanguages || [])];
+
+		// Parse translations
+		if (t.translations) {
+			try {
+				const parsed = JSON.parse(t.translations);
+				// Extract the editable fields, but retain the full payload per
+				// language so non-edited fields (e.g. `blocks`) survive a save.
+				for (const lang of Object.keys(parsed)) {
+					const entry = parsed[lang] && typeof parsed[lang] === 'object' ? parsed[lang] : {};
+					rawTranslations.value[lang] = { ...entry };
+					translations.value[lang] = {
+						subject: entry.subject || '',
+						previewText: entry.previewText || '',
+					};
 				}
+			} catch {
+				translations.value = {};
+				rawTranslations.value = {};
 			}
-
-			hasChanges.value = false;
 		}
 	},
-	{ immediate: true }
-);
-
-// Track changes
-watch(
-	[() => form, translations],
-	() => {
-		hasChanges.value = true;
-	},
-	{ deep: true }
-);
+	watchSources: [() => form, () => translations.value],
+	onDirtyChange: setHasChanges,
+});
 
 // Add language
 const addLanguage = (langCode: string) => {
@@ -173,8 +179,9 @@ const buildTranslationsJson = () => {
 	return JSON.stringify(result);
 };
 
-// Save handler
-const handleSave = async () => {
+// Save handler. Resolves to whether the save succeeded so the unsaved-changes
+// guard can keep the user on the page (and keep their edits) when it fails.
+const handleSave = async (): Promise<boolean> => {
 	isSaving.value = true;
 	try {
 		const outcome = await emailSettingsSave({
@@ -200,32 +207,34 @@ const handleSave = async () => {
 		switch (outcome.status) {
 			case 'failed':
 				// The mutation already surfaced its own error toast.
-				return;
+				return false;
 			case 'no-overlay':
 				showToast(
 					`Add a ${getLanguageNativeLabel(outcome.language)} translation before making it the default language.`,
 					'error'
 				);
-				return;
+				return false;
 			case 'language-promoted':
 				// `setDefaultLanguage` re-keyed subject/preview/body; the live query
 				// reloads the form. Reflect the new default so a follow-up save is a
 				// plain patch, not another (now no-op) swap attempt.
 				persistedDefaultLanguage.value = form.defaultLanguage;
-				hasChanges.value = false;
+				markClean();
 				showToast('Default language updated');
-				return;
+				return true;
 			case 'saved':
-				hasChanges.value = false;
+				markClean();
 				showToast('Settings saved successfully');
-				return;
+				return true;
 		}
+		return false;
 	} finally {
 		isSaving.value = false;
 	}
 };
 
-// Navigation
+// Navigation. `router.push` triggers the unsaved-changes route guard when the
+// form is dirty, so a Back click prompts to save/discard instead of dropping edits.
 const handleBack = () => {
 	router.push(`/dashboard/send/emails/${templateId}/edit`);
 };
@@ -479,6 +488,14 @@ const handleBack = () => {
 				</div>
 			</div>
 		</UiQueryBoundary>
+
+		<!-- Unsaved Changes Dialog -->
+		<UnsavedChangesDialog
+			:show="showUnsavedDialog"
+			@close="cancelNavigation"
+			@discard="confirmDiscard"
+			@save="confirmSave"
+		/>
 	</div>
 </template>
 
