@@ -16,7 +16,7 @@
 import { v } from 'convex/values';
 import { internalQuery } from '../_generated/server';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
-import { authedMutation, publicQuery } from '../lib/authedFunctions';
+import { authedMutation, authedQuery, publicQuery } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { normalizeEmail } from '@owlat/shared';
@@ -25,27 +25,42 @@ import { resolveSendAsIdentitiesForCtx } from './identities';
 import { getOrThrow, throwForbidden, throwInvalidState, throwNotFound } from '../_utils/errors';
 import { assertStateIs, type TransitionOutcome as DraftTransitionOutcome } from './draftLifecycle';
 import { markOnboardingStep } from '../auth/userOnboarding';
-import { getOptional } from '../lib/env';
-import { isDeliveryConfigured } from '../lib/sendProviders/capability';
+import { getMailSyncConfig, getMtaConfig } from './mtaClient';
+import { resolveMailboxTransport } from './externalAccounts';
 
 /**
  * True iff this mailbox actually has an outbound transport to ship the message —
- * the honest gate behind the onboarding "first send" milestone. Hosted mailboxes
- * dispatch through the instance delivery provider; a connected external mailbox
- * dispatches through the mail-sync worker (the member's own SMTP). Stamping
- * `firstSendDone` on an instance that can't dispatch would let a member
- * "complete" a send that is silently dropped.
+ * the honest gate behind the onboarding "first send" milestone. Resolves through
+ * the SAME decision the dispatcher uses (`resolveMailboxTransport`) so the gate
+ * can never disagree with where the message really goes: a hosted mailbox ships
+ * through the MTA, a connected external mailbox through the mail-sync worker.
+ * Stamping `firstSendDone` on an instance that can't dispatch this mailbox would
+ * let a member "complete" a send that is silently dropped.
  */
 async function mailboxHasSendTransport(
 	ctx: QueryCtx | MutationCtx,
 	mailbox: Doc<'mailboxes'>
 ): Promise<boolean> {
-	// undefined kind ⇒ hosted (back-compat for pre-external rows).
-	if (mailbox.kind === 'external') {
-		return Boolean(getOptional('MAIL_SYNC_API_URL') && getOptional('MAIL_SYNC_API_KEY'));
-	}
-	return isDeliveryConfigured(ctx);
+	const transport = await resolveMailboxTransport(ctx, mailbox);
+	return transport.kind === 'external' ? getMailSyncConfig() !== null : getMtaConfig() !== null;
 }
+
+/**
+ * Member-safe signal for "can a test send from this mailbox actually leave the
+ * instance?" — the honest client gate behind the fresh-start "email myself"
+ * step. Wraps the SAME server-side helper as the send-time `firstSendDone`
+ * stamp, so the button and the completion never disagree. Returns false (rather
+ * than throwing) when the mailbox isn't accessible, so the caller renders the
+ * "still being set up" state instead of an error.
+ */
+export const canSendFrom = authedQuery({
+	args: { mailboxId: v.id('mailboxes') },
+	handler: async (ctx, args): Promise<boolean> => {
+		const owned = await requireMailboxAccess(ctx, args.mailboxId);
+		if (!owned.ok) return false;
+		return mailboxHasSendTransport(ctx, owned.mailbox);
+	},
+});
 
 export const create = authedMutation({
 	args: {
