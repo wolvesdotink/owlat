@@ -22,7 +22,7 @@
  *     <YourContent :data="data" />
  *   </UiQueryBoundary>
  */
-import { computed } from 'vue';
+import { computed, getCurrentInstance } from 'vue';
 
 interface Props {
 	/** Truthy while the underlying query has not delivered its first result. */
@@ -35,6 +35,8 @@ interface Props {
 	errorTitle?: string;
 	/** Override copy for the default error alert (otherwise derived from `error`). */
 	errorMessage?: string;
+	/** Label under the spinner in the default loading slot. */
+	loadingLabel?: string;
 	/** Hide the retry control on the default error state. */
 	hideRetry?: boolean;
 }
@@ -45,6 +47,7 @@ const props = withDefaults(defineProps<Props>(), {
 	empty: false,
 	errorTitle: 'Failed to load',
 	errorMessage: undefined,
+	loadingLabel: 'Loading…',
 	hideRetry: false,
 });
 
@@ -53,10 +56,15 @@ const emit = defineEmits<{
 	retry: [];
 }>();
 
-const hasRetryListener = computed(() => !!getCurrentInstance()?.vnode.props?.['onRetry']);
+// Captured during setup — getCurrentInstance() returns null once called from an
+// event handler (the instance is no longer active), which would make retry
+// wrongly fall back to a page reload even when the caller wired `@retry`.
+const instance = getCurrentInstance();
+const hasRetryListener = computed(() => !!instance?.vnode.props?.['onRetry']);
 
 const displayMessage = computed(
-	() => props.errorMessage ?? props.error?.message ?? 'Something went wrong while loading this view.'
+	() =>
+		props.errorMessage ?? props.error?.message ?? 'Something went wrong while loading this view.'
 );
 
 function handleRetry() {
@@ -86,13 +94,17 @@ function handleRetry() {
 		<div class="flex items-center justify-center py-16">
 			<div class="flex flex-col items-center gap-3">
 				<UiSpinner />
-				<p class="text-text-secondary text-sm">Loading…</p>
+				<p class="text-text-secondary text-sm">{{ loadingLabel }}</p>
 			</div>
 		</div>
 	</slot>
 
 	<slot v-else-if="empty" name="empty">
-		<UiEmptyState icon="lucide:inbox" title="Nothing to show" description="There's no data to display yet." />
+		<UiEmptyState
+			icon="lucide:inbox"
+			title="Nothing to show"
+			description="There's no data to display yet."
+		/>
 	</slot>
 
 	<slot v-else />
