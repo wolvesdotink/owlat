@@ -8,7 +8,15 @@
  * The MX derivation is the pure `buildInboundMxRecords` helper (unit-tested);
  * the copyable host/value reuse the same `DomainsDNSRecordPanel` the sending
  * side uses. Renders nothing when there is no mail host to point at (send-only
- * install) — the parent additionally gates on an inbound feature flag.
+ * install with no MTA).
+ *
+ * The section renders whether or not inbound is turned on, to break the
+ * chicken-and-egg where an admin setting inbound up couldn't find the MX
+ * instructions because they were hidden behind the very flag they were trying
+ * to enable. When `inboundEnabled` is false we show an honest "receiving isn't
+ * turned on yet — here's how" banner with the enable path (Settings → Features)
+ * plus the MX record to add, and skip the live reverse-DNS preflight (there is
+ * nothing to accept mail yet, so the port/PTR verdict would be misleading).
  *
  * Reverse DNS (PTR) used to be static "set reverse DNS" advice; it is now a live
  * FCrDNS preflight (`checkReceivingReverseDns`) run once against this
@@ -27,6 +35,13 @@ const props = defineProps<{
 	mailHost: string | null | undefined;
 	/** The inbound SMTP port other mail servers deliver to. */
 	inboundPort: number;
+	/**
+	 * Whether an inbound feature is turned on for this deployment. When false the
+	 * MX guidance still renders (so setup isn't a chicken-and-egg), but framed as
+	 * a "not turned on yet — here's how" state and the reverse-DNS preflight is
+	 * skipped.
+	 */
+	inboundEnabled: boolean;
 }>();
 
 const mxRecords = computed(() => buildInboundMxRecords(props.domain, props.mailHost));
@@ -37,7 +52,7 @@ const mxRecords = computed(() => buildInboundMxRecords(props.domain, props.mailH
 // so the panel simply omits the status line rather than erroring.
 const { run: runReverseDnsCheck } = useBackendOperation(
 	api.domains.dnsVerification.checkReceivingReverseDns,
-	{ label: 'Check receiving reverse DNS', type: 'action' },
+	{ label: 'Check receiving reverse DNS', type: 'action' }
 );
 
 type ReverseDnsVerdict = Awaited<ReturnType<typeof runReverseDnsCheck>>;
@@ -45,9 +60,11 @@ const reverseDns = ref<ReverseDnsVerdict>(undefined);
 const reverseDnsChecked = ref(false);
 
 onMounted(async () => {
-	// Only meaningful when there is a mail host to point at; the parent already
-	// gates on that, but guard here too so a send-only render is a no-op.
-	if (!props.mailHost) return;
+	// Only meaningful when there is a mail host to point at AND inbound is on;
+	// with inbound off there is nothing accepting mail, so a PTR verdict would be
+	// misleading. The parent gates on the mail host too — guard here so a
+	// send-only or not-yet-enabled render is a no-op.
+	if (!props.mailHost || !props.inboundEnabled) return;
 	reverseDns.value = await runReverseDnsCheck({});
 	reverseDnsChecked.value = true;
 });
@@ -58,11 +75,34 @@ onMounted(async () => {
 		<p class="text-xs font-medium text-text-tertiary uppercase tracking-wider mb-2">
 			Receiving (inbound mail)
 		</p>
+
+		<!-- Honest "not turned on yet" state — receiving is off, but we still show
+		     the enable path + MX record so setup isn't a chicken-and-egg. -->
+		<div
+			v-if="!inboundEnabled"
+			data-testid="receiving-not-enabled"
+			class="mb-3 p-4 bg-bg-surface rounded-xl border border-border-subtle"
+		>
+			<p class="text-sm text-text-secondary">
+				<strong class="text-text-primary">Receiving isn't turned on yet.</strong>
+				This deployment isn't set up to accept mail for your domains. You can add the MX record
+				below now so DNS is ready — but incoming mail won't be accepted until you turn on a
+				receiving feature.
+			</p>
+			<NuxtLink
+				to="/dashboard/settings/features"
+				class="inline-flex items-center gap-1 text-sm text-brand hover:underline mt-2"
+			>
+				Turn on receiving in Settings → Features
+				<Icon name="lucide:arrow-right" class="w-3.5 h-3.5" />
+			</NuxtLink>
+		</div>
+
 		<p class="text-sm text-text-secondary mb-3">
-			To receive mail for <strong class="text-text-primary">{{ domain }}</strong> through this
-			Owlat instance, publish the MX record below. Inbound mail is delivered to this
-			deployment's mail host
-			(<code class="bg-bg-surface px-1.5 py-0.5 rounded text-xs">{{ mailHost }}</code>).
+			To receive mail for <strong class="text-text-primary">{{ domain }}</strong> through this Owlat
+			instance, publish the MX record below. Inbound mail is delivered to this deployment's mail
+			host (<code class="bg-bg-surface px-1.5 py-0.5 rounded text-xs">{{ mailHost }}</code
+			>).
 		</p>
 
 		<div class="space-y-3">
@@ -79,16 +119,21 @@ onMounted(async () => {
 			</div>
 		</div>
 
-		<div class="mt-4 p-4 bg-bg-surface rounded-xl border border-border-subtle">
+		<!-- Operational detail (firewall + live PTR verdict) only matters once
+		     receiving is actually turned on. -->
+		<div
+			v-if="inboundEnabled"
+			class="mt-4 p-4 bg-bg-surface rounded-xl border border-border-subtle"
+		>
 			<p class="text-sm text-text-secondary">
 				<strong class="text-text-primary">Inbound port + firewall:</strong>
 				other mail servers connect to
 				<code class="bg-bg-deep px-1.5 py-0.5 rounded text-xs">{{ mailHost }}</code>
 				on TCP port
 				<code class="bg-bg-deep px-1.5 py-0.5 rounded text-xs">{{ inboundPort }}</code>
-				to deliver mail, so open inbound TCP {{ inboundPort }} on your firewall / security
-				group. Many cloud providers block port {{ inboundPort }} by default — confirm your
-				host allows inbound SMTP.
+				to deliver mail, so open inbound TCP {{ inboundPort }} on your firewall / security group.
+				Many cloud providers block port {{ inboundPort }} by default — confirm your host allows
+				inbound SMTP.
 			</p>
 
 			<!-- Live reverse-DNS (PTR) verdict — replaces the old static advice. -->
@@ -104,9 +149,10 @@ onMounted(async () => {
 				v-else-if="reverseDnsChecked && reverseDns && reverseDns.hasPtr"
 				class="text-sm text-warning mt-2"
 			>
-				PTR record found
-				(<code class="bg-bg-deep px-1.5 py-0.5 rounded text-xs">{{ reverseDns.ptrValue }}</code>)
-				but it doesn't match
+				PTR record found (<code class="bg-bg-deep px-1.5 py-0.5 rounded text-xs">{{
+					reverseDns.ptrValue
+				}}</code
+				>) but it doesn't match
 				<code class="bg-bg-deep px-1.5 py-0.5 rounded text-xs">{{ reverseDns.checkedHost }}</code
 				>. Ask your host to set the reverse DNS (PTR) for this IP to the mail host so it
 				forward-confirms.
@@ -117,8 +163,8 @@ onMounted(async () => {
 			>
 				No PTR record found for
 				<code class="bg-bg-deep px-1.5 py-0.5 rounded text-xs">{{ reverseDns.checkedHost }}</code>
-				— ask your host to set reverse DNS (PTR) for the mail host's IP, or Gmail/Yahoo may
-				reject or spam-folder your mail.
+				— ask your host to set reverse DNS (PTR) for the mail host's IP, or Gmail/Yahoo may reject
+				or spam-folder your mail.
 			</p>
 		</div>
 	</div>

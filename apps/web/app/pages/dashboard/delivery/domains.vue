@@ -232,12 +232,13 @@ const canManageDomains = computed(() => role.value === 'owner' || role.value ===
 const { data: inboundMailConfig } = useConvexQuery(api.domains.domains.getInboundMailConfig, () =>
 	canManageDomains.value ? {} : 'skip'
 );
-// Show the Receiving (MX) section only when an inbound feature flag is active
-// AND the deployment has a mail host to point at — mirrors how the sending
-// panels gate, so a send-only install never sees inbound noise.
-const showReceivingDns = computed(
-	() => hasInboundFeature(flags.value) && Boolean(inboundMailConfig.value?.mailHost)
-);
+// Show the Receiving (MX) section whenever the deployment has a mail host to
+// point at — regardless of whether an inbound feature is on yet. Gating it on
+// the flag hid the MX instructions from the very admin trying to enable inbound
+// (chicken-and-egg); instead the section renders always and shows an honest
+// "not turned on yet — here's how" state when `inboundEnabled` is false.
+const inboundEnabled = computed(() => hasInboundFeature(flags.value));
+const showReceivingDns = computed(() => Boolean(inboundMailConfig.value?.mailHost));
 const dmarcPolicyOptions: { value: DmarcPolicy; label: string; hint: string }[] = [
 	{
 		value: 'none',
@@ -877,8 +878,10 @@ const readinessSummary = (domain: DomainWithVerification) =>
 									</div>
 								</template>
 
-								<!-- Receiving (inbound MX) — only when an inbound feature flag is on
-								     and the deployment exposes a mail host to point at. -->
+								<!-- Receiving (inbound MX) — renders whenever the deployment exposes a
+								     mail host, whether or not inbound is enabled yet; the section
+								     itself shows a "not turned on yet" state when off so setup
+								     is not a chicken-and-egg. -->
 								<div
 									v-if="
 										showReceivingDns &&
@@ -891,6 +894,7 @@ const readinessSummary = (domain: DomainWithVerification) =>
 										:domain="domain.domain"
 										:mail-host="inboundMailConfig?.mailHost ?? null"
 										:inbound-port="inboundMailConfig?.inboundPort ?? 25"
+										:inbound-enabled="inboundEnabled"
 									/>
 								</div>
 
