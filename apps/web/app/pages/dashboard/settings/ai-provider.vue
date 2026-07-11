@@ -194,6 +194,16 @@ function hydrate() {
 
 watch(config, () => hydrate(), { immediate: true });
 
+// Collapsing "use a hosted embedder" returns the embedding plane to local, so
+// view state and form state can never diverge: the "Local (bundled)" banner
+// (which now keys off `form.embeddingProviderKind`) tells the truth about what
+// Save persists, and no hosted-key requirement lingers behind a hidden panel.
+watch(showHostedEmbedder, (open) => {
+	if (!hydrating.value && !open && form.embeddingProviderKind !== 'local') {
+		form.embeddingProviderKind = 'local';
+	}
+});
+
 async function handleSave() {
 	languageError.value = liveLanguageError.value;
 	if (languageError.value) return;
@@ -321,32 +331,27 @@ async function handleTest() {
 							help-text="Sent once over TLS, encrypted at rest, and never shown again."
 						/>
 
-						<div v-if="requiresKey" class="text-sm">
-							<button
-								type="button"
-								class="text-text-secondary hover:text-text-primary inline-flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded"
-								@click="showLanguageBaseUrl = !showLanguageBaseUrl"
-							>
-								<Icon
-									:name="showLanguageBaseUrl ? 'lucide:chevron-down' : 'lucide:chevron-right'"
-									class="w-4 h-4"
-								/>
-								Advanced: custom base URL (proxy / gateway)
-							</button>
+						<div v-if="requiresKey">
+							<SettingsDisclosureToggle
+								v-model:open="showLanguageBaseUrl"
+								label="Advanced: custom base URL (proxy / gateway)"
+								controls="ai-language-base-url"
+							/>
 						</div>
-						<UiInput
-							v-if="showLanguageBaseUrl"
-							v-model="form.languageBaseUrl"
-							type="text"
-							label="Base URL"
-							:placeholder="languageMeta?.defaultBaseUrl ?? 'https://…'"
-							:disabled="isSaving"
-							:help-text="
-								requiresKey
-									? 'Route requests through a custom endpoint. Leave blank to use the provider default.'
-									: 'The address of your local server (Ollama, vLLM, llama.cpp).'
-							"
-						/>
+						<div v-if="showLanguageBaseUrl" id="ai-language-base-url">
+							<UiInput
+								v-model="form.languageBaseUrl"
+								type="text"
+								label="Base URL"
+								:placeholder="languageMeta?.defaultBaseUrl ?? 'https://…'"
+								:disabled="isSaving"
+								:help-text="
+									requiresKey
+										? 'Route requests through a custom endpoint. Leave blank to use the provider default.'
+										: 'The address of your local server (Ollama, vLLM, llama.cpp).'
+								"
+							/>
+						</div>
 
 						<div class="grid gap-6 sm:grid-cols-2">
 							<SettingsAiModelPicker
@@ -377,7 +382,7 @@ async function handleTest() {
 					</p>
 
 					<div
-						v-if="!showHostedEmbedder"
+						v-if="form.embeddingProviderKind === 'local'"
 						class="flex items-start gap-3 rounded-lg bg-success-subtle/50 border border-border-subtle p-4"
 					>
 						<Icon name="lucide:check-circle-2" class="w-5 h-5 text-success shrink-0 mt-0.5" />
@@ -390,20 +395,14 @@ async function handleTest() {
 					</div>
 
 					<div class="mt-4">
-						<button
-							type="button"
-							class="text-sm text-text-secondary hover:text-text-primary inline-flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded"
-							@click="showHostedEmbedder = !showHostedEmbedder"
-						>
-							<Icon
-								:name="showHostedEmbedder ? 'lucide:chevron-down' : 'lucide:chevron-right'"
-								class="w-4 h-4"
-							/>
-							Advanced: use a hosted embedder instead
-						</button>
+						<SettingsDisclosureToggle
+							v-model:open="showHostedEmbedder"
+							label="Advanced: use a hosted embedder instead"
+							controls="ai-hosted-embedder"
+						/>
 					</div>
 
-					<div v-if="showHostedEmbedder" class="mt-4 space-y-6">
+					<div v-if="showHostedEmbedder" id="ai-hosted-embedder" class="mt-4 space-y-6">
 						<UiSelect
 							v-model="form.embeddingProviderKind"
 							label="Embedding provider"
