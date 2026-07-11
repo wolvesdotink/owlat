@@ -24,25 +24,14 @@
  */
 
 import { v } from 'convex/values';
-import {
-	internalAction,
-	internalMutation,
-	internalQuery,
-} from '../_generated/server';
+import { internalAction, internalMutation, internalQuery } from '../_generated/server';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import { assertFeatureEnabled } from '../lib/featureFlags';
-import {
-	throwInvalidInput,
-	throwInvalidState,
-	throwNotFound,
-} from '../_utils/errors';
+import { throwInvalidInput, throwInvalidState, getOrThrow } from '../_utils/errors';
 import { providerFor } from './providers';
-import {
-	RetryableProviderError,
-	type FetchPageResult,
-} from './_common';
+import { RetryableProviderError, type FetchPageResult } from './_common';
 
 const MAX_RETRIES = 2;
 
@@ -62,7 +51,7 @@ export const integrationProviderConfigValidator = v.union(
 	v.object({
 		provider: v.literal('stripe'),
 		apiKey: v.string(),
-	}),
+	})
 );
 
 // ─── Public mutations ───────────────────────────────────────────────────────
@@ -88,7 +77,7 @@ export const startIntegrationImport = authedMutation({
 		// the import, not just exist.
 		await assertFeatureEnabled(
 			ctx,
-			args.config.provider === 'mailchimp' ? 'imports.mailchimp' : 'imports.stripe',
+			args.config.provider === 'mailchimp' ? 'imports.mailchimp' : 'imports.stripe'
 		);
 
 		// Adapter-validated config — keeps per-provider knowledge of which
@@ -123,15 +112,11 @@ export const startIntegrationImport = authedMutation({
 			startedAt: Date.now(),
 		});
 
-		await ctx.scheduler.runAfter(
-			0,
-			internal.integrationImports.walker.processIntegrationPage,
-			{
-				importId,
-				config: args.config,
-				cursor: '',
-			},
-		);
+		await ctx.scheduler.runAfter(0, internal.integrationImports.walker.processIntegrationPage, {
+			importId,
+			config: args.config,
+			cursor: '',
+		});
 
 		return importId;
 	},
@@ -149,11 +134,8 @@ export const cancelImport = authedMutation({
 	},
 	handler: async (ctx, args) => {
 		await requireOrgPermission(ctx, 'imports:manage', 'Only owners and admins can cancel imports');
-		const importRecord = await ctx.db.get(args.importId);
+		const importRecord = await getOrThrow(ctx, args.importId, 'Import');
 
-		if (!importRecord) {
-			throwNotFound('Import');
-		}
 		if (importRecord.status !== 'running') {
 			throwInvalidState('Import is not running');
 		}
@@ -208,10 +190,9 @@ export const processIntegrationPage = internalAction({
 	},
 	handler: async (ctx, args) => {
 		// Cancellation race: every scheduled hop checks status at entry.
-		const importRecord = await ctx.runQuery(
-			internal.integrationImports.walker.getImportById,
-			{ importId: args.importId },
-		);
+		const importRecord = await ctx.runQuery(internal.integrationImports.walker.getImportById, {
+			importId: args.importId,
+		});
 		if (!importRecord || importRecord.status !== 'running') return;
 
 		const adapter = providerFor(args.config.provider);
@@ -231,14 +212,11 @@ export const processIntegrationPage = internalAction({
 					await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
 					continue;
 				}
-				await ctx.runMutation(
-					internal.integrationImports.walker.completeImport,
-					{
-						importId: args.importId,
-						status: 'failed',
-						errorMessage: err instanceof Error ? err.message : 'Unknown error',
-					},
-				);
+				await ctx.runMutation(internal.integrationImports.walker.completeImport, {
+					importId: args.importId,
+					status: 'failed',
+					errorMessage: err instanceof Error ? err.message : 'Unknown error',
+				});
 				return;
 			}
 		}
@@ -253,25 +231,22 @@ export const processIntegrationPage = internalAction({
 
 		if (result.rows.length > 0) {
 			try {
-				const batchResults = await ctx.runMutation(
-					internal.contacts.import.importBatch,
-					{
-						rows: result.rows,
-						source: args.config.provider,
-						handleDuplicates: importRecord.handleDuplicates,
-						...(importRecord.topicId
-							? {
-									topicAssignments: {
-										kind: 'single' as const,
-										topicId: importRecord.topicId,
-									},
-								}
-							: {}),
-						...(adapter.defaultDoiAttest
-							? { doiAttest: { attestSource: adapter.defaultDoiAttest } }
-							: {}),
-					},
-				);
+				const batchResults = await ctx.runMutation(internal.contacts.import.importBatch, {
+					rows: result.rows,
+					source: args.config.provider,
+					handleDuplicates: importRecord.handleDuplicates,
+					...(importRecord.topicId
+						? {
+								topicAssignments: {
+									kind: 'single' as const,
+									topicId: importRecord.topicId,
+								},
+							}
+						: {}),
+					...(adapter.defaultDoiAttest
+						? { doiAttest: { attestSource: adapter.defaultDoiAttest } }
+						: {}),
+				});
 				batchImported = batchResults.imported;
 				batchUpdated = batchResults.updated;
 				batchSkipped = batchResults.skipped;
@@ -280,45 +255,33 @@ export const processIntegrationPage = internalAction({
 			} catch (error) {
 				batchFailed = result.rows.length;
 				batchErrors.push(
-					`Batch at cursor "${args.cursor}" failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+					`Batch at cursor "${args.cursor}" failed: ${error instanceof Error ? error.message : 'Unknown error'}`
 				);
 			}
 		}
 
-		await ctx.runMutation(
-			internal.integrationImports.walker.updateImportProgress,
-			{
-				importId: args.importId,
-				imported: batchImported,
-				updated: batchUpdated,
-				skipped: batchSkipped,
-				failed: batchFailed,
-				errors: batchErrors,
-				...(result.totalEstimate !== undefined
-					? { totalEstimate: result.totalEstimate }
-					: {}),
-				newCursor: result.nextCursor ?? args.cursor,
-			},
-		);
+		await ctx.runMutation(internal.integrationImports.walker.updateImportProgress, {
+			importId: args.importId,
+			imported: batchImported,
+			updated: batchUpdated,
+			skipped: batchSkipped,
+			failed: batchFailed,
+			errors: batchErrors,
+			...(result.totalEstimate !== undefined ? { totalEstimate: result.totalEstimate } : {}),
+			newCursor: result.nextCursor ?? args.cursor,
+		});
 
 		if (result.nextCursor !== null) {
-			await ctx.scheduler.runAfter(
-				0,
-				internal.integrationImports.walker.processIntegrationPage,
-				{
-					importId: args.importId,
-					config: args.config,
-					cursor: result.nextCursor,
-				},
-			);
+			await ctx.scheduler.runAfter(0, internal.integrationImports.walker.processIntegrationPage, {
+				importId: args.importId,
+				config: args.config,
+				cursor: result.nextCursor,
+			});
 		} else {
-			await ctx.runMutation(
-				internal.integrationImports.walker.completeImport,
-				{
-					importId: args.importId,
-					status: 'completed',
-				},
-			);
+			await ctx.runMutation(internal.integrationImports.walker.completeImport, {
+				importId: args.importId,
+				status: 'completed',
+			});
 		}
 	},
 });
@@ -356,9 +319,7 @@ export const updateImportProgress = internalMutation({
 			failed: record.failed + args.failed,
 			errors: mergedErrors,
 			cursor: args.newCursor,
-			...(args.totalEstimate !== undefined
-				? { totalEstimate: args.totalEstimate }
-				: {}),
+			...(args.totalEstimate !== undefined ? { totalEstimate: args.totalEstimate } : {}),
 		});
 	},
 });
