@@ -15,7 +15,7 @@ import { adminQuery } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import { tokenUsageValidator } from '../lib/convexValidators';
 import type { TokenUsage } from '../agent/steps/types';
-import { estimateCostUsd } from '../lib/llm/pricing';
+import { estimateCostUsd, providerLabelForModel } from '../lib/llm/pricing';
 
 /** Persist one LLM call's token usage + priced cost. No-ops when usage is absent. */
 export const record = internalMutation({
@@ -48,7 +48,7 @@ export async function recordLlmSpend(
 	ctx: ActionCtx,
 	feature: string,
 	tokenUsage: TokenUsage | undefined,
-	modelUsed: string | undefined,
+	modelUsed: string | undefined
 ): Promise<void> {
 	if (!tokenUsage) return;
 	await ctx.runMutation(internal.analytics.llmUsage.record, { feature, modelUsed, tokenUsage });
@@ -68,9 +68,17 @@ export const getSpendByFeature = adminQuery({
 			.order('desc')
 			.take(5000);
 
-		const byFeature = new Map<string, { feature: string; totalTokens: number; costUsd: number; calls: number }>();
+		const byFeature = new Map<
+			string,
+			{ feature: string; totalTokens: number; costUsd: number; calls: number }
+		>();
 		for (const e of events) {
-			const acc = byFeature.get(e.feature) ?? { feature: e.feature, totalTokens: 0, costUsd: 0, calls: 0 };
+			const acc = byFeature.get(e.feature) ?? {
+				feature: e.feature,
+				totalTokens: 0,
+				costUsd: 0,
+				calls: 0,
+			};
 			acc.totalTokens += e.totalTokens;
 			acc.costUsd += e.costUsd;
 			acc.calls += 1;
@@ -79,5 +87,49 @@ export const getSpendByFeature = adminQuery({
 		const features = [...byFeature.values()].sort((a, b) => b.costUsd - a.costUsd);
 		const totalCostUsd = features.reduce((sum, f) => sum + f.costUsd, 0);
 		return { features, totalCostUsd, hoursBack: args.hoursBack ?? 24 };
+	},
+});
+
+/**
+ * Deployment AI spend grouped by PROVIDER BACKEND over a recent window, so an
+ * admin who switches or splits providers reads spend per backend (OpenAI vs
+ * Anthropic vs a local model vs OpenRouter) — complementing the per-feature
+ * view above. The provider is derived from each row's recorded model id
+ * ({@link providerLabelForModel}); no schema column is needed, so this works for
+ * every historical row too.
+ */
+export const getSpendByProvider = adminQuery({
+	args: {
+		hoursBack: v.optional(v.number()),
+	},
+	handler: async (ctx, args) => {
+		const since = Date.now() - (args.hoursBack ?? 24) * 60 * 60 * 1000;
+		// bounded: windowed scan capped at the most-recent 5000 usage events.
+		const events = await ctx.db
+			.query('llmUsageEvents')
+			.withIndex('by_creation_time', (q) => q.gte('_creationTime', since))
+			.order('desc')
+			.take(5000);
+
+		const byProvider = new Map<
+			string,
+			{ provider: string; totalTokens: number; costUsd: number; calls: number }
+		>();
+		for (const e of events) {
+			const provider = providerLabelForModel(e.modelUsed);
+			const acc = byProvider.get(provider) ?? {
+				provider,
+				totalTokens: 0,
+				costUsd: 0,
+				calls: 0,
+			};
+			acc.totalTokens += e.totalTokens;
+			acc.costUsd += e.costUsd;
+			acc.calls += 1;
+			byProvider.set(provider, acc);
+		}
+		const providers = [...byProvider.values()].sort((a, b) => b.costUsd - a.costUsd);
+		const totalCostUsd = providers.reduce((sum, p) => sum + p.costUsd, 0);
+		return { providers, totalCostUsd, hoursBack: args.hoursBack ?? 24 };
 	},
 });

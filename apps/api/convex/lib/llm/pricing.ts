@@ -85,3 +85,47 @@ export function estimateCostUsd(
 ): number {
 	return estimateCost(modelUsed, usage).costUsd;
 }
+
+// Model-id prefix → provider-family label, most-specific-first (so
+// `text-embedding-004` reads as Google before the generic `text-embedding-`
+// OpenAI prefix). Used only to GROUP spend by backend in the usage dashboard.
+const PROVIDER_LABELS: { prefix: string; label: string }[] = [
+	{ prefix: 'text-embedding-004', label: 'Google' },
+	{ prefix: 'text-embedding', label: 'OpenAI' },
+	{ prefix: 'gpt-', label: 'OpenAI' },
+	{ prefix: 'chatgpt', label: 'OpenAI' },
+	{ prefix: 'o1', label: 'OpenAI' },
+	{ prefix: 'o3', label: 'OpenAI' },
+	{ prefix: 'o4', label: 'OpenAI' },
+	{ prefix: 'claude', label: 'Anthropic' },
+	{ prefix: 'gemini', label: 'Google' },
+	{ prefix: 'llama', label: 'Local' },
+	{ prefix: 'qwen', label: 'Local' },
+	{ prefix: 'mistral', label: 'Local' },
+	{ prefix: 'mixtral', label: 'Local' },
+	{ prefix: 'gemma', label: 'Local' },
+	{ prefix: 'phi', label: 'Local' },
+	{ prefix: 'deepseek', label: 'Local' },
+	{ prefix: 'nomic', label: 'Local' },
+];
+
+/**
+ * Best-effort provider-family label for a model id, so the usage dashboard can
+ * read spend PER BACKEND rather than only per feature. Derivation is by id
+ * shape:
+ *   • a provider-prefixed id (contains `/`, e.g. `anthropic/claude-opus-4-8`)
+ *     comes from the OpenRouter aggregator → `OpenRouter`;
+ *   • otherwise the id's prefix maps to its native provider.
+ *
+ * This is intentionally derived from the recorded model id (not threaded through
+ * the ~40 call sites), so it CANNOT distinguish an Azure deployment named after
+ * its base model (it reads as OpenAI) — an accepted limitation for a spend
+ * summary. An unrecognized id is `Other`; an absent id is `Unknown`.
+ */
+export function providerLabelForModel(modelUsed: string | undefined): string {
+	const id = (modelUsed ?? '').toLowerCase().trim();
+	if (!id) return 'Unknown';
+	if (id.includes('/')) return 'OpenRouter';
+	const match = PROVIDER_LABELS.find((p) => id.startsWith(p.prefix));
+	return match?.label ?? 'Other';
+}
