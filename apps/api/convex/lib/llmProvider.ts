@@ -185,10 +185,7 @@ function resolveEmbeddingPlane(
 		? (getOptional('LOCAL_EMBEDDING_MODEL') ?? adapter.defaultModel)
 		: adapter.defaultModel;
 	const clientConfig: ProviderClientConfig = adapter.isLocal
-		? {
-				apiKey: hostedKey,
-				baseUrl: getOptional('LOCAL_EMBEDDING_BASE_URL') ?? adapter.defaultBaseUrl,
-			}
+		? { baseUrl: getOptional('LOCAL_EMBEDDING_BASE_URL') ?? adapter.defaultBaseUrl }
 		: { apiKey: hostedKey };
 	return { kind, modelId: storedModel ?? modelDefault, clientConfig, modelVersion };
 }
@@ -256,40 +253,46 @@ interface KeyEnvelope {
 	version: number;
 }
 
-/** The language-key envelope of a row, or `undefined` when no key is stored. */
-function languageKeyEnvelope(row: Doc<'aiProviderConfig'>): KeyEnvelope | undefined {
+/**
+ * Assemble a `KeyEnvelope` from a row's four secret columns, or `undefined` when
+ * any is absent (no key stored). Single-sources the read side across both planes,
+ * mirroring how `storedEnvelopeOf` single-sources the persist side.
+ */
+function envelopeFromColumns(
+	ciphertext: string | undefined,
+	iv: string | undefined,
+	authTag: string | undefined,
+	version: number | undefined
+): KeyEnvelope | undefined {
 	if (
-		row.secretCiphertext === undefined ||
-		row.secretIv === undefined ||
-		row.secretAuthTag === undefined ||
-		row.secretEnvelopeVersion === undefined
+		ciphertext === undefined ||
+		iv === undefined ||
+		authTag === undefined ||
+		version === undefined
 	) {
 		return undefined;
 	}
-	return {
-		ciphertext: row.secretCiphertext,
-		iv: row.secretIv,
-		authTag: row.secretAuthTag,
-		version: row.secretEnvelopeVersion,
-	};
+	return { ciphertext, iv, authTag, version };
+}
+
+/** The language-key envelope of a row, or `undefined` when no key is stored. */
+function languageKeyEnvelope(row: Doc<'aiProviderConfig'>): KeyEnvelope | undefined {
+	return envelopeFromColumns(
+		row.secretCiphertext,
+		row.secretIv,
+		row.secretAuthTag,
+		row.secretEnvelopeVersion
+	);
 }
 
 /** The embedding-key envelope of a row, or `undefined` when no key is stored. */
 function embeddingKeyEnvelope(row: Doc<'aiProviderConfig'>): KeyEnvelope | undefined {
-	if (
-		row.embeddingSecretCiphertext === undefined ||
-		row.embeddingSecretIv === undefined ||
-		row.embeddingSecretAuthTag === undefined ||
-		row.embeddingSecretEnvelopeVersion === undefined
-	) {
-		return undefined;
-	}
-	return {
-		ciphertext: row.embeddingSecretCiphertext,
-		iv: row.embeddingSecretIv,
-		authTag: row.embeddingSecretAuthTag,
-		version: row.embeddingSecretEnvelopeVersion,
-	};
+	return envelopeFromColumns(
+		row.embeddingSecretCiphertext,
+		row.embeddingSecretIv,
+		row.embeddingSecretAuthTag,
+		row.embeddingSecretEnvelopeVersion
+	);
 }
 
 /**
