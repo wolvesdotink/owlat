@@ -69,7 +69,7 @@ export function useAutomationStepConfig(
 			const parsed = {
 				kind,
 				config: module.parseConfig(raw),
-			} as StepCurrentConfig;
+			} as NonNullable<StepCurrentConfig>;
 			currentConfig.value = parsed;
 			persistedConfigJson.value = JSON.stringify(parsed.config);
 		},
