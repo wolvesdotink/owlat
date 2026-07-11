@@ -23,7 +23,7 @@ import { authedAction } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { encryptSecret, decryptSecret } from '../lib/credentialCrypto';
-import { getOptional } from '../lib/env';
+import { getMailSyncConfig } from './mtaClient';
 import { throwForbidden, throwInvalidInput } from '../_utils/errors';
 
 interface ProtocolTestResult {
@@ -165,16 +165,15 @@ export const testConnection = authedAction({
 	handler: async (ctx, args): Promise<ConnectionTestResult> => {
 		await assertExternalEnabled(ctx);
 		validateShape(args);
-		const baseUrl = getOptional('MAIL_SYNC_API_URL');
-		const apiKey = getOptional('MAIL_SYNC_API_KEY');
-		if (!baseUrl || !apiKey) {
+		const mailSync = getMailSyncConfig();
+		if (!mailSync) {
 			const error = 'The mail sync service is not configured on this instance.';
 			return { imap: { ok: false, error }, smtp: { ok: false, error } };
 		}
 		try {
-			const res = await fetch(`${baseUrl.replace(/\/$/, '')}/test`, {
+			const res = await fetch(`${mailSync.baseUrl}/test`, {
 				method: 'POST',
-				headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+				headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${mailSync.apiKey}` },
 				body: JSON.stringify({
 					imap: {
 						host: args.imapHost,

@@ -52,22 +52,23 @@ vi.mock('../lib/sessionOrganization', async () => {
 
 const allModules = import.meta.glob('../**/*.*s');
 const modules = Object.fromEntries(
-	Object.entries(allModules).filter(([path]) =>
-		!path.includes('sesActions') &&
-		!path.includes('agentSecurity') &&
-		!path.includes('agentContext') &&
-		!path.includes('agentClassifier') &&
-		!path.includes('agentDrafter') &&
-		!path.includes('agentRouter') &&
-		!path.includes('agent/walker') &&
-		!path.includes('agent/steps/index') &&
-		!path.includes('agent/steps/shared') &&
-		!path.includes('agent/steps/classify') &&
-		!path.includes('agent/steps/draft') &&
-		!path.includes('knowledgeExtraction') &&
-		!path.includes('semanticFileProcessing') &&
-		!path.includes('visualizationAgent') &&
-		!path.includes('llmProvider')
+	Object.entries(allModules).filter(
+		([path]) =>
+			!path.includes('sesActions') &&
+			!path.includes('agentSecurity') &&
+			!path.includes('agentContext') &&
+			!path.includes('agentClassifier') &&
+			!path.includes('agentDrafter') &&
+			!path.includes('agentRouter') &&
+			!path.includes('agent/walker') &&
+			!path.includes('agent/steps/index') &&
+			!path.includes('agent/steps/shared') &&
+			!path.includes('agent/steps/classify') &&
+			!path.includes('agent/steps/draft') &&
+			!path.includes('knowledgeExtraction') &&
+			!path.includes('semanticFileProcessing') &&
+			!path.includes('visualizationAgent') &&
+			!path.includes('llmProvider')
 	)
 );
 
@@ -113,7 +114,7 @@ describe('mail.external — feature gate', () => {
 		const t = convexTest(schema, modules);
 		setSession('user-A', 'owner');
 		await expect(t.query(api.mail.externalAccounts.getForCurrentUser, {})).rejects.toThrow(
-			/disabled/i,
+			/disabled/i
 		);
 	});
 
@@ -133,7 +134,7 @@ describe('mail.external — connect + provisioning', () => {
 		setSession('user-A', 'owner');
 		const { mailboxId, externalAccountId } = await t.mutation(
 			internal.mail.externalAccounts._connectInternal,
-			CREDS,
+			CREDS
 		);
 
 		const mailbox = await t.run((ctx) => ctx.db.get(mailboxId));
@@ -146,7 +147,7 @@ describe('mail.external — connect + provisioning', () => {
 			ctx.db
 				.query('mailFolders')
 				.withIndex('by_mailbox', (q) => q.eq('mailboxId', mailboxId))
-				.collect(),
+				.collect()
 		);
 		expect(folders).toHaveLength(6);
 	});
@@ -175,7 +176,7 @@ describe('mail.external — connect + provisioning', () => {
 			t.mutation(internal.mail.externalAccounts._connectInternal, {
 				...CREDS,
 				emailAddress: 'second@example.com',
-			}),
+			})
 		).rejects.toThrow(/already/i);
 	});
 });
@@ -187,7 +188,7 @@ describe('mail.external — disconnect', () => {
 		setSession('user-A', 'owner');
 		const { mailboxId, externalAccountId } = await t.mutation(
 			internal.mail.externalAccounts._connectInternal,
-			CREDS,
+			CREDS
 		);
 
 		await t.mutation(api.mail.externalAccounts.disconnect, {});
@@ -216,9 +217,9 @@ describe('resolveOutboundTransport', () => {
 				uidValidity: Date.now(),
 				createdAt: Date.now(),
 				updatedAt: Date.now(),
-			}),
+			})
 		);
-		const res = await t.query(internal.mail.externalAccounts.resolveOutboundTransport, {
+		const res = await t.query(internal.mail.outboundTransport.resolveOutboundTransport, {
 			mailboxId,
 		});
 		expect(res.kind).toBe('hosted');
@@ -230,7 +231,7 @@ describe('resolveOutboundTransport', () => {
 		setSession('user-A', 'owner');
 		const { mailboxId } = await t.mutation(internal.mail.externalAccounts._connectInternal, CREDS);
 
-		const res = await t.query(internal.mail.externalAccounts.resolveOutboundTransport, {
+		const res = await t.query(internal.mail.outboundTransport.resolveOutboundTransport, {
 			mailboxId,
 		});
 		expect(res.kind).toBe('external');

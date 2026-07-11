@@ -26,7 +26,7 @@
  */
 
 import { convexTest, type TestConvex } from 'convex-test';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import schema from '../schema';
 import { api } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
@@ -414,6 +414,165 @@ describe('mail.drafts.send + cancelPendingSend ownership', () => {
 
 		const still = await t.run(async (ctx) => ctx.db.get(draftId));
 		expect(still?.state).toBe('pending_send');
+	});
+});
+
+// ════════════════════════════════════════════════════════════════════
+// drafts.send — an HONEST firstSendDone (never completed without a transport)
+// ════════════════════════════════════════════════════════════════════
+
+describe('mail.drafts.send — honest firstSendDone gating', () => {
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
+
+	// Read the caller's onboarding `firstSendDone` stamp (null when unset).
+	const readFirstSendDone = (t: TestConvex<typeof schema>, authUserId: string) =>
+		t.run(async (ctx) => {
+			const row = await ctx.db
+				.query('userOnboarding')
+				.withIndex('by_auth_user_id', (q) => q.eq('authUserId', authUserId))
+				.first();
+			return row?.firstSendDone ?? null;
+		});
+
+	async function sendOwnTestDraft(
+		t: TestConvex<typeof schema>,
+		mailboxId: Id<'mailboxes'>
+	): Promise<void> {
+		const { draftId } = await t.mutation(api.mail.drafts.create, { mailboxId });
+		await t.mutation(api.mail.drafts.update, {
+			draftId,
+			toAddresses: ['recipient@example.com'],
+		});
+		await t.mutation(api.mail.drafts.send, { draftId, undoSendDelayMs: 30_000 });
+	}
+
+	// A connected external (BYO SMTP) mailbox: kind='external' PLUS a real
+	// externalMailAccounts row referenced by externalAccountId. Without the
+	// account link the mailbox resolves back to the HOSTED (MTA) transport, so
+	// the fixture must carry it to exercise the external branch it intends to.
+	async function seedExternalMailbox(t: TestConvex<typeof schema>): Promise<Id<'mailboxes'>> {
+		return t.run(async (ctx) => {
+			const now = Date.now();
+			const mailboxId = await ctx.db.insert('mailboxes', {
+				userId: 'user-ext',
+				organizationId: 'org-1',
+				address: 'ext@hinterland.camp',
+				domain: 'hinterland.camp',
+				kind: 'external',
+				status: 'active',
+				usedBytes: 0,
+				uidValidity: now,
+				createdAt: now,
+				updatedAt: now,
+			});
+			const accountId = await ctx.db.insert('externalMailAccounts', {
+				userId: 'user-ext',
+				organizationId: 'org-1',
+				mailboxId,
+				imapHost: 'imap.example',
+				imapPort: 993,
+				isImapSecure: true,
+				smtpHost: 'smtp.example',
+				smtpPort: 465,
+				isSmtpSecure: true,
+				authMethod: 'password',
+				imapUsername: 'ext@hinterland.camp',
+				secretCiphertext: 'x',
+				secretIv: 'x',
+				secretAuthTag: 'x',
+				secretEnvelopeVersion: 1,
+				status: 'connected',
+				createdAt: now,
+				updatedAt: now,
+			});
+			await ctx.db.patch(mailboxId, { externalAccountId: accountId });
+			return mailboxId;
+		});
+	}
+
+	it('does NOT stamp firstSendDone when a hosted mailbox has no MTA transport', async () => {
+		const t = convexTest(schema, modules);
+		const a = await seedMailbox(t, 'user-alice', 'alice@hinterland.camp');
+
+		// Hosted Postbox drafts dispatch exclusively via the MTA. Clear the
+		// suite's default MTA env (vitest.setup seeds MTA_API_URL/MTA_API_KEY) so
+		// there is genuinely no hosted transport; getMtaConfig() prefers
+		// MTA_INTERNAL_URL, so clear all three. The send is then silently never
+		// dispatched, so the milestone must NOT record.
+		vi.stubEnv('MTA_INTERNAL_URL', '');
+		vi.stubEnv('MTA_API_URL', '');
+		vi.stubEnv('MTA_API_KEY', '');
+		setUser('user-alice', 'editor');
+		await sendOwnTestDraft(t, a.mailboxId);
+
+		expect(await readFirstSendDone(t, 'user-alice')).toBeNull();
+	});
+
+	it('does NOT stamp firstSendDone for a hosted mailbox on a resend-only instance (no MTA)', async () => {
+		const t = convexTest(schema, modules);
+		const a = await seedMailbox(t, 'user-alice', 'alice@hinterland.camp');
+
+		// A campaign/transactional provider (resend) is configured but there is no
+		// MTA — the Postbox draft is saved to Sent and never dispatched. Clear the
+		// suite's default MTA env (all three keys getMtaConfig reads) so only the
+		// resend provider remains. Stamping here would be the exact lie this gate
+		// exists to remove.
+		vi.stubEnv('EMAIL_PROVIDER', 'resend');
+		vi.stubEnv('RESEND_API_KEY', 'secret');
+		vi.stubEnv('MTA_INTERNAL_URL', '');
+		vi.stubEnv('MTA_API_URL', '');
+		vi.stubEnv('MTA_API_KEY', '');
+		setUser('user-alice', 'editor');
+		await sendOwnTestDraft(t, a.mailboxId);
+
+		expect(await readFirstSendDone(t, 'user-alice')).toBeNull();
+	});
+
+	it('stamps firstSendDone on a real send once the MTA is configured', async () => {
+		const t = convexTest(schema, modules);
+		const a = await seedMailbox(t, 'user-alice', 'alice@hinterland.camp');
+
+		// The MTA — the transport hosted Postbox drafts actually ship through — is
+		// reachable, so the send honestly completes the first-send step. Keyed on
+		// the MTA env, NOT EMAIL_PROVIDER (Postbox dispatch never consults it).
+		vi.stubEnv('MTA_API_URL', 'https://mta.example');
+		vi.stubEnv('MTA_API_KEY', 'secret');
+		setUser('user-alice', 'editor');
+		await sendOwnTestDraft(t, a.mailboxId);
+
+		expect(await readFirstSendDone(t, 'user-alice')).toBeGreaterThan(0);
+	});
+
+	it('stamps firstSendDone for an external mailbox once the mail-sync worker is configured', async () => {
+		const t = convexTest(schema, modules);
+		// External mailbox ships through the member's own SMTP via the mail-sync
+		// worker — its transport is the worker env, not the instance provider.
+		const mailboxId = await seedExternalMailbox(t);
+
+		// No instance provider, but the external worker IS configured.
+		vi.stubEnv('MAIL_SYNC_API_URL', 'https://sync.example');
+		vi.stubEnv('MAIL_SYNC_API_KEY', 'secret');
+		setUser('user-ext', 'editor');
+		await sendOwnTestDraft(t, mailboxId);
+
+		expect(await readFirstSendDone(t, 'user-ext')).toBeGreaterThan(0);
+	});
+
+	it('does NOT stamp firstSendDone for an external mailbox when the worker is unconfigured', async () => {
+		const t = convexTest(schema, modules);
+		const mailboxId = await seedExternalMailbox(t);
+
+		// The external transport is the mail-sync worker env. Explicitly clear it
+		// so the "unconfigured" state is deterministic rather than relying on the
+		// setup file happening not to seed MAIL_SYNC_*.
+		vi.stubEnv('MAIL_SYNC_API_URL', '');
+		vi.stubEnv('MAIL_SYNC_API_KEY', '');
+		setUser('user-ext', 'editor');
+		await sendOwnTestDraft(t, mailboxId);
+
+		expect(await readFirstSendDone(t, 'user-ext')).toBeNull();
 	});
 });
 
