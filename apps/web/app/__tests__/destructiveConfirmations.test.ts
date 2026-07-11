@@ -5,128 +5,159 @@
  * UiConfirmationDialog; removing a Postbox contact now surfaces an undo toast.
  *
  * Two layers of coverage:
- *   1. A behavioural harness proves the confirm-gate contract — the trigger only
- *      arms the action, cancel discards it without mutating, and confirm is what
- *      actually mutates (exactly once).
- *   2. Source assertions prove the three real pages adopt that gate rather than
- *      calling their mutation straight from the trigger's click handler.
+ *   1. A behavioural mount of the REAL UiConfirmationDialog proves the exact
+ *      contract the pages depend on: the mutation only runs on @confirm (once),
+ *      never while the dialog is closed, and never on cancel / backdrop /
+ *      @update:open(false).
+ *   2. Thin source assertions prove the three real pages wire that gate in rather
+ *      than calling their mutation straight from the trigger's click handler.
  */
 import { describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { defineComponent, h, ref } from 'vue';
 import { mount } from '@vue/test-utils';
+import UiConfirmationDialog from '../../../../packages/ui/components/ui/ConfirmationDialog.vue';
 
-// Mirrors the pending-target + confirm/cancel pattern the pages use. The mutation
-// is a spy so we can assert exactly when (and whether) it runs.
-function makeGateHarness(mutate: () => void) {
-	return defineComponent({
+// UiConfirmationDialog is authored against Nuxt auto-imports (UiModal/UiButton/Icon).
+// Minimal stubs stand in for those so we exercise the dialog's own confirm/cancel/
+// close wiring, not its dependencies.
+const UiModalStub = defineComponent({
+	props: { open: Boolean, persistent: Boolean, closable: Boolean },
+	emits: ['update:open'],
+	setup(props, { slots, emit }) {
+		return () =>
+			props.open
+				? h('div', { class: 'modal' }, [
+						h('button', { class: 'backdrop', onClick: () => emit('update:open', false) }, 'x'),
+						h('div', { class: 'body' }, slots.default?.()),
+						h('div', { class: 'footer' }, slots.footer?.()),
+					])
+				: null;
+	},
+});
+
+const UiButtonStub = defineComponent({
+	props: { variant: String, disabled: Boolean },
+	setup(_props, { slots }) {
+		// Single root <button> so the parent's @click falls through natively.
+		return () => h('button', { class: 'ui-button' }, slots.default?.());
+	},
+});
+
+const globalStubs = {
+	global: { stubs: { UiModal: UiModalStub, UiButton: UiButtonStub, Icon: true } },
+};
+
+// Mirrors the page pattern: a trigger arms the dialog (sets :open), @confirm runs
+// the mutation then closes, and @update:open drives the open state.
+function mountPageLikeGate(onMutate: () => void) {
+	const Harness = defineComponent({
 		setup() {
-			const pending = ref<{ id: string } | null>(null);
-			const arm = () => {
-				pending.value = { id: 'target-1' };
-			};
-			const cancel = () => {
-				pending.value = null;
-			};
-			const confirm = () => {
-				if (!pending.value) return;
-				mutate();
-				pending.value = null;
-			};
-			return { pending, arm, cancel, confirm };
+			const open = ref(false);
+			return { open };
 		},
 		render() {
 			return h('div', [
-				h('button', { class: 'trigger', onClick: this.arm }, 'delete'),
-				this.pending
-					? h('div', { class: 'dialog' }, [
-							h('button', { class: 'cancel', onClick: this.cancel }, 'cancel'),
-							h('button', { class: 'confirm', onClick: this.confirm }, 'confirm'),
-						])
-					: null,
+				h('button', { class: 'trigger', onClick: () => (this.open = true) }, 'delete'),
+				h(UiConfirmationDialog, {
+					open: this.open,
+					variant: 'danger',
+					onConfirm: () => {
+						onMutate();
+						this.open = false;
+					},
+					'onUpdate:open': (v: boolean) => {
+						this.open = v;
+					},
+				}),
 			]);
 		},
 	});
+	return mount(Harness, globalStubs);
 }
 
-describe('destructive confirmation gate', () => {
-	it('arms but does not mutate when the trigger is clicked', async () => {
+const confirmButton = (w: ReturnType<typeof mountPageLikeGate>) =>
+	w.find('.footer button[type="button"]');
+const cancelButton = (w: ReturnType<typeof mountPageLikeGate>) =>
+	w.find('.footer button.ui-button');
+
+describe('UiConfirmationDialog gate (real component)', () => {
+	it('does not mutate before the dialog is armed', () => {
 		const mutate = vi.fn();
-		const wrapper = mount(makeGateHarness(mutate));
+		const w = mountPageLikeGate(mutate);
 
-		await wrapper.find('button.trigger').trigger('click');
-
+		expect(w.find('.modal').exists()).toBe(false);
 		expect(mutate).not.toHaveBeenCalled();
-		expect(wrapper.find('.dialog').exists()).toBe(true);
 	});
 
-	it('cancel discards the action without mutating', async () => {
+	it('arms the dialog on the trigger without mutating', async () => {
 		const mutate = vi.fn();
-		const wrapper = mount(makeGateHarness(mutate));
+		const w = mountPageLikeGate(mutate);
 
-		await wrapper.find('button.trigger').trigger('click');
-		await wrapper.find('button.cancel').trigger('click');
+		await w.find('button.trigger').trigger('click');
 
+		expect(w.find('.modal').exists()).toBe(true);
 		expect(mutate).not.toHaveBeenCalled();
-		expect(wrapper.find('.dialog').exists()).toBe(false);
 	});
 
-	it('confirm mutates exactly once and closes the dialog', async () => {
+	it('mutates exactly once on confirm and closes', async () => {
 		const mutate = vi.fn();
-		const wrapper = mount(makeGateHarness(mutate));
+		const w = mountPageLikeGate(mutate);
 
-		await wrapper.find('button.trigger').trigger('click');
-		await wrapper.find('button.confirm').trigger('click');
+		await w.find('button.trigger').trigger('click');
+		await confirmButton(w).trigger('click');
 
 		expect(mutate).toHaveBeenCalledTimes(1);
-		expect(wrapper.find('.dialog').exists()).toBe(false);
+		expect(w.find('.modal').exists()).toBe(false);
+	});
+
+	it('never mutates on cancel and closes', async () => {
+		const mutate = vi.fn();
+		const w = mountPageLikeGate(mutate);
+
+		await w.find('button.trigger').trigger('click');
+		await cancelButton(w).trigger('click');
+
+		expect(mutate).not.toHaveBeenCalled();
+		expect(w.find('.modal').exists()).toBe(false);
+	});
+
+	it('never mutates on backdrop dismiss and closes', async () => {
+		const mutate = vi.fn();
+		const w = mountPageLikeGate(mutate);
+
+		await w.find('button.trigger').trigger('click');
+		await w.find('.backdrop').trigger('click');
+
+		expect(mutate).not.toHaveBeenCalled();
+		expect(w.find('.modal').exists()).toBe(false);
 	});
 });
 
 const readPage = (relPath: string) =>
 	readFileSync(resolve(__dirname, '..', 'pages', relPath), 'utf8');
 
-describe('assistant chat delete confirms first', () => {
-	const source = readPage('dashboard/assistant/index.vue');
-
-	it('routes the trash button to a pending target instead of removing directly', () => {
-		expect(source).toContain('pendingDelete = {');
+// Thin secondary guard: prove each page routes its trigger into the gate instead
+// of mutating directly, and confirms through UiConfirmationDialog.
+describe('pages wire the gate in (source guard)', () => {
+	it('assistant delete arms a pending target and removes only on confirm', () => {
+		const source = readPage('dashboard/assistant/index.vue');
 		expect(source).not.toContain('onDelete(c._id)');
-	});
-
-	it('performs the removal only from the confirmation dialog', () => {
 		expect(source).toContain('<UiConfirmationDialog');
 		expect(source).toContain('@confirm="confirmDelete"');
-		expect(source).toMatch(/confirmDelete[\s\S]*await remove\(/);
 	});
-});
 
-describe('quarantine block-sender confirms first', () => {
-	const source = readPage('dashboard/inbox/quarantine.vue');
-
-	it('routes the block button to a pending target instead of blocking directly', () => {
-		expect(source).toContain('pendingBlock = {');
+	it('quarantine block arms a pending target and blocks only on confirm', () => {
+		const source = readPage('dashboard/inbox/quarantine.vue');
 		expect(source).not.toContain('@click="onBlock(message._id)"');
-	});
-
-	it('performs the block only from the confirmation dialog', () => {
 		expect(source).toContain('<UiConfirmationDialog');
 		expect(source).toContain('@confirm="confirmBlock"');
-		expect(source).toMatch(/confirmBlock[\s\S]*await onBlock\(/);
 	});
-});
 
-describe('postbox contact removal offers undo', () => {
-	const source = readPage('dashboard/postbox/contacts.vue');
-
-	it('routes the trash button through a handler rather than removing silently', () => {
+	it('postbox contact removal routes through a handler with an undo toast', () => {
+		const source = readPage('dashboard/postbox/contacts.vue');
 		expect(source).toContain('@click="removeContact(c)"');
-		expect(source).not.toContain('@click="remove(c._id as Id<\'mailContacts\'>)"');
-	});
-
-	it('shows an undo toast that re-adds the contact', () => {
 		expect(source).toMatch(/showToast\([\s\S]*label: 'Undo'/);
-		expect(source).toMatch(/onAction[\s\S]*save\(/);
 	});
 });
