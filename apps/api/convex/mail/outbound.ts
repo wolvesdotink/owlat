@@ -21,8 +21,7 @@ import type { Id } from '../_generated/dataModel';
 import { logError, logInfo } from '../lib/runtimeLog';
 import { renderEmailHtml, renderPlainText, renderAmpEmail } from '@owlat/email-renderer';
 import type { EditorBlock } from '@owlat/shared/types';
-import { getOptional } from '../lib/env';
-import { getMtaConfig, scanAttachmentBytes } from './mtaClient';
+import { getMailSyncConfig, getMtaConfig, scanAttachmentBytes } from './mtaClient';
 import type { TransitionOutcome as DraftTransitionOutcome } from './draftLifecycle';
 import { buildMessageId, buildRfc822, stripHtml, type DraftRow } from './rfc822';
 import { rewriteInlineImageCids, isInlineImageReferenced } from '@owlat/shared/inlineImages';
@@ -144,9 +143,8 @@ async function dispatchViaExternalWorker(
 		}
 	};
 
-	const baseUrl = getOptional('MAIL_SYNC_API_URL');
-	const apiKey = getOptional('MAIL_SYNC_API_KEY');
-	if (!baseUrl || !apiKey) {
+	const mailSync = getMailSyncConfig();
+	if (!mailSync) {
 		// Mis-provisioned external-mail install: the mail.external feature is on but
 		// the worker URL/key never reached the Convex runtime. Surface a real
 		// delivery failure on every recipient instead of silently leaving the
@@ -177,9 +175,9 @@ async function dispatchViaExternalWorker(
 
 	let result: ExternalSendResult;
 	try {
-		const res = await fetch(`${baseUrl.replace(/\/+$/, '')}/send`, {
+		const res = await fetch(`${mailSync.baseUrl}/send`, {
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+			headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${mailSync.apiKey}` },
 			body: JSON.stringify({
 				externalAccountId: params.externalAccountId,
 				messageId: params.rfc822MessageId,

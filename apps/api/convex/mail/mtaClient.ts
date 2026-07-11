@@ -26,6 +26,25 @@ export function getMtaConfig(): MtaConfig | null {
 	return { baseUrl: baseUrl.replace(/\/+$/, ''), apiKey };
 }
 
+export interface MailSyncConfig {
+	baseUrl: string;
+	apiKey: string;
+}
+
+/**
+ * Resolve the mail-sync worker base URL + bearer token — the transport a
+ * connected external (BYO IMAP/SMTP) mailbox sends and receives through. Single
+ * source of truth for "is the external worker configured?": null iff either
+ * `MAIL_SYNC_API_URL` or `MAIL_SYNC_API_KEY` is unset. The trailing slash is
+ * trimmed so callers can append `/path` directly.
+ */
+export function getMailSyncConfig(): MailSyncConfig | null {
+	const baseUrl = getOptional('MAIL_SYNC_API_URL');
+	const apiKey = getOptional('MAIL_SYNC_API_KEY');
+	if (!baseUrl || !apiKey) return null;
+	return { baseUrl: baseUrl.replace(/\/+$/, ''), apiKey };
+}
+
 /** Raw `/scan/attachment` response body shape. */
 interface AttachmentScanResponse {
 	clean: boolean;
@@ -72,7 +91,7 @@ export type AttachmentScanVerdict =
 export async function scanAttachmentBytes(
 	mta: MtaConfig | null,
 	filename: string,
-	data: Buffer,
+	data: Buffer
 ): Promise<AttachmentScanVerdict> {
 	if (!mta) return { kind: 'skipped' }; // scanner not configured → fail-open, silent
 
@@ -84,10 +103,7 @@ export async function scanAttachmentBytes(
 				'Content-Type': 'application/octet-stream',
 				'X-Filename': filename,
 			},
-			body: data.buffer.slice(
-				data.byteOffset,
-				data.byteOffset + data.byteLength,
-			) as ArrayBuffer,
+			body: data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer,
 		});
 
 		if (!res.ok) {
