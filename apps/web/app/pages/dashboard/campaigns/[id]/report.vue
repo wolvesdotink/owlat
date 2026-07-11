@@ -45,6 +45,7 @@ const {
 	data: campaign,
 	isLoading: campaignLoading,
 	error: campaignError,
+	refetch: refetchCampaign,
 } = useConvexQuery(api.campaigns.campaigns.getWithRelations, () => ({
 	campaignId: campaignId.value,
 }));
@@ -232,16 +233,9 @@ const loadPrevClicked = () => {
 			:loading="isLoading && !campaign"
 			:error="campaignError"
 			error-title="Couldn't load this report"
+			loading-label="Loading report..."
+			@retry="refetchCampaign"
 		>
-			<template #loading>
-				<div class="flex items-center justify-center py-16">
-					<div class="flex flex-col items-center gap-3">
-						<UiSpinner />
-						<p class="text-text-secondary text-sm">Loading report...</p>
-					</div>
-				</div>
-			</template>
-
 			<!-- Campaign Not Found -->
 			<div
 				v-if="!campaign"

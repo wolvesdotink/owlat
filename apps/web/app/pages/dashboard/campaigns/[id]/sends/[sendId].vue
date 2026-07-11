@@ -17,6 +17,7 @@ const {
 	data: send,
 	isLoading,
 	error,
+	refetch,
 } = useConvexQuery(api.delivery.sends.get, () => ({
 	id: sendId.value,
 }));
@@ -28,16 +29,9 @@ const {
 			:loading="isLoading && !send"
 			:error="error"
 			error-title="Couldn't load send details"
+			loading-label="Loading send details..."
+			@retry="refetch"
 		>
-			<template #loading>
-				<div class="flex items-center justify-center py-16">
-					<div class="flex flex-col items-center gap-3">
-						<UiSpinner />
-						<p class="text-text-secondary text-sm">Loading send details...</p>
-					</div>
-				</div>
-			</template>
-
 			<!-- Not Found -->
 			<div
 				v-if="!send"

@@ -26,6 +26,7 @@ const {
 	data: template,
 	isLoading: templateLoading,
 	error: templateError,
+	refetch: refetchTemplate,
 } = useConvexQuery(api.emailTemplates.emails.get, () => ({ templateId }));
 
 // Mutations
@@ -142,6 +143,7 @@ const handleTranslations = () => {
 			:loading="templateLoading"
 			:error="templateError"
 			error-title="Couldn't load this template"
+			@retry="refetchTemplate"
 		>
 			<template #loading>
 				<div class="h-full flex items-center justify-center bg-bg-deep">

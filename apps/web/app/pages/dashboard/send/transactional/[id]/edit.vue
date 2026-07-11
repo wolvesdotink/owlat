@@ -29,6 +29,7 @@ const {
 	data: email,
 	isLoading: emailLoading,
 	error: emailError,
+	refetch: refetchEmail,
 } = useConvexQuery(api.transactional.emails.get, () => ({ id: emailId }));
 
 // Mutations
@@ -273,6 +274,7 @@ const handleCreateVariable = async (variable: { key: string; type?: string }) =>
 			:loading="emailLoading"
 			:error="emailError"
 			error-title="Couldn't load this email"
+			@retry="refetchEmail"
 		>
 			<template #loading>
 				<div class="h-full flex items-center justify-center bg-bg-deep">
