@@ -17,12 +17,13 @@ const { hasActiveOrganization, isLoading: organizationLoading } = useOrganizatio
 const reasonFilter = ref<'all' | 'bounced' | 'complained' | 'manual'>('all');
 
 // Get blocked emails with real-time updates
-const { data: blockedEmailsData, isLoading: blockedEmailsLoading } = useOrganizationQuery(
-	api.blockedEmails.listByTeam,
-	() => ({
-		reason: reasonFilter.value === 'all' ? undefined : reasonFilter.value,
-	})
-);
+const {
+	data: blockedEmailsData,
+	isLoading: blockedEmailsLoading,
+	error: blockedEmailsError,
+} = useOrganizationQuery(api.blockedEmails.listByTeam, () => ({
+	reason: reasonFilter.value === 'all' ? undefined : reasonFilter.value,
+}));
 
 // Get counts by reason
 const { data: countsData } = useOrganizationQuery(api.blockedEmails.getCountsByReason);
@@ -210,218 +211,217 @@ const getReasonLabel = (reason: string) => {
 			</div>
 		</div>
 
-		<!-- Loading State -->
-		<div v-if="isLoading && !blockedEmailsData" class="flex items-center justify-center py-16">
-			<div class="flex flex-col items-center gap-3">
-				<UiSpinner />
-				<p class="text-text-secondary text-sm">Loading suppressions...</p>
-			</div>
-		</div>
-
-		<!-- No Organization State -->
-		<div v-else-if="!hasActiveOrganization" class="card p-0 overflow-hidden">
-			<UiEmptyState
-				icon="lucide:ban"
-				title="No workspace selected"
-				description="Create or select a workspace to manage your suppressions."
-			/>
-		</div>
-
-		<!-- Content -->
-		<div v-else class="space-y-6">
-			<!-- Info Card -->
-			<div class="card p-6 bg-warning/5 border-warning/20">
-				<div class="flex gap-4">
-					<UiIconBox icon="lucide:alert-triangle" size="sm" variant="warning" rounded="lg" />
-					<div>
-						<h3 class="font-medium text-text-primary mb-1">What are suppressions?</h3>
-						<p class="text-sm text-text-secondary">
-							Suppressed addresses stop receiving mail from your campaigns and automations. An
-							address is added automatically when it bounces (the mailbox doesn't exist) or when
-							someone marks a send as spam — so you never send to it again. You can also suppress an
-							address by hand to stop sending to a specific recipient.
-						</p>
-					</div>
-				</div>
-			</div>
-
-			<!-- Stats Cards -->
-			<div v-if="countsData" class="grid grid-cols-2 md:grid-cols-4 gap-4">
-				<div class="card p-4">
-					<p class="text-sm text-text-secondary">Total suppressed</p>
-					<p class="text-2xl font-semibold text-text-primary mt-1">{{ countsData.total }}</p>
-				</div>
-				<div class="card p-4">
-					<div class="flex items-center gap-2">
-						<Icon name="lucide:mail" class="w-4 h-4 text-error" />
-						<p class="text-sm text-text-secondary">Bounced</p>
-					</div>
-					<p class="text-2xl font-semibold text-text-primary mt-1">{{ countsData.bounced }}</p>
-				</div>
-				<div class="card p-4">
-					<div class="flex items-center gap-2">
-						<Icon name="lucide:message-square-warning" class="w-4 h-4 text-warning" />
-						<p class="text-sm text-text-secondary">Complained</p>
-					</div>
-					<p class="text-2xl font-semibold text-text-primary mt-1">{{ countsData.complained }}</p>
-				</div>
-				<div class="card p-4">
-					<div class="flex items-center gap-2">
-						<Icon name="lucide:user-x" class="w-4 h-4 text-brand" />
-						<p class="text-sm text-text-secondary">Manual</p>
-					</div>
-					<p class="text-2xl font-semibold text-text-primary mt-1">{{ countsData.manual }}</p>
-				</div>
-			</div>
-
-			<!-- Filters and Search -->
-			<div class="flex flex-col sm:flex-row gap-4">
-				<!-- Search -->
-				<div class="relative flex-1">
-					<Icon
-						name="lucide:search"
-						class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary"
-					/>
-					<input
-						v-model="searchQuery"
-						type="text"
-						placeholder="Search by email address..."
-						class="input pl-10"
-					/>
-				</div>
-
-				<!-- Filter by reason -->
-				<div class="flex items-center gap-2">
-					<Icon name="lucide:filter" class="w-4 h-4 text-text-tertiary" />
-					<select v-model="reasonFilter" class="input w-40">
-						<option value="all">All reasons</option>
-						<option value="bounced">Bounced</option>
-						<option value="complained">Complained</option>
-						<option value="manual">Manually suppressed</option>
-					</select>
-				</div>
-			</div>
-
-			<!-- Empty State -->
-			<div
-				v-if="blockedEmailsData && blockedEmailsData.length === 0"
-				class="card p-0 overflow-hidden"
-			>
+		<UiQueryBoundary
+			:loading="isLoading && !blockedEmailsData"
+			:error="blockedEmailsError"
+			error-title="Couldn't load suppressions"
+			loading-label="Loading suppressions..."
+		>
+			<!-- No Organization State -->
+			<div v-if="!hasActiveOrganization" class="card p-0 overflow-hidden">
 				<UiEmptyState
 					icon="lucide:ban"
-					title="No suppressions"
-					description="Nothing is suppressed. Addresses are added automatically when they bounce or when someone marks a send as spam."
-				>
-					<template #action>
-						<UiButton @click="addModal.open()">
-							<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
-							Add suppression
-						</UiButton>
-					</template>
-				</UiEmptyState>
-			</div>
-
-			<!-- No Search Results -->
-			<div
-				v-else-if="filteredBlockedEmails.length === 0 && searchQuery.trim()"
-				class="card p-0 overflow-hidden"
-			>
-				<UiEmptyState
-					icon="lucide:search"
-					title="No results found"
-					:description="`No suppressions match &quot;${searchQuery}&quot;. Try a different search term.`"
+					title="No workspace selected"
+					description="Create or select a workspace to manage your suppressions."
 				/>
 			</div>
 
-			<!-- Blocked Emails List -->
-			<div v-else-if="filteredBlockedEmails.length > 0" class="card p-0 overflow-hidden">
-				<table class="w-full">
-					<thead>
-						<tr class="border-b border-border-subtle bg-bg-surface/50">
-							<th
-								class="text-left text-xs font-medium text-text-tertiary uppercase tracking-wider px-6 py-3"
+			<!-- Content -->
+			<div v-else class="space-y-6">
+				<!-- Info Card -->
+				<div class="card p-6 bg-warning/5 border-warning/20">
+					<div class="flex gap-4">
+						<UiIconBox icon="lucide:alert-triangle" size="sm" variant="warning" rounded="lg" />
+						<div>
+							<h3 class="font-medium text-text-primary mb-1">What are suppressions?</h3>
+							<p class="text-sm text-text-secondary">
+								Suppressed addresses stop receiving mail from your campaigns and automations. An
+								address is added automatically when it bounces (the mailbox doesn't exist) or when
+								someone marks a send as spam — so you never send to it again. You can also suppress
+								an address by hand to stop sending to a specific recipient.
+							</p>
+						</div>
+					</div>
+				</div>
+
+				<!-- Stats Cards -->
+				<div v-if="countsData" class="grid grid-cols-2 md:grid-cols-4 gap-4">
+					<div class="card p-4">
+						<p class="text-sm text-text-secondary">Total suppressed</p>
+						<p class="text-2xl font-semibold text-text-primary mt-1">{{ countsData.total }}</p>
+					</div>
+					<div class="card p-4">
+						<div class="flex items-center gap-2">
+							<Icon name="lucide:mail" class="w-4 h-4 text-error" />
+							<p class="text-sm text-text-secondary">Bounced</p>
+						</div>
+						<p class="text-2xl font-semibold text-text-primary mt-1">{{ countsData.bounced }}</p>
+					</div>
+					<div class="card p-4">
+						<div class="flex items-center gap-2">
+							<Icon name="lucide:message-square-warning" class="w-4 h-4 text-warning" />
+							<p class="text-sm text-text-secondary">Complained</p>
+						</div>
+						<p class="text-2xl font-semibold text-text-primary mt-1">{{ countsData.complained }}</p>
+					</div>
+					<div class="card p-4">
+						<div class="flex items-center gap-2">
+							<Icon name="lucide:user-x" class="w-4 h-4 text-brand" />
+							<p class="text-sm text-text-secondary">Manual</p>
+						</div>
+						<p class="text-2xl font-semibold text-text-primary mt-1">{{ countsData.manual }}</p>
+					</div>
+				</div>
+
+				<!-- Filters and Search -->
+				<div class="flex flex-col sm:flex-row gap-4">
+					<!-- Search -->
+					<div class="relative flex-1">
+						<Icon
+							name="lucide:search"
+							class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary"
+						/>
+						<input
+							v-model="searchQuery"
+							type="text"
+							placeholder="Search by email address..."
+							class="input pl-10"
+						/>
+					</div>
+
+					<!-- Filter by reason -->
+					<div class="flex items-center gap-2">
+						<Icon name="lucide:filter" class="w-4 h-4 text-text-tertiary" />
+						<select v-model="reasonFilter" class="input w-40">
+							<option value="all">All reasons</option>
+							<option value="bounced">Bounced</option>
+							<option value="complained">Complained</option>
+							<option value="manual">Manually suppressed</option>
+						</select>
+					</div>
+				</div>
+
+				<!-- Empty State -->
+				<div
+					v-if="blockedEmailsData && blockedEmailsData.length === 0"
+					class="card p-0 overflow-hidden"
+				>
+					<UiEmptyState
+						icon="lucide:ban"
+						title="No suppressions"
+						description="Nothing is suppressed. Addresses are added automatically when they bounce or when someone marks a send as spam."
+					>
+						<template #action>
+							<UiButton @click="addModal.open()">
+								<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
+								Add suppression
+							</UiButton>
+						</template>
+					</UiEmptyState>
+				</div>
+
+				<!-- No Search Results -->
+				<div
+					v-else-if="filteredBlockedEmails.length === 0 && searchQuery.trim()"
+					class="card p-0 overflow-hidden"
+				>
+					<UiEmptyState
+						icon="lucide:search"
+						title="No results found"
+						:description="`No suppressions match &quot;${searchQuery}&quot;. Try a different search term.`"
+					/>
+				</div>
+
+				<!-- Blocked Emails List -->
+				<div v-else-if="filteredBlockedEmails.length > 0" class="card p-0 overflow-hidden">
+					<table class="w-full">
+						<thead>
+							<tr class="border-b border-border-subtle bg-bg-surface/50">
+								<th
+									class="text-left text-xs font-medium text-text-tertiary uppercase tracking-wider px-6 py-3"
+								>
+									Email Address
+								</th>
+								<th
+									class="text-left text-xs font-medium text-text-tertiary uppercase tracking-wider px-6 py-3"
+								>
+									Reason
+								</th>
+								<th
+									class="text-left text-xs font-medium text-text-tertiary uppercase tracking-wider px-6 py-3 hidden md:table-cell"
+								>
+									Notes
+								</th>
+								<th
+									class="text-left text-xs font-medium text-text-tertiary uppercase tracking-wider px-6 py-3 hidden lg:table-cell"
+								>
+									Date Added
+								</th>
+								<th
+									class="text-right text-xs font-medium text-text-tertiary uppercase tracking-wider px-6 py-3"
+								>
+									Actions
+								</th>
+							</tr>
+						</thead>
+						<tbody class="divide-y divide-border-subtle">
+							<tr
+								v-for="blockedEmail in filteredBlockedEmails"
+								:key="blockedEmail._id"
+								class="hover:bg-bg-surface/30 transition-colors"
 							>
-								Email Address
-							</th>
-							<th
-								class="text-left text-xs font-medium text-text-tertiary uppercase tracking-wider px-6 py-3"
-							>
-								Reason
-							</th>
-							<th
-								class="text-left text-xs font-medium text-text-tertiary uppercase tracking-wider px-6 py-3 hidden md:table-cell"
-							>
-								Notes
-							</th>
-							<th
-								class="text-left text-xs font-medium text-text-tertiary uppercase tracking-wider px-6 py-3 hidden lg:table-cell"
-							>
-								Date Added
-							</th>
-							<th
-								class="text-right text-xs font-medium text-text-tertiary uppercase tracking-wider px-6 py-3"
-							>
-								Actions
-							</th>
-						</tr>
-					</thead>
-					<tbody class="divide-y divide-border-subtle">
-						<tr
-							v-for="blockedEmail in filteredBlockedEmails"
-							:key="blockedEmail._id"
-							class="hover:bg-bg-surface/30 transition-colors"
-						>
-							<td class="px-6 py-4">
-								<div class="flex items-center gap-3">
-									<div class="p-2 rounded-lg bg-bg-surface flex items-center justify-center">
-										<Icon
-											:name="getReasonIcon(blockedEmail.reason)"
-											class="w-4 h-4 text-text-secondary"
-										/>
+								<td class="px-6 py-4">
+									<div class="flex items-center gap-3">
+										<div class="p-2 rounded-lg bg-bg-surface flex items-center justify-center">
+											<Icon
+												:name="getReasonIcon(blockedEmail.reason)"
+												class="w-4 h-4 text-text-secondary"
+											/>
+										</div>
+										<span class="text-sm font-medium text-text-primary">
+											{{ blockedEmail.email }}
+										</span>
 									</div>
-									<span class="text-sm font-medium text-text-primary">
-										{{ blockedEmail.email }}
+								</td>
+								<td class="px-6 py-4">
+									<span
+										:class="[
+											'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border',
+											getReasonBadgeClass(blockedEmail.reason),
+										]"
+									>
+										{{ getReasonLabel(blockedEmail.reason) }}
 									</span>
-								</div>
-							</td>
-							<td class="px-6 py-4">
-								<span
-									:class="[
-										'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border',
-										getReasonBadgeClass(blockedEmail.reason),
-									]"
-								>
-									{{ getReasonLabel(blockedEmail.reason) }}
-								</span>
-							</td>
-							<td class="px-6 py-4 hidden md:table-cell">
-								<span
-									v-if="blockedEmail.notes"
-									class="text-sm text-text-secondary truncate max-w-[200px] block"
-								>
-									{{ blockedEmail.notes }}
-								</span>
-								<span v-else class="text-sm text-text-tertiary">—</span>
-							</td>
-							<td class="px-6 py-4 hidden lg:table-cell">
-								<span class="text-sm text-text-secondary">
-									{{ formatDateTime(blockedEmail.createdAt) }}
-								</span>
-							</td>
-							<td class="px-6 py-4 text-right">
-								<button
-									class="btn btn-ghost p-2 text-error hover:bg-error/10"
-									title="Remove suppression"
-									@click="emailToDelete = blockedEmail"
-								>
-									<Icon name="lucide:trash-2" class="w-4 h-4" />
-								</button>
-							</td>
-						</tr>
-					</tbody>
-				</table>
+								</td>
+								<td class="px-6 py-4 hidden md:table-cell">
+									<span
+										v-if="blockedEmail.notes"
+										class="text-sm text-text-secondary truncate max-w-[200px] block"
+									>
+										{{ blockedEmail.notes }}
+									</span>
+									<span v-else class="text-sm text-text-tertiary">—</span>
+								</td>
+								<td class="px-6 py-4 hidden lg:table-cell">
+									<span class="text-sm text-text-secondary">
+										{{ formatDateTime(blockedEmail.createdAt) }}
+									</span>
+								</td>
+								<td class="px-6 py-4 text-right">
+									<button
+										class="btn btn-ghost p-2 text-error hover:bg-error/10"
+										title="Remove suppression"
+										@click="emailToDelete = blockedEmail"
+									>
+										<Icon name="lucide:trash-2" class="w-4 h-4" />
+									</button>
+								</td>
+							</tr>
+						</tbody>
+					</table>
+				</div>
 			</div>
-		</div>
+		</UiQueryBoundary>
 
 		<!-- Add suppression Modal -->
 		<UiModal v-model:open="addModal.isOpen.value" title="Add suppression">

@@ -7,7 +7,7 @@ import { internal } from '../_generated/api';
 const FORM_SUBMISSION_DELETE_BATCH = 256;
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import { validateStringLength, STRING_LIMITS } from '../lib/inputGuards';
-import { throwNotFound, throwRateLimited, throwInvalidInput } from '../_utils/errors';
+import { getOrThrow, throwRateLimited, throwInvalidInput } from '../_utils/errors';
 import { rateLimiter } from '../rateLimiter';
 import { formFieldValidator } from '../lib/convexValidators';
 import { assertFeatureEnabled } from '../lib/featureFlags';
@@ -43,9 +43,7 @@ export const listByTeam = authedQuery({
 	args: {},
 	handler: async (ctx) => {
 		await assertFeatureEnabled(ctx, 'forms');
-		const forms = await ctx.db
-			.query('formEndpoints')
-			.collect(); // bounded: small per-org list
+		const forms = await ctx.db.query('formEndpoints').collect(); // bounded: small per-org list
 
 		return forms.map((form) => ({
 			...form,
@@ -115,7 +113,11 @@ export const create = authedMutation({
 		doubleOptIn: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'organization:manage', 'Only owners and admins can manage forms');
+		await requireOrgPermission(
+			ctx,
+			'organization:manage',
+			'Only owners and admins can manage forms'
+		);
 		// Validate input lengths
 		validateStringLength(args.name, STRING_LIMITS.NAME, 'Name');
 		if (args.redirectUrl) validateStringLength(args.redirectUrl, STRING_LIMITS.URL, 'Redirect URL');
@@ -162,7 +164,11 @@ export const update = authedMutation({
 		doubleOptIn: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'organization:manage', 'Only owners and admins can manage forms');
+		await requireOrgPermission(
+			ctx,
+			'organization:manage',
+			'Only owners and admins can manage forms'
+		);
 		// Validate input lengths
 		if (args.name) validateStringLength(args.name, STRING_LIMITS.NAME, 'Name');
 		if (args.redirectUrl) validateStringLength(args.redirectUrl, STRING_LIMITS.URL, 'Redirect URL');
@@ -172,11 +178,7 @@ export const update = authedMutation({
 
 		const { formEndpointId, ...updates } = args;
 
-		const form = await ctx.db.get(formEndpointId);
-		if (!form) {
-			throwNotFound('Form endpoint');
-		}
-
+		await getOrThrow(ctx, formEndpointId, 'Form endpoint');
 
 		// Build update object with only provided fields
 		const updateData: Record<string, unknown> = {
@@ -206,11 +208,12 @@ export const remove = authedMutation({
 		formEndpointId: v.id('formEndpoints'),
 	},
 	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'organization:manage', 'Only owners and admins can manage forms');
-		const form = await ctx.db.get(args.formEndpointId);
-		if (!form) {
-			throwNotFound('Form endpoint');
-		}
+		await requireOrgPermission(
+			ctx,
+			'organization:manage',
+			'Only owners and admins can manage forms'
+		);
+		await getOrThrow(ctx, args.formEndpointId, 'Form endpoint');
 
 		// Deactivate immediately (stops new submissions), then drain the unbounded
 		// submission history in scheduled batches before deleting the endpoint —
@@ -227,7 +230,7 @@ export const remove = authedMutation({
 /**
  * Scheduled cascade: delete one bounded page of a form's submissions per
  * invocation, rescheduling until drained, then delete the endpoint row. Reuses
- * the batched-continuation shape of organizations/deletion/steps/formSubmissions.
+ * the batched-continuation shape of workspaces/deletion/steps/formSubmissions.
  */
 export const drainAndDeleteForm = internalMutation({
 	args: { formEndpointId: v.id('formEndpoints') },
@@ -266,7 +269,6 @@ export const getSubmissions = authedQuery({
 	handler: async (ctx, args) => {
 		const form = await ctx.db.get(args.formEndpointId);
 		if (!form) return [];
-
 
 		const limit = args.limit || 50;
 
@@ -390,9 +392,7 @@ export const confirmSubmission = publicMutation({
 		// confirmation page.
 		const submission = await ctx.db
 			.query('formSubmissions')
-			.withIndex('by_confirmation_token', (q) =>
-				q.eq('confirmationToken', args.token),
-			)
+			.withIndex('by_confirmation_token', (q) => q.eq('confirmationToken', args.token))
 			.first();
 
 		if (!submission) {
@@ -401,7 +401,7 @@ export const confirmSubmission = publicMutation({
 			// the DOI lifecycle — there is no form row to patch in step 3.
 			const doiOnly: DoiTransitionOutcome = await ctx.runMutation(
 				internal.contacts.doiLifecycle.transitionByConfirmationToken,
-				{ token: args.token, input: { to: 'confirmed', at: now } },
+				{ token: args.token, input: { to: 'confirmed', at: now } }
 			);
 			if (!doiOnly.ok) {
 				if (doiOnly.reason === 'token_expired') return { success: false, error: 'token_expired' };
@@ -424,7 +424,7 @@ export const confirmSubmission = publicMutation({
 			{
 				token: args.token,
 				input: { to: 'confirmed', at: now },
-			},
+			}
 		);
 
 		if (!doiOutcome.ok) {
@@ -441,7 +441,7 @@ export const confirmSubmission = publicMutation({
 		// between the peek and now.
 		const submissionOutcome: MarkConfirmedOutcome = await ctx.runMutation(
 			internal.forms.submission.markConfirmedByToken,
-			{ token: args.token },
+			{ token: args.token }
 		);
 
 		if (!submissionOutcome.ok) {

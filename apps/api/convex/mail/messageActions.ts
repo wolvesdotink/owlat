@@ -13,9 +13,9 @@ import type { Id, Doc } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
 import { requireMailboxAccess } from './permissions';
 import { isMessageSnoozed } from '../lib/mailSnooze';
-import { adjustFolderUnseen } from './folders';
+import { adjustFolderUnseen, bumpFolderModseq } from './folders';
 import { clearThreadNeedsReply } from './needsReply';
-import { throwForbidden, throwInvalidState, throwNotFound } from '../_utils/errors';
+import { getOrThrow, throwForbidden, throwInvalidState } from '../_utils/errors';
 
 type Flag = 'seen' | 'flagged' | 'answered' | 'deleted';
 
@@ -30,15 +30,6 @@ export type MovedMessage = {
 };
 
 type MoveResult = { ok: true; moved: MovedMessage[] };
-
-/** Bump folder modseq atomically; return the assigned value. */
-async function bumpFolderModseq(ctx: MutationCtx, folderId: Id<'mailFolders'>): Promise<number> {
-	const folder = await ctx.db.get(folderId);
-	if (!folder) throw new Error('Folder not found');
-	const next = folder.highestModseq + 1;
-	await ctx.db.patch(folderId, { highestModseq: next, updatedAt: Date.now() });
-	return next;
-}
 
 /** Re-derive a thread's aggregate counters from its current messages. */
 export async function rebuildThreadAggregates(
@@ -184,8 +175,7 @@ export const move = authedMutation({
 		targetFolderId: v.id('mailFolders'),
 	},
 	handler: async (ctx, args): Promise<MoveResult> => {
-		const target = await ctx.db.get(args.targetFolderId);
-		if (!target) throwNotFound('Target folder');
+		const target = await getOrThrow(ctx, args.targetFolderId, 'Target folder');
 		const owned = await requireMailboxAccess(ctx, target.mailboxId);
 		if (!owned.ok) throwForbidden('Folder not accessible');
 

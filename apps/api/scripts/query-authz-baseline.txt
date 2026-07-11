@@ -104,7 +104,7 @@ convex/mediaAssets.ts:get
 convex/mediaAssets.ts:getStats
 convex/mediaAssets.ts:list
 convex/mediaAssets.ts:listTags
-convex/organizations/settings.ts:get
+convex/workspaces/settings.ts:get
 convex/providerRoutes.ts:listRoutes
 convex/segments.ts:get
 convex/segments.ts:list

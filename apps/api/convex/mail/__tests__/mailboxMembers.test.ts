@@ -12,7 +12,7 @@ import { describe, it, expect, vi } from 'vitest';
 import schema from '../../schema';
 import type { Id } from '../../_generated/dataModel';
 import { api } from '../../_generated/api';
-import { modules, seedMailbox } from './helpers';
+import { modules, seedMailbox } from './helpers.testlib';
 
 // One mutable hoisted session drives both the wrapper floors
 // (`getMutationContext` / `requireOrgMember`) and the in-handler mailbox gate

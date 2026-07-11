@@ -101,4 +101,26 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 		period: MINUTE,
 		capacity: 30,
 	},
+
+	// Admin "Test connection" probes on the AI-providers settings page. Each hit
+	// decrypts the stored key and (for local providers) makes an outbound
+	// reachability request, so cap per-user to stop a tight loop from turning the
+	// button into an SSRF/credential-probe amplifier.
+	aiProviderConfigTest: {
+		kind: 'token bucket',
+		rate: 10,
+		period: MINUTE,
+		capacity: 15,
+	},
+
+	// Admin "Load available models" fetches on the AI-providers settings page.
+	// Each hit decrypts the stored key (hosted) and makes an outbound `/models`
+	// request, so cap per-user like the Test-connection probe above to stop a
+	// tight loop from turning the button into a credential-probe amplifier.
+	aiProviderConfigListModels: {
+		kind: 'token bucket',
+		rate: 10,
+		period: MINUTE,
+		capacity: 15,
+	},
 });

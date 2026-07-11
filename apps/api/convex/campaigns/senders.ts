@@ -26,7 +26,8 @@ import { authedMutation, authedQuery } from '../lib/authedFunctions';
 import { hasPermission, requireOrgMember, requireOrgPermission } from '../lib/sessionOrganization';
 import { checkEmailDomainVerification } from '../domains/domains';
 import { isValidEmail } from '../lib/inputGuards';
-import { throwInvalidInput, throwNotFound, throwAlreadyExists } from '../_utils/errors';
+import { normalizeEmail } from '@owlat/shared';
+import { getOrThrow, throwInvalidInput, throwAlreadyExists } from '../_utils/errors';
 
 type Ctx = QueryCtx | MutationCtx;
 
@@ -71,14 +72,6 @@ export function senderNotAllowedMessage(fromEmail: string): string {
 		`"${fromEmail}" is not an approved campaign sender. ` +
 		'Add it under Campaign senders, or allow custom senders in Settings.'
 	);
-}
-
-/**
- * Normalize a from-address for storage / lookup: trimmed + lowercased. Callers
- * that display the value keep the raw form in `displayName`, not here.
- */
-function normalizeEmail(email: string): string {
-	return email.trim().toLowerCase();
 }
 
 /**
@@ -241,10 +234,7 @@ export const update = authedMutation({
 	},
 	handler: async (ctx, args) => {
 		await requireCampaignSendersManage(ctx);
-		const sender = await ctx.db.get(args.id);
-		if (!sender) {
-			throwNotFound('Campaign sender');
-		}
+		await getOrThrow(ctx, args.id, 'Campaign sender');
 		const patch: Partial<Doc<'campaignSenders'>> = { updatedAt: Date.now() };
 		if (args.displayName !== undefined) {
 			patch.displayName = args.displayName.trim() || undefined;
@@ -264,10 +254,7 @@ export const setDefault = authedMutation({
 	args: { id: v.id('campaignSenders') },
 	handler: async (ctx, args) => {
 		await requireCampaignSendersManage(ctx);
-		const sender = await ctx.db.get(args.id);
-		if (!sender) {
-			throwNotFound('Campaign sender');
-		}
+		await getOrThrow(ctx, args.id, 'Campaign sender');
 		await clearDefault(ctx);
 		await ctx.db.patch(args.id, { isDefault: true, updatedAt: Date.now() });
 		return args.id;
@@ -283,10 +270,7 @@ export const remove = authedMutation({
 	args: { id: v.id('campaignSenders') },
 	handler: async (ctx, args) => {
 		await requireCampaignSendersManage(ctx);
-		const sender = await ctx.db.get(args.id);
-		if (!sender) {
-			throwNotFound('Campaign sender');
-		}
+		await getOrThrow(ctx, args.id, 'Campaign sender');
 		await ctx.db.delete(args.id);
 		return { success: true };
 	},

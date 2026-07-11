@@ -17,7 +17,7 @@ import { listResources } from '../lib/listing';
 import { topicListing } from './listing';
 import { toPaginationCursor } from '../lib/paginationCursor';
 import { validateStringLength, STRING_LIMITS } from '../lib/inputGuards';
-import { throwNotFound } from '../_utils/errors';
+import { getOrThrow, throwNotFound } from '../_utils/errors';
 import { trackEvent } from '../lib/posthogHelpers';
 import { batchGet } from '../_utils/batchLoader';
 import {
@@ -28,29 +28,28 @@ import {
 } from '../contacts/doiLifecycle';
 import type { SubscribeOutcome } from './subscription';
 
-// Query to get a single topic by ID. Reuses the descriptor's `contactCount`
-// enrichment so list and get can no longer drift.
+// Load a single topic by ID, enriched with the descriptor's `contactCount` so
+// list and get can no longer drift. Shared by the session-gated `get` and the
+// API-key `getInternal` variant.
+async function getTopicImpl(ctx: QueryCtx, topicId: Id<'topics'>) {
+	const topic = await ctx.db.get(topicId);
+	if (!topic) return null;
+
+	const enriched = topicListing.enrich ? await topicListing.enrich(ctx.db, topic) : {};
+	return { ...topic, ...enriched } as Doc<'topics'> & { contactCount: number };
+}
+
+// Query to get a single topic by ID.
 export const get = authedQuery({
 	args: { topicId: v.id('topics') },
-	handler: async (ctx, args) => {
-		const topic = await ctx.db.get(args.topicId);
-		if (!topic) return null;
-
-		const enriched = topicListing.enrich ? await topicListing.enrich(ctx.db, topic) : {};
-		return { ...topic, ...enriched } as Doc<'topics'> & { contactCount: number };
-	},
+	handler: async (ctx, args) => getTopicImpl(ctx, args.topicId),
 });
 
 // Internal variant for the API-key REST route (topics/apiHttp.ts), which has
 // no Convex session and so cannot call the session-gated `get` above.
 export const getInternal = internalQuery({
 	args: { topicId: v.id('topics') },
-	handler: async (ctx, args) => {
-		const topic = await ctx.db.get(args.topicId);
-		if (!topic) return null;
-		const enriched = topicListing.enrich ? await topicListing.enrich(ctx.db, topic) : {};
-		return { ...topic, ...enriched } as Doc<'topics'> & { contactCount: number };
-	},
+	handler: async (ctx, args) => getTopicImpl(ctx, args.topicId),
 });
 
 // Query to get contacts in a topic (paginated)
@@ -143,10 +142,7 @@ export const update = authedMutation({
 		if (args.description)
 			validateStringLength(args.description, STRING_LIMITS.DESCRIPTION, 'Description');
 
-		const topic = await ctx.db.get(args.topicId);
-		if (!topic) {
-			throwNotFound('Topic');
-		}
+		await getOrThrow(ctx, args.topicId, 'Topic');
 
 		const updates: {
 			name?: string;
@@ -184,10 +180,7 @@ export const remove = authedMutation({
 	args: { topicId: v.id('topics') },
 	handler: async (ctx, args) => {
 		await requireOrgPermission(ctx, 'topics:manage', 'Only owners and admins can manage topics');
-		const topic = await ctx.db.get(args.topicId);
-		if (!topic) {
-			throwNotFound('Topic');
-		}
+		await getOrThrow(ctx, args.topicId, 'Topic');
 
 		// Delete all memberships associated with this topic
 		const memberships = await ctx.db

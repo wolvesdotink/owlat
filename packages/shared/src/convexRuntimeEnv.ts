@@ -100,6 +100,15 @@ export const CONVEX_RUNTIME_ENV_KEYS = [
 	'LLM_MODEL_FAST',
 	'LLM_MODEL_CAPABLE',
 	'LLM_EMBEDDING_MODEL',
+	// Local-by-default embedding plane (an OpenAI-compatible sidecar, e.g. Ollama).
+	// Read at Convex function runtime by resolveEmbeddingModel via getOptional(), so
+	// they must be pushed into the deployment — a self-hoster who sets
+	// LOCAL_EMBEDDING_BASE_URL in .env would otherwise find it silently never applied
+	// and the local embedder falls back to the adapter default (http://localhost:11434/v1,
+	// unreachable from the Convex container), i.e. the local-by-default plane silently
+	// doesn't work.
+	'LOCAL_EMBEDDING_BASE_URL',
+	'LOCAL_EMBEDDING_MODEL',
 	'LLM_COMPLEXITY_ROUTING',
 	'OPENAI_API_KEY',
 	'OPENROUTER_API_KEY',

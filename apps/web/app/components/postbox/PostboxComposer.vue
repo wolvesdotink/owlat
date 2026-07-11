@@ -226,19 +226,18 @@ async function handleDiscard() {
 // SAME draft id — no content loss. The live field values ride along so the
 // popup seeds instantly instead of waiting for hydration. `focusBody` is
 // exposed so the reader's r/a keys can re-focus an already-open inline box.
-const { promoting, basicEditor, focusBody, handlePromote } =
-	usePostboxComposerInline({
-		inline: props.inline ?? false,
-		flush,
-		snapshot: () => ({
-			toAddresses: [...toAddresses.value],
-			ccAddresses: [...ccAddresses.value],
-			bccAddresses: [...bccAddresses.value],
-			subject: subject.value,
-			bodyHtml: bodyHtml.value,
-		}),
-		emitPromote: (payload) => emit('promote', payload),
-	});
+const { promoting, basicEditor, focusBody, handlePromote } = usePostboxComposerInline({
+	inline: props.inline ?? false,
+	flush,
+	snapshot: () => ({
+		toAddresses: [...toAddresses.value],
+		ccAddresses: [...ccAddresses.value],
+		bccAddresses: [...bccAddresses.value],
+		subject: subject.value,
+		bodyHtml: bodyHtml.value,
+	}),
+	emitPromote: (payload) => emit('promote', payload),
+});
 defineExpose({ focusBody });
 
 const unscheduling = ref(false);
@@ -255,7 +254,7 @@ async function handleUnschedule() {
 }
 
 const scheduledLabel = computed(() =>
-	scheduledSendAt.value ? formatDateTime(scheduledSendAt.value) : '',
+	scheduledSendAt.value ? formatDateTime(scheduledSendAt.value) : ''
 );
 
 const lastSavedLabel = computed(() => {
@@ -264,14 +263,20 @@ const lastSavedLabel = computed(() => {
 	return `Saved ${new Date(lastSavedAt.value).toLocaleTimeString()}`;
 });
 
+// Composer root: used both for scoped OS-level file drops (desktop) and the
+// keyboard-shortcut binding below.
+const rootEl = ref<HTMLElement | null>(null);
 const {
 	isDragOver: dragActive,
 	handleDragOver: onDragOver,
 	handleDragLeave: onDragLeave,
 	handleDrop: onDrop,
-} = useDropZone((files) => {
-	void addFiles(files);
-});
+} = useDropZone(
+	(files) => {
+		void addFiles(files);
+	},
+	{ osFileDrop: true, rootRef: rootEl }
+);
 
 function onPaste(event: ClipboardEvent) {
 	const files = Array.from(event.clipboardData?.files ?? []);
@@ -284,20 +289,18 @@ function onPaste(event: ClipboardEvent) {
 // Keyboard shortcuts (Cmd/Ctrl+Enter send, +Shift schedule, Esc minimize),
 // bound on the composer root (capture) so each stacked popup composer only
 // handles its own keys.
-const rootEl = ref<HTMLElement | null>(null);
-const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } =
-	usePostboxComposerKeys({
-		rootEl,
-		canSend,
-		sending,
-		isScheduled,
-		scheduleOpen,
-		onSend: () => void handleSend(),
-		onSchedule: () => {
-			scheduleOpen.value = true;
-		},
-		onMinimize: () => emit('minimize'),
-	});
+const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostboxComposerKeys({
+	rootEl,
+	canSend,
+	sending,
+	isScheduled,
+	scheduleOpen,
+	onSend: () => void handleSend(),
+	onSchedule: () => {
+		scheduleOpen.value = true;
+	},
+	onMinimize: () => emit('minimize'),
+});
 </script>
 
 <template>
@@ -314,11 +317,11 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } =
 			v-if="dragActive"
 			class="absolute inset-0 z-10 flex items-center justify-center bg-brand/10 border-2 border-dashed border-brand rounded pointer-events-none"
 		>
-			<span class="text-sm font-medium text-brand">
-				Drop to attach · drop in text to embed
-			</span>
+			<span class="text-sm font-medium text-brand"> Drop to attach · drop in text to embed </span>
 		</div>
-		<header class="flex items-center justify-between px-3 py-2 bg-bg-surface border-b border-border-subtle">
+		<header
+			class="flex items-center justify-between px-3 py-2 bg-bg-surface border-b border-border-subtle"
+		>
 			<span class="text-sm font-semibold">
 				{{ subject || 'New message' }}
 			</span>
@@ -381,11 +384,7 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } =
 				:disabled="unscheduling"
 				@click="handleUnschedule"
 			>
-				<Icon
-					v-if="unscheduling"
-					name="lucide:loader-2"
-					class="w-3.5 h-3.5 mr-1 animate-spin"
-				/>
+				<Icon v-if="unscheduling" name="lucide:loader-2" class="w-3.5 h-3.5 mr-1 animate-spin" />
 				Unschedule to edit
 			</button>
 		</div>

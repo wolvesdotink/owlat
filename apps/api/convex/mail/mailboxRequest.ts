@@ -26,14 +26,15 @@ import {
 	requireAuthenticatedIdentity,
 	requireOrgPermission,
 } from '../lib/sessionOrganization';
-import {
-	throwForbidden,
-	throwInvalidInput,
-	throwInvalidState,
-	throwNotFound,
-} from '../_utils/errors';
+import { getOrThrow, throwForbidden, throwInvalidInput, throwInvalidState } from '../_utils/errors';
+import { normalizeEmail } from '@owlat/shared';
 import { markOnboardingStep } from '../auth/userOnboarding';
-import { canonicalAddress, createProvisionedMailbox, getActiveMailboxForUser } from './mailbox';
+import {
+	canonicalAddress,
+	createProvisionedMailbox,
+	getActiveMailboxForUser,
+	isDomainVerified,
+} from './mailbox';
 import { claimReservedMailbox } from './pendingMailbox';
 import type { Id } from '../_generated/dataModel';
 
@@ -48,7 +49,7 @@ const MAX_NOTE_LENGTH = 500;
  * usable remains — the caller refuses rather than build a bad address.
  */
 function localpartFromEmail(email: string): string {
-	const local = email.trim().toLowerCase().split('@')[0] ?? '';
+	const local = normalizeEmail(email).split('@')[0] ?? '';
 	return local.replace(/[^a-z0-9._-]/g, '');
 }
 
@@ -128,6 +129,10 @@ export const request = authedMutation({
  *   - `hasMailbox`    — a live personal mailbox already exists → land in Postbox.
  *   - `reservedAddress` — a hosted mailbox is reserved for their email but not
  *     yet claimed → offer to claim it.
+ *   - `reservationAwaitingDomain` — the reservation's sending domain hasn't
+ *     verified yet (an early-instance invite). The mailbox can't be stood up
+ *     until it does, so the guard shows "reserved, activates when your domain
+ *     verifies" progress rather than "being set up right now".
  *   - `hasOpenRequest` — they have already asked an admin (don't offer twice).
  * The "can they connect an external account" leg is a feature flag the client
  * already resolves, so it stays out of this read.
@@ -140,31 +145,46 @@ export const freshStartStatus = authedQuery({
 	): Promise<{
 		hasMailbox: boolean;
 		reservedAddress: string | null;
+		reservationAwaitingDomain: boolean;
 		hasOpenRequest: boolean;
 	}> => {
 		const session = await getBetterAuthSessionWithRole(ctx);
 		if (!session) {
-			return { hasMailbox: false, reservedAddress: null, hasOpenRequest: false };
+			return {
+				hasMailbox: false,
+				reservedAddress: null,
+				reservationAwaitingDomain: false,
+				hasOpenRequest: false,
+			};
 		}
 
 		const mailbox = await getActiveMailboxForUser(ctx, session.userId);
 		if (mailbox) {
-			return { hasMailbox: true, reservedAddress: null, hasOpenRequest: false };
+			return {
+				hasMailbox: true,
+				reservedAddress: null,
+				reservationAwaitingDomain: false,
+				hasOpenRequest: false,
+			};
 		}
 
 		const profile = await ctx.db
 			.query('userProfiles')
 			.withIndex('by_auth_user_id', (q) => q.eq('authUserId', session.userId))
 			.first();
-		const email = profile?.email?.trim().toLowerCase();
+		const email = profile?.email ? normalizeEmail(profile.email) : undefined;
 
 		let reservedAddress: string | null = null;
+		let reservationAwaitingDomain = false;
 		if (email) {
 			const pending = await ctx.db
 				.query('pendingMailboxes')
 				.withIndex('by_invitee_email', (q) => q.eq('inviteeEmail', email))
 				.first();
 			reservedAddress = pending?.address ?? null;
+			if (pending) {
+				reservationAwaitingDomain = !(await isDomainVerified(ctx, pending.domain));
+			}
 		}
 
 		const open = await ctx.db
@@ -173,7 +193,12 @@ export const freshStartStatus = authedQuery({
 			.filter((q) => q.eq(q.field('status'), 'open'))
 			.first();
 
-		return { hasMailbox: false, reservedAddress, hasOpenRequest: Boolean(open) };
+		return {
+			hasMailbox: false,
+			reservedAddress,
+			reservationAwaitingDomain,
+			hasOpenRequest: Boolean(open),
+		};
 	},
 });
 
@@ -245,8 +270,7 @@ export const provisionFromRequest = authedMutation({
 		if (!session?.activeOrganizationId) throwForbidden('No active organization');
 		const organizationId = session.activeOrganizationId;
 
-		const row = await ctx.db.get(args.requestId);
-		if (!row) throwNotFound('Request');
+		const row = await getOrThrow(ctx, args.requestId, 'Request');
 		if (row.organizationId !== organizationId) {
 			throwForbidden('Request not accessible');
 		}
@@ -312,7 +336,7 @@ export const provisionFromRequest = authedMutation({
 		const reserved = await ctx.db
 			.query('pendingMailboxes')
 			.withIndex('by_invitee_email', (q) =>
-				q.eq('inviteeEmail', row.requesterEmail.trim().toLowerCase())
+				q.eq('inviteeEmail', normalizeEmail(row.requesterEmail))
 			)
 			.filter((q) => q.eq(q.field('organizationId'), organizationId))
 			.first();
@@ -320,6 +344,11 @@ export const provisionFromRequest = authedMutation({
 		if (reserved) {
 			const claim = await claimReservedMailbox(ctx, reserved, row.authUserId);
 			if (!claim.ok) {
+				if (claim.reason === 'domain_unverified') {
+					throwInvalidState(
+						`Verify the sending domain ${reserved.domain} before provisioning ${reserved.address}.`
+					);
+				}
 				throwInvalidState(`A mailbox already exists at ${reserved.address}`);
 			}
 			return fulfil(claim.mailboxId);
@@ -370,8 +399,7 @@ export const resolve = authedMutation({
 		const session = await getBetterAuthSessionWithRole(ctx);
 		if (!session?.activeOrganizationId) throwForbidden('No active organization');
 
-		const row = await ctx.db.get(args.requestId);
-		if (!row) throwNotFound('Request');
+		const row = await getOrThrow(ctx, args.requestId, 'Request');
 		if (row.organizationId !== session.activeOrganizationId) {
 			throwForbidden('Request not accessible');
 		}

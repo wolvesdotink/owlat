@@ -11,7 +11,7 @@
 
 import { createOpenAI } from '@ai-sdk/openai';
 import type { EmbeddingModel, LanguageModel } from 'ai';
-import { EMBEDDING_DIMENSIONS } from '../constants';
+import { CURRENT_EMBEDDING_MODEL, EMBEDDING_DIMENSIONS } from '../constants';
 import { hostedCacheKey, memoizeClient } from './clientCache';
 import type {
 	EmbeddingClientConfig,
@@ -48,8 +48,16 @@ export const openaiLanguageAdapter: LanguageProviderAdapter<'openai'> = {
 
 export const openaiEmbeddingAdapter: EmbeddingProviderAdapter<'openai'> = {
 	kind: 'openai',
+	label: 'OpenAI',
 	dimensions: EMBEDDING_DIMENSIONS,
+	isLocal: false,
+	defaultModel: CURRENT_EMBEDDING_MODEL,
 	buildEmbeddingModel(cfg: EmbeddingClientConfig): EmbeddingModel {
 		return openaiClient(cfg).embedding(cfg.modelId);
+	},
+	validateCredentials(cfg: EmbeddingClientConfig): void {
+		if (!cfg.apiKey) {
+			throw new Error('OpenAI embeddings require an API key.');
+		}
 	},
 };

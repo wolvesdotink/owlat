@@ -2,6 +2,15 @@
  * Date and time formatting utilities
  */
 
+/**
+ * Capitalize the first character of a string, leaving the rest untouched
+ * (e.g. "delivered" -> "Delivered"). Re-exported from `@owlat/shared` so it is
+ * available as a Nuxt auto-import in web templates and code — the single home
+ * for the `s.charAt(0).toUpperCase() + s.slice(1)` idiom that was inlined
+ * across ~10 rows/pages/composables.
+ */
+export { capitalize } from '@owlat/shared';
+
 export type DateFormatStyle = 'short' | 'medium' | 'long' | 'full' | 'relative';
 
 const dateFormatOptions: Record<
@@ -278,4 +287,15 @@ export function formatCompactFileSize(bytes: number): string {
 export function formatDateForCsv(timestamp: number | undefined): string {
 	if (!timestamp) return '';
 	return new Date(timestamp).toISOString();
+}
+
+/**
+ * Turn a snake_case enum value into a human "Title Case" label
+ * ("circuit_open" -> "Circuit Open"). Single home for the fallback formatting
+ * previously copy-pasted across enum-driven labels.
+ *
+ * @param value - The snake_case enum value
+ */
+export function titleCaseEnum(value: string): string {
+	return value.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }

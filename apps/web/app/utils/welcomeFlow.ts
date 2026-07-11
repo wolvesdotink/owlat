@@ -22,17 +22,50 @@
 export type OnboardingMode = 'fresh' | 'migration';
 
 /**
- * The onboarding steps the checklist can render. A subset of the backend
+ * The onboarding steps the checklist can render. Mostly a subset of the backend
  * `ONBOARDING_STEPS` union (`auth/userOnboarding.ts`): the two intermediate
  * import phases (`importStarted`/`importDone`) collapse to a single "bring your
  * email over" row keyed on `importDone`.
+ *
+ * `aiConnected` is the exception — it is NOT a backend onboarding stamp. Its
+ * completion is derived at render time from the instance's AI configuration
+ * gap (`workspaces.featureFlags.getFlagsConfigStatus` — the `ai` flag is absent
+ * from the gap map once a provider is configured by EITHER `LLM_*` env OR a
+ * stored key), so an env-only self-hoster and a UI-configured org both mark it
+ * done for every member of the instance. {@link AI_CONNECTED_STEP_ID} names it
+ * for the one component that special-cases its completion source.
  */
 export type ChecklistStepId =
 	| 'mailboxReady'
+	| 'aiConnected'
 	| 'importDone'
 	| 'knowledgeIndexed'
 	| 'sendingSwitched'
 	| 'firstSendDone';
+
+/**
+ * The single checklist step whose completion is sourced from the org's
+ * AI-provider config rather than a per-user `userOnboarding` stamp. Exported so
+ * `UserChecklist.vue` can special-case it without a magic string, and so the
+ * distinction is testable.
+ */
+export const AI_CONNECTED_STEP_ID = 'aiConnected' as const satisfies ChecklistStepId;
+
+/**
+ * Whether the org-scoped `aiConnected` step is complete, derived from the
+ * per-flag config-gap map returned by
+ * `workspaces.featureFlags.getFlagsConfigStatus`. That backend query lists the
+ * `ai` flag ONLY while AI is unconfigured, and treats env (`LLM_*`) OR a stored
+ * provider key as satisfying config — so the flag's ABSENCE from the map means a
+ * provider is configured either way, which is exactly when this step is done.
+ *
+ * While the query is still loading the map is `undefined`; that is "not yet
+ * known", NOT configured, so we require a defined map before reporting done —
+ * otherwise the step would flash complete on first paint.
+ */
+export function isAiConnected(configGapStatus: Record<string, string[]> | undefined): boolean {
+	return configGapStatus !== undefined && !('ai' in configGapStatus);
+}
 
 export interface ChecklistStepMeta {
 	id: ChecklistStepId;
@@ -58,6 +91,15 @@ export const CHECKLIST_STEPS: readonly ChecklistStepMeta[] = [
 		href: '/dashboard/postbox/settings/add-account',
 		cta: 'Set up',
 		icon: 'lucide:mailbox',
+		migrationOnly: false,
+	},
+	{
+		id: 'aiConnected',
+		title: 'Connect your AI',
+		description: 'Point Owlat at an AI provider so drafting, replies, and search light up.',
+		href: '/dashboard/settings/ai-provider',
+		cta: 'Connect',
+		icon: 'lucide:sparkles',
 		migrationOnly: false,
 	},
 	{
@@ -108,30 +150,14 @@ export function visibleChecklistSteps(mode: OnboardingMode): ChecklistStepMeta[]
 
 /**
  * Whether the checklist has nothing left to do: every VISIBLE step for the mode
- * is complete. A completed checklist disappears for good (see
- * {@link shouldShowUserChecklist}).
+ * is complete. A completed checklist section disappears for good (see
+ * `buildGettingStarted` in `~/utils/gettingStarted`).
  */
 export function isChecklistComplete(
 	mode: OnboardingMode,
 	completed: ReadonlySet<ChecklistStepId>
 ): boolean {
 	return visibleChecklistSteps(mode).every((step) => completed.has(step.id));
-}
-
-/**
- * Whether the per-user checklist card should render. It hides while state is
- * still loading, once the member dismisses it, and forever once every visible
- * step is complete.
- */
-export function shouldShowUserChecklist(opts: {
-	isLoading: boolean;
-	dismissed: boolean;
-	isComplete: boolean;
-}): boolean {
-	if (opts.isLoading) return false;
-	if (opts.dismissed) return false;
-	if (opts.isComplete) return false;
-	return true;
 }
 
 /**

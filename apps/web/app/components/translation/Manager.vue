@@ -48,8 +48,10 @@ interface Block {
 		html?: string;
 		text?: string;
 		alt?: string;
-		columns?: Array<Array<{ id: string; type: string; content: Record<string, unknown> }>>;
-		items?: Array<{ id: string; type: string; content: Record<string, unknown> }>;
+		// Columns nest a grid of blocks; containers nest a flat list. Typing them
+		// as Block lets extractBlockRows recurse without re-casting each level.
+		columns?: Block[][];
+		items?: Block[];
 		[key: string]: unknown;
 	};
 }
@@ -293,13 +295,13 @@ const extractBlockRows = (blocks: Block[], rows: TranslatableRow[], prefix = '')
 		} else if (block.type === 'columns' && block.content.columns) {
 			// Recursively extract from column items
 			block.content.columns.forEach((column, colIndex) => {
-				extractBlockRows(column as unknown as Block[], rows, `${prefix}Column ${colIndex + 1} > `);
+				extractBlockRows(column, rows, `${prefix}Column ${colIndex + 1} > `);
 			});
 		} else if (block.type === 'container' && block.content.items) {
 			// Recursively extract from container items
 			containerBlockIndex++;
 			extractBlockRows(
-				block.content.items as unknown as Block[],
+				block.content.items,
 				rows,
 				`${prefix}Container ${containerBlockIndex} > `
 			);
@@ -323,20 +325,14 @@ const getTranslationValue = (row: TranslatableRow, language: string): string => 
 		return translation.previewText || '';
 	}
 
-	// Block content
+	// Block content — the fieldType name matches the block-content property.
 	const blockTranslation = translation.blocks?.[row.id];
 	if (!blockTranslation) return '';
 
-	switch (row.fieldType) {
-		case 'html':
-			return blockTranslation.html || '';
-		case 'buttonText':
-			return blockTranslation.buttonText || '';
-		case 'alt':
-			return blockTranslation.alt || '';
-		default:
-			return '';
+	if (row.fieldType === 'html' || row.fieldType === 'buttonText' || row.fieldType === 'alt') {
+		return blockTranslation[row.fieldType] ?? '';
 	}
+	return '';
 };
 
 // Update translation value
@@ -368,16 +364,9 @@ const updateTranslationValue = async (row: TranslatableRow, language: string, va
 			}
 
 			const blockTrans = trans.blocks[row.blockId]!;
-			switch (row.fieldType) {
-				case 'html':
-					blockTrans.html = value;
-					break;
-				case 'buttonText':
-					blockTrans.buttonText = value;
-					break;
-				case 'alt':
-					blockTrans.alt = value;
-					break;
+			// The fieldType name matches the block-content property to write.
+			if (row.fieldType === 'html' || row.fieldType === 'buttonText' || row.fieldType === 'alt') {
+				blockTrans[row.fieldType] = value;
 			}
 		}
 

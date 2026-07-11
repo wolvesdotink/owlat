@@ -1,6 +1,8 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import {
 	SETUP_STEPS,
+	SETUP_DRAFT_STORAGE_KEY,
+	readSetupDraft,
 	isSetupEmailValid,
 	validateAdmin,
 	adminIsValid,
@@ -10,9 +12,13 @@ import {
 	buildSetupSummary,
 	buildApplyBody,
 	interpretSetupModeProbe,
+	serializeSetupDraft,
+	parseSetupDraft,
+	setupStepPath,
 	SMTP_RELAY_PRESETS,
 	type AdminDraft,
 	type EmailStepDraft,
+	type SetupDraft,
 	type SmtpRelayDraft,
 } from '../useSetupWizard';
 import { getDefaultFlags, type FeatureFlagState } from '@owlat/shared/featureFlags';
@@ -329,5 +335,88 @@ describe('post-apply readiness probe', () => {
 		expect(interpretSetupModeProbe(400)).toBe(false);
 		expect(interpretSetupModeProbe(200)).toBe(false);
 		expect(interpretSetupModeProbe(503)).toBe(false);
+	});
+});
+
+describe('draft persistence round-trip', () => {
+	const fullDraft: SetupDraft = {
+		flags: getDefaultFlags(),
+		env: { EMAIL_PROVIDER: 'resend', RESEND_API_KEY: 're_live_1' },
+		admin: validAdmin,
+		isMigrationMode: true,
+		token: 'stk_abc123',
+	};
+
+	it('restores every collected field after a serialize→parse reload', () => {
+		const restored = parseSetupDraft(serializeSetupDraft(fullDraft));
+		expect(restored).toEqual(fullDraft);
+	});
+
+	it('preserves the setup token and provider credentials across a reload', () => {
+		const restored = parseSetupDraft(serializeSetupDraft(fullDraft));
+		expect(restored?.token).toBe('stk_abc123');
+		expect(restored?.env?.['RESEND_API_KEY']).toBe('re_live_1');
+		expect(restored?.admin?.password).toBe(validAdmin.password);
+	});
+
+	it('returns null for a missing or non-JSON payload so a bad entry never crashes', () => {
+		expect(parseSetupDraft(null)).toBeNull();
+		expect(parseSetupDraft(undefined)).toBeNull();
+		expect(parseSetupDraft('')).toBeNull();
+		expect(parseSetupDraft('not-json')).toBeNull();
+		// Valid JSON that isn't an object is still rejected.
+		expect(parseSetupDraft('"just a string"')).toBeNull();
+		expect(parseSetupDraft('42')).toBeNull();
+	});
+
+	it('drops fields of the wrong shape rather than trusting them', () => {
+		const restored = parseSetupDraft(
+			JSON.stringify({
+				token: 5,
+				isMigrationMode: 'yes',
+				admin: { email: 'x' },
+				env: { OK: 'v', BAD: 3 },
+				flags: { campaigns: 'on' },
+			})
+		);
+		expect(restored).toEqual({});
+	});
+
+	it('accepts a partial draft, surfacing only the well-typed fields', () => {
+		const restored = parseSetupDraft(JSON.stringify({ token: 'stk_x', isMigrationMode: false }));
+		expect(restored).toEqual({ token: 'stk_x', isMigrationMode: false });
+	});
+});
+
+describe('readSetupDraft — sessionStorage read the reload restore hinges on', () => {
+	const fullDraft: SetupDraft = {
+		flags: getDefaultFlags(),
+		env: { EMAIL_PROVIDER: 'resend', RESEND_API_KEY: 're_live_1' },
+		admin: validAdmin,
+		isMigrationMode: true,
+		token: 'stk_abc123',
+	};
+
+	beforeEach(() => {
+		sessionStorage.clear();
+	});
+
+	it('returns the persisted draft seeded under the namespaced key', () => {
+		sessionStorage.setItem(SETUP_DRAFT_STORAGE_KEY, serializeSetupDraft(fullDraft));
+		expect(readSetupDraft()).toEqual(fullDraft);
+	});
+
+	it('returns null when no draft has been persisted', () => {
+		expect(readSetupDraft()).toBeNull();
+	});
+});
+
+describe('setupStepPath', () => {
+	it('maps each step id to its /setup/* route', () => {
+		expect(setupStepPath('mode')).toBe('/setup/mode');
+		expect(setupStepPath('features')).toBe('/setup/features');
+		expect(setupStepPath('email')).toBe('/setup/email');
+		expect(setupStepPath('admin')).toBe('/setup/admin');
+		expect(setupStepPath('review')).toBe('/setup/review');
 	});
 });

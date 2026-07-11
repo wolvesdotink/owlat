@@ -374,10 +374,6 @@ export const duplicate = authedMutation({
 		if (!outcome.ok) {
 			throwNotFound('Transactional email');
 		}
-		if (!outcome.ok) {
-			// unreachable — narrowing for compiler.
-			throwInternal('Unexpected outcome');
-		}
 		return outcome.emailId;
 	},
 });

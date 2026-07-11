@@ -5,7 +5,7 @@ import { internalMutation, internalQuery } from './_generated/server';
 import { authedQuery, authedMutation } from './lib/authedFunctions';
 import { requireOrgPermission } from './lib/sessionOrganization';
 import { isValidEmail, normalizeEmail } from './lib/inputGuards';
-import { throwInvalidInput, throwAlreadyExists, throwNotFound } from './_utils/errors';
+import { getOrThrow, throwInvalidInput, throwAlreadyExists } from './_utils/errors';
 import { scheduleSuppressionMirror } from './delivery/suppressionMirror';
 import { recordAuditLog } from './lib/auditLog';
 
@@ -14,7 +14,7 @@ import { recordAuditLog } from './lib/auditLog';
 // match or null. Single source of truth for the blocklist-by-email read.
 async function findBlockedByEmail(
 	ctx: QueryCtx | MutationCtx,
-	email: string,
+	email: string
 ): Promise<Doc<'blockedEmails'> | null> {
 	const normalizedEmail = normalizeEmail(email);
 	return await ctx.db
@@ -57,10 +57,7 @@ export const listByTeam = authedQuery({
 				.order('desc')
 				.take(BLOCKLIST_VIEW_LIMIT);
 		}
-		return await ctx.db
-			.query('blockedEmails')
-			.order('desc')
-			.take(BLOCKLIST_VIEW_LIMIT);
+		return await ctx.db.query('blockedEmails').order('desc').take(BLOCKLIST_VIEW_LIMIT);
 	},
 });
 
@@ -104,7 +101,11 @@ export const add = authedMutation({
 		sourceTransactionalSendId: v.optional(v.id('transactionalSends')),
 	},
 	handler: async (ctx, args) => {
-		const session = await requireOrgPermission(ctx, 'contacts:manage', 'Only owners and admins can manage the blocklist');
+		const session = await requireOrgPermission(
+			ctx,
+			'contacts:manage',
+			'Only owners and admins can manage the blocklist'
+		);
 		const normalizedEmail = normalizeEmail(args.email);
 
 		// Validate email format
@@ -154,11 +155,12 @@ export const add = authedMutation({
 export const remove = authedMutation({
 	args: { blockedEmailId: v.id('blockedEmails') },
 	handler: async (ctx, args) => {
-		const session = await requireOrgPermission(ctx, 'contacts:manage', 'Only owners and admins can manage the blocklist');
-		const blockedEmail = await ctx.db.get(args.blockedEmailId);
-		if (!blockedEmail) {
-			throwNotFound('Blocked email');
-		}
+		const session = await requireOrgPermission(
+			ctx,
+			'contacts:manage',
+			'Only owners and admins can manage the blocklist'
+		);
+		const blockedEmail = await getOrThrow(ctx, args.blockedEmailId, 'Blocked email');
 
 		await ctx.db.delete(args.blockedEmailId);
 
@@ -186,7 +188,11 @@ export const bulkAdd = authedMutation({
 		),
 	},
 	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'contacts:manage', 'Only owners and admins can manage the blocklist');
+		await requireOrgPermission(
+			ctx,
+			'contacts:manage',
+			'Only owners and admins can manage the blocklist'
+		);
 		const results = {
 			added: 0,
 			skipped: 0,
@@ -243,21 +249,15 @@ export const getCountsByReason = authedQuery({
 		const [bounced, complained, manual] = await Promise.all([
 			ctx.db
 				.query('blockedEmails')
-				.withIndex('by_reason', (q) =>
-					q.eq('reason', 'bounced')
-				)
+				.withIndex('by_reason', (q) => q.eq('reason', 'bounced'))
 				.take(BLOCKLIST_VIEW_LIMIT),
 			ctx.db
 				.query('blockedEmails')
-				.withIndex('by_reason', (q) =>
-					q.eq('reason', 'complained')
-				)
+				.withIndex('by_reason', (q) => q.eq('reason', 'complained'))
 				.take(BLOCKLIST_VIEW_LIMIT),
 			ctx.db
 				.query('blockedEmails')
-				.withIndex('by_reason', (q) =>
-					q.eq('reason', 'manual')
-				)
+				.withIndex('by_reason', (q) => q.eq('reason', 'manual'))
 				.take(BLOCKLIST_VIEW_LIMIT),
 		]);
 

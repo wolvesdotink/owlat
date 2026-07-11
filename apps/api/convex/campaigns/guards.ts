@@ -14,7 +14,7 @@
 import type { MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { requireOrgPermission, type MutationSessionContext } from '../lib/sessionOrganization';
-import { throwNotFound, throwInvalidState } from '../_utils/errors';
+import { getOrThrow, throwInvalidState } from '../_utils/errors';
 
 /**
  * Require that the caller may manage campaigns and that the target campaign
@@ -39,10 +39,7 @@ export async function requireDraftCampaign(
 		`You do not have permission to ${action}`
 	);
 
-	const campaign = await ctx.db.get(campaignId);
-	if (!campaign) {
-		throwNotFound('Campaign');
-	}
+	const campaign = await getOrThrow(ctx, campaignId, 'Campaign');
 	if (campaign.status !== 'draft') {
 		throwInvalidState(notDraftMessage);
 	}

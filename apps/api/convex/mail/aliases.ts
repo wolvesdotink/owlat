@@ -13,15 +13,12 @@ import { authedMutation, publicQuery } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import { requireMailboxAccess } from './permissions';
 import {
+	getOrThrow,
 	throwForbidden,
 	throwInvalidInput,
 	throwAlreadyExists,
-	throwNotFound,
 } from '../_utils/errors';
-
-function canonical(addr: string): string {
-	return addr.trim().toLowerCase();
-}
+import { normalizeEmail } from '@owlat/shared';
 
 // public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
 export const list = publicQuery({
@@ -47,7 +44,7 @@ export const create = authedMutation({
 		const owned = await requireMailboxAccess(ctx, args.mailboxId, 'owner');
 		if (!owned.ok) throwForbidden('Mailbox not accessible');
 
-		const alias = canonical(args.alias);
+		const alias = normalizeEmail(args.alias);
 		if (!alias.includes('@')) throwInvalidInput('Alias must be a full email address');
 
 		// No collision with another mailbox or alias
@@ -66,8 +63,7 @@ export const create = authedMutation({
 			throwAlreadyExists('Alias already in use');
 		}
 
-		const mailbox = await ctx.db.get(args.mailboxId);
-		if (!mailbox) throwNotFound('Mailbox');
+		const mailbox = await getOrThrow(ctx, args.mailboxId, 'Mailbox');
 
 		const id = await ctx.db.insert('mailAliases', {
 			alias,

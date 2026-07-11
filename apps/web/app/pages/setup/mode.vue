@@ -11,7 +11,7 @@ definePageMeta({ layout: false });
 useHead({ title: 'Owlat setup — Operating mode' });
 
 const router = useRouter();
-const { flags, isMigrationMode } = useSetupWizard();
+const { flags, isMigrationMode, goToStep } = useSetupWizard();
 const { getStepStatus, isConnectorHighlighted } = useWizard(SETUP_WIZARD_STEPS, 'mode');
 
 // Pre-fill the flag set from a named mode, then continue to the fine-tune step.
@@ -41,6 +41,7 @@ function custom() {
 				:steps="SETUP_WIZARD_STEPS"
 				:get-step-status="getStepStatus as (stepId: string) => 'completed' | 'current' | 'upcoming'"
 				:is-connector-highlighted="isConnectorHighlighted"
+				:on-step-click="goToStep"
 			/>
 
 			<header class="mb-6">

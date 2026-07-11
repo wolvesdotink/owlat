@@ -3,9 +3,9 @@ import { authedMutation } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { requirePlatformAdmin } from './platformAdmin';
-import { throwNotFound, throwInvalidInput, throwInvalidState } from '../_utils/errors';
+import { getOrThrow, throwNotFound, throwInvalidInput, throwInvalidState } from '../_utils/errors';
 import { recordAuditLog } from '../lib/auditLog';
-import { abuseStatusValidator } from '../organizations/abuseStatus';
+import { abuseStatusValidator } from '../workspaces/abuseStatus';
 
 // Authorization model: every mutation here is an `authedMutation` (session
 // floor) whose handler first calls `requirePlatformAdmin(ctx)` — FORBIDDEN
@@ -37,9 +37,7 @@ export const setOrganizationStatus = authedMutation({
 	handler: async (ctx, args) => {
 		const admin = await requirePlatformAdmin(ctx);
 
-		const settings = await ctx.db
-			.query('instanceSettings')
-			.first();
+		const settings = await ctx.db.query('instanceSettings').first();
 
 		if (!settings) {
 			throwNotFound('Organization');
@@ -47,17 +45,14 @@ export const setOrganizationStatus = authedMutation({
 
 		const previousStatus = settings.abuseStatus || 'clean';
 
-		const outcome = await ctx.runMutation(
-			internal.organizations.abuseStatus.adminOverride,
-			{
-				input: {
-					to: args.abuseStatus,
-					at: Date.now(),
-					reason: args.reason,
-					changedBy: admin.authUserId,
-				},
+		const outcome = await ctx.runMutation(internal.workspaces.abuseStatus.adminOverride, {
+			input: {
+				to: args.abuseStatus,
+				at: Date.now(),
+				reason: args.reason,
+				changedBy: admin.authUserId,
 			},
-		);
+		});
 
 		if (!outcome.ok) {
 			throwInvalidState(`Cannot set abuse status: ${outcome.reason}`);
@@ -96,10 +91,7 @@ export const approveCampaign = authedMutation({
 	handler: async (ctx, args) => {
 		const admin = await requirePlatformAdmin(ctx);
 
-		const campaign = await ctx.db.get(args.campaignId);
-		if (!campaign) {
-			throwNotFound('Campaign');
-		}
+		const campaign = await getOrThrow(ctx, args.campaignId, 'Campaign');
 
 		if (campaign.status !== 'pending_review') {
 			throwInvalidInput('Campaign is not pending review');
@@ -141,10 +133,7 @@ export const approveTransactional = authedMutation({
 	handler: async (ctx, args) => {
 		const admin = await requirePlatformAdmin(ctx);
 
-		const email = await ctx.db.get(args.transactionalEmailId);
-		if (!email) {
-			throwNotFound('Transactional email');
-		}
+		const email = await getOrThrow(ctx, args.transactionalEmailId, 'Transactional email');
 
 		if (email.status !== 'pending_review') {
 			throwInvalidInput('Transactional email is not pending review');
@@ -190,10 +179,7 @@ export const rejectContent = authedMutation({
 		const now = Date.now();
 
 		if (args.resourceType === 'campaign') {
-			const campaign = await ctx.db.get(args.resourceId as Id<'campaigns'>);
-			if (!campaign) {
-				throwNotFound('Campaign');
-			}
+			const campaign = await getOrThrow(ctx, args.resourceId as Id<'campaigns'>, 'Campaign');
 
 			if (campaign.status !== 'pending_review') {
 				throwInvalidInput('Campaign is not pending review');
@@ -217,10 +203,11 @@ export const rejectContent = authedMutation({
 				},
 			});
 		} else {
-			const email = await ctx.db.get(args.resourceId as Id<'transactionalEmails'>);
-			if (!email) {
-				throwNotFound('Transactional email');
-			}
+			const email = await getOrThrow(
+				ctx,
+				args.resourceId as Id<'transactionalEmails'>,
+				'Transactional email'
+			);
 
 			if (email.status !== 'pending_review') {
 				throwInvalidInput('Transactional email is not pending review');
@@ -328,10 +315,7 @@ export const removePlatformAdmin = authedMutation({
 			throwInvalidInput('Only superadmins can remove platform admins');
 		}
 
-		const targetAdmin = await ctx.db.get(args.adminId);
-		if (!targetAdmin) {
-			throwNotFound('Platform admin');
-		}
+		const targetAdmin = await getOrThrow(ctx, args.adminId, 'Platform admin');
 
 		// Cannot remove yourself
 		if (targetAdmin.authUserId === admin.authUserId) {

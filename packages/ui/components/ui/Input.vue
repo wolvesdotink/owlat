@@ -14,6 +14,12 @@ interface Props {
 	helpText?: string;
 	id?: string;
 	size?: InputSize;
+	/**
+	 * Focus the field on mount. Unlike the native `autofocus` attribute this also
+	 * fires on client-side route changes (SPA navigation between wizard steps),
+	 * where the browser would otherwise skip autofocus.
+	 */
+	autofocus?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -22,6 +28,13 @@ const props = withDefaults(defineProps<Props>(), {
 	disabled: false,
 	required: false,
 	size: 'md',
+	autofocus: false,
+});
+
+const inputRef = ref<HTMLInputElement | null>(null);
+
+onMounted(() => {
+	if (props.autofocus) inputRef.value?.focus();
 });
 
 const emit = defineEmits<{
@@ -98,6 +111,7 @@ const handleInput = (event: Event) => {
 			<!-- Input element -->
 			<input
 				:id="inputId"
+				ref="inputRef"
 				:type="type"
 				:value="modelValue"
 				:placeholder="placeholder"

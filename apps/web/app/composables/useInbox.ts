@@ -48,15 +48,16 @@ export function useInbox() {
 
 	// ── Thread list (keyset pagination; the args pick the backend index) ──
 	const threadCursor = ref<string | undefined>(undefined);
-	const { data: threadsData, isLoading: threadsLoading } = useConvexQuery(
-		api.inbox.queries.listThreads,
-		() => ({
-			filter: filter.value,
-			sort: sort.value,
-			limit: 25,
-			cursor: threadCursor.value,
-		})
-	);
+	const {
+		data: threadsData,
+		isLoading: threadsLoading,
+		error: threadsError,
+	} = useConvexQuery(api.inbox.queries.listThreads, () => ({
+		filter: filter.value,
+		sort: sort.value,
+		limit: 25,
+		cursor: threadCursor.value,
+	}));
 
 	type Thread = NonNullable<typeof threadsData.value>['threads'][number];
 
@@ -112,9 +113,6 @@ export function useInbox() {
 		}
 	};
 
-	// Compact relative time ("Just now", "5m ago", "3h ago", short date past 7d).
-	const formatRelativeTime = (timestamp: number) => formatCompactRelativeTime(timestamp);
-
 	return {
 		// State
 		filter,
@@ -123,11 +121,10 @@ export function useInbox() {
 		filterCounts,
 		threads,
 		threadsLoading,
+		threadsError,
 		hasMoreThreads,
 		stats,
 		// Actions
 		loadMoreThreads,
-		// Helpers
-		formatRelativeTime,
 	};
 }

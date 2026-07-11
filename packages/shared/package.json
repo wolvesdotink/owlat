@@ -57,6 +57,10 @@
 			"types": "./src/setupSecrets.ts",
 			"import": "./src/setupSecrets.ts"
 		},
+		"./setupToken": {
+			"types": "./src/setupToken.ts",
+			"import": "./src/setupToken.ts"
+		},
 		"./passwordHash": {
 			"types": "./src/passwordHash.ts",
 			"import": "./src/passwordHash.ts"
@@ -136,6 +140,10 @@
 		"./spf": {
 			"types": "./src/spf.ts",
 			"import": "./src/spf.ts"
+		},
+		"./composeVerify": {
+			"types": "./src/composeVerify.ts",
+			"import": "./src/composeVerify.ts"
 		}
 	},
 	"peerDependencies": {

@@ -16,7 +16,8 @@
  */
 
 import { z } from 'zod';
-import { getLLMProvider } from '../lib/llmProvider';
+import type { ActionCtx } from '../_generated/server';
+import { resolveLanguageModel } from '../lib/llmProvider';
 import { runLlmObject } from '../lib/llm/dispatch';
 import type { TokenUsage } from '../agent/steps/types';
 
@@ -35,16 +36,19 @@ export const replyOptionsSchema = z.object({
  * record spend under its own event name. Does NOT record spend or catch errors
  * itself — the caller decides fail-soft behaviour.
  */
-export async function generateReplyOptions(args: {
-	prompt: string;
-	temperature?: number;
-}): Promise<{
+export async function generateReplyOptions(
+	ctx: ActionCtx,
+	args: {
+		prompt: string;
+		temperature?: number;
+	}
+): Promise<{
 	replies: string[];
 	tokenUsage: TokenUsage | undefined;
 	modelUsed: string | undefined;
 }> {
 	const { object, tokenUsage, modelUsed } = await runLlmObject({
-		model: getLLMProvider('draft'),
+		model: await resolveLanguageModel(ctx, 'draft'),
 		schema: replyOptionsSchema,
 		prompt: args.prompt,
 		temperature: args.temperature ?? 0.7,

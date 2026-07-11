@@ -25,12 +25,8 @@ import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import {
-	nextTable,
-	ORGANIZATION_DELETION_STEPS,
-	STEPS,
-} from '../organizations/deletion/walker';
-import type { OrganizationDeletionTable } from '../organizations/deletion/steps/_common';
+import { nextTable, ORGANIZATION_DELETION_STEPS, STEPS } from '../workspaces/deletion/walker';
+import type { OrganizationDeletionTable } from '../workspaces/deletion/steps/_common';
 import {
 	createTestContact,
 	createTestEmailTemplate,
@@ -55,9 +51,7 @@ vi.mock('../lib/sessionOrganization', async () => {
 // and the domains step delegates via the lifecycle which schedules them.
 const allModules = import.meta.glob('../**/*.*s');
 const modules = Object.fromEntries(
-	Object.entries(allModules).filter(
-		([path]) => !path.includes('providers/registerAction'),
-	),
+	Object.entries(allModules).filter(([path]) => !path.includes('providers/registerAction'))
 );
 
 /**
@@ -90,8 +84,7 @@ async function drainAndCancel(t: TestRunner): Promise<void> {
 
 describe('Organization deletion walker — STEPS list invariants', () => {
 	it('contains every OrganizationDeletionTable literal exactly once', () => {
-		const registryKeys = Object.keys(ORGANIZATION_DELETION_STEPS) as
-			OrganizationDeletionTable[];
+		const registryKeys = Object.keys(ORGANIZATION_DELETION_STEPS) as OrganizationDeletionTable[];
 		expect(STEPS).toHaveLength(registryKeys.length);
 		expect(new Set(STEPS)).toEqual(new Set(registryKeys));
 		// No duplicates.
@@ -107,12 +100,8 @@ describe('Organization deletion walker — STEPS list invariants', () => {
 	});
 
 	it('orders contacts after emailSends + transactionalSends', () => {
-		expect(STEPS.indexOf('contacts')).toBeGreaterThan(
-			STEPS.indexOf('emailSends'),
-		);
-		expect(STEPS.indexOf('contacts')).toBeGreaterThan(
-			STEPS.indexOf('transactionalSends'),
-		);
+		expect(STEPS.indexOf('contacts')).toBeGreaterThan(STEPS.indexOf('emailSends'));
+		expect(STEPS.indexOf('contacts')).toBeGreaterThan(STEPS.indexOf('transactionalSends'));
 	});
 
 	it('orders domain identities + reputation before domains step', () => {
@@ -161,7 +150,7 @@ describe('Organization deletion step modules — hard-delete shape', () => {
 			});
 		});
 
-		await t.mutation(internal.organizations.deletion.walker.runStep, {
+		await t.mutation(internal.workspaces.deletion.walker.runStep, {
 			table: 'segments',
 		});
 		await drainAndCancel(t);
@@ -185,7 +174,7 @@ describe('Organization deletion step modules — hard-delete shape', () => {
 			});
 		});
 
-		await t.mutation(internal.organizations.deletion.walker.runStep, {
+		await t.mutation(internal.workspaces.deletion.walker.runStep, {
 			table: 'apiKeys',
 		});
 		await drainAndCancel(t);
@@ -210,7 +199,7 @@ describe('Organization deletion step modules — hard-delete shape', () => {
 			});
 		});
 
-		await t.mutation(internal.organizations.deletion.walker.runStep, {
+		await t.mutation(internal.workspaces.deletion.walker.runStep, {
 			table: 'webhooks',
 		});
 		await drainAndCancel(t);
@@ -252,7 +241,7 @@ describe('Organization deletion step modules — storage purge', () => {
 			expect(await ctx.storage.getUrl(storageId)).not.toBeNull();
 		});
 
-		await t.mutation(internal.organizations.deletion.walker.runStep, {
+		await t.mutation(internal.workspaces.deletion.walker.runStep, {
 			table: 'mediaAssets',
 		});
 		await drainAndCancel(t);
@@ -287,7 +276,7 @@ describe('Organization deletion step modules — storage purge', () => {
 			});
 		});
 
-		await t.mutation(internal.organizations.deletion.walker.runStep, {
+		await t.mutation(internal.workspaces.deletion.walker.runStep, {
 			table: 'semanticFiles',
 		});
 		await drainAndCancel(t);
@@ -383,7 +372,7 @@ describe('Organization deletion step modules — storage purge', () => {
 			});
 		});
 
-		await t.mutation(internal.organizations.deletion.walker.runStep, {
+		await t.mutation(internal.workspaces.deletion.walker.runStep, {
 			table: 'mailMessages',
 		});
 		await drainAndCancel(t);
@@ -445,7 +434,7 @@ describe('Organization deletion step modules — storage purge', () => {
 			});
 		});
 
-		await t.mutation(internal.organizations.deletion.walker.runStep, {
+		await t.mutation(internal.workspaces.deletion.walker.runStep, {
 			table: 'mailDrafts',
 		});
 		await drainAndCancel(t);
@@ -463,10 +452,7 @@ describe('Organization deletion step modules — storage purge', () => {
 		let sid: Id<'_storage'>;
 		await t.run(async (ctx) => {
 			sid = await ctx.storage.store(new Blob(['payload']));
-			const txEmailId = await ctx.db.insert(
-				'transactionalEmails',
-				createTestTransactionalEmail(),
-			);
+			const txEmailId = await ctx.db.insert('transactionalEmails', createTestTransactionalEmail());
 			await ctx.db.insert('transactionalSends', {
 				kind: 'transactional' as const,
 				transactionalEmailId: txEmailId,
@@ -477,7 +463,7 @@ describe('Organization deletion step modules — storage purge', () => {
 			});
 		});
 
-		await t.mutation(internal.organizations.deletion.walker.runStep, {
+		await t.mutation(internal.workspaces.deletion.walker.runStep, {
 			table: 'transactionalSends',
 		});
 		await drainAndCancel(t);
@@ -503,7 +489,7 @@ describe('Organization deletion — delegating steps', () => {
 		await t.run(async (ctx) => {
 			contactId = await ctx.db.insert(
 				'contacts',
-				createTestContact({ email: 'cascade@example.com' }),
+				createTestContact({ email: 'cascade@example.com' })
 			);
 			topicId = await ctx.db.insert('topics', {
 				name: 'List',
@@ -542,7 +528,7 @@ describe('Organization deletion — delegating steps', () => {
 			});
 		});
 
-		await t.mutation(internal.organizations.deletion.walker.runStep, {
+		await t.mutation(internal.workspaces.deletion.walker.runStep, {
 			table: 'contacts',
 		});
 		await drainAndCancel(t);
@@ -602,7 +588,7 @@ describe('Organization deletion — delegating steps', () => {
 			});
 		});
 
-		await t.mutation(internal.organizations.deletion.walker.runStep, {
+		await t.mutation(internal.workspaces.deletion.walker.runStep, {
 			table: 'domains',
 		});
 		await drainAndCancel(t);
@@ -641,7 +627,7 @@ describe('Organization deletion walker — dispatch loop', () => {
 			});
 		});
 
-		await t.mutation(internal.organizations.deletion.walker.runStep, {
+		await t.mutation(internal.workspaces.deletion.walker.runStep, {
 			table: 'instanceSettings',
 		});
 		await drainAndCancel(t);
@@ -694,7 +680,7 @@ describe('Organization deletion walker — dispatch loop', () => {
 		});
 
 		for (const table of STEPS) {
-			await t.mutation(internal.organizations.deletion.walker.runStep, {
+			await t.mutation(internal.workspaces.deletion.walker.runStep, {
 				table,
 			});
 		}
@@ -722,7 +708,7 @@ describe('organizations.settings.remove — end-to-end wipe', () => {
 	it('remove() returns success + schedules walker.start', async () => {
 		const t = convexTest(schema, modules);
 
-		const outcome = await t.mutation(api.organizations.settings.remove, {});
+		const outcome = await t.mutation(api.workspaces.settings.remove, {});
 		expect(outcome.success).toBe(true);
 		expect(outcome.message).toContain('deletion');
 
@@ -736,9 +722,7 @@ describe('organizations.settings.remove — end-to-end wipe', () => {
 		const t = convexTest(schema, modules);
 		let storageId: Id<'_storage'>;
 		await t.run(async (ctx) => {
-			storageId = await ctx.storage.store(
-				new Blob(['blob'], { type: 'image/png' }),
-			);
+			storageId = await ctx.storage.store(new Blob(['blob'], { type: 'image/png' }));
 			await ctx.db.insert('mediaAssets', {
 				storageId,
 				filename: 'a.png',
@@ -756,7 +740,7 @@ describe('organizations.settings.remove — end-to-end wipe', () => {
 		});
 
 		for (const table of STEPS) {
-			await t.mutation(internal.organizations.deletion.walker.runStep, {
+			await t.mutation(internal.workspaces.deletion.walker.runStep, {
 				table,
 			});
 		}

@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import type { ActionCtx } from '../../_generated/server';
+import type { Doc } from '../../_generated/dataModel';
 
 // Mock @ai-sdk/openai before importing the module under test
 const mockLanguageModel = { modelId: '', provider: 'openai' };
@@ -13,11 +15,41 @@ vi.mock('@ai-sdk/openai', () => ({
 	createOpenAI: mockCreateOpenAI,
 }));
 
-// The `openaiCompatible` adapter is imported via the registry but never invoked
-// on the env path — stub its SDK so the test doesn't depend on the real package.
+// The `openaiCompatible` / `local` adapters build through `@ai-sdk/openai-compatible`.
+// Stub its SDK: the client is callable (chat) AND exposes `.textEmbeddingModel`
+// (the local embedding plane), so the test doesn't depend on the real package.
+const mockCompatEmbeddingModel = { modelId: '', provider: 'openai-compatible' };
+const mockCompatTextEmbedding = vi.fn().mockReturnValue(mockCompatEmbeddingModel);
+const mockCompatClient = Object.assign(vi.fn().mockReturnValue(mockLanguageModel), {
+	textEmbeddingModel: mockCompatTextEmbedding,
+});
+const mockCreateOpenAICompatible = vi.fn().mockReturnValue(mockCompatClient);
 vi.mock('@ai-sdk/openai-compatible', () => ({
-	createOpenAICompatible: vi.fn(() => vi.fn()),
+	createOpenAICompatible: mockCreateOpenAICompatible,
 }));
+
+/** A mock ActionCtx whose `_getConfigRow` returns `row` and decrypt yields a key. */
+function makeCtx(row: Doc<'aiProviderConfig'> | null) {
+	const runQuery = vi.fn(async () => row);
+	const runAction = vi.fn(async () => 'decrypted-key');
+	const ctx = { runQuery, runAction } as unknown as ActionCtx;
+	return { ctx, runQuery, runAction };
+}
+
+/** A minimal stored config row, overridable per field. */
+function storedRow(over: Partial<Doc<'aiProviderConfig'>> = {}): Doc<'aiProviderConfig'> {
+	return {
+		_id: 'cfg1' as Doc<'aiProviderConfig'>['_id'],
+		_creationTime: 0,
+		languageProviderKind: 'openai',
+		modelFast: 'stored-fast',
+		modelCapable: 'stored-capable',
+		embeddingProviderKind: 'local',
+		embeddingModelVersion: 1,
+		updatedAt: 123,
+		...over,
+	} as Doc<'aiProviderConfig'>;
+}
 
 describe('llmProvider', () => {
 	beforeEach(() => {
@@ -26,186 +58,221 @@ describe('llmProvider', () => {
 		mockCreateOpenAI.mockClear();
 		mockOpenAIFactory.mockClear();
 		mockOpenAIFactory.embedding.mockClear();
+		mockCreateOpenAICompatible.mockClear();
+		mockCompatClient.mockClear();
+		mockCompatTextEmbedding.mockClear();
 		// Reset return values
 		mockCreateOpenAI.mockReturnValue(mockOpenAIFactory);
 		mockOpenAIFactory.mockReturnValue(mockLanguageModel);
 		mockOpenAIFactory.embedding.mockReturnValue(mockEmbeddingModel);
+		mockCreateOpenAICompatible.mockReturnValue(mockCompatClient);
+		mockCompatClient.mockReturnValue(mockLanguageModel);
+		mockCompatTextEmbedding.mockReturnValue(mockCompatEmbeddingModel);
 	});
 
 	afterEach(() => {
 		vi.unstubAllEnvs();
 	});
 
-	// ============ getLLMProvider ============
+	// ============ resolveLanguageModel (env fallback path) ============
 
-	describe('getLLMProvider', () => {
-		it('should return a model for classify task (fast tier)', async () => {
+	describe('resolveLanguageModel — env fallback', () => {
+		it('returns a fast-tier model for classify', async () => {
 			vi.stubEnv('OPENAI_API_KEY', 'test-key');
-			const { getLLMProvider } = await import('../llmProvider');
-			const model = getLLMProvider('classify');
+			const { resolveLanguageModel } = await import('../llmProvider');
+			const { ctx } = makeCtx(null);
+			const model = await resolveLanguageModel(ctx, 'classify');
 			expect(model).toBeDefined();
 			expect(mockOpenAIFactory).toHaveBeenCalledWith('gpt-4o-mini');
 		});
 
-		it('should return a model for draft task (capable tier)', async () => {
+		it('returns a capable-tier model for draft', async () => {
 			vi.stubEnv('OPENAI_API_KEY', 'test-key');
-			const { getLLMProvider } = await import('../llmProvider');
-			const model = getLLMProvider('draft');
+			const { resolveLanguageModel } = await import('../llmProvider');
+			const { ctx } = makeCtx(null);
+			const model = await resolveLanguageModel(ctx, 'draft');
 			expect(model).toBeDefined();
 			expect(mockOpenAIFactory).toHaveBeenCalledWith('gpt-4o');
 		});
 
-		it('should route classify/extract/guard/summarize to fast tier', async () => {
+		it('routes classify/extract/guard/summarize to the fast tier', async () => {
 			vi.stubEnv('OPENAI_API_KEY', 'test-key');
 			vi.stubEnv('LLM_MODEL_FAST', 'gpt-4o-mini-test');
-			const { getLLMProvider } = await import('../llmProvider');
-
+			const { resolveLanguageModel } = await import('../llmProvider');
+			const { ctx } = makeCtx(null);
 			for (const task of ['classify', 'extract', 'guard', 'summarize'] as const) {
 				mockOpenAIFactory.mockClear();
-				getLLMProvider(task);
+				await resolveLanguageModel(ctx, task);
 				expect(mockOpenAIFactory).toHaveBeenCalledWith('gpt-4o-mini-test');
 			}
 		});
 
-		it('should route draft/plan to capable tier', async () => {
+		it('routes draft/plan to the capable tier', async () => {
 			vi.stubEnv('OPENAI_API_KEY', 'test-key');
 			vi.stubEnv('LLM_MODEL_CAPABLE', 'gpt-4o-test');
-			const { getLLMProvider } = await import('../llmProvider');
-
+			const { resolveLanguageModel } = await import('../llmProvider');
+			const { ctx } = makeCtx(null);
 			for (const task of ['draft', 'plan'] as const) {
 				mockOpenAIFactory.mockClear();
-				getLLMProvider(task);
+				await resolveLanguageModel(ctx, task);
 				expect(mockOpenAIFactory).toHaveBeenCalledWith('gpt-4o-test');
 			}
 		});
 
-		it('should throw when no API key is set and provider is not ollama', async () => {
-			// Ensure no API keys
+		it('throws when no API key is set and the provider is not ollama', async () => {
 			delete process.env['LLM_API_KEY'];
 			delete process.env['OPENROUTER_API_KEY'];
 			delete process.env['OPENAI_API_KEY'];
-
-			const { getLLMProvider } = await import('../llmProvider');
-			expect(() => getLLMProvider('classify')).toThrow('LLM API not configured');
+			const { resolveLanguageModel } = await import('../llmProvider');
+			const { ctx } = makeCtx(null);
+			await expect(resolveLanguageModel(ctx, 'classify')).rejects.toThrow('LLM API not configured');
 		});
 
-		it('should not throw when provider is ollama even without API key', async () => {
+		it('does not throw for ollama even without an API key', async () => {
 			vi.stubEnv('LLM_PROVIDER', 'ollama');
 			delete process.env['LLM_API_KEY'];
 			delete process.env['OPENROUTER_API_KEY'];
 			delete process.env['OPENAI_API_KEY'];
-
-			const { getLLMProvider } = await import('../llmProvider');
-			expect(() => getLLMProvider('classify')).not.toThrow();
+			const { resolveLanguageModel } = await import('../llmProvider');
+			const { ctx } = makeCtx(null);
+			await expect(resolveLanguageModel(ctx, 'classify')).resolves.toBeDefined();
 		});
 
-		it('should use LLM_API_KEY over OPENAI_API_KEY', async () => {
+		it('prefers LLM_API_KEY over OPENAI_API_KEY', async () => {
 			vi.stubEnv('LLM_API_KEY', 'primary-key');
 			vi.stubEnv('OPENAI_API_KEY', 'fallback-key');
-			const { getLLMProvider } = await import('../llmProvider');
-			getLLMProvider('classify');
+			const { resolveLanguageModel } = await import('../llmProvider');
+			const { ctx } = makeCtx(null);
+			await resolveLanguageModel(ctx, 'classify');
 			expect(mockCreateOpenAI).toHaveBeenCalledWith(
 				expect.objectContaining({ apiKey: 'primary-key' })
 			);
 		});
 
-		it('should fall back to OPENROUTER_API_KEY then OPENAI_API_KEY', async () => {
-			vi.stubEnv('OPENROUTER_API_KEY', 'router-key');
-			delete process.env['LLM_API_KEY'];
-			delete process.env['OPENAI_API_KEY'];
-			const { getLLMProvider } = await import('../llmProvider');
-			getLLMProvider('classify');
-			expect(mockCreateOpenAI).toHaveBeenCalledWith(
-				expect.objectContaining({ apiKey: 'router-key' })
-			);
-		});
-
-		it('should use LLM_MODEL as fallback for fast tier when LLM_MODEL_FAST is not set', async () => {
+		it('defaults to the draft task when none is specified', async () => {
 			vi.stubEnv('OPENAI_API_KEY', 'test-key');
-			vi.stubEnv('LLM_MODEL', 'custom-model');
-			delete process.env['LLM_MODEL_FAST'];
-			const { getLLMProvider } = await import('../llmProvider');
-			getLLMProvider('classify');
-			expect(mockOpenAIFactory).toHaveBeenCalledWith('custom-model');
-		});
-
-		it('should default to draft task when no task is specified', async () => {
-			vi.stubEnv('OPENAI_API_KEY', 'test-key');
-			const { getLLMProvider } = await import('../llmProvider');
-			getLLMProvider();
+			const { resolveLanguageModel } = await import('../llmProvider');
+			const { ctx } = makeCtx(null);
+			await resolveLanguageModel(ctx);
 			expect(mockOpenAIFactory).toHaveBeenCalledWith('gpt-4o');
 		});
 	});
 
-	// ============ keyed-client cache ============
+	// ============ resolveAiConfig (dual source + memoization) ============
 
-	describe('keyed provider-client cache', () => {
-		it('builds the client once and reuses it across calls and tiers for the same env', async () => {
-			vi.stubEnv('OPENAI_API_KEY', 'stable-key');
-			const { getLLMProvider } = await import('../llmProvider');
-			getLLMProvider('classify');
-			getLLMProvider('classify');
-			getLLMProvider('draft'); // different tier, same (kind, baseUrl, key)
-			// createOpenAI (the client factory) is invoked once; only the per-call
-			// model selection re-runs.
-			expect(mockCreateOpenAI).toHaveBeenCalledTimes(1);
+	describe('resolveAiConfig', () => {
+		it('falls back to env when no stored row exists', async () => {
+			vi.stubEnv('OPENAI_API_KEY', 'env-key');
+			const { resolveAiConfig } = await import('../llmProvider');
+			const { ctx, runAction } = makeCtx(null);
+			const cfg = await resolveAiConfig(ctx);
+			expect(cfg.source).toBe('env');
+			expect(cfg.language.kind).toBe('openai');
+			expect(cfg.language.models.capable).toBe('gpt-4o');
+			expect(cfg.language.clientConfig.apiKey).toBe('env-key');
+			// No stored hosted key ⇒ the Node decrypt action is never invoked.
+			expect(runAction).not.toHaveBeenCalled();
 		});
 
-		it('shares one client between the language and embedding planes', async () => {
-			vi.stubEnv('OPENAI_API_KEY', 'stable-key');
-			const { getLLMProvider, getEmbeddingModel } = await import('../llmProvider');
-			getLLMProvider('classify');
-			getEmbeddingModel();
-			expect(mockCreateOpenAI).toHaveBeenCalledTimes(1);
+		it('prefers the stored hosted config over env and decrypts via the Node action', async () => {
+			// Env is configured too — the stored row must still win.
+			vi.stubEnv('OPENAI_API_KEY', 'env-key');
+			const { resolveAiConfig } = await import('../llmProvider');
+			const { ctx, runAction } = makeCtx(
+				storedRow({
+					languageProviderKind: 'openai',
+					modelFast: 'stored-fast',
+					modelCapable: 'stored-capable',
+					secretCiphertext: 'ct',
+					secretIv: 'iv',
+					secretAuthTag: 'tag',
+					secretEnvelopeVersion: 1,
+				})
+			);
+			const cfg = await resolveAiConfig(ctx);
+			expect(cfg.source).toBe('stored');
+			expect(cfg.language.models.fast).toBe('stored-fast');
+			expect(cfg.language.models.capable).toBe('stored-capable');
+			// The plaintext key came back from the Node decrypt action, not env.
+			expect(cfg.language.clientConfig.apiKey).toBe('decrypted-key');
+			expect(runAction).toHaveBeenCalledTimes(1);
 		});
 
-		it('rebuilds the client when the API key changes (key-fingerprint keying)', async () => {
-			vi.stubEnv('OPENAI_API_KEY', 'key-one');
-			const { getLLMProvider } = await import('../llmProvider');
-			getLLMProvider('classify');
-			vi.stubEnv('OPENAI_API_KEY', 'key-two');
-			getLLMProvider('classify');
-			expect(mockCreateOpenAI).toHaveBeenCalledTimes(2);
+		it('resolves a stored local provider without decrypting (keyless)', async () => {
+			const { resolveAiConfig } = await import('../llmProvider');
+			const { ctx, runAction } = makeCtx(
+				storedRow({
+					languageProviderKind: 'openaiCompatible',
+					languageBaseUrl: 'http://localhost:11434/v1',
+					modelFast: 'local-fast',
+					modelCapable: 'local-capable',
+				})
+			);
+			const cfg = await resolveAiConfig(ctx);
+			expect(cfg.source).toBe('stored');
+			expect(cfg.language.kind).toBe('openaiCompatible');
+			expect(cfg.language.clientConfig.baseUrl).toBe('http://localhost:11434/v1');
+			expect(cfg.language.clientConfig.apiKey).toBeUndefined();
+			expect(runAction).not.toHaveBeenCalled();
 		});
 
-		it('rebuilds the client when the base URL changes', async () => {
-			vi.stubEnv('OPENAI_API_KEY', 'stable-key');
-			const { getLLMProvider } = await import('../llmProvider');
-			getLLMProvider('classify');
-			vi.stubEnv('LLM_BASE_URL', 'https://proxy.example.test/v1');
-			getLLMProvider('classify');
-			expect(mockCreateOpenAI).toHaveBeenCalledTimes(2);
+		it('memoizes within the TTL and re-reads after a cache reset', async () => {
+			vi.stubEnv('OPENAI_API_KEY', 'env-key');
+			const { resolveAiConfig, __resetAiConfigCacheForTests } = await import('../llmProvider');
+			const { ctx, runQuery } = makeCtx(null);
+			await resolveAiConfig(ctx);
+			await resolveAiConfig(ctx);
+			// Second call is served from the in-process cache — no second read.
+			expect(runQuery).toHaveBeenCalledTimes(1);
+			__resetAiConfigCacheForTests();
+			await resolveAiConfig(ctx);
+			expect(runQuery).toHaveBeenCalledTimes(2);
 		});
 	});
 
-	// ============ getLLMProviderForClassifiedDraft ============
+	// ============ resolveLanguageModelForClassifiedDraft ============
 
-	describe('getLLMProviderForClassifiedDraft', () => {
+	describe('resolveLanguageModelForClassifiedDraft', () => {
 		const trivial = { category: 'other', intent: 'praise', priority: 'low', confidence: 0.95 };
 		const complex = { category: 'support', intent: 'question', priority: 'high', confidence: 0.95 };
 
-		it('keeps the capable tier when complexity routing is off (default), even for a trivial message', async () => {
+		it('keeps the capable tier when complexity routing is off (default)', async () => {
 			vi.stubEnv('OPENAI_API_KEY', 'test-key');
-			// LLM_COMPLEXITY_ROUTING unset ⇒ off
-			const { getLLMProviderForClassifiedDraft } = await import('../llmProvider');
-			getLLMProviderForClassifiedDraft(trivial);
+			const { resolveLanguageModelForClassifiedDraft } = await import('../llmProvider');
+			const { ctx } = makeCtx(null);
+			await resolveLanguageModelForClassifiedDraft(ctx, trivial);
 			expect(mockOpenAIFactory).toHaveBeenCalledWith('gpt-4o');
 		});
 
 		it('downgrades a trivial message to the fast tier when routing is on', async () => {
 			vi.stubEnv('OPENAI_API_KEY', 'test-key');
 			vi.stubEnv('LLM_COMPLEXITY_ROUTING', '1');
-			const { getLLMProviderForClassifiedDraft } = await import('../llmProvider');
-			getLLMProviderForClassifiedDraft(trivial);
+			const { resolveLanguageModelForClassifiedDraft } = await import('../llmProvider');
+			const { ctx } = makeCtx(null);
+			await resolveLanguageModelForClassifiedDraft(ctx, trivial);
 			expect(mockOpenAIFactory).toHaveBeenCalledWith('gpt-4o-mini');
 		});
 
 		it('keeps a complex message on the capable tier even when routing is on', async () => {
 			vi.stubEnv('OPENAI_API_KEY', 'test-key');
 			vi.stubEnv('LLM_COMPLEXITY_ROUTING', '1');
-			const { getLLMProviderForClassifiedDraft } = await import('../llmProvider');
-			getLLMProviderForClassifiedDraft(complex);
+			const { resolveLanguageModelForClassifiedDraft } = await import('../llmProvider');
+			const { ctx } = makeCtx(null);
+			await resolveLanguageModelForClassifiedDraft(ctx, complex);
 			expect(mockOpenAIFactory).toHaveBeenCalledWith('gpt-4o');
+		});
+	});
+
+	// ============ rename surface ============
+
+	describe('resolver export surface', () => {
+		it('no longer exports the former sync getLLMProvider* names', async () => {
+			const mod = await import('../llmProvider');
+			expect('getLLMProvider' in mod).toBe(false);
+			expect('getLLMProviderForUserText' in mod).toBe(false);
+			expect('getLLMProviderForClassifiedDraft' in mod).toBe(false);
+			expect(typeof mod.resolveLanguageModel).toBe('function');
+			expect(typeof mod.resolveAiConfig).toBe('function');
 		});
 	});
 
@@ -251,23 +318,25 @@ describe('llmProvider', () => {
 		});
 	});
 
-	// ============ getEmbeddingModel ============
+	// ============ resolveEmbeddingModel — env fallback ============
 
-	describe('getEmbeddingModel', () => {
-		it('should return an embedding model', async () => {
+	describe('resolveEmbeddingModel — env fallback', () => {
+		it('resolves the default embedding model via the openai adapter', async () => {
 			vi.stubEnv('OPENAI_API_KEY', 'test-key');
-			const { getEmbeddingModel } = await import('../llmProvider');
-			const model = getEmbeddingModel();
+			const { resolveEmbeddingModel } = await import('../llmProvider');
+			const { ctx } = makeCtx(null);
+			const model = await resolveEmbeddingModel(ctx);
 			expect(model).toBeDefined();
 			expect(mockOpenAIFactory.embedding).toHaveBeenCalledWith('text-embedding-3-small');
 		});
 
-		it('should use custom embedding model from env', async () => {
+		it('honors a custom LLM_EMBEDDING_MODEL from env', async () => {
 			vi.stubEnv('OPENAI_API_KEY', 'test-key');
 			// A 1536-dim model is honored as-is (matches the vector index width).
 			vi.stubEnv('LLM_EMBEDDING_MODEL', 'text-embedding-ada-002');
-			const { getEmbeddingModel } = await import('../llmProvider');
-			getEmbeddingModel();
+			const { resolveEmbeddingModel } = await import('../llmProvider');
+			const { ctx } = makeCtx(null);
+			await resolveEmbeddingModel(ctx);
 			expect(mockOpenAIFactory.embedding).toHaveBeenCalledWith('text-embedding-ada-002');
 		});
 
@@ -275,16 +344,93 @@ describe('llmProvider', () => {
 			vi.stubEnv('OPENAI_API_KEY', 'test-key');
 			// text-embedding-3-large is 3072-dim and won't fit the 1536 index.
 			vi.stubEnv('LLM_EMBEDDING_MODEL', 'text-embedding-3-large');
-			const { getEmbeddingModel } = await import('../llmProvider');
-			expect(() => getEmbeddingModel()).toThrow(/1536/);
+			const { resolveEmbeddingModel } = await import('../llmProvider');
+			const { ctx } = makeCtx(null);
+			await expect(resolveEmbeddingModel(ctx)).rejects.toThrow(/1536/);
 		});
 
-		it('should throw when no API key and provider is not ollama', async () => {
+		it('throws when no API key and provider is not ollama', async () => {
 			delete process.env['LLM_API_KEY'];
 			delete process.env['OPENROUTER_API_KEY'];
 			delete process.env['OPENAI_API_KEY'];
-			const { getEmbeddingModel } = await import('../llmProvider');
-			expect(() => getEmbeddingModel()).toThrow('LLM API not configured');
+			const { resolveEmbeddingModel } = await import('../llmProvider');
+			const { ctx } = makeCtx(null);
+			await expect(resolveEmbeddingModel(ctx)).rejects.toThrow('LLM API not configured');
+		});
+	});
+
+	// ============ resolveEmbeddingModel — local-by-default embedding plane ============
+
+	describe('resolveEmbeddingModel — stored config (two decoupled planes)', () => {
+		it('resolves the LOCAL embedder by default under an Anthropic language config', async () => {
+			// Anthropic has no embeddings API, so retrieval must still work via the
+			// local-by-default embedding plane — resolved INDEPENDENTLY of language.
+			vi.stubEnv('LOCAL_EMBEDDING_BASE_URL', 'http://ollama:11434/v1');
+			const { resolveEmbeddingModel } = await import('../llmProvider');
+			const { ctx, runAction } = makeCtx(
+				storedRow({
+					languageProviderKind: 'anthropic',
+					secretCiphertext: 'ct',
+					secretIv: 'iv',
+					secretAuthTag: 'tag',
+					secretEnvelopeVersion: 1,
+					embeddingProviderKind: 'local',
+				})
+			);
+			const model = await resolveEmbeddingModel(ctx);
+			expect(model).toBe(mockCompatEmbeddingModel);
+			// Built through the OpenAI-compatible sidecar at the local base URL,
+			// using the default local model, with NO OpenAI embedding call.
+			expect(mockCreateOpenAICompatible).toHaveBeenCalledWith(
+				expect.objectContaining({ baseURL: 'http://ollama:11434/v1' })
+			);
+			expect(mockCompatTextEmbedding).toHaveBeenCalledWith('nomic-embed-text');
+			expect(mockOpenAIFactory.embedding).not.toHaveBeenCalled();
+			// The local embedder is keyless — only the hosted LANGUAGE key is decrypted.
+			expect(runAction).toHaveBeenCalledTimes(1);
+		});
+
+		it('honors LOCAL_EMBEDDING_MODEL for the local plane', async () => {
+			vi.stubEnv('LOCAL_EMBEDDING_BASE_URL', 'http://ollama:11434/v1');
+			vi.stubEnv('LOCAL_EMBEDDING_MODEL', 'mxbai-embed-large');
+			const { resolveEmbeddingModel } = await import('../llmProvider');
+			const { ctx } = makeCtx(storedRow({ embeddingProviderKind: 'local' }));
+			await resolveEmbeddingModel(ctx);
+			expect(mockCompatTextEmbedding).toHaveBeenCalledWith('mxbai-embed-large');
+		});
+
+		it('resolves a HOSTED embedder override, decrypting its own key', async () => {
+			const { resolveEmbeddingModel } = await import('../llmProvider');
+			const { ctx, runAction } = makeCtx(
+				storedRow({
+					languageProviderKind: 'anthropic', // keyless-in-this-test (no lang envelope)
+					embeddingProviderKind: 'openai',
+					embeddingModel: 'text-embedding-3-small',
+					embeddingSecretCiphertext: 'ect',
+					embeddingSecretIv: 'eiv',
+					embeddingSecretAuthTag: 'etag',
+					embeddingSecretEnvelopeVersion: 1,
+				})
+			);
+			const model = await resolveEmbeddingModel(ctx);
+			expect(model).toBe(mockEmbeddingModel);
+			expect(mockCreateOpenAI).toHaveBeenCalledWith(
+				expect.objectContaining({ apiKey: 'decrypted-key' })
+			);
+			expect(mockOpenAIFactory.embedding).toHaveBeenCalledWith('text-embedding-3-small');
+			// Only the embedding key is decrypted (the anthropic language row has no key).
+			expect(runAction).toHaveBeenCalledTimes(1);
+		});
+
+		it('raises an ACTIONABLE error for a hosted embedder with no key (never an empty vector)', async () => {
+			const { resolveEmbeddingModel } = await import('../llmProvider');
+			// Hosted embedder selected but no embedding key envelope stored.
+			const { ctx } = makeCtx(
+				storedRow({ languageProviderKind: 'openaiCompatible', embeddingProviderKind: 'openai' })
+			);
+			await expect(resolveEmbeddingModel(ctx)).rejects.toThrow(/API key/i);
+			// It failed BEFORE building any embedding model — no silent empty vector.
+			expect(mockOpenAIFactory.embedding).not.toHaveBeenCalled();
 		});
 	});
 
@@ -307,11 +453,12 @@ describe('llmProvider', () => {
 		it('builds the default embedding model from CURRENT_EMBEDDING_MODEL', async () => {
 			vi.stubEnv('OPENAI_API_KEY', 'test-key');
 			delete process.env['LLM_EMBEDDING_MODEL'];
-			const [{ getEmbeddingModel }, { CURRENT_EMBEDDING_MODEL }] = await Promise.all([
+			const [{ resolveEmbeddingModel }, { CURRENT_EMBEDDING_MODEL }] = await Promise.all([
 				import('../llmProvider'),
 				import('../constants'),
 			]);
-			getEmbeddingModel();
+			const { ctx } = makeCtx(null);
+			await resolveEmbeddingModel(ctx);
 			expect(mockOpenAIFactory.embedding).toHaveBeenCalledWith(CURRENT_EMBEDDING_MODEL);
 		});
 	});

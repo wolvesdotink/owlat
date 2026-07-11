@@ -38,6 +38,7 @@ import {
 } from '@owlat/shared/featureFlags';
 import { readEnv, writeEnv, mergeEnv, type EnvMap } from '../lib/env';
 import { ensureSecrets } from '../lib/secrets';
+import { generateSetupToken } from '@owlat/shared/setupToken';
 import { writeComposeOverride } from '../lib/override';
 import { saveFlagState } from '../lib/flagState';
 import { applySetupDefaults, type DeploymentMode } from '../lib/setupConfig';
@@ -48,16 +49,12 @@ import {
 	validateOpenRouterKey,
 	validatePostHogHost,
 	validateGoogleSafeBrowsingKey,
+	isValidEmail,
 } from '../lib/validators';
 
-interface RunOptions {
-	web: boolean;
-	terminal: boolean;
-	assumeYes: boolean;
-	owlatDir: string;
-	configFile?: string;
-	positional: string[];
-}
+import type { CliOptions } from '../lib/cliOptions';
+
+type RunOptions = Omit<CliOptions, 'args'>;
 
 export async function runSetup(opts: RunOptions): Promise<number> {
 	const envPath = join(opts.owlatDir, '.env');
@@ -407,7 +404,7 @@ async function collectAdmin(): Promise<{ email: string; name: string; password: 
 		email: () =>
 			text({
 				message: 'Admin email',
-				validate: (v) => (/^.+@.+\..+$/.test(v ?? '') ? undefined : 'Enter a valid email'),
+				validate: (v) => (isValidEmail(v ?? '') ? undefined : 'Enter a valid email'),
 			}),
 		name: () => text({ message: 'Admin display name' }),
 		password: () => password({ message: 'Admin password (min 12 chars)', mask: '•' }),
@@ -448,7 +445,21 @@ async function launchWebWizard(opts: RunOptions): Promise<number> {
 	const withSecrets = ensureSecrets(existing);
 	withSecrets['OWLAT_DEPLOYMENT_MODE'] = 'selfhost';
 	withSecrets['OWLAT_SETUP_MODE'] = 'true';
+	// Mint a one-time setup token that gates the unauthenticated /api/setup/*
+	// endpoints. Without it, the first caller to reach the wizard could create
+	// the platform-admin account and rewrite .env — instance takeover. Reuse an
+	// existing token on re-run so a token already handed to the browser stays
+	// valid. It is written to the root-owned .env (mounted into the read-only web
+	// container as OWLAT_SETUP_TOKEN) AND printed below so the operator can paste
+	// it into the wizard.
+	if (!withSecrets['OWLAT_SETUP_TOKEN']) {
+		withSecrets['OWLAT_SETUP_TOKEN'] = generateSetupToken();
+	}
 	await writeEnv(envPath, withSecrets);
+
+	log.warn(
+		`Setup token (paste this into the web wizard's final step): ${pc.bold(withSecrets['OWLAT_SETUP_TOKEN'])}`
+	);
 
 	// Optionally try to open the browser when DISPLAY is available.
 	if (process.env['DISPLAY'] || process.platform === 'darwin' || process.platform === 'win32') {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { estimateCost, estimateCostUsd } from '../pricing';
+import { estimateCost, estimateCostUsd, providerLabelForModel } from '../pricing';
 
 const oneMillionEach = {
 	promptTokens: 1_000_000,
@@ -63,5 +63,36 @@ describe('estimateCost', () => {
 	it('scales linearly with token counts', () => {
 		const half = { promptTokens: 500_000, completionTokens: 500_000, totalTokens: 1_000_000 };
 		expect(estimateCostUsd('gpt-4o-mini', half)).toBeCloseTo(0.75 / 2);
+	});
+});
+
+describe('providerLabelForModel — spend grouping per backend', () => {
+	it('labels native ids by their provider family', () => {
+		expect(providerLabelForModel('gpt-4o-mini')).toBe('OpenAI');
+		expect(providerLabelForModel('o3-mini')).toBe('OpenAI');
+		expect(providerLabelForModel('claude-opus-4-8')).toBe('Anthropic');
+		expect(providerLabelForModel('gemini-2.5-pro')).toBe('Google');
+		expect(providerLabelForModel('llama3.1')).toBe('Local');
+		expect(providerLabelForModel('qwen2.5')).toBe('Local');
+	});
+
+	it('reads a provider-prefixed (slash) id as coming from OpenRouter', () => {
+		expect(providerLabelForModel('anthropic/claude-opus-4-8')).toBe('OpenRouter');
+		expect(providerLabelForModel('openai/gpt-4o')).toBe('OpenRouter');
+	});
+
+	it('distinguishes Google vs OpenAI embedding ids by the more-specific prefix', () => {
+		expect(providerLabelForModel('text-embedding-004')).toBe('Google');
+		expect(providerLabelForModel('text-embedding-3-small')).toBe('OpenAI');
+	});
+
+	it('is case-insensitive and trims', () => {
+		expect(providerLabelForModel('  GPT-4O  ')).toBe('OpenAI');
+	});
+
+	it('falls back to Other for an unrecognized id and Unknown for none', () => {
+		expect(providerLabelForModel('some-brand-new-model')).toBe('Other');
+		expect(providerLabelForModel(undefined)).toBe('Unknown');
+		expect(providerLabelForModel('')).toBe('Unknown');
 	});
 });

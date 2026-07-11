@@ -14,21 +14,27 @@
 import type { AuthState, ConnectionState, SelectedState } from '../types.js';
 
 /** Returns null when authenticated; otherwise a BAD line to emit. */
-export function requireAuth(
-	state: ConnectionState,
-	tag: string,
-): string | null {
+export function requireAuth(state: ConnectionState, tag: string): string | null {
 	if (state.auth) return null;
 	return `${tag} BAD Not authenticated`;
 }
 
 /** Returns null when a folder is SELECTed; otherwise a BAD line to emit. */
-export function requireSelect(
-	state: ConnectionState,
-	tag: string,
-): string | null {
+export function requireSelect(state: ConnectionState, tag: string): string | null {
 	if (state.selected) return null;
 	return `${tag} BAD No mailbox selected`;
+}
+
+/**
+ * Returns null when the SELECTed folder is writable; otherwise a NO
+ * line to emit. Call after `requireSelect` so the selection is known
+ * to exist.
+ */
+export function requireWritableSelect(state: ConnectionState, tag: string): string | null {
+	if (state.selected?.readOnly) {
+		return `${tag} NO Mailbox is read-only`;
+	}
+	return null;
 }
 
 /**

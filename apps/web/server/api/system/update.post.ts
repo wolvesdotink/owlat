@@ -1,14 +1,15 @@
-import { createHash } from 'node:crypto';
 import type { FunctionReference } from 'convex/server';
 import { api, internal } from '@owlat/api';
+import { isValidTargetVersion } from '@owlat/shared/composeVerify';
 import { requirePlatformAdmin } from '~~/server/utils/requireAdmin';
+import { resolveVerifiedComposeTemplate } from '~~/server/utils/composeUpdate';
 import { getInstanceSecret, callUpdater } from '~~/server/utils/updater';
 
 // ConvexHttpClient.mutation's type only admits public function references, but
 // internal mutations execute fine at runtime. Re-tag the visibility while
 // preserving the inferred argument and return types.
 function asPublicMutation<Args extends Record<string, unknown>, Ret>(
-	ref: FunctionReference<'mutation', 'internal', Args, Ret>,
+	ref: FunctionReference<'mutation', 'internal', Args, Ret>
 ): FunctionReference<'mutation', 'public', Args, Ret> {
 	return ref as unknown as FunctionReference<'mutation', 'public', Args, Ret>;
 }
@@ -34,12 +35,14 @@ function asPublicMutation<Args extends Record<string, unknown>, Ret>(
 export default defineEventHandler(async (event) => {
 	const client = await requirePlatformAdmin(event);
 
-	const instanceSecret = getInstanceSecret('In-app updates not configured (INSTANCE_SECRET missing)');
+	const instanceSecret = getInstanceSecret(
+		'In-app updates not configured (INSTANCE_SECRET missing)'
+	);
 
 	const body = await readBody<{ targetVersion?: string }>(event);
 	const targetVersion = body?.targetVersion?.trim() || '';
 
-	if (!/^\d+\.\d+\.\d+(-[A-Za-z0-9.-]+)?$/.test(targetVersion)) {
+	if (!isValidTargetVersion(targetVersion)) {
 		throw createError({
 			statusCode: 400,
 			message: 'Invalid targetVersion (expected semver like 1.2.3)',
@@ -48,103 +51,37 @@ export default defineEventHandler(async (event) => {
 
 	const currentVersion = process.env['OWLAT_VERSION'] || 'dev';
 
-	// 1. Fetch the pinned compose template + its SHA256 manifest from GitHub
-	//    Releases. The release workflow publishes BOTH `docker-compose-<v>.yml`
-	//    AND `docker-compose-<v>.yml.sha256`. Downloading and verifying both
-	//    gives us tamper-evidence on the manifest — a hostile GitHub account
-	//    or MitM cannot silently swap the compose file without also matching
-	//    the published hash (which is attested separately by the release
-	//    workflow via Sigstore/cosign in Phase 1.2).
-	//
-	// S2 (Phase 1.3): replaces the prior substring check — that only proved
-	// the downloaded file *mentioned* the target version, not that it came
-	// from Owlat's release pipeline.
-	const composeUrl =
-		`https://github.com/wolvesdotink/owlat/releases/download/v${targetVersion}/docker-compose-${targetVersion}.yml`;
-	const sha256Url = `${composeUrl}.sha256`;
+	// 1. Fetch + cryptographically verify the pinned compose template from
+	//    GitHub Releases. The release workflow publishes BOTH
+	//    `docker-compose-<v>.yml` AND `docker-compose-<v>.yml.sha256`; the
+	//    shared helper downloads both, confirms the file's SHA-256 matches the
+	//    published digest, and confirms it pins the expected web image. This is
+	//    the ONLY trusted source of a compose template — a caller-supplied one
+	//    is never forwarded to the updater. The same helper backs
+	//    `/api/self-update` so both routes stay in lock-step.
+	const composeTemplate = await resolveVerifiedComposeTemplate({ targetVersion, currentVersion });
 
-	async function fetchFromRelease(url: string, accept: string): Promise<string> {
-		const resp = await fetch(url, {
-			headers: {
-				'User-Agent': `owlat-selfhost/${currentVersion}`,
-				'Accept': accept,
-			},
-			redirect: 'follow',
-			signal: AbortSignal.timeout(30_000),
-		});
-		if (!resp.ok) {
-			throw new Error(`GitHub returned ${resp.status}`);
-		}
-		return resp.text();
-	}
-
-	let composeTemplate: string;
-	let expectedSha256: string;
-	try {
-		const [body, manifest] = await Promise.all([
-			fetchFromRelease(composeUrl, 'text/yaml, application/x-yaml, text/plain'),
-			fetchFromRelease(sha256Url, 'text/plain'),
-		]);
-		composeTemplate = body;
-		// Manifest format produced by `sha256sum` is `<hex>  <filename>`.
-		// Accept that AND a bare hex digest (defensive against format drift).
-		const firstToken = manifest.trim().split(/\s+/)[0] || '';
-		if (!/^[a-f0-9]{64}$/i.test(firstToken)) {
-			throw new Error(
-				`Invalid SHA256 manifest format (expected 64-hex digest, got "${firstToken.slice(0, 20)}…")`,
-			);
-		}
-		expectedSha256 = firstToken.toLowerCase();
-	} catch (err) {
-		const msg = err instanceof Error ? err.message : 'Unknown fetch error';
-		throw createError({
-			statusCode: 502,
-			message: `Could not download release artifacts for v${targetVersion}: ${msg}`,
-		});
-	}
-
-	// Cryptographically verify the compose file against the published hash.
-	const actualSha256 = createHash('sha256').update(composeTemplate).digest('hex');
-	if (actualSha256 !== expectedSha256) {
-		throw createError({
-			statusCode: 502,
-			message: `Compose template hash mismatch — refusing to apply. Expected ${expectedSha256}, got ${actualSha256}. This may indicate a tampered release artifact; contact support before retrying.`,
-		});
-	}
-
-	// Defence-in-depth: confirm the verified body references the expected web
-	// image version. Cheap check that catches mismatched-manifest releases
-	// (wrong sha256 published for wrong compose file). Released templates pin
-	// the canonical ghcr.io/wolvesdotink org (root docker-compose.yml +
-	// gen-release-compose.sh).
-	if (!composeTemplate.includes(`ghcr.io/wolvesdotink/web:${targetVersion}`)) {
-		throw createError({
-			statusCode: 502,
-			message: `Verified compose template does not reference v${targetVersion}`,
-		});
-	}
-
-	// 2. Look up the current user for audit trail.
-	const identity = await client
-		.query(api.platformAdmin.platformAdmin.isPlatformAdmin, {})
-		.catch(() => null);
-	// isPlatformAdmin returned true already (from requirePlatformAdmin), so use
-	// a dedicated identity query if available — for now, we don't need the
-	// auth user id; use a generic tag.
-	void identity;
+	// 2. Look up the acting admin's user id for the audit trail. Falls back to
+	//    the generic 'platform-admin' tag only if the lookup fails (it won't
+	//    normally — requirePlatformAdmin already proved an admin session).
+	const initiatedBy =
+		(await client
+			.query(api.platformAdmin.platformAdmin.currentPlatformAdminUserId, {})
+			.catch(() => null)) ?? 'platform-admin';
 
 	// 3. Record the update start.
-	const runId = await client.mutation(
-		asPublicMutation(internal.systemUpdates.recordUpdateStart),
-		{
-			versionFrom: currentVersion,
-			versionTo: targetVersion,
-			initiatedBy: 'platform-admin', // TODO: surface actual user id
-		},
-	);
+	const runId = await client.mutation(asPublicMutation(internal.systemUpdates.recordUpdateStart), {
+		versionFrom: currentVersion,
+		versionTo: targetVersion,
+		initiatedBy,
+	});
 
 	// 4. Dispatch to the updater sidecar.
-	let updaterResult: { success?: boolean; error?: string; steps?: { step: string; stdout: string; stderr: string }[] } = {};
+	let updaterResult: {
+		success?: boolean;
+		error?: string;
+		steps?: { step: string; stdout: string; stderr: string }[];
+	} = {};
 	let updaterOk = false;
 
 	try {
@@ -156,7 +93,7 @@ export default defineEventHandler(async (event) => {
 			signal: AbortSignal.timeout(10 * 60 * 1000),
 		});
 
-		updaterResult = await updaterResp.json() as typeof updaterResult;
+		updaterResult = (await updaterResp.json()) as typeof updaterResult;
 		updaterOk = updaterResp.ok;
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : 'Unknown updater error';

@@ -12,7 +12,7 @@ const { mockCompatibleClient, mockCreateCompatible } = vi.hoisted(() => {
 
 vi.mock('@ai-sdk/openai-compatible', () => ({ createOpenAICompatible: mockCreateCompatible }));
 
-import { openrouterLanguageAdapter, parseOpenRouterModelIds } from '../openrouter';
+import { openrouterLanguageAdapter } from '../openrouter';
 import { estimateCost } from '../../llm/pricing';
 
 describe('openrouterLanguageAdapter', () => {
@@ -55,36 +55,6 @@ describe('openrouterLanguageAdapter', () => {
 	it('requires an API key (hosted, keyed)', () => {
 		expect(() => openrouterLanguageAdapter.validateCredentials({})).toThrow(/API key/);
 		expect(() => openrouterLanguageAdapter.validateCredentials({ apiKey: 'k' })).not.toThrow();
-	});
-});
-
-describe('parseOpenRouterModelIds', () => {
-	it('parses model ids from a /models fixture payload', () => {
-		const fixture = {
-			data: [
-				{ id: 'anthropic/claude-opus-4-8', name: 'Claude Opus 4.8' },
-				{ id: 'openai/gpt-4o', name: 'GPT-4o' },
-				{ id: 'google/gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
-			],
-		};
-		expect(parseOpenRouterModelIds(fixture)).toEqual([
-			'anthropic/claude-opus-4-8',
-			'openai/gpt-4o',
-			'google/gemini-2.5-pro',
-		]);
-	});
-
-	it('skips off-shape entries without throwing', () => {
-		const messy = {
-			data: [{ id: 'openai/gpt-4o' }, { name: 'no id here' }, 'not-an-object', { id: 42 }, null],
-		};
-		expect(parseOpenRouterModelIds(messy)).toEqual(['openai/gpt-4o']);
-	});
-
-	it('returns an empty list for a malformed body rather than throwing', () => {
-		expect(parseOpenRouterModelIds({})).toEqual([]);
-		expect(parseOpenRouterModelIds(null)).toEqual([]);
-		expect(parseOpenRouterModelIds({ data: 'nope' })).toEqual([]);
 	});
 });
 

@@ -1,7 +1,7 @@
 import { v } from 'convex/values';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
-import { requireOrgPermission } from '../lib/sessionOrganization';
-import { throwNotFound, throwAlreadyExists } from '../_utils/errors';
+import { requireContactsManage } from './guards';
+import { getOrThrow, throwAlreadyExists } from '../_utils/errors';
 
 // Query to list all contact properties
 export const listByOrganization = authedQuery({
@@ -45,11 +45,7 @@ export const create = authedMutation({
 		),
 	},
 	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'contacts:manage',
-			'Only owners and admins can manage contacts'
-		);
+		await requireContactsManage(ctx);
 
 		// Check if property with same key already exists
 		const existing = await ctx.db
@@ -77,16 +73,9 @@ export const update = authedMutation({
 		label: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'contacts:manage',
-			'Only owners and admins can manage contacts'
-		);
+		await requireContactsManage(ctx);
 
-		const property = await ctx.db.get(args.propertyId);
-		if (!property) {
-			throwNotFound('Property');
-		}
+		await getOrThrow(ctx, args.propertyId, 'Property');
 
 		const updates: { label?: string } = {};
 		if (args.label !== undefined) {
@@ -102,16 +91,9 @@ export const update = authedMutation({
 export const remove = authedMutation({
 	args: { propertyId: v.id('contactProperties') },
 	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'contacts:manage',
-			'Only owners and admins can manage contacts'
-		);
+		await requireContactsManage(ctx);
 
-		const property = await ctx.db.get(args.propertyId);
-		if (!property) {
-			throwNotFound('Property');
-		}
+		await getOrThrow(ctx, args.propertyId, 'Property');
 
 		// Delete all property values associated with this property
 		const values = await ctx.db
@@ -132,11 +114,7 @@ export const remove = authedMutation({
 export const createDefaultProperties = authedMutation({
 	args: {},
 	handler: async (ctx) => {
-		await requireOrgPermission(
-			ctx,
-			'contacts:manage',
-			'Only owners and admins can manage contacts'
-		);
+		await requireContactsManage(ctx);
 
 		const defaultProperties = [
 			{ key: 'first_name', label: 'First Name', type: 'string' as const },

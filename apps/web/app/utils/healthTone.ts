@@ -37,3 +37,11 @@ export const healthChipClass: Record<HealthTone, string> = {
 	error: 'bg-error/10 text-error',
 	neutral: 'bg-bg-surface text-text-secondary',
 };
+
+/** Bare text colour per tone (e.g. a standalone status glyph or label). */
+export const healthTextClass: Record<HealthTone, string> = {
+	success: 'text-success',
+	warning: 'text-warning',
+	error: 'text-error',
+	neutral: 'text-text-tertiary',
+};

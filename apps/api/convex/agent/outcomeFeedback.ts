@@ -32,7 +32,7 @@ import { z } from 'zod';
 import { v } from 'convex/values';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
-import { getLLMProvider } from '../lib/llmProvider';
+import { resolveLanguageModel } from '../lib/llmProvider';
 import { runLlmObject } from '../lib/llm/dispatch';
 import { recordLlmSpend } from '../analytics/llmUsage';
 
@@ -85,7 +85,7 @@ export const classifyReplyOutcome = internalAction({
 		let sentiment: 'negative' | 'neutral' | 'positive';
 		try {
 			const { object, tokenUsage, modelUsed } = await runLlmObject({
-				model: getLLMProvider('classify'),
+				model: await resolveLanguageModel(ctx, 'classify'),
 				schema: outcomeSchema,
 				prompt:
 					`${SYSTEM_GUARD}\n\n` +

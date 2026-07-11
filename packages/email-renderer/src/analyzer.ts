@@ -4,7 +4,11 @@
  */
 
 import type { EditorBlock, ClientSupport, CommonBlockProperties } from '@owlat/shared';
-import { GMAIL_CLIP_BYTES, GMAIL_CSS_LIMIT_BYTES, GMAIL_CSS_WARNING_BYTES } from '@owlat/shared/emailLimits';
+import {
+	GMAIL_CLIP_BYTES,
+	GMAIL_CSS_LIMIT_BYTES,
+	GMAIL_CSS_WARNING_BYTES,
+} from '@owlat/shared/emailLimits';
 import { scoreBlockCompatibility } from './compatibility';
 import { validateBlocks } from './validator';
 import type { EmailHealthScore, EmailHealthRecommendation, RenderOptions } from './types';
@@ -106,21 +110,43 @@ const getLinkCount = (html: string): number => {
 };
 
 /**
- * Extract visible text content from HTML (strip tags, decode entities).
+ * Strip HTML down to its visible text: drop <style>/<script> (and optionally
+ * comments), remove tags, decode the basic entities, collapse whitespace, trim.
+ *
+ * The two call sites differ in three deliberate ways, so each is a flag:
+ *  - `stripComments` — remove `<!-- ... -->` before dropping tags
+ *  - `tagReplacement` — what a stripped tag leaves behind (' ' vs '')
+ *  - `decodeAllEntities` — also turn numeric (`&#123;`) and named (`&copy;`)
+ *    entities into spaces
  */
-const getTextContent = (html: string): string => {
-	return html
+const stripToText = (
+	html: string,
+	opts: { stripComments?: boolean; tagReplacement?: string; decodeAllEntities?: boolean } = {}
+): string => {
+	const { stripComments = false, tagReplacement = ' ', decodeAllEntities = false } = opts;
+	let s = html
 		.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-		.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-		.replace(/<[^>]+>/g, ' ')
+		.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '');
+	if (stripComments) {
+		s = s.replace(/<!--[\s\S]*?-->/g, '');
+	}
+	s = s
+		.replace(/<[^>]+>/g, tagReplacement)
 		.replace(/&nbsp;/gi, ' ')
 		.replace(/&amp;/gi, '&')
 		.replace(/&lt;/gi, '<')
-		.replace(/&gt;/gi, '>')
-		.replace(/&#\d+;/g, ' ')
-		.replace(/&\w+;/g, ' ')
-		.replace(/\s+/g, ' ')
-		.trim();
+		.replace(/&gt;/gi, '>');
+	if (decodeAllEntities) {
+		s = s.replace(/&#\d+;/g, ' ').replace(/&\w+;/g, ' ');
+	}
+	return s.replace(/\s+/g, ' ').trim();
+};
+
+/**
+ * Extract visible text content from HTML (strip tags, decode entities).
+ */
+const getTextContent = (html: string): string => {
+	return stripToText(html, { decodeAllEntities: true });
 };
 
 /**
@@ -159,17 +185,7 @@ const getSizeBreakdown = (html: string): EmailSizeBreakdown => {
 		: 0;
 
 	// Text content (strip all tags)
-	const textOnly = html
-		.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-		.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-		.replace(/<!--[\s\S]*?-->/g, '')
-		.replace(/<[^>]+>/g, '')
-		.replace(/&nbsp;/gi, ' ')
-		.replace(/&amp;/gi, '&')
-		.replace(/&lt;/gi, '<')
-		.replace(/&gt;/gi, '>')
-		.replace(/\s+/g, ' ')
-		.trim();
+	const textOnly = stripToText(html, { stripComments: true, tagReplacement: '' });
 	const textContentBytes = encoder.encode(textOnly).length;
 
 	// Whitespace
@@ -177,8 +193,14 @@ const getSizeBreakdown = (html: string): EmailSizeBreakdown => {
 	const whitespaceBytes = encoder.encode(whitespaceOnly).length;
 
 	// Markup overhead = total - everything else
-	const markupOverheadBytes = Math.max(0,
-		totalBytes - styleBlockBytes - msoConditionalBytes - imageTagBytes - textContentBytes - whitespaceBytes
+	const markupOverheadBytes = Math.max(
+		0,
+		totalBytes -
+			styleBlockBytes -
+			msoConditionalBytes -
+			imageTagBytes -
+			textContentBytes -
+			whitespaceBytes
 	);
 
 	return {
@@ -260,7 +282,10 @@ export const suggestOptimizations = (html: string): OptimizationSuggestion[] => 
 /**
  * Analyze rendered email HTML for potential issues.
  */
-export const analyzeEmail = (html: string, options?: { subjectLine?: string; includeBreakdown?: boolean }): EmailAnalysis => {
+export const analyzeEmail = (
+	html: string,
+	options?: { subjectLine?: string; includeBreakdown?: boolean }
+): EmailAnalysis => {
 	const htmlSizeBytes = new TextEncoder().encode(html).length;
 	const exceedsGmailClip = htmlSizeBytes > GMAIL_CLIP_THRESHOLD;
 	const tableNestingDepth = getTableNestingDepth(html);
@@ -268,64 +293,96 @@ export const analyzeEmail = (html: string, options?: { subjectLine?: string; inc
 	const linkCount = getLinkCount(html);
 	const textContent = getTextContent(html);
 	const hasTextContent = textContent.length > 50;
-	const textToImageRatio = imageCount > 0 ? Math.round(textContent.length / imageCount) : textContent.length > 0 ? Infinity : 0;
+	const textToImageRatio =
+		imageCount > 0
+			? Math.round(textContent.length / imageCount)
+			: textContent.length > 0
+				? Infinity
+				: 0;
 	const displayNoneCount = getDisplayNoneCount(html);
 
 	const warnings: string[] = [];
 
 	if (exceedsGmailClip) {
 		const sizeKb = Math.round(htmlSizeBytes / 1024);
-		warnings.push(`Email size (${sizeKb}KB) exceeds Gmail's 102KB clipping threshold. Content after 102KB will be hidden behind a "View entire message" link.`);
+		warnings.push(
+			`Email size (${sizeKb}KB) exceeds Gmail's 102KB clipping threshold. Content after 102KB will be hidden behind a "View entire message" link.`
+		);
 	}
 
 	if (tableNestingDepth > 10) {
-		warnings.push(`High table nesting depth (${tableNestingDepth}). Some email clients may have rendering issues with deeply nested tables. Consider simplifying the layout.`);
+		warnings.push(
+			`High table nesting depth (${tableNestingDepth}). Some email clients may have rendering issues with deeply nested tables. Consider simplifying the layout.`
+		);
 	}
 
 	if (imageCount > 20) {
-		warnings.push(`High image count (${imageCount}). Emails with many images may be slow to load or flagged by spam filters.`);
+		warnings.push(
+			`High image count (${imageCount}). Emails with many images may be slow to load or flagged by spam filters.`
+		);
 	}
 
 	if (htmlSizeBytes > 80 * 1024 && !exceedsGmailClip) {
 		const sizeKb = Math.round(htmlSizeBytes / 1024);
-		warnings.push(`Email size (${sizeKb}KB) is approaching Gmail's 102KB clipping threshold. Consider optimizing content.`);
+		warnings.push(
+			`Email size (${sizeKb}KB) is approaching Gmail's 102KB clipping threshold. Consider optimizing content.`
+		);
 	}
 
 	if (linkCount > 60) {
-		warnings.push(`High link count (${linkCount}). Emails with excessive links may trigger spam filters.`);
+		warnings.push(
+			`High link count (${linkCount}). Emails with excessive links may trigger spam filters.`
+		);
 	}
 
 	if (!hasTextContent && imageCount > 0) {
-		warnings.push('Email appears to be image-only with minimal text content. This harms deliverability and accessibility.');
+		warnings.push(
+			'Email appears to be image-only with minimal text content. This harms deliverability and accessibility.'
+		);
 	}
 
 	if (imageCount > 0 && textToImageRatio < 50) {
-		warnings.push(`Low text-to-image ratio (${textToImageRatio} chars per image). Consider adding more text content for better deliverability.`);
+		warnings.push(
+			`Low text-to-image ratio (${textToImageRatio} chars per image). Consider adding more text content for better deliverability.`
+		);
 	}
 
 	if (displayNoneCount > 3) {
-		warnings.push(`Found ${displayNoneCount} display:none elements beyond preheader. Excessive hidden content can trigger spam filters.`);
+		warnings.push(
+			`Found ${displayNoneCount} display:none elements beyond preheader. Excessive hidden content can trigger spam filters.`
+		);
 	}
 
 	// Check for potential issues
 	if (html.includes('position:absolute') || html.includes('position: absolute')) {
-		warnings.push('Email contains position:absolute — this is stripped by Gmail and some other clients.');
+		warnings.push(
+			'Email contains position:absolute — this is stripped by Gmail and some other clients.'
+		);
 	}
 
 	if (html.includes('<form') || html.includes('<input')) {
-		warnings.push('Email contains form elements — these are stripped by most email clients except Apple Mail/iOS.');
+		warnings.push(
+			'Email contains form elements — these are stripped by most email clients except Apple Mail/iOS.'
+		);
 	}
 
 	if (html.includes('<video') || html.includes('<audio')) {
-		warnings.push('Email contains <video> or <audio> tags — only supported in Apple Mail/iOS. Use thumbnail + link pattern instead.');
+		warnings.push(
+			'Email contains <video> or <audio> tags — only supported in Apple Mail/iOS. Use thumbnail + link pattern instead.'
+		);
 	}
 
 	// Subject line analysis
 	if (options?.subjectLine) {
 		if (options.subjectLine.length > 70) {
-			warnings.push(`Subject line is ${options.subjectLine.length} chars — may be truncated in Gmail (70 char limit).`);
+			warnings.push(
+				`Subject line is ${options.subjectLine.length} chars — may be truncated in Gmail (70 char limit).`
+			);
 		}
-		if (options.subjectLine === options.subjectLine.toUpperCase() && /[A-Z]/.test(options.subjectLine)) {
+		if (
+			options.subjectLine === options.subjectLine.toUpperCase() &&
+			/[A-Z]/.test(options.subjectLine)
+		) {
 			warnings.push('Subject line is ALL CAPS — this can trigger spam filters.');
 		}
 	}
@@ -333,17 +390,21 @@ export const analyzeEmail = (html: string, options?: { subjectLine?: string; inc
 	// Gmail CSS size guard
 	const styleMatches = html.match(/<style[^>]*>([\s\S]*?)<\/style>/gi);
 	const styleContent = styleMatches
-		? styleMatches.map(s => s.replace(/<\/?style[^>]*>/gi, '')).join('')
+		? styleMatches.map((s) => s.replace(/<\/?style[^>]*>/gi, '')).join('')
 		: '';
 	const styleBlockSizeBytes = new TextEncoder().encode(styleContent).length;
 	const exceedsGmailCssLimit = styleBlockSizeBytes > GMAIL_CSS_THRESHOLD;
 
 	if (exceedsGmailCssLimit) {
 		const sizeKb = Math.round(styleBlockSizeBytes / 1024);
-		warnings.push(`CSS style block (${sizeKb}KB) exceeds Gmail's ~8KB limit. Gmail will strip the entire <style> block, breaking responsive layout and dark mode. Enable CSS inlining.`);
+		warnings.push(
+			`CSS style block (${sizeKb}KB) exceeds Gmail's ~8KB limit. Gmail will strip the entire <style> block, breaking responsive layout and dark mode. Enable CSS inlining.`
+		);
 	} else if (styleBlockSizeBytes > GMAIL_CSS_WARNING_THRESHOLD) {
 		const percent = Math.round((styleBlockSizeBytes / GMAIL_CSS_THRESHOLD) * 100);
-		warnings.push(`CSS style block is at ${percent}% of Gmail's ~8KB limit. Consider reducing CSS to avoid Gmail stripping styles.`);
+		warnings.push(
+			`CSS style block is at ${percent}% of Gmail's ~8KB limit. Consider reducing CSS to avoid Gmail stripping styles.`
+		);
 	}
 
 	// Basic CSS syntax validation
@@ -351,7 +412,9 @@ export const analyzeEmail = (html: string, options?: { subjectLine?: string; inc
 	const openBraces = (styleContent.match(/{/g) || []).length;
 	const closeBraces = (styleContent.match(/}/g) || []).length;
 	if (openBraces !== closeBraces) {
-		cssValidationIssues.push(`Unbalanced braces in CSS: ${openBraces} opening vs ${closeBraces} closing`);
+		cssValidationIssues.push(
+			`Unbalanced braces in CSS: ${openBraces} opening vs ${closeBraces} closing`
+		);
 	}
 	const unclosedStrings = styleContent.match(/'[^']*$|"[^"]*$/gm);
 	if (unclosedStrings) {
@@ -400,7 +463,7 @@ const GMAIL_CSS_WARNING_THRESHOLD = GMAIL_CSS_WARNING_BYTES;
 export const getEmailHealthScore = (
 	blocks: EditorBlock[],
 	html: string,
-	_options?: RenderOptions,
+	_options?: RenderOptions
 ): EmailHealthScore => {
 	const recommendations: EmailHealthRecommendation[] = [];
 
@@ -409,7 +472,10 @@ export const getEmailHealthScore = (
 	let compatCount = 0;
 	for (const block of blocks) {
 		const content = block.content as CommonBlockProperties;
-		const score = scoreBlockCompatibility(block.type, content as unknown as Record<string, unknown>);
+		const score = scoreBlockCompatibility(
+			block.type,
+			content as unknown as Record<string, unknown>
+		);
 		compatTotal += score.score;
 		compatCount++;
 		if (score.criticalIssues.length > 0) {
@@ -424,10 +490,10 @@ export const getEmailHealthScore = (
 
 	// --- 2. Accessibility score ---
 	const a11yResult = validateBlocks(blocks, { accessibilityAudit: true, level: 'soft' });
-	const a11yIssues = a11yResult.issues.filter(i => i.code.startsWith('A11Y_'));
-	const a11yErrors = a11yIssues.filter(i => i.severity === 'error').length;
-	const a11yWarnings = a11yIssues.filter(i => i.severity === 'warning').length;
-	const accessibility = Math.max(0, 100 - (a11yErrors * 20) - (a11yWarnings * 10));
+	const a11yIssues = a11yResult.issues.filter((i) => i.code.startsWith('A11Y_'));
+	const a11yErrors = a11yIssues.filter((i) => i.severity === 'error').length;
+	const a11yWarnings = a11yIssues.filter((i) => i.severity === 'warning').length;
+	const accessibility = Math.max(0, 100 - a11yErrors * 20 - a11yWarnings * 10);
 	if (a11yErrors > 0) {
 		recommendations.push({
 			category: 'accessibility',
@@ -492,12 +558,20 @@ export const getEmailHealthScore = (
 	deliverability = Math.max(0, deliverability);
 
 	// --- 4. Outlook support score ---
-	const outlookClients: (keyof ClientSupport)[] = ['outlookDesktop', 'outlook365', 'outlookNew', 'outlookMac'];
+	const outlookClients: (keyof ClientSupport)[] = [
+		'outlookDesktop',
+		'outlook365',
+		'outlookNew',
+		'outlookMac',
+	];
 	let outlookTotal = 0;
 	let outlookCount = 0;
 	for (const block of blocks) {
 		const content = block.content as CommonBlockProperties;
-		const score = scoreBlockCompatibility(block.type, content as unknown as Record<string, unknown>);
+		const score = scoreBlockCompatibility(
+			block.type,
+			content as unknown as Record<string, unknown>
+		);
 
 		// Count Outlook clients in full/partial support
 		for (const client of outlookClients) {
@@ -520,10 +594,7 @@ export const getEmailHealthScore = (
 
 	// --- Overall weighted composite ---
 	const overall = Math.round(
-		compatibility * 0.35 +
-		accessibility * 0.20 +
-		deliverability * 0.30 +
-		outlookSupport * 0.15,
+		compatibility * 0.35 + accessibility * 0.2 + deliverability * 0.3 + outlookSupport * 0.15
 	);
 
 	return {

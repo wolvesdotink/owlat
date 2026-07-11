@@ -22,7 +22,7 @@ vi.mock('../../../../lib/llm/dispatch', () => ({
 	runLlmObject: (a: unknown) => runLlmObjectMock(a as never),
 }));
 vi.mock('../../../../lib/llmProvider', () => ({
-	getLLMProvider: () => ({}) as never,
+	resolveLanguageModel: () => ({}) as never,
 }));
 
 import { classifyStep } from '../index';

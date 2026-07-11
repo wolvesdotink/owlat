@@ -2,6 +2,10 @@ import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { jsonPrimitiveRecord, updateStepResultValidator } from '../lib/convexValidators';
 import { auditActionValidator, auditResourceValidator } from '../auditActions/catalog';
+import {
+	embeddingProviderKindValidator,
+	languageProviderKindValidator,
+} from '../lib/aiProviderConfigValidators';
 
 /**
  * Auth + instance-admin tables — userProfiles, instanceSettings, apiKeys, platformAdmins,
@@ -144,6 +148,9 @@ export const authTables = {
 		// Status
 		isActive: v.boolean(),
 		revokedAt: v.optional(v.number()),
+		// Optional hard expiry (epoch ms). When set and in the past, the key is
+		// rejected at verification even while `isActive` is still true.
+		expiresAt: v.optional(v.number()),
 		// Timestamps
 		createdAt: v.number(),
 		updatedAt: v.number(),
@@ -359,5 +366,61 @@ export const authTables = {
 		// Audit: who last changed this record (auth user email) and when.
 		updatedAt: v.number(),
 		updatedBy: v.optional(v.string()),
+	}),
+
+	// Pluggable AI providers (bring-your-own-key) — PER-ORG SINGLETON (single-org
+	// per deployment; at most one row). Records the admin's choice of AI backend
+	// across TWO DECOUPLED PLANES (2026-07-10 pluggable-AI-providers plan):
+	//
+	//   • LANGUAGE plane (all text generation) — `languageProviderKind` selects a
+	//     registered adapter (hosted OpenAI/Anthropic/Google/OpenRouter via an
+	//     encrypted key, OR the local OpenAI-compatible adapter via
+	//     `languageBaseUrl` and NO key). `modelFast`/`modelCapable` are the per-tier
+	//     model ids.
+	//   • EMBEDDING plane (knowledge graph / semantic search) — resolved
+	//     INDEPENDENTLY. `embeddingProviderKind` defaults to `'local'` so retrieval
+	//     works under any language choice; a hosted embedder (OpenAI) is an override
+	//     carrying its own key envelope.
+	//
+	// SECRETS AT REST: the language key (and optional hosted-embedder key) are
+	// stored ONLY as an AES-256-GCM envelope (secretCiphertext/Iv/AuthTag +
+	// EnvelopeVersion), exactly like `externalMailAccounts`, encrypted in a
+	// `'use node'` action with `lib/credentialCrypto`. All envelope columns are
+	// OPTIONAL — a local provider needs no key. Queries NEVER return the envelope,
+	// only `keyPreview` + a "configured" boolean. Decrypt happens only at call time
+	// inside a Node action. Env `LLM_*` remains the deployment fallback when this
+	// row is absent; a present row wins (resolution is a later plan piece).
+	//
+	// `embeddingModelVersion` is the dimension guard: it is bumped whenever the
+	// embedding model/provider changes so stale vectors are never silently mixed
+	// with new-model vectors (callers re-index on a version change). Writes go
+	// through the secure-by-default admin gate + `recordAuditLog`.
+	aiProviderConfig: defineTable({
+		// ── LANGUAGE plane ──
+		languageProviderKind: languageProviderKindValidator,
+		// Base-URL override — required for the local OpenAI-compatible adapter
+		// (Ollama/vLLM/llama.cpp); unset for hosted providers using their default.
+		languageBaseUrl: v.optional(v.string()),
+		modelFast: v.string(),
+		modelCapable: v.string(),
+		// Language-provider API key envelope (absent for local, keyless providers).
+		secretCiphertext: v.optional(v.string()),
+		secretIv: v.optional(v.string()),
+		secretAuthTag: v.optional(v.string()),
+		secretEnvelopeVersion: v.optional(v.number()),
+		// Non-secret masked preview of the language key (e.g. `sk-…a1b2`) for the UI.
+		keyPreview: v.optional(v.string()),
+		// ── EMBEDDING plane (resolved independently; local by default) ──
+		embeddingProviderKind: embeddingProviderKindValidator,
+		embeddingModel: v.optional(v.string()),
+		// Dimension guard — bumped on any embedding model/provider change.
+		embeddingModelVersion: v.number(),
+		// Hosted-embedder API key envelope (only when embeddingProviderKind is hosted).
+		embeddingSecretCiphertext: v.optional(v.string()),
+		embeddingSecretIv: v.optional(v.string()),
+		embeddingSecretAuthTag: v.optional(v.string()),
+		embeddingSecretEnvelopeVersion: v.optional(v.number()),
+		embeddingKeyPreview: v.optional(v.string()),
+		updatedAt: v.number(),
 	}),
 };

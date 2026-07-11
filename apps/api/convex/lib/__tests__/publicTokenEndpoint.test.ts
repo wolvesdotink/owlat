@@ -31,12 +31,35 @@ interface FakeCtxOptions {
 function makeFakeCtx(options: FakeCtxOptions = {}): HandlerContext {
 	const { rateLimitOk = true, rateLimitRetryAfter = 0 } = options;
 	return {
-		runMutation: vi.fn(
-			async () => ({ ok: rateLimitOk, retryAfter: rateLimitRetryAfter }),
-		) as unknown as HandlerContext['runMutation'],
+		runMutation: vi.fn(async () => ({
+			ok: rateLimitOk,
+			retryAfter: rateLimitRetryAfter,
+		})) as unknown as HandlerContext['runMutation'],
 		runQuery: vi.fn() as unknown as HandlerContext['runQuery'],
 		runAction: vi.fn() as unknown as HandlerContext['runAction'],
 	};
+}
+
+/**
+ * Build a POST `Request` whose body is a single-chunk `ReadableStream`. A
+ * streamed body carries no `Content-Length`, exercising the parser paths that
+ * cannot rely on the pre-read length guard.
+ */
+function chunkedRequest(contentType: string, payload: string): Request {
+	const body = new ReadableStream<Uint8Array>({
+		start(controller) {
+			controller.enqueue(new TextEncoder().encode(payload));
+			controller.close();
+		},
+	});
+	return new Request('http://x/', {
+		method: 'POST',
+		headers: { 'Content-Type': contentType },
+		body,
+		// `duplex` is required by the Fetch spec for a streaming request body but
+		// is not yet in the DOM `RequestInit` typings.
+		duplex: 'half',
+	} as RequestInit & { duplex: 'half' });
 }
 
 // ─── compilePath ───────────────────────────────────────────────────────────
@@ -124,6 +147,43 @@ describe('parseBody', () => {
 		});
 		await expect(parseBody(request, 'formData')).rejects.toThrow();
 	});
+
+	it('parses a small multipart body for mode "formData"', async () => {
+		const form = new FormData();
+		form.append('name', 'foo');
+		form.append('email', 'bar@baz.com');
+		const request = new Request('http://x/', { method: 'POST', body: form });
+		await expect(parseBody(request, 'formData')).resolves.toEqual({
+			name: 'foo',
+			email: 'bar@baz.com',
+		});
+	});
+
+	it('rejects an oversize CHUNKED multipart body (no Content-Length pre-check)', async () => {
+		// A streamed body carries no Content-Length, so the pre-read length guard
+		// is skipped and only the multipart branch's own byte accounting can
+		// reject it. This is the exact case the fix closes.
+		const boundary = '----owlattest';
+		const payload =
+			`--${boundary}\r\n` +
+			'Content-Disposition: form-data; name="big"\r\n\r\n' +
+			'x'.repeat(200_000) +
+			`\r\n--${boundary}--\r\n`;
+		const request = chunkedRequest(`multipart/form-data; boundary=${boundary}`, payload);
+		expect(request.headers.get('Content-Length')).toBeNull();
+		await expect(parseBody(request, 'formData')).rejects.toThrow(/too large/i);
+	});
+
+	it('accepts a chunked multipart body under the cap', async () => {
+		const boundary = '----owlattest';
+		const payload =
+			`--${boundary}\r\n` +
+			'Content-Disposition: form-data; name="name"\r\n\r\n' +
+			'foo' +
+			`\r\n--${boundary}--\r\n`;
+		const request = chunkedRequest(`multipart/form-data; boundary=${boundary}`, payload);
+		await expect(parseBody(request, 'formData')).resolves.toEqual({ name: 'foo' });
+	});
 });
 
 // ─── Shell shape: CORS preflight ───────────────────────────────────────────
@@ -138,7 +198,7 @@ describe('shell — CORS preflight', () => {
 				cors: 'POST, OPTIONS',
 				resultMode: 'action',
 			},
-			async () => ({ ok: true, data: {} }),
+			async () => ({ ok: true, data: {} })
 		);
 		const ctx = makeFakeCtx();
 		const request = new Request('http://localhost/unsub/abc', { method: 'OPTIONS' });
@@ -157,7 +217,7 @@ describe('shell — CORS preflight', () => {
 				cors: false,
 				resultMode: 'action',
 			},
-			async () => ({ ok: true, data: {} }),
+			async () => ({ ok: true, data: {} })
 		);
 		const ctx = makeFakeCtx();
 		const request = new Request('http://localhost/unsub/abc', { method: 'OPTIONS' });
@@ -179,7 +239,7 @@ describe('shell — method gate', () => {
 				cors: 'GET, OPTIONS',
 				resultMode: 'action',
 			},
-			async () => ({ ok: true, data: {} }),
+			async () => ({ ok: true, data: {} })
 		);
 		const ctx = makeFakeCtx();
 		const request = new Request('http://localhost/share/abc', { method: 'DELETE' });
@@ -204,7 +264,7 @@ describe('shell — rate-limit gate', () => {
 				cors: 'GET, OPTIONS',
 				resultMode: 'action',
 			},
-			async () => ({ ok: true, data: {} }),
+			async () => ({ ok: true, data: {} })
 		);
 		const ctx = makeFakeCtx({ rateLimitOk: false, rateLimitRetryAfter: 5000 });
 		const request = new Request('http://localhost/share/abc', { method: 'GET' });
@@ -232,7 +292,7 @@ describe('shell — token extract', () => {
 			async (_ctx, { token }) => {
 				seenTokens.push(token);
 				return { ok: true, data: {} };
-			},
+			}
 		);
 		const ctx = makeFakeCtx();
 		// %3A = ':' — RFC 8058 token format is `contactId:timestamp:signature`
@@ -256,7 +316,7 @@ describe('shell — token extract', () => {
 			async (_ctx, { token }) => {
 				seenTokens.push(token);
 				return { ok: true, data: {} };
-			},
+			}
 		);
 		const ctx = makeFakeCtx();
 		const request = new Request('http://localhost/confirm/doi?token=tok123', {
@@ -275,7 +335,7 @@ describe('shell — token extract', () => {
 				cors: 'GET, POST, OPTIONS',
 				resultMode: 'action',
 			},
-			async () => ({ ok: true, data: {} }),
+			async () => ({ ok: true, data: {} })
 		);
 		const ctx = makeFakeCtx();
 		const request = new Request('http://localhost/confirm/doi', { method: 'POST' });
@@ -303,7 +363,7 @@ describe('shell — body parsing', () => {
 			async (_ctx, { body }) => {
 				receivedBody = body;
 				return { ok: true, data: {} };
-			},
+			}
 		);
 		const ctx = makeFakeCtx();
 		const request = new Request('http://localhost/prefs/update/abc', {
@@ -324,7 +384,7 @@ describe('shell — body parsing', () => {
 				body: 'json',
 				resultMode: 'action',
 			},
-			async () => ({ ok: true, data: {} }),
+			async () => ({ ok: true, data: {} })
 		);
 		const ctx = makeFakeCtx();
 		const request = new Request('http://localhost/prefs/update/abc', {
@@ -353,7 +413,7 @@ describe('shell — handler throw', () => {
 			},
 			async () => {
 				throw new Error('synthetic failure');
-			},
+			}
 		);
 		const ctx = makeFakeCtx();
 		const request = new Request('http://localhost/share/abc', { method: 'GET' });
@@ -378,7 +438,7 @@ describe('shell — action mode', () => {
 				cors: 'GET, OPTIONS',
 				resultMode: 'action',
 			},
-			async () => ({ ok: true, data: { html: '<p/>' } }),
+			async () => ({ ok: true, data: { html: '<p/>' } })
 		);
 		const ctx = makeFakeCtx();
 		const request = new Request('http://localhost/share/abc', { method: 'GET' });
@@ -404,7 +464,7 @@ describe('shell — action mode', () => {
 				reason: 'share_link_not_found',
 				message: 'Share link not found',
 				status: 404,
-			}),
+			})
 		);
 		const ctx = makeFakeCtx();
 		const request = new Request('http://localhost/share/abc', { method: 'GET' });
@@ -428,7 +488,7 @@ describe('shell — action mode', () => {
 				cors: 'GET, OPTIONS',
 				resultMode: 'action',
 			},
-			async () => ({ ok: false, reason: 'invalid_token' }),
+			async () => ({ ok: false, reason: 'invalid_token' })
 		);
 		const ctx = makeFakeCtx();
 		const request = new Request('http://localhost/share/abc', { method: 'GET' });
@@ -451,7 +511,7 @@ describe('shell — action mode', () => {
 					status: 302,
 					headers: { Location: 'https://example.com/thanks' },
 				}),
-			}),
+			})
 		);
 		const ctx = makeFakeCtx();
 		const request = new Request('http://localhost/forms/abc', { method: 'POST' });
@@ -474,7 +534,7 @@ describe('shell — action mode', () => {
 				ok: true,
 				headers: { 'Cache-Control': 'public, max-age=3600' },
 				data: { html: '<p/>' },
-			}),
+			})
 		);
 		const ctx = makeFakeCtx();
 		const request = new Request('http://localhost/archive/abc', { method: 'GET' });
@@ -496,7 +556,7 @@ describe('shell — outcome mode', () => {
 				cors: 'GET, OPTIONS',
 				resultMode: 'outcome',
 			},
-			async () => ({ ok: true, data: { email: 'x@y.z' } }),
+			async () => ({ ok: true, data: { email: 'x@y.z' } })
 		);
 		const ctx = makeFakeCtx();
 		const request = new Request('http://localhost/unsub/verify/abc', { method: 'GET' });
@@ -517,7 +577,7 @@ describe('shell — outcome mode', () => {
 				cors: 'GET, OPTIONS',
 				resultMode: 'outcome',
 			},
-			async () => ({ ok: false, reason: 'expired' }),
+			async () => ({ ok: false, reason: 'expired' })
 		);
 		const ctx = makeFakeCtx();
 		const request = new Request('http://localhost/unsub/verify/abc', { method: 'GET' });
@@ -548,7 +608,7 @@ describe('rate-limit key mode', () => {
 		return { ctx, keys };
 	}
 
-	it("ip+token mode gives each token its own bucket key", async () => {
+	it('ip+token mode gives each token its own bucket key', async () => {
 		const handler = createShellHandler(
 			{
 				path: '/unsub/:token',
@@ -558,7 +618,7 @@ describe('rate-limit key mode', () => {
 				cors: 'GET, OPTIONS',
 				resultMode: 'outcome',
 			},
-			async () => ({ ok: true, data: {} }),
+			async () => ({ ok: true, data: {} })
 		);
 		const { ctx, keys } = makeKeyCapturingCtx();
 		await handler(ctx, new Request('http://localhost/unsub/recipientA', { method: 'GET' }));
@@ -575,7 +635,7 @@ describe('rate-limit key mode', () => {
 				cors: 'POST, OPTIONS',
 				resultMode: 'outcome',
 			},
-			async () => ({ ok: true, data: {} }),
+			async () => ({ ok: true, data: {} })
 		);
 		const { ctx, keys } = makeKeyCapturingCtx();
 		await handler(ctx, new Request('http://localhost/forms/formA', { method: 'POST' }));

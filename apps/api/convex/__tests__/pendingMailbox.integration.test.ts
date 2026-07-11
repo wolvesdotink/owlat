@@ -10,6 +10,7 @@ import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { api } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
+import { claimReservationsForVerifiedDomain } from '../mail/pendingMailbox';
 
 const sessionMocks = vi.hoisted(() => ({
 	getMutationContext: vi.fn(),
@@ -41,7 +42,12 @@ function setAdminSession(userId = 'admin-user', orgId = 'test-org') {
 
 async function seedUserProfile(t: ReturnType<typeof convexTest>, userId: string, email: string) {
 	await t.run(async (ctx) => {
-		await ctx.db.insert('userProfiles', { authUserId: userId, email, createdAt: Date.now(), updatedAt: Date.now() });
+		await ctx.db.insert('userProfiles', {
+			authUserId: userId,
+			email,
+			createdAt: Date.now(),
+			updatedAt: Date.now(),
+		});
 	});
 }
 
@@ -59,28 +65,29 @@ function setEditorSession(userId = 'editor-user', orgId = 'test-org') {
 
 const allModules = import.meta.glob('../**/*.*s');
 const modules = Object.fromEntries(
-	Object.entries(allModules).filter(([path]) =>
-		!path.includes('sesActions') &&
-		!path.includes('agentSecurity') &&
-		!path.includes('agentContext') &&
-		!path.includes('agentClassifier') &&
-		!path.includes('agentDrafter') &&
-		!path.includes('agentRouter') &&
-		!path.includes('agent/walker') &&
-		!path.includes('agent/steps/index') &&
-		!path.includes('agent/steps/shared') &&
-		!path.includes('agent/steps/classify') &&
-		!path.includes('agent/steps/draft') &&
-		!path.includes('knowledgeExtraction') &&
-		!path.includes('semanticFileProcessing') &&
-		!path.includes('visualizationAgent') &&
-		!path.includes('llmProvider')
+	Object.entries(allModules).filter(
+		([path]) =>
+			!path.includes('sesActions') &&
+			!path.includes('agentSecurity') &&
+			!path.includes('agentContext') &&
+			!path.includes('agentClassifier') &&
+			!path.includes('agentDrafter') &&
+			!path.includes('agentRouter') &&
+			!path.includes('agent/walker') &&
+			!path.includes('agent/steps/index') &&
+			!path.includes('agent/steps/shared') &&
+			!path.includes('agent/steps/classify') &&
+			!path.includes('agent/steps/draft') &&
+			!path.includes('knowledgeExtraction') &&
+			!path.includes('semanticFileProcessing') &&
+			!path.includes('visualizationAgent') &&
+			!path.includes('llmProvider')
 	)
 );
 
 async function seedVerifiedDomain(
 	t: ReturnType<typeof convexTest>,
-	domain: string,
+	domain: string
 ): Promise<Id<'domains'>> {
 	let id!: Id<'domains'>;
 	await t.run(async (ctx) => {
@@ -103,7 +110,7 @@ async function seedVerifiedDomain(
 
 async function seedPendingDomain(
 	t: ReturnType<typeof convexTest>,
-	domain: string,
+	domain: string
 ): Promise<Id<'domains'>> {
 	let id!: Id<'domains'>;
 	await t.run(async (ctx) => {
@@ -130,16 +137,13 @@ describe('pendingMailbox.setForInvitation', () => {
 		const t = convexTest(schema, modules);
 		await seedVerifiedDomain(t, 'hinterland.camp');
 
-		const result = await t.mutation(
-			api.mail.pendingMailbox.setForInvitation,
-			{
-				invitationId: 'inv-1',
-				inviteeEmail: 'invitee@example.com',
-				localpart: 'marcel',
-				domain: 'hinterland.camp',
-				displayName: 'Marcel Pfeifer',
-			},
-		);
+		const result = await t.mutation(api.mail.pendingMailbox.setForInvitation, {
+			invitationId: 'inv-1',
+			inviteeEmail: 'invitee@example.com',
+			localpart: 'marcel',
+			domain: 'hinterland.camp',
+			displayName: 'Marcel Pfeifer',
+		});
 
 		expect(result.address).toBe('marcel@hinterland.camp');
 		await t.run(async (ctx) => {
@@ -165,23 +169,68 @@ describe('pendingMailbox.setForInvitation', () => {
 				inviteeEmail: 'invitee@example.com',
 				localpart: 'marcel',
 				domain: 'hinterland.camp',
-			}),
+			})
 		).rejects.toThrow();
 	});
 
-	it('rejects an unverified domain', async () => {
+	it('reserves the intent on a not-yet-verified domain (early-instance invite)', async () => {
 		setAdminSession();
 		const t = convexTest(schema, modules);
-		await seedPendingDomain(t, 'unverified.example');
+		await seedPendingDomain(t, 'verifying.example');
+
+		const result = await t.mutation(api.mail.pendingMailbox.setForInvitation, {
+			invitationId: 'inv-early',
+			inviteeEmail: 'invitee@example.com',
+			localpart: 'marcel',
+			domain: 'verifying.example',
+		});
+
+		expect(result.address).toBe('marcel@verifying.example');
+		await t.run(async (ctx) => {
+			const row = await ctx.db
+				.query('pendingMailboxes')
+				.withIndex('by_invitation', (q) => q.eq('invitationId', 'inv-early'))
+				.first();
+			expect(row?.address).toBe('marcel@verifying.example');
+		});
+	});
+
+	it('rejects a domain this instance does not host at all', async () => {
+		setAdminSession();
+		const t = convexTest(schema, modules);
 
 		await expect(
 			t.mutation(api.mail.pendingMailbox.setForInvitation, {
 				invitationId: 'inv-1',
 				inviteeEmail: 'invitee@example.com',
 				localpart: 'marcel',
-				domain: 'unverified.example',
-			}),
-		).rejects.toThrow(/not a verified domain/i);
+				domain: 'not-here.example',
+			})
+		).rejects.toThrow(/Add not-here\.example as a sending domain/i);
+	});
+
+	it('rejects a domain that failed verification', async () => {
+		setAdminSession();
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) => {
+			const now = Date.now();
+			await ctx.db.insert('domains', {
+				domain: 'broken.example',
+				status: 'failed',
+				dnsRecords: {},
+				createdAt: now,
+				updatedAt: now,
+			});
+		});
+
+		await expect(
+			t.mutation(api.mail.pendingMailbox.setForInvitation, {
+				invitationId: 'inv-1',
+				inviteeEmail: 'invitee@example.com',
+				localpart: 'marcel',
+				domain: 'broken.example',
+			})
+		).rejects.toThrow(/failed verification/i);
 	});
 
 	it('rejects an invalid local part', async () => {
@@ -195,7 +244,7 @@ describe('pendingMailbox.setForInvitation', () => {
 				inviteeEmail: 'invitee@example.com',
 				localpart: 'has spaces',
 				domain: 'hinterland.camp',
-			}),
+			})
 		).rejects.toThrow(/local part/i);
 	});
 
@@ -224,7 +273,7 @@ describe('pendingMailbox.setForInvitation', () => {
 				inviteeEmail: 'invitee@example.com',
 				localpart: 'marcel',
 				domain: 'hinterland.camp',
-			}),
+			})
 		).rejects.toThrow(/already exists/i);
 	});
 
@@ -246,7 +295,7 @@ describe('pendingMailbox.setForInvitation', () => {
 				inviteeEmail: 'invitee@example.com',
 				localpart: 'marcel',
 				domain: 'hinterland.camp',
-			}),
+			})
 		).rejects.toThrow(/already reserved/i);
 	});
 
@@ -291,10 +340,9 @@ describe('pendingMailbox.cancelForInvitation', () => {
 			domain: 'hinterland.camp',
 		});
 
-		const result = await t.mutation(
-			api.mail.pendingMailbox.cancelForInvitation,
-			{ invitationId: 'inv-1' },
-		);
+		const result = await t.mutation(api.mail.pendingMailbox.cancelForInvitation, {
+			invitationId: 'inv-1',
+		});
 		expect(result.canceled).toBe(true);
 
 		await t.run(async (ctx) => {
@@ -310,10 +358,9 @@ describe('pendingMailbox.cancelForInvitation', () => {
 		setAdminSession();
 		const t = convexTest(schema, modules);
 
-		const result = await t.mutation(
-			api.mail.pendingMailbox.cancelForInvitation,
-			{ invitationId: 'nope' },
-		);
+		const result = await t.mutation(api.mail.pendingMailbox.cancelForInvitation, {
+			invitationId: 'nope',
+		});
 		expect(result.canceled).toBe(false);
 	});
 });
@@ -335,10 +382,9 @@ describe('pendingMailbox.claimForInvitation', () => {
 		setAdminSession('invitee-user', 'test-org');
 		await seedUserProfile(t, 'invitee-user', 'invitee@example.com');
 
-		const result = await t.mutation(
-			api.mail.pendingMailbox.claimForInvitation,
-			{ invitationId: 'inv-1' },
-		);
+		const result = await t.mutation(api.mail.pendingMailbox.claimForInvitation, {
+			invitationId: 'inv-1',
+		});
 		expect(result.created).toBe(true);
 		if (result.created !== true) throw new Error('typeguard');
 
@@ -367,10 +413,9 @@ describe('pendingMailbox.claimForInvitation', () => {
 		setAdminSession('invitee-user', 'test-org');
 		const t = convexTest(schema, modules);
 
-		const result = await t.mutation(
-			api.mail.pendingMailbox.claimForInvitation,
-			{ invitationId: 'never-existed' },
-		);
+		const result = await t.mutation(api.mail.pendingMailbox.claimForInvitation, {
+			invitationId: 'never-existed',
+		});
 		expect(result.created).toBe(false);
 	});
 
@@ -387,15 +432,13 @@ describe('pendingMailbox.claimForInvitation', () => {
 
 		setAdminSession('invitee-user', 'test-org');
 		await seedUserProfile(t, 'invitee-user', 'invitee@example.com');
-		const first = await t.mutation(
-			api.mail.pendingMailbox.claimForInvitation,
-			{ invitationId: 'inv-1' },
-		);
+		const first = await t.mutation(api.mail.pendingMailbox.claimForInvitation, {
+			invitationId: 'inv-1',
+		});
 		expect(first.created).toBe(true);
-		const second = await t.mutation(
-			api.mail.pendingMailbox.claimForInvitation,
-			{ invitationId: 'inv-1' },
-		);
+		const second = await t.mutation(api.mail.pendingMailbox.claimForInvitation, {
+			invitationId: 'inv-1',
+		});
 		expect(second.created).toBe(false);
 	});
 
@@ -428,10 +471,9 @@ describe('pendingMailbox.claimForInvitation', () => {
 
 		setAdminSession('invitee-user', 'test-org');
 		await seedUserProfile(t, 'invitee-user', 'invitee@example.com');
-		const result = await t.mutation(
-			api.mail.pendingMailbox.claimForInvitation,
-			{ invitationId: 'inv-1' },
-		);
+		const result = await t.mutation(api.mail.pendingMailbox.claimForInvitation, {
+			invitationId: 'inv-1',
+		});
 		expect(result.created).toBe(false);
 		if (result.created === false) {
 			expect(result.error).toBe('address_taken');
@@ -457,10 +499,9 @@ describe('pendingMailbox.claimForInvitation', () => {
 		});
 
 		setAdminSession('invitee-user', 'other-org');
-		const result = await t.mutation(
-			api.mail.pendingMailbox.claimForInvitation,
-			{ invitationId: 'inv-1' },
-		);
+		const result = await t.mutation(api.mail.pendingMailbox.claimForInvitation, {
+			invitationId: 'inv-1',
+		});
 		expect(result.created).toBe(false);
 		if (result.created === false) {
 			expect(result.error).toBe('organization_mismatch');
@@ -496,5 +537,117 @@ describe('pendingMailbox.claimForInvitation — invitee binding', () => {
 			invitationId: 'inv-bind',
 		});
 		expect(claimed.created).toBe(true);
+	});
+});
+
+describe('pendingMailbox — early-instance (pre-verification) reservation', () => {
+	it('parks the accepting invitee in awaiting_domain and keeps the reservation', async () => {
+		setAdminSession('admin-user', 'test-org');
+		const t = convexTest(schema, modules);
+		await seedPendingDomain(t, 'verifying.example');
+		await t.mutation(api.mail.pendingMailbox.setForInvitation, {
+			invitationId: 'inv-early',
+			inviteeEmail: 'invitee@example.com',
+			localpart: 'marcel',
+			domain: 'verifying.example',
+		});
+
+		// The invitee accepts BEFORE the domain verifies: no live mailbox yet, the
+		// reservation must survive so it can activate on verify.
+		setAdminSession('invitee-user', 'test-org');
+		await seedUserProfile(t, 'invitee-user', 'invitee@example.com');
+		const result = await t.mutation(api.mail.pendingMailbox.claimForInvitation, {
+			invitationId: 'inv-early',
+		});
+
+		expect(result.created).toBe(false);
+		if (result.created === false) {
+			expect(result.error).toBe('awaiting_domain');
+		}
+		await t.run(async (ctx) => {
+			const row = await ctx.db
+				.query('pendingMailboxes')
+				.withIndex('by_invitation', (q) => q.eq('invitationId', 'inv-early'))
+				.first();
+			expect(row).toBeTruthy();
+			const mailbox = await ctx.db
+				.query('mailboxes')
+				.withIndex('by_user', (q) => q.eq('userId', 'invitee-user'))
+				.first();
+			expect(mailbox).toBeNull();
+		});
+	});
+
+	it('claims reserved mailboxes for already-accepted invitees when the domain verifies', async () => {
+		setAdminSession('admin-user', 'test-org');
+		const t = convexTest(schema, modules);
+		const domainId = await seedPendingDomain(t, 'verifying.example');
+		await t.mutation(api.mail.pendingMailbox.setForInvitation, {
+			invitationId: 'inv-early',
+			inviteeEmail: 'invitee@example.com',
+			localpart: 'marcel',
+			domain: 'verifying.example',
+		});
+
+		// The invitee ACCEPTS before verify: the claim parks in awaiting_domain and
+		// stamps the reservation with the accepting userId — that stamp (not an
+		// email match) is what the sweep keys on.
+		setAdminSession('invitee-user', 'test-org');
+		await seedUserProfile(t, 'invitee-user', 'invitee@example.com');
+		const parked = await t.mutation(api.mail.pendingMailbox.claimForInvitation, {
+			invitationId: 'inv-early',
+		});
+		expect(parked.created).toBe(false);
+
+		// The domain verifies → the lifecycle sweep provisions the parked mailbox.
+		await t.run(async (ctx) => {
+			await ctx.db.patch(domainId, { status: 'verified' });
+			const provisioned = await claimReservationsForVerifiedDomain(ctx, 'verifying.example');
+			expect(provisioned).toBe(1);
+		});
+
+		await t.run(async (ctx) => {
+			const mailbox = await ctx.db
+				.query('mailboxes')
+				.withIndex('by_address', (q) => q.eq('address', 'marcel@verifying.example'))
+				.first();
+			expect(mailbox?.userId).toBe('invitee-user');
+			expect(mailbox?.status).toBe('active');
+
+			const row = await ctx.db
+				.query('pendingMailboxes')
+				.withIndex('by_invitation', (q) => q.eq('invitationId', 'inv-early'))
+				.first();
+			expect(row).toBeNull();
+		});
+	});
+
+	it('leaves reservations for not-yet-accepted invitees untouched on verify', async () => {
+		setAdminSession('admin-user', 'test-org');
+		const t = convexTest(schema, modules);
+		const domainId = await seedPendingDomain(t, 'verifying.example');
+		await t.mutation(api.mail.pendingMailbox.setForInvitation, {
+			invitationId: 'inv-early',
+			inviteeEmail: 'invitee@example.com',
+			localpart: 'marcel',
+			domain: 'verifying.example',
+		});
+		// A profile exists for the invitee email (they REGISTERED via the invite
+		// link — register.vue creates the profile before the accept step) but they
+		// never accepted, so the reservation carries no acceptedByUserId. The sweep
+		// must NOT provision them: acceptance is read from the stamp, never
+		// re-derived by matching the email against userProfiles.
+		await seedUserProfile(t, 'invitee-user', 'invitee@example.com');
+
+		await t.run(async (ctx) => {
+			await ctx.db.patch(domainId, { status: 'verified' });
+			const provisioned = await claimReservationsForVerifiedDomain(ctx, 'verifying.example');
+			expect(provisioned).toBe(0);
+			const row = await ctx.db
+				.query('pendingMailboxes')
+				.withIndex('by_invitation', (q) => q.eq('invitationId', 'inv-early'))
+				.first();
+			expect(row).toBeTruthy();
+		});
 	});
 });

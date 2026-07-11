@@ -9,11 +9,21 @@
  *
  * The client is memoized per `(baseUrl, key-hash)`; the cache key stores only a
  * non-reversible hash of the key, never a slice of the raw secret.
+ *
+ * `listModels` hits the server's OpenAI-shaped `/models` endpoint (Ollama, vLLM,
+ * and llama.cpp all expose it) so the settings model-picker can show what the
+ * local server actually serves instead of free-text only.
  */
 
-import type { LanguageModel } from 'ai';
+import type { EmbeddingModel, LanguageModel } from 'ai';
 import { type OpenAICompatibleClient, openAICompatibleClient } from './clientCache';
-import type { LanguageProviderAdapter, ProviderClientConfig } from './types';
+import { parseOpenAiModelIds } from './modelListing';
+import type {
+	EmbeddingClientConfig,
+	EmbeddingProviderAdapter,
+	LanguageProviderAdapter,
+	ProviderClientConfig,
+} from './types';
 
 const clientCache = new Map<string, OpenAICompatibleClient>();
 
@@ -39,6 +49,33 @@ export const openaiCompatibleLanguageAdapter: LanguageProviderAdapter<'openaiCom
 		return compatibleClient(cfg)(modelId);
 	},
 	validateCredentials(cfg: ProviderClientConfig): void {
+		requireBaseUrl(cfg);
+	},
+	async listModels(cfg: ProviderClientConfig): Promise<string[]> {
+		const baseUrl = requireBaseUrl(cfg);
+		const res = await fetch(`${baseUrl}/models`, {
+			headers: cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {},
+		});
+		if (!res.ok) {
+			throw new Error(`Local model listing failed (HTTP ${res.status}).`);
+		}
+		const body: unknown = await res.json();
+		return parseOpenAiModelIds(body);
+	},
+};
+
+export const openaiCompatibleEmbeddingAdapter: EmbeddingProviderAdapter<'openaiCompatible'> = {
+	kind: 'openaiCompatible',
+	label: 'OpenAI-compatible (custom)',
+	// A custom server's native width — validated at write time by the guard.
+	dimensions: 768,
+	isLocal: true,
+	defaultBaseUrl: 'http://localhost:11434/v1',
+	defaultModel: 'nomic-embed-text',
+	buildEmbeddingModel(cfg: EmbeddingClientConfig): EmbeddingModel {
+		return compatibleClient(cfg).textEmbeddingModel(cfg.modelId);
+	},
+	validateCredentials(cfg: EmbeddingClientConfig): void {
 		requireBaseUrl(cfg);
 	},
 };

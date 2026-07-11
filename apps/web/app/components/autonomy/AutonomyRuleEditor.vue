@@ -62,7 +62,7 @@ const showDeleteConfirm = ref(false);
 const categoryIcon = computed(() => resolveCategoryIcon(form.category));
 const categoryLabel = computed(() => {
 	const cat = categories.find((c) => c.value === form.category);
-	return cat?.label ?? form.category.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+	return cat?.label ?? titleCaseEnum(form.category);
 });
 
 const thresholdPercent = computed(() => Math.round(form.autoApproveThreshold * 100));

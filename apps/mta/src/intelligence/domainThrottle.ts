@@ -13,8 +13,12 @@
  */
 
 import type Redis from 'ioredis';
-import { getProfile as getRuntimeProfile } from '../config/ispProfiles.js';
-import type { DomainProfile } from '../types.js';
+// Reads the runtime profile from Redis (seeded from config.ts ISP_PROFILES on
+// startup, then overridable via the admin API) so that operator changes — e.g.
+// lowering gmail.com's rate during a deliverability incident — take effect on
+// the throttle hot path without a redeploy. Falls back to the hardcoded
+// defaults when Redis has no profile (e.g. before seeding).
+import { getProfile } from '../config/ispProfiles.js';
 import { logger } from '../monitoring/logger.js';
 
 const THROTTLE_PREFIX = 'mta:throttle:';
@@ -22,19 +26,6 @@ const WINDOW_PREFIX = 'mta:throttle:window:';
 const WINDOW_SECONDS = 60;
 const RECOVERY_THRESHOLD = 20; // consecutive successes before rate increase
 const HASH_TTL = 86400; // 24h TTL for throttle state
-
-/**
- * Get the ISP profile for a domain.
- *
- * Reads the runtime profile from Redis (seeded from config.ts ISP_PROFILES on
- * startup, then overridable via the admin API) so that operator changes — e.g.
- * lowering gmail.com's rate during a deliverability incident — take effect on
- * the throttle hot path without a redeploy. Falls back to the hardcoded
- * defaults when Redis has no profile (e.g. before seeding).
- */
-async function getProfile(redis: Redis, domain: string): Promise<DomainProfile> {
-	return getRuntimeProfile(redis, domain);
-}
 
 /**
  * Build Redis keys scoped to a specific IP + domain pair
@@ -158,14 +149,19 @@ export async function recordSuccess(redis: Redis, ip: string, domain: string): P
 
 	// Recovery: after sustained success, increase rate toward ceiling
 	if (consecutive >= RECOVERY_THRESHOLD) {
-		const currentRate = parseFloat((await redis.hget(hashKey, 'currentRate')) ?? String(profile.defaultRate));
+		const currentRate = parseFloat(
+			(await redis.hget(hashKey, 'currentRate')) ?? String(profile.defaultRate)
+		);
 		const newRate = Math.min(currentRate * profile.recoveryFactor, profile.ceiling);
 
 		await redis.hset(
 			hashKey,
-			'currentRate', String(newRate),
-			'consecutiveSuccess', '0',
-			'status', 'healthy'
+			'currentRate',
+			String(newRate),
+			'consecutiveSuccess',
+			'0',
+			'status',
+			'healthy'
 		);
 
 		if (newRate > currentRate) {
@@ -184,7 +180,9 @@ export async function recordDefer(redis: Redis, ip: string, domain: string): Pro
 	const { hash: hashKey } = keys(ip, domain);
 	const now = Date.now();
 
-	const currentRate = parseFloat((await redis.hget(hashKey, 'currentRate')) ?? String(profile.defaultRate));
+	const currentRate = parseFloat(
+		(await redis.hget(hashKey, 'currentRate')) ?? String(profile.defaultRate)
+	);
 	const newRate = Math.max(currentRate * profile.backoffFactor, profile.floor);
 
 	// Check for rapid deferrals → blocking status
@@ -199,7 +197,10 @@ export async function recordDefer(redis: Redis, ip: string, domain: string): Pro
 		newRecentDefers++;
 		if (newRecentDefers >= 3) {
 			status = 'blocking';
-			logger.warn({ ip, domain, recentDefers: newRecentDefers }, 'Domain marked as blocking for IP');
+			logger.warn(
+				{ ip, domain, recentDefers: newRecentDefers },
+				'Domain marked as blocking for IP'
+			);
 		}
 	} else {
 		newRecentDefers = 1;
@@ -207,15 +208,23 @@ export async function recordDefer(redis: Redis, ip: string, domain: string): Pro
 
 	await redis.hset(
 		hashKey,
-		'currentRate', String(newRate),
-		'consecutiveSuccess', '0',
-		'lastDeferAt', String(now),
-		'status', status,
-		'recentDefers', String(newRecentDefers)
+		'currentRate',
+		String(newRate),
+		'consecutiveSuccess',
+		'0',
+		'lastDeferAt',
+		String(now),
+		'status',
+		status,
+		'recentDefers',
+		String(newRecentDefers)
 	);
 	await redis.expire(hashKey, HASH_TTL);
 
-	logger.info({ ip, domain, previousRate: currentRate, newRate, status }, 'Domain throttle rate reduced');
+	logger.info(
+		{ ip, domain, previousRate: currentRate, newRate, status },
+		'Domain throttle rate reduced'
+	);
 }
 
 /**
@@ -230,7 +239,11 @@ export async function recordReject(redis: Redis, ip: string, domain: string): Pr
 /**
  * Get current throttle state for an IP+domain pair (for monitoring)
  */
-export async function getThrottleState(redis: Redis, ip: string, domain: string): Promise<{
+export async function getThrottleState(
+	redis: Redis,
+	ip: string,
+	domain: string
+): Promise<{
 	currentRate: number;
 	status: string;
 	consecutiveSuccess: number;

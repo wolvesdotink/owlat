@@ -20,7 +20,7 @@ import { v } from 'convex/values';
 import { z } from 'zod';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
-import { getLLMProvider } from '../lib/llmProvider';
+import { resolveLanguageModel } from '../lib/llmProvider';
 import { runLlmObject } from '../lib/llm/dispatch';
 import { recordLlmSpend } from '../analytics/llmUsage';
 import { classifyMailCategory, resolveCategory, type MailCategory } from './category';
@@ -92,7 +92,7 @@ export const classifyThread = internalAction({
 
 			const { object, tokenUsage, modelUsed } = await runLlmObject({
 				// High-volume background classification → cheap "summarize" tier.
-				model: getLLMProvider('summarize'),
+				model: await resolveLanguageModel(ctx, 'summarize'),
 				schema: refinementSchema,
 				prompt:
 					`${SYSTEM_GUARD}\n\nClassify this personal email into exactly one category:\n` +

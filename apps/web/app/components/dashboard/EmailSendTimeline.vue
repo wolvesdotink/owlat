@@ -97,15 +97,14 @@ const timelineEvents = computed<TimelineEvent[]>(() => {
 	for (let i = startIndex; i < progressionOrder.length; i++) {
 		const key = progressionOrder[i]!;
 		const ts = timestamps[key];
-		const reached = isError
-			? ts != null
-			: i <= currentStatusIndex && ts != null;
+		const reached = isError ? ts != null : i <= currentStatusIndex && ts != null;
 		const cfg = statusConfig[key]!;
 
 		let delta: string | undefined;
 		if (reached && ts && prevTimestamp) {
 			const d = formatDelta(prevTimestamp, ts);
-			if (d) delta = `${d} after ${progressionOrder[i - 1] === 'queued' ? 'Queued' : events[events.length - 1]?.label || ''}`;
+			if (d)
+				delta = `${d} after ${progressionOrder[i - 1] === 'queued' ? 'Queued' : events[events.length - 1]?.label || ''}`;
 		}
 
 		let extra: string | undefined;
@@ -115,7 +114,7 @@ const timelineEvents = computed<TimelineEvent[]>(() => {
 
 		events.push({
 			key,
-			label: key.charAt(0).toUpperCase() + key.slice(1),
+			label: capitalize(key),
 			icon: cfg.icon,
 			colorClasses: cfg.color,
 			timestamp: ts,
@@ -141,7 +140,7 @@ const timelineEvents = computed<TimelineEvent[]>(() => {
 			}
 			events.push({
 				key: errKey,
-				label: errKey.charAt(0).toUpperCase() + errKey.slice(1),
+				label: capitalize(errKey),
 				icon: cfg.icon,
 				colorClasses: cfg.color,
 				timestamp: ts,
@@ -171,16 +170,16 @@ const copyMessageId = async () => {
 			<h3 class="text-lg font-medium text-text-primary mb-6">Event Timeline</h3>
 
 			<div class="space-y-1">
-				<div
-					v-for="(event, index) in timelineEvents"
-					:key="event.key"
-					class="relative"
-				>
+				<div v-for="(event, index) in timelineEvents" :key="event.key" class="relative">
 					<!-- Timeline connector line -->
 					<div
 						v-if="index < timelineEvents.length - 1"
 						class="absolute left-5 top-10 bottom-0 w-px"
-						:class="event.reached && timelineEvents[index + 1]?.reached ? 'bg-border-subtle' : 'border-l border-dashed border-border-subtle'"
+						:class="
+							event.reached && timelineEvents[index + 1]?.reached
+								? 'bg-border-subtle'
+								: 'border-l border-dashed border-border-subtle'
+						"
 					/>
 
 					<!-- Event item -->
@@ -233,7 +232,10 @@ const copyMessageId = async () => {
 					:key="index"
 					class="flex items-start gap-3 text-sm"
 				>
-					<Icon name="lucide:external-link" class="w-4 h-4 text-text-tertiary mt-0.5 flex-shrink-0" />
+					<Icon
+						name="lucide:external-link"
+						class="w-4 h-4 text-text-tertiary mt-0.5 flex-shrink-0"
+					/>
 					<div class="min-w-0">
 						<a
 							:href="link.url"
@@ -277,10 +279,7 @@ const copyMessageId = async () => {
 						<p class="text-sm text-text-secondary font-mono truncate">{{ providerMessageId }}</p>
 					</div>
 				</div>
-				<button
-					class="btn btn-secondary text-xs gap-1.5 flex-shrink-0"
-					@click="copyMessageId"
-				>
+				<button class="btn btn-secondary text-xs gap-1.5 flex-shrink-0" @click="copyMessageId">
 					<Icon :name="messageIdCopied ? 'lucide:check' : 'lucide:copy'" class="w-3.5 h-3.5" />
 					{{ messageIdCopied ? 'Copied' : 'Copy' }}
 				</button>
@@ -304,7 +303,9 @@ const copyMessageId = async () => {
 				/>
 			</button>
 			<div v-if="showDataVariables" class="mt-4">
-				<pre class="text-sm text-text-secondary bg-bg-surface rounded-lg p-4 overflow-x-auto font-mono">{{ JSON.stringify(dataVariables, null, 2) }}</pre>
+				<pre
+					class="text-sm text-text-secondary bg-bg-surface rounded-lg p-4 overflow-x-auto font-mono"
+					>{{ JSON.stringify(dataVariables, null, 2) }}</pre>
 			</div>
 		</div>
 	</div>

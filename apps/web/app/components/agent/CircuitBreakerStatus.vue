@@ -15,10 +15,7 @@ const formattedName = computed(() => {
 		confidence_degradation: 'Confidence Degradation',
 		rejection_spike: 'Rejection Spike',
 	};
-	return (
-		names[props.breakerType] ??
-		props.breakerType.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
-	);
+	return names[props.breakerType] ?? titleCaseEnum(props.breakerType);
 });
 
 const stateConfig = computed(() => {

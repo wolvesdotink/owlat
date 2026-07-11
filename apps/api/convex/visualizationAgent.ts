@@ -18,11 +18,11 @@ import {
 import { adminQuery, authedMutation } from './lib/authedFunctions';
 import { requireAdminContext } from './lib/sessionOrganization';
 import { internal } from './_generated/api';
-import { getLLMProvider } from './lib/llmProvider';
+import { resolveLanguageModel } from './lib/llmProvider';
 import { logInfo, logWarn } from './lib/runtimeLog';
 import { runLlmText } from './lib/llm/dispatch';
 import { recordLlmSpend } from './analytics/llmUsage';
-import { throwNotFound } from './_utils/errors';
+import { getOrThrow } from './_utils/errors';
 import { validateStringLength, STRING_LIMITS } from './lib/inputGuards';
 import { getCachedContactCount } from './lib/contactCountHelpers';
 import { readDailyStats } from './lib/sendDailyStats';
@@ -125,7 +125,7 @@ export const createFromPrompt = authedMutation({
 		dataset: v.optional(datasetKeyValidator),
 	},
 	handler: async (ctx, args) => {
-		await requireAdminContext(ctx);
+		const session = await requireAdminContext(ctx);
 		// Bound the prompt — it feeds an LLM call, so an unbounded string is a
 		// (admin-only) cost/abuse vector.
 		validateStringLength(args.prompt, STRING_LIMITS.DESCRIPTION, 'Prompt');
@@ -137,7 +137,7 @@ export const createFromPrompt = authedMutation({
 			description: args.prompt,
 			html: '<div style="padding:20px;text-align:center;color:#666;">Generating visualization...</div>',
 			pinned: args.pinned ?? false,
-			createdBy: 'user', // Will be replaced with actual user ID when auth is wired
+			createdBy: session.userId, // Real creator: the admin session that issued the request.
 			createdAt: now,
 			updatedAt: now,
 		});
@@ -167,8 +167,7 @@ export const regenerate = authedMutation({
 	args: { id: v.id('visualizations') },
 	handler: async (ctx, args) => {
 		await requireAdminContext(ctx);
-		const viz = await ctx.db.get(args.id);
-		if (!viz) throwNotFound('Visualization');
+		const viz = await getOrThrow(ctx, args.id, 'Visualization');
 
 		// Only live-data visualizations carry a refreshable dataset key.
 		const dataset =
@@ -197,8 +196,7 @@ export const togglePin = authedMutation({
 	args: { id: v.id('visualizations') },
 	handler: async (ctx, args) => {
 		await requireAdminContext(ctx);
-		const viz = await ctx.db.get(args.id);
-		if (!viz) throwNotFound('Visualization');
+		const viz = await getOrThrow(ctx, args.id, 'Visualization');
 
 		await ctx.db.patch(args.id, {
 			pinned: !viz.pinned,
@@ -264,7 +262,7 @@ export const generate = internalAction({
 			const system = liveData ? buildLiveSystemPrompt(liveData) : ILLUSTRATIVE_SYSTEM_PROMPT;
 
 			const result = await runLlmText({
-				model: getLLMProvider('draft'),
+				model: await resolveLanguageModel(ctx, 'draft'),
 				system,
 				prompt: args.prompt,
 			});
@@ -296,7 +294,7 @@ export const generate = internalAction({
 
 			// Generate a proper title from the prompt
 			const titleResult = await runLlmText({
-				model: getLLMProvider('summarize'),
+				model: await resolveLanguageModel(ctx, 'summarize'),
 				prompt: `Generate a short (3-8 word) title for this visualization request: "${args.prompt}"
 Respond with ONLY the title, no quotes or explanation.`,
 			});

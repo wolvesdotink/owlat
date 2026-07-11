@@ -27,22 +27,34 @@ import type { EmbeddingModel, LanguageModel } from 'ai';
  * `LanguageProviderKind` type and the registry's completeness guard derive from
  * one source. Adapters today: `openai` (hosted OpenAI, plus any endpoint that
  * speaks the OpenAI shape via an explicit base URL), `anthropic` (hosted native
- * Claude), `google` (hosted native Gemini), `openrouter` (hosted aggregator
- * fronting many upstream models via free-text, provider-prefixed ids), and
- * `openaiCompatible` (local / custom OpenAI-compatible servers: Ollama, vLLM,
- * llama.cpp).
+ * Claude), `google` (hosted native Gemini), `azure` (hosted Azure OpenAI,
+ * deployment-name based), `openrouter` (hosted aggregator fronting many upstream
+ * models via free-text, provider-prefixed ids), and `openaiCompatible` (local /
+ * custom OpenAI-compatible servers: Ollama, vLLM, llama.cpp).
  */
 export const LANGUAGE_PROVIDER_KINDS = [
 	'openai',
 	'anthropic',
 	'google',
+	'azure',
 	'openrouter',
 	'openaiCompatible',
 ] as const;
 export type LanguageProviderKind = (typeof LANGUAGE_PROVIDER_KINDS)[number];
 
-/** The embedding provider kinds. One adapter today: `openai`. */
-export const EMBEDDING_PROVIDER_KINDS = ['openai'] as const;
+/**
+ * The embedding provider kinds. The embedding plane is LOCAL BY DEFAULT so
+ * retrieval works under ANY language choice (incl. Anthropic, which has no
+ * embeddings API):
+ *   • `local` — the bundled default: a local embeddings service reached over an
+ *     OpenAI-compatible `/embeddings` endpoint (e.g. Ollama `nomic-embed-text`),
+ *     driven by `LOCAL_EMBEDDING_BASE_URL`. Always resolves; needs no key.
+ *   • `openai` / `google` — optional HOSTED overrides (an encrypted key).
+ *   • `openaiCompatible` — a custom OpenAI-compatible embeddings server
+ *     (vLLM / llama.cpp / a self-hosted gateway), base-URL driven.
+ * `local` is first so it is the natural default for a fresh stored config.
+ */
+export const EMBEDDING_PROVIDER_KINDS = ['local', 'openai', 'google', 'openaiCompatible'] as const;
 export type EmbeddingProviderKind = (typeof EMBEDDING_PROVIDER_KINDS)[number];
 
 /**
@@ -91,14 +103,32 @@ export interface LanguageProviderAdapter<K extends LanguageProviderKind = Langua
 }
 
 /**
- * Embedding provider adapter. Resolved independently of the language provider.
- * `dimensions` is the native output width of the adapter's default model — used
- * to guard the fixed-width vector index.
+ * Embedding provider adapter. Resolved INDEPENDENTLY of the language provider
+ * (the two planes are decoupled). One adapter per provider; the `kind` narrows
+ * the registry's mapped-type guard so a missing/mismatched method is a compile
+ * error. `buildEmbeddingModel` is the call-time surface the resolver uses;
+ * `validateCredentials` fails fast on incomplete config so a misconfigured
+ * hosted embedder surfaces an actionable error rather than silently producing a
+ * broken vector.
  */
 export interface EmbeddingProviderAdapter<K extends EmbeddingProviderKind = EmbeddingProviderKind> {
 	readonly kind: K;
-	/** Native embedding width for this provider's default model. */
+	/** Human label for the settings UI. */
+	readonly label: string;
+	/**
+	 * Native embedding width for this provider's default model. Metadata for the
+	 * UI / docs — the authoritative runtime guard is `assertEmbeddingDimension`,
+	 * which rejects any vector that won't fit the fixed-width index at write time.
+	 */
 	readonly dimensions: number;
+	/** True for locally-hosted embedders (keyless, base-URL driven). */
+	readonly isLocal: boolean;
+	/** Default base URL for this provider (a local server's endpoint), if any. */
+	readonly defaultBaseUrl?: string;
+	/** Sensible default embedding model id when none is configured. */
+	readonly defaultModel: string;
 	/** Build the AI-SDK embedding model for a resolved config + model id. */
 	buildEmbeddingModel(cfg: EmbeddingClientConfig): EmbeddingModel;
+	/** Throw a descriptive error when `cfg` can't produce a working client. */
+	validateCredentials(cfg: EmbeddingClientConfig): void;
 }

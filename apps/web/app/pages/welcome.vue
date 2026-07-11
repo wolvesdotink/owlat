@@ -14,8 +14,8 @@ import { api } from '@owlat/api';
  *
  * Landing here records `welcomedAt`, so the member is "returning" from now on and
  * is never bounced back. Every path is skippable and resumable from the
- * persistent onboarding checklist (OnboardingUserChecklist), so leaving mid-flow
- * costs nothing.
+ * persistent "Getting started" checklist (DashboardGettingStarted), so leaving
+ * mid-flow costs nothing.
  */
 
 useHead({ title: 'Welcome — Owlat' });
@@ -29,7 +29,7 @@ const { organization } = useOrganizationContext();
 const { $convex } = useNuxtApp();
 
 const { data: settings, isLoading: isLoadingSettings } = useConvexQuery(
-	api.organizations.settings.get,
+	api.workspaces.settings.get,
 	{}
 );
 

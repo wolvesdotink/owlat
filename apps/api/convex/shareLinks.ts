@@ -3,7 +3,7 @@ import { authedQuery, authedMutation } from './lib/authedFunctions';
 import { nanoid } from 'nanoid';
 import { getOptional } from './lib/env';
 import { requireOrgPermission } from './lib/sessionOrganization';
-import { throwNotFound, throwInvalidInput, throwInvalidState } from './_utils/errors';
+import { getOrThrow, throwInvalidInput, throwInvalidState } from './_utils/errors';
 
 const FORTY_EIGHT_HOURS_MS = 48 * 60 * 60 * 1000;
 
@@ -36,10 +36,7 @@ export const createShareLink = authedMutation({
 		let previewText: string | undefined;
 
 		if (args.emailTemplateId) {
-			const template = await ctx.db.get(args.emailTemplateId);
-			if (!template) {
-				throwNotFound('Email template');
-			}
+			const template = await getOrThrow(ctx, args.emailTemplateId, 'Email template');
 			if (!template.htmlContent) {
 				throwInvalidState('Template must be saved at least once before sharing');
 			}
@@ -47,10 +44,7 @@ export const createShareLink = authedMutation({
 			subject = template.subject;
 			previewText = template.previewText;
 		} else {
-			const email = await ctx.db.get(args.transactionalEmailId!);
-			if (!email) {
-				throwNotFound('Transactional email');
-			}
+			const email = await getOrThrow(ctx, args.transactionalEmailId!, 'Transactional email');
 			if (!email.htmlContent) {
 				throwInvalidState('Email must be saved at least once before sharing');
 			}
@@ -97,10 +91,7 @@ export const revokeShareLink = authedMutation({
 			'shareLinks:manage',
 			'Only owners and admins can revoke share links'
 		);
-		const shareLink = await ctx.db.get(args.shareLinkId);
-		if (!shareLink) {
-			throwNotFound('Share link');
-		}
+		await getOrThrow(ctx, args.shareLinkId, 'Share link');
 
 		await ctx.db.patch(args.shareLinkId, {
 			revokedAt: Date.now(),

@@ -16,7 +16,7 @@ import { v } from 'convex/values';
 import { authedMutation, publicQuery } from '../lib/authedFunctions';
 import type { Doc, Id } from '../_generated/dataModel';
 import { requireMailboxAccess } from './permissions';
-import { throwForbidden, throwInvalidInput, throwNotFound } from '../_utils/errors';
+import { getOrThrow, throwForbidden, throwInvalidInput } from '../_utils/errors';
 
 // ── Public CRUD ───────────────────────────────────────────────────
 
@@ -147,8 +147,7 @@ export const update = authedMutation({
 		stopProcessing: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
-		const filter = await ctx.db.get(args.filterId);
-		if (!filter) throwNotFound('Filter');
+		const filter = await getOrThrow(ctx, args.filterId, 'Filter');
 		const owned = await requireMailboxAccess(ctx, filter.mailboxId, 'owner');
 		if (!owned.ok) throwForbidden('Filter not accessible');
 

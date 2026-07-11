@@ -40,7 +40,7 @@ const runLlmObjectMock = vi.hoisted(() => vi.fn());
 
 vi.mock('../lib/llmProvider', async () => {
 	const actual = await vi.importActual<typeof import('../lib/llmProvider')>('../lib/llmProvider');
-	return { ...actual, getLLMProvider: vi.fn(() => 'test-model') };
+	return { ...actual, resolveLanguageModel: vi.fn(() => 'test-model') };
 });
 
 vi.mock('../lib/llm/dispatch', async () => {

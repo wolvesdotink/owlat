@@ -1,3 +1,5 @@
+'use node';
+
 /**
  * Send provider adapter (module) — registry + dispatch.
  *

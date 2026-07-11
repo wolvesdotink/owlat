@@ -1,10 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import {
+	AI_CONNECTED_STEP_ID,
 	CHECKLIST_STEPS,
+	isAiConnected,
 	isChecklistComplete,
 	isWelcomeTriggerPath,
 	shouldRouteToWelcome,
-	shouldShowUserChecklist,
 	visibleChecklistSteps,
 	type ChecklistStepId,
 } from '../welcomeFlow';
@@ -53,7 +54,7 @@ describe('isWelcomeTriggerPath — where the middleware checks', () => {
 describe('visibleChecklistSteps — step visibility adapts to the mode', () => {
 	it('fresh-start mode hides every import / post-import step', () => {
 		const ids = visibleChecklistSteps('fresh').map((s) => s.id);
-		expect(ids).toEqual(['mailboxReady', 'firstSendDone']);
+		expect(ids).toEqual(['mailboxReady', 'aiConnected', 'firstSendDone']);
 		expect(ids).not.toContain('importDone');
 		expect(ids).not.toContain('knowledgeIndexed');
 		expect(ids).not.toContain('sendingSwitched');
@@ -63,11 +64,20 @@ describe('visibleChecklistSteps — step visibility adapts to the mode', () => {
 		const ids = visibleChecklistSteps('migration').map((s) => s.id);
 		expect(ids).toEqual([
 			'mailboxReady',
+			'aiConnected',
 			'importDone',
 			'knowledgeIndexed',
 			'sendingSwitched',
 			'firstSendDone',
 		]);
+	});
+
+	it('shows the universal "Connect your AI" step in both modes', () => {
+		expect(visibleChecklistSteps('fresh').map((s) => s.id)).toContain(AI_CONNECTED_STEP_ID);
+		expect(visibleChecklistSteps('migration').map((s) => s.id)).toContain(AI_CONNECTED_STEP_ID);
+		const aiStep = CHECKLIST_STEPS.find((s) => s.id === AI_CONNECTED_STEP_ID);
+		expect(aiStep?.migrationOnly).toBe(false);
+		expect(aiStep?.href).toBe('/dashboard/settings/ai-provider');
 	});
 
 	it('only the migration-only steps differ between the two modes', () => {
@@ -76,20 +86,56 @@ describe('visibleChecklistSteps — step visibility adapts to the mode', () => {
 	});
 });
 
+describe('isAiConnected — org-scoped AI step completion (env OR stored)', () => {
+	// The config-gap map from `getFlagsConfigStatus` lists the `ai` flag ONLY
+	// while AI is unconfigured; the backend already treats LLM_* env OR a stored
+	// provider key as satisfying it. So the step's completion is purely "is the
+	// `ai` key absent from the gap map?" — which must hold for BOTH sources.
+
+	it('completes for an env-configured self-hoster (no stored row, `ai` absent from the gap)', () => {
+		// LLM_* set in env ⇒ the backend drops `ai` from the gap map with no stored
+		// config. This is the env-fallback path the round-1 defect missed: a working
+		// env-only instance must complete the step.
+		const envConfiguredGap = { campaigns: ['A configured delivery provider'] };
+		expect(isAiConnected(envConfiguredGap)).toBe(true);
+	});
+
+	it('completes for a UI-configured org (stored key ⇒ `ai` absent from the gap)', () => {
+		// A stored provider key likewise clears the `ai` gap; same absence, same done.
+		expect(isAiConnected({})).toBe(true);
+	});
+
+	it('stays incomplete while AI is unconfigured (`ai` present in the gap)', () => {
+		expect(isAiConnected({ ai: ['LLM_PROVIDER', 'LLM_API_KEY'] })).toBe(false);
+	});
+
+	it('is not complete while the config-gap query is still loading (undefined)', () => {
+		// Guards against the step flashing "done" on first paint before data lands.
+		expect(isAiConnected(undefined)).toBe(false);
+	});
+});
+
 describe('isChecklistComplete — completeness is per visible step', () => {
-	it('fresh mode completes once its two universal steps are done', () => {
-		const done = new Set<ChecklistStepId>(['mailboxReady', 'firstSendDone']);
+	it('fresh mode completes once its universal steps are done', () => {
+		const done = new Set<ChecklistStepId>(['mailboxReady', 'aiConnected', 'firstSendDone']);
 		expect(isChecklistComplete('fresh', done)).toBe(true);
 	});
 
-	it('the same two steps do NOT complete a migration checklist', () => {
+	it('an unconnected AI step keeps a fresh checklist incomplete', () => {
+		// Everything else done, but the AI provider is not yet connected.
 		const done = new Set<ChecklistStepId>(['mailboxReady', 'firstSendDone']);
+		expect(isChecklistComplete('fresh', done)).toBe(false);
+	});
+
+	it('the universal steps alone do NOT complete a migration checklist', () => {
+		const done = new Set<ChecklistStepId>(['mailboxReady', 'aiConnected', 'firstSendDone']);
 		expect(isChecklistComplete('migration', done)).toBe(false);
 	});
 
 	it('migration completes only when every step is done', () => {
 		const done = new Set<ChecklistStepId>([
 			'mailboxReady',
+			'aiConnected',
 			'importDone',
 			'knowledgeIndexed',
 			'sendingSwitched',
@@ -100,25 +146,5 @@ describe('isChecklistComplete — completeness is per visible step', () => {
 
 	it('an empty set is never complete', () => {
 		expect(isChecklistComplete('fresh', new Set())).toBe(false);
-	});
-});
-
-describe('shouldShowUserChecklist — visibility gating', () => {
-	const base = { isLoading: false, dismissed: false, isComplete: false };
-
-	it('shows when loaded, not dismissed, and incomplete', () => {
-		expect(shouldShowUserChecklist(base)).toBe(true);
-	});
-
-	it('hides while loading', () => {
-		expect(shouldShowUserChecklist({ ...base, isLoading: true })).toBe(false);
-	});
-
-	it('hides once dismissed', () => {
-		expect(shouldShowUserChecklist({ ...base, dismissed: true })).toBe(false);
-	});
-
-	it('hides for good once complete', () => {
-		expect(shouldShowUserChecklist({ ...base, isComplete: true })).toBe(false);
 	});
 });

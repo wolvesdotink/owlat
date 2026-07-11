@@ -26,7 +26,7 @@ const {
 	error: sendersError,
 } = useOrganizationQuery(api.campaigns.senders.list);
 
-const { data: settings } = useOrganizationQuery(api.organizations.settings.get);
+const { data: settings } = useOrganizationQuery(api.workspaces.settings.get);
 
 // --- "Allow custom from-addresses" toggle -----------------------------------
 // Local mirror of the instance setting so the switch feels instant; the query
@@ -43,7 +43,7 @@ watch(
 // The switch flips instantly (optimistic apply) and rolls back only if the
 // write fails — the shared helper owns the categorized failure toast.
 const { run: saveAllowCustom, isLoading: savingSettings } = useOptimisticMutation(
-	api.organizations.settings.update,
+	api.workspaces.settings.update,
 	{ label: 'Update campaign sender policy' }
 );
 

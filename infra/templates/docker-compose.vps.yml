@@ -82,6 +82,11 @@ services:
       # CONVEX_SITE_URL is the in-network URL the apply handler uses to reach the
       # backend's HTTP routes (/seed/admin).
       OWLAT_SETUP_MODE: ${OWLAT_SETUP_MODE:-false}
+      # One-time token that gates the unauthenticated /api/setup/* endpoints while
+      # OWLAT_SETUP_MODE=true. `owlat setup` mints it into .env and prints it; the
+      # wizard must echo it back. Without it the first caller could seize the
+      # instance (create the admin, rewrite .env).
+      OWLAT_SETUP_TOKEN: ${OWLAT_SETUP_TOKEN:-}
       OWLAT_DIR: /opt/owlat
       CONVEX_SITE_URL: ${CONVEX_SITE_URL:-http://convex:3211}
     depends_on:

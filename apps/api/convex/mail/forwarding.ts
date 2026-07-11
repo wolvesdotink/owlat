@@ -13,7 +13,8 @@ import { v } from 'convex/values';
 import { internalQuery } from '../_generated/server';
 import { authedMutation, publicQuery } from '../lib/authedFunctions';
 import { requireMailboxAccess } from './permissions';
-import { throwForbidden, throwInvalidInput, throwNotFound } from '../_utils/errors';
+import { getOrThrow, throwForbidden, throwInvalidInput } from '../_utils/errors';
+import { normalizeEmail } from '@owlat/shared';
 
 // public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
 export const list = publicQuery({
@@ -39,7 +40,7 @@ export const create = authedMutation({
 		const owned = await requireMailboxAccess(ctx, args.mailboxId, 'owner');
 		if (!owned.ok) throwForbidden('Mailbox not accessible');
 
-		const forwardTo = args.forwardTo.trim().toLowerCase();
+		const forwardTo = normalizeEmail(args.forwardTo);
 		if (!forwardTo.includes('@')) throwInvalidInput('Invalid forwarding address');
 
 		// Don't forward to ourselves — would loop instantly
@@ -67,12 +68,11 @@ export const update = authedMutation({
 		isEnabled: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
-		const row = await ctx.db.get(args.id);
-		if (!row) throwNotFound('Forwarding rule');
+		const row = await getOrThrow(ctx, args.id, 'Forwarding rule');
 		const owned = await requireMailboxAccess(ctx, row.mailboxId, 'owner');
 		if (!owned.ok) throwForbidden('Not accessible');
 		const patch: Record<string, unknown> = { updatedAt: Date.now() };
-		if (args.forwardTo !== undefined) patch['forwardTo'] = args.forwardTo.trim().toLowerCase();
+		if (args.forwardTo !== undefined) patch['forwardTo'] = normalizeEmail(args.forwardTo);
 		if (args.keepLocalCopy !== undefined) patch['keepLocalCopy'] = args.keepLocalCopy;
 		if (args.isEnabled !== undefined) patch['isEnabled'] = args.isEnabled;
 		await ctx.db.patch(args.id, patch);

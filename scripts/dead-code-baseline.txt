@@ -22,7 +22,6 @@ export:packages/email-builder/src/utils/variables.ts:containsVariable
 export:packages/email-builder/src/utils/variables.ts:extractVariableName
 export:packages/email-builder/src/utils/variables.ts:extractVariableNames
 export:packages/email-renderer/src/helpers/inline-styles.ts:buildInlineStyle
-export:packages/email-renderer/src/helpers/inline-styles.ts:buildInlineStyleFromPairs
 export:packages/email-renderer/src/helpers/table.ts:wrapColumnCell
 export:packages/email-renderer/src/outlook.ts:msoConditional
 export:packages/email-renderer/src/outlook.ts:notMsoConditional

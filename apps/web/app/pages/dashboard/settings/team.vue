@@ -107,14 +107,25 @@ const { data: domainsData } = useConvexQuery(api.domains.domains.listByOrganizat
 const verifiedDomains = computed(() =>
 	(domainsData.value ?? []).filter((d) => d.status === 'verified')
 );
-const canOfferMailbox = computed(() => postboxEnabled.value && verifiedDomains.value.length > 0);
+// Domains a mailbox may be RESERVED on — verified ones plus those still setting
+// up (registering/pending DNS). Reserving on a not-yet-verified domain is how a
+// brand-new instance gives its earliest invitees a real "your mailbox is
+// reserved, activates when your domain verifies" step instead of a dead end; the
+// mailbox only materializes once the domain verifies (backend claim gate).
+// Verified domains sort first so the default pick is a live one when available.
+const reservableDomains = computed(() =>
+	(domainsData.value ?? [])
+		.filter((d) => d.status === 'verified' || d.status === 'pending' || d.status === 'registering')
+		.sort((a, b) => Number(b.status === 'verified') - Number(a.status === 'verified'))
+);
+const canOfferMailbox = computed(() => postboxEnabled.value && reservableDomains.value.length > 0);
 
 // Whether an outbound transport is actually configured. The invite/resend API
 // calls succeed even when it isn't (the send hook fails closed and BetterAuth
 // swallows the error), so we only claim "we emailed them" when a transport
 // exists — otherwise the accept link is the real (and only) way in.
 const { data: emailConfigured } = useConvexQuery(
-	api.organizations.featureFlags.deliveryConfigured,
+	api.workspaces.featureFlags.deliveryConfigured,
 	() => ({})
 );
 
@@ -147,6 +158,8 @@ const inviteSuccess = ref<{
 	email: string;
 	acceptUrl: string;
 	mailboxAddress?: string;
+	// The reserved mailbox's domain is still verifying — it activates on verify.
+	mailboxAwaitingDomain?: boolean;
 } | null>(null);
 
 // Once the admin hand-edits the mailbox local part we stop auto-deriving it
@@ -158,12 +171,13 @@ const localpartEdited = ref(false);
 // reserved-by-default rule when hosted mail resolves after the modal is open.
 const mailboxTouched = ref(false);
 
-// Pre-select the first verified domain when the user opts into the mailbox section.
+// Pre-select the first reservable domain (verified-first) when the user opts into
+// the mailbox section.
 watch(
-	() => [inviteForm.addMailbox, verifiedDomains.value.length] as const,
+	() => [inviteForm.addMailbox, reservableDomains.value.length] as const,
 	([addMailbox]) => {
-		if (addMailbox && !inviteForm.mailboxDomain && verifiedDomains.value.length > 0) {
-			inviteForm.mailboxDomain = verifiedDomains.value[0]!.domain;
+		if (addMailbox && !inviteForm.mailboxDomain && reservableDomains.value.length > 0) {
+			inviteForm.mailboxDomain = reservableDomains.value[0]!.domain;
 		}
 	}
 );
@@ -173,6 +187,12 @@ const mailboxPreviewAddress = computed(() => {
 	if (!lp || !inviteForm.mailboxDomain) return '';
 	return `${lp}@${inviteForm.mailboxDomain}`;
 });
+
+// The chosen mailbox domain is live vs still verifying — drives the honest
+// pre-verification copy in the modal (progress, not "ready now").
+const selectedDomainVerified = computed(() =>
+	verifiedDomains.value.some((d) => d.domain === inviteForm.mailboxDomain)
+);
 
 // Suggest a mailbox local part from the invitee's email until the admin edits it.
 function deriveLocalpart(email: string): string {
@@ -253,7 +273,7 @@ const { signOut } = useAuth();
 const showDeleteOrgModal = ref(false);
 const deleteOrgConfirmText = ref('');
 const isDeletingOrg = ref(false);
-const { run: removeOrganization } = useBackendOperation(api.organizations.settings.remove, {
+const { run: removeOrganization } = useBackendOperation(api.workspaces.settings.remove, {
 	label: 'Delete workspace',
 });
 
@@ -319,6 +339,9 @@ const handleInvite = async () => {
 				displayName: inviteForm.mailboxDisplayName.trim() || undefined,
 			}
 		: undefined;
+	// Reserving on a domain that's still verifying — the mailbox activates when it
+	// verifies rather than at accept time. Snapshot it for the honest copy below.
+	const mailboxAwaitingDomain = Boolean(mailbox) && !selectedDomainVerified.value;
 
 	try {
 		const { invitationId } = await invite(inviteForm.email.trim(), inviteForm.role, mailbox);
@@ -330,11 +353,15 @@ const handleInvite = async () => {
 				email: inviteForm.email.trim(),
 				acceptUrl: buildAcceptUrl(invitationId),
 				mailboxAddress: mailbox ? `${mailbox.localpart}@${mailbox.domain}` : undefined,
+				mailboxAwaitingDomain,
 			};
 		} else {
-			const successMsg = mailbox
-				? `Invitation sent to ${inviteForm.email}. Mailbox ${mailbox.localpart}@${mailbox.domain} will be created when they accept.`
-				: `Invitation sent to ${inviteForm.email}`;
+			let successMsg = `Invitation sent to ${inviteForm.email}`;
+			if (mailbox) {
+				successMsg = mailboxAwaitingDomain
+					? `Invitation sent to ${inviteForm.email}. Mailbox ${mailbox.localpart}@${mailbox.domain} is reserved and activates when ${mailbox.domain} verifies.`
+					: `Invitation sent to ${inviteForm.email}. Mailbox ${mailbox.localpart}@${mailbox.domain} will be created when they accept.`;
+			}
 			showToast(successMsg);
 			isInviteModalOpen.value = false;
 		}
@@ -890,8 +917,8 @@ const formatExpiryTime = (expiresAt: Date) => {
 
 				<div class="p-6">
 					<p class="text-text-secondary text-sm mb-4">
-						Deleting the workspace permanently removes every team member, all contacts,
-						campaigns, automations, mailboxes, and analytics. This action cannot be undone.
+						Deleting the workspace permanently removes every team member, all contacts, campaigns,
+						automations, mailboxes, and analytics. This action cannot be undone.
 					</p>
 					<UiButton variant="danger" @click="showDeleteOrgModal = true">
 						<template #iconLeft>
@@ -966,12 +993,19 @@ const formatExpiryTime = (expiresAt: Date) => {
 									Reserve a personal mailbox for this user
 								</span>
 								<span v-if="canOfferMailbox" class="block text-xs text-text-secondary mt-0.5">
-									We'll create the mailbox automatically when they accept. On by default — uncheck
-									to invite without one.
+									We reserve the address now and create the mailbox when they accept. On by default
+									— uncheck to invite without one.
+								</span>
+								<span v-else-if="postboxEnabled" class="block text-xs text-text-secondary mt-0.5">
+									Add a sending domain to reserve mailboxes for new members — you can invite them
+									now and their mailbox activates when the domain verifies.
+									<NuxtLink to="/dashboard/delivery/domains" class="text-brand hover:underline">
+										Add a domain
+									</NuxtLink>
 								</span>
 								<span v-else class="block text-xs text-text-secondary mt-0.5">
-									Set up hosted mail — a verified sending domain and the Postbox — to reserve
-									mailboxes for new members.
+									Set up hosted mail — a sending domain and the Postbox — to reserve mailboxes for
+									new members.
 								</span>
 							</span>
 						</label>
@@ -992,13 +1026,28 @@ const formatExpiryTime = (expiresAt: Date) => {
 									<span class="text-text-tertiary">@</span>
 									<select v-model="inviteForm.mailboxDomain" class="input" :disabled="isInviting">
 										<option value="">Select domain</option>
-										<option v-for="d in verifiedDomains" :key="d._id" :value="d.domain">
-											{{ d.domain }}
+										<option v-for="d in reservableDomains" :key="d._id" :value="d.domain">
+											{{ d.domain }}{{ d.status === 'verified' ? '' : ' (verifying…)' }}
 										</option>
 									</select>
 								</div>
-								<p v-if="mailboxPreviewAddress" class="text-xs text-text-tertiary mt-1">
+								<p
+									v-if="mailboxPreviewAddress && selectedDomainVerified"
+									class="text-xs text-text-tertiary mt-1"
+								>
 									Will be created as: <code>{{ mailboxPreviewAddress }}</code>
+								</p>
+								<p
+									v-else-if="mailboxPreviewAddress"
+									class="text-xs text-text-tertiary mt-1"
+									data-testid="invite-mailbox-awaiting-domain"
+								>
+									<code>{{ mailboxPreviewAddress }}</code> is reserved now and activates
+									automatically once
+									<span class="font-medium">{{ inviteForm.mailboxDomain }}</span> verifies.
+									<NuxtLink to="/dashboard/delivery/domains" class="text-brand hover:underline">
+										Finish verifying
+									</NuxtLink>
 								</p>
 							</div>
 
@@ -1041,7 +1090,14 @@ const formatExpiryTime = (expiresAt: Date) => {
 					</div>
 				</div>
 
-				<p v-if="inviteSuccess?.mailboxAddress" class="text-sm text-text-secondary">
+				<p
+					v-if="inviteSuccess?.mailboxAddress && inviteSuccess?.mailboxAwaitingDomain"
+					class="text-sm text-text-secondary"
+				>
+					Mailbox <code>{{ inviteSuccess.mailboxAddress }}</code> is reserved — it activates
+					automatically once its sending domain verifies.
+				</p>
+				<p v-else-if="inviteSuccess?.mailboxAddress" class="text-sm text-text-secondary">
 					Mailbox <code>{{ inviteSuccess.mailboxAddress }}</code> will be created when they accept.
 				</p>
 

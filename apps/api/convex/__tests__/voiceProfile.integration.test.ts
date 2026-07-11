@@ -38,7 +38,7 @@ const runLlmObjectMock = vi.hoisted(() => vi.fn());
 
 vi.mock('../lib/llmProvider', async () => {
 	const actual = await vi.importActual<typeof import('../lib/llmProvider')>('../lib/llmProvider');
-	return { ...actual, getLLMProvider: vi.fn(() => 'test-model') };
+	return { ...actual, resolveLanguageModel: vi.fn(() => 'test-model') };
 });
 
 vi.mock('../lib/llm/dispatch', async () => {
@@ -52,8 +52,8 @@ const modules = Object.fromEntries(
 		([path]) =>
 			!path.includes('sesActions') &&
 			!path.includes('visualizationAgent') &&
-			!path.includes('semanticFileProcessing'),
-	),
+			!path.includes('semanticFileProcessing')
+	)
 );
 
 beforeEach(() => {
@@ -62,7 +62,7 @@ beforeEach(() => {
 
 async function seedMailboxWithSent(
 	t: TestConvex<typeof schema>,
-	sentBodies: string[],
+	sentBodies: string[]
 ): Promise<Id<'mailboxes'>> {
 	return await t.run(async (ctx) => {
 		const now = Date.now();
@@ -153,7 +153,7 @@ describe('mail.voiceProfileActions.refresh', () => {
 		rateLimiterTest.register(t);
 		await enableFeatures(t, ['ai']);
 		const mailboxId = await seedMailboxWithSent(t, [
-			"Hey Bob,\n\nSounds great, ship it.\n\nCheers,\nMe\n\n" +
+			'Hey Bob,\n\nSounds great, ship it.\n\nCheers,\nMe\n\n' +
 				'On Mon, Jan 1, 2024, Bob <bob@x.com> wrote:\n> Should we ship?',
 			'Thanks, appreciate it!',
 			'Will do — talk soon.',
@@ -186,7 +186,7 @@ describe('mail.voiceProfileActions.refresh', () => {
 			ctx.db
 				.query('mailVoiceProfiles')
 				.withIndex('by_mailbox', (q) => q.eq('mailboxId', mailboxId))
-				.first(),
+				.first()
 		);
 		expect(row?.status).toBe('idle');
 		expect(row?.profile?.greetings).toEqual(['Hey']);
@@ -221,7 +221,7 @@ describe('mail.voiceProfileActions.refresh', () => {
 			ctx.db
 				.query('mailVoiceProfiles')
 				.withIndex('by_mailbox', (q) => q.eq('mailboxId', mailboxId))
-				.first(),
+				.first()
 		);
 		expect(row?.status).toBe('idle');
 		expect(row?.profile).toBeUndefined();
@@ -231,7 +231,7 @@ describe('mail.voiceProfileActions.refresh', () => {
 describe('mail.voiceProfile.getGuidanceForMailbox', () => {
 	async function seedProfile(
 		t: TestConvex<typeof schema>,
-		lastComputedAt: number,
+		lastComputedAt: number
 	): Promise<Id<'mailboxes'>> {
 		return await t.run(async (ctx) => {
 			const now = Date.now();
@@ -274,7 +274,7 @@ describe('mail.voiceProfile.getGuidanceForMailbox', () => {
 			ctx.db
 				.query('mailVoiceProfiles')
 				.withIndex('by_mailbox', (q) => q.eq('mailboxId', mailboxId))
-				.first(),
+				.first()
 		);
 	}
 

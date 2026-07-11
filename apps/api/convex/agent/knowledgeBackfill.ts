@@ -3,7 +3,7 @@
  *
  * On initial agent setup (the false→true edge of the `ai.agent` feature
  * flag, kicked off from `setFeatureFlag` in
- * `organizations/featureFlags.ts`), walks the org's existing
+ * `workspaces/featureFlags.ts`), walks the org's existing
  * `inboundMessages` and feeds each one through the existing
  * `knowledgeExtraction.extractFromMessage` pipeline so the AI drafter has
  * historical context from day one.
@@ -21,11 +21,7 @@ import { v } from 'convex/values';
 import type { Doc } from '../_generated/dataModel';
 import { takeReceivedAtChunk } from '../lib/receivedAtCursor';
 import { recordAuditLog } from '../lib/auditLog';
-import {
-	internalAction,
-	internalMutation,
-	internalQuery,
-} from '../_generated/server';
+import { internalAction, internalMutation, internalQuery } from '../_generated/server';
 import { publicQuery, adminMutation } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
@@ -195,11 +191,7 @@ export const patchProgress = internalMutation({
 export const finalizeJob = internalMutation({
 	args: {
 		jobId: v.id('knowledgeBackfillJobs'),
-		status: v.union(
-			v.literal('completed'),
-			v.literal('cancelled'),
-			v.literal('failed')
-		),
+		status: v.union(v.literal('completed'), v.literal('cancelled'), v.literal('failed')),
 		errorMessage: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
@@ -241,10 +233,7 @@ export const runChunk = internalAction({
 			if (job.status !== 'running') return;
 
 			// Honor mid-scan disable.
-			const enabled = await ctx.runQuery(
-				internal.agent.knowledgeBackfill.isAgentEnabled,
-				{}
-			);
+			const enabled = await ctx.runQuery(internal.agent.knowledgeBackfill.isAgentEnabled, {});
 			if (!enabled) {
 				await ctx.runMutation(internal.agent.knowledgeBackfill.finalizeJob, {
 					jobId: args.jobId,
@@ -253,14 +242,11 @@ export const runChunk = internalAction({
 				return;
 			}
 
-			const { messages, hasMore } = await ctx.runQuery(
-				internal.agent.knowledgeBackfill.nextChunk,
-				{
-					cursorReceivedAt: job.cursorReceivedAt,
-					cursorId: job.cursorId,
-					limit: args.chunkSize,
-				}
-			);
+			const { messages, hasMore } = await ctx.runQuery(internal.agent.knowledgeBackfill.nextChunk, {
+				cursorReceivedAt: job.cursorReceivedAt,
+				cursorId: job.cursorId,
+				limit: args.chunkSize,
+			});
 
 			let deltaScanned = 0;
 			let deltaExtracted = 0;
@@ -275,27 +261,24 @@ export const runChunk = internalAction({
 				lastId = msg._id;
 
 				// Idempotency: if this message has already been extracted, skip.
-				const already = await ctx.runQuery(
-					internal.agent.knowledgeBackfill.hasExtraction,
-					{ inboundMessageId: msg._id }
-				);
+				const already = await ctx.runQuery(internal.agent.knowledgeBackfill.hasExtraction, {
+					inboundMessageId: msg._id,
+				});
 				if (already) {
 					deltaSkipped++;
 					continue;
 				}
 
 				try {
-					await ctx.runAction(
-						internal.knowledge.extraction.extractFromMessage,
-						{ inboundMessageId: msg._id }
-					);
+					await ctx.runAction(internal.knowledge.extraction.extractFromMessage, {
+						inboundMessageId: msg._id,
+					});
 					// Re-check post-call: extractFromMessage silently no-ops on
 					// short bodies and swallows internal errors. Only count as
 					// "extracted" if it actually wrote at least one entry.
-					const wrote = await ctx.runQuery(
-						internal.agent.knowledgeBackfill.hasExtraction,
-						{ inboundMessageId: msg._id }
-					);
+					const wrote = await ctx.runQuery(internal.agent.knowledgeBackfill.hasExtraction, {
+						inboundMessageId: msg._id,
+					});
 					if (wrote) {
 						deltaExtracted++;
 					} else {
@@ -324,15 +307,11 @@ export const runChunk = internalAction({
 			});
 
 			if (hasMore) {
-				await ctx.scheduler.runAfter(
-					interChunkDelay,
-					internal.agent.knowledgeBackfill.runChunk,
-					{
-						jobId: args.jobId,
-						chunkSize: args.chunkSize,
-						interChunkDelayMs: args.interChunkDelayMs,
-					}
-				);
+				await ctx.scheduler.runAfter(interChunkDelay, internal.agent.knowledgeBackfill.runChunk, {
+					jobId: args.jobId,
+					chunkSize: args.chunkSize,
+					interChunkDelayMs: args.interChunkDelayMs,
+				});
 			} else {
 				await ctx.runMutation(internal.agent.knowledgeBackfill.finalizeJob, {
 					jobId: args.jobId,

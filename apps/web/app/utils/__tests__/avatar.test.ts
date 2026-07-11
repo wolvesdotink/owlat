@@ -6,6 +6,7 @@ import {
 	AVATAR_SIZE_CLASSES,
 	avatarInitials,
 	initialsAndColorForAddress,
+	personInitials,
 } from '../avatar';
 
 describe('avatarInitials', () => {
@@ -27,6 +28,33 @@ describe('avatarInitials', () => {
 		expect(avatarInitials('ab')).toBe('AB');
 		expect(avatarInitials('a')).toBe('A');
 		expect(avatarInitials('abcdef')).toBe('AB');
+	});
+});
+
+describe('personInitials', () => {
+	it('takes the first letter of both name parts', () => {
+		expect(personInitials('Ada', 'Lovelace')).toBe('AL');
+		expect(personInitials('ada', 'lovelace', 'ada@example.com')).toBe('AL');
+	});
+
+	it('uses just the first name when there is no last name', () => {
+		expect(personInitials('Marcel')).toBe('M');
+		expect(personInitials('marcel', '', 'marcel@example.com')).toBe('M');
+	});
+
+	it('uses just the last name when there is no first name', () => {
+		expect(personInitials(null, 'Doe')).toBe('D');
+	});
+
+	it('falls back to the first letter of the email', () => {
+		expect(personInitials(undefined, undefined, 'zoe@example.com')).toBe('Z');
+		expect(personInitials('', '', 'zoe@example.com')).toBe('Z');
+	});
+
+	it('falls back to "?" when nothing is present', () => {
+		expect(personInitials()).toBe('?');
+		expect(personInitials(null, null, null)).toBe('?');
+		expect(personInitials('  ', '  ', '  ')).toBe('?');
 	});
 });
 
@@ -89,8 +117,9 @@ describe('initialsAndColorForAddress', () => {
 
 	it('spreads distinct inputs across the palette', () => {
 		const tokens = new Set(
-			Array.from({ length: 40 }, (_, i) =>
-				initialsAndColorForAddress(`user${i}@example${i % 7}.com`).colorToken
+			Array.from(
+				{ length: 40 },
+				(_, i) => initialsAndColorForAddress(`user${i}@example${i % 7}.com`).colorToken
 			)
 		);
 		// 40 distinct addresses over a 10-token palette must hit most tokens.

@@ -3,7 +3,7 @@ import { internalQuery } from '../_generated/server';
 import { authedMutation } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import { requireOrgPermission } from '../lib/sessionOrganization';
-import { throwInvalidState, throwNotFound } from '../_utils/errors';
+import { getOrThrow, throwInvalidState } from '../_utils/errors';
 import { validateReadyToSend } from './preflight';
 import { seedDefaultSenderIfNeeded } from './senders';
 import { assertTransitioned } from './lifecycle';
@@ -21,10 +21,7 @@ export const cancel = authedMutation({
 			'You do not have permission to cancel campaigns'
 		);
 
-		const campaign = await ctx.db.get(args.campaignId);
-		if (!campaign) {
-			throwNotFound('Campaign');
-		}
+		const campaign = await getOrThrow(ctx, args.campaignId, 'Campaign');
 
 		if (campaign.status !== 'scheduled') {
 			throwInvalidState('Only scheduled campaigns can be cancelled');
@@ -62,10 +59,7 @@ export const reschedule = authedMutation({
 			'You do not have permission to reschedule campaigns'
 		);
 
-		const campaign = await ctx.db.get(args.campaignId);
-		if (!campaign) {
-			throwNotFound('Campaign');
-		}
+		const campaign = await getOrThrow(ctx, args.campaignId, 'Campaign');
 
 		if (campaign.status !== 'scheduled') {
 			throwInvalidState('Only scheduled campaigns can be rescheduled');
@@ -122,10 +116,7 @@ export const unschedule = authedMutation({
 			'You do not have permission to unschedule campaigns'
 		);
 
-		const campaign = await ctx.db.get(args.campaignId);
-		if (!campaign) {
-			throwNotFound('Campaign');
-		}
+		const campaign = await getOrThrow(ctx, args.campaignId, 'Campaign');
 
 		if (campaign.status !== 'scheduled') {
 			throwInvalidState('Only scheduled campaigns can be unscheduled');
@@ -162,10 +153,7 @@ export const schedule = authedMutation({
 			'You do not have permission to schedule campaigns'
 		);
 
-		const campaign = await ctx.db.get(args.campaignId);
-		if (!campaign) {
-			throwNotFound('Campaign');
-		}
+		const campaign = await getOrThrow(ctx, args.campaignId, 'Campaign');
 
 		if (campaign.status !== 'draft') {
 			throwInvalidState('Only draft campaigns can be scheduled');

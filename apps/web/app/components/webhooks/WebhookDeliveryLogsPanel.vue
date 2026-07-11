@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
-import { formatDateTime } from '~/utils/formatters';
+import { capitalize, formatDateTime } from '~/utils/formatters';
 
 interface WebhookDeliveryLog {
 	_id: Id<'webhookDeliveryLogs'>;
@@ -11,7 +11,11 @@ interface WebhookDeliveryLog {
 	scheduledAt: number;
 	attemptNumber: number;
 	maxAttempts: number;
-	payload: { event: string; timestamp: string; data: Record<string, string | number | boolean | null> };
+	payload: {
+		event: string;
+		timestamp: string;
+		data: Record<string, string | number | boolean | null>;
+	};
 	responseBody?: string;
 	errorMessage?: string;
 	attemptedAt?: number;
@@ -25,7 +29,16 @@ interface Props {
 	webhookId: Id<'webhooks'> | null;
 	logs: WebhookDeliveryLog[] | undefined;
 	logsLoading: boolean;
-	stats: { total: number; success: number; failed: number; pending: number; retrying: number; successRate: number } | undefined;
+	stats:
+		| {
+				total: number;
+				success: number;
+				failed: number;
+				pending: number;
+				retrying: number;
+				successRate: number;
+		  }
+		| undefined;
 	selectedLogId: Id<'webhookDeliveryLogs'> | null;
 	selectedLog: WebhookDeliveryLog | null | undefined;
 	isSendingTest: boolean;
@@ -40,14 +53,15 @@ const emit = defineEmits<{
 	sendTest: [];
 }>();
 
+const STATUS_COLORS: Record<string, string> = {
+	success: 'bg-success/10 text-success',
+	failed: 'bg-error/10 text-error',
+	retrying: 'bg-warning/10 text-warning',
+	pending: 'bg-brand-subtle text-brand',
+};
+
 function statusColor(status: string) {
-	switch (status) {
-		case 'success': return 'bg-success/10 text-success';
-		case 'failed': return 'bg-error/10 text-error';
-		case 'retrying': return 'bg-warning/10 text-warning';
-		case 'pending': return 'bg-brand-subtle text-brand';
-		default: return 'bg-bg-surface text-text-tertiary';
-	}
+	return STATUS_COLORS[status] ?? 'bg-bg-surface text-text-tertiary';
 }
 
 function formatDuration(ms: number | undefined) {
@@ -60,7 +74,7 @@ function formatEventLabel(event: string) {
 	if (event === 'test') return 'Test';
 	return event
 		.split('.')
-		.map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+		.map((s) => capitalize(s))
 		.join(' ');
 }
 
@@ -81,7 +95,11 @@ function formatJson(value: unknown) {
 		:open="isOpen"
 		:title="selectedLogId ? 'Delivery Detail' : `Delivery Logs — ${webhookName}`"
 		size="2xl"
-		@update:open="(v) => { if (!v) emit('close'); }"
+		@update:open="
+			(v) => {
+				if (!v) emit('close');
+			}
+		"
 	>
 		<!-- Sub-header toolbar: back navigation + send test -->
 		<div
@@ -110,7 +128,10 @@ function formatJson(value: unknown) {
 		</div>
 
 		<!-- Stats Bar -->
-		<div v-if="!selectedLogId && stats && stats.total > 0" class="mb-4 py-3 border-y border-border-subtle grid grid-cols-4 gap-4">
+		<div
+			v-if="!selectedLogId && stats && stats.total > 0"
+			class="mb-4 py-3 border-y border-border-subtle grid grid-cols-4 gap-4"
+		>
 			<div class="text-center">
 				<p class="text-lg font-semibold text-text-primary">{{ stats.total }}</p>
 				<p class="text-xs text-text-tertiary">Total</p>
@@ -140,7 +161,12 @@ function formatJson(value: unknown) {
 			<div v-else-if="selectedLogId && selectedLog" class="px-6 space-y-4">
 				<!-- Status + attempt -->
 				<div class="flex items-center gap-3">
-					<span :class="['inline-flex items-center px-2.5 py-1 rounded text-xs font-medium', statusColor(selectedLog.status)]">
+					<span
+						:class="[
+							'inline-flex items-center px-2.5 py-1 rounded text-xs font-medium',
+							statusColor(selectedLog.status),
+						]"
+					>
 						{{ selectedLog.status }}
 					</span>
 					<span class="text-sm text-text-secondary">
@@ -186,13 +212,17 @@ function formatJson(value: unknown) {
 				<!-- Request payload -->
 				<div>
 					<p class="text-xs text-text-tertiary mb-1">Request Payload</p>
-					<pre class="text-xs font-mono bg-bg-deep border border-border-subtle rounded-lg p-3 overflow-x-auto text-text-secondary">{{ formatJson(selectedLog.payload) }}</pre>
+					<pre
+						class="text-xs font-mono bg-bg-deep border border-border-subtle rounded-lg p-3 overflow-x-auto text-text-secondary"
+						>{{ formatJson(selectedLog.payload) }}</pre>
 				</div>
 
 				<!-- Response body -->
 				<div v-if="selectedLog.responseBody">
 					<p class="text-xs text-text-tertiary mb-1">Response Body</p>
-					<pre class="text-xs font-mono bg-bg-deep border border-border-subtle rounded-lg p-3 overflow-x-auto text-text-secondary">{{ selectedLog.responseBody }}</pre>
+					<pre
+						class="text-xs font-mono bg-bg-deep border border-border-subtle rounded-lg p-3 overflow-x-auto text-text-secondary"
+						>{{ selectedLog.responseBody }}</pre>
 				</div>
 			</div>
 
@@ -204,7 +234,12 @@ function formatJson(value: unknown) {
 					class="flex items-center gap-4 px-6 py-3 border-b border-border-subtle hover:bg-bg-surface/50 cursor-pointer transition-colors"
 					@click="emit('selectLog', log._id)"
 				>
-					<span :class="['inline-flex items-center px-2 py-0.5 rounded text-xs font-medium shrink-0', statusColor(log.status)]">
+					<span
+						:class="[
+							'inline-flex items-center px-2 py-0.5 rounded text-xs font-medium shrink-0',
+							statusColor(log.status),
+						]"
+					>
 						{{ log.status }}
 					</span>
 					<span class="text-sm text-text-primary min-w-0 truncate">
@@ -229,7 +264,9 @@ function formatJson(value: unknown) {
 					<Icon name="lucide:scroll-text" class="w-8 h-8 text-text-tertiary" />
 				</div>
 				<p class="text-text-secondary font-medium">No delivery logs yet</p>
-				<p class="text-sm text-text-tertiary mt-1">Send a test webhook to see delivery logs here.</p>
+				<p class="text-sm text-text-tertiary mt-1">
+					Send a test webhook to see delivery logs here.
+				</p>
 				<button
 					class="btn btn-primary gap-2 mt-4"
 					:disabled="isSendingTest"
