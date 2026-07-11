@@ -142,26 +142,64 @@ export interface WebviewFileDropHandlers {
 }
 
 /**
- * Subscribe to OS-level file drops onto the app window. Tauri intercepts
- * native drags (the webview's HTML5 `drop` never sees them), so desktop drop
- * support must go through this event. Resolves to an unlisten function.
+ * All active drop subscribers. A single module-level Tauri drag-drop listener
+ * (registered lazily below) reads each drop's paths **once** and fans the
+ * resulting `File[]` out to every subscriber, which hit-tests independently.
+ *
+ * Reading per-subscriber would be wrong: each read goes through
+ * `read_authorized_file`, which consumes the Rust one-shot allowlist entry, so
+ * with 2+ mounted zones (stacked popup composers, an inline reply + a popup, the
+ * CSV modal open over a composer) only the first-registered listener's read of a
+ * path would succeed and every other zone would get `[]` — its drop silently
+ * no-ops. Single-read + fan-out also avoids shipping the file bytes over IPC
+ * once per mounted zone.
+ */
+const dropSubscribers = new Set<WebviewFileDropHandlers>();
+
+/** The shared drag-drop listener registration, created on the first subscriber. */
+let dragDropListener: Promise<() => void> | null = null;
+
+/** Run `visit` for each current subscriber over a snapshot (so a subscriber
+ *  unsubscribing mid-drop can't disturb the iteration). */
+function fanOutToSubscribers(visit: (handlers: WebviewFileDropHandlers) => void): void {
+	for (const handlers of Array.from(dropSubscribers)) visit(handlers);
+}
+
+/** Register the single shared Tauri drag-drop listener once. */
+function ensureDragDropListener(): Promise<() => void> {
+	if (!dragDropListener) {
+		dragDropListener = getCurrentWebview().onDragDropEvent((event) => {
+			const payload = event.payload;
+			if (payload.type === 'enter' || payload.type === 'over') {
+				fanOutToSubscribers((h) => h.onOver?.(payload.position));
+			} else if (payload.type === 'leave') {
+				fanOutToSubscribers((h) => h.onLeave?.());
+			} else if (payload.type === 'drop') {
+				const position = payload.position;
+				// Read each dropped path ONCE, then hand the same `File[]` to every
+				// subscriber. `readFilesFromPaths` never rejects (it skips unreadable
+				// entries), so `onDrop` always fires and every zone can clear its drag
+				// state — even on a folder drop. The `.catch` is belt-and-suspenders.
+				void readFilesFromPaths(payload.paths)
+					.then((files) => fanOutToSubscribers((h) => h.onDrop(files, position)))
+					.catch(() => fanOutToSubscribers((h) => h.onDrop([], position)));
+			}
+		});
+	}
+	return dragDropListener;
+}
+
+/**
+ * Subscribe to OS-level file drops onto the app window. Tauri intercepts native
+ * drags (the webview's HTML5 `drop` never sees them), so desktop drop support
+ * must go through this event. All subscribers share one underlying listener that
+ * reads each drop once and fans the files out (see {@link dropSubscribers}).
+ * Resolves to an unsubscribe function.
  */
 export async function onWebviewFileDrop(handlers: WebviewFileDropHandlers): Promise<() => void> {
-	const unlisten = await getCurrentWebview().onDragDropEvent((event) => {
-		const payload = event.payload;
-		if (payload.type === 'enter' || payload.type === 'over') {
-			handlers.onOver?.(payload.position);
-		} else if (payload.type === 'leave') {
-			handlers.onLeave?.();
-		} else if (payload.type === 'drop') {
-			const position = payload.position;
-			// `readFilesFromPaths` never rejects (it skips unreadable entries), so
-			// `onDrop` always fires and the drop UI can always clear its drag state
-			// — even on a folder drop. The `.catch` is a belt-and-suspenders guard.
-			void readFilesFromPaths(payload.paths)
-				.then((files) => handlers.onDrop(files, position))
-				.catch(() => handlers.onDrop([], position));
-		}
-	});
-	return unlisten;
+	dropSubscribers.add(handlers);
+	await ensureDragDropListener();
+	return () => {
+		dropSubscribers.delete(handlers);
+	};
 }
