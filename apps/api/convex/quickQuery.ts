@@ -26,7 +26,7 @@ import { v } from 'convex/values';
 import { embed } from 'ai';
 import { authedAction } from './lib/authedFunctions';
 import { internal } from './_generated/api';
-import { getEmbeddingModel, resolveLanguageModel } from './lib/llmProvider';
+import { resolveEmbeddingModel, resolveLanguageModel } from './lib/llmProvider';
 import { runLlmText } from './lib/llm/dispatch';
 import { scrubForInjection, clampText } from './assistant/prompt';
 import { logInfo } from './lib/runtimeLog';
@@ -74,8 +74,11 @@ export const ask = authedAction({
 		// Fail-soft: on any embed error we fall through with no vector and each seam
 		// re-embeds from `queryText` itself (or degrades to no vector recall).
 		let embedding: number[] | undefined;
+		// Resolve OUTSIDE the try so a misconfigured embedder surfaces an actionable
+		// error; only a transient embed() failure falls soft to no-vector recall.
+		const embeddingModel = await resolveEmbeddingModel(ctx);
 		try {
-			const res = await embed({ model: getEmbeddingModel(), value: question });
+			const res = await embed({ model: embeddingModel, value: question });
 			embedding = Array.from(res.embedding);
 		} catch (error) {
 			logInfo('[quickQuery] embed failed', { error: String(error) });

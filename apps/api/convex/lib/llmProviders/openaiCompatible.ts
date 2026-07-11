@@ -11,9 +11,14 @@
  * non-reversible hash of the key, never a slice of the raw secret.
  */
 
-import type { LanguageModel } from 'ai';
+import type { EmbeddingModel, LanguageModel } from 'ai';
 import { type OpenAICompatibleClient, openAICompatibleClient } from './clientCache';
-import type { LanguageProviderAdapter, ProviderClientConfig } from './types';
+import type {
+	EmbeddingClientConfig,
+	EmbeddingProviderAdapter,
+	LanguageProviderAdapter,
+	ProviderClientConfig,
+} from './types';
 
 const clientCache = new Map<string, OpenAICompatibleClient>();
 
@@ -39,6 +44,22 @@ export const openaiCompatibleLanguageAdapter: LanguageProviderAdapter<'openaiCom
 		return compatibleClient(cfg)(modelId);
 	},
 	validateCredentials(cfg: ProviderClientConfig): void {
+		requireBaseUrl(cfg);
+	},
+};
+
+export const openaiCompatibleEmbeddingAdapter: EmbeddingProviderAdapter<'openaiCompatible'> = {
+	kind: 'openaiCompatible',
+	label: 'OpenAI-compatible (custom)',
+	// A custom server's native width — validated at write time by the guard.
+	dimensions: 768,
+	isLocal: true,
+	defaultBaseUrl: 'http://localhost:11434/v1',
+	defaultModel: 'nomic-embed-text',
+	buildEmbeddingModel(cfg: EmbeddingClientConfig): EmbeddingModel {
+		return compatibleClient(cfg).textEmbeddingModel(cfg.modelId);
+	},
+	validateCredentials(cfg: EmbeddingClientConfig): void {
 		requireBaseUrl(cfg);
 	},
 };
