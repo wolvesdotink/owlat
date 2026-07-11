@@ -122,6 +122,11 @@ const topicAssignmentSummary = computed(() => {
 					@change="csvImport.handleFileSelect"
 				/>
 				<div
+					:ref="
+						(el) => {
+							csvImport.dropRootRef.value = el as HTMLElement | null;
+						}
+					"
 					:class="[
 						'border-2 border-dashed rounded-xl p-8 text-center transition-colors cursor-pointer',
 						csvImport.isDragging.value
