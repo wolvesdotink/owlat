@@ -40,13 +40,24 @@ const MAX_FILE_BYTES: u64 = 50 * 1024 * 1024;
 /// by a native pick ([`pick_files`]) or an OS drop ([`remember_dropped_paths`]);
 /// consumed (removed) by [`read_authorized_file`]. This is the whole security
 /// boundary: a path the webview names that isn't here is refused.
+///
+/// Each pick/drop *replaces* the whole set (generation clearing) rather than
+/// accumulating: a path dropped where nothing reads it (e.g. onto the dashboard,
+/// settings or the reader pane, with no `osFileDrop` zone mounted) would
+/// otherwise stay authorized for the rest of the session. Bounding it to the
+/// most recent gesture means a later webview compromise can't harvest files the
+/// user once dropped anywhere on the window. Legitimate reads arrive within
+/// milliseconds of the pick/drop, well before the next one supersedes them.
 #[derive(Default)]
 pub struct AllowedReads(Mutex<HashSet<PathBuf>>);
 
 impl AllowedReads {
-    fn allow(&self, path: PathBuf) {
+    /// Replace the entire allowlist with `paths` (generation clearing) — see the
+    /// type doc for why each gesture supersedes the previous generation.
+    fn replace(&self, paths: impl IntoIterator<Item = PathBuf>) {
         if let Ok(mut set) = self.0.lock() {
-            set.insert(path);
+            set.clear();
+            set.extend(paths);
         }
     }
 
@@ -59,13 +70,12 @@ impl AllowedReads {
     }
 }
 
-/// Record OS-dropped paths as authorized reads. Called from the window's
-/// `DragDrop` handler in `main.rs`, which is the only place a drop's real paths
-/// are known to the Rust side.
+/// Record OS-dropped paths as the current authorized-read generation. Called
+/// from the window's `DragDrop` handler in `main.rs`, which is the only place a
+/// drop's real paths are known to the Rust side. Replaces any prior generation
+/// so unconsumed entries from an earlier drop/pick don't linger.
 pub fn remember_dropped_paths(state: &AllowedReads, paths: &[PathBuf]) {
-    for path in paths {
-        state.allow(path.clone());
-    }
+    state.replace(paths.iter().cloned());
 }
 
 /// A picker format filter, mirroring the JS `FilePickerFilter`.
@@ -115,9 +125,7 @@ pub async fn pick_files(
         .filter_map(|path| path.into_path().ok())
         .collect();
 
-    for path in &paths {
-        allow.allow(path.clone());
-    }
+    allow.replace(paths.iter().cloned());
     Ok(paths
         .iter()
         .map(|path| path.to_string_lossy().into_owned())

@@ -74,7 +74,9 @@ fn main() {
         // Capture OS-level file drops in Rust so `read_authorized_file` will
         // serve their bytes. This runs synchronously in the event loop before
         // the webview's drag-drop event is delivered, so by the time JS invokes
-        // the read command the dropped paths are already authorized.
+        // the read command the dropped paths are already authorized. Each drop
+        // replaces the previous authorized-read generation (see files.rs), so a
+        // drop where no zone reads the files doesn't leave them readable forever.
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {
                 let allow = window.state::<files::AllowedReads>();
