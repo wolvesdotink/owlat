@@ -11,10 +11,7 @@ import { internalMutation } from '../_generated/server';
 import { authedMutation, publicQuery } from '../lib/authedFunctions';
 import { requireMailboxAccess } from './permissions';
 import { throwForbidden, throwInvalidInput } from '../_utils/errors';
-
-function canonical(addr: string): string {
-	return addr.trim().toLowerCase();
-}
+import { normalizeEmail } from '@owlat/shared';
 
 // ─── Pure frecency ranking (recency × frequency blend) ───────────────────────
 // Exported for unit tests. The autocomplete ordering blends how *recently* a
@@ -157,7 +154,7 @@ export const senderState = publicQuery({
 		};
 		const owned = await requireMailboxAccess(ctx, args.mailboxId);
 		if (!owned.ok) return empty;
-		const email = canonical(args.email);
+		const email = normalizeEmail(args.email);
 		const settings = await ctx.db
 			.query('mailUserSettings')
 			.withIndex('by_user', (q) => q.eq('userId', owned.mailbox.userId))
@@ -191,7 +188,7 @@ export const upsert = authedMutation({
 	handler: async (ctx, args) => {
 		const owned = await requireMailboxAccess(ctx, args.mailboxId);
 		if (!owned.ok) throwForbidden('Mailbox not accessible');
-		const email = canonical(args.email);
+		const email = normalizeEmail(args.email);
 		if (!email.includes('@')) throwInvalidInput('Invalid email');
 
 		const now = Date.now();
@@ -245,7 +242,7 @@ export const setVip = authedMutation({
 	handler: async (ctx, args) => {
 		const owned = await requireMailboxAccess(ctx, args.mailboxId);
 		if (!owned.ok) throwForbidden('Mailbox not accessible');
-		const email = canonical(args.email);
+		const email = normalizeEmail(args.email);
 		if (!email.includes('@')) throwInvalidInput('Invalid email');
 		const now = Date.now();
 		const existing = await ctx.db
@@ -284,7 +281,7 @@ export const acceptSender = authedMutation({
 	handler: async (ctx, args) => {
 		const owned = await requireMailboxAccess(ctx, args.mailboxId);
 		if (!owned.ok) throwForbidden('Mailbox not accessible');
-		const email = canonical(args.email);
+		const email = normalizeEmail(args.email);
 		if (!email.includes('@')) throwInvalidInput('Invalid email');
 		const now = Date.now();
 		const existing = await ctx.db
@@ -317,7 +314,7 @@ export const internalRecordRecipients = internalMutation({
 	handler: async (ctx, args) => {
 		const now = Date.now();
 		for (const raw of args.emails) {
-			const email = canonical(raw);
+			const email = normalizeEmail(raw);
 			if (!email.includes('@')) continue;
 			const existing = await ctx.db
 				.query('mailContacts')

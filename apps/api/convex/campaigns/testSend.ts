@@ -9,6 +9,7 @@ import { composeForSend } from '../delivery/sendComposition';
 import { formatFromAddress } from '../lib/emailProviders/domainVerification';
 import { senderNotAllowedMessage } from './senders';
 import { isValidEmail } from '../lib/inputGuards';
+import { normalizeEmail } from '@owlat/shared';
 import {
 	throwNotFound,
 	throwInvalidInput,
@@ -40,7 +41,7 @@ async function guardTestSend(
 	}
 	const allowedSet = new Set(allowed);
 	for (const email of recipients) {
-		if (!allowedSet.has(email.trim().toLowerCase())) {
+		if (!allowedSet.has(normalizeEmail(email))) {
 			throwForbidden(
 				`Test emails can only be sent to your organization's own member addresses. "${email}" is not a member of this organization.`
 			);

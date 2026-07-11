@@ -15,6 +15,7 @@ import { resolveAllowedFromAddressesForCtx } from './identities';
 import { rebuildThreadAggregates } from './messageActions';
 import { bumpFolderModseq } from './folders';
 import { normalizeSubject } from '../lib/emailAddress';
+import { normalizeEmail } from '@owlat/shared';
 
 /**
  * Error string used by APPEND to signal a from-address violation. The
@@ -662,7 +663,7 @@ export const appendMessage = internalMutation({
 		// own Sent folder with a fabricated "From: ceo@org.com" entry that
 		// later flows into "resend from Sent" UI as a real spoof.
 		const allowedFrom = await resolveAllowedFromAddressesForCtx(ctx, folder.mailboxId);
-		if (!allowedFrom.includes(args.fromAddress.trim().toLowerCase())) {
+		if (!allowedFrom.includes(normalizeEmail(args.fromAddress))) {
 			throw new Error(FROM_NOT_AUTHORIZED_ERROR);
 		}
 

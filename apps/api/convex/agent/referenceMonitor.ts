@@ -27,7 +27,7 @@
  * classifier — keep every check deterministic and cheap.
  */
 
-import { parseAddress } from '@owlat/shared';
+import { normalizeEmail, parseAddress } from '@owlat/shared';
 import { stripRemoteImages } from '@owlat/shared/postboxTrackers';
 import { detectSecretLeak } from '../lib/secretLeakScan';
 
@@ -39,11 +39,6 @@ import { detectSecretLeak } from '../lib/secretLeakScan';
  */
 export function deriveAuthenticatedRecipient(inboundFrom: string): string | undefined {
 	return parseAddress(inboundFrom)?.address;
-}
-
-/** Canonicalize an address for equality: trim + lowercase (addresses are ASCII-cased). */
-function normalizeEmail(address: string): string {
-	return address.trim().toLowerCase();
 }
 
 export interface OutboundHtmlSanitizeResult {

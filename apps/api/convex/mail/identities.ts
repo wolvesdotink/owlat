@@ -21,10 +21,7 @@ import { publicQuery } from '../lib/authedFunctions';
 import type { QueryCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { loadReadableMailbox, requireMailboxAccess } from './permissions';
-
-function canonical(addr: string): string {
-	return addr.trim().toLowerCase();
-}
+import { normalizeEmail } from '@owlat/shared';
 
 /**
  * Shared helper for v8 mutations/queries: read the allowed-from set
@@ -41,8 +38,8 @@ export async function resolveAllowedFromAddressesForCtx(
 		.withIndex('by_target', (q) => q.eq('targetMailboxId', mailboxId))
 		.collect(); // bounded: aliases pointing at one target
 	const set = new Set<string>();
-	set.add(canonical(mailbox.address));
-	for (const a of aliases) set.add(canonical(a.alias));
+	set.add(normalizeEmail(mailbox.address));
+	for (const a of aliases) set.add(normalizeEmail(a.alias));
 	return Array.from(set);
 }
 
@@ -181,7 +178,7 @@ export async function isSanctionedSendAsForUser(
 		userId: string;
 	}
 ): Promise<boolean> {
-	const canon = canonical(params.fromAddress);
+	const canon = normalizeEmail(params.fromAddress);
 	const allowed = await resolveAllowedFromAddressesForCtx(ctx, params.sendingMailboxId);
 	if (!allowed.includes(canon)) return false;
 	// Team / own identity: the sender is composing directly from this mailbox.
