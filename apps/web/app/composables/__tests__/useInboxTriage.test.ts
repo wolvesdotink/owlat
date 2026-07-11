@@ -53,7 +53,6 @@ beforeEach(() => {
 	removeToast.mockClear();
 	// The pending inverse lives at module scope — drop any leftover entry.
 	usePostboxTriageUndo().dismiss();
-	stateBuckets = new Map();
 });
 
 afterEach(() => {
