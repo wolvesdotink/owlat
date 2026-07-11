@@ -43,6 +43,23 @@ export function useSegmentForm() {
 	});
 	const isSaving = ref(false);
 
+	// Dirty tracking for the unsaved-changes guard: snapshot the form when the
+	// builder opens, then compare against it. Only meaningful while the modal is
+	// open, so closing (which clears `isSegmentModalOpen`) reports clean.
+	const formSnapshot = ref('');
+	const serializeForm = () =>
+		JSON.stringify({
+			name: segmentForm.name,
+			description: segmentForm.description,
+			filters: segmentForm.filters,
+		});
+	const snapshotForm = () => {
+		formSnapshot.value = serializeForm();
+	};
+	const isSegmentFormDirty = computed(
+		() => isSegmentModalOpen.value && serializeForm() !== formSnapshot.value
+	);
+
 	// ─── Audience-Size Estimate (debounced, non-reactive) ──────────────
 	// countMatchingContacts is an action (it walks the contacts table to count
 	// matches), so we call it imperatively on a debounce when the builder is open
@@ -52,7 +69,7 @@ export function useSegmentForm() {
 	const matchingCount = ref<number | null>(null);
 	const { run: estimateAudience, isLoading: countLoading } = useBackendOperation(
 		api.segments.countMatchingContacts,
-		{ label: 'Estimate audience size', type: 'action' },
+		{ label: 'Estimate audience size', type: 'action' }
 	);
 	let countTimer: ReturnType<typeof setTimeout> | null = null;
 	// Monotonic token: the action resolves out of order (its duration varies with
@@ -78,7 +95,7 @@ export function useSegmentForm() {
 				}
 			}, 400);
 		},
-		{ deep: true },
+		{ deep: true }
 	);
 
 	if (getCurrentInstance()) {
@@ -102,6 +119,7 @@ export function useSegmentForm() {
 		segmentForm.description = '';
 		segmentForm.filters = { logic: 'AND', conditions: [] };
 		resetErrors();
+		snapshotForm();
 		isSegmentModalOpen.value = true;
 	};
 
@@ -117,6 +135,7 @@ export function useSegmentForm() {
 		segmentForm.description = segment.description || '';
 		segmentForm.filters = segment.filters ?? { logic: 'AND', conditions: [] };
 		resetErrors();
+		snapshotForm();
 		isSegmentModalOpen.value = true;
 	};
 
@@ -227,6 +246,7 @@ export function useSegmentForm() {
 		segmentForm,
 		segmentErrors,
 		isSaving,
+		isSegmentFormDirty,
 
 		// Matching count
 		matchingCount,
