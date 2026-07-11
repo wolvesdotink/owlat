@@ -26,16 +26,23 @@ const userId = computed(() => user.value?.id ?? null);
 const { currentMailbox, isLoading: mailboxLoading } = usePostboxMailbox();
 const mailbox = computed(() => currentMailbox.value);
 
-// Whether this instance can ACTUALLY send. Without a configured transport a test
-// send is silently dropped and never records `firstSendDone` (gated server-side
-// in `mail.drafts.send`), so we must not offer a "completes onboarding" button
-// that can't complete anything — we reframe the step as an honest "your admin is
-// still setting up sending" note instead.
-const { data: transport, isLoading: transportLoading } = useConvexQuery(
-	api.delivery.status.getTransportSummary,
-	{}
+// Whether a test send from THIS mailbox would actually leave the instance.
+// Wraps the same server-side resolution `mail.drafts.send` gates `firstSendDone`
+// on (the mailbox's real transport — MTA for hosted, mail-sync worker for a
+// connected external account), so the button and the completion never disagree:
+// without a transport the send is silently dropped and never records the step,
+// so we must not offer a "completes onboarding" button that can't complete
+// anything — we reframe the step as an honest "your admin is still setting up
+// sending" note instead. Subscribes via useOrganizationQuery (session-gated) and
+// skips until the reserved mailbox has resolved, like the delivery cards do.
+const { data: canSendData, isLoading: transportLoading } = useOrganizationQuery(
+	api.mail.drafts.canSendFrom,
+	() => {
+		const mb = mailbox.value;
+		return mb ? { mailboxId: mb._id } : undefined;
+	}
 );
-const canSend = computed(() => transport.value?.canSend ?? false);
+const canSend = computed(() => canSendData.value ?? false);
 
 // ── Two-minute setup fields ──
 const displayName = ref('');
