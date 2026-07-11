@@ -50,6 +50,14 @@ export const mailTables = {
 		displayName: v.optional(v.string()),
 		createdAt: v.number(),
 		createdByUserId: v.string(), // inviter — audit only
+		// Set when the invitee ACCEPTS while the domain is still unverified: the
+		// claim is parked in "awaiting_domain" and stamped with the accepting
+		// BetterAuth userId. The verify-time sweep provisions ONLY rows carrying
+		// this id, using it directly — so acceptance, org-match and identity
+		// binding are facts recorded at accept time, never re-derived by email
+		// (which would wrongly provision a not-yet-accepted registrant and miss
+		// mixed-case profile emails). Absent ⇒ nobody has accepted yet.
+		acceptedByUserId: v.optional(v.string()),
 	})
 		.index('by_invitation', ['invitationId'])
 		.index('by_address', ['address'])

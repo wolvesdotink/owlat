@@ -33,7 +33,12 @@ import {
 	throwNotFound,
 } from '../_utils/errors';
 import { markOnboardingStep } from '../auth/userOnboarding';
-import { canonicalAddress, createProvisionedMailbox, getActiveMailboxForUser } from './mailbox';
+import {
+	canonicalAddress,
+	createProvisionedMailbox,
+	getActiveMailboxForUser,
+	isDomainVerified,
+} from './mailbox';
 import { claimReservedMailbox } from './pendingMailbox';
 import type { Id } from '../_generated/dataModel';
 
@@ -182,11 +187,7 @@ export const freshStartStatus = authedQuery({
 				.first();
 			reservedAddress = pending?.address ?? null;
 			if (pending) {
-				const domainRow = await ctx.db
-					.query('domains')
-					.withIndex('by_domain', (q) => q.eq('domain', pending.domain))
-					.first();
-				reservationAwaitingDomain = !domainRow || domainRow.status !== 'verified';
+				reservationAwaitingDomain = !(await isDomainVerified(ctx, pending.domain));
 			}
 		}
 

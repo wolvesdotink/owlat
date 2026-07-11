@@ -29,7 +29,7 @@ const { run: claimPendingMailbox } = useBackendOperation(
 	{ label: 'Claim mailbox' }
 );
 const { run: claimInboxMemberships } = useBackendOperation(
-	api.mail.pendingMailbox.claimInboxMemberships,
+	api.mail.pendingInboxMembership.claimInboxMemberships,
 	{ label: 'Join team inbox' }
 );
 
@@ -80,7 +80,7 @@ async function handleAcceptInvitation() {
 		});
 		if (claim?.created) {
 			claimedMailboxAddress.value = claim.address;
-		} else if (claim && !claim.created && claim.error === 'awaiting_domain') {
+		} else if (claim && !claim.created && 'error' in claim && claim.error === 'awaiting_domain') {
 			reservedAwaitingAddress.value = claim.address;
 		}
 

@@ -98,6 +98,24 @@ export function canonicalAddress(raw: string): string {
 }
 
 /**
+ * Is `domain` a sending domain this instance has fully VERIFIED? The one truth
+ * for the invariant the reservation flow hinges on: a hosted mailbox may only be
+ * stood up on a verified domain (inbound mail could not arrive otherwise), and
+ * the fresh-start guard reads a reservation as "activates when your domain
+ * verifies" until this returns true. A missing domains row counts as unverified.
+ */
+export async function isDomainVerified(
+	ctx: QueryCtx | MutationCtx,
+	domain: string
+): Promise<boolean> {
+	const domainRow = await ctx.db
+		.query('domains')
+		.withIndex('by_domain', (q) => q.eq('domain', domain))
+		.first();
+	return domainRow?.status === 'verified';
+}
+
+/**
  * Insert a `mailboxes` row, provision the six system folders, and schedule
  * the MTA cache push. Caller is responsible for the dup-check and any
  * permission gating. Returns the new mailbox id.

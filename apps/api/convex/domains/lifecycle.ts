@@ -55,7 +55,7 @@ import { internalMutation, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { recordAuditLog, type AuditAction } from '../lib/auditLog';
-import { claimReservationsForVerifiedDomain } from '../mail/pendingMailbox';
+import { clearReservationsForDomain } from '../mail/pendingMailbox';
 import { dnsRecordsValidator, verificationResultsValidator } from '../lib/convexValidators';
 import { getOptional } from '../lib/env';
 import { buildDmarcRecordValue, DEFAULT_DMARC_POLICY, dmarcPolicyValidator } from './dmarc';
@@ -489,7 +489,14 @@ async function applyEffects(
 				break;
 			}
 			case 'claim_reserved_mailboxes': {
-				await claimReservationsForVerifiedDomain(ctx, effect.domain);
+				// Scheduled, not inline: a throw while provisioning a reserved mailbox
+				// must never roll back the domain's → verified transition itself (same
+				// reasoning as register_with_provider / delete_with_provider above).
+				await ctx.scheduler.runAfter(
+					0,
+					internal.mail.pendingMailbox.provisionReservationsForVerifiedDomain,
+					{ domain: effect.domain }
+				);
 				break;
 			}
 		}
@@ -905,6 +912,12 @@ export const remove = internalMutation({
 			const adapter = providerFor(providerKind);
 			await adapter.clearIdentity(ctx, args.domainId);
 		}
+
+		// A removed domain will never verify, so any pre-verification mailbox
+		// reservations on it would strand their invitees on "activates when your
+		// domain verifies" forever. Clear them here, atomically with the removal
+		// (mirrors cancelForInvitation).
+		await clearReservationsForDomain(ctx, domainName);
 
 		// Delete the row; provider-side cleanup is best-effort + async.
 		await ctx.db.delete(args.domainId);
