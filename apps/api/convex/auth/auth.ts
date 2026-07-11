@@ -262,7 +262,7 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 					// invite was issued), name the inbox in the email and waiting
 					// membership; otherwise send the generic org invite.
 					const inboxContext = await ctx.runQuery(
-						internal.mail.pendingMailbox.inboxInviteContextForEmail,
+						internal.mail.pendingInboxMembership.inboxInviteContextForEmail,
 						{ organizationId: org.id, email }
 					);
 
