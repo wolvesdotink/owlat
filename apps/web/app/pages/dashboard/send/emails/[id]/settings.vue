@@ -31,14 +31,11 @@ const { run: updateTemplate } = useBackendOperation(api.emailTemplates.emails.up
 	label: 'Save settings',
 });
 // Changing the default language re-keys subject/preview/body — it must route
-// through `setDefaultLanguage` (which promotes the chosen overlay and demotes
-// the old default), not a plain field patch.
+// through `setDefaultLanguage`, not a plain field patch.
 const { run: promoteDefaultLanguage } = useBackendOperation(
 	api.emailTemplates.i18n.setDefaultLanguage,
 	{ label: 'Change default language' }
 );
-
-// Common languages for dropdown
 
 // Form state
 const form = reactive({
@@ -51,12 +48,10 @@ const form = reactive({
 // Translations keyed by language code (only the fields this page edits)
 const translations = ref<Record<string, { subject: string; previewText: string }>>({});
 
-// Full per-language translation payload as last persisted (subject/previewText
-// PLUS fields this page does not edit, e.g. `blocks` written by the Translation
-// Manager). Retained so saving here never drops them.
+// Full per-language translation payload as last persisted, incl. fields this
+// page does not edit (e.g. `blocks`). Retained so saving here never drops them.
 const rawTranslations = ref<Record<string, Record<string, unknown>>>({});
 
-// Track changes
 const isSaving = ref(false);
 
 // The default language as last persisted. Changing the form's defaultLanguage
@@ -91,8 +86,8 @@ const getLanguageNativeLabel = (code: string) => {
 	return lang?.nativeLabel || code;
 };
 
-// Unsaved-changes guard. `onSave` closes over `handleSave` (declared below); it
-// is only invoked later from the navigation guard, by which point it exists.
+// Unsaved-changes guard; `onSave` (late-bound) throws on a failed save so the
+// user stays on the page with their edits.
 const {
 	showDialog: showUnsavedDialog,
 	confirmDiscard,
@@ -105,10 +100,9 @@ const {
 	},
 });
 
-// Load → dirty loop. Reuses the shared editor dirty tracker, which defers its
-// "initialized" flag by a tick so the writes `initialize` makes when the
-// template loads don't trip the change watcher. The old hand-rolled deep watch
-// fired synchronously during init and flashed a false-positive "Unsaved changes".
+// Load → dirty loop via the shared tracker, whose deferred "initialized" flag
+// keeps the writes `initialize` makes on load from tripping the change watcher
+// (the old hand-rolled deep watch fired during init → false-positive "Unsaved").
 const { hasChanges, markClean } = useEditorDirtyTracking({
 	source: template,
 	initialize: (t) => {
@@ -118,12 +112,10 @@ const { hasChanges, markClean } = useEditorDirtyTracking({
 		persistedDefaultLanguage.value = t.defaultLanguage || 'en';
 		form.supportedLanguages = [...(t.supportedLanguages || [])];
 
-		// Parse translations
 		if (t.translations) {
 			try {
 				const parsed = JSON.parse(t.translations);
-				// Extract the editable fields, but retain the full payload per
-				// language so non-edited fields (e.g. `blocks`) survive a save.
+				// Retain the full per-language payload so non-edited fields survive a save.
 				for (const lang of Object.keys(parsed)) {
 					const entry = parsed[lang] && typeof parsed[lang] === 'object' ? parsed[lang] : {};
 					rawTranslations.value[lang] = { ...entry };
@@ -180,18 +172,15 @@ const buildTranslationsJson = () => {
 };
 
 // Save handler. Resolves to whether the save succeeded so the unsaved-changes
-// guard can keep the user on the page (and keep their edits) when it fails.
+// guard keeps the user on the page (with their edits) when it fails.
 const handleSave = async (): Promise<boolean> => {
 	isSaving.value = true;
 	try {
 		const outcome = await emailSettingsSave({
 			persistedDefaultLanguage: persistedDefaultLanguage.value,
 			selectedDefaultLanguage: form.defaultLanguage,
-			// Promotable targets are the languages this save will persist an
-			// overlay for. `buildTranslationsJson()` writes exactly the supported
-			// languages present in `translations.value`, and `emailSettingsSave`
-			// persists that payload (step 1) before the swap (step 2) — so a
-			// just-added overlay is a valid target without needing a prior save.
+			// Promotable targets: `emailSettingsSave` persists this payload before
+			// the swap, so a just-added overlay is valid without a prior save.
 			overlayLanguages: Object.keys(translations.value),
 			updatePayload: {
 				subject: form.subject,
@@ -233,8 +222,7 @@ const handleSave = async (): Promise<boolean> => {
 	}
 };
 
-// Navigation. `router.push` triggers the unsaved-changes route guard when the
-// form is dirty, so a Back click prompts to save/discard instead of dropping edits.
+// Navigation; `router.push` trips the unsaved-changes route guard when dirty.
 const handleBack = () => {
 	router.push(`/dashboard/send/emails/${templateId}/edit`);
 };
