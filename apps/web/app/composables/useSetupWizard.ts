@@ -25,12 +25,18 @@ import {
 	SMTP_RELAY_PRESETS,
 	type SmtpRelayPreset,
 } from '@owlat/shared/setupSendingPresets';
+import { SETUP_DRAFT_STORAGE_KEY, readSetupDraft, serializeSetupDraft } from './setupWizardDraft';
 
 // Re-export the shared preset table and its key type so the setup step (and its
 // tests) keep importing them from this composable; the single source of truth
 // lives in `@owlat/shared/setupSendingPresets`, shared with the setup CLI.
 export { SMTP_RELAY_PRESETS, PROVIDER_ENV_KEYS };
 export type SmtpPreset = SmtpRelayPreset;
+
+// Re-export the draft-persistence surface so the setup pages and tests keep a
+// single import entry point; the implementation lives in `./setupWizardDraft`.
+export { SETUP_DRAFT_STORAGE_KEY, serializeSetupDraft, parseSetupDraft } from './setupWizardDraft';
+export type { SetupDraft } from './setupWizardDraft';
 
 // ── Steps ────────────────────────────────────────────────────────────────────
 
@@ -46,6 +52,16 @@ export type SetupStepId = (typeof SETUP_STEPS)[number]['id'];
 
 /** Mutable copy of {@link SETUP_STEPS} for `useWizard`, which expects `WizardStep[]`. */
 export const SETUP_WIZARD_STEPS = SETUP_STEPS.map((s) => ({ ...s }));
+
+/**
+ * Route path for a step. Each `/setup/*` page is named after its step id, so
+ * this is the single mapping the step indicator uses to jump back to a
+ * completed step. Kept here (not inlined in the pages) so the id⇄route contract
+ * lives next to the step list it derives from.
+ */
+export function setupStepPath(stepId: SetupStepId): string {
+	return `/setup/${stepId}`;
+}
 
 // ── Shared draft types ───────────────────────────────────────────────────────
 
@@ -327,18 +343,101 @@ export function useSetupWizard() {
 	const admin = useState<AdminDraft>('setupAdmin', () => ({ email: '', name: '', password: '' }));
 	// "Moving from another platform, or starting fresh?" — default fresh (false).
 	const isMigrationMode = useState<boolean>('setupMigrationMode', () => false);
+	// One-time setup token from `owlat setup`; sent in the X-Setup-Token header on
+	// the privileged endpoints. Shared across steps and persisted like the rest.
+	const setupToken = useState<string>('setupToken', () => '');
+	// Set once launch succeeds — disarms the unload warning and stops persisting.
+	const completed = useState<boolean>('setupCompleted', () => false);
+
+	// Client-only: restore any saved draft, then mirror every change back into
+	// sessionStorage so a refresh or accidental back-navigation out of /setup/*
+	// no longer wipes the collected config, and warn before an actual tab close
+	// while the draft still holds data. `useState` bakes SSR state into the
+	// payload and does NOT re-run its initializer on the client, so the restore
+	// has to happen explicitly here rather than in the initializers above.
+	if (import.meta.client) {
+		const hydrated = useState<boolean>('setupHydrated', () => false);
+		if (!hydrated.value) {
+			const stored = readSetupDraft();
+			if (stored) {
+				if (stored.flags) flags.value = { ...getDefaultFlags(), ...stored.flags };
+				if (stored.env) env.value = { ...stored.env };
+				if (stored.admin) admin.value = { ...admin.value, ...stored.admin };
+				if (typeof stored.isMigrationMode === 'boolean') {
+					isMigrationMode.value = stored.isMigrationMode;
+				}
+				if (typeof stored.token === 'string') setupToken.value = stored.token;
+			}
+			hydrated.value = true;
+		}
+
+		watch(
+			[flags, env, admin, isMigrationMode, setupToken],
+			() => {
+				if (completed.value) return;
+				try {
+					sessionStorage.setItem(
+						SETUP_DRAFT_STORAGE_KEY,
+						serializeSetupDraft({
+							flags: flags.value,
+							env: env.value,
+							admin: admin.value,
+							isMigrationMode: isMigrationMode.value,
+							token: setupToken.value,
+						})
+					);
+				} catch {
+					// Storage full/unavailable — persistence is best-effort, never fatal.
+				}
+			},
+			{ deep: true }
+		);
+
+		const hasDraftData = (): boolean =>
+			admin.value.email !== '' ||
+			admin.value.name !== '' ||
+			admin.value.password !== '' ||
+			setupToken.value !== '' ||
+			Object.keys(env.value).length > 0;
+
+		const onBeforeUnload = (e: BeforeUnloadEvent) => {
+			if (!completed.value && hasDraftData()) {
+				e.preventDefault();
+				e.returnValue = '';
+			}
+		};
+		onMounted(() => window.addEventListener('beforeunload', onBeforeUnload));
+		onUnmounted(() => window.removeEventListener('beforeunload', onBeforeUnload));
+	}
 
 	const resolved = computed(() => resolveFlags(flags.value));
 	const requiresProvider = computed(() => needsDeliveryProvider(flags.value));
 	const summary = computed(() => buildSetupSummary(flags.value, env.value, admin.value));
+
+	/**
+	 * Mark the wizard finished: drop the persisted draft and disarm the unload
+	 * warning so the post-apply redirect isn't blocked. Call once apply succeeds.
+	 */
+	function completeSetup(): void {
+		completed.value = true;
+		if (typeof sessionStorage !== 'undefined') {
+			try {
+				sessionStorage.removeItem(SETUP_DRAFT_STORAGE_KEY);
+			} catch {
+				// Best-effort — a failed clear only leaves a stale draft, not a crash.
+			}
+		}
+	}
 
 	return {
 		flags,
 		env,
 		admin,
 		isMigrationMode,
+		setupToken,
 		resolved,
 		requiresProvider,
 		summary,
+		completeSetup,
 	};
 }
