@@ -265,10 +265,7 @@ async function handleRemoveSuppression() {
 							Cancel
 						</button>
 						<button class="btn btn-primary gap-2" :disabled="isSaving" @click="saveChanges">
-							<div
-								v-if="isSaving"
-								class="w-4 h-4 border-2 border-bg-deep border-t-transparent rounded-full animate-spin"
-							/>
+							<UiSpinner v-if="isSaving" size="xs" tone="inverse" />
 							<Icon v-else name="lucide:save" class="w-4 h-4" />
 							Save Changes
 						</button>
@@ -795,10 +792,7 @@ async function handleRemoveSuppression() {
 								:disabled="isDeleting"
 								@click="confirmDelete"
 							>
-								<div
-									v-if="isDeleting"
-									class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"
-								/>
+								<UiSpinner v-if="isDeleting" class="mr-2" size="xs" tone="inverse" />
 								{{ isDeleting ? 'Deleting...' : 'Delete Contact' }}
 							</button>
 						</div>

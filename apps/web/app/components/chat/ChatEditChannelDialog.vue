@@ -25,7 +25,7 @@ const visibility = ref<'public' | 'private'>(props.initialVisibility);
 const error = ref<string | null>(null);
 const { run: updateChannel, isLoading: isSaving } = useBackendOperation(
 	api.chat.rooms.updateChannel,
-	{ label: 'Update channel', inlineTarget: error },
+	{ label: 'Update channel', inlineTarget: error }
 );
 
 const handleSubmit = async () => {
@@ -50,8 +50,11 @@ const handleSubmit = async () => {
 	<ChatDialogShell title="Edit channel" @close="emit('close')">
 		<div class="px-5 py-4 space-y-4">
 			<div>
-				<label for="edit-name" class="block text-sm font-medium text-text-secondary mb-1.5">Name</label>
-				<input id="edit-name"
+				<label for="edit-name" class="block text-sm font-medium text-text-secondary mb-1.5"
+					>Name</label
+				>
+				<input
+					id="edit-name"
 					v-model="name"
 					type="text"
 					placeholder="e.g. general"
@@ -63,7 +66,8 @@ const handleSubmit = async () => {
 				<label for="edit-description" class="block text-sm font-medium text-text-secondary mb-1.5">
 					Description <span class="text-text-tertiary font-normal">(optional)</span>
 				</label>
-				<input id="edit-description"
+				<input
+					id="edit-description"
 					v-model="description"
 					type="text"
 					placeholder="What is this channel about?"
@@ -110,10 +114,7 @@ const handleSubmit = async () => {
 				:disabled="!name.trim() || isSaving"
 				@click="handleSubmit"
 			>
-				<div
-					v-if="isSaving"
-					class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"
-				/>
+				<UiSpinner v-if="isSaving" size="xs" tone="inverse" />
 				<Icon v-else name="lucide:check" class="w-4 h-4" />
 				Save
 			</button>

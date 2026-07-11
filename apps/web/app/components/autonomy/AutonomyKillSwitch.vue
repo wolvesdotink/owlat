@@ -56,10 +56,7 @@ const handleConfirm = () => {
 						:disabled="busy"
 						@click="handleConfirm"
 					>
-						<div
-							v-if="busy"
-							class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"
-						/>
+						<UiSpinner v-if="busy" size="xs" tone="inverse" />
 						<Icon v-else name="lucide:check" class="w-4 h-4" />
 						Yes, stop now
 					</button>
