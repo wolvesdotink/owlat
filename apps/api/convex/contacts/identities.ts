@@ -11,7 +11,7 @@ import { internalMutation, type MutationCtx } from '../_generated/server';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import type { Doc } from '../_generated/dataModel';
-import { throwAlreadyExists, throwNotFound } from '../_utils/errors';
+import { getOrThrow, throwAlreadyExists } from '../_utils/errors';
 import { logInfo } from '../lib/runtimeLog';
 import { mergeContactRelations } from '../lib/contactMutations';
 import { decrementContactCount } from '../lib/contactCountHelpers';
@@ -231,9 +231,8 @@ export const mergeContacts = authedMutation({
 			'Only owners and admins can manage contacts'
 		);
 
-		const target = await ctx.db.get(args.targetContactId);
-		const source = await ctx.db.get(args.sourceContactId);
-		if (!target || !source) throwNotFound('Contact');
+		const target = await getOrThrow(ctx, args.targetContactId, 'Contact');
+		const source = await getOrThrow(ctx, args.sourceContactId, 'Contact');
 
 		// Repoint EVERY contact-owned row (identities, relationships, topic
 		// memberships, property values, activities, sends, automation runs, form
