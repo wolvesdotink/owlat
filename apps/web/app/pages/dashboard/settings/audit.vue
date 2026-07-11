@@ -216,8 +216,13 @@ const dateRangeOptions = [
 			</p>
 		</div>
 
-		<!-- First-load skeleton (shaped like the audit-log table) -->
-		<div v-else-if="isLoading && !auditLogsData" class="card overflow-hidden">
+		<!-- First-load skeleton (shaped like the audit-log table). Gated on the
+		     accumulated rows, not the raw page: a Load More briefly resets
+		     auditLogsData to undefined while the next page resubscribes, but page 1
+		     stays in accumulatedLogs, so the rows never blank back to the skeleton
+		     mid-session. A filter change clears accumulatedLogs synchronously, so it
+		     still shows the first-load skeleton as intended. -->
+		<div v-else-if="isLoading && accumulatedLogs.length === 0" class="card overflow-hidden">
 			<DashboardListSkeleton variant="table" :columns="5" :rows="8" />
 		</div>
 
