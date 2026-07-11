@@ -13,7 +13,7 @@ import schema from '../../schema';
 import type { Id } from '../../_generated/dataModel';
 import { api } from '../../_generated/api';
 import { requireMailboxAccess, loadReadableMailbox } from '../permissions';
-import { modules, seedMailbox } from './helpers';
+import { modules, seedMailbox } from './helpers.testlib';
 
 const sessionMocks = vi.hoisted(() => ({
 	getBetterAuthSessionWithRole: vi.fn(),
