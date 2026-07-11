@@ -6,18 +6,16 @@
  * can always find the instructions (no chicken-and-egg where the guidance is
  * hidden behind the very flag they're trying to turn on).
  */
-import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 
 // `useBackendOperation` is a Nuxt auto-import the SFC references as a bare
-// global; stub it before the component module is evaluated so the reverse-DNS
-// preflight is inert in the test.
-beforeAll(() => {
-	vi.stubGlobal('useBackendOperation', () => ({
-		run: vi.fn(async () => undefined),
-		isLoading: ref(false),
-	}));
-});
+// global; stub it at module top-level so it is in place before `mount()`
+// triggers the component's `setup()` and the reverse-DNS preflight is inert. The
+// component only destructures `run`, so that is all the stub needs to expose.
+vi.stubGlobal('useBackendOperation', () => ({
+	run: vi.fn(async () => undefined),
+}));
 
 import ReceivingDnsSection from '../ReceivingDnsSection.vue';
 
