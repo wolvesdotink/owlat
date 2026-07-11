@@ -14,19 +14,11 @@ const mailboxIdRef = computed(() => props.mailboxId);
 const { labels, create, rename, setColor, remove } = usePostboxLabels(mailboxIdRef);
 
 const newName = ref('');
-const newColor = ref('#0a6cdd');
+const newColor = ref(DEFAULT_LABEL_COLOR);
 const editingId = ref<Id<'mailLabels'> | null>(null);
 const editingName = ref('');
 
-const PRESET_COLORS = [
-	'#0a6cdd',
-	'#10b981',
-	'#f59e0b',
-	'#ef4444',
-	'#8b5cf6',
-	'#ec4899',
-	'#6b7280',
-];
+const PRESET_COLORS = LABEL_PRESET_HEXES;
 
 async function handleCreate() {
 	const trimmed = newName.value.trim();
