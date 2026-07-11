@@ -12,6 +12,7 @@
 
 import { v } from 'convex/values';
 import { internalMutation, internalQuery } from '../_generated/server';
+import { normalizeEmail } from '@owlat/shared';
 
 const WINDOW_MS = 60_000;
 const PER_ADDRESS_LIMIT = 5;
@@ -26,7 +27,7 @@ export const recordFailure = internalMutation({
 	},
 	handler: async (ctx, args) => {
 		await ctx.db.insert('mailAuthFailures', {
-			address: args.address.trim().toLowerCase(),
+			address: normalizeEmail(args.address),
 			ip: args.ip,
 			scope: args.scope,
 			occurredAt: Date.now(),
@@ -41,7 +42,7 @@ export const isThrottled = internalQuery({
 	},
 	handler: async (ctx, args): Promise<boolean> => {
 		const cutoff = Date.now() - WINDOW_MS;
-		const lower = args.address.trim().toLowerCase();
+		const lower = normalizeEmail(args.address);
 
 		const byAddr = await ctx.db
 			.query('mailAuthFailures')

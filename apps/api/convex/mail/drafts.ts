@@ -18,6 +18,7 @@ import { internalQuery } from '../_generated/server';
 import { authedMutation, publicQuery } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
+import { normalizeEmail } from '@owlat/shared';
 import { requireMailboxAccess } from './permissions';
 import { resolveSendAsIdentitiesForCtx } from './identities';
 import { getOrThrow, throwForbidden, throwInvalidState, throwNotFound } from '../_utils/errors';
@@ -153,7 +154,7 @@ export const setIdentity = authedMutation({
 		if (!owned.ok) throwForbidden('Draft not accessible');
 		assertStateIs(draft, 'draft');
 
-		const candidate = args.fromAddress.trim().toLowerCase();
+		const candidate = normalizeEmail(args.fromAddress);
 		const identities = await resolveSendAsIdentitiesForCtx(ctx, owned.mailbox, owned.userId);
 		const match = identities.find((i) => i.address === candidate);
 		if (!match) {
