@@ -27,11 +27,9 @@ const footerLinks = {
 				<div>
 					<div class="flex items-center gap-2.5 mb-4">
 						<OwlLogo size="24px" />
-						<span class="text-[0.9375rem] font-semibold tracking-tight text-text-primary"
-							>Owlat</span
-						>
+						<span class="text-md font-semibold tracking-tight text-text-primary">Owlat</span>
 					</div>
-					<p class="text-[0.8125rem] text-text-tertiary leading-[1.7] max-w-[240px]">
+					<p class="text-caption text-text-tertiary leading-[1.7] max-w-[240px]">
 						Email infrastructure for product teams. Campaigns, automations, and transactional sends
 						from one platform.
 					</p>
@@ -40,7 +38,7 @@ const footerLinks = {
 				<!-- Product -->
 				<div>
 					<h4
-						class="font-mono text-[0.625rem] font-medium uppercase tracking-[0.1em] text-text-disabled mb-5"
+						class="font-mono text-2xs font-medium uppercase tracking-[0.1em] text-text-disabled mb-5"
 					>
 						Product
 					</h4>
@@ -48,7 +46,7 @@ const footerLinks = {
 						<li v-for="link in footerLinks.product" :key="link.label">
 							<a
 								:href="link.href"
-								class="text-[0.8125rem] text-text-secondary hover:text-text-primary transition-colors duration-(--motion-fast) no-underline"
+								class="text-caption text-text-secondary hover:text-text-primary transition-colors duration-(--motion-fast) no-underline"
 							>
 								{{ link.label }}
 							</a>
@@ -59,7 +57,7 @@ const footerLinks = {
 				<!-- Developers -->
 				<div>
 					<h4
-						class="font-mono text-[0.625rem] font-medium uppercase tracking-[0.1em] text-text-disabled mb-5"
+						class="font-mono text-2xs font-medium uppercase tracking-[0.1em] text-text-disabled mb-5"
 					>
 						Developers
 					</h4>
@@ -67,7 +65,7 @@ const footerLinks = {
 						<li v-for="link in footerLinks.developers" :key="link.label">
 							<a
 								:href="link.href"
-								class="text-[0.8125rem] text-text-secondary hover:text-text-primary transition-colors duration-(--motion-fast) no-underline"
+								class="text-caption text-text-secondary hover:text-text-primary transition-colors duration-(--motion-fast) no-underline"
 							>
 								{{ link.label }}
 							</a>
@@ -78,7 +76,7 @@ const footerLinks = {
 				<!-- Company -->
 				<div>
 					<h4
-						class="font-mono text-[0.625rem] font-medium uppercase tracking-[0.1em] text-text-disabled mb-5"
+						class="font-mono text-2xs font-medium uppercase tracking-[0.1em] text-text-disabled mb-5"
 					>
 						Company
 					</h4>
@@ -86,7 +84,7 @@ const footerLinks = {
 						<li v-for="link in footerLinks.company" :key="link.label">
 							<a
 								:href="link.href"
-								class="text-[0.8125rem] text-text-secondary hover:text-text-primary transition-colors duration-(--motion-fast) no-underline"
+								class="text-caption text-text-secondary hover:text-text-primary transition-colors duration-(--motion-fast) no-underline"
 							>
 								{{ link.label }}
 							</a>
@@ -99,12 +97,12 @@ const footerLinks = {
 			<div
 				class="flex items-center justify-between pt-10 mt-12 border-t border-border-subtle max-sm:flex-col max-sm:gap-4"
 			>
-				<p class="text-[0.6875rem] text-text-disabled">
+				<p class="text-2xs text-text-disabled">
 					&copy; {{ new Date().getFullYear() }} <a href="https://wolves.ink">Wolves</a>. All rights
 					reserved.
 				</p>
 				<UiThemeToggle
-					class="theme-toggle flex items-center gap-2 text-[0.6875rem] text-text-disabled hover:text-text-tertiary transition-colors duration-(--motion-fast) cursor-pointer bg-transparent border-none p-0"
+					class="theme-toggle flex items-center gap-2 text-2xs text-text-disabled hover:text-text-tertiary transition-colors duration-(--motion-fast) cursor-pointer bg-transparent border-none p-0"
 				>
 					<span>Theme</span>
 				</UiThemeToggle>
