@@ -94,7 +94,7 @@ const hostedFeatures = [
 
 					<a
 						href="https://docs.owlat.app/developer/self-hosting"
-						class="btn btn-primary w-full px-4 py-2.5 text-caption font-semibold no-underline"
+						class="btn btn-primary btn-sm w-full no-underline"
 					>
 						Start self-hosting →
 					</a>
@@ -133,10 +133,7 @@ const hostedFeatures = [
 						</li>
 					</ul>
 
-					<a
-						href="/waitlist"
-						class="btn btn-secondary w-full px-4 py-2.5 text-caption font-semibold no-underline"
-					>
+					<a href="/waitlist" class="btn btn-secondary btn-sm w-full no-underline">
 						Join waitlist
 					</a>
 				</div>
