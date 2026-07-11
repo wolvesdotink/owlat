@@ -69,15 +69,16 @@ export function useTransactionalList() {
 
 	// --- DATA QUERIES ---
 
-	const { data: transactionalEmails, isLoading: emailsLoading } = useOrganizationQuery(
-		api.transactional.emails.list,
-		() => ({
-			status: selectedStatus.value === 'all' ? undefined : selectedStatus.value,
-			search: debouncedSearch.value || undefined,
-			sortBy: currentSort.value.sortBy,
-			sortOrder: currentSort.value.sortOrder,
-		})
-	);
+	const {
+		data: transactionalEmails,
+		isLoading: emailsLoading,
+		error: emailsError,
+	} = useOrganizationQuery(api.transactional.emails.list, () => ({
+		status: selectedStatus.value === 'all' ? undefined : selectedStatus.value,
+		search: debouncedSearch.value || undefined,
+		sortBy: currentSort.value.sortBy,
+		sortOrder: currentSort.value.sortOrder,
+	}));
 
 	const { data: statusCounts } = useOrganizationQuery(api.transactional.emails.countByStatus);
 	const { data: sendCounts } = useOrganizationQuery(api.transactional.sends.getCounts);
@@ -353,6 +354,7 @@ result = response.json()`;
 		statusCounts,
 		sendCounts,
 		isLoading,
+		error: emailsError,
 
 		// Dropdown state
 		dropdownOpenStates,

@@ -14,21 +14,25 @@ const { data: audienceStats, isLoading: statsLoading } = useOrganizationQuery(
 );
 
 // Fetch subscriber growth (last 30 days)
-const { data: subscriberGrowth, isLoading: growthLoading } = useOrganizationQuery(
-	api.contacts.analytics.getSubscriberGrowth
-);
+const {
+	data: subscriberGrowth,
+	isLoading: growthLoading,
+	error: growthError,
+} = useOrganizationQuery(api.contacts.analytics.getSubscriberGrowth);
 
 // Fetch top topics
-const { data: topLists, isLoading: listsLoading } = useOrganizationQuery(
-	api.contacts.analytics.getTopTopics,
-	{ limit: 5 }
-);
+const {
+	data: topLists,
+	isLoading: listsLoading,
+	error: listsError,
+} = useOrganizationQuery(api.contacts.analytics.getTopTopics, { limit: 5 });
 
 // Fetch recent contacts
-const { data: recentContacts, isLoading: contactsLoading } = useOrganizationQuery(
-	api.contacts.analytics.getRecent,
-	{ limit: 5 }
-);
+const {
+	data: recentContacts,
+	isLoading: contactsLoading,
+	error: contactsError,
+} = useOrganizationQuery(api.contacts.analytics.getRecent, { limit: 5 });
 
 // Activity types for filtering
 type ActivityType = 'topic_subscribed' | 'topic_unsubscribed' | 'topic_confirmed' | 'created';
@@ -40,13 +44,14 @@ const subscriberActivityTypes: ActivityType[] = [
 ];
 
 // Fetch recent activity (topic changes and contact creation only)
-const { data: recentActivity, isLoading: activityLoading } = useOrganizationQuery(
-	api.contacts.activities.getRecent,
-	{
-		limit: 10,
-		activityTypes: subscriberActivityTypes,
-	}
-);
+const {
+	data: recentActivity,
+	isLoading: activityLoading,
+	error: activityError,
+} = useOrganizationQuery(api.contacts.activities.getRecent, {
+	limit: 10,
+	activityTypes: subscriberActivityTypes,
+});
 
 // Stats for display
 const stats = computed(() => [
@@ -234,7 +239,6 @@ function getContactName(
 			</div>
 		</div>
 
-		<!-- Two column layout - Growth Chart and Top Topics -->
 		<div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
 			<!-- Subscriber Growth Chart (Last 30 Days) -->
 			<div>
@@ -248,20 +252,20 @@ function getContactName(
 					</span>
 				</div>
 				<div class="card">
-					<!-- Loading state -->
-					<div v-if="growthLoading" class="flex items-center justify-center py-8">
-						<Icon name="lucide:loader-2" class="w-6 h-6 animate-spin text-text-tertiary" />
-					</div>
-
-					<!-- Chart -->
-					<UiBars
-						v-else
-						:data="growthBars"
-						:height="128"
-						:label-every="5"
-						:format-value="(v: number) => `${v.toLocaleString()} new subscribers`"
-						aria-label="New subscribers per day over the last 30 days"
-					/>
+					<UiQueryBoundary
+						:loading="growthLoading"
+						:error="growthError"
+						error-title="Couldn't load subscriber growth"
+						loading-label="Loading chart..."
+					>
+						<UiBars
+							:data="growthBars"
+							:height="128"
+							:label-every="5"
+							:format-value="(v: number) => `${v.toLocaleString()} new subscribers`"
+							aria-label="New subscribers per day over the last 30 days"
+						/>
+					</UiQueryBoundary>
 				</div>
 			</div>
 
@@ -281,70 +285,69 @@ function getContactName(
 					</NuxtLink>
 				</div>
 				<div class="card">
-					<!-- Loading state -->
-					<div v-if="listsLoading" class="flex items-center justify-center py-8">
-						<Icon name="lucide:loader-2" class="w-6 h-6 animate-spin text-text-tertiary" />
-					</div>
-
-					<!-- Empty state -->
-					<div
-						v-else-if="!topLists || topLists.length === 0"
-						class="flex flex-col items-center justify-center py-12 text-center"
+					<UiQueryBoundary
+						:loading="listsLoading"
+						:error="listsError"
+						error-title="Couldn't load top topics"
+						loading-label="Loading topics..."
 					>
-						<UiIconBox
-							icon="lucide:list-plus"
-							size="xl"
-							variant="surface"
-							rounded="full"
-							class="mb-4"
-						/>
-						<p class="text-text-secondary font-medium">No topics yet</p>
-						<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-							Create a topic to organize your contacts.
-						</p>
-						<NuxtLink
-							to="/dashboard/audience/topics?action=create"
-							class="btn btn-primary mt-6 gap-2"
+						<div
+							v-if="!topLists || topLists.length === 0"
+							class="flex flex-col items-center justify-center py-12 text-center"
 						>
-							<Icon name="lucide:plus" class="w-4 h-4" />
-							Create Topic
-						</NuxtLink>
-					</div>
+							<UiIconBox
+								icon="lucide:list-plus"
+								size="xl"
+								variant="surface"
+								rounded="full"
+								class="mb-4"
+							/>
+							<p class="text-text-secondary font-medium">No topics yet</p>
+							<p class="text-sm text-text-tertiary mt-1 max-w-sm">
+								Create a topic to organize your contacts.
+							</p>
+							<NuxtLink
+								to="/dashboard/audience/topics?action=create"
+								class="btn btn-primary mt-6 gap-2"
+							>
+								<Icon name="lucide:plus" class="w-4 h-4" />
+								Create Topic
+							</NuxtLink>
+						</div>
 
-					<!-- Topics -->
-					<div v-else class="divide-y divide-border-subtle">
-						<NuxtLink
-							v-for="list in topLists"
-							:key="list._id"
-							:to="`/dashboard/audience/topics/${list._id}`"
-							class="flex items-center gap-4 py-3 first:pt-0 last:pb-0 hover:bg-bg-surface -mx-4 px-4 transition-colors"
-						>
-							<UiIconBox icon="lucide:mail" size="sm" variant="surface" rounded="lg" />
-							<div class="flex-1 min-w-0">
-								<p class="text-sm text-text-primary truncate font-medium">
-									{{ list.name }}
-								</p>
-								<p class="text-xs text-text-tertiary mt-0.5">
-									{{ list.contactCount.toLocaleString() }} contacts
-								</p>
-							</div>
-							<div class="text-right">
-								<div class="w-16 h-2 bg-bg-surface rounded-full overflow-hidden">
-									<div
-										class="h-full bg-brand rounded-full"
-										:style="{
-											width: `${Math.min((list.contactCount / (audienceStats?.totalContacts || 1)) * 100, 100)}%`,
-										}"
-									/>
+						<div v-else class="divide-y divide-border-subtle">
+							<NuxtLink
+								v-for="list in topLists"
+								:key="list._id"
+								:to="`/dashboard/audience/topics/${list._id}`"
+								class="flex items-center gap-4 py-3 first:pt-0 last:pb-0 hover:bg-bg-surface -mx-4 px-4 transition-colors"
+							>
+								<UiIconBox icon="lucide:mail" size="sm" variant="surface" rounded="lg" />
+								<div class="flex-1 min-w-0">
+									<p class="text-sm text-text-primary truncate font-medium">
+										{{ list.name }}
+									</p>
+									<p class="text-xs text-text-tertiary mt-0.5">
+										{{ list.contactCount.toLocaleString() }} contacts
+									</p>
 								</div>
-							</div>
-						</NuxtLink>
-					</div>
+								<div class="text-right">
+									<div class="w-16 h-2 bg-bg-surface rounded-full overflow-hidden">
+										<div
+											class="h-full bg-brand rounded-full"
+											:style="{
+												width: `${Math.min((list.contactCount / (audienceStats?.totalContacts || 1)) * 100, 100)}%`,
+											}"
+										/>
+									</div>
+								</div>
+							</NuxtLink>
+						</div>
+					</UiQueryBoundary>
 				</div>
 			</div>
 		</div>
 
-		<!-- Two column layout - Recent Contacts and Recent Activity -->
 		<div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
 			<!-- Recent Contacts -->
 			<div>
@@ -362,62 +365,62 @@ function getContactName(
 					</NuxtLink>
 				</div>
 				<div class="card">
-					<!-- Loading state -->
-					<div v-if="contactsLoading" class="flex items-center justify-center py-8">
-						<Icon name="lucide:loader-2" class="w-6 h-6 animate-spin text-text-tertiary" />
-					</div>
-
-					<!-- Empty state -->
-					<div
-						v-else-if="!recentContacts || recentContacts.length === 0"
-						class="flex flex-col items-center justify-center py-12 text-center"
+					<UiQueryBoundary
+						:loading="contactsLoading"
+						:error="contactsError"
+						error-title="Couldn't load recent contacts"
+						loading-label="Loading contacts..."
 					>
-						<UiIconBox
-							icon="lucide:users"
-							size="xl"
-							variant="surface"
-							rounded="full"
-							class="mb-4"
-						/>
-						<p class="text-text-secondary font-medium">No contacts yet</p>
-						<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-							Add your first contact to get started.
-						</p>
-						<NuxtLink
-							to="/dashboard/audience/contacts?action=add"
-							class="btn btn-primary mt-6 gap-2"
+						<div
+							v-if="!recentContacts || recentContacts.length === 0"
+							class="flex flex-col items-center justify-center py-12 text-center"
 						>
-							<Icon name="lucide:plus" class="w-4 h-4" />
-							Add Contact
-						</NuxtLink>
-					</div>
+							<UiIconBox
+								icon="lucide:users"
+								size="xl"
+								variant="surface"
+								rounded="full"
+								class="mb-4"
+							/>
+							<p class="text-text-secondary font-medium">No contacts yet</p>
+							<p class="text-sm text-text-tertiary mt-1 max-w-sm">
+								Add your first contact to get started.
+							</p>
+							<NuxtLink
+								to="/dashboard/audience/contacts?action=add"
+								class="btn btn-primary mt-6 gap-2"
+							>
+								<Icon name="lucide:plus" class="w-4 h-4" />
+								Add Contact
+							</NuxtLink>
+						</div>
 
-					<!-- Contacts list -->
-					<div v-else class="divide-y divide-border-subtle">
-						<NuxtLink
-							v-for="contact in recentContacts"
-							:key="contact._id"
-							:to="`/dashboard/audience/contacts/${contact._id}`"
-							class="flex items-center gap-4 py-3 first:pt-0 last:pb-0 hover:bg-bg-surface -mx-4 px-4 transition-colors"
-						>
-							<UiIconBox icon="lucide:users" size="sm" variant="surface" rounded="lg" />
-							<div class="flex-1 min-w-0">
-								<p class="text-sm text-text-primary truncate font-medium">
-									{{
-										contact.firstName || contact.lastName
-											? `${contact.firstName ?? ''} ${contact.lastName ?? ''}`.trim()
-											: contact.email
-									}}
-								</p>
-								<p
-									v-if="contact.firstName || contact.lastName"
-									class="text-xs text-text-tertiary truncate"
-								>
-									{{ contact.email }}
-								</p>
-							</div>
-						</NuxtLink>
-					</div>
+						<div v-else class="divide-y divide-border-subtle">
+							<NuxtLink
+								v-for="contact in recentContacts"
+								:key="contact._id"
+								:to="`/dashboard/audience/contacts/${contact._id}`"
+								class="flex items-center gap-4 py-3 first:pt-0 last:pb-0 hover:bg-bg-surface -mx-4 px-4 transition-colors"
+							>
+								<UiIconBox icon="lucide:users" size="sm" variant="surface" rounded="lg" />
+								<div class="flex-1 min-w-0">
+									<p class="text-sm text-text-primary truncate font-medium">
+										{{
+											contact.firstName || contact.lastName
+												? `${contact.firstName ?? ''} ${contact.lastName ?? ''}`.trim()
+												: contact.email
+										}}
+									</p>
+									<p
+										v-if="contact.firstName || contact.lastName"
+										class="text-xs text-text-tertiary truncate"
+									>
+										{{ contact.email }}
+									</p>
+								</div>
+							</NuxtLink>
+						</div>
+					</UiQueryBoundary>
 				</div>
 			</div>
 
@@ -430,65 +433,65 @@ function getContactName(
 					</h2>
 				</div>
 				<div class="card">
-					<!-- Loading state -->
-					<div v-if="activityLoading" class="flex items-center justify-center py-8">
-						<Icon name="lucide:loader-2" class="w-6 h-6 animate-spin text-text-tertiary" />
-					</div>
-
-					<!-- Empty state -->
-					<div
-						v-else-if="!recentActivity || recentActivity.length === 0"
-						class="flex flex-col items-center justify-center py-12 text-center"
+					<UiQueryBoundary
+						:loading="activityLoading"
+						:error="activityError"
+						error-title="Couldn't load recent activity"
+						loading-label="Loading activity..."
 					>
-						<UiIconBox
-							icon="lucide:activity"
-							size="xl"
-							variant="surface"
-							rounded="full"
-							class="mb-4"
-						/>
-						<p class="text-text-secondary font-medium">No recent activity</p>
-						<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-							Activity will appear here as contacts subscribe to or unsubscribe from topics.
-						</p>
-					</div>
-
-					<!-- Activity list -->
-					<div v-else class="divide-y divide-border-subtle">
 						<div
-							v-for="activity in recentActivity"
-							:key="activity._id"
-							class="flex items-center gap-3 py-3 first:pt-0 last:pb-0"
+							v-if="!recentActivity || recentActivity.length === 0"
+							class="flex flex-col items-center justify-center py-12 text-center"
 						>
-							<div
-								:class="[
-									'p-2 rounded-lg bg-bg-surface flex-shrink-0',
-									getActivityIcon(activity.activityType).color,
-								]"
-							>
-								<Icon :name="getActivityIcon(activity.activityType).icon" class="w-4 h-4" />
-							</div>
-							<div class="flex-1 min-w-0">
-								<p class="text-sm text-text-primary">
-									<NuxtLink
-										v-if="activity.contact"
-										:to="`/dashboard/audience/contacts/${activity.contact._id}`"
-										class="font-medium hover:text-brand transition-colors"
-									>
-										{{ getContactName(activity.contact) }}
-									</NuxtLink>
-									<span v-else class="font-medium">Unknown</span>
-									<span class="text-text-secondary">
-										{{ formatActivityDescription(activity.activityType) }}
-									</span>
-								</p>
-							</div>
-							<span class="text-xs text-text-tertiary flex items-center gap-1 flex-shrink-0">
-								<Icon name="lucide:clock" class="w-3 h-3" />
-								{{ formatCompactRelativeTime(activity.occurredAt) }}
-							</span>
+							<UiIconBox
+								icon="lucide:activity"
+								size="xl"
+								variant="surface"
+								rounded="full"
+								class="mb-4"
+							/>
+							<p class="text-text-secondary font-medium">No recent activity</p>
+							<p class="text-sm text-text-tertiary mt-1 max-w-sm">
+								Activity will appear here as contacts subscribe to or unsubscribe from topics.
+							</p>
 						</div>
-					</div>
+
+						<div v-else class="divide-y divide-border-subtle">
+							<div
+								v-for="activity in recentActivity"
+								:key="activity._id"
+								class="flex items-center gap-3 py-3 first:pt-0 last:pb-0"
+							>
+								<div
+									:class="[
+										'p-2 rounded-lg bg-bg-surface flex-shrink-0',
+										getActivityIcon(activity.activityType).color,
+									]"
+								>
+									<Icon :name="getActivityIcon(activity.activityType).icon" class="w-4 h-4" />
+								</div>
+								<div class="flex-1 min-w-0">
+									<p class="text-sm text-text-primary">
+										<NuxtLink
+											v-if="activity.contact"
+											:to="`/dashboard/audience/contacts/${activity.contact._id}`"
+											class="font-medium hover:text-brand transition-colors"
+										>
+											{{ getContactName(activity.contact) }}
+										</NuxtLink>
+										<span v-else class="font-medium">Unknown</span>
+										<span class="text-text-secondary">
+											{{ formatActivityDescription(activity.activityType) }}
+										</span>
+									</p>
+								</div>
+								<span class="text-xs text-text-tertiary flex items-center gap-1 flex-shrink-0">
+									<Icon name="lucide:clock" class="w-3 h-3" />
+									{{ formatCompactRelativeTime(activity.occurredAt) }}
+								</span>
+							</div>
+						</div>
+					</UiQueryBoundary>
 				</div>
 			</div>
 		</div>

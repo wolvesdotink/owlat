@@ -48,15 +48,16 @@ export function useInbox() {
 
 	// ── Thread list (keyset pagination; the args pick the backend index) ──
 	const threadCursor = ref<string | undefined>(undefined);
-	const { data: threadsData, isLoading: threadsLoading } = useConvexQuery(
-		api.inbox.queries.listThreads,
-		() => ({
-			filter: filter.value,
-			sort: sort.value,
-			limit: 25,
-			cursor: threadCursor.value,
-		})
-	);
+	const {
+		data: threadsData,
+		isLoading: threadsLoading,
+		error: threadsError,
+	} = useConvexQuery(api.inbox.queries.listThreads, () => ({
+		filter: filter.value,
+		sort: sort.value,
+		limit: 25,
+		cursor: threadCursor.value,
+	}));
 
 	type Thread = NonNullable<typeof threadsData.value>['threads'][number];
 
@@ -120,6 +121,7 @@ export function useInbox() {
 		filterCounts,
 		threads,
 		threadsLoading,
+		threadsError,
 		hasMoreThreads,
 		stats,
 		// Actions

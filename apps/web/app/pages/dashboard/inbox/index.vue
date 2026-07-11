@@ -20,6 +20,7 @@ const {
 	filterCounts,
 	threads,
 	threadsLoading,
+	threadsError,
 	hasMoreThreads,
 	stats,
 	loadMoreThreads,
@@ -145,49 +146,55 @@ const emptyMessage = computed(() => INBOX_FILTER_META[filter.value].empty);
 		</div>
 
 		<!-- Loading — Postbox list skeleton geometry -->
-		<div v-if="threadsLoading && threads.length === 0">
-			<PostboxThreadListSkeleton :rows="8" />
-		</div>
-
-		<!-- Empty state — copy per active pill -->
-		<div
-			v-else-if="threads.length === 0"
-			class="flex flex-col items-center justify-center py-16 text-center"
+		<UiQueryBoundary
+			:loading="threadsLoading && threads.length === 0"
+			:error="threadsError"
+			error-title="Couldn't load the inbox"
 		>
-			<UiIconBox icon="lucide:inbox" size="xl" variant="surface" rounded="full" class="mb-4" />
-			<p class="text-text-secondary font-medium">{{ emptyMessage }}</p>
-		</div>
+			<template #loading>
+				<PostboxThreadListSkeleton :rows="8" />
+			</template>
 
-		<!-- Thread List — Postbox row DNA: single column, weight-based unread,
-		     one status chip, hover-reveal triage. Keyboard: j/k/Enter + i. -->
-		<div v-else>
-			<ul
-				role="listbox"
-				tabindex="0"
-				aria-label="Team inbox threads"
-				:aria-activedescendant="activeId"
-				class="divide-y divide-border-subtle rounded-lg border border-border-subtle focus:outline-none focus-visible:ring-1 focus-visible:ring-brand/50"
-				@keydown="onKeydown"
+			<!-- Empty state — copy per active pill -->
+			<div
+				v-if="threads.length === 0"
+				class="flex flex-col items-center justify-center py-16 text-center"
 			>
-				<InboxThreadRow
-					v-for="(thread, index) in threads"
-					:key="thread._id"
-					:thread="thread"
-					:focused="index === focusedIndex"
-					:format-compact-relative-time="formatCompactRelativeTime"
-					:members="assignMembers"
-					:current-user-id="user?.id ?? null"
-					@assign="assignThreadTo(thread, $event)"
-					@resolve="resolveThread(thread)"
-					@snooze="openSnooze(thread)"
-				/>
-			</ul>
-
-			<!-- Load More -->
-			<div v-if="hasMoreThreads" class="pt-4 text-center">
-				<button class="btn btn-secondary btn-sm" @click="loadMoreThreads">Load More</button>
+				<UiIconBox icon="lucide:inbox" size="xl" variant="surface" rounded="full" class="mb-4" />
+				<p class="text-text-secondary font-medium">{{ emptyMessage }}</p>
 			</div>
-		</div>
+
+			<!-- Thread List — Postbox row DNA: single column, weight-based unread,
+		     one status chip, hover-reveal triage. Keyboard: j/k/Enter + i. -->
+			<div v-else>
+				<ul
+					role="listbox"
+					tabindex="0"
+					aria-label="Team inbox threads"
+					:aria-activedescendant="activeId"
+					class="divide-y divide-border-subtle rounded-lg border border-border-subtle focus:outline-none focus-visible:ring-1 focus-visible:ring-brand/50"
+					@keydown="onKeydown"
+				>
+					<InboxThreadRow
+						v-for="(thread, index) in threads"
+						:key="thread._id"
+						:thread="thread"
+						:focused="index === focusedIndex"
+						:format-compact-relative-time="formatCompactRelativeTime"
+						:members="assignMembers"
+						:current-user-id="user?.id ?? null"
+						@assign="assignThreadTo(thread, $event)"
+						@resolve="resolveThread(thread)"
+						@snooze="openSnooze(thread)"
+					/>
+				</ul>
+
+				<!-- Load More -->
+				<div v-if="hasMoreThreads" class="pt-4 text-center">
+					<button class="btn btn-secondary btn-sm" @click="loadMoreThreads">Load More</button>
+				</div>
+			</div>
+		</UiQueryBoundary>
 
 		<PostboxSnoozeDialog
 			:open="showSnoozeDialog"

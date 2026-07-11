@@ -13,9 +13,11 @@ definePageMeta({
 const { hasActiveOrganization, isLoading: teamLoading } = useOrganizationContext();
 
 // Get contact properties with real-time updates
-const { data: propertiesData, isLoading: propertiesLoading } = useOrganizationQuery(
-	api.contacts.properties.listByOrganization
-);
+const {
+	data: propertiesData,
+	isLoading: propertiesLoading,
+	error: propertiesError,
+} = useOrganizationQuery(api.contacts.properties.listByOrganization);
 
 const isLoading = computed(() => teamLoading.value || propertiesLoading.value);
 
@@ -272,139 +274,141 @@ useClickOutsideSelector('[data-property-dropdown]', () => {
 			</div>
 		</div>
 
-		<!-- Loading State -->
-		<div v-if="isLoading && !propertiesData" class="flex items-center justify-center py-16">
-			<div class="flex flex-col items-center gap-3">
-				<UiSpinner />
-				<p class="text-text-secondary text-sm">Loading properties...</p>
-			</div>
-		</div>
-
-		<!-- No Team State -->
-		<UiCard v-else-if="!hasActiveOrganization">
-			<UiEmptyState
-				icon="lucide:tags"
-				title="No team selected"
-				description="Create or select a team to manage contact properties."
-			/>
-		</UiCard>
-
-		<!-- Content -->
-		<div v-else class="space-y-6">
-			<!-- Properties List -->
-			<UiCard padding="none" overflow="hidden">
-				<template #header>
-					<div class="flex items-center gap-3">
-						<UiIconBox icon="lucide:tags" size="sm" variant="surface" rounded="lg" />
-						<div>
-							<h2 class="text-lg font-semibold text-text-primary">Properties</h2>
-							<p class="text-sm text-text-secondary">
-								{{ propertiesData?.length || 0 }} custom field{{
-									(propertiesData?.length || 0) !== 1 ? 's' : ''
-								}}
-							</p>
-						</div>
-					</div>
-				</template>
-
-				<!-- Empty State -->
+		<UiQueryBoundary
+			:loading="isLoading && !propertiesData"
+			:error="propertiesError"
+			error-title="Couldn't load properties"
+			loading-label="Loading properties..."
+		>
+			<!-- No Team State -->
+			<UiCard v-if="!hasActiveOrganization">
 				<UiEmptyState
-					v-if="!propertiesData || propertiesData.length === 0"
 					icon="lucide:tags"
-					title="No properties yet"
-					description="Create custom properties to store additional information about your contacts."
-					class="py-12"
-				>
-					<template #action>
-						<UiButton @click="openCreateModal()">
-							<template #iconLeft>
-								<Icon name="lucide:plus" class="w-4 h-4" />
-							</template>
-							Create First Property
-						</UiButton>
-					</template>
-				</UiEmptyState>
+					title="No team selected"
+					description="Create or select a team to manage contact properties."
+				/>
+			</UiCard>
 
-				<!-- Properties Table -->
-				<div v-else class="divide-y divide-border-subtle">
-					<div
-						v-for="property in propertiesData"
-						:key="property._id"
-						class="px-6 py-4 flex items-center justify-between hover:bg-bg-surface/50 transition-colors"
-					>
-						<div class="flex items-center gap-4">
-							<!-- Type Icon -->
-							<div class="p-2 rounded-lg bg-bg-surface flex items-center justify-center">
-								<Icon :name="getTypeInfo(property.type).icon" class="w-5 h-5 text-text-secondary" />
-							</div>
-
-							<!-- Property Info -->
+			<!-- Content -->
+			<div v-else class="space-y-6">
+				<!-- Properties List -->
+				<UiCard padding="none" overflow="hidden">
+					<template #header>
+						<div class="flex items-center gap-3">
+							<UiIconBox icon="lucide:tags" size="sm" variant="surface" rounded="lg" />
 							<div>
-								<div class="flex items-center gap-2">
-									<p class="font-medium text-text-primary">{{ property.label }}</p>
-									<span
-										class="px-2 py-0.5 rounded-full text-xs font-medium bg-bg-surface text-text-secondary border border-border-subtle"
-									>
-										{{ getTypeInfo(property.type).label }}
-									</span>
-								</div>
-								<p class="text-sm text-text-tertiary font-mono">{{ property.key }}</p>
+								<h2 class="text-lg font-semibold text-text-primary">Properties</h2>
+								<p class="text-sm text-text-secondary">
+									{{ propertiesData?.length || 0 }} custom field{{
+										(propertiesData?.length || 0) !== 1 ? 's' : ''
+									}}
+								</p>
 							</div>
 						</div>
+					</template>
 
-						<!-- Actions -->
-						<div class="relative" data-property-dropdown>
-							<UiButton
-								variant="ghost"
-								size="sm"
-								@click.stop="openDropdown = openDropdown === property._id ? null : property._id"
-							>
-								<Icon name="lucide:more-horizontal" class="w-4 h-4" />
+					<!-- Empty State -->
+					<UiEmptyState
+						v-if="!propertiesData || propertiesData.length === 0"
+						icon="lucide:tags"
+						title="No properties yet"
+						description="Create custom properties to store additional information about your contacts."
+						class="py-12"
+					>
+						<template #action>
+							<UiButton @click="openCreateModal()">
+								<template #iconLeft>
+									<Icon name="lucide:plus" class="w-4 h-4" />
+								</template>
+								Create First Property
 							</UiButton>
+						</template>
+					</UiEmptyState>
 
-							<!-- Dropdown Menu -->
-							<Transition name="dropdown">
-								<div
-									v-if="openDropdown === property._id"
-									class="absolute right-0 mt-2 w-40 bg-bg-elevated border border-border-subtle rounded-xl shadow-lg z-10 py-1"
-								>
-									<button
-										class="w-full px-4 py-2 text-left text-sm text-text-primary hover:bg-bg-surface flex items-center gap-2"
-										@click="openEditModal(property)"
-									>
-										<Icon name="lucide:pencil" class="w-4 h-4 text-text-tertiary" />
-										Edit
-									</button>
-									<button
-										class="w-full px-4 py-2 text-left text-sm text-error hover:bg-bg-surface flex items-center gap-2"
-										@click="openDeleteModal(property)"
-									>
-										<Icon name="lucide:trash-2" class="w-4 h-4" />
-										Delete
-									</button>
+					<!-- Properties Table -->
+					<div v-else class="divide-y divide-border-subtle">
+						<div
+							v-for="property in propertiesData"
+							:key="property._id"
+							class="px-6 py-4 flex items-center justify-between hover:bg-bg-surface/50 transition-colors"
+						>
+							<div class="flex items-center gap-4">
+								<!-- Type Icon -->
+								<div class="p-2 rounded-lg bg-bg-surface flex items-center justify-center">
+									<Icon
+										:name="getTypeInfo(property.type).icon"
+										class="w-5 h-5 text-text-secondary"
+									/>
 								</div>
-							</Transition>
-						</div>
-					</div>
-				</div>
-			</UiCard>
 
-			<!-- Info Card -->
-			<UiCard>
-				<h3 class="text-sm font-medium text-text-primary mb-4">Property Types</h3>
-				<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-					<div v-for="type in propertyTypes" :key="type.value" class="flex items-start gap-3">
-						<div class="p-2 rounded-lg bg-bg-surface flex items-center justify-center">
-							<Icon :name="type.icon" class="w-4 h-4 text-text-secondary" />
-						</div>
-						<div>
-							<p class="font-medium text-text-primary text-sm">{{ type.label }}</p>
-							<p class="text-xs text-text-secondary mt-0.5">{{ type.description }}</p>
+								<!-- Property Info -->
+								<div>
+									<div class="flex items-center gap-2">
+										<p class="font-medium text-text-primary">{{ property.label }}</p>
+										<span
+											class="px-2 py-0.5 rounded-full text-xs font-medium bg-bg-surface text-text-secondary border border-border-subtle"
+										>
+											{{ getTypeInfo(property.type).label }}
+										</span>
+									</div>
+									<p class="text-sm text-text-tertiary font-mono">{{ property.key }}</p>
+								</div>
+							</div>
+
+							<!-- Actions -->
+							<div class="relative" data-property-dropdown>
+								<UiButton
+									variant="ghost"
+									size="sm"
+									@click.stop="openDropdown = openDropdown === property._id ? null : property._id"
+								>
+									<Icon name="lucide:more-horizontal" class="w-4 h-4" />
+								</UiButton>
+
+								<!-- Dropdown Menu -->
+								<Transition name="dropdown">
+									<div
+										v-if="openDropdown === property._id"
+										class="absolute right-0 mt-2 w-40 bg-bg-elevated border border-border-subtle rounded-xl shadow-lg z-10 py-1"
+									>
+										<button
+											class="w-full px-4 py-2 text-left text-sm text-text-primary hover:bg-bg-surface flex items-center gap-2"
+											@click="openEditModal(property)"
+										>
+											<Icon name="lucide:pencil" class="w-4 h-4 text-text-tertiary" />
+											Edit
+										</button>
+										<button
+											class="w-full px-4 py-2 text-left text-sm text-error hover:bg-bg-surface flex items-center gap-2"
+											@click="openDeleteModal(property)"
+										>
+											<Icon name="lucide:trash-2" class="w-4 h-4" />
+											Delete
+										</button>
+									</div>
+								</Transition>
+							</div>
 						</div>
 					</div>
-				</div>
-			</UiCard>
-		</div>
+				</UiCard>
+
+				<!-- Info Card -->
+				<UiCard>
+					<h3 class="text-sm font-medium text-text-primary mb-4">Property Types</h3>
+					<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+						<div v-for="type in propertyTypes" :key="type.value" class="flex items-start gap-3">
+							<div class="p-2 rounded-lg bg-bg-surface flex items-center justify-center">
+								<Icon :name="type.icon" class="w-4 h-4 text-text-secondary" />
+							</div>
+							<div>
+								<p class="font-medium text-text-primary text-sm">{{ type.label }}</p>
+								<p class="text-xs text-text-secondary mt-0.5">{{ type.description }}</p>
+							</div>
+						</div>
+					</div>
+				</UiCard>
+			</div>
+		</UiQueryBoundary>
 
 		<!-- Create Property Modal -->
 		<UiModal v-model:open="isCreateModalOpen" title="New Property">

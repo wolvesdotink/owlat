@@ -25,10 +25,12 @@ const { isFocusMode } = useFocusMode();
 const { emailTheme } = useEmailTheme();
 
 // Fetch transactional email data
-const { data: email, isLoading: emailLoading } = useConvexQuery(
-	api.transactional.emails.get,
-	() => ({ id: emailId })
-);
+const {
+	data: email,
+	isLoading: emailLoading,
+	error: emailError,
+	refetch: refetchEmail,
+} = useConvexQuery(api.transactional.emails.get, () => ({ id: emailId }));
 
 // Mutations
 const { run: updateEmail } = useBackendOperation(api.transactional.emails.update, {
@@ -268,166 +270,177 @@ const handleCreateVariable = async (variable: { key: string; type?: string }) =>
 
 <template>
 	<div :class="isFocusMode ? 'h-screen' : 'h-[calc(100vh-64px)]'">
-		<!-- Loading State -->
-		<div v-if="emailLoading" class="h-full flex items-center justify-center bg-bg-deep">
-			<div class="flex flex-col items-center gap-3">
-				<UiSpinner />
-				<p class="text-text-secondary text-sm">Loading email...</p>
-			</div>
-		</div>
-
-		<!-- Not Found State -->
-		<div v-else-if="!email" class="h-full flex items-center justify-center bg-bg-deep">
-			<div class="text-center">
-				<div class="w-12 h-12 text-error mx-auto mb-4">!</div>
-				<h2 class="text-xl font-semibold text-text-primary mb-2">Email not found</h2>
-				<p class="text-text-secondary mb-6">
-					This transactional email doesn't exist or has been deleted.
-				</p>
-				<button class="btn btn-primary" @click="handleBack">Back to Emails</button>
-			</div>
-		</div>
-
-		<!-- Email Builder + Attachments -->
-		<EmailBuilder
-			v-else
-			v-model:blocks="blocks"
-			v-model:subject="subject"
-			v-model:name="name"
-			:variables="variables"
-			:config="{
-				variableType: 'data',
-				blockTypes: ['text', 'image', 'button', 'divider', 'spacer', 'columns'],
-				hideSubject: false,
-			}"
-			:is-saving="isSaving"
-			@save="handleSave"
-			@back="handleBack"
-			@send-test="handleSendTest"
-			@create-variable="handleCreateVariable"
+		<UiQueryBoundary
+			:loading="emailLoading"
+			:error="emailError"
+			error-title="Couldn't load this email"
+			@retry="refetchEmail"
 		>
-			<template #toolbar-actions>
-				<!-- Current lifecycle status — draft / awaiting review / published.
+			<template #loading>
+				<div class="h-full flex items-center justify-center bg-bg-deep">
+					<div class="flex flex-col items-center gap-3">
+						<UiSpinner />
+						<p class="text-text-secondary text-sm">Loading email...</p>
+					</div>
+				</div>
+			</template>
+
+			<!-- Not Found State -->
+			<div v-if="!email" class="h-full flex items-center justify-center bg-bg-deep">
+				<div class="text-center">
+					<div class="w-12 h-12 text-error mx-auto mb-4">!</div>
+					<h2 class="text-xl font-semibold text-text-primary mb-2">Email not found</h2>
+					<p class="text-text-secondary mb-6">
+						This transactional email doesn't exist or has been deleted.
+					</p>
+					<button class="btn btn-primary" @click="handleBack">Back to Emails</button>
+				</div>
+			</div>
+
+			<!-- Email Builder + Attachments -->
+			<EmailBuilder
+				v-else
+				v-model:blocks="blocks"
+				v-model:subject="subject"
+				v-model:name="name"
+				:variables="variables"
+				:config="{
+					variableType: 'data',
+					blockTypes: ['text', 'image', 'button', 'divider', 'spacer', 'columns'],
+					hideSubject: false,
+				}"
+				:is-saving="isSaving"
+				@save="handleSave"
+				@back="handleBack"
+				@send-test="handleSendTest"
+				@create-variable="handleCreateVariable"
+			>
+				<template #toolbar-actions>
+					<!-- Current lifecycle status — draft / awaiting review / published.
 				     `pending_review` is shown distinctly so the author knows the
 				     template is NOT sendable yet (the send API rejects it). -->
-				<span
-					:class="[
-						'inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium',
-						isPublished
-							? 'bg-success/10 text-success'
-							: isPendingReview
-								? 'bg-warning/10 text-warning'
-								: 'bg-text-tertiary/10 text-text-tertiary',
-					]"
-					:title="
-						isPublished
-							? 'This email is live and can be sent via the API.'
-							: isPendingReview
-								? 'This email was flagged by the content scanner and cannot be sent until an admin approves it.'
-								: 'This email is a draft. Publish it to make it sendable via the API.'
-					"
-				>
-					<Icon
-						:name="
+					<span
+						:class="[
+							'inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium',
 							isPublished
-								? 'lucide:check-circle'
+								? 'bg-success/10 text-success'
 								: isPendingReview
-									? 'lucide:clock-3'
-									: 'lucide:pencil'
+									? 'bg-warning/10 text-warning'
+									: 'bg-text-tertiary/10 text-text-tertiary',
+						]"
+						:title="
+							isPublished
+								? 'This email is live and can be sent via the API.'
+								: isPendingReview
+									? 'This email was flagged by the content scanner and cannot be sent until an admin approves it.'
+									: 'This email is a draft. Publish it to make it sendable via the API.'
 						"
-						class="w-3.5 h-3.5"
-					/>
-					{{ isPublished ? 'Published' : isPendingReview ? 'Awaiting review' : 'Draft' }}
-				</span>
-				<ShareLinksPopover :transactional-email-id="emailId" :has-unsaved-changes="hasChanges" />
-				<UiButton
-					variant="outline"
-					size="sm"
-					title="Manage translations"
-					@click="handleTranslations"
-				>
-					<template #iconLeft>
-						<Icon name="lucide:languages" class="w-4 h-4" />
-					</template>
-					Translations
-				</UiButton>
-				<!-- Awaiting review — no author-side action moves this forward, so the
+					>
+						<Icon
+							:name="
+								isPublished
+									? 'lucide:check-circle'
+									: isPendingReview
+										? 'lucide:clock-3'
+										: 'lucide:pencil'
+							"
+							class="w-3.5 h-3.5"
+						/>
+						{{ isPublished ? 'Published' : isPendingReview ? 'Awaiting review' : 'Draft' }}
+					</span>
+					<ShareLinksPopover :transactional-email-id="emailId" :has-unsaved-changes="hasChanges" />
+					<UiButton
+						variant="outline"
+						size="sm"
+						title="Manage translations"
+						@click="handleTranslations"
+					>
+						<template #iconLeft>
+							<Icon name="lucide:languages" class="w-4 h-4" />
+						</template>
+						Translations
+					</UiButton>
+					<!-- Awaiting review — no author-side action moves this forward, so the
 				     primary action is a disabled, honest state rather than "Publish". -->
-				<UiButton
-					v-if="isPendingReview"
-					variant="secondary"
-					size="sm"
-					disabled
-					title="Flagged by the content scanner — an admin must approve this email before it can be sent."
-				>
-					<template #iconLeft>
-						<Icon name="lucide:clock-3" class="w-4 h-4" />
-					</template>
-					Awaiting review
-				</UiButton>
-				<!-- Publish / Unpublish — the only affordance that makes a transactional
+					<UiButton
+						v-if="isPendingReview"
+						variant="secondary"
+						size="sm"
+						disabled
+						title="Flagged by the content scanner — an admin must approve this email before it can be sent."
+					>
+						<template #iconLeft>
+							<Icon name="lucide:clock-3" class="w-4 h-4" />
+						</template>
+						Awaiting review
+					</UiButton>
+					<!-- Publish / Unpublish — the only affordance that makes a transactional
 				     email sendable; without it the send API rejects every request. -->
-				<UiButton
-					v-else
-					:variant="isPublished ? 'secondary' : 'primary'"
-					size="sm"
-					:loading="isPublishing"
-					:title="
-						isPublished
-							? 'Return this email to draft (stops new sends)'
-							: 'Publish this email to make it sendable via the API'
-					"
-					@click="handleTogglePublish"
-				>
-					<template v-if="!isPublishing" #iconLeft>
-						<Icon :name="isPublished ? 'lucide:rotate-ccw' : 'lucide:rocket'" class="w-4 h-4" />
-					</template>
-					{{ isPublished ? 'Unpublish' : 'Publish' }}
-				</UiButton>
-			</template>
-			<template #after-canvas>
-				<!-- Awaiting-review banner — the content scanner flagged this email, so
+					<UiButton
+						v-else
+						:variant="isPublished ? 'secondary' : 'primary'"
+						size="sm"
+						:loading="isPublishing"
+						:title="
+							isPublished
+								? 'Return this email to draft (stops new sends)'
+								: 'Publish this email to make it sendable via the API'
+						"
+						@click="handleTogglePublish"
+					>
+						<template v-if="!isPublishing" #iconLeft>
+							<Icon :name="isPublished ? 'lucide:rotate-ccw' : 'lucide:rocket'" class="w-4 h-4" />
+						</template>
+						{{ isPublished ? 'Unpublish' : 'Publish' }}
+					</UiButton>
+				</template>
+				<template #after-canvas>
+					<!-- Awaiting-review banner — the content scanner flagged this email, so
 				     it is NOT sendable until an admin approves it. Shown instead of
 				     letting the author believe a successful publish made it live. -->
-				<div
-					v-if="isPendingReview"
-					class="mt-3 p-4 bg-warning/10 border border-warning/20 rounded-lg flex items-start gap-3"
-				>
-					<Icon name="lucide:shield-alert" class="w-5 h-5 text-warning shrink-0 mt-0.5" />
-					<div>
-						<p class="text-sm font-medium text-text-primary">Awaiting review</p>
-						<p class="text-sm text-text-secondary mt-1">
-							This email was flagged by our content scanner and is pending review by a platform
-							administrator. It is not published and the send API will reject requests for it until
-							it has been approved. Edit the content and publish again to re-run the scan.
-						</p>
+					<div
+						v-if="isPendingReview"
+						class="mt-3 p-4 bg-warning/10 border border-warning/20 rounded-lg flex items-start gap-3"
+					>
+						<Icon name="lucide:shield-alert" class="w-5 h-5 text-warning shrink-0 mt-0.5" />
+						<div>
+							<p class="text-sm font-medium text-text-primary">Awaiting review</p>
+							<p class="text-sm text-text-secondary mt-1">
+								This email was flagged by our content scanner and is pending review by a platform
+								administrator. It is not published and the send API will reject requests for it
+								until it has been approved. Edit the content and publish again to re-run the scan.
+							</p>
+						</div>
 					</div>
-				</div>
-				<div class="mt-3 rounded-lg shadow-surface-1 bg-bg-elevated px-10 py-5">
-					<AttachmentPanel :attachments="attachments" @update:attachments="attachments = $event" />
-				</div>
-				<!-- Unsubscribe footer — when on, sends of this email append a
+					<div class="mt-3 rounded-lg shadow-surface-1 bg-bg-elevated px-10 py-5">
+						<AttachmentPanel
+							:attachments="attachments"
+							@update:attachments="attachments = $event"
+						/>
+					</div>
+					<!-- Unsubscribe footer — when on, sends of this email append a
 				     Manage Preferences / Unsubscribe footer (built per-recipient at
 				     send time). Off by default: most transactional mail is exempt. -->
-				<div
-					class="mt-3 rounded-lg shadow-surface-1 bg-bg-elevated px-10 py-5 flex items-center justify-between gap-4"
-				>
-					<div>
-						<p class="text-base font-medium text-text-primary">Show unsubscribe link</p>
-						<p class="text-sm text-text-tertiary mt-0.5">
-							Append a Manage Preferences and Unsubscribe footer to every send of this email. Leave
-							off for receipts, password resets, and other mail recipients can't opt out of.
-						</p>
+					<div
+						class="mt-3 rounded-lg shadow-surface-1 bg-bg-elevated px-10 py-5 flex items-center justify-between gap-4"
+					>
+						<div>
+							<p class="text-base font-medium text-text-primary">Show unsubscribe link</p>
+							<p class="text-sm text-text-tertiary mt-0.5">
+								Append a Manage Preferences and Unsubscribe footer to every send of this email.
+								Leave off for receipts, password resets, and other mail recipients can't opt out of.
+							</p>
+						</div>
+						<UiSwitch
+							:model-value="showUnsubscribe"
+							label="Show unsubscribe link"
+							class="shrink-0"
+							@update:model-value="showUnsubscribe = $event"
+						/>
 					</div>
-					<UiSwitch
-						:model-value="showUnsubscribe"
-						label="Show unsubscribe link"
-						class="shrink-0"
-						@update:model-value="showUnsubscribe = $event"
-					/>
-				</div>
-			</template>
-		</EmailBuilder>
+				</template>
+			</EmailBuilder>
+		</UiQueryBoundary>
 
 		<!-- Media Picker Modal -->
 		<MediaPickerModal

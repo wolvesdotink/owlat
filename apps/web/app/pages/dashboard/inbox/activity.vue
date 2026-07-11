@@ -18,6 +18,7 @@ definePageMeta({
 const {
 	timeline,
 	isLoading,
+	error,
 	channelFilter,
 	channels,
 	channelIcon,
@@ -96,122 +97,121 @@ async function handleResolve(threadId: Id<'conversationThreads'>) {
 			</button>
 		</div>
 
-		<!-- Loading -->
-		<div v-if="isLoading && !timeline.length" class="flex items-center justify-center py-16">
-			<div class="flex flex-col items-center gap-3">
-				<UiSpinner />
-				<p class="text-text-secondary text-sm">Loading messages...</p>
-			</div>
-		</div>
+		<UiQueryBoundary
+			:loading="isLoading && !timeline.length"
+			:error="error"
+			error-title="Couldn't load activity"
+			loading-label="Loading messages..."
+		>
+			<!-- Empty — guided CTA (admin-only button, explanation for everyone) -->
+			<InboxActivityEmptyState
+				v-if="timeline.length === 0"
+				:filter-label="activeFilterLabel"
+				:can-manage="canManageChannels"
+			/>
 
-		<!-- Empty — guided CTA (admin-only button, explanation for everyone) -->
-		<InboxActivityEmptyState
-			v-else-if="timeline.length === 0"
-			:filter-label="activeFilterLabel"
-			:can-manage="canManageChannels"
-		/>
-
-		<!-- Message list -->
-		<ul v-else class="space-y-2">
-			<li v-for="item in timeline" :key="item._id" class="group relative">
-				<NuxtLink
-					:to="`/dashboard/inbox/${item.threadId}`"
-					class="card !p-4 flex items-start gap-4 hover:border-brand transition-colors cursor-pointer block"
-				>
-					<!-- Channel icon -->
-					<div
-						class="flex-shrink-0 w-10 h-10 rounded-full bg-bg-surface flex items-center justify-center"
+			<!-- Message list -->
+			<ul v-else class="space-y-2">
+				<li v-for="item in timeline" :key="item._id" class="group relative">
+					<NuxtLink
+						:to="`/dashboard/inbox/${item.threadId}`"
+						class="card !p-4 flex items-start gap-4 hover:border-brand transition-colors cursor-pointer block"
 					>
-						<Icon
-							:name="channelIcon(item.channel)"
-							class="w-5 h-5"
-							:class="channelColor(item.channel)"
-						/>
-					</div>
-
-					<!-- Content -->
-					<div class="flex-1 min-w-0">
-						<div class="flex items-center gap-2 mb-0.5">
-							<!-- Direction chip -->
-							<span
-								:class="[
-									'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium',
-									item.direction === 'inbound'
-										? 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400'
-										: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400',
-								]"
-							>
-								<Icon :name="directionIcon(item.direction)" class="w-3 h-3" />
-								{{ directionLabel(item.direction) }}
-							</span>
-
-							<!-- Channel chip -->
-							<UiBadge variant="neutral" size="sm">
-								{{ channelLabel(item.channel) }}
-							</UiBadge>
-
-							<!-- Delivery state — one small mark, detail in its title (one-chip rule) -->
+						<!-- Channel icon -->
+						<div
+							class="flex-shrink-0 w-10 h-10 rounded-full bg-bg-surface flex items-center justify-center"
+						>
 							<Icon
-								v-if="deliveryStatusMeta(item.status)"
-								:name="deliveryStatusMeta(item.status)!.icon"
-								class="w-3.5 h-3.5"
-								:class="deliveryStatusMeta(item.status)!.class"
-								:title="deliveryStatusMeta(item.status)!.label"
+								:name="channelIcon(item.channel)"
+								class="w-5 h-5"
+								:class="channelColor(item.channel)"
 							/>
 						</div>
 
-						<!-- Subject (for email) -->
-						<p v-if="item.content.subject" class="text-text-primary text-sm font-medium">
-							{{ item.content.subject }}
+						<!-- Content -->
+						<div class="flex-1 min-w-0">
+							<div class="flex items-center gap-2 mb-0.5">
+								<!-- Direction chip -->
+								<span
+									:class="[
+										'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium',
+										item.direction === 'inbound'
+											? 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400'
+											: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400',
+									]"
+								>
+									<Icon :name="directionIcon(item.direction)" class="w-3 h-3" />
+									{{ directionLabel(item.direction) }}
+								</span>
+
+								<!-- Channel chip -->
+								<UiBadge variant="neutral" size="sm">
+									{{ channelLabel(item.channel) }}
+								</UiBadge>
+
+								<!-- Delivery state — one small mark, detail in its title (one-chip rule) -->
+								<Icon
+									v-if="deliveryStatusMeta(item.status)"
+									:name="deliveryStatusMeta(item.status)!.icon"
+									class="w-3.5 h-3.5"
+									:class="deliveryStatusMeta(item.status)!.class"
+									:title="deliveryStatusMeta(item.status)!.label"
+								/>
+							</div>
+
+							<!-- Subject (for email) -->
+							<p v-if="item.content.subject" class="text-text-primary text-sm font-medium">
+								{{ item.content.subject }}
+							</p>
+
+							<!-- Content preview -->
+							<p class="text-text-secondary text-sm mt-0.5">
+								{{ truncate(item.content.text || '') }}
+							</p>
+						</div>
+
+						<!-- Time (hidden under the action rail on hover/focus — zero layout shift) -->
+						<p
+							class="flex-shrink-0 text-text-tertiary text-xs transition-opacity motion-reduce:transition-none opacity-100 group-hover:opacity-0 group-focus-within:opacity-0"
+						>
+							{{ formatTime(item.createdAt) }}
 						</p>
+					</NuxtLink>
 
-						<!-- Content preview -->
-						<p class="text-text-secondary text-sm mt-0.5">
-							{{ truncate(item.content.text || '') }}
-						</p>
-					</div>
-
-					<!-- Time (hidden under the action rail on hover/focus — zero layout shift) -->
-					<p
-						class="flex-shrink-0 text-text-tertiary text-xs transition-opacity motion-reduce:transition-none opacity-100 group-hover:opacity-0 group-focus-within:opacity-0"
-					>
-						{{ formatTime(item.createdAt) }}
-					</p>
-				</NuxtLink>
-
-				<!-- Hover-reveal action rail: opacity-only overlay, pointer-events gated,
+					<!-- Hover-reveal action rail: opacity-only overlay, pointer-events gated,
 				     also revealed on keyboard focus-within. No DOM/layout shift. -->
-				<div
-					class="absolute top-1/2 right-4 -translate-y-1/2 flex items-center gap-1 rounded-lg border border-border-subtle bg-bg-elevated px-1 py-1 shadow-lg opacity-0 pointer-events-none transition-opacity motion-reduce:transition-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto"
-				>
-					<NuxtLink
-						:to="`/dashboard/inbox/${item.threadId}`"
-						class="btn btn-ghost btn-sm !px-2"
-						title="Open conversation"
-						aria-label="Open conversation"
+					<div
+						class="absolute top-1/2 right-4 -translate-y-1/2 flex items-center gap-1 rounded-lg border border-border-subtle bg-bg-elevated px-1 py-1 shadow-lg opacity-0 pointer-events-none transition-opacity motion-reduce:transition-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto"
 					>
-						<Icon name="lucide:arrow-up-right" class="w-4 h-4" />
-					</NuxtLink>
-					<NuxtLink
-						:to="`/dashboard/inbox/${item.threadId}`"
-						class="btn btn-ghost btn-sm !px-2"
-						title="Assign to a teammate"
-						aria-label="Assign to a teammate"
-					>
-						<Icon name="lucide:user-plus" class="w-4 h-4" />
-					</NuxtLink>
-					<button
-						type="button"
-						class="btn btn-ghost btn-sm !px-2"
-						:disabled="resolvingId === item.threadId"
-						title="Mark as resolved"
-						aria-label="Mark as resolved"
-						@click="handleResolve(item.threadId)"
-					>
-						<Icon name="lucide:check-circle" class="w-4 h-4" />
-					</button>
-				</div>
-			</li>
-		</ul>
+						<NuxtLink
+							:to="`/dashboard/inbox/${item.threadId}`"
+							class="btn btn-ghost btn-sm !px-2"
+							title="Open conversation"
+							aria-label="Open conversation"
+						>
+							<Icon name="lucide:arrow-up-right" class="w-4 h-4" />
+						</NuxtLink>
+						<NuxtLink
+							:to="`/dashboard/inbox/${item.threadId}`"
+							class="btn btn-ghost btn-sm !px-2"
+							title="Assign to a teammate"
+							aria-label="Assign to a teammate"
+						>
+							<Icon name="lucide:user-plus" class="w-4 h-4" />
+						</NuxtLink>
+						<button
+							type="button"
+							class="btn btn-ghost btn-sm !px-2"
+							:disabled="resolvingId === item.threadId"
+							title="Mark as resolved"
+							aria-label="Mark as resolved"
+							@click="handleResolve(item.threadId)"
+						>
+							<Icon name="lucide:check-circle" class="w-4 h-4" />
+						</button>
+					</div>
+				</li>
+			</ul>
+		</UiQueryBoundary>
 	</div>
 </template>

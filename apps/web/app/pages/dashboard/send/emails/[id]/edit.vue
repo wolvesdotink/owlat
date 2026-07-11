@@ -22,10 +22,12 @@ const { hasActiveOrganization } = useOrganizationContext();
 const { isFocusMode } = useFocusMode();
 
 // Fetch template data
-const { data: template, isLoading: templateLoading } = useConvexQuery(
-	api.emailTemplates.emails.get,
-	() => ({ templateId })
-);
+const {
+	data: template,
+	isLoading: templateLoading,
+	error: templateError,
+	refetch: refetchTemplate,
+} = useConvexQuery(api.emailTemplates.emails.get, () => ({ templateId }));
 
 // Mutations
 const { run: updateTemplate } = useBackendOperation(api.emailTemplates.emails.update, {
@@ -137,65 +139,73 @@ const handleTranslations = () => {
 
 <template>
 	<div :class="isFocusMode ? 'h-screen' : 'h-[calc(100vh-64px)]'">
-		<!-- Loading State -->
-		<div v-if="templateLoading" class="h-full flex items-center justify-center bg-bg-deep">
-			<div class="flex flex-col items-center gap-3">
-				<UiSpinner />
-				<p class="text-text-secondary text-sm">Loading template...</p>
-			</div>
-		</div>
-
-		<!-- Not Found State -->
-		<div v-else-if="!template" class="h-full flex items-center justify-center bg-bg-deep">
-			<div class="text-center">
-				<div class="w-12 h-12 text-error mx-auto mb-4">!</div>
-				<h2 class="text-xl font-semibold text-text-primary mb-2">Template not found</h2>
-				<p class="text-text-secondary mb-6">
-					This email template doesn't exist or has been deleted.
-				</p>
-				<button class="btn btn-primary" @click="handleBack">Back to Emails</button>
-			</div>
-		</div>
-
-		<!-- Email Builder -->
-		<UiErrorBoundary
-			v-else
-			fallback-message="The email editor hit an unexpected error. Please refresh — your last saved version is safe."
+		<UiQueryBoundary
+			:loading="templateLoading"
+			:error="templateError"
+			error-title="Couldn't load this template"
+			@retry="refetchTemplate"
 		>
-			<EmailBuilder
-				v-model:blocks="blocks"
-				v-model:subject="subject"
-				v-model:name="name"
-				:variables="variables"
-				:config="{
-					variableType: 'personalization',
-					theme: emailTheme,
-					showMandatoryUnsubscribeFooter: true,
-					showSettings: true,
-				}"
-				:is-saving="isSaving"
-				@save="handleSave"
-				@back="handleBack"
-				@settings="handleSettings"
-				@send-test="handleSendTest"
+			<template #loading>
+				<div class="h-full flex items-center justify-center bg-bg-deep">
+					<div class="flex flex-col items-center gap-3">
+						<UiSpinner />
+						<p class="text-text-secondary text-sm">Loading template...</p>
+					</div>
+				</div>
+			</template>
+
+			<!-- Not Found State -->
+			<div v-if="!template" class="h-full flex items-center justify-center bg-bg-deep">
+				<div class="text-center">
+					<div class="w-12 h-12 text-error mx-auto mb-4">!</div>
+					<h2 class="text-xl font-semibold text-text-primary mb-2">Template not found</h2>
+					<p class="text-text-secondary mb-6">
+						This email template doesn't exist or has been deleted.
+					</p>
+					<button class="btn btn-primary" @click="handleBack">Back to Emails</button>
+				</div>
+			</div>
+
+			<!-- Email Builder -->
+			<UiErrorBoundary
+				v-else
+				fallback-message="The email editor hit an unexpected error. Please refresh — your last saved version is safe."
 			>
-				<!-- Toolbar actions -->
-				<template #toolbar-actions>
-					<ShareLinksPopover :email-template-id="templateId" :has-unsaved-changes="hasChanges" />
-					<UiButton
-						variant="outline"
-						size="sm"
-						title="Manage translations"
-						@click="handleTranslations"
-					>
-						<template #iconLeft>
-							<Icon name="lucide:languages" class="w-4 h-4" />
-						</template>
-						Translations
-					</UiButton>
-				</template>
-			</EmailBuilder>
-		</UiErrorBoundary>
+				<EmailBuilder
+					v-model:blocks="blocks"
+					v-model:subject="subject"
+					v-model:name="name"
+					:variables="variables"
+					:config="{
+						variableType: 'personalization',
+						theme: emailTheme,
+						showMandatoryUnsubscribeFooter: true,
+						showSettings: true,
+					}"
+					:is-saving="isSaving"
+					@save="handleSave"
+					@back="handleBack"
+					@settings="handleSettings"
+					@send-test="handleSendTest"
+				>
+					<!-- Toolbar actions -->
+					<template #toolbar-actions>
+						<ShareLinksPopover :email-template-id="templateId" :has-unsaved-changes="hasChanges" />
+						<UiButton
+							variant="outline"
+							size="sm"
+							title="Manage translations"
+							@click="handleTranslations"
+						>
+							<template #iconLeft>
+								<Icon name="lucide:languages" class="w-4 h-4" />
+							</template>
+							Translations
+						</UiButton>
+					</template>
+				</EmailBuilder>
+			</UiErrorBoundary>
+		</UiQueryBoundary>
 
 		<!-- Media Picker Modal -->
 		<MediaPickerModal

@@ -66,7 +66,11 @@ const statusFilters: { value: AutomationStatus; label: string }[] = [
 
 // Fetch automations with real-time updates (session-based, no organizationId needed).
 // Status filtering runs server-side through the Listing engine (ADR-0037).
-const { results: automations, isLoading: automationsLoading } = usePaginatedQuery(
+const {
+	results: automations,
+	isLoading: automationsLoading,
+	error: automationsError,
+} = usePaginatedQuery(
 	api.automations.automations.list,
 	() => ({
 		status: selectedStatus.value === 'all' ? undefined : selectedStatus.value,
@@ -272,260 +276,265 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 
 		<!-- Content -->
 		<div class="card p-0 overflow-hidden">
-			<!-- Loading State -->
-			<div v-if="isLoading && !automations" class="flex items-center justify-center py-16">
-				<div class="flex flex-col items-center gap-3">
-					<UiSpinner />
-					<p class="text-text-secondary text-sm">Loading automations...</p>
-				</div>
-			</div>
-
-			<!-- Empty State (no team) -->
-			<UiEmptyState
-				v-else-if="!hasActiveOrganization"
-				icon="lucide:zap"
-				title="No team selected"
-				description="Create or select a team to start creating automations."
-			/>
-
-			<!-- Empty State (no automations) -->
-			<UiEmptyState
-				v-else-if="
-					!isLoading &&
-					(!filteredAutomations || filteredAutomations.length === 0) &&
-					!debouncedSearch
-				"
-				icon="lucide:zap"
-				title="No automations yet"
-				description="Create your first automation to send emails automatically when a contact signs up, subscribes, or triggers an event."
+			<UiQueryBoundary
+				:loading="isLoading && !automations"
+				:error="automationsError"
+				error-title="Couldn't load automations"
+				loading-label="Loading automations..."
 			>
-				<template #action>
-					<UiButton @click="handleNewAutomation">
-						<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
-						Create Automation
-					</UiButton>
-				</template>
-			</UiEmptyState>
+				<!-- Empty State (no team) -->
+				<UiEmptyState
+					v-if="!hasActiveOrganization"
+					icon="lucide:zap"
+					title="No team selected"
+					description="Create or select a team to start creating automations."
+				/>
 
-			<!-- Empty State (no search results) -->
-			<UiEmptyState
-				v-else-if="
-					!isLoading &&
-					(!filteredAutomations || filteredAutomations.length === 0) &&
-					debouncedSearch
-				"
-				icon="lucide:search"
-				title="No results found"
-				:description="`No automations match &quot;${debouncedSearch}&quot;. Try a different search term.`"
-			>
-				<template #action>
-					<UiButton
-						variant="secondary"
-						@click="
-							searchQuery = '';
-							debouncedSearch = '';
-						"
-					>
-						Clear search
-					</UiButton>
-				</template>
-			</UiEmptyState>
+				<!-- Empty State (no automations) -->
+				<UiEmptyState
+					v-else-if="
+						!isLoading &&
+						(!filteredAutomations || filteredAutomations.length === 0) &&
+						!debouncedSearch
+					"
+					icon="lucide:zap"
+					title="No automations yet"
+					description="Create your first automation to send emails automatically when a contact signs up, subscribes, or triggers an event."
+				>
+					<template #action>
+						<UiButton @click="handleNewAutomation">
+							<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
+							Create Automation
+						</UiButton>
+					</template>
+				</UiEmptyState>
 
-			<!-- Automations Table -->
-			<div v-else>
-				<div class="overflow-x-auto">
-					<table class="w-full">
-						<thead>
-							<tr class="border-b border-border-subtle">
-								<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">Name</th>
-								<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">Trigger</th>
-								<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">Status</th>
-								<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
-									Contacts in Flow
-								</th>
-								<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">Created</th>
-								<th class="text-right px-6 py-4 text-sm font-medium text-text-secondary">
-									Actions
-								</th>
-							</tr>
-						</thead>
-						<tbody>
-							<tr
-								v-for="automation in filteredAutomations"
-								:key="automation._id"
-								class="border-b border-border-subtle last:border-b-0 hover:bg-bg-surface transition-colors"
-							>
-								<td class="px-6 py-4">
-									<div class="min-w-0">
+				<!-- Empty State (no search results) -->
+				<UiEmptyState
+					v-else-if="
+						!isLoading &&
+						(!filteredAutomations || filteredAutomations.length === 0) &&
+						debouncedSearch
+					"
+					icon="lucide:search"
+					title="No results found"
+					:description="`No automations match &quot;${debouncedSearch}&quot;. Try a different search term.`"
+				>
+					<template #action>
+						<UiButton
+							variant="secondary"
+							@click="
+								searchQuery = '';
+								debouncedSearch = '';
+							"
+						>
+							Clear search
+						</UiButton>
+					</template>
+				</UiEmptyState>
+
+				<!-- Automations Table -->
+				<div v-else>
+					<div class="overflow-x-auto">
+						<table class="w-full">
+							<thead>
+								<tr class="border-b border-border-subtle">
+									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">Name</th>
+									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
+										Trigger
+									</th>
+									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
+										Status
+									</th>
+									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
+										Contacts in Flow
+									</th>
+									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
+										Created
+									</th>
+									<th class="text-right px-6 py-4 text-sm font-medium text-text-secondary">
+										Actions
+									</th>
+								</tr>
+							</thead>
+							<tbody>
+								<tr
+									v-for="automation in filteredAutomations"
+									:key="automation._id"
+									class="border-b border-border-subtle last:border-b-0 hover:bg-bg-surface transition-colors"
+								>
+									<td class="px-6 py-4">
+										<div class="min-w-0">
+											<span
+												class="text-text-primary font-medium hover:text-brand cursor-pointer transition-colors"
+												@click="
+													automation.status === 'draft'
+														? handleEdit(automation._id)
+														: handleViewDetails(automation._id)
+												"
+											>
+												{{ automation.name }}
+											</span>
+											<p
+												v-if="automation.description"
+												class="text-sm text-text-tertiary truncate mt-0.5 max-w-xs"
+											>
+												{{ automation.description }}
+											</p>
+										</div>
+									</td>
+									<td class="px-6 py-4">
+										<div class="flex items-center gap-1.5">
+											<Icon
+												:name="getTriggerDisplay(automation.triggerType).icon"
+												class="w-4 h-4 text-text-tertiary"
+											/>
+											<span class="text-text-secondary text-sm">
+												{{ getTriggerDisplay(automation.triggerType).label }}
+											</span>
+										</div>
+									</td>
+									<td class="px-6 py-4">
 										<span
-											class="text-text-primary font-medium hover:text-brand cursor-pointer transition-colors"
-											@click="
-												automation.status === 'draft'
-													? handleEdit(automation._id)
-													: handleViewDetails(automation._id)
-											"
-										>
-											{{ automation.name }}
-										</span>
-										<p
-											v-if="automation.description"
-											class="text-sm text-text-tertiary truncate mt-0.5 max-w-xs"
-										>
-											{{ automation.description }}
-										</p>
-									</div>
-								</td>
-								<td class="px-6 py-4">
-									<div class="flex items-center gap-1.5">
-										<Icon
-											:name="getTriggerDisplay(automation.triggerType).icon"
-											class="w-4 h-4 text-text-tertiary"
-										/>
-										<span class="text-text-secondary text-sm">
-											{{ getTriggerDisplay(automation.triggerType).label }}
-										</span>
-									</div>
-								</td>
-								<td class="px-6 py-4">
-									<span
-										:class="[
-											'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium',
-											getStatusBadge(automation.status).color,
-										]"
-									>
-										<Icon :name="getStatusBadge(automation.status).icon" class="w-3 h-3" />
-										{{ getStatusBadge(automation.status).label }}
-									</span>
-								</td>
-								<td class="px-6 py-4">
-									<div class="flex items-center gap-1.5">
-										<Icon name="lucide:users" class="w-4 h-4 text-text-tertiary" />
-										<span class="text-text-secondary text-sm">
-											{{ automation.statsActive || 0 }}
-										</span>
-									</div>
-								</td>
-								<td class="px-6 py-4">
-									<span class="text-text-secondary text-sm">
-										{{ formatDate(automation.createdAt) }}
-									</span>
-								</td>
-								<td class="px-6 py-4">
-									<div class="flex items-center justify-end gap-1" @click.stop>
-										<!-- Toggle Active/Paused -->
-										<button
-											v-if="automation.status !== 'draft'"
 											:class="[
-												'p-2 rounded-lg transition-colors',
-												automation.status === 'active'
-													? 'text-warning hover:text-warning hover:bg-warning/10'
-													: 'text-success hover:text-success hover:bg-success/10',
+												'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium',
+												getStatusBadge(automation.status).color,
 											]"
-											:title="automation.status === 'active' ? 'Pause' : 'Activate'"
-											:disabled="toggleingId === automation._id"
-											@click="handleToggleStatus(automation)"
 										>
-											<Icon
-												v-if="toggleingId === automation._id"
-												name="lucide:loader-2"
-												class="w-4 h-4 animate-spin"
-											/>
-											<Icon
-												v-else-if="automation.status === 'active'"
-												name="lucide:pause"
-												class="w-4 h-4"
-											/>
-											<Icon v-else name="lucide:play" class="w-4 h-4" />
-										</button>
-										<!-- Edit -->
-										<button
-											class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors"
-											title="Edit"
-											@click="handleEdit(automation._id)"
-										>
-											<Icon name="lucide:pencil" class="w-4 h-4" />
-										</button>
-										<!-- More Actions Dropdown -->
-										<div class="relative" data-dropdown>
+											<Icon :name="getStatusBadge(automation.status).icon" class="w-3 h-3" />
+											{{ getStatusBadge(automation.status).label }}
+										</span>
+									</td>
+									<td class="px-6 py-4">
+										<div class="flex items-center gap-1.5">
+											<Icon name="lucide:users" class="w-4 h-4 text-text-tertiary" />
+											<span class="text-text-secondary text-sm">
+												{{ automation.statsActive || 0 }}
+											</span>
+										</div>
+									</td>
+									<td class="px-6 py-4">
+										<span class="text-text-secondary text-sm">
+											{{ formatDate(automation.createdAt) }}
+										</span>
+									</td>
+									<td class="px-6 py-4">
+										<div class="flex items-center justify-end gap-1" @click.stop>
+											<!-- Toggle Active/Paused -->
+											<button
+												v-if="automation.status !== 'draft'"
+												:class="[
+													'p-2 rounded-lg transition-colors',
+													automation.status === 'active'
+														? 'text-warning hover:text-warning hover:bg-warning/10'
+														: 'text-success hover:text-success hover:bg-success/10',
+												]"
+												:title="automation.status === 'active' ? 'Pause' : 'Activate'"
+												:disabled="toggleingId === automation._id"
+												@click="handleToggleStatus(automation)"
+											>
+												<Icon
+													v-if="toggleingId === automation._id"
+													name="lucide:loader-2"
+													class="w-4 h-4 animate-spin"
+												/>
+												<Icon
+													v-else-if="automation.status === 'active'"
+													name="lucide:pause"
+													class="w-4 h-4"
+												/>
+												<Icon v-else name="lucide:play" class="w-4 h-4" />
+											</button>
+											<!-- Edit -->
 											<button
 												class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors"
-												@click="toggleDropdown(automation._id)"
-												aria-label="More actions"
+												title="Edit"
+												@click="handleEdit(automation._id)"
 											>
-												<Icon name="lucide:more-vertical" class="w-4 h-4" />
+												<Icon name="lucide:pencil" class="w-4 h-4" />
 											</button>
-											<Transition
-												enter-active-class="duration-(--motion-moderate) ease-spring"
-												enter-from-class="opacity-0 scale-95"
-												enter-to-class="opacity-100 scale-100"
-												leave-active-class="duration-(--motion-moderate-exit) ease-exit"
-												leave-from-class="opacity-100 scale-100"
-												leave-to-class="opacity-0 scale-95"
-											>
-												<div
-													v-if="openDropdownId === automation._id"
-													class="absolute right-0 top-full mt-1 w-40 bg-bg-elevated border border-border-subtle rounded-lg shadow-lg z-10 py-1"
+											<!-- More Actions Dropdown -->
+											<div class="relative" data-dropdown>
+												<button
+													class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors"
+													@click="toggleDropdown(automation._id)"
+													aria-label="More actions"
 												>
-													<button
-														v-if="automation.status !== 'draft'"
-														class="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-bg-surface flex items-center gap-2 transition-colors"
-														@click="handleViewDetails(automation._id)"
-													>
-														<Icon name="lucide:zap" class="w-4 h-4" />
-														View Details
-													</button>
-													<button
-														class="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-bg-surface flex items-center gap-2 transition-colors"
-														@click="handleEdit(automation._id)"
-													>
-														<Icon name="lucide:pencil" class="w-4 h-4" />
-														Edit
-													</button>
-													<button
-														class="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-bg-surface flex items-center gap-2 transition-colors"
-														@click="handleDuplicate(automation._id)"
-													>
-														<Icon name="lucide:copy" class="w-4 h-4" />
-														Duplicate
-													</button>
-													<button
-														v-if="automation.status !== 'draft'"
-														:disabled="toggleingId === automation._id"
-														class="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-bg-surface flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-														@click="handleToggleStatus(automation)"
-													>
-														<Icon
-															:name="
-																automation.status === 'active' ? 'lucide:pause' : 'lucide:play'
-															"
-															class="w-4 h-4"
-														/>
-														{{ automation.status === 'active' ? 'Pause' : 'Activate' }}
-													</button>
+													<Icon name="lucide:more-vertical" class="w-4 h-4" />
+												</button>
+												<Transition
+													enter-active-class="duration-(--motion-moderate) ease-spring"
+													enter-from-class="opacity-0 scale-95"
+													enter-to-class="opacity-100 scale-100"
+													leave-active-class="duration-(--motion-moderate-exit) ease-exit"
+													leave-from-class="opacity-100 scale-100"
+													leave-to-class="opacity-0 scale-95"
+												>
 													<div
-														v-if="automation.status !== 'active'"
-														class="border-t border-border-subtle my-1"
-													/>
-													<button
-														v-if="automation.status !== 'active'"
-														class="w-full px-3 py-2 text-left text-sm text-error hover:bg-error/10 flex items-center gap-2 transition-colors"
-														@click="
-															openDeleteModal(automation._id, automation.name, automation.status)
-														"
+														v-if="openDropdownId === automation._id"
+														class="absolute right-0 top-full mt-1 w-40 bg-bg-elevated border border-border-subtle rounded-lg shadow-lg z-10 py-1"
 													>
-														<Icon name="lucide:trash-2" class="w-4 h-4" />
-														Delete
-													</button>
-												</div>
-											</Transition>
+														<button
+															v-if="automation.status !== 'draft'"
+															class="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-bg-surface flex items-center gap-2 transition-colors"
+															@click="handleViewDetails(automation._id)"
+														>
+															<Icon name="lucide:zap" class="w-4 h-4" />
+															View Details
+														</button>
+														<button
+															class="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-bg-surface flex items-center gap-2 transition-colors"
+															@click="handleEdit(automation._id)"
+														>
+															<Icon name="lucide:pencil" class="w-4 h-4" />
+															Edit
+														</button>
+														<button
+															class="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-bg-surface flex items-center gap-2 transition-colors"
+															@click="handleDuplicate(automation._id)"
+														>
+															<Icon name="lucide:copy" class="w-4 h-4" />
+															Duplicate
+														</button>
+														<button
+															v-if="automation.status !== 'draft'"
+															:disabled="toggleingId === automation._id"
+															class="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-bg-surface flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+															@click="handleToggleStatus(automation)"
+														>
+															<Icon
+																:name="
+																	automation.status === 'active' ? 'lucide:pause' : 'lucide:play'
+																"
+																class="w-4 h-4"
+															/>
+															{{ automation.status === 'active' ? 'Pause' : 'Activate' }}
+														</button>
+														<div
+															v-if="automation.status !== 'active'"
+															class="border-t border-border-subtle my-1"
+														/>
+														<button
+															v-if="automation.status !== 'active'"
+															class="w-full px-3 py-2 text-left text-sm text-error hover:bg-error/10 flex items-center gap-2 transition-colors"
+															@click="
+																openDeleteModal(automation._id, automation.name, automation.status)
+															"
+														>
+															<Icon name="lucide:trash-2" class="w-4 h-4" />
+															Delete
+														</button>
+													</div>
+												</Transition>
+											</div>
 										</div>
-									</div>
-								</td>
-							</tr>
-						</tbody>
-					</table>
+									</td>
+								</tr>
+							</tbody>
+						</table>
+					</div>
 				</div>
-			</div>
+			</UiQueryBoundary>
 		</div>
 
 		<!-- Delete Confirmation Modal -->
