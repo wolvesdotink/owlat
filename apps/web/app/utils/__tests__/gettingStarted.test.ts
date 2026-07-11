@@ -3,6 +3,7 @@ import {
 	buildGettingStarted,
 	BACKUPS_STEP,
 	INSTANCE_STEPS,
+	READY_TO_SEND_STEP,
 	type GettingStartedInput,
 	type InstanceFlagId,
 } from '../gettingStarted';
@@ -39,6 +40,12 @@ function sectionIds(model: ReturnType<typeof buildGettingStarted>): string[] {
 
 function allStepIds(model: ReturnType<typeof buildGettingStarted>): string[] {
 	return model.sections.flatMap((s) => s.steps.map((step) => step.id));
+}
+
+function readyStep(model: ReturnType<typeof buildGettingStarted>) {
+	return model.sections
+		.find((s) => s.id === 'instance')
+		?.steps.find((step) => step.id === 'readyToSend');
 }
 
 describe('buildGettingStarted — visibility', () => {
@@ -109,17 +116,45 @@ describe('buildGettingStarted — mode matrix (fresh vs migration)', () => {
 });
 
 describe('buildGettingStarted — instance steps and self-host resources', () => {
-	it('carries every backend instance flag as a step, with honest completion', () => {
-		const instanceFlags: Record<InstanceFlagId, boolean> = {
-			...NO_FLAGS,
-			sendPathReady: true,
-			setupDomain: true,
-		};
-		const model = buildGettingStarted(input({ role: 'admin', instanceFlags }));
+	it('leads the instance section with the one readiness step, deferring both pre-send halves', () => {
+		const model = buildGettingStarted(input({ role: 'admin' }));
 		const instance = model.sections.find((s) => s.id === 'instance');
 		expect(instance).toBeDefined();
-		const done = (instance?.steps ?? []).filter((s) => s.completed).map((s) => s.id);
-		expect(done.sort()).toEqual(['sendPathReady', 'setupDomain']);
+		const steps = instance?.steps ?? [];
+		// The single "Get ready to send" step leads and points at the Delivery hub.
+		expect(steps[0]?.id).toBe('readyToSend');
+		expect(steps[0]?.href).toBe('/dashboard/delivery');
+		// The two go-live halves are NOT re-listed as separate steps here.
+		const ids = steps.map((s) => s.id);
+		expect(ids).not.toContain('sendPathReady');
+		expect(ids).not.toContain('setupDomain');
+		// Nor do their old standalone destinations reappear anywhere on the surface.
+		const hrefs = steps.map((s) => s.href);
+		expect(hrefs).not.toContain('/dashboard/delivery/config');
+		expect(hrefs).not.toContain('/dashboard/delivery/domains');
+	});
+
+	it('marks the readiness step done only when transport AND a verified domain are both in place', () => {
+		const bothOff = buildGettingStarted(input({ role: 'admin' }));
+		expect(readyStep(bothOff)?.completed).toBe(false);
+
+		const transportOnly = buildGettingStarted(
+			input({ role: 'admin', instanceFlags: { ...NO_FLAGS, sendPathReady: true } })
+		);
+		expect(readyStep(transportOnly)?.completed).toBe(false);
+
+		const domainOnly = buildGettingStarted(
+			input({ role: 'admin', instanceFlags: { ...NO_FLAGS, setupDomain: true } })
+		);
+		expect(readyStep(domainOnly)?.completed).toBe(false);
+
+		const both = buildGettingStarted(
+			input({
+				role: 'admin',
+				instanceFlags: { ...NO_FLAGS, sendPathReady: true, setupDomain: true },
+			})
+		);
+		expect(readyStep(both)?.completed).toBe(true);
 	});
 
 	it('adds the backups step and resource links only for a self-host admin who needs them', () => {
@@ -142,7 +177,12 @@ describe('buildGettingStarted — instance steps and self-host resources', () =>
 describe('buildGettingStarted — progress counts', () => {
 	it('counts completed vs total across all visible steps', () => {
 		const personalCompleted = new Set<ChecklistStepId>(['mailboxReady']);
-		const instanceFlags: Record<InstanceFlagId, boolean> = { ...NO_FLAGS, sendPathReady: true };
+		// Both go-live halves done → the folded readiness step counts once.
+		const instanceFlags: Record<InstanceFlagId, boolean> = {
+			...NO_FLAGS,
+			sendPathReady: true,
+			setupDomain: true,
+		};
 		const model = buildGettingStarted(
 			input({ role: 'admin', mode: 'fresh', instanceFlags, personalCompleted })
 		);
@@ -154,17 +194,14 @@ describe('buildGettingStarted — progress counts', () => {
 describe('no step present in the old three surfaces is lost', () => {
 	it('every legacy step id survives in the unified catalog', () => {
 		const instanceIds = INSTANCE_STEPS.map((s) => s.id);
-		// The old OnboardingChecklist + self-host banner instance steps.
+		// The old OnboardingChecklist instance steps, minus the two pre-send halves.
 		expect(instanceIds.sort()).toEqual(
-			[
-				'addedContacts',
-				'createdApiKey',
-				'createdEmail',
-				'sendPathReady',
-				'sentCampaign',
-				'setupDomain',
-			].sort()
+			['addedContacts', 'createdApiKey', 'createdEmail', 'sentCampaign'].sort()
 		);
+		// The two go-live halves (sendPathReady + setupDomain) are not dropped — they
+		// are subsumed by the one readiness step that defers to the Delivery hub.
+		expect(READY_TO_SEND_STEP.id).toBe('readyToSend');
+		expect(READY_TO_SEND_STEP.href).toBe('/dashboard/delivery');
 		// The self-host banner's backups pointer.
 		expect(BACKUPS_STEP.id).toBe('backupsScheduled');
 		// The old per-user UserChecklist steps (migration shows them all).

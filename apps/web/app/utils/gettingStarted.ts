@@ -92,25 +92,35 @@ export interface GettingStartedModel {
 }
 
 /**
- * The instance go-live steps, in the order they were shown in the old
- * OnboardingChecklist. Preserved verbatim so no step is lost in the merge; the
- * `sendPathReady` + `setupDomain` steps also cover the old self-host banner's
- * "configure a sending provider" / "verify a sending domain" pre-send prompts.
+ * The two pre-send halves of go-live — a configured transport (`sendPathReady`)
+ * and a verified sending domain (`setupDomain`) — are NOT re-listed here as
+ * separate steps. They now meet in ONE place: the Delivery hub's readiness panel,
+ * which derives a single "can this instance send?" truth from both. This surface
+ * defers to it with the single {@link READY_TO_SEND_STEP} below, so the two
+ * halves are never re-asserted as if the wizard never ran. Its completion still
+ * comes from the same backend flags (both must be true), keeping the honest,
+ * server-derived truth intact.
+ */
+export const READY_TO_SEND_STEP: Omit<GettingStartedStep, 'completed'> = {
+	id: 'readyToSend',
+	title: 'Get ready to send',
+	description:
+		'Set up sending and verify your domain in one place — Delivery shows exactly what is left before mail can go out.',
+	icon: 'lucide:send',
+	href: '/dashboard/delivery',
+	cta: 'Open delivery',
+};
+
+/**
+ * The remaining instance go-live steps, in the order they were shown in the old
+ * OnboardingChecklist (minus the two pre-send halves, now owned by
+ * {@link READY_TO_SEND_STEP}). Preserved verbatim so no step is lost in the merge.
  */
 interface InstanceStepMeta extends Omit<GettingStartedStep, 'completed' | 'id'> {
 	id: InstanceFlagId;
 }
 
 export const INSTANCE_STEPS: readonly InstanceStepMeta[] = [
-	{
-		id: 'sendPathReady',
-		title: 'Configure a sending provider',
-		description:
-			'Set up a delivery provider so this instance can actually send email — then send a test.',
-		icon: 'lucide:send',
-		href: '/dashboard/delivery/config',
-		cta: 'Set up sending',
-	},
 	{
 		id: 'addedContacts',
 		title: 'Add contacts',
@@ -143,14 +153,6 @@ export const INSTANCE_STEPS: readonly InstanceStepMeta[] = [
 		icon: 'lucide:key',
 		href: '/dashboard/settings/api',
 		cta: 'Create key',
-	},
-	{
-		id: 'setupDomain',
-		title: 'Set up a domain',
-		description: 'Verify a sending domain (SPF, DKIM, DMARC) for deliverability.',
-		icon: 'lucide:globe',
-		href: '/dashboard/delivery/domains',
-		cta: 'Add domain',
 	},
 ];
 
@@ -211,10 +213,19 @@ export function buildGettingStarted(input: GettingStartedInput): GettingStartedM
 	const instanceActive =
 		input.role === 'admin' && !input.instanceDismissed && !input.instanceComplete;
 	if (instanceActive) {
-		const steps: GettingStartedStep[] = INSTANCE_STEPS.map((step) => ({
-			...step,
-			completed: input.instanceFlags[step.id],
-		}));
+		// Lead with the one readiness step that defers both pre-send halves to the
+		// Delivery hub. It's done only when a transport AND a verified domain are
+		// both in place — the same backend flags, now folded into one honest step.
+		const steps: GettingStartedStep[] = [
+			{
+				...READY_TO_SEND_STEP,
+				completed: input.instanceFlags.sendPathReady && input.instanceFlags.setupDomain,
+			},
+			...INSTANCE_STEPS.map((step) => ({
+				...step,
+				completed: input.instanceFlags[step.id],
+			})),
+		];
 		if (input.showBackupsStep && input.isSelfHost) {
 			steps.push({ ...BACKUPS_STEP, completed: false });
 		}

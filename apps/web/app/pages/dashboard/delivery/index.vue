@@ -178,10 +178,16 @@ const sendingDetail = computed(() => {
 			</NuxtLink>
 		</div>
 
-		<!-- The one transport card leads the hub: which transport is live, whether
-			 it's ready, recent health, and a single "Change transport" action. It
-			 carries its own loading/error states and stays visible even before any
-			 reputation history exists, so "how do I send?" is always answered first. -->
+		<!-- The one readiness panel leads the hub: it derives a single truth for
+			 "can this instance send?" from the real transport + domain + email-auth
+			 state, so the two halves of go-live (a transport, a verified/authenticated
+			 domain) meet in ONE place. The self-host onboarding banner defers its
+			 pre-send steps here rather than re-listing them. -->
+		<DeliveryReadinessPanel class="mb-6" />
+
+		<!-- Transport detail below the readiness summary: which transport is live,
+			 its recent runtime health, and the single "Change transport" action that
+			 opens the in-app transport editor. -->
 		<DeliveryTransportCard class="mb-6" />
 
 		<!-- Loading -->
