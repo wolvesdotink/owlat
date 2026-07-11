@@ -16,16 +16,9 @@ const currentVersion = computed(() => (config.public.owlatVersion as string) || 
 
 // Deployment-wide LLM spend, broken down by feature (last 7 days). The data was
 // recorded by every priced LLM call but had no UI surface until now.
-const { data: llmSpend } = useOrganizationQuery(api.analytics.llmUsage.getSpendByFeature, () => ({
-	hoursBack: 168,
-}));
-
-// The SAME spend, grouped by provider backend (OpenAI / Anthropic / Google /
-// OpenRouter / Local), derived from each call's recorded model id — so spend
-// reads correctly per backend after a provider switch or split.
-const { data: llmSpendByProvider } = useOrganizationQuery(
-	api.analytics.llmUsage.getSpendByProvider,
-	() => ({ hoursBack: 168 })
+const { data: llmSpend } = useOrganizationQuery(
+	api.analytics.llmUsage.getSpendByFeature,
+	() => ({ hoursBack: 168 }),
 );
 
 // Per-org dollar-spend budget: remaining daily/monthly headroom + warn state.
@@ -33,7 +26,7 @@ const { data: llmSpendByProvider } = useOrganizationQuery(
 // AI is paused (analytics/spendBudget.ts). Unset ceilings ⇒ `configured: false`.
 const { data: spendBudget } = useOrganizationQuery(
 	api.analytics.spendBudget.getBudgetStatusAdmin,
-	() => ({})
+	() => ({}),
 );
 
 // Cached latest-release info from Convex (read-only, reactive)
@@ -67,19 +60,11 @@ const updateAvailable = computed(() => {
 });
 
 function semverGreater(a: string, b: string): boolean {
-	const parse = (s: string) =>
-		s
-			.replace(/^v/, '')
-			.split('.')
-			.map((n) => parseInt(n, 10) || 0);
+	const parse = (s: string) => s.replace(/^v/, '').split('.').map((n) => parseInt(n, 10) || 0);
 	const aParts = parse(a);
 	const bParts = parse(b);
-	const am = aParts[0] ?? 0,
-		ai = aParts[1] ?? 0,
-		ap = aParts[2] ?? 0;
-	const bm = bParts[0] ?? 0,
-		bi = bParts[1] ?? 0,
-		bp = bParts[2] ?? 0;
+	const am = aParts[0] ?? 0, ai = aParts[1] ?? 0, ap = aParts[2] ?? 0;
+	const bm = bParts[0] ?? 0, bi = bParts[1] ?? 0, bp = bParts[2] ?? 0;
 	if (am !== bm) return am > bm;
 	if (ai !== bi) return ai > bi;
 	return ap > bp;
@@ -93,14 +78,10 @@ const { data: history } = useConvexQuery(api.systemUpdates.listUpdateHistory, ()
 
 // ── Container health ─────────────────────────────────────────────────────────
 
-const containerHealth = ref<{
-	containers?: Array<{ service: string; state: string; imageTag?: string }>;
-} | null>(null);
+const containerHealth = ref<{ containers?: Array<{ service: string; state: string; imageTag?: string }> } | null>(null);
 async function fetchContainerHealth() {
 	try {
-		containerHealth.value = await $fetch<{
-			containers?: Array<{ service: string; state: string; imageTag?: string }>;
-		}>('/api/internal/updater-health');
+		containerHealth.value = await $fetch<{ containers?: Array<{ service: string; state: string; imageTag?: string }> }>('/api/internal/updater-health');
 	} catch {
 		containerHealth.value = null;
 	}
@@ -128,15 +109,16 @@ async function confirmUpdate() {
 	updateSteps.value = null;
 
 	try {
-		const resp = await $fetch<{
-			steps?: Array<{ step: string; stdout?: string; stderr?: string }>;
-		}>('/api/system/update', {
-			method: 'POST',
-			body: { targetVersion: pendingTargetVersion.value },
-			retry: 0,
-			// Long timeout for pull+up+convex-deploy
-			timeout: 10 * 60 * 1000,
-		});
+		const resp = await $fetch<{ steps?: Array<{ step: string; stdout?: string; stderr?: string }> }>(
+			'/api/system/update',
+			{
+				method: 'POST',
+				body: { targetVersion: pendingTargetVersion.value },
+				retry: 0,
+				// Long timeout for pull+up+convex-deploy
+				timeout: 10 * 60 * 1000,
+			},
+		);
 		updateSteps.value = resp.steps ?? null;
 		// Don't set success yet — wait for UpdateProgress to confirm new version is live.
 	} catch (err) {
@@ -188,10 +170,7 @@ function formatDuration(start?: number, end?: number) {
 	<div class="max-w-[960px] mx-auto p-8 space-y-6">
 		<!-- Page header -->
 		<div>
-			<NuxtLink
-				to="/dashboard/settings"
-				class="text-caption text-text-tertiary hover:text-brand transition-colors"
-			>
+			<NuxtLink to="/dashboard/settings" class="text-caption text-text-tertiary hover:text-brand transition-colors">
 				← Settings
 			</NuxtLink>
 			<h1 class="mt-2 text-2xl font-semibold text-text-primary">System &amp; Updates</h1>
@@ -206,9 +185,7 @@ function formatDuration(start?: number, end?: number) {
 		<!-- Container health -->
 		<div class="rounded-xl border border-border-default bg-bg-elevated p-6">
 			<div class="flex items-center justify-between mb-4">
-				<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider">
-					Container health
-				</h3>
+				<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider">Container health</h3>
 				<button
 					type="button"
 					class="text-xs text-text-tertiary hover:text-brand transition-colors"
@@ -240,16 +217,9 @@ function formatDuration(start?: number, end?: number) {
 						<td class="py-2">
 							<span
 								class="inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full"
-								:class="
-									c.state?.includes('running')
-										? 'bg-success/10 text-success'
-										: 'bg-warning/10 text-warning'
-								"
+								:class="c.state?.includes('running') ? 'bg-success/10 text-success' : 'bg-warning/10 text-warning'"
 							>
-								<span
-									class="w-1.5 h-1.5 rounded-full"
-									:class="c.state?.includes('running') ? 'bg-success' : 'bg-warning'"
-								/>
+								<span class="w-1.5 h-1.5 rounded-full" :class="c.state?.includes('running') ? 'bg-success' : 'bg-warning'" />
 								{{ c.state }}
 							</span>
 						</td>
@@ -258,20 +228,14 @@ function formatDuration(start?: number, end?: number) {
 				</tbody>
 			</table>
 
-			<pre v-else class="text-xs text-text-tertiary whitespace-pre-wrap break-words">{{
-				containerHealth.containers
-			}}</pre>
+			<pre v-else class="text-xs text-text-tertiary whitespace-pre-wrap break-words">{{ containerHealth.containers }}</pre>
 		</div>
 
 		<!-- LLM spend card -->
 		<div class="rounded-xl border border-border-default bg-bg-elevated p-6">
 			<div class="flex items-baseline justify-between gap-4 flex-wrap mb-4">
-				<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider">
-					LLM spend · last 7 days
-				</h3>
-				<p class="text-2xl font-semibold text-text-primary">
-					${{ (llmSpend?.totalCostUsd ?? 0).toFixed(2) }}
-				</p>
+				<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider">LLM spend · last 7 days</h3>
+				<p class="text-2xl font-semibold text-text-primary">${{ (llmSpend?.totalCostUsd ?? 0).toFixed(2) }}</p>
 			</div>
 			<div v-if="llmSpend && llmSpend.features.length" class="space-y-2">
 				<div
@@ -288,73 +252,32 @@ function formatDuration(start?: number, end?: number) {
 			</div>
 			<p v-else class="text-text-tertiary text-sm">No LLM usage recorded in the last 7 days.</p>
 
-			<!-- Same spend, grouped by provider backend -->
-			<div
-				v-if="llmSpendByProvider && llmSpendByProvider.providers.length > 1"
-				class="mt-4 pt-4 border-t border-border-default"
-			>
-				<p class="text-xs font-medium text-text-tertiary uppercase tracking-wider mb-2">
-					By provider
-				</p>
-				<div class="space-y-2">
-					<div
-						v-for="p in llmSpendByProvider.providers"
-						:key="p.provider"
-						class="flex items-center justify-between text-sm"
-					>
-						<span class="text-text-secondary">{{ p.provider }}</span>
-						<span class="text-text-primary font-medium">
-							${{ p.costUsd.toFixed(2) }}
-							<span class="text-text-tertiary font-normal">· {{ p.calls }} calls</span>
-						</span>
-					</div>
-				</div>
-			</div>
-
 			<!-- Spend budget: remaining headroom + warn / paused state -->
-			<div
-				v-if="spendBudget?.configured"
-				class="mt-4 pt-4 border-t border-border-default space-y-2"
-			>
+			<div v-if="spendBudget?.configured" class="mt-4 pt-4 border-t border-border-default space-y-2">
 				<div class="flex items-baseline justify-between gap-2 flex-wrap">
-					<h4 class="text-xs font-medium text-text-tertiary uppercase tracking-wider">
-						Spend budget
-					</h4>
+					<h4 class="text-xs font-medium text-text-tertiary uppercase tracking-wider">Spend budget</h4>
 					<span
 						v-if="spendBudget.state !== 'ok'"
 						class="text-2xs font-medium px-2 py-0.5 rounded-full"
-						:class="
-							spendBudget.state === 'exceeded'
-								? 'bg-red-500/15 text-red-500'
-								: 'bg-amber-500/15 text-amber-500'
-						"
+						:class="spendBudget.state === 'exceeded'
+							? 'bg-red-500/15 text-red-500'
+							: 'bg-amber-500/15 text-amber-500'"
 					>
-						{{
-							spendBudget.state === 'exceeded'
-								? 'Ceiling reached — auto-send paused'
-								: 'Approaching ceiling'
-						}}
+						{{ spendBudget.state === 'exceeded' ? 'Ceiling reached — auto-send paused' : 'Approaching ceiling' }}
 					</span>
 				</div>
 				<div v-if="spendBudget.daily.configured" class="flex items-center justify-between text-sm">
 					<span class="text-text-secondary">Daily remaining</span>
 					<span class="text-text-primary font-medium">
 						${{ spendBudget.daily.remainingUsd.toFixed(2) }}
-						<span class="text-text-tertiary font-normal"
-							>of ${{ spendBudget.daily.limitUsd.toFixed(2) }}</span
-						>
+						<span class="text-text-tertiary font-normal">of ${{ spendBudget.daily.limitUsd.toFixed(2) }}</span>
 					</span>
 				</div>
-				<div
-					v-if="spendBudget.monthly.configured"
-					class="flex items-center justify-between text-sm"
-				>
+				<div v-if="spendBudget.monthly.configured" class="flex items-center justify-between text-sm">
 					<span class="text-text-secondary">Monthly remaining</span>
 					<span class="text-text-primary font-medium">
 						${{ spendBudget.monthly.remainingUsd.toFixed(2) }}
-						<span class="text-text-tertiary font-normal"
-							>of ${{ spendBudget.monthly.limitUsd.toFixed(2) }}</span
-						>
+						<span class="text-text-tertiary font-normal">of ${{ spendBudget.monthly.limitUsd.toFixed(2) }}</span>
 					</span>
 				</div>
 				<p v-if="!spendBudget.advisoryAllowed" class="text-text-tertiary text-xs">
@@ -367,9 +290,7 @@ function formatDuration(start?: number, end?: number) {
 		<div class="rounded-xl border border-border-default bg-bg-elevated p-6">
 			<div class="flex items-start justify-between gap-4 flex-wrap">
 				<div class="min-w-0">
-					<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider mb-2">
-						Available updates
-					</h3>
+					<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider mb-2">Available updates</h3>
 
 					<template v-if="updateAvailable && latestRelease?.latestVersion">
 						<div class="flex items-baseline gap-3 flex-wrap">
@@ -391,15 +312,12 @@ function formatDuration(start?: number, end?: number) {
 							<span class="text-text-primary font-medium">You're on the latest version.</span>
 						</div>
 						<p class="mt-1 text-caption text-text-tertiary">
-							Latest: v{{ latestRelease.latestVersion }} · Last checked
-							{{ formatDateTime(latestRelease.checkedAt) }}
+							Latest: v{{ latestRelease.latestVersion }} · Last checked {{ formatDateTime(latestRelease.checkedAt) }}
 						</p>
 					</template>
 
 					<template v-else>
-						<p class="text-text-primary">
-							Click "Check now" to poll GitHub for the latest release.
-						</p>
+						<p class="text-text-primary">Click "Check now" to poll GitHub for the latest release.</p>
 					</template>
 				</div>
 
@@ -435,10 +353,7 @@ function formatDuration(start?: number, end?: number) {
 				<summary class="text-caption font-medium text-text-primary cursor-pointer hover:text-brand">
 					Release notes
 				</summary>
-				<pre
-					class="mt-3 text-caption text-text-secondary whitespace-pre-wrap font-sans leading-relaxed"
-					>{{ latestRelease.releaseNotes }}</pre
-				>
+				<pre class="mt-3 text-caption text-text-secondary whitespace-pre-wrap font-sans leading-relaxed">{{ latestRelease.releaseNotes }}</pre>
 			</details>
 
 			<div v-if="latestRelease?.error" class="mt-3 text-xs text-warning">
@@ -455,12 +370,9 @@ function formatDuration(start?: number, end?: number) {
 				Confirm update to v{{ pendingTargetVersion }}
 			</h3>
 			<p class="text-sm text-text-secondary mb-4">
-				This will download the pinned compose template, pull new images, redeploy Convex functions,
-				and recreate containers. The web app may restart mid-flight.
-				<br /><br />
-				<strong>Back up before updating.</strong> Data volumes persist across normal updates, but a
-				release with breaking schema changes may migrate or reset data — check the release notes
-				first.
+				This will download the pinned compose template, pull new images, redeploy Convex functions, and recreate containers. The web app may restart mid-flight.
+				<br><br>
+				<strong>Back up before updating.</strong> Data volumes persist across normal updates, but a release with breaking schema changes may migrate or reset data — check the release notes first.
 			</p>
 			<div class="flex gap-3">
 				<button
@@ -490,10 +402,7 @@ function formatDuration(start?: number, end?: number) {
 		/>
 
 		<!-- Success / failure banners -->
-		<div
-			v-if="updateState === 'success'"
-			class="rounded-xl border border-success/40 bg-success/5 p-6"
-		>
+		<div v-if="updateState === 'success'" class="rounded-xl border border-success/40 bg-success/5 p-6">
 			<div class="flex items-start gap-3">
 				<Icon name="lucide:check-circle-2" class="w-6 h-6 text-success shrink-0" />
 				<div>
@@ -513,16 +422,8 @@ function formatDuration(start?: number, end?: number) {
 					<p class="mt-1 text-sm text-error break-words">{{ updateError }}</p>
 					<p class="mt-3 text-caption text-text-secondary">
 						See the
-						<a
-							href="https://docs.owlat.app/developer/self-hosting-maintenance#recovering-from-a-failed-update"
-							target="_blank"
-							rel="noopener"
-							class="text-brand underline"
-							>recovery guide</a
-						>
-						or run
-						<code class="font-mono text-xs bg-bg-surface px-1.5 py-0.5 rounded">owlat doctor</code>
-						on the host.
+						<a href="https://docs.owlat.app/developer/self-hosting-maintenance#recovering-from-a-failed-update" target="_blank" rel="noopener" class="text-brand underline">recovery guide</a>
+						or run <code class="font-mono text-xs bg-bg-surface px-1.5 py-0.5 rounded">owlat doctor</code> on the host.
 					</p>
 				</div>
 			</div>
@@ -530,9 +431,7 @@ function formatDuration(start?: number, end?: number) {
 
 		<!-- Update history -->
 		<div class="rounded-xl border border-border-default bg-bg-elevated p-6">
-			<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider mb-4">
-				Update history
-			</h3>
+			<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider mb-4">Update history</h3>
 
 			<div v-if="!history || history.length === 0" class="text-caption text-text-tertiary">
 				No updates applied yet.
@@ -557,9 +456,7 @@ function formatDuration(start?: number, end?: number) {
 							{{ row.versionFrom || '—' }} → {{ row.versionTo || '—' }}
 						</td>
 						<td class="py-2 text-text-secondary">{{ formatDateTime(row.startedAt) }}</td>
-						<td class="py-2 text-text-secondary">
-							{{ formatDuration(row.startedAt, row.finishedAt) }}
-						</td>
+						<td class="py-2 text-text-secondary">{{ formatDuration(row.startedAt, row.finishedAt) }}</td>
 						<td class="py-2">
 							<span
 								class="inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full"
