@@ -50,9 +50,9 @@ const ICON: Record<StepState, string> = {
 const COLOR: Record<StepState, string> = {
 	pending: 'text-text-secondary/50',
 	running: 'text-brand',
-	ok: 'text-emerald-400',
-	warn: 'text-amber-400',
-	failed: 'text-red-400',
+	ok: 'text-success',
+	warn: 'text-warning',
+	failed: 'text-error',
 	skipped: 'text-text-secondary',
 };
 
@@ -95,7 +95,7 @@ watch(
 							row.step.state === 'pending'
 								? 'text-text-secondary'
 								: row.step.state === 'failed'
-									? 'text-red-300'
+									? 'text-error'
 									: 'text-text-primary'
 						"
 					>
