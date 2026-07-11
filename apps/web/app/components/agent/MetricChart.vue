@@ -37,14 +37,18 @@ const innerWidth = viewWidth - chartPadding.left - chartPadding.right;
 const innerHeight = chartHeight - chartPadding.top - chartPadding.bottom;
 
 const points = computed(() => {
-	if (!hasData.value) return [];
+	const data = sortedData.value;
+	if (data.length < 2) return [];
+	const first = data[0];
+	const last = data[data.length - 1];
+	if (!first || !last) return [];
 	const { min, max } = yBounds.value;
-	const xMin = sortedData.value[0]!.timestamp;
-	const xMax = sortedData.value[sortedData.value.length - 1]!.timestamp;
+	const xMin = first.timestamp;
+	const xMax = last.timestamp;
 	const xRange = xMax - xMin || 1;
 	const yRange = max - min || 1;
 
-	return sortedData.value.map((d) => ({
+	return data.map((d) => ({
 		x: chartPadding.left + ((d.timestamp - xMin) / xRange) * innerWidth,
 		y: chartPadding.top + innerHeight - ((d.value - min) / yRange) * innerHeight,
 		value: d.value,
@@ -57,13 +61,17 @@ const polylinePoints = computed(() =>
 );
 
 const areaPath = computed(() => {
-	if (points.value.length < 2) return '';
-	const first = points.value[0]!;
-	const last = points.value[points.value.length - 1]!;
+	const pts = points.value;
+	if (pts.length < 2) return '';
+	const first = pts[0];
+	const last = pts[pts.length - 1];
+	if (!first || !last) return '';
 	const baseline = chartPadding.top + innerHeight;
 	let path = `M ${first.x},${baseline} L ${first.x},${first.y}`;
-	for (let i = 1; i < points.value.length; i++) {
-		path += ` L ${points.value[i]!.x},${points.value[i]!.y}`;
+	for (let i = 1; i < pts.length; i++) {
+		const p = pts[i];
+		if (!p) continue;
+		path += ` L ${p.x},${p.y}`;
 	}
 	path += ` L ${last.x},${baseline} Z`;
 	return path;
@@ -79,10 +87,13 @@ const yLabels = computed(() => {
 });
 
 const xLabels = computed(() => {
-	if (!hasData.value) return { first: '', last: '' };
+	const data = sortedData.value;
+	const first = data[0];
+	const last = data[data.length - 1];
+	if (!hasData.value || !first || !last) return { first: '', last: '' };
 	return {
-		first: formatTime(sortedData.value[0]!.timestamp),
-		last: formatTime(sortedData.value[sortedData.value.length - 1]!.timestamp),
+		first: formatTime(first.timestamp),
+		last: formatTime(last.timestamp),
 	};
 });
 

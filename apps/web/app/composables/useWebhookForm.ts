@@ -95,7 +95,7 @@ export function useWebhookForm() {
 	};
 
 	const selectAllEvents = () => {
-		createForm.events = WEBHOOK_EVENTS.map((e) => e.value) as unknown as WebhookEvent[];
+		createForm.events = WEBHOOK_EVENTS.map((e): WebhookEvent => e.value);
 	};
 
 	const clearAllEvents = () => {
@@ -103,7 +103,6 @@ export function useWebhookForm() {
 	};
 
 	const handleCreate = async () => {
-
 		createFormError.value = '';
 
 		if (!createForm.name.trim()) {
@@ -259,7 +258,6 @@ export function useWebhookForm() {
 	const webhookActions = useWebhookActions(showNotification);
 
 	// ─── Utilities ──────────────────────────────────────────────────────
-
 
 	const getEventLabel = (event: string) => {
 		const found = WEBHOOK_EVENTS.find((e) => e.value === event);

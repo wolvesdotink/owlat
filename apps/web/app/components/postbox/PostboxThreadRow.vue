@@ -1,11 +1,13 @@
 <script lang="ts">
+import type { Id } from '@owlat/api/dataModel';
+
 /**
  * One thread-list row's message shape. Extracted here (shared with
  * PostboxThreadList.vue) so the list and the row agree on the projection the
  * folder query returns.
  */
 export type PostboxThreadRowMessage = {
-	_id: string;
+	_id: Id<'mailMessages'>;
 	threadId?: string;
 	fromAddress: string;
 	fromName?: string;
