@@ -486,12 +486,9 @@ const readinessSummary = (domain: DomainWithVerification) =>
 			 sends (managed MTA records vs SES/relay/Resend that sign on your behalf). -->
 		<DeliveryDomainDnsGuidance />
 
-		<!-- Loading State -->
-		<div v-if="isLoading && !domainsData" class="flex items-center justify-center py-16">
-			<div class="flex flex-col items-center gap-3">
-				<UiSpinner />
-				<p class="text-text-secondary text-sm">Loading domains...</p>
-			</div>
+		<!-- First-load skeleton (shaped like the domain list) -->
+		<div v-if="isLoading && !domainsData" class="card overflow-hidden">
+			<DashboardListSkeleton variant="card" leading :rows="4" />
 		</div>
 
 		<!-- No Team State -->

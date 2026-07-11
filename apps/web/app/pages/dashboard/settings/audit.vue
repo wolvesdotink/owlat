@@ -119,13 +119,10 @@ const {
 const { data: activeUsersData } = useOrganizationQuery(api.auditLogs.getActiveUsers);
 
 // Get stats for the stats cards
-const { data: statsData } = useOrganizationQuery(
-	api.auditLogs.getStats,
-	() => ({
-		startDate: dateRangeValues.value.startDate,
-		endDate: dateRangeValues.value.endDate,
-	})
-);
+const { data: statsData } = useOrganizationQuery(api.auditLogs.getStats, () => ({
+	startDate: dateRangeValues.value.startDate,
+	endDate: dateRangeValues.value.endDate,
+}));
 
 const isLoading = computed(() => organizationLoading.value || auditLogsLoading.value);
 
@@ -186,7 +183,6 @@ const dateRangeOptions = [
 	{ value: 'week', label: 'Last 7 Days' },
 	{ value: 'month', label: 'Last 30 Days' },
 ];
-
 </script>
 
 <template>
@@ -220,12 +216,9 @@ const dateRangeOptions = [
 			</p>
 		</div>
 
-		<!-- Loading State -->
-		<div v-else-if="isLoading && !auditLogsData" class="flex items-center justify-center py-16">
-			<div class="flex flex-col items-center gap-3">
-				<UiSpinner />
-				<p class="text-text-secondary text-sm">Loading audit log...</p>
-			</div>
+		<!-- First-load skeleton (shaped like the audit-log table) -->
+		<div v-else-if="isLoading && !auditLogsData" class="card overflow-hidden">
+			<DashboardListSkeleton variant="table" :columns="5" :rows="8" />
 		</div>
 
 		<!-- No Organization State -->
@@ -233,7 +226,13 @@ const dateRangeOptions = [
 			v-else-if="!hasActiveOrganization"
 			class="card flex flex-col items-center justify-center py-16 text-center px-6"
 		>
-			<UiIconBox icon="lucide:clipboard-list" size="xl" variant="surface" rounded="full" class="mb-4" />
+			<UiIconBox
+				icon="lucide:clipboard-list"
+				size="xl"
+				variant="surface"
+				rounded="full"
+				class="mb-4"
+			/>
 			<p class="text-text-secondary font-medium">No workspace selected</p>
 			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
 				Create or select a workspace to view the audit log.
@@ -282,7 +281,10 @@ const dateRangeOptions = [
 				<div class="flex flex-col lg:flex-row gap-4">
 					<!-- Search -->
 					<div class="relative flex-1">
-						<Icon name="lucide:search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary" />
+						<Icon
+							name="lucide:search"
+							class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary"
+						/>
 						<input
 							v-model="searchQuery"
 							type="text"
@@ -310,12 +312,12 @@ const dateRangeOptions = [
 						<Icon name="lucide:activity" class="w-4 h-4 text-text-tertiary" />
 						<select v-model="selectedAction" class="input w-44">
 							<option value="">All Actions</option>
-							<optgroup
-								v-for="group in actionTypeGroups"
-								:key="group.label"
-								:label="group.label"
-							>
-								<option v-for="actionValue in group.actions" :key="actionValue" :value="actionValue">
+							<optgroup v-for="group in actionTypeGroups" :key="group.label" :label="group.label">
+								<option
+									v-for="actionValue in group.actions"
+									:key="actionValue"
+									:value="actionValue"
+								>
 									{{ getActionLabel(actionValue) }}
 								</option>
 							</optgroup>
@@ -366,7 +368,13 @@ const dateRangeOptions = [
 				v-if="auditLogsData && auditLogsData.logs.length === 0"
 				class="card flex flex-col items-center justify-center py-16 text-center px-6"
 			>
-				<UiIconBox icon="lucide:clipboard-list" size="xl" variant="surface" rounded="full" class="mb-4" />
+				<UiIconBox
+					icon="lucide:clipboard-list"
+					size="xl"
+					variant="surface"
+					rounded="full"
+					class="mb-4"
+				/>
 				<p class="text-text-secondary font-medium">No activity recorded</p>
 				<p class="text-sm text-text-tertiary mt-1 max-w-sm">
 					Team actions will appear here as they happen. Start by creating a campaign, adding
@@ -453,10 +461,7 @@ const dateRangeOptions = [
 						<!-- Resource Icon -->
 						<div class="flex-shrink-0">
 							<div class="p-2 rounded-lg bg-bg-surface flex items-center justify-center">
-								<Icon
-									:name="getResourceIcon(log.resource)"
-									class="w-4 h-4 text-text-secondary"
-								/>
+								<Icon :name="getResourceIcon(log.resource)" class="w-4 h-4 text-text-secondary" />
 							</div>
 						</div>
 					</div>
