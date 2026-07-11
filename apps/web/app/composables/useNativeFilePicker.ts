@@ -24,8 +24,17 @@ export function useNativeFilePicker() {
 	 */
 	async function pickNativeFiles(options: PickFilesOptions = {}): Promise<File[]> {
 		if (!isDesktop.value) return [];
-		const { pickFiles } = await import('@owlat/desktop/src/dialog');
-		return pickFiles(options);
+		try {
+			const { pickFiles } = await import('@owlat/desktop/src/dialog');
+			return await pickFiles(options);
+		} catch (error) {
+			// A picker/read failure resolves to "no files" (like a cancel) so it
+			// never leaks as an unhandled rejection into the `@click` handlers that
+			// call this (FileUploadModal.browse, composer onAttachClick,
+			// useCsvImport.triggerFileInput).
+			console.warn('[useNativeFilePicker] Native file pick failed', error);
+			return [];
+		}
 	}
 
 	return { isDesktop, pickNativeFiles };

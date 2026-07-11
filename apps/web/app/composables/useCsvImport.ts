@@ -206,19 +206,23 @@ export function useCsvImport() {
 		step.value = 'mapping';
 	};
 
-	// Handle file selection
-	const handleFileSelect = async (event: Event) => {
-		const input = event.target as HTMLInputElement;
-		const file = input.files?.[0];
-
+	// Guard that a chosen/dropped file is a `.csv` before parsing it, setting
+	// `errorMessage` when it isn't. Shared by the `<input>`, the native picker
+	// and the drop zone so the "first file → `.csv` guard → error → ingest" flow
+	// lives in exactly one place.
+	const acceptCsvFile = (file: File | undefined, errorMessage: string) => {
 		if (!file) return;
-
 		if (!file.name.endsWith('.csv')) {
-			error.value = 'Please select a CSV file';
+			error.value = errorMessage;
 			return;
 		}
+		void ingestFile(file);
+	};
 
-		await ingestFile(file);
+	// Handle file selection
+	const handleFileSelect = (event: Event) => {
+		const input = event.target as HTMLInputElement;
+		acceptCsvFile(input.files?.[0], 'Please select a CSV file');
 	};
 
 	// Trigger file selection: the native OS picker (filtered to `.csv`) on
@@ -229,15 +233,7 @@ export function useCsvImport() {
 			void pickNativeFiles({
 				title: 'Choose a CSV file',
 				filters: [{ name: 'CSV', extensions: ['csv'] }],
-			}).then((files) => {
-				const file = files[0];
-				if (!file) return;
-				if (!file.name.endsWith('.csv')) {
-					error.value = 'Please select a CSV file';
-					return;
-				}
-				void ingestFile(file);
-			});
+			}).then((files) => acceptCsvFile(files[0], 'Please select a CSV file'));
 			return;
 		}
 		fileInputRef.value?.click();
@@ -248,18 +244,10 @@ export function useCsvImport() {
 	// flag so callers/templates keep their current binding. On desktop, OS-level
 	// drops are accepted too, scoped to the drop element via `dropRootRef`.
 	const dropRootRef = ref<HTMLElement | null>(null);
-	const dropZone = useDropZone(
-		(files) => {
-			const file = files[0];
-			if (!file) return;
-			if (!file.name.endsWith('.csv')) {
-				error.value = 'Please drop a CSV file';
-				return;
-			}
-			void ingestFile(file);
-		},
-		{ osFileDrop: true, rootRef: dropRootRef }
-	);
+	const dropZone = useDropZone((files) => acceptCsvFile(files[0], 'Please drop a CSV file'), {
+		osFileDrop: true,
+		rootRef: dropRootRef,
+	});
 	const isDragging = dropZone.isDragOver;
 	const handleDragOver = dropZone.handleDragOver;
 	const handleDragLeave = dropZone.handleDragLeave;

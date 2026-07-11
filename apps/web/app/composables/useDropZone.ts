@@ -1,5 +1,6 @@
 import { getCurrentInstance, onMounted, onUnmounted, ref } from 'vue';
 import type { Ref } from 'vue';
+import { useDesktopContext } from '~/composables/useDesktopContext';
 
 /**
  * Options for {@link useDropZone}.
@@ -104,11 +105,6 @@ export function useDropZone(
 	};
 }
 
-/** `true` when running inside the Tauri desktop webview. */
-function isTauri(): boolean {
-	return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
-}
-
 /**
  * Wire the Tauri OS-level drag-drop event to a drop zone. Registered on mount
  * and torn down on unmount. When `rootRef` is set, only drops within that
@@ -121,11 +117,18 @@ function registerOsFileDrop(
 	onFiles: (files: File[]) => void,
 	rootRef: Ref<HTMLElement | null> | undefined
 ): void {
-	if (!isTauri() || !getCurrentInstance()) return;
+	// Reuse the shared desktop check (registerOsFileDrop already runs in setup,
+	// so a component instance exists) instead of forking a third Tauri probe.
+	if (!useDesktopContext().isDesktop.value || !getCurrentInstance()) return;
 
 	const isWithinRoot = (position: { x: number; y: number }): boolean => {
-		const el = rootRef?.value;
-		if (!el) return true;
+		// No rootRef: the caller opted into accept-anywhere on the window.
+		if (!rootRef) return true;
+		const el = rootRef.value;
+		// rootRef was provided but its element is unmounted (e.g. behind a v-if):
+		// treat as out-of-bounds so a stray window drop can't hit a zone that
+		// isn't on screen (e.g. re-ingesting a CSV on the mapping step).
+		if (!el) return false;
 		const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
 		const x = position.x / dpr;
 		const y = position.y / dpr;
