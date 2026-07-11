@@ -17,7 +17,7 @@ export interface LabelPresetColor {
 	readonly hex: string;
 }
 
-export const LABEL_PRESET_COLORS: readonly LabelPresetColor[] = [
+export const LABEL_PRESET_COLORS = [
 	{ token: 'brand', hex: '#c4785a' },
 	{ token: 'accent', hex: '#d4a574' },
 	{ token: 'success', hex: '#7a9b6e' },
@@ -25,10 +25,10 @@ export const LABEL_PRESET_COLORS: readonly LabelPresetColor[] = [
 	{ token: 'warning', hex: '#c9a55a' },
 	{ token: 'error', hex: '#c46b5a' },
 	{ token: 'brand-dim', hex: '#8c5640' },
-] as const;
+] as const satisfies readonly LabelPresetColor[];
 
 /** Just the hex values, in preset order — the shape the picker iterates over. */
 export const LABEL_PRESET_HEXES: readonly string[] = LABEL_PRESET_COLORS.map((c) => c.hex);
 
 /** The default colour offered for a new label (the terracotta brand accent). */
-export const DEFAULT_LABEL_COLOR: string = LABEL_PRESET_HEXES[0]!;
+export const DEFAULT_LABEL_COLOR: string = LABEL_PRESET_COLORS[0].hex;
