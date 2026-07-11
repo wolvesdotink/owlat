@@ -9,10 +9,15 @@
  *
  * The client is memoized per `(baseUrl, key-hash)`; the cache key stores only a
  * non-reversible hash of the key, never a slice of the raw secret.
+ *
+ * `listModels` hits the server's OpenAI-shaped `/models` endpoint (Ollama, vLLM,
+ * and llama.cpp all expose it) so the settings model-picker can show what the
+ * local server actually serves instead of free-text only.
  */
 
 import type { EmbeddingModel, LanguageModel } from 'ai';
 import { type OpenAICompatibleClient, openAICompatibleClient } from './clientCache';
+import { parseOpenAiModelIds } from './modelListing';
 import type {
 	EmbeddingClientConfig,
 	EmbeddingProviderAdapter,
@@ -45,6 +50,17 @@ export const openaiCompatibleLanguageAdapter: LanguageProviderAdapter<'openaiCom
 	},
 	validateCredentials(cfg: ProviderClientConfig): void {
 		requireBaseUrl(cfg);
+	},
+	async listModels(cfg: ProviderClientConfig): Promise<string[]> {
+		const baseUrl = requireBaseUrl(cfg);
+		const res = await fetch(`${baseUrl}/models`, {
+			headers: cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {},
+		});
+		if (!res.ok) {
+			throw new Error(`Local model listing failed (HTTP ${res.status}).`);
+		}
+		const body: unknown = await res.json();
+		return parseOpenAiModelIds(body);
 	},
 };
 

@@ -22,6 +22,7 @@ export type LanguageProviderKind =
 	| 'openai'
 	| 'anthropic'
 	| 'google'
+	| 'azure'
 	| 'openrouter'
 	| 'openaiCompatible';
 
@@ -45,10 +46,21 @@ export interface LanguageProviderMeta {
 	docsUrl?: string;
 	/** Default base URL a local provider ships with (an Ollama/vLLM endpoint). */
 	defaultBaseUrl?: string;
+	/**
+	 * Hosted provider that STILL needs an explicit base URL (e.g. Azure's resource
+	 * endpoint). The base-URL field is shown by default and required at save.
+	 */
+	requiresBaseUrl?: boolean;
 	/** Per-tier default model ids used when none is entered. */
 	defaultModels: { fast: string; capable: string };
 	/** Curated model ids offered in the dropdown before the free-text override. */
 	curatedModels: readonly string[];
+	/**
+	 * True when the backend adapter implements `listModels` (OpenRouter's `/models`
+	 * or a local server's `/models`), so the settings page can offer a "Load
+	 * available models" action to populate the picker with the live catalog.
+	 */
+	supportsModelListing?: boolean;
 	/** One-line hint shown under the provider select. */
 	hint: string;
 }
@@ -98,6 +110,17 @@ export const LANGUAGE_PROVIDERS: readonly LanguageProviderMeta[] = [
 		hint: 'Hosted Gemini models. Paste a Google AI Studio key.',
 	},
 	{
+		kind: 'azure',
+		label: 'Azure OpenAI',
+		isLocal: false,
+		docsUrl: 'https://learn.microsoft.com/azure/ai-services/openai/',
+		requiresBaseUrl: true,
+		defaultBaseUrl: 'https://<resource>.openai.azure.com/openai',
+		defaultModels: { fast: 'gpt-4o-mini', capable: 'gpt-4o' },
+		curatedModels: ['gpt-4o', 'gpt-4o-mini'],
+		hint: 'GPT models from your Azure OpenAI resource. Model ids are your deployment names — paste your key and resource base URL.',
+	},
+	{
 		kind: 'openrouter',
 		label: 'OpenRouter',
 		isLocal: false,
@@ -109,6 +132,7 @@ export const LANGUAGE_PROVIDERS: readonly LanguageProviderMeta[] = [
 			'openai/gpt-4o-mini',
 			'google/gemini-2.5-pro',
 		],
+		supportsModelListing: true,
 		hint: 'One key, many upstream models. Use provider-prefixed ids like anthropic/claude-sonnet-4-5.',
 	},
 	{
@@ -118,6 +142,7 @@ export const LANGUAGE_PROVIDERS: readonly LanguageProviderMeta[] = [
 		defaultBaseUrl: 'http://localhost:11434/v1',
 		defaultModels: { fast: 'llama3.1', capable: 'llama3.1' },
 		curatedModels: ['llama3.1', 'qwen2.5', 'mistral'],
+		supportsModelListing: true,
 		hint: 'Ollama, vLLM, or llama.cpp on your own hardware. No key — just a base URL.',
 	},
 ] as const;
@@ -211,6 +236,25 @@ export function modelOptions(curated: readonly string[], current: string): Selec
 }
 
 /**
+ * Merge a provider's live model catalog (from the backend `listModels` action)
+ * into its curated list, curated ids first, then any live id not already curated
+ * — de-duplicated, order-stable. The result feeds {@link modelOptions} so the
+ * picker shows what the provider actually serves instead of free-text only. An
+ * empty `live` list leaves the curated list unchanged (a copy).
+ */
+export function mergeLiveModels(curated: readonly string[], live: readonly string[]): string[] {
+	const merged = [...curated];
+	const seen = new Set(curated);
+	for (const id of live) {
+		if (id && !seen.has(id)) {
+			seen.add(id);
+			merged.push(id);
+		}
+	}
+	return merged;
+}
+
+/**
  * Resolve the effective model id from a dropdown `choice` + the free-text
  * `custom` field. When the sentinel is chosen, the trimmed custom text wins;
  * otherwise the chosen id is used verbatim.
@@ -222,17 +266,23 @@ export function resolveModelId(choice: string, custom: string): string {
 /**
  * Validate the language plane before save. A local provider never needs a key
  * (the field is hidden). A hosted provider needs either a stored key or a
- * freshly-typed one — otherwise saving would persist a config that can't run.
- * Returns a human error string, or `null` when the config is savable.
+ * freshly-typed one — otherwise saving would persist a config that can't run. A
+ * provider flagged `requiresBaseUrl` (Azure) additionally needs its resource
+ * base URL. Returns a human error string, or `null` when the config is savable.
  */
 export function validateLanguageConfig(input: {
 	kind: string;
 	hasStoredKey: boolean;
 	apiKey: string;
+	baseUrl?: string;
 }): string | null {
+	const meta = languageProviderMeta(input.kind);
+	const label = meta?.label ?? 'this provider';
+	if (meta?.requiresBaseUrl && !(input.baseUrl ?? '').trim()) {
+		return `${label} needs its resource base URL. Add it above to continue.`;
+	}
 	if (!languageProviderRequiresKey(input.kind)) return null;
 	if (input.hasStoredKey || input.apiKey.trim().length > 0) return null;
-	const label = languageProviderMeta(input.kind)?.label ?? 'this provider';
 	return `${label} needs an API key. Paste one above to continue.`;
 }
 
