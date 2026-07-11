@@ -3,8 +3,9 @@
  * (`/api/auth/convex/token`) from the instance's TRUSTED configured origin.
  *
  * SECURITY: this URL must NOT be derived from request-controlled input such as
- * the `Host` header. `requirePlatformAdmin` forwards the caller's session
- * cookie to this URL, so a spoofed `Host` would let an attacker redirect that
+ * the `Host` header. `authedConvexClient` (used by `requirePlatformAdmin` and
+ * `requireOrgAdmin`) forwards the caller's session cookie to this URL, so a
+ * spoofed `Host` would let an attacker redirect that
  * cookie to an origin of their choosing (a low-value SSRF / credential leak).
  * We always build it from `runtimeConfig.public.siteUrl`, which is operator
  * configuration, never client input.
