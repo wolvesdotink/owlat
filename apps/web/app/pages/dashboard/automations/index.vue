@@ -280,7 +280,6 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 				:loading="isLoading && automations.length === 0"
 				:error="automationsError"
 				error-title="Couldn't load automations"
-				loading-label="Loading automations..."
 			>
 				<!-- Loading State: content-shaped skeleton on first load only -->
 				<template #loading>

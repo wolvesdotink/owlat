@@ -295,7 +295,6 @@ onMounted(() => {
 				:loading="isLoading && topics.length === 0"
 				:error="topicsError"
 				error-title="Couldn't load topics"
-				loading-label="Loading topics..."
 			>
 				<!-- Loading State: content-shaped skeleton on first load only -->
 				<template #loading>

@@ -142,7 +142,6 @@ onMounted(() => {
 				:loading="isLoading && segments.length === 0"
 				:error="segmentsError"
 				error-title="Couldn't load segments"
-				loading-label="Loading segments..."
 			>
 				<!-- Loading State: content-shaped skeleton on first load only -->
 				<template #loading>
