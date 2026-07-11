@@ -22,7 +22,7 @@ import type { ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { embed } from 'ai';
-import { getEmbeddingModel } from '../lib/llmProvider';
+import { resolveEmbeddingModel } from '../lib/llmProvider';
 import { entryTypeValidator } from '../schema/knowledge';
 import { logInfo } from '../lib/runtimeLog';
 import { isContactScopeVisible } from '../lib/contactScope';
@@ -109,8 +109,11 @@ export const semanticSearch = internalAction({
 		let vector = args.embedding;
 		if (!vector || vector.length === 0) {
 			if (!queryText) return [];
+			// Resolve OUTSIDE the try so a misconfigured embedder surfaces an
+			// actionable error rather than silently returning zero results.
+			const embeddingModel = await resolveEmbeddingModel(ctx);
 			try {
-				const { embedding } = await embed({ model: getEmbeddingModel(), value: queryText });
+				const { embedding } = await embed({ model: embeddingModel, value: queryText });
 				vector = Array.from(embedding);
 			} catch (error) {
 				logInfo('[knowledge.retrieval] embed failed', { error: String(error) });

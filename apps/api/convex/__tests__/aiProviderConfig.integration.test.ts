@@ -58,7 +58,14 @@ vi.mock('../lib/llmProviders', () => ({
 		defaultModels: { fast: 'fast-default', capable: 'capable-default' },
 		validateCredentials: adapterMocks.validateCredentials,
 	}),
-	embeddingProviderFor: () => ({ kind: 'openai', dimensions: 1536 }),
+	embeddingProviderFor: (kind: string) => ({
+		kind,
+		dimensions: 1536,
+		// Local + custom-compatible embedders are keyless; openai/google are hosted.
+		isLocal: kind === 'local' || kind === 'openaiCompatible',
+		defaultModel: kind === 'local' ? 'nomic-embed-text' : 'text-embedding-3-small',
+		validateCredentials: adapterMocks.validateCredentials,
+	}),
 }));
 
 const allModules = import.meta.glob('../**/*.*s');
@@ -236,6 +243,52 @@ describe('aiProviderConfig.saveConfig + getConfig', () => {
 		expect(result.embeddingModelVersion).toBe(2);
 		// The key survived a keyless re-save.
 		expect(result.isLanguageKeySet).toBe(true);
+	});
+
+	it('bumps embeddingModelVersion when the embedding provider kind changes (re-index flag)', async () => {
+		const t = setup();
+		await t.action(api.aiProviderConfigActions.saveConfig, {
+			languageProviderKind: 'anthropic',
+			apiKey: 'sk-ant-secret-key-1234',
+			// default embedding kind: local
+		});
+		await t.action(api.aiProviderConfigActions.saveConfig, {
+			languageProviderKind: 'anthropic',
+			embeddingProviderKind: 'openai',
+			embeddingModel: 'text-embedding-3-small',
+			embeddingApiKey: 'sk-embed-secret-key-9999',
+		});
+
+		const result = await t.query(api.aiProviderConfig.getConfig, {});
+		if (!result.configured) throw new Error('unreachable');
+		expect(result.embeddingProviderKind).toBe('openai');
+		// Switching planes bumps the guard so a re-index can be prompted.
+		expect(result.embeddingModelVersion).toBe(2);
+	});
+
+	it('round-trips a HOSTED embedder key without ever returning ciphertext', async () => {
+		const t = setup();
+		await t.action(api.aiProviderConfigActions.saveConfig, {
+			languageProviderKind: 'anthropic',
+			apiKey: 'sk-ant-secret-key-1234',
+			embeddingProviderKind: 'openai',
+			embeddingModel: 'text-embedding-3-small',
+			embeddingApiKey: 'sk-embed-secret-key-9999',
+		});
+
+		// The stored row holds the embedding envelope…
+		const row = await t.run((ctx) => ctx.db.query('aiProviderConfig').first());
+		expect(row?.embeddingSecretCiphertext).toBeTruthy();
+		expect(row?.embeddingSecretCiphertext).not.toContain('sk-embed');
+
+		// …but the public query exposes only a masked preview + boolean.
+		const result = await t.query(api.aiProviderConfig.getConfig, {});
+		if (!result.configured) throw new Error('unreachable');
+		expect(result.isEmbeddingKeySet).toBe(true);
+		expect(result.embeddingKeyPreview).toBe('sk-…9999');
+		const serialized = JSON.stringify(result);
+		expect(serialized).not.toContain('sk-embed-secret-key-9999');
+		expect(serialized).not.toContain(row?.embeddingSecretCiphertext ?? '__nope__');
 	});
 });
 

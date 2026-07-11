@@ -14,9 +14,13 @@
 
 import { openaiEmbeddingAdapter, openaiLanguageAdapter } from './openai';
 import { anthropicLanguageAdapter } from './anthropic';
-import { googleLanguageAdapter } from './google';
+import { googleEmbeddingAdapter, googleLanguageAdapter } from './google';
 import { openrouterLanguageAdapter } from './openrouter';
-import { openaiCompatibleLanguageAdapter } from './openaiCompatible';
+import {
+	openaiCompatibleEmbeddingAdapter,
+	openaiCompatibleLanguageAdapter,
+} from './openaiCompatible';
+import { localEmbeddingAdapter } from './local';
 import type {
 	EmbeddingProviderAdapter,
 	EmbeddingProviderKind,
@@ -67,7 +71,10 @@ export function languageProviderFor<K extends LanguageProviderKind>(
 // ─── Embedding registry ────────────────────────────────────────────────────
 
 export const EMBEDDING_PROVIDERS = {
+	local: localEmbeddingAdapter,
 	openai: openaiEmbeddingAdapter,
+	google: googleEmbeddingAdapter,
+	openaiCompatible: openaiCompatibleEmbeddingAdapter,
 } as const;
 
 const _embeddingTypecheck: { [K in EmbeddingProviderKind]: EmbeddingProviderAdapter<K> } =

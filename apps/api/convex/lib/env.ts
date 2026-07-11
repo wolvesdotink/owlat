@@ -105,6 +105,9 @@ export type EnvKey =
 	| 'LLM_MODEL_FAST'
 	| 'LLM_MODEL_CAPABLE'
 	| 'LLM_EMBEDDING_MODEL'
+	// Local-by-default embedding plane (an OpenAI-compatible sidecar, e.g. Ollama).
+	| 'LOCAL_EMBEDDING_BASE_URL'
+	| 'LOCAL_EMBEDDING_MODEL'
 	| 'LLM_COMPLEXITY_ROUTING'
 	| 'OPENAI_API_KEY'
 	| 'OPENROUTER_API_KEY'

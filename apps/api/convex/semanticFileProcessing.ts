@@ -14,7 +14,7 @@ import { internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
 import {
 	resolveLanguageModel,
-	getEmbeddingModel,
+	resolveEmbeddingModel,
 	assertEmbeddingDimension,
 } from './lib/llmProvider';
 import { CURRENT_EMBEDDING_MODEL } from './lib/constants';
@@ -114,9 +114,13 @@ ${textForAI}`,
 		const embeddingText = [title, summary, extractedText.slice(0, 2000)].filter(Boolean).join(' ');
 
 		if (embeddingText.length > 10) {
+			// Resolve OUTSIDE the try so a misconfigured embedder surfaces an
+			// actionable error instead of being swallowed into a silent empty vector;
+			// only a transient embed() failure fails soft (metadata without search).
+			const embeddingModel = await resolveEmbeddingModel(ctx);
 			try {
 				const embeddingResult = await embed({
-					model: getEmbeddingModel(),
+					model: embeddingModel,
 					value: embeddingText,
 				});
 				assertEmbeddingDimension(embeddingResult.embedding);
@@ -243,8 +247,11 @@ export const semanticSearch = internalAction({
 		let vector = args.embedding;
 		if (!vector || vector.length === 0) {
 			if (!queryText) return [];
+			// Resolve OUTSIDE the try so a misconfigured embedder surfaces an
+			// actionable error rather than silently returning zero results.
+			const embeddingModel = await resolveEmbeddingModel(ctx);
 			try {
-				const { embedding } = await embed({ model: getEmbeddingModel(), value: queryText });
+				const { embedding } = await embed({ model: embeddingModel, value: queryText });
 				vector = Array.from(embedding);
 			} catch (error) {
 				logInfo('[semantic_file] search embed failed', { error: String(error) });

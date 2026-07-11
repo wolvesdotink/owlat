@@ -13,11 +13,11 @@ import { internalAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { CURRENT_EMBEDDING_MODEL } from '../lib/constants';
-import { embed } from 'ai';
+import { embed, type EmbeddingModel } from 'ai';
 import { z } from 'zod';
 import {
 	resolveLanguageModel,
-	getEmbeddingModel,
+	resolveEmbeddingModel,
 	assertEmbeddingDimension,
 } from '../lib/llmProvider';
 import { logInfo } from '../lib/runtimeLog';
@@ -73,7 +73,7 @@ const extractionSchema = z.object({
  */
 async function persistExtractedEntries(
 	ctx: ActionCtx,
-	embeddingModel: ReturnType<typeof getEmbeddingModel>,
+	embeddingModel: EmbeddingModel,
 	entries: ExtractedEntry[],
 	source: {
 		sourceType: 'agent_extracted' | 'file' | 'email';
@@ -195,7 +195,7 @@ Only extract knowledge you are confident about. Skip trivial greetings or small 
 			if (!extraction.entries || extraction.entries.length === 0) return;
 
 			// ── Step 2: Generate embeddings and store ──
-			const embeddingModel = getEmbeddingModel();
+			const embeddingModel = await resolveEmbeddingModel(ctx);
 			await persistExtractedEntries(ctx, embeddingModel, extraction.entries, {
 				sourceType: 'agent_extracted',
 				sourceId: args.inboundMessageId,
@@ -266,7 +266,7 @@ Extract any facts, decisions, events, preferences, goals, relationships, or acti
 
 			if (!extraction.entries || extraction.entries.length === 0) return;
 
-			const embeddingModel = getEmbeddingModel();
+			const embeddingModel = await resolveEmbeddingModel(ctx);
 			await persistExtractedEntries(ctx, embeddingModel, extraction.entries, {
 				sourceType: 'file',
 				sourceId: args.fileId,
@@ -380,7 +380,7 @@ Only extract knowledge you are confident about. Skip trivial greetings or small 
 
 			if (!extraction.entries || extraction.entries.length === 0) return;
 
-			const embeddingModel = getEmbeddingModel();
+			const embeddingModel = await resolveEmbeddingModel(ctx);
 			await persistExtractedEntries(ctx, embeddingModel, extraction.entries, {
 				sourceType: 'email',
 				sourceId: args.mailMessageId,

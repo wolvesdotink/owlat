@@ -7,7 +7,7 @@
  *
  *   • STORED per-org config (`aiProviderConfig` row) WINS when present. The
  *     language key is decrypted ONLY for hosted providers, and ONLY inside the
- *     sibling `'use node'` action `aiProviderConfigActions._decryptLanguageKey`
+ *     sibling `'use node'` action `aiProviderConfigActions._decryptSecretEnvelope`
  *     (the plaintext key never crosses to a query result or the client).
  *   • ENV `LLM_*` is the deployment fallback when no row exists — self-hosters
  *     who set `LLM_*` keep working with zero UI.
@@ -20,10 +20,21 @@
  * specifics.
  *
  * `resolveLanguageModel(ctx, task)` (async) replaces the former sync, env-only
- * per-task resolver. Embedding resolution still runs through the env-only
- * `getEmbeddingModel()` for now (the embedding-plane upgrade is a later plan
- * piece); the embedding selection is surfaced on the resolved config so that
- * piece can consume it.
+ * per-task resolver. Embeddings resolve through the SAME `resolveAiConfig(ctx)`
+ * point via `resolveEmbeddingModel(ctx)` — the two planes are DECOUPLED:
+ *
+ *   • The embedding plane is LOCAL BY DEFAULT (an OpenAI-compatible sidecar via
+ *     `LOCAL_EMBEDDING_BASE_URL`) so retrieval works under ANY language choice,
+ *     including Anthropic (which has no embeddings API). Optional hosted
+ *     embedders (`openai` / `google`) are overrides with their own encrypted key.
+ *   • The env `LLM_EMBEDDING_MODEL` (through the `openai` adapter) remains the
+ *     deployment fallback when no stored row exists — resolution order is:
+ *     stored hosted embedder (decrypted key) → stored local default → env.
+ *
+ * A misconfigured hosted embedder surfaces an actionable error at resolve time
+ * (never a silent empty/zero vector); changing the embedder bumps the stored
+ * `embeddingModelVersion` so a re-index can be prompted, and a mismatched-width
+ * vector is rejected at write time by `assertEmbeddingDimension`.
  *
  * Environment (fallback only):
  *   LLM_PROVIDER        openai (default) | openrouter | ollama
@@ -31,9 +42,10 @@
  *   LLM_BASE_URL        explicit base-URL override (e.g. an OpenAI-compat proxy)
  *   LLM_MODEL_FAST / LLM_MODEL_CAPABLE / LLM_MODEL      model IDs per tier
  *   LLM_EMBEDDING_MODEL embedding model (default text-embedding-3-small)
+ *   LOCAL_EMBEDDING_BASE_URL / LOCAL_EMBEDDING_MODEL    local embedder sidecar
  */
 
-import type { LanguageModel } from 'ai';
+import type { EmbeddingModel, LanguageModel } from 'ai';
 import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
@@ -70,13 +82,18 @@ export interface ResolvedLanguagePlane {
 }
 
 /**
- * The resolved embedding plane — resolved INDEPENDENTLY of the language plane.
- * The embedding-plane upgrade (a later plan piece) consumes this; today
- * {@link getEmbeddingModel} still resolves embeddings from env directly.
+ * The resolved embedding plane — resolved INDEPENDENTLY of the language plane
+ * ({@link resolveEmbeddingModel} builds the AI-SDK model from it). `clientConfig`
+ * carries the local sidecar base URL or the decrypted hosted-embedder key;
+ * `modelVersion` is the stored dimension-guard version (absent for env fallback).
  */
 export interface ResolvedEmbeddingPlane {
 	readonly kind: StoredEmbeddingProviderKind;
 	readonly modelId: string;
+	/** Base URL (local sidecar) / decrypted key (hosted). Empty for env-keyless. */
+	readonly clientConfig: ProviderClientConfig;
+	/** Stored `embeddingModelVersion` guard; `undefined` under the env fallback. */
+	readonly modelVersion?: number;
 }
 
 /** The dual-source-resolved AI config for both planes. */
@@ -149,30 +166,60 @@ function modelIdForTier(tier: LLMTier): string {
 		: (getOptional('LLM_MODEL_CAPABLE') ?? getOptional('LLM_MODEL') ?? defaults.capable);
 }
 
+/**
+ * Resolve the embedding plane for a stored kind. The two planes are decoupled,
+ * so this depends only on the embedding selection — never the language provider.
+ * Local / custom-compatible embedders draw their base URL from
+ * `LOCAL_EMBEDDING_BASE_URL` (falling back to the adapter's default endpoint) and
+ * their model from `LOCAL_EMBEDDING_MODEL`; hosted embedders carry the decrypted
+ * `hostedKey`. `storedModel` (the admin's explicit choice) always wins.
+ */
+function resolveEmbeddingPlane(
+	kind: StoredEmbeddingProviderKind,
+	storedModel: string | undefined,
+	hostedKey: string | undefined,
+	modelVersion: number | undefined
+): ResolvedEmbeddingPlane {
+	const adapter = embeddingProviderFor(kind);
+	const modelDefault = adapter.isLocal
+		? (getOptional('LOCAL_EMBEDDING_MODEL') ?? adapter.defaultModel)
+		: adapter.defaultModel;
+	const clientConfig: ProviderClientConfig = adapter.isLocal
+		? { baseUrl: getOptional('LOCAL_EMBEDDING_BASE_URL') ?? adapter.defaultBaseUrl }
+		: { apiKey: hostedKey };
+	return { kind, modelId: storedModel ?? modelDefault, clientConfig, modelVersion };
+}
+
 /** Resolve both planes from the env `LLM_*` fallback (no stored row present). */
 export function resolveEnvProviderConfig(): ResolvedProviderConfig {
+	// The language and embedding planes share the env key/base-URL here (the
+	// prior single-client behavior); resolve it once.
+	const clientConfig = resolveEnvClientConfig();
 	return {
 		source: 'env',
 		language: {
 			kind: ENV_LANGUAGE_KIND,
-			clientConfig: resolveEnvClientConfig(),
+			clientConfig,
 			models: { fast: modelIdForTier('fast'), capable: modelIdForTier('capable') },
 		},
 		embedding: {
 			kind: ENV_EMBEDDING_KIND,
 			modelId: getOptional('LLM_EMBEDDING_MODEL') ?? DEFAULT_EMBEDDING_MODEL,
+			clientConfig,
 		},
 	};
 }
 
 /**
- * Map a stored config row into a resolved config. `languageKey` is the decrypted
- * language-provider key (already fetched via the Node decrypt action for hosted
- * providers, `undefined` for local/keyless ones).
+ * Map a stored config row into a resolved config. `languageKey` / `embeddingKey`
+ * are the decrypted provider keys (already fetched via the Node decrypt action
+ * for hosted providers, `undefined` for local/keyless ones). The embedding plane
+ * is resolved INDEPENDENTLY of the language plane.
  */
 export function buildStoredProviderConfig(
 	row: Doc<'aiProviderConfig'>,
-	languageKey: string | undefined
+	languageKey: string | undefined,
+	embeddingKey: string | undefined
 ): ResolvedProviderConfig {
 	const adapter = languageProviderFor(row.languageProviderKind);
 	return {
@@ -183,10 +230,12 @@ export function buildStoredProviderConfig(
 			clientConfig: { apiKey: languageKey, baseUrl: row.languageBaseUrl ?? adapter.defaultBaseUrl },
 			models: { fast: row.modelFast, capable: row.modelCapable },
 		},
-		embedding: {
-			kind: row.embeddingProviderKind,
-			modelId: row.embeddingModel ?? DEFAULT_EMBEDDING_MODEL,
-		},
+		embedding: resolveEmbeddingPlane(
+			row.embeddingProviderKind,
+			row.embeddingModel,
+			embeddingKey,
+			row.embeddingModelVersion
+		),
 	};
 }
 
@@ -196,26 +245,63 @@ export function buildStoredProviderConfig(
 const AI_CONFIG_CACHE_TTL_MS = 30_000;
 let configCache: { config: ResolvedProviderConfig; expiresAt: number } | null = null;
 
-/** True when a stored row carries a complete language-key envelope to decrypt. */
-function hasLanguageKeyEnvelope(row: Doc<'aiProviderConfig'>): row is Doc<'aiProviderConfig'> & {
-	secretCiphertext: string;
-	secretIv: string;
-	secretAuthTag: string;
-	secretEnvelopeVersion: number;
-} {
-	return (
-		row.secretCiphertext !== undefined &&
-		row.secretIv !== undefined &&
-		row.secretAuthTag !== undefined &&
-		row.secretEnvelopeVersion !== undefined
+/** A complete, decryptable AES-256-GCM envelope read off a config row. */
+interface KeyEnvelope {
+	ciphertext: string;
+	iv: string;
+	authTag: string;
+	version: number;
+}
+
+/**
+ * Assemble a `KeyEnvelope` from a row's four secret columns, or `undefined` when
+ * any is absent (no key stored). Single-sources the read side across both planes,
+ * mirroring how `storedEnvelopeOf` single-sources the persist side.
+ */
+function envelopeFromColumns(
+	ciphertext: string | undefined,
+	iv: string | undefined,
+	authTag: string | undefined,
+	version: number | undefined
+): KeyEnvelope | undefined {
+	if (
+		ciphertext === undefined ||
+		iv === undefined ||
+		authTag === undefined ||
+		version === undefined
+	) {
+		return undefined;
+	}
+	return { ciphertext, iv, authTag, version };
+}
+
+/** The language-key envelope of a row, or `undefined` when no key is stored. */
+function languageKeyEnvelope(row: Doc<'aiProviderConfig'>): KeyEnvelope | undefined {
+	return envelopeFromColumns(
+		row.secretCiphertext,
+		row.secretIv,
+		row.secretAuthTag,
+		row.secretEnvelopeVersion
+	);
+}
+
+/** The embedding-key envelope of a row, or `undefined` when no key is stored. */
+function embeddingKeyEnvelope(row: Doc<'aiProviderConfig'>): KeyEnvelope | undefined {
+	return envelopeFromColumns(
+		row.embeddingSecretCiphertext,
+		row.embeddingSecretIv,
+		row.embeddingSecretAuthTag,
+		row.embeddingSecretEnvelopeVersion
 	);
 }
 
 /**
  * Resolve the org's AI config for both planes: the stored per-org row WINS when
- * present (decrypting the hosted language key inside a Node action), otherwise
- * the env `LLM_*` fallback. Memoized for a short TTL. This is the single point
- * every language-model resolution flows through.
+ * present (decrypting hosted keys inside a Node action), otherwise the env
+ * `LLM_*` fallback. Memoized for a short TTL. This is the single point every
+ * language- AND embedding-model resolution flows through. The two planes decrypt
+ * their own keys — a hosted language provider and a hosted embedder can each
+ * carry a distinct key.
  */
 export async function resolveAiConfig(ctx: ActionCtx): Promise<ResolvedProviderConfig> {
 	const cached = configCache;
@@ -226,24 +312,28 @@ export async function resolveAiConfig(ctx: ActionCtx): Promise<ResolvedProviderC
 	if (!row) {
 		config = resolveEnvProviderConfig();
 	} else {
-		const adapter = languageProviderFor(row.languageProviderKind);
-		let languageKey: string | undefined;
-		if (!adapter.isLocal && hasLanguageKeyEnvelope(row)) {
-			// Decrypt ONLY inside the Node action — this v8-safe module never
-			// touches node:crypto. The plaintext key builds the model and is then
-			// discarded; it never reaches a query result or the client.
-			languageKey = await ctx.runAction(internal.aiProviderConfigActions._decryptLanguageKey, {
-				ciphertext: row.secretCiphertext,
-				iv: row.secretIv,
-				authTag: row.secretAuthTag,
-				version: row.secretEnvelopeVersion,
-			});
-		}
-		config = buildStoredProviderConfig(row, languageKey);
+		// Decrypt ONLY inside the Node action — this v8-safe module never touches
+		// node:crypto. Each plaintext key builds a model and is then discarded; it
+		// never reaches a query result or the client. Only hosted providers carry a
+		// key; local/keyless ones decrypt nothing.
+		const languageLocal = languageProviderFor(row.languageProviderKind).isLocal;
+		const embeddingLocal = embeddingProviderFor(row.embeddingProviderKind).isLocal;
+		const languageEnvelope = languageLocal ? undefined : languageKeyEnvelope(row);
+		const embeddingEnvelope = embeddingLocal ? undefined : embeddingKeyEnvelope(row);
+		const languageKey = languageEnvelope ? await decryptEnvelope(ctx, languageEnvelope) : undefined;
+		const embeddingKey = embeddingEnvelope
+			? await decryptEnvelope(ctx, embeddingEnvelope)
+			: undefined;
+		config = buildStoredProviderConfig(row, languageKey, embeddingKey);
 	}
 
 	configCache = { config, expiresAt: Date.now() + AI_CONFIG_CACHE_TTL_MS };
 	return config;
+}
+
+/** Decrypt one envelope via the Node crypto action (the v8 resolver can't). */
+function decryptEnvelope(ctx: ActionCtx, envelope: KeyEnvelope): Promise<string> {
+	return ctx.runAction(internal.aiProviderConfigActions._decryptSecretEnvelope, envelope);
 }
 
 /** Test-only: drop the in-process config cache so a fresh resolution runs. */
@@ -309,30 +399,49 @@ export async function resolveLanguageModelForClassifiedDraft(
 }
 
 // Known embedding models and their native output width. Used to fail fast when
-// LLM_EMBEDDING_MODEL is set to a model whose vectors won't fit the fixed
-// EMBEDDING_DIMENSIONS-wide vector index. Unknown/custom (e.g. Ollama) models
-// aren't listed — they're caught at write time by assertEmbeddingDimension.
+// a configured model's vectors won't fit the fixed EMBEDDING_DIMENSIONS-wide
+// vector index. Unknown/custom (e.g. local Ollama) models aren't listed — they're
+// caught at write time by assertEmbeddingDimension.
 const KNOWN_EMBEDDING_DIMENSIONS: Record<string, number> = {
 	'text-embedding-3-small': 1536,
 	'text-embedding-ada-002': 1536,
 	'text-embedding-3-large': 3072,
 };
 
-/** Resolve the embedding model used by knowledge graph / semantic file search. */
-export function getEmbeddingModel() {
-	const modelId = getOptional('LLM_EMBEDDING_MODEL') ?? DEFAULT_EMBEDDING_MODEL;
+/**
+ * Fail fast when a resolved embedding model's known native width won't fit the
+ * fixed vector index. Only checks models with a known width; local/custom ones
+ * are validated at write time by {@link assertEmbeddingDimension}.
+ */
+function assertKnownEmbeddingWidth(modelId: string): void {
 	const known = KNOWN_EMBEDDING_DIMENSIONS[modelId];
 	if (known !== undefined && known !== EMBEDDING_DIMENSIONS) {
 		throw new Error(
-			`LLM_EMBEDDING_MODEL='${modelId}' produces ${known}-dimensional vectors, but the ` +
-				`vector index is fixed at ${EMBEDDING_DIMENSIONS}. Set a ${EMBEDDING_DIMENSIONS}-dim ` +
+			`Embedding model '${modelId}' produces ${known}-dimensional vectors, but the ` +
+				`vector index is fixed at ${EMBEDDING_DIMENSIONS}. Choose a ${EMBEDDING_DIMENSIONS}-dim ` +
 				`embedding model (e.g. text-embedding-3-small) or change the schema vectorIndex dimensions.`
 		);
 	}
-	return embeddingProviderFor(ENV_EMBEDDING_KIND).buildEmbeddingModel({
-		...resolveEnvClientConfig(),
-		modelId,
-	});
+}
+
+/**
+ * Resolve the embedding model used by knowledge graph / semantic file search /
+ * quickQuery, through the SAME {@link resolveAiConfig} point as the language
+ * plane but INDEPENDENTLY of the language provider. A misconfigured hosted
+ * embedder (e.g. no key) throws an actionable error HERE — before any `embed()`
+ * call — so it can never degrade to a silent empty/zero vector. Callers that
+ * fail soft on transient embed failures must resolve the model OUTSIDE their
+ * try/catch so a misconfiguration surfaces rather than being swallowed.
+ */
+export async function resolveEmbeddingModel(ctx: ActionCtx): Promise<EmbeddingModel> {
+	const cfg = await resolveAiConfig(ctx);
+	const { kind, modelId, clientConfig } = cfg.embedding;
+	assertKnownEmbeddingWidth(modelId);
+	const adapter = embeddingProviderFor(kind);
+	// Surface an unusable config (missing hosted key / local base URL) as an
+	// actionable error before building the model.
+	adapter.validateCredentials({ ...clientConfig, modelId });
+	return adapter.buildEmbeddingModel({ ...clientConfig, modelId });
 }
 
 /**

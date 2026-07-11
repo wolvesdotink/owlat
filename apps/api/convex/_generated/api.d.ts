@@ -328,6 +328,7 @@ import type * as lib_llmProviders_anthropic from "../lib/llmProviders/anthropic.
 import type * as lib_llmProviders_clientCache from "../lib/llmProviders/clientCache.js";
 import type * as lib_llmProviders_google from "../lib/llmProviders/google.js";
 import type * as lib_llmProviders_index from "../lib/llmProviders/index.js";
+import type * as lib_llmProviders_local from "../lib/llmProviders/local.js";
 import type * as lib_llmProviders_openai from "../lib/llmProviders/openai.js";
 import type * as lib_llmProviders_openaiCompatible from "../lib/llmProviders/openaiCompatible.js";
 import type * as lib_llmProviders_openrouter from "../lib/llmProviders/openrouter.js";
@@ -907,6 +908,7 @@ declare const fullApi: ApiFromModules<{
   "lib/llmProviders/clientCache": typeof lib_llmProviders_clientCache;
   "lib/llmProviders/google": typeof lib_llmProviders_google;
   "lib/llmProviders/index": typeof lib_llmProviders_index;
+  "lib/llmProviders/local": typeof lib_llmProviders_local;
   "lib/llmProviders/openai": typeof lib_llmProviders_openai;
   "lib/llmProviders/openaiCompatible": typeof lib_llmProviders_openaiCompatible;
   "lib/llmProviders/openrouter": typeof lib_llmProviders_openrouter;
