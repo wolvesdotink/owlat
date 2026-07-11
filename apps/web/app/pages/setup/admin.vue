@@ -1,5 +1,11 @@
 <script setup lang="ts">
-import { SETUP_WIZARD_STEPS, validateAdmin, adminIsValid } from '~/composables/useSetupWizard';
+import {
+	SETUP_WIZARD_STEPS,
+	setupStepPath,
+	validateAdmin,
+	adminIsValid,
+	type SetupStepId,
+} from '~/composables/useSetupWizard';
 
 definePageMeta({ layout: false });
 useHead({ title: 'Owlat setup — Admin account' });
@@ -8,14 +14,23 @@ const router = useRouter();
 const { admin } = useSetupWizard();
 const { getStepStatus, isConnectorHighlighted } = useWizard(SETUP_WIZARD_STEPS, 'admin');
 
+// Jump back to an already-completed step from the indicator (draft is persisted).
+function goToStep(stepId: string) {
+	router.push(setupStepPath(stepId as SetupStepId));
+}
+
 const submitted = ref(false);
 // Track touched fields so an error only shows after the user has left the field
 // (or after an advance attempt), not while they're still typing.
 const touched = reactive({ email: false, password: false });
 
 const errors = computed(() => validateAdmin(admin.value));
-const emailError = computed(() => ((submitted.value || touched.email) ? errors.value.email : undefined));
-const passwordError = computed(() => ((submitted.value || touched.password) ? errors.value.password : undefined));
+const emailError = computed(() =>
+	submitted.value || touched.email ? errors.value.email : undefined
+);
+const passwordError = computed(() =>
+	submitted.value || touched.password ? errors.value.password : undefined
+);
 
 function next() {
 	submitted.value = true;
@@ -29,16 +44,17 @@ function next() {
 		<div class="mx-auto max-w-xl px-6 py-12">
 			<div class="flex items-center gap-3 mb-8">
 				<UiIconBox icon="lucide:feather" size="md" variant="brand" rounded="xl" />
-				<span class="text-sm font-medium text-text-secondary tracking-wide uppercase">Owlat setup</span>
+				<span class="text-sm font-medium text-text-secondary tracking-wide uppercase"
+					>Owlat setup</span
+				>
 			</div>
 
 			<UiStepIndicator
 				class="mb-10"
 				:steps="SETUP_WIZARD_STEPS"
-				:get-step-status="
-					getStepStatus as (stepId: string) => 'completed' | 'current' | 'upcoming'
-				"
+				:get-step-status="getStepStatus as (stepId: string) => 'completed' | 'current' | 'upcoming'"
 				:is-connector-highlighted="isConnectorHighlighted"
+				:on-step-click="goToStep"
 			/>
 
 			<header class="mb-6">
@@ -56,6 +72,7 @@ function next() {
 						label="Email"
 						placeholder="you@example.com"
 						autocomplete="email"
+						autofocus
 						required
 						:error="emailError"
 						@blur="touched.email = true"

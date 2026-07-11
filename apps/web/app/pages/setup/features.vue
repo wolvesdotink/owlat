@@ -9,7 +9,7 @@ import {
 	type FeatureFlagKey,
 	type FeaturePackKey,
 } from '@owlat/shared/featureFlags';
-import { SETUP_WIZARD_STEPS } from '~/composables/useSetupWizard';
+import { SETUP_WIZARD_STEPS, setupStepPath, type SetupStepId } from '~/composables/useSetupWizard';
 
 definePageMeta({ layout: false });
 useHead({ title: 'Owlat setup — Features' });
@@ -17,6 +17,11 @@ useHead({ title: 'Owlat setup — Features' });
 const router = useRouter();
 const { flags, resolved } = useSetupWizard();
 const { getStepStatus, isConnectorHighlighted } = useWizard(SETUP_WIZARD_STEPS, 'features');
+
+// Jump back to an already-completed step from the indicator (draft is persisted).
+function goToStep(stepId: string) {
+	router.push(setupStepPath(stepId as SetupStepId));
+}
 
 const byCategory = computed(() => getFlagsByCategory());
 const sendingNeedsProvider = computed(() => needsDeliveryProvider(flags.value));
@@ -60,16 +65,17 @@ function togglePack(packKey: FeaturePackKey) {
 		<div class="mx-auto max-w-3xl px-6 py-12">
 			<div class="flex items-center gap-3 mb-8">
 				<UiIconBox icon="lucide:feather" size="md" variant="brand" rounded="xl" />
-				<span class="text-sm font-medium text-text-secondary tracking-wide uppercase">Owlat setup</span>
+				<span class="text-sm font-medium text-text-secondary tracking-wide uppercase"
+					>Owlat setup</span
+				>
 			</div>
 
 			<UiStepIndicator
 				class="mb-10"
 				:steps="SETUP_WIZARD_STEPS"
-				:get-step-status="
-					getStepStatus as (stepId: string) => 'completed' | 'current' | 'upcoming'
-				"
+				:get-step-status="getStepStatus as (stepId: string) => 'completed' | 'current' | 'upcoming'"
 				:is-connector-highlighted="isConnectorHighlighted"
+				:on-step-click="goToStep"
 			/>
 
 			<header class="mb-6">
@@ -90,7 +96,9 @@ function togglePack(packKey: FeaturePackKey) {
 
 			<UiCard padding="lg" class="mb-6">
 				<h2 class="font-medium text-text-primary">Feature packs</h2>
-				<p class="text-sm text-text-tertiary mb-4">Pick a bundle. Toggling a pack flips every flag it contains.</p>
+				<p class="text-sm text-text-tertiary mb-4">
+					Pick a bundle. Toggling a pack flips every flag it contains.
+				</p>
 				<ul class="space-y-2">
 					<li
 						v-for="packKey in ALL_FEATURE_PACK_KEYS"
@@ -109,9 +117,13 @@ function togglePack(packKey: FeaturePackKey) {
 							<div class="flex-1">
 								<div class="flex items-baseline gap-2 font-medium text-text-primary">
 									{{ FEATURE_PACKS[packKey].label }}
-									<UiBadge v-if="packState[packKey] === 'partial'" variant="neutral">partial</UiBadge>
+									<UiBadge v-if="packState[packKey] === 'partial'" variant="neutral"
+										>partial</UiBadge
+									>
 								</div>
-								<p class="text-sm text-text-secondary mt-0.5">{{ FEATURE_PACKS[packKey].description }}</p>
+								<p class="text-sm text-text-secondary mt-0.5">
+									{{ FEATURE_PACKS[packKey].description }}
+								</p>
 							</div>
 						</label>
 					</li>
@@ -119,7 +131,9 @@ function togglePack(packKey: FeaturePackKey) {
 			</UiCard>
 
 			<section v-for="(defs, cat) in byCategory" :key="cat" class="mb-6">
-				<h2 class="text-xs font-semibold uppercase tracking-wide text-text-tertiary mb-3">{{ categoryLabel(cat) }}</h2>
+				<h2 class="text-xs font-semibold uppercase tracking-wide text-text-tertiary mb-3">
+					{{ categoryLabel(cat) }}
+				</h2>
 				<ul class="space-y-2">
 					<li
 						v-for="def in defs"
@@ -138,7 +152,9 @@ function togglePack(packKey: FeaturePackKey) {
 							<div class="flex-1">
 								<div class="flex items-baseline gap-2 font-medium text-text-primary">
 									{{ def.label }}
-									<span v-if="def.requires?.length" class="text-xs font-normal text-text-tertiary">requires: {{ def.requires.join(', ') }}</span>
+									<span v-if="def.requires?.length" class="text-xs font-normal text-text-tertiary"
+										>requires: {{ def.requires.join(', ') }}</span
+									>
 								</div>
 								<p class="text-sm text-text-secondary mt-0.5">{{ def.description }}</p>
 							</div>

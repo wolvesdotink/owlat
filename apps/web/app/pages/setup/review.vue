@@ -3,14 +3,25 @@ import {
 	SETUP_WIZARD_STEPS,
 	interpretSetupModeProbe,
 	buildApplyBody,
+	setupStepPath,
+	type SetupStepId,
 } from '~/composables/useSetupWizard';
 
 definePageMeta({ layout: false });
 useHead({ title: 'Owlat setup — Review' });
 
 const router = useRouter();
-const { flags, env, admin, isMigrationMode, summary } = useSetupWizard();
+const { flags, env, admin, isMigrationMode, summary, setupToken, completeSetup } = useSetupWizard();
 const { getStepStatus, isConnectorHighlighted } = useWizard(SETUP_WIZARD_STEPS, 'review');
+
+// Jump back to an already-completed step from the indicator (draft is persisted).
+function goToStep(stepId: string) {
+	router.push(setupStepPath(stepId as SetupStepId));
+}
+
+// The privileged apply endpoint authenticates with the one-time setup token.
+const trimmedToken = computed(() => setupToken.value.trim());
+const canLaunch = computed(() => !summary.value.missingProvider && trimmedToken.value !== '');
 
 const GENERATED_SECRETS = [
 	'BETTER_AUTH_SECRET',
@@ -41,7 +52,7 @@ async function probeSetupCleared(): Promise<boolean> {
 	try {
 		const res = await fetch('/api/setup/validate-provider', {
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
+			headers: { 'Content-Type': 'application/json', 'X-Setup-Token': trimmedToken.value },
 			body: '{}',
 		});
 		return interpretSetupModeProbe(res.status);
@@ -80,6 +91,7 @@ async function apply() {
 			'/api/setup/apply',
 			{
 				method: 'POST',
+				headers: { 'X-Setup-Token': trimmedToken.value },
 				body: buildApplyBody(flags.value, env.value, admin.value, isMigrationMode.value),
 			}
 		);
@@ -88,6 +100,9 @@ async function apply() {
 			phase.value = 'idle';
 			return;
 		}
+		// Setup is done: drop the persisted draft and disarm the unload warning so
+		// the redirect below isn't blocked by the "unsaved changes" prompt.
+		completeSetup();
 		// Server response could be tampered with; clamp to a same-origin path.
 		redirectTarget.value = safeRedirect(res.redirectTo, '/auth/login?postSetup=1');
 		phase.value = 'finalizing';
@@ -123,6 +138,7 @@ onUnmounted(stopPolling);
 				:steps="SETUP_WIZARD_STEPS"
 				:get-step-status="getStepStatus as (stepId: string) => 'completed' | 'current' | 'upcoming'"
 				:is-connector-highlighted="isConnectorHighlighted"
+				:on-step-click="goToStep"
 			/>
 
 			<header class="mb-6">
@@ -186,6 +202,18 @@ onUnmounted(stopPolling);
 				</dl>
 			</UiCard>
 
+			<div class="mt-5">
+				<UiInput
+					v-model="setupToken"
+					type="password"
+					label="Setup token"
+					placeholder="stk_…"
+					autocomplete="off"
+					autofocus
+					help-text="Printed by the owlat setup command when it enabled setup mode. Required to launch — it proves you're the operator who started setup."
+				/>
+			</div>
+
 			<div v-if="summary.missingProvider" class="mt-5">
 				<UiErrorAlert
 					variant="warning"
@@ -225,7 +253,7 @@ onUnmounted(stopPolling);
 				</UiButton>
 				<UiButton
 					:loading="phase === 'applying'"
-					:disabled="phase !== 'idle' || summary.missingProvider"
+					:disabled="phase !== 'idle' || !canLaunch"
 					@click="apply"
 				>
 					{{

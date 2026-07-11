@@ -5,7 +5,7 @@ import {
 	operatingModeFlags,
 	type OperatingModeKey,
 } from '@owlat/shared/operatingModes';
-import { SETUP_WIZARD_STEPS } from '~/composables/useSetupWizard';
+import { SETUP_WIZARD_STEPS, setupStepPath, type SetupStepId } from '~/composables/useSetupWizard';
 
 definePageMeta({ layout: false });
 useHead({ title: 'Owlat setup — Operating mode' });
@@ -13,6 +13,12 @@ useHead({ title: 'Owlat setup — Operating mode' });
 const router = useRouter();
 const { flags, isMigrationMode } = useSetupWizard();
 const { getStepStatus, isConnectorHighlighted } = useWizard(SETUP_WIZARD_STEPS, 'mode');
+
+// Jump back to an already-completed step from the indicator. The wizard draft is
+// persisted, so returning to an earlier step never loses later input.
+function goToStep(stepId: string) {
+	router.push(setupStepPath(stepId as SetupStepId));
+}
 
 // Pre-fill the flag set from a named mode, then continue to the fine-tune step.
 function pick(key: OperatingModeKey) {
@@ -41,6 +47,7 @@ function custom() {
 				:steps="SETUP_WIZARD_STEPS"
 				:get-step-status="getStepStatus as (stepId: string) => 'completed' | 'current' | 'upcoming'"
 				:is-connector-highlighted="isConnectorHighlighted"
+				:on-step-click="goToStep"
 			/>
 
 			<header class="mb-6">
