@@ -11,6 +11,7 @@ definePageMeta({
 const { currentMailbox, isLoading: mailboxesLoading } = usePostboxMailbox();
 const mailboxId = computed(() => currentMailbox.value?._id ?? null);
 const { contacts, isLoading, save, remove } = usePostboxContacts(mailboxId);
+type MailContact = (typeof contacts.value)[number];
 const stack = usePostboxComposerStack();
 const { showToast } = useToast();
 
@@ -39,9 +40,9 @@ function openNew() {
 	form.value = { contactId: null, email: '', displayName: '', organization: '' };
 	editOpen.value = true;
 }
-function openEdit(c: { _id: string; email: string; displayName?: string; organization?: string }) {
+function openEdit(c: MailContact) {
 	form.value = {
-		contactId: c._id as Id<'mailContacts'>,
+		contactId: c._id,
 		email: c.email,
 		displayName: c.displayName ?? '',
 		organization: c.organization ?? '',
@@ -63,13 +64,8 @@ async function submit() {
 
 // Removing a contact is no longer silent: it confirms with a toast that offers
 // an immediate Undo, which re-adds the contact from the captured details.
-async function removeContact(c: {
-	_id: string;
-	email: string;
-	displayName?: string;
-	organization?: string;
-}) {
-	const result = await remove(c._id as Id<'mailContacts'>);
+async function removeContact(c: MailContact) {
+	const result = await remove(c._id);
 	if (result === undefined) return;
 	showToast(`Removed ${c.displayName || c.email}`, 'success', {
 		action: {
