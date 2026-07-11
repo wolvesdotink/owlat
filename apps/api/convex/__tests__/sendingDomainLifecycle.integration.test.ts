@@ -34,9 +34,7 @@ vi.mock('../lib/sessionOrganization', async () => {
 // Exclude provider register actions — they require AWS / MTA credentials.
 const allModules = import.meta.glob('../**/*.*s');
 const modules = Object.fromEntries(
-	Object.entries(allModules).filter(
-		([path]) => !path.includes('providers/registerAction'),
-	)
+	Object.entries(allModules).filter(([path]) => !path.includes('providers/registerAction'))
 );
 
 describe('Sending domain lifecycle — create', () => {
@@ -419,6 +417,130 @@ describe('Sending domain lifecycle — verification', () => {
 	});
 });
 
+describe('Sending domain lifecycle — reservation provisioning on → verified', () => {
+	it('provisions an already-accepted reservation end-to-end through the real edge', async () => {
+		// The whole early-instance-invite promise: a mailbox reserved on a
+		// still-unverified domain, whose invitee already accepted (parked with
+		// acceptedByUserId), must materialize the moment the domain verifies —
+		// driven through the real pending → verified transition, not by importing
+		// the sweep helper. The → verified edge SCHEDULES the sweep, so we drain
+		// scheduled functions before asserting the mailbox stood up.
+		const t = convexTest(schema, modules);
+		let domainId: Id<'domains'>;
+		await t.run(async (ctx) => {
+			domainId = await ctx.db.insert('domains', {
+				domain: 'activates.com',
+				status: 'pending',
+				dnsRecords: { dkim: [] },
+				providerType: 'mta',
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+			await ctx.db.insert('pendingMailboxes', {
+				invitationId: 'inv-verify',
+				inviteeEmail: 'accepted@example.com',
+				organizationId: 'test-org',
+				localpart: 'accepted',
+				domain: 'activates.com',
+				address: 'accepted@activates.com',
+				createdAt: Date.now(),
+				createdByUserId: 'admin-user',
+				// Stamped at accept time — only stamped rows are swept.
+				acceptedByUserId: 'accepted-user',
+			});
+		});
+
+		// The → verified edge SCHEDULES the sweep (runAfter(0)), which in turn
+		// schedules the mailbox cache-push — drain both under fake timers.
+		vi.useFakeTimers();
+		try {
+			const outcome = await t.mutation(internal.domains.lifecycle.transition, {
+				domainId: domainId!,
+				input: { to: 'verified', at: Date.now(), verificationResults: {} },
+				userId: 'user',
+			});
+			expect(outcome.ok).toBe(true);
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+		} finally {
+			vi.useRealTimers();
+		}
+
+		await t.run(async (ctx) => {
+			// The reserved mailbox materialized, owned by the recorded accept-time id.
+			const mailbox = await ctx.db
+				.query('mailboxes')
+				.withIndex('by_address', (q) => q.eq('address', 'accepted@activates.com'))
+				.first();
+			expect(mailbox).not.toBeNull();
+			expect(mailbox!.userId).toBe('accepted-user');
+			expect(mailbox!.status).toBe('active');
+
+			// The reservation was consumed, not left dangling.
+			const remaining = await ctx.db
+				.query('pendingMailboxes')
+				.withIndex('by_domain', (q) => q.eq('domain', 'activates.com'))
+				.collect();
+			expect(remaining).toHaveLength(0);
+		});
+	});
+
+	it('leaves an un-accepted reservation parked until its invitee accepts', async () => {
+		// A reservation with no acceptedByUserId (invitee hasn't accepted yet) must
+		// NOT be provisioned by the verify-time sweep — it materializes later
+		// through the normal accept-time claim once the domain is verified.
+		const t = convexTest(schema, modules);
+		let domainId: Id<'domains'>;
+		await t.run(async (ctx) => {
+			domainId = await ctx.db.insert('domains', {
+				domain: 'unaccepted.com',
+				status: 'pending',
+				dnsRecords: { dkim: [] },
+				providerType: 'mta',
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+			await ctx.db.insert('pendingMailboxes', {
+				invitationId: 'inv-parked',
+				inviteeEmail: 'parked@example.com',
+				organizationId: 'test-org',
+				localpart: 'parked',
+				domain: 'unaccepted.com',
+				address: 'parked@unaccepted.com',
+				createdAt: Date.now(),
+				createdByUserId: 'admin-user',
+			});
+		});
+
+		vi.useFakeTimers();
+		try {
+			const outcome = await t.mutation(internal.domains.lifecycle.transition, {
+				domainId: domainId!,
+				input: { to: 'verified', at: Date.now(), verificationResults: {} },
+				userId: 'user',
+			});
+			expect(outcome.ok).toBe(true);
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+		} finally {
+			vi.useRealTimers();
+		}
+
+		await t.run(async (ctx) => {
+			const mailbox = await ctx.db
+				.query('mailboxes')
+				.withIndex('by_address', (q) => q.eq('address', 'parked@unaccepted.com'))
+				.first();
+			expect(mailbox).toBeNull();
+
+			// The reservation is preserved for the invitee's own accept-time claim.
+			const remaining = await ctx.db
+				.query('pendingMailboxes')
+				.withIndex('by_domain', (q) => q.eq('domain', 'unaccepted.com'))
+				.collect();
+			expect(remaining).toHaveLength(1);
+		});
+	});
+});
+
 describe('Sending domain lifecycle — regenerate', () => {
 	it('verified → registering clears identity row + verification fields', async () => {
 		const t = convexTest(schema, modules);
@@ -519,6 +641,50 @@ describe('Sending domain lifecycle — remove', () => {
 				.filter((q) => q.eq(q.field('resourceId'), domainId))
 				.collect();
 			expect(audits.map((a) => a.action)).toContain('sending_domain.deleted');
+		});
+
+		await t.finishInProgressScheduledFunctions();
+	});
+
+	it('clears pending-mailbox reservations on the removed domain (no stranded invitees)', async () => {
+		// A removed domain will never verify, so any reservations parked on it must
+		// be dropped — otherwise their invitees sit on "activates when your domain
+		// verifies" forever. remove() calls clearReservationsForDomain atomically.
+		const t = convexTest(schema, modules);
+		let domainId: Id<'domains'>;
+		await t.run(async (ctx) => {
+			domainId = await ctx.db.insert('domains', {
+				domain: 'reserved-gone.com',
+				status: 'pending',
+				dnsRecords: { dkim: [] },
+				providerType: 'mta',
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+			await ctx.db.insert('pendingMailboxes', {
+				invitationId: 'inv-remove',
+				inviteeEmail: 'invitee@example.com',
+				organizationId: 'test-org',
+				localpart: 'invitee',
+				domain: 'reserved-gone.com',
+				address: 'invitee@reserved-gone.com',
+				createdAt: Date.now(),
+				createdByUserId: 'admin-user',
+			});
+		});
+
+		const outcome = await t.mutation(internal.domains.lifecycle.remove, {
+			domainId: domainId!,
+			userId: 'user',
+		});
+		expect(outcome.ok).toBe(true);
+
+		await t.run(async (ctx) => {
+			const remaining = await ctx.db
+				.query('pendingMailboxes')
+				.withIndex('by_domain', (q) => q.eq('domain', 'reserved-gone.com'))
+				.collect();
+			expect(remaining).toHaveLength(0);
 		});
 
 		await t.finishInProgressScheduledFunctions();
@@ -675,16 +841,14 @@ describe('Sending domain lifecycle — recordDkimRotation (MTA→Convex propagat
 	// the MTA provider's `registerDomain` writes (host `${selector}._domainkey`).
 	async function seedRotatedDomain(
 		t: ReturnType<typeof convexTest>,
-		domain: string,
+		domain: string
 	): Promise<Id<'domains'>> {
 		return await t.run(async (ctx) =>
 			ctx.db.insert('domains', {
 				domain,
 				status: 'verified',
 				dnsRecords: {
-					dkim: [
-						{ type: 'TXT', host: 's1._domainkey', value: 'v=DKIM1; k=rsa; p=OLDKEY' },
-					],
+					dkim: [{ type: 'TXT', host: 's1._domainkey', value: 'v=DKIM1; k=rsa; p=OLDKEY' }],
 					dmarc: { type: 'TXT', host: '_dmarc', value: 'v=DMARC1; p=none' },
 				},
 				verificationResults: {
@@ -695,7 +859,7 @@ describe('Sending domain lifecycle — recordDkimRotation (MTA→Convex propagat
 				verifiedAt: Date.now(),
 				createdAt: Date.now(),
 				updatedAt: Date.now(),
-			}),
+			})
 		);
 	}
 
@@ -726,9 +890,7 @@ describe('Sending domain lifecycle — recordDkimRotation (MTA→Convex propagat
 			expect(hosts).toContain('s1._domainkey');
 			expect(hosts).toContain('s2._domainkey');
 			// The new record carries the new public key.
-			expect(dkim.find((r) => r.host === 's2._domainkey')!.value).toBe(
-				'v=DKIM1; k=rsa; p=NEWKEY',
-			);
+			expect(dkim.find((r) => r.host === 's2._domainkey')!.value).toBe('v=DKIM1; k=rsa; p=NEWKEY');
 			// The stale per-selector DKIM verification is dropped so the UI prompts
 			// a re-publish + re-verify of the new selector.
 			expect(domain!.verificationResults?.dkim).toBeUndefined();
@@ -845,7 +1007,7 @@ describe('Sending domain lifecycle — recordDkimRotation (MTA→Convex propagat
 describe('Sending domain lifecycle — setDmarcPolicy', () => {
 	async function seedPendingDomain(
 		t: ReturnType<typeof convexTest>,
-		domain: string,
+		domain: string
 	): Promise<Id<'domains'>> {
 		return await t.run(async (ctx) =>
 			ctx.db.insert('domains', {
@@ -861,7 +1023,7 @@ describe('Sending domain lifecycle — setDmarcPolicy', () => {
 				providerType: 'mta',
 				createdAt: Date.now(),
 				updatedAt: Date.now(),
-			}),
+			})
 		);
 	}
 
@@ -918,9 +1080,7 @@ describe('Sending domain lifecycle — setDmarcPolicy', () => {
 			expect(domain!.dmarcSubdomainPolicy).toBe('none');
 			expect(domain!.dmarcPct).toBe(10);
 			// No MTA_DMARC_RUA configured in tests, so no `rua=` tag is emitted.
-			expect(domain!.dnsRecords.dmarc!.value).toBe(
-				'v=DMARC1; p=reject; sp=none; pct=10',
-			);
+			expect(domain!.dnsRecords.dmarc!.value).toBe('v=DMARC1; p=reject; sp=none; pct=10');
 		});
 	});
 
@@ -991,7 +1151,7 @@ describe('Sending domain lifecycle — setDmarcPolicy', () => {
 				policy: 'reject',
 				pct: 150,
 				userId: 'user',
-			}),
+			})
 		).rejects.toThrow();
 	});
 
@@ -1026,7 +1186,7 @@ describe('Sending domain lifecycle — setDmarcPolicy', () => {
 				providerType: 'mta',
 				createdAt: Date.now(),
 				updatedAt: Date.now(),
-			}),
+			})
 		);
 
 		const outcome = await t.mutation(internal.domains.lifecycle.setDmarcPolicy, {
