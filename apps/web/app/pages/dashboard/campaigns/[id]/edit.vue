@@ -89,18 +89,34 @@ const onEditEmailClick = (event: MouseEvent, url: string) => {
 	pendingEmailUrl.value = url;
 	showEditEmailPrompt.value = true;
 };
-const openPendingEmail = () => {
-	if (pendingEmailUrl.value) window.open(pendingEmailUrl.value, '_blank', 'noopener');
+const closeEditEmailPrompt = () => {
 	pendingEmailUrl.value = '';
 	showEditEmailPrompt.value = false;
+};
+const openPendingEmail = () => {
+	if (pendingEmailUrl.value) window.open(pendingEmailUrl.value, '_blank', 'noopener');
+	closeEditEmailPrompt();
 };
 const discardAndOpenEmail = () => {
 	openPendingEmail();
 };
 const saveAndOpenEmail = async () => {
-	// handleSave clears the dirty flag on success; keep the prompt up (with the
-	// form's inline errors visible) if the save fails so nothing is lost.
-	if (await handleSave()) openPendingEmail();
+	// Open the new tab synchronously inside this click gesture: deferring the
+	// window.open() until after the awaited save takes it out of the user-gesture
+	// context and most popup blockers swallow it (a regression from the original
+	// synchronous target="_blank" link). Clear its opener to match noopener, then
+	// navigate it once the save resolves. On failure, discard the blank tab and
+	// keep the prompt up (with inline errors) so nothing is lost — handleSave
+	// clears the dirty flag only on success.
+	const url = pendingEmailUrl.value;
+	const tab = url ? window.open('', '_blank') : null;
+	if (tab) tab.opener = null;
+	if (await handleSave()) {
+		if (tab && url) tab.location.href = url;
+		closeEditEmailPrompt();
+	} else {
+		tab?.close();
+	}
 };
 
 // Test-email modal (shared CampaignsTestEmailModal owns the send flow)
