@@ -62,7 +62,7 @@ type SpendTotals = { totalTokens: number; costUsd: number; calls: number };
  * per-feature and per-provider spend queries share this shape and differ only in
  * the grouping key, so both delegate here and rename `key` to their own label.
  */
-function groupSpend<E extends SpendTotals>(
+function groupSpend<E extends { totalTokens: number; costUsd: number }>(
 	events: E[],
 	keyOf: (event: E) => string
 ): { groups: Array<SpendTotals & { key: string }>; totalCostUsd: number } {
