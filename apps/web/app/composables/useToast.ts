@@ -3,4 +3,4 @@
  * This shim preserves the local import path for existing tests and code.
  */
 export { useToast } from '@owlat/ui/composables/useToast';
-export type { Toast } from '@owlat/ui/composables/useToast';
+export type { Toast, ToastType } from '@owlat/ui/composables/useToast';
