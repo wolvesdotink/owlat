@@ -26,12 +26,7 @@ import {
 	requireAuthenticatedIdentity,
 	requireOrgPermission,
 } from '../lib/sessionOrganization';
-import {
-	throwForbidden,
-	throwInvalidInput,
-	throwInvalidState,
-	throwNotFound,
-} from '../_utils/errors';
+import { getOrThrow, throwForbidden, throwInvalidInput, throwInvalidState } from '../_utils/errors';
 import { normalizeEmail } from '@owlat/shared';
 import { markOnboardingStep } from '../auth/userOnboarding';
 import { canonicalAddress, createProvisionedMailbox, getActiveMailboxForUser } from './mailbox';
@@ -246,8 +241,7 @@ export const provisionFromRequest = authedMutation({
 		if (!session?.activeOrganizationId) throwForbidden('No active organization');
 		const organizationId = session.activeOrganizationId;
 
-		const row = await ctx.db.get(args.requestId);
-		if (!row) throwNotFound('Request');
+		const row = await getOrThrow(ctx, args.requestId, 'Request');
 		if (row.organizationId !== organizationId) {
 			throwForbidden('Request not accessible');
 		}
@@ -371,8 +365,7 @@ export const resolve = authedMutation({
 		const session = await getBetterAuthSessionWithRole(ctx);
 		if (!session?.activeOrganizationId) throwForbidden('No active organization');
 
-		const row = await ctx.db.get(args.requestId);
-		if (!row) throwNotFound('Request');
+		const row = await getOrThrow(ctx, args.requestId, 'Request');
 		if (row.organizationId !== session.activeOrganizationId) {
 			throwForbidden('Request not accessible');
 		}

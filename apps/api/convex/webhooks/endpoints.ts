@@ -1,6 +1,6 @@
 import { v } from 'convex/values';
 import { internal } from '../_generated/api';
-import { throwNotFound, throwInvalidInput } from '../_utils/errors';
+import { getOrThrow, throwInvalidInput } from '../_utils/errors';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import { assertFeatureEnabled } from '../lib/featureFlags';
@@ -244,10 +244,7 @@ export const update = authedMutation({
 		);
 		const { webhookId, name, url, events } = args;
 
-		const webhook = await ctx.db.get(webhookId);
-		if (!webhook) {
-			throwNotFound('Webhook');
-		}
+		const webhook = await getOrThrow(ctx, webhookId, 'Webhook');
 
 		const updates: Record<string, unknown> = {
 			updatedAt: Date.now(),
@@ -309,10 +306,7 @@ export const regenerateSecret = authedMutation({
 			'organization:manage',
 			'Only owners and admins can manage webhooks'
 		);
-		const webhook = await ctx.db.get(args.webhookId);
-		if (!webhook) {
-			throwNotFound('Webhook');
-		}
+		const webhook = await getOrThrow(ctx, args.webhookId, 'Webhook');
 
 		// Generate a new secret
 		const secret = randomToken(32, 'whsec_');
@@ -347,10 +341,7 @@ export const toggle = authedMutation({
 			'organization:manage',
 			'Only owners and admins can manage webhooks'
 		);
-		const webhook = await ctx.db.get(args.webhookId);
-		if (!webhook) {
-			throwNotFound('Webhook');
-		}
+		const webhook = await getOrThrow(ctx, args.webhookId, 'Webhook');
 
 		await ctx.db.patch(args.webhookId, {
 			isActive: !webhook.isActive,
@@ -374,10 +365,7 @@ export const enable = authedMutation({
 			'organization:manage',
 			'Only owners and admins can manage webhooks'
 		);
-		const webhook = await ctx.db.get(args.webhookId);
-		if (!webhook) {
-			throwNotFound('Webhook');
-		}
+		const webhook = await getOrThrow(ctx, args.webhookId, 'Webhook');
 
 		if (webhook.isActive) {
 			return { success: true };
@@ -405,10 +393,7 @@ export const disable = authedMutation({
 			'organization:manage',
 			'Only owners and admins can manage webhooks'
 		);
-		const webhook = await ctx.db.get(args.webhookId);
-		if (!webhook) {
-			throwNotFound('Webhook');
-		}
+		const webhook = await getOrThrow(ctx, args.webhookId, 'Webhook');
 
 		if (!webhook.isActive) {
 			return { success: true };
@@ -437,10 +422,7 @@ export const remove = authedMutation({
 			'organization:manage',
 			'Only owners and admins can manage webhooks'
 		);
-		const webhook = await ctx.db.get(args.webhookId);
-		if (!webhook) {
-			throwNotFound('Webhook');
-		}
+		const webhook = await getOrThrow(ctx, args.webhookId, 'Webhook');
 
 		// Delete all delivery logs for this webhook
 		const deliveryLogs = await ctx.db
@@ -479,10 +461,7 @@ export const sendTestWebhook = authedMutation({
 			'organization:manage',
 			'Only owners and admins can manage webhooks'
 		);
-		const webhook = await ctx.db.get(args.webhookId);
-		if (!webhook) {
-			throwNotFound('Webhook');
-		}
+		const webhook = await getOrThrow(ctx, args.webhookId, 'Webhook');
 
 		if (!webhook.isActive) {
 			throwInvalidInput('Webhook must be active to send a test event');

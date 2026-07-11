@@ -39,7 +39,7 @@ import { getBetterAuthSessionWithRole, hasPermission } from '../lib/sessionOrgan
 import { assertFeatureEnabled } from '../lib/featureFlags';
 import { provisionMailbox } from './mailbox';
 import { getOptional } from '../lib/env';
-import { throwForbidden, throwInvalidState, throwNotFound } from '../_utils/errors';
+import { getOrThrow, throwForbidden, throwInvalidState, throwNotFound } from '../_utils/errors';
 import {
 	getCallerExternalMailbox,
 	getMoveForAccount,
@@ -227,8 +227,7 @@ export const provisionHosted = adminMutation({
 		const session = await getBetterAuthSessionWithRole(ctx);
 		if (!session?.activeOrganizationId) throwForbidden('No active organization');
 
-		const move = await ctx.db.get(args.moveId);
-		if (!move) throwNotFound('Mailbox move');
+		const move = await getOrThrow(ctx, args.moveId, 'Mailbox move');
 		if (move.organizationId !== session.activeOrganizationId) {
 			throwForbidden('Move not accessible');
 		}

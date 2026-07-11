@@ -1,7 +1,7 @@
 import { v } from 'convex/values';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { requireContactsManage } from './guards';
-import { throwNotFound, throwAlreadyExists } from '../_utils/errors';
+import { getOrThrow, throwAlreadyExists } from '../_utils/errors';
 
 // Query to list all contact properties
 export const listByOrganization = authedQuery({
@@ -75,10 +75,7 @@ export const update = authedMutation({
 	handler: async (ctx, args) => {
 		await requireContactsManage(ctx);
 
-		const property = await ctx.db.get(args.propertyId);
-		if (!property) {
-			throwNotFound('Property');
-		}
+		await getOrThrow(ctx, args.propertyId, 'Property');
 
 		const updates: { label?: string } = {};
 		if (args.label !== undefined) {
@@ -96,10 +93,7 @@ export const remove = authedMutation({
 	handler: async (ctx, args) => {
 		await requireContactsManage(ctx);
 
-		const property = await ctx.db.get(args.propertyId);
-		if (!property) {
-			throwNotFound('Property');
-		}
+		await getOrThrow(ctx, args.propertyId, 'Property');
 
 		// Delete all property values associated with this property
 		const values = await ctx.db

@@ -26,7 +26,7 @@ import { internalMutation } from '../_generated/server';
 import { authedMutation } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import { requireOrgPermission } from '../lib/sessionOrganization';
-import { throwNotFound } from '../_utils/errors';
+import { getOrThrow } from '../_utils/errors';
 import { recordAuditLog } from '../lib/auditLog';
 import { assertDevDeployment } from './_guard';
 
@@ -66,8 +66,7 @@ export const forceVerifyDomainInternal = internalMutation({
 		userId: v.string(),
 	},
 	handler: async (ctx, { domainId, userId }): Promise<ForceVerifyResult> => {
-		const domain = await ctx.db.get(domainId);
-		if (!domain) throwNotFound('Domain not found');
+		const domain = await getOrThrow(ctx, domainId, 'Domain');
 
 		const now = Date.now();
 		const previousStatus = domain.status;

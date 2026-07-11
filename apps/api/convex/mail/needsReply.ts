@@ -27,7 +27,7 @@ import { internalMutation, internalQuery, type MutationCtx } from '../_generated
 import { authedMutation, publicQuery } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
-import { throwForbidden, throwNotFound } from '../_utils/errors';
+import { getOrThrow, throwForbidden } from '../_utils/errors';
 import { isMessageSnoozed } from '../lib/mailSnooze';
 import { requireMailboxAccess, loadReadableMailbox } from './permissions';
 import { urgencyFallbackScore } from './priorityScore';
@@ -448,8 +448,7 @@ export const listQueue = publicQuery({
 export const clear = authedMutation({
 	args: { threadId: v.id('mailThreads') },
 	handler: async (ctx, args) => {
-		const thread = await ctx.db.get(args.threadId);
-		if (!thread) throwNotFound('Thread');
+		const thread = await getOrThrow(ctx, args.threadId, 'Thread');
 		const owned = await requireMailboxAccess(ctx, thread.mailboxId);
 		if (!owned.ok) throwForbidden('Thread not accessible');
 		await clearThreadNeedsReply(ctx, args.threadId);

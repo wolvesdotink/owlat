@@ -7,7 +7,7 @@ import { internal } from '../_generated/api';
 const FORM_SUBMISSION_DELETE_BATCH = 256;
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import { validateStringLength, STRING_LIMITS } from '../lib/inputGuards';
-import { throwNotFound, throwRateLimited, throwInvalidInput } from '../_utils/errors';
+import { getOrThrow, throwRateLimited, throwInvalidInput } from '../_utils/errors';
 import { rateLimiter } from '../rateLimiter';
 import { formFieldValidator } from '../lib/convexValidators';
 import { assertFeatureEnabled } from '../lib/featureFlags';
@@ -178,10 +178,7 @@ export const update = authedMutation({
 
 		const { formEndpointId, ...updates } = args;
 
-		const form = await ctx.db.get(formEndpointId);
-		if (!form) {
-			throwNotFound('Form endpoint');
-		}
+		await getOrThrow(ctx, formEndpointId, 'Form endpoint');
 
 		// Build update object with only provided fields
 		const updateData: Record<string, unknown> = {
@@ -216,10 +213,7 @@ export const remove = authedMutation({
 			'organization:manage',
 			'Only owners and admins can manage forms'
 		);
-		const form = await ctx.db.get(args.formEndpointId);
-		if (!form) {
-			throwNotFound('Form endpoint');
-		}
+		await getOrThrow(ctx, args.formEndpointId, 'Form endpoint');
 
 		// Deactivate immediately (stops new submissions), then drain the unbounded
 		// submission history in scheduled batches before deleting the endpoint —

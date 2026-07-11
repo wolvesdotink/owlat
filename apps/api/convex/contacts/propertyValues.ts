@@ -4,7 +4,7 @@ import type { QueryCtx, MutationCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
 import { getUserIdFromSession, requireOrgPermission } from '../lib/sessionOrganization';
 import { validateStringLength, STRING_LIMITS } from '../lib/inputGuards';
-import { throwNotFound, throwInvalidInput } from '../_utils/errors';
+import { getOrThrow, throwInvalidInput } from '../_utils/errors';
 
 /**
  * Verify a contact exists.
@@ -13,10 +13,7 @@ async function verifyContactExists(
 	ctx: Pick<QueryCtx | MutationCtx, 'db'>,
 	contactId: Id<'contacts'>
 ) {
-	const contact = await ctx.db.get(contactId);
-	if (!contact) {
-		throwNotFound('Contact');
-	}
+	const contact = await getOrThrow(ctx, contactId, 'Contact');
 	return contact;
 }
 
@@ -74,10 +71,7 @@ export const set = authedMutation({
 		await verifyContactExists(ctx, args.contactId);
 
 		// Check if the property exists
-		const property = await ctx.db.get(args.propertyId);
-		if (!property) {
-			throwNotFound('Property');
-		}
+		await getOrThrow(ctx, args.propertyId, 'Property');
 
 		// Check if value already exists for this contact and property
 		const existing = await ctx.db
@@ -151,10 +145,7 @@ export const countByProperty = authedQuery({
 		await getUserIdFromSession(ctx);
 
 		// Verify property exists
-		const property = await ctx.db.get(args.propertyId);
-		if (!property) {
-			throwNotFound('Property');
-		}
+		await getOrThrow(ctx, args.propertyId, 'Property');
 
 		const values = await ctx.db
 			.query('contactPropertyValues')
