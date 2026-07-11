@@ -5,7 +5,7 @@ export const doiAttestedEditorModule: ContactActivityEditorModule<'doi_attested'
 	displayConfig: {
 		icon: 'lucide:shield-check',
 		label: 'DOI Attested',
-		color: 'text-green-600',
+		color: 'text-success',
 	},
 	formatDescription(metadata) {
 		if (metadata?.attestSource) {

@@ -75,8 +75,8 @@ const { data: spendBudget } = useOrganizationQuery(
 					v-if="spendBudget.state !== 'ok'"
 					class="text-2xs font-medium px-2 py-0.5 rounded-full"
 					:class="spendBudget.state === 'exceeded'
-						? 'bg-red-500/15 text-red-500'
-						: 'bg-amber-500/15 text-amber-500'"
+						? 'bg-error/10 text-error'
+						: 'bg-warning/10 text-warning'"
 				>
 					{{ spendBudget.state === 'exceeded' ? 'Ceiling reached — auto-send paused' : 'Approaching ceiling' }}
 				</span>
