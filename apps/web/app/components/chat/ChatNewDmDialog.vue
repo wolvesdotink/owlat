@@ -19,8 +19,8 @@ const selectedIds = computed(() => new Set(selectedMembers.value.map((m) => m.me
 // DM dialog additionally excludes the current user from candidates.
 const addCandidates = computed(() =>
 	candidates.value.filter(
-		(c) => !selectedIds.value.has(c.memberId) && c.memberId !== user.value?.id,
-	),
+		(c) => !selectedIds.value.has(c.memberId) && c.memberId !== user.value?.id
+	)
 );
 
 const handleSubmit = async () => {
@@ -40,48 +40,53 @@ const handleSubmit = async () => {
 
 <template>
 	<ChatDialogShell title="New direct message" @close="emit('close')">
-
-				<div class="px-5 py-4 space-y-3">
-					<ChatMemberPicker
-						v-model="selectedMembers"
-						v-model:query="memberQuery"
-						label="To"
-						placeholder="Search teammates by name or email…"
+		<div class="px-5 py-4 space-y-3">
+			<ChatMemberPicker
+				v-model="selectedMembers"
+				v-model:query="memberQuery"
+				label="To"
+				placeholder="Search teammates by name or email…"
+			>
+				<template #candidates="{ addMember }">
+					<div
+						v-if="memberQuery && addCandidates.length > 0"
+						class="mt-2 max-h-48 overflow-y-auto space-y-1 bg-bg-surface border border-border-subtle rounded p-1"
 					>
-						<template #candidates="{ addMember }">
-							<div v-if="memberQuery && addCandidates.length > 0" class="mt-2 max-h-48 overflow-y-auto space-y-1 bg-bg-surface border border-border-subtle rounded p-1">
-								<button
-									v-for="candidate in addCandidates"
-									:key="candidate.memberId"
-									class="w-full text-left px-2 py-1.5 text-sm rounded hover:bg-bg-elevated text-text-primary flex items-center gap-2"
-									@click="addMember(candidate)"
-								>
-									<UiAvatar :name="candidate.name" :email="candidate.email" :image="candidate.image" size="sm" bg="elevated" />
-									<span>{{ candidate.name ?? candidate.email ?? candidate.memberId }}</span>
-								</button>
-							</div>
-						</template>
-					</ChatMemberPicker>
-					<p class="text-xs text-text-tertiary">
-						Pick one teammate for a 1:1 DM, or multiple for a group chat.
-					</p>
-					<div v-if="error" class="text-sm text-error">{{ error }}</div>
-				</div>
+						<button
+							v-for="candidate in addCandidates"
+							:key="candidate.memberId"
+							class="w-full text-left px-2 py-1.5 text-sm rounded hover:bg-bg-elevated text-text-primary flex items-center gap-2"
+							@click="addMember(candidate)"
+						>
+							<UiAvatar
+								:name="candidate.name"
+								:email="candidate.email"
+								:image="candidate.image"
+								size="sm"
+								bg="elevated"
+							/>
+							<span>{{ candidate.name ?? candidate.email ?? candidate.memberId }}</span>
+						</button>
+					</div>
+				</template>
+			</ChatMemberPicker>
+			<p class="text-xs text-text-tertiary">
+				Pick one teammate for a 1:1 DM, or multiple for a group chat.
+			</p>
+			<div v-if="error" class="text-sm text-error">{{ error }}</div>
+		</div>
 
-				<div class="flex items-center justify-end gap-3 px-5 py-4 border-t border-border-subtle">
-					<button class="btn btn-secondary" @click="emit('close')">Cancel</button>
-					<button
-						class="btn btn-primary gap-2"
-						:disabled="selectedMembers.length === 0 || isCreating"
-						@click="handleSubmit"
-					>
-						<div
-							v-if="isCreating"
-							class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"
-						/>
-						<Icon v-else name="lucide:send" class="w-4 h-4" />
-						Start chat
-					</button>
-				</div>
+		<div class="flex items-center justify-end gap-3 px-5 py-4 border-t border-border-subtle">
+			<button class="btn btn-secondary" @click="emit('close')">Cancel</button>
+			<button
+				class="btn btn-primary gap-2"
+				:disabled="selectedMembers.length === 0 || isCreating"
+				@click="handleSubmit"
+			>
+				<UiSpinner v-if="isCreating" size="xs" tone="inverse" />
+				<Icon v-else name="lucide:send" class="w-4 h-4" />
+				Start chat
+			</button>
+		</div>
 	</ChatDialogShell>
 </template>
