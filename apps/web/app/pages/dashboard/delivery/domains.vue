@@ -575,8 +575,8 @@ const readinessSummary = (domain: DomainWithVerification) =>
 						:aria-controls="`domain-records-${domain._id}`"
 						:aria-label="`DNS records for ${domain.domain}`"
 						@click="toggleDomainExpansion(domain._id)"
-						@keydown.enter.prevent="toggleDomainExpansion(domain._id)"
-						@keydown.space.prevent="toggleDomainExpansion(domain._id)"
+						@keydown.enter.self="toggleDomainExpansion(domain._id)"
+						@keydown.space.self.prevent="toggleDomainExpansion(domain._id)"
 					>
 						<div class="flex items-center gap-4">
 							<UiIconBox icon="lucide:globe" size="sm" variant="surface" rounded="lg" />

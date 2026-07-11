@@ -198,8 +198,8 @@ const {
 						:aria-controls="`webhook-details-${webhook._id}`"
 						:aria-label="`Details for ${webhook.name}`"
 						@click="toggleExpanded(webhook._id)"
-						@keydown.enter.prevent="toggleExpanded(webhook._id)"
-						@keydown.space.prevent="toggleExpanded(webhook._id)"
+						@keydown.enter.self="toggleExpanded(webhook._id)"
+						@keydown.space.self.prevent="toggleExpanded(webhook._id)"
 					>
 						<div class="flex items-center gap-4 min-w-0">
 							<div

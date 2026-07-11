@@ -127,6 +127,7 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 						class="flex items-center gap-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary bg-bg-surface border border-border-subtle rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 						aria-haspopup="listbox"
 						:aria-expanded="isSortDropdownOpen"
+						aria-controls="transactional-sort-listbox"
 						aria-label="Sort emails"
 						@click="isSortDropdownOpen = !isSortDropdownOpen"
 					>
@@ -144,6 +145,7 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 					>
 						<div
 							v-if="isSortDropdownOpen"
+							id="transactional-sort-listbox"
 							role="listbox"
 							aria-label="Sort emails"
 							class="absolute right-0 top-full mt-1 w-44 bg-bg-elevated border border-border-subtle rounded-lg shadow-lg z-20 py-1"
@@ -280,8 +282,8 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 						tabindex="0"
 						:aria-label="`Edit ${email.name}`"
 						@click="handleEdit(email._id)"
-						@keydown.enter="handleEdit(email._id)"
-						@keydown.space.prevent="handleEdit(email._id)"
+						@keydown.enter.self="handleEdit(email._id)"
+						@keydown.space.self.prevent="handleEdit(email._id)"
 					>
 						<!-- Thumbnail Area -->
 						<div
@@ -426,8 +428,8 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 									tabindex="0"
 									:aria-label="`Edit ${email.name}`"
 									@click="handleEdit(email._id)"
-									@keydown.enter="handleEdit(email._id)"
-									@keydown.space.prevent="handleEdit(email._id)"
+									@keydown.enter.self="handleEdit(email._id)"
+									@keydown.space.self.prevent="handleEdit(email._id)"
 								>
 									<td class="px-6 py-4">
 										<div class="flex flex-col">
@@ -680,7 +682,8 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 								</div>
 								<pre
 									class="p-4 rounded-lg bg-bg-deep text-text-secondary text-sm font-mono overflow-x-auto whitespace-pre-wrap"
-									>{{ getCodeSnippet('curl') }}</pre>
+									>{{ getCodeSnippet('curl') }}</pre
+								>
 							</div>
 
 							<!-- JavaScript -->
@@ -702,7 +705,8 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 								</div>
 								<pre
 									class="p-4 rounded-lg bg-bg-deep text-text-secondary text-sm font-mono overflow-x-auto whitespace-pre-wrap"
-									>{{ getCodeSnippet('javascript') }}</pre>
+									>{{ getCodeSnippet('javascript') }}</pre
+								>
 							</div>
 
 							<!-- Python -->
@@ -724,7 +728,8 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 								</div>
 								<pre
 									class="p-4 rounded-lg bg-bg-deep text-text-secondary text-sm font-mono overflow-x-auto whitespace-pre-wrap"
-									>{{ getCodeSnippet('python') }}</pre>
+									>{{ getCodeSnippet('python') }}</pre
+								>
 							</div>
 
 							<div class="mt-4 p-4 rounded-lg bg-warning/10 border border-warning/20">
