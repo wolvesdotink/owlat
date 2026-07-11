@@ -5,9 +5,16 @@ import { v } from 'convex/values';
 import { paginationOptsValidator, type PaginationResult } from 'convex/server';
 import type { Doc } from './_generated/dataModel';
 import { requireOrgPermission } from './lib/sessionOrganization';
-import { throwNotFound, throwInvalidState, throwInvalidInput } from './_utils/errors';
+import { getOrThrow, throwInvalidState, throwInvalidInput } from './_utils/errors';
 import { logError } from './lib/runtimeLog';
-import { isExtensionAllowed, isMimeTypeAllowed, isExecutableExtension, detectDoubleExtension, mergePolicy, DEFAULT_FILE_POLICY } from '@owlat/email-scanner';
+import {
+	isExtensionAllowed,
+	isMimeTypeAllowed,
+	isExecutableExtension,
+	detectDoubleExtension,
+	mergePolicy,
+	DEFAULT_FILE_POLICY,
+} from '@owlat/email-scanner';
 import { MAX_LIBRARY_FILE_BYTES, MAX_LIBRARY_FILE_MB } from '@owlat/shared/attachments';
 
 // The media library re-allows SVG on top of the scanner default (which
@@ -61,19 +68,14 @@ export const list = authedQuery({
 			// Use search index for text search
 			const results = await ctx.db
 				.query('mediaAssets')
-				.withSearchIndex('search_media', (q) =>
-					q.search('searchableText', args.search!)
-				)
+				.withSearchIndex('search_media', (q) => q.search('searchableText', args.search!))
 				.paginate(args.paginationOpts);
 
 			return applyPostFilters(results);
 		}
 
 		// Default: list by creation date (newest first)
-		const results = await ctx.db
-			.query('mediaAssets')
-			.order('desc')
-			.paginate(args.paginationOpts);
+		const results = await ctx.db.query('mediaAssets').order('desc').paginate(args.paginationOpts);
 
 		return applyPostFilters(results);
 	},
@@ -107,9 +109,7 @@ const MEDIA_SCAN_LIMIT = 20_000;
 export const getStats = authedQuery({
 	args: {},
 	handler: async (ctx) => {
-		const assets = await ctx.db
-			.query('mediaAssets')
-			.take(MEDIA_SCAN_LIMIT);
+		const assets = await ctx.db.query('mediaAssets').take(MEDIA_SCAN_LIMIT);
 		const totalBytes = assets.reduce((sum, a) => sum + a.fileSize, 0);
 		return { totalCount: assets.length, totalBytes, truncated: assets.length >= MEDIA_SCAN_LIMIT };
 	},
@@ -164,9 +164,7 @@ export const countUsage = authedQuery({
 export const listTags = authedQuery({
 	args: {},
 	handler: async (ctx) => {
-		const assets = await ctx.db
-			.query('mediaAssets')
-			.take(MEDIA_SCAN_LIMIT);
+		const assets = await ctx.db.query('mediaAssets').take(MEDIA_SCAN_LIMIT);
 		const tagSet = new Set<string>();
 		for (const asset of assets) {
 			if (asset.tags) {
@@ -194,7 +192,11 @@ export const create = authedMutation({
 		tags: v.optional(v.array(v.string())),
 	},
 	handler: async (ctx, args) => {
-		const session = await requireOrgPermission(ctx, 'media:manage', 'Only owners and admins can create media assets');
+		const session = await requireOrgPermission(
+			ctx,
+			'media:manage',
+			'Only owners and admins can create media assets'
+		);
 
 		// Security: Validate file type before creating asset record
 		const doubleExt = detectDoubleExtension(args.filename);
@@ -342,8 +344,7 @@ export const reconcileAssetSize = internalMutation({
 
 		// Gross under-report → treat as quota evasion and quarantine.
 		const claimed = asset.fileSize;
-		const grossUnderReport =
-			args.actualSize > claimed * FILE_SIZE_MISMATCH_QUARANTINE_FACTOR;
+		const grossUnderReport = args.actualSize > claimed * FILE_SIZE_MISMATCH_QUARANTINE_FACTOR;
 		if (grossUnderReport) {
 			await ctx.db.delete(args.assetId);
 			try {
@@ -352,7 +353,7 @@ export const reconcileAssetSize = internalMutation({
 				// Blob may already be gone — best effort.
 			}
 			logError(
-				`[mediaAssets] quarantined asset ${args.assetId} — fileSize under-reported: claimed ${claimed}, actual ${args.actualSize}`,
+				`[mediaAssets] quarantined asset ${args.assetId} — fileSize under-reported: claimed ${claimed}, actual ${args.actualSize}`
 			);
 			return;
 		}
@@ -393,9 +394,12 @@ export const update = authedMutation({
 		tags: v.optional(v.array(v.string())),
 	},
 	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'media:manage', 'Only owners and admins can update media assets');
-		const asset = await ctx.db.get(args.assetId);
-		if (!asset) { throwNotFound('Media asset'); }
+		await requireOrgPermission(
+			ctx,
+			'media:manage',
+			'Only owners and admins can update media assets'
+		);
+		const asset = await getOrThrow(ctx, args.assetId, 'Media asset');
 
 		const newAlt = args.alt !== undefined ? args.alt : asset.alt;
 		const newTags = args.tags !== undefined ? args.tags : asset.tags;
@@ -416,9 +420,12 @@ export const update = authedMutation({
 export const remove = authedMutation({
 	args: { assetId: v.id('mediaAssets') },
 	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'media:manage', 'Only owners and admins can delete media assets');
-		const asset = await ctx.db.get(args.assetId);
-		if (!asset) { throwNotFound('Media asset'); }
+		await requireOrgPermission(
+			ctx,
+			'media:manage',
+			'Only owners and admins can delete media assets'
+		);
+		const asset = await getOrThrow(ctx, args.assetId, 'Media asset');
 
 		await ctx.storage.delete(asset.storageId);
 		await ctx.db.delete(args.assetId);
@@ -431,7 +438,11 @@ export const remove = authedMutation({
 export const bulkDelete = authedMutation({
 	args: { assetIds: v.array(v.id('mediaAssets')) },
 	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'media:manage', 'Only owners and admins can bulk-delete media assets');
+		await requireOrgPermission(
+			ctx,
+			'media:manage',
+			'Only owners and admins can bulk-delete media assets'
+		);
 
 		for (const assetId of args.assetIds) {
 			const asset = await ctx.db.get(assetId);

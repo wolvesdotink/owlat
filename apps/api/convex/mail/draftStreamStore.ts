@@ -20,7 +20,7 @@ import { authedMutation, authedQuery } from '../lib/authedFunctions';
 import { internalMutation } from '../_generated/server';
 import { getMutationContext, getUserIdFromSession } from '../lib/sessionOrganization';
 import { tokenUsageValidator } from '../lib/convexValidators';
-import { throwForbidden, throwNotFound } from '../_utils/errors';
+import { getOrThrow, throwForbidden } from '../_utils/errors';
 
 /** Cap the persisted streaming text so a runaway model cannot bloat a row. */
 const DRAFT_STREAM_MAX_CHARS = 20000;
@@ -60,8 +60,7 @@ export const beginDraftStream = internalMutation({
 	args: { streamId: v.id('aiDraftStreams') },
 	handler: async (ctx, args) => {
 		const userId = await getUserIdFromSession(ctx);
-		const row = await ctx.db.get(args.streamId);
-		if (!row) throwNotFound('Draft stream');
+		const row = await getOrThrow(ctx, args.streamId, 'Draft stream');
 		if (row.ownerId !== userId) throwForbidden('You do not own this draft stream');
 		// Reset to a clean streaming state (the client may re-run revise on the
 		// same buffer with a new instruction — the clarification-answer loop).

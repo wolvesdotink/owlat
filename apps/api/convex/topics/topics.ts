@@ -17,7 +17,7 @@ import { listResources } from '../lib/listing';
 import { topicListing } from './listing';
 import { toPaginationCursor } from '../lib/paginationCursor';
 import { validateStringLength, STRING_LIMITS } from '../lib/inputGuards';
-import { throwNotFound } from '../_utils/errors';
+import { getOrThrow, throwNotFound } from '../_utils/errors';
 import { trackEvent } from '../lib/posthogHelpers';
 import { batchGet } from '../_utils/batchLoader';
 import {
@@ -142,10 +142,7 @@ export const update = authedMutation({
 		if (args.description)
 			validateStringLength(args.description, STRING_LIMITS.DESCRIPTION, 'Description');
 
-		const topic = await ctx.db.get(args.topicId);
-		if (!topic) {
-			throwNotFound('Topic');
-		}
+		await getOrThrow(ctx, args.topicId, 'Topic');
 
 		const updates: {
 			name?: string;
@@ -183,10 +180,7 @@ export const remove = authedMutation({
 	args: { topicId: v.id('topics') },
 	handler: async (ctx, args) => {
 		await requireOrgPermission(ctx, 'topics:manage', 'Only owners and admins can manage topics');
-		const topic = await ctx.db.get(args.topicId);
-		if (!topic) {
-			throwNotFound('Topic');
-		}
+		await getOrThrow(ctx, args.topicId, 'Topic');
 
 		// Delete all memberships associated with this topic
 		const memberships = await ctx.db

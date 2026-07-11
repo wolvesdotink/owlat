@@ -13,7 +13,7 @@ import { v } from 'convex/values';
 import { internalQuery } from '../_generated/server';
 import { authedMutation, publicQuery } from '../lib/authedFunctions';
 import { requireMailboxAccess } from './permissions';
-import { throwForbidden, throwInvalidInput, throwNotFound } from '../_utils/errors';
+import { getOrThrow, throwForbidden, throwInvalidInput } from '../_utils/errors';
 import { normalizeEmail } from '@owlat/shared';
 
 // public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
@@ -68,8 +68,7 @@ export const update = authedMutation({
 		isEnabled: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
-		const row = await ctx.db.get(args.id);
-		if (!row) throwNotFound('Forwarding rule');
+		const row = await getOrThrow(ctx, args.id, 'Forwarding rule');
 		const owned = await requireMailboxAccess(ctx, row.mailboxId, 'owner');
 		if (!owned.ok) throwForbidden('Not accessible');
 		const patch: Record<string, unknown> = { updatedAt: Date.now() };

@@ -17,7 +17,7 @@ import { internalQuery } from '../_generated/server';
 import { adminQuery, authedMutation } from '../lib/authedFunctions';
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import { assertFeatureEnabled, isFeatureEnabled } from '../lib/featureFlags';
-import { throwInvalidInput, throwNotFound } from '../_utils/errors';
+import { getOrThrow, throwInvalidInput } from '../_utils/errors';
 import {
 	evaluateHandlingRules,
 	type HandlingRuleLike,
@@ -119,8 +119,7 @@ export const update = authedMutation({
 			'organization:manage',
 			'Only owners and admins can change handling rules'
 		);
-		const existing = await ctx.db.get(args.ruleId);
-		if (!existing) throwNotFound('Handling rule');
+		await getOrThrow(ctx, args.ruleId, 'Handling rule');
 
 		const patch: Record<string, unknown> = { updatedAt: Date.now() };
 		if (args.instruction !== undefined) {

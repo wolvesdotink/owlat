@@ -31,7 +31,7 @@ import { internalMutation, internalQuery, type QueryCtx } from '../_generated/se
 import { authedMutation, publicQuery } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
-import { throwForbidden, throwNotFound } from '../_utils/errors';
+import { getOrThrow, throwForbidden } from '../_utils/errors';
 import { isBulkOrNoReplySender } from './needsReply';
 import { armThreadFollowUp, followUpWaitingOn } from './followUps';
 import { requireMailboxAccess, loadReadableMailbox } from './permissions';
@@ -368,8 +368,7 @@ async function listMailboxCommitments(
 export const resolveCommitment = authedMutation({
 	args: { commitmentId: v.id('mailCommitments') },
 	handler: async (ctx, args) => {
-		const commitment = await ctx.db.get(args.commitmentId);
-		if (!commitment) throwNotFound('Commitment');
+		const commitment = await getOrThrow(ctx, args.commitmentId, 'Commitment');
 		const owned = await requireMailboxAccess(ctx, commitment.mailboxId);
 		if (!owned.ok) throwForbidden('Commitment not accessible');
 		await ctx.db.patch(args.commitmentId, { status: 'done', updatedAt: Date.now() });

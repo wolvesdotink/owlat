@@ -7,12 +7,9 @@
 
 import { v } from 'convex/values';
 import type { QueryCtx, MutationCtx } from '../_generated/server';
-import {
-	getMutationContext,
-	getUserIdFromSession,
-} from '../lib/sessionOrganization';
+import { getMutationContext, getUserIdFromSession } from '../lib/sessionOrganization';
 import { chatQuery, chatMutation } from './_helpers';
-import { throwNotFound } from '../_utils/errors';
+import { getOrThrow } from '../_utils/errors';
 
 /**
  * Resolve `@handle` strings into authUserIds. Handles match either the email
@@ -23,7 +20,7 @@ import { throwNotFound } from '../_utils/errors';
  */
 export async function resolveMentionsToMemberIds(
 	ctx: QueryCtx | MutationCtx,
-	handles: string[],
+	handles: string[]
 ): Promise<string[]> {
 	if (handles.length === 0) return [];
 
@@ -55,7 +52,7 @@ export const listMyUnreadMentions = chatQuery({
 		const mentions = await ctx.db
 			.query('chatMentions')
 			.withIndex('by_mentioned_unread', (q) =>
-				q.eq('mentionedMemberId', userId).eq('readAt', undefined),
+				q.eq('mentionedMemberId', userId).eq('readAt', undefined)
 			)
 			.order('desc')
 			.take(limit);
@@ -91,7 +88,7 @@ export const countMyUnreadMentions = chatQuery({
 		const mentions = await ctx.db
 			.query('chatMentions')
 			.withIndex('by_mentioned_unread', (q) =>
-				q.eq('mentionedMemberId', userId).eq('readAt', undefined),
+				q.eq('mentionedMemberId', userId).eq('readAt', undefined)
 			)
 			.take(101);
 		return mentions.length;
@@ -104,10 +101,7 @@ export const markMentionRead = chatMutation({
 	args: { mentionId: v.id('chatMentions') },
 	handler: async (ctx, args) => {
 		const { userId } = await getMutationContext(ctx);
-		const mention = await ctx.db.get(args.mentionId);
-		if (!mention) {
-			throwNotFound('Mention');
-		}
+		const mention = await getOrThrow(ctx, args.mentionId, 'Mention');
 		if (mention.mentionedMemberId !== userId) {
 			// Silently no-op — don't leak existence of others' mentions.
 			return;

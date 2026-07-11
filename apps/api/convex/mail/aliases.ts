@@ -13,10 +13,10 @@ import { authedMutation, publicQuery } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import { requireMailboxAccess } from './permissions';
 import {
+	getOrThrow,
 	throwForbidden,
 	throwInvalidInput,
 	throwAlreadyExists,
-	throwNotFound,
 } from '../_utils/errors';
 import { normalizeEmail } from '@owlat/shared';
 
@@ -63,8 +63,7 @@ export const create = authedMutation({
 			throwAlreadyExists('Alias already in use');
 		}
 
-		const mailbox = await ctx.db.get(args.mailboxId);
-		if (!mailbox) throwNotFound('Mailbox');
+		const mailbox = await getOrThrow(ctx, args.mailboxId, 'Mailbox');
 
 		const id = await ctx.db.insert('mailAliases', {
 			alias,

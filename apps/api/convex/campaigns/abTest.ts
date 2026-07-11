@@ -6,7 +6,7 @@ import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { getUserIdFromSession, requireOrgPermission } from '../lib/sessionOrganization';
 import { requireDraftCampaign } from './guards';
-import { throwNotFound, throwInvalidState, throwInvalidInput } from '../_utils/errors';
+import { getOrThrow, throwInvalidState, throwInvalidInput } from '../_utils/errors';
 
 /**
  * Per-variant A/B stats from a variant's `emailSends` rows. opened/clicked are
@@ -121,10 +121,7 @@ export const enableABTest = authedMutation({
 
 		// If content test, verify template exists
 		if (args.testType === 'content' && args.variantBTemplateId) {
-			const template = await ctx.db.get(args.variantBTemplateId);
-			if (!template) {
-				throwNotFound('Variant B template');
-			}
+			await getOrThrow(ctx, args.variantBTemplateId, 'Variant B template');
 		}
 
 		const abTestConfig: {
@@ -206,10 +203,7 @@ export const declareABTestWinner = authedMutation({
 			'Only owners and admins can declare A/B test winners'
 		);
 
-		const campaign = await ctx.db.get(args.campaignId);
-		if (!campaign) {
-			throwNotFound('Campaign');
-		}
+		const campaign = await getOrThrow(ctx, args.campaignId, 'Campaign');
 
 		if (!campaign.isABTest) {
 			throwInvalidState('Campaign is not an A/B test');
@@ -294,10 +288,7 @@ export const getABTestStats = authedQuery({
 	},
 	handler: async (ctx, args) => {
 		await getUserIdFromSession(ctx);
-		const campaign = await ctx.db.get(args.campaignId);
-		if (!campaign) {
-			throwNotFound('Campaign');
-		}
+		const campaign = await getOrThrow(ctx, args.campaignId, 'Campaign');
 
 		if (!campaign.isABTest) {
 			return null;

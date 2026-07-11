@@ -27,7 +27,7 @@ import { hasPermission, requireOrgMember, requireOrgPermission } from '../lib/se
 import { checkEmailDomainVerification } from '../domains/domains';
 import { isValidEmail } from '../lib/inputGuards';
 import { normalizeEmail } from '@owlat/shared';
-import { throwInvalidInput, throwNotFound, throwAlreadyExists } from '../_utils/errors';
+import { getOrThrow, throwInvalidInput, throwAlreadyExists } from '../_utils/errors';
 
 type Ctx = QueryCtx | MutationCtx;
 
@@ -234,10 +234,7 @@ export const update = authedMutation({
 	},
 	handler: async (ctx, args) => {
 		await requireCampaignSendersManage(ctx);
-		const sender = await ctx.db.get(args.id);
-		if (!sender) {
-			throwNotFound('Campaign sender');
-		}
+		await getOrThrow(ctx, args.id, 'Campaign sender');
 		const patch: Partial<Doc<'campaignSenders'>> = { updatedAt: Date.now() };
 		if (args.displayName !== undefined) {
 			patch.displayName = args.displayName.trim() || undefined;
@@ -257,10 +254,7 @@ export const setDefault = authedMutation({
 	args: { id: v.id('campaignSenders') },
 	handler: async (ctx, args) => {
 		await requireCampaignSendersManage(ctx);
-		const sender = await ctx.db.get(args.id);
-		if (!sender) {
-			throwNotFound('Campaign sender');
-		}
+		await getOrThrow(ctx, args.id, 'Campaign sender');
 		await clearDefault(ctx);
 		await ctx.db.patch(args.id, { isDefault: true, updatedAt: Date.now() });
 		return args.id;
@@ -276,10 +270,7 @@ export const remove = authedMutation({
 	args: { id: v.id('campaignSenders') },
 	handler: async (ctx, args) => {
 		await requireCampaignSendersManage(ctx);
-		const sender = await ctx.db.get(args.id);
-		if (!sender) {
-			throwNotFound('Campaign sender');
-		}
+		await getOrThrow(ctx, args.id, 'Campaign sender');
 		await ctx.db.delete(args.id);
 		return { success: true };
 	},

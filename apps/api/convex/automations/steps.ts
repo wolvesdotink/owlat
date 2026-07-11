@@ -3,7 +3,7 @@ import { type MutationCtx, type QueryCtx } from '../_generated/server';
 import { authedMutation } from '../lib/authedFunctions';
 import type { Doc } from '../_generated/dataModel';
 import { requireDraftAutomation } from './guards';
-import { throwNotFound } from '../_utils/errors';
+import { getOrThrow } from '../_utils/errors';
 import { stepConfigValidator } from '../lib/convexValidators';
 import { emailStepModule } from './steps/email';
 import { delayStepModule } from './steps/delay';
@@ -193,8 +193,7 @@ export const updateStep = authedMutation({
 		config: v.optional(stepConfigValidator),
 	},
 	handler: async (ctx, args) => {
-		const step = await ctx.db.get(args.stepId);
-		if (!step) throwNotFound('Automation step');
+		const step = await getOrThrow(ctx, args.stepId, 'Automation step');
 		// authz: requireDraftAutomation enforces automations:manage
 		await requireDraftAutomation(
 			ctx,
@@ -263,8 +262,7 @@ export const removeStep = authedMutation({
 		stepId: v.id('automationSteps'),
 	},
 	handler: async (ctx, args) => {
-		const step = await ctx.db.get(args.stepId);
-		if (!step) throwNotFound('Automation step');
+		const step = await getOrThrow(ctx, args.stepId, 'Automation step');
 		// authz: requireDraftAutomation enforces automations:manage
 		await requireDraftAutomation(
 			ctx,

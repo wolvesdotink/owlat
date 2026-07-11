@@ -11,11 +11,8 @@
  */
 
 import { v } from 'convex/values';
-import {
-	getMutationContext,
-	getUserIdFromSession,
-} from '../lib/sessionOrganization';
-import { throwInvalidInput, throwNotFound } from '../_utils/errors';
+import { getMutationContext, getUserIdFromSession } from '../lib/sessionOrganization';
+import { getOrThrow, throwInvalidInput } from '../_utils/errors';
 import {
 	chatQuery,
 	chatMutation,
@@ -41,12 +38,12 @@ export const linkChannelToInboxThread = chatMutation({
 		}
 		await assertCanAdministerRoom(ctx, room, userId, role);
 
-		const inboxThread = await ctx.db.get(args.inboxThreadId);
-		if (!inboxThread) {
-			throwNotFound('Inbox thread');
-		}
+		const inboxThread = await getOrThrow(ctx, args.inboxThreadId, 'Inbox thread');
 		// Internal pseudo-threads from the old chat scaffold are not linkable.
-		if (inboxThread.contactIdentifier === 'internal-chat' || inboxThread.contactIdentifier === 'channel') {
+		if (
+			inboxThread.contactIdentifier === 'internal-chat' ||
+			inboxThread.contactIdentifier === 'channel'
+		) {
 			throwInvalidInput('That thread is not an inbox conversation');
 		}
 
@@ -143,9 +140,7 @@ export const findChannelsForInboxThread = chatQuery({
 
 		const channels = await ctx.db
 			.query('chatRooms')
-			.withIndex('by_linked_inbox_thread', (q) =>
-				q.eq('linkedInboxThreadId', args.inboxThreadId),
-			)
+			.withIndex('by_linked_inbox_thread', (q) => q.eq('linkedInboxThreadId', args.inboxThreadId))
 			.take(50);
 
 		// Filter to channels the caller can see (public + member of private).

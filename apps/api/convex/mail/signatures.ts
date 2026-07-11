@@ -11,7 +11,7 @@ import sanitizeHtml from 'sanitize-html';
 import { POSTBOX_SANITIZE_CONFIG } from '@owlat/shared/postboxSanitize';
 import { authedMutation, publicQuery } from '../lib/authedFunctions';
 import { requireMailboxAccess } from './permissions';
-import { throwForbidden, throwInvalidInput, throwNotFound } from '../_utils/errors';
+import { getOrThrow, throwForbidden, throwInvalidInput } from '../_utils/errors';
 
 // ── Signature detection from imported sent mail ─────────────────────────────
 
@@ -192,8 +192,7 @@ export const update = authedMutation({
 		isDefault: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
-		const sig = await ctx.db.get(args.signatureId);
-		if (!sig) throwNotFound('Signature');
+		const sig = await getOrThrow(ctx, args.signatureId, 'Signature');
 		const owned = await requireMailboxAccess(ctx, sig.mailboxId);
 		if (!owned.ok) throwForbidden('Not accessible');
 

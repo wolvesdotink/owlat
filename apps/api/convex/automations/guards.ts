@@ -14,11 +14,8 @@
 
 import type { MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
-import {
-	requireOrgPermission,
-	type MutationSessionContext,
-} from '../lib/sessionOrganization';
-import { throwNotFound, throwInvalidState } from '../_utils/errors';
+import { requireOrgPermission, type MutationSessionContext } from '../lib/sessionOrganization';
+import { getOrThrow, throwInvalidState } from '../_utils/errors';
 
 /**
  * Require that the caller may manage automations. Lifecycle-style mutations
@@ -29,9 +26,13 @@ import { throwNotFound, throwInvalidState } from '../_utils/errors';
  */
 export async function requireAutomationManage(
 	ctx: MutationCtx,
-	action: string,
+	action: string
 ): Promise<MutationSessionContext> {
-	return await requireOrgPermission(ctx, 'automations:manage', `Only owners and admins can ${action}`);
+	return await requireOrgPermission(
+		ctx,
+		'automations:manage',
+		`Only owners and admins can ${action}`
+	);
 }
 
 /**
@@ -41,13 +42,10 @@ export async function requireAutomationManage(
 export async function requireAutomation(
 	ctx: MutationCtx,
 	automationId: Id<'automations'>,
-	action: string,
+	action: string
 ): Promise<{ session: MutationSessionContext; automation: Doc<'automations'> }> {
 	const session = await requireAutomationManage(ctx, action);
-	const automation = await ctx.db.get(automationId);
-	if (!automation) {
-		throwNotFound('Automation');
-	}
+	const automation = await getOrThrow(ctx, automationId, 'Automation');
 	return { session, automation };
 }
 
@@ -59,7 +57,7 @@ export async function requireDraftAutomation(
 	ctx: MutationCtx,
 	automationId: Id<'automations'>,
 	action: string,
-	notDraftMessage: string,
+	notDraftMessage: string
 ): Promise<{ session: MutationSessionContext; automation: Doc<'automations'> }> {
 	const result = await requireAutomation(ctx, automationId, action);
 	if (result.automation.status !== 'draft') {

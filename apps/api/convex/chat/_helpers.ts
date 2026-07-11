@@ -10,7 +10,7 @@
 
 import type { Doc, Id } from '../_generated/dataModel';
 import type { QueryCtx, MutationCtx } from '../_generated/server';
-import { throwForbidden, throwNotFound, throwInvalidInput } from '../_utils/errors';
+import { getOrThrow, throwForbidden, throwInvalidInput } from '../_utils/errors';
 import { hasPermission, type OrganizationRole } from '../lib/sessionOrganization';
 import { authedQuery, authedMutation, featureGated } from '../lib/authedFunctions';
 
@@ -57,7 +57,7 @@ export const CHAT_MEMBER_BATCH_MAX = 50;
  */
 export async function assertChatTargetsAreOrgMembers(
 	ctx: QueryCtx | MutationCtx,
-	authUserIds: string[],
+	authUserIds: string[]
 ): Promise<void> {
 	if (authUserIds.length > CHAT_MEMBER_BATCH_MAX) {
 		throwInvalidInput(`Cannot add more than ${CHAT_MEMBER_BATCH_MAX} people at once`);
@@ -92,13 +92,9 @@ export function normalizeDmKey(memberIds: string[]): string {
  */
 export async function getRoomOrThrow(
 	ctx: QueryCtx | MutationCtx,
-	roomId: Id<'chatRooms'>,
+	roomId: Id<'chatRooms'>
 ): Promise<Doc<'chatRooms'>> {
-	const room = await ctx.db.get(roomId);
-	if (!room) {
-		throwNotFound('Chat room');
-	}
-	return room;
+	return await getOrThrow(ctx, roomId, 'Chat room');
 }
 
 /**
@@ -107,13 +103,11 @@ export async function getRoomOrThrow(
 export async function getMembership(
 	ctx: QueryCtx | MutationCtx,
 	roomId: Id<'chatRooms'>,
-	memberId: string,
+	memberId: string
 ): Promise<Doc<'chatRoomMembers'> | null> {
 	return await ctx.db
 		.query('chatRoomMembers')
-		.withIndex('by_room_and_member', (q) =>
-			q.eq('roomId', roomId).eq('memberId', memberId),
-		)
+		.withIndex('by_room_and_member', (q) => q.eq('roomId', roomId).eq('memberId', memberId))
 		.first();
 }
 
@@ -126,7 +120,7 @@ export async function getMembership(
 export async function assertCanReadRoom(
 	ctx: QueryCtx | MutationCtx,
 	room: Doc<'chatRooms'>,
-	memberId: string,
+	memberId: string
 ): Promise<void> {
 	if (room.kind === 'channel' && room.visibility === 'public') {
 		return;
@@ -146,7 +140,7 @@ export async function assertCanReadRoom(
 export async function assertCanWriteRoom(
 	ctx: QueryCtx | MutationCtx,
 	roomId: Id<'chatRooms'>,
-	memberId: string,
+	memberId: string
 ): Promise<Doc<'chatRoomMembers'>> {
 	const membership = await getMembership(ctx, roomId, memberId);
 	if (!membership) {
@@ -167,7 +161,7 @@ export async function assertCanAdministerRoom(
 	ctx: QueryCtx | MutationCtx,
 	room: Doc<'chatRooms'>,
 	memberId: string,
-	orgRole: OrganizationRole,
+	orgRole: OrganizationRole
 ): Promise<void> {
 	if (hasPermission(orgRole, 'chat:manage')) {
 		return;
@@ -197,7 +191,7 @@ export type ProfileSummary = {
  */
 export async function loadProfileSummary(
 	ctx: QueryCtx | MutationCtx,
-	authUserId: string,
+	authUserId: string
 ): Promise<ProfileSummary> {
 	const row = await ctx.db
 		.query('userProfiles')

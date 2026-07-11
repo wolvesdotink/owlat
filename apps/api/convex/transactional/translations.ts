@@ -1,7 +1,7 @@
 import { v } from 'convex/values';
 import { authedMutation, authedQuery } from '../lib/authedFunctions';
 import { requireOrgPermission } from '../lib/sessionOrganization';
-import { throwNotFound } from '../_utils/errors';
+import { getOrThrow, throwNotFound } from '../_utils/errors';
 import { assertEditableForPublishableChange } from './lifecycle';
 import { type TranslatableBlockContent } from '../emailTemplates/translationMerge';
 import {
@@ -46,11 +46,12 @@ export const addTranslation = authedMutation({
 		forceWhilePublished: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'templates:manage', 'Only owners and admins can manage transactional email translations');
-		const email = await ctx.db.get(args.id);
-		if (!email) {
-			throwNotFound('Transactional email');
-		}
+		await requireOrgPermission(
+			ctx,
+			'templates:manage',
+			'Only owners and admins can manage transactional email translations'
+		);
+		const email = await getOrThrow(ctx, args.id, 'Transactional email');
 
 		assertEditableForPublishableChange(email, args.forceWhilePublished);
 
@@ -75,11 +76,12 @@ export const updateTranslation = authedMutation({
 		forceWhilePublished: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'templates:manage', 'Only owners and admins can manage transactional email translations');
-		const email = await ctx.db.get(args.id);
-		if (!email) {
-			throwNotFound('Transactional email');
-		}
+		await requireOrgPermission(
+			ctx,
+			'templates:manage',
+			'Only owners and admins can manage transactional email translations'
+		);
+		const email = await getOrThrow(ctx, args.id, 'Transactional email');
 
 		assertEditableForPublishableChange(email, args.forceWhilePublished);
 
@@ -136,11 +138,12 @@ export const removeTranslation = authedMutation({
 		forceWhilePublished: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'templates:manage', 'Only owners and admins can manage transactional email translations');
-		const email = await ctx.db.get(args.id);
-		if (!email) {
-			throwNotFound('Transactional email');
-		}
+		await requireOrgPermission(
+			ctx,
+			'templates:manage',
+			'Only owners and admins can manage transactional email translations'
+		);
+		const email = await getOrThrow(ctx, args.id, 'Transactional email');
 
 		assertEditableForPublishableChange(email, args.forceWhilePublished);
 

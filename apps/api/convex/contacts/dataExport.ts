@@ -12,7 +12,7 @@
 import { v } from 'convex/values';
 import { authedQuery } from '../lib/authedFunctions';
 import { requireOrgPermission } from '../lib/sessionOrganization';
-import { throwNotFound } from '../_utils/errors';
+import { getOrThrow } from '../_utils/errors';
 
 const CAP = 1000;
 
@@ -22,10 +22,7 @@ export const exportContactData = authedQuery({
 		// Full personal-data disclosure — operator surface.
 		await requireOrgPermission(ctx, 'organization:manage');
 
-		const contact = await ctx.db.get(args.contactId);
-		if (!contact) {
-			throwNotFound('Contact');
-		}
+		const contact = await getOrThrow(ctx, args.contactId, 'Contact');
 
 		const capped = async <T>(rows: T[]): Promise<{ rows: T[]; truncated: boolean }> => ({
 			rows: rows.slice(0, CAP),
@@ -33,8 +30,17 @@ export const exportContactData = authedQuery({
 		});
 
 		const [
-			identities, topics, propertyValues, activities, emailSends, transactionalSends,
-			automationRuns, formSubmissions, inboundMessages, unifiedMessages, threads,
+			identities,
+			topics,
+			propertyValues,
+			activities,
+			emailSends,
+			transactionalSends,
+			automationRuns,
+			formSubmissions,
+			inboundMessages,
+			unifiedMessages,
+			threads,
 		] = await Promise.all([
 			ctx.db
 				.query('contactIdentities')

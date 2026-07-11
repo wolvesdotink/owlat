@@ -16,10 +16,10 @@ import { requireMailboxAccess } from './permissions';
 /** Per-batch row cap for the scheduled label-reference cleanup. */
 const LABEL_CLEANUP_BATCH = 256;
 import {
+	getOrThrow,
 	throwAlreadyExists,
 	throwForbidden,
 	throwInvalidInput,
-	throwNotFound,
 } from '../_utils/errors';
 
 const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
@@ -64,8 +64,7 @@ export const update = authedMutation({
 		color: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		const label = await ctx.db.get(args.labelId);
-		if (!label) throwNotFound('Label');
+		const label = await getOrThrow(ctx, args.labelId, 'Label');
 		const owned = await requireMailboxAccess(ctx, label.mailboxId);
 		if (!owned.ok) throwForbidden('Label not accessible');
 
@@ -203,8 +202,7 @@ export const toggleOnMessage = authedMutation({
 		add: v.boolean(),
 	},
 	handler: async (ctx, args) => {
-		const message = await ctx.db.get(args.messageId);
-		if (!message) throwNotFound('Message');
+		const message = await getOrThrow(ctx, args.messageId, 'Message');
 		const owned = await requireMailboxAccess(ctx, message.mailboxId);
 		if (!owned.ok) throwForbidden('Message not accessible');
 
@@ -267,8 +265,7 @@ export const toggleOnThread = authedMutation({
 		add: v.boolean(),
 	},
 	handler: async (ctx, args) => {
-		const thread = await ctx.db.get(args.threadId);
-		if (!thread) throwNotFound('Thread');
+		const thread = await getOrThrow(ctx, args.threadId, 'Thread');
 		const owned = await requireMailboxAccess(ctx, thread.mailboxId);
 		if (!owned.ok) throwForbidden('Thread not accessible');
 

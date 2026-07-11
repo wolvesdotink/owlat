@@ -22,7 +22,7 @@ import { resolveLanguageModel } from './lib/llmProvider';
 import { logInfo, logWarn } from './lib/runtimeLog';
 import { runLlmText } from './lib/llm/dispatch';
 import { recordLlmSpend } from './analytics/llmUsage';
-import { throwNotFound } from './_utils/errors';
+import { getOrThrow } from './_utils/errors';
 import { validateStringLength, STRING_LIMITS } from './lib/inputGuards';
 import { getCachedContactCount } from './lib/contactCountHelpers';
 import { readDailyStats } from './lib/sendDailyStats';
@@ -167,8 +167,7 @@ export const regenerate = authedMutation({
 	args: { id: v.id('visualizations') },
 	handler: async (ctx, args) => {
 		await requireAdminContext(ctx);
-		const viz = await ctx.db.get(args.id);
-		if (!viz) throwNotFound('Visualization');
+		const viz = await getOrThrow(ctx, args.id, 'Visualization');
 
 		// Only live-data visualizations carry a refreshable dataset key.
 		const dataset =
@@ -197,8 +196,7 @@ export const togglePin = authedMutation({
 	args: { id: v.id('visualizations') },
 	handler: async (ctx, args) => {
 		await requireAdminContext(ctx);
-		const viz = await ctx.db.get(args.id);
-		if (!viz) throwNotFound('Visualization');
+		const viz = await getOrThrow(ctx, args.id, 'Visualization');
 
 		await ctx.db.patch(args.id, {
 			pinned: !viz.pinned,

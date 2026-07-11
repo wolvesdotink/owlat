@@ -19,7 +19,7 @@ import sanitizeHtml from 'sanitize-html';
 import { POSTBOX_SANITIZE_CONFIG } from '@owlat/shared/postboxSanitize';
 import { authedMutation, publicQuery } from '../lib/authedFunctions';
 import { requireMailboxAccess } from './permissions';
-import { throwForbidden, throwInvalidInput, throwNotFound } from '../_utils/errors';
+import { getOrThrow, throwForbidden, throwInvalidInput } from '../_utils/errors';
 
 /**
  * Hard cap on the post-sanitize snippet body size, in characters. Sanitize-html
@@ -88,8 +88,7 @@ export const update = authedMutation({
 		bodyHtml: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		const snippet = await ctx.db.get(args.snippetId);
-		if (!snippet) throwNotFound('Snippet');
+		const snippet = await getOrThrow(ctx, args.snippetId, 'Snippet');
 		const owned = await requireMailboxAccess(ctx, snippet.mailboxId);
 		if (!owned.ok) throwForbidden('Not accessible');
 

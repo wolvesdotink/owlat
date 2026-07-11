@@ -12,17 +12,12 @@ import { contactListing } from './listing';
 import { topicListing } from '../topics/listing';
 import { contactCreateSourceValidator } from './resolution';
 import { segmentListing } from '../segments/listing';
-import {
-	reconcileContactCount,
-} from '../lib/contactCountHelpers';
-import {
-	softDeleteContact,
-	permanentlyDeleteContactWithRelations,
-} from '../lib/contactMutations';
+import { reconcileContactCount } from '../lib/contactCountHelpers';
+import { softDeleteContact, permanentlyDeleteContactWithRelations } from '../lib/contactMutations';
 import { recordAuditLog } from '../lib/auditLog';
 import { trackEvent } from '../lib/posthogHelpers';
 import { validateStringLength, normalizeEmail, STRING_LIMITS } from '../lib/inputGuards';
-import { throwNotFound, throwAlreadyExists, throwInvalidInput } from '../_utils/errors';
+import { getOrThrow, throwNotFound, throwAlreadyExists, throwInvalidInput } from '../_utils/errors';
 import { createContact } from './creation';
 
 // Query to get a single contact by ID (session-authenticated client callers).
@@ -48,7 +43,12 @@ export const get = authedQuery({
 export const getByIds = authedQuery({
 	args: { contactIds: v.array(v.id('contacts')) },
 	handler: async (ctx, args) => {
-		const out: Array<{ _id: Id<'contacts'>; email?: string; firstName?: string; lastName?: string }> = [];
+		const out: Array<{
+			_id: Id<'contacts'>;
+			email?: string;
+			firstName?: string;
+			lastName?: string;
+		}> = [];
 		for (const contactId of args.contactIds) {
 			const contact = await ctx.db.get(contactId);
 			if (!contact || contact.deletedAt !== undefined) continue;
@@ -157,7 +157,11 @@ export const create = authedMutation({
 		if (args.firstName) validateStringLength(args.firstName, STRING_LIMITS.NAME, 'First name');
 		if (args.lastName) validateStringLength(args.lastName, STRING_LIMITS.NAME, 'Last name');
 
-		const session = await requireOrgPermission(ctx, 'contacts:manage', 'Only owners and admins can create contacts');
+		const session = await requireOrgPermission(
+			ctx,
+			'contacts:manage',
+			'Only owners and admins can create contacts'
+		);
 
 		const email = normalizeEmail(args.email);
 		const { contactId } = await createContact(ctx, {
@@ -201,7 +205,11 @@ export const update = authedMutation({
 	handler: async (ctx, args) => {
 		const contact = await ctx.db.get(args.contactId);
 
-		const session = await requireOrgPermission(ctx, 'contacts:manage', 'Only owners and admins can update contacts');
+		const session = await requireOrgPermission(
+			ctx,
+			'contacts:manage',
+			'Only owners and admins can update contacts'
+		);
 
 		if (!contact) {
 			throwNotFound('Contact');
@@ -209,8 +217,10 @@ export const update = authedMutation({
 
 		// Bound input lengths the same way create() does — update was skipping it.
 		if (args.email !== undefined) validateStringLength(args.email, STRING_LIMITS.NAME, 'Email');
-		if (args.firstName !== undefined) validateStringLength(args.firstName, STRING_LIMITS.NAME, 'First name');
-		if (args.lastName !== undefined) validateStringLength(args.lastName, STRING_LIMITS.NAME, 'Last name');
+		if (args.firstName !== undefined)
+			validateStringLength(args.firstName, STRING_LIMITS.NAME, 'First name');
+		if (args.lastName !== undefined)
+			validateStringLength(args.lastName, STRING_LIMITS.NAME, 'Last name');
 
 		const now = Date.now();
 		const updates: {
@@ -235,9 +245,7 @@ export const update = authedMutation({
 				// reclaiming it — match resolveContact's live-only lookup.
 				const existing = await ctx.db
 					.query('contacts')
-					.withIndex('by_email', (q) =>
-						q.eq('email', email)
-					)
+					.withIndex('by_email', (q) => q.eq('email', email))
 					.filter((q) => q.eq(q.field('deletedAt'), undefined))
 					.first();
 				if (existing) {
@@ -320,7 +328,11 @@ export const remove = authedMutation({
 	handler: async (ctx, args) => {
 		const contact = await ctx.db.get(args.contactId);
 
-		const session = await requireOrgPermission(ctx, 'contacts:manage', 'Only owners and admins can delete contacts');
+		const session = await requireOrgPermission(
+			ctx,
+			'contacts:manage',
+			'Only owners and admins can delete contacts'
+		);
 
 		if (!contact) {
 			throwNotFound('Contact');
@@ -348,11 +360,17 @@ export const bulkDelete = authedMutation({
 		contactIds: v.array(v.id('contacts')),
 	},
 	handler: async (ctx, args) => {
-		const session = await requireOrgPermission(ctx, 'contacts:manage', 'Only owners and admins can delete contacts');
+		const session = await requireOrgPermission(
+			ctx,
+			'contacts:manage',
+			'Only owners and admins can delete contacts'
+		);
 
 		// Cap at 100 contacts per mutation to avoid transaction timeouts
 		if (args.contactIds.length > 100) {
-			throwInvalidInput('Cannot delete more than 100 contacts at once. Please batch your requests.');
+			throwInvalidInput(
+				'Cannot delete more than 100 contacts at once. Please batch your requests.'
+			);
 		}
 
 		let deleted = 0;
@@ -406,30 +424,35 @@ export const importBatch = authedMutation({
 				lastName: v.optional(v.string()),
 				language: v.optional(v.string()),
 				properties: v.optional(
-					v.record(
-						v.string(),
-						v.union(v.string(), v.number(), v.boolean(), v.null()),
-					),
+					v.record(v.string(), v.union(v.string(), v.number(), v.boolean(), v.null()))
 				),
 			})
 		),
 		handleDuplicates: v.union(v.literal('skip'), v.literal('update')),
 		topicId: v.optional(v.id('topics')),
-		contactListAssignments: v.optional(v.array(v.object({
-			email: v.string(),
-			topicIds: v.array(v.id('topics')),
-		}))),
+		contactListAssignments: v.optional(
+			v.array(
+				v.object({
+					email: v.string(),
+					topicIds: v.array(v.id('topics')),
+				})
+			)
+		),
 		// Admin-attest: imported contacts arrive already DOI-confirmed at a
 		// source platform. Gated by the same `contacts:manage` permission as
 		// the rest of import on this shell. See ADR-0019.
 		doiAttest: v.optional(
 			v.object({
 				attestSource: v.string(),
-			}),
+			})
 		),
 	},
 	handler: async (ctx, args) => {
-		const session = await requireOrgPermission(ctx, 'contacts:manage', 'Only owners and admins can import contacts');
+		const session = await requireOrgPermission(
+			ctx,
+			'contacts:manage',
+			'Only owners and admins can import contacts'
+		);
 
 		// Validate topic exists if provided
 		if (args.topicId) {
@@ -477,7 +500,7 @@ export const importBatch = authedMutation({
 							},
 						}
 					: {}),
-			},
+			}
 		);
 
 		// Preserve the legacy return shape callers expect.
@@ -517,9 +540,7 @@ export const getByEmailForTeam = internalQuery({
 		// erased contact to read as absent and be recreatable).
 		return await ctx.db
 			.query('contacts')
-			.withIndex('by_email', (q) =>
-				q.eq('email', normalizeEmail(args.email))
-			)
+			.withIndex('by_email', (q) => q.eq('email', normalizeEmail(args.email)))
 			.filter((q) => q.eq(q.field('deletedAt'), undefined))
 			.first();
 	},
@@ -571,10 +592,7 @@ export const updateForTeam = internalMutation({
 		lastName: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		const contact = await ctx.db.get(args.contactId);
-		if (!contact) {
-			throwNotFound('Contact');
-		}
+		const contact = await getOrThrow(ctx, args.contactId, 'Contact');
 
 		const now = Date.now();
 		const updates: {
@@ -599,9 +617,7 @@ export const updateForTeam = internalMutation({
 				// reclaiming it — match resolveContact's live-only lookup.
 				const existing = await ctx.db
 					.query('contacts')
-					.withIndex('by_email', (q) =>
-						q.eq('email', email)
-					)
+					.withIndex('by_email', (q) => q.eq('email', email))
 					.filter((q) => q.eq(q.field('deletedAt'), undefined))
 					.first();
 				if (existing) {
@@ -657,10 +673,7 @@ export const removeForTeam = internalMutation({
 		contactId: v.id('contacts'),
 	},
 	handler: async (ctx, args) => {
-		const contact = await ctx.db.get(args.contactId);
-		if (!contact) {
-			throwNotFound('Contact');
-		}
+		await getOrThrow(ctx, args.contactId, 'Contact');
 
 		// REST/API-key delete is a hard delete (no human session to attach a
 		// 30-day soft-delete grace to). The UI delete (`remove` above) soft-deletes.
@@ -749,10 +762,7 @@ export const cleanupSoftDeletedContacts = internalMutation({
 			.query('contacts')
 			.withIndex('by_deleted_at')
 			.filter((q) =>
-				q.and(
-					q.neq(q.field('deletedAt'), undefined),
-					q.lt(q.field('deletedAt'), cutoff),
-				),
+				q.and(q.neq(q.field('deletedAt'), undefined), q.lt(q.field('deletedAt'), cutoff))
 			)
 			.take(limit);
 

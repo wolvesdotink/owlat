@@ -35,7 +35,7 @@ import {
 import { authedMutation } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
-import { throwForbidden, throwNotFound } from '../_utils/errors';
+import { getOrThrow, throwForbidden } from '../_utils/errors';
 import { isBulkOrNoReplySender } from './needsReply';
 import { requireMailboxAccess } from './permissions';
 
@@ -308,8 +308,7 @@ export const recategorize = authedMutation({
 		),
 	},
 	handler: async (ctx, args) => {
-		const thread = await ctx.db.get(args.threadId);
-		if (!thread) throwNotFound('Thread');
+		const thread = await getOrThrow(ctx, args.threadId, 'Thread');
 		const owned = await requireMailboxAccess(ctx, thread.mailboxId);
 		if (!owned.ok) throwForbidden('Thread not accessible');
 

@@ -25,7 +25,7 @@ import { v } from 'convex/values';
 import { internalMutation, type MutationCtx } from '../_generated/server';
 import { authedMutation } from '../lib/authedFunctions';
 import type { Doc, Id } from '../_generated/dataModel';
-import { throwForbidden, throwInvalidInput, throwNotFound } from '../_utils/errors';
+import { getOrThrow, throwForbidden, throwInvalidInput } from '../_utils/errors';
 import { isMessageSnoozed } from '../lib/mailSnooze';
 import { requireMailboxAccess, requireMessageAccess } from './permissions';
 import { adjustFolderUnseen } from './folders';
@@ -125,8 +125,7 @@ export const arm = authedMutation({
 export const cancel = authedMutation({
 	args: { threadId: v.id('mailThreads') },
 	handler: async (ctx, args) => {
-		const thread = await ctx.db.get(args.threadId);
-		if (!thread) throwNotFound('Thread');
+		const thread = await getOrThrow(ctx, args.threadId, 'Thread');
 		const owned = await requireMailboxAccess(ctx, thread.mailboxId);
 		if (!owned.ok) throwForbidden('Thread not accessible');
 		await clearThreadFollowUp(ctx, args.threadId);
