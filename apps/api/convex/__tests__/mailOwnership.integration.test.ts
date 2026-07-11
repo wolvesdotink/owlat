@@ -496,8 +496,14 @@ describe('mail.drafts.send — honest firstSendDone gating', () => {
 		const t = convexTest(schema, modules);
 		const a = await seedMailbox(t, 'user-alice', 'alice@hinterland.camp');
 
-		// Hosted Postbox drafts dispatch exclusively via the MTA. With no MTA env
-		// the send is silently never dispatched, so the milestone must NOT record.
+		// Hosted Postbox drafts dispatch exclusively via the MTA. Clear the
+		// suite's default MTA env (vitest.setup seeds MTA_API_URL/MTA_API_KEY) so
+		// there is genuinely no hosted transport; getMtaConfig() prefers
+		// MTA_INTERNAL_URL, so clear all three. The send is then silently never
+		// dispatched, so the milestone must NOT record.
+		vi.stubEnv('MTA_INTERNAL_URL', '');
+		vi.stubEnv('MTA_API_URL', '');
+		vi.stubEnv('MTA_API_KEY', '');
 		setUser('user-alice', 'editor');
 		await sendOwnTestDraft(t, a.mailboxId);
 
@@ -509,10 +515,15 @@ describe('mail.drafts.send — honest firstSendDone gating', () => {
 		const a = await seedMailbox(t, 'user-alice', 'alice@hinterland.camp');
 
 		// A campaign/transactional provider (resend) is configured but there is no
-		// MTA — the Postbox draft is saved to Sent and never dispatched. Stamping
-		// here would be the exact lie this gate exists to remove.
+		// MTA — the Postbox draft is saved to Sent and never dispatched. Clear the
+		// suite's default MTA env (all three keys getMtaConfig reads) so only the
+		// resend provider remains. Stamping here would be the exact lie this gate
+		// exists to remove.
 		vi.stubEnv('EMAIL_PROVIDER', 'resend');
 		vi.stubEnv('RESEND_API_KEY', 'secret');
+		vi.stubEnv('MTA_INTERNAL_URL', '');
+		vi.stubEnv('MTA_API_URL', '');
+		vi.stubEnv('MTA_API_KEY', '');
 		setUser('user-alice', 'editor');
 		await sendOwnTestDraft(t, a.mailboxId);
 
@@ -553,6 +564,11 @@ describe('mail.drafts.send — honest firstSendDone gating', () => {
 		const t = convexTest(schema, modules);
 		const mailboxId = await seedExternalMailbox(t);
 
+		// The external transport is the mail-sync worker env. Explicitly clear it
+		// so the "unconfigured" state is deterministic rather than relying on the
+		// setup file happening not to seed MAIL_SYNC_*.
+		vi.stubEnv('MAIL_SYNC_API_URL', '');
+		vi.stubEnv('MAIL_SYNC_API_KEY', '');
 		setUser('user-ext', 'editor');
 		await sendOwnTestDraft(t, mailboxId);
 
