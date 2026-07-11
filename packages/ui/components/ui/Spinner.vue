@@ -13,10 +13,12 @@ const SIZE_CLASSES: Record<SpinnerSize, string> = {
 };
 
 // `inverse` rides on a filled/brand surface (e.g. inside a primary button) where
-// the brand ring would vanish; it uses white so it reads against the fill.
+// the brand ring would vanish; it inherits the host's foreground colour so the
+// ring matches the button's own icon/text in both themes (text-inverse on
+// btn-primary, white on text-white/bg-error buttons) — no baked-in hex.
 const TONE_CLASSES: Record<SpinnerTone, string> = {
 	brand: 'border-brand',
-	inverse: 'border-white',
+	inverse: 'border-current',
 };
 
 const props = withDefaults(
