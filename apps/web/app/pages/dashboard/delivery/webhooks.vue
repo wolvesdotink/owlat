@@ -188,8 +188,15 @@ const {
 				>
 					<!-- Webhook Header -->
 					<div
-						class="flex items-center justify-between px-6 py-4 cursor-pointer hover:bg-bg-surface/50 transition-colors"
+						class="flex items-center justify-between px-6 py-4 cursor-pointer hover:bg-bg-surface/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-inset"
+						role="button"
+						tabindex="0"
+						:aria-expanded="expandedWebhookId === webhook._id"
+						:aria-controls="`webhook-details-${webhook._id}`"
+						:aria-label="`Details for ${webhook.name}`"
 						@click="toggleExpanded(webhook._id)"
+						@keydown.enter.self="toggleExpanded(webhook._id)"
+						@keydown.space.self.prevent="toggleExpanded(webhook._id)"
 					>
 						<div class="flex items-center gap-4 min-w-0">
 							<div
@@ -235,7 +242,11 @@ const {
 
 					<!-- Expanded Details -->
 					<Transition name="expand">
-						<div v-if="expandedWebhookId === webhook._id" class="border-t border-border-subtle">
+						<div
+							v-if="expandedWebhookId === webhook._id"
+							:id="`webhook-details-${webhook._id}`"
+							class="border-t border-border-subtle"
+						>
 							<!-- Events -->
 							<div class="px-6 py-4 border-b border-border-subtle">
 								<p class="text-sm font-medium text-text-secondary mb-2">Subscribed Events</p>
