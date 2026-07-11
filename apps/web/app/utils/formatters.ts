@@ -2,6 +2,15 @@
  * Date and time formatting utilities
  */
 
+/**
+ * Capitalize the first character of a string, leaving the rest untouched
+ * (e.g. "delivered" -> "Delivered"). Re-exported from `@owlat/shared` so it is
+ * available as a Nuxt auto-import in web templates and code — the single home
+ * for the `s.charAt(0).toUpperCase() + s.slice(1)` idiom that was inlined
+ * across ~10 rows/pages/composables.
+ */
+export { capitalize } from '@owlat/shared';
+
 export type DateFormatStyle = 'short' | 'medium' | 'long' | 'full' | 'relative';
 
 const dateFormatOptions: Record<

@@ -157,13 +157,7 @@ const contactName = computed(() => {
 const contactInitials = computed(() => {
 	if (!details.value) return '';
 	const { firstName, lastName, email } = details.value.contact;
-	if (firstName && lastName) {
-		return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
-	}
-	if (firstName) {
-		return firstName.charAt(0).toUpperCase();
-	}
-	return email?.charAt(0).toUpperCase() ?? '?';
+	return personInitials(firstName, lastName, email);
 });
 </script>
 
@@ -247,8 +241,7 @@ const contactInitials = computed(() => {
 									{{ formatDate(details.membership.addedAt) }}
 								</div>
 							</div>
-
-							</div>
+						</div>
 					</div>
 
 					<!-- Email History Card -->
@@ -264,7 +257,13 @@ const contactInitials = computed(() => {
 							v-if="details.emailHistory.length === 0"
 							class="flex flex-col items-center justify-center py-8 text-center"
 						>
-							<UiIconBox icon="lucide:mail" size="lg" variant="surface" rounded="full" class="mb-3" />
+							<UiIconBox
+								icon="lucide:mail"
+								size="lg"
+								variant="surface"
+								rounded="full"
+								class="mb-3"
+							/>
 							<p class="text-text-secondary text-sm">No emails sent yet</p>
 							<p class="text-text-tertiary text-sm mt-1">
 								Emails from campaigns targeting this topic will appear here.
@@ -421,7 +420,11 @@ const contactInitials = computed(() => {
 			:description="`Remove &quot;${details?.contact.email ?? ''}&quot; from this topic? The contact will not be deleted, only removed from &quot;${details?.topic.name ?? ''}&quot;.`"
 			confirm-text="Remove"
 			:is-loading="isRemoving"
-			@update:open="(v: boolean) => { if (!v) isRemoveModalOpen = false; }"
+			@update:open="
+				(v: boolean) => {
+					if (!v) isRemoveModalOpen = false;
+				}
+			"
 			@confirm="handleRemove"
 		/>
 	</div>

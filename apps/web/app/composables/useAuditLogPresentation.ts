@@ -18,6 +18,7 @@
  * template.
  */
 import { AUDIT_ACTION_LITERALS } from '@owlat/api/auditActions';
+import { capitalize } from '../utils/formatters';
 
 /**
  * Dropdown option for the resource filter. The `value` is a UI-level resource
@@ -238,9 +239,7 @@ export function getResourceLabel(resource: string): string {
 
 export function getActionLabel(action: string): string {
 	const verb = actionVerb(action);
-	return (
-		ACTION_VERB_LABELS[verb] ?? verb.charAt(0).toUpperCase() + verb.slice(1).replace(/_/g, ' ')
-	);
+	return ACTION_VERB_LABELS[verb] ?? capitalize(verb.replace(/_/g, ' '));
 }
 
 export function getActionIcon(action: string): string {

@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 
-const { data: contacts, isLoading } = useOrganizationQuery(
-	api.contacts.analytics.getRecent,
-	{ limit: 5 }
-);
+const { data: contacts, isLoading } = useOrganizationQuery(api.contacts.analytics.getRecent, {
+	limit: 5,
+});
 
 interface Contact {
 	_id: string;
@@ -26,10 +25,7 @@ function getDisplayName(contact: Contact): string {
 }
 
 function getInitials(contact: Contact): string {
-	if (contact.firstName || contact.lastName) {
-		return [contact.firstName?.[0], contact.lastName?.[0]].filter(Boolean).join('').toUpperCase();
-	}
-	return (contact.email?.[0] ?? '?').toUpperCase();
+	return personInitials(contact.firstName, contact.lastName, contact.email);
 }
 </script>
 
