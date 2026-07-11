@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
 	AI_CONNECTED_STEP_ID,
 	CHECKLIST_STEPS,
+	isAiConnected,
 	isChecklistComplete,
 	isWelcomeTriggerPath,
 	shouldRouteToWelcome,
@@ -82,6 +83,35 @@ describe('visibleChecklistSteps — step visibility adapts to the mode', () => {
 	it('only the migration-only steps differ between the two modes', () => {
 		const migrationOnly = CHECKLIST_STEPS.filter((s) => s.migrationOnly).map((s) => s.id);
 		expect(migrationOnly).toEqual(['importDone', 'knowledgeIndexed', 'sendingSwitched']);
+	});
+});
+
+describe('isAiConnected — org-scoped AI step completion (env OR stored)', () => {
+	// The config-gap map from `getFlagsConfigStatus` lists the `ai` flag ONLY
+	// while AI is unconfigured; the backend already treats LLM_* env OR a stored
+	// provider key as satisfying it. So the step's completion is purely "is the
+	// `ai` key absent from the gap map?" — which must hold for BOTH sources.
+
+	it('completes for an env-configured self-hoster (no stored row, `ai` absent from the gap)', () => {
+		// LLM_* set in env ⇒ the backend drops `ai` from the gap map with no stored
+		// config. This is the env-fallback path the round-1 defect missed: a working
+		// env-only instance must complete the step.
+		const envConfiguredGap = { campaigns: ['A configured delivery provider'] };
+		expect(isAiConnected(envConfiguredGap)).toBe(true);
+	});
+
+	it('completes for a UI-configured org (stored key ⇒ `ai` absent from the gap)', () => {
+		// A stored provider key likewise clears the `ai` gap; same absence, same done.
+		expect(isAiConnected({})).toBe(true);
+	});
+
+	it('stays incomplete while AI is unconfigured (`ai` present in the gap)', () => {
+		expect(isAiConnected({ ai: ['LLM_PROVIDER', 'LLM_API_KEY'] })).toBe(false);
+	});
+
+	it('is not complete while the config-gap query is still loading (undefined)', () => {
+		// Guards against the step flashing "done" on first paint before data lands.
+		expect(isAiConnected(undefined)).toBe(false);
 	});
 });
 
