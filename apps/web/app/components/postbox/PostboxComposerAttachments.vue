@@ -64,7 +64,7 @@ const emit = defineEmits<{
 				v-for="up in uploads"
 				:key="up.id"
 				class="relative inline-flex items-center gap-1.5 pl-1.5 pr-1 py-1 rounded bg-bg-surface text-xs overflow-hidden"
-				:class="up.status === 'failed' ? 'ring-1 ring-red-500/50' : ''"
+				:class="up.status === 'failed' ? 'ring-1 ring-error/50' : ''"
 			>
 				<img
 					v-if="up.thumbUrl"
