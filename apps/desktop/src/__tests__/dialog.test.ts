@@ -1,8 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Mock every Tauri module dialog.ts pulls in. `open` is the native picker,
-// `invoke('read_file')` reads a chosen path's bytes, and onDragDropEvent is the
-// OS-level drop stream. Hoisted so the spies exist when the mock factories run.
+// Mock every Tauri module dialog.ts pulls in. The picker and every file read
+// now go through the Rust side: `invoke('pick_files')` opens the native dialog
+// and returns the chosen absolute paths (recorded server-side as authorized
+// reads), and `invoke('read_authorized_file', { path })` returns the bytes for
+// one of those paths. `onDragDropEvent` is the OS-level drop stream. Hoisted so
+// the spies exist when the mock factories run.
 const { openMock, invokeMock, onDragDropEventMock } = vi.hoisted(() => ({
 	openMock: vi.fn(),
 	invokeMock: vi.fn(),
@@ -25,6 +28,20 @@ vi.mock('@tauri-apps/api/webview', () => ({
 
 import { pickFiles, onWebviewFileDrop } from '../dialog';
 
+/** Route `invoke` by command: `pick_files` returns paths, `read_authorized_file`
+ *  returns each path's bytes (with an optional per-path override for failures). */
+function stubInvoke(pickedPaths: string[], reads: Record<string, ArrayBuffer | Error> = {}) {
+	invokeMock.mockImplementation((cmd: string, args?: { path?: string }) => {
+		if (cmd === 'pick_files') return Promise.resolve(pickedPaths);
+		if (cmd === 'read_authorized_file') {
+			const path = args?.path ?? '';
+			const result = reads[path] ?? new Uint8Array([1, 2, 3]).buffer;
+			return result instanceof Error ? Promise.reject(result) : Promise.resolve(result);
+		}
+		return Promise.reject(new Error(`unexpected invoke ${cmd}`));
+	});
+}
+
 beforeEach(() => {
 	openMock.mockReset();
 	invokeMock.mockReset();
@@ -33,30 +50,36 @@ beforeEach(() => {
 
 describe('pickFiles', () => {
 	it('returns [] when the user cancels the dialog', async () => {
-		openMock.mockResolvedValue(null);
+		stubInvoke([]);
 
 		const files = await pickFiles({ title: 'Choose a file' });
 
 		expect(files).toEqual([]);
-		expect(invokeMock).not.toHaveBeenCalled();
+		expect(invokeMock).toHaveBeenCalledWith('pick_files', {
+			title: 'Choose a file',
+			filters: [],
+			multiple: false,
+		});
+		// No paths → nothing read.
+		expect(invokeMock).not.toHaveBeenCalledWith('read_authorized_file', expect.anything());
 	});
 
 	it('forwards filters/multiple and reads the picked path into a typed File', async () => {
-		openMock.mockResolvedValue('/Users/me/Documents/contacts.csv');
-		invokeMock.mockResolvedValue(new TextEncoder().encode('id,email').buffer);
+		stubInvoke(['/Users/me/Documents/contacts.csv'], {
+			'/Users/me/Documents/contacts.csv': new TextEncoder().encode('id,email').buffer,
+		});
 
 		const files = await pickFiles({
 			title: 'Choose a CSV file',
 			filters: [{ name: 'CSV', extensions: ['csv'] }],
 		});
 
-		expect(openMock).toHaveBeenCalledWith({
+		expect(invokeMock).toHaveBeenCalledWith('pick_files', {
 			title: 'Choose a CSV file',
-			multiple: false,
-			directory: false,
 			filters: [{ name: 'CSV', extensions: ['csv'] }],
+			multiple: false,
 		});
-		expect(invokeMock).toHaveBeenCalledWith('read_file', {
+		expect(invokeMock).toHaveBeenCalledWith('read_authorized_file', {
 			path: '/Users/me/Documents/contacts.csv',
 		});
 		expect(files).toHaveLength(1);
@@ -66,13 +89,22 @@ describe('pickFiles', () => {
 	});
 
 	it('reads every path when multiple files are chosen', async () => {
-		openMock.mockResolvedValue(['/a/one.png', '/b/two.pdf']);
-		invokeMock.mockResolvedValue(new Uint8Array([1, 2, 3]).buffer);
+		stubInvoke(['/a/one.png', '/b/two.pdf']);
 
 		const files = await pickFiles({ multiple: true });
 
 		expect(files.map((f) => f.name)).toEqual(['one.png', 'two.pdf']);
 		expect(files.map((f) => f.type)).toEqual(['image/png', 'application/pdf']);
+	});
+
+	it('skips a file that fails to read instead of poisoning the whole batch', async () => {
+		stubInvoke(['/a/good.png', '/b/broken.pdf'], {
+			'/b/broken.pdf': new Error('read failed'),
+		});
+
+		const files = await pickFiles({ multiple: true });
+
+		expect(files.map((f) => f.name)).toEqual(['good.png']);
 	});
 });
 
@@ -84,7 +116,7 @@ describe('onWebviewFileDrop', () => {
 			handler = cb;
 			return Promise.resolve(unlisten);
 		});
-		invokeMock.mockResolvedValue(new Uint8Array([1]).buffer);
+		stubInvoke([], { '/x/report.pdf': new Uint8Array([1]).buffer });
 
 		const onDrop = vi.fn();
 		const onOver = vi.fn();
@@ -102,5 +134,25 @@ describe('onWebviewFileDrop', () => {
 		const droppedFiles = onDrop.mock.calls[0]?.[0] as File[];
 		expect(droppedFiles[0]?.name).toBe('report.pdf');
 		expect(stop).toBe(unlisten);
+	});
+
+	it('still fires onDrop (clearing drag state) when a dropped path is unreadable', async () => {
+		let handler: ((event: { payload: unknown }) => void) | undefined;
+		onDragDropEventMock.mockImplementation((cb: (event: { payload: unknown }) => void) => {
+			handler = cb;
+			return Promise.resolve(vi.fn());
+		});
+		// A folder drop: the read rejects. onDrop must still fire (with the empty
+		// result) so the drop zone can clear its stuck drag highlight.
+		stubInvoke([], { '/some/folder': new Error('is a directory') });
+
+		const onDrop = vi.fn();
+		await onWebviewFileDrop({ onDrop });
+
+		handler?.({
+			payload: { type: 'drop', paths: ['/some/folder'], position: { x: 1, y: 2 } },
+		});
+		await vi.waitFor(() => expect(onDrop).toHaveBeenCalledTimes(1));
+		expect(onDrop.mock.calls[0]?.[0]).toEqual([]);
 	});
 });
