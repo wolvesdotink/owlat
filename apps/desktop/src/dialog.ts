@@ -82,37 +82,52 @@ function mimeForName(name: string): string {
 }
 
 /**
- * Read the file at `path` off disk (via the `read_file` Tauri command) and wrap
- * it in a `File` with the basename and an inferred MIME type, so the existing
- * upload/validation pipeline treats it exactly like an `<input type=file>`
- * selection.
+ * Read one authorized path off disk (via the `read_authorized_file` Tauri
+ * command) and wrap it in a `File` with the basename and an inferred MIME type,
+ * so the existing upload/validation pipeline treats it exactly like an
+ * `<input type=file>` selection. Rejects if the path isn't on the Rust-side
+ * one-shot allowlist (i.e. wasn't just picked or dropped), is too large, or is
+ * unreadable (e.g. a folder).
  */
 async function readFileFromPath(path: string): Promise<File> {
-	const buffer = await invoke<ArrayBuffer>('read_file', { path });
+	const buffer = await invoke<ArrayBuffer>('read_authorized_file', { path });
 	const name = baseName(path);
 	return new File([buffer], name, { type: mimeForName(name) });
 }
 
-/** Read many paths into `File` objects, preserving order. */
+/**
+ * Read many paths into `File` objects, skipping any that fail (a dropped folder,
+ * an unreadable or unauthorized path) rather than letting one bad entry poison
+ * the whole batch or reject unhandled. Never rejects: callers always get the
+ * readable files (possibly empty), so drop UIs can always clear their state.
+ */
 async function readFilesFromPaths(paths: string[]): Promise<File[]> {
-	return Promise.all(paths.map(readFileFromPath));
+	const results = await Promise.all(
+		paths.map(async (path) => {
+			try {
+				return await readFileFromPath(path);
+			} catch (error) {
+				console.warn(`[dialog] Skipping unreadable file: ${path}`, error);
+				return null;
+			}
+		})
+	);
+	return results.filter((file): file is File => file !== null);
 }
 
 /**
  * Open the native OS file picker and return the chosen files as `File`
  * objects. Returns an empty array when the user cancels. This is the desktop
- * replacement for `<input type=file>`: the same `File` objects flow into the
- * same validation and upload code.
+ * replacement for `<input type=file>`: the picker runs entirely on the Rust
+ * side (no path is ever passed from JS), and the same `File` objects flow into
+ * the same validation and upload code.
  */
 export async function pickFiles(options: PickFilesOptions = {}): Promise<File[]> {
-	const picked = await open({
+	const paths = await invoke<string[]>('pick_files', {
 		title: options.title,
+		filters: options.filters ?? [],
 		multiple: options.multiple ?? false,
-		directory: false,
-		filters: options.filters,
 	});
-	if (picked === null) return [];
-	const paths = Array.isArray(picked) ? picked : [picked];
 	return readFilesFromPaths(paths);
 }
 
@@ -140,9 +155,12 @@ export async function onWebviewFileDrop(handlers: WebviewFileDropHandlers): Prom
 			handlers.onLeave?.();
 		} else if (payload.type === 'drop') {
 			const position = payload.position;
-			void readFilesFromPaths(payload.paths).then((files) => {
-				handlers.onDrop(files, position);
-			});
+			// `readFilesFromPaths` never rejects (it skips unreadable entries), so
+			// `onDrop` always fires and the drop UI can always clear its drag state
+			// — even on a folder drop. The `.catch` is a belt-and-suspenders guard.
+			void readFilesFromPaths(payload.paths)
+				.then((files) => handlers.onDrop(files, position))
+				.catch(() => handlers.onDrop([], position));
 		}
 	});
 	return unlisten;
