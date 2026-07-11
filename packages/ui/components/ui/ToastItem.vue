@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import type { Toast } from '../../composables/useToast';
+import type { Toast, ToastType } from '../../composables/useToast';
 
 /**
  * A single toast card. Extracted from {@link Toast.vue} so the same markup can
@@ -11,51 +11,62 @@ const props = defineProps<{ toast: Toast }>();
 
 const emit = defineEmits<{ dismiss: [] }>();
 
-/** Per-type colour + icon, all via Fluid Functionalism semantic tokens. */
-const style = computed(() => {
-	switch (props.toast.type) {
-		case 'error':
-			return {
-				container: 'bg-error-subtle border-error/20',
-				iconWrap: 'bg-error/20',
-				icon: 'lucide:alert-circle',
-				iconColor: 'text-error',
-				text: 'text-error',
-				actionHover: 'text-error hover:bg-error/20',
-				closeHover: 'hover:bg-error/20 text-error',
-			};
-		case 'warning':
-			return {
-				container: 'bg-warning-subtle border-warning/20',
-				iconWrap: 'bg-warning/20',
-				icon: 'lucide:alert-triangle',
-				iconColor: 'text-warning',
-				text: 'text-warning',
-				actionHover: 'text-warning hover:bg-warning/20',
-				closeHover: 'hover:bg-warning/20 text-warning',
-			};
-		case 'info':
-			return {
-				container: 'bg-info-subtle border-info/20',
-				iconWrap: 'bg-info/20',
-				icon: 'lucide:info',
-				iconColor: 'text-info',
-				text: 'text-info',
-				actionHover: 'text-info hover:bg-info/20',
-				closeHover: 'hover:bg-info/20 text-info',
-			};
-		default:
-			return {
-				container: 'bg-success-subtle border-success/20',
-				iconWrap: 'bg-success/20',
-				icon: 'lucide:check',
-				iconColor: 'text-success',
-				text: 'text-success',
-				actionHover: 'text-success hover:bg-success/20',
-				closeHover: 'hover:bg-success/20 text-success',
-			};
-	}
-});
+interface ToastStyle {
+	container: string;
+	iconWrap: string;
+	icon: string;
+	iconColor: string;
+	text: string;
+	actionHover: string;
+	closeHover: string;
+}
+
+/**
+ * Per-type colour + icon, all via Fluid Functionalism semantic tokens. Modelled
+ * as an exhaustive {@link Record} (matching IconBox.vue) so adding a fifth
+ * {@link ToastType} is a compile error rather than silently rendering as
+ * success. Full literal class strings are kept so Tailwind's scanner sees them.
+ */
+const STYLES: Record<ToastType, ToastStyle> = {
+	success: {
+		container: 'bg-success-subtle border-success/20',
+		iconWrap: 'bg-success/20',
+		icon: 'lucide:check',
+		iconColor: 'text-success',
+		text: 'text-success',
+		actionHover: 'text-success hover:bg-success/20',
+		closeHover: 'hover:bg-success/20 text-success',
+	},
+	error: {
+		container: 'bg-error-subtle border-error/20',
+		iconWrap: 'bg-error/20',
+		icon: 'lucide:alert-circle',
+		iconColor: 'text-error',
+		text: 'text-error',
+		actionHover: 'text-error hover:bg-error/20',
+		closeHover: 'hover:bg-error/20 text-error',
+	},
+	warning: {
+		container: 'bg-warning-subtle border-warning/20',
+		iconWrap: 'bg-warning/20',
+		icon: 'lucide:alert-triangle',
+		iconColor: 'text-warning',
+		text: 'text-warning',
+		actionHover: 'text-warning hover:bg-warning/20',
+		closeHover: 'hover:bg-warning/20 text-warning',
+	},
+	info: {
+		container: 'bg-info-subtle border-info/20',
+		iconWrap: 'bg-info/20',
+		icon: 'lucide:info',
+		iconColor: 'text-info',
+		text: 'text-info',
+		actionHover: 'text-info hover:bg-info/20',
+		closeHover: 'hover:bg-info/20 text-info',
+	},
+};
+
+const style = computed(() => STYLES[props.toast.type]);
 </script>
 
 <template>
