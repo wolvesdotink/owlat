@@ -24,7 +24,7 @@ import { internalAction } from './_generated/server';
 import type { Id } from './_generated/dataModel';
 import { authedAction } from './lib/authedFunctions';
 import { decryptSecret, encryptSecret } from './lib/credentialCrypto';
-import { languageProviderFor } from './lib/llmProviders';
+import { embeddingProviderFor, languageProviderFor } from './lib/llmProviders';
 import { rateLimiter } from './rateLimiter';
 import { throwUnauthenticated } from './_utils/errors';
 import {
@@ -85,8 +85,19 @@ export const saveConfig = authedAction({
 			adapter.validateCredentials({ apiKey: args.apiKey, baseUrl: languageBaseUrl });
 		}
 
+		// Local by default; the adapter decides whether it is keyless (local /
+		// custom-compatible) or a hosted embedder that needs a key.
 		const embeddingProviderKind = args.embeddingProviderKind ?? 'local';
-		const isEmbeddingLocal = embeddingProviderKind === 'local';
+		const embeddingAdapter = embeddingProviderFor(embeddingProviderKind);
+		const isEmbeddingLocal = embeddingAdapter.isLocal;
+		// Fail fast on a hosted embedder configured with a key but structurally
+		// invalid, before persisting anything.
+		if (!isEmbeddingLocal && args.embeddingApiKey) {
+			embeddingAdapter.validateCredentials({
+				apiKey: args.embeddingApiKey,
+				modelId: args.embeddingModel?.trim() || embeddingAdapter.defaultModel,
+			});
+		}
 
 		return await ctx.runMutation(internal.aiProviderConfig._persistConfig, {
 			languageProviderKind: args.languageProviderKind,
@@ -161,14 +172,16 @@ export const testConnection = authedAction({
 });
 
 /**
- * Decrypt a stored language-key envelope for `lib/llmProvider.resolveAiConfig`.
+ * Decrypt a stored AES-256-GCM key envelope for `lib/llmProvider.resolveAiConfig`.
  * The ONLY call-time decryption point for the pluggable-provider resolver: the
  * v8-safe resolver can't touch `node:crypto`, so it hands the (already-read)
  * envelope columns to this Node action, which returns the plaintext key for
- * immediate model construction. Internal-only — never exposed to the client,
- * and the caller who can invoke it already holds the envelope from the row.
+ * immediate model construction. Used for BOTH planes — the hosted language key
+ * and the hosted-embedder key each flow through here. Internal-only — never
+ * exposed to the client, and the caller who can invoke it already holds the
+ * envelope from the row.
  */
-export const _decryptLanguageKey = internalAction({
+export const _decryptSecretEnvelope = internalAction({
 	args: {
 		ciphertext: v.string(),
 		iv: v.string(),
