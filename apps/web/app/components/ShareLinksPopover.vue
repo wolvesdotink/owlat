@@ -198,7 +198,7 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 									</button>
 									<button
 										v-if="getLinkStatus(link) === 'active'"
-										class="p-1 rounded hover:bg-red-50 text-text-secondary hover:text-red-500 transition-colors"
+										class="p-1 rounded hover:bg-error/10 text-text-secondary hover:text-error transition-colors"
 										title="Revoke link"
 										@click="handleRevoke(link._id)"
 									>
