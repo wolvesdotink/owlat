@@ -222,16 +222,8 @@ const dateRangeOptions = [
 			:loading="isLoading && !auditLogsData"
 			:error="auditLogsError"
 			error-title="Couldn't load the audit log"
+			loading-label="Loading audit log..."
 		>
-			<template #loading>
-				<div class="flex items-center justify-center py-16">
-					<div class="flex flex-col items-center gap-3">
-						<UiSpinner />
-						<p class="text-text-secondary text-sm">Loading audit log...</p>
-					</div>
-				</div>
-			</template>
-
 			<!-- No Organization State -->
 			<div
 				v-if="!hasActiveOrganization"

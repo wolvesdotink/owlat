@@ -239,7 +239,6 @@ function getContactName(
 			</div>
 		</div>
 
-		<!-- Two column layout - Growth Chart and Top Topics -->
 		<div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
 			<!-- Subscriber Growth Chart (Last 30 Days) -->
 			<div>
@@ -257,14 +256,8 @@ function getContactName(
 						:loading="growthLoading"
 						:error="growthError"
 						error-title="Couldn't load subscriber growth"
+						loading-label="Loading chart..."
 					>
-						<template #loading>
-							<div class="flex items-center justify-center py-8">
-								<Icon name="lucide:loader-2" class="w-6 h-6 animate-spin text-text-tertiary" />
-							</div>
-						</template>
-
-						<!-- Chart -->
 						<UiBars
 							:data="growthBars"
 							:height="128"
@@ -296,14 +289,8 @@ function getContactName(
 						:loading="listsLoading"
 						:error="listsError"
 						error-title="Couldn't load top topics"
+						loading-label="Loading topics..."
 					>
-						<template #loading>
-							<div class="flex items-center justify-center py-8">
-								<Icon name="lucide:loader-2" class="w-6 h-6 animate-spin text-text-tertiary" />
-							</div>
-						</template>
-
-						<!-- Empty state -->
 						<div
 							v-if="!topLists || topLists.length === 0"
 							class="flex flex-col items-center justify-center py-12 text-center"
@@ -328,7 +315,6 @@ function getContactName(
 							</NuxtLink>
 						</div>
 
-						<!-- Topics -->
 						<div v-else class="divide-y divide-border-subtle">
 							<NuxtLink
 								v-for="list in topLists"
@@ -362,7 +348,6 @@ function getContactName(
 			</div>
 		</div>
 
-		<!-- Two column layout - Recent Contacts and Recent Activity -->
 		<div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
 			<!-- Recent Contacts -->
 			<div>
@@ -384,14 +369,8 @@ function getContactName(
 						:loading="contactsLoading"
 						:error="contactsError"
 						error-title="Couldn't load recent contacts"
+						loading-label="Loading contacts..."
 					>
-						<template #loading>
-							<div class="flex items-center justify-center py-8">
-								<Icon name="lucide:loader-2" class="w-6 h-6 animate-spin text-text-tertiary" />
-							</div>
-						</template>
-
-						<!-- Empty state -->
 						<div
 							v-if="!recentContacts || recentContacts.length === 0"
 							class="flex flex-col items-center justify-center py-12 text-center"
@@ -416,7 +395,6 @@ function getContactName(
 							</NuxtLink>
 						</div>
 
-						<!-- Contacts list -->
 						<div v-else class="divide-y divide-border-subtle">
 							<NuxtLink
 								v-for="contact in recentContacts"
@@ -459,14 +437,8 @@ function getContactName(
 						:loading="activityLoading"
 						:error="activityError"
 						error-title="Couldn't load recent activity"
+						loading-label="Loading activity..."
 					>
-						<template #loading>
-							<div class="flex items-center justify-center py-8">
-								<Icon name="lucide:loader-2" class="w-6 h-6 animate-spin text-text-tertiary" />
-							</div>
-						</template>
-
-						<!-- Empty state -->
 						<div
 							v-if="!recentActivity || recentActivity.length === 0"
 							class="flex flex-col items-center justify-center py-12 text-center"
@@ -484,7 +456,6 @@ function getContactName(
 							</p>
 						</div>
 
-						<!-- Activity list -->
 						<div v-else class="divide-y divide-border-subtle">
 							<div
 								v-for="activity in recentActivity"

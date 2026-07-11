@@ -278,16 +278,8 @@ useClickOutsideSelector('[data-property-dropdown]', () => {
 			:loading="isLoading && !propertiesData"
 			:error="propertiesError"
 			error-title="Couldn't load properties"
+			loading-label="Loading properties..."
 		>
-			<template #loading>
-				<div class="flex items-center justify-center py-16">
-					<div class="flex flex-col items-center gap-3">
-						<UiSpinner />
-						<p class="text-text-secondary text-sm">Loading properties...</p>
-					</div>
-				</div>
-			</template>
-
 			<!-- No Team State -->
 			<UiCard v-if="!hasActiveOrganization">
 				<UiEmptyState

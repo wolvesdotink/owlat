@@ -215,16 +215,8 @@ const getReasonLabel = (reason: string) => {
 			:loading="isLoading && !blockedEmailsData"
 			:error="blockedEmailsError"
 			error-title="Couldn't load suppressions"
+			loading-label="Loading suppressions..."
 		>
-			<template #loading>
-				<div class="flex items-center justify-center py-16">
-					<div class="flex flex-col items-center gap-3">
-						<UiSpinner />
-						<p class="text-text-secondary text-sm">Loading suppressions...</p>
-					</div>
-				</div>
-			</template>
-
 			<!-- No Organization State -->
 			<div v-if="!hasActiveOrganization" class="card p-0 overflow-hidden">
 				<UiEmptyState

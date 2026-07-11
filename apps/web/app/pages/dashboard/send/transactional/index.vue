@@ -201,16 +201,8 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 				:loading="isLoading && !transactionalEmails"
 				:error="emailsError"
 				error-title="Couldn't load transactional emails"
+				loading-label="Loading transactional emails..."
 			>
-				<template #loading>
-					<div class="flex items-center justify-center py-16">
-						<div class="flex flex-col items-center gap-3">
-							<UiSpinner />
-							<p class="text-text-secondary text-sm">Loading transactional emails...</p>
-						</div>
-					</div>
-				</template>
-
 				<!-- Empty State (no organization) -->
 				<UiEmptyState
 					v-if="!hasActiveOrganization"
@@ -668,8 +660,7 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 								</div>
 								<pre
 									class="p-4 rounded-lg bg-bg-deep text-text-secondary text-sm font-mono overflow-x-auto whitespace-pre-wrap"
-									>{{ getCodeSnippet('curl') }}</pre
-								>
+									>{{ getCodeSnippet('curl') }}</pre>
 							</div>
 
 							<!-- JavaScript -->
@@ -691,8 +682,7 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 								</div>
 								<pre
 									class="p-4 rounded-lg bg-bg-deep text-text-secondary text-sm font-mono overflow-x-auto whitespace-pre-wrap"
-									>{{ getCodeSnippet('javascript') }}</pre
-								>
+									>{{ getCodeSnippet('javascript') }}</pre>
 							</div>
 
 							<!-- Python -->
@@ -714,8 +704,7 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 								</div>
 								<pre
 									class="p-4 rounded-lg bg-bg-deep text-text-secondary text-sm font-mono overflow-x-auto whitespace-pre-wrap"
-									>{{ getCodeSnippet('python') }}</pre
-								>
+									>{{ getCodeSnippet('python') }}</pre>
 							</div>
 
 							<div class="mt-4 p-4 rounded-lg bg-warning/10 border border-warning/20">

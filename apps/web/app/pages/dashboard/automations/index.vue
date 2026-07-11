@@ -280,16 +280,8 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 				:loading="isLoading && !automations"
 				:error="automationsError"
 				error-title="Couldn't load automations"
+				loading-label="Loading automations..."
 			>
-				<template #loading>
-					<div class="flex items-center justify-center py-16">
-						<div class="flex flex-col items-center gap-3">
-							<UiSpinner />
-							<p class="text-text-secondary text-sm">Loading automations...</p>
-						</div>
-					</div>
-				</template>
-
 				<!-- Empty State (no team) -->
 				<UiEmptyState
 					v-if="!hasActiveOrganization"

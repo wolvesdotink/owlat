@@ -163,16 +163,8 @@ const sendEstimate = computed(() => {
 			:loading="campaignLoading"
 			:error="campaignError"
 			error-title="Couldn't load this campaign"
+			loading-label="Loading campaign..."
 		>
-			<template #loading>
-				<div class="flex items-center justify-center py-16">
-					<div class="flex flex-col items-center gap-3">
-						<UiSpinner />
-						<p class="text-text-secondary text-sm">Loading campaign...</p>
-					</div>
-				</div>
-			</template>
-
 			<!-- Not Found State -->
 			<div v-if="!campaignData" class="max-w-4xl mx-auto px-6 py-16 text-center">
 				<UiIconBox

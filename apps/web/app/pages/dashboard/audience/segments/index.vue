@@ -142,16 +142,8 @@ onMounted(() => {
 				:loading="isLoading && !segments"
 				:error="segmentsError"
 				error-title="Couldn't load segments"
+				loading-label="Loading segments..."
 			>
-				<template #loading>
-					<div class="flex items-center justify-center py-16">
-						<div class="flex flex-col items-center gap-3">
-							<UiSpinner />
-							<p class="text-text-secondary text-sm">Loading segments...</p>
-						</div>
-					</div>
-				</template>
-
 				<!-- Empty State (no organization) -->
 				<UiEmptyState
 					v-if="!hasActiveOrganization"

@@ -111,16 +111,12 @@ const sourceFilterOptions: { value: SourceType | null; label: string; icon?: str
 			</div>
 		</div>
 
-		<UiQueryBoundary :loading="isLoading" :error="error" error-title="Couldn't load files">
-			<template #loading>
-				<div class="flex items-center justify-center py-16">
-					<div class="flex flex-col items-center gap-3">
-						<UiSpinner />
-						<p class="text-text-secondary text-sm">Loading files...</p>
-					</div>
-				</div>
-			</template>
-
+		<UiQueryBoundary
+			:loading="isLoading"
+			:error="error"
+			error-title="Couldn't load files"
+			loading-label="Loading files..."
+		>
 			<!-- Empty state -->
 			<div
 				v-if="!files || files.length === 0"

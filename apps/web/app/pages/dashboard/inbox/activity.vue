@@ -101,16 +101,8 @@ async function handleResolve(threadId: Id<'conversationThreads'>) {
 			:loading="isLoading && !timeline.length"
 			:error="error"
 			error-title="Couldn't load activity"
+			loading-label="Loading messages..."
 		>
-			<template #loading>
-				<div class="flex items-center justify-center py-16">
-					<div class="flex flex-col items-center gap-3">
-						<UiSpinner />
-						<p class="text-text-secondary text-sm">Loading messages...</p>
-					</div>
-				</div>
-			</template>
-
 			<!-- Empty — guided CTA (admin-only button, explanation for everyone) -->
 			<InboxActivityEmptyState
 				v-if="timeline.length === 0"
