@@ -284,7 +284,8 @@ const { prefetch: prefetchAdjacent } = usePostboxPrefetch();
 watch([focusedIndex, () => props.activeMessageId], () => {
 	const ids = visibleIds.value;
 	let anchor = focusedIndex.value;
-	if (anchor < 0 && props.activeMessageId) anchor = ids.indexOf(props.activeMessageId);
+	if (anchor < 0 && props.activeMessageId)
+		anchor = ids.findIndex((id) => id === props.activeMessageId);
 	if (anchor < 0) return;
 	prefetchAdjacent([ids[anchor + 1], ids[anchor - 1]]);
 });
