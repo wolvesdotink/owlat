@@ -159,6 +159,11 @@ export function usePaginatedQuery<Query extends FunctionReference<'query'>>(
 		isRefetching: readonly(isRefetching),
 		error: readonly(error),
 		loadMore: (numItems: number) => {
+			// During a keepPreviousData refetch, `_loadMore` still points at the
+			// closure of the subscription disposed at the top of subscribe(), so
+			// invoking it is undefined behaviour. No-op until the fresh first page
+			// repopulates `_loadMore`; the refetch resolves near-instantly.
+			if (isRefetching.value) return;
 			_loadMore.value?.(numItems);
 		},
 	};
