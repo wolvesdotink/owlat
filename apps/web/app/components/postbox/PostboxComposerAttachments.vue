@@ -76,10 +76,10 @@ const emit = defineEmits<{
 					v-else
 					:name="up.status === 'failed' ? 'lucide:alert-circle' : 'lucide:paperclip'"
 					class="w-3 h-3"
-					:class="up.status === 'failed' ? 'text-red-500' : 'text-text-tertiary'"
+					:class="up.status === 'failed' ? 'text-error' : 'text-text-tertiary'"
 				/>
 				<span class="truncate max-w-[140px]">{{ up.filename }}</span>
-				<span v-if="up.status === 'failed'" class="text-red-500">Failed</span>
+				<span v-if="up.status === 'failed'" class="text-error">Failed</span>
 				<span v-else class="text-text-tertiary tabular-nums">
 					{{ up.indeterminate ? '…' : Math.round(up.progress * 100) + '%' }}
 				</span>
@@ -125,19 +125,19 @@ const emit = defineEmits<{
 				>
 					<span
 						class="block h-full rounded-full transition-[width] duration-(--motion-moderate)"
-						:class="meter.amber ? 'bg-amber-500' : 'bg-accent'"
+						:class="meter.amber ? 'bg-warning' : 'bg-accent'"
 						:style="{ width: Math.min(100, Math.round(meter.ratio * 100)) + '%' }"
 					/>
 				</span>
 				<span
 					class="tabular-nums shrink-0"
-					:class="meter.amber ? 'text-amber-500' : 'text-text-tertiary'"
+					:class="meter.amber ? 'text-warning' : 'text-text-tertiary'"
 				>
 					{{ formatCompactFileSize(meter.totalBytes) }}
 					of {{ formatCompactFileSize(meter.budgetBytes) }}
 				</span>
 			</div>
-			<p v-if="meter.amber" class="text-[11px] text-amber-500">
+			<p v-if="meter.amber" class="text-[11px] text-warning">
 				Large attachments may bounce — consider sharing a link for oversized files.
 			</p>
 		</div>

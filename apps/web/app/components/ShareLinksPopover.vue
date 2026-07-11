@@ -171,7 +171,7 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 								<!-- Status badge -->
 								<span
 									v-if="getLinkStatus(link) === 'active'"
-									class="text-xs text-green-600 font-medium whitespace-nowrap"
+									class="text-xs text-success font-medium whitespace-nowrap"
 								>
 									Active &middot; {{ getHoursRemaining(link.expiresAt) }}h left
 								</span>
@@ -181,7 +181,7 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 								>
 									Expired
 								</span>
-								<span v-else class="text-xs text-red-500 font-medium"> Revoked </span>
+								<span v-else class="text-xs text-error font-medium"> Revoked </span>
 
 								<!-- Actions -->
 								<div class="flex items-center gap-1">

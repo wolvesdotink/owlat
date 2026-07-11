@@ -612,7 +612,7 @@ const readinessSummary = (domain: DomainWithVerification) =>
 						<div class="flex items-center gap-2">
 							<button
 								v-if="canForceVerify && domain.status !== 'verified'"
-								class="btn gap-1.5 text-sm py-1.5 px-3 border border-yellow-500/40 bg-yellow-500/10 text-yellow-700 hover:bg-yellow-500/20 dark:text-yellow-300"
+								class="btn gap-1.5 text-sm py-1.5 px-3 border border-warning/40 bg-warning/10 text-warning hover:bg-warning/20"
 								title="Skip DNS verification and mark this domain as verified — dev/selfhost only"
 								:disabled="forcingDomainId === domain._id"
 								@click.stop="handleForceVerify(domain._id)"
@@ -625,7 +625,7 @@ const readinessSummary = (domain: DomainWithVerification) =>
 								<Icon v-else name="lucide:wand-2" class="w-4 h-4" />
 								Force Verify
 								<span
-									class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-yellow-500/30 uppercase tracking-wide"
+									class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-warning/20 uppercase tracking-wide"
 								>
 									Dev
 								</span>
