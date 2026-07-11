@@ -55,6 +55,12 @@ export interface LanguageProviderMeta {
 	defaultModels: { fast: string; capable: string };
 	/** Curated model ids offered in the dropdown before the free-text override. */
 	curatedModels: readonly string[];
+	/**
+	 * True when the backend adapter implements `listModels` (OpenRouter's `/models`
+	 * or a local server's `/models`), so the settings page can offer a "Load
+	 * available models" action to populate the picker with the live catalog.
+	 */
+	supportsModelListing?: boolean;
 	/** One-line hint shown under the provider select. */
 	hint: string;
 }
@@ -126,6 +132,7 @@ export const LANGUAGE_PROVIDERS: readonly LanguageProviderMeta[] = [
 			'openai/gpt-4o-mini',
 			'google/gemini-2.5-pro',
 		],
+		supportsModelListing: true,
 		hint: 'One key, many upstream models. Use provider-prefixed ids like anthropic/claude-sonnet-4-5.',
 	},
 	{
@@ -135,6 +142,7 @@ export const LANGUAGE_PROVIDERS: readonly LanguageProviderMeta[] = [
 		defaultBaseUrl: 'http://localhost:11434/v1',
 		defaultModels: { fast: 'llama3.1', capable: 'llama3.1' },
 		curatedModels: ['llama3.1', 'qwen2.5', 'mistral'],
+		supportsModelListing: true,
 		hint: 'Ollama, vLLM, or llama.cpp on your own hardware. No key — just a base URL.',
 	},
 ] as const;
@@ -225,6 +233,25 @@ export function modelOptions(curated: readonly string[], current: string): Selec
 	}
 	options.push({ value: CUSTOM_MODEL_VALUE, label: 'Custom model id…' });
 	return options;
+}
+
+/**
+ * Merge a provider's live model catalog (from the backend `listModels` action)
+ * into its curated list, curated ids first, then any live id not already curated
+ * — de-duplicated, order-stable. The result feeds {@link modelOptions} so the
+ * picker shows what the provider actually serves instead of free-text only. An
+ * empty `live` list leaves the curated list unchanged (a copy).
+ */
+export function mergeLiveModels(curated: readonly string[], live: readonly string[]): string[] {
+	const merged = [...curated];
+	const seen = new Set(curated);
+	for (const id of live) {
+		if (id && !seen.has(id)) {
+			seen.add(id);
+			merged.push(id);
+		}
+	}
+	return merged;
 }
 
 /**

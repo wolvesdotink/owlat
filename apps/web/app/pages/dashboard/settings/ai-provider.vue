@@ -6,6 +6,7 @@ import {
 	languageProviderMeta,
 	languageProviderOptions,
 	languageProviderRequiresKey,
+	mergeLiveModels,
 	modelOptions,
 	resolveModelId,
 	testConnectionReducer,
@@ -38,6 +39,10 @@ const { run: runTest, isLoading: isTesting } = useBackendOperation(
 	api.aiProviderConfigActions.testConnection,
 	{ label: 'Test AI connection', type: 'action' }
 );
+const { run: runListModels, isLoading: isLoadingModels } = useBackendOperation(
+	api.aiProviderConfigActions.listModels,
+	{ label: 'Load available models', type: 'action' }
+);
 
 const providerOptions = languageProviderOptions();
 const embeddingOptions = embeddingProviderOptions();
@@ -63,17 +68,24 @@ const showHostedEmbedder = ref(false);
 const hydrating = ref(false);
 const isDirty = ref(false);
 const testState = ref<TestConnectionState>({ status: 'idle' });
+// The provider's live model catalog, once "Load available models" has run. Reset
+// whenever the provider changes (a stale list must never leak across backends).
+const liveModels = ref<string[]>([]);
+const liveModelsError = ref<string | null>(null);
 
 const languageMeta = computed(() => languageProviderMeta(form.languageProviderKind));
 const embeddingMeta = computed(() => embeddingProviderMeta(form.embeddingProviderKind));
 const requiresKey = computed(() => languageProviderRequiresKey(form.languageProviderKind));
 const embeddingRequiresKey = computed(() => embeddingMeta.value?.isLocal === false);
+const supportsModelListing = computed(() => languageMeta.value?.supportsModelListing === true);
 
-const fastModelOptions = computed(() =>
-	modelOptions(languageMeta.value?.curatedModels ?? [], form.modelFastChoice)
+// Curated ids first, then any live id the provider reports that isn't already curated.
+const languageModelIds = computed(() =>
+	mergeLiveModels(languageMeta.value?.curatedModels ?? [], liveModels.value)
 );
+const fastModelOptions = computed(() => modelOptions(languageModelIds.value, form.modelFastChoice));
 const capableModelOptions = computed(() =>
-	modelOptions(languageMeta.value?.curatedModels ?? [], form.modelCapableChoice)
+	modelOptions(languageModelIds.value, form.modelCapableChoice)
 );
 const embeddingModelOptions = computed(() =>
 	modelOptions(embeddingMeta.value?.curatedModels ?? [], form.embeddingModelChoice)
@@ -129,6 +141,9 @@ function applyLanguageDefaults(kind: LanguageProviderKind) {
 	form.modelCapableCustom = '';
 	languageError.value = null;
 	testState.value = { status: 'idle' };
+	// A live catalog belongs to one provider — drop it when the backend changes.
+	liveModels.value = [];
+	liveModelsError.value = null;
 	if (meta.isLocal) {
 		form.apiKey = '';
 		if (!form.languageBaseUrl.trim()) form.languageBaseUrl = meta.defaultBaseUrl ?? '';
@@ -244,6 +259,32 @@ async function handleSave() {
 	isDirty.value = false;
 	testState.value = { status: 'idle' };
 	showToast('AI provider saved');
+}
+
+/**
+ * Pull the provider's live model catalog (OpenRouter / local `/models`) against
+ * the SAVED config and merge it into the pickers. Like Test connection, it reads
+ * the stored row, so it is only enabled once the config is saved and clean.
+ */
+async function handleLoadModels() {
+	liveModelsError.value = null;
+	const result = await runListModels({});
+	if (result === undefined) {
+		liveModelsError.value = 'Could not load models.';
+		return;
+	}
+	if (result.error) {
+		liveModelsError.value = result.error;
+		return;
+	}
+	if (!result.supported) {
+		liveModelsError.value = 'This provider does not support listing models.';
+		return;
+	}
+	liveModels.value = result.models;
+	if (result.models.length === 0) {
+		liveModelsError.value = 'No models returned — keep using a custom id.';
+	}
 }
 
 async function handleTest() {
@@ -378,6 +419,29 @@ async function handleTest() {
 								:disabled="isSaving"
 								hint="Used for quick tasks — classification, short replies."
 							/>
+						</div>
+
+						<div v-if="supportsModelListing" class="flex flex-wrap items-center gap-3">
+							<UiButton
+								type="button"
+								variant="secondary"
+								size="sm"
+								:loading="isLoadingModels"
+								:disabled="isSaving || isLoadingModels || isDirty || !config?.configured"
+								@click="handleLoadModels"
+							>
+								<template #iconLeft>
+									<Icon v-if="!isLoadingModels" name="lucide:list-restart" class="w-4 h-4" />
+								</template>
+								Load available models
+							</UiButton>
+							<p v-if="liveModelsError" class="text-xs text-error">{{ liveModelsError }}</p>
+							<p v-else-if="liveModels.length" class="text-xs text-success">
+								Loaded {{ liveModels.length }} models from your provider.
+							</p>
+							<p v-else-if="isDirty || !config?.configured" class="text-xs text-text-tertiary">
+								Save first, then load the live model list.
+							</p>
 						</div>
 					</div>
 				</UiCard>

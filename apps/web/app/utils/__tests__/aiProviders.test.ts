@@ -8,6 +8,7 @@ import {
 	languageProviderMeta,
 	languageProviderOptions,
 	languageProviderRequiresKey,
+	mergeLiveModels,
 	modelOptions,
 	resolveModelId,
 	testConnectionReducer,
@@ -104,6 +105,27 @@ describe('modelOptions — model-picker option mapping', () => {
 	it('ignores an empty or sentinel current value', () => {
 		expect(modelOptions(['a'], '')).toHaveLength(2);
 		expect(modelOptions(['a'], CUSTOM_MODEL_VALUE)).toHaveLength(2);
+	});
+});
+
+describe('mergeLiveModels — live catalog merged into curated', () => {
+	it('appends live ids not already curated, order-stable and de-duplicated', () => {
+		expect(mergeLiveModels(['gpt-4o', 'gpt-4o-mini'], ['gpt-4o', 'o3', 'o3'])).toEqual([
+			'gpt-4o',
+			'gpt-4o-mini',
+			'o3',
+		]);
+	});
+
+	it('returns a copy of curated when there is no live catalog', () => {
+		const curated = ['llama3.1'] as const;
+		const merged = mergeLiveModels(curated, []);
+		expect(merged).toEqual(['llama3.1']);
+		expect(merged).not.toBe(curated);
+	});
+
+	it('drops empty-string live ids', () => {
+		expect(mergeLiveModels([], ['', 'qwen2.5'])).toEqual(['qwen2.5']);
 	});
 });
 
