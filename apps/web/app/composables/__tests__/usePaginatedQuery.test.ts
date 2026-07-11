@@ -182,6 +182,35 @@ describe('usePaginatedQuery', () => {
 				expect.any(Function)
 			);
 		});
+
+		it('nulls loadMore on a transition to skip so a click cannot invoke the disposed closure', async () => {
+			const shouldSkip = ref(false);
+			const { results, status, isLoading, loadMore } = usePaginatedQuery(
+				fakeQuery,
+				() => (shouldSkip.value ? ('skip' as const) : { teamId: '123' }),
+				{ initialNumItems: 20 }
+			);
+
+			const staleLoadMore = vi.fn();
+			mockSuccessCallback!({
+				results: [{ id: '1' }],
+				status: 'CanLoadMore',
+				loadMore: staleLoadMore,
+			});
+			expect(results.value).toEqual([{ id: '1' }]);
+			expect(status.value).toBe('CanLoadMore');
+
+			// Transition to skip (e.g. a workspace switch nulls the scoped id): the
+			// subscription is disposed, rows stay on screen, isLoading goes false —
+			// but loadMore must be a deterministic no-op, not a dead-closure call.
+			shouldSkip.value = true;
+			await nextTick();
+
+			expect(isLoading.value).toBe(false);
+			expect(results.value).toEqual([{ id: '1' }]);
+			loadMore(10);
+			expect(staleLoadMore).not.toHaveBeenCalled();
+		});
 	});
 
 	describe('error handling', () => {

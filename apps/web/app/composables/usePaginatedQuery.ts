@@ -80,6 +80,12 @@ export function usePaginatedQuery<Query extends FunctionReference<'query'>>(
 			// data has arrived, a transition to skip is idle, not loading.
 			isLoading.value = results.value.length === 0;
 			isRefetching.value = false;
+			// The subscription was disposed at the top of subscribe(), so any
+			// retained `_loadMore` now points at a dead closure. Null it so a
+			// "Load more" click on the (still-visible) rows is a deterministic
+			// no-op via the `?.` wrapper; the fresh first page repopulates it on
+			// un-skip.
+			_loadMore.value = null;
 			return;
 		}
 
