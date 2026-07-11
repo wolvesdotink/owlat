@@ -37,6 +37,36 @@ describe('useToast', () => {
 		expect(toasts.value).toHaveLength(0);
 	});
 
+	it('keeps error toasts on screen longer than success toasts', () => {
+		const { showToast, toasts } = useToast();
+		showToast('Saved', 'success');
+		showToast('Failed', 'error');
+		expect(toasts.value).toHaveLength(2);
+
+		// Just past the success lifetime: the success is gone, the error remains.
+		vi.advanceTimersByTime(3001);
+		expect(toasts.value).toHaveLength(1);
+		expect(toasts.value[0]?.type).toBe('error');
+
+		// The error survives well beyond the success window before it clears.
+		vi.advanceTimersByTime(5000);
+		expect(toasts.value).toHaveLength(0);
+	});
+
+	it('treats a non-positive duration as sticky (never auto-dismisses)', () => {
+		const { showToast, toasts } = useToast();
+		showToast('Stay put', 'error', { durationMs: 0 });
+		vi.advanceTimersByTime(60_000);
+		expect(toasts.value).toHaveLength(1);
+	});
+
+	it('supports info and warning toast types', () => {
+		const { showToast, toasts } = useToast();
+		showToast('Heads up', 'info');
+		showToast('Careful', 'warning');
+		expect(toasts.value.map((t) => t.type)).toEqual(['info', 'warning']);
+	});
+
 	it('removes a specific toast without touching the others', () => {
 		const { showToast, removeToast, toasts } = useToast();
 		showToast('one');
