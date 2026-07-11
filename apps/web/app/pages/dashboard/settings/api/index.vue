@@ -75,11 +75,31 @@ const { showToast: showNotification } = useToast();
 // backend validates against it, so a drift here can only under-offer, never
 // grant an unknown scope.
 const AVAILABLE_SCOPES: ReadonlyArray<{ value: string; label: string; description: string }> = [
-	{ value: 'contacts:read', label: 'Contacts — read', description: 'List and read contacts and their details.' },
-	{ value: 'contacts:write', label: 'Contacts — write', description: 'Create, update, and delete contacts.' },
-	{ value: 'events:write', label: 'Events — write', description: 'Ingest events that can trigger automations.' },
-	{ value: 'transactional:send', label: 'Transactional — send', description: 'Send transactional emails.' },
-	{ value: 'topics:write', label: 'Topics — write', description: 'Add or remove contacts on topics.' },
+	{
+		value: 'contacts:read',
+		label: 'Contacts — read',
+		description: 'List and read contacts and their details.',
+	},
+	{
+		value: 'contacts:write',
+		label: 'Contacts — write',
+		description: 'Create, update, and delete contacts.',
+	},
+	{
+		value: 'events:write',
+		label: 'Events — write',
+		description: 'Ingest events that can trigger automations.',
+	},
+	{
+		value: 'transactional:send',
+		label: 'Transactional — send',
+		description: 'Send transactional emails.',
+	},
+	{
+		value: 'topics:write',
+		label: 'Topics — write',
+		description: 'Add or remove contacts on topics.',
+	},
 ];
 
 const isCreateModalOpen = ref(false);
@@ -377,17 +397,14 @@ const activeKeysCount = computed(() => {
 				<UiIconBox icon="lucide:lock" size="xl" variant="surface" rounded="full" class="mb-4" />
 				<p class="text-text-secondary font-medium">Admins only</p>
 				<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-					API keys can only be managed by workspace owners and admins. Ask an admin if you need
-					API access.
+					API keys can only be managed by workspace owners and admins. Ask an admin if you need API
+					access.
 				</p>
 			</div>
 
-			<!-- Loading State -->
-			<div v-else-if="isLoading && !apiKeys" class="flex items-center justify-center py-16">
-				<div class="flex flex-col items-center gap-3">
-					<UiSpinner />
-					<p class="text-text-secondary text-sm">Loading API keys...</p>
-				</div>
+			<!-- First-load skeleton (shaped like the API-key list) -->
+			<div v-else-if="isLoading && !apiKeys" class="card overflow-hidden">
+				<DashboardListSkeleton variant="card" leading :rows="4" />
 			</div>
 
 			<!-- Empty State (no organization) -->
@@ -458,11 +475,19 @@ const activeKeysCount = computed(() => {
 											aria-label="API key name"
 											@keyup.enter="saveRename"
 											@keyup.esc="renamingId = null"
+										/>
+										<button
+											class="p-1 text-success hover:bg-success/10 rounded"
+											title="Save"
+											@click="saveRename"
 										>
-										<button class="p-1 text-success hover:bg-success/10 rounded" title="Save" @click="saveRename">
 											<Icon name="lucide:check" class="w-4 h-4" />
 										</button>
-										<button class="p-1 text-text-tertiary hover:bg-bg-surface rounded" title="Cancel" @click="renamingId = null">
+										<button
+											class="p-1 text-text-tertiary hover:bg-bg-surface rounded"
+											title="Cancel"
+											@click="renamingId = null"
+										>
 											<Icon name="lucide:x" class="w-4 h-4" />
 										</button>
 									</div>
@@ -546,7 +571,11 @@ const activeKeysCount = computed(() => {
 			size="md"
 			:closable="!isCreating"
 			:persistent="isCreating"
-			@update:open="(v) => { if (!v) closeCreateModal(); }"
+			@update:open="
+				(v) => {
+					if (!v) closeCreateModal();
+				}
+			"
 		>
 			<!-- Form -->
 			<form @submit.prevent="handleCreate">
@@ -579,8 +608,8 @@ const activeKeysCount = computed(() => {
 				<div>
 					<span class="label">Scopes <span class="text-error">*</span></span>
 					<p class="mb-2 text-xs text-text-tertiary">
-						Grant only the permissions this key needs. A compromised key can do
-						nothing beyond its scopes.
+						Grant only the permissions this key needs. A compromised key can do nothing beyond its
+						scopes.
 					</p>
 					<div class="space-y-2">
 						<label
@@ -614,7 +643,12 @@ const activeKeysCount = computed(() => {
 				>
 					Cancel
 				</button>
-				<button type="button" class="btn btn-primary gap-2" :disabled="isCreating" @click="handleCreate">
+				<button
+					type="button"
+					class="btn btn-primary gap-2"
+					:disabled="isCreating"
+					@click="handleCreate"
+				>
 					<Icon v-if="isCreating" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
 					{{ isCreating ? 'Creating...' : 'Create Key' }}
 				</button>
@@ -627,7 +661,11 @@ const activeKeysCount = computed(() => {
 			size="lg"
 			:closable="false"
 			persistent
-			@update:open="(v) => { if (!v) closeCreatedKeyModal(); }"
+			@update:open="
+				(v) => {
+					if (!v) closeCreatedKeyModal();
+				}
+			"
 		>
 			<template v-if="createdKey">
 				<!-- Header -->
@@ -643,8 +681,8 @@ const activeKeysCount = computed(() => {
 						<div>
 							<p class="text-sm font-medium text-warning">Copy your API key now</p>
 							<p class="text-sm text-warning/80 mt-1">
-								This is the only time you'll see this key. Store it securely - you won't be
-								able to see it again.
+								This is the only time you'll see this key. Store it securely - you won't be able to
+								see it again.
 							</p>
 						</div>
 					</div>
@@ -685,7 +723,11 @@ const activeKeysCount = computed(() => {
 			:description="`Revoking &quot;${keyToRevoke?.name ?? ''}&quot; will immediately disable the key. Any API requests using this key will fail. You can delete the key later to remove it completely.`"
 			confirm-text="Revoke Key"
 			:is-loading="isRevoking"
-			@update:open="(v) => { if (!v) closeRevokeModal(); }"
+			@update:open="
+				(v) => {
+					if (!v) closeRevokeModal();
+				}
+			"
 			@confirm="handleRevoke"
 		/>
 
@@ -697,7 +739,11 @@ const activeKeysCount = computed(() => {
 			:description="`Permanently delete &quot;${keyToDelete?.name ?? ''}&quot;? This action cannot be undone. The key will be permanently removed from your account.`"
 			confirm-text="Delete Key"
 			:is-loading="isDeleting"
-			@update:open="(v) => { if (!v) closeDeleteModal(); }"
+			@update:open="
+				(v) => {
+					if (!v) closeDeleteModal();
+				}
+			"
 			@confirm="handleDelete"
 		/>
 	</div>

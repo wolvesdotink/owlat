@@ -1,7 +1,15 @@
-import type { FunctionReference, FunctionArgs, FunctionReturnType, PaginationResult } from 'convex/server';
+import type {
+	FunctionReference,
+	FunctionArgs,
+	FunctionReturnType,
+	PaginationResult,
+} from 'convex/server';
 import type { PaginationStatus } from 'convex/browser';
 
-type PaginatedQueryArgs<Query extends FunctionReference<'query'>> = Omit<FunctionArgs<Query>, 'paginationOpts'>;
+type PaginatedQueryArgs<Query extends FunctionReference<'query'>> = Omit<
+	FunctionArgs<Query>,
+	'paginationOpts'
+>;
 type PaginatedItem<Query extends FunctionReference<'query'>> =
 	FunctionReturnType<Query> extends PaginationResult<infer T> ? T : never;
 
@@ -36,12 +44,13 @@ const DEFAULT_TIMEOUT = 10_000;
 export function usePaginatedQuery<Query extends FunctionReference<'query'>>(
 	query: Query,
 	args: PaginatedQueryArgs<Query> | ArgsFactory<PaginatedQueryArgs<Query>>,
-	options: { initialNumItems: number; timeout?: number }
+	options: { initialNumItems: number; timeout?: number; keepPreviousData?: boolean }
 ) {
 	const client = useConvex();
 	const results = ref<PaginatedItem<Query>[]>([]) as Ref<PaginatedItem<Query>[]>;
 	const status = ref<PaginationStatus>('LoadingFirstPage');
 	const isLoading = ref(true);
+	const isRefetching = ref(false);
 	const error = ref<Error | null>(null);
 
 	let unsubscribe: (() => void) | null = null;
@@ -67,7 +76,16 @@ export function usePaginatedQuery<Query extends FunctionReference<'query'>>(
 		clearSubscriptionTimeout();
 
 		if (resolvedArgs.value === 'skip') {
-			isLoading.value = true;
+			// Only stay in the first-load state if we never delivered rows; once
+			// data has arrived, a transition to skip is idle, not loading.
+			isLoading.value = results.value.length === 0;
+			isRefetching.value = false;
+			// The subscription was disposed at the top of subscribe(), so any
+			// retained `_loadMore` now points at a dead closure. Null it so a
+			// "Load more" click on the (still-visible) rows is a deterministic
+			// no-op via the `?.` wrapper; the fresh first page repopulates it on
+			// un-skip.
+			_loadMore.value = null;
 			return;
 		}
 
@@ -77,11 +95,19 @@ export function usePaginatedQuery<Query extends FunctionReference<'query'>>(
 			return;
 		}
 
-		isLoading.value = true;
+		// Stale-while-revalidate: when keepPreviousData is set and we already have
+		// rows (e.g. a search/filter change resubscribes), keep the current rows on
+		// screen and flag a background refetch instead of blanking to the full-pane
+		// skeleton. Preserve status/loadMore until the new first page lands.
+		if (options.keepPreviousData && results.value.length > 0) {
+			isRefetching.value = true;
+		} else {
+			isLoading.value = true;
+			results.value = [];
+			status.value = 'LoadingFirstPage';
+			_loadMore.value = null;
+		}
 		error.value = null;
-		results.value = [];
-		status.value = 'LoadingFirstPage';
-		_loadMore.value = null;
 
 		const sub = client.onPaginatedUpdate_experimental(
 			query,
@@ -94,12 +120,14 @@ export function usePaginatedQuery<Query extends FunctionReference<'query'>>(
 				status.value = typed.status ?? 'Exhausted';
 				_loadMore.value = typed.loadMore ?? null;
 				isLoading.value = false;
+				isRefetching.value = false;
 				error.value = null;
 			},
 			(e: Error) => {
 				clearSubscriptionTimeout();
 				error.value = e;
 				isLoading.value = false;
+				isRefetching.value = false;
 			}
 		);
 
@@ -108,9 +136,10 @@ export function usePaginatedQuery<Query extends FunctionReference<'query'>>(
 		// Start timeout — if neither callback fires, stop loading with an error
 		timeoutId = setTimeout(() => {
 			timeoutId = null;
-			if (isLoading.value) {
+			if (isLoading.value || isRefetching.value) {
 				error.value = new Error('Convex query subscription timed out');
 				isLoading.value = false;
+				isRefetching.value = false;
 			}
 		}, timeoutMs);
 	};
@@ -133,8 +162,14 @@ export function usePaginatedQuery<Query extends FunctionReference<'query'>>(
 		results,
 		status: readonly(status),
 		isLoading: readonly(isLoading),
+		isRefetching: readonly(isRefetching),
 		error: readonly(error),
 		loadMore: (numItems: number) => {
+			// During a keepPreviousData refetch, `_loadMore` still points at the
+			// closure of the subscription disposed at the top of subscribe(), so
+			// invoking it is undefined behaviour. No-op until the fresh first page
+			// repopulates `_loadMore`; the refetch resolves near-instantly.
+			if (isRefetching.value) return;
 			_loadMore.value?.(numItems);
 		},
 	};

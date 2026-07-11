@@ -139,11 +139,15 @@ onMounted(() => {
 		<!-- Content -->
 		<UiCard padding="none" overflow="hidden">
 			<UiQueryBoundary
-				:loading="isLoading && !segments"
+				:loading="isLoading && segments.length === 0"
 				:error="segmentsError"
 				error-title="Couldn't load segments"
-				loading-label="Loading segments..."
 			>
+				<!-- Loading State: content-shaped skeleton on first load only -->
+				<template #loading>
+					<DashboardListSkeleton variant="table" :columns="6" :rows="6" />
+				</template>
+
 				<!-- Empty State (no organization) -->
 				<UiEmptyState
 					v-if="!hasActiveOrganization"

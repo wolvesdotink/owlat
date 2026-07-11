@@ -141,12 +141,9 @@ const {
 
 		<!-- Content -->
 		<div>
-			<!-- Loading State -->
-			<div v-if="isLoading && !webhooks" class="flex items-center justify-center py-16">
-				<div class="flex flex-col items-center gap-3">
-					<UiSpinner />
-					<p class="text-text-secondary text-sm">Loading webhooks...</p>
-				</div>
+			<!-- First-load skeleton (shaped like the webhook list) -->
+			<div v-if="isLoading && !webhooks" class="card overflow-hidden">
+				<DashboardListSkeleton variant="card" leading :rows="3" />
 			</div>
 
 			<!-- Empty State (no organization) -->

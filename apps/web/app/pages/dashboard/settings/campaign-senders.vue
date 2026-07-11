@@ -226,12 +226,9 @@ async function onSubmitAdd() {
 			</p>
 		</div>
 
-		<!-- Loading -->
-		<div v-else-if="sendersLoading && !senders" class="flex items-center justify-center py-16">
-			<div class="flex flex-col items-center gap-3">
-				<UiSpinner />
-				<p class="text-text-secondary text-sm">Loading campaign senders…</p>
-			</div>
+		<!-- First-load skeleton (shaped like the sender list) -->
+		<div v-else-if="sendersLoading && !senders" class="card overflow-hidden">
+			<DashboardListSkeleton variant="card" leading :rows="3" />
 		</div>
 
 		<!-- Error -->

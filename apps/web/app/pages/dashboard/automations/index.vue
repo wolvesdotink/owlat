@@ -75,7 +75,7 @@ const {
 	() => ({
 		status: selectedStatus.value === 'all' ? undefined : selectedStatus.value,
 	}),
-	{ initialNumItems: 100 }
+	{ initialNumItems: 100, keepPreviousData: true }
 );
 
 // Client-side search filtering
@@ -277,11 +277,15 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 		<!-- Content -->
 		<div class="card p-0 overflow-hidden">
 			<UiQueryBoundary
-				:loading="isLoading && !automations"
+				:loading="isLoading && automations.length === 0"
 				:error="automationsError"
 				error-title="Couldn't load automations"
-				loading-label="Loading automations..."
 			>
+				<!-- Loading State: content-shaped skeleton on first load only -->
+				<template #loading>
+					<DashboardListSkeleton variant="table" :columns="6" :rows="6" />
+				</template>
+
 				<!-- Empty State (no team) -->
 				<UiEmptyState
 					v-if="!hasActiveOrganization"
