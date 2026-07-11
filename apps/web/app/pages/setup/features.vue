@@ -9,19 +9,14 @@ import {
 	type FeatureFlagKey,
 	type FeaturePackKey,
 } from '@owlat/shared/featureFlags';
-import { SETUP_WIZARD_STEPS, setupStepPath, type SetupStepId } from '~/composables/useSetupWizard';
+import { SETUP_WIZARD_STEPS } from '~/composables/useSetupWizard';
 
 definePageMeta({ layout: false });
 useHead({ title: 'Owlat setup — Features' });
 
 const router = useRouter();
-const { flags, resolved } = useSetupWizard();
+const { flags, resolved, goToStep } = useSetupWizard();
 const { getStepStatus, isConnectorHighlighted } = useWizard(SETUP_WIZARD_STEPS, 'features');
-
-// Jump back to an already-completed step from the indicator (draft is persisted).
-function goToStep(stepId: string) {
-	router.push(setupStepPath(stepId as SetupStepId));
-}
 
 const byCategory = computed(() => getFlagsByCategory());
 const sendingNeedsProvider = computed(() => needsDeliveryProvider(flags.value));

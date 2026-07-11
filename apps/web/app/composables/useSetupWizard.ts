@@ -41,7 +41,7 @@ export type SmtpPreset = SmtpRelayPreset;
 
 // Re-export the draft-persistence surface so the setup pages and tests keep a
 // single import entry point; the implementation lives in `./setupWizardDraft`.
-export { SETUP_DRAFT_STORAGE_KEY, parseSetupDraft, serializeSetupDraft };
+export { SETUP_DRAFT_STORAGE_KEY, parseSetupDraft, readSetupDraft, serializeSetupDraft };
 export type { SetupDraft };
 
 // ── Steps ────────────────────────────────────────────────────────────────────
@@ -420,6 +420,15 @@ export function useSetupWizard() {
 	const requiresProvider = computed(() => needsDeliveryProvider(flags.value));
 	const summary = computed(() => buildSetupSummary(flags.value, env.value, admin.value));
 
+	// Jump back to an already-completed step from the indicator. The single home
+	// for the id⇄route navigation the `/setup/*` pages share; the wizard draft is
+	// persisted, so returning to an earlier step never loses later input. Accepts
+	// a `string` (StepIndicator's `onStepClick` contract) and narrows once here.
+	const router = useRouter();
+	function goToStep(stepId: string): void {
+		router.push(setupStepPath(stepId as SetupStepId));
+	}
+
 	/**
 	 * Mark the wizard finished: drop the persisted draft and disarm the unload
 	 * warning so the post-apply redirect isn't blocked. Call once apply succeeds.
@@ -444,6 +453,7 @@ export function useSetupWizard() {
 		resolved,
 		requiresProvider,
 		summary,
+		goToStep,
 		completeSetup,
 	};
 }

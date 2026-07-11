@@ -1,23 +1,12 @@
 <script setup lang="ts">
-import {
-	SETUP_WIZARD_STEPS,
-	setupStepPath,
-	validateAdmin,
-	adminIsValid,
-	type SetupStepId,
-} from '~/composables/useSetupWizard';
+import { SETUP_WIZARD_STEPS, validateAdmin, adminIsValid } from '~/composables/useSetupWizard';
 
 definePageMeta({ layout: false });
 useHead({ title: 'Owlat setup — Admin account' });
 
 const router = useRouter();
-const { admin } = useSetupWizard();
+const { admin, goToStep } = useSetupWizard();
 const { getStepStatus, isConnectorHighlighted } = useWizard(SETUP_WIZARD_STEPS, 'admin');
-
-// Jump back to an already-completed step from the indicator (draft is persisted).
-function goToStep(stepId: string) {
-	router.push(setupStepPath(stepId as SetupStepId));
-}
 
 const submitted = ref(false);
 // Track touched fields so an error only shows after the user has left the field

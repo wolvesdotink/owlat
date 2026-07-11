@@ -3,21 +3,15 @@ import {
 	SETUP_WIZARD_STEPS,
 	interpretSetupModeProbe,
 	buildApplyBody,
-	setupStepPath,
-	type SetupStepId,
 } from '~/composables/useSetupWizard';
 
 definePageMeta({ layout: false });
 useHead({ title: 'Owlat setup — Review' });
 
 const router = useRouter();
-const { flags, env, admin, isMigrationMode, summary, setupToken, completeSetup } = useSetupWizard();
+const { flags, env, admin, isMigrationMode, summary, setupToken, goToStep, completeSetup } =
+	useSetupWizard();
 const { getStepStatus, isConnectorHighlighted } = useWizard(SETUP_WIZARD_STEPS, 'review');
-
-// Jump back to an already-completed step from the indicator (draft is persisted).
-function goToStep(stepId: string) {
-	router.push(setupStepPath(stepId as SetupStepId));
-}
 
 // The privileged apply endpoint authenticates with the one-time setup token.
 const trimmedToken = computed(() => setupToken.value.trim());

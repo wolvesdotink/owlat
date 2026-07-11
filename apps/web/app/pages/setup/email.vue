@@ -4,11 +4,9 @@ import {
 	SMTP_RELAY_PRESETS,
 	buildProviderEnv,
 	emailStepIsValid,
-	setupStepPath,
 	validateEmailStep,
 	type EmailStepDraft,
 	type ProviderChoice,
-	type SetupStepId,
 	type SmtpPreset,
 } from '~/composables/useSetupWizard';
 
@@ -16,13 +14,8 @@ definePageMeta({ layout: false });
 useHead({ title: 'Owlat setup — Email provider' });
 
 const router = useRouter();
-const { env, requiresProvider, setupToken } = useSetupWizard();
+const { env, requiresProvider, setupToken, goToStep } = useSetupWizard();
 const { getStepStatus, isConnectorHighlighted } = useWizard(SETUP_WIZARD_STEPS, 'email');
-
-// Jump back to an already-completed step from the indicator (draft is persisted).
-function goToStep(stepId: string) {
-	router.push(setupStepPath(stepId as SetupStepId));
-}
 
 // Seed the local draft from any previously-entered values so going Back and
 // returning doesn't wipe the operator's input.
