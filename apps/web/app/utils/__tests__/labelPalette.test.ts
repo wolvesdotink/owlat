@@ -1,11 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import {
-	DEFAULT_LABEL_COLOR,
-	LABEL_PRESET_COLORS,
-	LABEL_PRESET_HEXES,
-} from '../labelPalette';
+import { DEFAULT_LABEL_COLOR, LABEL_PRESET_COLORS, LABEL_PRESET_HEXES } from '../labelPalette';
 
 // The Fluid Functionalism token source of truth. Each preset must map to one of
 // these `--color-*` declarations, proving the palette is derived from FF tokens
