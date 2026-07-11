@@ -286,6 +286,12 @@ const settingsSections = computed(() => {
 			icon: 'lucide:key',
 		},
 		{
+			name: 'AI Provider',
+			description: 'Choose the AI backend — a hosted key or a model you host yourself',
+			href: '/dashboard/settings/ai-provider',
+			icon: 'lucide:sparkles',
+		},
+		{
 			name: 'Form Endpoints',
 			description: 'Create embeddable signup forms for your website',
 			href: '/dashboard/settings/forms',
