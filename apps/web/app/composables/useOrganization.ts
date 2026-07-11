@@ -300,7 +300,7 @@ export function useOrganization() {
 	// invite must also sweep any pending team-inbox membership reserved for them —
 	// otherwise the inbox would silently materialize if they ever joined later.
 	const { run: cancelPendingInboxMemberships } = useBackendOperation(
-		api.mail.pendingMailbox.cancelInboxMembershipsForEmail,
+		api.mail.pendingInboxMembership.cancelInboxMembershipsForEmail,
 		{
 			label: 'Cancel reserved inbox access',
 		}

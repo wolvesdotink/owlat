@@ -10,13 +10,13 @@
  */
 
 import { v } from 'convex/values';
-import { internalQuery } from '../_generated/server';
+import { internalMutation } from '../_generated/server';
 import type { MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
-import { authedMutation, adminMutation } from '../lib/authedFunctions';
+import { authedMutation } from '../lib/authedFunctions';
 import { markOnboardingStep } from '../auth/userOnboarding';
 import { requireAdminContext, getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
-import { normalizeEmail, isValidEmail } from '../lib/inputGuards';
+import { normalizeEmail } from '../lib/inputGuards';
 import {
 	throwForbidden,
 	throwUnauthenticated,
@@ -24,8 +24,13 @@ import {
 	throwInvalidState,
 	throwAlreadyExists,
 } from '../_utils/errors';
-import { canonicalAddress, provisionMailbox } from './mailbox';
-import { requireMailboxAccess } from './permissions';
+import { canonicalAddress, provisionMailbox, isDomainVerified } from './mailbox';
+
+// Upper bound on the reservations swept per domain in one verify/remove pass.
+// A brand-new instance carries at most a handful of pre-verification
+// reservations on any single domain, so this is comfortably above the real
+// ceiling while keeping the sweep O(cap) instead of an unbounded .collect().
+const RESERVATION_SWEEP_CAP = 200;
 
 const LOCALPART_PATTERN = /^[a-z0-9._-]+$/;
 
@@ -36,23 +41,40 @@ const LOCALPART_PATTERN = /^[a-z0-9._-]+$/;
  * so the collision guard and the provision → delete-reservation → mark-ready
  * sequence can never drift between them.
  *
- * Returns `{ ok: false }` when a live mailbox already holds the reserved address
- * (the reservation is left in place — the caller decides whether to clear it or
- * surface the collision); otherwise provisions the mailbox at the reserved
- * address, deletes the reservation, marks the user's onboarding mailbox-ready,
- * and returns the new mailbox id.
+ * Fails without provisioning when:
+ *   - `'domain_unverified'` — the reserved domain is not verified yet (a
+ *     pre-verification reservation on a brand-new instance). The reservation is
+ *     left in place so it can materialize once the domain verifies; the invitee
+ *     sees "reserved, activates when your domain verifies" progress meanwhile.
+ *   - `'address_taken'` — a live mailbox already holds the reserved address. The
+ *     reservation is left in place; the caller decides whether to clear it.
+ *
+ * On success it provisions the mailbox at the reserved address, deletes the
+ * reservation, marks the user's onboarding mailbox-ready, and returns the id.
  */
+export type ClaimReservedResult =
+	| { ok: true; mailboxId: Id<'mailboxes'> }
+	| { ok: false; reason: 'domain_unverified' | 'address_taken' };
+
 export async function claimReservedMailbox(
 	ctx: MutationCtx,
 	pending: Doc<'pendingMailboxes'>,
 	userId: string
-): Promise<{ ok: true; mailboxId: Id<'mailboxes'> } | { ok: false }> {
+): Promise<ClaimReservedResult> {
+	// A hosted mailbox must live on a VERIFIED sending domain — the reservation
+	// may have been made pre-verification (early-instance invite). Never stand up
+	// a mailbox on an unverified domain: inbound mail could not arrive, so it
+	// would be a dishonest "your mailbox is ready".
+	if (!(await isDomainVerified(ctx, pending.domain))) {
+		return { ok: false as const, reason: 'domain_unverified' as const };
+	}
+
 	const liveCollision = await ctx.db
 		.query('mailboxes')
 		.withIndex('by_address', (q) => q.eq('address', pending.address))
 		.first();
 	if (liveCollision) {
-		return { ok: false as const };
+		return { ok: false as const, reason: 'address_taken' as const };
 	}
 
 	const mailboxId = await provisionMailbox(ctx, {
@@ -67,6 +89,90 @@ export async function claimReservedMailbox(
 	await markOnboardingStep(ctx, userId, 'mailboxReady');
 
 	return { ok: true as const, mailboxId };
+}
+
+/**
+ * Verify-time sweep: when a sending domain finally verifies, provision the
+ * mailboxes that were reserved on it for invitees who have ALREADY accepted (so
+ * they were parked in the "reserved, activates when your domain verifies" state).
+ * Scheduled off the `→ verified` edge from `domains/lifecycle.ts`.
+ *
+ * "Already accepted" is read from `acceptedByUserId`, stamped by
+ * `claimForInvitation` at accept time — NOT re-derived by matching the invitee
+ * email against `userProfiles`. That distinction is load-bearing: a person who
+ * registered via the invite link but never accepted (register.vue creates the
+ * profile before the accept step), or any pre-existing account with that email,
+ * must NOT silently receive a live org mailbox; and because profile emails are
+ * stored as typed (mixed case) while the reservation email is canonical
+ * lowercase, an email match would also miss legitimately-parked invitees. Using
+ * the recorded userId sidesteps both.
+ *
+ * Reservations with no `acceptedByUserId` are left untouched — they materialize
+ * through the normal accept-time claim (`claimForInvitation`), which now
+ * succeeds because the domain is verified. Bounded per domain (a handful of
+ * reservations on a brand-new instance). Returns how many mailboxes it stood up.
+ */
+export async function claimReservationsForVerifiedDomain(
+	ctx: MutationCtx,
+	domain: string
+): Promise<number> {
+	const normalized = normalizeEmail(domain);
+	const reservations = await ctx.db
+		.query('pendingMailboxes')
+		.withIndex('by_domain', (q) => q.eq('domain', normalized))
+		.take(RESERVATION_SWEEP_CAP);
+
+	let provisioned = 0;
+	for (const pending of reservations) {
+		// Only invitees who ACCEPTED (and were parked here) can be provisioned now,
+		// using the exact userId recorded at accept time.
+		const acceptedByUserId = pending.acceptedByUserId;
+		if (acceptedByUserId === undefined) {
+			continue;
+		}
+
+		const claim = await claimReservedMailbox(ctx, pending, acceptedByUserId);
+		if (claim.ok) {
+			provisioned += 1;
+		}
+	}
+	return provisioned;
+}
+
+/**
+ * Scheduled wrapper for the verify-time sweep. `domains/lifecycle.ts` schedules
+ * this via `ctx.scheduler.runAfter(0, …)` on the `→ verified` edge — decoupled
+ * from the domain transition itself so a provisioning throw here can never roll
+ * back the domain's move to `verified` (mirrors how `register_with_provider` /
+ * `delete_with_provider` are scheduled rather than run inline).
+ */
+export const provisionReservationsForVerifiedDomain = internalMutation({
+	args: { domain: v.string() },
+	handler: async (ctx, args) => {
+		await claimReservationsForVerifiedDomain(ctx, args.domain);
+	},
+});
+
+/**
+ * Drop every reservation on `domain`. Called from the domain remove/delete
+ * lifecycle path: a removed (or failed-and-cleared) domain will never verify, so
+ * its reservations would otherwise strand invitees on "activates when your
+ * domain verifies" forever and keep the rows alive indefinitely. Mirrors
+ * `cancelForInvitation`. Bounded by `RESERVATION_SWEEP_CAP` per domain.
+ */
+export async function clearReservationsForDomain(
+	ctx: MutationCtx,
+	domain: string
+): Promise<number> {
+	const normalized = normalizeEmail(domain);
+	const reservations = await ctx.db
+		.query('pendingMailboxes')
+		.withIndex('by_domain', (q) => q.eq('domain', normalized))
+		.take(RESERVATION_SWEEP_CAP);
+	for (const pending of reservations) {
+		await ctx.db.delete(pending._id);
+	}
+	return reservations.length;
 }
 
 export const setForInvitation = authedMutation({
@@ -93,12 +199,23 @@ export const setForInvitation = authedMutation({
 			throwInvalidInput('Domain is required');
 		}
 
+		// The domain must be one this instance actually hosts — verified OR still
+		// registering/pending DNS. Reserving on a domain that isn't set up here at
+		// all (or that failed verification) would be a spoof / a promise we can't
+		// keep, so those are rejected. A reservation on a not-yet-verified domain is
+		// intentional (early-instance invites): it materializes into a live mailbox
+		// only once the domain verifies (see `claimReservedMailbox`).
 		const domainRow = await ctx.db
 			.query('domains')
 			.withIndex('by_domain', (q) => q.eq('domain', domain))
 			.first();
-		if (!domainRow || domainRow.status !== 'verified') {
-			throwInvalidState(`Domain ${domain} is not a verified domain`);
+		if (!domainRow) {
+			throwInvalidState(`Add ${domain} as a sending domain before reserving a mailbox on it.`);
+		}
+		if (domainRow.status === 'failed') {
+			throwInvalidState(
+				`Domain ${domain} failed verification — fix its DNS before reserving a mailbox on it.`
+			);
 		}
 
 		const address = canonicalAddress(`${localpart}@${domain}`);
@@ -202,6 +319,21 @@ export const claimForInvitation = authedMutation({
 
 		const claim = await claimReservedMailbox(ctx, pending, session.userId);
 		if (!claim.ok) {
+			if (claim.reason === 'domain_unverified') {
+				// Early-instance invite: the mailbox is reserved but its domain hasn't
+				// verified yet. KEEP the reservation and STAMP it with the accepting
+				// userId — the verify-time sweep provisions only stamped rows, using
+				// this id, so acceptance + org-match + identity binding are recorded as
+				// facts here rather than re-derived by email later. The invitee's
+				// Postbox guard shows "reserved, activates when your domain verifies"
+				// from `freshStartStatus`.
+				await ctx.db.patch(pending._id, { acceptedByUserId: session.userId });
+				return {
+					created: false as const,
+					error: 'awaiting_domain' as const,
+					address: pending.address,
+				};
+			}
 			// A live mailbox already holds the reserved address — the reservation is
 			// stale, so clear it (the invitee will land in the fresh-start flow).
 			await ctx.db.delete(pending._id);
@@ -213,233 +345,5 @@ export const claimForInvitation = authedMutation({
 			mailboxId: claim.mailboxId,
 			address: pending.address,
 		};
-	},
-});
-
-// ============================================================
-// Team-inbox membership grants — the shared-inbox analogue of the reservation
-// pattern above. Adding a not-yet-member email to a team inbox reserves a grant
-// here (and the caller separately issues the org invite); the grant is claimed
-// into a real `mailboxMembers` row when that person accepts.
-// ============================================================
-
-/**
- * Reserve a team-inbox membership for someone who is NOT yet an org member. The
- * caller issues the org invite (BetterAuth, the b1 flow); this row carries the
- * intent so the membership materializes on accept — and lets the invitation
- * email name the inbox (see `inboxInviteContextForEmail`). Existing org members
- * are added directly through `mailboxMembers.addMember`, not this path.
- *
- * Admin-gated (issuing an org invite requires admin) and owner-gated on the
- * mailbox itself. Idempotent per (org, email, mailbox): a repeat call returns
- * the existing reservation rather than stacking duplicates.
- */
-export const reserveInboxMembership = adminMutation({
-	args: {
-		mailboxId: v.id('mailboxes'),
-		inviteeEmail: v.string(),
-	},
-	handler: async (ctx, args) => {
-		const access = await requireMailboxAccess(ctx, args.mailboxId, 'owner');
-		if (!access.ok) {
-			throwForbidden('You do not have permission to manage this inbox.');
-		}
-		if (access.mailbox.scope !== 'shared') {
-			throwInvalidInput('You can only invite people to a team inbox.');
-		}
-
-		const inviteeEmail = normalizeEmail(args.inviteeEmail);
-		if (!isValidEmail(inviteeEmail)) {
-			throwInvalidInput('Enter a valid email address.');
-		}
-
-		// This path is only for people who aren't in the organization yet; an
-		// existing member should be added from the members list (no invite, no
-		// grant), and inviting them would fail at BetterAuth anyway.
-		const existingProfile = await ctx.db
-			.query('userProfiles')
-			.withIndex('by_email', (q) => q.eq('email', inviteeEmail))
-			.first();
-		if (existingProfile && existingProfile.deletedAt === undefined) {
-			throwInvalidInput('They are already in your organization — add them from the members list.');
-		}
-
-		// Idempotent per (org, email, mailbox): a repeat call is a no-op.
-		const existing = await ctx.db
-			.query('pendingMailboxMembers')
-			.withIndex('by_org_email', (q) =>
-				q.eq('organizationId', access.mailbox.organizationId).eq('inviteeEmail', inviteeEmail)
-			)
-			.collect(); // bounded: a person is pre-added to at most a handful of inboxes
-		const already = existing.find((row) => row.mailboxId === args.mailboxId);
-		if (already) {
-			return { id: already._id, address: access.mailbox.address, alreadyReserved: true as const };
-		}
-
-		const id = await ctx.db.insert('pendingMailboxMembers', {
-			organizationId: access.mailbox.organizationId,
-			inviteeEmail,
-			mailboxId: args.mailboxId,
-			mailboxAddress: access.mailbox.address,
-			invitedByUserId: access.userId,
-			createdAt: Date.now(),
-		});
-
-		return { id, address: access.mailbox.address, alreadyReserved: false as const };
-	},
-});
-
-/**
- * Claim every team-inbox membership reserved for the accepting user. Called
- * right after `acceptInvitation`, before the welcome redirect, so the inbox is
- * already in the sidebar when they land.
- *
- * The claim is bound to the caller's OWN login email (resolved from their
- * profile): a user can only materialize grants addressed to them, so knowing a
- * teammate's invite never grants their inbox access. Each grant becomes a
- * `member` row (idempotent — a second accept, or an already-present membership,
- * is a no-op) and the grant is deleted. Grants whose inbox no longer exists,
- * left the org, or stopped being shared are dropped without a membership.
- */
-export const claimInboxMemberships = authedMutation({
-	args: {},
-	handler: async (ctx) => {
-		// all-members: every member may claim, but ONLY grants bound to their own
-		// login email — the email match below is the per-row authorization, so a
-		// caller can never materialize a teammate's inbox access.
-		const session = await getBetterAuthSessionWithRole(ctx);
-		if (!session) {
-			throwUnauthenticated();
-		}
-		if (!session.activeOrganizationId) {
-			throwForbidden('No active organization');
-		}
-		const organizationId = session.activeOrganizationId;
-
-		const profile = await ctx.db
-			.query('userProfiles')
-			.withIndex('by_auth_user_id', (q) => q.eq('authUserId', session.userId))
-			.first();
-		const callerEmail = profile?.email ? normalizeEmail(profile.email) : undefined;
-		if (!callerEmail) {
-			return { claimed: [] as string[] };
-		}
-
-		const grants = await ctx.db
-			.query('pendingMailboxMembers')
-			.withIndex('by_org_email', (q) =>
-				q.eq('organizationId', organizationId).eq('inviteeEmail', callerEmail)
-			)
-			.collect(); // bounded: a person is pre-added to at most a handful of inboxes
-
-		const claimed: string[] = [];
-		for (const grant of grants) {
-			// Drop grants whose target inbox is gone, moved org, or is no longer a
-			// team inbox — nothing to grant, so just clear the stale row.
-			const mailbox = await ctx.db.get(grant.mailboxId);
-			if (
-				!mailbox ||
-				mailbox.status !== 'active' ||
-				mailbox.scope !== 'shared' ||
-				mailbox.organizationId !== organizationId
-			) {
-				await ctx.db.delete(grant._id);
-				continue;
-			}
-
-			const existingMembership = await ctx.db
-				.query('mailboxMembers')
-				.withIndex('by_mailbox_user', (q) =>
-					q.eq('mailboxId', grant.mailboxId).eq('authUserId', session.userId)
-				)
-				.unique();
-			if (!existingMembership) {
-				await ctx.db.insert('mailboxMembers', {
-					mailboxId: grant.mailboxId,
-					authUserId: session.userId,
-					role: 'member',
-					addedBy: grant.invitedByUserId,
-					createdAt: Date.now(),
-				});
-			}
-			await ctx.db.delete(grant._id);
-			claimed.push(mailbox.address);
-		}
-
-		return { claimed };
-	},
-});
-
-/**
- * Sweep every un-claimed team-inbox grant reserved for `inviteeEmail` in the
- * caller's active org. Called when an admin cancels the org invitation (grants
- * are keyed by email, not invitation id, so cancelling the invite must also
- * clear the pending membership — otherwise it would silently materialize inbox
- * access if that email ever joined later, contradicting the 7-day-expiry the
- * invitation email promises) and as best-effort rollback when reserving succeeds
- * but the invite send fails. Mirrors `cancelForInvitation` for `pendingMailboxes`.
- *
- * Admin-gated (the wrapper) and org-scoped: only grants in the caller's active
- * org are touched, so one org can never clear another's reservations.
- */
-export const cancelInboxMembershipsForEmail = adminMutation({
-	args: {
-		inviteeEmail: v.string(),
-		// When present, narrow the sweep to this one inbox's grant. The invite-cancel
-		// path leaves it off (the whole invitation is gone, so every grant it carried
-		// should go too); the reserve-failed-invite rollback passes it so it deletes
-		// only the grant this attempt created, never a sibling inbox's live grant.
-		mailboxId: v.optional(v.id('mailboxes')),
-	},
-	handler: async (ctx, args) => {
-		const session = await getBetterAuthSessionWithRole(ctx);
-		if (!session?.activeOrganizationId) {
-			throwForbidden('No active organization');
-		}
-		const organizationId = session.activeOrganizationId;
-		const inviteeEmail = normalizeEmail(args.inviteeEmail);
-		if (!inviteeEmail) {
-			return { canceled: 0 };
-		}
-
-		const grants = await ctx.db
-			.query('pendingMailboxMembers')
-			.withIndex('by_org_email', (q) =>
-				q.eq('organizationId', organizationId).eq('inviteeEmail', inviteeEmail)
-			)
-			.collect(); // bounded: a person is pre-added to at most a handful of inboxes
-		const targetMailboxId = args.mailboxId;
-		const toCancel =
-			targetMailboxId === undefined
-				? grants
-				: grants.filter((grant) => grant.mailboxId === targetMailboxId);
-		for (const grant of toCancel) {
-			await ctx.db.delete(grant._id);
-		}
-		return { canceled: toCancel.length };
-	},
-});
-
-/**
- * Internal-only: the team inbox an invitee has been pre-added to, if any, so the
- * `sendInvitationEmail` hook can name it in the invitation ("<inviter> invited
- * you to <support@…>"). Returns the first reserved inbox address for
- * (org, email), or `null`. The grant is created before the invite is issued, so
- * it is already present when the hook fires.
- */
-export const inboxInviteContextForEmail = internalQuery({
-	args: {
-		organizationId: v.string(),
-		email: v.string(),
-	},
-	handler: async (ctx, args) => {
-		const email = normalizeEmail(args.email);
-		const grant = await ctx.db
-			.query('pendingMailboxMembers')
-			.withIndex('by_org_email', (q) =>
-				q.eq('organizationId', args.organizationId).eq('inviteeEmail', email)
-			)
-			.first();
-		return grant ? { inboxAddress: grant.mailboxAddress } : null;
 	},
 });

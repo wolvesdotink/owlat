@@ -53,15 +53,18 @@ const transferOwnership = useBackendOperation(api.mail.mailboxMembers.transferOw
 	label: 'Transfer ownership',
 	inlineTarget: error,
 });
-const reserveInboxMembership = useBackendOperation(api.mail.pendingMailbox.reserveInboxMembership, {
-	label: 'Invite to team inbox',
-	inlineTarget: error,
-});
+const reserveInboxMembership = useBackendOperation(
+	api.mail.pendingInboxMembership.reserveInboxMembership,
+	{
+		label: 'Invite to team inbox',
+		inlineTarget: error,
+	}
+);
 // Rollback for a reserve-succeeded-but-invite-failed partial: without this the
 // grant would be orphaned (no invitation attached) yet still materialize on a
 // later join.
 const cancelInboxMembership = useBackendOperation(
-	api.mail.pendingMailbox.cancelInboxMembershipsForEmail,
+	api.mail.pendingInboxMembership.cancelInboxMembershipsForEmail,
 	{ label: 'Undo team-inbox reservation' }
 );
 

@@ -1,5 +1,5 @@
 /**
- * Coverage for the team-inbox membership grant flow in mail/pendingMailbox.ts:
+ * Coverage for the team-inbox membership grant flow in mail/pendingInboxMembership.ts:
  *   - reserveInboxMembership -> claimInboxMemberships: membership materializes
  *   - grant is bound to the invitee email (a different-email accept can't claim)
  *   - reservation + claim are both idempotent
@@ -116,13 +116,13 @@ async function seedUserProfile(
 	});
 }
 
-describe('pendingMailbox.reserveInboxMembership', () => {
+describe('pendingInboxMembership.reserveInboxMembership', () => {
 	it('reserves a grant on a team inbox for a not-yet-member email', async () => {
 		setAdminSession();
 		const t = convexTest(schema, modules);
 		const mailboxId = await seedSharedMailbox(t, 'support@hinterland.camp');
 
-		const result = await t.mutation(api.mail.pendingMailbox.reserveInboxMembership, {
+		const result = await t.mutation(api.mail.pendingInboxMembership.reserveInboxMembership, {
 			mailboxId,
 			inviteeEmail: 'Newbie@Example.com',
 		});
@@ -157,7 +157,7 @@ describe('pendingMailbox.reserveInboxMembership', () => {
 		});
 
 		await expect(
-			t.mutation(api.mail.pendingMailbox.reserveInboxMembership, {
+			t.mutation(api.mail.pendingInboxMembership.reserveInboxMembership, {
 				mailboxId: personalId,
 				inviteeEmail: 'newbie@example.com',
 			})
@@ -171,7 +171,7 @@ describe('pendingMailbox.reserveInboxMembership', () => {
 		await seedUserProfile(t, 'existing-user', 'existing@example.com');
 
 		await expect(
-			t.mutation(api.mail.pendingMailbox.reserveInboxMembership, {
+			t.mutation(api.mail.pendingInboxMembership.reserveInboxMembership, {
 				mailboxId,
 				inviteeEmail: 'existing@example.com',
 			})
@@ -183,11 +183,11 @@ describe('pendingMailbox.reserveInboxMembership', () => {
 		const t = convexTest(schema, modules);
 		const mailboxId = await seedSharedMailbox(t, 'support@hinterland.camp');
 
-		await t.mutation(api.mail.pendingMailbox.reserveInboxMembership, {
+		await t.mutation(api.mail.pendingInboxMembership.reserveInboxMembership, {
 			mailboxId,
 			inviteeEmail: 'newbie@example.com',
 		});
-		const second = await t.mutation(api.mail.pendingMailbox.reserveInboxMembership, {
+		const second = await t.mutation(api.mail.pendingInboxMembership.reserveInboxMembership, {
 			mailboxId,
 			inviteeEmail: 'newbie@example.com',
 		});
@@ -200,12 +200,12 @@ describe('pendingMailbox.reserveInboxMembership', () => {
 	});
 });
 
-describe('pendingMailbox.claimInboxMemberships', () => {
+describe('pendingInboxMembership.claimInboxMemberships', () => {
 	it('materializes the reserved membership when the invitee accepts', async () => {
 		setAdminSession();
 		const t = convexTest(schema, modules);
 		const mailboxId = await seedSharedMailbox(t, 'support@hinterland.camp');
-		await t.mutation(api.mail.pendingMailbox.reserveInboxMembership, {
+		await t.mutation(api.mail.pendingInboxMembership.reserveInboxMembership, {
 			mailboxId,
 			inviteeEmail: 'newbie@example.com',
 		});
@@ -215,7 +215,7 @@ describe('pendingMailbox.claimInboxMemberships', () => {
 		setInviteeSession('newbie-user');
 		await seedUserProfile(t, 'newbie-user', 'newbie@example.com');
 
-		const result = await t.mutation(api.mail.pendingMailbox.claimInboxMemberships, {});
+		const result = await t.mutation(api.mail.pendingInboxMembership.claimInboxMemberships, {});
 		expect(result.claimed).toEqual(['support@hinterland.camp']);
 
 		await t.run(async (ctx) => {
@@ -236,7 +236,7 @@ describe('pendingMailbox.claimInboxMemberships', () => {
 		setAdminSession();
 		const t = convexTest(schema, modules);
 		const mailboxId = await seedSharedMailbox(t, 'support@hinterland.camp');
-		await t.mutation(api.mail.pendingMailbox.reserveInboxMembership, {
+		await t.mutation(api.mail.pendingInboxMembership.reserveInboxMembership, {
 			mailboxId,
 			inviteeEmail: 'newbie@example.com',
 		});
@@ -245,7 +245,7 @@ describe('pendingMailbox.claimInboxMemberships', () => {
 		// inherit the grant reserved for newbie@.
 		setInviteeSession('impostor-user');
 		await seedUserProfile(t, 'impostor-user', 'impostor@example.com');
-		const stolen = await t.mutation(api.mail.pendingMailbox.claimInboxMemberships, {});
+		const stolen = await t.mutation(api.mail.pendingInboxMembership.claimInboxMemberships, {});
 		expect(stolen.claimed).toEqual([]);
 
 		await t.run(async (ctx) => {
@@ -263,7 +263,7 @@ describe('pendingMailbox.claimInboxMemberships', () => {
 		// The real invitee (case-insensitive) claims it.
 		setInviteeSession('newbie-user');
 		await seedUserProfile(t, 'newbie-user', 'Newbie@Example.com');
-		const claimed = await t.mutation(api.mail.pendingMailbox.claimInboxMemberships, {});
+		const claimed = await t.mutation(api.mail.pendingInboxMembership.claimInboxMemberships, {});
 		expect(claimed.claimed).toEqual(['support@hinterland.camp']);
 	});
 
@@ -271,7 +271,7 @@ describe('pendingMailbox.claimInboxMemberships', () => {
 		setAdminSession();
 		const t = convexTest(schema, modules);
 		const mailboxId = await seedSharedMailbox(t, 'support@hinterland.camp');
-		await t.mutation(api.mail.pendingMailbox.reserveInboxMembership, {
+		await t.mutation(api.mail.pendingInboxMembership.reserveInboxMembership, {
 			mailboxId,
 			inviteeEmail: 'newbie@example.com',
 		});
@@ -279,9 +279,9 @@ describe('pendingMailbox.claimInboxMemberships', () => {
 		setInviteeSession('newbie-user');
 		await seedUserProfile(t, 'newbie-user', 'newbie@example.com');
 
-		const first = await t.mutation(api.mail.pendingMailbox.claimInboxMemberships, {});
+		const first = await t.mutation(api.mail.pendingInboxMembership.claimInboxMemberships, {});
 		expect(first.claimed).toEqual(['support@hinterland.camp']);
-		const second = await t.mutation(api.mail.pendingMailbox.claimInboxMemberships, {});
+		const second = await t.mutation(api.mail.pendingInboxMembership.claimInboxMemberships, {});
 		expect(second.claimed).toEqual([]);
 
 		await t.run(async (ctx) => {
@@ -296,24 +296,27 @@ describe('pendingMailbox.claimInboxMemberships', () => {
 	});
 });
 
-describe('pendingMailbox.cancelInboxMembershipsForEmail', () => {
+describe('pendingInboxMembership.cancelInboxMembershipsForEmail', () => {
 	it('sweeps every un-claimed grant for the email in the caller org', async () => {
 		setAdminSession();
 		const t = convexTest(schema, modules);
 		const supportId = await seedSharedMailbox(t, 'support@hinterland.camp');
 		const salesId = await seedSharedMailbox(t, 'sales@hinterland.camp');
-		await t.mutation(api.mail.pendingMailbox.reserveInboxMembership, {
+		await t.mutation(api.mail.pendingInboxMembership.reserveInboxMembership, {
 			mailboxId: supportId,
 			inviteeEmail: 'newbie@example.com',
 		});
-		await t.mutation(api.mail.pendingMailbox.reserveInboxMembership, {
+		await t.mutation(api.mail.pendingInboxMembership.reserveInboxMembership, {
 			mailboxId: salesId,
 			inviteeEmail: 'newbie@example.com',
 		});
 
-		const result = await t.mutation(api.mail.pendingMailbox.cancelInboxMembershipsForEmail, {
-			inviteeEmail: 'Newbie@Example.com', // case-insensitive
-		});
+		const result = await t.mutation(
+			api.mail.pendingInboxMembership.cancelInboxMembershipsForEmail,
+			{
+				inviteeEmail: 'Newbie@Example.com', // case-insensitive
+			}
+		);
 		expect(result.canceled).toBe(2);
 
 		await t.run(async (ctx) => {
@@ -327,26 +330,29 @@ describe('pendingMailbox.cancelInboxMembershipsForEmail', () => {
 		const t = convexTest(schema, modules);
 		const supportId = await seedSharedMailbox(t, 'support@hinterland.camp');
 		const salesId = await seedSharedMailbox(t, 'sales@hinterland.camp');
-		await t.mutation(api.mail.pendingMailbox.reserveInboxMembership, {
+		await t.mutation(api.mail.pendingInboxMembership.reserveInboxMembership, {
 			mailboxId: supportId,
 			inviteeEmail: 'newbie@example.com',
 		});
-		await t.mutation(api.mail.pendingMailbox.reserveInboxMembership, {
+		await t.mutation(api.mail.pendingInboxMembership.reserveInboxMembership, {
 			mailboxId: salesId,
 			inviteeEmail: 'newbie@example.com',
 		});
 
 		// Roll back only the sales grant (the reserve-failed-invite rollback path).
-		const result = await t.mutation(api.mail.pendingMailbox.cancelInboxMembershipsForEmail, {
-			inviteeEmail: 'newbie@example.com',
-			mailboxId: salesId,
-		});
+		const result = await t.mutation(
+			api.mail.pendingInboxMembership.cancelInboxMembershipsForEmail,
+			{
+				inviteeEmail: 'newbie@example.com',
+				mailboxId: salesId,
+			}
+		);
 		expect(result.canceled).toBe(1);
 
 		// The support grant survives and still materializes on accept.
 		setInviteeSession('newbie-user');
 		await seedUserProfile(t, 'newbie-user', 'newbie@example.com');
-		const claimed = await t.mutation(api.mail.pendingMailbox.claimInboxMemberships, {});
+		const claimed = await t.mutation(api.mail.pendingInboxMembership.claimInboxMemberships, {});
 		expect(claimed.claimed).toEqual(['support@hinterland.camp']);
 
 		await t.run(async (ctx) => {
@@ -364,17 +370,17 @@ describe('pendingMailbox.cancelInboxMembershipsForEmail', () => {
 		setAdminSession();
 		const t = convexTest(schema, modules);
 		const mailboxId = await seedSharedMailbox(t, 'support@hinterland.camp');
-		await t.mutation(api.mail.pendingMailbox.reserveInboxMembership, {
+		await t.mutation(api.mail.pendingInboxMembership.reserveInboxMembership, {
 			mailboxId,
 			inviteeEmail: 'newbie@example.com',
 		});
-		await t.mutation(api.mail.pendingMailbox.cancelInboxMembershipsForEmail, {
+		await t.mutation(api.mail.pendingInboxMembership.cancelInboxMembershipsForEmail, {
 			inviteeEmail: 'newbie@example.com',
 		});
 
 		setInviteeSession('newbie-user');
 		await seedUserProfile(t, 'newbie-user', 'newbie@example.com');
-		const claimed = await t.mutation(api.mail.pendingMailbox.claimInboxMemberships, {});
+		const claimed = await t.mutation(api.mail.pendingInboxMembership.claimInboxMemberships, {});
 		expect(claimed.claimed).toEqual([]);
 	});
 });
@@ -384,7 +390,7 @@ describe('mail.mailbox.remove cascade', () => {
 		setAdminSession();
 		const t = convexTest(schema, modules);
 		const mailboxId = await seedSharedMailbox(t, 'support@hinterland.camp');
-		await t.mutation(api.mail.pendingMailbox.reserveInboxMembership, {
+		await t.mutation(api.mail.pendingInboxMembership.reserveInboxMembership, {
 			mailboxId,
 			inviteeEmail: 'newbie@example.com',
 		});

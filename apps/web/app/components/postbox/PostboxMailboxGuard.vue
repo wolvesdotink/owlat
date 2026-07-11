@@ -48,6 +48,12 @@ const state = computed(() =>
 );
 
 const reservedAddress = computed(() => freshStatus.value?.reservedAddress ?? null);
+// True when the reservation's sending domain hasn't verified yet (an early-
+// instance invite). The mailbox is held for them and activates automatically the
+// moment the domain verifies — progress, not a stalled provision.
+const reservationAwaitingDomain = computed(
+	() => freshStatus.value?.reservationAwaitingDomain ?? false
+);
 
 const requested = ref(false);
 const { run: requestMailbox, isLoading: requesting } = useBackendOperation(
@@ -76,7 +82,10 @@ const alreadyAsked = computed(() => Boolean(freshStatus.value?.hasOpenRequest) |
 
 	<slot v-else-if="state === 'ready'" />
 
-	<!-- A hosted mailbox is reserved and provisioning; nothing to do but wait. -->
+	<!-- A hosted mailbox is reserved and provisioning; nothing to do but wait.
+	     When the reservation's sending domain hasn't verified yet (early-instance
+	     invite) the copy names that gate honestly instead of implying it's already
+	     provisioning. -->
 	<div
 		v-else-if="state === 'reserved'"
 		class="flex-1 flex items-center justify-center p-12"
@@ -84,11 +93,20 @@ const alreadyAsked = computed(() => Boolean(freshStatus.value?.hasOpenRequest) |
 	>
 		<div class="w-full max-w-sm text-center">
 			<Icon name="lucide:mail-check" class="w-10 h-10 mx-auto text-text-tertiary" />
-			<h2 class="text-lg font-semibold text-text-primary mt-4">Your mailbox is being set up</h2>
-			<p class="text-sm text-text-secondary mt-2">
-				<span class="font-medium text-text-primary">{{ reservedAddress }}</span> is reserved for
-				you. It'll appear here automatically as soon as it's ready.
-			</p>
+			<template v-if="reservationAwaitingDomain">
+				<h2 class="text-lg font-semibold text-text-primary mt-4">Your mailbox is reserved</h2>
+				<p class="text-sm text-text-secondary mt-2" data-testid="mailbox-guard-reserved-awaiting">
+					<span class="font-medium text-text-primary">{{ reservedAddress }}</span> is held for you.
+					It activates here automatically as soon as your workspace's sending domain verifies.
+				</p>
+			</template>
+			<template v-else>
+				<h2 class="text-lg font-semibold text-text-primary mt-4">Your mailbox is being set up</h2>
+				<p class="text-sm text-text-secondary mt-2">
+					<span class="font-medium text-text-primary">{{ reservedAddress }}</span> is reserved for
+					you. It'll appear here automatically as soon as it's ready.
+				</p>
+			</template>
 		</div>
 	</div>
 
