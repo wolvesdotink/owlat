@@ -41,10 +41,13 @@ const handleDuplicate = async () => {
 };
 
 // Fetch campaign with related data
-const { data: campaign, isLoading: campaignLoading } = useConvexQuery(
-	api.campaigns.campaigns.getWithRelations,
-	() => ({ campaignId: campaignId.value })
-);
+const {
+	data: campaign,
+	isLoading: campaignLoading,
+	error: campaignError,
+} = useConvexQuery(api.campaigns.campaigns.getWithRelations, () => ({
+	campaignId: campaignId.value,
+}));
 
 // Fetch email send statistics
 const { data: stats, isLoading: statsLoading } = useConvexQuery(
@@ -225,351 +228,272 @@ const loadPrevClicked = () => {
 
 <template>
 	<div class="p-6 lg:p-8">
-		<!-- Loading State -->
-		<div v-if="isLoading && !campaign" class="flex items-center justify-center py-16">
-			<div class="flex flex-col items-center gap-3">
-				<UiSpinner />
-				<p class="text-text-secondary text-sm">Loading report...</p>
-			</div>
-		</div>
-
-		<!-- Campaign Not Found -->
-		<div
-			v-else-if="!campaign"
-			class="card flex flex-col items-center justify-center py-16 text-center px-6"
+		<UiQueryBoundary
+			:loading="isLoading && !campaign"
+			:error="campaignError"
+			error-title="Couldn't load this report"
 		>
-			<UiIconBox
-				icon="lucide:bar-chart-3"
-				size="xl"
-				variant="surface"
-				rounded="full"
-				class="mb-4"
-			/>
-			<p class="text-text-secondary font-medium">Campaign not found</p>
-			<p class="text-sm text-text-tertiary mt-1">
-				This campaign may have been deleted or you don't have access to it.
-			</p>
-			<NuxtLink to="/dashboard/campaigns" class="btn btn-secondary mt-6">
-				Back to Campaigns
-			</NuxtLink>
-		</div>
+			<template #loading>
+				<div class="flex items-center justify-center py-16">
+					<div class="flex flex-col items-center gap-3">
+						<UiSpinner />
+						<p class="text-text-secondary text-sm">Loading report...</p>
+					</div>
+				</div>
+			</template>
 
-		<!-- Report Content -->
-		<div v-else>
-			<!-- Header -->
-			<div class="mb-8">
-				<NuxtLink
-					to="/dashboard/campaigns"
-					class="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary text-sm mb-4 transition-colors duration-(--motion-fast)"
-				>
-					<Icon name="lucide:arrow-left" class="w-4 h-4" />
+			<!-- Campaign Not Found -->
+			<div
+				v-if="!campaign"
+				class="card flex flex-col items-center justify-center py-16 text-center px-6"
+			>
+				<UiIconBox
+					icon="lucide:bar-chart-3"
+					size="xl"
+					variant="surface"
+					rounded="full"
+					class="mb-4"
+				/>
+				<p class="text-text-secondary font-medium">Campaign not found</p>
+				<p class="text-sm text-text-tertiary mt-1">
+					This campaign may have been deleted or you don't have access to it.
+				</p>
+				<NuxtLink to="/dashboard/campaigns" class="btn btn-secondary mt-6">
 					Back to Campaigns
 				</NuxtLink>
-				<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-					<div>
-						<h1 class="text-2xl font-semibold text-text-primary">{{ campaign.name }}</h1>
-						<p class="mt-1 text-text-secondary text-sm flex flex-wrap items-center gap-x-2 gap-y-1">
-							<span class="inline-flex items-center gap-1.5">
-								<Icon name="lucide:clock" class="w-4 h-4" />
-								Sent {{ formatDateTime(campaign.sentAt) }}
-							</span>
-							<span class="text-text-tertiary">·</span>
-							<span class="tabular-nums">{{ sentCount.toLocaleString() }} recipients</span>
-						</p>
-					</div>
-					<div class="flex items-center gap-3">
-						<button
-							class="btn btn-secondary gap-2"
-							:disabled="isDuplicating"
-							@click="handleDuplicate"
-						>
-							<Icon v-if="isDuplicating" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
-							<Icon v-else name="lucide:copy" class="w-4 h-4" />
-							{{ isDuplicating ? 'Duplicating...' : 'Duplicate' }}
-						</button>
-						<span
-							class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-success/10 text-success"
-						>
-							<Icon name="lucide:check-circle-2" class="w-3 h-3" />
-							Sent
-						</span>
-					</div>
-				</div>
 			</div>
 
-			<!-- Archive Link -->
-			<div v-if="archiveUrl" class="card p-4 mb-8">
-				<div class="flex items-center justify-between">
-					<div class="flex items-center gap-3">
-						<UiIconBox icon="lucide:globe" size="sm" rounded="lg" />
-						<div class="min-w-0">
-							<p class="text-sm font-medium text-text-primary">Public Archive</p>
-							<p class="text-xs text-text-tertiary truncate max-w-md">{{ archiveUrl }}</p>
+			<!-- Report Content -->
+			<div v-else>
+				<!-- Header -->
+				<div class="mb-8">
+					<NuxtLink
+						to="/dashboard/campaigns"
+						class="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary text-sm mb-4 transition-colors duration-(--motion-fast)"
+					>
+						<Icon name="lucide:arrow-left" class="w-4 h-4" />
+						Back to Campaigns
+					</NuxtLink>
+					<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+						<div>
+							<h1 class="text-2xl font-semibold text-text-primary">{{ campaign.name }}</h1>
+							<p
+								class="mt-1 text-text-secondary text-sm flex flex-wrap items-center gap-x-2 gap-y-1"
+							>
+								<span class="inline-flex items-center gap-1.5">
+									<Icon name="lucide:clock" class="w-4 h-4" />
+									Sent {{ formatDateTime(campaign.sentAt) }}
+								</span>
+								<span class="text-text-tertiary">·</span>
+								<span class="tabular-nums">{{ sentCount.toLocaleString() }} recipients</span>
+							</p>
+						</div>
+						<div class="flex items-center gap-3">
+							<button
+								class="btn btn-secondary gap-2"
+								:disabled="isDuplicating"
+								@click="handleDuplicate"
+							>
+								<Icon v-if="isDuplicating" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
+								<Icon v-else name="lucide:copy" class="w-4 h-4" />
+								{{ isDuplicating ? 'Duplicating...' : 'Duplicate' }}
+							</button>
+							<span
+								class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-success/10 text-success"
+							>
+								<Icon name="lucide:check-circle-2" class="w-3 h-3" />
+								Sent
+							</span>
 						</div>
 					</div>
-					<button class="btn btn-secondary text-sm gap-1.5" @click="copyArchiveLink">
-						<Icon :name="archiveCopied ? 'lucide:check' : 'lucide:copy'" class="w-3.5 h-3.5" />
-						{{ archiveCopied ? 'Copied' : 'Copy Link' }}
-					</button>
-				</div>
-			</div>
-
-			<!-- Hero stat tiles -->
-			<div class="card p-6 mb-8">
-				<div class="grid grid-cols-2 lg:grid-cols-4 gap-6">
-					<UiStatTile
-						v-for="tile in heroTiles"
-						:key="tile.key"
-						:label="tile.label"
-						:value="tile.value.toLocaleString()"
-						:delta="tile.delta.text"
-						:delta-direction="tile.delta.direction"
-					/>
-				</div>
-				<p class="mt-4 text-xs text-text-tertiary">
-					<template v-if="previousComparable">
-						Change vs your previous {{ campaign.isABTest ? 'A/B ' : '' }}send ·
-						{{ previousComparable.name }}
-					</template>
-					<template v-else> No comparable prior send to compare against yet. </template>
-				</p>
-			</div>
-
-			<!-- A/B Test fold-in -->
-			<div v-if="campaign.isABTest && abTestStats" class="mb-8">
-				<CampaignAbComparison
-					:stats="abTestStats"
-					:is-selecting-winner="isSelectingWinner"
-					@select-winner="handleSelectWinner"
-				/>
-			</div>
-
-			<!-- Open & Click rate (progress bars read better than a bare number vs a 100% target) -->
-			<div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-				<div class="card p-6">
-					<div class="flex items-baseline justify-between mb-4">
-						<h3 class="text-base font-medium text-text-primary">Open rate</h3>
-						<span class="font-display text-3xl text-text-primary tabular-nums leading-none"
-							>{{ openRate.toFixed(1) }}%</span
-						>
-					</div>
-					<div class="h-2 bg-bg-surface rounded-full overflow-hidden">
-						<div
-							class="h-full bg-brand rounded-full transition-all duration-(--motion-slow) ease-(--ease-spring)"
-							:style="{ width: `${Math.min(openRate, 100)}%` }"
-						/>
-					</div>
-					<p class="text-sm text-text-tertiary mt-3 tabular-nums">
-						{{ (stats?.uniqueOpens ?? 0).toLocaleString() }} of
-						{{ (stats?.delivered ?? 0).toLocaleString() }} delivered opened
-					</p>
 				</div>
 
-				<div class="card p-6">
-					<div class="flex items-baseline justify-between mb-4">
-						<h3 class="text-base font-medium text-text-primary">Click rate</h3>
-						<span class="font-display text-3xl text-text-primary tabular-nums leading-none"
-							>{{ clickRate.toFixed(1) }}%</span
-						>
-					</div>
-					<div class="h-2 bg-bg-surface rounded-full overflow-hidden">
-						<div
-							class="h-full bg-brand rounded-full transition-all duration-(--motion-slow) ease-(--ease-spring)"
-							:style="{ width: `${Math.min(clickRate, 100)}%` }"
-						/>
-					</div>
-					<p class="text-sm text-text-tertiary mt-3 tabular-nums">
-						{{ (stats?.uniqueClicks ?? 0).toLocaleString() }} of
-						{{ (stats?.delivered ?? 0).toLocaleString() }} delivered clicked a link
-					</p>
-				</div>
-			</div>
-
-			<!-- Opens Timeline -->
-			<div class="card p-6 mb-8">
-				<div class="flex items-baseline justify-between mb-6">
-					<h3 class="text-base font-medium text-text-primary">Opens over time</h3>
-					<span class="text-xs text-text-tertiary">First 48 hours</span>
-				</div>
-
-				<!-- Empty state -->
-				<div
-					v-if="timelineData.length === 0"
-					class="flex flex-col items-center justify-center py-12 text-center"
-				>
-					<Icon name="lucide:eye" class="w-10 h-10 text-text-tertiary mb-3" />
-					<p class="text-text-secondary">No opens recorded yet</p>
-					<p class="text-sm text-text-tertiary mt-1">
-						Opens will appear here as recipients view your email.
-					</p>
-				</div>
-
-				<UiTrendChart
-					v-else
-					:data="timelineData"
-					label-peak
-					:format-value="(v: number) => v.toLocaleString()"
-					aria-label="Opens over the first 48 hours"
-				/>
-			</div>
-
-			<!-- Click Heatmap -->
-			<div v-if="campaign?.emailTemplate?.htmlContent" class="card p-6 mb-8">
-				<div class="flex items-center gap-3 mb-6">
-					<UiIconBox icon="lucide:flame" size="sm" variant="warning" rounded="lg" />
-					<div>
-						<h3 class="text-base font-medium text-text-primary">Link click heatmap</h3>
-						<p class="text-sm text-text-secondary">Visual representation of link engagement</p>
-					</div>
-				</div>
-
-				<ClickHeatmap
-					:html-content="campaign.emailTemplate.htmlContent"
-					:link-stats="linkClickStats?.links || []"
-					:total-delivered="linkClickStats?.totalDelivered || 0"
-				/>
-			</div>
-
-			<!-- Contacts List -->
-			<div class="card p-0 overflow-hidden">
-				<!-- Tabs -->
-				<div class="flex border-b border-border-subtle">
-					<button
-						:class="[
-							'flex-1 px-6 py-4 text-sm transition-colors duration-(--motion-fast) flex items-center justify-center gap-2',
-							selectedTab === 'opened'
-								? 'text-text-primary font-semibold border-b-2 border-brand'
-								: 'text-text-secondary font-medium hover:text-text-primary',
-						]"
-						@click="selectedTab = 'opened'"
-					>
-						<Icon name="lucide:eye" class="w-4 h-4" />
-						Opened ({{ openedContacts?.total || 0 }})
-					</button>
-					<button
-						:class="[
-							'flex-1 px-6 py-4 text-sm transition-colors duration-(--motion-fast) flex items-center justify-center gap-2',
-							selectedTab === 'clicked'
-								? 'text-text-primary font-semibold border-b-2 border-brand'
-								: 'text-text-secondary font-medium hover:text-text-primary',
-						]"
-						@click="selectedTab = 'clicked'"
-					>
-						<Icon name="lucide:mouse-pointer-click" class="w-4 h-4" />
-						Clicked ({{ clickedContacts?.total || 0 }})
-					</button>
-				</div>
-
-				<!-- Opened Contacts Tab -->
-				<div v-if="selectedTab === 'opened'">
-					<div v-if="openedLoading && !openedContacts" class="p-8 flex justify-center">
-						<Icon name="lucide:loader-2" class="w-6 h-6 text-brand animate-spin" />
-					</div>
-
-					<div
-						v-else-if="!openedContacts || openedContacts.sends.length === 0"
-						class="py-12 text-center"
-					>
-						<Icon name="lucide:eye" class="w-10 h-10 text-text-tertiary mx-auto mb-3" />
-						<p class="text-text-secondary">No contacts have opened this email yet</p>
-					</div>
-
-					<div v-else>
-						<div class="divide-y divide-border-subtle">
-							<div
-								v-for="send in openedContacts.sends"
-								:key="send._id"
-								class="px-6 py-4 flex items-center justify-between hover:bg-bg-surface transition-colors duration-(--motion-fast)"
-							>
-								<div class="flex items-center gap-3 min-w-0">
-									<UiIconBox icon="lucide:users" size="sm" rounded="full" />
-									<div class="min-w-0">
-										<div class="text-text-primary font-medium truncate">
-											{{
-												send.contact?.firstName || send.contact?.email?.split('@')[0] || 'Unknown'
-											}}
-											{{ send.contact?.lastName || '' }}
-										</div>
-										<div class="text-sm text-text-tertiary truncate">
-											{{ send.contact?.email || 'No email' }}
-										</div>
-									</div>
-								</div>
-								<div class="flex items-center gap-4 shrink-0">
-									<div class="text-right">
-										<div class="text-sm text-text-secondary">
-											{{ formatCompactRelativeTime(send.openedAt, { emptyLabel: '—' }) }}
-										</div>
-										<div v-if="send.openCount > 1" class="text-xs text-text-tertiary tabular-nums">
-											{{ send.openCount }} opens
-										</div>
-									</div>
-									<NuxtLink
-										:to="`/dashboard/campaigns/${campaignId}/sends/${send._id}`"
-										class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast)"
-										title="View send details"
-									>
-										<Icon name="lucide:chevron-right" class="w-4 h-4" />
-									</NuxtLink>
-								</div>
+				<!-- Archive Link -->
+				<div v-if="archiveUrl" class="card p-4 mb-8">
+					<div class="flex items-center justify-between">
+						<div class="flex items-center gap-3">
+							<UiIconBox icon="lucide:globe" size="sm" rounded="lg" />
+							<div class="min-w-0">
+								<p class="text-sm font-medium text-text-primary">Public Archive</p>
+								<p class="text-xs text-text-tertiary truncate max-w-md">{{ archiveUrl }}</p>
 							</div>
 						</div>
-
-						<div
-							v-if="openedContacts.total > pageSize"
-							class="px-6 py-4 border-t border-border-subtle flex items-center justify-between"
-						>
-							<button
-								class="btn btn-secondary text-sm"
-								:disabled="openedOffset === 0"
-								@click="loadPrevOpened"
-							>
-								Previous
-							</button>
-							<span class="text-sm text-text-tertiary tabular-nums">
-								{{ openedOffset + 1 }}-{{
-									Math.min(openedOffset + pageSize, openedContacts.total)
-								}}
-								of {{ openedContacts.total }}
-							</span>
-							<button
-								class="btn btn-secondary text-sm"
-								:disabled="!openedContacts.hasMore"
-								@click="loadMoreOpened"
-							>
-								Next
-							</button>
-						</div>
+						<button class="btn btn-secondary text-sm gap-1.5" @click="copyArchiveLink">
+							<Icon :name="archiveCopied ? 'lucide:check' : 'lucide:copy'" class="w-3.5 h-3.5" />
+							{{ archiveCopied ? 'Copied' : 'Copy Link' }}
+						</button>
 					</div>
 				</div>
 
-				<!-- Clicked Contacts Tab -->
-				<div v-if="selectedTab === 'clicked'">
-					<div v-if="clickedLoading && !clickedContacts" class="p-8 flex justify-center">
-						<Icon name="lucide:loader-2" class="w-6 h-6 text-brand animate-spin" />
-					</div>
-
-					<div
-						v-else-if="!clickedContacts || clickedContacts.sends.length === 0"
-						class="py-12 text-center"
-					>
-						<Icon
-							name="lucide:mouse-pointer-click"
-							class="w-10 h-10 text-text-tertiary mx-auto mb-3"
+				<!-- Hero stat tiles -->
+				<div class="card p-6 mb-8">
+					<div class="grid grid-cols-2 lg:grid-cols-4 gap-6">
+						<UiStatTile
+							v-for="tile in heroTiles"
+							:key="tile.key"
+							:label="tile.label"
+							:value="tile.value.toLocaleString()"
+							:delta="tile.delta.text"
+							:delta-direction="tile.delta.direction"
 						/>
-						<p class="text-text-secondary">No contacts have clicked links in this email yet</p>
+					</div>
+					<p class="mt-4 text-xs text-text-tertiary">
+						<template v-if="previousComparable">
+							Change vs your previous {{ campaign.isABTest ? 'A/B ' : '' }}send ·
+							{{ previousComparable.name }}
+						</template>
+						<template v-else> No comparable prior send to compare against yet. </template>
+					</p>
+				</div>
+
+				<!-- A/B Test fold-in -->
+				<div v-if="campaign.isABTest && abTestStats" class="mb-8">
+					<CampaignAbComparison
+						:stats="abTestStats"
+						:is-selecting-winner="isSelectingWinner"
+						@select-winner="handleSelectWinner"
+					/>
+				</div>
+
+				<!-- Open & Click rate (progress bars read better than a bare number vs a 100% target) -->
+				<div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+					<div class="card p-6">
+						<div class="flex items-baseline justify-between mb-4">
+							<h3 class="text-base font-medium text-text-primary">Open rate</h3>
+							<span class="font-display text-3xl text-text-primary tabular-nums leading-none"
+								>{{ openRate.toFixed(1) }}%</span
+							>
+						</div>
+						<div class="h-2 bg-bg-surface rounded-full overflow-hidden">
+							<div
+								class="h-full bg-brand rounded-full transition-all duration-(--motion-slow) ease-(--ease-spring)"
+								:style="{ width: `${Math.min(openRate, 100)}%` }"
+							/>
+						</div>
+						<p class="text-sm text-text-tertiary mt-3 tabular-nums">
+							{{ (stats?.uniqueOpens ?? 0).toLocaleString() }} of
+							{{ (stats?.delivered ?? 0).toLocaleString() }} delivered opened
+						</p>
 					</div>
 
-					<div v-else>
-						<div class="divide-y divide-border-subtle">
-							<div
-								v-for="send in clickedContacts.sends"
-								:key="send._id"
-								class="px-6 py-4 hover:bg-bg-surface transition-colors duration-(--motion-fast)"
+					<div class="card p-6">
+						<div class="flex items-baseline justify-between mb-4">
+							<h3 class="text-base font-medium text-text-primary">Click rate</h3>
+							<span class="font-display text-3xl text-text-primary tabular-nums leading-none"
+								>{{ clickRate.toFixed(1) }}%</span
 							>
-								<div class="flex items-center justify-between">
+						</div>
+						<div class="h-2 bg-bg-surface rounded-full overflow-hidden">
+							<div
+								class="h-full bg-brand rounded-full transition-all duration-(--motion-slow) ease-(--ease-spring)"
+								:style="{ width: `${Math.min(clickRate, 100)}%` }"
+							/>
+						</div>
+						<p class="text-sm text-text-tertiary mt-3 tabular-nums">
+							{{ (stats?.uniqueClicks ?? 0).toLocaleString() }} of
+							{{ (stats?.delivered ?? 0).toLocaleString() }} delivered clicked a link
+						</p>
+					</div>
+				</div>
+
+				<!-- Opens Timeline -->
+				<div class="card p-6 mb-8">
+					<div class="flex items-baseline justify-between mb-6">
+						<h3 class="text-base font-medium text-text-primary">Opens over time</h3>
+						<span class="text-xs text-text-tertiary">First 48 hours</span>
+					</div>
+
+					<!-- Empty state -->
+					<div
+						v-if="timelineData.length === 0"
+						class="flex flex-col items-center justify-center py-12 text-center"
+					>
+						<Icon name="lucide:eye" class="w-10 h-10 text-text-tertiary mb-3" />
+						<p class="text-text-secondary">No opens recorded yet</p>
+						<p class="text-sm text-text-tertiary mt-1">
+							Opens will appear here as recipients view your email.
+						</p>
+					</div>
+
+					<UiTrendChart
+						v-else
+						:data="timelineData"
+						label-peak
+						:format-value="(v: number) => v.toLocaleString()"
+						aria-label="Opens over the first 48 hours"
+					/>
+				</div>
+
+				<!-- Click Heatmap -->
+				<div v-if="campaign?.emailTemplate?.htmlContent" class="card p-6 mb-8">
+					<div class="flex items-center gap-3 mb-6">
+						<UiIconBox icon="lucide:flame" size="sm" variant="warning" rounded="lg" />
+						<div>
+							<h3 class="text-base font-medium text-text-primary">Link click heatmap</h3>
+							<p class="text-sm text-text-secondary">Visual representation of link engagement</p>
+						</div>
+					</div>
+
+					<ClickHeatmap
+						:html-content="campaign.emailTemplate.htmlContent"
+						:link-stats="linkClickStats?.links || []"
+						:total-delivered="linkClickStats?.totalDelivered || 0"
+					/>
+				</div>
+
+				<!-- Contacts List -->
+				<div class="card p-0 overflow-hidden">
+					<!-- Tabs -->
+					<div class="flex border-b border-border-subtle">
+						<button
+							:class="[
+								'flex-1 px-6 py-4 text-sm transition-colors duration-(--motion-fast) flex items-center justify-center gap-2',
+								selectedTab === 'opened'
+									? 'text-text-primary font-semibold border-b-2 border-brand'
+									: 'text-text-secondary font-medium hover:text-text-primary',
+							]"
+							@click="selectedTab = 'opened'"
+						>
+							<Icon name="lucide:eye" class="w-4 h-4" />
+							Opened ({{ openedContacts?.total || 0 }})
+						</button>
+						<button
+							:class="[
+								'flex-1 px-6 py-4 text-sm transition-colors duration-(--motion-fast) flex items-center justify-center gap-2',
+								selectedTab === 'clicked'
+									? 'text-text-primary font-semibold border-b-2 border-brand'
+									: 'text-text-secondary font-medium hover:text-text-primary',
+							]"
+							@click="selectedTab = 'clicked'"
+						>
+							<Icon name="lucide:mouse-pointer-click" class="w-4 h-4" />
+							Clicked ({{ clickedContacts?.total || 0 }})
+						</button>
+					</div>
+
+					<!-- Opened Contacts Tab -->
+					<div v-if="selectedTab === 'opened'">
+						<div v-if="openedLoading && !openedContacts" class="p-8 flex justify-center">
+							<Icon name="lucide:loader-2" class="w-6 h-6 text-brand animate-spin" />
+						</div>
+
+						<div
+							v-else-if="!openedContacts || openedContacts.sends.length === 0"
+							class="py-12 text-center"
+						>
+							<Icon name="lucide:eye" class="w-10 h-10 text-text-tertiary mx-auto mb-3" />
+							<p class="text-text-secondary">No contacts have opened this email yet</p>
+						</div>
+
+						<div v-else>
+							<div class="divide-y divide-border-subtle">
+								<div
+									v-for="send in openedContacts.sends"
+									:key="send._id"
+									class="px-6 py-4 flex items-center justify-between hover:bg-bg-surface transition-colors duration-(--motion-fast)"
+								>
 									<div class="flex items-center gap-3 min-w-0">
-										<UiIconBox icon="lucide:users" size="sm" variant="warning" rounded="full" />
+										<UiIconBox icon="lucide:users" size="sm" rounded="full" />
 										<div class="min-w-0">
 											<div class="text-text-primary font-medium truncate">
 												{{
@@ -585,15 +509,13 @@ const loadPrevClicked = () => {
 									<div class="flex items-center gap-4 shrink-0">
 										<div class="text-right">
 											<div class="text-sm text-text-secondary">
-												{{ formatCompactRelativeTime(send.clickedAt, { emptyLabel: '—' }) }}
+												{{ formatCompactRelativeTime(send.openedAt, { emptyLabel: '—' }) }}
 											</div>
 											<div
-												v-if="send.clickedLinks.length > 0"
+												v-if="send.openCount > 1"
 												class="text-xs text-text-tertiary tabular-nums"
 											>
-												{{ send.clickedLinks.length }} link{{
-													send.clickedLinks.length !== 1 ? 's' : ''
-												}}
+												{{ send.openCount }} opens
 											</div>
 										</div>
 										<NuxtLink
@@ -605,50 +527,145 @@ const loadPrevClicked = () => {
 										</NuxtLink>
 									</div>
 								</div>
-								<div v-if="send.clickedLinks.length > 0" class="ml-13 mt-2 space-y-1">
-									<div
-										v-for="(link, linkIndex) in send.clickedLinks.slice(0, 3)"
-										:key="linkIndex"
-										class="flex items-center gap-2 text-xs text-text-tertiary"
-									>
-										<Icon name="lucide:external-link" class="w-3 h-3" />
-										<span class="truncate max-w-xs">{{ link.url }}</span>
-									</div>
-									<div v-if="send.clickedLinks.length > 3" class="text-xs text-text-tertiary">
-										+{{ send.clickedLinks.length - 3 }} more links
-									</div>
-								</div>
 							</div>
+
+							<div
+								v-if="openedContacts.total > pageSize"
+								class="px-6 py-4 border-t border-border-subtle flex items-center justify-between"
+							>
+								<button
+									class="btn btn-secondary text-sm"
+									:disabled="openedOffset === 0"
+									@click="loadPrevOpened"
+								>
+									Previous
+								</button>
+								<span class="text-sm text-text-tertiary tabular-nums">
+									{{ openedOffset + 1 }}-{{
+										Math.min(openedOffset + pageSize, openedContacts.total)
+									}}
+									of {{ openedContacts.total }}
+								</span>
+								<button
+									class="btn btn-secondary text-sm"
+									:disabled="!openedContacts.hasMore"
+									@click="loadMoreOpened"
+								>
+									Next
+								</button>
+							</div>
+						</div>
+					</div>
+
+					<!-- Clicked Contacts Tab -->
+					<div v-if="selectedTab === 'clicked'">
+						<div v-if="clickedLoading && !clickedContacts" class="p-8 flex justify-center">
+							<Icon name="lucide:loader-2" class="w-6 h-6 text-brand animate-spin" />
 						</div>
 
 						<div
-							v-if="clickedContacts.total > pageSize"
-							class="px-6 py-4 border-t border-border-subtle flex items-center justify-between"
+							v-else-if="!clickedContacts || clickedContacts.sends.length === 0"
+							class="py-12 text-center"
 						>
-							<button
-								class="btn btn-secondary text-sm"
-								:disabled="clickedOffset === 0"
-								@click="loadPrevClicked"
+							<Icon
+								name="lucide:mouse-pointer-click"
+								class="w-10 h-10 text-text-tertiary mx-auto mb-3"
+							/>
+							<p class="text-text-secondary">No contacts have clicked links in this email yet</p>
+						</div>
+
+						<div v-else>
+							<div class="divide-y divide-border-subtle">
+								<div
+									v-for="send in clickedContacts.sends"
+									:key="send._id"
+									class="px-6 py-4 hover:bg-bg-surface transition-colors duration-(--motion-fast)"
+								>
+									<div class="flex items-center justify-between">
+										<div class="flex items-center gap-3 min-w-0">
+											<UiIconBox icon="lucide:users" size="sm" variant="warning" rounded="full" />
+											<div class="min-w-0">
+												<div class="text-text-primary font-medium truncate">
+													{{
+														send.contact?.firstName ||
+														send.contact?.email?.split('@')[0] ||
+														'Unknown'
+													}}
+													{{ send.contact?.lastName || '' }}
+												</div>
+												<div class="text-sm text-text-tertiary truncate">
+													{{ send.contact?.email || 'No email' }}
+												</div>
+											</div>
+										</div>
+										<div class="flex items-center gap-4 shrink-0">
+											<div class="text-right">
+												<div class="text-sm text-text-secondary">
+													{{ formatCompactRelativeTime(send.clickedAt, { emptyLabel: '—' }) }}
+												</div>
+												<div
+													v-if="send.clickedLinks.length > 0"
+													class="text-xs text-text-tertiary tabular-nums"
+												>
+													{{ send.clickedLinks.length }} link{{
+														send.clickedLinks.length !== 1 ? 's' : ''
+													}}
+												</div>
+											</div>
+											<NuxtLink
+												:to="`/dashboard/campaigns/${campaignId}/sends/${send._id}`"
+												class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast)"
+												title="View send details"
+											>
+												<Icon name="lucide:chevron-right" class="w-4 h-4" />
+											</NuxtLink>
+										</div>
+									</div>
+									<div v-if="send.clickedLinks.length > 0" class="ml-13 mt-2 space-y-1">
+										<div
+											v-for="(link, linkIndex) in send.clickedLinks.slice(0, 3)"
+											:key="linkIndex"
+											class="flex items-center gap-2 text-xs text-text-tertiary"
+										>
+											<Icon name="lucide:external-link" class="w-3 h-3" />
+											<span class="truncate max-w-xs">{{ link.url }}</span>
+										</div>
+										<div v-if="send.clickedLinks.length > 3" class="text-xs text-text-tertiary">
+											+{{ send.clickedLinks.length - 3 }} more links
+										</div>
+									</div>
+								</div>
+							</div>
+
+							<div
+								v-if="clickedContacts.total > pageSize"
+								class="px-6 py-4 border-t border-border-subtle flex items-center justify-between"
 							>
-								Previous
-							</button>
-							<span class="text-sm text-text-tertiary tabular-nums">
-								{{ clickedOffset + 1 }}-{{
-									Math.min(clickedOffset + pageSize, clickedContacts.total)
-								}}
-								of {{ clickedContacts.total }}
-							</span>
-							<button
-								class="btn btn-secondary text-sm"
-								:disabled="!clickedContacts.hasMore"
-								@click="loadMoreClicked"
-							>
-								Next
-							</button>
+								<button
+									class="btn btn-secondary text-sm"
+									:disabled="clickedOffset === 0"
+									@click="loadPrevClicked"
+								>
+									Previous
+								</button>
+								<span class="text-sm text-text-tertiary tabular-nums">
+									{{ clickedOffset + 1 }}-{{
+										Math.min(clickedOffset + pageSize, clickedContacts.total)
+									}}
+									of {{ clickedContacts.total }}
+								</span>
+								<button
+									class="btn btn-secondary text-sm"
+									:disabled="!clickedContacts.hasMore"
+									@click="loadMoreClicked"
+								>
+									Next
+								</button>
+							</div>
 						</div>
 					</div>
 				</div>
 			</div>
-		</div>
+		</UiQueryBoundary>
 	</div>
 </template>
