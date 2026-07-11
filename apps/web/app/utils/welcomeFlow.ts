@@ -22,17 +22,32 @@
 export type OnboardingMode = 'fresh' | 'migration';
 
 /**
- * The onboarding steps the checklist can render. A subset of the backend
+ * The onboarding steps the checklist can render. Mostly a subset of the backend
  * `ONBOARDING_STEPS` union (`auth/userOnboarding.ts`): the two intermediate
  * import phases (`importStarted`/`importDone`) collapse to a single "bring your
  * email over" row keyed on `importDone`.
+ *
+ * `aiConnected` is the exception — it is NOT a backend onboarding stamp. Its
+ * completion is derived at render time from the org's AI-provider config
+ * (`aiProviderConfig.getConfig` → `configured`), so a stored provider key marks
+ * it done for every member of the instance. {@link AI_CONNECTED_STEP_ID} names
+ * it for the one component that special-cases its completion source.
  */
 export type ChecklistStepId =
 	| 'mailboxReady'
+	| 'aiConnected'
 	| 'importDone'
 	| 'knowledgeIndexed'
 	| 'sendingSwitched'
 	| 'firstSendDone';
+
+/**
+ * The single checklist step whose completion is sourced from the org's
+ * AI-provider config rather than a per-user `userOnboarding` stamp. Exported so
+ * `UserChecklist.vue` can special-case it without a magic string, and so the
+ * distinction is testable.
+ */
+export const AI_CONNECTED_STEP_ID = 'aiConnected' as const satisfies ChecklistStepId;
 
 export interface ChecklistStepMeta {
 	id: ChecklistStepId;
@@ -58,6 +73,15 @@ export const CHECKLIST_STEPS: readonly ChecklistStepMeta[] = [
 		href: '/dashboard/postbox/settings/add-account',
 		cta: 'Set up',
 		icon: 'lucide:mailbox',
+		migrationOnly: false,
+	},
+	{
+		id: 'aiConnected',
+		title: 'Connect your AI',
+		description: 'Point Owlat at an AI provider so drafting, replies, and search light up.',
+		href: '/dashboard/settings/ai-provider',
+		cta: 'Connect',
+		icon: 'lucide:sparkles',
 		migrationOnly: false,
 	},
 	{

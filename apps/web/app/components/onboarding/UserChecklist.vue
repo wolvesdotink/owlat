@@ -2,6 +2,7 @@
 import { api } from '@owlat/api';
 import { isInstanceOnboardingActive, shouldShowUserChecklist } from '~/utils/onboarding';
 import {
+	AI_CONNECTED_STEP_ID,
 	isChecklistComplete,
 	visibleChecklistSteps,
 	type ChecklistStepId,
@@ -53,6 +54,14 @@ const instanceOnboardingActive = computed(() =>
 	})
 );
 
+// The `aiConnected` step is org-scoped, not a per-user stamp: it is done the
+// moment a provider is configured for the instance (env fallback OR a stored
+// key). Read the masked config surface (never a secret) so the step self-checks.
+const { data: aiConfig, isLoading: isLoadingAiConfig } = useConvexQuery(
+	api.aiProviderConfig.getConfig,
+	{}
+);
+
 const mode = computed<OnboardingMode>(() =>
 	settings.value?.isMigrationMode ? 'migration' : 'fresh'
 );
@@ -60,7 +69,10 @@ const mode = computed<OnboardingMode>(() =>
 const steps = computed(() =>
 	visibleChecklistSteps(mode.value).map((step) => ({
 		...step,
-		completed: (onboarding.value?.[step.id] ?? null) !== null,
+		completed:
+			step.id === AI_CONNECTED_STEP_ID
+				? (aiConfig.value?.configured ?? false)
+				: (onboarding.value?.[step.id] ?? null) !== null,
 	}))
 );
 
@@ -73,7 +85,11 @@ const completedCount = computed(() => steps.value.filter((s) => s.completed).len
 const isComplete = computed(() => isChecklistComplete(mode.value, completedIds.value));
 
 const isLoading = computed(
-	() => isLoadingOnboarding.value || isLoadingSettings.value || isLoadingInstance.value
+	() =>
+		isLoadingOnboarding.value ||
+		isLoadingSettings.value ||
+		isLoadingInstance.value ||
+		isLoadingAiConfig.value
 );
 
 const shouldShow = computed(() =>
