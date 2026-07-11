@@ -111,11 +111,6 @@ async function assignToMe(thread: TeamThread) {
 	await assignTo(thread, me);
 }
 
-/** Hover picker choice — a specific member, or `undefined` to unassign. */
-function assignThreadTo(thread: TeamThread, assignedTo: string | undefined) {
-	return assignTo(thread, assignedTo);
-}
-
 async function resolveThread(thread: TeamThread) {
 	const previousStatus = thread.status;
 	if (previousStatus === 'resolved') return;
@@ -248,7 +243,7 @@ const emptyMessage = computed(() => INBOX_FILTER_META[filter.value].empty);
 						:format-compact-relative-time="formatCompactRelativeTime"
 						:members="assignMembers"
 						:current-user-id="user?.id ?? null"
-						@assign="assignThreadTo(thread, $event)"
+						@assign="assignTo(thread, $event)"
 						@resolve="resolveThread(thread)"
 						@snooze="openSnooze(thread)"
 					/>
