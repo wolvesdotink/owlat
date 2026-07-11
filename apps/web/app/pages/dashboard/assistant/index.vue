@@ -33,7 +33,7 @@ const scrollToBottom = () => {
 // Follow the stream: re-scroll as the last turn grows or a turn is added.
 watch(
 	() => [messages.value.length, messages.value.at(-1)?.text.length, messages.value.at(-1)?.status],
-	scrollToBottom,
+	scrollToBottom
 );
 watch(activeId, scrollToBottom);
 
@@ -47,8 +47,19 @@ const onExample = (prompt: string) => {
 	void send(prompt);
 };
 
-const onDelete = (id: Id<'aiConversations'>) => {
-	void remove(id);
+// Deleting a chat is irreversible, so confirm before removing it.
+const pendingDelete = ref<{ _id: Id<'aiConversations'>; title: string } | null>(null);
+const isDeleting = ref(false);
+
+const confirmDelete = async () => {
+	if (!pendingDelete.value) return;
+	isDeleting.value = true;
+	try {
+		await remove(pendingDelete.value._id);
+		pendingDelete.value = null;
+	} finally {
+		isDeleting.value = false;
+	}
 };
 
 // Inline rename of a conversation title in the list.
@@ -123,7 +134,9 @@ const formatDate = (ts: number) =>
 					/>
 					<template v-else>
 						<span class="flex-1 truncate">{{ c.title }}</span>
-						<span class="text-[11px] text-text-tertiary flex-shrink-0">{{ formatDate(c.lastMessageAt) }}</span>
+						<span class="text-[11px] text-text-tertiary flex-shrink-0">{{
+							formatDate(c.lastMessageAt)
+						}}</span>
 						<button
 							class="opacity-0 group-hover:opacity-100 text-text-tertiary hover:text-text-primary transition-opacity flex-shrink-0"
 							title="Rename conversation"
@@ -136,7 +149,7 @@ const formatDate = (ts: number) =>
 							class="opacity-0 group-hover:opacity-100 text-text-tertiary hover:text-error transition-opacity flex-shrink-0"
 							title="Delete conversation"
 							aria-label="Delete conversation"
-							@click.stop="onDelete(c._id)"
+							@click.stop="pendingDelete = { _id: c._id, title: c.title }"
 						>
 							<Icon name="lucide:trash-2" class="w-3.5 h-3.5" />
 						</button>
@@ -152,7 +165,9 @@ const formatDate = (ts: number) =>
 				class="border-b border-border-subtle px-4 py-2.5 flex items-center gap-2"
 			>
 				<Icon name="lucide:sparkles" class="w-4 h-4 text-brand flex-shrink-0" />
-				<h1 class="text-sm font-semibold text-text-primary truncate">{{ activeConversation.title }}</h1>
+				<h1 class="text-sm font-semibold text-text-primary truncate">
+					{{ activeConversation.title }}
+				</h1>
 			</header>
 
 			<div ref="scrollRef" class="flex-1 overflow-y-auto px-4 py-4">
@@ -191,5 +206,21 @@ const formatDate = (ts: number) =>
 
 			<AssistantComposer :streaming="streaming" @send="send" @stop="stop" />
 		</section>
+
+		<!-- Delete confirmation — a removed chat and its messages cannot be recovered -->
+		<UiConfirmationDialog
+			:open="!!pendingDelete"
+			variant="danger"
+			title="Delete chat"
+			:description="`&quot;${pendingDelete?.title ?? ''}&quot; and all of its messages will be permanently deleted.`"
+			confirm-text="Delete chat"
+			:is-loading="isDeleting"
+			@update:open="
+				(v: boolean) => {
+					if (!v) pendingDelete = null;
+				}
+			"
+			@confirm="confirmDelete"
+		/>
 	</div>
 </template>
