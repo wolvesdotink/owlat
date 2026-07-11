@@ -6,17 +6,18 @@
  * c3-skeletons.
  *
  * The two behaviours the plan cares about:
- *   - first load (loading, no data yet) shows the skeleton, shaped like the
+ *   - first load (loading, empty results) shows the skeleton, shaped like the
  *     surface it stands in for;
- *   - a live refresh with data already visible NEVER flashes the skeleton back
- *     — the standard `isLoading && !data` gate keeps the rows on screen.
+ *   - a live refresh with rows already visible NEVER flashes the skeleton back
+ *     — the `isLoading && results.length === 0` gate keeps the rows on screen.
  *
  * The gate is asserted with a tiny harness that reproduces the exact v-if
- * expression the converted pages use, so the "no spinner flash on refresh"
- * guarantee is covered without mounting a whole page's composable graph.
+ * expression the converted pages use against the semantics usePaginatedQuery
+ * actually produces (results is `[]`, never null), so the "no spinner flash on
+ * refresh" guarantee is covered without mounting a whole page's composable graph.
  */
 import { describe, it, expect } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { mount, type VueWrapper } from '@vue/test-utils';
 import { defineComponent } from 'vue';
 
 import DashboardListSkeleton from '../ListSkeleton.vue';
@@ -29,6 +30,15 @@ function mountSkeleton(props: Record<string, unknown> = {}) {
 		props,
 		global: { components: { UiSkeleton } },
 	});
+}
+
+/**
+ * Count circular placeholders by the UiSkeleton contract (its `circle` prop),
+ * rather than coupling to the `.rounded-full` class that is UiSkeleton's own
+ * implementation detail.
+ */
+function circleCount(w: VueWrapper): number {
+	return w.findAllComponents(UiSkeleton).filter((c) => c.props('circle') === true).length;
 }
 
 describe('DashboardListSkeleton', () => {
@@ -44,14 +54,15 @@ describe('DashboardListSkeleton', () => {
 		// header + 5 body rows, each is a flex row div under the root
 		const rows = w.findAll(`${SKELETON} > .flex.items-center`);
 		expect(rows).toHaveLength(6);
-		// columns × (header + body rows) shimmer bars, no leading circle
-		expect(w.findAll('.rounded-full')).toHaveLength(0);
+		// no leading circle when `leading` is off — assert the UiSkeleton contract
+		// (its `circle` prop), not its internal markup class
+		expect(circleCount(w)).toBe(0);
 	});
 
 	it('table variant with `leading` adds an avatar/checkbox circle per body row', () => {
 		const w = mountSkeleton({ variant: 'table', rows: 3, columns: 4, leading: true });
 		// one circle per body row (header uses a bar, not a circle)
-		expect(w.findAll('.rounded-full')).toHaveLength(3);
+		expect(circleCount(w)).toBe(3);
 	});
 
 	it('card variant renders a divided list with one item per `rows`', () => {
@@ -62,46 +73,50 @@ describe('DashboardListSkeleton', () => {
 });
 
 /**
- * Reproduces the converted surfaces' loading gate: skeleton is shown only while
- * loading AND no data has arrived. Proves first-load shows it and a background
- * refresh (data present, loading true again) keeps the rows — no skeleton flash.
+ * Reproduces the converted surfaces' loading gate against the semantics
+ * usePaginatedQuery actually produces: `results` is always an array (`[]` on
+ * first load, never null), so the honest first-load signal is
+ * `isLoading && results.length === 0`. Proves first-load (loading + empty) shows
+ * the skeleton and a refresh (rows present, loading true again) keeps the rows —
+ * no skeleton flash.
  */
 const GatedSurface = defineComponent({
 	components: { DashboardListSkeleton },
 	props: {
 		isLoading: { type: Boolean, required: true },
-		data: { type: Array as () => unknown[] | null, required: true },
+		results: { type: Array as () => unknown[], required: true },
 	},
 	template: `
 		<div>
-			<DashboardListSkeleton v-if="isLoading && !data" variant="table" />
-			<ul v-else-if="data && data.length" data-testid="rows">
-				<li v-for="(_, i) in data" :key="i">row</li>
+			<DashboardListSkeleton v-if="isLoading && results.length === 0" variant="table" />
+			<ul v-else-if="results.length" data-testid="rows">
+				<li v-for="(_, i) in results" :key="i">row</li>
 			</ul>
 		</div>
 	`,
 });
 
 describe('converted-surface loading gate', () => {
-	it('shows the skeleton on first load (loading, no data yet)', () => {
+	it('shows the skeleton on first load (loading, empty results)', () => {
 		const w = mount(GatedSurface, {
-			props: { isLoading: true, data: null },
+			props: { isLoading: true, results: [] },
 			global: { components: { DashboardListSkeleton, UiSkeleton } },
 		});
 		expect(w.find(SKELETON).exists()).toBe(true);
 		expect(w.find('[data-testid="rows"]').exists()).toBe(false);
 	});
 
-	it('keeps previous data (no skeleton flash) on a refresh with rows visible', async () => {
+	it('keeps previous rows (no skeleton flash) on a refresh with rows visible', async () => {
 		const w = mount(GatedSurface, {
-			props: { isLoading: false, data: [1, 2, 3] },
+			props: { isLoading: false, results: [1, 2, 3] },
 			global: { components: { DashboardListSkeleton, UiSkeleton } },
 		});
 		expect(w.find('[data-testid="rows"]').exists()).toBe(true);
 		expect(w.find(SKELETON).exists()).toBe(false);
 
-		// A live-query refresh re-enters loading while data is still present.
-		await w.setProps({ isLoading: true, data: [1, 2, 3] });
+		// A live-query refresh (or a keepPreviousData resubscribe) re-enters loading
+		// while rows are still present — the skeleton must stay hidden.
+		await w.setProps({ isLoading: true, results: [1, 2, 3] });
 		expect(w.find(SKELETON).exists()).toBe(false);
 		expect(w.find('[data-testid="rows"]').exists()).toBe(true);
 	});
