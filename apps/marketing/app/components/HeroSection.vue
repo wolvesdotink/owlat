@@ -39,7 +39,7 @@ async function copyInstall() {
 				</h1>
 
 				<!-- Tagline -->
-				<p class="mt-6 text-[1.0625rem] text-text-secondary leading-[1.75] max-w-prose">
+				<p class="mt-6 text-md text-text-secondary leading-[1.75] max-w-prose">
 					Owlat is open-source and self-hosted. Design emails visually, manage audiences, run
 					campaigns with A/B testing, and send transactional emails via API — all from one platform.
 				</p>
@@ -48,7 +48,7 @@ async function copyInstall() {
 				<div class="mt-10 flex items-center gap-3.5 flex-wrap">
 					<a
 						href="https://docs.owlat.app/developer/self-hosting"
-						class="btn btn-primary px-6 text-md font-semibold no-underline"
+						class="btn btn-primary px-6 text-md no-underline"
 					>
 						Self-host in 5 minutes
 					</a>
@@ -62,7 +62,7 @@ async function copyInstall() {
 						>
 						<button
 							type="button"
-							class="shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-2xs font-semibold uppercase tracking-wider text-text-tertiary hover:text-brand transition-colors duration-(--motion-fast) ui-press"
+							class="shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-2xs font-semibold uppercase tracking-wider text-text-tertiary hover:text-brand ui-press"
 							:aria-label="copied ? 'Copied' : 'Copy install command'"
 							@click="copyInstall"
 						>

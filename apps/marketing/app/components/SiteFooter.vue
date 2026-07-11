@@ -38,7 +38,7 @@ const footerLinks = {
 				<!-- Product -->
 				<div>
 					<h4
-						class="font-mono text-[0.625rem] font-medium uppercase tracking-[0.1em] text-text-disabled mb-5"
+						class="font-mono text-2xs font-medium uppercase tracking-[0.1em] text-text-disabled mb-5"
 					>
 						Product
 					</h4>
@@ -57,7 +57,7 @@ const footerLinks = {
 				<!-- Developers -->
 				<div>
 					<h4
-						class="font-mono text-[0.625rem] font-medium uppercase tracking-[0.1em] text-text-disabled mb-5"
+						class="font-mono text-2xs font-medium uppercase tracking-[0.1em] text-text-disabled mb-5"
 					>
 						Developers
 					</h4>
@@ -76,7 +76,7 @@ const footerLinks = {
 				<!-- Company -->
 				<div>
 					<h4
-						class="font-mono text-[0.625rem] font-medium uppercase tracking-[0.1em] text-text-disabled mb-5"
+						class="font-mono text-2xs font-medium uppercase tracking-[0.1em] text-text-disabled mb-5"
 					>
 						Company
 					</h4>
