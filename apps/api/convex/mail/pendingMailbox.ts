@@ -44,23 +44,44 @@ function normalizeDomain(raw: string): string {
  * so the collision guard and the provision → delete-reservation → mark-ready
  * sequence can never drift between them.
  *
- * Returns `{ ok: false }` when a live mailbox already holds the reserved address
- * (the reservation is left in place — the caller decides whether to clear it or
- * surface the collision); otherwise provisions the mailbox at the reserved
- * address, deletes the reservation, marks the user's onboarding mailbox-ready,
- * and returns the new mailbox id.
+ * Fails without provisioning when:
+ *   - `'domain_unverified'` — the reserved domain is not verified yet (a
+ *     pre-verification reservation on a brand-new instance). The reservation is
+ *     left in place so it can materialize once the domain verifies; the invitee
+ *     sees "reserved, activates when your domain verifies" progress meanwhile.
+ *   - `'address_taken'` — a live mailbox already holds the reserved address. The
+ *     reservation is left in place; the caller decides whether to clear it.
+ *
+ * On success it provisions the mailbox at the reserved address, deletes the
+ * reservation, marks the user's onboarding mailbox-ready, and returns the id.
  */
+export type ClaimReservedResult =
+	| { ok: true; mailboxId: Id<'mailboxes'> }
+	| { ok: false; reason: 'domain_unverified' | 'address_taken' };
+
 export async function claimReservedMailbox(
 	ctx: MutationCtx,
 	pending: Doc<'pendingMailboxes'>,
 	userId: string
-): Promise<{ ok: true; mailboxId: Id<'mailboxes'> } | { ok: false }> {
+): Promise<ClaimReservedResult> {
+	// A hosted mailbox must live on a VERIFIED sending domain — the reservation
+	// may have been made pre-verification (early-instance invite). Never stand up
+	// a mailbox on an unverified domain: inbound mail could not arrive, so it
+	// would be a dishonest "your mailbox is ready".
+	const domainRow = await ctx.db
+		.query('domains')
+		.withIndex('by_domain', (q) => q.eq('domain', pending.domain))
+		.first();
+	if (!domainRow || domainRow.status !== 'verified') {
+		return { ok: false as const, reason: 'domain_unverified' as const };
+	}
+
 	const liveCollision = await ctx.db
 		.query('mailboxes')
 		.withIndex('by_address', (q) => q.eq('address', pending.address))
 		.first();
 	if (liveCollision) {
-		return { ok: false as const };
+		return { ok: false as const, reason: 'address_taken' as const };
 	}
 
 	const mailboxId = await provisionMailbox(ctx, {
@@ -75,6 +96,48 @@ export async function claimReservedMailbox(
 	await markOnboardingStep(ctx, userId, 'mailboxReady');
 
 	return { ok: true as const, mailboxId };
+}
+
+/**
+ * Verify-time sweep: when a sending domain finally verifies, provision the
+ * mailboxes that were reserved on it for invitees who have ALREADY accepted (so
+ * they were parked in the "reserved, activates when your domain verifies" state).
+ * Fired as a lifecycle effect from `domains/lifecycle.ts` on the `→ verified`
+ * edge.
+ *
+ * Reservations whose invitee hasn't signed up yet are left untouched — they
+ * materialize through the normal accept-time claim (`claimForInvitation`), which
+ * now succeeds because the domain is verified. Bounded per domain (a handful of
+ * reservations on a brand-new instance). Returns how many mailboxes it stood up.
+ */
+export async function claimReservationsForVerifiedDomain(
+	ctx: MutationCtx,
+	domain: string
+): Promise<number> {
+	const normalized = normalizeDomain(domain);
+	const reservations = await ctx.db
+		.query('pendingMailboxes')
+		.withIndex('by_domain', (q) => q.eq('domain', normalized))
+		.collect();
+
+	let provisioned = 0;
+	for (const pending of reservations) {
+		// Only invitees who already have an account can be provisioned now; resolve
+		// the account by the invite-bound email (the same identity claim binds to).
+		const profile = await ctx.db
+			.query('userProfiles')
+			.withIndex('by_email', (q) => q.eq('email', pending.inviteeEmail))
+			.first();
+		if (!profile || profile.deletedAt !== undefined) {
+			continue;
+		}
+
+		const claim = await claimReservedMailbox(ctx, pending, profile.authUserId);
+		if (claim.ok) {
+			provisioned += 1;
+		}
+	}
+	return provisioned;
 }
 
 export const setForInvitation = authedMutation({
@@ -101,12 +164,23 @@ export const setForInvitation = authedMutation({
 			throwInvalidInput('Domain is required');
 		}
 
+		// The domain must be one this instance actually hosts — verified OR still
+		// registering/pending DNS. Reserving on a domain that isn't set up here at
+		// all (or that failed verification) would be a spoof / a promise we can't
+		// keep, so those are rejected. A reservation on a not-yet-verified domain is
+		// intentional (early-instance invites): it materializes into a live mailbox
+		// only once the domain verifies (see `claimReservedMailbox`).
 		const domainRow = await ctx.db
 			.query('domains')
 			.withIndex('by_domain', (q) => q.eq('domain', domain))
 			.first();
-		if (!domainRow || domainRow.status !== 'verified') {
-			throwInvalidState(`Domain ${domain} is not a verified domain`);
+		if (!domainRow) {
+			throwInvalidState(`Add ${domain} as a sending domain before reserving a mailbox on it.`);
+		}
+		if (domainRow.status === 'failed') {
+			throwInvalidState(
+				`Domain ${domain} failed verification — fix its DNS before reserving a mailbox on it.`
+			);
 		}
 
 		const address = canonicalAddress(`${localpart}@${domain}`);
@@ -210,6 +284,17 @@ export const claimForInvitation = authedMutation({
 
 		const claim = await claimReservedMailbox(ctx, pending, session.userId);
 		if (!claim.ok) {
+			if (claim.reason === 'domain_unverified') {
+				// Early-instance invite: the mailbox is reserved but its domain hasn't
+				// verified yet. KEEP the reservation — the verify-time sweep provisions
+				// it the moment the domain goes live. The invitee's Postbox guard shows
+				// "reserved, activates when your domain verifies" from `freshStartStatus`.
+				return {
+					created: false as const,
+					error: 'awaiting_domain' as const,
+					address: pending.address,
+				};
+			}
 			// A live mailbox already holds the reserved address — the reservation is
 			// stale, so clear it (the invitee will land in the fresh-start flow).
 			await ctx.db.delete(pending._id);

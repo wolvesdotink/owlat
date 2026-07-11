@@ -128,6 +128,10 @@ export const request = authedMutation({
  *   - `hasMailbox`    — a live personal mailbox already exists → land in Postbox.
  *   - `reservedAddress` — a hosted mailbox is reserved for their email but not
  *     yet claimed → offer to claim it.
+ *   - `reservationAwaitingDomain` — the reservation's sending domain hasn't
+ *     verified yet (an early-instance invite). The mailbox can't be stood up
+ *     until it does, so the guard shows "reserved, activates when your domain
+ *     verifies" progress rather than "being set up right now".
  *   - `hasOpenRequest` — they have already asked an admin (don't offer twice).
  * The "can they connect an external account" leg is a feature flag the client
  * already resolves, so it stays out of this read.
@@ -140,16 +144,27 @@ export const freshStartStatus = authedQuery({
 	): Promise<{
 		hasMailbox: boolean;
 		reservedAddress: string | null;
+		reservationAwaitingDomain: boolean;
 		hasOpenRequest: boolean;
 	}> => {
 		const session = await getBetterAuthSessionWithRole(ctx);
 		if (!session) {
-			return { hasMailbox: false, reservedAddress: null, hasOpenRequest: false };
+			return {
+				hasMailbox: false,
+				reservedAddress: null,
+				reservationAwaitingDomain: false,
+				hasOpenRequest: false,
+			};
 		}
 
 		const mailbox = await getActiveMailboxForUser(ctx, session.userId);
 		if (mailbox) {
-			return { hasMailbox: true, reservedAddress: null, hasOpenRequest: false };
+			return {
+				hasMailbox: true,
+				reservedAddress: null,
+				reservationAwaitingDomain: false,
+				hasOpenRequest: false,
+			};
 		}
 
 		const profile = await ctx.db
@@ -159,12 +174,20 @@ export const freshStartStatus = authedQuery({
 		const email = profile?.email?.trim().toLowerCase();
 
 		let reservedAddress: string | null = null;
+		let reservationAwaitingDomain = false;
 		if (email) {
 			const pending = await ctx.db
 				.query('pendingMailboxes')
 				.withIndex('by_invitee_email', (q) => q.eq('inviteeEmail', email))
 				.first();
 			reservedAddress = pending?.address ?? null;
+			if (pending) {
+				const domainRow = await ctx.db
+					.query('domains')
+					.withIndex('by_domain', (q) => q.eq('domain', pending.domain))
+					.first();
+				reservationAwaitingDomain = !domainRow || domainRow.status !== 'verified';
+			}
 		}
 
 		const open = await ctx.db
@@ -173,7 +196,12 @@ export const freshStartStatus = authedQuery({
 			.filter((q) => q.eq(q.field('status'), 'open'))
 			.first();
 
-		return { hasMailbox: false, reservedAddress, hasOpenRequest: Boolean(open) };
+		return {
+			hasMailbox: false,
+			reservedAddress,
+			reservationAwaitingDomain,
+			hasOpenRequest: Boolean(open),
+		};
 	},
 });
 
@@ -320,6 +348,11 @@ export const provisionFromRequest = authedMutation({
 		if (reserved) {
 			const claim = await claimReservedMailbox(ctx, reserved, row.authUserId);
 			if (!claim.ok) {
+				if (claim.reason === 'domain_unverified') {
+					throwInvalidState(
+						`Verify the sending domain ${reserved.domain} before provisioning ${reserved.address}.`
+					);
+				}
 				throwInvalidState(`A mailbox already exists at ${reserved.address}`);
 			}
 			return fulfil(claim.mailboxId);

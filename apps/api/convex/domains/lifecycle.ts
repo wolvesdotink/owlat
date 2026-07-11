@@ -31,6 +31,9 @@
  *   clear_provider_identity         — fires on `→ registering` when a
  *                                     previous identity sibling row exists.
  *   delete_with_provider            — fires on `remove()`.
+ *   claim_reserved_mailboxes        — fires on `→ verified`; provisions the
+ *                                     mailboxes reserved on this domain pre-
+ *                                     verification for already-accepted invitees.
  *
  * The lifecycle never branches on `providerType`. Provider variation lives
  * entirely behind the **Sending domain provider adapter (module)** seam —
@@ -52,13 +55,10 @@ import { internalMutation, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { recordAuditLog, type AuditAction } from '../lib/auditLog';
+import { claimReservationsForVerifiedDomain } from '../mail/pendingMailbox';
 import { dnsRecordsValidator, verificationResultsValidator } from '../lib/convexValidators';
 import { getOptional } from '../lib/env';
-import {
-	buildDmarcRecordValue,
-	DEFAULT_DMARC_POLICY,
-	dmarcPolicyValidator,
-} from './dmarc';
+import { buildDmarcRecordValue, DEFAULT_DMARC_POLICY, dmarcPolicyValidator } from './dmarc';
 import {
 	isSendingDomainProviderKind,
 	providerFor,
@@ -68,11 +68,7 @@ import {
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-export type SendingDomainStatus =
-	| 'registering'
-	| 'pending'
-	| 'verified'
-	| 'failed';
+export type SendingDomainStatus = 'registering' | 'pending' | 'verified' | 'failed';
 
 type DnsRecords = Doc<'domains'>['dnsRecords'];
 type VerificationResults = NonNullable<Doc<'domains'>['verificationResults']>;
@@ -126,9 +122,7 @@ export type SendingDomainCreateOutcome =
 	| { ok: true; domainId: Id<'domains'> }
 	| { ok: false; reason: 'invalid_format' | 'already_exists' };
 
-export type SendingDomainRemoveOutcome =
-	| { ok: true }
-	| { ok: false; reason: 'domain_not_found' };
+export type SendingDomainRemoveOutcome = { ok: true } | { ok: false; reason: 'domain_not_found' };
 
 // ─── Validators ─────────────────────────────────────────────────────────────
 
@@ -141,7 +135,7 @@ const providerIdentityValidator = v.union(
 		kind: v.literal('ses'),
 		dkimTokens: v.array(v.string()),
 		verificationToken: v.string(),
-	}),
+	})
 );
 
 const transitionInputValidator = v.union(
@@ -163,7 +157,7 @@ const transitionInputValidator = v.union(
 		at: v.number(),
 		error: v.optional(v.string()),
 		verificationResults: v.optional(verificationResultsValidator),
-	}),
+	})
 );
 
 const providerCheckResultValidator = v.object({
@@ -197,17 +191,14 @@ type ProviderCheckResult = { verified: boolean; lastError?: string };
  */
 export function deriveVerificationVerdict(
 	dns: VerificationResults,
-	providerCheck: ProviderCheckResult,
+	providerCheck: ProviderCheckResult
 ): 'verified' | 'failed' | 'pending' {
 	const dkimAllVerified = dns.dkim?.every((r) => r.verified) ?? false;
 	const mailFromAllVerified = !dns.mailFrom || dns.mailFrom.every((r) => r.verified);
 	// SPF is optional — when no SPF record is configured, it counts as verified.
 	const spfVerified = dns.spf ? dns.spf.verified === true : true;
 	const dnsAllVerified =
-		spfVerified &&
-		dkimAllVerified &&
-		dns.dmarc?.verified === true &&
-		mailFromAllVerified;
+		spfVerified && dkimAllVerified && dns.dmarc?.verified === true && mailFromAllVerified;
 
 	const dnsAnyFailed =
 		dns.spf?.verified === false ||
@@ -255,6 +246,13 @@ type Effect =
 			kind: 'delete_with_provider';
 			domain: string;
 			providerType: SendingDomainProviderKind;
+	  }
+	| {
+			// A domain just verified — provision any mailboxes reserved on it for
+			// invitees who already accepted (early-instance invites that were parked
+			// in the "activates when your domain verifies" state).
+			kind: 'claim_reserved_mailboxes';
+			domain: string;
 	  };
 
 type ReducerResult = {
@@ -265,10 +263,7 @@ type ReducerResult = {
 
 // ─── Reducer ────────────────────────────────────────────────────────────────
 
-function reduce(
-	domain: Doc<'domains'>,
-	input: SendingDomainTransitionInput,
-): ReducerResult {
+function reduce(domain: Doc<'domains'>, input: SendingDomainTransitionInput): ReducerResult {
 	const from = domain.status as SendingDomainStatus;
 	const to = input.to;
 	const isSelfLoop = from === to;
@@ -289,8 +284,7 @@ function reduceSelfLoop(input: SendingDomainTransitionInput): ReducerResult {
 	// fresh `verificationResults`. Everything else records nothing.
 	const carriesResults =
 		input.to === 'verified' ||
-		((input.to === 'pending' || input.to === 'failed') &&
-			input.verificationResults !== undefined);
+		((input.to === 'pending' || input.to === 'failed') && input.verificationResults !== undefined);
 
 	if (carriesResults) {
 		return {
@@ -308,7 +302,7 @@ function reduceSelfLoop(input: SendingDomainTransitionInput): ReducerResult {
 
 function buildPatch(
 	domain: Doc<'domains'>,
-	input: SendingDomainTransitionInput,
+	input: SendingDomainTransitionInput
 ): Record<string, unknown> {
 	const updatedAt = input.at;
 	switch (input.to) {
@@ -376,7 +370,7 @@ function buildPatch(
 function buildEffects(
 	domain: Doc<'domains'>,
 	input: SendingDomainTransitionInput,
-	from: SendingDomainStatus,
+	from: SendingDomainStatus
 ): Effect[] {
 	const effects: Effect[] = [];
 	const auditAction = auditActionFor(input.to, from);
@@ -407,13 +401,18 @@ function buildEffects(
 		});
 	}
 
+	// `buildEffects` runs only for real (non-self-loop) transitions, so this fires
+	// on the actual `registering|pending|failed → verified` edge — never on a
+	// re-verification self-loop. Provision the mailboxes reserved on this domain
+	// pre-verification for invitees who already accepted.
+	if (input.to === 'verified') {
+		effects.push({ kind: 'claim_reserved_mailboxes', domain: domain.domain });
+	}
+
 	return effects;
 }
 
-function auditActionFor(
-	to: SendingDomainStatus,
-	from: SendingDomainStatus,
-): AuditAction | null {
+function auditActionFor(to: SendingDomainStatus, from: SendingDomainStatus): AuditAction | null {
 	switch (to) {
 		case 'registering':
 			// Regenerate path — never reached via `create()` (which has its
@@ -437,7 +436,7 @@ function auditActionFor(
 
 function buildAuditDetails(
 	input: SendingDomainTransitionInput,
-	from: SendingDomainStatus,
+	from: SendingDomainStatus
 ): Record<string, string | number | boolean | null> {
 	const base: Record<string, string | number | boolean | null> = {
 		previousStatus: from,
@@ -455,7 +454,7 @@ function buildAuditDetails(
 async function applyEffects(
 	ctx: MutationCtx,
 	effects: ReadonlyArray<Effect>,
-	userId: string,
+	userId: string
 ): Promise<void> {
 	for (const effect of effects) {
 		switch (effect.kind) {
@@ -470,11 +469,10 @@ async function applyEffects(
 				break;
 			}
 			case 'register_with_provider': {
-				await ctx.scheduler.runAfter(
-					0,
-					internal.domains.providers.registerAction.run,
-					{ providerType: effect.providerType, domainId: effect.domainId },
-				);
+				await ctx.scheduler.runAfter(0, internal.domains.providers.registerAction.run, {
+					providerType: effect.providerType,
+					domainId: effect.domainId,
+				});
 				break;
 			}
 			case 'clear_provider_identity': {
@@ -486,8 +484,12 @@ async function applyEffects(
 				await ctx.scheduler.runAfter(
 					0,
 					internal.domains.providers.registerAction.deleteDomainAction,
-					{ providerType: effect.providerType, domain: effect.domain },
+					{ providerType: effect.providerType, domain: effect.domain }
 				);
+				break;
+			}
+			case 'claim_reserved_mailboxes': {
+				await claimReservationsForVerifiedDomain(ctx, effect.domain);
 				break;
 			}
 		}
@@ -500,7 +502,7 @@ async function dispatch(
 	ctx: MutationCtx,
 	domain: Doc<'domains'>,
 	input: SendingDomainTransitionInput,
-	userId: string,
+	userId: string
 ): Promise<SendingDomainTransitionOutcome> {
 	const from = domain.status as SendingDomainStatus;
 	const isLegal = LEGAL_EDGES[from].has(input.to);
@@ -518,11 +520,7 @@ async function dispatch(
 
 	// On register-completion `→ pending`, persist the per-provider identity
 	// sibling row atomically with the status patch.
-	if (
-		input.to === 'pending' &&
-		input.identity !== undefined &&
-		!isSelfLoop
-	) {
+	if (input.to === 'pending' && input.identity !== undefined && !isSelfLoop) {
 		const providerKind = isSendingDomainProviderKind(domain.providerType)
 			? domain.providerType
 			: null;
@@ -600,7 +598,7 @@ export const create = internalMutation({
 					providerType: providerKind,
 				},
 			],
-			args.userId,
+			args.userId
 		);
 
 		return { ok: true, domainId };
@@ -759,7 +757,7 @@ export const setDmarcPolicy = internalMutation({
 					},
 				},
 			],
-			args.userId,
+			args.userId
 		);
 
 		return { ok: true, policy: args.policy, changed: true };
@@ -839,7 +837,7 @@ export const recordDkimRotation = internalMutation({
 				(r, i) =>
 					r.host === nextDkim[i]!.host &&
 					r.value === nextDkim[i]!.value &&
-					r.type === nextDkim[i]!.type,
+					r.type === nextDkim[i]!.type
 			);
 		if (unchanged) {
 			return { ok: true, phase: args.phase, selector: args.selector, changed: false };
@@ -881,7 +879,7 @@ export const recordDkimRotation = internalMutation({
 					},
 				},
 			],
-			args.userId,
+			args.userId
 		);
 
 		return { ok: true, phase: args.phase, selector: args.selector, changed: true };

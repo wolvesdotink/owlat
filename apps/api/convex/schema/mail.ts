@@ -39,7 +39,13 @@ export const mailTables = {
 		inviteeEmail: v.string(), // canonical lowercase — claim is bound to this identity
 		organizationId: v.string(),
 		localpart: v.string(), // canonical lowercase
-		domain: v.string(), // verified domain at invite time
+		// Sending domain at invite time. It does NOT have to be verified yet: on a
+		// brand-new instance an admin can reserve a mailbox on a domain that is
+		// still registering/pending DNS, so the earliest invitees get "reserved,
+		// activates when your domain verifies" progress instead of a dead end. The
+		// reservation only materializes into a live mailbox once the domain is
+		// verified (claim gate in mail/pendingMailbox.ts + the verify-time sweep).
+		domain: v.string(),
 		address: v.string(), // canonical "${localpart}@${domain}"
 		displayName: v.optional(v.string()),
 		createdAt: v.number(),
@@ -49,7 +55,10 @@ export const mailTables = {
 		.index('by_address', ['address'])
 		// Look up an invitee's reservation by their email at first login (the
 		// fresh-start welcome shows "your mailbox X is reserved — claim it").
-		.index('by_invitee_email', ['inviteeEmail']),
+		.index('by_invitee_email', ['inviteeEmail'])
+		// Sweep every reservation on a domain when it finally verifies, so already-
+		// accepted invitees' mailboxes provision the moment the domain goes live.
+		.index('by_domain', ['domain']),
 
 	// Per-user mailbox identity (e.g. marcel@hinterland.camp).
 	// One BetterAuth user can own multiple mailboxes.
