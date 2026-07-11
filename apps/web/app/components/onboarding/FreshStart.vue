@@ -5,9 +5,13 @@
  * Owlat is its own platform by default (locked decision 5): this is a pure
  * product welcome, never an import prompt. The two-minute setup personalises the
  * mailbox reserved for the member (display name, signature, notification scope)
- * and offers an optional test email to themselves, then drops them into Postbox.
- * Finishing marks `userOnboarding.mailboxReady`; the optional test send marks
- * `firstSendDone` server-side (in `mail.drafts.send`).
+ * and — ONLY when the instance actually has a sending transport — offers an
+ * optional test email to themselves, then drops them into Postbox. Finishing
+ * marks `userOnboarding.mailboxReady`; a real test send marks `firstSendDone`
+ * server-side (in `mail.drafts.send`, which itself gates the stamp on a
+ * transport). When there is no send path yet we show an honest "your admin is
+ * still setting up sending" note instead of a check the member can't complete,
+ * and the unified onboarding checklist reflects that `firstSendDone` stays open.
  *
  * When the member has no mailbox and no way to make one, the same honest
  * next-step surface the Postbox guard uses is shown (reserved / connect an
@@ -21,6 +25,17 @@ const userId = computed(() => user.value?.id ?? null);
 
 const { currentMailbox, isLoading: mailboxLoading } = usePostboxMailbox();
 const mailbox = computed(() => currentMailbox.value);
+
+// Whether this instance can ACTUALLY send. Without a configured transport a test
+// send is silently dropped and never records `firstSendDone` (gated server-side
+// in `mail.drafts.send`), so we must not offer a "completes onboarding" button
+// that can't complete anything — we reframe the step as an honest "your admin is
+// still setting up sending" note instead.
+const { data: transport, isLoading: transportLoading } = useConvexQuery(
+	api.delivery.status.getTransportSummary,
+	{}
+);
+const canSend = computed(() => transport.value?.canSend ?? false);
 
 // ── Two-minute setup fields ──
 const displayName = ref('');
@@ -74,10 +89,15 @@ function signatureToHtml(text: string): string {
 	return `<p>${escaped.replace(/\n/g, '<br />')}</p>`;
 }
 
-/** Optional: email yourself. Soft-fails (no send path yet is not a blocker). */
+/**
+ * Optional: email yourself. Only reachable when a transport exists (the button
+ * is hidden otherwise). Soft-fails on a TRANSIENT send error — a real transport
+ * that hiccups is not a blocker — but a missing transport never gets here, so we
+ * never record a completion that didn't happen.
+ */
 async function sendTestEmail() {
 	const mb = mailbox.value;
-	if (!mb || testSending.value) return;
+	if (!mb || testSending.value || !canSend.value) return;
 	testSending.value = true;
 	try {
 		const created = await createDraftOp.run({ mailboxId: mb._id });
@@ -207,9 +227,17 @@ function skipToInbox() {
 					</p>
 				</div>
 
-				<!-- Optional test email -->
+				<!-- Optional test email — only an honest option when a transport exists. -->
 				<div class="border-t border-border-subtle pt-4">
-					<div class="flex items-center justify-between gap-4">
+					<!-- Loading the transport state: hold the row so it never flashes
+					     between the button and the "still setting up" note. -->
+					<div v-if="transportLoading" class="flex items-center gap-3">
+						<UiSpinner size="sm" />
+						<p class="text-xs text-text-tertiary">Checking whether sending is ready…</p>
+					</div>
+
+					<!-- A real transport exists: offer the completable test send. -->
+					<div v-else-if="canSend" class="flex items-center justify-between gap-4">
 						<div class="min-w-0">
 							<p class="text-sm font-medium">Send yourself a test</p>
 							<p class="mt-0.5 text-xs text-text-tertiary">
@@ -231,6 +259,20 @@ function skipToInbox() {
 						>
 							<Icon name="lucide:check-circle-2" class="h-4 w-4" /> Sent
 						</span>
+					</div>
+
+					<!-- No transport yet: an honest, informational note — NOT a check the
+					     member can complete. Sending isn't wired up, so we don't pretend
+					     a test would land anywhere. -->
+					<div v-else class="flex items-start gap-3">
+						<Icon name="lucide:clock" class="mt-0.5 h-4 w-4 shrink-0 text-text-tertiary" />
+						<div class="min-w-0">
+							<p class="text-sm font-medium">Your admin is still setting up sending</p>
+							<p class="mt-0.5 text-xs text-text-tertiary">
+								You can finish your profile now — the moment a sending transport is ready, you'll be
+								able to send your first message.
+							</p>
+						</div>
 					</div>
 				</div>
 			</div>
