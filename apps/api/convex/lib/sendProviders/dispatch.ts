@@ -1,3 +1,5 @@
+'use node';
+
 /**
  * Send dispatch (helper).
  *
