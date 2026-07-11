@@ -28,10 +28,12 @@ export type OnboardingMode = 'fresh' | 'migration';
  * email over" row keyed on `importDone`.
  *
  * `aiConnected` is the exception — it is NOT a backend onboarding stamp. Its
- * completion is derived at render time from the org's AI-provider config
- * (`aiProviderConfig.getConfig` → `configured`), so a stored provider key marks
- * it done for every member of the instance. {@link AI_CONNECTED_STEP_ID} names
- * it for the one component that special-cases its completion source.
+ * completion is derived at render time from the instance's AI configuration
+ * gap (`workspaces.featureFlags.getFlagsConfigStatus` — the `ai` flag is absent
+ * from the gap map once a provider is configured by EITHER `LLM_*` env OR a
+ * stored key), so an env-only self-hoster and a UI-configured org both mark it
+ * done for every member of the instance. {@link AI_CONNECTED_STEP_ID} names it
+ * for the one component that special-cases its completion source.
  */
 export type ChecklistStepId =
 	| 'mailboxReady'
@@ -48,6 +50,22 @@ export type ChecklistStepId =
  * distinction is testable.
  */
 export const AI_CONNECTED_STEP_ID = 'aiConnected' as const satisfies ChecklistStepId;
+
+/**
+ * Whether the org-scoped `aiConnected` step is complete, derived from the
+ * per-flag config-gap map returned by
+ * `workspaces.featureFlags.getFlagsConfigStatus`. That backend query lists the
+ * `ai` flag ONLY while AI is unconfigured, and treats env (`LLM_*`) OR a stored
+ * provider key as satisfying config — so the flag's ABSENCE from the map means a
+ * provider is configured either way, which is exactly when this step is done.
+ *
+ * While the query is still loading the map is `undefined`; that is "not yet
+ * known", NOT configured, so we require a defined map before reporting done —
+ * otherwise the step would flash complete on first paint.
+ */
+export function isAiConnected(configGapStatus: Record<string, string[]> | undefined): boolean {
+	return configGapStatus !== undefined && !('ai' in configGapStatus);
+}
 
 export interface ChecklistStepMeta {
 	id: ChecklistStepId;
