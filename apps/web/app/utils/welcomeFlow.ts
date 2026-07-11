@@ -150,8 +150,8 @@ export function visibleChecklistSteps(mode: OnboardingMode): ChecklistStepMeta[]
 
 /**
  * Whether the checklist has nothing left to do: every VISIBLE step for the mode
- * is complete. A completed checklist disappears for good (see
- * `shouldShowUserChecklist` in `~/utils/onboarding`).
+ * is complete. A completed checklist section disappears for good (see
+ * `buildGettingStarted` in `~/utils/gettingStarted`).
  */
 export function isChecklistComplete(
 	mode: OnboardingMode,
