@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
-import type { Id } from '@owlat/api/dataModel';
 import ClickHeatmap from '~/components/dashboard/ClickHeatmap.vue';
 import CampaignAbComparison from '~/components/dashboard/CampaignAbComparison.vue';
 import { selectPreviousComparable, computeStatDeltas, NO_DELTAS } from '~/utils/campaignReport';
@@ -12,9 +11,8 @@ definePageMeta({
 	middleware: 'auth',
 });
 
-const route = useRoute();
 const router = useRouter();
-const campaignId = computed(() => route.params['id'] as Id<'campaigns'>);
+const campaignId = useRouteId<'campaigns'>();
 
 // Mutations
 const { run: duplicateCampaign } = useBackendOperation(api.campaigns.campaigns.duplicate, {

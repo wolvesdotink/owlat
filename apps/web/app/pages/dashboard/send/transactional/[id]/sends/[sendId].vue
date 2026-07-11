@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
-import type { Id } from '@owlat/api/dataModel';
 
 useHead({ title: 'Send Details — Owlat' });
 
@@ -9,9 +8,8 @@ definePageMeta({
 	middleware: 'auth',
 });
 
-const route = useRoute();
-const emailId = computed(() => route.params['id'] as Id<'transactionalEmails'>);
-const sendId = computed(() => route.params['sendId'] as Id<'transactionalSends'>);
+const emailId = useRouteId<'transactionalEmails'>();
+const sendId = useRouteId<'transactionalSends'>('sendId');
 
 const { data: send, isLoading } = useConvexQuery(api.transactional.sends.get, () => ({
 	id: sendId.value,

@@ -6,7 +6,6 @@ import {
 	type Variable,
 } from '@owlat/email-builder';
 import { api } from '@owlat/api';
-import type { Id } from '@owlat/api/dataModel';
 
 useHead({ title: 'Edit Email — Owlat' });
 
@@ -15,9 +14,8 @@ definePageMeta({
 	middleware: 'auth',
 });
 
-const route = useRoute();
 const router = useRouter();
-const templateId = route.params['id'] as Id<'emailTemplates'>;
+const templateId = useRouteId<'emailTemplates'>();
 const { hasActiveOrganization } = useOrganizationContext();
 const { isFocusMode } = useFocusMode();
 
@@ -27,7 +25,7 @@ const {
 	isLoading: templateLoading,
 	error: templateError,
 	refetch: refetchTemplate,
-} = useConvexQuery(api.emailTemplates.emails.get, () => ({ templateId }));
+} = useConvexQuery(api.emailTemplates.emails.get, () => ({ templateId: templateId.value }));
 
 // Mutations
 const { run: updateTemplate } = useBackendOperation(api.emailTemplates.emails.update, {
@@ -97,7 +95,7 @@ const {
 	},
 	save: async (ctx) => {
 		await publishableEmailSave({
-			identifier: { emailType: 'marketing', emailId: templateId },
+			identifier: { emailType: 'marketing', emailId: templateId.value },
 			blocks: ctx.blocks.value,
 			renderOptions: { theme: emailTheme.value, variableType: 'personalization' },
 			supportedLanguages: template.value?.supportedLanguages ?? [],
@@ -107,7 +105,7 @@ const {
 				// operation module has toasted any categorized failure; throw so the
 				// editor stays dirty instead of being marked clean on a failed save.
 				const result = await updateTemplate({
-					templateId,
+					templateId: templateId.value,
 					name: ctx.name.value,
 					subject: ctx.subject.value,
 					content: JSON.stringify(ctx.blocks.value),
@@ -128,12 +126,12 @@ const handleBack = () => {
 
 // Settings handler
 const handleSettings = () => {
-	router.push(`/dashboard/send/emails/${templateId}/settings`);
+	router.push(`/dashboard/send/emails/${templateId.value}/settings`);
 };
 
 // Translations handler
 const handleTranslations = () => {
-	router.push(`/dashboard/send/emails/${templateId}/translations`);
+	router.push(`/dashboard/send/emails/${templateId.value}/translations`);
 };
 </script>
 

@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import { UnsavedChangesDialog } from '@owlat/email-builder';
-import type { Id } from '@owlat/api/dataModel';
 
 useHead({ title: 'Edit Campaign — Owlat' });
 
@@ -10,10 +9,8 @@ definePageMeta({
 	middleware: 'auth',
 });
 
-const route = useRoute();
-
 // Get campaign ID from route
-const campaignId = computed(() => route.params['id'] as Id<'campaigns'>);
+const campaignId = useRouteId<'campaigns'>();
 
 // Initialize composables
 const abTest = useCampaignABTest();

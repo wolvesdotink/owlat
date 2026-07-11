@@ -9,10 +9,8 @@ definePageMeta({
 	middleware: 'auth',
 });
 
-const route = useRoute();
-
 // Get contact ID from route
-const contactId = computed(() => route.params['id'] as Id<'contacts'>);
+const contactId = useRouteId<'contacts'>();
 
 // GDPR data-subject access export: lazily fetch the full personal-data bundle
 // on demand and download it as JSON. The query is skipped until requested.

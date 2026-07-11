@@ -10,14 +10,13 @@ definePageMeta({
 	middleware: 'auth',
 });
 
-const route = useRoute();
 const router = useRouter();
 
 // Breadcrumbs
 const { setDynamicBreadcrumbs, clearDynamicBreadcrumbs } = useBreadcrumbs();
 
 // Get the segment ID from the route
-const segmentId = computed(() => route.params['id'] as Id<'segments'>);
+const segmentId = useRouteId<'segments'>();
 
 // Organization loading state
 const { isLoading: organizationLoading } = useOrganizationContext();
@@ -35,24 +34,22 @@ const {
 	isLoading: membersLoading,
 	loadMore,
 	status: membersPaginationStatus,
-} = usePaginatedQuery(
-	api.segments.listMembers,
-	() => ({ id: segmentId.value }),
-	{ initialNumItems: 200 }
-);
+} = usePaginatedQuery(api.segments.listMembers, () => ({ id: segmentId.value }), {
+	initialNumItems: 200,
+});
 
 const isLoading = computed(
 	() => organizationLoading.value || segmentLoading.value || membersLoading.value
 );
 
 // Contact-property labels for the editor context + describeFilters helper.
-const { data: contactProperties } = useOrganizationQuery(api.contacts.properties.listByOrganization);
+const { data: contactProperties } = useOrganizationQuery(
+	api.contacts.properties.listByOrganization
+);
 const { results: topics } = useTopicsList();
 const { describeFilters } = useSegmentFilters({ contactProperties, topics });
 
-const filterSummary = computed(() =>
-	segment.value ? describeFilters(segment.value.filters) : ''
-);
+const filterSummary = computed(() => (segment.value ? describeFilters(segment.value.filters) : ''));
 
 // Update breadcrumbs when segment data is loaded
 watch(
@@ -398,7 +395,11 @@ const handleExport = async () => {
 									>
 										<div class="flex items-center gap-1">
 											Email
-											<Icon v-if="getSortIcon('email')" :name="getSortIcon('email')!" class="w-4 h-4" />
+											<Icon
+												v-if="getSortIcon('email')"
+												:name="getSortIcon('email')!"
+												class="w-4 h-4"
+											/>
 										</div>
 									</th>
 									<th
