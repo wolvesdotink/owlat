@@ -17,7 +17,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { defineComponent, h, ref } from 'vue';
 import { mount } from '@vue/test-utils';
-import UiConfirmationDialog from '../../../../packages/ui/components/ui/ConfirmationDialog.vue';
+import UiConfirmationDialog from '@owlat/ui/components/ui/ConfirmationDialog.vue';
 
 // UiConfirmationDialog is authored against Nuxt auto-imports (UiModal/UiButton/Icon).
 // Minimal stubs stand in for those so we exercise the dialog's own confirm/cancel/
