@@ -42,13 +42,15 @@ export interface InboundMxRecord {
 }
 
 /**
- * True when any inbound feature flag is enabled in the resolved flag map. Drives
- * whether the Receiving DNS section is shown at all. Returns false for a
- * missing map (still loading) so the section never flashes before flags arrive.
+ * True when any inbound feature flag is enabled in the resolved flag map. The
+ * Receiving DNS section always renders (so MX setup isn't a chicken-and-egg);
+ * this result drives its framing — enabled shows the live firewall/PTR detail,
+ * while false shows the honest "receiving isn't turned on yet — here's how"
+ * state. Returns false for a missing map (still loading); the caller additionally
+ * waits on the flag subscription so the "not turned on yet" copy never flashes
+ * on an inbound-enabled install before the live flags arrive.
  */
-export function hasInboundFeature(
-	resolved: Record<string, boolean> | null | undefined,
-): boolean {
+export function hasInboundFeature(resolved: Record<string, boolean> | null | undefined): boolean {
 	if (!resolved) return false;
 	return INBOUND_FEATURE_FLAGS.some((flag) => resolved[flag] === true);
 }
@@ -62,12 +64,9 @@ export function hasInboundFeature(
  */
 export function buildInboundMxRecords(
 	domain: string,
-	mailHost: string | null | undefined,
+	mailHost: string | null | undefined
 ): InboundMxRecord[] {
-	const target = (mailHost ?? '')
-		.trim()
-		.toLowerCase()
-		.replace(/\.$/, ''); // strip a trailing FQDN root dot
+	const target = (mailHost ?? '').trim().toLowerCase().replace(/\.$/, ''); // strip a trailing FQDN root dot
 	if (!domain.trim() || !target) return [];
 	return [
 		{
