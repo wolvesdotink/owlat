@@ -46,14 +46,9 @@ const { memberSearch, filteredMembers, isMailboxStatusPending, mailboxMetaFor } 
 // Opened via its exposed open() from the permission-gated "Invite" affordances.
 const inviteModal = ref<{ open: () => void } | null>(null);
 
-// Copyable accept links for the pending-invites list. Every invitation exposes
-// an accept URL of the form SITE_URL/invite/accept?id=<id>; this is the path
-// that works even when outbound email delivery isn't configured yet.
-const { copy } = useCopyToClipboard();
-const requestUrl = useRequestURL();
-function buildAcceptUrl(invitationId: string): string {
-	return `${requestUrl.origin}/invite/accept?id=${encodeURIComponent(invitationId)}`;
-}
+// Copyable accept links for the pending-invites list. Shared with the invite
+// modal so the two build and copy identical links.
+const { buildAcceptUrl, copyLinkText } = useInviteLinks();
 
 // Whether an outbound transport is actually configured. The resend API call
 // succeeds even when it isn't (the send hook fails closed and BetterAuth
@@ -113,11 +108,6 @@ const handleCancelInvite = async () => {
 	}
 };
 
-// Copy an invite's accept link to the clipboard.
-async function copyLinkText(url: string) {
-	const ok = await copy(url);
-	showToast(ok ? 'Invite link copied' : 'Could not copy the link', ok ? 'success' : 'error');
-}
 function copyInviteLink(invitationId: string) {
 	return copyLinkText(buildAcceptUrl(invitationId));
 }

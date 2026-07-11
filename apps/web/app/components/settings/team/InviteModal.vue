@@ -13,14 +13,9 @@ const { organizationId, invitations, invite } = useOrganization();
 // the role legend never diverge.
 const inviteRoleOptions = ROLE_DEFINITIONS.filter((r) => r.role !== 'owner');
 
-// Copyable accept links. Every invitation exposes an accept URL of the form
-// SITE_URL/invite/accept?id=<id>; this is the path that works even when
-// outbound email delivery isn't configured yet.
-const { copy } = useCopyToClipboard();
-const requestUrl = useRequestURL();
-function buildAcceptUrl(invitationId: string): string {
-	return `${requestUrl.origin}/invite/accept?id=${encodeURIComponent(invitationId)}`;
-}
+// Copyable accept links, shared with the Team page so the two build and copy
+// identical links.
+const { buildAcceptUrl, copyLinkText } = useInviteLinks();
 
 // Postbox feature + verified domain lookup for the optional mailbox slot.
 const { isEnabled } = useFeatureFlag();
@@ -267,12 +262,6 @@ const handleInvite = async () => {
 		isInviting.value = false;
 	}
 };
-
-// Copy an invite's accept link to the clipboard.
-async function copyLinkText(url: string) {
-	const ok = await copy(url);
-	showToast(ok ? 'Invite link copied' : 'Could not copy the link', ok ? 'success' : 'error');
-}
 
 // Opened by the parent's "Invite Member" affordances (all permission-gated).
 defineExpose({ open: openInviteModal });
