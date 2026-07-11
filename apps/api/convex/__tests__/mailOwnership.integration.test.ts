@@ -26,7 +26,7 @@
  */
 
 import { convexTest, type TestConvex } from 'convex-test';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import schema from '../schema';
 import { api } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
@@ -414,6 +414,123 @@ describe('mail.drafts.send + cancelPendingSend ownership', () => {
 
 		const still = await t.run(async (ctx) => ctx.db.get(draftId));
 		expect(still?.state).toBe('pending_send');
+	});
+});
+
+// ════════════════════════════════════════════════════════════════════
+// drafts.send — an HONEST firstSendDone (never completed without a transport)
+// ════════════════════════════════════════════════════════════════════
+
+describe('mail.drafts.send — honest firstSendDone gating', () => {
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
+
+	// Read the caller's onboarding `firstSendDone` stamp (null when unset).
+	const readFirstSendDone = (t: TestConvex<typeof schema>, authUserId: string) =>
+		t.run(async (ctx) => {
+			const row = await ctx.db
+				.query('userOnboarding')
+				.withIndex('by_auth_user_id', (q) => q.eq('authUserId', authUserId))
+				.first();
+			return row?.firstSendDone ?? null;
+		});
+
+	async function sendOwnTestDraft(
+		t: TestConvex<typeof schema>,
+		mailboxId: Id<'mailboxes'>
+	): Promise<void> {
+		const { draftId } = await t.mutation(api.mail.drafts.create, { mailboxId });
+		await t.mutation(api.mail.drafts.update, {
+			draftId,
+			toAddresses: ['recipient@example.com'],
+		});
+		await t.mutation(api.mail.drafts.send, { draftId, undoSendDelayMs: 30_000 });
+	}
+
+	it('does NOT stamp firstSendDone when the instance has no transport', async () => {
+		const t = convexTest(schema, modules);
+		const a = await seedMailbox(t, 'user-alice', 'alice@hinterland.camp');
+
+		// No EMAIL_PROVIDER / provider route configured — the send is silently
+		// undeliverable, so the milestone must NOT be recorded.
+		vi.stubEnv('EMAIL_PROVIDER', '');
+		setUser('user-alice', 'editor');
+		await sendOwnTestDraft(t, a.mailboxId);
+
+		expect(await readFirstSendDone(t, 'user-alice')).toBeNull();
+	});
+
+	it('stamps firstSendDone on a real send once a hosted transport is configured', async () => {
+		const t = convexTest(schema, modules);
+		const a = await seedMailbox(t, 'user-alice', 'alice@hinterland.camp');
+
+		// A configured MTA provider — hosted mail can actually ship, so the send
+		// honestly completes the first-send step.
+		vi.stubEnv('EMAIL_PROVIDER', 'mta');
+		vi.stubEnv('MTA_API_URL', 'https://mta.example');
+		vi.stubEnv('MTA_API_KEY', 'secret');
+		setUser('user-alice', 'editor');
+		await sendOwnTestDraft(t, a.mailboxId);
+
+		expect(await readFirstSendDone(t, 'user-alice')).toBeGreaterThan(0);
+	});
+
+	it('stamps firstSendDone for an external mailbox once the mail-sync worker is configured', async () => {
+		const t = convexTest(schema, modules);
+		// External mailbox ships through the member's own SMTP via the mail-sync
+		// worker — its transport is the worker env, not the instance provider.
+		const mailboxId = await t.run(async (ctx) => {
+			const now = Date.now();
+			return ctx.db.insert('mailboxes', {
+				userId: 'user-ext',
+				organizationId: 'org-1',
+				address: 'ext@hinterland.camp',
+				domain: 'hinterland.camp',
+				kind: 'external',
+				status: 'active',
+				usedBytes: 0,
+				uidValidity: now,
+				createdAt: now,
+				updatedAt: now,
+			});
+		});
+
+		// No instance provider, but the external worker IS configured.
+		vi.stubEnv('EMAIL_PROVIDER', '');
+		vi.stubEnv('MAIL_SYNC_API_URL', 'https://sync.example');
+		vi.stubEnv('MAIL_SYNC_API_KEY', 'secret');
+		setUser('user-ext', 'editor');
+		await sendOwnTestDraft(t, mailboxId);
+
+		expect(await readFirstSendDone(t, 'user-ext')).toBeGreaterThan(0);
+	});
+
+	it('does NOT stamp firstSendDone for an external mailbox when the worker is unconfigured', async () => {
+		const t = convexTest(schema, modules);
+		const mailboxId = await t.run(async (ctx) => {
+			const now = Date.now();
+			return ctx.db.insert('mailboxes', {
+				userId: 'user-ext',
+				organizationId: 'org-1',
+				address: 'ext@hinterland.camp',
+				domain: 'hinterland.camp',
+				kind: 'external',
+				status: 'active',
+				usedBytes: 0,
+				uidValidity: now,
+				createdAt: now,
+				updatedAt: now,
+			});
+		});
+
+		vi.stubEnv('EMAIL_PROVIDER', '');
+		vi.stubEnv('MAIL_SYNC_API_URL', '');
+		vi.stubEnv('MAIL_SYNC_API_KEY', '');
+		setUser('user-ext', 'editor');
+		await sendOwnTestDraft(t, mailboxId);
+
+		expect(await readFirstSendDone(t, 'user-ext')).toBeNull();
 	});
 });
 
