@@ -65,8 +65,6 @@ export interface GettingStartedStep {
 	cta: string;
 	icon: string;
 	completed: boolean;
-	/** Opens in a new tab (docs / external dashboard). */
-	external?: boolean;
 }
 
 export interface GettingStartedSection {
@@ -154,7 +152,7 @@ export const INSTANCE_STEPS: readonly InstanceStepMeta[] = [
 		href: '/dashboard/delivery/domains',
 		cta: 'Add domain',
 	},
-] as const;
+];
 
 /**
  * The optional backups step (platform-admin only, self-host, until a schedule is
@@ -217,7 +215,7 @@ export function buildGettingStarted(input: GettingStartedInput): GettingStartedM
 			...step,
 			completed: input.instanceFlags[step.id],
 		}));
-		if (input.showBackupsStep) {
+		if (input.showBackupsStep && input.isSelfHost) {
 			steps.push({ ...BACKUPS_STEP, completed: false });
 		}
 		sections.push({
