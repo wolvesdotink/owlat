@@ -17,10 +17,9 @@ const DATASET_OPTIONS = [
 
 type DatasetValue = (typeof DATASET_OPTIONS)[number]['value'];
 
-const { run: createFromPrompt } = useBackendOperation(
-	api.visualizationAgent.createFromPrompt,
-	{ label: 'Create visualization' },
-);
+const { run: createFromPrompt } = useBackendOperation(api.visualizationAgent.createFromPrompt, {
+	label: 'Create visualization',
+});
 
 const prompt = ref('');
 const pinToBoard = ref(false);
@@ -54,9 +53,9 @@ const handleCreate = async () => {
 			<h3 class="text-lg font-medium text-text-primary">Create Visualization</h3>
 		</div>
 		<p class="text-sm text-text-secondary mb-4">
-			Describe a chart in natural language and the AI agent will generate an interactive
-			component. Leave the data source on <strong>Illustrative sample data</strong> for a layout
-			mockup, or pick one of the live datasets below to chart your account's real numbers.
+			Describe a chart in natural language and the AI agent will generate an interactive component.
+			Leave the data source on <strong>Illustrative sample data</strong> for a layout mockup, or
+			pick one of the live datasets below to chart your account's real numbers.
 		</p>
 
 		<div class="space-y-3">
@@ -95,10 +94,7 @@ const handleCreate = async () => {
 					:disabled="!prompt.trim() || isCreating"
 					@click="handleCreate"
 				>
-					<div
-						v-if="isCreating"
-						class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"
-					/>
+					<UiSpinner v-if="isCreating" size="xs" tone="inverse" />
 					<Icon v-else name="lucide:sparkles" class="w-4 h-4" />
 					{{ isCreating ? 'Generating...' : 'Generate' }}
 				</button>

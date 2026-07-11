@@ -400,9 +400,7 @@ onBeforeUnmount(() => {
 						v-if="isSearching && !hasAnyResults"
 						class="px-4 py-8 text-center text-text-tertiary"
 					>
-						<div
-							class="animate-spin w-5 h-5 border-2 border-text-tertiary border-t-brand rounded-full mx-auto"
-						/>
+						<UiSpinner class="mx-auto" size="sm" tone="brand" />
 						<p class="mt-2 text-sm">Searching…</p>
 					</div>
 

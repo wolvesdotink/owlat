@@ -23,12 +23,8 @@ function close() {
 </script>
 
 <template>
-	<div
-		v-if="open && password"
-		class="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
-		@click.self="close"
-	>
-		<div class="bg-bg-elevated rounded-md w-full max-w-md p-5 shadow-2xl">
+	<UiModal :open="open && !!password" size="md" @update:open="emit('update:open', $event)">
+		<div v-if="password">
 			<header class="flex items-start gap-3 mb-4">
 				<div
 					class="w-9 h-9 rounded-full bg-warning/10 text-warning flex items-center justify-center flex-shrink-0"
@@ -38,8 +34,8 @@ function close() {
 				<div class="flex-1">
 					<h2 class="text-lg font-semibold">Save this password now</h2>
 					<p class="text-sm text-text-secondary mt-0.5">
-						Owlat does not store the cleartext — once you close this dialog
-						it is gone for good. Paste it into <strong>{{ label || 'your client' }}</strong>
+						Owlat does not store the cleartext — once you close this dialog it is gone for good.
+						Paste it into <strong>{{ label || 'your client' }}</strong>
 						and revoke this entry to rotate later.
 					</p>
 				</div>
@@ -52,21 +48,12 @@ function close() {
 			</div>
 
 			<div class="flex items-center justify-between mt-4">
-				<button
-					type="button"
-					class="btn btn-ghost"
-					@click="copyPassword"
-				>
-					<Icon
-						:name="copied ? 'lucide:check' : 'lucide:copy'"
-						class="w-4 h-4 mr-1.5"
-					/>
+				<button type="button" class="btn btn-ghost" @click="copyPassword">
+					<Icon :name="copied ? 'lucide:check' : 'lucide:copy'" class="w-4 h-4 mr-1.5" />
 					{{ copied ? 'Copied' : 'Copy' }}
 				</button>
-				<button type="button" class="btn btn-primary" @click="close">
-					I've saved it
-				</button>
+				<button type="button" class="btn btn-primary" @click="close">I've saved it</button>
 			</div>
 		</div>
-	</div>
+	</UiModal>
 </template>

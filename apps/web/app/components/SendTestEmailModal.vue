@@ -345,10 +345,7 @@ watch(
 				:disabled="!canSend || isSending"
 				@click="handleSend"
 			>
-				<div
-					v-if="isSending"
-					class="w-4 h-4 border-2 border-text-inverse/30 border-t-text-inverse rounded-full animate-spin"
-				/>
+				<UiSpinner v-if="isSending" size="xs" tone="inverse" />
 				<Icon v-else name="lucide:send" class="w-4 h-4" />
 				<span>{{ isSending ? 'Sending...' : 'Send Test' }}</span>
 			</button>

@@ -68,7 +68,7 @@ useModalFocus(
 		<Transition name="modal">
 			<div
 				v-if="open"
-				class="fixed inset-0 bg-bg-deep/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+				class="fixed inset-0 bg-bg-deep/80 backdrop-blur-sm z-(--z-modal) flex items-center justify-center p-4"
 				:style="zIndex !== undefined ? { zIndex } : undefined"
 				@click.self="handleBackdropClick"
 			>

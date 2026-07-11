@@ -2,21 +2,24 @@
 import type { Id } from '@owlat/api/dataModel';
 import type { EntryType, SourceType } from '~/utils/knowledgeEntryTypes';
 
-const props = withDefaults(defineProps<{
-	isEdit?: boolean;
-	entryId?: Id<'knowledgeEntries'>;
-	initialValues?: {
-		entryType?: string;
-		title?: string;
-		content?: string;
-		sourceType?: string;
-		confidence?: number;
-		tags?: string[];
-		expiresAt?: number;
-	};
-}>(), {
-	isEdit: false,
-});
+const props = withDefaults(
+	defineProps<{
+		isEdit?: boolean;
+		entryId?: Id<'knowledgeEntries'>;
+		initialValues?: {
+			entryType?: string;
+			title?: string;
+			content?: string;
+			sourceType?: string;
+			confidence?: number;
+			tags?: string[];
+			expiresAt?: number;
+		};
+	}>(),
+	{
+		isEdit: false,
+	}
+);
 
 const emit = defineEmits<{
 	saved: [id: string];
@@ -48,7 +51,10 @@ const isSubmitting = ref(false);
 
 const parsedTags = computed(() => {
 	if (!form.tagsInput.trim()) return [];
-	return form.tagsInput.split(',').map((t) => t.trim()).filter(Boolean);
+	return form.tagsInput
+		.split(',')
+		.map((t) => t.trim())
+		.filter(Boolean);
 });
 
 const canSubmit = computed(() => form.title.trim() && form.content.trim());
@@ -95,7 +101,9 @@ const handleCancel = () => {
 	<form class="space-y-5" @submit.prevent="handleSubmit">
 		<!-- Entry Type -->
 		<div>
-			<label for="form-entrytype" class="block text-sm font-medium text-text-secondary mb-1.5">Type</label>
+			<label for="form-entrytype" class="block text-sm font-medium text-text-secondary mb-1.5"
+				>Type</label
+			>
 			<select id="form-entrytype" v-model="form.entryType" class="input w-full">
 				<option v-for="t in ENTRY_TYPES" :key="t" :value="t">
 					{{ TYPE_CONFIG[t].label }}
@@ -105,8 +113,11 @@ const handleCancel = () => {
 
 		<!-- Title -->
 		<div>
-			<label for="form-title" class="block text-sm font-medium text-text-secondary mb-1.5">Title</label>
-			<input id="form-title"
+			<label for="form-title" class="block text-sm font-medium text-text-secondary mb-1.5"
+				>Title</label
+			>
+			<input
+				id="form-title"
 				v-model="form.title"
 				type="text"
 				placeholder="Short, descriptive title"
@@ -116,8 +127,11 @@ const handleCancel = () => {
 
 		<!-- Content -->
 		<div>
-			<label for="form-content" class="block text-sm font-medium text-text-secondary mb-1.5">Content</label>
-			<textarea id="form-content"
+			<label for="form-content" class="block text-sm font-medium text-text-secondary mb-1.5"
+				>Content</label
+			>
+			<textarea
+				id="form-content"
 				v-model="form.content"
 				placeholder="Detailed knowledge entry content..."
 				rows="4"
@@ -127,7 +141,9 @@ const handleCancel = () => {
 
 		<!-- Source Type -->
 		<div>
-			<label for="form-sourcetype" class="block text-sm font-medium text-text-secondary mb-1.5">Source</label>
+			<label for="form-sourcetype" class="block text-sm font-medium text-text-secondary mb-1.5"
+				>Source</label
+			>
 			<select id="form-sourcetype" v-model="form.sourceType" class="input w-full">
 				<option v-for="(config, key) in SOURCE_CONFIG" :key="key" :value="key">
 					{{ config.label }}
@@ -139,9 +155,12 @@ const handleCancel = () => {
 		<div>
 			<label for="form-confidence" class="block text-sm font-medium text-text-secondary mb-1.5">
 				Confidence
-				<span class="font-normal text-text-tertiary">({{ Math.round(form.confidence * 100) }}%)</span>
+				<span class="font-normal text-text-tertiary"
+					>({{ Math.round(form.confidence * 100) }}%)</span
+				>
 			</label>
-			<input id="form-confidence"
+			<input
+				id="form-confidence"
 				v-model.number="form.confidence"
 				type="range"
 				min="0"
@@ -161,7 +180,8 @@ const handleCancel = () => {
 				Tags
 				<span class="text-text-tertiary font-normal">(comma-separated)</span>
 			</label>
-			<input id="form-tagsinput"
+			<input
+				id="form-tagsinput"
 				v-model="form.tagsInput"
 				type="text"
 				placeholder="e.g. important, customer, q1-2026"
@@ -184,7 +204,8 @@ const handleCancel = () => {
 				Expires in
 				<span class="text-text-tertiary font-normal">(optional, days from now)</span>
 			</label>
-			<input id="form-expiresindays"
+			<input
+				id="form-expiresindays"
 				v-model="form.expiresInDays"
 				type="number"
 				min="1"
@@ -195,18 +216,9 @@ const handleCancel = () => {
 
 		<!-- Actions -->
 		<div class="flex items-center justify-end gap-3 pt-2">
-			<button type="button" class="btn btn-secondary" @click="handleCancel">
-				Cancel
-			</button>
-			<button
-				type="submit"
-				class="btn btn-primary gap-2"
-				:disabled="!canSubmit || isSubmitting"
-			>
-				<div
-					v-if="isSubmitting"
-					class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"
-				/>
+			<button type="button" class="btn btn-secondary" @click="handleCancel">Cancel</button>
+			<button type="submit" class="btn btn-primary gap-2" :disabled="!canSubmit || isSubmitting">
+				<UiSpinner v-if="isSubmitting" size="xs" tone="inverse" />
 				<Icon v-else name="lucide:plus" class="w-4 h-4" />
 				{{ isEdit ? 'Update Entry' : 'Create Entry' }}
 			</button>

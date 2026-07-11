@@ -203,64 +203,34 @@ const handleCancel = () => {
 				:disabled="isSaving || (!form.category && isNew)"
 				@click="handleSave"
 			>
-				<div
-					v-if="isSaving"
-					class="w-4 h-4 border-2 border-bg-deep border-t-transparent rounded-full animate-spin"
-				/>
+				<UiSpinner v-if="isSaving" size="xs" tone="inverse" />
 				<Icon v-else name="lucide:save" class="w-4 h-4" />
 				{{ isNew ? 'Create Rule' : 'Save Changes' }}
 			</button>
 		</div>
 
 		<!-- Delete Confirmation -->
-		<Teleport to="body">
-			<Transition name="fade">
-				<div
-					v-if="showDeleteConfirm"
-					class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-					@click.self="showDeleteConfirm = false"
+		<UiModal :open="showDeleteConfirm" size="sm" @update:open="showDeleteConfirm = $event">
+			<div class="flex items-center gap-3 mb-4">
+				<UiIconBox icon="lucide:alert-triangle" size="sm" variant="error" />
+				<h3 class="text-lg font-medium text-text-primary">Delete Rule</h3>
+			</div>
+			<p class="text-sm text-text-secondary">
+				Are you sure you want to delete the autonomy rule for
+				<strong>{{ categoryLabel }}</strong
+				>? This action cannot be undone.
+			</p>
+			<template #footer>
+				<button class="btn btn-secondary" @click="showDeleteConfirm = false">Cancel</button>
+				<button
+					class="btn bg-error text-white hover:bg-error/90 gap-2"
+					:disabled="isDeleting"
+					@click="handleDelete"
 				>
-					<div
-						class="bg-bg-elevated border border-border-subtle rounded-xl p-6 max-w-sm mx-4 shadow-xl"
-					>
-						<div class="flex items-center gap-3 mb-4">
-							<UiIconBox icon="lucide:alert-triangle" size="sm" variant="error" />
-							<h3 class="text-lg font-medium text-text-primary">Delete Rule</h3>
-						</div>
-						<p class="text-sm text-text-secondary mb-6">
-							Are you sure you want to delete the autonomy rule for
-							<strong>{{ categoryLabel }}</strong
-							>? This action cannot be undone.
-						</p>
-						<div class="flex justify-end gap-3">
-							<button class="btn btn-secondary" @click="showDeleteConfirm = false">Cancel</button>
-							<button
-								class="btn bg-error text-white hover:bg-error/90 gap-2"
-								:disabled="isDeleting"
-								@click="handleDelete"
-							>
-								<div
-									v-if="isDeleting"
-									class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"
-								/>
-								Delete
-							</button>
-						</div>
-					</div>
-				</div>
-			</Transition>
-		</Teleport>
+					<UiSpinner v-if="isDeleting" size="xs" tone="inverse" />
+					Delete
+				</button>
+			</template>
+		</UiModal>
 	</UiCard>
 </template>
-
-<style scoped>
-.fade-enter-active,
-.fade-leave-active {
-	transition: opacity var(--motion-moderate) var(--ease-spring);
-}
-
-.fade-enter-from,
-.fade-leave-to {
-	opacity: 0;
-}
-</style>

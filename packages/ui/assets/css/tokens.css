@@ -66,6 +66,17 @@
 	/* === MOTION / LAYOUT === */
 	--radius-card: 12px;
 
+	/* === Z-INDEX LAYER (named stacking order) ===
+	 * One scale so the chrome that floats over the page can't fight over ad-hoc
+	 * z-[NN] values. The UiModal backdrop sits at 50; every named layer below is
+	 * defined relative to it. Consume with the Tailwind v4 var shorthand, e.g.
+	 * `z-(--z-titlebar)`. */
+	--z-modal: 50; /* UiModal / dialog backdrops */
+	--z-header: 60; /* mobile top bar */
+	--z-titlebar: 70; /* desktop window titlebar */
+	--z-menu: 80; /* dropdown / workspace menu popovers */
+	--z-overlay: 100; /* full-screen overlays: lightbox, skip-link */
+
 	/* === FLUID FUNCTIONALISM: WEIGHT-BASED EMPHASIS ===
 	 * Overrides Tailwind's font-weight scale so every existing font-medium /
 	 * font-semibold consumer adopts FF weights. Instrument Sans is a variable

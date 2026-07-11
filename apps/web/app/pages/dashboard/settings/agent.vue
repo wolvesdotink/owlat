@@ -24,10 +24,7 @@ const { run: updateConfig } = useBackendOperation(api.agentConfigMutations.updat
 });
 
 // Knowledge backfill status (live-reactive Convex query — no manual polling)
-const { data: backfillJob } = useConvexQuery(
-	api.agent.knowledgeBackfill.getStatus,
-	() => ({})
-);
+const { data: backfillJob } = useConvexQuery(api.agent.knowledgeBackfill.getStatus, () => ({}));
 const { run: cancelBackfill } = useBackendOperation(api.agent.knowledgeBackfill.cancel, {
 	label: 'Cancel backfill',
 });
@@ -52,12 +49,18 @@ const backfillStatusLabel = computed(() => {
 	const job = backfillJob.value;
 	if (!job) return '';
 	switch (job.status) {
-		case 'pending': return 'Queued';
-		case 'running': return 'Scanning mail history';
-		case 'completed': return 'Complete';
-		case 'cancelled': return 'Cancelled';
-		case 'failed': return 'Failed';
-		default: return job.status;
+		case 'pending':
+			return 'Queued';
+		case 'running':
+			return 'Scanning mail history';
+		case 'completed':
+			return 'Complete';
+		case 'cancelled':
+			return 'Cancelled';
+		case 'failed':
+			return 'Failed';
+		default:
+			return job.status;
 	}
 });
 
@@ -66,11 +69,16 @@ const backfillStatusVariant = computed(() => {
 	if (!job) return 'neutral';
 	switch (job.status) {
 		case 'running':
-		case 'pending': return 'brand';
-		case 'completed': return 'success';
-		case 'cancelled': return 'neutral';
-		case 'failed': return 'danger';
-		default: return 'neutral';
+		case 'pending':
+			return 'brand';
+		case 'completed':
+			return 'success';
+		case 'cancelled':
+			return 'neutral';
+		case 'failed':
+			return 'danger';
+		default:
+			return 'neutral';
 	}
 });
 
@@ -89,17 +97,21 @@ const isSaving = ref(false);
 const isFormDirty = ref(false);
 
 // Sync form when config loads
-watch(config, (newConfig) => {
-	if (newConfig) {
-		form.autoReplyEnabled = newConfig.isAutoReplyEnabled ?? false;
-		form.confidenceThreshold = newConfig.confidenceThreshold ?? 0.7;
-		form.maxDailyAutoReplies = newConfig.maxDailyAutoReplies ?? 50;
-		form.toneDescription = newConfig.toneDescription ?? '';
-		form.signatureTemplate = newConfig.signatureTemplate ?? '';
-		form.coalesceWindowMs = newConfig.coalesceWindowMs ?? 30000;
-		isFormDirty.value = false;
-	}
-}, { immediate: true });
+watch(
+	config,
+	(newConfig) => {
+		if (newConfig) {
+			form.autoReplyEnabled = newConfig.isAutoReplyEnabled ?? false;
+			form.confidenceThreshold = newConfig.confidenceThreshold ?? 0.7;
+			form.maxDailyAutoReplies = newConfig.maxDailyAutoReplies ?? 50;
+			form.toneDescription = newConfig.toneDescription ?? '';
+			form.signatureTemplate = newConfig.signatureTemplate ?? '';
+			form.coalesceWindowMs = newConfig.coalesceWindowMs ?? 30000;
+			isFormDirty.value = false;
+		}
+	},
+	{ immediate: true }
+);
 
 // Mirror the `ai.agent` flag into the form toggle
 watch(
@@ -111,21 +123,25 @@ watch(
 );
 
 // Track dirty state
-watch(form, () => {
-	const agentFlag = flags.value['ai.agent'] === true;
-	if (!config.value) {
-		isFormDirty.value = form.enabled !== agentFlag;
-		return;
-	}
-	isFormDirty.value =
-		form.enabled !== agentFlag ||
-		form.autoReplyEnabled !== (config.value.isAutoReplyEnabled ?? false) ||
-		form.confidenceThreshold !== (config.value.confidenceThreshold ?? 0.7) ||
-		form.maxDailyAutoReplies !== (config.value.maxDailyAutoReplies ?? 50) ||
-		form.toneDescription !== (config.value.toneDescription ?? '') ||
-		form.signatureTemplate !== (config.value.signatureTemplate ?? '') ||
-		form.coalesceWindowMs !== (config.value.coalesceWindowMs ?? 30000);
-}, { deep: true });
+watch(
+	form,
+	() => {
+		const agentFlag = flags.value['ai.agent'] === true;
+		if (!config.value) {
+			isFormDirty.value = form.enabled !== agentFlag;
+			return;
+		}
+		isFormDirty.value =
+			form.enabled !== agentFlag ||
+			form.autoReplyEnabled !== (config.value.isAutoReplyEnabled ?? false) ||
+			form.confidenceThreshold !== (config.value.confidenceThreshold ?? 0.7) ||
+			form.maxDailyAutoReplies !== (config.value.maxDailyAutoReplies ?? 50) ||
+			form.toneDescription !== (config.value.toneDescription ?? '') ||
+			form.signatureTemplate !== (config.value.signatureTemplate ?? '') ||
+			form.coalesceWindowMs !== (config.value.coalesceWindowMs ?? 30000);
+	},
+	{ deep: true }
+);
 
 // Toast notifications (global)
 const { showToast } = useToast();
@@ -195,10 +211,7 @@ const confidencePercent = computed(() => Math.round(form.confidenceThreshold * 1
 				:disabled="!isFormDirty || isSaving"
 				@click="handleSave"
 			>
-				<div
-					v-if="isSaving"
-					class="w-4 h-4 border-2 border-bg-deep border-t-transparent rounded-full animate-spin"
-				/>
+				<UiSpinner v-if="isSaving" size="xs" tone="inverse" />
 				<Icon v-else name="lucide:save" class="w-4 h-4" />
 				Save Changes
 			</button>
@@ -236,10 +249,15 @@ const confidencePercent = computed(() => Math.round(form.confidenceThreshold * 1
 							<div>
 								<p class="text-text-primary font-medium">Auto-Reply</p>
 								<p class="text-sm text-text-tertiary">
-									Allow the agent to send replies without human approval when confidence is above threshold.
+									Allow the agent to send replies without human approval when confidence is above
+									threshold.
 								</p>
 							</div>
-							<UiSwitch v-model="form.autoReplyEnabled" :disabled="!form.enabled" label="Auto-reply" />
+							<UiSwitch
+								v-model="form.autoReplyEnabled"
+								:disabled="!form.enabled"
+								label="Auto-reply"
+							/>
 						</div>
 					</div>
 				</div>
@@ -275,22 +293,32 @@ const confidencePercent = computed(() => Math.round(form.confidenceThreshold * 1
 								</span>
 								<span class="font-mono text-text-tertiary">{{ backfillProgressPercent }}%</span>
 							</div>
-							<UiProgressBar size="sm" :value="backfillProgressPercent" aria-label="Knowledge backfill progress" />
+							<UiProgressBar
+								size="sm"
+								:value="backfillProgressPercent"
+								aria-label="Knowledge backfill progress"
+							/>
 						</div>
 
 						<!-- Counters -->
 						<div class="grid grid-cols-3 gap-3 text-xs">
 							<div class="rounded-lg bg-bg-surface px-3 py-2">
 								<div class="text-text-tertiary">Extracted</div>
-								<div class="font-mono text-text-primary text-base">{{ backfillJob.extractedCount }}</div>
+								<div class="font-mono text-text-primary text-base">
+									{{ backfillJob.extractedCount }}
+								</div>
 							</div>
 							<div class="rounded-lg bg-bg-surface px-3 py-2">
 								<div class="text-text-tertiary">Skipped</div>
-								<div class="font-mono text-text-primary text-base">{{ backfillJob.skippedCount }}</div>
+								<div class="font-mono text-text-primary text-base">
+									{{ backfillJob.skippedCount }}
+								</div>
 							</div>
 							<div class="rounded-lg bg-bg-surface px-3 py-2">
 								<div class="text-text-tertiary">Errors</div>
-								<div class="font-mono text-text-primary text-base">{{ backfillJob.errorCount }}</div>
+								<div class="font-mono text-text-primary text-base">
+									{{ backfillJob.errorCount }}
+								</div>
 							</div>
 						</div>
 
@@ -305,10 +333,7 @@ const confidencePercent = computed(() => Math.round(form.confidenceThreshold * 1
 								:disabled="isCancellingBackfill"
 								@click="handleCancelBackfill"
 							>
-								<div
-									v-if="isCancellingBackfill"
-									class="w-3.5 h-3.5 border-2 border-text-secondary border-t-transparent rounded-full animate-spin"
-								/>
+								<UiSpinner v-if="isCancellingBackfill" size="xs" tone="brand" />
 								<Icon v-else name="lucide:x" class="w-3.5 h-3.5" />
 								Cancel Backfill
 							</button>
@@ -341,7 +366,8 @@ const confidencePercent = computed(() => Math.round(form.confidenceThreshold * 1
 								</span>
 							</div>
 							<p class="text-sm text-text-tertiary mb-3">
-								Minimum confidence score required for auto-approval. Drafts below this threshold go to the review queue.
+								Minimum confidence score required for auto-approval. Drafts below this threshold go
+								to the review queue.
 							</p>
 							<input
 								v-model.number="form.confidenceThreshold"
@@ -361,7 +387,8 @@ const confidencePercent = computed(() => Math.round(form.confidenceThreshold * 1
 						<div>
 							<label class="text-text-primary font-medium">Daily Auto-Reply Limit</label>
 							<p class="text-sm text-text-tertiary mt-1 mb-3">
-								Maximum number of auto-approved replies per day. Excess messages go to the review queue.
+								Maximum number of auto-approved replies per day. Excess messages go to the review
+								queue.
 							</p>
 							<input
 								v-model.number="form.maxDailyAutoReplies"
@@ -377,8 +404,8 @@ const confidencePercent = computed(() => Math.round(form.confidenceThreshold * 1
 						<div>
 							<label class="text-text-primary font-medium">Message Coalescing Window</label>
 							<p class="text-sm text-text-tertiary mt-1 mb-3">
-								Wait this many seconds for additional messages before processing a thread.
-								Prevents redundant processing of rapid message bursts.
+								Wait this many seconds for additional messages before processing a thread. Prevents
+								redundant processing of rapid message bursts.
 							</p>
 							<div class="flex items-center gap-3">
 								<input
@@ -388,7 +415,9 @@ const confidencePercent = computed(() => Math.round(form.confidenceThreshold * 1
 									max="300"
 									class="input w-40"
 									placeholder="30"
-									@input="form.coalesceWindowMs = Number(($event.target as HTMLInputElement).value) * 1000"
+									@input="
+										form.coalesceWindowMs = Number(($event.target as HTMLInputElement).value) * 1000
+									"
 								/>
 								<span class="text-text-secondary text-sm">seconds</span>
 							</div>
@@ -441,10 +470,7 @@ const confidencePercent = computed(() => Math.round(form.confidenceThreshold * 1
 						:disabled="!isFormDirty || isSaving"
 						@click="handleSave"
 					>
-						<div
-							v-if="isSaving"
-							class="w-4 h-4 border-2 border-bg-deep border-t-transparent rounded-full animate-spin"
-						/>
+						<UiSpinner v-if="isSaving" size="xs" tone="inverse" />
 						<Icon v-else name="lucide:save" class="w-4 h-4" />
 						Save Changes
 					</button>

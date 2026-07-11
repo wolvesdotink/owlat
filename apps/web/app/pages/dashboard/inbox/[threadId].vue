@@ -555,10 +555,7 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 										:aria-disabled="isHeld ? 'true' : undefined"
 										@click="onApprove(message._id)"
 									>
-										<div
-											v-if="isApproving"
-											class="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"
-										/>
+										<UiSpinner v-if="isApproving" size="xs" tone="inverse" />
 										<Icon v-else name="lucide:check" class="w-3 h-3" />
 										Approve & Send
 									</button>

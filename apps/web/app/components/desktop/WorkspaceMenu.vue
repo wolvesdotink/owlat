@@ -150,7 +150,7 @@ onUnmounted(() => {
 				ref="menuRef"
 				role="menu"
 				aria-label="Workspaces"
-				class="absolute top-full left-0 mt-1 z-[80] min-w-56 max-w-72 rounded-lg border border-border-subtle bg-bg-elevated p-1 shadow-lg"
+				class="absolute top-full left-0 mt-1 z-(--z-menu) min-w-56 max-w-72 rounded-lg border border-border-subtle bg-bg-elevated p-1 shadow-lg"
 			>
 				<button
 					v-for="ws in workspaces"
