@@ -336,6 +336,7 @@ async function handleTest() {
 								v-model:open="showLanguageBaseUrl"
 								label="Advanced: custom base URL (proxy / gateway)"
 								controls="ai-language-base-url"
+								:disabled="isSaving"
 							/>
 						</div>
 						<div v-if="showLanguageBaseUrl" id="ai-language-base-url">
@@ -399,6 +400,7 @@ async function handleTest() {
 							v-model:open="showHostedEmbedder"
 							label="Advanced: use a hosted embedder instead"
 							controls="ai-hosted-embedder"
+							:disabled="isSaving"
 						/>
 					</div>
 
@@ -429,19 +431,19 @@ async function handleTest() {
 							:disabled="isSaving"
 							help-text="Encrypted at rest, never shown again."
 						/>
+					</div>
 
-						<div
-							v-if="embeddingChanged"
-							class="flex items-start gap-3 rounded-lg bg-warning-subtle/50 border border-border-subtle p-4 text-sm"
-						>
-							<Icon name="lucide:alert-triangle" class="w-5 h-5 text-warning shrink-0 mt-0.5" />
-							<div>
-								<p class="text-text-primary font-medium">Changing embeddings needs a re-index</p>
-								<p class="text-text-secondary mt-0.5">
-									New and old vectors aren't comparable. After saving, re-index your knowledge so
-									search stays accurate.
-								</p>
-							</div>
+					<div
+						v-if="embeddingChanged"
+						class="mt-4 flex items-start gap-3 rounded-lg bg-warning-subtle/50 border border-border-subtle p-4 text-sm"
+					>
+						<Icon name="lucide:alert-triangle" class="w-5 h-5 text-warning shrink-0 mt-0.5" />
+						<div>
+							<p class="text-text-primary font-medium">Changing embeddings needs a re-index</p>
+							<p class="text-text-secondary mt-0.5">
+								New and old vectors aren't comparable. After saving, re-index your knowledge so
+								search stays accurate.
+							</p>
 						</div>
 					</div>
 				</UiCard>
