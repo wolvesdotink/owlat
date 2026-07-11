@@ -1,6 +1,7 @@
 // Prevents additional console window on Windows in release
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod files;
 mod menu;
 mod notifications;
 mod secrets;
@@ -51,6 +52,7 @@ fn main() {
             secrets::secret_set,
             secrets::secret_get,
             secrets::secret_delete,
+            files::read_file,
             window::open_compose,
             window::set_traffic_lights_visible,
             window::set_accent_frame,
