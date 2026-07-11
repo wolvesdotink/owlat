@@ -8,6 +8,7 @@ import {
 	languageProviderMeta,
 	languageProviderOptions,
 	languageProviderRequiresKey,
+	mergeLiveModels,
 	modelOptions,
 	resolveModelId,
 	testConnectionReducer,
@@ -16,11 +17,12 @@ import {
 } from '../aiProviders';
 
 describe('provider catalog', () => {
-	it('exposes exactly the five language kinds and four embedding kinds', () => {
+	it('exposes exactly the six language kinds and four embedding kinds', () => {
 		expect(LANGUAGE_PROVIDERS.map((p) => p.kind)).toEqual([
 			'openai',
 			'anthropic',
 			'google',
+			'azure',
 			'openrouter',
 			'openaiCompatible',
 		]);
@@ -106,6 +108,27 @@ describe('modelOptions — model-picker option mapping', () => {
 	});
 });
 
+describe('mergeLiveModels — live catalog merged into curated', () => {
+	it('appends live ids not already curated, order-stable and de-duplicated', () => {
+		expect(mergeLiveModels(['gpt-4o', 'gpt-4o-mini'], ['gpt-4o', 'o3', 'o3'])).toEqual([
+			'gpt-4o',
+			'gpt-4o-mini',
+			'o3',
+		]);
+	});
+
+	it('returns a copy of curated when there is no live catalog', () => {
+		const curated = ['llama3.1'] as const;
+		const merged = mergeLiveModels(curated, []);
+		expect(merged).toEqual(['llama3.1']);
+		expect(merged).not.toBe(curated);
+	});
+
+	it('drops empty-string live ids', () => {
+		expect(mergeLiveModels([], ['', 'qwen2.5'])).toEqual(['qwen2.5']);
+	});
+});
+
 describe('resolveModelId', () => {
 	it('returns the chosen id verbatim when not the sentinel', () => {
 		expect(resolveModelId('gpt-4o', 'ignored')).toBe('gpt-4o');
@@ -137,6 +160,27 @@ describe('validateLanguageConfig', () => {
 	it('passes a hosted provider when a key is freshly typed', () => {
 		expect(
 			validateLanguageConfig({ kind: 'google', hasStoredKey: false, apiKey: 'sk-abc' })
+		).toBeNull();
+	});
+
+	it('requires Azure to carry its resource base URL even with a key', () => {
+		const err = validateLanguageConfig({
+			kind: 'azure',
+			hasStoredKey: true,
+			apiKey: '',
+			baseUrl: '  ',
+		});
+		expect(err).toBe('Azure OpenAI needs its resource base URL. Add it above to continue.');
+	});
+
+	it('passes Azure when both a key and a base URL are present', () => {
+		expect(
+			validateLanguageConfig({
+				kind: 'azure',
+				hasStoredKey: false,
+				apiKey: 'k',
+				baseUrl: 'https://acme.openai.azure.com/openai',
+			})
 		).toBeNull();
 	});
 });

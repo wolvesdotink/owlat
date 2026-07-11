@@ -172,6 +172,67 @@ export const testConnection = authedAction({
 });
 
 /**
+ * List the models the STORED language provider exposes, for the settings model
+ * picker. Only the OpenRouter and local (OpenAI-compatible) adapters implement
+ * discovery — for the rest (or when nothing is configured) `supported` is false
+ * and the picker stays free-text. Decrypts the stored key (hosted) only to fetch
+ * the provider's `/models`; returns just the ids (never the key). Rate-limited
+ * per user, and fails soft: a listing error is returned inline, never thrown.
+ */
+// all-members: read-only model-catalog probe against the STORED config. Persists
+// nothing and returns only public model ids — never the key — so any org member
+// may run it (mirrors `testConnection`).
+export const listModels = authedAction({
+	args: {},
+	handler: async (ctx): Promise<{ supported: boolean; models: string[]; error?: string }> => {
+		const identity = await ctx.auth.getUserIdentity();
+		if (!identity) throwUnauthenticated();
+		const rl = await rateLimiter.limit(ctx, 'aiProviderConfigListModels', {
+			key: identity.subject,
+		});
+		if (!rl.ok) {
+			return { supported: true, models: [], error: 'Too many requests — try again in a moment.' };
+		}
+
+		const row = await ctx.runQuery(internal.aiProviderConfig._getConfigRow, {});
+		if (!row) return { supported: false, models: [] };
+
+		const adapter = languageProviderFor(row.languageProviderKind);
+		// Bind the optional method to a local so its narrowing survives the awaits
+		// below (property narrowing on `adapter.listModels` would otherwise reset).
+		const discover = adapter.listModels;
+		if (!discover) return { supported: false, models: [] };
+
+		try {
+			const apiKey =
+				!adapter.isLocal &&
+				row.secretCiphertext !== undefined &&
+				row.secretIv !== undefined &&
+				row.secretAuthTag !== undefined &&
+				row.secretEnvelopeVersion !== undefined
+					? decryptSecret({
+							ciphertext: row.secretCiphertext,
+							iv: row.secretIv,
+							authTag: row.secretAuthTag,
+							version: row.secretEnvelopeVersion,
+						})
+					: undefined;
+			const models = await discover({
+				apiKey,
+				baseUrl: row.languageBaseUrl ?? adapter.defaultBaseUrl,
+			});
+			return { supported: true, models };
+		} catch (e) {
+			return {
+				supported: true,
+				models: [],
+				error: e instanceof Error ? e.message : 'Could not load models.',
+			};
+		}
+	},
+});
+
+/**
  * Decrypt a stored AES-256-GCM key envelope for `lib/llmProvider.resolveAiConfig`.
  * The ONLY call-time decryption point for the pluggable-provider resolver: the
  * v8-safe resolver can't touch `node:crypto`, so it hands the (already-read)

@@ -15,6 +15,7 @@
 import { openaiEmbeddingAdapter, openaiLanguageAdapter } from './openai';
 import { anthropicLanguageAdapter } from './anthropic';
 import { googleEmbeddingAdapter, googleLanguageAdapter } from './google';
+import { azureLanguageAdapter } from './azure';
 import { openrouterLanguageAdapter } from './openrouter';
 import {
 	openaiCompatibleEmbeddingAdapter,
@@ -44,6 +45,7 @@ export const LANGUAGE_PROVIDERS = {
 	openai: openaiLanguageAdapter,
 	anthropic: anthropicLanguageAdapter,
 	google: googleLanguageAdapter,
+	azure: azureLanguageAdapter,
 	openrouter: openrouterLanguageAdapter,
 	openaiCompatible: openaiCompatibleLanguageAdapter,
 } as const;

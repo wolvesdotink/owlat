@@ -21,6 +21,7 @@
 
 import type { LanguageModel } from 'ai';
 import { type OpenAICompatibleClient, openAICompatibleClient } from './clientCache';
+import { parseOpenAiModelIds } from './modelListing';
 import type { LanguageProviderAdapter, ProviderClientConfig } from './types';
 
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
@@ -34,31 +35,6 @@ function openrouterBaseUrl(cfg: ProviderClientConfig): string {
 
 function openrouterClient(cfg: ProviderClientConfig): OpenAICompatibleClient {
 	return openAICompatibleClient(clientCache, 'openrouter', openrouterBaseUrl(cfg), cfg.apiKey);
-}
-
-/**
- * Extract the model ids from an OpenRouter `/models` payload
- * (`{ data: [{ id, … }] }`), defensively: anything off-shape is skipped rather
- * than throwing, so a malformed entry can't sink the whole listing.
- */
-export function parseOpenRouterModelIds(body: unknown): string[] {
-	if (typeof body !== 'object' || body === null || !('data' in body)) {
-		return [];
-	}
-	const data = (body as { data: unknown }).data;
-	if (!Array.isArray(data)) {
-		return [];
-	}
-	const ids: string[] = [];
-	for (const entry of data) {
-		if (typeof entry === 'object' && entry !== null && 'id' in entry) {
-			const id = (entry as { id: unknown }).id;
-			if (typeof id === 'string' && id.length > 0) {
-				ids.push(id);
-			}
-		}
-	}
-	return ids;
 }
 
 export const openrouterLanguageAdapter: LanguageProviderAdapter<'openrouter'> = {
@@ -85,6 +61,6 @@ export const openrouterLanguageAdapter: LanguageProviderAdapter<'openrouter'> = 
 			throw new Error(`OpenRouter model listing failed (HTTP ${res.status}).`);
 		}
 		const body: unknown = await res.json();
-		return parseOpenRouterModelIds(body);
+		return parseOpenAiModelIds(body);
 	},
 };
