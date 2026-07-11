@@ -3,7 +3,7 @@
 		<Transition name="search-modal">
 			<div
 				v-if="open"
-				class="fixed inset-0 z-[60] flex items-start justify-center pt-[15vh]"
+				class="fixed inset-0 z-(--z-header) flex items-start justify-center pt-[15vh]"
 				@keydown.escape="emit('update:open', false)"
 			>
 				<!-- Backdrop -->
