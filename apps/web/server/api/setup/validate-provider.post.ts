@@ -24,6 +24,7 @@ import {
 	type SetupProvider,
 	type SmtpRelayInput,
 } from '@owlat/shared/setupValidators';
+import { requireSetupToken } from '~~/server/utils/setupToken';
 
 interface ValidateBody {
 	provider: SetupProvider | 'smtp';

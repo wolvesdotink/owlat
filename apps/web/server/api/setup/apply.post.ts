@@ -29,6 +29,7 @@ import {
 	pushConvexRuntimeEnv,
 	selectRuntimeEnvVars,
 } from '@owlat/shared/convexRuntimeEnv';
+import { requireSetupToken } from '~~/server/utils/setupToken';
 
 interface ApplyBody {
 	flags: FeatureFlagState;
