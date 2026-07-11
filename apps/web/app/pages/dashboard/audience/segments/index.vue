@@ -12,6 +12,7 @@ const {
 	isLoading: segmentsLoading,
 	status: segmentsStatus,
 	loadMore: loadMoreSegments,
+	error: segmentsError,
 } = usePaginatedQuery(api.segments.list, () => ({}), { initialNumItems: 100 });
 // The list filters/sorts client-side with no pager, so an org with >100
 // segments was silently capped at the first 100. Eagerly pull every page.
@@ -137,175 +138,188 @@ onMounted(() => {
 
 		<!-- Content -->
 		<UiCard padding="none" overflow="hidden">
-			<!-- Loading State -->
-			<div v-if="isLoading && !segments" class="flex items-center justify-center py-16">
-				<div class="flex flex-col items-center gap-3">
-					<UiSpinner />
-					<p class="text-text-secondary text-sm">Loading segments...</p>
-				</div>
-			</div>
-
-			<!-- Empty State (no organization) -->
-			<UiEmptyState
-				v-else-if="!hasActiveOrganization"
-				icon="lucide:filter"
-				title="No workspace selected"
-				description="Create or select a workspace to start managing your segments."
-			/>
-
-			<!-- Empty State (no segments) -->
-			<UiEmptyState
-				v-else-if="!isLoading && filteredSegments.length === 0 && !searchQuery"
-				icon="lucide:filter"
-				title="No segments yet"
-				description="Create your first segment to filter contacts based on properties, activity, and more."
+			<UiQueryBoundary
+				:loading="isLoading && !segments"
+				:error="segmentsError"
+				error-title="Couldn't load segments"
 			>
-				<template #action>
-					<UiButton @click="openCreateModal">
-						<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
-						New Segment
-					</UiButton>
+				<template #loading>
+					<div class="flex items-center justify-center py-16">
+						<div class="flex flex-col items-center gap-3">
+							<UiSpinner />
+							<p class="text-text-secondary text-sm">Loading segments...</p>
+						</div>
+					</div>
 				</template>
-			</UiEmptyState>
 
-			<!-- Empty State (no search results) -->
-			<UiEmptyState
-				v-else-if="!isLoading && filteredSegments.length === 0 && searchQuery"
-				icon="lucide:search"
-				title="No results found"
-				:description="`No segments match &quot;${searchQuery}&quot;. Try a different search term.`"
-			>
-				<template #action>
-					<UiButton variant="secondary" @click="searchQuery = ''">Clear search</UiButton>
-				</template>
-			</UiEmptyState>
+				<!-- Empty State (no organization) -->
+				<UiEmptyState
+					v-if="!hasActiveOrganization"
+					icon="lucide:filter"
+					title="No workspace selected"
+					description="Create or select a workspace to start managing your segments."
+				/>
 
-			<!-- Data Table -->
-			<div v-else>
-				<div class="overflow-x-auto">
-					<table class="w-full">
-						<thead>
-							<tr class="border-b border-border-subtle">
-								<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
-									<button
-										type="button"
-										class="flex items-center gap-1 py-4 -my-4 px-1 -mx-1 rounded hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
-										@click="toggleSort('name')"
-									>
-										Name
-										<Icon v-if="getSortIcon('name')" :name="getSortIcon('name')!" class="w-4 h-4" />
-									</button>
-								</th>
-								<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">Filters</th>
-								<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
-									<button
-										type="button"
-										class="flex items-center gap-1 py-4 -my-4 px-1 -mx-1 rounded hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
-										@click="toggleSort('cachedCount')"
-									>
-										Contacts
-										<Icon
-											v-if="getSortIcon('cachedCount')"
-											:name="getSortIcon('cachedCount')!"
-											class="w-4 h-4"
-										/>
-									</button>
-								</th>
-								<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
-									<button
-										type="button"
-										class="flex items-center gap-1 py-4 -my-4 px-1 -mx-1 rounded hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
-										@click="toggleSort('createdAt')"
-									>
-										Created
-										<Icon
-											v-if="getSortIcon('createdAt')"
-											:name="getSortIcon('createdAt')!"
-											class="w-4 h-4"
-										/>
-									</button>
-								</th>
-								<th class="text-right px-6 py-4 text-sm font-medium text-text-secondary">
-									Actions
-								</th>
-							</tr>
-						</thead>
-						<tbody>
-							<tr
-								v-for="segment in filteredSegments"
-								:key="segment._id"
-								class="border-b border-border-subtle last:border-b-0 hover:bg-bg-surface transition-colors"
-							>
-								<td class="px-6 py-4">
-									<NuxtLink
-										:to="`/dashboard/audience/segments/${segment._id}`"
-										class="flex items-center gap-3 group"
-									>
-										<UiIconBox icon="lucide:filter" size="sm" variant="surface" rounded="lg" />
-										<div>
-											<span
-												class="text-text-primary font-medium group-hover:text-brand transition-colors"
-												>{{ segment.name }}</span
-											>
-											<p v-if="segment.description" class="text-sm text-text-tertiary">
-												{{ segment.description }}
-											</p>
-										</div>
-									</NuxtLink>
-								</td>
-								<td class="px-6 py-4">
-									<span class="text-text-secondary text-sm">{{
-										describeFilters(segment.filters)
-									}}</span>
-								</td>
-								<td class="px-6 py-4">
-									<div class="flex items-center gap-2">
-										<Icon name="lucide:users" class="w-4 h-4 text-text-tertiary" />
-										<span class="text-text-secondary">{{ segment.cachedCount ?? '—' }}</span>
-									</div>
-								</td>
-								<td class="px-6 py-4">
-									<span class="text-text-tertiary text-sm">{{
-										formatDate(segment.createdAt)
-									}}</span>
-								</td>
-								<td class="px-6 py-4">
-									<div class="flex items-center justify-end gap-1">
+				<!-- Empty State (no segments) -->
+				<UiEmptyState
+					v-else-if="!isLoading && filteredSegments.length === 0 && !searchQuery"
+					icon="lucide:filter"
+					title="No segments yet"
+					description="Create your first segment to filter contacts based on properties, activity, and more."
+				>
+					<template #action>
+						<UiButton @click="openCreateModal">
+							<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
+							New Segment
+						</UiButton>
+					</template>
+				</UiEmptyState>
+
+				<!-- Empty State (no search results) -->
+				<UiEmptyState
+					v-else-if="!isLoading && filteredSegments.length === 0 && searchQuery"
+					icon="lucide:search"
+					title="No results found"
+					:description="`No segments match &quot;${searchQuery}&quot;. Try a different search term.`"
+				>
+					<template #action>
+						<UiButton variant="secondary" @click="searchQuery = ''">Clear search</UiButton>
+					</template>
+				</UiEmptyState>
+
+				<!-- Data Table -->
+				<div v-else>
+					<div class="overflow-x-auto">
+						<table class="w-full">
+							<thead>
+								<tr class="border-b border-border-subtle">
+									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
+										<button
+											type="button"
+											class="flex items-center gap-1 py-4 -my-4 px-1 -mx-1 rounded hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
+											@click="toggleSort('name')"
+										>
+											Name
+											<Icon
+												v-if="getSortIcon('name')"
+												:name="getSortIcon('name')!"
+												class="w-4 h-4"
+											/>
+										</button>
+									</th>
+									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
+										Filters
+									</th>
+									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
+										<button
+											type="button"
+											class="flex items-center gap-1 py-4 -my-4 px-1 -mx-1 rounded hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
+											@click="toggleSort('cachedCount')"
+										>
+											Contacts
+											<Icon
+												v-if="getSortIcon('cachedCount')"
+												:name="getSortIcon('cachedCount')!"
+												class="w-4 h-4"
+											/>
+										</button>
+									</th>
+									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
+										<button
+											type="button"
+											class="flex items-center gap-1 py-4 -my-4 px-1 -mx-1 rounded hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
+											@click="toggleSort('createdAt')"
+										>
+											Created
+											<Icon
+												v-if="getSortIcon('createdAt')"
+												:name="getSortIcon('createdAt')!"
+												class="w-4 h-4"
+											/>
+										</button>
+									</th>
+									<th class="text-right px-6 py-4 text-sm font-medium text-text-secondary">
+										Actions
+									</th>
+								</tr>
+							</thead>
+							<tbody>
+								<tr
+									v-for="segment in filteredSegments"
+									:key="segment._id"
+									class="border-b border-border-subtle last:border-b-0 hover:bg-bg-surface transition-colors"
+								>
+									<td class="px-6 py-4">
 										<NuxtLink
 											:to="`/dashboard/audience/segments/${segment._id}`"
-											class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
-											title="View contacts"
+											class="flex items-center gap-3 group"
 										>
-											<Icon name="lucide:users" class="w-4 h-4" />
+											<UiIconBox icon="lucide:filter" size="sm" variant="surface" rounded="lg" />
+											<div>
+												<span
+													class="text-text-primary font-medium group-hover:text-brand transition-colors"
+													>{{ segment.name }}</span
+												>
+												<p v-if="segment.description" class="text-sm text-text-tertiary">
+													{{ segment.description }}
+												</p>
+											</div>
 										</NuxtLink>
-										<button
-											class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
-											title="Edit segment"
-											@click="openEditModal(segment)"
-										>
-											<Icon name="lucide:pencil" class="w-4 h-4" />
-										</button>
-										<button
-											class="p-2 rounded-lg text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors"
-											title="Delete segment"
-											@click="openDeleteModal(segment)"
-										>
-											<Icon name="lucide:trash-2" class="w-4 h-4" />
-										</button>
-									</div>
-								</td>
-							</tr>
-						</tbody>
-					</table>
-				</div>
+									</td>
+									<td class="px-6 py-4">
+										<span class="text-text-secondary text-sm">{{
+											describeFilters(segment.filters)
+										}}</span>
+									</td>
+									<td class="px-6 py-4">
+										<div class="flex items-center gap-2">
+											<Icon name="lucide:users" class="w-4 h-4 text-text-tertiary" />
+											<span class="text-text-secondary">{{ segment.cachedCount ?? '—' }}</span>
+										</div>
+									</td>
+									<td class="px-6 py-4">
+										<span class="text-text-tertiary text-sm">{{
+											formatDate(segment.createdAt)
+										}}</span>
+									</td>
+									<td class="px-6 py-4">
+										<div class="flex items-center justify-end gap-1">
+											<NuxtLink
+												:to="`/dashboard/audience/segments/${segment._id}`"
+												class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
+												title="View contacts"
+											>
+												<Icon name="lucide:users" class="w-4 h-4" />
+											</NuxtLink>
+											<button
+												class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
+												title="Edit segment"
+												@click="openEditModal(segment)"
+											>
+												<Icon name="lucide:pencil" class="w-4 h-4" />
+											</button>
+											<button
+												class="p-2 rounded-lg text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors"
+												title="Delete segment"
+												@click="openDeleteModal(segment)"
+											>
+												<Icon name="lucide:trash-2" class="w-4 h-4" />
+											</button>
+										</div>
+									</td>
+								</tr>
+							</tbody>
+						</table>
+					</div>
 
-				<!-- Segment count footer -->
-				<div class="px-6 py-4 border-t border-border-subtle">
-					<p class="text-sm text-text-tertiary">
-						{{ filteredSegments.length }} segment{{ filteredSegments.length !== 1 ? 's' : '' }}
-					</p>
+					<!-- Segment count footer -->
+					<div class="px-6 py-4 border-t border-border-subtle">
+						<p class="text-sm text-text-tertiary">
+							{{ filteredSegments.length }} segment{{ filteredSegments.length !== 1 ? 's' : '' }}
+						</p>
+					</div>
 				</div>
-			</div>
+			</UiQueryBoundary>
 		</UiCard>
 
 		<!-- Create/Edit Segment Modal -->

@@ -21,6 +21,7 @@ const {
 	status: paginationStatus,
 	loadMore,
 	isLoading: topicsLoading,
+	error: topicsError,
 } = usePaginatedQuery(api.topics.topics.list, () => ({}), { initialNumItems: 50 });
 
 watch(
@@ -290,156 +291,169 @@ onMounted(() => {
 
 		<!-- Content -->
 		<UiCard padding="none" overflow="hidden">
-			<!-- Loading State -->
-			<div v-if="isLoading && !topics" class="flex items-center justify-center py-16">
-				<div class="flex flex-col items-center gap-3">
-					<UiSpinner />
-					<p class="text-text-secondary text-sm">Loading topics...</p>
-				</div>
-			</div>
-
-			<!-- Empty State (no organization) -->
-			<UiEmptyState
-				v-else-if="!hasActiveOrganization"
-				icon="lucide:list"
-				title="No workspace selected"
-				description="Create or select a workspace to start managing your topics."
-			/>
-
-			<!-- Empty State (no lists) -->
-			<UiEmptyState
-				v-else-if="!isLoading && filteredTopics.length === 0 && !searchQuery"
-				icon="lucide:list"
-				title="No topics yet"
-				description="Create your first topic to organize contacts for targeted email campaigns."
+			<UiQueryBoundary
+				:loading="isLoading && !topics"
+				:error="topicsError"
+				error-title="Couldn't load topics"
 			>
-				<template #action>
-					<UiButton @click="openCreateModal">
-						<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
-						New Topic
-					</UiButton>
+				<template #loading>
+					<div class="flex items-center justify-center py-16">
+						<div class="flex flex-col items-center gap-3">
+							<UiSpinner />
+							<p class="text-text-secondary text-sm">Loading topics...</p>
+						</div>
+					</div>
 				</template>
-			</UiEmptyState>
 
-			<!-- Empty State (no search results) -->
-			<UiEmptyState
-				v-else-if="!isLoading && filteredTopics.length === 0 && searchQuery"
-				icon="lucide:search"
-				title="No results found"
-				:description="`No topics match &quot;${searchQuery}&quot;. Try a different search term.`"
-			>
-				<template #action>
-					<UiButton variant="secondary" @click="searchQuery = ''"> Clear search </UiButton>
-				</template>
-			</UiEmptyState>
+				<!-- Empty State (no organization) -->
+				<UiEmptyState
+					v-if="!hasActiveOrganization"
+					icon="lucide:list"
+					title="No workspace selected"
+					description="Create or select a workspace to start managing your topics."
+				/>
 
-			<!-- Data Table -->
-			<div v-else>
-				<div class="overflow-x-auto">
-					<table class="w-full">
-						<thead>
-							<tr class="border-b border-border-subtle">
-								<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
-									<button
-										type="button"
-										class="flex items-center gap-1 py-4 -my-4 px-1 -mx-1 rounded hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
-										@click="toggleSort('name')"
-									>
-										Name
-										<Icon v-if="getSortIcon('name')" :name="getSortIcon('name')!" class="w-4 h-4" />
-									</button>
-								</th>
-								<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
-									Description
-								</th>
-								<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
-									<button
-										type="button"
-										class="flex items-center gap-1 py-4 -my-4 px-1 -mx-1 rounded hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
-										@click="toggleSort('contactCount')"
-									>
-										Contacts
-										<Icon
-											v-if="getSortIcon('contactCount')"
-											:name="getSortIcon('contactCount')!"
-											class="w-4 h-4"
-										/>
-									</button>
-								</th>
-								<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
-									<button
-										type="button"
-										class="flex items-center gap-1 py-4 -my-4 px-1 -mx-1 rounded hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
-										@click="toggleSort('createdAt')"
-									>
-										Created
-										<Icon
-											v-if="getSortIcon('createdAt')"
-											:name="getSortIcon('createdAt')!"
-											class="w-4 h-4"
-										/>
-									</button>
-								</th>
-								<th class="text-right px-6 py-4 text-sm font-medium text-text-secondary">
-									Actions
-								</th>
-							</tr>
-						</thead>
-						<tbody>
-							<tr
-								v-for="topic in filteredTopics"
-								:key="topic._id"
-								class="border-b border-border-subtle last:border-b-0 hover:bg-bg-surface transition-colors cursor-pointer"
-								@click="viewTopicContacts(topic._id)"
-							>
-								<td class="px-6 py-4">
-									<div class="flex items-center gap-3">
-										<UiIconBox icon="lucide:list" size="sm" variant="surface" rounded="lg" />
-										<span class="text-text-primary font-medium">{{ topic.name }}</span>
-									</div>
-								</td>
-								<td class="px-6 py-4">
-									<span class="text-text-secondary">{{ topic.description || '—' }}</span>
-								</td>
-								<td class="px-6 py-4">
-									<div class="flex items-center gap-2">
-										<Icon name="lucide:users" class="w-4 h-4 text-text-tertiary" />
-										<span class="text-text-secondary">{{ topic.contactCount }}</span>
-									</div>
-								</td>
-								<td class="px-6 py-4">
-									<span class="text-text-tertiary text-sm">{{ formatDate(topic.createdAt) }}</span>
-								</td>
-								<td class="px-6 py-4">
-									<div class="flex items-center justify-end gap-1">
+				<!-- Empty State (no lists) -->
+				<UiEmptyState
+					v-else-if="!isLoading && filteredTopics.length === 0 && !searchQuery"
+					icon="lucide:list"
+					title="No topics yet"
+					description="Create your first topic to organize contacts for targeted email campaigns."
+				>
+					<template #action>
+						<UiButton @click="openCreateModal">
+							<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
+							New Topic
+						</UiButton>
+					</template>
+				</UiEmptyState>
+
+				<!-- Empty State (no search results) -->
+				<UiEmptyState
+					v-else-if="!isLoading && filteredTopics.length === 0 && searchQuery"
+					icon="lucide:search"
+					title="No results found"
+					:description="`No topics match &quot;${searchQuery}&quot;. Try a different search term.`"
+				>
+					<template #action>
+						<UiButton variant="secondary" @click="searchQuery = ''"> Clear search </UiButton>
+					</template>
+				</UiEmptyState>
+
+				<!-- Data Table -->
+				<div v-else>
+					<div class="overflow-x-auto">
+						<table class="w-full">
+							<thead>
+								<tr class="border-b border-border-subtle">
+									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
 										<button
-											class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
-											title="Edit topic"
-											@click.stop="openEditModal(topic)"
+											type="button"
+											class="flex items-center gap-1 py-4 -my-4 px-1 -mx-1 rounded hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
+											@click="toggleSort('name')"
 										>
-											<Icon name="lucide:pencil" class="w-4 h-4" />
+											Name
+											<Icon
+												v-if="getSortIcon('name')"
+												:name="getSortIcon('name')!"
+												class="w-4 h-4"
+											/>
 										</button>
+									</th>
+									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
+										Description
+									</th>
+									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
 										<button
-											class="p-2 rounded-lg text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors"
-											title="Delete topic"
-											@click.stop="openDeleteModal(topic)"
+											type="button"
+											class="flex items-center gap-1 py-4 -my-4 px-1 -mx-1 rounded hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
+											@click="toggleSort('contactCount')"
 										>
-											<Icon name="lucide:trash-2" class="w-4 h-4" />
+											Contacts
+											<Icon
+												v-if="getSortIcon('contactCount')"
+												:name="getSortIcon('contactCount')!"
+												class="w-4 h-4"
+											/>
 										</button>
-									</div>
-								</td>
-							</tr>
-						</tbody>
-					</table>
-				</div>
+									</th>
+									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
+										<button
+											type="button"
+											class="flex items-center gap-1 py-4 -my-4 px-1 -mx-1 rounded hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
+											@click="toggleSort('createdAt')"
+										>
+											Created
+											<Icon
+												v-if="getSortIcon('createdAt')"
+												:name="getSortIcon('createdAt')!"
+												class="w-4 h-4"
+											/>
+										</button>
+									</th>
+									<th class="text-right px-6 py-4 text-sm font-medium text-text-secondary">
+										Actions
+									</th>
+								</tr>
+							</thead>
+							<tbody>
+								<tr
+									v-for="topic in filteredTopics"
+									:key="topic._id"
+									class="border-b border-border-subtle last:border-b-0 hover:bg-bg-surface transition-colors cursor-pointer"
+									@click="viewTopicContacts(topic._id)"
+								>
+									<td class="px-6 py-4">
+										<div class="flex items-center gap-3">
+											<UiIconBox icon="lucide:list" size="sm" variant="surface" rounded="lg" />
+											<span class="text-text-primary font-medium">{{ topic.name }}</span>
+										</div>
+									</td>
+									<td class="px-6 py-4">
+										<span class="text-text-secondary">{{ topic.description || '—' }}</span>
+									</td>
+									<td class="px-6 py-4">
+										<div class="flex items-center gap-2">
+											<Icon name="lucide:users" class="w-4 h-4 text-text-tertiary" />
+											<span class="text-text-secondary">{{ topic.contactCount }}</span>
+										</div>
+									</td>
+									<td class="px-6 py-4">
+										<span class="text-text-tertiary text-sm">{{
+											formatDate(topic.createdAt)
+										}}</span>
+									</td>
+									<td class="px-6 py-4">
+										<div class="flex items-center justify-end gap-1">
+											<button
+												class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
+												title="Edit topic"
+												@click.stop="openEditModal(topic)"
+											>
+												<Icon name="lucide:pencil" class="w-4 h-4" />
+											</button>
+											<button
+												class="p-2 rounded-lg text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors"
+												title="Delete topic"
+												@click.stop="openDeleteModal(topic)"
+											>
+												<Icon name="lucide:trash-2" class="w-4 h-4" />
+											</button>
+										</div>
+									</td>
+								</tr>
+							</tbody>
+						</table>
+					</div>
 
-				<!-- Count footer -->
-				<div class="px-6 py-4 border-t border-border-subtle">
-					<p class="text-sm text-text-tertiary">
-						{{ filteredTopics.length }} topic{{ filteredTopics.length !== 1 ? 's' : '' }}
-					</p>
+					<!-- Count footer -->
+					<div class="px-6 py-4 border-t border-border-subtle">
+						<p class="text-sm text-text-tertiary">
+							{{ filteredTopics.length }} topic{{ filteredTopics.length !== 1 ? 's' : '' }}
+						</p>
+					</div>
 				</div>
-			</div>
+			</UiQueryBoundary>
 		</UiCard>
 
 		<!-- Create List Modal -->

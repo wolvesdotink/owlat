@@ -52,7 +52,11 @@ const selectSort = (option: SortOption) => {
 // Fetch marketing templates. Type filter + full-text search run server-side
 // through the Listing engine (ADR-0037); the sort dropdown is applied
 // client-side over the loaded page. Search results keep relevance order.
-const { results: rawTemplates, isLoading: templatesLoading } = usePaginatedQuery(
+const {
+	results: rawTemplates,
+	isLoading: templatesLoading,
+	error: templatesError,
+} = usePaginatedQuery(
 	api.emailTemplates.emails.list,
 	() => {
 		if (authPending.value || !isAuthenticated.value) return 'skip';
@@ -329,220 +333,233 @@ onUnmounted(() => {
 
 		<!-- Content -->
 		<div>
-			<!-- Loading State -->
-			<div v-if="isLoading && !templates" class="flex items-center justify-center py-16">
-				<div class="flex flex-col items-center gap-3">
-					<UiSpinner />
-					<p class="text-text-secondary text-sm">Loading templates...</p>
-				</div>
-			</div>
-
-			<!-- Empty State (no team) -->
-			<UiEmptyState
-				v-else-if="!hasActiveOrganization"
-				icon="lucide:mail"
-				title="No team selected"
-				description="Create or select a team to start creating email templates."
-			/>
-
-			<!-- Empty State (no templates) -->
-			<UiEmptyState
-				v-else-if="!isLoading && (!templates || templates.length === 0) && !debouncedSearch"
-				icon="lucide:megaphone"
-				title="No marketing templates yet"
-				description="Create your first marketing template to start sending campaigns and newsletters."
+			<UiQueryBoundary
+				:loading="isLoading && !templates"
+				:error="templatesError"
+				error-title="Couldn't load templates"
 			>
-				<template #action>
-					<UiButton @click="openCreateModal">
-						<template #iconLeft>
-							<Icon name="lucide:plus" class="w-4 h-4" />
-						</template>
-						Create Marketing Template
-					</UiButton>
-				</template>
-			</UiEmptyState>
-
-			<!-- Empty State (no search results) -->
-			<UiEmptyState
-				v-else-if="!isLoading && (!templates || templates.length === 0) && debouncedSearch"
-				icon="lucide:search"
-				title="No results found"
-				:description="`No templates match &quot;${debouncedSearch}&quot;. Try a different search term.`"
-			>
-				<template #action>
-					<UiButton variant="secondary" @click="clearSearch()"> Clear search </UiButton>
-				</template>
-			</UiEmptyState>
-
-			<!-- Grid View -->
-			<div
-				v-else-if="viewMode === 'grid'"
-				class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
-			>
-				<UiCard
-					v-for="template in templates"
-					:key="template._id"
-					padding="none"
-					overflow="hidden"
-					hoverable
-					clickable
-					class="group"
-					@click="handleEdit(template._id)"
-				>
-					<!-- Thumbnail Area -->
-					<div class="aspect-[4/3] bg-bg-surface flex items-center justify-center relative">
-						<Icon name="lucide:send" class="w-12 h-12 text-text-tertiary/30" />
-						<!-- Hover Overlay -->
-						<div
-							class="absolute inset-0 bg-bg-deep/80 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2"
-						>
-							<button
-								class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-brand hover:text-text-inverse transition-colors"
-								@click.stop="handleEdit(template._id)"
-								aria-label="Edit"
-							>
-								<Icon name="lucide:pencil" class="w-4 h-4" />
-							</button>
-							<button
-								class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-brand hover:text-text-inverse transition-colors"
-								@click.stop="handleDuplicate(template._id)"
-								aria-label="Copy"
-							>
-								<Icon name="lucide:copy" class="w-4 h-4" />
-							</button>
-							<button
-								class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-error hover:text-white transition-colors"
-								@click.stop="openDeleteModal(template._id, template.name)"
-								aria-label="Delete"
-							>
-								<Icon name="lucide:trash-2" class="w-4 h-4" />
-							</button>
+				<template #loading>
+					<div class="flex items-center justify-center py-16">
+						<div class="flex flex-col items-center gap-3">
+							<UiSpinner />
+							<p class="text-text-secondary text-sm">Loading templates...</p>
 						</div>
 					</div>
+				</template>
 
-					<!-- Info -->
-					<div class="p-4">
-						<div class="flex items-start justify-between gap-2">
-							<div class="min-w-0 flex-1">
-								<h3 class="font-medium text-text-primary truncate">{{ template.name }}</h3>
-								<p class="text-sm text-text-tertiary truncate mt-0.5">
-									{{ template.subject || 'No subject' }}
-								</p>
-							</div>
-							<UiDropdownMenu v-model:open="dropdownOpenStates[template._id]" @click.stop>
-								<template #trigger>
-									<UiButton variant="ghost" size="sm">
-										<Icon name="lucide:more-vertical" class="w-4 h-4" />
-									</UiButton>
-								</template>
-								<UiDropdownMenuItem icon="lucide:pencil" @click="handleEdit(template._id)">
-									Edit
-								</UiDropdownMenuItem>
-								<UiDropdownMenuItem icon="lucide:copy" @click="handleDuplicate(template._id)">
-									Duplicate
-								</UiDropdownMenuItem>
-								<UiDropdownDivider />
-								<UiDropdownMenuItem
-									icon="lucide:trash-2"
-									danger
-									@click="openDeleteModal(template._id, template.name)"
-								>
-									Delete
-								</UiDropdownMenuItem>
-							</UiDropdownMenu>
-						</div>
+				<!-- Empty State (no team) -->
+				<UiEmptyState
+					v-if="!hasActiveOrganization"
+					icon="lucide:mail"
+					title="No team selected"
+					description="Create or select a team to start creating email templates."
+				/>
 
-						<div class="flex items-center gap-2 mt-3">
-							<span
-								:class="[
-									'inline-flex items-center px-2 py-0.5 rounded text-xs font-medium',
-									getStatusBadge(template.status).color,
-								]"
+				<!-- Empty State (no templates) -->
+				<UiEmptyState
+					v-else-if="!isLoading && (!templates || templates.length === 0) && !debouncedSearch"
+					icon="lucide:megaphone"
+					title="No marketing templates yet"
+					description="Create your first marketing template to start sending campaigns and newsletters."
+				>
+					<template #action>
+						<UiButton @click="openCreateModal">
+							<template #iconLeft>
+								<Icon name="lucide:plus" class="w-4 h-4" />
+							</template>
+							Create Marketing Template
+						</UiButton>
+					</template>
+				</UiEmptyState>
+
+				<!-- Empty State (no search results) -->
+				<UiEmptyState
+					v-else-if="!isLoading && (!templates || templates.length === 0) && debouncedSearch"
+					icon="lucide:search"
+					title="No results found"
+					:description="`No templates match &quot;${debouncedSearch}&quot;. Try a different search term.`"
+				>
+					<template #action>
+						<UiButton variant="secondary" @click="clearSearch()"> Clear search </UiButton>
+					</template>
+				</UiEmptyState>
+
+				<!-- Grid View -->
+				<div
+					v-else-if="viewMode === 'grid'"
+					class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
+				>
+					<UiCard
+						v-for="template in templates"
+						:key="template._id"
+						padding="none"
+						overflow="hidden"
+						hoverable
+						clickable
+						class="group"
+						@click="handleEdit(template._id)"
+					>
+						<!-- Thumbnail Area -->
+						<div class="aspect-[4/3] bg-bg-surface flex items-center justify-center relative">
+							<Icon name="lucide:send" class="w-12 h-12 text-text-tertiary/30" />
+							<!-- Hover Overlay -->
+							<div
+								class="absolute inset-0 bg-bg-deep/80 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2"
 							>
-								{{ getStatusBadge(template.status).label }}
-							</span>
+								<button
+									class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-brand hover:text-text-inverse transition-colors"
+									@click.stop="handleEdit(template._id)"
+									aria-label="Edit"
+								>
+									<Icon name="lucide:pencil" class="w-4 h-4" />
+								</button>
+								<button
+									class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-brand hover:text-text-inverse transition-colors"
+									@click.stop="handleDuplicate(template._id)"
+									aria-label="Copy"
+								>
+									<Icon name="lucide:copy" class="w-4 h-4" />
+								</button>
+								<button
+									class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-error hover:text-white transition-colors"
+									@click.stop="openDeleteModal(template._id, template.name)"
+									aria-label="Delete"
+								>
+									<Icon name="lucide:trash-2" class="w-4 h-4" />
+								</button>
+							</div>
 						</div>
 
-						<p class="text-xs text-text-tertiary mt-3">
-							Updated {{ formatDate(template.updatedAt) }}
-						</p>
+						<!-- Info -->
+						<div class="p-4">
+							<div class="flex items-start justify-between gap-2">
+								<div class="min-w-0 flex-1">
+									<h3 class="font-medium text-text-primary truncate">{{ template.name }}</h3>
+									<p class="text-sm text-text-tertiary truncate mt-0.5">
+										{{ template.subject || 'No subject' }}
+									</p>
+								</div>
+								<UiDropdownMenu v-model:open="dropdownOpenStates[template._id]" @click.stop>
+									<template #trigger>
+										<UiButton variant="ghost" size="sm">
+											<Icon name="lucide:more-vertical" class="w-4 h-4" />
+										</UiButton>
+									</template>
+									<UiDropdownMenuItem icon="lucide:pencil" @click="handleEdit(template._id)">
+										Edit
+									</UiDropdownMenuItem>
+									<UiDropdownMenuItem icon="lucide:copy" @click="handleDuplicate(template._id)">
+										Duplicate
+									</UiDropdownMenuItem>
+									<UiDropdownDivider />
+									<UiDropdownMenuItem
+										icon="lucide:trash-2"
+										danger
+										@click="openDeleteModal(template._id, template.name)"
+									>
+										Delete
+									</UiDropdownMenuItem>
+								</UiDropdownMenu>
+							</div>
+
+							<div class="flex items-center gap-2 mt-3">
+								<span
+									:class="[
+										'inline-flex items-center px-2 py-0.5 rounded text-xs font-medium',
+										getStatusBadge(template.status).color,
+									]"
+								>
+									{{ getStatusBadge(template.status).label }}
+								</span>
+							</div>
+
+							<p class="text-xs text-text-tertiary mt-3">
+								Updated {{ formatDate(template.updatedAt) }}
+							</p>
+						</div>
+					</UiCard>
+				</div>
+
+				<!-- List View -->
+				<UiCard v-else padding="none" overflow="hidden">
+					<div class="overflow-x-auto">
+						<table class="w-full">
+							<thead>
+								<tr class="border-b border-border-subtle">
+									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">Name</th>
+									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
+										Subject
+									</th>
+									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
+										Status
+									</th>
+									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
+										Updated
+									</th>
+									<th class="text-right px-6 py-4 text-sm font-medium text-text-secondary">
+										Actions
+									</th>
+								</tr>
+							</thead>
+							<tbody>
+								<tr
+									v-for="template in templates"
+									:key="template._id"
+									class="border-b border-border-subtle last:border-b-0 hover:bg-bg-surface transition-colors cursor-pointer"
+									@click="handleEdit(template._id)"
+								>
+									<td class="px-6 py-4">
+										<span class="text-text-primary font-medium">{{ template.name }}</span>
+									</td>
+									<td class="px-6 py-4">
+										<span class="text-text-secondary">{{ template.subject || '-' }}</span>
+									</td>
+									<td class="px-6 py-4">
+										<span
+											:class="[
+												'inline-flex items-center px-2 py-0.5 rounded text-xs font-medium',
+												getStatusBadge(template.status).color,
+											]"
+										>
+											{{ getStatusBadge(template.status).label }}
+										</span>
+									</td>
+									<td class="px-6 py-4">
+										<span class="text-text-tertiary text-sm">{{
+											formatDate(template.updatedAt)
+										}}</span>
+									</td>
+									<td class="px-6 py-4">
+										<div class="flex items-center justify-end gap-1" @click.stop>
+											<button
+												class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors"
+												@click="handleEdit(template._id)"
+												aria-label="Edit"
+											>
+												<Icon name="lucide:pencil" class="w-4 h-4" />
+											</button>
+											<button
+												class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors"
+												@click="handleDuplicate(template._id)"
+												aria-label="Copy"
+											>
+												<Icon name="lucide:copy" class="w-4 h-4" />
+											</button>
+											<button
+												class="p-2 rounded-lg text-text-tertiary hover:text-error hover:bg-error/10 transition-colors"
+												@click="openDeleteModal(template._id, template.name)"
+												aria-label="Delete"
+											>
+												<Icon name="lucide:trash-2" class="w-4 h-4" />
+											</button>
+										</div>
+									</td>
+								</tr>
+							</tbody>
+						</table>
 					</div>
 				</UiCard>
-			</div>
-
-			<!-- List View -->
-			<UiCard v-else padding="none" overflow="hidden">
-				<div class="overflow-x-auto">
-					<table class="w-full">
-						<thead>
-							<tr class="border-b border-border-subtle">
-								<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">Name</th>
-								<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">Subject</th>
-								<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">Status</th>
-								<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">Updated</th>
-								<th class="text-right px-6 py-4 text-sm font-medium text-text-secondary">
-									Actions
-								</th>
-							</tr>
-						</thead>
-						<tbody>
-							<tr
-								v-for="template in templates"
-								:key="template._id"
-								class="border-b border-border-subtle last:border-b-0 hover:bg-bg-surface transition-colors cursor-pointer"
-								@click="handleEdit(template._id)"
-							>
-								<td class="px-6 py-4">
-									<span class="text-text-primary font-medium">{{ template.name }}</span>
-								</td>
-								<td class="px-6 py-4">
-									<span class="text-text-secondary">{{ template.subject || '-' }}</span>
-								</td>
-								<td class="px-6 py-4">
-									<span
-										:class="[
-											'inline-flex items-center px-2 py-0.5 rounded text-xs font-medium',
-											getStatusBadge(template.status).color,
-										]"
-									>
-										{{ getStatusBadge(template.status).label }}
-									</span>
-								</td>
-								<td class="px-6 py-4">
-									<span class="text-text-tertiary text-sm">{{
-										formatDate(template.updatedAt)
-									}}</span>
-								</td>
-								<td class="px-6 py-4">
-									<div class="flex items-center justify-end gap-1" @click.stop>
-										<button
-											class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors"
-											@click="handleEdit(template._id)"
-											aria-label="Edit"
-										>
-											<Icon name="lucide:pencil" class="w-4 h-4" />
-										</button>
-										<button
-											class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors"
-											@click="handleDuplicate(template._id)"
-											aria-label="Copy"
-										>
-											<Icon name="lucide:copy" class="w-4 h-4" />
-										</button>
-										<button
-											class="p-2 rounded-lg text-text-tertiary hover:text-error hover:bg-error/10 transition-colors"
-											@click="openDeleteModal(template._id, template.name)"
-											aria-label="Delete"
-										>
-											<Icon name="lucide:trash-2" class="w-4 h-4" />
-										</button>
-									</div>
-								</td>
-							</tr>
-						</tbody>
-					</table>
-				</div>
-			</UiCard>
+			</UiQueryBoundary>
 		</div>
 
 		<!-- Template Library Modal -->

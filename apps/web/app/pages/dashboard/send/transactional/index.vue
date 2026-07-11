@@ -25,6 +25,7 @@ const {
 	statusCounts,
 	sendCounts,
 	isLoading: listLoading,
+	error: emailsError,
 	dropdownOpenStates,
 	formatDate,
 	getStatusBadge,
@@ -196,306 +197,321 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 
 		<!-- Content -->
 		<div>
-			<!-- Loading State -->
-			<div v-if="isLoading && !transactionalEmails" class="flex items-center justify-center py-16">
-				<div class="flex flex-col items-center gap-3">
-					<UiSpinner />
-					<p class="text-text-secondary text-sm">Loading transactional emails...</p>
-				</div>
-			</div>
-
-			<!-- Empty State (no organization) -->
-			<UiEmptyState
-				v-else-if="!hasActiveOrganization"
-				icon="lucide:send"
-				title="No workspace selected"
-				description="Create or select a workspace to start creating transactional emails."
-			/>
-
-			<!-- Empty State (no transactional emails) -->
-			<UiEmptyState
-				v-else-if="
-					!isLoading &&
-					(!transactionalEmails || transactionalEmails.length === 0) &&
-					!debouncedSearch
-				"
-				icon="lucide:send"
-				title="No transactional emails yet"
-				description="Transactional emails are triggered by your application via API. Create your first one to get started."
+			<UiQueryBoundary
+				:loading="isLoading && !transactionalEmails"
+				:error="emailsError"
+				error-title="Couldn't load transactional emails"
 			>
-				<template #action>
-					<UiButton @click="openCreateModal">
-						<template #iconLeft>
-							<Icon name="lucide:plus" class="w-4 h-4" />
-						</template>
-						Create Transactional Email
-					</UiButton>
+				<template #loading>
+					<div class="flex items-center justify-center py-16">
+						<div class="flex flex-col items-center gap-3">
+							<UiSpinner />
+							<p class="text-text-secondary text-sm">Loading transactional emails...</p>
+						</div>
+					</div>
 				</template>
-			</UiEmptyState>
 
-			<!-- Empty State (no search results) -->
-			<UiEmptyState
-				v-else-if="
-					!isLoading &&
-					(!transactionalEmails || transactionalEmails.length === 0) &&
-					debouncedSearch
-				"
-				icon="lucide:search"
-				title="No results found"
-				:description="`No transactional emails match &quot;${debouncedSearch}&quot;. Try a different search term.`"
-			>
-				<template #action>
-					<UiButton
-						variant="secondary"
-						@click="
-							searchQuery = '';
-							debouncedSearch = '';
-						"
-					>
-						Clear search
-					</UiButton>
-				</template>
-			</UiEmptyState>
+				<!-- Empty State (no organization) -->
+				<UiEmptyState
+					v-if="!hasActiveOrganization"
+					icon="lucide:send"
+					title="No workspace selected"
+					description="Create or select a workspace to start creating transactional emails."
+				/>
 
-			<!-- Grid View -->
-			<div
-				v-else-if="viewMode === 'grid'"
-				class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
-			>
-				<UiCard
-					v-for="email in transactionalEmails"
-					:key="email._id"
-					padding="none"
-					overflow="hidden"
-					hoverable
-					clickable
-					class="group"
-					@click="handleEdit(email._id)"
+				<!-- Empty State (no transactional emails) -->
+				<UiEmptyState
+					v-else-if="
+						!isLoading &&
+						(!transactionalEmails || transactionalEmails.length === 0) &&
+						!debouncedSearch
+					"
+					icon="lucide:send"
+					title="No transactional emails yet"
+					description="Transactional emails are triggered by your application via API. Create your first one to get started."
 				>
-					<!-- Thumbnail Area -->
-					<div
-						class="aspect-[4/3] bg-bg-surface flex flex-col items-center justify-center relative px-4"
+					<template #action>
+						<UiButton @click="openCreateModal">
+							<template #iconLeft>
+								<Icon name="lucide:plus" class="w-4 h-4" />
+							</template>
+							Create Transactional Email
+						</UiButton>
+					</template>
+				</UiEmptyState>
+
+				<!-- Empty State (no search results) -->
+				<UiEmptyState
+					v-else-if="
+						!isLoading &&
+						(!transactionalEmails || transactionalEmails.length === 0) &&
+						debouncedSearch
+					"
+					icon="lucide:search"
+					title="No results found"
+					:description="`No transactional emails match &quot;${debouncedSearch}&quot;. Try a different search term.`"
+				>
+					<template #action>
+						<UiButton
+							variant="secondary"
+							@click="
+								searchQuery = '';
+								debouncedSearch = '';
+							"
+						>
+							Clear search
+						</UiButton>
+					</template>
+				</UiEmptyState>
+
+				<!-- Grid View -->
+				<div
+					v-else-if="viewMode === 'grid'"
+					class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
+				>
+					<UiCard
+						v-for="email in transactionalEmails"
+						:key="email._id"
+						padding="none"
+						overflow="hidden"
+						hoverable
+						clickable
+						class="group"
+						@click="handleEdit(email._id)"
 					>
-						<Icon name="lucide:send" class="w-10 h-10 text-text-tertiary/30 mb-2" />
-						<code
-							class="px-2 py-1 rounded bg-bg-elevated text-text-tertiary text-xs font-mono truncate max-w-full"
-						>
-							{{ email.slug }}
-						</code>
-						<!-- Hover Overlay -->
+						<!-- Thumbnail Area -->
 						<div
-							class="absolute inset-0 bg-bg-deep/80 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2"
+							class="aspect-[4/3] bg-bg-surface flex flex-col items-center justify-center relative px-4"
 						>
-							<button
-								class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-brand hover:text-text-inverse transition-colors"
-								title="View API Code"
-								@click.stop="openCodeSnippetModal(email._id, email.name, email.slug)"
+							<Icon name="lucide:send" class="w-10 h-10 text-text-tertiary/30 mb-2" />
+							<code
+								class="px-2 py-1 rounded bg-bg-elevated text-text-tertiary text-xs font-mono truncate max-w-full"
 							>
-								<Icon name="lucide:code" class="w-4 h-4" />
-							</button>
-							<button
-								class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-brand hover:text-text-inverse transition-colors"
-								@click.stop="handleEdit(email._id)"
-								aria-label="Edit"
+								{{ email.slug }}
+							</code>
+							<!-- Hover Overlay -->
+							<div
+								class="absolute inset-0 bg-bg-deep/80 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2"
 							>
-								<Icon name="lucide:pencil" class="w-4 h-4" />
-							</button>
-							<button
-								class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-brand hover:text-text-inverse transition-colors"
-								@click.stop="handleDuplicate(email._id)"
-								aria-label="Copy"
-							>
-								<Icon name="lucide:copy" class="w-4 h-4" />
-							</button>
-							<button
-								class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-error hover:text-white transition-colors"
-								@click.stop="openDeleteModal(email._id, email.name)"
-								aria-label="Delete"
-							>
-								<Icon name="lucide:trash-2" class="w-4 h-4" />
-							</button>
-						</div>
-					</div>
-
-					<!-- Info -->
-					<div class="p-4">
-						<div class="flex items-start justify-between gap-2">
-							<div class="min-w-0 flex-1">
-								<h3 class="font-medium text-text-primary truncate">{{ email.name }}</h3>
-								<p class="text-sm text-text-tertiary truncate mt-0.5">
-									{{ email.subject || 'No subject' }}
-								</p>
+								<button
+									class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-brand hover:text-text-inverse transition-colors"
+									title="View API Code"
+									@click.stop="openCodeSnippetModal(email._id, email.name, email.slug)"
+								>
+									<Icon name="lucide:code" class="w-4 h-4" />
+								</button>
+								<button
+									class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-brand hover:text-text-inverse transition-colors"
+									@click.stop="handleEdit(email._id)"
+									aria-label="Edit"
+								>
+									<Icon name="lucide:pencil" class="w-4 h-4" />
+								</button>
+								<button
+									class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-brand hover:text-text-inverse transition-colors"
+									@click.stop="handleDuplicate(email._id)"
+									aria-label="Copy"
+								>
+									<Icon name="lucide:copy" class="w-4 h-4" />
+								</button>
+								<button
+									class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-error hover:text-white transition-colors"
+									@click.stop="openDeleteModal(email._id, email.name)"
+									aria-label="Delete"
+								>
+									<Icon name="lucide:trash-2" class="w-4 h-4" />
+								</button>
 							</div>
-							<!-- Dropdown Menu -->
-							<UiDropdownMenu v-model:open="dropdownOpenStates[email._id]" @click.stop>
-								<template #trigger>
-									<UiButton variant="ghost" size="sm">
-										<Icon name="lucide:more-vertical" class="w-4 h-4" />
-									</UiButton>
-								</template>
-								<UiDropdownMenuItem
-									icon="lucide:code"
-									@click="openCodeSnippetModal(email._id, email.name, email.slug)"
-								>
-									View API Code
-								</UiDropdownMenuItem>
-								<UiDropdownMenuItem
-									icon="lucide:send"
-									@click="openRecentSends(email._id, email.name)"
-								>
-									View sends
-								</UiDropdownMenuItem>
-								<UiDropdownMenuItem icon="lucide:pencil" @click="handleEdit(email._id)">
-									Edit
-								</UiDropdownMenuItem>
-								<UiDropdownMenuItem icon="lucide:copy" @click="handleDuplicate(email._id)">
-									Duplicate
-								</UiDropdownMenuItem>
-								<UiDropdownDivider />
-								<UiDropdownMenuItem
-									icon="lucide:trash-2"
-									danger
-									@click="openDeleteModal(email._id, email.name)"
-								>
-									Delete
-								</UiDropdownMenuItem>
-							</UiDropdownMenu>
 						</div>
 
-						<!-- Meta Info -->
-						<div class="flex items-center gap-2 mt-3">
-							<span
-								:class="[
-									'inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium',
-									getStatusBadge(email.status).color,
-								]"
-							>
-								<Icon :name="getStatusBadge(email.status).icon" class="w-3 h-3" />
-								{{ getStatusBadge(email.status).label }}
-							</span>
-							<span class="text-text-tertiary text-xs">
-								{{ sendCounts?.[email._id] ?? 0 }} sends
-							</span>
+						<!-- Info -->
+						<div class="p-4">
+							<div class="flex items-start justify-between gap-2">
+								<div class="min-w-0 flex-1">
+									<h3 class="font-medium text-text-primary truncate">{{ email.name }}</h3>
+									<p class="text-sm text-text-tertiary truncate mt-0.5">
+										{{ email.subject || 'No subject' }}
+									</p>
+								</div>
+								<!-- Dropdown Menu -->
+								<UiDropdownMenu v-model:open="dropdownOpenStates[email._id]" @click.stop>
+									<template #trigger>
+										<UiButton variant="ghost" size="sm">
+											<Icon name="lucide:more-vertical" class="w-4 h-4" />
+										</UiButton>
+									</template>
+									<UiDropdownMenuItem
+										icon="lucide:code"
+										@click="openCodeSnippetModal(email._id, email.name, email.slug)"
+									>
+										View API Code
+									</UiDropdownMenuItem>
+									<UiDropdownMenuItem
+										icon="lucide:send"
+										@click="openRecentSends(email._id, email.name)"
+									>
+										View sends
+									</UiDropdownMenuItem>
+									<UiDropdownMenuItem icon="lucide:pencil" @click="handleEdit(email._id)">
+										Edit
+									</UiDropdownMenuItem>
+									<UiDropdownMenuItem icon="lucide:copy" @click="handleDuplicate(email._id)">
+										Duplicate
+									</UiDropdownMenuItem>
+									<UiDropdownDivider />
+									<UiDropdownMenuItem
+										icon="lucide:trash-2"
+										danger
+										@click="openDeleteModal(email._id, email.name)"
+									>
+										Delete
+									</UiDropdownMenuItem>
+								</UiDropdownMenu>
+							</div>
+
+							<!-- Meta Info -->
+							<div class="flex items-center gap-2 mt-3">
+								<span
+									:class="[
+										'inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium',
+										getStatusBadge(email.status).color,
+									]"
+								>
+									<Icon :name="getStatusBadge(email.status).icon" class="w-3 h-3" />
+									{{ getStatusBadge(email.status).label }}
+								</span>
+								<span class="text-text-tertiary text-xs">
+									{{ sendCounts?.[email._id] ?? 0 }} sends
+								</span>
+							</div>
+
+							<p class="text-xs text-text-tertiary mt-3">
+								Updated {{ formatDate(email.updatedAt) }}
+							</p>
 						</div>
+					</UiCard>
+				</div>
 
-						<p class="text-xs text-text-tertiary mt-3">Updated {{ formatDate(email.updatedAt) }}</p>
-					</div>
-				</UiCard>
-			</div>
-
-			<!-- List View (Table) -->
-			<UiCard v-else padding="none" overflow="hidden">
-				<div class="overflow-x-auto">
-					<table class="w-full">
-						<thead>
-							<tr class="border-b border-border-subtle">
-								<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">Name</th>
-								<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">Slug</th>
-								<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">Status</th>
-								<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">Sends</th>
-								<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">Updated</th>
-								<th class="text-right px-6 py-4 text-sm font-medium text-text-secondary">
-									Actions
-								</th>
-							</tr>
-						</thead>
-						<tbody>
-							<tr
-								v-for="email in transactionalEmails"
-								:key="email._id"
-								class="border-b border-border-subtle last:border-b-0 hover:bg-bg-surface transition-colors cursor-pointer"
-								@click="handleEdit(email._id)"
-							>
-								<td class="px-6 py-4">
-									<div class="flex flex-col">
-										<span class="text-text-primary font-medium">{{ email.name }}</span>
+				<!-- List View (Table) -->
+				<UiCard v-else padding="none" overflow="hidden">
+					<div class="overflow-x-auto">
+						<table class="w-full">
+							<thead>
+								<tr class="border-b border-border-subtle">
+									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">Name</th>
+									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">Slug</th>
+									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
+										Status
+									</th>
+									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">Sends</th>
+									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
+										Updated
+									</th>
+									<th class="text-right px-6 py-4 text-sm font-medium text-text-secondary">
+										Actions
+									</th>
+								</tr>
+							</thead>
+							<tbody>
+								<tr
+									v-for="email in transactionalEmails"
+									:key="email._id"
+									class="border-b border-border-subtle last:border-b-0 hover:bg-bg-surface transition-colors cursor-pointer"
+									@click="handleEdit(email._id)"
+								>
+									<td class="px-6 py-4">
+										<div class="flex flex-col">
+											<span class="text-text-primary font-medium">{{ email.name }}</span>
+											<span class="text-text-tertiary text-sm">{{
+												email.subject || 'No subject'
+											}}</span>
+										</div>
+									</td>
+									<td class="px-6 py-4">
+										<code
+											class="px-2 py-1 rounded bg-bg-surface text-text-secondary text-sm font-mono"
+										>
+											{{ email.slug }}
+										</code>
+									</td>
+									<td class="px-6 py-4">
+										<span
+											:class="[
+												'inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium',
+												getStatusBadge(email.status).color,
+											]"
+										>
+											<Icon :name="getStatusBadge(email.status).icon" class="w-3 h-3" />
+											{{ getStatusBadge(email.status).label }}
+										</span>
+									</td>
+									<td class="px-6 py-4">
+										<span class="text-text-secondary text-sm">
+											{{ sendCounts?.[email._id] ?? 0 }}
+										</span>
+									</td>
+									<td class="px-6 py-4">
 										<span class="text-text-tertiary text-sm">{{
-											email.subject || 'No subject'
+											formatDate(email.updatedAt)
 										}}</span>
-									</div>
-								</td>
-								<td class="px-6 py-4">
-									<code
-										class="px-2 py-1 rounded bg-bg-surface text-text-secondary text-sm font-mono"
-									>
-										{{ email.slug }}
-									</code>
-								</td>
-								<td class="px-6 py-4">
-									<span
-										:class="[
-											'inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium',
-											getStatusBadge(email.status).color,
-										]"
-									>
-										<Icon :name="getStatusBadge(email.status).icon" class="w-3 h-3" />
-										{{ getStatusBadge(email.status).label }}
-									</span>
-								</td>
-								<td class="px-6 py-4">
-									<span class="text-text-secondary text-sm">
-										{{ sendCounts?.[email._id] ?? 0 }}
-									</span>
-								</td>
-								<td class="px-6 py-4">
-									<span class="text-text-tertiary text-sm">{{ formatDate(email.updatedAt) }}</span>
-								</td>
-								<td class="px-6 py-4">
-									<div class="flex items-center justify-end gap-1" @click.stop>
-										<button
-											class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors"
-											title="View API Code"
-											@click="openCodeSnippetModal(email._id, email.name, email.slug)"
-										>
-											<Icon name="lucide:code" class="w-4 h-4" />
-										</button>
-										<button
-											class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors"
-											title="Edit"
-											@click="handleEdit(email._id)"
-										>
-											<Icon name="lucide:pencil" class="w-4 h-4" />
-										</button>
-										<UiDropdownMenu v-model:open="dropdownOpenStates[email._id]">
-											<template #trigger>
-												<button
-													class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors"
-													aria-label="More actions"
-												>
-													<Icon name="lucide:more-vertical" class="w-4 h-4" />
-												</button>
-											</template>
-											<UiDropdownMenuItem
-												icon="lucide:code"
+									</td>
+									<td class="px-6 py-4">
+										<div class="flex items-center justify-end gap-1" @click.stop>
+											<button
+												class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors"
+												title="View API Code"
 												@click="openCodeSnippetModal(email._id, email.name, email.slug)"
 											>
-												View API Code
-											</UiDropdownMenuItem>
-											<UiDropdownMenuItem
-												icon="lucide:send"
-												@click="openRecentSends(email._id, email.name)"
+												<Icon name="lucide:code" class="w-4 h-4" />
+											</button>
+											<button
+												class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors"
+												title="Edit"
+												@click="handleEdit(email._id)"
 											>
-												View sends
-											</UiDropdownMenuItem>
-											<UiDropdownMenuItem icon="lucide:copy" @click="handleDuplicate(email._id)">
-												Duplicate
-											</UiDropdownMenuItem>
-											<UiDropdownDivider />
-											<UiDropdownMenuItem
-												icon="lucide:trash-2"
-												danger
-												@click="openDeleteModal(email._id, email.name)"
-											>
-												Delete
-											</UiDropdownMenuItem>
-										</UiDropdownMenu>
-									</div>
-								</td>
-							</tr>
-						</tbody>
-					</table>
-				</div>
-			</UiCard>
+												<Icon name="lucide:pencil" class="w-4 h-4" />
+											</button>
+											<UiDropdownMenu v-model:open="dropdownOpenStates[email._id]">
+												<template #trigger>
+													<button
+														class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors"
+														aria-label="More actions"
+													>
+														<Icon name="lucide:more-vertical" class="w-4 h-4" />
+													</button>
+												</template>
+												<UiDropdownMenuItem
+													icon="lucide:code"
+													@click="openCodeSnippetModal(email._id, email.name, email.slug)"
+												>
+													View API Code
+												</UiDropdownMenuItem>
+												<UiDropdownMenuItem
+													icon="lucide:send"
+													@click="openRecentSends(email._id, email.name)"
+												>
+													View sends
+												</UiDropdownMenuItem>
+												<UiDropdownMenuItem icon="lucide:copy" @click="handleDuplicate(email._id)">
+													Duplicate
+												</UiDropdownMenuItem>
+												<UiDropdownDivider />
+												<UiDropdownMenuItem
+													icon="lucide:trash-2"
+													danger
+													@click="openDeleteModal(email._id, email.name)"
+												>
+													Delete
+												</UiDropdownMenuItem>
+											</UiDropdownMenu>
+										</div>
+									</td>
+								</tr>
+							</tbody>
+						</table>
+					</div>
+				</UiCard>
+			</UiQueryBoundary>
 		</div>
 
 		<!-- Create Modal -->

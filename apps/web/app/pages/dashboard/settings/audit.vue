@@ -78,18 +78,19 @@ const dateRangeValues = computed(() => {
 });
 
 // Get audit logs with real-time updates
-const { data: auditLogsData, isLoading: auditLogsLoading } = useOrganizationQuery(
-	api.auditLogs.list,
-	() => ({
-		action: selectedAction.value || undefined,
-		resource: selectedResource.value || undefined,
-		userId: selectedUserId.value || undefined,
-		startDate: dateRangeValues.value.startDate,
-		endDate: dateRangeValues.value.endDate,
-		limit: pageSize,
-		cursor: cursor.value ?? undefined,
-	})
-);
+const {
+	data: auditLogsData,
+	isLoading: auditLogsLoading,
+	error: auditLogsError,
+} = useOrganizationQuery(api.auditLogs.list, () => ({
+	action: selectedAction.value || undefined,
+	resource: selectedResource.value || undefined,
+	userId: selectedUserId.value || undefined,
+	startDate: dateRangeValues.value.startDate,
+	endDate: dateRangeValues.value.endDate,
+	limit: pageSize,
+	cursor: cursor.value ?? undefined,
+}));
 
 // Accumulate pages so "Load More" appends instead of replacing the visible
 // page (first page replaces, each next appends deduped by _id); a filter/date
@@ -119,13 +120,10 @@ const {
 const { data: activeUsersData } = useOrganizationQuery(api.auditLogs.getActiveUsers);
 
 // Get stats for the stats cards
-const { data: statsData } = useOrganizationQuery(
-	api.auditLogs.getStats,
-	() => ({
-		startDate: dateRangeValues.value.startDate,
-		endDate: dateRangeValues.value.endDate,
-	})
-);
+const { data: statsData } = useOrganizationQuery(api.auditLogs.getStats, () => ({
+	startDate: dateRangeValues.value.startDate,
+	endDate: dateRangeValues.value.endDate,
+}));
 
 const isLoading = computed(() => organizationLoading.value || auditLogsLoading.value);
 
@@ -186,7 +184,6 @@ const dateRangeOptions = [
 	{ value: 'week', label: 'Last 7 Days' },
 	{ value: 'month', label: 'Last 30 Days' },
 ];
-
 </script>
 
 <template>
@@ -220,256 +217,283 @@ const dateRangeOptions = [
 			</p>
 		</div>
 
-		<!-- Loading State -->
-		<div v-else-if="isLoading && !auditLogsData" class="flex items-center justify-center py-16">
-			<div class="flex flex-col items-center gap-3">
-				<UiSpinner />
-				<p class="text-text-secondary text-sm">Loading audit log...</p>
-			</div>
-		</div>
-
-		<!-- No Organization State -->
-		<div
-			v-else-if="!hasActiveOrganization"
-			class="card flex flex-col items-center justify-center py-16 text-center px-6"
+		<UiQueryBoundary
+			v-else
+			:loading="isLoading && !auditLogsData"
+			:error="auditLogsError"
+			error-title="Couldn't load the audit log"
 		>
-			<UiIconBox icon="lucide:clipboard-list" size="xl" variant="surface" rounded="full" class="mb-4" />
-			<p class="text-text-secondary font-medium">No workspace selected</p>
-			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-				Create or select a workspace to view the audit log.
-			</p>
-		</div>
+			<template #loading>
+				<div class="flex items-center justify-center py-16">
+					<div class="flex flex-col items-center gap-3">
+						<UiSpinner />
+						<p class="text-text-secondary text-sm">Loading audit log...</p>
+					</div>
+				</div>
+			</template>
 
-		<!-- Content -->
-		<div v-else class="space-y-6">
-			<!-- Stats Cards -->
-			<div v-if="statsData" class="grid grid-cols-2 md:grid-cols-4 gap-4">
-				<div class="card p-4">
-					<p class="text-sm text-text-secondary">Total Actions</p>
-					<p class="text-2xl font-semibold text-text-primary mt-1">{{ statsData.total }}</p>
-				</div>
-				<div class="card p-4">
-					<div class="flex items-center gap-2">
-						<Icon name="lucide:send" class="w-4 h-4 text-brand" />
-						<p class="text-sm text-text-secondary">Campaigns</p>
-					</div>
-					<p class="text-2xl font-semibold text-text-primary mt-1">
-						{{ statsData.byResource['campaign'] ?? 0 }}
-					</p>
-				</div>
-				<div class="card p-4">
-					<div class="flex items-center gap-2">
-						<Icon name="lucide:users" class="w-4 h-4 text-brand" />
-						<p class="text-sm text-text-secondary">Contacts</p>
-					</div>
-					<p class="text-2xl font-semibold text-text-primary mt-1">
-						{{ statsData.byResource['contact'] ?? 0 }}
-					</p>
-				</div>
-				<div class="card p-4">
-					<div class="flex items-center gap-2">
-						<Icon name="lucide:settings" class="w-4 h-4 text-warning" />
-						<p class="text-sm text-text-secondary">Settings</p>
-					</div>
-					<p class="text-2xl font-semibold text-text-primary mt-1">
-						{{ statsData.byResource['settings'] ?? 0 }}
-					</p>
-				</div>
+			<!-- No Organization State -->
+			<div
+				v-if="!hasActiveOrganization"
+				class="card flex flex-col items-center justify-center py-16 text-center px-6"
+			>
+				<UiIconBox
+					icon="lucide:clipboard-list"
+					size="xl"
+					variant="surface"
+					rounded="full"
+					class="mb-4"
+				/>
+				<p class="text-text-secondary font-medium">No workspace selected</p>
+				<p class="text-sm text-text-tertiary mt-1 max-w-sm">
+					Create or select a workspace to view the audit log.
+				</p>
 			</div>
 
-			<!-- Filters -->
-			<div class="card p-4">
-				<div class="flex flex-col lg:flex-row gap-4">
-					<!-- Search -->
-					<div class="relative flex-1">
-						<Icon name="lucide:search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary" />
-						<input
-							v-model="searchQuery"
-							type="text"
-							placeholder="Search by user, action, or details..."
-							class="input pl-10"
-						/>
+			<!-- Content -->
+			<div v-else class="space-y-6">
+				<!-- Stats Cards -->
+				<div v-if="statsData" class="grid grid-cols-2 md:grid-cols-4 gap-4">
+					<div class="card p-4">
+						<p class="text-sm text-text-secondary">Total Actions</p>
+						<p class="text-2xl font-semibold text-text-primary mt-1">{{ statsData.total }}</p>
 					</div>
-
-					<!-- Resource Filter -->
-					<div class="flex items-center gap-2">
-						<Icon name="lucide:filter" class="w-4 h-4 text-text-tertiary" />
-						<select v-model="selectedResource" class="input w-40">
-							<option
-								v-for="resource in resourceTypes"
-								:key="resource.value"
-								:value="resource.value"
-							>
-								{{ resource.label }}
-							</option>
-						</select>
+					<div class="card p-4">
+						<div class="flex items-center gap-2">
+							<Icon name="lucide:send" class="w-4 h-4 text-brand" />
+							<p class="text-sm text-text-secondary">Campaigns</p>
+						</div>
+						<p class="text-2xl font-semibold text-text-primary mt-1">
+							{{ statsData.byResource['campaign'] ?? 0 }}
+						</p>
 					</div>
+					<div class="card p-4">
+						<div class="flex items-center gap-2">
+							<Icon name="lucide:users" class="w-4 h-4 text-brand" />
+							<p class="text-sm text-text-secondary">Contacts</p>
+						</div>
+						<p class="text-2xl font-semibold text-text-primary mt-1">
+							{{ statsData.byResource['contact'] ?? 0 }}
+						</p>
+					</div>
+					<div class="card p-4">
+						<div class="flex items-center gap-2">
+							<Icon name="lucide:settings" class="w-4 h-4 text-warning" />
+							<p class="text-sm text-text-secondary">Settings</p>
+						</div>
+						<p class="text-2xl font-semibold text-text-primary mt-1">
+							{{ statsData.byResource['settings'] ?? 0 }}
+						</p>
+					</div>
+				</div>
 
-					<!-- Action Filter -->
-					<div class="flex items-center gap-2">
-						<Icon name="lucide:activity" class="w-4 h-4 text-text-tertiary" />
-						<select v-model="selectedAction" class="input w-44">
-							<option value="">All Actions</option>
-							<optgroup
-								v-for="group in actionTypeGroups"
-								:key="group.label"
-								:label="group.label"
-							>
-								<option v-for="actionValue in group.actions" :key="actionValue" :value="actionValue">
-									{{ getActionLabel(actionValue) }}
+				<!-- Filters -->
+				<div class="card p-4">
+					<div class="flex flex-col lg:flex-row gap-4">
+						<!-- Search -->
+						<div class="relative flex-1">
+							<Icon
+								name="lucide:search"
+								class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary"
+							/>
+							<input
+								v-model="searchQuery"
+								type="text"
+								placeholder="Search by user, action, or details..."
+								class="input pl-10"
+							/>
+						</div>
+
+						<!-- Resource Filter -->
+						<div class="flex items-center gap-2">
+							<Icon name="lucide:filter" class="w-4 h-4 text-text-tertiary" />
+							<select v-model="selectedResource" class="input w-40">
+								<option
+									v-for="resource in resourceTypes"
+									:key="resource.value"
+									:value="resource.value"
+								>
+									{{ resource.label }}
 								</option>
-							</optgroup>
-						</select>
-					</div>
+							</select>
+						</div>
 
-					<!-- User Filter -->
-					<div v-if="activeUsersData && activeUsersData.length > 0" class="flex items-center gap-2">
-						<Icon name="lucide:user" class="w-4 h-4 text-text-tertiary" />
-						<select v-model="selectedUserId" class="input w-40">
-							<option value="">All Users</option>
-							<option v-for="user in activeUsersData" :key="user._id" :value="user.authUserId">
-								{{ user.name ?? user.email }}
-							</option>
-						</select>
-					</div>
+						<!-- Action Filter -->
+						<div class="flex items-center gap-2">
+							<Icon name="lucide:activity" class="w-4 h-4 text-text-tertiary" />
+							<select v-model="selectedAction" class="input w-44">
+								<option value="">All Actions</option>
+								<optgroup v-for="group in actionTypeGroups" :key="group.label" :label="group.label">
+									<option
+										v-for="actionValue in group.actions"
+										:key="actionValue"
+										:value="actionValue"
+									>
+										{{ getActionLabel(actionValue) }}
+									</option>
+								</optgroup>
+							</select>
+						</div>
 
-					<!-- Date Range Filter -->
-					<div class="flex items-center gap-2">
-						<Icon name="lucide:calendar" class="w-4 h-4 text-text-tertiary" />
-						<select v-model="dateRange" class="input w-40">
-							<option v-for="option in dateRangeOptions" :key="option.value" :value="option.value">
-								{{ option.label }}
-							</option>
-						</select>
-					</div>
+						<!-- User Filter -->
+						<div
+							v-if="activeUsersData && activeUsersData.length > 0"
+							class="flex items-center gap-2"
+						>
+							<Icon name="lucide:user" class="w-4 h-4 text-text-tertiary" />
+							<select v-model="selectedUserId" class="input w-40">
+								<option value="">All Users</option>
+								<option v-for="user in activeUsersData" :key="user._id" :value="user.authUserId">
+									{{ user.name ?? user.email }}
+								</option>
+							</select>
+						</div>
 
-					<!-- Reset Filters -->
-					<button
-						v-if="
-							searchQuery ||
-							selectedAction ||
-							selectedResource ||
-							selectedUserId ||
-							dateRange !== 'all'
-						"
-						class="btn btn-ghost gap-2 text-text-secondary hover:text-text-primary"
-						@click="resetFilters"
-					>
-						<Icon name="lucide:refresh-cw" class="w-4 h-4" />
-						Reset
-					</button>
+						<!-- Date Range Filter -->
+						<div class="flex items-center gap-2">
+							<Icon name="lucide:calendar" class="w-4 h-4 text-text-tertiary" />
+							<select v-model="dateRange" class="input w-40">
+								<option
+									v-for="option in dateRangeOptions"
+									:key="option.value"
+									:value="option.value"
+								>
+									{{ option.label }}
+								</option>
+							</select>
+						</div>
+
+						<!-- Reset Filters -->
+						<button
+							v-if="
+								searchQuery ||
+								selectedAction ||
+								selectedResource ||
+								selectedUserId ||
+								dateRange !== 'all'
+							"
+							class="btn btn-ghost gap-2 text-text-secondary hover:text-text-primary"
+							@click="resetFilters"
+						>
+							<Icon name="lucide:refresh-cw" class="w-4 h-4" />
+							Reset
+						</button>
+					</div>
 				</div>
-			</div>
 
-			<!-- Empty State -->
-			<div
-				v-if="auditLogsData && auditLogsData.logs.length === 0"
-				class="card flex flex-col items-center justify-center py-16 text-center px-6"
-			>
-				<UiIconBox icon="lucide:clipboard-list" size="xl" variant="surface" rounded="full" class="mb-4" />
-				<p class="text-text-secondary font-medium">No activity recorded</p>
-				<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-					Team actions will appear here as they happen. Start by creating a campaign, adding
-					contacts, or updating settings.
-				</p>
-			</div>
-
-			<!-- No Search Results -->
-			<div
-				v-else-if="filteredLogs.length === 0 && searchQuery.trim()"
-				class="card flex flex-col items-center justify-center py-16 text-center px-6"
-			>
-				<UiIconBox icon="lucide:search" size="xl" variant="surface" rounded="full" class="mb-4" />
-				<p class="text-text-secondary font-medium">No results found</p>
-				<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-					No audit logs match "{{ searchQuery }}". Try a different search term or adjust filters.
-				</p>
-			</div>
-
-			<!-- Audit Log List -->
-			<div v-else-if="filteredLogs.length > 0" class="space-y-4">
+				<!-- Empty State -->
 				<div
-					v-for="log in filteredLogs"
-					:key="log._id"
-					class="card p-4 hover:bg-bg-surface/30 transition-colors"
+					v-if="auditLogsData && auditLogsData.logs.length === 0"
+					class="card flex flex-col items-center justify-center py-16 text-center px-6"
 				>
-					<div class="flex items-start gap-4">
-						<!-- User Avatar -->
-						<div class="flex-shrink-0">
-							<div
-								class="w-10 h-10 rounded-full bg-bg-surface flex items-center justify-center text-sm font-medium text-text-secondary"
-							>
-								{{ getUserInitials(log.userProfile?.name, log.userProfile?.email) }}
-							</div>
-						</div>
+					<UiIconBox
+						icon="lucide:clipboard-list"
+						size="xl"
+						variant="surface"
+						rounded="full"
+						class="mb-4"
+					/>
+					<p class="text-text-secondary font-medium">No activity recorded</p>
+					<p class="text-sm text-text-tertiary mt-1 max-w-sm">
+						Team actions will appear here as they happen. Start by creating a campaign, adding
+						contacts, or updating settings.
+					</p>
+				</div>
 
-						<!-- Content -->
-						<div class="flex-1 min-w-0">
-							<div class="flex items-center flex-wrap gap-2 mb-1">
-								<!-- User Name -->
-								<span class="font-medium text-text-primary">
-									{{ log.userProfile?.name ?? log.userProfile?.email ?? 'Unknown User' }}
-								</span>
+				<!-- No Search Results -->
+				<div
+					v-else-if="filteredLogs.length === 0 && searchQuery.trim()"
+					class="card flex flex-col items-center justify-center py-16 text-center px-6"
+				>
+					<UiIconBox icon="lucide:search" size="xl" variant="surface" rounded="full" class="mb-4" />
+					<p class="text-text-secondary font-medium">No results found</p>
+					<p class="text-sm text-text-tertiary mt-1 max-w-sm">
+						No audit logs match "{{ searchQuery }}". Try a different search term or adjust filters.
+					</p>
+				</div>
 
-								<!-- Action Badge -->
-								<span
-									:class="[
-										'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium',
-										getActionColorClass(log.action),
-									]"
+				<!-- Audit Log List -->
+				<div v-else-if="filteredLogs.length > 0" class="space-y-4">
+					<div
+						v-for="log in filteredLogs"
+						:key="log._id"
+						class="card p-4 hover:bg-bg-surface/30 transition-colors"
+					>
+						<div class="flex items-start gap-4">
+							<!-- User Avatar -->
+							<div class="flex-shrink-0">
+								<div
+									class="w-10 h-10 rounded-full bg-bg-surface flex items-center justify-center text-sm font-medium text-text-secondary"
 								>
-									<Icon :name="getActionIcon(log.action)" class="w-3 h-3" />
-									{{ getActionLabel(log.action) }}
-								</span>
-
-								<!-- Resource Badge -->
-								<span
-									class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-bg-surface text-text-secondary"
-								>
-									<Icon :name="getResourceIcon(log.resource)" class="w-3 h-3" />
-									{{ getResourceLabel(log.resource) }}
-								</span>
+									{{ getUserInitials(log.userProfile?.name, log.userProfile?.email) }}
+								</div>
 							</div>
 
-							<!-- Details -->
-							<div v-if="log.details" class="text-sm text-text-secondary mt-1">
-								<template v-if="parseDetails(log.details)['name']">
-									<span class="font-medium">"{{ parseDetails(log.details)['name'] }}"</span>
-								</template>
-								<template v-else-if="parseDetails(log.details)['email']">
-									<span class="font-medium">{{ parseDetails(log.details)['email'] }}</span>
-								</template>
-								<template v-else-if="parseDetails(log.details)['count']">
-									<span class="font-medium">{{ parseDetails(log.details)['count'] }} items</span>
-								</template>
+							<!-- Content -->
+							<div class="flex-1 min-w-0">
+								<div class="flex items-center flex-wrap gap-2 mb-1">
+									<!-- User Name -->
+									<span class="font-medium text-text-primary">
+										{{ log.userProfile?.name ?? log.userProfile?.email ?? 'Unknown User' }}
+									</span>
+
+									<!-- Action Badge -->
+									<span
+										:class="[
+											'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium',
+											getActionColorClass(log.action),
+										]"
+									>
+										<Icon :name="getActionIcon(log.action)" class="w-3 h-3" />
+										{{ getActionLabel(log.action) }}
+									</span>
+
+									<!-- Resource Badge -->
+									<span
+										class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-bg-surface text-text-secondary"
+									>
+										<Icon :name="getResourceIcon(log.resource)" class="w-3 h-3" />
+										{{ getResourceLabel(log.resource) }}
+									</span>
+								</div>
+
+								<!-- Details -->
+								<div v-if="log.details" class="text-sm text-text-secondary mt-1">
+									<template v-if="parseDetails(log.details)['name']">
+										<span class="font-medium">"{{ parseDetails(log.details)['name'] }}"</span>
+									</template>
+									<template v-else-if="parseDetails(log.details)['email']">
+										<span class="font-medium">{{ parseDetails(log.details)['email'] }}</span>
+									</template>
+									<template v-else-if="parseDetails(log.details)['count']">
+										<span class="font-medium">{{ parseDetails(log.details)['count'] }} items</span>
+									</template>
+								</div>
+
+								<!-- Timestamp -->
+								<p class="text-xs text-text-tertiary mt-2" :title="formatFullDate(log.createdAt)">
+									{{ formatTimestamp(log.createdAt) }}
+								</p>
 							</div>
 
-							<!-- Timestamp -->
-							<p class="text-xs text-text-tertiary mt-2" :title="formatFullDate(log.createdAt)">
-								{{ formatTimestamp(log.createdAt) }}
-							</p>
-						</div>
-
-						<!-- Resource Icon -->
-						<div class="flex-shrink-0">
-							<div class="p-2 rounded-lg bg-bg-surface flex items-center justify-center">
-								<Icon
-									:name="getResourceIcon(log.resource)"
-									class="w-4 h-4 text-text-secondary"
-								/>
+							<!-- Resource Icon -->
+							<div class="flex-shrink-0">
+								<div class="p-2 rounded-lg bg-bg-surface flex items-center justify-center">
+									<Icon :name="getResourceIcon(log.resource)" class="w-4 h-4 text-text-secondary" />
+								</div>
 							</div>
 						</div>
 					</div>
-				</div>
 
-				<!-- Load More -->
-				<div v-if="auditLogsData?.hasMore" class="flex justify-center pt-4">
-					<button class="btn btn-secondary gap-2" @click="loadMore">
-						<Icon name="lucide:chevron-down" class="w-4 h-4" />
-						Load More
-					</button>
+					<!-- Load More -->
+					<div v-if="auditLogsData?.hasMore" class="flex justify-center pt-4">
+						<button class="btn btn-secondary gap-2" @click="loadMore">
+							<Icon name="lucide:chevron-down" class="w-4 h-4" />
+							Load More
+						</button>
+					</div>
 				</div>
 			</div>
-		</div>
+		</UiQueryBoundary>
 	</div>
 </template>
