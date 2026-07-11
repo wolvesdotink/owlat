@@ -19,6 +19,9 @@ const status = ref<'loading' | 'accepting' | 'success' | 'error' | 'login-requir
 const errorMessage = ref('');
 const organizationName = ref('');
 const claimedMailboxAddress = ref('');
+// An early-instance reservation whose sending domain hasn't verified yet: the
+// mailbox is held for them and activates automatically once the domain verifies.
+const reservedAwaitingAddress = ref('');
 const claimedInboxAddresses = ref<string[]>([]);
 
 const { run: claimPendingMailbox } = useBackendOperation(
@@ -26,7 +29,7 @@ const { run: claimPendingMailbox } = useBackendOperation(
 	{ label: 'Claim mailbox' }
 );
 const { run: claimInboxMemberships } = useBackendOperation(
-	api.mail.pendingMailbox.claimInboxMemberships,
+	api.mail.pendingInboxMembership.claimInboxMemberships,
 	{ label: 'Join team inbox' }
 );
 
@@ -77,6 +80,8 @@ async function handleAcceptInvitation() {
 		});
 		if (claim?.created) {
 			claimedMailboxAddress.value = claim.address;
+		} else if (claim && !claim.created && 'error' in claim && claim.error === 'awaiting_domain') {
+			reservedAwaitingAddress.value = claim.address;
 		}
 
 		// Best-effort: materialize any team-inbox memberships reserved for this
@@ -170,6 +175,11 @@ function redirectToRegister() {
 						Your mailbox at
 						<code class="text-text-primary">{{ claimedMailboxAddress }}</code>
 						is ready.
+					</p>
+					<p v-else-if="reservedAwaitingAddress" class="text-text-secondary mb-2">
+						Your mailbox
+						<code class="text-text-primary">{{ reservedAwaitingAddress }}</code>
+						is reserved — it activates automatically once your workspace's sending domain verifies.
 					</p>
 					<p v-for="addr in claimedInboxAddresses" :key="addr" class="text-text-secondary mb-2">
 						The team inbox

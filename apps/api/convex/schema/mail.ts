@@ -39,17 +39,34 @@ export const mailTables = {
 		inviteeEmail: v.string(), // canonical lowercase — claim is bound to this identity
 		organizationId: v.string(),
 		localpart: v.string(), // canonical lowercase
-		domain: v.string(), // verified domain at invite time
+		// Sending domain at invite time. It does NOT have to be verified yet: on a
+		// brand-new instance an admin can reserve a mailbox on a domain that is
+		// still registering/pending DNS, so the earliest invitees get "reserved,
+		// activates when your domain verifies" progress instead of a dead end. The
+		// reservation only materializes into a live mailbox once the domain is
+		// verified (claim gate in mail/pendingMailbox.ts + the verify-time sweep).
+		domain: v.string(),
 		address: v.string(), // canonical "${localpart}@${domain}"
 		displayName: v.optional(v.string()),
 		createdAt: v.number(),
 		createdByUserId: v.string(), // inviter — audit only
+		// Set when the invitee ACCEPTS while the domain is still unverified: the
+		// claim is parked in "awaiting_domain" and stamped with the accepting
+		// BetterAuth userId. The verify-time sweep provisions ONLY rows carrying
+		// this id, using it directly — so acceptance, org-match and identity
+		// binding are facts recorded at accept time, never re-derived by email
+		// (which would wrongly provision a not-yet-accepted registrant and miss
+		// mixed-case profile emails). Absent ⇒ nobody has accepted yet.
+		acceptedByUserId: v.optional(v.string()),
 	})
 		.index('by_invitation', ['invitationId'])
 		.index('by_address', ['address'])
 		// Look up an invitee's reservation by their email at first login (the
 		// fresh-start welcome shows "your mailbox X is reserved — claim it").
-		.index('by_invitee_email', ['inviteeEmail']),
+		.index('by_invitee_email', ['inviteeEmail'])
+		// Sweep every reservation on a domain when it finally verifies, so already-
+		// accepted invitees' mailboxes provision the moment the domain goes live.
+		.index('by_domain', ['domain']),
 
 	// Per-user mailbox identity (e.g. marcel@hinterland.camp).
 	// One BetterAuth user can own multiple mailboxes.
