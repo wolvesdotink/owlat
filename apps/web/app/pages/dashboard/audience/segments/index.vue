@@ -138,7 +138,12 @@ onMounted(() => {
 		<!-- Content -->
 		<UiCard padding="none" overflow="hidden">
 			<!-- Loading State -->
-			<DashboardListSkeleton v-if="isLoading && !segments" variant="table" :columns="6" :rows="6" />
+			<DashboardListSkeleton
+				v-if="isLoading && segments.length === 0"
+				variant="table"
+				:columns="6"
+				:rows="6"
+			/>
 
 			<!-- Empty State (no organization) -->
 			<UiEmptyState

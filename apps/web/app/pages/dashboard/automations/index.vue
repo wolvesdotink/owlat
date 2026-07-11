@@ -71,7 +71,7 @@ const { results: automations, isLoading: automationsLoading } = usePaginatedQuer
 	() => ({
 		status: selectedStatus.value === 'all' ? undefined : selectedStatus.value,
 	}),
-	{ initialNumItems: 100 }
+	{ initialNumItems: 100, keepPreviousData: true }
 );
 
 // Client-side search filtering
@@ -274,7 +274,7 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 		<div class="card p-0 overflow-hidden">
 			<!-- Loading State -->
 			<DashboardListSkeleton
-				v-if="isLoading && !automations"
+				v-if="isLoading && automations.length === 0"
 				variant="table"
 				:columns="6"
 				:rows="6"

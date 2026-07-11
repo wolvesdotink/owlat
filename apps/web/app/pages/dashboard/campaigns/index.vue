@@ -101,7 +101,7 @@ const {
 } = usePaginatedQuery(
 	api.campaigns.campaigns.list,
 	() => ({ status: serverStatus.value, search: debouncedSearch.value || undefined }),
-	{ initialNumItems: 100 }
+	{ initialNumItems: 100, keepPreviousData: true }
 );
 
 const { data: statusCounts } = useOrganizationQuery(

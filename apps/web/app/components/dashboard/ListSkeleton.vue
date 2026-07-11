@@ -7,10 +7,15 @@
  * so the pane doesn't reflow when data lands. Generalizes the Postbox pattern
  * (PostboxThreadListSkeleton) to the dashboard's two dominant layouts.
  *
- * SHOW ON FIRST LOAD ONLY. Gate it with `isLoading && !data` (never `isLoading`
- * alone) so a live-query refresh that already has rows keeps them visible and
- * never flashes back to the skeleton. The underlying UiSkeleton renders a static
- * block (no shimmer) under prefers-reduced-motion. Sizing uses FF tokens only.
+ * SHOW ON FIRST LOAD ONLY. Gate it on the query's honest first-load signal —
+ * `isLoading && <results>.length === 0` (usePaginatedQuery) or
+ * `status === 'LoadingFirstPage'`, never `isLoading` alone. `usePaginatedQuery`
+ * initialises `results` to `[]` (never null), so a bare `!results` gate is dead
+ * code and the skeleton would never show. Pass `keepPreviousData` to the query on
+ * surfaces whose args change (search / sort / status filter) so a resubscribe
+ * keeps the current rows and flags `isRefetching` instead of blanking the pane
+ * back to the skeleton. The underlying UiSkeleton renders a static block (no
+ * shimmer) under prefers-reduced-motion. Sizing uses FF tokens only.
  */
 withDefaults(
 	defineProps<{

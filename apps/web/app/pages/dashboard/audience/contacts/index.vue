@@ -64,7 +64,7 @@ const {
 		sort: sortBy.value,
 		order: sortOrder.value,
 	}),
-	{ initialNumItems: pageSize }
+	{ initialNumItems: pageSize, keepPreviousData: true }
 );
 
 // Fetch contact properties and topics
@@ -598,7 +598,7 @@ onUnmounted(() => {
 			<UiQueryBoundary :error="contactsError">
 				<!-- Loading State -->
 				<DashboardListSkeleton
-					v-if="isLoading && !contacts"
+					v-if="isLoading && contacts.length === 0"
 					variant="table"
 					leading
 					:columns="4"
