@@ -18,7 +18,32 @@
  * template.
  */
 import { AUDIT_ACTION_LITERALS } from '@owlat/api/auditActions';
+import type { Id } from '@owlat/api/dataModel';
 import { capitalize } from '../utils/formatters';
+
+/**
+ * A single audit-log row as returned by `api.auditLogs.list`. Lives here (the
+ * audit presentation SSOT) so the page and the row-list component share one
+ * shape instead of redeclaring it. `details` is a jsonPrimitiveRecord (a plain
+ * object), not a JSON string — do NOT JSON.parse it.
+ */
+export interface AuditLogEntry {
+	_id: Id<'auditLogs'>;
+	_creationTime: number;
+	userId: string;
+	action: string;
+	resource: string;
+	resourceId?: string;
+	details?: Record<string, unknown>;
+	ipAddress?: string;
+	userAgent?: string;
+	createdAt: number;
+	userProfile: {
+		_id: Id<'userProfiles'>;
+		name?: string;
+		email: string;
+	} | null;
+}
 
 /**
  * Dropdown option for the resource filter. The `value` is a UI-level resource

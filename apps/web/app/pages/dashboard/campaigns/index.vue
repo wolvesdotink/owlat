@@ -101,7 +101,7 @@ const {
 } = usePaginatedQuery(
 	api.campaigns.campaigns.list,
 	() => ({ status: serverStatus.value, search: debouncedSearch.value || undefined }),
-	{ initialNumItems: 100 }
+	{ initialNumItems: 100, keepPreviousData: true }
 );
 
 const { data: statusCounts } = useOrganizationQuery(
@@ -364,15 +364,9 @@ const showEmptyState = computed(
 			</div>
 		</div>
 
-		<div
-			v-if="activeLoading && visibleRows.length === 0"
-			class="flex items-center justify-center py-16"
-		>
-			<div class="flex flex-col items-center gap-3">
-				<UiSpinner />
-				<p class="text-text-secondary text-sm">Loading campaigns…</p>
-			</div>
-		</div>
+		<UiCard v-if="activeLoading && visibleRows.length === 0" padding="none" overflow="hidden">
+			<DashboardListSkeleton variant="card" :rows="6" />
+		</UiCard>
 
 		<UiErrorAlert
 			v-else-if="activeError"

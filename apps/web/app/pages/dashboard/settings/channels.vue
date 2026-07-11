@@ -135,12 +135,9 @@ const handleChannelError = (message: string) => {
 			</UiDropdownMenu>
 		</div>
 
-		<!-- Loading State -->
-		<div v-if="isLoading" class="flex items-center justify-center py-16">
-			<div class="flex flex-col items-center gap-3">
-				<UiSpinner />
-				<p class="text-text-secondary text-sm">Loading channel configurations...</p>
-			</div>
+		<!-- First-load skeleton (shaped like the channel list) -->
+		<div v-if="isLoading && !channels" class="card overflow-hidden">
+			<DashboardListSkeleton variant="card" leading :rows="3" />
 		</div>
 
 		<template v-else>

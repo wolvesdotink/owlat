@@ -292,11 +292,15 @@ onMounted(() => {
 		<!-- Content -->
 		<UiCard padding="none" overflow="hidden">
 			<UiQueryBoundary
-				:loading="isLoading && !topics"
+				:loading="isLoading && topics.length === 0"
 				:error="topicsError"
 				error-title="Couldn't load topics"
-				loading-label="Loading topics..."
 			>
+				<!-- Loading State: content-shaped skeleton on first load only -->
+				<template #loading>
+					<DashboardListSkeleton variant="table" :columns="6" :rows="6" />
+				</template>
+
 				<!-- Empty State (no organization) -->
 				<UiEmptyState
 					v-if="!hasActiveOrganization"

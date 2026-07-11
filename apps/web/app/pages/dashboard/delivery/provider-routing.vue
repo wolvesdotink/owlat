@@ -233,12 +233,9 @@ async function handleReset() {
 			</div>
 		</div>
 
-		<!-- Loading State -->
-		<div v-if="isLoading && !routesData" class="flex items-center justify-center py-16">
-			<div class="flex flex-col items-center gap-3">
-				<UiSpinner />
-				<p class="text-text-secondary text-sm">Loading provider routes...</p>
-			</div>
+		<!-- First-load skeleton (shaped like the route list) -->
+		<div v-if="isLoading && !routesData" class="card overflow-hidden">
+			<DashboardListSkeleton variant="card" leading :rows="4" />
 		</div>
 
 		<!-- No Organization State -->
