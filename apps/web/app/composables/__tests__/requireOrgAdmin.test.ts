@@ -33,12 +33,12 @@ beforeEach(() => {
 	cookie = 'better-auth.session=abc';
 	mockQuery.mockReset();
 
-	vi.stubGlobal('useRuntimeConfig', () => ({ public: { convexUrl: 'https://convex.test' } }));
+	vi.stubGlobal('useRuntimeConfig', () => ({
+		public: { convexUrl: 'https://convex.test', siteUrl: 'http://localhost:3000' },
+	}));
 	vi.stubGlobal('getHeader', (_event: unknown, name: string) =>
 		name === 'cookie' ? cookie : undefined
 	);
-	vi.stubGlobal('getRequestHost', () => 'localhost:3000');
-	vi.stubGlobal('getRequestProtocol', () => 'http');
 	vi.stubGlobal('createError', (opts: { statusCode: number; message: string }) =>
 		Object.assign(new Error(opts.message), { statusCode: opts.statusCode })
 	);
