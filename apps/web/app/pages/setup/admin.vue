@@ -5,7 +5,7 @@ definePageMeta({ layout: false });
 useHead({ title: 'Owlat setup — Admin account' });
 
 const router = useRouter();
-const { admin } = useSetupWizard();
+const { admin, goToStep } = useSetupWizard();
 const { getStepStatus, isConnectorHighlighted } = useWizard(SETUP_WIZARD_STEPS, 'admin');
 
 const submitted = ref(false);
@@ -14,8 +14,12 @@ const submitted = ref(false);
 const touched = reactive({ email: false, password: false });
 
 const errors = computed(() => validateAdmin(admin.value));
-const emailError = computed(() => ((submitted.value || touched.email) ? errors.value.email : undefined));
-const passwordError = computed(() => ((submitted.value || touched.password) ? errors.value.password : undefined));
+const emailError = computed(() =>
+	submitted.value || touched.email ? errors.value.email : undefined
+);
+const passwordError = computed(() =>
+	submitted.value || touched.password ? errors.value.password : undefined
+);
 
 function next() {
 	submitted.value = true;
@@ -29,16 +33,17 @@ function next() {
 		<div class="mx-auto max-w-xl px-6 py-12">
 			<div class="flex items-center gap-3 mb-8">
 				<UiIconBox icon="lucide:feather" size="md" variant="brand" rounded="xl" />
-				<span class="text-sm font-medium text-text-secondary tracking-wide uppercase">Owlat setup</span>
+				<span class="text-sm font-medium text-text-secondary tracking-wide uppercase"
+					>Owlat setup</span
+				>
 			</div>
 
 			<UiStepIndicator
 				class="mb-10"
 				:steps="SETUP_WIZARD_STEPS"
-				:get-step-status="
-					getStepStatus as (stepId: string) => 'completed' | 'current' | 'upcoming'
-				"
+				:get-step-status="getStepStatus as (stepId: string) => 'completed' | 'current' | 'upcoming'"
 				:is-connector-highlighted="isConnectorHighlighted"
+				:on-step-click="goToStep"
 			/>
 
 			<header class="mb-6">
@@ -56,6 +61,7 @@ function next() {
 						label="Email"
 						placeholder="you@example.com"
 						autocomplete="email"
+						autofocus
 						required
 						:error="emailError"
 						@blur="touched.email = true"
