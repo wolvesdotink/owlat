@@ -28,7 +28,10 @@ const stubs = {
 		props: ['title', 'message', 'variant'],
 		template: '<div data-testid="error-alert">{{ title }} — {{ message }}</div>',
 	},
-	UiButton: { template: '<button data-testid="retry" @click="$emit(\'click\')"><slot /></button>' },
+	UiButton: {
+		emits: ['click'],
+		template: '<button data-testid="retry" @click="$emit(\'click\')"><slot /></button>',
+	},
 };
 
 const slots = {
