@@ -93,7 +93,7 @@ function openForYou(): void {
 	<div
 		v-if="isDesktop"
 		data-tauri-drag-region
-		class="desktop-titlebar fixed top-0 inset-x-0 z-[70] flex items-center h-[var(--titlebar-h,44px)] border-b border-border-subtle bg-bg-elevated select-none"
+		class="desktop-titlebar fixed top-0 inset-x-0 z-(--z-titlebar) flex items-center h-[var(--titlebar-h,44px)] border-b border-border-subtle bg-bg-elevated select-none"
 		:class="isMac ? 'pl-[88px] pr-2.5' : 'pl-2.5'"
 	>
 		<!-- LEFT — workspace chip / switcher (draggable gaps around it). -->

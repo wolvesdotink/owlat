@@ -402,7 +402,7 @@ const sidebarDesktopClass = computed(() => {
 		<!-- Skip link: first tab stop, visible only when focused -->
 		<a
 			href="#main-content"
-			class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[100] focus:px-4 focus:py-2 focus:bg-bg-elevated focus:border focus:border-brand focus:rounded-lg focus:text-text-primary"
+			class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-(--z-overlay) focus:px-4 focus:py-2 focus:bg-bg-elevated focus:border focus:border-brand focus:rounded-lg focus:text-text-primary"
 		>
 			Skip to main content
 		</a>
@@ -414,7 +414,7 @@ const sidebarDesktopClass = computed(() => {
 
 		<!-- Fill the iOS notch / dynamic island area so scrolled content never peeks through above the header. -->
 		<div
-			class="fixed top-0 left-0 right-0 z-[60] pointer-events-none bg-bg-elevated lg:hidden"
+			class="fixed top-0 left-0 right-0 z-(--z-header) pointer-events-none bg-bg-elevated lg:hidden"
 			style="height: env(safe-area-inset-top, 0px)"
 		/>
 

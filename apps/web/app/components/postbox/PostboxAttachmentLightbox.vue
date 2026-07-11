@@ -146,7 +146,7 @@ onBeforeUnmount(() => {
 	<Teleport to="body">
 		<div
 			ref="containerRef"
-			class="fixed inset-0 z-[100] flex flex-col bg-black/85"
+			class="fixed inset-0 z-(--z-overlay) flex flex-col bg-black/85"
 			role="dialog"
 			aria-modal="true"
 			:aria-label="current ? `Preview of ${current.filename}` : 'Attachment preview'"
