@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
 	deriveDeliveryReadiness,
+	readinessInputFromSources,
+	type ReadinessDomainRow,
 	type ReadinessGateKey,
 	type ReadinessInput,
 } from '../deliveryReadiness';
@@ -137,5 +139,59 @@ describe('deriveDeliveryReadiness — summary', () => {
 
 	it('gives an all-clear line when everything is ready', () => {
 		expect(deriveDeliveryReadiness(input()).summary).toContain('can send');
+	});
+});
+
+describe('readinessInputFromSources — folding the two live sources', () => {
+	function row(overrides: Partial<ReadinessDomainRow> = {}): ReadinessDomainRow {
+		return { status: 'verified', missing: [], ...overrides };
+	}
+
+	it('reports auth against the most-active VERIFIED domain, not a more-active unverified one', () => {
+		// Rows arrive most-active first: an unverified domain leads, a verified one
+		// follows. Auth must be read from the verified one (what mail sends from).
+		const rows: ReadinessDomainRow[] = [
+			row({ status: 'pending', missing: ['SPF', 'DKIM', 'DMARC'] }),
+			row({ status: 'verified', missing: ['DMARC'] }),
+		];
+		const result = readinessInputFromSources({ canSend: true }, rows);
+		expect(result.domainVerified).toBe(true);
+		expect(result.authMissing).toEqual(['DMARC']);
+		expect(result.authComplete).toBe(false);
+	});
+
+	it('falls back to the most-active configured domain before any has verified', () => {
+		const rows: ReadinessDomainRow[] = [
+			row({ status: 'pending', missing: ['DKIM'] }),
+			row({ status: 'failed', missing: ['SPF', 'DKIM', 'DMARC'] }),
+		];
+		const result = readinessInputFromSources({ canSend: false }, rows);
+		expect(result.hasDomains).toBe(true);
+		expect(result.domainVerified).toBe(false);
+		// missing passthrough from the leading (most-active) row.
+		expect(result.authMissing).toEqual(['DKIM']);
+		expect(result.authComplete).toBe(false);
+	});
+
+	it('is fully unset with empty rows (no domain to authenticate)', () => {
+		const result = readinessInputFromSources({ canSend: false }, []);
+		expect(result).toEqual({
+			transportConfigured: false,
+			hasDomains: false,
+			domainVerified: false,
+			authComplete: false,
+			authMissing: [],
+		});
+	});
+
+	it('marks auth complete when the verified domain has no missing records', () => {
+		const result = readinessInputFromSources({ canSend: true }, [row()]);
+		expect(result.authComplete).toBe(true);
+		expect(result.authMissing).toEqual([]);
+	});
+
+	it('carries transport canSend straight through', () => {
+		expect(readinessInputFromSources({ canSend: true }, []).transportConfigured).toBe(true);
+		expect(readinessInputFromSources({ canSend: false }, [row()]).transportConfigured).toBe(false);
 	});
 });
