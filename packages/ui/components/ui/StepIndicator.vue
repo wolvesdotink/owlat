@@ -42,10 +42,10 @@ function handleStepClick(stepId: Step['id']): void {
 				<component
 					:is="stepIsClickable(step.id) ? 'button' : 'div'"
 					:type="stepIsClickable(step.id) ? 'button' : undefined"
-					class="flex items-center rounded-md text-left"
+					class="flex items-center"
 					:class="
 						stepIsClickable(step.id)
-							? 'cursor-pointer transition-opacity duration-(--motion-fast) hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand'
+							? 'rounded-md text-left cursor-pointer transition-opacity duration-(--motion-fast) hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand'
 							: ''
 					"
 					:aria-label="stepIsClickable(step.id) ? `Go back to ${step.label}` : undefined"
