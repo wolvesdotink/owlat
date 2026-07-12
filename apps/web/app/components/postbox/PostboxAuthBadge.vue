@@ -10,7 +10,7 @@
  * flag is off, or there are no verdicts to reason about (a legacy row), it
  * renders nothing.
  */
-import { deriveSenderAuth, type SenderAuthInput } from '~/utils/senderAuth';
+import { deriveSenderAuth, type SenderAuthInput, type SenderAuthResult } from '~/utils/senderAuth';
 
 const props = defineProps<{
 	/** Feature-flag gate: when false the badge renders nothing. */
@@ -34,30 +34,21 @@ watch(
 	{ immediate: true }
 );
 
-const toneClass = computed(() => {
-	switch (result.value?.tone) {
-		case 'ok':
-			return 'border-border-subtle text-text-secondary';
-		case 'warn':
-			return 'border-warning/40 text-warning';
-		case 'danger':
-			return 'border-error/40 text-error';
-		default:
-			return 'border-border-subtle text-text-secondary';
-	}
-});
+// One table keyed by the tone discriminator so chip and icon styling never
+// drift apart. FF tokens only.
+const TONE_CLASSES: Record<SenderAuthResult['tone'], { chip: string; icon: string }> = {
+	ok: { chip: 'border-border-subtle text-text-secondary', icon: 'text-success' },
+	warn: { chip: 'border-warning/40 text-warning', icon: 'text-warning' },
+	danger: { chip: 'border-error/40 text-error', icon: 'text-error' },
+};
+const FALLBACK_TONE = {
+	chip: 'border-border-subtle text-text-secondary',
+	icon: 'text-text-tertiary',
+};
 
-const iconClass = computed(() => {
-	switch (result.value?.tone) {
-		case 'ok':
-			return 'text-success';
-		case 'warn':
-			return 'text-warning';
-		case 'danger':
-			return 'text-error';
-		default:
-			return 'text-text-tertiary';
-	}
+const toneClasses = computed(() => {
+	const tone = result.value?.tone;
+	return tone ? TONE_CLASSES[tone] : FALLBACK_TONE;
 });
 </script>
 
@@ -66,12 +57,12 @@ const iconClass = computed(() => {
 		<button
 			type="button"
 			class="inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs border focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-			:class="toneClass"
+			:class="toneClasses.chip"
 			:aria-expanded="expanded"
 			data-testid="auth-badge-toggle"
 			@click="expanded = !expanded"
 		>
-			<Icon :name="result.icon" class="w-3.5 h-3.5" :class="iconClass" />
+			<Icon :name="result.icon" class="w-3.5 h-3.5" :class="toneClasses.icon" />
 			<span data-testid="auth-badge-summary">{{ result.summary }}</span>
 			<Icon
 				:name="expanded ? 'lucide:chevron-up' : 'lucide:chevron-down'"
