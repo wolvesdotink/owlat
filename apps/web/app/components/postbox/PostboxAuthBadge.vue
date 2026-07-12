@@ -21,11 +21,18 @@ const props = defineProps<{
 const result = computed(() => (props.enabled ? deriveSenderAuth(props.auth) : null));
 
 // Quiet by default when verified; the warn/danger states start expanded so the
-// reader sees why without having to reach for it.
+// reader sees why without having to reach for it. Watch the derived STATE (a
+// primitive) rather than the result object: the parent passes a fresh `auth`
+// object on every render, so keying off object identity would re-snap the
+// reader's manual expand/collapse on any unrelated re-render.
 const expanded = ref(false);
-watchEffect(() => {
-	expanded.value = result.value ? result.value.state !== 'verified' : false;
-});
+watch(
+	() => result.value?.state,
+	(state) => {
+		expanded.value = state ? state !== 'verified' : false;
+	},
+	{ immediate: true }
+);
 
 const toneClass = computed(() => {
 	switch (result.value?.tone) {
