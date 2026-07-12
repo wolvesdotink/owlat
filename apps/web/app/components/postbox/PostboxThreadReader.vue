@@ -48,7 +48,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { extractAttachmentAt } from '@owlat/shared/mailMime';
 import { extractEmailAddress } from '~/utils/emailAddress';
-import { deriveSenderAuth, type SenderAuthState } from '~/utils/senderAuth';
+import { deriveSenderAuth, type SenderAuthInput, type SenderAuthState } from '~/utils/senderAuth';
 import { formatCompactRelativeTime, formatDateTime } from '~/utils/formatters';
 import { isLongThreadForSummary } from '~/utils/postboxAutoSummary';
 import { shouldShowSchedulingChip } from '~/utils/postboxSchedulingChip';
@@ -388,7 +388,7 @@ const {
 // compute for every message; the flag only decides whether it renders.
 const authBadgesEnabled = computed(() => isFeatureEnabled('senderAuthBadges'));
 
-function senderAuthInput(msg: PostboxReaderMessage) {
+function senderAuthInput(msg: PostboxReaderMessage): SenderAuthInput {
 	return {
 		fromDomain: extractEmailAddress(msg.fromAddress).split('@')[1],
 		spfResult: msg.spfResult,
