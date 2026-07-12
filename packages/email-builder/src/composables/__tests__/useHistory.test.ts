@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ref, shallowRef, nextTick } from 'vue';
+import { ref, nextTick } from 'vue';
 import { useHistory } from '../useHistory';
 import type { EditorBlock } from '../../types';
 
@@ -18,28 +18,35 @@ import type { EditorBlock } from '../../types';
  * immediately after a commit. Calling `undo()`/`redo()` re-syncs them.
  *
  * Harness notes:
- *  - `blocks` is a `shallowRef` so its `.value` is a plain array; the composable
- *    deep-clones it via `structuredClone`, which is unreliable on a deep Vue
- *    reactive proxy under Node/V8. Tests always reassign `blocks.value`
- *    wholesale, so shallow reactivity is enough to trigger the watcher.
- *  - Real timers with a tiny `debounceMs` drive the debounce (fake timers also
- *    break `structuredClone` of Vue proxies — a harness artifact).
+ *  - `blocks` is a deep `ref`, matching the editor's `canvasBlocks`. Its
+ *    `.value` is a reactive proxy, which `structuredClone` rejects in every
+ *    engine (DataCloneError) — the composable's JSON-fallback clone must absorb
+ *    that, so using a deep ref here is the regression test for the editor
+ *    crashing at mount.
+ *  - Real timers with a tiny `debounceMs` drive the debounce.
  */
 
 const DEBOUNCE = 2;
 
 function block(id: string, html: string): EditorBlock {
-	return { id, type: 'text', content: { html, blockType: 'paragraph', fontSize: 16, textColor: '#000' } };
+	return {
+		id,
+		type: 'text',
+		content: { html, blockType: 'paragraph', fontSize: 16, textColor: '#000' },
+	};
 }
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 const htmlOf = (b: EditorBlock) => (b.content as { html: string }).html;
 
 function setup() {
-	const blocks = shallowRef<EditorBlock[]>([block('a', 'one')]);
+	const blocks = ref<EditorBlock[]>([block('a', 'one')]);
 	const name = ref('Initial');
 	const subject = ref('Subj');
-	const history = useHistory(blocks, name, subject, { debounceMs: DEBOUNCE, checkpointInterval: 10 });
+	const history = useHistory(blocks, name, subject, {
+		debounceMs: DEBOUNCE,
+		checkpointInterval: 10,
+	});
 	return { blocks, name, subject, history };
 }
 
@@ -63,8 +70,12 @@ describe('useHistory', () => {
 		const { blocks, name, history } = setup();
 		expect(history.currentIndex.value).toBe(0);
 
-		await commit(() => { name.value = 'Second'; });
-		await commit(() => { blocks.value = [block('a', 'two')]; });
+		await commit(() => {
+			name.value = 'Second';
+		});
+		await commit(() => {
+			blocks.value = [block('a', 'two')];
+		});
 		expect(history.currentIndex.value).toBe(2);
 
 		history.undo();
@@ -88,8 +99,12 @@ describe('useHistory', () => {
 
 	it('undo → new edit invalidates the redo branch', async () => {
 		const { blocks, name, history } = setup();
-		await commit(() => { name.value = 'B'; });
-		await commit(() => { name.value = 'C'; });
+		await commit(() => {
+			name.value = 'B';
+		});
+		await commit(() => {
+			name.value = 'C';
+		});
 		expect(history.currentIndex.value).toBe(2);
 
 		history.undo();
@@ -99,7 +114,9 @@ describe('useHistory', () => {
 		expect(name.value).toBe('B');
 
 		// A fresh edit from the undone position must drop the future "C" entry.
-		await commit(() => { blocks.value = [block('a', 'branch')]; });
+		await commit(() => {
+			blocks.value = [block('a', 'branch')];
+		});
 		expect(history.currentIndex.value).toBe(2);
 
 		// There is nothing to redo into, and undoing returns to "B", never "C".
@@ -117,7 +134,9 @@ describe('useHistory', () => {
 		const { name, history } = setup();
 		// 12 edits → crosses the 10-delta checkpoint boundary at least once.
 		for (let i = 0; i < 12; i++) {
-			await commit(() => { name.value = `v${i}`; });
+			await commit(() => {
+				name.value = `v${i}`;
+			});
 		}
 		expect(history.currentIndex.value).toBe(12);
 		expect(name.value).toBe('v11');
@@ -144,7 +163,9 @@ describe('useHistory', () => {
 		const { name, history } = setup();
 		// Far exceed MAX_HISTORY_ENTRIES (50).
 		for (let i = 0; i < 70; i++) {
-			await commit(() => { name.value = `n${i}`; });
+			await commit(() => {
+				name.value = `n${i}`;
+			});
 		}
 		// Trimming keeps the index within the retained window (no runaway growth).
 		expect(history.currentIndex.value).toBeLessThanOrEqual(50);
@@ -178,7 +199,9 @@ describe('useHistory', () => {
 		// More distinct positions than MAX_HISTORY_CACHE_SIZE (10) → eviction runs
 		// as we walk back across reconstructed/cached states.
 		for (let i = 0; i < 15; i++) {
-			await commit(() => { name.value = `c${i}`; });
+			await commit(() => {
+				name.value = `c${i}`;
+			});
 		}
 		while (history.canUndo.value) {
 			history.undo();
@@ -193,8 +216,12 @@ describe('useHistory', () => {
 
 	it('clearHistory resets to a single checkpoint at the current state', async () => {
 		const { name, history } = setup();
-		await commit(() => { name.value = 'X'; });
-		await commit(() => { name.value = 'Y'; });
+		await commit(() => {
+			name.value = 'X';
+		});
+		await commit(() => {
+			name.value = 'Y';
+		});
 		expect(history.currentIndex.value).toBe(2);
 
 		history.clearHistory();
