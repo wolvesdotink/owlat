@@ -111,8 +111,8 @@ export function buildMtaStsDnsRecords(
 	const target = (webHost ?? '')
 		.trim()
 		.toLowerCase()
-		.replace(/:\d+$/, '') // drop a :port suffix
-		.replace(/\.$/, ''); // strip a trailing FQDN root dot
+		.replace(/\.$/, '') // strip a trailing FQDN root dot first…
+		.replace(/:\d+$/, ''); // …so the :port suffix is now at the end to drop
 	if (!id || !target) return [];
 	return [
 		{ type: 'TXT', host: MTA_STS_TXT_HOST, value: buildMtaStsTxtValue(id) },
