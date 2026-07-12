@@ -51,11 +51,11 @@ const mxRecords = computed(() => buildInboundMxRecords(props.domain, props.mailH
 // policy id, from which we derive the `_mta-sts` TXT + `mta-sts` CNAME records
 // the domain must publish. The CNAME target is this Owlat instance's own web
 // host (where the policy file is served). No policy → no id → no rows.
-const { data: mtaStsGuidance } = useConvexQuery(api.domains.domains.getMtaStsGuidance, {});
+const { data: mtaStsGuidance } = useConvexQuery(api.domains.mtaSts.getMtaStsGuidance, {});
 
 const runtimeConfig = useRuntimeConfig();
 const webHost = computed<string | null>(() => {
-	const siteUrl = (runtimeConfig.public.siteUrl as string) || '';
+	const siteUrl = runtimeConfig.public.siteUrl || '';
 	try {
 		return siteUrl ? new URL(siteUrl).host : null;
 	} catch {
@@ -65,6 +65,32 @@ const webHost = computed<string | null>(() => {
 
 const mtaStsRecords = computed(() =>
 	buildMtaStsDnsRecords(mtaStsGuidance.value?.policyId ?? null, webHost.value)
+);
+
+// Live verification that the operator's published MTA-STS records + served
+// policy actually match what this deployment generates (the same fail-soft
+// pattern as the reverse-DNS preflight). Admin-gated + never throws: a lookup
+// or fetch hiccup resolves to "not verified yet", never an error. Runs once the
+// domain is publishing a policy (records present), so a deployment with no
+// policy makes no backend call.
+const { run: runMtaStsVerify } = useBackendOperation(
+	api.domains.mtaStsVerify.verifyReceivingMtaSts,
+	{ label: 'Verify MTA-STS publication', type: 'action' }
+);
+
+type MtaStsVerdict = Awaited<ReturnType<typeof runMtaStsVerify>>;
+const mtaStsVerification = ref<MtaStsVerdict>(undefined);
+const mtaStsChecked = ref(false);
+const mtaStsVerifyRan = ref(false);
+watch(
+	() => mtaStsRecords.value.length > 0,
+	async (hasRecords) => {
+		if (!hasRecords || mtaStsVerifyRan.value) return;
+		mtaStsVerifyRan.value = true;
+		mtaStsVerification.value = await runMtaStsVerify({ domain: props.domain });
+		mtaStsChecked.value = true;
+	},
+	{ immediate: true }
 );
 
 // Live reverse-DNS (PTR / FCrDNS) preflight for the deployment's mail host. The
@@ -171,6 +197,22 @@ watch(
 					:domain="domain"
 				/>
 			</div>
+
+			<!-- Live verify verdict: does the published policy match what we serve? -->
+			<p
+				v-if="mtaStsChecked && mtaStsVerification && mtaStsVerification.verified"
+				class="text-sm text-success mt-3"
+			>
+				MTA-STS is live — the DNS record and served policy match, so senders can require encrypted
+				delivery to you.
+			</p>
+			<p
+				v-else-if="mtaStsChecked && mtaStsVerification && !mtaStsVerification.verified"
+				class="text-sm text-warning mt-3"
+			>
+				MTA-STS isn't verified yet. Publish both records above (DNS can take a little while to
+				propagate) — until then senders won't require encrypted delivery.
+			</p>
 		</div>
 
 		<!-- Operational detail (firewall + live PTR verdict) only matters once

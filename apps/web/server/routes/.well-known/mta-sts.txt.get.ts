@@ -15,14 +15,16 @@
  */
 import { ConvexHttpClient } from 'convex/browser';
 import { api } from '@owlat/api';
-import { MTA_STS_CONTENT_TYPE } from '@owlat/shared/mtaStsPolicy';
+import { MTA_STS_CONTENT_TYPE, MTA_STS_POLICY_HOST } from '@owlat/shared/mtaStsPolicy';
 
 /**
  * The MTA-STS policy file is valid ONLY on the `mta-sts.<domain>` host (RFC 8461
- * §3.2). Case-insensitive; a bare port suffix on the host is tolerated.
+ * §3.2). Case-insensitive; a bare port suffix on the host is tolerated. The
+ * label is derived from `MTA_STS_POLICY_HOST` so it stays in lockstep with the
+ * DNS-guidance/verify surfaces (one source of truth for `mta-sts`).
  */
 export function isMtaStsHost(host: string): boolean {
-	return host.toLowerCase().startsWith('mta-sts.');
+	return host.toLowerCase().startsWith(`${MTA_STS_POLICY_HOST}.`);
 }
 
 export default defineEventHandler(async (event): Promise<string> => {
@@ -32,13 +34,13 @@ export default defineEventHandler(async (event): Promise<string> => {
 	}
 
 	const config = useRuntimeConfig(event);
-	const convexUrl = (config.public as { convexUrl?: string }).convexUrl ?? '';
+	const convexUrl = config.public.convexUrl ?? '';
 	if (!convexUrl) {
 		throw createError({ statusCode: 404, statusMessage: 'Not Found' });
 	}
 
 	const client = new ConvexHttpClient(convexUrl);
-	const policy = await client.query(api.domains.domains.getMtaStsPolicy, {});
+	const policy = await client.query(api.domains.mtaSts.getMtaStsPolicy, {});
 	if (!policy) {
 		throw createError({ statusCode: 404, statusMessage: 'Not Found' });
 	}

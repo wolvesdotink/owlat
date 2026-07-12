@@ -20,8 +20,14 @@ const { canManageOrganization } = usePermissions();
 const { showToast } = useToast();
 
 const { data: settings, isLoading } = useConvexQuery(api.workspaces.settings.get, {});
-// Admin-gated guidance: is a policy actually being served (mail host present)?
-const { data: guidance } = useConvexQuery(api.domains.domains.getMtaStsGuidance, {});
+// `getMtaStsGuidance` is admin-gated (`organization:manage`); this card renders
+// for non-admins too (with read-only copy), so subscribe only when the viewer
+// can manage the org — otherwise the query rejects with `forbidden` and the
+// card would surface a false "no mail host" warning. Conditional-args pattern
+// (matches `getLastSesEventAt` in config.vue).
+const { data: guidance } = useConvexQuery(api.domains.mtaSts.getMtaStsGuidance, () =>
+	canManageOrganization.value ? {} : 'skip'
+);
 
 const mode = computed<MtaStsMode>(() => settings.value?.mtaStsMode ?? 'none');
 
@@ -50,8 +56,13 @@ const DESCRIPTIONS: Record<MtaStsMode, string> = {
 };
 
 // Enforce is published but there's no mail host to serve a policy for — the
-// policy can't actually take effect, so warn honestly.
-const enforceWithoutHost = computed(() => mode.value === 'enforce' && !guidance.value?.mailHost);
+// policy can't actually take effect, so warn honestly. Derived ONLY from loaded
+// guidance: for a non-admin (or before the query resolves) `guidance` is
+// undefined and we make no claim, so a viewer who can't read the mail host never
+// sees a warning we haven't actually confirmed.
+const enforceWithoutHost = computed(
+	() => mode.value === 'enforce' && guidance.value != null && !guidance.value.mailHost
+);
 
 // Confirmation toast per saved mode (kept beside DESCRIPTIONS so the two copies
 // can't drift; one map instead of a nested ternary).
