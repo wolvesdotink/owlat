@@ -57,6 +57,29 @@ describe('deriveSenderAuth', () => {
 		);
 	});
 
+	it('pass with NO alignment domain → unauthenticated, never misaligned', () => {
+		// An older MTA (A1 "older MTA" case) persists an SPF pass without the
+		// envelope domain. We never observed a differing domain, so we may not
+		// claim impersonation — only that we couldn't tie the pass to the sender.
+		const result = deriveSenderAuth({
+			fromDomain: 'acme.com',
+			spfResult: 'pass',
+		});
+		expect(result?.state).toBe('unauthenticated');
+		expect(result?.tone).toBe('warn');
+	});
+
+	it('a bare public suffix envelope domain does NOT align into verified', () => {
+		// domainsAlign must refuse a single-label suffix, so an SPF pass whose
+		// MAIL FROM is itself a TLD can't masquerade as an organizational match.
+		const result = deriveSenderAuth({
+			fromDomain: 'acme.com',
+			spfResult: 'pass',
+			envelopeFromDomain: 'com',
+		});
+		expect(result?.state).toBe('misaligned');
+	});
+
 	it('DMARC fail + p=none → failed', () => {
 		const result = deriveSenderAuth({
 			fromDomain: 'acme.com',
