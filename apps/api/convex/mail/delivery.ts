@@ -35,6 +35,7 @@ import { ATTACHMENT_COMPOSE_LIMITS, MAX_ATTACHMENT_BYTES } from '@owlat/shared/a
 import { logError } from '../lib/runtimeLog';
 import { getMtaConfig, scanAttachmentBytes } from './mtaClient';
 import { scanContent } from '@owlat/email-scanner';
+import { computeSenderHeuristics, type SenderHeuristics } from './senderHeuristics';
 import { enqueueNeedsReplyCheck } from './needsReply';
 import { enqueueCategoryCheck } from './category';
 import { clearThreadFollowUp } from './followUps';
@@ -439,6 +440,8 @@ export async function insertDeliveredMessage(
 		dmarcPolicy?: string;
 		envelopeFromDomain?: string;
 		dkimSigningDomain?: string;
+		/** Ingest-computed sender-impersonation heuristics (Sealed Mail A4). */
+		senderHeuristics?: SenderHeuristics;
 		/** Parsed List-Unsubscribe target (extracted at ingest from the raw header block). */
 		unsubscribe?: { httpUrl?: string; mailtoUrl?: string; oneClick: boolean };
 		/** Add rawSize to mailbox.usedBytes (local cache accounting). */
@@ -555,6 +558,7 @@ export async function insertDeliveredMessage(
 		dmarcPolicy: params.dmarcPolicy,
 		envelopeFromDomain: params.envelopeFromDomain,
 		dkimSigningDomain: params.dkimSigningDomain,
+		senderHeuristics: params.senderHeuristics,
 		unsubscribe: params.unsubscribe,
 		createdAt: now,
 		updatedAt: now,
@@ -700,7 +704,10 @@ export const deliverToMailbox = internalMutation({
 		let spamScore = args.spamScore;
 		let spamVerdict = args.spamVerdict;
 		if (spamScore == null && spamVerdict == null) {
-			const scan = scanContent(args.subject, args.htmlBodyInline ?? args.textBodyInline ?? '');
+			const scan = scanContent(args.subject, args.htmlBodyInline ?? args.textBodyInline ?? '', {
+				from: args.from,
+				replyTo: args.replyTo,
+			});
 			spamScore = scan.score;
 			// `blocked` (score >= 40) is high enough confidence to route to Spam;
 			// `suspicious`/`clean` stay in the inbox but keep their numeric score.
@@ -766,6 +773,19 @@ export const deliverToMailbox = internalMutation({
 			return { skipped: true };
 		}
 
+		// 4b. Sender-impersonation heuristics (Sealed Mail A4). Computed on this
+		// hosted-mailbox ingest path only — the same place the content scan runs —
+		// so the reader's sender badge can surface first-time-sender and
+		// lookalike-of-contact detail without re-parsing the raw .eml. Returns
+		// undefined when nothing notable fired, so an unremarkable sender stores no
+		// object at all.
+		const senderHeuristics = await computeSenderHeuristics(ctx, {
+			mailbox,
+			fromAddress,
+			from: args.from,
+			replyTo: args.replyTo,
+		});
+
 		// 5-11. Threading, UID/modseq, insert, and folder/thread/usedBytes
 		//       aggregates + audit — shared with external IMAP sync.
 		const messageId = await insertDeliveredMessage(ctx, {
@@ -801,6 +821,7 @@ export const deliverToMailbox = internalMutation({
 			dmarcPolicy: args.dmarcPolicy,
 			envelopeFromDomain: args.envelopeFromDomain,
 			dkimSigningDomain: args.dkimSigningDomain,
+			senderHeuristics,
 			unsubscribe: args.unsubscribe,
 			countUsedBytes: true,
 		});

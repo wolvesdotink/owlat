@@ -17,25 +17,7 @@ import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import type { DatabaseWriter } from '../../_generated/server';
 import type { Id } from '../../_generated/dataModel';
-
-// See delivery.test.ts: the `../../**` glob omits the `mail/` dir it climbed
-// through, so merge a second glob rooted at `mail/` and re-prefix its keys.
-const rootGlob = import.meta.glob('../../**/*.*s');
-const mailGlob = Object.fromEntries(
-	Object.entries(import.meta.glob('../**/*.*s')).map(([path, mod]) => [
-		path.replace(/^\.\.\//, '../../mail/'),
-		mod,
-	])
-);
-const allModules = { ...rootGlob, ...mailGlob };
-const modules = Object.fromEntries(
-	Object.entries(allModules).filter(
-		([path]) =>
-			!path.includes('sesActions') &&
-			!path.includes('agentSecurity') &&
-			!path.includes('llmProvider')
-	)
-);
+import { modules } from './testModules';
 
 async function insertMailbox(ctx: { db: DatabaseWriter }): Promise<Id<'mailboxes'>> {
 	const now = Date.now();

@@ -1,4 +1,6 @@
 <script lang="ts">
+import type { SenderHeuristics } from '~/utils/senderAuth';
+
 /**
  * The full message row the reader renders (the list-row shape plus body /
  * verdict fields). Exported for hosts that pass rows through — the folder
@@ -38,6 +40,11 @@ export type PostboxReaderMessage = {
 	dmarcPolicy?: string;
 	envelopeFromDomain?: string;
 	dkimSigningDomain?: string;
+	// Ingest-computed sender-impersonation heuristics (Sealed Mail A4), threaded
+	// through so the sender badge can render secondary detail lines (first-time
+	// sender, look-alike of a known contact's domain). Whole object absent when
+	// nothing fired — the badge shows no extra lines rather than a false "clear".
+	senderHeuristics?: SenderHeuristics;
 	flagSeen?: boolean;
 	unsubscribe?: { httpUrl?: string; mailtoUrl?: string; oneClick: boolean };
 };
@@ -895,7 +902,11 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 								:mailbox-id="message.mailboxId"
 								:unsubscribe="msg.unsubscribe"
 							/>
-							<PostboxAuthBadge :enabled="authBadgesEnabled" :auth="senderAuthInput(msg)" />
+							<PostboxAuthBadge
+								:enabled="authBadgesEnabled"
+								:auth="senderAuthInput(msg)"
+								:heuristics="msg.senderHeuristics"
+							/>
 						</div>
 					</header>
 

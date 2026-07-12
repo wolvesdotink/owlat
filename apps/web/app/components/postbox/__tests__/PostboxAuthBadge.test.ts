@@ -14,13 +14,13 @@ import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 
 import PostboxAuthBadge from '../PostboxAuthBadge.vue';
-import type { SenderAuthInput } from '~/utils/senderAuth';
+import type { SenderAuthInput, SenderHeuristics } from '~/utils/senderAuth';
 
 const iconStub = { props: ['name'], template: '<span />' };
 
-function mountBadge(auth: SenderAuthInput, enabled = true) {
+function mountBadge(auth: SenderAuthInput, enabled = true, heuristics?: SenderHeuristics) {
 	return mount(PostboxAuthBadge, {
-		props: { enabled, auth },
+		props: { enabled, auth, heuristics },
 		global: { stubs: { Icon: iconStub } },
 	});
 }
@@ -106,5 +106,53 @@ describe('PostboxAuthBadge', () => {
 	it('legacy row (no verdicts) renders nothing even with the flag on', () => {
 		const wrapper = mountBadge({ fromDomain: 'acme.com' });
 		expect(wrapper.find('[data-testid="auth-badge"]').exists()).toBe(false);
+	});
+
+	// Sealed Mail A4 — ingest sender-impersonation heuristics compose INTO this
+	// badge's detail as secondary lines (never a second badge). Each line is
+	// asserted verbatim: the honesty audit for the heuristic copy too.
+	it('renders each fired heuristic as a verbatim secondary line', () => {
+		const wrapper = mountBadge(UNAUTH, true, {
+			lookalikeOfContactDomain: 'paypal.com',
+			isFromDomainSpoofed: true,
+			isReplyToMismatch: true,
+			isFirstTimeSender: true,
+		});
+		const items = wrapper.findAll('[data-testid="auth-badge-heuristics"] li');
+		expect(items.map((li) => li.text())).toEqual([
+			"This sender's domain looks like paypal.com, but is not it.",
+			"The sender's domain uses look-alike characters that imitate another domain.",
+			'Replies would go to a different domain than this message claims to be from.',
+			"This is the first message you've received from this address.",
+		]);
+	});
+
+	it('renders no heuristic lines when nothing fired', () => {
+		const wrapper = mountBadge(UNAUTH, true, {});
+		expect(wrapper.find('[data-testid="auth-badge-heuristics"]').exists()).toBe(false);
+	});
+
+	it('a verified sender with a look-alike heuristic auto-expands and shows the line', () => {
+		// A domain can be authenticated AND still impersonate a known contact —
+		// the reader must not have to reach for that, so it starts expanded.
+		const wrapper = mountBadge(VERIFIED, true, { lookalikeOfContactDomain: 'paypal.com' });
+		expect(wrapper.find('[data-testid="auth-badge-summary"]').text()).toBe('Verified sender');
+		const items = wrapper.findAll('[data-testid="auth-badge-heuristics"] li');
+		expect(items.map((li) => li.text())).toEqual([
+			"This sender's domain looks like paypal.com, but is not it.",
+		]);
+	});
+
+	it('a legacy row (no verdicts) shows no heuristic lines even when heuristics fired', () => {
+		// No badge means no lines — heuristics surface only through this badge,
+		// so an absent auth verdict fails closed to silence.
+		const wrapper = mountBadge({ fromDomain: 'acme.com' }, true, { isFirstTimeSender: true });
+		expect(wrapper.find('[data-testid="auth-badge"]').exists()).toBe(false);
+		expect(wrapper.find('[data-testid="auth-badge-heuristics"]').exists()).toBe(false);
+	});
+
+	it('flag off shows no heuristic lines', () => {
+		const wrapper = mountBadge(UNAUTH, false, { isFirstTimeSender: true });
+		expect(wrapper.find('[data-testid="auth-badge-heuristics"]').exists()).toBe(false);
 	});
 });

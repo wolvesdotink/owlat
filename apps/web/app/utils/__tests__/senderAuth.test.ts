@@ -6,7 +6,7 @@
  * verified (fail-closed). The verbatim misaligned string is asserted here.
  */
 import { describe, it, expect } from 'vitest';
-import { deriveSenderAuth, type SenderAuthInput } from '../senderAuth';
+import { deriveSenderAuth, deriveSenderHeuristicLines, type SenderAuthInput } from '../senderAuth';
 
 describe('deriveSenderAuth', () => {
 	it('aligned pass → verified', () => {
@@ -117,5 +117,47 @@ describe('deriveSenderAuth', () => {
 			dmarcPolicy: 'reject',
 		});
 		expect(result?.state).toBe('failed');
+	});
+});
+
+describe('deriveSenderHeuristicLines', () => {
+	it('returns [] when the heuristics object is absent', () => {
+		expect(deriveSenderHeuristicLines(undefined)).toEqual([]);
+	});
+
+	it('returns [] when nothing fired', () => {
+		expect(deriveSenderHeuristicLines({})).toEqual([]);
+	});
+
+	it('emits strongest-signal-first verbatim lines for each fired flag', () => {
+		expect(
+			deriveSenderHeuristicLines({
+				lookalikeOfContactDomain: 'paypal.com',
+				isFromDomainSpoofed: true,
+				isReplyToMismatch: true,
+				isFirstTimeSender: true,
+			})
+		).toEqual([
+			"This sender's domain looks like paypal.com, but is not it.",
+			"The sender's domain uses look-alike characters that imitate another domain.",
+			'Replies would go to a different domain than this message claims to be from.',
+			"This is the first message you've received from this address.",
+		]);
+	});
+
+	it('names the resembled domain in the look-alike line', () => {
+		expect(deriveSenderHeuristicLines({ lookalikeOfContactDomain: 'stripe.com' })).toEqual([
+			"This sender's domain looks like stripe.com, but is not it.",
+		]);
+	});
+
+	it('ignores a blank look-alike domain', () => {
+		expect(deriveSenderHeuristicLines({ lookalikeOfContactDomain: '  ' })).toEqual([]);
+	});
+
+	it('emits only the first-time line when that is all that fired', () => {
+		expect(deriveSenderHeuristicLines({ isFirstTimeSender: true })).toEqual([
+			"This is the first message you've received from this address.",
+		]);
 	});
 });
