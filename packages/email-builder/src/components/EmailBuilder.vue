@@ -940,7 +940,7 @@ function handleSlashCommandSelect(command: SlashCommand, fromBlockId: string) {
 </script>
 
 <template>
-	<div class="light flex flex-col h-screen bg-bg-base">
+	<div class="light flex flex-col h-full bg-bg-base">
 		<!-- Header -->
 		<div
 			class="shrink-0 overflow-hidden transition-[max-height,opacity] duration-(--motion-moderate) ease-spring max-h-20"
