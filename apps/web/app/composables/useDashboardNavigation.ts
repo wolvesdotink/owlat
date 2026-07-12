@@ -10,6 +10,14 @@ export interface NavigationSection {
 	key: SectionKey;
 	name: string;
 	icon: string;
+	/**
+	 * When set, the sidebar renders the section as a single flat link to this
+	 * destination instead of a collapsible sub-list — used for surfaces that
+	 * carry their own in-page navigation (Postbox's folder rail) or have only
+	 * one destination (Chat, Assistant). `items` still feeds the command
+	 * palette so every destination stays reachable from ⌘K.
+	 */
+	href?: string;
 	items: NavigationItem[];
 }
 
@@ -95,10 +103,14 @@ export function useDashboardNavigation() {
 		}
 
 		if (isFeatureEnabled('postbox') || isFeatureEnabled('mail.external')) {
+			// Every postbox page renders its own folder rail (folders, labels,
+			// search, compose), so the sidebar shows one flat link instead of
+			// duplicating the folder list. The items below are palette-only.
 			sections.push({
 				key: 'postbox',
 				name: 'Postbox',
 				icon: 'lucide:mailbox',
+				href: '/dashboard/postbox',
 				items: [
 					{ name: 'Inbox', href: '/dashboard/postbox/inbox', icon: 'lucide:inbox' },
 					{ name: 'Sent', href: '/dashboard/postbox/sent', icon: 'lucide:send' },
@@ -115,6 +127,7 @@ export function useDashboardNavigation() {
 				key: 'chat',
 				name: 'Chat',
 				icon: 'lucide:message-circle',
+				href: '/dashboard/chat',
 				items: [{ name: 'Messages', href: '/dashboard/chat', icon: 'lucide:message-circle' }],
 			});
 		}
@@ -124,6 +137,7 @@ export function useDashboardNavigation() {
 				key: 'assistant',
 				name: 'Assistant',
 				icon: 'lucide:sparkles',
+				href: '/dashboard/assistant',
 				items: [{ name: 'Chat', href: '/dashboard/assistant', icon: 'lucide:sparkles' }],
 			});
 		}
