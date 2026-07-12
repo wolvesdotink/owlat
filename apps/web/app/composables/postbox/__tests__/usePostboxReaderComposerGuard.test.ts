@@ -11,12 +11,17 @@
  * stack, the compose-seed builders, the pending-compose state) are stubbed so
  * the test can isolate the guard routing.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ref, computed, nextTick } from 'vue';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { ref, computed, nextTick, effectScope, type EffectScope } from 'vue';
 import type { PostboxPendingCompose } from '~/utils/postboxShortcuts';
 
 const composerOpen = vi.fn();
 const pendingCompose = ref<PostboxPendingCompose | null>(null);
+
+// Each composer's watchers live in their own scope so they die with the test
+// that created them — otherwise a leaked watcher from an earlier test would
+// flush first and consume the shared `pendingCompose` intent (see round-2).
+const scopes: EffectScope[] = [];
 
 vi.stubGlobal('usePostboxComposerStack', () => ({ open: composerOpen }));
 vi.stubGlobal('useState', () => pendingCompose);
@@ -50,13 +55,20 @@ function makeComposer(guardReply: (run: () => void) => void) {
 		ccAddresses: [],
 		receivedAt: 0,
 	};
-	return usePostboxReaderComposer({
-		getMessage: () => message,
-		latestMessage: computed(() => message),
-		ownAddresses: computed(() => new Set<string>()),
-		replyDefault: ref('reply'),
-		guardReply,
-	});
+	const scope = effectScope();
+	scopes.push(scope);
+	const composer = scope.run(() =>
+		usePostboxReaderComposer({
+			getMessage: () => message,
+			latestMessage: computed(() => message),
+			ownAddresses: computed(() => new Set<string>()),
+			replyDefault: ref('reply'),
+			guardReply,
+		})
+	);
+	// `scope.run` returns undefined only if the scope is already inactive; a
+	// freshly created scope always yields the composer.
+	return composer!;
 }
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
@@ -64,6 +76,12 @@ const flush = () => new Promise((r) => setTimeout(r, 0));
 beforeEach(() => {
 	composerOpen.mockClear();
 	pendingCompose.value = null;
+});
+
+afterEach(() => {
+	// Tear down each composer's watchers so they can't leak into the next test
+	// and consume its shared `pendingCompose` intent first.
+	while (scopes.length > 0) scopes.pop()!.stop();
 });
 
 describe('usePostboxReaderComposer reply guard routing', () => {
