@@ -1,0 +1,23 @@
+ARC-Seal: i=2; a=rsa-sha256; d=hop2.example.net; s=arc; t=1783944300;
+ cv=fail; b=PLACEHOLDER_AS2_SIGNATURE
+ARC-Message-Signature: i=2; a=rsa-sha256; c=relaxed/relaxed; d=hop2.example.net;
+ s=arc; t=1783944300; h=from:to:subject:date:message-id; bh=PLACEHOLDER_BODY_HASH;
+ b=PLACEHOLDER_AMS2_SIGNATURE
+ARC-Authentication-Results: i=2; hop2.example.net; arc=fail
+ARC-Seal: i=1; a=rsa-sha256; d=hop1.example.net; s=arc; t=1783944250;
+ cv=none; b=PLACEHOLDER_AS1_SIGNATURE_TAMPERED
+ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=hop1.example.net;
+ s=arc; t=1783944250; h=from:to:subject:date:message-id; bh=PLACEHOLDER_BODY_HASH;
+ b=PLACEHOLDER_AMS1_SIGNATURE
+ARC-Authentication-Results: i=1; hop1.example.net;
+ spf=pass smtp.mailfrom=alice@origin.example.com; dkim=pass header.d=origin.example.com
+From: Alice <alice@origin.example.com>
+To: Bob <bob@receiver.example.org>
+Subject: Chain validation failed
+Date: Fri, 11 Jul 2026 12:26:00 +0000
+Message-ID: <arc-cv-fail-0001@origin.example.com>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+A prior ARC set was tampered with, so the most recent seal records cv=fail. Per
+RFC 8617 the chain is permanently failed and provides no authentication rescue.

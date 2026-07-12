@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { encryptSecret, decryptSecret } from '../credentialCrypto';
+import { encryptSecret, decryptSecret, createSecretBox } from '../credentialCrypto';
 
 describe('credentialCrypto', () => {
 	beforeEach(() => {
@@ -56,5 +56,60 @@ describe('credentialCrypto', () => {
 		const env = encryptSecret('secret');
 		vi.stubEnv('INSTANCE_SECRET', 'a-completely-different-secret');
 		expect(() => decryptSecret(env)).toThrow();
+	});
+});
+
+describe('createSecretBox', () => {
+	const CONTEXT_A = { salt: 'owlat:test:salt:a', info: 'owlat:test:info:a' };
+	const CONTEXT_B = { salt: 'owlat:test:salt:b', info: 'owlat:test:info:b' };
+	const SECRET = 'shared-box-secret-value';
+
+	it('round-trips plaintext of varied shapes', () => {
+		const box = createSecretBox(SECRET, CONTEXT_A);
+		const cases = ['hello', '', 'ünïcödé 🔐 пароль', 'x'.repeat(8192)];
+		for (const plain of cases) {
+			expect(box.open(box.seal(plain))).toBe(plain);
+		}
+	});
+
+	it('produces non-deterministic ciphertext (random IV) for the same input', () => {
+		const box = createSecretBox(SECRET, CONTEXT_A);
+		const a = box.seal('same-input');
+		const b = box.seal('same-input');
+		expect(a.ciphertext).not.toBe(b.ciphertext);
+		expect(a.iv).not.toBe(b.iv);
+	});
+
+	it('detects tampering via the GCM auth tag', () => {
+		const box = createSecretBox(SECRET, CONTEXT_A);
+		const env = box.seal('secret');
+		const flipped = Buffer.from(env.authTag, 'base64');
+		flipped[0] = (flipped[0] ?? 0) ^ 0x01;
+		const tampered = { ...env, authTag: flipped.toString('base64') };
+		expect(() => box.open(tampered)).toThrow();
+	});
+
+	it('detects a tampered ciphertext body', () => {
+		const box = createSecretBox(SECRET, CONTEXT_A);
+		const env = box.seal('secret');
+		const bad = { ...env, ciphertext: Buffer.from('not the real bytes').toString('base64') };
+		expect(() => box.open(bad)).toThrow();
+	});
+
+	it('isolates boxes across info/salt strings (domain separation)', () => {
+		const boxA = createSecretBox(SECRET, CONTEXT_A);
+		const boxB = createSecretBox(SECRET, CONTEXT_B);
+		const sealedByA = boxA.seal('cross-context payload');
+		// A box built with a different context derives a different key, so opening
+		// A's envelope with B must fail rather than silently return plaintext.
+		expect(() => boxB.open(sealedByA)).toThrow();
+		expect(boxA.open(sealedByA)).toBe('cross-context payload');
+	});
+
+	it('derives independent keys per context', () => {
+		const keyA = createSecretBox(SECRET, CONTEXT_A).deriveKey();
+		const keyB = createSecretBox(SECRET, CONTEXT_B).deriveKey();
+		expect(keyA.equals(keyB)).toBe(false);
+		expect(keyA.length).toBe(32);
 	});
 });

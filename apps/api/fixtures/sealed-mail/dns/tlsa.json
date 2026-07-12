@@ -1,0 +1,35 @@
+{
+  "note": "Mock DoH/validating-resolver answers for DANE TLSA lookups (T-series). The `ad` field mirrors the resolver's Authenticated Data bit; per locked decision D6 an absent/false AD bit is treated as 'no TLSA' (fail-open to normal delivery), not as a verified record. Each case is keyed by the _<port>._tcp.<host> owner name the sender queries before a DANE-pinned connection.",
+  "cases": {
+    "verified-3-1-1": {
+      "query": "_25._tcp.mx.example.com",
+      "ad": true,
+      "answers": [
+        {
+          "usage": 3,
+          "selector": 1,
+          "matchingType": 1,
+          "certificateAssociationData": "0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      ]
+    },
+    "no-tlsa": {
+      "query": "_25._tcp.mx.plain.example.org",
+      "ad": true,
+      "answers": []
+    },
+    "ad-bit-absent": {
+      "query": "_25._tcp.mx.unsigned.example.net",
+      "ad": false,
+      "answers": [
+        {
+          "usage": 3,
+          "selector": 1,
+          "matchingType": 1,
+          "certificateAssociationData": "1111111111111111111111111111111111111111111111111111111111111111"
+        }
+      ],
+      "expectedTreatment": "no-tlsa (AD absent => unvalidated, per D6)"
+    }
+  }
+}
