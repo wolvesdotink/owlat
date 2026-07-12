@@ -1094,18 +1094,23 @@ configure_selfhost_mta() {
   owl_say "Let's configure the mail engine for your self-hosted flock."
 
   # Auto-generate keys
-  local mta_key mta_webhook_secret
+  local mta_key mta_webhook_secret mta_secret
   mta_key=$(generate_secret)
   mta_webhook_secret=$(generate_secret)
+  # Seals DKIM keys + relay credentials at rest (>= 32 bytes; the MTA refuses to
+  # boot otherwise). MTA-only, so it is NOT mirrored into the Convex env.
+  mta_secret=$(generate_secret)
 
   # Store in BOTH selfhost .env and Convex env vars
   set_selfhost_var "MTA_API_KEY" "$mta_key"
   set_selfhost_var "MTA_WEBHOOK_SECRET" "$mta_webhook_secret"
+  set_selfhost_var "MTA_SECRET" "$mta_secret"
   set_convex_var "MTA_API_KEY" "$mta_key"
   set_convex_var "MTA_WEBHOOK_SECRET" "$mta_webhook_secret"
 
   success "Generated MTA_API_KEY"
   success "Generated MTA_WEBHOOK_SECRET"
+  success "Generated MTA_SECRET"
 
   echo ""
 
@@ -1235,6 +1240,7 @@ write_selfhost_env() {
     echo "# ── MTA Configuration ────────────────────────────────────────────────────────"
     echo "MTA_API_KEY=${SELFHOST_VARS[MTA_API_KEY]:-}"
     echo "MTA_WEBHOOK_SECRET=${SELFHOST_VARS[MTA_WEBHOOK_SECRET]:-}"
+    echo "MTA_SECRET=${SELFHOST_VARS[MTA_SECRET]:-}"
     echo ""
     echo "EHLO_HOSTNAME=${SELFHOST_VARS[EHLO_HOSTNAME]:-mail.example.com}"
     echo "RETURN_PATH_DOMAIN=${SELFHOST_VARS[RETURN_PATH_DOMAIN]:-bounces.example.com}"
