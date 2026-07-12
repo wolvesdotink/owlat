@@ -41,17 +41,34 @@ export function extractHeaderDomain(headerValue: string): string | undefined {
 }
 
 /**
- * Reduce a domain to its registrable form (last two labels) so that subdomains
- * of the same organisation compare equal — `mail.paypal.com` and `paypal.com`
- * both fold to `paypal.com`. A deliberately coarse eTLD+1 approximation: it
- * avoids a public-suffix-list dependency at the cost of treating
- * `foo.co.uk`/`bar.co.uk` as different registrable domains (they are), which is
- * the safe direction for a mismatch check (never a false "same org").
+ * Second-level labels that act as public suffixes under a two-letter country
+ * TLD, so `paypal.co.uk` is the registrable domain (not `co.uk`). A small
+ * embedded set rather than a full public-suffix-list dependency — it covers the
+ * common `co.uk` / `com.au` / `org.uk` style suffixes that would otherwise fold
+ * distinct organisations together. Missing an exotic suffix errs toward
+ * over-folding, so extend deliberately.
+ */
+const SECOND_LEVEL_PUBLIC_SUFFIXES = new Set(['co', 'com', 'net', 'org', 'ac', 'gov', 'edu']);
+
+/**
+ * Reduce a domain to its registrable form so that subdomains of the same
+ * organisation compare equal — `mail.paypal.com` and `paypal.com` both fold to
+ * `paypal.com`, and `support.paypal.co.uk` and `paypal.co.uk` both fold to
+ * `paypal.co.uk`. A deliberately coarse eTLD+1 approximation that avoids a
+ * public-suffix-list dependency: when the last label is a two-letter TLD and the
+ * second-to-last is a known public suffix (`co`, `com`, …), it keeps the last
+ * THREE labels so distinct orgs on the same ccTLD stay distinct
+ * (`paypal.co.uk` ≠ `evil.co.uk`); otherwise it keeps the last two. This is the
+ * safe direction for a mismatch check — it never collapses two different
+ * organisations into a false "same org".
  */
 export function registrableDomain(domain: string): string {
 	const labels = domain.split('.').filter((l) => l.length > 0);
 	if (labels.length <= 2) return labels.join('.');
-	return labels.slice(-2).join('.');
+	const tld = labels[labels.length - 1]!;
+	const sld = labels[labels.length - 2]!;
+	const keep = tld.length === 2 && SECOND_LEVEL_PUBLIC_SUFFIXES.has(sld) ? 3 : 2;
+	return labels.slice(-keep).join('.');
 }
 
 /**
