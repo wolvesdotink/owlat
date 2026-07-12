@@ -470,6 +470,23 @@ export const mailTables = {
 		// which renders as "unknown" (never asserts alignment we did not verify).
 		envelopeFromDomain: v.optional(v.string()),
 		dkimSigningDomain: v.optional(v.string()),
+		// Sender-impersonation heuristics computed at ingest (Sealed Mail A4).
+		// Two content-visible signals derived from the scanner rule (a From domain
+		// that homoglyph/punycode-spoofs a real one, a Reply-To on a different
+		// domain) plus two that need data the scanner cannot see (is this a
+		// first-time sender to this mailbox, does the From domain look like a KNOWN
+		// contact's). Surfaced by the reader's sender badge as secondary detail
+		// lines — never a second badge. ALL optional and the whole object is
+		// absent when nothing fired, so a legacy row / an unremarkable sender
+		// renders no extra lines rather than a false "all clear".
+		senderHeuristics: v.optional(
+			v.object({
+				fromDomainSpoofed: v.optional(v.boolean()),
+				replyToMismatch: v.optional(v.boolean()),
+				firstTimeSender: v.optional(v.boolean()),
+				lookalikeOfContactDomain: v.optional(v.string()),
+			})
+		),
 
 		// Team-inbox attribution: on an outbound message, the BetterAuth user id of
 		// the teammate who fired the send (copied from the draft at dispatch). Lets

@@ -447,6 +447,7 @@ import type * as mail_promptGuards from "../mail/promptGuards.js";
 import type * as mail_replyOptions from "../mail/replyOptions.js";
 import type * as mail_reviseDraft from "../mail/reviseDraft.js";
 import type * as mail_rfc822 from "../mail/rfc822.js";
+import type * as mail_senderHeuristics from "../mail/senderHeuristics.js";
 import type * as mail_sendingSwitch from "../mail/sendingSwitch.js";
 import type * as mail_settings from "../mail/settings.js";
 import type * as mail_signatures from "../mail/signatures.js";
@@ -1035,6 +1036,7 @@ declare const fullApi: ApiFromModules<{
   "mail/replyOptions": typeof mail_replyOptions;
   "mail/reviseDraft": typeof mail_reviseDraft;
   "mail/rfc822": typeof mail_rfc822;
+  "mail/senderHeuristics": typeof mail_senderHeuristics;
   "mail/sendingSwitch": typeof mail_sendingSwitch;
   "mail/settings": typeof mail_settings;
   "mail/signatures": typeof mail_signatures;
