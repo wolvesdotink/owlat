@@ -12,13 +12,19 @@ import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { logError, logInfo } from '../lib/runtimeLog';
 import { getMtaConfig } from './mtaClient';
+import { isDevDeployment } from '../devShortcuts/_guard';
 
 export const pushMailboxToCache = internalAction({
 	args: { mailboxId: v.id('mailboxes') },
 	handler: async (ctx, args) => {
 		const config = getMtaConfig();
 		if (!config) {
-			logError('[Mailbox cache] MTA_API_URL/MTA_API_KEY not set; skipping push');
+			// Expected on dev deployments (no local MTA — hosted mailboxes just
+			// skip the cache warm-up); a real misconfiguration anywhere else,
+			// where the MTA's onRcptTo lookup depends on this push.
+			if (!isDevDeployment()) {
+				logError('[Mailbox cache] MTA_API_URL/MTA_API_KEY not set; skipping push');
+			}
 			return;
 		}
 

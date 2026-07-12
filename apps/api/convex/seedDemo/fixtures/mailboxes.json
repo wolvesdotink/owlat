@@ -1,0 +1,28 @@
+[
+	{
+		"slug": "mailbox-dev",
+		"owner": "dev@example.com",
+		"address": "dev@demo.localhost",
+		"displayName": "Dev Admin"
+	},
+	{
+		"slug": "mailbox-taylor",
+		"owner": "taylor@example.com",
+		"address": "taylor@demo.localhost",
+		"displayName": "Taylor Demo"
+	},
+	{
+		"slug": "mailbox-jordan",
+		"owner": "jordan@example.com",
+		"address": "jordan@demo.localhost",
+		"displayName": "Jordan Demo"
+	},
+	{
+		"slug": "mailbox-team",
+		"owner": "dev@example.com",
+		"address": "team@demo.localhost",
+		"displayName": "Team",
+		"scope": "shared",
+		"members": ["taylor@example.com", "jordan@example.com"]
+	}
+]

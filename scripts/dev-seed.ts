@@ -12,9 +12,11 @@
  *      random secret on first run.
  *   3. `POST /seed/admin` — owner account dev@example.com / devpassword12345
  *      (one-shot; a 409 means an owner already exists and is left untouched).
- *   4. `POST /seed/demo` — demo content (topics, contacts, campaigns, …) plus
- *      the dummy teammate accounts from
- *      apps/api/convex/seedDemo/fixtures/accounts.json. Idempotent.
+ *   4. `POST /seed/demo` — demo content (topics, contacts, campaigns, …), the
+ *      dummy teammate accounts from
+ *      apps/api/convex/seedDemo/fixtures/accounts.json, and a hosted mailbox
+ *      per account (plus a shared team@demo.localhost inbox) so the Postbox
+ *      works without manual provisioning. Idempotent.
  *
  * Flags:
  *   --reset   wipe seed-tagged demo rows first, then reseed (accounts persist)
