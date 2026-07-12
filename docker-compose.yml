@@ -155,6 +155,10 @@ services:
       BOUNCE_PORT: 25
       REDIS_URL: redis://:${REDIS_PASSWORD:-owlat-internal}@redis:6379
       MTA_API_KEY: ${MTA_API_KEY}
+      # Seals DKIM private keys + relay credentials at rest (>= 32 bytes). Minted
+      # by setup (ensureSecrets) alongside MTA_API_KEY. The MTA asserts its
+      # presence + strength at boot (config.ts), matching the MTA_API_KEY contract.
+      MTA_SECRET: ${MTA_SECRET:-}
       EHLO_HOSTNAME: ${EHLO_HOSTNAME:-mail.localhost}
       RETURN_PATH_DOMAIN: ${RETURN_PATH_DOMAIN:-bounces.localhost}
       BOUNCE_VERP_KEY: ${BOUNCE_VERP_KEY:-}

@@ -38,6 +38,7 @@ import {
 } from '@owlat/shared/featureFlags';
 import { readEnv, writeEnv, mergeEnv, type EnvMap } from '../lib/env';
 import { ensureSecrets } from '../lib/secrets';
+import { sealRelayPasswordForBackup } from '@owlat/shared/envBackupBox';
 import { generateSetupToken } from '@owlat/shared/setupToken';
 import { writeComposeOverride } from '../lib/override';
 import { saveFlagState } from '../lib/flagState';
@@ -181,10 +182,15 @@ export async function runSetup(opts: RunOptions): Promise<number> {
 	// path (lib/setupConfig.applySetupDefaults) so the two can't diverge.
 	applySetupDefaults(withSecrets, deploymentMode as DeploymentMode, flags);
 
-	await writeEnv(envPath, withSecrets);
+	// Seal the SMTP relay password in the `.env` BACKUP copy so it is never
+	// persisted in plaintext. The deploy step reseeds from `.env` through
+	// `selectRuntimeEnvVars`, which unseals sealed tokens before the live push,
+	// so the working credential still reaches the deployment env store.
+	const envBackup = sealRelayPasswordForBackup(withSecrets);
+	await writeEnv(envPath, envBackup);
 	const profiles = await writeComposeOverride(overridePath, flags, { hosted });
 	// Canonicalize COMPOSE_PROFILES in .env (updater + bare docker compose read it; MTA is opt-in now).
-	await writeEnv(envPath, { ...withSecrets, COMPOSE_PROFILES: profiles.join(',') });
+	await writeEnv(envPath, { ...envBackup, COMPOSE_PROFILES: profiles.join(',') });
 	// Mirror the resolved flag state to .owlat-flags.json so `doctor`,
 	// `feature`, and `pack` operate on the same baseline the wizard chose
 	// (without it they recompute from defaults and silently drop selections).

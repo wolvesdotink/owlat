@@ -22,6 +22,7 @@ import {
 	type FeatureFlagState,
 } from '@owlat/shared/featureFlags';
 import { readEnvFile, writeEnvFile } from '@owlat/shared/setupEnv';
+import { sealRelayPasswordForBackup } from '@owlat/shared/envBackupBox';
 import { ensureSecrets } from '@owlat/shared/setupSecrets';
 import { hashPassword } from '@owlat/shared/passwordHash';
 import {
@@ -208,7 +209,17 @@ export default defineEventHandler(
 			};
 		}
 		const convexAdminUrl = deriveConvexAdminUrl(convexSiteUrl);
-		const runtimeVars = selectRuntimeEnvVars(merged);
+		// `selectRuntimeEnvVars` is also the reseed step for secrets sealed at rest
+		// in the `.env` backup (envsealed:v1:… tokens, e.g. the SMTP relay password
+		// written by /api/delivery/apply-transport): it unseals them so the live env
+		// store receives working plaintext, and FAILS CLOSED on a tampered/orphaned
+		// token — surface that as a clean wizard error, never a 500.
+		let runtimeVars: Array<[string, string]>;
+		try {
+			runtimeVars = selectRuntimeEnvVars(merged);
+		} catch (e) {
+			return { ok: false, message: (e as Error).message };
+		}
 		try {
 			await pushConvexRuntimeEnv(convexAdminUrl, convexAdminKey, runtimeVars);
 		} catch (e) {
@@ -225,7 +236,13 @@ export default defineEventHandler(
 		// `docker compose up` activate the same services the override marker declares
 		// (the built-in MTA is now an opt-in profile).
 		merged['COMPOSE_PROFILES'] = profiles.join(',');
-		await writeEnvFile(envPath, merged);
+		// Seal the SMTP relay password in the `.env` BACKUP copy so a filesystem
+		// dump never leaks it. The live push above already carried the working
+		// plaintext into the encrypted deployment env store (and the reseed in
+		// `selectRuntimeEnvVars` unseals this backup before any later re-push), so
+		// the send path is untouched. INSTANCE_SECRET is guaranteed present here —
+		// the seed call above hard-fails without it.
+		await writeEnvFile(envPath, sealRelayPasswordForBackup(merged));
 
 		const overridePath = resolve(OWLAT_DIR, 'docker-compose.override.yml');
 		const overrideYaml =

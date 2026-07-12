@@ -5,6 +5,7 @@
 import { hostname } from 'os';
 import { isOutboundTlsMode, OUTBOUND_TLS_MODES, type OutboundTlsMode } from '@owlat/shared';
 import type { IpPoolConfig, DkimKeyConfig, DomainProfile } from './types.js';
+import { assertMtaSecretStrength } from './lib/secretBox.js';
 
 export interface MtaConfig {
 	/** HTTP server port */
@@ -15,6 +16,12 @@ export interface MtaConfig {
 	redisUrl: string;
 	/** Shared secret for HTTP API authentication */
 	apiKey: string;
+	/**
+	 * Secret that seals transport secrets at rest (DKIM private keys, relay
+	 * credentials) via the MTA secret box. Boot-validated to be >= 32 bytes; the
+	 * installer generates it. Distinct from MTA_API_KEY/MTA_WEBHOOK_SECRET.
+	 */
+	mtaSecret: string;
 	/** EHLO hostname (must match rDNS PTR record); the per-IP map falls back to this */
 	ehloHostname: string;
 	/**
@@ -311,6 +318,11 @@ export function loadConfig(): MtaConfig {
 		throw new Error('IP_POOLS_TRANSACTIONAL must contain at least one IP');
 	if (campaignIps.length === 0) throw new Error('IP_POOLS_CAMPAIGN must contain at least one IP');
 
+	// MTA_SECRET seals DKIM keys + relay credentials at rest. Fail the boot fast
+	// if it is absent or too weak rather than sealing under a guessable key.
+	const mtaSecret = requiredEnv('MTA_SECRET');
+	assertMtaSecretStrength(mtaSecret);
+
 	// EHLO hostname must be a real FQDN that can match a PTR record.
 	const ehloHostname = requiredEnv('EHLO_HOSTNAME');
 	assertValidEhloHostname(ehloHostname, 'EHLO_HOSTNAME');
@@ -384,6 +396,7 @@ export function loadConfig(): MtaConfig {
 		bouncePort: parseInt(optionalEnv('BOUNCE_PORT', '25'), 10),
 		redisUrl: optionalEnv('REDIS_URL', 'redis://localhost:6379'),
 		apiKey: requiredEnv('MTA_API_KEY'),
+		mtaSecret,
 		ehloHostname,
 		ehloHostnames,
 		returnPathDomain: requiredEnv('RETURN_PATH_DOMAIN'),

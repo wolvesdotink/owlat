@@ -18,11 +18,17 @@
  *      From field means "keep the current default", never "clear it"). This takes
  *      effect immediately; no restart is needed for sends to switch.
  *   3. Persists the same patch to `.env` (mode preserved by `writeEnvFile`) so
- *      the choice survives a container recreate.
+ *      the choice survives a container recreate — with the SMTP relay password
+ *      SEALED (never plaintext) in that backup copy.
  *
  * Secret hygiene: credentials arrive from the admin's own form and are written
- * to the encrypted deployment env store + the `.env` file (0600). No credential
- * VALUE is ever returned — the response carries only booleans and human copy.
+ * to the encrypted deployment env store + the `.env` file (0600). The SMTP
+ * relay password is SEALED in the `.env` backup copy (AES-256-GCM under
+ * INSTANCE_SECRET, `@owlat/shared/envBackupBox`) — the live env store receives
+ * the working plaintext, and the deploy-time reseed (`selectRuntimeEnvVars`)
+ * unseals the backup before any re-push, so a `.env` dump never leaks the relay
+ * password. No credential VALUE is ever returned — the response carries only
+ * booleans and human copy.
  *
  * When the deployment can't be reached to push live (no `CONVEX_ADMIN_KEY` on
  * disk, e.g. a dev checkout), the `.env` is still written and the response says
@@ -39,6 +45,7 @@ import {
 import { isDeliveryProviderKind } from '@owlat/shared/featureFlags';
 import { readEnvFile, writeEnvFile } from '@owlat/shared/setupEnv';
 import { deriveConvexAdminUrl, pushConvexRuntimeEnv } from '@owlat/shared/convexRuntimeEnv';
+import { sealRelayPasswordForBackup } from '@owlat/shared/envBackupBox';
 import { requireOrgAdmin } from '~~/server/utils/requireOrgAdmin';
 
 interface ApplyBody {
@@ -109,12 +116,16 @@ export default defineEventHandler(async (event): Promise<ApplyResult> => {
 	}
 	const { merged, changes } = plan;
 
+	// The on-disk backup gets the SEALED relay password; `changes` (the live
+	// push below) keeps the working plaintext.
+	const envBackup = sealRelayPasswordForBackup(merged);
+
 	const adminKey = existing['CONVEX_ADMIN_KEY'];
 	if (!adminKey) {
 		// No admin key on disk (e.g. a dev checkout) — persist the choice and hand
 		// off to the restart affordance instead of silently no-op'ing the live send.
 		try {
-			await writeEnvFile(envPath, merged);
+			await writeEnvFile(envPath, envBackup);
 		} catch (e) {
 			return {
 				ok: false,
@@ -154,7 +165,7 @@ export default defineEventHandler(async (event): Promise<ApplyResult> => {
 	}
 
 	try {
-		await writeEnvFile(envPath, merged);
+		await writeEnvFile(envPath, envBackup);
 	} catch (e) {
 		// Live change already took effect; only persistence failed. Say so honestly.
 		return {
