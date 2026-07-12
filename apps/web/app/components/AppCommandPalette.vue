@@ -17,19 +17,17 @@ import {
  *      Postbox layout registers its reader actions + folders) via
  *      `useCommandPaletteSurface`; the palette is the shared shell, surfaces are
  *      consumers (no per-surface fork);
- *   2. verbs — New campaign, Compose, New contact…;
+ *   2. verbs / sidebar-context switch / navigation — the static providers,
+ *      built in `useCommandPaletteProviders`;
  *   3. object search — contacts / templates / campaigns via the existing
- *      `globalSearch` search index (debounced, capped per group);
- *   4. navigation — every sidebar destination (shared `useDashboardNavigation`).
+ *      `globalSearch` search index (debounced, capped per group).
  *
  * The Cmd+Shift+K knowledge Quick Query keeps its own shortcut; it is surfaced
  * here as the "Ask knowledge…" action (dispatches `owlat:open-knowledge-query`,
  * which the layout listens for).
  */
 
-const { isEnabled: isFeatureEnabled } = useFeatureFlag();
-const { isDesktop } = useDesktopContext();
-const { navigationSections } = useDashboardNavigation();
+const { verbItems, contextItems, navItems } = useCommandPaletteProviders();
 const surfaceGroups = useCommandPaletteSurface();
 
 const open = ref(false);
@@ -120,63 +118,6 @@ function toResultItems(results: SearchResult[]): PaletteItem[] {
 	}));
 }
 
-// ── Static verb + utility providers.
-const verbItems = computed<PaletteItem[]>(() => {
-	const verbs: PaletteItem[] = [];
-	if (isFeatureEnabled('campaigns')) {
-		verbs.push({
-			id: 'verb:new-campaign',
-			label: 'New campaign',
-			icon: 'lucide:megaphone',
-			run: () => void navigateTo('/dashboard/campaigns/new'),
-		});
-	}
-	if (isFeatureEnabled('postbox') || isFeatureEnabled('mail.external')) {
-		verbs.push({
-			id: 'verb:compose',
-			label: 'Compose message',
-			icon: 'lucide:pencil',
-			run: () => void navigateTo('/dashboard/postbox/inbox'),
-		});
-	}
-	verbs.push({
-		id: 'verb:new-contact',
-		label: 'New contact',
-		icon: 'lucide:user-plus',
-		run: () => void navigateTo('/dashboard/audience/contacts'),
-	});
-	if (isFeatureEnabled('ai.knowledge')) {
-		verbs.push({
-			id: 'verb:ask-knowledge',
-			label: 'Ask knowledge…',
-			subtitle: 'Search your knowledge base',
-			icon: 'lucide:sparkles',
-			run: () => window.dispatchEvent(new Event('owlat:open-knowledge-query')),
-		});
-	}
-	if (isDesktop.value) {
-		verbs.push({
-			id: 'verb:check-updates',
-			label: 'Check for updates',
-			icon: 'lucide:download-cloud',
-			run: () => window.dispatchEvent(new Event('owlat:check-updates')),
-		});
-	}
-	return verbs;
-});
-
-const navItems = computed<PaletteItem[]>(() =>
-	navigationSections.value.flatMap((section) =>
-		section.items.map((item) => ({
-			id: `nav:${item.href}`,
-			label: item.name,
-			subtitle: section.name,
-			icon: item.icon,
-			run: () => void navigateTo(item.href),
-		}))
-	)
-);
-
 // ── Assemble the ordered, capped group list.
 const groups = computed<PaletteGroup[]>(() => {
 	const query = searchQuery.value;
@@ -211,6 +152,14 @@ const groups = computed<PaletteGroup[]>(() => {
 		heading: 'Create',
 		order: 5,
 		items: filterItems(verbItems.value, query),
+	});
+
+	// Sidebar-context switch (empty groups are dropped on merge).
+	out.push({
+		key: 'context',
+		heading: 'Context',
+		order: 6,
+		items: filterItems(contextItems.value, query),
 	});
 
 	// Object search — only once the query is meaningful.
