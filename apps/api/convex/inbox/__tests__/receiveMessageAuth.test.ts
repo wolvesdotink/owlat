@@ -16,7 +16,16 @@ import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import type { DatabaseWriter } from '../../_generated/server';
 
-const allModules = import.meta.glob('../../**/*.*s');
+// See delivery.test.ts: the `../../**` glob omits the `inbox/` dir it climbed
+// through, so merge a second glob rooted at `inbox/` and re-prefix its keys.
+const rootGlob = import.meta.glob('../../**/*.*s');
+const inboxGlob = Object.fromEntries(
+	Object.entries(import.meta.glob('../**/*.*s')).map(([path, mod]) => [
+		path.replace(/^\.\.\//, '../../inbox/'),
+		mod,
+	])
+);
+const allModules = { ...rootGlob, ...inboxGlob };
 const modules = Object.fromEntries(
 	Object.entries(allModules).filter(
 		([path]) =>
