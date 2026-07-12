@@ -25,7 +25,18 @@ import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import type { OrganizationRole } from '../../lib/sessionOrganization';
 
+// Mutable role each test selects — `getTlsReportSummary` is `adminQuery`
+// (→ `requireOrgPermission('organization:manage')`), so the role distinction is
+// what the wrapper's gate decides.
 let mockRole: OrganizationRole = 'admin';
+
+function throwForbidden(): never {
+	const err = new Error("You don't have permission to perform this action") as Error & {
+		data?: { category: string };
+	};
+	err.data = { category: 'forbidden' };
+	throw err;
+}
 
 vi.mock('../../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual<typeof import('../../lib/sessionOrganization')>(
@@ -37,7 +48,13 @@ vi.mock('../../lib/sessionOrganization', async () => {
 		requireOrgMember: vi.fn(async () => ctx()),
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
 		getUserIdFromSession: vi.fn().mockResolvedValue('test-user'),
-		requireOrgPermission: vi.fn(async () => ctx()),
+		// Role-aware gate: owner/admin pass `organization:manage`, editor does not.
+		requireOrgPermission: vi.fn(async (_c: unknown, permission: string) => {
+			if (permission === 'organization:manage' && mockRole === 'editor') {
+				throwForbidden();
+			}
+			return ctx();
+		}),
 	};
 });
 
@@ -59,20 +76,6 @@ const identity = {
 const fixtureGz = readFileSync(
 	new URL('../../../../../fixtures/sealed-mail/tls-report-sample.json.gz', import.meta.url)
 );
-
-function ingestArgs(d: TlsReportDigest) {
-	return {
-		reportId: d.reportId,
-		organizationName: d.organizationName,
-		contactInfo: d.contactInfo,
-		policyDomain: d.policyDomain,
-		rangeStartMs: d.rangeStartMs,
-		rangeEndMs: d.rangeEndMs,
-		successCount: d.successCount,
-		failureCount: d.failureCount,
-		failureTypeCounts: d.failureTypeCounts,
-	};
-}
 
 beforeEach(() => {
 	mockRole = 'admin';
@@ -124,15 +127,17 @@ describe('domains.tlsReports.ingest (idempotent)', () => {
 	it('persists the fixture digest as a single row', async () => {
 		const t = convexTest(schema, modules);
 		const digest = await digestFixture();
-		const res = await t.mutation(internal.domains.tlsReports.ingest, ingestArgs(digest));
+		// `TlsReportDigest` is exactly the ingest args shape — pass it straight
+		// through, as the HTTP handler does.
+		const res = await t.mutation(internal.domains.tlsReports.ingest, digest);
 		expect(res.deduped).toBe(false);
 	});
 
 	it('is idempotent on duplicate report-id (patched, not duplicated)', async () => {
 		const t = convexTest(schema, modules);
 		const digest = await digestFixture();
-		const first = await t.mutation(internal.domains.tlsReports.ingest, ingestArgs(digest));
-		const second = await t.mutation(internal.domains.tlsReports.ingest, ingestArgs(digest));
+		const first = await t.mutation(internal.domains.tlsReports.ingest, digest);
+		const second = await t.mutation(internal.domains.tlsReports.ingest, digest);
 		expect(first.deduped).toBe(false);
 		expect(second.deduped).toBe(true);
 		expect(second.id).toBe(first.id);
@@ -141,6 +146,26 @@ describe('domains.tlsReports.ingest (idempotent)', () => {
 
 describe('domains.tlsReports.getTlsReportSummary (aggregation)', () => {
 	const now = Date.now();
+
+	it('rejects a non-admin member (editor) with forbidden', async () => {
+		const t = convexTest(schema, modules);
+		mockRole = 'editor';
+		const category = await t
+			.withIdentity(identity)
+			.query(api.domains.tlsReports.getTlsReportSummary, {})
+			.then(() => undefined)
+			.catch((e: { data?: { category?: string } }) => e?.data?.category);
+		expect(category).toBe('forbidden');
+	});
+
+	it('allows an admin (empty summary when nothing ingested)', async () => {
+		const t = convexTest(schema, modules);
+		mockRole = 'admin';
+		const summary = await t
+			.withIdentity(identity)
+			.query(api.domains.tlsReports.getTlsReportSummary, {});
+		expect(summary.reportCount).toBe(0);
+	});
 
 	it('rolls up partners, failure types, and the daily trend', async () => {
 		const t = convexTest(schema, modules);
