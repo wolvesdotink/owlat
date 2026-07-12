@@ -6,9 +6,11 @@
  * for the outbound record and `apps/mta/src/inbound/router.ts` for the system
  * inbound route that catches it). Reports arrive as gzip-compressed JSON;
  * the MTA forwards them to the dedicated `/webhooks/mta-tls-report` webhook,
- * whose handler (`handleTlsReportWebhook`, wired in `http.ts`) gunzips + parses
- * them with the shared, never-throwing parser (`@owlat/shared` `decodeTlsReport`)
- * and calls {@link ingest}.
+ * whose handler (`handleTlsReportWebhook`, wired in `http.ts`) verifies the HMAC
+ * signature and hands the attachment to the `'use node'` action
+ * `domains/tlsReportsNode.ts:decodeAndIngest` (the gunzip step needs the Node
+ * runtime), which parses with the shared never-throwing parser (`@owlat/shared`
+ * `decodeTlsReport`) and calls {@link ingest}.
  *
  * `ingest` is idempotent by the report's own `report-id` (RFC 8460 §4.1) so a
  * re-delivered report never double-counts. {@link getTlsReportSummary} rolls the
@@ -18,7 +20,7 @@
 
 import { v } from 'convex/values';
 import { internalMutation } from '../_generated/server';
-import { authedQuery } from '../lib/authedFunctions';
+import { adminQuery } from '../lib/authedFunctions';
 
 /** Window the dashboard summarises. */
 const SUMMARY_WINDOW_DAYS = 30;
@@ -86,8 +88,13 @@ interface TrendPoint {
  * Returns per-partner success rates, aggregate failure-type counts, a 30-day
  * daily trend, and headline totals. Empty when nothing has been ingested (the
  * card renders its own empty state).
+ *
+ * Admin-gated (`adminQuery` → `organization:manage`): TLS-RPT is operator
+ * transport telemetry that lives on the admin-only Delivery → Config page
+ * alongside `delivery.status.getStatus` (also `adminQuery`), so it follows the
+ * same floor rather than being visible to every org member.
  */
-export const getTlsReportSummary = authedQuery({
+export const getTlsReportSummary = adminQuery({
 	args: {},
 	handler: async (ctx) => {
 		const cutoff = Date.now() - SUMMARY_WINDOW_DAYS * DAY_MS;
