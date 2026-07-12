@@ -859,24 +859,11 @@ const sidebarDesktopClass = computed(() => {
 				:class="
 					isFocusMode
 						? 'min-h-[calc(100dvh-var(--titlebar-h,0px))]'
-						: 'min-h-[calc(100dvh-var(--titlebar-h,0px)-4rem)] lg:min-h-[calc(100dvh-var(--titlebar-h,0px)-4rem-3rem)]'
+						: 'min-h-[calc(100dvh-var(--titlebar-h,0px)-4rem)]'
 				"
 			>
 				<slot />
 			</main>
-
-			<!-- Footer with system status (hidden in focus mode) -->
-			<footer
-				v-if="!isFocusMode"
-				class="h-12 flex items-center justify-between px-4 lg:px-6 border-t border-border-subtle bg-bg-elevated"
-			>
-				<div class="flex items-center gap-4">
-					<SystemStatusIndicator />
-				</div>
-				<div class="flex items-center gap-4 text-xs text-text-tertiary">
-					<span class="hidden sm:inline">Owlat v1.0</span>
-				</div>
-			</footer>
 		</div>
 
 		<!-- Quick Query panel (knowledge search — gated on ai.knowledge) -->
