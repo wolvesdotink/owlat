@@ -54,13 +54,27 @@ function norm(v: string | undefined): string {
  * Relaxed domain alignment: exact match, or one is the organizational suffix
  * of the other (`mail.acme.com` aligns with `acme.com`). Empty domains never
  * align — an unknown domain can't be asserted to match anything.
+ *
+ * This is a no-PSL (Public Suffix List) approximation: we treat the shorter
+ * side as an "organizational" domain by pure string suffix. To avoid the
+ * degenerate case where a bare public suffix or TLD (`com`, `co.uk`) swallows
+ * everything under it (`com` would otherwise "align" with `acme.com`), we
+ * refuse suffix alignment when the suffix side is a single label with no dot.
+ * A residual, co.uk-shaped risk remains — `foo.co.uk` still suffix-aligns with
+ * `co.uk` because `co.uk` has a dot — but that is far narrower than accepting a
+ * bare TLD, and closing it properly needs a real PSL we deliberately don't ship
+ * here.
  */
 function domainsAlign(a: string | undefined, b: string | undefined): boolean {
 	const x = norm(a);
 	const y = norm(b);
 	if (!x || !y) return false;
 	if (x === y) return true;
-	return x.endsWith('.' + y) || y.endsWith('.' + x);
+	// Only accept suffix alignment when the SUFFIX side has at least one dot,
+	// so a bare public suffix / TLD is never treated as an organizational match.
+	if (y.includes('.') && x.endsWith('.' + y)) return true;
+	if (x.includes('.') && y.endsWith('.' + x)) return true;
+	return false;
 }
 
 /**
@@ -79,10 +93,20 @@ export function deriveSenderAuth(input: SenderAuthInput): SenderAuthResult | nul
 
 	const spfPass = spf === 'pass';
 	const dkimPass = dkim === 'pass';
+	const spfDomain = norm(input.envelopeFromDomain);
+	const dkimDomain = norm(input.dkimSigningDomain);
 	const spfAligned = spfPass && domainsAlign(input.envelopeFromDomain, input.fromDomain);
 	const dkimAligned = dkimPass && domainsAlign(input.dkimSigningDomain, input.fromDomain);
 	const anyAligned = spfAligned || dkimAligned;
-	const passedButUnaligned = (spfPass || dkimPass) && !anyAligned;
+	// "Misaligned" is an impersonation claim, so it MUST rest on an observed
+	// differing domain: a check passed AND we know the domain it authenticated
+	// AND that domain does not align with the visible From. A pass whose
+	// alignment domain is absent (e.g. an older MTA that persisted the verdict
+	// without the domain) is NOT misaligned — we simply couldn't tie it to the
+	// sender, which is `unauthenticated`, not an accusation.
+	const spfMisaligned = spfPass && spfDomain !== '' && !spfAligned;
+	const dkimMisaligned = dkimPass && dkimDomain !== '' && !dkimAligned;
+	const passedButUnaligned = !anyAligned && (spfMisaligned || dkimMisaligned);
 
 	// 1. An explicit DMARC failure is the strongest negative signal.
 	if (dmarc === 'fail') {
@@ -109,12 +133,11 @@ export function deriveSenderAuth(input: SenderAuthInput): SenderAuthResult | nul
 		};
 	}
 
-	// 3. Something passed, but for a different domain than the From header claims.
+	// 3. A check passed for a KNOWN domain that differs from the From header —
+	//    the classic impersonation shape. `passedButUnaligned` guarantees at
+	//    least one of these domains is non-empty, so `actualDomain` is real.
 	if (passedButUnaligned) {
-		const actualDomain =
-			(spfPass ? norm(input.envelopeFromDomain) : '') ||
-			(dkimPass ? norm(input.dkimSigningDomain) : '') ||
-			'another domain';
+		const actualDomain = (spfMisaligned ? spfDomain : '') || dkimDomain;
 		return {
 			state: 'misaligned',
 			summary: 'Sender not authorized',
