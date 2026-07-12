@@ -1,0 +1,46 @@
+{
+  "organization-name": "Google Inc.",
+  "date-range": {
+    "start-datetime": "2026-07-11T00:00:00Z",
+    "end-datetime": "2026-07-11T23:59:59Z"
+  },
+  "contact-info": "smtp-tls-reporting@google.com",
+  "report-id": "2026-07-11T00:00:00Z_owlat.example",
+  "policies": [
+    {
+      "policy": {
+        "policy-type": "sts",
+        "policy-string": [
+          "version: STSv1",
+          "mode: enforce",
+          "mx: mx.owlat.example",
+          "max_age: 604800"
+        ],
+        "policy-domain": "owlat.example",
+        "mx-host": [
+          "mx.owlat.example"
+        ]
+      },
+      "summary": {
+        "total-successful-session-count": 4123,
+        "total-failure-session-count": 7
+      },
+      "failure-details": [
+        {
+          "result-type": "starttls-not-supported",
+          "sending-mta-ip": "209.85.220.41",
+          "receiving-mx-hostname": "mx.owlat.example",
+          "receiving-ip": "203.0.113.9",
+          "failed-session-count": 5,
+          "additional-information": "https://google.com/smtp-tls-reporting"
+        },
+        {
+          "result-type": "certificate-host-mismatch",
+          "sending-mta-ip": "209.85.220.73",
+          "receiving-mx-hostname": "mx.owlat.example",
+          "failed-session-count": 2
+        }
+      ]
+    }
+  ]
+}

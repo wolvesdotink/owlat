@@ -21,6 +21,22 @@ export {
 } from './address';
 export { type AlignmentMode, isSpfAligned, emailDomain } from './spfAlignment';
 export { type OutboundTlsMode, OUTBOUND_TLS_MODES, isOutboundTlsMode } from './outboundTlsMode';
+export {
+	type TlsRptPolicy,
+	type TlsRptFailureDetail,
+	type TlsRptPolicyBlock,
+	type TlsRptReport,
+	type TlsReportParseResult,
+	type TlsReportDigest,
+	TLS_RPT_MAX_COMPRESSED_BYTES,
+	TLS_RPT_MAX_DECOMPRESSED_BYTES,
+	TLS_RPT_FAILURE_EXPLANATIONS,
+	gunzipTlsReport,
+	parseTlsReport,
+	decodeTlsReport,
+	digestTlsReport,
+	explainTlsFailureType,
+} from './tlsReport';
 export { isSpfRecord, parseSpfMechanisms, mergeSpfRecords } from './spf';
 export type { ValidationIssue } from './validation';
 export {

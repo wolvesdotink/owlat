@@ -49,6 +49,10 @@
 			"types": "./src/outboundTlsMode.ts",
 			"import": "./src/outboundTlsMode.ts"
 		},
+		"./tlsReport": {
+			"types": "./src/tlsReport.ts",
+			"import": "./src/tlsReport.ts"
+		},
 		"./setupEnv": {
 			"types": "./src/setupEnv.ts",
 			"import": "./src/setupEnv.ts"
