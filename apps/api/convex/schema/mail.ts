@@ -12,6 +12,7 @@ import {
 	mailUnsubscribeValidator,
 	spamVerdictValidator,
 	draftQualityValidator,
+	senderHeuristicsValidator,
 } from '../lib/convexValidators';
 import { editAdjustmentValidator } from '../mail/editLearningValidators';
 
@@ -479,14 +480,7 @@ export const mailTables = {
 		// lines — never a second badge. ALL optional and the whole object is
 		// absent when nothing fired, so a legacy row / an unremarkable sender
 		// renders no extra lines rather than a false "all clear".
-		senderHeuristics: v.optional(
-			v.object({
-				fromDomainSpoofed: v.optional(v.boolean()),
-				replyToMismatch: v.optional(v.boolean()),
-				firstTimeSender: v.optional(v.boolean()),
-				lookalikeOfContactDomain: v.optional(v.string()),
-			})
-		),
+		senderHeuristics: v.optional(senderHeuristicsValidator),
 
 		// Team-inbox attribution: on an outbound message, the BetterAuth user id of
 		// the teammate who fired the send (copied from the draft at dispatch). Lets

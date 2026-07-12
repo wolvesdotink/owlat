@@ -7,7 +7,7 @@
  * scanner cannot see, so they are derived here against the mailbox's own
  * history and the workspace's contact book:
  *
- *   • firstTimeSender — no prior message from this address has ever landed in
+ *   • isFirstTimeSender — no prior message from this address has ever landed in
  *     this mailbox. On its own this is weak (everyone is new once), but paired
  *     with a spoof/lookalike signal it sharpens the reader's judgement.
  *   • lookalikeOfContactDomain — the From domain is a near-miss (bounded edit
@@ -29,32 +29,19 @@ import {
 } from '@owlat/email-scanner';
 import type { MutationCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
+import type { SenderHeuristics } from '../lib/convexValidators';
 
-/**
- * Persisted shape. Every field optional so the writer can omit a signal it did
- * not compute; an all-empty result is dropped entirely (stored as undefined).
- */
-export interface SenderHeuristics {
-	/** From domain visually spoofs a real domain (homoglyph or punycode). */
-	fromDomainSpoofed?: boolean;
-	/** Reply-To sits on a different registrable domain than From. */
-	replyToMismatch?: boolean;
-	/** No prior message from this address has landed in this mailbox. */
-	firstTimeSender?: boolean;
-	/**
-	 * The KNOWN contact domain this From domain is a near-miss of (present only
-	 * on a lookalike hit). Stored so the reader can name it: "looks like
-	 * paypal.com".
-	 */
-	lookalikeOfContactDomain?: string;
-}
+// Persisted shape is the single source of truth in `lib/convexValidators`
+// (`senderHeuristicsValidator`); the schema references that validator and this
+// type is derived from it, so the field set never drifts across the three sites.
+export type { SenderHeuristics };
 
 /**
  * Levenshtein edit distance, bounded early-exit at `max`. Small inputs
  * (domain strings), so the full O(n·m) table is fine; the bound just lets us
  * bail once we know the pair is too far apart to matter.
  */
-export function boundedEditDistance(a: string, b: string, max: number): number {
+function boundedEditDistance(a: string, b: string, max: number): number {
 	if (a === b) return 0;
 	if (Math.abs(a.length - b.length) > max) return max + 1;
 	const prev: number[] = Array.from({ length: b.length + 1 }, () => 0);
@@ -124,10 +111,10 @@ export async function computeSenderHeuristics(
 	// the spam score agree on what "spoofed" means.
 	const headerFlags = scanSenderImpersonation(params.from ?? params.fromAddress, params.replyTo);
 	if (headerFlags.some((f) => f.type === 'sender_impersonation')) {
-		result.fromDomainSpoofed = true;
+		result.isFromDomainSpoofed = true;
 	}
 	if (headerFlags.some((f) => f.type === 'reply_to_mismatch')) {
-		result.replyToMismatch = true;
+		result.isReplyToMismatch = true;
 	}
 
 	// 2. First-time sender — no earlier message from this address in this mailbox.
@@ -138,7 +125,7 @@ export async function computeSenderHeuristics(
 		)
 		.first();
 	if (!prior) {
-		result.firstTimeSender = true;
+		result.isFirstTimeSender = true;
 	}
 
 	// 3. Lookalike-of-known-contact — the From domain is a bounded edit-distance
@@ -159,9 +146,9 @@ export async function computeSenderHeuristics(
 	}
 
 	const notable =
-		result.fromDomainSpoofed ||
-		result.replyToMismatch ||
-		result.firstTimeSender ||
+		result.isFromDomainSpoofed ||
+		result.isReplyToMismatch ||
+		result.isFirstTimeSender ||
 		result.lookalikeOfContactDomain !== undefined;
 	return notable ? result : undefined;
 }
