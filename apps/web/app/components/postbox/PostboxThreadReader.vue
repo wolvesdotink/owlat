@@ -38,6 +38,16 @@ export type PostboxReaderMessage = {
 	dmarcPolicy?: string;
 	envelopeFromDomain?: string;
 	dkimSigningDomain?: string;
+	// Ingest-computed sender-impersonation heuristics (Sealed Mail A4), threaded
+	// through so the sender badge can render secondary detail lines (first-time
+	// sender, look-alike of a known contact's domain). Whole object absent when
+	// nothing fired — the badge shows no extra lines rather than a false "clear".
+	senderHeuristics?: {
+		fromDomainSpoofed?: boolean;
+		replyToMismatch?: boolean;
+		firstTimeSender?: boolean;
+		lookalikeOfContactDomain?: string;
+	};
 	flagSeen?: boolean;
 	unsubscribe?: { httpUrl?: string; mailtoUrl?: string; oneClick: boolean };
 };
