@@ -12,8 +12,8 @@ import {
 	mailUnsubscribeValidator,
 	spamVerdictValidator,
 	draftQualityValidator,
-	senderHeuristicsValidator,
 } from '../lib/convexValidators';
+import { senderHeuristicsValidator } from '../lib/senderHeuristicsValidator';
 import { editAdjustmentValidator } from '../mail/editLearningValidators';
 
 /**

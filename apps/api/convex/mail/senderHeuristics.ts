@@ -29,9 +29,9 @@ import {
 } from '@owlat/email-scanner';
 import type { MutationCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
-import type { SenderHeuristics } from '../lib/convexValidators';
+import type { SenderHeuristics } from '../lib/senderHeuristicsValidator';
 
-// Persisted shape is the single source of truth in `lib/convexValidators`
+// Persisted shape is the single source of truth in `lib/senderHeuristicsValidator`
 // (`senderHeuristicsValidator`); the schema references that validator and this
 // type is derived from it, so the field set never drifts across the three sites.
 export type { SenderHeuristics };
