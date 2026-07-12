@@ -38,15 +38,10 @@ import type { Id } from '../../_generated/dataModel';
 
 // The standard EICAR anti-malware test signature (a real virus scanner reports
 // it as malware; it is otherwise inert).
-const EICAR =
-	'X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*';
+const EICAR = 'X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*';
 
 /** Build a multipart/mixed .eml carrying a base64 attachment. */
-function emlWithAttachment(opts: {
-	messageId: string;
-	filename: string;
-	body: string;
-}): string {
+function emlWithAttachment(opts: { messageId: string; filename: string; body: string }): string {
 	return [
 		'From: sender@isp.example',
 		'To: me@example.com',
@@ -78,9 +73,7 @@ interface ScanResponseBody {
 }
 
 /** Spy on fetch returning a canned `/scan/attachment` body (or an HTTP error). */
-function mockScan(
-	response: ScanResponseBody | { httpStatus: number },
-): {
+function mockScan(response: ScanResponseBody | { httpStatus: number }): {
 	calls: Array<{ url: string; filename?: string; body: Buffer }>;
 } {
 	const calls: Array<{ url: string; filename?: string; body: Buffer }> = [];
@@ -125,7 +118,7 @@ describe('scanInboundAttachments (pure verdict aggregation)', () => {
 				messageId: '<v1@isp.example>',
 				filename: 'eicar.com',
 				body: EICAR,
-			}),
+			})
 		);
 		const verdict = await scanInboundAttachments(MTA, raw);
 
@@ -148,7 +141,7 @@ describe('scanInboundAttachments (pure verdict aggregation)', () => {
 				messageId: '<v2@isp.example>',
 				filename: 'report.pdf',
 				body: 'pretend pdf',
-			}),
+			})
 		);
 		const verdict = await scanInboundAttachments(MTA, raw);
 
@@ -166,7 +159,7 @@ describe('scanInboundAttachments (pure verdict aggregation)', () => {
 				messageId: '<v3@isp.example>',
 				filename: 'doc.txt',
 				body: 'hi',
-			}),
+			})
 		);
 		const verdict = await scanInboundAttachments(MTA, raw);
 
@@ -174,7 +167,7 @@ describe('scanInboundAttachments (pure verdict aggregation)', () => {
 		expect(warnSpy).toHaveBeenCalledTimes(1);
 	});
 
-	it('honours the scanner\'s own skipped verdict (failed open inside the MTA)', async () => {
+	it("honours the scanner's own skipped verdict (failed open inside the MTA)", async () => {
 		const warnSpy = vi.spyOn(scannerHealth, 'warnScanSkipped');
 		mockScan({ clean: true, skipped: true, reason: 'ClamAV unavailable' });
 
@@ -183,7 +176,7 @@ describe('scanInboundAttachments (pure verdict aggregation)', () => {
 				messageId: '<v4@isp.example>',
 				filename: 'doc.txt',
 				body: 'hi',
-			}),
+			})
 		);
 		const verdict = await scanInboundAttachments(MTA, raw);
 
@@ -198,7 +191,7 @@ describe('scanInboundAttachments (pure verdict aggregation)', () => {
 				messageId: '<v5@isp.example>',
 				filename: 'doc.txt',
 				body: 'hi',
-			}),
+			})
 		);
 		expect(await scanInboundAttachments(MTA, raw)).toBe('clean');
 		expect(calls).toHaveLength(1);
@@ -211,7 +204,7 @@ describe('scanInboundAttachments (pure verdict aggregation)', () => {
 				messageId: '<v6@isp.example>',
 				filename: 'doc.txt',
 				body: 'hi',
-			}),
+			})
 		);
 		expect(await scanInboundAttachments(null, raw)).toBeUndefined();
 		expect(fetchSpy).not.toHaveBeenCalled();
@@ -219,9 +212,7 @@ describe('scanInboundAttachments (pure verdict aggregation)', () => {
 
 	it('returns undefined when there are no attachments to scan', async () => {
 		const fetchSpy = vi.spyOn(globalThis, 'fetch');
-		const raw = Buffer.from(
-			['Content-Type: text/plain', '', 'just text'].join('\r\n'),
-		);
+		const raw = Buffer.from(['Content-Type: text/plain', '', 'just text'].join('\r\n'));
 		expect(await scanInboundAttachments(MTA, raw)).toBeUndefined();
 		expect(fetchSpy).not.toHaveBeenCalled();
 	});
@@ -238,7 +229,7 @@ const mailGlob = Object.fromEntries(
 	Object.entries(import.meta.glob('../**/*.*s')).map(([path, mod]) => [
 		path.replace(/^\.\.\//, '../../mail/'),
 		mod,
-	]),
+	])
 );
 const allModules = { ...rootGlob, ...mailGlob };
 const modules = Object.fromEntries(
@@ -246,8 +237,8 @@ const modules = Object.fromEntries(
 		([path]) =>
 			!path.includes('sesActions') &&
 			!path.includes('agentSecurity') &&
-			!path.includes('llmProvider'),
-	),
+			!path.includes('llmProvider')
+	)
 );
 
 async function insertMailbox(ctx: { db: DatabaseWriter }): Promise<Id<'mailboxes'>> {
@@ -269,7 +260,7 @@ async function insertFolder(
 	ctx: { db: DatabaseWriter },
 	mailboxId: Id<'mailboxes'>,
 	name: string,
-	role: 'inbox' | 'spam',
+	role: 'inbox' | 'spam'
 ): Promise<Id<'mailFolders'>> {
 	const now = Date.now();
 	return ctx.db.insert('mailFolders', {
@@ -292,10 +283,9 @@ async function insertFolder(
 const SPAM_HTML =
 	'<html><body>' +
 	'<p>YOU HAVE WON a million dollars! Send a wire transfer immediately to claim.</p>' +
-	Array.from(
-		{ length: 20 },
-		(_, i) => `<a href="https://bit.ly/claim-${i}">click here</a>`,
-	).join('') +
+	Array.from({ length: 20 }, (_, i) => `<a href="https://bit.ly/claim-${i}">click here</a>`).join(
+		''
+	) +
 	'</body></html>';
 
 describe('deliverToMailbox — inbound content/spam scan for personal mailboxes (PR-40)', () => {

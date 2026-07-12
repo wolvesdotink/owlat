@@ -93,7 +93,11 @@ export function createBounceServer(config: MtaConfig, redis: Redis): SMTPServer 
 			const remoteIp = session.remoteAddress;
 
 			try {
-				const allowed = await checkConnectionRateLimit(redis, remoteIp, config.bounceMaxConnectionsPerIp);
+				const allowed = await checkConnectionRateLimit(
+					redis,
+					remoteIp,
+					config.bounceMaxConnectionsPerIp
+				);
 
 				if (!allowed) {
 					logger.warn({ remoteIp }, 'Bounce server connection rate limited');
@@ -102,7 +106,7 @@ export function createBounceServer(config: MtaConfig, redis: Redis): SMTPServer 
 
 				// Tarpit: add deliberate delay for non-local connections
 				if (config.bounceTarpitEnabled && !isLocalAddress(remoteIp)) {
-					await new Promise(resolve => setTimeout(resolve, config.bounceTarpitDelayMs));
+					await new Promise((resolve) => setTimeout(resolve, config.bounceTarpitDelayMs));
 				}
 
 				callback();
@@ -193,37 +197,41 @@ export function createBounceServer(config: MtaConfig, redis: Redis): SMTPServer 
 			}
 
 			// 2. Personal-mailbox lookup (Postbox) — Redis cache only
-			findMailboxRoute(redis, address.address).then((mailboxEntry) => {
-				if (mailboxEntry) {
-					// Pre-flight quota check (best-effort; SIZE may be unknown)
-					if (
-						mailboxEntry.quotaBytes != null &&
-						mailboxEntry.usedBytes >= mailboxEntry.quotaBytes
-					) {
-						callback(new Error('552 5.2.2 Mailbox over quota'));
+			findMailboxRoute(redis, address.address)
+				.then((mailboxEntry) => {
+					if (mailboxEntry) {
+						// Pre-flight quota check (best-effort; SIZE may be unknown)
+						if (
+							mailboxEntry.quotaBytes != null &&
+							mailboxEntry.usedBytes >= mailboxEntry.quotaBytes
+						) {
+							callback(new Error('552 5.2.2 Mailbox over quota'));
+							return;
+						}
+						callback();
 						return;
 					}
-					callback();
-					return;
-				}
 
-				// 3. Fall through to existing inbound route table (AI shared inbox, etc.)
-				findRoute(redis, address.address).then((route) => {
-					if (route) {
-						if (route.mode === 'reject') {
-							callback(new Error('Mailbox not found'));
-						} else {
-							callback();
-						}
-					} else {
-						callback(new Error('Mailbox not found'));
-					}
-				}).catch(() => {
+					// 3. Fall through to existing inbound route table (AI shared inbox, etc.)
+					findRoute(redis, address.address)
+						.then((route) => {
+							if (route) {
+								if (route.mode === 'reject') {
+									callback(new Error('Mailbox not found'));
+								} else {
+									callback();
+								}
+							} else {
+								callback(new Error('Mailbox not found'));
+							}
+						})
+						.catch(() => {
+							callback(new Error('Temporary error'));
+						});
+				})
+				.catch(() => {
 					callback(new Error('Temporary error'));
 				});
-			}).catch(() => {
-				callback(new Error('Temporary error'));
-			});
 		},
 
 		// Process incoming bounce/FBL emails — runs the Bounce intake pipeline
@@ -259,9 +267,7 @@ export function createBounceServer(config: MtaConfig, redis: Redis): SMTPServer 
 				// mangles canonicalization. The verdict is threaded onto the
 				// personal-mailbox payload's `dkimResult`. Fail-open: a verify
 				// crash yields `temperror`, never a NACK of accepted bytes.
-				const dkim = config.inboundDkimEnabled
-					? await verifyDkim(rawBuffer)
-					: undefined;
+				const dkim = config.inboundDkimEnabled ? await verifyDkim(rawBuffer) : undefined;
 				const dkimResult = dkim?.result;
 
 				// Evaluate DMARC (RFC 7489): bind the (envelope-authenticated) SPF
@@ -307,7 +313,7 @@ export function createBounceServer(config: MtaConfig, redis: Redis): SMTPServer 
 					// pipeline edit broke that invariant — log and ACK.
 					logger.warn(
 						{ rcptTo, subject: parsed.subject },
-						'Bounce pipeline returned continue without a classification',
+						'Bounce pipeline returned continue without a classification'
 					);
 					callback();
 					return;
@@ -349,7 +355,7 @@ function logAttempt(attempt: BounceAttempt, parsed: import('mailparser').ParsedM
 		case 'fbl':
 			logger.info(
 				{ messageId: attempt.arf.originalMessageId, type: 'complaint' },
-				'FBL complaint processed',
+				'FBL complaint processed'
 			);
 			return;
 		case 'dsn_attributed':
@@ -359,14 +365,11 @@ function logAttempt(attempt: BounceAttempt, parsed: import('mailparser').ParsedM
 					bounceType: attempt.bounce.bounceType,
 					type: 'bounce',
 				},
-				'Bounce DSN processed',
+				'Bounce DSN processed'
 			);
 			return;
 		case 'route_hold':
-			logger.info(
-				{ rcptTo: attempt.rcptTo, from: parsed.from?.text },
-				'Inbound email held',
-			);
+			logger.info({ rcptTo: attempt.rcptTo, from: parsed.from?.text }, 'Inbound email held');
 			return;
 		case 'route_bounce':
 			logger.info({ rcptTo: attempt.rcptTo }, 'Inbound email bounced by route');
@@ -374,7 +377,7 @@ function logAttempt(attempt: BounceAttempt, parsed: import('mailparser').ParsedM
 		case 'unrecognized':
 			logger.warn(
 				{ rcptTo: attempt.rcptTo, subject: parsed.subject },
-				'Received unrecognized inbound email',
+				'Received unrecognized inbound email'
 			);
 			return;
 		case 'dsn_unattributed':

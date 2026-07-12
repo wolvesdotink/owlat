@@ -154,10 +154,10 @@ export const handleMailWebhook = httpAction(async (ctx, request) => {
 	}
 
 	if (payload.event !== 'inbound.mailbox.received' || !payload.mailboxPayload) {
-		return new Response(
-			JSON.stringify({ error: `Unsupported event: ${payload.event}` }),
-			{ status: 400, headers: { 'Content-Type': 'application/json' } }
-		);
+		return new Response(JSON.stringify({ error: `Unsupported event: ${payload.event}` }), {
+			status: 400,
+			headers: { 'Content-Type': 'application/json' },
+		});
 	}
 
 	const mp = payload.mailboxPayload;

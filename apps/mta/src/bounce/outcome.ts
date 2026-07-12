@@ -116,7 +116,7 @@ function reduceFbl(attempt: Extract<BounceAttempt, { kind: 'fbl' }>): OutcomeRed
 }
 
 function reduceDsnAttributed(
-	attempt: Extract<BounceAttempt, { kind: 'dsn_attributed' }>,
+	attempt: Extract<BounceAttempt, { kind: 'dsn_attributed' }>
 ): OutcomeReduction {
 	const { bounce } = attempt;
 	return {
@@ -144,7 +144,7 @@ function reduceDsnUnattributed(): OutcomeReduction {
 
 function reduceMailbox(
 	attempt: Extract<BounceAttempt, { kind: 'mailbox' }>,
-	ctx: BasePhaseCtx,
+	ctx: BasePhaseCtx
 ): OutcomeReduction {
 	const { parsed, rawBuffer, spfResult, envelopeFromDomain, dkimSigningDomain, returnPath } = ctx;
 	const {
@@ -231,7 +231,7 @@ function reduceMailbox(
 
 function reduceEndpointForward(
 	attempt: Extract<BounceAttempt, { kind: 'endpoint_forward' }>,
-	ctx: BasePhaseCtx,
+	ctx: BasePhaseCtx
 ): OutcomeReduction {
 	return {
 		effects: [
@@ -258,7 +258,7 @@ function reduceEndpointForward(
 
 function reduceInboundAccept(
 	attempt: Extract<BounceAttempt, { kind: 'inbound_accept' }>,
-	ctx: BasePhaseCtx,
+	ctx: BasePhaseCtx
 ): OutcomeReduction {
 	const { parsed, spfResult, dkimResult, dmarcResult, dmarcPolicy } = ctx;
 	const { route, rcptTo, attachments, headers } = attempt;
@@ -293,7 +293,7 @@ function reduceInboundAccept(
 
 	const referencesString = Array.isArray(parsed.references)
 		? parsed.references.join(' ')
-		: parsed.references ?? undefined;
+		: (parsed.references ?? undefined);
 
 	effects.push({
 		kind: 'notify_convex',

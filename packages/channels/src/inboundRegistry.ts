@@ -161,7 +161,7 @@ export function getInboundChannelAdapter(source: InboundSource): InboundChannelA
 	if (!adapter) {
 		throw new Error(
 			`No inbound channel adapter registered for source "${source}". ` +
-				`Register one with registerInboundChannelAdapter() from @owlat/channels.`,
+				`Register one with registerInboundChannelAdapter() from @owlat/channels.`
 		);
 	}
 	return adapter;
