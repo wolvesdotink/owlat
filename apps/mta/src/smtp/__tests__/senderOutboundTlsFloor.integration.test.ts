@@ -9,21 +9,19 @@
  * FULL {@link sendToMx} through the REAL {@link SmtpConnectionPool} + real
  * nodemailer + real tlsRpt (over ioredis-mock) against a loopback
  * {@link SMTPServer}, exactly like senderPlaintextTlsRpt.integration.test.ts.
- * Only the destination port is rewritten (sendToMx hardcodes 25).
+ * Both suites share the loopback harness (loopbackMxHarness.ts); only the
+ * destination port is rewritten (sendToMx hardcodes 25).
  *
  *  - `require` vs a receiver that offers no STARTTLS ⇒ soft bounce +
  *    `starttls-not-supported` recorded.
  *  - `require-verified` vs a self-signed MX (advertising STARTTLS) ⇒ soft bounce
  *    + `certificate-not-trusted` recorded.
- *  - `opportunistic` (the default) against the SAME broken receivers still
+ *  - `opportunistic` (the default) against the SAME broken receiver still
  *    delivers — the floor switch is what changes the outcome, and the default is
  *    byte-identical to today.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { SMTPServer } from 'smtp-server';
-import type { AddressInfo } from 'node:net';
 import Redis from 'ioredis-mock';
-import { MX_CERT, MX_KEY } from './certFixture.js';
 
 vi.mock('../mxResolver.js', () => ({
 	getMxHostnames: vi.fn().mockResolvedValue(['127.0.0.1']),
@@ -59,105 +57,14 @@ vi.mock('../../monitoring/logger.js', () => ({
 import { sendToMx } from '../sender.js';
 import { pool } from '../connectionPool.js';
 import { generateReport } from '../tlsRpt.js';
-import type { EmailJob } from '../../types.js';
-import type { MtaConfig } from '../../config.js';
-import type { OutboundTlsMode } from '../tlsPolicy.js';
-
-interface ServerProbe {
-	server: SMTPServer;
-	port: number;
-	dataReached(): boolean;
-}
-
-/**
- * Loopback SMTP server. `advertiseStartTls:false` OMITS STARTTLS from EHLO (so a
- * `require` client cannot upgrade); when true it advertises STARTTLS backed by
- * the self-signed {@link MX_CERT} (so a `require-verified` client upgrades and
- * then fails verification). `dataReached` proves whether the body was ever
- * accepted — under a required-TLS bounce it must stay false.
- */
-async function startServer(advertiseStartTls: boolean): Promise<ServerProbe> {
-	let sawData = false;
-	const server = new SMTPServer({
-		secure: false,
-		authOptional: true,
-		disabledCommands: advertiseStartTls ? ['AUTH'] : ['AUTH', 'STARTTLS'],
-		hideSTARTTLS: !advertiseStartTls,
-		cert: MX_CERT,
-		key: MX_KEY,
-		minVersion: 'TLSv1.2',
-		onData(stream, _session, cb) {
-			sawData = true;
-			stream.on('data', () => {});
-			stream.on('end', () => cb());
-		},
-	});
-	server.on('error', () => {});
-	await new Promise<void>((resolve, reject) => {
-		server.once('error', reject);
-		server.listen(0, '127.0.0.1', () => {
-			server.removeListener('error', reject);
-			resolve();
-		});
-	});
-	const port = (server.server.address() as AddressInfo).port;
-	return { server, port, dataReached: () => sawData };
-}
-
-function stopServer(server: SMTPServer): Promise<void> {
-	return new Promise((resolve) => server.close(() => resolve()));
-}
-
-function createJob(overrides: Partial<EmailJob> = {}): EmailJob {
-	return {
-		messageId: 'msg-tlsfloor-001',
-		to: 'user@recipient.test',
-		from: 'sender@owlat.com',
-		subject: 'T1',
-		html: '<p>Hello</p>',
-		ipPool: 'transactional',
-		organizationId: 'org-1',
-		dkimDomain: 'owlat.com',
-		...overrides,
-	};
-}
-
-function createConfig(outboundTlsMode: OutboundTlsMode): MtaConfig {
-	return {
-		port: 3100,
-		bouncePort: 25,
-		redisUrl: 'redis://localhost:6379',
-		apiKey: 'test-key',
-		ehloHostname: 'mail.owlat.com',
-		ehloHostnames: {},
-		returnPathDomain: 'bounces.owlat.com',
-		convexSiteUrl: 'https://test.convex.site',
-		webhookSecret: 'secret',
-		ipPools: { transactional: ['127.0.0.1'], campaign: ['127.0.0.1'] },
-		dkimKeys: {},
-		workerConcurrency: 50,
-		serverId: 'test-server',
-		smtpPool: { maxPerHost: 3, idleTimeoutMs: 30000, maxAgeMs: 300000 },
-		orgLimits: { defaultDailyLimit: 50000, defaultHourlyLimit: 5000 },
-		submissionPort: 587,
-		submissionEnabled: false,
-		contentScreeningEnabled: true,
-		contentMaxSizeKb: 500,
-		deliveryLogMaxLen: 100000,
-		deliveryLogTtlHours: 72,
-		webhookDlqMaxSize: 10000,
-		bounceMaxConnectionsPerIp: 10,
-		bounceMaxClients: 200,
-		bounceTarpitEnabled: false,
-		bounceTarpitDelayMs: 5000,
-		inboundSpfEnabled: false,
-		rspamdRejectThreshold: 15,
-		smtpPoolGlobalMaxPerHost: 10,
-		outboundTlsMode,
-	} as MtaConfig;
-}
-
-const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
+import {
+	type ServerProbe,
+	startServer,
+	stopServer,
+	createJob,
+	createConfig,
+	flush,
+} from './loopbackMxHarness.js';
 
 describe('sendToMx honours OUTBOUND_TLS_MODE: bounce + TLS-RPT under a required floor (T1)', () => {
 	let redis: InstanceType<typeof Redis>;
@@ -195,9 +102,14 @@ describe('sendToMx honours OUTBOUND_TLS_MODE: bounce + TLS-RPT under a required 
 	}
 
 	it('require: a receiver that offers no STARTTLS soft-bounces and records starttls-not-supported', async () => {
-		probe = await startServer(/* advertiseStartTls */ false);
+		probe = await startServer({ advertiseStartTls: false });
 
-		const result = await sendToMx(createJob(), createConfig('require'), redis, '127.0.0.1');
+		const result = await sendToMx(
+			createJob(),
+			createConfig({ outboundTlsMode: 'require' }),
+			redis,
+			'127.0.0.1'
+		);
 
 		// A required TLS floor never falls back to cleartext: the body never reached
 		// the server and the send is a retryable soft bounce naming the TLS failure.
@@ -210,11 +122,11 @@ describe('sendToMx honours OUTBOUND_TLS_MODE: bounce + TLS-RPT under a required 
 	}, 15000);
 
 	it('require-verified: a self-signed MX soft-bounces and records certificate-not-trusted', async () => {
-		probe = await startServer(/* advertiseStartTls */ true);
+		probe = await startServer({ advertiseStartTls: true });
 
 		const result = await sendToMx(
 			createJob(),
-			createConfig('require-verified'),
+			createConfig({ outboundTlsMode: 'require-verified' }),
 			redis,
 			'127.0.0.1'
 		);
@@ -228,9 +140,14 @@ describe('sendToMx honours OUTBOUND_TLS_MODE: bounce + TLS-RPT under a required 
 	}, 15000);
 
 	it('opportunistic (default): the SAME no-STARTTLS receiver still gets the mail — the floor switch is what changes the outcome', async () => {
-		probe = await startServer(/* advertiseStartTls */ false);
+		probe = await startServer({ advertiseStartTls: false });
 
-		const result = await sendToMx(createJob(), createConfig('opportunistic'), redis, '127.0.0.1');
+		const result = await sendToMx(
+			createJob(),
+			createConfig({ outboundTlsMode: 'opportunistic' }),
+			redis,
+			'127.0.0.1'
+		);
 
 		// Byte-identical to today: opportunistic delivers over cleartext rather than
 		// bouncing, and the cleartext session is recorded as starttls-not-supported
