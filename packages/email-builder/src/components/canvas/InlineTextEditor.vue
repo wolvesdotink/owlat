@@ -1,6 +1,13 @@
 <script setup lang="ts">
 import { ref, shallowRef, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
-import type { EditorBlock, EmailTheme, Variable, TextBlockContent, SlashCommand } from '../../types';
+import { moduleFor } from '@owlat/email-renderer';
+import type {
+	EditorBlock,
+	EmailTheme,
+	Variable,
+	TextBlockContent,
+	SlashCommand,
+} from '../../types';
 import { defaultPadding } from '../../defaults';
 import { useSlashCommands } from '../../composables/useSlashCommands';
 import { useRichText } from '@owlat/ui/composables/useRichText';
@@ -29,7 +36,14 @@ let blurTimeout: ReturnType<typeof setTimeout> | null = null;
 // to the campaign-builder context.
 const richText = useRichText({ editorRef: editorEl });
 
-const content = computed(() => props.block.content as TextBlockContent);
+// Same theme-defaults application as TextPreview: keep the inline editor's
+// typography identical to what the Walker renders, so entering edit mode
+// doesn't visibly reflow the block.
+const content = computed(() => {
+	const raw = props.block.content as TextBlockContent;
+	const applied = moduleFor('text')?.applyTheme?.(raw as never, props.theme);
+	return (applied as TextBlockContent | undefined) ?? raw;
+});
 
 // Slash commands
 const slashCommands = useSlashCommands();
@@ -49,8 +63,8 @@ let triggerStartNode: Node | null = null;
 const filteredVariables = computed(() => {
 	if (!props.variables?.length) return [];
 	const q = variableQuery.value.toLowerCase();
-	return props.variables.filter((v) =>
-		v.key.toLowerCase().includes(q) || v.label.toLowerCase().includes(q),
+	return props.variables.filter(
+		(v) => v.key.toLowerCase().includes(q) || v.label.toLowerCase().includes(q)
 	);
 });
 
@@ -58,11 +72,14 @@ const filteredVariables = computed(() => {
 const editorStyles = computed(() => {
 	const c = content.value;
 	const t = props.theme;
+	const isHeading = c.blockType === 'h1' || c.blockType === 'h2' || c.blockType === 'h3';
 	return {
 		fontSize: `${c.fontSize || t.bodyFontSize || 16}px`,
 		color: c.textColor || t.bodyTextColor || '#333333',
 		fontFamily: c.fontFamily || t.fontFamily || 'Arial, sans-serif',
-		fontWeight: c.fontWeight ? String(c.fontWeight) : 'normal',
+		// Headings render UA-bold in email clients when fontWeight is unset —
+		// mirror TextPreview so entering edit mode doesn't change the weight.
+		fontWeight: c.fontWeight ? String(c.fontWeight) : isHeading ? 'bold' : 'normal',
 		lineHeight: c.lineHeight ? String(c.lineHeight) : '1.5',
 		textAlign: (c.textAlign || 'left') as 'left' | 'right' | 'center' | 'justify',
 		letterSpacing: c.letterSpacing ? `${c.letterSpacing}px` : 'normal',
@@ -195,7 +212,8 @@ function cleanupTriggerText() {
 	const text = triggerStartNode.textContent || '';
 	const selection = window.getSelection();
 	const cursorOffset = selection?.rangeCount ? selection.getRangeAt(0).startOffset : text.length;
-	const endOffset = triggerStartNode === selection?.getRangeAt(0)?.startContainer ? cursorOffset : text.length;
+	const endOffset =
+		triggerStartNode === selection?.getRangeAt(0)?.startContainer ? cursorOffset : text.length;
 	const before = text.slice(0, triggerStartOffset);
 	const after = text.slice(endOffset);
 	triggerStartNode.textContent = before + after;
@@ -203,7 +221,10 @@ function cleanupTriggerText() {
 	// Restore cursor position
 	if (selection && triggerStartNode.parentNode) {
 		const range = document.createRange();
-		range.setStart(triggerStartNode, Math.min(triggerStartOffset, (triggerStartNode.textContent || '').length));
+		range.setStart(
+			triggerStartNode,
+			Math.min(triggerStartOffset, (triggerStartNode.textContent || '').length)
+		);
 		range.collapse(true);
 		selection.removeAllRanges();
 		selection.addRange(range);
@@ -249,7 +270,8 @@ function cleanupSlashText() {
 	const selection = window.getSelection();
 	const cursorOffset = selection?.rangeCount ? selection.getRangeAt(0).startOffset : text.length;
 	// Remove from slashStartOffset to current cursor position
-	const endOffset = slashStartNode === selection?.getRangeAt(0)?.startContainer ? cursorOffset : text.length;
+	const endOffset =
+		slashStartNode === selection?.getRangeAt(0)?.startContainer ? cursorOffset : text.length;
 	const before = text.slice(0, slashStartOffset);
 	const after = text.slice(endOffset);
 	slashStartNode.textContent = before + after;
@@ -257,7 +279,10 @@ function cleanupSlashText() {
 	// Restore cursor position
 	if (selection && slashStartNode.parentNode) {
 		const range = document.createRange();
-		range.setStart(slashStartNode, Math.min(slashStartOffset, (slashStartNode.textContent || '').length));
+		range.setStart(
+			slashStartNode,
+			Math.min(slashStartOffset, (slashStartNode.textContent || '').length)
+		);
 		range.collapse(true);
 		selection.removeAllRanges();
 		selection.addRange(range);
@@ -314,7 +339,7 @@ function handleKeydown(event: KeyboardEvent) {
 			event.stopPropagation();
 			variableSelectedIndex.value = Math.min(
 				variableSelectedIndex.value + 1,
-				filteredVariables.value.length - 1,
+				filteredVariables.value.length - 1
 			);
 			return;
 		}
