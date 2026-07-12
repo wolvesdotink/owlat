@@ -66,6 +66,10 @@ export const CONVEX_RUNTIME_ENV_KEYS = [
 	'MTA_SPF_INCLUDE',
 	'MTA_DMARC_RUA',
 	'MTA_TLSRPT_RUA',
+	// Outbound TLS floor (opportunistic | require | require-verified) — pushed so
+	// the backend can surface the current mode in the transport editor and avoid a
+	// silent TLS-policy downgrade when an admin re-applies the transport.
+	'OUTBOUND_TLS_MODE',
 	'MTA_WEBHOOK_SECRET',
 	'MTA_IP_POOLS',
 	'MTA_RETURN_PATH_DOMAIN',

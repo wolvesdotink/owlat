@@ -20,6 +20,7 @@ export {
 	normalizeEmail,
 } from './address';
 export { type AlignmentMode, isSpfAligned, emailDomain } from './spfAlignment';
+export { type OutboundTlsMode, OUTBOUND_TLS_MODES, isOutboundTlsMode } from './outboundTlsMode';
 export { isSpfRecord, parseSpfMechanisms, mergeSpfRecords } from './spf';
 export type { ValidationIssue } from './validation';
 export {

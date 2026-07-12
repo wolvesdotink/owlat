@@ -66,6 +66,10 @@ export const getStatus = adminQuery({
 			requiredEnv,
 			providerConfigured,
 			canSend,
+			// Non-secret: the active outbound TLS floor for the built-in MTA, so the
+			// transport editor can seed its selector and a re-apply never silently
+			// resets a previously-chosen floor to `opportunistic`. Unset ⇒ null.
+			outboundTlsMode: getOptional('OUTBOUND_TLS_MODE') ?? null,
 			lastTestSucceededAt: settings?.deliveryTestLastSucceededAt ?? null,
 		};
 	},

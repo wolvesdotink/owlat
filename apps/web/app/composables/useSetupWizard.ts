@@ -25,6 +25,7 @@ import {
 	SMTP_RELAY_PRESETS,
 	type SmtpRelayPreset,
 } from '@owlat/shared/setupSendingPresets';
+import type { OutboundTlsMode } from '@owlat/shared/outboundTlsMode';
 import { SETUP_DRAFT_STORAGE_KEY, readSetupDraft, serializeSetupDraft } from './setupWizardDraft';
 
 // Re-export the shared preset table and its key type so the setup step (and its
@@ -32,6 +33,11 @@ import { SETUP_DRAFT_STORAGE_KEY, readSetupDraft, serializeSetupDraft } from './
 // lives in `@owlat/shared/setupSendingPresets`, shared with the setup CLI.
 export { SMTP_RELAY_PRESETS, PROVIDER_ENV_KEYS };
 export type SmtpPreset = SmtpRelayPreset;
+
+// The outbound-TLS selector surface (option list, `seedOutboundTlsMode`, and the
+// `OutboundTlsMode` re-export) lives in the sibling `setupOutboundTls` module,
+// split out to keep this file under the file-size ratchet. This file still uses
+// the `OutboundTlsMode` type for the email step draft below.
 
 // ── Steps ────────────────────────────────────────────────────────────────────
 
@@ -92,6 +98,12 @@ export interface EmailStepDraft {
 	resendKey: string;
 	ses: SesCredentials;
 	smtp: SmtpRelayDraft;
+	/**
+	 * Outbound TLS posture for the built-in MTA. Optional — omitted drafts (and
+	 * every non-`mta` transport) fall back to the `opportunistic` default, which
+	 * is byte-identical to the historic behaviour.
+	 */
+	outboundTlsMode?: OutboundTlsMode;
 	/** Optional From-identity — flows into the apply contract's `env`. */
 	fromEmail: string;
 	fromName: string;
@@ -199,6 +211,13 @@ export function buildProviderEnv(
 
 	if (draft.provider !== 'none') {
 		next['EMAIL_PROVIDER'] = draft.provider;
+		if (draft.provider === 'mta') {
+			// Outbound TLS posture applies only to the built-in MTA's direct-MX
+			// delivery. Always emit it (default `opportunistic`) so switching TO the
+			// MTA writes an explicit value rather than leaving a stale one from a
+			// prior install. Other transports clear it (it is in PROVIDER_ENV_KEYS).
+			next['OUTBOUND_TLS_MODE'] = draft.outboundTlsMode ?? 'opportunistic';
+		}
 		if (draft.provider === 'resend') {
 			next['RESEND_API_KEY'] = draft.resendKey;
 		}

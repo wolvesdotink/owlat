@@ -246,7 +246,11 @@ async function handleSendTest() {
 			<!-- Editable transport editor — change provider / rotate credentials in
 			     place, tested and applied through the same env-patch the setup wizard
 			     uses. The status cards above stay the read-only at-a-glance summary. -->
-			<DeliveryTransportEditor :current-provider="status.provider" @applied="refetchStatus" />
+			<DeliveryTransportEditor
+				:current-provider="status.provider"
+				:current-outbound-tls-mode="status.outboundTlsMode"
+				@applied="refetchStatus"
+			/>
 
 			<!-- Provider + required env presence -->
 			<UiCard padding="none" overflow="hidden">
