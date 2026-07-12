@@ -10,7 +10,8 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { ParsedMail } from 'mailparser';
-import { forwardToEndpoint, type InboundAuthVerdicts } from '../forwarder.js';
+import { forwardToEndpoint } from '../forwarder.js';
+import type { InboundAuthVerdicts } from '../../types.js';
 import type { InboundRoute } from '../router.js';
 
 vi.mock('../../monitoring/logger.js', () => ({

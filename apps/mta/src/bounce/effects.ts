@@ -25,10 +25,10 @@ import * as circuitBreaker from '../intelligence/circuitBreaker.js';
 import * as campaignComplaintRate from '../intelligence/campaignComplaintRate.js';
 import * as metrics from '../monitoring/collector.js';
 import { notifyConvex } from '../webhooks/convexNotifier.js';
-import { forwardToEndpoint, type InboundAuthVerdicts } from '../inbound/forwarder.js';
+import { forwardToEndpoint } from '../inbound/forwarder.js';
 import { bumpUsedBytes } from '../inbound/mailboxResolver.js';
 import { logger } from '../monitoring/logger.js';
-import type { MtaWebhookEvent } from '../types.js';
+import type { InboundAuthVerdicts, MtaWebhookEvent } from '../types.js';
 import type { InboundRoute } from '../inbound/router.js';
 import type { PhaseDeps } from './types.js';
 
@@ -113,7 +113,7 @@ export type BounceEffect =
  */
 export async function applyEffects(
 	effects: ReadonlyArray<BounceEffect>,
-	deps: PhaseDeps,
+	deps: PhaseDeps
 ): Promise<void> {
 	const parallel: Array<Promise<unknown>> = [];
 
@@ -130,14 +130,14 @@ export async function applyEffects(
 
 function fireAndForget(
 	effect: Extract<BounceEffect, { kind: 'notify_convex' | 'mailbox_quota_bump' }>,
-	deps: PhaseDeps,
+	deps: PhaseDeps
 ): void {
 	if (effect.kind === 'notify_convex') {
 		notifyConvex(effect.event, deps.config, deps.redis).catch((err) =>
 			logger.error(
 				{ err, event: effect.event.event, messageId: effect.event.messageId },
-				'Failed to notify Convex',
-			),
+				'Failed to notify Convex'
+			)
 		);
 		return;
 	}
@@ -189,7 +189,7 @@ function applyOne(effect: BounceEffect, deps: PhaseDeps): Promise<unknown> {
  */
 async function recordCampaignComplaint(
 	effect: Extract<BounceEffect, { kind: 'campaign_complaint_record' }>,
-	deps: PhaseDeps,
+	deps: PhaseDeps
 ): Promise<void> {
 	let result;
 	try {
@@ -209,7 +209,7 @@ async function recordCampaignComplaint(
 			complaints: result.complaints,
 			delivered: result.delivered,
 		},
-		'Campaign complaint rate exceeded threshold',
+		'Campaign complaint rate exceeded threshold'
 	);
 
 	notifyConvex(
@@ -223,8 +223,11 @@ async function recordCampaignComplaint(
 			timestamp: Date.now(),
 		},
 		deps.config,
-		deps.redis,
+		deps.redis
 	).catch((err) =>
-		logger.error({ err, campaignId: effect.campaignId }, 'Failed to alert Convex of campaign complaint rate'),
+		logger.error(
+			{ err, campaignId: effect.campaignId },
+			'Failed to alert Convex of campaign complaint rate'
+		)
 	);
 }
