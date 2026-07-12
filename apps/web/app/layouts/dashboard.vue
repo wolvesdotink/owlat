@@ -30,8 +30,6 @@ const { isFocusMode } = useFocusMode();
 // Desktop runtime — gates the workspace switcher rail + native chrome.
 const { isDesktop, isMac, isWindows } = useDesktopContext();
 
-// Bridge global OS shortcuts (compose / quick-switcher) into the SPA.
-useDesktopShortcuts();
 // ⌘1–9 workspace switching + native application-menu actions (desktop only).
 useWorkspaceHotkeys();
 useDesktopMenu();
