@@ -17,20 +17,17 @@ import {
  *      Postbox layout registers its reader actions + folders) via
  *      `useCommandPaletteSurface`; the palette is the shared shell, surfaces are
  *      consumers (no per-surface fork);
- *   2. verbs — New campaign, Compose, New contact…;
+ *   2. verbs / sidebar-context switch / navigation — the static providers,
+ *      built in `useCommandPaletteProviders`;
  *   3. object search — contacts / templates / campaigns via the existing
- *      `globalSearch` search index (debounced, capped per group);
- *   4. navigation — every sidebar destination (shared `useDashboardNavigation`).
+ *      `globalSearch` search index (debounced, capped per group).
  *
  * The Cmd+Shift+K knowledge Quick Query keeps its own shortcut; it is surfaced
  * here as the "Ask knowledge…" action (dispatches `owlat:open-knowledge-query`,
  * which the layout listens for).
  */
 
-const { isEnabled: isFeatureEnabled } = useFeatureFlag();
-const { isDesktop } = useDesktopContext();
-const { navigationSections } = useDashboardNavigation();
-const { showToggle: hasSidebarContexts, activeContext, switchContext } = useSidebarContext();
+const { verbItems, contextItems, navItems } = useCommandPaletteProviders();
 const surfaceGroups = useCommandPaletteSurface();
 
 const open = ref(false);
@@ -120,80 +117,6 @@ function toResultItems(results: SearchResult[]): PaletteItem[] {
 		},
 	}));
 }
-
-// ── Static verb + utility providers.
-const verbItems = computed<PaletteItem[]>(() => {
-	const verbs: PaletteItem[] = [];
-	if (isFeatureEnabled('campaigns')) {
-		verbs.push({
-			id: 'verb:new-campaign',
-			label: 'New campaign',
-			icon: 'lucide:megaphone',
-			run: () => void navigateTo('/dashboard/campaigns/new'),
-		});
-	}
-	if (isFeatureEnabled('postbox') || isFeatureEnabled('mail.external')) {
-		verbs.push({
-			id: 'verb:compose',
-			label: 'Compose message',
-			icon: 'lucide:pencil',
-			run: () => void navigateTo('/dashboard/postbox/inbox'),
-		});
-	}
-	verbs.push({
-		id: 'verb:new-contact',
-		label: 'New contact',
-		icon: 'lucide:user-plus',
-		run: () => void navigateTo('/dashboard/audience/contacts'),
-	});
-	if (isFeatureEnabled('ai.knowledge')) {
-		verbs.push({
-			id: 'verb:ask-knowledge',
-			label: 'Ask knowledge…',
-			subtitle: 'Search your knowledge base',
-			icon: 'lucide:sparkles',
-			run: () => window.dispatchEvent(new Event('owlat:open-knowledge-query')),
-		});
-	}
-	if (isDesktop.value) {
-		verbs.push({
-			id: 'verb:check-updates',
-			label: 'Check for updates',
-			icon: 'lucide:download-cloud',
-			run: () => window.dispatchEvent(new Event('owlat:check-updates')),
-		});
-	}
-	return verbs;
-});
-
-// Sidebar-context switch — only the OTHER context is offered, and only while
-// the sidebar toggle itself exists (both contexts survived the feature flags).
-// Runs the same last-visited navigation as clicking the sidebar toggle.
-const contextItems = computed<PaletteItem[]>(() => {
-	if (!hasSidebarContexts.value) return [];
-	const other = activeContext.value === 'inbox' ? ('marketing' as const) : ('inbox' as const);
-	return [
-		{
-			id: `context:${other}`,
-			label: other === 'inbox' ? 'Switch to Inbox' : 'Switch to Marketing',
-			subtitle: 'Sidebar context',
-			icon: other === 'inbox' ? 'lucide:inbox' : 'lucide:megaphone',
-			run: () => void switchContext(other),
-		},
-	];
-});
-
-const navItems = computed<PaletteItem[]>(() =>
-	navigationSections.value.flatMap((section) =>
-		section.items.map((item) => ({
-			id: `nav:${item.href}`,
-			label: item.name,
-			subtitle: section.name,
-			icon: item.icon,
-			run: () => void navigateTo(item.href),
-		}))
-	)
-);
 
 // ── Assemble the ordered, capped group list.
 const groups = computed<PaletteGroup[]>(() => {
