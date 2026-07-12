@@ -131,6 +131,49 @@ describe('transport editor — validation gating', () => {
 	});
 });
 
+describe('transport editor — outbound TLS mode (OUTBOUND_TLS_MODE)', () => {
+	it('emits the chosen outbound TLS mode for the built-in MTA transport', () => {
+		const env = buildProviderEnv(
+			{},
+			draft({ provider: 'mta', outboundTlsMode: 'require-verified' })
+		);
+		expect(env['EMAIL_PROVIDER']).toBe('mta');
+		expect(env['OUTBOUND_TLS_MODE']).toBe('require-verified');
+	});
+
+	it('defaults an omitted mode to opportunistic (byte-identical to historic behaviour)', () => {
+		const env = buildProviderEnv({}, draft({ provider: 'mta' }));
+		expect(env['OUTBOUND_TLS_MODE']).toBe('opportunistic');
+	});
+
+	it('never emits OUTBOUND_TLS_MODE for a relay/API transport (their TLS is the provider’s concern)', () => {
+		for (const env of [
+			buildProviderEnv({}, draft({ provider: 'resend', resendKey: 'k' })),
+			buildProviderEnv(
+				{},
+				draft({
+					provider: 'smtp',
+					smtp: {
+						preset: 'custom',
+						host: 'h',
+						port: '587',
+						secure: false,
+						username: 'u',
+						password: 'p',
+					},
+					outboundTlsMode: 'require-verified',
+				})
+			),
+		]) {
+			expect(env['OUTBOUND_TLS_MODE']).toBeUndefined();
+		}
+	});
+
+	it('OUTBOUND_TLS_MODE is inside the server allowlist so the patch is accepted', () => {
+		expect(PROVIDER_ENV_KEYS).toContain('OUTBOUND_TLS_MODE');
+	});
+});
+
 describe('transport editor — server allowlist invariant', () => {
 	it('every provider/from key the patch can set is inside PROVIDER_ENV_KEYS', () => {
 		// Union of keys across every provider kind + optional From identity.
