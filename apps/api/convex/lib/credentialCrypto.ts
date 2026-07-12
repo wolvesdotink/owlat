@@ -17,6 +17,14 @@
  * callers serialize/parse it. We return ciphertext/iv/authTag as base64 strings
  * for storage on the `externalMailAccounts` row. `decryptSecret` throws if the
  * GCM auth tag does not verify (tamper / wrong key).
+ *
+ * This module is also the home of the reusable `createSecretBox(secret, context)`
+ * primitive: the same AES-256-GCM + HKDF-SHA256 core, parameterized by an
+ * explicit domain-separation {@link SecretBoxContext} (salt + info). New
+ * consumers (T6 MTA transport secrets, E1 keyVault private keys) MUST build
+ * their own box with a DISTINCT salt/info pair so their keys stay
+ * cryptographically isolated from these external-mail credentials and from each
+ * other — never reuse another consumer's labels.
  */
 
 import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from 'node:crypto';
@@ -34,13 +42,7 @@ const AUTH_TAG_BYTES = 16; // GCM standard 128-bit auth tag (passed explicitly)
 const HKDF_SALT = 'owlat:external-mail:salt:v1';
 const HKDF_INFO = 'owlat:external-mail:creds:v1';
 
-export interface EncryptedEnvelope {
-	/** base64-encoded ciphertext */
-	ciphertext: string;
-	/** base64-encoded 12-byte GCM nonce */
-	iv: string;
-	/** base64-encoded 16-byte GCM auth tag */
-	authTag: string;
+export interface EncryptedEnvelope extends SecretBoxEnvelope {
 	/** matches CURRENT_EXTERNAL_MAIL_CRED_VERSION at encrypt time */
 	version: number;
 }
