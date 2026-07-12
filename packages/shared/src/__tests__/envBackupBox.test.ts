@@ -3,6 +3,7 @@ import {
 	ENV_BACKUP_SEALED_PREFIX,
 	createEnvBackupBox,
 	isEnvBackupSealedValue,
+	sealRelayPasswordForBackup,
 } from '../envBackupBox';
 
 const SECRET = 'a'.repeat(64); // installer-style 32-byte hex INSTANCE_SECRET
@@ -57,5 +58,44 @@ describe('createEnvBackupBox', () => {
 
 	it('refuses to build a box without an INSTANCE_SECRET', () => {
 		expect(() => createEnvBackupBox('')).toThrow(/INSTANCE_SECRET/);
+	});
+});
+
+describe('sealRelayPasswordForBackup', () => {
+	it('seals a plaintext relay password in the returned map', () => {
+		const sealedMap = sealRelayPasswordForBackup({
+			INSTANCE_SECRET: SECRET,
+			SMTP_RELAY_PASSWORD: 'hunter2-relay-password',
+		});
+		const stored = sealedMap['SMTP_RELAY_PASSWORD']!;
+		expect(isEnvBackupSealedValue(stored)).toBe(true);
+		expect(stored).not.toContain('hunter2-relay-password');
+		expect(createEnvBackupBox(SECRET).open(stored)).toBe('hunter2-relay-password');
+	});
+
+	it('is idempotent: an already-sealed password passes through unchanged (no double-seal)', () => {
+		const alreadySealed = createEnvBackupBox(SECRET).seal('hunter2-relay-password');
+		const env = { INSTANCE_SECRET: SECRET, SMTP_RELAY_PASSWORD: alreadySealed };
+		const result = sealRelayPasswordForBackup(env);
+		// Same token, byte-for-byte — never wrapped a second time.
+		expect(result['SMTP_RELAY_PASSWORD']).toBe(alreadySealed);
+		// The reseed unseals exactly one layer, so it must still open to the
+		// original plaintext (a double-seal would strand the inner token).
+		expect(createEnvBackupBox(SECRET).open(result['SMTP_RELAY_PASSWORD']!)).toBe(
+			'hunter2-relay-password'
+		);
+	});
+
+	it('passes through unchanged when there is no relay password', () => {
+		const env = { INSTANCE_SECRET: SECRET };
+		expect(sealRelayPasswordForBackup(env)).toBe(env);
+	});
+
+	it('passes through unchanged when there is no INSTANCE_SECRET (bare dev .env)', () => {
+		const env = { SMTP_RELAY_PASSWORD: 'hunter2-relay-password' };
+		const result = sealRelayPasswordForBackup(env);
+		expect(result).toBe(env);
+		expect(result['SMTP_RELAY_PASSWORD']).toBe('hunter2-relay-password');
+		expect(isEnvBackupSealedValue(result['SMTP_RELAY_PASSWORD']!)).toBe(false);
 	});
 });
