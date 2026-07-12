@@ -35,6 +35,15 @@ convex/
 Convex generated function paths mirror the folder structure: a query in
 `mail/imap.ts` is reached via `api.mail.imap.<funcName>`.
 
+**Magic root files never move into domain folders.** `schema.ts`,
+`convex.config.ts`, `http.ts`, and `auth.config.ts` are filenames the Convex
+CLI resolves at the convex root, exactly. `auth.config.ts` in particular is
+the instance auth (JWT provider) configuration evaluated at push time — a past
+reorg moved it to `auth/config.ts` and every freshly-pushed deployment silently
+lost all auth providers: sessions kept working, but every
+`ctx.auth.getUserIdentity()` returned null and all authed queries threw
+"Not authenticated".
+
 ### One file per `<domain>/<feature>.ts`
 
 Default: queries, mutations, and actions for one feature live in a single file
