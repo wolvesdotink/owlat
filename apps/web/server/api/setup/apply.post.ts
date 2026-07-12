@@ -208,7 +208,17 @@ export default defineEventHandler(
 			};
 		}
 		const convexAdminUrl = deriveConvexAdminUrl(convexSiteUrl);
-		const runtimeVars = selectRuntimeEnvVars(merged);
+		// `selectRuntimeEnvVars` is also the reseed step for secrets sealed at rest
+		// in the `.env` backup (envsealed:v1:… tokens, e.g. the SMTP relay password
+		// written by /api/delivery/apply-transport): it unseals them so the live env
+		// store receives working plaintext, and FAILS CLOSED on a tampered/orphaned
+		// token — surface that as a clean wizard error, never a 500.
+		let runtimeVars: Array<[string, string]>;
+		try {
+			runtimeVars = selectRuntimeEnvVars(merged);
+		} catch (e) {
+			return { ok: false, message: (e as Error).message };
+		}
 		try {
 			await pushConvexRuntimeEnv(convexAdminUrl, convexAdminKey, runtimeVars);
 		} catch (e) {
