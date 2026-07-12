@@ -561,8 +561,49 @@ const sidebarDesktopClass = computed(() => {
 							class="my-2 border-t border-border-subtle"
 							aria-hidden="true"
 						/>
+						<!-- Flat section: a single link, no collapsible sub-list. Used when
+						     the destination carries its own in-page navigation (Postbox's
+						     folder rail) or the section has only one page (Chat, Assistant). -->
+						<NuxtLink
+							v-if="section.href"
+							:to="section.href"
+							:class="[
+								'relative flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+								isActiveRoute(section.href)
+									? 'bg-brand-subtle text-brand'
+									: 'text-text-secondary hover:text-text-primary hover:bg-bg-surface',
+								{ 'justify-center': isCollapsed },
+							]"
+							:title="isCollapsed ? section.name : undefined"
+						>
+							<Icon
+								:name="section.icon"
+								:class="[
+									'w-5 h-5 flex-shrink-0',
+									isActiveRoute(section.href) ? 'text-brand' : 'text-text-tertiary',
+								]"
+							/>
+							<span v-if="!isCollapsed" class="flex-1 text-left">{{ section.name }}</span>
+							<!-- Chat mention badge: inline expanded; corner overlay collapsed. -->
+							<span
+								v-if="section.key === 'chat' && liveChatMentionCount > 0 && !isCollapsed"
+								class="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-error text-white"
+								:title="`${liveChatMentionCount} unread mention${liveChatMentionCount === 1 ? '' : 's'}`"
+							>
+								{{ liveChatMentionCount > 99 ? '99+' : liveChatMentionCount }}
+							</span>
+							<span
+								v-if="section.key === 'chat' && liveChatMentionCount > 0 && isCollapsed"
+								class="absolute top-1 right-1 min-w-4 h-4 px-1 rounded-full bg-error text-white text-[10px] leading-4 font-semibold text-center ring-2 ring-bg-elevated"
+								:title="`${liveChatMentionCount} unread mention${liveChatMentionCount === 1 ? '' : 's'}`"
+							>
+								{{ liveChatMentionCount > 99 ? '99+' : liveChatMentionCount }}
+							</span>
+						</NuxtLink>
+
 						<!-- Section header -->
 						<button
+							v-else
 							:class="[
 								'relative w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
 								isSectionActive(section)
@@ -624,7 +665,7 @@ const sidebarDesktopClass = computed(() => {
 							leave-to-class="opacity-0 max-h-0"
 						>
 							<ul
-								v-if="!isCollapsed && sectionStates[section.key]"
+								v-if="!section.href && !isCollapsed && sectionStates[section.key]"
 								class="mt-1 ml-4 space-y-0.5 overflow-hidden"
 							>
 								<li v-for="item in section.items" :key="item.name">

@@ -205,6 +205,24 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 			<span v-if="!railCollapsed" class="flex-1">Contacts</span>
 		</NuxtLink>
 
+		<!-- Postbox settings (accounts, signatures, filters, notifications). The
+		     dashboard sidebar links to the Postbox as a whole, so this rail is the
+		     one steady entry point to its settings. -->
+		<NuxtLink
+			to="/dashboard/postbox/settings"
+			class="rounded text-sm text-text-tertiary hover:text-text-secondary hover:bg-bg-surface"
+			:class="
+				railCollapsed
+					? 'flex items-center justify-center w-9 h-9'
+					: 'flex items-center gap-2 px-2.5 py-1'
+			"
+			:title="railCollapsed ? 'Settings' : undefined"
+			:aria-label="railCollapsed ? 'Settings' : undefined"
+		>
+			<Icon name="lucide:settings" :class="railCollapsed ? 'w-4 h-4' : 'w-3.5 h-3.5'" />
+			<span v-if="!railCollapsed" class="flex-1">Settings</span>
+		</NuxtLink>
+
 		<!-- Custom folders (no role; user-created or custom IMAP folders).
 		     Expanded-only: folder CRUD and label management live here. -->
 		<div v-if="!railCollapsed" class="mt-3">
