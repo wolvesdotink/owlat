@@ -67,13 +67,23 @@ export const MTA_STS_WELL_KNOWN_PATH = '/.well-known/mta-sts.txt';
 export const MTA_STS_CONTENT_TYPE = 'text/plain; charset=utf-8';
 
 /**
+ * Normalize an MX host set to its canonical form: each host trimmed and
+ * lowercased, empties dropped, de-duplicated and sorted. The ONE definition of
+ * "the same logical MX set" — shared by {@link canonicalPolicyKey} (the id) and
+ * {@link buildMtaStsPolicy} (the body) so the "id changes iff the body changes"
+ * invariant can't drift.
+ */
+function normalizeMxHosts(mx: readonly string[]): string[] {
+	return [...new Set(mx.map((host) => host.trim().toLowerCase()).filter(Boolean))].sort();
+}
+
+/**
  * Canonical string for one (mode, MX set): the mode followed by the MX hosts
  * lowercased, de-duplicated and sorted. Order- and case-insensitive so the same
  * logical policy always hashes to the same id.
  */
 function canonicalPolicyKey(mode: MtaStsPublishedMode, mx: readonly string[]): string {
-	const hosts = [...new Set(mx.map((host) => host.trim().toLowerCase()).filter(Boolean))].sort();
-	return `${mode}\n${hosts.join(',')}`;
+	return `${mode}\n${normalizeMxHosts(mx).join(',')}`;
 }
 
 /**
@@ -185,7 +195,7 @@ export function verifyMtaStsPublication(
  * it.
  */
 export function buildMtaStsPolicy(mode: MtaStsPublishedMode, mx: readonly string[]): string {
-	const hosts = [...new Set(mx.map((host) => host.trim().toLowerCase()).filter(Boolean))].sort();
+	const hosts = normalizeMxHosts(mx);
 	const lines = ['version: STSv1', `mode: ${mode}`];
 	for (const host of hosts) {
 		lines.push(`mx: ${host}`);
