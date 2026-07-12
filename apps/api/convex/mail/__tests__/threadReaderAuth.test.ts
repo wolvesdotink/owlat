@@ -3,15 +3,17 @@
  *
  * A1 persisted the four SPF/DKIM/DMARC verdicts and the two DMARC alignment
  * inputs (envelope MAIL FROM domain + DKIM d= domain) on `mailMessages`. This
- * piece threads them out through the reader query that backs
+ * piece threads them out through the reader queries that back
  * `PostboxThreadReader.vue` so A3 can render an honest sender badge. The
- * queries return the full message document, so the contract is simply that
- * nothing along the read path strips the six fields.
+ * conversation view subscribes to `mail.mailbox.listThreadMessages`, and the
+ * deep-link fallback uses `mail.mailbox.getMessage`; both return the full
+ * message document, so the contract is simply that nothing along either read
+ * path strips the six fields.
  *
- * This locks that contract: a message seeded WITH all six fields reads them
- * back through `mail.mailbox.getMessage`, and a legacy message seeded WITHOUT
- * them surfaces them ABSENT (never defaulted — the reader must not claim a
- * verdict we never computed).
+ * This locks that contract on BOTH queries: a message seeded WITH all six
+ * fields reads them back, and a legacy message seeded WITHOUT them surfaces
+ * them ABSENT (never defaulted — the reader must not claim a verdict we never
+ * computed).
  */
 
 import { convexTest } from 'convex-test';
@@ -19,27 +21,8 @@ import { describe, it, expect, vi } from 'vitest';
 import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import type { DatabaseWriter } from '../../_generated/server';
-import type { Id } from '../../_generated/dataModel';
-
-// See delivery.test.ts / ingestAuthVerdicts.test.ts: the `../../**` glob omits
-// the `mail/` dir it climbed through, so merge a second glob rooted at `mail/`
-// and re-prefix its keys so `t.query(api.mail.…)` resolves the modules.
-const rootGlob = import.meta.glob('../../**/*.*s');
-const mailGlob = Object.fromEntries(
-	Object.entries(import.meta.glob('../**/*.*s')).map(([path, mod]) => [
-		path.replace(/^\.\.\//, '../../mail/'),
-		mod,
-	])
-);
-const allModules = { ...rootGlob, ...mailGlob };
-const modules = Object.fromEntries(
-	Object.entries(allModules).filter(
-		([path]) =>
-			!path.includes('sesActions') &&
-			!path.includes('agentSecurity') &&
-			!path.includes('llmProvider')
-	)
-);
+import type { Doc, Id } from '../../_generated/dataModel';
+import { modules, seedMailbox } from './helpers.testlib';
 
 // Reader queries are soft-auth; an org owner reads any mailbox in the org.
 const sessionMocks = vi.hoisted(() => ({
@@ -57,21 +40,6 @@ function setOwnerSession() {
 		userId: 'test-user',
 		role: 'owner',
 		activeOrganizationId: 'test-org',
-	});
-}
-
-async function insertMailbox(ctx: { db: DatabaseWriter }): Promise<Id<'mailboxes'>> {
-	const now = Date.now();
-	return ctx.db.insert('mailboxes', {
-		userId: 'test-user',
-		organizationId: 'test-org',
-		address: 'me@example.com',
-		domain: 'example.com',
-		status: 'active',
-		usedBytes: 0,
-		uidValidity: now,
-		createdAt: now,
-		updatedAt: now,
 	});
 }
 
@@ -98,9 +66,14 @@ async function insertFolder(
 }
 
 async function setup(t: ReturnType<typeof convexTest>): Promise<Id<'_storage'>> {
+	const mailboxId = await seedMailbox(t, {
+		userId: 'test-user',
+		organizationId: 'test-org',
+		address: 'me@example.com',
+		domain: 'example.com',
+	});
 	let rawStorageId!: Id<'_storage'>;
 	await t.run(async (ctx) => {
-		const mailboxId = await insertMailbox(ctx);
 		await insertFolder(ctx, mailboxId, 'INBOX', 'inbox');
 		await insertFolder(ctx, mailboxId, 'Spam', 'spam');
 		rawStorageId = await ctx.storage.store(new Blob(['x']));
@@ -124,7 +97,38 @@ const baseDelivery = (rawStorageId: Id<'_storage'>, messageId: string) => ({
 	attachments: [],
 });
 
-describe('mail.mailbox.getMessage — reader surfaces inbound auth verdicts (Sealed Mail A2)', () => {
+/** The six A1 fields the reader must surface (present or absent, never defaulted). */
+type AuthVerdictFields = Pick<
+	Doc<'mailMessages'>,
+	| 'spfResult'
+	| 'dkimResult'
+	| 'dmarcResult'
+	| 'dmarcPolicy'
+	| 'envelopeFromDomain'
+	| 'dkimSigningDomain'
+>;
+
+function expectSeededVerdicts(m: AuthVerdictFields | null | undefined): void {
+	expect(m).toBeTruthy();
+	expect(m?.spfResult).toBe('pass');
+	expect(m?.dkimResult).toBe('pass');
+	expect(m?.dmarcResult).toBe('pass');
+	expect(m?.dmarcPolicy).toBe('reject');
+	expect(m?.envelopeFromDomain).toBe('sender.example');
+	expect(m?.dkimSigningDomain).toBe('sender.example');
+}
+
+function expectAbsentVerdicts(m: AuthVerdictFields | null | undefined): void {
+	expect(m).toBeTruthy();
+	expect(m?.spfResult).toBeUndefined();
+	expect(m?.dkimResult).toBeUndefined();
+	expect(m?.dmarcResult).toBeUndefined();
+	expect(m?.dmarcPolicy).toBeUndefined();
+	expect(m?.envelopeFromDomain).toBeUndefined();
+	expect(m?.dkimSigningDomain).toBeUndefined();
+}
+
+describe('mail reader queries — surface inbound auth verdicts (Sealed Mail A2)', () => {
 	it('returns the four verdicts and both alignment domains for a seeded message', async () => {
 		setOwnerSession();
 		const t = convexTest(schema, modules);
@@ -142,16 +146,18 @@ describe('mail.mailbox.getMessage — reader surfaces inbound auth verdicts (Sea
 		expect('messageId' in result).toBe(true);
 		if (!('messageId' in result)) return;
 
+		// Deep-link fallback query.
 		const message = await t.query(api.mail.mailbox.getMessage, {
 			messageId: result.messageId,
 		});
-		expect(message).not.toBeNull();
-		expect(message?.spfResult).toBe('pass');
-		expect(message?.dkimResult).toBe('pass');
-		expect(message?.dmarcResult).toBe('pass');
-		expect(message?.dmarcPolicy).toBe('reject');
-		expect(message?.envelopeFromDomain).toBe('sender.example');
-		expect(message?.dkimSigningDomain).toBe('sender.example');
+		expectSeededVerdicts(message);
+
+		// Query the reader actually subscribes to for the conversation view.
+		const thread = await t.query(api.mail.mailbox.listThreadMessages, {
+			messageId: result.messageId,
+		});
+		const threadMessage = thread?.messages.find((m) => m._id === result.messageId);
+		expectSeededVerdicts(threadMessage);
 	});
 
 	it('surfaces all six fields as ABSENT for a legacy message that carried none', async () => {
@@ -166,15 +172,17 @@ describe('mail.mailbox.getMessage — reader surfaces inbound auth verdicts (Sea
 		expect('messageId' in result).toBe(true);
 		if (!('messageId' in result)) return;
 
+		// Deep-link fallback query.
 		const message = await t.query(api.mail.mailbox.getMessage, {
 			messageId: result.messageId,
 		});
-		expect(message).not.toBeNull();
-		expect(message?.spfResult).toBeUndefined();
-		expect(message?.dkimResult).toBeUndefined();
-		expect(message?.dmarcResult).toBeUndefined();
-		expect(message?.dmarcPolicy).toBeUndefined();
-		expect(message?.envelopeFromDomain).toBeUndefined();
-		expect(message?.dkimSigningDomain).toBeUndefined();
+		expectAbsentVerdicts(message);
+
+		// Query the reader actually subscribes to for the conversation view.
+		const thread = await t.query(api.mail.mailbox.listThreadMessages, {
+			messageId: result.messageId,
+		});
+		const threadMessage = thread?.messages.find((m) => m._id === result.messageId);
+		expectAbsentVerdicts(threadMessage);
 	});
 });
