@@ -64,6 +64,12 @@ export type EnvKey =
 	// Unset ⇒ no `_smtp._tls` record (Owlat does not provision a per-customer
 	// `tls-reports@<domain>` mailbox, so reports would otherwise go unread).
 	| 'MTA_TLSRPT_RUA'
+	// Outbound TLS posture for the built-in MTA's direct-MX delivery
+	// (`opportunistic` | `require` | `require-verified`). Written by the delivery
+	// transport editor and surfaced read-only to that editor via
+	// `delivery/status.ts:getStatus` so re-applying an edit preserves the chosen
+	// floor. The MTA itself reads this from its own config; unset ⇒ `opportunistic`.
+	| 'OUTBOUND_TLS_MODE'
 	| 'MTA_WEBHOOK_SECRET'
 	// Mail sync worker (external IMAP/SMTP accounts)
 	| 'MAIL_SYNC_API_URL'

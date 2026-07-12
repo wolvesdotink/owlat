@@ -45,6 +45,10 @@
 			"types": "./src/setupSendingPresets.ts",
 			"import": "./src/setupSendingPresets.ts"
 		},
+		"./outboundTlsMode": {
+			"types": "./src/outboundTlsMode.ts",
+			"import": "./src/outboundTlsMode.ts"
+		},
 		"./setupEnv": {
 			"types": "./src/setupEnv.ts",
 			"import": "./src/setupEnv.ts"
