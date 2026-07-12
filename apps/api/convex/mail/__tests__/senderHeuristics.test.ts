@@ -95,7 +95,10 @@ async function setupMailbox(t: ReturnType<typeof convexTest>): Promise<Id<'_stor
 	return rawStorageId;
 }
 
-const baseArgs = (rawStorageId: Id<'_storage'>, overrides: Record<string, unknown>) => ({
+const baseArgs = (
+	rawStorageId: Id<'_storage'>,
+	overrides: { from: string; subject: string; messageId: string }
+) => ({
 	rawStorageId,
 	rawSize: 1,
 	recipientAddress: 'me@example.com',
