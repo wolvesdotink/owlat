@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { getSectionPadding, getSectionBackground, getSectionBorder, getMarginOnlyPadding } from '../../helpers/padding';
+import {
+	getSectionPadding,
+	getSectionBackground,
+	getSectionBorder,
+	getMarginOnlyPadding,
+} from '../../helpers/padding';
 import { buttonModule } from '../../blocks/button';
 import { heroModule } from '../../blocks/hero';
 import type { EditorBlock, ButtonBlockContent, HeroBlockContent } from '@owlat/shared';
@@ -48,17 +53,32 @@ describe('getSectionBackground', () => {
 describe('buttonModule.layout', () => {
 	it('returns blockBackgroundColor as the section background', () => {
 		const content = { blockBackgroundColor: '#00ff00' } as unknown as ButtonBlockContent;
-		expect(buttonModule.layout!(content)).toEqual({ background: '#00ff00' });
+		expect(buttonModule.layout!(content)).toEqual({
+			background: '#00ff00',
+			gradient: '',
+			borderRadius: 0,
+		});
 	});
 
-	it('returns empty layout when blockBackgroundColor is unset', () => {
+	it('explicitly suppresses every section default when blockBackgroundColor is unset', () => {
+		// An omitted field falls through to the Walker's content-derived default,
+		// and for a button that default IS the button's own fill/radius — the
+		// full-width wrapper would render as one giant button-colored band.
 		const content = {} as unknown as ButtonBlockContent;
-		expect(buttonModule.layout!(content)).toEqual({});
+		expect(buttonModule.layout!(content)).toEqual({
+			background: '',
+			gradient: '',
+			borderRadius: 0,
+		});
 	});
 
 	it('skips the transparent sentinel', () => {
 		const content = { blockBackgroundColor: 'transparent' } as unknown as ButtonBlockContent;
-		expect(buttonModule.layout!(content)).toEqual({});
+		expect(buttonModule.layout!(content)).toEqual({
+			background: '',
+			gradient: '',
+			borderRadius: 0,
+		});
 	});
 });
 
@@ -72,8 +92,14 @@ describe('heroModule.layout', () => {
 describe('getMarginOnlyPadding', () => {
 	it('returns margin-only padding string (used by hero sections)', () => {
 		const content = {
-			marginTop: 5, marginRight: 10, marginBottom: 5, marginLeft: 10,
-			paddingTop: 99, paddingRight: 99, paddingBottom: 99, paddingLeft: 99,
+			marginTop: 5,
+			marginRight: 10,
+			marginBottom: 5,
+			marginLeft: 10,
+			paddingTop: 99,
+			paddingRight: 99,
+			paddingBottom: 99,
+			paddingLeft: 99,
 		} as unknown as EditorBlock['content'];
 		expect(getMarginOnlyPadding(content)).toBe('5px 10px 5px 10px');
 	});

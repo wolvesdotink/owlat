@@ -165,6 +165,54 @@ describe('renderEmailHtml', () => {
 	});
 });
 
+describe('button section wrapper', () => {
+	it('keeps the button fill off the full-width section wrapper', () => {
+		const fragment = renderBlockFragment(buttonBlock);
+		// The width:100% wrapper table must not carry the button's own
+		// backgroundColor / borderRadius — that painted the whole section as one
+		// giant button-colored band in preview while the editor showed a compact
+		// centered button.
+		const wrapperTag = fragment.slice(0, fragment.indexOf('>') + 1);
+		expect(wrapperTag).toContain('width="100%"');
+		expect(wrapperTag).not.toContain('background-color');
+		expect(wrapperTag).not.toContain('border-radius');
+		// The fill stays on the button itself.
+		expect(fragment).toContain('background-color:#007bff');
+		expect(fragment).toContain('border-radius:4px');
+	});
+
+	it('paints blockBackgroundColor (and only it) on the section wrapper', () => {
+		const banded: EditorBlock = {
+			...buttonBlock,
+			content: { ...(buttonBlock.content as object), blockBackgroundColor: '#fef3c7' },
+		} as EditorBlock;
+		const fragment = renderBlockFragment(banded);
+		const wrapperTag = fragment.slice(0, fragment.indexOf('>') + 1);
+		expect(wrapperTag).toContain('background-color:#fef3c7');
+		expect(wrapperTag).not.toContain('#007bff');
+	});
+
+	it('keeps a button gradient off the section wrapper', () => {
+		const gradientButton: EditorBlock = {
+			...buttonBlock,
+			content: {
+				...(buttonBlock.content as object),
+				backgroundGradient: {
+					type: 'linear',
+					angle: 90,
+					stops: [
+						{ color: '#ff0000', position: 0 },
+						{ color: '#0000ff', position: 100 },
+					],
+				},
+			},
+		} as EditorBlock;
+		const fragment = renderBlockFragment(gradientButton);
+		const wrapperTag = fragment.slice(0, fragment.indexOf('>') + 1);
+		expect(wrapperTag).not.toContain('gradient');
+	});
+});
+
 describe('renderBlockFragment', () => {
 	it('returns HTML fragment without document wrapper', () => {
 		const fragment = renderBlockFragment(textBlock);
@@ -257,9 +305,7 @@ describe('social block', () => {
 			id: 'social',
 			type: 'social',
 			content: {
-				links: [
-					{ platform: 'twitter', url: 'https://x.com/test', enabled: false },
-				],
+				links: [{ platform: 'twitter', url: 'https://x.com/test', enabled: false }],
 				iconStyle: 'filled',
 				align: 'center',
 				iconSize: 32,
@@ -606,7 +652,24 @@ describe('render warnings', () => {
 			id: 'acc-w',
 			type: 'accordion',
 			content: {
-				sections: [{ id: 's1', title: 'Test', items: [{ id: 't1', type: 'text', content: { html: '<p>Hi</p>', blockType: 'paragraph', fontSize: 14, textColor: '#000' } }] }],
+				sections: [
+					{
+						id: 's1',
+						title: 'Test',
+						items: [
+							{
+								id: 't1',
+								type: 'text',
+								content: {
+									html: '<p>Hi</p>',
+									blockType: 'paragraph',
+									fontSize: 14,
+									textColor: '#000',
+								},
+							},
+						],
+					},
+				],
 			},
 		};
 		renderEmailHtml([accordionBlock], { onWarning: (w) => warnings.push(w) });
@@ -749,13 +812,32 @@ describe('column background images', () => {
 				ratio: 'equal',
 				mobileStacking: true,
 				columns: [
-					[{ id: 'c1', type: 'text', content: { html: '<p>Col 1</p>', blockType: 'paragraph', fontSize: 14, textColor: '#000' } }],
-					[{ id: 'c2', type: 'text', content: { html: '<p>Col 2</p>', blockType: 'paragraph', fontSize: 14, textColor: '#000' } }],
+					[
+						{
+							id: 'c1',
+							type: 'text',
+							content: {
+								html: '<p>Col 1</p>',
+								blockType: 'paragraph',
+								fontSize: 14,
+								textColor: '#000',
+							},
+						},
+					],
+					[
+						{
+							id: 'c2',
+							type: 'text',
+							content: {
+								html: '<p>Col 2</p>',
+								blockType: 'paragraph',
+								fontSize: 14,
+								textColor: '#000',
+							},
+						},
+					],
 				],
-				columnStyles: [
-					{ backgroundImage: 'https://example.com/bg.jpg' },
-					{},
-				],
+				columnStyles: [{ backgroundImage: 'https://example.com/bg.jpg' }, {}],
 			},
 		};
 		const html = renderEmailHtml([colBlock]);
