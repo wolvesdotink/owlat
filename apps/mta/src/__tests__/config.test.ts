@@ -8,6 +8,8 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 
 const REQUIRED_ENV = {
 	MTA_API_KEY: 'test-api-key',
+	// >= 32 bytes — the boot floor for the secret box that seals DKIM keys at rest.
+	MTA_SECRET: 'test-mta-secret-0123456789abcdef0123456789abcdef',
 	EHLO_HOSTNAME: 'mail.owlat.com',
 	RETURN_PATH_DOMAIN: 'bounces.owlat.com',
 	CONVEX_SITE_URL: 'https://test.convex.site',
@@ -37,6 +39,21 @@ describe('loadConfig', () => {
 	it('throws on missing EHLO_HOSTNAME', () => {
 		delete process.env.EHLO_HOSTNAME;
 		expect(() => loadConfig()).toThrow('EHLO_HOSTNAME');
+	});
+
+	it('throws when MTA_SECRET is missing', () => {
+		delete process.env.MTA_SECRET;
+		expect(() => loadConfig()).toThrow('MTA_SECRET');
+	});
+
+	it('throws when MTA_SECRET is shorter than 32 bytes', () => {
+		process.env.MTA_SECRET = 'too-short';
+		expect(() => loadConfig()).toThrow('MTA_SECRET must be at least 32 bytes');
+	});
+
+	it('exposes a valid MTA_SECRET on the config', () => {
+		const config = loadConfig();
+		expect(config.mtaSecret).toBe(REQUIRED_ENV.MTA_SECRET);
 	});
 
 	it('uses defaults for PORT and REDIS_URL', () => {
@@ -202,9 +219,9 @@ describe('resolveEhloForIp', () => {
 	});
 
 	it('falls back when the map is empty', () => {
-		expect(resolveEhloForIp({ ehloHostname: 'only.example.com', ehloHostnames: {} }, '1.2.3.4')).toBe(
-			'only.example.com',
-		);
+		expect(
+			resolveEhloForIp({ ehloHostname: 'only.example.com', ehloHostnames: {} }, '1.2.3.4')
+		).toBe('only.example.com');
 	});
 });
 
@@ -217,16 +234,16 @@ describe('.env.example coverage', () => {
 		const read = new Set(
 			[
 				...configSrc.matchAll(
-					/(?:requiredEnv|optionalEnv)\('([A-Z][A-Z0-9_]+)'|process\.env\['([A-Z][A-Z0-9_]+)'\]/g,
+					/(?:requiredEnv|optionalEnv)\('([A-Z][A-Z0-9_]+)'|process\.env\['([A-Z][A-Z0-9_]+)'\]/g
 				),
 			]
 				.map((m) => m[1] ?? m[2])
-				.filter((k): k is string => Boolean(k)),
+				.filter((k): k is string => Boolean(k))
 		);
 
 		// Keys documented in .env.example (live `KEY=` or commented `# KEY=`).
 		const documented = new Set(
-			[...envExample.matchAll(/^\s*#?\s*([A-Z][A-Z0-9_]+)=/gm)].map((m) => m[1]),
+			[...envExample.matchAll(/^\s*#?\s*([A-Z][A-Z0-9_]+)=/gm)].map((m) => m[1])
 		);
 
 		const missing = [...read].filter((k) => !documented.has(k)).sort();
