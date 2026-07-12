@@ -38,7 +38,7 @@ export const googleLanguageAdapter: LanguageProviderAdapter<'google'> = {
 	label: 'Google (Gemini)',
 	docsUrl: 'https://ai.google.dev/gemini-api/docs',
 	isLocal: false,
-	defaultModels: { fast: 'gemini-2.5-flash', capable: 'gemini-2.5-pro' },
+	defaultModels: { fast: 'gemini-3.1-flash-lite', capable: 'gemini-3.5-flash' },
 	buildChatModel(cfg: ProviderClientConfig, modelId: string): LanguageModel {
 		return googleClient(cfg)(modelId);
 	},

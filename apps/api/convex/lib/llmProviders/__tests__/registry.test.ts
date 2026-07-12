@@ -67,7 +67,7 @@ describe('llmProviders registry', () => {
 		const adapter = languageProviderFor('openai');
 		expect(adapter.kind).toBe('openai');
 		expect(adapter.isLocal).toBe(false);
-		expect(adapter.defaultModels).toEqual({ fast: 'gpt-4o-mini', capable: 'gpt-4o' });
+		expect(adapter.defaultModels).toEqual({ fast: 'gpt-5.6-luna', capable: 'gpt-5.6-sol' });
 	});
 
 	it('exposes the openaiCompatible adapter as a local provider', () => {

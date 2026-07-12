@@ -35,7 +35,7 @@ export const openaiLanguageAdapter: LanguageProviderAdapter<'openai'> = {
 	label: 'OpenAI',
 	docsUrl: 'https://platform.openai.com/docs/api-reference',
 	isLocal: false,
-	defaultModels: { fast: 'gpt-4o-mini', capable: 'gpt-4o' },
+	defaultModels: { fast: 'gpt-5.6-luna', capable: 'gpt-5.6-sol' },
 	buildChatModel(cfg: ProviderClientConfig, modelId: string): LanguageModel {
 		return openaiClient(cfg)(modelId);
 	},

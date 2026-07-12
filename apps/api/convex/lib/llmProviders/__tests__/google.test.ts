@@ -24,8 +24,8 @@ describe('googleLanguageAdapter', () => {
 		expect(googleLanguageAdapter.kind).toBe('google');
 		expect(googleLanguageAdapter.isLocal).toBe(false);
 		expect(googleLanguageAdapter.defaultModels).toEqual({
-			fast: 'gemini-2.5-flash',
-			capable: 'gemini-2.5-pro',
+			fast: 'gemini-3.1-flash-lite',
+			capable: 'gemini-3.5-flash',
 		});
 	});
 

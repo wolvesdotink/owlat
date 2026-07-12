@@ -42,7 +42,7 @@ export const azureLanguageAdapter: LanguageProviderAdapter<'azure'> = {
 	isLocal: false,
 	// Deployment names, not canonical model ids — the admin sets these in Azure.
 	// These are common conventions; the effective id is the deployment's name.
-	defaultModels: { fast: 'gpt-4o-mini', capable: 'gpt-4o' },
+	defaultModels: { fast: 'gpt-5.6-luna', capable: 'gpt-5.6-sol' },
 	buildChatModel(cfg: ProviderClientConfig, modelId: string): LanguageModel {
 		return azureClient(cfg)(modelId);
 	},

@@ -83,7 +83,7 @@ describe('llmProvider', () => {
 			const { ctx } = makeCtx(null);
 			const model = await resolveLanguageModel(ctx, 'classify');
 			expect(model).toBeDefined();
-			expect(mockOpenAIFactory).toHaveBeenCalledWith('gpt-4o-mini');
+			expect(mockOpenAIFactory).toHaveBeenCalledWith('gpt-5.6-luna');
 		});
 
 		it('returns a capable-tier model for draft', async () => {
@@ -92,7 +92,7 @@ describe('llmProvider', () => {
 			const { ctx } = makeCtx(null);
 			const model = await resolveLanguageModel(ctx, 'draft');
 			expect(model).toBeDefined();
-			expect(mockOpenAIFactory).toHaveBeenCalledWith('gpt-4o');
+			expect(mockOpenAIFactory).toHaveBeenCalledWith('gpt-5.6-sol');
 		});
 
 		it('routes classify/extract/guard/summarize to the fast tier', async () => {
@@ -154,7 +154,7 @@ describe('llmProvider', () => {
 			const { resolveLanguageModel } = await import('../llmProvider');
 			const { ctx } = makeCtx(null);
 			await resolveLanguageModel(ctx);
-			expect(mockOpenAIFactory).toHaveBeenCalledWith('gpt-4o');
+			expect(mockOpenAIFactory).toHaveBeenCalledWith('gpt-5.6-sol');
 		});
 	});
 
@@ -168,7 +168,7 @@ describe('llmProvider', () => {
 			const cfg = await resolveAiConfig(ctx);
 			expect(cfg.source).toBe('env');
 			expect(cfg.language.kind).toBe('openai');
-			expect(cfg.language.models.capable).toBe('gpt-4o');
+			expect(cfg.language.models.capable).toBe('gpt-5.6-sol');
 			expect(cfg.language.clientConfig.apiKey).toBe('env-key');
 			// No stored hosted key ⇒ the Node decrypt action is never invoked.
 			expect(runAction).not.toHaveBeenCalled();
@@ -241,7 +241,7 @@ describe('llmProvider', () => {
 			const { resolveLanguageModelForClassifiedDraft } = await import('../llmProvider');
 			const { ctx } = makeCtx(null);
 			await resolveLanguageModelForClassifiedDraft(ctx, trivial);
-			expect(mockOpenAIFactory).toHaveBeenCalledWith('gpt-4o');
+			expect(mockOpenAIFactory).toHaveBeenCalledWith('gpt-5.6-sol');
 		});
 
 		it('downgrades a trivial message to the fast tier when routing is on', async () => {
@@ -250,7 +250,7 @@ describe('llmProvider', () => {
 			const { resolveLanguageModelForClassifiedDraft } = await import('../llmProvider');
 			const { ctx } = makeCtx(null);
 			await resolveLanguageModelForClassifiedDraft(ctx, trivial);
-			expect(mockOpenAIFactory).toHaveBeenCalledWith('gpt-4o-mini');
+			expect(mockOpenAIFactory).toHaveBeenCalledWith('gpt-5.6-luna');
 		});
 
 		it('keeps a complex message on the capable tier even when routing is on', async () => {
@@ -259,7 +259,7 @@ describe('llmProvider', () => {
 			const { resolveLanguageModelForClassifiedDraft } = await import('../llmProvider');
 			const { ctx } = makeCtx(null);
 			await resolveLanguageModelForClassifiedDraft(ctx, complex);
-			expect(mockOpenAIFactory).toHaveBeenCalledWith('gpt-4o');
+			expect(mockOpenAIFactory).toHaveBeenCalledWith('gpt-5.6-sol');
 		});
 	});
 
@@ -285,8 +285,8 @@ describe('llmProvider', () => {
 			const config = getLLMConfig();
 
 			expect(config.provider).toBe('openai');
-			expect(config.modelFast).toBe('gpt-4o-mini');
-			expect(config.modelCapable).toBe('gpt-4o');
+			expect(config.modelFast).toBe('gpt-5.6-luna');
+			expect(config.modelCapable).toBe('gpt-5.6-sol');
 			expect(config.embeddingModel).toBe('text-embedding-3-small');
 			expect(config.hasApiKey).toBe(true);
 		});
