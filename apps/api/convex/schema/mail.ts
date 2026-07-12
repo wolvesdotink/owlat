@@ -110,7 +110,11 @@ export const mailTables = {
 		.index('by_address', ['address'])
 		.index('by_user', ['userId'])
 		.index('by_domain', ['domain'])
-		.index('by_status', ['status']),
+		.index('by_status', ['status'])
+		// Enumerate every shared (team) inbox org-wide — the admin management
+		// surface (mail/mailboxMembers.ts::listShared). Personal mailboxes keep
+		// `scope` unset, so the 'shared' range stays small by construction.
+		.index('by_scope', ['scope']),
 
 	// Explicit membership on a mailbox — the access-control source of truth for
 	// shared (team) inboxes. A personal mailbox carries exactly one row: an

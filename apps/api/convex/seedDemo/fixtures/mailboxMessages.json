@@ -1,0 +1,43 @@
+[
+	{
+		"messageId": "demo-team-0001@demo.localhost",
+		"recipient": "team@demo.localhost",
+		"from": "Mia Nguyen <mia@northwind.example>",
+		"subject": "Can we move our onboarding call?",
+		"text": "Hi team,\n\nSomething came up on our side — could we push tomorrow's onboarding call to later in the week? Thursday afternoon would work great for us.\n\nThanks!\nMia",
+		"minutesAgo": 180
+	},
+	{
+		"messageId": "demo-team-0002@demo.localhost",
+		"recipient": "team@demo.localhost",
+		"from": "Mia Nguyen <mia@northwind.example>",
+		"subject": "Re: Can we move our onboarding call?",
+		"text": "Quick follow-up: Friday morning also works if Thursday is too tight. Whatever is easiest for you.\n\nMia",
+		"minutesAgo": 90,
+		"inReplyTo": "demo-team-0001@demo.localhost"
+	},
+	{
+		"messageId": "demo-team-0003@demo.localhost",
+		"recipient": "team@demo.localhost",
+		"from": "Ben Ortiz <ben@acmecorp.example>",
+		"subject": "Invoice #2041 shows our old billing address",
+		"text": "Hello,\n\nWe moved offices last month and invoice #2041 still shows the old billing address. Could you re-issue it with the address below?\n\nAcme Corp\n42 Harbor Way, Suite 300\nRotterdam\n\nBest,\nBen",
+		"minutesAgo": 45
+	},
+	{
+		"messageId": "demo-support-0001@demo.localhost",
+		"recipient": "support@demo.localhost",
+		"from": "Priya Sharma <priya@globex.example>",
+		"subject": "Password reset link expired",
+		"text": "Hi,\n\nI requested a password reset but the link had already expired by the time I opened it. Could you send a fresh one to this address?\n\nThanks,\nPriya",
+		"minutesAgo": 30
+	},
+	{
+		"messageId": "demo-support-0002@demo.localhost",
+		"recipient": "support@demo.localhost",
+		"from": "Leo Meyer <leo@initech.example>",
+		"subject": "Feature request: CSV export for reports",
+		"text": "Hey there,\n\nLoving the product so far. One thing that would help our finance team a lot: a CSV export on the monthly reports page. Is that on the roadmap?\n\nCheers,\nLeo",
+		"minutesAgo": 600
+	}
+]

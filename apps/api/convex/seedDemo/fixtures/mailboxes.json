@@ -24,5 +24,13 @@
 		"displayName": "Team",
 		"scope": "shared",
 		"members": ["taylor@example.com", "jordan@example.com"]
+	},
+	{
+		"slug": "mailbox-support",
+		"owner": "dev@example.com",
+		"address": "support@demo.localhost",
+		"displayName": "Support",
+		"scope": "shared",
+		"members": ["taylor@example.com", "jordan@example.com"]
 	}
 ]

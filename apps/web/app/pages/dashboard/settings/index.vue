@@ -64,7 +64,7 @@ const { run: setFeatureFlag } = useBackendOperation(api.workspaces.featureFlags.
 });
 
 // Feature flag state — archive default lives on `campaigns.archive`, not on instanceSettings
-const { flags } = useFeatureFlag();
+const { flags, isEnabled } = useFeatureFlag();
 
 // Form state
 const form = reactive({
@@ -318,6 +318,18 @@ const settingsSections = computed(() => {
 			href: '/dashboard/settings/forms',
 			icon: 'lucide:file-text',
 		},
+		// Admin surface for shared Postbox inboxes — only shown when a mail
+		// surface is enabled (the page itself carries an admins-only gate).
+		...(isEnabled('postbox') || isEnabled('mail.external')
+			? [
+					{
+						name: 'Team Inboxes',
+						description: 'See every shared inbox and manage who can read and send from it',
+						href: '/dashboard/settings/team-inboxes',
+						icon: 'lucide:mails',
+					},
+				]
+			: []),
 		{
 			name: 'Audit Log',
 			description: 'Track team member actions and changes',

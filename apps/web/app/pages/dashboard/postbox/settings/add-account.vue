@@ -11,7 +11,10 @@ definePageMeta({
 });
 
 const step = ref<1 | 4>(1);
-const mode = ref<'personal' | 'team'>('personal');
+// `?mode=team` (the admin Team-inboxes page's create CTA) preselects the team
+// tab; anything else starts on personal.
+const route = useRoute();
+const mode = ref<'personal' | 'team'>(route.query['mode'] === 'team' ? 'team' : 'personal');
 const localPart = ref('');
 const selectedDomain = ref('');
 const displayName = ref('');
@@ -27,7 +30,18 @@ const {
 } = useConvexQuery(api.domains.domains.listVerified, () => ({}));
 const verifiedDomains = computed(() => domainsData.value ?? []);
 const { isEnabled } = useFeatureFlag();
-const { isAdmin } = usePermissions();
+const { isAdmin, showAdminGate } = usePermissions();
+
+// Only admins may create a team inbox (the toggle below is admin-only). If a
+// non-admin lands here with `?mode=team`, fall back to personal once the role
+// resolves — `showAdminGate` stays false until then, so admins never flicker.
+watch(
+	showAdminGate,
+	(gated) => {
+		if (gated && mode.value === 'team') mode.value = 'personal';
+	},
+	{ immediate: true }
+);
 
 // Team inbox: only admins may create one, and it needs a member roster from the
 // org. Fetched lazily the first time the team mode is selected.
@@ -35,9 +49,14 @@ const { members: orgMembers, fetchMembers, isLoadingMembers } = useOrganization(
 const selectedMemberIds = ref<string[]>([]);
 const isTeam = computed(() => mode.value === 'team');
 
-watch(mode, (value) => {
-	if (value === 'team') void fetchMembers();
-});
+// Immediate so a `?mode=team` deep link loads the roster on first paint too.
+watch(
+	mode,
+	(value) => {
+		if (value === 'team') void fetchMembers();
+	},
+	{ immediate: true }
+);
 
 const { user } = useAuth();
 
