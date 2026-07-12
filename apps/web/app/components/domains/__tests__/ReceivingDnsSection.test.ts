@@ -25,6 +25,14 @@ let siteUrl = '';
 vi.stubGlobal('useConvexQuery', () => ({ data: ref({ policyId: mtaStsPolicyId }) }));
 vi.stubGlobal('useRuntimeConfig', () => ({ public: { siteUrl } }));
 
+// `useMtaStsVerification` is a Nuxt auto-import the SFC references as a bare
+// global; the record-row assertions don't depend on the live verdict, so an
+// inert stub is honest here.
+vi.stubGlobal('useMtaStsVerification', () => ({
+	verification: ref(undefined),
+	checked: ref(false),
+}));
+
 beforeEach(() => {
 	mtaStsPolicyId = null;
 	siteUrl = '';
