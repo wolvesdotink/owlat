@@ -11,6 +11,7 @@
  */
 
 import { convexTest } from 'convex-test';
+import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { describe, it, expect } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
@@ -59,6 +60,7 @@ async function getRow(t: ReturnType<typeof convexTest>, messageId: string) {
 describe('inbox.messages.receiveMessage — inbound auth-verdict persistence (Sealed Mail A1)', () => {
 	it('persists SPF/DKIM/DMARC verdicts + policy on the AI-inbox path', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const messageId = '<auth-pass-1@sender.example>';
 
 		await t.mutation(internal.inbox.messages.receiveMessage, {
@@ -84,6 +86,7 @@ describe('inbox.messages.receiveMessage — inbound auth-verdict persistence (Se
 
 	it('persists a failing DMARC verdict verbatim (never upgraded)', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const messageId = '<auth-fail-1@spoofer.example>';
 
 		await t.mutation(internal.inbox.messages.receiveMessage, {
@@ -108,6 +111,7 @@ describe('inbox.messages.receiveMessage — inbound auth-verdict persistence (Se
 
 	it('stores the verdicts as ABSENT when an old MTA omits them (never defaults to "pass")', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const messageId = '<old-mta-1@sender.example>';
 
 		await t.mutation(internal.inbox.messages.receiveMessage, {
