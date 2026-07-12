@@ -120,6 +120,10 @@ export const getInboundMailConfig = authedQuery({
 	},
 });
 
+// The MTA-STS policy/guidance queries (`getMtaStsPolicy`, `getMtaStsGuidance`)
+// live in the sibling `domains/mtaSts.ts`, and the live verification action in
+// `domains/mtaStsVerify.ts`.
+
 // Query: Count domains by status
 export const countByStatus = authedQuery({
 	args: {},

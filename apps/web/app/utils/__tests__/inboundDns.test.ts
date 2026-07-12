@@ -1,9 +1,36 @@
 import { describe, it, expect } from 'vitest';
 import {
 	buildInboundMxRecords,
+	buildMtaStsDnsRecords,
 	hasInboundFeature,
 	INBOUND_MX_PRIORITY,
 } from '../inboundDns';
+
+describe('buildMtaStsDnsRecords', () => {
+	it('builds the _mta-sts TXT + mta-sts CNAME records', () => {
+		expect(buildMtaStsDnsRecords('abcd1234abcd1234', 'acme.owlat.app')).toEqual([
+			{ type: 'TXT', host: '_mta-sts', value: 'v=STSv1; id=abcd1234abcd1234' },
+			{ type: 'CNAME', host: 'mta-sts', value: 'acme.owlat.app' },
+		]);
+	});
+
+	it('lowercases and strips a port + trailing dot from the web host', () => {
+		expect(buildMtaStsDnsRecords('id123', 'ACME.owlat.app:443.')).toEqual([
+			{ type: 'TXT', host: '_mta-sts', value: 'v=STSv1; id=id123' },
+			{ type: 'CNAME', host: 'mta-sts', value: 'acme.owlat.app' },
+		]);
+	});
+
+	it('returns [] when there is no policy id (nothing published)', () => {
+		expect(buildMtaStsDnsRecords(null, 'acme.owlat.app')).toEqual([]);
+		expect(buildMtaStsDnsRecords('', 'acme.owlat.app')).toEqual([]);
+	});
+
+	it('returns [] when there is no known web host', () => {
+		expect(buildMtaStsDnsRecords('id123', null)).toEqual([]);
+		expect(buildMtaStsDnsRecords('id123', '  ')).toEqual([]);
+	});
+});
 
 describe('buildInboundMxRecords', () => {
 	it('builds the apex MX record pointing at the deployment mail host', () => {
@@ -20,7 +47,7 @@ describe('buildInboundMxRecords', () => {
 
 	it('lowercases and strips a trailing root dot from the mail host', () => {
 		expect(buildInboundMxRecords('example.com', 'Mail.Example.Com.')[0]?.value).toBe(
-			'mail.example.com',
+			'mail.example.com'
 		);
 	});
 
@@ -45,9 +72,7 @@ describe('hasInboundFeature', () => {
 	});
 
 	it('is false when no inbound flag is on (send-only install)', () => {
-		expect(hasInboundFeature({ campaigns: true, transactional: true, inbox: false })).toBe(
-			false,
-		);
+		expect(hasInboundFeature({ campaigns: true, transactional: true, inbox: false })).toBe(false);
 		expect(hasInboundFeature({})).toBe(false);
 	});
 

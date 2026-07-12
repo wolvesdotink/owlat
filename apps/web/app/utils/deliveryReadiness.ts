@@ -19,8 +19,14 @@ import type { HealthTone } from '~/utils/healthTone';
  * client.
  */
 
-/** The three readiness gates, in the order the panel renders them. */
-export type ReadinessGateKey = 'transport' | 'domain' | 'authentication';
+/**
+ * The readiness gates, in the order the panel renders them. `mta-sts` is a
+ * conditional gate — it appears only when the deployment is publishing an
+ * MTA-STS policy in `enforce` mode whose DNS/policy isn't verified yet, so that
+ * an unfinished inbound-TLS hardening step is surfaced without adding noise to
+ * deployments that don't publish a policy.
+ */
+export type ReadinessGateKey = 'transport' | 'domain' | 'authentication' | 'mta-sts';
 
 /**
  * A gate's state:
@@ -77,6 +83,16 @@ export interface ReadinessInput {
 	authComplete: boolean;
 	/** Auth record names still missing for that domain, in display order. */
 	authMissing: string[];
+	/**
+	 * The deployment is publishing an MTA-STS policy in `enforce` mode, but the
+	 * `_mta-sts` TXT record / served policy isn't verified yet. Optional and
+	 * defaults to "no warning" — deployments that publish nothing (the default)
+	 * or are still in `testing` leave it unset, so this never touches their
+	 * verdict. When true it downgrades an otherwise-ready instance to a warning:
+	 * enforce without the record in place can bounce inbound mail from senders
+	 * that honour the policy.
+	 */
+	mtaStsEnforceWithoutRecord?: boolean;
 }
 
 /**
@@ -98,18 +114,39 @@ export interface ReadinessDomainRow {
 }
 
 /**
- * Fold the two live query results into the flat `ReadinessInput` the verdict is
+ * The MTA-STS half: the deployment's current inbound-TLS publishing state,
+ * narrowed to the two facts readiness needs. Structural on purpose (no import of
+ * the shared `MtaStsMode`) so this stays a pure primitive-in helper. Optional —
+ * a viewer who can't read the admin-gated guidance (or a deployment that
+ * publishes nothing) passes `null` and the MTA-STS gate never appears.
+ */
+export interface ReadinessMtaStsSource {
+	/** Current publishing mode (`none` | `testing` | `enforce`). */
+	mode: 'none' | 'testing' | 'enforce';
+	/** The `_mta-sts` record + served policy verified live against what we serve. */
+	recordVerified: boolean;
+}
+
+/**
+ * Fold the live query results into the flat `ReadinessInput` the verdict is
  * derived from. This is the small piece of real derivation the panel used to do
- * inline: which domain we report authentication against.
+ * inline: which domain we report authentication against, plus the conditional
+ * MTA-STS warning.
  *
  * `getDeliveryDomainTable` returns rows already sorted most-active first, so we
  * report auth against the most-active VERIFIED domain (the one mail actually
  * sends from), falling back to the most-active configured domain before any has
  * verified, and to nothing at all when there are no domains yet.
+ *
+ * `mtaSts` is the admin-only inbound-TLS state: only `enforce` published WITHOUT
+ * the record verified sets `mtaStsEnforceWithoutRecord` (and thus the warning);
+ * `none`/`testing`, an already-verified record, or a `null` source (non-admin or
+ * no policy) leave it unset so nothing changes for those deployments.
  */
 export function readinessInputFromSources(
 	summary: ReadinessTransportSummary,
-	rows: readonly ReadinessDomainRow[]
+	rows: readonly ReadinessDomainRow[],
+	mtaSts?: ReadinessMtaStsSource | null
 ): ReadinessInput {
 	const verified = rows.filter((row) => row.status === 'verified');
 	const primary = verified[0] ?? rows[0] ?? null;
@@ -119,6 +156,8 @@ export function readinessInputFromSources(
 		domainVerified: verified.length > 0,
 		authComplete: primary ? primary.missing.length === 0 : false,
 		authMissing: primary?.missing ?? [],
+		mtaStsEnforceWithoutRecord:
+			mtaSts != null && mtaSts.mode === 'enforce' && !mtaSts.recordVerified,
 	};
 }
 
@@ -222,6 +261,25 @@ function authenticationGate(input: ReadinessInput): ReadinessGate {
 	};
 }
 
+/**
+ * The MTA-STS gate — surfaced only when `enforce` is published without the
+ * record verified. A warning (not a hard block): the instance can still send;
+ * the risk is on the INBOUND side, where senders honouring the policy may bounce
+ * mail until the record + served policy are live.
+ */
+function mtaStsGate(): ReadinessGate {
+	return {
+		key: 'mta-sts',
+		title: 'Inbound TLS policy (MTA-STS)',
+		detail:
+			'MTA-STS is set to enforce, but its DNS record isn’t in place yet — publish it so senders can require encrypted delivery.',
+		status: 'attention',
+		tone: 'warning',
+		actionHref: DOMAINS_HREF,
+		actionLabel: 'Publish record',
+	};
+}
+
 const LEVEL_TONE: Record<ReadinessLevel, HealthTone> = {
 	ready: 'success',
 	incomplete: 'warning',
@@ -245,13 +303,21 @@ const LEVEL_HEADLINE: Record<ReadinessLevel, string> = {
  */
 export function deriveDeliveryReadiness(input: ReadinessInput): DeliveryReadiness {
 	const gates = [transportGate(input), domainGate(input), authenticationGate(input)];
+	// The MTA-STS gate is conditional: only publishing `enforce` without the
+	// record verified adds it, so a deployment that publishes nothing sees the
+	// same three gates as before.
+	if (input.mtaStsEnforceWithoutRecord) {
+		gates.push(mtaStsGate());
+	}
 
 	const canSend = input.transportConfigured && input.domainVerified;
 
 	let level: ReadinessLevel;
 	if (!canSend) {
 		level = 'blocked';
-	} else if (!input.authComplete) {
+	} else if (!input.authComplete || input.mtaStsEnforceWithoutRecord) {
+		// CAN send, but something deliverability-adjacent is unfinished — either
+		// SPF/DKIM/DMARC or the enforced inbound MTA-STS record.
 		level = 'incomplete';
 	} else {
 		level = 'ready';

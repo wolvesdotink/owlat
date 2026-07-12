@@ -59,6 +59,14 @@ export const authTables = {
 		// mail import; when false the welcome flow is a pure fresh-start and exposes
 		// no import surface. Admin-gated write, member-readable via `settings.get`.
 		isMigrationMode: v.optional(v.boolean()),
+		// MTA-STS publishing posture (RFC 8461) for INBOUND mail to this
+		// deployment. `none` (or unset) publishes no policy — byte-identical to
+		// today. `testing` publishes a policy whose failures are only reported;
+		// `enforce` requires senders to use verified TLS to a listed MX. The MX
+		// host is the deployment's own EHLO_HOSTNAME; the policy body + id are
+		// derived by `@owlat/shared/mtaStsPolicy`. Admin-gated write via
+		// `settings.update`, served publicly by the `getMtaStsPolicy` query.
+		mtaStsMode: v.optional(v.union(v.literal('none'), v.literal('testing'), v.literal('enforce'))),
 		// Feature toggles (see packages/shared/src/featureFlags.ts for the schema).
 		// Unset keys fall back to FEATURE_FLAGS[key].default at resolution time.
 		// Includes `campaigns.archive` — there is no separate `archiveEnabled` column.

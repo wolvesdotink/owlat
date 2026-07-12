@@ -259,6 +259,11 @@ const {
 				@applied="refetchStatus"
 			/>
 
+			<!-- Inbound TLS hardening: publish our own MTA-STS policy (none →
+			     testing → enforce). Receiving posture, but it lives beside the
+			     transport controls so all TLS policy is in one place. -->
+			<DeliveryMtaStsModeCard />
+
 			<!-- Provider + required env presence -->
 			<UiCard padding="none" overflow="hidden">
 				<template #header>

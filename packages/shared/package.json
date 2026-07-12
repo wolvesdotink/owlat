@@ -53,6 +53,10 @@
 			"types": "./src/tlsReport.ts",
 			"import": "./src/tlsReport.ts"
 		},
+		"./mtaStsPolicy": {
+			"types": "./src/mtaStsPolicy.ts",
+			"import": "./src/mtaStsPolicy.ts"
+		},
 		"./setupEnv": {
 			"types": "./src/setupEnv.ts",
 			"import": "./src/setupEnv.ts"
