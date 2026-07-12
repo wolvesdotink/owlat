@@ -45,43 +45,111 @@ export interface EncryptedEnvelope {
 	version: number;
 }
 
+/**
+ * The domain-separation context for an HKDF-derived key. `salt` and `info` are
+ * fed verbatim to HKDF-SHA256; two boxes with different labels derive
+ * independent keys, so a payload sealed under one context can never open under
+ * another (cross-context isolation).
+ */
+export interface SecretBoxContext {
+	/** HKDF salt — the version-pinned separation label. */
+	salt: string;
+	/** HKDF info — the per-use separation label. */
+	info: string;
+}
+
+/**
+ * The authenticated ciphertext produced by a {@link SecretBox}. Version-free by
+ * design: callers that need envelope versioning (external-mail creds) wrap this
+ * with their own version field, while other consumers (MTA secrets, keyVault)
+ * store the raw box.
+ */
+export interface SecretBoxEnvelope {
+	/** base64-encoded ciphertext */
+	ciphertext: string;
+	/** base64-encoded 12-byte GCM nonce */
+	iv: string;
+	/** base64-encoded 16-byte GCM auth tag */
+	authTag: string;
+}
+
+/**
+ * A reusable AES-256-GCM + HKDF-SHA256 sealing primitive. The MTA (transport
+ * secrets) and the keyVault (E2EE private keys) construct their own box with a
+ * distinct {@link SecretBoxContext}, so every consumer shares the exact same
+ * crypto core while staying cryptographically domain-separated.
+ */
+export interface SecretBox {
+	/** Derive the 32-byte AES key from `secret` via HKDF-SHA256. */
+	deriveKey(): Buffer;
+	/** Encrypt a plaintext string into an authenticated envelope. */
+	seal(plaintext: string): SecretBoxEnvelope;
+	/** Decrypt an envelope back to plaintext. Throws on auth-tag mismatch (tamper). */
+	open(envelope: SecretBoxEnvelope): string;
+}
+
+/**
+ * Build a {@link SecretBox} that derives its key from `secret` under the given
+ * HKDF salt/info context. Pure crypto — reads no env — so callers control the
+ * secret source and the domain-separation labels.
+ */
+export function createSecretBox(secret: string, context: SecretBoxContext): SecretBox {
+	const deriveKey = (): Buffer => {
+		const derived = hkdfSync(
+			'sha256',
+			Buffer.from(secret, 'utf8'),
+			Buffer.from(context.salt, 'utf8'),
+			Buffer.from(context.info, 'utf8'),
+			KEY_BYTES
+		);
+		return Buffer.from(derived);
+	};
+
+	return {
+		deriveKey,
+		seal(plaintext: string): SecretBoxEnvelope {
+			const key = deriveKey();
+			const iv = randomBytes(IV_BYTES);
+			const cipher = createCipheriv(ALGORITHM, key, iv, { authTagLength: AUTH_TAG_BYTES });
+			const ciphertext = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
+			const authTag = cipher.getAuthTag();
+			return {
+				ciphertext: ciphertext.toString('base64'),
+				iv: iv.toString('base64'),
+				authTag: authTag.toString('base64'),
+			};
+		},
+		open(envelope: SecretBoxEnvelope): string {
+			const key = deriveKey();
+			const iv = Buffer.from(envelope.iv, 'base64');
+			const decipher = createDecipheriv(ALGORITHM, key, iv, { authTagLength: AUTH_TAG_BYTES });
+			decipher.setAuthTag(Buffer.from(envelope.authTag, 'base64'));
+			const plaintext = Buffer.concat([
+				decipher.update(Buffer.from(envelope.ciphertext, 'base64')),
+				decipher.final(),
+			]);
+			return plaintext.toString('utf8');
+		},
+	};
+}
+
+/** The external-mail credentials box: INSTANCE_SECRET under the pinned context. */
+function externalMailBox(): SecretBox {
+	return createSecretBox(getRequired('INSTANCE_SECRET'), { salt: HKDF_SALT, info: HKDF_INFO });
+}
+
 /** Derive the 32-byte AES key from INSTANCE_SECRET via HKDF-SHA256. */
 export function deriveKey(): Buffer {
-	const secret = getRequired('INSTANCE_SECRET');
-	const derived = hkdfSync(
-		'sha256',
-		Buffer.from(secret, 'utf8'),
-		Buffer.from(HKDF_SALT, 'utf8'),
-		Buffer.from(HKDF_INFO, 'utf8'),
-		KEY_BYTES,
-	);
-	return Buffer.from(derived);
+	return externalMailBox().deriveKey();
 }
 
 /** Encrypt a plaintext string into an authenticated, versioned envelope. */
 export function encryptSecret(plaintext: string): EncryptedEnvelope {
-	const key = deriveKey();
-	const iv = randomBytes(IV_BYTES);
-	const cipher = createCipheriv(ALGORITHM, key, iv, { authTagLength: AUTH_TAG_BYTES });
-	const ciphertext = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
-	const authTag = cipher.getAuthTag();
-	return {
-		ciphertext: ciphertext.toString('base64'),
-		iv: iv.toString('base64'),
-		authTag: authTag.toString('base64'),
-		version: CURRENT_EXTERNAL_MAIL_CRED_VERSION,
-	};
+	const box = externalMailBox().seal(plaintext);
+	return { ...box, version: CURRENT_EXTERNAL_MAIL_CRED_VERSION };
 }
 
 /** Decrypt an envelope back to plaintext. Throws on auth-tag mismatch (tamper). */
 export function decryptSecret(envelope: EncryptedEnvelope): string {
-	const key = deriveKey();
-	const iv = Buffer.from(envelope.iv, 'base64');
-	const decipher = createDecipheriv(ALGORITHM, key, iv, { authTagLength: AUTH_TAG_BYTES });
-	decipher.setAuthTag(Buffer.from(envelope.authTag, 'base64'));
-	const plaintext = Buffer.concat([
-		decipher.update(Buffer.from(envelope.ciphertext, 'base64')),
-		decipher.final(),
-	]);
-	return plaintext.toString('utf8');
+	return externalMailBox().open(envelope);
 }
