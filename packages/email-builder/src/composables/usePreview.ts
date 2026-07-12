@@ -1,12 +1,25 @@
 import { ref, watch, type Ref, type ComputedRef } from 'vue';
-import type { EditorBlock, PreviewMode, PreviewDevice, EmailTheme, VariableType } from '../types';
+import type {
+	EditorBlock,
+	PreviewMode,
+	PreviewDevice,
+	EmailTheme,
+	Variable,
+	VariableType,
+} from '../types';
+import { fillPreviewVariables } from '../utils/variables';
 import { renderEmailHtml } from '@owlat/email-renderer';
 import { renderPlainText } from '@owlat/email-renderer';
 import { renderAmpEmail } from '@owlat/email-renderer';
 import { analyzeEmail, getEmailHealthScore, suggestOptimizations } from '@owlat/email-renderer';
 import { validateBlocks } from '@owlat/email-renderer';
 import { diffEmails } from '@owlat/email-renderer';
-import type { RenderOptions, TargetClient, ValidationLevel, EmailHealthScore } from '@owlat/email-renderer';
+import type {
+	RenderOptions,
+	TargetClient,
+	ValidationLevel,
+	EmailHealthScore,
+} from '@owlat/email-renderer';
 import type { EmailAnalysis, OptimizationSuggestion } from '@owlat/email-renderer';
 import type { ValidationIssue } from '@owlat/email-renderer';
 import type { EmailDiff } from '@owlat/email-renderer';
@@ -34,6 +47,8 @@ export interface UsePreviewOptions {
 	variableType: ComputedRef<VariableType>;
 	showMandatoryUnsubscribeFooter: ComputedRef<boolean>;
 	renderOptions?: Ref<Partial<PreviewRenderOptions>>;
+	/** Available variables (for default preview values via their labels) */
+	variables?: Ref<Variable[]> | ComputedRef<Variable[]>;
 }
 
 export interface UsePreviewReturn {
@@ -64,7 +79,14 @@ export interface UsePreviewReturn {
  * Composable for managing preview state
  */
 export function usePreview(options: UsePreviewOptions): UsePreviewReturn {
-	const { canvasBlocks, theme, variableType, showMandatoryUnsubscribeFooter, renderOptions } = options;
+	const {
+		canvasBlocks,
+		theme,
+		variableType,
+		showMandatoryUnsubscribeFooter,
+		renderOptions,
+		variables,
+	} = options;
 
 	const previewMode = ref<PreviewMode>('edit');
 	const previewDevice = ref<PreviewDevice>('desktop');
@@ -128,6 +150,20 @@ export function usePreview(options: UsePreviewOptions): UsePreviewReturn {
 		return merged;
 	};
 
+	// Preview-time variable substitution. The renderer intentionally leaves
+	// {{var}} tokens in its output (send-time personalization is a separate
+	// per-recipient backend pass), so the preview fills them here: user-set
+	// Variable Values first, then inline fallbacks, then generated defaults.
+	const fillVariables = (content: string, escape: boolean): string => {
+		const labels: Record<string, string> = {};
+		for (const v of variables?.value ?? []) labels[v.key] = v.label;
+		return fillPreviewVariables(content, {
+			values: renderOptions?.value?.variableValues ?? {},
+			labels,
+			escape,
+		});
+	};
+
 	// Generate HTML from blocks (synchronous)
 	const generateEmailHtml = (darkMode = false): string => {
 		const opts = buildRenderOptions(darkMode);
@@ -136,19 +172,19 @@ export function usePreview(options: UsePreviewOptions): UsePreviewReturn {
 
 		const html = renderEmailHtml(canvasBlocks.value, opts);
 		renderWarnings.value = warnings;
-		return appendMandatoryUnsubscribeFooter(html);
+		return appendMandatoryUnsubscribeFooter(fillVariables(html, true));
 	};
 
 	// Generate plain text from blocks
 	const generatePlainText = (): string => {
 		const opts = buildRenderOptions();
-		return renderPlainText(canvasBlocks.value, opts);
+		return fillVariables(renderPlainText(canvasBlocks.value, opts), false);
 	};
 
 	// Generate AMP HTML from blocks
 	const generateAmpHtml = (): string => {
 		const opts = buildRenderOptions();
-		return renderAmpEmail(canvasBlocks.value, opts);
+		return fillVariables(renderAmpEmail(canvasBlocks.value, opts), true);
 	};
 
 	// Run analysis on current HTML
@@ -232,9 +268,13 @@ export function usePreview(options: UsePreviewOptions): UsePreviewReturn {
 
 	// Re-render when render options change while in preview mode
 	if (renderOptions) {
-		watch(renderOptions, () => {
-			if (previewMode.value !== 'edit') regenerate();
-		}, { deep: true });
+		watch(
+			renderOptions,
+			() => {
+				if (previewMode.value !== 'edit') regenerate();
+			},
+			{ deep: true }
+		);
 	}
 
 	return {
