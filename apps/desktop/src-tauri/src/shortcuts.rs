@@ -1,11 +1,12 @@
 //! Global (system-wide) keyboard shortcuts.
 //!
-//! Each shortcut shows/focuses the main window and emits an event the SPA maps
-//! onto its existing in-app shortcut machinery (see apps/web
-//! useDesktopShortcuts.ts → useKeyboardShortcuts). The window toggle is handled
-//! entirely in Rust (no SPA round-trip).
+//! Only combos that make sense from outside the app are registered globally
+//! (show/hide toggle, quick-compose) — a global hotkey fires and swallows the
+//! keystroke regardless of which app is focused, so common in-app shortcuts
+//! like Cmd+K must NOT be registered here. The command palette handles
+//! Cmd/Ctrl+K itself inside the webview (AppCommandPalette.vue).
 
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Manager};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 use crate::window;
@@ -24,10 +25,6 @@ fn primary() -> Modifiers {
 
 fn compose_shortcut() -> Shortcut {
     Shortcut::new(Some(primary() | Modifiers::SHIFT), Code::KeyC)
-}
-
-fn switcher_shortcut() -> Shortcut {
-    Shortcut::new(Some(primary()), Code::KeyK)
 }
 
 fn toggle_shortcut() -> Shortcut {
@@ -50,9 +47,6 @@ pub fn handle(app: &AppHandle, shortcut: &Shortcut, state: ShortcutState) {
         }
     } else if shortcut == &compose_shortcut() {
         window::open_compose_window(app, "/compose");
-    } else if shortcut == &switcher_shortcut() {
-        window::show_main_window(app);
-        let _ = app.emit("shortcut://quick-switcher", ());
     }
 }
 
@@ -60,7 +54,7 @@ pub fn handle(app: &AppHandle, shortcut: &Shortcut, state: ShortcutState) {
 /// already taken by another app.
 pub fn register_global_shortcuts(app: &AppHandle) {
     let gs = app.global_shortcut();
-    for sc in [toggle_shortcut(), compose_shortcut(), switcher_shortcut()] {
+    for sc in [toggle_shortcut(), compose_shortcut()] {
         let _ = gs.register(sc);
     }
 }
