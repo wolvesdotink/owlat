@@ -212,8 +212,18 @@ export function createBounceServer(config: MtaConfig, redis: Redis): SMTPServer 
 						return;
 					}
 
-					// 3. Fall through to existing inbound route table (AI shared inbox, etc.)
-					findRoute(redis, address.address)
+					// 3. Fall through to existing inbound route table (AI shared inbox,
+					//    etc.) — plus the TLS-RPT system route for the operator's
+					//    `_smtp._tls` rua address (RFC 8460). The system config MUST be
+					//    threaded here too: onData/resolveRoutePhase knows the system
+					//    route, but without it at the RCPT gate the rua address is
+					//    rejected "Mailbox not found" before onData ever runs, so inbound
+					//    TLS reports would never arrive.
+					findRoute(redis, address.address, {
+						ruaAddress: config.tlsRptRua,
+						convexSiteUrl: config.convexSiteUrl,
+						webhookSecret: config.webhookSecret,
+					})
 						.then((route) => {
 							if (route) {
 								if (route.mode === 'reject') {

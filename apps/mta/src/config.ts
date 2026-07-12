@@ -39,6 +39,11 @@ export interface MtaConfig {
 	convexSiteUrl: string;
 	/** Shared secret for Convex webhook authentication */
 	webhookSecret: string;
+	/**
+	 * TLS-RPT (RFC 8460) reporting address published in `_smtp._tls` rua=.
+	 * Inbound reports to it are routed to the TLS-RPT system webhook. Optional.
+	 */
+	tlsRptRua?: string;
 	/** IP pool configuration */
 	ipPools: IpPoolConfig;
 	/** Per-domain DKIM keys */
@@ -402,6 +407,11 @@ export function loadConfig(): MtaConfig {
 		returnPathDomain: requiredEnv('RETURN_PATH_DOMAIN'),
 		convexSiteUrl: requiredEnv('CONVEX_SITE_URL'),
 		webhookSecret: requiredEnv('MTA_WEBHOOK_SECRET'),
+		// TLS-RPT (RFC 8460) reporting address we publish in `_smtp._tls` rua=.
+		// When set (mailto: URI or bare address), inbound reports to it are
+		// caught by the TLS-RPT system route and forwarded to Convex. Optional —
+		// omitted when the operator does not collect TLS reports.
+		tlsRptRua: process.env['MTA_TLSRPT_RUA'],
 		ipPools: { transactional: transactionalIps, campaign: campaignIps },
 		dkimKeys,
 		workerConcurrency: parseInt(optionalEnv('WORKER_CONCURRENCY', '50'), 10),

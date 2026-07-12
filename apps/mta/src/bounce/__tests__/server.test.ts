@@ -27,6 +27,13 @@ vi.mock('../inboundSecurity.js', async (importOriginal) => {
 	return { ...actual, checkSpf: vi.fn() };
 });
 
+// Personal-mailbox lookup is a Redis cache read; stub it to "no mailbox" so the
+// RCPT path falls through to the inbound route table (where the TLS-RPT system
+// route lives). `findRoute` itself stays real.
+vi.mock('../../inbound/mailboxResolver.js', () => ({
+	findMailboxRoute: vi.fn(async () => null),
+}));
+
 import type Redis from 'ioredis';
 import type { SMTPServerAddress, SMTPServerSession } from 'smtp-server';
 import { createBounceServer } from '../server.js';
@@ -54,7 +61,7 @@ function getOnMailFrom(config: MtaConfig) {
 	return handler as (
 		address: SMTPServerAddress,
 		session: SMTPServerSession,
-		callback: (err?: Error | null) => void,
+		callback: (err?: Error | null) => void
 	) => void;
 }
 
@@ -66,16 +73,11 @@ function makeSession(): SMTPServerSession {
 }
 
 /** Run `onMailFrom` and resolve with the error (if any) passed to its callback. */
-function runMailFrom(
-	config: MtaConfig,
-	envelopeFrom: string,
-): Promise<Error | null | undefined> {
+function runMailFrom(config: MtaConfig, envelopeFrom: string): Promise<Error | null | undefined> {
 	const onMailFrom = getOnMailFrom(config);
 	return new Promise((resolve) => {
-		onMailFrom(
-			{ address: envelopeFrom } as SMTPServerAddress,
-			makeSession(),
-			(err) => resolve(err),
+		onMailFrom({ address: envelopeFrom } as SMTPServerAddress, makeSession(), (err) =>
+			resolve(err)
 		);
 	});
 }
@@ -114,8 +116,60 @@ describe('bounce server onMailFrom SPF gate (PR-74)', () => {
 	});
 
 	it('skips SPF entirely (even for a real sender) when inboundSpfEnabled is false', async () => {
-		const err = await runMailFrom(makeConfig({ inboundSpfEnabled: false }), 'whoever@anywhere.test');
+		const err = await runMailFrom(
+			makeConfig({ inboundSpfEnabled: false }),
+			'whoever@anywhere.test'
+		);
 		expect(err == null).toBe(true);
 		expect(checkSpf).not.toHaveBeenCalled();
+	});
+});
+
+// ─── RCPT gate — TLS-RPT rua system route (blocking #3) ────────────────────
+
+// Minimal Redis stub: every route-table lookup misses (returns null), so the
+// only route that can match is the in-memory TLS-RPT system route.
+const fakeRedis = { get: async () => null } as unknown as Redis;
+
+/** Pull the (typed) `onRcptTo` handler out of the constructed server. */
+function getOnRcptTo(config: MtaConfig) {
+	const server = createBounceServer(config, fakeRedis);
+	const handler = (server.options as { onRcptTo?: unknown }).onRcptTo;
+	if (typeof handler !== 'function') throw new Error('onRcptTo not registered');
+	return handler as (
+		address: SMTPServerAddress,
+		session: SMTPServerSession,
+		callback: (err?: Error | null) => void
+	) => void;
+}
+
+/** Run `onRcptTo` and resolve with the error (if any) passed to its callback. */
+function runRcptTo(config: MtaConfig, rcptTo: string): Promise<Error | null | undefined> {
+	const onRcptTo = getOnRcptTo(config);
+	return new Promise((resolve) => {
+		onRcptTo({ address: rcptTo } as SMTPServerAddress, makeSession(), (err) => resolve(err));
+	});
+}
+
+describe('bounce server onRcptTo — TLS-RPT rua system route', () => {
+	const RUA = 'tls-reports@owlat.test';
+	const tlsRptConfig = makeConfig({
+		tlsRptRua: `mailto:${RUA}`,
+		convexSiteUrl: 'https://acme.convex.site',
+		webhookSecret: 'mta-test-secret',
+	});
+
+	it('accepts RCPT TO the configured rua address (delivers to the system webhook)', async () => {
+		// Without threading the system-route config into the RCPT gate, findRoute
+		// returns null here and the address is rejected "Mailbox not found" before
+		// onData/resolveRoutePhase ever runs — so inbound TLS reports never arrive.
+		const err = await runRcptTo(tlsRptConfig, RUA);
+		expect(err == null).toBe(true);
+	});
+
+	it('still rejects an unrelated, unrouted recipient with "Mailbox not found"', async () => {
+		const err = await runRcptTo(tlsRptConfig, 'nobody@nowhere.test');
+		expect(err).toBeInstanceOf(Error);
+		expect((err as Error).message).toMatch(/Mailbox not found/i);
 	});
 });

@@ -23,6 +23,7 @@ import { handleMtaWebhook } from './mtaWebhook';
 import { handleSesWebhook } from './sesWebhook';
 import { handleMailWebhook } from './mail/webhook';
 import { handleVerifyCredential } from './mail/authHttp';
+import { handleTlsReportWebhook } from './domains/tlsReportsHttp';
 import { handleSmsWebhook, handleWhatsAppWebhook, handleGenericWebhook } from './webhooks/channels';
 import { handleGithubWebhook } from './webhooks/githubHttp';
 import { verifyContactDoiToken, confirmContactDoi } from './topics/doiHttp';
@@ -265,6 +266,14 @@ http.route({
 	path: '/webhooks/mta-verify-credential',
 	method: 'POST',
 	handler: handleVerifyCredential,
+});
+
+// POST /webhooks/mta-tls-report - inbound TLS-RPT (RFC 8460) aggregate reports
+// forwarded from the MTA's system inbound route for the `_smtp._tls` rua address
+http.route({
+	path: '/webhooks/mta-tls-report',
+	method: 'POST',
+	handler: handleTlsReportWebhook,
 });
 
 // ============ CHANNEL WEBHOOK ENDPOINTS ============
