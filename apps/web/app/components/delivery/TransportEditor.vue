@@ -4,6 +4,7 @@ import {
 	SMTP_RELAY_PRESETS,
 	buildProviderEnv,
 	emailStepIsValid,
+	seedOutboundTlsMode,
 	validateEmailStep,
 	type EmailStepDraft,
 	type OutboundTlsMode,
@@ -23,6 +24,13 @@ import {
 const props = defineProps<{
 	/** The active EMAIL_PROVIDER kind from the status query (null when unset). */
 	currentProvider: string | null;
+	/**
+	 * The active OUTBOUND_TLS_MODE for the built-in MTA (null when unset). Not a
+	 * secret, so it is surfaced to seed the editor — otherwise re-applying any
+	 * transport edit would silently reset a previously-chosen floor back to
+	 * `opportunistic`.
+	 */
+	currentOutboundTlsMode?: string | null;
 }>();
 
 const emit = defineEmits<{ applied: [] }>();
@@ -43,9 +51,11 @@ const sesAccess = ref('');
 const sesSecret = ref('');
 const fromEmail = ref('');
 const fromName = ref('');
-// Outbound TLS posture for the built-in MTA (direct-MX). Default matches the
-// backend default and today's behaviour.
-const outboundTlsMode = ref<OutboundTlsMode>('opportunistic');
+// Outbound TLS posture for the built-in MTA (direct-MX). Seeded from the active
+// mode (via the shared `seedOutboundTlsMode`) so re-applying an edit preserves a
+// previously-chosen floor; falls back to the `opportunistic` backend default
+// (today's behaviour) when unset/unknown.
+const outboundTlsMode = ref<OutboundTlsMode>(seedOutboundTlsMode(props.currentOutboundTlsMode));
 const outboundTlsModeOptions = OUTBOUND_TLS_MODE_OPTIONS.map((o) => ({
 	value: o.value,
 	label: o.label,

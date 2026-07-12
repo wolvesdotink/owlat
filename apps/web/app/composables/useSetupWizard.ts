@@ -25,6 +25,7 @@ import {
 	SMTP_RELAY_PRESETS,
 	type SmtpRelayPreset,
 } from '@owlat/shared/setupSendingPresets';
+import type { OutboundTlsMode } from '@owlat/shared/outboundTlsMode';
 import { SETUP_DRAFT_STORAGE_KEY, readSetupDraft, serializeSetupDraft } from './setupWizardDraft';
 
 // Re-export the shared preset table and its key type so the setup step (and its
@@ -32,6 +33,10 @@ import { SETUP_DRAFT_STORAGE_KEY, readSetupDraft, serializeSetupDraft } from './
 // lives in `@owlat/shared/setupSendingPresets`, shared with the setup CLI.
 export { SMTP_RELAY_PRESETS, PROVIDER_ENV_KEYS };
 export type SmtpPreset = SmtpRelayPreset;
+
+// Re-export the shared outbound-TLS union so the setup step and its tests import
+// it from this composable; the env contract lives in `@owlat/shared`.
+export type { OutboundTlsMode };
 
 // ── Steps ────────────────────────────────────────────────────────────────────
 
@@ -86,14 +91,10 @@ export interface SmtpRelayDraft {
 }
 
 /**
- * Outbound TLS posture for the built-in MTA's direct-MX delivery (env
- * `OUTBOUND_TLS_MODE`). Only meaningful for the `mta` transport — for a relay or
- * API provider the TLS to that provider is the provider's concern. Kept as a
- * local union (not imported from the MTA package) to avoid a cross-package
- * dependency; the string VALUES are the env contract shared with the MTA config.
+ * Human-facing option list for the outbound-TLS selector. The {@link OutboundTlsMode}
+ * values are the shared env contract (`@owlat/shared`); the label/hint copy is
+ * UI-only and lives here beside the setup wizard.
  */
-export type OutboundTlsMode = 'opportunistic' | 'require' | 'require-verified';
-
 export const OUTBOUND_TLS_MODE_OPTIONS: {
 	value: OutboundTlsMode;
 	label: string;
@@ -115,6 +116,19 @@ export const OUTBOUND_TLS_MODE_OPTIONS: {
 		hint: 'Require encryption and a valid certificate. Strongest, but can bounce mail to receivers with a misconfigured or self-signed certificate.',
 	},
 ];
+
+/**
+ * Narrow the active (non-secret) `OUTBOUND_TLS_MODE` — as reported by the status
+ * query — to a valid mode for seeding the editor. A previously-chosen floor is
+ * preserved; an unset/unknown value falls back to `opportunistic` (the backend
+ * default). Used so re-applying a transport edit never silently downgrades a
+ * floor an admin already set.
+ */
+export function seedOutboundTlsMode(current: string | null | undefined): OutboundTlsMode {
+	return OUTBOUND_TLS_MODE_OPTIONS.some((o) => o.value === current)
+		? (current as OutboundTlsMode)
+		: 'opportunistic';
+}
 
 export interface EmailStepDraft {
 	provider: ProviderChoice;
