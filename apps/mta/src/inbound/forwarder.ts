@@ -11,6 +11,27 @@ import { logger } from '../monitoring/logger.js';
 const TIMEOUT_MS = 10_000;
 const MAX_RETRIES = 2;
 
+/**
+ * RFC 8601 inbound authentication verdicts plus the DMARC alignment inputs,
+ * as computed by the MTA over the raw bytes at ingest. Every field is optional:
+ * a disabled check (or an absent identity) leaves it `undefined`, which the
+ * downstream consumer must render as "unknown" — never as a pass.
+ */
+export interface InboundAuthVerdicts {
+	/** SPF result on the SMTP envelope MAIL FROM (RFC 7208 §2.6 keyword). */
+	spfResult?: string;
+	/** DKIM result on the strongest signature (RFC 6376 / RFC 8601 keyword). */
+	dkimResult?: string;
+	/** DMARC result binding SPF/DKIM to the From domain (RFC 7489). */
+	dmarcResult?: string;
+	/** Published DMARC policy (`none`/`quarantine`/`reject`) for the From domain. */
+	dmarcPolicy?: string;
+	/** DMARC alignment input: the SMTP envelope MAIL FROM domain. */
+	envelopeFromDomain?: string;
+	/** DMARC alignment input: the d= domain of the passing DKIM signature. */
+	dkimSigningDomain?: string;
+}
+
 interface InboundEmailPayload {
 	from: string;
 	to: string;
@@ -28,6 +49,14 @@ interface InboundEmailPayload {
 		size: number;
 		content: string; // base64
 	}>;
+	// RFC 8601 inbound auth verdicts + DMARC alignment inputs, so a webhook
+	// consumer can render an honest sender-authenticity badge. All optional.
+	spfResult?: string;
+	dkimResult?: string;
+	dmarcResult?: string;
+	dmarcPolicy?: string;
+	envelopeFromDomain?: string;
+	dkimSigningDomain?: string;
 }
 
 /**
@@ -36,7 +65,8 @@ interface InboundEmailPayload {
 export async function forwardToEndpoint(
 	parsed: ParsedMail,
 	route: InboundRoute,
-	recipientAddress: string
+	recipientAddress: string,
+	auth?: InboundAuthVerdicts
 ): Promise<boolean> {
 	if (!route.endpointUrl) {
 		logger.error({ routeId: route.id }, 'Route has no endpoint URL');
@@ -60,6 +90,12 @@ export async function forwardToEndpoint(
 			size: att.size,
 			content: att.content.toString('base64'),
 		})),
+		spfResult: auth?.spfResult,
+		dkimResult: auth?.dkimResult,
+		dmarcResult: auth?.dmarcResult,
+		dmarcPolicy: auth?.dmarcPolicy,
+		envelopeFromDomain: auth?.envelopeFromDomain,
+		dkimSigningDomain: auth?.dkimSigningDomain,
 	};
 
 	// Copy relevant headers

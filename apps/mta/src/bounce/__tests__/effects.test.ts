@@ -126,11 +126,12 @@ describe('applyEffects — per-effect dispatch', () => {
 			createdAt: 0,
 		};
 		const parsed = { subject: 'x' } as unknown as ParsedMail;
+		const auth = { spfResult: 'pass', dkimResult: 'pass' };
 		await applyEffects(
-			[{ kind: 'forward_to_endpoint', route, parsed, rcptTo: 'me@org.example' }],
+			[{ kind: 'forward_to_endpoint', route, parsed, rcptTo: 'me@org.example', auth }],
 			makeDeps(),
 		);
-		expect(forwardToEndpoint).toHaveBeenCalledWith(parsed, route, 'me@org.example');
+		expect(forwardToEndpoint).toHaveBeenCalledWith(parsed, route, 'me@org.example', auth);
 	});
 
 	it('notify_convex → notifyConvex (fire-and-forget)', async () => {

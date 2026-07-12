@@ -291,6 +291,8 @@ export function createBounceServer(config: MtaConfig, redis: Redis): SMTPServer 
 					dmarcResult,
 					dmarcPolicy,
 					spfResult,
+					envelopeFromDomain,
+					dkimSigningDomain: dkim?.domain,
 					returnPath,
 				});
 
@@ -321,6 +323,8 @@ export function createBounceServer(config: MtaConfig, redis: Redis): SMTPServer 
 					dmarcResult,
 					dmarcPolicy,
 					spfResult,
+					envelopeFromDomain,
+					dkimSigningDomain: dkim?.domain,
 					returnPath,
 				});
 				await applyEffects(effects, deps);

@@ -57,6 +57,21 @@ export interface BasePhaseCtx {
 	 */
 	readonly spfResult?: SpfVerdict;
 	/**
+	 * DMARC alignment input: the SMTP envelope MAIL FROM domain (the SPF-
+	 * authenticated identity), captured in `onMailFrom` and threaded through the
+	 * session. Surfaced onto the inbound payloads beside the verdicts so the
+	 * Convex reader can later compare it against the visible From domain.
+	 * `undefined` when SPF is disabled or MAIL FROM is empty (DSN).
+	 */
+	readonly envelopeFromDomain?: string;
+	/**
+	 * DMARC alignment input: the `d=` domain of the passing DKIM signature
+	 * (`dkim.domain`), captured in `onData`. Surfaced onto the inbound payloads
+	 * beside the verdicts. `undefined` when DKIM is disabled or no signature
+	 * verified.
+	 */
+	readonly dkimSigningDomain?: string;
+	/**
 	 * The SMTP envelope sender (MAIL FROM / return-path), as taken from
 	 * `session.envelope.mailFrom` in `onData`. Normalized so the RFC 5321
 	 * §4.5.5 null sender (`<>`) and a missing MAIL FROM both surface as the

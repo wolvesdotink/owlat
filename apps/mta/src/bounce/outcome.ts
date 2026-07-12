@@ -146,7 +146,7 @@ function reduceMailbox(
 	attempt: Extract<BounceAttempt, { kind: 'mailbox' }>,
 	ctx: BasePhaseCtx,
 ): OutcomeReduction {
-	const { parsed, rawBuffer, spfResult, returnPath } = ctx;
+	const { parsed, rawBuffer, spfResult, envelopeFromDomain, dkimSigningDomain, returnPath } = ctx;
 	const {
 		mailbox,
 		rcptTo,
@@ -211,6 +211,11 @@ function reduceMailbox(
 						// stores whatever is present and routes spam verdicts to the
 						// Spam folder.
 						spfResult,
+						// DMARC alignment inputs (envelope MAIL FROM domain + DKIM d=
+						// domain), stored beside the verdicts on `mailMessages` so a
+						// later impersonation heuristic need not re-parse the .eml.
+						envelopeFromDomain,
+						dkimSigningDomain,
 					},
 					timestamp: Date.now(),
 				},
@@ -235,6 +240,17 @@ function reduceEndpointForward(
 				route: attempt.route,
 				parsed: ctx.parsed,
 				rcptTo: attempt.rcptTo,
+				// RFC 8601 inbound auth verdicts + DMARC alignment inputs, threaded
+				// to the external endpoint's webhook payload beside the message so a
+				// downstream consumer can show an honest sender badge. All optional.
+				auth: {
+					spfResult: ctx.spfResult,
+					dkimResult: ctx.dkimResult,
+					dmarcResult: ctx.dmarcResult,
+					dmarcPolicy: ctx.dmarcPolicy,
+					envelopeFromDomain: ctx.envelopeFromDomain,
+					dkimSigningDomain: ctx.dkimSigningDomain,
+				},
 			},
 		],
 	};
@@ -244,7 +260,7 @@ function reduceInboundAccept(
 	attempt: Extract<BounceAttempt, { kind: 'inbound_accept' }>,
 	ctx: BasePhaseCtx,
 ): OutcomeReduction {
-	const { parsed } = ctx;
+	const { parsed, spfResult, dkimResult, dmarcResult, dmarcPolicy } = ctx;
 	const { route, rcptTo, attachments, headers } = attempt;
 	const effects: BounceEffect[] = [];
 
@@ -297,6 +313,15 @@ function reduceInboundAccept(
 				messageId: parsed.messageId ?? undefined,
 				inReplyTo: parsed.inReplyTo?.replace(/[<>]/g, '') ?? undefined,
 				references: referencesString,
+				// RFC 8601 inbound auth verdicts (SPF/DKIM/DMARC + published policy),
+				// computed in `onData` and threaded through the ctx. The AI-inbox
+				// path used to DROP these before persisting; now they ride to
+				// `inboundMessages` so the reader can show an honest sender badge.
+				// Absent verdicts stay absent (renders "unknown", never "pass").
+				spfResult,
+				dkimResult,
+				dmarcResult,
+				dmarcPolicy,
 				attachments: attachmentMeta,
 			},
 			timestamp: Date.now(),
