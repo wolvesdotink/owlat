@@ -26,6 +26,10 @@ const {
 
 type SharedInbox = NonNullable<typeof inboxes.value>[number];
 
+// "Open inbox" makes the selected team inbox the active Postbox mailbox and
+// lands on its inbox — the same switch the sidebar switcher and Cmd-K perform.
+const { switchToMailbox } = usePostboxMailbox();
+
 // One inbox's management panel open at a time — the page stays scannable and
 // the expanded roster is unambiguous.
 const expandedId = ref<Id<'mailboxes'> | null>(null);
@@ -161,6 +165,15 @@ function formatCreated(createdAt: number) {
 							>
 								External
 							</span>
+							<UiButton
+								variant="ghost"
+								size="sm"
+								title="Make this the active mailbox in Postbox"
+								@click="switchToMailbox(inbox._id)"
+							>
+								<Icon name="lucide:arrow-right" class="w-4 h-4 mr-1.5" />
+								Open inbox
+							</UiButton>
 							<UiButton
 								variant="secondary"
 								size="sm"
