@@ -20,6 +20,13 @@ export interface InboundRoute {
 	endpointUrl?: string;
 	/** Organization ID for correlation */
 	organizationId?: string;
+	/**
+	 * When set, `endpoint` forwards to this URL are HMAC-signed with this secret
+	 * (x-mta-signature/x-mta-timestamp), marking a *system* route delivering to
+	 * one of our own trusted Convex webhooks rather than an untrusted customer
+	 * endpoint. Never persisted for user-created routes.
+	 */
+	systemSecret?: string;
 	createdAt: number;
 }
 
@@ -30,13 +37,69 @@ function routeKey(domain: string, address: string): string {
 	return `${ROUTE_PREFIX}${domain}:${address}`;
 }
 
+// ─── TLS-RPT system route (RFC 8460) ────────────────────────────────
+
+/** Synthetic id for the TLS-RPT reporting-address system route. */
+export const TLS_RPT_SYSTEM_ROUTE_ID = '__system:tls-rpt__';
+/** Convex webhook path the TLS-RPT system route delivers to. */
+export const TLS_RPT_WEBHOOK_PATH = '/webhooks/mta-tls-report';
+
+/** Config the inbound pipeline threads through to recognise the rua address. */
+export interface TlsRptSystemRouteConfig {
+	/** The operator's `_smtp._tls` `rua=` value (mailto: URI or bare address). */
+	ruaAddress?: string;
+	/** Convex deployment site URL, e.g. `https://acme.convex.site`. */
+	convexSiteUrl: string;
+	/** Shared MTA webhook secret used to HMAC-sign the forward. */
+	webhookSecret: string;
+}
+
+/**
+ * Normalise a TLS-RPT `rua=` value to a bare lowercase `local@domain` address,
+ * stripping the `mailto:` scheme and any `?subject=` parameters (RFC 8460 §3).
+ * Returns null for empty/`https:` reporting URIs (those are polled elsewhere,
+ * not delivered as inbound mail) or anything without an `@`.
+ */
+export function parseRuaAddress(rua: string | undefined): string | null {
+	if (!rua) return null;
+	const trimmed = rua.trim();
+	if (!trimmed) return null;
+	const lower = trimmed.toLowerCase();
+	if (lower.startsWith('https:') || lower.startsWith('http:')) return null;
+	const withoutScheme = lower.startsWith('mailto:') ? lower.slice('mailto:'.length) : lower;
+	const addr = withoutScheme.split('?')[0]?.trim();
+	if (!addr || addr.indexOf('@') < 1) return null;
+	return addr;
+}
+
+/**
+ * Build the synthetic TLS-RPT system route delivering to the dedicated Convex
+ * webhook. Not persisted — constructed in-memory by {@link findRoute} when a
+ * recipient matches the configured rua address.
+ */
+export function buildTlsRptSystemRoute(config: TlsRptSystemRouteConfig): InboundRoute {
+	const base = config.convexSiteUrl.replace(/\/+$/, '');
+	const addr = parseRuaAddress(config.ruaAddress);
+	const atIndex = addr ? addr.lastIndexOf('@') : -1;
+	return {
+		id: TLS_RPT_SYSTEM_ROUTE_ID,
+		domain: atIndex >= 0 ? addr!.slice(atIndex + 1) : '',
+		address: atIndex >= 0 ? addr!.slice(0, atIndex) : '',
+		mode: 'endpoint',
+		endpointUrl: `${base}${TLS_RPT_WEBHOOK_PATH}`,
+		systemSecret: config.webhookSecret,
+		createdAt: 0,
+	};
+}
+
 /**
  * Find the best matching route for a recipient address
  * Priority: exact match → wildcard
  */
 export async function findRoute(
 	redis: Redis,
-	recipientEmail: string
+	recipientEmail: string,
+	system?: TlsRptSystemRouteConfig
 ): Promise<InboundRoute | null> {
 	// Route the recipient through the shared parser so inbound routing agrees
 	// with every other address derivation (unwraps "Name <addr>", lowercases).
@@ -47,16 +110,32 @@ export async function findRoute(
 	const domain = parsed.address.slice(atIndex + 1);
 	if (!domain || !localPart) return null;
 
+	// System route: the operator's TLS-RPT reporting address (rua=) delivers to
+	// the dedicated Convex webhook, never a user mailbox. Checked before the
+	// route table so an operator can't shadow it with a conflicting entry.
+	const ruaAddress = parseRuaAddress(system?.ruaAddress);
+	if (system && ruaAddress && parsed.address.toLowerCase() === ruaAddress) {
+		return buildTlsRptSystemRoute(system);
+	}
+
 	// Try exact match first
 	const exactData = await redis.get(routeKey(domain, localPart));
 	if (exactData) {
-		try { return JSON.parse(exactData); } catch { /* fall through */ }
+		try {
+			return JSON.parse(exactData);
+		} catch {
+			/* fall through */
+		}
 	}
 
 	// Try wildcard
 	const wildcardData = await redis.get(routeKey(domain, '*'));
 	if (wildcardData) {
-		try { return JSON.parse(wildcardData); } catch { /* fall through */ }
+		try {
+			return JSON.parse(wildcardData);
+		} catch {
+			/* fall through */
+		}
 	}
 
 	return null;
@@ -103,7 +182,11 @@ export async function listRoutes(redis: Redis): Promise<InboundRoute[]> {
 	for (const id of ids) {
 		const data = await redis.get(`${ROUTE_PREFIX}${id}`);
 		if (data) {
-			try { routes.push(JSON.parse(data)); } catch { /* skip */ }
+			try {
+				routes.push(JSON.parse(data));
+			} catch {
+				/* skip */
+			}
 		}
 	}
 

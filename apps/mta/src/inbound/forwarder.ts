@@ -5,6 +5,7 @@
  */
 
 import type { ParsedMail } from 'mailparser';
+import { createHmac } from 'crypto';
 import type { InboundRoute } from './router.js';
 import type { InboundAuthVerdicts } from '../types.js';
 import { logger } from '../monitoring/logger.js';
@@ -80,6 +81,22 @@ export async function forwardToEndpoint(
 		}
 	}
 
+	const body = JSON.stringify(payload);
+
+	// System routes (e.g. the TLS-RPT reporting webhook) forward to one of our
+	// own trusted Convex endpoints, so we HMAC-sign the body with the shared
+	// webhook secret — same scheme the Convex handlers verify. Customer routes
+	// carry no secret and stay unsigned.
+	const signedHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+	if (route.systemSecret) {
+		const timestamp = String(Math.floor(Date.now() / 1000));
+		const signature = createHmac('sha256', route.systemSecret)
+			.update(`${timestamp}.${body}`)
+			.digest('hex');
+		signedHeaders['x-mta-timestamp'] = timestamp;
+		signedHeaders['x-mta-signature'] = signature;
+	}
+
 	for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
 		try {
 			const controller = new AbortController();
@@ -87,8 +104,8 @@ export async function forwardToEndpoint(
 
 			const response = await fetch(route.endpointUrl, {
 				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(payload),
+				headers: signedHeaders,
+				body,
 				signal: controller.signal,
 			});
 
