@@ -1,4 +1,6 @@
 <script lang="ts">
+import type { SenderHeuristics } from '~/utils/senderAuth';
+
 /**
  * The full message row the reader renders (the list-row shape plus body /
  * verdict fields). Exported for hosts that pass rows through — the folder
@@ -42,12 +44,7 @@ export type PostboxReaderMessage = {
 	// through so the sender badge can render secondary detail lines (first-time
 	// sender, look-alike of a known contact's domain). Whole object absent when
 	// nothing fired — the badge shows no extra lines rather than a false "clear".
-	senderHeuristics?: {
-		isFromDomainSpoofed?: boolean;
-		isReplyToMismatch?: boolean;
-		isFirstTimeSender?: boolean;
-		lookalikeOfContactDomain?: string;
-	};
+	senderHeuristics?: SenderHeuristics;
 	flagSeen?: boolean;
 	unsubscribe?: { httpUrl?: string; mailtoUrl?: string; oneClick: boolean };
 };
