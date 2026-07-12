@@ -399,11 +399,6 @@ export const securityFlagsValidator = v.object({
 	scanTimestamp: v.number(),
 });
 
-// Sender-impersonation heuristics (`senderHeuristicsValidator` / `SenderHeuristics`)
-// live in `./senderHeuristicsValidator.ts`, referenced by `schema/mail.ts` and
-// `mail/senderHeuristics.ts` — kept out of this shared module so it stays under
-// the ~500 LOC file-size ratchet.
-
 // Agent classification output (inboundMessages.classification)
 export const classificationValidator = v.object({
 	category: v.string(),
