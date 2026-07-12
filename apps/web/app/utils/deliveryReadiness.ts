@@ -114,18 +114,39 @@ export interface ReadinessDomainRow {
 }
 
 /**
- * Fold the two live query results into the flat `ReadinessInput` the verdict is
+ * The MTA-STS half: the deployment's current inbound-TLS publishing state,
+ * narrowed to the two facts readiness needs. Structural on purpose (no import of
+ * the shared `MtaStsMode`) so this stays a pure primitive-in helper. Optional —
+ * a viewer who can't read the admin-gated guidance (or a deployment that
+ * publishes nothing) passes `null` and the MTA-STS gate never appears.
+ */
+export interface ReadinessMtaStsSource {
+	/** Current publishing mode (`none` | `testing` | `enforce`). */
+	mode: 'none' | 'testing' | 'enforce';
+	/** The `_mta-sts` record + served policy verified live against what we serve. */
+	recordVerified: boolean;
+}
+
+/**
+ * Fold the live query results into the flat `ReadinessInput` the verdict is
  * derived from. This is the small piece of real derivation the panel used to do
- * inline: which domain we report authentication against.
+ * inline: which domain we report authentication against, plus the conditional
+ * MTA-STS warning.
  *
  * `getDeliveryDomainTable` returns rows already sorted most-active first, so we
  * report auth against the most-active VERIFIED domain (the one mail actually
  * sends from), falling back to the most-active configured domain before any has
  * verified, and to nothing at all when there are no domains yet.
+ *
+ * `mtaSts` is the admin-only inbound-TLS state: only `enforce` published WITHOUT
+ * the record verified sets `mtaStsEnforceWithoutRecord` (and thus the warning);
+ * `none`/`testing`, an already-verified record, or a `null` source (non-admin or
+ * no policy) leave it unset so nothing changes for those deployments.
  */
 export function readinessInputFromSources(
 	summary: ReadinessTransportSummary,
-	rows: readonly ReadinessDomainRow[]
+	rows: readonly ReadinessDomainRow[],
+	mtaSts?: ReadinessMtaStsSource | null
 ): ReadinessInput {
 	const verified = rows.filter((row) => row.status === 'verified');
 	const primary = verified[0] ?? rows[0] ?? null;
@@ -135,6 +156,8 @@ export function readinessInputFromSources(
 		domainVerified: verified.length > 0,
 		authComplete: primary ? primary.missing.length === 0 : false,
 		authMissing: primary?.missing ?? [],
+		mtaStsEnforceWithoutRecord:
+			mtaSts != null && mtaSts.mode === 'enforce' && !mtaSts.recordVerified,
 	};
 }
 
