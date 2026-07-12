@@ -209,6 +209,7 @@ describe('readinessInputFromSources — folding the two live sources', () => {
 			domainVerified: false,
 			authComplete: false,
 			authMissing: [],
+			mtaStsEnforceWithoutRecord: false,
 		});
 	});
 
@@ -221,5 +222,37 @@ describe('readinessInputFromSources — folding the two live sources', () => {
 	it('carries transport canSend straight through', () => {
 		expect(readinessInputFromSources({ canSend: true }, []).transportConfigured).toBe(true);
 		expect(readinessInputFromSources({ canSend: false }, [row()]).transportConfigured).toBe(false);
+	});
+
+	it('warns only when MTA-STS enforce is published WITHOUT the record verified', () => {
+		const enforceUnverified = readinessInputFromSources({ canSend: true }, [row()], {
+			mode: 'enforce',
+			recordVerified: false,
+		});
+		expect(enforceUnverified.mtaStsEnforceWithoutRecord).toBe(true);
+
+		const enforceVerified = readinessInputFromSources({ canSend: true }, [row()], {
+			mode: 'enforce',
+			recordVerified: true,
+		});
+		expect(enforceVerified.mtaStsEnforceWithoutRecord).toBe(false);
+	});
+
+	it('never warns for testing/none modes or a missing (non-admin) source', () => {
+		expect(
+			readinessInputFromSources({ canSend: true }, [row()], {
+				mode: 'testing',
+				recordVerified: false,
+			}).mtaStsEnforceWithoutRecord
+		).toBe(false);
+		expect(
+			readinessInputFromSources({ canSend: true }, [row()], {
+				mode: 'none',
+				recordVerified: false,
+			}).mtaStsEnforceWithoutRecord
+		).toBe(false);
+		expect(
+			readinessInputFromSources({ canSend: true }, [row()], null).mtaStsEnforceWithoutRecord
+		).toBe(false);
 	});
 });

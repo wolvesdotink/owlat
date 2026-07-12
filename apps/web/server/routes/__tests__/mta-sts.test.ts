@@ -14,13 +14,18 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const { queryMock } = vi.hoisted(() => ({ queryMock: vi.fn() }));
 
+// The route calls `new ConvexHttpClient(url)`, so the mock must be CONSTRUCTIBLE
+// — an arrow function can't be used with `new`. A real class returning the
+// shared `query` mock satisfies both `new` and the `.query()` call.
 vi.mock('convex/browser', () => ({
-	ConvexHttpClient: vi.fn().mockImplementation(() => ({ query: queryMock })),
+	ConvexHttpClient: class {
+		query = queryMock;
+	},
 }));
 
 // The generated Convex api is only used as an opaque function reference here.
 vi.mock('@owlat/api', () => ({
-	api: { domains: { domains: { getMtaStsPolicy: 'getMtaStsPolicy' } } },
+	api: { domains: { mtaSts: { getMtaStsPolicy: 'getMtaStsPolicy' } } },
 }));
 
 let requestHost = 'mta-sts.example.com';

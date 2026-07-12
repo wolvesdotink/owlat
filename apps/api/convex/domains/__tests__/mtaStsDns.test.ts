@@ -90,21 +90,21 @@ describe('getMtaStsPolicy (public policy content)', () => {
 	it('returns null when no policy mode is set (nothing published)', async () => {
 		vi.stubEnv('EHLO_HOSTNAME', 'mail.example.com');
 		const t = convexTest(schema, modules);
-		expect(await t.query(api.domains.domains.getMtaStsPolicy, {})).toBeNull();
+		expect(await t.query(api.domains.mtaSts.getMtaStsPolicy, {})).toBeNull();
 	});
 
 	it('returns null when mode is enforce but no mail host is configured', async () => {
 		vi.stubEnv('EHLO_HOSTNAME', '');
 		const t = convexTest(schema, modules);
 		await seedMode(t, 'enforce');
-		expect(await t.query(api.domains.domains.getMtaStsPolicy, {})).toBeNull();
+		expect(await t.query(api.domains.mtaSts.getMtaStsPolicy, {})).toBeNull();
 	});
 
 	it('serves the exact RFC 8461 body + id for enforce with a mail host', async () => {
 		vi.stubEnv('EHLO_HOSTNAME', 'mail.example.com');
 		const t = convexTest(schema, modules);
 		await seedMode(t, 'enforce');
-		const policy = await t.query(api.domains.domains.getMtaStsPolicy, {});
+		const policy = await t.query(api.domains.mtaSts.getMtaStsPolicy, {});
 		expect(policy).not.toBeNull();
 		expect(policy?.mode).toBe('enforce');
 		expect(policy?.body).toBe(
@@ -117,7 +117,7 @@ describe('getMtaStsPolicy (public policy content)', () => {
 		vi.stubEnv('EHLO_HOSTNAME', 'mail.example.com');
 		const t = convexTest(schema, modules);
 		await seedMode(t, 'testing');
-		const policy = await t.query(api.domains.domains.getMtaStsPolicy, {});
+		const policy = await t.query(api.domains.mtaSts.getMtaStsPolicy, {});
 		expect(policy?.body).toContain('mode: testing');
 	});
 });
@@ -128,7 +128,7 @@ describe('getMtaStsGuidance (admin DNS records)', () => {
 		mockRole = 'editor';
 		const category = await t
 			.withIdentity(identity)
-			.query(api.domains.domains.getMtaStsGuidance, {})
+			.query(api.domains.mtaSts.getMtaStsGuidance, {})
 			.then(() => undefined)
 			.catch((e: { data?: { category?: string } }) => e?.data?.category);
 		expect(category).toBe('forbidden');
@@ -137,9 +137,7 @@ describe('getMtaStsGuidance (admin DNS records)', () => {
 	it('returns null records when nothing is published', async () => {
 		vi.stubEnv('EHLO_HOSTNAME', 'mail.example.com');
 		const t = convexTest(schema, modules);
-		const guidance = await t
-			.withIdentity(identity)
-			.query(api.domains.domains.getMtaStsGuidance, {});
+		const guidance = await t.withIdentity(identity).query(api.domains.mtaSts.getMtaStsGuidance, {});
 		expect(guidance).toEqual({
 			mode: 'none',
 			mailHost: 'mail.example.com',
@@ -152,9 +150,7 @@ describe('getMtaStsGuidance (admin DNS records)', () => {
 		vi.stubEnv('EHLO_HOSTNAME', 'mail.example.com');
 		const t = convexTest(schema, modules);
 		await seedMode(t, 'enforce');
-		const guidance = await t
-			.withIdentity(identity)
-			.query(api.domains.domains.getMtaStsGuidance, {});
+		const guidance = await t.withIdentity(identity).query(api.domains.mtaSts.getMtaStsGuidance, {});
 		expect(guidance.mode).toBe('enforce');
 		expect(guidance.policyId).toMatch(/^[0-9a-f]{16}$/);
 		expect(guidance.txtValue).toBe(buildMtaStsTxtValue(guidance.policyId!));
