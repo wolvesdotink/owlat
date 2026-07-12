@@ -905,7 +905,11 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 								:mailbox-id="message.mailboxId"
 								:unsubscribe="msg.unsubscribe"
 							/>
-							<PostboxAuthBadge :enabled="authBadgesEnabled" :auth="senderAuthInput(msg)" />
+							<PostboxAuthBadge
+								:enabled="authBadgesEnabled"
+								:auth="senderAuthInput(msg)"
+								:heuristics="msg.senderHeuristics"
+							/>
 						</div>
 					</header>
 
