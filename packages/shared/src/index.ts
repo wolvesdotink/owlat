@@ -37,6 +37,20 @@ export {
 	digestTlsReport,
 	explainTlsFailureType,
 } from './tlsReport';
+export {
+	type MtaStsMode,
+	type MtaStsPublishedMode,
+	MTA_STS_MODES,
+	MTA_STS_MAX_AGE_SECONDS,
+	MTA_STS_TXT_HOST,
+	MTA_STS_POLICY_HOST,
+	MTA_STS_WELL_KNOWN_PATH,
+	MTA_STS_CONTENT_TYPE,
+	isMtaStsMode,
+	mtaStsPolicyId,
+	buildMtaStsTxtValue,
+	buildMtaStsPolicy,
+} from './mtaStsPolicy';
 export { isSpfRecord, parseSpfMechanisms, mergeSpfRecords } from './spf';
 export type { ValidationIssue } from './validation';
 export {
