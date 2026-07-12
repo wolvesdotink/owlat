@@ -30,10 +30,12 @@ import contactsFixture from './fixtures/contacts.json';
 import contactTopicsFixture from './fixtures/contactTopics.json';
 import savedBlocksFixture from './fixtures/savedBlocks.json';
 import emailTemplatesFixture from './fixtures/emailTemplates.json';
+import transactionalEmailsFixture from './fixtures/transactionalEmails.json';
 import campaignsFixture from './fixtures/campaigns.json';
 import automationsFixture from './fixtures/automations.json';
 import webhooksFixture from './fixtures/webhooks.json';
 import domainsFixture from './fixtures/domains.json';
+import mailboxesFixture from './fixtures/mailboxes.json';
 
 import { accountsLoader } from './loaders/accounts';
 import { topicsLoader } from './loaders/topics';
@@ -41,10 +43,12 @@ import { contactsLoader } from './loaders/contacts';
 import { contactTopicsLoader } from './loaders/contactTopics';
 import { savedBlocksLoader } from './loaders/savedBlocks';
 import { emailTemplatesLoader } from './loaders/emailTemplates';
+import { transactionalEmailsLoader } from './loaders/transactionalEmails';
 import { campaignsLoader } from './loaders/campaigns';
 import { automationsLoader } from './loaders/automations';
 import { webhooksLoader } from './loaders/webhooks';
 import { domainsLoader } from './loaders/domains';
+import { mailboxesLoader } from './loaders/mailboxes';
 import type { Loader, SeedRefs } from './loaders/types';
 
 // Order matters: each entry's `dependencies` reference earlier modules in the
@@ -56,10 +60,12 @@ const LOADERS: Array<{ loader: Loader; records: unknown[] }> = [
 	{ loader: contactTopicsLoader, records: contactTopicsFixture },
 	{ loader: savedBlocksLoader, records: savedBlocksFixture },
 	{ loader: emailTemplatesLoader, records: emailTemplatesFixture },
+	{ loader: transactionalEmailsLoader, records: transactionalEmailsFixture },
 	{ loader: campaignsLoader, records: campaignsFixture },
 	{ loader: automationsLoader, records: automationsFixture },
 	{ loader: webhooksLoader, records: webhooksFixture },
 	{ loader: domainsLoader, records: domainsFixture },
+	{ loader: mailboxesLoader, records: mailboxesFixture },
 ];
 
 // Tables that may carry `seedTag: 'demo'` rows. Used by reset to wipe them.
@@ -70,6 +76,7 @@ const SEEDED_TABLES: TableNames[] = [
 	'contactIdentities',
 	'emailBlocks',
 	'emailTemplates',
+	'transactionalEmails',
 	'campaigns',
 	'emailSends',
 	'automations',

@@ -13,7 +13,13 @@ import { convex, crossDomain } from '@convex-dev/better-auth/plugins';
 import { components, internal } from '../_generated/api';
 import type { DataModel } from '../_generated/dataModel';
 import type { ActionCtx } from '../_generated/server';
-import authConfig from './config';
+// NOTE: `auth.config.ts` must live at the convex root under exactly that name —
+// it is Convex's instance auth configuration, evaluated at push time to
+// register the JWT provider. Nesting it into a domain folder (as `auth/config.ts`)
+// silently strips ALL auth providers from freshly-pushed deployments: sessions
+// still work (BetterAuth plane) but every `ctx.auth.getUserIdentity()` returns
+// null and every authed query throws "Not authenticated".
+import authConfig from '../auth.config';
 import { isDevDeployment } from '../devShortcuts/_guard';
 import {
 	generateInvitationEmailHtml,

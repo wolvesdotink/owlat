@@ -25,8 +25,8 @@ describe('openrouterLanguageAdapter', () => {
 		expect(openrouterLanguageAdapter.kind).toBe('openrouter');
 		expect(openrouterLanguageAdapter.isLocal).toBe(false);
 		expect(openrouterLanguageAdapter.defaultModels).toEqual({
-			fast: 'openai/gpt-4o-mini',
-			capable: 'anthropic/claude-sonnet-4-5',
+			fast: 'deepseek/deepseek-v4-flash',
+			capable: 'anthropic/claude-sonnet-5',
 		});
 	});
 

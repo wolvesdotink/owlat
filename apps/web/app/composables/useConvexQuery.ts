@@ -60,9 +60,15 @@ export function useConvexQuery<Query extends FunctionReference<'query'>>(
 	const resolvedArgs = computed(() => resolveArgs(args));
 
 	const subscribe = (opts?: { background?: boolean }) => {
-		// Clean up previous subscription and timeout
+		// Clean up previous subscription and timeout. MUST null the handle after
+		// calling it: the Convex client's unsubscribe throws on a second call
+		// (removeSubscriber reads a deleted query token). Leaving it set meant a
+		// valid → skip → valid args sequence (e.g. typing through an invalid
+		// email) called the dead unsubscribe again, the throw aborted this
+		// re-subscribe, and the UI silently kept the PREVIOUS args' data forever.
 		if (unsubscribe) {
 			unsubscribe();
+			unsubscribe = null;
 		}
 		clearSubscriptionTimeout();
 

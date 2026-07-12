@@ -475,6 +475,7 @@ const {
 	variableType,
 	showMandatoryUnsubscribeFooter,
 	renderOptions,
+	variables: computed(() => props.variables),
 });
 
 // Keep the live editing reactivity the canvas had before: while a non-edit

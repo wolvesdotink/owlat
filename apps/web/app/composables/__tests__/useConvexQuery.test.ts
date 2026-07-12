@@ -16,11 +16,18 @@ describe('useConvexQuery', () => {
 		onScopeDisposeCallback = null;
 		mockUnsubscribe = vi.fn();
 		mockClient = {
-			onUpdate: vi.fn((_query: unknown, _args: unknown, callback: (data: unknown) => void, onError: (error: unknown) => void) => {
-				mockOnUpdateCallback = callback;
-				mockOnErrorCallback = onError;
-				return mockUnsubscribe;
-			}),
+			onUpdate: vi.fn(
+				(
+					_query: unknown,
+					_args: unknown,
+					callback: (data: unknown) => void,
+					onError: (error: unknown) => void
+				) => {
+					mockOnUpdateCallback = callback;
+					mockOnErrorCallback = onError;
+					return mockUnsubscribe;
+				}
+			),
 		};
 		vi.stubGlobal('useConvex', () => mockClient);
 		vi.stubGlobal('getCurrentScope', () => ({}));
@@ -45,7 +52,12 @@ describe('useConvexQuery', () => {
 			useConvexQuery(fakeQuery, args);
 
 			expect(mockClient.onUpdate).toHaveBeenCalledOnce();
-			expect(mockClient.onUpdate).toHaveBeenCalledWith(fakeQuery, args, expect.any(Function), expect.any(Function));
+			expect(mockClient.onUpdate).toHaveBeenCalledWith(
+				fakeQuery,
+				args,
+				expect.any(Function),
+				expect.any(Function)
+			);
 		});
 
 		it('updates data and sets isLoading=false when callback fires', () => {
@@ -93,9 +105,58 @@ describe('useConvexQuery', () => {
 			expect(isLoading.value).toBe(true);
 		});
 
+		it('re-subscribes with fresh args after a valid → skip → valid sequence (stale-data regression)', async () => {
+			// The real Convex client's unsubscribe THROWS when called twice
+			// (removeSubscriber reads a deleted query token). Mirror that here: the
+			// composable used to leave the dead unsubscribe handle set across the
+			// skip transition, call it again on the next valid args, and the throw
+			// aborted the re-subscribe — the UI then showed the PREVIOUS args' data
+			// forever (e.g. the add-sender domain hint naming the old domain).
+			mockClient.onUpdate = vi.fn(
+				(_query: unknown, _args: unknown, callback: (data: unknown) => void) => {
+					mockOnUpdateCallback = callback;
+					let dead = false;
+					return vi.fn(() => {
+						if (dead) throw new TypeError('unsubscribed twice');
+						dead = true;
+					});
+				}
+			);
+
+			const email = ref('hallo@wolves.ink');
+			const { data } = useConvexQuery(fakeQuery, () =>
+				email.value.includes('@') ? { email: email.value } : ('skip' as const)
+			);
+			mockOnUpdateCallback!({ domain: 'wolves.ink' });
+			expect(data.value).toEqual({ domain: 'wolves.ink' });
+
+			// Mid-edit the address is invalid → skip (previous data retained by design).
+			email.value = 'hallo';
+			await nextTick();
+			expect(data.value).toEqual({ domain: 'wolves.ink' });
+
+			// Valid again with different args → MUST create a fresh subscription…
+			email.value = 'hallo@example.com';
+			await nextTick();
+			expect(mockClient.onUpdate).toHaveBeenCalledTimes(2);
+			expect(mockClient.onUpdate).toHaveBeenLastCalledWith(
+				fakeQuery,
+				{ email: 'hallo@example.com' },
+				expect.any(Function),
+				expect.any(Function)
+			);
+			// …and clear the stale result while the new one loads.
+			expect(data.value).toBeUndefined();
+
+			mockOnUpdateCallback!({ domain: 'example.com' });
+			expect(data.value).toEqual({ domain: 'example.com' });
+		});
+
 		it('goes idle (isLoading=false) when args transition from valid to skip after data loaded', async () => {
 			const skip = ref(false);
-			const { data, isLoading } = useConvexQuery(fakeQuery, () => (skip.value ? 'skip' : { teamId: '1' }));
+			const { data, isLoading } = useConvexQuery(fakeQuery, () =>
+				skip.value ? 'skip' : { teamId: '1' }
+			);
 
 			// Deliver data for the valid args.
 			mockOnUpdateCallback!({ ok: true });
@@ -154,13 +215,23 @@ describe('useConvexQuery', () => {
 			useConvexQuery(fakeQuery, () => ({ teamId: teamId.value }));
 
 			expect(mockClient.onUpdate).toHaveBeenCalledTimes(1);
-			expect(mockClient.onUpdate).toHaveBeenCalledWith(fakeQuery, { teamId: '123' }, expect.any(Function), expect.any(Function));
+			expect(mockClient.onUpdate).toHaveBeenCalledWith(
+				fakeQuery,
+				{ teamId: '123' },
+				expect.any(Function),
+				expect.any(Function)
+			);
 
 			teamId.value = '456';
 			await nextTick();
 
 			expect(mockClient.onUpdate).toHaveBeenCalledTimes(2);
-			expect(mockClient.onUpdate).toHaveBeenLastCalledWith(fakeQuery, { teamId: '456' }, expect.any(Function), expect.any(Function));
+			expect(mockClient.onUpdate).toHaveBeenLastCalledWith(
+				fakeQuery,
+				{ teamId: '456' },
+				expect.any(Function),
+				expect.any(Function)
+			);
 		});
 
 		it('unsubscribes old subscription before subscribing new on args change', async () => {

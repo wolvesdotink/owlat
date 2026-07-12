@@ -28,6 +28,12 @@ const backgroundClients = new Map<string, WorkspaceBadgeClient>();
 let backgroundOwners = 0;
 
 function setBadge(id: string, count: number): void {
+	// The unchanged-count guard is load-bearing: the active-workspace watchEffect
+	// calls this, and the spread below READS `badges` — making it a dependency of
+	// that effect. Unconditionally writing a fresh object would re-trigger the
+	// effect on its own write, recursing forever ("Maximum recursive updates
+	// exceeded"). Bailing when the count is already right lets it converge.
+	if ((badges.value[id] ?? 0) === count) return;
 	badges.value = { ...badges.value, [id]: count };
 }
 

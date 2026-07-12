@@ -95,6 +95,46 @@ describe('usePreview', () => {
 		expect(preview.plainText.value).toContain('Edited body copy');
 	});
 
+	it('fills {{variables}} in the preview from the Variable Values panel', async () => {
+		const renderOptions = ref<Partial<PreviewRenderOptions>>({});
+		const canvasBlocks = ref<EditorBlock[]>([textBlock('a', 'Hi {{first_name}}, welcome')]);
+		const preview = usePreview({
+			canvasBlocks,
+			theme: computed(() => defaultTheme),
+			variableType: computed<VariableType>(() => 'personalization'),
+			showMandatoryUnsubscribeFooter: computed(() => false),
+			renderOptions,
+		});
+		preview.togglePreviewMode();
+
+		// No value set → sample default, never the raw token.
+		expect(preview.generatedHtml.value).toContain('Hi Alex, welcome');
+		expect(preview.generatedHtml.value).not.toContain('{{first_name}}');
+
+		renderOptions.value = { variableValues: { first_name: 'Marcel' } };
+		await nextTick();
+
+		expect(preview.generatedHtml.value).toContain('Hi Marcel, welcome');
+		expect(preview.plainText.value).toContain('Hi Marcel, welcome');
+	});
+
+	it('defaults unknown variables to their label or humanized key', () => {
+		const canvasBlocks = ref<EditorBlock[]>([
+			textBlock('a', 'Your {{plan_tier}} plan, code {{coupon_code}}'),
+		]);
+		const preview = usePreview({
+			canvasBlocks,
+			theme: computed(() => defaultTheme),
+			variableType: computed<VariableType>(() => 'personalization'),
+			showMandatoryUnsubscribeFooter: computed(() => false),
+			variables: computed(() => [{ key: 'plan_tier', label: 'Plan Tier' }]),
+		});
+		preview.togglePreviewMode();
+
+		expect(preview.generatedHtml.value).toContain('Your Plan Tier plan');
+		expect(preview.generatedHtml.value).toContain('code Coupon code');
+	});
+
 	it('toggles back to edit mode', () => {
 		const { preview } = setup();
 		preview.togglePreviewMode();

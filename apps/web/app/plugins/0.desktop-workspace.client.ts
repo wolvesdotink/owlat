@@ -71,7 +71,10 @@ export default defineNuxtPlugin({
 		else if (/Win/i.test(platform)) root.classList.add('is-win');
 		else root.classList.add('is-linux');
 
-		await loadWorkspaces();
+		// Dev-only auto-connect: `tauri dev` loads the local Nuxt dev server, so
+		// seed the page's own origin as a workspace instead of making the
+		// developer run the manual connect handshake on every fresh profile.
+		await loadWorkspaces({ seedLocalDev: import.meta.dev });
 
 		// Paint the active workspace's identity accent BEFORE first render (the
 		// switch/restart path reloads the webview, so reading it here — after the

@@ -67,6 +67,18 @@ export function useHistory(
 	const stateCache = new Map<number, HistoryState>();
 	const MAX_CACHE_SIZE = MAX_HISTORY_CACHE_SIZE;
 
+	// structuredClone throws DataCloneError on Vue reactive proxies, and the
+	// canvas blocks ref is deeply reactive — so cloning `blocks.value` directly
+	// crashes the editor at mount. Blocks are plain JSON data, so fall back to a
+	// JSON round-trip, which reads *through* proxies and yields plain objects.
+	const deepClone = <T>(value: T): T => {
+		try {
+			return structuredClone(value);
+		} catch {
+			return JSON.parse(JSON.stringify(value)) as T;
+		}
+	};
+
 	const getCachedState = (index: number): HistoryState | undefined => {
 		return stateCache.get(index);
 	};
@@ -79,7 +91,7 @@ export function useHistory(
 				stateCache.delete(firstKey);
 			}
 		}
-		stateCache.set(index, structuredClone(state));
+		stateCache.set(index, deepClone(state));
 	};
 
 	const invalidateCache = () => {
@@ -89,9 +101,8 @@ export function useHistory(
 	// Debounce timer
 	let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
-	// Deep clone helper (structuredClone is faster and handles more types than JSON roundtrip)
 	const cloneState = (): HistoryState => ({
-		blocks: structuredClone(blocks.value),
+		blocks: deepClone(blocks.value),
 		name: name.value,
 		subject: subject.value,
 	});
@@ -177,7 +188,7 @@ export function useHistory(
 	// Apply a history state
 	const applyState = (state: HistoryState) => {
 		isNavigating.value = true;
-		blocks.value = structuredClone(state.blocks);
+		blocks.value = deepClone(state.blocks);
 		name.value = state.name;
 		subject.value = state.subject;
 		previousState = state;
@@ -208,7 +219,7 @@ export function useHistory(
 
 		if (currentEntry?.type === 'delta' && previousState) {
 			// Fast path: apply reverse patches
-			const newState = structuredClone(previousState) as HistoryState;
+			const newState = deepClone(previousState) as HistoryState;
 			applyPatch(newState, currentEntry.reversePatches);
 			applyState(newState);
 			setCachedState(currentIndex.value, newState);
@@ -216,7 +227,7 @@ export function useHistory(
 			// Check cache first
 			const cached = getCachedState(currentIndex.value);
 			if (cached) {
-				applyState(structuredClone(cached));
+				applyState(deepClone(cached));
 			} else {
 				// Reconstruct and cache
 				const state = reconstructState(entries.value, currentIndex.value);
@@ -237,20 +248,20 @@ export function useHistory(
 
 		if (entry?.type === 'delta' && previousState) {
 			// Fast path: apply forward patches
-			const newState = structuredClone(previousState) as HistoryState;
+			const newState = deepClone(previousState) as HistoryState;
 			applyPatch(newState, entry.patches);
 			applyState(newState);
 			setCachedState(currentIndex.value, newState);
 		} else if (entry?.type === 'checkpoint') {
 			// Use checkpoint state directly
-			const state = structuredClone(entry.state);
+			const state = deepClone(entry.state);
 			applyState(state);
 			setCachedState(currentIndex.value, state);
 		} else {
 			// Check cache first
 			const cached = getCachedState(currentIndex.value);
 			if (cached) {
-				applyState(structuredClone(cached));
+				applyState(deepClone(cached));
 			} else {
 				// Reconstruct and cache
 				const state = reconstructState(entries.value, currentIndex.value);

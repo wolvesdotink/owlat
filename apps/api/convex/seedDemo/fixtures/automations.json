@@ -1,14 +1,14 @@
 [
 	{
-		"slug": "welcome-on-signup",
-		"name": "Welcome on signup",
-		"description": "Sends the welcome email when a new contact is created.",
+		"slug": "promo-on-signup",
+		"name": "Promo on signup",
+		"description": "Sends the current promo email when a new contact is created.",
 		"triggerType": "contact_created",
 		"status": "active",
 		"steps": [
 			{
 				"stepType": "email",
-				"template": "welcome-marketing"
+				"template": "summer-sale"
 			}
 		]
 	}

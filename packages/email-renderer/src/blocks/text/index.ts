@@ -16,13 +16,29 @@ import { checkShape, isString, isNumber, isOneOf } from '../../helpers/validatio
 
 const TEXT_BLOCK_TYPES = ['paragraph', 'h1', 'h2', 'h3'] as const;
 const VAGUE_LINK_PATTERNS = [
-	'click here', 'here', 'read more', 'link', 'learn more',
-	'more', 'details', 'find out', 'find out more', 'go',
-	'continue', 'see more', 'view', 'this', 'more info',
+	'click here',
+	'here',
+	'read more',
+	'link',
+	'learn more',
+	'more',
+	'details',
+	'find out',
+	'find out more',
+	'go',
+	'continue',
+	'see more',
+	'view',
+	'this',
+	'more info',
 ];
 
 /** Build the inline style list shared by both placements. */
-const baseStyles = (content: TextBlockContent, includeMsoRule: boolean, alignAllValues: boolean): string[] => {
+const baseStyles = (
+	content: TextBlockContent,
+	includeMsoRule: boolean,
+	alignAllValues: boolean
+): string[] => {
 	const lineHeight = content.lineHeight ?? 1.5;
 	const styles: string[] = [
 		`font-size:${content.fontSize}px`,
@@ -32,22 +48,27 @@ const baseStyles = (content: TextBlockContent, includeMsoRule: boolean, alignAll
 	if (includeMsoRule) styles.push('mso-line-height-rule:exactly');
 	// At root placement, `text-align:left` is omitted (browser default).
 	// At column placement, every textAlign is emitted (Outlook needs explicit alignment in column cells).
-	if (alignAllValues ? !!content.textAlign : !!(content.textAlign && content.textAlign !== 'left')) {
+	if (
+		alignAllValues ? !!content.textAlign : !!(content.textAlign && content.textAlign !== 'left')
+	) {
 		styles.push(`text-align:${content.textAlign}`);
 	}
 	if (content.fontFamily) styles.push(`font-family:${escapeCss(content.fontFamily)}`);
 	if (content.fontWeight) styles.push(`font-weight:${content.fontWeight}`);
 	if (content.letterSpacing) styles.push(`letter-spacing:${content.letterSpacing}px`);
-	if (content.textTransform && content.textTransform !== 'none') styles.push(`text-transform:${content.textTransform}`);
-	if (content.textDecoration && content.textDecoration !== 'none') styles.push(`text-decoration:${content.textDecoration}`);
+	if (content.textTransform && content.textTransform !== 'none')
+		styles.push(`text-transform:${content.textTransform}`);
+	if (content.textDecoration && content.textDecoration !== 'none')
+		styles.push(`text-decoration:${content.textDecoration}`);
 	return styles;
 };
 
 const renderRoot = (content: TextBlockContent): string => {
 	const styles = baseStyles(content, true, false);
-	const tag = content.blockType === 'h1' || content.blockType === 'h2' || content.blockType === 'h3'
-		? content.blockType
-		: 'div';
+	const tag =
+		content.blockType === 'h1' || content.blockType === 'h2' || content.blockType === 'h3'
+			? content.blockType
+			: 'div';
 	if (tag !== 'div') styles.push('margin:0', 'padding:0');
 	return `<${tag} style="${styles.join(';')}">${content.html}</${tag}>`;
 };
@@ -91,9 +112,7 @@ export const textModule: BlockModule<'text'> = {
 
 	responsiveCss({ block, content }) {
 		if (!content.mobileFontSize) return [];
-		return [
-			`[data-block-id="${block.id}"] div{font-size:${content.mobileFontSize}px!important}`,
-		];
+		return [`[data-block-id="${block.id}"] div{font-size:${content.mobileFontSize}px!important}`];
 	},
 
 	html({ block, content, ctx, placement }) {
@@ -110,7 +129,8 @@ export const textModule: BlockModule<'text'> = {
 	},
 
 	plaintext({ content }) {
-		const withLinks = extractLinks(content.html);
+		// Same missing-html guard as html(): blocks written via SDK/API may omit it.
+		const withLinks = extractLinks(content.html || '');
 		return stripHtml(withLinks);
 	},
 
@@ -202,8 +222,7 @@ export const textModule: BlockModule<'text'> = {
 					protonMail: 'none',
 				},
 				severity: 'warning',
-				recommendation:
-					'Always include a fallback font stack (e.g., "Roboto, Arial, sans-serif")',
+				recommendation: 'Always include a fallback font stack (e.g., "Roboto, Arial, sans-serif")',
 				owlatHandled: false,
 			},
 			{
@@ -269,19 +288,57 @@ export const textModule: BlockModule<'text'> = {
 		ctx.state.hasTextBlock = true;
 
 		// Shape
-		checkShape(content as unknown as Record<string, unknown>, [
-			{ field: 'html', check: isString, code: 'TEXT_HTML_TYPE', message: 'html must be a string' },
-			{ field: 'blockType', check: (v) => isOneOf(v, TEXT_BLOCK_TYPES), code: 'TEXT_BLOCKTYPE_INVALID', message: 'blockType must be paragraph, h1, h2, or h3' },
-			{ field: 'fontSize', check: isNumber, code: 'TEXT_FONTSIZE_TYPE', message: 'fontSize must be a number' },
-			{ field: 'textColor', check: isString, code: 'TEXT_TEXTCOLOR_TYPE', message: 'textColor must be a string' },
-		], block.id, 'text', ctx.issues);
+		checkShape(
+			content as unknown as Record<string, unknown>,
+			[
+				{
+					field: 'html',
+					check: isString,
+					code: 'TEXT_HTML_TYPE',
+					message: 'html must be a string',
+				},
+				{
+					field: 'blockType',
+					check: (v) => isOneOf(v, TEXT_BLOCK_TYPES),
+					code: 'TEXT_BLOCKTYPE_INVALID',
+					message: 'blockType must be paragraph, h1, h2, or h3',
+				},
+				{
+					field: 'fontSize',
+					check: isNumber,
+					code: 'TEXT_FONTSIZE_TYPE',
+					message: 'fontSize must be a number',
+				},
+				{
+					field: 'textColor',
+					check: isString,
+					code: 'TEXT_TEXTCOLOR_TYPE',
+					message: 'textColor must be a string',
+				},
+			],
+			block.id,
+			'text',
+			ctx.issues
+		);
 
 		// Semantic
 		if (!content.html || content.html.trim() === '') {
-			ctx.issues.push({ blockId: block.id, blockType: 'text', severity: 'warning', code: 'TEXT_EMPTY', message: 'Text block has empty content' });
+			ctx.issues.push({
+				blockId: block.id,
+				blockType: 'text',
+				severity: 'warning',
+				code: 'TEXT_EMPTY',
+				message: 'Text block has empty content',
+			});
 		}
 		if (content.fontSize && content.fontSize < 13) {
-			ctx.issues.push({ blockId: block.id, blockType: 'text', severity: 'warning', code: 'TEXT_SMALL_FONT', message: `Font size ${content.fontSize}px is below 13px — some mobile clients enforce minimum font sizes, causing layout shifts` });
+			ctx.issues.push({
+				blockId: block.id,
+				blockType: 'text',
+				severity: 'warning',
+				code: 'TEXT_SMALL_FONT',
+				message: `Font size ${content.fontSize}px is below 13px — some mobile clients enforce minimum font sizes, causing layout shifts`,
+			});
 		}
 
 		// Accessibility (audit mode)
@@ -296,7 +353,13 @@ export const textModule: BlockModule<'text'> = {
 					const textMatch = link.match(/>([^<]*)</);
 					const text = textMatch?.[1]?.trim().toLowerCase() || '';
 					if (VAGUE_LINK_PATTERNS.includes(text)) {
-						ctx.issues.push({ blockId: block.id, blockType: 'text', severity: 'warning', code: 'A11Y_VAGUE_LINK_TEXT', message: `Link text "${text}" is vague — use descriptive link text for screen readers` });
+						ctx.issues.push({
+							blockId: block.id,
+							blockType: 'text',
+							severity: 'warning',
+							code: 'A11Y_VAGUE_LINK_TEXT',
+							message: `Link text "${text}" is vague — use descriptive link text for screen readers`,
+						});
 					}
 				}
 			}
@@ -304,10 +367,22 @@ export const textModule: BlockModule<'text'> = {
 
 		// Outlook
 		if (content.lineHeight && content.lineHeight > 3) {
-			ctx.issues.push({ blockId: block.id, blockType: 'text', severity: 'warning', code: 'OUTLOOK_LINE_HEIGHT_LARGE', message: `Line height ${content.lineHeight} is unusually large — Outlook may add excessive extra spacing. Use unitless values like 1.5.` });
+			ctx.issues.push({
+				blockId: block.id,
+				blockType: 'text',
+				severity: 'warning',
+				code: 'OUTLOOK_LINE_HEIGHT_LARGE',
+				message: `Line height ${content.lineHeight} is unusually large — Outlook may add excessive extra spacing. Use unitless values like 1.5.`,
+			});
 		}
 		if (content.fontWeight && content.fontWeight !== 400 && content.fontWeight !== 700) {
-			ctx.issues.push({ blockId: block.id, blockType: 'text', severity: 'info', code: 'OUTLOOK_TEXT_FONT_WEIGHT', message: `Font weight ${content.fontWeight} is not supported in Outlook — only 400 (normal) and 700 (bold) are reliable` });
+			ctx.issues.push({
+				blockId: block.id,
+				blockType: 'text',
+				severity: 'info',
+				code: 'OUTLOOK_TEXT_FONT_WEIGHT',
+				message: `Font weight ${content.fontWeight} is not supported in Outlook — only 400 (normal) and 700 (bold) are reliable`,
+			});
 		}
 	},
 };

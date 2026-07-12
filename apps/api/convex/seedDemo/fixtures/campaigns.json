@@ -1,11 +1,11 @@
 [
 	{
-		"slug": "spring-sale",
-		"name": "Spring Sale 2026",
-		"template": "welcome-marketing",
+		"slug": "summer-sale",
+		"name": "Summer Sale 2026",
+		"template": "summer-sale",
 		"topic": "promotions",
 		"status": "sent",
-		"subject": "Spring Sale — 20% off this week only",
+		"subject": "Summer Sale — 20% off this week only",
 		"fromName": "Owlat Demo",
 		"fromEmail": "hello@demo.localhost",
 		"sentDaysAgo": 6,

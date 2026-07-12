@@ -67,12 +67,87 @@ async function persistStore(): Promise<void> {
 	} satisfies WorkspaceStoreShape);
 }
 
+/** Stable id for the dev-only auto-seeded localhost workspace. Deterministic so
+ * its keychain entry (`owlat-ws:local-dev`) survives a workspaces.json wipe and
+ * a previously stored dev session signs back in without any reconnect. */
+export const LOCAL_DEV_WORKSPACE_ID = 'local-dev';
+
+const LOCAL_DEV_ORIGIN_RE = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
+
+/**
+ * Dev-only auto-connect. Under `tauri dev` the webview loads the local Nuxt dev
+ * server directly (tauri.conf.json `devUrl`), so the instance the developer
+ * wants is always the page's own origin — discover its Convex URLs via the
+ * same-origin /api/instance-info probe and upsert a workspace for it, instead
+ * of routing through the manual connect flow (system browser + `owlat://` deep
+ * link, which doesn't even fire in dev builds). Fail-soft: any probe error
+ * leaves the store untouched and the normal welcome flow takes over.
+ */
+async function seedLocalDevWorkspace(): Promise<void> {
+	const origin = window.location.origin;
+	if (!LOCAL_DEV_ORIGIN_RE.test(origin)) return;
+
+	let info: InstanceInfo;
+	try {
+		const res = await fetch(`${origin}/api/instance-info`, { credentials: 'omit' });
+		if (!res.ok) return;
+		info = (await res.json()) as InstanceInfo;
+	} catch {
+		return;
+	}
+	if (!info.convexUrl || !info.convexSiteUrl) return;
+
+	const sameOrigin = (url: string) => {
+		try {
+			return new URL(url).origin === origin;
+		} catch {
+			return false;
+		}
+	};
+	// A workspace already pointing at this dev instance (seeded earlier, or
+	// added manually via the connect flow) is reused — never duplicated. Its
+	// endpoints are refreshed since local Convex ports can change between runs.
+	let local = workspaces.value.find(
+		(w) => w.id === LOCAL_DEV_WORKSPACE_ID || sameOrigin(w.siteUrl)
+	);
+	if (local) {
+		local.siteUrl = info.siteUrl || origin;
+		local.convexUrl = info.convexUrl;
+		local.convexSiteUrl = info.convexSiteUrl;
+	} else {
+		const now = Date.now();
+		local = {
+			id: LOCAL_DEV_WORKSPACE_ID,
+			label: info.name || 'Local dev',
+			siteUrl: info.siteUrl || origin,
+			convexUrl: info.convexUrl,
+			convexSiteUrl: info.convexSiteUrl,
+			userId: '',
+			tokenRef: workspaceTokenRef(LOCAL_DEV_WORKSPACE_ID),
+			addedAt: now,
+			lastActiveAt: now,
+			accentColor: pickAccentColor(workspaces.value.length),
+		};
+		workspaces.value = [...workspaces.value, local];
+	}
+
+	// Activate it only when nothing (valid) is active — a developer who switched
+	// to some other connected workspace keeps their choice.
+	if (!activeId.value || !workspaces.value.some((w) => w.id === activeId.value)) {
+		activeId.value = local.id;
+	}
+	await persistStore();
+}
+
 /**
  * Read the persisted workspaces, seed the active-workspace singleton, and
  * hydrate the keychain cache for the active workspace. Awaited by the boot
  * plugin BEFORE the Convex/auth singletons are first imported.
+ *
+ * `seedLocalDev` (passed by the boot plugin only in dev) auto-connects the
+ * page's own origin as a workspace — see `seedLocalDevWorkspace`.
  */
-export async function loadWorkspaces(): Promise<void> {
+export async function loadWorkspaces(options?: { seedLocalDev?: boolean }): Promise<void> {
 	if (!isDesktopRuntime() || loaded) return;
 	loaded = true;
 
@@ -91,6 +166,8 @@ export async function loadWorkspaces(): Promise<void> {
 		}
 	});
 	if (backfilled) await persistStore();
+
+	if (options?.seedLocalDev) await seedLocalDevWorkspace();
 
 	const active = workspaces.value.find((w) => w.id === activeId.value) ?? null;
 	setActiveWorkspace(active);

@@ -66,12 +66,22 @@ only be validated against an actual fresh VPS.
 ## Develop
 
 ```sh
+bun run dev      # from the repo root — web (localhost:3000) + Convex backend
 cd apps/desktop
 bun run dev      # tauri dev — loads the Nuxt dev server at localhost:3000
 ```
 
 In dev the app loads `devUrl` (the Nuxt dev server), which has the full Nitro
 server, so both the web cookie flow and the desktop cross-domain flow work.
+
+**Auto-connect.** In dev the boot plugin seeds a `local-dev` workspace for the
+page's own origin (discovered via `/api/instance-info`), so there is no manual
+"connect a server" handshake: the app opens straight onto the in-app login
+form, which signs into the local backend cross-domain and persists the session
+to the OS keychain (`owlat-ws:local-dev`). Subsequent launches restore it
+automatically. Seed accounts come from `bun run dev:seed` (see the root
+README); connecting additional (remote) workspaces still works via
+Settings → Connected workspaces.
 
 ## Verify auth (headless spike)
 

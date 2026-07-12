@@ -21,9 +21,12 @@ const wrapperStyles = computed(() => ({
 	marginLeft: `${content.value.marginLeft ?? 0}px`,
 }));
 
-const enabledLinks = computed(() =>
-	(content.value.links || []).filter((l) => l.enabled !== false)
-);
+const enabledLinks = computed(() => (content.value.links || []).filter((l) => l.enabled !== false));
+
+// The renderer only emits icons that have BOTH enabled and a URL — an icon
+// without a link would be dead weight in the sent email. Dim those here so
+// the canvas doesn't promise icons the email won't contain.
+const hasUnlinkedIcons = computed(() => enabledLinks.value.some((l) => !l.url));
 
 const platformLabels: Record<string, string> = {
 	twitter: 'X',
@@ -58,10 +61,15 @@ const platformLabels: Record<string, string> = {
 					width: `${content.iconSize || 32}px`,
 					height: `${content.iconSize || 32}px`,
 					backgroundColor: content.iconColor || '#374151',
+					opacity: link.url ? undefined : 0.35,
 				}"
+				:title="link.url ? link.url : 'No URL yet — this icon will not appear in the sent email'"
 			>
 				{{ platformLabels[link.platform] || link.platform.slice(0, 2).toUpperCase() }}
 			</div>
+		</div>
+		<div v-if="hasUnlinkedIcons" class="mt-1.5 text-[11px] text-text-tertiary">
+			Dimmed icons have no URL and won't appear in the sent email
 		</div>
 	</div>
 </template>

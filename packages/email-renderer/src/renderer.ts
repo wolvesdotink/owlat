@@ -1,4 +1,9 @@
-import type { EditorBlock, BlockCondition, BlockRepeat, CommonBlockProperties } from '@owlat/shared';
+import type {
+	EditorBlock,
+	BlockCondition,
+	BlockRepeat,
+	CommonBlockProperties,
+} from '@owlat/shared';
 import type { RenderOptions, RenderContext } from './types';
 import { wrapDocument } from './boilerplate';
 import { renderBlock } from './blocks';
@@ -42,7 +47,8 @@ const createContext = (options: RenderOptions = {}): RenderContext => {
 		theme,
 		darkMode,
 		variableType,
-		variableClass: variableType === 'personalization' ? 'personalization-variable' : 'data-variable',
+		variableClass:
+			variableType === 'personalization' ? 'personalization-variable' : 'data-variable',
 		baseWidth: options.baseWidth ?? options.theme?.baseWidth ?? DEFAULT_BASE_WIDTH,
 		preheaderText: options.preheaderText ?? '',
 		title: options.title ?? '',
@@ -63,7 +69,10 @@ const createContext = (options: RenderOptions = {}): RenderContext => {
 /**
  * Evaluate a block condition against variable values.
  */
-const evaluateCondition = (condition: BlockCondition, variables: Record<string, string>): boolean => {
+const evaluateCondition = (
+	condition: BlockCondition,
+	variables: Record<string, string>
+): boolean => {
 	const value = variables[condition.variable];
 	switch (condition.operator) {
 		case 'exists':
@@ -75,7 +84,9 @@ const evaluateCondition = (condition: BlockCondition, variables: Record<string, 
 		case 'notEquals':
 			return value !== condition.value;
 		case 'contains':
-			return value !== undefined && condition.value !== undefined && value.includes(condition.value);
+			return (
+				value !== undefined && condition.value !== undefined && value.includes(condition.value)
+			);
 		default:
 			return true;
 	}
@@ -107,7 +118,10 @@ const expandRepeats = (blocks: EditorBlock[], ctx: RenderContext): EditorBlock[]
 		// Parse the array variable (expects JSON-encoded array string)
 		const rawValue = ctx.variableValues[repeat.variable];
 		if (!rawValue) {
-			addWarning(ctx, `Repeat variable "${repeat.variable}" not found in variableValues — block "${block.id}" skipped.`);
+			addWarning(
+				ctx,
+				`Repeat variable "${repeat.variable}" not found in variableValues — block "${block.id}" skipped.`
+			);
 			continue;
 		}
 
@@ -115,11 +129,17 @@ const expandRepeats = (blocks: EditorBlock[], ctx: RenderContext): EditorBlock[]
 		try {
 			items = JSON.parse(rawValue);
 			if (!Array.isArray(items)) {
-				addWarning(ctx, `Repeat variable "${repeat.variable}" is not an array — block "${block.id}" skipped.`);
+				addWarning(
+					ctx,
+					`Repeat variable "${repeat.variable}" is not an array — block "${block.id}" skipped.`
+				);
 				continue;
 			}
 		} catch {
-			addWarning(ctx, `Repeat variable "${repeat.variable}" is not valid JSON — block "${block.id}" skipped.`);
+			addWarning(
+				ctx,
+				`Repeat variable "${repeat.variable}" is not valid JSON — block "${block.id}" skipped.`
+			);
 			continue;
 		}
 
@@ -128,7 +148,10 @@ const expandRepeats = (blocks: EditorBlock[], ctx: RenderContext): EditorBlock[]
 		const limitedItems = items.slice(0, limit);
 
 		if (items.length > limit) {
-			addWarning(ctx, `Repeat variable "${repeat.variable}" has ${items.length} items but was capped at ${limit} — block "${block.id}".`);
+			addWarning(
+				ctx,
+				`Repeat variable "${repeat.variable}" has ${items.length} items but was capped at ${limit} — block "${block.id}".`
+			);
 		}
 
 		for (let i = 0; i < limitedItems.length; i++) {
@@ -139,7 +162,9 @@ const expandRepeats = (blocks: EditorBlock[], ctx: RenderContext): EditorBlock[]
 			const clonedBlock = {
 				...block,
 				id: `${block.id}-repeat-${i}`,
-				content: structuredClone(block.content),
+				// JSON round-trip instead of structuredClone: editor callers pass Vue
+				// reactive proxies, which structuredClone rejects with DataCloneError.
+				content: JSON.parse(JSON.stringify(block.content)),
 			} as unknown as EditorBlock;
 
 			// Replace {{alias.key}} placeholders in text content
@@ -159,7 +184,10 @@ const expandRepeats = (blocks: EditorBlock[], ctx: RenderContext): EditorBlock[]
 				try {
 					clonedBlock.content = JSON.parse(replaced);
 				} catch {
-					addWarning(ctx, `Repeat item ${i} for variable "${repeat.variable}" produced invalid JSON after substitution — item skipped in block "${block.id}".`);
+					addWarning(
+						ctx,
+						`Repeat item ${i} for variable "${repeat.variable}" produced invalid JSON after substitution — item skipped in block "${block.id}".`
+					);
 					continue;
 				}
 			}
@@ -172,7 +200,10 @@ const expandRepeats = (blocks: EditorBlock[], ctx: RenderContext): EditorBlock[]
 
 			// Safety: prevent total expanded block count from growing unbounded
 			if (result.length > MAX_EXPANDED_BLOCKS) {
-				addWarning(ctx, `Repeat expansion exceeded ${MAX_EXPANDED_BLOCKS} total blocks — further repeats truncated.`);
+				addWarning(
+					ctx,
+					`Repeat expansion exceeded ${MAX_EXPANDED_BLOCKS} total blocks — further repeats truncated.`
+				);
 				return result;
 			}
 		}
@@ -310,19 +341,24 @@ export const renderBlockFragment = (block: EditorBlock, options?: RenderOptions)
  * clean up style attributes.
  */
 const minifyHtml = (html: string): string => {
-	return html
-		// Strip HTML comments EXCEPT MSO conditionals (<!--[if and <![endif]-->)
-		.replace(/<!--(?!\[if)(?!<!\[endif\])[\s\S]*?-->/g, '')
-		// Collapse whitespace between tags
-		.replace(/>\s+</g, '><')
-		// Collapse multiple spaces
-		.replace(/\s{2,}/g, ' ')
-		// Remove trailing semicolons in style attributes
-		.replace(/;"/g, '"')
-		// Collapse whitespace within style attribute values
-		.replace(/style="([^"]*)"/g, (_match, styles: string) => {
-			const cleaned = styles.replace(/\s*;\s*/g, ';').replace(/\s*:\s*/g, ':').trim();
-			return `style="${cleaned}"`;
-		})
-		.trim();
+	return (
+		html
+			// Strip HTML comments EXCEPT MSO conditionals (<!--[if and <![endif]-->)
+			.replace(/<!--(?!\[if)(?!<!\[endif\])[\s\S]*?-->/g, '')
+			// Collapse whitespace between tags
+			.replace(/>\s+</g, '><')
+			// Collapse multiple spaces
+			.replace(/\s{2,}/g, ' ')
+			// Remove trailing semicolons in style attributes
+			.replace(/;"/g, '"')
+			// Collapse whitespace within style attribute values
+			.replace(/style="([^"]*)"/g, (_match, styles: string) => {
+				const cleaned = styles
+					.replace(/\s*;\s*/g, ';')
+					.replace(/\s*:\s*/g, ':')
+					.trim();
+				return `style="${cleaned}"`;
+			})
+			.trim()
+	);
 };

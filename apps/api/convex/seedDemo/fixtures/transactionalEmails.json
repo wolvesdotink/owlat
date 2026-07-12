@@ -1,0 +1,20 @@
+[
+	{
+		"slug": "welcome",
+		"name": "Welcome to Owlat",
+		"subject": "Welcome aboard — here's what's next",
+		"status": "published",
+		"dataVariablesSchema": { "firstName": "string" },
+		"content": "[{\"id\":\"tx-1a\",\"type\":\"text\",\"content\":{\"html\":\"Welcome, {{firstName}}!\",\"blockType\":\"h2\",\"fontSize\":24,\"textColor\":\"#374151\",\"lineHeight\":1.3}},{\"id\":\"tx-1b\",\"type\":\"text\",\"content\":{\"html\":\"Thanks for creating your account. Here are three things to try first: connect a domain, import your contacts, and send yourself a test email.\",\"blockType\":\"paragraph\",\"fontSize\":16,\"textColor\":\"#374151\",\"lineHeight\":1.5}}]",
+		"htmlContent": "<html><body><h2>Welcome, {{firstName}}!</h2><p>Thanks for creating your account. Here are three things to try first: connect a domain, import your contacts, and send yourself a test email.</p></body></html>"
+	},
+	{
+		"slug": "order-confirmed",
+		"name": "Order confirmation",
+		"subject": "Your order #{{orderNumber}} is confirmed",
+		"status": "published",
+		"dataVariablesSchema": { "orderNumber": "string", "totalAmount": "string" },
+		"content": "[{\"id\":\"tx-2a\",\"type\":\"text\",\"content\":{\"html\":\"Order confirmed\",\"blockType\":\"h2\",\"fontSize\":24,\"textColor\":\"#374151\",\"lineHeight\":1.3}},{\"id\":\"tx-2b\",\"type\":\"text\",\"content\":{\"html\":\"Thanks for your order! Order #{{orderNumber}} totalling {{totalAmount}} is confirmed and being prepared for shipping.\",\"blockType\":\"paragraph\",\"fontSize\":16,\"textColor\":\"#374151\",\"lineHeight\":1.5}}]",
+		"htmlContent": "<html><body><h2>Order confirmed</h2><p>Thanks for your order! Order #{{orderNumber}} totalling {{totalAmount}} is confirmed and being prepared for shipping.</p></body></html>"
+	}
+]

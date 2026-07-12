@@ -156,7 +156,7 @@ export async function getSingletonOrganizationId(ctx: QueryCtx | MutationCtx): P
 		model: 'organization',
 		where: [],
 		paginationOpts: { cursor: null, numItems: 2 },
-	})) as { page?: Array<{ id?: string }> } | null;
+	})) as { page?: Array<{ id?: string; _id?: string }> } | null;
 
 	const orgs = result?.page ?? [];
 	if (orgs.length === 0) {
@@ -167,7 +167,12 @@ export async function getSingletonOrganizationId(ctx: QueryCtx | MutationCtx): P
 			'Multi-organization mode is not supported. Only one organization per Owlat instance is allowed.'
 		);
 	}
-	const singletonId = orgs[0]?.id;
+	// The adapter returns RAW component docs: current versions expose the org id
+	// only as `_id` (the component generates it and rejects a client-supplied
+	// `id`), while rows written by older component versions carry an explicit
+	// `id` field. Read both — `id` alone made this throw "No organization
+	// configured" on healthy new deployments (same pattern as sendQueries.ts).
+	const singletonId = orgs[0]?.id ?? orgs[0]?._id;
 	if (!singletonId) {
 		throwForbidden('No organization configured on this Owlat instance');
 	}

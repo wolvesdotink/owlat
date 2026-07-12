@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { sanitizeRawHtml } from '@owlat/email-renderer';
+import { sanitizeRawHtml, moduleFor } from '@owlat/email-renderer';
 import type { EditorBlock, EmailTheme, TextBlockContent } from '../../../types';
 
 const props = defineProps<{
@@ -8,15 +8,23 @@ const props = defineProps<{
 	theme: Required<EmailTheme>;
 }>();
 
-const content = computed(() => props.block.content as TextBlockContent);
+// Run the renderer module's applyTheme so the canvas shows the same
+// heading/body theme defaults the Walker folds in at render time — otherwise
+// edit and preview drift apart on themed typography.
+const content = computed(() => {
+	const raw = props.block.content as TextBlockContent;
+	const applied = moduleFor('text')?.applyTheme?.(raw as never, props.theme);
+	return (applied as TextBlockContent | undefined) ?? raw;
+});
 
 // This preview renders directly into the (non-sandboxed) editor canvas via
 // v-html, so author-supplied text HTML must be sanitised here — otherwise a
 // stored `<img onerror=…>` would execute in the admin's own session. Mirrors
 // the render-boundary sanitiser used for outbound email HTML.
-const sanitizedHtml = computed(() =>
-	sanitizeRawHtml(content.value.html || '')
-	|| '<span style="opacity:0.4">Enter your text here...</span>',
+const sanitizedHtml = computed(
+	() =>
+		sanitizeRawHtml(content.value.html || '') ||
+		'<span style="opacity:0.4">Enter your text here...</span>'
 );
 
 const tag = computed(() => {
@@ -33,7 +41,9 @@ const styles = computed(() => {
 		fontSize: `${c.fontSize || t.bodyFontSize || 16}px`,
 		color: c.textColor || t.bodyTextColor || '#333333',
 		fontFamily: c.fontFamily || t.fontFamily || 'Arial, sans-serif',
-		fontWeight: c.fontWeight ? String(c.fontWeight) : 'normal',
+		// The renderer emits a bare <h1>-<h3> when fontWeight is unset, which
+		// email clients render at the UA-default bold — mirror that here.
+		fontWeight: c.fontWeight ? String(c.fontWeight) : isHeading ? 'bold' : 'normal',
 		lineHeight: c.lineHeight ? String(c.lineHeight) : '1.5',
 		textAlign: c.textAlign || ('left' as const),
 		letterSpacing: c.letterSpacing ? `${c.letterSpacing}px` : 'normal',
@@ -45,12 +55,13 @@ const styles = computed(() => {
 		paddingLeft: `${c.paddingLeft ?? 24}px`,
 		backgroundColor: c.backgroundColor || 'transparent',
 		borderRadius: c.borderRadius ? `${c.borderRadius}px` : undefined,
+		// The explicit margin longhands double as the heading UA-margin reset:
+		// the renderer zeroes the <h*> tag's own margin and folds these values
+		// into the section padding, so the net box is identical.
 		marginTop: `${c.marginTop ?? 0}px`,
 		marginRight: `${c.marginRight ?? 0}px`,
 		marginBottom: `${c.marginBottom ?? 0}px`,
 		marginLeft: `${c.marginLeft ?? 0}px`,
-		// Headings in the renderer get margin:0; padding:0 reset
-		...(isHeading ? { margin: '0', padding: undefined } : {}),
 	};
 });
 </script>

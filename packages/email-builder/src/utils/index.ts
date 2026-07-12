@@ -32,7 +32,12 @@ export {
 	shouldCreateCheckpoint,
 	reconstructState,
 } from './deltaHistory';
-export { containsVariable, extractVariableName, extractVariableNames } from './variables';
+export {
+	containsVariable,
+	extractVariableName,
+	extractVariableNames,
+	fillPreviewVariables,
+} from './variables';
 export { getByPath, setByPath } from './propertyPath';
 export { gradientCss } from './gradient';
 export {
