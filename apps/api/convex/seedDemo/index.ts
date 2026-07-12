@@ -149,6 +149,15 @@ export const seedDemoHttp = httpAction(async (ctx, request) => {
 
 	try {
 		const summary = await ctx.runMutation(internal.seedDemo.index.runSeedDemo, { reset });
+		// Demo threads for the seeded team inboxes run action-side (not as a
+		// Loader): the raw message blob must land in `_storage` first, and only
+		// actions can store blobs. Runs after the mutation so the mailboxes exist.
+		const messages: { inserted: number; skipped: number } = await ctx.runAction(
+			internal.seedDemo.messages.seedMailboxMessages,
+			{}
+		);
+		summary.inserted['mailboxMessages'] = messages.inserted;
+		summary.skipped['mailboxMessages'] = messages.skipped;
 		return jsonResponse(summary, 200);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : 'Internal error';
