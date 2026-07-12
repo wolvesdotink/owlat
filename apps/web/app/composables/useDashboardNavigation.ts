@@ -57,6 +57,17 @@ export function useDashboardNavigation() {
 					]
 				: []),
 			{ name: 'Messaging', href: '/dashboard/settings/channels', icon: 'lucide:radio' },
+			// Admin management surface for shared Postbox inboxes — only meaningful
+			// when a mail surface is on. The page itself shows an admins-only gate.
+			...(isFeatureEnabled('postbox') || isFeatureEnabled('mail.external')
+				? [
+						{
+							name: 'Team Inboxes',
+							href: '/dashboard/settings/team-inboxes',
+							icon: 'lucide:mails',
+						},
+					]
+				: []),
 			{ name: 'Account', href: '/dashboard/settings/account', icon: 'lucide:users' },
 			...(isDesktop.value
 				? [{ name: 'Desktop', href: '/dashboard/settings/desktop', icon: 'lucide:monitor' }]

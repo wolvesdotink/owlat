@@ -168,6 +168,11 @@ const routeConfigs: Record<string, RouteConfig> = {
 		sectionHref: '/dashboard/settings',
 		page: 'Campaign senders',
 	},
+	'/dashboard/settings/team-inboxes': {
+		section: 'Settings',
+		sectionHref: '/dashboard/settings',
+		page: 'Team Inboxes',
+	},
 	'/dashboard/settings/forms': {
 		section: 'Settings',
 		sectionHref: '/dashboard/settings',
