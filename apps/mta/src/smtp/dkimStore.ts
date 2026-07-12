@@ -9,9 +9,30 @@ import { generateKeyPairSync, createPublicKey } from 'crypto';
 import type Redis from 'ioredis';
 import type { DkimKeyConfig } from '../types.js';
 import { logger } from '../monitoring/logger.js';
+import { getMtaSecretBox } from '../lib/secretBox.js';
 
 const DKIM_PREFIX = 'mta:dkim:';
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Unseal a stored DKIM private-key value, migrating a legacy plaintext value in
+ * place. Private keys are sealed at rest (secretBox) so a Redis dump never
+ * exposes a PEM. Pre-sealing installs — and keys written by an older MTA — hold
+ * the raw PEM; on the FIRST read we detect that, re-seal it under
+ * `${DKIM_PREFIX}${domain}`, log once, and return the plaintext. The signer
+ * therefore always receives the identical PEM, so signatures verify unchanged
+ * before and after the migration.
+ */
+async function unsealPrivateKey(redis: Redis, domain: string, stored: string): Promise<string> {
+	const box = getMtaSecretBox();
+	if (box.isSealed(stored)) {
+		return box.open(stored);
+	}
+	// Legacy plaintext PEM — seal it in place (lazy boot migration), then use it.
+	await redis.hset(`${DKIM_PREFIX}${domain}`, { privateKey: box.seal(stored) });
+	logger.info({ domain }, 'DKIM private key sealed in place (plaintext → sealed migration)');
+	return stored;
+}
 
 interface CachedKey {
 	config: DkimKeyConfig;
@@ -24,10 +45,7 @@ const cache = new Map<string, CachedKey>();
 /**
  * Get DKIM config for a domain (cache-first, then Redis)
  */
-export async function getDkimConfig(
-	redis: Redis,
-	domain: string
-): Promise<DkimKeyConfig | null> {
+export async function getDkimConfig(redis: Redis, domain: string): Promise<DkimKeyConfig | null> {
 	// Check cache
 	const cached = cache.get(domain);
 	if (cached && Date.now() - cached.cachedAt < CACHE_TTL_MS) {
@@ -40,7 +58,7 @@ export async function getDkimConfig(
 
 	const config: DkimKeyConfig = {
 		selector: data['selector'],
-		privateKey: data['privateKey'],
+		privateKey: await unsealPrivateKey(redis, domain, data['privateKey']),
 	};
 
 	// Update cache
@@ -57,9 +75,12 @@ export async function setDkimKey(
 	selector: string,
 	privateKey: string
 ): Promise<void> {
+	// Seal the private key at rest so a Redis dump never exposes a PEM. The
+	// selector and timestamps stay plaintext (non-secret). getDkimConfig unseals
+	// transparently on read, so callers still see the raw PEM.
 	await redis.hset(`${DKIM_PREFIX}${domain}`, {
 		selector,
-		privateKey,
+		privateKey: getMtaSecretBox().seal(privateKey),
 		addedAt: String(Date.now()),
 		rotatedAt: String(Date.now()),
 	});
@@ -88,13 +109,16 @@ export async function hasDkimKey(redis: Redis, domain: string): Promise<boolean>
 /**
  * List all DKIM domains (keys redacted)
  */
-export async function listDkimDomains(redis: Redis): Promise<Array<{
-	domain: string;
-	selector: string;
-	addedAt?: number;
-	rotatedAt?: number;
-}>> {
-	const results: Array<{ domain: string; selector: string; addedAt?: number; rotatedAt?: number }> = [];
+export async function listDkimDomains(redis: Redis): Promise<
+	Array<{
+		domain: string;
+		selector: string;
+		addedAt?: number;
+		rotatedAt?: number;
+	}>
+> {
+	const results: Array<{ domain: string; selector: string; addedAt?: number; rotatedAt?: number }> =
+		[];
 	let cursor = '0';
 
 	do {
