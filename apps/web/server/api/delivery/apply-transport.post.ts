@@ -45,7 +45,7 @@ import {
 import { isDeliveryProviderKind } from '@owlat/shared/featureFlags';
 import { readEnvFile, writeEnvFile } from '@owlat/shared/setupEnv';
 import { deriveConvexAdminUrl, pushConvexRuntimeEnv } from '@owlat/shared/convexRuntimeEnv';
-import { createEnvBackupBox } from '@owlat/shared/envBackupBox';
+import { sealRelayPasswordForBackup } from '@owlat/shared/envBackupBox';
 import { requireOrgAdmin } from '~~/server/utils/requireOrgAdmin';
 
 interface ApplyBody {
@@ -62,29 +62,6 @@ interface ApplyResult {
 }
 
 const OWLAT_DIR = process.env['OWLAT_DIR'] || '/opt/owlat';
-
-/**
- * Seal the SMTP relay password in the `.env` BACKUP copy so it is ciphertext at
- * rest — the LIVE send path is untouched (the plaintext goes into the encrypted
- * deployment env store via `pushConvexRuntimeEnv` above, and the deploy-time
- * reseed in `selectRuntimeEnvVars` unseals this backup before any re-push).
- *
- * Sealing needs INSTANCE_SECRET from the same `.env`; a checkout without one
- * (bare dev `.env`) keeps today's plaintext write rather than producing a token
- * nothing could ever unseal. Double-sealing is impossible: credentials are
- * clear-then-set in `planTransportEnvChange`, so `merged` carries the key ONLY
- * when the patch supplied a fresh plaintext password — a stale (sealed) value
- * from a previous apply never survives into `merged`.
- */
-function sealRelayPasswordForBackup(merged: Record<string, string>): Record<string, string> {
-	const password = merged['SMTP_RELAY_PASSWORD'];
-	const instanceSecret = merged['INSTANCE_SECRET'];
-	if (!password || !instanceSecret) return merged;
-	return {
-		...merged,
-		SMTP_RELAY_PASSWORD: createEnvBackupBox(instanceSecret).seal(password),
-	};
-}
 
 export default defineEventHandler(async (event): Promise<ApplyResult> => {
 	await requireOrgAdmin(event);
