@@ -7,7 +7,7 @@
  * `mailMessages.senderHeuristics` for the reader's sender badge. This asserts:
  * first-time-sender true on a fresh address and false once a prior message
  * exists, a lookalike-of-contact hit is persisted with the resembled domain,
- * and a homoglyph From domain sets fromDomainSpoofed.
+ * and a homoglyph From domain sets isFromDomainSpoofed.
  */
 
 import { convexTest } from 'convex-test';
@@ -16,25 +16,7 @@ import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import type { DatabaseWriter } from '../../_generated/server';
 import type { Id } from '../../_generated/dataModel';
-
-// See ingestAuthVerdicts.test.ts / delivery.test.ts: the `../../**` glob omits
-// the `mail/` dir it climbed through, so merge a second glob rooted at `mail/`.
-const rootGlob = import.meta.glob('../../**/*.*s');
-const mailGlob = Object.fromEntries(
-	Object.entries(import.meta.glob('../**/*.*s')).map(([path, mod]) => [
-		path.replace(/^\.\.\//, '../../mail/'),
-		mod,
-	])
-);
-const allModules = { ...rootGlob, ...mailGlob };
-const modules = Object.fromEntries(
-	Object.entries(allModules).filter(
-		([path]) =>
-			!path.includes('sesActions') &&
-			!path.includes('agentSecurity') &&
-			!path.includes('llmProvider')
-	)
-);
+import { modules } from './testModules';
 
 async function insertMailbox(ctx: { db: DatabaseWriter }): Promise<Id<'mailboxes'>> {
 	const now = Date.now();
@@ -130,7 +112,7 @@ describe('mail.delivery.deliverToMailbox — sender heuristics (Sealed Mail A4)'
 
 		await t.run(async (ctx: { db: DatabaseWriter }) => {
 			const msg = await ctx.db.get(result.messageId);
-			expect(msg?.senderHeuristics?.firstTimeSender).toBe(true);
+			expect(msg?.senderHeuristics?.isFirstTimeSender).toBe(true);
 		});
 	});
 
@@ -159,8 +141,9 @@ describe('mail.delivery.deliverToMailbox — sender heuristics (Sealed Mail A4)'
 
 		await t.run(async (ctx: { db: DatabaseWriter }) => {
 			const msg = await ctx.db.get(second.messageId);
-			// Not a first-time sender — and with no other signal, no object at all.
-			expect(msg?.senderHeuristics?.firstTimeSender).not.toBe(true);
+			// Not a first-time sender — and with no other signal firing, the whole
+			// object is dropped rather than stored with stray fields.
+			expect(msg?.senderHeuristics).toBeUndefined();
 		});
 	});
 
@@ -213,7 +196,7 @@ describe('mail.delivery.deliverToMailbox — sender heuristics (Sealed Mail A4)'
 		});
 	});
 
-	it('sets fromDomainSpoofed for a homoglyph From domain', async () => {
+	it('sets isFromDomainSpoofed for a homoglyph From domain', async () => {
 		const t = convexTest(schema, modules);
 		const rawStorageId = await setupMailbox(t);
 
@@ -232,7 +215,7 @@ describe('mail.delivery.deliverToMailbox — sender heuristics (Sealed Mail A4)'
 
 		await t.run(async (ctx: { db: DatabaseWriter }) => {
 			const msg = await ctx.db.get(result.messageId);
-			expect(msg?.senderHeuristics?.fromDomainSpoofed).toBe(true);
+			expect(msg?.senderHeuristics?.isFromDomainSpoofed).toBe(true);
 		});
 	});
 });

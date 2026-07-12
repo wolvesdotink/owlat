@@ -24,6 +24,15 @@ describe('sender-impersonation detection', () => {
 			expect(registrableDomain('mail.paypal.com')).toBe('paypal.com');
 			expect(registrableDomain('paypal.com')).toBe('paypal.com');
 		});
+		it('keeps three labels under a two-level public suffix (ccTLD)', () => {
+			// A naive last-two-labels fold would collapse these to `co.uk`; the
+			// registrable domain must stay the org, so two distinct orgs on the
+			// same ccTLD do not read as "same org".
+			expect(registrableDomain('paypal.co.uk')).toBe('paypal.co.uk');
+			expect(registrableDomain('support.paypal.co.uk')).toBe('paypal.co.uk');
+			expect(registrableDomain('evil-domain.co.uk')).toBe('evil-domain.co.uk');
+			expect(registrableDomain('team.acme.com.au')).toBe('acme.com.au');
+		});
 	});
 
 	describe('scanSenderImpersonation', () => {
@@ -56,6 +65,20 @@ describe('sender-impersonation detection', () => {
 
 		it('does NOT flag a Reply-To that is a subdomain of the same org', () => {
 			const flags = scanSenderImpersonation('newsletter@mail.paypal.com', 'support@paypal.com');
+			expect(flags.find((f) => f.type === 'reply_to_mismatch')).toBeUndefined();
+		});
+
+		it('flags a Reply-To hijack across two orgs on the same ccTLD', () => {
+			// Both end in .co.uk, but they are different registrable domains — a
+			// last-two-labels fold would wrongly treat them as the same org.
+			const flags = scanSenderImpersonation('billing@paypal.co.uk', 'attacker@evil-domain.co.uk');
+			const flag = flags.find((f) => f.type === 'reply_to_mismatch');
+			expect(flag).toBeDefined();
+			expect(flag!.match).toBe('evil-domain.co.uk');
+		});
+
+		it('does NOT flag a ccTLD Reply-To on a subdomain of the same org', () => {
+			const flags = scanSenderImpersonation('newsletter@mail.paypal.co.uk', 'support@paypal.co.uk');
 			expect(flags.find((f) => f.type === 'reply_to_mismatch')).toBeUndefined();
 		});
 
