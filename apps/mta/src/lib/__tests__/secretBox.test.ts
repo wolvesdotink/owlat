@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import {
 	createSecretBox,
 	getMtaSecretBox,
+	initMtaSecretBox,
 	resetMtaSecretBoxForTests,
 	assertMtaSecretStrength,
 	MTA_SECRET_MIN_BYTES,
@@ -95,6 +96,26 @@ describe('secretBox', () => {
 		it('builds a working box from MTA_SECRET (set by the vitest setup)', () => {
 			const box = getMtaSecretBox();
 			expect(box.open(box.seal('via-env'))).toBe('via-env');
+		});
+	});
+
+	describe('initMtaSecretBox', () => {
+		it('binds the shared box to an explicit secret (config-supplied source)', () => {
+			initMtaSecretBox(SECRET);
+			const box = getMtaSecretBox();
+			const sealed = box.seal('via-config');
+			expect(box.open(sealed)).toBe('via-config');
+			// The bound box uses the SAME secret + pinned MTA context: a box built
+			// independently with that secret + context opens its output.
+			const twin = createSecretBox(SECRET, {
+				salt: 'owlat:mta-secrets:salt:v1',
+				info: 'owlat:mta-secrets:secrets:v1',
+			});
+			expect(twin.open(sealed)).toBe('via-config');
+		});
+
+		it('rejects a weak secret before binding', () => {
+			expect(() => initMtaSecretBox('short')).toThrow(/at least 32 bytes/);
 		});
 	});
 });

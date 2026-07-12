@@ -143,10 +143,26 @@ export function assertMtaSecretStrength(secret: string | undefined): asserts sec
 let cachedBox: SecretBox | null = null;
 
 /**
- * The MTA transport-secret box: MTA_SECRET under the pinned MTA context. Lazily
- * built and cached. Reads MTA_SECRET from the environment (config.ts validates
- * its presence + strength at boot); throws here too if it is missing/weak so a
- * misconfigured process can never seal under a bad key.
+ * Bind the MTA transport-secret box to the boot-validated secret from config.
+ *
+ * Called once from the MTA entry point with `config.mtaSecret` so the env read
+ * lives in `config.ts` (the single MTA env boundary) and the box has ONE
+ * authoritative secret source in production. `getMtaSecretBox()` then returns
+ * this bound box rather than re-reading the environment.
+ */
+export function initMtaSecretBox(secret: string): void {
+	assertMtaSecretStrength(secret);
+	cachedBox = createSecretBox(secret, { salt: MTA_SECRET_SALT, info: MTA_SECRET_INFO });
+}
+
+/**
+ * The MTA transport-secret box: MTA_SECRET under the pinned MTA context.
+ *
+ * In production it is bound at boot by {@link initMtaSecretBox} from
+ * `config.mtaSecret`. If that has not run (unit tests that seal/unseal without
+ * loading the full config), it lazily falls back to `MTA_SECRET` from the
+ * environment — validated for presence + strength either way, so a misconfigured
+ * process can never seal under a weak key.
  */
 export function getMtaSecretBox(): SecretBox {
 	if (cachedBox) return cachedBox;
