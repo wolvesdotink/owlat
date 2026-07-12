@@ -23,8 +23,12 @@ Content-Disposition: attachment; filename="signature.asc"
 
 -----BEGIN PGP SIGNATURE-----
 
-PLACEHOLDER_STALE_SIGNATURE_OVER_ORIGINAL_BODY_DOES_NOT_MATCH
-=BBBB
+wrsEARYKAG0FgmpT3nQJEJmLeayO8zevRRQAAAAAABwAIHNhbHRAbm90YXRp
+b25zLm9wZW5wZ3Bqcy5vcmdpEaWcKQpOV/DIa4tSW/FQg4+kQqi70gjE3a/4
+2Yh2ohYhBPOmAJAMZnnVLeaXsZmLeayO8zevAAAnOQEA5UYYbNwNCVMZrLFb
+akoOxsSH1pssdhVad+HUuGbFyfwA/2vShZ7HQSlzIwj79/DZKMNZAY4ALoHw
+JUXhJab/2bEO
+=kuS8
 -----END PGP SIGNATURE-----
 
 --sig-boundary-bad--

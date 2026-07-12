@@ -23,8 +23,12 @@ Content-Disposition: attachment; filename="signature.asc"
 
 -----BEGIN PGP SIGNATURE-----
 
-PLACEHOLDER_GOOD_SIGNATURE_ARMOR_REGENERATE_WITH_GPG_OR_OPENPGP
-=AAAA
+wrsEARYKAG0FgmpT3nQJEJmLeayO8zevRRQAAAAAABwAIHNhbHRAbm90YXRp
+b25zLm9wZW5wZ3Bqcy5vcmcRkQxJK2bEw0YdcAEXSvLs3gwVZd0r15NoFw61
+08SQRhYhBPOmAJAMZnnVLeaXsZmLeayO8zevAAB9fgEA5QhzCnPdeTdiElnb
+R/DVM3syxe20/qO7FgFIq4DyjGABAKnGg2vq8Sh2HfrmQOT1wUAruP38v7z4
+GygwMXufF3IH
+=DCy6
 -----END PGP SIGNATURE-----
 
 --sig-boundary-good--

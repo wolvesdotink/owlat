@@ -13,16 +13,20 @@ time. Regeneration is an offline, developer-only step documented below.
 | WKD hashing | `wkd/hash-vectors.json` | **Real, verified** — deterministic z-base32(SHA-1(lowercase(local-part))); the `joe.doe` vector matches the canonical WKD draft example | `node` one-liner below |
 | TLS-RPT | `tls-rpt/report.json`, `tls-rpt/report.json.gz` | **Real** — RFC 8460 report, gzipped exactly as a reporter would POST it | `node`/`zlib` below |
 | DNS mocks | `dns/tlsa.json`, `dns/mta-sts-txt.json` | **Real** — hand-authored resolver-answer shapes (TLSA usage/selector/matching-type; `_mta-sts` TXT + policy body) | edit by hand |
-| PGP/MIME | `pgp-mime/*.eml` | **Structural placeholders** — RFC 3156 message structure is real; the armored signature/ciphertext blocks are placeholders. Regenerating with real OpenPGP keys is a QA follow-up | `gpg` or `openpgp` below |
-| ARC | `arc/*.eml` | **Structural placeholders** — RFC 8617 header sets are real; the `b=`/`bh=` signature values are placeholders. Regenerating with real keys is a QA follow-up | `gpg`/OpenARC below |
+| PGP/MIME | `pgp-mime/*.eml` | **Real, self-verified** — genuine OpenPGP material produced by `pgp-mime/generate.mjs` with the committed throwaway keys: `good-sig` verifies, `bad-sig` fails, `protected-headers` decrypts to the inner subject (outer `Subject` stays `...` per D4). Bytes are CRLF; `.gitattributes` exempts the corpus from EOL normalization | `node pgp-mime/generate.mjs` |
+| ARC | `arc/*.eml` | **Structural placeholders** — RFC 8617 header sets are real; the `b=`/`bh=` signature values are placeholders. No sanctioned offline ARC sealer is in the dependency set, so real chains are a QA follow-up | `gpg`/OpenARC below |
 
-> The PGP/MIME and ARC `.eml` files carry **placeholder** cryptographic material
-> (`PLACEHOLDER_...`, `=AAAA` armor tails). They exercise MIME parsing, header
-> extraction, and the honesty-audit state machine (good-sig / bad-sig / no-sig /
-> protected-headers; valid-rescue / broken-ams / untrusted-sealer / cv-fail).
-> Producing GnuPG- or openpgp.js-signed versions with a committed test keyring is
-> a tracked QA follow-up; do it offline and overwrite the bytes in place so CI
-> stays gpg-free.
+> The ARC `.eml` files still carry **placeholder** cryptographic material
+> (`PLACEHOLDER_...`, `=AAAA` armor tails): they exercise the RFC 8617 header-set
+> parsing and the honesty-audit state machine (valid-rescue / broken-ams /
+> untrusted-sealer / cv-fail) but not real seal verification. Producing real
+> chains with a committed keyring is a tracked follow-up; do it offline and
+> overwrite the bytes in place so CI stays gpg-free.
+>
+> The PGP/MIME `.eml` files are **real**: regenerate them any time with
+> `node pgp-mime/generate.mjs` (resolves the checked-in `openpgp` dependency; no
+> GnuPG needed). The script self-verifies and exits non-zero if the material is
+> not genuine.
 
 ## PGP/MIME (`pgp-mime/`)
 
@@ -37,26 +41,27 @@ Four cases the reader badge state machine must distinguish:
   headers per locked decision **D4**: the outer `Subject` is the literal `...`
   and the real subject travels inside the encrypted part.
 
-Regenerate with GnuPG (offline; uses a throwaway keyring):
+The throwaway keys that produced these fixtures are committed under
+`pgp-mime/keys/` (`alice` signs, `bob` decrypts; public + private, ASCII-armored).
+They protect nothing — they exist purely so verification/decryption is
+reproducible and so downstream honesty-audit tests can assert real signatures.
+
+Regenerate, gpg-free, with the checked-in `openpgp` dependency (added in P0) —
+run from `apps/api` (where `openpgp` resolves):
 
 ```sh
-export GNUPGHOME="$(mktemp -d)"
-gpg --batch --quick-generate-key 'Alice <alice@sealed.example.com>' rsa3072 default never
-# Sign the body part to produce a multipart/signed message:
-gpg --armor --detach-sign --digest-algo SHA256 body.txt   # -> signature.asc
-# Encrypt to Bob's public key for the protected-headers case:
-gpg --armor --encrypt --recipient bob@sealed.example.org inner.eml
+node fixtures/sealed-mail/pgp-mime/generate.mjs
 ```
 
-Or, keeping the repo gpg-free, with the checked-in `openpgp` dependency (added in
-P0) via a one-off Node script:
+`generate.mjs` mints fresh Alice/Bob keys, signs the exact CRLF body part
+(`good-sig`), signs the original body then embeds a modified one (`bad-sig`),
+encrypts an inner MIME part whose real `Subject` travels inside while the outer
+`Subject` stays `...` (`protected-headers`), overwrites the `.eml` + key bytes in
+place, and self-verifies (exits non-zero if the material is not genuine). Because
+it re-mints keys, every run rewrites `keys/` too.
 
-```js
-import * as openpgp from 'openpgp';
-const { privateKey } = await openpgp.generateKey({ userIDs: [{ name: 'Alice', email: 'alice@sealed.example.com' }], type: 'ecc', curve: 'ed25519' });
-const message = await openpgp.createMessage({ text: bodyPart });
-const detachedSignature = await openpgp.sign({ message, signingKeys: privateKey, detached: true });
-```
+GnuPG regeneration remains a valid offline alternative but is not required and CI
+never invokes it.
 
 ## ARC (`arc/`)
 
