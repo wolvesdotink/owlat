@@ -174,6 +174,12 @@ const DISPATCH: DispatchTable = {
 			references: m.references,
 			attachmentMeta: m.attachments.length > 0 ? JSON.stringify(m.attachments) : undefined,
 			timestamp: m.timestamp,
+			// RFC 8601 inbound auth verdicts. Previously dropped on this AI-inbox
+			// path; now persisted so the reader can show an honest sender badge.
+			spfResult: m.spfResult,
+			dkimResult: m.dkimResult,
+			dmarcResult: m.dmarcResult,
+			dmarcPolicy: m.dmarcPolicy,
 		});
 	},
 	'channel.received': async (ctx, e) => {

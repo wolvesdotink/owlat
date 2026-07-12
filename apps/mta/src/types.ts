@@ -148,8 +148,29 @@ export interface MtaWebhookEvent {
 	timestamp: number;
 }
 
+/**
+ * RFC 8601 inbound authentication verdicts plus the DMARC alignment inputs, as
+ * computed by the MTA over the raw bytes at ingest. Every field is optional: a
+ * disabled check (or an absent identity) leaves it `undefined`, which the
+ * downstream consumer must render as "unknown" — never as a pass.
+ */
+export interface InboundAuthVerdicts {
+	/** SPF result on the SMTP envelope MAIL FROM (RFC 7208 §2.6 keyword). */
+	spfResult?: string;
+	/** DKIM result on the strongest signature (RFC 6376 / RFC 8601 keyword). */
+	dkimResult?: string;
+	/** DMARC result binding SPF/DKIM to the From domain (RFC 7489). */
+	dmarcResult?: string;
+	/** Published DMARC policy (`none`/`quarantine`/`reject`) for the From domain. */
+	dmarcPolicy?: string;
+	/** DMARC alignment input: the SMTP envelope MAIL FROM domain. */
+	envelopeFromDomain?: string;
+	/** DMARC alignment input: the d= domain of the passing DKIM signature. */
+	dkimSigningDomain?: string;
+}
+
 /** Personal-mailbox (Postbox) inbound payload — includes raw RFC822 for storage */
-export interface MailboxInboundPayload {
+export interface MailboxInboundPayload extends InboundAuthVerdicts {
 	deliveryId: string;
 	recipientAddress: string;
 	rawBytesBase64: string;
@@ -182,14 +203,13 @@ export interface MailboxInboundPayload {
 	spamScore?: number;
 	spamVerdict?: 'ham' | 'spam' | 'quarantine';
 	virusVerdict?: 'clean' | 'infected' | 'skipped';
-	spfResult?: string;
-	dkimResult?: string;
-	dmarcResult?: string;
-	dmarcPolicy?: string;
 }
 
-/** Parsed inbound email content forwarded to Convex */
-export interface InboundEmailPayload {
+/** Parsed inbound email content forwarded to Convex (AI-inbox `inbound.received`) */
+export interface InboundEmailPayload extends Pick<
+	InboundAuthVerdicts,
+	'spfResult' | 'dkimResult' | 'dmarcResult' | 'dmarcPolicy'
+> {
 	from: string;
 	to: string;
 	subject: string;

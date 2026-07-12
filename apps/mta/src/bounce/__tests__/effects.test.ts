@@ -50,20 +50,20 @@ describe('applyEffects — per-effect dispatch', () => {
 		const deps = makeDeps();
 		await applyEffects(
 			[{ kind: 'circuit_breaker_outcome', orgId: 'org-1', outcome: 'complained' }],
-			deps,
+			deps
 		);
 		expect(circuitBreaker.recordOutcome).toHaveBeenCalledWith(
 			expect.anything(),
 			'org-1',
 			'complained',
-			deps.config,
+			deps.config
 		);
 	});
 
 	it('metric_inc(fbl_complaint) → fblComplaintsTotal.inc with labels', async () => {
 		await applyEffects(
 			[{ kind: 'metric_inc', metric: 'fbl_complaint', isp: 'microsoft', attributed: 'yes' }],
-			makeDeps(),
+			makeDeps()
 		);
 		expect(metrics.fblComplaintsTotal.inc).toHaveBeenCalledWith({
 			isp: 'microsoft',
@@ -74,8 +74,15 @@ describe('applyEffects — per-effect dispatch', () => {
 	// PR-15: per-campaign complaint counter (distinct from the per-isp counter).
 	it('metric_inc(fbl_complaint_by_campaign) → fblComplaintsByCampaignTotal.inc with labels', async () => {
 		await applyEffects(
-			[{ kind: 'metric_inc', metric: 'fbl_complaint_by_campaign', campaign: 'camp_1', isp: 'yahoo' }],
-			makeDeps(),
+			[
+				{
+					kind: 'metric_inc',
+					metric: 'fbl_complaint_by_campaign',
+					campaign: 'camp_1',
+					isp: 'yahoo',
+				},
+			],
+			makeDeps()
 		);
 		expect(metrics.fblComplaintsByCampaignTotal.inc).toHaveBeenCalledWith({
 			campaign: 'camp_1',
@@ -107,7 +114,7 @@ describe('applyEffects — per-effect dispatch', () => {
 					ttlSeconds: 3600,
 				},
 			],
-			deps,
+			deps
 		);
 		const value = await deps.redis.get('mta:inbound-att:msg-1:0');
 		expect(value).toBe('AAAA');
@@ -126,11 +133,12 @@ describe('applyEffects — per-effect dispatch', () => {
 			createdAt: 0,
 		};
 		const parsed = { subject: 'x' } as unknown as ParsedMail;
+		const auth = { spfResult: 'pass', dkimResult: 'pass' };
 		await applyEffects(
-			[{ kind: 'forward_to_endpoint', route, parsed, rcptTo: 'me@org.example' }],
-			makeDeps(),
+			[{ kind: 'forward_to_endpoint', route, parsed, rcptTo: 'me@org.example', auth }],
+			makeDeps()
 		);
-		expect(forwardToEndpoint).toHaveBeenCalledWith(parsed, route, 'me@org.example');
+		expect(forwardToEndpoint).toHaveBeenCalledWith(parsed, route, 'me@org.example', auth);
 	});
 
 	it('notify_convex → notifyConvex (fire-and-forget)', async () => {
@@ -145,7 +153,7 @@ describe('applyEffects — per-effect dispatch', () => {
 					},
 				},
 			],
-			makeDeps(),
+			makeDeps()
 		);
 		expect(notifyConvex).toHaveBeenCalled();
 	});
@@ -153,7 +161,7 @@ describe('applyEffects — per-effect dispatch', () => {
 	it('mailbox_quota_bump → bumpUsedBytes (fire-and-forget)', async () => {
 		await applyEffects(
 			[{ kind: 'mailbox_quota_bump', address: 'me@org.example', deltaBytes: 1234 }],
-			makeDeps(),
+			makeDeps()
 		);
 		expect(bumpUsedBytes).toHaveBeenCalledWith(expect.anything(), 'me@org.example', 1234);
 	});
@@ -169,7 +177,7 @@ describe('applyEffects — fire-and-forget guarantees', () => {
 					event: { event: 'complained', timestamp: 0 },
 				},
 			],
-			makeDeps(),
+			makeDeps()
 		);
 		expect(notifyConvex).toHaveBeenCalled();
 	});
@@ -178,7 +186,7 @@ describe('applyEffects — fire-and-forget guarantees', () => {
 		vi.mocked(bumpUsedBytes).mockImplementation(() => new Promise(() => {}));
 		await applyEffects(
 			[{ kind: 'mailbox_quota_bump', address: 'me@org.example', deltaBytes: 1 }],
-			makeDeps(),
+			makeDeps()
 		);
 		expect(bumpUsedBytes).toHaveBeenCalled();
 	});
@@ -188,8 +196,8 @@ describe('applyEffects — fire-and-forget guarantees', () => {
 		await expect(
 			applyEffects(
 				[{ kind: 'notify_convex', event: { event: 'complained', timestamp: 0 } }],
-				makeDeps(),
-			),
+				makeDeps()
+			)
 		).resolves.toBeUndefined();
 	});
 
@@ -198,8 +206,8 @@ describe('applyEffects — fire-and-forget guarantees', () => {
 		await expect(
 			applyEffects(
 				[{ kind: 'circuit_breaker_outcome', orgId: 'org-1', outcome: 'complained' }],
-				makeDeps(),
-			),
+				makeDeps()
+			)
 		).rejects.toThrow('boom');
 	});
 });
@@ -213,7 +221,7 @@ describe('applyEffects — campaign_complaint_record (per-campaign rate + alert)
 	async function complain(deps: PhaseDeps): Promise<void> {
 		await applyEffects(
 			[{ kind: 'campaign_complaint_record', campaignId: CAMPAIGN, organizationId: 'org-1' }],
-			deps,
+			deps
 		);
 	}
 
