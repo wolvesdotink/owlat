@@ -26,6 +26,16 @@ export interface ScanInput {
 	text: string;
 	/** URLs extracted from the HTML once, reused by URL-aware rules. */
 	urls: Array<{ href: string; text: string }>;
+	/**
+	 * Raw `From:` header value (address or "Name <address>"). Optional — the
+	 * legacy scanContent(subject, html) callers pass no headers, so header-aware
+	 * rules (sender-impersonation) must no-op when it is absent rather than
+	 * assume a sender. Header rules stay content-only: they inspect the strings
+	 * handed to them and never reach for the network or a database.
+	 */
+	from?: string;
+	/** Raw `Reply-To:` header value, when present. Optional, as above. */
+	replyTo?: string;
 }
 
 /**

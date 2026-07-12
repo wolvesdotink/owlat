@@ -10,15 +10,33 @@
  * flag is off, or there are no verdicts to reason about (a legacy row), it
  * renders nothing.
  */
-import { deriveSenderAuth, type SenderAuthInput, type SenderAuthResult } from '~/utils/senderAuth';
+import {
+	deriveSenderAuth,
+	deriveSenderHeuristicLines,
+	type SenderAuthInput,
+	type SenderAuthResult,
+	type SenderHeuristics,
+} from '~/utils/senderAuth';
 
 const props = defineProps<{
 	/** Feature-flag gate: when false the badge renders nothing. */
 	enabled: boolean;
 	auth: SenderAuthInput;
+	/**
+	 * Ingest-computed sender-impersonation heuristics (Sealed Mail A4). Rendered
+	 * as secondary detail lines under the main explanation — never a second
+	 * badge. Absent / all-clear contributes no lines.
+	 */
+	heuristics?: SenderHeuristics;
 }>();
 
 const result = computed(() => (props.enabled ? deriveSenderAuth(props.auth) : null));
+
+// Secondary impersonation lines, shown only when the badge itself renders (a
+// legacy row with no verdicts stays silent). Each line maps 1:1 to a fired flag.
+const heuristicLines = computed(() =>
+	props.enabled ? deriveSenderHeuristicLines(props.heuristics) : []
+);
 
 // Quiet by default when verified; the warn/danger states start expanded so the
 // reader sees why without having to reach for it. Watch the derived STATE (a
@@ -27,9 +45,13 @@ const result = computed(() => (props.enabled ? deriveSenderAuth(props.auth) : nu
 // reader's manual expand/collapse on any unrelated re-render.
 const expanded = ref(false);
 watch(
-	() => result.value?.state,
-	(state) => {
-		expanded.value = state ? state !== 'verified' : false;
+	[() => result.value?.state, () => heuristicLines.value.length],
+	([state, lineCount]) => {
+		// Expand when there is something the reader should not have to reach for:
+		// any non-verified state, OR an impersonation heuristic fired even on an
+		// otherwise-verified sender (a verified domain can still be a look-alike
+		// of a contact). A quiet verified sender with no heuristics stays folded.
+		expanded.value = state ? state !== 'verified' || lineCount > 0 : false;
 	},
 	{ immediate: true }
 );
@@ -76,5 +98,12 @@ const toneClasses = computed(() => {
 		>
 			{{ result.detail }}
 		</p>
+		<ul
+			v-if="expanded && heuristicLines.length"
+			class="mt-1.5 space-y-1 text-xs text-text-secondary max-w-prose list-disc pl-4"
+			data-testid="auth-badge-heuristics"
+		>
+			<li v-for="line in heuristicLines" :key="line">{{ line }}</li>
+		</ul>
 	</div>
 </template>

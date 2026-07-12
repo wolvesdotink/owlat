@@ -156,3 +156,45 @@ export function deriveSenderAuth(input: SenderAuthInput): SenderAuthResult | nul
 		icon: 'lucide:shield-question',
 	};
 }
+
+/**
+ * Ingest-computed sender-impersonation heuristics (Sealed Mail A4), persisted on
+ * `mailMessages.senderHeuristics`. The whole object is absent when nothing fired
+ * — an unremarkable / legacy row contributes no lines rather than a false "all
+ * clear". This is the web-side copy of the shape (single source is the Convex
+ * `senderHeuristicsValidator`); the boundary keeps its own copy per this app's
+ * existing cross-package pattern.
+ */
+export interface SenderHeuristics {
+	isFromDomainSpoofed?: boolean;
+	isReplyToMismatch?: boolean;
+	isFirstTimeSender?: boolean;
+	lookalikeOfContactDomain?: string;
+}
+
+/**
+ * Turn the ingest heuristics into plain-language SECONDARY lines rendered inside
+ * the auth badge's detail (never a second badge). Each line maps 1:1 to a flag
+ * that actually fired — the honesty audit again: we only say what was observed.
+ * Order runs strongest-signal first (a named look-alike, then a look-alike
+ * character set, then a reply-to redirect) and ends with the softest context
+ * signal (first contact). Returns [] when nothing fired.
+ */
+export function deriveSenderHeuristicLines(heuristics: SenderHeuristics | undefined): string[] {
+	if (!heuristics) return [];
+	const lines: string[] = [];
+	const lookalike = heuristics.lookalikeOfContactDomain?.trim();
+	if (lookalike) {
+		lines.push(`This sender's domain looks like ${lookalike}, but is not it.`);
+	}
+	if (heuristics.isFromDomainSpoofed) {
+		lines.push("The sender's domain uses look-alike characters that imitate another domain.");
+	}
+	if (heuristics.isReplyToMismatch) {
+		lines.push('Replies would go to a different domain than this message claims to be from.');
+	}
+	if (heuristics.isFirstTimeSender) {
+		lines.push("This is the first message you've received from this address.");
+	}
+	return lines;
+}

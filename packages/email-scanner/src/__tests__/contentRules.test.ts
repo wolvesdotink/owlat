@@ -30,6 +30,7 @@ describe('contentRules — registry lifecycle', () => {
 			'homoglyphs',
 			'phishing-urls',
 			'prohibited-content',
+			'sender-impersonation',
 			'spam-keywords',
 		]);
 	});
@@ -99,16 +100,13 @@ describe('contentRules — registry-driven scanContent matches legacy flag cover
 	it('still emits spam_keywords flags through the registry', () => {
 		const result = scanContent(
 			'FREE MONEY - Get Rich Quick!!!',
-			'<html><body>Make money fast! Double your investment guaranteed!</body></html>',
+			'<html><body>Make money fast! Double your investment guaranteed!</body></html>'
 		);
 		expect(result.flags.some((f) => f.type === 'spam_keywords')).toBe(true);
 	});
 
 	it('still emits caps_abuse and excessive_punctuation through the registry', () => {
-		const result = scanContent(
-			'WIN BIG NOW!!!!!',
-			'<html><body>Click here.</body></html>',
-		);
+		const result = scanContent('WIN BIG NOW!!!!!', '<html><body>Click here.</body></html>');
 		expect(result.flags.some((f) => f.type === 'caps_abuse')).toBe(true);
 		expect(result.flags.some((f) => f.type === 'excessive_punctuation')).toBe(true);
 	});
@@ -141,7 +139,7 @@ describe('contentRules — extension proof', () => {
 
 		const result = scanContent(
 			'Hi team',
-			'<html><body>This is internal-only — do not forward.</body></html>',
+			'<html><body>This is internal-only — do not forward.</body></html>'
 		);
 
 		// The custom rule was invoked exactly once and with the standard input shape
@@ -195,10 +193,7 @@ describe('contentRules — failure modes', () => {
 		installedIds.push('broken');
 
 		// Other built-in rules should still flag this
-		const result = scanContent(
-			'FREE MONEY',
-			'<html><body>get rich quick today</body></html>',
-		);
+		const result = scanContent('FREE MONEY', '<html><body>get rich quick today</body></html>');
 		expect(result.flags.some((f) => f.type === 'spam_keywords')).toBe(true);
 	});
 
@@ -213,7 +208,7 @@ describe('contentRules — failure modes', () => {
 
 		const result = scanContent('hi', '<p>clean body</p>');
 		const surfaced = result.flags.find(
-			(f) => f.type === 'suspicious_pattern' && f.description.includes('broken-named'),
+			(f) => f.type === 'suspicious_pattern' && f.description.includes('broken-named')
 		);
 		expect(surfaced).toBeDefined();
 		expect(surfaced!.description).toContain('boom');
