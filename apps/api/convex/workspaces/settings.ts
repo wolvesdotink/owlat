@@ -48,6 +48,9 @@ export const update = authedMutation({
 		// When on, campaign sends may use any from-address on a verified sending
 		// domain, not just the curated `campaignSenders` list. Defaults OFF.
 		isCustomCampaignSendersAllowed: v.optional(v.boolean()),
+		// MTA-STS publishing posture for inbound mail (RFC 8461). Defaults to
+		// `none` (nothing published) — step through `testing` before `enforce`.
+		mtaStsMode: v.optional(v.union(v.literal('none'), v.literal('testing'), v.literal('enforce'))),
 		emailTheme: v.optional(
 			v.object({
 				primaryColor: v.string(),

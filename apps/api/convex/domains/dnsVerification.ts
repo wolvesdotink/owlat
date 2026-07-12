@@ -28,6 +28,13 @@ import { throwNotFound, throwInvalidState, throwInternal } from '../_utils/error
 import { txtRecordMatches } from './dnsMatch';
 import { checkReverseDns } from './reverseDns';
 import type { ReverseDnsResult } from './reverseDns';
+import {
+	MTA_STS_TXT_HOST,
+	MTA_STS_POLICY_HOST,
+	MTA_STS_WELL_KNOWN_PATH,
+	verifyMtaStsPublication,
+} from '@owlat/shared/mtaStsPolicy';
+import type { MtaStsVerification } from '@owlat/shared/mtaStsPolicy';
 
 type DnsRecord = {
 	type?: 'TXT' | 'CNAME' | 'MX' | 'TLSA';
@@ -469,3 +476,61 @@ export const checkReceivingReverseDns = authedAction({
 		return checkReverseDns(mailHost, { resolve4: dns.resolve4, reverse: dns.reverse });
 	},
 });
+
+// ─── Receiving MTA-STS publication check ────────────────────────────────────
+//
+// Live verification that our OWN MTA-STS policy (RFC 8461) is correctly
+// published for `domain`: the `_mta-sts.<domain>` TXT record must carry our
+// current policy id AND `https://mta-sts.<domain>/.well-known/mta-sts.txt` must
+// serve the exact policy body we generate. The expected policy is read from the
+// same `getMtaStsPolicy` query the public route serves, so "what we verify"
+// can't drift from "what we publish". The id-match verdict is the pure,
+// unit-tested `verifyMtaStsPublication`; this action only gathers the raw DNS +
+// HTTPS observations and never throws — a lookup/fetch failure degrades to a
+// "not found" observation so the setup UI shows "not verified", not an error.
+// Returns `null` when no policy is being published (`mode === 'none'` or no mail
+// host), matching `getMtaStsPolicy`.
+//
+// authz: admin-gated — the underlying `getMtaStsGuidance`/verify are operator
+// tasks; the floor is `organization:manage` (checked in `getMtaStsGuidance`).
+export const verifyReceivingMtaSts = authedAction({
+	args: { domain: v.string() },
+	handler: async (ctx, args): Promise<MtaStsVerification | null> => {
+		// Admin gate + published-policy check in one query the route also uses.
+		await ctx.runQuery(api.domains.domains.getMtaStsGuidance, {});
+		const expected = await ctx.runQuery(api.domains.domains.getMtaStsPolicy, {});
+		if (!expected) return null;
+
+		const txtValue = await resolveMtaStsTxt(args.domain);
+		const servedBody = await fetchMtaStsPolicyBody(args.domain);
+		return verifyMtaStsPublication(
+			{ policyId: expected.policyId, body: expected.body },
+			{ txtValue, servedBody }
+		);
+	},
+});
+
+// Resolve the `_mta-sts.<domain>` TXT record, joining multi-string chunks per
+// RFC 1035. Fail-soft: any lookup error → null (treated as "no record").
+async function resolveMtaStsTxt(domain: string): Promise<string | null> {
+	try {
+		const records = await dns.resolveTxt(`${MTA_STS_TXT_HOST}.${domain}`);
+		const joined = records.map((chunks) => chunks.join(''));
+		return joined.find((value) => value.toLowerCase().includes('v=stsv1')) ?? joined[0] ?? null;
+	} catch {
+		return null;
+	}
+}
+
+// Fetch the HTTPS-served policy body from `mta-sts.<domain>`. Fail-soft: any
+// non-2xx or network error → null (treated as "not served").
+async function fetchMtaStsPolicyBody(domain: string): Promise<string | null> {
+	try {
+		const url = `https://${MTA_STS_POLICY_HOST}.${domain}${MTA_STS_WELL_KNOWN_PATH}`;
+		const response = await fetch(url, { redirect: 'error' });
+		if (!response.ok) return null;
+		return await response.text();
+	} catch {
+		return null;
+	}
+}
