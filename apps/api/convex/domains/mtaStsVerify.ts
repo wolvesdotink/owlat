@@ -52,8 +52,13 @@ export interface MtaStsGatherDeps {
 	resolveTxt(name: string): Promise<string[][]>;
 	/** Resolve every address for a host (per `node:dns` `lookup({ all: true })`). */
 	lookup(host: string): Promise<{ address: string }[]>;
-	/** Fetch a URL (per the global `fetch`). */
-	fetch: typeof fetch;
+	/**
+	 * Fetch a URL. Declared structurally (not `typeof fetch`) so the interface
+	 * doesn't inherit the global's extra members (e.g. Bun's `fetch.preconnect`),
+	 * which would trip strict typecheck under apps/web's lib set. Every call site
+	 * and test fake satisfies this shape.
+	 */
+	fetch(input: string | URL, init?: RequestInit): Promise<Response>;
 }
 
 const defaultDeps: MtaStsGatherDeps = {
