@@ -25,24 +25,13 @@ import {
 	SMTP_RELAY_PRESETS,
 	type SmtpRelayPreset,
 } from '@owlat/shared/setupSendingPresets';
-import {
-	SETUP_DRAFT_STORAGE_KEY,
-	parseSetupDraft,
-	readSetupDraft,
-	serializeSetupDraft,
-	type SetupDraft,
-} from './setupWizardDraft';
+import { SETUP_DRAFT_STORAGE_KEY, readSetupDraft, serializeSetupDraft } from './setupWizardDraft';
 
 // Re-export the shared preset table and its key type so the setup step (and its
 // tests) keep importing them from this composable; the single source of truth
 // lives in `@owlat/shared/setupSendingPresets`, shared with the setup CLI.
 export { SMTP_RELAY_PRESETS, PROVIDER_ENV_KEYS };
 export type SmtpPreset = SmtpRelayPreset;
-
-// Re-export the draft-persistence surface so the setup pages and tests keep a
-// single import entry point; the implementation lives in `./setupWizardDraft`.
-export { SETUP_DRAFT_STORAGE_KEY, parseSetupDraft, readSetupDraft, serializeSetupDraft };
-export type { SetupDraft };
 
 // ── Steps ────────────────────────────────────────────────────────────────────
 

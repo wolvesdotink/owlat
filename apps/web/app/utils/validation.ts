@@ -23,4 +23,6 @@ export {
 export { normalizeEmail } from '@owlat/shared';
 
 // Re-export string helpers from shared strings (for backwards compatibility)
-export { truncate, capitalize } from '@owlat/shared';
+// (`capitalize` is exported from utils/formatters.ts — re-exporting it here too
+// would collide in the Nuxt auto-import registry)
+export { truncate } from '@owlat/shared';
