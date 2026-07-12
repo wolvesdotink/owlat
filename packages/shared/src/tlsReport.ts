@@ -10,9 +10,12 @@
  * without ever throwing, so a malformed or oversized upload can never crash the
  * ingestion path.
  *
- * Pure + dependency-free (uses only the WHATWG `DecompressionStream`), so it is
- * importable from the MTA (Node), the Convex backend (isolate runtime) and the
- * web client alike — the single source of truth for the report schema.
+ * Pure + dependency-free. The gunzip step uses the WHATWG `DecompressionStream`,
+ * which is a Node/browser global but is NOT in Convex's default (V8 isolate)
+ * runtime API surface — so the Convex ingest path routes the decode through a
+ * `'use node'` internal action (`domains/tlsReportsNode.ts`), never the isolate.
+ * The pure `parseTlsReport`/`digestTlsReport` half runs anywhere. This module is
+ * the single source of truth for the report schema.
  */
 
 // ─── RFC 8460 report shape ──────────────────────────────────────────
@@ -85,7 +88,10 @@ export async function gunzipTlsReport(bytes: Uint8Array): Promise<string> {
 	const writer = stream.writable.getWriter();
 	// The real gunzip error surfaces on the reader for corrupt input; swallow the
 	// writer-side rejection so it isn't reported as an unhandled rejection.
-	writer.write(bytes as BufferSource).catch(() => undefined);
+	// Cast to `Uint8Array<ArrayBuffer>` (not the DOM-only `BufferSource` name,
+	// which is undefined under the MTA/IMAP `lib: ES2022` builds) — a concrete
+	// typed array is assignable to the writer's chunk type in every tree.
+	writer.write(bytes as Uint8Array<ArrayBuffer>).catch(() => undefined);
 	writer.close().catch(() => undefined);
 
 	const reader = stream.readable.getReader();
