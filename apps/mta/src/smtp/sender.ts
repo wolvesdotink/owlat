@@ -312,6 +312,26 @@ export async function sendToMx(
 				);
 			}
 
+			// A TLS-negotiation failure UNDER A REQUIRED TLS FLOOR must be classified
+			// as a TLS failure BEFORE the SMTP-code branches below. When we demand
+			// STARTTLS (`require` / `require-verified`) against a receiver that does
+			// not advertise it, nodemailer sends STARTTLS anyway; the server replies
+			// 5xx to that command and nodemailer raises `code: 'ETLS'` with a
+			// `responseCode` parsed from the 5xx reply ("Error upgrading connection
+			// with STARTTLS: 5xx …"). That 5xx is a verdict on the STARTTLS command,
+			// NOT a permanent verdict on the recipient — so it must NOT fall into the
+			// `smtpCode >= 500` hard-bounce branch. Instead surface it as a TLS
+			// failure so the caller takes the soft/deferred retry path (we never fall
+			// back to cleartext under a required floor). Only applies when a floor was
+			// actually required, so the historic opportunistic behaviour is unchanged.
+			if (requireTLS && (stsResultType || error.code === 'ETLS')) {
+				return {
+					kind: 'tls-failure',
+					resultType: stsResultType ?? 'starttls-not-supported',
+					response,
+				};
+			}
+
 			// 5xx = permanent failure (hard bounce) — don't try next MX
 			if (smtpCode && smtpCode >= 500 && smtpCode < 600) {
 				// Special case: 5.2.2 is "mailbox full" — soft bounce despite 5xx
