@@ -8,8 +8,8 @@
  * repo's `ai` catalog; the OpenAI-compatible shape is the supported way to
  * reach OpenRouter and keeps the dependency surface small.)
  *
- * Model ids are free-text and provider-prefixed — e.g. `anthropic/claude-opus-4-8`,
- * `openai/gpt-4o-mini` — so there is no fixed `defaultModels` catalog to price
+ * Model ids are free-text and provider-prefixed — e.g. `anthropic/claude-opus-4.8`,
+ * `deepseek/deepseek-v4-flash` — so there is no fixed `defaultModels` catalog to price
  * deterministically. `listModels` hits OpenRouter's public `/models` endpoint so
  * a settings UI can populate a picker. Pricing for OpenRouter ids degrades
  * gracefully: the usage cost table matches on the embedded upstream id via its
@@ -44,7 +44,7 @@ export const openrouterLanguageAdapter: LanguageProviderAdapter<'openrouter'> = 
 	isLocal: false,
 	// Free-text, provider-prefixed ids; these are sensible starting points a user
 	// can swap for any model the /models listing exposes.
-	defaultModels: { fast: 'openai/gpt-4o-mini', capable: 'anthropic/claude-sonnet-4-5' },
+	defaultModels: { fast: 'deepseek/deepseek-v4-flash', capable: 'anthropic/claude-sonnet-5' },
 	buildChatModel(cfg: ProviderClientConfig, modelId: string): LanguageModel {
 		return openrouterClient(cfg)(modelId);
 	},

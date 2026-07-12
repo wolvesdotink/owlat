@@ -13,7 +13,13 @@ import { gradientToCss } from '../../helpers/gradient';
 import { wrapColumnItem } from '../../helpers/table';
 import { escapeAttr, escapeCss, escapeHtml, sanitizeUrl } from '../../sanitize';
 import { transformUrl } from '../../helpers/linkTransform';
-import { checkShape, checkGradientStopLimit, isString, isNumber, isOneOf } from '../../helpers/validation';
+import {
+	checkShape,
+	checkGradientStopLimit,
+	isString,
+	isNumber,
+	isOneOf,
+} from '../../helpers/validation';
 import { getContrastRatio } from '../../validators/registry';
 
 const ALIGNS_FULL = ['left', 'center', 'right', 'full'] as const;
@@ -37,15 +43,22 @@ const renderVmlButton = (content: ButtonBlockContent): string => {
 		btnWidth = parseInt(content.buttonWidth, 10) || undefined;
 	}
 
-	const strokeWeight = content.buttonBorderWidth && content.buttonBorderWidth > 0 ? content.buttonBorderWidth : 0;
+	const strokeWeight =
+		content.buttonBorderWidth && content.buttonBorderWidth > 0 ? content.buttonBorderWidth : 0;
 	const strokeColor = escapeAttr(content.buttonBorderColor || content.backgroundColor);
-	const strokeAttr = strokeWeight > 0
-		? ` strokeweight="${strokeWeight}px" strokecolor="${strokeColor}"`
-		: ' stroked="false"';
+	const strokeAttr =
+		strokeWeight > 0
+			? ` strokeweight="${strokeWeight}px" strokecolor="${strokeColor}"`
+			: ' stroked="false"';
 
 	const widthAttr = btnWidth ? ` style="width:${btnWidth}px"` : '';
-	const textTransformStyle = content.textTransform && content.textTransform !== 'none' ? `text-transform:${content.textTransform};` : '';
-	const letterSpacingStyle = content.letterSpacing ? `letter-spacing:${content.letterSpacing}px;` : '';
+	const textTransformStyle =
+		content.textTransform && content.textTransform !== 'none'
+			? `text-transform:${content.textTransform};`
+			: '';
+	const letterSpacingStyle = content.letterSpacing
+		? `letter-spacing:${content.letterSpacing}px;`
+		: '';
 
 	const gradient = content.backgroundGradient;
 	if (gradient && gradient.stops.length >= 2) {
@@ -89,8 +102,14 @@ export const renderButtonContent = (content: ButtonBlockContent): string => {
 		tdStyles.push(`background:${escapeCss(gradientToCss(content.backgroundGradient))}`);
 	}
 
-	if (content.buttonBorderWidth && content.buttonBorderWidth > 0 && content.buttonBorderStyle !== 'none') {
-		tdStyles.push(`border:${content.buttonBorderWidth}px ${content.buttonBorderStyle || 'solid'} ${escapeCss(content.buttonBorderColor || '#000000')}`);
+	if (
+		content.buttonBorderWidth &&
+		content.buttonBorderWidth > 0 &&
+		content.buttonBorderStyle !== 'none'
+	) {
+		tdStyles.push(
+			`border:${content.buttonBorderWidth}px ${content.buttonBorderStyle || 'solid'} ${escapeCss(content.buttonBorderColor || '#000000')}`
+		);
 	}
 
 	const linkStyles: string[] = [
@@ -105,7 +124,8 @@ export const renderButtonContent = (content: ButtonBlockContent): string => {
 	];
 
 	if (content.letterSpacing) linkStyles.push(`letter-spacing:${content.letterSpacing}px`);
-	if (content.textTransform && content.textTransform !== 'none') linkStyles.push(`text-transform:${content.textTransform}`);
+	if (content.textTransform && content.textTransform !== 'none')
+		linkStyles.push(`text-transform:${content.textTransform}`);
 
 	const linkStyleStr = linkStyles.filter(Boolean).join(';');
 	const target = content.target || '_blank';
@@ -114,7 +134,12 @@ export const renderButtonContent = (content: ButtonBlockContent): string => {
 	const notMsoStart = '<!--[if !mso]><!-->';
 	const notMsoEnd = '<!--<![endif]-->';
 
-	const tableWidth = content.align === 'full' ? ' width="100%"' : (content.buttonWidth ? ` width="${escapeAttr(content.buttonWidth)}"` : '');
+	const tableWidth =
+		content.align === 'full'
+			? ' width="100%"'
+			: content.buttonWidth
+				? ` width="${escapeAttr(content.buttonWidth)}"`
+				: '';
 	const safeUrl = escapeAttr(sanitizeUrl(content.url));
 	const relAttr = target === '_blank' ? ' rel="noopener noreferrer"' : '';
 	return `${vml}${notMsoStart}<table cellpadding="0" cellspacing="0" border="0" role="presentation" align="${tableAlign}"${tableWidth}><tr><td style="${tdStyles.join(';')}"><a href="${safeUrl}" target="${target}"${relAttr} style="${linkStyleStr}">${escapeHtml(content.text)}</a></td></tr></table>${notMsoEnd}`;
@@ -127,7 +152,7 @@ export const buttonModule: BlockModule<'button'> = {
 	preflight({ block, ctx }) {
 		if (block.content.buttonWidth && block.content.buttonWidth.endsWith('%')) {
 			ctx.warnings.push(
-				`Button block "${block.id}" uses percentage buttonWidth (${block.content.buttonWidth}) — VML in Outlook ignores percentage widths.`,
+				`Button block "${block.id}" uses percentage buttonWidth (${block.content.buttonWidth}) — VML in Outlook ignores percentage widths.`
 			);
 		}
 	},
@@ -135,9 +160,17 @@ export const buttonModule: BlockModule<'button'> = {
 	layout(content) {
 		// `content.backgroundColor` is the button's fill, not the section's. The
 		// section background comes from a separate `blockBackgroundColor` field
-		// so users can frame the button with a contrasting band.
+		// so users can frame the button with a contrasting band. All three
+		// overrides must be EXPLICIT ('' / 0, never omitted): the button's own
+		// backgroundColor / backgroundGradient / borderRadius would otherwise
+		// fall through to the Walker's content-derived defaults and paint the
+		// full-width section wrapper as one giant button-colored band.
 		const bg = content.blockBackgroundColor;
-		return bg && bg !== 'transparent' ? { background: bg } : {};
+		return {
+			background: bg && bg !== 'transparent' ? bg : '',
+			gradient: '',
+			borderRadius: 0,
+		};
 	},
 
 	applyTheme(content, theme) {
@@ -223,8 +256,7 @@ export const buttonModule: BlockModule<'button'> = {
 				feature: 'Explicit button width',
 				description: 'Custom width on buttons (px or %)',
 				support: { ...fullSupport, outlookDesktop: 'partial' },
-				fallback:
-					'VML supports pixel widths only. Percentage widths ignored in Outlook.',
+				fallback: 'VML supports pixel widths only. Percentage widths ignored in Outlook.',
 				owlatHandled: true,
 			},
 			{
@@ -255,8 +287,7 @@ export const buttonModule: BlockModule<'button'> = {
 				description: 'Rounded corners on buttons',
 				support: fullSupport,
 				severity: 'info',
-				recommendation:
-					'Owlat uses VML v:roundrect — works in all clients including Outlook',
+				recommendation: 'Owlat uses VML v:roundrect — works in all clients including Outlook',
 				owlatHandled: true,
 			},
 			{
@@ -281,36 +312,102 @@ export const buttonModule: BlockModule<'button'> = {
 
 	validate({ block, content, ctx }) {
 		// Shape
-		checkShape(content as unknown as Record<string, unknown>, [
-			{ field: 'text', check: isString, code: 'BUTTON_TEXT_TYPE', message: 'text must be a string' },
-			{ field: 'url', check: isString, code: 'BUTTON_URL_TYPE', message: 'url must be a string' },
-			{ field: 'backgroundColor', check: isString, code: 'BUTTON_BG_TYPE', message: 'backgroundColor must be a string' },
-			{ field: 'textColor', check: isString, code: 'BUTTON_TEXTCOLOR_TYPE', message: 'textColor must be a string' },
-			{ field: 'align', check: (v) => isOneOf(v, ALIGNS_FULL), code: 'BUTTON_ALIGN_INVALID', message: 'align must be left, center, right, or full' },
-			{ field: 'borderRadius', check: isNumber, code: 'BUTTON_BORDER_RADIUS_TYPE', message: 'borderRadius must be a number' },
-			{ field: 'paddingX', check: isNumber, code: 'BUTTON_PADDING_X_TYPE', message: 'paddingX must be a number' },
-			{ field: 'paddingY', check: isNumber, code: 'BUTTON_PADDING_Y_TYPE', message: 'paddingY must be a number' },
-		], block.id, 'button', ctx.issues);
+		checkShape(
+			content as unknown as Record<string, unknown>,
+			[
+				{
+					field: 'text',
+					check: isString,
+					code: 'BUTTON_TEXT_TYPE',
+					message: 'text must be a string',
+				},
+				{ field: 'url', check: isString, code: 'BUTTON_URL_TYPE', message: 'url must be a string' },
+				{
+					field: 'backgroundColor',
+					check: isString,
+					code: 'BUTTON_BG_TYPE',
+					message: 'backgroundColor must be a string',
+				},
+				{
+					field: 'textColor',
+					check: isString,
+					code: 'BUTTON_TEXTCOLOR_TYPE',
+					message: 'textColor must be a string',
+				},
+				{
+					field: 'align',
+					check: (v) => isOneOf(v, ALIGNS_FULL),
+					code: 'BUTTON_ALIGN_INVALID',
+					message: 'align must be left, center, right, or full',
+				},
+				{
+					field: 'borderRadius',
+					check: isNumber,
+					code: 'BUTTON_BORDER_RADIUS_TYPE',
+					message: 'borderRadius must be a number',
+				},
+				{
+					field: 'paddingX',
+					check: isNumber,
+					code: 'BUTTON_PADDING_X_TYPE',
+					message: 'paddingX must be a number',
+				},
+				{
+					field: 'paddingY',
+					check: isNumber,
+					code: 'BUTTON_PADDING_Y_TYPE',
+					message: 'paddingY must be a number',
+				},
+			],
+			block.id,
+			'button',
+			ctx.issues
+		);
 
 		// Semantic
 		if (!content.url || content.url.trim() === '' || content.url === '#') {
-			ctx.issues.push({ blockId: block.id, blockType: 'button', severity: 'error', code: 'BUTTON_NO_URL', message: 'Button block has no valid URL' });
+			ctx.issues.push({
+				blockId: block.id,
+				blockType: 'button',
+				severity: 'error',
+				code: 'BUTTON_NO_URL',
+				message: 'Button block has no valid URL',
+			});
 		}
 		if (!content.text || content.text.trim() === '') {
-			ctx.issues.push({ blockId: block.id, blockType: 'button', severity: 'warning', code: 'BUTTON_NO_TEXT', message: 'Button block has no text' });
+			ctx.issues.push({
+				blockId: block.id,
+				blockType: 'button',
+				severity: 'warning',
+				code: 'BUTTON_NO_TEXT',
+				message: 'Button block has no text',
+			});
 		}
 
 		// Accessibility (audit mode)
 		if (ctx.options?.accessibilityAudit && content.backgroundColor && content.textColor) {
 			const contrast = getContrastRatio(content.backgroundColor, content.textColor);
 			if (contrast < 4.5) {
-				ctx.issues.push({ blockId: block.id, blockType: 'button', severity: 'warning', code: 'A11Y_LOW_CONTRAST', message: `Button text contrast ratio (${contrast.toFixed(1)}:1) is below WCAG AA minimum of 4.5:1` });
+				ctx.issues.push({
+					blockId: block.id,
+					blockType: 'button',
+					severity: 'warning',
+					code: 'A11Y_LOW_CONTRAST',
+					message: `Button text contrast ratio (${contrast.toFixed(1)}:1) is below WCAG AA minimum of 4.5:1`,
+				});
 			}
 		}
 
 		// Outlook
 		if (content.backgroundGradient) {
-			ctx.issues.push({ blockId: block.id, blockType: 'button', severity: 'warning', code: 'OUTLOOK_GRADIENT_BUTTON', message: 'Button has a gradient background — Outlook VML v:roundrect uses solid backgroundColor as fallback.' });
+			ctx.issues.push({
+				blockId: block.id,
+				blockType: 'button',
+				severity: 'warning',
+				code: 'OUTLOOK_GRADIENT_BUTTON',
+				message:
+					'Button has a gradient background — Outlook VML v:roundrect uses solid backgroundColor as fallback.',
+			});
 			checkGradientStopLimit(content.backgroundGradient, block.id, 'button', ctx.issues);
 		}
 	},

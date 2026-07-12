@@ -10,7 +10,13 @@
  * inspect their parent's identity.
  */
 
-import type { EditorBlock, BlockType, EmailTheme, FeatureCompatibility, PropertyCompatibility } from '@owlat/shared';
+import type {
+	EditorBlock,
+	BlockType,
+	EmailTheme,
+	FeatureCompatibility,
+	PropertyCompatibility,
+} from '@owlat/shared';
 import type { RenderContext } from '../types';
 import type { ValidatorContext } from '../validators/registry';
 
@@ -25,8 +31,12 @@ import type { ValidatorContext } from '../validators/registry';
  * its own inner padding (`'outer-only'`, e.g. hero with a full-bleed bg).
  */
 export interface BlockLayout {
-	/** Section background color. Omit → Walker reads `content.backgroundColor`. */
+	/** Section background color. Omit → Walker reads `content.backgroundColor`. Pass `''` for none. */
 	background?: string;
+	/** Section background gradient CSS. Omit → Walker reads `content.backgroundGradient`. Pass `''` for none. */
+	gradient?: string;
+	/** Section border radius in px. Omit → Walker reads `content.borderRadius`. Pass `0` for none. */
+	borderRadius?: number;
 	/** CSS padding shorthand for the section's outer `<td>`. Omit → Walker computes padding+margin sum. */
 	padding?: string;
 	/** How the Walker wraps the block. Default `'normal'`. */
@@ -45,7 +55,7 @@ export type Placement = 'root' | 'column' | 'container' | 'hero';
  * scattered across every composite module.
  */
 export const itemToBlock = (item: { id: string; type: string; content: unknown }): EditorBlock =>
-	({ id: item.id, type: item.type, content: item.content } as EditorBlock);
+	({ id: item.id, type: item.type, content: item.content }) as EditorBlock;
 
 /** Narrow `EditorBlock` to the variant matching one type discriminant. */
 export type BlockOf<T extends BlockType> = Extract<EditorBlock, { type: T }>;
@@ -55,7 +65,7 @@ export type ContentOf<T extends BlockType> = BlockOf<T>['content'];
 export type HtmlWalk = (
 	child: EditorBlock,
 	childWidth: number,
-	childPlacement: Placement,
+	childPlacement: Placement
 ) => string;
 
 /** Walker recursion entry for plaintext. */

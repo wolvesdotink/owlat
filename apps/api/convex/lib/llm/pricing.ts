@@ -16,6 +16,10 @@ type Price = { prefix: string; inputPerM: number; outputPerM: number };
 // Ordered most-specific-first so `gpt-4o-mini` matches before `gpt-4o`.
 const PRICING: Price[] = [
 	// OpenAI
+	{ prefix: 'gpt-5.6-luna', inputPerM: 1, outputPerM: 6 },
+	{ prefix: 'gpt-5.6-terra', inputPerM: 2.5, outputPerM: 15 },
+	{ prefix: 'gpt-5.6-sol', inputPerM: 5, outputPerM: 30 },
+	{ prefix: 'gpt-5.5', inputPerM: 5, outputPerM: 30 },
 	{ prefix: 'gpt-4o-mini', inputPerM: 0.15, outputPerM: 0.6 },
 	{ prefix: 'gpt-4o', inputPerM: 2.5, outputPerM: 10 },
 	{ prefix: 'gpt-4.1-nano', inputPerM: 0.1, outputPerM: 0.4 },
@@ -28,7 +32,11 @@ const PRICING: Price[] = [
 	// list prices differ from the generic `claude-*` fallbacks below — e.g.
 	// claude-opus-4-8 is $5/$25, not the older Opus $15/$75 — so they must
 	// match before the generic prefixes.
+	{ prefix: 'claude-fable-5', inputPerM: 10, outputPerM: 50 },
 	{ prefix: 'claude-opus-4-8', inputPerM: 5, outputPerM: 25 },
+	// OpenRouter spells current Anthropic ids with a dot (anthropic/claude-opus-4.8).
+	{ prefix: 'claude-opus-4.8', inputPerM: 5, outputPerM: 25 },
+	{ prefix: 'claude-sonnet-5', inputPerM: 3, outputPerM: 15 },
 	{ prefix: 'claude-sonnet-4-5', inputPerM: 3, outputPerM: 15 },
 	{ prefix: 'claude-haiku-4-5', inputPerM: 1, outputPerM: 5 },
 	{ prefix: 'claude-3-5-haiku', inputPerM: 0.8, outputPerM: 4 },
@@ -41,6 +49,9 @@ const PRICING: Price[] = [
 	// Google (Gemini) — native ids, and the same ids appear provider-prefixed via
 	// OpenRouter (e.g. `google/gemini-2.5-flash`), where the `includes` fallback
 	// still matches. Most-specific-first: `-lite`/`-8b` variants before the base.
+	{ prefix: 'gemini-3.5-flash', inputPerM: 1.5, outputPerM: 9 },
+	{ prefix: 'gemini-3.1-flash-lite', inputPerM: 0.25, outputPerM: 1.5 },
+	{ prefix: 'gemini-3.1-pro', inputPerM: 2, outputPerM: 12 },
 	{ prefix: 'gemini-2.5-flash-lite', inputPerM: 0.1, outputPerM: 0.4 },
 	{ prefix: 'gemini-2.5-flash', inputPerM: 0.3, outputPerM: 2.5 },
 	{ prefix: 'gemini-2.5-pro', inputPerM: 1.25, outputPerM: 10 },
@@ -49,6 +60,13 @@ const PRICING: Price[] = [
 	{ prefix: 'gemini-1.5-flash-8b', inputPerM: 0.0375, outputPerM: 0.15 },
 	{ prefix: 'gemini-1.5-flash', inputPerM: 0.075, outputPerM: 0.3 },
 	{ prefix: 'gemini-1.5-pro', inputPerM: 1.25, outputPerM: 5 },
+	// Popular OpenRouter upstreams (curated in the settings model picker). The ids
+	// arrive provider-prefixed (deepseek/deepseek-v4-flash) and match via `includes`.
+	{ prefix: 'deepseek-v4-flash', inputPerM: 0.077, outputPerM: 0.154 },
+	{ prefix: 'deepseek-v4-pro', inputPerM: 0.435, outputPerM: 0.87 },
+	{ prefix: 'minimax-m3', inputPerM: 0.3, outputPerM: 1.2 },
+	{ prefix: 'mimo-v2.5-pro', inputPerM: 0.435, outputPerM: 0.87 },
+	{ prefix: 'kimi-k2.6', inputPerM: 0.66, outputPerM: 3.41 },
 ];
 
 // Conservative fallback (≈ a mid-tier model) — never price an unknown model $0.

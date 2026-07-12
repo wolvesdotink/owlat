@@ -113,17 +113,15 @@ fn layout_traffic_lights(ns_window: &objc2_app_kit::NSWindow) {
     {
         return;
     }
-    // SAFETY: `standardWindowButton` returns the window-owned buttons;
-    // `superview` walks to the titlebar container view that hosts them.
-    let (Some(close), Some(miniaturize), Some(zoom)) = (unsafe {
-        (
-            ns_window.standardWindowButton(NSWindowButton::CloseButton),
-            ns_window.standardWindowButton(NSWindowButton::MiniaturizeButton),
-            ns_window.standardWindowButton(NSWindowButton::ZoomButton),
-        )
-    }) else {
+    let (Some(close), Some(miniaturize), Some(zoom)) = (
+        ns_window.standardWindowButton(NSWindowButton::CloseButton),
+        ns_window.standardWindowButton(NSWindowButton::MiniaturizeButton),
+        ns_window.standardWindowButton(NSWindowButton::ZoomButton),
+    ) else {
         return;
     };
+    // SAFETY: `superview` walks to the titlebar container view that hosts the
+    // window-owned buttons.
     let Some(container) = (unsafe { close.superview() }).and_then(|v| unsafe { v.superview() })
     else {
         return;
@@ -216,8 +214,9 @@ pub fn setup_traffic_lights(window: &WebviewWindow) {
     ns_window.setTitlebarSeparatorStyle(NSTitlebarSeparatorStyle::None);
     layout_traffic_lights(ns_window);
 
-    // SAFETY: button/superview walk as in layout_traffic_lights.
-    let Some(container) = (unsafe { ns_window.standardWindowButton(NSWindowButton::CloseButton) })
+    // SAFETY: superview walk as in layout_traffic_lights.
+    let Some(container) = ns_window
+        .standardWindowButton(NSWindowButton::CloseButton)
         .and_then(|b| unsafe { b.superview() })
         .and_then(|v| unsafe { v.superview() })
     else {
@@ -484,10 +483,8 @@ fn apply_traffic_lights(window: &WebviewWindow, visible: bool) {
         NSWindowButton::MiniaturizeButton,
         NSWindowButton::ZoomButton,
     ] {
-        // SAFETY: `standardWindowButton` returns the window-owned NSButton (or
-        // None); `setHidden` is a plain NSView setter.
-        if let Some(button) = unsafe { ns_window.standardWindowButton(kind) } {
-            unsafe { button.setHidden(hidden) };
+        if let Some(button) = ns_window.standardWindowButton(kind) {
+            button.setHidden(hidden);
         }
     }
     // On macOS 26 toggling the buttons' hidden state can make AppKit re-layout

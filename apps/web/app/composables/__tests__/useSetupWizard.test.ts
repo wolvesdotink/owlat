@@ -1,8 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
 	SETUP_STEPS,
-	SETUP_DRAFT_STORAGE_KEY,
-	readSetupDraft,
 	isSetupEmailValid,
 	validateAdmin,
 	adminIsValid,
@@ -12,15 +10,19 @@ import {
 	buildSetupSummary,
 	buildApplyBody,
 	interpretSetupModeProbe,
-	serializeSetupDraft,
-	parseSetupDraft,
 	setupStepPath,
 	SMTP_RELAY_PRESETS,
 	type AdminDraft,
 	type EmailStepDraft,
-	type SetupDraft,
 	type SmtpRelayDraft,
 } from '../useSetupWizard';
+import {
+	SETUP_DRAFT_STORAGE_KEY,
+	readSetupDraft,
+	serializeSetupDraft,
+	parseSetupDraft,
+	type SetupDraft,
+} from '../setupWizardDraft';
 import { getDefaultFlags, type FeatureFlagState } from '@owlat/shared/featureFlags';
 
 const validAdmin: AdminDraft = {

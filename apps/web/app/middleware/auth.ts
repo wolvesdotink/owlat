@@ -20,10 +20,14 @@ export default defineNuxtRouteMiddleware(async (to) => {
 
 	// If not authenticated and trying to access protected route
 	if (!isAuthenticated.value) {
-		// Desktop: there is no in-app login form — sign-in happens in the system
-		// browser per workspace. An expired/absent session sends the user to the
-		// workspace screen to re-connect (which re-runs the browser handshake).
-		if (isDesktopRuntime()) {
+		// Packaged desktop: there is no in-app login form — sign-in happens in the
+		// system browser per workspace. An expired/absent session sends the user to
+		// the workspace screen to re-connect (which re-runs the browser handshake).
+		// In dev the webview loads the local Nuxt dev server and the in-app form
+		// signs straight into the auto-seeded local workspace (the cross-domain
+		// auth client works against localhost), so fall through to the web
+		// login redirect instead of the handshake.
+		if (isDesktopRuntime() && !import.meta.dev) {
 			return navigateTo('/desktop/welcome');
 		}
 
@@ -69,5 +73,4 @@ export default defineNuxtRouteMiddleware(async (to) => {
 			return navigateTo('/setup/team');
 		}
 	}
-
 });

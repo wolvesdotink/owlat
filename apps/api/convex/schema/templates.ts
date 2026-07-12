@@ -78,7 +78,7 @@ export const templateTables = {
 				stale: v.boolean(),
 				failureCount: v.optional(v.number()),
 				lastFailureAt: v.optional(v.number()),
-			}),
+			})
 		),
 		// Marks rows inserted by /seed/demo so they can be wiped on reset.
 		seedTag: v.optional(v.string()),
@@ -190,8 +190,10 @@ export const templateTables = {
 				stale: v.boolean(),
 				failureCount: v.optional(v.number()),
 				lastFailureAt: v.optional(v.number()),
-			}),
+			})
 		),
+		// Marks rows inserted by /seed/demo so they can be wiped on reset.
+		seedTag: v.optional(v.string()),
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	})
@@ -213,11 +215,7 @@ export const templateTables = {
 		// Which non-campaign source produced this Send. `transactional` is the
 		// public transactional API; `automation` is an automation email step;
 		// `agent_reply` is an approved agent-drafted inbox reply.
-		kind: v.union(
-			v.literal('transactional'),
-			v.literal('automation'),
-			v.literal('agent_reply')
-		),
+		kind: v.union(v.literal('transactional'), v.literal('automation'), v.literal('agent_reply')),
 		// Set for `kind: 'transactional'` (the template-backed API send). Optional
 		// because automation/agent sends carry their own provenance + pre-rendered
 		// subject/html instead of a template id.

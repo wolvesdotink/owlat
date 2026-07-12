@@ -18,9 +18,6 @@ export:packages/email-builder/src/schema/definitions/_shared.ts:sharedGroupsNoFu
 export:packages/email-builder/src/utils/blocks.ts:hasBlockBorder
 export:packages/email-builder/src/utils/blocks.ts:updateBlockBorder
 export:packages/email-builder/src/utils/gradient.ts:gradientCss
-export:packages/email-builder/src/utils/variables.ts:containsVariable
-export:packages/email-builder/src/utils/variables.ts:extractVariableName
-export:packages/email-builder/src/utils/variables.ts:extractVariableNames
 export:packages/email-renderer/src/helpers/inline-styles.ts:buildInlineStyle
 export:packages/email-renderer/src/helpers/table.ts:wrapColumnCell
 export:packages/email-renderer/src/outlook.ts:msoConditional

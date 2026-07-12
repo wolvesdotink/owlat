@@ -21,7 +21,7 @@ import {
  *   3. Session's activeOrganizationId does not match the singleton's id.
  */
 
-type OrgRow = { id: string };
+type OrgRow = { id?: string; _id?: string };
 
 /**
  * Build a minimal `QueryCtx`-shaped object whose only used surface is
@@ -46,33 +46,41 @@ describe('assertSingletonOrgInvariant', () => {
 	it('passes when exactly one organization exists and the session matches it', async () => {
 		const ctx = makeCtx([{ id: 'org_singleton' }]);
 
-		await expect(
-			assertSingletonOrgInvariant(ctx, 'org_singleton')
-		).resolves.toBeUndefined();
+		await expect(assertSingletonOrgInvariant(ctx, 'org_singleton')).resolves.toBeUndefined();
+	});
+
+	it('passes with a raw `_id`-only doc (current component shape — no `id` field)', async () => {
+		// The live adapter returns RAW component docs: current versions expose the
+		// org id only as `_id` (the component generates it and rejects a
+		// client-supplied `id`). Reading only `.id` made every authed query throw
+		// "No organization configured" on healthy new deployments.
+		const ctx = makeCtx([{ _id: 'org_singleton' }]);
+
+		await expect(assertSingletonOrgInvariant(ctx, 'org_singleton')).resolves.toBeUndefined();
 	});
 
 	it('throws when zero organizations exist (broken bootstrap)', async () => {
 		const ctx = makeCtx([]);
 
-		await expect(
-			assertSingletonOrgInvariant(ctx, 'org_anything')
-		).rejects.toThrow(/No organization configured/);
+		await expect(assertSingletonOrgInvariant(ctx, 'org_anything')).rejects.toThrow(
+			/No organization configured/
+		);
 	});
 
 	it('throws when two or more organizations exist', async () => {
 		const ctx = makeCtx([{ id: 'org_a' }, { id: 'org_b' }]);
 
-		await expect(
-			assertSingletonOrgInvariant(ctx, 'org_a')
-		).rejects.toThrow(/Multi-organization mode is not supported/);
+		await expect(assertSingletonOrgInvariant(ctx, 'org_a')).rejects.toThrow(
+			/Multi-organization mode is not supported/
+		);
 	});
 
 	it('throws when the session points at a different org than the singleton', async () => {
 		const ctx = makeCtx([{ id: 'org_singleton' }]);
 
-		await expect(
-			assertSingletonOrgInvariant(ctx, 'org_stale_or_attacker')
-		).rejects.toThrow(/does not match the deployment singleton/);
+		await expect(assertSingletonOrgInvariant(ctx, 'org_stale_or_attacker')).rejects.toThrow(
+			/does not match the deployment singleton/
+		);
 	});
 
 	it('throws when findMany returns null page (defensive: BetterAuth adapter quirk)', async () => {
@@ -80,9 +88,9 @@ describe('assertSingletonOrgInvariant', () => {
 			runQuery: vi.fn(async () => null),
 		} as unknown as Parameters<typeof assertSingletonOrgInvariant>[0];
 
-		await expect(
-			assertSingletonOrgInvariant(ctx, 'org_anything')
-		).rejects.toThrow(/No organization configured/);
+		await expect(assertSingletonOrgInvariant(ctx, 'org_anything')).rejects.toThrow(
+			/No organization configured/
+		);
 	});
 
 	it('caches the validated singleton id and skips runQuery on subsequent calls', async () => {
@@ -104,9 +112,9 @@ describe('assertSingletonOrgInvariant', () => {
 		await assertSingletonOrgInvariant(ctx, 'org_singleton');
 		expect(runQueryMock).toHaveBeenCalledTimes(1);
 
-		await expect(
-			assertSingletonOrgInvariant(ctx, 'org_attacker')
-		).rejects.toThrow(/does not match the deployment singleton/);
+		await expect(assertSingletonOrgInvariant(ctx, 'org_attacker')).rejects.toThrow(
+			/does not match the deployment singleton/
+		);
 		// Cache makes the second call a pure equality check — no DB round trip.
 		expect(runQueryMock).toHaveBeenCalledTimes(1);
 	});

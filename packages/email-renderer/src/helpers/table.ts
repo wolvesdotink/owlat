@@ -2,7 +2,13 @@ import type { EditorBlock, CommonBlockProperties } from '@owlat/shared';
 import { getColumnWidths } from '@owlat/shared';
 import type { RenderContext } from '../types';
 import type { BlockLayout } from '../blocks/_module';
-import { getSectionPadding, getMarginOnlyPadding, getSectionBackground, getSectionBorder, getSectionBorderRadius } from './padding';
+import {
+	getSectionPadding,
+	getMarginOnlyPadding,
+	getSectionBackground,
+	getSectionBorder,
+	getSectionBorderRadius,
+} from './padding';
 import { gradientToCss } from './gradient';
 
 // Re-exported from @owlat/shared so existing renderer call sites keep importing
@@ -59,16 +65,16 @@ export const wrapSection = (
 	block: EditorBlock,
 	innerHtml: string,
 	ctx: RenderContext,
-	layout?: BlockLayout,
+	layout?: BlockLayout
 ): string => {
 	const padding =
-		layout?.padding
-		?? (layout?.sectionMode === 'outer-only'
+		layout?.padding ??
+		(layout?.sectionMode === 'outer-only'
 			? getMarginOnlyPadding(block.content)
 			: getSectionPadding(block.content));
 	const bgColor = layout?.background ?? getSectionBackground(block.content);
 	const border = getSectionBorder(block);
-	const borderRadius = getSectionBorderRadius(block);
+	const borderRadius = layout?.borderRadius ?? getSectionBorderRadius(block);
 	const classes = getBlockClasses(block);
 	const c = block.content as CommonBlockProperties;
 	const isFullWidth = c.fullWidth === true;
@@ -78,8 +84,10 @@ export const wrapSection = (
 	if (darkModeVars) tableStyles.push(darkModeVars);
 	if (bgColor) tableStyles.push(`background-color:${bgColor}`);
 	const gradient = c.backgroundGradient;
-	if (gradient && gradient.stops?.length >= 2) {
-		tableStyles.push(`background:${gradientToCss(gradient)}`);
+	const gradientCss =
+		layout?.gradient ?? (gradient && gradient.stops?.length >= 2 ? gradientToCss(gradient) : '');
+	if (gradientCss) {
+		tableStyles.push(`background:${gradientCss}`);
 	}
 	if (border.width > 0 && border.style !== 'none') {
 		tableStyles.push(`border:${border.width}px ${border.style} ${border.color}`);
@@ -116,4 +124,3 @@ export const wrapColumnCell = (width: string, innerHtml: string): string => {
  */
 export const wrapColumnItem = (innerHtml: string): string =>
 	`<table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation"><tr><td style="padding:8px 0">${innerHtml}</td></tr></table>`;
-

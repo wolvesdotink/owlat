@@ -28,6 +28,8 @@ const errorInfo = ref<string>('');
 onErrorCaptured((err: Error, _instance, info: string) => {
 	error.value = err;
 	errorInfo.value = info;
+	// Surface the error for debugging — the fallback UI hides it otherwise.
+	console.error(`[ErrorBoundary] captured (${info}):`, err);
 	// Return false to stop propagation to parent error handlers
 	return false;
 });

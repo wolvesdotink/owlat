@@ -9,6 +9,7 @@
  */
 
 import type * as __tests___factories from "../__tests__/factories.js";
+import type * as __tests___helpers_permissionGateMock from "../__tests__/helpers/permissionGateMock.js";
 import type * as _utils_batchLoader from "../_utils/batchLoader.js";
 import type * as _utils_errors from "../_utils/errors.js";
 import type * as accountDeletionEmail from "../accountDeletionEmail.js";
@@ -65,7 +66,6 @@ import type * as auth_apiAuth from "../auth/apiAuth.js";
 import type * as auth_apiKeys from "../auth/apiKeys.js";
 import type * as auth_apiScopes from "../auth/apiScopes.js";
 import type * as auth_auth from "../auth/auth.js";
-import type * as auth_config from "../auth/config.js";
 import type * as auth_invitationResend from "../auth/invitationResend.js";
 import type * as auth_memberErasure from "../auth/memberErasure.js";
 import type * as auth_membership from "../auth/membership.js";
@@ -469,20 +469,6 @@ import type * as migrations_0032_thread_contact_identifier from "../migrations/0
 import type * as migrations_0033_campaign_audience from "../migrations/0033_campaign_audience.js";
 import type * as migrations_0034_mailbox_owner_membership from "../migrations/0034_mailbox_owner_membership.js";
 import type * as mtaWebhook from "../mtaWebhook.js";
-import type * as workspaces_abuseGate from "../workspaces/abuseGate.js";
-import type * as workspaces_abuseStatus from "../workspaces/abuseStatus.js";
-import type * as workspaces_deletion_steps__common from "../workspaces/deletion/steps/_common.js";
-import type * as workspaces_deletion_steps_contacts from "../workspaces/deletion/steps/contacts.js";
-import type * as workspaces_deletion_steps_domains from "../workspaces/deletion/steps/domains.js";
-import type * as workspaces_deletion_steps_mailDrafts from "../workspaces/deletion/steps/mailDrafts.js";
-import type * as workspaces_deletion_steps_mailMessages from "../workspaces/deletion/steps/mailMessages.js";
-import type * as workspaces_deletion_steps_mediaAssets from "../workspaces/deletion/steps/mediaAssets.js";
-import type * as workspaces_deletion_steps_semanticFiles from "../workspaces/deletion/steps/semanticFiles.js";
-import type * as workspaces_deletion_steps_sweep from "../workspaces/deletion/steps/sweep.js";
-import type * as workspaces_deletion_steps_transactionalSends from "../workspaces/deletion/steps/transactionalSends.js";
-import type * as workspaces_deletion_walker from "../workspaces/deletion/walker.js";
-import type * as workspaces_featureFlags from "../workspaces/featureFlags.js";
-import type * as workspaces_settings from "../workspaces/settings.js";
 import type * as platformAdmin_mutations from "../platformAdmin/mutations.js";
 import type * as platformAdmin_platformAdmin from "../platformAdmin/platformAdmin.js";
 import type * as platformAdmin_queries from "../platformAdmin/queries.js";
@@ -523,8 +509,10 @@ import type * as seedDemo_loaders_contactTopics from "../seedDemo/loaders/contac
 import type * as seedDemo_loaders_contacts from "../seedDemo/loaders/contacts.js";
 import type * as seedDemo_loaders_domains from "../seedDemo/loaders/domains.js";
 import type * as seedDemo_loaders_emailTemplates from "../seedDemo/loaders/emailTemplates.js";
+import type * as seedDemo_loaders_mailboxes from "../seedDemo/loaders/mailboxes.js";
 import type * as seedDemo_loaders_savedBlocks from "../seedDemo/loaders/savedBlocks.js";
 import type * as seedDemo_loaders_topics from "../seedDemo/loaders/topics.js";
+import type * as seedDemo_loaders_transactionalEmails from "../seedDemo/loaders/transactionalEmails.js";
 import type * as seedDemo_loaders_types from "../seedDemo/loaders/types.js";
 import type * as seedDemo_loaders_webhooks from "../seedDemo/loaders/webhooks.js";
 import type * as segments from "../segments.js";
@@ -585,6 +573,20 @@ import type * as webhooks_pipeline from "../webhooks/pipeline.js";
 import type * as webhooks_scheduleFanout from "../webhooks/scheduleFanout.js";
 import type * as webhooks_security from "../webhooks/security.js";
 import type * as webhooks_types from "../webhooks/types.js";
+import type * as workspaces_abuseGate from "../workspaces/abuseGate.js";
+import type * as workspaces_abuseStatus from "../workspaces/abuseStatus.js";
+import type * as workspaces_deletion_steps__common from "../workspaces/deletion/steps/_common.js";
+import type * as workspaces_deletion_steps_contacts from "../workspaces/deletion/steps/contacts.js";
+import type * as workspaces_deletion_steps_domains from "../workspaces/deletion/steps/domains.js";
+import type * as workspaces_deletion_steps_mailDrafts from "../workspaces/deletion/steps/mailDrafts.js";
+import type * as workspaces_deletion_steps_mailMessages from "../workspaces/deletion/steps/mailMessages.js";
+import type * as workspaces_deletion_steps_mediaAssets from "../workspaces/deletion/steps/mediaAssets.js";
+import type * as workspaces_deletion_steps_semanticFiles from "../workspaces/deletion/steps/semanticFiles.js";
+import type * as workspaces_deletion_steps_sweep from "../workspaces/deletion/steps/sweep.js";
+import type * as workspaces_deletion_steps_transactionalSends from "../workspaces/deletion/steps/transactionalSends.js";
+import type * as workspaces_deletion_walker from "../workspaces/deletion/walker.js";
+import type * as workspaces_featureFlags from "../workspaces/featureFlags.js";
+import type * as workspaces_settings from "../workspaces/settings.js";
 
 import type {
   ApiFromModules,
@@ -594,6 +596,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   "__tests__/factories": typeof __tests___factories;
+  "__tests__/helpers/permissionGateMock": typeof __tests___helpers_permissionGateMock;
   "_utils/batchLoader": typeof _utils_batchLoader;
   "_utils/errors": typeof _utils_errors;
   accountDeletionEmail: typeof accountDeletionEmail;
@@ -650,7 +653,6 @@ declare const fullApi: ApiFromModules<{
   "auth/apiKeys": typeof auth_apiKeys;
   "auth/apiScopes": typeof auth_apiScopes;
   "auth/auth": typeof auth_auth;
-  "auth/config": typeof auth_config;
   "auth/invitationResend": typeof auth_invitationResend;
   "auth/memberErasure": typeof auth_memberErasure;
   "auth/membership": typeof auth_membership;
@@ -1054,20 +1056,6 @@ declare const fullApi: ApiFromModules<{
   "migrations/0033_campaign_audience": typeof migrations_0033_campaign_audience;
   "migrations/0034_mailbox_owner_membership": typeof migrations_0034_mailbox_owner_membership;
   mtaWebhook: typeof mtaWebhook;
-  "workspaces/abuseGate": typeof workspaces_abuseGate;
-  "workspaces/abuseStatus": typeof workspaces_abuseStatus;
-  "workspaces/deletion/steps/_common": typeof workspaces_deletion_steps__common;
-  "workspaces/deletion/steps/contacts": typeof workspaces_deletion_steps_contacts;
-  "workspaces/deletion/steps/domains": typeof workspaces_deletion_steps_domains;
-  "workspaces/deletion/steps/mailDrafts": typeof workspaces_deletion_steps_mailDrafts;
-  "workspaces/deletion/steps/mailMessages": typeof workspaces_deletion_steps_mailMessages;
-  "workspaces/deletion/steps/mediaAssets": typeof workspaces_deletion_steps_mediaAssets;
-  "workspaces/deletion/steps/semanticFiles": typeof workspaces_deletion_steps_semanticFiles;
-  "workspaces/deletion/steps/sweep": typeof workspaces_deletion_steps_sweep;
-  "workspaces/deletion/steps/transactionalSends": typeof workspaces_deletion_steps_transactionalSends;
-  "workspaces/deletion/walker": typeof workspaces_deletion_walker;
-  "workspaces/featureFlags": typeof workspaces_featureFlags;
-  "workspaces/settings": typeof workspaces_settings;
   "platformAdmin/mutations": typeof platformAdmin_mutations;
   "platformAdmin/platformAdmin": typeof platformAdmin_platformAdmin;
   "platformAdmin/queries": typeof platformAdmin_queries;
@@ -1108,8 +1096,10 @@ declare const fullApi: ApiFromModules<{
   "seedDemo/loaders/contacts": typeof seedDemo_loaders_contacts;
   "seedDemo/loaders/domains": typeof seedDemo_loaders_domains;
   "seedDemo/loaders/emailTemplates": typeof seedDemo_loaders_emailTemplates;
+  "seedDemo/loaders/mailboxes": typeof seedDemo_loaders_mailboxes;
   "seedDemo/loaders/savedBlocks": typeof seedDemo_loaders_savedBlocks;
   "seedDemo/loaders/topics": typeof seedDemo_loaders_topics;
+  "seedDemo/loaders/transactionalEmails": typeof seedDemo_loaders_transactionalEmails;
   "seedDemo/loaders/types": typeof seedDemo_loaders_types;
   "seedDemo/loaders/webhooks": typeof seedDemo_loaders_webhooks;
   segments: typeof segments;
@@ -1170,6 +1160,20 @@ declare const fullApi: ApiFromModules<{
   "webhooks/scheduleFanout": typeof webhooks_scheduleFanout;
   "webhooks/security": typeof webhooks_security;
   "webhooks/types": typeof webhooks_types;
+  "workspaces/abuseGate": typeof workspaces_abuseGate;
+  "workspaces/abuseStatus": typeof workspaces_abuseStatus;
+  "workspaces/deletion/steps/_common": typeof workspaces_deletion_steps__common;
+  "workspaces/deletion/steps/contacts": typeof workspaces_deletion_steps_contacts;
+  "workspaces/deletion/steps/domains": typeof workspaces_deletion_steps_domains;
+  "workspaces/deletion/steps/mailDrafts": typeof workspaces_deletion_steps_mailDrafts;
+  "workspaces/deletion/steps/mailMessages": typeof workspaces_deletion_steps_mailMessages;
+  "workspaces/deletion/steps/mediaAssets": typeof workspaces_deletion_steps_mediaAssets;
+  "workspaces/deletion/steps/semanticFiles": typeof workspaces_deletion_steps_semanticFiles;
+  "workspaces/deletion/steps/sweep": typeof workspaces_deletion_steps_sweep;
+  "workspaces/deletion/steps/transactionalSends": typeof workspaces_deletion_steps_transactionalSends;
+  "workspaces/deletion/walker": typeof workspaces_deletion_walker;
+  "workspaces/featureFlags": typeof workspaces_featureFlags;
+  "workspaces/settings": typeof workspaces_settings;
 }>;
 
 /**
