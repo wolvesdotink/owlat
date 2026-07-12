@@ -159,7 +159,7 @@ export const listShared = adminQuery({
 		const shared = await ctx.db
 			.query('mailboxes')
 			.withIndex('by_scope', (q) => q.eq('scope', 'shared'))
-			.collect();
+			.collect(); // bounded: shared team inboxes only (org infrastructure, a handful; personal rows keep scope unset)
 		const live = shared
 			.filter((mailbox) => mailbox.status !== 'deleted')
 			.sort((a, b) => a.address.localeCompare(b.address));
