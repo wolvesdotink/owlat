@@ -9,6 +9,9 @@
  * Surface:
  *   - createShared        admin-gated: provision a hosted team inbox, creator
  *                         becomes its owner, initial members are added.
+ *   - listShared          admin-gated: every team inbox org-wide with its full
+ *                         roster + pending invites — the Settings → Team
+ *                         inboxes management surface.
  *   - members             list the roster (any member / org admin can read).
  *   - myRole              the caller's own role on a mailbox, or null — the
  *                         reactive query the UI (and tests) watch to see access
@@ -25,7 +28,7 @@
 
 import { v } from 'convex/values';
 import type { MutationCtx } from '../_generated/server';
-import { authedMutation, authedQuery } from '../lib/authedFunctions';
+import { adminQuery, authedMutation, authedQuery } from '../lib/authedFunctions';
 import type { Id } from '../_generated/dataModel';
 import { requireAdminContext, getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 import { throwForbidden, throwInvalidInput } from '../_utils/errors';
@@ -138,6 +141,67 @@ export const createShared = authedMutation({
 		}
 
 		return mailboxId;
+	},
+});
+
+/**
+ * Every team inbox org-wide with its full roster and pending invites — the
+ * data behind the admin "Team inboxes" settings page. Admin-gated by the
+ * `adminQuery` wrapper (`organization:manage`): the page exists precisely so
+ * an admin can see and manage inboxes they are NOT a member of, so the
+ * per-mailbox `requireMailboxAccess` soft-fail used by `members` is the wrong
+ * floor here. Bounded: team inboxes are org infrastructure (a handful per
+ * deployment), and the `by_scope` range never touches personal mailboxes.
+ */
+export const listShared = adminQuery({
+	args: {},
+	handler: async (ctx) => {
+		const shared = await ctx.db
+			.query('mailboxes')
+			.withIndex('by_scope', (q) => q.eq('scope', 'shared'))
+			.collect();
+		const live = shared
+			.filter((mailbox) => mailbox.status !== 'deleted')
+			.sort((a, b) => a.address.localeCompare(b.address));
+		return await Promise.all(
+			live.map(async (mailbox) => {
+				const rows = await ctx.db
+					.query('mailboxMembers')
+					.withIndex('by_mailbox_user', (q) => q.eq('mailboxId', mailbox._id))
+					.collect(); // bounded: one team's roster
+				// Owner first, then newest additions — the order the admin list renders.
+				rows.sort((a, b) =>
+					a.role !== b.role ? (a.role === 'owner' ? -1 : 1) : b.createdAt - a.createdAt
+				);
+				const members = await Promise.all(
+					rows.map(async (row) => {
+						const profile = await loadMemberProfile(ctx, row.authUserId);
+						return {
+							authUserId: row.authUserId,
+							role: row.role,
+							name: profile.name,
+							email: profile.email,
+							image: profile.image,
+						};
+					})
+				);
+				const pending = await ctx.db
+					.query('pendingMailboxMembers')
+					.withIndex('by_mailbox', (q) => q.eq('mailboxId', mailbox._id))
+					.collect(); // bounded: open invites on one inbox
+				return {
+					_id: mailbox._id,
+					address: mailbox.address,
+					displayName: mailbox.displayName ?? null,
+					status: mailbox.status,
+					kind: mailbox.kind ?? 'hosted',
+					createdAt: mailbox.createdAt,
+					memberCount: rows.length,
+					members,
+					pendingInvites: pending.map((p) => p.inviteeEmail).sort(),
+				};
+			})
+		);
 	},
 });
 

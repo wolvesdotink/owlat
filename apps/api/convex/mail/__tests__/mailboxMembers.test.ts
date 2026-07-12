@@ -53,6 +53,15 @@ vi.mock('../../lib/sessionOrganization', async () => {
 				activeOrganizationId: sessionMock.orgId,
 			};
 		}),
+		// Same same-module-binding story for the `adminQuery` wrapper's floor
+		// (`requireOrgPermission`): mock it directly so `listShared`'s admin gate
+		// reflects `sessionMock.role`.
+		requireOrgPermission: vi.fn(async () => {
+			if (sessionMock.role !== 'owner' && sessionMock.role !== 'admin') {
+				throw new Error("You don't have permission to perform this action");
+			}
+			return { userId: sessionMock.userId, role: sessionMock.role };
+		}),
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
 		getBetterAuthSessionWithRole: vi.fn(async () => {
 			if (sessionMock.role === null) return null;
@@ -214,6 +223,70 @@ describe('createShared — hosted team inbox', () => {
 				memberUserIds: [],
 			})
 		).rejects.toThrow('already exists');
+	});
+});
+
+describe('listShared — org-wide admin overview', () => {
+	it('lists every live team inbox with roster and pending invites; personal and deleted mailboxes are excluded', async () => {
+		const t = convexTest(schema, modules);
+		setSession('admin-user', 'admin');
+		await seedVerifiedDomain(t);
+		await seedUsers(t, 'user-B', 'admin-user');
+
+		// A hosted team inbox the admin created, with one extra member…
+		const hostedId = await t.mutation(api.mail.mailboxMembers.createShared, {
+			address: 'support@hinterland.camp',
+			displayName: 'Support',
+			memberUserIds: ['user-B'],
+		});
+		// …an external-backed team inbox owned by someone else entirely…
+		const externalId = await seedSharedExternal(t);
+		// …plus noise the overview must NOT show: a personal mailbox and a
+		// deleted team inbox.
+		await seedMailbox(t, { address: 'personal@hinterland.camp' });
+		await seedMailbox(t, {
+			address: 'gone@hinterland.camp',
+			scope: 'shared',
+			status: 'deleted',
+		});
+		// A pending (not-yet-accepted) invite on the hosted inbox.
+		await t.run(async (ctx) => {
+			await ctx.db.insert('pendingMailboxMembers', {
+				organizationId: 'org-1',
+				inviteeEmail: 'newhire@example.com',
+				mailboxId: hostedId,
+				mailboxAddress: 'support@hinterland.camp',
+				invitedByUserId: 'admin-user',
+				createdAt: Date.now(),
+			});
+		});
+
+		const list = await t.query(api.mail.mailboxMembers.listShared, {});
+		expect(list.map((m) => m._id).sort()).toEqual([hostedId, externalId].sort());
+
+		const hosted = list.find((m) => m._id === hostedId)!;
+		expect(hosted.displayName).toBe('Support');
+		expect(hosted.kind).toBe('hosted');
+		expect(hosted.memberCount).toBe(2);
+		// Owner sorts first; profile display fields are joined in.
+		expect(hosted.members[0]).toMatchObject({
+			authUserId: 'admin-user',
+			role: 'owner',
+			email: 'admin-user@hinterland.camp',
+		});
+		expect(hosted.members.map((m) => m.authUserId)).toContain('user-B');
+		expect(hosted.pendingInvites).toEqual(['newhire@example.com']);
+
+		const external = list.find((m) => m._id === externalId)!;
+		expect(external.kind).toBe('external');
+		expect(external.memberCount).toBe(1);
+		expect(external.pendingInvites).toEqual([]);
+	});
+
+	it('rejects a non-admin caller (admin floor, not per-mailbox membership)', async () => {
+		const t = convexTest(schema, modules);
+		setSession('editor-user', 'editor');
+		await expect(t.query(api.mail.mailboxMembers.listShared, {})).rejects.toThrow(/permission/i);
 	});
 });
 
