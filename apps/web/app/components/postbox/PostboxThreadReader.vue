@@ -26,7 +26,18 @@ export type PostboxReaderMessage = {
 		contentId?: string;
 	}>;
 	spamVerdict?: string;
+	// Inbound sender-authentication verdicts + DMARC alignment inputs, persisted
+	// at ingest (Sealed Mail A1) and threaded through the reader queries here so
+	// A3 can render an honest sender badge. All optional: a message delivered by
+	// an older MTA (or a legacy row from before A1) carries them absent, and the
+	// reader must surface that as "unknown" rather than assert a verdict we never
+	// computed.
+	spfResult?: string;
+	dkimResult?: string;
 	dmarcResult?: string;
+	dmarcPolicy?: string;
+	envelopeFromDomain?: string;
+	dkimSigningDomain?: string;
 	flagSeen?: boolean;
 	unsubscribe?: { httpUrl?: string; mailtoUrl?: string; oneClick: boolean };
 };

@@ -58,6 +58,7 @@ export type MailboxSeed = {
 	userId?: string;
 	organizationId?: string;
 	address?: string;
+	domain?: string;
 	status?: 'active' | 'suspended' | 'deleted';
 	scope?: 'personal' | 'shared';
 	kind?: 'hosted' | 'external';
@@ -75,7 +76,7 @@ export async function seedMailbox(
 			userId: seed.userId ?? 'user-A',
 			organizationId: seed.organizationId ?? 'org-1',
 			address: seed.address ?? 'a@hinterland.camp',
-			domain: 'hinterland.camp',
+			domain: seed.domain ?? 'hinterland.camp',
 			...(seed.scope ? { scope: seed.scope } : {}),
 			...(seed.kind ? { kind: seed.kind } : {}),
 			status: seed.status ?? 'active',
