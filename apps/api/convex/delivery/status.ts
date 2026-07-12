@@ -26,6 +26,7 @@ import { internalMutation } from '../_generated/server';
 import { getOptional, type EnvKey } from '../lib/env';
 import { isSendProviderKind } from '../lib/sendProviders/types';
 import { providerKindConfigured, isDeliveryConfigured } from '../lib/sendProviders/capability';
+import { outboundTransportFacts } from '../lib/outboundAlignment';
 
 /**
  * Report the delivery send-path configuration as booleans for the admin
@@ -142,11 +143,21 @@ export const getTransportSummary = authedQuery({
 			}
 		}
 
+		// Non-secret outbound identities powering the readiness panel's
+		// sender-alignment gate: the transport's normalized kind plus the effective
+		// DKIM `d=` / return-path domains (DNS-facing values, never credentials).
+		const facts = outboundTransportFacts();
+
 		return {
 			provider,
 			canSend,
 			advancedRoutingActive,
 			health,
+			alignment: {
+				kind: facts.kind,
+				returnPathDomain: facts.returnPathDomain,
+				dkimDomain: facts.dkimDomain,
+			},
 		};
 	},
 });

@@ -26,7 +26,8 @@ import { authedMutation, authedQuery } from '../lib/authedFunctions';
 import { hasPermission, requireOrgMember, requireOrgPermission } from '../lib/sessionOrganization';
 import { checkEmailDomainVerification } from '../domains/domains';
 import { isValidEmail } from '../lib/inputGuards';
-import { normalizeEmail } from '@owlat/shared';
+import { checkFromAlignment, emailDomain, normalizeEmail } from '@owlat/shared';
+import { outboundTransportFacts } from '../lib/outboundAlignment';
 import { getOrThrow, throwInvalidInput, throwAlreadyExists } from '../_utils/errors';
 
 type Ctx = QueryCtx | MutationCtx;
@@ -156,6 +157,16 @@ export const list = authedQuery({
  * the list) get `canManage: false` and see the "ask your admin" branch. Returns
  * only the fields the picker renders — enabled senders, the custom-address
  * toggle, and the caller's manage capability.
+ *
+ * Each enabled sender also carries its live authenticity annotation so the picker
+ * can render a chip and disable-with-reason a broken identity BEFORE any send:
+ *  - `domainVerified` — the sender's domain still passes verification (a curated
+ *    sender was verified when added, but the domain can lapse afterwards).
+ *  - `alignment`      — whether the ACTIVE transport signs/bounces this From-domain
+ *    in a DMARC-aligned way (`aligned` / `misaligned` / `unknown`). A relay that
+ *    re-signs as its own domain comes back `misaligned`, so the wizard can block
+ *    a send that would look spoofed.
+ *  - `alignmentReason`— plain-language guidance when not cleanly aligned.
  */
 export const listForPicker = authedQuery({
 	args: {},
@@ -166,15 +177,30 @@ export const listForPicker = authedQuery({
 		const session = await requireOrgMember(ctx);
 		const all = await ctx.db.query('campaignSenders').take(MAX_CAMPAIGN_SENDERS);
 		const settings = await ctx.db.query('instanceSettings').first();
-		return {
-			senders: all
-				.filter((s) => s.isEnabled)
-				.map((s) => ({
+
+		// The active transport's effective outbound identities (non-secret), read
+		// once and reused for every enabled sender's alignment check.
+		const facts = outboundTransportFacts();
+
+		const enabled = all.filter((s) => s.isEnabled);
+		const senders = await Promise.all(
+			enabled.map(async (s) => {
+				const verification = await checkEmailDomainVerification(ctx, s.email);
+				const alignment = checkFromAlignment(emailDomain(s.email), facts);
+				return {
 					_id: s._id,
 					email: s.email,
 					displayName: s.displayName,
 					isDefault: s.isDefault,
-				})),
+					domainVerified: verification.verified,
+					alignment: alignment.state,
+					alignmentReason: alignment.reason,
+				};
+			})
+		);
+
+		return {
+			senders,
 			isCustomAllowed: settings?.isCustomCampaignSendersAllowed === true,
 			canManage: hasPermission(session.role, 'settings:manage'),
 		};
