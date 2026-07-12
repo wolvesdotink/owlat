@@ -3,18 +3,18 @@
 		"slug": "header-default",
 		"name": "Brand Header",
 		"description": "Top-of-email brand banner with logo placeholder.",
-		"content": "[{\"id\":\"hdr-1\",\"type\":\"container\",\"content\":{\"backgroundColor\":\"#1f2937\",\"padding\":{\"top\":24,\"right\":24,\"bottom\":24,\"left\":24}},\"children\":[{\"id\":\"hdr-2\",\"type\":\"text\",\"content\":{\"text\":\"<h1 style=\\\"color:#fff;margin:0\\\">Owlat Demo</h1>\"}}]}]"
+		"content": "[{\"id\":\"hdr-1\",\"type\":\"container\",\"content\":{\"items\":[{\"id\":\"hdr-2\",\"type\":\"text\",\"content\":{\"html\":\"Owlat Demo\",\"blockType\":\"h1\",\"fontSize\":32,\"textColor\":\"#ffffff\",\"lineHeight\":1.3}}],\"maxWidth\":100,\"backgroundColor\":\"#1f2937\",\"paddingTop\":24,\"paddingRight\":24,\"paddingBottom\":24,\"paddingLeft\":24,\"paddingLinked\":true,\"marginTop\":0,\"marginRight\":0,\"marginBottom\":0,\"marginLeft\":0,\"borderWidth\":0,\"borderColor\":\"#e5e5e5\",\"borderStyle\":\"solid\",\"borderRadius\":8}}]"
 	},
 	{
 		"slug": "footer-default",
 		"name": "Standard Footer",
 		"description": "Address + unsubscribe link block.",
-		"content": "[{\"id\":\"ftr-1\",\"type\":\"text\",\"content\":{\"text\":\"<p style=\\\"color:#6b7280;font-size:12px;text-align:center\\\">Owlat Demo Co · 123 Demo Street · {{unsubscribe_link}}</p>\"}}]"
+		"content": "[{\"id\":\"ftr-1\",\"type\":\"text\",\"content\":{\"html\":\"Owlat Demo Co · 123 Demo Street · {{unsubscribe_link}}\",\"blockType\":\"paragraph\",\"fontSize\":12,\"textColor\":\"#6b7280\",\"textAlign\":\"center\",\"lineHeight\":1.5}}]"
 	},
 	{
 		"slug": "cta-button",
 		"name": "Primary CTA Button",
 		"description": "Reusable call-to-action button.",
-		"content": "[{\"id\":\"cta-1\",\"type\":\"button\",\"content\":{\"text\":\"Read more\",\"href\":\"https://example.com\",\"backgroundColor\":\"#2563eb\",\"textColor\":\"#ffffff\",\"borderRadius\":6,\"padding\":{\"top\":12,\"right\":24,\"bottom\":12,\"left\":24}}}]"
+		"content": "[{\"id\":\"cta-1\",\"type\":\"button\",\"content\":{\"text\":\"Read more\",\"url\":\"https://example.com\",\"backgroundColor\":\"#2563eb\",\"textColor\":\"#ffffff\",\"align\":\"center\",\"borderRadius\":6,\"paddingX\":24,\"paddingY\":12}}]"
 	}
 ]

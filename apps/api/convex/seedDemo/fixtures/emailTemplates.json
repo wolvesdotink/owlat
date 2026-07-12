@@ -1,23 +1,13 @@
 [
 	{
-		"slug": "welcome-marketing",
-		"name": "Welcome to Owlat",
+		"slug": "summer-sale",
+		"name": "Summer Sale",
 		"type": "marketing",
-		"subject": "Welcome aboard — here's what's next",
-		"previewText": "A quick tour of what you can do with your new account.",
+		"subject": "Summer Sale — 20% off this week only",
+		"previewText": "Our biggest discount of the season, for one week.",
 		"status": "published",
-		"content": "[{\"id\":\"t-1\",\"type\":\"text\",\"content\":{\"text\":\"<h2>Welcome!</h2><p>Thanks for joining. Here are three things to try first.</p>\"}}]",
-		"htmlContent": "<html><body><h2>Welcome!</h2><p>Thanks for joining. Here are three things to try first.</p></body></html>"
-	},
-	{
-		"slug": "order-confirmation",
-		"name": "Order confirmation",
-		"type": "marketing",
-		"subject": "Your order #{{order_number}} is confirmed",
-		"previewText": "We're getting your order ready to ship.",
-		"status": "published",
-		"content": "[{\"id\":\"t-2\",\"type\":\"text\",\"content\":{\"text\":\"<p>Thanks for your order, {{first_name}}! Order #{{order_number}} is being processed.</p>\"}}]",
-		"htmlContent": "<html><body><p>Thanks for your order! Your order is being processed.</p></body></html>"
+		"content": "[{\"id\":\"t-1a\",\"type\":\"text\",\"content\":{\"html\":\"Summer Sale: 20% off everything\",\"blockType\":\"h2\",\"fontSize\":24,\"textColor\":\"#374151\",\"lineHeight\":1.3}},{\"id\":\"t-1b\",\"type\":\"text\",\"content\":{\"html\":\"Hi {{first_name}}, our biggest discount of the season is live. Use code SUMMER20 at checkout — valid through Sunday.\",\"blockType\":\"paragraph\",\"fontSize\":16,\"textColor\":\"#374151\",\"lineHeight\":1.5}},{\"id\":\"t-1c\",\"type\":\"button\",\"content\":{\"text\":\"Shop the sale\",\"url\":\"https://example.com/sale\",\"backgroundColor\":\"#2563eb\",\"textColor\":\"#ffffff\",\"align\":\"center\",\"borderRadius\":6,\"paddingX\":24,\"paddingY\":12}}]",
+		"htmlContent": "<html><body><h2>Summer Sale: 20% off everything</h2><p>Our biggest discount of the season is live. Use code SUMMER20 at checkout — valid through Sunday.</p><p><a href=\"https://example.com/sale\">Shop the sale</a></p></body></html>"
 	},
 	{
 		"slug": "monthly-newsletter",
@@ -26,6 +16,6 @@
 		"subject": "This month at Owlat",
 		"previewText": "What we shipped, what's next.",
 		"status": "draft",
-		"content": "[{\"id\":\"t-3\",\"type\":\"text\",\"content\":{\"text\":\"<h2>Monthly recap</h2><p>Highlights from the month.</p>\"}}]"
+		"content": "[{\"id\":\"t-3a\",\"type\":\"text\",\"content\":{\"html\":\"Monthly recap\",\"blockType\":\"h2\",\"fontSize\":24,\"textColor\":\"#374151\",\"lineHeight\":1.3}},{\"id\":\"t-3b\",\"type\":\"text\",\"content\":{\"html\":\"Highlights from the month.\",\"blockType\":\"paragraph\",\"fontSize\":16,\"textColor\":\"#374151\",\"lineHeight\":1.5}}]"
 	}
 ]
