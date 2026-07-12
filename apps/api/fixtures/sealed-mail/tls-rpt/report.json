@@ -1,0 +1,40 @@
+{
+  "organization-name": "Example Reporter Inc.",
+  "date-range": {
+    "start-datetime": "2026-07-10T00:00:00Z",
+    "end-datetime": "2026-07-11T00:00:00Z"
+  },
+  "contact-info": "tlsrpt@reporter.example",
+  "report-id": "2026-07-10T00:00:00Z_example.com",
+  "policies": [
+    {
+      "policy": {
+        "policy-type": "sts",
+        "policy-string": [
+          "version: STSv1",
+          "mode: enforce",
+          "mx: mx.example.com",
+          "max_age: 604800"
+        ],
+        "policy-domain": "example.com",
+        "mx-host": [
+          "mx.example.com"
+        ]
+      },
+      "summary": {
+        "total-successful-session-count": 9821,
+        "total-failure-session-count": 3
+      },
+      "failure-details": [
+        {
+          "result-type": "validation-failure",
+          "sending-mta-ip": "203.0.113.10",
+          "receiving-mx-hostname": "mx.example.com",
+          "receiving-ip": "198.51.100.5",
+          "failed-session-count": 3,
+          "failure-reason-code": "X509_V_ERR_CERT_HAS_EXPIRED"
+        }
+      ]
+    }
+  ]
+}
