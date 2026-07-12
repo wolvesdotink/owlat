@@ -4,6 +4,7 @@ import {
 	SMTP_RELAY_PRESETS,
 	buildProviderEnv,
 	emailStepIsValid,
+	seedOutboundTlsMode,
 	validateEmailStep,
 	type EmailStepDraft,
 } from '../useSetupWizard';
@@ -171,6 +172,25 @@ describe('transport editor — outbound TLS mode (OUTBOUND_TLS_MODE)', () => {
 
 	it('OUTBOUND_TLS_MODE is inside the server allowlist so the patch is accepted', () => {
 		expect(PROVIDER_ENV_KEYS).toContain('OUTBOUND_TLS_MODE');
+	});
+
+	// Regression: an admin who set `require-verified` and later re-applies any
+	// transport edit must NOT have the floor silently reset to `opportunistic`.
+	// The editor seeds its mode from the active value (status query) via
+	// `seedOutboundTlsMode`; re-applying then re-emits the SAME floor.
+	it('re-apply preserves a previously-set mode (no silent downgrade)', () => {
+		// Seeded from the active OUTBOUND_TLS_MODE, exactly as the editor does.
+		const seeded = seedOutboundTlsMode('require-verified');
+		expect(seeded).toBe('require-verified');
+		const env = buildProviderEnv({}, draft({ provider: 'mta', outboundTlsMode: seeded }));
+		expect(env['OUTBOUND_TLS_MODE']).toBe('require-verified');
+	});
+
+	it('seedOutboundTlsMode falls back to opportunistic for an unset/unknown active value', () => {
+		expect(seedOutboundTlsMode(null)).toBe('opportunistic');
+		expect(seedOutboundTlsMode(undefined)).toBe('opportunistic');
+		expect(seedOutboundTlsMode('bogus')).toBe('opportunistic');
+		expect(seedOutboundTlsMode('require')).toBe('require');
 	});
 });
 
