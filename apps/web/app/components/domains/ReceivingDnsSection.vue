@@ -70,27 +70,11 @@ const mtaStsRecords = computed(() =>
 // Live verification that the operator's published MTA-STS records + served
 // policy actually match what this deployment generates (the same fail-soft
 // pattern as the reverse-DNS preflight). Admin-gated + never throws: a lookup
-// or fetch hiccup resolves to "not verified yet", never an error. Runs once the
-// domain is publishing a policy (records present), so a deployment with no
-// policy makes no backend call.
-const { run: runMtaStsVerify } = useBackendOperation(
-	api.domains.mtaStsVerify.verifyReceivingMtaSts,
-	{ label: 'Verify MTA-STS publication', type: 'action' }
-);
-
-type MtaStsVerdict = Awaited<ReturnType<typeof runMtaStsVerify>>;
-const mtaStsVerification = ref<MtaStsVerdict>(undefined);
-const mtaStsChecked = ref(false);
-const mtaStsVerifyRan = ref(false);
-watch(
-	() => mtaStsRecords.value.length > 0,
-	async (hasRecords) => {
-		if (!hasRecords || mtaStsVerifyRan.value) return;
-		mtaStsVerifyRan.value = true;
-		mtaStsVerification.value = await runMtaStsVerify({ domain: props.domain });
-		mtaStsChecked.value = true;
-	},
-	{ immediate: true }
+// or fetch hiccup resolves to "not verified yet", never an error. The shared
+// composable runs it once the domain is publishing a policy (records present),
+// so a deployment with no policy makes no backend call.
+const { verification: mtaStsVerification, checked: mtaStsChecked } = useMtaStsVerification(() =>
+	mtaStsRecords.value.length > 0 ? props.domain : null
 );
 
 // Live reverse-DNS (PTR / FCrDNS) preflight for the deployment's mail host. The

@@ -55,28 +55,12 @@ const mtaStsDomain = computed<string | null>(() => {
 });
 
 // Live verify of the published policy vs what we serve. Admin-gated + fail-soft
-// (never throws); run once `enforce` is published and a domain is available, so
-// deployments not enforcing make no backend call.
-const { run: runMtaStsVerify } = useBackendOperation(
-	api.domains.mtaStsVerify.verifyReceivingMtaSts,
-	{ label: 'Verify MTA-STS publication', type: 'action' }
-);
-type MtaStsVerdict = Awaited<ReturnType<typeof runMtaStsVerify>>;
-const mtaStsVerification = ref<MtaStsVerdict>(undefined);
-const mtaStsVerifyRan = ref(false);
-watch(
-	() =>
-		canManageOrganization.value &&
-		mtaStsGuidance.value?.mode === 'enforce' &&
-		mtaStsDomain.value !== null,
-	async (shouldVerify) => {
-		if (!shouldVerify || mtaStsVerifyRan.value) return;
-		const domain = mtaStsDomain.value;
-		if (!domain) return;
-		mtaStsVerifyRan.value = true;
-		mtaStsVerification.value = await runMtaStsVerify({ domain });
-	},
-	{ immediate: true }
+// (never throws); the shared composable runs it once `enforce` is published and
+// a domain is available, so deployments not enforcing make no backend call.
+const { verification: mtaStsVerification } = useMtaStsVerification(() =>
+	canManageOrganization.value && mtaStsGuidance.value?.mode === 'enforce'
+		? mtaStsDomain.value
+		: null
 );
 
 // Only claim "enforce without record" once the mode is known AND we have a
