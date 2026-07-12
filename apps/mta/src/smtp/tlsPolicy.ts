@@ -16,30 +16,10 @@
  * silently lowering the other.
  */
 
-/**
- * Operator-chosen outbound TLS posture (env `OUTBOUND_TLS_MODE`, or a per-domain
- * override):
- *  - `opportunistic` — encrypt when the receiver offers STARTTLS, but never fail
- *    delivery on a missing or unverifiable certificate (RFC 7435). The default.
- *  - `require` — the handshake MUST upgrade to TLS; the certificate is not
- *    verified (encrypt-always, tolerate self-signed MX certs).
- *  - `require-verified` — the handshake MUST upgrade to TLS AND the certificate
- *    must verify against the WebPKI trust store. Can bounce mail to receivers
- *    with broken/self-signed TLS.
- */
-export type OutboundTlsMode = 'opportunistic' | 'require' | 'require-verified';
+import type { OutboundTlsMode } from '@owlat/shared';
 
-/** The set of valid {@link OutboundTlsMode} values, in strictness order. */
-export const OUTBOUND_TLS_MODES: readonly OutboundTlsMode[] = [
-	'opportunistic',
-	'require',
-	'require-verified',
-] as const;
-
-/** Narrow an untrusted string to a valid {@link OutboundTlsMode}. */
-export function isOutboundTlsMode(value: string): value is OutboundTlsMode {
-	return (OUTBOUND_TLS_MODES as readonly string[]).includes(value);
-}
+export type { OutboundTlsMode } from '@owlat/shared';
+export { OUTBOUND_TLS_MODES, isOutboundTlsMode } from '@owlat/shared';
 
 /** The MTA-STS policy state that applies to the recipient domain. */
 export type StsPolicyMode = 'enforce' | 'testing' | 'none';

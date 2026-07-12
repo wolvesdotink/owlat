@@ -13,19 +13,12 @@ import { resolveEhloForIp } from '../config.js';
 import { getMxHostnames } from './mxResolver.js';
 import { getDkimOptions } from './dkim.js';
 import { getStsTlsOptions, isMxAllowed } from './mtaSts.js';
-import { resolveTlsRequirements } from './tlsPolicy.js';
-import { resolveOutboundTlsMode } from './outboundTlsOverrides.js';
 import { buildVerpAddress } from '../bounce/verp.js';
 import { extractDomain } from '../queue/groups.js';
 import { extractDomainOrNull } from '@owlat/shared';
 import { logger } from '../monitoring/logger.js';
 import { pool, PoolOverCapError } from './connectionPool.js';
-import {
-	recordTlsResult,
-	buildStsPolicyString,
-	type TlsPolicyContext,
-	type TlsResultType,
-} from './tlsRpt.js';
+import { recordTlsResult, buildStsPolicyString, type TlsPolicyContext, type TlsResultType } from './tlsRpt.js';
 import { withSecuredCapture } from './tlsSecuredCapture.js';
 
 /**
@@ -131,29 +124,6 @@ export async function sendToMx(
 		logger.debug({ recipientDomain, mx: stsOptions.allowedMxHosts }, 'MTA-STS enforce mode active');
 	}
 
-	// Resolve the operator's outbound TLS floor for this recipient (per-domain
-	// override, else the global OUTBOUND_TLS_MODE) and combine it with the
-	// recipient's MTA-STS state via strictest-wins. `opportunistic` + no policy
-	// yields requireTLS:false / verify:false — byte-identical to the historic
-	// behaviour; `require` / `require-verified` raise the handshake demand. DANE
-	// is plumbed as null until T3 lands.
-	const localTlsMode = await resolveOutboundTlsMode(
-		redis,
-		recipientDomain,
-		config.outboundTlsMode ?? 'opportunistic'
-	);
-	const tlsRequirements = resolveTlsRequirements({
-		localMode: localTlsMode,
-		stsPolicy: { policyMode: stsOptions.policyMode },
-		daneResult: null,
-	});
-	if (localTlsMode !== 'opportunistic') {
-		logger.debug(
-			{ recipientDomain, localTlsMode, reason: tlsRequirements.reason },
-			'Outbound TLS floor raised'
-		);
-	}
-
 	// TLS-RPT policy context: when an MTA-STS policy applies, every recorded TLS
 	// result is attributed to policy-type 'sts' with the policy body + MX
 	// patterns (RFC 8460 §3). Without a policy, results stay 'no-policy-found'.
@@ -205,10 +175,7 @@ export async function sendToMx(
 			// failure: try the next MX, and if all are capped the loop falls through
 			// to a soft bounce so the job is re-queued with backoff.
 			if (err instanceof PoolOverCapError) {
-				logger.warn(
-					{ mxHost, recipientDomain },
-					'Global connection cap reached, trying next MX host'
-				);
+				logger.warn({ mxHost, recipientDomain }, 'Global connection cap reached, trying next MX host');
 				return { kind: 'over-cap' };
 			}
 			throw err;
@@ -252,7 +219,7 @@ export async function sendToMx(
 						from: verpAddress,
 						to: job.to,
 					},
-				})
+				}),
 			);
 
 			// Record the TLS-RPT result for this successful delivery (RFC 8460 §4.3).
@@ -268,14 +235,7 @@ export async function sendToMx(
 			const successResultType: TlsResultType = secured
 				? 'success'
 				: stsAttributedResultType('starttls-not-supported', stsOptions.policyMode);
-			recordTlsResult(
-				redis,
-				recipientDomain,
-				successResultType,
-				mxHost,
-				bindIp,
-				policyContext
-			).catch(() => {});
+			recordTlsResult(redis, recipientDomain, successResultType, mxHost, bindIp, policyContext).catch(() => {});
 
 			// Parse remote message ID from SMTP response
 			// Gmail: "250 2.0.0 OK 1234567890 abc123.google.com"
@@ -293,12 +253,7 @@ export async function sendToMx(
 				},
 			};
 		} catch (err: unknown) {
-			const error = err as {
-				responseCode?: number;
-				response?: string;
-				message?: string;
-				code?: string;
-			};
+			const error = err as { responseCode?: number; response?: string; message?: string; code?: string };
 			const smtpCode = error.responseCode;
 			const response = error.response ?? error.message ?? 'Unknown error';
 			const enhancedCode = parseEnhancedCode(response);
@@ -311,9 +266,7 @@ export async function sendToMx(
 			let stsResultType: TlsResultType | null = null;
 			if (baseType) {
 				stsResultType = stsAttributedResultType(baseType, stsOptions.policyMode);
-				recordTlsResult(redis, recipientDomain, stsResultType, mxHost, bindIp, policyContext).catch(
-					() => {}
-				);
+				recordTlsResult(redis, recipientDomain, stsResultType, mxHost, bindIp, policyContext).catch(() => {});
 			}
 
 			// 5xx = permanent failure (hard bounce) — don't try next MX
@@ -364,14 +317,6 @@ export async function sendToMx(
 		}
 	}
 
-	// Remember the last TLS-negotiation failure (no SMTP status) so that, when a
-	// TLS-required floor (`require` / `require-verified`, or MTA-STS enforce) makes
-	// every MX fail its handshake, the bounce names the TLS failure instead of the
-	// generic "all MX failed". It stays a soft/deferred bounce — the message is
-	// retried until the receiver fixes its TLS or the message expires (permanent-
-	// ish): we never fall back to cleartext under a TLS-required policy.
-	let lastTlsFailureResponse: string | null = null;
-
 	// Try each MX host in priority order
 	for (const mxHost of mxHosts) {
 		// MTA-STS enforcement: skip MX hosts not listed in the policy
@@ -383,14 +328,7 @@ export async function sendToMx(
 			// RFC 8460 §4.3: an MX that is not in the enforce policy is a policy
 			// failure — record it (previously this skip recorded nothing, so STS
 			// MX-mismatch was invisible in our TLS-RPT reports).
-			recordTlsResult(
-				redis,
-				recipientDomain,
-				'sts-policy-invalid',
-				mxHost,
-				bindIp,
-				policyContext
-			).catch(() => {});
+			recordTlsResult(redis, recipientDomain, 'sts-policy-invalid', mxHost, bindIp, policyContext).catch(() => {});
 			continue;
 		}
 
@@ -409,53 +347,27 @@ export async function sendToMx(
 			if (probe.kind === 'tls-failure') {
 				logger.warn(
 					{ mxHost, recipientDomain, resultType: probe.resultType },
-					'MTA-STS testing-mode TLS failure recorded; retrying at the local TLS floor'
+					'MTA-STS testing-mode TLS failure recorded; retrying opportunistically'
 				);
-				// Retry the same MX at the operator's local TLS floor so the report-only
-				// STS policy never blocks delivery. With the default `opportunistic`
-				// mode this is (no requireTLS / no verify) — historic behaviour. Under a
-				// `require` / `require-verified` local mode the floor is preserved and
-				// the retry never downgrades below it.
-				const retry = await attemptSend(
-					mxHost,
-					tlsRequirements.requireTLS,
-					tlsRequirements.rejectUnauthorized
-				);
+				// Retry the same MX opportunistically (no requireTLS / no verify) so
+				// the report-only policy never blocks delivery.
+				const retry = await attemptSend(mxHost, false, false);
 				if (retry.kind === 'sent' || retry.kind === 'smtp') {
 					return retry.result;
 				}
-				if (retry.kind === 'tls-failure') lastTlsFailureResponse = retry.response;
 				continue; // retry failed too — try the next MX
 			}
 			// over-cap / connection → try the next MX
 			continue;
 		}
 
-		// Enforce / no-policy path: a single attempt at the resolved TLS floor
-		// (strictest of the local mode and the recipient's MTA-STS state).
-		const outcome = await attemptSend(
-			mxHost,
-			tlsRequirements.requireTLS,
-			tlsRequirements.rejectUnauthorized
-		);
+		// Enforce / no-policy path: a single attempt with the policy's TLS profile.
+		const outcome = await attemptSend(mxHost, stsOptions.requireTLS, stsOptions.rejectUnauthorized);
 		if (outcome.kind === 'sent' || outcome.kind === 'smtp') {
 			return outcome.result;
 		}
-		if (outcome.kind === 'tls-failure') lastTlsFailureResponse = outcome.response;
 		// over-cap / connection / tls-failure (no SMTP code) → try the next MX
 		continue;
-	}
-
-	// Every MX failed a TLS-required handshake: surface the TLS failure rather
-	// than a generic connection error. Soft/deferred so the message is retried
-	// until the receiver's TLS is fixed or the message expires — a TLS-required
-	// floor never falls back to cleartext.
-	if (lastTlsFailureResponse) {
-		return {
-			success: false,
-			error: `TLS required but no MX for ${recipientDomain} completed a usable TLS handshake: ${lastTlsFailureResponse}`,
-			bounceType: 'soft',
-		};
 	}
 
 	// All MX hosts failed at connection level
@@ -474,11 +386,7 @@ export async function sendToMx(
  *
  * Exported for regression testing of the classification table.
  */
-export function classifyTlsFailure(error: {
-	code?: string;
-	message?: string;
-	response?: string;
-}): import('./tlsRpt.js').TlsResultType | null {
+export function classifyTlsFailure(error: { code?: string; message?: string; response?: string }): import('./tlsRpt.js').TlsResultType | null {
 	const msg = (error.message ?? '') + (error.response ?? '');
 	const code = error.code ?? '';
 
@@ -497,21 +405,9 @@ export function classifyTlsFailure(error: {
 
 	if (msg.includes('certificate') || msg.includes('CERT_') || msg.includes('altname')) {
 		if (msg.includes('expired')) return 'certificate-expired';
-		if (
-			msg.includes('hostname') ||
-			msg.includes('Hostname') ||
-			msg.includes('mismatch') ||
-			msg.includes('altname')
-		)
-			return 'certificate-host-mismatch';
+		if (msg.includes('hostname') || msg.includes('Hostname') || msg.includes('mismatch') || msg.includes('altname')) return 'certificate-host-mismatch';
 		// Match both the legacy spaced form and Node's hyphenated "self-signed".
-		if (
-			msg.includes('self signed') ||
-			msg.includes('self-signed') ||
-			msg.includes('untrusted') ||
-			msg.includes('UNABLE_TO_VERIFY')
-		)
-			return 'certificate-not-trusted';
+		if (msg.includes('self signed') || msg.includes('self-signed') || msg.includes('untrusted') || msg.includes('UNABLE_TO_VERIFY')) return 'certificate-not-trusted';
 		return 'validation-failure';
 	}
 

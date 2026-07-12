@@ -3,8 +3,8 @@
  */
 
 import { hostname } from 'os';
+import { isOutboundTlsMode, OUTBOUND_TLS_MODES, type OutboundTlsMode } from '@owlat/shared';
 import type { IpPoolConfig, DkimKeyConfig, DomainProfile } from './types.js';
-import { isOutboundTlsMode, OUTBOUND_TLS_MODES, type OutboundTlsMode } from './smtp/tlsPolicy.js';
 
 export interface MtaConfig {
 	/** HTTP server port */
