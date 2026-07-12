@@ -118,6 +118,63 @@ export function buildMtaStsTxtValue(policyId: string): string {
 }
 
 /**
+ * Parse the `id=` value out of an observed `_mta-sts` TXT record. Tolerant of
+ * tag order and surrounding whitespace (RFC 8461 §3.1 is a `;`-delimited
+ * key/value list); returns `null` when the record isn't a valid STSv1 record or
+ * carries no id.
+ */
+export function parseMtaStsTxtId(txtValue: string): string | null {
+	const parts = txtValue.split(';').map((part) => part.trim());
+	if (!parts.some((part) => part.toLowerCase() === 'v=stsv1')) return null;
+	for (const part of parts) {
+		const eq = part.indexOf('=');
+		if (eq === -1) continue;
+		if (part.slice(0, eq).trim().toLowerCase() === 'id') {
+			const id = part.slice(eq + 1).trim();
+			return id || null;
+		}
+	}
+	return null;
+}
+
+/** The result of checking a published MTA-STS policy against what we expect. */
+export interface MtaStsVerification {
+	/** The `_mta-sts` TXT record carries a `v=STSv1; id=…` with our current id. */
+	txtRecordValid: boolean;
+	/** The HTTPS-served policy body is byte-identical to the one we generate. */
+	policyServedValid: boolean;
+	/** Both halves check out — the policy is fully, correctly published. */
+	verified: boolean;
+	/** The id we expect the TXT record to carry (this deployment's current id). */
+	expectedId: string;
+	/** The id actually observed in the TXT record, when parseable. */
+	observedId: string | null;
+}
+
+/**
+ * Verify an observed MTA-STS publication against the policy this deployment
+ * currently generates: the TXT record must announce our current policy id
+ * (RFC 8461 §3.1) AND the HTTPS-served body must match ours exactly (§3.2). Pure
+ * — the caller does the DNS/HTTPS gathering and passes the raw observations in,
+ * so the id-match logic is unit-testable without a network.
+ */
+export function verifyMtaStsPublication(
+	expected: { policyId: string; body: string },
+	observed: { txtValue?: string | null; servedBody?: string | null }
+): MtaStsVerification {
+	const observedId = observed.txtValue ? parseMtaStsTxtId(observed.txtValue) : null;
+	const txtRecordValid = observedId !== null && observedId === expected.policyId;
+	const policyServedValid = (observed.servedBody ?? null) === expected.body;
+	return {
+		txtRecordValid,
+		policyServedValid,
+		verified: txtRecordValid && policyServedValid,
+		expectedId: expected.policyId,
+		observedId,
+	};
+}
+
+/**
  * Build the MTA-STS policy file body served at `/.well-known/mta-sts.txt`
  * (RFC 8461 §3.2). CRLF line endings per the spec's ABNF. One `mx` line per MX
  * host; hosts are lowercased, de-duplicated and sorted so the body is stable for

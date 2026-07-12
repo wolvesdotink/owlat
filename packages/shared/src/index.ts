@@ -46,10 +46,13 @@ export {
 	MTA_STS_POLICY_HOST,
 	MTA_STS_WELL_KNOWN_PATH,
 	MTA_STS_CONTENT_TYPE,
+	type MtaStsVerification,
 	isMtaStsMode,
 	mtaStsPolicyId,
 	buildMtaStsTxtValue,
+	parseMtaStsTxtId,
 	buildMtaStsPolicy,
+	verifyMtaStsPublication,
 } from './mtaStsPolicy';
 export { isSpfRecord, parseSpfMechanisms, mergeSpfRecords } from './spf';
 export type { ValidationIssue } from './validation';
