@@ -28,14 +28,6 @@ import { throwNotFound, throwInvalidState, throwInternal } from '../_utils/error
 import { txtRecordMatches } from './dnsMatch';
 import { checkReverseDns } from './reverseDns';
 import type { ReverseDnsResult } from './reverseDns';
-import {
-	MTA_STS_TXT_HOST,
-	MTA_STS_POLICY_HOST,
-	MTA_STS_WELL_KNOWN_PATH,
-	verifyMtaStsPublication,
-} from '@owlat/shared/mtaStsPolicy';
-import { isValidDomain } from '@owlat/shared';
-import type { MtaStsVerification } from '@owlat/shared/mtaStsPolicy';
 
 type DnsRecord = {
 	type?: 'TXT' | 'CNAME' | 'MX' | 'TLSA';
@@ -477,82 +469,3 @@ export const checkReceivingReverseDns = authedAction({
 		return checkReverseDns(mailHost, { resolve4: dns.resolve4, reverse: dns.reverse });
 	},
 });
-
-// ─── Receiving MTA-STS publication check ────────────────────────────────────
-//
-// Live verification that our OWN MTA-STS policy (RFC 8461) is correctly
-// published for `domain`: the `_mta-sts.<domain>` TXT record must carry our
-// current policy id AND `https://mta-sts.<domain>/.well-known/mta-sts.txt` must
-// serve the exact policy body we generate. The expected policy is read from the
-// same `getMtaStsPolicy` query the public route serves, so "what we verify"
-// can't drift from "what we publish". The id-match verdict is the pure,
-// unit-tested `verifyMtaStsPublication`; this action only gathers the raw DNS +
-// HTTPS observations and never throws — a lookup/fetch failure degrades to a
-// "not found" observation so the setup UI shows "not verified", not an error.
-// Returns `null` when no policy is being published (`mode === 'none'` or no mail
-// host), matching `getMtaStsPolicy`.
-//
-// authz: admin-gated — the underlying `getMtaStsGuidance`/verify are operator
-// tasks; the floor is `organization:manage` (checked in `getMtaStsGuidance`).
-export const verifyReceivingMtaSts = authedAction({
-	args: { domain: v.string() },
-	handler: async (ctx, args): Promise<MtaStsVerification | null> => {
-		// Admin gate + published-policy check in one query the route also uses.
-		await ctx.runQuery(api.domains.domains.getMtaStsGuidance, {});
-		const expected = await ctx.runQuery(api.domains.domains.getMtaStsPolicy, {});
-		if (!expected) return null;
-
-		const txtValue = await resolveMtaStsTxt(args.domain);
-		const servedBody = await fetchMtaStsPolicyBody(args.domain);
-		return verifyMtaStsPublication(
-			{ policyId: expected.policyId, body: expected.body },
-			{ txtValue, servedBody }
-		);
-	},
-});
-
-// A published MTA-STS policy body is a handful of short lines; anything larger is
-// not a policy we can meaningfully compare, so we cap the HTTPS read to bound
-// memory and reject an oversized (or slow-drip) response instead of buffering it.
-const MTA_STS_POLICY_MAX_BYTES = 64 * 1024;
-// Hard ceiling on the policy fetch so a hostile or unresponsive host on the
-// operator-supplied domain can't hang the verify action (mirrors the
-// AbortSignal.timeout guards on the other outbound fetches in this backend).
-const MTA_STS_FETCH_TIMEOUT_MS = 10_000;
-
-// Resolve the `_mta-sts.<domain>` TXT record, joining multi-string chunks per
-// RFC 1035. Fail-soft: a malformed domain or any lookup error → null (treated as
-// "no record"). `domain` is validated before it reaches the DNS name so a bogus
-// value can't smuggle extra labels into the query.
-async function resolveMtaStsTxt(domain: string): Promise<string | null> {
-	if (!isValidDomain(domain)) return null;
-	try {
-		const records = await dns.resolveTxt(`${MTA_STS_TXT_HOST}.${domain}`);
-		const joined = records.map((chunks) => chunks.join(''));
-		return joined.find((value) => value.toLowerCase().includes('v=stsv1')) ?? joined[0] ?? null;
-	} catch {
-		return null;
-	}
-}
-
-// Fetch the HTTPS-served policy body from `mta-sts.<domain>`. Fail-soft: a
-// malformed domain, any non-2xx, redirect, timeout, oversized body or network
-// error → null (treated as "not served"). SSRF-disciplined: HTTPS only, no
-// cross-host redirects (`redirect: 'error'`), a bounded timeout and a body-size
-// cap, and `domain` is validated so it can't inject userinfo/port/path into the
-// request URL.
-async function fetchMtaStsPolicyBody(domain: string): Promise<string | null> {
-	if (!isValidDomain(domain)) return null;
-	try {
-		const url = `https://${MTA_STS_POLICY_HOST}.${domain}${MTA_STS_WELL_KNOWN_PATH}`;
-		const response = await fetch(url, {
-			redirect: 'error',
-			signal: AbortSignal.timeout(MTA_STS_FETCH_TIMEOUT_MS),
-		});
-		if (!response.ok) return null;
-		const body = await response.text();
-		return body.length > MTA_STS_POLICY_MAX_BYTES ? null : body;
-	} catch {
-		return null;
-	}
-}
