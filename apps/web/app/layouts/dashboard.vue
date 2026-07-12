@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { logError } from '~/lib/runtimeLog';
+import type { NavigationSection } from '~/composables/useDashboardNavigation';
 
 const { user, signOut, isPending } = useAuth();
 const { isEnabled: isFeatureEnabled } = useFeatureFlag();
@@ -30,8 +31,6 @@ const { isFocusMode } = useFocusMode();
 // Desktop runtime — gates the workspace switcher rail + native chrome.
 const { isDesktop, isMac, isWindows } = useDesktopContext();
 
-// Bridge global OS shortcuts (compose / quick-switcher) into the SPA.
-useDesktopShortcuts();
 // ⌘1–9 workspace switching + native application-menu actions (desktop only).
 useWorkspaceHotkeys();
 useDesktopMenu();
@@ -201,9 +200,17 @@ const isSidebarOpen = ref(false);
 const isUserDropdownOpen = ref(false);
 const userDropdownRef = ref<HTMLElement | null>(null);
 
-// Navigation sections with items — filtered by feature flags. Shared with the
-// global command palette via useDashboardNavigation so the two never drift.
-const { navigationSections } = useDashboardNavigation();
+// Navigation sections with items — filtered by feature flags (shared with the
+// global command palette via useDashboardNavigation) and narrowed to the
+// active sidebar context (Inbox ↔ Marketing) with shared sections appended.
+// The toggle is emergent: it renders only while both contexts have sections.
+const { showToggle, activeContext, sidebarSections, firstSharedKey, switchContext } =
+	useSidebarContext();
+
+const sidebarContexts = [
+	{ key: 'inbox', label: 'Inbox', icon: 'lucide:inbox' },
+	{ key: 'marketing', label: 'Marketing', icon: 'lucide:megaphone' },
+] as const;
 
 // Check if a route is active (exact or prefix match)
 const isActiveRoute = (href: string) => {
@@ -238,7 +245,7 @@ const isActiveRoute = (href: string) => {
 };
 
 // Check if any item in a section is active
-const isSectionActive = (section: (typeof navigationSections.value)[0]) => {
+const isSectionActive = (section: NavigationSection) => {
 	return section.items.some((item) => isActiveRoute(item.href));
 };
 
@@ -258,7 +265,7 @@ const getSectionOverviewRoute = (sectionKey: string) => {
 };
 
 // Handle section header click - navigate when collapsed, toggle when expanded
-const handleSectionClick = (section: (typeof navigationSections.value)[0]) => {
+const handleSectionClick = (section: NavigationSection) => {
 	if (isCollapsed.value) {
 		router.push(getSectionOverviewRoute(section.key));
 	} else {
@@ -486,6 +493,39 @@ const sidebarDesktopClass = computed(() => {
 				</button>
 			</div>
 
+			<!-- Context toggle: the sidebar shows one context at a time (Inbox ↔
+			     Marketing) so it stays focused on the current work. Emergent: only
+			     rendered while both contexts survived the feature flags. Switching
+			     navigates to the target context's last-visited route. -->
+			<div v-if="showToggle" class="px-2 pt-3" role="group" aria-label="Sidebar context">
+				<div :class="isCollapsed ? 'flex flex-col gap-1' : 'flex gap-1'">
+					<button
+						v-for="context in sidebarContexts"
+						:key="context.key"
+						type="button"
+						:aria-pressed="activeContext === context.key"
+						:class="[
+							'flex items-center justify-center gap-1.5 rounded-lg text-xs font-medium transition-colors',
+							isCollapsed ? 'p-2' : 'flex-1 px-2 py-1.5',
+							activeContext === context.key
+								? 'bg-brand-subtle text-brand'
+								: 'text-text-secondary hover:text-text-primary hover:bg-bg-surface',
+						]"
+						:title="isCollapsed ? context.label : undefined"
+						@click="switchContext(context.key)"
+					>
+						<Icon
+							:name="context.icon"
+							:class="[
+								isCollapsed ? 'w-5 h-5' : 'w-3.5 h-3.5',
+								activeContext === context.key ? 'text-brand' : 'text-text-tertiary',
+							]"
+						/>
+						<span v-if="!isCollapsed">{{ context.label }}</span>
+					</button>
+				</div>
+			</div>
+
 			<!-- Navigation with collapsible sections -->
 			<nav class="flex-1 px-2 py-4 overflow-y-auto">
 				<!-- Dashboard link (always visible) -->
@@ -512,9 +552,15 @@ const sidebarDesktopClass = computed(() => {
 					</NuxtLink>
 				</div>
 
-				<!-- Collapsible sections -->
+				<!-- Collapsible sections — the active context's sections first, shared
+				     sections (Assistant, Knowledge, Settings) after the divider -->
 				<div class="space-y-1">
-					<div v-for="section in navigationSections" :key="section.key" class="mb-1">
+					<div v-for="section in sidebarSections" :key="section.key" class="mb-1">
+						<div
+							v-if="section.key === firstSharedKey"
+							class="my-2 border-t border-border-subtle"
+							aria-hidden="true"
+						/>
 						<!-- Flat section: a single link, no collapsible sub-list. Used when
 						     the destination carries its own in-page navigation (Postbox's
 						     folder rail) or the section has only one page (Chat, Assistant). -->
@@ -811,7 +857,9 @@ const sidebarDesktopClass = computed(() => {
 				id="main-content"
 				tabindex="-1"
 				:class="
-					isFocusMode ? 'min-h-screen' : 'min-h-[calc(100vh-4rem)] lg:min-h-[calc(100vh-4rem-3rem)]'
+					isFocusMode
+						? 'min-h-[calc(100dvh-var(--titlebar-h,0px))]'
+						: 'min-h-[calc(100dvh-var(--titlebar-h,0px)-4rem)] lg:min-h-[calc(100dvh-var(--titlebar-h,0px)-4rem-3rem)]'
 				"
 			>
 				<slot />

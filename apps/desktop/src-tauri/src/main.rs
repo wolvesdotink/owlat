@@ -34,7 +34,7 @@ fn main() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None::<Vec<&str>>,
         ))
-        // System-wide shortcuts: quick-compose, quick-switcher, show/hide.
+        // System-wide shortcuts: quick-compose, show/hide.
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, shortcut, event| {

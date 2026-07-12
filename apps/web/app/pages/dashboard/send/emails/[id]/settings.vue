@@ -228,7 +228,7 @@ const handleBack = () => {
 </script>
 
 <template>
-	<div class="h-[calc(100vh-64px)] flex flex-col bg-bg-base">
+	<div class="h-[calc(100dvh-var(--titlebar-h,0px)-64px)] flex flex-col bg-bg-base">
 		<!-- Header -->
 		<div
 			class="shrink-0 h-14 border-b border-border-subtle bg-bg-elevated flex items-center justify-between px-4"
