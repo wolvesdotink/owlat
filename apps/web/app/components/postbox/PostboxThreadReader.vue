@@ -373,7 +373,8 @@ const {
 	inlineSpec,
 	inlineReplyEl,
 	expandInline,
-	expandPrimaryReply,
+	guardedExpandReply,
+	guardedExpandReplyAll,
 	collapseInline,
 	inlineSenderLabel,
 } = usePostboxReaderComposer({
@@ -381,6 +382,9 @@ const {
 	latestMessage,
 	ownAddresses,
 	replyDefault,
+	// Route every in-composer reply/reply-all path (keyboard, inline box, list
+	// hand-off) through the sender-auth reply guard against the latest message.
+	guardReply: (run) => guardLatestReply(run),
 });
 
 // Sender-authentication badge (Sealed Mail A3, flag `senderAuthBadges`). The
@@ -412,14 +416,36 @@ const replyGuardEl = ref<{
 	guard: (threadId: string, state: SenderAuthState | null, action: () => void) => void;
 } | null>(null);
 
-function guardedReply(msg: PostboxReaderMessage) {
+/**
+ * Run `action` behind the reply guard for `msg`: a one-time-per-thread confirm
+ * when `msg` failed sender authentication, else straight through. Shared by
+ * every reply/reply-all entry point (per-message buttons, keyboard, inline box,
+ * list hand-off) so none of them can bypass the interstitial.
+ */
+function runGuarded(msg: PostboxReaderMessage | undefined, action: () => void) {
+	if (!msg) {
+		action();
+		return;
+	}
 	const threadId = msg.threadId ?? msg._id;
-	replyGuardEl.value?.guard(threadId, senderAuthState(msg), () => openPrimaryReply(msg));
+	replyGuardEl.value?.guard(threadId, senderAuthState(msg), action);
+}
+
+function guardedOpen(msg: PostboxReaderMessage, open: (m: PostboxReaderMessage) => void) {
+	runGuarded(msg, () => open(msg));
+}
+
+function guardedReply(msg: PostboxReaderMessage) {
+	guardedOpen(msg, openPrimaryReply);
 }
 
 function guardedReplyAll(msg: PostboxReaderMessage) {
-	const threadId = msg.threadId ?? msg._id;
-	replyGuardEl.value?.guard(threadId, senderAuthState(msg), () => openReplyAll(msg));
+	guardedOpen(msg, openReplyAll);
+}
+
+/** Guard a reply/reply-all against the LATEST message (keyboard/inline paths). */
+function guardLatestReply(run: () => void) {
+	runGuarded(latestMessage.value, run);
 }
 
 async function runAndAdvance(run: () => Promise<unknown>) {
@@ -518,10 +544,10 @@ function runReaderAction(action: string) {
 			readerBulk.toggle(messageId.value);
 			break;
 		case 'reply':
-			void expandPrimaryReply();
+			guardedExpandReply();
 			break;
 		case 'replyAll':
-			void expandInline('replyAll');
+			guardedExpandReplyAll();
 			break;
 		case 'forward':
 			void expandInline('forward');
@@ -1070,7 +1096,14 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 				:sender-label="inlineSenderLabel"
 				:show-reply-all="hasOtherRecipients(latestMessage)"
 				:spec="inlineSpec"
-				@expand="(kind) => void (kind === 'reply' ? expandPrimaryReply() : expandInline(kind))"
+				@expand="
+					(kind) =>
+						kind === 'reply'
+							? guardedExpandReply()
+							: kind === 'replyAll'
+								? guardedExpandReplyAll()
+								: void expandInline(kind)
+				"
 				@collapse="collapseInline"
 			/>
 		</div>
