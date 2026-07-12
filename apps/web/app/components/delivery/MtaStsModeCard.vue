@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
-import type { MtaStsMode } from '@owlat/shared/mtaStsPolicy';
+import { isMtaStsMode, type MtaStsMode } from '@owlat/shared/mtaStsPolicy';
 
 /**
  * MTA-STS publishing stepper (Delivery → provider config).
@@ -53,17 +53,20 @@ const DESCRIPTIONS: Record<MtaStsMode, string> = {
 // policy can't actually take effect, so warn honestly.
 const enforceWithoutHost = computed(() => mode.value === 'enforce' && !guidance.value?.mailHost);
 
+// Confirmation toast per saved mode (kept beside DESCRIPTIONS so the two copies
+// can't drift; one map instead of a nested ternary).
+const SAVED_TOASTS: Record<MtaStsMode, string> = {
+	none: 'MTA-STS turned off — no policy is published.',
+	testing: 'MTA-STS set to testing — senders will report TLS problems without failing delivery.',
+	enforce: 'MTA-STS set to enforce — publish the DNS records so senders require verified TLS.',
+};
+
 async function selectMode(next: string) {
-	if (!canManageOrganization.value || next === mode.value) return;
-	const res = await updateSettings({ mtaStsMode: next as MtaStsMode });
+	// `next` is a SegmentedControl option value; narrow it before it drives a save.
+	if (!isMtaStsMode(next) || !canManageOrganization.value || next === mode.value) return;
+	const res = await updateSettings({ mtaStsMode: next });
 	if (res === undefined) return; // failure already toasted
-	showToast(
-		next === 'none'
-			? 'MTA-STS turned off — no policy is published.'
-			: next === 'testing'
-				? 'MTA-STS set to testing — senders will report TLS problems without failing delivery.'
-				: 'MTA-STS set to enforce — publish the DNS records so senders require verified TLS.'
-	);
+	showToast(SAVED_TOASTS[next]);
 }
 </script>
 
