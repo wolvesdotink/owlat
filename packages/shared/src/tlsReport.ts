@@ -85,7 +85,7 @@ export async function gunzipTlsReport(bytes: Uint8Array): Promise<string> {
 	const writer = stream.writable.getWriter();
 	// The real gunzip error surfaces on the reader for corrupt input; swallow the
 	// writer-side rejection so it isn't reported as an unhandled rejection.
-	writer.write(bytes).catch(() => undefined);
+	writer.write(bytes as BufferSource).catch(() => undefined);
 	writer.close().catch(() => undefined);
 
 	const reader = stream.readable.getReader();
