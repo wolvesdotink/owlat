@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import {
 	OUTBOUND_TLS_MODE_OPTIONS,
+	seedOutboundTlsMode,
+	type OutboundTlsMode,
+} from '~/composables/setupOutboundTls';
+import {
 	SMTP_RELAY_PRESETS,
 	buildProviderEnv,
 	emailStepIsValid,
-	seedOutboundTlsMode,
 	validateEmailStep,
 	type EmailStepDraft,
-	type OutboundTlsMode,
 	type ProviderChoice,
 	type SmtpPreset,
 } from '~/composables/useSetupWizard';

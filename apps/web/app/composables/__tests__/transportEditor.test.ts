@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
+import { seedOutboundTlsMode } from '../setupOutboundTls';
 import {
 	PROVIDER_ENV_KEYS,
 	SMTP_RELAY_PRESETS,
 	buildProviderEnv,
 	emailStepIsValid,
-	seedOutboundTlsMode,
 	validateEmailStep,
 	type EmailStepDraft,
 } from '../useSetupWizard';
