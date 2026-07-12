@@ -39,8 +39,8 @@ export function formatSuccessRate(rate: number | null): string {
 
 /**
  * Traffic-light tone for a TLS success rate. A single failed session is rare and
- * worth noticing, so the thresholds are deliberately strict: 100% is healthy,
- * anything below 99% warns, below 95% is an error. Unknown (no sessions) is
+ * worth noticing, so the thresholds are deliberately strict: 99% or above is
+ * healthy, 95%–99% warns, below 95% is an error. Unknown (no sessions) is
  * neutral.
  */
 export function successRateTone(rate: number | null): HealthTone {
