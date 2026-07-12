@@ -554,3 +554,34 @@ describe('featureFlags — infra templates stay in sync', () => {
 		expect(missing).toEqual([]);
 	});
 });
+
+describe('featureFlags — sealed-mail flags', () => {
+	it('registers senderAuthBadges and sealedMail, both default OFF', () => {
+		expect(FEATURE_FLAGS.senderAuthBadges).toBeDefined();
+		expect(FEATURE_FLAGS.sealedMail).toBeDefined();
+		expect(FEATURE_FLAGS.senderAuthBadges.default).toBe(false);
+		expect(FEATURE_FLAGS.sealedMail.default).toBe(false);
+	});
+
+	it('includes both flags OFF in the default self-host flag set', () => {
+		const flags = getDefaultFlags();
+		expect(flags.senderAuthBadges).toBe(false);
+		expect(flags.sealedMail).toBe(false);
+	});
+
+	it('keeps sealedMail off unless its dependencies are on', () => {
+		const stored: FeatureFlagState = { sealedMail: true };
+		const resolved = resolveFlags(stored);
+		expect(resolved.sealedMail).toBe(false);
+	});
+
+	it('resolves sealedMail on only when postbox and senderAuthBadges are on', () => {
+		const stored: FeatureFlagState = {
+			postbox: true,
+			senderAuthBadges: true,
+			sealedMail: true,
+		};
+		const resolved = resolveFlags(stored);
+		expect(resolved.sealedMail).toBe(true);
+	});
+});
