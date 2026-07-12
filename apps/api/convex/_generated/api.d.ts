@@ -219,6 +219,8 @@ import type * as domains_dnsMatch from "../domains/dnsMatch.js";
 import type * as domains_dnsVerification from "../domains/dnsVerification.js";
 import type * as domains_domains from "../domains/domains.js";
 import type * as domains_lifecycle from "../domains/lifecycle.js";
+import type * as domains_mtaSts from "../domains/mtaSts.js";
+import type * as domains_mtaStsVerify from "../domains/mtaStsVerify.js";
 import type * as domains_providers_index from "../domains/providers/index.js";
 import type * as domains_providers_mta_index from "../domains/providers/mta/index.js";
 import type * as domains_providers_registerAction from "../domains/providers/registerAction.js";
@@ -812,6 +814,8 @@ declare const fullApi: ApiFromModules<{
   "domains/dnsVerification": typeof domains_dnsVerification;
   "domains/domains": typeof domains_domains;
   "domains/lifecycle": typeof domains_lifecycle;
+  "domains/mtaSts": typeof domains_mtaSts;
+  "domains/mtaStsVerify": typeof domains_mtaStsVerify;
   "domains/providers/index": typeof domains_providers_index;
   "domains/providers/mta/index": typeof domains_providers_mta_index;
   "domains/providers/registerAction": typeof domains_providers_registerAction;

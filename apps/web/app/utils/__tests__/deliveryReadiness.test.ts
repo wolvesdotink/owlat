@@ -142,6 +142,34 @@ describe('deriveDeliveryReadiness — summary', () => {
 	});
 });
 
+describe('deriveDeliveryReadiness — MTA-STS enforce gate', () => {
+	it('leaves a ready instance untouched when the flag is unset (default)', () => {
+		const r = deriveDeliveryReadiness(input());
+		expect(r.level).toBe('ready');
+		expect(r.gates.find((g) => g.key === 'mta-sts')).toBeUndefined();
+	});
+
+	it('warns (incomplete) when enforce is published without the record, even if sending is otherwise ready', () => {
+		const r = deriveDeliveryReadiness(input({ mtaStsEnforceWithoutRecord: true }));
+		expect(r.canSend).toBe(true);
+		expect(r.level).toBe('incomplete');
+		expect(r.tone).toBe('warning');
+		const g = gate(r, 'mta-sts');
+		expect(g.status).toBe('attention');
+		expect(g.tone).toBe('warning');
+		expect(g.actionHref).toBe('/dashboard/delivery/domains');
+		// The summary leads with the unfinished MTA-STS step.
+		expect(r.summary).toContain('MTA-STS');
+	});
+
+	it('stays blocked (not merely incomplete) when the transport is also missing', () => {
+		const r = deriveDeliveryReadiness(
+			input({ transportConfigured: false, mtaStsEnforceWithoutRecord: true })
+		);
+		expect(r.level).toBe('blocked');
+	});
+});
+
 describe('readinessInputFromSources — folding the two live sources', () => {
 	function row(overrides: Partial<ReadinessDomainRow> = {}): ReadinessDomainRow {
 		return { status: 'verified', missing: [], ...overrides };
@@ -181,6 +209,7 @@ describe('readinessInputFromSources — folding the two live sources', () => {
 			domainVerified: false,
 			authComplete: false,
 			authMissing: [],
+			mtaStsEnforceWithoutRecord: false,
 		});
 	});
 
@@ -193,5 +222,37 @@ describe('readinessInputFromSources — folding the two live sources', () => {
 	it('carries transport canSend straight through', () => {
 		expect(readinessInputFromSources({ canSend: true }, []).transportConfigured).toBe(true);
 		expect(readinessInputFromSources({ canSend: false }, [row()]).transportConfigured).toBe(false);
+	});
+
+	it('warns only when MTA-STS enforce is published WITHOUT the record verified', () => {
+		const enforceUnverified = readinessInputFromSources({ canSend: true }, [row()], {
+			mode: 'enforce',
+			recordVerified: false,
+		});
+		expect(enforceUnverified.mtaStsEnforceWithoutRecord).toBe(true);
+
+		const enforceVerified = readinessInputFromSources({ canSend: true }, [row()], {
+			mode: 'enforce',
+			recordVerified: true,
+		});
+		expect(enforceVerified.mtaStsEnforceWithoutRecord).toBe(false);
+	});
+
+	it('never warns for testing/none modes or a missing (non-admin) source', () => {
+		expect(
+			readinessInputFromSources({ canSend: true }, [row()], {
+				mode: 'testing',
+				recordVerified: false,
+			}).mtaStsEnforceWithoutRecord
+		).toBe(false);
+		expect(
+			readinessInputFromSources({ canSend: true }, [row()], {
+				mode: 'none',
+				recordVerified: false,
+			}).mtaStsEnforceWithoutRecord
+		).toBe(false);
+		expect(
+			readinessInputFromSources({ canSend: true }, [row()], null).mtaStsEnforceWithoutRecord
+		).toBe(false);
 	});
 });

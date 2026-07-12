@@ -19,8 +19,11 @@ import {
 	deriveDeliveryReadiness,
 	readinessInputFromSources,
 	type ReadinessGateStatus,
+	type ReadinessMtaStsSource,
 } from '~/utils/deliveryReadiness';
 import { healthChipClass, healthTextClass } from '~/utils/healthTone';
+
+const { canManageOrganization } = usePermissions();
 
 const {
 	data: transport,
@@ -34,13 +37,52 @@ const {
 	error: domainsError,
 } = useOrganizationQuery(api.analytics.reputationQueries.getDeliveryDomainTable);
 
+// MTA-STS publishing is an admin-gated inbound-TLS concern; `getMtaStsGuidance`
+// requires `organization:manage`, so subscribe only for admins (conditional
+// args). A member sees the same three gates as before — they can't fix an
+// inbound-TLS record anyway, and the readiness input treats a `null` source as
+// "no warning".
+const { data: mtaStsGuidance } = useConvexQuery(api.domains.mtaSts.getMtaStsGuidance, () =>
+	canManageOrganization.value ? {} : 'skip'
+);
+
+// The domain whose published MTA-STS records we verify: the most-active verified
+// sending domain (the one readiness already reports auth against), falling back
+// to the most-active configured domain.
+const mtaStsDomain = computed<string | null>(() => {
+	const rows = domainRows.value ?? [];
+	return rows.find((row) => row.status === 'verified')?.domain ?? rows[0]?.domain ?? null;
+});
+
+// Live verify of the published policy vs what we serve. Admin-gated + fail-soft
+// (never throws); the shared composable runs it once `enforce` is published and
+// a domain is available, so deployments not enforcing make no backend call.
+const { verification: mtaStsVerification } = useMtaStsVerification(() =>
+	canManageOrganization.value && mtaStsGuidance.value?.mode === 'enforce'
+		? mtaStsDomain.value
+		: null
+);
+
+// Only claim "enforce without record" once the mode is known AND we have a
+// verdict; before the verify resolves (or for a non-admin) leave it null so the
+// gate never flashes an unconfirmed warning.
+const mtaStsSource = computed<ReadinessMtaStsSource | null>(() => {
+	const mode = mtaStsGuidance.value?.mode;
+	if (!mode) return null;
+	if (mode !== 'enforce') return { mode, recordVerified: true };
+	if (!mtaStsVerification.value) return null;
+	return { mode, recordVerified: mtaStsVerification.value.verified };
+});
+
 const isLoading = computed(() => transportLoading.value || domainsLoading.value);
 const hasError = computed(() => Boolean(transportError.value || domainsError.value));
 
 const readiness = computed(() => {
 	const summary = transport.value;
 	if (!summary) return null;
-	return deriveDeliveryReadiness(readinessInputFromSources(summary, domainRows.value ?? []));
+	return deriveDeliveryReadiness(
+		readinessInputFromSources(summary, domainRows.value ?? [], mtaStsSource.value)
+	);
 });
 
 // Per-gate glyph; the text colour reuses the shared tone → class map so it can't

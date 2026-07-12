@@ -26,7 +26,7 @@
  * reachability isn't testable from the backend, so that stays advisory text.
  */
 import { api } from '@owlat/api';
-import { buildInboundMxRecords } from '~/utils/inboundDns';
+import { buildInboundMxRecords, buildMtaStsDnsRecords } from '~/utils/inboundDns';
 
 const props = defineProps<{
 	/** The sending domain whose inbound MX records to derive. */
@@ -45,6 +45,37 @@ const props = defineProps<{
 }>();
 
 const mxRecords = computed(() => buildInboundMxRecords(props.domain, props.mailHost));
+
+// MTA-STS publishing (RFC 8461): when the operator has turned on a policy
+// (`mtaStsMode` testing/enforce) the admin-gated guidance carries the current
+// policy id, from which we derive the `_mta-sts` TXT + `mta-sts` CNAME records
+// the domain must publish. The CNAME target is this Owlat instance's own web
+// host (where the policy file is served). No policy → no id → no rows.
+const { data: mtaStsGuidance } = useConvexQuery(api.domains.mtaSts.getMtaStsGuidance, {});
+
+const runtimeConfig = useRuntimeConfig();
+const webHost = computed<string | null>(() => {
+	const siteUrl = runtimeConfig.public.siteUrl || '';
+	try {
+		return siteUrl ? new URL(siteUrl).host : null;
+	} catch {
+		return null;
+	}
+});
+
+const mtaStsRecords = computed(() =>
+	buildMtaStsDnsRecords(mtaStsGuidance.value?.policyId ?? null, webHost.value)
+);
+
+// Live verification that the operator's published MTA-STS records + served
+// policy actually match what this deployment generates (the same fail-soft
+// pattern as the reverse-DNS preflight). Admin-gated + never throws: a lookup
+// or fetch hiccup resolves to "not verified yet", never an error. The shared
+// composable runs it once the domain is publishing a policy (records present),
+// so a deployment with no policy makes no backend call.
+const { verification: mtaStsVerification, checked: mtaStsChecked } = useMtaStsVerification(() =>
+	mtaStsRecords.value.length > 0 ? props.domain : null
+);
 
 // Live reverse-DNS (PTR / FCrDNS) preflight for the deployment's mail host. The
 // backend reads the host authoritatively from env and never throws; `run()`
@@ -126,6 +157,46 @@ watch(
 					:domain="domain"
 				/>
 			</div>
+		</div>
+
+		<!-- MTA-STS (RFC 8461) records — shown only once the operator turns on a
+		     policy (Delivery → provider config). These let senders REQUIRE
+		     encrypted delivery to your mail server. -->
+		<div v-if="mtaStsRecords.length > 0" class="mt-5">
+			<p class="text-xs font-medium text-text-tertiary uppercase tracking-wider mb-2">
+				Require encryption (MTA-STS)
+			</p>
+			<p class="text-sm text-text-secondary mb-3">
+				You've turned on a mail-encryption policy for
+				<strong class="text-text-primary">{{ domain }}</strong
+				>. Publish both records below so other mail servers can find it and require an encrypted,
+				verified connection when they deliver to you.
+			</p>
+			<div class="space-y-3">
+				<DomainsDNSRecordPanel
+					v-for="(rec, i) in mtaStsRecords"
+					:key="`mta-sts-${i}`"
+					:record="{ type: rec.type, host: rec.host, value: rec.value }"
+					:label="rec.type"
+					:domain="domain"
+				/>
+			</div>
+
+			<!-- Live verify verdict: does the published policy match what we serve? -->
+			<p
+				v-if="mtaStsChecked && mtaStsVerification && mtaStsVerification.verified"
+				class="text-sm text-success mt-3"
+			>
+				MTA-STS is live — the DNS record and served policy match, so senders can require encrypted
+				delivery to you.
+			</p>
+			<p
+				v-else-if="mtaStsChecked && mtaStsVerification && !mtaStsVerification.verified"
+				class="text-sm text-warning mt-3"
+			>
+				MTA-STS isn't verified yet. Publish both records above (DNS can take a little while to
+				propagate) — until then senders won't require encrypted delivery.
+			</p>
 		</div>
 
 		<!-- Operational detail (firewall + live PTR verdict) only matters once
