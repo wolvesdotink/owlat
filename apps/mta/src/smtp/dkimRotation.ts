@@ -14,6 +14,7 @@ import { generateKeyPairSync } from 'crypto';
 import { resolveTxt } from 'dns/promises';
 import type Redis from 'ioredis';
 import { getDkimConfig, setDkimKey, listDkimDomains } from './dkimStore.js';
+import { getMtaSecretBox } from '../lib/secretBox.js';
 import { logger } from '../monitoring/logger.js';
 
 /** Injectable for tests; matches dns/promises resolveTxt. */
@@ -53,7 +54,7 @@ export async function isPendingDnsPublished(
 	domain: string,
 	selector: string,
 	expectedDnsRecord: string | undefined,
-	resolveTxtFn: TxtResolver = resolveTxt,
+	resolveTxtFn: TxtResolver = resolveTxt
 ): Promise<boolean> {
 	if (!expectedDnsRecord) return false;
 	const expectedP = /p=([A-Za-z0-9+/=]+)/.exec(expectedDnsRecord)?.[1];
@@ -122,7 +123,9 @@ export async function initiateRotation(
 	// Check for existing pending rotation
 	const existing = await getRotationState(redis, domain);
 	if (existing?.pendingSelector) {
-		throw new Error(`Domain ${domain} already has a pending rotation (selector: ${existing.pendingSelector}). Activate or cancel it first.`);
+		throw new Error(
+			`Domain ${domain} already has a pending rotation (selector: ${existing.pendingSelector}). Activate or cancel it first.`
+		);
 	}
 
 	// Get current active key
@@ -147,11 +150,15 @@ export async function initiateRotation(
 		.replace(/\s/g, '');
 	const dnsRecord = `v=DKIM1; k=rsa; p=${pubKeyBase64}`;
 
-	// Store the pending key in Redis (separate from the active key)
+	// Store the pending key in Redis (separate from the active key). The private
+	// key is sealed at rest (secretBox) so a Redis dump taken during the multi-day
+	// rotation overlap window never exposes the about-to-be-active PEM — the same
+	// at-rest guarantee active keys get in dkimStore. activatePendingKey unseals
+	// on read, so the promoted key is byte-identical to what was generated here.
 	const pendingKeyRedis = `mta:dkim:pending:${domain}`;
 	await redis.hset(pendingKeyRedis, {
 		selector: newSelector,
-		privateKey,
+		privateKey: getMtaSecretBox().seal(privateKey),
 	});
 	await redis.expire(pendingKeyRedis, 30 * 86400); // 30 day expiry
 
@@ -197,7 +204,7 @@ export async function activatePendingKey(
 	domain: string,
 	force = false,
 	resolveTxtFn: TxtResolver = resolveTxt,
-	notify: DkimRotationNotifier = noopNotifier,
+	notify: DkimRotationNotifier = noopNotifier
 ): Promise<{ activated: boolean; selector?: string }> {
 	const state = await getRotationState(redis, domain);
 	if (!state?.pendingSelector) {
@@ -223,7 +230,7 @@ export async function activatePendingKey(
 			domain,
 			state.pendingSelector,
 			state.pendingDnsRecord,
-			resolveTxtFn,
+			resolveTxtFn
 		);
 		if (!published) {
 			logger.warn(
@@ -242,8 +249,16 @@ export async function activatePendingKey(
 		return { activated: false };
 	}
 
+	// Unseal the pending private key (sealed on write in initiateRotation),
+	// tolerating a legacy plaintext value written by an older MTA before pending
+	// keys were sealed. setDkimKey re-seals it under the active hash.
+	const box = getMtaSecretBox();
+	const pendingPrivateKey = box.isSealed(pendingData['privateKey'])
+		? box.open(pendingData['privateKey'])
+		: pendingData['privateKey'];
+
 	// Activate: set the pending key as the new active key
-	await setDkimKey(redis, domain, pendingData['selector'], pendingData['privateKey']);
+	await setDkimKey(redis, domain, pendingData['selector'], pendingPrivateKey);
 
 	// Clean up pending state
 	await redis.del(pendingKeyRedis);
@@ -252,7 +267,13 @@ export async function activatePendingKey(
 		lastRotatedAt: String(Date.now()),
 		nextRotationAt: String(Date.now() + DEFAULT_ROTATION_INTERVAL_DAYS * 86400_000),
 	});
-	await redis.hdel(`${ROTATION_PREFIX}${domain}`, 'pendingSelector', 'pendingDnsRecord', 'pendingCreatedAt', 'activateAfter');
+	await redis.hdel(
+		`${ROTATION_PREFIX}${domain}`,
+		'pendingSelector',
+		'pendingDnsRecord',
+		'pendingCreatedAt',
+		'activateAfter'
+	);
 
 	logger.info({ domain, selector: pendingData['selector'] }, 'DKIM key rotation activated');
 
@@ -281,7 +302,13 @@ export async function cancelRotation(redis: Redis, domain: string): Promise<bool
 	}
 
 	await redis.del(`mta:dkim:pending:${domain}`);
-	await redis.hdel(`${ROTATION_PREFIX}${domain}`, 'pendingSelector', 'pendingDnsRecord', 'pendingCreatedAt', 'activateAfter');
+	await redis.hdel(
+		`${ROTATION_PREFIX}${domain}`,
+		'pendingSelector',
+		'pendingDnsRecord',
+		'pendingCreatedAt',
+		'activateAfter'
+	);
 
 	logger.info({ domain }, 'DKIM key rotation cancelled');
 	return true;
@@ -290,7 +317,10 @@ export async function cancelRotation(redis: Redis, domain: string): Promise<bool
 /**
  * Get the rotation state for a domain
  */
-export async function getRotationState(redis: Redis, domain: string): Promise<RotationState | null> {
+export async function getRotationState(
+	redis: Redis,
+	domain: string
+): Promise<RotationState | null> {
 	const data = await redis.hgetall(`${ROTATION_PREFIX}${domain}`);
 	if (!data['activeSelector']) return null;
 
@@ -312,13 +342,19 @@ export async function getRotationState(redis: Redis, domain: string): Promise<Ro
  *
  * Returns domains that need attention (past rotation date or have pending keys ready).
  */
-export async function checkRotationStatus(redis: Redis): Promise<Array<{
-	domain: string;
-	action: 'needs_rotation' | 'pending_ready' | 'pending_waiting';
-	details: string;
-}>> {
+export async function checkRotationStatus(redis: Redis): Promise<
+	Array<{
+		domain: string;
+		action: 'needs_rotation' | 'pending_ready' | 'pending_waiting';
+		details: string;
+	}>
+> {
 	const domains = await listDkimDomains(redis);
-	const results: Array<{ domain: string; action: 'needs_rotation' | 'pending_ready' | 'pending_waiting'; details: string }> = [];
+	const results: Array<{
+		domain: string;
+		action: 'needs_rotation' | 'pending_ready' | 'pending_waiting';
+		details: string;
+	}> = [];
 
 	for (const { domain } of domains) {
 		const state = await getRotationState(redis, domain);

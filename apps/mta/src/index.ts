@@ -23,6 +23,7 @@ import { initializeWarming, evaluateDay } from './intelligence/warming.js';
 import * as orgLimits from './intelligence/orgLimits.js';
 import { pool } from './smtp/connectionPool.js';
 import { seedFromConfig } from './smtp/dkimStore.js';
+import { initMtaSecretBox } from './lib/secretBox.js';
 import { seedProfiles } from './config/ispProfiles.js';
 import { startLeaderElection, isLeader, stopLeaderElection } from './lib/leaderElection.js';
 import { fetchPostmasterData } from './monitoring/postmaster.js';
@@ -37,6 +38,10 @@ async function main() {
 
 	// ── 1. Load configuration ──
 	const config = loadConfig();
+	// Bind the transport-secret box to the boot-validated MTA_SECRET so every
+	// seal/unseal (DKIM keys, pending rotation keys) shares one authoritative
+	// secret source rather than re-reading the environment.
+	initMtaSecretBox(config.mtaSecret);
 	logger.info(
 		{
 			port: config.port,
@@ -66,7 +71,10 @@ async function main() {
 
 	// ── 3a. Enable distributed pool coordination ──
 	pool.enableDistributedCoordination(redis, config.smtpPoolGlobalMaxPerHost, config.serverId);
-	logger.info({ globalMaxPerHost: config.smtpPoolGlobalMaxPerHost }, 'Distributed pool coordination enabled');
+	logger.info(
+		{ globalMaxPerHost: config.smtpPoolGlobalMaxPerHost },
+		'Distributed pool coordination enabled'
+	);
 
 	// ── 3b. Seed DKIM keys from env var into Redis ──
 	await seedFromConfig(redis, config.dkimKeys);
@@ -96,12 +104,9 @@ async function main() {
 
 	// ── 7. Start HTTP server ──
 	const app = createApp(queue, redis, config);
-	const server = serve(
-		{ fetch: app.fetch, port: config.port },
-		(info) => {
-			logger.info({ port: info.port }, 'HTTP server listening');
-		}
-	);
+	const server = serve({ fetch: app.fetch, port: config.port }, (info) => {
+		logger.info({ port: info.port }, 'HTTP server listening');
+	});
 
 	// ── 8. Start bounce SMTP server ──
 	let bounceServer: ReturnType<typeof createBounceServer> | undefined;
@@ -109,7 +114,10 @@ async function main() {
 		bounceServer = createBounceServer(config, redis);
 		await startBounceServer(bounceServer, config.bouncePort);
 	} catch (err) {
-		logger.warn({ err, port: config.bouncePort }, 'Bounce server failed to start (port may require root)');
+		logger.warn(
+			{ err, port: config.bouncePort },
+			'Bounce server failed to start (port may require root)'
+		);
 	}
 
 	// ── 8b. Start SMTP submission server (if enabled) ──
@@ -133,9 +141,7 @@ async function main() {
 	// RFC 8314 §3.3/§7.3-preferred transport: the whole connection is wrapped in
 	// TLS, so there is no plaintext window for AUTH to be stripped. Same
 	// fail-fast-on-missing-TLS / soften-transient-listen as the 587 listener.
-	let implicitTlsSubmissionServer:
-		| ReturnType<typeof createImplicitTlsSubmissionServer>
-		| undefined;
+	let implicitTlsSubmissionServer: ReturnType<typeof createImplicitTlsSubmissionServer> | undefined;
 	if (config.submissionImplicitTlsEnabled) {
 		implicitTlsSubmissionServer = createImplicitTlsSubmissionServer(queue, redis, config);
 		try {
@@ -143,7 +149,7 @@ async function main() {
 		} catch (err) {
 			logger.warn(
 				{ err, port: config.submissionImplicitTlsPort },
-				'Implicit-TLS submission server failed to start',
+				'Implicit-TLS submission server failed to start'
 			);
 		}
 	}
@@ -155,36 +161,50 @@ async function main() {
 	const dnsblInterval = startDnsblChecker(redis, config);
 
 	// ── 11. Start warming evaluation cron (daily check — leader only) ──
-	const warmingInterval = setInterval(async () => {
-		if (!isLeader()) return; // Skip if not leader
-		for (const ip of allIps) {
-			try {
-				await evaluateDay(redis, ip, config);
-			} catch (err) {
-				logger.error({ err, ip }, 'Warming evaluation failed');
+	const warmingInterval = setInterval(
+		async () => {
+			if (!isLeader()) return; // Skip if not leader
+			for (const ip of allIps) {
+				try {
+					await evaluateDay(redis, ip, config);
+				} catch (err) {
+					logger.error({ err, ip }, 'Warming evaluation failed');
+				}
 			}
-		}
-	}, 60 * 60 * 1000); // Every hour; evaluateDay is idempotent per UTC day (lastEvaluatedDate guard), so it advances the schedule at most once/day
+		},
+		60 * 60 * 1000
+	); // Every hour; evaluateDay is idempotent per UTC day (lastEvaluatedDate guard), so it advances the schedule at most once/day
 
 	// ── 12. Start Google Postmaster data fetcher (every hour — leader only) ──
-	const postmasterInterval = setInterval(async () => {
-		if (!isLeader()) return;
-		try {
-			await fetchPostmasterData(redis, config);
-		} catch (err) {
-			logger.error({ err }, 'Postmaster data fetch failed');
-		}
-	}, 60 * 60 * 1000);
+	const postmasterInterval = setInterval(
+		async () => {
+			if (!isLeader()) return;
+			try {
+				await fetchPostmasterData(redis, config);
+			} catch (err) {
+				logger.error({ err }, 'Postmaster data fetch failed');
+			}
+		},
+		60 * 60 * 1000
+	);
 
 	// ── 13. Start TLS-RPT daily report generation (every 24h — leader only) ──
-	const tlsRptInterval = setInterval(async () => {
-		if (!isLeader()) return;
-		try {
-			await sendTlsReports(redis, config.ehloHostname, `postmaster@${config.returnPathDomain}`, queue);
-		} catch (err) {
-			logger.error({ err }, 'TLS-RPT generation failed');
-		}
-	}, 24 * 60 * 60 * 1000);
+	const tlsRptInterval = setInterval(
+		async () => {
+			if (!isLeader()) return;
+			try {
+				await sendTlsReports(
+					redis,
+					config.ehloHostname,
+					`postmaster@${config.returnPathDomain}`,
+					queue
+				);
+			} catch (err) {
+				logger.error({ err }, 'TLS-RPT generation failed');
+			}
+		},
+		24 * 60 * 60 * 1000
+	);
 
 	// ── 14. Check DKIM key rotation status (every 6h — leader only) ──
 	// On auto-activation, propagate the new selector back to Convex so the
@@ -204,22 +224,31 @@ async function main() {
 			redis
 		).catch(() => {});
 	};
-	const dkimRotationInterval = setInterval(async () => {
-		if (!isLeader()) return;
-		try {
-			const rotationStatus = await checkRotationStatus(redis);
-			for (const entry of rotationStatus) {
-				if (entry.action === 'pending_ready') {
-					logger.info({ domain: entry.domain, details: entry.details }, 'Auto-activating DKIM pending key');
-					await activatePendingKey(redis, entry.domain, false, undefined, notifyDkimRotation);
-				} else if (entry.action === 'needs_rotation') {
-					logger.warn({ domain: entry.domain, details: entry.details }, 'DKIM key rotation recommended');
+	const dkimRotationInterval = setInterval(
+		async () => {
+			if (!isLeader()) return;
+			try {
+				const rotationStatus = await checkRotationStatus(redis);
+				for (const entry of rotationStatus) {
+					if (entry.action === 'pending_ready') {
+						logger.info(
+							{ domain: entry.domain, details: entry.details },
+							'Auto-activating DKIM pending key'
+						);
+						await activatePendingKey(redis, entry.domain, false, undefined, notifyDkimRotation);
+					} else if (entry.action === 'needs_rotation') {
+						logger.warn(
+							{ domain: entry.domain, details: entry.details },
+							'DKIM key rotation recommended'
+						);
+					}
 				}
+			} catch (err) {
+				logger.error({ err }, 'DKIM rotation check failed');
 			}
-		} catch (err) {
-			logger.error({ err }, 'DKIM rotation check failed');
-		}
-	}, 6 * 60 * 60 * 1000);
+		},
+		6 * 60 * 60 * 1000
+	);
 
 	// ── 15. Start GroupMQ worker ──
 	await worker.run();
@@ -252,7 +281,7 @@ async function main() {
 		const watchdog = setTimeout(() => {
 			logger.fatal(
 				{ deadlineMs: SHUTDOWN_DEADLINE_MS },
-				'Shutdown deadline exceeded — forcing exit',
+				'Shutdown deadline exceeded — forcing exit'
 			);
 			process.exit(1);
 		}, SHUTDOWN_DEADLINE_MS);

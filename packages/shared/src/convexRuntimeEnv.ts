@@ -20,9 +20,13 @@
  * any Node context that has the deployment URL + admin key.
  *
  * Exposed via the `@owlat/shared/convexRuntimeEnv` subpath ONLY — the
- * `pushConvexRuntimeEnv` half uses `fetch` and is intended for server code; keep
- * it out of the browser-safe `.` barrel.
+ * `pushConvexRuntimeEnv` half uses `fetch`, and `selectRuntimeEnvVars` pulls in
+ * `node:crypto` (via `envBackupBox`) to unseal secrets sealed at rest in the
+ * `.env` backup copy — both are intended for server code; keep this module out
+ * of the browser-safe `.` barrel.
  */
+
+import { createEnvBackupBox, isEnvBackupSealedValue, type EnvBackupBox } from './envBackupBox';
 
 /**
  * Function-runtime env keys — the single source of truth is the `EnvKey` union
@@ -157,12 +161,45 @@ export const CONVEX_RUNTIME_ENV_KEYS = [
  * From a `.env` map, pick the function-runtime vars that have a value. Compose-
  * only vars (ports, image versions, `NUXT_PUBLIC_*`, `REDIS_*`) are excluded —
  * they never belong in the Convex deployment.
+ *
+ * This is also the deploy-time RESEED step for secrets sealed at rest in the
+ * `.env` backup copy (see `envBackupBox.ts`): a value carrying the
+ * `envsealed:v1:` prefix is unsealed with the map's own INSTANCE_SECRET before
+ * being pushed, so the live deployment env store always receives the WORKING
+ * plaintext credential. Plain values pass through untouched — a legacy
+ * plaintext `.env` keeps deploying exactly as before.
+ *
+ * FAIL CLOSED: a sealed token that cannot be opened (tampered, or the
+ * INSTANCE_SECRET it was sealed under is gone) throws a clear error naming the
+ * key — ciphertext must never be pushed as a live credential, where it would
+ * silently break the path that reads it (e.g. SMTP relay auth).
  */
 export function selectRuntimeEnvVars(env: Record<string, string>): Array<[string, string]> {
 	const out: Array<[string, string]> = [];
+	let box: EnvBackupBox | null = null;
 	for (const key of CONVEX_RUNTIME_ENV_KEYS) {
 		const value = env[key];
-		if (value !== undefined && value !== '') out.push([key, value]);
+		if (value === undefined || value === '') continue;
+		if (!isEnvBackupSealedValue(value)) {
+			out.push([key, value]);
+			continue;
+		}
+		const instanceSecret = env['INSTANCE_SECRET'];
+		if (!instanceSecret) {
+			throw new Error(
+				`Refusing to push ${key}: its .env value is sealed (envsealed:v1:…) but INSTANCE_SECRET is missing from the same .env, so it cannot be unsealed. Restore INSTANCE_SECRET or re-enter the credential.`
+			);
+		}
+		box ??= createEnvBackupBox(instanceSecret);
+		let plaintext: string;
+		try {
+			plaintext = box.open(value);
+		} catch (e) {
+			throw new Error(
+				`Refusing to push ${key}: its sealed .env value could not be opened (${(e as Error).message}). The token is tampered/corrupt or was sealed under a different INSTANCE_SECRET — re-enter the credential rather than deploying ciphertext as the live value.`
+			);
+		}
+		out.push([key, plaintext]);
 	}
 	return out;
 }

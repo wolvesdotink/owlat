@@ -21,6 +21,10 @@ export default defineConfig({
 	},
 	resolve: {
 		alias: [
+			// `~~` (Nuxt rootDir) must precede `~` — string aliases match in order,
+			// and `~` would otherwise swallow the `~~/server/...` imports used by
+			// server routes under test.
+			{ find: '~~', replacement: resolve(__dirname, '.') },
 			{ find: '~', replacement: resolve(__dirname, 'app') },
 			{
 				find: /^@owlat\/shared\/(.+)$/,

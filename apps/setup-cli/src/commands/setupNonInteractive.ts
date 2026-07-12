@@ -18,6 +18,7 @@ import { log } from '@clack/prompts';
 import pc from 'picocolors';
 import { readFile } from 'node:fs/promises';
 import { readEnv, writeEnv, type EnvMap } from '../lib/env';
+import { sealRelayPasswordForBackup } from '@owlat/shared/envBackupBox';
 import { writeComposeOverride } from '../lib/override';
 import { saveFlagState } from '../lib/flagState';
 import { createReporter, SetupStep } from '../lib/progress';
@@ -43,7 +44,12 @@ interface ConfigFileArgs {
  * Emits structured progress (`OWLAT_PROGRESS=json`) so a remote driver can
  * render it.
  */
-export async function applyConfigFile({ configFile, owlatDir, envPath, overridePath }: ConfigFileArgs): Promise<number> {
+export async function applyConfigFile({
+	configFile,
+	owlatDir,
+	envPath,
+	overridePath,
+}: ConfigFileArgs): Promise<number> {
 	const reporter = createReporter();
 	reporter.step(SetupStep.Config, 'Applying configuration');
 
@@ -52,7 +58,8 @@ export async function applyConfigFile({ configFile, owlatDir, envPath, overrideP
 		raw = await readFile(configFile, 'utf-8');
 	} catch (e) {
 		reporter.fail(`Could not read ${configFile}: ${(e as Error).message}`);
-		if (!reporter.isJson) log.error(`Could not read config file ${configFile}: ${(e as Error).message}`);
+		if (!reporter.isJson)
+			log.error(`Could not read config file ${configFile}: ${(e as Error).message}`);
 		return 1;
 	}
 
@@ -67,15 +74,22 @@ export async function applyConfigFile({ configFile, owlatDir, envPath, overrideP
 		return 1;
 	}
 
-	await writeEnv(envPath, resolved.env);
-	const profiles = await writeComposeOverride(overridePath, resolved.flags, { hosted: resolved.hosted });
+	// Seal the SMTP relay password in the `.env` BACKUP copy so it is never
+	// persisted in plaintext (the deploy reseed unseals it before the live push).
+	const envBackup = sealRelayPasswordForBackup(resolved.env);
+	await writeEnv(envPath, envBackup);
+	const profiles = await writeComposeOverride(overridePath, resolved.flags, {
+		hosted: resolved.hosted,
+	});
 	// Canonicalize COMPOSE_PROFILES in .env (updater + bare docker compose read it).
-	await writeEnv(envPath, { ...resolved.env, COMPOSE_PROFILES: profiles.join(',') });
+	await writeEnv(envPath, { ...envBackup, COMPOSE_PROFILES: profiles.join(',') });
 	await saveFlagState(owlatDir, resolved.flags);
 
 	reporter.ok(`profiles: ${profiles.join(', ') || 'none'}`);
 	if (!reporter.isJson) {
-		log.success(`Wrote ${pc.cyan(envPath)} and ${pc.cyan(overridePath)} from ${pc.cyan(configFile)} (profiles: ${profiles.join(', ') || 'none'})`);
+		log.success(
+			`Wrote ${pc.cyan(envPath)} and ${pc.cyan(overridePath)} from ${pc.cyan(configFile)} (profiles: ${profiles.join(', ') || 'none'})`
+		);
 	}
 	return 0;
 }
@@ -94,7 +108,12 @@ interface ApplyArgs {
  * `buildSetupFromConfig` (shared with the `--config` path) so the
  * non-interactive routes cannot diverge.
  */
-export async function applyAssumeYes({ owlatDir, envPath, overridePath, existingEnv }: ApplyArgs): Promise<number> {
+export async function applyAssumeYes({
+	owlatDir,
+	envPath,
+	overridePath,
+	existingEnv,
+}: ApplyArgs): Promise<number> {
 	let resolved;
 	try {
 		const config = buildAssumeYesConfig(existingEnv);
@@ -104,16 +123,21 @@ export async function applyAssumeYes({ owlatDir, envPath, overridePath, existing
 		return 1;
 	}
 
-	await writeEnv(envPath, resolved.env);
-	const profiles = await writeComposeOverride(overridePath, resolved.flags, { hosted: resolved.hosted });
+	// Seal the SMTP relay password in the `.env` BACKUP copy so it is never
+	// persisted in plaintext (the deploy reseed unseals it before the live push).
+	const envBackup = sealRelayPasswordForBackup(resolved.env);
+	await writeEnv(envPath, envBackup);
+	const profiles = await writeComposeOverride(overridePath, resolved.flags, {
+		hosted: resolved.hosted,
+	});
 	// Canonicalize COMPOSE_PROFILES in .env (updater + bare docker compose read it).
-	await writeEnv(envPath, { ...resolved.env, COMPOSE_PROFILES: profiles.join(',') });
+	await writeEnv(envPath, { ...envBackup, COMPOSE_PROFILES: profiles.join(',') });
 	await saveFlagState(owlatDir, resolved.flags);
 
 	log.success(
 		`Wrote ${pc.cyan(envPath)} and ${pc.cyan(overridePath)} from assume-yes defaults ` +
 			`(deployment: ${resolved.deploymentMode}, provider: ${resolved.env['EMAIL_PROVIDER'] ?? 'none'}, ` +
-			`profiles: ${profiles.join(', ') || 'none'}).`,
+			`profiles: ${profiles.join(', ') || 'none'}).`
 	);
 	return 0;
 }
