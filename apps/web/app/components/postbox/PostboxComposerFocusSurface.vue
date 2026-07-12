@@ -54,7 +54,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown, true));
 		/>
 	</Transition>
 	<div
-		class="pbx-focus-frame fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-6 sm:p-10 pointer-events-none"
+		class="pbx-focus-frame fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-6 sm:p-10 pt-[calc(var(--titlebar-h,0px)+1.5rem)] sm:pt-[calc(var(--titlebar-h,0px)+2.5rem)] pointer-events-none"
 		:class="{ 'is-focused': focusedId }"
 	>
 		<div id="pbx-focus-mount" class="w-full max-w-2xl pointer-events-auto" />

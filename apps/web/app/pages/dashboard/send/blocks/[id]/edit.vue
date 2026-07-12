@@ -169,7 +169,13 @@ const handleSettings = () => {
 </script>
 
 <template>
-	<div :class="isFocusMode ? 'h-screen' : 'h-[calc(100vh-64px)]'">
+	<div
+		:class="
+			isFocusMode
+				? 'h-[calc(100dvh-var(--titlebar-h,0px))]'
+				: 'h-[calc(100dvh-var(--titlebar-h,0px)-64px)]'
+		"
+	>
 		<!-- Loading State -->
 		<div v-if="blockLoading" class="h-full flex items-center justify-center bg-bg-deep">
 			<div class="flex flex-col items-center gap-3">

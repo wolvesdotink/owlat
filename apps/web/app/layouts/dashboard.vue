@@ -770,7 +770,9 @@ const sidebarDesktopClass = computed(() => {
 				id="main-content"
 				tabindex="-1"
 				:class="
-					isFocusMode ? 'min-h-screen' : 'min-h-[calc(100vh-4rem)] lg:min-h-[calc(100vh-4rem-3rem)]'
+					isFocusMode
+						? 'min-h-[calc(100dvh-var(--titlebar-h,0px))]'
+						: 'min-h-[calc(100dvh-var(--titlebar-h,0px)-4rem)] lg:min-h-[calc(100dvh-var(--titlebar-h,0px)-4rem-3rem)]'
 				"
 			>
 				<slot />

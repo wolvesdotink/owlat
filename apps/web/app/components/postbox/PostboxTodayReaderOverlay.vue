@@ -122,7 +122,10 @@ onUnmounted(() => {
 <template>
 	<!-- z-30: above the Today column, below composer popups (z-40) and the
 	     dialog/toast layer (z-50) so reply popups + pickers stay usable. -->
-	<div class="fixed inset-0 z-30 overflow-y-auto p-4 sm:p-8" data-postbox-today-overlay>
+	<div
+		class="fixed inset-0 z-30 overflow-y-auto p-4 sm:p-8 pt-[calc(var(--titlebar-h,0px)+1rem)] sm:pt-[calc(var(--titlebar-h,0px)+2rem)]"
+		data-postbox-today-overlay
+	>
 		<!-- Scrim: click = back to the list (Esc twin). -->
 		<div
 			class="fixed inset-0 bg-bg-deep/60 backdrop-blur-sm"

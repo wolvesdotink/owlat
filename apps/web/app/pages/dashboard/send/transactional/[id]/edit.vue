@@ -267,7 +267,13 @@ const handleCreateVariable = async (variable: { key: string; type?: string }) =>
 </script>
 
 <template>
-	<div :class="isFocusMode ? 'h-screen' : 'h-[calc(100vh-64px)]'">
+	<div
+		:class="
+			isFocusMode
+				? 'h-[calc(100dvh-var(--titlebar-h,0px))]'
+				: 'h-[calc(100dvh-var(--titlebar-h,0px)-64px)]'
+		"
+	>
 		<UiQueryBoundary
 			:loading="emailLoading"
 			:error="emailError"
