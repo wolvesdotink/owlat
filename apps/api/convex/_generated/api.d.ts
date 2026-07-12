@@ -515,6 +515,7 @@ import type * as seedDemo_loaders_topics from "../seedDemo/loaders/topics.js";
 import type * as seedDemo_loaders_transactionalEmails from "../seedDemo/loaders/transactionalEmails.js";
 import type * as seedDemo_loaders_types from "../seedDemo/loaders/types.js";
 import type * as seedDemo_loaders_webhooks from "../seedDemo/loaders/webhooks.js";
+import type * as seedDemo_messages from "../seedDemo/messages.js";
 import type * as segments from "../segments.js";
 import type * as segments_listing from "../segments/listing.js";
 import type * as semanticFileProcessing from "../semanticFileProcessing.js";
@@ -1102,6 +1103,7 @@ declare const fullApi: ApiFromModules<{
   "seedDemo/loaders/transactionalEmails": typeof seedDemo_loaders_transactionalEmails;
   "seedDemo/loaders/types": typeof seedDemo_loaders_types;
   "seedDemo/loaders/webhooks": typeof seedDemo_loaders_webhooks;
+  "seedDemo/messages": typeof seedDemo_messages;
   segments: typeof segments;
   "segments/listing": typeof segments_listing;
   semanticFileProcessing: typeof semanticFileProcessing;
