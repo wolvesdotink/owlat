@@ -59,6 +59,19 @@ describe('PostboxAuthBadge', () => {
 		);
 	});
 
+	it("keeps the reader's manual expand across a fresh auth object of the same state", async () => {
+		// The parent binds `:auth="senderAuthInput(msg)"`, a new object every
+		// render. Expansion must key off the derived state, not object identity,
+		// or an unrelated re-render would re-snap what the reader just toggled.
+		const wrapper = mountBadge(VERIFIED);
+		await wrapper.find('[data-testid="auth-badge-toggle"]').trigger('click');
+		expect(wrapper.find('[data-testid="auth-badge-detail"]').exists()).toBe(true);
+
+		// A new object, same verified state (as the live parent would produce).
+		await wrapper.setProps({ auth: { ...VERIFIED } });
+		expect(wrapper.find('[data-testid="auth-badge-detail"]').exists()).toBe(true);
+	});
+
 	it('misaligned: verbatim impersonation copy, starts expanded, collapses on click', async () => {
 		const wrapper = mountBadge(MISALIGNED);
 		expect(wrapper.find('[data-testid="auth-badge-summary"]').text()).toBe('Sender not authorized');
