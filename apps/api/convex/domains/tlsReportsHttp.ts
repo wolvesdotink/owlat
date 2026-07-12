@@ -7,8 +7,11 @@
  * inbound route (`apps/mta/src/inbound/router.ts`) that delivers here — a
  * dedicated webhook event, never a user mailbox. The forwarded body is the
  * MTA endpoint-forward payload; we locate the `application/tlsrpt+gzip`
- * attachment, gunzip + parse it with the shared never-throwing parser, and
- * idempotently persist the digest via `domains/tlsReports.ts:ingest`.
+ * attachment and hand it to the `'use node'` action
+ * `domains/tlsReportsNode.ts:decodeAndIngest`, which gunzips + parses it with
+ * the shared never-throwing parser and idempotently persists the digest via
+ * `domains/tlsReports.ts:ingest`. (The gunzip step uses `DecompressionStream`,
+ * which is absent from Convex's default isolate runtime, so it must run in Node.)
  *
  * Auth mirrors the other MTA webhooks (`mta-verify-credential`): the same
  * `MTA_WEBHOOK_SECRET` HMAC over `${timestamp}.${body}` with a 60s freshness
@@ -23,9 +26,8 @@ import { httpAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { logError } from '../lib/runtimeLog';
 import { getOptional } from '../lib/env';
-import { constantTimeEqual } from '../webhooks/security';
+import { constantTimeEqual, hmacSha256Hex } from '../webhooks/security';
 import { getClientIp } from '../publicRateLimit';
-import { decodeTlsReport, parseTlsReport, digestTlsReport } from '@owlat/shared';
 
 interface ForwardedAttachment {
 	filename?: string;
@@ -38,7 +40,6 @@ function isTlsReportAttachment(att: ForwardedAttachment): boolean {
 	const name = (att.filename ?? '').toLowerCase();
 	return (
 		ct.includes('tlsrpt') ||
-		ct === 'application/tlsrpt+gzip' ||
 		name.endsWith('.json.gz') ||
 		name.endsWith('.gz') ||
 		name.endsWith('.json')
@@ -80,18 +81,9 @@ export const handleTlsReportWebhook = httpAction(async (ctx, request) => {
 	}
 
 	const bodyText = await request.text();
-	const enc = new TextEncoder();
-	const key = await crypto.subtle.importKey(
-		'raw',
-		enc.encode(secret),
-		{ name: 'HMAC', hash: 'SHA-256' },
-		false,
-		['sign']
-	);
-	const sig = await crypto.subtle.sign('HMAC', key, enc.encode(`${timestamp}.${bodyText}`));
-	const expected = Array.from(new Uint8Array(sig))
-		.map((b) => b.toString(16).padStart(2, '0'))
-		.join('');
+	// Same HMAC scheme as the other MTA webhooks — reuse the shared helper rather
+	// than re-inlining importKey + sign + hex-encode.
+	const expected = await hmacSha256Hex(secret, `${timestamp}.${bodyText}`);
 	if (!constantTimeEqual(signature, expected)) {
 		return new Response(JSON.stringify({ error: 'Invalid signature' }), { status: 401 });
 	}
@@ -112,34 +104,23 @@ export const handleTlsReportWebhook = httpAction(async (ctx, request) => {
 		});
 	}
 
-	let bytes: Uint8Array;
-	try {
-		bytes = Uint8Array.from(atob(attachment.content), (c) => c.charCodeAt(0));
-	} catch {
-		return new Response(JSON.stringify({ ok: false, reason: 'bad-base64' }), {
-			status: 200,
-			headers: { 'Content-Type': 'application/json' },
-		});
-	}
-
-	// Gzip attachments go through gunzip+parse; a plain `.json` is parsed directly.
+	// The gunzip step (WHATWG DecompressionStream) is not in Convex's default
+	// isolate runtime, so decode + validate + digest + ingest run in a `'use node'`
+	// action. It never throws — a bad base64 / corrupt gzip / malformed report all
+	// come back as `{ ok: false, reason }`, which we acknowledge (2xx) so the MTA
+	// stops retrying a permanently-bad report.
 	const isPlainJson = (attachment.filename ?? '').toLowerCase().endsWith('.json');
-	const parsed = isPlainJson
-		? parseTlsReport(new TextDecoder('utf-8').decode(bytes))
-		: await decodeTlsReport(bytes);
+	const result = await ctx.runAction(internal.domains.tlsReportsNode.decodeAndIngest, {
+		contentBase64: attachment.content,
+		isPlainJson,
+	});
 
-	if (!parsed.ok) {
-		// Rejected WITHOUT throwing — acknowledge so the MTA stops retrying.
-		return new Response(JSON.stringify({ ok: false, reason: parsed.error }), {
+	if (!result.ok) {
+		return new Response(JSON.stringify({ ok: false, reason: result.reason }), {
 			status: 200,
 			headers: { 'Content-Type': 'application/json' },
 		});
 	}
-
-	// The digest's shape is exactly the ingest args — pass it straight through
-	// rather than re-listing every field.
-	const digest = digestTlsReport(parsed.report);
-	const result = await ctx.runMutation(internal.domains.tlsReports.ingest, digest);
 
 	return new Response(JSON.stringify({ ok: true, deduped: result.deduped }), {
 		status: 200,

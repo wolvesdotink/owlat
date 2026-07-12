@@ -229,6 +229,7 @@ import type * as domains_reverseDns from "../domains/reverseDns.js";
 import type * as domains_spf from "../domains/spf.js";
 import type * as domains_tlsReports from "../domains/tlsReports.js";
 import type * as domains_tlsReportsHttp from "../domains/tlsReportsHttp.js";
+import type * as domains_tlsReportsNode from "../domains/tlsReportsNode.js";
 import type * as domains_tlsRpt from "../domains/tlsRpt.js";
 import type * as domains_trackingDomains from "../domains/trackingDomains.js";
 import type * as emailBlocks_blocks from "../emailBlocks/blocks.js";
@@ -819,6 +820,7 @@ declare const fullApi: ApiFromModules<{
   "domains/spf": typeof domains_spf;
   "domains/tlsReports": typeof domains_tlsReports;
   "domains/tlsReportsHttp": typeof domains_tlsReportsHttp;
+  "domains/tlsReportsNode": typeof domains_tlsReportsNode;
   "domains/tlsRpt": typeof domains_tlsRpt;
   "domains/trackingDomains": typeof domains_trackingDomains;
   "emailBlocks/blocks": typeof emailBlocks_blocks;
