@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { Id } from '@owlat/api/dataModel';
+
 useHead({ title: 'Chat — Owlat' });
 
 definePageMeta({
@@ -6,6 +8,8 @@ definePageMeta({
 	middleware: 'auth',
 	requiresFeature: 'chat',
 });
+
+const router = useRouter();
 
 const { channels, archivedChannels, dms, isLoading } = useChatRooms();
 // Count only here; the Mentions dialog opens the 50-row feed lazily on demand.
@@ -15,6 +19,10 @@ const showCreateChannel = ref(false);
 const showNewDm = ref(false);
 const showBrowseChannels = ref(false);
 const showMentions = ref(false);
+
+const handleSelectRoom = (id: Id<'chatRooms'>) => {
+	router.push(`/dashboard/chat/${id}`);
+};
 </script>
 
 <template>
@@ -28,6 +36,7 @@ const showMentions = ref(false);
 				:is-loading="isLoading"
 				:active-room-id="undefined"
 				:mention-count="mentionCount"
+				@select="handleSelectRoom"
 				@new-channel="showCreateChannel = true"
 				@new-dm="showNewDm = true"
 				@browse-channels="showBrowseChannels = true"
@@ -61,12 +70,24 @@ const showMentions = ref(false);
 		<ChatNewChannelDialog
 			v-if="showCreateChannel"
 			@close="showCreateChannel = false"
+			@created="
+				(id) => {
+					showCreateChannel = false;
+					router.push(`/dashboard/chat/${id}`);
+				}
+			"
 		/>
-		<ChatNewDmDialog v-if="showNewDm" @close="showNewDm = false" />
-		<ChatChannelBrowser
-			v-if="showBrowseChannels"
-			@close="showBrowseChannels = false"
+		<ChatNewDmDialog
+			v-if="showNewDm"
+			@close="showNewDm = false"
+			@created="
+				(id) => {
+					showNewDm = false;
+					router.push(`/dashboard/chat/${id}`);
+				}
+			"
 		/>
+		<ChatChannelBrowser v-if="showBrowseChannels" @close="showBrowseChannels = false" />
 		<ChatMentionsDialog v-if="showMentions" @close="showMentions = false" />
 	</div>
 </template>
