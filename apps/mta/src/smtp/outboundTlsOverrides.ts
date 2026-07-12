@@ -11,6 +11,7 @@
 
 import type Redis from 'ioredis';
 import { isOutboundTlsMode, type OutboundTlsMode } from './tlsPolicy.js';
+import { logger } from '../monitoring/logger.js';
 
 /** Redis hash: field = recipient domain (lowercased), value = OutboundTlsMode. */
 const OVERRIDES_KEY = 'mta:outbound-tls:overrides';
@@ -45,8 +46,11 @@ export async function listOutboundTlsOverrides(
 /**
  * Resolve the EFFECTIVE outbound TLS mode for a recipient domain: the per-domain
  * override when one is set (and valid), otherwise the global default. Never
- * throws — a Redis hiccup falls back to the global default so a lookup failure
- * cannot silently strengthen (bounce mail) or is otherwise the caller's floor.
+ * throws — on a Redis lookup failure it falls back to the global mode. That
+ * fallback is honest but not free: if the domain had a STRONGER override (e.g.
+ * `require-verified` while the global is `opportunistic`), a transient Redis
+ * error transparently weakens the floor for that send, so the failure is logged
+ * rather than swallowed.
  */
 export async function resolveOutboundTlsMode(
 	redis: Redis,
@@ -56,8 +60,8 @@ export async function resolveOutboundTlsMode(
 	try {
 		const value = await redis.hget(OVERRIDES_KEY, domain.toLowerCase());
 		if (value && isOutboundTlsMode(value)) return value;
-	} catch {
-		// Fall through to the global default on any lookup error.
+	} catch (err) {
+		logger.warn({ domain, err }, 'outbound TLS override lookup failed; using global mode');
 	}
 	return globalMode;
 }
