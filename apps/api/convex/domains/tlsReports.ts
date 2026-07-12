@@ -51,18 +51,7 @@ export const ingest = internalMutation({
 			.withIndex('by_reportId', (q) => q.eq('reportId', args.reportId))
 			.unique();
 
-		const row = {
-			reportId: args.reportId,
-			organizationName: args.organizationName,
-			contactInfo: args.contactInfo,
-			policyDomain: args.policyDomain,
-			rangeStartMs: args.rangeStartMs,
-			rangeEndMs: args.rangeEndMs,
-			successCount: args.successCount,
-			failureCount: args.failureCount,
-			failureTypeCounts: args.failureTypeCounts,
-			receivedAt: Date.now(),
-		};
+		const row = { ...args, receivedAt: Date.now() };
 
 		if (existing) {
 			await ctx.db.patch(existing._id, row);
@@ -105,7 +94,7 @@ export const getTlsReportSummary = authedQuery({
 		const rows = await ctx.db
 			.query('tlsReports')
 			.withIndex('by_rangeStart', (q) => q.gte('rangeStartMs', cutoff))
-			.collect();
+			.collect(); // bounded: 30-day window over inbound TLS-RPT — a handful of partner MX providers report at most daily (low hundreds of rows).
 
 		const partners = new Map<string, PartnerSummary>();
 		const failureTypes = new Map<string, number>();
