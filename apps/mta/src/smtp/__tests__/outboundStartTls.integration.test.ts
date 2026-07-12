@@ -20,7 +20,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { SMTPServer } from 'smtp-server';
 import type { AddressInfo } from 'node:net';
 import { SmtpConnectionPool } from '../connectionPool.js';
-import { classifyTlsFailure } from '../sender.js';
+import { classifyTlsFailure } from '../tlsFailureClassification.js';
 import { resolveTlsRequirements } from '../tlsPolicy.js';
 // Throwaway self-signed cert/key (CN/SAN mx.test) shared with the other
 // outbound-TLS integration tests.
