@@ -75,16 +75,19 @@ export function parseRuaAddress(rua: string | undefined): string | null {
 /**
  * Build the synthetic TLS-RPT system route delivering to the dedicated Convex
  * webhook. Not persisted — constructed in-memory by {@link findRoute} when a
- * recipient matches the configured rua address.
+ * recipient matches the configured rua address. Takes the already-parsed rua
+ * address (via {@link parseRuaAddress}) so the caller parses it exactly once.
  */
-export function buildTlsRptSystemRoute(config: TlsRptSystemRouteConfig): InboundRoute {
+export function buildTlsRptSystemRoute(
+	config: TlsRptSystemRouteConfig,
+	parsedRua: string | null
+): InboundRoute {
 	const base = config.convexSiteUrl.replace(/\/+$/, '');
-	const addr = parseRuaAddress(config.ruaAddress);
-	const atIndex = addr ? addr.lastIndexOf('@') : -1;
+	const atIndex = parsedRua ? parsedRua.lastIndexOf('@') : -1;
 	return {
 		id: TLS_RPT_SYSTEM_ROUTE_ID,
-		domain: addr && atIndex >= 0 ? addr.slice(atIndex + 1) : '',
-		address: addr && atIndex >= 0 ? addr.slice(0, atIndex) : '',
+		domain: parsedRua && atIndex >= 0 ? parsedRua.slice(atIndex + 1) : '',
+		address: parsedRua && atIndex >= 0 ? parsedRua.slice(0, atIndex) : '',
 		mode: 'endpoint',
 		endpointUrl: `${base}${TLS_RPT_WEBHOOK_PATH}`,
 		systemSecret: config.webhookSecret,
@@ -115,7 +118,7 @@ export async function findRoute(
 	// route table so an operator can't shadow it with a conflicting entry.
 	const ruaAddress = parseRuaAddress(system?.ruaAddress);
 	if (system && ruaAddress && parsed.address.toLowerCase() === ruaAddress) {
-		return buildTlsRptSystemRoute(system);
+		return buildTlsRptSystemRoute(system, ruaAddress);
 	}
 
 	// Try exact match first
