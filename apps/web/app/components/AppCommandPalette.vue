@@ -314,7 +314,7 @@ function onGlobalKey(event: KeyboardEvent) {
 	}
 }
 
-// Header/mobile search buttons + desktop OS-global shortcut both open us.
+// Header/mobile search buttons open us.
 function onExternalOpen() {
 	if (!open.value) void openPalette();
 }
@@ -322,12 +322,10 @@ function onExternalOpen() {
 onMounted(() => {
 	loadRecent();
 	window.addEventListener('keydown', onGlobalKey);
-	window.addEventListener('owlat:quick-switcher', onExternalOpen);
 	window.addEventListener(COMMAND_PALETTE_OPEN_EVENT, onExternalOpen);
 });
 onBeforeUnmount(() => {
 	window.removeEventListener('keydown', onGlobalKey);
-	window.removeEventListener('owlat:quick-switcher', onExternalOpen);
 	window.removeEventListener(COMMAND_PALETTE_OPEN_EVENT, onExternalOpen);
 });
 </script>
