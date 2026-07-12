@@ -29,8 +29,16 @@ async function unsealPrivateKey(redis: Redis, domain: string, stored: string): P
 		return box.open(stored);
 	}
 	// Legacy plaintext PEM — seal it in place (lazy boot migration), then use it.
-	await redis.hset(`${DKIM_PREFIX}${domain}`, { privateKey: box.seal(stored) });
-	logger.info({ domain }, 'DKIM private key sealed in place (plaintext → sealed migration)');
+	// Guard the write against a concurrent setDkimKey (e.g. rotation activation)
+	// that landed a NEW sealed key between our earlier hgetall and now: re-read the
+	// field and only replace it if it is STILL the exact plaintext we read. Without
+	// this compare, the re-seal of the stale key would clobber the new key while
+	// the selector kept the new value → selector/key mismatch → DKIM failures.
+	const current = await redis.hget(`${DKIM_PREFIX}${domain}`, 'privateKey');
+	if (current === stored) {
+		await redis.hset(`${DKIM_PREFIX}${domain}`, { privateKey: box.seal(stored) });
+		logger.info({ domain }, 'DKIM private key sealed in place (plaintext → sealed migration)');
+	}
 	return stored;
 }
 
