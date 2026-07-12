@@ -39,6 +39,13 @@ export interface InboundEmailMessage {
 	}>;
 	/** Timestamp from the webhook envelope (ms since epoch). */
 	timestamp: number;
+	// RFC 8601 inbound auth verdicts, computed by the MTA at ingest and carried
+	// through to `inboundMessages`. All optional: an older MTA (or a disabled
+	// check) omits the field, which must render as "unknown" — never "pass".
+	spfResult?: string;
+	dkimResult?: string;
+	dmarcResult?: string;
+	dmarcPolicy?: string;
 }
 
 /**
@@ -84,6 +91,10 @@ export class MtaInboundAdapter implements InboundChannelAdapter {
 					size: number;
 					redisKey?: string;
 				}>;
+				spfResult?: string;
+				dkimResult?: string;
+				dmarcResult?: string;
+				dmarcPolicy?: string;
 			};
 			timestamp: number;
 		};
@@ -100,6 +111,10 @@ export class MtaInboundAdapter implements InboundChannelAdapter {
 			references: p.references,
 			attachments: p.attachments,
 			timestamp: env.timestamp,
+			spfResult: p.spfResult,
+			dkimResult: p.dkimResult,
+			dmarcResult: p.dmarcResult,
+			dmarcPolicy: p.dmarcPolicy,
 		};
 	}
 }

@@ -64,6 +64,10 @@ interface MailWebhookPayload {
 		dkimResult?: string;
 		dmarcResult?: string;
 		dmarcPolicy?: string;
+		// DMARC alignment inputs (envelope MAIL FROM domain + DKIM d= domain),
+		// stored beside the verdicts on `mailMessages`. Both optional.
+		envelopeFromDomain?: string;
+		dkimSigningDomain?: string;
 	};
 }
 
@@ -184,6 +188,8 @@ export const handleMailWebhook = httpAction(async (ctx, request) => {
 			dkimResult: mp.dkimResult,
 			dmarcResult: mp.dmarcResult,
 			dmarcPolicy: mp.dmarcPolicy,
+			envelopeFromDomain: mp.envelopeFromDomain,
+			dkimSigningDomain: mp.dkimSigningDomain,
 		});
 
 		return new Response(JSON.stringify({ success: true, result }), {
