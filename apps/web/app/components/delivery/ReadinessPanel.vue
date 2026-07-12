@@ -18,6 +18,7 @@ import { api } from '@owlat/api';
 import {
 	deriveDeliveryReadiness,
 	readinessInputFromSources,
+	type ReadinessAlignmentSource,
 	type ReadinessGateStatus,
 	type ReadinessMtaStsSource,
 } from '~/utils/deliveryReadiness';
@@ -77,11 +78,29 @@ const mtaStsSource = computed<ReadinessMtaStsSource | null>(() => {
 const isLoading = computed(() => transportLoading.value || domainsLoading.value);
 const hasError = computed(() => Boolean(transportError.value || domainsError.value));
 
+// The active transport's outbound identities (non-secret) + the VERIFIED sending
+// domains — the ones mail actually sends from — so the alignment gate warns only
+// when a domain you really send from is misaligned. Null until the transport
+// summary loads (it never flashes an unconfirmed warning).
+const alignmentSource = computed<ReadinessAlignmentSource | null>(() => {
+	const summary = transport.value;
+	if (!summary) return null;
+	const fromDomains = (domainRows.value ?? [])
+		.filter((row) => row.status === 'verified')
+		.map((row) => row.domain);
+	return { facts: summary.alignment, fromDomains };
+});
+
 const readiness = computed(() => {
 	const summary = transport.value;
 	if (!summary) return null;
 	return deriveDeliveryReadiness(
-		readinessInputFromSources(summary, domainRows.value ?? [], mtaStsSource.value)
+		readinessInputFromSources(
+			summary,
+			domainRows.value ?? [],
+			mtaStsSource.value,
+			alignmentSource.value
+		)
 	);
 });
 
