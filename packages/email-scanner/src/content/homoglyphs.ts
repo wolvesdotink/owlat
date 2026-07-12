@@ -26,29 +26,29 @@ const SCRIPT_RANGES: ScriptRange[] = [
 	{
 		name: 'Cyrillic',
 		ranges: [
-			[0x0400, 0x04FF], // Cyrillic
-			[0x0500, 0x052F], // Cyrillic Supplement
-			[0x2DE0, 0x2DFF], // Cyrillic Extended-A
-			[0xA640, 0xA69F], // Cyrillic Extended-B
+			[0x0400, 0x04ff], // Cyrillic
+			[0x0500, 0x052f], // Cyrillic Supplement
+			[0x2de0, 0x2dff], // Cyrillic Extended-A
+			[0xa640, 0xa69f], // Cyrillic Extended-B
 		],
 	},
 	{
 		name: 'Greek',
 		ranges: [
-			[0x0370, 0x03FF], // Greek and Coptic
-			[0x1F00, 0x1FFF], // Greek Extended
+			[0x0370, 0x03ff], // Greek and Coptic
+			[0x1f00, 0x1fff], // Greek Extended
 		],
 	},
 	{
 		name: 'Armenian',
 		ranges: [
-			[0x0530, 0x058F], // Armenian
+			[0x0530, 0x058f], // Armenian
 		],
 	},
 	{
 		name: 'Georgian',
 		ranges: [
-			[0x10A0, 0x10FF], // Georgian
+			[0x10a0, 0x10ff], // Georgian
 		],
 	},
 ];
@@ -64,11 +64,11 @@ const CONFUSABLE_MAP: Map<number, string> = new Map([
 	[0x0430, 'a'], // а → a
 	[0x0441, 'c'], // с → c
 	[0x0435, 'e'], // е → e
-	[0x04BB, 'h'], // һ → h
+	[0x04bb, 'h'], // һ → h
 	[0x0456, 'i'], // і → i
 	[0x0458, 'j'], // ј → j
-	[0x043A, 'k'], // к → k (lowercase)
-	[0x043E, 'o'], // о → o
+	[0x043a, 'k'], // к → k (lowercase)
+	[0x043e, 'o'], // о → o
 	[0x0440, 'p'], // р → p
 	[0x0455, 's'], // ѕ → s
 	[0x0443, 'y'], // у → y (visually closer to 'y' in most sans-serif fonts)
@@ -77,38 +77,38 @@ const CONFUSABLE_MAP: Map<number, string> = new Map([
 	[0x0412, 'B'], // В → B
 	[0x0421, 'C'], // С → C
 	[0x0415, 'E'], // Е → E
-	[0x041D, 'H'], // Н → H
+	[0x041d, 'H'], // Н → H
 	[0x0406, 'I'], // І → I
-	[0x041A, 'K'], // К → K
-	[0x041C, 'M'], // М → M
-	[0x041E, 'O'], // О → O
+	[0x041a, 'K'], // К → K
+	[0x041c, 'M'], // М → M
+	[0x041e, 'O'], // О → O
 	[0x0420, 'P'], // Р → P
 	[0x0405, 'S'], // Ѕ → S
 	[0x0422, 'T'], // Т → T
 	[0x0425, 'X'], // Х → X
 
 	// Greek → Latin lookalikes
-	[0x03BF, 'o'], // ο → o
-	[0x03B1, 'a'], // α → a (close enough in many fonts)
-	[0x03B5, 'e'], // ε → e (similar)
-	[0x03B9, 'i'], // ι → i
-	[0x03BA, 'k'], // κ → k
-	[0x03BD, 'v'], // ν → v
-	[0x03C1, 'p'], // ρ → p
-	[0x03C4, 't'], // τ → t (similar in sans-serif)
-	[0x03C5, 'u'], // υ → u
-	[0x039F, 'O'], // Ο → O
+	[0x03bf, 'o'], // ο → o
+	[0x03b1, 'a'], // α → a (close enough in many fonts)
+	[0x03b5, 'e'], // ε → e (similar)
+	[0x03b9, 'i'], // ι → i
+	[0x03ba, 'k'], // κ → k
+	[0x03bd, 'v'], // ν → v
+	[0x03c1, 'p'], // ρ → p
+	[0x03c4, 't'], // τ → t (similar in sans-serif)
+	[0x03c5, 'u'], // υ → u
+	[0x039f, 'O'], // Ο → O
 	[0x0391, 'A'], // Α → A
 	[0x0392, 'B'], // Β → B
 	[0x0395, 'E'], // Ε → E
 	[0x0397, 'H'], // Η → H
 	[0x0399, 'I'], // Ι → I
-	[0x039A, 'K'], // Κ → K
-	[0x039C, 'M'], // Μ → M
-	[0x039D, 'N'], // Ν → N
-	[0x03A1, 'P'], // Ρ → P
-	[0x03A4, 'T'], // Τ → T
-	[0x03A5, 'Y'], // Υ → Y
+	[0x039a, 'K'], // Κ → K
+	[0x039c, 'M'], // Μ → M
+	[0x039d, 'N'], // Ν → N
+	[0x03a1, 'P'], // Ρ → P
+	[0x03a4, 'T'], // Τ → T
+	[0x03a5, 'Y'], // Υ → Y
 	[0x0396, 'Z'], // Ζ → Z
 ]);
 
@@ -116,8 +116,12 @@ const CONFUSABLE_MAP: Map<number, string> = new Map([
 
 /**
  * Detect which non-Latin scripts are present in a string.
+ *
+ * Exported so sibling rules (e.g. sender-impersonation, which inspects the
+ * From/Reply-To domains the URL scanner never sees) can reuse the same
+ * script-range table instead of re-deriving it.
  */
-function detectScripts(text: string): Set<string> {
+export function detectScripts(text: string): Set<string> {
 	const scripts = new Set<string>();
 
 	for (let i = 0; i < text.length; i++) {
@@ -137,23 +141,26 @@ function detectScripts(text: string): Set<string> {
 		}
 
 		// Handle surrogate pairs
-		if (codePoint > 0xFFFF) i++;
+		if (codePoint > 0xffff) i++;
 	}
 
 	return scripts;
 }
 
 /**
- * Check if a string contains Latin characters.
+ * Check if a string contains Latin characters. Exported for reuse by the
+ * sender-impersonation rule's mixed-script domain check.
  */
-function hasLatinChars(text: string): boolean {
+export function hasLatinChars(text: string): boolean {
 	return /[a-zA-Z]/.test(text);
 }
 
 /**
  * Find confusable characters in a string and return them with their Latin equivalents.
  */
-function findConfusables(text: string): Array<{ char: string; codePoint: number; mimics: string; position: number }> {
+function findConfusables(
+	text: string
+): Array<{ char: string; codePoint: number; mimics: string; position: number }> {
 	const found: Array<{ char: string; codePoint: number; mimics: string; position: number }> = [];
 
 	for (let i = 0; i < text.length; i++) {
@@ -171,7 +178,7 @@ function findConfusables(text: string): Array<{ char: string; codePoint: number;
 		}
 
 		// Handle surrogate pairs
-		if (codePoint > 0xFFFF) i++;
+		if (codePoint > 0xffff) i++;
 	}
 
 	return found;
@@ -198,7 +205,7 @@ export function deconfuse(text: string): string {
 		}
 
 		// Handle surrogate pairs
-		if (codePoint > 0xFFFF) i++;
+		if (codePoint > 0xffff) i++;
 	}
 	return result;
 }
