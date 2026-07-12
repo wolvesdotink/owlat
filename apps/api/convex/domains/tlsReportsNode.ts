@@ -32,7 +32,7 @@ export const decodeAndIngest = internalAction({
 		reason: v.optional(v.string()),
 		deduped: v.optional(v.boolean()),
 	}),
-	handler: async (ctx, args) => {
+	handler: async (ctx, args): Promise<{ ok: boolean; reason?: string; deduped?: boolean }> => {
 		let bytes: Uint8Array;
 		try {
 			bytes = Uint8Array.from(atob(args.contentBase64), (c) => c.charCodeAt(0));
