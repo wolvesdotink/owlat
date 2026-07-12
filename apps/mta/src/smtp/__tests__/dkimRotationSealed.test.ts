@@ -28,6 +28,9 @@ describe('DKIM rotation — pending key sealed at rest', () => {
 
 	beforeEach(async () => {
 		redis = new Redis();
+		// ioredis-mock shares one data store across `new Redis()` instances, so a
+		// pending rotation from a prior test would leak into this one. Flush first.
+		await redis.flushall();
 		clearCache();
 		// A rotation needs an existing active key for the domain.
 		await setDkimKey(redis, 'rot.com', 's-active', 'active-private-key');
