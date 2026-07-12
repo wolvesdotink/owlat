@@ -34,6 +34,7 @@ import {
 	MTA_STS_WELL_KNOWN_PATH,
 	verifyMtaStsPublication,
 } from '@owlat/shared/mtaStsPolicy';
+import { isValidDomain } from '@owlat/shared';
 import type { MtaStsVerification } from '@owlat/shared/mtaStsPolicy';
 
 type DnsRecord = {
@@ -510,9 +511,21 @@ export const verifyReceivingMtaSts = authedAction({
 	},
 });
 
+// A published MTA-STS policy body is a handful of short lines; anything larger is
+// not a policy we can meaningfully compare, so we cap the HTTPS read to bound
+// memory and reject an oversized (or slow-drip) response instead of buffering it.
+const MTA_STS_POLICY_MAX_BYTES = 64 * 1024;
+// Hard ceiling on the policy fetch so a hostile or unresponsive host on the
+// operator-supplied domain can't hang the verify action (mirrors the
+// AbortSignal.timeout guards on the other outbound fetches in this backend).
+const MTA_STS_FETCH_TIMEOUT_MS = 10_000;
+
 // Resolve the `_mta-sts.<domain>` TXT record, joining multi-string chunks per
-// RFC 1035. Fail-soft: any lookup error → null (treated as "no record").
+// RFC 1035. Fail-soft: a malformed domain or any lookup error → null (treated as
+// "no record"). `domain` is validated before it reaches the DNS name so a bogus
+// value can't smuggle extra labels into the query.
 async function resolveMtaStsTxt(domain: string): Promise<string | null> {
+	if (!isValidDomain(domain)) return null;
 	try {
 		const records = await dns.resolveTxt(`${MTA_STS_TXT_HOST}.${domain}`);
 		const joined = records.map((chunks) => chunks.join(''));
@@ -522,14 +535,23 @@ async function resolveMtaStsTxt(domain: string): Promise<string | null> {
 	}
 }
 
-// Fetch the HTTPS-served policy body from `mta-sts.<domain>`. Fail-soft: any
-// non-2xx or network error → null (treated as "not served").
+// Fetch the HTTPS-served policy body from `mta-sts.<domain>`. Fail-soft: a
+// malformed domain, any non-2xx, redirect, timeout, oversized body or network
+// error → null (treated as "not served"). SSRF-disciplined: HTTPS only, no
+// cross-host redirects (`redirect: 'error'`), a bounded timeout and a body-size
+// cap, and `domain` is validated so it can't inject userinfo/port/path into the
+// request URL.
 async function fetchMtaStsPolicyBody(domain: string): Promise<string | null> {
+	if (!isValidDomain(domain)) return null;
 	try {
 		const url = `https://${MTA_STS_POLICY_HOST}.${domain}${MTA_STS_WELL_KNOWN_PATH}`;
-		const response = await fetch(url, { redirect: 'error' });
+		const response = await fetch(url, {
+			redirect: 'error',
+			signal: AbortSignal.timeout(MTA_STS_FETCH_TIMEOUT_MS),
+		});
 		if (!response.ok) return null;
-		return await response.text();
+		const body = await response.text();
+		return body.length > MTA_STS_POLICY_MAX_BYTES ? null : body;
 	} catch {
 		return null;
 	}
