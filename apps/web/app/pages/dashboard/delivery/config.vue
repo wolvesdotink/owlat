@@ -105,6 +105,15 @@ async function handleSendTest() {
 		testError.value = result.error ?? 'Test send failed.';
 	}
 }
+
+// Inbound TLS-RPT (RFC 8460) roll-up — daily reports partners send us about
+// TLS negotiation when delivering mail to our MX. Member-safe (operator
+// deliverability telemetry, no credentials).
+const {
+	data: tlsReportSummary,
+	isLoading: tlsReportLoading,
+	error: tlsReportError,
+} = useOrganizationQuery(api.domains.tlsReports.getTlsReportSummary);
 </script>
 
 <template>
@@ -196,8 +205,7 @@ async function handleSendTest() {
 								</div>
 								<pre
 									class="select-all overflow-x-auto rounded-lg bg-bg-surface px-3 py-2 font-mono text-xs text-text-primary"
-									>{{ envSnippet }}</pre
-								>
+									>{{ envSnippet }}</pre>
 								<p class="text-xs text-text-tertiary mt-1.5">
 									Values are left blank — fill in your real credentials. They are never displayed
 									here.
@@ -224,8 +232,7 @@ async function handleSendTest() {
 								</div>
 								<pre
 									class="select-all overflow-x-auto rounded-lg bg-bg-surface px-3 py-2 font-mono text-xs text-text-primary"
-									>{{ envSetCommand }}</pre
-								>
+									>{{ envSetCommand }}</pre>
 								<p class="text-xs text-text-tertiary mt-1.5">
 									Run <code class="text-text-primary">owlat-setup env --show</code> to list every
 									variable your current configuration needs. See the
@@ -408,8 +415,7 @@ async function handleSendTest() {
 						</div>
 						<pre
 							class="select-all overflow-x-auto rounded-lg bg-bg-surface px-3 py-2 font-mono text-xs text-text-primary"
-							>{{ sesWebhookUrl }}</pre
-						>
+							>{{ sesWebhookUrl }}</pre>
 					</div>
 					<p v-else class="text-xs text-text-tertiary">
 						Set your site URL to see the endpoint SNS should subscribe to.
@@ -457,6 +463,13 @@ async function handleSendTest() {
 					</div>
 				</div>
 			</UiCard>
+
+			<!-- Inbound TLS reports (TLS-RPT, RFC 8460) partners send us -->
+			<DeliveryTlsReportCard
+				:summary="tlsReportSummary"
+				:is-loading="tlsReportLoading"
+				:error="tlsReportError"
+			/>
 		</div>
 	</div>
 </template>
