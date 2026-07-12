@@ -1,0 +1,30 @@
+From: Alice <alice@sealed.example.com>
+To: Bob <bob@sealed.example.org>
+Subject: Signed hello
+Date: Fri, 11 Jul 2026 12:00:00 +0000
+Message-ID: <good-sig-0001@sealed.example.com>
+MIME-Version: 1.0
+Content-Type: multipart/signed; micalg=pgp-sha256;
+ protocol="application/pgp-signature"; boundary="sig-boundary-good"
+
+--sig-boundary-good
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+Hello Bob,
+
+This body is covered by a valid detached OpenPGP signature.
+
+-- Alice
+--sig-boundary-good
+Content-Type: application/pgp-signature; name="signature.asc"
+Content-Description: OpenPGP digital signature
+Content-Disposition: attachment; filename="signature.asc"
+
+-----BEGIN PGP SIGNATURE-----
+
+PLACEHOLDER_GOOD_SIGNATURE_ARMOR_REGENERATE_WITH_GPG_OR_OPENPGP
+=AAAA
+-----END PGP SIGNATURE-----
+
+--sig-boundary-good--

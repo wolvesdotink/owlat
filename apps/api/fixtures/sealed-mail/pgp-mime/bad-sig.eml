@@ -1,0 +1,30 @@
+From: Alice <alice@sealed.example.com>
+To: Bob <bob@sealed.example.org>
+Subject: Tampered hello
+Date: Fri, 11 Jul 2026 12:05:00 +0000
+Message-ID: <bad-sig-0001@sealed.example.com>
+MIME-Version: 1.0
+Content-Type: multipart/signed; micalg=pgp-sha256;
+ protocol="application/pgp-signature"; boundary="sig-boundary-bad"
+
+--sig-boundary-bad
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+Hello Bob,
+
+This body was MODIFIED after signing, so the signature must not verify.
+
+-- Alice
+--sig-boundary-bad
+Content-Type: application/pgp-signature; name="signature.asc"
+Content-Description: OpenPGP digital signature
+Content-Disposition: attachment; filename="signature.asc"
+
+-----BEGIN PGP SIGNATURE-----
+
+PLACEHOLDER_STALE_SIGNATURE_OVER_ORIGINAL_BODY_DOES_NOT_MATCH
+=BBBB
+-----END PGP SIGNATURE-----
+
+--sig-boundary-bad--

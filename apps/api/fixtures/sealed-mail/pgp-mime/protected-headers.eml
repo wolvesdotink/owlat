@@ -1,0 +1,29 @@
+From: Alice <alice@sealed.example.com>
+To: Bob <bob@sealed.example.org>
+Subject: ...
+Date: Fri, 11 Jul 2026 12:15:00 +0000
+Message-ID: <protected-headers-0001@sealed.example.com>
+MIME-Version: 1.0
+Content-Type: multipart/encrypted;
+ protocol="application/pgp-encrypted"; boundary="enc-boundary-ph"
+
+--enc-boundary-ph
+Content-Type: application/pgp-encrypted
+Content-Description: PGP/MIME version identification
+
+Version: 1
+
+--enc-boundary-ph
+Content-Type: application/octet-stream; name="encrypted.asc"
+Content-Description: OpenPGP encrypted message
+Content-Disposition: inline; filename="encrypted.asc"
+
+-----BEGIN PGP MESSAGE-----
+
+PLACEHOLDER_ENCRYPTED_PAYLOAD
+DECRYPTS_TO_THE_INNER_PART_SHOWN_BELOW_IN_THE_README
+REAL_SUBJECT_TRAVELS_INSIDE_PER_LOCKED_DECISION_D4
+=CCCC
+-----END PGP MESSAGE-----
+
+--enc-boundary-ph--

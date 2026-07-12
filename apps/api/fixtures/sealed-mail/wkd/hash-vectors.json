@@ -1,0 +1,28 @@
+{
+  "algorithm": "z-base32(SHA-1(lowercase(local-part)))",
+  "zbase32Alphabet": "ybndrfg8ejkmcpqxot1uwisza345h769",
+  "note": "WKD advanced-method local-part hashing per draft-koch-openpgp-webkey-service. The local part is lower-cased, SHA-1 hashed, and the 20-byte digest is z-base32 encoded to a fixed 32-char string. These vectors are deterministic and were computed offline with node:crypto (no OpenPGP needed); the joe.doe vector matches the canonical example in the WKD draft.",
+  "vectors": [
+    {
+      "localPart": "Joe.Doe",
+      "lowercased": "joe.doe",
+      "hash": "iy9q119eutrkn8s1mk4r39qejnbu3n5q",
+      "source": "canonical example from draft-koch-openpgp-webkey-service"
+    },
+    {
+      "localPart": "test",
+      "lowercased": "test",
+      "hash": "iffe93qcsgp4c8ncbb378rxjo6cn9q6u"
+    },
+    {
+      "localPart": "alice",
+      "lowercased": "alice",
+      "hash": "kei1q4tipxxu1yj79k9kfukdhfy631xe"
+    },
+    {
+      "localPart": "Bob.Smith",
+      "lowercased": "bob.smith",
+      "hash": "osqn644naf5sooko49x4d18mhf97iuk9"
+    }
+  ]
+}
