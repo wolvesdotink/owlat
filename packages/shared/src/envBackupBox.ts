@@ -1,9 +1,9 @@
 /**
  * Sealing for credential values in the `.env` BACKUP copy (secrets at rest).
  *
- * NODE-ONLY: uses `node:crypto`. Exposed via the `@owlat/shared/envBackupBox`
- * subpath ONLY — it must never be re-exported from the `.` barrel, which has to
- * stay browser-safe.
+ * NODE-ONLY: uses `node:crypto` (via `@owlat/shared/secretBox`). Exposed via the
+ * `@owlat/shared/envBackupBox` subpath ONLY — it must never be re-exported from
+ * the `.` barrel, which has to stay browser-safe.
  *
  * Why this exists: the LIVE source for transport credentials is the Convex
  * deployment's env store (already encrypted; written by `apply-transport` /
@@ -12,19 +12,13 @@
  * the SMTP relay password in plaintext, so a filesystem/backup dump leaked it.
  * This box seals that backup copy while the live store keeps working plaintext.
  *
- * This is the `.env`-backup twin of the Convex `createSecretBox` primitive
- * (apps/api/convex/lib/credentialCrypto.ts): the SAME AES-256-GCM + HKDF-SHA256
- * core, parameterized by an explicit domain-separation context. It is
- * re-implemented rather than imported because the Convex module is a
- * `'use node'` action file importing Convex-only helpers (`./env`,
- * `./constants`) — importing it here would drag in the Convex runtime and cross
- * the package boundary the cross-package-import guard forbids.
- *
- * The box is keyed by INSTANCE_SECRET (present in every install's `.env`; the
- * same secret the Convex external-mail box derives from) under HKDF context
- * labels DISTINCT from every other consumer (external-mail creds, MTA transport
- * secrets, keyVault), so a value sealed here can never open under another box —
- * and vice versa.
+ * It is a thin binding of the shared `createSecretBox` primitive
+ * (`@owlat/shared/secretBox`): the SAME AES-256-GCM + HKDF-SHA256 core, pinned to
+ * an env-backup domain-separation context. The box is keyed by INSTANCE_SECRET
+ * (present in every install's `.env`; the same secret the Convex external-mail
+ * box derives from) under HKDF context labels DISTINCT from every other consumer
+ * (external-mail creds, MTA transport secrets, keyVault), so a value sealed here
+ * can never open under another box — and vice versa.
  *
  * Sealed tokens are self-describing via {@link ENV_BACKUP_SEALED_PREFIX}, so a
  * reader (the deploy-time reseed in `selectRuntimeEnvVars`) can distinguish a
@@ -34,12 +28,7 @@
  * token FAILS CLOSED — ciphertext is never pushed as a live credential.
  */
 
-import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from 'node:crypto';
-
-const ALGORITHM = 'aes-256-gcm';
-const KEY_BYTES = 32;
-const IV_BYTES = 12; // GCM standard 96-bit nonce
-const AUTH_TAG_BYTES = 16; // GCM standard 128-bit auth tag (passed explicitly)
+import { createSecretBox, type SecretBox } from './secretBox';
 
 /**
  * The HKDF domain-separation context for the `.env`-backup box. Changing either
@@ -62,15 +51,8 @@ export function isEnvBackupSealedValue(value: string): boolean {
 	return value.startsWith(ENV_BACKUP_SEALED_PREFIX);
 }
 
-/** An AES-256-GCM + HKDF-SHA256 sealing primitive for `.env`-backup values. */
-export interface EnvBackupBox {
-	/** Seal a plaintext string into a self-describing sealed token (with prefix). */
-	seal(plaintext: string): string;
-	/** Open a sealed token back to plaintext. Throws on a bad prefix or auth-tag mismatch (tamper / wrong key). */
-	open(sealed: string): string;
-	/** Whether a stored value is a sealed token produced by {@link seal}. */
-	isSealed(value: string): boolean;
-}
+/** An AES-256-GCM + HKDF-SHA256 sealing box for `.env`-backup values. */
+export type EnvBackupBox = SecretBox;
 
 /**
  * Build the `.env`-backup box keyed by `instanceSecret` under the pinned
@@ -84,50 +66,37 @@ export function createEnvBackupBox(instanceSecret: string): EnvBackupBox {
 	if (!instanceSecret) {
 		throw new Error('createEnvBackupBox: INSTANCE_SECRET is required to seal/unseal .env values.');
 	}
+	return createSecretBox(instanceSecret, {
+		salt: ENV_BACKUP_SALT,
+		info: ENV_BACKUP_INFO,
+		prefix: ENV_BACKUP_SEALED_PREFIX,
+	});
+}
 
-	const deriveKey = (): Buffer => {
-		const derived = hkdfSync(
-			'sha256',
-			Buffer.from(instanceSecret, 'utf8'),
-			Buffer.from(ENV_BACKUP_SALT, 'utf8'),
-			Buffer.from(ENV_BACKUP_INFO, 'utf8'),
-			KEY_BYTES
-		);
-		return Buffer.from(derived);
-	};
-
+/**
+ * Return a copy of an `.env` map with `SMTP_RELAY_PASSWORD` sealed for at-rest
+ * backup — the single helper every `.env` WRITER funnels the relay credential
+ * through so the file never persists it in plaintext (the card's acceptance
+ * reads on the file, and it has several writers: the web setup wizard, the
+ * transport editor, and the CLI setup/quickstart paths).
+ *
+ * The LIVE deployment env store is untouched: callers push plaintext (or a
+ * sealed token that `selectRuntimeEnvVars` unseals) BEFORE writing this backup,
+ * so the send path always reads the working credential.
+ *
+ * Fails SAFE, never wrong:
+ *   - no password, or no INSTANCE_SECRET in the same map ⇒ pass through
+ *     unchanged (a bare dev `.env` keeps today's plaintext write rather than
+ *     minting a token nothing could ever open);
+ *   - the value is ALREADY a sealed token ⇒ pass through unchanged (idempotent,
+ *     so re-running setup over a sealed `.env` never double-seals).
+ */
+export function sealRelayPasswordForBackup(env: Record<string, string>): Record<string, string> {
+	const password = env['SMTP_RELAY_PASSWORD'];
+	const instanceSecret = env['INSTANCE_SECRET'];
+	if (!password || !instanceSecret || isEnvBackupSealedValue(password)) return env;
 	return {
-		isSealed: isEnvBackupSealedValue,
-		seal(plaintext: string): string {
-			const key = deriveKey();
-			const iv = randomBytes(IV_BYTES);
-			const cipher = createCipheriv(ALGORITHM, key, iv, { authTagLength: AUTH_TAG_BYTES });
-			const ciphertext = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
-			const authTag = cipher.getAuthTag();
-			return (
-				ENV_BACKUP_SEALED_PREFIX +
-				`${iv.toString('base64')}.${authTag.toString('base64')}.${ciphertext.toString('base64')}`
-			);
-		},
-		open(sealed: string): string {
-			if (!isEnvBackupSealedValue(sealed)) {
-				throw new Error('envBackupBox.open: value is not a sealed token');
-			}
-			const body = sealed.slice(ENV_BACKUP_SEALED_PREFIX.length);
-			const parts = body.split('.');
-			if (parts.length !== 3) {
-				throw new Error('envBackupBox.open: malformed sealed token');
-			}
-			const [ivB64, tagB64, ctB64] = parts as [string, string, string];
-			const key = deriveKey();
-			const iv = Buffer.from(ivB64, 'base64');
-			const decipher = createDecipheriv(ALGORITHM, key, iv, { authTagLength: AUTH_TAG_BYTES });
-			decipher.setAuthTag(Buffer.from(tagB64, 'base64'));
-			const plaintext = Buffer.concat([
-				decipher.update(Buffer.from(ctB64, 'base64')),
-				decipher.final(),
-			]);
-			return plaintext.toString('utf8');
-		},
+		...env,
+		SMTP_RELAY_PASSWORD: createEnvBackupBox(instanceSecret).seal(password),
 	};
 }
