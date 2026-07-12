@@ -462,6 +462,14 @@ export const mailTables = {
 		// (a quarantine/reject fail → Spam) and the UI banner can distinguish a
 		// monitor-only `p=none` fail from one the domain owner asked us to act on.
 		dmarcPolicy: v.optional(v.string()),
+		// DMARC alignment inputs captured alongside the verdicts above: the SMTP
+		// envelope MAIL FROM domain (the SPF-authenticated identity) and the d=
+		// domain of the passing DKIM signature. Kept so a later impersonation
+		// heuristic can compare them against the visible From domain without
+		// re-parsing the raw .eml. ALL optional — an older MTA sends them absent,
+		// which renders as "unknown" (never asserts alignment we did not verify).
+		envelopeFromDomain: v.optional(v.string()),
+		dkimSigningDomain: v.optional(v.string()),
 
 		// Team-inbox attribution: on an outbound message, the BetterAuth user id of
 		// the teammate who fired the send (copied from the draft at dispatch). Lets

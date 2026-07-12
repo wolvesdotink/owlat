@@ -202,6 +202,10 @@ export const ingestFromWebhook = internalAction({
 		dkimResult: v.optional(v.string()),
 		dmarcResult: v.optional(v.string()),
 		dmarcPolicy: v.optional(v.string()),
+		// DMARC alignment inputs (envelope MAIL FROM domain + DKIM d= domain),
+		// stored beside the verdicts on `mailMessages`. Both optional.
+		envelopeFromDomain: v.optional(v.string()),
+		dkimSigningDomain: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<{ messageId: Id<'mailMessages'> } | { skipped: true }> => {
 		// Decode raw MIME and stash in Convex storage.
@@ -272,6 +276,8 @@ export const ingestFromWebhook = internalAction({
 				dkimResult: args.dkimResult,
 				dmarcResult: args.dmarcResult,
 				dmarcPolicy: args.dmarcPolicy,
+				envelopeFromDomain: args.envelopeFromDomain,
+				dkimSigningDomain: args.dkimSigningDomain,
 			}
 		);
 
@@ -431,6 +437,8 @@ export async function insertDeliveredMessage(
 		dkimResult?: string;
 		dmarcResult?: string;
 		dmarcPolicy?: string;
+		envelopeFromDomain?: string;
+		dkimSigningDomain?: string;
 		/** Parsed List-Unsubscribe target (extracted at ingest from the raw header block). */
 		unsubscribe?: { httpUrl?: string; mailtoUrl?: string; oneClick: boolean };
 		/** Add rawSize to mailbox.usedBytes (local cache accounting). */
@@ -545,6 +553,8 @@ export async function insertDeliveredMessage(
 		dkimResult: params.dkimResult,
 		dmarcResult: params.dmarcResult,
 		dmarcPolicy: params.dmarcPolicy,
+		envelopeFromDomain: params.envelopeFromDomain,
+		dkimSigningDomain: params.dkimSigningDomain,
 		unsubscribe: params.unsubscribe,
 		createdAt: now,
 		updatedAt: now,
@@ -646,6 +656,10 @@ export const deliverToMailbox = internalMutation({
 		dkimResult: v.optional(v.string()),
 		dmarcResult: v.optional(v.string()),
 		dmarcPolicy: v.optional(v.string()),
+		// DMARC alignment inputs (envelope MAIL FROM domain + DKIM d= domain),
+		// stored beside the verdicts on `mailMessages`. Both optional.
+		envelopeFromDomain: v.optional(v.string()),
+		dkimSigningDomain: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<{ messageId: Id<'mailMessages'> } | { skipped: true }> => {
 		const recipient = extractEmail(args.recipientAddress);
@@ -785,6 +799,8 @@ export const deliverToMailbox = internalMutation({
 			dkimResult: args.dkimResult,
 			dmarcResult: args.dmarcResult,
 			dmarcPolicy: args.dmarcPolicy,
+			envelopeFromDomain: args.envelopeFromDomain,
+			dkimSigningDomain: args.dkimSigningDomain,
 			unsubscribe: args.unsubscribe,
 			countUsedBytes: true,
 		});

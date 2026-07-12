@@ -110,6 +110,22 @@ export const inboxTables = {
 		headers: v.optional(v.string()),
 		// Attachment metadata (JSON array: [{filename, contentType, size}], content stored separately)
 		attachmentMeta: v.optional(v.string()),
+		// RFC 8601 inbound authentication verdicts, computed by the MTA over the
+		// raw bytes at ingest (SPF on MAIL FROM, DKIM on the d= signature, DMARC
+		// binding the two to the From domain via alignment). The AI-inbox path
+		// used to DROP these — the personal-mailbox path (`mailMessages`) has
+		// carried them since inbound auth landed. Persisted here so the reader can
+		// render an honest sender-authenticity badge. ALL optional: an older MTA
+		// (or a disabled check) sends the field absent, which renders as "unknown"
+		// downstream — NEVER as "pass". RFC 8601 keyword strings
+		// (`pass`/`fail`/`softfail`/`neutral`/`none`/`temperror`/`permerror`).
+		spfResult: v.optional(v.string()),
+		dkimResult: v.optional(v.string()),
+		dmarcResult: v.optional(v.string()),
+		// The published DMARC policy (`none`/`quarantine`/`reject`) that applied to
+		// the From domain, captured alongside `dmarcResult` so the reader can tell a
+		// monitor-only `p=none` fail from one the domain owner asked us to act on.
+		dmarcPolicy: v.optional(v.string()),
 		// Relationships
 		threadId: v.optional(v.id('conversationThreads')),
 		contactId: v.optional(v.id('contacts')),

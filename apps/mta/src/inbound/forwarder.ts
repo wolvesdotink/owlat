@@ -6,12 +6,19 @@
 
 import type { ParsedMail } from 'mailparser';
 import type { InboundRoute } from './router.js';
+import type { InboundAuthVerdicts } from '../types.js';
 import { logger } from '../monitoring/logger.js';
 
 const TIMEOUT_MS = 10_000;
 const MAX_RETRIES = 2;
 
-interface InboundEmailPayload {
+/**
+ * Wire shape POSTed to a route's configured HTTP endpoint (distinct from the
+ * Convex-webhook `InboundEmailPayload` in `../types.ts` — this one inlines
+ * attachment bytes and carries the RFC 8601 auth verdicts + DMARC alignment
+ * inputs so the endpoint can render an honest sender-authenticity badge).
+ */
+interface EndpointForwardPayload extends InboundAuthVerdicts {
 	from: string;
 	to: string;
 	subject: string;
@@ -36,14 +43,15 @@ interface InboundEmailPayload {
 export async function forwardToEndpoint(
 	parsed: ParsedMail,
 	route: InboundRoute,
-	recipientAddress: string
+	recipientAddress: string,
+	auth?: InboundAuthVerdicts
 ): Promise<boolean> {
 	if (!route.endpointUrl) {
 		logger.error({ routeId: route.id }, 'Route has no endpoint URL');
 		return false;
 	}
 
-	const payload: InboundEmailPayload = {
+	const payload: EndpointForwardPayload = {
 		from: parsed.from?.text ?? '',
 		to: recipientAddress,
 		subject: parsed.subject ?? '',
@@ -54,12 +62,13 @@ export async function forwardToEndpoint(
 		messageId: parsed.messageId,
 		inReplyTo: parsed.inReplyTo,
 		references: Array.isArray(parsed.references) ? parsed.references.join(' ') : parsed.references,
-		attachments: (parsed.attachments ?? []).map(att => ({
+		attachments: (parsed.attachments ?? []).map((att) => ({
 			filename: att.filename,
 			contentType: att.contentType,
 			size: att.size,
 			content: att.content.toString('base64'),
 		})),
+		...auth,
 	};
 
 	// Copy relevant headers
@@ -99,7 +108,7 @@ export async function forwardToEndpoint(
 		}
 
 		if (attempt < MAX_RETRIES) {
-			await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+			await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
 		}
 	}
 

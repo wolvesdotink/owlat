@@ -52,6 +52,13 @@ export const receiveMessage = internalMutation({
 		references: v.optional(v.string()),
 		attachmentMeta: v.optional(v.string()),
 		timestamp: v.number(),
+		// RFC 8601 inbound auth verdicts, forwarded by the MTA. All optional so an
+		// older MTA (or a disabled check) stores them absent — absent renders as
+		// "unknown" downstream, NEVER as "pass".
+		spfResult: v.optional(v.string()),
+		dkimResult: v.optional(v.string()),
+		dmarcResult: v.optional(v.string()),
+		dmarcPolicy: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		const senderEmail = extractEmail(args.from);
@@ -98,6 +105,10 @@ export const receiveMessage = internalMutation({
 			contactId,
 			processingStatus: 'received',
 			receivedAt: args.timestamp,
+			spfResult: args.spfResult,
+			dkimResult: args.dkimResult,
+			dmarcResult: args.dmarcResult,
+			dmarcPolicy: args.dmarcPolicy,
 		});
 		await applyInboxStatsDelta(ctx, null, 'received');
 
