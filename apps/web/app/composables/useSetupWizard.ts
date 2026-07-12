@@ -85,6 +85,37 @@ export interface SmtpRelayDraft {
 	password: string;
 }
 
+/**
+ * Outbound TLS posture for the built-in MTA's direct-MX delivery (env
+ * `OUTBOUND_TLS_MODE`). Only meaningful for the `mta` transport — for a relay or
+ * API provider the TLS to that provider is the provider's concern. Kept as a
+ * local union (not imported from the MTA package) to avoid a cross-package
+ * dependency; the string VALUES are the env contract shared with the MTA config.
+ */
+export type OutboundTlsMode = 'opportunistic' | 'require' | 'require-verified';
+
+export const OUTBOUND_TLS_MODE_OPTIONS: {
+	value: OutboundTlsMode;
+	label: string;
+	hint: string;
+}[] = [
+	{
+		value: 'opportunistic',
+		label: 'Opportunistic (recommended)',
+		hint: 'Encrypt whenever the receiving server offers it, but still deliver if it doesn’t. Safest for reaching everyone.',
+	},
+	{
+		value: 'require',
+		label: 'Always encrypt',
+		hint: 'Refuse to deliver over an unencrypted connection. A receiver that can’t do TLS won’t get the mail.',
+	},
+	{
+		value: 'require-verified',
+		label: 'Always encrypt and verify',
+		hint: 'Require encryption and a valid certificate. Strongest, but can bounce mail to receivers with a misconfigured or self-signed certificate.',
+	},
+];
+
 export interface EmailStepDraft {
 	provider: ProviderChoice;
 	/** Whether the chosen features force a real delivery provider (no "none"). */
@@ -92,6 +123,12 @@ export interface EmailStepDraft {
 	resendKey: string;
 	ses: SesCredentials;
 	smtp: SmtpRelayDraft;
+	/**
+	 * Outbound TLS posture for the built-in MTA. Optional — omitted drafts (and
+	 * every non-`mta` transport) fall back to the `opportunistic` default, which
+	 * is byte-identical to the historic behaviour.
+	 */
+	outboundTlsMode?: OutboundTlsMode;
 	/** Optional From-identity — flows into the apply contract's `env`. */
 	fromEmail: string;
 	fromName: string;
@@ -199,6 +236,13 @@ export function buildProviderEnv(
 
 	if (draft.provider !== 'none') {
 		next['EMAIL_PROVIDER'] = draft.provider;
+		if (draft.provider === 'mta') {
+			// Outbound TLS posture applies only to the built-in MTA's direct-MX
+			// delivery. Always emit it (default `opportunistic`) so switching TO the
+			// MTA writes an explicit value rather than leaving a stale one from a
+			// prior install. Other transports clear it (it is in PROVIDER_ENV_KEYS).
+			next['OUTBOUND_TLS_MODE'] = draft.outboundTlsMode ?? 'opportunistic';
+		}
 		if (draft.provider === 'resend') {
 			next['RESEND_API_KEY'] = draft.resendKey;
 		}

@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import {
+	OUTBOUND_TLS_MODE_OPTIONS,
 	SMTP_RELAY_PRESETS,
 	buildProviderEnv,
 	emailStepIsValid,
 	validateEmailStep,
 	type EmailStepDraft,
+	type OutboundTlsMode,
 	type ProviderChoice,
 	type SmtpPreset,
 } from '~/composables/useSetupWizard';
@@ -41,6 +43,16 @@ const sesAccess = ref('');
 const sesSecret = ref('');
 const fromEmail = ref('');
 const fromName = ref('');
+// Outbound TLS posture for the built-in MTA (direct-MX). Default matches the
+// backend default and today's behaviour.
+const outboundTlsMode = ref<OutboundTlsMode>('opportunistic');
+const outboundTlsModeOptions = OUTBOUND_TLS_MODE_OPTIONS.map((o) => ({
+	value: o.value,
+	label: o.label,
+}));
+const outboundTlsModeHint = computed(
+	() => OUTBOUND_TLS_MODE_OPTIONS.find((o) => o.value === outboundTlsMode.value)?.hint ?? ''
+);
 
 const smtpPreset = ref<SmtpPreset>('mailgun');
 const smtpHost = ref(SMTP_RELAY_PRESETS['mailgun'].host);
@@ -105,6 +117,7 @@ const draft = computed<EmailStepDraft>(() => ({
 		username: smtpUsername.value,
 		password: smtpPassword.value,
 	},
+	outboundTlsMode: outboundTlsMode.value,
 	fromEmail: fromEmail.value,
 	fromName: fromName.value,
 }));
@@ -309,6 +322,26 @@ function cancel() {
 				<UiInput v-model="smtpUsername" label="Username" autocomplete="off" />
 				<UiInput v-model="smtpPassword" type="password" label="Password" autocomplete="off" />
 				<p v-if="showErrors && errors.smtp" class="text-sm text-error">{{ errors.smtp }}</p>
+			</div>
+
+			<div v-if="provider === 'mta'" class="space-y-3">
+				<UiSelect
+					v-model="outboundTlsMode"
+					label="Connection security"
+					:options="outboundTlsModeOptions"
+				/>
+				<p class="text-sm text-text-secondary">{{ outboundTlsModeHint }}</p>
+				<p
+					v-if="outboundTlsMode === 'require-verified'"
+					class="text-xs text-warning flex items-start gap-1.5"
+				>
+					<Icon name="lucide:alert-circle" class="w-3.5 h-3.5 mt-0.5 shrink-0" />
+					<span>
+						“Always encrypt and verify” can bounce mail to receivers whose mail servers have a
+						misconfigured or self-signed certificate. Use it only if you know your recipients keep
+						valid certificates.
+					</span>
+				</p>
 			</div>
 
 			<div class="border-t border-border-subtle pt-5">
