@@ -6,7 +6,8 @@
  * can always find the instructions (no chicken-and-egg where the guidance is
  * hidden behind the very flag they're trying to turn on).
  */
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ref } from 'vue';
 import { mount } from '@vue/test-utils';
 
 // `useBackendOperation` is a Nuxt auto-import the SFC references as a bare
@@ -16,6 +17,18 @@ import { mount } from '@vue/test-utils';
 vi.stubGlobal('useBackendOperation', () => ({
 	run: vi.fn(async () => undefined),
 }));
+
+// The MTA-STS guidance query + runtime config are also bare auto-imports. Mutable
+// backing values so individual tests can turn a published policy on/off.
+let mtaStsPolicyId: string | null = null;
+let siteUrl = '';
+vi.stubGlobal('useConvexQuery', () => ({ data: ref({ policyId: mtaStsPolicyId }) }));
+vi.stubGlobal('useRuntimeConfig', () => ({ public: { siteUrl } }));
+
+beforeEach(() => {
+	mtaStsPolicyId = null;
+	siteUrl = '';
+});
 
 import ReceivingDnsSection from '../ReceivingDnsSection.vue';
 
@@ -69,6 +82,22 @@ describe('ReceivingDnsSection', () => {
 		expect(banner.exists()).toBe(true);
 		expect(banner.text()).toContain("Receiving isn't turned on yet");
 		expect(banner.find('a').attributes('href')).toBe('/dashboard/settings/features');
+	});
+
+	it('does not render MTA-STS records when no policy is published', () => {
+		const w = mountSection(true);
+		// Only the MX record — no _mta-sts / mta-sts rows.
+		expect(w.text()).not.toContain('Require encryption (MTA-STS)');
+	});
+
+	it('renders the _mta-sts TXT + mta-sts CNAME records when a policy is published', () => {
+		mtaStsPolicyId = 'abcd1234abcd1234';
+		siteUrl = 'https://acme.owlat.app';
+		const w = mountSection(true);
+		expect(w.text()).toContain('Require encryption (MTA-STS)');
+		const values = w.findAll('[data-testid="dns-record"]').map((n) => n.attributes('data-value'));
+		expect(values).toContain('v=STSv1; id=abcd1234abcd1234');
+		expect(values).toContain('acme.owlat.app');
 	});
 
 	it('renders nothing when there is no mail host to point at', () => {

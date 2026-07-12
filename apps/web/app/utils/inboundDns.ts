@@ -11,6 +11,11 @@
  */
 
 import type { FeatureFlagKey } from '@owlat/shared/featureFlags';
+import {
+	MTA_STS_TXT_HOST,
+	MTA_STS_POLICY_HOST,
+	buildMtaStsTxtValue,
+} from '@owlat/shared/mtaStsPolicy';
 
 /**
  * Receiving-category flags that imply the user wants to receive mail for a
@@ -75,5 +80,42 @@ export function buildInboundMxRecords(
 			priority: INBOUND_MX_PRIORITY,
 			value: target,
 		},
+	];
+}
+
+export interface MtaStsDnsRecord {
+	type: 'TXT' | 'CNAME';
+	/** DNS host RELATIVE to the domain (e.g. `_mta-sts`, `mta-sts`). */
+	host: string;
+	value: string;
+}
+
+/**
+ * The two DNS records a domain must publish to advertise this deployment's
+ * MTA-STS policy (RFC 8461 §3.1–3.2):
+ *
+ *   1. `_mta-sts` TXT = `v=STSv1; id=<policyId>` — announces a policy exists and
+ *      its current id, so senders re-fetch when it changes.
+ *   2. `mta-sts` CNAME → this Owlat instance's web host — where senders fetch
+ *      `https://mta-sts.<domain>/.well-known/mta-sts.txt`.
+ *
+ * Returns `[]` when there is no policy id (nothing published) or no known web
+ * host, so the caller renders nothing rather than a broken record. `webHost` is
+ * lowercased and stripped of any port + trailing FQDN dot.
+ */
+export function buildMtaStsDnsRecords(
+	policyId: string | null | undefined,
+	webHost: string | null | undefined
+): MtaStsDnsRecord[] {
+	const id = (policyId ?? '').trim();
+	const target = (webHost ?? '')
+		.trim()
+		.toLowerCase()
+		.replace(/:\d+$/, '') // drop a :port suffix
+		.replace(/\.$/, ''); // strip a trailing FQDN root dot
+	if (!id || !target) return [];
+	return [
+		{ type: 'TXT', host: MTA_STS_TXT_HOST, value: buildMtaStsTxtValue(id) },
+		{ type: 'CNAME', host: MTA_STS_POLICY_HOST, value: target },
 	];
 }
