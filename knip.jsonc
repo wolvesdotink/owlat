@@ -79,6 +79,7 @@
 				"src/setupValidators.ts",
 				"src/setupEnv.ts",
 				"src/convexRuntimeEnv.ts",
+				"src/envBackupBox.ts",
 				"src/setupSecrets.ts",
 				"src/passwordHash.ts",
 				"src/operationError.ts",

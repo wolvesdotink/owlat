@@ -57,6 +57,10 @@
 			"types": "./src/convexRuntimeEnv.ts",
 			"import": "./src/convexRuntimeEnv.ts"
 		},
+		"./envBackupBox": {
+			"types": "./src/envBackupBox.ts",
+			"import": "./src/envBackupBox.ts"
+		},
 		"./setupSecrets": {
 			"types": "./src/setupSecrets.ts",
 			"import": "./src/setupSecrets.ts"
