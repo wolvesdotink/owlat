@@ -30,6 +30,7 @@ import {
 const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 const { isDesktop } = useDesktopContext();
 const { navigationSections } = useDashboardNavigation();
+const { showToggle: hasSidebarContexts, activeContext, switchContext } = useSidebarContext();
 const surfaceGroups = useCommandPaletteSurface();
 
 const open = ref(false);
@@ -165,6 +166,23 @@ const verbItems = computed<PaletteItem[]>(() => {
 	return verbs;
 });
 
+// Sidebar-context switch — only the OTHER context is offered, and only while
+// the sidebar toggle itself exists (both contexts survived the feature flags).
+// Runs the same last-visited navigation as clicking the sidebar toggle.
+const contextItems = computed<PaletteItem[]>(() => {
+	if (!hasSidebarContexts.value) return [];
+	const other = activeContext.value === 'inbox' ? ('marketing' as const) : ('inbox' as const);
+	return [
+		{
+			id: `context:${other}`,
+			label: other === 'inbox' ? 'Switch to Inbox' : 'Switch to Marketing',
+			subtitle: 'Sidebar context',
+			icon: other === 'inbox' ? 'lucide:inbox' : 'lucide:megaphone',
+			run: () => void switchContext(other),
+		},
+	];
+});
+
 const navItems = computed<PaletteItem[]>(() =>
 	navigationSections.value.flatMap((section) =>
 		section.items.map((item) => ({
@@ -211,6 +229,14 @@ const groups = computed<PaletteGroup[]>(() => {
 		heading: 'Create',
 		order: 5,
 		items: filterItems(verbItems.value, query),
+	});
+
+	// Sidebar-context switch (empty groups are dropped on merge).
+	out.push({
+		key: 'context',
+		heading: 'Context',
+		order: 6,
+		items: filterItems(contextItems.value, query),
 	});
 
 	// Object search — only once the query is meaningful.
