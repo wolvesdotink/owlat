@@ -43,9 +43,9 @@ export type PostboxReaderMessage = {
 	// sender, look-alike of a known contact's domain). Whole object absent when
 	// nothing fired — the badge shows no extra lines rather than a false "clear".
 	senderHeuristics?: {
-		fromDomainSpoofed?: boolean;
-		replyToMismatch?: boolean;
-		firstTimeSender?: boolean;
+		isFromDomainSpoofed?: boolean;
+		isReplyToMismatch?: boolean;
+		isFirstTimeSender?: boolean;
 		lookalikeOfContactDomain?: string;
 	};
 	flagSeen?: boolean;
