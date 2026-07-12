@@ -83,8 +83,8 @@ export function buildTlsRptSystemRoute(config: TlsRptSystemRouteConfig): Inbound
 	const atIndex = addr ? addr.lastIndexOf('@') : -1;
 	return {
 		id: TLS_RPT_SYSTEM_ROUTE_ID,
-		domain: atIndex >= 0 ? addr!.slice(atIndex + 1) : '',
-		address: atIndex >= 0 ? addr!.slice(0, atIndex) : '',
+		domain: addr && atIndex >= 0 ? addr.slice(atIndex + 1) : '',
+		address: addr && atIndex >= 0 ? addr.slice(0, atIndex) : '',
 		mode: 'endpoint',
 		endpointUrl: `${base}${TLS_RPT_WEBHOOK_PATH}`,
 		systemSecret: config.webhookSecret,

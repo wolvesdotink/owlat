@@ -136,18 +136,10 @@ export const handleTlsReportWebhook = httpAction(async (ctx, request) => {
 		});
 	}
 
+	// The digest's shape is exactly the ingest args — pass it straight through
+	// rather than re-listing every field.
 	const digest = digestTlsReport(parsed.report);
-	const result = await ctx.runMutation(internal.domains.tlsReports.ingest, {
-		reportId: digest.reportId,
-		organizationName: digest.organizationName,
-		contactInfo: digest.contactInfo,
-		policyDomain: digest.policyDomain,
-		rangeStartMs: digest.rangeStartMs,
-		rangeEndMs: digest.rangeEndMs,
-		successCount: digest.successCount,
-		failureCount: digest.failureCount,
-		failureTypeCounts: digest.failureTypeCounts,
-	});
+	const result = await ctx.runMutation(internal.domains.tlsReports.ingest, digest);
 
 	return new Response(JSON.stringify({ ok: true, deduped: result.deduped }), {
 		status: 200,
