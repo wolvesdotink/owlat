@@ -20,7 +20,8 @@
  *     (a binary `.eml` must not be UTF-8 round-tripped) via the blob cipher in
  *     `lib/atRestBodies.ts`. Because Convex storage is immutable per id, the
  *     blob pages read each blob, store the sealed copy under a new id, repoint
- *     the row, and delete the old plaintext blob.
+ *     EVERY row referencing the old blob (IMAP COPY shares one blob across rows —
+ *     see `repointResealedBlobs`), then delete the old plaintext blob.
  *
  * This back-fill catches up EXISTING rows. New rows already seal at write time
  * (`sealBodyAtWrite` for the inline columns and `storeSealedBlob` for the blobs,
@@ -202,18 +203,28 @@ export const mailMessageBlobPage = internalQuery({
 });
 
 /**
- * Repoint one mailMessages row at its sealed blob copies AND delete the old
- * plaintext blobs — atomically, in one mutation transaction. Each `*StorageId`
- * arg is the NEW sealed id; the paired `old*StorageId` is the plaintext blob to
- * drop once the row no longer references it. Doing the repoint and the delete in
- * the same mutation closes the orphan window: an interrupt cannot leave the row
- * pointing at the sealed copy while the old plaintext blob lingers in storage
- * (which a later re-run would skip, since the pointer is already sealed).
- * Mutations may delete storage (`dropBlob` in `ingestExternalMessage` does too).
+ * Repoint EVERY row that references an old plaintext blob at its sealed copy,
+ * then delete the old blob — atomically, in one mutation transaction, per column.
+ *
+ * SHARING-AWARE (the crux): IMAP COPY (`mail/imap.ts` copyMessages) shares a
+ * storage blob across rows — the copy is a new `mailMessages` row spreading the
+ * SAME `rawStorageId`/`textBodyStorageId`/`htmlBodyStorageId`. If we repointed
+ * only the row we resealed and deleted the old blob, every sibling copy would be
+ * left pointing at a deleted id — unreadable forever (`readSealedBlobBytes` →
+ * `null`, `/sealed-blob` 404, IMAP `FETCH RFC822` empty). So for each column we
+ * look up ALL rows referencing the old id (via the `by_*_storage` index) and
+ * repoint them to the new sealed id BEFORE deleting the old blob. The primary
+ * resealed row is among them (it still references the old id at call time).
+ *
+ * Doing repoint-and-delete in one mutation closes the orphan window: an interrupt
+ * cannot leave a row pointing at the sealed copy while the old plaintext blob
+ * lingers (a later re-run would then skip it, since its pointer is already
+ * sealed). Mutations may delete storage (`dropBlob` in `ingestExternalMessage`
+ * does too). Each `*StorageId` arg is the NEW sealed id; the paired
+ * `old*StorageId` is the shared plaintext blob to drop.
  */
-export const patchMailMessageBlobIds = internalMutation({
+export const repointResealedBlobs = internalMutation({
 	args: {
-		id: v.id('mailMessages'),
 		rawStorageId: v.optional(v.id('_storage')),
 		oldRawStorageId: v.optional(v.id('_storage')),
 		textBodyStorageId: v.optional(v.id('_storage')),
@@ -222,25 +233,35 @@ export const patchMailMessageBlobIds = internalMutation({
 		oldHtmlBodyStorageId: v.optional(v.id('_storage')),
 	},
 	handler: async (ctx, args) => {
-		const patch: {
-			rawStorageId?: Id<'_storage'>;
-			textBodyStorageId?: Id<'_storage'>;
-			htmlBodyStorageId?: Id<'_storage'>;
-		} = {};
-		if (args.rawStorageId) patch.rawStorageId = args.rawStorageId;
-		if (args.textBodyStorageId) patch.textBodyStorageId = args.textBodyStorageId;
-		if (args.htmlBodyStorageId) patch.htmlBodyStorageId = args.htmlBodyStorageId;
-		if (Object.keys(patch).length === 0) return;
-		await ctx.db.patch(args.id, patch);
-		// Same-transaction delete of the now-unreferenced plaintext originals.
 		if (args.rawStorageId && args.oldRawStorageId) {
-			await ctx.storage.delete(args.oldRawStorageId);
+			const newId = args.rawStorageId;
+			const oldId = args.oldRawStorageId;
+			const rows = await ctx.db
+				.query('mailMessages')
+				.withIndex('by_raw_storage', (q) => q.eq('rawStorageId', oldId))
+				.collect();
+			for (const r of rows) await ctx.db.patch(r._id, { rawStorageId: newId });
+			await ctx.storage.delete(oldId);
 		}
 		if (args.textBodyStorageId && args.oldTextBodyStorageId) {
-			await ctx.storage.delete(args.oldTextBodyStorageId);
+			const newId = args.textBodyStorageId;
+			const oldId = args.oldTextBodyStorageId;
+			const rows = await ctx.db
+				.query('mailMessages')
+				.withIndex('by_text_body_storage', (q) => q.eq('textBodyStorageId', oldId))
+				.collect();
+			for (const r of rows) await ctx.db.patch(r._id, { textBodyStorageId: newId });
+			await ctx.storage.delete(oldId);
 		}
 		if (args.htmlBodyStorageId && args.oldHtmlBodyStorageId) {
-			await ctx.storage.delete(args.oldHtmlBodyStorageId);
+			const newId = args.htmlBodyStorageId;
+			const oldId = args.oldHtmlBodyStorageId;
+			const rows = await ctx.db
+				.query('mailMessages')
+				.withIndex('by_html_body_storage', (q) => q.eq('htmlBodyStorageId', oldId))
+				.collect();
+			for (const r of rows) await ctx.db.patch(r._id, { htmlBodyStorageId: newId });
+			await ctx.storage.delete(oldId);
 		}
 	},
 });
@@ -271,13 +292,13 @@ async function resealRowBlobs(ctx: ActionCtx, row: MessageBlobIds): Promise<bool
 		? await resealStoredBlob(ctx.storage, row.htmlBodyStorageId)
 		: null;
 	if (!newRaw && !newText && !newHtml) return false;
-	// Repoint the row AND drop the old plaintext blobs in ONE mutation, so the
-	// old-blob delete is transactional with the pointer swap. An interrupt before
-	// this call leaves the row on the still-readable plaintext original (mixed
-	// tolerance) and a re-run reseals it; an interrupt cannot orphan a plaintext
-	// blob behind an already-sealed pointer, because both happen or neither does.
-	await ctx.runMutation(internal.migrations['0035_seal_bodies_at_rest'].patchMailMessageBlobIds, {
-		id: row.id,
+	// Repoint EVERY row sharing each old blob AND drop the old plaintext blobs in
+	// ONE mutation, so the old-blob delete is transactional with the pointer swap
+	// across all sibling copies. An interrupt before this call leaves the rows on
+	// the still-readable plaintext original (mixed tolerance) and a re-run reseals;
+	// an interrupt cannot orphan a plaintext blob behind an already-sealed pointer,
+	// nor a sibling copy behind a deleted blob, because all-or-nothing per column.
+	await ctx.runMutation(internal.migrations['0035_seal_bodies_at_rest'].repointResealedBlobs, {
 		rawStorageId: newRaw ?? undefined,
 		oldRawStorageId: newRaw ? row.rawStorageId : undefined,
 		textBodyStorageId: newText ?? undefined,
