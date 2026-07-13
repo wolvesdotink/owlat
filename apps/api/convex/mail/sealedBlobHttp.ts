@@ -39,6 +39,11 @@ export const serveSealedBlob = httpAction(async (ctx, request) => {
 			headers: {
 				'Content-Type': verified.contentType,
 				'Cache-Control': 'no-store',
+				// The Postbox web reader fetches this cross-origin (the app origin →
+				// the `.convex.site` HTTP-actions host), exactly as it did the Convex
+				// signed storage URL this replaces. Allow the read; the capability
+				// token is the access control.
+				'Access-Control-Allow-Origin': '*',
 			},
 		});
 	} catch (err) {

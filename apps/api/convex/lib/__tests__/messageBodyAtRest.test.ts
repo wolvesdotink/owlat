@@ -20,7 +20,7 @@ import {
 	sealMessageBody,
 	type BodyBlobStorageReader,
 } from '../messageBody';
-import { sealAtRest } from '../atRestBodies';
+import { sealBytesAtRest } from '../atRestBodies';
 import type { Id } from '../../_generated/dataModel';
 
 const SECRET = 'unit-test-instance-secret-value';
@@ -29,11 +29,16 @@ beforeEach(() => {
 	vi.stubEnv('INSTANCE_SECRET', SECRET);
 });
 
-/** A storage stub that returns a single blob for a known id. */
-function storageWith(id: string, text: string): BodyBlobStorageReader {
+/** A storage stub that returns a single blob (from a string or raw bytes) for a
+ * known id. Storage blobs are sealed with the BYTE cipher, so a sealed blob is
+ * stored as its raw sealed bytes here. */
+function storageWith(id: string, content: string | Uint8Array): BodyBlobStorageReader {
 	return {
 		get(storageId: Id<'_storage'>): Promise<Blob | null> {
-			return Promise.resolve(String(storageId) === id ? new Blob([text]) : null);
+			if (String(storageId) !== id) return Promise.resolve(null);
+			return Promise.resolve(
+				new Blob([typeof content === 'string' ? content : (content as unknown as BlobPart)])
+			);
 		},
 	};
 }
@@ -62,11 +67,11 @@ describe('messageBody open* accessors — sealed rows round-trip', () => {
 		expect(body.html).toBe('<b>x</b>');
 	});
 
-	it('shape 3: mailMessages storage blob', async () => {
+	it('shape 3: mailMessages storage blob (byte cipher)', async () => {
 		const text = 'the full sealed body from the blob';
-		const sealedBlob = await sealAtRest(SECRET, text);
+		const sealedBytes = await sealBytesAtRest(SECRET, new TextEncoder().encode(text));
 		const storageId = 'blob-1' as unknown as Id<'_storage'>;
-		const resolved = await readMailMessageText(storageWith('blob-1', sealedBlob), {
+		const resolved = await readMailMessageText(storageWith('blob-1', sealedBytes), {
 			textBodyStorageId: storageId,
 		});
 		expect(resolved).toBe(text);
