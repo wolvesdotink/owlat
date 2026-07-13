@@ -21,6 +21,7 @@ import {
 	type FeatureFlagState,
 } from '@owlat/shared/featureFlags';
 import { readEnv, writeEnv, type EnvMap } from '../lib/env';
+import { sealRelayPasswordForBackup } from '@owlat/shared/envBackupBox';
 import { loadFlagState } from '../lib/flagState';
 
 interface EnvCmdOptions {
@@ -65,7 +66,7 @@ export interface EnvShowRow {
 export function computeEnvShowRows(
 	flags: FeatureFlagState,
 	env: EnvMap,
-	opts: { deliveryProvider?: string } = {},
+	opts: { deliveryProvider?: string } = {}
 ): EnvShowRow[] {
 	const resolved = resolveFlags(flags);
 	const requiredBy = new Map<string, string[]>();
@@ -81,7 +82,8 @@ export function computeEnvShowRows(
 	}
 	const provider = opts.deliveryProvider;
 	if (provider && needsDeliveryProvider(flags)) {
-		for (const v of getSendPathRequiredEnv(provider)) attribute(v, `send path (EMAIL_PROVIDER=${provider})`);
+		for (const v of getSendPathRequiredEnv(provider))
+			attribute(v, `send path (EMAIL_PROVIDER=${provider})`);
 	}
 
 	return getRequiredEnvVars(flags, { deliveryProvider: provider }).map((key) => {
@@ -134,8 +136,8 @@ async function runEnvShow(opts: EnvCmdOptions): Promise<number> {
 	} else {
 		console.log(
 			pc.yellow(
-				`${missing} of ${rows.length} required variable(s) are unset. Set one with \`owlat-setup env <KEY> <VALUE>\`.`,
-			),
+				`${missing} of ${rows.length} required variable(s) are unset. Set one with \`owlat-setup env <KEY> <VALUE>\`.`
+			)
 		);
 	}
 	return 0;
@@ -161,7 +163,15 @@ export async function runEnv(opts: EnvCmdOptions): Promise<number> {
 	const envPath = join(opts.owlatDir, '.env');
 	const existing = await readEnv(envPath);
 	existing[key] = value;
-	await writeEnv(envPath, existing);
+	// Seal SMTP_RELAY_PASSWORD in the `.env` BACKUP so `owlat-setup env
+	// SMTP_RELAY_PASSWORD <value>` never persists the relay credential in
+	// plaintext — mirrors the setup wizard and the in-app transport editor. The
+	// deploy step (`selectRuntimeEnvVars`) unseals the token before the live env
+	// push, so relay auth still works end to end. Fail-safe: with no
+	// INSTANCE_SECRET in the file the value passes through unchanged (a bare
+	// `.env` keeps today's plaintext write rather than minting an unopenable
+	// token); every other key passes through untouched.
+	await writeEnv(envPath, sealRelayPasswordForBackup(existing));
 
 	console.log(`${pc.green('✓')} ${key} = ${maskSecretValue(key, value)}`);
 	console.log(`\nRun ${pc.cyan('owlat restart')} to apply.`);
