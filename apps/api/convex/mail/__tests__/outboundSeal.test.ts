@@ -195,6 +195,22 @@ describe('mail/outbound · dispatchDraft stores SEALED bytes (capstone)', () => 
 				createdAt: now,
 				updatedAt: now,
 			});
+			// The sent cascade needs the mailbox's Sent folder to land the message,
+			// otherwise the `to:'sent'` transition refuses with `sent_folder_missing`
+			// and no `mailMessages` row is ever stored.
+			await ctx.db.insert('mailFolders', {
+				mailboxId,
+				name: 'Sent',
+				role: 'sent',
+				uidValidity: now,
+				uidNext: 1,
+				highestModseq: 0,
+				totalCount: 0,
+				unseenCount: 0,
+				subscribed: true,
+				createdAt: now,
+				updatedAt: now,
+			});
 			return await ctx.db.insert('mailDrafts', {
 				mailboxId,
 				toAddresses: ['bob@b.test'],
