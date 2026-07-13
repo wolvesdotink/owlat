@@ -63,6 +63,43 @@ async function openMaybe(stored: string | undefined): Promise<string | undefined
 	return stored === undefined ? undefined : openMessageBody(stored);
 }
 
+/**
+ * Fail-safe body open for the GDPR export bundle: like {@link openMessageBody},
+ * but if a value LOOKS sealed yet fails to decrypt (a genuine tamper, OR a
+ * never-sealed plaintext row whose text happens to be a structurally valid
+ * envelope — attacker-craftable during the mixed-state window before the E8b
+ * back-fill runs), it returns the stored string VERBATIM instead of throwing.
+ * No plaintext leaks either way (a real ciphertext exports as ciphertext), and
+ * one crafted inbound message can no longer DoS the whole export. Once the
+ * back-fill has sealed every row this branch is unreachable.
+ */
+async function openMessageBodyLenient(stored: string): Promise<string> {
+	try {
+		return await openMessageBody(stored);
+	} catch {
+		return stored;
+	}
+}
+
+async function openMaybeLenient(stored: string | undefined): Promise<string | undefined> {
+	return stored === undefined ? undefined : openMessageBodyLenient(stored);
+}
+
+/** Fail-safe sibling of {@link openMessageBody} for the export bundle. */
+export async function openMessageBodyForExport(stored: string): Promise<string> {
+	return openMessageBodyLenient(stored);
+}
+
+/** Fail-safe sibling of {@link openInboundMessageBody} for the export bundle. */
+export async function openInboundMessageBodyForExport(
+	row: InboundMessageBodyFields
+): Promise<InboundMessageBody> {
+	return {
+		text: await openMaybeLenient(row.textBody ?? undefined),
+		html: await openMaybeLenient(row.htmlBody ?? undefined),
+	};
+}
+
 // ── Seal-patch builders (E8b migration) ──────────────────────────────────────
 //
 // The E8b back-fill migration must READ each raw body column to re-seal it. So

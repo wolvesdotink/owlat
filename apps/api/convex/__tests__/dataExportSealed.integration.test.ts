@@ -104,4 +104,65 @@ describe('contacts.dataExport — sealed bodies decrypt on export (c)', () => {
 		expect(unified!.content).not.toContain('atrest:');
 		expect(JSON.parse(unified!.content).text).toBe(unifiedText);
 	});
+
+	it('does not fail the whole export when one row is an undecryptable envelope-shaped plaintext', async () => {
+		const t = convexTest(schema, allModules);
+		const now = Date.now();
+
+		// A never-sealed plaintext body that is STRUCTURALLY a valid envelope
+		// (4 parts, version 1, 12-byte IV, 16-byte ct) but is not ours — GCM auth
+		// fails. Attacker-craftable and present during the pre-back-fill window.
+		// The export must return it verbatim, never throw.
+		const iv = Buffer.from(new Uint8Array(12)).toString('base64');
+		const ct = Buffer.from(new Uint8Array(16)).toString('base64');
+		const craftedEnvelope = `atrest:1:${iv}:${ct}`;
+
+		const contactId = await t.run(async (ctx): Promise<Id<'contacts'>> => {
+			const cId = await ctx.db.insert('contacts', {
+				email: 'crafted@example.com',
+				source: 'api',
+				doiStatus: 'not_required',
+				createdAt: now,
+				updatedAt: now,
+			});
+
+			await ctx.db.insert('inboundMessages', {
+				messageId: '<crafted@example.com>',
+				from: 'crafted@example.com',
+				to: 'me@example.com',
+				subject: 's',
+				textBody: craftedEnvelope,
+				processingStatus: 'received',
+				receivedAt: now,
+				contactId: cId,
+			});
+
+			const threadId = await ctx.db.insert('conversationThreads', {
+				subject: 's',
+				normalizedSubject: 's',
+				contactIdentifier: 'crafted@example.com',
+				status: 'open',
+				messageCount: 1,
+				lastMessageAt: now,
+				firstMessageAt: now,
+				createdAt: now,
+			});
+			await ctx.db.insert('unifiedMessages', {
+				threadId,
+				channel: 'email',
+				direction: 'inbound',
+				content: craftedEnvelope,
+				status: 'received',
+				createdAt: now,
+				contactId: cId,
+			});
+
+			return cId;
+		});
+
+		const bundle = await t.query(api.contacts.dataExport.exportContactData, { contactId });
+
+		expect(bundle.inboundMessages.rows[0]!.textBody).toBe(craftedEnvelope);
+		expect(bundle.unifiedMessages.rows[0]!.content).toBe(craftedEnvelope);
+	});
 });
