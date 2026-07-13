@@ -819,7 +819,6 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 		     panel. Flag-gated; renders nothing without a key on file. -->
 		<PostboxThreadSealSurfaces
 			v-if="sealedMailEnabled && threadCounterpart"
-			:enabled="sealedMailEnabled"
 			:correspondent="threadCounterpart"
 			class="mb-3"
 		/>

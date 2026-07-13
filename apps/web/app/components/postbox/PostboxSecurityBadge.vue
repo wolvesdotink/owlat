@@ -2,6 +2,7 @@
 import { extractClearsignedText, type SecureMessageClass } from '@owlat/shared/secureMessage';
 import { computeSecureMessageRecovery } from '~/composables/postbox/useSecureMessageRecovery';
 import { deriveSealedBadge, type InboundEncryptionInfo } from '~/utils/sealedMessage';
+import { SEAL_TONE_CLASSES } from '~/utils/sealTone';
 
 /**
  * Honest PGP/S-MIME disclosure for the reader.
@@ -75,14 +76,10 @@ const recovery = computed(() =>
 );
 const armoredCiphertext = computed(() => recovery.value.armoredCiphertext);
 
-// Sealed-Mail chip tone classes (FF tokens only), keyed by the derived tone so
-// chip and icon can never drift apart.
-const SEALED_TONE: Record<'ok' | 'warn', { chip: string; icon: string }> = {
-	ok: { chip: 'border-success/40 text-success', icon: 'text-success' },
-	warn: { chip: 'border-warning/40 text-warning', icon: 'text-warning' },
-};
+// Sealed-Mail chip tone classes (FF tokens only) — shared with the composer
+// seal-lock so chip and icon never drift apart between the two surfaces.
 const sealedTone = computed(() =>
-	sealedBadge.value ? SEALED_TONE[sealedBadge.value.tone] : SEALED_TONE.warn
+	sealedBadge.value ? SEAL_TONE_CLASSES[sealedBadge.value.tone] : SEAL_TONE_CLASSES.warn
 );
 
 // Recovery controls appear for any undecryptable ciphertext — the Sealed-Mail

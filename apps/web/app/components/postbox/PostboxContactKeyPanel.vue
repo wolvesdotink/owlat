@@ -3,53 +3,34 @@
  * Per-contact sealing-key panel (Sealed Mail E5, flag `sealedMail`). Shows the
  * PUBLIC trust state Owlat holds for one correspondent — the pinned fingerprint,
  * when it was first seen, where it was discovered, and (on a conflict) the new
- * key awaiting acceptance. Read-only: it reads
- * `api.e2ee.recipientKeys.getRecipientKeyStatus`, which returns public material
- * only. Re-accepting a changed key happens through PostboxKeyChangeBanner.
+ * key awaiting acceptance. Read-only.
  *
- * No private material exists in the source table, so nothing secret is rendered.
- * Every surface has an explicit empty / loading state.
+ * The trust state is loaded ONCE by the parent (`PostboxThreadSealSurfaces`) and
+ * passed down as `status`, so this panel does not re-query the same address.
+ * No private material exists in the source shape, so nothing secret is rendered.
+ * Re-accepting a changed key happens through PostboxKeyChangeBanner.
  */
-import { api } from '@owlat/api';
+import { formatFingerprint } from '~/utils/fingerprints';
 import { formatDateTime } from '~/utils/formatters';
+import type { RecipientKeyStatus } from '~/utils/recipientKeyStatus';
 
-const props = defineProps<{ address: string }>();
+const props = defineProps<{
+	/** The correspondent's address (for the empty-state copy). */
+	address: string;
+	/** The recipient's PUBLIC key status, loaded once by the parent surfaces. */
+	status: RecipientKeyStatus;
+}>();
 
-const statusQuery = useConvexQuery(api.e2ee.recipientKeys.getRecipientKeyStatus, () => ({
-	address: props.address,
-}));
-
-type KeyStatus = {
-	outcome: 'trusted' | 'keyChanged' | 'notFound';
-	pinnedFingerprint: string | null;
-	observedFingerprint: string | null;
-	discoveredAt: number | null;
-	source: string | null;
-};
-
-const status = computed(() => statusQuery.data.value as KeyStatus | null | undefined);
-const isLoading = computed(() => statusQuery.isLoading.value);
-
-/** Grouped display of a full fingerprint (spaced every 4 hex chars). */
-function formatFingerprint(fp: string | null | undefined): string | null {
-	if (!fp) return null;
-	return fp
-		.replace(/\s+/g, '')
-		.toUpperCase()
-		.replace(/(.{4})/g, '$1 ')
-		.trim();
-}
-
-const pinnedFingerprint = computed(() => formatFingerprint(status.value?.pinnedFingerprint));
-const observedFingerprint = computed(() => formatFingerprint(status.value?.observedFingerprint));
+const pinnedFingerprint = computed(() => formatFingerprint(props.status.pinnedFingerprint));
+const observedFingerprint = computed(() => formatFingerprint(props.status.observedFingerprint));
 
 const firstSeen = computed(() => {
-	const at = status.value?.discoveredAt;
+	const at = props.status.discoveredAt;
 	return at ? formatDateTime(at) : null;
 });
 
 const sourceLabel = computed(() => {
-	switch (status.value?.source) {
+	switch (props.status.source) {
 		case 'manifest':
 			return 'the sending server';
 		case 'wkd':
@@ -64,12 +45,8 @@ const sourceLabel = computed(() => {
 	<section class="rounded border border-border-subtle p-3" data-testid="contact-key-panel">
 		<h3 class="text-sm font-medium text-text-primary">Sealing key</h3>
 
-		<p v-if="isLoading" class="mt-2 text-xs text-text-tertiary" data-testid="contact-key-loading">
-			Checking for a key…
-		</p>
-
 		<p
-			v-else-if="!status || status.outcome === 'notFound'"
+			v-if="status.outcome === 'notFound'"
 			class="mt-2 text-xs text-text-secondary"
 			data-testid="contact-key-empty"
 		>

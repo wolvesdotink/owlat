@@ -8,44 +8,39 @@
  *   - PostboxContactKeyPanel — the pinned fingerprint, first-seen, and source, so
  *     the reader can see who they are actually sealing to.
  *
- * Both are read/act-only over public material. When the flag is off, or there is
- * no key status for the correspondent, it renders nothing.
+ * Both are read/act-only over public material. The parent renders this only when
+ * the `sealedMail` flag is on and a correspondent exists (one gate, one owner);
+ * this component loads the correspondent's key status ONCE and hands it to the
+ * contact-key panel. When there is no key status, it renders nothing.
  */
 import { api } from '@owlat/api';
+import type { RecipientKeyStatus } from '~/utils/recipientKeyStatus';
 
 const props = defineProps<{
-	/** Feature-flag gate: when false, nothing renders. */
-	enabled: boolean;
 	/** The thread's correspondent address (already lower-cased by the reader). */
 	correspondent: string;
 }>();
 
 const statusQuery = useConvexQuery(api.e2ee.recipientKeys.getRecipientKeyStatus, () =>
-	props.enabled && props.correspondent ? { address: props.correspondent } : ('skip' as const)
+	props.correspondent ? { address: props.correspondent } : ('skip' as const)
 );
 
-type KeyStatus = {
-	outcome: 'trusted' | 'keyChanged' | 'notFound';
-	pinnedFingerprint: string | null;
-	observedFingerprint: string | null;
-	discoveredAt: number | null;
-	source: string | null;
-	expiresAt: number;
-};
-
-const status = computed(() => statusQuery.data.value as KeyStatus | null | undefined);
-const showKeyChange = computed(() => props.enabled && status.value?.outcome === 'keyChanged');
+const status = computed(() => statusQuery.data.value as RecipientKeyStatus | null | undefined);
 </script>
 
 <template>
-	<div v-if="enabled && status">
+	<div v-if="status">
 		<PostboxKeyChangeBanner
-			v-if="showKeyChange"
+			v-if="status.outcome === 'keyChanged'"
 			:address="correspondent"
 			:old-fingerprint="status.pinnedFingerprint"
 			:new-fingerprint="status.observedFingerprint"
 			@accepted="statusQuery.refetch()"
 		/>
-		<PostboxContactKeyPanel v-if="status.outcome !== 'notFound'" :address="correspondent" />
+		<PostboxContactKeyPanel
+			v-if="status.outcome !== 'notFound'"
+			:address="correspondent"
+			:status="status"
+		/>
 	</div>
 </template>
