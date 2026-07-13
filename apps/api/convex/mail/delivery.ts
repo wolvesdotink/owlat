@@ -40,6 +40,7 @@ import { computeSenderHeuristics, type SenderHeuristics } from './senderHeuristi
 import {
 	inboundEncryptionInfoValidator,
 	isSealedPgpMime,
+	usableRestoredBodies,
 	type InboundEncryptionInfo,
 } from '../e2ee/inboundSeal';
 import { enqueueNeedsReplyCheck } from './needsReply';
@@ -269,14 +270,12 @@ export const ingestFromWebhook = internalAction({
 				// Restored plaintext (real Subject + bodies, D4) replaces the outer
 				// placeholder + ciphertext so the normal pipeline sees real content.
 				if (opened.subject !== undefined) effectiveSubject = opened.subject;
-				// Fail-safe: only replace when the restore yields a usable body
-				// (non-empty text or html); otherwise keep the original body rather
-				// than clobbering it with nothing, so decrypted content is never lost.
-				const restoredText = opened.text && opened.text.length > 0 ? opened.text : undefined;
-				const restoredHtml = opened.html && opened.html.length > 0 ? opened.html : undefined;
-				if (restoredText !== undefined || restoredHtml !== undefined) {
-					effectiveText = restoredText;
-					effectiveHtml = restoredHtml;
+				// Fail-safe: only replace when the restore yields a usable body — see
+				// usableRestoredBodies.
+				const bodies = usableRestoredBodies(opened);
+				if (bodies) {
+					effectiveText = bodies.text;
+					effectiveHtml = bodies.html;
 				}
 			}
 		}

@@ -156,6 +156,23 @@ export function parseInnerMessage(innerMime: string): RestoredMessage {
 }
 
 /**
+ * The usable bodies from a restored message, or `undefined` when neither body is
+ * present. Fail-safe for the ingest callers: the decrypted plaintext only
+ * REPLACES the ciphertext body when the restore yields a non-empty `text` or
+ * `html`; otherwise the caller keeps the original body rather than clobbering it
+ * with nothing, so decrypted content is never silently lost.
+ */
+export function usableRestoredBodies(r: {
+	text?: string;
+	html?: string;
+}): { text?: string; html?: string } | undefined {
+	const text = r.text || undefined;
+	const html = r.html || undefined;
+	if (text === undefined && html === undefined) return undefined;
+	return { text, html };
+}
+
+/**
  * Whether a header block (the text before the first blank line) contains a MIME
  * header — i.e. this really is a MIME entity, not bare inline-armored plaintext.
  * A genuine inner MIME message always carries a `Content-Type:`; `MIME-Version:`

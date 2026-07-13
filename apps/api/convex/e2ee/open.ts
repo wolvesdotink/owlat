@@ -40,6 +40,7 @@ import {
 	inboundEncryptionInfoValidator,
 	isSealedPgpMime,
 	parseInnerMessage,
+	usableRestoredBodies,
 	type InboundEncryptionInfo,
 } from './inboundSeal';
 
@@ -267,14 +268,11 @@ export const decryptAndReceive = internalAction({
 			if (restored.subject !== undefined) subject = restored.subject;
 			// The decrypted plaintext REPLACES the ciphertext body so the agent
 			// pipeline + the unified mirror consume real text (D3). Fail-safe: only
-			// replace when the restore yields a usable body (non-empty text or html);
-			// otherwise keep the original body rather than clobbering it with nothing,
-			// so decrypted content is never silently lost.
-			const restoredText = restored.text && restored.text.length > 0 ? restored.text : undefined;
-			const restoredHtml = restored.html && restored.html.length > 0 ? restored.html : undefined;
-			if (restoredText !== undefined || restoredHtml !== undefined) {
-				textBody = restoredText;
-				htmlBody = restoredHtml;
+			// replace when the restore yields a usable body — see usableRestoredBodies.
+			const bodies = usableRestoredBodies(restored);
+			if (bodies) {
+				textBody = bodies.text;
+				htmlBody = bodies.html;
 			}
 			const info = buildOpenedInfo(outcome, normalizeEmail(args.from));
 			sealedFlags = {
