@@ -20,21 +20,9 @@ import { v } from 'convex/values';
 import * as openpgp from 'openpgp';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
-import { createSecretBox, type SecretBoxEnvelope } from '../lib/credentialCrypto';
-import { getRequired, getOptional } from '../lib/env';
+import { getOptional } from '../lib/env';
 import { armoredToBinaryBase64, wkdHashForAddress, splitAddress } from './wkd';
-
-/**
- * The E2EE private-key secret box: INSTANCE_SECRET under a context distinct from
- * every other consumer (external-mail creds, MTA transport, .env backup), so a
- * key sealed here can never open under another box.
- */
-const E2EE_KEY_BOX = { salt: 'owlat:e2ee:keys:salt:v1', info: 'owlat:e2ee:keys:v1' } as const;
-
-function sealPrivateKey(privateKeyArmored: string): SecretBoxEnvelope {
-	const box = createSecretBox(getRequired('INSTANCE_SECRET'), E2EE_KEY_BOX);
-	return box.seal(privateKeyArmored);
-}
+import { sealPrivateKey } from './sealing';
 
 interface GeneratedKeypair {
 	fingerprint: string;

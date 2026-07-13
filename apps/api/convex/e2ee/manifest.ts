@@ -19,8 +19,8 @@ import { createHash } from 'node:crypto';
 import * as openpgp from 'openpgp';
 import { publicAction } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
-import { createSecretBox } from '../lib/credentialCrypto';
-import { getRequired, getOptional } from '../lib/env';
+import { getOptional } from '../lib/env';
+import { openPrivateKey } from './sealing';
 
 /** Manifest schema version — bump when the signed-payload shape changes. */
 export const MANIFEST_VERSION = 1;
@@ -138,11 +138,7 @@ export const getSignedManifest = publicAction({
 		const identity = await ctx.runQuery(internal.e2ee.keys.getInstanceIdentityInternal, {});
 		if (!identity) return null;
 
-		const box = createSecretBox(getRequired('INSTANCE_SECRET'), {
-			salt: 'owlat:e2ee:keys:salt:v1',
-			info: 'owlat:e2ee:keys:v1',
-		});
-		const privateKeyArmored = box.open(identity.sealedPrivateKey);
+		const privateKeyArmored = openPrivateKey(identity.sealedPrivateKey);
 
 		const directory = await ctx.runQuery(internal.e2ee.keys.getKeyDirectory, {});
 		const payload = buildManifestPayload({
