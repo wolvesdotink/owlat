@@ -1,7 +1,8 @@
 /**
  * Organization settings (module) — sole writer of the singleton
  * `instanceSettings` row's *settings columns* (`emailTheme`, `timezone`,
- * `defaultFromName`, `defaultFromEmail`, `isMigrationMode`, `updatedAt`). Sibling of
+ * `defaultFromName`, `defaultFromEmail`, `isMigrationMode`,
+ * `isInboundTlsRequired`, `updatedAt`). Sibling of
  * **Feature flags (module)** (which owns the `featureFlags` map),
  * **Abuse status (module)** (which owns the abuse-status columns), and
  * the **Organization deletion (module)** walker scheduled by `remove`.
@@ -23,7 +24,7 @@
 import { v } from 'convex/values';
 import { MAX_TRUSTED_ARC_FORWARDERS, sanitizeTrustedForwarders } from '@owlat/shared/arcTrust';
 import { sealPolicyValidator } from '../mail/sealPolicy';
-import { internalMutation } from '../_generated/server';
+import { internalMutation, internalQuery } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
@@ -62,6 +63,9 @@ export const update = authedMutation({
 		// Sealed Mail (E3) org sealing policy (locked decision D2): `auto` / `ask` /
 		// `off`. Unset ⇒ `auto` at resolution time.
 		sealPolicy: v.optional(sealPolicyValidator),
+		// Require STARTTLS before accepting MAIL FROM. Defaults ON; owners/admins
+		// can disable it for legacy senders that cannot negotiate TLS.
+		isInboundTlsRequired: v.optional(v.boolean()),
 		emailTheme: v.optional(
 			v.object({
 				primaryColor: v.string(),
@@ -123,7 +127,19 @@ export const update = authedMutation({
 				detailsBlob: JSON.stringify({ changes }),
 			});
 		}
+		if (args.isInboundTlsRequired !== undefined) {
+			await ctx.scheduler.runAfter(0, internal.mail.mailboxActions.pushInboundTlsPolicy, {});
+		}
 		return settingsId;
+	},
+});
+
+/** Read-side policy for the Node action that synchronizes the MTA Redis gate. */
+export const getInboundTlsPolicy = internalQuery({
+	args: {},
+	handler: async (ctx): Promise<boolean> => {
+		const settings = await ctx.db.query('instanceSettings').first();
+		return settings?.isInboundTlsRequired !== false;
 	},
 });
 

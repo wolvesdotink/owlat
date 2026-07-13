@@ -6,6 +6,7 @@
  * to Convex from the SMTP onRcptTo hot path.
  *
  *   POST /mailboxes/cache/{address}   -> create/refresh cache entry
+ *   POST /mailboxes/inbound-tls-policy -> set the instance TLS acceptance floor
  *   DELETE /mailboxes/cache/{address} -> remove cache entry
  *   GET /mailboxes/cache              -> list cached addresses
  */
@@ -19,12 +20,14 @@ import {
 	listMailboxCache,
 } from '../inbound/mailboxResolver.js';
 import { masterKeyAuth } from '../auth/masterKeyAuth.js';
+import { setInboundTlsRequired } from '../inbound/inboundTlsPolicy.js';
 
 interface CacheEntryBody {
 	mailboxId: string;
 	organizationId: string;
 	quotaBytes?: number;
 	usedBytes?: number;
+	isInboundTlsRequired?: boolean;
 }
 
 export function createMailboxRoutes(redis: Redis, config: MtaConfig) {
@@ -43,13 +46,30 @@ export function createMailboxRoutes(redis: Redis, config: MtaConfig) {
 		if (!body.mailboxId || !body.organizationId) {
 			return c.json({ error: 'mailboxId and organizationId are required' }, 400);
 		}
+		if (body.isInboundTlsRequired !== undefined && typeof body.isInboundTlsRequired !== 'boolean') {
+			return c.json({ error: 'isInboundTlsRequired must be a boolean' }, 400);
+		}
 		await setMailboxCache(redis, address, {
 			mailboxId: body.mailboxId,
 			organizationId: body.organizationId,
 			quotaBytes: body.quotaBytes,
 			usedBytes: body.usedBytes ?? 0,
 		});
+		if (body.isInboundTlsRequired !== undefined) {
+			await setInboundTlsRequired(redis, body.isInboundTlsRequired);
+		}
 		return c.json({ success: true });
+	});
+
+	// Update the instance-wide SMTP acceptance floor immediately after an
+	// owner/admin changes it in Convex. Missing state defaults to required.
+	app.post('/inbound-tls-policy', async (c) => {
+		const body = await c.req.json<{ isRequired?: unknown }>();
+		if (typeof body.isRequired !== 'boolean') {
+			return c.json({ error: 'isRequired must be a boolean' }, 400);
+		}
+		await setInboundTlsRequired(redis, body.isRequired);
+		return c.json({ success: true, isRequired: body.isRequired });
 	});
 
 	// Remove cache entry.

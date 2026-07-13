@@ -73,6 +73,9 @@ export const authTables = {
 		// the composer opt-in (E5), `off` never seals. Unset ⇒ `auto`. Admin-gated
 		// write via `workspaces/settings.update`.
 		sealPolicy: v.optional(sealPolicyValidator),
+		// Plaintext SMTP is rejected by default with 550 5.7.10. Owners/admins
+		// may explicitly disable the floor for compatibility with legacy senders.
+		isInboundTlsRequired: v.optional(v.boolean()),
 		// Trusted ARC forwarders (Sealed Mail A5): domains whose validated ARC seal
 		// (RFC 8617) we honour to RESCUE a DMARC fail on inbound forwarded mail —
 		// a mailing-list / forwarding message that broke DKIM but whose sealer

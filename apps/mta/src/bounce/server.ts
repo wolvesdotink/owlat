@@ -32,6 +32,7 @@ import { reduce } from './outcome.js';
 import { applyEffects } from './effects.js';
 import type { BounceAttempt, SpfVerdict } from './types.js';
 import type { SMTPServerSession } from 'smtp-server';
+import { inboundTlsRequiredError, isInboundTlsRequired } from '../inbound/inboundTlsPolicy.js';
 
 /** Hard cap for buffered inbound MIME (advertised AND wire-enforced). */
 const MAX_INBOUND_BYTES = 10 * 1024 * 1024;
@@ -140,6 +141,14 @@ export function createBounceServer(config: MtaConfig, redis: Redis): SMTPServer 
 
 		// SPF validation on MAIL FROM
 		async onMailFrom(address, session, callback) {
+			if ((await isInboundTlsRequired(redis)) && !session.secure) {
+				logger.warn(
+					{ remoteIp: session.remoteAddress, from: address.address },
+					'Plaintext inbound SMTP transaction rejected — STARTTLS required'
+				);
+				return callback(inboundTlsRequiredError());
+			}
+
 			if (!config.inboundSpfEnabled) {
 				return callback();
 			}

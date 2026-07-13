@@ -32,6 +32,10 @@ export const pushMailboxToCache = internalAction({
 			mailboxId: args.mailboxId,
 		});
 		if (!mailbox) return;
+		const isInboundTlsRequired = await ctx.runQuery(
+			internal.workspaces.settings.getInboundTlsPolicy,
+			{}
+		);
 
 		const url = `${config.baseUrl}/mailboxes/cache/${encodeURIComponent(mailbox.address)}`;
 		try {
@@ -46,6 +50,7 @@ export const pushMailboxToCache = internalAction({
 					organizationId: mailbox.organizationId,
 					quotaBytes: mailbox.quotaBytes,
 					usedBytes: mailbox.usedBytes,
+					isInboundTlsRequired,
 				}),
 			});
 			if (!res.ok) {
@@ -56,6 +61,34 @@ export const pushMailboxToCache = internalAction({
 			logInfo(`[Mailbox cache] Pushed ${mailbox.address}`);
 		} catch (err) {
 			logError('[Mailbox cache] Push error:', err);
+		}
+	},
+});
+
+/** Push an owner/admin policy change into the MTA's Redis-backed SMTP gate. */
+export const pushInboundTlsPolicy = internalAction({
+	args: {},
+	handler: async (ctx) => {
+		const config = getMtaConfig();
+		if (!config) return;
+		const isRequired = await ctx.runQuery(internal.workspaces.settings.getInboundTlsPolicy, {});
+		try {
+			const res = await fetch(`${config.baseUrl}/mailboxes/inbound-tls-policy`, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					Authorization: `Bearer ${config.apiKey}`,
+				},
+				body: JSON.stringify({ isRequired }),
+			});
+			if (!res.ok) {
+				const body = await res.text().catch(() => '');
+				logError(`[Inbound TLS policy] Push failed (${res.status}): ${body}`);
+				return;
+			}
+			logInfo(`[Inbound TLS policy] Pushed ${isRequired ? 'required' : 'optional'}`);
+		} catch (err) {
+			logError('[Inbound TLS policy] Push error:', err);
 		}
 	},
 });
