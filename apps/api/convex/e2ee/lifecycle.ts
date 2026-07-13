@@ -201,7 +201,7 @@ export const rotateAddressKey = adminMutation({
  */
 export const revokeAddressKey = adminMutation({
 	args: { address: v.string() },
-	handler: async (ctx, args) => {
+	handler: async (ctx, args): Promise<{ deactivated: number }> => {
 		await assertFeatureEnabled(ctx, 'sealedMail');
 		return ctx.runMutation(internal.e2ee.lifecycle.deactivateAddressKeys, {
 			address: normalizeEmail(args.address),
