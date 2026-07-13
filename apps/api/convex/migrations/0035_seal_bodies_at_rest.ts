@@ -32,12 +32,18 @@
  * It is idempotent and resumable, so re-running or running it on an
  * already-sealed instance is a no-op.
  *
- * RESIDUAL (mixed-tolerated, not a write-path gap in acceptance): the
- * external-sync worker paths that UPLOAD a blob straight to storage
- * (`mail.imap.appendMessage`, `mail.externalDelivery.ingestExternalMessage`)
- * land it plaintext — a mutation cannot re-seal a blob (blob contents are
- * action-only). Those blobs are sealed by this back-fill and, until it runs,
- * read/serve correctly through the mixed-tolerance accessors + proxy.
+ * PLAINTEXT WRITE PATHS, RESEALED OUT-OF-BAND (no standing residual): a mutation
+ * cannot read/re-store a blob's bytes (blob contents are action-only), so the two
+ * paths that accept a worker-uploaded PLAINTEXT blob seal it via a scheduled
+ * per-message action ({@link resealMessageBlobs}, `runAfter(0)`, idempotent):
+ *   - `mail.imap.appendMessage` (IMAP APPEND uploads the raw `.eml` straight to
+ *     storage) schedules the reseal after inserting the row.
+ *   - `mail.externalDelivery.ingestExternalMessage` (external IMAP sync) already
+ *     seals at write: its sole caller `ingestExternalRaw` is an ACTION that seals
+ *     the raw `.eml` (`storeSealedBlob`) and the body blobs (`splitBodyForStorage`
+ *     → `storeSealedBlob`) before the mutation runs, so nothing lands plaintext.
+ * Between the plaintext write and the scheduled reseal, the blob reads/serves
+ * correctly through the mixed-tolerance accessors + `/sealed-blob` proxy.
  *
  * DOCUMENTED SEARCH EXCEPTION (stays plaintext on purpose): `mailMessages.snippet`,
  * the `searchableText` search fields, and embedding vectors — Convex indexes
@@ -62,6 +68,7 @@ import {
 	internalAction,
 	internalMutation,
 	internalQuery,
+	type ActionCtx,
 	type MutationCtx,
 } from '../_generated/server';
 import { internal } from '../_generated/api';
@@ -194,13 +201,25 @@ export const mailMessageBlobPage = internalQuery({
 	},
 });
 
-/** Repoint one mailMessages row at its sealed blob copies (only changed ids). */
+/**
+ * Repoint one mailMessages row at its sealed blob copies AND delete the old
+ * plaintext blobs — atomically, in one mutation transaction. Each `*StorageId`
+ * arg is the NEW sealed id; the paired `old*StorageId` is the plaintext blob to
+ * drop once the row no longer references it. Doing the repoint and the delete in
+ * the same mutation closes the orphan window: an interrupt cannot leave the row
+ * pointing at the sealed copy while the old plaintext blob lingers in storage
+ * (which a later re-run would skip, since the pointer is already sealed).
+ * Mutations may delete storage (`dropBlob` in `ingestExternalMessage` does too).
+ */
 export const patchMailMessageBlobIds = internalMutation({
 	args: {
 		id: v.id('mailMessages'),
 		rawStorageId: v.optional(v.id('_storage')),
+		oldRawStorageId: v.optional(v.id('_storage')),
 		textBodyStorageId: v.optional(v.id('_storage')),
+		oldTextBodyStorageId: v.optional(v.id('_storage')),
 		htmlBodyStorageId: v.optional(v.id('_storage')),
+		oldHtmlBodyStorageId: v.optional(v.id('_storage')),
 	},
 	handler: async (ctx, args) => {
 		const patch: {
@@ -211,9 +230,63 @@ export const patchMailMessageBlobIds = internalMutation({
 		if (args.rawStorageId) patch.rawStorageId = args.rawStorageId;
 		if (args.textBodyStorageId) patch.textBodyStorageId = args.textBodyStorageId;
 		if (args.htmlBodyStorageId) patch.htmlBodyStorageId = args.htmlBodyStorageId;
-		if (Object.keys(patch).length > 0) await ctx.db.patch(args.id, patch);
+		if (Object.keys(patch).length === 0) return;
+		await ctx.db.patch(args.id, patch);
+		// Same-transaction delete of the now-unreferenced plaintext originals.
+		if (args.rawStorageId && args.oldRawStorageId) {
+			await ctx.storage.delete(args.oldRawStorageId);
+		}
+		if (args.textBodyStorageId && args.oldTextBodyStorageId) {
+			await ctx.storage.delete(args.oldTextBodyStorageId);
+		}
+		if (args.htmlBodyStorageId && args.oldHtmlBodyStorageId) {
+			await ctx.storage.delete(args.oldHtmlBodyStorageId);
+		}
 	},
 });
+
+/** The storage-blob ids of one mailMessages row (raw `.eml` required, body blobs
+ * optional). Shared by the page walker and the per-message reseal action. */
+interface MessageBlobIds {
+	id: Id<'mailMessages'>;
+	rawStorageId: Id<'_storage'>;
+	textBodyStorageId?: Id<'_storage'>;
+	htmlBodyStorageId?: Id<'_storage'>;
+}
+
+/**
+ * Seal ONE message's storage blobs and repoint+delete atomically. Reseals the
+ * raw `.eml` and both body blobs (each idempotent — an already-sealed blob
+ * reseals to `null`), then, if anything changed, swaps the row's pointers and
+ * drops the old plaintext originals in a single mutation. Returns `true` when a
+ * blob was sealed. Shared by the back-fill page walker and the per-message
+ * reseal scheduled after a plaintext-blob write path.
+ */
+async function resealRowBlobs(ctx: ActionCtx, row: MessageBlobIds): Promise<boolean> {
+	const newRaw = await resealStoredBlob(ctx.storage, row.rawStorageId);
+	const newText = row.textBodyStorageId
+		? await resealStoredBlob(ctx.storage, row.textBodyStorageId)
+		: null;
+	const newHtml = row.htmlBodyStorageId
+		? await resealStoredBlob(ctx.storage, row.htmlBodyStorageId)
+		: null;
+	if (!newRaw && !newText && !newHtml) return false;
+	// Repoint the row AND drop the old plaintext blobs in ONE mutation, so the
+	// old-blob delete is transactional with the pointer swap. An interrupt before
+	// this call leaves the row on the still-readable plaintext original (mixed
+	// tolerance) and a re-run reseals it; an interrupt cannot orphan a plaintext
+	// blob behind an already-sealed pointer, because both happen or neither does.
+	await ctx.runMutation(internal.migrations['0035_seal_bodies_at_rest'].patchMailMessageBlobIds, {
+		id: row.id,
+		rawStorageId: newRaw ?? undefined,
+		oldRawStorageId: newRaw ? row.rawStorageId : undefined,
+		textBodyStorageId: newText ?? undefined,
+		oldTextBodyStorageId: newText && row.textBodyStorageId ? row.textBodyStorageId : undefined,
+		htmlBodyStorageId: newHtml ?? undefined,
+		oldHtmlBodyStorageId: newHtml && row.htmlBodyStorageId ? row.htmlBodyStorageId : undefined,
+	});
+	return true;
+}
 
 /** Seal the storage blobs of one page of mailMessages. */
 export const sealMailMessagesBlobsPage = internalAction({
@@ -228,33 +301,45 @@ export const sealMailMessagesBlobsPage = internalAction({
 		});
 		let sealed = 0;
 		for (const row of rows) {
-			const newRaw = await resealStoredBlob(ctx.storage, row.rawStorageId);
-			const newText = row.textBodyStorageId
-				? await resealStoredBlob(ctx.storage, row.textBodyStorageId)
-				: null;
-			const newHtml = row.htmlBodyStorageId
-				? await resealStoredBlob(ctx.storage, row.htmlBodyStorageId)
-				: null;
-			if (newRaw || newText || newHtml) {
-				await ctx.runMutation(
-					internal.migrations['0035_seal_bodies_at_rest'].patchMailMessageBlobIds,
-					{
-						id: row.id,
-						rawStorageId: newRaw ?? undefined,
-						textBodyStorageId: newText ?? undefined,
-						htmlBodyStorageId: newHtml ?? undefined,
-					}
-				);
-				// Only after the row points at the sealed copies do we delete the old
-				// plaintext blobs — an interrupt before the patch leaves the row on the
-				// still-readable original (mixed tolerance), never dangling.
-				if (newRaw) await ctx.storage.delete(row.rawStorageId);
-				if (newText && row.textBodyStorageId) await ctx.storage.delete(row.textBodyStorageId);
-				if (newHtml && row.htmlBodyStorageId) await ctx.storage.delete(row.htmlBodyStorageId);
-				sealed++;
-			}
+			if (await resealRowBlobs(ctx, row)) sealed++;
 		}
 		return { cursor: next, isDone, sealed };
+	},
+});
+
+/** The storage-blob ids of ONE mailMessages row (per-message reseal). */
+export const mailMessageBlobIdsById = internalQuery({
+	args: { id: v.id('mailMessages') },
+	handler: async (ctx, { id }): Promise<MessageBlobIds | null> => {
+		const m = await ctx.db.get(id);
+		if (!m) return null;
+		return {
+			id: m._id,
+			rawStorageId: m.rawStorageId,
+			textBodyStorageId: m.textBodyStorageId,
+			htmlBodyStorageId: m.htmlBodyStorageId,
+		};
+	},
+});
+
+/**
+ * Seal ONE message's storage blobs at rest. Scheduled (`runAfter(0)`) from IMAP
+ * APPEND (`mail.imap.appendMessage`), which uploads the raw `.eml` straight to
+ * storage as plaintext — a mutation cannot read/re-store a blob's contents, so
+ * the staged plaintext blob must be resealed out-of-band. (External IMAP sync
+ * already seals at write via the `ingestExternalRaw` action, so it needs no
+ * scheduled reseal.) Idempotent: a re-run over an already-sealed blob is a no-op,
+ * so double-scheduling or a retry never corrupts the row.
+ */
+export const resealMessageBlobs = internalAction({
+	args: { id: v.id('mailMessages') },
+	handler: async (ctx, { id }): Promise<void> => {
+		const row = await ctx.runQuery(
+			internal.migrations['0035_seal_bodies_at_rest'].mailMessageBlobIdsById,
+			{ id }
+		);
+		if (!row) return;
+		await resealRowBlobs(ctx, row);
 	},
 });
 

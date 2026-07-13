@@ -10,6 +10,7 @@
 
 import { v } from 'convex/values';
 import { internalQuery, internalMutation } from '../_generated/server';
+import { internal } from '../_generated/api';
 import type { Id, Doc } from '../_generated/dataModel';
 import { resolveAllowedFromAddressesForCtx } from './identities';
 import { rebuildThreadAggregates } from './messageActions';
@@ -743,6 +744,16 @@ export const appendMessage = internalMutation({
 		// The conversation list links to latestMessageId; set it now that the
 		// appended message exists.
 		await ctx.db.patch(threadId, { latestMessageId: messageId });
+
+		// E8b: the IMAP server uploads the raw `.eml` straight to storage
+		// (plaintext), so seal it at rest out-of-band — a mutation can't read/re-store
+		// a blob's bytes. Idempotent + resumable; the accessor + `/sealed-blob` proxy
+		// serve it correctly in the meantime (mixed-state tolerance).
+		await ctx.scheduler.runAfter(
+			0,
+			internal.migrations['0035_seal_bodies_at_rest'].resealMessageBlobs,
+			{ id: messageId }
+		);
 
 		await ctx.db.patch(folder._id, {
 			uidNext: uid + 1,
