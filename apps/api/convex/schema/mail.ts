@@ -14,6 +14,7 @@ import {
 	draftQualityValidator,
 } from '../lib/convexValidators';
 import { mailEncryptionInfoValidator } from '../mail/sealPolicy';
+import { inboundEncryptionInfoValidator } from '../e2ee/inboundSeal';
 import { senderHeuristicsValidator } from '../lib/senderHeuristicsValidator';
 import { editAdjustmentValidator } from '../mail/editLearningValidators';
 
@@ -547,6 +548,18 @@ export const mailTables = {
 		// recipient without a usable key — never a mixed send, per D2). Absent on
 		// inbound rows and on outbound rows written before this field existed.
 		encryptionInfo: v.optional(mailEncryptionInfoValidator),
+
+		// Sealed Mail (E4): the INBOUND unsealing outcome for a DELIVERED message
+		// (decrypt-on-ingest, D3). When present the message arrived as PGP/MIME
+		// ciphertext; `decrypted:true` means we opened it (the row's body columns
+		// hold the restored plaintext, the raw `.eml` at `rawStorageId` is the
+		// retained sealed original) and `signatureValid` records whether the body's
+		// signature verified against the pinned sender key; `decrypted:false` is the
+		// "Encrypted — can't decrypt" path (we hold no usable key). Distinct from the
+		// outbound `encryptionInfo` above — an inbound record describes what WE
+		// verified on receipt, not what WE sealed. Absent on plaintext mail and on
+		// rows written before this field existed.
+		inboundEncryptionInfo: v.optional(inboundEncryptionInfoValidator),
 
 		createdAt: v.number(),
 		updatedAt: v.number(),

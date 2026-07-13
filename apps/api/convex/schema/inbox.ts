@@ -126,6 +126,18 @@ export const inboxTables = {
 		// the From domain, captured alongside `dmarcResult` so the reader can tell a
 		// monitor-only `p=none` fail from one the domain owner asked us to act on.
 		dmarcPolicy: v.optional(v.string()),
+		// Sealed Mail (E4): mirrored flags of the inbound unsealing outcome on the
+		// AI-inbox path (decrypt-on-ingest, D3). The full record lives on the
+		// mailMessages side; here only what the reader's badge needs. `sealed` is
+		// true when the message arrived as PGP/MIME ciphertext; `signatureValid` is
+		// present ONLY when we decrypted it AND checked the signature (true iff it
+		// verified against the pinned sender key — an undecryptable message carries
+		// `sealed:true` with no signature claim). All optional: plaintext mail and
+		// pre-E4 rows omit them entirely.
+		sealed: v.optional(v.boolean()),
+		signatureValid: v.optional(v.boolean()),
+		signerFingerprint: v.optional(v.string()),
+		signerInstance: v.optional(v.string()),
 		// Relationships
 		threadId: v.optional(v.id('conversationThreads')),
 		contactId: v.optional(v.id('contacts')),
