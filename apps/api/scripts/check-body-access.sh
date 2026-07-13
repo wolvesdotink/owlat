@@ -10,7 +10,7 @@
 # BASELINE OF ZERO from day one (piece E8a migrated every reader): a single
 # violation fails the build. There is no baseline file to grow.
 #
-# Two forbidden patterns, scoped to apps/api/convex/ source:
+# Three forbidden patterns, scoped to apps/api/convex/ source:
 #
 #   1. A dot-read of a body-content field —
 #      `<recv>.textBody` / `.htmlBody` / `.textBodyInline` / `.htmlBodyInline` —
@@ -24,6 +24,11 @@
 #   2. A body-blob CONTENT read — `storage.get(<x>.textBodyStorageId)` /
 #      `...htmlBodyStorageId` — anywhere but lib/messageBody.ts. Turning a body
 #      blob id into bytes is exactly what `readMailMessageText` owns.
+#
+#   3. A DESTRUCTURING read of a body field — `const { textBody } = row;` — which
+#      would otherwise slip past pattern 1 (that pattern requires a leading `.`).
+#      Object-literal WRITES (`= { textBody: … }`) put the brace on the right of
+#      `=` and never match; only `{ … } =` (a binding target) does.
 #
 # Excluded paths: _generated, __tests__, *.test.ts, schema/ (type declarations,
 # not reads), lib/messageBody.ts (the accessor itself), and webhooks/dispatcher.ts
@@ -88,22 +93,45 @@ if [ -n "$read_violations" ]; then
 fi
 
 # ── Pattern 2: body-blob CONTENT reads ───────────────────────────────────────
-blob_violations=$(
-	grep -rnE 'storage\.get\([^)]*(textBodyStorageId|htmlBodyStorageId)' "$root" --include='*.ts' 2>/dev/null \
-		| grep -v '/_generated/' \
-		| grep -v '/__tests__/' \
-		| grep -v '\.test\.ts:' \
-		| grep -v '/lib/messageBody.ts:' \
-		|| true
-)
+# Scan the SAME `$files` list pattern 1 uses so "in scope" has one definition.
+blob_violations=""
+while IFS= read -r f; do
+	[ -n "$f" ] || continue
+	while IFS= read -r hit; do
+		blob_violations="${blob_violations}${f}:${hit}"$'\n'
+	done < <(grep -nE 'storage\.get\([^)]*(textBodyStorageId|htmlBodyStorageId)' "$f" 2>/dev/null || true)
+done < <(printf '%s\n' "$files")
+
 if [ -n "$blob_violations" ]; then
-	count=$(printf '%s\n' "$blob_violations" | grep -c .)
+	count=$(printf '%s' "$blob_violations" | grep -c .)
 	echo "FAIL: $count body-blob content read(s) outside lib/messageBody.ts:"
 	echo ""
-	echo "$blob_violations"
+	printf '%s' "$blob_violations"
 	echo ""
 	echo "Resolve a body blob via readMailMessageText(ctx.storage, row) so the one"
 	echo "place that turns a body-storage id into bytes stays inside the accessor."
+	fail=1
+fi
+
+# ── Pattern 3: destructuring body-field reads ────────────────────────────────
+# `const { textBody } = row;` bypasses pattern 1's leading-dot requirement. Match
+# a destructuring binding target (`{ … } =`) that names a body field. An object
+# literal write (`= { textBody: … }`) puts the brace after `=` and never matches.
+destructure_violations=""
+while IFS= read -r f; do
+	[ -n "$f" ] || continue
+	while IFS= read -r hit; do
+		destructure_violations="${destructure_violations}${f}:${hit}"$'\n'
+	done < <(grep -nE "\{[^}]*\b(${fields})\b[^}]*\}[[:space:]]*=" "$f" 2>/dev/null || true)
+done < <(printf '%s\n' "$files")
+
+if [ -n "$destructure_violations" ]; then
+	count=$(printf '%s' "$destructure_violations" | grep -c .)
+	echo "FAIL: $count destructuring body-field read(s) outside lib/messageBody.ts:"
+	echo ""
+	printf '%s' "$destructure_violations"
+	echo ""
+	echo "Read the body through lib/messageBody.ts instead of destructuring the row."
 	fail=1
 fi
 

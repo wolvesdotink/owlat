@@ -91,6 +91,21 @@ describe('check-body-access.sh ratchet', () => {
 		expect(runRatchet(root)).toBe(1);
 	});
 
+	it('fails a tree with a destructuring body-field read', () => {
+		const root = join(workDir, 'bad-destructure');
+		mkdirSync(root, { recursive: true });
+		writeFileSync(join(root, 'reader.ts'), 'const { textBody } = row;\n');
+		expect(runRatchet(root)).toBe(1);
+	});
+
+	it('does not confuse an object-literal write with a destructuring read', () => {
+		const root = join(workDir, 'literal-write');
+		mkdirSync(root, { recursive: true });
+		// `= { textBody: … }` is a write, not a destructuring read — NOT a violation.
+		writeFileSync(join(root, 'writer.ts'), "const patch = { textBody: 'x' };\n");
+		expect(runRatchet(root)).toBe(0);
+	});
+
 	it('does not confuse a *BodyStorageId handle passed to getUrl with a content read', () => {
 		const root = join(workDir, 'geturl');
 		mkdirSync(root, { recursive: true });
