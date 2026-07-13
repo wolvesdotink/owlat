@@ -8,8 +8,11 @@
  *   - `getCached` (internal) — cache read the discovery action consults;
  *   - `upsertDiscovery` (internal) — persist a discovery + pin decision;
  *   - `listExpiring` (internal) — the refresh-cron worklist;
- *   - `getRecipientKeyStatus` (public discovery projection) — PUBLIC key /
- *     trust state for a UI (never any private material — there is none here);
+ *   - `getRecipientKeyStatus` (authed org-member read) — the recipient's PUBLIC
+ *     key / trust state for a UI (never any private material — there is none
+ *     here). Authed, not public: the row set is this org's inbound discovery
+ *     cache, so *which* addresses we have pinned keys for is org-private
+ *     correspondence metadata that must not be an anonymous enumeration oracle.
  *   - `reacceptKeyChange` (admin) — the explicit re-accept transition.
  *
  * Nothing here uses `authedIdentityMutation` (a locked Sealed-Mail rule).
@@ -17,7 +20,7 @@
 
 import { v } from 'convex/values';
 import { internalMutation, internalQuery } from '../_generated/server';
-import { adminMutation, publicQuery } from '../lib/authedFunctions';
+import { adminMutation, authedQuery } from '../lib/authedFunctions';
 import { assertFeatureEnabled } from '../lib/featureFlags';
 import { normalizeEmail } from '@owlat/shared';
 import { reacceptObservedKey } from './pinning';
@@ -111,12 +114,14 @@ export const listExpiring = internalQuery({
 });
 
 /**
- * PUBLIC: the discovery/trust status for an address — PUBLIC key material and
- * the pin state only. There is no private material in this table, so this is
- * safe; it backs the reader's "Sealed - sender verified" / "key changed" UI.
+ * The discovery/trust status for an address — the recipient's PUBLIC key
+ * material and pin state only (no private material lives in this table). Backs
+ * the reader's "Sealed - sender verified" / "key changed" UI. Authed to an org
+ * member: the presence of a row (and its trust state) reveals whom this org
+ * seals mail to, which is org-private correspondence metadata, so it is NOT an
+ * anonymous read even though the key bytes themselves are public.
  */
-export const getRecipientKeyStatus = publicQuery({
-	// public: recipient PUBLIC key + TOFU state is safe to read; no secrets live here.
+export const getRecipientKeyStatus = authedQuery({
 	args: { address: v.string() },
 	returns: v.union(
 		v.null(),
