@@ -142,8 +142,8 @@ const mailboxOpenResultValidator = v.union(
 		sealed: v.literal(true),
 		decrypted: v.literal(true),
 		subject: v.optional(v.string()),
-		textBody: v.optional(v.string()),
-		htmlBody: v.optional(v.string()),
+		text: v.optional(v.string()),
+		html: v.optional(v.string()),
 		encryptionInfo: inboundEncryptionInfoValidator,
 	}),
 	// Sealed but undecryptable — today's "Encrypted — can't decrypt" path.
@@ -195,8 +195,8 @@ export const openInboundForMailbox = internalAction({
 			sealed: true as const,
 			decrypted: true as const,
 			...(restored.subject !== undefined ? { subject: restored.subject } : {}),
-			...(restored.textBody !== undefined ? { textBody: restored.textBody } : {}),
-			...(restored.htmlBody !== undefined ? { htmlBody: restored.htmlBody } : {}),
+			...(restored.text !== undefined ? { text: restored.text } : {}),
+			...(restored.html !== undefined ? { html: restored.html } : {}),
 			encryptionInfo,
 		};
 	},
@@ -258,8 +258,8 @@ export const decryptAndReceive = internalAction({
 			if (restored.subject !== undefined) subject = restored.subject;
 			// The decrypted plaintext REPLACES the ciphertext body so the agent
 			// pipeline + the unified mirror consume real text (D3).
-			textBody = restored.textBody;
-			htmlBody = restored.htmlBody;
+			textBody = restored.text;
+			htmlBody = restored.html;
 			const info = buildOpenedInfo(outcome, normalizeEmail(args.from));
 			sealedFlags = {
 				isSealed: true,

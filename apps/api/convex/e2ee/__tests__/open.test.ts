@@ -75,7 +75,7 @@ describe('e2ee/open · openSealed', () => {
 
 		const restored = parseInnerMessage(outcome.innerMime);
 		expect(restored.subject).toBe(REAL_SUBJECT);
-		expect(restored.textBody).toContain(CANARY);
+		expect(restored.text).toContain(CANARY);
 	});
 
 	it('decrypts but reports signatureValid:false against the WRONG sender key', async () => {
@@ -99,7 +99,7 @@ describe('e2ee/open · openSealed', () => {
 		expect(outcome.signatureValid).toBe(false);
 		expect(outcome.signerFingerprint).toBeUndefined();
 		// The plaintext is still recovered — decrypt-on-ingest stores it UNVERIFIED.
-		expect(parseInnerMessage(outcome.innerMime).textBody).toContain(CANARY);
+		expect(parseInnerMessage(outcome.innerMime).text).toContain(CANARY);
 	});
 
 	it('opens without a sender key as UNVERIFIED (no pin ⇒ no signature claim)', async () => {
@@ -164,9 +164,9 @@ describe('e2ee/open · openSealed', () => {
 		// Protected headers restored: the real subject + BOTH bodies from the
 		// multipart/alternative inner (the outer `.eml` carries only `Subject: ...`).
 		expect(restored.subject).toBe('Q3 sealed interop numbers');
-		expect(restored.textBody).toContain('CANARY_INBOUND_INTEROP_5b2c1d');
-		expect(restored.htmlBody).toContain('CANARY_INBOUND_INTEROP_5b2c1d');
-		expect(restored.htmlBody).toContain('<p>HTML');
+		expect(restored.text).toContain('CANARY_INBOUND_INTEROP_5b2c1d');
+		expect(restored.html).toContain('CANARY_INBOUND_INTEROP_5b2c1d');
+		expect(restored.html).toContain('<p>HTML');
 	});
 
 	it('the cipher-suite constant is the PGP/MIME profile', () => {
@@ -212,8 +212,8 @@ describe('e2ee/inboundSeal · parseInnerMessage', () => {
 		].join('\r\n');
 		const r = parseInnerMessage(inner);
 		expect(r.subject).toBe('Single part subject');
-		expect(r.textBody).toContain('the single-part body');
-		expect(r.htmlBody).toBeUndefined();
+		expect(r.text).toContain('the single-part body');
+		expect(r.html).toBeUndefined();
 	});
 
 	it('restores text + html from a multipart/alternative inner', () => {
@@ -234,8 +234,8 @@ describe('e2ee/inboundSeal · parseInnerMessage', () => {
 		].join('\r\n');
 		const r = parseInnerMessage(inner);
 		expect(r.subject).toBe('Multi part subject');
-		expect(r.textBody).toContain('text branch');
-		expect(r.htmlBody).toContain('<b>html branch</b>');
+		expect(r.text).toContain('text branch');
+		expect(r.html).toContain('<b>html branch</b>');
 	});
 
 	it('unfolds a folded Subject header', () => {

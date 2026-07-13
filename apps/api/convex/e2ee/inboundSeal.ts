@@ -116,9 +116,9 @@ export interface RestoredMessage {
 	/** The real `Subject` (protected header D4), or undefined when the inner has none. */
 	subject?: string;
 	/** The decrypted `text/plain` body, if any. */
-	textBody?: string;
+	text?: string;
 	/** The decrypted `text/html` body, if any. */
-	htmlBody?: string;
+	html?: string;
 }
 
 /**
@@ -138,8 +138,8 @@ export function parseInnerMessage(innerMime: string): RestoredMessage {
 
 	const result: RestoredMessage = {};
 	if (subject !== undefined) result.subject = subject;
-	if (textPart) result.textBody = decodeUtf8(textPart.bytes);
-	if (htmlPart) result.htmlBody = decodeUtf8(htmlPart.bytes);
+	if (textPart) result.text = decodeUtf8(textPart.bytes);
+	if (htmlPart) result.html = decodeUtf8(htmlPart.bytes);
 	return result;
 }
 

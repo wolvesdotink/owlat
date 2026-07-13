@@ -269,8 +269,8 @@ export const ingestFromWebhook = internalAction({
 				// Restored plaintext (real Subject + bodies, D4) replaces the outer
 				// placeholder + ciphertext so the normal pipeline sees real content.
 				if (opened.subject !== undefined) effectiveSubject = opened.subject;
-				effectiveText = opened.textBody;
-				effectiveHtml = opened.htmlBody;
+				effectiveText = opened.text;
+				effectiveHtml = opened.html;
 			}
 		}
 
