@@ -102,12 +102,40 @@ describe('e2ee/discovery URLs', () => {
 	});
 });
 
+/**
+ * Graft an UNCERTIFIED User ID for `email` onto `baseArmored` (a real key for a
+ * DIFFERENT address). The bogus UID is inserted before the first subkey packet so
+ * packet ordering stays valid and carries NO self-certification — the
+ * hostile/compromised-WKD-host attack: a genuine key with a grafted, uncertified
+ * binding to the victim address. No private key is needed to mount it.
+ */
+async function graftUncertifiedUid(baseArmored: string, email: string): Promise<string> {
+	const list = (await openpgp.readKey({ armoredKey: baseArmored })).toPacketList();
+	const firstSubkey = list.findIndex(
+		(p) => p instanceof openpgp.PublicSubkeyPacket || p instanceof openpgp.SecretSubkeyPacket
+	);
+	const insertAt = firstSubkey === -1 ? list.length : firstSubkey;
+	list.splice(insertAt, 0, openpgp.UserIDPacket.fromObject({ email }));
+	return (await openpgp.readKey({ binaryKey: list.write() })).armor();
+}
+
 describe('e2ee/discovery key<->address binding', () => {
 	it('accepts a key that certifies the exact address', async () => {
 		expect(await keyCertifiesAddress(bobPub, BOB)).toBe(true);
 	});
 	it('rejects a key for a DIFFERENT address (the spoof case)', async () => {
 		expect(await keyCertifiesAddress(alicePub, BOB)).toBe(false);
+	});
+	it('rejects a hybrid key: valid alice UID + UNCERTIFIED bob UID grafted on', async () => {
+		// alice's real key with an uncertified `bob@...` UID grafted on. The address
+		// is listed, and the key has a valid primary user (alice's own UID) — the old
+		// key-wide `getPrimaryUser()` check would wrongly accept it and pin a
+		// misdirected key. Binding the check to the MATCHING UID rejects it.
+		const hybrid = await graftUncertifiedUid(alicePub, BOB);
+		expect((await openpgp.readKey({ armoredKey: hybrid })).getUserIDs()).toContain(`<${BOB}>`);
+		expect(await keyCertifiesAddress(hybrid, BOB)).toBe(false);
+		// The genuine, self-certified alice UID on the same key is still honored.
+		expect(await keyCertifiesAddress(hybrid, 'alice@sealed.example.com')).toBe(true);
 	});
 	it('rejects garbage', async () => {
 		expect(await keyCertifiesAddress('not a key', BOB)).toBe(false);
