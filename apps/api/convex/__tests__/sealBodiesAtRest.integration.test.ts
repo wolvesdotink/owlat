@@ -411,7 +411,10 @@ describe('E8b migration — interrupt/resume (b)', () => {
 		// Drain the blob walker to completion.
 		let cursor: string | null = null;
 		for (;;) {
-			const page = await t.action(migration.sealMailMessagesBlobsPage, { cursor });
+			const page: { cursor: string; isDone: boolean; sealed: number } = await t.action(
+				migration.sealMailMessagesBlobsPage,
+				{ cursor }
+			);
 			if (page.isDone) break;
 			cursor = page.cursor;
 		}
