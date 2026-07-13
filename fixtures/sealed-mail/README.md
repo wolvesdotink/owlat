@@ -22,6 +22,31 @@ never needs `gpg`, a live MTA, or Redis — the bytes are committed directly.
   `sealMime` output offline is tracked as manual QA, not a CI gate; the
   `openpgp.js` round-trip above is the automated regression.
 
+## Inbound unsealing / decrypt-on-ingest (E4)
+
+A committed, byte-stable **sealed message** plus the keys needed to open it, so
+the inbound path (`e2ee/open.ts:openSealed`) can be regression-tested against a
+ciphertext it did not itself produce. Consumed by
+`apps/api/convex/e2ee/__tests__/open.test.ts` (the INTEROP case).
+
+- `pgp/inbound-sealed-goodsig.eml` — a PGP/MIME `multipart/encrypted` message
+  whose outer `Subject` is the `...` placeholder (protected headers, D4); the
+  inner ciphertext holds the real subject `Q3 sealed interop numbers` and a
+  `multipart/alternative` body carrying the `CANARY_INBOUND_INTEROP_…` marker in
+  both `text/plain` and `text/html`. Encrypted to `inbound-recipient` and signed
+  by `inbound-sender`.
+- `pgp/inbound-recipient.secret.asc` / `pgp/inbound-recipient.public.asc` — the
+  test recipient keypair; the secret half opens the fixture.
+- `pgp/inbound-sender.public.asc` — the test sender's public key; verifying the
+  fixture's signature against it yields `signatureValid: true`.
+
+These bytes were generated **offline** with `openpgp.js` (RFC 9580 profile) — the
+same standards-compliant encoding GnuPG/Thunderbird emit — so CI never needs
+`gpg`. Cross-opening the fixture with GnuPG/Thunderbird remains manual QA, exactly
+as for the outbound E3 fixture above; the `openpgp.js` decrypt here is the
+automated regression. The recipient private key is unencrypted **on purpose** —
+it is a throwaway test key that guards nothing.
+
 ## TLS-RPT (RFC 8460)
 
 - `tls-report-sample.json` — a human-readable real-world-shaped aggregate report
