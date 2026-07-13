@@ -20,6 +20,7 @@ import {
 } from './factories';
 import type { Id } from '../_generated/dataModel';
 import type { WorkId } from '@convex-dev/workpool';
+import { openUnifiedMessageContent } from '../lib/messageBody';
 
 const modules = import.meta.glob('../**/*.*s');
 
@@ -440,7 +441,7 @@ describe('completeSend — does NOT write providerHealth (ADR-0020 regression)',
 				expect(row.status).toBe('sent');
 				expect(row.threadId).toBe(threadId);
 				expect(row.externalMessageId).toBe('pm-agent-out');
-				const content = JSON.parse(row.content);
+				const content = await openUnifiedMessageContent(row.content);
 				expect(content.text).toBe('Thanks for reaching out!');
 				expect(content.subject).toBe('Re: Hi');
 			});

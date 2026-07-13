@@ -9,6 +9,18 @@ import {
 	createTestChannelConfig,
 } from './factories';
 import type { Id } from '../_generated/dataModel';
+import { isSealedAtRest } from '../lib/atRestBodies';
+import {
+	openUnifiedMessageContent,
+	UNIFIED_MESSAGE_STORAGE_VERSION_PLAINTEXT,
+	UNIFIED_MESSAGE_STORAGE_VERSION_SEALED,
+} from '../lib/messageBody';
+
+function expectedContentStorageVersion(content: string): number {
+	return isSealedAtRest(content)
+		? UNIFIED_MESSAGE_STORAGE_VERSION_SEALED
+		: UNIFIED_MESSAGE_STORAGE_VERSION_PLAINTEXT;
+}
 
 /** Create a valid conversation thread for DB insertion (strips fields not in schema) */
 function threadData(overrides: Record<string, unknown> = {}) {
@@ -325,7 +337,7 @@ describe('unifiedMessages.recordInbound', () => {
 			expect(msg!.status).toBe('received');
 			expect(msg!.channel).toBe('email');
 			expect(msg!.contentVersion).toBe(1);
-			expect(msg!.contentStorageVersion).toBe(1);
+			expect(msg!.contentStorageVersion).toBe(expectedContentStorageVersion(msg!.content));
 		});
 	});
 });
@@ -353,7 +365,7 @@ describe('unifiedMessages.recordOutbound', () => {
 			expect(msg!.status).toBe('queued');
 			expect(msg!.channel).toBe('sms');
 			expect(msg!.contentVersion).toBe(1);
-			expect(msg!.contentStorageVersion).toBe(1);
+			expect(msg!.contentStorageVersion).toBe(expectedContentStorageVersion(msg!.content));
 		});
 	});
 
@@ -712,7 +724,7 @@ describe('unifiedMessages.sendChatMessage', () => {
 			expect(msg!.channel).toBe('chat');
 			expect(msg!.direction).toBe('outbound');
 			expect(msg!.status).toBe('delivered');
-			const content = JSON.parse(msg!.content);
+			const content = await openUnifiedMessageContent(msg!.content);
 			expect(content.text).toBe('Hello from the team!');
 		});
 	});
