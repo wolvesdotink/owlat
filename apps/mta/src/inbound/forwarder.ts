@@ -53,7 +53,7 @@ export async function forwardToEndpoint(
 	}
 
 	const payload: EndpointForwardPayload = {
-		from: parsed.from?.text ?? '',
+		from: parsed.from?.value?.[0]?.address ?? '',
 		to: recipientAddress,
 		subject: parsed.subject ?? '',
 		textBody: parsed.text,
