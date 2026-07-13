@@ -71,6 +71,7 @@ export const e2eeTables = {
 		// anonymous callers). Absent until first published.
 		cachedManifest: v.optional(
 			v.object({
+				signedManifestVersion: v.number(),
 				keyDirectoryDigest: v.string(),
 				instanceFingerprint: v.string(),
 				rotationFeedUrl: v.string(),

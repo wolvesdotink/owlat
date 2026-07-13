@@ -15,11 +15,14 @@ export const messagingTables = {
 		direction: v.union(v.literal('inbound'), v.literal('outbound')),
 		// Sender/recipient
 		contactId: v.optional(v.id('contacts')),
-		memberId: v.optional(v.string()),     // Internal sender (BetterAuth user ID)
+		memberId: v.optional(v.string()), // Internal sender (BetterAuth user ID)
 		// Message content (JSON: { text, html, subject, mediaUrl })
 		content: v.string(),
 		// Schema version for `content` JSON blob; bump on shape change to allow migration.
 		contentVersion: v.optional(v.number()),
+		// Storage encoding version, independent from the JSON schema above:
+		// 1 = legacy plaintext JSON, 2 = authenticated at-rest envelope.
+		contentStorageVersion: v.optional(v.number()),
 		// External provider message ID
 		externalMessageId: v.optional(v.string()),
 		// Delivery status
@@ -63,17 +66,14 @@ export const messagingTables = {
 		// Encrypted credentials (JSON string, encrypted at rest)
 		config: v.optional(v.string()),
 		// Health monitoring
-		healthStatus: v.optional(v.union(
-			v.literal('healthy'),
-			v.literal('degraded'),
-			v.literal('down')
-		)),
+		healthStatus: v.optional(
+			v.union(v.literal('healthy'), v.literal('degraded'), v.literal('down'))
+		),
 		lastHealthCheckAt: v.optional(v.number()),
 		lastSuccessfulSend: v.optional(v.number()),
 		lastError: v.optional(v.string()),
 		// Timestamps
 		createdAt: v.number(),
 		updatedAt: v.number(),
-	})
-		.index('by_channel', ['channel']),
+	}).index('by_channel', ['channel']),
 };

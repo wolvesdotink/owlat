@@ -20,6 +20,8 @@ import {
 	openUnifiedMessageContent,
 	readMailMessageText,
 	sealMessageBody,
+	sealUnifiedMessageContentAtWrite,
+	UNIFIED_MESSAGE_STORAGE_VERSION_SEALED,
 	type BodyBlobStorageReader,
 } from '../messageBody';
 import { sealBytesAtRest } from '../atRestBodies';
@@ -85,6 +87,13 @@ describe('messageBody open* accessors — sealed rows round-trip', () => {
 		const parsed = await openUnifiedMessageContent(sealed);
 		expect(parsed.text).toBe('unified text');
 		expect(parsed.subject).toBe('Hi');
+	});
+
+	it('versions unified content schema separately from its sealed storage encoding', async () => {
+		const versioned = await sealUnifiedMessageContentAtWrite(JSON.stringify({ text: 'private' }));
+		expect(versioned.contentVersion).toBe(1);
+		expect(versioned.contentStorageVersion).toBe(UNIFIED_MESSAGE_STORAGE_VERSION_SEALED);
+		expect(versioned.content).not.toContain('private');
 	});
 
 	it('shape 5: conversationThreads.lastPreview', async () => {
