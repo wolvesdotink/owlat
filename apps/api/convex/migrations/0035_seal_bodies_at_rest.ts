@@ -240,6 +240,9 @@ export const repointResealedBlobs = internalMutation({
 				.query('mailMessages')
 				.withIndex('by_raw_storage', (q) => q.eq('rawStorageId', oldId))
 				.collect();
+			// bounded: rows sharing one storage blob = the resealed message plus
+			// its IMAP-COPY siblings (copyMessages spreads the same id) — a small
+			// per-message fan-out on the by_raw_storage index, not a table-wide scan.
 			for (const r of rows) await ctx.db.patch(r._id, { rawStorageId: newId });
 			await ctx.storage.delete(oldId);
 		}
@@ -250,6 +253,9 @@ export const repointResealedBlobs = internalMutation({
 				.query('mailMessages')
 				.withIndex('by_text_body_storage', (q) => q.eq('textBodyStorageId', oldId))
 				.collect();
+			// bounded: rows sharing one storage blob = the resealed message plus
+			// its IMAP-COPY siblings (copyMessages spreads the same id) — a small
+			// per-message fan-out on the by_text_body_storage index, not a table-wide scan.
 			for (const r of rows) await ctx.db.patch(r._id, { textBodyStorageId: newId });
 			await ctx.storage.delete(oldId);
 		}
@@ -260,6 +266,9 @@ export const repointResealedBlobs = internalMutation({
 				.query('mailMessages')
 				.withIndex('by_html_body_storage', (q) => q.eq('htmlBodyStorageId', oldId))
 				.collect();
+			// bounded: rows sharing one storage blob = the resealed message plus
+			// its IMAP-COPY siblings (copyMessages spreads the same id) — a small
+			// per-message fan-out on the by_html_body_storage index, not a table-wide scan.
 			for (const r of rows) await ctx.db.patch(r._id, { htmlBodyStorageId: newId });
 			await ctx.storage.delete(oldId);
 		}
