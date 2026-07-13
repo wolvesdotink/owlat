@@ -63,6 +63,23 @@ export async function loadRecipientKeyStates(
 }
 
 /**
+ * Whether the sender address has an ACTIVE signing key in the vault. The seal
+ * decision needs a live signing key for the From address (its private half is
+ * opened by the Node action, never here). Shared by the dispatch path
+ * (`getOutboundSealInputs`) and the composer's seal-state query so both derive
+ * the same "can this address sign?" answer. Returns a boolean only — no key
+ * material of any kind crosses this boundary.
+ */
+export async function hasActiveSigningKey(ctx: QueryCtx, fromAddress: string): Promise<boolean> {
+	const signingAddress = normalizeEmail(fromAddress);
+	const signingRow = await ctx.db
+		.query('keyVault')
+		.withIndex('by_address', (q) => q.eq('address', signingAddress))
+		.first();
+	return !!signingRow && signingRow.isActive;
+}
+
+/**
  * Gather everything the dispatch-time seal decision (`mail/sealPolicy.decideSeal`)
  * reads, from the V8 plane, so the Node `dispatchDraft` action can decide whether
  * to seal without a direct db handle. Returns PUBLIC material only: recipient
@@ -102,13 +119,7 @@ export const getOutboundSealInputs = internalQuery({
 			return { flagEnabled: false, policy, hasSigningKey: false, recipients: [] };
 		}
 
-		const signingAddress = normalizeEmail(args.fromAddress);
-		const signingRow = await ctx.db
-			.query('keyVault')
-			.withIndex('by_address', (q) => q.eq('address', signingAddress))
-			.first();
-		const hasSigningKey = !!signingRow && signingRow.isActive;
-
+		const hasSigningKey = await hasActiveSigningKey(ctx, args.fromAddress);
 		const recipients = await loadRecipientKeyStates(ctx, args.recipients);
 		return { flagEnabled, policy, hasSigningKey, recipients };
 	},

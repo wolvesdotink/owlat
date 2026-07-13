@@ -25,8 +25,9 @@ export type SealPolicy = 'auto' | 'ask' | 'off';
 /**
  * Convex validator for the org sealing policy (`instanceSettings.sealPolicy`,
  * locked decision D2). `auto` seals whenever every recipient has a usable pinned
- * key; `ask` defers to the composer opt-in (wired by E5); `off` never seals.
- * Unset ⇒ treated as `auto` at resolution time. Mirrors {@link SealPolicy}.
+ * key; `ask` keeps sealing available but never seals automatically (the message
+ * goes out normally); `off` never seals. Unset ⇒ treated as `auto` at resolution
+ * time. Mirrors {@link SealPolicy}.
  */
 export const sealPolicyValidator = v.union(v.literal('auto'), v.literal('ask'), v.literal('off'));
 
@@ -129,8 +130,8 @@ export const mailEncryptionInfoValidator = v.union(
  * decisive gates first, then the all-recipients rule (D2 — one keyless recipient
  * forces plaintext), then the signer check, and only `policy === 'auto'` actually
  * seals automatically. `policy === 'ask'` is a deliberate plaintext-with-reason
- * here: the composer opt-in that turns `ask` into a seal is the E5 piece; until
- * then `ask` behaves as "ready, but not automatic".
+ * here: it keeps sealing available but never seals automatically, so the message
+ * goes out normally with `reason:'policy_ask'`.
  */
 export function decideSeal(inputs: SealInputs): SealDecision {
 	if (!inputs.flagEnabled) return { seal: false, reason: 'flag_off' };
@@ -149,7 +150,7 @@ export function decideSeal(inputs: SealInputs): SealDecision {
 		keys.push(r.pinnedPublicKeyArmored);
 	}
 	if (!inputs.hasSigningKey) return { seal: false, reason: 'no_signing_key' };
-	// Keys are ready. `ask` waits for the composer opt-in (E5); only `auto` seals now.
+	// Keys are ready. `ask` never seals automatically; only `auto` seals now.
 	if (inputs.policy === 'ask') return { seal: false, reason: 'policy_ask' };
 	return { seal: true, recipientPublicKeysArmored: keys };
 }
@@ -168,16 +169,37 @@ export type SealState =
 	| { kind: 'cannotSeal'; reason: SealSkipReason };
 
 /**
- * Derive the composer's `sealState` from the policy + recipient states. Pure.
- * `keyChanged` takes precedence over a generic "no key" so the user sees the
- * specific rotation warning rather than a vague block.
+ * Derive the composer's `sealState` from the policy, recipient states, AND
+ * whether the sender has a signing key. Pure. Walks the SAME gates in the SAME
+ * order as {@link decideSeal} (the dispatch decision) so the composer's promise
+ * can never claim more than what the sender actually does — the honesty rule is
+ * enforced by construction, not by convention:
+ *   - `off`               → `cannotSeal('policy_off')`
+ *   - no recipients       → `cannotSeal('no_recipients')`
+ *   - a rotated key       → `keyChanged` (surfaced ahead of a generic "no key" so
+ *                           the reader sees the specific rotation warning)
+ *   - any keyless recip.  → `cannotSeal('recipient_no_key')`
+ *   - no sender key        → `cannotSeal('no_signing_key')`
+ *   - policy `ask`        → `cannotSeal('policy_ask')` (keys are ready, but the
+ *                           org asks before sealing, so it goes out normally)
+ *   - otherwise           → `willSeal`
+ * `flag_off` is handled by the caller before this runs. This mirrors
+ * `decideSeal`'s ordering exactly: recipient checks, then the signer, then `ask`.
  */
-export function deriveSealState(policy: SealPolicy, recipients: RecipientKeyState[]): SealState {
+export function deriveSealState(
+	policy: SealPolicy,
+	recipients: RecipientKeyState[],
+	hasSigningKey: boolean
+): SealState {
 	if (policy === 'off') return { kind: 'cannotSeal', reason: 'policy_off' };
 	if (recipients.length === 0) return { kind: 'cannotSeal', reason: 'no_recipients' };
 	const changed = recipients.filter((r) => r.outcome === 'keyChanged').map((r) => r.address);
 	if (changed.length > 0) return { kind: 'keyChanged', addresses: changed };
 	const allTrusted = recipients.every((r) => r.outcome === 'trusted' && !!r.pinnedPublicKeyArmored);
 	if (!allTrusted) return { kind: 'cannotSeal', reason: 'recipient_no_key' };
+	if (!hasSigningKey) return { kind: 'cannotSeal', reason: 'no_signing_key' };
+	// Keys are ready. Under `ask` the org wants a human decision, so the composer
+	// reports "won't seal automatically" rather than promising encryption.
+	if (policy === 'ask') return { kind: 'cannotSeal', reason: 'policy_ask' };
 	return { kind: 'willSeal' };
 }

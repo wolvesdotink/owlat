@@ -276,6 +276,15 @@ describe('mail/outbound · dispatchDraft stores SEALED bytes (capstone)', () => 
 });
 
 describe('mail/draftLifecycle · getSealState (three composer states)', () => {
+	// Minting the From-address signing key opens the E2EE secret box, so the
+	// vault crypto needs INSTANCE_SECRET — same as the dispatch-path describes.
+	beforeEach(() => {
+		vi.stubEnv('INSTANCE_SECRET', INSTANCE_SECRET);
+	});
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
+
 	async function insertDraft(t: T, recipients: string[]): Promise<Id<'mailDrafts'>> {
 		return await t.run(async (ctx) => {
 			const now = Date.now();
@@ -306,13 +315,41 @@ describe('mail/draftLifecycle · getSealState (three composer states)', () => {
 		});
 	}
 
-	it('willSeal when policy allows and the recipient is trusted', async () => {
+	it('willSeal when policy allows, the recipient is trusted, and the sender can sign', async () => {
 		const t = convexTest(schema, modules);
 		await seedSettings(t);
+		// A minted signing key for the From address — willSeal now requires it, so
+		// the composer promise matches what dispatch would actually do.
+		await t.action(internal.e2ee.keysNode.mintForAddress, { address: 'alice@a.test' });
 		await seedRecipient(t, 'bob@b.test', 'trusted', 'ARMORED');
 		const draftId = await insertDraft(t, ['bob@b.test']);
 		expect(await t.query(internal.mail.draftLifecycle.getSealState, { draftId })).toEqual({
 			kind: 'willSeal',
+		});
+	});
+
+	it('cannotSeal (no_signing_key) when the sender has no minted key', async () => {
+		const t = convexTest(schema, modules);
+		await seedSettings(t);
+		// Recipient is trusted, but the From address never had a key minted: the
+		// composer must NOT promise sealing when dispatch would send plaintext.
+		await seedRecipient(t, 'bob@b.test', 'trusted', 'ARMORED');
+		const draftId = await insertDraft(t, ['bob@b.test']);
+		expect(await t.query(internal.mail.draftLifecycle.getSealState, { draftId })).toEqual({
+			kind: 'cannotSeal',
+			reason: 'no_signing_key',
+		});
+	});
+
+	it('cannotSeal (policy_ask) when everything is ready but the org asks first', async () => {
+		const t = convexTest(schema, modules);
+		await seedSettings(t, { sealPolicy: 'ask' });
+		await t.action(internal.e2ee.keysNode.mintForAddress, { address: 'alice@a.test' });
+		await seedRecipient(t, 'bob@b.test', 'trusted', 'ARMORED');
+		const draftId = await insertDraft(t, ['bob@b.test']);
+		expect(await t.query(internal.mail.draftLifecycle.getSealState, { draftId })).toEqual({
+			kind: 'cannotSeal',
+			reason: 'policy_ask',
 		});
 	});
 

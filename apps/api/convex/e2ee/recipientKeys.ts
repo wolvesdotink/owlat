@@ -140,6 +140,10 @@ export const getRecipientKeyStatus = authedQuery({
 			outcome: outcomeValidator,
 			pinnedFingerprint: v.union(v.string(), v.null()),
 			observedFingerprint: v.union(v.string(), v.null()),
+			// First-seen timestamp + discovery source, for the per-contact key panel
+			// (E5). Public metadata: WHEN we first pinned a key and WHERE we found it.
+			discoveredAt: v.union(v.number(), v.null()),
+			source: v.union(sourceValidator, v.null()),
 			expiresAt: v.number(),
 		})
 	),
@@ -154,6 +158,8 @@ export const getRecipientKeyStatus = authedQuery({
 			outcome: row.outcome,
 			pinnedFingerprint: row.pinnedFingerprint ?? null,
 			observedFingerprint: row.observedFingerprint ?? null,
+			discoveredAt: row.discoveredAt ?? null,
+			source: row.source ?? null,
 			expiresAt: row.expiresAt,
 		};
 	},
