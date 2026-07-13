@@ -1,0 +1,42 @@
+From: gnupg-sender@interop.example.org
+To: gnupg-recipient@interop.example.net
+Subject: ...
+Date: Mon, 13 Jul 2026 10:00:00 +0000
+Message-ID: <gnupg-interop-0001@interop.example.org>
+MIME-Version: 1.0
+Content-Type: multipart/encrypted;
+ protocol="application/pgp-encrypted"; boundary="=_gnupg_sealed_interop"
+
+--=_gnupg_sealed_interop
+Content-Type: application/pgp-encrypted
+Content-Description: PGP/MIME version identification
+
+Version: 1
+
+--=_gnupg_sealed_interop
+Content-Type: application/octet-stream; name="encrypted.asc"
+Content-Description: OpenPGP encrypted message
+Content-Disposition: inline; filename="encrypted.asc"
+
+-----BEGIN PGP MESSAGE-----
+
+hF4Dl9ibuWqderMSAQdAUj7I+X27rNNh0UkhYglRnEAY5CtbKQ+KAnJN6vSTDGYw
+ItUjGjxV0yydH5S5VlopJFwfwiv+z8y96dCv4rsni3koLnT5aQuVHcZEWCqOzGUx
+1OkBCQIQZcgTDcw0rSQh04ez/WKVlmjU3YQOoFBLkCy2C9TBLAqjC2HAe+652VXs
+TB4Kda+SDGlFTT5qFV0ylCJlKqHrW8rd1GuBn5wzzLKoXSOBBwDiGUQKwZ78SK2m
+RzL0Vow8CghP+23uUrB8ReakzCmmSCjWfjMI+MCGuf/dGUnPv+cWjw55QE2677Mx
+ZlmNPlyIW6VQM/DpF4JZ8a3vp2Cer64wjPWrnzDRaEzSUJ2DX+om0jV6rak88EMf
+pwOqyK5l0yDCif457RlRgmjZJlmUm/IgZnxzrrUu7N8JX4iB31c8tYVkaffpUy7M
+tl9Z+yJpqOMnMDAyDZaM9NvhWiAUDy23VQbA27hxzbkts0kiOyRCetFL86cMjz9O
+7O9JzoVYD+gVMxC5JEXYwHDj5cQBrCzSYwyrqJGmEvzLYEfWn+fiZm/+uR3ucJkT
+XcZOd6tqF7T/LLFFYxKSnsPQ8aVx1nX5ely7m5FcoxNn9MHzAI11gTK7ms21qMtX
+SBHHdmSB7Z5We2e8UdLFZlYSbD+0cNvEjQByqBkvrCzRhZ5pqyX6F/U0oYz5yu9T
+/NgDv6v0ECc4FTQ26MWbCsZHHhSeuhp6Q7cX/qc4du2zl3jh9R3GA1+pmeIADAQ8
+Kg3pOuQSB3tQN4/FDax9z1fHA9ZjBKxT7W7NlBpa0SlVxE+QEy8RlJeoIniMit2x
+2vpNMdaiI6+K6GUHZxlqBOLAjU3WXdr27AwIodsLej0b4kSxlqjihcYYG78TjRnY
+DMz7et0sT1JPVyYNteLj1bRD
+=+axV
+-----END PGP MESSAGE-----
+
+--=_gnupg_sealed_interop--
+

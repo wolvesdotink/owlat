@@ -40,12 +40,20 @@ ciphertext it did not itself produce. Consumed by
 - `pgp/inbound-sender.public.asc` — the test sender's public key; verifying the
   fixture's signature against it yields `signatureValid: true`.
 
-These bytes were generated **offline** with `openpgp.js` (RFC 9580 profile) — the
-same standards-compliant encoding GnuPG/Thunderbird emit — so CI never needs
-`gpg`. Cross-opening the fixture with GnuPG/Thunderbird remains manual QA, exactly
-as for the outbound E3 fixture above; the `openpgp.js` decrypt here is the
-automated regression. The recipient private key is unencrypted **on purpose** —
-it is a throwaway test key that guards nothing.
+These bytes were generated **offline** with `openpgp.js` (RFC 9580 profile), so
+CI never needs `gpg`; the decrypt here is a byte-equal round-trip regression.
+The recipient private key is unencrypted **on purpose** — it is a throwaway
+test key that guards nothing.
+
+**Cross-implementation interop is CI-covered too**: a genuinely
+**GnuPG-generated** fixture group lives at `apps/api/fixtures/sealed-mail/gnupg/`
+(see its README) — keys, encryption, and signature all produced offline by
+`gpg` 2.5.21 and opened by the same `open.test.ts` suite. That group mints its
+own gpg-native recipient keypair because GnuPG cannot encrypt to
+`inbound-recipient.public.asc` (a v4 key with RFC 9580 new-style algorithm IDs
+Ed25519 = 27 / X25519 = 25, which gpg rejects on v4 keys). The
+**Thunderbird**-generated interop case is GUI-only and lives in the E7 manual QA
+checklist (`scripts/sealed-mail-qa.md`) by plan-owner decision 2026-07-13.
 
 ## TLS-RPT (RFC 8460)
 
