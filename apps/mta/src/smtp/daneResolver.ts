@@ -18,6 +18,7 @@
  */
 
 import type Redis from 'ioredis';
+import { readStreamBytes, StreamByteLimitExceeded } from '@owlat/shared';
 import { parseTlsaRecord, type TlsaRecord } from '@owlat/shared/dane';
 import { logger } from '../monitoring/logger.js';
 
@@ -107,11 +108,17 @@ async function readCappedDohJson(response: Response): Promise<DohResponse> {
 	if (Number.isFinite(declared) && declared > DANE_MAX_RESPONSE_BYTES) {
 		throw new Error(`DoH response too large (${declared} bytes)`);
 	}
-	const text = await response.text();
-	if (text.length > DANE_MAX_RESPONSE_BYTES) {
-		throw new Error(`DoH response too large (${text.length} bytes)`);
+	let bytes: Uint8Array | null;
+	try {
+		bytes = await readStreamBytes(response.body, DANE_MAX_RESPONSE_BYTES);
+	} catch (error) {
+		if (error instanceof StreamByteLimitExceeded) {
+			throw new Error(`DoH response exceeds ${DANE_MAX_RESPONSE_BYTES} bytes`);
+		}
+		throw error;
 	}
-	return JSON.parse(text) as DohResponse;
+	if (!bytes) throw new Error('DoH response has no body');
+	return JSON.parse(new TextDecoder().decode(bytes)) as DohResponse;
 }
 
 /**

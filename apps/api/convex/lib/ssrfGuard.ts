@@ -20,6 +20,7 @@ import { promises as dns, lookup as dnsLookup } from 'dns';
 import { isIP } from 'net';
 import type { LookupAddress, LookupAllOptions } from 'dns';
 import { Agent } from 'undici';
+import { readStreamBytes, StreamByteLimitExceeded } from '@owlat/shared';
 
 // The literal-IP classification lives in the runtime-agnostic lib/ipBlocklist so
 // the v8-runtime webhook-host check can share it. Re-exported for existing
@@ -171,32 +172,14 @@ export async function readCappedBytes(
 	body: ReadableStream<Uint8Array> | null,
 	maxBytes: number
 ): Promise<Uint8Array | null> {
-	if (!body) return null;
-	const reader = body.getReader();
-	const chunks: Uint8Array[] = [];
-	let total = 0;
 	try {
-		for (;;) {
-			const { done, value } = await reader.read();
-			if (done) break;
-			if (!value) continue;
-			total += value.byteLength;
-			if (total > maxBytes) {
-				await reader.cancel();
-				throw new CappedReadOverflow(`response exceeds ${maxBytes} bytes`);
-			}
-			chunks.push(value);
+		return await readStreamBytes(body, maxBytes);
+	} catch (error) {
+		if (error instanceof StreamByteLimitExceeded) {
+			throw new CappedReadOverflow(error.message);
 		}
-	} finally {
-		reader.releaseLock();
+		throw error;
 	}
-	const merged = new Uint8Array(total);
-	let offset = 0;
-	for (const chunk of chunks) {
-		merged.set(chunk, offset);
-		offset += chunk.byteLength;
-	}
-	return merged;
 }
 
 /**
