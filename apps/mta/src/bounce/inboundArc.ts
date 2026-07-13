@@ -35,7 +35,8 @@
 import { dkimVerify } from 'mailauth/lib/dkim/verify.js';
 import { arc } from 'mailauth/lib/arc/index.js';
 import { logger } from '../monitoring/logger.js';
-import type { ArcChainResult } from '@owlat/shared/arcTrust';
+import { normalizeDomain, type ArcChainResult } from '@owlat/shared/arcTrust';
+import type { DkimDnsResolver } from './inboundDkim.js';
 
 export {
 	DEFAULT_TRUSTED_ARC_FORWARDERS,
@@ -64,14 +65,21 @@ export interface ArcVerdict {
 }
 
 /**
- * Injection seam mirroring `mailauth`'s DNS resolver shape (also used by
- * `inboundDkim`). Tests supply a hermetic resolver returning the fixture's
- * public keys so CI never touches real DNS.
+ * Injection seam for the hermetic DNS resolver tests supply so CI never touches
+ * real DNS. Structurally identical to (and reusing) `inboundDkim`'s
+ * `DkimDnsResolver` — there is exactly one resolver shape across inbound auth.
  */
-export type ArcDnsResolver = (name: string, rrtype: string) => Promise<string[][] | string[]>;
+export type ArcDnsResolver = DkimDnsResolver;
 
 export interface VerifyArcOptions {
 	readonly resolver?: ArcDnsResolver;
+	/**
+	 * A pre-parsed ARC seed from a prior `dkimVerify` pass over the SAME bytes
+	 * (mailauth threads the parsed chain onto `dkimResult.arc`). Threading it in
+	 * lets the hot ingest path verify DKIM once instead of parsing + verifying
+	 * the raw message a second time here. Absent => we parse it ourselves.
+	 */
+	readonly arcSeed?: unknown;
 }
 
 /** The thin local interface a future `packages/mail-auth` can implement. */
@@ -82,9 +90,12 @@ interface MailauthArcResult {
 	readonly status?: { readonly result?: string };
 	readonly signature?: { readonly signingDomain?: string } | false;
 	readonly authenticationResults?: {
-		readonly spf?: { readonly result?: string };
-		readonly dkim?: ReadonlyArray<{ readonly result?: string }>;
-		readonly dmarc?: { readonly result?: string };
+		readonly spf?: { readonly result?: string; readonly smtp?: { readonly mailfrom?: string } };
+		readonly dkim?: ReadonlyArray<{
+			readonly result?: string;
+			readonly header?: { readonly d?: string };
+		}>;
+		readonly dmarc?: { readonly result?: string; readonly header?: { readonly from?: string } };
 	};
 }
 
@@ -102,16 +113,56 @@ function normalizeCv(raw: string | undefined): ArcChainResult {
 }
 
 /**
- * Did the sealer's sealed Authentication-Results attest the original passed?
- * True when the AAR records a passing DMARC, OR any passing DKIM signature, OR a
- * passing SPF — i.e. the forwarder saw the message authenticate before relaying.
+ * Relaxed DMARC alignment (RFC 7489 §3.1.1, relaxed mode): an authenticated
+ * domain aligns with the visible From domain when they share a registered
+ * organizational domain — approximated here as equality or a sub-/super-domain
+ * relationship. Both inputs are already normalized.
+ */
+function domainsAlign(authDomain: string, fromDomain: string): boolean {
+	if (!authDomain || !fromDomain) return false;
+	return (
+		authDomain === fromDomain ||
+		authDomain.endsWith('.' + fromDomain) ||
+		fromDomain.endsWith('.' + authDomain)
+	);
+}
+
+/**
+ * Did the sealer's sealed Authentication-Results honestly attest that the
+ * ORIGINAL message passed for its visible From domain?
+ *
+ * Fail-CLOSED, because this predicate is what lets a trusted forwarder suppress
+ * DMARC-fail → Spam routing (a spammer posting a spoofed From through a trusted
+ * list must NOT be rescued):
+ *   - An explicit `dmarc=fail` in the AAR is authoritative → never attest, even
+ *     if an unaligned SPF/DKIM passed (a spammer's own envelope SPF passes at
+ *     the list while the spoofed From fails DMARC).
+ *   - `dmarc=pass` proves From-alignment per RFC 8617 override practice → attest.
+ *   - With no DMARC verdict recorded, fall back ONLY to a passing SPF or DKIM
+ *     whose authenticated domain ALIGNS with the recorded From domain — an
+ *     unaligned pass proves nothing about the visible sender.
  */
 function attestsPass(ar: MailauthArcResult['authenticationResults']): boolean {
 	if (!ar) return false;
-	if ((ar.dmarc?.result ?? '').toLowerCase() === 'pass') return true;
-	if ((ar.spf?.result ?? '').toLowerCase() === 'pass') return true;
+	const dmarc = (ar.dmarc?.result ?? '').toLowerCase();
+	if (dmarc === 'fail') return false;
+	if (dmarc === 'pass') return true;
+
+	const fromDomain = normalizeDomain(ar.dmarc?.header?.from);
+	if (!fromDomain) return false;
+	if (
+		(ar.spf?.result ?? '').toLowerCase() === 'pass' &&
+		domainsAlign(normalizeDomain(ar.spf?.smtp?.mailfrom), fromDomain)
+	) {
+		return true;
+	}
 	for (const entry of ar.dkim ?? []) {
-		if ((entry.result ?? '').toLowerCase() === 'pass') return true;
+		if (
+			(entry.result ?? '').toLowerCase() === 'pass' &&
+			domainsAlign(normalizeDomain(entry.header?.d), fromDomain)
+		) {
+			return true;
+		}
 	}
 	return false;
 }
@@ -122,25 +173,35 @@ function attestsPass(ar: MailauthArcResult['authenticationResults']): boolean {
  */
 export const verifyArcChain: ArcVerifier = async (rawBuffer, options = {}) => {
 	try {
-		// Parse + verify DKIM first (mailauth threads the parsed ARC chain onto
-		// `dkimResult.arc`), then validate the ARC seal chain. This lower-level
-		// path skips SPF/DMARC so verification stays hermetic — only ARC seal
-		// public keys are looked up, via the injected resolver in tests.
-		const resolverOpt = options.resolver ? { resolver: options.resolver } : undefined;
-		const dkimResult = (await dkimVerify(rawBuffer, resolverOpt)) as { arc?: unknown };
-		if (!dkimResult?.arc) {
+		// One resolver seam for both mailauth calls (structurally identical to the
+		// DKIM path): pass `{ resolver }` when injected, else `undefined` so
+		// mailauth uses its default DNS. `arc()`'s second parameter is optional
+		// upstream but loosely typed, so narrow it once here.
+		const resolverOpt: { resolver: ArcDnsResolver } | undefined = options.resolver
+			? { resolver: options.resolver }
+			: undefined;
+
+		// Reuse the ARC seed the hot ingest path already parsed via `verifyDkim`
+		// (mailauth threads the parsed chain onto `dkimResult.arc`) instead of
+		// parsing + verifying the raw bytes a second time. Only when it wasn't
+		// supplied do we run our own DKIM pass to obtain it. This lower-level path
+		// skips SPF/DMARC so verification stays hermetic — only ARC seal public
+		// keys are looked up, via the injected resolver in tests.
+		let arcSeed = options.arcSeed;
+		if (arcSeed === undefined) {
+			const dkimResult = (await dkimVerify(rawBuffer, resolverOpt)) as { arc?: unknown };
+			arcSeed = dkimResult?.arc;
+		}
+		if (!arcSeed) {
 			return { cv: 'none', attestsOriginalPass: false };
 		}
 		const arcResult = (await arc(
-			dkimResult.arc as Parameters<typeof arc>[0],
-			{ resolver: options.resolver } as unknown as Parameters<typeof arc>[1]
+			arcSeed as Parameters<typeof arc>[0],
+			resolverOpt as Parameters<typeof arc>[1]
 		)) as unknown as MailauthArcResult;
 
 		const cv = normalizeCv(arcResult.status?.result);
-		const sealerDomain =
-			arcResult.signature && arcResult.signature !== false
-				? arcResult.signature.signingDomain
-				: undefined;
+		const sealerDomain = arcResult.signature ? arcResult.signature.signingDomain : undefined;
 		return {
 			cv,
 			sealerDomain: sealerDomain || undefined,

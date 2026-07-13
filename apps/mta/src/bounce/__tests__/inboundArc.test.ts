@@ -15,6 +15,10 @@
  *   - untrusted-sealer: a valid chain, but the sealer is NOT on the trusted list
  *                       -> cv=pass yet NO rescue (trust gate).
  *   - cv-fail         : the ARC-Seal signature is corrupt -> cv=fail, no rescue.
+ *   - dmarc-fail-spf-pass : spam relayed THROUGH a trusted list — a valid chain
+ *                       from a trusted sealer, but its sealed AAR records
+ *                       dmarc=fail (spoofed From) with only the spammer's own
+ *                       envelope spf=pass -> cv=pass yet attests=false, NO rescue.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -77,6 +81,16 @@ describe('verifyArcChain — RFC 8617 chain verdict (Sealed Mail A5)', () => {
 	it('a corrupt ARC-Seal signature => cv=fail', async () => {
 		const verdict = await verifyArcChain(fixture('cv-fail'), { resolver });
 		expect(verdict.cv).toBe('fail');
+	});
+
+	it('spam through a trusted list (AAR dmarc=fail, unaligned spf=pass) => cv=pass but attests=false', async () => {
+		// The sealer is a TRUSTED forwarder and the chain validates, so both the
+		// trust gate and the chain gate pass — the ONLY thing standing between the
+		// spoof and the inbox is the honest attestation. It must be false.
+		const verdict = await verifyArcChain(fixture('dmarc-fail-spf-pass'), { resolver });
+		expect(verdict.cv).toBe('pass');
+		expect(verdict.sealerDomain).toBe('lists.sourceforge.net');
+		expect(verdict.attestsOriginalPass).toBe(false);
 	});
 
 	it('a message with no ARC headers => cv=none, no rescue', async () => {
@@ -147,10 +161,37 @@ describe('shouldArcOverrideDmarc — the DMARC-rescue gate', () => {
 		).toBe(false);
 	});
 
+	it('does NOT rescue spam relayed through a trusted list (dmarc=fail attestation)', async () => {
+		const verdict = await verifyArcChain(fixture('dmarc-fail-spf-pass'), { resolver });
+		// Trust gate passes (sealer is on the default list) — the attestation is
+		// what blocks the rescue, proving fail-closed on a false attestation.
+		expect(isTrustedForwarder(verdict.sealerDomain, DEFAULT_TRUSTED_ARC_FORWARDERS)).toBe(true);
+		expect(
+			shouldArcOverrideDmarc(
+				{
+					arcCv: verdict.cv,
+					arcSealerDomain: verdict.sealerDomain,
+					arcAttestsOriginalPass: verdict.attestsOriginalPass,
+				},
+				DEFAULT_TRUSTED_ARC_FORWARDERS
+			)
+		).toBe(false);
+	});
+
 	it('matches a trusted forwarder on a subdomain of a listed entry', () => {
 		expect(isTrustedForwarder('mail-a.google.com', DEFAULT_TRUSTED_ARC_FORWARDERS)).toBe(true);
 		expect(isTrustedForwarder('google.com.evil.example', DEFAULT_TRUSTED_ARC_FORWARDERS)).toBe(
 			false
 		);
+	});
+
+	it('NEVER treats a single-label allow-list entry as a TLD wildcard', () => {
+		// A typo'd or malicious bare `com` must not trust every `.com` sealer.
+		expect(isTrustedForwarder('spammer.com', ['com'])).toBe(false);
+		expect(isTrustedForwarder('mail.spammer.com', ['com'])).toBe(false);
+		// An exact single-label match is harmless (no real sealer is a bare TLD).
+		expect(isTrustedForwarder('com', ['com'])).toBe(true);
+		// A dot-bearing entry still matches its own subdomains.
+		expect(isTrustedForwarder('mail.acme.com', ['acme.com'])).toBe(true);
 	});
 });

@@ -1,19 +1,19 @@
-ARC-Seal: i=1; a=rsa-sha256; t=1783900793; cv=none;
+ARC-Seal: i=1; a=rsa-sha256; t=1783902765; cv=none;
  d=lists.sourceforge.net; s=arc1;
- b=DdO+9hgI0/fkT25NE1FTXSNOM2Z9mgzVwL/+VC0OuLLlDm+xVToieG07901zOqTUf3ESwbv4o
- TmN0W4kEGbSJ+kIMurGgPAKonea4rsjikblCjtxHgi+mKBOMeKEpHlphzeTZBY6EapxAYovMH5A
- 60bdZgy4m+i1aIpvwp5vmH1NzITsRKMg1ACu2QZbNlDGtQt7toX7cvmBLDrmw06UCzKWt8QJFgv
- hwOQtoILw3m+z7R+8hquI04dVFD4xChR3DADe7vavWmWAGrTOOheZ7Qh1jn9mlpU49yZtH3dF9z
- xFU4Yg9FTy5pg0DZEYH7phLFFeJ1yw4ad8qsEnXs+DKw==
+ b=LZqO4PjlexN17AdB//KmP0PEFpRWxtRWq5wiRHbUmGKTlFLfeRX+RTG08p7yNMH8Nnm1I3Js6
+ Snig4a247DMR7wQK+YcFUXnL4u9bsYJR3TMZWD7/9XUggc1YBvUrRWYCm6wpa/fKgA5p+VijDHN
+ AatYx61QDusJCgOQuuiRPvxgQ+Zys/4ohSYACju2JJm9/HMF7Fod2IN9y+T7oW7exiPYp78wL2l
+ d9Rw+MZaD+8TPIvPAs50fAPECDIegk/7sjzXYUwvnDFsjPAMLpUNHXqk9ynfETEQhk2TgBezV8t
+ vMgQqPFGra308D/L0Aotooe+NyNlASs/yTqFNinW7zcw==
 ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed;
  d=lists.sourceforge.net; h=Content-Type: MIME-Version: Message-ID: Date:
- Subject: To: From; q=dns/txt; s=arc1; t=1783900793;
+ Subject: To: From; q=dns/txt; s=arc1; t=1783902765;
  bh=nmWyQJhggJOsbfBYMzimPC9tNUc/l94o++2tHoqk0Cw=;
- b=HS5uAe88LZ0mJ7ScRYF7DMOQ59Xh51LxMmoutp4CQUQpbasnw3smiYJ8K1kHe1KA/SlrtasWv
- YANBNOpp9/43kM1lfgBmswKLmG4wl5zKvEuho4DFiCToXOB/OOqAsbFt7Ut22UHl5iD/pR7rwl5
- 6KqA8LUbwNEJl72QF8XAVXjq9yy3AUH7HS0/nLMlVC8VmjksPZ21lYiPPUTOdMhZM1ykBHOElGp
- Nh5dlTMqXneM/ko1muFqAFeTuaLiBS1ZQVAoog66QuxZDcQBGRGJGVROj4pM/Mi1BLyvgZTE5Wg
- zMaVw8otjYDuzewT050Cm/cD4MzkmtNTDouKlEUcASKQ==
+ b=Mhxgwnp56+W62f+hBNpd48lp4HlmR+1VunvW/42l/b2Qz2xs3YZ/vnL4e+LoqL4+ncea+qS8k
+ DiZhDBgtT7Ge0/XNGhxG4LCI5fC6tjOJRQFqrYhCAKM9ASbLJtE6e3Ap+Cz0HDHOhXG/JNIhLZc
+ NJODLOZx0u4h8A9Z3LSXaKVS9NI3KpP8njIqSIOiZg13Z16uz4Jm56euVa1FJZqq4q0PL24zfT5
+ yE2Ia/m7MV54Ymb6oODv73EOZJvP2mrsVjJwSGrFQJjtxaTk0OT7sCGM5bgZ1Kn0fdfvZCvHNAy
+ 8A003ogu25W9eG3+qYznZsP/5OKxj7v1ph72CrZXIB8A==
 ARC-Authentication-Results: i=1; lists.sourceforge.net; dmarc=pass header.from=author.example; spf=pass smtp.mailfrom=lists.example; dkim=pass header.d=author.example
 From: Alice Author <alice@author.example>
 To: list@lists.example

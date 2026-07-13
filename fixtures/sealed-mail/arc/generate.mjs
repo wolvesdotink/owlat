@@ -54,12 +54,16 @@ function baseMessage() {
 			'',
 			'This is a mailing-list message whose author DKIM was broken by the list.',
 			'',
-		].join('\r\n'),
+		].join('\r\n')
 	);
 }
 
-/** Seal `base` as `sealerDomain`, attesting the original passed DMARC. */
-async function seal(sealerDomain, key) {
+/**
+ * Seal `base` as `sealerDomain`. By default the sealed ARC-Authentication-Results
+ * attest the original PASSED DMARC; pass `authResults` to seal a different
+ * attestation (e.g. the spam-through-a-trusted-list `dmarc=fail` shape).
+ */
+async function seal(sealerDomain, key, authResults) {
 	const base = baseMessage();
 	const arcHeaders = await sealMessage(base, {
 		signingDomain: sealerDomain,
@@ -69,8 +73,9 @@ async function seal(sealerDomain, key) {
 		cv: 'none', // i=1: no prior chain
 		i: 1,
 		authResults:
+			authResults ??
 			`${sealerDomain}; dmarc=pass header.from=author.example; ` +
-			`spf=pass smtp.mailfrom=lists.example; dkim=pass header.d=author.example`,
+				`spf=pass smtp.mailfrom=lists.example; dkim=pass header.d=author.example`,
 	});
 	return Buffer.concat([arcHeaders, base]);
 }
@@ -107,6 +112,20 @@ cvFail = cvFail.replace(/(ARC-Seal:[\s\S]*?b=)([A-Za-z0-9+/=]{10})/, (_m, p1, p2
 	return p1 + rotated;
 });
 writeFileSync(join(outDir, 'cv-fail.eml'), Buffer.from(cvFail, 'binary'));
+
+// e. Spam through a TRUSTED forwarder — the sealer is trusted and the chain is
+//    valid (cv=pass), so the trust + chain gates BOTH pass. But its sealed AAR
+//    records dmarc=fail for the spoofed From, with only the spammer's own
+//    envelope spf=pass. This is the attack the honesty audit must block: the
+//    attestation is false, so verifyArcChain must report attestsOriginalPass=false
+//    and NO rescue can fire. Sealed by the same trusted key as case (a).
+const spamThroughTrusted = await seal(
+	'lists.sourceforge.net',
+	trustedKey,
+	'lists.sourceforge.net; dmarc=fail header.from=author.example; ' +
+		'spf=pass smtp.mailfrom=spammer.example; dkim=fail header.d=author.example'
+);
+writeFileSync(join(outDir, 'dmarc-fail-spf-pass.eml'), spamThroughTrusted);
 
 writeFileSync(join(outDir, 'keys.json'), JSON.stringify(keys, null, 2) + '\n');
 
