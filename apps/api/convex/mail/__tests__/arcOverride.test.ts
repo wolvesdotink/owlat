@@ -242,6 +242,32 @@ describe('mail.delivery.deliverToMailbox — ARC override (Sealed Mail A5)', () 
 		expect(land.role).toBe('spam');
 	});
 
+	it('does NOT let a single-label allow-list entry act as a TLD wildcard', async () => {
+		const t = convexTest(schema, modules);
+		const rawStorageId = await setupMailbox(t);
+		// A malicious/typo'd bare `com` entry must not trust every `.com` sealer,
+		// even though a real settings.update sanitizes it away — this pins the
+		// delivery-path predicate itself as fail-closed.
+		await t.run(async (ctx) => {
+			await ctx.db.insert('instanceSettings', {
+				trustedArcForwarders: ['com'],
+				createdAt: Date.now(),
+			});
+		});
+
+		const result = await deliver(t, rawStorageId, '<arc-9@author.example>', {
+			arcCv: 'pass',
+			arcSealerDomain: 'evil.com',
+			arcAttestsOriginalPass: true,
+		});
+		expect('messageId' in result).toBe(true);
+		if (!('messageId' in result)) return;
+
+		const land = await landing(t, result.messageId);
+		expect(land.role).toBe('spam');
+		expect(land.dmarcOverride).toBeUndefined();
+	});
+
 	it('leaves an ordinary DMARC quarantine-fail (no ARC) routed to Spam', async () => {
 		const t = convexTest(schema, modules);
 		const rawStorageId = await setupMailbox(t);
