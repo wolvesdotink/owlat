@@ -19,7 +19,7 @@ import { internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
 import { unifiedMessageChannelValidator, outboundChannelValidator } from './lib/convexValidators';
 import { applyOpenThreadDelta } from './lib/inboxStats';
-import { openUnifiedMessageContent, sealBodyAtWrite } from './lib/messageBody';
+import { openUnifiedMessageContent, sealUnifiedMessageContentAtWrite } from './lib/messageBody';
 
 // ============================================================
 // Queries
@@ -178,7 +178,7 @@ export const recordOutbound = internalMutation({
 			direction: 'outbound',
 			contactId: args.contactId,
 			memberId: args.memberId,
-			content: await sealBodyAtWrite(args.content),
+			...(await sealUnifiedMessageContentAtWrite(args.content)),
 			externalMessageId: args.externalMessageId,
 			status: args.status ?? 'queued',
 			metadata: args.metadata,
@@ -294,7 +294,7 @@ export const sendChatMessage = authedMutation({
 			channel: 'chat',
 			direction: 'outbound',
 			contactId: args.contactId,
-			content: await sealBodyAtWrite(content),
+			...(await sealUnifiedMessageContentAtWrite(content)),
 			externalMessageId: `chat_${now}_${Math.random().toString(36).slice(2, 9)}`,
 			status: 'delivered',
 			createdAt: now,
@@ -741,7 +741,7 @@ export async function recordInboundMirror(
 		channel: args.channel,
 		direction: 'inbound',
 		contactId: args.contactId,
-		content: await sealBodyAtWrite(args.content),
+		...(await sealUnifiedMessageContentAtWrite(args.content)),
 		externalMessageId: args.externalMessageId,
 		status: 'received',
 		metadata: args.metadata,
@@ -788,7 +788,7 @@ export async function mirrorEmailSendWrite(
 		channel: 'email',
 		direction: 'outbound',
 		contactId: args.contactId,
-		content: await sealBodyAtWrite(content),
+		...(await sealUnifiedMessageContentAtWrite(content)),
 		externalMessageId: args.externalMessageId,
 		status,
 		createdAt: now,

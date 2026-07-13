@@ -28,6 +28,7 @@ import { adminMutation, adminQuery, publicQuery } from '../lib/authedFunctions';
 import { assertFeatureEnabled, isFeatureEnabled } from '../lib/featureFlags';
 import { normalizeEmail } from '@owlat/shared';
 
+const SIGNED_MANIFEST_VERSION = 1;
 const MAX_KEY_ROWS_PER_ADDRESS = 128;
 const MAX_VAULT_ROWS = 10_000;
 const MAX_MAILBOXES = 5_000;
@@ -300,6 +301,7 @@ export const cacheInstanceManifest = internalMutation({
 		if (!row) return;
 		await ctx.db.patch(row._id, {
 			cachedManifest: {
+				signedManifestVersion: SIGNED_MANIFEST_VERSION,
 				keyDirectoryDigest: args.keyDirectoryDigest,
 				instanceFingerprint: args.instanceFingerprint,
 				rotationFeedUrl: args.rotationFeedUrl,

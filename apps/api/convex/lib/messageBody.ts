@@ -26,6 +26,10 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { getOptional, getRequired } from './env';
 import { openAtRest, sealAtRest, isSealedAtRest } from './atRestBodies';
 import { readSealedBlobText } from './sealedBlob';
+import { CURRENT_UNIFIED_MESSAGE_CONTENT_VERSION } from './constants';
+
+export const UNIFIED_MESSAGE_STORAGE_VERSION_PLAINTEXT = 1;
+export const UNIFIED_MESSAGE_STORAGE_VERSION_SEALED = 2;
 
 // ── Sealed-at-rest shim (E8b) ────────────────────────────────────────────────
 //
@@ -66,6 +70,22 @@ export async function sealBodyAtWrite(plaintext: string): Promise<string> {
 	const secret = getOptional('INSTANCE_SECRET');
 	if (secret === undefined) return plaintext;
 	return sealAtRest(secret, plaintext);
+}
+
+/** Version both the JSON schema and its independent at-rest storage encoding. */
+export async function sealUnifiedMessageContentAtWrite(content: string): Promise<{
+	content: string;
+	contentVersion: number;
+	contentStorageVersion: number;
+}> {
+	const stored = await sealBodyAtWrite(content);
+	return {
+		content: stored,
+		contentVersion: CURRENT_UNIFIED_MESSAGE_CONTENT_VERSION,
+		contentStorageVersion: isSealedAtRest(stored)
+			? UNIFIED_MESSAGE_STORAGE_VERSION_SEALED
+			: UNIFIED_MESSAGE_STORAGE_VERSION_PLAINTEXT,
+	};
 }
 
 /** Optional-body sibling of {@link sealBodyAtWrite} for write sites whose column
@@ -183,14 +203,24 @@ export async function sealMailInlineBodyPatch(
 /** The `content` JSON blob of a `unifiedMessages` row (sealed as one string). */
 export interface UnifiedMessageContentField {
 	content: string;
+	contentVersion?: number;
+	contentStorageVersion?: number;
 }
 
 /** Build the sealing patch for a `unifiedMessages` row (only changed fields). */
 export async function sealUnifiedContentPatch(
 	row: UnifiedMessageContentField
-): Promise<{ content?: string }> {
+): Promise<{ content?: string; contentVersion?: number; contentStorageVersion?: number }> {
 	const next = await sealMessageBody(row.content);
-	return next !== row.content ? { content: next } : {};
+	return {
+		...(next !== row.content ? { content: next } : {}),
+		...(row.contentVersion === undefined
+			? { contentVersion: CURRENT_UNIFIED_MESSAGE_CONTENT_VERSION }
+			: {}),
+		...(row.contentStorageVersion !== UNIFIED_MESSAGE_STORAGE_VERSION_SEALED
+			? { contentStorageVersion: UNIFIED_MESSAGE_STORAGE_VERSION_SEALED }
+			: {}),
+	};
 }
 
 /** Build the migration patch for `conversationThreads.lastPreview`. */

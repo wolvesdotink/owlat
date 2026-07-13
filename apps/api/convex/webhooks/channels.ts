@@ -61,7 +61,7 @@ import { internal } from '../_generated/api';
 import { createContact } from '../contacts/creation';
 import { findOrCreateForChannel } from '../inbox/threads/module';
 import { buildMessagePreview } from '../lib/textPreview';
-import { sealBodyAtWrite } from '../lib/messageBody';
+import { sealBodyAtWrite, sealUnifiedMessageContentAtWrite } from '../lib/messageBody';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { logError } from '../lib/runtimeLog';
 
@@ -121,7 +121,7 @@ export const processInboundChannel = internalMutation({
 			channel: args.channel,
 			direction: 'inbound',
 			contactId,
-			content: await sealBodyAtWrite(args.content),
+			...(await sealUnifiedMessageContentAtWrite(args.content)),
 			externalMessageId: args.externalMessageId,
 			status: 'received',
 			metadata: args.metadata,
