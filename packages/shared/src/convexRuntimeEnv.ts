@@ -45,6 +45,13 @@ export const CONVEX_RUNTIME_ENV_KEYS = [
 	// Auth & instance
 	'BETTER_AUTH_SECRET',
 	'INSTANCE_SECRET',
+	// The PREVIOUS INSTANCE_SECRET — set ONLY during a secret-rotation window
+	// (Sealed Mail key lifecycle, E6). Pushed into the deployment so the E2EE key
+	// box's mixed-vault fallback (open under current, else previous) actually
+	// reaches the Convex function runtime while the re-seal migration runs; a
+	// self-hoster who set it only in the compose .env would otherwise find the
+	// fallback silently dead and old-secret rows unopenable mid-migration.
+	'INSTANCE_SECRET_PREVIOUS',
 	'OWLAT_VERSION',
 	'OWLAT_DEV_MODE',
 	// Site URLs
