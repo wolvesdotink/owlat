@@ -125,6 +125,41 @@ describe('e2ee/keys', () => {
 		expect(row?.sealedPrivateKey.ciphertext).toBeTruthy();
 	});
 
+	it('never exposes private material through the instance-key or manifest surfaces', async () => {
+		const t = convexTest(schema, modules);
+		// Publication follows the flag, so enable Sealed Mail for the manifest path.
+		await t.run(async (ctx) => {
+			await ctx.db.insert('instanceSettings', {
+				featureFlags: { sealedMail: true },
+				createdAt: Date.now(),
+			});
+		});
+		await insertMailbox(t, 'primary@sealed.example.com');
+		await t.action(internal.e2ee.keysNode.runBackfill, {});
+
+		// getInstancePublicKey — PUBLIC signing-key discovery, public material only.
+		const instance = await t.query(api.e2ee.keys.getInstancePublicKey, {});
+		expect(instance).not.toBeNull();
+		expect(Object.keys(instance!).sort()).toEqual(['fingerprint', 'publicKeyArmored']);
+		expect(JSON.stringify(instance)).not.toContain('PRIVATE');
+
+		// getSignedManifest — PUBLIC action; carries the PUBLIC instance key + a
+		// detached signature, never the private half.
+		const manifest = await t.action(api.e2ee.manifest.getSignedManifest, {});
+		expect(manifest).not.toBeNull();
+		expect(JSON.stringify(manifest)).not.toContain('PRIVATE');
+		expect(manifest!.instance.publicKeyArmored).toContain('PUBLIC KEY');
+		expect(manifest!.signature).toContain('PGP SIGNATURE');
+	});
+
+	it('stops publishing the manifest when Sealed Mail is turned OFF', async () => {
+		const t = convexTest(schema, modules);
+		await insertMailbox(t, 'primary@sealed.example.com');
+		await t.action(internal.e2ee.keysNode.runBackfill, {});
+		// Flag defaults OFF (no instanceSettings row) — publication must 404.
+		expect(await t.action(api.e2ee.manifest.getSignedManifest, {})).toBeNull();
+	});
+
 	it('backfills a key for every mailbox address AND alias, plus the instance identity', async () => {
 		const t = convexTest(schema, modules);
 		await insertMailbox(t, 'primary@sealed.example.com');
