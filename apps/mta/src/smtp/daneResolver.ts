@@ -18,38 +18,19 @@
  */
 
 import type Redis from 'ioredis';
-import { readStreamBytes, StreamByteLimitExceeded } from '@owlat/shared';
 import { parseTlsaRecord, type TlsaRecord } from '@owlat/shared/dane';
 import { logger } from '../monitoring/logger.js';
+import { queryDohJson } from './dohResolver.js';
 
 const DANE_CACHE_PREFIX = 'mta:dane:';
 const DANE_NEGATIVE_TTL = 300; // 5 min cache for "no usable TLSA"
 const DANE_MIN_TTL = 60; // never cache a positive result for less than 1 min
 const DANE_MAX_TTL = 86_400; // …nor more than 1 day
-const DANE_FETCH_TIMEOUT = 10_000;
-/** Reject DoH bodies larger than this before parsing (a TLSA RRset is tiny). */
-const DANE_MAX_RESPONSE_BYTES = 65_536;
 /** TLSA resource-record type (RFC 6698 §7.1). */
 const TLSA_RRTYPE = 52;
 /** DNS RCODEs we branch on (RFC 1035 §4.1.1, RFC 2136). */
 const DNS_RCODE_NOERROR = 0;
 const DNS_RCODE_NXDOMAIN = 3;
-
-/** One answer entry in an RFC 8484 JSON (`application/dns-json`) response. */
-interface DohAnswer {
-	name?: string;
-	type?: number;
-	TTL?: number;
-	data?: string;
-}
-
-/** The RFC 8484 JSON response shape we consume. */
-interface DohResponse {
-	Status?: number;
-	/** DNSSEC Authenticated Data bit — true only when the resolver validated. */
-	AD?: boolean;
-	Answer?: DohAnswer[];
-}
 
 /**
  * The outcome of a TLSA lookup for one MX host.
@@ -98,30 +79,6 @@ function clampTtl(ttl: number | undefined): number {
 }
 
 /**
- * Read a DoH response body as JSON with a hard size cap (a TLSA RRset is a few
- * hundred bytes; anything large is garbage or hostile). Rejects on an oversize
- * `content-length` header before buffering, and again on the actual byte length,
- * so a lying/absent header cannot bypass the cap.
- */
-async function readCappedDohJson(response: Response): Promise<DohResponse> {
-	const declared = Number(response.headers.get('content-length'));
-	if (Number.isFinite(declared) && declared > DANE_MAX_RESPONSE_BYTES) {
-		throw new Error(`DoH response too large (${declared} bytes)`);
-	}
-	let bytes: Uint8Array | null;
-	try {
-		bytes = await readStreamBytes(response.body, DANE_MAX_RESPONSE_BYTES);
-	} catch (error) {
-		if (error instanceof StreamByteLimitExceeded) {
-			throw new Error(`DoH response exceeds ${DANE_MAX_RESPONSE_BYTES} bytes`);
-		}
-		throw error;
-	}
-	if (!bytes) throw new Error('DoH response has no body');
-	return JSON.parse(new TextDecoder().decode(bytes)) as DohResponse;
-}
-
-/**
  * Query the DoH resolver for the `_25._tcp.<host>` TLSA RRset and classify the
  * outcome into the three RFC 7672 §2.1 states (see {@link TlsaLookupResult}).
  *
@@ -133,27 +90,12 @@ async function readCappedDohJson(response: Response): Promise<DohResponse> {
  */
 async function queryTlsa(resolverUrl: string, host: string): Promise<QueryOutcome> {
 	const name = `_25._tcp.${host}`;
-	const url = new URL(resolverUrl);
-	url.searchParams.set('name', name);
-	url.searchParams.set('type', String(TLSA_RRTYPE));
-	// RFC 8484 §4.2.1: ask the resolver to perform DNSSEC validation.
-	url.searchParams.set('do', '1');
-
-	let body: DohResponse;
-	try {
-		const response = await fetch(url, {
-			headers: { Accept: 'application/dns-json' },
-			signal: AbortSignal.timeout(DANE_FETCH_TIMEOUT),
-		});
-		if (!response.ok) {
-			logger.debug({ host, status: response.status }, 'DANE TLSA DoH query non-2xx');
-			return { status: 'lookup-failed', reason: `DoH HTTP ${response.status}` };
-		}
-		body = await readCappedDohJson(response);
-	} catch (err) {
-		logger.debug({ host, err }, 'DANE TLSA DoH query failed');
-		return { status: 'lookup-failed', reason: 'DoH request failed' };
+	const query = await queryDohJson(resolverUrl, name, TLSA_RRTYPE);
+	if (!query.ok) {
+		logger.debug({ host, reason: query.reason }, 'DANE TLSA DoH query failed');
+		return { status: 'lookup-failed', reason: query.reason };
 	}
+	const body = query.response;
 
 	const rcode = body.Status ?? DNS_RCODE_NOERROR;
 
