@@ -109,28 +109,36 @@ function instanceIdentityEmail(): string {
  * Mint a fresh instance-identity keypair and upsert it (unconditionally — the
  * caller decides whether a key is missing or stale). Returns the fingerprint.
  */
-async function mintAndStoreInstance(ctx: ActionCtx): Promise<string> {
+async function mintAndStoreInstance(
+	ctx: ActionCtx,
+	expectedFingerprint?: string
+): Promise<{ created: boolean; fingerprint: string }> {
 	const kp = await generateKeypair(instanceIdentityEmail(), 'Owlat instance');
-	await ctx.runMutation(internal.e2ee.keys.storeKeypair, {
+	const stored = await ctx.runMutation(internal.e2ee.keys.storeKeypair, {
 		kind: 'instance',
 		fingerprint: kp.fingerprint,
 		algorithm: KEY_ALGORITHM,
 		publicKeyArmored: kp.publicKeyArmored,
 		publicKeyBinaryBase64: kp.publicKeyBinaryBase64,
 		sealedPrivateKey: sealPrivateKey(kp.privateKeyArmored),
+		expectedFingerprint,
 	});
-	return kp.fingerprint;
+	return { created: stored.created, fingerprint: stored.fingerprint };
 }
 
 /**
  * Mint a fresh address keypair for `address` and upsert it (unconditionally).
  * Refreshes the published WKD binary. Returns the fingerprint.
  */
-async function mintAndStoreAddress(ctx: ActionCtx, address: string): Promise<string> {
+async function mintAndStoreAddress(
+	ctx: ActionCtx,
+	address: string,
+	expectedFingerprint?: string
+): Promise<{ created: boolean; fingerprint: string }> {
 	const { localPart, domain } = splitAddress(address);
 	const normalized = `${localPart}@${domain}`;
 	const kp = await generateKeypair(normalized, normalized);
-	await ctx.runMutation(internal.e2ee.keys.storeKeypair, {
+	const stored = await ctx.runMutation(internal.e2ee.keys.storeKeypair, {
 		kind: 'address',
 		address: normalized,
 		domain,
@@ -140,8 +148,9 @@ async function mintAndStoreAddress(ctx: ActionCtx, address: string): Promise<str
 		publicKeyArmored: kp.publicKeyArmored,
 		publicKeyBinaryBase64: kp.publicKeyBinaryBase64,
 		sealedPrivateKey: sealPrivateKey(kp.privateKeyArmored),
+		expectedFingerprint,
 	});
-	return kp.fingerprint;
+	return { created: stored.created, fingerprint: stored.fingerprint };
 }
 
 /**
@@ -160,8 +169,7 @@ export const mintForAddress = internalAction({
 		});
 		if (existing) return { created: false, fingerprint: existing.fingerprint };
 
-		const fingerprint = await mintAndStoreAddress(ctx, normalized);
-		return { created: true, fingerprint };
+		return await mintAndStoreAddress(ctx, normalized);
 	},
 });
 
@@ -173,8 +181,7 @@ export const ensureInstanceIdentity = internalAction({
 		const existing = await ctx.runQuery(internal.e2ee.keys.getInstanceIdentityInternal, {});
 		if (existing) return { created: false, fingerprint: existing.fingerprint };
 
-		const fingerprint = await mintAndStoreInstance(ctx);
-		return { created: true, fingerprint };
+		return await mintAndStoreInstance(ctx);
 	},
 });
 
@@ -201,9 +208,9 @@ export const remintLegacyProfile = internalAction({
 			if (await isLegacyProfile(entry.publicKeyArmored)) continue; // already legacy — leave it
 
 			if (entry.kind === 'instance') {
-				await mintAndStoreInstance(ctx);
+				await mintAndStoreInstance(ctx, entry.fingerprint);
 			} else if (entry.address) {
-				await mintAndStoreAddress(ctx, entry.address);
+				await mintAndStoreAddress(ctx, entry.address, entry.fingerprint);
 			} else {
 				continue; // address row without an address is unreachable — nothing to re-mint
 			}

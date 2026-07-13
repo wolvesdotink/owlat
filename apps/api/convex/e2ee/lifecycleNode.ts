@@ -91,7 +91,7 @@ export const runRotateAddressKey = internalAction({
 		};
 		const rotationSignature = await signRotationStatement(oldPrivateKeyArmored, statement);
 
-		await ctx.runMutation(internal.e2ee.lifecycle.storeRotatedAddressKey, {
+		const stored = await ctx.runMutation(internal.e2ee.lifecycle.storeRotatedAddressKey, {
 			address,
 			domain,
 			wkdHash: wkdHashForAddress(address),
@@ -103,6 +103,7 @@ export const runRotateAddressKey = internalAction({
 			sealedPrivateKey: sealPrivateKey(fresh.privateKeyArmored),
 			rotationSignature,
 		});
+		if (!stored.rotated) return { rotated: false };
 		return {
 			rotated: true,
 			oldFingerprint: current.fingerprint,

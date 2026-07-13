@@ -130,6 +130,31 @@ describe('e2ee/keys', () => {
 		expect(rows[0]?.wkdHash).toBe('kei1q4tipxxu1yj79k9kfukdhfy631xe'); // WKD hash of "alice"
 	});
 
+	it('keeps the first concurrently-minted identity instead of overwriting it', async () => {
+		const t = convexTest(schema, modules);
+		const address = 'race@sealed.example.com';
+		const first = await t.action(internal.e2ee.keysNode.mintForAddress, { address });
+		const row = await t.query(internal.e2ee.keys.getAddressKeyInternal, { address });
+		if (!row) throw new Error('minted key missing');
+
+		const losingWriter = await t.mutation(internal.e2ee.keys.storeKeypair, {
+			kind: 'address',
+			address,
+			domain: 'sealed.example.com',
+			wkdHash: wkdHashForAddress(address),
+			fingerprint: 'B'.repeat(40),
+			algorithm: row.algorithm,
+			publicKeyArmored: 'FORGED CONCURRENT PUBLIC KEY',
+			publicKeyBinaryBase64: Buffer.from('forged').toString('base64'),
+			sealedPrivateKey: row.sealedPrivateKey,
+		});
+
+		expect(losingWriter).toMatchObject({ created: false, fingerprint: first.fingerprint });
+		const active = await t.query(internal.e2ee.keys.getAddressKeyInternal, { address });
+		expect(active?.fingerprint).toBe(first.fingerprint);
+		expect(active?.publicKeyArmored).not.toContain('FORGED');
+	});
+
 	it('seals the private key so it opens back to a matching OpenPGP key', async () => {
 		const t = convexTest(schema, modules);
 		const address = 'bob@sealed.example.org';
