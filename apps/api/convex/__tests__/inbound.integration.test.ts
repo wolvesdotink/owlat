@@ -4,7 +4,11 @@ import schema from '../schema';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import { createTestContact, createTestConversationThread, createTestInboundMessage } from './factories';
+import {
+	createTestContact,
+	createTestConversationThread,
+	createTestInboundMessage,
+} from './factories';
 import { openInboundMessageBody, openUnifiedMessageContent } from '../lib/messageBody';
 
 vi.mock('../lib/sessionOrganization', async () => {
@@ -21,22 +25,23 @@ vi.mock('../lib/sessionOrganization', async () => {
 const allModules = import.meta.glob('../**/*.*s');
 // Filter out modules that require external APIs (node runtime actions)
 const modules = Object.fromEntries(
-	Object.entries(allModules).filter(([path]) =>
-		!path.includes('sesActions') &&
-		!path.includes('agentSecurity') &&
-		!path.includes('agentContext') &&
-		!path.includes('agentClassifier') &&
-		!path.includes('agentDrafter') &&
-		!path.includes('agentRouter') &&
-		!path.includes('agent/walker') &&
-		!path.includes('agent/steps/index') &&
-		!path.includes('agent/steps/shared') &&
-		!path.includes('agent/steps/classify') &&
-		!path.includes('agent/steps/draft') &&
-		!path.includes('knowledgeExtraction') &&
-		!path.includes('semanticFileProcessing') &&
-		!path.includes('visualizationAgent') &&
-		!path.includes('llmProvider')
+	Object.entries(allModules).filter(
+		([path]) =>
+			!path.includes('sesActions') &&
+			!path.includes('agentSecurity') &&
+			!path.includes('agentContext') &&
+			!path.includes('agentClassifier') &&
+			!path.includes('agentDrafter') &&
+			!path.includes('agentRouter') &&
+			!path.includes('agent/walker') &&
+			!path.includes('agent/steps/index') &&
+			!path.includes('agent/steps/shared') &&
+			!path.includes('agent/steps/classify') &&
+			!path.includes('agent/steps/draft') &&
+			!path.includes('knowledgeExtraction') &&
+			!path.includes('semanticFileProcessing') &&
+			!path.includes('visualizationAgent') &&
+			!path.includes('llmProvider')
 	)
 );
 
@@ -76,9 +81,12 @@ describe('inbound.receiveMessage', () => {
 		// finds it via `contactIdentities.by_identifier`).
 		let existingContactId!: Id<'contacts'>;
 		await t.run(async (ctx) => {
-			existingContactId = await ctx.db.insert('contacts', createTestContact({
-				email: 'existing@example.com',
-			}));
+			existingContactId = await ctx.db.insert(
+				'contacts',
+				createTestContact({
+					email: 'existing@example.com',
+				})
+			);
 			await ctx.db.insert('contactIdentities', {
 				contactId: existingContactId,
 				channel: 'email',
@@ -347,12 +355,10 @@ describe('inbound.receiveMessage', () => {
 			const rows = await ctx.db
 				.query('unifiedMessages')
 				.withIndex('by_external_message_id', (q) =>
-					q.eq('externalMessageId', '<redeliver-001@example.com>'),
+					q.eq('externalMessageId', '<redeliver-001@example.com>')
 				)
 				.collect();
-			const emailInbound = rows.filter(
-				(r) => r.channel === 'email' && r.direction === 'inbound',
-			);
+			const emailInbound = rows.filter((r) => r.channel === 'email' && r.direction === 'inbound');
 			expect(emailInbound).toHaveLength(1);
 			expect(emailInbound[0]!.contactId).toBe(first.contactId);
 		});
@@ -529,7 +535,7 @@ describe('mail.deliveryHooks.runPostDelivery', () => {
 			vi.fn(async (_url: string, init?: { body?: string }) => {
 				if (init?.body) sends.push(JSON.parse(init.body) as SendPost);
 				return { ok: true, status: 200, json: async () => ({ success: true }) } as Response;
-			}),
+			})
 		);
 		return { sends };
 	}
@@ -542,7 +548,7 @@ describe('mail.deliveryHooks.runPostDelivery', () => {
 	/** A mailbox plus one inbox folder — enough to satisfy the action's args. */
 	async function seedMailbox(
 		t: ReturnType<typeof convexTest>,
-		address: string,
+		address: string
 	): Promise<{ mailboxId: Id<'mailboxes'>; folderId: Id<'mailFolders'> }> {
 		return t.run(async (ctx) => {
 			const now = Date.now();
@@ -578,7 +584,7 @@ describe('mail.deliveryHooks.runPostDelivery', () => {
 	async function seedMessage(
 		t: ReturnType<typeof convexTest>,
 		mailboxId: Id<'mailboxes'>,
-		folderId: Id<'mailFolders'>,
+		folderId: Id<'mailFolders'>
 	): Promise<Id<'mailMessages'>> {
 		return t.run(async (ctx) => {
 			const now = Date.now();
@@ -638,7 +644,7 @@ describe('mail.deliveryHooks.runPostDelivery', () => {
 		t: ReturnType<typeof convexTest>,
 		mailboxId: Id<'mailboxes'>,
 		forwardTo: string,
-		isEnabled = true,
+		isEnabled = true
 	): Promise<void> {
 		await t.run(async (ctx) => {
 			const now = Date.now();
@@ -656,7 +662,7 @@ describe('mail.deliveryHooks.runPostDelivery', () => {
 	async function enableVacation(
 		t: ReturnType<typeof convexTest>,
 		mailboxId: Id<'mailboxes'>,
-		overrides: Record<string, unknown> = {},
+		overrides: Record<string, unknown> = {}
 	): Promise<void> {
 		await t.run(async (ctx) => {
 			const now = Date.now();
@@ -767,9 +773,9 @@ describe('mail.deliveryHooks.runPostDelivery', () => {
 			ctx.db
 				.query('mailVacationLog')
 				.withIndex('by_mailbox_and_sender', (q) =>
-					q.eq('mailboxId', mailboxId).eq('senderEmail', 'persistent@example.com'),
+					q.eq('mailboxId', mailboxId).eq('senderEmail', 'persistent@example.com')
 				)
-				.first(),
+				.first()
 		);
 		expect(logged).not.toBeNull();
 	});
