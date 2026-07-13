@@ -28,7 +28,7 @@
 
 import { v } from 'convex/values';
 import * as openpgp from 'openpgp';
-import { internalAction } from '../_generated/server';
+import { internalAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { getOptional } from '../lib/env';
 import { armoredToBinaryBase64, wkdHashForAddress, splitAddress } from './wkd';
@@ -103,6 +103,45 @@ function instanceIdentityEmail(): string {
 }
 
 /**
+ * Mint a fresh instance-identity keypair and upsert it (unconditionally — the
+ * caller decides whether a key is missing or stale). Returns the fingerprint.
+ */
+async function mintAndStoreInstance(ctx: ActionCtx): Promise<string> {
+	const kp = await generateKeypair(instanceIdentityEmail(), 'Owlat instance');
+	await ctx.runMutation(internal.e2ee.keys.storeKeypair, {
+		kind: 'instance',
+		fingerprint: kp.fingerprint,
+		algorithm: KEY_ALGORITHM,
+		publicKeyArmored: kp.publicKeyArmored,
+		publicKeyBinaryBase64: kp.publicKeyBinaryBase64,
+		sealedPrivateKey: sealPrivateKey(kp.privateKeyArmored),
+	});
+	return kp.fingerprint;
+}
+
+/**
+ * Mint a fresh address keypair for `address` and upsert it (unconditionally).
+ * Refreshes the published WKD binary. Returns the fingerprint.
+ */
+async function mintAndStoreAddress(ctx: ActionCtx, address: string): Promise<string> {
+	const { localPart, domain } = splitAddress(address);
+	const normalized = `${localPart}@${domain}`;
+	const kp = await generateKeypair(normalized, normalized);
+	await ctx.runMutation(internal.e2ee.keys.storeKeypair, {
+		kind: 'address',
+		address: normalized,
+		domain,
+		wkdHash: wkdHashForAddress(normalized),
+		fingerprint: kp.fingerprint,
+		algorithm: KEY_ALGORITHM,
+		publicKeyArmored: kp.publicKeyArmored,
+		publicKeyBinaryBase64: kp.publicKeyBinaryBase64,
+		sealedPrivateKey: sealPrivateKey(kp.privateKeyArmored),
+	});
+	return kp.fingerprint;
+}
+
+/**
  * Idempotently mint + publish an address key. Skips keygen entirely when an
  * active key already exists (so re-runs are cheap and stable).
  */
@@ -118,19 +157,8 @@ export const mintForAddress = internalAction({
 		});
 		if (existing) return { created: false, fingerprint: existing.fingerprint };
 
-		const kp = await generateKeypair(normalized, normalized);
-		await ctx.runMutation(internal.e2ee.keys.storeKeypair, {
-			kind: 'address',
-			address: normalized,
-			domain,
-			wkdHash: wkdHashForAddress(normalized),
-			fingerprint: kp.fingerprint,
-			algorithm: KEY_ALGORITHM,
-			publicKeyArmored: kp.publicKeyArmored,
-			publicKeyBinaryBase64: kp.publicKeyBinaryBase64,
-			sealedPrivateKey: sealPrivateKey(kp.privateKeyArmored),
-		});
-		return { created: true, fingerprint: kp.fingerprint };
+		const fingerprint = await mintAndStoreAddress(ctx, normalized);
+		return { created: true, fingerprint };
 	},
 });
 
@@ -142,17 +170,8 @@ export const ensureInstanceIdentity = internalAction({
 		const existing = await ctx.runQuery(internal.e2ee.keys.getInstanceIdentityInternal, {});
 		if (existing) return { created: false, fingerprint: existing.fingerprint };
 
-		const email = instanceIdentityEmail();
-		const kp = await generateKeypair(email, 'Owlat instance');
-		await ctx.runMutation(internal.e2ee.keys.storeKeypair, {
-			kind: 'instance',
-			fingerprint: kp.fingerprint,
-			algorithm: KEY_ALGORITHM,
-			publicKeyArmored: kp.publicKeyArmored,
-			publicKeyBinaryBase64: kp.publicKeyBinaryBase64,
-			sealedPrivateKey: sealPrivateKey(kp.privateKeyArmored),
-		});
-		return { created: true, fingerprint: kp.fingerprint };
+		const fingerprint = await mintAndStoreInstance(ctx);
+		return { created: true, fingerprint };
 	},
 });
 
@@ -179,30 +198,9 @@ export const remintLegacyProfile = internalAction({
 			if (await isLegacyProfile(entry.publicKeyArmored)) continue; // already legacy — leave it
 
 			if (entry.kind === 'instance') {
-				const kp = await generateKeypair(instanceIdentityEmail(), 'Owlat instance');
-				await ctx.runMutation(internal.e2ee.keys.storeKeypair, {
-					kind: 'instance',
-					fingerprint: kp.fingerprint,
-					algorithm: KEY_ALGORITHM,
-					publicKeyArmored: kp.publicKeyArmored,
-					publicKeyBinaryBase64: kp.publicKeyBinaryBase64,
-					sealedPrivateKey: sealPrivateKey(kp.privateKeyArmored),
-				});
+				await mintAndStoreInstance(ctx);
 			} else if (entry.address) {
-				const { localPart, domain } = splitAddress(entry.address);
-				const normalized = `${localPart}@${domain}`;
-				const kp = await generateKeypair(normalized, normalized);
-				await ctx.runMutation(internal.e2ee.keys.storeKeypair, {
-					kind: 'address',
-					address: normalized,
-					domain,
-					wkdHash: wkdHashForAddress(normalized),
-					fingerprint: kp.fingerprint,
-					algorithm: KEY_ALGORITHM,
-					publicKeyArmored: kp.publicKeyArmored,
-					publicKeyBinaryBase64: kp.publicKeyBinaryBase64,
-					sealedPrivateKey: sealPrivateKey(kp.privateKeyArmored),
-				});
+				await mintAndStoreAddress(ctx, entry.address);
 			} else {
 				continue; // address row without an address is unreachable — nothing to re-mint
 			}
