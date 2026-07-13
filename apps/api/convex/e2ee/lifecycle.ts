@@ -111,7 +111,7 @@ export const deactivateAddressKeys = internalMutation({
 		const rows = await ctx.db
 			.query('keyVault')
 			.withIndex('by_address', (q) => q.eq('address', address))
-			.collect();
+			.collect(); // bounded: active + a handful of retired rows for one address.
 		let deactivated = 0;
 		const now = Date.now();
 		for (const row of rows) {

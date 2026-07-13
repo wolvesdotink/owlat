@@ -38,7 +38,7 @@ async function activeAddressRow(ctx: QueryCtx, address: string): Promise<Doc<'ke
 	const rows = await ctx.db
 		.query('keyVault')
 		.withIndex('by_address', (q) => q.eq('address', address))
-		.collect();
+		.collect(); // bounded: active + retired rows for one address.
 	return rows.find((r) => r.isActive) ?? null;
 }
 
