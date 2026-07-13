@@ -25,13 +25,8 @@ import { internalMutation, internalQuery } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { adminMutation } from '../lib/authedFunctions';
 import { assertFeatureEnabled } from '../lib/featureFlags';
+import { sealedPrivateKeyValidator } from './keys';
 import { normalizeEmail } from '@owlat/shared';
-
-const sealedPrivateKeyValidator = v.object({
-	ciphertext: v.string(),
-	iv: v.string(),
-	authTag: v.string(),
-});
 
 /**
  * Atomically rotate an address to a freshly-minted key. The OLD active key is
@@ -63,8 +58,12 @@ export const storeRotatedAddressKey = internalMutation({
 			.query('keyVault')
 			.withIndex('by_address', (q) => q.eq('address', address))
 			.collect(); // bounded: active key + a handful of retired keys.
+		let retired = 0;
 		for (const row of rows) {
-			if (row.isActive) await ctx.db.patch(row._id, { isActive: false, updatedAt: now });
+			if (row.isActive) {
+				await ctx.db.patch(row._id, { isActive: false, updatedAt: now });
+				retired++;
+			}
 		}
 
 		// Insert the new active key.
@@ -92,7 +91,7 @@ export const storeRotatedAddressKey = internalMutation({
 			createdAt: now,
 		});
 
-		return { newKeyId, retired: rows.filter((r) => r.isActive).length };
+		return { newKeyId, retired };
 	},
 });
 
