@@ -22,30 +22,10 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, it, expect } from 'vitest';
-import * as openpgp from 'openpgp';
 import { sealMime } from '../seal';
 import { openSealed } from '../open';
 import { isSealedPgpMime, parseInnerMessage, INBOUND_CIPHER_SUITE } from '../inboundSeal';
-
-interface TestKeypair {
-	fingerprint: string;
-	publicKeyArmored: string;
-	privateKeyArmored: string;
-}
-
-async function generateTestKeypair(email: string): Promise<TestKeypair> {
-	const { privateKey, publicKey } = await openpgp.generateKey({
-		type: 'curve25519',
-		userIDs: [{ name: email, email }],
-		format: 'armored',
-	});
-	const key = await openpgp.readKey({ armoredKey: publicKey });
-	return {
-		fingerprint: key.getFingerprint().toUpperCase(),
-		publicKeyArmored: publicKey,
-		privateKeyArmored: privateKey,
-	};
-}
+import { bodyOf, generateTestKeypair } from './sealedMailTestHelpers';
 
 const CANARY = 'CANARY_INBOUND_OPEN_7c3e91';
 const REAL_SUBJECT = 'Sealed quarterly figures';
@@ -88,6 +68,10 @@ describe('e2ee/open · openSealed', () => {
 		if (outcome.status !== 'opened') return;
 		expect(outcome.signatureValid).toBe(true);
 		expect(outcome.signerFingerprint).toBe(sender.fingerprint);
+
+		// Card acceptance: BYTE-EQUAL body. The decrypted inner body is byte-for-byte
+		// the exact body we sealed (not merely "contains the canary").
+		expect(bodyOf(outcome.innerMime)).toBe(bodyOf(sampleMessage()));
 
 		const restored = parseInnerMessage(outcome.innerMime);
 		expect(restored.subject).toBe(REAL_SUBJECT);

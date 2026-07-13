@@ -18,12 +18,18 @@
 
 import { convexTest } from 'convex-test';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import * as openpgp from 'openpgp';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
-import type { DatabaseWriter } from '../../_generated/server';
 import type { Id } from '../../_generated/dataModel';
 import { sealMime } from '../../e2ee/seal';
+import {
+	bodyOf,
+	generateTestKeypair,
+	innerMessage,
+	recipientVaultPublicKey,
+	seedPinnedSender,
+	type ConvexTestCtx,
+} from '../../e2ee/__tests__/sealedMailTestHelpers';
 import { modules } from './testModules';
 
 const INSTANCE_SECRET = 'unit-test-instance-secret-value';
@@ -31,18 +37,19 @@ const RECIPIENT = 'me@example.com';
 const SENDER = 'alice@sender.test';
 const CANARY = 'CANARY_INGEST_UNSEAL_9f21ab';
 const REAL_SUBJECT = 'Sealed ingest subject';
+const MESSAGE_ID = '<ingest-e4-0001@sender.test>';
 
-type T = ReturnType<typeof convexTest>;
+type T = ConvexTestCtx;
 
-async function generateTestKeypair(
-	email: string
-): Promise<{ publicKeyArmored: string; privateKeyArmored: string }> {
-	const { publicKey, privateKey } = await openpgp.generateKey({
-		type: 'curve25519',
-		userIDs: [{ name: email, email }],
-		format: 'armored',
+/** The exact protected-headers inner message these tests seal + expect back. */
+function testInnerMessage(): string {
+	return innerMessage({
+		from: SENDER,
+		to: RECIPIENT,
+		subject: REAL_SUBJECT,
+		body: `Confidential ${CANARY} numbers.`,
+		messageId: MESSAGE_ID,
 	});
-	return { publicKeyArmored: publicKey, privateKeyArmored: privateKey };
 }
 
 async function seedSettings(t: T): Promise<void> {
@@ -87,50 +94,6 @@ async function seedMailbox(t: T): Promise<void> {
 			});
 		}
 	});
-}
-
-/** Read the recipient's PUBLIC vault key (minted by `mintForAddress`) to seal TO it. */
-async function recipientPublicKey(t: T): Promise<string> {
-	return await t.run(async (ctx: { db: DatabaseWriter }) => {
-		const row = await ctx.db
-			.query('keyVault')
-			.withIndex('by_address', (q) => q.eq('address', RECIPIENT))
-			.first();
-		if (!row) throw new Error('recipient vault key missing');
-		return row.publicKeyArmored;
-	});
-}
-
-async function seedPinnedSender(t: T, pinnedPublicKeyArmored: string): Promise<void> {
-	await t.run(async (ctx) => {
-		const now = Date.now();
-		await ctx.db.insert('recipientKeys', {
-			address: SENDER,
-			domain: 'sender.test',
-			outcome: 'trusted',
-			pinnedFingerprint: 'FP',
-			pinnedPublicKeyArmored,
-			expiresAt: now + 60_000,
-			discoveredAt: now,
-			updatedAt: now,
-		});
-	});
-}
-
-function innerMessage(): string {
-	return [
-		'Message-ID: <ingest-e4-0001@sender.test>',
-		'Date: Mon, 13 Jul 2026 09:00:00 +0000',
-		`From: ${SENDER}`,
-		`To: ${RECIPIENT}`,
-		`Subject: ${REAL_SUBJECT}`,
-		'MIME-Version: 1.0',
-		'Content-Type: text/plain; charset=utf-8',
-		'Content-Transfer-Encoding: 7bit',
-		'',
-		`Confidential ${CANARY} numbers.`,
-		'',
-	].join('\r\n');
 }
 
 async function ingest(
@@ -181,10 +144,14 @@ describe('mail.delivery.ingestFromWebhook — decrypt-on-ingest (Sealed Mail E4/
 		await seedMailbox(t);
 		await t.action(internal.e2ee.keysNode.mintForAddress, { address: RECIPIENT });
 		const sender = await generateTestKeypair(SENDER);
-		await seedPinnedSender(t, sender.publicKeyArmored);
+		await seedPinnedSender(t, {
+			address: SENDER,
+			domain: 'sender.test',
+			pinnedPublicKeyArmored: sender.publicKeyArmored,
+		});
 
-		const sealed = await sealMime(innerMessage(), {
-			recipientPublicKeysArmored: [await recipientPublicKey(t)],
+		const sealed = await sealMime(testInnerMessage(), {
+			recipientPublicKeysArmored: [await recipientVaultPublicKey(t, RECIPIENT)],
 			signingKeyArmored: sender.privateKeyArmored,
 		});
 		const result = await ingest(t, sealed.mime, sealed.armoredCiphertext);
@@ -192,8 +159,11 @@ describe('mail.delivery.ingestFromWebhook — decrypt-on-ingest (Sealed Mail E4/
 		if (!('messageId' in result)) return;
 
 		const { msg, rawText } = await readRow(t, result.messageId);
-		// Restored plaintext + real subject flow into the pipeline (D3).
+		// Restored plaintext + real subject flow into the pipeline (D3). BYTE-EQUAL
+		// body (card acceptance): the stored plaintext is byte-for-byte the exact
+		// inner-message body, not merely "contains the canary".
 		expect(msg.subject).toBe(REAL_SUBJECT);
+		expect(msg.textBodyInline).toBe(bodyOf(testInnerMessage()));
 		expect(msg.textBodyInline).toContain(CANARY);
 		// The retained raw `.eml` is the sealed ORIGINAL — ciphertext, no canary.
 		expect(rawText).toContain('multipart/encrypted; protocol="application/pgp-encrypted"');
@@ -219,10 +189,14 @@ describe('mail.delivery.ingestFromWebhook — decrypt-on-ingest (Sealed Mail E4/
 		const sender = await generateTestKeypair(SENDER);
 		const impostor = await generateTestKeypair('mallory@evil.test');
 		// The message is signed by `sender`, but the PINNED key is the impostor's.
-		await seedPinnedSender(t, impostor.publicKeyArmored);
+		await seedPinnedSender(t, {
+			address: SENDER,
+			domain: 'sender.test',
+			pinnedPublicKeyArmored: impostor.publicKeyArmored,
+		});
 
-		const sealed = await sealMime(innerMessage(), {
-			recipientPublicKeysArmored: [await recipientPublicKey(t)],
+		const sealed = await sealMime(testInnerMessage(), {
+			recipientPublicKeysArmored: [await recipientVaultPublicKey(t, RECIPIENT)],
 			signingKeyArmored: sender.privateKeyArmored,
 		});
 		const result = await ingest(t, sealed.mime, sealed.armoredCiphertext);
@@ -249,9 +223,13 @@ describe('mail.delivery.ingestFromWebhook — decrypt-on-ingest (Sealed Mail E4/
 		// Recipient has NO vault key, so we cannot open the message.
 		const recipientOnly = await generateTestKeypair(RECIPIENT);
 		const sender = await generateTestKeypair(SENDER);
-		await seedPinnedSender(t, sender.publicKeyArmored);
+		await seedPinnedSender(t, {
+			address: SENDER,
+			domain: 'sender.test',
+			pinnedPublicKeyArmored: sender.publicKeyArmored,
+		});
 
-		const sealed = await sealMime(innerMessage(), {
+		const sealed = await sealMime(testInnerMessage(), {
 			recipientPublicKeysArmored: [recipientOnly.publicKeyArmored],
 			signingKeyArmored: sender.privateKeyArmored,
 		});

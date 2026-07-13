@@ -7,19 +7,26 @@
  * the pinned sender key, then hands the PLAINTEXT to
  * `inbox.messages.receiveMessage`. We then assert:
  *   - `inboundMessages` stores the DECRYPTED body (what the agent pipeline reads)
- *     + the restored real subject + the mirrored `sealed` / `signatureValid`
+ *     + the restored real subject + the mirrored `isSealed` / `isSignatureValid`
  *     flags — a spoofed/absent signature never claims "verified";
  *   - the `unifiedMessages` mirror carries the DECRYPTED text (not ciphertext),
  *     so the cross-channel timeline + agent both consume real content.
  */
 
 import { convexTest } from 'convex-test';
+import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import * as openpgp from 'openpgp';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import type { DatabaseWriter } from '../../_generated/server';
 import { sealMime } from '../../e2ee/seal';
+import {
+	generateTestKeypair,
+	innerMessage,
+	recipientVaultPublicKey,
+	seedPinnedSender,
+	type ConvexTestCtx,
+} from '../../e2ee/__tests__/sealedMailTestHelpers';
 import { modules } from '../../mail/__tests__/testModules';
 
 const INSTANCE_SECRET = 'unit-test-instance-secret-value';
@@ -28,68 +35,30 @@ const SENDER = 'alice@sender.test';
 const CANARY = 'CANARY_MIRROR_UNSEAL_4d7e02';
 const REAL_SUBJECT = 'Sealed AI-inbox subject';
 
-type T = ReturnType<typeof convexTest>;
+type T = ConvexTestCtx;
 
-async function generateTestKeypair(
-	email: string
-): Promise<{ publicKeyArmored: string; privateKeyArmored: string }> {
-	const { publicKey, privateKey } = await openpgp.generateKey({
-		type: 'curve25519',
-		userIDs: [{ name: email, email }],
-		format: 'armored',
+/** The exact protected-headers inner message these tests seal. */
+function testInnerMessage(messageId: string): string {
+	return innerMessage({
+		from: SENDER,
+		to: RECIPIENT,
+		subject: REAL_SUBJECT,
+		body: `Secret ${CANARY} for the agent.`,
+		messageId,
 	});
-	return { publicKeyArmored: publicKey, privateKeyArmored: privateKey };
-}
-
-async function recipientPublicKey(t: T): Promise<string> {
-	return await t.run(async (ctx: { db: DatabaseWriter }) => {
-		const row = await ctx.db
-			.query('keyVault')
-			.withIndex('by_address', (q) => q.eq('address', RECIPIENT))
-			.first();
-		if (!row) throw new Error('recipient vault key missing');
-		return row.publicKeyArmored;
-	});
-}
-
-async function seedPinnedSender(t: T, pinnedPublicKeyArmored: string): Promise<void> {
-	await t.run(async (ctx) => {
-		const now = Date.now();
-		await ctx.db.insert('recipientKeys', {
-			address: SENDER,
-			domain: 'sender.test',
-			outcome: 'trusted',
-			pinnedFingerprint: 'FP',
-			pinnedPublicKeyArmored,
-			expiresAt: now + 60_000,
-			discoveredAt: now,
-			updatedAt: now,
-		});
-	});
-}
-
-function innerMessage(): string {
-	return [
-		'Message-ID: <mirror-e4-0001@sender.test>',
-		`From: ${SENDER}`,
-		`To: ${RECIPIENT}`,
-		`Subject: ${REAL_SUBJECT}`,
-		'MIME-Version: 1.0',
-		'Content-Type: text/plain; charset=utf-8',
-		'Content-Transfer-Encoding: 7bit',
-		'',
-		`Secret ${CANARY} for the agent.`,
-		'',
-	].join('\r\n');
 }
 
 async function readMirror(
 	t: T
-): Promise<{ text?: string; sealed?: boolean; signatureValid?: boolean }> {
+): Promise<{ text?: string; isSealed?: boolean; isSignatureValid?: boolean }> {
 	return await t.run(async (ctx: { db: DatabaseWriter }) => {
 		const row = await ctx.db.query('unifiedMessages').first();
 		if (!row) throw new Error('no unifiedMessages mirror row');
-		return JSON.parse(row.content) as { text?: string; sealed?: boolean; signatureValid?: boolean };
+		return JSON.parse(row.content) as {
+			text?: string;
+			isSealed?: boolean;
+			isSignatureValid?: boolean;
+		};
 	});
 }
 
@@ -103,12 +72,17 @@ describe('e2ee.open.decryptAndReceive — mirror + agent consume decrypted text 
 
 	it('decrypts, verifies, and both inboundMessages + the mirror carry plaintext', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		await t.action(internal.e2ee.keysNode.mintForAddress, { address: RECIPIENT });
 		const sender = await generateTestKeypair(SENDER);
-		await seedPinnedSender(t, sender.publicKeyArmored);
+		await seedPinnedSender(t, {
+			address: SENDER,
+			domain: 'sender.test',
+			pinnedPublicKeyArmored: sender.publicKeyArmored,
+		});
 
-		const sealed = await sealMime(innerMessage(), {
-			recipientPublicKeysArmored: [await recipientPublicKey(t)],
+		const sealed = await sealMime(testInnerMessage('<mirror-e4-0001@sender.test>'), {
+			recipientPublicKeysArmored: [await recipientVaultPublicKey(t, RECIPIENT)],
 			signingKeyArmored: sender.privateKeyArmored,
 		});
 
@@ -135,26 +109,31 @@ describe('e2ee.open.decryptAndReceive — mirror + agent consume decrypted text 
 		expect(inbound.subject).toBe(REAL_SUBJECT);
 		expect(inbound.textBody).toContain(CANARY);
 		expect(inbound.textBody).not.toContain('-----BEGIN PGP MESSAGE-----');
-		expect(inbound.sealed).toBe(true);
-		expect(inbound.signatureValid).toBe(true);
+		expect(inbound.isSealed).toBe(true);
+		expect(inbound.isSignatureValid).toBe(true);
 		expect(inbound.signerInstance).toBe('sender.test');
 
 		// The unified-timeline mirror carries the DECRYPTED text + the sealed flag.
 		const mirror = await readMirror(t);
 		expect(mirror.text).toContain(CANARY);
-		expect(mirror.sealed).toBe(true);
-		expect(mirror.signatureValid).toBe(true);
+		expect(mirror.isSealed).toBe(true);
+		expect(mirror.isSignatureValid).toBe(true);
 	});
 
-	it('decrypts but records signatureValid:false against the wrong pinned key', async () => {
+	it('decrypts but records isSignatureValid:false against the wrong pinned key', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		await t.action(internal.e2ee.keysNode.mintForAddress, { address: RECIPIENT });
 		const sender = await generateTestKeypair(SENDER);
 		const impostor = await generateTestKeypair('mallory@evil.test');
-		await seedPinnedSender(t, impostor.publicKeyArmored);
+		await seedPinnedSender(t, {
+			address: SENDER,
+			domain: 'sender.test',
+			pinnedPublicKeyArmored: impostor.publicKeyArmored,
+		});
 
-		const sealed = await sealMime(innerMessage(), {
-			recipientPublicKeysArmored: [await recipientPublicKey(t)],
+		const sealed = await sealMime(testInnerMessage('<mirror-e4-0002@sender.test>'), {
+			recipientPublicKeysArmored: [await recipientVaultPublicKey(t, RECIPIENT)],
 			signingKeyArmored: sender.privateKeyArmored,
 		});
 
@@ -175,8 +154,8 @@ describe('e2ee.open.decryptAndReceive — mirror + agent consume decrypted text 
 			return row;
 		});
 		expect(inbound.textBody).toContain(CANARY); // decrypted
-		expect(inbound.sealed).toBe(true);
-		expect(inbound.signatureValid).toBe(false); // UNVERIFIED
+		expect(inbound.isSealed).toBe(true);
+		expect(inbound.isSignatureValid).toBe(false); // UNVERIFIED
 		expect(inbound.signerInstance).toBeUndefined();
 	});
 });
