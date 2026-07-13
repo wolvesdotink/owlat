@@ -92,8 +92,10 @@ export async function sendToMx(
 	// override, else the global OUTBOUND_TLS_MODE) and combine it with the
 	// recipient's MTA-STS state via strictest-wins. `opportunistic` + no policy
 	// yields requireTLS:false / verify:false — byte-identical to the historic
-	// behaviour; `require` / `require-verified` raise the handshake demand. DANE
-	// is plumbed as null until T3 lands.
+	// behaviour; `require` / `require-verified` raise the handshake demand. This
+	// non-DANE floor passes `daneResult: null`; the per-MX DANE outcome is resolved
+	// through the SAME resolver inside the MX loop below, so one module owns the
+	// TLS floor rather than DANE precedence being re-encoded here by hand.
 	const localTlsMode = await resolveOutboundTlsMode(
 		redis,
 		recipientDomain,
@@ -379,16 +381,41 @@ export async function sendToMx(
 	// message expires): we never fall back to cleartext under a TLS-required policy.
 	let lastTlsFailureResponse: string | null = null;
 
+	// Remember a DANE TLSA lookup failure (SERVFAIL / timeout / transport error).
+	// Such a failure is NOT a denial of existence, so we must not downgrade to the
+	// non-DANE path — we defer this MX. If every MX defers on a lookup failure the
+	// bounce names that (soft/deferred) rather than delivering without DANE.
+	let lastDaneDeferResponse: string | null = null;
+
 	// Try each MX host in priority order
 	for (const mxHost of mxHosts) {
 		// DANE (RFC 7672) takes precedence over MTA-STS. When enabled and the MX
 		// publishes a usable, DNSSEC-authenticated TLSA RRset, authenticate the MX
-		// certificate against it: authenticated TLS is required and a mismatch defers
-		// the message (never cleartext). A null plan (flag off / no usable TLSA)
-		// leaves the MTA-STS / local-floor path below byte-identical to T1.
-		const danePlan = await prepareDaneAttempt(redis, mxHost, recipientDomain, config);
-		if (danePlan) {
-			const outcome = await attemptSend(mxHost, true, true, danePlan);
+		// certificate against it via a TLS floor resolved by the SAME strictest-wins
+		// module the non-DANE path uses (so DANE precedence lives in one place). A
+		// `none` decision (flag off / no usable TLSA) leaves the MTA-STS / local-floor
+		// path below byte-identical to T1; a `defer` decision (lookup failed) skips
+		// this MX without ever falling back to cleartext.
+		const daneDecision = await prepareDaneAttempt(redis, mxHost, recipientDomain, config);
+		if (daneDecision.kind === 'defer') {
+			lastDaneDeferResponse = daneDecision.reason;
+			continue;
+		}
+		if (daneDecision.kind === 'proceed') {
+			// Resolve the TLS floor with a usable DANE result: requireTLS + verified
+			// TLS (RFC 7672 §2, supersedes MTA-STS). resolveTlsRequirements owns the
+			// precedence; the DanePlan supplies the TLSA cert-authentication hook.
+			const daneTls = resolveTlsRequirements({
+				localMode: localTlsMode,
+				stsPolicy: { policyMode: stsOptions.policyMode },
+				daneResult: { usable: true },
+			});
+			const outcome = await attemptSend(
+				mxHost,
+				daneTls.requireTLS,
+				daneTls.rejectUnauthorized,
+				daneDecision.plan
+			);
 			if (outcome.kind === 'sent' || outcome.kind === 'smtp') {
 				return outcome.result;
 			}
@@ -483,6 +510,18 @@ export async function sendToMx(
 		return {
 			success: false,
 			error: `TLS required but no MX for ${recipientDomain} completed a usable TLS handshake: ${lastTlsFailureResponse}`,
+			bounceType: 'soft',
+		};
+	}
+
+	// Every MX deferred because its DANE TLSA lookup could not be completed. We
+	// never downgrade to a non-DANE (possibly cleartext) delivery on a lookup
+	// failure (RFC 7672 §2.1), so this is a soft/deferred bounce: retried until the
+	// resolver recovers or the message expires.
+	if (lastDaneDeferResponse) {
+		return {
+			success: false,
+			error: `DANE enabled but TLSA lookup could not be completed for any MX of ${recipientDomain}; deferring rather than delivering without DANE: ${lastDaneDeferResponse}`,
 			bounceType: 'soft',
 		};
 	}

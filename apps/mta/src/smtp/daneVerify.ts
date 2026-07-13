@@ -45,8 +45,9 @@ export function buildDaneCheck(
 		while (node && node.raw && node.raw.length > 0 && !seen.has(node)) {
 			seen.add(node);
 			chainDer.push(node.raw);
-			const issuer = (node as PeerCertificate & { issuerCertificate?: PeerCertificate })
-				.issuerCertificate;
+			const issuer: PeerCertificate | undefined = (
+				node as PeerCertificate & { issuerCertificate?: PeerCertificate }
+			).issuerCertificate;
 			node = issuer && issuer !== node ? issuer : undefined;
 		}
 
@@ -65,33 +66,66 @@ export interface DanePlan {
 }
 
 /**
- * Prepare the DANE attempt for one recipient MX host. Returns `null` when DANE is
- * disabled or the MX publishes no usable, DNSSEC-authenticated TLSA RRset (the
- * caller then applies its MTA-STS / local-floor policy — byte-identical to the
- * pre-DANE path). Otherwise returns the handshake hook and the tlsa policy
- * context (RFC 7672 supersedes MTA-STS).
+ * The DANE decision for one recipient MX host (RFC 7672 §2.1):
+ *
+ *  - `proceed`: a usable, DNSSEC-authenticated TLSA RRset is in force — attempt
+ *    delivery with the handshake hook (authenticated TLS required, no cleartext
+ *    fallback), superseding MTA-STS.
+ *  - `none`: DANE is off, or the MX publishes no usable TLSA (authenticated
+ *    denial / unauthenticated answer) — the caller applies its MTA-STS /
+ *    local-floor policy, byte-identical to the pre-DANE path.
+ *  - `defer`: the TLSA lookup could not be completed (SERVFAIL / timeout /
+ *    transport error). Delivering without DANE here would be a downgrade, so the
+ *    caller must soft-defer this MX rather than fall through to cleartext.
+ */
+export type DaneDecision =
+	| { kind: 'proceed'; plan: DanePlan }
+	| { kind: 'none' }
+	| { kind: 'defer'; reason: string };
+
+/**
+ * Decide how to handle DANE for one recipient MX host. Never throws.
+ *
+ * A `lookup-failed` TLSA result becomes `defer` (fail-closed): only an
+ * authenticated denial of existence or a non-usable RRset falls through to the
+ * non-DANE path, so a resolver outage or an attacker who suppresses the TLSA
+ * lookup cannot silently strip DANE and downgrade to opportunistic cleartext.
  */
 export async function prepareDaneAttempt(
 	redis: Redis,
 	mxHost: string,
 	recipientDomain: string,
 	config: MtaConfig
-): Promise<DanePlan | null> {
-	if (!config.daneEnabled || !config.daneResolverUrl) return null;
+): Promise<DaneDecision> {
+	if (!config.daneEnabled || !config.daneResolverUrl) return { kind: 'none' };
 
-	const tlsaRecords = await lookupTlsaRecords(redis, mxHost, config.daneResolverUrl);
-	if (!hasUsableTlsa(tlsaRecords)) return null;
+	const lookup = await lookupTlsaRecords(redis, mxHost, config.daneResolverUrl);
+
+	if (lookup.status === 'lookup-failed') {
+		logger.warn(
+			{ mxHost, recipientDomain, reason: lookup.reason },
+			'DANE TLSA lookup failed; deferring rather than downgrading to non-DANE (RFC 7672 §2.1)'
+		);
+		return { kind: 'defer', reason: `DANE TLSA lookup failed: ${lookup.reason}` };
+	}
+
+	if (lookup.status === 'no-tlsa' || !hasUsableTlsa(lookup.records)) {
+		return { kind: 'none' };
+	}
 
 	logger.debug(
-		{ mxHost, recipientDomain, count: tlsaRecords.length },
+		{ mxHost, recipientDomain, count: lookup.records.length },
 		'DANE TLSA in force for MX (supersedes MTA-STS)'
 	);
 	return {
-		checkServerIdentity: buildDaneCheck(tlsaRecords),
-		policyContext: {
-			policyType: 'tlsa',
-			policyString: buildTlsaPolicyString(tlsaRecords),
-			mxHostPatterns: [mxHost],
+		kind: 'proceed',
+		plan: {
+			checkServerIdentity: buildDaneCheck(lookup.records),
+			policyContext: {
+				policyType: 'tlsa',
+				policyString: buildTlsaPolicyString(lookup.records),
+				mxHostPatterns: [mxHost],
+			},
 		},
 	};
 }

@@ -107,9 +107,10 @@ const STS_REASON: Record<StsPolicyMode, string> = {
  * DANE precedence (RFC 7672 §2): a usable, DNSSEC-authenticated TLSA RRset
  * mandates authenticated TLS regardless of MTA-STS — so a usable DANE result
  * raises the TLS floor even when MTA-STS is absent or in testing mode, and
- * agrees with an MTA-STS enforce policy. DANE authenticates the certificate via
- * the TLSA match (`daneRequired`), not via the PKIX trust store, so it does not
- * by itself set `rejectUnauthorized` (that stays driven by the local/STS floor).
+ * agrees with an MTA-STS enforce policy. It also forces `rejectUnauthorized`:
+ * Node only invokes the DANE `checkServerIdentity` hook on a PKIX-authorized
+ * chain, so the certificate must be verified for the TLSA match to even run — a
+ * DANE send therefore requires PKIX verification ON (fail-closed).
  */
 export function resolveTlsRequirements({
 	localMode,
@@ -121,7 +122,7 @@ export function resolveTlsRequirements({
 	const daneRequired = daneResult?.usable === true;
 
 	const requireTLS = local.requireTLS || sts.requireTLS || daneRequired;
-	const rejectUnauthorized = local.rejectUnauthorized || sts.rejectUnauthorized;
+	const rejectUnauthorized = local.rejectUnauthorized || sts.rejectUnauthorized || daneRequired;
 
 	const reason = daneRequired
 		? `${LOCAL_REASON[localMode]}; ${STS_REASON[stsPolicy.policyMode]}; DANE TLSA authenticated (RFC 7672, supersedes MTA-STS) → requireTLS=${requireTLS}, verify=${rejectUnauthorized}, dane=true (strictest-wins)`
