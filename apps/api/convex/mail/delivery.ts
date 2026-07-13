@@ -780,16 +780,22 @@ export const deliverToMailbox = internalMutation({
 		// editable allow-list (unset ⇒ the seeded defaults); an explicit `[]`
 		// disables the override. The predicate is shared with the MTA so the two
 		// sides never fork on what "trusted rescue" means.
+		// The override only APPLIES to an actual DMARC fail — that is the only
+		// verdict there is anything to rescue. A message that passed DMARC on its
+		// own (or where DMARC was not evaluated) must keep its own verdict, so a
+		// direct-pass forward is never mislabelled "verified via forwarder".
 		const settings = await ctx.db.query('instanceSettings').first();
 		const trustedForwarders = settings?.trustedArcForwarders ?? DEFAULT_TRUSTED_ARC_FORWARDERS;
-		const arcRescued = shouldArcOverrideDmarc(
-			{
-				arcCv: args.arcCv,
-				arcSealerDomain: args.arcSealerDomain,
-				arcAttestsOriginalPass: args.arcAttestsOriginalPass,
-			},
-			trustedForwarders
-		);
+		const arcRescued =
+			args.dmarcResult === 'fail' &&
+			shouldArcOverrideDmarc(
+				{
+					arcCv: args.arcCv,
+					arcSealerDomain: args.arcSealerDomain,
+					arcAttestsOriginalPass: args.arcAttestsOriginalPass,
+				},
+				trustedForwarders
+			);
 		const dmarcOverride = arcRescued ? 'arc' : undefined;
 		const arcSealer = arcRescued ? args.arcSealerDomain : undefined;
 
