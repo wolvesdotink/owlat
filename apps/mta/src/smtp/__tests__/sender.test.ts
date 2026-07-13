@@ -37,6 +37,11 @@ vi.mock('../mtaSts.js', async (importOriginal) => {
 vi.mock('../dkim.js', () => ({
 	getDkimOptions: vi.fn().mockResolvedValue(undefined),
 }));
+// DANE TLSA resolver is stubbed per-test (default: no TLSA, so the DANE branch is
+// inert and the historic path is byte-identical).
+vi.mock('../daneResolver.js', () => ({
+	lookupTlsaRecords: vi.fn().mockResolvedValue([]),
+}));
 vi.mock('../../bounce/verp.js', () => ({
 	buildVerpAddress: vi.fn().mockReturnValue('bounce+encoded@bounces.owlat.com'),
 }));
@@ -53,7 +58,11 @@ import { getStsTlsOptions } from '../mtaSts.js';
 import { getMxHostnames } from '../mxResolver.js';
 import { generateReport } from '../tlsRpt.js';
 import { pool } from '../connectionPool.js';
+import { lookupTlsaRecords } from '../daneResolver.js';
 import { logger } from '../../monitoring/logger.js';
+import { X509Certificate } from 'node:crypto';
+import type { PeerCertificate } from 'node:tls';
+import { MX_CERT } from './certFixture.js';
 import nodemailer from 'nodemailer';
 import type { Transporter } from 'nodemailer';
 import type { EmailJob } from '../../types.js';
@@ -227,9 +236,7 @@ describe('sendToMx', () => {
 
 		await sendToMx(createJob({ amp }), config, redis, '10.0.0.1');
 
-		expect(mockTransport.sendMail).toHaveBeenCalledWith(
-			expect.objectContaining({ amp }),
-		);
+		expect(mockTransport.sendMail).toHaveBeenCalledWith(expect.objectContaining({ amp }));
 	});
 
 	it('omits the amp option when the job has no AMP body', async () => {
@@ -336,7 +343,7 @@ describe('sendToMx', () => {
 			expect.any(String),
 			expect.objectContaining({
 				tls: expect.objectContaining({ minVersion: 'TLSv1.2' }),
-			}),
+			})
 		);
 	});
 
@@ -373,7 +380,7 @@ describe('sendToMx', () => {
 			createJob({ from: 'sender@owlat.com', to: 'user@example.com' }),
 			config,
 			redis,
-			'10.0.0.1',
+			'10.0.0.1'
 		);
 		expect(result.success).toBe(true);
 
@@ -424,9 +431,7 @@ describe('sendToMx', () => {
 
 		await sendToMx(createJob({ from: 'user@example.com' }), config, redis, '10.0.0.1');
 
-		const headerKeys = Object.keys(headersOf(0)).filter(
-			(k) => k.toLowerCase() === 'message-id',
-		);
+		const headerKeys = Object.keys(headersOf(0)).filter((k) => k.toLowerCase() === 'message-id');
 		expect(headerKeys).toHaveLength(1);
 	});
 
@@ -451,7 +456,7 @@ describe('sendToMx', () => {
 			createJob({ from: 'user@example.com', headers: { 'Message-ID': supplied } }),
 			config,
 			redis,
-			'10.0.0.1',
+			'10.0.0.1'
 		);
 
 		expect(headersOf(0)['Message-ID']).toBe(supplied);
@@ -471,7 +476,7 @@ describe('sendToMx', () => {
 			expect(pool.acquire).toHaveBeenCalledWith(
 				expect.any(String),
 				'10.0.0.1',
-				expect.objectContaining({ name: 'mail1.owlat.com' }),
+				expect.objectContaining({ name: 'mail1.owlat.com' })
 			);
 		});
 
@@ -487,7 +492,7 @@ describe('sendToMx', () => {
 			expect(pool.acquire).toHaveBeenCalledWith(
 				expect.any(String),
 				'10.0.0.9',
-				expect.objectContaining({ name: 'fallback.owlat.com' }),
+				expect.objectContaining({ name: 'fallback.owlat.com' })
 			);
 		});
 
@@ -528,7 +533,7 @@ describe('sendToMx', () => {
 			expect(pool.acquire).toHaveBeenCalledWith(
 				expect.any(String),
 				'10.0.0.1',
-				expect.objectContaining({ name: 'mail.test.example' }),
+				expect.objectContaining({ name: 'mail.test.example' })
 			);
 			// Never the OS/container hostname — it has no matching PTR record.
 			const opts = vi.mocked(pool.acquire).mock.calls[0]![2] as { name?: string };
@@ -544,7 +549,13 @@ describe('sendToMx', () => {
 	async function reportFor(): Promise<NonNullable<Awaited<ReturnType<typeof generateReport>>>> {
 		await flush();
 		const today = new Date().toISOString().split('T')[0]!;
-		const report = await generateReport(redis as unknown as Parameters<typeof generateReport>[0], 'example.com', today, 'Owlat MTA', 'postmaster@owlat.com');
+		const report = await generateReport(
+			redis as unknown as Parameters<typeof generateReport>[0],
+			'example.com',
+			today,
+			'Owlat MTA',
+			'postmaster@owlat.com'
+		);
 		expect(report).not.toBeNull();
 		return report!;
 	}
@@ -575,7 +586,7 @@ describe('sendToMx', () => {
 				expect.objectContaining({
 					requireTLS: true,
 					tls: expect.objectContaining({ rejectUnauthorized: true, minVersion: 'TLSv1.2' }),
-				}),
+				})
 			);
 		});
 
@@ -599,7 +610,7 @@ describe('sendToMx', () => {
 			// …and the skip was logged (RFC 8461 §5 — never deliver outside policy).
 			expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
 				expect.objectContaining({ mxHost: 'mx1.example.com' }),
-				expect.stringContaining('not permitted by MTA-STS policy'),
+				expect.stringContaining('not permitted by MTA-STS policy')
 			);
 		});
 
@@ -686,7 +697,7 @@ describe('sendToMx', () => {
 					requireTLS: true,
 					// rejectUnauthorized + the pinned TLSv1.2 floor both ride in tls.
 					tls: expect.objectContaining({ rejectUnauthorized: true, minVersion: 'TLSv1.2' }),
-				}),
+				})
 			);
 		});
 
@@ -702,7 +713,7 @@ describe('sendToMx', () => {
 				expect.objectContaining({
 					requireTLS: false,
 					tls: expect.objectContaining({ rejectUnauthorized: false }),
-				}),
+				})
 			);
 		});
 
@@ -791,7 +802,7 @@ describe('sendToMx', () => {
 			expect(policy.policy['mx-host']).toEqual(['aspmx.l.google.com']);
 
 			const details = policy['failure-details']!;
-			const invalid = details.filter(d => d['result-type'] === 'sts-policy-invalid');
+			const invalid = details.filter((d) => d['result-type'] === 'sts-policy-invalid');
 			expect(invalid.length).toBeGreaterThanOrEqual(1);
 			expect(policy.summary['total-failure-session-count']).toBeGreaterThanOrEqual(1);
 		});
@@ -815,9 +826,9 @@ describe('sendToMx', () => {
 			const policy = report.policies[0]!;
 			expect(policy.policy['policy-type']).toBe('sts');
 			const details = policy['failure-details']!;
-			expect(details.find(d => d['result-type'] === 'sts-webpki-invalid')).toBeDefined();
+			expect(details.find((d) => d['result-type'] === 'sts-webpki-invalid')).toBeDefined();
 			// And NOT the generic certificate-host-mismatch type under enforce.
-			expect(details.find(d => d['result-type'] === 'certificate-host-mismatch')).toBeUndefined();
+			expect(details.find((d) => d['result-type'] === 'certificate-host-mismatch')).toBeUndefined();
 		});
 
 		it('testing mode + STARTTLS-stripping server: records a failure but still delivers', async () => {
@@ -849,7 +860,7 @@ describe('sendToMx', () => {
 			expect(policy.summary['total-failure-session-count']).toBeGreaterThanOrEqual(1);
 			expect(policy.summary['total-successful-session-count']).toBe(0);
 			const details = policy['failure-details']!;
-			expect(details.find(d => d['result-type'] === 'sts-policy-invalid')).toBeDefined();
+			expect(details.find((d) => d['result-type'] === 'sts-policy-invalid')).toBeDefined();
 		});
 	});
 
@@ -873,8 +884,8 @@ describe('sendToMx', () => {
 			expect(policy.summary['total-successful-session-count']).toBe(0);
 			expect(policy.summary['total-failure-session-count']).toBe(1);
 			const details = policy['failure-details']!;
-			expect(details.find(d => d['result-type'] === 'starttls-not-supported')).toBeDefined();
-			expect(details.find(d => d['result-type'] === 'success')).toBeUndefined();
+			expect(details.find((d) => d['result-type'] === 'starttls-not-supported')).toBeDefined();
+			expect(details.find((d) => d['result-type'] === 'success')).toBeUndefined();
 		});
 
 		it('records a TLS success when the connection negotiated STARTTLS', async () => {
@@ -892,6 +903,111 @@ describe('sendToMx', () => {
 			const policy = report.policies[0]!;
 			expect(policy.summary['total-successful-session-count']).toBe(1);
 			expect(policy.summary['total-failure-session-count']).toBe(0);
+		});
+	});
+
+	// ── T3: DANE at send time (RFC 7672), flag DANE_ENABLED ──────────────────
+	//
+	// The sender matrix for DANE: flag OFF is byte-identical to T1 (resolver never
+	// consulted, no checkServerIdentity on the acquire); with a usable TLSA RRset
+	// the acquire requires verified TLS and carries the DANE cert-authentication
+	// hook; a TLSA mismatch defers (soft bounce) and records a TLS-RPT
+	// validation-failure attributed to the tlsa policy.
+	describe('DANE at send time (T3)', () => {
+		// The DANE-EE(3) SPKI SHA-256 of the fixture MX certificate — the record the
+		// MX would publish at _25._tcp.<mx>.
+		const CERT_SPKI_SHA256 = '49fc4a5424807bbbde5617d8b4bb563a79f4566c28d4d9b2e917dddcc7bac89c';
+		const MATCHING_TLSA = { usage: 3, selector: 1, matchingType: 1, data: CERT_SPKI_SHA256 };
+		const MISMATCH_TLSA = { usage: 3, selector: 1, matchingType: 1, data: 'deadbeef'.repeat(8) };
+
+		/** A minimal PeerCertificate carrying the fixture cert's DER. */
+		function fixturePeerCert(): PeerCertificate {
+			return { raw: new X509Certificate(MX_CERT).raw } as unknown as PeerCertificate;
+		}
+
+		function daneConfig(): MtaConfig {
+			return createConfig({ daneEnabled: true, daneResolverUrl: 'https://doh.example/dns-query' });
+		}
+
+		it('flag OFF => resolver never consulted; acquire has no DANE hook (byte-identical to T1)', async () => {
+			mockTransport.sendMail.mockResolvedValue({ response: '250 OK' });
+
+			const result = await sendToMx(createJob(), config, redis, '10.0.0.1');
+
+			expect(result.success).toBe(true);
+			expect(vi.mocked(lookupTlsaRecords)).not.toHaveBeenCalled();
+			const tlsOpts = vi.mocked(pool.acquire).mock.calls[0]![2].tls ?? {};
+			expect(tlsOpts).not.toHaveProperty('checkServerIdentity');
+		});
+
+		it('DANE enabled but no usable TLSA => falls through to the non-DANE path', async () => {
+			vi.mocked(lookupTlsaRecords).mockResolvedValue([]);
+			mockTransport.sendMail.mockResolvedValue({ response: '250 OK' });
+
+			const result = await sendToMx(createJob(), daneConfig(), redis, '10.0.0.1');
+
+			expect(result.success).toBe(true);
+			expect(vi.mocked(lookupTlsaRecords)).toHaveBeenCalled();
+			const tlsOpts = vi.mocked(pool.acquire).mock.calls[0]![2].tls ?? {};
+			expect(tlsOpts).not.toHaveProperty('checkServerIdentity');
+		});
+
+		it('usable TLSA => acquire requires verified TLS and carries the DANE hook', async () => {
+			vi.mocked(lookupTlsaRecords).mockResolvedValue([MATCHING_TLSA]);
+			mockTransport.sendMail.mockImplementation(async () => {
+				securedCaptureLogger.info({ tnx: 'smtp' }, 'Connection upgraded with STARTTLS');
+				return { response: '250 OK over DANE TLS' };
+			});
+
+			const result = await sendToMx(createJob(), daneConfig(), redis, '10.0.0.1');
+
+			expect(result.success).toBe(true);
+			const opts = vi.mocked(pool.acquire).mock.calls[0]![2];
+			expect(opts.requireTLS).toBe(true);
+			expect(opts.tls?.rejectUnauthorized).toBe(true);
+			expect(typeof opts.tls?.checkServerIdentity).toBe('function');
+		});
+
+		it('the DANE hook accepts a matching MX certificate and rejects a mismatch', async () => {
+			vi.mocked(lookupTlsaRecords).mockResolvedValue([MATCHING_TLSA]);
+			mockTransport.sendMail.mockResolvedValue({ response: '250 OK' });
+			await sendToMx(createJob(), daneConfig(), redis, '10.0.0.1');
+
+			const check = vi.mocked(pool.acquire).mock.calls[0]![2].tls!.checkServerIdentity!;
+			// Matching cert → accept (undefined).
+			expect(check('mx1.example.com', fixturePeerCert())).toBeUndefined();
+
+			// A wrong TLSA record → the hook returns an Error (aborts the handshake).
+			vi.mocked(lookupTlsaRecords).mockResolvedValue([MISMATCH_TLSA]);
+			await sendToMx(createJob(), daneConfig(), redis, '10.0.0.1');
+			const mismatchCheck = vi.mocked(pool.acquire).mock.calls.at(-1)![2].tls!.checkServerIdentity!;
+			const verdict = mismatchCheck('mx1.example.com', fixturePeerCert());
+			expect(verdict).toBeInstanceOf(Error);
+			expect((verdict as Error).message).toContain('DANE TLSA mismatch');
+		});
+
+		it('a TLSA mismatch defers (soft bounce) and records a validation-failure under the tlsa policy', async () => {
+			vi.mocked(lookupTlsaRecords).mockResolvedValue([MISMATCH_TLSA]);
+			// Simulate nodemailer aborting the handshake because our checkServerIdentity
+			// returned an Error: a TLS-level failure with no SMTP status code.
+			mockTransport.sendMail.mockRejectedValue(
+				Object.assign(new Error('DANE TLSA mismatch: MX certificate did not match'), {
+					code: 'ERR_TLS_CERT_ALTNAME_INVALID',
+				})
+			);
+
+			const result = await sendToMx(createJob(), daneConfig(), redis, '10.0.0.1');
+
+			// No cleartext fallback: the message is deferred for retry.
+			expect(result.success).toBe(false);
+			expect(result.bounceType).toBe('soft');
+
+			const report = await reportFor();
+			const policy = report.policies[0]!;
+			expect(policy.policy['policy-type']).toBe('tlsa');
+			expect(policy.policy['policy-string']).toContain(`3 1 1 ${MISMATCH_TLSA.data}`);
+			const details = policy['failure-details']!;
+			expect(details.find((d) => d['result-type'] === 'validation-failure')).toBeDefined();
 		});
 	});
 });
