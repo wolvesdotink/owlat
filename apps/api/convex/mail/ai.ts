@@ -26,12 +26,8 @@ import { throwNotFound } from '../_utils/errors';
 export function threadToText(messages: Doc<'mailMessages'>[]): string {
 	return messages
 		.map((m) => {
-			const body = (
-				mailMessageInlineBody(m).text ??
-				(mailMessageInlineBody(m).html ? stripHtml(mailMessageInlineBody(m).html) : undefined) ??
-				m.snippet ??
-				''
-			).slice(0, 4000);
+			const { text, html } = mailMessageInlineBody(m);
+			const body = (text ?? (html ? stripHtml(html) : undefined) ?? m.snippet ?? '').slice(0, 4000);
 			return `From: ${m.fromName || m.fromAddress}\nSubject: ${m.subject}\n${body}`;
 		})
 		.join('\n\n---\n\n')
