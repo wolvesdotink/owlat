@@ -205,7 +205,8 @@ const {
 								</div>
 								<pre
 									class="select-all overflow-x-auto rounded-lg bg-bg-surface px-3 py-2 font-mono text-xs text-text-primary"
-									>{{ envSnippet }}</pre>
+									>{{ envSnippet }}</pre
+								>
 								<p class="text-xs text-text-tertiary mt-1.5">
 									Values are left blank — fill in your real credentials. They are never displayed
 									here.
@@ -232,7 +233,8 @@ const {
 								</div>
 								<pre
 									class="select-all overflow-x-auto rounded-lg bg-bg-surface px-3 py-2 font-mono text-xs text-text-primary"
-									>{{ envSetCommand }}</pre>
+									>{{ envSetCommand }}</pre
+								>
 								<p class="text-xs text-text-tertiary mt-1.5">
 									Run <code class="text-text-primary">owlat-setup env --show</code> to list every
 									variable your current configuration needs. See the
@@ -263,6 +265,10 @@ const {
 			     testing → enforce). Receiving posture, but it lives beside the
 			     transport controls so all TLS policy is in one place. -->
 			<DeliveryMtaStsModeCard />
+
+			<!-- Inbound sender authenticity: which forwarders we trust to rescue a
+			     DMARC fail on mailing-list / forwarded mail (Sealed Mail A5). -->
+			<DeliveryTrustedForwardersCard />
 
 			<!-- Provider + required env presence -->
 			<UiCard padding="none" overflow="hidden">
@@ -420,7 +426,8 @@ const {
 						</div>
 						<pre
 							class="select-all overflow-x-auto rounded-lg bg-bg-surface px-3 py-2 font-mono text-xs text-text-primary"
-							>{{ sesWebhookUrl }}</pre>
+							>{{ sesWebhookUrl }}</pre
+						>
 					</div>
 					<p v-else class="text-xs text-text-tertiary">
 						Set your site URL to see the endpoint SNS should subscribe to.

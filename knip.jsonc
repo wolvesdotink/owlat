@@ -132,6 +132,7 @@
 		"**/dist/**",
 		"**/src-tauri/**",
 		"**/*.css",
+		"fixtures/**",
 		"packages/sdk-java/**"
 	],
 	"ignoreBinaries": ["convex", "tauri", "playwright", "docker", "cargo"],

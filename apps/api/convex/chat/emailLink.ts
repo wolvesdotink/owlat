@@ -11,6 +11,7 @@
  */
 
 import { v } from 'convex/values';
+import { inboundMessageBody } from '../lib/messageBody';
 import { getMutationContext, getUserIdFromSession } from '../lib/sessionOrganization';
 import { getOrThrow, throwInvalidInput } from '../_utils/errors';
 import {
@@ -120,7 +121,7 @@ export const getLinkedThreadView = chatQuery({
 				from: m.from,
 				to: m.to,
 				subject: m.subject,
-				textBody: m.textBody?.slice(0, 4000) ?? null,
+				textBody: inboundMessageBody(m).text?.slice(0, 4000) ?? null,
 				receivedAt: m.receivedAt,
 				processingStatus: m.processingStatus,
 			})),

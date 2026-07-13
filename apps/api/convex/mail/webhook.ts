@@ -68,6 +68,12 @@ interface MailWebhookPayload {
 		// stored beside the verdicts on `mailMessages`. Both optional.
 		envelopeFromDomain?: string;
 		dkimSigningDomain?: string;
+		// Verified inbound ARC verdict (RFC 8617, Sealed Mail A5). Used to rescue a
+		// DMARC fail when a TRUSTED forwarder sealed a valid chain attesting the
+		// original passed. All optional — an older MTA omits them (no rescue).
+		arcCv?: string;
+		arcSealerDomain?: string;
+		arcAttestsOriginalPass?: boolean;
 	};
 }
 
@@ -188,6 +194,9 @@ export const handleMailWebhook = httpAction(async (ctx, request) => {
 			dkimResult: mp.dkimResult,
 			dmarcResult: mp.dmarcResult,
 			dmarcPolicy: mp.dmarcPolicy,
+			arcCv: mp.arcCv,
+			arcSealerDomain: mp.arcSealerDomain,
+			arcAttestsOriginalPass: mp.arcAttestsOriginalPass,
 			envelopeFromDomain: mp.envelopeFromDomain,
 			dkimSigningDomain: mp.dkimSigningDomain,
 		});
