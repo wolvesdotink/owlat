@@ -18,6 +18,7 @@ import {
 	throwInvalidInput,
 	throwAlreadyExists,
 } from '../_utils/errors';
+import { isFeatureEnabled } from '../lib/featureFlags';
 import { normalizeEmail } from '@owlat/shared';
 
 // public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
@@ -82,6 +83,12 @@ export const create = authedMutation({
 			alias,
 			mailboxId: args.mailboxId,
 		});
+
+		// Sealed Mail (E1): mint + publish an E2EE keypair for the new alias
+		// address (flag-gated `sealedMail`, default OFF; no-op when off).
+		if (await isFeatureEnabled(ctx, 'sealedMail')) {
+			await ctx.scheduler.runAfter(0, internal.e2ee.keysNode.mintForAddress, { address: alias });
+		}
 
 		return id;
 	},
