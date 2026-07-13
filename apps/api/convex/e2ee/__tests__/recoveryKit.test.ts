@@ -22,7 +22,7 @@ import {
 	groupFingerprint,
 	recoveryKitFilename,
 } from '../recoveryKit';
-import { modules } from './sealedMailTestHelpers';
+import { enableSealedMail, modules } from './sealedMailTestHelpers';
 
 describe('e2ee/recoveryKit pure assembly', () => {
 	it('groups a fingerprint into 4-char blocks', () => {
@@ -73,6 +73,7 @@ describe('e2ee/recoveryKit export -> wipe -> import round-trip', () => {
 
 	it('opens an old sealed fixture after export, wipe, and import', async () => {
 		const t = convexTest(schema, modules);
+		await enableSealedMail(t);
 		const address = 'recover@sealed.example.com';
 
 		// Mint the address key and seal a fixture message TO its published public key.
@@ -129,6 +130,7 @@ describe('e2ee/recoveryKit export -> wipe -> import round-trip', () => {
 
 	it('importing an OLDER kit while a DIFFERENT key is active keeps BOTH keys decrypting', async () => {
 		const t = convexTest(schema, modules);
+		await enableSealedMail(t);
 		const address = 'both@sealed.example.com';
 
 		// Mint key A and seal a fixture to it, then export A's recovery kit.
@@ -160,8 +162,10 @@ describe('e2ee/recoveryKit export -> wipe -> import round-trip', () => {
 			privateKeyArmored: kitA!.privateKeyArmored,
 		});
 		expect(imported.imported).toBe(true);
+		const publicAfterImport = await t.query(api.e2ee.keys.getPublicKeyByAddress, { address });
+		expect(publicAfterImport?.publicKeyArmored).toBe(publicB);
 
-		// BOTH private keys are still present and BOTH fixtures open.
+		// B remains published, while BOTH private keys are present and BOTH fixtures open.
 		const sealedKeys = await t.query(internal.e2ee.keys.getAddressPrivateKeysInternal, { address });
 		const recipientPrivateKeysArmored = sealedKeys.map((env) => openPrivateKey(env));
 		expect(recipientPrivateKeysArmored.length).toBeGreaterThanOrEqual(2);

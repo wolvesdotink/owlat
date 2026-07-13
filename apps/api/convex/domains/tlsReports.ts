@@ -21,10 +21,12 @@
 import { v } from 'convex/values';
 import { internalMutation } from '../_generated/server';
 import { adminQuery } from '../lib/authedFunctions';
+import { TLS_RPT_MAX_FAILURE_TYPES } from '@owlat/shared';
 
 /** Window the dashboard summarises. */
 const SUMMARY_WINDOW_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
+const MAX_REPORTS_PER_SUMMARY = 5_000;
 
 const failureTypeCountValidator = v.array(v.object({ type: v.string(), count: v.number() }));
 
@@ -48,6 +50,9 @@ export const ingest = internalMutation({
 		failureTypeCounts: failureTypeCountValidator,
 	},
 	handler: async (ctx, args) => {
+		if (args.failureTypeCounts.length > TLS_RPT_MAX_FAILURE_TYPES) {
+			throw new Error(`TLS report exceeds the ${TLS_RPT_MAX_FAILURE_TYPES} failure-type limit`);
+		}
 		const existing = await ctx.db
 			.query('tlsReports')
 			.withIndex('by_reportId', (q) => q.eq('reportId', args.reportId))
@@ -98,10 +103,11 @@ export const getTlsReportSummary = adminQuery({
 	args: {},
 	handler: async (ctx) => {
 		const cutoff = Date.now() - SUMMARY_WINDOW_DAYS * DAY_MS;
-		const rows = await ctx.db
+		const matchedRows = await ctx.db
 			.query('tlsReports')
-			.withIndex('by_rangeStart', (q) => q.gte('rangeStartMs', cutoff))
-			.collect(); // bounded: 30-day window over inbound TLS-RPT — a handful of partner MX providers report at most daily (low hundreds of rows).
+			.withIndex('by_range_start_ms', (q) => q.gte('rangeStartMs', cutoff))
+			.take(MAX_REPORTS_PER_SUMMARY + 1);
+		const rows = matchedRows.slice(0, MAX_REPORTS_PER_SUMMARY);
 
 		const partners = new Map<string, PartnerSummary>();
 		const failureTypes = new Map<string, number>();
@@ -145,6 +151,7 @@ export const getTlsReportSummary = adminQuery({
 		return {
 			windowDays: SUMMARY_WINDOW_DAYS,
 			reportCount: rows.length,
+			isTruncated: matchedRows.length > MAX_REPORTS_PER_SUMMARY,
 			totalSuccessCount: totalSuccess,
 			totalFailureCount: totalFailure,
 			overallSuccessRate: totalSessions > 0 ? totalSuccess / totalSessions : null,

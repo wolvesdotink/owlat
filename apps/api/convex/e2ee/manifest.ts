@@ -25,6 +25,7 @@ import type { RotationStatement } from './pinning';
 
 /** Manifest schema version — bump when the signed-payload shape changes. */
 export const MANIFEST_VERSION = 1;
+const SIGNED_MANIFEST_CACHE_VERSION = 1;
 
 /** One published address key, as summarised in the directory digest. */
 export interface KeyDirectoryEntry {
@@ -167,6 +168,7 @@ export const getSignedManifest = publicAction({
 		const cached = identity.cachedManifest;
 		if (
 			cached &&
+			cached.signedManifestVersion === SIGNED_MANIFEST_CACHE_VERSION &&
 			cached.keyDirectoryDigest === digest &&
 			cached.instanceFingerprint === identity.fingerprint &&
 			cached.rotationFeedUrl === feedUrl

@@ -34,6 +34,21 @@ export type SealState =
 	| { kind: 'keyChanged'; addresses: string[] }
 	| { kind: 'cannotSeal'; reason: SealSkipReason };
 
+export type SealSendBlock = 'checking' | 'needs_unsealed_consent' | 'key_changed' | null;
+
+/** Pure mirror of the server send gate, used by button, shortcut and scheduler paths. */
+export function sealSendBlock(
+	enabled: boolean,
+	state: SealState | null,
+	allowUnsealed: boolean
+): SealSendBlock {
+	if (!enabled) return null;
+	if (!state) return 'checking';
+	if (state.kind === 'willSeal') return null;
+	if (state.kind === 'keyChanged') return 'key_changed';
+	return allowUnsealed ? null : 'needs_unsealed_consent';
+}
+
 /** The three visual tones the lock renders in (shared with the sealed badge). */
 export type SealLockTone = SealTone;
 

@@ -651,6 +651,8 @@ describe('E8b migration — canary dump has zero body plaintext (d)', () => {
 			expect(await openAtRest(SECRET, inbound!.textBody ?? '')).toContain(CANARY);
 			const unified = await ctx.db.query('unifiedMessages').first();
 			expect(await openAtRest(SECRET, unified!.content)).toContain(CANARY);
+			expect(unified!.contentVersion).toBe(1);
+			expect(unified!.contentStorageVersion).toBe(2);
 			const draft = await ctx.db.query('mailDrafts').first();
 			expect(await openAtRest(SECRET, draft!.bodyHtml)).toContain(CANARY);
 		});

@@ -2,7 +2,7 @@
  * Sealed Mail E8b — seal every existing MESSAGE BODY at rest (migration 0035).
  *
  * Back-fills the sealing that `lib/atRestBodies.ts` applies going forward: it
- * walks the four body-bearing tables and replaces each plaintext body column
+ * walks the five body-bearing tables and replaces each plaintext body column
  * with the sealed envelope (`atrest:1:…`). After it completes, a database dump
  * holds ciphertext for these columns — the acceptance bar for E8b — while the
  * documented search-index exception (`mailMessages.snippet`, `searchableText`,
@@ -13,6 +13,7 @@
  *   - mailMessages    : textBodyInline, htmlBodyInline (personal-mailbox snippet)
  *   - unifiedMessages : content                      (the JSON body blob)
  *   - mailDrafts      : bodyHtml, bodyText, bodyBlocks (compose drafts)
+ *   - conversationThreads : lastPreview                (team-inbox snippet)
  *
  * STORAGE BLOBS SEALED (byte cipher):
  *   - mailMessages : rawStorageId (the raw `.eml`), textBodyStorageId,
@@ -79,6 +80,7 @@ import {
 	sealMailInlineBodyPatch,
 	sealUnifiedContentPatch,
 	sealMailDraftBodyPatch,
+	sealConversationThreadPreviewPatch,
 } from '../lib/messageBody';
 import { resealStoredBlob } from '../lib/sealedBlob';
 
@@ -100,6 +102,7 @@ interface SealCounts {
 	mailMessages: number;
 	unifiedMessages: number;
 	mailDrafts: number;
+	conversationThreads: number;
 	/** mailMessages rows whose STORAGE BLOBS (raw `.eml` + body blobs) were sealed. */
 	mailBlobs: number;
 }
@@ -170,6 +173,15 @@ export const sealMailDraftsPage = internalMutation({
 		),
 });
 
+/** Seal the team-inbox denormalized preview for one page. */
+export const sealConversationThreadsPage = internalMutation({
+	args: cursorArg,
+	handler: (ctx, { cursor }): Promise<PageResult> =>
+		sealPage(ctx, 'conversationThreads', cursor, sealConversationThreadPreviewPatch, (id, patch) =>
+			ctx.db.patch(id, patch)
+		),
+});
+
 // ── Storage-blob sealing (raw `.eml` + body blobs on mailMessages) ───────────
 //
 // The four pages above seal INLINE body columns (DB strings). The raw `.eml`
@@ -233,16 +245,17 @@ export const repointResealedBlobs = internalMutation({
 		oldHtmlBodyStorageId: v.optional(v.id('_storage')),
 	},
 	handler: async (ctx, args) => {
+		const maxSharedBlobReferences = 1_000;
 		if (args.rawStorageId && args.oldRawStorageId) {
 			const newId = args.rawStorageId;
 			const oldId = args.oldRawStorageId;
 			const rows = await ctx.db
 				.query('mailMessages')
 				.withIndex('by_raw_storage', (q) => q.eq('rawStorageId', oldId))
-				.collect();
-			// bounded: rows sharing one storage blob = the resealed message plus
-			// its IMAP-COPY siblings (copyMessages spreads the same id) — a small
-			// per-message fan-out on the by_raw_storage index, not a table-wide scan.
+				.take(maxSharedBlobReferences + 1);
+			if (rows.length > maxSharedBlobReferences) {
+				throw new Error('raw blob has too many shared references to migrate atomically');
+			}
 			for (const r of rows) await ctx.db.patch(r._id, { rawStorageId: newId });
 			await ctx.storage.delete(oldId);
 		}
@@ -252,10 +265,10 @@ export const repointResealedBlobs = internalMutation({
 			const rows = await ctx.db
 				.query('mailMessages')
 				.withIndex('by_text_body_storage', (q) => q.eq('textBodyStorageId', oldId))
-				.collect();
-			// bounded: rows sharing one storage blob = the resealed message plus
-			// its IMAP-COPY siblings (copyMessages spreads the same id) — a small
-			// per-message fan-out on the by_text_body_storage index, not a table-wide scan.
+				.take(maxSharedBlobReferences + 1);
+			if (rows.length > maxSharedBlobReferences) {
+				throw new Error('text body blob has too many shared references to migrate atomically');
+			}
 			for (const r of rows) await ctx.db.patch(r._id, { textBodyStorageId: newId });
 			await ctx.storage.delete(oldId);
 		}
@@ -265,10 +278,10 @@ export const repointResealedBlobs = internalMutation({
 			const rows = await ctx.db
 				.query('mailMessages')
 				.withIndex('by_html_body_storage', (q) => q.eq('htmlBodyStorageId', oldId))
-				.collect();
-			// bounded: rows sharing one storage blob = the resealed message plus
-			// its IMAP-COPY siblings (copyMessages spreads the same id) — a small
-			// per-message fan-out on the by_html_body_storage index, not a table-wide scan.
+				.take(maxSharedBlobReferences + 1);
+			if (rows.length > maxSharedBlobReferences) {
+				throw new Error('HTML body blob has too many shared references to migrate atomically');
+			}
 			for (const r of rows) await ctx.db.patch(r._id, { htmlBodyStorageId: newId });
 			await ctx.storage.delete(oldId);
 		}
@@ -411,13 +424,26 @@ export const run = internalAction({
 		const mailDrafts = await drainTable((a) =>
 			ctx.runMutation(internal.migrations['0035_seal_bodies_at_rest'].sealMailDraftsPage, a)
 		);
+		const conversationThreads = await drainTable((a) =>
+			ctx.runMutation(
+				internal.migrations['0035_seal_bodies_at_rest'].sealConversationThreadsPage,
+				a
+			)
+		);
 		// Storage blobs (raw `.eml` + body blobs) — an action page, since blob
 		// contents are only readable from an action.
 		const mailBlobs = await drainTable((a) =>
 			ctx.runAction(internal.migrations['0035_seal_bodies_at_rest'].sealMailMessagesBlobsPage, a)
 		);
 		return {
-			sealed: { inboundMessages, mailMessages, unifiedMessages, mailDrafts, mailBlobs },
+			sealed: {
+				inboundMessages,
+				mailMessages,
+				unifiedMessages,
+				mailDrafts,
+				conversationThreads,
+				mailBlobs,
+			},
 		};
 	},
 });

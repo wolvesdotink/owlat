@@ -29,7 +29,10 @@ const route: InboundRoute = {
 };
 
 const parsed = {
-	from: { text: 'Alice <alice@sender.example>' },
+	from: {
+		text: 'Alice <alice@sender.example>',
+		value: [{ address: 'alice@sender.example', name: 'Alice' }],
+	},
 	subject: 'Hello',
 	text: 'Body',
 	attachments: [],
@@ -87,7 +90,7 @@ describe('forwardToEndpoint — webhook payload auth verdicts (Sealed Mail A1)',
 		expect(body['envelopeFromDomain']).toBeUndefined();
 		expect(body['dkimSigningDomain']).toBeUndefined();
 		// The message envelope still travels.
-		expect(body['from']).toBe('Alice <alice@sender.example>');
+		expect(body['from']).toBe('alice@sender.example');
 		expect(body['to']).toBe('support@org.example');
 	});
 });

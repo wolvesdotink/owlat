@@ -137,5 +137,5 @@ export const domainTables = {
 	})
 		.index('by_reportId', ['reportId'])
 		.index('by_policyDomain', ['policyDomain'])
-		.index('by_rangeStart', ['rangeStartMs']),
+		.index('by_range_start_ms', ['rangeStartMs']),
 };

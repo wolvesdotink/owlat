@@ -82,29 +82,32 @@ export async function ingestMessage(convex: ConvexClient, params: IngestParams):
 	}));
 	const references = Array.isArray(parsed.references)
 		? parsed.references.join(' ')
-		: parsed.references ?? undefined;
+		: (parsed.references ?? undefined);
 
-	await convex.action(fn.ingestExternalRaw as never, {
-		accountId: params.accountId,
-		folderRole: params.folderRole,
-		remoteName: params.remoteName,
-		remoteUid: params.remoteUid,
-		remoteUidValidity: params.remoteUidValidity,
-		rawBytesBase64: params.raw.toString('base64'),
-		from: parsed.from?.text ?? '',
-		to: addrList(parsed.to),
-		cc: addrList(parsed.cc),
-		bcc: addrList(parsed.bcc),
-		replyTo: parsed.replyTo?.text ?? undefined,
-		subject: parsed.subject ?? '',
-		textBodyInline: capBody(text),
-		htmlBodyInline: capBody(html),
-		messageId: parsed.messageId ?? syntheticMessageId(params),
-		inReplyTo: parsed.inReplyTo ?? undefined,
-		references,
-		receivedAt: (parsed.date ?? new Date()).getTime(),
-		attachments,
-		flagSeen: params.flags.has('\\Seen'),
-		flagFlagged: params.flags.has('\\Flagged'),
-	} as never);
+	await convex.action(
+		fn.ingestExternalRaw as never,
+		{
+			accountId: params.accountId,
+			folderRole: params.folderRole,
+			remoteName: params.remoteName,
+			remoteUid: params.remoteUid,
+			remoteUidValidity: params.remoteUidValidity,
+			rawBytesBase64: params.raw.toString('base64'),
+			from: parsed.from?.value?.[0]?.address ?? '',
+			to: addrList(parsed.to),
+			cc: addrList(parsed.cc),
+			bcc: addrList(parsed.bcc),
+			replyTo: parsed.replyTo?.text ?? undefined,
+			subject: parsed.subject ?? '',
+			textBodyInline: capBody(text),
+			htmlBodyInline: capBody(html),
+			messageId: parsed.messageId ?? syntheticMessageId(params),
+			inReplyTo: parsed.inReplyTo ?? undefined,
+			references,
+			receivedAt: (parsed.date ?? new Date()).getTime(),
+			attachments,
+			flagSeen: params.flags.has('\\Seen'),
+			flagFlagged: params.flags.has('\\Flagged'),
+		} as never
+	);
 }

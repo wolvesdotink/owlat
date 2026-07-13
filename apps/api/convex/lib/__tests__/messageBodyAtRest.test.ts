@@ -1,12 +1,13 @@
 /**
  * messageBody — the sealed-at-rest decrypt shim (Sealed Mail E8b).
  *
- * NAMED TEST GATE (a): the `open*` accessors round-trip a body across ALL FOUR
+ * NAMED TEST GATE (a): the `open*` accessors round-trip a body across ALL FIVE
  * storage shapes, for both a SEALED row and a LEGACY-PLAINTEXT row:
  *   1. inboundMessages inline    -> openInboundMessageBody
  *   2. mailMessages inline       -> openMailMessageInlineBody
  *   3. mailMessages storage blob -> readMailMessageText
  *   4. unifiedMessages.content   -> openUnifiedMessageContent
+ *   5. conversationThreads preview -> openConversationThreadPreview
  * The sync accessors E8a introduced still describe the raw row; these async
  * siblings are the ONE place that unseals.
  */
@@ -14,10 +15,13 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
 	openInboundMessageBody,
+	openConversationThreadPreview,
 	openMailMessageInlineBody,
 	openUnifiedMessageContent,
 	readMailMessageText,
 	sealMessageBody,
+	sealUnifiedMessageContentAtWrite,
+	UNIFIED_MESSAGE_STORAGE_VERSION_SEALED,
 	type BodyBlobStorageReader,
 } from '../messageBody';
 import { sealBytesAtRest } from '../atRestBodies';
@@ -84,6 +88,22 @@ describe('messageBody open* accessors — sealed rows round-trip', () => {
 		expect(parsed.text).toBe('unified text');
 		expect(parsed.subject).toBe('Hi');
 	});
+
+	it('versions unified content schema separately from its sealed storage encoding', async () => {
+		const versioned = await sealUnifiedMessageContentAtWrite(JSON.stringify({ text: 'private' }));
+		expect(versioned.contentVersion).toBe(1);
+		expect(versioned.contentStorageVersion).toBe(UNIFIED_MESSAGE_STORAGE_VERSION_SEALED);
+		expect(versioned.content).not.toContain('private');
+	});
+
+	it('shape 5: conversationThreads.lastPreview', async () => {
+		const row = {
+			_id: 'thread-1',
+			lastPreview: await sealMessageBody('private preview'),
+		};
+		const opened = await openConversationThreadPreview(row);
+		expect(opened.lastPreview).toBe('private preview');
+	});
 });
 
 describe('messageBody open* accessors — legacy plaintext rows pass through', () => {
@@ -110,6 +130,11 @@ describe('messageBody open* accessors — legacy plaintext rows pass through', (
 	it('shape 4: unsealed unified content', async () => {
 		const parsed = await openUnifiedMessageContent(JSON.stringify({ text: 'plain unified' }));
 		expect(parsed.text).toBe('plain unified');
+	});
+
+	it('shape 5: unsealed conversation preview', async () => {
+		const opened = await openConversationThreadPreview({ lastPreview: 'plain preview' });
+		expect(opened.lastPreview).toBe('plain preview');
 	});
 
 	it('absent fields collapse to undefined', async () => {

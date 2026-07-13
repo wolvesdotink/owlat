@@ -15,6 +15,7 @@ import {
 	digestTlsReport,
 	explainTlsFailureType,
 	TLS_RPT_MAX_COMPRESSED_BYTES,
+	TLS_RPT_MAX_FAILURE_TYPES,
 	type TlsRptReport,
 } from '../tlsReport';
 
@@ -100,6 +101,21 @@ describe('digestTlsReport', () => {
 		expect(digest.failureCount).toBe(3);
 		expect(digest.policyDomain).toBe('mx.owlat.example');
 		expect(digest.failureTypeCounts).toEqual([{ type: 'starttls-not-supported', count: 3 }]);
+	});
+
+	it('caps attacker-controlled failure-type cardinality', () => {
+		const failureDetails = Array.from({ length: TLS_RPT_MAX_FAILURE_TYPES + 20 }, (_, index) => ({
+			'result-type': `attacker-type-${index}`,
+			'sending-mta-ip': '10.0.0.1',
+			'receiving-mx-hostname': 'mx.owlat.example',
+			'failed-session-count': 1,
+		}));
+		const digest = digestTlsReport({
+			...report,
+			policies: [{ ...report.policies[0]!, 'failure-details': failureDetails }],
+		});
+		expect(digest.failureTypeCounts).toHaveLength(TLS_RPT_MAX_FAILURE_TYPES);
+		expect(digest.failureTypeCounts.at(-1)).toEqual({ type: 'other', count: 21 });
 	});
 });
 

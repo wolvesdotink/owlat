@@ -139,11 +139,11 @@ function instanceOf(address: string): string | undefined {
 const mailboxOpenResultValidator = v.union(
 	// Not a sealed message, OR Sealed Mail is off — the plaintext fast path is
 	// unchanged (no bodies touched, no record written).
-	v.object({ sealed: v.literal(false) }),
+	v.object({ isSealed: v.literal(false) }),
 	// Sealed and successfully opened — the restored plaintext + honest record.
 	v.object({
-		sealed: v.literal(true),
-		decrypted: v.literal(true),
+		isSealed: v.literal(true),
+		isDecrypted: v.literal(true),
 		subject: v.optional(v.string()),
 		text: v.optional(v.string()),
 		html: v.optional(v.string()),
@@ -151,8 +151,8 @@ const mailboxOpenResultValidator = v.union(
 	}),
 	// Sealed but undecryptable — today's "Encrypted — can't decrypt" path.
 	v.object({
-		sealed: v.literal(true),
-		decrypted: v.literal(false),
+		isSealed: v.literal(true),
+		isDecrypted: v.literal(false),
 		encryptionInfo: inboundEncryptionInfoValidator,
 	})
 );
@@ -176,18 +176,18 @@ export const openInboundForMailbox = internalAction({
 		// Flag OFF ⇒ behave exactly as before: never decrypt, never record. A sealed
 		// message just stays ciphertext (the reader's existing "Encrypted" badge).
 		if (!(await ctx.runQuery(internal.e2ee.keys.isSealedMailEnabled, {}))) {
-			return { sealed: false as const };
+			return { isSealed: false as const };
 		}
 
 		const raw = Buffer.from(args.rawBytesBase64, 'base64').toString('utf8');
-		if (!isSealedPgpMime(raw)) return { sealed: false as const };
+		if (!isSealedPgpMime(raw)) return { isSealed: false as const };
 
 		const outcome = await openWithVault(ctx, raw, args.recipientAddress, args.from);
 		if (outcome.status === 'cannotDecrypt') {
 			return {
-				sealed: true as const,
-				decrypted: false as const,
-				encryptionInfo: { sealed: true, decrypted: false },
+				isSealed: true as const,
+				isDecrypted: false as const,
+				encryptionInfo: { isSealed: true, isDecrypted: false },
 			};
 		}
 
@@ -195,8 +195,8 @@ export const openInboundForMailbox = internalAction({
 		const fromAddress = normalizeEmail(args.from);
 		const encryptionInfo = buildOpenedInfo(outcome, fromAddress);
 		return {
-			sealed: true as const,
-			decrypted: true as const,
+			isSealed: true as const,
+			isDecrypted: true as const,
 			...(restored.subject !== undefined ? { subject: restored.subject } : {}),
 			...(restored.text !== undefined ? { text: restored.text } : {}),
 			...(restored.html !== undefined ? { html: restored.html } : {}),
@@ -277,7 +277,7 @@ export const decryptAndReceive = internalAction({
 			const info = buildOpenedInfo(outcome, normalizeEmail(args.from));
 			sealedFlags = {
 				isSealed: true,
-				isSignatureValid: info.signatureValid,
+				isSignatureValid: info.isSignatureValid,
 				...(info.signerFingerprint ? { signerFingerprint: info.signerFingerprint } : {}),
 				...(info.signerInstance ? { signerInstance: info.signerInstance } : {}),
 			};
@@ -381,13 +381,13 @@ async function resolvePinnedSenderKey(ctx: ActionCtx, from: string): Promise<str
 function buildOpenedInfo(
 	outcome: Extract<OpenOutcome, { status: 'opened' }>,
 	fromAddress: string
-): Extract<InboundEncryptionInfo, { decrypted: true }> {
+): Extract<InboundEncryptionInfo, { isDecrypted: true }> {
 	const signerInstance = outcome.signatureValid ? instanceOf(fromAddress) : undefined;
 	return {
-		sealed: true,
-		decrypted: true,
+		isSealed: true,
+		isDecrypted: true,
 		cipherSuite: INBOUND_CIPHER_SUITE,
-		signatureValid: outcome.signatureValid,
+		isSignatureValid: outcome.signatureValid,
 		...(outcome.signerFingerprint ? { signerFingerprint: outcome.signerFingerprint } : {}),
 		...(signerInstance ? { signerInstance } : {}),
 	};

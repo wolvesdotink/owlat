@@ -91,7 +91,7 @@ export const runRotateAddressKey = internalAction({
 		};
 		const rotationSignature = await signRotationStatement(oldPrivateKeyArmored, statement);
 
-		await ctx.runMutation(internal.e2ee.lifecycle.storeRotatedAddressKey, {
+		const stored = await ctx.runMutation(internal.e2ee.lifecycle.storeRotatedAddressKey, {
 			address,
 			domain,
 			wkdHash: wkdHashForAddress(address),
@@ -103,6 +103,7 @@ export const runRotateAddressKey = internalAction({
 			sealedPrivateKey: sealPrivateKey(fresh.privateKeyArmored),
 			rotationSignature,
 		});
+		if (!stored.rotated) return { rotated: false };
 		return {
 			rotated: true,
 			oldFingerprint: current.fingerprint,
@@ -213,9 +214,8 @@ async function importRecoveryKitCore(
 	}
 
 	const fingerprint = privateKey.getFingerprint().toUpperCase();
-	// storeImportedAddressKey (NOT storeKeypair): retire-then-insert on a fingerprint
-	// mismatch so importing an OLDER kit while a DIFFERENT key is active never
-	// overwrites the active key's private material — both keys keep decrypting.
+	// storeImportedAddressKey (NOT storeKeypair): a different imported fingerprint
+	// is retained for decryption without replacing the currently published key.
 	await ctx.runMutation(internal.e2ee.keys.storeImportedAddressKey, {
 		address: normalized,
 		domain,

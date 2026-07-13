@@ -28,6 +28,16 @@ import { adminMutation, adminQuery, publicQuery } from '../lib/authedFunctions';
 import { assertFeatureEnabled, isFeatureEnabled } from '../lib/featureFlags';
 import { normalizeEmail } from '@owlat/shared';
 
+const SIGNED_MANIFEST_VERSION = 1;
+const MAX_KEY_ROWS_PER_ADDRESS = 128;
+const MAX_VAULT_ROWS = 10_000;
+const MAX_MAILBOXES = 5_000;
+const MAX_MAIL_ALIASES = 10_000;
+
+function assertWithinLimit(rows: readonly unknown[], limit: number, label: string): void {
+	if (rows.length > limit) throw new Error(`${label} exceeds the supported limit of ${limit}`);
+}
+
 /**
  * The ACTIVE `keyVault` row for a (normalized) address, or null. After a rotation
  * an address holds multiple rows — exactly one active, the rest decrypt-only — so
@@ -38,7 +48,8 @@ async function activeAddressRow(ctx: QueryCtx, address: string): Promise<Doc<'ke
 	const rows = await ctx.db
 		.query('keyVault')
 		.withIndex('by_address', (q) => q.eq('address', address))
-		.collect(); // bounded: active + retired rows for one address.
+		.take(MAX_KEY_ROWS_PER_ADDRESS + 1);
+	assertWithinLimit(rows, MAX_KEY_ROWS_PER_ADDRESS, 'key history');
 	return rows.find((r) => r.isActive) ?? null;
 }
 
@@ -76,7 +87,12 @@ export const storeKeypair = internalMutation({
 		publicKeyArmored: v.string(),
 		publicKeyBinaryBase64: v.string(),
 		sealedPrivateKey: sealedPrivateKeyValidator,
+		// Intentional replacement (legacy-profile migration) must name the active
+		// fingerprint it observed. Ordinary minting leaves this absent and can
+		// never overwrite a concurrently-created identity.
+		expectedFingerprint: v.optional(v.string()),
 	},
+	returns: v.object({ id: v.id('keyVault'), created: v.boolean(), fingerprint: v.string() }),
 	handler: async (ctx, args) => {
 		// An `'address'` row without an address is unreachable (no WKD hash, no
 		// discovery) — reject it rather than silently inserting a dead row.
@@ -100,6 +116,17 @@ export const storeKeypair = internalMutation({
 					: null;
 
 		if (existing) {
+			const isSameKey = existing.fingerprint.toUpperCase() === args.fingerprint.toUpperCase();
+			const mayReplace =
+				args.expectedFingerprint !== undefined &&
+				existing.fingerprint.toUpperCase() === args.expectedFingerprint.toUpperCase();
+			if (!isSameKey && !mayReplace) {
+				return {
+					id: existing._id,
+					created: false as const,
+					fingerprint: existing.fingerprint,
+				};
+			}
 			await ctx.db.patch(existing._id, {
 				domain: args.domain,
 				wkdHash: args.wkdHash,
@@ -111,7 +138,10 @@ export const storeKeypair = internalMutation({
 				isActive: true,
 				updatedAt: now,
 			});
-			return { id: existing._id, created: false as const };
+			return { id: existing._id, created: false as const, fingerprint: args.fingerprint };
+		}
+		if (args.expectedFingerprint !== undefined) {
+			throw new Error('storeKeypair: active key changed before replacement');
 		}
 
 		const id = await ctx.db.insert('keyVault', {
@@ -128,7 +158,7 @@ export const storeKeypair = internalMutation({
 			createdAt: now,
 			updatedAt: now,
 		});
-		return { id, created: true as const };
+		return { id, created: true as const, fingerprint: args.fingerprint };
 	},
 });
 
@@ -137,14 +167,13 @@ export const storeKeypair = internalMutation({
  * held for the address. Unlike {@link storeKeypair} (which patches whichever row
  * is active — fine for a re-mint, fatal for an import), this NEVER overwrites a
  * row that carries a DIFFERENT fingerprint:
- *   - a row already holding the imported fingerprint is refreshed in place and
- *     made active (idempotent same-key re-import);
- *   - otherwise the imported key is INSERTED as a new active row and every other
- *     active row is retired to decrypt-only (the retire-then-insert shape of a
- *     rotation).
+ *   - a row already holding the imported fingerprint is refreshed in place;
+ *   - otherwise the imported key is INSERTED as decrypt-only whenever a
+ *     different active key already exists;
+ *   - the import becomes active only when the address has no active key.
  * So importing an OLDER kit while a DIFFERENT key is active keeps BOTH private
- * keys — the current key's material is never clobbered and mail sealed to it
- * still opens. Internal — called only by the Node import action.
+ * keys without rolling public key discovery back to the older key. Internal —
+ * called only by the Node import action.
  */
 export const storeImportedAddressKey = internalMutation({
 	args: {
@@ -165,7 +194,8 @@ export const storeImportedAddressKey = internalMutation({
 		const rows = await ctx.db
 			.query('keyVault')
 			.withIndex('by_address', (q) => q.eq('address', address))
-			.collect(); // bounded: active key + a handful of retired keys.
+			.take(MAX_KEY_ROWS_PER_ADDRESS + 1);
+		assertWithinLimit(rows, MAX_KEY_ROWS_PER_ADDRESS, 'key history');
 
 		const material = {
 			domain: args.domain,
@@ -178,28 +208,25 @@ export const storeImportedAddressKey = internalMutation({
 		};
 
 		const sameKey = rows.find((r) => r.fingerprint.toUpperCase() === fingerprint);
+		const activeKey = rows.find((r) => r.isActive);
 		if (sameKey) {
-			// Re-importing a key we already hold: refresh + activate it, and retire any
-			// OTHER active row so exactly one key stays active.
-			for (const r of rows) {
-				if (r._id !== sameKey._id && r.isActive) {
-					await ctx.db.patch(r._id, { isActive: false, updatedAt: now });
-				}
-			}
-			await ctx.db.patch(sameKey._id, { ...material, isActive: true, updatedAt: now });
+			// Refresh the imported material, but do not reactivate a retired key while
+			// another key is current. A recovery import restores decryption capability;
+			// rotation is the only operation allowed to change the published key.
+			await ctx.db.patch(sameKey._id, {
+				...material,
+				isActive: sameKey.isActive || activeKey === undefined,
+				updatedAt: now,
+			});
 			return { id: sameKey._id, created: false as const };
 		}
 
-		// A key we don't hold: retire every current active row to decrypt-only (never
-		// overwrite its private material) and insert the import as the new active key.
-		for (const r of rows) {
-			if (r.isActive) await ctx.db.patch(r._id, { isActive: false, updatedAt: now });
-		}
+		// A key we don't hold becomes active only when there is no published key yet.
 		const id = await ctx.db.insert('keyVault', {
 			kind: 'address',
 			address,
 			...material,
-			isActive: true,
+			isActive: activeKey === undefined,
 			createdAt: now,
 			updatedAt: now,
 		});
@@ -233,7 +260,8 @@ export const getAddressPrivateKeysInternal = internalQuery({
 		const rows = await ctx.db
 			.query('keyVault')
 			.withIndex('by_address', (q) => q.eq('address', normalized))
-			.collect(); // bounded: active key + a handful of retired decrypt-only keys.
+			.take(MAX_KEY_ROWS_PER_ADDRESS + 1);
+		assertWithinLimit(rows, MAX_KEY_ROWS_PER_ADDRESS, 'key history');
 		// Active first, then most-recently-updated, so the common case (a message
 		// sealed to the current key) is tried first.
 		return rows
@@ -273,6 +301,7 @@ export const cacheInstanceManifest = internalMutation({
 		if (!row) return;
 		await ctx.db.patch(row._id, {
 			cachedManifest: {
+				signedManifestVersion: SIGNED_MANIFEST_VERSION,
 				keyDirectoryDigest: args.keyDirectoryDigest,
 				instanceFingerprint: args.instanceFingerprint,
 				rotationFeedUrl: args.rotationFeedUrl,
@@ -305,7 +334,8 @@ export const getKeyDirectory = internalQuery({
 		const rows = await ctx.db
 			.query('keyVault')
 			.withIndex('by_kind', (q) => q.eq('kind', 'address'))
-			.collect(); // bounded: one row per Postbox address (mailboxes + aliases) — single-org instance.
+			.take(MAX_VAULT_ROWS + 1);
+		assertWithinLimit(rows, MAX_VAULT_ROWS, 'address key directory');
 		return rows.flatMap((r) =>
 			r.isActive && r.address ? [{ address: r.address, fingerprint: r.fingerprint }] : []
 		);
@@ -322,6 +352,7 @@ export const getPublicKeyByAddress = publicQuery({
 	args: { address: v.string() },
 	returns: publicKeyProjectionValidator,
 	handler: async (ctx, args) => {
+		if (!(await isFeatureEnabled(ctx, 'sealedMail'))) return null;
 		// The ACTIVE row — after a rotation an address has an old decrypt-only row
 		// too, and we must publish the CURRENT public key for discovery.
 		const row = await activeAddressRow(ctx, normalizeEmail(args.address));
@@ -340,14 +371,18 @@ export const getKeyForWkd = publicQuery({
 	args: { domain: v.string(), wkdHash: v.string() },
 	returns: v.union(v.null(), v.object({ binaryBase64: v.string() })),
 	handler: async (ctx, args) => {
+		if (!(await isFeatureEnabled(ctx, 'sealedMail'))) return null;
 		const domain = args.domain.toLowerCase();
 		// After a rotation, the domain+wkdHash matches BOTH the retired and the new
 		// row (same local-part). Serve the ACTIVE key so a WKD fetch returns the
 		// current published key rather than whichever the index yields first.
 		const rows = await ctx.db
 			.query('keyVault')
-			.withIndex('by_wkd', (q) => q.eq('domain', domain).eq('wkdHash', args.wkdHash))
-			.collect(); // bounded: active + retired rows for one local-part.
+			.withIndex('by_domain_and_wkd_hash', (q) =>
+				q.eq('domain', domain).eq('wkdHash', args.wkdHash)
+			)
+			.take(MAX_KEY_ROWS_PER_ADDRESS + 1);
+		assertWithinLimit(rows, MAX_KEY_ROWS_PER_ADDRESS, 'WKD key history');
 		const row = rows.find((r) => r.isActive);
 		if (!row) return null;
 		return { binaryBase64: row.publicKeyBinaryBase64 };
@@ -360,6 +395,7 @@ export const getInstancePublicKey = publicQuery({
 	args: {},
 	returns: publicKeyProjectionValidator,
 	handler: async (ctx) => {
+		if (!(await isFeatureEnabled(ctx, 'sealedMail'))) return null;
 		const row = await ctx.db
 			.query('keyVault')
 			.withIndex('by_kind', (q) => q.eq('kind', 'instance'))
@@ -378,12 +414,16 @@ export const getInstancePublicKey = publicQuery({
 export const listKeyProfiles = internalQuery({
 	args: {},
 	handler: async (ctx) => {
-		const rows = await ctx.db.query('keyVault').collect(); // bounded: one row per address + the single instance identity.
-		return rows.map((r) => ({
-			kind: r.kind,
-			address: r.address,
-			publicKeyArmored: r.publicKeyArmored,
-		}));
+		const rows = await ctx.db.query('keyVault').take(MAX_VAULT_ROWS + 1);
+		assertWithinLimit(rows, MAX_VAULT_ROWS, 'key vault');
+		return rows
+			.filter((r) => r.isActive)
+			.map((r) => ({
+				kind: r.kind,
+				address: r.address,
+				fingerprint: r.fingerprint,
+				publicKeyArmored: r.publicKeyArmored,
+			}));
 	},
 });
 
@@ -395,8 +435,10 @@ export const listKeyProfiles = internalQuery({
 export const listAddressesNeedingKeys = internalQuery({
 	args: {},
 	handler: async (ctx) => {
-		const mailboxes = await ctx.db.query('mailboxes').collect(); // bounded: per-user mailboxes on a single-org instance.
-		const aliases = await ctx.db.query('mailAliases').collect(); // bounded: per-mailbox aliases on a single-org instance.
+		const mailboxes = await ctx.db.query('mailboxes').take(MAX_MAILBOXES + 1);
+		assertWithinLimit(mailboxes, MAX_MAILBOXES, 'mailboxes');
+		const aliases = await ctx.db.query('mailAliases').take(MAX_MAIL_ALIASES + 1);
+		assertWithinLimit(aliases, MAX_MAIL_ALIASES, 'mail aliases');
 
 		const wanted = new Set<string>();
 		for (const mb of mailboxes) wanted.add(normalizeEmail(mb.address));
@@ -405,7 +447,8 @@ export const listAddressesNeedingKeys = internalQuery({
 		const existing = await ctx.db
 			.query('keyVault')
 			.withIndex('by_kind', (q) => q.eq('kind', 'address'))
-			.collect(); // bounded: one row per address.
+			.take(MAX_VAULT_ROWS + 1);
+		assertWithinLimit(existing, MAX_VAULT_ROWS, 'address keys');
 		for (const row of existing) {
 			if (row.isActive && row.address) wanted.delete(row.address);
 		}
@@ -444,7 +487,8 @@ export const getReadiness = adminQuery({
 		const addressKeys = await ctx.db
 			.query('keyVault')
 			.withIndex('by_kind', (q) => q.eq('kind', 'address'))
-			.collect(); // bounded: one row per address.
+			.take(MAX_VAULT_ROWS + 1);
+		assertWithinLimit(addressKeys, MAX_VAULT_ROWS, 'address keys');
 		const activeAddressKeys = addressKeys.filter((r) => r.isActive).length;
 		return {
 			instanceIdentityPublished: instance !== null && instance.isActive,

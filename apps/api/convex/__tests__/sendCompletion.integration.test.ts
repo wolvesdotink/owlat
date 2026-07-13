@@ -20,6 +20,7 @@ import {
 } from './factories';
 import type { Id } from '../_generated/dataModel';
 import type { WorkId } from '@convex-dev/workpool';
+import { openUnifiedMessageContent } from '../lib/messageBody';
 
 const modules = import.meta.glob('../**/*.*s');
 
@@ -38,9 +39,7 @@ afterEach(async () => {
 	await new Promise((resolve) => setTimeout(resolve, 25));
 });
 
-async function setupCampaignSend(
-	t: ReturnType<typeof convexTest>
-): Promise<Id<'emailSends'>> {
+async function setupCampaignSend(t: ReturnType<typeof convexTest>): Promise<Id<'emailSends'>> {
 	let sendId: Id<'emailSends'>;
 	await t.run(async (ctx) => {
 		const campaignId = await ctx.db.insert('campaigns', createTestCampaign());
@@ -58,10 +57,7 @@ async function setupTransactionalSend(
 ): Promise<Id<'transactionalSends'>> {
 	let txSendId: Id<'transactionalSends'>;
 	await t.run(async (ctx) => {
-		const txEmailId = await ctx.db.insert(
-			'transactionalEmails',
-			createTestTransactionalEmail()
-		);
+		const txEmailId = await ctx.db.insert('transactionalEmails', createTestTransactionalEmail());
 		txSendId = await ctx.db.insert('transactionalSends', {
 			kind: 'transactional' as const,
 			transactionalEmailId: txEmailId,
@@ -373,9 +369,7 @@ describe('completeSend — does NOT write providerHealth (ADR-0020 regression)',
 
 		// ── unified-timeline mirror (confirmed agent reply → unifiedMessages) ──
 		// A seed that carries the thread + contact the outbound mirror needs.
-		async function seedThreadedAgentReply(
-			t: ReturnType<typeof convexTest>,
-		): Promise<{
+		async function seedThreadedAgentReply(t: ReturnType<typeof convexTest>): Promise<{
 			sendId: Id<'transactionalSends'>;
 			threadId: Id<'conversationThreads'>;
 			contactId: Id<'contacts'>;
@@ -440,7 +434,7 @@ describe('completeSend — does NOT write providerHealth (ADR-0020 regression)',
 				expect(row.status).toBe('sent');
 				expect(row.threadId).toBe(threadId);
 				expect(row.externalMessageId).toBe('pm-agent-out');
-				const content = JSON.parse(row.content);
+				const content = await openUnifiedMessageContent(row.content);
 				expect(content.text).toBe('Thanks for reaching out!');
 				expect(content.subject).toBe('Re: Hi');
 			});

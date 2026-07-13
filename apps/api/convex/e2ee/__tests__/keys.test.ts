@@ -91,6 +91,15 @@ async function insertMailbox(t: ReturnType<typeof convexTest>, address: string):
 	});
 }
 
+async function enableSealedMail(t: ReturnType<typeof convexTest>): Promise<void> {
+	await t.run(async (ctx) => {
+		await ctx.db.insert('instanceSettings', {
+			featureFlags: { postbox: true, senderAuthBadges: true, sealedMail: true },
+			createdAt: Date.now(),
+		});
+	});
+}
+
 describe('e2ee/keys', () => {
 	beforeEach(() => {
 		vi.stubEnv('INSTANCE_SECRET', 'unit-test-instance-secret-value');
@@ -121,6 +130,31 @@ describe('e2ee/keys', () => {
 		expect(rows[0]?.wkdHash).toBe('kei1q4tipxxu1yj79k9kfukdhfy631xe'); // WKD hash of "alice"
 	});
 
+	it('keeps the first concurrently-minted identity instead of overwriting it', async () => {
+		const t = convexTest(schema, modules);
+		const address = 'race@sealed.example.com';
+		const first = await t.action(internal.e2ee.keysNode.mintForAddress, { address });
+		const row = await t.query(internal.e2ee.keys.getAddressKeyInternal, { address });
+		if (!row) throw new Error('minted key missing');
+
+		const losingWriter = await t.mutation(internal.e2ee.keys.storeKeypair, {
+			kind: 'address',
+			address,
+			domain: 'sealed.example.com',
+			wkdHash: wkdHashForAddress(address),
+			fingerprint: 'B'.repeat(40),
+			algorithm: row.algorithm,
+			publicKeyArmored: 'FORGED CONCURRENT PUBLIC KEY',
+			publicKeyBinaryBase64: Buffer.from('forged').toString('base64'),
+			sealedPrivateKey: row.sealedPrivateKey,
+		});
+
+		expect(losingWriter).toMatchObject({ created: false, fingerprint: first.fingerprint });
+		const active = await t.query(internal.e2ee.keys.getAddressKeyInternal, { address });
+		expect(active?.fingerprint).toBe(first.fingerprint);
+		expect(active?.publicKeyArmored).not.toContain('FORGED');
+	});
+
 	it('seals the private key so it opens back to a matching OpenPGP key', async () => {
 		const t = convexTest(schema, modules);
 		const address = 'bob@sealed.example.org';
@@ -142,6 +176,7 @@ describe('e2ee/keys', () => {
 
 	it('never exposes private key material through any public query', async () => {
 		const t = convexTest(schema, modules);
+		await enableSealedMail(t);
 		const address = 'carol@sealed.example.com';
 		await t.action(internal.e2ee.keysNode.mintForAddress, { address });
 
@@ -167,6 +202,43 @@ describe('e2ee/keys', () => {
 				.first()
 		);
 		expect(row?.sealedPrivateKey.ciphertext).toBeTruthy();
+	});
+
+	it('withdraws every public key-discovery surface when Sealed Mail is disabled', async () => {
+		const t = convexTest(schema, modules);
+		const address = 'rollback@sealed.example.com';
+		await t.action(internal.e2ee.keysNode.mintForAddress, { address });
+		await t.run(async (ctx) => {
+			const addressRow = await ctx.db
+				.query('keyVault')
+				.withIndex('by_address', (q) => q.eq('address', address))
+				.first();
+			if (!addressRow) throw new Error('address key missing');
+			await ctx.db.insert('keyVault', {
+				kind: 'instance',
+				fingerprint: addressRow.fingerprint,
+				algorithm: addressRow.algorithm,
+				publicKeyArmored: addressRow.publicKeyArmored,
+				publicKeyBinaryBase64: addressRow.publicKeyBinaryBase64,
+				sealedPrivateKey: addressRow.sealedPrivateKey,
+				isActive: true,
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+			await ctx.db.insert('instanceSettings', {
+				featureFlags: { postbox: true, sealedMail: false },
+				createdAt: Date.now(),
+			});
+		});
+
+		expect(await t.query(api.e2ee.keys.getPublicKeyByAddress, { address })).toBeNull();
+		expect(
+			await t.query(api.e2ee.keys.getKeyForWkd, {
+				domain: 'sealed.example.com',
+				wkdHash: wkdHashForAddress(address),
+			})
+		).toBeNull();
+		expect(await t.query(api.e2ee.keys.getInstancePublicKey, {})).toBeNull();
 	});
 
 	it('never exposes private material through the instance-key or manifest surfaces', async () => {
@@ -208,6 +280,7 @@ describe('e2ee/keys', () => {
 
 	it('backfills a key for every mailbox address AND alias, plus the instance identity', async () => {
 		const t = convexTest(schema, modules);
+		await enableSealedMail(t);
 		await insertMailbox(t, 'primary@sealed.example.com');
 		await insertMailbox(t, 'team@sealed.example.com');
 

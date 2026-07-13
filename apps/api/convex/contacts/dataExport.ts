@@ -13,7 +13,11 @@ import { v } from 'convex/values';
 import { authedQuery } from '../lib/authedFunctions';
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import { getOrThrow } from '../_utils/errors';
-import { openInboundMessageBodyForExport, openMessageBodyForExport } from '../lib/messageBody';
+import {
+	openConversationThreadPreviewForExport,
+	openInboundMessageBodyForExport,
+	openMessageBodyForExport,
+} from '../lib/messageBody';
 
 const CAP = 1000;
 
@@ -130,6 +134,9 @@ export const exportContactData = authedQuery({
 				content: await openMessageBodyForExport(row.content),
 			}))
 		);
+		const decryptedThreads = await Promise.all(
+			threads.slice(0, CAP).map(openConversationThreadPreviewForExport)
+		);
 
 		return {
 			exportedAt: Date.now(),
@@ -144,7 +151,10 @@ export const exportContactData = authedQuery({
 			formSubmissions: await capped(formSubmissions),
 			inboundMessages: { rows: decryptedInbound, truncated: inboundMessages.length > CAP },
 			unifiedMessages: { rows: decryptedUnified, truncated: unifiedMessages.length > CAP },
-			conversationThreads: await capped(threads),
+			conversationThreads: {
+				rows: decryptedThreads,
+				truncated: threads.length > CAP,
+			},
 			knowledgeEntries: { rows: knowledgeEntries, truncated: entryLinks.length > CAP },
 		};
 	},

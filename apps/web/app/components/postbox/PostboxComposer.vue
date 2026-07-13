@@ -5,6 +5,7 @@ import type { ComposerPromotePayload } from '~/composables/postbox/usePostboxCom
 import { SIMPLE_BLOCK_TYPES } from '~/composables/postbox/postboxBlockTypes';
 import { convertReplyToReplyAll } from '~/utils/postboxReplyDefault';
 import { mentionsAttachment } from '~/utils/attachmentMention';
+import { sealSendBlock } from '~/utils/sealComposer';
 
 const EmailBuilder = defineAsyncComponent(() =>
 	import('@owlat/email-builder').then((m) => m.EmailBuilder)
@@ -45,6 +46,7 @@ const emit = defineEmits<{
 }>();
 
 const {
+	draftId: activeDraftId,
 	toAddresses,
 	ccAddresses,
 	bccAddresses,
@@ -102,7 +104,9 @@ const aiRewriteEnabled = computed(() => isFeatureEnabled('ai'));
 
 // Sealed Mail (E5): the composer seal-lock indicator (honest per-draft seal
 // state, wired in usePostboxComposerSealLock so this file stays focused).
-const { sealedMailEnabled, composerSealState } = usePostboxComposerSealLock(() => props.draftId);
+const { sealedMailEnabled, composerSealState } = usePostboxComposerSealLock(
+	() => activeDraftId.value ?? undefined
+);
 
 // Formatting-toolbar preference. Default is the Apple-minimal floating bar (only
 // on selection); the footer "Aa" affordance flips back to the classic persistent
@@ -181,7 +185,9 @@ const {
 	onConfirm: (opts) => void handleSend(opts),
 });
 
-async function handleSend(opts?: { scheduledSendAt?: number }) {
+type SendOptions = { scheduledSendAt?: number; allowUnsealed?: boolean };
+
+async function handleSend(opts?: SendOptions) {
 	// Explain *why* Send is inert while an upload is in flight (Send is disabled
 	// via `canSend`, and Cmd/Ctrl+Enter routes here too) so the user waits rather
 	// than losing the not-yet-committed attachment. Keep this above the canSend
@@ -191,6 +197,22 @@ async function handleSend(opts?: { scheduledSendAt?: number }) {
 		return;
 	}
 	if (!canSend.value || sending.value) return;
+	const sealBlock = sealSendBlock(
+		sealedMailEnabled.value,
+		composerSealState.value,
+		opts?.allowUnsealed === true
+	);
+	if (sealBlock) {
+		if (sealBlock === 'checking') {
+			await flush();
+			showToast('Checking whether this message can be sealed…');
+		} else if (sealBlock === 'key_changed') {
+			showToast('Review and confirm the changed recipient key before sending.');
+		} else {
+			showToast('Choose “Send unsealed” to confirm plaintext delivery.');
+		}
+		return;
+	}
 	// Catch the classic "I said 'attached' but forgot to attach" mistake.
 	if (
 		attachments.value.length === 0 &&
@@ -267,28 +289,9 @@ const lastSavedLabel = computed(() => {
 	return `Saved ${new Date(lastSavedAt.value).toLocaleTimeString()}`;
 });
 
-// Composer root: used both for scoped OS-level file drops (desktop) and the
-// keyboard-shortcut binding below.
-const rootEl = ref<HTMLElement | null>(null);
-const {
-	isDragOver: dragActive,
-	handleDragOver: onDragOver,
-	handleDragLeave: onDragLeave,
-	handleDrop: onDrop,
-} = useDropZone(
-	(files) => {
-		void addFiles(files);
-	},
-	{ osFileDrop: true, rootRef: rootEl }
-);
-
-function onPaste(event: ClipboardEvent) {
-	const files = Array.from(event.clipboardData?.files ?? []);
-	if (files.length > 0) {
-		event.preventDefault();
-		void addFiles(files);
-	}
-}
+// Scoped OS-level file drops and clipboard attachment pastes.
+const { rootEl, dragActive, onDragOver, onDragLeave, onDrop, onPaste } =
+	usePostboxComposerDropZone(addFiles);
 
 // Keyboard shortcuts (Cmd/Ctrl+Enter send, +Shift schedule, Esc minimize),
 // bound on the composer root (capture) so each stacked popup composer only
@@ -375,13 +378,13 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 		/>
 
 		<!-- Sealed Mail (E5): honest seal-lock indicator. Sending unsealed on a
-		     cannotSeal draft is an explicit act — the lock's "Send unsealed" routes
-		     to the same send handler as the primary button. -->
+		     cannotSeal draft is an explicit act — only this control supplies the
+		     plaintext-consent bit to the shared send handler. -->
 		<div v-if="sealedMailEnabled && composerSealState" class="px-3">
 			<PostboxComposerSealLock
 				:enabled="sealedMailEnabled"
 				:seal-state="composerSealState"
-				@send-unsealed="handleSend()"
+				@send-unsealed="handleSend({ allowUnsealed: true })"
 			/>
 		</div>
 

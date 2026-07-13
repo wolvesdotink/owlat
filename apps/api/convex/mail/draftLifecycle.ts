@@ -57,7 +57,11 @@ export const DEFAULT_UNDO_SEND_DELAY_MS = 30_000;
 
 export type DraftState = 'draft' | 'pending_send' | 'scheduled';
 
-export type RevertReason = 'user_cancel' | 'from_revoked' | 'scan_blocked';
+export type RevertReason =
+	| 'user_cancel'
+	| 'from_revoked'
+	| 'scan_blocked'
+	| 'seal_consent_required';
 
 export interface SentInputContext {
 	rawStorageId: Id<'_storage'>;
@@ -143,7 +147,12 @@ const transitionInputValidator = v.union(
 	v.object({
 		to: v.literal('draft'),
 		at: v.number(),
-		reason: v.union(v.literal('user_cancel'), v.literal('from_revoked'), v.literal('scan_blocked')),
+		reason: v.union(
+			v.literal('user_cancel'),
+			v.literal('from_revoked'),
+			v.literal('scan_blocked'),
+			v.literal('seal_consent_required')
+		),
 	}),
 	v.object({
 		to: v.literal('sent'),
@@ -198,7 +207,8 @@ type AuditLogEffect = {
 		| 'postbox_draft.sent'
 		| 'postbox_draft.cancelled'
 		| 'postbox_draft.from_revoked'
-		| 'postbox_draft.scan_blocked';
+		| 'postbox_draft.scan_blocked'
+		| 'postbox_draft.seal_consent_required';
 	draftId: Id<'mailDrafts'>;
 	mailboxId: Id<'mailboxes'>;
 	details: Record<string, string | number | boolean>;
@@ -335,6 +345,7 @@ const REVERT_AUDIT_ACTION: Record<RevertReason, AuditLogEffect['action']> = {
 	user_cancel: 'postbox_draft.cancelled',
 	from_revoked: 'postbox_draft.from_revoked',
 	scan_blocked: 'postbox_draft.scan_blocked',
+	seal_consent_required: 'postbox_draft.seal_consent_required',
 };
 
 function reduceDraftRevert(
@@ -346,6 +357,7 @@ function reduceDraftRevert(
 			state: 'draft',
 			scheduledSendAt: undefined,
 			undoToken: undefined,
+			isUnsealedSendAllowed: undefined,
 			lastEditedAt: args.at,
 		},
 		effects: [

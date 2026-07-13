@@ -55,10 +55,10 @@ export const inboxTables = {
 		// Denormalized at create time by the thread module so the list never has to
 		// join to the newest message to know the channel.
 		channel: v.optional(v.string()),
-		// Newest message's plaintext preview — denormalized by the thread module on
+		// Newest message's sealed-at-rest preview — denormalized by the thread module on
 		// each inbound_activity so the team-inbox row can show a snippet line
 		// without an N+1 read of the latest inboundMessages/unifiedMessages row.
-		// Read-side hint only; never gates a query.
+		// Read-side hint only; opened by inbox queries and never gates a query.
 		lastPreview: v.optional(v.string()),
 		// Thread metadata
 		messageCount: v.number(),

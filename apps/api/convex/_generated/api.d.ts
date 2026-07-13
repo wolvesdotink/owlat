@@ -426,6 +426,7 @@ import type * as mail_deliveryHooks from "../mail/deliveryHooks.js";
 import type * as mail_draftLifecycle from "../mail/draftLifecycle.js";
 import type * as mail_draftOnArrival from "../mail/draftOnArrival.js";
 import type * as mail_draftOnArrivalStore from "../mail/draftOnArrivalStore.js";
+import type * as mail_draftQueries from "../mail/draftQueries.js";
 import type * as mail_draftStreamStore from "../mail/draftStreamStore.js";
 import type * as mail_drafts from "../mail/drafts.js";
 import type * as mail_editLearning from "../mail/editLearning.js";
@@ -1045,6 +1046,7 @@ declare const fullApi: ApiFromModules<{
   "mail/draftLifecycle": typeof mail_draftLifecycle;
   "mail/draftOnArrival": typeof mail_draftOnArrival;
   "mail/draftOnArrivalStore": typeof mail_draftOnArrivalStore;
+  "mail/draftQueries": typeof mail_draftQueries;
   "mail/draftStreamStore": typeof mail_draftStreamStore;
   "mail/drafts": typeof mail_drafts;
   "mail/editLearning": typeof mail_editLearning;

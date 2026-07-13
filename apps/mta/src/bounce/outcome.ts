@@ -178,7 +178,7 @@ function reduceMailbox(
 						deliveryId,
 						recipientAddress: rcptTo,
 						rawBytesBase64: rawBuffer.toString('base64'),
-						from: parsed.from?.text ?? '',
+						from: parsed.from?.value?.[0]?.address ?? '',
 						to: [...toAddrs],
 						cc: [...ccAddrs],
 						bcc: [...bccAddrs],
@@ -312,7 +312,7 @@ function reduceInboundAccept(
 			organizationId: route.organizationId,
 			message: `Inbound from ${parsed.from?.text} to ${rcptTo}`,
 			inboundPayload: {
-				from: parsed.from?.text ?? '',
+				from: parsed.from?.value?.[0]?.address ?? '',
 				to: rcptTo,
 				subject: parsed.subject ?? '(no subject)',
 				textBody: parsed.text ?? undefined,
