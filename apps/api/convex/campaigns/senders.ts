@@ -24,7 +24,7 @@ import {
 } from '../_generated/server';
 import { authedMutation, authedQuery } from '../lib/authedFunctions';
 import { hasPermission, requireOrgMember, requireOrgPermission } from '../lib/sessionOrganization';
-import { checkEmailDomainVerification } from '../domains/domains';
+import { checkEmailDomainVerification, memoizedEmailDomainVerification } from '../domains/domains';
 import { isValidEmail } from '../lib/inputGuards';
 import { checkFromAlignment, emailDomain, normalizeEmail } from '@owlat/shared';
 import { outboundTransportFacts } from '../lib/outboundAlignment';
@@ -183,19 +183,9 @@ export const listForPicker = authedQuery({
 		const facts = outboundTransportFacts();
 
 		const enabled = all.filter((s) => s.isEnabled);
-		// Domain verification depends only on the address's domain, and many senders
-		// commonly share one org domain — memoize the indexed lookup per domain so
-		// the same `domains` row isn't re-queried once per sender.
-		const verificationByDomain = new Map<string, ReturnType<typeof checkEmailDomainVerification>>();
-		const verifyDomain = (email: string) => {
-			const domain = emailDomain(email);
-			let pending = verificationByDomain.get(domain);
-			if (!pending) {
-				pending = checkEmailDomainVerification(ctx, email);
-				verificationByDomain.set(domain, pending);
-			}
-			return pending;
-		};
+		// Many senders commonly share one org domain — memoize domain verification
+		// per domain so the same `domains` row isn't re-queried once per sender.
+		const verifyDomain = memoizedEmailDomainVerification(ctx);
 		const senders = await Promise.all(
 			enabled.map(async (s) => {
 				const verification = await verifyDomain(s.email);

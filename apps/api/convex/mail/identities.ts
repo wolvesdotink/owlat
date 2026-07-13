@@ -24,7 +24,7 @@ import { loadReadableMailbox, requireMailboxAccess } from './permissions';
 import { checkFromAlignment, emailDomain, normalizeEmail } from '@owlat/shared';
 import type { OutboundAlignmentState } from '@owlat/shared';
 import { outboundTransportFacts } from '../lib/outboundAlignment';
-import { checkEmailDomainVerification } from '../domains/domains';
+import { memoizedEmailDomainVerification } from '../domains/domains';
 
 /**
  * Shared helper for v8 mutations/queries: read the allowed-from set
@@ -234,16 +234,7 @@ export const listSendAsIdentities = publicQuery({
 		// once and reused; domain verification depends only on the address's domain,
 		// so it's memoized per domain (the common case: many identities, one domain).
 		const facts = outboundTransportFacts();
-		const verificationByDomain = new Map<string, ReturnType<typeof checkEmailDomainVerification>>();
-		const verifyDomain = (address: string) => {
-			const domain = emailDomain(address);
-			let pending = verificationByDomain.get(domain);
-			if (!pending) {
-				pending = checkEmailDomainVerification(ctx, address);
-				verificationByDomain.set(domain, pending);
-			}
-			return pending;
-		};
+		const verifyDomain = memoizedEmailDomainVerification(ctx);
 		return Promise.all(
 			identities.map(async (identity) => {
 				const verification = await verifyDomain(identity.address);
