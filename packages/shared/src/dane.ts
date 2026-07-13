@@ -12,9 +12,12 @@
  *  - the outbound sender's DANE-at-send path in `apps/mta` (does the recipient
  *    MX's certificate match the recipient's published TLSA RRset? — RFC 7672).
  *
- * PURE: no Convex, no network, no MTA imports. Certificate bytes are DER; hashing
- * uses `node:crypto`, which is available in both the Convex Node action runtime
- * and the MTA.
+ * SERVER-ONLY: no Convex, no network, no MTA imports, but it DOES depend on
+ * `node:crypto` (`X509Certificate`, `createHash`) for certificate hashing, which
+ * is available in both the Convex Node action runtime and the MTA but NOT in the
+ * browser. It is therefore exposed only via the `@owlat/shared/dane` subpath and
+ * deliberately kept OUT of the client-reachable package barrel (`index.ts`), so
+ * the Nuxt web bundle never tries to resolve `node:crypto`.
  *
  * SMTP scope (RFC 7672 §2.1): only certificate usages DANE-TA(2) and DANE-EE(3)
  * are usable for SMTP. Usages PKIX-TA(0)/PKIX-EE(1) are treated as unusable, so a
@@ -79,6 +82,17 @@ export function parseTlsaRecord(raw: string): TlsaRecord | null {
 	}
 
 	return { usage, selector, matchingType, data };
+}
+
+/**
+ * Render a TLSA record in DNS presentation form
+ * `"<usage> <selector> <matching-type> <hex>"` (RFC 6698 §2.2). The single source
+ * of truth for this string so every surface that shows or reports a TLSA record —
+ * the own-domain DNS verifier's human `foundValue` and the outbound sender's
+ * TLS-RPT `tlsa` policy-string — renders it identically.
+ */
+export function formatTlsaRecord(record: TlsaRecord): string {
+	return `${record.usage} ${record.selector} ${record.matchingType} ${record.data}`;
 }
 
 /** True when two parsed TLSA associations are byte-for-byte identical. */

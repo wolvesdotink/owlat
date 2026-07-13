@@ -18,7 +18,7 @@
  */
 
 import type Redis from 'ioredis';
-import { parseTlsaRecord, type TlsaRecord } from '@owlat/shared';
+import { parseTlsaRecord, type TlsaRecord } from '@owlat/shared/dane';
 import { logger } from '../monitoring/logger.js';
 
 const DANE_CACHE_PREFIX = 'mta:dane:';

@@ -24,7 +24,12 @@ import { logError } from '../lib/runtimeLog';
 import { isSendingDomainProviderKind, providerFor } from './providers';
 import type { ProviderCheckResult } from './providers';
 import { detectMultipleSpf, isSpfRecord, mergeSpfRecords } from './spf';
-import { parseTlsaRecord, tlsaRecordsEqual, type TlsaRecord } from '@owlat/shared';
+import {
+	formatTlsaRecord,
+	parseTlsaRecord,
+	tlsaRecordsEqual,
+	type TlsaRecord,
+} from '@owlat/shared/dane';
 import { throwNotFound, throwInvalidState, throwInternal } from '../_utils/errors';
 import { txtRecordMatches } from './dnsMatch';
 import { checkReverseDns } from './reverseDns';
@@ -275,11 +280,6 @@ function toTlsaRecord(resolved: ResolvedTlsaRecord): TlsaRecord {
 	};
 }
 
-/** Presentation form of a parsed TLSA record, for the human-facing foundValue. */
-function formatTlsa(record: TlsaRecord): string {
-	return `${record.usage} ${record.selector} ${record.matchingType} ${record.data}`;
-}
-
 async function verifyTlsaRecord(hostname: string, record: DnsRecord): Promise<VerificationResult> {
 	const now = Date.now();
 	const expected = parseExpectedTlsa(record);
@@ -290,13 +290,13 @@ async function verifyTlsaRecord(hostname: string, record: DnsRecord): Promise<Ve
 		const resolved = (await resolveTlsa(hostname)).map(toTlsaRecord);
 		const matching = resolved.find((tlsa) => tlsaRecordsEqual(tlsa, expected));
 		if (matching) {
-			return { verified: true, lastChecked: now, foundValue: formatTlsa(matching) };
+			return { verified: true, lastChecked: now, foundValue: formatTlsaRecord(matching) };
 		}
 		return {
 			verified: false,
 			lastChecked: now,
 			error: 'No matching TLSA record found',
-			foundValue: resolved[0] ? formatTlsa(resolved[0]) : undefined,
+			foundValue: resolved[0] ? formatTlsaRecord(resolved[0]) : undefined,
 		};
 	} catch (error) {
 		return classifyDnsError(error, now, 'No TLSA record found at this hostname');

@@ -9,7 +9,7 @@
 
 import type { PeerCertificate } from 'node:tls';
 import type Redis from 'ioredis';
-import { hasUsableTlsa, matchCertificateToTlsa, type TlsaRecord } from '@owlat/shared';
+import { hasUsableTlsa, matchCertificateToTlsa, type TlsaRecord } from '@owlat/shared/dane';
 import type { MtaConfig } from '../config.js';
 import { logger } from '../monitoring/logger.js';
 import { lookupTlsaRecords } from './daneResolver.js';

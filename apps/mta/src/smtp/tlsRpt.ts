@@ -19,7 +19,7 @@ import { logger } from '../monitoring/logger.js';
 import { Counter } from 'prom-client';
 import { registry } from '../monitoring/collector.js';
 import type { EmailJob } from '../types.js';
-import type { TlsaRecord } from '@owlat/shared';
+import { formatTlsaRecord, type TlsaRecord } from '@owlat/shared/dane';
 import { buildGroupKey, extractDomain } from '../queue/groups.js';
 
 const TLS_RPT_PREFIX = 'mta:tls-rpt:';
@@ -205,7 +205,7 @@ export function buildStsPolicyString(
  * the exact RRset we authenticated against.
  */
 export function buildTlsaPolicyString(records: readonly TlsaRecord[]): string[] {
-	return records.map((r) => `${r.usage} ${r.selector} ${r.matchingType} ${r.data}`);
+	return records.map(formatTlsaRecord);
 }
 
 // ─── Report Generation ──────────────────────────────────────────────

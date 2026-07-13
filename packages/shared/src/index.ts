@@ -21,20 +21,10 @@ export {
 } from './address';
 export { type AlignmentMode, isSpfAligned, emailDomain } from './spfAlignment';
 export { type OutboundTlsMode, OUTBOUND_TLS_MODES, isOutboundTlsMode } from './outboundTlsMode';
-export {
-	type TlsaRecord,
-	type PresentedCertificate,
-	type DaneMatchResult,
-	DANE_USAGE,
-	DANE_SELECTOR,
-	DANE_MATCHING,
-	parseTlsaRecord,
-	tlsaRecordsEqual,
-	isUsableForSmtp,
-	hasUsableTlsa,
-	computeAssociation,
-	matchCertificateToTlsa,
-} from './dane';
+// NOTE: `./dane` is intentionally NOT re-exported here. It depends on `node:crypto`
+// (certificate hashing) which does not resolve in the Nuxt web client bundle that
+// consumes this barrel. Server code (apps/api, apps/mta) imports it directly from
+// the `@owlat/shared/dane` subpath instead.
 export {
 	type TlsRptPolicy,
 	type TlsRptFailureDetail,
