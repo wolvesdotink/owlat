@@ -22,8 +22,9 @@ import type { AddressInfo } from 'node:net';
 import { SmtpConnectionPool } from '../connectionPool.js';
 import { classifyTlsFailure } from '../tlsFailureClassification.js';
 import { resolveTlsRequirements } from '../tlsPolicy.js';
-import { buildDaneEeVerifier } from '../daneVerify.js';
+import { buildDanePeerVerifier, buildDanePolicyFingerprint } from '../daneVerify.js';
 import { computeAssociation } from '@owlat/shared/dane';
+import type { TlsaRecord } from '@owlat/shared/dane';
 import { X509Certificate } from 'node:crypto';
 // Throwaway self-signed cert/key (CN/SAN mx.test) shared with the other
 // outbound-TLS integration tests.
@@ -94,6 +95,14 @@ async function startServer(): Promise<ServerProbe> {
 
 function stopServer(server: SMTPServer): Promise<void> {
 	return new Promise((resolve) => server.close(() => resolve()));
+}
+
+function daneTlsOptions(records: TlsaRecord[], referenceIdentifiers: string[]) {
+	return {
+		rejectUnauthorized: false,
+		verifyPeerCertificate: buildDanePeerVerifier(records, referenceIdentifiers),
+		danePolicyFingerprint: buildDanePolicyFingerprint(records, referenceIdentifiers),
+	};
 }
 
 describe('outbound STARTTLS opportunistic-vs-enforce (PR-25)', () => {
@@ -237,17 +246,15 @@ describe('outbound STARTTLS opportunistic-vs-enforce (PR-25)', () => {
 		const certDer = new X509Certificate(MX_CERT).raw;
 		const association = computeAssociation(certDer, 1, 1);
 		expect(association).not.toBeNull();
+		const records = [{ usage: 3, selector: 1, matchingType: 1, data: association! }];
 
 		const { key, transport } = await pool.acquire('127.0.0.1', '127.0.0.1', {
 			port: probe.port,
 			secure: false,
 			requireTLS: true,
 			tls: {
-				rejectUnauthorized: false,
+				...daneTlsOptions(records, ['mx.test']),
 				servername: 'deliberately-wrong-name.example',
-				verifyPeerCertificate: buildDaneEeVerifier([
-					{ usage: 3, selector: 1, matchingType: 1, data: association! },
-				]),
 			},
 			connectionTimeout: 5000,
 			greetingTimeout: 5000,
@@ -273,9 +280,8 @@ describe('outbound STARTTLS opportunistic-vs-enforce (PR-25)', () => {
 	it('DANE-EE: a TLSA mismatch aborts before SMTP DATA', async () => {
 		probe = await startServer();
 		pool = new SmtpConnectionPool({ maxPerHost: 3, idleTimeoutMs: 30000, maxAgeMs: 300000 });
-		const verifyPeerCertificate = vi.fn(
-			buildDaneEeVerifier([{ usage: 3, selector: 1, matchingType: 1, data: '00'.repeat(32) }])
-		);
+		const records = [{ usage: 3, selector: 1, matchingType: 1, data: '00'.repeat(32) }];
+		const verifyPeerCertificate = vi.fn(buildDanePeerVerifier(records, ['mx.test']));
 
 		const { key, transport } = await pool.acquire('127.0.0.1', '127.0.0.1', {
 			port: probe.port,
@@ -284,6 +290,7 @@ describe('outbound STARTTLS opportunistic-vs-enforce (PR-25)', () => {
 			tls: {
 				rejectUnauthorized: false,
 				verifyPeerCertificate,
+				danePolicyFingerprint: buildDanePolicyFingerprint(records, ['mx.test']),
 			},
 			connectionTimeout: 5000,
 			greetingTimeout: 5000,
@@ -297,10 +304,74 @@ describe('outbound STARTTLS opportunistic-vs-enforce (PR-25)', () => {
 				subject: 'dane-ee mismatch',
 				text: 'must not reach DATA',
 			})
-		).rejects.toThrow(/DANE-EE TLSA mismatch/);
+		).rejects.toThrow(/DANE TLSA mismatch/);
 		pool.release(key);
 
 		expect(verifyPeerCertificate).toHaveBeenCalledOnce();
+		expect(probe.dataOverTls()).toBeNull();
+	}, 15000);
+
+	it('DANE-TA: an associated CA certificate authenticates the named MX', async () => {
+		probe = await startServer();
+		pool = new SmtpConnectionPool({ maxPerHost: 3, idleTimeoutMs: 30000, maxAgeMs: 300000 });
+		const certDer = new X509Certificate(MX_CERT).raw;
+		const association = computeAssociation(certDer, 0, 1);
+		expect(association).not.toBeNull();
+		const records = [{ usage: 2, selector: 0, matchingType: 1, data: association! }];
+
+		const { key, transport } = await pool.acquire('127.0.0.1', '127.0.0.1', {
+			port: probe.port,
+			secure: false,
+			requireTLS: true,
+			tls: {
+				...daneTlsOptions(records, ['mx.test']),
+				servername: 'mx.test',
+			},
+			connectionTimeout: 5000,
+			greetingTimeout: 5000,
+			socketTimeout: 5000,
+		});
+
+		try {
+			const info = await transport.sendMail({
+				from: 'sender@owlat.test',
+				to: 'recipient@example.test',
+				subject: 'dane-ta',
+				text: 'authenticated by the DNSSEC-associated trust anchor',
+			});
+			expect(info.accepted).toContain('recipient@example.test');
+		} finally {
+			pool.release(key);
+		}
+		expect(probe.dataOverTls()).toBe(true);
+	}, 15000);
+
+	it('DANE-TA: a trust-anchor match still rejects the wrong MX name before DATA', async () => {
+		probe = await startServer();
+		pool = new SmtpConnectionPool({ maxPerHost: 3, idleTimeoutMs: 30000, maxAgeMs: 300000 });
+		const certDer = new X509Certificate(MX_CERT).raw;
+		const association = computeAssociation(certDer, 0, 1);
+		const records = [{ usage: 2, selector: 0, matchingType: 1, data: association! }];
+
+		const { key, transport } = await pool.acquire('127.0.0.1', '127.0.0.1', {
+			port: probe.port,
+			secure: false,
+			requireTLS: true,
+			tls: daneTlsOptions(records, ['wrong-mx.example']),
+			connectionTimeout: 5000,
+			greetingTimeout: 5000,
+			socketTimeout: 5000,
+		});
+
+		await expect(
+			transport.sendMail({
+				from: 'sender@owlat.test',
+				to: 'recipient@example.test',
+				subject: 'dane-ta wrong name',
+				text: 'must not reach DATA',
+			})
+		).rejects.toThrow(/DANE-TA validation failed: MX certificate name mismatch/);
+		pool.release(key);
 		expect(probe.dataOverTls()).toBeNull();
 	}, 15000);
 

@@ -3,11 +3,12 @@
  *
  * Maintains reusable nodemailer transports keyed by
  * {mxHost}:{bindIp}:{dkimDomain}:{tlsProfile}, where tlsProfile encodes
- * requireTLS + tls.rejectUnauthorized. The TLS profile MUST be part of the key:
- * many domains share an MX (Google/O365), so without it an MTA-STS-enforce send
- * (requireTLS + verifying) would silently reuse an earlier opportunistic,
- * non-verifying transport to the same MX — a STARTTLS-stripping / enforcement
- * bypass on exactly the high-value shared-MX providers (RFC 8461 §5, RFC 7435).
+ * requireTLS, tls.rejectUnauthorized, and any DANE policy fingerprint. The TLS
+ * profile MUST be part of the key: many domains share an MX (Google/O365), so
+ * without it an MTA-STS-enforce send (requireTLS + verifying) would silently
+ * reuse an earlier opportunistic, non-verifying transport to the same MX — a
+ * STARTTLS-stripping / enforcement bypass on exactly the high-value shared-MX
+ * providers (RFC 8461 §5, RFC 7435).
  * Evicts idle and aged-out connections automatically.
  *
  * Distributed coordination (optional, via Redis): each ACTUALLY-CREATED transport
@@ -20,7 +21,7 @@
 
 import nodemailer from 'nodemailer';
 import type { Transporter } from 'nodemailer';
-import type { PeerCertificate, TLSSocket } from 'node:tls';
+import type { TLSSocket } from 'node:tls';
 import type Redis from 'ioredis';
 import { Gauge } from 'prom-client';
 import { registry } from '../monitoring/collector.js';
@@ -52,20 +53,13 @@ export interface AcquireOptions {
 		 */
 		servername?: string;
 		/**
-		 * DANE (RFC 7672) certificate-authentication hook. When present the
-		 * transport gets its own pool bucket (see {@link SmtpConnectionPool.buildKey})
-		 * and the callback authenticates the MX certificate against its TLSA RRset
-		 * during the handshake — returning an Error aborts the connection. Node only
-		 * invokes it on a PKIX-authorized chain (rejectUnauthorized), so DANE runs
-		 * PKIX + TLSA together. Forwarded into the transport via `...options.tls`.
-		 */
-		checkServerIdentity?: (host: string, cert: PeerCertificate) => Error | undefined;
-		/**
-		 * Runs after STARTTLS succeeds but before SMTP resumes. This is the DANE-EE
-		 * seam: it runs even with PKIX rejection disabled, and any returned error
-		 * destroys the socket before the post-TLS EHLO.
+		 * Runs after STARTTLS succeeds but before SMTP resumes. It runs even with
+		 * PKIX rejection disabled, and any returned error destroys the socket before
+		 * the post-TLS EHLO.
 		 */
 		verifyPeerCertificate?: (socket: TLSSocket) => Error | undefined;
+		/** Pool-only identity for the exact TLSA RRset and DANE-TA reference names. */
+		danePolicyFingerprint?: string;
 	};
 	name?: string;
 	connectionTimeout?: number;
@@ -142,26 +136,29 @@ export class SmtpConnectionPool {
 	/**
 	 * Build the pool key for a given connection.
 	 *
-	 * The TLS profile (requireTLS + rejectUnauthorized) is part of the key so a
-	 * verifying/enforcing connection is NEVER served an opportunistic,
-	 * non-verifying transport to the same shared MX. Defaults match the transport
-	 * factory defaults (requireTLS=false, rejectUnauthorized=false) so callers
-	 * that omit the profile get the opportunistic bucket — the existing behaviour.
+	 * The TLS profile (requireTLS + rejectUnauthorized + DANE policy) is part of
+	 * the key so a verifying/enforcing connection is NEVER served an
+	 * opportunistic, non-verifying transport to the same shared MX. Defaults match
+	 * the transport factory defaults (requireTLS=false, rejectUnauthorized=false)
+	 * so callers that omit the profile get the opportunistic bucket — the existing
+	 * behaviour.
 	 */
 	static buildKey(
 		mxHost: string,
 		bindIp: string,
 		dkimDomain?: string,
-		tls?: { requireTLS?: boolean; rejectUnauthorized?: boolean; dane?: boolean }
+		tls?: {
+			requireTLS?: boolean;
+			rejectUnauthorized?: boolean;
+			danePolicyFingerprint?: string;
+		}
 	): string {
 		const requireTLS = tls?.requireTLS ?? false;
 		const rejectUnauthorized = tls?.rejectUnauthorized ?? false;
-		// A DANE (RFC 7672) transport carries a per-MX checkServerIdentity that
-		// authenticates the certificate against the TLSA RRset. It must NOT be
-		// reused for a non-DANE send to the same MX (which would skip the TLSA
-		// match), nor vice-versa — so DANE gets its own TLS-profile bucket. The
-		// suffix is only appended for DANE, keeping non-DANE keys unchanged.
-		const daneSuffix = tls?.dane ? 'da1' : '';
+		// A DANE transport must not outlive or cross recipient-specific TLSA policy.
+		// The exact RRset + reference-name fingerprint therefore participates in
+		// identity; non-DANE keys remain unchanged.
+		const daneSuffix = tls?.danePolicyFingerprint ? `da${tls.danePolicyFingerprint}` : '';
 		const tlsProfile = `rt${requireTLS ? 1 : 0}ru${rejectUnauthorized ? 1 : 0}${daneSuffix}`;
 		return `${mxHost}:${bindIp}:${dkimDomain ?? 'none'}:${tlsProfile}`;
 	}
@@ -180,13 +177,14 @@ export class SmtpConnectionPool {
 		bindIp: string,
 		options: AcquireOptions
 	): Promise<{ key: string; transport: Transporter }> {
+		if (options.tls?.verifyPeerCertificate && !options.tls.danePolicyFingerprint) {
+			throw new Error('DANE verifier requires a policy fingerprint for safe pooling');
+		}
 		const dkimDomain = options.dkim?.domainName;
 		const key = SmtpConnectionPool.buildKey(mxHost, bindIp, dkimDomain, {
 			requireTLS: options.requireTLS,
 			rejectUnauthorized: options.tls?.rejectUnauthorized,
-			dane:
-				options.tls?.checkServerIdentity !== undefined ||
-				options.tls?.verifyPeerCertificate !== undefined,
+			danePolicyFingerprint: options.tls?.danePolicyFingerprint,
 		});
 
 		// Reuse fast-path — an already-counted transport, no new global slot.
@@ -235,6 +233,8 @@ export class SmtpConnectionPool {
 			throw new PoolOverCapError(mxHost);
 		}
 
+		const transportTls = { ...options.tls };
+		delete transportTls.danePolicyFingerprint;
 		const transport = nodemailer.createTransport({
 			host: mxHost,
 			port: options.port ?? 25,
@@ -249,7 +249,7 @@ export class SmtpConnectionPool {
 			// nosemgrep -- opportunistic TLS default for SMTP delivery (RFC 7435); callers (MTA-STS enforce) override via options.tls.
 			tls: {
 				rejectUnauthorized: false,
-				...options.tls,
+				...transportTls,
 				minVersion: options.tls?.minVersion ?? 'TLSv1.2',
 			},
 			name: options.name,
