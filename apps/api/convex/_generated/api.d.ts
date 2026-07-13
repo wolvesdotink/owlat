@@ -238,6 +238,7 @@ import type * as e2ee_keys from "../e2ee/keys.js";
 import type * as e2ee_keysNode from "../e2ee/keysNode.js";
 import type * as e2ee_manifest from "../e2ee/manifest.js";
 import type * as e2ee_sealing from "../e2ee/sealing.js";
+import type * as e2ee_selfCheck from "../e2ee/selfCheck.js";
 import type * as e2ee_wkd from "../e2ee/wkd.js";
 import type * as emailBlocks_blocks from "../emailBlocks/blocks.js";
 import type * as emailBlocks_module from "../emailBlocks/module.js";
@@ -839,6 +840,7 @@ declare const fullApi: ApiFromModules<{
   "e2ee/keysNode": typeof e2ee_keysNode;
   "e2ee/manifest": typeof e2ee_manifest;
   "e2ee/sealing": typeof e2ee_sealing;
+  "e2ee/selfCheck": typeof e2ee_selfCheck;
   "e2ee/wkd": typeof e2ee_wkd;
   "emailBlocks/blocks": typeof emailBlocks_blocks;
   "emailBlocks/module": typeof emailBlocks_module;

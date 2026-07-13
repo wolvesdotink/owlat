@@ -295,8 +295,9 @@ export const backfillKeys = adminMutation({
 /**
  * Admin: local key-publication status for the delivery-readiness surface.
  * Reports whether the instance signing identity exists and how many address
- * keys are published — the local truth a "encryption keys published" readiness
- * check reads (a live self-fetch of WKD/manifest is a later transport piece).
+ * keys are published — the local truth the "encryption keys published" readiness
+ * check reads. The live counterpart that self-fetches our own WKD + manifest is
+ * `domains/dnsVerification.checkEncryptionKeysReadiness`.
  */
 export const getReadiness = adminQuery({
 	args: {},
