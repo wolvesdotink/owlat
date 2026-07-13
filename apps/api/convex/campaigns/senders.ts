@@ -183,9 +183,22 @@ export const listForPicker = authedQuery({
 		const facts = outboundTransportFacts();
 
 		const enabled = all.filter((s) => s.isEnabled);
+		// Domain verification depends only on the address's domain, and many senders
+		// commonly share one org domain — memoize the indexed lookup per domain so
+		// the same `domains` row isn't re-queried once per sender.
+		const verificationByDomain = new Map<string, ReturnType<typeof checkEmailDomainVerification>>();
+		const verifyDomain = (email: string) => {
+			const domain = emailDomain(email);
+			let pending = verificationByDomain.get(domain);
+			if (!pending) {
+				pending = checkEmailDomainVerification(ctx, email);
+				verificationByDomain.set(domain, pending);
+			}
+			return pending;
+		};
 		const senders = await Promise.all(
 			enabled.map(async (s) => {
-				const verification = await checkEmailDomainVerification(ctx, s.email);
+				const verification = await verifyDomain(s.email);
 				const alignment = checkFromAlignment(emailDomain(s.email), facts);
 				return {
 					_id: s._id,
