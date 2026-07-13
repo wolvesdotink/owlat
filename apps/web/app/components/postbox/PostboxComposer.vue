@@ -100,6 +100,10 @@ const { ghostSuggestionsEnabled } = usePostboxGhostGate();
 const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 const aiRewriteEnabled = computed(() => isFeatureEnabled('ai'));
 
+// Sealed Mail (E5): the composer seal-lock indicator (honest per-draft seal
+// state, wired in usePostboxComposerSealLock so this file stays focused).
+const { sealedMailEnabled, composerSealState } = usePostboxComposerSealLock(() => props.draftId);
+
 // Formatting-toolbar preference. Default is the Apple-minimal floating bar (only
 // on selection); the footer "Aa" affordance flips back to the classic persistent
 // toolbar and persists the choice per user.
@@ -369,6 +373,17 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 			@from-change="onFromChange"
 			@apply-reply-all="onApplyReplyAll"
 		/>
+
+		<!-- Sealed Mail (E5): honest seal-lock indicator. Sending unsealed on a
+		     cannotSeal draft is an explicit act — the lock's "Send unsealed" routes
+		     to the same send handler as the primary button. -->
+		<div v-if="sealedMailEnabled && composerSealState" class="px-3">
+			<PostboxComposerSealLock
+				:enabled="sealedMailEnabled"
+				:seal-state="composerSealState"
+				@send-unsealed="handleSend()"
+			/>
+		</div>
 
 		<div
 			v-if="isScheduled"
