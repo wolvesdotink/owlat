@@ -11,7 +11,9 @@ vi.mock('nodemailer', () => ({
 	},
 }));
 vi.mock('prom-client', () => ({
-	Gauge: vi.fn(function () { return { set: vi.fn() }; }),
+	Gauge: vi.fn(function () {
+		return { set: vi.fn() };
+	}),
 }));
 vi.mock('../../monitoring/collector.js', () => ({
 	registry: { registerMetric: vi.fn() },
@@ -71,10 +73,10 @@ describe('SmtpConnectionPool', () => {
 
 	it('buildKey produces correct format', () => {
 		expect(SmtpConnectionPool.buildKey('mx1.example.com', '10.0.0.1')).toBe(
-			'mx1.example.com:10.0.0.1:none:rt0ru0',
+			'mx1.example.com:10.0.0.1:none:rt0ru0'
 		);
 		expect(SmtpConnectionPool.buildKey('mx1.example.com', '10.0.0.1', 'owlat.com')).toBe(
-			'mx1.example.com:10.0.0.1:owlat.com:rt0ru0',
+			'mx1.example.com:10.0.0.1:owlat.com:rt0ru0'
 		);
 	});
 
@@ -97,6 +99,47 @@ describe('SmtpConnectionPool', () => {
 		expect(enforcing).not.toBe(opportunistic);
 	});
 
+	it('binds DANE transports to the exact policy fingerprint', async () => {
+		const verifyPeerCertificate = () => undefined;
+		const first = await pool.acquire('mx.shared.example', '10.0.0.1', {
+			port: 25,
+			requireTLS: true,
+			tls: {
+				rejectUnauthorized: false,
+				verifyPeerCertificate,
+				danePolicyFingerprint: 'policy-a',
+			},
+		});
+		pool.release(first.key);
+		const second = await pool.acquire('mx.shared.example', '10.0.0.1', {
+			port: 25,
+			requireTLS: true,
+			tls: {
+				rejectUnauthorized: false,
+				verifyPeerCertificate,
+				danePolicyFingerprint: 'policy-b',
+			},
+		});
+
+		expect(first.key).toContain('dapolicy-a');
+		expect(second.key).toContain('dapolicy-b');
+		expect(second.transport).not.toBe(first.transport);
+		expect(nodemailer.createTransport).toHaveBeenCalledTimes(2);
+		for (const [transportOptions] of vi.mocked(nodemailer.createTransport).mock.calls) {
+			expect(transportOptions.tls).not.toHaveProperty('danePolicyFingerprint');
+		}
+	});
+
+	it('rejects an unfingerprinted DANE verifier instead of pooling it unsafely', async () => {
+		await expect(
+			pool.acquire('mx.example', '10.0.0.1', {
+				port: 25,
+				tls: { verifyPeerCertificate: () => undefined },
+			})
+		).rejects.toThrow(/requires a policy fingerprint/);
+		expect(nodemailer.createTransport).not.toHaveBeenCalled();
+	});
+
 	it('pins tls.minVersion TLSv1.2 on every created transport (RFC 8996/9325)', async () => {
 		// Caller passes a tls block WITHOUT minVersion — the pool must still pin the floor.
 		await pool.acquire('mx1.example.com', '10.0.0.1', {
@@ -107,7 +150,7 @@ describe('SmtpConnectionPool', () => {
 		expect(nodemailer.createTransport).toHaveBeenCalledWith(
 			expect.objectContaining({
 				tls: expect.objectContaining({ minVersion: 'TLSv1.2', rejectUnauthorized: false }),
-			}),
+			})
 		);
 	});
 
@@ -117,7 +160,7 @@ describe('SmtpConnectionPool', () => {
 		expect(nodemailer.createTransport).toHaveBeenCalledWith(
 			expect.objectContaining({
 				tls: expect.objectContaining({ minVersion: 'TLSv1.2' }),
-			}),
+			})
 		);
 	});
 
@@ -130,7 +173,7 @@ describe('SmtpConnectionPool', () => {
 		expect(nodemailer.createTransport).toHaveBeenCalledWith(
 			expect.objectContaining({
 				tls: expect.objectContaining({ minVersion: 'TLSv1.3', rejectUnauthorized: true }),
-			}),
+			})
 		);
 	});
 
@@ -200,8 +243,14 @@ function makeRedisMock() {
 		pipeline: vi.fn(() => {
 			const ops: Array<['incr' | 'decr', string]> = [];
 			const chain = {
-				incr: (k: string) => { ops.push(['incr', k]); return chain; },
-				decr: (k: string) => { ops.push(['decr', k]); return chain; },
+				incr: (k: string) => {
+					ops.push(['incr', k]);
+					return chain;
+				},
+				decr: (k: string) => {
+					ops.push(['decr', k]);
+					return chain;
+				},
 				expire: () => chain,
 				exec: async () => {
 					for (const [op, k] of ops) {
@@ -223,7 +272,11 @@ describe('SmtpConnectionPool — distributed coordination', () => {
 	it('enforces the global per-host cap atomically and rolls back over-cap reservations', async () => {
 		const redis = makeRedisMock();
 		// High per-host limit so the GLOBAL cap is the gate under test.
-		const pool = new SmtpConnectionPool({ maxPerHost: 100, idleTimeoutMs: 30000, maxAgeMs: 300000 });
+		const pool = new SmtpConnectionPool({
+			maxPerHost: 100,
+			idleTimeoutMs: 30000,
+			maxAgeMs: 300000,
+		});
 		pool.enableDistributedCoordination(redis as unknown as Redis, 2, 'srv1');
 
 		// Distinct bindIps → distinct keys → distinct transports to the SAME host.
@@ -233,7 +286,7 @@ describe('SmtpConnectionPool — distributed coordination', () => {
 
 		// Third new connection is over the global cap of 2 → throws, INCR rolled back.
 		await expect(pool.acquire('mx.example.com', '10.0.0.3', { port: 25 })).rejects.toBeInstanceOf(
-			PoolOverCapError,
+			PoolOverCapError
 		);
 		expect(await pool.getGlobalConnectionCount('mx.example.com')).toBe(2); // not 3
 	});
@@ -287,7 +340,11 @@ describe('SmtpConnectionPool — distributed coordination', () => {
 	});
 
 	it('fail-opens when coordination is disabled (no redis)', async () => {
-		const pool = new SmtpConnectionPool({ maxPerHost: 100, idleTimeoutMs: 30000, maxAgeMs: 300000 });
+		const pool = new SmtpConnectionPool({
+			maxPerHost: 100,
+			idleTimeoutMs: 30000,
+			maxAgeMs: 300000,
+		});
 		// No enableDistributedCoordination → no cap, no tracking.
 		await pool.acquire('mx.example.com', '10.0.0.1', { port: 25 });
 		await pool.acquire('mx.example.com', '10.0.0.2', { port: 25 });
@@ -298,7 +355,11 @@ describe('SmtpConnectionPool — distributed coordination', () => {
 
 	it('rolls back the global INCR exactly once on an over-cap reservation (count stays at cap)', async () => {
 		const redis = makeRedisMock();
-		const pool = new SmtpConnectionPool({ maxPerHost: 100, idleTimeoutMs: 30000, maxAgeMs: 300000 });
+		const pool = new SmtpConnectionPool({
+			maxPerHost: 100,
+			idleTimeoutMs: 30000,
+			maxAgeMs: 300000,
+		});
 		pool.enableDistributedCoordination(redis as unknown as Redis, 1, 'srv1');
 
 		await pool.acquire('mx.example.com', '10.0.0.1', { port: 25 });
@@ -306,10 +367,10 @@ describe('SmtpConnectionPool — distributed coordination', () => {
 
 		// Two more over-cap attempts both throw and both roll their INCR back.
 		await expect(pool.acquire('mx.example.com', '10.0.0.2', { port: 25 })).rejects.toBeInstanceOf(
-			PoolOverCapError,
+			PoolOverCapError
 		);
 		await expect(pool.acquire('mx.example.com', '10.0.0.3', { port: 25 })).rejects.toBeInstanceOf(
-			PoolOverCapError,
+			PoolOverCapError
 		);
 
 		// Count is still exactly the cap — never leaked above it, never went negative.

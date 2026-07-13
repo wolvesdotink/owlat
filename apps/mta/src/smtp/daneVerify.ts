@@ -2,96 +2,172 @@
  * DANE (RFC 7672) certificate authentication for outbound delivery.
  *
  * Bridges the TLS handshake to the pure TLSA matcher in `@owlat/shared`: resolves
- * a recipient MX's TLSA RRset, and — when it is usable — produces the
- * `checkServerIdentity` hook plus the TLS-RPT policy context the sender needs to
- * authenticate the certificate and attribute the result.
+ * a recipient MX's TLSA RRset, and — when it is usable — produces the peer
+ * verifier plus the TLS-RPT policy context the sender needs to authenticate the
+ * certificate and attribute the result.
  */
 
+import { createHash, X509Certificate } from 'node:crypto';
 import type { PeerCertificate, TLSSocket } from 'node:tls';
 import type Redis from 'ioredis';
-import { hasUsableTlsa, matchCertificateToTlsa, type TlsaRecord } from '@owlat/shared/dane';
+import {
+	computeAssociation,
+	formatTlsaRecord,
+	hasUsableTlsa,
+	matchCertificateToTlsa,
+	type TlsaRecord,
+} from '@owlat/shared/dane';
 import type { MtaConfig } from '../config.js';
 import { logger } from '../monitoring/logger.js';
 import { lookupTlsaRecords } from './daneResolver.js';
 import { buildTlsaPolicyString, type TlsPolicyContext } from './tlsRpt.js';
 import type { DaneMxDestination } from './daneMxResolver.js';
 
-/**
- * Build a TLS `checkServerIdentity` callback that authenticates the MX
- * certificate against a DANE TLSA RRset (RFC 7672). Returns `undefined` (accept
- * the handshake) when a usable TLSA record matches the presented certificate or
- * chain, or an `Error` (abort the handshake) on a mismatch.
- *
- * Node only invokes `checkServerIdentity` on a PKIX-authorized chain, so the DANE
- * path runs with certificate verification ON: the MX certificate must be BOTH
- * publicly trusted AND DANE-matched. A DANE-EE certificate that is not PKIX-valid
- * is therefore deferred (fail-closed) rather than delivered unauthenticated —
- * the safe direction for a security control.
- */
-export function buildDaneCheck(
-	records: readonly TlsaRecord[]
-): (host: string, cert: PeerCertificate) => Error | undefined {
-	return (_host, cert) => {
-		const leafDer = cert.raw;
-		if (!leafDer || leafDer.length === 0) {
-			return new Error('DANE TLSA check: no peer certificate presented');
-		}
+function collectPeerChain(cert: PeerCertificate): Buffer[] {
+	const chain: Buffer[] = [];
+	const seen = new Set<string>();
+	let node: PeerCertificate | undefined = cert;
+	while (node?.raw && node.raw.length > 0) {
+		const fingerprint = createHash('sha256').update(node.raw).digest('hex');
+		if (seen.has(fingerprint)) break;
+		seen.add(fingerprint);
+		chain.push(node.raw);
+		const issuer: PeerCertificate | undefined = (
+			node as PeerCertificate & { issuerCertificate?: PeerCertificate }
+		).issuerCertificate;
+		node = issuer && issuer !== node ? issuer : undefined;
+	}
+	return chain;
+}
 
-		// Walk the presented chain (leaf → issuer …) for DANE-TA(2) matching. The
-		// root certificate's issuerCertificate points back at itself; the seen-set
-		// terminates the walk.
-		const chainDer: Buffer[] = [];
-		const seen = new Set<PeerCertificate>();
-		let node: PeerCertificate | undefined = cert;
-		while (node && node.raw && node.raw.length > 0 && !seen.has(node)) {
-			seen.add(node);
-			chainDer.push(node.raw);
-			const issuer: PeerCertificate | undefined = (
-				node as PeerCertificate & { issuerCertificate?: PeerCertificate }
-			).issuerCertificate;
-			node = issuer && issuer !== node ? issuer : undefined;
-		}
+function matchesTlsa(certDer: Buffer, record: TlsaRecord): boolean {
+	return computeAssociation(certDer, record.selector, record.matchingType) === record.data;
+}
 
-		const result = matchCertificateToTlsa({ leafDer, chainDer }, records);
-		if (result.matched) return undefined;
-		return new Error('DANE TLSA mismatch: MX certificate did not match any usable TLSA record');
-	};
+function validateDaneTaPath(
+	chainDer: readonly Buffer[],
+	anchorIndex: number,
+	referenceIdentifiers: readonly string[],
+	now: number
+): Error | undefined {
+	let chain: X509Certificate[];
+	try {
+		chain = chainDer.slice(0, anchorIndex + 1).map((der) => new X509Certificate(der));
+	} catch {
+		return new Error('DANE-TA validation failed: malformed certificate in peer chain');
+	}
+
+	const leaf = chain[0];
+	if (!leaf) return new Error('DANE-TA validation failed: peer chain is empty');
+	if (!referenceIdentifiers.some((identifier) => leaf.checkHost(identifier) !== undefined)) {
+		return new Error('DANE-TA validation failed: MX certificate name mismatch');
+	}
+	const extendedKeyUsage = leaf.keyUsage;
+	if (
+		Array.isArray(extendedKeyUsage) &&
+		extendedKeyUsage.length > 0 &&
+		!extendedKeyUsage.includes('1.3.6.1.5.5.7.3.1') &&
+		!extendedKeyUsage.includes('2.5.29.37.0')
+	) {
+		return new Error('DANE-TA validation failed: certificate is not valid for TLS servers');
+	}
+
+	for (const cert of chain) {
+		const validFrom = Date.parse(cert.validFrom);
+		const validTo = Date.parse(cert.validTo);
+		if (
+			!Number.isFinite(validFrom) ||
+			!Number.isFinite(validTo) ||
+			now < validFrom ||
+			now > validTo
+		) {
+			return new Error('DANE-TA validation failed: certificate is outside its validity period');
+		}
+	}
+
+	const anchor = chain[anchorIndex];
+	if (!anchor?.ca) return new Error('DANE-TA validation failed: TLSA trust anchor is not a CA');
+	for (let index = 0; index < anchorIndex; index++) {
+		const child = chain[index];
+		const issuer = chain[index + 1];
+		if (!child || !issuer?.ca || !child.checkIssued(issuer) || !child.verify(issuer.publicKey)) {
+			return new Error('DANE-TA validation failed: invalid certificate path to TLSA trust anchor');
+		}
+	}
+	return undefined;
 }
 
 /**
- * Authenticate a completed TLS handshake with DANE-EE(3).
+ * Authenticate a completed TLS handshake against an SMTP DANE RRset.
  *
- * RFC 7672 makes the DNSSEC-authenticated leaf association the trust anchor:
- * PKIX trust, certificate names, and the certificate validity interval do not
- * participate. The caller therefore handshakes with ordinary PKIX rejection
- * disabled and invokes this verifier before SMTP resumes after STARTTLS.
+ * DANE-EE(3) is a direct leaf association and intentionally ignores WebPKI,
+ * names, and certificate dates. DANE-TA(2) instead validates the presented
+ * chain to the associated CA, including signatures, CA constraints, validity,
+ * and the RFC 7672 reference-identifier name check. Any usable association may
+ * authenticate the peer, which matters during EE/TA rollover.
  */
-export function buildDaneEeVerifier(
-	records: readonly TlsaRecord[]
+export function buildDanePeerVerifier(
+	records: readonly TlsaRecord[],
+	referenceIdentifiers: readonly string[],
+	now: () => number = Date.now
 ): (socket: TLSSocket) => Error | undefined {
 	const daneEeRecords = records.filter((record) => record.usage === 3);
+	const daneTaRecords = records.filter((record) => record.usage === 2);
+	const normalizedIdentifiers = [...new Set(referenceIdentifiers.map(normalizeHostname))].filter(
+		Boolean
+	);
+
 	return (socket) => {
-		const cert = socket.getPeerCertificate(true);
-		if (!cert?.raw || cert.raw.length === 0) {
-			return new Error('DANE-EE TLSA check: no peer certificate presented');
+		const peer = socket.getPeerCertificate(true);
+		if (!peer?.raw || peer.raw.length === 0) {
+			return new Error('DANE TLSA check: no peer certificate presented');
 		}
-		const result = matchCertificateToTlsa(
-			{ leafDer: cert.raw, chainDer: [cert.raw] },
-			daneEeRecords
+		if (
+			matchCertificateToTlsa({ leafDer: peer.raw, chainDer: [peer.raw] }, daneEeRecords).matched
+		) {
+			return undefined;
+		}
+
+		const chainDer = collectPeerChain(peer);
+		let lastTaError: Error | undefined;
+		for (const record of daneTaRecords) {
+			for (let anchorIndex = 0; anchorIndex < chainDer.length; anchorIndex++) {
+				const candidate = chainDer[anchorIndex];
+				if (!candidate || !matchesTlsa(candidate, record)) continue;
+				const pathError = validateDaneTaPath(chainDer, anchorIndex, normalizedIdentifiers, now());
+				if (!pathError) return undefined;
+				lastTaError = pathError;
+			}
+		}
+		return (
+			lastTaError ??
+			new Error('DANE TLSA mismatch: peer chain did not match any usable TLSA association')
 		);
-		if (result.matched) return undefined;
-		return new Error('DANE-EE TLSA mismatch: MX leaf certificate did not match');
 	};
+}
+
+function normalizeHostname(hostname: string): string {
+	return hostname.trim().toLowerCase().replace(/\.$/, '');
+}
+
+/** Stable identity for the complete DANE authentication policy of a connection. */
+export function buildDanePolicyFingerprint(
+	records: readonly TlsaRecord[],
+	referenceIdentifiers: readonly string[]
+): string {
+	const recordPolicy = records.map(formatTlsaRecord).sort();
+	const namePolicy = referenceIdentifiers.map(normalizeHostname).filter(Boolean).sort();
+	return createHash('sha256')
+		.update(JSON.stringify({ version: 1, records: recordPolicy, names: namePolicy }))
+		.digest('hex');
 }
 
 /** The per-attempt DANE inputs the sender feeds into one delivery attempt. */
 export interface DanePlan {
-	/** Whether Node should apply ordinary WebPKI validation before DANE. */
-	rejectUnauthorized: boolean;
-	/** Legacy DANE-TA verifier; replaced by a full path validator in the next stage. */
-	checkServerIdentity?: (host: string, cert: PeerCertificate) => Error | undefined;
-	/** DANE-EE verifier run after TLS but before SMTP resumes. */
-	verifyPeerCertificate?: (socket: TLSSocket) => Error | undefined;
+	/** DANE verifier run after TLS but before SMTP resumes. */
+	verifyPeerCertificate: (socket: TLSSocket) => Error | undefined;
+	/** Stable pool identity for the TLSA RRset and TA reference names. */
+	policyFingerprint: string;
 	/** The TLS-RPT policy context (policy-type `tlsa`) to attribute the result to. */
 	policyContext: TlsPolicyContext;
 }
@@ -148,7 +224,16 @@ export async function prepareDaneAttempt(
 ): Promise<DaneDecision> {
 	const mode = config.daneMode ?? 'off';
 	if (mode === 'off' || !config.daneResolverUrl) return { kind: 'none' };
-	if (destination && destination.addressSecurity !== 'secure') {
+	if (destination?.addressSecurity === 'indeterminate') {
+		const reason = `DANE address discovery indeterminate for ${mxHost}`;
+		if (mode === 'enforce') return { kind: 'defer', reason };
+		logger.debug(
+			{ mxHost, recipientDomain },
+			'DANE report-only: address discovery indeterminate; delivery proceeds on the normal policy'
+		);
+		return { kind: 'none' };
+	}
+	if (destination?.addressSecurity === 'insecure') {
 		logger.debug(
 			{ mxHost, recipientDomain, addressSecurity: destination.addressSecurity },
 			'DANE skipped because the MX address chain is not DNSSEC-secure'
@@ -180,12 +265,11 @@ export async function prepareDaneAttempt(
 		return { kind: 'none' };
 	}
 
-	const daneEeRecords = lookup.records.filter((record) => record.usage === 3);
+	const referenceIdentifiers = [mxHost];
+	if (destination?.mxSecurity === 'secure') referenceIdentifiers.push(recipientDomain);
 	const plan: DanePlan = {
-		rejectUnauthorized: daneEeRecords.length === 0,
-		...(daneEeRecords.length > 0
-			? { verifyPeerCertificate: buildDaneEeVerifier(daneEeRecords) }
-			: { checkServerIdentity: buildDaneCheck(lookup.records) }),
+		verifyPeerCertificate: buildDanePeerVerifier(lookup.records, referenceIdentifiers),
+		policyFingerprint: buildDanePolicyFingerprint(lookup.records, referenceIdentifiers),
 		policyContext: {
 			policyType: 'tlsa',
 			policyString: buildTlsaPolicyString(lookup.records),

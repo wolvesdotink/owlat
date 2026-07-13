@@ -8,6 +8,7 @@
 FROM oven/bun:1.3-alpine AS builder
 WORKDIR /build
 COPY package.json bun.lock* ./
+COPY patches/ patches/
 # ALL workspace manifests — bun validates the frozen lockfile against the full
 # workspace shape (same idiom as apps/web/Dockerfile).
 COPY --parents apps/*/package.json packages/*/package.json ./
