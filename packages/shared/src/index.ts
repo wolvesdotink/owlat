@@ -22,6 +22,20 @@ export {
 export { type AlignmentMode, isSpfAligned, emailDomain } from './spfAlignment';
 export { type OutboundTlsMode, OUTBOUND_TLS_MODES, isOutboundTlsMode } from './outboundTlsMode';
 export {
+	type TlsaRecord,
+	type PresentedCertificate,
+	type DaneMatchResult,
+	DANE_USAGE,
+	DANE_SELECTOR,
+	DANE_MATCHING,
+	parseTlsaRecord,
+	tlsaRecordsEqual,
+	isUsableForSmtp,
+	hasUsableTlsa,
+	computeAssociation,
+	matchCertificateToTlsa,
+} from './dane';
+export {
 	type TlsRptPolicy,
 	type TlsRptFailureDetail,
 	type TlsRptPolicyBlock,
