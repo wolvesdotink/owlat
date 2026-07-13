@@ -73,7 +73,7 @@ async function openMaybe(stored: string | undefined): Promise<string | undefined
  * one crafted inbound message can no longer DoS the whole export. Once the
  * back-fill has sealed every row this branch is unreachable.
  */
-async function openMessageBodyLenient(stored: string): Promise<string> {
+export async function openMessageBodyForExport(stored: string): Promise<string> {
 	try {
 		return await openMessageBody(stored);
 	} catch {
@@ -82,12 +82,7 @@ async function openMessageBodyLenient(stored: string): Promise<string> {
 }
 
 async function openMaybeLenient(stored: string | undefined): Promise<string | undefined> {
-	return stored === undefined ? undefined : openMessageBodyLenient(stored);
-}
-
-/** Fail-safe sibling of {@link openMessageBody} for the export bundle. */
-export async function openMessageBodyForExport(stored: string): Promise<string> {
-	return openMessageBodyLenient(stored);
+	return stored === undefined ? undefined : openMessageBodyForExport(stored);
 }
 
 /** Fail-safe sibling of {@link openInboundMessageBody} for the export bundle. */
