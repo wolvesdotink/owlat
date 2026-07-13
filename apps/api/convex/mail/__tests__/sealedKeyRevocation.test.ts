@@ -14,6 +14,7 @@ import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import { modules } from './testModules';
 import { seedMailbox } from './helpers.testlib';
+import { enableSealedMail } from '../../e2ee/__tests__/sealedMailTestHelpers';
 
 // One mutable session drives the `authedMutation` wrapper floors AND the
 // in-handler admin / mailbox-access gates (mirrors mailboxAccess.test.ts).
@@ -35,6 +36,13 @@ vi.mock('../../lib/sessionOrganization', async () => {
 			if (sessionMock.role === null) throw new Error('Not authenticated');
 			return { userId: sessionMock.userId, role: sessionMock.role };
 		}),
+		// `mail/mailbox.ts:remove` gates via `requireAdminContext`. Its real body
+		// calls the module-sibling `getMutationContext`, which `vi.mock` does NOT
+		// intercept for intra-module calls, so mock it directly here.
+		requireAdminContext: vi.fn(async () => {
+			if (sessionMock.role === null) throw new Error('Not authenticated');
+			return { userId: sessionMock.userId, role: sessionMock.role };
+		}),
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
 		getBetterAuthSessionWithRole: vi.fn(async () => {
 			if (sessionMock.role === null) return null;
@@ -46,15 +54,6 @@ vi.mock('../../lib/sessionOrganization', async () => {
 		}),
 	};
 });
-
-async function enableSealedMail(t: ReturnType<typeof convexTest>): Promise<void> {
-	await t.run(async (ctx) => {
-		await ctx.db.insert('instanceSettings', {
-			featureFlags: { postbox: true, sealedMail: true },
-			createdAt: Date.now(),
-		});
-	});
-}
 
 describe('Sealed Mail revocation on address deletion', () => {
 	beforeEach(() => {
