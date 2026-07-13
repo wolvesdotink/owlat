@@ -17,6 +17,7 @@ import * as openpgp from 'openpgp';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import { modules } from './testModules';
+import { readSealedBlobBytes } from '../../lib/sealedBlob';
 
 const INSTANCE_SECRET = 'unit-test-instance-secret-value';
 const SEALED_FLAGS = { postbox: true, senderAuthBadges: true, sealedMail: true };
@@ -124,10 +125,11 @@ describe('mail/outbound · sealPolicy "off" keeps the STORED bytes plaintext (E5
 			const rows = await ctx.db.query('mailMessages').collect();
 			const sent = rows[0];
 			if (!sent) throw new Error('dispatchDraft stored no sent mailMessages row');
-			const blob = await ctx.storage.get(sent.rawStorageId);
-			if (!blob) throw new Error('stored .eml blob missing');
+			// E8b seals the stored `.eml` blob at rest; unseal that layer so the
+			// plaintext-`.eml` assertions below see the real (unsealed-policy) bytes.
+			const rawBytes = await readSealedBlobBytes(ctx.storage, sent.rawStorageId);
 			return {
-				storedText: await blob.text(),
+				storedText: rawBytes ? new TextDecoder().decode(rawBytes) : '',
 				encryptionInfo: sent.encryptionInfo as { sealed: boolean; reason?: string } | undefined,
 			};
 		});

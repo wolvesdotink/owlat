@@ -9,7 +9,7 @@
 import { internal } from '../../../_generated/api';
 import type { Id } from '../../../_generated/dataModel';
 import type { AgentStepModule } from '../types';
-import { inboundMessageBody } from '../../../lib/messageBody';
+import { openInboundMessageBody } from '../../../lib/messageBody';
 import {
 	EMERGENCY_BUDGET,
 	activityContentSnippet,
@@ -211,21 +211,19 @@ export const contextRetrievalStep: AgentStepModule<
 						title: m.subject || '(no subject)',
 					});
 				}
-				contextParts.push(
-					'[CONVERSATION HISTORY]\n' +
-						threadMessages
-							.map(
-								(m) =>
-									`From: ${m.from}\nDate: ${new Date(m.receivedAt).toISOString()}\nSubject: ${m.subject}\n${inboundMessageBody(m).text ?? '(no text body)'}\n---`
-							)
-							.join('\n')
+				const historyLines = await Promise.all(
+					threadMessages.map(
+						async (m) =>
+							`From: ${m.from}\nDate: ${new Date(m.receivedAt).toISOString()}\nSubject: ${m.subject}\n${(await openInboundMessageBody(m)).text ?? '(no text body)'}\n---`
+					)
 				);
+				contextParts.push('[CONVERSATION HISTORY]\n' + historyLines.join('\n'));
 			}
 		}
 
 		// The inbound body the model reads, with remote images / tracking pixels
 		// neutralized (privacy: the agent reads every inbound automatically).
-		const inboundBody = inboundBodyForContext(message);
+		const inboundBody = await inboundBodyForContext(message);
 
 		// Query text for semantic retrieval: the inbound subject + body.
 		const queryText = `${message.subject ?? ''}\n${inboundBody ?? ''}`.slice(0, 2000);

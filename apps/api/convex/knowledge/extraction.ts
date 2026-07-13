@@ -12,7 +12,7 @@ import { v } from 'convex/values';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import { inboundMessageBody, readMailMessageText } from '../lib/messageBody';
+import { openInboundMessageBody, readMailMessageText } from '../lib/messageBody';
 import { CURRENT_EMBEDDING_MODEL } from '../lib/constants';
 import { embed, type EmbeddingModel } from 'ai';
 import { z } from 'zod';
@@ -141,7 +141,7 @@ export const extractFromMessage = internalAction({
 			inboundMessageId: args.inboundMessageId,
 		});
 		if (!message) return;
-		const { text: bodyText, html: bodyHtml } = inboundMessageBody(message);
+		const { text: bodyText, html: bodyHtml } = await openInboundMessageBody(message);
 
 		const textContent = bodyText ?? '';
 		if (textContent.length < 20) return; // Skip very short messages

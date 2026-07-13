@@ -9,7 +9,7 @@
  */
 
 import { v } from 'convex/values';
-import { mailMessageInlineBody } from '../lib/messageBody';
+import { openMailMessageInlineBody } from '../lib/messageBody';
 import { authedAction } from '../lib/authedFunctions';
 import { api, internal } from '../_generated/api';
 import type { Doc } from '../_generated/dataModel';
@@ -22,16 +22,17 @@ import { generateReplyOptions } from './replyOptions';
 import { SYSTEM_GUARD } from './promptGuards';
 import { throwNotFound } from '../_utils/errors';
 
-/** Flatten a thread into a bounded plaintext transcript for the prompt. */
-export function threadToText(messages: Doc<'mailMessages'>[]): string {
-	return messages
-		.map((m) => {
-			const { text, html } = mailMessageInlineBody(m);
+/** Flatten a thread into a bounded plaintext transcript for the prompt. Unseals
+ * each row's inline body at rest through the accessor choke point (E8b). */
+export async function threadToText(messages: Doc<'mailMessages'>[]): Promise<string> {
+	const parts = await Promise.all(
+		messages.map(async (m) => {
+			const { text, html } = await openMailMessageInlineBody(m);
 			const body = (text ?? (html ? stripHtml(html) : undefined) ?? m.snippet ?? '').slice(0, 4000);
 			return `From: ${m.fromName || m.fromAddress}\nSubject: ${m.subject}\n${body}`;
 		})
-		.join('\n\n---\n\n')
-		.slice(0, 12000);
+	);
+	return parts.join('\n\n---\n\n').slice(0, 12000);
 }
 
 /** System prompt for extractive thread summarization (2–4 bullets). */
@@ -55,7 +56,7 @@ async function runThreadSummary(
 	const { text, tokenUsage, modelUsed } = await runLlmText({
 		model: await resolveLanguageModel(ctx, 'summarize'),
 		system: SUMMARIZE_SYSTEM,
-		prompt: `Summarize this email thread:\n\n${threadToText(messages)}`,
+		prompt: `Summarize this email thread:\n\n${await threadToText(messages)}`,
 		temperature: 0.2,
 	});
 	await recordLlmSpend(ctx, 'postbox_summarize', tokenUsage, modelUsed);
@@ -232,7 +233,7 @@ export const suggestReplies = authedAction({
 				: `Suggest up to 3 short, distinct reply options the recipient could send ` +
 					`(1–2 sentences each, ready to send, varied in stance).`;
 		const { replies, tokenUsage, modelUsed } = await generateReplyOptions(ctx, {
-			prompt: `${SYSTEM_GUARD}\n\n${instruction}${voiceSection}\n\nThread:\n\n${threadToText(thread.messages)}`,
+			prompt: `${SYSTEM_GUARD}\n\n${instruction}${voiceSection}\n\nThread:\n\n${await threadToText(thread.messages)}`,
 		});
 		await recordLlmSpend(ctx, 'postbox_suggest_replies', tokenUsage, modelUsed);
 		return { replies };
@@ -301,7 +302,7 @@ export const askThread = authedAction({
 		});
 		if (!thread || thread.messages.length === 0) throwNotFound('Thread');
 		const { system, prompt } = buildAskThreadPrompt({
-			transcript: threadToText(thread.messages),
+			transcript: await threadToText(thread.messages),
 			question: args.question,
 			history: args.history,
 		});

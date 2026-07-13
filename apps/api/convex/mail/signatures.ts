@@ -7,7 +7,7 @@
  */
 
 import { v } from 'convex/values';
-import { mailMessageInlineBody } from '../lib/messageBody';
+import { openMailMessageInlineBody } from '../lib/messageBody';
 import sanitizeHtml from 'sanitize-html';
 import { POSTBOX_SANITIZE_CONFIG } from '@owlat/shared/postboxSanitize';
 import { authedMutation, publicQuery } from '../lib/authedFunctions';
@@ -256,9 +256,9 @@ export const suggestFromImport = publicQuery({
 			.order('desc')
 			.take(SIGNATURE_SCAN_LIMIT);
 
-		const bodies = recent
-			.map((m) => mailMessageInlineBody(m).text)
-			.filter((b): b is string => typeof b === 'string' && b.trim().length > 0);
+		const bodies = (
+			await Promise.all(recent.map(async (m) => (await openMailMessageInlineBody(m)).text))
+		).filter((b): b is string => typeof b === 'string' && b.trim().length > 0);
 		if (bodies.length === 0) return null;
 
 		return detectSignatureFromBodies(bodies);

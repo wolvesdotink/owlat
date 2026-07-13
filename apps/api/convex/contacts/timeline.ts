@@ -9,7 +9,7 @@
 import { v } from 'convex/values';
 import { authedQuery } from '../lib/authedFunctions';
 import { getBetterAuthSessionWithRole, hasPermission } from '../lib/sessionOrganization';
-import { parseUnifiedMessageContent } from '../lib/messageBody';
+import { openUnifiedMessageContent } from '../lib/messageBody';
 import type { UnifiedMessageContent } from '../lib/messageBody';
 import type { Doc, Id } from '../_generated/dataModel';
 
@@ -131,7 +131,7 @@ export const getTimeline = authedQuery({
 		}
 
 		for (const msg of messages) {
-			let content: TimelineContent = parseUnifiedMessageContent(msg.content);
+			let content: TimelineContent = await openUnifiedMessageContent(msg.content);
 			// ADR-0040: withhold the inbound *email* body from non-admins, but keep
 			// the row + its subject/metadata so the timeline stays coherent.
 			if (msg.channel === 'email' && msg.direction === 'inbound' && !canReadInboundEmail) {

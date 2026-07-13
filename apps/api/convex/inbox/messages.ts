@@ -26,6 +26,7 @@ import { rateLimiter } from '../rateLimiter';
 import { extractEmail, normalizeSubject } from '../lib/emailAddress';
 import { isAutomatedMail } from '../lib/inboundClassification';
 import { isSuppressed } from '../lib/suppression';
+import { sealBodyAtWriteMaybe } from '../lib/messageBody';
 
 // Re-exported for existing importers of this module.
 export { extractEmail, normalizeSubject };
@@ -101,13 +102,18 @@ export const receiveMessage = internalMutation({
 		});
 
 		// ── 3. Store the inbound message ──
+		// E8b: seal the inline bodies at rest before they land in the row (the
+		// preview/snippet derived above stays plaintext — the documented
+		// search-index exception). Readers unseal through the accessor plane.
+		const sealedTextBody = await sealBodyAtWriteMaybe(args.textBody);
+		const sealedHtmlBody = await sealBodyAtWriteMaybe(args.htmlBody);
 		const inboundMessageId = await ctx.db.insert('inboundMessages', {
 			messageId: args.messageId,
 			from: args.from,
 			to: args.to,
 			subject: args.subject,
-			textBody: args.textBody,
-			htmlBody: args.htmlBody,
+			textBody: sealedTextBody,
+			htmlBody: sealedHtmlBody,
 			inReplyTo: args.inReplyTo,
 			references: args.references,
 			headers: args.headers,

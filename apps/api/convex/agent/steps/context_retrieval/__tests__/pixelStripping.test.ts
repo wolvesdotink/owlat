@@ -44,8 +44,8 @@ function makeCtx(message: Record<string, unknown>) {
 }
 
 describe('inboundBodyForContext', () => {
-	it('strips a remote tracking pixel from an HTML-only body', () => {
-		const body = inboundBodyForContext({
+	it('strips a remote tracking pixel from an HTML-only body', async () => {
+		const body = await inboundBodyForContext({
 			textBody: null,
 			htmlBody: `<p>Hello</p>${REMOTE_PIXEL}`,
 		});
@@ -54,8 +54,8 @@ describe('inboundBodyForContext', () => {
 		expect(body).not.toContain('<img');
 	});
 
-	it('keeps inline cid: content while stripping remote images', () => {
-		const body = inboundBodyForContext({
+	it('keeps inline cid: content while stripping remote images', async () => {
+		const body = await inboundBodyForContext({
 			textBody: null,
 			htmlBody: `${INLINE_CID}${REMOTE_PIXEL}`,
 		});
@@ -63,16 +63,16 @@ describe('inboundBodyForContext', () => {
 		expect(body).not.toContain('tracker.evil');
 	});
 
-	it('prefers the plain-text part verbatim (no images to strip)', () => {
-		const body = inboundBodyForContext({
+	it('prefers the plain-text part verbatim (no images to strip)', async () => {
+		const body = await inboundBodyForContext({
 			textBody: 'Plain text body',
 			htmlBody: REMOTE_PIXEL,
 		});
 		expect(body).toBe('Plain text body');
 	});
 
-	it('returns undefined when neither body part is present', () => {
-		expect(inboundBodyForContext({ textBody: null, htmlBody: null })).toBeUndefined();
+	it('returns undefined when neither body part is present', async () => {
+		expect(await inboundBodyForContext({ textBody: null, htmlBody: null })).toBeUndefined();
 	});
 });
 

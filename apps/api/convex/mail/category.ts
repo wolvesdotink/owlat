@@ -25,7 +25,7 @@
  */
 
 import { v } from 'convex/values';
-import { mailMessageInlineBody } from '../lib/messageBody';
+import { openMailMessageInlineBody } from '../lib/messageBody';
 import {
 	internalMutation,
 	internalQuery,
@@ -229,12 +229,16 @@ export const getThreadCategoryContext = internalQuery({
 			)
 			.first();
 
-		const transcript = ordered
-			.slice(-CATEGORY_CONTEXT_MESSAGES)
-			.map(
-				(m) =>
-					`From: ${m.fromName || m.fromAddress}\nSubject: ${m.subject}\n${(mailMessageInlineBody(m).text ?? m.snippet ?? '').slice(0, 1500)}`
+		const transcript = (
+			await Promise.all(
+				ordered
+					.slice(-CATEGORY_CONTEXT_MESSAGES)
+					.map(
+						async (m) =>
+							`From: ${m.fromName || m.fromAddress}\nSubject: ${m.subject}\n${((await openMailMessageInlineBody(m)).text ?? m.snippet ?? '').slice(0, 1500)}`
+					)
 			)
+		)
 			.join('\n\n---\n\n')
 			.slice(0, 8000);
 

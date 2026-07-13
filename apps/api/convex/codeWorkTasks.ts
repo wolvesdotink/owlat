@@ -7,7 +7,7 @@
  */
 
 import { v } from 'convex/values';
-import { inboundMessageBody } from './lib/messageBody';
+import { openInboundMessageBody } from './lib/messageBody';
 import { normalizeEmail } from '@owlat/shared';
 import { internalMutation, internalQuery } from './_generated/server';
 import type { MutationCtx } from './_generated/server';
@@ -224,7 +224,7 @@ export const createFromInbound = internalMutation({
 		// Code-agent appropriateness check — distinct from the email-assistant
 		// injection guard. Rejects destructive / exfiltrating / backdoor
 		// instructions before a task is ever queued.
-		const { text: bodyText, html: bodyHtml } = inboundMessageBody(message);
+		const { text: bodyText, html: bodyHtml } = await openInboundMessageBody(message);
 		const safety = checkCodeAgentSafety({
 			subject: message.subject ?? '',
 			textBody: bodyText,

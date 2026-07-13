@@ -19,7 +19,7 @@
 
 import { z } from 'zod';
 import type { Infer } from 'convex/values';
-import { inboundMessageBody } from '../../../lib/messageBody';
+import { openInboundMessageBody } from '../../../lib/messageBody';
 import {
 	checkUrlReputation,
 	type CachedVerdict,
@@ -288,7 +288,7 @@ export const securityScanStep: AgentStepModule<
 			inboundMessageId: input.inboundMessageId,
 		});
 		if (!message) throw new Error('Inbound message not found');
-		const { text: bodyText, html: bodyHtml } = inboundMessageBody(message);
+		const { text: bodyText, html: bodyHtml } = await openInboundMessageBody(message);
 
 		// ── Layer 1: Prompt injection detection on text body ──
 		const textContent = bodyText ?? message.subject ?? '';
