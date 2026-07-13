@@ -26,9 +26,10 @@ export type StsPolicyMode = 'enforce' | 'testing' | 'none';
 
 /**
  * TLSA / DANE state for the target MX (RFC 7672). Supplied by the sender when
- * `DANE_ENABLED` and the recipient MX publishes a DNSSEC-authenticated TLSA
- * RRset; `null` when DANE is off or no usable TLSA exists (then the resolver
- * behaves exactly as it did before T3).
+ * DANE is enforcing and the recipient MX publishes a DNSSEC-authenticated TLSA
+ * RRset; `null` when DANE is off/report or no usable TLSA exists (then the
+ * resolver behaves exactly as it did before T3). Report mode never feeds a usable
+ * result into the delivery floor — it observes only, so no requireTLS from DANE.
  */
 export interface DaneTlsaResult {
 	/**
