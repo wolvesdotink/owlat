@@ -70,8 +70,40 @@ export const DEFAULT_TRUSTED_ARC_FORWARDERS: readonly string[] = [
 ];
 
 /** Lowercase + strip a single trailing dot + leading/trailing whitespace. */
-function normalizeDomain(domain: string | undefined): string {
+export function normalizeDomain(domain: string | undefined): string {
 	return (domain ?? '').trim().toLowerCase().replace(/\.$/, '');
+}
+
+/**
+ * Is `entry` a usable trusted-forwarder domain? A trusted entry must be a bare,
+ * dot-bearing hostname with no internal whitespace — a single label (`com`) is
+ * rejected because, treated as a suffix, it would trust EVERY sealer under that
+ * TLD. This is the server-side floor behind the UI's add-domain guard, so a
+ * direct `settings.update` call can't widen who we trust past what the operator
+ * could type in the editor.
+ */
+export function isValidForwarderDomain(entry: string | undefined): boolean {
+	const normalized = normalizeDomain(entry);
+	return normalized.includes('.') && !/\s/.test(normalized);
+}
+
+/**
+ * Normalize + validate an operator-supplied trusted-forwarder list: lowercase
+ * each entry, drop blanks / single-label / whitespace-bearing entries, and
+ * de-duplicate. Applied server-side in `settings.update` so the persisted list
+ * can never contain an entry the trust predicate would misread as a wildcard.
+ */
+export function sanitizeTrustedForwarders(entries: readonly string[]): string[] {
+	const seen = new Set<string>();
+	const out: string[] = [];
+	for (const entry of entries) {
+		if (!isValidForwarderDomain(entry)) continue;
+		const normalized = normalizeDomain(entry);
+		if (seen.has(normalized)) continue;
+		seen.add(normalized);
+		out.push(normalized);
+	}
+	return out;
 }
 
 /**
@@ -93,7 +125,10 @@ export function isTrustedForwarder(
 		const trusted = normalizeDomain(entry);
 		if (!trusted) continue;
 		if (sealer === trusted) return true;
-		if (sealer.endsWith('.' + trusted)) return true;
+		// A single-label entry (a typo'd or malicious `com`) is NEVER a suffix
+		// wildcard — only its exact match above counts — so it can't trust every
+		// sealer under a TLD. Suffix matching applies to dot-bearing entries only.
+		if (trusted.includes('.') && sealer.endsWith('.' + trusted)) return true;
 	}
 	return false;
 }
