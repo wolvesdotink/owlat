@@ -16,6 +16,8 @@
  * cross-package pattern (see `utils/senderAuth.ts`).
  */
 
+import type { SealTone } from './sealTone';
+
 /** Why a draft cannot (or would not automatically) be sealed. Mirrors the Convex `SealSkipReason`. */
 export type SealSkipReason =
 	| 'flag_off'
@@ -32,8 +34,8 @@ export type SealState =
 	| { kind: 'keyChanged'; addresses: string[] }
 	| { kind: 'cannotSeal'; reason: SealSkipReason };
 
-/** The three visual tones the lock renders in. FF tokens map off this in the component. */
-export type SealLockTone = 'ok' | 'warn' | 'muted';
+/** The three visual tones the lock renders in (shared with the sealed badge). */
+export type SealLockTone = SealTone;
 
 export interface ComposerLockResult {
 	/** Discriminator carried through to the component for styling + branching. */
@@ -80,7 +82,7 @@ function cannotSealDetail(reason: SealSkipReason): string {
 		case 'no_signing_key':
 			return "This address doesn't have a sealing key yet, so this message will be sent normally.";
 		case 'policy_ask':
-			return 'Sealed mail is available for these recipients. Turn it on for this message, or send it normally.';
+			return 'Sealed mail is available for these recipients, but your workspace is set to ask before sealing, so this message will be sent normally.';
 		case 'flag_off':
 			return 'Sealed mail is not available yet, so this message will be sent normally.';
 		case 'key_changed':
@@ -108,7 +110,7 @@ export function deriveComposerLock(state: SealState): ComposerLockResult {
 			return {
 				kind: 'keyChanged',
 				summary: "A recipient's key changed",
-				detail: `The sealing key for ${joinAddresses(state.addresses)} changed since you last sealed mail to them. Review and confirm the new key before Owlat will seal to it.`,
+				detail: `The sealing key for ${joinAddresses(state.addresses)} changed since you last sealed mail to them. Open your conversation with them to review and confirm the new key before Owlat will seal to it.`,
 				tone: 'warn',
 				icon: 'lucide:key-round',
 				allowSendUnsealed: false,

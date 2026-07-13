@@ -4,7 +4,7 @@ import { api } from '@owlat/api';
 /**
  * Sealed Mail settings (E5, flag `sealedMail`). The org-level sealing policy
  * (locked decision D2): `auto` seals whenever every recipient can receive sealed
- * mail; `ask` keeps it available but off by default per message; `off` never
+ * mail; `ask` keeps sealing available but never seals automatically; `off` never
  * seals. Owner/admin only — the backend floor is `settings:manage`.
  */
 useHead({ title: 'Sealed Mail — Owlat' });
@@ -49,9 +49,9 @@ const OPTIONS: Array<{ value: SealPolicy; title: string; description: string }> 
 	},
 	{
 		value: 'ask',
-		title: 'Ask each time',
+		title: 'Keep available, but never automatic',
 		description:
-			'Sealing stays available, but you choose per message whether to turn it on. Nothing is sealed unless you say so.',
+			'Owlat keeps discovering keys and shows when a message could be sealed, but never seals on its own — messages are sent normally. Switch to "Seal automatically" to turn on sealing.',
 	},
 	{
 		value: 'off',

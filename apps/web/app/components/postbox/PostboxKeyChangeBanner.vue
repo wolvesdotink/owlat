@@ -12,6 +12,7 @@
  * re-check the seal state.
  */
 import { api } from '@owlat/api';
+import { shortFingerprint } from '~/utils/fingerprints';
 
 const props = defineProps<{
 	/** The recipient whose key changed (drives the copy and the re-pin call). */
@@ -31,15 +32,12 @@ const reaccept = useBackendOperation(api.e2ee.recipientKeys.reacceptKeyChange, {
 	label: 'accept-recipient-key',
 });
 
-const errored = ref(false);
+// Re-pinning a changed key is an `adminMutation` (E2): only owners/admins can
+// re-accept. Members see the same honest warning but are told to ask an admin,
+// rather than a button that would always fail with a misleading error.
+const { isAdmin } = usePermissions();
 
-/** Short, human display of a fingerprint (last 16 hex chars, spaced). */
-function shortFingerprint(fp: string | null | undefined): string | null {
-	if (!fp) return null;
-	const clean = fp.replace(/\s+/g, '').toUpperCase();
-	const tail = clean.slice(-16);
-	return tail.replace(/(.{4})/g, '$1 ').trim();
-}
+const errored = ref(false);
 
 const oldShort = computed(() => shortFingerprint(props.oldFingerprint));
 const newShort = computed(() => shortFingerprint(props.newFingerprint));
@@ -83,10 +81,10 @@ async function accept() {
 					</div>
 				</dl>
 				<p v-if="errored" class="mt-1.5 text-xs text-error" data-testid="key-change-error">
-					Couldn't accept the new key. It may have already been resolved — try reopening this
-					thread.
+					Couldn't accept the new key. It may have already been accepted by someone else — try
+					reopening this thread.
 				</p>
-				<div class="mt-2 flex items-center gap-2">
+				<div v-if="isAdmin" class="mt-2 flex items-center gap-2">
 					<button
 						type="button"
 						class="btn btn-primary btn-sm"
@@ -97,6 +95,9 @@ async function accept() {
 						{{ reaccept.isLoading.value ? 'Accepting…' : 'Accept new key' }}
 					</button>
 				</div>
+				<p v-else class="mt-2 text-xs text-text-secondary" data-testid="key-change-admin-only">
+					Ask a workspace admin to review this key change before sealed mail resumes to this person.
+				</p>
 			</div>
 		</div>
 	</div>
