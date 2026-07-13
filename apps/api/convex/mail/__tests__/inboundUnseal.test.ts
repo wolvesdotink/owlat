@@ -31,6 +31,7 @@ import {
 	type ConvexTestCtx,
 } from '../../e2ee/__tests__/sealedMailTestHelpers';
 import { modules } from './testModules';
+import { openMailMessageInlineBody } from '../../lib/messageBody';
 
 const INSTANCE_SECRET = 'unit-test-instance-secret-value';
 const RECIPIENT = 'me@example.com';
@@ -123,7 +124,10 @@ async function readRow(t: T, messageId: Id<'mailMessages'>) {
 		if (!msg) throw new Error('mailMessages row missing');
 		const rawBlob = await ctx.storage.get(msg.rawStorageId);
 		const rawText = rawBlob ? await rawBlob.text() : '';
-		return { msg, rawText };
+		// E8b seals the inline bodies at rest; unseal them so the plaintext
+		// assertions exercise the composed decrypt-on-ingest → at-rest-seal path.
+		const { text, html } = await openMailMessageInlineBody(msg);
+		return { msg: { ...msg, textBodyInline: text, htmlBodyInline: html }, rawText };
 	});
 }
 

@@ -28,6 +28,7 @@ import {
 	type ConvexTestCtx,
 } from '../../e2ee/__tests__/sealedMailTestHelpers';
 import { modules } from '../../mail/__tests__/testModules';
+import { openMessageBody } from '../../lib/messageBody';
 
 const INSTANCE_SECRET = 'unit-test-instance-secret-value';
 const RECIPIENT = 'inbox@example.com';
@@ -54,7 +55,8 @@ async function readMirror(
 	return await t.run(async (ctx: { db: DatabaseWriter }) => {
 		const row = await ctx.db.query('unifiedMessages').first();
 		if (!row) throw new Error('no unifiedMessages mirror row');
-		return JSON.parse(row.content) as {
+		// E8b seals the mirror `content` at rest; unseal before parsing.
+		return JSON.parse(await openMessageBody(row.content)) as {
 			text?: string;
 			isSealed?: boolean;
 			isSignatureValid?: boolean;
@@ -104,7 +106,12 @@ describe('e2ee.open.decryptAndReceive — mirror + agent consume decrypted text 
 		const inbound = await t.run(async (ctx: { db: DatabaseWriter }) => {
 			const row = await ctx.db.query('inboundMessages').first();
 			if (!row) throw new Error('no inboundMessages row');
-			return row;
+			// E8b seals textBody at rest; unseal it so the plaintext assertions below
+			// exercise the composed E2EE-decrypt → at-rest-seal → accessor-unseal path.
+			return {
+				...row,
+				textBody: row.textBody === undefined ? undefined : await openMessageBody(row.textBody),
+			};
 		});
 		expect(inbound.subject).toBe(REAL_SUBJECT);
 		expect(inbound.textBody).toContain(CANARY);
@@ -151,7 +158,12 @@ describe('e2ee.open.decryptAndReceive — mirror + agent consume decrypted text 
 		const inbound = await t.run(async (ctx: { db: DatabaseWriter }) => {
 			const row = await ctx.db.query('inboundMessages').first();
 			if (!row) throw new Error('no inboundMessages row');
-			return row;
+			// E8b seals textBody at rest; unseal it so the plaintext assertions below
+			// exercise the composed E2EE-decrypt → at-rest-seal → accessor-unseal path.
+			return {
+				...row,
+				textBody: row.textBody === undefined ? undefined : await openMessageBody(row.textBody),
+			};
 		});
 		expect(inbound.textBody).toContain(CANARY); // decrypted
 		expect(inbound.isSealed).toBe(true);
