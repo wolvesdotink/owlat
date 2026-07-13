@@ -200,7 +200,7 @@ describe('mail/outbound · dispatchDraft stores SEALED bytes (capstone)', () => 
 	async function dispatchAndReadStored(
 		t: T,
 		opts: { agent: boolean; canary: string }
-	): Promise<{ storedText: string; encryptionInfo: { sealed: boolean } | undefined }> {
+	): Promise<{ storedText: string; encryptionInfo: { isSealed: boolean } | undefined }> {
 		await seedSettings(t);
 		await t.action(internal.e2ee.keysNode.mintForAddress, { address: 'alice@a.test' });
 		const recipient = await generatePublicKey('bob@b.test');
@@ -272,7 +272,7 @@ describe('mail/outbound · dispatchDraft stores SEALED bytes (capstone)', () => 
 			const rawBytes = await readSealedBlobBytes(ctx.storage, sent.rawStorageId);
 			return {
 				storedText: rawBytes ? new TextDecoder().decode(rawBytes) : '',
-				encryptionInfo: sent.encryptionInfo as { sealed: boolean } | undefined,
+				encryptionInfo: sent.encryptionInfo as { isSealed: boolean } | undefined,
 			};
 		});
 	}
@@ -288,7 +288,7 @@ describe('mail/outbound · dispatchDraft stores SEALED bytes (capstone)', () => 
 		expect(storedText).not.toContain(CANARY);
 		expect(storedText).toContain('multipart/encrypted; protocol="application/pgp-encrypted"');
 		expect(storedText).toMatch(/^Subject: \.\.\.\r?$/m);
-		expect(encryptionInfo).toMatchObject({ sealed: true, algorithm: 'pgp-mime' });
+		expect(encryptionInfo).toMatchObject({ isSealed: true, algorithm: 'pgp-mime' });
 	});
 
 	it('agent-reply path seals — an AI-authored draft stores sealed bytes too', async () => {
@@ -300,7 +300,7 @@ describe('mail/outbound · dispatchDraft stores SEALED bytes (capstone)', () => 
 		});
 		expect(storedText).not.toContain(CANARY);
 		expect(storedText).toContain('multipart/encrypted; protocol="application/pgp-encrypted"');
-		expect(encryptionInfo).toMatchObject({ sealed: true, algorithm: 'pgp-mime' });
+		expect(encryptionInfo).toMatchObject({ isSealed: true, algorithm: 'pgp-mime' });
 	});
 });
 

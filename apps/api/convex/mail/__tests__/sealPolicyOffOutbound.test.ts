@@ -112,6 +112,7 @@ describe('mail/outbound · sealPolicy "off" keeps the STORED bytes plaintext (E5
 				bodyHtml: `<p>the ${CANARY} body</p>`,
 				attachments: [],
 				state: 'pending_send',
+				isUnsealedSendAllowed: true,
 				scheduledSendAt: now + 10_000,
 				undoToken: 'tok-off',
 				lastEditedAt: now,
@@ -130,7 +131,7 @@ describe('mail/outbound · sealPolicy "off" keeps the STORED bytes plaintext (E5
 			const rawBytes = await readSealedBlobBytes(ctx.storage, sent.rawStorageId);
 			return {
 				storedText: rawBytes ? new TextDecoder().decode(rawBytes) : '',
-				encryptionInfo: sent.encryptionInfo as { sealed: boolean; reason?: string } | undefined,
+				encryptionInfo: sent.encryptionInfo as { isSealed: boolean; reason?: string } | undefined,
 			};
 		});
 
@@ -138,6 +139,6 @@ describe('mail/outbound · sealPolicy "off" keeps the STORED bytes plaintext (E5
 		expect(storedText).toContain(CANARY);
 		expect(storedText).not.toContain('multipart/encrypted; protocol="application/pgp-encrypted"');
 		// And the row honestly records WHY it wasn't sealed.
-		expect(encryptionInfo).toEqual({ sealed: false, reason: 'policy_off' });
+		expect(encryptionInfo).toEqual({ isSealed: false, reason: 'policy_off' });
 	});
 });

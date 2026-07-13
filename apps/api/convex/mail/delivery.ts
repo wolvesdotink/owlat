@@ -264,14 +264,14 @@ export const ingestFromWebhook = internalAction({
 					recipientAddress: args.recipientAddress,
 					from: args.from,
 				})
-			: ({ sealed: false } as const);
+			: ({ isSealed: false } as const);
 		let effectiveSubject = args.subject;
 		let effectiveText = args.textBody;
 		let effectiveHtml = args.htmlBody;
 		let inboundEncryptionInfo: InboundEncryptionInfo | undefined;
-		if (opened.sealed) {
+		if (opened.isSealed) {
 			inboundEncryptionInfo = opened.encryptionInfo;
-			if (opened.decrypted) {
+			if (opened.isDecrypted) {
 				// Restored plaintext (real Subject + bodies, D4) replaces the outer
 				// placeholder + ciphertext so the normal pipeline sees real content.
 				if (opened.subject !== undefined) effectiveSubject = opened.subject;

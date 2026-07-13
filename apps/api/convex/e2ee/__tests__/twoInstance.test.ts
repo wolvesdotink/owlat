@@ -311,13 +311,13 @@ beforeAll(async () => {
 			from: ALICE,
 		})
 	);
-	if (!(opened.sealed && opened.decrypted)) {
+	if (!(opened.isSealed && opened.isDecrypted)) {
 		throw new Error('expected instance B to decrypt the sealed message');
 	}
 	// The mailbox result carries the full encryptionInfo union; narrow to the
 	// decrypted branch so its verified-signature fields are readable.
 	const openedInfo = opened.encryptionInfo;
-	if (!openedInfo.decrypted) {
+	if (!openedInfo.isDecrypted) {
 		throw new Error('decrypted result carried an undecrypted encryptionInfo');
 	}
 
@@ -374,9 +374,9 @@ beforeAll(async () => {
 		wire,
 		sealRecipientFingerprints: recipientFingerprints,
 		sealSigningFingerprint: signingFingerprint,
-		openedSealed: opened.sealed,
-		openedDecrypted: opened.decrypted,
-		openedSignatureValid: openedInfo.signatureValid,
+		openedSealed: opened.isSealed,
+		openedDecrypted: opened.isDecrypted,
+		openedSignatureValid: openedInfo.isSignatureValid,
 		openedSignerFingerprint: openedInfo.signerFingerprint,
 		openedSignerInstance: openedInfo.signerInstance,
 		openedSubject: opened.subject,

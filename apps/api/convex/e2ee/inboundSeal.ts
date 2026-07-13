@@ -35,10 +35,10 @@ export const INBOUND_CIPHER_SUITE = 'pgp-mime';
  * (`mailMessages.inboundEncryptionInfo`) and mirrored as flags on
  * `inboundMessages`. A DISCRIMINATED UNION so the type itself enforces "honest
  * by construction":
- *   - `decrypted: true`  MUST carry a `signatureValid` boolean (a claim we
+ *   - `isDecrypted: true` MUST carry an `isSignatureValid` boolean (a claim we
  *     actually made) plus the cipher suite; the signer fields are present ONLY
  *     when the signature verified against the pinned sender key.
- *   - `decrypted: false` is the "Encrypted — can't decrypt" path: sealed on the
+ *   - `isDecrypted: false` is the "Encrypted — can't decrypt" path: sealed on the
  *     wire but we hold no usable key, so NO signature claim is representable.
  * Neither "decrypted with a signature but no suite" nor "undecryptable but
  * claiming a valid signature" can be constructed. Mirrored one-for-one by
@@ -46,31 +46,31 @@ export const INBOUND_CIPHER_SUITE = 'pgp-mime';
  */
 export type InboundEncryptionInfo =
 	| {
-			sealed: true;
-			decrypted: true;
+			isSealed: true;
+			isDecrypted: true;
 			cipherSuite: string;
 			/** True ONLY when the body's signature verified against the pinned sender key. */
-			signatureValid: boolean;
+			isSignatureValid: boolean;
 			/** Uppercase-hex fingerprint of the signing key — present only when verified. */
 			signerFingerprint?: string;
 			/** The sending instance (the sender address's domain) — present only when verified. */
 			signerInstance?: string;
 	  }
-	| { sealed: true; decrypted: false };
+	| { isSealed: true; isDecrypted: false };
 
 /** Convex validator mirroring {@link InboundEncryptionInfo} exactly (kept in lockstep). */
 export const inboundEncryptionInfoValidator = v.union(
 	v.object({
-		sealed: v.literal(true),
-		decrypted: v.literal(true),
+		isSealed: v.literal(true),
+		isDecrypted: v.literal(true),
 		cipherSuite: v.string(),
-		signatureValid: v.boolean(),
+		isSignatureValid: v.boolean(),
 		signerFingerprint: v.optional(v.string()),
 		signerInstance: v.optional(v.string()),
 	}),
 	v.object({
-		sealed: v.literal(true),
-		decrypted: v.literal(false),
+		isSealed: v.literal(true),
+		isDecrypted: v.literal(false),
 	})
 );
 
