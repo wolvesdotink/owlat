@@ -5,12 +5,13 @@
  * connecting via SMTP port 25, and sending with DKIM signing.
  */
 
-import type { PeerCertificate } from 'node:tls';
+import type { PeerCertificate, TLSSocket } from 'node:tls';
 import type Redis from 'ioredis';
 import type { EmailJob, EmailJobResult } from '../types.js';
 import type { MtaConfig } from '../config.js';
 import { resolveEhloForIp } from '../config.js';
 import { getMxHostnames } from './mxResolver.js';
+import { resolveDaneMxDestinations, type DaneMxDestination } from './daneMxResolver.js';
 import { getDkimOptions } from './dkim.js';
 import { getStsTlsOptions, isMxAllowed } from './mtaSts.js';
 import { resolveTlsRequirements } from './tlsPolicy.js';
@@ -50,7 +51,38 @@ export async function sendToMx(
 	bindIp: string
 ): Promise<EmailJobResult> {
 	const recipientDomain = extractDomain(job.to);
-	const mxHosts = await getMxHostnames(redis, recipientDomain);
+	let mxHosts: string[];
+	let daneDestinations = new Map<string, DaneMxDestination>();
+	if ((config.daneMode ?? 'off') !== 'off' && config.daneResolverUrl) {
+		const discovery = await resolveDaneMxDestinations(
+			redis,
+			recipientDomain,
+			config.daneResolverUrl
+		);
+		if (discovery.status === 'lookup-failed') {
+			if (config.daneMode === 'enforce') {
+				return {
+					success: false,
+					error: `DANE MX discovery failed for ${recipientDomain}: ${discovery.reason}`,
+					bounceType: 'soft',
+				};
+			}
+			logger.warn(
+				{ recipientDomain, reason: discovery.reason },
+				'DANE report-only MX discovery failed; using normal MX resolution'
+			);
+			mxHosts = await getMxHostnames(redis, recipientDomain);
+		} else if (discovery.status === 'not-found') {
+			mxHosts = [];
+		} else {
+			mxHosts = discovery.destinations.map((destination) => destination.mxHostname);
+			daneDestinations = new Map(
+				discovery.destinations.map((destination) => [destination.mxHostname, destination])
+			);
+		}
+	} else {
+		mxHosts = await getMxHostnames(redis, recipientDomain);
+	}
 
 	if (mxHosts.length === 0) {
 		return {
@@ -140,6 +172,8 @@ export async function sendToMx(
 		opts: {
 			/** DANE cert-authentication hook (RFC 7672); its presence marks a DANE attempt. */
 			checkServerIdentity?: (host: string, cert: PeerCertificate) => Error | undefined;
+			/** DANE-EE post-handshake verifier; runs before SMTP resumes. */
+			verifyPeerCertificate?: (socket: TLSSocket) => Error | undefined;
 			/** Override the recorded TLS-RPT policy context (e.g. the tlsa policy). */
 			policyContext?: TlsPolicyContext;
 		} = {}
@@ -151,7 +185,8 @@ export async function sendToMx(
 		| { kind: 'over-cap' }
 	> {
 		const ctx = opts.policyContext ?? policyContext;
-		const daneRequired = opts.checkServerIdentity !== undefined;
+		const daneRequired =
+			opts.checkServerIdentity !== undefined || opts.verifyPeerCertificate !== undefined;
 		let acquired: Awaited<ReturnType<typeof pool.acquire>>;
 		try {
 			acquired = await pool.acquire(mxHost, bindIp, {
@@ -169,6 +204,9 @@ export async function sendToMx(
 					// the connection (caught below as a validation-failure — never a
 					// cleartext fallback). Absent for non-DANE sends.
 					...(opts.checkServerIdentity ? { checkServerIdentity: opts.checkServerIdentity } : {}),
+					...(opts.verifyPeerCertificate
+						? { verifyPeerCertificate: opts.verifyPeerCertificate }
+						: {}),
 				},
 				name: ehloHostname,
 				connectionTimeout: 30_000,
@@ -366,7 +404,13 @@ export async function sendToMx(
 		// `none` decision (flag off / no usable TLSA) leaves the MTA-STS / local-floor
 		// path below byte-identical to T1; a `defer` decision (lookup failed) skips
 		// this MX without ever falling back to cleartext.
-		const daneDecision = await prepareDaneAttempt(redis, mxHost, recipientDomain, config);
+		const daneDecision = await prepareDaneAttempt(
+			redis,
+			mxHost,
+			recipientDomain,
+			config,
+			daneDestinations.get(mxHost)
+		);
 		if (daneDecision.kind === 'defer') {
 			lastDaneDeferResponse = daneDecision.reason;
 			continue;
@@ -384,7 +428,7 @@ export async function sendToMx(
 			const outcome = await attemptSend(
 				mxHost,
 				daneTls.requireTLS,
-				daneTls.rejectUnauthorized,
+				daneDecision.plan.rejectUnauthorized,
 				daneDecision.plan
 			);
 			if (outcome.kind === 'sent' || outcome.kind === 'smtp') {
@@ -413,7 +457,7 @@ export async function sendToMx(
 			const probe = await attemptSend(
 				mxHost,
 				daneTls.requireTLS,
-				daneTls.rejectUnauthorized,
+				daneDecision.plan.rejectUnauthorized,
 				daneDecision.plan
 			);
 			if (probe.kind === 'sent' || probe.kind === 'smtp') {

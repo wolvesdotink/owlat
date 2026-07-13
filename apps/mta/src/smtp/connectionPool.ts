@@ -20,7 +20,7 @@
 
 import nodemailer from 'nodemailer';
 import type { Transporter } from 'nodemailer';
-import type { PeerCertificate } from 'node:tls';
+import type { PeerCertificate, TLSSocket } from 'node:tls';
 import type Redis from 'ioredis';
 import { Gauge } from 'prom-client';
 import { registry } from '../monitoring/collector.js';
@@ -60,6 +60,12 @@ export interface AcquireOptions {
 		 * PKIX + TLSA together. Forwarded into the transport via `...options.tls`.
 		 */
 		checkServerIdentity?: (host: string, cert: PeerCertificate) => Error | undefined;
+		/**
+		 * Runs after STARTTLS succeeds but before SMTP resumes. This is the DANE-EE
+		 * seam: it runs even with PKIX rejection disabled, and any returned error
+		 * destroys the socket before the post-TLS EHLO.
+		 */
+		verifyPeerCertificate?: (socket: TLSSocket) => Error | undefined;
 	};
 	name?: string;
 	connectionTimeout?: number;
@@ -178,7 +184,9 @@ export class SmtpConnectionPool {
 		const key = SmtpConnectionPool.buildKey(mxHost, bindIp, dkimDomain, {
 			requireTLS: options.requireTLS,
 			rejectUnauthorized: options.tls?.rejectUnauthorized,
-			dane: options.tls?.checkServerIdentity !== undefined,
+			dane:
+				options.tls?.checkServerIdentity !== undefined ||
+				options.tls?.verifyPeerCertificate !== undefined,
 		});
 
 		// Reuse fast-path — an already-counted transport, no new global slot.

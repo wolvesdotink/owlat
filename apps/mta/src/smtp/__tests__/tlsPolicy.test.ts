@@ -147,16 +147,15 @@ describe('resolveTlsRequirements — DANE precedence (T3, RFC 7672 §2)', () => 
 		expect(withDane.daneRequired).toBe(true);
 	});
 
-	it('DANE forces verified TLS even under opportunistic + no policy (checkServerIdentity needs a PKIX-authorized chain)', () => {
+	it('DANE authenticates independently of WebPKI under opportunistic + no policy', () => {
 		const result = resolveTlsRequirements({
 			localMode: 'opportunistic',
 			stsPolicy: { policyMode: 'none' },
 			daneResult: { usable: true },
 		});
-		// Node only invokes the DANE checkServerIdentity hook on a PKIX-authorized
-		// chain, so a DANE send must verify the certificate (fail-closed) — the local
-		// opportunistic floor cannot lower it back to unverified.
-		expect(result.rejectUnauthorized).toBe(true);
+		// The post-handshake DANE verifier is the trust source and runs before SMTP
+		// resumes, so PKIX rejection must not pre-empt a valid DANE-EE certificate.
+		expect(result.rejectUnauthorized).toBe(false);
 		expect(result.requireTLS).toBe(true);
 		expect(result.daneRequired).toBe(true);
 	});
@@ -171,14 +170,14 @@ describe('resolveTlsRequirements — DANE precedence (T3, RFC 7672 §2)', () => 
 		expect(result.daneRequired).toBe(true);
 	});
 
-	it('DANE agrees with STS-enforce: both demand TLS; daneRequired flags the cert match', () => {
+	it('DANE supersedes STS-enforce certificate authentication while still requiring TLS', () => {
 		const result = resolveTlsRequirements({
 			localMode: 'opportunistic',
 			stsPolicy: { policyMode: 'enforce' },
 			daneResult: { usable: true },
 		});
 		expect(result.requireTLS).toBe(true);
-		expect(result.rejectUnauthorized).toBe(true);
+		expect(result.rejectUnauthorized).toBe(false);
 		expect(result.daneRequired).toBe(true);
 	});
 

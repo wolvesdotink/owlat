@@ -22,6 +22,9 @@ import type { AddressInfo } from 'node:net';
 import { SmtpConnectionPool } from '../connectionPool.js';
 import { classifyTlsFailure } from '../tlsFailureClassification.js';
 import { resolveTlsRequirements } from '../tlsPolicy.js';
+import { buildDaneEeVerifier } from '../daneVerify.js';
+import { computeAssociation } from '@owlat/shared/dane';
+import { X509Certificate } from 'node:crypto';
 // Throwaway self-signed cert/key (CN/SAN mx.test) shared with the other
 // outbound-TLS integration tests.
 import { MX_CERT, MX_KEY } from './certFixture.js';
@@ -226,6 +229,79 @@ describe('outbound STARTTLS opportunistic-vs-enforce (PR-25)', () => {
 		expect(probe.sniServername()).toBe('mx.test');
 		// And DATA still rode the upgraded TLS session.
 		expect(probe.dataOverTls()).toBe(true);
+	}, 15000);
+
+	it('DANE-EE: a matching TLSA record authenticates the self-signed MX', async () => {
+		probe = await startServer();
+		pool = new SmtpConnectionPool({ maxPerHost: 3, idleTimeoutMs: 30000, maxAgeMs: 300000 });
+		const certDer = new X509Certificate(MX_CERT).raw;
+		const association = computeAssociation(certDer, 1, 1);
+		expect(association).not.toBeNull();
+
+		const { key, transport } = await pool.acquire('127.0.0.1', '127.0.0.1', {
+			port: probe.port,
+			secure: false,
+			requireTLS: true,
+			tls: {
+				rejectUnauthorized: false,
+				servername: 'deliberately-wrong-name.example',
+				verifyPeerCertificate: buildDaneEeVerifier([
+					{ usage: 3, selector: 1, matchingType: 1, data: association! },
+				]),
+			},
+			connectionTimeout: 5000,
+			greetingTimeout: 5000,
+			socketTimeout: 5000,
+		});
+
+		try {
+			const info = await transport.sendMail({
+				from: 'sender@owlat.test',
+				to: 'recipient@example.test',
+				subject: 'dane-ee',
+				text: 'authenticated solely by the DNSSEC TLSA leaf association',
+			});
+			expect(info.accepted).toContain('recipient@example.test');
+		} finally {
+			pool.release(key);
+		}
+
+		expect(probe.upgraded()).toBe(true);
+		expect(probe.dataOverTls()).toBe(true);
+	}, 15000);
+
+	it('DANE-EE: a TLSA mismatch aborts before SMTP DATA', async () => {
+		probe = await startServer();
+		pool = new SmtpConnectionPool({ maxPerHost: 3, idleTimeoutMs: 30000, maxAgeMs: 300000 });
+		const verifyPeerCertificate = vi.fn(
+			buildDaneEeVerifier([{ usage: 3, selector: 1, matchingType: 1, data: '00'.repeat(32) }])
+		);
+
+		const { key, transport } = await pool.acquire('127.0.0.1', '127.0.0.1', {
+			port: probe.port,
+			secure: false,
+			requireTLS: true,
+			tls: {
+				rejectUnauthorized: false,
+				verifyPeerCertificate,
+			},
+			connectionTimeout: 5000,
+			greetingTimeout: 5000,
+			socketTimeout: 5000,
+		});
+
+		await expect(
+			transport.sendMail({
+				from: 'sender@owlat.test',
+				to: 'recipient@example.test',
+				subject: 'dane-ee mismatch',
+				text: 'must not reach DATA',
+			})
+		).rejects.toThrow(/DANE-EE TLSA mismatch/);
+		pool.release(key);
+
+		expect(verifyPeerCertificate).toHaveBeenCalledOnce();
+		expect(probe.dataOverTls()).toBeNull();
 	}, 15000);
 
 	// ── (3) ignoreTLS is never plumbed through the pool ──
