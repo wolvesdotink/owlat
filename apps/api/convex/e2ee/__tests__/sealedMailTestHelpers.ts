@@ -28,6 +28,22 @@ export const modules = { ...rootGlob, ...e2eeGlob };
 /** The `convexTest(...)` handle type, shared so each suite need not re-derive it. */
 export type ConvexTestCtx = ReturnType<typeof convexTest>;
 
+/**
+ * The convex module map — every backend module, loaded exactly as the e2ee
+ * suites need so `t.action`/`t.query`/`t.run` can reach the wired API. Lives
+ * here so the `import.meta.glob` scaffolding is written ONCE (same-directory
+ * glob paths resolve identically from any `__tests__` file). Pass to
+ * `convexTest(schema, modules)`.
+ */
+const rootGlob = import.meta.glob('../../**/*.*s');
+const e2eeGlob = Object.fromEntries(
+	Object.entries(import.meta.glob('../**/*.*s')).map(([path, mod]) => [
+		path.replace(/^\.\.\//, '../../e2ee/'),
+		mod,
+	])
+);
+export const modules = { ...rootGlob, ...e2eeGlob };
+
 export interface TestKeypair {
 	fingerprint: string;
 	publicKeyArmored: string;
