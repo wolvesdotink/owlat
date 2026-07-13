@@ -167,6 +167,19 @@ export interface InboundAuthVerdicts {
 	envelopeFromDomain?: string;
 	/** DMARC alignment input: the d= domain of the passing DKIM signature. */
 	dkimSigningDomain?: string;
+	/**
+	 * ARC chain-validation result (`cv=`, RFC 8617, Sealed Mail A5). Only `pass`
+	 * is eligible to rescue a DMARC fail. Absent on older MTA builds / no chain.
+	 */
+	arcCv?: string;
+	/** `d=` of the outermost ARC seal — the forwarder vouching for the message. */
+	arcSealerDomain?: string;
+	/**
+	 * Whether the sealer's sealed ARC-Authentication-Results attest the ORIGINAL
+	 * message passed DMARC (or carried an aligned, passing SPF/DKIM). Convex only
+	 * honours a trusted-forwarder rescue when this is true.
+	 */
+	arcAttestsOriginalPass?: boolean;
 }
 
 /** Personal-mailbox (Postbox) inbound payload — includes raw RFC822 for storage */

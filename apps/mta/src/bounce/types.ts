@@ -72,6 +72,18 @@ export interface BasePhaseCtx {
 	 */
 	readonly dkimSigningDomain?: string;
 	/**
+	 * Inbound ARC chain-validation result (`cv=`, RFC 8617) computed by `onData`
+	 * over the raw bytes (Sealed Mail A5). Threaded onto the mailbox payload so
+	 * the Convex delivery path can rescue a DMARC fail when a TRUSTED forwarder
+	 * sealed a valid chain attesting the original passed. `undefined` when ARC is
+	 * disabled, no chain is present, or on the dispatch-side ctx.
+	 */
+	readonly arcCv?: string;
+	/** `d=` of the outermost ARC seal — the forwarder vouching for the message. */
+	readonly arcSealerDomain?: string;
+	/** Whether the sealer's AAR attests the original passed authentication. */
+	readonly arcAttestsOriginalPass?: boolean;
+	/**
 	 * The SMTP envelope sender (MAIL FROM / return-path), as taken from
 	 * `session.envelope.mailFrom` in `onData`. Normalized so the RFC 5321
 	 * §4.5.5 null sender (`<>`) and a missing MAIL FROM both surface as the
@@ -194,6 +206,12 @@ export type BounceAttempt =
 			readonly dmarcResult: string | undefined;
 			/** Published DMARC policy (`none`/`quarantine`/`reject`), for routing. */
 			readonly dmarcPolicy: string | undefined;
+			/** Inbound ARC chain-validation result (`cv=`, RFC 8617) — Sealed Mail A5. */
+			readonly arcCv: string | undefined;
+			/** `d=` of the outermost ARC seal — the forwarder vouching. */
+			readonly arcSealerDomain: string | undefined;
+			/** Whether the sealer's AAR attests the original passed. */
+			readonly arcAttestsOriginalPass: boolean | undefined;
 	  }
 	| {
 			readonly kind: 'endpoint_forward';

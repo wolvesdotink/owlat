@@ -29,3 +29,7 @@ bun.lock -text
 # so git must never EOL-normalize them (the blanket `* text=auto eol=lf` above
 # would silently corrupt every signature). Exempt the whole corpus.
 apps/api/fixtures/sealed-mail/** -text
+# The A5 ARC interop fixtures live at the repo-root corpus. RFC 8617 ARC seals /
+# AMS body hashes are computed over exact CRLF bytes, so these must never be
+# EOL-normalized either.
+fixtures/sealed-mail/** -text

@@ -40,6 +40,11 @@ export type PostboxReaderMessage = {
 	dmarcPolicy?: string;
 	envelopeFromDomain?: string;
 	dkimSigningDomain?: string;
+	// Inbound-auth override the backend applied (Sealed Mail A5): `'arc'` when a
+	// trusted forwarder's validated ARC chain rescued a DMARC fail; `arcSealer`
+	// names the honoured sealer so the badge can render "verified via forwarder".
+	dmarcOverride?: string;
+	arcSealer?: string;
 	// Ingest-computed sender-impersonation heuristics (Sealed Mail A4), threaded
 	// through so the sender badge can render secondary detail lines (first-time
 	// sender, look-alike of a known contact's domain). Whole object absent when
@@ -408,6 +413,8 @@ function senderAuthInput(msg: PostboxReaderMessage): SenderAuthInput {
 		dmarcPolicy: msg.dmarcPolicy,
 		envelopeFromDomain: msg.envelopeFromDomain,
 		dkimSigningDomain: msg.dkimSigningDomain,
+		dmarcOverride: msg.dmarcOverride,
+		arcSealer: msg.arcSealer,
 	};
 }
 

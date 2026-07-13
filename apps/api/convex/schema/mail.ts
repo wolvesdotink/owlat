@@ -471,6 +471,16 @@ export const mailTables = {
 		// which renders as "unknown" (never asserts alignment we did not verify).
 		envelopeFromDomain: v.optional(v.string()),
 		dkimSigningDomain: v.optional(v.string()),
+		// Inbound-authentication OVERRIDE applied at delivery (Sealed Mail A5). Set
+		// to `'arc'` when a DMARC fail was RESCUED because a TRUSTED forwarder's
+		// validated ARC chain (RFC 8617) attested the original passed — the message
+		// then skipped Spam-routing. `arcSealer` records which forwarder's seal was
+		// honoured (its `d=`), so the reader's badge can say "verified via forwarder"
+		// and name it. Both absent on the overwhelmingly common non-forwarded path —
+		// their presence is the ONLY thing that unlocks the badge's forwarder state,
+		// so an ordinary message can never render it.
+		dmarcOverride: v.optional(v.string()),
+		arcSealer: v.optional(v.string()),
 		// Sender-impersonation heuristics computed at ingest (Sealed Mail A4).
 		// Two content-visible signals derived from the scanner rule (a From domain
 		// that homoglyph/punycode-spoofs a real one, a Reply-To on a different

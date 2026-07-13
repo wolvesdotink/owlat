@@ -67,6 +67,14 @@ export const authTables = {
 		// derived by `@owlat/shared/mtaStsPolicy`. Admin-gated write via
 		// `settings.update`, served publicly by the `getMtaStsPolicy` query.
 		mtaStsMode: v.optional(v.union(v.literal('none'), v.literal('testing'), v.literal('enforce'))),
+		// Trusted ARC forwarders (Sealed Mail A5): domains whose validated ARC seal
+		// (RFC 8617) we honour to RESCUE a DMARC fail on inbound forwarded mail —
+		// a mailing-list / forwarding message that broke DKIM but whose sealer
+		// attests the original passed skips Spam-routing instead of false-failing.
+		// Unset ⇒ the code falls back to `DEFAULT_TRUSTED_ARC_FORWARDERS` from
+		// `@owlat/shared/arcTrust`; an explicit `[]` disables the override entirely.
+		// Admin-gated write via `settings.update`, editable in Settings → Delivery.
+		trustedArcForwarders: v.optional(v.array(v.string())),
 		// Feature toggles (see packages/shared/src/featureFlags.ts for the schema).
 		// Unset keys fall back to FEATURE_FLAGS[key].default at resolution time.
 		// Includes `campaigns.archive` — there is no separate `archiveEnabled` column.

@@ -21,6 +21,7 @@ export const resolveRoutePhase: Phase<BasePhaseCtx, CtxWithAcceptRoute> = {
 	name: 'resolve_route',
 	async run(deps, ctx) {
 		const { parsed, rcptTo, dkimResult, dmarcResult, dmarcPolicy } = ctx;
+		const { arcCv, arcSealerDomain, arcAttestsOriginalPass } = ctx;
 
 		if (!rcptTo) {
 			return {
@@ -59,6 +60,9 @@ export const resolveRoutePhase: Phase<BasePhaseCtx, CtxWithAcceptRoute> = {
 					dkimResult,
 					dmarcResult,
 					dmarcPolicy,
+					arcCv,
+					arcSealerDomain,
+					arcAttestsOriginalPass,
 				},
 			};
 		}

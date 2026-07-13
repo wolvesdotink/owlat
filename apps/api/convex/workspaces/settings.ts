@@ -21,6 +21,7 @@
  */
 
 import { v } from 'convex/values';
+import { sanitizeTrustedForwarders } from '@owlat/shared/arcTrust';
 import { internalMutation } from '../_generated/server';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
@@ -51,6 +52,10 @@ export const update = authedMutation({
 		// MTA-STS publishing posture for inbound mail (RFC 8461). Defaults to
 		// `none` (nothing published) — step through `testing` before `enforce`.
 		mtaStsMode: v.optional(v.union(v.literal('none'), v.literal('testing'), v.literal('enforce'))),
+		// Trusted ARC forwarders (Sealed Mail A5) — domains whose validated ARC seal
+		// rescues an inbound DMARC fail. Unset keeps the seeded default list; an
+		// explicit `[]` turns the override off.
+		trustedArcForwarders: v.optional(v.array(v.string())),
 		emailTheme: v.optional(
 			v.object({
 				primaryColor: v.string(),
@@ -67,13 +72,21 @@ export const update = authedMutation({
 			'Only owners and admins can update organization settings'
 		);
 		const now = Date.now();
+		// Validate the trusted-forwarder list server-side: normalize, drop
+		// single-label / whitespace entries, and de-duplicate so the persisted
+		// list can never contain an entry the ARC trust predicate would misread as
+		// a TLD wildcard. The UI enforces the same rule; this is the floor.
+		const patch =
+			args.trustedArcForwarders !== undefined
+				? { ...args, trustedArcForwarders: sanitizeTrustedForwarders(args.trustedArcForwarders) }
+				: args;
 		const existing = await ctx.db.query('instanceSettings').first();
 		if (existing) {
-			await ctx.db.patch(existing._id, { ...args, updatedAt: now });
+			await ctx.db.patch(existing._id, { ...patch, updatedAt: now });
 			return existing._id;
 		}
 		return await ctx.db.insert('instanceSettings', {
-			...args,
+			...patch,
 			createdAt: now,
 			updatedAt: now,
 		});

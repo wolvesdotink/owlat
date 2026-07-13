@@ -46,6 +46,14 @@ const UNAUTH: SenderAuthInput = {
 	spfResult: 'none',
 	dmarcResult: 'none',
 };
+// Sealed Mail A5 — a DMARC fail rescued by a trusted forwarder's ARC chain.
+const FORWARDED: SenderAuthInput = {
+	fromDomain: 'author.example',
+	dmarcResult: 'fail',
+	dmarcPolicy: 'quarantine',
+	dmarcOverride: 'arc',
+	arcSealer: 'lists.sourceforge.net',
+};
 
 describe('PostboxAuthBadge', () => {
 	it('verified: quiet chip, verbatim summary, detail hidden until expanded', async () => {
@@ -95,6 +103,19 @@ describe('PostboxAuthBadge', () => {
 		expect(wrapper.find('[data-testid="auth-badge-summary"]').text()).toBe('Unverified sender');
 		expect(wrapper.find('[data-testid="auth-badge-detail"]').text()).toBe(
 			"We couldn't confirm this message really came from acme.com."
+		);
+	});
+
+	it('forwarded (ARC rescue): verbatim "Verified via forwarder" summary + named detail', async () => {
+		const wrapper = mountBadge(FORWARDED);
+		expect(wrapper.find('[data-testid="auth-badge-summary"]').text()).toBe(
+			'Verified via forwarder'
+		);
+		// A rescued sender is trustworthy → quiet by default, expands on click.
+		expect(wrapper.find('[data-testid="auth-badge-detail"]').exists()).toBe(false);
+		await wrapper.find('[data-testid="auth-badge-toggle"]').trigger('click');
+		expect(wrapper.find('[data-testid="auth-badge-detail"]').text()).toBe(
+			'A forwarding service you trust (lists.sourceforge.net) confirmed this message really was sent for author.example before passing it on. Its own checks broke in forwarding, which is normal for mailing lists.'
 		);
 	});
 

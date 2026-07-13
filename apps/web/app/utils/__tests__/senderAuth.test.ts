@@ -118,6 +118,50 @@ describe('deriveSenderAuth', () => {
 		});
 		expect(result?.state).toBe('failed');
 	});
+
+	// Sealed Mail A5 — the trusted-forwarder "verified via forwarder" state. The
+	// copy is asserted VERBATIM (honesty audit): this state is reachable ONLY when
+	// the backend set `dmarcOverride === 'arc'`, and it precedes the fail branch so
+	// a rescued DMARC fail never reads as suspicious.
+	it('DMARC fail rescued by a trusted forwarder → forwarded, with the verbatim named copy', () => {
+		const result = deriveSenderAuth({
+			fromDomain: 'author.example',
+			spfResult: 'fail',
+			dkimResult: 'fail',
+			dmarcResult: 'fail',
+			dmarcPolicy: 'quarantine',
+			dmarcOverride: 'arc',
+			arcSealer: 'lists.sourceforge.net',
+		});
+		expect(result?.state).toBe('forwarded');
+		expect(result?.tone).toBe('ok');
+		expect(result?.summary).toBe('Verified via forwarder');
+		expect(result?.detail).toBe(
+			'A forwarding service you trust (lists.sourceforge.net) confirmed this message really was sent for author.example before passing it on. Its own checks broke in forwarding, which is normal for mailing lists.'
+		);
+	});
+
+	it('forwarded state falls back to un-named copy when no sealer is recorded', () => {
+		const result = deriveSenderAuth({
+			fromDomain: 'author.example',
+			dmarcResult: 'fail',
+			dmarcPolicy: 'quarantine',
+			dmarcOverride: 'arc',
+		});
+		expect(result?.state).toBe('forwarded');
+		expect(result?.detail).toBe(
+			'A forwarding service you trust confirmed this message really was sent for author.example before passing it on. Its own checks broke in forwarding, which is normal for mailing lists.'
+		);
+	});
+
+	it('the forwarder state is unreachable without the backend override (an ordinary DMARC fail stays failed)', () => {
+		const result = deriveSenderAuth({
+			fromDomain: 'author.example',
+			dmarcResult: 'fail',
+			dmarcPolicy: 'quarantine',
+		});
+		expect(result?.state).toBe('failed');
+	});
 });
 
 describe('deriveSenderHeuristicLines', () => {
