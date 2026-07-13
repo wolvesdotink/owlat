@@ -1,3 +1,5 @@
+'use node';
+
 /**
  * Web Key Directory (WKD) primitives — pure, Node-runtime helpers.
  *
@@ -6,11 +8,12 @@
  * We implement the DIRECT method: the key is served from the address's own
  * domain at `/.well-known/openpgpkey/hu/<zbase32(SHA-1(lowercase(localpart)))>`.
  *
- * This module is deliberately CONVEX-FREE (no `query`/`mutation`/`action`
- * exports and no `_generated` imports) so it can be unit-tested directly and
- * imported by the `'use node'` action plane without dragging the V8 query
- * runtime in. It DOES use `node:crypto` (SHA-1) and `openpgp` (armor<->binary),
- * so only Node-runtime callers may import it — never a V8 query/mutation file.
+ * Convex-free of any `query`/`mutation`/`action` exports (no `_generated`
+ * imports), so it can be unit-tested directly. It uses `node:crypto` (SHA-1)
+ * and `openpgp` (armor<->binary), neither of which exists in Convex's default
+ * V8 isolate, so — like `lib/credentialCrypto.ts` — it runs in the Node runtime
+ * (`'use node'`) and may be imported only by other Node-runtime modules, never
+ * by a V8 query/mutation file.
  */
 
 import { createHash } from 'node:crypto';

@@ -1,3 +1,5 @@
+'use node';
+
 /**
  * The E2EE private-key secret box — the SINGLE source of truth for how Sealed
  * Mail seals OpenPGP private keys (per-address and the instance identity) at
@@ -9,9 +11,10 @@
  * important, so the sealing site (`e2ee/keysNode.ts`) and the opening site
  * (`e2ee/manifest.ts`) can never drift apart into two subtly-different literals.
  *
- * Convex-free pure helpers (no `query`/`mutation`/`action` exports): safe to
- * import from the `'use node'` action plane. Uses `node:crypto` via
- * `createSecretBox`, so only Node-runtime callers may import it.
+ * Free of any `query`/`mutation`/`action` exports (pure helpers). It wraps
+ * `createSecretBox` from the Node-runtime `lib/credentialCrypto.ts`, which uses
+ * `node:crypto`, so — like that module — it runs in the Node runtime
+ * (`'use node'`) and may be imported only by other Node-runtime modules.
  */
 
 import { createSecretBox, type SecretBoxEnvelope } from '../lib/credentialCrypto';
