@@ -58,10 +58,14 @@ describe('sealed-blob decrypt-serving proxy', () => {
 		const { storageId, url } = await seedSealedBlob(t, 'message/rfc822');
 
 		// The stored blob is genuinely ciphertext (a storage dump holds no canary).
-		const storedBytes = await t.run(async (ctx) => {
-			const blob = await ctx.storage.get(storageId);
-			return new Uint8Array(await blob!.arrayBuffer());
-		});
+		// `t.run` cannot return a Uint8Array (not a Convex value) — return the raw
+		// ArrayBuffer and wrap it outside the callback.
+		const storedBytes = new Uint8Array(
+			await t.run(async (ctx) => {
+				const blob = await ctx.storage.get(storageId);
+				return await blob!.arrayBuffer();
+			})
+		);
 		expect(isSealedBytesAtRest(storedBytes)).toBe(true);
 		expect(new TextDecoder().decode(storedBytes)).not.toContain(CANARY);
 
