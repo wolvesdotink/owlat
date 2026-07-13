@@ -17,6 +17,7 @@ definePageMeta({
 const { showAdminGate } = usePermissions();
 const { hasActiveOrganization } = useOrganizationContext();
 const { isEnabled: isFeatureEnabled } = useFeatureFlag();
+const { showToast } = useToast();
 
 const sealedMailEnabled = computed(() => isFeatureEnabled('sealedMail'));
 
@@ -67,6 +68,60 @@ async function choose(value: SealPolicy) {
 	policy.value = value;
 	const result = await savePolicy({ sealPolicy: value });
 	if (result === undefined) policy.value = previous;
+}
+
+// ── Recovery kit (E6, locked decision D7). The armored private key + plain-words
+// instructions for one address — the only sanctioned private-key egress, and the
+// import path to restore access after a rebuild. Owner/admin only.
+const kitAddress = ref('');
+const importAddress = ref('');
+const importKey = ref('');
+
+const { run: exportKit, isLoading: exporting } = useBackendOperation(
+	api.e2ee.lifecycleNode.exportRecoveryKit,
+	{ label: 'Export recovery kit', type: 'action' }
+);
+const { run: importKit, isLoading: importing } = useBackendOperation(
+	api.e2ee.lifecycleNode.importRecoveryKit,
+	{ label: 'Import recovery kit', type: 'action' }
+);
+
+async function downloadKit() {
+	const address = kitAddress.value.trim();
+	if (!address) return;
+	const kit = await exportKit({ address });
+	if (kit === undefined) return; // operation error already surfaced
+	if (kit === null) {
+		showToast('No sealed-mail key exists for that address yet.', 'error');
+		return;
+	}
+	// Bundle the instructions and the private key into one downloadable file.
+	const contents = `${kit.instructions}\n\n${kit.privateKeyArmored}\n`;
+	const blob = new Blob([contents], { type: 'application/pgp-keys' });
+	const url = URL.createObjectURL(blob);
+	const anchor = document.createElement('a');
+	anchor.href = url;
+	anchor.download = kit.filename;
+	anchor.click();
+	URL.revokeObjectURL(url);
+	showToast('Recovery kit downloaded. Store it somewhere private and offline.', 'success');
+}
+
+async function restoreKit() {
+	const address = importAddress.value.trim();
+	const privateKeyArmored = importKey.value.trim();
+	if (!address || !privateKeyArmored) return;
+	const result = await importKit({ address, privateKeyArmored });
+	if (result === undefined) return;
+	if (result.imported) {
+		showToast(
+			'Recovery kit imported. Sealed mail for this address can be opened again.',
+			'success'
+		);
+		importKey.value = '';
+	} else {
+		showToast("That key doesn't match this address, so it wasn't imported.", 'error');
+	}
 }
 </script>
 
@@ -135,6 +190,86 @@ async function choose(value: SealPolicy) {
 					</span>
 				</label>
 			</fieldset>
+
+			<!-- Recovery kit (E6 / D7): download the private key for an address so
+			     sealed mail can be restored later; import one to restore access. -->
+			<section class="space-y-4 rounded border border-border-subtle p-5">
+				<div>
+					<h2 class="text-base font-semibold text-text-primary">Recovery kit</h2>
+					<p class="mt-1 text-sm text-text-secondary">
+						A recovery kit is the private key that opens sealed mail for one address, plus
+						plain-language instructions. Download one for each address and keep it somewhere private
+						and offline. There is no master copy on the server, so a recovery kit is the only way to
+						restore sealed mail if this instance is rebuilt.
+					</p>
+				</div>
+
+				<div class="space-y-2">
+					<label for="kit-address" class="block text-sm font-medium text-text-primary">
+						Download a recovery kit
+					</label>
+					<div class="flex flex-wrap items-center gap-2">
+						<input
+							id="kit-address"
+							v-model="kitAddress"
+							type="email"
+							inputmode="email"
+							autocomplete="off"
+							placeholder="you@your-domain.com"
+							data-testid="recovery-kit-address"
+							class="min-w-0 flex-1 rounded border border-border-subtle bg-bg-surface px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+						/>
+						<UiButton
+							variant="secondary"
+							size="sm"
+							:loading="exporting"
+							:disabled="!kitAddress.trim()"
+							@click="downloadKit"
+						>
+							Download recovery kit
+						</UiButton>
+					</div>
+				</div>
+
+				<div class="space-y-2 border-t border-border-subtle pt-4">
+					<label for="kit-import-address" class="block text-sm font-medium text-text-primary">
+						Restore from a recovery kit
+					</label>
+					<p class="text-xs text-text-secondary">
+						Paste a previously downloaded recovery kit to restore access for its address.
+					</p>
+					<input
+						id="kit-import-address"
+						v-model="importAddress"
+						type="email"
+						inputmode="email"
+						autocomplete="off"
+						placeholder="you@your-domain.com"
+						data-testid="recovery-kit-import-address"
+						class="w-full rounded border border-border-subtle bg-bg-surface px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+					/>
+					<textarea
+						id="kit-import-key"
+						v-model="importKey"
+						rows="4"
+						spellcheck="false"
+						placeholder="-----BEGIN PGP PRIVATE KEY BLOCK-----"
+						data-testid="recovery-kit-import-key"
+						class="w-full rounded border border-border-subtle bg-bg-surface px-3 py-2 font-mono text-xs text-text-primary placeholder:text-text-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+					/>
+					<div class="flex justify-end">
+						<UiButton
+							variant="secondary"
+							size="sm"
+							:loading="importing"
+							:disabled="!importAddress.trim() || !importKey.trim()"
+							@click="restoreKit"
+						>
+							Import recovery kit
+						</UiButton>
+					</div>
+				</div>
+			</section>
 		</template>
 	</div>
 </template>
