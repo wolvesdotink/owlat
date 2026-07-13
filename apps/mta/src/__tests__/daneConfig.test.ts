@@ -1,7 +1,7 @@
 /**
  * Unit tests for the DANE (RFC 7672) send-time config parser (`loadDaneConfig`).
  *
- * DANE is three-valued (`DANE_MODE`: off/report/enforce, default `report`). The
+ * DANE is three-valued (`DANE_MODE`: off/report/enforce, default `off`). The
  * two invariants under test:
  *
  *  - Mode parsing: the default is `report`; each declared mode round-trips; an
@@ -21,9 +21,9 @@ function envFrom(map: Record<string, string>): (key: string, def: string) => str
 }
 
 describe('loadDaneConfig — DANE_MODE parsing', () => {
-	it('defaults to report when DANE_MODE is unset', () => {
+	it('defaults to off when DANE_MODE is unset', () => {
 		const cfg = loadDaneConfig(envFrom({ DANE_RESOLVER_URL: 'https://doh.example/dns-query' }));
-		expect(cfg.daneMode).toBe('report');
+		expect(cfg.daneMode).toBe('off');
 	});
 
 	it.each(DANE_MODES)('round-trips the declared mode %s', (mode) => {
@@ -52,9 +52,9 @@ describe('loadDaneConfig — resolver gate (inert without a resolver)', () => {
 		}
 	);
 
-	it('report (the default) with no resolver does not throw — a fresh install stays inert', () => {
+	it('off (the default) with no resolver does not throw — a fresh install stays inert', () => {
 		expect(() => loadDaneConfig(envFrom({}))).not.toThrow();
-		expect(loadDaneConfig(envFrom({}))).toEqual({ daneMode: 'report', daneResolverUrl: undefined });
+		expect(loadDaneConfig(envFrom({}))).toEqual({ daneMode: 'off', daneResolverUrl: undefined });
 	});
 });
 
