@@ -109,6 +109,22 @@ export async function openMessageBodyForExport(stored: string): Promise<string> 
 	}
 }
 
+/** Open a denormalized conversation preview before returning a thread row. */
+export async function openConversationThreadPreview<T extends { lastPreview?: string | null }>(
+	row: T
+): Promise<T> {
+	if (row.lastPreview === undefined || row.lastPreview === null) return row;
+	return { ...row, lastPreview: await openMessageBody(row.lastPreview) };
+}
+
+/** Lenient export sibling: tampered ciphertext is exported as stored, never fatal. */
+export async function openConversationThreadPreviewForExport<
+	T extends { lastPreview?: string | null },
+>(row: T): Promise<T> {
+	if (row.lastPreview === undefined || row.lastPreview === null) return row;
+	return { ...row, lastPreview: await openMessageBodyForExport(row.lastPreview) };
+}
+
 async function openMaybeLenient(stored: string | undefined): Promise<string | undefined> {
 	return stored === undefined ? undefined : openMessageBodyForExport(stored);
 }
@@ -175,6 +191,15 @@ export async function sealUnifiedContentPatch(
 ): Promise<{ content?: string }> {
 	const next = await sealMessageBody(row.content);
 	return next !== row.content ? { content: next } : {};
+}
+
+/** Build the migration patch for `conversationThreads.lastPreview`. */
+export async function sealConversationThreadPreviewPatch(row: {
+	lastPreview?: string | null;
+}): Promise<{ lastPreview?: string }> {
+	if (row.lastPreview === undefined || row.lastPreview === null) return {};
+	const next = await sealMessageBody(row.lastPreview);
+	return next !== row.lastPreview ? { lastPreview: next } : {};
 }
 
 /** The body columns of a `mailDrafts` row. `bodyHtml` is required; the text and
