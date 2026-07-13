@@ -8,41 +8,53 @@
  * documented search-index exception (`mailMessages.snippet`, `searchableText`,
  * embedding vectors) stays plaintext so server-side search keeps working.
  *
- * COLUMNS SEALED (string bodies):
+ * INLINE BODY COLUMNS SEALED (DB strings, text cipher):
  *   - inboundMessages : textBody, htmlBody          (AI-inbox inline bodies)
  *   - mailMessages    : textBodyInline, htmlBodyInline (personal-mailbox snippet)
  *   - unifiedMessages : content                      (the JSON body blob)
  *   - mailDrafts      : bodyHtml, bodyText, bodyBlocks (compose drafts)
  *
- * This back-fill seals the four INLINE body shapes of EXISTING rows. New rows
- * already seal at write time (`sealBodyAtWrite` at every production insert/patch)
- * and every reader decrypts through the accessor plane in `lib/messageBody.ts`,
- * so running this migration is the one-time step that catches up rows written
- * before sealing was live. It is idempotent and resumable, so re-running or
- * running it on an already-sealed table is a no-op.
+ * STORAGE BLOBS SEALED (byte cipher):
+ *   - mailMessages : rawStorageId (the raw `.eml`), textBodyStorageId,
+ *     htmlBodyStorageId (the over-threshold body blobs). Sealed byte-for-byte
+ *     (a binary `.eml` must not be UTF-8 round-tripped) via the blob cipher in
+ *     `lib/atRestBodies.ts`. Because Convex storage is immutable per id, the
+ *     blob pages read each blob, store the sealed copy under a new id, repoint
+ *     the row, and delete the old plaintext blob.
  *
- * STORAGE BLOBS (raw `.eml` at `rawStorageId`, and the `*BodyStorageId` body
- * blobs) are NOT sealed here or at write. They are served to clients and the MTA
- * via SIGNED STORAGE URLS (`ctx.storage.getUrl`), so sealing the bytes in place
- * would hand ciphertext to a plain download and regress delivery/IMAP FETCH.
- * Sealing them safely needs a byte-level cipher (a binary `.eml` must not be
- * UTF-8 round-tripped) plus a server-side decrypt-serving path on the naked-URL
- * consumers (web reader, IMAP bridge, raw download) — a change that has to be
- * verified against a live instance, not CI. The in-memory reader path
- * (`readMailMessageText()`) already unseals transparently, so a blob sealed by
- * that later step round-trips with no reader change. See
- * `apps/docs/content/3.developer/21.sealed-mail-at-rest.md#storage-blobs`.
+ * This back-fill catches up EXISTING rows. New rows already seal at write time
+ * (`sealBodyAtWrite` for the inline columns and `storeSealedBlob` for the blobs,
+ * at every production insert/patch), every in-process reader decrypts through
+ * the accessor plane in `lib/messageBody.ts`, and the naked-URL blob consumers
+ * (web reader, IMAP bridge, outbound MTA, raw download) fetch through the
+ * `/sealed-blob` decrypt-serving proxy (`mail/sealedBlobHttp.ts`) — so a blob is
+ * only ever plaintext on the wire to an authorized consumer, ciphertext at rest.
+ * It is idempotent and resumable, so re-running or running it on an
+ * already-sealed instance is a no-op.
+ *
+ * RESIDUAL (mixed-tolerated, not a write-path gap in acceptance): the
+ * external-sync worker paths that UPLOAD a blob straight to storage
+ * (`mail.imap.appendMessage`, `mail.externalDelivery.ingestExternalMessage`)
+ * land it plaintext — a mutation cannot re-seal a blob (blob contents are
+ * action-only). Those blobs are sealed by this back-fill and, until it runs,
+ * read/serve correctly through the mixed-tolerance accessors + proxy.
+ *
+ * DOCUMENTED SEARCH EXCEPTION (stays plaintext on purpose): `mailMessages.snippet`,
+ * the `searchableText` search fields, and embedding vectors — Convex indexes
+ * plaintext; sealing them would break server-side search. They hold a
+ * snippet/keywords, never the full body. Export decrypts (`contacts/dataExport.ts`).
  *
  * SAFETY: this back-fill is a manually-invoked internal action (never auto-run on
  * deploy), matching the 0032–0034 convention; an operator runs `run` once.
  *
- * RESUMABLE: each table is walked one page at a time via a cursor-carrying
- * `internalMutation`; the `run` orchestrator (an `internalAction`) drives the
- * cursors to completion and can be re-invoked after an interrupt. Because
- * `sealMessageBody` is idempotent (an already-sealed or empty value is returned
- * unchanged) and readers tolerate a mix of sealed and plaintext rows
- * (`openAtRest` passes plaintext through), NO row is ever unreadable mid-run and
- * re-running never double-seals.
+ * RESUMABLE: each table is walked one page at a time (a cursor-carrying
+ * `internalMutation` for the inline columns, an `internalAction` for the blobs);
+ * the `run` orchestrator drives the cursors to completion and can be re-invoked
+ * after an interrupt. Because sealing is idempotent (an already-sealed or empty
+ * value / an already-sealed blob is skipped) and readers tolerate a mix of
+ * sealed and plaintext rows and blobs (`openAtRest` / `openBytesAtRest` pass
+ * plaintext through), NO row is ever unreadable mid-run and re-running never
+ * double-seals.
  */
 
 import { v } from 'convex/values';
