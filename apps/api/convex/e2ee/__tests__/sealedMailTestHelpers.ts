@@ -29,20 +29,20 @@ export const modules = { ...rootGlob, ...e2eeGlob };
 export type ConvexTestCtx = ReturnType<typeof convexTest>;
 
 /**
- * The convex module map — every backend module, loaded exactly as the e2ee
- * suites need so `t.action`/`t.query`/`t.run` can reach the wired API. Lives
- * here so the `import.meta.glob` scaffolding is written ONCE (same-directory
- * glob paths resolve identically from any `__tests__` file). Pass to
- * `convexTest(schema, modules)`.
+ * Seed `instanceSettings` with the FULL Sealed Mail dependency flag set so the
+ * feature actually resolves ON. `sealedMail` declares `requires: ['postbox',
+ * 'senderAuthBadges']` (packages/shared featureFlags), so all three must be
+ * seeded — omitting `senderAuthBadges` forces `sealedMail` OFF via
+ * `resolveFlags`. Shared here so no suite re-derives (and drifts) the flag set.
  */
-const rootGlob = import.meta.glob('../../**/*.*s');
-const e2eeGlob = Object.fromEntries(
-	Object.entries(import.meta.glob('../**/*.*s')).map(([path, mod]) => [
-		path.replace(/^\.\.\//, '../../e2ee/'),
-		mod,
-	])
-);
-export const modules = { ...rootGlob, ...e2eeGlob };
+export async function enableSealedMail(t: ConvexTestCtx): Promise<void> {
+	await t.run(async (ctx) => {
+		await ctx.db.insert('instanceSettings', {
+			featureFlags: { postbox: true, senderAuthBadges: true, sealedMail: true },
+			createdAt: Date.now(),
+		});
+	});
+}
 
 export interface TestKeypair {
 	fingerprint: string;

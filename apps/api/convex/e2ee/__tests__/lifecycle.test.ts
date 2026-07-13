@@ -23,17 +23,8 @@ import { verifyRotationStatement } from '../discovery';
 import { verifyManifest, type ManifestPayload } from '../manifest';
 import { openSealed } from '../open';
 import { openPrivateKey } from '../sealing';
-import { modules } from './sealedMailTestHelpers';
+import { modules, enableSealedMail } from './sealedMailTestHelpers';
 import * as openpgp from 'openpgp';
-
-async function enableSealedMail(t: ReturnType<typeof convexTest>): Promise<void> {
-	await t.run(async (ctx) => {
-		await ctx.db.insert('instanceSettings', {
-			featureFlags: { postbox: true, senderAuthBadges: true, sealedMail: true },
-			createdAt: Date.now(),
-		});
-	});
-}
 
 describe('e2ee/lifecycle rotation + revocation', () => {
 	beforeEach(() => {
