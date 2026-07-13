@@ -48,10 +48,13 @@ watch(
 	[() => result.value?.state, () => heuristicLines.value.length],
 	([state, lineCount]) => {
 		// Expand when there is something the reader should not have to reach for:
-		// any non-verified state, OR an impersonation heuristic fired even on an
-		// otherwise-verified sender (a verified domain can still be a look-alike
-		// of a contact). A quiet verified sender with no heuristics stays folded.
-		expanded.value = state ? state !== 'verified' || lineCount > 0 : false;
+		// any non-trustworthy state, OR an impersonation heuristic fired even on an
+		// otherwise-trustworthy sender (a verified domain can still be a look-alike
+		// of a contact). The trustworthy states — a directly-verified sender and a
+		// trusted-forwarder ARC rescue ('forwarded') — stay quiet with no
+		// heuristics, so a rescued mailing-list message never reads as suspicious.
+		const trustworthy = state === 'verified' || state === 'forwarded';
+		expanded.value = state ? !trustworthy || lineCount > 0 : false;
 	},
 	{ immediate: true }
 );
