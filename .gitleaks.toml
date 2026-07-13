@@ -27,4 +27,7 @@ paths = [
   '''(^|/)\.env(\.|$)''',
   '''(^|/)infra/templates/''',
   '''(^|/)Caddyfile\.example$''',
+  # Sealed Mail interop corpus: throwaway PGP keypairs committed so decrypt/verify
+  # is reproducible offline (they protect nothing — see fixtures/sealed-mail/README.md).
+  '''(^|/)fixtures/sealed-mail/''',
 ]
