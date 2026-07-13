@@ -48,6 +48,7 @@ import { enqueueCategoryCheck } from './category';
 import { clearThreadFollowUp } from './followUps';
 import { resolveDeliverableMailbox } from './mailbox';
 import { clearSnoozeUntilReplyForThread } from './snooze';
+import { sealBodyAtWriteMaybe } from '../lib/messageBody';
 
 const INLINE_BODY_THRESHOLD_BYTES = 64 * 1024;
 

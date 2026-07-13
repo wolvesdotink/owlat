@@ -47,6 +47,7 @@ import {
 	type OutboundEncryptionInfo,
 	type SealState,
 } from './sealPolicy';
+import { sealBodyAtWriteMaybe } from '../lib/messageBody';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 

@@ -22,7 +22,7 @@
  *                        mediaUrl }`.
  */
 
-import type { Id } from '../_generated/dataModel';
+import type { Doc, Id } from '../_generated/dataModel';
 import { getOptional, getRequired } from './env';
 import { openAtRest, sealAtRest, isSealedAtRest } from './atRestBodies';
 
@@ -210,11 +210,13 @@ export async function sealMailDraftBodyPatch(
  * is built from plaintext — never from a sealed envelope. Other draft fields are
  * returned untouched.
  */
-export async function openMailDraftBody<T extends MailDraftBodyFields>(draft: T): Promise<T> {
-	const bodyHtml = await openMessageBody(draft.bodyHtml);
-	const bodyText = await openMaybe(draft.bodyText);
-	const bodyBlocks = await openMaybe(draft.bodyBlocks);
-	return { ...draft, bodyHtml, bodyText, bodyBlocks };
+export async function openMailDraftBody(draft: Doc<'mailDrafts'>): Promise<Doc<'mailDrafts'>> {
+	return {
+		...draft,
+		bodyHtml: await openMessageBody(draft.bodyHtml),
+		bodyText: await openMaybe(draft.bodyText),
+		bodyBlocks: await openMaybe(draft.bodyBlocks),
+	};
 }
 
 // ── Shape 1: inboundMessages inline bodies ───────────────────────────────────

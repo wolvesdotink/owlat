@@ -16,6 +16,7 @@ import { rebuildThreadAggregates } from './messageActions';
 import { bumpFolderModseq } from './folders';
 import { normalizeSubject } from '../lib/emailAddress';
 import { normalizeEmail } from '@owlat/shared';
+import { sealBodyAtWriteMaybe } from '../lib/messageBody';
 
 /**
  * Error string used by APPEND to signal a from-address violation. The
