@@ -64,12 +64,14 @@ export const e2eeTables = {
 		isActive: v.boolean(),
 		// INSTANCE row only: the last signed `/.well-known/owlat.json` manifest,
 		// cached so the public route serves byte-stable bytes and re-signs only
-		// when the key-directory digest or instance key changes (no per-request
-		// OpenPGP signing for anonymous callers). Absent until first published.
+		// when the key-directory digest, instance key, or rotation-feed URL
+		// (derived from SITE_URL) changes (no per-request OpenPGP signing for
+		// anonymous callers). Absent until first published.
 		cachedManifest: v.optional(
 			v.object({
 				keyDirectoryDigest: v.string(),
 				instanceFingerprint: v.string(),
+				rotationFeedUrl: v.string(),
 				signedManifestJson: v.string(),
 			})
 		),

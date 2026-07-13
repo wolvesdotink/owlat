@@ -153,12 +153,14 @@ export const getSignedManifest = publicAction({
 
 		const directory = await ctx.runQuery(internal.e2ee.keys.getKeyDirectory, {});
 		const digest = keyDirectoryDigest(directory);
+		const feedUrl = rotationFeedUrl();
 
 		const cached = identity.cachedManifest;
 		if (
 			cached &&
 			cached.keyDirectoryDigest === digest &&
-			cached.instanceFingerprint === identity.fingerprint
+			cached.instanceFingerprint === identity.fingerprint &&
+			cached.rotationFeedUrl === feedUrl
 		) {
 			return JSON.parse(cached.signedManifestJson) as SignedManifest;
 		}
@@ -168,7 +170,7 @@ export const getSignedManifest = publicAction({
 			instanceFingerprint: identity.fingerprint,
 			instancePublicKeyArmored: identity.publicKeyArmored,
 			directory,
-			rotationFeedUrl: rotationFeedUrl(),
+			rotationFeedUrl: feedUrl,
 			generatedAt: Date.now(),
 		});
 		const signature = await signManifest(payload, privateKeyArmored);
@@ -177,6 +179,7 @@ export const getSignedManifest = publicAction({
 		await ctx.runMutation(internal.e2ee.keys.cacheInstanceManifest, {
 			keyDirectoryDigest: digest,
 			instanceFingerprint: identity.fingerprint,
+			rotationFeedUrl: feedUrl,
 			signedManifestJson: JSON.stringify(signed),
 		});
 		return signed;

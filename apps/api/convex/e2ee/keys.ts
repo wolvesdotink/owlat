@@ -147,6 +147,7 @@ export const cacheInstanceManifest = internalMutation({
 	args: {
 		keyDirectoryDigest: v.string(),
 		instanceFingerprint: v.string(),
+		rotationFeedUrl: v.string(),
 		signedManifestJson: v.string(),
 	},
 	handler: async (ctx, args) => {
@@ -159,6 +160,7 @@ export const cacheInstanceManifest = internalMutation({
 			cachedManifest: {
 				keyDirectoryDigest: args.keyDirectoryDigest,
 				instanceFingerprint: args.instanceFingerprint,
+				rotationFeedUrl: args.rotationFeedUrl,
 				signedManifestJson: args.signedManifestJson,
 			},
 			updatedAt: Date.now(),
