@@ -1,107 +1,208 @@
 #!/usr/bin/env bash
 #
-# Offline, developer-only GnuPG interop regression for Sealed Mail key minting.
+# Offline, developer-only regenerator for the GENUINE GnuPG interop fixtures.
 #
-# CI NEVER runs this — it needs `gpg` on the machine (CI stays gpg-free; every
-# committed fixture is read as bytes). This is the DIRECT regression check for
-# the interop bug fixed in E1b: GnuPG (2.5.x), Thunderbird/RNP and older gpg all
-# REJECT the RFC 9580 new-style ed25519/x25519 algorithm IDs (25/27) that
-# openpgp.js `type: 'curve25519'` mints ("can't handle public key algorithm
-# 27"), so a WKD/manifest key minted that way cannot be encrypted TO. The fix
-# mints on the LEGACY curve25519 profile (EdDSA-legacy algo 22 + ECDH algo 18 —
-# what Proton mints), which every OpenPGP implementation accepts.
+# Every byte of OpenPGP material in this group — the throwaway keys, the
+# encryption, the signature — is produced by `gpg` itself (NOT openpgp.js), so
+# the E4 interop test in `convex/e2ee/__tests__/open.test.ts` proves true
+# cross-implementation interop: GnuPG writes, our `openpgp.js` ingest path opens.
+# Only the PGP/MIME *wrapper* (RFC 3156 multipart/encrypted framing) is
+# assembled by this script — that part is plain text, not crypto.
 #
-# What this proves, end-to-end, against real GnuPG:
-#   1. gpg CAN `--encrypt` to an Owlat-minted LEGACY-profile public key  → PASS
-#   2. gpg CANNOT `--encrypt` to a new-style (pre-fix) public key         → the bug
+# Produces:
+#   keys/sender.pub.asc / keys/sender.sec.asc         gpg-minted signer keypair
+#   keys/recipient.pub.asc / keys/recipient.sec.asc   gpg-minted recipient keypair
+#   inner-protected-headers.eml                       committed plaintext INPUT (D4:
+#                                                     real Subject + text/html inside)
+#   inner-no-protected-headers.eml                    committed plaintext INPUT (no
+#                                                     protected headers — body only)
+#   sealed-protected-headers.eml                      signed+encrypted PGP/MIME; outer
+#                                                     Subject is the literal "..."
+#   sealed-no-protected-headers.eml                   signed+encrypted PGP/MIME; outer
+#                                                     Subject is the real one
 #
-# It mints both profiles with the checked-in `openpgp` dependency (the same
-# library the backend uses), so it is reproducible without any external keys.
+# Why this group mints its OWN recipient keypair instead of encrypting to
+# `fixtures/sealed-mail/pgp/inbound-recipient.public.asc`: that key is an
+# openpgp.js v4 key using the RFC 9580 new-style algorithm IDs (Ed25519 = 27,
+# X25519 = 25), which GnuPG rejects on v4 keys ("can't handle public key
+# algorithm 27") — gpg cannot encrypt to it. The keys here are gpg-native
+# ed25519/cv25519 (EdDSA 22 / ECDH 18), which openpgp.js reads fine, keeping the
+# interop direction that matters for INBOUND: foreign implementation seals,
+# our stack opens.
 #
-# Run (from any cwd — the script cd's into apps/api, where `openpgp` resolves):
-#   bash apps/api/fixtures/sealed-mail/gnupg/generate.sh
-# Optionally pass a path to an already-exported Owlat public key to test it
-# directly instead of minting a fresh one:
-#   bash fixtures/sealed-mail/gnupg/generate.sh /path/to/owlat-address.pub.asc
+# The throwaway keys are committed (alice/bob precedent in pgp-mime/keys/) and
+# protect nothing — regenerate freely. The secret keys are unprotected on
+# purpose. CI NEVER runs gpg: the bytes are committed; this script is offline
+# regeneration only. It self-verifies from the COMMITTED artifacts (fresh
+# keyring, gpg --decrypt + signature check, byte-equal plaintext) and exits
+# non-zero if the material is not genuine.
 #
+# Run:  bash apps/api/fixtures/sealed-mail/gnupg/generate.sh
+# Needs gpg >= 2.4 (generated/verified with gpg (GnuPG) 2.5.21). Uses a
+# temporary GNUPGHOME throughout — the operator keyring is never touched.
+#
+# All message bytes use CRLF (RFC 5322 / RFC 3156); .gitattributes exempts this
+# corpus from EOL normalization so the committed bytes stay exact.
+
 set -euo pipefail
 
-command -v gpg >/dev/null 2>&1 || { echo "gpg not found — install GnuPG to run this offline check"; exit 127; }
-command -v node >/dev/null 2>&1 || { echo "node not found"; exit 127; }
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+GPG="${GPG:-gpg}"
 
-here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Resolve any caller-supplied key path against the original cwd BEFORE we move.
-supplied_key=""
-if [[ "${1:-}" != "" ]]; then
-	supplied_key="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
-fi
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
+mkdir -p "$WORK/gen-home" "$WORK/verify-home"
+chmod 700 "$WORK/gen-home" "$WORK/verify-home"
 
-# openpgp resolves by a node_modules walk-up from the cwd (Node's ESM loader
-# ignores NODE_PATH), so run from apps/api where the dependency is installed —
-# this makes the script correct regardless of the caller's cwd.
-apps_api="$(cd "$here/../../.." && pwd)"
-cd "$apps_api"
-work="$(mktemp -d)"
-trap 'rm -rf "$work"' EXIT
+# Every gpg call gets an explicit --homedir; never the operator's ~/.gnupg.
+gpg_gen()    { "$GPG" --homedir "$WORK/gen-home"    --batch --no-tty "$@"; }
+gpg_verify() { "$GPG" --homedir "$WORK/verify-home" --batch --no-tty "$@"; }
 
-# A throwaway GnuPG homedir so we never touch the developer's real keyring.
-export GNUPGHOME="$work/gnupg"
-mkdir -p "$GNUPGHOME"
-chmod 700 "$GNUPGHOME"
+# Emit each argument as a CRLF-terminated line.
+crlf() { printf '%s\r\n' "$@"; }
 
-# ── Obtain the two public keys under test ────────────────────────────────────
-legacy_pub="$work/legacy.pub.asc"
-newstyle_pub="$work/newstyle.pub.asc"
+"$GPG" --version | head -n 1
 
-if [[ "$supplied_key" != "" ]]; then
-	# Caller supplied a real Owlat-exported public key — test it directly.
-	cp "$supplied_key" "$legacy_pub"
-	echo "Using supplied Owlat public key: $supplied_key"
-else
-	# Mint both profiles with the same openpgp.js the backend uses. The heredoc is
-	# ESM (top-level `import` + `await`), so stdin MUST be flagged as a module —
-	# `node -` defaults to CommonJS and would reject the `import`.
-	node --input-type=module - "$legacy_pub" "$newstyle_pub" <<'NODE'
-import * as openpgp from 'openpgp';
-import { writeFileSync } from 'node:fs';
-const [, , legacyOut, newStyleOut] = process.argv;
-// LEGACY profile — exactly what apps/api/convex/e2ee/keysNode.ts now mints.
-const legacy = await openpgp.generateKey({
-	type: 'ecc',
-	curve: 'curve25519Legacy',
-	userIDs: [{ name: 'Owlat address', email: 'legacy@sealed.example.com' }],
-	format: 'armored',
-});
-writeFileSync(legacyOut, legacy.publicKey);
-// NEW-STYLE profile — the pre-fix shape GnuPG rejects.
-const newStyle = await openpgp.generateKey({
-	type: 'curve25519',
-	userIDs: [{ name: 'Owlat address', email: 'newstyle@sealed.example.com' }],
-	format: 'armored',
-});
-writeFileSync(newStyleOut, newStyle.publicKey);
-NODE
-fi
+# --- 1. Mint the throwaway keypairs with gpg itself -------------------------
+gen_key() {
+	gpg_gen --gen-key <<-EOF
+		%no-protection
+		Key-Type: eddsa
+		Key-Curve: ed25519
+		Key-Usage: sign
+		Subkey-Type: ecdh
+		Subkey-Curve: cv25519
+		Subkey-Usage: encrypt
+		Name-Real: $1
+		Name-Email: $2
+		Expire-Date: 0
+		%commit
+	EOF
+}
+gen_key 'GnuPG Interop Sender' 'gnupg-sender@interop.example.org'
+gen_key 'GnuPG Interop Recipient' 'gnupg-recipient@interop.example.net'
 
-# ── 1. gpg MUST accept the legacy-profile key ────────────────────────────────
-echo "== gpg encrypt to LEGACY-profile Owlat key (expect PASS) =="
-gpg --batch --import "$legacy_pub"
-legacy_fpr="$(gpg --batch --with-colons --import-options show-only --import "$legacy_pub" | awk -F: '/^fpr:/ {print $10; exit}')"
-echo "hello sealed mail" | gpg --batch --yes --trust-model always --encrypt --recipient "$legacy_fpr" --armor --output "$work/legacy.gpg"
-echo "OK — GnuPG encrypted to the legacy-profile key ($legacy_fpr)"
+fpr_of() {
+	gpg_gen --with-colons --list-keys "$1" | awk -F: '/^fpr:/ { print $10; exit }'
+}
+SENDER_FPR="$(fpr_of gnupg-sender@interop.example.org)"
+RECIPIENT_FPR="$(fpr_of gnupg-recipient@interop.example.net)"
+echo "sender:    $SENDER_FPR"
+echo "recipient: $RECIPIENT_FPR"
 
-# ── 2. Demonstrate the bug: gpg REJECTS the new-style key ────────────────────
-if [[ -f "$newstyle_pub" ]]; then
-	echo "== gpg encrypt to NEW-STYLE key (expect FAIL — this is the bug) =="
-	gpg --batch --import "$newstyle_pub" || true
-	newstyle_fpr="$(gpg --batch --with-colons --import-options show-only --import "$newstyle_pub" | awk -F: '/^fpr:/ {print $10; exit}')"
-	if echo "hello" | gpg --batch --yes --trust-model always --encrypt --recipient "$newstyle_fpr" --armor --output "$work/newstyle.gpg" 2>"$work/err"; then
-		echo "UNEXPECTED — this gpg build encrypted to the new-style key; note its version:"
-		gpg --version | head -1
-	else
-		echo "As expected, GnuPG refused the new-style key:"
-		sed 's/^/  /' "$work/err" || true
+mkdir -p "$HERE/keys"
+gpg_gen --armor --export "$SENDER_FPR" >"$HERE/keys/sender.pub.asc"
+gpg_gen --armor --export-secret-keys "$SENDER_FPR" >"$HERE/keys/sender.sec.asc"
+gpg_gen --armor --export "$RECIPIENT_FPR" >"$HERE/keys/recipient.pub.asc"
+gpg_gen --armor --export-secret-keys "$RECIPIENT_FPR" >"$HERE/keys/recipient.sec.asc"
+
+# --- 2. The committed plaintext INPUTS (byte-equal assertion targets) --------
+# (a) Protected headers per locked decision D4: the REAL Subject and both body
+#     branches travel INSIDE the ciphertext.
+crlf \
+	'Message-ID: <gnupg-interop-0001@interop.example.org>' \
+	'Date: Mon, 13 Jul 2026 10:00:00 +0000' \
+	'From: gnupg-sender@interop.example.org' \
+	'To: gnupg-recipient@interop.example.net' \
+	'Subject: GnuPG sealed interop figures' \
+	'MIME-Version: 1.0' \
+	'Content-Type: multipart/alternative; boundary="=_gnupg_inner_alt"' \
+	'' \
+	'--=_gnupg_inner_alt' \
+	'Content-Type: text/plain; charset=utf-8' \
+	'' \
+	'The CANARY_GNUPG_INTEROP_9f41aa figures, plain-text branch.' \
+	'' \
+	'--=_gnupg_inner_alt' \
+	'Content-Type: text/html; charset=utf-8' \
+	'' \
+	'<p>HTML CANARY_GNUPG_INTEROP_9f41aa figures.</p>' \
+	'' \
+	'--=_gnupg_inner_alt--' \
+	'' >"$HERE/inner-protected-headers.eml"
+
+# (b) NO protected headers — a bare body entity, the way clients without the
+#     protected-headers convention seal: the outer Subject stays authoritative.
+crlf \
+	'Content-Type: text/plain; charset=utf-8' \
+	'' \
+	'No protected headers in here - the outer Subject is the real one.' \
+	'CANARY_GNUPG_PLAIN_2ee7c3' \
+	'' >"$HERE/inner-no-protected-headers.eml"
+
+# --- 3. Sign + encrypt with gpg (the actual cross-implementation crypto) ----
+seal() { # seal <inner-file> <out-armor>
+	gpg_gen --armor --sign --encrypt \
+		--local-user "$SENDER_FPR" --recipient "$RECIPIENT_FPR" \
+		--trust-model always --output "$2" "$1"
+}
+seal "$HERE/inner-protected-headers.eml" "$WORK/protected.asc"
+seal "$HERE/inner-no-protected-headers.eml" "$WORK/plain.asc"
+
+# --- 4. Assemble the PGP/MIME wrappers (RFC 3156) ----------------------------
+armor_crlf() { awk '{ sub(/\r$/, ""); printf "%s\r\n", $0 }' "$1"; }
+
+write_eml() { # write_eml <outer-subject> <message-id> <armor-file> <out-file>
+	{
+		crlf \
+			'From: gnupg-sender@interop.example.org' \
+			'To: gnupg-recipient@interop.example.net' \
+			"Subject: $1" \
+			'Date: Mon, 13 Jul 2026 10:00:00 +0000' \
+			"Message-ID: <$2@interop.example.org>" \
+			'MIME-Version: 1.0' \
+			'Content-Type: multipart/encrypted;' \
+			' protocol="application/pgp-encrypted"; boundary="=_gnupg_sealed_interop"' \
+			'' \
+			'--=_gnupg_sealed_interop' \
+			'Content-Type: application/pgp-encrypted' \
+			'Content-Description: PGP/MIME version identification' \
+			'' \
+			'Version: 1' \
+			'' \
+			'--=_gnupg_sealed_interop' \
+			'Content-Type: application/octet-stream; name="encrypted.asc"' \
+			'Content-Description: OpenPGP encrypted message' \
+			'Content-Disposition: inline; filename="encrypted.asc"' \
+			''
+		armor_crlf "$3"
+		crlf \
+			'' \
+			'--=_gnupg_sealed_interop--' \
+			''
+	} >"$4"
+}
+write_eml '...' 'gnupg-interop-0001' "$WORK/protected.asc" "$HERE/sealed-protected-headers.eml"
+write_eml 'GnuPG interop without protected headers' 'gnupg-interop-0002' \
+	"$WORK/plain.asc" "$HERE/sealed-no-protected-headers.eml"
+
+# --- 5. Self-verify from the COMMITTED artifacts only ------------------------
+# Fresh keyring, keys imported from the exported .asc files, ciphertext pulled
+# back out of the .eml wrappers: proves the committed bytes are genuine,
+# self-consistent GnuPG material (decrypts byte-equal, signature GOODSIG by the
+# committed sender key). Exits non-zero on any mismatch.
+gpg_verify --import \
+	"$HERE/keys/sender.pub.asc" "$HERE/keys/recipient.pub.asc" \
+	"$HERE/keys/recipient.sec.asc" 2>/dev/null
+
+check() { # check <sealed-eml> <inner-file> <label>
+	sed -n '/-----BEGIN PGP MESSAGE-----/,/-----END PGP MESSAGE-----/p' "$1" |
+		tr -d '\r' >"$WORK/check.asc"
+	local status decrypted="$WORK/check.out"
+	rm -f "$decrypted"
+	status="$(gpg_verify --status-fd 1 --trust-model always \
+		--output "$decrypted" --decrypt "$WORK/check.asc" 2>/dev/null)"
+	if ! grep -q "^\[GNUPG:\] VALIDSIG $SENDER_FPR " <<<"$status"; then
+		echo "FAIL: $3: signature is not a VALIDSIG by the committed sender key" >&2
+		exit 1
 	fi
-fi
+	if ! cmp -s "$decrypted" "$2"; then
+		echo "FAIL: $3: decrypted plaintext is not byte-equal to $2" >&2
+		exit 1
+	fi
+	echo "OK: $3 decrypts byte-equal with GOODSIG by $SENDER_FPR"
+}
+check "$HERE/sealed-protected-headers.eml" "$HERE/inner-protected-headers.eml" 'sealed-protected-headers.eml'
+check "$HERE/sealed-no-protected-headers.eml" "$HERE/inner-no-protected-headers.eml" 'sealed-no-protected-headers.eml'
 
-echo "Done. The legacy profile is GnuPG-encryptable; the new-style profile is not."
+echo 'OK: all GnuPG interop fixtures are genuine and self-consistent'

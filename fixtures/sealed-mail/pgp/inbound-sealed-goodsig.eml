@@ -1,0 +1,44 @@
+Message-ID: <interop-0001@a.instance.test>
+Date: Mon, 13 Jul 2026 09:00:00 +0000
+From: alice@a.instance.test
+To: bob@b.instance.test
+Subject: ...
+MIME-Version: 1.0
+Content-Type: multipart/encrypted; protocol="application/pgp-encrypted"; boundary="=_owlat_sealed_interop_fixture"
+
+--=_owlat_sealed_interop_fixture
+Content-Type: application/pgp-encrypted
+Content-Description: PGP/MIME version identification
+
+Version: 1
+--=_owlat_sealed_interop_fixture
+Content-Type: application/octet-stream; name="encrypted.asc"
+Content-Description: OpenPGP encrypted message
+Content-Disposition: inline; filename="encrypted.asc"
+-----BEGIN PGP MESSAGE-----
+
+wVQD6V3szSSyvxUZqsv4p8dGAWuGKGMVzX2v7Jl4hn4ZTicKwcDnACpVTgYp
+CSqq8KWPDHG1GelBn98g6qAq4X9lDhYwjZVir+O2GNexxuE4b6Uw97nSwm0B
+M1FgrMThwcg1L2eS4OHqx8U1y7aHudufSIMoys4z94xynnFHuG7/IbVGa6ZI
+a9isLhrVcVUKvGqnS+moZtgtdys9RAbxSjYG4bPv0pHieVHY+CzfX/q7BvoE
+zgor38fBXamen5UwfdFzs2hzBpd6ZuxBDShocXL2fXWx71o87U5jLJeF0eQQ
+1rK9tW+sYONmD8zsfPfefz7NVpK+3xXc3wIwSyyTNKQHytNPhtwLq3/Je7B2
+CjXVzkT1DUWC2w4uEVF5fZUEDurP2MvXordfqVX4y+fCw2iSu/DP7ys42Eqf
+qpad3BfE+0sp69Hm9CSCkMxdC1n2q2Yy4HghCwKh62AjEUZwfwLbmzMSddC4
+dG2NDBcGwfAqOQ7oP2bL5A0UKCD1qY3pWxYAtszgwRkG2IDSbC3lPWWrqAil
+vBaBsW/6WKJ8HmumsJNRmZId78WLsXJTVBt6qIr69D/ELfsZ6SQ0dzyAO/jp
+ZF3/A6SXrRZdu6jjLONmysjaqm5XDh/KdsLip1zdUEQufk1aa8BFRO9heQKV
+DBZFjaAMf1b1TNIfmi8CAhptTHFxqX2zJlcO59Hz+2ruorU+qhlexokj3lND
+z5CFEPQGJycD4VS8b1kruDckMJxOFhTHMYLSVqk/QAACB2tBOj3/R5rwJ2BT
+JmMFo0E6RjQTv0aFq2r2YXqzJsWeZ2+7WgKx1gQU+o5HStKKLnhMQn8paAfN
+/9mikcmJBNfe5c5UnmM2TPxpgQrT9jZEh+uwVdYOWG4P+/KGTFeZIOHF+gaG
+7gbLDsHOzQujq9VMatbvHp/QOM4gSlHTdsIUOExLAPjwJgLNiNwo6pZvToqk
+uByMfIksmfykv+dkVVRvuTwxk8aJQvqw0p0LjW1UHVtwDyAb7uIklb1EEHpd
+3zZ++G3a/dp6+Wju8uE9KoA3mbd5PSKLhWwbIjPfGr8Q9oNxYy6zqj64+z21
+RsMJt+7z5P+latxNXNtqyAJ8naUKdwZlux/47P9tSvIEf1y/Fyw+4QUWykcA
+y9Y7acl3u4cudIzl9Y5Upu9Np1tUh1KMOUZezlnARMflJAwUywLkZt9hCo43
++as=
+=qGSA
+-----END PGP MESSAGE-----
+
+--=_owlat_sealed_interop_fixture--
