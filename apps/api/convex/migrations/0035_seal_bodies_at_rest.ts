@@ -46,7 +46,12 @@
  */
 
 import { v } from 'convex/values';
-import { internalAction, internalMutation, type MutationCtx } from '../_generated/server';
+import {
+	internalAction,
+	internalMutation,
+	internalQuery,
+	type MutationCtx,
+} from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Doc, Id, TableNames } from '../_generated/dataModel';
 import {
@@ -55,6 +60,7 @@ import {
 	sealUnifiedContentPatch,
 	sealMailDraftBodyPatch,
 } from '../lib/messageBody';
+import { resealStoredBlob } from '../lib/sealedBlob';
 
 /** Rows per page. Small enough to stay well inside a mutation's limits. */
 const PAGE_SIZE = 50;
@@ -74,6 +80,8 @@ interface SealCounts {
 	mailMessages: number;
 	unifiedMessages: number;
 	mailDrafts: number;
+	/** mailMessages rows whose STORAGE BLOBS (raw `.eml` + body blobs) were sealed. */
+	mailBlobs: number;
 }
 
 /**
@@ -142,6 +150,102 @@ export const sealMailDraftsPage = internalMutation({
 		),
 });
 
+// ── Storage-blob sealing (raw `.eml` + body blobs on mailMessages) ───────────
+//
+// The four pages above seal INLINE body columns (DB strings). The raw `.eml`
+// (`rawStorageId`) and the over-threshold body blobs (`*BodyStorageId`) are
+// separate STORAGE objects — sealing them means reading each blob's bytes,
+// sealing them with the byte cipher, storing the sealed copy under a new id,
+// pointing the row at it, and deleting the old plaintext blob. That needs an
+// ACTION (blob contents are unreadable from a query/mutation), so it is a
+// three-part page: a query yields the ids, `resealStoredBlob` does the crypto in
+// the action, and a mutation patches the row. Idempotent + resumable:
+// `resealStoredBlob` returns null for an already-sealed blob, so a re-run skips.
+
+/** One page of mailMessages' storage-blob ids (raw + body blobs). */
+export const mailMessageBlobPage = internalQuery({
+	args: cursorArg,
+	handler: async (ctx, { cursor }) => {
+		const { page, continueCursor, isDone } = await ctx.db
+			.query('mailMessages')
+			.paginate({ numItems: PAGE_SIZE, cursor });
+		return {
+			rows: page.map((m) => ({
+				id: m._id,
+				rawStorageId: m.rawStorageId,
+				textBodyStorageId: m.textBodyStorageId,
+				htmlBodyStorageId: m.htmlBodyStorageId,
+			})),
+			cursor: continueCursor,
+			isDone,
+		};
+	},
+});
+
+/** Repoint one mailMessages row at its sealed blob copies (only changed ids). */
+export const patchMailMessageBlobIds = internalMutation({
+	args: {
+		id: v.id('mailMessages'),
+		rawStorageId: v.optional(v.id('_storage')),
+		textBodyStorageId: v.optional(v.id('_storage')),
+		htmlBodyStorageId: v.optional(v.id('_storage')),
+	},
+	handler: async (ctx, args) => {
+		const patch: {
+			rawStorageId?: Id<'_storage'>;
+			textBodyStorageId?: Id<'_storage'>;
+			htmlBodyStorageId?: Id<'_storage'>;
+		} = {};
+		if (args.rawStorageId) patch.rawStorageId = args.rawStorageId;
+		if (args.textBodyStorageId) patch.textBodyStorageId = args.textBodyStorageId;
+		if (args.htmlBodyStorageId) patch.htmlBodyStorageId = args.htmlBodyStorageId;
+		if (Object.keys(patch).length > 0) await ctx.db.patch(args.id, patch);
+	},
+});
+
+/** Seal the storage blobs of one page of mailMessages. */
+export const sealMailMessagesBlobsPage = internalAction({
+	args: cursorArg,
+	handler: async (ctx, { cursor }): Promise<PageResult> => {
+		const {
+			rows,
+			cursor: next,
+			isDone,
+		} = await ctx.runQuery(internal.migrations['0035_seal_bodies_at_rest'].mailMessageBlobPage, {
+			cursor,
+		});
+		let sealed = 0;
+		for (const row of rows) {
+			const newRaw = await resealStoredBlob(ctx.storage, row.rawStorageId);
+			const newText = row.textBodyStorageId
+				? await resealStoredBlob(ctx.storage, row.textBodyStorageId)
+				: null;
+			const newHtml = row.htmlBodyStorageId
+				? await resealStoredBlob(ctx.storage, row.htmlBodyStorageId)
+				: null;
+			if (newRaw || newText || newHtml) {
+				await ctx.runMutation(
+					internal.migrations['0035_seal_bodies_at_rest'].patchMailMessageBlobIds,
+					{
+						id: row.id,
+						rawStorageId: newRaw ?? undefined,
+						textBodyStorageId: newText ?? undefined,
+						htmlBodyStorageId: newHtml ?? undefined,
+					}
+				);
+				// Only after the row points at the sealed copies do we delete the old
+				// plaintext blobs — an interrupt before the patch leaves the row on the
+				// still-readable original (mixed tolerance), never dangling.
+				if (newRaw) await ctx.storage.delete(row.rawStorageId);
+				if (newText && row.textBodyStorageId) await ctx.storage.delete(row.textBodyStorageId);
+				if (newHtml && row.htmlBodyStorageId) await ctx.storage.delete(row.htmlBodyStorageId);
+				sealed++;
+			}
+		}
+		return { cursor: next, isDone, sealed };
+	},
+});
+
 /**
  * Drive one table's paginated walker to completion. Extracted so `run` reads as
  * a list of tables and the interrupt/resume test can drive a single table's
@@ -180,6 +284,13 @@ export const run = internalAction({
 		const mailDrafts = await drainTable((a) =>
 			ctx.runMutation(internal.migrations['0035_seal_bodies_at_rest'].sealMailDraftsPage, a)
 		);
-		return { sealed: { inboundMessages, mailMessages, unifiedMessages, mailDrafts } };
+		// Storage blobs (raw `.eml` + body blobs) — an action page, since blob
+		// contents are only readable from an action.
+		const mailBlobs = await drainTable((a) =>
+			ctx.runAction(internal.migrations['0035_seal_bodies_at_rest'].sealMailMessagesBlobsPage, a)
+		);
+		return {
+			sealed: { inboundMessages, mailMessages, unifiedMessages, mailDrafts, mailBlobs },
+		};
 	},
 });

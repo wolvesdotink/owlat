@@ -41,7 +41,7 @@
 
 import type { Id } from '../_generated/dataModel';
 import { getOptional } from './env';
-import { sealBytesAtRest, openBytesAtRest } from './atRestBodies';
+import { sealBytesAtRest, openBytesAtRest, isSealedBytesAtRest } from './atRestBodies';
 
 /** Proxy route path (registered in `http.ts`). */
 export const SEALED_BLOB_PATH = '/sealed-blob';
@@ -167,6 +167,33 @@ export async function sealedBlobUrl(
 		sig,
 	});
 	return `${siteUrl.replace(/\/$/, '')}${SEALED_BLOB_PATH}?${params.toString()}`;
+}
+
+/**
+ * Re-seal an EXISTING stored blob for the back-fill migration (E8b). Convex
+ * storage is immutable per id, so sealing in place means: read the blob, seal
+ * its bytes, store the SEALED copy under a NEW id, and return that id (the caller
+ * patches the row to point at it, then deletes the old plaintext blob). Returns
+ * `null` — no change needed — when there is no key, the blob is missing, or it
+ * is ALREADY sealed (so the migration is idempotent and resumable: a re-run
+ * re-reads a now-sealed blob and skips it).
+ */
+export async function resealStoredBlob(
+	storage: BlobGet & BlobStore,
+	storageId: Id<'_storage'>
+): Promise<Id<'_storage'> | null> {
+	const secret = getOptional('INSTANCE_SECRET');
+	if (secret === undefined) return null;
+	const blob = await storage.get(storageId);
+	if (!blob) return null;
+	const bytes = new Uint8Array(await blob.arrayBuffer());
+	if (isSealedBytesAtRest(bytes)) return null;
+	const sealed = await sealBytesAtRest(secret, bytes);
+	return storage.store(
+		new Blob([sealed as unknown as BlobPart], {
+			type: blob.type || 'application/octet-stream',
+		})
+	);
 }
 
 /** The parsed, VERIFIED fields of a proxy request, or `null` if invalid/expired. */

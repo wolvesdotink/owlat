@@ -7,17 +7,19 @@
  *       (a half-migrated table is a mix of sealed + plaintext rows and both
  *       decrypt to the canary). Resuming from the returned cursor finishes with
  *       no row ever unreadable and no double-sealing.
- *   (d) CANARY CHECK — after the orchestrator seals every body-bearing table, a
- *       raw dump of the seeded convex-test instance contains the body canary in
- *       NO body column (the sealed columns are ciphertext); the plaintext
- *       search-index exception (`mailMessages.snippet`) is not asserted against.
+ *   (d) CANARY CHECK — after the orchestrator seals every body-bearing table AND
+ *       the mailMessages STORAGE BLOBS (raw `.eml` + body blobs), a raw dump of
+ *       the seeded convex-test instance — both the DB body columns AND the stored
+ *       blob bytes — contains the body canary NOWHERE (all ciphertext); the
+ *       plaintext search-index exception (`mailMessages.snippet`) is not asserted
+ *       against. Each sealed blob still unseals back to the canary.
  */
 
 import { convexTest } from 'convex-test';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import schema from '../schema';
 import { internal } from '../_generated/api';
-import { openAtRest, isSealedAtRest } from '../lib/atRestBodies';
+import { openAtRest, isSealedAtRest, openBytesAtRest } from '../lib/atRestBodies';
 
 const SECRET = 'test-instance-secret-value-for-aes-256-gcm-kdf';
 const CANARY = 'CANARY-body-plaintext-9f3a-do-not-leak';
@@ -174,7 +176,17 @@ describe('E8b migration — canary dump has zero body plaintext (d)', () => {
 				createdAt: now,
 				updatedAt: now,
 			});
-			const rawStorageId = await ctx.storage.store(new Blob(['raw']));
+			// STORAGE BLOBS carry the canary too: the raw `.eml` and the
+			// over-threshold body blobs. The migration must seal these so a STORAGE
+			// dump (not just a DB dump) holds no plaintext.
+			const rawEml = `${CANARY} raw .eml bytes\r\nSubject: ...\r\n`;
+			const rawStorageId = await ctx.storage.store(new Blob([rawEml], { type: 'message/rfc822' }));
+			const textBodyStorageId = await ctx.storage.store(
+				new Blob([`${CANARY} mail blob text`], { type: 'text/plain; charset=utf-8' })
+			);
+			const htmlBodyStorageId = await ctx.storage.store(
+				new Blob([`<p>${CANARY} mail blob html</p>`], { type: 'text/html; charset=utf-8' })
+			);
 			await ctx.db.insert('mailMessages', {
 				mailboxId,
 				folderId,
@@ -190,7 +202,9 @@ describe('E8b migration — canary dump has zero body plaintext (d)', () => {
 				normalizedSubject: 's',
 				snippet: 'plaintext snippet stays plaintext (search exception)',
 				rawStorageId,
-				rawSize: 3,
+				rawSize: rawEml.length,
+				textBodyStorageId,
+				htmlBodyStorageId,
 				textBodyInline: `${CANARY} mail inline text`,
 				htmlBodyInline: `<p>${CANARY} mail inline html</p>`,
 				attachments: [],
@@ -268,6 +282,27 @@ describe('E8b migration — canary dump has zero body plaintext (d)', () => {
 			}
 		});
 
+		// STORAGE DUMP: read every mailMessages storage blob (raw `.eml` + body
+		// blobs) and assert the canary appears in NONE of them — the storage half of
+		// the acceptance bar. Then assert each sealed blob still decrypts back.
+		await t.run(async (ctx) => {
+			for (const row of await ctx.db.query('mailMessages').collect()) {
+				const blobIds = [row.rawStorageId, row.textBodyStorageId, row.htmlBodyStorageId].filter(
+					(id): id is NonNullable<typeof id> => id !== undefined
+				);
+				expect(blobIds.length).toBeGreaterThan(0);
+				for (const id of blobIds) {
+					const blob = await ctx.storage.get(id);
+					const bytes = new Uint8Array(await blob!.arrayBuffer());
+					// A raw storage dump of the sealed blob holds no canary plaintext…
+					expect(new TextDecoder().decode(bytes)).not.toContain(CANARY);
+					// …but unsealing with the instance key restores it.
+					const opened = await openBytesAtRest(SECRET, bytes);
+					expect(new TextDecoder().decode(opened)).toContain(CANARY);
+				}
+			}
+		});
+
 		// And every sealed body still decrypts back to the canary.
 		await t.run(async (ctx) => {
 			const inbound = await ctx.db.query('inboundMessages').first();
@@ -284,5 +319,6 @@ describe('E8b migration — canary dump has zero body plaintext (d)', () => {
 		expect(rerun.sealed.mailMessages).toBe(0);
 		expect(rerun.sealed.unifiedMessages).toBe(0);
 		expect(rerun.sealed.mailDrafts).toBe(0);
+		expect(rerun.sealed.mailBlobs).toBe(0);
 	});
 });
