@@ -300,7 +300,7 @@ export const securityScanStep: AgentStepModule<
 			: { detected: false, confidence: 0, pattern: undefined };
 
 		// ── Layer 2: Instruction smuggling in HTML ──
-		const smugglingResult = detectSmuggling(bodyHtml ?? undefined);
+		const smugglingResult = detectSmuggling(bodyHtml);
 
 		// ── Layer 3: Basic spam heuristics ──
 		const spamScore = calculateSpamScore(textContent, message.subject);

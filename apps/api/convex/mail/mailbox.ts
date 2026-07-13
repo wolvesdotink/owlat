@@ -916,9 +916,10 @@ export const getMessageBody = publicQuery({
 	handler: async (ctx, args) => {
 		const message = await loadReadableMessage(ctx, args.messageId);
 		if (!message) return null;
+		const { text, html } = mailMessageInlineBody(message);
 		return {
-			htmlInline: mailMessageInlineBody(message).html ?? null,
-			textInline: mailMessageInlineBody(message).text ?? null,
+			htmlInline: html ?? null,
+			textInline: text ?? null,
 			htmlUrl: message.htmlBodyStorageId
 				? await ctx.storage.getUrl(message.htmlBodyStorageId)
 				: null,

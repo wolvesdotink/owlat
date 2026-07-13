@@ -10,13 +10,10 @@ import { v } from 'convex/values';
 import { authedQuery } from '../lib/authedFunctions';
 import { getBetterAuthSessionWithRole, hasPermission } from '../lib/sessionOrganization';
 import { parseUnifiedMessageContent } from '../lib/messageBody';
+import type { UnifiedMessageContent } from '../lib/messageBody';
 import type { Doc, Id } from '../_generated/dataModel';
 
-interface TimelineContent {
-	text?: string;
-	subject?: string;
-	html?: string;
-	mediaUrl?: string;
+interface TimelineContent extends UnifiedMessageContent {
 	/**
 	 * Set on inbound shared-inbox email rows whose body was withheld from a
 	 * non-admin caller (ADR-0040). The row, subject, and metadata still render;

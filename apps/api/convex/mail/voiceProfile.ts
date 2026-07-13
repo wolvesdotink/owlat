@@ -92,11 +92,14 @@ export const sampleSentBodies = internalQuery({
 			.order('desc')
 			.take(VOICE_SAMPLE_SIZE);
 		const samples = buildVoiceSamples(
-			messages.map((m) => ({
-				textBodyInline: mailMessageInlineBody(m).text,
-				htmlBodyInline: mailMessageInlineBody(m).html,
-				snippet: m.snippet,
-			}))
+			messages.map((m) => {
+				const { text, html } = mailMessageInlineBody(m);
+				return {
+					textBodyInline: text,
+					htmlBodyInline: html,
+					snippet: m.snippet,
+				};
+			})
 		);
 		return { samples, sentCount: sent.totalCount };
 	},

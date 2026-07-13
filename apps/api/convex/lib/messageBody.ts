@@ -1,5 +1,5 @@
 /**
- * getMessageBody — the single accessor for reading a message's body out of the
+ * messageBody — the single module for reading a message's body out of the
  * three storage shapes Owlat keeps mail/message bodies in. Every direct reader
  * (agent context, knowledge extraction, mail AI / needs-reply / voice-profile,
  * timeline/export, preview builders) goes through here so there is ONE place

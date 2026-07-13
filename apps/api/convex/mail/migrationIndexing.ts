@@ -63,13 +63,14 @@ export const getMessageForExtraction = internalQuery({
 	handler: async (ctx, args) => {
 		const m = await ctx.db.get(args.mailMessageId);
 		if (!m) return null;
+		const { text, html } = mailMessageInlineBody(m);
 		return {
 			fromAddress: m.fromAddress,
 			fromName: m.fromName,
 			subject: m.subject,
-			textInline: mailMessageInlineBody(m).text,
+			textInline: text,
 			textStorageId: m.textBodyStorageId,
-			htmlInline: mailMessageInlineBody(m).html,
+			htmlInline: html,
 		};
 	},
 });
