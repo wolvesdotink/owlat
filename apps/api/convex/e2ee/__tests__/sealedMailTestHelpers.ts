@@ -11,15 +11,10 @@ import type { convexTest } from 'convex-test';
 import * as openpgp from 'openpgp';
 import type { DatabaseWriter } from '../../_generated/server';
 
-/** The `convexTest(...)` handle type, shared so each suite need not re-derive it. */
-export type ConvexTestCtx = ReturnType<typeof convexTest>;
-
 /**
- * The convex module map — every backend module, loaded exactly as the e2ee
- * suites need so `t.action`/`t.query`/`t.run` can reach the wired API. Lives
- * here so the `import.meta.glob` scaffolding is written ONCE (same-directory
- * glob paths resolve identically from any `__tests__` file). Pass to
- * `convexTest(schema, modules)`.
+ * The full convex function module map for `convexTest(schema, modules)`. Every
+ * e2ee suite needs it; extracted here ONCE (this file sits at the SAME directory
+ * depth as the suites, so the relative `import.meta.glob` patterns are unchanged).
  */
 const rootGlob = import.meta.glob('../../**/*.*s');
 const e2eeGlob = Object.fromEntries(
@@ -29,6 +24,25 @@ const e2eeGlob = Object.fromEntries(
 	])
 );
 export const modules = { ...rootGlob, ...e2eeGlob };
+
+/** The `convexTest(...)` handle type, shared so each suite need not re-derive it. */
+export type ConvexTestCtx = ReturnType<typeof convexTest>;
+
+/**
+ * Seed `instanceSettings` with the FULL Sealed Mail dependency flag set so the
+ * feature actually resolves ON. `sealedMail` declares `requires: ['postbox',
+ * 'senderAuthBadges']` (packages/shared featureFlags), so all three must be
+ * seeded — omitting `senderAuthBadges` forces `sealedMail` OFF via
+ * `resolveFlags`. Shared here so no suite re-derives (and drifts) the flag set.
+ */
+export async function enableSealedMail(t: ConvexTestCtx): Promise<void> {
+	await t.run(async (ctx) => {
+		await ctx.db.insert('instanceSettings', {
+			featureFlags: { postbox: true, senderAuthBadges: true, sealedMail: true },
+			createdAt: Date.now(),
+		});
+	});
+}
 
 export interface TestKeypair {
 	fingerprint: string;

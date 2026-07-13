@@ -109,5 +109,14 @@ export const remove = authedMutation({
 		await ctx.scheduler.runAfter(0, internal.mail.aliasesActions.removeAliasFromCache, {
 			alias: row.alias,
 		});
+
+		// Sealed Mail (E6): revoke the alias's E2EE key on deletion — stop publishing
+		// it for sealing while retaining the row decrypt-only so historical sealed
+		// mail still opens. Flag-gated the same way the `create` counterpart mints.
+		if (await isFeatureEnabled(ctx, 'sealedMail')) {
+			await ctx.scheduler.runAfter(0, internal.e2ee.lifecycle.deactivateAddressKeys, {
+				address: row.alias,
+			});
+		}
 	},
 });

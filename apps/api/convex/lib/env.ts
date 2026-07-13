@@ -12,6 +12,13 @@ export type EnvKey =
 	// Auth & instance
 	| 'BETTER_AUTH_SECRET'
 	| 'INSTANCE_SECRET'
+	// The PREVIOUS INSTANCE_SECRET, set ONLY during a secret rotation window
+	// (Sealed Mail key lifecycle, E6). While set, the E2EE key box opens a sealed
+	// private key under the current secret and, on failure, falls back to this one
+	// — so the vault keeps reading correctly mid-migration while
+	// `e2ee/lifecycleNode.ts:reSealVault` re-seals every row under the new secret.
+	// Remove it once the re-seal migration has completed. Unset ⇒ no fallback.
+	| 'INSTANCE_SECRET_PREVIOUS'
 	| 'OWLAT_VERSION'
 	// When set to 'true' / '1' / 'yes' / 'on', enables dev-only endpoints
 	// (`/seed/demo`, `/dev/reset`, `forceVerifyDomain`). Fail-closed default:

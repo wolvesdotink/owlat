@@ -23,6 +23,42 @@
  * (`__tests__/pinning.test.ts`).
  */
 
+import { normalizeEmail } from '@owlat/shared';
+
+/**
+ * A key-rotation statement: the OLD key attests, under its own signature, that
+ * it rotated to a NEW key for `address`. Published in the manifest rotation feed
+ * (`e2ee/lifecycle.ts` writes it, `e2ee/manifest.ts` serves it) and verified by
+ * a peer against the fingerprint it already pinned.
+ */
+export interface RotationStatement {
+	address: string;
+	oldFingerprint: string;
+	newFingerprint: string;
+	/** Armored OpenPGP detached signature by the OLD key over {@link rotationStatementText}. */
+	signature: string;
+}
+
+/**
+ * The canonical bytes a rotation statement's signature covers — the SINGLE
+ * source of truth shared by the signer (`e2ee/lifecycleNode.ts`) and the
+ * verifier (`e2ee/discovery.ts`), so the two can never drift into two
+ * subtly-different literals. Pure: address is normalized, fingerprints are
+ * whitespace-stripped + upper-cased.
+ */
+export function rotationStatementText(statement: {
+	address: string;
+	oldFingerprint: string;
+	newFingerprint: string;
+}): string {
+	return [
+		'owlat-key-rotation',
+		normalizeEmail(statement.address),
+		statement.oldFingerprint.replace(/\s+/g, '').toUpperCase(),
+		statement.newFingerprint.replace(/\s+/g, '').toUpperCase(),
+	].join('\n');
+}
+
 /** Persisted trust state for a discovered recipient key. */
 export type PinState = 'pinned' | 'keyChanged';
 
