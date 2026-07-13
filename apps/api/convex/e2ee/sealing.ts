@@ -24,7 +24,10 @@ import { getOptional, getRequired } from '../lib/env';
  * The E2EE private-key domain-separation context. Version-pinned; a change here
  * is a key-format break (existing sealed rows would no longer open).
  */
-const E2EE_KEY_BOX = { salt: 'owlat:e2ee:keys:salt:v1', info: 'owlat:e2ee:keys:v1' } as const;
+export const E2EE_KEY_BOX = {
+	salt: 'owlat:e2ee:keys:salt:v1',
+	info: 'owlat:e2ee:keys:v1',
+} as const;
 
 /** The E2EE box keyed by an explicit secret — the reusable core the two below share. */
 function e2eeKeyBoxFor(secret: string): ReturnType<typeof createSecretBox> {

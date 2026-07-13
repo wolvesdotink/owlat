@@ -14,18 +14,9 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import { createSecretBox, type SecretBoxEnvelope } from '../../lib/credentialCrypto';
-import { openPrivateKey, reSealPrivateKey, sealPrivateKey } from '../sealing';
+import { E2EE_KEY_BOX, openPrivateKey, reSealPrivateKey, sealPrivateKey } from '../sealing';
+import { modules } from './sealedMailTestHelpers';
 
-const rootGlob = import.meta.glob('../../**/*.*s');
-const e2eeGlob = Object.fromEntries(
-	Object.entries(import.meta.glob('../**/*.*s')).map(([path, mod]) => [
-		path.replace(/^\.\.\//, '../../e2ee/'),
-		mod,
-	])
-);
-const modules = { ...rootGlob, ...e2eeGlob };
-
-const E2EE_KEY_BOX = { salt: 'owlat:e2ee:keys:salt:v1', info: 'owlat:e2ee:keys:v1' };
 const SECRET_OLD = 'instance-secret-generation-1';
 const SECRET_NEW = 'instance-secret-generation-2';
 
@@ -96,13 +87,15 @@ describe('e2ee/sealing INSTANCE_SECRET rotation', () => {
 		vi.stubEnv('INSTANCE_SECRET_PREVIOUS', SECRET_OLD);
 
 		// MID-MIGRATION: both rows read correctly right now (fallback bridges the old row).
+		// Sorted by address — 'new@…' sorts BEFORE 'old@…', so the new-secret row's
+		// key comes first — proving the fallback opens the still-old-secret row too.
 		const midValues = await t.run(async (ctx) => {
 			const rows = await ctx.db.query('keyVault').collect();
 			return rows
 				.sort((a, b) => a.address!.localeCompare(b.address!))
 				.map((r) => openPrivateKey(r.sealedPrivateKey));
 		});
-		expect(midValues).toEqual(['OLD-ROW-KEY', 'NEW-ROW-KEY']);
+		expect(midValues).toEqual(['NEW-ROW-KEY', 'OLD-ROW-KEY']);
 
 		// Run the migration.
 		const result = await t.action(internal.e2ee.lifecycleNode.runReSealVault, {});
@@ -118,6 +111,6 @@ describe('e2ee/sealing INSTANCE_SECRET rotation', () => {
 				.sort((a, b) => a.address!.localeCompare(b.address!))
 				.map((r) => openPrivateKey(r.sealedPrivateKey));
 		});
-		expect(finalValues).toEqual(['OLD-ROW-KEY', 'NEW-ROW-KEY']);
+		expect(finalValues).toEqual(['NEW-ROW-KEY', 'OLD-ROW-KEY']);
 	});
 });

@@ -11,6 +11,20 @@ import type { convexTest } from 'convex-test';
 import * as openpgp from 'openpgp';
 import type { DatabaseWriter } from '../../_generated/server';
 
+/**
+ * The full convex function module map for `convexTest(schema, modules)`. Every
+ * e2ee suite needs it; extracted here ONCE (this file sits at the SAME directory
+ * depth as the suites, so the relative `import.meta.glob` patterns are unchanged).
+ */
+const rootGlob = import.meta.glob('../../**/*.*s');
+const e2eeGlob = Object.fromEntries(
+	Object.entries(import.meta.glob('../**/*.*s')).map(([path, mod]) => [
+		path.replace(/^\.\.\//, '../../e2ee/'),
+		mod,
+	])
+);
+export const modules = { ...rootGlob, ...e2eeGlob };
+
 /** The `convexTest(...)` handle type, shared so each suite need not re-derive it. */
 export type ConvexTestCtx = ReturnType<typeof convexTest>;
 
