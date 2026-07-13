@@ -148,8 +148,7 @@ export const update = authedMutation({
 		if (args.ccAddresses !== undefined) patch['ccAddresses'] = args.ccAddresses;
 		if (args.bccAddresses !== undefined) patch['bccAddresses'] = args.bccAddresses;
 		if (args.subject !== undefined) patch['subject'] = args.subject;
-		// E8b: seal the compose body columns at rest; the composer GET and the send
-		// dispatcher decrypt through `openMailDraftBody` on the way back out.
+		// E8b: seal body columns at rest (readers decrypt via `openMailDraftBody`).
 		if (args.bodyHtml !== undefined) patch['bodyHtml'] = await sealBodyAtWrite(args.bodyHtml);
 		if (args.bodyText !== undefined) patch['bodyText'] = await sealBodyAtWrite(args.bodyText);
 		if (args.bodyBlocks !== undefined) patch['bodyBlocks'] = await sealBodyAtWrite(args.bodyBlocks);
@@ -346,8 +345,7 @@ export const listForMailbox = publicQuery({
 			.withIndex('by_mailbox_and_edited', (q) => q.eq('mailboxId', args.mailboxId))
 			.order('desc')
 			.take(100);
-		// E8b: unseal the body columns so the composer list renders plaintext.
-		return await Promise.all(drafts.map((d) => openMailDraftBody(d)));
+		return await Promise.all(drafts.map((d) => openMailDraftBody(d))); // E8b: unseal bodies
 	},
 });
 
@@ -496,9 +494,7 @@ export const cancelScheduledSend = authedMutation({
 export const getInternal = internalQuery({
 	args: { draftId: v.id('mailDrafts') },
 	handler: async (ctx, args) => {
-		const draft = await ctx.db.get(args.draftId);
-		// E8b: decrypt the body columns so the send dispatcher builds the outgoing
-		// RFC822 from plaintext, never a sealed envelope.
+		const draft = await ctx.db.get(args.draftId); // E8b: openMailDraftBody decrypts for send
 		return draft === null ? null : await openMailDraftBody(draft);
 	},
 });
