@@ -305,6 +305,7 @@ import type * as knowledge_maintenance from "../knowledge/maintenance.js";
 import type * as knowledge_relationDecay from "../knowledge/relationDecay.js";
 import type * as knowledge_retrieval from "../knowledge/retrieval.js";
 import type * as lib_aiProviderConfigValidators from "../lib/aiProviderConfigValidators.js";
+import type * as lib_atRestBodies from "../lib/atRestBodies.js";
 import type * as lib_auditLog from "../lib/auditLog.js";
 import type * as lib_authedFunctions from "../lib/authedFunctions.js";
 import type * as lib_automationConfigTypes from "../lib/automationConfigTypes.js";
@@ -491,6 +492,7 @@ import type * as migrations_0027_drain_inflight_integration_imports from "../mig
 import type * as migrations_0032_thread_contact_identifier from "../migrations/0032_thread_contact_identifier.js";
 import type * as migrations_0033_campaign_audience from "../migrations/0033_campaign_audience.js";
 import type * as migrations_0034_mailbox_owner_membership from "../migrations/0034_mailbox_owner_membership.js";
+import type * as migrations_0035_seal_bodies_at_rest from "../migrations/0035_seal_bodies_at_rest.js";
 import type * as mtaWebhook from "../mtaWebhook.js";
 import type * as platformAdmin_mutations from "../platformAdmin/mutations.js";
 import type * as platformAdmin_platformAdmin from "../platformAdmin/platformAdmin.js";
@@ -917,6 +919,7 @@ declare const fullApi: ApiFromModules<{
   "knowledge/relationDecay": typeof knowledge_relationDecay;
   "knowledge/retrieval": typeof knowledge_retrieval;
   "lib/aiProviderConfigValidators": typeof lib_aiProviderConfigValidators;
+  "lib/atRestBodies": typeof lib_atRestBodies;
   "lib/auditLog": typeof lib_auditLog;
   "lib/authedFunctions": typeof lib_authedFunctions;
   "lib/automationConfigTypes": typeof lib_automationConfigTypes;
@@ -1103,6 +1106,7 @@ declare const fullApi: ApiFromModules<{
   "migrations/0032_thread_contact_identifier": typeof migrations_0032_thread_contact_identifier;
   "migrations/0033_campaign_audience": typeof migrations_0033_campaign_audience;
   "migrations/0034_mailbox_owner_membership": typeof migrations_0034_mailbox_owner_membership;
+  "migrations/0035_seal_bodies_at_rest": typeof migrations_0035_seal_bodies_at_rest;
   mtaWebhook: typeof mtaWebhook;
   "platformAdmin/mutations": typeof platformAdmin_mutations;
   "platformAdmin/platformAdmin": typeof platformAdmin_platformAdmin;

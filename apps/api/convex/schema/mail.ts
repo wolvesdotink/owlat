@@ -582,6 +582,13 @@ export const mailTables = {
 		.index('by_mailbox_and_unseen', ['mailboxId', 'flagSeen'])
 		// Backs the 1-minute snooze sweep cron — range scan on snoozedUntil <= now.
 		.index('by_snoozed_until', ['snoozedUntil'])
+		// SEALED-AT-REST EXCEPTION (Sealed Mail E8b): the message BODY columns
+		// (`textBodyInline`/`htmlBodyInline` and the `*BodyStorageId` blobs) are
+		// sealed with the instance data key, but `snippet` stays PLAINTEXT because
+		// Convex full-text search indexes the plaintext of `searchField`. This is
+		// the documented, deliberate exception — `snippet` is a short excerpt, never
+		// the full body, and losing it would break server-side mail search. See
+		// lib/atRestBodies.ts and docs/.../sealed-mail-at-rest.
 		.searchIndex('search_messages', {
 			searchField: 'snippet',
 			filterFields: ['mailboxId', 'folderId', 'fromAddress', 'flagSeen', 'flagFlagged'],
