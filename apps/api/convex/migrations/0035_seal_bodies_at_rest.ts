@@ -2,7 +2,7 @@
  * Sealed Mail E8b — seal every existing MESSAGE BODY at rest (migration 0035).
  *
  * Back-fills the sealing that `lib/atRestBodies.ts` applies going forward: it
- * walks the four body-bearing tables and replaces each plaintext body column
+ * walks the five body-bearing tables and replaces each plaintext body column
  * with the sealed envelope (`atrest:1:…`). After it completes, a database dump
  * holds ciphertext for these columns — the acceptance bar for E8b — while the
  * documented search-index exception (`mailMessages.snippet`, `searchableText`,
@@ -13,6 +13,7 @@
  *   - mailMessages    : textBodyInline, htmlBodyInline (personal-mailbox snippet)
  *   - unifiedMessages : content                      (the JSON body blob)
  *   - mailDrafts      : bodyHtml, bodyText, bodyBlocks (compose drafts)
+ *   - conversationThreads : lastPreview                (team-inbox snippet)
  *
  * STORAGE BLOBS SEALED (byte cipher):
  *   - mailMessages : rawStorageId (the raw `.eml`), textBodyStorageId,
@@ -79,6 +80,7 @@ import {
 	sealMailInlineBodyPatch,
 	sealUnifiedContentPatch,
 	sealMailDraftBodyPatch,
+	sealConversationThreadPreviewPatch,
 } from '../lib/messageBody';
 import { resealStoredBlob } from '../lib/sealedBlob';
 
@@ -100,6 +102,7 @@ interface SealCounts {
 	mailMessages: number;
 	unifiedMessages: number;
 	mailDrafts: number;
+	conversationThreads: number;
 	/** mailMessages rows whose STORAGE BLOBS (raw `.eml` + body blobs) were sealed. */
 	mailBlobs: number;
 }
@@ -166,6 +169,15 @@ export const sealMailDraftsPage = internalMutation({
 	args: cursorArg,
 	handler: (ctx, { cursor }): Promise<PageResult> =>
 		sealPage(ctx, 'mailDrafts', cursor, sealMailDraftBodyPatch, (id, patch) =>
+			ctx.db.patch(id, patch)
+		),
+});
+
+/** Seal the team-inbox denormalized preview for one page. */
+export const sealConversationThreadsPage = internalMutation({
+	args: cursorArg,
+	handler: (ctx, { cursor }): Promise<PageResult> =>
+		sealPage(ctx, 'conversationThreads', cursor, sealConversationThreadPreviewPatch, (id, patch) =>
 			ctx.db.patch(id, patch)
 		),
 });
@@ -411,13 +423,26 @@ export const run = internalAction({
 		const mailDrafts = await drainTable((a) =>
 			ctx.runMutation(internal.migrations['0035_seal_bodies_at_rest'].sealMailDraftsPage, a)
 		);
+		const conversationThreads = await drainTable((a) =>
+			ctx.runMutation(
+				internal.migrations['0035_seal_bodies_at_rest'].sealConversationThreadsPage,
+				a
+			)
+		);
 		// Storage blobs (raw `.eml` + body blobs) — an action page, since blob
 		// contents are only readable from an action.
 		const mailBlobs = await drainTable((a) =>
 			ctx.runAction(internal.migrations['0035_seal_bodies_at_rest'].sealMailMessagesBlobsPage, a)
 		);
 		return {
-			sealed: { inboundMessages, mailMessages, unifiedMessages, mailDrafts, mailBlobs },
+			sealed: {
+				inboundMessages,
+				mailMessages,
+				unifiedMessages,
+				mailDrafts,
+				conversationThreads,
+				mailBlobs,
+			},
 		};
 	},
 });

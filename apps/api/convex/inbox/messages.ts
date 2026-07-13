@@ -103,8 +103,8 @@ export const receiveMessage = internalMutation({
 
 		// ── 3. Store the inbound message ──
 		// E8b: seal the inline bodies at rest before they land in the row (the
-		// preview/snippet derived above stays plaintext — the documented
-		// search-index exception). Readers unseal through the accessor plane.
+		// preview derived above is sealed by the thread module too. Readers unseal
+		// both through the accessor plane.
 		const sealedTextBody = await sealBodyAtWriteMaybe(args.textBody);
 		const sealedHtmlBody = await sealBodyAtWriteMaybe(args.htmlBody);
 		const inboundMessageId = await ctx.db.insert('inboundMessages', {
