@@ -372,9 +372,10 @@ export async function sendToMx(
 			continue;
 		}
 		if (daneDecision.kind === 'proceed') {
-			// Resolve the TLS floor with a usable DANE result: requireTLS + verified
-			// TLS (RFC 7672 §2, supersedes MTA-STS). resolveTlsRequirements owns the
-			// precedence; the DanePlan supplies the TLSA cert-authentication hook.
+			// Enforce mode: resolve the TLS floor with a usable DANE result —
+			// requireTLS + verified TLS (RFC 7672 §2, supersedes MTA-STS).
+			// resolveTlsRequirements owns the precedence; the DanePlan supplies the
+			// TLSA cert-authentication hook.
 			const daneTls = resolveTlsRequirements({
 				localMode: localTlsMode,
 				stsPolicy: { policyMode: stsOptions.policyMode },
@@ -393,6 +394,53 @@ export async function sendToMx(
 				lastTlsFailureResponse = outcome.response;
 			}
 			// over-cap / connection / tls-failure → try the next MX (never cleartext).
+			continue;
+		}
+		if (daneDecision.kind === 'report') {
+			// Report-only DANE (RFC 7672 report mode) — the DANE analogue of MTA-STS
+			// testing mode. Make ONE probe attempt at the DANE floor (requireTLS +
+			// verify + the TLSA hook) purely to OBSERVE the certificate authentication
+			// and emit the TLS-RPT result (success, or a `validation-failure` under the
+			// `tlsa` policy on a mismatch). DANE never requires TLS or bounces here: on
+			// any probe failure we retry the SAME MX at the normal opportunistic/MTA-STS
+			// floor so delivery is unaffected. Report-only is observability only and
+			// honours D6 (DANE never bounces mail by default).
+			const daneTls = resolveTlsRequirements({
+				localMode: localTlsMode,
+				stsPolicy: { policyMode: stsOptions.policyMode },
+				daneResult: { usable: true },
+			});
+			const probe = await attemptSend(
+				mxHost,
+				daneTls.requireTLS,
+				daneTls.rejectUnauthorized,
+				daneDecision.plan
+			);
+			if (probe.kind === 'sent' || probe.kind === 'smtp') {
+				return probe.result;
+			}
+			if (probe.kind === 'tls-failure') {
+				// The validation-failure (tlsa policy) has already been recorded inside
+				// attemptSend. Deliver anyway at the normal floor — report-only never
+				// blocks mail on a DANE outcome.
+				logger.debug(
+					{ mxHost, recipientDomain, resultType: probe.resultType },
+					'DANE report-only: TLSA result recorded; delivering at the normal TLS floor'
+				);
+				const retry = await attemptSend(
+					mxHost,
+					tlsRequirements.requireTLS,
+					tlsRequirements.rejectUnauthorized
+				);
+				if (retry.kind === 'sent' || retry.kind === 'smtp') {
+					return retry.result;
+				}
+				if (retry.kind === 'tls-failure' && tlsRequirements.requireTLS) {
+					lastTlsFailureResponse = retry.response;
+				}
+				continue; // retry failed too — try the next MX
+			}
+			// over-cap / connection → try the next MX (same as the non-DANE path).
 			continue;
 		}
 

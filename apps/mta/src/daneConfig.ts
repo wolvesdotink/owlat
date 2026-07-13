@@ -2,21 +2,51 @@
  * DANE (RFC 7672) send-time configuration parsing and boot validation.
  *
  * Split out of `config.ts` to keep that module under the file-size gate and to
- * co-locate the DANE-specific boot checks: the `DANE_ENABLED` flag (off by
- * default — locked decision D6), the mandatory validating DoH resolver URL, and
- * the plaintext-channel guard that protects the DNSSEC AD bit the whole design
+ * co-locate the DANE-specific boot checks: the three-valued `DANE_MODE`
+ * (off/report/enforce), the validating DoH resolver URL, and the
+ * plaintext-channel guard that protects the DNSSEC AD bit the whole design
  * trusts.
  */
 
+/**
+ * How DANE (RFC 7672) participates in outbound delivery, from least to most
+ * strict. A discriminated three-valued mode rather than a boolean pair so a send
+ * site branches on one value (no illegal "reporting but also enforcing" state):
+ *
+ *  - `off`: no TLSA lookups, no DANE effect — byte-identical to the historic
+ *    (DANE-disabled) path.
+ *  - `report`: perform the TLSA lookup and evaluate the MX certificate against
+ *    it, EMIT the TLS-RPT result (success / `validation-failure` under the `tlsa`
+ *    policy), but NEVER require TLS or bounce on a DANE outcome — delivery
+ *    proceeds on the normal opportunistic/MTA-STS decision. Observability only.
+ *  - `enforce`: a usable TLSA RRset mandates verified TLS authenticated against
+ *    it (supersedes MTA-STS); a mismatch/failure defers the message (never
+ *    cleartext) and records a `validation-failure`.
+ */
+export const DANE_MODES = ['off', 'report', 'enforce'] as const;
+export type DaneMode = (typeof DANE_MODES)[number];
+
+/** Narrow an arbitrary string to a {@link DaneMode}. */
+export function isDaneMode(value: string): value is DaneMode {
+	return (DANE_MODES as readonly string[]).includes(value);
+}
+
 /** Resolved DANE configuration (subset of `MtaConfig`). */
 export interface DaneConfig {
-	/** Whether DANE authentication is attempted at send time. Default: off (D6). */
-	daneEnabled: boolean;
 	/**
-	 * Validating DoH resolver endpoint. Required — and validated for scheme — when
-	 * `daneEnabled`. The AD (DNSSEC Authenticated Data) bit is trusted, so this
-	 * MUST be a channel an on-path attacker cannot forge over (https, or http only
-	 * to a loopback resolver).
+	 * How DANE participates in outbound delivery. Default: `report` — report-only
+	 * has zero enforcement/delivery impact (it never bounces mail, honouring locked
+	 * decision D6), while giving operators DANE visibility in the TLS-RPT dashboard
+	 * out of the box.
+	 */
+	daneMode: DaneMode;
+	/**
+	 * Validating DoH resolver endpoint. `report` and `enforce` both need it to run;
+	 * when it is unset DANE is INERT in every mode (no lookups) — a fresh install
+	 * with no resolver behaves exactly as before. When set, it is validated for
+	 * scheme: the AD (DNSSEC Authenticated Data) bit is trusted, so this MUST be a
+	 * channel an on-path attacker cannot forge over (https, or http only to a
+	 * loopback resolver).
 	 */
 	daneResolverUrl?: string;
 }
@@ -34,32 +64,40 @@ function isLoopbackHost(hostname: string): boolean {
 }
 
 /**
- * Parse and validate the DANE environment (`DANE_ENABLED`, `DANE_RESOLVER_URL`).
+ * Parse and validate the DANE environment (`DANE_MODE`, `DANE_RESOLVER_URL`).
  *
  * Reads through the caller's `optionalEnv` helper (so all MTA env access stays
- * consistent) and fails the boot fast on any misconfiguration rather than
- * silently doing nothing — or, worse, implying protection it cannot provide:
+ * consistent). Defaults to `report` (see {@link DaneConfig.daneMode}).
  *
- *  - `DANE_ENABLED=true` with no resolver → error (DANE needs a validating
- *    resolver to be safe; booting without one would silently disable it).
- *  - a malformed resolver URL → error (a typo'd endpoint would otherwise throw
- *    on the hot delivery path).
- *  - a non-`https:` remote resolver → error. DANE trusts the resolver's AD bit,
- *    so a plaintext (`http:`) channel to a REMOTE resolver would let an on-path
- *    attacker forge AD and strip DANE (defeating D6). `http:` is permitted only
- *    for a loopback resolver, where there is no on-path network to attack.
+ *  - An unrecognised `DANE_MODE` → error (a typo like `enforced` must not silently
+ *    fall back to a different posture).
+ *  - No `DANE_RESOLVER_URL` → DANE is inert in every mode (no lookups). This is a
+ *    graceful no-op, NOT an error: it keeps a fresh install (no resolver) on the
+ *    exact historic path even though the default mode is `report`.
+ *  - A malformed resolver URL → error (a typo'd endpoint would otherwise throw on
+ *    the hot delivery path).
+ *  - A non-`https:` REMOTE resolver → error. DANE trusts the resolver's AD bit, so
+ *    a plaintext (`http:`) channel to a remote resolver would let an on-path
+ *    attacker forge AD and strip DANE. `http:` is permitted only for a loopback
+ *    resolver, where there is no on-path network to attack.
  */
 export function loadDaneConfig(
 	optionalEnv: (key: string, defaultValue: string) => string
 ): DaneConfig {
-	const daneEnabled = optionalEnv('DANE_ENABLED', 'false') === 'true';
+	const daneModeRaw = optionalEnv('DANE_MODE', 'report');
+	if (!isDaneMode(daneModeRaw)) {
+		throw new Error(
+			`DANE_MODE must be one of: ${DANE_MODES.join(', ')} — got ${JSON.stringify(daneModeRaw)}`
+		);
+	}
+	const daneMode: DaneMode = daneModeRaw;
+
 	const daneResolverUrl = optionalEnv('DANE_RESOLVER_URL', '') || undefined;
 
-	if (!daneEnabled) return { daneEnabled: false, daneResolverUrl };
-
-	if (!daneResolverUrl) {
-		throw new Error('DANE_ENABLED=true requires DANE_RESOLVER_URL (a validating DoH resolver).');
-	}
+	// No resolver → DANE is inert regardless of mode (graceful no-op, historic
+	// path). We still validate a resolver URL when one is present, even in `off`
+	// mode, so a scheme mistake is caught at boot rather than the day it is enabled.
+	if (!daneResolverUrl) return { daneMode, daneResolverUrl: undefined };
 
 	let url: URL;
 	try {
@@ -80,5 +118,5 @@ export function loadDaneConfig(
 		);
 	}
 
-	return { daneEnabled: true, daneResolverUrl };
+	return { daneMode, daneResolverUrl };
 }
