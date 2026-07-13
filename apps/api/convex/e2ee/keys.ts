@@ -76,7 +76,12 @@ export const storeKeypair = internalMutation({
 		publicKeyArmored: v.string(),
 		publicKeyBinaryBase64: v.string(),
 		sealedPrivateKey: sealedPrivateKeyValidator,
+		// Intentional replacement (legacy-profile migration) must name the active
+		// fingerprint it observed. Ordinary minting leaves this absent and can
+		// never overwrite a concurrently-created identity.
+		expectedFingerprint: v.optional(v.string()),
 	},
+	returns: v.object({ id: v.id('keyVault'), created: v.boolean(), fingerprint: v.string() }),
 	handler: async (ctx, args) => {
 		// An `'address'` row without an address is unreachable (no WKD hash, no
 		// discovery) — reject it rather than silently inserting a dead row.
@@ -100,6 +105,17 @@ export const storeKeypair = internalMutation({
 					: null;
 
 		if (existing) {
+			const isSameKey = existing.fingerprint.toUpperCase() === args.fingerprint.toUpperCase();
+			const mayReplace =
+				args.expectedFingerprint !== undefined &&
+				existing.fingerprint.toUpperCase() === args.expectedFingerprint.toUpperCase();
+			if (!isSameKey && !mayReplace) {
+				return {
+					id: existing._id,
+					created: false as const,
+					fingerprint: existing.fingerprint,
+				};
+			}
 			await ctx.db.patch(existing._id, {
 				domain: args.domain,
 				wkdHash: args.wkdHash,
@@ -111,7 +127,10 @@ export const storeKeypair = internalMutation({
 				isActive: true,
 				updatedAt: now,
 			});
-			return { id: existing._id, created: false as const };
+			return { id: existing._id, created: false as const, fingerprint: args.fingerprint };
+		}
+		if (args.expectedFingerprint !== undefined) {
+			throw new Error('storeKeypair: active key changed before replacement');
 		}
 
 		const id = await ctx.db.insert('keyVault', {
@@ -128,7 +147,7 @@ export const storeKeypair = internalMutation({
 			createdAt: now,
 			updatedAt: now,
 		});
-		return { id, created: true as const };
+		return { id, created: true as const, fingerprint: args.fingerprint };
 	},
 });
 
@@ -382,11 +401,14 @@ export const listKeyProfiles = internalQuery({
 	args: {},
 	handler: async (ctx) => {
 		const rows = await ctx.db.query('keyVault').collect(); // bounded: one row per address + the single instance identity.
-		return rows.map((r) => ({
-			kind: r.kind,
-			address: r.address,
-			publicKeyArmored: r.publicKeyArmored,
-		}));
+		return rows
+			.filter((r) => r.isActive)
+			.map((r) => ({
+				kind: r.kind,
+				address: r.address,
+				fingerprint: r.fingerprint,
+				publicKeyArmored: r.publicKeyArmored,
+			}));
 	},
 });
 

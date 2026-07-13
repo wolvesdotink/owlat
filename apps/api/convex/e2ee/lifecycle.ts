@@ -49,6 +49,10 @@ export const storeRotatedAddressKey = internalMutation({
 		sealedPrivateKey: sealedPrivateKeyValidator,
 		rotationSignature: v.string(),
 	},
+	returns: v.union(
+		v.object({ rotated: v.literal(false) }),
+		v.object({ rotated: v.literal(true), newKeyId: v.id('keyVault'), retired: v.number() })
+	),
 	handler: async (ctx, args) => {
 		const address = normalizeEmail(args.address);
 		const now = Date.now();
@@ -58,13 +62,14 @@ export const storeRotatedAddressKey = internalMutation({
 			.query('keyVault')
 			.withIndex('by_address', (q) => q.eq('address', address))
 			.collect(); // bounded: active key + a handful of retired keys.
-		let retired = 0;
-		for (const row of rows) {
-			if (row.isActive) {
-				await ctx.db.patch(row._id, { isActive: false, updatedAt: now });
-				retired++;
-			}
+		const activeRows = rows.filter((row) => row.isActive);
+		if (
+			activeRows.length !== 1 ||
+			activeRows[0]?.fingerprint.toUpperCase() !== args.oldFingerprint.toUpperCase()
+		) {
+			return { rotated: false as const };
 		}
+		await ctx.db.patch(activeRows[0]._id, { isActive: false, updatedAt: now });
 
 		// Insert the new active key.
 		const newKeyId = await ctx.db.insert('keyVault', {
@@ -91,7 +96,7 @@ export const storeRotatedAddressKey = internalMutation({
 			createdAt: now,
 		});
 
-		return { newKeyId, retired };
+		return { rotated: true as const, newKeyId, retired: 1 };
 	},
 });
 
