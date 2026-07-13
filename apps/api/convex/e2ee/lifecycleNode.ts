@@ -148,6 +148,26 @@ async function assertAdmin(ctx: ActionCtx): Promise<void> {
 	await ctx.runQuery(internal.auth.membership.assertOrgAdmin, {});
 }
 
+/** Feature floor for a `'use node'` action — the flag is read via an internalQuery. */
+async function assertSealedMailEnabled(ctx: ActionCtx): Promise<void> {
+	if (!(await ctx.runQuery(internal.e2ee.keys.isSealedMailEnabled, {}))) {
+		throw new Error('Sealed Mail is not enabled for this workspace.');
+	}
+}
+
+/** The recovery-kit egress shape — the ONE place a private key leaves the vault. */
+const recoveryKitValidator = v.union(
+	v.null(),
+	v.object({
+		address: v.string(),
+		fingerprint: v.string(),
+		privateKeyArmored: v.string(),
+		instructions: v.string(),
+		filename: v.string(),
+		generatedAt: v.number(),
+	})
+);
+
 /**
  * The recovery-kit EXPORT core (no auth) — read the address's active key and
  * assemble its kit. Hoisted out of the handler (like `discovery.ts`) so both the
@@ -193,8 +213,10 @@ async function importRecoveryKitCore(
 	}
 
 	const fingerprint = privateKey.getFingerprint().toUpperCase();
-	await ctx.runMutation(internal.e2ee.keys.storeKeypair, {
-		kind: 'address',
+	// storeImportedAddressKey (NOT storeKeypair): retire-then-insert on a fingerprint
+	// mismatch so importing an OLDER kit while a DIFFERENT key is active never
+	// overwrites the active key's private material — both keys keep decrypting.
+	await ctx.runMutation(internal.e2ee.keys.storeImportedAddressKey, {
 		address: normalized,
 		domain,
 		wkdHash: wkdHashForAddress(normalized),
@@ -217,8 +239,14 @@ async function importRecoveryKitCore(
 // cannot run requireOrgPermission against ctx.db itself.
 export const exportRecoveryKit = authedAction({
 	args: { address: v.string() },
+	returns: recoveryKitValidator,
 	handler: async (ctx, args): Promise<RecoveryKit | null> => {
 		await assertAdmin(ctx);
+		// Feature-gate the private-key egress: with `sealedMail` OFF (the branch
+		// default) there is no sealed mail to recover, so the export path stays shut.
+		// (importRecoveryKit stays UNGATED on purpose — a restore must work on a
+		// rebuilt instance before the flag is re-enabled.)
+		await assertSealedMailEnabled(ctx);
 		return exportRecoveryKitCore(ctx, args.address);
 	},
 });

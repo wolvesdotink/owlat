@@ -42,7 +42,12 @@ async function activeAddressRow(ctx: QueryCtx, address: string): Promise<Doc<'ke
 	return rows.find((r) => r.isActive) ?? null;
 }
 
-const sealedPrivateKeyValidator = v.object({
+/**
+ * The at-rest sealed private-key envelope shape (a `credentialCrypto` secret box).
+ * The single source of truth for this validator — `e2ee/lifecycle.ts` imports it
+ * rather than re-declaring it, so the two planes can't drift.
+ */
+export const sealedPrivateKeyValidator = v.object({
 	ciphertext: v.string(),
 	iv: v.string(),
 	authTag: v.string(),
@@ -119,6 +124,81 @@ export const storeKeypair = internalMutation({
 			publicKeyArmored: args.publicKeyArmored,
 			publicKeyBinaryBase64: args.publicKeyBinaryBase64,
 			sealedPrivateKey: args.sealedPrivateKey,
+			isActive: true,
+			createdAt: now,
+			updatedAt: now,
+		});
+		return { id, created: true as const };
+	},
+});
+
+/**
+ * Persist a RECOVERY-KIT-imported address key WITHOUT destroying any other key
+ * held for the address. Unlike {@link storeKeypair} (which patches whichever row
+ * is active — fine for a re-mint, fatal for an import), this NEVER overwrites a
+ * row that carries a DIFFERENT fingerprint:
+ *   - a row already holding the imported fingerprint is refreshed in place and
+ *     made active (idempotent same-key re-import);
+ *   - otherwise the imported key is INSERTED as a new active row and every other
+ *     active row is retired to decrypt-only (the retire-then-insert shape of a
+ *     rotation).
+ * So importing an OLDER kit while a DIFFERENT key is active keeps BOTH private
+ * keys — the current key's material is never clobbered and mail sealed to it
+ * still opens. Internal — called only by the Node import action.
+ */
+export const storeImportedAddressKey = internalMutation({
+	args: {
+		address: v.string(),
+		domain: v.optional(v.string()),
+		wkdHash: v.optional(v.string()),
+		fingerprint: v.string(),
+		algorithm: v.string(),
+		publicKeyArmored: v.string(),
+		publicKeyBinaryBase64: v.string(),
+		sealedPrivateKey: sealedPrivateKeyValidator,
+	},
+	returns: v.object({ id: v.id('keyVault'), created: v.boolean() }),
+	handler: async (ctx, args) => {
+		const address = normalizeEmail(args.address);
+		const now = Date.now();
+		const fingerprint = args.fingerprint.toUpperCase();
+		const rows = await ctx.db
+			.query('keyVault')
+			.withIndex('by_address', (q) => q.eq('address', address))
+			.collect(); // bounded: active key + a handful of retired keys.
+
+		const material = {
+			domain: args.domain,
+			wkdHash: args.wkdHash,
+			fingerprint: args.fingerprint,
+			algorithm: args.algorithm,
+			publicKeyArmored: args.publicKeyArmored,
+			publicKeyBinaryBase64: args.publicKeyBinaryBase64,
+			sealedPrivateKey: args.sealedPrivateKey,
+		};
+
+		const sameKey = rows.find((r) => r.fingerprint.toUpperCase() === fingerprint);
+		if (sameKey) {
+			// Re-importing a key we already hold: refresh + activate it, and retire any
+			// OTHER active row so exactly one key stays active.
+			for (const r of rows) {
+				if (r._id !== sameKey._id && r.isActive) {
+					await ctx.db.patch(r._id, { isActive: false, updatedAt: now });
+				}
+			}
+			await ctx.db.patch(sameKey._id, { ...material, isActive: true, updatedAt: now });
+			return { id: sameKey._id, created: false as const };
+		}
+
+		// A key we don't hold: retire every current active row to decrypt-only (never
+		// overwrite its private material) and insert the import as the new active key.
+		for (const r of rows) {
+			if (r.isActive) await ctx.db.patch(r._id, { isActive: false, updatedAt: now });
+		}
+		const id = await ctx.db.insert('keyVault', {
+			kind: 'address',
+			address,
+			...material,
 			isActive: true,
 			createdAt: now,
 			updatedAt: now,
