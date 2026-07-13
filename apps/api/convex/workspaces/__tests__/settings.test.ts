@@ -145,6 +145,15 @@ describe('organizations.settings.update — permission rule', () => {
 // ============================================================
 
 describe('organizations.settings.update — write semantics', () => {
+	it('rejects oversized trusted ARC forwarder lists', async () => {
+		const t = convexTest(schema, modules);
+		await expect(
+			t.mutation(api.workspaces.settings.update, {
+				trustedArcForwarders: Array.from({ length: 101 }, (_, index) => `list-${index}.example`),
+			})
+		).rejects.toThrow(/At most 100/);
+	});
+
 	it('creates the singleton row on first write', async () => {
 		const t = convexTest(schema, modules);
 

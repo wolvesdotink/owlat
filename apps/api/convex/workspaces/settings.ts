@@ -21,7 +21,7 @@
  */
 
 import { v } from 'convex/values';
-import { sanitizeTrustedForwarders } from '@owlat/shared/arcTrust';
+import { MAX_TRUSTED_ARC_FORWARDERS, sanitizeTrustedForwarders } from '@owlat/shared/arcTrust';
 import { sealPolicyValidator } from '../mail/sealPolicy';
 import { internalMutation } from '../_generated/server';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
@@ -76,6 +76,12 @@ export const update = authedMutation({
 			'Only owners and admins can update organization settings'
 		);
 		const now = Date.now();
+		if (
+			args.trustedArcForwarders !== undefined &&
+			args.trustedArcForwarders.length > MAX_TRUSTED_ARC_FORWARDERS
+		) {
+			throw new Error(`At most ${MAX_TRUSTED_ARC_FORWARDERS} trusted ARC forwarders are allowed`);
+		}
 		// Validate the trusted-forwarder list server-side: normalize, drop
 		// single-label / whitespace entries, and de-duplicate so the persisted
 		// list can never contain an entry the ARC trust predicate would misread as

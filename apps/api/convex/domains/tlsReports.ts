@@ -21,6 +21,7 @@
 import { v } from 'convex/values';
 import { internalMutation } from '../_generated/server';
 import { adminQuery } from '../lib/authedFunctions';
+import { TLS_RPT_MAX_FAILURE_TYPES } from '@owlat/shared';
 
 /** Window the dashboard summarises. */
 const SUMMARY_WINDOW_DAYS = 30;
@@ -49,6 +50,9 @@ export const ingest = internalMutation({
 		failureTypeCounts: failureTypeCountValidator,
 	},
 	handler: async (ctx, args) => {
+		if (args.failureTypeCounts.length > TLS_RPT_MAX_FAILURE_TYPES) {
+			throw new Error(`TLS report exceeds the ${TLS_RPT_MAX_FAILURE_TYPES} failure-type limit`);
+		}
 		const existing = await ctx.db
 			.query('tlsReports')
 			.withIndex('by_reportId', (q) => q.eq('reportId', args.reportId))
