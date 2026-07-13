@@ -10,6 +10,7 @@ import {
 	mailInboxModeValidator,
 	mailNotifyAboutValidator,
 	mailUnsubscribeValidator,
+	mailEncryptionInfoValidator,
 	spamVerdictValidator,
 	draftQualityValidator,
 } from '../lib/convexValidators';
@@ -538,6 +539,14 @@ export const mailTables = {
 				),
 			})
 		),
+
+		// Sealed Mail (E3): the outbound sealing outcome for a SENT copy. When
+		// `sealed` is true the raw `.eml` is PGP/MIME ciphertext (real subject
+		// inside, `...` outside) and the fingerprints used are recorded; when
+		// false a `reason` explains why the message went plaintext (e.g. a
+		// recipient without a usable key — never a mixed send, per D2). Absent on
+		// inbound rows and on outbound rows written before this field existed.
+		encryptionInfo: v.optional(mailEncryptionInfoValidator),
 
 		createdAt: v.number(),
 		updatedAt: v.number(),

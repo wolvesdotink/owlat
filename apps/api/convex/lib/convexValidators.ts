@@ -328,6 +328,32 @@ export const mailMessageAttachmentValidator = v.object({
 	partIndex: v.string(),
 });
 
+// Org-level Sealed Mail sealing policy (instanceSettings.sealPolicy, locked
+// decision D2). `auto` seals whenever every recipient has a usable pinned key;
+// `ask` leaves the decision to the composer opt-in (wired by the E5 piece);
+// `off` never seals. Unset ⇒ treated as `auto` at resolution time.
+export const sealPolicyValidator = v.union(v.literal('auto'), v.literal('ask'), v.literal('off'));
+
+// Outbound sealing outcome recorded on a sent mailMessages row
+// (mailMessages.encryptionInfo, Sealed Mail E3). Honest by construction: when
+// `sealed` is false a `reason` explains why the message went plaintext; when
+// true the PGP/MIME algorithm plus the recipient + signing fingerprints that
+// were actually used are recorded. Never any private material.
+export const mailEncryptionInfoValidator = v.object({
+	sealed: v.boolean(),
+	// Present when `sealed` is false — why the message was NOT sealed
+	// (e.g. `policy_off`, `recipient_no_key`, `key_changed`). See
+	// mail/sealPolicy.ts SealSkipReason.
+	reason: v.optional(v.string()),
+	// PGP/MIME (RFC 9580 profile) is the only sealing algorithm today.
+	algorithm: v.optional(v.literal('pgp-mime')),
+	// Uppercase-hex fingerprints of the recipient encryption keys the body was
+	// sealed to (public material).
+	recipientFingerprints: v.optional(v.array(v.string())),
+	// Uppercase-hex fingerprint of the sender address key that signed the body.
+	signingFingerprint: v.optional(v.string()),
+});
+
 // Parsed List-Unsubscribe / List-Unsubscribe-Post target (mailMessages.unsubscribe).
 // Parsed ONCE at ingest from the raw header block (see @owlat/shared/listUnsubscribe)
 // so the reader can render the Unsubscribe chip without re-opening the raw .eml.
