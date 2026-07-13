@@ -41,6 +41,10 @@ import {
 	type RotationStatement,
 } from './pinning';
 
+// Re-export so the module's public surface stays stable after RotationStatement
+// (+ rotationStatementText) moved into pinning.ts — consumers still import it here.
+export type { RotationStatement } from './pinning';
+
 /** Positive discovery hit is refreshed after 24h. */
 export const TTL_FOUND_MS = 24 * 60 * 60 * 1000;
 /** A negative result (no usable key) is re-checked after 1h. */
