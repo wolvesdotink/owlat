@@ -233,6 +233,12 @@ export const NON_TENANT_TABLES = [
 	// this org's contact business data, so it is out of the tenant wipe like
 	// `keyVault` and the other caches.
 	'recipientKeys',
+	// Sealed Mail published key-rotation statements (E6). Signed old->new
+	// fingerprint bindings we serve in the manifest rotation feed. Public material
+	// only, regenerable from the vault's rotation history — instance crypto
+	// infrastructure, not this org's contact business data, so it is out of the
+	// tenant wipe like `keyVault` / `recipientKeys`.
+	'keyRotations',
 ] as const satisfies readonly TableNames[];
 
 /**

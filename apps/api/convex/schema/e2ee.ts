@@ -147,4 +147,41 @@ export const e2eeTables = {
 	})
 		.index('by_address', ['address'])
 		.index('by_expiresAt', ['expiresAt']),
+
+	/**
+	 * Signed key-rotation statements this instance has published (Sealed Mail key
+	 * lifecycle, E6). One row per rotation event on one of OUR address keys.
+	 *
+	 * When an address key rotates, the OLD private key signs a statement binding
+	 * `oldFingerprint -> newFingerprint` for `address` (the exact canonical bytes
+	 * `e2ee/pinning.ts:rotationStatementText` produces). We publish those
+	 * statements in the `keyRotations` feed of our `/.well-known/owlat.json`
+	 * manifest (OUTSIDE the signed payload — each entry carries its own
+	 * self-authenticating signature). A peer that had pinned our OLD key verifies
+	 * the statement against that pin and silently upgrades to the new key (the
+	 * `signedRotation` TOFU transition), mirroring the DKIM overlap-rotation
+	 * pattern where the old selector stays valid through the overlap. This is the
+	 * ONLY thing that authorizes a silent re-pin across a key change.
+	 *
+	 * Holds only PUBLIC material (fingerprints + a detached signature) — no
+	 * secrets — but it is instance infrastructure regenerable from the vault, not
+	 * this org's contact business data, so it is out of the tenant wipe like
+	 * `keyVault` / `recipientKeys`. Written only by
+	 * `e2ee/lifecycle.ts:storeRotatedAddressKey`.
+	 */
+	keyRotations: defineTable({
+		// The rotated address (`localpart@domain`, lowercased).
+		address: v.string(),
+		// The uppercase-hex fingerprint of the key BEFORE the rotation (the signer).
+		oldFingerprint: v.string(),
+		// The uppercase-hex fingerprint of the key AFTER the rotation.
+		newFingerprint: v.string(),
+		// Armored OpenPGP detached signature by the OLD key over the canonical
+		// rotation-statement bytes. Self-authenticating: a peer verifies it against
+		// the fingerprint it already pinned, so the feed need not be signed as a whole.
+		signature: v.string(),
+		createdAt: v.number(),
+	})
+		.index('by_address', ['address'])
+		.index('by_createdAt', ['createdAt']),
 };
