@@ -84,7 +84,7 @@ function makeDeps(opts: {
 				if (opts.wkd === undefined || typeof opts.wkd === 'number') {
 					return new Response(null, { status: typeof opts.wkd === 'number' ? opts.wkd : 404 });
 				}
-				return new Response(new Blob([opts.wkd]), { status: 200 });
+				return new Response(opts.wkd.slice(), { status: 200 });
 			}
 			return new Response(null, { status: 404 });
 		},
