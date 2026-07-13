@@ -32,7 +32,13 @@ export interface SealMimeOptions {
 	recipientPublicKeysArmored: string[];
 	/** Armored PRIVATE key of the sender address (already opened from the vault). */
 	signingKeyArmored: string;
-	/** Whether to protect headers (default true). Always true in production; the flag exists for tests. */
+	/**
+	 * Whether to annotate the inner root Content-Type with the
+	 * `protected-headers="v1"` marker (default true; production always passes true).
+	 * The full original message — real Subject included — is encrypted and the
+	 * outer Subject is the `...` placeholder EITHER WAY; `false` only omits the
+	 * compliant-reader hint. Exercised with `false` in `seal.test.ts`.
+	 */
 	protectSubject?: boolean;
 }
 
@@ -113,11 +119,19 @@ export async function sealMime(rawRfc822: string, opts: SealMimeOptions): Promis
 	const parsed = parseHeaders(headerBlock);
 
 	// Inner cleartext = the ORIGINAL message, with the root Content-Type marked
-	// `protected-headers="v1"` so a reader prefers the (real) headers inside.
+	// `protected-headers="v1"` so a reader prefers the (real) headers inside. We
+	// append the parameter to the END of the FULL LOGICAL Content-Type header
+	// (rebuilding from `parsed`, which already unfolded continuation lines) rather
+	// than to the first physical line — a folded `Content-Type:\r\n boundary="x"`
+	// would otherwise unfold to a run-together `...;; protected-headers=... boundary`.
 	const innerHeaderBlock = protect
-		? headerBlock.replace(/^(Content-Type:[^\r\n]*)/im, (m) =>
-				/protected-headers/i.test(m) ? m : `${m}; protected-headers="v1"`
-			)
+		? parsed
+				.map((h) =>
+					h.name === 'content-type' && !/protected-headers/i.test(h.line)
+						? `${h.line}; protected-headers="v1"`
+						: h.line
+				)
+				.join('\r\n')
 		: headerBlock;
 	const innerMessage = `${innerHeaderBlock}\r\n\r\n${body}`;
 
