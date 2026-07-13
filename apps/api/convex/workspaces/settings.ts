@@ -24,8 +24,10 @@ import { v } from 'convex/values';
 import { MAX_TRUSTED_ARC_FORWARDERS, sanitizeTrustedForwarders } from '@owlat/shared/arcTrust';
 import { sealPolicyValidator } from '../mail/sealPolicy';
 import { internalMutation } from '../_generated/server';
+import type { Id } from '../_generated/dataModel';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
+import { recordAuditLog } from '../lib/auditLog';
 import {
 	getUserIdFromSession,
 	getMutationContext,
@@ -70,7 +72,7 @@ export const update = authedMutation({
 		),
 	},
 	handler: async (ctx, args) => {
-		await requireOrgPermission(
+		const session = await requireOrgPermission(
 			ctx,
 			'settings:manage',
 			'Only owners and admins can update organization settings'
@@ -86,20 +88,42 @@ export const update = authedMutation({
 		// single-label / whitespace entries, and de-duplicate so the persisted
 		// list can never contain an entry the ARC trust predicate would misread as
 		// a TLD wildcard. The UI enforces the same rule; this is the floor.
-		const patch =
-			args.trustedArcForwarders !== undefined
-				? { ...args, trustedArcForwarders: sanitizeTrustedForwarders(args.trustedArcForwarders) }
-				: args;
+		const patch = {
+			...args,
+			...(args.trustedArcForwarders !== undefined
+				? { trustedArcForwarders: sanitizeTrustedForwarders(args.trustedArcForwarders) }
+				: {}),
+		};
 		const existing = await ctx.db.query('instanceSettings').first();
+		const changes: Record<string, { from: unknown; to: unknown }> = {};
+		for (const key of Object.keys(patch) as Array<keyof typeof patch>) {
+			const to = patch[key];
+			if (to === undefined) continue;
+			const from = existing?.[key] ?? null;
+			if (JSON.stringify(from) !== JSON.stringify(to)) changes[key] = { from, to };
+		}
+
+		let settingsId: Id<'instanceSettings'>;
 		if (existing) {
 			await ctx.db.patch(existing._id, { ...patch, updatedAt: now });
-			return existing._id;
+			settingsId = existing._id;
+		} else {
+			settingsId = await ctx.db.insert('instanceSettings', {
+				...patch,
+				createdAt: now,
+				updatedAt: now,
+			});
 		}
-		return await ctx.db.insert('instanceSettings', {
-			...patch,
-			createdAt: now,
-			updatedAt: now,
-		});
+		if (Object.keys(changes).length > 0) {
+			await recordAuditLog(ctx, {
+				userId: session.userId,
+				action: 'settings.updated',
+				resource: 'settings',
+				resourceId: settingsId,
+				detailsBlob: JSON.stringify({ changes }),
+			});
+		}
+		return settingsId;
 	},
 });
 
