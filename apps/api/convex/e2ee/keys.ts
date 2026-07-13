@@ -28,6 +28,15 @@ import { adminMutation, adminQuery, publicQuery } from '../lib/authedFunctions';
 import { assertFeatureEnabled, isFeatureEnabled } from '../lib/featureFlags';
 import { normalizeEmail } from '@owlat/shared';
 
+const MAX_KEY_ROWS_PER_ADDRESS = 128;
+const MAX_VAULT_ROWS = 10_000;
+const MAX_MAILBOXES = 5_000;
+const MAX_MAIL_ALIASES = 10_000;
+
+function assertWithinLimit(rows: readonly unknown[], limit: number, label: string): void {
+	if (rows.length > limit) throw new Error(`${label} exceeds the supported limit of ${limit}`);
+}
+
 /**
  * The ACTIVE `keyVault` row for a (normalized) address, or null. After a rotation
  * an address holds multiple rows — exactly one active, the rest decrypt-only — so
@@ -38,7 +47,8 @@ async function activeAddressRow(ctx: QueryCtx, address: string): Promise<Doc<'ke
 	const rows = await ctx.db
 		.query('keyVault')
 		.withIndex('by_address', (q) => q.eq('address', address))
-		.collect(); // bounded: active + retired rows for one address.
+		.take(MAX_KEY_ROWS_PER_ADDRESS + 1);
+	assertWithinLimit(rows, MAX_KEY_ROWS_PER_ADDRESS, 'key history');
 	return rows.find((r) => r.isActive) ?? null;
 }
 
@@ -183,7 +193,8 @@ export const storeImportedAddressKey = internalMutation({
 		const rows = await ctx.db
 			.query('keyVault')
 			.withIndex('by_address', (q) => q.eq('address', address))
-			.collect(); // bounded: active key + a handful of retired keys.
+			.take(MAX_KEY_ROWS_PER_ADDRESS + 1);
+		assertWithinLimit(rows, MAX_KEY_ROWS_PER_ADDRESS, 'key history');
 
 		const material = {
 			domain: args.domain,
@@ -248,7 +259,8 @@ export const getAddressPrivateKeysInternal = internalQuery({
 		const rows = await ctx.db
 			.query('keyVault')
 			.withIndex('by_address', (q) => q.eq('address', normalized))
-			.collect(); // bounded: active key + a handful of retired decrypt-only keys.
+			.take(MAX_KEY_ROWS_PER_ADDRESS + 1);
+		assertWithinLimit(rows, MAX_KEY_ROWS_PER_ADDRESS, 'key history');
 		// Active first, then most-recently-updated, so the common case (a message
 		// sealed to the current key) is tried first.
 		return rows
@@ -320,7 +332,8 @@ export const getKeyDirectory = internalQuery({
 		const rows = await ctx.db
 			.query('keyVault')
 			.withIndex('by_kind', (q) => q.eq('kind', 'address'))
-			.collect(); // bounded: one row per Postbox address (mailboxes + aliases) — single-org instance.
+			.take(MAX_VAULT_ROWS + 1);
+		assertWithinLimit(rows, MAX_VAULT_ROWS, 'address key directory');
 		return rows.flatMap((r) =>
 			r.isActive && r.address ? [{ address: r.address, fingerprint: r.fingerprint }] : []
 		);
@@ -364,7 +377,8 @@ export const getKeyForWkd = publicQuery({
 		const rows = await ctx.db
 			.query('keyVault')
 			.withIndex('by_wkd', (q) => q.eq('domain', domain).eq('wkdHash', args.wkdHash))
-			.collect(); // bounded: active + retired rows for one local-part.
+			.take(MAX_KEY_ROWS_PER_ADDRESS + 1);
+		assertWithinLimit(rows, MAX_KEY_ROWS_PER_ADDRESS, 'WKD key history');
 		const row = rows.find((r) => r.isActive);
 		if (!row) return null;
 		return { binaryBase64: row.publicKeyBinaryBase64 };
@@ -396,7 +410,8 @@ export const getInstancePublicKey = publicQuery({
 export const listKeyProfiles = internalQuery({
 	args: {},
 	handler: async (ctx) => {
-		const rows = await ctx.db.query('keyVault').collect(); // bounded: one row per address + the single instance identity.
+		const rows = await ctx.db.query('keyVault').take(MAX_VAULT_ROWS + 1);
+		assertWithinLimit(rows, MAX_VAULT_ROWS, 'key vault');
 		return rows
 			.filter((r) => r.isActive)
 			.map((r) => ({
@@ -416,8 +431,10 @@ export const listKeyProfiles = internalQuery({
 export const listAddressesNeedingKeys = internalQuery({
 	args: {},
 	handler: async (ctx) => {
-		const mailboxes = await ctx.db.query('mailboxes').collect(); // bounded: per-user mailboxes on a single-org instance.
-		const aliases = await ctx.db.query('mailAliases').collect(); // bounded: per-mailbox aliases on a single-org instance.
+		const mailboxes = await ctx.db.query('mailboxes').take(MAX_MAILBOXES + 1);
+		assertWithinLimit(mailboxes, MAX_MAILBOXES, 'mailboxes');
+		const aliases = await ctx.db.query('mailAliases').take(MAX_MAIL_ALIASES + 1);
+		assertWithinLimit(aliases, MAX_MAIL_ALIASES, 'mail aliases');
 
 		const wanted = new Set<string>();
 		for (const mb of mailboxes) wanted.add(normalizeEmail(mb.address));
@@ -426,7 +443,8 @@ export const listAddressesNeedingKeys = internalQuery({
 		const existing = await ctx.db
 			.query('keyVault')
 			.withIndex('by_kind', (q) => q.eq('kind', 'address'))
-			.collect(); // bounded: one row per address.
+			.take(MAX_VAULT_ROWS + 1);
+		assertWithinLimit(existing, MAX_VAULT_ROWS, 'address keys');
 		for (const row of existing) {
 			if (row.isActive && row.address) wanted.delete(row.address);
 		}
@@ -465,7 +483,8 @@ export const getReadiness = adminQuery({
 		const addressKeys = await ctx.db
 			.query('keyVault')
 			.withIndex('by_kind', (q) => q.eq('kind', 'address'))
-			.collect(); // bounded: one row per address.
+			.take(MAX_VAULT_ROWS + 1);
+		assertWithinLimit(addressKeys, MAX_VAULT_ROWS, 'address keys');
 		const activeAddressKeys = addressKeys.filter((r) => r.isActive).length;
 		return {
 			instanceIdentityPublished: instance !== null && instance.isActive,
