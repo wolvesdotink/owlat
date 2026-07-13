@@ -218,6 +218,7 @@ import type * as domains_dmarc from "../domains/dmarc.js";
 import type * as domains_dnsMatch from "../domains/dnsMatch.js";
 import type * as domains_dnsVerification from "../domains/dnsVerification.js";
 import type * as domains_domains from "../domains/domains.js";
+import type * as domains_encryptionKeysReadiness from "../domains/encryptionKeysReadiness.js";
 import type * as domains_lifecycle from "../domains/lifecycle.js";
 import type * as domains_mtaSts from "../domains/mtaSts.js";
 import type * as domains_mtaStsVerify from "../domains/mtaStsVerify.js";
@@ -820,6 +821,7 @@ declare const fullApi: ApiFromModules<{
   "domains/dnsMatch": typeof domains_dnsMatch;
   "domains/dnsVerification": typeof domains_dnsVerification;
   "domains/domains": typeof domains_domains;
+  "domains/encryptionKeysReadiness": typeof domains_encryptionKeysReadiness;
   "domains/lifecycle": typeof domains_lifecycle;
   "domains/mtaSts": typeof domains_mtaSts;
   "domains/mtaStsVerify": typeof domains_mtaStsVerify;
