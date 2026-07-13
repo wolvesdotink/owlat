@@ -28,18 +28,23 @@ type SealPolicy = 'auto' | 'ask' | 'off';
 // Local mirror so the choice feels instant; the query re-emits the authoritative
 // value on save. Unset ⇒ `auto` (the resolution-time default).
 const policy = ref<SealPolicy>('auto');
+const isInboundTlsRequired = ref(true);
 watch(
 	settings,
 	(value) => {
 		const stored = value?.sealPolicy;
 		policy.value = stored === 'ask' || stored === 'off' ? stored : 'auto';
+		isInboundTlsRequired.value = value?.isInboundTlsRequired !== false;
 	},
 	{ immediate: true }
 );
 
-const { run: savePolicy, isLoading: saving } = useBackendOperation(api.workspaces.settings.update, {
-	label: 'Update sealing policy',
-});
+const { run: saveSettings, isLoading: saving } = useBackendOperation(
+	api.workspaces.settings.update,
+	{
+		label: 'Update Sealed Mail settings',
+	}
+);
 
 const OPTIONS: Array<{ value: SealPolicy; title: string; description: string }> = [
 	{
@@ -66,8 +71,16 @@ async function choose(value: SealPolicy) {
 	if (value === policy.value) return;
 	const previous = policy.value;
 	policy.value = value;
-	const result = await savePolicy({ sealPolicy: value });
+	const result = await saveSettings({ sealPolicy: value });
 	if (result === undefined) policy.value = previous;
+}
+
+async function setInboundTlsRequired(value: boolean) {
+	if (value === isInboundTlsRequired.value) return;
+	const previous = isInboundTlsRequired.value;
+	isInboundTlsRequired.value = value;
+	const result = await saveSettings({ isInboundTlsRequired: value });
+	if (result === undefined) isInboundTlsRequired.value = previous;
 }
 
 // ── Recovery kit (E6, locked decision D7). The armored private key + plain-words
@@ -211,6 +224,29 @@ async function runReSeal() {
 					</span>
 				</label>
 			</fieldset>
+
+			<section class="space-y-4 rounded border border-border-subtle p-5">
+				<div class="flex items-start justify-between gap-4">
+					<div class="min-w-0">
+						<h2 class="text-base font-semibold text-text-primary">Require TLS for incoming mail</h2>
+						<p class="mt-1 text-sm text-text-secondary">
+							Reject senders that try to deliver without STARTTLS. They receive a permanent “550
+							5.7.10 Encryption needed” response, so the message is never accepted or stored.
+						</p>
+						<p v-if="!isInboundTlsRequired" class="mt-2 text-xs text-warning">
+							Plaintext inbound delivery is allowed. Only disable this for legacy mail servers that
+							cannot use TLS.
+						</p>
+					</div>
+					<UiToggle
+						:model-value="isInboundTlsRequired"
+						:disabled="saving"
+						:label="isInboundTlsRequired ? 'Required' : 'Optional'"
+						data-testid="inbound-tls-required"
+						@update:model-value="setInboundTlsRequired"
+					/>
+				</div>
+			</section>
 
 			<!-- Recovery kit (E6 / D7): download the private key for an address so
 			     sealed mail can be restored later; import one to restore access. -->

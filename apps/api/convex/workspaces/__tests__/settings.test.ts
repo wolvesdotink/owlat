@@ -151,6 +151,7 @@ describe('organizations.settings.update — write semantics', () => {
 			mtaStsMode: 'enforce',
 			trustedArcForwarders: ['lists.example.org'],
 			sealPolicy: 'ask',
+			isInboundTlsRequired: false,
 		});
 
 		await t.run(async (ctx) => {
@@ -167,6 +168,9 @@ describe('organizations.settings.update — write semantics', () => {
 				to: ['lists.example.org'],
 			});
 			expect(details.changes?.['sealPolicy']).toEqual({ from: null, to: 'ask' });
+			expect(details.changes?.['isInboundTlsRequired']).toEqual({ from: null, to: false });
+			const scheduled = await ctx.db.system.query('_scheduled_functions').collect();
+			expect(scheduled.some((job) => job.name.includes('pushInboundTlsPolicy'))).toBe(true);
 		});
 	});
 

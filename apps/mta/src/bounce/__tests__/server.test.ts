@@ -34,11 +34,23 @@ vi.mock('../../inbound/mailboxResolver.js', () => ({
 	findMailboxRoute: vi.fn(async () => null),
 }));
 
+vi.mock('../../inbound/inboundTlsPolicy.js', () => ({
+	isInboundTlsRequired: vi.fn(async () => true),
+	inboundTlsRequiredError: () => {
+		const error = new Error('5.7.10 Encryption needed: STARTTLS required') as Error & {
+			responseCode: number;
+		};
+		error.responseCode = 550;
+		return error;
+	},
+}));
+
 import type Redis from 'ioredis';
 import type { SMTPServerAddress, SMTPServerSession } from 'smtp-server';
 import { createBounceServer } from '../server.js';
 import { checkSpf } from '../inboundSecurity.js';
 import type { MtaConfig } from '../../config.js';
+import { isInboundTlsRequired } from '../../inbound/inboundTlsPolicy.js';
 
 /** Minimal MtaConfig — only the fields `createBounceServer`/`onMailFrom` read. */
 function makeConfig(overrides: Partial<MtaConfig> = {}): MtaConfig {
@@ -65,26 +77,64 @@ function getOnMailFrom(config: MtaConfig) {
 	) => void;
 }
 
-function makeSession(): SMTPServerSession {
+function makeSession(secure = true): SMTPServerSession {
 	return {
 		remoteAddress: '203.0.113.10',
 		hostNameAppearsAs: 'sender.example.com',
+		secure,
 	} as unknown as SMTPServerSession;
 }
 
 /** Run `onMailFrom` and resolve with the error (if any) passed to its callback. */
-function runMailFrom(config: MtaConfig, envelopeFrom: string): Promise<Error | null | undefined> {
+function runMailFrom(
+	config: MtaConfig,
+	envelopeFrom: string,
+	secure = true
+): Promise<Error | null | undefined> {
 	const onMailFrom = getOnMailFrom(config);
 	return new Promise((resolve) => {
-		onMailFrom({ address: envelopeFrom } as SMTPServerAddress, makeSession(), (err) =>
+		onMailFrom({ address: envelopeFrom } as SMTPServerAddress, makeSession(secure), (err) =>
 			resolve(err)
 		);
 	});
 }
 
+describe('bounce server onMailFrom inbound TLS gate', () => {
+	beforeEach(() => {
+		vi.mocked(isInboundTlsRequired).mockReset().mockResolvedValue(true);
+	});
+
+	it('rejects plaintext before accepting the SMTP transaction', async () => {
+		const error = await runMailFrom(
+			makeConfig({ inboundSpfEnabled: false }),
+			'sender@example.com',
+			false
+		);
+		expect(error).toBeInstanceOf(Error);
+		expect((error as Error & { responseCode?: number }).responseCode).toBe(550);
+		expect((error as Error).message).toContain('5.7.10 Encryption needed');
+	});
+
+	it('accepts a TLS-upgraded transaction when the policy is enabled', async () => {
+		const error = await runMailFrom(makeConfig({ inboundSpfEnabled: false }), 'sender@example.com');
+		expect(error == null).toBe(true);
+	});
+
+	it('accepts plaintext only after the policy is explicitly disabled', async () => {
+		vi.mocked(isInboundTlsRequired).mockResolvedValue(false);
+		const error = await runMailFrom(
+			makeConfig({ inboundSpfEnabled: false }),
+			'sender@example.com',
+			false
+		);
+		expect(error == null).toBe(true);
+	});
+});
+
 describe('bounce server onMailFrom SPF gate (PR-74)', () => {
 	beforeEach(() => {
 		vi.mocked(checkSpf).mockReset();
+		vi.mocked(isInboundTlsRequired).mockReset().mockResolvedValue(true);
 	});
 
 	it('accepts an empty MAIL FROM ("") without consulting SPF (null sender)', async () => {
