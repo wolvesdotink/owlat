@@ -218,6 +218,7 @@ interface Captured {
 	outcomeAfterRotation: string | undefined;
 	rediscoverOutcome: string;
 	nextSendSeal: { seal: boolean; reason?: string };
+	isolationOpensUnderOwnSecret: boolean;
 	isolationOpenThrew: boolean;
 }
 
@@ -335,9 +336,19 @@ beforeAll(async () => {
 	);
 	const nextDecision = decideSeal(nextSendInputs);
 
-	// 6. At-rest isolation: A's box cannot open B's freshly-sealed private key.
+	// 6. At-rest isolation: B's OWN box opens B's freshly-sealed private key
+	//    (positive control — proves the box context matches the sealing site, so
+	//    the negative result below can ONLY be the differing secret), while A's
+	//    box cannot open it.
 	const bobRotatedVault = await vaultRow(instanceB, BOB);
 	if (!bobRotatedVault) throw new Error('rotated bob vault row missing');
+	let isolationOpensUnderOwnSecret = false;
+	try {
+		const opened = createSecretBox(B_SECRET, E2EE_KEY_BOX).open(bobRotatedVault.sealedPrivateKey);
+		isolationOpensUnderOwnSecret = opened.includes('BEGIN PGP PRIVATE KEY BLOCK');
+	} catch {
+		isolationOpensUnderOwnSecret = false;
+	}
 	let isolationOpenThrew = false;
 	try {
 		createSecretBox(A_SECRET, E2EE_KEY_BOX).open(bobRotatedVault.sealedPrivateKey);
@@ -368,6 +379,7 @@ beforeAll(async () => {
 		outcomeAfterRotation: rotatedRow?.outcome,
 		rediscoverOutcome: rediscover.outcome,
 		nextSendSeal: nextDecision.seal ? { seal: true } : { seal: false, reason: nextDecision.reason },
+		isolationOpensUnderOwnSecret,
 		isolationOpenThrew,
 	};
 }, 60_000);
@@ -432,6 +444,10 @@ describe('e2ee/twoInstance · two-instance E2EE proof', () => {
 
 	it('the two instances are cryptographically isolated (separate at-rest secrets + keys)', () => {
 		expect(A_SECRET).not.toBe(B_SECRET);
+		// Positive control: B's OWN box DOES open B's sealed private key, proving the
+		// box context matches the sealing site — so the failure below can only be the
+		// differing secret, never a drifted salt/info literal.
+		expect(captured.isolationOpensUnderOwnSecret).toBe(true);
 		// A's box cannot open B's sealed private key — the vaults are independent.
 		expect(captured.isolationOpenThrew).toBe(true);
 		// Distinct instance signing identities.
