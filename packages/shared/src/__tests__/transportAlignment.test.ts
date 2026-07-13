@@ -42,6 +42,16 @@ describe('checkFromAlignment — built-in MTA', () => {
 		expect(r.reason).toContain('owlat.com');
 		expect(r.reason).toContain('acme.com');
 	});
+
+	it('is unknown (not aligned) when d= is a foreign domain and the return-path is undeclared', () => {
+		// The MTA's default return-path is a SHARED VERP bounce domain that does
+		// NOT align per From-domain, so an undeclared return-path can't rescue a
+		// declared-foreign d=. Only the DKIM identity gets the per-From-domain
+		// default; the return-path stays `null` (unknown), so the verdict is
+		// `unknown` — never a claimed alignment we didn't verify.
+		const r = checkFromAlignment('acme.com', mta({ dkimDomain: 'owlat.com' }));
+		expect(r.state).toBe('unknown');
+	});
 });
 
 describe('checkFromAlignment — SMTP relay', () => {

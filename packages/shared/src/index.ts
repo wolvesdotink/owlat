@@ -21,6 +21,7 @@ export {
 } from './address';
 export { type AlignmentMode, isSpfAligned, emailDomain } from './spfAlignment';
 export {
+	SEND_TRANSPORT_KINDS,
 	type SendTransportKind,
 	type OutboundAlignmentState,
 	type OutboundTransportFacts,

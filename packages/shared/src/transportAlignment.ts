@@ -26,8 +26,17 @@
 
 import { isSpfAligned } from './spfAlignment';
 
-/** The send-transport kinds Owlat supports (mirrors the backend `SendProviderKind`). */
-export type SendTransportKind = 'mta' | 'ses' | 'resend' | 'smtp';
+/**
+ * The send-transport kinds Owlat supports, as a runtime `as const` tuple so the
+ * `SendTransportKind` type derives from ONE source. This is the canonical list:
+ * the backend's `SEND_PROVIDER_KINDS` / `SendProviderKind`
+ * (`apps/api/convex/lib/sendProviders/types.ts`) re-export it, so a new provider
+ * kind can't be added on the backend and silently drift past this alignment guard.
+ */
+export const SEND_TRANSPORT_KINDS = ['mta', 'ses', 'resend', 'smtp'] as const;
+
+/** A send-transport kind (`'mta' | 'ses' | 'resend' | 'smtp'`). */
+export type SendTransportKind = (typeof SEND_TRANSPORT_KINDS)[number];
 
 /**
  * A single From-domain's alignment against the active transport:
@@ -76,16 +85,21 @@ type IdentityAlignment = true | false | null;
 
 /**
  * Alignment of one authenticated identity (DKIM `d=` or the return-path domain).
- * An undeclared identity (`null`) aligns for the built-in MTA — it signs/bounces
- * per-From-domain — but is genuinely unknown for a relay (the relay controls it).
+ *
+ * `perFromDomainDefault` is true ONLY for the built-in MTA's DKIM identity: it
+ * signs `d=` == the From-domain by construction, so an undeclared DKIM domain
+ * aligns. The MTA's *return-path*, by contrast, uses a single SHARED VERP bounce
+ * domain that does NOT align per From-domain (see `spfAlignment.ts`), so an
+ * undeclared return-path is `null` (unknown) even for the MTA — and always `null`
+ * for a relay, whose identities the relay controls.
  */
 function identityAlignment(
 	identityDomain: string | null,
 	fromDomain: string,
-	mtaPerDomainDefault: boolean
+	perFromDomainDefault: boolean
 ): IdentityAlignment {
 	if (identityDomain == null) {
-		return mtaPerDomainDefault ? true : null;
+		return perFromDomainDefault ? true : null;
 	}
 	return isSpfAligned(identityDomain, fromDomain);
 }
@@ -113,9 +127,13 @@ export function checkFromAlignment(
 		return { state: 'unknown', reason: null };
 	}
 
-	const perDomain = facts.kind === 'mta';
-	const dkim = identityAlignment(facts.dkimDomain, from, perDomain);
-	const returnPath = identityAlignment(facts.returnPathDomain, from, perDomain);
+	// The built-in MTA signs DKIM per-From-domain by construction, so an
+	// undeclared DKIM domain aligns. Its return-path is a SHARED VERP bounce
+	// domain that does NOT align per From-domain, so an undeclared return-path is
+	// always `null` (unknown) — never a claimed alignment we didn't verify.
+	const dkimPerFromDomain = facts.kind === 'mta';
+	const dkim = identityAlignment(facts.dkimDomain, from, dkimPerFromDomain);
+	const returnPath = identityAlignment(facts.returnPathDomain, from, false);
 
 	// DMARC passes when at least one authenticated identity aligns.
 	if (dkim === true || returnPath === true) {
