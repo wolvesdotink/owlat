@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
-import { DEFAULT_TRUSTED_ARC_FORWARDERS } from '@owlat/shared/arcTrust';
+import {
+	DEFAULT_TRUSTED_ARC_FORWARDERS,
+	isValidForwarderDomain,
+	normalizeDomain,
+} from '@owlat/shared/arcTrust';
 
 /**
  * Trusted forwarders editor (Delivery → provider config), Sealed Mail A5.
@@ -50,16 +54,12 @@ const { run: updateSettings, isLoading: isSaving } = useBackendOperation(
 	{ label: 'Update trusted forwarders' }
 );
 
-function normalize(raw: string): string {
-	return raw.trim().toLowerCase().replace(/\.$/, '');
-}
-
 function addDomain() {
 	if (!canManageOrganization.value) return;
-	const domain = normalize(newDomain.value);
+	const domain = normalizeDomain(newDomain.value);
 	// A bare, dot-bearing domain only — reject blanks, spaces, and single labels
-	// so a typo can't silently widen who we trust.
-	if (!domain || !domain.includes('.') || /\s/.test(domain)) return;
+	// so a typo can't silently widen who we trust. Same rule the backend enforces.
+	if (!isValidForwarderDomain(domain)) return;
 	if (draft.value.includes(domain)) {
 		newDomain.value = '';
 		return;
