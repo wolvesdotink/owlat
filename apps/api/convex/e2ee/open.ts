@@ -32,6 +32,7 @@ import { internal } from '../_generated/api';
 import { extractArmoredCiphertext } from '@owlat/shared/secureMessage';
 import { normalizeEmail } from '@owlat/shared';
 import { openPrivateKey } from './sealing';
+import { shouldRefetch } from './discovery';
 import {
 	decodeUtf8,
 	INBOUND_CIPHER_SUITE,
@@ -339,6 +340,9 @@ async function resolvePinnedSenderKey(ctx: ActionCtx, from: string): Promise<str
 	// A conflicting (keyChanged) pin must stay UNVERIFIED until an admin resolves
 	// it — never discover past it.
 	if (cached && cached.outcome === 'keyChanged') return undefined;
+	// A fresh negative pin (notFound within TTL) has nothing to verify against and
+	// discovery would only return it from cache — skip the Node-action hop entirely.
+	if (cached && !shouldRefetch(cached, Date.now())) return undefined;
 
 	// First contact (or an expired negative cache): discover once, then re-read.
 	try {
