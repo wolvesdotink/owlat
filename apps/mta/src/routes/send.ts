@@ -26,6 +26,9 @@ function priorityToOrderMs(priority: number): number {
 import { checkSystemHealth } from '../scaling/degradation.js';
 import { logger } from '../monitoring/logger.js';
 
+/** Match the existing attachment-scan ceiling and bound Redis job growth. */
+const MAX_SEALED_MIME_BYTES = 25 * 1024 * 1024;
+
 interface SendRequest {
 	messageId: string;
 	to: string;
@@ -33,6 +36,8 @@ interface SendRequest {
 	subject: string;
 	html: string;
 	text?: string;
+	/** Postbox-only complete PGP/MIME bytes, base64-encoded. */
+	sealedMimeBase64?: string;
 	/** AMP4Email body — delivered as a `text/x-amp-html` alternative part. */
 	amp?: string;
 	replyTo?: string;
@@ -144,6 +149,36 @@ export function createSendHandler(queue: Queue<EmailJob>, redis: Redis) {
 			return c.json({ error: 'Missing required field: dkimDomain' }, 400);
 		}
 
+		if (body.sealedMimeBase64) {
+			if (body.organizationId !== 'postbox') {
+				return c.json({ error: 'sealedMimeBase64 is restricted to Postbox mail' }, 400);
+			}
+			if (
+				!/^[A-Za-z0-9+/]+={0,2}$/.test(body.sealedMimeBase64) ||
+				body.sealedMimeBase64.length % 4 !== 0
+			) {
+				return c.json({ error: 'sealedMimeBase64 must be valid base64' }, 400);
+			}
+			const rawBytes = Buffer.from(body.sealedMimeBase64, 'base64');
+			if (rawBytes.length > MAX_SEALED_MIME_BYTES) {
+				return c.json({ error: 'sealedMimeBase64 exceeds the 25 MiB limit' }, 400);
+			}
+			const raw = rawBytes.toString('utf8');
+			const headerBlock = raw.split(/\r?\n\r?\n/, 1)[0]?.replace(/\r?\n[ \t]+/g, ' ') ?? '';
+			const header = (name: string) =>
+				headerBlock.match(new RegExp(`^${name}:[ \\t]*(.+)$`, 'im'))?.[1]?.trim();
+			const rawFrom = parseAddress(header('From') ?? '');
+			const contentType = header('Content-Type') ?? '';
+			if (
+				rawFrom?.address !== parsedFrom.address ||
+				header('Subject') !== '...' ||
+				!/^multipart\/encrypted\b/i.test(contentType) ||
+				!/[;\s]protocol="?application\/pgp-encrypted"?/i.test(contentType)
+			) {
+				return c.json({ error: 'sealedMimeBase64 is not an authorized PGP/MIME message' }, 400);
+			}
+		}
+
 		if (body.ipPool !== 'transactional' && body.ipPool !== 'campaign') {
 			return c.json({ error: 'ipPool must be "transactional" or "campaign"' }, 400);
 		}
@@ -172,6 +207,7 @@ export function createSendHandler(queue: Queue<EmailJob>, redis: Redis) {
 			subject: body.subject,
 			html: body.html,
 			text: body.text,
+			sealedMimeBase64: body.sealedMimeBase64,
 			amp: body.amp,
 			replyTo: body.replyTo,
 			headers: body.headers,

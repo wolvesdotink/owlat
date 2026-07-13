@@ -333,6 +333,28 @@ describe('sendToMx', () => {
 		expect(arg.text).toBe('Plain text body');
 	});
 
+	it('hands sealed Postbox PGP/MIME to nodemailer as exact raw bytes', async () => {
+		mockTransport.sendMail.mockResolvedValue({ response: '250 OK' });
+		const mime =
+			'From: sender@owlat.com\r\nSubject: ...\r\nContent-Type: multipart/encrypted; protocol="application/pgp-encrypted"\r\n\r\nciphertext';
+
+		await sendToMx(
+			createJob({ sealedMimeBase64: Buffer.from(mime).toString('base64') }),
+			config,
+			redis,
+			'10.0.0.1'
+		);
+
+		const arg = mockTransport.sendMail.mock.calls[0]![0] as {
+			raw?: Buffer;
+			text?: string;
+			html?: string;
+		};
+		expect(arg.raw?.toString('utf8')).toBe(mime);
+		expect(arg.text).toBeUndefined();
+		expect(arg.html).toBeUndefined();
+	});
+
 	it('pins tls.minVersion TLSv1.2 when acquiring an outbound connection (RFC 8996/9325)', async () => {
 		mockTransport.sendMail.mockResolvedValue({ response: '250 OK' });
 

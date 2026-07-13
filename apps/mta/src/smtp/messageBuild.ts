@@ -62,6 +62,15 @@ export function buildSendMailPayload(
 	verpAddress: string,
 	messageIdHeader: string | undefined
 ): SendMailOptions {
+	if (job.sealedMimeBase64) {
+		return {
+			raw: Buffer.from(job.sealedMimeBase64, 'base64'),
+			envelope: {
+				from: verpAddress,
+				to: job.to,
+			},
+		};
+	}
 	return {
 		from: job.from,
 		to: job.to,

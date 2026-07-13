@@ -372,10 +372,30 @@ export const dispatchDraft = internalAction({
 		// `.eml` and the on-wire body are ciphertext; the real subject travels
 		// inside and the outer subject is the literal placeholder "..." (D4).
 		const sealRecipients = [...draft.toAddresses, ...draft.ccAddresses, ...draft.bccAddresses];
-		const sealInputs = await ctx.runQuery(internal.mail.outboundQueries.getOutboundSealInputs, {
+		let sealInputs = await ctx.runQuery(internal.mail.outboundQueries.getOutboundSealInputs, {
 			fromAddress: draft.fromAddress,
 			recipients: sealRecipients,
 		});
+		// First contact must get the same chance to seal as a previously-seen peer.
+		// Refresh only absent/expired cache rows, only when auto-sealing could
+		// actually proceed. Discovery is fail-soft and cache-aware; one peer's
+		// network failure becomes an honest plaintext decision, never a stuck send.
+		if (
+			sealInputs.flagEnabled &&
+			sealInputs.policy === 'auto' &&
+			sealInputs.hasSigningKey &&
+			sealInputs.discoveryAddresses.length > 0
+		) {
+			await Promise.all(
+				sealInputs.discoveryAddresses.map((address: string) =>
+					ctx.runAction(internal.e2ee.discovery.discoverRecipientKey, { address })
+				)
+			);
+			sealInputs = await ctx.runQuery(internal.mail.outboundQueries.getOutboundSealInputs, {
+				fromAddress: draft.fromAddress,
+				recipients: sealRecipients,
+			});
+		}
 		const sealDecision = decideSeal(sealInputs);
 
 		let storedBytes: Buffer = raw;
@@ -542,13 +562,22 @@ export const dispatchDraft = internalAction({
 			return;
 		}
 
-		// When sealing applied, the on-wire body is the armored ciphertext and the
-		// subject is the "..." placeholder (D4) — no plaintext subject or body
-		// leaves this action. When not sealed, the classic structured fields ride
-		// exactly as before. The external-worker path fetches the stored `.eml`
-		// (already the sealed bytes), so it needs no equivalent branch.
-		const wireContent: { subject: string; html?: string; text?: string; amp?: string } = sealed
-			? { subject: sealed.outerSubject, text: sealed.armoredCiphertext }
+		// When sealing applied, pass the complete PGP/MIME bytes through the MTA
+		// unchanged; the placeholder Subject and ciphertext body are already inside
+		// that envelope. When not sealed, the classic structured fields ride exactly
+		// as before. The external worker fetches the same stored `.eml` directly.
+		const wireContent: {
+			subject: string;
+			html: string;
+			text?: string;
+			amp?: string;
+			sealedMimeBase64?: string;
+		} = sealed
+			? {
+					subject: sealed.outerSubject,
+					html: ' ',
+					sealedMimeBase64: Buffer.from(sealed.mime, 'utf-8').toString('base64'),
+				}
 			: {
 					subject: draft.subject || '(no subject)',
 					html: draft.bodyHtml || stripHtml(draft.bodyHtml ?? '') || ' ',

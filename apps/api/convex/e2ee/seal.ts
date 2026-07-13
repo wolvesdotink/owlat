@@ -17,8 +17,8 @@
  *
  * Pure of `ctx`/db/network: bytes in, bytes out. `'use node'` only because
  * `openpgp` (and the `node:crypto` boundary generator) run in the action runtime.
- * The caller (`mail/outbound.ts`) stores `mime` as the raw `.eml`, ships
- * `armoredCiphertext` as the message body, and records `encryptionInfo` on the row.
+ * The caller (`mail/outbound.ts`) stores `mime` as the raw `.eml`, ships those
+ * exact bytes through the MTA, and records `encryptionInfo` on the row.
  */
 
 import { randomBytes } from 'node:crypto';

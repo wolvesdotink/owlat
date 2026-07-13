@@ -63,6 +63,28 @@ export async function loadRecipientKeyStates(
 }
 
 /**
+ * Return normalized recipients whose discovery cache is absent or expired.
+ * Dispatch uses this bounded list to refresh keys before making the final seal
+ * decision; the composer remains a read-only view of the current cache.
+ */
+async function loadDiscoveryAddresses(ctx: QueryCtx, addresses: string[]): Promise<string[]> {
+	const seen = new Set<string>();
+	const stale: string[] = [];
+	const now = Date.now();
+	for (const raw of addresses) {
+		const address = normalizeEmail(raw);
+		if (seen.has(address)) continue;
+		seen.add(address);
+		const row = await ctx.db
+			.query('recipientKeys')
+			.withIndex('by_address', (q) => q.eq('address', address))
+			.first();
+		if (!row || row.expiresAt <= now) stale.push(address);
+	}
+	return stale;
+}
+
+/**
  * Whether the sender address has an ACTIVE signing key in the vault. The seal
  * decision needs a live signing key for the From address (its private half is
  * opened by the Node action, never here). Shared by the dispatch path
@@ -95,6 +117,7 @@ export const getOutboundSealInputs = internalQuery({
 		flagEnabled: v.boolean(),
 		policy: sealPolicyValidator,
 		hasSigningKey: v.boolean(),
+		discoveryAddresses: v.array(v.string()),
 		recipients: v.array(
 			v.object({
 				address: v.string(),
@@ -108,7 +131,7 @@ export const getOutboundSealInputs = internalQuery({
 			})
 		),
 	}),
-	handler: async (ctx, args): Promise<SealInputs> => {
+	handler: async (ctx, args): Promise<SealInputs & { discoveryAddresses: string[] }> => {
 		const flagEnabled = await isFeatureEnabled(ctx, 'sealedMail');
 		const settings = await ctx.db.query('instanceSettings').first();
 		const policy = settings?.sealPolicy ?? 'auto';
@@ -116,11 +139,18 @@ export const getOutboundSealInputs = internalQuery({
 		// decision is `flag_off` regardless, so the send path stays byte-identical
 		// to today for every deployment that has not enabled the flag.
 		if (!flagEnabled) {
-			return { flagEnabled: false, policy, hasSigningKey: false, recipients: [] };
+			return {
+				flagEnabled: false,
+				policy,
+				hasSigningKey: false,
+				discoveryAddresses: [],
+				recipients: [],
+			};
 		}
 
 		const hasSigningKey = await hasActiveSigningKey(ctx, args.fromAddress);
 		const recipients = await loadRecipientKeyStates(ctx, args.recipients);
-		return { flagEnabled, policy, hasSigningKey, recipients };
+		const discoveryAddresses = await loadDiscoveryAddresses(ctx, args.recipients);
+		return { flagEnabled, policy, hasSigningKey, discoveryAddresses, recipients };
 	},
 });

@@ -102,6 +102,7 @@ describe('mail/outboundSeal · getOutboundSealInputs + decideSeal', () => {
 		expect(inputs.flagEnabled).toBe(true);
 		expect(inputs.policy).toBe('auto');
 		expect(inputs.hasSigningKey).toBe(true);
+		expect(inputs.discoveryAddresses).toEqual([]);
 		expect(inputs.recipients).toHaveLength(1);
 		expect(inputs.recipients[0]?.outcome).toBe('trusted');
 		expect(inputs.recipients[0]?.pinnedPublicKeyArmored).toContain('PUBLIC KEY');
@@ -109,6 +110,26 @@ describe('mail/outboundSeal · getOutboundSealInputs + decideSeal', () => {
 		expect(JSON.stringify(inputs)).not.toContain('PRIVATE');
 
 		expect(decideSeal(inputs).seal).toBe(true);
+	});
+
+	it('marks absent and expired recipient rows for dispatch-time discovery', async () => {
+		const t = convexTest(schema, modules);
+		await seedSettings(t);
+		await t.action(internal.e2ee.keysNode.mintForAddress, { address: 'alice@a.test' });
+		await seedRecipient(t, 'expired@b.test', 'notFound');
+		await t.run(async (ctx) => {
+			const stale = await ctx.db
+				.query('recipientKeys')
+				.withIndex('by_address', (q) => q.eq('address', 'expired@b.test'))
+				.first();
+			if (stale) await ctx.db.patch(stale._id, { expiresAt: Date.now() - 1 });
+		});
+
+		const inputs = await t.query(internal.mail.outboundQueries.getOutboundSealInputs, {
+			fromAddress: 'alice@a.test',
+			recipients: ['new@b.test', 'expired@b.test'],
+		});
+		expect(inputs.discoveryAddresses).toEqual(['new@b.test', 'expired@b.test']);
 	});
 
 	it('one keyless recipient => plaintext with reason recorded (D2, no mixed send)', async () => {
