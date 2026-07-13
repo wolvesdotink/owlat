@@ -214,9 +214,8 @@ async function importRecoveryKitCore(
 	}
 
 	const fingerprint = privateKey.getFingerprint().toUpperCase();
-	// storeImportedAddressKey (NOT storeKeypair): retire-then-insert on a fingerprint
-	// mismatch so importing an OLDER kit while a DIFFERENT key is active never
-	// overwrites the active key's private material — both keys keep decrypting.
+	// storeImportedAddressKey (NOT storeKeypair): a different imported fingerprint
+	// is retained for decryption without replacing the currently published key.
 	await ctx.runMutation(internal.e2ee.keys.storeImportedAddressKey, {
 		address: normalized,
 		domain,

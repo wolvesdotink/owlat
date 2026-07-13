@@ -156,14 +156,13 @@ export const storeKeypair = internalMutation({
  * held for the address. Unlike {@link storeKeypair} (which patches whichever row
  * is active — fine for a re-mint, fatal for an import), this NEVER overwrites a
  * row that carries a DIFFERENT fingerprint:
- *   - a row already holding the imported fingerprint is refreshed in place and
- *     made active (idempotent same-key re-import);
- *   - otherwise the imported key is INSERTED as a new active row and every other
- *     active row is retired to decrypt-only (the retire-then-insert shape of a
- *     rotation).
+ *   - a row already holding the imported fingerprint is refreshed in place;
+ *   - otherwise the imported key is INSERTED as decrypt-only whenever a
+ *     different active key already exists;
+ *   - the import becomes active only when the address has no active key.
  * So importing an OLDER kit while a DIFFERENT key is active keeps BOTH private
- * keys — the current key's material is never clobbered and mail sealed to it
- * still opens. Internal — called only by the Node import action.
+ * keys without rolling public key discovery back to the older key. Internal —
+ * called only by the Node import action.
  */
 export const storeImportedAddressKey = internalMutation({
 	args: {
@@ -197,28 +196,25 @@ export const storeImportedAddressKey = internalMutation({
 		};
 
 		const sameKey = rows.find((r) => r.fingerprint.toUpperCase() === fingerprint);
+		const activeKey = rows.find((r) => r.isActive);
 		if (sameKey) {
-			// Re-importing a key we already hold: refresh + activate it, and retire any
-			// OTHER active row so exactly one key stays active.
-			for (const r of rows) {
-				if (r._id !== sameKey._id && r.isActive) {
-					await ctx.db.patch(r._id, { isActive: false, updatedAt: now });
-				}
-			}
-			await ctx.db.patch(sameKey._id, { ...material, isActive: true, updatedAt: now });
+			// Refresh the imported material, but do not reactivate a retired key while
+			// another key is current. A recovery import restores decryption capability;
+			// rotation is the only operation allowed to change the published key.
+			await ctx.db.patch(sameKey._id, {
+				...material,
+				isActive: sameKey.isActive || activeKey === undefined,
+				updatedAt: now,
+			});
 			return { id: sameKey._id, created: false as const };
 		}
 
-		// A key we don't hold: retire every current active row to decrypt-only (never
-		// overwrite its private material) and insert the import as the new active key.
-		for (const r of rows) {
-			if (r.isActive) await ctx.db.patch(r._id, { isActive: false, updatedAt: now });
-		}
+		// A key we don't hold becomes active only when there is no published key yet.
 		const id = await ctx.db.insert('keyVault', {
 			kind: 'address',
 			address,
 			...material,
-			isActive: true,
+			isActive: activeKey === undefined,
 			createdAt: now,
 			updatedAt: now,
 		});
