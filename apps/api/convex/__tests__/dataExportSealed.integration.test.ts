@@ -20,17 +20,20 @@ const CANARY = 'CANARY-body-plaintext-9f3a-do-not-leak';
 
 vi.stubEnv('INSTANCE_SECRET', SECRET);
 
-// `exportContactData` is an authedQuery gated on `organization:manage`; stub the
-// session lookup so it runs as an owner without a full BetterAuth session.
+// `exportContactData` is an authedQuery gated on `organization:manage`. Mocking
+// the session read alone would NOT intercept the intra-module callers that
+// actually gate the query: `authedQuery`'s auth floor calls `requireOrgMember`
+// and the handler calls `requireOrgPermission`, both of which reference the real
+// `getBetterAuthSessionWithRole` via their own lexical binding (a partial mock
+// does not rewrite intra-module calls). So admit the owner directly at those two
+// choke points — the same shape the established session-mocked tests use
+// (see externalAccounts.integration.test.ts).
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
 	return {
 		...actual,
-		getBetterAuthSessionWithRole: vi.fn().mockResolvedValue({
-			userId: 'test-user',
-			role: 'owner',
-			activeOrganizationId: 'test-org',
-		}),
+		requireOrgMember: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
+		requireOrgPermission: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
 	};
 });
 
