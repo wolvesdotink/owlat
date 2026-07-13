@@ -34,7 +34,7 @@ import { getOptional } from '../lib/env';
 import { armoredToBinaryBase64, wkdHashForAddress, splitAddress } from './wkd';
 import { sealPrivateKey } from './sealing';
 
-interface GeneratedKeypair {
+export interface GeneratedKeypair {
 	fingerprint: string;
 	publicKeyArmored: string;
 	privateKeyArmored: string;
@@ -43,15 +43,18 @@ interface GeneratedKeypair {
 
 /**
  * Algorithm label stored on the `keyVault` row (metadata only — no logic keys
- * off it). `eddsaLegacy` names the GnuPG-compatible signing primary.
+ * off it). `eddsaLegacy` names the GnuPG-compatible signing primary. Shared with
+ * the E6 lifecycle plane so a rotated key carries the same label.
  */
-const KEY_ALGORITHM = 'eddsaLegacy';
+export const KEY_ALGORITHM = 'eddsaLegacy';
 
 /**
  * Generate a GnuPG-compatible OpenPGP keypair (EdDSA-legacy signing primary +
- * ECDH encryption subkey, both Curve25519) bound to `email`.
+ * ECDH encryption subkey, both Curve25519) bound to `email`. Exported so the E6
+ * key-lifecycle plane (`e2ee/lifecycleNode.ts`) mints rotated keys on the exact
+ * same profile.
  */
-async function generateKeypair(email: string, name: string): Promise<GeneratedKeypair> {
+export async function generateKeypair(email: string, name: string): Promise<GeneratedKeypair> {
 	const { privateKey, publicKey } = await openpgp.generateKey({
 		// `type: 'ecc', curve: 'curve25519Legacy'` yields an EdDSA-legacy signing
 		// primary (algo 22) + an ECDH encryption subkey (algo 18), both on

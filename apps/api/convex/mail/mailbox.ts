@@ -375,6 +375,14 @@ export const remove = authedMutation({
 			await ctx.scheduler.runAfter(0, internal.mail.mailboxActions.removeFromCache, {
 				address: mailbox.address,
 			});
+			// Sealed Mail (E6): revoke the mailbox address's E2EE key on deletion — stop
+			// publishing it for sealing while retaining the row decrypt-only so historical
+			// sealed mail still opens. Flag-gated the same way the mint on create is.
+			if (await isFeatureEnabled(ctx, 'sealedMail')) {
+				await ctx.scheduler.runAfter(0, internal.e2ee.lifecycle.deactivateAddressKeys, {
+					address: mailbox.address,
+				});
+			}
 		}
 		return { success: true };
 	},

@@ -21,6 +21,7 @@ import { publicAction } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import { getOptional } from '../lib/env';
 import { openPrivateKey } from './sealing';
+import type { RotationStatement } from './pinning';
 
 /** Manifest schema version — bump when the signed-payload shape changes. */
 export const MANIFEST_VERSION = 1;
@@ -48,6 +49,14 @@ export type ManifestPayload = {
 /** The served manifest: the payload plus its armored detached signature. */
 export type SignedManifest = ManifestPayload & {
 	signature: string;
+	/**
+	 * The key-rotation feed (E6) — signed old->new statements a peer verifies
+	 * against a pin it already holds to upgrade silently. OUTSIDE the signed
+	 * payload (each entry is self-authenticating via its own detached signature),
+	 * so it never affects `keyDirectoryDigest` / signature verification. Absent
+	 * when this instance has never rotated a key.
+	 */
+	keyRotations?: RotationStatement[];
 };
 
 /**
@@ -174,7 +183,16 @@ export const getSignedManifest = publicAction({
 			generatedAt: Date.now(),
 		});
 		const signature = await signManifest(payload, privateKeyArmored);
-		const signed: SignedManifest = { ...payload, signature };
+		// The rotation feed rides OUTSIDE the signed payload — each entry carries its
+		// own detached signature by the old key, so it needs no manifest-wide sig. A
+		// rotation changes an active address fingerprint, which changes the
+		// keyDirectoryDigest above, so the cache invalidates and this refreshes.
+		const keyRotations = await ctx.runQuery(internal.e2ee.lifecycle.listRotationStatements, {});
+		const signed: SignedManifest = {
+			...payload,
+			signature,
+			...(keyRotations.length > 0 ? { keyRotations } : {}),
+		};
 
 		await ctx.runMutation(internal.e2ee.keys.cacheInstanceManifest, {
 			keyDirectoryDigest: digest,
