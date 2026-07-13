@@ -1,11 +1,22 @@
 <script setup lang="ts">
 import { extractClearsignedText, type SecureMessageClass } from '@owlat/shared/secureMessage';
 import { computeSecureMessageRecovery } from '~/composables/postbox/useSecureMessageRecovery';
+import { deriveSealedBadge, type InboundEncryptionInfo } from '~/utils/sealedMessage';
 
 /**
- * Honest PGP/S-MIME disclosure for the reader. Owlat doesn't verify signatures
- * or decrypt bodies yet, so this states the structure plainly ("Signed — not
- * verified" / "Encrypted") rather than implying a cryptographic guarantee.
+ * Honest PGP/S-MIME disclosure for the reader.
+ *
+ * Two drivers, in priority order:
+ *   1. `sealed` (Sealed Mail E5, flag `sealedMail`) — the honest inbound sealing
+ *      record from decrypt-on-ingest (`mailMessages.inboundEncryptionInfo`). When
+ *      present it wins: a decrypted-and-verified message reads "Sealed — sender
+ *      verified", a decrypted-but-unverified one "Sealed — sender not verified",
+ *      and an undecryptable one "Encrypted — can't decrypt". Every string is
+ *      derived by `deriveSealedBadge`, whose honesty audit is a unit test —
+ *      "verified" is unreachable without a valid signature against the pinned key.
+ *   2. `klass` (structural PGP/S-MIME detection) — the pre-Sealed-Mail fallback
+ *      for messages we never opened: states the structure plainly ("Signed — not
+ *      verified" / "Encrypted") rather than implying a cryptographic guarantee.
  *
  * For an encrypted body the reader hides the (unreadable) content, so this badge
  * also offers an escape hatch — copy the ciphertext / download the raw .eml — so
@@ -16,7 +27,16 @@ import { computeSecureMessageRecovery } from '~/composables/postbox/useSecureMes
 const props = defineProps<{
 	klass: SecureMessageClass;
 	message: { _id?: string; textBodyInline?: string };
+	/**
+	 * Sealed Mail (E5): the inbound sealing record. Present only on a message that
+	 * arrived sealed between Owlat instances; absent for ordinary (plaintext or
+	 * external-PGP) mail, where the `klass` driver takes over.
+	 */
+	sealed?: InboundEncryptionInfo;
 }>();
+
+// Sealed-Mail badge (priority driver). Null for a message with no sealing record.
+const sealedBadge = computed(() => deriveSealedBadge(props.sealed));
 
 const clearsignedText = computed(() =>
 	props.klass === 'pgp-clearsigned' && props.message.textBodyInline
@@ -54,6 +74,23 @@ const recovery = computed(() =>
 	computeSecureMessageRecovery(props.klass, props.message.textBodyInline)
 );
 const armoredCiphertext = computed(() => recovery.value.armoredCiphertext);
+
+// Sealed-Mail chip tone classes (FF tokens only), keyed by the derived tone so
+// chip and icon can never drift apart.
+const SEALED_TONE: Record<'ok' | 'warn', { chip: string; icon: string }> = {
+	ok: { chip: 'border-success/40 text-success', icon: 'text-success' },
+	warn: { chip: 'border-warning/40 text-warning', icon: 'text-warning' },
+};
+const sealedTone = computed(() =>
+	sealedBadge.value ? SEALED_TONE[sealedBadge.value.tone] : SEALED_TONE.warn
+);
+
+// Recovery controls appear for any undecryptable ciphertext — the Sealed-Mail
+// "can't decrypt" state OR the structural encrypted `klass` (when no sealing
+// record drives the badge). A decrypted sealed message needs no recovery.
+const showRecovery = computed(
+	() => sealedBadge.value?.state === 'cantDecrypt' || (!sealedBadge.value && meta.value?.encrypted)
+);
 
 const copied = ref(false);
 let copiedTimer: ReturnType<typeof setTimeout> | undefined;
@@ -114,8 +151,24 @@ function saveBlob(data: string | Uint8Array, filename: string) {
 </script>
 
 <template>
-	<div v-if="meta" class="mt-2">
+	<div v-if="sealedBadge || meta" class="mt-2">
+		<!-- Sealed-Mail chip (priority driver): the honest inbound sealing record. -->
+		<div v-if="sealedBadge" data-testid="sealed-badge">
+			<div
+				class="inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs border"
+				:class="sealedTone.chip"
+			>
+				<Icon :name="sealedBadge.icon" class="w-3.5 h-3.5" :class="sealedTone.icon" />
+				<span data-testid="sealed-badge-summary">{{ sealedBadge.summary }}</span>
+			</div>
+			<p class="mt-1.5 text-xs text-text-secondary max-w-prose" data-testid="sealed-badge-detail">
+				{{ sealedBadge.detail }}
+			</p>
+		</div>
+
+		<!-- Structural PGP/S-MIME chip (fallback): only when no sealing record drives it. -->
 		<div
+			v-else-if="meta"
 			class="inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs border border-border-subtle text-text-secondary"
 			:title="tooltip"
 		>
@@ -131,12 +184,13 @@ function saveBlob(data: string | Uint8Array, filename: string) {
 
 		<!-- Clearsigned: show the readable cleartext (signature is not verified). -->
 		<pre
-			v-if="clearsignedText"
+			v-if="clearsignedText && !sealedBadge"
 			class="mt-2 text-sm whitespace-pre-wrap font-sans text-text-primary"
-		>{{ clearsignedText }}</pre>
+			>{{ clearsignedText }}</pre
+		>
 
 		<!-- Encrypted: recovery controls so the user can decrypt externally. -->
-		<div v-if="meta.encrypted" class="mt-2 flex flex-wrap items-center gap-2">
+		<div v-if="showRecovery" class="mt-2 flex flex-wrap items-center gap-2">
 			<button
 				v-if="armoredCiphertext"
 				type="button"
