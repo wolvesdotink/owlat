@@ -378,7 +378,9 @@ export const getKeyForWkd = publicQuery({
 		// current published key rather than whichever the index yields first.
 		const rows = await ctx.db
 			.query('keyVault')
-			.withIndex('by_wkd', (q) => q.eq('domain', domain).eq('wkdHash', args.wkdHash))
+			.withIndex('by_domain_and_wkd_hash', (q) =>
+				q.eq('domain', domain).eq('wkdHash', args.wkdHash)
+			)
 			.take(MAX_KEY_ROWS_PER_ADDRESS + 1);
 		assertWithinLimit(rows, MAX_KEY_ROWS_PER_ADDRESS, 'WKD key history');
 		const row = rows.find((r) => r.isActive);
