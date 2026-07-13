@@ -130,6 +130,114 @@ async function seedMailMessageBlobs(
 	});
 }
 
+/**
+ * Seed an IMAP-COPY'd PAIR: two `mailMessages` rows that SHARE one raw `.eml`
+ * blob AND one text body blob AND one html body blob — exactly what
+ * `mail/imap.ts` copyMessages produces (the copy row spreads the original's
+ * `rawStorageId`/`textBodyStorageId`/`htmlBodyStorageId`). Returns the two row
+ * ids and the three shared plaintext blob ids so the test can assert both rows
+ * survive the reseal and the old plaintext blobs are gone.
+ */
+async function seedCopiedPair(t: ReturnType<typeof convexTest>): Promise<{
+	rowA: Id<'mailMessages'>;
+	rowB: Id<'mailMessages'>;
+	rawId: Id<'_storage'>;
+	textId: Id<'_storage'>;
+	htmlId: Id<'_storage'>;
+}> {
+	return t.run(async (ctx) => {
+		const now = Date.now();
+		const mailboxId = await ctx.db.insert('mailboxes', {
+			userId: 'test-user',
+			organizationId: 'test-org',
+			address: 'me@example.com',
+			domain: 'example.com',
+			status: 'active',
+			usedBytes: 0,
+			uidValidity: now,
+			createdAt: now,
+			updatedAt: now,
+		});
+		const folderId = await ctx.db.insert('mailFolders', {
+			mailboxId,
+			name: 'INBOX',
+			role: 'inbox',
+			uidValidity: now,
+			uidNext: 1,
+			highestModseq: 1,
+			totalCount: 0,
+			unseenCount: 0,
+			subscribed: true,
+			createdAt: now,
+			updatedAt: now,
+		});
+		const rawEml = `${CANARY} shared raw .eml\r\nSubject: ...\r\n`;
+		const rawId = await ctx.storage.store(new Blob([rawEml], { type: 'message/rfc822' }));
+		const textId = await ctx.storage.store(
+			new Blob([`${CANARY} shared body text`], { type: 'text/plain; charset=utf-8' })
+		);
+		const htmlId = await ctx.storage.store(
+			new Blob([`<p>${CANARY} shared body html</p>`], { type: 'text/html; charset=utf-8' })
+		);
+		// Two rows, ONE set of blobs shared between them (as copyMessages produces).
+		const insertRow = async (uid: number): Promise<Id<'mailMessages'>> => {
+			const threadId = await ctx.db.insert('mailThreads', {
+				mailboxId,
+				normalizedSubject: 's',
+				participants: ['a@example.com'],
+				messageCount: 1,
+				unreadCount: 0,
+				hasFlagged: false,
+				hasAttachments: false,
+				lastMessageAt: now,
+				firstMessageAt: now,
+				latestSnippet: 's',
+				latestFromAddress: 'a@example.com',
+				latestSubject: 's',
+				folderRoles: ['inbox'],
+				labelIds: [],
+				createdAt: now,
+				updatedAt: now,
+			});
+			return ctx.db.insert('mailMessages', {
+				mailboxId,
+				folderId,
+				uid,
+				modseq: 1,
+				rfc822MessageId: `<copy-${uid}@example.com>`,
+				threadId,
+				fromAddress: 'a@example.com',
+				toAddresses: ['me@example.com'],
+				ccAddresses: [],
+				bccAddresses: [],
+				subject: 's',
+				normalizedSubject: 's',
+				snippet: 'plaintext snippet stays plaintext (search exception)',
+				rawStorageId: rawId,
+				rawSize: rawEml.length,
+				textBodyStorageId: textId,
+				htmlBodyStorageId: htmlId,
+				attachments: [],
+				hasAttachments: false,
+				flagSeen: true,
+				flagFlagged: false,
+				flagAnswered: false,
+				flagDraft: false,
+				flagDeleted: false,
+				customFlags: [],
+				labelIds: [],
+				receivedAt: now,
+				internalDate: now,
+				createdAt: now,
+				updatedAt: now,
+			});
+		};
+		const rowA = await insertRow(1);
+		const rowB = await insertRow(2);
+		return { rowA, rowB, rawId, textId, htmlId };
+	});
+}
+
 /** Read every mailMessages raw blob through the mixed-tolerance accessor and
  * assert each still decodes to the canary; return how many are already sealed. */
 async function assertAllBlobsReadable(t: ReturnType<typeof convexTest>): Promise<number> {
@@ -288,6 +396,60 @@ describe('E8b migration — interrupt/resume (b)', () => {
 		expect(await assertAllBlobsReadable(t)).toBe(60);
 
 		// Idempotency mid-walk: re-running the FIRST page (already sealed) seals nothing.
+		const rerun = await t.action(migration.sealMailMessagesBlobsPage, { cursor: null });
+		expect(rerun.sealed).toBe(0);
+	});
+
+	it('keeps BOTH rows of an IMAP-COPY pair readable when they share a blob', async () => {
+		vi.stubEnv('CONVEX_SITE_URL', SITE);
+		const t = convexTest(schema, allModules);
+		// A COPY'd message: two rows, ONE raw `.eml` blob + ONE text + ONE html blob
+		// shared between them. Resealing the first row must NOT delete a blob still
+		// referenced by its sibling — it must repoint EVERY referencing row first.
+		const { rowA, rowB, rawId, textId, htmlId } = await seedCopiedPair(t);
+
+		// Drain the blob walker to completion.
+		let cursor: string | null = null;
+		for (;;) {
+			const page = await t.action(migration.sealMailMessagesBlobsPage, { cursor });
+			if (page.isDone) break;
+			cursor = page.cursor;
+		}
+
+		// The three shared plaintext blobs are gone.
+		await t.run(async (ctx) => {
+			expect(await ctx.storage.get(rawId)).toBeNull();
+			expect(await ctx.storage.get(textId)).toBeNull();
+			expect(await ctx.storage.get(htmlId)).toBeNull();
+		});
+
+		// BOTH rows still read every body back as the canary — neither was left
+		// pointing at a deleted blob (the round-3 data-loss defect).
+		await t.run(async (ctx) => {
+			for (const id of [rowA, rowB]) {
+				const m = await ctx.db.get(id);
+				expect(m).not.toBeNull();
+				for (const blobId of [m!.rawStorageId, m!.textBodyStorageId, m!.htmlBodyStorageId]) {
+					expect(blobId).toBeDefined();
+					const bytes = await readSealedBlobBytes(ctx.storage, blobId!);
+					expect(new TextDecoder().decode(bytes!)).toContain(CANARY);
+				}
+			}
+		});
+
+		// The reseal ran ONCE for the shared blobs — both rows point at the same
+		// sealed ids (the sibling was repointed, not resealed a second time).
+		await t.run(async (ctx) => {
+			const a = await ctx.db.get(rowA);
+			const b = await ctx.db.get(rowB);
+			expect(a!.rawStorageId).toBe(b!.rawStorageId);
+			expect(a!.textBodyStorageId).toBe(b!.textBodyStorageId);
+			expect(a!.htmlBodyStorageId).toBe(b!.htmlBodyStorageId);
+			// And they are genuinely sealed, not the plaintext originals.
+			expect(a!.rawStorageId).not.toBe(rawId);
+		});
+
+		// Idempotent: a re-run over the fully-sealed pair seals nothing.
 		const rerun = await t.action(migration.sealMailMessagesBlobsPage, { cursor: null });
 		expect(rerun.sealed).toBe(0);
 	});
