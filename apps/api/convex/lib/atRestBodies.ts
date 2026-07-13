@@ -23,11 +23,26 @@
  * from the V8 body readers).
  *
  * ENVELOPE: an opaque, self-describing string
- *   `atrest:1:<base64url(iv)>:<base64url(ciphertext‖gcmTag)>`
+ *   `atrest:1:<base64(iv)>:<base64(ciphertext‖gcmTag)>`
  * The `atrest:` prefix + version let a reader tell a sealed value from a
  * legacy-plaintext one WITHOUT a key, which is what makes the migration
  * resumable: a half-migrated table is a mix of sealed and plaintext rows and
  * every reader tolerates both (`openAtRest` returns an unsealed value verbatim).
+ *
+ * PREFIX-COLLISION SAFETY (both directions): message bodies are fully
+ * attacker-controlled, so a body can literally start with `atrest:`. Sealed
+ * detection is therefore STRICT, not a bare prefix test: a value counts as
+ * sealed only when it is a structurally valid envelope — exactly four
+ * colon-delimited parts, a known numeric version, base64 that decodes, a
+ * 12-byte IV and a ciphertext of at least the 16-byte GCM tag. A legacy
+ * plaintext body that merely starts with `atrest:` fails this test and is read
+ * verbatim (never decrypted, never a crash). In the other direction — a fresh
+ * plaintext that happens to be shaped exactly like a sealed envelope — the seal
+ * path's idempotency check is KEYED: it only treats a value as
+ * already-sealed when the value actually decrypts under this instance's key, so
+ * an envelope-shaped plaintext is never skipped-as-sealed; it is encrypted like
+ * any other body. Net: no colliding plaintext can be misclassified in either
+ * direction for data this instance has sealed.
  *
  * DOCUMENTED EXCEPTIONS (bodies that stay plaintext-derived on purpose):
  *   - Full-text SEARCH indexes (`mailMessages.snippet`, the `searchableText`
@@ -36,7 +51,8 @@
  *   - VECTOR embeddings — derived from plaintext at ingest and stored as floats.
  *   - Export — `contacts/dataExport.ts` DECRYPTS on export so the owner's own
  *     GDPR data package is readable.
- * These exceptions are restated at each index definition and in the docs.
+ * These exceptions are restated at each index definition and in the docs
+ * (`apps/docs/content/…/sealed-mail-at-rest.md`).
  */
 
 const ENVELOPE_PREFIX = 'atrest';
@@ -47,18 +63,10 @@ const HKDF_INFO = 'owlat:at-rest:bodies:v1';
 /** HKDF salt — pinned alongside the info label; changing either is a key change. */
 const HKDF_SALT = 'owlat:at-rest:bodies:salt:v1';
 const IV_BYTES = 12; // AES-GCM 96-bit nonce
+const GCM_TAG_BYTES = 16; // AES-GCM 128-bit auth tag — the minimum ciphertext length
 
-/**
- * Minimal secret source. Injected so the pure crypto core never reads env
- * directly — Convex functions pass `getRequired('INSTANCE_SECRET')`, tests pass
- * a fixture secret. Keeps this module free of `lib/env.ts` (and therefore usable
- * from a plain unit test without a Convex context).
- */
-export type AtRestSecret = string;
-
-function textEncoder(): TextEncoder {
-	return new TextEncoder();
-}
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
 
 /** Standard padded base64. The envelope is colon-delimited and stored internally
  * (never placed in a URL), so `+`/`/`/`=` are safe and padding keeps `atob`
@@ -69,25 +77,33 @@ function toBase64(bytes: Uint8Array): string {
 	return btoa(binary);
 }
 
-function fromBase64(value: string): Uint8Array {
-	const binary = atob(value);
+/** Decode padded base64. Returns `null` on any malformed input so callers can
+ * reject a non-envelope string without a `try/catch` at each site. */
+function tryFromBase64(value: string): Uint8Array<ArrayBuffer> | null {
+	let binary: string;
+	try {
+		binary = atob(value);
+	} catch {
+		return null;
+	}
+	// Reject non-canonical base64 (whitespace, wrong padding) by round-tripping.
 	const out = new Uint8Array(binary.length);
 	for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
+	if (toBase64(out) !== value) return null;
 	return out;
 }
 
 /** Derive the 256-bit AES-GCM key from the instance secret via HKDF-SHA256. */
-async function deriveAesKey(secret: AtRestSecret): Promise<CryptoKey> {
-	const enc = textEncoder();
-	const ikm = await crypto.subtle.importKey('raw', enc.encode(secret), 'HKDF', false, [
+async function deriveAesKey(secret: string): Promise<CryptoKey> {
+	const ikm = await crypto.subtle.importKey('raw', encoder.encode(secret), 'HKDF', false, [
 		'deriveKey',
 	]);
 	return crypto.subtle.deriveKey(
 		{
 			name: 'HKDF',
 			hash: 'SHA-256',
-			salt: enc.encode(HKDF_SALT),
-			info: enc.encode(HKDF_INFO),
+			salt: encoder.encode(HKDF_SALT),
+			info: encoder.encode(HKDF_INFO),
 		},
 		ikm,
 		{ name: 'AES-GCM', length: 256 },
@@ -96,31 +112,73 @@ async function deriveAesKey(secret: AtRestSecret): Promise<CryptoKey> {
 	);
 }
 
+/** A structurally valid sealed envelope, parsed. */
+interface ParsedEnvelope {
+	iv: Uint8Array<ArrayBuffer>;
+	ciphertext: Uint8Array<ArrayBuffer>;
+}
+
 /**
- * Is `stored` an at-rest-sealed value? A cheap, KEYLESS prefix check — this is
- * how a reader (and the migration) tells a sealed column from a legacy-plaintext
- * one. A `false` here means "treat as plaintext", never "fail".
+ * Parse `stored` into a sealed envelope, or `null` if it is NOT one. STRICT —
+ * this is what lets an attacker-controlled plaintext beginning with `atrest:`
+ * be told apart from a real envelope WITHOUT a key: it must be exactly
+ * `atrest:<version>:<base64 iv>:<base64 ct>`, the version must parse to the
+ * known version, both segments must be canonical base64, the IV must be
+ * `IV_BYTES` long, and the ciphertext must be at least the GCM tag length.
+ * Anything else is plaintext.
+ */
+function parseEnvelope(stored: string): ParsedEnvelope | null {
+	if (!stored.startsWith(`${ENVELOPE_PREFIX}:`)) return null;
+	const parts = stored.split(':');
+	if (parts.length !== 4) return null;
+	if (Number(parts[1]) !== ENVELOPE_VERSION) return null;
+	const iv = tryFromBase64(parts[2] ?? '');
+	if (iv === null || iv.length !== IV_BYTES) return null;
+	const ciphertext = tryFromBase64(parts[3] ?? '');
+	if (ciphertext === null || ciphertext.length < GCM_TAG_BYTES) return null;
+	return { iv, ciphertext };
+}
+
+/**
+ * Is `stored` an at-rest-sealed value? A cheap, KEYLESS but STRUCTURALLY STRICT
+ * check — this is how a reader (and the migration) tells a sealed column from a
+ * legacy-plaintext one. A `false` here means "treat as plaintext", never
+ * "fail": a plaintext body that merely starts with `atrest:` returns `false`.
  */
 export function isSealedAtRest(stored: string): boolean {
-	return stored.startsWith(`${ENVELOPE_PREFIX}:`);
+	return parseEnvelope(stored) !== null;
 }
 
 /**
  * Seal a plaintext body into the versioned envelope string. The empty string is
  * returned verbatim (there is nothing to hide, and an empty inline field is a
- * common "no body" sentinel that readers compare against `''`). An
- * already-sealed value is returned unchanged so the migration is idempotent —
- * re-running it never double-seals.
+ * common "no body" sentinel that readers compare against `''`).
+ *
+ * IDEMPOTENCY IS KEYED: a re-run of the migration must not double-seal, so an
+ * already-sealed value is returned unchanged — but "already sealed" is decided
+ * by actually DECRYPTING it under this instance's key, not by its shape. That
+ * closes the collision: an envelope-shaped *plaintext* fails the decrypt and is
+ * encrypted like any other body (never skipped as if it were ciphertext), while
+ * a genuine prior seal round-trips and is left untouched.
  */
-export async function sealAtRest(secret: AtRestSecret, plaintext: string): Promise<string> {
+export async function sealAtRest(secret: string, plaintext: string): Promise<string> {
 	if (plaintext === '') return '';
-	if (isSealedAtRest(plaintext)) return plaintext;
 	const key = await deriveAesKey(secret);
+	const existing = parseEnvelope(plaintext);
+	if (existing !== null) {
+		try {
+			await crypto.subtle.decrypt({ name: 'AES-GCM', iv: existing.iv }, key, existing.ciphertext);
+			return plaintext; // genuinely our ciphertext — idempotent no-op
+		} catch {
+			// Envelope-shaped but not ours (attacker-crafted plaintext): fall through
+			// and seal it for real, so it is protected and never misread as sealed.
+		}
+	}
 	const iv = crypto.getRandomValues(new Uint8Array(IV_BYTES));
 	const ciphertext = await crypto.subtle.encrypt(
-		{ name: 'AES-GCM', iv: iv as unknown as ArrayBuffer },
+		{ name: 'AES-GCM', iv },
 		key,
-		textEncoder().encode(plaintext)
+		encoder.encode(plaintext)
 	);
 	return `${ENVELOPE_PREFIX}:${ENVELOPE_VERSION}:${toBase64(iv)}:${toBase64(
 		new Uint8Array(ciphertext)
@@ -128,47 +186,20 @@ export async function sealAtRest(secret: AtRestSecret, plaintext: string): Promi
 }
 
 /**
- * Open a stored body. A value that is NOT a sealed envelope is returned verbatim
- * — that is the mixed-tolerance contract that lets a half-migrated table stay
- * fully readable. A sealed envelope is decrypted; a malformed or unknown-version
- * envelope, or an auth-tag mismatch (tamper / wrong key), throws.
+ * Open a stored body. A value that is NOT a structurally valid sealed envelope
+ * is returned verbatim — that is the mixed-tolerance contract that lets a
+ * half-migrated table stay fully readable, and it means an attacker-controlled
+ * plaintext starting with `atrest:` is read as plaintext, never decrypted. A
+ * sealed envelope is decrypted; an auth-tag mismatch (tamper / wrong key) throws.
  */
-export async function openAtRest(secret: AtRestSecret, stored: string): Promise<string> {
-	if (stored === '' || !isSealedAtRest(stored)) return stored;
-	const parts = stored.split(':');
-	// prefix : version : iv : ciphertext
-	if (parts.length !== 4) {
-		throw new Error('atRestBodies: malformed sealed envelope');
-	}
-	const version = Number(parts[1]);
-	if (version !== ENVELOPE_VERSION) {
-		throw new Error(`atRestBodies: unsupported envelope version ${parts[1]}`);
-	}
-	const iv = fromBase64(parts[2] ?? '');
-	const ciphertext = fromBase64(parts[3] ?? '');
+export async function openAtRest(secret: string, stored: string): Promise<string> {
+	const envelope = parseEnvelope(stored);
+	if (envelope === null) return stored;
 	const key = await deriveAesKey(secret);
 	const plaintext = await crypto.subtle.decrypt(
-		{ name: 'AES-GCM', iv: iv as unknown as ArrayBuffer },
+		{ name: 'AES-GCM', iv: envelope.iv },
 		key,
-		ciphertext as unknown as ArrayBuffer
+		envelope.ciphertext
 	);
-	return new TextDecoder().decode(plaintext);
-}
-
-/** Open an optional stored body — `undefined`/`null` pass through untouched. */
-export async function openAtRestOptional(
-	secret: AtRestSecret,
-	stored: string | undefined | null
-): Promise<string | undefined> {
-	if (stored === undefined || stored === null) return undefined;
-	return openAtRest(secret, stored);
-}
-
-/** Seal an optional body — `undefined`/`null` pass through as `undefined`. */
-export async function sealAtRestOptional(
-	secret: AtRestSecret,
-	plaintext: string | undefined | null
-): Promise<string | undefined> {
-	if (plaintext === undefined || plaintext === null) return undefined;
-	return sealAtRest(secret, plaintext);
+	return decoder.decode(plaintext);
 }

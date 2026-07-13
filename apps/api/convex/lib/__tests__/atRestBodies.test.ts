@@ -7,13 +7,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import {
-	sealAtRest,
-	openAtRest,
-	isSealedAtRest,
-	openAtRestOptional,
-	sealAtRestOptional,
-} from '../atRestBodies';
+import { sealAtRest, openAtRest, isSealedAtRest } from '../atRestBodies';
 
 const SECRET = 'unit-test-instance-secret-value';
 const CANARY = 'CANARY-body-plaintext-9f3a-do-not-leak';
@@ -75,20 +69,37 @@ describe('atRestBodies cipher', () => {
 		await expect(openAtRest(SECRET, tampered)).rejects.toThrow();
 	});
 
-	it('rejects an unknown envelope version', async () => {
+	it('treats an unknown envelope version as plaintext (forward-safe passthrough)', async () => {
+		// A future-version envelope is not one THIS reader can open, so strict
+		// detection classifies it as plaintext and returns it verbatim rather than
+		// crashing — the v2 reader that ships alongside v2 data is what opens it.
 		const sealed = await sealAtRest(SECRET, CANARY);
 		const parts = sealed.split(':');
 		const bumped = `${parts[0]}:99:${parts[2]}:${parts[3]}`;
-		await expect(openAtRest(SECRET, bumped)).rejects.toThrow(/version/);
+		expect(isSealedAtRest(bumped)).toBe(false);
+		expect(await openAtRest(SECRET, bumped)).toBe(bumped);
 	});
 
-	it('optional helpers pass undefined/null through', async () => {
-		expect(await sealAtRestOptional(SECRET, undefined)).toBeUndefined();
-		expect(await sealAtRestOptional(SECRET, null)).toBeUndefined();
-		expect(await openAtRestOptional(SECRET, undefined)).toBeUndefined();
-		expect(await openAtRestOptional(SECRET, null)).toBeUndefined();
-		const sealed = await sealAtRestOptional(SECRET, CANARY);
-		expect(sealed).toBeDefined();
-		expect(await openAtRestOptional(SECRET, sealed)).toBe(CANARY);
+	// ── Prefix-collision safety (attacker-controlled bodies) ───────────────────
+
+	it('reads an attacker plaintext that merely starts with "atrest:" verbatim', async () => {
+		// Not a structurally valid envelope (wrong part count / non-base64), so it
+		// is plaintext: never decrypted, never a crash.
+		for (const body of ['atrest:', 'atrest:hello world', 'atrest:1:not-base64:nope']) {
+			expect(isSealedAtRest(body)).toBe(false);
+			expect(await openAtRest(SECRET, body)).toBe(body);
+		}
+	});
+
+	it('seals an envelope-shaped plaintext for real (never skipped as already-sealed)', async () => {
+		// Craft a value that is structurally a valid envelope but was NOT produced
+		// by this instance (random IV + ciphertext bytes). The keyed idempotency
+		// check must decline to treat it as sealed and encrypt it.
+		const fakeIv = 'A'.repeat(16); // base64 of 12 zero-ish bytes, valid length
+		const fakeCt = 'A'.repeat(24); // ≥ 16 bytes decoded
+		const shaped = `atrest:1:${fakeIv}:${fakeCt}`;
+		const sealed = await sealAtRest(SECRET, shaped);
+		expect(sealed).not.toBe(shaped);
+		expect(await openAtRest(SECRET, sealed)).toBe(shaped);
 	});
 });
