@@ -22,6 +22,39 @@ never needs `gpg`, a live MTA, or Redis — the bytes are committed directly.
   `sealMime` output offline is tracked as manual QA, not a CI gate; the
   `openpgp.js` round-trip above is the automated regression.
 
+## Inbound unsealing / decrypt-on-ingest (E4)
+
+A committed, byte-stable **sealed message** plus the keys needed to open it, so
+the inbound path (`e2ee/open.ts:openSealed`) can be regression-tested against a
+ciphertext it did not itself produce. Consumed by
+`apps/api/convex/e2ee/__tests__/open.test.ts` (the INTEROP case).
+
+- `pgp/inbound-sealed-goodsig.eml` — a PGP/MIME `multipart/encrypted` message
+  whose outer `Subject` is the `...` placeholder (protected headers, D4); the
+  inner ciphertext holds the real subject `Q3 sealed interop numbers` and a
+  `multipart/alternative` body carrying the `CANARY_INBOUND_INTEROP_…` marker in
+  both `text/plain` and `text/html`. Encrypted to `inbound-recipient` and signed
+  by `inbound-sender`.
+- `pgp/inbound-recipient.secret.asc` / `pgp/inbound-recipient.public.asc` — the
+  test recipient keypair; the secret half opens the fixture.
+- `pgp/inbound-sender.public.asc` — the test sender's public key; verifying the
+  fixture's signature against it yields `signatureValid: true`.
+
+These bytes were generated **offline** with `openpgp.js` (RFC 9580 profile), so
+CI never needs `gpg`; the decrypt here is a byte-equal round-trip regression.
+The recipient private key is unencrypted **on purpose** — it is a throwaway
+test key that guards nothing.
+
+**Cross-implementation interop is CI-covered too**: a genuinely
+**GnuPG-generated** fixture group lives at `apps/api/fixtures/sealed-mail/gnupg/`
+(see its README) — keys, encryption, and signature all produced offline by
+`gpg` 2.5.21 and opened by the same `open.test.ts` suite. That group mints its
+own gpg-native recipient keypair because GnuPG cannot encrypt to
+`inbound-recipient.public.asc` (a v4 key with RFC 9580 new-style algorithm IDs
+Ed25519 = 27 / X25519 = 25, which gpg rejects on v4 keys). The
+**Thunderbird**-generated interop case is GUI-only and lives in the E7 manual QA
+checklist (`scripts/sealed-mail-qa.md`) by plan-owner decision 2026-07-13.
+
 ## TLS-RPT (RFC 8460)
 
 - `tls-report-sample.json` — a human-readable real-world-shaped aggregate report

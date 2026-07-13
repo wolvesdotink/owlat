@@ -1,0 +1,20 @@
+Message-ID: <gnupg-interop-0001@interop.example.org>
+Date: Mon, 13 Jul 2026 10:00:00 +0000
+From: gnupg-sender@interop.example.org
+To: gnupg-recipient@interop.example.net
+Subject: GnuPG sealed interop figures
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="=_gnupg_inner_alt"
+
+--=_gnupg_inner_alt
+Content-Type: text/plain; charset=utf-8
+
+The CANARY_GNUPG_INTEROP_9f41aa figures, plain-text branch.
+
+--=_gnupg_inner_alt
+Content-Type: text/html; charset=utf-8
+
+<p>HTML CANARY_GNUPG_INTEROP_9f41aa figures.</p>
+
+--=_gnupg_inner_alt--
+
