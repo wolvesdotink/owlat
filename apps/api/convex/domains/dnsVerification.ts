@@ -24,6 +24,7 @@ import { logError } from '../lib/runtimeLog';
 import { isSendingDomainProviderKind, providerFor } from './providers';
 import type { ProviderCheckResult } from './providers';
 import { detectMultipleSpf, isSpfRecord, mergeSpfRecords } from './spf';
+import { parseTlsaRecord, tlsaRecordsEqual, type TlsaRecord } from '@owlat/shared';
 import { throwNotFound, throwInvalidState, throwInternal } from '../_utils/errors';
 import { txtRecordMatches } from './dnsMatch';
 import { checkReverseDns } from './reverseDns';
@@ -235,72 +236,67 @@ async function resolveTlsa(hostname: string): Promise<ResolvedTlsaRecord[]> {
 }
 
 /**
- * Parse a stored TLSA record value (`<usage> <selector> <matchingType> <hex>`)
- * into its four parts. Falls back to the explicit `usage`/`selector`/
- * `matchingType` fields when they are set. Returns `null` when the value is not
- * a well-formed TLSA payload.
+ * Parse the operator's stored expected TLSA record into the shared
+ * {@link TlsaRecord} shape. Prefers the presentation form
+ * (`<usage> <selector> <matchingType> <hex>`) parsed by the shared
+ * `parseTlsaRecord`, and falls back to the explicit `usage`/`selector`/
+ * `matchingType` fields when they are set. Returns `null` when neither yields a
+ * well-formed payload.
  */
-function parseTlsaValue(record: DnsRecord): {
-	usage: number;
-	selector: number;
-	matchingType: number;
-	data: string;
-} | null {
-	const parts = record.value.trim().split(/\s+/);
-	if (parts.length >= 4) {
-		const usage = Number(parts[0]);
-		const selector = Number(parts[1]);
-		const matchingType = Number(parts[2]);
-		const data = parts.slice(3).join('').toLowerCase();
-		if (Number.isInteger(usage) && Number.isInteger(selector) && Number.isInteger(matchingType)) {
-			return { usage, selector, matchingType, data };
-		}
-	}
+function parseExpectedTlsa(record: DnsRecord): TlsaRecord | null {
+	const fromPresentation = parseTlsaRecord(record.value);
+	if (fromPresentation) return fromPresentation;
+
 	if (
 		record.usage !== undefined &&
 		record.selector !== undefined &&
 		record.matchingType !== undefined
 	) {
-		return {
-			usage: record.usage,
-			selector: record.selector,
-			matchingType: record.matchingType,
-			data: record.value.trim().replace(/\s+/g, '').toLowerCase(),
-		};
+		const data = record.value.trim().replace(/\s+/g, '').toLowerCase();
+		if (data.length > 0) {
+			return {
+				usage: record.usage,
+				selector: record.selector,
+				matchingType: record.matchingType,
+				data,
+			};
+		}
 	}
 	return null;
 }
 
+/** Convert a DNS-resolved TLSA answer into the shared {@link TlsaRecord} shape. */
+function toTlsaRecord(resolved: ResolvedTlsaRecord): TlsaRecord {
+	return {
+		usage: resolved.certUsage,
+		selector: resolved.selector,
+		matchingType: resolved.match,
+		data: resolved.data.toString('hex').toLowerCase(),
+	};
+}
+
+/** Presentation form of a parsed TLSA record, for the human-facing foundValue. */
+function formatTlsa(record: TlsaRecord): string {
+	return `${record.usage} ${record.selector} ${record.matchingType} ${record.data}`;
+}
+
 async function verifyTlsaRecord(hostname: string, record: DnsRecord): Promise<VerificationResult> {
 	const now = Date.now();
-	const expected = parseTlsaValue(record);
+	const expected = parseExpectedTlsa(record);
 	if (!expected) {
 		return { verified: false, lastChecked: now, error: 'Invalid TLSA record configuration' };
 	}
 	try {
-		const records = await resolveTlsa(hostname);
-		const matching = records.find(
-			(tlsa) =>
-				tlsa.certUsage === expected.usage &&
-				tlsa.selector === expected.selector &&
-				tlsa.match === expected.matchingType &&
-				tlsa.data.toString('hex').toLowerCase() === expected.data
-		);
+		const resolved = (await resolveTlsa(hostname)).map(toTlsaRecord);
+		const matching = resolved.find((tlsa) => tlsaRecordsEqual(tlsa, expected));
 		if (matching) {
-			return {
-				verified: true,
-				lastChecked: now,
-				foundValue: `${matching.certUsage} ${matching.selector} ${matching.match} ${matching.data.toString('hex')}`,
-			};
+			return { verified: true, lastChecked: now, foundValue: formatTlsa(matching) };
 		}
 		return {
 			verified: false,
 			lastChecked: now,
 			error: 'No matching TLSA record found',
-			foundValue:
-				records.length > 0 && records[0]
-					? `${records[0].certUsage} ${records[0].selector} ${records[0].match} ${records[0].data.toString('hex')}`
-					: undefined,
+			foundValue: resolved[0] ? formatTlsa(resolved[0]) : undefined,
 		};
 	} catch (error) {
 		return classifyDnsError(error, now, 'No TLSA record found at this hostname');
