@@ -76,9 +76,16 @@ async function decryptInner(
 		format: 'binary',
 	});
 	const inner = new TextDecoder().decode(data as Uint8Array);
+	// Fail CLOSED: an UNSIGNED sealMime output yields an empty `signatures` array,
+	// and `await undefined` would otherwise resolve and report a bogus valid
+	// signature. Assert a signature is actually present before verifying it.
+	const [sig] = signatures;
+	if (!sig) {
+		throw new Error('sealed message carried no signatures — signing is fail-open');
+	}
 	let signatureValid = false;
 	try {
-		await signatures[0]?.verified;
+		await sig.verified;
 		signatureValid = true;
 	} catch {
 		signatureValid = false;
@@ -166,6 +173,71 @@ describe('e2ee/seal · sealMime', () => {
 		expect(inner).toContain('filename="report.bin"');
 		expect(inner).toContain('aGVsbG8gc2VhbGVkIHdvcmxk');
 		expect(sealed.mime).not.toContain('aGVsbG8gc2VhbGVkIHdvcmxk');
+	});
+
+	it('protectSubject:false omits the inner marker but still seals + hides the subject', async () => {
+		const recipient = await generateTestKeypair('bob@b.instance.test');
+		const sender = await generateTestKeypair('alice@a.instance.test');
+
+		const sealed = await sealMime(sampleMessage(), {
+			recipientPublicKeysArmored: [recipient.publicKeyArmored],
+			signingKeyArmored: sender.privateKeyArmored,
+			protectSubject: false,
+		});
+		// The outer subject is the placeholder and the real subject/body never leak
+		// EITHER WAY — `false` only drops the compliant-reader hint.
+		expect(sealed.mime).toMatch(/^Subject: \.\.\.\r?$/m);
+		expect(sealed.mime).not.toContain(REAL_SUBJECT);
+		expect(sealed.mime).not.toContain(CANARY);
+
+		const { inner, signatureValid } = await decryptInner(
+			sealed.armoredCiphertext,
+			recipient.privateKeyArmored,
+			sender.publicKeyArmored
+		);
+		expect(signatureValid).toBe(true);
+		expect(inner).toContain(`Subject: ${REAL_SUBJECT}`);
+		expect(inner).toContain(CANARY);
+		// The one difference from the protected path: no marker was injected.
+		expect(inner).not.toContain('protected-headers="v1"');
+	});
+
+	it('appends the protected-headers marker cleanly to a FOLDED Content-Type', async () => {
+		const recipient = await generateTestKeypair('bob@b.instance.test');
+		const sender = await generateTestKeypair('alice@a.instance.test');
+		// Content-Type parameters continue on a folded line — the marker must land at
+		// the end of the FULL logical header, never run together as `mixed;; protected`.
+		const foldedContentType = [
+			'Message-ID: <folded-0001@a.instance.test>',
+			'From: alice@a.instance.test',
+			'To: bob@b.instance.test',
+			`Subject: ${REAL_SUBJECT}`,
+			'MIME-Version: 1.0',
+			'Content-Type: multipart/mixed;',
+			' boundary="fold_boundary"',
+			'',
+			'--fold_boundary',
+			'Content-Type: text/plain; charset=utf-8',
+			'',
+			`the ${CANARY} body`,
+			'--fold_boundary--',
+			'',
+		].join('\r\n');
+
+		const sealed = await sealMime(foldedContentType, {
+			recipientPublicKeysArmored: [recipient.publicKeyArmored],
+			signingKeyArmored: sender.privateKeyArmored,
+		});
+		const { inner, signatureValid } = await decryptInner(
+			sealed.armoredCiphertext,
+			recipient.privateKeyArmored,
+			sender.publicKeyArmored
+		);
+		expect(signatureValid).toBe(true);
+		// Well-formed: the marker sits after the (folded) boundary parameter…
+		expect(inner).toContain('boundary="fold_boundary"; protected-headers="v1"');
+		// …and never as a run-together `;;` blob on the first physical line.
+		expect(inner).not.toContain('multipart/mixed;; protected-headers');
 	});
 
 	it('seals to ALL recipients — either private key opens it (D2)', async () => {
