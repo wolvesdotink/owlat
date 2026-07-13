@@ -13,11 +13,12 @@
  */
 
 import { convexTest, type TestConvex } from 'convex-test';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import schema from '../../schema';
 import type { Id } from '../../_generated/dataModel';
 import { api } from '../../_generated/api';
 import { modules, seedMailbox } from './helpers.testlib';
+import { createTestDomain } from '../../__tests__/factories';
 import { internal } from '../../_generated/api';
 import { resolveSendAsIdentitiesForCtx, isSanctionedSendAsForUser } from '../identities';
 
@@ -572,5 +573,71 @@ describe('drafts.setIdentity — records the sending mailbox', () => {
 				fromAddress: 'd@hinterland.camp',
 			})
 		).rejects.toThrow();
+	});
+});
+
+async function seedVerifiedDomain(t: TestConvex<typeof schema>, domain: string): Promise<void> {
+	await t.run((ctx) =>
+		ctx.db.insert(
+			'domains',
+			createTestDomain({ domain, status: 'verified', lastVerifiedAt: Date.now() })
+		)
+	);
+}
+
+describe('listSendAsIdentities — authenticity annotation (composer From-picker)', () => {
+	beforeEach(() => {
+		process.env['EMAIL_PROVIDER'] = 'mta';
+	});
+	afterEach(() => {
+		delete process.env['EMAIL_PROVIDER'];
+		delete process.env['OUTBOUND_DKIM_DOMAIN'];
+		delete process.env['MTA_RETURN_PATH_DOMAIN'];
+	});
+
+	it('annotates each identity as verified + aligned for the built-in MTA on a verified domain', async () => {
+		const t = convexTest(schema, modules);
+		const personal = await seedMailbox(t, { userId: 'user-A', address: 'a@hinterland.camp' });
+		await seedVerifiedDomain(t, 'hinterland.camp');
+		setSession('user-A', 'editor');
+
+		const result = await t.query(api.mail.identities.listSendAsIdentities, {
+			mailboxId: personal,
+		});
+		expect(result).toHaveLength(1);
+		expect(result[0]).toMatchObject({
+			address: 'a@hinterland.camp',
+			domainVerified: true,
+			alignment: 'aligned',
+			alignmentReason: null,
+		});
+	});
+
+	it('annotates an unverified domain as not verified (so the composer disables it)', async () => {
+		const t = convexTest(schema, modules);
+		const personal = await seedMailbox(t, { userId: 'user-A', address: 'a@hinterland.camp' });
+		// No verified `domains` row for hinterland.camp.
+		setSession('user-A', 'editor');
+
+		const result = await t.query(api.mail.identities.listSendAsIdentities, {
+			mailboxId: personal,
+		});
+		expect(result[0]?.domainVerified).toBe(false);
+	});
+
+	it('annotates a foreign-signing relay identity as misaligned with a plain-language reason', async () => {
+		process.env['EMAIL_PROVIDER'] = 'smtp';
+		process.env['OUTBOUND_DKIM_DOMAIN'] = 'sendgrid.net';
+		process.env['MTA_RETURN_PATH_DOMAIN'] = 'sendgrid.net';
+		const t = convexTest(schema, modules);
+		const personal = await seedMailbox(t, { userId: 'user-A', address: 'a@hinterland.camp' });
+		await seedVerifiedDomain(t, 'hinterland.camp');
+		setSession('user-A', 'editor');
+
+		const result = await t.query(api.mail.identities.listSendAsIdentities, {
+			mailboxId: personal,
+		});
+		expect(result[0]?.alignment).toBe('misaligned');
+		expect(result[0]?.alignmentReason).toContain('sendgrid.net');
 	});
 });
