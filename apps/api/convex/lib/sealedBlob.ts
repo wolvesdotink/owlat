@@ -91,9 +91,17 @@ async function hmac(secret: string, message: string): Promise<string> {
 	return bytesToBase64Url(new Uint8Array(mac));
 }
 
+/**
+ * Domain-separation label for the capability-token HMAC. Per the brief's
+ * distinct-domain-per-use rule, the token is signed over a context-prefixed
+ * message so a raw-`INSTANCE_SECRET` HMAC from this use can never collide with
+ * an HMAC minted for any other purpose (tracking, MTA-webhook verify, …).
+ */
+const TOKEN_CONTEXT = 'owlat:sealed-blob:token:v1:';
+
 /** The signed message that binds a token to its blob, content-type, and expiry. */
 function tokenMessage(storageId: string, contentType: string, exp: number): string {
-	return `${storageId}.${contentType}.${exp}`;
+	return `${TOKEN_CONTEXT}${storageId}.${contentType}.${exp}`;
 }
 
 /**
