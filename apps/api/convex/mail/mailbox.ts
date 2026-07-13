@@ -30,6 +30,7 @@ import {
 	loadAccessibleMailboxes,
 } from './permissions';
 import { isMessageSnoozed } from '../lib/mailSnooze';
+import { isFeatureEnabled } from '../lib/featureFlags';
 import { normalizeEmail, parseAddress } from '@owlat/shared';
 
 /**
@@ -176,6 +177,19 @@ export async function provisionMailbox(
 		addedBy: args.userId, // self — the implicit owner predates member management
 		createdAt: now,
 	});
+
+	// Sealed Mail (E1): mint + publish an E2EE keypair for the new address so
+	// other instances can seal mail to it. Flag-gated (`sealedMail`, default OFF)
+	// and offloaded to the Node keygen plane; a no-op when the flag is off.
+	if (await isFeatureEnabled(ctx, 'sealedMail')) {
+		// Mint the singleton instance signing identity on first use (idempotent),
+		// so `/.well-known/owlat.json` can be signed as soon as any address key is
+		// published — otherwise the manifest would 404 until an admin ran backfill.
+		await ctx.scheduler.runAfter(0, internal.e2ee.keysNode.ensureInstanceIdentity, {});
+		await ctx.scheduler.runAfter(0, internal.e2ee.keysNode.mintForAddress, {
+			address: args.address,
+		});
+	}
 
 	for (const role of SYSTEM_FOLDER_ROLES) {
 		await ctx.db.insert('mailFolders', {
