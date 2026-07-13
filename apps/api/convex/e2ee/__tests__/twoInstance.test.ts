@@ -44,10 +44,12 @@ import { convexTest } from 'convex-test';
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
+import type { DatabaseWriter } from '../../_generated/server';
 import { createSecretBox } from '../../lib/credentialCrypto';
 import { decideSeal } from '../../mail/sealPolicy';
 import { sealMime } from '../seal';
 import { openPrivateKey } from '../sealing';
+import { modules, type ConvexTestCtx } from './sealedMailTestHelpers';
 
 // The two instances resolve any peer host to a fixed PUBLIC-unicast address so
 // the discovery SSRF guard (which rejects private/loopback resolutions) passes
@@ -68,23 +70,23 @@ const BOB = 'bob@b.test';
 const REAL_SUBJECT = 'Q3 sealed board numbers';
 const CANARY = 'CANARY_TWO_INSTANCE_PROOF_8f2a41';
 
-// The convex module map — every backend module, loaded exactly as the sibling
-// e2ee suites do so `t.action`/`t.query` can reach the wired API.
-const rootGlob = import.meta.glob('../../**/*.*s');
-const e2eeGlob = Object.fromEntries(
-	Object.entries(import.meta.glob('../**/*.*s')).map(([path, mod]) => [
-		path.replace(/^\.\.\//, '../../e2ee/'),
-		mod,
-	])
-);
-const modules = { ...rootGlob, ...e2eeGlob };
+type Ctx = ConvexTestCtx;
 
-type Ctx = ReturnType<typeof convexTest>;
-
-/** Run `fn` with `process.env.INSTANCE_SECRET` set to `secret` (a given instance's box). */
+/**
+ * Run `fn` with `process.env.INSTANCE_SECRET` set to `secret` (a given instance's
+ * box), restoring the previous value afterwards. The restore matters: unwrapped
+ * steps (step-2 discovery, step-5 rediscover on A) must not silently inherit the
+ * last-stubbed instance's secret — if a step ever grows a hidden dependence on the
+ * ambient secret it fails loudly instead of using the wrong instance's box.
+ */
 async function asInstance<T>(secret: string, fn: () => Promise<T>): Promise<T> {
+	const previous = process.env['INSTANCE_SECRET'];
 	vi.stubEnv('INSTANCE_SECRET', secret);
-	return await fn();
+	try {
+		return await fn();
+	} finally {
+		vi.stubEnv('INSTANCE_SECRET', previous);
+	}
 }
 
 /** The RFC 5322 message alice sends bob — the plaintext that gets sealed. */
@@ -164,9 +166,14 @@ function makeFetchShim(instances: Record<string, Ctx>) {
 	};
 }
 
+// `ReturnType<typeof convexTest>` collapses convex-test's schema generic, so the
+// `ctx.db` handed to `t.run` loses the schema and the index names below stop
+// typechecking. Annotate the callback's `ctx.db` as the schema-aware
+// `DatabaseWriter` (the same fix `sealedMailTestHelpers.ts` uses) to restore it.
+
 /** The recipientKeys trust row an instance holds for a peer address. */
 async function recipientRow(t: Ctx, address: string) {
-	return await t.run((ctx) =>
+	return await t.run((ctx: { db: DatabaseWriter }) =>
 		ctx.db
 			.query('recipientKeys')
 			.withIndex('by_address', (q) => q.eq('address', address))
@@ -176,7 +183,7 @@ async function recipientRow(t: Ctx, address: string) {
 
 /** The keyVault address row for `address`. */
 async function vaultRow(t: Ctx, address: string) {
-	return await t.run((ctx) =>
+	return await t.run((ctx: { db: DatabaseWriter }) =>
 		ctx.db
 			.query('keyVault')
 			.withIndex('by_address', (q) => q.eq('address', address))
@@ -186,7 +193,7 @@ async function vaultRow(t: Ctx, address: string) {
 
 /** The single instance-identity keyVault row. */
 async function instanceRow(t: Ctx) {
-	return await t.run((ctx) =>
+	return await t.run((ctx: { db: DatabaseWriter }) =>
 		ctx.db
 			.query('keyVault')
 			.withIndex('by_kind', (q) => q.eq('kind', 'instance'))
