@@ -22,15 +22,7 @@ import {
 	groupFingerprint,
 	recoveryKitFilename,
 } from '../recoveryKit';
-
-const rootGlob = import.meta.glob('../../**/*.*s');
-const e2eeGlob = Object.fromEntries(
-	Object.entries(import.meta.glob('../**/*.*s')).map(([path, mod]) => [
-		path.replace(/^\.\.\//, '../../e2ee/'),
-		mod,
-	])
-);
-const modules = { ...rootGlob, ...e2eeGlob };
+import { modules } from './sealedMailTestHelpers';
 
 describe('e2ee/recoveryKit pure assembly', () => {
 	it('groups a fingerprint into 4-char blocks', () => {
@@ -133,6 +125,54 @@ describe('e2ee/recoveryKit export -> wipe -> import round-trip', () => {
 		if (outcome.status === 'opened') {
 			expect(outcome.innerMime).toContain('the sealed body');
 		}
+	});
+
+	it('importing an OLDER kit while a DIFFERENT key is active keeps BOTH keys decrypting', async () => {
+		const t = convexTest(schema, modules);
+		const address = 'both@sealed.example.com';
+
+		// Mint key A and seal a fixture to it, then export A's recovery kit.
+		await t.action(internal.e2ee.keysNode.mintForAddress, { address });
+		const publicA = (await t.query(api.e2ee.keys.getPublicKeyByAddress, { address }))!
+			.publicKeyArmored;
+		const sealedToA = (await openpgp.encrypt({
+			message: await openpgp.createMessage({ text: 'sealed to key A' }),
+			encryptionKeys: await openpgp.readKey({ armoredKey: publicA }),
+			format: 'armored',
+		})) as string;
+		const kitA = await t.action(internal.e2ee.lifecycleNode.runExportRecoveryKit, { address });
+		expect(kitA).not.toBeNull();
+
+		// Rotate to key B (A retired to decrypt-only), and seal a fixture to B.
+		await t.action(internal.e2ee.lifecycleNode.runRotateAddressKey, { address });
+		const publicB = (await t.query(api.e2ee.keys.getPublicKeyByAddress, { address }))!
+			.publicKeyArmored;
+		const sealedToB = (await openpgp.encrypt({
+			message: await openpgp.createMessage({ text: 'sealed to key B' }),
+			encryptionKeys: await openpgp.readKey({ armoredKey: publicB }),
+			format: 'armored',
+		})) as string;
+
+		// Import the OLDER kit A while B is active. The active key's private material
+		// must NOT be clobbered (the storeKeypair bug this guards against).
+		const imported = await t.action(internal.e2ee.lifecycleNode.runImportRecoveryKit, {
+			address,
+			privateKeyArmored: kitA!.privateKeyArmored,
+		});
+		expect(imported.imported).toBe(true);
+
+		// BOTH private keys are still present and BOTH fixtures open.
+		const sealedKeys = await t.query(internal.e2ee.keys.getAddressPrivateKeysInternal, { address });
+		const recipientPrivateKeysArmored = sealedKeys.map((env) => openPrivateKey(env));
+		expect(recipientPrivateKeysArmored.length).toBeGreaterThanOrEqual(2);
+
+		const outcomeA = await openSealed({ raw: sealedToA, recipientPrivateKeysArmored });
+		expect(outcomeA.status).toBe('opened');
+		if (outcomeA.status === 'opened') expect(outcomeA.innerMime).toContain('sealed to key A');
+
+		const outcomeB = await openSealed({ raw: sealedToB, recipientPrivateKeysArmored });
+		expect(outcomeB.status).toBe('opened');
+		if (outcomeB.status === 'opened') expect(outcomeB.innerMime).toContain('sealed to key B');
 	});
 
 	it('rejects an import whose key does not certify the address', async () => {

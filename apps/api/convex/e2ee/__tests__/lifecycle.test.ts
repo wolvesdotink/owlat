@@ -21,15 +21,10 @@ import { api, internal } from '../../_generated/api';
 import { evaluatePin } from '../pinning';
 import { verifyRotationStatement } from '../discovery';
 import { verifyManifest, type ManifestPayload } from '../manifest';
-
-const rootGlob = import.meta.glob('../../**/*.*s');
-const e2eeGlob = Object.fromEntries(
-	Object.entries(import.meta.glob('../**/*.*s')).map(([path, mod]) => [
-		path.replace(/^\.\.\//, '../../e2ee/'),
-		mod,
-	])
-);
-const modules = { ...rootGlob, ...e2eeGlob };
+import { openSealed } from '../open';
+import { openPrivateKey } from '../sealing';
+import { modules } from './sealedMailTestHelpers';
+import * as openpgp from 'openpgp';
 
 async function enableSealedMail(t: ReturnType<typeof convexTest>): Promise<void> {
 	await t.run(async (ctx) => {
@@ -90,6 +85,57 @@ describe('e2ee/lifecycle rotation + revocation', () => {
 		expect(privateKeys.map((r) => r.fingerprint).sort()).toEqual(
 			[minted.fingerprint, rotated.newFingerprint].sort()
 		);
+	});
+
+	it('a message sealed to the OLD key still opens after rotation, and one to the NEW key opens too', async () => {
+		const t = convexTest(schema, modules);
+		const address = 'erin@sealed.example.com';
+
+		// Mint, then seal a fixture to the ORIGINAL (pre-rotation) published key.
+		await t.action(internal.e2ee.keysNode.mintForAddress, { address });
+		const oldPublic = (await t.query(api.e2ee.keys.getPublicKeyByAddress, { address }))!
+			.publicKeyArmored;
+		const sealedToOld = (await openpgp.encrypt({
+			message: await openpgp.createMessage({ text: 'sealed under the old key' }),
+			encryptionKeys: await openpgp.readKey({ armoredKey: oldPublic }),
+			format: 'armored',
+		})) as string;
+
+		// Rotate — the old key is retired to decrypt-only, a new active key is minted.
+		const rotated = await t.action(internal.e2ee.lifecycleNode.runRotateAddressKey, { address });
+		expect(rotated.rotated).toBe(true);
+
+		// Seal a second fixture to the NEW published key.
+		const newPublic = (await t.query(api.e2ee.keys.getPublicKeyByAddress, { address }))!
+			.publicKeyArmored;
+		expect((await openpgp.readKey({ armoredKey: newPublic })).getFingerprint().toUpperCase()).toBe(
+			rotated.newFingerprint
+		);
+		const sealedToNew = (await openpgp.encrypt({
+			message: await openpgp.createMessage({ text: 'sealed under the new key' }),
+			encryptionKeys: await openpgp.readKey({ armoredKey: newPublic }),
+			format: 'armored',
+		})) as string;
+
+		// The exact multi-key decrypt surface the open plane uses: EVERY retained
+		// private key for the address, active-first, opened from its at-rest envelope.
+		const sealedKeys = await t.query(internal.e2ee.keys.getAddressPrivateKeysInternal, { address });
+		expect(sealedKeys).toHaveLength(2);
+		const recipientPrivateKeysArmored = sealedKeys.map((env) => openPrivateKey(env));
+
+		// The OLD-key fixture opens via the retained decrypt-only key...
+		const oldOutcome = await openSealed({ raw: sealedToOld, recipientPrivateKeysArmored });
+		expect(oldOutcome.status).toBe('opened');
+		if (oldOutcome.status === 'opened') {
+			expect(oldOutcome.innerMime).toContain('sealed under the old key');
+		}
+
+		// ...and the NEW-key fixture opens via the active key.
+		const newOutcome = await openSealed({ raw: sealedToNew, recipientPrivateKeysArmored });
+		expect(newOutcome.status).toBe('opened');
+		if (newOutcome.status === 'opened') {
+			expect(newOutcome.innerMime).toContain('sealed under the new key');
+		}
 	});
 
 	it('publishes a rotation statement that verifies and upgrades a peer pin silently', async () => {
