@@ -421,8 +421,21 @@ export function loadConfig(): MtaConfig {
 	// provide). Fail fast instead.
 	const daneEnabled = optionalEnv('DANE_ENABLED', 'false') === 'true';
 	const daneResolverUrl = process.env['DANE_RESOLVER_URL'];
-	if (daneEnabled && !daneResolverUrl) {
-		throw new Error('DANE_ENABLED=true requires DANE_RESOLVER_URL (a validating DoH resolver).');
+	if (daneEnabled) {
+		if (!daneResolverUrl) {
+			throw new Error('DANE_ENABLED=true requires DANE_RESOLVER_URL (a validating DoH resolver).');
+		}
+		// Reject a malformed URL at boot rather than crashing every DANE send: the
+		// TLSA resolver runs on the hot delivery path and a typo'd endpoint would
+		// otherwise throw there (or silently disable DANE) — the exact "silently do
+		// nothing" failure the presence check above guards against.
+		try {
+			new URL(daneResolverUrl);
+		} catch {
+			throw new Error(
+				'DANE_RESOLVER_URL must be a valid URL (a DoH resolver endpoint, e.g. https://127.0.0.1:8443/dns-query).'
+			);
+		}
 	}
 
 	return {
