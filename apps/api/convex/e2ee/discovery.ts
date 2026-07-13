@@ -33,7 +33,13 @@ import { readCappedBytes, CappedReadOverflow, guardedDispatcher } from '../lib/s
 import { normalizeEmail } from '@owlat/shared';
 import { splitAddress, wkdHashForAddress } from './wkd';
 import { verifyManifest, type ManifestPayload } from './manifest';
-import { evaluatePin, fingerprintsEqual, type PinDecision } from './pinning';
+import {
+	evaluatePin,
+	fingerprintsEqual,
+	rotationStatementText,
+	type PinDecision,
+	type RotationStatement,
+} from './pinning';
 
 /** Positive discovery hit is refreshed after 24h. */
 export const TTL_FOUND_MS = 24 * 60 * 60 * 1000;
@@ -46,15 +52,6 @@ const MAX_BYTES = 256 * 1024;
 
 /** Thrown when a fetch is rejected for an SSRF reason (non-https, redirect, private host, oversize). */
 export class SsrfRejection extends Error {}
-
-/** A signed rotation statement, published in the manifest rotation feed. */
-export interface RotationStatement {
-	address: string;
-	oldFingerprint: string;
-	newFingerprint: string;
-	/** Armored detached signature by the OLD key over the canonical statement. */
-	signature: string;
-}
 
 /** The parsed `/.well-known/owlat.json` body — the signed payload plus extras. */
 interface FetchedManifest extends ManifestPayload {
@@ -185,16 +182,6 @@ export async function keyCertifiesAddress(armoredKey: string, address: string): 
 /** The uppercase-hex primary fingerprint of an armored key. */
 async function fingerprintOf(armoredKey: string): Promise<string> {
 	return (await openpgp.readKey({ armoredKey })).getFingerprint().toUpperCase();
-}
-
-/** The canonical bytes a rotation statement's signature covers. */
-function rotationStatementText(s: RotationStatement): string {
-	return [
-		'owlat-key-rotation',
-		normalizeEmail(s.address),
-		s.oldFingerprint.replace(/\s+/g, '').toUpperCase(),
-		s.newFingerprint.replace(/\s+/g, '').toUpperCase(),
-	].join('\n');
 }
 
 /**
