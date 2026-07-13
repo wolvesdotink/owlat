@@ -37,6 +37,7 @@ import { logError } from '../lib/runtimeLog';
 import { getMtaConfig, scanAttachmentBytes } from './mtaClient';
 import { scanContent } from '@owlat/email-scanner';
 import { computeSenderHeuristics, type SenderHeuristics } from './senderHeuristics';
+import { inboundEncryptionInfoValidator, type InboundEncryptionInfo } from '../e2ee/inboundSeal';
 import { enqueueNeedsReplyCheck } from './needsReply';
 import { enqueueCategoryCheck } from './category';
 import { clearThreadFollowUp } from './followUps';
@@ -229,15 +230,45 @@ export const ingestFromWebhook = internalAction({
 		// here so the reader's Unsubscribe chip never re-opens the raw .eml.
 		const unsubscribe = extractListUnsubscribe(rawHeaderBlock) ?? undefined;
 		const blob = new Blob([rawBytes], { type: 'message/rfc822' });
+		// The raw `.eml` we store IS the sealed original when the message arrived
+		// sealed — decrypt-on-ingest keeps the ciphertext downloadable (D3) while
+		// the row's body columns below carry the restored plaintext.
 		const rawStorageId = await ctx.storage.store(blob);
+
+		// Sealed Mail (E4, D3): decrypt-on-ingest. When the message arrived as
+		// PGP/MIME ciphertext AND we hold the recipient's vault key, open it here so
+		// the RESTORED plaintext (real Subject + bodies) flows into the normal
+		// pipeline (threading, categorize, needs-reply, agent, knowledge, search). A
+		// message we cannot decrypt — or any plaintext message, or when the flag is
+		// off — falls straight through to the existing path unchanged. The honest
+		// outcome is recorded on the row as `inboundEncryptionInfo`.
+		const opened = await ctx.runAction(internal.e2ee.open.openInboundForMailbox, {
+			rawBytesBase64: args.rawBytesBase64,
+			recipientAddress: args.recipientAddress,
+			from: args.from,
+		});
+		let effectiveSubject = args.subject;
+		let effectiveText = args.textBody;
+		let effectiveHtml = args.htmlBody;
+		let inboundEncryptionInfo: InboundEncryptionInfo | undefined;
+		if (opened.sealed) {
+			inboundEncryptionInfo = opened.encryptionInfo;
+			if (opened.decrypted) {
+				// Restored plaintext (real Subject + bodies, D4) replaces the outer
+				// placeholder + ciphertext so the normal pipeline sees real content.
+				if (opened.subject !== undefined) effectiveSubject = opened.subject;
+				effectiveText = opened.textBody;
+				effectiveHtml = opened.htmlBody;
+			}
+		}
 
 		// Inline small bodies for a fast list/reader render; stash larger bodies
 		// as separate blobs (served lazily by mailbox.getMessageBody).
-		const textBody = await splitBodyForStorage(ctx, args.textBody, 'text/plain; charset=utf-8');
-		const htmlBody = await splitBodyForStorage(ctx, args.htmlBody, 'text/html; charset=utf-8');
+		const textBody = await splitBodyForStorage(ctx, effectiveText, 'text/plain; charset=utf-8');
+		const htmlBody = await splitBodyForStorage(ctx, effectiveHtml, 'text/html; charset=utf-8');
 		// Snippet from the FULL body, before the inline/blob split, so >64KB
 		// bodies still get a non-empty preview + search snippet.
-		const snippet = buildSnippet(args.textBody, args.htmlBody);
+		const snippet = buildSnippet(effectiveText, effectiveHtml);
 
 		// Scan inbound attachments for malware (defense-in-depth on the receiving
 		// side). ClamAV lives in the MTA container, so we POST each attachment leaf
@@ -266,7 +297,9 @@ export const ingestFromWebhook = internalAction({
 				bcc: args.bcc,
 				replyTo: args.replyTo,
 				returnPath: args.returnPath,
-				subject: args.subject,
+				// Restored real subject (D4) when the message was opened; the outer
+				// placeholder `...` otherwise. Threading below keys off this.
+				subject: effectiveSubject,
 				textBodyInline: textBody.inline,
 				textBodyStorageId: textBody.storageId,
 				htmlBodyInline: htmlBody.inline,
@@ -289,6 +322,7 @@ export const ingestFromWebhook = internalAction({
 				arcAttestsOriginalPass: args.arcAttestsOriginalPass,
 				envelopeFromDomain: args.envelopeFromDomain,
 				dkimSigningDomain: args.dkimSigningDomain,
+				inboundEncryptionInfo,
 			}
 		);
 
@@ -456,6 +490,10 @@ export async function insertDeliveredMessage(
 		dkimSigningDomain?: string;
 		/** Ingest-computed sender-impersonation heuristics (Sealed Mail A4). */
 		senderHeuristics?: SenderHeuristics;
+		/** Inbound unsealing outcome (Sealed Mail E4, D3): present only for a message
+		 * that arrived sealed. The body columns above hold the RESTORED plaintext when
+		 * `decrypted:true`; the raw `.eml` stays the sealed original either way. */
+		inboundEncryptionInfo?: InboundEncryptionInfo;
 		/** Parsed List-Unsubscribe target (extracted at ingest from the raw header block). */
 		unsubscribe?: { httpUrl?: string; mailtoUrl?: string; oneClick: boolean };
 		/** Add rawSize to mailbox.usedBytes (local cache accounting). */
@@ -575,6 +613,7 @@ export async function insertDeliveredMessage(
 		envelopeFromDomain: params.envelopeFromDomain,
 		dkimSigningDomain: params.dkimSigningDomain,
 		senderHeuristics: params.senderHeuristics,
+		inboundEncryptionInfo: params.inboundEncryptionInfo,
 		unsubscribe: params.unsubscribe,
 		createdAt: now,
 		updatedAt: now,
@@ -686,6 +725,11 @@ export const deliverToMailbox = internalMutation({
 		// stored beside the verdicts on `mailMessages`. Both optional.
 		envelopeFromDomain: v.optional(v.string()),
 		dkimSigningDomain: v.optional(v.string()),
+		// Sealed Mail (E4, D3): the inbound unsealing outcome, computed by the
+		// ingest action before this mutation. Present only for a message that
+		// arrived sealed; the body args above already hold the RESTORED plaintext
+		// when it decrypted. Absent ⇒ a plaintext message (unchanged fast path).
+		inboundEncryptionInfo: v.optional(inboundEncryptionInfoValidator),
 	},
 	handler: async (ctx, args): Promise<{ messageId: Id<'mailMessages'> } | { skipped: true }> => {
 		const recipient = extractEmail(args.recipientAddress);
@@ -876,6 +920,7 @@ export const deliverToMailbox = internalMutation({
 			envelopeFromDomain: args.envelopeFromDomain,
 			dkimSigningDomain: args.dkimSigningDomain,
 			senderHeuristics,
+			inboundEncryptionInfo: args.inboundEncryptionInfo,
 			unsubscribe: args.unsubscribe,
 			countUsedBytes: true,
 		});

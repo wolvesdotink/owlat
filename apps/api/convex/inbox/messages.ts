@@ -59,6 +59,17 @@ export const receiveMessage = internalMutation({
 		dkimResult: v.optional(v.string()),
 		dmarcResult: v.optional(v.string()),
 		dmarcPolicy: v.optional(v.string()),
+		// Sealed Mail (E4, D3): mirrored unsealing flags from the decrypt-on-ingest
+		// action on the AI-inbox path. `textBody`/`htmlBody` above are ALREADY the
+		// decrypted plaintext when `sealed` is set (the action opened the message
+		// before calling this mutation), so the agent pipeline + the unified mirror
+		// consume real text. `signatureValid` is present only when we decrypted and
+		// checked the signature — absent ⇒ undecryptable (no claim). All optional so
+		// the plaintext path is byte-identical.
+		sealed: v.optional(v.boolean()),
+		signatureValid: v.optional(v.boolean()),
+		signerFingerprint: v.optional(v.string()),
+		signerInstance: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		const senderEmail = extractEmail(args.from);
@@ -109,6 +120,10 @@ export const receiveMessage = internalMutation({
 			dkimResult: args.dkimResult,
 			dmarcResult: args.dmarcResult,
 			dmarcPolicy: args.dmarcPolicy,
+			sealed: args.sealed,
+			signatureValid: args.signatureValid,
+			signerFingerprint: args.signerFingerprint,
+			signerInstance: args.signerInstance,
 		});
 		await applyInboxStatsDelta(ctx, null, 'received');
 
@@ -154,9 +169,12 @@ export const receiveMessage = internalMutation({
 				channel: 'email',
 				contactId,
 				content: JSON.stringify({
+					// `text`/`html` are the DECRYPTED plaintext when `sealed` (D3): the
+					// unified timeline + agent pipeline read real content, not ciphertext.
 					text: args.textBody,
 					html: args.htmlBody,
 					subject: args.subject,
+					...(args.sealed ? { sealed: true, signatureValid: args.signatureValid } : {}),
 				}),
 				externalMessageId: args.messageId,
 			});
