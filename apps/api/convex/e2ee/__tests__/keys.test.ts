@@ -91,6 +91,15 @@ async function insertMailbox(t: ReturnType<typeof convexTest>, address: string):
 	});
 }
 
+async function enableSealedMail(t: ReturnType<typeof convexTest>): Promise<void> {
+	await t.run(async (ctx) => {
+		await ctx.db.insert('instanceSettings', {
+			featureFlags: { postbox: true, senderAuthBadges: true, sealedMail: true },
+			createdAt: Date.now(),
+		});
+	});
+}
+
 describe('e2ee/keys', () => {
 	beforeEach(() => {
 		vi.stubEnv('INSTANCE_SECRET', 'unit-test-instance-secret-value');
@@ -142,6 +151,7 @@ describe('e2ee/keys', () => {
 
 	it('never exposes private key material through any public query', async () => {
 		const t = convexTest(schema, modules);
+		await enableSealedMail(t);
 		const address = 'carol@sealed.example.com';
 		await t.action(internal.e2ee.keysNode.mintForAddress, { address });
 
@@ -167,6 +177,43 @@ describe('e2ee/keys', () => {
 				.first()
 		);
 		expect(row?.sealedPrivateKey.ciphertext).toBeTruthy();
+	});
+
+	it('withdraws every public key-discovery surface when Sealed Mail is disabled', async () => {
+		const t = convexTest(schema, modules);
+		const address = 'rollback@sealed.example.com';
+		await t.action(internal.e2ee.keysNode.mintForAddress, { address });
+		await t.run(async (ctx) => {
+			const addressRow = await ctx.db
+				.query('keyVault')
+				.withIndex('by_address', (q) => q.eq('address', address))
+				.first();
+			if (!addressRow) throw new Error('address key missing');
+			await ctx.db.insert('keyVault', {
+				kind: 'instance',
+				fingerprint: addressRow.fingerprint,
+				algorithm: addressRow.algorithm,
+				publicKeyArmored: addressRow.publicKeyArmored,
+				publicKeyBinaryBase64: addressRow.publicKeyBinaryBase64,
+				sealedPrivateKey: addressRow.sealedPrivateKey,
+				isActive: true,
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+			await ctx.db.insert('instanceSettings', {
+				featureFlags: { postbox: true, sealedMail: false },
+				createdAt: Date.now(),
+			});
+		});
+
+		expect(await t.query(api.e2ee.keys.getPublicKeyByAddress, { address })).toBeNull();
+		expect(
+			await t.query(api.e2ee.keys.getKeyForWkd, {
+				domain: 'sealed.example.com',
+				wkdHash: wkdHashForAddress(address),
+			})
+		).toBeNull();
+		expect(await t.query(api.e2ee.keys.getInstancePublicKey, {})).toBeNull();
 	});
 
 	it('never exposes private material through the instance-key or manifest surfaces', async () => {
@@ -208,6 +255,7 @@ describe('e2ee/keys', () => {
 
 	it('backfills a key for every mailbox address AND alias, plus the instance identity', async () => {
 		const t = convexTest(schema, modules);
+		await enableSealedMail(t);
 		await insertMailbox(t, 'primary@sealed.example.com');
 		await insertMailbox(t, 'team@sealed.example.com');
 

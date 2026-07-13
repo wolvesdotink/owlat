@@ -7,8 +7,16 @@
  * i.e. no special flags — served as `text/plain`. Public and content-free, so no
  * authentication is involved.
  */
-export default defineEventHandler((event): string => {
+import { api } from '@owlat/api';
+import { publicConvexClient } from '../../../utils/publicConvexClient';
+
+export default defineEventHandler(async (event): Promise<string> => {
+	const client = publicConvexClient(event);
+	const flags = await client.query(api.workspaces.featureFlags.getFeatureFlags, {});
+	if (!flags.sealedMail) {
+		throw createError({ statusCode: 404, statusMessage: 'Not Found' });
+	}
 	setResponseHeader(event, 'Content-Type', 'text/plain; charset=utf-8');
-	setResponseHeader(event, 'Cache-Control', 'public, max-age=3600');
+	setResponseHeader(event, 'Cache-Control', 'no-store');
 	return '';
 });

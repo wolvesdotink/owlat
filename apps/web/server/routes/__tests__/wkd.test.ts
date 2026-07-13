@@ -2,8 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 /**
  * Tests for the WKD (Web Key Directory) Nuxt routes:
- *   - `GET /.well-known/openpgpkey/policy` — always 200, `text/plain`, empty body
- *     (its presence signals WKD support).
+ *   - `GET /.well-known/openpgpkey/policy` — 200 only while Sealed Mail is on;
+ *     disabling the feature withdraws the WKD capability with a 404.
  *   - `GET /.well-known/openpgpkey/hu/<hash>` — returns the BINARY public key as
  *     `application/octet-stream` for a known (host, hash); 404s for an unknown
  *     local-part (Convex query returns null) and when the hash segment is empty.
@@ -21,7 +21,10 @@ vi.mock('convex/browser', () => ({
 }));
 
 vi.mock('@owlat/api', () => ({
-	api: { e2ee: { keys: { getKeyForWkd: 'getKeyForWkd' } } },
+	api: {
+		e2ee: { keys: { getKeyForWkd: 'getKeyForWkd' } },
+		workspaces: { featureFlags: { getFeatureFlags: 'getFeatureFlags' } },
+	},
 }));
 
 let requestHost = 'sealed.example.com';
@@ -58,8 +61,8 @@ beforeEach(() => {
 
 async function callPolicy(): Promise<string> {
 	const mod = await import('../.well-known/openpgpkey/policy.get');
-	const handler = mod.default as unknown as (event: unknown) => string;
-	return handler({});
+	const handler = mod.default as unknown as (event: unknown) => Promise<string>;
+	return await handler({});
 }
 
 async function callHu(): Promise<Uint8Array> {
@@ -70,9 +73,16 @@ async function callHu(): Promise<Uint8Array> {
 
 describe('GET /.well-known/openpgpkey/policy', () => {
 	it('serves an empty text/plain policy file', async () => {
+		queryMock.mockResolvedValue({ sealedMail: true });
 		const body = await callPolicy();
 		expect(body).toBe('');
 		expect(responseHeaders['Content-Type']).toBe('text/plain; charset=utf-8');
+		expect(responseHeaders['Cache-Control']).toBe('no-store');
+	});
+
+	it('404s when Sealed Mail is disabled', async () => {
+		queryMock.mockResolvedValue({ sealedMail: false });
+		await expect(callPolicy()).rejects.toMatchObject({ statusCode: 404 });
 	});
 });
 
@@ -84,6 +94,7 @@ describe('GET /.well-known/openpgpkey/hu/<hash>', () => {
 		const result = await callHu();
 		expect(Buffer.from(result)).toEqual(keyBytes);
 		expect(responseHeaders['Content-Type']).toBe('application/octet-stream');
+		expect(responseHeaders['Cache-Control']).toBe('no-store');
 		expect(queryMock).toHaveBeenCalledWith('getKeyForWkd', {
 			domain: 'sealed.example.com',
 			wkdHash: 'kei1q4tipxxu1yj79k9kfukdhfy631xe',

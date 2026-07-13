@@ -322,6 +322,7 @@ export const getPublicKeyByAddress = publicQuery({
 	args: { address: v.string() },
 	returns: publicKeyProjectionValidator,
 	handler: async (ctx, args) => {
+		if (!(await isFeatureEnabled(ctx, 'sealedMail'))) return null;
 		// The ACTIVE row — after a rotation an address has an old decrypt-only row
 		// too, and we must publish the CURRENT public key for discovery.
 		const row = await activeAddressRow(ctx, normalizeEmail(args.address));
@@ -340,6 +341,7 @@ export const getKeyForWkd = publicQuery({
 	args: { domain: v.string(), wkdHash: v.string() },
 	returns: v.union(v.null(), v.object({ binaryBase64: v.string() })),
 	handler: async (ctx, args) => {
+		if (!(await isFeatureEnabled(ctx, 'sealedMail'))) return null;
 		const domain = args.domain.toLowerCase();
 		// After a rotation, the domain+wkdHash matches BOTH the retired and the new
 		// row (same local-part). Serve the ACTIVE key so a WKD fetch returns the
@@ -360,6 +362,7 @@ export const getInstancePublicKey = publicQuery({
 	args: {},
 	returns: publicKeyProjectionValidator,
 	handler: async (ctx) => {
+		if (!(await isFeatureEnabled(ctx, 'sealedMail'))) return null;
 		const row = await ctx.db
 			.query('keyVault')
 			.withIndex('by_kind', (q) => q.eq('kind', 'instance'))
