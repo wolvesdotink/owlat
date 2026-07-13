@@ -43,13 +43,8 @@ import { followUpWaitingOn } from './followUps';
 import { logError } from '../lib/runtimeLog';
 import { normalizeSubject } from '../lib/emailAddress';
 import { isFeatureEnabled } from '../lib/featureFlags';
-import { normalizeEmail } from '@owlat/shared';
-import {
-	deriveSealState,
-	type OutboundEncryptionInfo,
-	type RecipientKeyState,
-	type SealState,
-} from './sealPolicy';
+import { loadRecipientKeyStates } from './outboundQueries';
+import { deriveSealState, type OutboundEncryptionInfo, type SealState } from './sealPolicy';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -988,28 +983,11 @@ export const getSealState = internalQuery({
 		const settings = await ctx.db.query('instanceSettings').first();
 		const policy = settings?.sealPolicy ?? 'auto';
 
-		const seen = new Set<string>();
-		const recipients: RecipientKeyState[] = [];
-		for (const raw of [...draft.toAddresses, ...draft.ccAddresses, ...draft.bccAddresses]) {
-			const address = normalizeEmail(raw);
-			if (seen.has(address)) continue;
-			seen.add(address);
-			const row = await ctx.db
-				.query('recipientKeys')
-				.withIndex('by_address', (q) => q.eq('address', address))
-				.first();
-			recipients.push(
-				row
-					? {
-							address,
-							outcome: row.outcome,
-							...(row.outcome === 'trusted' && row.pinnedPublicKeyArmored
-								? { pinnedPublicKeyArmored: row.pinnedPublicKeyArmored }
-								: {}),
-						}
-					: { address, outcome: 'missing' }
-			);
-		}
+		const recipients = await loadRecipientKeyStates(ctx, [
+			...draft.toAddresses,
+			...draft.ccAddresses,
+			...draft.bccAddresses,
+		]);
 		return deriveSealState(policy, recipients);
 	},
 });

@@ -13,7 +13,7 @@
  */
 
 import { v } from 'convex/values';
-import { internalQuery } from '../_generated/server';
+import { internalQuery, type QueryCtx } from '../_generated/server';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { normalizeEmail } from '@owlat/shared';
 import { sealPolicyValidator } from '../lib/convexValidators';
@@ -23,6 +23,45 @@ export const getMessage = internalQuery({
 	args: { messageId: v.id('mailMessages') },
 	handler: async (ctx, args) => ctx.db.get(args.messageId),
 });
+
+/**
+ * Load the per-recipient TOFU trust state for a set of addresses, deduped on the
+ * normalized address (a To+Cc collision is asked once and the all-recipients rule
+ * counts each address exactly once). Shared by the dispatch-time seal decision
+ * (`getOutboundSealInputs`) and the composer's `getSealState` so the two paths can
+ * never drift into different "who has a key?" answers. Returns PUBLIC material
+ * only: the pinned public key rides along only for a `trusted` row; an address
+ * with no discovery row at all is `missing`.
+ */
+export async function loadRecipientKeyStates(
+	ctx: QueryCtx,
+	addresses: string[]
+): Promise<RecipientKeyState[]> {
+	const seen = new Set<string>();
+	const recipients: RecipientKeyState[] = [];
+	for (const raw of addresses) {
+		const address = normalizeEmail(raw);
+		if (seen.has(address)) continue;
+		seen.add(address);
+		const row = await ctx.db
+			.query('recipientKeys')
+			.withIndex('by_address', (q) => q.eq('address', address))
+			.first();
+		if (!row) {
+			recipients.push({ address, outcome: 'missing' });
+			continue;
+		}
+		// A pinned public key is only usable to seal when the row is `trusted`.
+		recipients.push({
+			address,
+			outcome: row.outcome,
+			...(row.outcome === 'trusted' && row.pinnedPublicKeyArmored
+				? { pinnedPublicKeyArmored: row.pinnedPublicKeyArmored }
+				: {}),
+		});
+	}
+	return recipients;
+}
 
 /**
  * Gather everything the dispatch-time seal decision (`mail/sealPolicy.decideSeal`)
@@ -71,31 +110,7 @@ export const getOutboundSealInputs = internalQuery({
 			.first();
 		const hasSigningKey = !!signingRow && signingRow.isActive;
 
-		// Deduplicate recipients on the normalized address so a To+Cc collision is
-		// asked once and the all-recipients rule counts each address exactly once.
-		const seen = new Set<string>();
-		const recipients: RecipientKeyState[] = [];
-		for (const raw of args.recipients) {
-			const address = normalizeEmail(raw);
-			if (seen.has(address)) continue;
-			seen.add(address);
-			const row = await ctx.db
-				.query('recipientKeys')
-				.withIndex('by_address', (q) => q.eq('address', address))
-				.first();
-			if (!row) {
-				recipients.push({ address, outcome: 'missing' });
-				continue;
-			}
-			// A pinned public key is only usable to seal when the row is `trusted`.
-			recipients.push({
-				address,
-				outcome: row.outcome,
-				...(row.outcome === 'trusted' && row.pinnedPublicKeyArmored
-					? { pinnedPublicKeyArmored: row.pinnedPublicKeyArmored }
-					: {}),
-			});
-		}
+		const recipients = await loadRecipientKeyStates(ctx, args.recipients);
 		return { flagEnabled, policy, hasSigningKey, recipients };
 	},
 });
