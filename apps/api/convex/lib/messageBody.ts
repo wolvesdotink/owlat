@@ -60,9 +60,7 @@ export async function openMessageBody(stored: string): Promise<string> {
 }
 
 async function openMaybe(stored: string | undefined): Promise<string | undefined> {
-	if (stored === undefined) return undefined;
-	if (!isSealedAtRest(stored)) return stored;
-	return openAtRest(atRestSecret(), stored);
+	return stored === undefined ? undefined : openMessageBody(stored);
 }
 
 // ── Seal-patch builders (E8b migration) ──────────────────────────────────────
@@ -102,6 +100,45 @@ export async function sealMailInlineBodyPatch(
 	if (row.htmlBodyInline !== undefined) {
 		const next = await sealMessageBody(row.htmlBodyInline);
 		if (next !== row.htmlBodyInline) patch.htmlBodyInline = next;
+	}
+	return patch;
+}
+
+/** The `content` JSON blob of a `unifiedMessages` row (sealed as one string). */
+export interface UnifiedMessageContentField {
+	content: string;
+}
+
+/** Build the sealing patch for a `unifiedMessages` row (only changed fields). */
+export async function sealUnifiedContentPatch(
+	row: UnifiedMessageContentField
+): Promise<{ content?: string }> {
+	const next = await sealMessageBody(row.content);
+	return next !== row.content ? { content: next } : {};
+}
+
+/** The body columns of a `mailDrafts` row. `bodyHtml` is required; the text and
+ * block variants are optional. */
+export interface MailDraftBodyFields {
+	bodyHtml: string;
+	bodyText?: string;
+	bodyBlocks?: string;
+}
+
+/** Build the sealing patch for a `mailDrafts` row (only changed fields). */
+export async function sealMailDraftBodyPatch(
+	row: MailDraftBodyFields
+): Promise<{ bodyHtml?: string; bodyText?: string; bodyBlocks?: string }> {
+	const patch: { bodyHtml?: string; bodyText?: string; bodyBlocks?: string } = {};
+	const nextHtml = await sealMessageBody(row.bodyHtml);
+	if (nextHtml !== row.bodyHtml) patch.bodyHtml = nextHtml;
+	if (row.bodyText !== undefined) {
+		const next = await sealMessageBody(row.bodyText);
+		if (next !== row.bodyText) patch.bodyText = next;
+	}
+	if (row.bodyBlocks !== undefined) {
+		const next = await sealMessageBody(row.bodyBlocks);
+		if (next !== row.bodyBlocks) patch.bodyBlocks = next;
 	}
 	return patch;
 }
