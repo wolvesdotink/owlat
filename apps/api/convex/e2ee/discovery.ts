@@ -26,7 +26,7 @@
 import { v } from 'convex/values';
 import * as openpgp from 'openpgp';
 import dns from 'node:dns/promises';
-import { internalAction } from '../_generated/server';
+import { internalAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { isDisallowedIpAddress } from '../lib/ipBlocklist';
 import { readCappedBytes, CappedReadOverflow, guardedDispatcher } from '../lib/ssrfGuard';
@@ -336,91 +336,110 @@ export function shouldRefetch(cached: { expiresAt: number } | null, now: number)
 	return !cached || cached.expiresAt <= now;
 }
 
+/** Outcome of discovering (or refreshing) the key for a single address. */
+type DiscoveryOutcome = {
+	outcome: 'disabled' | 'trusted' | 'keyChanged' | 'notFound';
+	cached?: true;
+	action?: PinDecision['action'];
+};
+
 /**
- * INTERNAL: discover (or refresh) the key for one address and persist the
- * discovery + TOFU pin decision. Cache-aware (skips a fresh row unless `force`).
- * Flag-gated: a no-op when Sealed Mail is off.
+ * Discover (or refresh) the key for one address and persist the discovery +
+ * TOFU pin decision. Cache-aware (skips a fresh row unless `force`) and
+ * flag-gated (a no-op when Sealed Mail is off). Hoisted out of the action
+ * handler so the cron can call it directly — that removes the action→action
+ * hop (a Convex antipattern within one runtime) and the same-module `internal`
+ * self-reference that would otherwise collapse this module's wired-api types.
  */
-export const discoverRecipientKey = internalAction({
-	args: { address: v.string(), force: v.optional(v.boolean()) },
-	handler: async (ctx, args) => {
-		if (!(await ctx.runQuery(internal.e2ee.keys.isSealedMailEnabled, {}))) {
-			return { outcome: 'disabled' as const };
-		}
-		const address = normalizeEmail(args.address);
-		const now = Date.now();
-		const cached = await ctx.runQuery(internal.e2ee.recipientKeys.getCached, {
-			address,
-		});
+async function runRecipientKeyDiscovery(
+	ctx: ActionCtx,
+	args: { address: string; force?: boolean }
+): Promise<DiscoveryOutcome> {
+	if (!(await ctx.runQuery(internal.e2ee.keys.isSealedMailEnabled, {}))) {
+		return { outcome: 'disabled' };
+	}
+	const address = normalizeEmail(args.address);
+	const now = Date.now();
+	const cached = await ctx.runQuery(internal.e2ee.recipientKeys.getCached, {
+		address,
+	});
 
-		if (!args.force && !shouldRefetch(cached, now)) {
-			return { outcome: cached?.outcome ?? 'notFound', cached: true as const };
-		}
+	if (!args.force && !shouldRefetch(cached, now)) {
+		return { outcome: cached?.outcome ?? 'notFound', cached: true };
+	}
 
-		const fetched = await discoverKeyForAddress(address, defaultDeps);
-		const domain = address.slice(address.lastIndexOf('@') + 1);
+	const fetched = await discoverKeyForAddress(address, defaultDeps);
+	const domain = address.slice(address.lastIndexOf('@') + 1);
 
-		// A discovery MISS never drops an existing pin — preserve prior trust, re-check sooner.
-		if (fetched.outcome === 'notFound') {
-			await ctx.runMutation(internal.e2ee.recipientKeys.upsertDiscovery, {
-				address,
-				domain,
-				outcome: cached?.pinnedFingerprint ? cached.outcome : 'notFound',
-				pinnedFingerprint: cached?.pinnedFingerprint,
-				pinnedPublicKeyArmored: cached?.pinnedPublicKeyArmored,
-				observedFingerprint: cached?.observedFingerprint,
-				observedPublicKeyArmored: cached?.observedPublicKeyArmored,
-				source: cached?.source,
-				instanceFingerprint: fetched.instanceFingerprint ?? cached?.instanceFingerprint,
-				expiresAt: now + TTL_NEGATIVE_MS,
-			});
-			return { outcome: 'notFound' as const };
-		}
-
-		const observedFingerprint = fetched.fingerprint;
-		const observedArmored = fetched.publicKeyArmored;
-		const pinnedFingerprint = cached?.pinnedFingerprint ?? null;
-
-		// Did the remote publish a valid signed rotation from our pin to this key?
-		const rotationSignatureValid =
-			pinnedFingerprint !== null &&
-			!fingerprintsEqual(pinnedFingerprint, observedFingerprint) &&
-			cached?.pinnedPublicKeyArmored !== undefined
-				? await anyRotationValid(
-						cached.pinnedPublicKeyArmored,
-						fetched.rotationStatements ?? [],
-						address,
-						pinnedFingerprint,
-						observedFingerprint
-					)
-				: false;
-
-		const decision: PinDecision = evaluatePin({
-			pinnedFingerprint,
-			observedFingerprint,
-			rotationSignatureValid,
-		});
-
-		// On `keyChanged` the pin stays the OLD key; otherwise the observed key
-		// becomes the trusted pin.
-		const trustedIsObserved = decision.state === 'pinned';
+	// A discovery MISS never drops an existing pin — preserve prior trust, re-check sooner.
+	if (fetched.outcome === 'notFound') {
 		await ctx.runMutation(internal.e2ee.recipientKeys.upsertDiscovery, {
 			address,
 			domain,
-			outcome: decision.state === 'pinned' ? 'trusted' : 'keyChanged',
-			pinnedFingerprint: decision.pinnedFingerprint,
-			pinnedPublicKeyArmored: trustedIsObserved ? observedArmored : cached?.pinnedPublicKeyArmored,
-			observedFingerprint,
-			observedPublicKeyArmored: observedArmored,
-			source: 'wkd',
+			outcome: cached?.pinnedFingerprint ? cached.outcome : 'notFound',
+			pinnedFingerprint: cached?.pinnedFingerprint,
+			pinnedPublicKeyArmored: cached?.pinnedPublicKeyArmored,
+			observedFingerprint: cached?.observedFingerprint,
+			observedPublicKeyArmored: cached?.observedPublicKeyArmored,
+			source: cached?.source,
 			instanceFingerprint: fetched.instanceFingerprint ?? cached?.instanceFingerprint,
-			expiresAt: now + TTL_FOUND_MS,
+			expiresAt: now + TTL_NEGATIVE_MS,
 		});
-		return {
-			outcome: decision.state === 'pinned' ? 'trusted' : 'keyChanged',
-			action: decision.action,
-		};
-	},
+		return { outcome: 'notFound' as const };
+	}
+
+	const observedFingerprint = fetched.fingerprint;
+	const observedArmored = fetched.publicKeyArmored;
+	const pinnedFingerprint = cached?.pinnedFingerprint ?? null;
+
+	// Did the remote publish a valid signed rotation from our pin to this key?
+	const rotationSignatureValid =
+		pinnedFingerprint !== null &&
+		!fingerprintsEqual(pinnedFingerprint, observedFingerprint) &&
+		cached?.pinnedPublicKeyArmored !== undefined
+			? await anyRotationValid(
+					cached.pinnedPublicKeyArmored,
+					fetched.rotationStatements ?? [],
+					address,
+					pinnedFingerprint,
+					observedFingerprint
+				)
+			: false;
+
+	const decision: PinDecision = evaluatePin({
+		pinnedFingerprint,
+		observedFingerprint,
+		rotationSignatureValid,
+	});
+
+	// On `keyChanged` the pin stays the OLD key; otherwise the observed key
+	// becomes the trusted pin.
+	const trustedIsObserved = decision.state === 'pinned';
+	await ctx.runMutation(internal.e2ee.recipientKeys.upsertDiscovery, {
+		address,
+		domain,
+		outcome: decision.state === 'pinned' ? 'trusted' : 'keyChanged',
+		pinnedFingerprint: decision.pinnedFingerprint,
+		pinnedPublicKeyArmored: trustedIsObserved ? observedArmored : cached?.pinnedPublicKeyArmored,
+		observedFingerprint,
+		observedPublicKeyArmored: observedArmored,
+		source: 'wkd',
+		instanceFingerprint: fetched.instanceFingerprint ?? cached?.instanceFingerprint,
+		expiresAt: now + TTL_FOUND_MS,
+	});
+	return {
+		outcome: decision.state === 'pinned' ? 'trusted' : 'keyChanged',
+		action: decision.action,
+	};
+}
+
+/**
+ * INTERNAL: discover (or refresh) the key for one address and persist the
+ * discovery + TOFU pin decision. Thin wrapper over {@link runRecipientKeyDiscovery}.
+ */
+export const discoverRecipientKey = internalAction({
+	args: { address: v.string(), force: v.optional(v.boolean()) },
+	handler: (ctx, args) => runRecipientKeyDiscovery(ctx, args),
 });
 
 /** True if ANY of the statements is a valid signed rotation to the observed key. */
@@ -454,7 +473,7 @@ async function anyRotationValid(
  */
 export const refreshExpiringRecipientKeys = internalAction({
 	args: {},
-	handler: async (ctx) => {
+	handler: async (ctx): Promise<{ refreshed: number }> => {
 		if (!(await ctx.runQuery(internal.e2ee.keys.isSealedMailEnabled, {}))) {
 			return { refreshed: 0 };
 		}
@@ -463,7 +482,7 @@ export const refreshExpiringRecipientKeys = internalAction({
 			limit: 50,
 		});
 		for (const address of addresses) {
-			await ctx.runAction(internal.e2ee.discovery.discoverRecipientKey, { address, force: true });
+			await runRecipientKeyDiscovery(ctx, { address, force: true });
 		}
 		return { refreshed: addresses.length };
 	},
