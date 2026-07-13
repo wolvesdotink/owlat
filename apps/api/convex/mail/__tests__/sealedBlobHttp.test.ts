@@ -79,6 +79,17 @@ describe('sealed-blob decrypt-serving proxy', () => {
 		expect(await res.text()).toContain(CANARY);
 	});
 
+	it('fails closed when blobs are sealed but the proxy origin is missing', async () => {
+		vi.stubEnv('CONVEX_SITE_URL', '');
+		const t = convexTest(schema, modules);
+		const storageId = await t.run((ctx) =>
+			storeSealedBlob(ctx.storage, enc.encode(`${CANARY} blob body`), 'message/rfc822')
+		);
+
+		const url = await t.run((ctx) => sealedBlobUrl(ctx.storage, storageId, 'message/rfc822'));
+		expect(url).toBeNull();
+	});
+
 	it('rejects a forged signature with 403', async () => {
 		const t = convexTest(schema, modules);
 		const { url } = await seedSealedBlob(t, 'message/rfc822');

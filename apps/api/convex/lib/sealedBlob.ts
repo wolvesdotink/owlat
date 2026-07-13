@@ -32,11 +32,11 @@
  * through verbatim, so the proxy serves a not-yet-migrated blob correctly too —
  * the store can hold a mix of sealed and plaintext blobs during the back-fill.
  *
- * FALLBACK. Sealing only happens when `INSTANCE_SECRET` is configured, so a blob
- * is only ever ciphertext on an instance that HAS the key. When either the
- * secret or `CONVEX_SITE_URL` is absent, {@link sealedBlobUrl} falls back to the
- * direct signed URL — the blob is plaintext in that case, so a bare URL is
- * correct and nothing regresses on an unprovisioned install.
+ * FALLBACK. Sealing only happens when `INSTANCE_SECRET` is configured, so an
+ * instance without that secret can safely return the direct signed storage URL.
+ * If the secret exists but `CONVEX_SITE_URL` does not, the blob may be
+ * ciphertext: URL minting therefore fails closed instead of exposing unusable
+ * ciphertext and bypassing the decrypt-serving boundary.
  */
 
 import type { Id } from '../_generated/dataModel';
@@ -153,8 +153,9 @@ export async function readSealedBlobText(
 /**
  * Mint a URL a consumer can fetch to get the blob's PLAINTEXT bytes. When the
  * instance has a key and a site URL, this is the decrypt-serving proxy URL
- * (capability token bound to the blob + content-type + expiry). Otherwise the
- * blob is plaintext at rest, so we fall back to the direct signed storage URL.
+ * (capability token bound to the blob + content-type + expiry). Without a key,
+ * blobs are plaintext and the direct signed storage URL is safe. With a key but
+ * no proxy origin, return `null`: a direct URL could expose sealed ciphertext.
  */
 export async function sealedBlobUrl(
 	storage: BlobGetUrl,
@@ -163,9 +164,10 @@ export async function sealedBlobUrl(
 ): Promise<string | null> {
 	const secret = getOptional('INSTANCE_SECRET');
 	const siteUrl = getOptional('CONVEX_SITE_URL');
-	if (secret === undefined || siteUrl === undefined) {
+	if (secret === undefined) {
 		return storage.getUrl(storageId);
 	}
+	if (!siteUrl) return null;
 	const exp = Date.now() + TOKEN_TTL_MS;
 	const sig = await hmac(secret, tokenMessage(storageId, contentType, exp));
 	const params = new URLSearchParams({
