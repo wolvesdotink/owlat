@@ -245,16 +245,17 @@ export const repointResealedBlobs = internalMutation({
 		oldHtmlBodyStorageId: v.optional(v.id('_storage')),
 	},
 	handler: async (ctx, args) => {
+		const maxSharedBlobReferences = 1_000;
 		if (args.rawStorageId && args.oldRawStorageId) {
 			const newId = args.rawStorageId;
 			const oldId = args.oldRawStorageId;
 			const rows = await ctx.db
 				.query('mailMessages')
 				.withIndex('by_raw_storage', (q) => q.eq('rawStorageId', oldId))
-				.collect();
-			// bounded: rows sharing one storage blob = the resealed message plus
-			// its IMAP-COPY siblings (copyMessages spreads the same id) — a small
-			// per-message fan-out on the by_raw_storage index, not a table-wide scan.
+				.take(maxSharedBlobReferences + 1);
+			if (rows.length > maxSharedBlobReferences) {
+				throw new Error('raw blob has too many shared references to migrate atomically');
+			}
 			for (const r of rows) await ctx.db.patch(r._id, { rawStorageId: newId });
 			await ctx.storage.delete(oldId);
 		}
@@ -264,10 +265,10 @@ export const repointResealedBlobs = internalMutation({
 			const rows = await ctx.db
 				.query('mailMessages')
 				.withIndex('by_text_body_storage', (q) => q.eq('textBodyStorageId', oldId))
-				.collect();
-			// bounded: rows sharing one storage blob = the resealed message plus
-			// its IMAP-COPY siblings (copyMessages spreads the same id) — a small
-			// per-message fan-out on the by_text_body_storage index, not a table-wide scan.
+				.take(maxSharedBlobReferences + 1);
+			if (rows.length > maxSharedBlobReferences) {
+				throw new Error('text body blob has too many shared references to migrate atomically');
+			}
 			for (const r of rows) await ctx.db.patch(r._id, { textBodyStorageId: newId });
 			await ctx.storage.delete(oldId);
 		}
@@ -277,10 +278,10 @@ export const repointResealedBlobs = internalMutation({
 			const rows = await ctx.db
 				.query('mailMessages')
 				.withIndex('by_html_body_storage', (q) => q.eq('htmlBodyStorageId', oldId))
-				.collect();
-			// bounded: rows sharing one storage blob = the resealed message plus
-			// its IMAP-COPY siblings (copyMessages spreads the same id) — a small
-			// per-message fan-out on the by_html_body_storage index, not a table-wide scan.
+				.take(maxSharedBlobReferences + 1);
+			if (rows.length > maxSharedBlobReferences) {
+				throw new Error('HTML body blob has too many shared references to migrate atomically');
+			}
 			for (const r of rows) await ctx.db.patch(r._id, { htmlBodyStorageId: newId });
 			await ctx.storage.delete(oldId);
 		}
