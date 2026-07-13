@@ -56,6 +56,7 @@ async function scheduleRecipientDiscovery(ctx: MutationCtx, addresses: string[])
  * than throwing) when the mailbox isn't accessible, so the caller renders the
  * "still being set up" state instead of an error.
  */
+// authz: draftQueries.canSendFromHandler enforces mailbox access.
 export const canSendFrom = authedQuery({
 	args: { mailboxId: v.id('mailboxes') },
 	handler: canSendFromHandler,
