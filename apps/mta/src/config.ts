@@ -141,21 +141,13 @@ export interface MtaConfig {
 	 */
 	outboundTlsMode?: OutboundTlsMode;
 	/**
-	 * DANE (RFC 7672) at send time. Three-valued (RFC-7672 report-only support):
-	 * `off` is byte-identical to the historic path (no TLSA lookups); `report`
-	 * looks up and evaluates each recipient MX's DNSSEC-authenticated TLSA RRset
-	 * and EMITS the TLS-RPT result but never requires TLS or bounces (observability
-	 * only); `enforce` additionally authenticates the MX certificate against the
-	 * RRset — a require-TLS floor that supersedes MTA-STS, deferring a mismatch.
-	 *
-	 * Default: `report` (honours locked decision D6 — DANE never bounces mail by
-	 * default because report-only has zero enforcement/delivery impact — while
-	 * giving DANE visibility out of the box). Inert in every mode without a
-	 * resolver URL, so a fresh install still behaves exactly as before.
-	 *
-	 * `loadConfig` always populates this; optional only so partial test-double
-	 * configs and `as MtaConfig` casts need not restate it (read sites treat an
-	 * absent value as `off`).
+	 * DANE (RFC 7672) at send time: `off` (no TLSA lookups, historic path),
+	 * `report` (evaluate each MX's DNSSEC-authenticated TLSA and emit the TLS-RPT
+	 * result but never require TLS or bounce — observability only), or `enforce`
+	 * (also authenticate the MX cert against the RRset, a require-TLS floor that
+	 * supersedes MTA-STS and defers a mismatch). Default `report`, which honours
+	 * D6 (zero enforcement/delivery impact). Inert in every mode without a resolver
+	 * URL. Optional only for test doubles; read sites treat an absent value as `off`.
 	 */
 	daneMode?: DaneMode;
 	/**

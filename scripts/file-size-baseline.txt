@@ -40,6 +40,7 @@ apps/docs/app/pages/index.vue
 apps/mail-sync/src/connection.ts
 apps/marketing/app/components/FeatureBento.vue
 apps/mta/src/bounce/inboundSecurity.ts
+apps/mta/src/smtp/sender.ts
 apps/mta/src/smtp/submissionServer.ts
 apps/mta/src/smtp/tlsRpt.ts
 apps/setup-cli/src/commands/quickstart.ts
@@ -67,10 +68,10 @@ apps/web/app/pages/dashboard/delivery/domains.vue
 apps/web/app/pages/dashboard/files/[id].vue
 apps/web/app/pages/dashboard/inbox/[threadId].vue
 apps/web/app/pages/dashboard/knowledge/[id].vue
+apps/web/app/pages/dashboard/postbox/migrate.vue
 apps/web/app/pages/dashboard/send/blocks/index.vue
 apps/web/app/pages/dashboard/send/marketing/index.vue
 apps/web/app/pages/dashboard/send/transactional/index.vue
-apps/web/app/pages/dashboard/postbox/migrate.vue
 apps/web/app/pages/dashboard/settings/account.vue
 apps/web/app/pages/dashboard/settings/api/index.vue
 apps/web/app/pages/dashboard/settings/forms.vue
@@ -79,8 +80,8 @@ apps/web/app/pages/dashboard/settings/operator/index.vue
 apps/web/app/pages/dashboard/settings/properties.vue
 apps/web/app/pages/dashboard/settings/team.vue
 apps/web/app/pages/desktop/setup.vue
-packages/email-builder/src/components/canvas/InlineTextEditor.vue
 packages/email-builder/src/components/EmailBuilder.vue
+packages/email-builder/src/components/canvas/InlineTextEditor.vue
 packages/email-previewer/src/components/ClientSelector.vue
 packages/email-previewer/src/components/EmailPreviewer.vue
 packages/email-previewer/src/components/RenderOptionsPanel.vue
