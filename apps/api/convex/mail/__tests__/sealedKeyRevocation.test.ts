@@ -126,7 +126,7 @@ describe('Sealed Mail revocation on address deletion', () => {
 		expect(await t.query(api.e2ee.keys.getPublicKeyByAddress, { address: alias })).toBeNull();
 	});
 
-	it('leaves the key published when Sealed Mail is off (flag-gated, like the mint)', async () => {
+	it('keeps the vault key active while public discovery is withdrawn when Sealed Mail is off', async () => {
 		const t = convexTest(schema, modules);
 		// NOTE: sealedMail NOT enabled — deletion must not touch the key.
 		const address = 'flagoff@hinterland.camp';
@@ -141,7 +141,9 @@ describe('Sealed Mail revocation on address deletion', () => {
 			vi.useRealTimers();
 		}
 
-		// Flag off ⇒ no revocation scheduled ⇒ the key is still active/published.
-		expect(await t.query(api.e2ee.keys.getPublicKeyByAddress, { address })).not.toBeNull();
+		// Flag off ⇒ no revocation scheduled, so the vault key remains active for
+		// historical decryption. Public discovery is independently withdrawn.
+		expect(await t.query(internal.e2ee.keys.getAddressKeyInternal, { address })).not.toBeNull();
+		expect(await t.query(api.e2ee.keys.getPublicKeyByAddress, { address })).toBeNull();
 	});
 });

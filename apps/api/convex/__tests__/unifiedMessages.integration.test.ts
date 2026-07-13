@@ -2,8 +2,25 @@ import { convexTest } from 'convex-test';
 import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
-import { createTestConversationThread, createTestContact, createTestUnifiedMessage, createTestChannelConfig } from './factories';
+import {
+	createTestConversationThread,
+	createTestContact,
+	createTestUnifiedMessage,
+	createTestChannelConfig,
+} from './factories';
 import type { Id } from '../_generated/dataModel';
+import { isSealedAtRest } from '../lib/atRestBodies';
+import {
+	openUnifiedMessageContent,
+	UNIFIED_MESSAGE_STORAGE_VERSION_PLAINTEXT,
+	UNIFIED_MESSAGE_STORAGE_VERSION_SEALED,
+} from '../lib/messageBody';
+
+function expectedContentStorageVersion(content: string): number {
+	return isSealedAtRest(content)
+		? UNIFIED_MESSAGE_STORAGE_VERSION_SEALED
+		: UNIFIED_MESSAGE_STORAGE_VERSION_PLAINTEXT;
+}
 
 /** Create a valid conversation thread for DB insertion (strips fields not in schema) */
 function threadData(overrides: Record<string, unknown> = {}) {
@@ -20,7 +37,11 @@ vi.mock('../lib/sessionOrganization', async () => {
 		getUserIdFromSession: vi.fn().mockResolvedValue('test-user'),
 		getMutationContext: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
 		requireOrgPermission: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
-		requireAuthenticatedIdentity: vi.fn().mockResolvedValue({ subject: 'test-user', issuer: 'test', tokenIdentifier: 'test|test-user' }),
+		requireAuthenticatedIdentity: vi.fn().mockResolvedValue({
+			subject: 'test-user',
+			issuer: 'test',
+			tokenIdentifier: 'test|test-user',
+		}),
 	};
 });
 
@@ -40,13 +61,23 @@ vi.mock('../lib/contactCountHelpers', async () => {
 
 const allModules = import.meta.glob('../**/*.*s');
 const modules = Object.fromEntries(
-	Object.entries(allModules).filter(([path]) =>
-		!path.includes('sesActions') && !path.includes('agentSecurity') && !path.includes('agentContext') && !path.includes('agentClassifier') && !path.includes('agentDrafter') && !path.includes('agentRouter') &&
-		!path.includes('agent/walker') &&
-		!path.includes('agent/steps/index') &&
-		!path.includes('agent/steps/shared') &&
-		!path.includes('agent/steps/classify') &&
-		!path.includes('agent/steps/draft') && !path.includes('knowledgeExtraction') && !path.includes('semanticFileProcessing') && !path.includes('visualizationAgent') && !path.includes('llmProvider')
+	Object.entries(allModules).filter(
+		([path]) =>
+			!path.includes('sesActions') &&
+			!path.includes('agentSecurity') &&
+			!path.includes('agentContext') &&
+			!path.includes('agentClassifier') &&
+			!path.includes('agentDrafter') &&
+			!path.includes('agentRouter') &&
+			!path.includes('agent/walker') &&
+			!path.includes('agent/steps/index') &&
+			!path.includes('agent/steps/shared') &&
+			!path.includes('agent/steps/classify') &&
+			!path.includes('agent/steps/draft') &&
+			!path.includes('knowledgeExtraction') &&
+			!path.includes('semanticFileProcessing') &&
+			!path.includes('visualizationAgent') &&
+			!path.includes('llmProvider')
 	)
 );
 
@@ -60,21 +91,30 @@ describe('unifiedMessages.getThreadTimeline', () => {
 		await t.run(async (ctx) => {
 			threadId = await ctx.db.insert('conversationThreads', threadData());
 
-			await ctx.db.insert('unifiedMessages', createTestUnifiedMessage({
-				threadId,
-				content: JSON.stringify({ text: 'First message' }),
-				createdAt: Date.now() - 2000,
-			}));
-			await ctx.db.insert('unifiedMessages', createTestUnifiedMessage({
-				threadId,
-				content: JSON.stringify({ text: 'Second message' }),
-				createdAt: Date.now() - 1000,
-			}));
-			await ctx.db.insert('unifiedMessages', createTestUnifiedMessage({
-				threadId,
-				content: JSON.stringify({ text: 'Third message' }),
-				createdAt: Date.now(),
-			}));
+			await ctx.db.insert(
+				'unifiedMessages',
+				createTestUnifiedMessage({
+					threadId,
+					content: JSON.stringify({ text: 'First message' }),
+					createdAt: Date.now() - 2000,
+				})
+			);
+			await ctx.db.insert(
+				'unifiedMessages',
+				createTestUnifiedMessage({
+					threadId,
+					content: JSON.stringify({ text: 'Second message' }),
+					createdAt: Date.now() - 1000,
+				})
+			);
+			await ctx.db.insert(
+				'unifiedMessages',
+				createTestUnifiedMessage({
+					threadId,
+					content: JSON.stringify({ text: 'Third message' }),
+					createdAt: Date.now(),
+				})
+			);
 		});
 
 		const messages = await t.query(api.unifiedMessages.getThreadTimeline, { threadId });
@@ -108,18 +148,24 @@ describe('unifiedMessages.getContactTimeline', () => {
 			contactId = await ctx.db.insert('contacts', createTestContact());
 			threadId = await ctx.db.insert('conversationThreads', threadData());
 
-			await ctx.db.insert('unifiedMessages', createTestUnifiedMessage({
-				threadId,
-				contactId,
-				content: JSON.stringify({ text: 'Older' }),
-				createdAt: Date.now() - 1000,
-			}));
-			await ctx.db.insert('unifiedMessages', createTestUnifiedMessage({
-				threadId,
-				contactId,
-				content: JSON.stringify({ text: 'Newer' }),
-				createdAt: Date.now(),
-			}));
+			await ctx.db.insert(
+				'unifiedMessages',
+				createTestUnifiedMessage({
+					threadId,
+					contactId,
+					content: JSON.stringify({ text: 'Older' }),
+					createdAt: Date.now() - 1000,
+				})
+			);
+			await ctx.db.insert(
+				'unifiedMessages',
+				createTestUnifiedMessage({
+					threadId,
+					contactId,
+					content: JSON.stringify({ text: 'Newer' }),
+					createdAt: Date.now(),
+				})
+			);
 		});
 
 		const messages = await t.query(api.unifiedMessages.getContactTimeline, { contactId });
@@ -140,33 +186,42 @@ describe('unifiedMessages.getContactTimeline', () => {
 			threadId = await ctx.db.insert('conversationThreads', threadData());
 
 			// Customer emailed in (mirrored inbound email)…
-			await ctx.db.insert('unifiedMessages', createTestUnifiedMessage({
-				threadId,
-				contactId,
-				channel: 'email',
-				direction: 'inbound',
-				content: JSON.stringify({ text: 'inbound email', subject: 'Hi' }),
-				createdAt: base - 3000,
-			}));
+			await ctx.db.insert(
+				'unifiedMessages',
+				createTestUnifiedMessage({
+					threadId,
+					contactId,
+					channel: 'email',
+					direction: 'inbound',
+					content: JSON.stringify({ text: 'inbound email', subject: 'Hi' }),
+					createdAt: base - 3000,
+				})
+			);
 			// …then an SMS came in on another channel…
-			await ctx.db.insert('unifiedMessages', createTestUnifiedMessage({
-				threadId,
-				contactId,
-				channel: 'sms',
-				direction: 'inbound',
-				content: JSON.stringify({ text: 'sms ping' }),
-				createdAt: base - 2000,
-			}));
+			await ctx.db.insert(
+				'unifiedMessages',
+				createTestUnifiedMessage({
+					threadId,
+					contactId,
+					channel: 'sms',
+					direction: 'inbound',
+					content: JSON.stringify({ text: 'sms ping' }),
+					createdAt: base - 2000,
+				})
+			);
 			// …then the agent replied by email (mirrored outbound email).
-			await ctx.db.insert('unifiedMessages', createTestUnifiedMessage({
-				threadId,
-				contactId,
-				channel: 'email',
-				direction: 'outbound',
-				status: 'sent',
-				content: JSON.stringify({ text: 'agent reply', subject: 'Re: Hi' }),
-				createdAt: base - 1000,
-			}));
+			await ctx.db.insert(
+				'unifiedMessages',
+				createTestUnifiedMessage({
+					threadId,
+					contactId,
+					channel: 'email',
+					direction: 'outbound',
+					status: 'sent',
+					content: JSON.stringify({ text: 'agent reply', subject: 'Re: Hi' }),
+					createdAt: base - 1000,
+				})
+			);
 		});
 
 		const messages = await t.query(api.unifiedMessages.getContactTimeline, { contactId });
@@ -188,16 +243,22 @@ describe('unifiedMessages.listRecent', () => {
 		await t.run(async (ctx) => {
 			const threadId = await ctx.db.insert('conversationThreads', threadData());
 
-			await ctx.db.insert('unifiedMessages', createTestUnifiedMessage({
-				threadId,
-				channel: 'email',
-				createdAt: Date.now() - 1000,
-			}));
-			await ctx.db.insert('unifiedMessages', createTestUnifiedMessage({
-				threadId,
-				channel: 'chat',
-				createdAt: Date.now(),
-			}));
+			await ctx.db.insert(
+				'unifiedMessages',
+				createTestUnifiedMessage({
+					threadId,
+					channel: 'email',
+					createdAt: Date.now() - 1000,
+				})
+			);
+			await ctx.db.insert(
+				'unifiedMessages',
+				createTestUnifiedMessage({
+					threadId,
+					channel: 'chat',
+					createdAt: Date.now(),
+				})
+			);
 		});
 
 		const messages = await t.query(api.unifiedMessages.listRecent, {});
@@ -210,9 +271,18 @@ describe('unifiedMessages.listRecent', () => {
 		await t.run(async (ctx) => {
 			const threadId = await ctx.db.insert('conversationThreads', threadData());
 
-			await ctx.db.insert('unifiedMessages', createTestUnifiedMessage({ threadId, channel: 'email' }));
-			await ctx.db.insert('unifiedMessages', createTestUnifiedMessage({ threadId, channel: 'chat' }));
-			await ctx.db.insert('unifiedMessages', createTestUnifiedMessage({ threadId, channel: 'email' }));
+			await ctx.db.insert(
+				'unifiedMessages',
+				createTestUnifiedMessage({ threadId, channel: 'email' })
+			);
+			await ctx.db.insert(
+				'unifiedMessages',
+				createTestUnifiedMessage({ threadId, channel: 'chat' })
+			);
+			await ctx.db.insert(
+				'unifiedMessages',
+				createTestUnifiedMessage({ threadId, channel: 'email' })
+			);
 		});
 
 		const emails = await t.query(api.unifiedMessages.listRecent, { channel: 'email' });
@@ -232,7 +302,9 @@ describe('unifiedMessages.listRecent', () => {
 		expect(mock).toHaveBeenCalledWith(expect.anything(), 'organization:manage');
 
 		mock.mockRejectedValueOnce(new Error('Insufficient permissions'));
-		await expect(t.query(api.unifiedMessages.listRecent, {})).rejects.toThrow('Insufficient permissions');
+		await expect(t.query(api.unifiedMessages.listRecent, {})).rejects.toThrow(
+			'Insufficient permissions'
+		);
 	});
 });
 
@@ -262,6 +334,8 @@ describe('unifiedMessages.recordInbound', () => {
 			expect(msg!.direction).toBe('inbound');
 			expect(msg!.status).toBe('received');
 			expect(msg!.channel).toBe('email');
+			expect(msg!.contentVersion).toBe(1);
+			expect(msg!.contentStorageVersion).toBe(expectedContentStorageVersion(msg!.content));
 		});
 	});
 });
@@ -288,6 +362,8 @@ describe('unifiedMessages.recordOutbound', () => {
 			expect(msg!.direction).toBe('outbound');
 			expect(msg!.status).toBe('queued');
 			expect(msg!.channel).toBe('sms');
+			expect(msg!.contentVersion).toBe(1);
+			expect(msg!.contentStorageVersion).toBe(expectedContentStorageVersion(msg!.content));
 		});
 	});
 
@@ -336,7 +412,7 @@ describe('unifiedMessages lastSuccessfulSend stamping', () => {
 			threadId = await ctx.db.insert('conversationThreads', threadData({ contactId }));
 			configId = await ctx.db.insert(
 				'channelConfigs',
-				createTestChannelConfig({ channel: 'email', isEnabled: true }),
+				createTestChannelConfig({ channel: 'email', isEnabled: true })
 			);
 		});
 
@@ -365,7 +441,7 @@ describe('unifiedMessages lastSuccessfulSend stamping', () => {
 			threadId = await ctx.db.insert('conversationThreads', threadData({ contactId }));
 			configId = await ctx.db.insert(
 				'channelConfigs',
-				createTestChannelConfig({ channel: 'email', isEnabled: true }),
+				createTestChannelConfig({ channel: 'email', isEnabled: true })
 			);
 		});
 
@@ -391,7 +467,7 @@ describe('unifiedMessages lastSuccessfulSend stamping', () => {
 			threadId = await ctx.db.insert('conversationThreads', threadData({ contactId }));
 			configId = await ctx.db.insert(
 				'channelConfigs',
-				createTestChannelConfig({ channel: 'email', isEnabled: true }),
+				createTestChannelConfig({ channel: 'email', isEnabled: true })
 			);
 		});
 
@@ -426,7 +502,7 @@ describe('unifiedMessages lastSuccessfulSend stamping', () => {
 			threadId = await ctx.db.insert('conversationThreads', threadData());
 			configId = await ctx.db.insert(
 				'channelConfigs',
-				createTestChannelConfig({ channel: 'chat', isEnabled: true }),
+				createTestChannelConfig({ channel: 'chat', isEnabled: true })
 			);
 		});
 
@@ -450,11 +526,14 @@ describe('unifiedMessages.updateDeliveryStatus', () => {
 
 		await t.run(async (ctx) => {
 			const threadId = await ctx.db.insert('conversationThreads', threadData());
-			msgId = await ctx.db.insert('unifiedMessages', createTestUnifiedMessage({
-				threadId,
-				direction: 'outbound',
-				status: 'queued',
-			}));
+			msgId = await ctx.db.insert(
+				'unifiedMessages',
+				createTestUnifiedMessage({
+					threadId,
+					direction: 'outbound',
+					status: 'queued',
+				})
+			);
 		});
 
 		await t.mutation(internal.unifiedMessages.updateDeliveryStatus, {
@@ -484,44 +563,99 @@ describe('unifiedMessages.listPendingDeliveryStatus', () => {
 			threadId = await ctx.db.insert('conversationThreads', threadData());
 
 			// SHOULD be picked: outbound, sent, channel, has externalMessageId, recent.
-			smsId = await ctx.db.insert('unifiedMessages', createTestUnifiedMessage({
-				threadId, channel: 'sms', direction: 'outbound', status: 'sent',
-				externalMessageId: 'SM123', createdAt: now,
-			}));
-			whatsappId = await ctx.db.insert('unifiedMessages', createTestUnifiedMessage({
-				threadId, channel: 'whatsapp', direction: 'outbound', status: 'sent',
-				externalMessageId: 'wamid.1', createdAt: now - 1000,
-			}));
-			genericId = await ctx.db.insert('unifiedMessages', createTestUnifiedMessage({
-				threadId, channel: 'generic', direction: 'outbound', status: 'sent',
-				externalMessageId: 'web-1', createdAt: now - 2000,
-			}));
+			smsId = await ctx.db.insert(
+				'unifiedMessages',
+				createTestUnifiedMessage({
+					threadId,
+					channel: 'sms',
+					direction: 'outbound',
+					status: 'sent',
+					externalMessageId: 'SM123',
+					createdAt: now,
+				})
+			);
+			whatsappId = await ctx.db.insert(
+				'unifiedMessages',
+				createTestUnifiedMessage({
+					threadId,
+					channel: 'whatsapp',
+					direction: 'outbound',
+					status: 'sent',
+					externalMessageId: 'wamid.1',
+					createdAt: now - 1000,
+				})
+			);
+			genericId = await ctx.db.insert(
+				'unifiedMessages',
+				createTestUnifiedMessage({
+					threadId,
+					channel: 'generic',
+					direction: 'outbound',
+					status: 'sent',
+					externalMessageId: 'web-1',
+					createdAt: now - 2000,
+				})
+			);
 
 			// NOT picked: email channel (owned by MTA pipeline).
-			await ctx.db.insert('unifiedMessages', createTestUnifiedMessage({
-				threadId, channel: 'email', direction: 'outbound', status: 'sent',
-				externalMessageId: 'msg-email', createdAt: now,
-			}));
+			await ctx.db.insert(
+				'unifiedMessages',
+				createTestUnifiedMessage({
+					threadId,
+					channel: 'email',
+					direction: 'outbound',
+					status: 'sent',
+					externalMessageId: 'msg-email',
+					createdAt: now,
+				})
+			);
 			// NOT picked: already delivered (terminal/progressed).
-			await ctx.db.insert('unifiedMessages', createTestUnifiedMessage({
-				threadId, channel: 'sms', direction: 'outbound', status: 'delivered',
-				externalMessageId: 'SM-done', createdAt: now,
-			}));
+			await ctx.db.insert(
+				'unifiedMessages',
+				createTestUnifiedMessage({
+					threadId,
+					channel: 'sms',
+					direction: 'outbound',
+					status: 'delivered',
+					externalMessageId: 'SM-done',
+					createdAt: now,
+				})
+			);
 			// NOT picked: inbound.
-			await ctx.db.insert('unifiedMessages', createTestUnifiedMessage({
-				threadId, channel: 'sms', direction: 'inbound', status: 'sent',
-				externalMessageId: 'SM-in', createdAt: now,
-			}));
+			await ctx.db.insert(
+				'unifiedMessages',
+				createTestUnifiedMessage({
+					threadId,
+					channel: 'sms',
+					direction: 'inbound',
+					status: 'sent',
+					externalMessageId: 'SM-in',
+					createdAt: now,
+				})
+			);
 			// NOT picked: no externalMessageId to poll on.
-			await ctx.db.insert('unifiedMessages', createTestUnifiedMessage({
-				threadId, channel: 'sms', direction: 'outbound', status: 'sent',
-				createdAt: now,
-			}));
+			await ctx.db.insert(
+				'unifiedMessages',
+				createTestUnifiedMessage({
+					threadId,
+					channel: 'sms',
+					direction: 'outbound',
+					status: 'sent',
+					createdAt: now,
+				})
+			);
 			// NOT picked: outside the window (older than sinceMs).
-			await ctx.db.insert('unifiedMessages', createTestUnifiedMessage({
-				threadId, channel: 'sms', direction: 'outbound', status: 'sent',
-				externalMessageId: 'SM-old', createdAt: now - 60_000,
-			}));
+			await ctx.db.insert(
+				'unifiedMessages',
+				createTestUnifiedMessage({
+					threadId,
+					channel: 'sms',
+					direction: 'outbound',
+					status: 'sent',
+					externalMessageId: 'SM-old',
+					createdAt: now - 60_000,
+				})
+			);
 		});
 
 		const pending = await t.query(internal.unifiedMessages.listPendingDeliveryStatus, {
@@ -530,7 +664,7 @@ describe('unifiedMessages.listPendingDeliveryStatus', () => {
 		});
 
 		expect(new Set(pending.map((p) => p.messageId))).toEqual(
-			new Set([smsId, whatsappId, genericId]),
+			new Set([smsId, whatsappId, genericId])
 		);
 		expect(pending.every((p) => typeof p.externalMessageId === 'string')).toBe(true);
 		expect(pending.every((p) => ['sms', 'whatsapp', 'generic'].includes(p.channel))).toBe(true);
@@ -543,10 +677,17 @@ describe('unifiedMessages.listPendingDeliveryStatus', () => {
 		await t.run(async (ctx) => {
 			const threadId = await ctx.db.insert('conversationThreads', threadData());
 			for (let i = 0; i < 5; i++) {
-				await ctx.db.insert('unifiedMessages', createTestUnifiedMessage({
-					threadId, channel: 'sms', direction: 'outbound', status: 'sent',
-					externalMessageId: `SM-${i}`, createdAt: now - i,
-				}));
+				await ctx.db.insert(
+					'unifiedMessages',
+					createTestUnifiedMessage({
+						threadId,
+						channel: 'sms',
+						direction: 'outbound',
+						status: 'sent',
+						externalMessageId: `SM-${i}`,
+						createdAt: now - i,
+					})
+				);
 			}
 		});
 
@@ -581,7 +722,7 @@ describe('unifiedMessages.sendChatMessage', () => {
 			expect(msg!.channel).toBe('chat');
 			expect(msg!.direction).toBe('outbound');
 			expect(msg!.status).toBe('delivered');
-			const content = JSON.parse(msg!.content);
+			const content = await openUnifiedMessageContent(msg!.content);
 			expect(content.text).toBe('Hello from the team!');
 		});
 	});
@@ -614,11 +755,14 @@ describe('unifiedMessages.updateChannelConfig', () => {
 		let configId!: Id<'channelConfigs'>;
 
 		await t.run(async (ctx) => {
-			configId = await ctx.db.insert('channelConfigs', createTestChannelConfig({
-				channel: 'email',
-				isEnabled: true,
-				displayName: 'Email',
-			}));
+			configId = await ctx.db.insert(
+				'channelConfigs',
+				createTestChannelConfig({
+					channel: 'email',
+					isEnabled: true,
+					displayName: 'Email',
+				})
+			);
 		});
 
 		await t.mutation(api.unifiedMessages.updateChannelConfig, {
@@ -642,10 +786,13 @@ describe('unifiedMessages.updateChannelHealth', () => {
 		const t = convexTest(schema, modules);
 
 		await t.run(async (ctx) => {
-			await ctx.db.insert('channelConfigs', createTestChannelConfig({
-				channel: 'sms',
-				isEnabled: true,
-			}));
+			await ctx.db.insert(
+				'channelConfigs',
+				createTestChannelConfig({
+					channel: 'sms',
+					isEnabled: true,
+				})
+			);
 		});
 
 		await t.mutation(internal.unifiedMessages.updateChannelHealth, {
@@ -682,11 +829,14 @@ describe('unifiedMessages.runChannelHealthChecks', () => {
 		const t = convexTest(schema, modules);
 
 		await t.run(async (ctx) => {
-			await ctx.db.insert('channelConfigs', createTestChannelConfig({
-				channel: 'sms',
-				isEnabled: true,
-				// no `config` blob → no credentials
-			}));
+			await ctx.db.insert(
+				'channelConfigs',
+				createTestChannelConfig({
+					channel: 'sms',
+					isEnabled: true,
+					// no `config` blob → no credentials
+				})
+			);
 		});
 
 		await t.action(internal.unifiedMessages.runChannelHealthChecks);
@@ -711,11 +861,14 @@ describe('unifiedMessages.runChannelHealthChecks', () => {
 		const t = convexTest(schema, modules);
 
 		await t.run(async (ctx) => {
-			await ctx.db.insert('channelConfigs', createTestChannelConfig({
-				channel: 'sms',
-				isEnabled: true,
-				config: 'not-a-valid-encrypted-envelope',
-			}));
+			await ctx.db.insert(
+				'channelConfigs',
+				createTestChannelConfig({
+					channel: 'sms',
+					isEnabled: true,
+					config: 'not-a-valid-encrypted-envelope',
+				})
+			);
 		});
 
 		await t.action(internal.unifiedMessages.runChannelHealthChecks);
@@ -734,10 +887,13 @@ describe('unifiedMessages.runChannelHealthChecks', () => {
 		const t = convexTest(schema, modules);
 
 		await t.run(async (ctx) => {
-			await ctx.db.insert('channelConfigs', createTestChannelConfig({
-				channel: 'email',
-				isEnabled: true,
-			}));
+			await ctx.db.insert(
+				'channelConfigs',
+				createTestChannelConfig({
+					channel: 'email',
+					isEnabled: true,
+				})
+			);
 		});
 
 		await t.action(internal.unifiedMessages.runChannelHealthChecks);

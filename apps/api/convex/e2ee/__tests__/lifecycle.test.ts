@@ -36,6 +36,7 @@ describe('e2ee/lifecycle rotation + revocation', () => {
 
 	it('rotates: new active key, old key retired to decrypt-only, statement recorded', async () => {
 		const t = convexTest(schema, modules);
+		await enableSealedMail(t);
 		const address = 'alice@sealed.example.com';
 
 		const minted = await t.action(internal.e2ee.keysNode.mintForAddress, { address });
@@ -78,8 +79,45 @@ describe('e2ee/lifecycle rotation + revocation', () => {
 		);
 	});
 
+	it('rejects a stale concurrent rotation without changing the active key or feed', async () => {
+		const t = convexTest(schema, modules);
+		const address = 'rotation-race@sealed.example.com';
+		const minted = await t.action(internal.e2ee.keysNode.mintForAddress, { address });
+		const winner = await t.action(internal.e2ee.lifecycleNode.runRotateAddressKey, { address });
+		expect(winner.rotated).toBe(true);
+		const active = await t.query(internal.e2ee.keys.getAddressKeyInternal, { address });
+		if (!active) throw new Error('rotated key missing');
+
+		const stale = await t.mutation(internal.e2ee.lifecycle.storeRotatedAddressKey, {
+			address,
+			domain: 'sealed.example.com',
+			wkdHash: active.wkdHash!,
+			oldFingerprint: minted.fingerprint,
+			newFingerprint: 'C'.repeat(40),
+			algorithm: active.algorithm,
+			publicKeyArmored: 'STALE PUBLIC KEY',
+			publicKeyBinaryBase64: Buffer.from('stale').toString('base64'),
+			sealedPrivateKey: active.sealedPrivateKey,
+			rotationSignature: 'STALE SIGNATURE',
+		});
+		expect(stale).toEqual({ rotated: false });
+
+		const rows = await t.run((ctx) =>
+			ctx.db
+				.query('keyVault')
+				.withIndex('by_address', (q) => q.eq('address', address))
+				.collect()
+		);
+		expect(rows).toHaveLength(2);
+		expect(rows.find((row) => row.isActive)?.fingerprint).toBe(winner.newFingerprint);
+		const feed = await t.query(internal.e2ee.lifecycle.listRotationStatements, {});
+		expect(feed).toHaveLength(1);
+		expect(feed[0]?.newFingerprint).toBe(winner.newFingerprint);
+	});
+
 	it('a message sealed to the OLD key still opens after rotation, and one to the NEW key opens too', async () => {
 		const t = convexTest(schema, modules);
+		await enableSealedMail(t);
 		const address = 'erin@sealed.example.com';
 
 		// Mint, then seal a fixture to the ORIGINAL (pre-rotation) published key.
@@ -131,6 +169,7 @@ describe('e2ee/lifecycle rotation + revocation', () => {
 
 	it('publishes a rotation statement that verifies and upgrades a peer pin silently', async () => {
 		const t = convexTest(schema, modules);
+		await enableSealedMail(t);
 		const address = 'bob@sealed.example.com';
 
 		const minted = await t.action(internal.e2ee.keysNode.mintForAddress, { address });
@@ -228,6 +267,7 @@ describe('e2ee/lifecycle rotation + revocation', () => {
 
 	it('revocation stops publishing the address public key (WKD + discovery)', async () => {
 		const t = convexTest(schema, modules);
+		await enableSealedMail(t);
 		const address = 'dave@sealed.example.com';
 		await t.action(internal.e2ee.keysNode.mintForAddress, { address });
 		expect(await t.query(api.e2ee.keys.getPublicKeyByAddress, { address })).not.toBeNull();

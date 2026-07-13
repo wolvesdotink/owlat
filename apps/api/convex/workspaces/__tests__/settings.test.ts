@@ -145,6 +145,40 @@ describe('organizations.settings.update — permission rule', () => {
 // ============================================================
 
 describe('organizations.settings.update — write semantics', () => {
+	it('audits security-sensitive delivery setting changes', async () => {
+		const t = convexTest(schema, modules);
+		await t.mutation(api.workspaces.settings.update, {
+			mtaStsMode: 'enforce',
+			trustedArcForwarders: ['lists.example.org'],
+			sealPolicy: 'ask',
+		});
+
+		await t.run(async (ctx) => {
+			const audit = await ctx.db.query('auditLogs').first();
+			expect(audit?.userId).toBe('test-user');
+			expect(audit?.action).toBe('settings.updated');
+			expect(audit?.resource).toBe('settings');
+			const details = JSON.parse(audit?.detailsBlob ?? '{}') as {
+				changes?: Record<string, { from: unknown; to: unknown }>;
+			};
+			expect(details.changes?.['mtaStsMode']).toEqual({ from: null, to: 'enforce' });
+			expect(details.changes?.['trustedArcForwarders']).toEqual({
+				from: null,
+				to: ['lists.example.org'],
+			});
+			expect(details.changes?.['sealPolicy']).toEqual({ from: null, to: 'ask' });
+		});
+	});
+
+	it('rejects oversized trusted ARC forwarder lists', async () => {
+		const t = convexTest(schema, modules);
+		await expect(
+			t.mutation(api.workspaces.settings.update, {
+				trustedArcForwarders: Array.from({ length: 101 }, (_, index) => `list-${index}.example`),
+			})
+		).rejects.toThrow(/At most 100/);
+	});
+
 	it('creates the singleton row on first write', async () => {
 		const t = convexTest(schema, modules);
 

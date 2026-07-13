@@ -20,6 +20,6 @@ export default defineEventHandler(async (event): Promise<unknown> => {
 	}
 
 	setResponseHeader(event, 'Content-Type', 'application/json; charset=utf-8');
-	setResponseHeader(event, 'Cache-Control', 'public, max-age=300');
+	setResponseHeader(event, 'Cache-Control', 'no-store');
 	return manifest;
 });

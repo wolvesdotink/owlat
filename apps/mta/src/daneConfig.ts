@@ -34,10 +34,8 @@ export function isDaneMode(value: string): value is DaneMode {
 /** Resolved DANE configuration (subset of `MtaConfig`). */
 export interface DaneConfig {
 	/**
-	 * How DANE participates in outbound delivery. Default: `report` — report-only
-	 * has zero enforcement/delivery impact (it never bounces mail, honouring locked
-	 * decision D6), while giving operators DANE visibility in the TLS-RPT dashboard
-	 * out of the box.
+	 * How DANE participates in outbound delivery. Default: `off`, matching locked
+	 * decision D6: operators must opt in before Owlat performs TLSA lookups.
 	 */
 	daneMode: DaneMode;
 	/**
@@ -67,7 +65,7 @@ function isLoopbackHost(hostname: string): boolean {
  * Parse and validate the DANE environment (`DANE_MODE`, `DANE_RESOLVER_URL`).
  *
  * Reads through the caller's `optionalEnv` helper (so all MTA env access stays
- * consistent). Defaults to `report` (see {@link DaneConfig.daneMode}).
+ * consistent). Defaults to `off` (see {@link DaneConfig.daneMode}).
  *
  *  - An unrecognised `DANE_MODE` → error (a typo like `enforced` must not silently
  *    fall back to a different posture).
@@ -84,7 +82,7 @@ function isLoopbackHost(hostname: string): boolean {
 export function loadDaneConfig(
 	optionalEnv: (key: string, defaultValue: string) => string
 ): DaneConfig {
-	const daneModeRaw = optionalEnv('DANE_MODE', 'report');
+	const daneModeRaw = optionalEnv('DANE_MODE', 'off');
 	if (!isDaneMode(daneModeRaw)) {
 		throw new Error(
 			`DANE_MODE must be one of: ${DANE_MODES.join(', ')} — got ${JSON.stringify(daneModeRaw)}`

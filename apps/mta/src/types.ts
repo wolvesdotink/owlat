@@ -18,6 +18,11 @@ export interface EmailJob {
 	/** Plain text content (auto-generated from HTML if omitted) */
 	text?: string;
 	/**
+	 * Postbox-only complete PGP/MIME message. When present the SMTP sender uses
+	 * these exact bytes instead of rebuilding MIME from `html`/`text`.
+	 */
+	sealedMimeBase64?: string;
+	/**
 	 * AMP4Email content. When present, delivered as a `text/x-amp-html`
 	 * alternative part so AMP-capable clients (Gmail, Yahoo, Mail.ru) render
 	 * the interactive version; everyone else falls through to the HTML part.

@@ -6,7 +6,7 @@
  * The cardinal rule (the honesty audit is a test, not a vibe): a state may never
  * claim more than what was cryptographically checked. "Sealed — sender verified"
  * is reachable ONLY when the message decrypted AND its signature verified against
- * the pinned sender key — i.e. `signatureValid === true` AND a `signerFingerprint`
+ * the pinned sender key — i.e. `isSignatureValid === true` AND a `signerFingerprint`
  * is present (the pin match). Any weaker combination renders "Sealed — sender not
  * verified"; an undecryptable ciphertext renders the "can't decrypt" state.
  *
@@ -18,14 +18,14 @@
 /** Web mirror of the Convex `InboundEncryptionInfo` union (`e2ee/inboundSeal.ts`). */
 export type InboundEncryptionInfo =
 	| {
-			sealed: true;
-			decrypted: true;
+			isSealed: true;
+			isDecrypted: true;
 			cipherSuite: string;
-			signatureValid: boolean;
+			isSignatureValid: boolean;
 			signerFingerprint?: string;
 			signerInstance?: string;
 	  }
-	| { sealed: true; decrypted: false };
+	| { isSealed: true; isDecrypted: false };
 
 export type SealedBadgeState = 'verified' | 'unverified' | 'cantDecrypt';
 
@@ -54,7 +54,7 @@ export function deriveSealedBadge(
 	// Sealed on the wire but we hold no usable key — nothing decrypted, so no
 	// signature claim is representable. This is the "Encrypted — can't decrypt"
 	// state (the pre-Sealed-Mail behaviour), now driven by the honest record.
-	if (!info.decrypted) {
+	if (!info.isDecrypted) {
 		return {
 			state: 'cantDecrypt',
 			summary: "Encrypted — can't decrypt",
@@ -66,10 +66,10 @@ export function deriveSealedBadge(
 	}
 
 	// The ONLY path to "verified": the body decrypted AND its signature verified
-	// against the PINNED sender key. `signatureValid` alone is not enough — a
+	// against the PINNED sender key. `isSignatureValid` alone is not enough — a
 	// verified signature always carries the signer's fingerprint (the pin match),
 	// so we require both. This double gate is the honesty audit.
-	if (info.signatureValid && !!info.signerFingerprint) {
+	if (info.isSignatureValid && !!info.signerFingerprint) {
 		return {
 			state: 'verified',
 			summary: 'Sealed — sender verified',

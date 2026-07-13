@@ -28,6 +28,13 @@ import { assertFeatureEnabled } from '../lib/featureFlags';
 import { sealedPrivateKeyValidator } from './keys';
 import { normalizeEmail } from '@owlat/shared';
 
+const MAX_KEY_ROWS_PER_ADDRESS = 128;
+const MAX_VAULT_ROWS = 10_000;
+
+function assertWithinLimit(rows: readonly unknown[], limit: number, label: string): void {
+	if (rows.length > limit) throw new Error(`${label} exceeds the supported limit of ${limit}`);
+}
+
 /**
  * Atomically rotate an address to a freshly-minted key. The OLD active key is
  * flipped to `isActive: false` (kept as a DECRYPT-ONLY row so mail sealed to it
@@ -49,6 +56,10 @@ export const storeRotatedAddressKey = internalMutation({
 		sealedPrivateKey: sealedPrivateKeyValidator,
 		rotationSignature: v.string(),
 	},
+	returns: v.union(
+		v.object({ rotated: v.literal(false) }),
+		v.object({ rotated: v.literal(true), newKeyId: v.id('keyVault'), retired: v.number() })
+	),
 	handler: async (ctx, args) => {
 		const address = normalizeEmail(args.address);
 		const now = Date.now();
@@ -57,14 +68,16 @@ export const storeRotatedAddressKey = internalMutation({
 		const rows = await ctx.db
 			.query('keyVault')
 			.withIndex('by_address', (q) => q.eq('address', address))
-			.collect(); // bounded: active key + a handful of retired keys.
-		let retired = 0;
-		for (const row of rows) {
-			if (row.isActive) {
-				await ctx.db.patch(row._id, { isActive: false, updatedAt: now });
-				retired++;
-			}
+			.take(MAX_KEY_ROWS_PER_ADDRESS + 1);
+		assertWithinLimit(rows, MAX_KEY_ROWS_PER_ADDRESS, 'key history');
+		const activeRows = rows.filter((row) => row.isActive);
+		if (
+			activeRows.length !== 1 ||
+			activeRows[0]?.fingerprint.toUpperCase() !== args.oldFingerprint.toUpperCase()
+		) {
+			return { rotated: false as const };
 		}
+		await ctx.db.patch(activeRows[0]._id, { isActive: false, updatedAt: now });
 
 		// Insert the new active key.
 		const newKeyId = await ctx.db.insert('keyVault', {
@@ -91,7 +104,7 @@ export const storeRotatedAddressKey = internalMutation({
 			createdAt: now,
 		});
 
-		return { newKeyId, retired };
+		return { rotated: true as const, newKeyId, retired: 1 };
 	},
 });
 
@@ -111,7 +124,8 @@ export const deactivateAddressKeys = internalMutation({
 		const rows = await ctx.db
 			.query('keyVault')
 			.withIndex('by_address', (q) => q.eq('address', address))
-			.collect(); // bounded: active + a handful of retired rows for one address.
+			.take(MAX_KEY_ROWS_PER_ADDRESS + 1);
+		assertWithinLimit(rows, MAX_KEY_ROWS_PER_ADDRESS, 'key history');
 		let deactivated = 0;
 		const now = Date.now();
 		for (const row of rows) {
@@ -166,7 +180,8 @@ export const listVaultForReseal = internalQuery({
 	args: {},
 	returns: v.array(v.object({ id: v.id('keyVault'), sealedPrivateKey: sealedPrivateKeyValidator })),
 	handler: async (ctx) => {
-		const rows = await ctx.db.query('keyVault').collect(); // bounded: one row per address + retired keys + the instance identity.
+		const rows = await ctx.db.query('keyVault').take(MAX_VAULT_ROWS + 1);
+		assertWithinLimit(rows, MAX_VAULT_ROWS, 'key vault');
 		return rows.map((r) => ({ id: r._id, sealedPrivateKey: r.sealedPrivateKey }));
 	},
 });

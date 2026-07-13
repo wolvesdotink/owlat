@@ -110,7 +110,7 @@ describe('reduce(fbl) — attributed complaint', () => {
 		const { effects } = reduce(withCampaign, makeCtx());
 
 		const perCampaign = effects.find(
-			(e) => e.kind === 'metric_inc' && e.metric === 'fbl_complaint_by_campaign',
+			(e) => e.kind === 'metric_inc' && e.metric === 'fbl_complaint_by_campaign'
 		);
 		expect(perCampaign).toEqual({
 			kind: 'metric_inc',
@@ -131,7 +131,7 @@ describe('reduce(fbl) — attributed complaint', () => {
 		const { effects } = reduce(attempt, makeCtx());
 		expect(effects.some((e) => e.kind === 'campaign_complaint_record')).toBe(false);
 		expect(
-			effects.some((e) => e.kind === 'metric_inc' && e.metric === 'fbl_complaint_by_campaign'),
+			effects.some((e) => e.kind === 'metric_inc' && e.metric === 'fbl_complaint_by_campaign')
 		).toBe(false);
 	});
 });
@@ -165,11 +165,7 @@ describe('reduce(fbl) — unattributed complaint', () => {
 			},
 		};
 		const { effects } = reduce(attempt, makeCtx());
-		expect(effects.map((e) => e.kind)).toEqual([
-			'metric_inc',
-			'notify_convex',
-			'fbl_stats_record',
-		]);
+		expect(effects.map((e) => e.kind)).toEqual(['metric_inc', 'notify_convex', 'fbl_stats_record']);
 		const m = effects.find((e) => e.kind === 'metric_inc');
 		if (m?.kind === 'metric_inc' && m.metric === 'fbl_complaint') {
 			// No Message-ID, so it remains unattributed at the metric level.
@@ -237,7 +233,7 @@ describe('reduce(fbl) — unattributed complaint', () => {
 			organizationId: undefined,
 		});
 		expect(
-			effects.some((e) => e.kind === 'metric_inc' && e.metric === 'fbl_complaint_by_campaign'),
+			effects.some((e) => e.kind === 'metric_inc' && e.metric === 'fbl_complaint_by_campaign')
 		).toBe(true);
 	});
 });
@@ -301,7 +297,7 @@ describe('reduce(mailbox)', () => {
 			expect(notify.event.organizationId).toBe('org-1');
 			expect(notify.event.mailboxPayload?.recipientAddress).toBe('me@org.example');
 			expect(notify.event.mailboxPayload?.rawBytesBase64).toBe(
-				Buffer.from('raw mime bytes').toString('base64'),
+				Buffer.from('raw mime bytes').toString('base64')
 			);
 			// DKIM verdict computed in onData is threaded through to the payload.
 			expect(notify.event.mailboxPayload?.dkimResult).toBe('pass');
@@ -312,6 +308,24 @@ describe('reduce(mailbox)', () => {
 			address: 'me@org.example',
 			deltaBytes: Buffer.from('raw mime bytes').length,
 		});
+	});
+
+	it('passes the bare sender address to Convex when From includes a display name', () => {
+		const { effects } = reduce(
+			mailboxAttempt(),
+			makeCtx({
+				parsed: makeParsed({
+					from: {
+						text: 'Bob Example <bob@isp.example>',
+						value: [{ address: 'bob@isp.example', name: 'Bob Example' }],
+						html: '',
+					},
+				}),
+			})
+		);
+		const notify = effects.find((effect) => effect.kind === 'notify_convex');
+		if (notify?.kind !== 'notify_convex') throw new Error('no notify_convex effect');
+		expect(notify.event.mailboxPayload?.from).toBe('bob@isp.example');
 	});
 
 	function mailboxAttempt(): BounceAttempt {
@@ -328,10 +342,7 @@ describe('reduce(mailbox)', () => {
 	}
 
 	function mailboxPayloadFor(spfResult: BasePhaseCtx['spfResult']) {
-		const { effects } = reduce(
-			mailboxAttempt(),
-			makeCtx({ rcptTo: 'me@org.example', spfResult }),
-		);
+		const { effects } = reduce(mailboxAttempt(), makeCtx({ rcptTo: 'me@org.example', spfResult }));
 		const notify = effects.find((e) => e.kind === 'notify_convex');
 		if (notify?.kind !== 'notify_convex') throw new Error('no notify_convex effect');
 		return notify.event.mailboxPayload;
@@ -373,7 +384,7 @@ describe('reduce(mailbox)', () => {
 		} as Partial<ParsedMail>);
 		const { effects } = reduce(
 			mailboxAttempt(),
-			makeCtx({ parsed, rcptTo: 'me@org.example', returnPath }),
+			makeCtx({ parsed, rcptTo: 'me@org.example', returnPath })
 		);
 		const notify = effects.find((e) => e.kind === 'notify_convex');
 		if (notify?.kind !== 'notify_convex') throw new Error('no notify_convex effect');
@@ -400,10 +411,7 @@ describe('reduce(endpoint_forward)', () => {
 	it('emits a single forward_to_endpoint effect carrying the route', () => {
 		const route = makeRoute({ mode: 'endpoint', endpointUrl: 'https://hook.example' });
 		const ctx = makeCtx();
-		const { effects } = reduce(
-			{ kind: 'endpoint_forward', route, rcptTo: 'me@org.example' },
-			ctx,
-		);
+		const { effects } = reduce({ kind: 'endpoint_forward', route, rcptTo: 'me@org.example' }, ctx);
 		expect(effects.map((e) => e.kind)).toEqual(['forward_to_endpoint']);
 		const fwd = effects.find((e) => e.kind === 'forward_to_endpoint');
 		if (fwd?.kind === 'forward_to_endpoint') {
@@ -422,13 +430,36 @@ describe('reduce(inbound_accept)', () => {
 			route,
 			rcptTo: 'inbox@org.example',
 			attachments: [
-				{ index: 0, filename: 'a.pdf', contentType: 'application/pdf', size: 10, contentBase64: 'AAAA' },
-				{ index: 1, filename: 'b.txt', contentType: 'text/plain', size: 5, contentBase64: undefined },
+				{
+					index: 0,
+					filename: 'a.pdf',
+					contentType: 'application/pdf',
+					size: 10,
+					contentBase64: 'AAAA',
+				},
+				{
+					index: 1,
+					filename: 'b.txt',
+					contentType: 'text/plain',
+					size: 5,
+					contentBase64: undefined,
+				},
 				{ index: 2, filename: 'c.png', contentType: 'image/png', size: 20, contentBase64: 'BBBB' },
 			],
-			headers: { 'from': 'bob@isp.example' },
+			headers: { from: 'bob@isp.example' },
 		};
-		const { effects } = reduce(attempt, makeCtx());
+		const { effects } = reduce(
+			attempt,
+			makeCtx({
+				parsed: makeParsed({
+					from: {
+						text: 'Bob Example <bob@isp.example>',
+						value: [{ address: 'bob@isp.example', name: 'Bob Example' }],
+						html: '',
+					},
+				}),
+			})
+		);
 		expect(effects.map((e) => e.kind)).toEqual([
 			'stage_attachment',
 			'stage_attachment',
@@ -456,11 +487,22 @@ describe('reduce(inbound_accept)', () => {
 			expect(notify.event.event).toBe('inbound.received');
 			expect(notify.event.organizationId).toBe('org-1');
 			expect(notify.event.inboundPayload?.attachments).toEqual([
-				{ filename: 'a.pdf', contentType: 'application/pdf', size: 10, redisKey: 'mta:inbound-att:orig-msg-1:0' },
+				{
+					filename: 'a.pdf',
+					contentType: 'application/pdf',
+					size: 10,
+					redisKey: 'mta:inbound-att:orig-msg-1:0',
+				},
 				{ filename: 'b.txt', contentType: 'text/plain', size: 5, redisKey: undefined },
-				{ filename: 'c.png', contentType: 'image/png', size: 20, redisKey: 'mta:inbound-att:orig-msg-1:2' },
+				{
+					filename: 'c.png',
+					contentType: 'image/png',
+					size: 20,
+					redisKey: 'mta:inbound-att:orig-msg-1:2',
+				},
 			]);
 			expect(notify.event.inboundPayload?.headers).toEqual({ from: 'bob@isp.example' });
+			expect(notify.event.inboundPayload?.from).toBe('bob@isp.example');
 		}
 	});
 
@@ -491,7 +533,11 @@ describe('reduce(route_hold | route_bounce | unrecognized)', () => {
 		],
 		[
 			'route_bounce',
-			{ kind: 'route_bounce', route: makeRoute({ mode: 'bounce' }), rcptTo: 'x@y.z' } as BounceAttempt,
+			{
+				kind: 'route_bounce',
+				route: makeRoute({ mode: 'bounce' }),
+				rcptTo: 'x@y.z',
+			} as BounceAttempt,
 		],
 		['unrecognized', { kind: 'unrecognized', rcptTo: 'x@y.z' } as BounceAttempt],
 	])('%s emits no effects', (_label, attempt) => {
