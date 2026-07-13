@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import type { SealState } from '~/utils/sealComposer';
 import type { ComposerMode } from '~/composables/postbox/usePostboxCompose';
 import type { ComposerPromotePayload } from '~/composables/postbox/usePostboxComposerStack';
 import { SIMPLE_BLOCK_TYPES } from '~/composables/postbox/postboxBlockTypes';
@@ -99,6 +101,16 @@ const { ghostSuggestionsEnabled } = usePostboxGhostGate();
 // The selection-rewrite pill is gated on the `ai` flag ONLY (no per-user toggle).
 const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 const aiRewriteEnabled = computed(() => isFeatureEnabled('ai'));
+
+// Sealed Mail (E5): the composer seal-lock indicator. Reads the honest per-draft
+// seal state (auth, mailbox-scoped) so the lock's promise matches what the sender
+// actually does at dispatch. Only queried once the draft exists and the flag is
+// on; recomputes as recipients change (the query re-runs on the draft's row).
+const sealedMailEnabled = computed(() => isFeatureEnabled('sealedMail'));
+const sealStateQuery = useConvexQuery(api.mail.drafts.getComposerSealState, () =>
+	sealedMailEnabled.value && props.draftId ? { draftId: props.draftId } : ('skip' as const)
+);
+const composerSealState = computed(() => (sealStateQuery.data.value ?? null) as SealState | null);
 
 // Formatting-toolbar preference. Default is the Apple-minimal floating bar (only
 // on selection); the footer "Aa" affordance flips back to the classic persistent
@@ -369,6 +381,17 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 			@from-change="onFromChange"
 			@apply-reply-all="onApplyReplyAll"
 		/>
+
+		<!-- Sealed Mail (E5): honest seal-lock indicator. Sending unsealed on a
+		     cannotSeal draft is an explicit act — the lock's "Send unsealed" routes
+		     to the same send handler as the primary button. -->
+		<div v-if="sealedMailEnabled && composerSealState" class="px-3">
+			<PostboxComposerSealLock
+				:enabled="sealedMailEnabled"
+				:seal-state="composerSealState"
+				@send-unsealed="handleSend()"
+			/>
+		</div>
 
 		<div
 			v-if="isScheduled"

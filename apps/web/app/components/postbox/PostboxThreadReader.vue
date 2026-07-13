@@ -1,5 +1,6 @@
 <script lang="ts">
 import type { SenderHeuristics } from '~/utils/senderAuth';
+import type { InboundEncryptionInfo } from '~/utils/sealedMessage';
 
 /**
  * The full message row the reader renders (the list-row shape plus body /
@@ -50,6 +51,12 @@ export type PostboxReaderMessage = {
 	// sender, look-alike of a known contact's domain). Whole object absent when
 	// nothing fired — the badge shows no extra lines rather than a false "clear".
 	senderHeuristics?: SenderHeuristics;
+	// Sealed Mail (E5): the honest inbound sealing record from decrypt-on-ingest
+	// (D3, `mailMessages.inboundEncryptionInfo`). Present only on a message that
+	// arrived sealed between Owlat instances; absent for ordinary mail, where the
+	// structural PGP/S-MIME badge (`secureClass`) takes over. Drives the reader's
+	// "Sealed — sender verified / not verified" / "can't decrypt" badge.
+	inboundEncryptionInfo?: InboundEncryptionInfo;
 	flagSeen?: boolean;
 	unsubscribe?: { httpUrl?: string; mailtoUrl?: string; oneClick: boolean };
 };
@@ -403,6 +410,31 @@ const {
 // derivation is honest — absent verdicts yield no badge — so this is safe to
 // compute for every message; the flag only decides whether it renders.
 const authBadgesEnabled = computed(() => isFeatureEnabled('senderAuthBadges'));
+
+// Sealed-Mail reader badge (E5, flag `sealedMail`). Gates the honest "Sealed —
+// sender verified / not verified" / "can't decrypt" chip driven by the inbound
+// sealing record. When off, sealed messages fall back to the structural badge.
+const sealedMailEnabled = computed(() => isFeatureEnabled('sealedMail'));
+
+// The thread's correspondent (Sealed Mail 1:1 plane, D5): the first party in the
+// conversation who isn't us. Prefer an inbound sender; fall back to a recipient
+// on an all-outbound thread. Drives the thread-level key-change banner + contact
+// key panel. Empty when we can't identify a single counterpart (the container
+// then renders nothing).
+const threadCounterpart = computed(() => {
+	const own = ownAddresses.value;
+	for (const m of allMessages.value) {
+		const from = extractEmailAddress(m.fromAddress).toLowerCase();
+		if (from && !own.has(from)) return from;
+	}
+	for (const m of allMessages.value) {
+		for (const to of m.toAddresses) {
+			const addr = extractEmailAddress(to).toLowerCase();
+			if (addr && !own.has(addr)) return addr;
+		}
+	}
+	return '';
+});
 
 function senderAuthInput(msg: PostboxReaderMessage): SenderAuthInput {
 	return {
@@ -782,6 +814,16 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 			</div>
 		</header>
 
+		<!-- Sealed Mail (E5): thread-level trust surfaces for the correspondent —
+		     the Signal-style key-change banner (explicit re-pin) + the contact key
+		     panel. Flag-gated; renders nothing without a key on file. -->
+		<PostboxThreadSealSurfaces
+			v-if="sealedMailEnabled && threadCounterpart"
+			:enabled="sealedMailEnabled"
+			:correspondent="threadCounterpart"
+			class="mb-3"
+		/>
+
 		<!-- Layout-matching skeleton while the thread loads (header is already
 		     rendered above from the list row, so only the message card shimmers). -->
 		<PostboxReaderSkeleton v-if="isLoading" />
@@ -939,9 +981,10 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 					</div>
 
 					<PostboxSecurityBadge
-						v-if="secureClass(msg) !== 'none'"
+						v-if="secureClass(msg) !== 'none' || (sealedMailEnabled && msg.inboundEncryptionInfo)"
 						:klass="secureClass(msg)"
 						:message="msg"
+						:sealed="sealedMailEnabled ? msg.inboundEncryptionInfo : undefined"
 					/>
 					<PostboxMessageBody
 						v-if="!hideRawBody(msg)"
