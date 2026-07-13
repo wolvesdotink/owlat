@@ -13,9 +13,9 @@
  * host). The file is public and carries only the deployment's own MX host, so no
  * authentication is involved.
  */
-import { ConvexHttpClient } from 'convex/browser';
 import { api } from '@owlat/api';
 import { MTA_STS_CONTENT_TYPE, MTA_STS_POLICY_HOST } from '@owlat/shared/mtaStsPolicy';
+import { publicConvexClient } from '../../utils/publicConvexClient';
 
 /**
  * The MTA-STS policy file is valid ONLY on the `mta-sts.<domain>` host (RFC 8461
@@ -33,13 +33,7 @@ export default defineEventHandler(async (event): Promise<string> => {
 		throw createError({ statusCode: 404, statusMessage: 'Not Found' });
 	}
 
-	const config = useRuntimeConfig(event);
-	const convexUrl = config.public.convexUrl ?? '';
-	if (!convexUrl) {
-		throw createError({ statusCode: 404, statusMessage: 'Not Found' });
-	}
-
-	const client = new ConvexHttpClient(convexUrl);
+	const client = publicConvexClient(event);
 	const policy = await client.query(api.domains.mtaSts.getMtaStsPolicy, {});
 	if (!policy) {
 		throw createError({ statusCode: 404, statusMessage: 'Not Found' });

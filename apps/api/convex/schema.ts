@@ -21,6 +21,7 @@ import { codeWorkTables } from './schema/codeWork';
 import { chatTables } from './schema/chat';
 import { assistantTables } from './schema/assistant';
 import { draftStreamTables } from './schema/draftStream';
+import { e2eeTables } from './schema/e2ee';
 
 // Note: Team invites are now handled by BetterAuth organization plugin's invitation table
 
@@ -47,4 +48,5 @@ export default defineSchema({
 	...chatTables,
 	...assistantTables,
 	...draftStreamTables,
+	...e2eeTables,
 });

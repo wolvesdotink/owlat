@@ -220,6 +220,13 @@ export const NON_TENANT_TABLES = [
 	// business data. Regenerable (partners re-send daily); not personal data of
 	// this org's contacts, so it is out of the tenant wipe like warmingState.
 	'tlsReports',
+	// End-to-end encryption key material (Sealed Mail). Instance crypto
+	// infrastructure — the instance signing identity plus per-address OpenPGP
+	// keypairs whose PUBLIC halves are published for discovery. Like
+	// `aiProviderConfig`, this is admin/instance-recreatable configuration (an
+	// idempotent backfill re-mints address keys), not this org's contact
+	// business data, so it is out of the tenant wipe.
+	'keyVault',
 ] as const satisfies readonly TableNames[];
 
 /**
