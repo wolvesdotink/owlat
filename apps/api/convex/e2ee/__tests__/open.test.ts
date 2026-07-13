@@ -157,6 +157,50 @@ describe('e2ee/open · openSealed', () => {
 		expect(outcome.status).toBe('cannotDecrypt');
 	});
 
+	it('INLINE ARMOR: a bare-text (non-MIME) payload opens byte-equal, content preserved', async () => {
+		// Inline-armored PGP (the shape `isSealedPgpMime` + the dispatcher AI-inbox
+		// gate both opt into) decrypts to BARE TEXT, not a MIME entity. A naive MIME
+		// parse would swallow the first paragraph as "headers" (or, with no blank
+		// line, yield an empty body) and silently lose the decrypted content — this
+		// pins that the whole payload is restored verbatim.
+		const recipient = await generateTestKeypair('bob@b.instance.test');
+		const sender = await generateTestKeypair('alice@a.instance.test');
+		const barePayload = `First paragraph with ${CANARY}.\r\n\r\nSecond paragraph — no MIME headers at all.`;
+		const armored = (await openpgp.encrypt({
+			message: await openpgp.createMessage({ text: barePayload }),
+			encryptionKeys: await openpgp.readKey({ armoredKey: recipient.publicKeyArmored }),
+			signingKeys: await openpgp.readPrivateKey({ armoredKey: sender.privateKeyArmored }),
+			format: 'armored',
+		})) as string;
+		const raw = [
+			'From: alice@a.instance.test',
+			'To: bob@b.instance.test',
+			'Subject: ...',
+			'',
+			armored,
+		].join('\r\n');
+
+		expect(isSealedPgpMime(raw)).toBe(true);
+		const outcome = await openSealed({
+			raw,
+			recipientPrivateKeysArmored: [recipient.privateKeyArmored],
+			senderPublicKeyArmored: sender.publicKeyArmored,
+		});
+		expect(outcome.status).toBe('opened');
+		if (outcome.status !== 'opened') return;
+		expect(outcome.signatureValid).toBe(true);
+		const restored = parseInnerMessage(outcome.innerMime);
+		// The ENTIRE decrypted payload is the text body — byte-equal to what was
+		// decrypted (no header-swallowing), with both paragraphs intact. (Compared
+		// to `outcome.innerMime` rather than `barePayload` because OpenPGP text
+		// literals canonicalize line endings — the point is nothing is lost.)
+		expect(restored.text).toBe(outcome.innerMime);
+		expect(restored.text).toContain(CANARY);
+		expect(restored.text).toContain('Second paragraph');
+		expect(restored.html).toBeUndefined();
+		expect(restored.subject).toBeUndefined();
+	});
+
 	it('INTEROP: the committed offline-sealed fixture opens + restores headers', async () => {
 		const raw = readFileSync(fixturePath('inbound-sealed-goodsig.eml'), 'utf-8');
 		const recipientPriv = readFileSync(fixturePath('inbound-recipient.secret.asc'), 'utf-8');
@@ -336,5 +380,32 @@ describe('e2ee/inboundSeal · parseInnerMessage', () => {
 			'body',
 		].join('\r\n');
 		expect(parseInnerMessage(inner).subject).toBe('a very long folded subject');
+	});
+
+	it('returns a bare non-MIME payload verbatim as text (inline armor)', () => {
+		// No Content-Type / MIME-Version → not a MIME entity. Multi-paragraph, so a
+		// naive header/body split would swallow the first paragraph as headers.
+		const bare = 'First paragraph.\r\n\r\nSecond paragraph, no headers at all.';
+		const r = parseInnerMessage(bare);
+		expect(r.text).toBe(bare);
+		expect(r.subject).toBeUndefined();
+		expect(r.html).toBeUndefined();
+	});
+
+	it('returns a single-line non-MIME payload (no blank line) verbatim as text', () => {
+		const bare = 'just one line, no blank line, no headers';
+		const r = parseInnerMessage(bare);
+		expect(r.text).toBe(bare);
+		expect(r.subject).toBeUndefined();
+		expect(r.html).toBeUndefined();
+	});
+
+	it('does not mistake a leading non-MIME "Word: value" line for headers', () => {
+		// A body line that happens to look header-shaped must NOT trigger MIME
+		// parsing — only a real `Content-Type:` / `MIME-Version:` does.
+		const bare = 'Note: this is body text\r\n\r\nand more body';
+		const r = parseInnerMessage(bare);
+		expect(r.text).toBe(bare);
+		expect(r.subject).toBeUndefined();
 	});
 });
