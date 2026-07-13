@@ -470,6 +470,7 @@ import type * as mail_replyOptions from "../mail/replyOptions.js";
 import type * as mail_reviseDraft from "../mail/reviseDraft.js";
 import type * as mail_rfc822 from "../mail/rfc822.js";
 import type * as mail_sealPolicy from "../mail/sealPolicy.js";
+import type * as mail_sealedBlobHttp from "../mail/sealedBlobHttp.js";
 import type * as mail_senderHeuristics from "../mail/senderHeuristics.js";
 import type * as mail_sendingSwitch from "../mail/sendingSwitch.js";
 import type * as mail_settings from "../mail/settings.js";
@@ -1084,6 +1085,7 @@ declare const fullApi: ApiFromModules<{
   "mail/reviseDraft": typeof mail_reviseDraft;
   "mail/rfc822": typeof mail_rfc822;
   "mail/sealPolicy": typeof mail_sealPolicy;
+  "mail/sealedBlobHttp": typeof mail_sealedBlobHttp;
   "mail/senderHeuristics": typeof mail_senderHeuristics;
   "mail/sendingSwitch": typeof mail_sendingSwitch;
   "mail/settings": typeof mail_settings;
