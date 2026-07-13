@@ -58,11 +58,7 @@ function fakeRedis(overrides: Record<string, unknown> = {}): Redis {
 	} as unknown as Redis;
 }
 
-function buildApp(
-	queue: FakeQueue,
-	redis: Redis,
-	auth: AuthContext = { isMasterKey: true }
-): Hono {
+function buildApp(queue: FakeQueue, redis: Redis, auth: AuthContext = { isMasterKey: true }): Hono {
 	const app = new Hono();
 	app.use('/send', async (c, next) => {
 		c.set('auth', auth);
@@ -304,6 +300,56 @@ describe('POST /send — job construction and routing', () => {
 		expect(typeof arg.orderMs).toBe('number');
 	});
 
+	it('accepts an authorized Postbox PGP/MIME message without rewriting it', async () => {
+		const queue = fakeQueue();
+		const sealedMime = [
+			'From: alice@example.com',
+			'To: bob@example.com',
+			'Subject: ...',
+			'MIME-Version: 1.0',
+			'Content-Type: multipart/encrypted; protocol="application/pgp-encrypted"; boundary="sealed"',
+			'',
+			'--sealed--',
+			'',
+		].join('\r\n');
+		const sealedMimeBase64 = Buffer.from(sealedMime).toString('base64');
+		const res = await post(
+			buildApp(queue, fakeRedis()),
+			validBody({
+				organizationId: 'postbox',
+				subject: '...',
+				sealedMimeBase64,
+				allowedFromAddresses: ['alice@example.com'],
+			})
+		);
+
+		expect(res.status).toBe(200);
+		const arg = queue.add.mock.calls[0]![0] as { data: { sealedMimeBase64?: string } };
+		expect(arg.data.sealedMimeBase64).toBe(sealedMimeBase64);
+	});
+
+	it('rejects sealed MIME whose From does not match the authorized envelope', async () => {
+		const queue = fakeQueue();
+		const forged = [
+			'From: mallory@example.com',
+			'Subject: ...',
+			'Content-Type: multipart/encrypted; protocol="application/pgp-encrypted"; boundary="x"',
+			'',
+			'--x--',
+		].join('\r\n');
+		const res = await post(
+			buildApp(queue, fakeRedis()),
+			validBody({
+				organizationId: 'postbox',
+				subject: '...',
+				sealedMimeBase64: Buffer.from(forged).toString('base64'),
+				allowedFromAddresses: ['alice@example.com'],
+			})
+		);
+		expect(res.status).toBe(400);
+		expect(queue.add).not.toHaveBeenCalled();
+	});
+
 	it('copies anti-loop headers (vacation auto-reply) onto the enqueued job', async () => {
 		// RFC 3834 §5: a vacation auto-reply MUST be stamped Auto-Submitted:
 		// auto-replied (so a receiving auto-responder won't reply back) and
@@ -351,9 +397,11 @@ describe('POST /send — job construction and routing', () => {
 		// A queue double that honours the supplied jobId, exactly like groupmq's
 		// `AddOptions.jobId` does — the returned Job.id is the jobId we passed.
 		const queue: FakeQueue = {
-			add: vi.fn().mockImplementation((opts: { jobId?: string }) =>
-				Promise.resolve({ id: opts.jobId ?? 'random-uuid' })
-			),
+			add: vi
+				.fn()
+				.mockImplementation((opts: { jobId?: string }) =>
+					Promise.resolve({ id: opts.jobId ?? 'random-uuid' })
+				),
 		};
 		const res = await post(buildApp(queue, fakeRedis()), validBody({ messageId: 'send_abc123' }));
 
