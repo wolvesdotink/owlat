@@ -22,8 +22,6 @@ import { openAtRest, isSealedAtRest } from '../lib/atRestBodies';
 const SECRET = 'test-instance-secret-value-for-aes-256-gcm-kdf';
 const CANARY = 'CANARY-body-plaintext-9f3a-do-not-leak';
 
-vi.stubEnv('INSTANCE_SECRET', SECRET);
-
 const allModules = import.meta.glob('../**/*.*s');
 
 const migration = internal.migrations['0035_seal_bodies_at_rest'];
@@ -44,6 +42,7 @@ async function seedInbound(t: ReturnType<typeof convexTest>, count: number): Pro
 				textBody: `${CANARY} text ${i}`,
 				htmlBody: `<p>${CANARY} html ${i}</p>`,
 				processingStatus: 'received',
+				receivedAt: now,
 			});
 		}
 	});
@@ -130,6 +129,7 @@ describe('E8b migration — canary dump has zero body plaintext (d)', () => {
 				textBody: `${CANARY} inbound text`,
 				htmlBody: `<p>${CANARY} inbound html</p>`,
 				processingStatus: 'received',
+				receivedAt: now,
 			});
 
 			const mailboxId = await ctx.db.insert('mailboxes', {

@@ -64,6 +64,7 @@ describe('contacts.dataExport — sealed bodies decrypt on export (c)', () => {
 				textBody: await sealAtRest(SECRET, inboundText),
 				htmlBody: await sealAtRest(SECRET, `<p>${CANARY} html</p>`),
 				processingStatus: 'received',
+				receivedAt: now,
 				contactId: cId,
 			});
 
