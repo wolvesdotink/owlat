@@ -379,6 +379,17 @@ crons.interval(
 	{}
 );
 
+// Sealed Mail: refresh expiring recipient-key discovery rows every 30 minutes
+// (e2ee/discovery.ts). Positive hits carry a 24h TTL and negatives a 1h TTL, so
+// this picks up rotated/newly-published peer keys and retires stale negatives
+// without a discovery on every send. A no-op when Sealed Mail is off.
+crons.interval(
+	'refresh recipient key discovery',
+	{ minutes: 30 },
+	internal.e2ee.discovery.refreshExpiringRecipientKeys,
+	{}
+);
+
 // Auto-merge unambiguous duplicate contacts (same email/phone across two
 // contacts) every 6 hours. Single-org hygiene; bounded per run.
 crons.interval(
