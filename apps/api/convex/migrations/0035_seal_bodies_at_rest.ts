@@ -1,5 +1,5 @@
 /**
- * ADR-0035 / Sealed Mail E8b — seal every existing MESSAGE BODY at rest.
+ * Sealed Mail E8b — seal every existing MESSAGE BODY at rest (migration 0035).
  *
  * Back-fills the sealing that `lib/atRestBodies.ts` applies going forward: it
  * walks the four body-bearing tables and replaces each plaintext body column
