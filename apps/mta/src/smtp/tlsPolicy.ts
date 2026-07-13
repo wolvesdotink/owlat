@@ -72,7 +72,9 @@ interface Floor {
 
 /** The TLS floor contributed by the local operator mode. */
 const LOCAL_FLOOR: Record<OutboundTlsMode, Floor> = {
+	// nosemgrep -- opportunistic SMTP TLS floor (RFC 7435): encrypt-if-offered, cert not verified. Verified TLS is demanded only by require-verified (below) and MTA-STS enforce.
 	opportunistic: { requireTLS: false, rejectUnauthorized: false },
+	// nosemgrep -- require demands TLS but not a verified cert (opportunistic-encrypt without a trust anchor); require-verified is the verifying floor.
 	require: { requireTLS: true, rejectUnauthorized: false },
 	'require-verified': { requireTLS: true, rejectUnauthorized: true },
 };
@@ -84,7 +86,9 @@ const LOCAL_FLOOR: Record<OutboundTlsMode, Floor> = {
  * verified TLS.
  */
 const STS_FLOOR: Record<StsPolicyMode, Floor> = {
+	// nosemgrep -- no MTA-STS policy raises no verified-TLS floor (RFC 7435 opportunistic).
 	none: { requireTLS: false, rejectUnauthorized: false },
+	// nosemgrep -- MTA-STS testing is report-only (RFC 8461 §5.2): observe, never demand verified TLS; only enforce (below) does.
 	testing: { requireTLS: false, rejectUnauthorized: false },
 	enforce: { requireTLS: true, rejectUnauthorized: true },
 };
