@@ -27,6 +27,48 @@
 import { verifyManifest, type SignedManifest } from './manifest';
 import { splitAddress, wkdHashForAddress } from './wkd';
 
+// A published manifest is a few KB of JSON and a WKD key body is a single small
+// OpenPGP transferable key, so cap each self-fetch read to bound memory against a
+// hostile or misconfigured own-endpoint that streams an unbounded body (mirrors
+// `mtaStsVerify`'s `MTA_STS_POLICY_MAX_BYTES` streamed cap).
+const MAX_BODY_BYTES = 64 * 1024;
+
+// Read a response body up to `maxBytes` real octets, returning the bytes or `null`
+// when the body is absent, its declared length already exceeds the cap, or the
+// stream overflows the cap mid-read. Counts actual bytes (not UTF-16 code units)
+// so a multibyte body is bounded correctly.
+async function readCappedBytes(response: Response, maxBytes: number): Promise<Uint8Array | null> {
+	const declared = Number(response.headers.get('content-length'));
+	if (Number.isFinite(declared) && declared > maxBytes) return null;
+	const body = response.body;
+	if (!body) return null;
+	const reader = body.getReader();
+	const chunks: Uint8Array[] = [];
+	let total = 0;
+	try {
+		for (;;) {
+			const { done, value } = await reader.read();
+			if (done) break;
+			if (!value) continue;
+			total += value.byteLength;
+			if (total > maxBytes) {
+				await reader.cancel();
+				return null;
+			}
+			chunks.push(value);
+		}
+	} finally {
+		reader.releaseLock();
+	}
+	const merged = new Uint8Array(total);
+	let offset = 0;
+	for (const chunk of chunks) {
+		merged.set(chunk, offset);
+		offset += chunk.byteLength;
+	}
+	return merged;
+}
+
 /** Structured verdict for the "encryption keys published" self-check. Never throws. */
 export type EncryptionKeysPublishedResult = {
 	/** The base site URL the check ran against (trailing slashes stripped). */
@@ -126,7 +168,8 @@ export async function checkEncryptionKeysPublished(
 	try {
 		const response = await deps.fetch(`${base}/.well-known/owlat.json`);
 		if (response.ok) {
-			const body: unknown = await response.json();
+			const bytes = await readCappedBytes(response, MAX_BODY_BYTES);
+			const body: unknown = bytes ? JSON.parse(new TextDecoder().decode(bytes)) : null;
 			if (isSignedManifest(body)) {
 				manifest.reachable = true;
 				manifest.fingerprint = body.instance.fingerprint;
@@ -173,8 +216,8 @@ export async function checkEncryptionKeysPublished(
 			const hash = wkdHashForAddress(probe.address);
 			const response = await deps.fetch(`${base}/.well-known/openpgpkey/hu/${hash}`);
 			if (response.ok) {
-				const bytes = new Uint8Array(await response.arrayBuffer());
-				keyServed = bytes.length > 0;
+				const bytes = await readCappedBytes(response, MAX_BODY_BYTES);
+				keyServed = bytes !== null && bytes.length > 0;
 			}
 		} catch {
 			// Keep keyServed = false.

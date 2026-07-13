@@ -48,10 +48,17 @@ export const checkEncryptionKeysReadiness = authedAction({
 		// Wrap the global `fetch` structurally so the deps type doesn't inherit the
 		// global's extra members (mirrors `mtaStsVerify`'s `HttpDeps`), and guard each
 		// self-fetch with an AbortSignal timeout — the helper's catch blocks degrade the
-		// resulting AbortError to "not reachable".
+		// resulting AbortError (or redirect rejection) to "not reachable"; the helper
+		// also caps each response body before parsing.
 		return checkEncryptionKeysPublished(
 			{ siteUrl, localPublished: local.isPublished, directory },
-			{ fetch: (url) => fetch(url, { signal: AbortSignal.timeout(READINESS_FETCH_TIMEOUT_MS) }) }
+			{
+				fetch: (url) =>
+					fetch(url, {
+						redirect: 'error',
+						signal: AbortSignal.timeout(READINESS_FETCH_TIMEOUT_MS),
+					}),
+			}
 		);
 	},
 });
