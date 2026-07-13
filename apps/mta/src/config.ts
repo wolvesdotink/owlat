@@ -6,6 +6,7 @@ import { hostname } from 'os';
 import { isOutboundTlsMode, OUTBOUND_TLS_MODES, type OutboundTlsMode } from '@owlat/shared';
 import type { IpPoolConfig, DkimKeyConfig, DomainProfile } from './types.js';
 import { assertMtaSecretStrength } from './lib/secretBox.js';
+import { loadDaneConfig } from './daneConfig.js';
 
 export interface MtaConfig {
 	/** HTTP server port */
@@ -414,29 +415,10 @@ export function loadConfig(): MtaConfig {
 	}
 	const outboundTlsMode: OutboundTlsMode = outboundTlsModeRaw;
 
-	// DANE (RFC 7672) at send time — off by default (locked decision D6). When
-	// enabled a validating DoH resolver URL is mandatory: DANE is only safe when
-	// the TLSA lookup is DNSSEC-authenticated, so booting with the flag on but no
-	// resolver would silently do nothing (or, worse, imply protection we cannot
-	// provide). Fail fast instead.
-	const daneEnabled = optionalEnv('DANE_ENABLED', 'false') === 'true';
-	const daneResolverUrl = process.env['DANE_RESOLVER_URL'];
-	if (daneEnabled) {
-		if (!daneResolverUrl) {
-			throw new Error('DANE_ENABLED=true requires DANE_RESOLVER_URL (a validating DoH resolver).');
-		}
-		// Reject a malformed URL at boot rather than crashing every DANE send: the
-		// TLSA resolver runs on the hot delivery path and a typo'd endpoint would
-		// otherwise throw there (or silently disable DANE) — the exact "silently do
-		// nothing" failure the presence check above guards against.
-		try {
-			new URL(daneResolverUrl);
-		} catch {
-			throw new Error(
-				'DANE_RESOLVER_URL must be a valid URL (a DoH resolver endpoint, e.g. https://127.0.0.1:8443/dns-query).'
-			);
-		}
-	}
+	// DANE (RFC 7672) at send time — off by default (locked decision D6). Parsing
+	// and validation (mandatory validating resolver, https-only channel) lives in
+	// daneConfig.ts to keep this module under the file-size gate.
+	const { daneEnabled, daneResolverUrl } = loadDaneConfig(optionalEnv);
 
 	return {
 		port: parseInt(optionalEnv('PORT', '3100'), 10),
