@@ -84,4 +84,65 @@ export const e2eeTables = {
 		// Direct-method WKD lookup: match a stored address key by its domain +
 		// local-part hash in one indexed read.
 		.index('by_wkd', ['domain', 'wkdHash']),
+
+	/**
+	 * Discovered + TOFU-pinned public keys of OTHER instances' recipients (Sealed
+	 * Mail key discovery, `e2ee/discovery.ts` + `e2ee/pinning.ts`). One row per
+	 * remote address we have tried to seal to.
+	 *
+	 * This is a discovery CACHE plus a trust ledger:
+	 *   - `outcome: 'trusted'` — we hold a pinned key usable to seal to `address`;
+	 *     `pinnedFingerprint`/`pinnedPublicKeyArmored` are the trusted material and
+	 *     equal the observed material.
+	 *   - `outcome: 'keyChanged'` — discovery observed a fingerprint DIFFERENT from
+	 *     the pin with no valid signed rotation. The pin is UNCHANGED (never
+	 *     silently re-pinned); the conflicting key rides along in the `observed*`
+	 *     fields so an explicit operator re-accept can adopt it.
+	 *   - `outcome: 'notFound'` — negative cache: the address published no usable
+	 *     key (short TTL so a newly-published key is picked up quickly).
+	 *
+	 * `expiresAt` drives the cache: a positive hit is refreshed after ~24h, a
+	 * negative one re-checked after ~1h. Only PUBLIC key material is stored — there
+	 * is no private key here — so this holds no secrets, but it IS trust state, so
+	 * a re-pin only happens via a signed rotation or an explicit re-accept.
+	 *
+	 * Instance discovery infrastructure, not per-org business data (classified in
+	 * `lib/tenantTables.ts` NON_TENANT_TABLES alongside `keyVault` / caches):
+	 * regenerable by re-discovery. Written only by `e2ee/recipientKeys.ts`.
+	 */
+	recipientKeys: defineTable({
+		// Full, lowercased recipient email (`localpart@domain`).
+		address: v.string(),
+		// Lowercased domain of `address` — the host discovery fetched from.
+		domain: v.string(),
+		// Last discovery outcome / current trust state (see the header).
+		outcome: v.union(v.literal('trusted'), v.literal('keyChanged'), v.literal('notFound')),
+		// The TOFU-pinned fingerprint (uppercase hex) — the key we will seal to.
+		// Absent only when we have never successfully discovered a key.
+		pinnedFingerprint: v.optional(v.string()),
+		// ASCII-armored PUBLIC key of `pinnedFingerprint` (safe to store — public).
+		pinnedPublicKeyArmored: v.optional(v.string()),
+		// The fingerprint observed on the most recent discovery. Equals
+		// `pinnedFingerprint` when `outcome === 'trusted'`; differs (the conflicting
+		// key) when `outcome === 'keyChanged'`.
+		observedFingerprint: v.optional(v.string()),
+		// ASCII-armored PUBLIC key observed on the most recent discovery — retained
+		// for a `keyChanged` conflict so an explicit re-accept can adopt it.
+		observedPublicKeyArmored: v.optional(v.string()),
+		// How the address key was obtained (`'wkd'` today; `'manifest'` reserved for
+		// a future manifest-embedded directory).
+		source: v.optional(v.union(v.literal('wkd'), v.literal('manifest'))),
+		// The remote instance's signing-identity fingerprint, from its verified
+		// `/.well-known/owlat.json` manifest (TOFU on the instance identity). Absent
+		// when the manifest was missing/unverifiable and the key came from WKD alone.
+		instanceFingerprint: v.optional(v.string()),
+		// Cache expiry: re-discover once `Date.now() >= expiresAt` (24h positive /
+		// 1h negative). Indexed so the refresh cron can page the soon-to-expire rows.
+		expiresAt: v.number(),
+		// First successful/attempted discovery for this address.
+		discoveredAt: v.number(),
+		updatedAt: v.number(),
+	})
+		.index('by_address', ['address'])
+		.index('by_expiresAt', ['expiresAt']),
 };

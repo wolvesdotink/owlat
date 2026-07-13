@@ -35,6 +35,7 @@ import {
 } from '@owlat/shared/mtaStsPolicy';
 import type { MtaStsVerification } from '@owlat/shared/mtaStsPolicy';
 import { isValidDomain } from '@owlat/shared';
+import { readCappedBytes, CappedReadOverflow } from '../lib/ssrfGuard';
 
 // A published MTA-STS policy body is a handful of short lines; anything larger is
 // not a policy we can meaningfully compare, so we cap the HTTPS read to bound
@@ -141,38 +142,20 @@ export async function fetchMtaStsPolicyBody(
 }
 
 // Read a response body stream up to `maxBytes` real bytes, returning the decoded
-// text or `null` if the stream exceeds the cap. Counts actual octets (not UTF-16
-// code units) so multibyte bodies are bounded correctly.
+// text or `null` if there is no body or the stream exceeds the cap. Decodes over
+// the shared capped-byte reader (an over-cap body is a soft "too big, ignore"
+// here — not a policy we can compare — so the overflow is swallowed to null).
 async function readCappedText(
 	body: ReadableStream<Uint8Array> | null,
 	maxBytes: number
 ): Promise<string | null> {
-	if (!body) return null;
-	const reader = body.getReader();
-	const chunks: Uint8Array[] = [];
-	let total = 0;
 	try {
-		for (;;) {
-			const { done, value } = await reader.read();
-			if (done) break;
-			if (!value) continue;
-			total += value.byteLength;
-			if (total > maxBytes) {
-				await reader.cancel();
-				return null;
-			}
-			chunks.push(value);
-		}
-	} finally {
-		reader.releaseLock();
+		const bytes = await readCappedBytes(body, maxBytes);
+		return bytes === null ? null : new TextDecoder().decode(bytes);
+	} catch (err) {
+		if (err instanceof CappedReadOverflow) return null;
+		throw err;
 	}
-	const merged = new Uint8Array(total);
-	let offset = 0;
-	for (const chunk of chunks) {
-		merged.set(chunk, offset);
-		offset += chunk.byteLength;
-	}
-	return new TextDecoder().decode(merged);
 }
 
 // True when every resolved address for `host` is a public unicast address.
