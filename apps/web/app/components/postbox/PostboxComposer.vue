@@ -1,7 +1,5 @@
 <script setup lang="ts">
-import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
-import type { SealState } from '~/utils/sealComposer';
 import type { ComposerMode } from '~/composables/postbox/usePostboxCompose';
 import type { ComposerPromotePayload } from '~/composables/postbox/usePostboxComposerStack';
 import { SIMPLE_BLOCK_TYPES } from '~/composables/postbox/postboxBlockTypes';
@@ -102,15 +100,9 @@ const { ghostSuggestionsEnabled } = usePostboxGhostGate();
 const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 const aiRewriteEnabled = computed(() => isFeatureEnabled('ai'));
 
-// Sealed Mail (E5): the composer seal-lock indicator. Reads the honest per-draft
-// seal state (auth, mailbox-scoped) so the lock's promise matches what the sender
-// actually does at dispatch. Only queried once the draft exists and the flag is
-// on; recomputes as recipients change (the query re-runs on the draft's row).
-const sealedMailEnabled = computed(() => isFeatureEnabled('sealedMail'));
-const sealStateQuery = useConvexQuery(api.mail.drafts.getComposerSealState, () =>
-	sealedMailEnabled.value && props.draftId ? { draftId: props.draftId } : ('skip' as const)
-);
-const composerSealState = computed(() => (sealStateQuery.data.value ?? null) as SealState | null);
+// Sealed Mail (E5): the composer seal-lock indicator (honest per-draft seal
+// state, wired in usePostboxComposerSealLock so this file stays focused).
+const { sealedMailEnabled, composerSealState } = usePostboxComposerSealLock(() => props.draftId);
 
 // Formatting-toolbar preference. Default is the Apple-minimal floating bar (only
 // on selection); the footer "Aa" affordance flips back to the classic persistent
