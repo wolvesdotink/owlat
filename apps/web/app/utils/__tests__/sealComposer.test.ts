@@ -23,7 +23,7 @@ describe('deriveComposerLock', () => {
 		expect(lock.kind).toBe('keyChanged');
 		expect(lock.summary).toBe("A recipient's key changed");
 		expect(lock.detail).toBe(
-			'The sealing key for bob@b.test changed since you last sealed mail to them. Review and confirm the new key before Owlat will seal to it.'
+			'The sealing key for bob@b.test changed since you last sealed mail to them. Open your conversation with them to review and confirm the new key before Owlat will seal to it.'
 		);
 		expect(lock.tone).toBe('warn');
 		// keyChanged never auto-seals AND is not a plaintext escape hatch — it must
@@ -57,7 +57,7 @@ describe('deriveComposerLock', () => {
 		no_signing_key:
 			"This address doesn't have a sealing key yet, so this message will be sent normally.",
 		policy_ask:
-			'Sealed mail is available for these recipients. Turn it on for this message, or send it normally.',
+			'Sealed mail is available for these recipients, but your workspace is set to ask before sealing, so this message will be sent normally.',
 		flag_off: 'Sealed mail is not available yet, so this message will be sent normally.',
 		key_changed:
 			"A recipient's key changed and needs review, so this message will be sent normally until you confirm it.",

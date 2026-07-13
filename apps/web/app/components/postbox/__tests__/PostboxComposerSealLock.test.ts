@@ -4,8 +4,9 @@
  *
  * Covers the three seal states with VERBATIM copy (the honesty audit), that a
  * cannotSeal draft exposes an EXPLICIT "Send unsealed" control which emits
- * send-unsealed (never a silent plaintext send), that keyChanged offers a review
- * control and NO unsealed escape hatch, and that the flag gate renders nothing.
+ * send-unsealed (never a silent plaintext send), that keyChanged offers NO
+ * unsealed escape hatch (its copy points at the thread's key-change banner), and
+ * that the flag gate renders nothing.
  */
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
@@ -34,22 +35,18 @@ describe('PostboxComposerSealLock', () => {
 		expect(wrapper.find('[data-testid="seal-lock-send-unsealed"]').exists()).toBe(false);
 	});
 
-	it('keyChanged: verbatim copy, a review control, and NO send-unsealed escape hatch', () => {
+	it('keyChanged: verbatim copy pointing at the thread, and NO send-unsealed escape hatch', () => {
 		const wrapper = mountLock({ kind: 'keyChanged', addresses: ['bob@b.test'] });
 		expect(wrapper.find('[data-testid="seal-lock-summary"]').text()).toBe(
 			"A recipient's key changed"
 		);
 		expect(wrapper.find('[data-testid="seal-lock-detail"]').text()).toBe(
-			'The sealing key for bob@b.test changed since you last sealed mail to them. Review and confirm the new key before Owlat will seal to it.'
+			'The sealing key for bob@b.test changed since you last sealed mail to them. Open your conversation with them to review and confirm the new key before Owlat will seal to it.'
 		);
-		expect(wrapper.find('[data-testid="seal-lock-review-keys"]').exists()).toBe(true);
+		// keyChanged is resolved on the thread's key-change banner, not the composer:
+		// the lock offers no in-composer action and no plaintext escape hatch.
+		expect(wrapper.find('[data-testid="seal-lock-review-keys"]').exists()).toBe(false);
 		expect(wrapper.find('[data-testid="seal-lock-send-unsealed"]').exists()).toBe(false);
-	});
-
-	it('keyChanged: the review control emits review-keys', async () => {
-		const wrapper = mountLock({ kind: 'keyChanged', addresses: ['bob@b.test'] });
-		await wrapper.find('[data-testid="seal-lock-review-keys"]').trigger('click');
-		expect(wrapper.emitted('review-keys')).toHaveLength(1);
 	});
 
 	it('cannotSeal: verbatim summary and an EXPLICIT send-unsealed act', async () => {

@@ -6,7 +6,9 @@
  * unsigned key change, and it calls the E2 mutation
  * `api.e2ee.recipientKeys.reacceptKeyChange` with the recipient's address, then
  * emits `accepted` on success. A failed re-accept surfaces an inline error and
- * does NOT emit accepted.
+ * does NOT emit accepted. Because re-pinning is an admin-only mutation, the
+ * accept button shows ONLY to admins; members get honest "ask an admin" copy
+ * instead of a button that would always fail.
  */
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
@@ -24,17 +26,21 @@ vi.mock('@owlat/api', () => {
 
 const reacceptRun = vi.fn(async (_args: unknown): Promise<unknown> => undefined);
 const reacceptLoading = ref(false);
-let lastOperation: unknown;
+// The banner reads `isAdmin` from usePermissions() to gate the accept button.
+const isAdmin = ref(true);
 
 beforeAll(() => {
-	vi.stubGlobal('useBackendOperation', (operation: unknown) => {
-		lastOperation = operation;
-		return { run: reacceptRun, isLoading: reacceptLoading, inlineError: ref(null) };
-	});
+	vi.stubGlobal('useBackendOperation', () => ({
+		run: reacceptRun,
+		isLoading: reacceptLoading,
+		inlineError: ref(null),
+	}));
+	vi.stubGlobal('usePermissions', () => ({ isAdmin }));
 });
 
 beforeEach(() => {
 	reacceptLoading.value = false;
+	isAdmin.value = true;
 	reacceptRun.mockReset();
 	reacceptRun.mockResolvedValue({ reaccepted: true, pinnedFingerprint: 'NEWFP' });
 });
@@ -79,10 +85,14 @@ describe('PostboxKeyChangeBanner', () => {
 		expect(wrapper.find('[data-testid="key-change-error"]').exists()).toBe(true);
 	});
 
-	it('wires the accept button to the reacceptKeyChange mutation reference', () => {
-		mountBanner();
-		// The proxy makes any property access identity-stable; assert the composable
-		// was handed a truthy operation reference (the api.e2ee.recipientKeys path).
-		expect(lastOperation).toBeTruthy();
+	it('a non-admin sees "ask an admin" copy and NO accept button (re-pin is admin-only)', () => {
+		isAdmin.value = false;
+		const wrapper = mountBanner();
+		// The warning still shows — everyone should know sealing paused — but the
+		// admin-only action is replaced with honest guidance, not a failing button.
+		expect(wrapper.find('[data-testid="key-change-banner"]').exists()).toBe(true);
+		expect(wrapper.find('[data-testid="key-change-accept"]').exists()).toBe(false);
+		expect(wrapper.find('[data-testid="key-change-admin-only"]').exists()).toBe(true);
+		expect(wrapper.text()).toContain('Ask a workspace admin');
 	});
 });
