@@ -41,7 +41,7 @@
 
 import type { Id } from '../_generated/dataModel';
 import { getOptional } from './env';
-import { sealBytesAtRest, openBytesAtRest, isSealedBytesAtRest } from './atRestBodies';
+import { sealBytesAtRest, openBytesAtRest } from './atRestBodies';
 
 /** Proxy route path (registered in `http.ts`). */
 export const SEALED_BLOB_PATH = '/sealed-blob';
@@ -195,8 +195,14 @@ export async function resealStoredBlob(
 	const blob = await storage.get(storageId);
 	if (!blob) return null;
 	const bytes = new Uint8Array(await blob.arrayBuffer());
-	if (isSealedBytesAtRest(bytes)) return null;
 	const sealed = await sealBytesAtRest(secret, bytes);
+	// `sealBytesAtRest` performs the KEYED idempotency check. A structural magic
+	// prefix alone is not proof of ciphertext; only bytes that decrypt under this
+	// instance key come back unchanged. Compare after that check to avoid storing
+	// a duplicate for genuine ciphertext or an empty blob.
+	if (sealed.length === bytes.length && sealed.every((byte, index) => byte === bytes[index])) {
+		return null;
+	}
 	return storage.store(
 		new Blob([sealed as unknown as BlobPart], {
 			type: blob.type || 'application/octet-stream',
