@@ -22,6 +22,7 @@
 
 import { v } from 'convex/values';
 import { sanitizeTrustedForwarders } from '@owlat/shared/arcTrust';
+import { sealPolicyValidator } from '../mail/sealPolicy';
 import { internalMutation } from '../_generated/server';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
@@ -56,6 +57,9 @@ export const update = authedMutation({
 		// rescues an inbound DMARC fail. Unset keeps the seeded default list; an
 		// explicit `[]` turns the override off.
 		trustedArcForwarders: v.optional(v.array(v.string())),
+		// Sealed Mail (E3) org sealing policy (locked decision D2): `auto` / `ask` /
+		// `off`. Unset ⇒ `auto` at resolution time.
+		sealPolicy: v.optional(sealPolicyValidator),
 		emailTheme: v.optional(
 			v.object({
 				primaryColor: v.string(),
