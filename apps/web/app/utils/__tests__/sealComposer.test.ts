@@ -4,7 +4,12 @@
  * encryption, and only `cannotSeal` permits an explicit unsealed send.
  */
 import { describe, it, expect } from 'vitest';
-import { deriveComposerLock, type SealSkipReason, type SealState } from '../sealComposer';
+import {
+	deriveComposerLock,
+	sealSendBlock,
+	type SealSkipReason,
+	type SealState,
+} from '../sealComposer';
 
 describe('deriveComposerLock', () => {
 	it('willSeal: verbatim promise copy, ok tone, no unsealed escape hatch', () => {
@@ -83,5 +88,26 @@ describe('deriveComposerLock', () => {
 		for (const state of nonWillSeal) {
 			expect(deriveComposerLock(state).summary).not.toBe('This message will be sealed');
 		}
+	});
+});
+
+describe('sealSendBlock', () => {
+	it('fails closed while state is loading and on an ordinary cannotSeal send', () => {
+		expect(sealSendBlock(true, null, false)).toBe('checking');
+		expect(sealSendBlock(true, { kind: 'cannotSeal', reason: 'recipient_no_key' }, false)).toBe(
+			'needs_unsealed_consent'
+		);
+	});
+
+	it('allows only the explicit unsealed action for cannotSeal', () => {
+		expect(
+			sealSendBlock(true, { kind: 'cannotSeal', reason: 'recipient_no_key' }, true)
+		).toBeNull();
+	});
+
+	it('never bypasses keyChanged and stays inert when the feature is off', () => {
+		const changed: SealState = { kind: 'keyChanged', addresses: ['eve@e.test'] };
+		expect(sealSendBlock(true, changed, true)).toBe('key_changed');
+		expect(sealSendBlock(false, changed, false)).toBeNull();
 	});
 });

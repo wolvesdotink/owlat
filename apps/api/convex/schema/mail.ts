@@ -953,6 +953,9 @@ export const mailTables = {
 		// the resulting sent message + the thread's `latestReply` so a shared inbox
 		// can attribute the reply. Undefined until send (and on legacy rows).
 		sentByUserId: v.optional(v.string()),
+		// Per-send explicit plaintext consent. Dispatch checks this again after
+		// discovery/crypto so a trust change during the undo window fails closed.
+		isUnsealedSendAllowed: v.optional(v.boolean()),
 
 		// Scheduled send / undo-send window
 		scheduledSendAt: v.optional(v.number()),

@@ -428,6 +428,23 @@ export const dispatchDraft = internalAction({
 		} else {
 			encryptionInfo = { sealed: false, reason: sealDecision.reason };
 		}
+		// Consent is checked again after discovery and crypto because either can
+		// change during the undo window. Never silently downgrade a normal Send to
+		// plaintext; return the draft to the composer for an explicit choice.
+		if (sealInputs.flagEnabled && !encryptionInfo.sealed && !draft.isUnsealedSendAllowed) {
+			logError(
+				`[Outbound] Refusing unsealed dispatch for draft ${args.draftId}: explicit consent missing`
+			);
+			await ctx.runMutation(internal.mail.draftLifecycle.transition, {
+				draftId: args.draftId,
+				input: {
+					to: 'draft',
+					at: Date.now(),
+					reason: 'seal_consent_required',
+				},
+			});
+			return;
+		}
 		const storedSize = storedBytes.length;
 
 		// Store the raw .eml in Convex storage — `storedBytes` is the E2EE-SEALED

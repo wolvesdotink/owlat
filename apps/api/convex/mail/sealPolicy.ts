@@ -169,6 +169,17 @@ export type SealState =
 	| { kind: 'cannotSeal'; reason: SealSkipReason };
 
 /**
+ * Sending permission for a feature-enabled draft. A key change is never
+ * bypassable; every other plaintext outcome requires the distinct explicit
+ * consent action rendered by the composer.
+ */
+export function canSendWithSealState(state: SealState, allowUnsealed: boolean): boolean {
+	if (state.kind === 'willSeal') return true;
+	if (state.kind === 'keyChanged') return false;
+	return allowUnsealed;
+}
+
+/**
  * Derive the composer's `sealState` from the policy, recipient states, AND
  * whether the sender has a signing key. Pure. Walks the SAME gates in the SAME
  * order as {@link decideSeal} (the dispatch decision) so the composer's promise

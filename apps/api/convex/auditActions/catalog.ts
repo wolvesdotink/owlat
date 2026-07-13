@@ -142,6 +142,7 @@ export const AUDIT_ACTION_LITERALS = [
 	action('postbox_draft.cancelled'),
 	action('postbox_draft.from_revoked'),
 	action('postbox_draft.scan_blocked'),
+	action('postbox_draft.seal_consent_required'),
 	// Platform admin
 	action('platform_admin.org_status_changed'),
 	action('platform_admin.tier_override'),
