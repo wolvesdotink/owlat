@@ -130,7 +130,9 @@ describe('e2ee/keys', () => {
 		// Publication follows the flag, so enable Sealed Mail for the manifest path.
 		await t.run(async (ctx) => {
 			await ctx.db.insert('instanceSettings', {
-				featureFlags: { sealedMail: true },
+				// sealedMail requires postbox + senderAuthBadges; seed the full chain
+				// so resolveFlags does not force it back off.
+				featureFlags: { postbox: true, senderAuthBadges: true, sealedMail: true },
 				createdAt: Date.now(),
 			});
 		});
