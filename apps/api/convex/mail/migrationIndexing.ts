@@ -23,7 +23,7 @@
  */
 
 import { v } from 'convex/values';
-import { mailMessageInlineBody } from '../lib/messageBody';
+import { openMailMessageInlineBody } from '../lib/messageBody';
 import { takeReceivedAtChunk } from '../lib/receivedAtCursor';
 import { internalAction, internalMutation, internalQuery } from '../_generated/server';
 import { internal } from '../_generated/api';
@@ -63,7 +63,7 @@ export const getMessageForExtraction = internalQuery({
 	handler: async (ctx, args) => {
 		const m = await ctx.db.get(args.mailMessageId);
 		if (!m) return null;
-		const { text, html } = mailMessageInlineBody(m);
+		const { text, html } = await openMailMessageInlineBody(m);
 		return {
 			fromAddress: m.fromAddress,
 			fromName: m.fromName,

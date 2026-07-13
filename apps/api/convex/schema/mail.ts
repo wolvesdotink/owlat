@@ -582,6 +582,24 @@ export const mailTables = {
 		.index('by_mailbox_and_unseen', ['mailboxId', 'flagSeen'])
 		// Backs the 1-minute snooze sweep cron — range scan on snoozedUntil <= now.
 		.index('by_snoozed_until', ['snoozedUntil'])
+		// SHARING-AWARE SEAL (Sealed Mail E8b): IMAP COPY shares a storage blob
+		// between rows (`mail/imap.ts` copyMessages spreads the same `rawStorageId`/
+		// `*BodyStorageId` into the new row). The at-rest reseal must repoint EVERY
+		// row that references an old plaintext blob before it deletes that blob, or a
+		// sibling copy is left pointing at a deleted id (unreadable forever). These
+		// indexes let the reseal find those siblings in O(matches) instead of a table
+		// scan. `textBodyStorageId`/`htmlBodyStorageId` are optional; rows without
+		// them index as `undefined` and are never matched by a concrete-id lookup.
+		.index('by_raw_storage', ['rawStorageId'])
+		.index('by_text_body_storage', ['textBodyStorageId'])
+		.index('by_html_body_storage', ['htmlBodyStorageId'])
+		// SEALED-AT-REST EXCEPTION (Sealed Mail E8b): the message BODY columns
+		// (`textBodyInline`/`htmlBodyInline` and the `*BodyStorageId` blobs) are
+		// sealed with the instance data key, but `snippet` stays PLAINTEXT because
+		// Convex full-text search indexes the plaintext of `searchField`. This is
+		// the documented, deliberate exception — `snippet` is a short excerpt, never
+		// the full body, and losing it would break server-side mail search. See
+		// lib/atRestBodies.ts and apps/docs/content/3.developer/21.sealed-mail-at-rest.md.
 		.searchIndex('search_messages', {
 			searchField: 'snippet',
 			filterFields: ['mailboxId', 'folderId', 'fromAddress', 'flagSeen', 'flagFlagged'],

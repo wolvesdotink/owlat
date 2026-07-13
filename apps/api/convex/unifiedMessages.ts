@@ -19,11 +19,24 @@ import { internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
 import { unifiedMessageChannelValidator, outboundChannelValidator } from './lib/convexValidators';
 import { applyOpenThreadDelta } from './lib/inboxStats';
-import { parseUnifiedMessageContent } from './lib/messageBody';
+import { openUnifiedMessageContent, sealBodyAtWrite } from './lib/messageBody';
 
 // ============================================================
 // Queries
 // ============================================================
+
+/**
+ * Open one `unifiedMessages` row for a timeline query: unseal the sealed-at-rest
+ * `content` (E8b) and parse the metadata JSON. Shared by the three timeline
+ * queries so the identical mapper lives in exactly one place.
+ */
+async function openTimelineRow(msg: Doc<'unifiedMessages'>) {
+	return {
+		...msg,
+		content: await openUnifiedMessageContent(msg.content),
+		metadata: msg.metadata ? parseMetadata(msg.metadata) : undefined,
+	};
+}
 
 /**
  * Get messages for a conversation thread (unified timeline)
@@ -40,11 +53,7 @@ export const getThreadTimeline = adminQuery({
 			.order('asc')
 			.take(args.limit ?? 100);
 
-		return messages.map((msg) => ({
-			...msg,
-			content: parseUnifiedMessageContent(msg.content),
-			metadata: msg.metadata ? parseMetadata(msg.metadata) : undefined,
-		}));
+		return await Promise.all(messages.map(openTimelineRow));
 	},
 });
 
@@ -63,11 +72,7 @@ export const getContactTimeline = adminQuery({
 			.order('desc')
 			.take(args.limit ?? 50);
 
-		return messages.map((msg) => ({
-			...msg,
-			content: parseUnifiedMessageContent(msg.content),
-			metadata: msg.metadata ? parseMetadata(msg.metadata) : undefined,
-		}));
+		return await Promise.all(messages.map(openTimelineRow));
 	},
 });
 
@@ -91,11 +96,7 @@ export const listRecent = adminQuery({
 
 		const messages = await q.order('desc').take(args.limit ?? 50);
 
-		return messages.map((msg) => ({
-			...msg,
-			content: parseUnifiedMessageContent(msg.content),
-			metadata: msg.metadata ? parseMetadata(msg.metadata) : undefined,
-		}));
+		return await Promise.all(messages.map(openTimelineRow));
 	},
 });
 
@@ -177,7 +178,7 @@ export const recordOutbound = internalMutation({
 			direction: 'outbound',
 			contactId: args.contactId,
 			memberId: args.memberId,
-			content: args.content,
+			content: await sealBodyAtWrite(args.content),
 			externalMessageId: args.externalMessageId,
 			status: args.status ?? 'queued',
 			metadata: args.metadata,
@@ -293,7 +294,7 @@ export const sendChatMessage = authedMutation({
 			channel: 'chat',
 			direction: 'outbound',
 			contactId: args.contactId,
-			content,
+			content: await sealBodyAtWrite(content),
 			externalMessageId: `chat_${now}_${Math.random().toString(36).slice(2, 9)}`,
 			status: 'delivered',
 			createdAt: now,
@@ -740,7 +741,7 @@ export async function recordInboundMirror(
 		channel: args.channel,
 		direction: 'inbound',
 		contactId: args.contactId,
-		content: args.content,
+		content: await sealBodyAtWrite(args.content),
 		externalMessageId: args.externalMessageId,
 		status: 'received',
 		metadata: args.metadata,
@@ -787,7 +788,7 @@ export async function mirrorEmailSendWrite(
 		channel: 'email',
 		direction: 'outbound',
 		contactId: args.contactId,
-		content,
+		content: await sealBodyAtWrite(content),
 		externalMessageId: args.externalMessageId,
 		status,
 		createdAt: now,

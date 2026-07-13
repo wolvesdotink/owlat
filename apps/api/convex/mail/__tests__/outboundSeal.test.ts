@@ -26,6 +26,8 @@ import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { decideSeal } from '../sealPolicy';
 import { modules } from './testModules';
+import { isSealedBytesAtRest } from '../../lib/atRestBodies';
+import { readSealedBlobBytes } from '../../lib/sealedBlob';
 
 const INSTANCE_SECRET = 'unit-test-instance-secret-value';
 
@@ -239,10 +241,15 @@ describe('mail/outbound · dispatchDraft stores SEALED bytes (capstone)', () => 
 			const rows = await ctx.db.query('mailMessages').collect();
 			const sent = rows[0];
 			if (!sent) throw new Error('dispatchDraft stored no sent mailMessages row');
-			const blob = await ctx.storage.get(sent.rawStorageId);
-			if (!blob) throw new Error('stored .eml blob missing');
+			// E8b seals the stored `.eml` blob at rest (byte cipher) on top of any
+			// E2EE PGP sealing. Prove that at-rest layer is present, then unseal it so
+			// the assertions below inspect the actual (PGP or plaintext) `.eml`.
+			const storedBlob = await ctx.storage.get(sent.rawStorageId);
+			if (!storedBlob) throw new Error('stored .eml blob missing');
+			expect(isSealedBytesAtRest(new Uint8Array(await storedBlob.arrayBuffer()))).toBe(true);
+			const rawBytes = await readSealedBlobBytes(ctx.storage, sent.rawStorageId);
 			return {
-				storedText: await blob.text(),
+				storedText: rawBytes ? new TextDecoder().decode(rawBytes) : '',
 				encryptionInfo: sent.encryptionInfo as { sealed: boolean } | undefined,
 			};
 		});

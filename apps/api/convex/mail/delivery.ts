@@ -48,6 +48,8 @@ import { enqueueCategoryCheck } from './category';
 import { clearThreadFollowUp } from './followUps';
 import { resolveDeliverableMailbox } from './mailbox';
 import { clearSnoozeUntilReplyForThread } from './snooze';
+import { sealBodyAtWriteMaybe } from '../lib/messageBody';
+import { storeSealedBlob, type BlobStore } from '../lib/sealedBlob';
 
 const INLINE_BODY_THRESHOLD_BYTES = 64 * 1024;
 
@@ -59,7 +61,7 @@ const INLINE_BODY_THRESHOLD_BYTES = 64 * 1024;
  * long threads rendered blank. Action-only (needs `ctx.storage.store`).
  */
 export async function splitBodyForStorage(
-	ctx: { storage: { store: (blob: Blob) => Promise<Id<'_storage'>> } },
+	ctx: { storage: BlobStore },
 	body: string | undefined,
 	contentType: string
 ): Promise<{ inline?: string; storageId?: Id<'_storage'> }> {
@@ -67,7 +69,9 @@ export async function splitBodyForStorage(
 	if (Buffer.byteLength(body, 'utf-8') <= INLINE_BODY_THRESHOLD_BYTES) {
 		return { inline: body };
 	}
-	const storageId = await ctx.storage.store(new Blob([body], { type: contentType }));
+	// E8b: seal the over-threshold body blob at rest (byte cipher). The reader
+	// (`readMailMessageText`) and the web-reader proxy both unseal transparently.
+	const storageId = await storeSealedBlob(ctx.storage, new TextEncoder().encode(body), contentType);
 	return { storageId };
 }
 
@@ -234,11 +238,12 @@ export const ingestFromWebhook = internalAction({
 		// List-Unsubscribe / List-Unsubscribe-Post (RFC 2369 / 8058), parsed once
 		// here so the reader's Unsubscribe chip never re-opens the raw .eml.
 		const unsubscribe = extractListUnsubscribe(rawHeaderBlock) ?? undefined;
-		const blob = new Blob([rawBytes], { type: 'message/rfc822' });
-		// The raw `.eml` we store IS the sealed original when the message arrived
-		// sealed — decrypt-on-ingest keeps the ciphertext downloadable (D3) while
-		// the row's body columns below carry the restored plaintext.
-		const rawStorageId = await ctx.storage.store(blob);
+		// The raw `.eml` we store IS the E2EE-sealed original when the message
+		// arrived sealed — decrypt-on-ingest keeps that ciphertext downloadable
+		// (D3) while the row's body columns below carry the restored plaintext.
+		// E8b then wraps the bytes in the AT-REST byte cipher so a storage dump
+		// holds no plaintext; the reader path + `/sealed-blob` proxy unseal it.
+		const rawStorageId = await storeSealedBlob(ctx.storage, rawBytes, 'message/rfc822');
 
 		// Sealed Mail (E4, D3): decrypt-on-ingest. When the message arrived as
 		// PGP/MIME ciphertext AND we hold the recipient's vault key, open it here so
@@ -604,9 +609,9 @@ export async function insertDeliveredMessage(
 		snippet,
 		rawStorageId: params.rawStorageId,
 		rawSize: params.rawSize,
-		textBodyInline: params.textBodyInline,
+		textBodyInline: await sealBodyAtWriteMaybe(params.textBodyInline),
 		textBodyStorageId: params.textBodyStorageId,
-		htmlBodyInline: params.htmlBodyInline,
+		htmlBodyInline: await sealBodyAtWriteMaybe(params.htmlBodyInline),
 		htmlBodyStorageId: params.htmlBodyStorageId,
 		attachments: params.attachments,
 		hasAttachments,
