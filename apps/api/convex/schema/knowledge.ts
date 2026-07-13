@@ -206,6 +206,13 @@ export const knowledgeTables = {
 		.index('by_thread', ['threadId'])
 		.index('by_source', ['sourceType', 'sourceId'])
 		.index('by_content_hash', ['contentHash'])
+		// SEALED-AT-REST EXCEPTION (Sealed Mail E8b): message bodies are sealed with
+		// the instance data key, but `searchableText` (the full-text search field
+		// derived from body/knowledge text) and `embedding` (the vector derived from
+		// plaintext at ingest) stay PLAINTEXT-DERIVED — Convex indexes plaintext, so
+		// sealing them would break server-side search and semantic retrieval. This is
+		// the documented, deliberate exception. See lib/atRestBodies.ts and
+		// apps/docs/content/3.developer/21.sealed-mail-at-rest.md.
 		.searchIndex('search_knowledge', {
 			searchField: 'searchableText',
 			filterFields: ['entryType'],
@@ -309,6 +316,11 @@ export const knowledgeTables = {
 		.index('by_created_at', ['createdAt'])
 		.index('by_thread', ['threadId'])
 		.index('by_previous_version', ['previousVersionId'])
+		// SEALED-AT-REST EXCEPTION (Sealed Mail E8b): as with knowledge entries,
+		// `searchableText` (full-text) and `embedding` (vector) stay PLAINTEXT-DERIVED
+		// so file search + semantic retrieval keep working — Convex indexes plaintext.
+		// Documented, deliberate exception. See lib/atRestBodies.ts and
+		// apps/docs/content/3.developer/21.sealed-mail-at-rest.md.
 		.searchIndex('search_files', {
 			searchField: 'searchableText',
 			filterFields: [],

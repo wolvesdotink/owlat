@@ -197,6 +197,7 @@ export const sidebarConfig: SidebarGroup[] = [
 			{ label: 'Email Renderer', to: '/developer/email-renderer' },
 			{ label: 'How Email Works', to: '/developer/how-email-works' },
 			{ label: 'Email Security', to: '/developer/email-security' },
+			{ label: 'Sealed Mail at Rest', to: '/developer/sealed-mail-at-rest' },
 			{ label: 'MTA System', to: '/developer/mta-system' },
 			{ label: 'Providers', to: '/developer/providers' },
 			{
