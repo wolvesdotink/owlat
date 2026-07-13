@@ -51,6 +51,10 @@ export const update = authedMutation({
 		// MTA-STS publishing posture for inbound mail (RFC 8461). Defaults to
 		// `none` (nothing published) — step through `testing` before `enforce`.
 		mtaStsMode: v.optional(v.union(v.literal('none'), v.literal('testing'), v.literal('enforce'))),
+		// Trusted ARC forwarders (Sealed Mail A5) — domains whose validated ARC seal
+		// rescues an inbound DMARC fail. Unset keeps the seeded default list; an
+		// explicit `[]` turns the override off.
+		trustedArcForwarders: v.optional(v.array(v.string())),
 		emailTheme: v.optional(
 			v.object({
 				primaryColor: v.string(),
