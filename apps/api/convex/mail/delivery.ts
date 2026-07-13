@@ -37,7 +37,11 @@ import { logError } from '../lib/runtimeLog';
 import { getMtaConfig, scanAttachmentBytes } from './mtaClient';
 import { scanContent } from '@owlat/email-scanner';
 import { computeSenderHeuristics, type SenderHeuristics } from './senderHeuristics';
-import { inboundEncryptionInfoValidator, type InboundEncryptionInfo } from '../e2ee/inboundSeal';
+import {
+	inboundEncryptionInfoValidator,
+	isSealedPgpMime,
+	type InboundEncryptionInfo,
+} from '../e2ee/inboundSeal';
 import { enqueueNeedsReplyCheck } from './needsReply';
 import { enqueueCategoryCheck } from './category';
 import { clearThreadFollowUp } from './followUps';
@@ -242,11 +246,19 @@ export const ingestFromWebhook = internalAction({
 		// message we cannot decrypt — or any plaintext message, or when the flag is
 		// off — falls straight through to the existing path unchanged. The honest
 		// outcome is recorded on the row as `inboundEncryptionInfo`.
-		const opened = await ctx.runAction(internal.e2ee.open.openInboundForMailbox, {
-			rawBytesBase64: args.rawBytesBase64,
-			recipientAddress: args.recipientAddress,
-			from: args.from,
-		});
+		//
+		// The structural check is pure + cheap, so a PLAINTEXT message (the common
+		// case, and the default while the flag is off) never spawns the `'use node'`
+		// open action — it would only return `{ sealed: false }` anyway. Mirrors the
+		// cheap `extractArmoredCiphertext` pre-gate the AI-inbox path already uses
+		// before its decrypt action.
+		const opened = isSealedPgpMime(rawBytes.toString('utf8'))
+			? await ctx.runAction(internal.e2ee.open.openInboundForMailbox, {
+					rawBytesBase64: args.rawBytesBase64,
+					recipientAddress: args.recipientAddress,
+					from: args.from,
+				})
+			: ({ sealed: false } as const);
 		let effectiveSubject = args.subject;
 		let effectiveText = args.textBody;
 		let effectiveHtml = args.htmlBody;
