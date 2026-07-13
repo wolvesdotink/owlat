@@ -112,13 +112,13 @@ export const exportContactData = authedQuery({
 		// E8b exception — the owner's own GDPR package is the one place plaintext
 		// leaves the store). Decrypt only up to the cap we actually return.
 		const decryptedInbound = await Promise.all(
-			inboundMessages.slice(0, CAP + 1).map(async (row) => {
+			inboundMessages.slice(0, CAP).map(async (row) => {
 				const body = await openInboundMessageBody(row);
 				return { ...row, textBody: body.text, htmlBody: body.html };
 			})
 		);
 		const decryptedUnified = await Promise.all(
-			unifiedMessages.slice(0, CAP + 1).map(async (row) => ({
+			unifiedMessages.slice(0, CAP).map(async (row) => ({
 				...row,
 				content: await openMessageBody(row.content),
 			}))
@@ -135,8 +135,8 @@ export const exportContactData = authedQuery({
 			transactionalSends: await capped(transactionalSends),
 			automationRuns: await capped(automationRuns),
 			formSubmissions: await capped(formSubmissions),
-			inboundMessages: await capped(decryptedInbound),
-			unifiedMessages: await capped(decryptedUnified),
+			inboundMessages: { rows: decryptedInbound, truncated: inboundMessages.length > CAP },
+			unifiedMessages: { rows: decryptedUnified, truncated: unifiedMessages.length > CAP },
 			conversationThreads: await capped(threads),
 			knowledgeEntries: { rows: knowledgeEntries, truncated: entryLinks.length > CAP },
 		};
