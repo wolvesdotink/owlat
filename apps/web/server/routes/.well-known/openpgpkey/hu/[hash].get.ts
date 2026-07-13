@@ -37,6 +37,6 @@ export default defineEventHandler(async (event): Promise<Uint8Array> => {
 	}
 
 	setResponseHeader(event, 'Content-Type', 'application/octet-stream');
-	setResponseHeader(event, 'Cache-Control', 'public, max-age=3600');
+	setResponseHeader(event, 'Cache-Control', 'no-store');
 	return new Uint8Array(Buffer.from(result.binaryBase64, 'base64'));
 });

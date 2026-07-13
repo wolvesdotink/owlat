@@ -70,6 +70,7 @@ describe('GET /.well-known/owlat.json', () => {
 		const result = await callRoute();
 		expect(result).toEqual(manifest);
 		expect(responseHeaders['Content-Type']).toBe('application/json; charset=utf-8');
+		expect(responseHeaders['Cache-Control']).toBe('no-store');
 		expect(actionMock).toHaveBeenCalledWith('getSignedManifest', {});
 	});
 
