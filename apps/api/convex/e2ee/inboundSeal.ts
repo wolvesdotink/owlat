@@ -132,6 +132,18 @@ export function parseInnerMessage(innerMime: string): RestoredMessage {
 	const blankAt = normalized.indexOf('\n\n');
 	const headerBlock = blankAt >= 0 ? normalized.slice(0, blankAt) : normalized;
 
+	// Inline-armored PGP decrypts to BARE TEXT, not a MIME entity. When the
+	// payload carries no MIME header block (no `Content-Type:` / `MIME-Version:`
+	// header line before the first blank line), there is nothing to parse: the
+	// whole payload IS the text body. Treating it as MIME would swallow the first
+	// paragraph as "headers" (or, with no blank line at all, yield an empty body),
+	// silently losing the decrypted content.
+	if (!hasMimeHeaderBlock(headerBlock)) {
+		// Return the ORIGINAL bytes (not the CR-stripped `normalized` copy) so the
+		// restored text is byte-equal to the decrypted payload.
+		return innerMime.length > 0 ? { text: innerMime } : {};
+	}
+
 	const subject = extractHeader(headerBlock, 'subject');
 	const textPart = extractFirstPartByType(innerMime, 'text/plain');
 	const htmlPart = extractFirstPartByType(innerMime, 'text/html');
@@ -141,6 +153,16 @@ export function parseInnerMessage(innerMime: string): RestoredMessage {
 	if (textPart) result.text = decodeUtf8(textPart.bytes);
 	if (htmlPart) result.html = decodeUtf8(htmlPart.bytes);
 	return result;
+}
+
+/**
+ * Whether a header block (the text before the first blank line) contains a MIME
+ * header — i.e. this really is a MIME entity, not bare inline-armored plaintext.
+ * A genuine inner MIME message always carries a `Content-Type:`; `MIME-Version:`
+ * is accepted too as a belt-and-braces signal.
+ */
+function hasMimeHeaderBlock(headerBlock: string): boolean {
+	return /^(?:content-type|mime-version):/im.test(headerBlock);
 }
 
 /** Extract a single (unfolded) header value by lower-cased name from a header block. */

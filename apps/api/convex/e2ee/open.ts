@@ -266,9 +266,16 @@ export const decryptAndReceive = internalAction({
 			const restored = parseInnerMessage(outcome.innerMime);
 			if (restored.subject !== undefined) subject = restored.subject;
 			// The decrypted plaintext REPLACES the ciphertext body so the agent
-			// pipeline + the unified mirror consume real text (D3).
-			textBody = restored.text;
-			htmlBody = restored.html;
+			// pipeline + the unified mirror consume real text (D3). Fail-safe: only
+			// replace when the restore yields a usable body (non-empty text or html);
+			// otherwise keep the original body rather than clobbering it with nothing,
+			// so decrypted content is never silently lost.
+			const restoredText = restored.text && restored.text.length > 0 ? restored.text : undefined;
+			const restoredHtml = restored.html && restored.html.length > 0 ? restored.html : undefined;
+			if (restoredText !== undefined || restoredHtml !== undefined) {
+				textBody = restoredText;
+				htmlBody = restoredHtml;
+			}
 			const info = buildOpenedInfo(outcome, normalizeEmail(args.from));
 			sealedFlags = {
 				isSealed: true,
