@@ -335,7 +335,9 @@ export const FEATURE_FLAGS: Record<FeatureFlagKey, FeatureFlagDefinition> = {
 		label: 'Sender authenticity badges',
 		description:
 			'Show an honest "sender verified" or "not authorized to send for this domain" badge on personal mail, based on the message\'s own authentication result.',
-		default: false,
+		// Ships ON by default (Sealed Mail release): resolves on wherever the
+		// Postbox plane runs, and stays off on deployments without personal mail.
+		default: true,
 		// Sender-authenticity surfaces live on the Postbox 1:1 plane.
 		requires: ['postbox'],
 	},
@@ -345,7 +347,9 @@ export const FEATURE_FLAGS: Record<FeatureFlagKey, FeatureFlagDefinition> = {
 		label: 'Sealed Mail (end-to-end encryption)',
 		description:
 			'Encrypt personal mail end-to-end between Owlat instances when every recipient has a usable key, and render a "Sealed" badge for encrypted messages.',
-		default: false,
+		// Ships ON by default (Sealed Mail release): auto-seals per locked
+		// decision D2 wherever Postbox + sender authenticity resolve on.
+		default: true,
 		// End-to-end sealing applies to the Postbox 1:1 plane, and the honest
 		// "Sealed - sender verified" badge builds on sender authenticity.
 		requires: ['postbox', 'senderAuthBadges'],
