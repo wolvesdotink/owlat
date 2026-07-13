@@ -371,6 +371,7 @@ import type * as lib_rrf from "../lib/rrf.js";
 import type * as lib_runtimeLog from "../lib/runtimeLog.js";
 import type * as lib_safeCompare from "../lib/safeCompare.js";
 import type * as lib_scannerHealth from "../lib/scannerHealth.js";
+import type * as lib_sealedBlob from "../lib/sealedBlob.js";
 import type * as lib_secretLeakScan from "../lib/secretLeakScan.js";
 import type * as lib_sendDailyStats from "../lib/sendDailyStats.js";
 import type * as lib_sendProviders_capability from "../lib/sendProviders/capability.js";
@@ -986,6 +987,7 @@ declare const fullApi: ApiFromModules<{
   "lib/runtimeLog": typeof lib_runtimeLog;
   "lib/safeCompare": typeof lib_safeCompare;
   "lib/scannerHealth": typeof lib_scannerHealth;
+  "lib/sealedBlob": typeof lib_sealedBlob;
   "lib/secretLeakScan": typeof lib_secretLeakScan;
   "lib/sendDailyStats": typeof lib_sendDailyStats;
   "lib/sendProviders/capability": typeof lib_sendProviders_capability;
