@@ -14,7 +14,8 @@ before flipping `sealedMail` / `senderAuthBadges` on by default.
 Locked decisions this exercise validates end to end: **D1** PGP/MIME via
 openpgp.js, **D2** auto-seal only when every recipient has a usable key, **D3**
 decrypt-on-ingest into the normal pipeline, **D4** protected headers (outer
-subject `...`), **D6** DANE behind `DANE_ENABLED`, **D7** recovery kit only.
+subject `...`), **D6** DANE via `DANE_MODE` (report-only never bounces by
+default), **D7** recovery kit only.
 
 ---
 
@@ -84,10 +85,12 @@ subject `...`), **D6** DANE behind `DANE_ENABLED`, **D7** recovery kit only.
 - [ ] **MTA-STS**: an external checker (e.g. an MTA-STS validator / `hardenize`)
       sees A's and B's published `mta-sts.txt` policy + `_mta-sts` TXT, and a mail
       from a strict-policy sender to each domain negotiates TLS.
-- [ ] **DANE** (only if `DANE_ENABLED=true` and TLSA records are published, D6):
-      a staging send to a DANE-enabled domain validates the TLSA record via the
-      configured validating resolver (AD bit trusted; AD absent ⇒ treated as no
-      TLSA). A local validating resolver is the documented production setup.
+- [ ] **DANE** (only if `DANE_MODE` is `report`/`enforce`, `DANE_RESOLVER_URL` is
+      set, and TLSA records are published, D6): a staging send to a DANE-enabled
+      domain validates the TLSA record via the configured validating resolver (AD
+      bit trusted; AD absent ⇒ treated as no TLSA). In `report` the result surfaces
+      in TLS-RPT (tlsa policy) without ever bouncing; `enforce` defers a non-match.
+      A local validating resolver is the documented production setup.
 - [ ] **TLS-RPT**: with a `_smtp._tls` reporting record live, confirm at least one
       aggregate TLS report is received and appears on the TLS-RPT dashboard.
 
