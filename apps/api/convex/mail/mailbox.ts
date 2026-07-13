@@ -11,7 +11,7 @@
  */
 
 import { v } from 'convex/values';
-import { mailMessageInlineBody } from '../lib/messageBody';
+import { openMailMessageInlineBody } from '../lib/messageBody';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { authedMutation, publicQuery } from '../lib/authedFunctions';
 import type { Id, Doc } from '../_generated/dataModel';
@@ -930,7 +930,7 @@ export const getMessageBody = publicQuery({
 	handler: async (ctx, args) => {
 		const message = await loadReadableMessage(ctx, args.messageId);
 		if (!message) return null;
-		const { text, html } = mailMessageInlineBody(message);
+		const { text, html } = await openMailMessageInlineBody(message);
 		return {
 			htmlInline: html ?? null,
 			textInline: text ?? null,
