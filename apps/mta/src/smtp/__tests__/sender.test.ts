@@ -906,13 +906,16 @@ describe('sendToMx', () => {
 		});
 	});
 
-	// ── T3: DANE at send time (RFC 7672), flag DANE_ENABLED ──────────────────
+	// ── T3: DANE at send time (RFC 7672), DANE_MODE off/report/enforce ───────
 	//
-	// The sender matrix for DANE: flag OFF is byte-identical to T1 (resolver never
-	// consulted, no checkServerIdentity on the acquire); with a usable TLSA RRset
-	// the acquire requires verified TLS and carries the DANE cert-authentication
-	// hook; a TLSA mismatch defers (soft bounce) and records a TLS-RPT
-	// validation-failure attributed to the tlsa policy.
+	// The sender matrix for DANE. `off` is byte-identical to T1 (resolver never
+	// consulted, no checkServerIdentity on the acquire). `enforce`: a usable TLSA
+	// RRset makes the acquire require verified TLS and carry the DANE
+	// cert-authentication hook; a TLSA mismatch defers (soft bounce) and records a
+	// TLS-RPT validation-failure attributed to the tlsa policy. `report`: same
+	// lookup + evaluation and the SAME TLS-RPT result is emitted, but DANE never
+	// requires TLS or bounces — a probe failure falls back to the normal floor and
+	// the mail is still delivered (observability only, zero delivery impact).
 	describe('DANE at send time (T3)', () => {
 		// The DANE-EE(3) SPKI SHA-256 of the fixture MX certificate — the record the
 		// MX would publish at _25._tcp.<mx>.
@@ -925,11 +928,11 @@ describe('sendToMx', () => {
 			return { raw: new X509Certificate(MX_CERT).raw } as unknown as PeerCertificate;
 		}
 
-		function daneConfig(): MtaConfig {
-			return createConfig({ daneEnabled: true, daneResolverUrl: 'https://doh.example/dns-query' });
+		function daneConfig(mode: 'report' | 'enforce' = 'enforce'): MtaConfig {
+			return createConfig({ daneMode: mode, daneResolverUrl: 'https://doh.example/dns-query' });
 		}
 
-		it('flag OFF => resolver never consulted; acquire has no DANE hook (byte-identical to T1)', async () => {
+		it('mode OFF => resolver never consulted; acquire has no DANE hook (byte-identical to T1)', async () => {
 			mockTransport.sendMail.mockResolvedValue({ response: '250 OK' });
 
 			const result = await sendToMx(createJob(), config, redis, '10.0.0.1');
@@ -939,6 +942,28 @@ describe('sendToMx', () => {
 			const tlsOpts = vi.mocked(pool.acquire).mock.calls[0]![2].tls ?? {};
 			expect(tlsOpts).not.toHaveProperty('checkServerIdentity');
 		});
+
+		it.each(['report', 'enforce'] as const)(
+			'mode %s with NO resolver => inert (resolver never consulted, no DANE hook)',
+			async (mode) => {
+				mockTransport.sendMail.mockResolvedValue({ response: '250 OK' });
+
+				// A mode is set but DANE_RESOLVER_URL is unset → DANE is a graceful no-op
+				// in every mode, byte-identical to the historic path (a fresh install with
+				// no resolver behaves exactly as before).
+				const result = await sendToMx(
+					createJob(),
+					createConfig({ daneMode: mode }),
+					redis,
+					'10.0.0.1'
+				);
+
+				expect(result.success).toBe(true);
+				expect(vi.mocked(lookupTlsaRecords)).not.toHaveBeenCalled();
+				const tlsOpts = vi.mocked(pool.acquire).mock.calls[0]![2].tls ?? {};
+				expect(tlsOpts).not.toHaveProperty('checkServerIdentity');
+			}
+		);
 
 		it('DANE enabled but no usable TLSA => falls through to the non-DANE path', async () => {
 			vi.mocked(lookupTlsaRecords).mockResolvedValue({ status: 'no-tlsa' });
@@ -1038,6 +1063,91 @@ describe('sendToMx', () => {
 			expect(policy.policy['policy-string']).toContain(`3 1 1 ${MISMATCH_TLSA.data}`);
 			const details = policy['failure-details']!;
 			expect(details.find((d) => d['result-type'] === 'validation-failure')).toBeDefined();
+		});
+
+		// ── report mode: observability only, zero delivery impact ────────────
+		it('report + matching TLSA => delivers and emits a TLS-RPT success under the tlsa policy', async () => {
+			vi.mocked(lookupTlsaRecords).mockResolvedValue({
+				status: 'records',
+				records: [MATCHING_TLSA],
+			});
+			mockTransport.sendMail.mockImplementation(async () => {
+				securedCaptureLogger.info({ tnx: 'smtp' }, 'Connection upgraded with STARTTLS');
+				return { response: '250 OK over DANE TLS' };
+			});
+
+			const result = await sendToMx(createJob(), daneConfig('report'), redis, '10.0.0.1');
+
+			// The single probe delivered; report-only never needs the fallback here.
+			expect(result.success).toBe(true);
+			expect(vi.mocked(pool.acquire)).toHaveBeenCalledTimes(1);
+			const opts = vi.mocked(pool.acquire).mock.calls[0]![2];
+			expect(typeof opts.tls?.checkServerIdentity).toBe('function');
+
+			// The TLS-RPT result is still emitted, attributed to the tlsa policy.
+			const report = await reportFor();
+			const policy = report.policies[0]!;
+			expect(policy.policy['policy-type']).toBe('tlsa');
+			expect(policy.summary['total-successful-session-count']).toBe(1);
+		});
+
+		it('report + TLSA MISMATCH => NO bounce, NO DANE requireTLS on delivery, but the validation-failure is still emitted', async () => {
+			vi.mocked(lookupTlsaRecords).mockResolvedValue({
+				status: 'records',
+				records: [MISMATCH_TLSA],
+			});
+			// Probe (call 0) aborts on the TLSA mismatch; the report-only fallback
+			// (call 1) delivers over the normal opportunistic floor.
+			mockTransport.sendMail
+				.mockImplementationOnce(async () => {
+					throw Object.assign(new Error('DANE TLSA mismatch: MX certificate did not match'), {
+						code: 'ERR_TLS_CERT_ALTNAME_INVALID',
+					});
+				})
+				.mockImplementation(async () => {
+					securedCaptureLogger.info({ tnx: 'smtp' }, 'Connection upgraded with STARTTLS');
+					return { response: '250 OK over opportunistic TLS (report-only fallback)' };
+				});
+
+			const result = await sendToMx(createJob(), daneConfig('report'), redis, '10.0.0.1');
+
+			// Report-only never bounces: the mail is delivered by the fallback attempt.
+			expect(result.success).toBe(true);
+			expect(vi.mocked(pool.acquire)).toHaveBeenCalledTimes(2);
+
+			// The probe carried the DANE hook + verified TLS (to observe the match).
+			const probeOpts = vi.mocked(pool.acquire).mock.calls[0]![2];
+			expect(probeOpts.requireTLS).toBe(true);
+			expect(typeof probeOpts.tls?.checkServerIdentity).toBe('function');
+
+			// The actual delivery imposes NO DANE requirement: normal opportunistic
+			// floor (requireTLS false), and no DANE cert-authentication hook.
+			const deliverOpts = vi.mocked(pool.acquire).mock.calls[1]![2];
+			expect(deliverOpts.requireTLS).toBe(false);
+			expect(deliverOpts.tls ?? {}).not.toHaveProperty('checkServerIdentity');
+
+			// The TLS-RPT validation-failure is still emitted under the tlsa policy.
+			const report = await reportFor();
+			const policy = report.policies[0]!;
+			expect(policy.policy['policy-type']).toBe('tlsa');
+			expect(policy.policy['policy-string']).toContain(`3 1 1 ${MISMATCH_TLSA.data}`);
+			const details = policy['failure-details']!;
+			expect(details.find((d) => d['result-type'] === 'validation-failure')).toBeDefined();
+		});
+
+		it('report + TLSA lookup FAILURE => delivers on the normal path (never defers)', async () => {
+			vi.mocked(lookupTlsaRecords).mockResolvedValue({
+				status: 'lookup-failed',
+				reason: 'DNS RCODE 2',
+			});
+			mockTransport.sendMail.mockResolvedValue({ response: '250 OK' });
+
+			const result = await sendToMx(createJob(), daneConfig('report'), redis, '10.0.0.1');
+
+			// Unlike enforce (which defers), report-only has zero delivery impact.
+			expect(result.success).toBe(true);
+			const tlsOpts = vi.mocked(pool.acquire).mock.calls[0]![2].tls ?? {};
+			expect(tlsOpts).not.toHaveProperty('checkServerIdentity');
 		});
 	});
 });
