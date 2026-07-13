@@ -27,6 +27,7 @@
  */
 
 import { v } from 'convex/values';
+import { mailMessageInlineBody } from '../lib/messageBody';
 import { internalMutation, internalQuery, type QueryCtx } from '../_generated/server';
 import { authedMutation, publicQuery } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
@@ -123,7 +124,7 @@ export const getMessageContext = internalQuery({
 		if (!message) return null;
 		const mailbox = await ctx.db.get(message.mailboxId);
 		if (!mailbox || mailbox.status !== 'active') return null;
-		const body = (message.textBodyInline ?? message.snippet ?? '').slice(0, 8000);
+		const body = (mailMessageInlineBody(message).text ?? message.snippet ?? '').slice(0, 8000);
 		return {
 			mailboxId: message.mailboxId,
 			threadId: message.threadId,
@@ -244,7 +245,7 @@ export const sweep = internalMutation({
 			for (const msg of recent) {
 				if (scheduled >= GLOBAL_EXTRACT_CAP || perMailbox >= EXTRACT_PER_MAILBOX) break;
 				if (msg.outbound === undefined) continue;
-				const body = msg.textBodyInline ?? msg.snippet ?? '';
+				const body = mailMessageInlineBody(msg).text ?? msg.snippet ?? '';
 				if (
 					!shouldExtractOutboundCommitment({
 						fromAddress: msg.fromAddress,

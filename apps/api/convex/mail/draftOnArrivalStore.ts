@@ -11,6 +11,7 @@
  */
 
 import { v } from 'convex/values';
+import { mailMessageInlineBody } from '../lib/messageBody';
 import { internalQuery, internalMutation } from '../_generated/server';
 import { draftQualityValidator } from '../lib/convexValidators';
 import { NEEDS_REPLY_CONTEXT_MESSAGES } from './needsReply';
@@ -53,7 +54,7 @@ export const loadForDraft = internalQuery({
 
 		const transcript = newest
 			.map((m) => {
-				const body = (m.textBodyInline ?? m.snippet ?? '').slice(0, EXCERPT_CHARS);
+				const body = (mailMessageInlineBody(m).text ?? m.snippet ?? '').slice(0, EXCERPT_CHARS);
 				return `From: ${m.fromName || m.fromAddress}\nSubject: ${m.subject}\n${body}`;
 			})
 			.join('\n\n---\n\n')

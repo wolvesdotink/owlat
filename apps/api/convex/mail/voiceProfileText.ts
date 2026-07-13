@@ -10,6 +10,7 @@
  */
 
 import { v } from 'convex/values';
+import { mailMessageInlineBody } from '../lib/messageBody';
 import { splitQuotedHtml, splitQuotedText } from '@owlat/shared/quotedText';
 
 // ── Tuning ────────────────────────────────────────────────────────────────
@@ -100,11 +101,12 @@ export interface RawSentBody {
  * uses, HTML is flattened to text, and the result is bounded.
  */
 export function extractSampleText(raw: RawSentBody): string {
+	const { text: inlineText, html: inlineHtml } = mailMessageInlineBody(raw);
 	let text: string;
-	if (raw.textBodyInline && raw.textBodyInline.trim()) {
-		text = splitQuotedText(raw.textBodyInline).fresh;
-	} else if (raw.htmlBodyInline && raw.htmlBodyInline.trim()) {
-		text = htmlToPlainText(splitQuotedHtml(raw.htmlBodyInline).fresh);
+	if (inlineText && inlineText.trim()) {
+		text = splitQuotedText(inlineText).fresh;
+	} else if (inlineHtml && inlineHtml.trim()) {
+		text = htmlToPlainText(splitQuotedHtml(inlineHtml).fresh);
 	} else {
 		text = raw.snippet ?? '';
 	}

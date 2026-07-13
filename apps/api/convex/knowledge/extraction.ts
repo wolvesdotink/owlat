@@ -12,6 +12,7 @@ import { v } from 'convex/values';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
+import { inboundMessageBody, readMailMessageText } from '../lib/messageBody';
 import { CURRENT_EMBEDDING_MODEL } from '../lib/constants';
 import { embed, type EmbeddingModel } from 'ai';
 import { z } from 'zod';
@@ -140,12 +141,13 @@ export const extractFromMessage = internalAction({
 			inboundMessageId: args.inboundMessageId,
 		});
 		if (!message) return;
+		const { text: bodyText, html: bodyHtml } = inboundMessageBody(message);
 
-		const textContent = message.textBody ?? '';
+		const textContent = bodyText ?? '';
 		if (textContent.length < 20) return; // Skip very short messages
 
 		// Don't feed prompt-injection payloads into the extraction LLM.
-		const risk = injectionRisk(textContent, message.htmlBody);
+		const risk = injectionRisk(textContent, bodyHtml);
 		if (risk) {
 			logInfo('[knowledge.extract] skipped: injection risk in untrusted message', { risk });
 			return;
@@ -321,11 +323,10 @@ export const extractFromMailMessage = internalAction({
 		});
 		if (!msg) return;
 
-		let textContent = msg.textInline ?? '';
-		if (!textContent && msg.textStorageId) {
-			const blob = await ctx.storage.get(msg.textStorageId);
-			if (blob) textContent = await blob.text();
-		}
+		let textContent = await readMailMessageText(ctx.storage, {
+			textBodyInline: msg.textInline ?? undefined,
+			textBodyStorageId: msg.textStorageId ?? undefined,
+		});
 		if (!textContent && msg.htmlInline) textContent = htmlToText(msg.htmlInline);
 		textContent = textContent.slice(0, 8000);
 		if (textContent.length < 20) return; // Skip very short messages

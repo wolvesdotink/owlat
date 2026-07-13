@@ -17,6 +17,7 @@
  */
 
 import { v } from 'convex/values';
+import { mailMessageInlineBody } from '../lib/messageBody';
 import { internalMutation, internalQuery } from '../_generated/server';
 import { authedMutation } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
@@ -141,7 +142,7 @@ export const getClarificationContext = internalQuery({
 		const transcript = newest
 			.map(
 				(m) =>
-					`From: ${m.fromName || m.fromAddress}\nSubject: ${m.subject}\n${(m.textBodyInline ?? m.snippet ?? '').slice(0, 2000)}`
+					`From: ${m.fromName || m.fromAddress}\nSubject: ${m.subject}\n${(mailMessageInlineBody(m).text ?? m.snippet ?? '').slice(0, 2000)}`
 			)
 			.join('\n\n---\n\n')
 			.slice(0, 12000);
