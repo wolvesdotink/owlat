@@ -14,21 +14,27 @@
  *   - unifiedMessages : content                      (the JSON body blob)
  *   - mailDrafts      : bodyHtml, bodyText, bodyBlocks (compose drafts)
  *
- * STORAGE BLOBS (raw `.eml` at `rawStorageId`, and the `*BodyStorageId` body
- * blobs) are served to clients and the MTA via SIGNED STORAGE URLS
- * (`ctx.storage.getUrl`), so sealing the bytes in place would hand ciphertext to
- * a plain download and regress delivery/IMAP FETCH. Sealing them safely needs a
- * decrypt-serving proxy; that is tracked as the follow-up (E8c) and is
- * intentionally OUT of this migration. Bodies read into memory through
- * `readMailMessageText()` already unseal transparently, so a blob sealed by that
- * later step round-trips with no reader change.
+ * This back-fill seals the four INLINE body shapes of EXISTING rows. New rows
+ * already seal at write time (`sealBodyAtWrite` at every production insert/patch)
+ * and every reader decrypts through the accessor plane in `lib/messageBody.ts`,
+ * so running this migration is the one-time step that catches up rows written
+ * before sealing was live. It is idempotent and resumable, so re-running or
+ * running it on an already-sealed table is a no-op.
  *
- * ACTIVATION ORDER (why this migration is safe to ship but sequenced): the body
- * READERS decrypt through the async accessors in `lib/messageBody.ts`, and the
- * WRITE paths seal via `sealMessageBody` — both are wired as part of E8c. This
- * back-fill is a manually-invoked internal action (never auto-run on deploy), so
- * an operator runs `run` only once the reader/writer wiring is live. See the PR
- * discussion for the sequencing decision.
+ * STORAGE BLOBS (raw `.eml` at `rawStorageId`, and the `*BodyStorageId` body
+ * blobs) are NOT sealed here or at write. They are served to clients and the MTA
+ * via SIGNED STORAGE URLS (`ctx.storage.getUrl`), so sealing the bytes in place
+ * would hand ciphertext to a plain download and regress delivery/IMAP FETCH.
+ * Sealing them safely needs a byte-level cipher (a binary `.eml` must not be
+ * UTF-8 round-tripped) plus a server-side decrypt-serving path on the naked-URL
+ * consumers (web reader, IMAP bridge, raw download) — a change that has to be
+ * verified against a live instance, not CI. The in-memory reader path
+ * (`readMailMessageText()`) already unseals transparently, so a blob sealed by
+ * that later step round-trips with no reader change. See
+ * `apps/docs/content/3.developer/21.sealed-mail-at-rest.md#storage-blobs`.
+ *
+ * SAFETY: this back-fill is a manually-invoked internal action (never auto-run on
+ * deploy), matching the 0032–0034 convention; an operator runs `run` once.
  *
  * RESUMABLE: each table is walked one page at a time via a cursor-carrying
  * `internalMutation`; the `run` orchestrator (an `internalAction`) drives the
