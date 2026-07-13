@@ -51,7 +51,7 @@ describe('mail/sealPolicy · decideSeal', () => {
 		});
 	});
 
-	it('does not auto-seal under the ask policy (composer opt-in is E5)', () => {
+	it('does not auto-seal under the ask policy — it never seals automatically', () => {
 		expect(decideSeal(baseInputs({ policy: 'ask' }))).toEqual({
 			seal: false,
 			reason: 'policy_ask',
@@ -92,22 +92,25 @@ describe('mail/sealPolicy · decideSeal', () => {
 });
 
 describe('mail/sealPolicy · deriveSealState (three states)', () => {
-	it('willSeal — policy allows and every recipient is trusted', () => {
-		expect(deriveSealState('auto', [trusted('bob@b.test'), trusted('carol@c.test')])).toEqual({
-			kind: 'willSeal',
-		});
+	it('willSeal — policy allows, every recipient is trusted, and the sender can sign', () => {
+		expect(deriveSealState('auto', [trusted('bob@b.test'), trusted('carol@c.test')], true)).toEqual(
+			{
+				kind: 'willSeal',
+			}
+		);
 	});
 
 	it('keyChanged — surfaces the rotated addresses', () => {
-		const state = deriveSealState('auto', [
-			trusted('bob@b.test'),
-			{ address: 'eve@e.test', outcome: 'keyChanged' },
-		]);
+		const state = deriveSealState(
+			'auto',
+			[trusted('bob@b.test'), { address: 'eve@e.test', outcome: 'keyChanged' }],
+			true
+		);
 		expect(state).toEqual({ kind: 'keyChanged', addresses: ['eve@e.test'] });
 	});
 
 	it('cannotSeal — org policy off', () => {
-		expect(deriveSealState('off', [trusted('bob@b.test')])).toEqual({
+		expect(deriveSealState('off', [trusted('bob@b.test')], true)).toEqual({
 			kind: 'cannotSeal',
 			reason: 'policy_off',
 		});
@@ -115,14 +118,38 @@ describe('mail/sealPolicy · deriveSealState (three states)', () => {
 
 	it('cannotSeal — a recipient without a usable key', () => {
 		expect(
-			deriveSealState('auto', [
-				trusted('bob@b.test'),
-				{ address: 'dave@d.test', outcome: 'missing' },
-			])
+			deriveSealState(
+				'auto',
+				[trusted('bob@b.test'), { address: 'dave@d.test', outcome: 'missing' }],
+				true
+			)
 		).toEqual({ kind: 'cannotSeal', reason: 'recipient_no_key' });
 	});
 
 	it('cannotSeal — no recipients', () => {
-		expect(deriveSealState('auto', [])).toEqual({ kind: 'cannotSeal', reason: 'no_recipients' });
+		expect(deriveSealState('auto', [], true)).toEqual({
+			kind: 'cannotSeal',
+			reason: 'no_recipients',
+		});
+	});
+
+	it('cannotSeal — sender has no signing key (mirrors decideSeal, no false promise)', () => {
+		// All recipients trusted, policy auto, but the From address has no minted
+		// key: the composer must NOT claim "will be sealed" when dispatch would send
+		// plaintext with reason `no_signing_key`.
+		expect(deriveSealState('auto', [trusted('bob@b.test')], false)).toEqual({
+			kind: 'cannotSeal',
+			reason: 'no_signing_key',
+		});
+	});
+
+	it('cannotSeal — policy ask never promises sealing even when keys are ready', () => {
+		// Keys present on both ends, but the org set `ask`: dispatch sends plaintext
+		// with reason `policy_ask`, so the composer must report cannotSeal, not
+		// willSeal — no per-message opt-in control exists to turn it on.
+		expect(deriveSealState('ask', [trusted('bob@b.test')], true)).toEqual({
+			kind: 'cannotSeal',
+			reason: 'policy_ask',
+		});
 	});
 });
