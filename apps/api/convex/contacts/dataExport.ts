@@ -13,6 +13,7 @@ import { v } from 'convex/values';
 import { authedQuery } from '../lib/authedFunctions';
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import { getOrThrow } from '../_utils/errors';
+import { openInboundMessageBody, openMessageBody } from '../lib/messageBody';
 
 const CAP = 1000;
 
@@ -106,6 +107,23 @@ export const exportContactData = authedQuery({
 				createdAt: e.createdAt,
 			}));
 
+		// A data-subject access request must be READABLE: the message bodies are
+		// sealed at rest (E8b), so DECRYPT them for the export bundle (a documented
+		// E8b exception — the owner's own GDPR package is the one place plaintext
+		// leaves the store). Decrypt only up to the cap we actually return.
+		const decryptedInbound = await Promise.all(
+			inboundMessages.slice(0, CAP + 1).map(async (row) => {
+				const body = await openInboundMessageBody(row);
+				return { ...row, textBody: body.text, htmlBody: body.html };
+			})
+		);
+		const decryptedUnified = await Promise.all(
+			unifiedMessages.slice(0, CAP + 1).map(async (row) => ({
+				...row,
+				content: await openMessageBody(row.content),
+			}))
+		);
+
 		return {
 			exportedAt: Date.now(),
 			contact,
@@ -117,8 +135,8 @@ export const exportContactData = authedQuery({
 			transactionalSends: await capped(transactionalSends),
 			automationRuns: await capped(automationRuns),
 			formSubmissions: await capped(formSubmissions),
-			inboundMessages: await capped(inboundMessages),
-			unifiedMessages: await capped(unifiedMessages),
+			inboundMessages: await capped(decryptedInbound),
+			unifiedMessages: await capped(decryptedUnified),
 			conversationThreads: await capped(threads),
 			knowledgeEntries: { rows: knowledgeEntries, truncated: entryLinks.length > CAP },
 		};
