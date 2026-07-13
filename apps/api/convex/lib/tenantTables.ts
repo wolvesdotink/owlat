@@ -227,6 +227,12 @@ export const NON_TENANT_TABLES = [
 	// idempotent backfill re-mints address keys), not this org's contact
 	// business data, so it is out of the tenant wipe.
 	'keyVault',
+	// Sealed Mail recipient-key discovery cache + TOFU trust ledger. Holds only
+	// PUBLIC keys of OTHER instances' recipients plus their pin state — a
+	// regenerable discovery cache (re-fetched from the peer's manifest/WKD), not
+	// this org's contact business data, so it is out of the tenant wipe like
+	// `keyVault` and the other caches.
+	'recipientKeys',
 ] as const satisfies readonly TableNames[];
 
 /**

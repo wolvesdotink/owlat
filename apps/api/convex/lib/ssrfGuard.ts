@@ -39,7 +39,7 @@ export type ValidatedUrl = { ok: true; url: URL } | { ok: false; error: string }
  */
 export async function validatePublicUrl(
 	urlStr: string,
-	opts: { protocols?: string[] } = {},
+	opts: { protocols?: string[] } = {}
 ): Promise<ValidatedUrl> {
 	const protocols = opts.protocols ?? ['http:', 'https:'];
 
@@ -94,7 +94,7 @@ export async function validatePublicUrl(
 export type LookupFn = (
 	hostname: string,
 	options: LookupAllOptions,
-	callback: (err: NodeJS.ErrnoException | null, addresses: LookupAddress[]) => void,
+	callback: (err: NodeJS.ErrnoException | null, addresses: LookupAddress[]) => void
 ) => void;
 
 /**
@@ -114,7 +114,7 @@ export function ssrfLookup(
 	hostname: string,
 	options: LookupAllOptions,
 	callback: (err: NodeJS.ErrnoException | null, addresses: LookupAddress[]) => void,
-	resolver: LookupFn = dnsLookup as unknown as LookupFn,
+	resolver: LookupFn = dnsLookup as unknown as LookupFn
 ): void {
 	resolver(hostname, { ...options, all: true }, (err, addresses) => {
 		if (err) {
@@ -126,9 +126,9 @@ export function ssrfLookup(
 			if (isDisallowedIpAddress(record.address)) {
 				callback(
 					new Error(
-						`Blocked connect to "${hostname}": resolves to a disallowed (private/internal) IP address ${record.address}`,
+						`Blocked connect to "${hostname}": resolves to a disallowed (private/internal) IP address ${record.address}`
 					),
-					[],
+					[]
 				);
 				return;
 			}
@@ -155,6 +155,50 @@ export function guardedDispatcher(): Agent {
 	});
 }
 
+/** Thrown by {@link readCappedBytes} when a response body exceeds the cap. */
+export class CappedReadOverflow extends Error {}
+
+/**
+ * Read a response body stream up to `maxBytes` real octets, returning the
+ * collected bytes (or `null` when there is no body). Throws
+ * {@link CappedReadOverflow} the moment the stream exceeds the cap — the caller
+ * decides whether that is a hard rejection (discovery treats an over-cap key
+ * fetch as an SSRF violation) or a soft "too big, ignore" (MTA-STS returns
+ * null). Counts actual octets (not UTF-16 code units) so multibyte bodies are
+ * bounded correctly.
+ */
+export async function readCappedBytes(
+	body: ReadableStream<Uint8Array> | null,
+	maxBytes: number
+): Promise<Uint8Array | null> {
+	if (!body) return null;
+	const reader = body.getReader();
+	const chunks: Uint8Array[] = [];
+	let total = 0;
+	try {
+		for (;;) {
+			const { done, value } = await reader.read();
+			if (done) break;
+			if (!value) continue;
+			total += value.byteLength;
+			if (total > maxBytes) {
+				await reader.cancel();
+				throw new CappedReadOverflow(`response exceeds ${maxBytes} bytes`);
+			}
+			chunks.push(value);
+		}
+	} finally {
+		reader.releaseLock();
+	}
+	const merged = new Uint8Array(total);
+	let offset = 0;
+	for (const chunk of chunks) {
+		merged.set(chunk, offset);
+		offset += chunk.byteLength;
+	}
+	return merged;
+}
+
 /**
  * Fetch a user-supplied URL with SSRF protection:
  *   1. validate the destination against the private/internal blocklist;
@@ -170,7 +214,7 @@ export function guardedDispatcher(): Agent {
  */
 export async function fetchGuarded(
 	urlStr: string,
-	init: RequestInit & { protocols?: string[] } = {},
+	init: RequestInit & { protocols?: string[] } = {}
 ): Promise<Response> {
 	const { protocols, ...requestInit } = init;
 	const check = await validatePublicUrl(urlStr, { protocols });
@@ -186,7 +230,7 @@ export async function fetchGuarded(
 	});
 	if (res.status >= 300 && res.status < 400) {
 		throw new Error(
-			`Blocked fetch of "${urlStr}": refusing to follow redirect (to ${res.headers.get('location') ?? 'unknown'}) — possible SSRF`,
+			`Blocked fetch of "${urlStr}": refusing to follow redirect (to ${res.headers.get('location') ?? 'unknown'}) — possible SSRF`
 		);
 	}
 	return res;
