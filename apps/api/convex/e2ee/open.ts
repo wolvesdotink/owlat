@@ -25,10 +25,11 @@
  * entry actions.
  */
 
-import { v } from 'convex/values';
+import { v, type Infer } from 'convex/values';
 import * as openpgp from 'openpgp';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
+import type { Id } from '../_generated/dataModel';
 import { extractArmoredCiphertext } from '@owlat/shared/secureMessage';
 import { normalizeEmail } from '@owlat/shared';
 import { openPrivateKey } from './sealing';
@@ -170,7 +171,7 @@ export const openInboundForMailbox = internalAction({
 		from: v.string(),
 	},
 	returns: mailboxOpenResultValidator,
-	handler: async (ctx, args) => {
+	handler: async (ctx, args): Promise<Infer<typeof mailboxOpenResultValidator>> => {
 		// Flag OFF ⇒ behave exactly as before: never decrypt, never record. A sealed
 		// message just stays ciphertext (the reader's existing "Encrypted" badge).
 		if (!(await ctx.runQuery(internal.e2ee.keys.isSealedMailEnabled, {}))) {
@@ -236,7 +237,14 @@ export const decryptAndReceive = internalAction({
 		threadId: v.id('conversationThreads'),
 		contactId: v.id('contacts'),
 	}),
-	handler: async (ctx, args) => {
+	handler: async (
+		ctx,
+		args
+	): Promise<{
+		inboundMessageId: Id<'inboundMessages'>;
+		threadId: Id<'conversationThreads'>;
+		contactId: Id<'contacts'>;
+	}> => {
 		const outcome = await openWithVault(
 			ctx,
 			args.armoredCiphertext,
