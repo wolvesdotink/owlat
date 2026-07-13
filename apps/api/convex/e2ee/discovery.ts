@@ -29,6 +29,7 @@ import dns from 'node:dns/promises';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { isDisallowedIpAddress } from '../lib/ipBlocklist';
+import { readCappedBytes, CappedReadOverflow, guardedDispatcher } from '../lib/ssrfGuard';
 import { normalizeEmail } from '@owlat/shared';
 import { splitAddress, wkdHashForAddress } from './wkd';
 import { verifyManifest, type ManifestPayload } from './manifest';
@@ -72,7 +73,16 @@ export interface DiscoveryDeps {
 
 const defaultDeps: DiscoveryDeps = {
 	lookup: (host) => dns.lookup(host, { all: true }),
-	fetch: (input, init) => fetch(input, init),
+	fetch: (input, init) =>
+		fetch(input, {
+			...init,
+			// @ts-expect-error `dispatcher` is an undici-specific fetch option not in
+			// the DOM RequestInit lib types, but valid in the Node action runtime. It
+			// binds the socket-level DNS lookup to the SSRF blocklist, closing the
+			// connect-time DNS-rebinding TOCTOU the up-front resolve can't (recipient
+			// domains are attacker-influenceable — anyone you mail).
+			dispatcher: guardedDispatcher(),
+		}),
 };
 
 /** The manifest URL for a domain. */
@@ -139,66 +149,33 @@ export async function guardedFetchBytes(
 	if (Number.isFinite(declared) && declared > MAX_BYTES) {
 		throw new SsrfRejection(`response from ${urlStr} exceeds ${MAX_BYTES} bytes`);
 	}
-	return readCappedBytes(res.body, MAX_BYTES);
-}
-
-/** Read a body stream up to `maxBytes`, or throw {@link SsrfRejection} if it exceeds the cap. */
-async function readCappedBytes(
-	body: ReadableStream<Uint8Array> | null,
-	maxBytes: number
-): Promise<Uint8Array | null> {
-	if (!body) return null;
-	const reader = body.getReader();
-	const chunks: Uint8Array[] = [];
-	let total = 0;
+	// An over-cap streamed body is an SSRF-class rejection here (never silently a
+	// "no key"): translate the shared reader's overflow into an SsrfRejection.
 	try {
-		for (;;) {
-			const { done, value } = await reader.read();
-			if (done) break;
-			if (!value) continue;
-			total += value.byteLength;
-			if (total > maxBytes) {
-				await reader.cancel();
-				throw new SsrfRejection(`response exceeds ${maxBytes} bytes`);
-			}
-			chunks.push(value);
+		return await readCappedBytes(res.body, MAX_BYTES);
+	} catch (err) {
+		if (err instanceof CappedReadOverflow) {
+			throw new SsrfRejection(`response from ${urlStr} exceeds ${MAX_BYTES} bytes`);
 		}
-	} finally {
-		reader.releaseLock();
+		throw err;
 	}
-	const merged = new Uint8Array(total);
-	let offset = 0;
-	for (const chunk of chunks) {
-		merged.set(chunk, offset);
-		offset += chunk.byteLength;
-	}
-	return merged;
-}
-
-/** Extract the lowercased email from a `Name <email>` or bare-email User ID. */
-function emailFromUserId(userId: string): string | null {
-	const angle = userId.match(/<([^>]+)>/);
-	const raw = (angle?.[1] ?? userId).trim().toLowerCase();
-	return raw.includes('@') ? raw : null;
 }
 
 /**
- * True iff the armored key carries a valid User ID for the EXACT address — the
- * key<->address binding. Rejects a key that merely lists the address without a
- * valid primary-user self-certification, or a key for a different address (the
- * spoof case: a WKD host serving someone else's key). Never throws.
+ * True iff the armored key carries a User ID for the EXACT address WITH a valid
+ * self-certification ON that matching UID — the key<->address binding. Rejects a
+ * key for a different address (the spoof case: a WKD host serving someone else's
+ * key) AND a hybrid key that merely LISTS the address on an uncertified UID
+ * grafted onto a third party's real key (the key's own valid UID would otherwise
+ * satisfy a key-wide primary-user check). `getPrimaryUser` filtered by the email
+ * selects only users whose UID matches `target` and requires a valid self-cert on
+ * one of them, throwing otherwise. Never throws.
  */
 export async function keyCertifiesAddress(armoredKey: string, address: string): Promise<boolean> {
 	try {
 		const key = await openpgp.readKey({ armoredKey });
 		const target = normalizeEmail(address);
-		const emails = key
-			.getUserIDs()
-			.map(emailFromUserId)
-			.filter((e): e is string => e !== null);
-		if (!emails.includes(target)) return false;
-		// Throws unless at least one User ID has a valid self-certification.
-		await key.getPrimaryUser();
+		await key.getPrimaryUser(undefined, { email: target });
 		return true;
 	} catch {
 		return false;
@@ -275,14 +252,19 @@ async function verifyFetchedManifest(bytes: Uint8Array): Promise<FetchedManifest
 }
 
 /** The outcome of a discovery fetch, BEFORE pin evaluation / persistence. */
-export interface DiscoveryFetch {
-	outcome: 'found' | 'notFound';
-	fingerprint?: string;
-	publicKeyArmored?: string;
-	source?: 'wkd';
-	instanceFingerprint?: string;
-	rotationStatements?: RotationStatement[];
-}
+export type DiscoveryFetch =
+	| {
+			outcome: 'found';
+			fingerprint: string;
+			publicKeyArmored: string;
+			source: 'wkd';
+			instanceFingerprint?: string;
+			rotationStatements?: RotationStatement[];
+	  }
+	| {
+			outcome: 'notFound';
+			instanceFingerprint?: string;
+	  };
 
 /**
  * Fetch + validate a recipient's key from their domain (manifest then WKD). Pure
@@ -354,16 +336,6 @@ export function shouldRefetch(cached: { expiresAt: number } | null, now: number)
 	return !cached || cached.expiresAt <= now;
 }
 
-interface CachedRow {
-	outcome: 'trusted' | 'keyChanged' | 'notFound';
-	pinnedFingerprint?: string;
-	pinnedPublicKeyArmored?: string;
-	observedFingerprint?: string;
-	observedPublicKeyArmored?: string;
-	instanceFingerprint?: string;
-	expiresAt: number;
-}
-
 /**
  * INTERNAL: discover (or refresh) the key for one address and persist the
  * discovery + TOFU pin decision. Cache-aware (skips a fresh row unless `force`).
@@ -377,9 +349,9 @@ export const discoverRecipientKey = internalAction({
 		}
 		const address = normalizeEmail(args.address);
 		const now = Date.now();
-		const cached = (await ctx.runQuery(internal.e2ee.recipientKeys.getCached, {
+		const cached = await ctx.runQuery(internal.e2ee.recipientKeys.getCached, {
 			address,
-		})) as CachedRow | null;
+		});
 
 		if (!args.force && !shouldRefetch(cached, now)) {
 			return { outcome: cached?.outcome ?? 'notFound', cached: true as const };
@@ -398,14 +370,15 @@ export const discoverRecipientKey = internalAction({
 				pinnedPublicKeyArmored: cached?.pinnedPublicKeyArmored,
 				observedFingerprint: cached?.observedFingerprint,
 				observedPublicKeyArmored: cached?.observedPublicKeyArmored,
+				source: cached?.source,
 				instanceFingerprint: fetched.instanceFingerprint ?? cached?.instanceFingerprint,
 				expiresAt: now + TTL_NEGATIVE_MS,
 			});
 			return { outcome: 'notFound' as const };
 		}
 
-		const observedFingerprint = fetched.fingerprint as string;
-		const observedArmored = fetched.publicKeyArmored as string;
+		const observedFingerprint = fetched.fingerprint;
+		const observedArmored = fetched.publicKeyArmored;
 		const pinnedFingerprint = cached?.pinnedFingerprint ?? null;
 
 		// Did the remote publish a valid signed rotation from our pin to this key?
