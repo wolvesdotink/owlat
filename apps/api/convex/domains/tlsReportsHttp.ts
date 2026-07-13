@@ -28,6 +28,7 @@ import { logError } from '../lib/runtimeLog';
 import { getOptional } from '../lib/env';
 import { constantTimeEqual, hmacSha256Hex } from '../webhooks/security';
 import { getClientIp } from '../publicRateLimit';
+import { errorResponse, jsonResponse, methodNotAllowed } from '../lib/httpResponse';
 
 interface ForwardedAttachment {
 	filename?: string;
@@ -48,7 +49,7 @@ function isTlsReportAttachment(att: ForwardedAttachment): boolean {
 
 export const handleTlsReportWebhook = httpAction(async (ctx, request) => {
 	if (request.method !== 'POST') {
-		return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405 });
+		return methodNotAllowed();
 	}
 
 	const rateIp = getClientIp(request);
@@ -57,27 +58,29 @@ export const handleTlsReportWebhook = httpAction(async (ctx, request) => {
 		{ limitType: 'webhookIngestion', key: `mta-tls-report:${rateIp}` }
 	);
 	if (!rateOk) {
-		return new Response(JSON.stringify({ error: 'Rate limited' }), {
-			status: 429,
-			headers: retryAfter ? { 'Retry-After': String(Math.ceil(retryAfter / 1000)) } : {},
-		});
+		return errorResponse(
+			'rate_limited',
+			'Rate limited',
+			retryAfter === undefined ? undefined : { retryAfter },
+			retryAfter ? { 'Retry-After': String(Math.ceil(retryAfter / 1000)) } : null
+		);
 	}
 
 	const secret = getOptional('MTA_WEBHOOK_SECRET');
 	if (!secret) {
 		logError('[mta-tls-report] MTA_WEBHOOK_SECRET not configured');
-		return new Response(JSON.stringify({ error: 'Endpoint not configured' }), { status: 503 });
+		return errorResponse('network', 'Endpoint not configured');
 	}
 
 	const signature = request.headers.get('x-mta-signature');
 	const timestamp = request.headers.get('x-mta-timestamp');
 	if (!signature || !timestamp) {
-		return new Response(JSON.stringify({ error: 'Missing signature' }), { status: 401 });
+		return errorResponse('unauthenticated', 'Missing signature');
 	}
 	const ts = parseInt(timestamp, 10);
 	const now = Math.floor(Date.now() / 1000);
 	if (Number.isNaN(ts) || Math.abs(now - ts) > 60) {
-		return new Response(JSON.stringify({ error: 'Stale timestamp' }), { status: 401 });
+		return errorResponse('unauthenticated', 'Stale timestamp');
 	}
 
 	const bodyText = await request.text();
@@ -85,23 +88,20 @@ export const handleTlsReportWebhook = httpAction(async (ctx, request) => {
 	// than re-inlining importKey + sign + hex-encode.
 	const expected = await hmacSha256Hex(secret, `${timestamp}.${bodyText}`);
 	if (!constantTimeEqual(signature, expected)) {
-		return new Response(JSON.stringify({ error: 'Invalid signature' }), { status: 401 });
+		return errorResponse('unauthenticated', 'Invalid signature');
 	}
 
 	let payload: { attachments?: ForwardedAttachment[] };
 	try {
 		payload = JSON.parse(bodyText);
 	} catch {
-		return new Response(JSON.stringify({ error: 'Invalid JSON' }), { status: 400 });
+		return errorResponse('invalid_input', 'Invalid JSON');
 	}
 
 	const attachment = (payload.attachments ?? []).find(isTlsReportAttachment);
 	if (!attachment?.content) {
 		// No report attachment — acknowledge without ingesting (do not retry).
-		return new Response(JSON.stringify({ ok: false, reason: 'no-report-attachment' }), {
-			status: 200,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonResponse({ ok: false, reason: 'no-report-attachment' });
 	}
 
 	// The gunzip step (WHATWG DecompressionStream) is not in Convex's default
@@ -116,14 +116,8 @@ export const handleTlsReportWebhook = httpAction(async (ctx, request) => {
 	});
 
 	if (!result.ok) {
-		return new Response(JSON.stringify({ ok: false, reason: result.reason }), {
-			status: 200,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonResponse({ ok: false, reason: result.reason });
 	}
 
-	return new Response(JSON.stringify({ ok: true, deduped: result.deduped }), {
-		status: 200,
-		headers: { 'Content-Type': 'application/json' },
-	});
+	return jsonResponse({ ok: true, deduped: result.deduped });
 });

@@ -85,6 +85,9 @@ describe('sealed-blob decrypt-serving proxy', () => {
 		const tampered = url.replace(/sig=[^&]+/, 'sig=forged-signature-value');
 		const res = await t.fetch(tampered.slice(SITE.length), { method: 'GET' });
 		expect(res.status).toBe(403);
+		expect(await res.json()).toEqual({
+			error: { category: 'forbidden', message: 'Forbidden' },
+		});
 	});
 
 	it('rejects an expired token with 403', async () => {

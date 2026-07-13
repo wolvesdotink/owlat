@@ -16,6 +16,7 @@ import type { Id } from '../_generated/dataModel';
 import { isValidConvexId } from '../lib/inputGuards';
 import { readSealedBlobBytes, verifyBlobToken } from '../lib/sealedBlob';
 import { logError } from '../lib/runtimeLog';
+import { errorResponse } from '../lib/httpResponse';
 
 export const serveSealedBlob = httpAction(async (ctx, request) => {
 	const url = new URL(request.url);
@@ -26,11 +27,11 @@ export const serveSealedBlob = httpAction(async (ctx, request) => {
 		url.searchParams.get('sig')
 	);
 	if (!verified || !isValidConvexId(verified.storageId)) {
-		return new Response('Forbidden', { status: 403 });
+		return errorResponse('forbidden', 'Forbidden');
 	}
 	try {
 		const bytes = await readSealedBlobBytes(ctx.storage, verified.storageId as Id<'_storage'>);
-		if (bytes === null) return new Response('Not found', { status: 404 });
+		if (bytes === null) return errorResponse('not_found', 'Not found');
 		// Copy into a fresh ArrayBuffer-backed view so the Response body type is
 		// unambiguous across runtimes.
 		const body = new Uint8Array(bytes);
@@ -50,6 +51,6 @@ export const serveSealedBlob = httpAction(async (ctx, request) => {
 		// A sealed blob that fails to decrypt (tamper / key mismatch) must not leak
 		// ciphertext or 200 — surface a 500 and log for the operator.
 		logError(`[sealedBlob] failed to serve ${verified.storageId}: ${String(err)}`);
-		return new Response('Internal Server Error', { status: 500 });
+		return errorResponse('internal', 'Internal Server Error');
 	}
 });
