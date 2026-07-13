@@ -21,7 +21,8 @@ import { extractDomainOrNull } from '@owlat/shared';
 import { logger } from '../monitoring/logger.js';
 import { pool, PoolOverCapError } from './connectionPool.js';
 import { prepareDaneAttempt } from './daneVerify.js';
-import { stripHtml, buildMessageId } from './messageBuild.js';
+import { buildMessageId, buildSendMailPayload } from './messageBuild.js';
+import { buildAllMxFailedResult } from './mxBounce.js';
 import {
 	recordTlsResult,
 	buildStsPolicyString,
@@ -196,38 +197,7 @@ export async function sendToMx(
 			// a per-call capture scope (see tlsSecuredCapture.ts) and read it back to
 			// record the right TLS-RPT result type below.
 			const { result: info, secured } = await withSecuredCapture(false, () =>
-				transport.sendMail({
-					from: job.from,
-					to: job.to,
-					subject: job.subject,
-					html: job.html,
-					text: job.text || stripHtml(job.html),
-					// nodemailer emits AMP as a `text/x-amp-html` alternative part,
-					// ordered so non-AMP clients fall through to the HTML part.
-					...(job.amp ? { amp: job.amp } : {}),
-					// Internally-generated mail (e.g. TLS-RPT reports) may carry binary
-					// attachments. base64-encoded on the job so they survive Redis JSON.
-					...(job.attachments && job.attachments.length > 0
-						? {
-								attachments: job.attachments.map((a) => ({
-									filename: a.filename,
-									contentType: a.contentType,
-									content: Buffer.from(a.contentBase64, 'base64'),
-								})),
-							}
-						: {}),
-					replyTo: job.replyTo,
-					headers: {
-						...job.headers,
-						...(messageIdHeader ? { 'Message-ID': messageIdHeader } : {}),
-						'X-Owlat-Message-Id': job.messageId,
-						'X-Owlat-Org-Id': job.organizationId,
-					},
-					envelope: {
-						from: verpAddress,
-						to: job.to,
-					},
-				})
+				transport.sendMail(buildSendMailPayload(job, verpAddress, messageIdHeader))
 			);
 
 			// Record the TLS-RPT result for this successful delivery (RFC 8460 §4.3).
@@ -502,34 +472,15 @@ export async function sendToMx(
 		continue;
 	}
 
-	// Every MX failed a TLS-required handshake: surface the TLS failure rather
-	// than a generic connection error. Soft/deferred so the message is retried
-	// until the receiver's TLS is fixed or the message expires — a TLS-required
-	// floor never falls back to cleartext.
-	if (lastTlsFailureResponse) {
-		return {
-			success: false,
-			error: `TLS required but no MX for ${recipientDomain} completed a usable TLS handshake: ${lastTlsFailureResponse}`,
-			bounceType: 'soft',
-		};
-	}
-
-	// Every MX deferred because its DANE TLSA lookup could not be completed. We
-	// never downgrade to a non-DANE (possibly cleartext) delivery on a lookup
-	// failure (RFC 7672 §2.1), so this is a soft/deferred bounce: retried until the
-	// resolver recovers or the message expires.
-	if (lastDaneDeferResponse) {
-		return {
-			success: false,
-			error: `DANE enabled but TLSA lookup could not be completed for any MX of ${recipientDomain}; deferring rather than delivering without DANE: ${lastDaneDeferResponse}`,
-			bounceType: 'soft',
-		};
-	}
-
-	// All MX hosts failed at connection level
-	return {
-		success: false,
-		error: `All MX hosts failed for ${recipientDomain}: ${mxHosts.join(', ')}`,
-		bounceType: 'soft',
-	};
+	// Every MX has been tried (or skipped). Classify the terminal bounce from the
+	// strictest reason recorded along the way — a TLS-required handshake failure,
+	// then a DANE TLSA lookup that could not be completed, else a plain
+	// connection-level failure. All soft/deferred: a TLS-required or DANE floor
+	// never falls back to cleartext (RFC 7672 §2.1).
+	return buildAllMxFailedResult(
+		recipientDomain,
+		mxHosts,
+		lastTlsFailureResponse,
+		lastDaneDeferResponse
+	);
 }
