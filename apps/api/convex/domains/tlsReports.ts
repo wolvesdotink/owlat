@@ -105,7 +105,7 @@ export const getTlsReportSummary = adminQuery({
 		const cutoff = Date.now() - SUMMARY_WINDOW_DAYS * DAY_MS;
 		const matchedRows = await ctx.db
 			.query('tlsReports')
-			.withIndex('by_rangeStart', (q) => q.gte('rangeStartMs', cutoff))
+			.withIndex('by_range_start_ms', (q) => q.gte('rangeStartMs', cutoff))
 			.take(MAX_REPORTS_PER_SUMMARY + 1);
 		const rows = matchedRows.slice(0, MAX_REPORTS_PER_SUMMARY);
 

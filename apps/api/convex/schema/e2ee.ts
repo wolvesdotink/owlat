@@ -86,7 +86,7 @@ export const e2eeTables = {
 		.index('by_kind', ['kind'])
 		// Direct-method WKD lookup: match a stored address key by its domain +
 		// local-part hash in one indexed read.
-		.index('by_wkd', ['domain', 'wkdHash']),
+		.index('by_domain_and_wkd_hash', ['domain', 'wkdHash']),
 
 	/**
 	 * Discovered + TOFU-pinned public keys of OTHER instances' recipients (Sealed
