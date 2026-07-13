@@ -22,6 +22,12 @@ import { getOptional } from '../lib/env';
 import { checkEncryptionKeysPublished } from '../e2ee/selfCheck';
 import type { EncryptionKeysPublishedResult } from '../e2ee/selfCheck';
 
+// Outbound self-fetch timeout — mirrors `mtaStsVerify`'s `MTA_STS_FETCH_TIMEOUT_MS`
+// and the AbortSignal.timeout guards on the other outbound fetches in this backend,
+// so a hung own-endpoint (or a misconfigured `SITE_URL`) can't stall the readiness
+// action across its three sequential fetches.
+const READINESS_FETCH_TIMEOUT_MS = 10_000;
+
 // Returns `null` when Sealed Mail is disabled or `SITE_URL` is unset (nothing to
 // probe). Never throws: the pure `checkEncryptionKeysPublished` helper swallows
 // every network/parse error, so a hiccup degrades to "not reachable" rather than
@@ -40,10 +46,12 @@ export const checkEncryptionKeysReadiness = authedAction({
 		if (!siteUrl) return null;
 		const directory = await ctx.runQuery(internal.e2ee.keys.getKeyDirectory, {});
 		// Wrap the global `fetch` structurally so the deps type doesn't inherit the
-		// global's extra members (mirrors `mtaStsVerify`'s `HttpDeps`).
+		// global's extra members (mirrors `mtaStsVerify`'s `HttpDeps`), and guard each
+		// self-fetch with an AbortSignal timeout — the helper's catch blocks degrade the
+		// resulting AbortError to "not reachable".
 		return checkEncryptionKeysPublished(
 			{ siteUrl, localPublished: local.isPublished, directory },
-			{ fetch: (url) => fetch(url) }
+			{ fetch: (url) => fetch(url, { signal: AbortSignal.timeout(READINESS_FETCH_TIMEOUT_MS) }) }
 		);
 	},
 });
