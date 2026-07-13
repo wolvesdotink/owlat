@@ -32,6 +32,8 @@ import {
 } from '../../e2ee/__tests__/sealedMailTestHelpers';
 import { modules } from './testModules';
 import { openMailMessageInlineBody } from '../../lib/messageBody';
+import { isSealedAtRest, isSealedBytesAtRest } from '../../lib/atRestBodies';
+import { readSealedBlobBytes } from '../../lib/sealedBlob';
 
 const INSTANCE_SECRET = 'unit-test-instance-secret-value';
 const RECIPIENT = 'me@example.com';
@@ -122,10 +124,20 @@ async function readRow(t: T, messageId: Id<'mailMessages'>) {
 	return await t.run(async (ctx) => {
 		const msg = await ctx.db.get(messageId);
 		if (!msg) throw new Error('mailMessages row missing');
-		const rawBlob = await ctx.storage.get(msg.rawStorageId);
-		const rawText = rawBlob ? await rawBlob.text() : '';
-		// E8b seals the inline bodies at rest; unseal them so the plaintext
-		// assertions exercise the composed decrypt-on-ingest → at-rest-seal path.
+		// WRITE-PATH PROOF: the inline bodies AND the raw `.eml` blob are CIPHERTEXT
+		// at rest — the ingest path sealed them at write (this fails if the sealing
+		// is a no-op, since the accessors pass plaintext through).
+		if (msg.textBodyInline) expect(isSealedAtRest(msg.textBodyInline)).toBe(true);
+		if (msg.htmlBodyInline) expect(isSealedAtRest(msg.htmlBodyInline)).toBe(true);
+		const rawStored = await ctx.storage.get(msg.rawStorageId);
+		const rawStoredBytes = rawStored
+			? new Uint8Array(await rawStored.arrayBuffer())
+			: new Uint8Array();
+		expect(isSealedBytesAtRest(rawStoredBytes)).toBe(true);
+		// E8b seals the inline bodies + raw blob at rest; unseal them so the
+		// plaintext assertions exercise the decrypt-on-ingest → at-rest-seal path.
+		const rawBytes = await readSealedBlobBytes(ctx.storage, msg.rawStorageId);
+		const rawText = rawBytes ? new TextDecoder().decode(rawBytes) : '';
 		const { text, html } = await openMailMessageInlineBody(msg);
 		return { msg: { ...msg, textBodyInline: text, htmlBodyInline: html }, rawText };
 	});
