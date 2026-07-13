@@ -12,6 +12,7 @@ import {
 	recipientLabel,
 	canonicalEmailAddress,
 } from '~/utils/recipientHints';
+import { senderAuthDisplay, type SenderAuthDisplay } from '~/utils/senderAlignment';
 
 type RecipientField = 'to' | 'cc' | 'bcc';
 
@@ -60,6 +61,28 @@ const hasPersonalIdentity = computed(() =>
 	props.availableIdentities.some((i) => i.kind === 'personal')
 );
 const firstIdentityAddress = computed(() => props.availableIdentities[0]?.address ?? '');
+
+// Live authenticity of each identity — domain verification + whether the active
+// transport signs/bounces this From-domain in a DMARC-aligned way. Derived from
+// `senderAuthDisplay` (the single source of truth the campaign wizard also uses),
+// so the composer's chip + disable-with-reason can't drift from the wizard's.
+function identityAuth(identity: SendAsIdentity): SenderAuthDisplay {
+	return senderAuthDisplay({
+		verified: identity.domainVerified,
+		alignment: identity.alignment,
+		reason: identity.alignmentReason,
+	});
+}
+
+// The identity the picker currently shows (the chosen From, falling back to the
+// first) and its authenticity verdict — drives the chip below the picker.
+const selectedIdentity = computed(() => {
+	const address = props.fromAddress || firstIdentityAddress.value;
+	return props.availableIdentities.find((i) => i.address === address) ?? null;
+});
+const selectedAuth = computed<SenderAuthDisplay | null>(() =>
+	selectedIdentity.value ? identityAuth(selectedIdentity.value) : null
+);
 
 function onFromChange(event: Event) {
 	const target = event.target as HTMLSelectElement;
@@ -140,6 +163,7 @@ function moveRecipient(payload: { email: string; from: RecipientField }, to: Rec
 							v-for="identity in group.items"
 							:key="identity.address"
 							:value="identity.address"
+							:disabled="identityAuth(identity).blocked"
 						>
 							{{ identity.address }}
 						</option>
@@ -150,11 +174,27 @@ function moveRecipient(payload: { email: string; from: RecipientField }, to: Rec
 						v-for="identity in availableIdentities"
 						:key="identity.address"
 						:value="identity.address"
+						:disabled="identityAuth(identity).blocked"
 					>
 						{{ identity.address }}
 					</option>
 				</template>
 			</select>
+		</div>
+		<!-- Live authenticity of the selected From identity: domain verification +
+			   transport alignment. A broken identity (unverified domain or a misaligned
+			   transport) is surfaced here with a plain-language reason and is disabled
+			   in the picker above so it can't be chosen. This is NOT gated on the picker
+			   being shown: a mailbox with a single identity (the common personal case)
+			   has no choice to make, but must still learn its identity is broken before
+			   sending — not after. Clean identities stay quiet. -->
+		<div v-if="selectedAuth && selectedAuth.tone !== 'success'" class="pl-14">
+			<CampaignsSenderAuthChip
+				v-if="selectedIdentity"
+				:verified="selectedIdentity.domainVerified"
+				:alignment="selectedIdentity.alignment"
+				:reason="selectedIdentity.alignmentReason"
+			/>
 		</div>
 		<div class="flex items-start gap-2">
 			<PostboxRecipientField

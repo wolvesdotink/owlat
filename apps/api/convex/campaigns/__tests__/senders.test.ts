@@ -196,6 +196,80 @@ describe('campaigns.senders CRUD — verified-domain guard', () => {
 	});
 });
 
+describe('campaigns.senders.listForPicker — authenticity annotation', () => {
+	async function seedCuratedSender(
+		t: ReturnType<typeof convexTest>,
+		email: string,
+		opts: { domain?: string; domainStatus?: 'verified' | 'pending' } = {}
+	) {
+		await t.run(async (ctx) => {
+			await ctx.db.insert(
+				'instanceSettings',
+				createTestInstanceSettings({ isCustomCampaignSendersAllowed: false })
+			);
+			if (opts.domain) {
+				await ctx.db.insert(
+					'domains',
+					createTestDomain({
+						domain: opts.domain,
+						status: opts.domainStatus ?? 'verified',
+						lastVerifiedAt: opts.domainStatus === 'pending' ? undefined : Date.now(),
+					})
+				);
+			}
+			await ctx.db.insert(
+				'campaignSenders',
+				createTestCampaignSender({ email, isEnabled: true, isDefault: true })
+			);
+		});
+	}
+
+	it('marks a verified sender on the built-in MTA as aligned', async () => {
+		process.env['EMAIL_PROVIDER'] = 'mta';
+		const t = convexTest(schema, modules);
+		await seedCuratedSender(t, 'news@acme.com', { domain: 'acme.com' });
+		const picker = await t.query(api.campaigns.senders.listForPicker, {});
+		expect(picker.senders).toHaveLength(1);
+		expect(picker.senders[0]?.domainVerified).toBe(true);
+		expect(picker.senders[0]?.alignment).toBe('aligned');
+		expect(picker.senders[0]?.alignmentReason).toBeNull();
+	});
+
+	it('flags a relay that signs and bounces as its own foreign domain as misaligned', async () => {
+		process.env['EMAIL_PROVIDER'] = 'smtp';
+		process.env['OUTBOUND_DKIM_DOMAIN'] = 'sendgrid.net';
+		process.env['MTA_RETURN_PATH_DOMAIN'] = 'sendgrid.net';
+		try {
+			const t = convexTest(schema, modules);
+			await seedCuratedSender(t, 'news@acme.com', { domain: 'acme.com' });
+			const picker = await t.query(api.campaigns.senders.listForPicker, {});
+			expect(picker.senders[0]?.domainVerified).toBe(true);
+			expect(picker.senders[0]?.alignment).toBe('misaligned');
+			expect(picker.senders[0]?.alignmentReason).toContain('sendgrid.net');
+		} finally {
+			delete process.env['OUTBOUND_DKIM_DOMAIN'];
+			delete process.env['MTA_RETURN_PATH_DOMAIN'];
+		}
+	});
+
+	it('reports unknown alignment for a relay whose identities are undeclared', async () => {
+		process.env['EMAIL_PROVIDER'] = 'smtp';
+		const t = convexTest(schema, modules);
+		await seedCuratedSender(t, 'news@acme.com', { domain: 'acme.com' });
+		const picker = await t.query(api.campaigns.senders.listForPicker, {});
+		expect(picker.senders[0]?.alignment).toBe('unknown');
+	});
+
+	it('marks a sender on an unverified/unknown domain as not verified', async () => {
+		process.env['EMAIL_PROVIDER'] = 'mta';
+		const t = convexTest(schema, modules);
+		// The sender's domain has no verified `domains` row.
+		await seedCuratedSender(t, 'news@other.com');
+		const picker = await t.query(api.campaigns.senders.listForPicker, {});
+		expect(picker.senders[0]?.domainVerified).toBe(false);
+	});
+});
+
 describe('campaigns.senders — sender curation stays admin-only (d4 re-gate)', () => {
 	// d4 opened `campaigns:manage` to editors, but curating the sender LIST is
 	// re-gated onto `settings:manage`. An editor holds the former and NOT the

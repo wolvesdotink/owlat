@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { OutboundTransportFacts } from '@owlat/shared';
 import {
 	deriveDeliveryReadiness,
 	readinessInputFromSources,
@@ -170,6 +171,125 @@ describe('deriveDeliveryReadiness — MTA-STS enforce gate', () => {
 	});
 });
 
+describe('deriveDeliveryReadiness — sender-alignment gate', () => {
+	it('leaves a ready instance untouched when the transport is aligned (default)', () => {
+		const r = deriveDeliveryReadiness(input());
+		expect(r.level).toBe('ready');
+		expect(r.gates.find((g) => g.key === 'alignment')).toBeUndefined();
+	});
+
+	it('warns (incomplete) when the transport is misaligned, even if sending is otherwise ready', () => {
+		const r = deriveDeliveryReadiness(
+			input({
+				transportMisaligned: true,
+				misalignedDomains: ['acme.com'],
+				alignmentReason: 'This relay signs as “sendgrid.net”, which isn’t part of “acme.com”.',
+			})
+		);
+		expect(r.canSend).toBe(true);
+		expect(r.level).toBe('incomplete');
+		expect(r.tone).toBe('warning');
+		const g = gate(r, 'alignment');
+		expect(g.status).toBe('attention');
+		expect(g.tone).toBe('warning');
+		expect(g.actionHref).toBe('/dashboard/delivery/config');
+		expect(g.detail).toContain('sendgrid.net');
+		// The summary leads with the unfinished alignment step.
+		expect(r.summary).toContain('sendgrid.net');
+	});
+
+	it('names the misaligned domains when no explicit reason is supplied', () => {
+		const g = gate(
+			deriveDeliveryReadiness(
+				input({ transportMisaligned: true, misalignedDomains: ['acme.com', 'widgets.io'] })
+			),
+			'alignment'
+		);
+		expect(g.detail).toContain('acme.com, widgets.io');
+	});
+
+	it('stays blocked (not merely incomplete) when the transport is also missing', () => {
+		const r = deriveDeliveryReadiness(
+			input({ transportConfigured: false, transportMisaligned: true })
+		);
+		expect(r.level).toBe('blocked');
+	});
+});
+
+describe('readinessInputFromSources — outbound alignment', () => {
+	const verifiedRow: ReadinessDomainRow = { status: 'verified', missing: [] };
+	const relayFacts = (over: Partial<OutboundTransportFacts> = {}): OutboundTransportFacts => ({
+		kind: 'smtp',
+		returnPathDomain: null,
+		dkimDomain: null,
+		...over,
+	});
+
+	it('warns for a relay that signs and bounces as its own foreign domain', () => {
+		const result = readinessInputFromSources({ canSend: true }, [verifiedRow], null, {
+			facts: relayFacts({ dkimDomain: 'sendgrid.net', returnPathDomain: 'sendgrid.net' }),
+			fromDomains: ['acme.com'],
+		});
+		expect(result.transportMisaligned).toBe(true);
+		expect(result.misalignedDomains).toEqual(['acme.com']);
+		expect(result.alignmentReason).toContain('sendgrid.net');
+	});
+
+	it('passes for the built-in MTA (signs per From-domain)', () => {
+		const result = readinessInputFromSources({ canSend: true }, [verifiedRow], null, {
+			facts: { kind: 'mta', returnPathDomain: 'bounces.owlat.com', dkimDomain: null },
+			fromDomains: ['acme.com'],
+		});
+		expect(result.transportMisaligned).toBe(false);
+		expect(result.misalignedDomains).toEqual([]);
+	});
+
+	it('passes for a relay configured to sign as the sending domain', () => {
+		const result = readinessInputFromSources({ canSend: true }, [verifiedRow], null, {
+			facts: relayFacts({ dkimDomain: 'acme.com', returnPathDomain: 'bounce.acme.com' }),
+			fromDomains: ['mail.acme.com'],
+		});
+		expect(result.transportMisaligned).toBe(false);
+	});
+
+	it('passes for SES with a domain (Easy DKIM) identity signing as the sending domain', () => {
+		// SES isn't the built-in MTA, so it has no per-From-domain default: it aligns
+		// only when the operator has declared its DKIM `d=` as their sending domain.
+		const result = readinessInputFromSources({ canSend: true }, [verifiedRow], null, {
+			facts: { kind: 'ses', returnPathDomain: null, dkimDomain: 'acme.com' },
+			fromDomains: ['acme.com'],
+		});
+		expect(result.transportMisaligned).toBe(false);
+	});
+
+	it('leaves SES with undeclared identities as unknown (no warning, never a claimed failure)', () => {
+		const result = readinessInputFromSources({ canSend: true }, [verifiedRow], null, {
+			facts: { kind: 'ses', returnPathDomain: null, dkimDomain: null },
+			fromDomains: ['acme.com'],
+		});
+		expect(result.transportMisaligned).toBe(false);
+		expect(result.misalignedDomains).toEqual([]);
+		expect(result.alignmentReason).toBeNull();
+	});
+
+	it('warns for SES configured to sign and bounce as a foreign domain', () => {
+		const result = readinessInputFromSources({ canSend: true }, [verifiedRow], null, {
+			facts: { kind: 'ses', returnPathDomain: 'amazonses.com', dkimDomain: 'amazonses.com' },
+			fromDomains: ['acme.com'],
+		});
+		expect(result.transportMisaligned).toBe(true);
+		expect(result.misalignedDomains).toEqual(['acme.com']);
+		expect(result.alignmentReason).toContain('amazonses.com');
+	});
+
+	it('leaves alignment unset (no warning) when no alignment source is provided', () => {
+		const result = readinessInputFromSources({ canSend: true }, [verifiedRow]);
+		expect(result.transportMisaligned).toBe(false);
+		expect(result.misalignedDomains).toEqual([]);
+		expect(result.alignmentReason).toBeNull();
+	});
+});
+
 describe('readinessInputFromSources — folding the two live sources', () => {
 	function row(overrides: Partial<ReadinessDomainRow> = {}): ReadinessDomainRow {
 		return { status: 'verified', missing: [], ...overrides };
@@ -210,6 +330,9 @@ describe('readinessInputFromSources — folding the two live sources', () => {
 			authComplete: false,
 			authMissing: [],
 			mtaStsEnforceWithoutRecord: false,
+			transportMisaligned: false,
+			misalignedDomains: [],
+			alignmentReason: null,
 		});
 	});
 

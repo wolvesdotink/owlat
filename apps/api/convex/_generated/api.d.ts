@@ -344,6 +344,7 @@ import type * as lib_llmProviders_types from "../lib/llmProviders/types.js";
 import type * as lib_mailHost from "../lib/mailHost.js";
 import type * as lib_mailSnooze from "../lib/mailSnooze.js";
 import type * as lib_messageBody from "../lib/messageBody.js";
+import type * as lib_outboundAlignment from "../lib/outboundAlignment.js";
 import type * as lib_pagination from "../lib/pagination.js";
 import type * as lib_paginationCursor from "../lib/paginationCursor.js";
 import type * as lib_posthog from "../lib/posthog.js";
@@ -940,6 +941,7 @@ declare const fullApi: ApiFromModules<{
   "lib/mailHost": typeof lib_mailHost;
   "lib/mailSnooze": typeof lib_mailSnooze;
   "lib/messageBody": typeof lib_messageBody;
+  "lib/outboundAlignment": typeof lib_outboundAlignment;
   "lib/pagination": typeof lib_pagination;
   "lib/paginationCursor": typeof lib_paginationCursor;
   "lib/posthog": typeof lib_posthog;
