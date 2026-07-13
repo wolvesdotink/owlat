@@ -22,7 +22,7 @@
 
 import { v } from 'convex/values';
 import { sanitizeTrustedForwarders } from '@owlat/shared/arcTrust';
-import { sealPolicyValidator } from '../lib/convexValidators';
+import { sealPolicyValidator } from '../mail/sealPolicy';
 import { internalMutation } from '../_generated/server';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';

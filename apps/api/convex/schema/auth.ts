@@ -1,10 +1,7 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
-import {
-	jsonPrimitiveRecord,
-	updateStepResultValidator,
-	sealPolicyValidator,
-} from '../lib/convexValidators';
+import { jsonPrimitiveRecord, updateStepResultValidator } from '../lib/convexValidators';
+import { sealPolicyValidator } from '../mail/sealPolicy';
 import { auditActionValidator, auditResourceValidator } from '../auditActions/catalog';
 import {
 	embeddingProviderKindValidator,

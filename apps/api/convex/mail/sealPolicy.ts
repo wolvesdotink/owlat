@@ -9,10 +9,26 @@
  * send. An org policy override (`auto` / `ask` / `off`) sits in front of that.
  * D5: this governs the Postbox 1:1 plane only; campaigns/transactional are
  * untouched and never reach this module.
+ *
+ * This module owns the Sealed-Mail Convex validators too (`sealPolicyValidator`,
+ * `sealSkipReasonValidator`, `mailEncryptionInfoValidator`) so each validator
+ * sits next to the TypeScript type it mirrors — the single source of truth for
+ * the sealing vocabulary — rather than drifting apart in `lib/convexValidators`.
+ * Importing `convex/values` here keeps the module pure of `ctx`/db/network.
  */
+
+import { v } from 'convex/values';
 
 /** Org-level sealing policy (`instanceSettings.sealPolicy`). Unset ⇒ `auto`. */
 export type SealPolicy = 'auto' | 'ask' | 'off';
+
+/**
+ * Convex validator for the org sealing policy (`instanceSettings.sealPolicy`,
+ * locked decision D2). `auto` seals whenever every recipient has a usable pinned
+ * key; `ask` defers to the composer opt-in (wired by E5); `off` never seals.
+ * Unset ⇒ treated as `auto` at resolution time. Mirrors {@link SealPolicy}.
+ */
+export const sealPolicyValidator = v.union(v.literal('auto'), v.literal('ask'), v.literal('off'));
 
 /**
  * The trust state of ONE recipient's discovered key, mirroring
@@ -51,6 +67,17 @@ export type SealSkipReason =
 	| 'key_changed'
 	| 'no_signing_key';
 
+/** Convex validator mirroring {@link SealSkipReason} exactly (kept in lockstep). */
+export const sealSkipReasonValidator = v.union(
+	v.literal('flag_off'),
+	v.literal('policy_off'),
+	v.literal('policy_ask'),
+	v.literal('no_recipients'),
+	v.literal('recipient_no_key'),
+	v.literal('key_changed'),
+	v.literal('no_signing_key')
+);
+
 /** The dispatch-time decision: seal (with the exact recipient keys) or send plaintext. */
 export type SealDecision =
 	| { seal: true; recipientPublicKeysArmored: string[] }
@@ -58,17 +85,44 @@ export type SealDecision =
 
 /**
  * The honest outbound sealing record persisted on a sent mailMessages row
- * (`mailMessages.encryptionInfo`). Never claims more than what actually happened:
- * `sealed:false` always carries the `reason`; `sealed:true` carries the exact
- * PGP/MIME fingerprints used.
+ * (`mailMessages.encryptionInfo`). A DISCRIMINATED UNION so the type itself
+ * enforces the "honest by construction" claim: a `sealed:true` value MUST carry
+ * the exact PGP/MIME fingerprints used, and a `sealed:false` value MUST carry the
+ * `reason`. Neither "sealed with no fingerprints" nor "unsealed with no reason"
+ * is representable. Mirrored one-for-one by {@link mailEncryptionInfoValidator}.
  */
-export interface OutboundEncryptionInfo {
-	sealed: boolean;
-	reason?: SealSkipReason;
-	algorithm?: 'pgp-mime';
-	recipientFingerprints?: string[];
-	signingFingerprint?: string;
-}
+export type OutboundEncryptionInfo =
+	| {
+			sealed: true;
+			algorithm: 'pgp-mime';
+			recipientFingerprints: string[];
+			signingFingerprint: string;
+	  }
+	| { sealed: false; reason: SealSkipReason };
+
+/**
+ * Convex validator mirroring {@link OutboundEncryptionInfo} — a `v.union` of the
+ * two honest shapes (sealed-with-fingerprints / unsealed-with-reason). Stored as
+ * `mailMessages.encryptionInfo` (schema/mail.ts) and echoed in the draft
+ * lifecycle's sent-context validator.
+ */
+export const mailEncryptionInfoValidator = v.union(
+	v.object({
+		sealed: v.literal(true),
+		// PGP/MIME (RFC 9580 profile) is the only sealing algorithm today.
+		algorithm: v.literal('pgp-mime'),
+		// Uppercase-hex fingerprints of the recipient encryption keys the body was
+		// sealed to (public material).
+		recipientFingerprints: v.array(v.string()),
+		// Uppercase-hex fingerprint of the sender address key that signed the body.
+		signingFingerprint: v.string(),
+	}),
+	v.object({
+		sealed: v.literal(false),
+		// Why the message went plaintext — see SealSkipReason.
+		reason: sealSkipReasonValidator,
+	})
+);
 
 /**
  * Decide whether THIS dispatch auto-seals. Order matters: the cheapest / most

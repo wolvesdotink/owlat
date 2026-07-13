@@ -10,10 +10,10 @@ import {
 	mailInboxModeValidator,
 	mailNotifyAboutValidator,
 	mailUnsubscribeValidator,
-	mailEncryptionInfoValidator,
 	spamVerdictValidator,
 	draftQualityValidator,
 } from '../lib/convexValidators';
+import { mailEncryptionInfoValidator } from '../mail/sealPolicy';
 import { senderHeuristicsValidator } from '../lib/senderHeuristicsValidator';
 import { editAdjustmentValidator } from '../mail/editLearningValidators';
 

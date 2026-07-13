@@ -16,8 +16,7 @@ import { v } from 'convex/values';
 import { internalQuery, type QueryCtx } from '../_generated/server';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { normalizeEmail } from '@owlat/shared';
-import { sealPolicyValidator } from '../lib/convexValidators';
-import type { RecipientKeyState, SealInputs } from './sealPolicy';
+import { sealPolicyValidator, type RecipientKeyState, type SealInputs } from './sealPolicy';
 
 export const getMessage = internalQuery({
 	args: { messageId: v.id('mailMessages') },

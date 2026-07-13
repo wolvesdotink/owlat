@@ -30,10 +30,7 @@
  */
 
 import { v } from 'convex/values';
-import {
-	mailMessageAttachmentValidator,
-	mailEncryptionInfoValidator,
-} from '../lib/convexValidators';
+import { mailMessageAttachmentValidator } from '../lib/convexValidators';
 import { internalMutation, internalQuery, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
@@ -44,7 +41,12 @@ import { logError } from '../lib/runtimeLog';
 import { normalizeSubject } from '../lib/emailAddress';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { loadRecipientKeyStates } from './outboundQueries';
-import { deriveSealState, type OutboundEncryptionInfo, type SealState } from './sealPolicy';
+import {
+	deriveSealState,
+	mailEncryptionInfoValidator,
+	type OutboundEncryptionInfo,
+	type SealState,
+} from './sealPolicy';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -976,7 +978,11 @@ export const getSealState = internalQuery({
 	args: { draftId: v.id('mailDrafts') },
 	handler: async (ctx, args): Promise<SealState> => {
 		const draft = await ctx.db.get(args.draftId);
-		if (!draft) return { kind: 'cannotSeal', reason: 'no_recipients' };
+		// A missing draft is a genuine not-found — NOT "no recipients". Throw rather
+		// than return a mislabelled `cannotSeal` state the E5 composer would render
+		// as a wrong explanation (the caller already scopes the draft to the mailbox
+		// before asking, so a miss here means the row was deleted mid-compose).
+		if (!draft) throw new Error(`getSealState: draft ${args.draftId} not found`);
 		if (!(await isFeatureEnabled(ctx, 'sealedMail'))) {
 			return { kind: 'cannotSeal', reason: 'flag_off' };
 		}
