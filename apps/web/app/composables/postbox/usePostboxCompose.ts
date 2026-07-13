@@ -363,7 +363,11 @@ export function usePostboxCompose(seed: DraftSeed) {
 		return plain.length > 0;
 	});
 
-	async function send(opts?: { undoSendDelayMs?: number; scheduledSendAt?: number }) {
+	async function send(opts?: {
+		undoSendDelayMs?: number;
+		scheduledSendAt?: number;
+		allowUnsealed?: boolean;
+	}) {
 		// Flush any pending autosave first
 		if (saveTimer) {
 			clearTimeout(saveTimer);
@@ -379,6 +383,7 @@ export function usePostboxCompose(seed: DraftSeed) {
 			draftId: id,
 			undoSendDelayMs: opts?.undoSendDelayMs,
 			scheduledSendAt: opts?.scheduledSendAt,
+			allowUnsealed: opts?.allowUnsealed,
 		});
 		// `useBackendOperation.run` swallows categorized failures (it has already
 		// toasted them) and returns `undefined`. Surface that as a throw so the

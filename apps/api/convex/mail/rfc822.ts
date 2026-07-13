@@ -55,6 +55,7 @@ export interface DraftRow {
 		contentId?: string;
 	}>;
 	state: 'draft' | 'pending_send' | 'scheduled';
+	isUnsealedSendAllowed?: boolean;
 	undoToken?: string;
 	scheduledSendAt?: number;
 }

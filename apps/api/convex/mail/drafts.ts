@@ -29,8 +29,22 @@ import { markOnboardingStep } from '../auth/userOnboarding';
 import { getMailSyncConfig, getMtaConfig } from './mtaClient';
 import { resolveMailboxTransport } from './outboundTransport';
 import { isFeatureEnabled } from '../lib/featureFlags';
-import { hasActiveSigningKey, loadRecipientKeyStates } from './outboundQueries';
-import { deriveSealState, type SealState } from './sealPolicy';
+import {
+	hasActiveSigningKey,
+	loadDiscoveryAddresses,
+	loadRecipientKeyStates,
+} from './outboundQueries';
+import { canSendWithSealState, deriveSealState, type SealState } from './sealPolicy';
+
+/** Queue bounded, cache-aware discovery whenever a draft's recipients change. */
+async function scheduleRecipientDiscovery(ctx: MutationCtx, addresses: string[]): Promise<void> {
+	if (!(await isFeatureEnabled(ctx, 'sealedMail'))) return;
+	const normalized = addresses.map(normalizeEmail).filter((a, i, all) => a && all.indexOf(a) === i);
+	const stale = await loadDiscoveryAddresses(ctx, normalized);
+	for (const address of stale) {
+		await ctx.scheduler.runAfter(0, internal.e2ee.discovery.discoverRecipientKey, { address });
+	}
+}
 
 /**
  * True iff this mailbox actually has an outbound transport to ship the message —
@@ -111,6 +125,7 @@ export const create = authedMutation({
 			subject,
 			at: now,
 		});
+		await scheduleRecipientDiscovery(ctx, toAddresses);
 
 		return { draftId, inReplySubject, inReplyFrom };
 	},
@@ -167,6 +182,17 @@ export const update = authedMutation({
 		}
 
 		await ctx.db.patch(args.draftId, patch);
+		if (
+			args.toAddresses !== undefined ||
+			args.ccAddresses !== undefined ||
+			args.bccAddresses !== undefined
+		) {
+			await scheduleRecipientDiscovery(ctx, [
+				...(args.toAddresses ?? draft.toAddresses),
+				...(args.ccAddresses ?? draft.ccAddresses),
+				...(args.bccAddresses ?? draft.bccAddresses),
+			]);
+		}
 		return { savedAt: patch['lastEditedAt'] };
 	},
 });
@@ -362,18 +388,35 @@ export const send = authedMutation({
 		draftId: v.id('mailDrafts'),
 		undoSendDelayMs: v.optional(v.number()),
 		scheduledSendAt: v.optional(v.number()),
+		allowUnsealed: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args): Promise<{ undoToken: string; sendAt: number }> => {
 		const draft = await getOrThrow(ctx, args.draftId, 'Draft');
 		const owned = await requireMailboxAccess(ctx, draft.mailboxId);
 		if (!owned.ok) throwForbidden('Draft not accessible');
 
+		let isUnsealedSendAllowed = false;
+		if (await isFeatureEnabled(ctx, 'sealedMail')) {
+			const sealState = await ctx.runQuery(internal.mail.draftLifecycle.getSealState, {
+				draftId: args.draftId,
+			});
+			if (!canSendWithSealState(sealState, args.allowUnsealed === true)) {
+				throwInvalidState(
+					sealState.kind === 'keyChanged'
+						? 'A recipient sealing key changed and must be confirmed before sending'
+						: 'Explicit confirmation is required to send this message unsealed'
+				);
+			}
+			isUnsealedSendAllowed = sealState.kind === 'cannotSeal' && args.allowUnsealed === true;
+		}
+
 		// Record WHO is sending (team-inbox attribution). The dispatch runs later
 		// in a session-less scheduled action, so the acting user must be captured
 		// here; the sent-effects reducer copies it onto the message + thread.
-		if (draft.sentByUserId !== owned.userId) {
-			await ctx.db.patch(args.draftId, { sentByUserId: owned.userId });
-		}
+		await ctx.db.patch(args.draftId, {
+			sentByUserId: owned.userId,
+			isUnsealedSendAllowed,
+		});
 
 		const now = Date.now();
 		const outcome: DraftTransitionOutcome = await ctx.runMutation(

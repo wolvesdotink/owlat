@@ -67,7 +67,10 @@ export async function loadRecipientKeyStates(
  * Dispatch uses this bounded list to refresh keys before making the final seal
  * decision; the composer remains a read-only view of the current cache.
  */
-async function loadDiscoveryAddresses(ctx: QueryCtx, addresses: string[]): Promise<string[]> {
+export async function loadDiscoveryAddresses(
+	ctx: QueryCtx,
+	addresses: string[]
+): Promise<string[]> {
 	const seen = new Set<string>();
 	const stale: string[] = [];
 	const now = Date.now();

@@ -6,10 +6,12 @@
 
 import { describe, it, expect } from 'vitest';
 import {
+	canSendWithSealState,
 	decideSeal,
 	deriveSealState,
 	type RecipientKeyState,
 	type SealInputs,
+	type SealState,
 } from '../sealPolicy';
 
 const trusted = (address: string, key = `KEY:${address}`): RecipientKeyState => ({
@@ -151,5 +153,26 @@ describe('mail/sealPolicy · deriveSealState (three states)', () => {
 			kind: 'cannotSeal',
 			reason: 'policy_ask',
 		});
+	});
+});
+
+describe('mail/sealPolicy · explicit plaintext consent', () => {
+	it('allows normal Send only when the message will seal', () => {
+		expect(canSendWithSealState({ kind: 'willSeal' }, false)).toBe(true);
+		expect(canSendWithSealState({ kind: 'cannotSeal', reason: 'recipient_no_key' }, false)).toBe(
+			false
+		);
+	});
+
+	it('allows cannotSeal only through the explicit unsealed action', () => {
+		expect(canSendWithSealState({ kind: 'cannotSeal', reason: 'recipient_no_key' }, true)).toBe(
+			true
+		);
+	});
+
+	it('never allows an unsigned key change, even with an override', () => {
+		const changed: SealState = { kind: 'keyChanged', addresses: ['eve@e.test'] };
+		expect(canSendWithSealState(changed, false)).toBe(false);
+		expect(canSendWithSealState(changed, true)).toBe(false);
 	});
 });

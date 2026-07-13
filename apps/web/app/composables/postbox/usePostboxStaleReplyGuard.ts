@@ -16,7 +16,7 @@ import { isReplyStale, type ReplyStateSnapshot } from '~/utils/postboxStaleReply
 
 interface StaleReplyGuardOptions {
 	/** Re-run the send once the user confirms past the collision warning. */
-	onConfirm: (opts?: { scheduledSendAt?: number }) => void;
+	onConfirm: (opts?: { scheduledSendAt?: number; allowUnsealed?: boolean }) => void;
 }
 
 export function usePostboxStaleReplyGuard(
@@ -62,14 +62,14 @@ export function usePostboxStaleReplyGuard(
 	// confirms, `acknowledged` short-circuits the guard so they aren't re-blocked.
 	const confirmOpen = ref(false);
 	let acknowledged = false;
-	let pendingOpts: { scheduledSendAt?: number } | undefined;
+	let pendingOpts: { scheduledSendAt?: number; allowUnsealed?: boolean } | undefined;
 
 	/**
 	 * Returns true when the send must pause for confirmation (a teammate replied
 	 * since this reply opened and the user hasn't acknowledged it yet) — the
 	 * caller returns early. Returns false when the send may proceed.
 	 */
-	function blockSend(opts?: { scheduledSendAt?: number }): boolean {
+	function blockSend(opts?: { scheduledSendAt?: number; allowUnsealed?: boolean }): boolean {
 		if (!isStale.value || acknowledged) return false;
 		pendingOpts = opts;
 		confirmOpen.value = true;

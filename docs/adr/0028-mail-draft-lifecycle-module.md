@@ -247,6 +247,7 @@ export function assertStateIs(draft: Doc<'mailDrafts'>, state: DraftState): void
   - `user_cancel` → `'postbox_draft.cancelled'`
   - `from_revoked` → `'postbox_draft.from_revoked'`
   - `scan_blocked` → `'postbox_draft.scan_blocked'`
+  - `seal_consent_required` → `'postbox_draft.seal_consent_required'`
 
 The previously-scheduled dispatch hop becomes a no-op when it later
 runs — the claim-side `transition({ to: 'sent' })` returns
