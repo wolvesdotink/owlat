@@ -72,7 +72,15 @@ export const TLS_RPT_MAX_COMPRESSED_BYTES = 1024 * 1024; // 1 MiB
 /** Max decompressed JSON we will hold in memory before rejecting. */
 export const TLS_RPT_MAX_DECOMPRESSED_BYTES = 16 * 1024 * 1024; // 16 MiB
 export const TLS_RPT_MAX_FAILURE_TYPES = 64;
-const TLS_RPT_MAX_FAILURE_TYPE_LENGTH = 128;
+/** Per-report session ceiling; keeps stored and 5,000-row dashboard sums exact. */
+export const TLS_RPT_MAX_SESSION_COUNT = 1_000_000_000;
+export const TLS_RPT_MAX_REPORT_ID_LENGTH = 512;
+export const TLS_RPT_MAX_ORGANIZATION_NAME_LENGTH = 256;
+export const TLS_RPT_MAX_CONTACT_INFO_LENGTH = 2_048;
+export const TLS_RPT_MAX_POLICY_DOMAIN_LENGTH = 253;
+export const TLS_RPT_MAX_FAILURE_TYPE_LENGTH = 128;
+const TLS_RPT_MAX_POLICY_TYPE_LENGTH = 64;
+const TLS_RPT_MAX_DATE_LENGTH = 64;
 
 // ─── Gunzip ─────────────────────────────────────────────────────────
 
@@ -126,6 +134,25 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+function isBoundedString(
+	value: unknown,
+	maxLength: number,
+	isEmptyAllowed = true
+): value is string {
+	return (
+		typeof value === 'string' && value.length <= maxLength && (isEmptyAllowed || value.length > 0)
+	);
+}
+
+function isSessionCount(value: unknown): value is number {
+	return (
+		typeof value === 'number' &&
+		Number.isSafeInteger(value) &&
+		value >= 0 &&
+		value <= TLS_RPT_MAX_SESSION_COUNT
+	);
+}
+
 function asStringArray(value: unknown): string[] {
 	if (!Array.isArray(value)) return [];
 	return value.filter((v): v is string => typeof v === 'string');
@@ -135,7 +162,12 @@ function parsePolicy(raw: unknown): TlsRptPolicy | null {
 	if (!isRecord(raw)) return null;
 	const policyType = raw['policy-type'];
 	const policyDomain = raw['policy-domain'];
-	if (typeof policyType !== 'string' || typeof policyDomain !== 'string') return null;
+	if (
+		!isBoundedString(policyType, TLS_RPT_MAX_POLICY_TYPE_LENGTH, false) ||
+		!isBoundedString(policyDomain, TLS_RPT_MAX_POLICY_DOMAIN_LENGTH, false)
+	) {
+		return null;
+	}
 	const policy: TlsRptPolicy = {
 		'policy-type': policyType,
 		'policy-string': asStringArray(raw['policy-string']),
@@ -150,8 +182,8 @@ function parseFailureDetail(raw: unknown): TlsRptFailureDetail | null {
 	if (!isRecord(raw)) return null;
 	const resultType = raw['result-type'];
 	const failedCount = raw['failed-session-count'];
-	if (typeof resultType !== 'string') return null;
-	if (typeof failedCount !== 'number' || !Number.isFinite(failedCount)) return null;
+	if (!isBoundedString(resultType, TLS_RPT_MAX_FAILURE_TYPE_LENGTH, false)) return null;
+	if (!isSessionCount(failedCount)) return null;
 	const detail: TlsRptFailureDetail = {
 		'result-type': resultType,
 		'sending-mta-ip': typeof raw['sending-mta-ip'] === 'string' ? raw['sending-mta-ip'] : '',
@@ -174,8 +206,7 @@ function parsePolicyBlock(raw: unknown): TlsRptPolicyBlock | null {
 	if (!isRecord(summary)) return null;
 	const success = summary['total-successful-session-count'];
 	const failure = summary['total-failure-session-count'];
-	if (typeof success !== 'number' || !Number.isFinite(success)) return null;
-	if (typeof failure !== 'number' || !Number.isFinite(failure)) return null;
+	if (!isSessionCount(success) || !isSessionCount(failure)) return null;
 
 	const block: TlsRptPolicyBlock = {
 		policy,
@@ -201,6 +232,9 @@ function parsePolicyBlock(raw: unknown): TlsRptPolicyBlock | null {
  * no usable policy blocks.
  */
 export function parseTlsReport(json: string): TlsReportParseResult {
+	if (new TextEncoder().encode(json).byteLength > TLS_RPT_MAX_DECOMPRESSED_BYTES) {
+		return { ok: false, error: 'tls-rpt: JSON payload too large' };
+	}
 	let raw: unknown;
 	try {
 		raw = JSON.parse(json);
@@ -210,21 +244,26 @@ export function parseTlsReport(json: string): TlsReportParseResult {
 	if (!isRecord(raw)) return { ok: false, error: 'report is not an object' };
 
 	const reportId = raw['report-id'];
-	if (typeof reportId !== 'string' || reportId.length === 0) {
-		return { ok: false, error: 'missing report-id' };
+	if (!isBoundedString(reportId, TLS_RPT_MAX_REPORT_ID_LENGTH, false)) {
+		return { ok: false, error: 'invalid report-id' };
 	}
 	const orgName = raw['organization-name'];
-	if (typeof orgName !== 'string') {
-		return { ok: false, error: 'missing organization-name' };
+	if (!isBoundedString(orgName, TLS_RPT_MAX_ORGANIZATION_NAME_LENGTH, false)) {
+		return { ok: false, error: 'invalid organization-name' };
 	}
 	const dateRange = raw['date-range'];
 	if (!isRecord(dateRange)) return { ok: false, error: 'missing date-range' };
 	const start = dateRange['start-datetime'];
 	const end = dateRange['end-datetime'];
-	if (typeof start !== 'string' || typeof end !== 'string') {
+	if (
+		!isBoundedString(start, TLS_RPT_MAX_DATE_LENGTH, false) ||
+		!isBoundedString(end, TLS_RPT_MAX_DATE_LENGTH, false)
+	) {
 		return { ok: false, error: 'invalid date-range' };
 	}
-	if (Number.isNaN(Date.parse(start)) || Number.isNaN(Date.parse(end))) {
+	const startMs = Date.parse(start);
+	const endMs = Date.parse(end);
+	if (Number.isNaN(startMs) || Number.isNaN(endMs) || startMs > endMs) {
 		return { ok: false, error: 'unparseable date-range' };
 	}
 	if (!Array.isArray(raw['policies'])) {
@@ -236,14 +275,34 @@ export function parseTlsReport(json: string): TlsReportParseResult {
 	if (policies.length === 0) {
 		return { ok: false, error: 'no valid policy blocks' };
 	}
+	let totalSuccess = 0;
+	let totalFailure = 0;
+	let totalDetailedFailures = 0;
+	for (const policy of policies) {
+		totalSuccess += policy.summary['total-successful-session-count'];
+		totalFailure += policy.summary['total-failure-session-count'];
+		for (const detail of policy['failure-details'] ?? []) {
+			totalDetailedFailures += detail['failed-session-count'];
+		}
+		if (
+			totalSuccess > TLS_RPT_MAX_SESSION_COUNT ||
+			totalFailure > TLS_RPT_MAX_SESSION_COUNT ||
+			totalDetailedFailures > TLS_RPT_MAX_SESSION_COUNT
+		) {
+			return { ok: false, error: 'session-count total is too large' };
+		}
+	}
 
 	const contactInfo = raw['contact-info'];
+	if (!isBoundedString(contactInfo, TLS_RPT_MAX_CONTACT_INFO_LENGTH)) {
+		return { ok: false, error: 'invalid contact-info' };
+	}
 	return {
 		ok: true,
 		report: {
 			'organization-name': orgName,
 			'date-range': { 'start-datetime': start, 'end-datetime': end },
-			'contact-info': typeof contactInfo === 'string' ? contactInfo : '',
+			'contact-info': contactInfo,
 			'report-id': reportId,
 			policies,
 		},
@@ -281,8 +340,9 @@ export interface TlsReportDigest {
 
 /**
  * Reduce a parsed report to the flat digest we store. Sums session counts and
- * failure-type counts across every policy block; the partner domain is the
- * first policy's `policy-domain` (a single report always concerns one domain).
+ * failure-type counts across every policy block. `policyDomain` is the first
+ * reported receiving-policy domain; the reporting partner is identified by
+ * `organizationName` instead.
  */
 export function digestTlsReport(report: TlsRptReport): TlsReportDigest {
 	let successCount = 0;

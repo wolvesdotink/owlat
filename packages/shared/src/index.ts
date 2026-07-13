@@ -35,6 +35,7 @@ export { type OutboundTlsMode, OUTBOUND_TLS_MODES, isOutboundTlsMode } from './o
 // (certificate hashing) which does not resolve in the Nuxt web client bundle that
 // consumes this barrel. Server code (apps/api, apps/mta) imports it directly from
 // the `@owlat/shared/dane` subpath instead.
+export { StreamByteLimitExceeded, readStreamBytes } from './cappedStream';
 export {
 	type TlsRptPolicy,
 	type TlsRptFailureDetail,
@@ -45,6 +46,12 @@ export {
 	TLS_RPT_MAX_COMPRESSED_BYTES,
 	TLS_RPT_MAX_DECOMPRESSED_BYTES,
 	TLS_RPT_MAX_FAILURE_TYPES,
+	TLS_RPT_MAX_SESSION_COUNT,
+	TLS_RPT_MAX_REPORT_ID_LENGTH,
+	TLS_RPT_MAX_ORGANIZATION_NAME_LENGTH,
+	TLS_RPT_MAX_CONTACT_INFO_LENGTH,
+	TLS_RPT_MAX_POLICY_DOMAIN_LENGTH,
+	TLS_RPT_MAX_FAILURE_TYPE_LENGTH,
 	TLS_RPT_FAILURE_EXPLANATIONS,
 	gunzipTlsReport,
 	parseTlsReport,

@@ -5,7 +5,7 @@
  * We publish a `_smtp._tls` reporting address; other mail servers send us daily
  * aggregate reports about how TLS negotiation went when they delivered mail TO
  * us. This card is where an operator sees that loop close: an overall success
- * rate, per-partner rates, and a plain-language breakdown of any failures
+ * rate, per-reporting-organization rates, and a plain-language breakdown of failures
  * ("STARTTLS stripped upstream", "certificate didn't match the server name").
  *
  * Prop-driven so the presentation is unit-tested directly; the Delivery page
@@ -99,24 +99,26 @@ const failureRows = computed(() => toFailureRows(props.summary?.failureTypeCount
 					</span>
 				</div>
 
-				<!-- Per-partner table -->
+				<!-- Per-reporting-organization table -->
 				<div>
 					<p class="text-xs font-medium uppercase tracking-wide text-text-tertiary mb-2">
-						By partner
+						By reporting organization
 					</p>
 					<ul class="divide-y divide-border-subtle">
 						<li
-							v-for="partner in summary.partners"
-							:key="partner.domain"
+							v-for="reporter in summary.reportingOrganizations"
+							:key="reporter.organizationName"
 							class="flex items-center justify-between gap-3 py-2"
-							data-testid="tls-report-partner"
+							data-testid="tls-report-reporter"
 						>
-							<span class="text-sm text-text-primary truncate">{{ partner.domain }}</span>
+							<span class="text-sm text-text-primary truncate">{{
+								reporter.organizationName
+							}}</span>
 							<span
 								class="text-sm font-medium shrink-0"
-								:class="healthTextClass[successRateTone(partner.successRate)]"
+								:class="healthTextClass[successRateTone(reporter.successRate)]"
 							>
-								{{ formatSuccessRate(partner.successRate) }}
+								{{ formatSuccessRate(reporter.successRate) }}
 							</span>
 						</li>
 					</ul>

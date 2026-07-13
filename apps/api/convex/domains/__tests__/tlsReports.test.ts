@@ -7,7 +7,7 @@
  *   2. Malformed / oversized reports are rejected WITHOUT throwing (the shared
  *      parser returns a discriminated failure; ingest is never reached).
  *   3. Duplicate report-id is idempotent (one row, patched not duplicated).
- *   4. `getTlsReportSummary` rolls partners / failure types / trend up correctly.
+ *   4. `getTlsReportSummary` rolls reporters / failure types / trend up correctly.
  */
 
 import { readFileSync } from 'fs';
@@ -142,6 +142,26 @@ describe('domains.tlsReports.ingest (idempotent)', () => {
 		expect(second.deduped).toBe(true);
 		expect(second.id).toBe(first.id);
 	});
+
+	it('does not conflate the same report-id from different organizations', async () => {
+		const t = convexTest(schema, modules);
+		const digest = await digestFixture();
+		const first = await t.mutation(internal.domains.tlsReports.ingest, digest);
+		const second = await t.mutation(internal.domains.tlsReports.ingest, {
+			...digest,
+			organizationName: 'Another Reporter',
+		});
+		expect(second.deduped).toBe(false);
+		expect(second.id).not.toBe(first.id);
+	});
+
+	it('rejects invalid counters even when the internal mutation is called directly', async () => {
+		const t = convexTest(schema, modules);
+		const digest = await digestFixture();
+		await expect(
+			t.mutation(internal.domains.tlsReports.ingest, { ...digest, successCount: -1 })
+		).rejects.toThrow('invalid counters');
+	});
 });
 
 describe('domains.tlsReports.getTlsReportSummary (aggregation)', () => {
@@ -167,7 +187,7 @@ describe('domains.tlsReports.getTlsReportSummary (aggregation)', () => {
 		expect(summary.reportCount).toBe(0);
 	});
 
-	it('rolls up partners, failure types, and the daily trend', async () => {
+	it('rolls up reporting organizations, failure types, and the daily trend', async () => {
 		const t = convexTest(schema, modules);
 		await t.mutation(internal.domains.tlsReports.ingest, {
 			reportId: 'r-google',
@@ -184,7 +204,7 @@ describe('domains.tlsReports.getTlsReportSummary (aggregation)', () => {
 			reportId: 'r-microsoft',
 			organizationName: 'Microsoft',
 			contactInfo: 'mailto:tls@microsoft.com',
-			policyDomain: 'partner.example',
+			policyDomain: 'owlat.example',
 			rangeStartMs: now - 1 * 24 * 60 * 60 * 1000,
 			rangeEndMs: now - 1 * 24 * 60 * 60 * 1000 + 1000,
 			successCount: 50,
@@ -201,10 +221,14 @@ describe('domains.tlsReports.getTlsReportSummary (aggregation)', () => {
 		expect(summary.totalFailureCount).toBe(10);
 		expect(summary.overallSuccessRate).toBeCloseTo(140 / 150, 5);
 
-		const owlat = summary.partners.find((p) => p.domain === 'owlat.example');
-		expect(owlat?.successRate).toBeCloseTo(0.9, 5);
-		const partner = summary.partners.find((p) => p.domain === 'partner.example');
-		expect(partner?.successRate).toBe(1);
+		const google = summary.reportingOrganizations.find(
+			(reporter) => reporter.organizationName === 'Google'
+		);
+		expect(google?.successRate).toBeCloseTo(0.9, 5);
+		const microsoft = summary.reportingOrganizations.find(
+			(reporter) => reporter.organizationName === 'Microsoft'
+		);
+		expect(microsoft?.successRate).toBe(1);
 
 		expect(summary.failureTypeCounts).toContainEqual({
 			type: 'starttls-not-supported',

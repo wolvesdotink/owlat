@@ -29,6 +29,17 @@ import { getOptional } from '../lib/env';
 import { constantTimeEqual, hmacSha256Hex } from '../webhooks/security';
 import { getClientIp } from '../publicRateLimit';
 import { errorResponse, jsonResponse, methodNotAllowed } from '../lib/httpResponse';
+import {
+	readStreamBytes,
+	StreamByteLimitExceeded,
+	TLS_RPT_MAX_DECOMPRESSED_BYTES,
+} from '@owlat/shared';
+
+// The webhook JSON wraps one base64 attachment. Allow the full plain-JSON
+// report ceiling plus bounded envelope metadata, and stop reading immediately
+// when an unauthenticated sender exceeds it.
+const TLS_RPT_MAX_WEBHOOK_BODY_BYTES =
+	4 * Math.ceil(TLS_RPT_MAX_DECOMPRESSED_BYTES / 3) + 64 * 1024;
 
 interface ForwardedAttachment {
 	filename?: string;
@@ -83,7 +94,20 @@ export const handleTlsReportWebhook = httpAction(async (ctx, request) => {
 		return errorResponse('unauthenticated', 'Stale timestamp');
 	}
 
-	const bodyText = await request.text();
+	const declaredLength = Number(request.headers.get('content-length'));
+	if (Number.isFinite(declaredLength) && declaredLength > TLS_RPT_MAX_WEBHOOK_BODY_BYTES) {
+		return jsonResponse({ ok: false, reason: 'payload-too-large' });
+	}
+	let bodyBytes: Uint8Array | null;
+	try {
+		bodyBytes = await readStreamBytes(request.body, TLS_RPT_MAX_WEBHOOK_BODY_BYTES);
+	} catch (error) {
+		if (error instanceof StreamByteLimitExceeded) {
+			return jsonResponse({ ok: false, reason: 'payload-too-large' });
+		}
+		throw error;
+	}
+	const bodyText = bodyBytes ? new TextDecoder().decode(bodyBytes) : '';
 	// Same HMAC scheme as the other MTA webhooks — reuse the shared helper rather
 	// than re-inlining importKey + sign + hex-encode.
 	const expected = await hmacSha256Hex(secret, `${timestamp}.${bodyText}`);

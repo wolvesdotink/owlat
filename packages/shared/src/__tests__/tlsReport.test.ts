@@ -73,6 +73,28 @@ describe('parseTlsReport', () => {
 		};
 		expect(parseTlsReport(JSON.stringify(bad)).ok).toBe(false);
 	});
+
+	it.each([-1, 1.5, 1_000_000_001, Number.MAX_SAFE_INTEGER + 1])(
+		'rejects invalid session count %s',
+		(invalidCount) => {
+			const bad = structuredClone(report);
+			bad.policies[0]!.summary['total-successful-session-count'] = invalidCount;
+			expect(parseTlsReport(JSON.stringify(bad)).ok).toBe(false);
+		}
+	);
+
+	it('rejects reversed date ranges and oversized stored labels', () => {
+		const reversed = structuredClone(report);
+		reversed['date-range'] = {
+			'start-datetime': '2026-07-12T00:00:00Z',
+			'end-datetime': '2026-07-11T00:00:00Z',
+		};
+		expect(parseTlsReport(JSON.stringify(reversed)).ok).toBe(false);
+
+		const oversized = structuredClone(report);
+		oversized['organization-name'] = 'x'.repeat(257);
+		expect(parseTlsReport(JSON.stringify(oversized)).ok).toBe(false);
+	});
 });
 
 describe('gunzip + decode', () => {

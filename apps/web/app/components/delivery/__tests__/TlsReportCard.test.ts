@@ -4,8 +4,8 @@
  *
  * Prop-driven, so we can assert every state directly:
  *   - loading / error / empty each render their own explicit block;
- *   - a populated summary shows the overall encrypted %, a per-partner row per
- *     partner, and a plain-language failure breakdown whose copy is asserted
+ *   - a populated summary shows the overall encrypted %, a row per reporting
+ *     organization, and a plain-language failure breakdown whose copy is asserted
  *     VERBATIM (the honesty audit: the card may only say what the report said).
  */
 import { describe, it, expect } from 'vitest';
@@ -33,16 +33,16 @@ const populated: TlsReportSummary = {
 	totalSuccessCount: 190,
 	totalFailureCount: 10,
 	overallSuccessRate: 190 / 200,
-	partners: [
+	reportingOrganizations: [
 		{
-			domain: 'google.com',
+			organizationName: 'Google',
 			successCount: 100,
 			failureCount: 10,
 			successRate: 100 / 110,
 			reportCount: 1,
 		},
 		{
-			domain: 'partner.example',
+			organizationName: 'Microsoft',
 			successCount: 90,
 			failureCount: 0,
 			successRate: 1,
@@ -75,7 +75,7 @@ describe('DeliveryTlsReportCard', () => {
 			totalSuccessCount: 0,
 			totalFailureCount: 0,
 			overallSuccessRate: null,
-			partners: [],
+			reportingOrganizations: [],
 			failureTypeCounts: [],
 			trend: [],
 		};
@@ -84,18 +84,18 @@ describe('DeliveryTlsReportCard', () => {
 		expect(w.find('[data-testid="tls-report-body"]').exists()).toBe(false);
 	});
 
-	it('renders the overall rate, one row per partner, and plain-language failures', () => {
+	it('renders the overall rate, one row per reporter, and plain-language failures', () => {
 		const w = mountCard({ summary: populated });
 		expect(w.find('[data-testid="tls-report-body"]').exists()).toBe(true);
 
 		// Overall encrypted percentage (190/200 = 95%).
 		expect(w.find('[data-testid="tls-report-overall"]').text()).toContain('95%');
 
-		// One row per partner.
-		const partners = w.findAll('[data-testid="tls-report-partner"]');
-		expect(partners).toHaveLength(2);
-		expect(partners[0]!.text()).toContain('google.com');
-		expect(partners[1]!.text()).toContain('100%');
+		// One row per reporting organization.
+		const reporters = w.findAll('[data-testid="tls-report-reporter"]');
+		expect(reporters).toHaveLength(2);
+		expect(reporters[0]!.text()).toContain('Google');
+		expect(reporters[1]!.text()).toContain('100%');
 
 		// Failure breakdown uses the agreed plain-language copy, verbatim.
 		const failures = w.findAll('[data-testid="tls-report-failure"]');
