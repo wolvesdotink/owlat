@@ -5,6 +5,7 @@ import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { createTestContact, createTestConversationThread, createTestInboundMessage } from './factories';
+import { openInboundMessageBody, openUnifiedMessageContent } from '../lib/messageBody';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -318,7 +319,7 @@ describe('inbound.receiveMessage', () => {
 			expect(row.status).toBe('received');
 			expect(row.threadId).toBe(result.threadId);
 			expect(row.externalMessageId).toBe('<mirror-001@example.com>');
-			const content = JSON.parse(row.content);
+			const content = await openUnifiedMessageContent(row.content);
 			expect(content.text).toBe('plain body');
 			expect(content.html).toBe('<p>html body</p>');
 			expect(content.subject).toBe('Mirror me');
@@ -378,11 +379,12 @@ describe('inbound.receiveMessage', () => {
 
 		await t.run(async (ctx) => {
 			const msg = await ctx.db.get(result.inboundMessageId);
+			const body = await openInboundMessageBody(msg!);
 			expect(msg!.from).toBe('Fields Test <fields@example.com>');
 			expect(msg!.to).toBe('inbox@myapp.com');
 			expect(msg!.subject).toBe('Field Validation');
-			expect(msg!.textBody).toBe('Text content here');
-			expect(msg!.htmlBody).toBe('<p>HTML content here</p>');
+			expect(body.text).toBe('Text content here');
+			expect(body.html).toBe('<p>HTML content here</p>');
 			expect(msg!.messageId).toBe('<fields-001@example.com>');
 			expect(msg!.inReplyTo).toBe('<parent@example.com>');
 			expect(msg!.references).toBe('<ref-a@example.com> <ref-b@example.com>');
