@@ -111,11 +111,11 @@ const STS_REASON: Record<StsPolicyMode, string> = {
  *
  * DANE precedence (RFC 7672 §2): a usable, DNSSEC-authenticated TLSA RRset
  * mandates authenticated TLS regardless of MTA-STS — so a usable DANE result
- * raises the TLS floor even when MTA-STS is absent or in testing mode, and
- * agrees with an MTA-STS enforce policy. It also forces `rejectUnauthorized`:
- * Node only invokes the DANE `checkServerIdentity` hook on a PKIX-authorized
- * chain, so the certificate must be verified for the TLSA match to even run — a
- * DANE send therefore requires PKIX verification ON (fail-closed).
+ * raises the TLS floor even when MTA-STS is absent or in testing mode. DANE's
+ * DNSSEC-authenticated TLSA association is the trust source, so it supersedes
+ * WebPKI/MTA-STS certificate authentication for this attempt. The dedicated
+ * post-handshake DANE verifier runs before SMTP resumes and therefore requires
+ * ordinary PKIX rejection to be disabled (notably for DANE-EE certificates).
  */
 export function resolveTlsRequirements({
 	localMode,
@@ -127,10 +127,12 @@ export function resolveTlsRequirements({
 	const daneRequired = daneResult?.usable === true;
 
 	const requireTLS = local.requireTLS || sts.requireTLS || daneRequired;
-	const rejectUnauthorized = local.rejectUnauthorized || sts.rejectUnauthorized || daneRequired;
+	const rejectUnauthorized = daneRequired
+		? false
+		: local.rejectUnauthorized || sts.rejectUnauthorized;
 
 	const reason = daneRequired
-		? `${LOCAL_REASON[localMode]}; ${STS_REASON[stsPolicy.policyMode]}; DANE TLSA authenticated (RFC 7672, supersedes MTA-STS) → requireTLS=${requireTLS}, verify=${rejectUnauthorized}, dane=true (strictest-wins)`
+		? `${LOCAL_REASON[localMode]}; ${STS_REASON[stsPolicy.policyMode]}; DANE TLSA authenticated (RFC 7672, supersedes MTA-STS/WebPKI) → requireTLS=${requireTLS}, pkix=false, dane=true`
 		: `${LOCAL_REASON[localMode]}; ${STS_REASON[stsPolicy.policyMode]} → requireTLS=${requireTLS}, verify=${rejectUnauthorized} (strictest-wins)`;
 
 	return { requireTLS, rejectUnauthorized, daneRequired, reason };

@@ -7,13 +7,14 @@
  * authenticate the certificate and attribute the result.
  */
 
-import type { PeerCertificate } from 'node:tls';
+import type { PeerCertificate, TLSSocket } from 'node:tls';
 import type Redis from 'ioredis';
 import { hasUsableTlsa, matchCertificateToTlsa, type TlsaRecord } from '@owlat/shared/dane';
 import type { MtaConfig } from '../config.js';
 import { logger } from '../monitoring/logger.js';
 import { lookupTlsaRecords } from './daneResolver.js';
 import { buildTlsaPolicyString, type TlsPolicyContext } from './tlsRpt.js';
+import type { DaneMxDestination } from './daneMxResolver.js';
 
 /**
  * Build a TLS `checkServerIdentity` callback that authenticates the MX
@@ -57,10 +58,40 @@ export function buildDaneCheck(
 	};
 }
 
+/**
+ * Authenticate a completed TLS handshake with DANE-EE(3).
+ *
+ * RFC 7672 makes the DNSSEC-authenticated leaf association the trust anchor:
+ * PKIX trust, certificate names, and the certificate validity interval do not
+ * participate. The caller therefore handshakes with ordinary PKIX rejection
+ * disabled and invokes this verifier before SMTP resumes after STARTTLS.
+ */
+export function buildDaneEeVerifier(
+	records: readonly TlsaRecord[]
+): (socket: TLSSocket) => Error | undefined {
+	const daneEeRecords = records.filter((record) => record.usage === 3);
+	return (socket) => {
+		const cert = socket.getPeerCertificate(true);
+		if (!cert?.raw || cert.raw.length === 0) {
+			return new Error('DANE-EE TLSA check: no peer certificate presented');
+		}
+		const result = matchCertificateToTlsa(
+			{ leafDer: cert.raw, chainDer: [cert.raw] },
+			daneEeRecords
+		);
+		if (result.matched) return undefined;
+		return new Error('DANE-EE TLSA mismatch: MX leaf certificate did not match');
+	};
+}
+
 /** The per-attempt DANE inputs the sender feeds into one delivery attempt. */
 export interface DanePlan {
-	/** The cert-authentication hook for the handshake (a mismatch aborts it). */
-	checkServerIdentity: (host: string, cert: PeerCertificate) => Error | undefined;
+	/** Whether Node should apply ordinary WebPKI validation before DANE. */
+	rejectUnauthorized: boolean;
+	/** Legacy DANE-TA verifier; replaced by a full path validator in the next stage. */
+	checkServerIdentity?: (host: string, cert: PeerCertificate) => Error | undefined;
+	/** DANE-EE verifier run after TLS but before SMTP resumes. */
+	verifyPeerCertificate?: (socket: TLSSocket) => Error | undefined;
 	/** The TLS-RPT policy context (policy-type `tlsa`) to attribute the result to. */
 	policyContext: TlsPolicyContext;
 }
@@ -112,10 +143,18 @@ export async function prepareDaneAttempt(
 	redis: Redis,
 	mxHost: string,
 	recipientDomain: string,
-	config: MtaConfig
+	config: MtaConfig,
+	destination?: DaneMxDestination
 ): Promise<DaneDecision> {
 	const mode = config.daneMode ?? 'off';
 	if (mode === 'off' || !config.daneResolverUrl) return { kind: 'none' };
+	if (destination && destination.addressSecurity !== 'secure') {
+		logger.debug(
+			{ mxHost, recipientDomain, addressSecurity: destination.addressSecurity },
+			'DANE skipped because the MX address chain is not DNSSEC-secure'
+		);
+		return { kind: 'none' };
+	}
 
 	const lookup = await lookupTlsaRecords(redis, mxHost, config.daneResolverUrl);
 
@@ -141,8 +180,12 @@ export async function prepareDaneAttempt(
 		return { kind: 'none' };
 	}
 
+	const daneEeRecords = lookup.records.filter((record) => record.usage === 3);
 	const plan: DanePlan = {
-		checkServerIdentity: buildDaneCheck(lookup.records),
+		rejectUnauthorized: daneEeRecords.length === 0,
+		...(daneEeRecords.length > 0
+			? { verifyPeerCertificate: buildDaneEeVerifier(daneEeRecords) }
+			: { checkServerIdentity: buildDaneCheck(lookup.records) }),
 		policyContext: {
 			policyType: 'tlsa',
 			policyString: buildTlsaPolicyString(lookup.records),
@@ -161,7 +204,12 @@ export async function prepareDaneAttempt(
 	}
 
 	logger.debug(
-		{ mxHost, recipientDomain, count: lookup.records.length },
+		{
+			mxHost,
+			recipientDomain,
+			count: lookup.records.length,
+			mxSecurity: destination?.mxSecurity,
+		},
 		'DANE TLSA in force for MX (supersedes MTA-STS)'
 	);
 	return { kind: 'proceed', plan };

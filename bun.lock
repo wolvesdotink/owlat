@@ -397,6 +397,9 @@
     "better-sqlite3",
     "@owlat/ui",
   ],
+  "patchedDependencies": {
+    "nodemailer@9.0.3": "patches/nodemailer@9.0.3.patch",
+  },
   "overrides": {
     "devalue": "^5.8.1",
     "fast-xml-builder": "^1.2.0",
