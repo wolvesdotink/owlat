@@ -143,8 +143,9 @@ describe('mail/outboundSeal · getOutboundSealInputs + decideSeal', () => {
 
 	it('flag off never seals (defaults to plaintext with flag_off)', async () => {
 		const t = convexTest(schema, modules);
-		// No sealedMail flag seeded.
-		await seedSettings(t, { flags: { postbox: true } });
+		// sealedMail defaults ON at ship time; disable it explicitly to exercise
+		// the flag-off branch (postbox on, sealed mail turned off for this deployment).
+		await seedSettings(t, { flags: { postbox: true, sealedMail: false } });
 		const inputs = await t.query(internal.mail.outboundQueries.getOutboundSealInputs, {
 			fromAddress: 'alice@a.test',
 			recipients: ['bob@b.test'],
@@ -383,7 +384,8 @@ describe('mail/draftLifecycle · getSealState (three composer states)', () => {
 
 	it('cannotSeal (flag_off) when Sealed Mail is disabled', async () => {
 		const t = convexTest(schema, modules);
-		await seedSettings(t, { flags: { postbox: true } });
+		// sealedMail defaults ON now; turn it off explicitly to test the disabled branch.
+		await seedSettings(t, { flags: { postbox: true, sealedMail: false } });
 		await seedRecipient(t, 'bob@b.test', 'trusted', 'ARMORED');
 		const draftId = await insertDraft(t, ['bob@b.test']);
 		expect(await t.query(internal.mail.draftLifecycle.getSealState, { draftId })).toEqual({
