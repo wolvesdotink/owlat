@@ -155,6 +155,63 @@ describe('PostboxComposerEnvelope — From picker authenticity (disable-with-rea
 		expect(wrapper.text()).toContain('Domain not verified');
 	});
 
+	it('surfaces a single broken identity even though the picker is hidden', () => {
+		// The common personal-mailbox case: exactly one identity, so there's no
+		// dropdown to make a choice in — but the user must still learn the identity
+		// is misaligned BEFORE sending, not after. The chip is not gated on the
+		// picker being shown.
+		const reason =
+			'This transport signs and bounces mail as “sendgrid.net”, which isn’t part of “acme.com”.';
+		const availableIdentities: SendAsIdentity[] = [
+			identity({
+				address: 'ceo@acme.com',
+				mailboxId: mb('mb-solo'),
+				label: 'Solo',
+				alignment: 'misaligned',
+				alignmentReason: reason,
+			}),
+		];
+		const wrapper = mount(PostboxComposerEnvelope, {
+			...mountOpts,
+			props: { ...baseProps, availableIdentities },
+		});
+		// No picker is rendered (single identity).
+		expect(wrapper.find('[data-testid="postbox-from-select"]').exists()).toBe(false);
+		// The broken state is still surfaced with its plain-language reason.
+		expect(wrapper.text()).toContain('Sender not aligned');
+		expect(wrapper.text()).toContain(reason);
+	});
+
+	it('surfaces a single unverified identity even though the picker is hidden', () => {
+		const availableIdentities: SendAsIdentity[] = [
+			identity({
+				address: 'ceo@acme.com',
+				mailboxId: mb('mb-solo'),
+				label: 'Solo',
+				domainVerified: false,
+			}),
+		];
+		const wrapper = mount(PostboxComposerEnvelope, {
+			...mountOpts,
+			props: { ...baseProps, availableIdentities },
+		});
+		expect(wrapper.find('[data-testid="postbox-from-select"]').exists()).toBe(false);
+		expect(wrapper.text()).toContain('Domain not verified');
+	});
+
+	it('a single clean identity stays quiet with no picker', () => {
+		const availableIdentities: SendAsIdentity[] = [
+			identity({ address: 'solo@hinterland.camp', mailboxId: mb('mb-solo'), label: 'Solo' }),
+		];
+		const wrapper = mount(PostboxComposerEnvelope, {
+			...mountOpts,
+			props: { ...baseProps, availableIdentities },
+		});
+		expect(wrapper.find('[data-testid="postbox-from-select"]').exists()).toBe(false);
+		expect(wrapper.text()).not.toContain('Domain not verified');
+		expect(wrapper.text()).not.toContain('Sender not aligned');
+	});
+
 	it('stays quiet (no chip) when the selected identity is verified and aligned', () => {
 		const availableIdentities: SendAsIdentity[] = [
 			identity({ address: 'team@hinterland.camp' }),

@@ -184,8 +184,11 @@ function moveRecipient(payload: { email: string; from: RecipientField }, to: Rec
 		<!-- Live authenticity of the selected From identity: domain verification +
 			   transport alignment. A broken identity (unverified domain or a misaligned
 			   transport) is surfaced here with a plain-language reason and is disabled
-			   in the picker above so it can't be chosen. Clean identities stay quiet. -->
-		<div v-if="showFromDropdown && selectedAuth && selectedAuth.tone !== 'success'" class="pl-14">
+			   in the picker above so it can't be chosen. This is NOT gated on the picker
+			   being shown: a mailbox with a single identity (the common personal case)
+			   has no choice to make, but must still learn its identity is broken before
+			   sending — not after. Clean identities stay quiet. -->
+		<div v-if="selectedAuth && selectedAuth.tone !== 'success'" class="pl-14">
 			<CampaignsSenderAuthChip
 				v-if="selectedIdentity"
 				:verified="selectedIdentity.domainVerified"
