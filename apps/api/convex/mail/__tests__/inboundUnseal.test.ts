@@ -244,6 +244,97 @@ describe('mail.delivery.ingestFromWebhook — decrypt-on-ingest (Sealed Mail E4/
 		expect(msg.inboundEncryptionInfo).toEqual({ sealed: true, decrypted: false });
 	});
 
+	it('sealed + a keyChanged pin ⇒ UNVERIFIED with NO re-discovery/re-pin (TOFU guard)', async () => {
+		const t = convexTest(schema, modules);
+		await seedSettings(t);
+		await seedMailbox(t);
+		await t.action(internal.e2ee.keysNode.mintForAddress, { address: RECIPIENT });
+		const sender = await generateTestKeypair(SENDER);
+		// The pin's OUTCOME is `keyChanged`, even though its pinned key is the exact
+		// key that signed this message: an unresolved rotation conflict must never be
+		// silently trusted (or re-discovered past) — it stays UNVERIFIED.
+		await t.run(async (ctx) => {
+			const now = Date.now();
+			await ctx.db.insert('recipientKeys', {
+				address: SENDER,
+				domain: 'sender.test',
+				outcome: 'keyChanged',
+				pinnedFingerprint: sender.fingerprint,
+				pinnedPublicKeyArmored: sender.publicKeyArmored,
+				expiresAt: now + 60_000,
+				discoveredAt: now,
+				updatedAt: now,
+			});
+		});
+
+		const sealed = await sealMime(testInnerMessage(), {
+			recipientPublicKeysArmored: [await recipientVaultPublicKey(t, RECIPIENT)],
+			signingKeyArmored: sender.privateKeyArmored,
+		});
+		const result = await ingest(t, sealed.mime, sealed.armoredCiphertext);
+		expect('messageId' in result).toBe(true);
+		if (!('messageId' in result)) return;
+
+		const { msg } = await readRow(t, result.messageId);
+		expect(msg.textBodyInline).toContain(CANARY); // still decrypted
+		expect(msg.inboundEncryptionInfo).toMatchObject({
+			sealed: true,
+			decrypted: true,
+			signatureValid: false,
+		});
+		expect(
+			(msg.inboundEncryptionInfo as { signerFingerprint?: string }).signerFingerprint
+		).toBeUndefined();
+		// The pin was NOT re-discovered or re-pinned: it stays `keyChanged` on the
+		// original key (discovery would have flipped it to `trusted`).
+		const pin = await t.run(async (ctx) =>
+			ctx.db
+				.query('recipientKeys')
+				.withIndex('by_address', (q) => q.eq('address', SENDER))
+				.first()
+		);
+		expect(pin?.outcome).toBe('keyChanged');
+		expect(pin?.pinnedFingerprint).toBe(sender.fingerprint);
+	});
+
+	it('sealed + no pin, discovery finds nothing ⇒ UNVERIFIED (fail-closed on miss)', async () => {
+		const t = convexTest(schema, modules);
+		await seedSettings(t);
+		await seedMailbox(t);
+		await t.action(internal.e2ee.keysNode.mintForAddress, { address: RECIPIENT });
+		const sender = await generateTestKeypair(SENDER);
+		// No pinned sender key is seeded: `resolvePinnedSenderKey` runs discovery once.
+		// The `.test` domain resolves to nothing, so discovery fails closed (notFound)
+		// and the message is stored UNVERIFIED rather than claiming a verified signer.
+
+		const sealed = await sealMime(testInnerMessage(), {
+			recipientPublicKeysArmored: [await recipientVaultPublicKey(t, RECIPIENT)],
+			signingKeyArmored: sender.privateKeyArmored,
+		});
+		const result = await ingest(t, sealed.mime, sealed.armoredCiphertext);
+		expect('messageId' in result).toBe(true);
+		if (!('messageId' in result)) return;
+
+		const { msg } = await readRow(t, result.messageId);
+		expect(msg.textBodyInline).toContain(CANARY); // still decrypted
+		expect(msg.inboundEncryptionInfo).toMatchObject({
+			sealed: true,
+			decrypted: true,
+			signatureValid: false,
+		});
+		expect(
+			(msg.inboundEncryptionInfo as { signerFingerprint?: string }).signerFingerprint
+		).toBeUndefined();
+		// Discovery ran once and persisted a negative pin (the notFound TTL row).
+		const pin = await t.run(async (ctx) =>
+			ctx.db
+				.query('recipientKeys')
+				.withIndex('by_address', (q) => q.eq('address', SENDER))
+				.first()
+		);
+		expect(pin?.outcome).toBe('notFound');
+	});
+
 	it('a plaintext message ⇒ the untouched fast path (no encryption record)', async () => {
 		const t = convexTest(schema, modules);
 		await seedSettings(t);
