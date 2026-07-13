@@ -31,20 +31,24 @@ export interface KeyDirectoryEntry {
 	fingerprint: string;
 }
 
-/** The SIGNED payload (everything except the detached signature). */
-export interface ManifestPayload {
+/**
+ * The SIGNED payload (everything except the detached signature). Declared as a
+ * `type` alias (not an `interface`) so it is structurally assignable to
+ * `JsonValue` — `canonicalManifest` can serialize it without a cast.
+ */
+export type ManifestPayload = {
 	version: number;
 	instance: { fingerprint: string; publicKeyArmored: string };
 	features: { e2ee: number };
 	keyDirectoryDigest: string;
 	rotationFeedUrl: string;
 	generatedAt: number;
-}
+};
 
 /** The served manifest: the payload plus its armored detached signature. */
-export interface SignedManifest extends ManifestPayload {
+export type SignedManifest = ManifestPayload & {
 	signature: string;
-}
+};
 
 /**
  * A digest of the published address-key directory: SHA-256 (hex) over the
@@ -82,7 +86,7 @@ export function buildManifestPayload(input: {
 
 /** Recursively key-sorted JSON — the exact bytes the signature covers. */
 export function canonicalManifest(payload: ManifestPayload): string {
-	return stableStringify(payload as unknown as JsonValue);
+	return stableStringify(payload);
 }
 
 /** Sign the canonical payload with the instance private key. Returns an armored detached signature. */
@@ -128,19 +132,38 @@ function rotationFeedUrl(): string {
 
 /**
  * PUBLIC: the signed instance manifest for `/.well-known/owlat.json`. Returns
- * null (route 404s) when the instance identity has not been minted yet. Opens
- * the sealed instance private key to sign; never returns it.
+ * null (route 404s) when Sealed Mail is disabled or the instance identity has
+ * not been minted yet.
+ *
+ * Serves the manifest cached on the instance row when it still matches the
+ * current key-directory digest and instance key, re-signing (and re-caching)
+ * only when either changes. This keeps the bytes stable for HTTP caching /
+ * verifier comparison and avoids doing anonymous per-request OpenPGP signing.
  */
 export const getSignedManifest = publicAction({
 	// public: the instance manifest is a world-readable, signed descriptor (TOFU discovery).
 	args: {},
 	handler: async (ctx): Promise<SignedManifest | null> => {
+		// Publication follows the flag: once an admin turns Sealed Mail OFF we stop
+		// advertising `features.e2ee` even though minted keys remain at rest.
+		if (!(await ctx.runQuery(internal.e2ee.keys.isSealedMailEnabled, {}))) return null;
+
 		const identity = await ctx.runQuery(internal.e2ee.keys.getInstanceIdentityInternal, {});
 		if (!identity) return null;
 
-		const privateKeyArmored = openPrivateKey(identity.sealedPrivateKey);
-
 		const directory = await ctx.runQuery(internal.e2ee.keys.getKeyDirectory, {});
+		const digest = keyDirectoryDigest(directory);
+
+		const cached = identity.cachedManifest;
+		if (
+			cached &&
+			cached.keyDirectoryDigest === digest &&
+			cached.instanceFingerprint === identity.fingerprint
+		) {
+			return JSON.parse(cached.signedManifestJson) as SignedManifest;
+		}
+
+		const privateKeyArmored = openPrivateKey(identity.sealedPrivateKey);
 		const payload = buildManifestPayload({
 			instanceFingerprint: identity.fingerprint,
 			instancePublicKeyArmored: identity.publicKeyArmored,
@@ -149,7 +172,14 @@ export const getSignedManifest = publicAction({
 			generatedAt: Date.now(),
 		});
 		const signature = await signManifest(payload, privateKeyArmored);
-		return { ...payload, signature };
+		const signed: SignedManifest = { ...payload, signature };
+
+		await ctx.runMutation(internal.e2ee.keys.cacheInstanceManifest, {
+			keyDirectoryDigest: digest,
+			instanceFingerprint: identity.fingerprint,
+			signedManifestJson: JSON.stringify(signed),
+		});
+		return signed;
 	},
 });
 

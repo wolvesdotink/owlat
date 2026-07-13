@@ -24,7 +24,7 @@ import { v } from 'convex/values';
 import { internalMutation, internalQuery } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { adminMutation, adminQuery, publicQuery } from '../lib/authedFunctions';
-import { assertFeatureEnabled } from '../lib/featureFlags';
+import { assertFeatureEnabled, isFeatureEnabled } from '../lib/featureFlags';
 import { normalizeEmail } from '@owlat/shared';
 
 const sealedPrivateKeyValidator = v.object({
@@ -58,6 +58,11 @@ export const storeKeypair = internalMutation({
 		sealedPrivateKey: sealedPrivateKeyValidator,
 	},
 	handler: async (ctx, args) => {
+		// An `'address'` row without an address is unreachable (no WKD hash, no
+		// discovery) — reject it rather than silently inserting a dead row.
+		if (args.kind === 'address' && !args.address) {
+			throw new Error("storeKeypair: kind 'address' requires an address");
+		}
 		const now = Date.now();
 		const existing =
 			args.kind === 'instance'
@@ -122,6 +127,45 @@ export const getAddressKeyInternal = internalQuery({
 	},
 });
 
+/**
+ * Whether Sealed Mail is enabled — read from an action (which has no direct DB
+ * access) to gate the public discovery/publication surfaces on the live flag.
+ */
+export const isSealedMailEnabled = internalQuery({
+	args: {},
+	returns: v.boolean(),
+	handler: (ctx) => isFeatureEnabled(ctx, 'sealedMail'),
+});
+
+/**
+ * Persist the signed manifest on the instance identity row so `getSignedManifest`
+ * serves byte-stable bytes and re-signs only when the key-directory digest or the
+ * instance key changes (avoids anonymous per-request OpenPGP signing). Internal —
+ * written only by the manifest signing action.
+ */
+export const cacheInstanceManifest = internalMutation({
+	args: {
+		keyDirectoryDigest: v.string(),
+		instanceFingerprint: v.string(),
+		signedManifestJson: v.string(),
+	},
+	handler: async (ctx, args) => {
+		const row = await ctx.db
+			.query('keyVault')
+			.withIndex('by_kind', (q) => q.eq('kind', 'instance'))
+			.first();
+		if (!row) return;
+		await ctx.db.patch(row._id, {
+			cachedManifest: {
+				keyDirectoryDigest: args.keyDirectoryDigest,
+				instanceFingerprint: args.instanceFingerprint,
+				signedManifestJson: args.signedManifestJson,
+			},
+			updatedAt: Date.now(),
+		});
+	},
+});
+
 /** The instance identity row (incl. sealed private key). Internal — action plane only. */
 export const getInstanceIdentityInternal = internalQuery({
 	args: {},
@@ -145,9 +189,9 @@ export const getKeyDirectory = internalQuery({
 			.query('keyVault')
 			.withIndex('by_kind', (q) => q.eq('kind', 'address'))
 			.collect(); // bounded: one row per Postbox address (mailboxes + aliases) — single-org instance.
-		return rows
-			.filter((r) => r.isActive && r.address)
-			.map((r) => ({ address: r.address as string, fingerprint: r.fingerprint }));
+		return rows.flatMap((r) =>
+			r.isActive && r.address ? [{ address: r.address, fingerprint: r.fingerprint }] : []
+		);
 	},
 });
 
