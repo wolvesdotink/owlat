@@ -16,12 +16,20 @@
  */
 
 import { convexTest } from 'convex-test';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import schema from '../schema';
 import { internal } from '../_generated/api';
-import { openAtRest, isSealedAtRest, openBytesAtRest } from '../lib/atRestBodies';
+import type { Id } from '../_generated/dataModel';
+import {
+	openAtRest,
+	isSealedAtRest,
+	openBytesAtRest,
+	isSealedBytesAtRest,
+} from '../lib/atRestBodies';
+import { readSealedBlobBytes, sealedBlobUrl } from '../lib/sealedBlob';
 
 const SECRET = 'test-instance-secret-value-for-aes-256-gcm-kdf';
+const SITE = 'https://example.convex.site';
 const CANARY = 'CANARY-body-plaintext-9f3a-do-not-leak';
 
 const allModules = import.meta.glob('../**/*.*s');
@@ -31,6 +39,114 @@ const migration = internal.migrations['0035_seal_bodies_at_rest'];
 beforeEach(() => {
 	vi.stubEnv('INSTANCE_SECRET', SECRET);
 });
+afterEach(() => {
+	vi.unstubAllEnvs();
+});
+
+/** Seed `count` blob-bearing mailMessages rows (raw `.eml` blob per row, carrying
+ * the canary). Returns nothing — the walk reads them back by query. */
+async function seedMailMessageBlobs(
+	t: ReturnType<typeof convexTest>,
+	count: number
+): Promise<void> {
+	await t.run(async (ctx) => {
+		const now = Date.now();
+		const mailboxId = await ctx.db.insert('mailboxes', {
+			userId: 'test-user',
+			organizationId: 'test-org',
+			address: 'me@example.com',
+			domain: 'example.com',
+			status: 'active',
+			usedBytes: 0,
+			uidValidity: now,
+			createdAt: now,
+			updatedAt: now,
+		});
+		const folderId = await ctx.db.insert('mailFolders', {
+			mailboxId,
+			name: 'INBOX',
+			role: 'inbox',
+			uidValidity: now,
+			uidNext: 1,
+			highestModseq: 1,
+			totalCount: 0,
+			unseenCount: 0,
+			subscribed: true,
+			createdAt: now,
+			updatedAt: now,
+		});
+		for (let i = 0; i < count; i++) {
+			const threadId = await ctx.db.insert('mailThreads', {
+				mailboxId,
+				normalizedSubject: 's',
+				participants: ['a@example.com'],
+				messageCount: 1,
+				unreadCount: 0,
+				hasFlagged: false,
+				hasAttachments: false,
+				lastMessageAt: now,
+				firstMessageAt: now,
+				latestSnippet: 's',
+				latestFromAddress: 'a@example.com',
+				latestSubject: 's',
+				folderRoles: ['inbox'],
+				labelIds: [],
+				createdAt: now,
+				updatedAt: now,
+			});
+			const rawEml = `${CANARY} raw .eml ${i}\r\nSubject: ...\r\n`;
+			const rawStorageId = await ctx.storage.store(new Blob([rawEml], { type: 'message/rfc822' }));
+			await ctx.db.insert('mailMessages', {
+				mailboxId,
+				folderId,
+				uid: i + 1,
+				modseq: 1,
+				rfc822MessageId: `<b-${i}@example.com>`,
+				threadId,
+				fromAddress: 'a@example.com',
+				toAddresses: ['me@example.com'],
+				ccAddresses: [],
+				bccAddresses: [],
+				subject: 's',
+				normalizedSubject: 's',
+				snippet: 'plaintext snippet stays plaintext (search exception)',
+				rawStorageId,
+				rawSize: rawEml.length,
+				attachments: [],
+				hasAttachments: false,
+				flagSeen: true,
+				flagFlagged: false,
+				flagAnswered: false,
+				flagDraft: false,
+				flagDeleted: false,
+				customFlags: [],
+				labelIds: [],
+				receivedAt: now,
+				internalDate: now,
+				createdAt: now,
+				updatedAt: now,
+			});
+		}
+	});
+}
+
+/** Read every mailMessages raw blob through the mixed-tolerance accessor and
+ * assert each still decodes to the canary; return how many are already sealed. */
+async function assertAllBlobsReadable(t: ReturnType<typeof convexTest>): Promise<number> {
+	return t.run(async (ctx) => {
+		const rows = await ctx.db.query('mailMessages').collect();
+		expect(rows.length).toBeGreaterThan(0);
+		let sealedCount = 0;
+		for (const row of rows) {
+			const blob = await ctx.storage.get(row.rawStorageId);
+			const stored = new Uint8Array(await blob!.arrayBuffer());
+			if (isSealedBytesAtRest(stored)) sealedCount++;
+			const bytes = await readSealedBlobBytes(ctx.storage, row.rawStorageId);
+			expect(new TextDecoder().decode(bytes!)).toContain(CANARY);
+		}
+		return sealedCount;
+	});
+}
 
 async function seedInbound(t: ReturnType<typeof convexTest>, count: number): Promise<void> {
 	await t.run(async (ctx) => {
@@ -113,6 +229,67 @@ describe('E8b migration — interrupt/resume (b)', () => {
 		for (let i = 0; i < rows1.length; i++) {
 			expect(rows2[i]!.textBody).toBe(rows1[i]!.textBody);
 		}
+	});
+
+	it('keeps every STORAGE BLOB readable across a paginated, resumable seal walk', async () => {
+		vi.stubEnv('CONVEX_SITE_URL', SITE);
+		const t = convexTest(schema, allModules);
+		// 60 rows > one PAGE_SIZE (50) → one page leaves a mix of sealed + plaintext
+		// blobs, exactly the interrupt window the atomic repoint+delete must survive.
+		await seedMailMessageBlobs(t, 60);
+
+		// Before the walk: all plaintext, all readable, none sealed.
+		expect(await assertAllBlobsReadable(t)).toBe(0);
+
+		// Page 1 — then STOP (interrupt). Some blobs sealed, the rest still plaintext.
+		const p1 = await t.action(migration.sealMailMessagesBlobsPage, { cursor: null });
+		expect(p1.isDone).toBe(false);
+		expect(p1.sealed).toBeGreaterThan(0);
+		const sealedAfterP1 = await assertAllBlobsReadable(t); // no blob unreadable mid-run
+		expect(sealedAfterP1).toBe(p1.sealed);
+		expect(sealedAfterP1).toBeLessThan(60); // genuinely mixed
+
+		// The mixed state also serves correctly through the decrypt-serving proxy —
+		// pick one sealed row and one still-plaintext row and fetch both.
+		const { sealedId, plainId } = await t.run(async (ctx) => {
+			const rows = await ctx.db.query('mailMessages').collect();
+			let sealed: string | null = null;
+			let plain: string | null = null;
+			for (const row of rows) {
+				const blob = await ctx.storage.get(row.rawStorageId);
+				const stored = new Uint8Array(await blob!.arrayBuffer());
+				if (isSealedBytesAtRest(stored)) sealed ??= row.rawStorageId;
+				else plain ??= row.rawStorageId;
+			}
+			return { sealedId: sealed, plainId: plain };
+		});
+		expect(sealedId).not.toBeNull();
+		expect(plainId).not.toBeNull();
+		for (const id of [sealedId, plainId]) {
+			const url = await t.run((ctx) =>
+				sealedBlobUrl(ctx.storage, id as Id<'_storage'>, 'message/rfc822')
+			);
+			const res = await t.fetch((url as string).slice(SITE.length), { method: 'GET' });
+			expect(res.status).toBe(200);
+			expect(await res.text()).toContain(CANARY);
+		}
+
+		// RESUME from the returned cursor, draining the rest — readable at every step.
+		let cursor = p1.cursor;
+		let isDone = p1.isDone;
+		while (!isDone) {
+			const next = await t.action(migration.sealMailMessagesBlobsPage, { cursor });
+			cursor = next.cursor;
+			isDone = next.isDone;
+			await assertAllBlobsReadable(t);
+		}
+
+		// Every blob now sealed AND still readable.
+		expect(await assertAllBlobsReadable(t)).toBe(60);
+
+		// Idempotency mid-walk: re-running the FIRST page (already sealed) seals nothing.
+		const rerun = await t.action(migration.sealMailMessagesBlobsPage, { cursor: null });
+		expect(rerun.sealed).toBe(0);
 	});
 });
 
