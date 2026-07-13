@@ -306,7 +306,12 @@ export function createBounceServer(config: MtaConfig, redis: Redis): SMTPServer 
 				// decision made in Convex against the operator's editable allow-list.
 				// The MTA only extracts the honest verdict here. Fail-open: a crash
 				// yields `cv: 'none'` (no rescue), never a NACK of accepted bytes.
-				const arcVerdict = config.inboundArcEnabled ? await verifyArcChain(rawBuffer) : undefined;
+				// Reuse the ARC seed `verifyDkim` already parsed from these bytes so we
+				// verify DKIM once, not twice, on the hot ingest path. When DKIM is
+				// disabled the seed is absent and `verifyArcChain` parses it itself.
+				const arcVerdict = config.inboundArcEnabled
+					? await verifyArcChain(rawBuffer, { arcSeed: dkim?.arcSeed })
+					: undefined;
 				const arcCv = arcVerdict?.cv;
 				const arcSealerDomain = arcVerdict?.sealerDomain;
 				const arcAttestsOriginalPass = arcVerdict?.attestsOriginalPass;
