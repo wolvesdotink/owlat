@@ -289,28 +289,9 @@ const lastSavedLabel = computed(() => {
 	return `Saved ${new Date(lastSavedAt.value).toLocaleTimeString()}`;
 });
 
-// Composer root: used both for scoped OS-level file drops (desktop) and the
-// keyboard-shortcut binding below.
-const rootEl = ref<HTMLElement | null>(null);
-const {
-	isDragOver: dragActive,
-	handleDragOver: onDragOver,
-	handleDragLeave: onDragLeave,
-	handleDrop: onDrop,
-} = useDropZone(
-	(files) => {
-		void addFiles(files);
-	},
-	{ osFileDrop: true, rootRef: rootEl }
-);
-
-function onPaste(event: ClipboardEvent) {
-	const files = Array.from(event.clipboardData?.files ?? []);
-	if (files.length > 0) {
-		event.preventDefault();
-		void addFiles(files);
-	}
-}
+// Scoped OS-level file drops and clipboard attachment pastes.
+const { rootEl, dragActive, onDragOver, onDragLeave, onDrop, onPaste } =
+	usePostboxComposerDropZone(addFiles);
 
 // Keyboard shortcuts (Cmd/Ctrl+Enter send, +Shift schedule, Esc minimize),
 // bound on the composer root (capture) so each stacked popup composer only
