@@ -71,6 +71,8 @@ export type TlsReportParseResult =
 export const TLS_RPT_MAX_COMPRESSED_BYTES = 1024 * 1024; // 1 MiB
 /** Max decompressed JSON we will hold in memory before rejecting. */
 export const TLS_RPT_MAX_DECOMPRESSED_BYTES = 16 * 1024 * 1024; // 16 MiB
+export const TLS_RPT_MAX_FAILURE_TYPES = 64;
+const TLS_RPT_MAX_FAILURE_TYPE_LENGTH = 128;
 
 // ─── Gunzip ─────────────────────────────────────────────────────────
 
@@ -291,8 +293,13 @@ export function digestTlsReport(report: TlsRptReport): TlsReportDigest {
 		successCount += block.summary['total-successful-session-count'];
 		failureCount += block.summary['total-failure-session-count'];
 		for (const detail of block['failure-details'] ?? []) {
-			const prev = failureTypes.get(detail['result-type']) ?? 0;
-			failureTypes.set(detail['result-type'], prev + detail['failed-session-count']);
+			const rawType = detail['result-type'].slice(0, TLS_RPT_MAX_FAILURE_TYPE_LENGTH);
+			const type =
+				failureTypes.has(rawType) || failureTypes.size < TLS_RPT_MAX_FAILURE_TYPES - 1
+					? rawType
+					: 'other';
+			const prev = failureTypes.get(type) ?? 0;
+			failureTypes.set(type, prev + detail['failed-session-count']);
 		}
 	}
 

@@ -69,6 +69,9 @@ export const DEFAULT_TRUSTED_ARC_FORWARDERS: readonly string[] = [
 	'list.sr.ht', // sourcehut lists
 ];
 
+export const MAX_TRUSTED_ARC_FORWARDERS = 100;
+const MAX_DOMAIN_LENGTH = 253;
+
 /** Lowercase + strip a single trailing dot + leading/trailing whitespace. */
 export function normalizeDomain(domain: string | undefined): string {
 	return (domain ?? '').trim().toLowerCase().replace(/\.$/, '');
@@ -84,7 +87,9 @@ export function normalizeDomain(domain: string | undefined): string {
  */
 export function isValidForwarderDomain(entry: string | undefined): boolean {
 	const normalized = normalizeDomain(entry);
-	return normalized.includes('.') && !/\s/.test(normalized);
+	return (
+		normalized.length <= MAX_DOMAIN_LENGTH && normalized.includes('.') && !/\s/.test(normalized)
+	);
 }
 
 /**
@@ -102,6 +107,7 @@ export function sanitizeTrustedForwarders(entries: readonly string[]): string[] 
 		if (seen.has(normalized)) continue;
 		seen.add(normalized);
 		out.push(normalized);
+		if (out.length === MAX_TRUSTED_ARC_FORWARDERS) break;
 	}
 	return out;
 }
