@@ -87,6 +87,9 @@ export const create = authedMutation({
 		// Sealed Mail (E1): mint + publish an E2EE keypair for the new alias
 		// address (flag-gated `sealedMail`, default OFF; no-op when off).
 		if (await isFeatureEnabled(ctx, 'sealedMail')) {
+			// Mint the singleton instance signing identity on first use (idempotent)
+			// so the signed manifest is publishable as soon as any key exists.
+			await ctx.scheduler.runAfter(0, internal.e2ee.keysNode.ensureInstanceIdentity, {});
 			await ctx.scheduler.runAfter(0, internal.e2ee.keysNode.mintForAddress, { address: alias });
 		}
 

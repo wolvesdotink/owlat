@@ -181,6 +181,10 @@ export async function provisionMailbox(
 	// other instances can seal mail to it. Flag-gated (`sealedMail`, default OFF)
 	// and offloaded to the Node keygen plane; a no-op when the flag is off.
 	if (await isFeatureEnabled(ctx, 'sealedMail')) {
+		// Mint the singleton instance signing identity on first use (idempotent),
+		// so `/.well-known/owlat.json` can be signed as soon as any address key is
+		// published — otherwise the manifest would 404 until an admin ran backfill.
+		await ctx.scheduler.runAfter(0, internal.e2ee.keysNode.ensureInstanceIdentity, {});
 		await ctx.scheduler.runAfter(0, internal.e2ee.keysNode.mintForAddress, {
 			address: args.address,
 		});
