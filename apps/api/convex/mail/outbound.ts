@@ -409,7 +409,7 @@ export const dispatchDraft = internalAction({
 			if (!signingRow) {
 				// The key vanished between the readiness check and here — fail SOFT to
 				// plaintext with the reason recorded rather than blocking the send.
-				encryptionInfo = { sealed: false, reason: 'no_signing_key' };
+				encryptionInfo = { isSealed: false, reason: 'no_signing_key' };
 			} else {
 				const signingKeyArmored = openPrivateKey(signingRow.sealedPrivateKey);
 				sealed = await sealMime(raw.toString('utf-8'), {
@@ -419,19 +419,19 @@ export const dispatchDraft = internalAction({
 				});
 				storedBytes = Buffer.from(sealed.mime, 'utf-8');
 				encryptionInfo = {
-					sealed: true,
+					isSealed: true,
 					algorithm: sealed.encryptionInfo.algorithm,
 					recipientFingerprints: sealed.encryptionInfo.recipientFingerprints,
 					signingFingerprint: sealed.encryptionInfo.signingFingerprint,
 				};
 			}
 		} else {
-			encryptionInfo = { sealed: false, reason: sealDecision.reason };
+			encryptionInfo = { isSealed: false, reason: sealDecision.reason };
 		}
 		// Consent is checked again after discovery and crypto because either can
 		// change during the undo window. Never silently downgrade a normal Send to
 		// plaintext; return the draft to the composer for an explicit choice.
-		if (sealInputs.flagEnabled && !encryptionInfo.sealed && !draft.isUnsealedSendAllowed) {
+		if (sealInputs.flagEnabled && !encryptionInfo.isSealed && !draft.isUnsealedSendAllowed) {
 			logError(
 				`[Outbound] Refusing unsealed dispatch for draft ${args.draftId}: explicit consent missing`
 			);

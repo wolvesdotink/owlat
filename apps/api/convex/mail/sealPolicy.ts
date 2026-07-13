@@ -87,19 +87,19 @@ export type SealDecision =
 /**
  * The honest outbound sealing record persisted on a sent mailMessages row
  * (`mailMessages.encryptionInfo`). A DISCRIMINATED UNION so the type itself
- * enforces the "honest by construction" claim: a `sealed:true` value MUST carry
+ * enforces the "honest by construction" claim: an `isSealed:true` value MUST carry
  * the exact PGP/MIME fingerprints used, and a `sealed:false` value MUST carry the
  * `reason`. Neither "sealed with no fingerprints" nor "unsealed with no reason"
  * is representable. Mirrored one-for-one by {@link mailEncryptionInfoValidator}.
  */
 export type OutboundEncryptionInfo =
 	| {
-			sealed: true;
+			isSealed: true;
 			algorithm: 'pgp-mime';
 			recipientFingerprints: string[];
 			signingFingerprint: string;
 	  }
-	| { sealed: false; reason: SealSkipReason };
+	| { isSealed: false; reason: SealSkipReason };
 
 /**
  * Convex validator mirroring {@link OutboundEncryptionInfo} — a `v.union` of the
@@ -109,7 +109,7 @@ export type OutboundEncryptionInfo =
  */
 export const mailEncryptionInfoValidator = v.union(
 	v.object({
-		sealed: v.literal(true),
+		isSealed: v.literal(true),
 		// PGP/MIME (RFC 9580 profile) is the only sealing algorithm today.
 		algorithm: v.literal('pgp-mime'),
 		// Uppercase-hex fingerprints of the recipient encryption keys the body was
@@ -119,7 +119,7 @@ export const mailEncryptionInfoValidator = v.union(
 		signingFingerprint: v.string(),
 	}),
 	v.object({
-		sealed: v.literal(false),
+		isSealed: v.literal(false),
 		// Why the message went plaintext — see SealSkipReason.
 		reason: sealSkipReasonValidator,
 	})

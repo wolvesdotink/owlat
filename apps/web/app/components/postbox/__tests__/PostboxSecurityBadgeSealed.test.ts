@@ -35,10 +35,10 @@ function mountBadge(opts: {
 }
 
 const VERIFIED: InboundEncryptionInfo = {
-	sealed: true,
-	decrypted: true,
+	isSealed: true,
+	isDecrypted: true,
 	cipherSuite: 'pgp-mime',
-	signatureValid: true,
+	isSignatureValid: true,
 	signerFingerprint: 'AABBCCDD00112233',
 };
 
@@ -55,7 +55,12 @@ describe('PostboxSecurityBadge · sealed driver', () => {
 
 	it('not verified: decrypted but signature did not verify → verbatim copy', () => {
 		const wrapper = mountBadge({
-			sealed: { sealed: true, decrypted: true, cipherSuite: 'pgp-mime', signatureValid: false },
+			sealed: {
+				isSealed: true,
+				isDecrypted: true,
+				cipherSuite: 'pgp-mime',
+				isSignatureValid: false,
+			},
 		});
 		expect(wrapper.find('[data-testid="sealed-badge-summary"]').text()).toBe(
 			'Sealed — sender not verified'
@@ -64,7 +69,12 @@ describe('PostboxSecurityBadge · sealed driver', () => {
 
 	it('HONESTY: signatureValid with no signer fingerprint can never read "verified"', () => {
 		const wrapper = mountBadge({
-			sealed: { sealed: true, decrypted: true, cipherSuite: 'pgp-mime', signatureValid: true },
+			sealed: {
+				isSealed: true,
+				isDecrypted: true,
+				cipherSuite: 'pgp-mime',
+				isSignatureValid: true,
+			},
 		});
 		expect(wrapper.find('[data-testid="sealed-badge-summary"]').text()).toBe(
 			'Sealed — sender not verified'
@@ -74,7 +84,7 @@ describe('PostboxSecurityBadge · sealed driver', () => {
 	it("can't decrypt: verbatim copy + recovery controls (download raw .eml)", () => {
 		const wrapper = mountBadge({
 			klass: 'pgp-encrypted',
-			sealed: { sealed: true, decrypted: false },
+			sealed: { isSealed: true, isDecrypted: false },
 		});
 		expect(wrapper.find('[data-testid="sealed-badge-summary"]').text()).toBe(
 			"Encrypted — can't decrypt"

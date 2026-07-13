@@ -9,10 +9,10 @@ import { describe, it, expect } from 'vitest';
 import { deriveSealedBadge, type InboundEncryptionInfo } from '../sealedMessage';
 
 const VERIFIED: InboundEncryptionInfo = {
-	sealed: true,
-	decrypted: true,
+	isSealed: true,
+	isDecrypted: true,
 	cipherSuite: 'pgp-mime',
-	signatureValid: true,
+	isSignatureValid: true,
 	signerFingerprint: 'AABBCCDD00112233',
 	signerInstance: 'b.test',
 };
@@ -34,10 +34,10 @@ describe('deriveSealedBadge', () => {
 
 	it('HONESTY: signatureValid but NO signer fingerprint is NOT verified', () => {
 		const badge = deriveSealedBadge({
-			sealed: true,
-			decrypted: true,
+			isSealed: true,
+			isDecrypted: true,
 			cipherSuite: 'pgp-mime',
-			signatureValid: true,
+			isSignatureValid: true,
 			// no signerFingerprint → no pin match → cannot claim verified
 		});
 		expect(badge?.state).toBe('unverified');
@@ -46,10 +46,10 @@ describe('deriveSealedBadge', () => {
 
 	it('HONESTY: a present fingerprint with signatureValid=false is NOT verified', () => {
 		const badge = deriveSealedBadge({
-			sealed: true,
-			decrypted: true,
+			isSealed: true,
+			isDecrypted: true,
 			cipherSuite: 'pgp-mime',
-			signatureValid: false,
+			isSignatureValid: false,
 			signerFingerprint: 'AABBCCDD00112233',
 		});
 		expect(badge?.state).toBe('unverified');
@@ -58,10 +58,10 @@ describe('deriveSealedBadge', () => {
 
 	it('unverified: verbatim copy', () => {
 		const badge = deriveSealedBadge({
-			sealed: true,
-			decrypted: true,
+			isSealed: true,
+			isDecrypted: true,
 			cipherSuite: 'pgp-mime',
-			signatureValid: false,
+			isSignatureValid: false,
 		});
 		expect(badge?.detail).toBe(
 			"This message was encrypted end-to-end, but we couldn't confirm who signed it."
@@ -70,7 +70,7 @@ describe('deriveSealedBadge', () => {
 	});
 
 	it("can't decrypt: verbatim copy, warn tone", () => {
-		const badge = deriveSealedBadge({ sealed: true, decrypted: false });
+		const badge = deriveSealedBadge({ isSealed: true, isDecrypted: false });
 		expect(badge?.state).toBe('cantDecrypt');
 		expect(badge?.summary).toBe("Encrypted — can't decrypt");
 		expect(badge?.detail).toBe(
@@ -81,14 +81,14 @@ describe('deriveSealedBadge', () => {
 
 	it('the "verified" summary is unreachable across every non-verified shape', () => {
 		const nonVerified: InboundEncryptionInfo[] = [
-			{ sealed: true, decrypted: false },
-			{ sealed: true, decrypted: true, cipherSuite: 'pgp-mime', signatureValid: false },
-			{ sealed: true, decrypted: true, cipherSuite: 'pgp-mime', signatureValid: true },
+			{ isSealed: true, isDecrypted: false },
+			{ isSealed: true, isDecrypted: true, cipherSuite: 'pgp-mime', isSignatureValid: false },
+			{ isSealed: true, isDecrypted: true, cipherSuite: 'pgp-mime', isSignatureValid: true },
 			{
-				sealed: true,
-				decrypted: true,
+				isSealed: true,
+				isDecrypted: true,
 				cipherSuite: 'pgp-mime',
-				signatureValid: false,
+				isSignatureValid: false,
 				signerFingerprint: 'DEAD',
 			},
 		];

@@ -186,10 +186,10 @@ describe('mail.delivery.ingestFromWebhook — decrypt-on-ingest (Sealed Mail E4/
 		expect(rawText).not.toContain(CANARY);
 		// Honest verified record.
 		expect(msg.inboundEncryptionInfo).toMatchObject({
-			sealed: true,
-			decrypted: true,
+			isSealed: true,
+			isDecrypted: true,
 			cipherSuite: 'pgp-mime',
-			signatureValid: true,
+			isSignatureValid: true,
 			signerInstance: 'sender.test',
 		});
 		expect((msg.inboundEncryptionInfo as { signerFingerprint?: string }).signerFingerprint).toMatch(
@@ -222,9 +222,9 @@ describe('mail.delivery.ingestFromWebhook — decrypt-on-ingest (Sealed Mail E4/
 		const { msg } = await readRow(t, result.messageId);
 		expect(msg.textBodyInline).toContain(CANARY); // still decrypted
 		expect(msg.inboundEncryptionInfo).toMatchObject({
-			sealed: true,
-			decrypted: true,
-			signatureValid: false,
+			isSealed: true,
+			isDecrypted: true,
+			isSignatureValid: false,
 		});
 		// A false signature makes NO signer claim.
 		expect(
@@ -257,7 +257,7 @@ describe('mail.delivery.ingestFromWebhook — decrypt-on-ingest (Sealed Mail E4/
 		// Body stays ciphertext (unchanged), never the plaintext canary.
 		expect(msg.textBodyInline ?? '').not.toContain(CANARY);
 		expect(msg.textBodyInline ?? '').toContain('-----BEGIN PGP MESSAGE-----');
-		expect(msg.inboundEncryptionInfo).toEqual({ sealed: true, decrypted: false });
+		expect(msg.inboundEncryptionInfo).toEqual({ isSealed: true, isDecrypted: false });
 	});
 
 	it('sealed + a keyChanged pin ⇒ UNVERIFIED with NO re-discovery/re-pin (TOFU guard)', async () => {
@@ -294,9 +294,9 @@ describe('mail.delivery.ingestFromWebhook — decrypt-on-ingest (Sealed Mail E4/
 		const { msg } = await readRow(t, result.messageId);
 		expect(msg.textBodyInline).toContain(CANARY); // still decrypted
 		expect(msg.inboundEncryptionInfo).toMatchObject({
-			sealed: true,
-			decrypted: true,
-			signatureValid: false,
+			isSealed: true,
+			isDecrypted: true,
+			isSignatureValid: false,
 		});
 		expect(
 			(msg.inboundEncryptionInfo as { signerFingerprint?: string }).signerFingerprint
@@ -334,9 +334,9 @@ describe('mail.delivery.ingestFromWebhook — decrypt-on-ingest (Sealed Mail E4/
 		const { msg } = await readRow(t, result.messageId);
 		expect(msg.textBodyInline).toContain(CANARY); // still decrypted
 		expect(msg.inboundEncryptionInfo).toMatchObject({
-			sealed: true,
-			decrypted: true,
-			signatureValid: false,
+			isSealed: true,
+			isDecrypted: true,
+			isSignatureValid: false,
 		});
 		expect(
 			(msg.inboundEncryptionInfo as { signerFingerprint?: string }).signerFingerprint

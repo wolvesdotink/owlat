@@ -542,7 +542,7 @@ export const mailTables = {
 		),
 
 		// Sealed Mail (E3): the outbound sealing outcome for a SENT copy. When
-		// `sealed` is true the raw `.eml` is PGP/MIME ciphertext (real subject
+		// `isSealed` is true the raw `.eml` is PGP/MIME ciphertext (real subject
 		// inside, `...` outside) and the fingerprints used are recorded; when
 		// false a `reason` explains why the message went plaintext (e.g. a
 		// recipient without a usable key — never a mixed send, per D2). Absent on
@@ -551,10 +551,10 @@ export const mailTables = {
 
 		// Sealed Mail (E4): the INBOUND unsealing outcome for a DELIVERED message
 		// (decrypt-on-ingest, D3). When present the message arrived as PGP/MIME
-		// ciphertext; `decrypted:true` means we opened it (the row's body columns
+		// ciphertext; `isDecrypted:true` means we opened it (the row's body columns
 		// hold the restored plaintext, the raw `.eml` at `rawStorageId` is the
-		// retained sealed original) and `signatureValid` records whether the body's
-		// signature verified against the pinned sender key; `decrypted:false` is the
+		// retained sealed original) and `isSignatureValid` records whether the body's
+		// signature verified against the pinned sender key; `isDecrypted:false` is the
 		// "Encrypted — can't decrypt" path (we hold no usable key). Distinct from the
 		// outbound `encryptionInfo` above — an inbound record describes what WE
 		// verified on receipt, not what WE sealed. Absent on plaintext mail and on
