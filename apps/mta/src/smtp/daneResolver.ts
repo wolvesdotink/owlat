@@ -47,10 +47,9 @@ interface DohResponse {
 	Answer?: DohAnswer[];
 }
 
-/** What a resolver lookup found for one MX host. */
+/** The cached TLSA records for one MX host. */
 interface CachedTlsa {
 	records: TlsaRecord[];
-	secure: boolean;
 }
 
 /** A lookup result plus the DNS TTL to cache it for (RFC 6698 §7). */
@@ -72,7 +71,7 @@ function clampTtl(ttl: number | undefined): number {
 
 /**
  * Query the DoH resolver for the `_25._tcp.<host>` TLSA RRset. Returns the
- * DNSSEC-authenticated records and the AD verdict, or `null` on any transport
+ * DNSSEC-authenticated records, or `null` on any transport
  * error (caller falls back to the non-DANE policy).
  */
 async function queryTlsa(resolverUrl: string, host: string): Promise<TlsaLookup | null> {
@@ -101,14 +100,14 @@ async function queryTlsa(resolverUrl: string, host: string): Promise<TlsaLookup 
 
 	// NXDOMAIN / SERVFAIL / any non-NOERROR → no usable TLSA (fall through).
 	if ((body.Status ?? DNS_RCODE_NOERROR) !== DNS_RCODE_NOERROR) {
-		return { records: [], secure: body.AD === true, ttl: DANE_NEGATIVE_TTL };
+		return { records: [], ttl: DANE_NEGATIVE_TTL };
 	}
 
 	// D6: without an authenticated (AD) answer, the RRset is untrusted and is
 	// treated as "no TLSA" — DANE must never be driven by unauthenticated DNS.
 	if (body.AD !== true) {
 		logger.debug({ host }, 'DANE TLSA answer not DNSSEC-authenticated (AD absent); ignoring');
-		return { records: [], secure: false, ttl: DANE_NEGATIVE_TTL };
+		return { records: [], ttl: DANE_NEGATIVE_TTL };
 	}
 
 	const records: TlsaRecord[] = [];
@@ -123,7 +122,6 @@ async function queryTlsa(resolverUrl: string, host: string): Promise<TlsaLookup 
 	}
 	return {
 		records,
-		secure: true,
 		ttl: records.length > 0 ? clampTtl(minTtl) : DANE_NEGATIVE_TTL,
 	};
 }
@@ -158,14 +156,14 @@ export async function lookupTlsaRecords(
 		// Transport error: short negative cache so we do not hammer the resolver.
 		await redis.set(
 			cacheKey,
-			JSON.stringify({ records: [], secure: false } satisfies CachedTlsa),
+			JSON.stringify({ records: [] } satisfies CachedTlsa),
 			'EX',
 			DANE_NEGATIVE_TTL
 		);
 		return [];
 	}
 
-	const entry: CachedTlsa = { records: result.records, secure: result.secure };
+	const entry: CachedTlsa = { records: result.records };
 	await redis.set(cacheKey, JSON.stringify(entry), 'EX', result.ttl);
 
 	if (result.records.length > 0) {
