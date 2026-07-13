@@ -147,6 +147,20 @@ describe('resolveTlsRequirements — DANE precedence (T3, RFC 7672 §2)', () => 
 		expect(withDane.daneRequired).toBe(true);
 	});
 
+	it('DANE forces verified TLS even under opportunistic + no policy (checkServerIdentity needs a PKIX-authorized chain)', () => {
+		const result = resolveTlsRequirements({
+			localMode: 'opportunistic',
+			stsPolicy: { policyMode: 'none' },
+			daneResult: { usable: true },
+		});
+		// Node only invokes the DANE checkServerIdentity hook on a PKIX-authorized
+		// chain, so a DANE send must verify the certificate (fail-closed) — the local
+		// opportunistic floor cannot lower it back to unverified.
+		expect(result.rejectUnauthorized).toBe(true);
+		expect(result.requireTLS).toBe(true);
+		expect(result.daneRequired).toBe(true);
+	});
+
 	it('DANE beats STS-testing: testing is report-only, DANE still mandates TLS', () => {
 		const result = resolveTlsRequirements({
 			localMode: 'opportunistic',

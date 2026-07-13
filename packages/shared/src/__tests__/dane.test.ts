@@ -11,6 +11,7 @@ import { describe, it, expect } from 'vitest';
 import { X509Certificate } from 'node:crypto';
 import {
 	parseTlsaRecord,
+	formatTlsaRecord,
 	tlsaRecordsEqual,
 	isUsableForSmtp,
 	hasUsableTlsa,
@@ -188,5 +189,13 @@ describe('matchCertificateToTlsa (RFC 7672)', () => {
 			{ usage: 2, selector: 1, matchingType: 1, data: VEC.spkiSha256 },
 		]);
 		expect(result.matched).toBe(true);
+	});
+});
+
+describe('formatTlsaRecord', () => {
+	it('renders the RFC 6698 §2.2 presentation form and round-trips through parseTlsaRecord', () => {
+		const record: TlsaRecord = { usage: 3, selector: 1, matchingType: 1, data: VEC.spkiSha256 };
+		expect(formatTlsaRecord(record)).toBe(`3 1 1 ${VEC.spkiSha256}`);
+		expect(parseTlsaRecord(formatTlsaRecord(record))).toEqual(record);
 	});
 });

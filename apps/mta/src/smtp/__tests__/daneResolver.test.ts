@@ -3,8 +3,11 @@
  *
  * The DNSSEC AD (Authenticated Data) bit is the trust anchor: an authenticated
  * (AD=1) answer yields usable TLSA records; an unauthenticated (AD absent/0)
- * answer is treated as "no TLSA" and MUST be ignored; NXDOMAIN / non-NOERROR
- * falls through to the non-DANE path. Results are cached (no repeat fetch).
+ * answer is treated as "no TLSA" and MUST be ignored. Crucially, RFC 7672 §2.1
+ * distinguishes an authenticated DENIAL of existence (NXDOMAIN → fall through to
+ * the non-DANE path) from a lookup FAILURE (SERVFAIL / timeout / transport error
+ * / non-2xx → the lookup could not be completed, so the caller must DEFER, never
+ * silently downgrade DANE). A failure is never cached. Records are cached.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import Redis from 'ioredis-mock';
@@ -36,8 +39,11 @@ function secureTlsaAnswer(data = '3 1 1 aabbcc'): unknown {
 
 let redis: RealRedis;
 
-beforeEach(() => {
+beforeEach(async () => {
 	redis = new Redis() as unknown as RealRedis;
+	// ioredis-mock shares one backing store across `new Redis()` instances, so a
+	// prior test's cache entry would otherwise leak into this one. Start clean.
+	await redis.flushall();
 });
 
 afterEach(() => {
@@ -48,12 +54,15 @@ describe('lookupTlsaRecords — AD-bit enforcement (D6)', () => {
 	it('AD=1 secure answer yields the parsed TLSA records', async () => {
 		vi.spyOn(globalThis, 'fetch').mockResolvedValue(dohResponse(secureTlsaAnswer()));
 
-		const records = await lookupTlsaRecords(redis, MX, RESOLVER);
+		const result = await lookupTlsaRecords(redis, MX, RESOLVER);
 
-		expect(records).toEqual([{ usage: 3, selector: 1, matchingType: 1, data: 'aabbcc' }]);
+		expect(result).toEqual({
+			status: 'records',
+			records: [{ usage: 3, selector: 1, matchingType: 1, data: 'aabbcc' }],
+		});
 	});
 
-	it('AD absent => records ignored (treated as no TLSA)', async () => {
+	it('AD absent => records ignored (treated as no TLSA, fall through)', async () => {
 		vi.spyOn(globalThis, 'fetch').mockResolvedValue(
 			dohResponse({
 				Status: 0,
@@ -62,9 +71,7 @@ describe('lookupTlsaRecords — AD-bit enforcement (D6)', () => {
 			})
 		);
 
-		const records = await lookupTlsaRecords(redis, MX, RESOLVER);
-
-		expect(records).toEqual([]);
+		expect(await lookupTlsaRecords(redis, MX, RESOLVER)).toEqual({ status: 'no-tlsa' });
 	});
 
 	it('AD=false => records ignored even when a TLSA answer is present', async () => {
@@ -76,31 +83,21 @@ describe('lookupTlsaRecords — AD-bit enforcement (D6)', () => {
 			})
 		);
 
-		expect(await lookupTlsaRecords(redis, MX, RESOLVER)).toEqual([]);
+		expect(await lookupTlsaRecords(redis, MX, RESOLVER)).toEqual({ status: 'no-tlsa' });
 	});
 });
 
-describe('lookupTlsaRecords — no usable answer falls through', () => {
-	it('NXDOMAIN (Status 3) => empty', async () => {
+describe('lookupTlsaRecords — denial of existence falls through', () => {
+	it('NXDOMAIN (Status 3) => no-tlsa (authenticated denial, fall through)', async () => {
 		vi.spyOn(globalThis, 'fetch').mockResolvedValue(dohResponse({ Status: 3, AD: true }));
-		expect(await lookupTlsaRecords(redis, MX, RESOLVER)).toEqual([]);
+		expect(await lookupTlsaRecords(redis, MX, RESOLVER)).toEqual({ status: 'no-tlsa' });
 	});
 
-	it('SERVFAIL (Status 2) => empty', async () => {
-		vi.spyOn(globalThis, 'fetch').mockResolvedValue(dohResponse({ Status: 2, AD: false }));
-		expect(await lookupTlsaRecords(redis, MX, RESOLVER)).toEqual([]);
-	});
-
-	it('a transport error resolves to empty (never throws)', async () => {
-		vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('network down'));
-		expect(await lookupTlsaRecords(redis, MX, RESOLVER)).toEqual([]);
-	});
-
-	it('non-2xx DoH response => empty', async () => {
+	it('authenticated NODATA (NOERROR, AD=1, no TLSA answer) => no-tlsa', async () => {
 		vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-			new Response('nope', { status: 502 }) as unknown as Response
+			dohResponse({ Status: 0, AD: true, Answer: [] })
 		);
-		expect(await lookupTlsaRecords(redis, MX, RESOLVER)).toEqual([]);
+		expect(await lookupTlsaRecords(redis, MX, RESOLVER)).toEqual({ status: 'no-tlsa' });
 	});
 
 	it('ignores non-TLSA (type != 52) and unparseable answers', async () => {
@@ -116,9 +113,50 @@ describe('lookupTlsaRecords — no usable answer falls through', () => {
 			})
 		);
 
-		expect(await lookupTlsaRecords(redis, MX, RESOLVER)).toEqual([
-			{ usage: 2, selector: 0, matchingType: 1, data: 'ddeeff' },
-		]);
+		expect(await lookupTlsaRecords(redis, MX, RESOLVER)).toEqual({
+			status: 'records',
+			records: [{ usage: 2, selector: 0, matchingType: 1, data: 'ddeeff' }],
+		});
+	});
+});
+
+describe('lookupTlsaRecords — a lookup FAILURE defers (never downgrades)', () => {
+	it('SERVFAIL (Status 2) => lookup-failed (defer, not fall-through)', async () => {
+		vi.spyOn(globalThis, 'fetch').mockResolvedValue(dohResponse({ Status: 2, AD: false }));
+		const result = await lookupTlsaRecords(redis, MX, RESOLVER);
+		expect(result.status).toBe('lookup-failed');
+	});
+
+	it('a transport error resolves to lookup-failed (never throws)', async () => {
+		vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('network down'));
+		const result = await lookupTlsaRecords(redis, MX, RESOLVER);
+		expect(result.status).toBe('lookup-failed');
+	});
+
+	it('non-2xx DoH response => lookup-failed', async () => {
+		vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+			new Response('nope', { status: 502 }) as unknown as Response
+		);
+		const result = await lookupTlsaRecords(redis, MX, RESOLVER);
+		expect(result.status).toBe('lookup-failed');
+	});
+
+	it('a lookup failure is NEVER cached (a later success is honoured)', async () => {
+		const fetchSpy = vi
+			.spyOn(globalThis, 'fetch')
+			.mockResolvedValueOnce(dohResponse({ Status: 2, AD: false })) // SERVFAIL
+			.mockResolvedValueOnce(dohResponse(secureTlsaAnswer())); // recovers
+
+		const first = await lookupTlsaRecords(redis, MX, RESOLVER);
+		const second = await lookupTlsaRecords(redis, MX, RESOLVER);
+
+		expect(first.status).toBe('lookup-failed');
+		expect(second).toEqual({
+			status: 'records',
+			records: [{ usage: 3, selector: 1, matchingType: 1, data: 'aabbcc' }],
+		});
+		// A failure must not have been negative-cached, so the second call re-fetched.
+		expect(fetchSpy).toHaveBeenCalledTimes(2);
 	});
 });
 
@@ -132,6 +170,17 @@ describe('lookupTlsaRecords — caching', () => {
 		const second = await lookupTlsaRecords(redis, MX, RESOLVER);
 
 		expect(first).toEqual(second);
+		expect(fetchSpy).toHaveBeenCalledTimes(1);
+	});
+
+	it('a no-tlsa denial is negative-cached (single fetch)', async () => {
+		const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(dohResponse({ Status: 3 }));
+
+		const first = await lookupTlsaRecords(redis, MX, RESOLVER);
+		const second = await lookupTlsaRecords(redis, MX, RESOLVER);
+
+		expect(first).toEqual({ status: 'no-tlsa' });
+		expect(second).toEqual({ status: 'no-tlsa' });
 		expect(fetchSpy).toHaveBeenCalledTimes(1);
 	});
 

@@ -40,7 +40,7 @@ vi.mock('../dkim.js', () => ({
 // DANE TLSA resolver is stubbed per-test (default: no TLSA, so the DANE branch is
 // inert and the historic path is byte-identical).
 vi.mock('../daneResolver.js', () => ({
-	lookupTlsaRecords: vi.fn().mockResolvedValue([]),
+	lookupTlsaRecords: vi.fn().mockResolvedValue({ status: 'no-tlsa' }),
 }));
 vi.mock('../../bounce/verp.js', () => ({
 	buildVerpAddress: vi.fn().mockReturnValue('bounce+encoded@bounces.owlat.com'),
@@ -941,7 +941,7 @@ describe('sendToMx', () => {
 		});
 
 		it('DANE enabled but no usable TLSA => falls through to the non-DANE path', async () => {
-			vi.mocked(lookupTlsaRecords).mockResolvedValue([]);
+			vi.mocked(lookupTlsaRecords).mockResolvedValue({ status: 'no-tlsa' });
 			mockTransport.sendMail.mockResolvedValue({ response: '250 OK' });
 
 			const result = await sendToMx(createJob(), daneConfig(), redis, '10.0.0.1');
@@ -952,8 +952,29 @@ describe('sendToMx', () => {
 			expect(tlsOpts).not.toHaveProperty('checkServerIdentity');
 		});
 
+		it('a TLSA lookup FAILURE (SERVFAIL/outage) defers — never downgrades to non-DANE', async () => {
+			// RFC 7672 §2.1: a lookup that could not be completed is not a denial of
+			// existence. The sender must defer, not fall through to a (possibly
+			// cleartext) non-DANE delivery.
+			vi.mocked(lookupTlsaRecords).mockResolvedValue({
+				status: 'lookup-failed',
+				reason: 'DNS RCODE 2',
+			});
+			mockTransport.sendMail.mockResolvedValue({ response: '250 OK' });
+
+			const result = await sendToMx(createJob(), daneConfig(), redis, '10.0.0.1');
+
+			expect(result.success).toBe(false);
+			expect(result.bounceType).toBe('soft');
+			// No delivery attempt at all: we never opened a connection for this MX.
+			expect(vi.mocked(pool.acquire)).not.toHaveBeenCalled();
+		});
+
 		it('usable TLSA => acquire requires verified TLS and carries the DANE hook', async () => {
-			vi.mocked(lookupTlsaRecords).mockResolvedValue([MATCHING_TLSA]);
+			vi.mocked(lookupTlsaRecords).mockResolvedValue({
+				status: 'records',
+				records: [MATCHING_TLSA],
+			});
 			mockTransport.sendMail.mockImplementation(async () => {
 				securedCaptureLogger.info({ tnx: 'smtp' }, 'Connection upgraded with STARTTLS');
 				return { response: '250 OK over DANE TLS' };
@@ -969,7 +990,10 @@ describe('sendToMx', () => {
 		});
 
 		it('the DANE hook accepts a matching MX certificate and rejects a mismatch', async () => {
-			vi.mocked(lookupTlsaRecords).mockResolvedValue([MATCHING_TLSA]);
+			vi.mocked(lookupTlsaRecords).mockResolvedValue({
+				status: 'records',
+				records: [MATCHING_TLSA],
+			});
 			mockTransport.sendMail.mockResolvedValue({ response: '250 OK' });
 			await sendToMx(createJob(), daneConfig(), redis, '10.0.0.1');
 
@@ -978,7 +1002,10 @@ describe('sendToMx', () => {
 			expect(check('mx1.example.com', fixturePeerCert())).toBeUndefined();
 
 			// A wrong TLSA record → the hook returns an Error (aborts the handshake).
-			vi.mocked(lookupTlsaRecords).mockResolvedValue([MISMATCH_TLSA]);
+			vi.mocked(lookupTlsaRecords).mockResolvedValue({
+				status: 'records',
+				records: [MISMATCH_TLSA],
+			});
 			await sendToMx(createJob(), daneConfig(), redis, '10.0.0.1');
 			const mismatchCheck = vi.mocked(pool.acquire).mock.calls.at(-1)![2].tls!.checkServerIdentity!;
 			const verdict = mismatchCheck('mx1.example.com', fixturePeerCert());
@@ -987,7 +1014,10 @@ describe('sendToMx', () => {
 		});
 
 		it('a TLSA mismatch defers (soft bounce) and records a validation-failure under the tlsa policy', async () => {
-			vi.mocked(lookupTlsaRecords).mockResolvedValue([MISMATCH_TLSA]);
+			vi.mocked(lookupTlsaRecords).mockResolvedValue({
+				status: 'records',
+				records: [MISMATCH_TLSA],
+			});
 			// Simulate nodemailer aborting the handshake because our checkServerIdentity
 			// returned an Error: a TLS-level failure with no SMTP status code.
 			mockTransport.sendMail.mockRejectedValue(
