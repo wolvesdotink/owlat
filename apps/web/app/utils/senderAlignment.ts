@@ -59,7 +59,7 @@ export function senderAuthDisplay(facts: SenderAuthFacts): SenderAuthDisplay {
 			label: 'Alignment unconfirmed',
 			detail:
 				facts.reason ??
-				'We can’t confirm this transport signs mail as this address. You can still send, but check your relay’s DKIM setup.',
+				'We can’t confirm this transport signs mail as this address. You can still send, but check the transport’s DKIM setup.',
 			blocked: false,
 		};
 	}

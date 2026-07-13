@@ -151,11 +151,14 @@ export function checkFromAlignment(
 		};
 	}
 
-	// A relay whose signing/bounce identities aren't declared: we can't confirm
-	// alignment, so we say so rather than claim a problem we didn't verify.
+	// A transport whose signing/bounce identities aren't fully declared: we can't
+	// confirm alignment, so we say so rather than claim a problem we didn't verify.
+	// This branch is also reachable for the built-in MTA (a declared-foreign DKIM
+	// domain with the shared VERP return-path undeclared), so the copy stays
+	// transport-neutral rather than saying "relay".
 	return {
 		state: 'unknown',
-		reason: `We can’t confirm this relay signs mail as “${from}”. If it signs as its own domain, mailboxes may treat your mail as spam — check your relay’s DKIM setup.`,
+		reason: `We can’t confirm this transport signs mail as “${from}”. If it signs as its own domain, mailboxes may treat your mail as spam — check the transport’s DKIM setup.`,
 	};
 }
 

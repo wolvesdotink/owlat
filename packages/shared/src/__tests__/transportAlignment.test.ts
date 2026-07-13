@@ -51,6 +51,10 @@ describe('checkFromAlignment — built-in MTA', () => {
 		// `unknown` — never a claimed alignment we didn't verify.
 		const r = checkFromAlignment('acme.com', mta({ dkimDomain: 'owlat.com' }));
 		expect(r.state).toBe('unknown');
+		// This branch is reachable for the built-in MTA, so the copy must not call
+		// the transport a "relay" — it's transport-neutral.
+		expect(r.reason).not.toContain('relay');
+		expect(r.reason).toContain('transport');
 	});
 });
 
