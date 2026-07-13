@@ -128,6 +128,9 @@ describe('handleTlsReportWebhook (/webhooks/mta-tls-report)', () => {
 			headers: { 'Content-Type': 'application/json' },
 		});
 		expect(res.status).toBe(401);
+		expect(await res.json()).toEqual({
+			error: { category: 'unauthenticated', message: 'Missing signature' },
+		});
 		expect(await countReports(t)).toBe(0);
 	});
 
