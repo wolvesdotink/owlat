@@ -10,6 +10,13 @@
  *   - "verified"        DMARC passed, OR a passing SPF/DKIM check that aligns
  *                       with the visible From domain. Only here do we tell the
  *                       reader the sender is authorized.
+ *   - "forwarded"       DMARC failed (a mailing list / forwarder broke the
+ *                       author's signature), but a TRUSTED forwarder's validated
+ *                       ARC chain (RFC 8617) attested the original passed, so the
+ *                       backend rescued it (`dmarcOverride === 'arc'`). Honest:
+ *                       we vouch via the forwarder we chose to trust, not the
+ *                       original signature. Reachable ONLY when the backend set
+ *                       the override — an ordinary message can never render it.
  *   - "misaligned"      Some check passed, but for a DIFFERENT domain than the
  *                       From header claims — the classic impersonation shape.
  *   - "failed"          DMARC explicitly failed.
@@ -20,7 +27,12 @@
  *                       absence is never rendered as "verified".
  */
 
-export type SenderAuthState = 'verified' | 'unauthenticated' | 'misaligned' | 'failed';
+export type SenderAuthState =
+	| 'verified'
+	| 'forwarded'
+	| 'unauthenticated'
+	| 'misaligned'
+	| 'failed';
 
 /** The raw inbound verdicts + alignment domains persisted at ingest (A1). */
 export interface SenderAuthInput {
@@ -34,6 +46,14 @@ export interface SenderAuthInput {
 	envelopeFromDomain?: string;
 	/** DKIM `d=` domain — what the signature actually authenticated. */
 	dkimSigningDomain?: string;
+	/**
+	 * Inbound-auth override the backend applied (Sealed Mail A5). `'arc'` means a
+	 * DMARC fail was RESCUED because a trusted forwarder's validated ARC chain
+	 * attested the original passed. Absent on the ordinary path.
+	 */
+	dmarcOverride?: string;
+	/** The trusted forwarder's `d=` that was honoured for the rescue, if named. */
+	arcSealer?: string;
 }
 
 export interface SenderAuthResult {
@@ -108,7 +128,28 @@ export function deriveSenderAuth(input: SenderAuthInput): SenderAuthResult | nul
 	const dkimMisaligned = dkimPass && dkimDomain !== '' && !dkimAligned;
 	const passedButUnaligned = !anyAligned && (spfMisaligned || dkimMisaligned);
 
-	// 1. An explicit DMARC failure is the strongest negative signal.
+	// 1. Trusted-forwarder ARC rescue (Sealed Mail A5). DMARC failed (a mailing
+	//    list / forwarder broke the author's DKIM), but the backend confirmed a
+	//    TRUSTED forwarder's validated ARC chain attested the original passed and
+	//    set `dmarcOverride === 'arc'`. We surface an honest "verified via
+	//    forwarder" state — the trust rests on the forwarder we chose, not the
+	//    original signature. This precedes the DMARC-fail branch precisely because
+	//    a rescued fail must NOT read as suspicious. Reachable ONLY when the
+	//    backend set the override.
+	if (norm(input.dmarcOverride) === 'arc') {
+		const sealer = norm(input.arcSealer);
+		return {
+			state: 'forwarded',
+			summary: 'Verified via forwarder',
+			detail: sealer
+				? `A forwarding service you trust (${sealer}) confirmed this message really was sent for ${fromDomain} before passing it on. Its own checks broke in forwarding, which is normal for mailing lists.`
+				: `A forwarding service you trust confirmed this message really was sent for ${fromDomain} before passing it on. Its own checks broke in forwarding, which is normal for mailing lists.`,
+			tone: 'ok',
+			icon: 'lucide:shield-check',
+		};
+	}
+
+	// 2. An explicit DMARC failure is the strongest negative signal.
 	if (dmarc === 'fail') {
 		const strict = norm(input.dmarcPolicy) === 'reject' || norm(input.dmarcPolicy) === 'quarantine';
 		return {
@@ -122,7 +163,7 @@ export function deriveSenderAuth(input: SenderAuthInput): SenderAuthResult | nul
 		};
 	}
 
-	// 2. Authenticated and aligned with the visible sender => the only "verified".
+	// 3. Authenticated and aligned with the visible sender => the only "verified".
 	if (dmarc === 'pass' || anyAligned) {
 		return {
 			state: 'verified',
@@ -133,7 +174,7 @@ export function deriveSenderAuth(input: SenderAuthInput): SenderAuthResult | nul
 		};
 	}
 
-	// 3. A check passed for a KNOWN domain that differs from the From header —
+	// 4. A check passed for a KNOWN domain that differs from the From header —
 	//    the classic impersonation shape. `passedButUnaligned` guarantees at
 	//    least one of these domains is non-empty, so `actualDomain` is real.
 	if (passedButUnaligned) {
@@ -147,7 +188,7 @@ export function deriveSenderAuth(input: SenderAuthInput): SenderAuthResult | nul
 		};
 	}
 
-	// 4. Verdicts exist but nothing passed we can tie to the sender.
+	// 5. Verdicts exist but nothing passed we can tie to the sender.
 	return {
 		state: 'unauthenticated',
 		summary: 'Unverified sender',

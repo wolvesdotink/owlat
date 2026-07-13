@@ -31,6 +31,7 @@ import { extractEmail, normalizeSubject } from '../lib/emailAddress';
 import { extractAntiLoopHeaders } from '../lib/inboundClassification';
 import { extractAttachments } from '@owlat/shared/mailMime';
 import { extractListUnsubscribe } from '@owlat/shared/listUnsubscribe';
+import { DEFAULT_TRUSTED_ARC_FORWARDERS, shouldArcOverrideDmarc } from '@owlat/shared/arcTrust';
 import { ATTACHMENT_COMPOSE_LIMITS, MAX_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
 import { logError } from '../lib/runtimeLog';
 import { getMtaConfig, scanAttachmentBytes } from './mtaClient';
@@ -203,6 +204,12 @@ export const ingestFromWebhook = internalAction({
 		dkimResult: v.optional(v.string()),
 		dmarcResult: v.optional(v.string()),
 		dmarcPolicy: v.optional(v.string()),
+		// Verified inbound ARC verdict (RFC 8617, Sealed Mail A5) — used to rescue a
+		// DMARC fail when a TRUSTED forwarder sealed a valid chain attesting the
+		// original passed. All optional (an older MTA omits them ⇒ no rescue).
+		arcCv: v.optional(v.string()),
+		arcSealerDomain: v.optional(v.string()),
+		arcAttestsOriginalPass: v.optional(v.boolean()),
 		// DMARC alignment inputs (envelope MAIL FROM domain + DKIM d= domain),
 		// stored beside the verdicts on `mailMessages`. Both optional.
 		envelopeFromDomain: v.optional(v.string()),
@@ -277,6 +284,9 @@ export const ingestFromWebhook = internalAction({
 				dkimResult: args.dkimResult,
 				dmarcResult: args.dmarcResult,
 				dmarcPolicy: args.dmarcPolicy,
+				arcCv: args.arcCv,
+				arcSealerDomain: args.arcSealerDomain,
+				arcAttestsOriginalPass: args.arcAttestsOriginalPass,
 				envelopeFromDomain: args.envelopeFromDomain,
 				dkimSigningDomain: args.dkimSigningDomain,
 			}
@@ -438,6 +448,10 @@ export async function insertDeliveredMessage(
 		dkimResult?: string;
 		dmarcResult?: string;
 		dmarcPolicy?: string;
+		/** Inbound-auth override (Sealed Mail A5): `'arc'` when a trusted forwarder
+		 * rescued a DMARC fail; `arcSealer` names the honoured sealer's `d=`. */
+		dmarcOverride?: string;
+		arcSealer?: string;
 		envelopeFromDomain?: string;
 		dkimSigningDomain?: string;
 		/** Ingest-computed sender-impersonation heuristics (Sealed Mail A4). */
@@ -556,6 +570,8 @@ export async function insertDeliveredMessage(
 		dkimResult: params.dkimResult,
 		dmarcResult: params.dmarcResult,
 		dmarcPolicy: params.dmarcPolicy,
+		dmarcOverride: params.dmarcOverride,
+		arcSealer: params.arcSealer,
 		envelopeFromDomain: params.envelopeFromDomain,
 		dkimSigningDomain: params.dkimSigningDomain,
 		senderHeuristics: params.senderHeuristics,
@@ -660,6 +676,12 @@ export const deliverToMailbox = internalMutation({
 		dkimResult: v.optional(v.string()),
 		dmarcResult: v.optional(v.string()),
 		dmarcPolicy: v.optional(v.string()),
+		// Verified inbound ARC verdict (RFC 8617, Sealed Mail A5). Rescues a DMARC
+		// fail when a TRUSTED forwarder sealed a valid chain attesting the original
+		// passed. All optional (older MTA ⇒ absent ⇒ no rescue).
+		arcCv: v.optional(v.string()),
+		arcSealerDomain: v.optional(v.string()),
+		arcAttestsOriginalPass: v.optional(v.boolean()),
 		// DMARC alignment inputs (envelope MAIL FROM domain + DKIM d= domain),
 		// stored beside the verdicts on `mailMessages`. Both optional.
 		envelopeFromDomain: v.optional(v.string()),
@@ -749,10 +771,40 @@ export const deliverToMailbox = internalMutation({
 			.filter((a) => a.type === 'forward' && a.forwardTo)
 			.map((a) => a.forwardTo as string);
 
+		// ARC rescue (RFC 8617, Sealed Mail A5): a mailing-list / forwarder that
+		// broke the author's DKIM makes DMARC fail even for legitimate mail. When a
+		// TRUSTED forwarder sealed a VALID chain (`cv=pass`) attesting the original
+		// passed, honour that attestation — skip the Spam-routing below and record
+		// `dmarcOverride: 'arc'` + the sealer so the reader's badge can say
+		// "verified via forwarder". Trust is decided HERE against the operator's
+		// editable allow-list (unset ⇒ the seeded defaults); an explicit `[]`
+		// disables the override. The predicate is shared with the MTA so the two
+		// sides never fork on what "trusted rescue" means.
+		// The override only APPLIES to an actual DMARC fail — that is the only
+		// verdict there is anything to rescue. A message that passed DMARC on its
+		// own (or where DMARC was not evaluated) must keep its own verdict, so a
+		// direct-pass forward is never mislabelled "verified via forwarder".
+		const settings = await ctx.db.query('instanceSettings').first();
+		const trustedForwarders = settings?.trustedArcForwarders ?? DEFAULT_TRUSTED_ARC_FORWARDERS;
+		const arcRescued =
+			args.dmarcResult === 'fail' &&
+			shouldArcOverrideDmarc(
+				{
+					arcCv: args.arcCv,
+					arcSealerDomain: args.arcSealerDomain,
+					arcAttestsOriginalPass: args.arcAttestsOriginalPass,
+				},
+				trustedForwarders
+			);
+		const dmarcOverride = arcRescued ? 'arc' : undefined;
+		const arcSealer = arcRescued ? args.arcSealerDomain : undefined;
+
 		// A DMARC fail (RFC 7489) routes to Spam only when the From-domain owner
 		// published an enforcing policy (`quarantine`/`reject`). A `p=none` fail
-		// is monitor-only — record the verdict but do not move the message.
+		// is monitor-only — record the verdict but do not move the message. A
+		// trusted-forwarder ARC rescue also suppresses the move.
 		const dmarcQuarantine =
+			!arcRescued &&
 			args.dmarcResult === 'fail' &&
 			(args.dmarcPolicy === 'quarantine' || args.dmarcPolicy === 'reject');
 		const initialRole =
@@ -819,6 +871,8 @@ export const deliverToMailbox = internalMutation({
 			dkimResult: args.dkimResult,
 			dmarcResult: args.dmarcResult,
 			dmarcPolicy: args.dmarcPolicy,
+			dmarcOverride,
+			arcSealer,
 			envelopeFromDomain: args.envelopeFromDomain,
 			dkimSigningDomain: args.dkimSigningDomain,
 			senderHeuristics,

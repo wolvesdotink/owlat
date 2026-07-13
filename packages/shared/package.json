@@ -157,6 +157,10 @@
 			"types": "./src/spfAlignment.ts",
 			"import": "./src/spfAlignment.ts"
 		},
+		"./arcTrust": {
+			"types": "./src/arcTrust.ts",
+			"import": "./src/arcTrust.ts"
+		},
 		"./spf": {
 			"types": "./src/spf.ts",
 			"import": "./src/spf.ts"

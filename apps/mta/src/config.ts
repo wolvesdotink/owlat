@@ -109,6 +109,8 @@ export interface MtaConfig {
 	inboundDkimEnabled: boolean;
 	/** Enable DMARC evaluation (RFC 7489) for inbound email */
 	inboundDmarcEnabled: boolean;
+	/** Enable ARC chain verification (RFC 8617) for inbound email (Sealed Mail A5) */
+	inboundArcEnabled: boolean;
 	/** Optional rspamd HTTP URL for content spam scoring */
 	rspamdUrl?: string;
 	/** Rspamd reject threshold (score above this rejects the email) */
@@ -454,6 +456,7 @@ export function loadConfig(): MtaConfig {
 		inboundSpfEnabled: optionalEnv('INBOUND_SPF_ENABLED', 'true') === 'true',
 		inboundDkimEnabled: optionalEnv('INBOUND_DKIM_ENABLED', 'true') === 'true',
 		inboundDmarcEnabled: optionalEnv('INBOUND_DMARC_ENABLED', 'true') === 'true',
+		inboundArcEnabled: optionalEnv('INBOUND_ARC_ENABLED', 'true') === 'true',
 		rspamdUrl: process.env['RSPAMD_URL'],
 		rspamdRejectThreshold: parseFloat(optionalEnv('RSPAMD_REJECT_THRESHOLD', '15')),
 		googlePostmasterCredentials: process.env['GOOGLE_POSTMASTER_CREDENTIALS'],
