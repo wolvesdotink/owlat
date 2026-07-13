@@ -19,6 +19,7 @@ import { internalAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { logError, logInfo } from '../lib/runtimeLog';
+import { storeSealedBlob, sealedBlobUrl } from '../lib/sealedBlob';
 import { renderEmailHtml, renderPlainText, renderAmpEmail } from '@owlat/email-renderer';
 import type { EditorBlock } from '@owlat/shared/types';
 import { getMailSyncConfig, getMtaConfig, scanAttachmentBytes } from './mtaClient';
@@ -164,7 +165,10 @@ async function dispatchViaExternalWorker(
 		});
 		return;
 	}
-	const rawEmlUrl = await ctx.storage.getUrl(params.rawStorageId);
+	// E8b: the stored `.eml` is sealed at rest, so hand the worker a
+	// decrypt-serving proxy URL — it fetches back the PLAINTEXT bytes to APPEND
+	// the sent copy remotely, exactly as it did with the bare storage URL.
+	const rawEmlUrl = await sealedBlobUrl(ctx.storage, params.rawStorageId, 'message/rfc822');
 	if (!rawEmlUrl) {
 		logError(`[Outbound] Missing raw .eml for external send of ${params.mailMessageId}`);
 		await transitionAll({
@@ -406,20 +410,20 @@ export const dispatchDraft = internalAction({
 		}
 		const storedSize = storedBytes.length;
 
-		// Store the raw .eml in Convex storage — the SEALED bytes when sealing
-		// applied. Convert to Uint8Array first because Blob's BlobPart type doesn't
-		// accept the Node Buffer<Shared|ArrayBuffer> union directly under newer
-		// @types/node.
+		// Store the raw .eml in Convex storage — `storedBytes` is the E2EE-SEALED
+		// wire bytes when Sealed Mail applied. Convert to Uint8Array first because
+		// Blob's BlobPart type doesn't accept the Node Buffer<Shared|ArrayBuffer>
+		// union directly under newer @types/node.
 		const rawBytes = new Uint8Array(
 			storedBytes.buffer,
 			storedBytes.byteOffset,
 			storedBytes.byteLength
 		);
-		const rawStorageId = await ctx.storage.store(
-			// `BlobPart` typings reject Uint8Array<ArrayBufferLike> under newer
-			// @types/node; the runtime accepts it. Cast through unknown.
-			new Blob([rawBytes as unknown as BlobPart], { type: 'message/rfc822' })
-		);
+		// E8b: wrap the bytes in the AT-REST byte cipher so the stored sent copy is
+		// ciphertext on disk. The outbound MTA / external-SMTP worker fetch the
+		// `.eml` back through the `/sealed-blob` decrypt-serving proxy (see the
+		// `rawEmlUrl` mint below), so what goes on the wire is the plaintext .eml.
+		const rawStorageId = await storeSealedBlob(ctx.storage, rawBytes, 'message/rfc822');
 
 		// Hand off to the lifecycle module — atomic with the six-table
 		// cascade, draft row delete, attachment-blob cleanup, address-book

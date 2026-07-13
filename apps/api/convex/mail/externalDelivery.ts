@@ -14,10 +14,16 @@
 
 import { v } from 'convex/values';
 import { mailMessageAttachmentValidator, mailUnsubscribeValidator } from '../lib/convexValidators';
-import { internalAction, internalMutation, internalQuery, type MutationCtx } from '../_generated/server';
+import {
+	internalAction,
+	internalMutation,
+	internalQuery,
+	type MutationCtx,
+} from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { insertDeliveredMessage, splitBodyForStorage, buildSnippet } from './delivery';
+import { storeSealedBlob } from '../lib/sealedBlob';
 import { extractListUnsubscribe } from '@owlat/shared/listUnsubscribe';
 
 const folderRoleValidator = v.union(
@@ -26,10 +32,8 @@ const folderRoleValidator = v.union(
 	v.literal('drafts'),
 	v.literal('trash'),
 	v.literal('spam'),
-	v.literal('archive'),
+	v.literal('archive')
 );
-
-
 
 /** Strip RFC 5322 angle brackets from a Message-ID for dedup. */
 function canonicalMessageId(raw: string): string {
@@ -112,7 +116,7 @@ export const ingestExternalMessage = internalMutation({
 		const folder = await ctx.db
 			.query('mailFolders')
 			.withIndex('by_mailbox_and_role', (q) =>
-				q.eq('mailboxId', mailbox._id).eq('role', args.folderRole),
+				q.eq('mailboxId', mailbox._id).eq('role', args.folderRole)
 			)
 			.first();
 		if (!folder) {
@@ -157,14 +161,19 @@ export const ingestExternalMessage = internalMutation({
 /** Upsert the (account, remoteName) cursor, advancing lastSeenUid monotonically. */
 async function advanceCursor(
 	ctx: MutationCtx,
-	args: { accountId: Id<'externalMailAccounts'>; remoteName: string; remoteUid: number; remoteUidValidity: number },
-	mailboxId: Id<'mailboxes'>,
+	args: {
+		accountId: Id<'externalMailAccounts'>;
+		remoteName: string;
+		remoteUid: number;
+		remoteUidValidity: number;
+	},
+	mailboxId: Id<'mailboxes'>
 ): Promise<void> {
 	const now = Date.now();
 	const existing = await ctx.db
 		.query('externalMailFolderSync')
 		.withIndex('by_account_and_remote', (q) =>
-			q.eq('accountId', args.accountId).eq('remoteName', args.remoteName),
+			q.eq('accountId', args.accountId).eq('remoteName', args.remoteName)
 		)
 		.first();
 	if (existing) {
@@ -233,7 +242,7 @@ export const recordFolderMapping = internalMutation({
 		const folder = await ctx.db
 			.query('mailFolders')
 			.withIndex('by_mailbox_and_role', (q) =>
-				q.eq('mailboxId', account.mailboxId).eq('role', args.folderRole),
+				q.eq('mailboxId', account.mailboxId).eq('role', args.folderRole)
 			)
 			.first();
 		if (!folder) return;
@@ -241,7 +250,7 @@ export const recordFolderMapping = internalMutation({
 		const existing = await ctx.db
 			.query('externalMailFolderSync')
 			.withIndex('by_account_and_remote', (q) =>
-				q.eq('accountId', args.accountId).eq('remoteName', args.remoteName),
+				q.eq('accountId', args.accountId).eq('remoteName', args.remoteName)
 			)
 			.first();
 		if (existing) {
@@ -300,12 +309,21 @@ export const ingestExternalRaw = internalAction({
 	},
 	handler: async (ctx, args): Promise<{ messageId: Id<'mailMessages'> } | { skipped: true }> => {
 		const rawBytes = Buffer.from(args.rawBytesBase64, 'base64');
-		const blob = new Blob([rawBytes], { type: 'message/rfc822' });
-		const rawStorageId = await ctx.storage.store(blob);
+		// E8b: seal the raw `.eml` at rest (byte cipher); the reader path + the
+		// `/sealed-blob` proxy unseal it for the web reader / IMAP bridge.
+		const rawStorageId = await storeSealedBlob(ctx.storage, rawBytes, 'message/rfc822');
 		// Bodies arrive uncapped from the worker; inline small ones, stash large
 		// ones as blobs (served lazily by mailbox.getMessageBody).
-		const textBody = await splitBodyForStorage(ctx, args.textBodyInline, 'text/plain; charset=utf-8');
-		const htmlBody = await splitBodyForStorage(ctx, args.htmlBodyInline, 'text/html; charset=utf-8');
+		const textBody = await splitBodyForStorage(
+			ctx,
+			args.textBodyInline,
+			'text/plain; charset=utf-8'
+		);
+		const htmlBody = await splitBodyForStorage(
+			ctx,
+			args.htmlBodyInline,
+			'text/html; charset=utf-8'
+		);
 		const snippet = buildSnippet(args.textBodyInline, args.htmlBodyInline);
 		// List-Unsubscribe / List-Unsubscribe-Post (RFC 2369 / 8058), parsed once
 		// at ingest so the reader's Unsubscribe chip never re-opens the raw .eml.

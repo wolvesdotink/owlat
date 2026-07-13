@@ -25,6 +25,7 @@
 import type { Doc, Id } from '../_generated/dataModel';
 import { getOptional, getRequired } from './env';
 import { openAtRest, sealAtRest, isSealedAtRest } from './atRestBodies';
+import { readSealedBlobText } from './sealedBlob';
 
 // ── Sealed-at-rest shim (E8b) ────────────────────────────────────────────────
 //
@@ -316,14 +317,12 @@ export async function readMailMessageText(
 	storage: BodyBlobStorageReader,
 	row: MailMessageTextFields
 ): Promise<string> {
-	// E8b: the inline snippet and the storage blob are both sealed at rest;
-	// unseal on the way out. `openMessageBody` passes legacy plaintext through
-	// unchanged, so a pre-E8b row or an unmigrated blob still resolves.
+	// E8b: the inline snippet is sealed as a DB string (text cipher); the storage
+	// blob is sealed byte-for-byte (blob cipher). Unseal on the way out with the
+	// matching accessor. Both pass legacy plaintext through unchanged, so a
+	// pre-E8b row or an unmigrated blob still resolves.
 	if (row.textBodyInline) return openMessageBody(row.textBodyInline);
-	if (row.textBodyStorageId) {
-		const blob = await storage.get(row.textBodyStorageId);
-		if (blob) return openMessageBody(await blob.text());
-	}
+	if (row.textBodyStorageId) return readSealedBlobText(storage, row.textBodyStorageId);
 	return '';
 }
 
