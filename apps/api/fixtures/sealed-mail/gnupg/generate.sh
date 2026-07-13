@@ -18,8 +18,8 @@
 # It mints both profiles with the checked-in `openpgp` dependency (the same
 # library the backend uses), so it is reproducible without any external keys.
 #
-# Run (from apps/api, where `openpgp` resolves):
-#   bash fixtures/sealed-mail/gnupg/generate.sh
+# Run (from any cwd — the script cd's into apps/api, where `openpgp` resolves):
+#   bash apps/api/fixtures/sealed-mail/gnupg/generate.sh
 # Optionally pass a path to an already-exported Owlat public key to test it
 # directly instead of minting a fresh one:
 #   bash fixtures/sealed-mail/gnupg/generate.sh /path/to/owlat-address.pub.asc
@@ -30,6 +30,17 @@ command -v gpg >/dev/null 2>&1 || { echo "gpg not found — install GnuPG to run
 command -v node >/dev/null 2>&1 || { echo "node not found"; exit 127; }
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Resolve any caller-supplied key path against the original cwd BEFORE we move.
+supplied_key=""
+if [[ "${1:-}" != "" ]]; then
+	supplied_key="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
+fi
+
+# openpgp resolves by a node_modules walk-up from the cwd (Node's ESM loader
+# ignores NODE_PATH), so run from apps/api where the dependency is installed —
+# this makes the script correct regardless of the caller's cwd.
+apps_api="$(cd "$here/../../.." && pwd)"
+cd "$apps_api"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
@@ -42,15 +53,15 @@ chmod 700 "$GNUPGHOME"
 legacy_pub="$work/legacy.pub.asc"
 newstyle_pub="$work/newstyle.pub.asc"
 
-if [[ "${1:-}" != "" ]]; then
+if [[ "$supplied_key" != "" ]]; then
 	# Caller supplied a real Owlat-exported public key — test it directly.
-	cp "$1" "$legacy_pub"
-	echo "Using supplied Owlat public key: $1"
+	cp "$supplied_key" "$legacy_pub"
+	echo "Using supplied Owlat public key: $supplied_key"
 else
 	# Mint both profiles with the same openpgp.js the backend uses. The heredoc is
 	# ESM (top-level `import` + `await`), so stdin MUST be flagged as a module —
 	# `node -` defaults to CommonJS and would reject the `import`.
-	NODE_PATH="${NODE_PATH:-$here/../../../node_modules}" node --input-type=module - "$legacy_pub" "$newstyle_pub" <<'NODE'
+	node --input-type=module - "$legacy_pub" "$newstyle_pub" <<'NODE'
 import * as openpgp from 'openpgp';
 import { writeFileSync } from 'node:fs';
 const [, , legacyOut, newStyleOut] = process.argv;
