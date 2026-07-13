@@ -6,6 +6,7 @@ import { hostname } from 'os';
 import { isOutboundTlsMode, OUTBOUND_TLS_MODES, type OutboundTlsMode } from '@owlat/shared';
 import type { IpPoolConfig, DkimKeyConfig, DomainProfile } from './types.js';
 import { assertMtaSecretStrength } from './lib/secretBox.js';
+import { loadDaneConfig } from './daneConfig.js';
 
 export interface MtaConfig {
 	/** HTTP server port */
@@ -139,6 +140,24 @@ export interface MtaConfig {
 	 * to `opportunistic`, the historic default).
 	 */
 	outboundTlsMode?: OutboundTlsMode;
+	/**
+	 * DANE (RFC 7672) at send time. Off by default (locked decision D6): when
+	 * enabled, the sender looks up each recipient MX's DNSSEC-authenticated TLSA
+	 * RRset and authenticates the MX certificate against it — a require-TLS floor
+	 * that supersedes MTA-STS. Flag off is byte-identical to the historic path.
+	 *
+	 * `loadConfig` always populates this; optional only so partial test-double
+	 * configs and `as MtaConfig` casts need not restate it (read sites treat an
+	 * absent value as off).
+	 */
+	daneEnabled?: boolean;
+	/**
+	 * DoH resolver URL used for DANE TLSA lookups (RFC 8484 JSON). Required when
+	 * `daneEnabled`. The AD (DNSSEC Authenticated Data) bit is trusted, so this
+	 * MUST be a validating resolver — a local validating resolver is the
+	 * recommended production configuration.
+	 */
+	daneResolverUrl?: string;
 }
 
 /**
@@ -398,6 +417,11 @@ export function loadConfig(): MtaConfig {
 	}
 	const outboundTlsMode: OutboundTlsMode = outboundTlsModeRaw;
 
+	// DANE (RFC 7672) at send time — off by default (locked decision D6). Parsing
+	// and validation (mandatory validating resolver, https-only channel) lives in
+	// daneConfig.ts to keep this module under the file-size gate.
+	const { daneEnabled, daneResolverUrl } = loadDaneConfig(optionalEnv);
+
 	return {
 		port: parseInt(optionalEnv('PORT', '3100'), 10),
 		bouncePort: parseInt(optionalEnv('BOUNCE_PORT', '25'), 10),
@@ -467,5 +491,7 @@ export function loadConfig(): MtaConfig {
 			10
 		),
 		outboundTlsMode,
+		daneEnabled,
+		daneResolverUrl,
 	};
 }

@@ -77,6 +77,7 @@ describe('resolveTlsRequirements — 3×3 mode × STS-state matrix', () => {
 		expect(result).toEqual({
 			requireTLS: false,
 			rejectUnauthorized: false,
+			daneRequired: false,
 			reason:
 				'local policy opportunistic; no MTA-STS policy → requireTLS=false, verify=false (strictest-wins)',
 		});
@@ -117,20 +118,79 @@ describe('resolveTlsRequirements — reason strings', () => {
 	});
 });
 
-describe('resolveTlsRequirements — DANE parameter (T3 seam)', () => {
-	it('accepts a daneResult and does not yet influence the outcome (null on this branch)', () => {
-		const base = resolveTlsRequirements({
-			localMode: 'require',
-			stsPolicy: { policyMode: 'none' },
-			daneResult: null,
-		});
-		// A (future) usable DANE result must not change the result on this branch.
-		const withDane = resolveTlsRequirements({
-			localMode: 'require',
+describe('resolveTlsRequirements — DANE precedence (T3, RFC 7672 §2)', () => {
+	it('a usable DANE result raises the TLS floor and sets daneRequired', () => {
+		const result = resolveTlsRequirements({
+			localMode: 'opportunistic',
 			stsPolicy: { policyMode: 'none' },
 			daneResult: { usable: true },
 		});
-		expect(withDane).toEqual(base);
+		expect(result.requireTLS).toBe(true);
+		expect(result.daneRequired).toBe(true);
+		expect(result.reason).toContain('DANE TLSA authenticated');
+		expect(result.reason).toContain('supersedes MTA-STS');
+	});
+
+	it('DANE beats STS-none: opportunistic + none + DANE => require TLS', () => {
+		const noDane = resolveTlsRequirements({
+			localMode: 'opportunistic',
+			stsPolicy: { policyMode: 'none' },
+			daneResult: null,
+		});
+		const withDane = resolveTlsRequirements({
+			localMode: 'opportunistic',
+			stsPolicy: { policyMode: 'none' },
+			daneResult: { usable: true },
+		});
+		expect(noDane.requireTLS).toBe(false);
+		expect(withDane.requireTLS).toBe(true);
+		expect(withDane.daneRequired).toBe(true);
+	});
+
+	it('DANE forces verified TLS even under opportunistic + no policy (checkServerIdentity needs a PKIX-authorized chain)', () => {
+		const result = resolveTlsRequirements({
+			localMode: 'opportunistic',
+			stsPolicy: { policyMode: 'none' },
+			daneResult: { usable: true },
+		});
+		// Node only invokes the DANE checkServerIdentity hook on a PKIX-authorized
+		// chain, so a DANE send must verify the certificate (fail-closed) — the local
+		// opportunistic floor cannot lower it back to unverified.
+		expect(result.rejectUnauthorized).toBe(true);
+		expect(result.requireTLS).toBe(true);
+		expect(result.daneRequired).toBe(true);
+	});
+
+	it('DANE beats STS-testing: testing is report-only, DANE still mandates TLS', () => {
+		const result = resolveTlsRequirements({
+			localMode: 'opportunistic',
+			stsPolicy: { policyMode: 'testing' },
+			daneResult: { usable: true },
+		});
+		expect(result.requireTLS).toBe(true);
+		expect(result.daneRequired).toBe(true);
+	});
+
+	it('DANE agrees with STS-enforce: both demand TLS; daneRequired flags the cert match', () => {
+		const result = resolveTlsRequirements({
+			localMode: 'opportunistic',
+			stsPolicy: { policyMode: 'enforce' },
+			daneResult: { usable: true },
+		});
+		expect(result.requireTLS).toBe(true);
+		expect(result.rejectUnauthorized).toBe(true);
+		expect(result.daneRequired).toBe(true);
+	});
+
+	it('a non-usable DANE result (no TLSA) leaves the STS/local floor untouched', () => {
+		const result = resolveTlsRequirements({
+			localMode: 'opportunistic',
+			stsPolicy: { policyMode: 'none' },
+			daneResult: { usable: false },
+		});
+		expect(result.requireTLS).toBe(false);
+		expect(result.daneRequired).toBe(false);
+		expect(result.reason).not.toContain('DANE TLSA authenticated');
 	});
 });
 
