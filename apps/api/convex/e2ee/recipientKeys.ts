@@ -99,8 +99,13 @@ export const upsertDiscovery = internalMutation({
 });
 
 /**
- * Addresses whose cache entry expires at/before `before`, oldest first. The
- * scheduled refresh cron pages this worklist and re-discovers each. Internal.
+ * PINNED addresses whose cache entry expires at/before `before`, oldest first.
+ * The scheduled refresh cron pages this worklist and re-discovers each — its
+ * purpose is rotated-key pickup, so it is scoped to rows that actually hold a
+ * pin. A `notFound` negative (no pin) is intentionally NOT refreshed here:
+ * on-demand discovery already re-checks negatives via `shouldRefetch` when a
+ * send needs the address, so an address that never publishes a key does not get
+ * fetched hourly forever. Internal.
  */
 export const listExpiring = internalQuery({
 	args: { before: v.number(), limit: v.number() },
@@ -108,6 +113,7 @@ export const listExpiring = internalQuery({
 		const rows = await ctx.db
 			.query('recipientKeys')
 			.withIndex('by_expiresAt', (q) => q.lte('expiresAt', args.before))
+			.filter((q) => q.neq(q.field('pinnedFingerprint'), undefined))
 			.take(Math.max(1, Math.min(args.limit, 200)));
 		return rows.map((r) => r.address);
 	},
@@ -121,6 +127,11 @@ export const listExpiring = internalQuery({
  * seals mail to, which is org-private correspondence metadata, so it is NOT an
  * anonymous read even though the key bytes themselves are public.
  */
+// all-members: any authenticated org member may read a recipient's PUBLIC key /
+// pin state — it backs the reader's Sealed-Mail badge and returns only
+// fingerprints + TOFU trust state (no private material exists in this table).
+// Authed (not public) solely so the row set isn't an anonymous enumeration
+// oracle for whom this org seals mail to.
 export const getRecipientKeyStatus = authedQuery({
 	args: { address: v.string() },
 	returns: v.union(
