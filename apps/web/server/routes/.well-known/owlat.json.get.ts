@@ -9,17 +9,11 @@
  * key); returns null — and this route 404s — before the instance identity has
  * been minted. Public; no authentication involved.
  */
-import { ConvexHttpClient } from 'convex/browser';
 import { api } from '@owlat/api';
+import { publicConvexClient } from '../../utils/publicConvexClient';
 
 export default defineEventHandler(async (event): Promise<unknown> => {
-	const config = useRuntimeConfig(event);
-	const convexUrl = config.public.convexUrl ?? '';
-	if (!convexUrl) {
-		throw createError({ statusCode: 404, statusMessage: 'Not Found' });
-	}
-
-	const client = new ConvexHttpClient(convexUrl);
+	const client = publicConvexClient(event);
 	const manifest = await client.action(api.e2ee.manifest.getSignedManifest, {});
 	if (!manifest) {
 		throw createError({ statusCode: 404, statusMessage: 'Not Found' });
