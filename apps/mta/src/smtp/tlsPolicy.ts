@@ -25,13 +25,17 @@ export { OUTBOUND_TLS_MODES, isOutboundTlsMode } from '@owlat/shared';
 export type StsPolicyMode = 'enforce' | 'testing' | 'none';
 
 /**
- * TLSA / DANE verification outcome for the target MX (RFC 7672). Populated by
- * T3; on this branch the resolver always receives `null` and never branches on
- * it (the parameter is plumbed through so T3 is a pure addition, not a signature
- * change).
+ * TLSA / DANE state for the target MX (RFC 7672). Supplied by the sender when
+ * `DANE_ENABLED` and the recipient MX publishes a DNSSEC-authenticated TLSA
+ * RRset; `null` when DANE is off or no usable TLSA exists (then the resolver
+ * behaves exactly as it did before T3).
  */
 export interface DaneTlsaResult {
-	/** Whether a usable, AD-trusted TLSA record set validated the MX certificate. */
+	/**
+	 * Whether the MX published at least one SMTP-usable (DANE-TA/DANE-EE), AD-trusted
+	 * TLSA record. When true the sender MUST authenticate the MX certificate against
+	 * that RRset — a require-TLS floor that supersedes MTA-STS (RFC 7672 §2).
+	 */
 	usable: boolean;
 }
 
@@ -40,15 +44,22 @@ export interface ResolveTlsRequirementsInput {
 	localMode: OutboundTlsMode;
 	/** The recipient domain's MTA-STS policy state. */
 	stsPolicy: { policyMode: StsPolicyMode };
-	/** DANE/TLSA result — always `null` until T3 lands. */
+	/** DANE/TLSA result — `null` when DANE is off or no usable TLSA exists. */
 	daneResult: DaneTlsaResult | null;
 }
 
 export interface TlsRequirements {
 	/** Whether the STARTTLS upgrade is mandatory (fail delivery if unavailable). */
 	requireTLS: boolean;
-	/** Whether the MX certificate must verify against the trust store. */
+	/** Whether the MX certificate must verify against the trust store (PKIX). */
 	rejectUnauthorized: boolean;
+	/**
+	 * Whether the MX certificate must additionally be authenticated against a DANE
+	 * TLSA RRset (RFC 7672). When true the sender attaches the TLSA match to the
+	 * handshake; a non-matching certificate fails the delivery (no cleartext
+	 * fallback).
+	 */
+	daneRequired: boolean;
 	/** Human-readable explanation of why this floor was chosen (logged, tested). */
 	reason: string;
 }
@@ -91,26 +102,30 @@ const STS_REASON: Record<StsPolicyMode, string> = {
 
 /**
  * Resolve the TLS requirements for one delivery attempt via strictest-wins over
- * the local mode and the recipient's MTA-STS state (DANE is accepted but not yet
- * consulted — see {@link DaneTlsaResult}).
+ * the local mode, the recipient's MTA-STS state, and DANE.
+ *
+ * DANE precedence (RFC 7672 §2): a usable, DNSSEC-authenticated TLSA RRset
+ * mandates authenticated TLS regardless of MTA-STS — so a usable DANE result
+ * raises the TLS floor even when MTA-STS is absent or in testing mode, and
+ * agrees with an MTA-STS enforce policy. DANE authenticates the certificate via
+ * the TLSA match (`daneRequired`), not via the PKIX trust store, so it does not
+ * by itself set `rejectUnauthorized` (that stays driven by the local/STS floor).
  */
 export function resolveTlsRequirements({
 	localMode,
 	stsPolicy,
 	daneResult,
 }: ResolveTlsRequirementsInput): TlsRequirements {
-	// DANE is plumbed through for T3; it is always null on this branch and must
-	// not influence the result yet. Referenced so the parameter is not flagged as
-	// unused while T3 is pending.
-	void daneResult;
-
 	const local = LOCAL_FLOOR[localMode];
 	const sts = STS_FLOOR[stsPolicy.policyMode];
+	const daneRequired = daneResult?.usable === true;
 
-	const requireTLS = local.requireTLS || sts.requireTLS;
+	const requireTLS = local.requireTLS || sts.requireTLS || daneRequired;
 	const rejectUnauthorized = local.rejectUnauthorized || sts.rejectUnauthorized;
 
-	const reason = `${LOCAL_REASON[localMode]}; ${STS_REASON[stsPolicy.policyMode]} → requireTLS=${requireTLS}, verify=${rejectUnauthorized} (strictest-wins)`;
+	const reason = daneRequired
+		? `${LOCAL_REASON[localMode]}; ${STS_REASON[stsPolicy.policyMode]}; DANE TLSA authenticated (RFC 7672, supersedes MTA-STS) → requireTLS=${requireTLS}, verify=${rejectUnauthorized}, dane=true (strictest-wins)`
+		: `${LOCAL_REASON[localMode]}; ${STS_REASON[stsPolicy.policyMode]} → requireTLS=${requireTLS}, verify=${rejectUnauthorized} (strictest-wins)`;
 
-	return { requireTLS, rejectUnauthorized, reason };
+	return { requireTLS, rejectUnauthorized, daneRequired, reason };
 }
