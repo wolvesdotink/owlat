@@ -252,6 +252,36 @@ describe('readinessInputFromSources — outbound alignment', () => {
 		expect(result.transportMisaligned).toBe(false);
 	});
 
+	it('passes for SES with a domain (Easy DKIM) identity signing as the sending domain', () => {
+		// SES isn't the built-in MTA, so it has no per-From-domain default: it aligns
+		// only when the operator has declared its DKIM `d=` as their sending domain.
+		const result = readinessInputFromSources({ canSend: true }, [verifiedRow], null, {
+			facts: { kind: 'ses', returnPathDomain: null, dkimDomain: 'acme.com' },
+			fromDomains: ['acme.com'],
+		});
+		expect(result.transportMisaligned).toBe(false);
+	});
+
+	it('leaves SES with undeclared identities as unknown (no warning, never a claimed failure)', () => {
+		const result = readinessInputFromSources({ canSend: true }, [verifiedRow], null, {
+			facts: { kind: 'ses', returnPathDomain: null, dkimDomain: null },
+			fromDomains: ['acme.com'],
+		});
+		expect(result.transportMisaligned).toBe(false);
+		expect(result.misalignedDomains).toEqual([]);
+		expect(result.alignmentReason).toBeNull();
+	});
+
+	it('warns for SES configured to sign and bounce as a foreign domain', () => {
+		const result = readinessInputFromSources({ canSend: true }, [verifiedRow], null, {
+			facts: { kind: 'ses', returnPathDomain: 'amazonses.com', dkimDomain: 'amazonses.com' },
+			fromDomains: ['acme.com'],
+		});
+		expect(result.transportMisaligned).toBe(true);
+		expect(result.misalignedDomains).toEqual(['acme.com']);
+		expect(result.alignmentReason).toContain('amazonses.com');
+	});
+
 	it('leaves alignment unset (no warning) when no alignment source is provided', () => {
 		const result = readinessInputFromSources({ canSend: true }, [verifiedRow]);
 		expect(result.transportMisaligned).toBe(false);
