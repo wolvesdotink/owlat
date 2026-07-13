@@ -203,3 +203,127 @@ export async function openAtRest(secret: string, stored: string): Promise<string
 	);
 	return decoder.decode(plaintext);
 }
+
+// ── BINARY (blob) sealing ────────────────────────────────────────────────────
+//
+// The string envelope above is text-based (`TextEncoder`/`TextDecoder`) and is
+// how the inline DB body columns are sealed. A STORAGE BLOB — the raw `.eml` at
+// `rawStorageId`, and the `*BodyStorageId` body blobs — can carry non-UTF-8
+// bytes (8-bit MIME, binary attachments in the raw message), so it must be
+// sealed byte-for-byte and never round-tripped through UTF-8. These functions
+// are the byte-level counterpart: same AES-256-GCM, same HKDF-over-INSTANCE_SECRET
+// construction, but a DISTINCT HKDF info label (domain-separated from the inline
+// key) and a compact BINARY envelope instead of the colon-delimited string.
+//
+// BLOB ENVELOPE (bytes): `MAGIC(6) ‖ version(1) ‖ iv(12) ‖ ciphertext‖gcmTag`.
+// `MAGIC` + version let a reader tell a sealed blob from a legacy-plaintext one
+// WITHOUT a key (mixed-tolerance during the back-fill), exactly like the string
+// prefix does for inline bodies.
+
+/** HKDF info label for the BLOB key — domain-separated from the inline body key. */
+const BLOB_HKDF_INFO = 'owlat:at-rest:blobs:v1';
+/** HKDF salt for the blob key — pinned alongside the info label. */
+const BLOB_HKDF_SALT = 'owlat:at-rest:blobs:salt:v1';
+/** Magic header bytes: ASCII "ARBLB1" (At-Rest BLoB, format 1). */
+const BLOB_MAGIC = new Uint8Array([0x41, 0x52, 0x42, 0x4c, 0x42, 0x31]); // "ARBLB1"
+const BLOB_VERSION = 1;
+const BLOB_HEADER_BYTES = BLOB_MAGIC.length + 1 + IV_BYTES; // magic + version + iv
+
+/** Derive the 256-bit AES-GCM key for BLOBS from the instance secret. */
+async function deriveBlobKey(secret: string): Promise<CryptoKey> {
+	const ikm = await crypto.subtle.importKey('raw', encoder.encode(secret), 'HKDF', false, [
+		'deriveKey',
+	]);
+	return crypto.subtle.deriveKey(
+		{
+			name: 'HKDF',
+			hash: 'SHA-256',
+			salt: encoder.encode(BLOB_HKDF_SALT),
+			info: encoder.encode(BLOB_HKDF_INFO),
+		},
+		ikm,
+		{ name: 'AES-GCM', length: 256 },
+		false,
+		['encrypt', 'decrypt']
+	);
+}
+
+/** Parse a sealed BLOB envelope into `{ iv, ciphertext }`, or `null` if `bytes`
+ * is NOT a structurally valid sealed blob (legacy plaintext). STRICT, keyless —
+ * the magic + version must match and the length must leave room for a GCM tag. */
+function parseBlobEnvelope(bytes: Uint8Array): ParsedEnvelope | null {
+	if (bytes.length < BLOB_HEADER_BYTES + GCM_TAG_BYTES) return null;
+	for (let i = 0; i < BLOB_MAGIC.length; i++) {
+		if (bytes[i] !== BLOB_MAGIC[i]) return null;
+	}
+	if (bytes[BLOB_MAGIC.length] !== BLOB_VERSION) return null;
+	const ivStart = BLOB_MAGIC.length + 1;
+	const iv = bytes.slice(ivStart, ivStart + IV_BYTES);
+	const ciphertext = bytes.slice(ivStart + IV_BYTES);
+	return {
+		iv: new Uint8Array(iv) as Uint8Array<ArrayBuffer>,
+		ciphertext: new Uint8Array(ciphertext) as Uint8Array<ArrayBuffer>,
+	};
+}
+
+/** Is `bytes` an at-rest-sealed BLOB? Cheap, keyless, structurally strict — the
+ * blob-envelope counterpart of {@link isSealedAtRest}. `false` ⇒ treat as
+ * legacy plaintext (read verbatim), never "fail". */
+export function isSealedBytesAtRest(bytes: Uint8Array): boolean {
+	return parseBlobEnvelope(bytes) !== null;
+}
+
+/**
+ * Seal blob bytes into the binary envelope. Empty input returns empty (nothing
+ * to hide). IDEMPOTENCY IS KEYED, mirroring {@link sealAtRest}: an
+ * already-sealed blob (one that actually decrypts under this instance's blob
+ * key) is returned unchanged; a plaintext blob that merely happens to begin
+ * with the magic bytes fails the decrypt and is sealed for real.
+ */
+export async function sealBytesAtRest(
+	secret: string,
+	plaintext: Uint8Array
+): Promise<Uint8Array<ArrayBuffer>> {
+	if (plaintext.length === 0) return new Uint8Array(0);
+	const key = await deriveBlobKey(secret);
+	const existing = parseBlobEnvelope(plaintext);
+	if (existing !== null) {
+		try {
+			await crypto.subtle.decrypt({ name: 'AES-GCM', iv: existing.iv }, key, existing.ciphertext);
+			return new Uint8Array(plaintext) as Uint8Array<ArrayBuffer>; // already our ciphertext
+		} catch {
+			// Magic-shaped but not ours: fall through and seal for real.
+		}
+	}
+	const iv = crypto.getRandomValues(new Uint8Array(IV_BYTES));
+	const ciphertext = new Uint8Array(
+		await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, plaintext as BufferSource)
+	);
+	const out = new Uint8Array(BLOB_HEADER_BYTES + ciphertext.length);
+	out.set(BLOB_MAGIC, 0);
+	out[BLOB_MAGIC.length] = BLOB_VERSION;
+	out.set(iv, BLOB_MAGIC.length + 1);
+	out.set(ciphertext, BLOB_HEADER_BYTES);
+	return out;
+}
+
+/**
+ * Open a stored blob. A value that is NOT a structurally valid sealed blob is
+ * returned verbatim (the mixed-tolerance contract that keeps a half-migrated
+ * store fully readable — a pre-seal or unmigrated blob reads as its own bytes).
+ * A sealed blob is decrypted; an auth-tag mismatch (tamper / wrong key) throws.
+ */
+export async function openBytesAtRest(
+	secret: string,
+	stored: Uint8Array
+): Promise<Uint8Array<ArrayBuffer>> {
+	const envelope = parseBlobEnvelope(stored);
+	if (envelope === null) return new Uint8Array(stored) as Uint8Array<ArrayBuffer>;
+	const key = await deriveBlobKey(secret);
+	const plaintext = await crypto.subtle.decrypt(
+		{ name: 'AES-GCM', iv: envelope.iv },
+		key,
+		envelope.ciphertext
+	);
+	return new Uint8Array(plaintext) as Uint8Array<ArrayBuffer>;
+}
