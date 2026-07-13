@@ -253,6 +253,24 @@ export const getInstancePublicKey = publicQuery({
 });
 
 /**
+ * Every `keyVault` row's subject + its armored public key, so the Node plane can
+ * detect which keys are still on the old RFC 9580 new-style profile and re-mint
+ * them onto the GnuPG-compatible legacy profile. Internal — read by the re-mint
+ * migration action; carries PUBLIC material only (never the sealed private half).
+ */
+export const listKeyProfiles = internalQuery({
+	args: {},
+	handler: async (ctx) => {
+		const rows = await ctx.db.query('keyVault').collect(); // bounded: one row per address + the single instance identity.
+		return rows.map((r) => ({
+			kind: r.kind,
+			address: r.address,
+			publicKeyArmored: r.publicKeyArmored,
+		}));
+	},
+});
+
+/**
  * Every sendable Postbox address (mailbox canonical addresses + aliases) that
  * does NOT yet have an active `keyVault` key. The idempotent backfill worklist.
  * Internal — read by the backfill action.

@@ -18,6 +18,50 @@ import * as openpgp from 'openpgp';
 import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import { createSecretBox } from '../../lib/credentialCrypto';
+import { wkdHashForAddress, armoredToBinaryBase64 } from '../wkd';
+
+/**
+ * Assert an armored public key uses the GnuPG-compatible LEGACY curve25519
+ * profile (EdDSA-legacy signing primary + ECDH encryption subkey) and NOT the
+ * RFC 9580 new-style ed25519/x25519 algorithm IDs that GnuPG/Thunderbird reject.
+ */
+async function assertLegacyProfile(publicKeyArmored: string): Promise<void> {
+	const key = await openpgp.readKey({ armoredKey: publicKeyArmored });
+	const primary = key.getAlgorithmInfo();
+	const subkey = key.getSubkeys()[0]?.getAlgorithmInfo();
+	// Primary: EdDSA-legacy on a 25519 curve — never the new-style ed25519 ID.
+	expect(primary.algorithm).toBe('eddsaLegacy');
+	expect(primary.algorithm).not.toBe('ed25519');
+	expect(String(primary.curve).toLowerCase()).toContain('25519');
+	// Encryption subkey: ECDH on curve25519 — never the new-style x25519 ID.
+	expect(subkey?.algorithm).toBe('ecdh');
+	expect(subkey?.algorithm).not.toBe('x25519');
+	expect(String(subkey?.curve).toLowerCase()).toContain('25519');
+}
+
+/** Mint an OLD RFC 9580 new-style key (the pre-fix keygen shape) for migration tests. */
+async function mintNewStyleKey(
+	email: string,
+	name: string
+): Promise<{
+	fingerprint: string;
+	publicKeyArmored: string;
+	privateKeyArmored: string;
+	binaryBase64: string;
+}> {
+	const { privateKey, publicKey } = await openpgp.generateKey({
+		type: 'curve25519',
+		userIDs: [{ name, email }],
+		format: 'armored',
+	});
+	const key = await openpgp.readKey({ armoredKey: publicKey });
+	return {
+		fingerprint: key.getFingerprint().toUpperCase(),
+		publicKeyArmored: publicKey,
+		privateKeyArmored: privateKey,
+		binaryBase64: await armoredToBinaryBase64(publicKey),
+	};
+}
 
 const rootGlob = import.meta.glob('../../**/*.*s');
 const e2eeGlob = Object.fromEntries(
@@ -204,5 +248,107 @@ describe('e2ee/keys', () => {
 		// Re-running is idempotent: nothing new is minted.
 		const again = await t.action(internal.e2ee.keysNode.runBackfill, {});
 		expect(again.minted).toBe(0);
+	});
+
+	it('mints address AND instance keys on the GnuPG-compatible legacy profile', async () => {
+		const t = convexTest(schema, modules);
+
+		// Address key — primary + encryption subkey both legacy-profile.
+		const address = 'legacy@sealed.example.com';
+		await t.action(internal.e2ee.keysNode.mintForAddress, { address });
+		const addressRow = await t.run((ctx) =>
+			ctx.db
+				.query('keyVault')
+				.withIndex('by_address', (q) => q.eq('address', address))
+				.first()
+		);
+		await assertLegacyProfile(addressRow!.publicKeyArmored);
+
+		// Instance identity key — same legacy profile.
+		await t.action(internal.e2ee.keysNode.ensureInstanceIdentity, {});
+		const instanceRow = await t.run((ctx) =>
+			ctx.db
+				.query('keyVault')
+				.withIndex('by_kind', (q) => q.eq('kind', 'instance'))
+				.first()
+		);
+		await assertLegacyProfile(instanceRow!.publicKeyArmored);
+	});
+
+	it('re-mints old new-style keys onto the legacy profile, idempotently, refreshing WKD + manifest', async () => {
+		const t = convexTest(schema, modules);
+
+		// Sealed Mail ON so the manifest signing path is live.
+		await t.run(async (ctx) => {
+			await ctx.db.insert('instanceSettings', {
+				featureFlags: { postbox: true, senderAuthBadges: true, sealedMail: true },
+				createdAt: Date.now(),
+			});
+		});
+
+		// Seed an instance identity + an address key on the OLD new-style profile,
+		// exactly as the pre-fix keygen would have produced them. Private keys are
+		// sealed for real so the manifest can sign with the (old) instance key.
+		const box = createSecretBox('unit-test-instance-secret-value', E2EE_KEY_BOX);
+		const domain = 'sealed.example.com';
+		const address = 'legacy@sealed.example.com';
+		const instanceOld = await mintNewStyleKey(`instance@${domain}`, 'Owlat instance');
+		const addressOld = await mintNewStyleKey(address, address);
+		const now = Date.now();
+		await t.run(async (ctx) => {
+			await ctx.db.insert('keyVault', {
+				kind: 'instance',
+				fingerprint: instanceOld.fingerprint,
+				algorithm: 'ed25519',
+				publicKeyArmored: instanceOld.publicKeyArmored,
+				publicKeyBinaryBase64: instanceOld.binaryBase64,
+				sealedPrivateKey: box.seal(instanceOld.privateKeyArmored),
+				isActive: true,
+				createdAt: now,
+				updatedAt: now,
+			});
+			await ctx.db.insert('keyVault', {
+				kind: 'address',
+				address,
+				domain,
+				wkdHash: wkdHashForAddress(address),
+				fingerprint: addressOld.fingerprint,
+				algorithm: 'ed25519',
+				publicKeyArmored: addressOld.publicKeyArmored,
+				publicKeyBinaryBase64: addressOld.binaryBase64,
+				sealedPrivateKey: box.seal(addressOld.privateKeyArmored),
+				isActive: true,
+				createdAt: now,
+				updatedAt: now,
+			});
+		});
+
+		// Baseline manifest digest over the OLD address fingerprint.
+		const before = await t.action(api.e2ee.manifest.getSignedManifest, {});
+		expect(before).not.toBeNull();
+
+		// Migrate: both stale-profile keys are re-minted.
+		const first = await t.action(internal.e2ee.keysNode.remintLegacyProfile, {});
+		expect(first.total).toBe(2);
+		expect(first.reminted).toBe(2);
+
+		// Every row now carries the legacy profile.
+		const rows = await t.run((ctx) => ctx.db.query('keyVault').collect());
+		expect(rows).toHaveLength(2);
+		for (const row of rows) await assertLegacyProfile(row.publicKeyArmored);
+
+		// WKD binary body was refreshed (new key => new published bytes).
+		const addressRow = rows.find((r) => r.kind === 'address');
+		expect(addressRow?.publicKeyBinaryBase64).not.toBe(addressOld.binaryBase64);
+
+		// Manifest key-directory digest changed (address fingerprint changed).
+		const after = await t.action(api.e2ee.manifest.getSignedManifest, {});
+		expect(after).not.toBeNull();
+		expect(after!.keyDirectoryDigest).not.toBe(before!.keyDirectoryDigest);
+
+		// Idempotent: a second run re-mints nothing (all keys already legacy).
+		const second = await t.action(internal.e2ee.keysNode.remintLegacyProfile, {});
+		expect(second.total).toBe(2);
+		expect(second.reminted).toBe(0);
 	});
 });

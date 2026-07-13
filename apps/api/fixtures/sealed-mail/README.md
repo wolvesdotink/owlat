@@ -15,6 +15,7 @@ time. Regeneration is an offline, developer-only step documented below.
 | DNS mocks | `dns/tlsa.json`, `dns/mta-sts-txt.json` | **Real** — hand-authored resolver-answer shapes (TLSA usage/selector/matching-type; `_mta-sts` TXT + policy body) | edit by hand |
 | PGP/MIME | `pgp-mime/*.eml` | **Real, self-verified** — genuine OpenPGP material produced by `pgp-mime/generate.mjs` with the committed throwaway keys: `good-sig` verifies, `bad-sig` fails, `protected-headers` decrypts to the inner subject (outer `Subject` stays `...` per D4). Bytes are CRLF; `.gitattributes` exempts the corpus from EOL normalization | `node pgp-mime/generate.mjs` |
 | ARC | `arc/*.eml` | **Structural placeholders** — RFC 8617 header sets are real; the `b=`/`bh=` signature values are placeholders. No sanctioned offline ARC sealer is in the dependency set, so real chains are a QA follow-up | `gpg`/OpenARC below |
+| GnuPG interop | `gnupg/generate.sh` | **Offline, developer-only script (no committed bytes)** — mints a legacy-profile and a new-style Owlat key with the checked-in `openpgp`, then proves real `gpg` CAN `--encrypt` to the legacy-profile key and CANNOT to the new-style one (the E1b interop bug). Needs `gpg` on the machine, so CI never runs it | `bash gnupg/generate.sh` |
 
 > The ARC `.eml` files still carry **placeholder** cryptographic material
 > (`PLACEHOLDER_...`, `=AAAA` armor tails): they exercise the RFC 8617 header-set

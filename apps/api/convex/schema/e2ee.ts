@@ -44,8 +44,10 @@ export const e2eeTables = {
 		wkdHash: v.optional(v.string()),
 		// Uppercase-hex OpenPGP v4 primary-key fingerprint (identity of the key).
 		fingerprint: v.string(),
-		// Primary key algorithm label, e.g. `ed25519` (Ed25519 sign primary with
-		// an X25519 encryption subkey, per locked decision D1).
+		// Primary key algorithm label, e.g. `eddsaLegacy` (the GnuPG-compatible
+		// LEGACY curve25519 profile: EdDSA-legacy sign primary + ECDH encryption
+		// subkey — what every OpenPGP implementation accepts; per locked decision
+		// D1 the message/signature format is unchanged, only the key profile).
 		algorithm: v.string(),
 		// ASCII-armored transferable PUBLIC key (safe to serve).
 		publicKeyArmored: v.string(),
