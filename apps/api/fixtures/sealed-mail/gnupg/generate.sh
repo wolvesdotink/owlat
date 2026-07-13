@@ -47,8 +47,10 @@ if [[ "${1:-}" != "" ]]; then
 	cp "$1" "$legacy_pub"
 	echo "Using supplied Owlat public key: $1"
 else
-	# Mint both profiles with the same openpgp.js the backend uses.
-	NODE_PATH="${NODE_PATH:-$here/../../../node_modules}" node - "$legacy_pub" "$newstyle_pub" <<'NODE'
+	# Mint both profiles with the same openpgp.js the backend uses. The heredoc is
+	# ESM (top-level `import` + `await`), so stdin MUST be flagged as a module —
+	# `node -` defaults to CommonJS and would reject the `import`.
+	NODE_PATH="${NODE_PATH:-$here/../../../node_modules}" node --input-type=module - "$legacy_pub" "$newstyle_pub" <<'NODE'
 import * as openpgp from 'openpgp';
 import { writeFileSync } from 'node:fs';
 const [, , legacyOut, newStyleOut] = process.argv;
