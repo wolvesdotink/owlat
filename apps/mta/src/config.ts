@@ -142,8 +142,12 @@ export interface MtaConfig {
 	 * enabled, the sender looks up each recipient MX's DNSSEC-authenticated TLSA
 	 * RRset and authenticates the MX certificate against it — a require-TLS floor
 	 * that supersedes MTA-STS. Flag off is byte-identical to the historic path.
+	 *
+	 * `loadConfig` always populates this; optional only so partial test-double
+	 * configs and `as MtaConfig` casts need not restate it (read sites treat an
+	 * absent value as off).
 	 */
-	daneEnabled: boolean;
+	daneEnabled?: boolean;
 	/**
 	 * DoH resolver URL used for DANE TLSA lookups (RFC 8484 JSON). Required when
 	 * `daneEnabled`. The AD (DNSSEC Authenticated Data) bit is trusted, so this
