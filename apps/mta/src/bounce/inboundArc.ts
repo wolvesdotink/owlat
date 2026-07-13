@@ -133,9 +133,7 @@ export const verifyArcChain: ArcVerifier = async (rawBuffer, options = {}) => {
 		}
 		const arcResult = (await arc(
 			dkimResult.arc as Parameters<typeof arc>[0],
-			{
-				resolver: options.resolver,
-			} as Parameters<typeof arc>[1]
+			{ resolver: options.resolver } as unknown as Parameters<typeof arc>[1]
 		)) as unknown as MailauthArcResult;
 
 		const cv = normalizeCv(arcResult.status?.result);
