@@ -10,16 +10,21 @@
  * See CONTEXT.md "Send provider adapter (module)".
  */
 
+import { SEND_TRANSPORT_KINDS } from '@owlat/shared';
+
 /**
  * The provider kinds, as a runtime tuple so both the `SendProviderKind` type
- * and the `isSendProviderKind` guard derive from one source. Lives in this
- * pure, isolate-safe module (no `nodemailer`/`'use node'` deps) so the isolate
- * function modules that only need the guard — `delivery/enqueue.ts`,
+ * and the `isSendProviderKind` guard derive from one source. The canonical list
+ * lives in `@owlat/shared` (`SEND_TRANSPORT_KINDS`) — the SAME tuple the outbound
+ * DMARC-alignment guard keys off — and is re-exported here so a new provider kind
+ * can't be added on either side without the other seeing it. This re-export lives
+ * in this pure, isolate-safe module (no `nodemailer`/`'use node'` deps) so the
+ * isolate function modules that only need the guard — `delivery/enqueue.ts`,
  * `delivery/status.ts`, `routing.ts`, `capability.ts` — can import it without
  * pulling the `SEND_PROVIDERS` registry (and thus `nodemailer`) into a
  * non-`'use node'` bundle.
  */
-export const SEND_PROVIDER_KINDS = ['mta', 'ses', 'resend', 'smtp'] as const;
+export const SEND_PROVIDER_KINDS = SEND_TRANSPORT_KINDS;
 
 export type SendProviderKind = (typeof SEND_PROVIDER_KINDS)[number];
 

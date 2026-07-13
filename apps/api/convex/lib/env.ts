@@ -50,6 +50,14 @@ export type EnvKey =
 	// the pool IPs, so the bounce envelope passes SPF at receivers that check
 	// MAIL FROM. Unset ⇒ no return-path SPF record is generated.
 	| 'MTA_RETURN_PATH_DOMAIN'
+	// The DKIM signing domain (`d=` tag) the ACTIVE transport stamps on outbound
+	// mail, when it isn't the per-message From-domain. The built-in MTA signs
+	// per-From-domain, so it leaves this unset (and aligns by construction); a
+	// generic SMTP relay that re-signs as its OWN domain (e.g. `sendgrid.net`)
+	// sets this so the outbound DMARC-alignment guard can detect that the relay's
+	// signature won't align with the operator's sending domains. Unset ⇒ the guard
+	// treats DKIM as per-From-domain (MTA) or undeclared (relay).
+	| 'OUTBOUND_DKIM_DOMAIN'
 	// Comma-separated list of the IP-pool addresses the MTA sends from. Used to
 	// generate the return-path SPF record (each IP authorized via `ip4:`).
 	| 'MTA_IP_POOLS'

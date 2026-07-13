@@ -19,7 +19,7 @@ import {
 	verificationResultValidator,
 	verificationResultsValidator,
 } from '../lib/convexValidators';
-import { extractDomainOrNull } from '@owlat/shared';
+import { emailDomain, extractDomainOrNull } from '@owlat/shared';
 
 // Types derived from validators for DNS records
 export type DnsRecord = Infer<typeof dnsRecordValidator>;
@@ -428,6 +428,30 @@ export async function checkEmailDomainVerification(
 		verified: true,
 		stale,
 		lastVerifiedAt: domainRecord.lastVerifiedAt,
+	};
+}
+
+/**
+ * Build a request-scoped memoizer for {@link checkEmailDomainVerification}.
+ *
+ * Domain verification depends only on the address's domain, and a From-picker
+ * commonly lists many addresses on one org domain — so the same `domains` row
+ * would otherwise be re-queried once per sender. The returned closure keys the
+ * pending lookup by the address's domain, reading each `domains` row once per
+ * request. Shared by the campaign-sender and send-as-identity picker queries.
+ */
+export function memoizedEmailDomainVerification(
+	ctx: QueryCtx | MutationCtx
+): (email: string) => Promise<EmailDomainVerificationStatus> {
+	const byDomain = new Map<string, Promise<EmailDomainVerificationStatus>>();
+	return (email: string) => {
+		const domain = emailDomain(email);
+		let pending = byDomain.get(domain);
+		if (!pending) {
+			pending = checkEmailDomainVerification(ctx, email);
+			byDomain.set(domain, pending);
+		}
+		return pending;
 	};
 }
 

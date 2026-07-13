@@ -1,3 +1,4 @@
+import { summarizeOutboundAlignment, type OutboundTransportFacts } from '@owlat/shared';
 import type { HealthTone } from '~/utils/healthTone';
 
 /**
@@ -26,7 +27,7 @@ import type { HealthTone } from '~/utils/healthTone';
  * an unfinished inbound-TLS hardening step is surfaced without adding noise to
  * deployments that don't publish a policy.
  */
-export type ReadinessGateKey = 'transport' | 'domain' | 'authentication' | 'mta-sts';
+export type ReadinessGateKey = 'transport' | 'domain' | 'authentication' | 'alignment' | 'mta-sts';
 
 /**
  * A gate's state:
@@ -93,6 +94,20 @@ export interface ReadinessInput {
 	 * that honour the policy.
 	 */
 	mtaStsEnforceWithoutRecord?: boolean;
+	/**
+	 * The active transport signs/bounces mail as a domain that doesn't align with
+	 * one or more of the configured sending domains, so DMARC fails for that mail
+	 * (RFC 7489). Typical cause: a generic SMTP relay signing as its OWN domain
+	 * instead of the operator's. Optional and defaults to "no warning" — the
+	 * built-in MTA and a correctly-configured relay leave it unset. When true it
+	 * downgrades an otherwise-ready instance to a warning: the instance CAN send,
+	 * but that mail is at risk of being treated as spam.
+	 */
+	transportMisaligned?: boolean;
+	/** The sending domains the active transport is misaligned for, in display order. */
+	misalignedDomains?: string[];
+	/** One plain-language line on WHY the transport is misaligned (per-transport guidance). */
+	alignmentReason?: string | null;
 }
 
 /**
@@ -128,6 +143,20 @@ export interface ReadinessMtaStsSource {
 }
 
 /**
+ * The outbound-alignment half: the active transport's effective identities plus
+ * the sending domains to check them against. Optional — a viewer or deployment
+ * without the transport facts (or with no sending domains yet) passes `null` and
+ * the alignment gate never appears. Structural on purpose so this stays a pure
+ * primitive-in helper.
+ */
+export interface ReadinessAlignmentSource {
+	/** The active transport's effective DKIM / return-path identities. */
+	facts: OutboundTransportFacts;
+	/** The configured sending domains to test alignment against. */
+	fromDomains: readonly string[];
+}
+
+/**
  * Fold the live query results into the flat `ReadinessInput` the verdict is
  * derived from. This is the small piece of real derivation the panel used to do
  * inline: which domain we report authentication against, plus the conditional
@@ -146,10 +175,13 @@ export interface ReadinessMtaStsSource {
 export function readinessInputFromSources(
 	summary: ReadinessTransportSummary,
 	rows: readonly ReadinessDomainRow[],
-	mtaSts?: ReadinessMtaStsSource | null
+	mtaSts?: ReadinessMtaStsSource | null,
+	alignment?: ReadinessAlignmentSource | null
 ): ReadinessInput {
 	const verified = rows.filter((row) => row.status === 'verified');
 	const primary = verified[0] ?? rows[0] ?? null;
+	const alignmentSummary =
+		alignment != null ? summarizeOutboundAlignment(alignment.fromDomains, alignment.facts) : null;
 	return {
 		transportConfigured: summary.canSend,
 		hasDomains: rows.length > 0,
@@ -158,6 +190,9 @@ export function readinessInputFromSources(
 		authMissing: primary?.missing ?? [],
 		mtaStsEnforceWithoutRecord:
 			mtaSts != null && mtaSts.mode === 'enforce' && !mtaSts.recordVerified,
+		transportMisaligned: alignmentSummary?.misaligned ?? false,
+		misalignedDomains: alignmentSummary?.misalignedDomains ?? [],
+		alignmentReason: alignmentSummary?.reason ?? null,
 	};
 }
 
@@ -262,6 +297,30 @@ function authenticationGate(input: ReadinessInput): ReadinessGate {
 }
 
 /**
+ * The outbound-alignment gate — surfaced only when the active transport is
+ * misaligned for a configured sending domain. A warning (not a hard block): the
+ * instance can still send, but that mail can be treated as spam because the
+ * address it's from and the way the transport signs/bounces it disagree. The fix
+ * is a transport-config change, so it links to the transport editor.
+ */
+function alignmentGate(input: ReadinessInput): ReadinessGate {
+	const domains = input.misalignedDomains ?? [];
+	const named = domains.length > 0 ? ` (${domains.join(', ')})` : '';
+	const detail =
+		input.alignmentReason ??
+		`This transport signs mail as a different domain than the one you send from${named}, so mailboxes can treat it as spam.`;
+	return {
+		key: 'alignment',
+		title: 'Sender alignment',
+		detail,
+		status: 'attention',
+		tone: 'warning',
+		actionHref: CONFIG_HREF,
+		actionLabel: 'Review transport',
+	};
+}
+
+/**
  * The MTA-STS gate — surfaced only when `enforce` is published without the
  * record verified. A warning (not a hard block): the instance can still send;
  * the risk is on the INBOUND side, where senders honouring the policy may bounce
@@ -303,6 +362,12 @@ const LEVEL_HEADLINE: Record<ReadinessLevel, string> = {
  */
 export function deriveDeliveryReadiness(input: ReadinessInput): DeliveryReadiness {
 	const gates = [transportGate(input), domainGate(input), authenticationGate(input)];
+	// The alignment gate is conditional: only a transport that's definitely
+	// misaligned for a configured sending domain adds it, so the built-in MTA and
+	// a correctly-configured relay see the same gates as before.
+	if (input.transportMisaligned) {
+		gates.push(alignmentGate(input));
+	}
 	// The MTA-STS gate is conditional: only publishing `enforce` without the
 	// record verified adds it, so a deployment that publishes nothing sees the
 	// same three gates as before.
@@ -315,9 +380,10 @@ export function deriveDeliveryReadiness(input: ReadinessInput): DeliveryReadines
 	let level: ReadinessLevel;
 	if (!canSend) {
 		level = 'blocked';
-	} else if (!input.authComplete || input.mtaStsEnforceWithoutRecord) {
+	} else if (!input.authComplete || input.transportMisaligned || input.mtaStsEnforceWithoutRecord) {
 		// CAN send, but something deliverability-adjacent is unfinished — either
-		// SPF/DKIM/DMARC or the enforced inbound MTA-STS record.
+		// SPF/DKIM/DMARC, a misaligned transport, or the enforced inbound MTA-STS
+		// record.
 		level = 'incomplete';
 	} else {
 		level = 'ready';
