@@ -30,8 +30,11 @@
  */
 
 import { v } from 'convex/values';
-import { mailMessageAttachmentValidator } from '../lib/convexValidators';
-import { internalMutation, type MutationCtx } from '../_generated/server';
+import {
+	mailMessageAttachmentValidator,
+	mailEncryptionInfoValidator,
+} from '../lib/convexValidators';
+import { internalMutation, internalQuery, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { recordAuditLog } from '../lib/auditLog';
@@ -39,6 +42,14 @@ import { isSanctionedSendAsForUser } from './identities';
 import { followUpWaitingOn } from './followUps';
 import { logError } from '../lib/runtimeLog';
 import { normalizeSubject } from '../lib/emailAddress';
+import { isFeatureEnabled } from '../lib/featureFlags';
+import { normalizeEmail } from '@owlat/shared';
+import {
+	deriveSealState,
+	type OutboundEncryptionInfo,
+	type RecipientKeyState,
+	type SealState,
+} from './sealPolicy';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -53,6 +64,9 @@ export type RevertReason = 'user_cancel' | 'from_revoked' | 'scan_blocked';
 export interface SentInputContext {
 	rawStorageId: Id<'_storage'>;
 	rawSize: number;
+	// Sealed Mail (E3): the outbound sealing outcome. Present on the personal-mail
+	// send path; the raw `.eml` at `rawStorageId` is ciphertext when `sealed`.
+	encryptionInfo?: OutboundEncryptionInfo;
 	rfc822MessageId: string;
 	inReplyToHeaderValue?: string;
 	references: string[];
@@ -108,6 +122,7 @@ export type TransitionOutcome =
 const sentInputContextValidator = v.object({
 	rawStorageId: v.id('_storage'),
 	rawSize: v.number(),
+	encryptionInfo: v.optional(mailEncryptionInfoValidator),
 	rfc822MessageId: v.string(),
 	inReplyToHeaderValue: v.optional(v.string()),
 	references: v.array(v.string()),
@@ -532,6 +547,8 @@ async function runSentEffects(
 			state: 'queued' as const,
 			recipients: [],
 		},
+		// Sealed Mail (E3): honest record of whether this send was sealed and why.
+		...(context.encryptionInfo ? { encryptionInfo: context.encryptionInfo } : {}),
 		createdAt: now,
 		updatedAt: now,
 	});
@@ -946,5 +963,53 @@ export const transitionByUndoToken = internalMutation({
 			};
 		}
 		return await dispatch(ctx, draft, args.input);
+	},
+});
+
+// ─── Sealed Mail: per-draft seal state ────────────────────────────────────────
+
+/**
+ * The composer-facing seal readiness for a draft (Sealed Mail E3 → consumed by
+ * the E5 compose surface): would sending NOW seal (`willSeal`), which recipients'
+ * keys rotated without a signed statement (`keyChanged`), or why it cannot seal
+ * (`cannotSeal`). Reads only PUBLIC trust state (recipient outcomes + the org
+ * policy) — never any private key material. The `sealedMail` flag gates it.
+ * Internal: E5 wraps it in an authed compose query that already scopes the draft
+ * to the caller's mailbox.
+ */
+export const getSealState = internalQuery({
+	args: { draftId: v.id('mailDrafts') },
+	handler: async (ctx, args): Promise<SealState> => {
+		const draft = await ctx.db.get(args.draftId);
+		if (!draft) return { kind: 'cannotSeal', reason: 'no_recipients' };
+		if (!(await isFeatureEnabled(ctx, 'sealedMail'))) {
+			return { kind: 'cannotSeal', reason: 'flag_off' };
+		}
+		const settings = await ctx.db.query('instanceSettings').first();
+		const policy = settings?.sealPolicy ?? 'auto';
+
+		const seen = new Set<string>();
+		const recipients: RecipientKeyState[] = [];
+		for (const raw of [...draft.toAddresses, ...draft.ccAddresses, ...draft.bccAddresses]) {
+			const address = normalizeEmail(raw);
+			if (seen.has(address)) continue;
+			seen.add(address);
+			const row = await ctx.db
+				.query('recipientKeys')
+				.withIndex('by_address', (q) => q.eq('address', address))
+				.first();
+			recipients.push(
+				row
+					? {
+							address,
+							outcome: row.outcome,
+							...(row.outcome === 'trusted' && row.pinnedPublicKeyArmored
+								? { pinnedPublicKeyArmored: row.pinnedPublicKeyArmored }
+								: {}),
+						}
+					: { address, outcome: 'missing' }
+			);
+		}
+		return deriveSealState(policy, recipients);
 	},
 });

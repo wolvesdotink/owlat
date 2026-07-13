@@ -25,6 +25,9 @@ import { getMailSyncConfig, getMtaConfig, scanAttachmentBytes } from './mtaClien
 import type { TransitionOutcome as DraftTransitionOutcome } from './draftLifecycle';
 import { buildMessageId, buildRfc822, stripHtml, type DraftRow } from './rfc822';
 import { rewriteInlineImageCids, isInlineImageReferenced } from '@owlat/shared/inlineImages';
+import { decideSeal, type OutboundEncryptionInfo } from './sealPolicy';
+import { sealMime, type SealedMime } from '../e2ee/seal';
+import { openPrivateKey } from '../e2ee/sealing';
 
 /**
  * Resolve the final HTML + plain-text (+ optional AMP) bodies for an outbound
@@ -348,7 +351,7 @@ export const dispatchDraft = internalAction({
 		draft.bodyText = rendered.text;
 		draft.bodyAmp = rendered.amp;
 
-		const { raw, size } = buildRfc822(
+		const { raw } = buildRfc822(
 			draft,
 			attachmentBuffers,
 			rfc822MessageId,
@@ -356,10 +359,62 @@ export const dispatchDraft = internalAction({
 			referencesHeaderValue
 		);
 
-		// Store the raw .eml in Convex storage. Convert to Uint8Array first
-		// because Blob's BlobPart type doesn't accept the Node Buffer<Shared|
-		// ArrayBuffer> union directly under newer @types/node.
-		const rawBytes = new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength);
+		// ── Sealed Mail (E3): seal the built message into signed+encrypted PGP/MIME
+		// when the org policy allows AND EVERY recipient has a usable pinned key
+		// (locked decisions D1/D2/D4). One keyless recipient => plaintext with the
+		// reason recorded — NEVER a mixed send (D2). The agent-reply path flows
+		// through this exact code (agent drafts dispatch via `dispatchDraft` too),
+		// so it seals identically with no special-casing. When sealed, the stored
+		// `.eml` and the on-wire body are ciphertext; the real subject travels
+		// inside and the outer subject is the literal placeholder "..." (D4).
+		const sealRecipients = [...draft.toAddresses, ...draft.ccAddresses, ...draft.bccAddresses];
+		const sealInputs = await ctx.runQuery(internal.mail.outboundQueries.getOutboundSealInputs, {
+			fromAddress: draft.fromAddress,
+			recipients: sealRecipients,
+		});
+		const sealDecision = decideSeal(sealInputs);
+
+		let storedBytes: Buffer = raw;
+		let sealed: SealedMime | null = null;
+		let encryptionInfo: OutboundEncryptionInfo;
+		if (sealDecision.seal) {
+			// Open the sender's private signing key from the vault (Node plane only).
+			const signingRow = await ctx.runQuery(internal.e2ee.keys.getAddressKeyInternal, {
+				address: draft.fromAddress,
+			});
+			if (!signingRow) {
+				// The key vanished between the readiness check and here — fail SOFT to
+				// plaintext with the reason recorded rather than blocking the send.
+				encryptionInfo = { sealed: false, reason: 'no_signing_key' };
+			} else {
+				const signingKeyArmored = openPrivateKey(signingRow.sealedPrivateKey);
+				sealed = await sealMime(raw.toString('utf-8'), {
+					recipientPublicKeysArmored: sealDecision.recipientPublicKeysArmored,
+					signingKeyArmored,
+					protectSubject: true,
+				});
+				storedBytes = Buffer.from(sealed.mime, 'utf-8');
+				encryptionInfo = {
+					sealed: true,
+					algorithm: sealed.encryptionInfo.algorithm,
+					recipientFingerprints: sealed.encryptionInfo.recipientFingerprints,
+					signingFingerprint: sealed.encryptionInfo.signingFingerprint,
+				};
+			}
+		} else {
+			encryptionInfo = { sealed: false, reason: sealDecision.reason };
+		}
+		const storedSize = storedBytes.length;
+
+		// Store the raw .eml in Convex storage — the SEALED bytes when sealing
+		// applied. Convert to Uint8Array first because Blob's BlobPart type doesn't
+		// accept the Node Buffer<Shared|ArrayBuffer> union directly under newer
+		// @types/node.
+		const rawBytes = new Uint8Array(
+			storedBytes.buffer,
+			storedBytes.byteOffset,
+			storedBytes.byteLength
+		);
 		const rawStorageId = await ctx.storage.store(
 			// `BlobPart` typings reject Uint8Array<ArrayBufferLike> under newer
 			// @types/node; the runtime accepts it. Cast through unknown.
@@ -380,7 +435,10 @@ export const dispatchDraft = internalAction({
 					at: Date.now(),
 					context: {
 						rawStorageId,
-						rawSize: size,
+						rawSize: storedSize,
+						// Only stamp the row when Sealed Mail is live — a flag-off
+						// deployment writes no `encryptionInfo`, byte-identical to today.
+						...(sealInputs.flagEnabled ? { encryptionInfo } : {}),
 						rfc822MessageId: rfc822MessageId.replace(/^<|>$/g, ''),
 						inReplyToHeaderValue: inReplyToHeaderValue?.replace(/^<|>$/g, ''),
 						references:
@@ -480,6 +538,20 @@ export const dispatchDraft = internalAction({
 			return;
 		}
 
+		// When sealing applied, the on-wire body is the armored ciphertext and the
+		// subject is the "..." placeholder (D4) — no plaintext subject or body
+		// leaves this action. When not sealed, the classic structured fields ride
+		// exactly as before. The external-worker path fetches the stored `.eml`
+		// (already the sealed bytes), so it needs no equivalent branch.
+		const wireContent: { subject: string; html?: string; text?: string; amp?: string } = sealed
+			? { subject: sealed.outerSubject, text: sealed.armoredCiphertext }
+			: {
+					subject: draft.subject || '(no subject)',
+					html: draft.bodyHtml || stripHtml(draft.bodyHtml ?? '') || ' ',
+					text: draft.bodyText,
+					...(draft.bodyAmp ? { amp: draft.bodyAmp } : {}),
+				};
+
 		if (mta) {
 			for (let i = 0; i < recipients.length; i++) {
 				const to = recipients[i];
@@ -499,10 +571,7 @@ export const dispatchDraft = internalAction({
 							messageId: mtaMessageId,
 							from: draft.fromAddress,
 							to,
-							subject: draft.subject || '(no subject)',
-							html: draft.bodyHtml || stripHtml(draft.bodyHtml ?? '') || ' ',
-							text: draft.bodyText,
-							...(draft.bodyAmp ? { amp: draft.bodyAmp } : {}),
+							...wireContent,
 							headers: {
 								'Message-ID': rfc822MessageId,
 								...(inReplyToHeaderValue ? { 'In-Reply-To': inReplyToHeaderValue } : {}),

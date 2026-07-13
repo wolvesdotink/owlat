@@ -14,8 +14,88 @@
 
 import { v } from 'convex/values';
 import { internalQuery } from '../_generated/server';
+import { isFeatureEnabled } from '../lib/featureFlags';
+import { normalizeEmail } from '@owlat/shared';
+import { sealPolicyValidator } from '../lib/convexValidators';
+import type { RecipientKeyState, SealInputs } from './sealPolicy';
 
 export const getMessage = internalQuery({
 	args: { messageId: v.id('mailMessages') },
 	handler: async (ctx, args) => ctx.db.get(args.messageId),
+});
+
+/**
+ * Gather everything the dispatch-time seal decision (`mail/sealPolicy.decideSeal`)
+ * reads, from the V8 plane, so the Node `dispatchDraft` action can decide whether
+ * to seal without a direct db handle. Returns PUBLIC material only: recipient
+ * PUBLIC keys (safe to expose — that is the whole point of key discovery) and a
+ * boolean `hasSigningKey` (never the sender's private key, which the action opens
+ * itself from the internal vault query). The `sealedMail` flag, the org policy
+ * (`auto` when unset), and per-recipient TOFU state come along so the pure
+ * decision stays a single source of truth across the composer and the sender.
+ */
+export const getOutboundSealInputs = internalQuery({
+	args: { fromAddress: v.string(), recipients: v.array(v.string()) },
+	returns: v.object({
+		flagEnabled: v.boolean(),
+		policy: sealPolicyValidator,
+		hasSigningKey: v.boolean(),
+		recipients: v.array(
+			v.object({
+				address: v.string(),
+				outcome: v.union(
+					v.literal('trusted'),
+					v.literal('keyChanged'),
+					v.literal('notFound'),
+					v.literal('missing')
+				),
+				pinnedPublicKeyArmored: v.optional(v.string()),
+			})
+		),
+	}),
+	handler: async (ctx, args): Promise<SealInputs> => {
+		const flagEnabled = await isFeatureEnabled(ctx, 'sealedMail');
+		const settings = await ctx.db.query('instanceSettings').first();
+		const policy = settings?.sealPolicy ?? 'auto';
+		// Sealed Mail off: skip the per-recipient discovery reads entirely — the
+		// decision is `flag_off` regardless, so the send path stays byte-identical
+		// to today for every deployment that has not enabled the flag.
+		if (!flagEnabled) {
+			return { flagEnabled: false, policy, hasSigningKey: false, recipients: [] };
+		}
+
+		const signingAddress = normalizeEmail(args.fromAddress);
+		const signingRow = await ctx.db
+			.query('keyVault')
+			.withIndex('by_address', (q) => q.eq('address', signingAddress))
+			.first();
+		const hasSigningKey = !!signingRow && signingRow.isActive;
+
+		// Deduplicate recipients on the normalized address so a To+Cc collision is
+		// asked once and the all-recipients rule counts each address exactly once.
+		const seen = new Set<string>();
+		const recipients: RecipientKeyState[] = [];
+		for (const raw of args.recipients) {
+			const address = normalizeEmail(raw);
+			if (seen.has(address)) continue;
+			seen.add(address);
+			const row = await ctx.db
+				.query('recipientKeys')
+				.withIndex('by_address', (q) => q.eq('address', address))
+				.first();
+			if (!row) {
+				recipients.push({ address, outcome: 'missing' });
+				continue;
+			}
+			// A pinned public key is only usable to seal when the row is `trusted`.
+			recipients.push({
+				address,
+				outcome: row.outcome,
+				...(row.outcome === 'trusted' && row.pinnedPublicKeyArmored
+					? { pinnedPublicKeyArmored: row.pinnedPublicKeyArmored }
+					: {}),
+			});
+		}
+		return { flagEnabled, policy, hasSigningKey, recipients };
+	},
 });
