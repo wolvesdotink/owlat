@@ -31,6 +31,10 @@ export {
 	summarizeOutboundAlignment,
 } from './transportAlignment';
 export { type OutboundTlsMode, OUTBOUND_TLS_MODES, isOutboundTlsMode } from './outboundTlsMode';
+// NOTE: `./dane` is intentionally NOT re-exported here. It depends on `node:crypto`
+// (certificate hashing) which does not resolve in the Nuxt web client bundle that
+// consumes this barrel. Server code (apps/api, apps/mta) imports it directly from
+// the `@owlat/shared/dane` subpath instead.
 export {
 	type TlsRptPolicy,
 	type TlsRptFailureDetail,
