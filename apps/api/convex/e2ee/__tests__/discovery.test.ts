@@ -84,7 +84,7 @@ function makeDeps(opts: {
 				if (opts.wkd === undefined || typeof opts.wkd === 'number') {
 					return new Response(null, { status: typeof opts.wkd === 'number' ? opts.wkd : 404 });
 				}
-				return new Response(opts.wkd, { status: 200 });
+				return new Response(new Blob([opts.wkd]), { status: 200 });
 			}
 			return new Response(null, { status: 404 });
 		},
@@ -147,6 +147,7 @@ describe('e2ee/discovery fetch flow', () => {
 		const deps = makeDeps({ manifest: await signedManifestBody(), wkd: bobBinary });
 		const r = await discoverKeyForAddress(BOB, deps);
 		expect(r.outcome).toBe('found');
+		if (r.outcome !== 'found') throw new Error('expected found');
 		expect(r.fingerprint).toBe(bobFp);
 		expect(r.source).toBe('wkd');
 		expect(r.instanceFingerprint).toBe(aliceFp);
@@ -156,6 +157,7 @@ describe('e2ee/discovery fetch flow', () => {
 		const deps = makeDeps({ manifest: 404, wkd: bobBinary });
 		const r = await discoverKeyForAddress(BOB, deps);
 		expect(r.outcome).toBe('found');
+		if (r.outcome !== 'found') throw new Error('expected found');
 		expect(r.fingerprint).toBe(bobFp);
 		expect(r.instanceFingerprint).toBeUndefined();
 	});
