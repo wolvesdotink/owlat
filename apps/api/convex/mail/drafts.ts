@@ -23,6 +23,7 @@ import { normalizeEmail } from '@owlat/shared';
 import { requireMailboxAccess } from './permissions';
 import { resolveSendAsIdentitiesForCtx } from './identities';
 import { getOrThrow, throwForbidden, throwInvalidState, throwNotFound } from '../_utils/errors';
+import { openMailDraftBody, sealBodyAtWrite } from '../lib/messageBody';
 import { assertStateIs, type TransitionOutcome as DraftTransitionOutcome } from './draftLifecycle';
 import { markOnboardingStep } from '../auth/userOnboarding';
 import { getMailSyncConfig, getMtaConfig } from './mtaClient';
@@ -147,9 +148,11 @@ export const update = authedMutation({
 		if (args.ccAddresses !== undefined) patch['ccAddresses'] = args.ccAddresses;
 		if (args.bccAddresses !== undefined) patch['bccAddresses'] = args.bccAddresses;
 		if (args.subject !== undefined) patch['subject'] = args.subject;
-		if (args.bodyHtml !== undefined) patch['bodyHtml'] = args.bodyHtml;
-		if (args.bodyText !== undefined) patch['bodyText'] = args.bodyText;
-		if (args.bodyBlocks !== undefined) patch['bodyBlocks'] = args.bodyBlocks;
+		// E8b: seal the compose body columns at rest; the composer GET and the send
+		// dispatcher decrypt through `openMailDraftBody` on the way back out.
+		if (args.bodyHtml !== undefined) patch['bodyHtml'] = await sealBodyAtWrite(args.bodyHtml);
+		if (args.bodyText !== undefined) patch['bodyText'] = await sealBodyAtWrite(args.bodyText);
+		if (args.bodyBlocks !== undefined) patch['bodyBlocks'] = await sealBodyAtWrite(args.bodyBlocks);
 		if (args.composerMode !== undefined) patch['composerMode'] = args.composerMode;
 		if (args.followUpRemindAt !== undefined) {
 			patch['followUpRemindAt'] = args.followUpRemindAt ?? undefined;
@@ -289,7 +292,7 @@ export const get = publicQuery({
 		if (!draft) return null;
 		const owned = await requireMailboxAccess(ctx, draft.mailboxId);
 		if (!owned.ok) return null;
-		return draft;
+		return await openMailDraftBody(draft);
 	},
 });
 
@@ -338,11 +341,13 @@ export const listForMailbox = publicQuery({
 	handler: async (ctx, args) => {
 		const owned = await requireMailboxAccess(ctx, args.mailboxId);
 		if (!owned.ok) return [];
-		return ctx.db
+		const drafts = await ctx.db
 			.query('mailDrafts')
 			.withIndex('by_mailbox_and_edited', (q) => q.eq('mailboxId', args.mailboxId))
 			.order('desc')
 			.take(100);
+		// E8b: unseal the body columns so the composer list renders plaintext.
+		return await Promise.all(drafts.map((d) => openMailDraftBody(d)));
 	},
 });
 
@@ -490,5 +495,10 @@ export const cancelScheduledSend = authedMutation({
 
 export const getInternal = internalQuery({
 	args: { draftId: v.id('mailDrafts') },
-	handler: async (ctx, args) => ctx.db.get(args.draftId),
+	handler: async (ctx, args) => {
+		const draft = await ctx.db.get(args.draftId);
+		// E8b: decrypt the body columns so the send dispatcher builds the outgoing
+		// RFC822 from plaintext, never a sealed envelope.
+		return draft === null ? null : await openMailDraftBody(draft);
+	},
 });

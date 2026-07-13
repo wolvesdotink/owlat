@@ -23,7 +23,7 @@
  */
 
 import type { Id } from '../_generated/dataModel';
-import { getRequired } from './env';
+import { getOptional, getRequired } from './env';
 import { openAtRest, sealAtRest, isSealedAtRest } from './atRestBodies';
 
 // ── Sealed-at-rest shim (E8b) ────────────────────────────────────────────────
@@ -43,9 +43,36 @@ function atRestSecret(): string {
 	return getRequired('INSTANCE_SECRET');
 }
 
-/** Seal a body for storage at rest. Writers call this before `db.insert`/`patch`. */
+/** Seal a body for storage at rest. Writers call this before `db.insert`/`patch`.
+ * REQUIRES `INSTANCE_SECRET` — used by the back-fill migration, which an operator
+ * runs deliberately on a provisioned instance. Production write paths use
+ * {@link sealBodyAtWrite}, which no-ops when no key is configured. */
 export async function sealMessageBody(plaintext: string): Promise<string> {
 	return sealAtRest(atRestSecret(), plaintext);
+}
+
+/**
+ * Seal a body at a PRODUCTION WRITE site (insert/patch), gated on the instance
+ * actually having a key: if `INSTANCE_SECRET` is not configured the plaintext is
+ * returned unchanged. This is the honest derive-from-the-real-path rule — an
+ * instance cannot seal without a key — and it keeps the mixed-tolerance contract
+ * that readers already honour (`openMessageBody` passes plaintext through). Every
+ * real deployment has `INSTANCE_SECRET` set, so new rows seal; unprovisioned
+ * installs and the test harness (which does not stub the secret) store plaintext
+ * exactly as before. A pre-sealed value is idempotently returned unchanged.
+ */
+export async function sealBodyAtWrite(plaintext: string): Promise<string> {
+	const secret = getOptional('INSTANCE_SECRET');
+	if (secret === undefined) return plaintext;
+	return sealAtRest(secret, plaintext);
+}
+
+/** Optional-body sibling of {@link sealBodyAtWrite} for write sites whose column
+ * is `string | undefined` — `undefined` stays `undefined` (column absent). */
+export async function sealBodyAtWriteMaybe(
+	plaintext: string | undefined
+): Promise<string | undefined> {
+	return plaintext === undefined ? undefined : sealBodyAtWrite(plaintext);
 }
 
 /**
@@ -173,6 +200,21 @@ export async function sealMailDraftBodyPatch(
 		if (next !== row.bodyBlocks) patch.bodyBlocks = next;
 	}
 	return patch;
+}
+
+/**
+ * Read AND UNSEAL the `mailDrafts` body columns (E8b). Returns the same draft
+ * with `bodyHtml` / `bodyText` / `bodyBlocks` decrypted (legacy plaintext passes
+ * through). This is the choke point for reading a draft's body: the composer GET
+ * and the send dispatcher both load a draft through here so the outgoing RFC822
+ * is built from plaintext — never from a sealed envelope. Other draft fields are
+ * returned untouched.
+ */
+export async function openMailDraftBody<T extends MailDraftBodyFields>(draft: T): Promise<T> {
+	const bodyHtml = await openMessageBody(draft.bodyHtml);
+	const bodyText = await openMaybe(draft.bodyText);
+	const bodyBlocks = await openMaybe(draft.bodyBlocks);
+	return { ...draft, bodyHtml, bodyText, bodyBlocks };
 }
 
 // ── Shape 1: inboundMessages inline bodies ───────────────────────────────────

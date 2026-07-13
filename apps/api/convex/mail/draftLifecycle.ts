@@ -524,9 +524,12 @@ async function runSentEffects(
 		snippet,
 		rawStorageId: context.rawStorageId,
 		rawSize: context.rawSize,
-		textBodyInline:
-			context.bodyText && context.bodyText.length <= 64 * 1024 ? context.bodyText : undefined,
-		htmlBodyInline: context.bodyHtml.length <= 64 * 1024 ? context.bodyHtml : undefined,
+		textBodyInline: await sealBodyAtWriteMaybe(
+			context.bodyText && context.bodyText.length <= 64 * 1024 ? context.bodyText : undefined
+		),
+		htmlBodyInline: await sealBodyAtWriteMaybe(
+			context.bodyHtml.length <= 64 * 1024 ? context.bodyHtml : undefined
+		),
 		attachments: context.attachmentsMeta,
 		hasAttachments: context.attachmentsMeta.length > 0,
 		// Team-inbox attribution: WHO fired this send (captured by drafts.send).
