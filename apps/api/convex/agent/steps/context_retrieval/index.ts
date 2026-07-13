@@ -9,6 +9,7 @@
 import { internal } from '../../../_generated/api';
 import type { Id } from '../../../_generated/dataModel';
 import type { AgentStepModule } from '../types';
+import { inboundMessageBody } from '../../../lib/messageBody';
 import {
 	EMERGENCY_BUDGET,
 	activityContentSnippet,
@@ -215,7 +216,7 @@ export const contextRetrievalStep: AgentStepModule<
 						threadMessages
 							.map(
 								(m) =>
-									`From: ${m.from}\nDate: ${new Date(m.receivedAt).toISOString()}\nSubject: ${m.subject}\n${m.textBody ?? '(no text body)'}\n---`
+									`From: ${m.from}\nDate: ${new Date(m.receivedAt).toISOString()}\nSubject: ${m.subject}\n${inboundMessageBody(m).text ?? '(no text body)'}\n---`
 							)
 							.join('\n')
 				);

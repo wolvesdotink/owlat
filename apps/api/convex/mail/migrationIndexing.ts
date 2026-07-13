@@ -23,6 +23,7 @@
  */
 
 import { v } from 'convex/values';
+import { mailMessageInlineBody } from '../lib/messageBody';
 import { takeReceivedAtChunk } from '../lib/receivedAtCursor';
 import { internalAction, internalMutation, internalQuery } from '../_generated/server';
 import { internal } from '../_generated/api';
@@ -66,9 +67,9 @@ export const getMessageForExtraction = internalQuery({
 			fromAddress: m.fromAddress,
 			fromName: m.fromName,
 			subject: m.subject,
-			textInline: m.textBodyInline,
+			textInline: mailMessageInlineBody(m).text,
 			textStorageId: m.textBodyStorageId,
-			htmlInline: m.htmlBodyInline,
+			htmlInline: mailMessageInlineBody(m).html,
 		};
 	},
 });

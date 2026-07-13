@@ -19,6 +19,7 @@ import { internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
 import { unifiedMessageChannelValidator, outboundChannelValidator } from './lib/convexValidators';
 import { applyOpenThreadDelta } from './lib/inboxStats';
+import { parseUnifiedMessageContent } from './lib/messageBody';
 
 // ============================================================
 // Queries
@@ -41,7 +42,7 @@ export const getThreadTimeline = adminQuery({
 
 		return messages.map((msg) => ({
 			...msg,
-			content: parseContent(msg.content),
+			content: parseUnifiedMessageContent(msg.content),
 			metadata: msg.metadata ? parseMetadata(msg.metadata) : undefined,
 		}));
 	},
@@ -64,7 +65,7 @@ export const getContactTimeline = adminQuery({
 
 		return messages.map((msg) => ({
 			...msg,
-			content: parseContent(msg.content),
+			content: parseUnifiedMessageContent(msg.content),
 			metadata: msg.metadata ? parseMetadata(msg.metadata) : undefined,
 		}));
 	},
@@ -92,7 +93,7 @@ export const listRecent = adminQuery({
 
 		return messages.map((msg) => ({
 			...msg,
-			content: parseContent(msg.content),
+			content: parseUnifiedMessageContent(msg.content),
 			metadata: msg.metadata ? parseMetadata(msg.metadata) : undefined,
 		}));
 	},
@@ -802,24 +803,6 @@ export async function mirrorEmailSendWrite(
 	}
 
 	return id;
-}
-
-/** Parsed shape of the `content` JSON blob (see schema comment). */
-interface UnifiedMessageContent {
-	text?: string;
-	html?: string;
-	subject?: string;
-	mediaUrl?: string;
-}
-
-function parseContent(str: string): UnifiedMessageContent {
-	try {
-		const parsed: unknown = JSON.parse(str);
-		if (parsed && typeof parsed === 'object') return parsed as UnifiedMessageContent;
-		return { text: str };
-	} catch {
-		return { text: str };
-	}
 }
 
 function parseMetadata(str: string): Record<string, unknown> {

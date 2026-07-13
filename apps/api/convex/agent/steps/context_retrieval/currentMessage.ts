@@ -14,6 +14,7 @@
 import { internal } from '../../../_generated/api';
 import type { ActionCtx } from '../../../_generated/server';
 import { stripRemoteImages } from '@owlat/shared/postboxTrackers';
+import { inboundMessageBody } from '../../../lib/messageBody';
 import { stripHiddenContent } from '../security_scan/patterns';
 
 /**
@@ -35,8 +36,9 @@ export function inboundBodyForContext(message: {
 	// reaches the draft even when the message scored below the quarantine
 	// threshold. `stripHiddenContent` is a no-op on already-clean text (the
 	// plain-text part passes through verbatim).
-	if (message.textBody != null) return stripHiddenContent(message.textBody);
-	if (message.htmlBody != null) return stripHiddenContent(stripRemoteImages(message.htmlBody).html);
+	const { text, html } = inboundMessageBody(message);
+	if (text != null) return stripHiddenContent(text);
+	if (html != null) return stripHiddenContent(stripRemoteImages(html).html);
 	return undefined;
 }
 

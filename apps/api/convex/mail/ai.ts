@@ -9,6 +9,7 @@
  */
 
 import { v } from 'convex/values';
+import { mailMessageInlineBody } from '../lib/messageBody';
 import { authedAction } from '../lib/authedFunctions';
 import { api, internal } from '../_generated/api';
 import type { Doc } from '../_generated/dataModel';
@@ -26,8 +27,8 @@ export function threadToText(messages: Doc<'mailMessages'>[]): string {
 	return messages
 		.map((m) => {
 			const body = (
-				m.textBodyInline ??
-				(m.htmlBodyInline ? stripHtml(m.htmlBodyInline) : undefined) ??
+				mailMessageInlineBody(m).text ??
+				(mailMessageInlineBody(m).html ? stripHtml(mailMessageInlineBody(m).html) : undefined) ??
 				m.snippet ??
 				''
 			).slice(0, 4000);

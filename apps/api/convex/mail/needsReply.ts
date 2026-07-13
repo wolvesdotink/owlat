@@ -23,6 +23,7 @@
  */
 
 import { v, type Infer } from 'convex/values';
+import { mailMessageInlineBody } from '../lib/messageBody';
 import { internalMutation, internalQuery, type MutationCtx } from '../_generated/server';
 import { authedMutation, publicQuery } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
@@ -215,7 +216,7 @@ export const getThreadContext = internalQuery({
 				subject: m.subject,
 				// Short bounded body excerpt — the refinement prompt does not need
 				// the full message, and snippet is always present.
-				excerpt: (m.textBodyInline ?? m.snippet ?? '').slice(0, 2000),
+				excerpt: (mailMessageInlineBody(m).text ?? m.snippet ?? '').slice(0, 2000),
 			})),
 		};
 	},

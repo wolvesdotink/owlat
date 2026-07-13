@@ -9,6 +9,7 @@
 import { v } from 'convex/values';
 import { authedQuery } from '../lib/authedFunctions';
 import { getBetterAuthSessionWithRole, hasPermission } from '../lib/sessionOrganization';
+import { parseUnifiedMessageContent } from '../lib/messageBody';
 import type { Doc, Id } from '../_generated/dataModel';
 
 interface TimelineContent {
@@ -99,7 +100,7 @@ export const getTimeline = authedQuery({
 			.withIndex('by_contact_and_occurred_at', (q) =>
 				before === undefined
 					? q.eq('contactId', args.contactId)
-					: q.eq('contactId', args.contactId).lt('occurredAt', before),
+					: q.eq('contactId', args.contactId).lt('occurredAt', before)
 			)
 			.order('desc')
 			.take(fetchLimit);
@@ -111,7 +112,7 @@ export const getTimeline = authedQuery({
 			.withIndex('by_contact_and_created_at', (q) =>
 				before === undefined
 					? q.eq('contactId', args.contactId)
-					: q.eq('contactId', args.contactId).lt('createdAt', before),
+					: q.eq('contactId', args.contactId).lt('createdAt', before)
 			)
 			.order('desc')
 			.take(fetchLimit);
@@ -133,7 +134,7 @@ export const getTimeline = authedQuery({
 		}
 
 		for (const msg of messages) {
-			let content = safeParseContent(msg.content);
+			let content: TimelineContent = parseUnifiedMessageContent(msg.content);
 			// ADR-0040: withhold the inbound *email* body from non-admins, but keep
 			// the row + its subject/metadata so the timeline stays coherent.
 			if (msg.channel === 'email' && msg.direction === 'inbound' && !canReadInboundEmail) {
@@ -268,14 +269,4 @@ export const getTimelineStats = authedQuery({
 function redactInboundEmailBody(content: TimelineContent): TimelineContent {
 	const { text: _text, html: _html, ...rest } = content;
 	return { ...rest, redacted: true };
-}
-
-function safeParseContent(str: string): TimelineContent {
-	try {
-		const parsed: unknown = JSON.parse(str);
-		if (parsed && typeof parsed === 'object') return parsed as TimelineContent;
-		return { text: str };
-	} catch {
-		return { text: str };
-	}
 }

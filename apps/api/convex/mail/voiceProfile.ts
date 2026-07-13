@@ -16,6 +16,7 @@
  */
 
 import { v } from 'convex/values';
+import { mailMessageInlineBody } from '../lib/messageBody';
 import { internalQuery, internalMutation } from '../_generated/server';
 import type { QueryCtx, MutationCtx } from '../_generated/server';
 import { authedMutation, publicQuery } from '../lib/authedFunctions';
@@ -92,8 +93,8 @@ export const sampleSentBodies = internalQuery({
 			.take(VOICE_SAMPLE_SIZE);
 		const samples = buildVoiceSamples(
 			messages.map((m) => ({
-				textBodyInline: m.textBodyInline,
-				htmlBodyInline: m.htmlBodyInline,
+				textBodyInline: mailMessageInlineBody(m).text,
+				htmlBodyInline: mailMessageInlineBody(m).html,
 				snippet: m.snippet,
 			}))
 		);
