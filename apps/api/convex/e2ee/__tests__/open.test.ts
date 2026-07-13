@@ -11,9 +11,12 @@
  *       reports `signatureValid: false` (UNVERIFIED, never "verified"); a decrypt
  *       against the WRONG recipient key resolves to `cannotDecrypt` (today's
  *       "Encrypted — can't decrypt" path), never a thrown ingest failure.
- *   (c) INTEROP FIXTURES — the committed, offline-generated sealed `.eml`
- *       (encrypted to the published test recipient key, signed by the test sender
- *       key) opens correctly and its protected headers are restored.
+ *   (c) INTEROP FIXTURES — the committed, offline-generated sealed `.eml`s open
+ *       correctly and their protected headers are restored, in BOTH provenances:
+ *       the openpgp.js-generated `fixtures/sealed-mail/pgp/` fixture AND the
+ *       genuine GnuPG-generated `apps/api/fixtures/sealed-mail/gnupg/` group
+ *       (keys, encryption, and signature all produced by `gpg` — true
+ *       cross-implementation interop for the inbound direction).
  *   (d) DETECTION + PARSING — `isSealedPgpMime` recognises PGP/MIME + inline
  *       armor and passes plaintext through; `parseInnerMessage` restores subject
  *       and text/html from single-part AND multipart inner messages.
@@ -21,6 +24,7 @@
 
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import * as openpgp from 'openpgp';
 import { describe, it, expect } from 'vitest';
 import { sealMime } from '../seal';
 import { openSealed } from '../open';
@@ -48,6 +52,14 @@ function sampleMessage(): string {
 
 function fixturePath(name: string): string {
 	return fileURLToPath(new URL(`../../../../../fixtures/sealed-mail/pgp/${name}`, import.meta.url));
+}
+
+function gnupgFixturePath(name: string): string {
+	return fileURLToPath(new URL(`../../../fixtures/sealed-mail/gnupg/${name}`, import.meta.url));
+}
+
+function readGnupgFixture(name: string): string {
+	return readFileSync(gnupgFixturePath(name), 'utf-8');
 }
 
 describe('e2ee/open · openSealed', () => {
@@ -171,6 +183,83 @@ describe('e2ee/open · openSealed', () => {
 
 	it('the cipher-suite constant is the PGP/MIME profile', () => {
 		expect(INBOUND_CIPHER_SUITE).toBe('pgp-mime');
+	});
+});
+
+describe('e2ee/open · GnuPG interop (gpg-generated fixtures)', () => {
+	// TRUE cross-implementation interop for the inbound direction: every byte of
+	// OpenPGP material in `apps/api/fixtures/sealed-mail/gnupg/` — the throwaway
+	// keys, the encryption, the signature — was produced OFFLINE by GnuPG
+	// (gpg 2.5.21 via `gnupg/generate.sh`), and here the openpgp.js ingest path
+	// opens it. The group carries its own gpg-minted recipient keypair because
+	// gpg cannot encrypt to the openpgp.js `pgp/inbound-recipient` key (a v4 key
+	// with RFC 9580 new-style algorithm IDs, rejected by GnuPG); the sender key is
+	// wired through `senderPublicKeyArmored` exactly like the openpgp.js fixture —
+	// the same pinned-key seam the ingest actions resolve into.
+	const recipientPriv = readGnupgFixture('keys/recipient.sec.asc');
+	const senderPub = readGnupgFixture('keys/sender.pub.asc');
+
+	it('opens the gpg-sealed protected-headers fixture — verify + restore, byte-equal', async () => {
+		const raw = readGnupgFixture('sealed-protected-headers.eml');
+		expect(isSealedPgpMime(raw)).toBe(true);
+
+		const outcome = await openSealed({
+			raw,
+			recipientPrivateKeysArmored: [recipientPriv],
+			senderPublicKeyArmored: senderPub,
+		});
+		expect(outcome.status).toBe('opened');
+		if (outcome.status !== 'opened') return;
+		expect(outcome.signatureValid).toBe(true);
+		const senderKey = await openpgp.readKey({ armoredKey: senderPub });
+		expect(outcome.signerFingerprint).toBe(senderKey.getFingerprint().toUpperCase());
+
+		// BYTE-EQUAL: gpg's literal packet preserves the committed plaintext input
+		// exactly, so the recovered inner MIME is the committed input, byte for byte.
+		expect(outcome.innerMime).toBe(readGnupgFixture('inner-protected-headers.eml'));
+
+		// Protected headers restored (D4): the real subject + BOTH body branches
+		// travelled inside the ciphertext; the outer `.eml` carries only `Subject: ...`.
+		const restored = parseInnerMessage(outcome.innerMime);
+		expect(restored.subject).toBe('GnuPG sealed interop figures');
+		expect(restored.text).toContain('CANARY_GNUPG_INTEROP_9f41aa');
+		expect(restored.html).toContain('CANARY_GNUPG_INTEROP_9f41aa');
+	});
+
+	it('opens the gpg-sealed fixture WITHOUT protected headers — no inner subject claim', async () => {
+		const raw = readGnupgFixture('sealed-no-protected-headers.eml');
+		expect(isSealedPgpMime(raw)).toBe(true);
+
+		const outcome = await openSealed({
+			raw,
+			recipientPrivateKeysArmored: [recipientPriv],
+			senderPublicKeyArmored: senderPub,
+		});
+		expect(outcome.status).toBe('opened');
+		if (outcome.status !== 'opened') return;
+		expect(outcome.signatureValid).toBe(true);
+		expect(outcome.innerMime).toBe(readGnupgFixture('inner-no-protected-headers.eml'));
+
+		// No protected headers inside ⇒ no restored subject (the OUTER subject stays
+		// authoritative on ingest); the body still decrypts.
+		const restored = parseInnerMessage(outcome.innerMime);
+		expect(restored.subject).toBeUndefined();
+		expect(restored.text).toContain('CANARY_GNUPG_PLAIN_2ee7c3');
+	});
+
+	it('reports the gpg fixture UNVERIFIED against the WRONG pinned sender key', async () => {
+		// Cross-provenance wrong-key: pin the openpgp.js fixture sender against the
+		// gpg-signed message — decrypts, but stays fail-closed UNVERIFIED.
+		const outcome = await openSealed({
+			raw: readGnupgFixture('sealed-protected-headers.eml'),
+			recipientPrivateKeysArmored: [recipientPriv],
+			senderPublicKeyArmored: readFileSync(fixturePath('inbound-sender.public.asc'), 'utf-8'),
+		});
+		expect(outcome.status).toBe('opened');
+		if (outcome.status !== 'opened') return;
+		expect(outcome.signatureValid).toBe(false);
+		expect(outcome.signerFingerprint).toBeUndefined();
+		expect(parseInnerMessage(outcome.innerMime).text).toContain('CANARY_GNUPG_INTEROP_9f41aa');
 	});
 });
 
