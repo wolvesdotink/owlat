@@ -22,7 +22,7 @@ export interface RecoveryKitInput {
 	address: string;
 	/** The uppercase-hex OpenPGP fingerprint of the key. */
 	fingerprint: string;
-	/** The armored `-----BEGIN PGP PRIVATE KEY BLOCK-----` for the address. */
+	/** The ASCII-armored OpenPGP private key block for the address. */
 	privateKeyArmored: string;
 	/** When the kit was generated (ms since epoch). */
 	generatedAt: number;

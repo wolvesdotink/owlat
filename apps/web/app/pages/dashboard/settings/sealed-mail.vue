@@ -274,7 +274,7 @@ async function runReSeal() {
 						v-model="importKey"
 						rows="4"
 						spellcheck="false"
-						placeholder="-----BEGIN PGP PRIVATE KEY BLOCK-----"
+						placeholder="Paste the ASCII-armored private key from your recovery kit"
 						data-testid="recovery-kit-import-key"
 						class="w-full rounded border border-border-subtle bg-bg-surface px-3 py-2 font-mono text-xs text-text-primary placeholder:text-text-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 					/>
