@@ -127,6 +127,23 @@ async function restoreKit() {
 		showToast("That key doesn't match this address, so it wasn't imported.", 'error');
 	}
 }
+
+// ── Re-seal after an instance-secret change (E6). After rotating INSTANCE_SECRET
+// (with the previous value kept in INSTANCE_SECRET_PREVIOUS during the window),
+// this re-encrypts every stored key under the new secret so the old secret can be
+// retired. The reachable operator trigger the self-host docs point at. Admin only.
+const { run: reSeal, isLoading: reSealing } = useBackendOperation(api.e2ee.lifecycle.reSealVault, {
+	label: 'Re-seal sealed mail',
+});
+
+async function runReSeal() {
+	const result = await reSeal({});
+	if (result === undefined) return;
+	showToast(
+		'Re-sealing started. Once it finishes you can remove the previous instance secret.',
+		'success'
+	);
+}
 </script>
 
 <template>
@@ -272,6 +289,32 @@ async function restoreKit() {
 							Import recovery kit
 						</UiButton>
 					</div>
+				</div>
+			</section>
+
+			<!-- Re-seal after an instance-secret change (E6). The reachable trigger the
+			     self-host docs point at for the INSTANCE_SECRET rotation acceptance. -->
+			<section class="space-y-4 rounded border border-border-subtle p-5">
+				<div>
+					<h2 class="text-base font-semibold text-text-primary">
+						After changing the instance secret
+					</h2>
+					<p class="mt-1 text-sm text-text-secondary">
+						If you rotate this instance's secret, keep the previous one in place until you run this.
+						Re-sealing re-encrypts every stored key under the new secret so the old one can be
+						retired. Sealed mail keeps opening throughout.
+					</p>
+				</div>
+				<div class="flex justify-end">
+					<UiButton
+						variant="secondary"
+						size="sm"
+						:loading="reSealing"
+						data-testid="reseal-vault"
+						@click="runReSeal"
+					>
+						Re-seal sealed mail
+					</UiButton>
 				</div>
 			</section>
 		</template>
