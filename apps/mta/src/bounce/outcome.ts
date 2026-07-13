@@ -158,6 +158,9 @@ function reduceMailbox(
 		dkimResult,
 		dmarcResult,
 		dmarcPolicy,
+		arcCv,
+		arcSealerDomain,
+		arcAttestsOriginalPass,
 	} = attempt;
 
 	const deliveryId = `mb-${parsed.messageId ?? Date.now()}-${rcptTo}`;
@@ -195,6 +198,12 @@ function reduceMailbox(
 						dkimResult,
 						dmarcResult,
 						dmarcPolicy,
+						// Verified ARC verdict (RFC 8617, Sealed Mail A5). Convex applies
+						// the trusted-forwarder override against its editable allow-list —
+						// the MTA only reports the cryptographic verdict.
+						arcCv,
+						arcSealerDomain,
+						arcAttestsOriginalPass,
 						attachments: attachments.map((att) => ({
 							filename: att.filename,
 							contentType: att.contentType,

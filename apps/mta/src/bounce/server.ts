@@ -25,6 +25,7 @@ import { emailDomain } from '@owlat/shared/spfAlignment';
 import { checkConnectionRateLimit, releaseConnection, checkSpf } from './inboundSecurity.js';
 import { verifyDkim } from './inboundDkim.js';
 import { evaluateDmarc, dnsDmarcLookup } from './inboundDmarc.js';
+import { verifyArcChain } from './inboundArc.js';
 import { runPipeline } from './pipeline.js';
 import { mainPipeline } from './phases/index.js';
 import { reduce } from './outcome.js';
@@ -298,6 +299,18 @@ export function createBounceServer(config: MtaConfig, redis: Redis): SMTPServer 
 				const dmarcResult = dmarc?.result;
 				const dmarcPolicy = dmarc?.policy;
 
+				// Verify the ARC chain (RFC 8617) over the raw bytes (Sealed Mail A5).
+				// A mailing list / forwarder that broke DKIM but sealed a valid chain
+				// attesting the original passed lets the Convex delivery path rescue
+				// the DMARC fail — but ONLY when the sealer is a TRUSTED forwarder, a
+				// decision made in Convex against the operator's editable allow-list.
+				// The MTA only extracts the honest verdict here. Fail-open: a crash
+				// yields `cv: 'none'` (no rescue), never a NACK of accepted bytes.
+				const arcVerdict = config.inboundArcEnabled ? await verifyArcChain(rawBuffer) : undefined;
+				const arcCv = arcVerdict?.cv;
+				const arcSealerDomain = arcVerdict?.sealerDomain;
+				const arcAttestsOriginalPass = arcVerdict?.attestsOriginalPass;
+
 				const deps = { redis, config };
 				const piped = await runPipeline(deps, mainPipeline, {
 					parsed,
@@ -306,6 +319,9 @@ export function createBounceServer(config: MtaConfig, redis: Redis): SMTPServer 
 					dkimResult,
 					dmarcResult,
 					dmarcPolicy,
+					arcCv,
+					arcSealerDomain,
+					arcAttestsOriginalPass,
 					spfResult,
 					envelopeFromDomain,
 					dkimSigningDomain: dkim?.domain,
@@ -338,6 +354,9 @@ export function createBounceServer(config: MtaConfig, redis: Redis): SMTPServer 
 					dkimResult,
 					dmarcResult,
 					dmarcPolicy,
+					arcCv,
+					arcSealerDomain,
+					arcAttestsOriginalPass,
 					spfResult,
 					envelopeFromDomain,
 					dkimSigningDomain: dkim?.domain,
