@@ -18,7 +18,13 @@
 import { v } from 'convex/values';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
-import { decodeTlsReport, parseTlsReport, digestTlsReport } from '@owlat/shared';
+import {
+	decodeTlsReport,
+	parseTlsReport,
+	digestTlsReport,
+	TLS_RPT_MAX_COMPRESSED_BYTES,
+	TLS_RPT_MAX_DECOMPRESSED_BYTES,
+} from '@owlat/shared';
 
 /**
  * Decode one forwarded TLS-RPT attachment and (if valid) ingest its digest.
@@ -33,11 +39,22 @@ export const decodeAndIngest = internalAction({
 		deduped: v.optional(v.boolean()),
 	}),
 	handler: async (ctx, args): Promise<{ ok: boolean; reason?: string; deduped?: boolean }> => {
+		const maxDecodedBytes = args.isPlainJson
+			? TLS_RPT_MAX_DECOMPRESSED_BYTES
+			: TLS_RPT_MAX_COMPRESSED_BYTES;
+		const maxBase64Characters = 4 * Math.ceil(maxDecodedBytes / 3);
+		if (args.contentBase64.length > maxBase64Characters) {
+			return { ok: false, reason: 'payload-too-large' };
+		}
+
 		let bytes: Uint8Array;
 		try {
 			bytes = Uint8Array.from(atob(args.contentBase64), (c) => c.charCodeAt(0));
 		} catch {
 			return { ok: false, reason: 'bad-base64' };
+		}
+		if (bytes.byteLength > maxDecodedBytes) {
+			return { ok: false, reason: 'payload-too-large' };
 		}
 
 		// Gzip attachments go through gunzip+parse; a plain `.json` is parsed directly.

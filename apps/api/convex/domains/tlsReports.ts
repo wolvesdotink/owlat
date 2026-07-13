@@ -12,16 +12,24 @@
  * runtime), which parses with the shared never-throwing parser (`@owlat/shared`
  * `decodeTlsReport`) and calls {@link ingest}.
  *
- * `ingest` is idempotent by the report's own `report-id` (RFC 8460 §4.1) so a
- * re-delivered report never double-counts. {@link getTlsReportSummary} rolls the
- * stored rows up for the Delivery-page dashboard card: per-partner success rate,
- * failure-type tallies, and a 30-day trend.
+ * `ingest` is idempotent by reporting organization + `report-id` (RFC 8460 §4.1)
+ * so a re-delivered report never double-counts. {@link getTlsReportSummary} rolls
+ * the stored rows up for the Delivery-page dashboard card: per-reporter success
+ * rate, failure-type tallies, and a 30-day trend.
  */
 
 import { v } from 'convex/values';
 import { internalMutation } from '../_generated/server';
 import { adminQuery } from '../lib/authedFunctions';
-import { TLS_RPT_MAX_FAILURE_TYPES } from '@owlat/shared';
+import {
+	TLS_RPT_MAX_CONTACT_INFO_LENGTH,
+	TLS_RPT_MAX_FAILURE_TYPE_LENGTH,
+	TLS_RPT_MAX_FAILURE_TYPES,
+	TLS_RPT_MAX_ORGANIZATION_NAME_LENGTH,
+	TLS_RPT_MAX_POLICY_DOMAIN_LENGTH,
+	TLS_RPT_MAX_REPORT_ID_LENGTH,
+	TLS_RPT_MAX_SESSION_COUNT,
+} from '@owlat/shared';
 
 /** Window the dashboard summarises. */
 const SUMMARY_WINDOW_DAYS = 30;
@@ -33,9 +41,9 @@ const failureTypeCountValidator = v.array(v.object({ type: v.string(), count: v.
 /**
  * Idempotently persist one parsed TLS-RPT report digest. Called only by the
  * `/webhooks/mta-tls-report` HTTP action after the shared parser has validated
- * the upload. De-duplicates on `reportId`: a re-delivered report patches the
- * existing row (partners may re-send a corrected report for the same id)
- * instead of inserting a duplicate.
+ * the upload. De-duplicates on reporting organization + `reportId`: a
+ * re-delivered or corrected report patches that reporter's existing row instead
+ * of conflating reporters that happened to choose the same id.
  */
 export const ingest = internalMutation({
 	args: {
@@ -53,9 +61,37 @@ export const ingest = internalMutation({
 		if (args.failureTypeCounts.length > TLS_RPT_MAX_FAILURE_TYPES) {
 			throw new Error(`TLS report exceeds the ${TLS_RPT_MAX_FAILURE_TYPES} failure-type limit`);
 		}
+		if (
+			args.reportId.length === 0 ||
+			args.reportId.length > TLS_RPT_MAX_REPORT_ID_LENGTH ||
+			args.organizationName.length === 0 ||
+			args.organizationName.length > TLS_RPT_MAX_ORGANIZATION_NAME_LENGTH ||
+			args.contactInfo.length > TLS_RPT_MAX_CONTACT_INFO_LENGTH ||
+			args.policyDomain.length === 0 ||
+			args.policyDomain.length > TLS_RPT_MAX_POLICY_DOMAIN_LENGTH
+		) {
+			throw new Error('TLS report contains an invalid stored label');
+		}
+		if (
+			!isNonNegativeSafeInteger(args.successCount) ||
+			!isNonNegativeSafeInteger(args.failureCount) ||
+			!Number.isSafeInteger(args.rangeStartMs) ||
+			!Number.isSafeInteger(args.rangeEndMs) ||
+			args.rangeStartMs > args.rangeEndMs ||
+			args.failureTypeCounts.some(
+				(entry) =>
+					entry.type.length === 0 ||
+					entry.type.length > TLS_RPT_MAX_FAILURE_TYPE_LENGTH ||
+					!isNonNegativeSafeInteger(entry.count)
+			)
+		) {
+			throw new Error('TLS report contains invalid counters or date range');
+		}
 		const existing = await ctx.db
 			.query('tlsReports')
-			.withIndex('by_reportId', (q) => q.eq('reportId', args.reportId))
+			.withIndex('by_reporter_report_id', (q) =>
+				q.eq('organizationName', args.organizationName).eq('reportId', args.reportId)
+			)
 			.unique();
 
 		const row = { ...args, receivedAt: Date.now() };
@@ -69,9 +105,13 @@ export const ingest = internalMutation({
 	},
 });
 
-/** Per-partner roll-up returned to the dashboard. */
-interface PartnerSummary {
-	domain: string;
+function isNonNegativeSafeInteger(value: number): boolean {
+	return Number.isSafeInteger(value) && value >= 0 && value <= TLS_RPT_MAX_SESSION_COUNT;
+}
+
+/** Per-reporting-organization roll-up returned to the dashboard. */
+interface ReportingOrganizationSummary {
+	organizationName: string;
 	successCount: number;
 	failureCount: number;
 	/** 0–1; null when there were no sessions at all. */
@@ -90,7 +130,7 @@ interface TrendPoint {
 /**
  * Roll up the last 30 days of TLS-RPT reports for the Delivery dashboard.
  *
- * Returns per-partner success rates, aggregate failure-type counts, a 30-day
+ * Returns per-reporter success rates, aggregate failure-type counts, a 30-day
  * daily trend, and headline totals. Empty when nothing has been ingested (the
  * card renders its own empty state).
  *
@@ -109,7 +149,7 @@ export const getTlsReportSummary = adminQuery({
 			.take(MAX_REPORTS_PER_SUMMARY + 1);
 		const rows = matchedRows.slice(0, MAX_REPORTS_PER_SUMMARY);
 
-		const partners = new Map<string, PartnerSummary>();
+		const reportingOrganizations = new Map<string, ReportingOrganizationSummary>();
 		const failureTypes = new Map<string, number>();
 		const trend = new Map<string, TrendPoint>();
 		let totalSuccess = 0;
@@ -119,17 +159,17 @@ export const getTlsReportSummary = adminQuery({
 			totalSuccess += r.successCount;
 			totalFailure += r.failureCount;
 
-			const partner = partners.get(r.policyDomain) ?? {
-				domain: r.policyDomain,
+			const reportingOrganization = reportingOrganizations.get(r.organizationName) ?? {
+				organizationName: r.organizationName,
 				successCount: 0,
 				failureCount: 0,
 				successRate: null,
 				reportCount: 0,
 			};
-			partner.successCount += r.successCount;
-			partner.failureCount += r.failureCount;
-			partner.reportCount += 1;
-			partners.set(r.policyDomain, partner);
+			reportingOrganization.successCount += r.successCount;
+			reportingOrganization.failureCount += r.failureCount;
+			reportingOrganization.reportCount += 1;
+			reportingOrganizations.set(r.organizationName, reportingOrganization);
 
 			for (const f of r.failureTypeCounts) {
 				failureTypes.set(f.type, (failureTypes.get(f.type) ?? 0) + f.count);
@@ -142,9 +182,10 @@ export const getTlsReportSummary = adminQuery({
 			trend.set(dayKey, point);
 		}
 
-		for (const partner of partners.values()) {
-			const total = partner.successCount + partner.failureCount;
-			partner.successRate = total > 0 ? partner.successCount / total : null;
+		for (const reportingOrganization of reportingOrganizations.values()) {
+			const total = reportingOrganization.successCount + reportingOrganization.failureCount;
+			reportingOrganization.successRate =
+				total > 0 ? reportingOrganization.successCount / total : null;
 		}
 
 		const totalSessions = totalSuccess + totalFailure;
@@ -155,7 +196,7 @@ export const getTlsReportSummary = adminQuery({
 			totalSuccessCount: totalSuccess,
 			totalFailureCount: totalFailure,
 			overallSuccessRate: totalSessions > 0 ? totalSuccess / totalSessions : null,
-			partners: Array.from(partners.values()).sort(
+			reportingOrganizations: Array.from(reportingOrganizations.values()).sort(
 				(a, b) => b.successCount + b.failureCount - (a.successCount + a.failureCount)
 			),
 			failureTypeCounts: Array.from(failureTypes.entries())

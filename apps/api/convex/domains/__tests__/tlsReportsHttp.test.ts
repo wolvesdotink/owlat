@@ -147,6 +147,24 @@ describe('handleTlsReportWebhook (/webhooks/mta-tls-report)', () => {
 		expect(await countReports(t)).toBe(0);
 	});
 
+	it('stops before authentication when Content-Length exceeds the body cap', async () => {
+		const t = setupTest();
+		const reqBody = body(VALID_ATTACHMENTS);
+		const ts = nowSeconds();
+		const sig = await hmacSha256Hex(SECRET, `${ts}.${reqBody}`);
+		const res = await t.fetch(TLS_RPT_PATH, {
+			method: 'POST',
+			body: reqBody,
+			headers: {
+				...signedHeaders(ts, sig),
+				'content-length': String(30 * 1024 * 1024),
+			},
+		});
+		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual({ ok: false, reason: 'payload-too-large' });
+		expect(await countReports(t)).toBe(0);
+	});
+
 	it('rejects (401) when the timestamp is stale (>60s)', async () => {
 		const t = setupTest();
 		const reqBody = body(VALID_ATTACHMENTS);

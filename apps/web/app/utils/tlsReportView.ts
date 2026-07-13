@@ -10,9 +10,9 @@
 import { explainTlsFailureType } from '@owlat/shared';
 import type { HealthTone } from './healthTone';
 
-/** Partner roll-up shape returned by `domains.tlsReports.getTlsReportSummary`. */
-export interface TlsPartnerRow {
-	domain: string;
+/** Reporter roll-up shape returned by `domains.tlsReports.getTlsReportSummary`. */
+export interface TlsReportingOrganizationRow {
+	organizationName: string;
 	successCount: number;
 	failureCount: number;
 	successRate: number | null;
@@ -26,7 +26,7 @@ export interface TlsReportSummary {
 	totalSuccessCount: number;
 	totalFailureCount: number;
 	overallSuccessRate: number | null;
-	partners: TlsPartnerRow[];
+	reportingOrganizations: TlsReportingOrganizationRow[];
 	failureTypeCounts: Array<{ type: string; count: number }>;
 	trend: Array<{ date: string; successCount: number; failureCount: number }>;
 }
