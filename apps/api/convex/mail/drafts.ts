@@ -27,6 +27,9 @@ import { assertStateIs, type TransitionOutcome as DraftTransitionOutcome } from 
 import { markOnboardingStep } from '../auth/userOnboarding';
 import { getMailSyncConfig, getMtaConfig } from './mtaClient';
 import { resolveMailboxTransport } from './outboundTransport';
+import { isFeatureEnabled } from '../lib/featureFlags';
+import { loadRecipientKeyStates } from './outboundQueries';
+import { deriveSealState, type SealState } from './sealPolicy';
 
 /**
  * True iff this mailbox actually has an outbound transport to ship the message —
@@ -287,6 +290,40 @@ export const get = publicQuery({
 		const owned = await requireMailboxAccess(ctx, draft.mailboxId);
 		if (!owned.ok) return null;
 		return draft;
+	},
+});
+
+/**
+ * Composer seal state for a draft (Sealed Mail E5, flag `sealedMail`). The authed,
+ * mailbox-scoped wrapper the compose surface reads: would sending now seal
+ * (`willSeal`), which recipients' keys rotated without a signed statement
+ * (`keyChanged`), or why it cannot seal (`cannotSeal`). Reuses the SAME pure
+ * `deriveSealState` + recipient-key readers as the dispatch path
+ * (`outboundQueries.ts`), so the composer's promise can never drift from what the
+ * sender actually does. Reads only PUBLIC trust state — never any private key
+ * material. Returns `null` (rather than throwing) when the draft is gone or the
+ * caller can't access its mailbox, so the composer renders no lock instead of an
+ * error.
+ */
+// public: soft-auth — returns null for anonymous; mailbox access is enforced in-handler
+export const getComposerSealState = publicQuery({
+	args: { draftId: v.id('mailDrafts') },
+	handler: async (ctx, args): Promise<SealState | null> => {
+		const draft = await ctx.db.get(args.draftId);
+		if (!draft) return null;
+		const owned = await requireMailboxAccess(ctx, draft.mailboxId);
+		if (!owned.ok) return null;
+		if (!(await isFeatureEnabled(ctx, 'sealedMail'))) {
+			return { kind: 'cannotSeal', reason: 'flag_off' };
+		}
+		const settings = await ctx.db.query('instanceSettings').first();
+		const policy = settings?.sealPolicy ?? 'auto';
+		const recipients = await loadRecipientKeyStates(ctx, [
+			...draft.toAddresses,
+			...draft.ccAddresses,
+			...draft.bccAddresses,
+		]);
+		return deriveSealState(policy, recipients);
 	},
 });
 
