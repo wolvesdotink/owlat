@@ -21,11 +21,26 @@
  */
 
 import { v } from 'convex/values';
-import { internalMutation, internalQuery } from '../_generated/server';
+import { internalMutation, internalQuery, type QueryCtx } from '../_generated/server';
+import type { Doc } from '../_generated/dataModel';
 import { internal } from '../_generated/api';
 import { adminMutation, adminQuery, publicQuery } from '../lib/authedFunctions';
 import { assertFeatureEnabled, isFeatureEnabled } from '../lib/featureFlags';
 import { normalizeEmail } from '@owlat/shared';
+
+/**
+ * The ACTIVE `keyVault` row for a (normalized) address, or null. After a rotation
+ * an address holds multiple rows — exactly one active, the rest decrypt-only — so
+ * the by_address index is scanned for the active one rather than trusting
+ * `.first()` (bounded: a handful of rows per address).
+ */
+async function activeAddressRow(ctx: QueryCtx, address: string): Promise<Doc<'keyVault'> | null> {
+	const rows = await ctx.db
+		.query('keyVault')
+		.withIndex('by_address', (q) => q.eq('address', address))
+		.collect();
+	return rows.find((r) => r.isActive) ?? null;
+}
 
 const sealedPrivateKeyValidator = v.object({
 	ciphertext: v.string(),
@@ -64,6 +79,11 @@ export const storeKeypair = internalMutation({
 			throw new Error("storeKeypair: kind 'address' requires an address");
 		}
 		const now = Date.now();
+		// Prefer the ACTIVE row for the subject. After a key rotation (E6) an address
+		// has multiple rows — one active, the old ones decrypt-only — and `.first()`
+		// on the by_address index would return whichever the index yields first
+		// (often the OLDEST, inactive row). Selecting the active row keeps this an
+		// upsert of the CURRENT key rather than reviving a retired one.
 		const existing =
 			args.kind === 'instance'
 				? await ctx.db
@@ -71,10 +91,7 @@ export const storeKeypair = internalMutation({
 						.withIndex('by_kind', (q) => q.eq('kind', 'instance'))
 						.first()
 				: args.address
-					? await ctx.db
-							.query('keyVault')
-							.withIndex('by_address', (q) => q.eq('address', args.address))
-							.first()
+					? await activeAddressRow(ctx, args.address)
 					: null;
 
 		if (existing) {
@@ -117,13 +134,31 @@ export const storeKeypair = internalMutation({
  */
 export const getAddressKeyInternal = internalQuery({
 	args: { address: v.string() },
+	handler: (ctx, args) => activeAddressRow(ctx, normalizeEmail(args.address)),
+});
+
+/**
+ * EVERY sealed private-key envelope for an address — the ACTIVE key plus every
+ * retired decrypt-only key kept from a rotation (E6). Newest first. Internal —
+ * consumed only by the Node open plane (`e2ee/open.ts`), which decrypts an
+ * inbound sealed message by TRYING every one of these keys, so a message sealed
+ * to a now-rotated key still opens (the DKIM overlap-rotation property for
+ * decryption). Never exposed publicly; carries the SEALED private half only.
+ */
+export const getAddressPrivateKeysInternal = internalQuery({
+	args: { address: v.string() },
+	returns: v.array(sealedPrivateKeyValidator),
 	handler: async (ctx, args) => {
 		const normalized = normalizeEmail(args.address);
-		const row = await ctx.db
+		const rows = await ctx.db
 			.query('keyVault')
 			.withIndex('by_address', (q) => q.eq('address', normalized))
-			.first();
-		return row && row.isActive ? row : null;
+			.collect(); // bounded: active key + a handful of retired decrypt-only keys.
+		// Active first, then most-recently-updated, so the common case (a message
+		// sealed to the current key) is tried first.
+		return rows
+			.sort((a, b) => Number(b.isActive) - Number(a.isActive) || b.updatedAt - a.updatedAt)
+			.map((r) => r.sealedPrivateKey);
 	},
 });
 
@@ -207,12 +242,10 @@ export const getPublicKeyByAddress = publicQuery({
 	args: { address: v.string() },
 	returns: publicKeyProjectionValidator,
 	handler: async (ctx, args) => {
-		const normalized = normalizeEmail(args.address);
-		const row = await ctx.db
-			.query('keyVault')
-			.withIndex('by_address', (q) => q.eq('address', normalized))
-			.first();
-		if (!row || !row.isActive) return null;
+		// The ACTIVE row — after a rotation an address has an old decrypt-only row
+		// too, and we must publish the CURRENT public key for discovery.
+		const row = await activeAddressRow(ctx, normalizeEmail(args.address));
+		if (!row) return null;
 		return { fingerprint: row.fingerprint, publicKeyArmored: row.publicKeyArmored };
 	},
 });
@@ -228,11 +261,15 @@ export const getKeyForWkd = publicQuery({
 	returns: v.union(v.null(), v.object({ binaryBase64: v.string() })),
 	handler: async (ctx, args) => {
 		const domain = args.domain.toLowerCase();
-		const row = await ctx.db
+		// After a rotation, the domain+wkdHash matches BOTH the retired and the new
+		// row (same local-part). Serve the ACTIVE key so a WKD fetch returns the
+		// current published key rather than whichever the index yields first.
+		const rows = await ctx.db
 			.query('keyVault')
 			.withIndex('by_wkd', (q) => q.eq('domain', domain).eq('wkdHash', args.wkdHash))
-			.first();
-		if (!row || !row.isActive) return null;
+			.collect(); // bounded: active + retired rows for one local-part.
+		const row = rows.find((r) => r.isActive);
+		if (!row) return null;
 		return { binaryBase64: row.publicKeyBinaryBase64 };
 	},
 });

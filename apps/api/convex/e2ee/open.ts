@@ -316,23 +316,31 @@ async function openWithVault(
 	recipientAddress: string,
 	from: string
 ): Promise<OpenOutcome> {
-	const recipientKey = await ctx.runQuery(internal.e2ee.keys.getAddressKeyInternal, {
+	// Load EVERY sealed private key for the address — the active key plus any
+	// retired decrypt-only keys kept across a rotation (E6) — and open the sealed
+	// envelope against all of them, so a message sealed to a now-rotated key still
+	// decrypts (the DKIM overlap-rotation property for decryption).
+	const sealedKeys = await ctx.runQuery(internal.e2ee.keys.getAddressPrivateKeysInternal, {
 		address: recipientAddress,
 	});
-	if (!recipientKey) return { status: 'cannotDecrypt' };
+	if (sealedKeys.length === 0) return { status: 'cannotDecrypt' };
 
-	let recipientPrivateKeyArmored: string;
-	try {
-		recipientPrivateKeyArmored = openPrivateKey(recipientKey.sealedPrivateKey);
-	} catch {
-		return { status: 'cannotDecrypt' };
+	const recipientPrivateKeysArmored: string[] = [];
+	for (const sealed of sealedKeys) {
+		try {
+			recipientPrivateKeysArmored.push(openPrivateKey(sealed));
+		} catch {
+			// A single unopenable envelope (e.g. mid INSTANCE_SECRET rotation) must not
+			// sink the whole open — skip it and try the rest.
+		}
 	}
+	if (recipientPrivateKeysArmored.length === 0) return { status: 'cannotDecrypt' };
 
 	const senderPublicKeyArmored = await resolvePinnedSenderKey(ctx, from);
 
 	return openSealed({
 		raw,
-		recipientPrivateKeysArmored: [recipientPrivateKeyArmored],
+		recipientPrivateKeysArmored,
 		...(senderPublicKeyArmored ? { senderPublicKeyArmored } : {}),
 	});
 }
