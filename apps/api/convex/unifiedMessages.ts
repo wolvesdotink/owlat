@@ -26,6 +26,19 @@ import { openUnifiedMessageContent, sealBodyAtWrite } from './lib/messageBody';
 // ============================================================
 
 /**
+ * Open one `unifiedMessages` row for a timeline query: unseal the sealed-at-rest
+ * `content` (E8b) and parse the metadata JSON. Shared by the three timeline
+ * queries so the identical mapper lives in exactly one place.
+ */
+async function openTimelineRow(msg: Doc<'unifiedMessages'>) {
+	return {
+		...msg,
+		content: await openUnifiedMessageContent(msg.content),
+		metadata: msg.metadata ? parseMetadata(msg.metadata) : undefined,
+	};
+}
+
+/**
  * Get messages for a conversation thread (unified timeline)
  */
 export const getThreadTimeline = adminQuery({
@@ -40,13 +53,7 @@ export const getThreadTimeline = adminQuery({
 			.order('asc')
 			.take(args.limit ?? 100);
 
-		return await Promise.all(
-			messages.map(async (msg) => ({
-				...msg,
-				content: await openUnifiedMessageContent(msg.content),
-				metadata: msg.metadata ? parseMetadata(msg.metadata) : undefined,
-			}))
-		);
+		return await Promise.all(messages.map(openTimelineRow));
 	},
 });
 
@@ -65,13 +72,7 @@ export const getContactTimeline = adminQuery({
 			.order('desc')
 			.take(args.limit ?? 50);
 
-		return await Promise.all(
-			messages.map(async (msg) => ({
-				...msg,
-				content: await openUnifiedMessageContent(msg.content),
-				metadata: msg.metadata ? parseMetadata(msg.metadata) : undefined,
-			}))
-		);
+		return await Promise.all(messages.map(openTimelineRow));
 	},
 });
 
@@ -95,13 +96,7 @@ export const listRecent = adminQuery({
 
 		const messages = await q.order('desc').take(args.limit ?? 50);
 
-		return await Promise.all(
-			messages.map(async (msg) => ({
-				...msg,
-				content: await openUnifiedMessageContent(msg.content),
-				metadata: msg.metadata ? parseMetadata(msg.metadata) : undefined,
-			}))
-		);
+		return await Promise.all(messages.map(openTimelineRow));
 	},
 });
 
