@@ -34,8 +34,11 @@ interface GeneratedKeypair {
 /** Generate an Ed25519 + X25519 OpenPGP keypair bound to `email`. */
 async function generateKeypair(email: string, name: string): Promise<GeneratedKeypair> {
 	const { privateKey, publicKey } = await openpgp.generateKey({
-		type: 'ecc',
-		curve: 'curve25519',
+		// `curve25519` yields an Ed25519 signing primary + an X25519 encryption
+		// subkey — the RFC 9580 profile (locked decision D1). (The older
+		// `type: 'ecc', curve: 'curve25519'` spelling is a deprecated alias that
+		// openpgp v6's types reject even though the runtime still tolerates it.)
+		type: 'curve25519',
 		userIDs: [{ name, email }],
 		format: 'armored',
 	});
