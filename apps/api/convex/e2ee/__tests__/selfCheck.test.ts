@@ -56,7 +56,7 @@ async function buildServedManifest(opts: {
 function fakeFetch(routes: {
 	manifest?: SignedManifest | null;
 	policyStatus?: number;
-	huBody?: Uint8Array | null;
+	huBody?: Uint8Array<ArrayBuffer> | null;
 }): (url: string) => Promise<Response> {
 	return (url: string) => {
 		if (url.endsWith('/.well-known/owlat.json')) {
