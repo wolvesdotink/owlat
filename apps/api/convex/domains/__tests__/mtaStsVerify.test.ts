@@ -156,8 +156,10 @@ describe('isPublicUnicastAddress', () => {
 		expect(isPublicUnicastAddress('169.254.1.1')).toBe(false);
 		expect(isPublicUnicastAddress('100.64.0.1')).toBe(false);
 		expect(isPublicUnicastAddress('::1')).toBe(false);
+		expect(isPublicUnicastAddress('::')).toBe(false);
 		expect(isPublicUnicastAddress('fe80::1')).toBe(false);
 		expect(isPublicUnicastAddress('fd00::1')).toBe(false);
+		expect(isPublicUnicastAddress('ff02::1')).toBe(false);
 		expect(isPublicUnicastAddress('::ffff:10.0.0.1')).toBe(false);
 	});
 

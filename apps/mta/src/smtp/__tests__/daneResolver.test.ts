@@ -141,6 +141,31 @@ describe('lookupTlsaRecords — a lookup FAILURE defers (never downgrades)', () 
 		expect(result.status).toBe('lookup-failed');
 	});
 
+	it('stops streaming a response whose body exceeds the byte cap', async () => {
+		let wasCancelled = false;
+		const oversizedBody = new ReadableStream<Uint8Array>({
+			start(controller) {
+				controller.enqueue(new Uint8Array(65_536));
+				controller.enqueue(new Uint8Array([1]));
+			},
+			cancel() {
+				wasCancelled = true;
+			},
+		});
+		vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+			new Response(oversizedBody, {
+				status: 200,
+				// A hostile resolver can omit or lie in Content-Length.
+				headers: { 'content-type': 'application/dns-json' },
+			}) as unknown as Response
+		);
+
+		expect(await lookupTlsaRecords(redis, MX, RESOLVER)).toMatchObject({
+			status: 'lookup-failed',
+		});
+		expect(wasCancelled).toBe(true);
+	});
+
 	it('a lookup failure is NEVER cached (a later success is honoured)', async () => {
 		const fetchSpy = vi
 			.spyOn(globalThis, 'fetch')

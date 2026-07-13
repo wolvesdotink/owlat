@@ -35,7 +35,12 @@ import {
 } from '@owlat/shared/mtaStsPolicy';
 import type { MtaStsVerification } from '@owlat/shared/mtaStsPolicy';
 import { isValidDomain } from '@owlat/shared';
-import { readCappedBytes, CappedReadOverflow } from '../lib/ssrfGuard';
+import {
+	readCappedBytes,
+	CappedReadOverflow,
+	guardedDispatcher,
+	isDisallowedIpAddress,
+} from '../lib/ssrfGuard';
 
 // A published MTA-STS policy body is a handful of short lines; anything larger is
 // not a policy we can meaningfully compare, so we cap the HTTPS read to bound
@@ -65,7 +70,13 @@ export interface MtaStsGatherDeps {
 const defaultDeps: MtaStsGatherDeps = {
 	resolveTxt: (name) => dns.resolveTxt(name),
 	lookup: (host) => dns.lookup(host, { all: true }),
-	fetch: (input, init) => fetch(input, init),
+	fetch: (input, init) =>
+		fetch(input, {
+			...init,
+			// @ts-expect-error `dispatcher` is an undici-specific fetch option not in
+			// the DOM RequestInit types, but is supported in the Node action runtime.
+			dispatcher: guardedDispatcher(),
+		}),
 };
 
 // Live verification that our OWN MTA-STS policy is correctly published for
@@ -115,7 +126,9 @@ export async function resolveMtaStsTxt(
 // cross-host redirects (`redirect: 'error'`), a bounded timeout, a streamed
 // body-size cap, `domain` validated so it can't inject userinfo/port/path into
 // the request URL, AND the `mta-sts.<domain>` host is rejected when it resolves
-// to a private/link-local/loopback address (public unicast only).
+// to a private/link-local/loopback address. The production fetch also repeats
+// that address check in the socket's DNS lookup, closing the DNS-rebinding gap
+// between this preflight and connection establishment.
 export async function fetchMtaStsPolicyBody(
 	domain: string,
 	deps: MtaStsGatherDeps = defaultDeps
@@ -160,10 +173,9 @@ async function readCappedText(
 
 // True when every resolved address for `host` is a public unicast address.
 // Fail-soft on a resolution error → false (treated as unreachable), and an
-// empty result → false (nothing to fetch). Best-effort SSRF guard: `fetch`
-// resolves independently, so this narrows the common misconfig/abuse case
-// (a `mta-sts.<domain>` CNAME/A pointing at an internal host) rather than being
-// a TOCTOU-proof barrier.
+// empty result → false (nothing to fetch). Production fetches additionally use
+// the connect-time dispatcher guard; keeping this preflight makes bad policy
+// hosts fail before opening a socket and keeps the gather dependency-injectable.
 async function resolvesToPublicAddress(host: string, deps: MtaStsGatherDeps): Promise<boolean> {
 	try {
 		const addresses = await deps.lookup(host);
@@ -177,37 +189,5 @@ async function resolvesToPublicAddress(host: string, deps: MtaStsGatherDeps): Pr
 // Reject loopback, private (RFC 1918), link-local, CGNAT, unique-local (IPv6)
 // and unspecified ranges — the addresses an SSRF probe would target.
 export function isPublicUnicastAddress(address: string): boolean {
-	const family = isIP(address);
-	if (family === 4) return isPublicIpv4(address);
-	if (family === 6) return isPublicIpv6(address);
-	return false;
-}
-
-function isPublicIpv4(address: string): boolean {
-	const parts = address.split('.').map((part) => Number(part));
-	if (
-		parts.length !== 4 ||
-		parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)
-	) {
-		return false;
-	}
-	const [a, b] = parts as [number, number, number, number];
-	if (a === 0 || a === 10 || a === 127) return false; // this-net, RFC 1918, loopback
-	if (a === 169 && b === 254) return false; // link-local
-	if (a === 172 && b >= 16 && b <= 31) return false; // RFC 1918
-	if (a === 192 && b === 168) return false; // RFC 1918
-	if (a === 100 && b >= 64 && b <= 127) return false; // CGNAT (RFC 6598)
-	if (a >= 224) return false; // multicast + reserved
-	return true;
-}
-
-function isPublicIpv6(address: string): boolean {
-	const lower = address.toLowerCase();
-	if (lower === '::' || lower === '::1') return false; // unspecified, loopback
-	if (lower.startsWith('fe80')) return false; // link-local
-	if (lower.startsWith('fc') || lower.startsWith('fd')) return false; // unique-local
-	// IPv4-mapped (::ffff:a.b.c.d) — defer to the IPv4 rules.
-	const mapped = lower.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
-	if (mapped?.[1]) return isPublicIpv4(mapped[1]);
-	return true;
+	return isIP(address) !== 0 && !isDisallowedIpAddress(address);
 }
