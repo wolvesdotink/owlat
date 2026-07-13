@@ -18,26 +18,37 @@
  * blobs) are served to clients and the MTA via SIGNED STORAGE URLS
  * (`ctx.storage.getUrl`), so sealing the bytes in place would hand ciphertext to
  * a plain download and regress delivery/IMAP FETCH. Sealing them safely needs a
- * decrypt-serving proxy; that is tracked as the follow-up and is intentionally
- * OUT of this migration. Bodies read into memory through
+ * decrypt-serving proxy; that is tracked as the follow-up (E8c) and is
+ * intentionally OUT of this migration. Bodies read into memory through
  * `readMailMessageText()` already unseal transparently, so a blob sealed by that
  * later step round-trips with no reader change.
+ *
+ * ACTIVATION ORDER (why this migration is safe to ship but sequenced): the body
+ * READERS decrypt through the async accessors in `lib/messageBody.ts`, and the
+ * WRITE paths seal via `sealMessageBody` — both are wired as part of E8c. This
+ * back-fill is a manually-invoked internal action (never auto-run on deploy), so
+ * an operator runs `run` only once the reader/writer wiring is live. See the PR
+ * discussion for the sequencing decision.
  *
  * RESUMABLE: each table is walked one page at a time via a cursor-carrying
  * `internalMutation`; the `run` orchestrator (an `internalAction`) drives the
  * cursors to completion and can be re-invoked after an interrupt. Because
- * `sealAtRest` is idempotent (an already-sealed or empty value is returned
+ * `sealMessageBody` is idempotent (an already-sealed or empty value is returned
  * unchanged) and readers tolerate a mix of sealed and plaintext rows
  * (`openAtRest` passes plaintext through), NO row is ever unreadable mid-run and
  * re-running never double-seals.
  */
 
 import { v } from 'convex/values';
-import { internalAction, internalMutation } from '../_generated/server';
+import { internalAction, internalMutation, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
-import { getRequired } from '../lib/env';
-import { sealAtRest } from '../lib/atRestBodies';
-import { sealInboundBodyPatch, sealMailInlineBodyPatch } from '../lib/messageBody';
+import type { Doc, Id, TableNames } from '../_generated/dataModel';
+import {
+	sealInboundBodyPatch,
+	sealMailInlineBodyPatch,
+	sealUnifiedContentPatch,
+	sealMailDraftBodyPatch,
+} from '../lib/messageBody';
 
 /** Rows per page. Small enough to stay well inside a mutation's limits. */
 const PAGE_SIZE = 50;
@@ -50,98 +61,79 @@ interface PageResult {
 	sealed: number;
 }
 
-/** Seal the inbound inline text/html body columns for one page. Field access
- * lives in `lib/messageBody.ts` (the body-layout owner); this applies the patch. */
+/** Per-table seal counts, named concretely so callers read `.inboundMessages`
+ * rather than a `Record<string, number>` index-signature access. */
+interface SealCounts {
+	inboundMessages: number;
+	mailMessages: number;
+	unifiedMessages: number;
+	mailDrafts: number;
+}
+
+/**
+ * Seal one page of a body-bearing table: paginate, build each row's sealing
+ * patch via the `lib/messageBody.ts` builder that owns that table's body-field
+ * layout, apply only the changed columns, and count the rows touched. The patch
+ * write is a closure over the caller's TYPED `ctx.db.patch`, so this generic
+ * walker stays type-safe without naming any body field itself — the ratchet's
+ * "body-field access lives only in messageBody.ts" invariant holds.
+ */
+async function sealPage<T extends TableNames, P extends object>(
+	ctx: MutationCtx,
+	table: T,
+	cursor: string | null,
+	buildPatch: (row: Doc<T>) => Promise<P>,
+	applyPatch: (id: Id<T>, patch: P) => Promise<void>
+): Promise<PageResult> {
+	const { page, continueCursor, isDone } = await ctx.db
+		.query(table)
+		.paginate({ numItems: PAGE_SIZE, cursor });
+	let sealed = 0;
+	for (const row of page) {
+		const patch = await buildPatch(row);
+		if (Object.keys(patch).length > 0) {
+			await applyPatch(row._id, patch);
+			sealed++;
+		}
+	}
+	return { cursor: continueCursor, isDone, sealed };
+}
+
+/** Seal the inbound inline text/html body columns for one page. */
 export const sealInboundMessagesPage = internalMutation({
 	args: cursorArg,
-	handler: async (ctx, { cursor }): Promise<PageResult> => {
-		const { page, continueCursor, isDone } = await ctx.db
-			.query('inboundMessages')
-			.paginate({ numItems: PAGE_SIZE, cursor });
-		let sealed = 0;
-		for (const row of page) {
-			const patch = await sealInboundBodyPatch(row);
-			if (Object.keys(patch).length > 0) {
-				await ctx.db.patch(row._id, patch);
-				sealed++;
-			}
-		}
-		return { cursor: continueCursor, isDone, sealed };
-	},
+	handler: (ctx, { cursor }): Promise<PageResult> =>
+		sealPage(ctx, 'inboundMessages', cursor, sealInboundBodyPatch, (id, patch) =>
+			ctx.db.patch(id, patch)
+		),
 });
 
 /** Seal the mailMessages inline text/html snippet columns for one page (inline
  * columns only — the body/eml storage blobs are handled separately; see header). */
 export const sealMailMessagesPage = internalMutation({
 	args: cursorArg,
-	handler: async (ctx, { cursor }): Promise<PageResult> => {
-		const { page, continueCursor, isDone } = await ctx.db
-			.query('mailMessages')
-			.paginate({ numItems: PAGE_SIZE, cursor });
-		let sealed = 0;
-		for (const row of page) {
-			const patch = await sealMailInlineBodyPatch(row);
-			if (Object.keys(patch).length > 0) {
-				await ctx.db.patch(row._id, patch);
-				sealed++;
-			}
-		}
-		return { cursor: continueCursor, isDone, sealed };
-	},
+	handler: (ctx, { cursor }): Promise<PageResult> =>
+		sealPage(ctx, 'mailMessages', cursor, sealMailInlineBodyPatch, (id, patch) =>
+			ctx.db.patch(id, patch)
+		),
 });
 
 /** Seal `unifiedMessages.content` (the JSON body blob) for one page. */
 export const sealUnifiedMessagesPage = internalMutation({
 	args: cursorArg,
-	handler: async (ctx, { cursor }): Promise<PageResult> => {
-		const secret = getRequired('INSTANCE_SECRET');
-		const { page, continueCursor, isDone } = await ctx.db
-			.query('unifiedMessages')
-			.paginate({ numItems: PAGE_SIZE, cursor });
-		let sealed = 0;
-		for (const row of page) {
-			const next = await sealAtRest(secret, row.content);
-			if (next !== row.content) {
-				await ctx.db.patch(row._id, { content: next });
-				sealed++;
-			}
-		}
-		return { cursor: continueCursor, isDone, sealed };
-	},
+	handler: (ctx, { cursor }): Promise<PageResult> =>
+		sealPage(ctx, 'unifiedMessages', cursor, sealUnifiedContentPatch, (id, patch) =>
+			ctx.db.patch(id, patch)
+		),
 });
 
 /** Seal `mailDrafts.bodyHtml` / `bodyText` / `bodyBlocks` for one page. */
 export const sealMailDraftsPage = internalMutation({
 	args: cursorArg,
-	handler: async (ctx, { cursor }): Promise<PageResult> => {
-		const secret = getRequired('INSTANCE_SECRET');
-		const { page, continueCursor, isDone } = await ctx.db
-			.query('mailDrafts')
-			.paginate({ numItems: PAGE_SIZE, cursor });
-		let sealed = 0;
-		for (const row of page) {
-			const patch: { bodyHtml?: string; bodyText?: string; bodyBlocks?: string } = {};
-			const nextHtml = await sealAtRest(secret, row.bodyHtml);
-			if (nextHtml !== row.bodyHtml) patch.bodyHtml = nextHtml;
-			if (row.bodyText !== undefined) {
-				const next = await sealAtRest(secret, row.bodyText);
-				if (next !== row.bodyText) patch.bodyText = next;
-			}
-			if (row.bodyBlocks !== undefined) {
-				const next = await sealAtRest(secret, row.bodyBlocks);
-				if (next !== row.bodyBlocks) patch.bodyBlocks = next;
-			}
-			if (
-				patch.bodyHtml !== undefined ||
-				patch.bodyText !== undefined ||
-				patch.bodyBlocks !== undefined
-			) {
-				await ctx.db.patch(row._id, patch);
-				sealed++;
-			}
-		}
-		return { cursor: continueCursor, isDone, sealed };
-	},
+	handler: (ctx, { cursor }): Promise<PageResult> =>
+		sealPage(ctx, 'mailDrafts', cursor, sealMailDraftBodyPatch, (id, patch) =>
+			ctx.db.patch(id, patch)
+		),
 });
 
 /**
@@ -169,26 +161,19 @@ async function drainTable(runPage: PageRunner): Promise<number> {
  */
 export const run = internalAction({
 	args: {},
-	handler: async (ctx): Promise<{ sealed: Record<string, number> }> => {
-		const inbound = await drainTable((a) =>
+	handler: async (ctx): Promise<{ sealed: SealCounts }> => {
+		const inboundMessages = await drainTable((a) =>
 			ctx.runMutation(internal.migrations['0035_seal_bodies_at_rest'].sealInboundMessagesPage, a)
 		);
-		const mail = await drainTable((a) =>
+		const mailMessages = await drainTable((a) =>
 			ctx.runMutation(internal.migrations['0035_seal_bodies_at_rest'].sealMailMessagesPage, a)
 		);
-		const unified = await drainTable((a) =>
+		const unifiedMessages = await drainTable((a) =>
 			ctx.runMutation(internal.migrations['0035_seal_bodies_at_rest'].sealUnifiedMessagesPage, a)
 		);
-		const drafts = await drainTable((a) =>
+		const mailDrafts = await drainTable((a) =>
 			ctx.runMutation(internal.migrations['0035_seal_bodies_at_rest'].sealMailDraftsPage, a)
 		);
-		return {
-			sealed: {
-				inboundMessages: inbound,
-				mailMessages: mail,
-				unifiedMessages: unified,
-				mailDrafts: drafts,
-			},
-		};
+		return { sealed: { inboundMessages, mailMessages, unifiedMessages, mailDrafts } };
 	},
 });
