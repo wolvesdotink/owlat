@@ -28,7 +28,7 @@ import { markOnboardingStep } from '../auth/userOnboarding';
 import { getMailSyncConfig, getMtaConfig } from './mtaClient';
 import { resolveMailboxTransport } from './outboundTransport';
 import { isFeatureEnabled } from '../lib/featureFlags';
-import { loadRecipientKeyStates } from './outboundQueries';
+import { hasActiveSigningKey, loadRecipientKeyStates } from './outboundQueries';
 import { deriveSealState, type SealState } from './sealPolicy';
 
 /**
@@ -294,16 +294,20 @@ export const get = publicQuery({
 });
 
 /**
- * Composer seal state for a draft (Sealed Mail E5, flag `sealedMail`). The authed,
- * mailbox-scoped wrapper the compose surface reads: would sending now seal
- * (`willSeal`), which recipients' keys rotated without a signed statement
- * (`keyChanged`), or why it cannot seal (`cannotSeal`). Reuses the SAME pure
- * `deriveSealState` + recipient-key readers as the dispatch path
- * (`outboundQueries.ts`), so the composer's promise can never drift from what the
- * sender actually does. Reads only PUBLIC trust state — never any private key
- * material. Returns `null` (rather than throwing) when the draft is gone or the
- * caller can't access its mailbox, so the composer renders no lock instead of an
- * error.
+ * Composer seal state for a draft (Sealed Mail E5, flag `sealedMail`). A
+ * `publicQuery` soft-auth wrapper (returns `null` for anonymous callers) that
+ * scopes the draft to the caller's mailbox in-handler via `requireMailboxAccess`.
+ * Answers, for the compose surface: would sending now seal (`willSeal`), which
+ * recipients' keys rotated without a signed statement (`keyChanged`), or why it
+ * cannot seal (`cannotSeal`). Feeds the SAME pure `deriveSealState` the same
+ * inputs the dispatch path (`getOutboundSealInputs` → `decideSeal`) reads — the
+ * per-recipient key states AND the sender's signing-key presence AND the org
+ * policy — so the composer's promise can never drift from what the sender
+ * actually does (a mailbox without a minted signing key, or an `ask`/`off`
+ * policy, resolves to `cannotSeal`, never a false "will be sealed"). Reads only
+ * PUBLIC trust state — never any private key material. Returns `null` (rather
+ * than throwing) when the draft is gone or the caller can't access its mailbox,
+ * so the composer renders no lock instead of an error.
  */
 // public: soft-auth — returns null for anonymous; mailbox access is enforced in-handler
 export const getComposerSealState = publicQuery({
@@ -323,7 +327,8 @@ export const getComposerSealState = publicQuery({
 			...draft.ccAddresses,
 			...draft.bccAddresses,
 		]);
-		return deriveSealState(policy, recipients);
+		const hasSigningKey = await hasActiveSigningKey(ctx, draft.fromAddress);
+		return deriveSealState(policy, recipients, hasSigningKey);
 	},
 });
 

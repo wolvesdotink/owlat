@@ -40,7 +40,7 @@ import { followUpWaitingOn } from './followUps';
 import { logError } from '../lib/runtimeLog';
 import { normalizeSubject } from '../lib/emailAddress';
 import { isFeatureEnabled } from '../lib/featureFlags';
-import { loadRecipientKeyStates } from './outboundQueries';
+import { hasActiveSigningKey, loadRecipientKeyStates } from './outboundQueries';
 import {
 	deriveSealState,
 	mailEncryptionInfoValidator,
@@ -969,8 +969,9 @@ export const transitionByUndoToken = internalMutation({
  * The composer-facing seal readiness for a draft (Sealed Mail E3 → consumed by
  * the E5 compose surface): would sending NOW seal (`willSeal`), which recipients'
  * keys rotated without a signed statement (`keyChanged`), or why it cannot seal
- * (`cannotSeal`). Reads only PUBLIC trust state (recipient outcomes + the org
- * policy) — never any private key material. The `sealedMail` flag gates it.
+ * (`cannotSeal`). Reads only PUBLIC trust state (recipient outcomes, the sender's
+ * signing-key presence, and the org policy) — never any private key material.
+ * The `sealedMail` flag gates it.
  * Internal: E5 wraps it in an authed compose query that already scopes the draft
  * to the caller's mailbox.
  */
@@ -994,6 +995,7 @@ export const getSealState = internalQuery({
 			...draft.ccAddresses,
 			...draft.bccAddresses,
 		]);
-		return deriveSealState(policy, recipients);
+		const hasSigningKey = await hasActiveSigningKey(ctx, draft.fromAddress);
+		return deriveSealState(policy, recipients, hasSigningKey);
 	},
 });
