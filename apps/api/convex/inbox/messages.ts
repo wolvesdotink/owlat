@@ -63,11 +63,11 @@ export const receiveMessage = internalMutation({
 		// action on the AI-inbox path. `textBody`/`htmlBody` above are ALREADY the
 		// decrypted plaintext when `sealed` is set (the action opened the message
 		// before calling this mutation), so the agent pipeline + the unified mirror
-		// consume real text. `signatureValid` is present only when we decrypted and
-		// checked the signature — absent ⇒ undecryptable (no claim). All optional so
-		// the plaintext path is byte-identical.
-		sealed: v.optional(v.boolean()),
-		signatureValid: v.optional(v.boolean()),
+		// consume real text. `isSignatureValid` is present only when we decrypted
+		// and checked the signature — absent ⇒ undecryptable (no claim). All
+		// optional so the plaintext path is byte-identical.
+		isSealed: v.optional(v.boolean()),
+		isSignatureValid: v.optional(v.boolean()),
 		signerFingerprint: v.optional(v.string()),
 		signerInstance: v.optional(v.string()),
 	},
@@ -120,8 +120,8 @@ export const receiveMessage = internalMutation({
 			dkimResult: args.dkimResult,
 			dmarcResult: args.dmarcResult,
 			dmarcPolicy: args.dmarcPolicy,
-			sealed: args.sealed,
-			signatureValid: args.signatureValid,
+			isSealed: args.isSealed,
+			isSignatureValid: args.isSignatureValid,
 			signerFingerprint: args.signerFingerprint,
 			signerInstance: args.signerInstance,
 		});
@@ -174,7 +174,7 @@ export const receiveMessage = internalMutation({
 					text: args.textBody,
 					html: args.htmlBody,
 					subject: args.subject,
-					...(args.sealed ? { sealed: true, signatureValid: args.signatureValid } : {}),
+					...(args.isSealed ? { isSealed: true, isSignatureValid: args.isSignatureValid } : {}),
 				}),
 				externalMessageId: args.messageId,
 			});
