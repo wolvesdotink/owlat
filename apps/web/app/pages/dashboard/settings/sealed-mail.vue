@@ -102,7 +102,11 @@ async function downloadKit() {
 	const anchor = document.createElement('a');
 	anchor.href = url;
 	anchor.download = kit.filename;
+	// Attach to the DOM before clicking — some browsers won't trigger a download
+	// from a detached anchor (matches the `downloadCsv` convention).
+	document.body.appendChild(anchor);
 	anchor.click();
+	document.body.removeChild(anchor);
 	URL.revokeObjectURL(url);
 	showToast('Recovery kit downloaded. Store it somewhere private and offline.', 'success');
 }
