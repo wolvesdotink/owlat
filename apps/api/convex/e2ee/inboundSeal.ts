@@ -165,6 +165,6 @@ function extractHeader(headerBlock: string, name: string): string | undefined {
 }
 
 /** Decode part bytes as UTF-8 (best-effort; never throws on malformed input). */
-function decodeUtf8(bytes: Uint8Array): string {
+export function decodeUtf8(bytes: Uint8Array): string {
 	return new TextDecoder('utf-8').decode(bytes);
 }

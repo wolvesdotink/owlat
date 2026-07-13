@@ -33,6 +33,7 @@ import { extractArmoredCiphertext } from '@owlat/shared/secureMessage';
 import { normalizeEmail } from '@owlat/shared';
 import { openPrivateKey } from './sealing';
 import {
+	decodeUtf8,
 	INBOUND_CIPHER_SUITE,
 	inboundEncryptionInfoValidator,
 	isSealedPgpMime,
@@ -94,21 +95,23 @@ export async function openSealed(params: OpenParams): Promise<OpenOutcome> {
 			...(verificationKey ? { verificationKeys: verificationKey } : {}),
 			format: 'binary',
 		});
-		innerMime = new TextDecoder('utf-8').decode(decrypted.data as Uint8Array);
+		innerMime = decodeUtf8(decrypted.data as Uint8Array);
 
 		// Signature verification is fail-CLOSED: only a signature that is PRESENT
 		// and verifies against the pinned key counts. An absent signature, an
 		// unverifiable one, or a decrypt without a pinned key all keep
-		// signatureValid: false.
+		// signatureValid: false. A message may carry MULTIPLE signatures and the
+		// pinned key's need not be first — accept when ANY verifies against it.
 		if (verificationKey) {
-			const [sig] = decrypted.signatures;
-			if (sig) {
+			for (const sig of decrypted.signatures) {
 				try {
 					await sig.verified;
 					signatureValid = true;
 					signerFingerprint = verificationKey.getFingerprint().toUpperCase();
+					break;
 				} catch {
-					signatureValid = false;
+					// This signature did not verify against the pinned key — a later
+					// entry still might, so keep looking (stay fail-closed if none do).
 				}
 			}
 		}
@@ -227,6 +230,11 @@ export const decryptAndReceive = internalAction({
 		dmarcResult: v.optional(v.string()),
 		dmarcPolicy: v.optional(v.string()),
 	},
+	returns: v.object({
+		inboundMessageId: v.id('inboundMessages'),
+		threadId: v.id('conversationThreads'),
+		contactId: v.id('contacts'),
+	}),
 	handler: async (ctx, args) => {
 		const outcome = await openWithVault(
 			ctx,
@@ -239,11 +247,11 @@ export const decryptAndReceive = internalAction({
 		let textBody = args.textBody;
 		let htmlBody = args.htmlBody;
 		let sealedFlags: {
-			sealed: true;
-			signatureValid?: boolean;
+			isSealed: true;
+			isSignatureValid?: boolean;
 			signerFingerprint?: string;
 			signerInstance?: string;
-		} = { sealed: true };
+		} = { isSealed: true };
 
 		if (outcome.status === 'opened') {
 			const restored = parseInnerMessage(outcome.innerMime);
@@ -254,8 +262,8 @@ export const decryptAndReceive = internalAction({
 			htmlBody = restored.htmlBody;
 			const info = buildOpenedInfo(outcome, normalizeEmail(args.from));
 			sealedFlags = {
-				sealed: true,
-				signatureValid: info.signatureValid,
+				isSealed: true,
+				isSignatureValid: info.signatureValid,
 				...(info.signerFingerprint ? { signerFingerprint: info.signerFingerprint } : {}),
 				...(info.signerInstance ? { signerInstance: info.signerInstance } : {}),
 			};
@@ -306,15 +314,42 @@ async function openWithVault(
 		return { status: 'cannotDecrypt' };
 	}
 
-	const cached = await ctx.runQuery(internal.e2ee.recipientKeys.getCached, { address: from });
-	const senderPublicKeyArmored =
-		cached && cached.outcome === 'trusted' ? cached.pinnedPublicKeyArmored : undefined;
+	const senderPublicKeyArmored = await resolvePinnedSenderKey(ctx, from);
 
 	return openSealed({
 		raw,
 		recipientPrivateKeysArmored: [recipientPrivateKeyArmored],
 		...(senderPublicKeyArmored ? { senderPublicKeyArmored } : {}),
 	});
+}
+
+/**
+ * Resolve the armored PUBLIC key to VERIFY the sender's signature against, per
+ * the card ("verify against the discovered/pinned sender key"). A cached
+ * `trusted` pin is used directly. On a cache MISS — every first-contact sender —
+ * we run the SSRF-guarded, TTL-cached `discoverRecipientKey` ONCE and re-read the
+ * freshly persisted pin, so a legitimate first message can be verified instead of
+ * being permanently recorded UNVERIFIED. Fail-CLOSED throughout: a `keyChanged`
+ * conflict is NEVER silently re-pinned (return undefined ⇒ UNVERIFIED), and any
+ * discovery error yields no verification key rather than a false claim.
+ */
+async function resolvePinnedSenderKey(ctx: ActionCtx, from: string): Promise<string | undefined> {
+	const cached = await ctx.runQuery(internal.e2ee.recipientKeys.getCached, { address: from });
+	if (cached && cached.outcome === 'trusted') return cached.pinnedPublicKeyArmored;
+	// A conflicting (keyChanged) pin must stay UNVERIFIED until an admin resolves
+	// it — never discover past it.
+	if (cached && cached.outcome === 'keyChanged') return undefined;
+
+	// First contact (or an expired negative cache): discover once, then re-read.
+	try {
+		await ctx.runAction(internal.e2ee.discovery.discoverRecipientKey, { address: from });
+	} catch {
+		return undefined;
+	}
+	const rediscovered = await ctx.runQuery(internal.e2ee.recipientKeys.getCached, { address: from });
+	return rediscovered && rediscovered.outcome === 'trusted'
+		? rediscovered.pinnedPublicKeyArmored
+		: undefined;
 }
 
 /** Build the honest opened-record from an open outcome + the sender address. */
