@@ -8,8 +8,8 @@
  * (workpool enqueue, provider routing) require infrastructure that
  * isn't bootstrapped in convex-test, so these tests focus on the
  * orchestrator's *DB-visible* effects: emailSends row creation, abVariant
- * tagging, cohort/remainder split. The schedule-only side effects
- * (enqueueCampaignEmails mutations) are tolerated as best-effort.
+ * tagging, cohort/remainder split. The schedule-only side effects are held on
+ * fake timers because each orchestrator hop is driven explicitly below.
  */
 
 import { convexTest, type TestConvex } from 'convex-test';
@@ -53,26 +53,15 @@ const modules = Object.fromEntries(
 	)
 );
 
-const suppressedErrors: Error[] = [];
-const unhandledRejectionHandler = (err: Error) => {
-	if (
-		err.message.includes('Could not find module') ||
-		err.message.includes('Write outside of transaction') ||
-		err.message.includes('Transaction not started')
-	) {
-		suppressedErrors.push(err);
-	} else {
-		throw err;
-	}
-};
-
 beforeEach(() => {
-	suppressedErrors.length = 0;
-	process.on('unhandledRejection', unhandledRejectionHandler);
+	vi.useFakeTimers();
 });
 
 afterEach(() => {
-	process.removeListener('unhandledRejection', unhandledRejectionHandler);
+	// These tests invoke each walker hop directly. Discard the corresponding
+	// runAfter callbacks so no Convex work survives this test environment.
+	vi.clearAllTimers();
+	vi.useRealTimers();
 });
 
 // ─── Setup ──────────────────────────────────────────────────────────────
