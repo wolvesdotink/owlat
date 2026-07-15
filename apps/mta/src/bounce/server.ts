@@ -25,12 +25,14 @@ import { emailDomain } from '@owlat/shared/spfAlignment';
 import { checkConnectionRateLimit, releaseConnection, checkSpf } from './inboundSecurity.js';
 import { verifyDkim } from './inboundDkim.js';
 import { evaluateDmarc, dnsDmarcLookup } from './inboundDmarc.js';
+import { verifyArcChain } from './inboundArc.js';
 import { runPipeline } from './pipeline.js';
 import { mainPipeline } from './phases/index.js';
 import { reduce } from './outcome.js';
 import { applyEffects } from './effects.js';
 import type { BounceAttempt, SpfVerdict } from './types.js';
 import type { SMTPServerSession } from 'smtp-server';
+import { inboundTlsRequiredError, isInboundTlsRequired } from '../inbound/inboundTlsPolicy.js';
 
 /** Hard cap for buffered inbound MIME (advertised AND wire-enforced). */
 const MAX_INBOUND_BYTES = 10 * 1024 * 1024;
@@ -93,7 +95,11 @@ export function createBounceServer(config: MtaConfig, redis: Redis): SMTPServer 
 			const remoteIp = session.remoteAddress;
 
 			try {
-				const allowed = await checkConnectionRateLimit(redis, remoteIp, config.bounceMaxConnectionsPerIp);
+				const allowed = await checkConnectionRateLimit(
+					redis,
+					remoteIp,
+					config.bounceMaxConnectionsPerIp
+				);
 
 				if (!allowed) {
 					logger.warn({ remoteIp }, 'Bounce server connection rate limited');
@@ -102,7 +108,7 @@ export function createBounceServer(config: MtaConfig, redis: Redis): SMTPServer 
 
 				// Tarpit: add deliberate delay for non-local connections
 				if (config.bounceTarpitEnabled && !isLocalAddress(remoteIp)) {
-					await new Promise(resolve => setTimeout(resolve, config.bounceTarpitDelayMs));
+					await new Promise((resolve) => setTimeout(resolve, config.bounceTarpitDelayMs));
 				}
 
 				callback();
@@ -135,6 +141,14 @@ export function createBounceServer(config: MtaConfig, redis: Redis): SMTPServer 
 
 		// SPF validation on MAIL FROM
 		async onMailFrom(address, session, callback) {
+			if ((await isInboundTlsRequired(redis)) && !session.secure) {
+				logger.warn(
+					{ remoteIp: session.remoteAddress, from: address.address },
+					'Plaintext inbound SMTP transaction rejected — STARTTLS required'
+				);
+				return callback(inboundTlsRequiredError());
+			}
+
 			if (!config.inboundSpfEnabled) {
 				return callback();
 			}
@@ -193,37 +207,51 @@ export function createBounceServer(config: MtaConfig, redis: Redis): SMTPServer 
 			}
 
 			// 2. Personal-mailbox lookup (Postbox) — Redis cache only
-			findMailboxRoute(redis, address.address).then((mailboxEntry) => {
-				if (mailboxEntry) {
-					// Pre-flight quota check (best-effort; SIZE may be unknown)
-					if (
-						mailboxEntry.quotaBytes != null &&
-						mailboxEntry.usedBytes >= mailboxEntry.quotaBytes
-					) {
-						callback(new Error('552 5.2.2 Mailbox over quota'));
+			findMailboxRoute(redis, address.address)
+				.then((mailboxEntry) => {
+					if (mailboxEntry) {
+						// Pre-flight quota check (best-effort; SIZE may be unknown)
+						if (
+							mailboxEntry.quotaBytes != null &&
+							mailboxEntry.usedBytes >= mailboxEntry.quotaBytes
+						) {
+							callback(new Error('552 5.2.2 Mailbox over quota'));
+							return;
+						}
+						callback();
 						return;
 					}
-					callback();
-					return;
-				}
 
-				// 3. Fall through to existing inbound route table (AI shared inbox, etc.)
-				findRoute(redis, address.address).then((route) => {
-					if (route) {
-						if (route.mode === 'reject') {
-							callback(new Error('Mailbox not found'));
-						} else {
-							callback();
-						}
-					} else {
-						callback(new Error('Mailbox not found'));
-					}
-				}).catch(() => {
+					// 3. Fall through to existing inbound route table (AI shared inbox,
+					//    etc.) — plus the TLS-RPT system route for the operator's
+					//    `_smtp._tls` rua address (RFC 8460). The system config MUST be
+					//    threaded here too: onData/resolveRoutePhase knows the system
+					//    route, but without it at the RCPT gate the rua address is
+					//    rejected "Mailbox not found" before onData ever runs, so inbound
+					//    TLS reports would never arrive.
+					findRoute(redis, address.address, {
+						ruaAddress: config.tlsRptRua,
+						convexSiteUrl: config.convexSiteUrl,
+						webhookSecret: config.webhookSecret,
+					})
+						.then((route) => {
+							if (route) {
+								if (route.mode === 'reject') {
+									callback(new Error('Mailbox not found'));
+								} else {
+									callback();
+								}
+							} else {
+								callback(new Error('Mailbox not found'));
+							}
+						})
+						.catch(() => {
+							callback(new Error('Temporary error'));
+						});
+				})
+				.catch(() => {
 					callback(new Error('Temporary error'));
 				});
-			}).catch(() => {
-				callback(new Error('Temporary error'));
-			});
 		},
 
 		// Process incoming bounce/FBL emails — runs the Bounce intake pipeline
@@ -259,9 +287,7 @@ export function createBounceServer(config: MtaConfig, redis: Redis): SMTPServer 
 				// mangles canonicalization. The verdict is threaded onto the
 				// personal-mailbox payload's `dkimResult`. Fail-open: a verify
 				// crash yields `temperror`, never a NACK of accepted bytes.
-				const dkim = config.inboundDkimEnabled
-					? await verifyDkim(rawBuffer)
-					: undefined;
+				const dkim = config.inboundDkimEnabled ? await verifyDkim(rawBuffer) : undefined;
 				const dkimResult = dkim?.result;
 
 				// Evaluate DMARC (RFC 7489): bind the (envelope-authenticated) SPF
@@ -282,6 +308,23 @@ export function createBounceServer(config: MtaConfig, redis: Redis): SMTPServer 
 				const dmarcResult = dmarc?.result;
 				const dmarcPolicy = dmarc?.policy;
 
+				// Verify the ARC chain (RFC 8617) over the raw bytes (Sealed Mail A5).
+				// A mailing list / forwarder that broke DKIM but sealed a valid chain
+				// attesting the original passed lets the Convex delivery path rescue
+				// the DMARC fail — but ONLY when the sealer is a TRUSTED forwarder, a
+				// decision made in Convex against the operator's editable allow-list.
+				// The MTA only extracts the honest verdict here. Fail-open: a crash
+				// yields `cv: 'none'` (no rescue), never a NACK of accepted bytes.
+				// Reuse the ARC seed `verifyDkim` already parsed from these bytes so we
+				// verify DKIM once, not twice, on the hot ingest path. When DKIM is
+				// disabled the seed is absent and `verifyArcChain` parses it itself.
+				const arcVerdict = config.inboundArcEnabled
+					? await verifyArcChain(rawBuffer, { arcSeed: dkim?.arcSeed })
+					: undefined;
+				const arcCv = arcVerdict?.cv;
+				const arcSealerDomain = arcVerdict?.sealerDomain;
+				const arcAttestsOriginalPass = arcVerdict?.attestsOriginalPass;
+
 				const deps = { redis, config };
 				const piped = await runPipeline(deps, mainPipeline, {
 					parsed,
@@ -290,7 +333,12 @@ export function createBounceServer(config: MtaConfig, redis: Redis): SMTPServer 
 					dkimResult,
 					dmarcResult,
 					dmarcPolicy,
+					arcCv,
+					arcSealerDomain,
+					arcAttestsOriginalPass,
 					spfResult,
+					envelopeFromDomain,
+					dkimSigningDomain: dkim?.domain,
 					returnPath,
 				});
 
@@ -305,7 +353,7 @@ export function createBounceServer(config: MtaConfig, redis: Redis): SMTPServer 
 					// pipeline edit broke that invariant — log and ACK.
 					logger.warn(
 						{ rcptTo, subject: parsed.subject },
-						'Bounce pipeline returned continue without a classification',
+						'Bounce pipeline returned continue without a classification'
 					);
 					callback();
 					return;
@@ -320,7 +368,12 @@ export function createBounceServer(config: MtaConfig, redis: Redis): SMTPServer 
 					dkimResult,
 					dmarcResult,
 					dmarcPolicy,
+					arcCv,
+					arcSealerDomain,
+					arcAttestsOriginalPass,
 					spfResult,
+					envelopeFromDomain,
+					dkimSigningDomain: dkim?.domain,
 					returnPath,
 				});
 				await applyEffects(effects, deps);
@@ -345,7 +398,7 @@ function logAttempt(attempt: BounceAttempt, parsed: import('mailparser').ParsedM
 		case 'fbl':
 			logger.info(
 				{ messageId: attempt.arf.originalMessageId, type: 'complaint' },
-				'FBL complaint processed',
+				'FBL complaint processed'
 			);
 			return;
 		case 'dsn_attributed':
@@ -355,14 +408,11 @@ function logAttempt(attempt: BounceAttempt, parsed: import('mailparser').ParsedM
 					bounceType: attempt.bounce.bounceType,
 					type: 'bounce',
 				},
-				'Bounce DSN processed',
+				'Bounce DSN processed'
 			);
 			return;
 		case 'route_hold':
-			logger.info(
-				{ rcptTo: attempt.rcptTo, from: parsed.from?.text },
-				'Inbound email held',
-			);
+			logger.info({ rcptTo: attempt.rcptTo, from: parsed.from?.text }, 'Inbound email held');
 			return;
 		case 'route_bounce':
 			logger.info({ rcptTo: attempt.rcptTo }, 'Inbound email bounced by route');
@@ -370,7 +420,7 @@ function logAttempt(attempt: BounceAttempt, parsed: import('mailparser').ParsedM
 		case 'unrecognized':
 			logger.warn(
 				{ rcptTo: attempt.rcptTo, subject: parsed.subject },
-				'Received unrecognized inbound email',
+				'Received unrecognized inbound email'
 			);
 			return;
 		case 'dsn_unattributed':

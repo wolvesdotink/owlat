@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { createSign, generateKeyPairSync } from 'crypto';
 import Redis from 'ioredis-mock';
 import {
 	getDkimConfig,
@@ -10,10 +11,18 @@ import {
 	seedFromConfig,
 	clearCache,
 } from '../dkimStore.js';
+import { getMtaSecretBox } from '../../lib/secretBox.js';
 
 vi.mock('../../monitoring/logger.js', () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
+
+const DKIM_PREFIX = 'mta:dkim:';
+
+/** Sign a fixed message with a PEM private key — proves the key is usable and unchanged. */
+function signWith(privateKeyPem: string): string {
+	return createSign('RSA-SHA256').update('dkim-canary').sign(privateKeyPem, 'base64');
+}
 
 describe('dkimStore', () => {
 	let redis: InstanceType<typeof Redis>;
@@ -181,6 +190,57 @@ describe('dkimStore', () => {
 			const second = await registerDomainKey(redis, 'idempotent.com');
 			expect(second.created).toBe(false);
 			expect(second.selector).toBe(first.selector);
+		});
+	});
+
+	describe('secrets at rest (sealed private keys)', () => {
+		it('stores the private key SEALED in Redis but returns plaintext on read', async () => {
+			const pem = '-----BEGIN PRIVATE KEY-----\nMIISEALEDkeymaterial\n-----END PRIVATE KEY-----';
+			await setDkimKey(redis, 'sealed.com', 's1', pem);
+
+			// The raw Redis value is a sealed token — no PEM markers in a dump.
+			const raw = await redis.hget(`${DKIM_PREFIX}sealed.com`, 'privateKey');
+			expect(raw).toBeTruthy();
+			expect(raw).not.toContain('BEGIN PRIVATE KEY');
+			expect(getMtaSecretBox().isSealed(raw!)).toBe(true);
+
+			// But getDkimConfig unseals transparently — caller sees the original PEM.
+			clearCache();
+			const config = await getDkimConfig(redis, 'sealed.com');
+			expect(config!.privateKey).toBe(pem);
+		});
+
+		it('migrates a legacy plaintext key in place on first read (byte-identical signing)', async () => {
+			// A real RSA key an OLD MTA wrote as plaintext straight into the hash.
+			const { privateKey } = generateKeyPairSync('rsa', {
+				modulusLength: 2048,
+				publicKeyEncoding: { type: 'spki', format: 'pem' },
+				privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+			});
+			await redis.hset(`${DKIM_PREFIX}legacy.com`, {
+				selector: 's1',
+				privateKey, // plaintext PEM, bypassing setDkimKey's sealing
+			});
+
+			// Signature the signer would produce BEFORE migration (raw seeded key).
+			const before = signWith(privateKey);
+
+			// First read: detects plaintext, seals it in place, returns the PEM.
+			clearCache();
+			const first = await getDkimConfig(redis, 'legacy.com');
+			expect(first!.privateKey).toBe(privateKey);
+			expect(signWith(first!.privateKey)).toBe(before);
+
+			// Redis now holds a sealed token — the plaintext PEM is gone from at-rest.
+			const rawAfter = await redis.hget(`${DKIM_PREFIX}legacy.com`, 'privateKey');
+			expect(rawAfter).not.toContain('BEGIN PRIVATE KEY');
+			expect(getMtaSecretBox().isSealed(rawAfter!)).toBe(true);
+
+			// Second read (from the sealed value): still the identical PEM + signature.
+			clearCache();
+			const second = await getDkimConfig(redis, 'legacy.com');
+			expect(second!.privateKey).toBe(privateKey);
+			expect(signWith(second!.privateKey)).toBe(before);
 		});
 	});
 

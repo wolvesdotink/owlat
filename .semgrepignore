@@ -22,3 +22,7 @@ apps/docs/content/
 *.example
 .env*
 infra/templates/
+# Sealed Mail interop corpus: committed throwaway PGP keypairs (reproducible
+# offline decrypt/verify; they protect nothing — see the corpus README).
+fixtures/sealed-mail/
+apps/api/fixtures/sealed-mail/

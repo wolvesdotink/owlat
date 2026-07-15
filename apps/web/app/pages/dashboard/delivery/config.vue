@@ -105,6 +105,15 @@ async function handleSendTest() {
 		testError.value = result.error ?? 'Test send failed.';
 	}
 }
+
+// Inbound TLS-RPT (RFC 8460) roll-up — daily reports partners send us about
+// TLS negotiation when delivering mail to our MX. Member-safe (operator
+// deliverability telemetry, no credentials).
+const {
+	data: tlsReportSummary,
+	isLoading: tlsReportLoading,
+	error: tlsReportError,
+} = useOrganizationQuery(api.domains.tlsReports.getTlsReportSummary);
 </script>
 
 <template>
@@ -246,7 +255,20 @@ async function handleSendTest() {
 			<!-- Editable transport editor — change provider / rotate credentials in
 			     place, tested and applied through the same env-patch the setup wizard
 			     uses. The status cards above stay the read-only at-a-glance summary. -->
-			<DeliveryTransportEditor :current-provider="status.provider" @applied="refetchStatus" />
+			<DeliveryTransportEditor
+				:current-provider="status.provider"
+				:current-outbound-tls-mode="status.outboundTlsMode"
+				@applied="refetchStatus"
+			/>
+
+			<!-- Inbound TLS hardening: publish our own MTA-STS policy (none →
+			     testing → enforce). Receiving posture, but it lives beside the
+			     transport controls so all TLS policy is in one place. -->
+			<DeliveryMtaStsModeCard />
+
+			<!-- Inbound sender authenticity: which forwarders we trust to rescue a
+			     DMARC fail on mailing-list / forwarded mail (Sealed Mail A5). -->
+			<DeliveryTrustedForwardersCard />
 
 			<!-- Provider + required env presence -->
 			<UiCard padding="none" overflow="hidden">
@@ -453,6 +475,13 @@ async function handleSendTest() {
 					</div>
 				</div>
 			</UiCard>
+
+			<!-- Inbound TLS reports (TLS-RPT, RFC 8460) partners send us -->
+			<DeliveryTlsReportCard
+				:summary="tlsReportSummary"
+				:is-loading="tlsReportLoading"
+				:error="tlsReportError"
+			/>
 		</div>
 	</div>
 </template>

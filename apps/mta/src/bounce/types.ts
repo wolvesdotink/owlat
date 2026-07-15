@@ -57,6 +57,33 @@ export interface BasePhaseCtx {
 	 */
 	readonly spfResult?: SpfVerdict;
 	/**
+	 * DMARC alignment input: the SMTP envelope MAIL FROM domain (the SPF-
+	 * authenticated identity), captured in `onMailFrom` and threaded through the
+	 * session. Surfaced onto the inbound payloads beside the verdicts so the
+	 * Convex reader can later compare it against the visible From domain.
+	 * `undefined` when SPF is disabled or MAIL FROM is empty (DSN).
+	 */
+	readonly envelopeFromDomain?: string;
+	/**
+	 * DMARC alignment input: the `d=` domain of the passing DKIM signature
+	 * (`dkim.domain`), captured in `onData`. Surfaced onto the inbound payloads
+	 * beside the verdicts. `undefined` when DKIM is disabled or no signature
+	 * verified.
+	 */
+	readonly dkimSigningDomain?: string;
+	/**
+	 * Inbound ARC chain-validation result (`cv=`, RFC 8617) computed by `onData`
+	 * over the raw bytes (Sealed Mail A5). Threaded onto the mailbox payload so
+	 * the Convex delivery path can rescue a DMARC fail when a TRUSTED forwarder
+	 * sealed a valid chain attesting the original passed. `undefined` when ARC is
+	 * disabled, no chain is present, or on the dispatch-side ctx.
+	 */
+	readonly arcCv?: string;
+	/** `d=` of the outermost ARC seal — the forwarder vouching for the message. */
+	readonly arcSealerDomain?: string;
+	/** Whether the sealer's AAR attests the original passed authentication. */
+	readonly arcAttestsOriginalPass?: boolean;
+	/**
 	 * The SMTP envelope sender (MAIL FROM / return-path), as taken from
 	 * `session.envelope.mailFrom` in `onData`. Normalized so the RFC 5321
 	 * §4.5.5 null sender (`<>`) and a missing MAIL FROM both surface as the
@@ -179,6 +206,12 @@ export type BounceAttempt =
 			readonly dmarcResult: string | undefined;
 			/** Published DMARC policy (`none`/`quarantine`/`reject`), for routing. */
 			readonly dmarcPolicy: string | undefined;
+			/** Inbound ARC chain-validation result (`cv=`, RFC 8617) — Sealed Mail A5. */
+			readonly arcCv: string | undefined;
+			/** `d=` of the outermost ARC seal — the forwarder vouching. */
+			readonly arcSealerDomain: string | undefined;
+			/** Whether the sealer's AAR attests the original passed. */
+			readonly arcAttestsOriginalPass: boolean | undefined;
 	  }
 	| {
 			readonly kind: 'endpoint_forward';

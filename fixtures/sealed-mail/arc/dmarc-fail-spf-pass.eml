@@ -1,0 +1,26 @@
+ARC-Seal: i=1; a=rsa-sha256; t=1783902765; cv=none;
+ d=lists.sourceforge.net; s=arc1;
+ b=AA2vxmmVgDkUjPkYf0HZ7P39TCbNfSoo/zoW15SFenQl+cc+lqTEVI7AYIn1buY0A8Qo8ZtXR
+ JhEv1Xo8Rbi8DhkoFd1LLUEyW9BupHqozPa96VUmLMbfcZVscyTaxQ7OqPntaZsOQe3M75v7ySb
+ jh1bBWh3g3UhHNEa7V6ao0YN1vkin+XJW9Rlmx3LhJ1O5xmmgtS2IlcA2CH9UBaIIwDA2/ka86+
+ b4JmjroYrK04Lt36HYhlZysFfCrLqnWzCaANf+VY0jBuZNeqvXtE5at+u4SkuUI6dZW7CecryP2
+ /VJF31qERqe586554NjYog2YWtcBfJ6x9COv2o+I8qqw==
+ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed;
+ d=lists.sourceforge.net; h=Content-Type: MIME-Version: Message-ID: Date:
+ Subject: To: From; q=dns/txt; s=arc1; t=1783902765;
+ bh=nmWyQJhggJOsbfBYMzimPC9tNUc/l94o++2tHoqk0Cw=;
+ b=Mhxgwnp56+W62f+hBNpd48lp4HlmR+1VunvW/42l/b2Qz2xs3YZ/vnL4e+LoqL4+ncea+qS8k
+ DiZhDBgtT7Ge0/XNGhxG4LCI5fC6tjOJRQFqrYhCAKM9ASbLJtE6e3Ap+Cz0HDHOhXG/JNIhLZc
+ NJODLOZx0u4h8A9Z3LSXaKVS9NI3KpP8njIqSIOiZg13Z16uz4Jm56euVa1FJZqq4q0PL24zfT5
+ yE2Ia/m7MV54Ymb6oODv73EOZJvP2mrsVjJwSGrFQJjtxaTk0OT7sCGM5bgZ1Kn0fdfvZCvHNAy
+ 8A003ogu25W9eG3+qYznZsP/5OKxj7v1ph72CrZXIB8A==
+ARC-Authentication-Results: i=1; lists.sourceforge.net; dmarc=fail header.from=author.example; spf=pass smtp.mailfrom=spammer.example; dkim=fail header.d=author.example
+From: Alice Author <alice@author.example>
+To: list@lists.example
+Subject: [list] hello from the mailing list
+Date: Tue, 01 Jul 2025 12:00:00 +0000
+Message-ID: <arc-fixture-001@author.example>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+This is a mailing-list message whose author DKIM was broken by the list.

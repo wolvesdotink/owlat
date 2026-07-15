@@ -15,34 +15,37 @@
 
 import { v } from 'convex/values';
 import { internalQuery } from '../_generated/server';
-import type { MutationCtx, QueryCtx } from '../_generated/server';
+import type { MutationCtx } from '../_generated/server';
 import { authedMutation, authedQuery, publicQuery } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
-import type { Doc, Id } from '../_generated/dataModel';
+import type { Id } from '../_generated/dataModel';
 import { normalizeEmail } from '@owlat/shared';
 import { requireMailboxAccess } from './permissions';
 import { resolveSendAsIdentitiesForCtx } from './identities';
 import { getOrThrow, throwForbidden, throwInvalidState, throwNotFound } from '../_utils/errors';
+import { sealBodyAtWrite } from '../lib/messageBody';
 import { assertStateIs, type TransitionOutcome as DraftTransitionOutcome } from './draftLifecycle';
 import { markOnboardingStep } from '../auth/userOnboarding';
-import { getMailSyncConfig, getMtaConfig } from './mtaClient';
-import { resolveMailboxTransport } from './outboundTransport';
+import { isFeatureEnabled } from '../lib/featureFlags';
+import { loadDiscoveryAddresses } from './outboundQueries';
+import { canSendWithSealState } from './sealPolicy';
+import {
+	canSendFromHandler,
+	getComposerSealStateHandler,
+	getDraftHandler,
+	getInternalHandler,
+	listForMailboxHandler,
+	mailboxHasSendTransport,
+} from './draftQueries';
 
-/**
- * True iff this mailbox actually has an outbound transport to ship the message —
- * the honest gate behind the onboarding "first send" milestone. Resolves through
- * the SAME decision the dispatcher uses (`resolveMailboxTransport`) so the gate
- * can never disagree with where the message really goes: a hosted mailbox ships
- * through the MTA, a connected external mailbox through the mail-sync worker.
- * Stamping `firstSendDone` on an instance that can't dispatch this mailbox would
- * let a member "complete" a send that is silently dropped.
- */
-async function mailboxHasSendTransport(
-	ctx: QueryCtx | MutationCtx,
-	mailbox: Doc<'mailboxes'>
-): Promise<boolean> {
-	const transport = await resolveMailboxTransport(ctx, mailbox);
-	return transport.kind === 'external' ? getMailSyncConfig() !== null : getMtaConfig() !== null;
+/** Queue bounded, cache-aware discovery whenever a draft's recipients change. */
+async function scheduleRecipientDiscovery(ctx: MutationCtx, addresses: string[]): Promise<void> {
+	if (!(await isFeatureEnabled(ctx, 'sealedMail'))) return;
+	const normalized = addresses.map(normalizeEmail).filter((a, i, all) => a && all.indexOf(a) === i);
+	const stale = await loadDiscoveryAddresses(ctx, normalized);
+	for (const address of stale) {
+		await ctx.scheduler.runAfter(0, internal.e2ee.discovery.discoverRecipientKey, { address });
+	}
 }
 
 /**
@@ -53,13 +56,10 @@ async function mailboxHasSendTransport(
  * than throwing) when the mailbox isn't accessible, so the caller renders the
  * "still being set up" state instead of an error.
  */
+// authz: draftQueries.canSendFromHandler enforces mailbox access.
 export const canSendFrom = authedQuery({
 	args: { mailboxId: v.id('mailboxes') },
-	handler: async (ctx, args): Promise<boolean> => {
-		const owned = await requireMailboxAccess(ctx, args.mailboxId);
-		if (!owned.ok) return false;
-		return mailboxHasSendTransport(ctx, owned.mailbox);
-	},
+	handler: canSendFromHandler,
 });
 
 export const create = authedMutation({
@@ -107,6 +107,7 @@ export const create = authedMutation({
 			subject,
 			at: now,
 		});
+		await scheduleRecipientDiscovery(ctx, toAddresses);
 
 		return { draftId, inReplySubject, inReplyFrom };
 	},
@@ -144,9 +145,10 @@ export const update = authedMutation({
 		if (args.ccAddresses !== undefined) patch['ccAddresses'] = args.ccAddresses;
 		if (args.bccAddresses !== undefined) patch['bccAddresses'] = args.bccAddresses;
 		if (args.subject !== undefined) patch['subject'] = args.subject;
-		if (args.bodyHtml !== undefined) patch['bodyHtml'] = args.bodyHtml;
-		if (args.bodyText !== undefined) patch['bodyText'] = args.bodyText;
-		if (args.bodyBlocks !== undefined) patch['bodyBlocks'] = args.bodyBlocks;
+		// E8b: seal body columns at rest (readers decrypt via `openMailDraftBody`).
+		if (args.bodyHtml !== undefined) patch['bodyHtml'] = await sealBodyAtWrite(args.bodyHtml);
+		if (args.bodyText !== undefined) patch['bodyText'] = await sealBodyAtWrite(args.bodyText);
+		if (args.bodyBlocks !== undefined) patch['bodyBlocks'] = await sealBodyAtWrite(args.bodyBlocks);
 		if (args.composerMode !== undefined) patch['composerMode'] = args.composerMode;
 		if (args.followUpRemindAt !== undefined) {
 			patch['followUpRemindAt'] = args.followUpRemindAt ?? undefined;
@@ -162,6 +164,17 @@ export const update = authedMutation({
 		}
 
 		await ctx.db.patch(args.draftId, patch);
+		if (
+			args.toAddresses !== undefined ||
+			args.ccAddresses !== undefined ||
+			args.bccAddresses !== undefined
+		) {
+			await scheduleRecipientDiscovery(ctx, [
+				...(args.toAddresses ?? draft.toAddresses),
+				...(args.ccAddresses ?? draft.ccAddresses),
+				...(args.bccAddresses ?? draft.bccAddresses),
+			]);
+		}
 		return { savedAt: patch['lastEditedAt'] };
 	},
 });
@@ -281,27 +294,35 @@ export const discard = authedMutation({
 // public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
 export const get = publicQuery({
 	args: { draftId: v.id('mailDrafts') },
-	handler: async (ctx, args) => {
-		const draft = await ctx.db.get(args.draftId);
-		if (!draft) return null;
-		const owned = await requireMailboxAccess(ctx, draft.mailboxId);
-		if (!owned.ok) return null;
-		return draft;
-	},
+	handler: getDraftHandler,
+});
+
+/**
+ * Composer seal state for a draft (Sealed Mail E5, flag `sealedMail`). A
+ * `publicQuery` soft-auth wrapper (returns `null` for anonymous callers) that
+ * scopes the draft to the caller's mailbox in-handler via `requireMailboxAccess`.
+ * Answers, for the compose surface: would sending now seal (`willSeal`), which
+ * recipients' keys rotated without a signed statement (`keyChanged`), or why it
+ * cannot seal (`cannotSeal`). Feeds the SAME pure `deriveSealState` the same
+ * inputs the dispatch path (`getOutboundSealInputs` → `decideSeal`) reads — the
+ * per-recipient key states AND the sender's signing-key presence AND the org
+ * policy — so the composer's promise can never drift from what the sender
+ * actually does (a mailbox without a minted signing key, or an `ask`/`off`
+ * policy, resolves to `cannotSeal`, never a false "will be sealed"). Reads only
+ * PUBLIC trust state — never any private key material. Returns `null` (rather
+ * than throwing) when the draft is gone or the caller can't access its mailbox,
+ * so the composer renders no lock instead of an error.
+ */
+// public: soft-auth — returns null for anonymous; mailbox access is enforced in-handler
+export const getComposerSealState = publicQuery({
+	args: { draftId: v.id('mailDrafts') },
+	handler: getComposerSealStateHandler,
 });
 
 // public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
 export const listForMailbox = publicQuery({
 	args: { mailboxId: v.id('mailboxes') },
-	handler: async (ctx, args) => {
-		const owned = await requireMailboxAccess(ctx, args.mailboxId);
-		if (!owned.ok) return [];
-		return ctx.db
-			.query('mailDrafts')
-			.withIndex('by_mailbox_and_edited', (q) => q.eq('mailboxId', args.mailboxId))
-			.order('desc')
-			.take(100);
-	},
+	handler: listForMailboxHandler,
 });
 
 /**
@@ -317,18 +338,35 @@ export const send = authedMutation({
 		draftId: v.id('mailDrafts'),
 		undoSendDelayMs: v.optional(v.number()),
 		scheduledSendAt: v.optional(v.number()),
+		allowUnsealed: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args): Promise<{ undoToken: string; sendAt: number }> => {
 		const draft = await getOrThrow(ctx, args.draftId, 'Draft');
 		const owned = await requireMailboxAccess(ctx, draft.mailboxId);
 		if (!owned.ok) throwForbidden('Draft not accessible');
 
+		let isUnsealedSendAllowed = false;
+		if (await isFeatureEnabled(ctx, 'sealedMail')) {
+			const sealState = await ctx.runQuery(internal.mail.draftLifecycle.getSealState, {
+				draftId: args.draftId,
+			});
+			if (!canSendWithSealState(sealState, args.allowUnsealed === true)) {
+				throwInvalidState(
+					sealState.kind === 'keyChanged'
+						? 'A recipient sealing key changed and must be confirmed before sending'
+						: 'Explicit confirmation is required to send this message unsealed'
+				);
+			}
+			isUnsealedSendAllowed = sealState.kind === 'cannotSeal' && args.allowUnsealed === true;
+		}
+
 		// Record WHO is sending (team-inbox attribution). The dispatch runs later
 		// in a session-less scheduled action, so the acting user must be captured
 		// here; the sent-effects reducer copies it onto the message + thread.
-		if (draft.sentByUserId !== owned.userId) {
-			await ctx.db.patch(args.draftId, { sentByUserId: owned.userId });
-		}
+		await ctx.db.patch(args.draftId, {
+			sentByUserId: owned.userId,
+			isUnsealedSendAllowed,
+		});
 
 		const now = Date.now();
 		const outcome: DraftTransitionOutcome = await ctx.runMutation(
@@ -448,5 +486,5 @@ export const cancelScheduledSend = authedMutation({
 
 export const getInternal = internalQuery({
 	args: { draftId: v.id('mailDrafts') },
-	handler: async (ctx, args) => ctx.db.get(args.draftId),
+	handler: getInternalHandler,
 });

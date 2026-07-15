@@ -54,6 +54,12 @@ interface MtaWebhookPayload {
 			size: number;
 			redisKey?: string;
 		}>;
+		// RFC 8601 inbound auth verdicts, forwarded by the MTA so the AI-inbox
+		// path can persist them on `inboundMessages` (previously dropped here).
+		spfResult?: string;
+		dkimResult?: string;
+		dmarcResult?: string;
+		dmarcPolicy?: string;
 	};
 	timestamp: number;
 }

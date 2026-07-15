@@ -21,7 +21,10 @@ import { publicQuery } from '../lib/authedFunctions';
 import type { QueryCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { loadReadableMailbox, requireMailboxAccess } from './permissions';
-import { normalizeEmail } from '@owlat/shared';
+import { checkFromAlignment, emailDomain, normalizeEmail } from '@owlat/shared';
+import type { OutboundAlignmentState } from '@owlat/shared';
+import { outboundTransportFacts } from '../lib/outboundAlignment';
+import { memoizedEmailDomainVerification } from '../domains/domains';
 
 /**
  * Shared helper for v8 mutations/queries: read the allowed-from set
@@ -115,6 +118,21 @@ export interface SendAsIdentity {
 }
 
 /**
+ * A send-as identity plus its live authenticity annotation, exactly mirroring the
+ * campaign wizard's `campaigns/senders.listForPicker` shape so the SAME
+ * `SenderAuthChip` + disable-with-reason surface drives both From-pickers:
+ *  - `domainVerified` — the address's domain still passes verification.
+ *  - `alignment`      — whether the ACTIVE transport signs/bounces this From-domain
+ *    in a DMARC-aligned way (`aligned` / `misaligned` / `unknown`).
+ *  - `alignmentReason`— plain-language guidance when not cleanly aligned.
+ */
+export interface AnnotatedSendAsIdentity extends SendAsIdentity {
+	domainVerified: boolean;
+	alignment: OutboundAlignmentState;
+	alignmentReason: string | null;
+}
+
+/**
  * The full set of identities the given user may send as while composing in
  * `threadMailbox`. Always includes the thread mailbox's own allowed-from set
  * (tagged 'team' when the mailbox is shared, else 'own'). When the thread
@@ -205,9 +223,29 @@ export async function isSanctionedSendAsForUser(
 // public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
 export const listSendAsIdentities = publicQuery({
 	args: { mailboxId: v.id('mailboxes') },
-	handler: async (ctx, args): Promise<SendAsIdentity[]> => {
+	handler: async (ctx, args): Promise<AnnotatedSendAsIdentity[]> => {
 		const access = await requireMailboxAccess(ctx, args.mailboxId);
 		if (!access.ok) return [];
-		return resolveSendAsIdentitiesForCtx(ctx, access.mailbox, access.userId);
+		const identities = await resolveSendAsIdentitiesForCtx(ctx, access.mailbox, access.userId);
+
+		// Annotate each identity with its live authenticity facts so the composer's
+		// From-picker renders the same chip + disable-with-reason as the campaign
+		// wizard. The active transport's effective outbound identities are read
+		// once and reused; domain verification depends only on the address's domain,
+		// so it's memoized per domain (the common case: many identities, one domain).
+		const facts = outboundTransportFacts();
+		const verifyDomain = memoizedEmailDomainVerification(ctx);
+		return Promise.all(
+			identities.map(async (identity) => {
+				const verification = await verifyDomain(identity.address);
+				const alignment = checkFromAlignment(emailDomain(identity.address), facts);
+				return {
+					...identity,
+					domainVerified: verification.verified,
+					alignment: alignment.state,
+					alignmentReason: alignment.reason,
+				};
+			})
+		);
 	},
 });

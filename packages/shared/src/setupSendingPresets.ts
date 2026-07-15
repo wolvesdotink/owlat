@@ -56,6 +56,10 @@ export const PROVIDER_ENV_KEYS = [
 	'SMTP_RELAY_SECURE',
 	'SMTP_RELAY_USERNAME',
 	'SMTP_RELAY_PASSWORD',
+	// Outbound TLS posture for the built-in MTA's direct-MX delivery. Only the
+	// `mta` transport emits it; cleared for the relay/API transports (their TLS is
+	// the provider's concern).
+	'OUTBOUND_TLS_MODE',
 	'DEFAULT_FROM_EMAIL',
 	'DEFAULT_FROM_NAME',
 ] as const;

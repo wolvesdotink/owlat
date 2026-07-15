@@ -20,7 +20,13 @@ export type ContentFlagType =
 	| 'homoglyph_spoofing'
 	| 'malicious_url'
 	| 'dangerous_file_type'
-	| 'attachment_malware';
+	| 'attachment_malware'
+	// Sender-authenticity flags (Sealed Mail A4): raised over the message
+	// headers rather than the body — a From domain that homoglyph/punycode
+	// spoofs a real domain, or a Reply-To that points at a different domain
+	// than the visible From (a classic reply-hijack setup).
+	| 'sender_impersonation'
+	| 'reply_to_mismatch';
 
 export type ContentFlagSeverity = 'low' | 'medium' | 'high';
 
@@ -126,7 +132,11 @@ export interface ClamClientOptions {
 	/** Whether to fail open if ClamAV is unreachable (default: true) */
 	failOpen?: boolean;
 	/** Logger function (default: console.warn) */
-	logger?: (level: 'info' | 'warn' | 'error', message: string, meta?: Record<string, unknown>) => void;
+	logger?: (
+		level: 'info' | 'warn' | 'error',
+		message: string,
+		meta?: Record<string, unknown>
+	) => void;
 }
 
 // ============ ENHANCED SCAN OPTIONS ============

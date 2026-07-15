@@ -35,6 +35,7 @@
         "convex": "catalog:convex",
         "nanoid": "^5.1.7",
         "nodemailer": "^9.0.3",
+        "openpgp": "^6.1.0",
         "posthog-node": "^5.28.5",
         "resend": "^6.9.4",
         "sanitize-html": "^2.13.0",
@@ -396,6 +397,9 @@
     "better-sqlite3",
     "@owlat/ui",
   ],
+  "patchedDependencies": {
+    "nodemailer@9.0.3": "patches/nodemailer@9.0.3.patch",
+  },
   "overrides": {
     "devalue": "^5.8.1",
     "fast-xml-builder": "^1.2.0",
@@ -2919,6 +2923,8 @@
     "oniguruma-to-es": ["oniguruma-to-es@4.3.6", "", { "dependencies": { "oniguruma-parser": "^0.12.2", "regex": "^6.1.0", "regex-recursion": "^6.0.2" } }, "sha512-csuQ9x3Yr0cEIs/Zgx/OEt9iBw9vqIunAPQkx19R/fiMq2oGVTgcMqO/V3Ybqefr1TBvosI6jU539ksaBULJyA=="],
 
     "open": ["open@10.2.0", "", { "dependencies": { "default-browser": "^5.2.1", "define-lazy-prop": "^3.0.0", "is-inside-container": "^1.0.0", "wsl-utils": "^0.1.0" } }, "sha512-YgBpdJHPyQ2UE5x+hlSXcnejzAvD0b22U2OuAP+8OnlJT+PjWPxtgmGqKKc+RgTM63U9gN0YzrYc71R2WT/hTA=="],
+
+    "openpgp": ["openpgp@6.3.1", "", { "peerDependencies": { "@openpgp/web-stream-tools": "~0.3.0" }, "optionalPeers": ["@openpgp/web-stream-tools"] }, "sha512-7oSPvmlKPojxFoyelT5DWPIAVmqWZh4qU/5pO6bdoShEtRpCw9Sye9IXUQj6EFM3XpgGssqccAr705YtTcLNQw=="],
 
     "orderedmap": ["orderedmap@2.1.1", "", {}, "sha512-TvAWxi0nDe1j/rtMcWcIj94+Ffe6n7zhow33h40SKxmsmozs6dz/e+EajymfoFcHd7sxNn8yHM8839uixMOV6g=="],
 

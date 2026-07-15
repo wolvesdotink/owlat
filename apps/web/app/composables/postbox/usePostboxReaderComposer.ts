@@ -35,14 +35,23 @@ type ReaderComposerMessage = ReplyForwardSource & { mailboxId: string; threadId?
  * `getMessage` returns the currently open message; `latestMessage` /
  * `ownAddresses` / `replyDefault` are the reader's live derived state, passed in
  * rather than re-derived so this composable is a pure view over them.
+ *
+ * `guardReply` (optional) wraps a reply/reply-all action with the sender-auth
+ * reply guard (Sealed Mail A3): the reader supplies it, and EVERY reply /
+ * reply-all entry point that lives in this layer — the keyboard `r`/`a`, the
+ * pinned inline box, and the list→reader hand-off — is routed through it so the
+ * interstitial can't be side-stepped by a non-button path. Forward is never
+ * guarded. Defaults to running the action directly (flag off / no guard).
  */
 export function usePostboxReaderComposer(opts: {
 	getMessage: () => ReaderComposerMessage;
 	latestMessage: ComputedRef<ReplyForwardSource | undefined>;
 	ownAddresses: ComputedRef<Set<string>>;
 	replyDefault: Ref<PostboxReplyDefaultMode> | ComputedRef<PostboxReplyDefaultMode>;
+	guardReply?: (run: () => void) => void;
 }) {
 	const { getMessage, latestMessage, ownAddresses, replyDefault } = opts;
+	const guardReply = opts.guardReply ?? ((run: () => void) => run());
 	const stack = usePostboxComposerStack();
 
 	/**
@@ -159,6 +168,16 @@ export function usePostboxReaderComposer(opts: {
 		await expandInline(primaryReplyKind(target));
 	}
 
+	// Guarded inline entry points: the reply guard sees the reply BEFORE the box
+	// expands. Used by the reader's keyboard shortcuts, the pinned inline box's
+	// expand affordance, and the list→reader hand-off below.
+	function guardedExpandReply() {
+		guardReply(() => void expandPrimaryReply());
+	}
+	function guardedExpandReplyAll() {
+		guardReply(() => void expandInline('replyAll'));
+	}
+
 	function collapseInline() {
 		inlineSeq++;
 		inlineSpec.value = null;
@@ -192,8 +211,10 @@ export function usePostboxReaderComposer(opts: {
 		([id], prev) => {
 			const { open, clear } = settlePendingCompose(pendingCompose.value, id, prev?.[0]);
 			if (clear) pendingCompose.value = null;
-			if (open === 'reply') void expandPrimaryReply();
-			else if (open === 'replyAll') void expandInline('replyAll');
+			// Reply / reply-all go through the guard (the list r/a hand-off is a
+			// primary reply path too); forward is never guarded.
+			if (open === 'reply') guardedExpandReply();
+			else if (open === 'replyAll') guardedExpandReplyAll();
 			else if (open === 'forward') void expandInline('forward');
 		},
 		{ immediate: true }
@@ -209,6 +230,8 @@ export function usePostboxReaderComposer(opts: {
 		inlineReplyEl,
 		expandInline,
 		expandPrimaryReply,
+		guardedExpandReply,
+		guardedExpandReplyAll,
 		collapseInline,
 		inlineSenderLabel,
 	};

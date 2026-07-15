@@ -101,10 +101,42 @@ export const domainTables = {
 		isVerified: v.boolean(),
 		verifiedAt: v.optional(v.number()),
 		createdAt: v.number(),
-	})
-		.index('by_domain', ['domain']),
+	}).index('by_domain', ['domain']),
 
 	// Per-domain reputation was folded into the unified, scope-discriminated
 	// `sendingReputation` table in schema/delivery.ts (ADR-0042) — there is no
 	// separate `domainReputation` table any more.
+
+	// Inbound SMTP TLS Reports (TLS-RPT, RFC 8460) — aggregate reports OTHER
+	// mail servers send us about TLS negotiation when delivering TO our MX,
+	// ingested via the `_smtp._tls` `rua=` address the MTA registers as a
+	// system inbound route. One row per received report, de-duplicated by the
+	// reporting organization plus its `report-id` (RFC 8460 §4.1) so a
+	// re-delivered report is idempotent without conflating different reporters.
+	// Operator deliverability telemetry — instance infrastructure,
+	// not org business data (see lib/tenantTables.ts NON_TENANT_TABLES).
+	// Written only by `domains/tlsReports.ts:ingest`.
+	tlsReports: defineTable({
+		// RFC 8460 report-id — unique within the reporting organization.
+		reportId: v.string(),
+		// Reporting organization (the sender of the report, i.e. our partner).
+		organizationName: v.string(),
+		// The report's contact-info URI (mailto:/https:), verbatim.
+		contactInfo: v.string(),
+		// The receiving policy domain this report concerns (normally one of ours).
+		policyDomain: v.string(),
+		// Reporting window (epoch ms), parsed from the RFC 3339 date-range.
+		rangeStartMs: v.number(),
+		rangeEndMs: v.number(),
+		// Session counts summed across every policy block in the report.
+		successCount: v.number(),
+		failureCount: v.number(),
+		// Per-result-type failure tallies (RFC 8460 §4.4 failure-details).
+		failureTypeCounts: v.array(v.object({ type: v.string(), count: v.number() })),
+		// When we ingested it.
+		receivedAt: v.number(),
+	})
+		.index('by_reporter_report_id', ['organizationName', 'reportId'])
+		.index('by_policyDomain', ['policyDomain'])
+		.index('by_range_start_ms', ['rangeStartMs']),
 };

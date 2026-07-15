@@ -33,6 +33,7 @@ import type { Doc, Id } from '../../_generated/dataModel';
 import { internal } from '../../_generated/api';
 import { recordAuditLog } from '../../lib/auditLog';
 import { applyOpenThreadDelta } from '../../lib/inboxStats';
+import { sealBodyAtWrite } from '../../lib/messageBody';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -231,14 +232,18 @@ async function applyTransition(
 ): Promise<TransitionOutcome> {
 	const result = reduce(thread, input);
 	if (Object.keys(result.patch).length > 0) {
-		await ctx.db.patch(thread._id, result.patch);
+		const patch = { ...result.patch };
+		if (typeof patch.lastPreview === 'string') {
+			patch.lastPreview = await sealBodyAtWrite(patch.lastPreview);
+		}
+		await ctx.db.patch(thread._id, patch);
 		// Keep the denormalized open-thread counter exact. A reducer only ever
 		// includes `status` in its patch when it actually changes (the no-op
 		// guards return NOOP first), so a `status` key here is always a real
 		// edge. Bump only when the edge crosses the open ↔ non-open boundary.
-		if (result.patch.status !== undefined && result.patch.status !== thread.status) {
+		if (patch.status !== undefined && patch.status !== thread.status) {
 			const wasOpen = thread.status === 'open';
-			const isOpen = result.patch.status === 'open';
+			const isOpen = patch.status === 'open';
 			if (!wasOpen && isOpen) await applyOpenThreadDelta(ctx, 1);
 			else if (wasOpen && !isOpen) await applyOpenThreadDelta(ctx, -1);
 		}

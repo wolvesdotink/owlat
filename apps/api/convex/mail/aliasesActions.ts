@@ -24,6 +24,10 @@ export const pushAliasToCache = internalAction({
 			mailboxId: args.mailboxId,
 		});
 		if (!mailbox) return;
+		const isInboundTlsRequired = await ctx.runQuery(
+			internal.workspaces.settings.getInboundTlsPolicy,
+			{}
+		);
 
 		const url = `${config.baseUrl}/mailboxes/cache/${encodeURIComponent(args.alias)}`;
 		try {
@@ -38,6 +42,7 @@ export const pushAliasToCache = internalAction({
 					organizationId: mailbox.organizationId,
 					quotaBytes: mailbox.quotaBytes,
 					usedBytes: mailbox.usedBytes,
+					isInboundTlsRequired,
 				}),
 			});
 			logInfo(`[Alias cache] Pushed ${args.alias} -> ${mailbox.address}`);

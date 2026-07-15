@@ -22,7 +22,9 @@ import { handleResendWebhook } from './resendWebhook';
 import { handleMtaWebhook } from './mtaWebhook';
 import { handleSesWebhook } from './sesWebhook';
 import { handleMailWebhook } from './mail/webhook';
+import { serveSealedBlob } from './mail/sealedBlobHttp';
 import { handleVerifyCredential } from './mail/authHttp';
+import { handleTlsReportWebhook } from './domains/tlsReportsHttp';
 import { handleSmsWebhook, handleWhatsAppWebhook, handleGenericWebhook } from './webhooks/channels';
 import { handleGithubWebhook } from './webhooks/githubHttp';
 import { verifyContactDoiToken, confirmContactDoi } from './topics/doiHttp';
@@ -265,6 +267,23 @@ http.route({
 	path: '/webhooks/mta-verify-credential',
 	method: 'POST',
 	handler: handleVerifyCredential,
+});
+
+// POST /webhooks/mta-tls-report - inbound TLS-RPT (RFC 8460) aggregate reports
+// forwarded from the MTA's system inbound route for the `_smtp._tls` rua address
+http.route({
+	path: '/webhooks/mta-tls-report',
+	method: 'POST',
+	handler: handleTlsReportWebhook,
+});
+
+// GET /sealed-blob - decrypt-serving proxy for sealed storage blobs (Sealed
+// Mail E8b). Reads a sealed blob named by a capability token, unseals it, and
+// streams the plaintext bytes to the web reader / IMAP bridge / outbound MTA.
+http.route({
+	path: '/sealed-blob',
+	method: 'GET',
+	handler: serveSealedBlob,
 });
 
 // ============ CHANNEL WEBHOOK ENDPOINTS ============

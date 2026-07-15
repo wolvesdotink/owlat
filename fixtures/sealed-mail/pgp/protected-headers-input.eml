@@ -1,0 +1,23 @@
+Message-ID: <sealed-fixture-0001@a.instance.test>
+Date: Mon, 13 Jul 2026 09:00:00 +0000
+From: alice@a.instance.test
+To: bob@b.instance.test
+Subject: Q3 board numbers — sealed fixture
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="fixture_boundary_root"
+
+--fixture_boundary_root
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: 7bit
+
+CANARY_SEALED_FIXTURE_PLAINTEXT_2f8c1a — this body and the subject above must
+only ever appear INSIDE the ciphertext, never in the outer sealed message.
+
+--fixture_boundary_root
+Content-Type: text/plain; charset=utf-8; name="numbers.txt"
+Content-Transfer-Encoding: base64
+Content-Disposition: attachment; filename="numbers.txt"
+
+UTMgcmV2ZW51ZTogNDIuMDBNCkVCSVREQTogMTMuMzdNCg==
+
+--fixture_boundary_root--

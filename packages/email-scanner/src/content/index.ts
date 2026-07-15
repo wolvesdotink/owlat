@@ -27,6 +27,9 @@ import './phishingUrls.js';
 import './homoglyphs.js';
 import './subjectAnalysis.js';
 import './prohibitedContent.js';
+// Header-aware rule — no-ops unless scanContent is given From/Reply-To. Ordered
+// last so its flags append after the body/URL rules (stable iteration order).
+import './senderImpersonation.js';
 
 /**
  * Strip HTML tags to get plain text for keyword scanning.
@@ -38,9 +41,7 @@ function stripHtml(html: string): string {
 		.replace(/<!--[\s\S]*?-->/g, '') // Remove comments
 		.replace(/<[^>]+>/g, ' ') // Remove all HTML tags
 		.replace(/&nbsp;/gi, ' ');
-	return decodeHtmlEntities(withoutMarkup)
-		.replace(/\s+/g, ' ')
-		.trim();
+	return decodeHtmlEntities(withoutMarkup).replace(/\s+/g, ' ').trim();
 }
 
 /**
@@ -86,12 +87,26 @@ export function levelForScore(score: number): ContentScanLevel {
  *
  * @param subject - Email subject line
  * @param htmlContent - Email HTML body content
+ * @param headers - Optional message headers (`from`, `replyTo`) for the
+ *   header-aware rules (sender-impersonation). Omitted by legacy callers, in
+ *   which case those rules no-op.
  * @returns ContentScanResult with score, flags, and level
  */
-export function scanContent(subject: string, htmlContent: string): ContentScanResult {
+export function scanContent(
+	subject: string,
+	htmlContent: string,
+	headers?: { from?: string; replyTo?: string }
+): ContentScanResult {
 	const text = stripHtml(htmlContent);
 	const urls = extractUrls(htmlContent);
-	const input: ScanInput = { subject, html: htmlContent, text, urls };
+	const input: ScanInput = {
+		subject,
+		html: htmlContent,
+		text,
+		urls,
+		from: headers?.from,
+		replyTo: headers?.replyTo,
+	};
 
 	const flags: ContentFlag[] = [];
 	for (const rule of contentRules.values()) {
@@ -120,11 +135,7 @@ export function scanContent(subject: string, htmlContent: string): ContentScanRe
 }
 
 // Pluggability primitives (the public extension surface)
-export {
-	contentRules,
-	registerContentRule,
-	unregisterContentRule,
-} from './rule.js';
+export { contentRules, registerContentRule, unregisterContentRule } from './rule.js';
 export type { ContentScanRule, ScanInput } from './rule.js';
 
 // Re-export sub-scanners for individual use
@@ -133,3 +144,8 @@ export { scanPhishingUrls, extractUrls, extractDomain } from './phishingUrls.js'
 export { scanHomoglyphs, deconfuse } from './homoglyphs.js';
 export { scanProhibitedContent } from './prohibitedContent.js';
 export { scanCapsAbuse, scanExcessivePunctuation } from './subjectAnalysis.js';
+export {
+	scanSenderImpersonation,
+	extractHeaderDomain,
+	registrableDomain,
+} from './senderImpersonation.js';

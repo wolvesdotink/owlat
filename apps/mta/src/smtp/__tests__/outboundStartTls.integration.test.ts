@@ -20,7 +20,12 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { SMTPServer } from 'smtp-server';
 import type { AddressInfo } from 'node:net';
 import { SmtpConnectionPool } from '../connectionPool.js';
-import { classifyTlsFailure } from '../sender.js';
+import { classifyTlsFailure } from '../tlsFailureClassification.js';
+import { resolveTlsRequirements } from '../tlsPolicy.js';
+import { buildDanePeerVerifier, buildDanePolicyFingerprint } from '../daneVerify.js';
+import { computeAssociation } from '@owlat/shared/dane';
+import type { TlsaRecord } from '@owlat/shared/dane';
+import { X509Certificate } from 'node:crypto';
 // Throwaway self-signed cert/key (CN/SAN mx.test) shared with the other
 // outbound-TLS integration tests.
 import { MX_CERT, MX_KEY } from './certFixture.js';
@@ -90,6 +95,14 @@ async function startServer(): Promise<ServerProbe> {
 
 function stopServer(server: SMTPServer): Promise<void> {
 	return new Promise((resolve) => server.close(() => resolve()));
+}
+
+function daneTlsOptions(records: TlsaRecord[], referenceIdentifiers: string[]) {
+	return {
+		rejectUnauthorized: false,
+		verifyPeerCertificate: buildDanePeerVerifier(records, referenceIdentifiers),
+		danePolicyFingerprint: buildDanePolicyFingerprint(records, referenceIdentifiers),
+	};
 }
 
 describe('outbound STARTTLS opportunistic-vs-enforce (PR-25)', () => {
@@ -227,6 +240,141 @@ describe('outbound STARTTLS opportunistic-vs-enforce (PR-25)', () => {
 		expect(probe.dataOverTls()).toBe(true);
 	}, 15000);
 
+	it('DANE-EE: a matching TLSA record authenticates the self-signed MX', async () => {
+		probe = await startServer();
+		pool = new SmtpConnectionPool({ maxPerHost: 3, idleTimeoutMs: 30000, maxAgeMs: 300000 });
+		const certDer = new X509Certificate(MX_CERT).raw;
+		const association = computeAssociation(certDer, 1, 1);
+		expect(association).not.toBeNull();
+		const records = [{ usage: 3, selector: 1, matchingType: 1, data: association! }];
+
+		const { key, transport } = await pool.acquire('127.0.0.1', '127.0.0.1', {
+			port: probe.port,
+			secure: false,
+			requireTLS: true,
+			tls: {
+				...daneTlsOptions(records, ['mx.test']),
+				servername: 'deliberately-wrong-name.example',
+			},
+			connectionTimeout: 5000,
+			greetingTimeout: 5000,
+			socketTimeout: 5000,
+		});
+
+		try {
+			const info = await transport.sendMail({
+				from: 'sender@owlat.test',
+				to: 'recipient@example.test',
+				subject: 'dane-ee',
+				text: 'authenticated solely by the DNSSEC TLSA leaf association',
+			});
+			expect(info.accepted).toContain('recipient@example.test');
+		} finally {
+			pool.release(key);
+		}
+
+		expect(probe.upgraded()).toBe(true);
+		expect(probe.dataOverTls()).toBe(true);
+	}, 15000);
+
+	it('DANE-EE: a TLSA mismatch aborts before SMTP DATA', async () => {
+		probe = await startServer();
+		pool = new SmtpConnectionPool({ maxPerHost: 3, idleTimeoutMs: 30000, maxAgeMs: 300000 });
+		const records = [{ usage: 3, selector: 1, matchingType: 1, data: '00'.repeat(32) }];
+		const verifyPeerCertificate = vi.fn(buildDanePeerVerifier(records, ['mx.test']));
+
+		const { key, transport } = await pool.acquire('127.0.0.1', '127.0.0.1', {
+			port: probe.port,
+			secure: false,
+			requireTLS: true,
+			tls: {
+				rejectUnauthorized: false,
+				verifyPeerCertificate,
+				danePolicyFingerprint: buildDanePolicyFingerprint(records, ['mx.test']),
+			},
+			connectionTimeout: 5000,
+			greetingTimeout: 5000,
+			socketTimeout: 5000,
+		});
+
+		await expect(
+			transport.sendMail({
+				from: 'sender@owlat.test',
+				to: 'recipient@example.test',
+				subject: 'dane-ee mismatch',
+				text: 'must not reach DATA',
+			})
+		).rejects.toThrow(/DANE TLSA mismatch/);
+		pool.release(key);
+
+		expect(verifyPeerCertificate).toHaveBeenCalledOnce();
+		expect(probe.dataOverTls()).toBeNull();
+	}, 15000);
+
+	it('DANE-TA: an associated CA certificate authenticates the named MX', async () => {
+		probe = await startServer();
+		pool = new SmtpConnectionPool({ maxPerHost: 3, idleTimeoutMs: 30000, maxAgeMs: 300000 });
+		const certDer = new X509Certificate(MX_CERT).raw;
+		const association = computeAssociation(certDer, 0, 1);
+		expect(association).not.toBeNull();
+		const records = [{ usage: 2, selector: 0, matchingType: 1, data: association! }];
+
+		const { key, transport } = await pool.acquire('127.0.0.1', '127.0.0.1', {
+			port: probe.port,
+			secure: false,
+			requireTLS: true,
+			tls: {
+				...daneTlsOptions(records, ['mx.test']),
+				servername: 'mx.test',
+			},
+			connectionTimeout: 5000,
+			greetingTimeout: 5000,
+			socketTimeout: 5000,
+		});
+
+		try {
+			const info = await transport.sendMail({
+				from: 'sender@owlat.test',
+				to: 'recipient@example.test',
+				subject: 'dane-ta',
+				text: 'authenticated by the DNSSEC-associated trust anchor',
+			});
+			expect(info.accepted).toContain('recipient@example.test');
+		} finally {
+			pool.release(key);
+		}
+		expect(probe.dataOverTls()).toBe(true);
+	}, 15000);
+
+	it('DANE-TA: a trust-anchor match still rejects the wrong MX name before DATA', async () => {
+		probe = await startServer();
+		pool = new SmtpConnectionPool({ maxPerHost: 3, idleTimeoutMs: 30000, maxAgeMs: 300000 });
+		const certDer = new X509Certificate(MX_CERT).raw;
+		const association = computeAssociation(certDer, 0, 1);
+		const records = [{ usage: 2, selector: 0, matchingType: 1, data: association! }];
+
+		const { key, transport } = await pool.acquire('127.0.0.1', '127.0.0.1', {
+			port: probe.port,
+			secure: false,
+			requireTLS: true,
+			tls: daneTlsOptions(records, ['wrong-mx.example']),
+			connectionTimeout: 5000,
+			greetingTimeout: 5000,
+			socketTimeout: 5000,
+		});
+
+		await expect(
+			transport.sendMail({
+				from: 'sender@owlat.test',
+				to: 'recipient@example.test',
+				subject: 'dane-ta wrong name',
+				text: 'must not reach DATA',
+			})
+		).rejects.toThrow(/DANE-TA validation failed: MX certificate name mismatch/);
+		pool.release(key);
+		expect(probe.dataOverTls()).toBeNull();
+	}, 15000);
+
 	// ── (3) ignoreTLS is never plumbed through the pool ──
 	// The pool's transport factory must never disable STARTTLS. ignoreTLS:true
 	// would let nodemailer skip the upgrade and send cleartext — a silent
@@ -238,7 +386,11 @@ describe('outbound STARTTLS opportunistic-vs-enforce (PR-25)', () => {
 		// asserting the options object has no ignoreTLS / disable-STARTTLS flag.
 		const nodemailer = (await import('nodemailer')).default;
 		const spy = vi.spyOn(nodemailer, 'createTransport');
-		const inspectPool = new SmtpConnectionPool({ maxPerHost: 3, idleTimeoutMs: 30000, maxAgeMs: 300000 });
+		const inspectPool = new SmtpConnectionPool({
+			maxPerHost: 3,
+			idleTimeoutMs: 30000,
+			maxAgeMs: 300000,
+		});
 		try {
 			await inspectPool.acquire('mx.test', '127.0.0.1', {
 				port: 25,
@@ -257,4 +409,140 @@ describe('outbound STARTTLS opportunistic-vs-enforce (PR-25)', () => {
 			await inspectPool.closeAll(100);
 		}
 	});
+});
+
+/**
+ * T1 — OUTBOUND_TLS_MODE=require-verified against a broken-TLS receiver.
+ *
+ * The resolver ({@link resolveTlsRequirements}) turns require-verified (with no
+ * MTA-STS policy) into requireTLS + rejectUnauthorized, and the sender feeds
+ * exactly those into the pool acquire. We drive the REAL pool with that profile
+ * and prove the handshake FAILS (delivery would bounce, never falling back to
+ * cleartext) and that the failure classifies to the TLS-RPT type the sender
+ * records — certificate-not-trusted for a self-signed MX, starttls-not-supported
+ * for a receiver that doesn't offer STARTTLS at all.
+ */
+describe('outbound require-verified vs broken TLS (T1)', () => {
+	let pool: SmtpConnectionPool | undefined;
+	let probe: ServerProbe | undefined;
+	let plainServer: SMTPServer | undefined;
+
+	afterEach(async () => {
+		if (pool) await pool.closeAll(500);
+		if (probe) await stopServer(probe.server);
+		if (plainServer) await stopServer(plainServer);
+		pool = undefined;
+		probe = undefined;
+		plainServer = undefined;
+	});
+
+	it('resolver: require-verified + no policy → requireTLS && verify', () => {
+		const req = resolveTlsRequirements({
+			localMode: 'require-verified',
+			stsPolicy: { policyMode: 'none' },
+			daneResult: null,
+		});
+		expect(req.requireTLS).toBe(true);
+		expect(req.rejectUnauthorized).toBe(true);
+	});
+
+	it('require-verified bounces on a self-signed MX and records certificate-not-trusted', async () => {
+		probe = await startServer();
+		pool = new SmtpConnectionPool({ maxPerHost: 3, idleTimeoutMs: 30000, maxAgeMs: 300000 });
+
+		const req = resolveTlsRequirements({
+			localMode: 'require-verified',
+			stsPolicy: { policyMode: 'none' },
+			daneResult: null,
+		});
+		const { key, transport } = await pool.acquire('127.0.0.1', '127.0.0.1', {
+			port: probe.port,
+			secure: false,
+			requireTLS: req.requireTLS,
+			// servername 'mx.test' matches the cert SAN, so the ONLY failure is the
+			// untrusted (self-signed) CA — exactly what require-verified must reject.
+			tls: { rejectUnauthorized: req.rejectUnauthorized, servername: 'mx.test' },
+			connectionTimeout: 5000,
+			greetingTimeout: 5000,
+			socketTimeout: 5000,
+		});
+
+		let caught: { code?: string; message?: string; response?: string } | undefined;
+		try {
+			await transport.sendMail({
+				from: 'sender@owlat.test',
+				to: 'recipient@example.test',
+				subject: 'require-verified',
+				text: 'must never be delivered to an unverifiable MX under require-verified',
+			});
+			expect.fail('delivery should have failed certificate verification');
+		} catch (err) {
+			caught = err as { code?: string; message?: string };
+		} finally {
+			pool.release(key);
+		}
+
+		expect(caught).toBeDefined();
+		expect(classifyTlsFailure(caught!)).toBe('certificate-not-trusted');
+	}, 15000);
+
+	it('require (TLS mandatory) bounces on a receiver that offers no STARTTLS and records starttls-not-supported', async () => {
+		// A plaintext-only server: STARTTLS is not advertised, so a requireTLS send
+		// cannot upgrade and nodemailer fails the transaction rather than sending in
+		// the clear.
+		plainServer = new SMTPServer({
+			secure: false,
+			authOptional: true,
+			disabledCommands: ['AUTH', 'STARTTLS'],
+			onData(stream, _session, cb) {
+				stream.on('data', () => {});
+				stream.on('end', () => cb());
+			},
+		});
+		plainServer.on('error', () => {});
+		await new Promise<void>((resolve, reject) => {
+			plainServer!.once('error', reject);
+			plainServer!.listen(0, '127.0.0.1', () => {
+				plainServer!.removeListener('error', reject);
+				resolve();
+			});
+		});
+		const port = (plainServer.server.address() as AddressInfo).port;
+
+		pool = new SmtpConnectionPool({ maxPerHost: 3, idleTimeoutMs: 30000, maxAgeMs: 300000 });
+		const req = resolveTlsRequirements({
+			localMode: 'require',
+			stsPolicy: { policyMode: 'none' },
+			daneResult: null,
+		});
+		expect(req.requireTLS).toBe(true);
+
+		const { key, transport } = await pool.acquire('127.0.0.1', '127.0.0.1', {
+			port,
+			secure: false,
+			requireTLS: req.requireTLS,
+			tls: { rejectUnauthorized: req.rejectUnauthorized },
+			connectionTimeout: 5000,
+			greetingTimeout: 5000,
+			socketTimeout: 5000,
+		});
+
+		let caught: { code?: string; message?: string; response?: string } | undefined;
+		try {
+			await transport.sendMail({
+				from: 'sender@owlat.test',
+				to: 'recipient@example.test',
+				subject: 'require',
+				text: 'must never be delivered in the clear when TLS is required',
+			});
+			expect.fail('delivery should have failed because STARTTLS is unavailable');
+		} catch (err) {
+			caught = err as { code?: string; message?: string };
+		} finally {
+			pool.release(key);
+		}
+
+		expect(caught).toBeDefined();
+		expect(classifyTlsFailure(caught!)).toBe('starttls-not-supported');
+	}, 15000);
 });

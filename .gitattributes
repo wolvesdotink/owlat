@@ -23,3 +23,13 @@ install.sh text eol=lf
 
 # Keep the lockfile byte-exact.
 bun.lock -text
+
+# Sealed-mail interop fixtures are checked in AS BYTES: RFC 5322 messages are
+# CRLF and detached PGP signatures / body hashes are computed over exact bytes,
+# so git must never EOL-normalize them (the blanket `* text=auto eol=lf` above
+# would silently corrupt every signature). Exempt the whole corpus.
+apps/api/fixtures/sealed-mail/** -text
+# The A5 ARC interop fixtures live at the repo-root corpus. RFC 8617 ARC seals /
+# AMS body hashes are computed over exact CRLF bytes, so these must never be
+# EOL-normalized either.
+fixtures/sealed-mail/** -text

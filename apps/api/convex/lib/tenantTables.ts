@@ -215,6 +215,30 @@ export const NON_TENANT_TABLES = [
 	'providerRoutes',
 	'providerHealth',
 	'warmingState',
+	// Inbound TLS-RPT (RFC 8460) aggregate reports from partner MX — operator
+	// deliverability telemetry keyed by the partner's own report-id, not org
+	// business data. Regenerable (partners re-send daily); not personal data of
+	// this org's contacts, so it is out of the tenant wipe like warmingState.
+	'tlsReports',
+	// End-to-end encryption key material (Sealed Mail). Instance crypto
+	// infrastructure — the instance signing identity plus per-address OpenPGP
+	// keypairs whose PUBLIC halves are published for discovery. Like
+	// `aiProviderConfig`, this is admin/instance-recreatable configuration (an
+	// idempotent backfill re-mints address keys), not this org's contact
+	// business data, so it is out of the tenant wipe.
+	'keyVault',
+	// Sealed Mail recipient-key discovery cache + TOFU trust ledger. Holds only
+	// PUBLIC keys of OTHER instances' recipients plus their pin state — a
+	// regenerable discovery cache (re-fetched from the peer's manifest/WKD), not
+	// this org's contact business data, so it is out of the tenant wipe like
+	// `keyVault` and the other caches.
+	'recipientKeys',
+	// Sealed Mail published key-rotation statements (E6). Signed old->new
+	// fingerprint bindings we serve in the manifest rotation feed. Public material
+	// only, regenerable from the vault's rotation history — instance crypto
+	// infrastructure, not this org's contact business data, so it is out of the
+	// tenant wipe like `keyVault` / `recipientKeys`.
+	'keyRotations',
 ] as const satisfies readonly TableNames[];
 
 /**

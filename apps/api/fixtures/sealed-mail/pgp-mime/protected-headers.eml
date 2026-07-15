@@ -1,0 +1,35 @@
+From: Alice <alice@sealed.example.com>
+To: Bob <bob@sealed.example.org>
+Subject: ...
+Date: Fri, 11 Jul 2026 12:15:00 +0000
+Message-ID: <protected-headers-0001@sealed.example.com>
+MIME-Version: 1.0
+Content-Type: multipart/encrypted;
+ protocol="application/pgp-encrypted"; boundary="enc-boundary-ph"
+
+--enc-boundary-ph
+Content-Type: application/pgp-encrypted
+Content-Description: PGP/MIME version identification
+
+Version: 1
+
+--enc-boundary-ph
+Content-Type: application/octet-stream; name="encrypted.asc"
+Content-Description: OpenPGP encrypted message
+Content-Disposition: inline; filename="encrypted.asc"
+
+-----BEGIN PGP MESSAGE-----
+
+wV4DotPiTo/8yy8SAQdAonP/TaXxC/WrkLSS4PhXYXR3e/HVRGgic+FfCgl0
+6GAwTv8vg+s/dx8h0cFTAJ8UfKzVa9lAkCTEf1NIc0a7ZuF1XIHzcTgB+UUD
+fMNeyo2p0sBkAXh+NcgbOzpAsv7SRrXvHixfXTrQGFQ+nm5OY6ZUth7B2oHh
+oHBAGtEXsLFmuXUNzair6FqvO2OMKEwZfAttvg5H52xPOcHvtAUt6i8OXyt2
+t6DTkMNp/SmZCoAwSKPXifZ0rH9yLYWgU2lUm05vl7o2oFKHjc+xPTGHOUeQ
+ozkDoBjvzbsFktuZXHKsqurV2qc+rQjJdBuq44+62J+r+229pWP0JeLqOKDd
+gfsp6lI5Cx3b0Tz6MvAkpvl4vRzVDxbUYHv6wjg1IcramEHCy+x6WDCljG5C
+l8qTYN2T+Sz3GT36G2uxv44+mGbzGl9A0Ge6XKs5tIIBIm5+LaWj6urPIln7
+67cWtq2tmxC5ENom+c6mSpoSQVojhv14QKPcghvOSQ==
+=JJAL
+-----END PGP MESSAGE-----
+
+--enc-boundary-ph--

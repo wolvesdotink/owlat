@@ -328,6 +328,9 @@ export const mailMessageAttachmentValidator = v.object({
 	partIndex: v.string(),
 });
 
+// Sealed-Mail validators (sealPolicyValidator / sealSkipReasonValidator /
+// mailEncryptionInfoValidator) live in `../mail/sealPolicy.ts` for the ~500 LOC ratchet.
+
 // Parsed List-Unsubscribe / List-Unsubscribe-Post target (mailMessages.unsubscribe).
 // Parsed ONCE at ingest from the raw header block (see @owlat/shared/listUnsubscribe)
 // so the reader can render the Unsubscribe chip without re-opening the raw .eml.

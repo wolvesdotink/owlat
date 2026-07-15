@@ -14,6 +14,7 @@
 import { internal } from '../../../_generated/api';
 import type { ActionCtx } from '../../../_generated/server';
 import { stripRemoteImages } from '@owlat/shared/postboxTrackers';
+import { openInboundMessageBody } from '../../../lib/messageBody';
 import { stripHiddenContent } from '../security_scan/patterns';
 
 /**
@@ -26,17 +27,18 @@ import { stripHiddenContent } from '../security_scan/patterns';
  * it becomes context. Fails soft (see `stripRemoteImages`): a strip error leaves
  * the HTML as-is, matching prior behaviour, and never blocks retrieval.
  */
-export function inboundBodyForContext(message: {
+export async function inboundBodyForContext(message: {
 	textBody?: string | null;
 	htmlBody?: string | null;
-}): string | undefined {
+}): Promise<string | undefined> {
 	// Strip hidden content (HTML comments / display:none / zero-width smuggling)
 	// before the body becomes model context, so a hidden instruction never
 	// reaches the draft even when the message scored below the quarantine
 	// threshold. `stripHiddenContent` is a no-op on already-clean text (the
 	// plain-text part passes through verbatim).
-	if (message.textBody != null) return stripHiddenContent(message.textBody);
-	if (message.htmlBody != null) return stripHiddenContent(stripRemoteImages(message.htmlBody).html);
+	const { text, html } = await openInboundMessageBody(message);
+	if (text != null) return stripHiddenContent(text);
+	if (html != null) return stripHiddenContent(stripRemoteImages(html).html);
 	return undefined;
 }
 

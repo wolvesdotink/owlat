@@ -16,14 +16,13 @@
  * FULL `sendToMx` through the REAL {@link SmtpConnectionPool} + real nodemailer
  * against a real loopback {@link SMTPServer} — one that hides STARTTLS and one
  * that advertises it — so the secured-state detection is observed against an
- * actual handshake, not a mock's say-so. Only the destination port is rewritten
- * (the loopback server listens on an ephemeral port; sendToMx hardcodes 25).
+ * actual handshake, not a mock's say-so. The shared loopback harness
+ * (loopbackMxHarness.ts) provides the server factory + job/config builders; only
+ * the destination port is rewritten (the loopback server listens on an ephemeral
+ * port; sendToMx hardcodes 25).
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { SMTPServer } from 'smtp-server';
-import type { AddressInfo } from 'node:net';
 import Redis from 'ioredis-mock';
-import { MX_CERT, MX_KEY } from './certFixture.js';
 
 // Resolvers/config deps are mocked (per-test policy + MX); the connection pool,
 // nodemailer, and tlsRpt are REAL so the secured-state capture and TLS-RPT
@@ -60,104 +59,15 @@ vi.mock('../../monitoring/logger.js', () => ({
 import { sendToMx } from '../sender.js';
 import { pool } from '../connectionPool.js';
 import { generateReport } from '../tlsRpt.js';
-import type { EmailJob } from '../../types.js';
 import type { MtaConfig } from '../../config.js';
-
-interface ServerProbe {
-	server: SMTPServer;
-	port: number;
-	/** Whether the DATA command arrived on an upgraded (TLS) session. */
-	dataOverTls(): boolean | null;
-}
-
-/**
- * Start a loopback SMTP server. `hideSTARTTLS:true` makes the EHLO response OMIT
- * the STARTTLS capability (the PR-24 scenario); `false` advertises it so a
- * client upgrades opportunistically. The server starts in cleartext, so a
- * session is only `secure` if the client issued STARTTLS (RFC 3207).
- */
-async function startServer(hideSTARTTLS: boolean): Promise<ServerProbe> {
-	let dataSecure: boolean | null = null;
-
-	const server = new SMTPServer({
-		secure: false,
-		authOptional: true,
-		disabledCommands: ['AUTH'],
-		hideSTARTTLS,
-		cert: MX_CERT,
-		key: MX_KEY,
-		minVersion: 'TLSv1.2',
-		onData(stream, session, cb) {
-			dataSecure = session.secure === true;
-			stream.on('data', () => {});
-			stream.on('end', () => cb());
-		},
-	});
-	server.on('error', () => {});
-	await new Promise<void>((resolve, reject) => {
-		server.once('error', reject);
-		server.listen(0, '127.0.0.1', () => {
-			server.removeListener('error', reject);
-			resolve();
-		});
-	});
-	const port = (server.server.address() as AddressInfo).port;
-	return { server, port, dataOverTls: () => dataSecure };
-}
-
-function stopServer(server: SMTPServer): Promise<void> {
-	return new Promise((resolve) => server.close(() => resolve()));
-}
-
-function createJob(overrides: Partial<EmailJob> = {}): EmailJob {
-	return {
-		messageId: 'msg-plaintext-001',
-		to: 'user@recipient.test',
-		from: 'sender@owlat.com',
-		subject: 'PR-24',
-		html: '<p>Hello</p>',
-		ipPool: 'transactional',
-		organizationId: 'org-1',
-		dkimDomain: 'owlat.com',
-		...overrides,
-	};
-}
-
-function createConfig(): MtaConfig {
-	return {
-		port: 3100,
-		bouncePort: 25,
-		redisUrl: 'redis://localhost:6379',
-		apiKey: 'test-key',
-		ehloHostname: 'mail.owlat.com',
-		ehloHostnames: {},
-		returnPathDomain: 'bounces.owlat.com',
-		convexSiteUrl: 'https://test.convex.site',
-		webhookSecret: 'secret',
-		ipPools: { transactional: ['127.0.0.1'], campaign: ['127.0.0.1'] },
-		dkimKeys: {},
-		workerConcurrency: 50,
-		serverId: 'test-server',
-		smtpPool: { maxPerHost: 3, idleTimeoutMs: 30000, maxAgeMs: 300000 },
-		orgLimits: { defaultDailyLimit: 50000, defaultHourlyLimit: 5000 },
-		submissionPort: 587,
-		submissionEnabled: false,
-		contentScreeningEnabled: true,
-		contentMaxSizeKb: 500,
-		deliveryLogMaxLen: 100000,
-		deliveryLogTtlHours: 72,
-		webhookDlqMaxSize: 10000,
-		bounceMaxConnectionsPerIp: 10,
-		bounceMaxClients: 200,
-		bounceTarpitEnabled: false,
-		bounceTarpitDelayMs: 5000,
-		inboundSpfEnabled: false,
-		rspamdRejectThreshold: 15,
-		smtpPoolGlobalMaxPerHost: 10,
-	} as MtaConfig;
-}
-
-const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
+import {
+	type ServerProbe,
+	startServer,
+	stopServer,
+	createJob,
+	createConfig,
+	flush,
+} from './loopbackMxHarness.js';
 
 describe('sendToMx records the real TLS-RPT result type per session (PR-24)', () => {
 	let redis: InstanceType<typeof Redis>;
@@ -174,7 +84,7 @@ describe('sendToMx records the real TLS-RPT result type per session (PR-24)', ()
 		// bindIp '127.0.0.1' keeps the source address on loopback.
 		const realAcquire = pool.acquire.bind(pool);
 		vi.spyOn(pool, 'acquire').mockImplementation((mxHost, bindIp, options) =>
-			realAcquire(mxHost, bindIp, { ...options, port: probe!.port }),
+			realAcquire(mxHost, bindIp, { ...options, port: probe!.port })
 		);
 	});
 
@@ -193,14 +103,14 @@ describe('sendToMx records the real TLS-RPT result type per session (PR-24)', ()
 			'recipient.test',
 			today,
 			'Owlat MTA',
-			'postmaster@owlat.com',
+			'postmaster@owlat.com'
 		);
 		expect(report).not.toBeNull();
 		return report!;
 	}
 
 	it('plaintext delivery (MX hides STARTTLS, no policy) is recorded as starttls-not-supported, not success', async () => {
-		probe = await startServer(/* hideSTARTTLS */ true);
+		probe = await startServer({ advertiseStartTls: false });
 
 		const result = await sendToMx(createJob(), config, redis, '127.0.0.1');
 
@@ -220,7 +130,7 @@ describe('sendToMx records the real TLS-RPT result type per session (PR-24)', ()
 	}, 15000);
 
 	it('an encrypted delivery (MX advertises STARTTLS) is still recorded as a TLS success', async () => {
-		probe = await startServer(/* hideSTARTTLS */ false);
+		probe = await startServer({ advertiseStartTls: true });
 
 		const result = await sendToMx(createJob(), config, redis, '127.0.0.1');
 

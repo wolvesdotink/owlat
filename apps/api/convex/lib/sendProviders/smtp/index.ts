@@ -57,6 +57,42 @@ const SMTP_CONNECTION_TIMEOUT_MS = 15_000;
 
 let cachedTransport: Transporter | null = null;
 
+/** Resolved, non-secret transport inputs (env-derived). */
+export interface RelayTransportInput {
+	host: string;
+	port: number;
+	/** true ⇒ implicit TLS (465); false ⇒ STARTTLS upgrade (587). */
+	secure: boolean;
+	user: string;
+	pass: string;
+}
+
+/**
+ * Assemble the nodemailer transport options for a relay send. Pure and exported
+ * so the TLS floor and STARTTLS-enforcement invariants are pinned by a test
+ * rather than living only inside the network path.
+ *
+ * - `requireTLS: !secure` — on the STARTTLS path demand the upgrade so a relay
+ *   that omits STARTTLS (or a MITM stripping it) can't silently downgrade the
+ *   AUTH credentials + body to cleartext.
+ * - `tls.minVersion: 'TLSv1.2'` — pin the floor (RFC 8996 deprecates TLS 1.0/1.1,
+ *   RFC 9325 mandates 1.2+). The direct-MX pool already pins this; without it the
+ *   relay path's floor was Node's env-fragile process default.
+ */
+export function buildRelayTransportOptions(input: RelayTransportInput) {
+	return {
+		host: input.host,
+		port: input.port,
+		secure: input.secure,
+		requireTLS: !input.secure,
+		// Fail a merely-unreachable relay fast and retryably (see the constant).
+		connectionTimeout: SMTP_CONNECTION_TIMEOUT_MS,
+		greetingTimeout: SMTP_CONNECTION_TIMEOUT_MS,
+		tls: { minVersion: 'TLSv1.2' as const },
+		auth: { user: input.user, pass: input.pass },
+	};
+}
+
 /**
  * Build (once) the nodemailer transport from the instance-level relay config.
  * `secure: true` opens an implicit TLS connection (typically port 465);
@@ -72,24 +108,15 @@ function getTransport(): Transporter {
 		throw new Error(`Invalid SMTP_RELAY_PORT: ${portRaw}`);
 	}
 	const secure = getBoolean('SMTP_RELAY_SECURE');
-	cachedTransport = nodemailer.createTransport({
-		host,
-		port,
-		secure,
-		// On the STARTTLS path (secure=false) demand an upgrade to TLS: without
-		// this nodemailer treats STARTTLS as opportunistic, so a relay that omits
-		// it — or an active MITM doing STARTTLS stripping — silently downgrades to
-		// cleartext and the AUTH credentials + message body go over the wire in the
-		// clear. `requireTLS` makes the send fail closed instead.
-		requireTLS: !secure,
-		// Fail a merely-unreachable relay fast and retryably (see the constant).
-		connectionTimeout: SMTP_CONNECTION_TIMEOUT_MS,
-		greetingTimeout: SMTP_CONNECTION_TIMEOUT_MS,
-		auth: {
+	cachedTransport = nodemailer.createTransport(
+		buildRelayTransportOptions({
+			host,
+			port,
+			secure,
 			user: getRequired('SMTP_RELAY_USERNAME'),
 			pass: getRequired('SMTP_RELAY_PASSWORD'),
-		},
-	});
+		})
+	);
 	return cachedTransport;
 }
 

@@ -17,6 +17,7 @@
  */
 
 import { v } from 'convex/values';
+import { openMailMessageInlineBody } from '../lib/messageBody';
 import { internalMutation, internalQuery } from '../_generated/server';
 import { authedMutation } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
@@ -138,11 +139,14 @@ export const getClarificationContext = internalQuery({
 			.order('desc')
 			.take(NEEDS_REPLY_CONTEXT_MESSAGES);
 		const newest = newestFirst.sort((a, b) => a.receivedAt - b.receivedAt);
-		const transcript = newest
-			.map(
-				(m) =>
-					`From: ${m.fromName || m.fromAddress}\nSubject: ${m.subject}\n${(m.textBodyInline ?? m.snippet ?? '').slice(0, 2000)}`
+		const transcript = (
+			await Promise.all(
+				newest.map(
+					async (m) =>
+						`From: ${m.fromName || m.fromAddress}\nSubject: ${m.subject}\n${((await openMailMessageInlineBody(m)).text ?? m.snippet ?? '').slice(0, 2000)}`
+				)
 			)
+		)
 			.join('\n\n---\n\n')
 			.slice(0, 12000);
 

@@ -141,7 +141,7 @@ export const coachDraft = authedAction({
 					messageId: args.messageId,
 				});
 				if (thread && thread.messages.length > 0) {
-					context = threadToText(thread.messages);
+					context = await threadToText(thread.messages);
 				}
 			}
 			const { object, tokenUsage, modelUsed } = await runLlmObject({

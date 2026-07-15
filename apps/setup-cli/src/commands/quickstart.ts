@@ -477,8 +477,20 @@ async function deployBackend(
 		await writeEnv(envPath, env);
 	}
 
-	// 4. Push function-runtime env vars into the deployment.
-	const runtimeVars = selectRuntimeEnvVars(env);
+	// 4. Push function-runtime env vars into the deployment. This is also the
+	// reseed step for secrets sealed at rest in the `.env` backup (envsealed:v1:…
+	// tokens, e.g. the SMTP relay password written by the in-app transport
+	// editor): `selectRuntimeEnvVars` unseals them so the deployment receives the
+	// WORKING plaintext credential, and FAILS CLOSED on a tampered/orphaned token
+	// rather than deploying ciphertext as a live credential.
+	let runtimeVars: Array<[string, string]>;
+	try {
+		runtimeVars = selectRuntimeEnvVars(env);
+	} catch (e) {
+		reporter.step(SetupStep.EnvSet, 'Setting function-runtime env var(s)');
+		reporter.fail((e as Error).message);
+		return 1;
+	}
 	reporter.step(SetupStep.EnvSet, `Setting ${runtimeVars.length} function-runtime env var(s)`);
 	s.start(`Setting ${runtimeVars.length} Convex function-runtime env var(s)`);
 	try {

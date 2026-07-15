@@ -60,6 +60,11 @@ export function ensureSecrets(existing: Record<string, string>): Record<string, 
 		// MTA_WEBHOOK_SECRET as a raw HMAC key — neither strips the prefix.
 		MTA_API_KEY: () => `mta_${generateSecret(40)}`,
 		MTA_WEBHOOK_SECRET: () => `whsec_${generateSecret(40)}`,
+		// Seals the MTA's transport secrets at rest (DKIM private keys, relay
+		// credentials) via the MTA secret box. Boot-validated to be >= 32 bytes;
+		// hex (64 chars) so it is copy-paste safe and comfortably over the floor.
+		// Keep it STABLE across restarts — rotating it strands already-sealed values.
+		MTA_SECRET: () => generateHexSecret(32),
 		// Bearer token the Convex runtime presents to the mail-sync worker
 		// (apps/mail-sync) on its internal /send + /test API. Generated alongside
 		// MTA_API_KEY so enabling the external-mailbox feature (mail.external) boots

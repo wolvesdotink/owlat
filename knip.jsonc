@@ -79,6 +79,8 @@
 				"src/setupValidators.ts",
 				"src/setupEnv.ts",
 				"src/convexRuntimeEnv.ts",
+				"src/secretBox.ts",
+				"src/envBackupBox.ts",
 				"src/setupSecrets.ts",
 				"src/passwordHash.ts",
 				"src/operationError.ts",
@@ -130,6 +132,7 @@
 		"**/dist/**",
 		"**/src-tauri/**",
 		"**/*.css",
+		"fixtures/**",
 		"packages/sdk-java/**"
 	],
 	"ignoreBinaries": ["convex", "tauri", "playwright", "docker", "cargo"],

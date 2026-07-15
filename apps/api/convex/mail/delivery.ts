@@ -31,15 +31,25 @@ import { extractEmail, normalizeSubject } from '../lib/emailAddress';
 import { extractAntiLoopHeaders } from '../lib/inboundClassification';
 import { extractAttachments } from '@owlat/shared/mailMime';
 import { extractListUnsubscribe } from '@owlat/shared/listUnsubscribe';
+import { DEFAULT_TRUSTED_ARC_FORWARDERS, shouldArcOverrideDmarc } from '@owlat/shared/arcTrust';
 import { ATTACHMENT_COMPOSE_LIMITS, MAX_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
 import { logError } from '../lib/runtimeLog';
 import { getMtaConfig, scanAttachmentBytes } from './mtaClient';
 import { scanContent } from '@owlat/email-scanner';
+import { computeSenderHeuristics, type SenderHeuristics } from './senderHeuristics';
+import {
+	inboundEncryptionInfoValidator,
+	isSealedPgpMime,
+	usableRestoredBodies,
+	type InboundEncryptionInfo,
+} from '../e2ee/inboundSeal';
 import { enqueueNeedsReplyCheck } from './needsReply';
 import { enqueueCategoryCheck } from './category';
 import { clearThreadFollowUp } from './followUps';
 import { resolveDeliverableMailbox } from './mailbox';
 import { clearSnoozeUntilReplyForThread } from './snooze';
+import { sealBodyAtWriteMaybe } from '../lib/messageBody';
+import { storeSealedBlob, type BlobStore } from '../lib/sealedBlob';
 
 const INLINE_BODY_THRESHOLD_BYTES = 64 * 1024;
 
@@ -51,7 +61,7 @@ const INLINE_BODY_THRESHOLD_BYTES = 64 * 1024;
  * long threads rendered blank. Action-only (needs `ctx.storage.store`).
  */
 export async function splitBodyForStorage(
-	ctx: { storage: { store: (blob: Blob) => Promise<Id<'_storage'>> } },
+	ctx: { storage: BlobStore },
 	body: string | undefined,
 	contentType: string
 ): Promise<{ inline?: string; storageId?: Id<'_storage'> }> {
@@ -59,7 +69,9 @@ export async function splitBodyForStorage(
 	if (Buffer.byteLength(body, 'utf-8') <= INLINE_BODY_THRESHOLD_BYTES) {
 		return { inline: body };
 	}
-	const storageId = await ctx.storage.store(new Blob([body], { type: contentType }));
+	// E8b: seal the over-threshold body blob at rest (byte cipher). The reader
+	// (`readMailMessageText`) and the web-reader proxy both unseal transparently.
+	const storageId = await storeSealedBlob(ctx.storage, new TextEncoder().encode(body), contentType);
 	return { storageId };
 }
 
@@ -202,6 +214,16 @@ export const ingestFromWebhook = internalAction({
 		dkimResult: v.optional(v.string()),
 		dmarcResult: v.optional(v.string()),
 		dmarcPolicy: v.optional(v.string()),
+		// Verified inbound ARC verdict (RFC 8617, Sealed Mail A5) — used to rescue a
+		// DMARC fail when a TRUSTED forwarder sealed a valid chain attesting the
+		// original passed. All optional (an older MTA omits them ⇒ no rescue).
+		arcCv: v.optional(v.string()),
+		arcSealerDomain: v.optional(v.string()),
+		arcAttestsOriginalPass: v.optional(v.boolean()),
+		// DMARC alignment inputs (envelope MAIL FROM domain + DKIM d= domain),
+		// stored beside the verdicts on `mailMessages`. Both optional.
+		envelopeFromDomain: v.optional(v.string()),
+		dkimSigningDomain: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<{ messageId: Id<'mailMessages'> } | { skipped: true }> => {
 		// Decode raw MIME and stash in Convex storage.
@@ -216,16 +238,60 @@ export const ingestFromWebhook = internalAction({
 		// List-Unsubscribe / List-Unsubscribe-Post (RFC 2369 / 8058), parsed once
 		// here so the reader's Unsubscribe chip never re-opens the raw .eml.
 		const unsubscribe = extractListUnsubscribe(rawHeaderBlock) ?? undefined;
-		const blob = new Blob([rawBytes], { type: 'message/rfc822' });
-		const rawStorageId = await ctx.storage.store(blob);
+		// The raw `.eml` we store IS the E2EE-sealed original when the message
+		// arrived sealed — decrypt-on-ingest keeps that ciphertext downloadable
+		// (D3) while the row's body columns below carry the restored plaintext.
+		// E8b then wraps the bytes in the AT-REST byte cipher so a storage dump
+		// holds no plaintext; the reader path + `/sealed-blob` proxy unseal it.
+		const rawStorageId = await storeSealedBlob(ctx.storage, rawBytes, 'message/rfc822');
+
+		// Sealed Mail (E4, D3): decrypt-on-ingest. When the message arrived as
+		// PGP/MIME ciphertext AND we hold the recipient's vault key, open it here so
+		// the RESTORED plaintext (real Subject + bodies) flows into the normal
+		// pipeline (threading, categorize, needs-reply, agent, knowledge, search). A
+		// message we cannot decrypt — or any plaintext message, or when the flag is
+		// off — falls straight through to the existing path unchanged. The honest
+		// outcome is recorded on the row as `inboundEncryptionInfo`.
+		//
+		// The structural check is pure + cheap, so a PLAINTEXT message (the common
+		// case, and the default while the flag is off) never spawns the `'use node'`
+		// open action — it would only return `{ sealed: false }` anyway. Mirrors the
+		// cheap `extractArmoredCiphertext` pre-gate the AI-inbox path already uses
+		// before its decrypt action.
+		const opened = isSealedPgpMime(rawBytes.toString('utf8'))
+			? await ctx.runAction(internal.e2ee.open.openInboundForMailbox, {
+					rawBytesBase64: args.rawBytesBase64,
+					recipientAddress: args.recipientAddress,
+					from: args.from,
+				})
+			: ({ isSealed: false } as const);
+		let effectiveSubject = args.subject;
+		let effectiveText = args.textBody;
+		let effectiveHtml = args.htmlBody;
+		let inboundEncryptionInfo: InboundEncryptionInfo | undefined;
+		if (opened.isSealed) {
+			inboundEncryptionInfo = opened.encryptionInfo;
+			if (opened.isDecrypted) {
+				// Restored plaintext (real Subject + bodies, D4) replaces the outer
+				// placeholder + ciphertext so the normal pipeline sees real content.
+				if (opened.subject !== undefined) effectiveSubject = opened.subject;
+				// Fail-safe: only replace when the restore yields a usable body — see
+				// usableRestoredBodies.
+				const bodies = usableRestoredBodies(opened);
+				if (bodies) {
+					effectiveText = bodies.text;
+					effectiveHtml = bodies.html;
+				}
+			}
+		}
 
 		// Inline small bodies for a fast list/reader render; stash larger bodies
 		// as separate blobs (served lazily by mailbox.getMessageBody).
-		const textBody = await splitBodyForStorage(ctx, args.textBody, 'text/plain; charset=utf-8');
-		const htmlBody = await splitBodyForStorage(ctx, args.htmlBody, 'text/html; charset=utf-8');
+		const textBody = await splitBodyForStorage(ctx, effectiveText, 'text/plain; charset=utf-8');
+		const htmlBody = await splitBodyForStorage(ctx, effectiveHtml, 'text/html; charset=utf-8');
 		// Snippet from the FULL body, before the inline/blob split, so >64KB
 		// bodies still get a non-empty preview + search snippet.
-		const snippet = buildSnippet(args.textBody, args.htmlBody);
+		const snippet = buildSnippet(effectiveText, effectiveHtml);
 
 		// Scan inbound attachments for malware (defense-in-depth on the receiving
 		// side). ClamAV lives in the MTA container, so we POST each attachment leaf
@@ -254,7 +320,9 @@ export const ingestFromWebhook = internalAction({
 				bcc: args.bcc,
 				replyTo: args.replyTo,
 				returnPath: args.returnPath,
-				subject: args.subject,
+				// Restored real subject (D4) when the message was opened; the outer
+				// placeholder `...` otherwise. Threading below keys off this.
+				subject: effectiveSubject,
 				textBodyInline: textBody.inline,
 				textBodyStorageId: textBody.storageId,
 				htmlBodyInline: htmlBody.inline,
@@ -272,6 +340,12 @@ export const ingestFromWebhook = internalAction({
 				dkimResult: args.dkimResult,
 				dmarcResult: args.dmarcResult,
 				dmarcPolicy: args.dmarcPolicy,
+				arcCv: args.arcCv,
+				arcSealerDomain: args.arcSealerDomain,
+				arcAttestsOriginalPass: args.arcAttestsOriginalPass,
+				envelopeFromDomain: args.envelopeFromDomain,
+				dkimSigningDomain: args.dkimSigningDomain,
+				inboundEncryptionInfo,
 			}
 		);
 
@@ -431,6 +505,18 @@ export async function insertDeliveredMessage(
 		dkimResult?: string;
 		dmarcResult?: string;
 		dmarcPolicy?: string;
+		/** Inbound-auth override (Sealed Mail A5): `'arc'` when a trusted forwarder
+		 * rescued a DMARC fail; `arcSealer` names the honoured sealer's `d=`. */
+		dmarcOverride?: string;
+		arcSealer?: string;
+		envelopeFromDomain?: string;
+		dkimSigningDomain?: string;
+		/** Ingest-computed sender-impersonation heuristics (Sealed Mail A4). */
+		senderHeuristics?: SenderHeuristics;
+		/** Inbound unsealing outcome (Sealed Mail E4, D3): present only for a message
+		 * that arrived sealed. The body columns above hold the RESTORED plaintext when
+		 * `decrypted:true`; the raw `.eml` stays the sealed original either way. */
+		inboundEncryptionInfo?: InboundEncryptionInfo;
 		/** Parsed List-Unsubscribe target (extracted at ingest from the raw header block). */
 		unsubscribe?: { httpUrl?: string; mailtoUrl?: string; oneClick: boolean };
 		/** Add rawSize to mailbox.usedBytes (local cache accounting). */
@@ -523,9 +609,9 @@ export async function insertDeliveredMessage(
 		snippet,
 		rawStorageId: params.rawStorageId,
 		rawSize: params.rawSize,
-		textBodyInline: params.textBodyInline,
+		textBodyInline: await sealBodyAtWriteMaybe(params.textBodyInline),
 		textBodyStorageId: params.textBodyStorageId,
-		htmlBodyInline: params.htmlBodyInline,
+		htmlBodyInline: await sealBodyAtWriteMaybe(params.htmlBodyInline),
 		htmlBodyStorageId: params.htmlBodyStorageId,
 		attachments: params.attachments,
 		hasAttachments,
@@ -545,6 +631,12 @@ export async function insertDeliveredMessage(
 		dkimResult: params.dkimResult,
 		dmarcResult: params.dmarcResult,
 		dmarcPolicy: params.dmarcPolicy,
+		dmarcOverride: params.dmarcOverride,
+		arcSealer: params.arcSealer,
+		envelopeFromDomain: params.envelopeFromDomain,
+		dkimSigningDomain: params.dkimSigningDomain,
+		senderHeuristics: params.senderHeuristics,
+		inboundEncryptionInfo: params.inboundEncryptionInfo,
 		unsubscribe: params.unsubscribe,
 		createdAt: now,
 		updatedAt: now,
@@ -646,6 +738,21 @@ export const deliverToMailbox = internalMutation({
 		dkimResult: v.optional(v.string()),
 		dmarcResult: v.optional(v.string()),
 		dmarcPolicy: v.optional(v.string()),
+		// Verified inbound ARC verdict (RFC 8617, Sealed Mail A5). Rescues a DMARC
+		// fail when a TRUSTED forwarder sealed a valid chain attesting the original
+		// passed. All optional (older MTA ⇒ absent ⇒ no rescue).
+		arcCv: v.optional(v.string()),
+		arcSealerDomain: v.optional(v.string()),
+		arcAttestsOriginalPass: v.optional(v.boolean()),
+		// DMARC alignment inputs (envelope MAIL FROM domain + DKIM d= domain),
+		// stored beside the verdicts on `mailMessages`. Both optional.
+		envelopeFromDomain: v.optional(v.string()),
+		dkimSigningDomain: v.optional(v.string()),
+		// Sealed Mail (E4, D3): the inbound unsealing outcome, computed by the
+		// ingest action before this mutation. Present only for a message that
+		// arrived sealed; the body args above already hold the RESTORED plaintext
+		// when it decrypted. Absent ⇒ a plaintext message (unchanged fast path).
+		inboundEncryptionInfo: v.optional(inboundEncryptionInfoValidator),
 	},
 	handler: async (ctx, args): Promise<{ messageId: Id<'mailMessages'> } | { skipped: true }> => {
 		const recipient = extractEmail(args.recipientAddress);
@@ -686,7 +793,10 @@ export const deliverToMailbox = internalMutation({
 		let spamScore = args.spamScore;
 		let spamVerdict = args.spamVerdict;
 		if (spamScore == null && spamVerdict == null) {
-			const scan = scanContent(args.subject, args.htmlBodyInline ?? args.textBodyInline ?? '');
+			const scan = scanContent(args.subject, args.htmlBodyInline ?? args.textBodyInline ?? '', {
+				from: args.from,
+				replyTo: args.replyTo,
+			});
 			spamScore = scan.score;
 			// `blocked` (score >= 40) is high enough confidence to route to Spam;
 			// `suspicious`/`clean` stay in the inbox but keep their numeric score.
@@ -728,10 +838,40 @@ export const deliverToMailbox = internalMutation({
 			.filter((a) => a.type === 'forward' && a.forwardTo)
 			.map((a) => a.forwardTo as string);
 
+		// ARC rescue (RFC 8617, Sealed Mail A5): a mailing-list / forwarder that
+		// broke the author's DKIM makes DMARC fail even for legitimate mail. When a
+		// TRUSTED forwarder sealed a VALID chain (`cv=pass`) attesting the original
+		// passed, honour that attestation — skip the Spam-routing below and record
+		// `dmarcOverride: 'arc'` + the sealer so the reader's badge can say
+		// "verified via forwarder". Trust is decided HERE against the operator's
+		// editable allow-list (unset ⇒ the seeded defaults); an explicit `[]`
+		// disables the override. The predicate is shared with the MTA so the two
+		// sides never fork on what "trusted rescue" means.
+		// The override only APPLIES to an actual DMARC fail — that is the only
+		// verdict there is anything to rescue. A message that passed DMARC on its
+		// own (or where DMARC was not evaluated) must keep its own verdict, so a
+		// direct-pass forward is never mislabelled "verified via forwarder".
+		const settings = await ctx.db.query('instanceSettings').first();
+		const trustedForwarders = settings?.trustedArcForwarders ?? DEFAULT_TRUSTED_ARC_FORWARDERS;
+		const arcRescued =
+			args.dmarcResult === 'fail' &&
+			shouldArcOverrideDmarc(
+				{
+					arcCv: args.arcCv,
+					arcSealerDomain: args.arcSealerDomain,
+					arcAttestsOriginalPass: args.arcAttestsOriginalPass,
+				},
+				trustedForwarders
+			);
+		const dmarcOverride = arcRescued ? 'arc' : undefined;
+		const arcSealer = arcRescued ? args.arcSealerDomain : undefined;
+
 		// A DMARC fail (RFC 7489) routes to Spam only when the From-domain owner
 		// published an enforcing policy (`quarantine`/`reject`). A `p=none` fail
-		// is monitor-only — record the verdict but do not move the message.
+		// is monitor-only — record the verdict but do not move the message. A
+		// trusted-forwarder ARC rescue also suppresses the move.
 		const dmarcQuarantine =
+			!arcRescued &&
 			args.dmarcResult === 'fail' &&
 			(args.dmarcPolicy === 'quarantine' || args.dmarcPolicy === 'reject');
 		const initialRole =
@@ -751,6 +891,19 @@ export const deliverToMailbox = internalMutation({
 		if (!folder || folder.mailboxId !== mailbox._id) {
 			return { skipped: true };
 		}
+
+		// 4b. Sender-impersonation heuristics (Sealed Mail A4). Computed on this
+		// hosted-mailbox ingest path only — the same place the content scan runs —
+		// so the reader's sender badge can surface first-time-sender and
+		// lookalike-of-contact detail without re-parsing the raw .eml. Returns
+		// undefined when nothing notable fired, so an unremarkable sender stores no
+		// object at all.
+		const senderHeuristics = await computeSenderHeuristics(ctx, {
+			mailbox,
+			fromAddress,
+			from: args.from,
+			replyTo: args.replyTo,
+		});
 
 		// 5-11. Threading, UID/modseq, insert, and folder/thread/usedBytes
 		//       aggregates + audit — shared with external IMAP sync.
@@ -785,6 +938,12 @@ export const deliverToMailbox = internalMutation({
 			dkimResult: args.dkimResult,
 			dmarcResult: args.dmarcResult,
 			dmarcPolicy: args.dmarcPolicy,
+			dmarcOverride,
+			arcSealer,
+			envelopeFromDomain: args.envelopeFromDomain,
+			dkimSigningDomain: args.dkimSigningDomain,
+			senderHeuristics,
+			inboundEncryptionInfo: args.inboundEncryptionInfo,
 			unsubscribe: args.unsubscribe,
 			countUsedBytes: true,
 		});

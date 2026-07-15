@@ -39,6 +39,8 @@ export type FeatureFlagKey =
 	| 'scan.content'
 	| 'scan.files'
 	| 'scan.urls'
+	| 'senderAuthBadges'
+	| 'sealedMail'
 	// Analytics & deliverability
 	| 'analytics.posthog'
 	| 'domains.verification'
@@ -326,6 +328,31 @@ export const FEATURE_FLAGS: Record<FeatureFlagKey, FeatureFlagDefinition> = {
 		description: 'Check outbound links against Google Safe Browsing before sending.',
 		default: false,
 		requiredEnvVars: ['GOOGLE_SAFE_BROWSING_API_KEY'],
+	},
+	senderAuthBadges: {
+		key: 'senderAuthBadges',
+		category: 'security',
+		label: 'Sender authenticity badges',
+		description:
+			'Show an honest "sender verified" or "not authorized to send for this domain" badge on personal mail, based on the message\'s own authentication result.',
+		// Ships ON by default (Sealed Mail release): resolves on wherever the
+		// Postbox plane runs, and stays off on deployments without personal mail.
+		default: true,
+		// Sender-authenticity surfaces live on the Postbox 1:1 plane.
+		requires: ['postbox'],
+	},
+	sealedMail: {
+		key: 'sealedMail',
+		category: 'security',
+		label: 'Sealed Mail (end-to-end encryption)',
+		description:
+			'Encrypt personal mail end-to-end between Owlat instances when every recipient has a usable key, and render a "Sealed" badge for encrypted messages.',
+		// Ships ON by default (Sealed Mail release): auto-seals per locked
+		// decision D2 wherever Postbox + sender authenticity resolve on.
+		default: true,
+		// End-to-end sealing applies to the Postbox 1:1 plane, and the honest
+		// "Sealed - sender verified" badge builds on sender authenticity.
+		requires: ['postbox', 'senderAuthBadges'],
 	},
 
 	'analytics.posthog': {

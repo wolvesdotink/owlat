@@ -1,0 +1,15 @@
+From: Alice <alice@sealed.example.com>
+To: Bob <bob@sealed.example.org>
+Subject: Plain hello
+Date: Fri, 11 Jul 2026 12:10:00 +0000
+Message-ID: <no-sig-0001@sealed.example.com>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+Hello Bob,
+
+This is an ordinary plaintext message with no OpenPGP signature at all.
+The sender-authenticity layer must fall back to DKIM/SPF/DMARC only.
+
+-- Alice

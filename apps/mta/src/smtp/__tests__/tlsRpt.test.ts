@@ -2,24 +2,37 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import Redis from 'ioredis-mock';
 import type RealRedis from 'ioredis';
 import { gunzipSync } from 'zlib';
-import { recordTlsResult, generateReport, generateAndSendReports, buildStsPolicyString } from '../tlsRpt.js';
+import {
+	recordTlsResult,
+	generateReport,
+	generateAndSendReports,
+	buildStsPolicyString,
+} from '../tlsRpt.js';
 import type { TlsRptQueue } from '../tlsRpt.js';
 import type { EmailJob } from '../../types.js';
-import { classifyTlsFailure, stsAttributedResultType } from '../sender.js';
+import { classifyTlsFailure, stsAttributedResultType } from '../tlsFailureClassification.js';
 
 const { resolveMock } = vi.hoisted(() => ({ resolveMock: vi.fn() }));
 vi.mock('dns/promises', () => ({ resolve: resolveMock }));
 
 vi.mock('prom-client', () => {
 	const metric = vi.fn(function () {
-		return { inc: vi.fn(), set: vi.fn(), observe: vi.fn(), dec: vi.fn(), labels: vi.fn(() => ({ inc: vi.fn(), set: vi.fn(), observe: vi.fn() })) };
+		return {
+			inc: vi.fn(),
+			set: vi.fn(),
+			observe: vi.fn(),
+			dec: vi.fn(),
+			labels: vi.fn(() => ({ inc: vi.fn(), set: vi.fn(), observe: vi.fn() })),
+		};
 	});
 	return {
 		Counter: metric,
 		Gauge: metric,
 		Histogram: metric,
 		Summary: metric,
-		Registry: vi.fn(function () { return { registerMetric: vi.fn(), metrics: vi.fn() }; }),
+		Registry: vi.fn(function () {
+			return { registerMetric: vi.fn(), metrics: vi.fn() };
+		}),
 		register: { registerMetric: vi.fn() },
 	};
 });
@@ -73,7 +86,13 @@ describe('tlsRpt', () => {
 		it('accumulates multiple results', async () => {
 			await recordTlsResult(redis, 'example.com', 'success', 'mx.example.com', '10.0.0.1');
 			await recordTlsResult(redis, 'example.com', 'success', 'mx.example.com', '10.0.0.1');
-			await recordTlsResult(redis, 'example.com', 'starttls-not-supported', 'mx2.example.com', '10.0.0.1');
+			await recordTlsResult(
+				redis,
+				'example.com',
+				'starttls-not-supported',
+				'mx2.example.com',
+				'10.0.0.1'
+			);
 
 			const today = new Date().toISOString().split('T')[0]!;
 			const key = `mta:tls-rpt:example.com:${today}`;
@@ -91,7 +110,13 @@ describe('tlsRpt', () => {
 			// Record some results
 			await recordTlsResult(redis, 'example.com', 'success', 'mx.example.com', '10.0.0.1');
 			await recordTlsResult(redis, 'example.com', 'success', 'mx.example.com', '10.0.0.1');
-			await recordTlsResult(redis, 'example.com', 'certificate-expired', 'mx2.example.com', '10.0.0.2');
+			await recordTlsResult(
+				redis,
+				'example.com',
+				'certificate-expired',
+				'mx2.example.com',
+				'10.0.0.2'
+			);
 
 			const report = await generateReport(
 				redis,
@@ -129,9 +154,27 @@ describe('tlsRpt', () => {
 
 			await recordTlsResult(redis, 'example.com', 'success', 'mx1.example.com', '10.0.0.1');
 			await recordTlsResult(redis, 'example.com', 'success', 'mx1.example.com', '10.0.0.1');
-			await recordTlsResult(redis, 'example.com', 'certificate-expired', 'mx2.example.com', '10.0.0.2');
-			await recordTlsResult(redis, 'example.com', 'starttls-not-supported', 'mx3.example.com', '10.0.0.3');
-			await recordTlsResult(redis, 'example.com', 'starttls-not-supported', 'mx3.example.com', '10.0.0.3');
+			await recordTlsResult(
+				redis,
+				'example.com',
+				'certificate-expired',
+				'mx2.example.com',
+				'10.0.0.2'
+			);
+			await recordTlsResult(
+				redis,
+				'example.com',
+				'starttls-not-supported',
+				'mx3.example.com',
+				'10.0.0.3'
+			);
+			await recordTlsResult(
+				redis,
+				'example.com',
+				'starttls-not-supported',
+				'mx3.example.com',
+				'10.0.0.3'
+			);
 
 			const report = await generateReport(
 				redis,
@@ -150,13 +193,13 @@ describe('tlsRpt', () => {
 			const details = policy['failure-details']!;
 			expect(details).toHaveLength(2);
 
-			const expired = details.find(d => d['result-type'] === 'certificate-expired');
+			const expired = details.find((d) => d['result-type'] === 'certificate-expired');
 			expect(expired).toBeDefined();
 			expect(expired!['receiving-mx-hostname']).toBe('mx2.example.com');
 			expect(expired!['sending-mta-ip']).toBe('10.0.0.2');
 			expect(expired!['failed-session-count']).toBe(1);
 
-			const starttls = details.find(d => d['result-type'] === 'starttls-not-supported');
+			const starttls = details.find((d) => d['result-type'] === 'starttls-not-supported');
 			expect(starttls).toBeDefined();
 			expect(starttls!['receiving-mx-hostname']).toBe('mx3.example.com');
 			expect(starttls!['sending-mta-ip']).toBe('10.0.0.3');
@@ -167,7 +210,13 @@ describe('tlsRpt', () => {
 			const today = new Date().toISOString().split('T')[0]!;
 			await recordTlsResult(redis, 'example.com', 'success', 'mx1.example.com', '10.0.0.1');
 
-			const r = await generateReport(redis, 'example.com', today, 'Owlat MTA', 'postmaster@owlat.com');
+			const r = await generateReport(
+				redis,
+				'example.com',
+				today,
+				'Owlat MTA',
+				'postmaster@owlat.com'
+			);
 			expect(r).not.toBeNull();
 			expect(r!['date-range']['start-datetime']).toBe(`${today}T00:00:00.000Z`);
 			expect(r!['date-range']['end-datetime']).toBe(`${today}T23:59:59.000Z`);
@@ -190,10 +239,30 @@ describe('tlsRpt', () => {
 		it('persists the STS policy context so generateReport emits policy-type "sts" with the policy-string and mx-host', async () => {
 			const today = new Date().toISOString().split('T')[0]!;
 
-			await recordTlsResult(redis, 'example.com', 'success', 'mx.example.com', '10.0.0.1', stsContext);
-			await recordTlsResult(redis, 'example.com', 'sts-webpki-invalid', 'mx2.example.com', '10.0.0.2', stsContext);
+			await recordTlsResult(
+				redis,
+				'example.com',
+				'success',
+				'mx.example.com',
+				'10.0.0.1',
+				stsContext
+			);
+			await recordTlsResult(
+				redis,
+				'example.com',
+				'sts-webpki-invalid',
+				'mx2.example.com',
+				'10.0.0.2',
+				stsContext
+			);
 
-			const report = await generateReport(redis, 'example.com', today, 'Owlat MTA', 'postmaster@owlat.com');
+			const report = await generateReport(
+				redis,
+				'example.com',
+				today,
+				'Owlat MTA',
+				'postmaster@owlat.com'
+			);
 			expect(report).not.toBeNull();
 
 			const policy = report!.policies[0]!.policy;
@@ -204,14 +273,20 @@ describe('tlsRpt', () => {
 
 			// The STS-specific failure result-type is carried through to the report.
 			const details = report!.policies[0]!['failure-details']!;
-			expect(details.find(d => d['result-type'] === 'sts-webpki-invalid')).toBeDefined();
+			expect(details.find((d) => d['result-type'] === 'sts-webpki-invalid')).toBeDefined();
 		});
 
 		it('falls back to "no-policy-found" with an empty policy-string when no STS context was recorded', async () => {
 			const today = new Date().toISOString().split('T')[0]!;
 			await recordTlsResult(redis, 'plain.com', 'success', 'mx.plain.com', '10.0.0.1');
 
-			const report = await generateReport(redis, 'plain.com', today, 'Owlat MTA', 'postmaster@owlat.com');
+			const report = await generateReport(
+				redis,
+				'plain.com',
+				today,
+				'Owlat MTA',
+				'postmaster@owlat.com'
+			);
 			const policy = report!.policies[0]!.policy;
 			expect(policy['policy-type']).toBe('no-policy-found');
 			expect(policy['policy-string']).toEqual([]);
@@ -220,14 +295,27 @@ describe('tlsRpt', () => {
 
 		it('records the sts-policy-invalid result type (enforce MX not in policy)', async () => {
 			const today = new Date().toISOString().split('T')[0]!;
-			await recordTlsResult(redis, 'example.com', 'sts-policy-invalid', 'rogue.example.net', '10.0.0.1', stsContext);
+			await recordTlsResult(
+				redis,
+				'example.com',
+				'sts-policy-invalid',
+				'rogue.example.net',
+				'10.0.0.1',
+				stsContext
+			);
 
 			const key = `mta:tls-rpt:example.com:${today}`;
 			expect(await redis.hget(key, 'fail:sts-policy-invalid')).toBe('1');
 
-			const report = await generateReport(redis, 'example.com', today, 'Owlat MTA', 'postmaster@owlat.com');
+			const report = await generateReport(
+				redis,
+				'example.com',
+				today,
+				'Owlat MTA',
+				'postmaster@owlat.com'
+			);
 			const details = report!.policies[0]!['failure-details']!;
-			const invalid = details.find(d => d['result-type'] === 'sts-policy-invalid');
+			const invalid = details.find((d) => d['result-type'] === 'sts-policy-invalid');
 			expect(invalid).toBeDefined();
 			expect(invalid!['receiving-mx-hostname']).toBe('rogue.example.net');
 			expect(report!.policies[0]!.policy['policy-type']).toBe('sts');
@@ -247,24 +335,38 @@ describe('tlsRpt', () => {
 	// ── PR-31: STS result-type escalation (RFC 8460 §4.4) ──
 	describe('stsAttributedResultType', () => {
 		it('keeps the generic result type when no STS policy is in force', () => {
-			expect(stsAttributedResultType('certificate-host-mismatch', 'none')).toBe('certificate-host-mismatch');
-			expect(stsAttributedResultType('starttls-not-supported', 'none')).toBe('starttls-not-supported');
+			expect(stsAttributedResultType('certificate-host-mismatch', 'none')).toBe(
+				'certificate-host-mismatch'
+			);
+			expect(stsAttributedResultType('starttls-not-supported', 'none')).toBe(
+				'starttls-not-supported'
+			);
 		});
 
 		it('escalates a cert/WebPKI failure to sts-webpki-invalid under enforce', () => {
-			expect(stsAttributedResultType('certificate-host-mismatch', 'enforce')).toBe('sts-webpki-invalid');
+			expect(stsAttributedResultType('certificate-host-mismatch', 'enforce')).toBe(
+				'sts-webpki-invalid'
+			);
 			expect(stsAttributedResultType('certificate-expired', 'enforce')).toBe('sts-webpki-invalid');
-			expect(stsAttributedResultType('certificate-not-trusted', 'enforce')).toBe('sts-webpki-invalid');
+			expect(stsAttributedResultType('certificate-not-trusted', 'enforce')).toBe(
+				'sts-webpki-invalid'
+			);
 			expect(stsAttributedResultType('validation-failure', 'enforce')).toBe('sts-webpki-invalid');
 		});
 
 		it('escalates a STARTTLS-stripping / other TLS failure to sts-policy-invalid under enforce', () => {
-			expect(stsAttributedResultType('starttls-not-supported', 'enforce')).toBe('sts-policy-invalid');
+			expect(stsAttributedResultType('starttls-not-supported', 'enforce')).toBe(
+				'sts-policy-invalid'
+			);
 		});
 
 		it('escalates under testing mode too (report-only days surface the same failures)', () => {
-			expect(stsAttributedResultType('starttls-not-supported', 'testing')).toBe('sts-policy-invalid');
-			expect(stsAttributedResultType('certificate-host-mismatch', 'testing')).toBe('sts-webpki-invalid');
+			expect(stsAttributedResultType('starttls-not-supported', 'testing')).toBe(
+				'sts-policy-invalid'
+			);
+			expect(stsAttributedResultType('certificate-host-mismatch', 'testing')).toBe(
+				'sts-webpki-invalid'
+			);
 		});
 	});
 
@@ -313,7 +415,7 @@ describe('tlsRpt', () => {
 
 			dnsWithRua({ 'example.com': 'https://tls-reports.example.com/ingest' });
 
-			const fetchMock = vi.fn(async () => ({ ok: true, status: 200 } as Response));
+			const fetchMock = vi.fn(async () => ({ ok: true, status: 200 }) as Response);
 			vi.stubGlobal('fetch', fetchMock);
 
 			const stats = await generateAndSendReports(redis, 'Owlat MTA', 'postmaster@owlat.com');
@@ -336,11 +438,16 @@ describe('tlsRpt', () => {
 		it('gzip-compresses the HTTPS POST body with application/tlsrpt+gzip', async () => {
 			const key = `mta:tls-rpt:example.com:${yesterday}`;
 			await redis.hincrby(key, 'successes', 2);
-			await recordTlsResultYesterday('example.com', 'certificate-expired', 'mx2.example.com', '10.0.0.2');
+			await recordTlsResultYesterday(
+				'example.com',
+				'certificate-expired',
+				'mx2.example.com',
+				'10.0.0.2'
+			);
 
 			dnsWithRua({ 'example.com': 'https://tls-reports.example.com/ingest' });
 
-			const fetchMock = vi.fn(async () => ({ ok: true, status: 200 } as Response));
+			const fetchMock = vi.fn(async () => ({ ok: true, status: 200 }) as Response);
 			vi.stubGlobal('fetch', fetchMock);
 
 			const stats = await generateAndSendReports(redis, 'Owlat MTA', 'postmaster@owlat.com');
@@ -349,12 +456,20 @@ describe('tlsRpt', () => {
 
 			const init = fetchMock.mock.calls[0]![1] as RequestInit;
 			// Content-Type advertises gzip…
-			expect((init.headers as Record<string, string>)['Content-Type']).toBe('application/tlsrpt+gzip');
+			expect((init.headers as Record<string, string>)['Content-Type']).toBe(
+				'application/tlsrpt+gzip'
+			);
 
 			// …and the body actually IS gzip — raw JSON.parse would throw, but
 			// gunzip then parse must yield the same report generateReport produced.
 			const decoded = JSON.parse(gunzipSync(init.body as Buffer).toString('utf8'));
-			const expected = await generateReport(redis, 'example.com', yesterday, 'Owlat MTA', 'postmaster@owlat.com');
+			const expected = await generateReport(
+				redis,
+				'example.com',
+				yesterday,
+				'Owlat MTA',
+				'postmaster@owlat.com'
+			);
 			expect(decoded).toEqual(expected);
 
 			vi.unstubAllGlobals();
@@ -364,7 +479,12 @@ describe('tlsRpt', () => {
 		it('enqueues exactly one MTA message for a mailto: rua with a gzip attachment', async () => {
 			const key = `mta:tls-rpt:example.com:${yesterday}`;
 			await redis.hincrby(key, 'successes', 5);
-			await recordTlsResultYesterday('example.com', 'starttls-not-supported', 'mx.example.com', '10.0.0.9');
+			await recordTlsResultYesterday(
+				'example.com',
+				'starttls-not-supported',
+				'mx.example.com',
+				'10.0.0.9'
+			);
 
 			dnsWithRua({ 'example.com': 'mailto:tls-reports@example.com' });
 
@@ -398,8 +518,16 @@ describe('tlsRpt', () => {
 			expect(job.attachments).toHaveLength(1);
 			const part = job.attachments![0]!;
 			expect(part.contentType).toBe('application/tlsrpt+gzip');
-			const decoded = JSON.parse(gunzipSync(Buffer.from(part.contentBase64, 'base64')).toString('utf8'));
-			const expected = await generateReport(redis, 'example.com', yesterday, 'Owlat MTA', 'postmaster@owlat.com');
+			const decoded = JSON.parse(
+				gunzipSync(Buffer.from(part.contentBase64, 'base64')).toString('utf8')
+			);
+			const expected = await generateReport(
+				redis,
+				'example.com',
+				yesterday,
+				'Owlat MTA',
+				'postmaster@owlat.com'
+			);
 			expect(decoded).toEqual(expected);
 
 			vi.unstubAllGlobals();
@@ -424,7 +552,7 @@ describe('tlsRpt', () => {
 
 			dnsWithRua({ 'empty.com': 'https://tls-reports.empty.com/ingest' });
 
-			const fetchMock = vi.fn(async () => ({ ok: true, status: 200 } as Response));
+			const fetchMock = vi.fn(async () => ({ ok: true, status: 200 }) as Response);
 			vi.stubGlobal('fetch', fetchMock);
 
 			const stats = await generateAndSendReports(redis, 'Owlat MTA', 'postmaster@owlat.com');
@@ -439,16 +567,46 @@ describe('tlsRpt', () => {
 
 	// ── Regression lock: TLS failure classification table (RFC 8460 §4) ──
 	describe('classifyTlsFailure', () => {
-		const cases: Array<[string, { code?: string; message?: string; response?: string }, string | null]> = [
-			['ESOCKET socket error -> null (network, not TLS)', { code: 'ESOCKET', message: 'socket hang up' }, null],
-			['ETIMEDOUT -> null (network, not TLS)', { code: 'ETIMEDOUT', message: 'connect ETIMEDOUT' }, null],
+		const cases: Array<
+			[string, { code?: string; message?: string; response?: string }, string | null]
+		> = [
+			[
+				'ESOCKET socket error -> null (network, not TLS)',
+				{ code: 'ESOCKET', message: 'socket hang up' },
+				null,
+			],
+			[
+				'ETIMEDOUT -> null (network, not TLS)',
+				{ code: 'ETIMEDOUT', message: 'connect ETIMEDOUT' },
+				null,
+			],
 			['ECONNREFUSED -> null', { code: 'ECONNREFUSED' }, null],
 			['ECONNRESET -> null', { code: 'ECONNRESET' }, null],
-			['STARTTLS missing -> starttls-not-supported', { message: 'STARTTLS not advertised' }, 'starttls-not-supported'],
-			['expired cert -> certificate-expired', { message: 'certificate has expired' }, 'certificate-expired'],
-			['altname mismatch -> certificate-host-mismatch', { message: "certificate altname does not match" }, 'certificate-host-mismatch'],
-			['untrusted cert -> certificate-not-trusted', { message: 'self signed certificate in chain' }, 'certificate-not-trusted'],
-			['generic SMTP error -> null (not TLS)', { code: '', message: '550 mailbox unavailable', response: '550' }, null],
+			[
+				'STARTTLS missing -> starttls-not-supported',
+				{ message: 'STARTTLS not advertised' },
+				'starttls-not-supported',
+			],
+			[
+				'expired cert -> certificate-expired',
+				{ message: 'certificate has expired' },
+				'certificate-expired',
+			],
+			[
+				'altname mismatch -> certificate-host-mismatch',
+				{ message: 'certificate altname does not match' },
+				'certificate-host-mismatch',
+			],
+			[
+				'untrusted cert -> certificate-not-trusted',
+				{ message: 'self signed certificate in chain' },
+				'certificate-not-trusted',
+			],
+			[
+				'generic SMTP error -> null (not TLS)',
+				{ code: '', message: '550 mailbox unavailable', response: '550' },
+				null,
+			],
 		];
 
 		for (const [name, error, expected] of cases) {

@@ -215,6 +215,38 @@ async function recordRun(status: 'success' | 'failed') {
 
 					<BackupCommandRow :command="CMD_RESTORE" />
 
+					<!-- Sealed Mail / instance-secret warning: sealed history is unrecoverable
+					     without the instance secret OR the per-address recovery kits. -->
+					<div class="rounded-lg border border-warning/40 bg-warning/5 p-4">
+						<div class="flex items-start gap-3">
+							<Icon name="lucide:key-round" class="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+							<div class="space-y-2">
+								<p class="text-sm font-medium text-text-primary">
+									Sealed Mail and your instance secret
+								</p>
+								<p class="text-sm text-text-secondary">
+									Mail that arrives sealed is stored encrypted. The only things that can open it
+									again are your instance secret (<code class="font-mono text-text-primary"
+										>INSTANCE_SECRET</code
+									>) and the recovery kits you download from Sealed Mail settings.
+								</p>
+								<p class="text-sm text-text-secondary">
+									If you lose the instance secret and haven't kept any recovery kits, sealed mail
+									you already received can no longer be opened, and a database backup alone will not
+									bring it back. Keep the instance secret in your backups, and download a recovery
+									kit for each address before you rely on Sealed Mail.
+								</p>
+								<NuxtLink
+									to="/dashboard/settings/sealed-mail"
+									class="inline-flex items-center gap-1.5 text-sm font-medium text-brand hover:underline"
+								>
+									Go to Sealed Mail settings
+									<Icon name="lucide:arrow-right" class="h-3.5 w-3.5" />
+								</NuxtLink>
+							</div>
+						</div>
+					</div>
+
 					<p class="text-xs text-text-tertiary">
 						Restoring replaces current data with the snapshot — stop the stack and confirm the
 						tarball before running it in production.

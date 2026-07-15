@@ -1,0 +1,37 @@
+From: gnupg-sender@interop.example.org
+To: gnupg-recipient@interop.example.net
+Subject: GnuPG interop without protected headers
+Date: Mon, 13 Jul 2026 10:00:00 +0000
+Message-ID: <gnupg-interop-0002@interop.example.org>
+MIME-Version: 1.0
+Content-Type: multipart/encrypted;
+ protocol="application/pgp-encrypted"; boundary="=_gnupg_sealed_interop"
+
+--=_gnupg_sealed_interop
+Content-Type: application/pgp-encrypted
+Content-Description: PGP/MIME version identification
+
+Version: 1
+
+--=_gnupg_sealed_interop
+Content-Type: application/octet-stream; name="encrypted.asc"
+Content-Description: OpenPGP encrypted message
+Content-Disposition: inline; filename="encrypted.asc"
+
+-----BEGIN PGP MESSAGE-----
+
+hF4Dl9ibuWqderMSAQdAIT22yoO6duqn2cJxjBdNLRaIE1smN0ET/dIuy/Bs2QYw
+GKtJBuGA8RfNQ3bdkidVV76oCe04vJ7IIIptyHaXE2cggTJtYXlvnVlV5RZHzGO4
+1MC0AQkCEOwO/BksoZ5GSTABnZvkrqCsmCGLinElopwU1GmzEEZYBvnjkQ9vvFGJ
+XLL8+rKFtyiLXPyQWYVYvjK7lqV4sqvifqOuBn+o0NLrdcZGQIeOX3VHBrTG4I+1
+v9RXL1+Nq71hxG6MVJhoUJnHt8zQ3bfu/EzkHHGf24UXZCduaH++eTTgQgrnAfwR
+bVt5lVOhq/1m/BvdZz9CUY7ctgc52ciVzNTZuH8H2zC7iQNPkr7ChOFJQaFIk0l2
+jjUeaRuEIpbN3KG5BZSW2P7W1QfyHNCBTAEtJj8TRYGGZubgf+rCeRwE9CyVYd/A
+I9v3qe86aJd7M1yBIg5PZKf1Bn55e0+nRxlOWcP2aAd3EHsTp7S53IqAiwGGQ0vb
+SxHOIU1laD9knDW+IQ/pgFj+dHlM6PHpISN/9xOUD8BKSx5JpZZWbJN6T0B4iA/8
+N7d+1SS64iBSCMGDOAz3GqK0WGrYFDvLQsm4x8NAKgqfgDOpUvkP
+=Uk+1
+-----END PGP MESSAGE-----
+
+--=_gnupg_sealed_interop--
+

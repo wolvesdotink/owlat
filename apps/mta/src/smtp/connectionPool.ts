@@ -3,11 +3,12 @@
  *
  * Maintains reusable nodemailer transports keyed by
  * {mxHost}:{bindIp}:{dkimDomain}:{tlsProfile}, where tlsProfile encodes
- * requireTLS + tls.rejectUnauthorized. The TLS profile MUST be part of the key:
- * many domains share an MX (Google/O365), so without it an MTA-STS-enforce send
- * (requireTLS + verifying) would silently reuse an earlier opportunistic,
- * non-verifying transport to the same MX — a STARTTLS-stripping / enforcement
- * bypass on exactly the high-value shared-MX providers (RFC 8461 §5, RFC 7435).
+ * requireTLS, tls.rejectUnauthorized, and any DANE policy fingerprint. The TLS
+ * profile MUST be part of the key: many domains share an MX (Google/O365), so
+ * without it an MTA-STS-enforce send (requireTLS + verifying) would silently
+ * reuse an earlier opportunistic, non-verifying transport to the same MX — a
+ * STARTTLS-stripping / enforcement bypass on exactly the high-value shared-MX
+ * providers (RFC 8461 §5, RFC 7435).
  * Evicts idle and aged-out connections automatically.
  *
  * Distributed coordination (optional, via Redis): each ACTUALLY-CREATED transport
@@ -20,6 +21,7 @@
 
 import nodemailer from 'nodemailer';
 import type { Transporter } from 'nodemailer';
+import type { TLSSocket } from 'node:tls';
 import type Redis from 'ioredis';
 import { Gauge } from 'prom-client';
 import { registry } from '../monitoring/collector.js';
@@ -50,6 +52,14 @@ export interface AcquireOptions {
 		 * verbatim. Forwarded into the transport via the `...options.tls` spread.
 		 */
 		servername?: string;
+		/**
+		 * Runs after STARTTLS succeeds but before SMTP resumes. It runs even with
+		 * PKIX rejection disabled, and any returned error destroys the socket before
+		 * the post-TLS EHLO.
+		 */
+		verifyPeerCertificate?: (socket: TLSSocket) => Error | undefined;
+		/** Pool-only identity for the exact TLSA RRset and DANE-TA reference names. */
+		danePolicyFingerprint?: string;
 	};
 	name?: string;
 	connectionTimeout?: number;
@@ -126,21 +136,30 @@ export class SmtpConnectionPool {
 	/**
 	 * Build the pool key for a given connection.
 	 *
-	 * The TLS profile (requireTLS + rejectUnauthorized) is part of the key so a
-	 * verifying/enforcing connection is NEVER served an opportunistic,
-	 * non-verifying transport to the same shared MX. Defaults match the transport
-	 * factory defaults (requireTLS=false, rejectUnauthorized=false) so callers
-	 * that omit the profile get the opportunistic bucket — the existing behaviour.
+	 * The TLS profile (requireTLS + rejectUnauthorized + DANE policy) is part of
+	 * the key so a verifying/enforcing connection is NEVER served an
+	 * opportunistic, non-verifying transport to the same shared MX. Defaults match
+	 * the transport factory defaults (requireTLS=false, rejectUnauthorized=false)
+	 * so callers that omit the profile get the opportunistic bucket — the existing
+	 * behaviour.
 	 */
 	static buildKey(
 		mxHost: string,
 		bindIp: string,
 		dkimDomain?: string,
-		tls?: { requireTLS?: boolean; rejectUnauthorized?: boolean },
+		tls?: {
+			requireTLS?: boolean;
+			rejectUnauthorized?: boolean;
+			danePolicyFingerprint?: string;
+		}
 	): string {
 		const requireTLS = tls?.requireTLS ?? false;
 		const rejectUnauthorized = tls?.rejectUnauthorized ?? false;
-		const tlsProfile = `rt${requireTLS ? 1 : 0}ru${rejectUnauthorized ? 1 : 0}`;
+		// A DANE transport must not outlive or cross recipient-specific TLSA policy.
+		// The exact RRset + reference-name fingerprint therefore participates in
+		// identity; non-DANE keys remain unchanged.
+		const daneSuffix = tls?.danePolicyFingerprint ? `da${tls.danePolicyFingerprint}` : '';
+		const tlsProfile = `rt${requireTLS ? 1 : 0}ru${rejectUnauthorized ? 1 : 0}${daneSuffix}`;
 		return `${mxHost}:${bindIp}:${dkimDomain ?? 'none'}:${tlsProfile}`;
 	}
 
@@ -156,12 +175,16 @@ export class SmtpConnectionPool {
 	async acquire(
 		mxHost: string,
 		bindIp: string,
-		options: AcquireOptions,
+		options: AcquireOptions
 	): Promise<{ key: string; transport: Transporter }> {
+		if (options.tls?.verifyPeerCertificate && !options.tls.danePolicyFingerprint) {
+			throw new Error('DANE verifier requires a policy fingerprint for safe pooling');
+		}
 		const dkimDomain = options.dkim?.domainName;
 		const key = SmtpConnectionPool.buildKey(mxHost, bindIp, dkimDomain, {
 			requireTLS: options.requireTLS,
 			rejectUnauthorized: options.tls?.rejectUnauthorized,
+			danePolicyFingerprint: options.tls?.danePolicyFingerprint,
 		});
 
 		// Reuse fast-path — an already-counted transport, no new global slot.
@@ -186,7 +209,11 @@ export class SmtpConnectionPool {
 			let oldestKey: string | undefined;
 			let oldestTime = Infinity;
 			for (const [poolKey, entry] of this.pool.entries()) {
-				if (poolKey.startsWith(hostPrefix) && entry.inFlight === 0 && entry.lastUsedAt < oldestTime) {
+				if (
+					poolKey.startsWith(hostPrefix) &&
+					entry.inFlight === 0 &&
+					entry.lastUsedAt < oldestTime
+				) {
 					oldestTime = entry.lastUsedAt;
 					oldestKey = poolKey;
 				}
@@ -206,6 +233,8 @@ export class SmtpConnectionPool {
 			throw new PoolOverCapError(mxHost);
 		}
 
+		const transportTls = { ...options.tls };
+		delete transportTls.danePolicyFingerprint;
 		const transport = nodemailer.createTransport({
 			host: mxHost,
 			port: options.port ?? 25,
@@ -218,7 +247,11 @@ export class SmtpConnectionPool {
 			// deprecates those; RFC 9325 mandates TLS 1.2+. The caller may raise the
 			// floor to TLSv1.3 but cannot lower it below 1.2.
 			// nosemgrep -- opportunistic TLS default for SMTP delivery (RFC 7435); callers (MTA-STS enforce) override via options.tls.
-			tls: { rejectUnauthorized: false, ...options.tls, minVersion: options.tls?.minVersion ?? 'TLSv1.2' },
+			tls: {
+				rejectUnauthorized: false,
+				...transportTls,
+				minVersion: options.tls?.minVersion ?? 'TLSv1.2',
+			},
 			name: options.name,
 			localAddress: bindIp,
 			connectionTimeout: options.connectionTimeout ?? 30_000,
@@ -248,9 +281,21 @@ export class SmtpConnectionPool {
 				keySelector: options.dkim.keySelector,
 				privateKey: options.dkim.privateKey,
 			};
-			(transport as unknown as {
-				use(step: string, plugin: (mail: { message?: { processFunc(fn: (input: NodeJS.ReadableStream) => NodeJS.ReadableStream): void } }, done: (err?: Error) => void) => void): void;
-			}).use('stream', (mail, done) => {
+			(
+				transport as unknown as {
+					use(
+						step: string,
+						plugin: (
+							mail: {
+								message?: {
+									processFunc(fn: (input: NodeJS.ReadableStream) => NodeJS.ReadableStream): void;
+								};
+							},
+							done: (err?: Error) => void
+						) => void
+					): void;
+				}
+			).use('stream', (mail, done) => {
 				mail.message?.processFunc(makeDkimProcessFunc(dkimKey));
 				done();
 			});
@@ -310,8 +355,8 @@ export class SmtpConnectionPool {
 			const keysToEvict: string[] = [];
 
 			for (const [key, entry] of this.pool.entries()) {
-				const idle = entry.inFlight === 0 && (now - entry.lastUsedAt) > this.config.idleTimeoutMs;
-				const aged = (now - entry.createdAt) > this.config.maxAgeMs && entry.inFlight === 0;
+				const idle = entry.inFlight === 0 && now - entry.lastUsedAt > this.config.idleTimeoutMs;
+				const aged = now - entry.createdAt > this.config.maxAgeMs && entry.inFlight === 0;
 
 				if (idle || aged) {
 					keysToEvict.push(key);

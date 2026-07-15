@@ -1,0 +1,427 @@
+/**
+ * E2EE key vault — the hard test gate for the E1 key-vault piece:
+ *   1. IDEMPOTENT MINT — minting the same address twice yields one row and the
+ *      second call reports `created:false` (no regeneration).
+ *   2. ENVELOPE ROUND-TRIP — the sealed private key opens under the E2EE secret
+ *      box back to a real OpenPGP private key whose fingerprint matches the row.
+ *   3. AUTHZ NEGATIVE — no PUBLIC query path ever returns private key material;
+ *      the sealed private key is reachable only via the internal/DB plane.
+ *   4. BACKFILL — the idempotent backfill mints a key for every mailbox address
+ *      AND every alias, plus the singleton instance identity.
+ *
+ * Keygen + sealing run in the Node action plane, so INSTANCE_SECRET is stubbed.
+ */
+
+import { convexTest } from 'convex-test';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import * as openpgp from 'openpgp';
+import schema from '../../schema';
+import { api, internal } from '../../_generated/api';
+import { createSecretBox } from '../../lib/credentialCrypto';
+import { wkdHashForAddress, armoredToBinaryBase64 } from '../wkd';
+
+/**
+ * Assert an armored public key uses the GnuPG-compatible LEGACY curve25519
+ * profile (EdDSA-legacy signing primary + ECDH encryption subkey) and NOT the
+ * RFC 9580 new-style ed25519/x25519 algorithm IDs that GnuPG/Thunderbird reject.
+ */
+async function assertLegacyProfile(publicKeyArmored: string): Promise<void> {
+	const key = await openpgp.readKey({ armoredKey: publicKeyArmored });
+	const primary = key.getAlgorithmInfo();
+	const subkey = key.getSubkeys()[0]?.getAlgorithmInfo();
+	// Primary: EdDSA-legacy on a 25519 curve — never the new-style ed25519 ID.
+	expect(primary.algorithm).toBe('eddsaLegacy');
+	expect(primary.algorithm).not.toBe('ed25519');
+	expect(String(primary.curve).toLowerCase()).toContain('25519');
+	// Encryption subkey: ECDH on curve25519 — never the new-style x25519 ID.
+	expect(subkey?.algorithm).toBe('ecdh');
+	expect(subkey?.algorithm).not.toBe('x25519');
+	expect(String(subkey?.curve).toLowerCase()).toContain('25519');
+}
+
+/** Mint an OLD RFC 9580 new-style key (the pre-fix keygen shape) for migration tests. */
+async function mintNewStyleKey(
+	email: string,
+	name: string
+): Promise<{
+	fingerprint: string;
+	publicKeyArmored: string;
+	privateKeyArmored: string;
+	binaryBase64: string;
+}> {
+	const { privateKey, publicKey } = await openpgp.generateKey({
+		type: 'curve25519',
+		userIDs: [{ name, email }],
+		format: 'armored',
+	});
+	const key = await openpgp.readKey({ armoredKey: publicKey });
+	return {
+		fingerprint: key.getFingerprint().toUpperCase(),
+		publicKeyArmored: publicKey,
+		privateKeyArmored: privateKey,
+		binaryBase64: await armoredToBinaryBase64(publicKey),
+	};
+}
+
+const rootGlob = import.meta.glob('../../**/*.*s');
+const e2eeGlob = Object.fromEntries(
+	Object.entries(import.meta.glob('../**/*.*s')).map(([path, mod]) => [
+		path.replace(/^\.\.\//, '../../e2ee/'),
+		mod,
+	])
+);
+const modules = { ...rootGlob, ...e2eeGlob };
+
+const E2EE_KEY_BOX = { salt: 'owlat:e2ee:keys:salt:v1', info: 'owlat:e2ee:keys:v1' };
+
+async function insertMailbox(t: ReturnType<typeof convexTest>, address: string): Promise<void> {
+	const now = Date.now();
+	await t.run(async (ctx) => {
+		await ctx.db.insert('mailboxes', {
+			userId: 'user-1',
+			organizationId: 'org-1',
+			address,
+			domain: address.split('@')[1] as string,
+			status: 'active',
+			usedBytes: 0,
+			uidValidity: now,
+			createdAt: now,
+			updatedAt: now,
+		});
+	});
+}
+
+async function enableSealedMail(t: ReturnType<typeof convexTest>): Promise<void> {
+	await t.run(async (ctx) => {
+		await ctx.db.insert('instanceSettings', {
+			featureFlags: { postbox: true, senderAuthBadges: true, sealedMail: true },
+			createdAt: Date.now(),
+		});
+	});
+}
+
+describe('e2ee/keys', () => {
+	beforeEach(() => {
+		vi.stubEnv('INSTANCE_SECRET', 'unit-test-instance-secret-value');
+	});
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
+
+	it('mints an address key idempotently (one row, second call created:false)', async () => {
+		const t = convexTest(schema, modules);
+		const address = 'alice@sealed.example.com';
+
+		const first = await t.action(internal.e2ee.keysNode.mintForAddress, { address });
+		expect(first.created).toBe(true);
+		expect(first.fingerprint).toMatch(/^[0-9A-F]{40}$/);
+
+		const second = await t.action(internal.e2ee.keysNode.mintForAddress, { address });
+		expect(second.created).toBe(false);
+		expect(second.fingerprint).toBe(first.fingerprint);
+
+		const rows = await t.run((ctx) =>
+			ctx.db
+				.query('keyVault')
+				.withIndex('by_address', (q) => q.eq('address', address))
+				.collect()
+		);
+		expect(rows).toHaveLength(1);
+		expect(rows[0]?.wkdHash).toBe('kei1q4tipxxu1yj79k9kfukdhfy631xe'); // WKD hash of "alice"
+	});
+
+	it('keeps the first concurrently-minted identity instead of overwriting it', async () => {
+		const t = convexTest(schema, modules);
+		const address = 'race@sealed.example.com';
+		const first = await t.action(internal.e2ee.keysNode.mintForAddress, { address });
+		const row = await t.query(internal.e2ee.keys.getAddressKeyInternal, { address });
+		if (!row) throw new Error('minted key missing');
+
+		const losingWriter = await t.mutation(internal.e2ee.keys.storeKeypair, {
+			kind: 'address',
+			address,
+			domain: 'sealed.example.com',
+			wkdHash: wkdHashForAddress(address),
+			fingerprint: 'B'.repeat(40),
+			algorithm: row.algorithm,
+			publicKeyArmored: 'FORGED CONCURRENT PUBLIC KEY',
+			publicKeyBinaryBase64: Buffer.from('forged').toString('base64'),
+			sealedPrivateKey: row.sealedPrivateKey,
+		});
+
+		expect(losingWriter).toMatchObject({ created: false, fingerprint: first.fingerprint });
+		const active = await t.query(internal.e2ee.keys.getAddressKeyInternal, { address });
+		expect(active?.fingerprint).toBe(first.fingerprint);
+		expect(active?.publicKeyArmored).not.toContain('FORGED');
+	});
+
+	it('seals the private key so it opens back to a matching OpenPGP key', async () => {
+		const t = convexTest(schema, modules);
+		const address = 'bob@sealed.example.org';
+		const { fingerprint } = await t.action(internal.e2ee.keysNode.mintForAddress, { address });
+
+		const row = await t.run((ctx) =>
+			ctx.db
+				.query('keyVault')
+				.withIndex('by_address', (q) => q.eq('address', address))
+				.first()
+		);
+		expect(row).not.toBeNull();
+
+		const box = createSecretBox('unit-test-instance-secret-value', E2EE_KEY_BOX);
+		const privateKeyArmored = box.open(row!.sealedPrivateKey);
+		const privateKey = await openpgp.readPrivateKey({ armoredKey: privateKeyArmored });
+		expect(privateKey.getFingerprint().toUpperCase()).toBe(fingerprint);
+	});
+
+	it('never exposes private key material through any public query', async () => {
+		const t = convexTest(schema, modules);
+		await enableSealedMail(t);
+		const address = 'carol@sealed.example.com';
+		await t.action(internal.e2ee.keysNode.mintForAddress, { address });
+
+		const pub = await t.query(api.e2ee.keys.getPublicKeyByAddress, { address });
+		expect(pub).not.toBeNull();
+		expect(Object.keys(pub!).sort()).toEqual(['fingerprint', 'publicKeyArmored']);
+		expect(JSON.stringify(pub)).not.toContain('PRIVATE KEY');
+
+		const wkd = await t.query(api.e2ee.keys.getKeyForWkd, {
+			domain: 'sealed.example.com',
+			wkdHash: 'fnh1sizqc1h17q515b19nhzxyddotzhd', // WKD hash of "carol"
+		});
+		// WKD returns the PUBLIC key body — present, and never a private packet.
+		expect(wkd).not.toBeNull();
+		const body = Buffer.from(wkd!.binaryBase64, 'base64');
+		expect(new TextDecoder().decode(body)).not.toContain('PRIVATE');
+
+		// The sealed private key DOES exist — just not on any public surface.
+		const row = await t.run((ctx) =>
+			ctx.db
+				.query('keyVault')
+				.withIndex('by_address', (q) => q.eq('address', address))
+				.first()
+		);
+		expect(row?.sealedPrivateKey.ciphertext).toBeTruthy();
+	});
+
+	it('withdraws every public key-discovery surface when Sealed Mail is disabled', async () => {
+		const t = convexTest(schema, modules);
+		const address = 'rollback@sealed.example.com';
+		await t.action(internal.e2ee.keysNode.mintForAddress, { address });
+		await t.run(async (ctx) => {
+			const addressRow = await ctx.db
+				.query('keyVault')
+				.withIndex('by_address', (q) => q.eq('address', address))
+				.first();
+			if (!addressRow) throw new Error('address key missing');
+			await ctx.db.insert('keyVault', {
+				kind: 'instance',
+				fingerprint: addressRow.fingerprint,
+				algorithm: addressRow.algorithm,
+				publicKeyArmored: addressRow.publicKeyArmored,
+				publicKeyBinaryBase64: addressRow.publicKeyBinaryBase64,
+				sealedPrivateKey: addressRow.sealedPrivateKey,
+				isActive: true,
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+			await ctx.db.insert('instanceSettings', {
+				featureFlags: { postbox: true, sealedMail: false },
+				createdAt: Date.now(),
+			});
+		});
+
+		expect(await t.query(api.e2ee.keys.getPublicKeyByAddress, { address })).toBeNull();
+		expect(
+			await t.query(api.e2ee.keys.getKeyForWkd, {
+				domain: 'sealed.example.com',
+				wkdHash: wkdHashForAddress(address),
+			})
+		).toBeNull();
+		expect(await t.query(api.e2ee.keys.getInstancePublicKey, {})).toBeNull();
+	});
+
+	it('never exposes private material through the instance-key or manifest surfaces', async () => {
+		const t = convexTest(schema, modules);
+		// Publication follows the flag, so enable Sealed Mail for the manifest path.
+		await t.run(async (ctx) => {
+			await ctx.db.insert('instanceSettings', {
+				// sealedMail requires postbox + senderAuthBadges; seed the full chain
+				// so resolveFlags does not force it back off.
+				featureFlags: { postbox: true, senderAuthBadges: true, sealedMail: true },
+				createdAt: Date.now(),
+			});
+		});
+		await insertMailbox(t, 'primary@sealed.example.com');
+		await t.action(internal.e2ee.keysNode.runBackfill, {});
+
+		// getInstancePublicKey — PUBLIC signing-key discovery, public material only.
+		const instance = await t.query(api.e2ee.keys.getInstancePublicKey, {});
+		expect(instance).not.toBeNull();
+		expect(Object.keys(instance!).sort()).toEqual(['fingerprint', 'publicKeyArmored']);
+		expect(JSON.stringify(instance)).not.toContain('PRIVATE');
+
+		// getSignedManifest — PUBLIC action; carries the PUBLIC instance key + a
+		// detached signature, never the private half.
+		const manifest = await t.action(api.e2ee.manifest.getSignedManifest, {});
+		expect(manifest).not.toBeNull();
+		expect(JSON.stringify(manifest)).not.toContain('PRIVATE');
+		expect(manifest!.instance.publicKeyArmored).toContain('PUBLIC KEY');
+		expect(manifest!.signature).toContain('PGP SIGNATURE');
+	});
+
+	it('stops publishing the manifest when Sealed Mail is turned OFF', async () => {
+		const t = convexTest(schema, modules);
+		await insertMailbox(t, 'primary@sealed.example.com');
+		await t.action(internal.e2ee.keysNode.runBackfill, {});
+		// Flag defaults OFF (no instanceSettings row) — publication must 404.
+		expect(await t.action(api.e2ee.manifest.getSignedManifest, {})).toBeNull();
+	});
+
+	it('backfills a key for every mailbox address AND alias, plus the instance identity', async () => {
+		const t = convexTest(schema, modules);
+		await enableSealedMail(t);
+		await insertMailbox(t, 'primary@sealed.example.com');
+		await insertMailbox(t, 'team@sealed.example.com');
+
+		// An alias targeting the first mailbox.
+		const now = Date.now();
+		await t.run(async (ctx) => {
+			const mailbox = await ctx.db
+				.query('mailboxes')
+				.withIndex('by_address', (q) => q.eq('address', 'primary@sealed.example.com'))
+				.first();
+			await ctx.db.insert('mailAliases', {
+				alias: 'sales@sealed.example.com',
+				targetMailboxId: mailbox!._id,
+				organizationId: 'org-1',
+				createdAt: now,
+			});
+		});
+
+		const result = await t.action(internal.e2ee.keysNode.runBackfill, {});
+		expect(result.total).toBe(3);
+		expect(result.minted).toBe(3);
+
+		const addressRows = await t.run((ctx) =>
+			ctx.db
+				.query('keyVault')
+				.withIndex('by_kind', (q) => q.eq('kind', 'address'))
+				.collect()
+		);
+		expect(addressRows.map((r) => r.address).sort()).toEqual([
+			'primary@sealed.example.com',
+			'sales@sealed.example.com',
+			'team@sealed.example.com',
+		]);
+
+		const instance = await t.query(api.e2ee.keys.getInstancePublicKey, {});
+		expect(instance?.publicKeyArmored).toContain('PUBLIC KEY');
+
+		// Re-running is idempotent: nothing new is minted.
+		const again = await t.action(internal.e2ee.keysNode.runBackfill, {});
+		expect(again.minted).toBe(0);
+	});
+
+	it('mints address AND instance keys on the GnuPG-compatible legacy profile', async () => {
+		const t = convexTest(schema, modules);
+
+		// Address key — primary + encryption subkey both legacy-profile.
+		const address = 'legacy@sealed.example.com';
+		await t.action(internal.e2ee.keysNode.mintForAddress, { address });
+		const addressRow = await t.run((ctx) =>
+			ctx.db
+				.query('keyVault')
+				.withIndex('by_address', (q) => q.eq('address', address))
+				.first()
+		);
+		await assertLegacyProfile(addressRow!.publicKeyArmored);
+
+		// Instance identity key — same legacy profile.
+		await t.action(internal.e2ee.keysNode.ensureInstanceIdentity, {});
+		const instanceRow = await t.run((ctx) =>
+			ctx.db
+				.query('keyVault')
+				.withIndex('by_kind', (q) => q.eq('kind', 'instance'))
+				.first()
+		);
+		await assertLegacyProfile(instanceRow!.publicKeyArmored);
+	});
+
+	it('re-mints old new-style keys onto the legacy profile, idempotently, refreshing WKD + manifest', async () => {
+		const t = convexTest(schema, modules);
+
+		// Sealed Mail ON so the manifest signing path is live.
+		await t.run(async (ctx) => {
+			await ctx.db.insert('instanceSettings', {
+				featureFlags: { postbox: true, senderAuthBadges: true, sealedMail: true },
+				createdAt: Date.now(),
+			});
+		});
+
+		// Seed an instance identity + an address key on the OLD new-style profile,
+		// exactly as the pre-fix keygen would have produced them. Private keys are
+		// sealed for real so the manifest can sign with the (old) instance key.
+		const box = createSecretBox('unit-test-instance-secret-value', E2EE_KEY_BOX);
+		const domain = 'sealed.example.com';
+		const address = 'legacy@sealed.example.com';
+		const instanceOld = await mintNewStyleKey(`instance@${domain}`, 'Owlat instance');
+		const addressOld = await mintNewStyleKey(address, address);
+		const now = Date.now();
+		await t.run(async (ctx) => {
+			await ctx.db.insert('keyVault', {
+				kind: 'instance',
+				fingerprint: instanceOld.fingerprint,
+				algorithm: 'ed25519',
+				publicKeyArmored: instanceOld.publicKeyArmored,
+				publicKeyBinaryBase64: instanceOld.binaryBase64,
+				sealedPrivateKey: box.seal(instanceOld.privateKeyArmored),
+				isActive: true,
+				createdAt: now,
+				updatedAt: now,
+			});
+			await ctx.db.insert('keyVault', {
+				kind: 'address',
+				address,
+				domain,
+				wkdHash: wkdHashForAddress(address),
+				fingerprint: addressOld.fingerprint,
+				algorithm: 'ed25519',
+				publicKeyArmored: addressOld.publicKeyArmored,
+				publicKeyBinaryBase64: addressOld.binaryBase64,
+				sealedPrivateKey: box.seal(addressOld.privateKeyArmored),
+				isActive: true,
+				createdAt: now,
+				updatedAt: now,
+			});
+		});
+
+		// Baseline manifest digest over the OLD address fingerprint.
+		const before = await t.action(api.e2ee.manifest.getSignedManifest, {});
+		expect(before).not.toBeNull();
+
+		// Migrate: both stale-profile keys are re-minted.
+		const first = await t.action(internal.e2ee.keysNode.remintLegacyProfile, {});
+		expect(first.total).toBe(2);
+		expect(first.reminted).toBe(2);
+
+		// Every row now carries the legacy profile.
+		const rows = await t.run((ctx) => ctx.db.query('keyVault').collect());
+		expect(rows).toHaveLength(2);
+		for (const row of rows) await assertLegacyProfile(row.publicKeyArmored);
+
+		// WKD binary body was refreshed (new key => new published bytes).
+		const addressRow = rows.find((r) => r.kind === 'address');
+		expect(addressRow?.publicKeyBinaryBase64).not.toBe(addressOld.binaryBase64);
+
+		// Manifest key-directory digest changed (address fingerprint changed).
+		const after = await t.action(api.e2ee.manifest.getSignedManifest, {});
+		expect(after).not.toBeNull();
+		expect(after!.keyDirectoryDigest).not.toBe(before!.keyDirectoryDigest);
+
+		// Idempotent: a second run re-mints nothing (all keys already legacy).
+		const second = await t.action(internal.e2ee.keysNode.remintLegacyProfile, {});
+		expect(second.total).toBe(2);
+		expect(second.reminted).toBe(0);
+	});
+});

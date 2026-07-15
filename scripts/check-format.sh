@@ -33,13 +33,14 @@ fi
 mergebase="$(git merge-base "$base" HEAD 2>/dev/null || echo "$base")"
 
 files=()
+# Exclude Convex-generated code: `convex codegen` emits double-quoted import
+# paths that scripts/check-codegen.sh greps for verbatim, so oxfmt's single-quote
+# rule must never touch `_generated/`. Generated files are owned by codegen, not
+# the formatter. Keep this comment outside the process substitution: Bash 3.2
+# misparses backticks inside comments nested in `< <(...)`.
 while IFS= read -r f; do
 	[ -n "$f" ] && [ -f "$f" ] && files+=("$f")
 done < <(
-	# Exclude Convex-generated code: `convex codegen` emits double-quoted
-	# import paths that scripts/check-codegen.sh greps for verbatim, so oxfmt's
-	# single-quote rule must never touch `_generated/`. The generated files are
-	# owned by codegen, not the formatter.
 	git diff --name-only --diff-filter=ACMR "$mergebase"...HEAD -- \
 		'*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' \
 		':(exclude)**/_generated/**'

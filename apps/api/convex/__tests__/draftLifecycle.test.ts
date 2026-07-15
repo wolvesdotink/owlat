@@ -38,22 +38,23 @@ vi.mock('../lib/sessionOrganization', async () => {
 
 const allModules = import.meta.glob('../**/*.*s');
 const modules = Object.fromEntries(
-	Object.entries(allModules).filter(([path]) =>
-		!path.includes('sesActions') &&
-		!path.includes('agentSecurity') &&
-		!path.includes('agentContext') &&
-		!path.includes('agentClassifier') &&
-		!path.includes('agentDrafter') &&
-		!path.includes('agentRouter') &&
-		!path.includes('agent/walker') &&
-		!path.includes('agent/steps/index') &&
-		!path.includes('agent/steps/shared') &&
-		!path.includes('agent/steps/classify') &&
-		!path.includes('agent/steps/draft') &&
-		!path.includes('knowledgeExtraction') &&
-		!path.includes('semanticFileProcessing') &&
-		!path.includes('visualizationAgent') &&
-		!path.includes('llmProvider')
+	Object.entries(allModules).filter(
+		([path]) =>
+			!path.includes('sesActions') &&
+			!path.includes('agentSecurity') &&
+			!path.includes('agentContext') &&
+			!path.includes('agentClassifier') &&
+			!path.includes('agentDrafter') &&
+			!path.includes('agentRouter') &&
+			!path.includes('agent/walker') &&
+			!path.includes('agent/steps/index') &&
+			!path.includes('agent/steps/shared') &&
+			!path.includes('agent/steps/classify') &&
+			!path.includes('agent/steps/draft') &&
+			!path.includes('knowledgeExtraction') &&
+			!path.includes('semanticFileProcessing') &&
+			!path.includes('visualizationAgent') &&
+			!path.includes('llmProvider')
 	)
 );
 
@@ -61,7 +62,7 @@ const modules = Object.fromEntries(
 
 async function seedMailboxAndSent(
 	t: ReturnType<typeof convexTest>,
-	address = 'alice@example.com',
+	address = 'alice@example.com'
 ): Promise<{
 	mailboxId: Id<'mailboxes'>;
 	sentFolderId: Id<'mailFolders'>;
@@ -117,7 +118,7 @@ async function seedDraft(
 		undoToken?: string;
 		scheduledSendAt?: number;
 		inReplyToMessageId?: Id<'mailMessages'>;
-	} = {},
+	} = {}
 ): Promise<Id<'mailDrafts'>> {
 	let draftId!: Id<'mailDrafts'>;
 	await t.run(async (ctx) => {
@@ -132,9 +133,7 @@ async function seedDraft(
 			bodyHtml: '<p>Hi</p>',
 			attachments: overrides.attachments ?? [],
 			state: overrides.state ?? 'draft',
-			...(overrides.inReplyToMessageId
-				? { inReplyToMessageId: overrides.inReplyToMessageId }
-				: {}),
+			...(overrides.inReplyToMessageId ? { inReplyToMessageId: overrides.inReplyToMessageId } : {}),
 			...(overrides.undoToken ? { undoToken: overrides.undoToken } : {}),
 			...(overrides.scheduledSendAt !== undefined
 				? { scheduledSendAt: overrides.scheduledSendAt }
@@ -146,13 +145,11 @@ async function seedDraft(
 	return draftId;
 }
 
-async function storeBlob(
-	t: ReturnType<typeof convexTest>,
-): Promise<Id<'_storage'>> {
+async function storeBlob(t: ReturnType<typeof convexTest>): Promise<Id<'_storage'>> {
 	let storageId!: Id<'_storage'>;
 	await t.run(async (ctx) => {
 		storageId = await ctx.storage.store(
-			new Blob([new Uint8Array([1, 2, 3])], { type: 'application/octet-stream' }),
+			new Blob([new Uint8Array([1, 2, 3])], { type: 'application/octet-stream' })
 		);
 	});
 	return storageId;
@@ -165,7 +162,7 @@ async function storeBlob(
  */
 async function seedInboundMessage(
 	t: ReturnType<typeof convexTest>,
-	mailboxId: Id<'mailboxes'>,
+	mailboxId: Id<'mailboxes'>
 ): Promise<Id<'mailMessages'>> {
 	let messageId!: Id<'mailMessages'>;
 	await t.run(async (ctx) => {
@@ -259,19 +256,13 @@ function makeSentContext(rawStorageId: Id<'_storage'>) {
 describe('assertStateIs', () => {
 	it('does nothing when the state matches', () => {
 		expect(() =>
-			assertStateIs(
-				{ state: 'draft' } as Parameters<typeof assertStateIs>[0],
-				'draft',
-			),
+			assertStateIs({ state: 'draft' } as Parameters<typeof assertStateIs>[0], 'draft')
 		).not.toThrow();
 	});
 
 	it('throws when the state does not match', () => {
 		expect(() =>
-			assertStateIs(
-				{ state: 'pending_send' } as Parameters<typeof assertStateIs>[0],
-				'draft',
-			),
+			assertStateIs({ state: 'pending_send' } as Parameters<typeof assertStateIs>[0], 'draft')
 		).toThrow(/Draft state is pending_send, expected draft/);
 	});
 });
@@ -373,9 +364,7 @@ describe('draftLifecycle.transition — to: pending_send', () => {
 		await t.run(async (ctx) => {
 			const logs = await ctx.db
 				.query('auditLogs')
-				.filter((q) =>
-					q.eq(q.field('action'), 'postbox_draft.send_initiated'),
-				)
+				.filter((q) => q.eq(q.field('action'), 'postbox_draft.send_initiated'))
 				.collect();
 			expect(logs.length).toBe(1);
 			expect(logs[0]!.resourceId).toBe(draftId);
@@ -412,12 +401,16 @@ describe('draftLifecycle.transition — to: scheduled', () => {
 
 describe('draftLifecycle.transition — to: draft (revert)', () => {
 	const REASONS: Array<{
-		reason: 'user_cancel' | 'from_revoked' | 'scan_blocked';
+		reason: 'user_cancel' | 'from_revoked' | 'scan_blocked' | 'seal_consent_required';
 		auditAction: string;
 	}> = [
 		{ reason: 'user_cancel', auditAction: 'postbox_draft.cancelled' },
 		{ reason: 'from_revoked', auditAction: 'postbox_draft.from_revoked' },
 		{ reason: 'scan_blocked', auditAction: 'postbox_draft.scan_blocked' },
+		{
+			reason: 'seal_consent_required',
+			auditAction: 'postbox_draft.seal_consent_required',
+		},
 	];
 
 	for (const { reason, auditAction } of REASONS) {
@@ -430,13 +423,10 @@ describe('draftLifecycle.transition — to: draft (revert)', () => {
 				scheduledSendAt: Date.now() + 5_000,
 			});
 
-			const outcome = await t.mutation(
-				internal.mail.draftLifecycle.transition,
-				{
-					draftId,
-					input: { to: 'draft', at: Date.now(), reason },
-				},
-			);
+			const outcome = await t.mutation(internal.mail.draftLifecycle.transition, {
+				draftId,
+				input: { to: 'draft', at: Date.now(), reason },
+			});
 			expect(outcome.ok).toBe(true);
 
 			await t.run(async (ctx) => {
@@ -510,16 +500,18 @@ describe('draftLifecycle.transition — to: sent', () => {
 			if (outcome.ok && outcome.messageId) {
 				const msg = await ctx.db.get(outcome.messageId);
 				expect(msg).not.toBeNull();
-				const outbound = (msg as { outbound?: {
-					state: string;
-					recipients: Array<{ address: string; mtaJobId: string }>;
-				} }).outbound;
+				const outbound = (
+					msg as {
+						outbound?: {
+							state: string;
+							recipients: Array<{ address: string; mtaJobId: string }>;
+						};
+					}
+				).outbound;
 				expect(outbound?.state).toBe('queued');
 				expect(outbound?.recipients.length).toBe(1);
 				expect(outbound?.recipients[0]!.address).toBe('bob@example.com');
-				expect(outbound?.recipients[0]!.mtaJobId).toBe(
-					`pb-${outcome.messageId}-0`,
-				);
+				expect(outbound?.recipients[0]!.mtaJobId).toBe(`pb-${outcome.messageId}-0`);
 			}
 
 			// Audit log
@@ -691,13 +683,10 @@ describe('draftLifecycle.transitionByUndoToken', () => {
 			undoToken: 'tok-5',
 		});
 
-		const outcome = await t.mutation(
-			internal.mail.draftLifecycle.transitionByUndoToken,
-			{
-				undoToken: 'tok-5',
-				input: { to: 'draft', at: Date.now(), reason: 'user_cancel' },
-			},
-		);
+		const outcome = await t.mutation(internal.mail.draftLifecycle.transitionByUndoToken, {
+			undoToken: 'tok-5',
+			input: { to: 'draft', at: Date.now(), reason: 'user_cancel' },
+		});
 		expect(outcome.ok).toBe(true);
 		if (outcome.ok) expect(outcome.draftId).toBe(draftId);
 	});
@@ -711,26 +700,20 @@ describe('draftLifecycle.transitionByUndoToken', () => {
 		});
 
 		// First click reverts
-		const first = await t.mutation(
-			internal.mail.draftLifecycle.transitionByUndoToken,
-			{
-				undoToken: 'tok-double',
-				input: { to: 'draft', at: Date.now(), reason: 'user_cancel' },
-			},
-		);
+		const first = await t.mutation(internal.mail.draftLifecycle.transitionByUndoToken, {
+			undoToken: 'tok-double',
+			input: { to: 'draft', at: Date.now(), reason: 'user_cancel' },
+		});
 		expect(first.ok).toBe(true);
 
 		// The first call patched the row, so undoToken is cleared. The
 		// double-click goes to undo_token_mismatch — symmetric idempotency
 		// because the row has no token anymore. Either way no second audit
 		// log is written.
-		const second = await t.mutation(
-			internal.mail.draftLifecycle.transitionByUndoToken,
-			{
-				undoToken: 'tok-double',
-				input: { to: 'draft', at: Date.now(), reason: 'user_cancel' },
-			},
-		);
+		const second = await t.mutation(internal.mail.draftLifecycle.transitionByUndoToken, {
+			undoToken: 'tok-double',
+			input: { to: 'draft', at: Date.now(), reason: 'user_cancel' },
+		});
 		expect(second.ok).toBe(false);
 		if (!second.ok) expect(second.reason).toBe('undo_token_mismatch');
 
@@ -756,13 +739,10 @@ describe('draftLifecycle.transitionByUndoToken', () => {
 			undoToken: 'tok-race',
 		});
 
-		const outcome = await t.mutation(
-			internal.mail.draftLifecycle.transitionByUndoToken,
-			{
-				undoToken: 'tok-race',
-				input: { to: 'draft', at: Date.now(), reason: 'user_cancel' },
-			},
-		);
+		const outcome = await t.mutation(internal.mail.draftLifecycle.transitionByUndoToken, {
+			undoToken: 'tok-race',
+			input: { to: 'draft', at: Date.now(), reason: 'user_cancel' },
+		});
 		expect(outcome.ok).toBe(true);
 		if (outcome.ok) {
 			expect(outcome.applied).toBe('recorded');
@@ -772,13 +752,10 @@ describe('draftLifecycle.transitionByUndoToken', () => {
 
 	it('returns undo_token_mismatch for an unknown token', async () => {
 		const t = convexTest(schema, modules);
-		const outcome = await t.mutation(
-			internal.mail.draftLifecycle.transitionByUndoToken,
-			{
-				undoToken: 'tok-nonexistent',
-				input: { to: 'draft', at: Date.now(), reason: 'user_cancel' },
-			},
-		);
+		const outcome = await t.mutation(internal.mail.draftLifecycle.transitionByUndoToken, {
+			undoToken: 'tok-nonexistent',
+			input: { to: 'draft', at: Date.now(), reason: 'user_cancel' },
+		});
 		expect(outcome.ok).toBe(false);
 		if (!outcome.ok) expect(outcome.reason).toBe('undo_token_mismatch');
 	});

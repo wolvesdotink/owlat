@@ -116,7 +116,7 @@ function reduceFbl(attempt: Extract<BounceAttempt, { kind: 'fbl' }>): OutcomeRed
 }
 
 function reduceDsnAttributed(
-	attempt: Extract<BounceAttempt, { kind: 'dsn_attributed' }>,
+	attempt: Extract<BounceAttempt, { kind: 'dsn_attributed' }>
 ): OutcomeReduction {
 	const { bounce } = attempt;
 	return {
@@ -144,9 +144,9 @@ function reduceDsnUnattributed(): OutcomeReduction {
 
 function reduceMailbox(
 	attempt: Extract<BounceAttempt, { kind: 'mailbox' }>,
-	ctx: BasePhaseCtx,
+	ctx: BasePhaseCtx
 ): OutcomeReduction {
-	const { parsed, rawBuffer, spfResult, returnPath } = ctx;
+	const { parsed, rawBuffer, spfResult, envelopeFromDomain, dkimSigningDomain, returnPath } = ctx;
 	const {
 		mailbox,
 		rcptTo,
@@ -158,6 +158,9 @@ function reduceMailbox(
 		dkimResult,
 		dmarcResult,
 		dmarcPolicy,
+		arcCv,
+		arcSealerDomain,
+		arcAttestsOriginalPass,
 	} = attempt;
 
 	const deliveryId = `mb-${parsed.messageId ?? Date.now()}-${rcptTo}`;
@@ -175,7 +178,7 @@ function reduceMailbox(
 						deliveryId,
 						recipientAddress: rcptTo,
 						rawBytesBase64: rawBuffer.toString('base64'),
-						from: parsed.from?.text ?? '',
+						from: parsed.from?.value?.[0]?.address ?? '',
 						to: [...toAddrs],
 						cc: [...ccAddrs],
 						bcc: [...bccAddrs],
@@ -195,6 +198,12 @@ function reduceMailbox(
 						dkimResult,
 						dmarcResult,
 						dmarcPolicy,
+						// Verified ARC verdict (RFC 8617, Sealed Mail A5). Convex applies
+						// the trusted-forwarder override against its editable allow-list —
+						// the MTA only reports the cryptographic verdict.
+						arcCv,
+						arcSealerDomain,
+						arcAttestsOriginalPass,
 						attachments: attachments.map((att) => ({
 							filename: att.filename,
 							contentType: att.contentType,
@@ -211,6 +220,11 @@ function reduceMailbox(
 						// stores whatever is present and routes spam verdicts to the
 						// Spam folder.
 						spfResult,
+						// DMARC alignment inputs (envelope MAIL FROM domain + DKIM d=
+						// domain), stored beside the verdicts on `mailMessages` so a
+						// later impersonation heuristic need not re-parse the .eml.
+						envelopeFromDomain,
+						dkimSigningDomain,
 					},
 					timestamp: Date.now(),
 				},
@@ -226,7 +240,7 @@ function reduceMailbox(
 
 function reduceEndpointForward(
 	attempt: Extract<BounceAttempt, { kind: 'endpoint_forward' }>,
-	ctx: BasePhaseCtx,
+	ctx: BasePhaseCtx
 ): OutcomeReduction {
 	return {
 		effects: [
@@ -235,6 +249,17 @@ function reduceEndpointForward(
 				route: attempt.route,
 				parsed: ctx.parsed,
 				rcptTo: attempt.rcptTo,
+				// RFC 8601 inbound auth verdicts + DMARC alignment inputs, threaded
+				// to the external endpoint's webhook payload beside the message so a
+				// downstream consumer can show an honest sender badge. All optional.
+				auth: {
+					spfResult: ctx.spfResult,
+					dkimResult: ctx.dkimResult,
+					dmarcResult: ctx.dmarcResult,
+					dmarcPolicy: ctx.dmarcPolicy,
+					envelopeFromDomain: ctx.envelopeFromDomain,
+					dkimSigningDomain: ctx.dkimSigningDomain,
+				},
 			},
 		],
 	};
@@ -242,9 +267,9 @@ function reduceEndpointForward(
 
 function reduceInboundAccept(
 	attempt: Extract<BounceAttempt, { kind: 'inbound_accept' }>,
-	ctx: BasePhaseCtx,
+	ctx: BasePhaseCtx
 ): OutcomeReduction {
-	const { parsed } = ctx;
+	const { parsed, spfResult, dkimResult, dmarcResult, dmarcPolicy } = ctx;
 	const { route, rcptTo, attachments, headers } = attempt;
 	const effects: BounceEffect[] = [];
 
@@ -277,7 +302,7 @@ function reduceInboundAccept(
 
 	const referencesString = Array.isArray(parsed.references)
 		? parsed.references.join(' ')
-		: parsed.references ?? undefined;
+		: (parsed.references ?? undefined);
 
 	effects.push({
 		kind: 'notify_convex',
@@ -287,7 +312,7 @@ function reduceInboundAccept(
 			organizationId: route.organizationId,
 			message: `Inbound from ${parsed.from?.text} to ${rcptTo}`,
 			inboundPayload: {
-				from: parsed.from?.text ?? '',
+				from: parsed.from?.value?.[0]?.address ?? '',
 				to: rcptTo,
 				subject: parsed.subject ?? '(no subject)',
 				textBody: parsed.text ?? undefined,
@@ -297,6 +322,15 @@ function reduceInboundAccept(
 				messageId: parsed.messageId ?? undefined,
 				inReplyTo: parsed.inReplyTo?.replace(/[<>]/g, '') ?? undefined,
 				references: referencesString,
+				// RFC 8601 inbound auth verdicts (SPF/DKIM/DMARC + published policy),
+				// computed in `onData` and threaded through the ctx. The AI-inbox
+				// path used to DROP these before persisting; now they ride to
+				// `inboundMessages` so the reader can show an honest sender badge.
+				// Absent verdicts stay absent (renders "unknown", never "pass").
+				spfResult,
+				dkimResult,
+				dmarcResult,
+				dmarcPolicy,
 				attachments: attachmentMeta,
 			},
 			timestamp: Date.now(),
