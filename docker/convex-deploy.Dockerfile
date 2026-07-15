@@ -75,7 +75,7 @@ COPY packages/plugin-codegen/scripts/convexBundleSmoke.ts packages/plugin-codege
 # Fail the image build if either package export points at an artifact that was
 # not copied into the final deploy image.
 RUN node --input-type=module -e "const { access } = await import('node:fs/promises'); const { fileURLToPath } = await import('node:url'); await Promise.all(['@owlat/plugin-host', '@owlat/plugin-kit'].map((specifier) => access(fileURLToPath(import.meta.resolve(specifier)))))"
-RUN node packages/plugin-codegen/scripts/convexBundleSmoke.ts
+RUN OWLAT_CONVEX_BUNDLE_PRODUCTION_ONLY=1 node packages/plugin-codegen/scripts/convexBundleSmoke.ts
 
 # Version metadata — injected by CI on release
 ARG OWLAT_VERSION=dev

@@ -31,7 +31,7 @@ export {
 	validatePluginManifest,
 } from './manifest';
 export type {
-	PluginComponentLoader,
+	PluginComponentDefinition,
 	PluginContributionKind,
 	PluginContributions,
 	PluginFeatureFlagDefinition,

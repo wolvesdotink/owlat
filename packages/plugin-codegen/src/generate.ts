@@ -9,6 +9,7 @@ import { renderPluginComposition } from './render';
 
 const CONFIG_PATH = 'plugins.config.ts';
 const CONVEX_OUTPUT_PATH = 'apps/api/convex/plugins/plugins.generated.ts';
+const COMPONENT_OUTPUT_PATH = 'apps/api/convex/plugins/components.generated.ts';
 const NUXT_OUTPUT_PATH = 'apps/web/app/plugins/plugin-composition.generated.ts';
 const MAX_GENERATED_FILE_BYTES = 4 * 1024 * 1024;
 
@@ -30,6 +31,7 @@ export async function generatePluginComposition(
 	const generated = renderPluginComposition(plugins);
 	const targets = [
 		{ path: join(workspaceRoot, CONVEX_OUTPUT_PATH), source: generated.convex },
+		{ path: join(workspaceRoot, COMPONENT_OUTPUT_PATH), source: generated.components },
 		{ path: join(workspaceRoot, NUXT_OUTPUT_PATH), source: generated.nuxt },
 	] as const;
 
