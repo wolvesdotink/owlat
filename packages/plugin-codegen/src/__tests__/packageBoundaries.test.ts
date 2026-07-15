@@ -121,7 +121,7 @@ describe('plugin package boundary lint', () => {
 		const root = await createRepository(
 			{
 				'apps/api/import-map.ts': `import '#mail';`,
-				'apps/api/npm-alias.ts': `import 'mail-alias';`,
+				'apps/api/npm-alias.ts': `import 'mail-alias/runtime';`,
 				'apps/api/ts-path.ts': `import '@mail/runtime';`,
 			},
 			{
@@ -142,7 +142,7 @@ describe('plugin package boundary lint', () => {
 			code: 'direct_plugin_import',
 			details: [
 				'apps/api/import-map.ts: imports #mail',
-				'apps/api/npm-alias.ts: imports mail-alias',
+				'apps/api/npm-alias.ts: imports mail-alias/runtime',
 				'apps/api/ts-path.ts: imports @mail/runtime',
 			],
 		});
@@ -150,16 +150,17 @@ describe('plugin package boundary lint', () => {
 
 	it('rejects Vite object and array aliases to configured plugins', async () => {
 		const root = await createRepository({
-			'apps/api/object-alias.ts': `import 'mail-plugin-alias';`,
-			'apps/api/array-alias.ts': `import 'mail-plugin-array';`,
+			'apps/api/object-alias.ts': `import 'mail-plugin-alias/runtime';`,
+			'apps/api/array-alias.ts': `import 'mail-plugin-array/server';`,
+			'apps/api/near-alias.ts': `import 'mail-plugin-alias-extra/runtime';`,
 			'apps/api/vite.config.ts': `export default { resolve: { alias: { 'mail-plugin-alias': '@acme/mail-plugin', }, }, test: { alias: [{ find: 'mail-plugin-array', replacement: '@acme/mail-plugin/runtime' }] } };`,
 		});
 
 		await expect(checkDirectPluginImports(root, configuredPackages)).rejects.toMatchObject({
 			code: 'direct_plugin_import',
 			details: [
-				'apps/api/array-alias.ts: imports mail-plugin-array',
-				'apps/api/object-alias.ts: imports mail-plugin-alias',
+				'apps/api/array-alias.ts: imports mail-plugin-array/server',
+				'apps/api/object-alias.ts: imports mail-plugin-alias/runtime',
 			],
 		});
 	});
