@@ -10,16 +10,10 @@ import {
 import type { LanguageModel } from 'ai';
 import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
-import {
-	MAX_LLM_ATTEMPTS,
-	runLlmTextWithAttemptMetadata,
-} from '../lib/llm/dispatch';
+import { MAX_LLM_ATTEMPTS, runLlmTextWithAttemptMetadata } from '../lib/llm/dispatch';
 import { estimateKnownCostMicrousd } from '../lib/llm/pricing';
 import { resolveLanguageModel } from '../lib/llmProvider';
-import {
-	PLUGIN_LLM_MAX_OUTPUT_TOKENS,
-	validatePluginLlmRequest,
-} from './llmRequest';
+import { PLUGIN_LLM_MAX_OUTPUT_TOKENS, validatePluginLlmRequest } from './llmRequest';
 
 export type PluginLlmErrorCode =
 	| 'access_denied'
@@ -140,13 +134,12 @@ export function bindAuthenticatedBundledPluginLlm(
 }
 
 async function recordDenied(ctx: ActionCtx, pluginId: string): Promise<void> {
-	await ctx.runMutation(internal.plugins.llmAccounting.recordDenied, { pluginId }).catch(() => null);
+	await ctx
+		.runMutation(internal.plugins.llmAccounting.recordDenied, { pluginId })
+		.catch(() => null);
 }
 
-async function settleFailure(
-	ctx: ActionCtx,
-	reservationId: string
-): Promise<boolean> {
+async function settleFailure(ctx: ActionCtx, reservationId: string): Promise<boolean> {
 	try {
 		await ctx.runMutation(internal.plugins.llmAccounting.settleFailure, { reservationId });
 		return true;

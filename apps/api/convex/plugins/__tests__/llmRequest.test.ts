@@ -32,7 +32,10 @@ describe('plugin LLM request boundary', () => {
 		{ tier: 'mystery', prompt: 'x' },
 		{ tier: 'fast', messages: [] },
 		{ tier: 'fast', messages: [{ role: 'tool', content: 'x' }] },
-		{ tier: 'fast', messages: [{ role: 'user', content: 'x'.repeat(PLUGIN_LLM_MAX_MESSAGE_BYTES + 1) }] },
+		{
+			tier: 'fast',
+			messages: [{ role: 'user', content: 'x'.repeat(PLUGIN_LLM_MAX_MESSAGE_BYTES + 1) }],
+		},
 		{ tier: 'fast', prompt: 'x'.repeat(PLUGIN_LLM_MAX_INPUT_BYTES + 1) },
 		{
 			tier: 'fast',
@@ -65,7 +68,14 @@ describe('plugin LLM request boundary', () => {
 		Object.defineProperty(messages, '01', { enumerable: true, value: { secret: 'hidden' } });
 		for (const request of [
 			accessor,
-			new Proxy({ tier: 'fast', prompt: 'secret' }, { ownKeys: () => { throw new Error('secret'); } }),
+			new Proxy(
+				{ tier: 'fast', prompt: 'secret' },
+				{
+					ownKeys: () => {
+						throw new Error('secret');
+					},
+				}
+			),
 			{ tier: 'fast', prompt: 'safe', [Symbol('secret')]: true },
 			Object.defineProperty({ tier: 'fast', prompt: 'safe' }, 'hidden', { value: 'secret' }),
 			{ tier: 'fast', messages },

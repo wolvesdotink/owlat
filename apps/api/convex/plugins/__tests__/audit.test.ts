@@ -47,7 +47,14 @@ describe('hosted plugin audit boundary', () => {
 				{ reasonCode: 'raw provider error: secret' },
 				{ [Symbol('secret')]: true },
 				accessor,
-				new Proxy({}, { ownKeys: () => { throw new Error('secret'); } }),
+				new Proxy(
+					{},
+					{
+						ownKeys: () => {
+							throw new Error('secret');
+						},
+					}
+				),
 			]) {
 				await expect(
 					recordHostedPluginAudit(

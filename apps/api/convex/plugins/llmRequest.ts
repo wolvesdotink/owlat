@@ -10,9 +10,11 @@ export const PLUGIN_LLM_PROTOCOL_TOKEN_RESERVE = 1024;
 export interface ValidatedPluginLlmRequest {
 	readonly tier: PluginLlmTier;
 	readonly inputTokensUpperBound: number;
-	readonly dispatchInput: { readonly prompt: string; readonly system?: string } | {
-		readonly messages: ModelMessage[];
-	};
+	readonly dispatchInput:
+		| { readonly prompt: string; readonly system?: string }
+		| {
+				readonly messages: ModelMessage[];
+		  };
 }
 
 export function validatePluginLlmRequest(input: unknown): ValidatedPluginLlmRequest {
@@ -31,7 +33,10 @@ export function validatePluginLlmRequest(input: unknown): ValidatedPluginLlmRequ
 		return Object.freeze({
 			tier,
 			inputTokensUpperBound: inputBytes + PLUGIN_LLM_PROTOCOL_TOKEN_RESERVE,
-			dispatchInput: Object.freeze({ prompt: prompt!, ...(system === undefined ? {} : { system }) }),
+			dispatchInput: Object.freeze({
+				prompt: prompt!,
+				...(system === undefined ? {} : { system }),
+			}),
 		});
 	}
 	if (system !== undefined) throw new TypeError('Invalid plugin LLM request');
@@ -52,7 +57,8 @@ export function validatePluginLlmRequest(input: unknown): ValidatedPluginLlmRequ
 			throw new TypeError('Invalid plugin LLM request');
 		}
 		const contentBytes = utf8Bytes(content);
-		if (contentBytes > PLUGIN_LLM_MAX_MESSAGE_BYTES) throw new TypeError('Invalid plugin LLM request');
+		if (contentBytes > PLUGIN_LLM_MAX_MESSAGE_BYTES)
+			throw new TypeError('Invalid plugin LLM request');
 		inputBytes += contentBytes;
 		return Object.freeze({ role, content });
 	});
@@ -60,11 +66,16 @@ export function validatePluginLlmRequest(input: unknown): ValidatedPluginLlmRequ
 	return Object.freeze({
 		tier,
 		inputTokensUpperBound: inputBytes + PLUGIN_LLM_PROTOCOL_TOKEN_RESERVE,
-		dispatchInput: Object.freeze({ messages: Object.freeze(messages) as unknown as ModelMessage[] }),
+		dispatchInput: Object.freeze({
+			messages: Object.freeze(messages) as unknown as ModelMessage[],
+		}),
 	});
 }
 
-function readRecord(value: unknown, allowed: ReadonlySet<string>): Record<string, PropertyDescriptor> {
+function readRecord(
+	value: unknown,
+	allowed: ReadonlySet<string>
+): Record<string, PropertyDescriptor> {
 	if (value === null || typeof value !== 'object' || Array.isArray(value)) {
 		throw new TypeError('Invalid plugin LLM request');
 	}
@@ -79,11 +90,14 @@ function readRecord(value: unknown, allowed: ReadonlySet<string>): Record<string
 	} catch {
 		throw new TypeError('Invalid plugin LLM request');
 	}
-	if (prototype !== Object.prototype && prototype !== null) throw new TypeError('Invalid plugin LLM request');
+	if (prototype !== Object.prototype && prototype !== null)
+		throw new TypeError('Invalid plugin LLM request');
 	for (const key of Reflect.ownKeys(descriptors)) {
-		if (typeof key !== 'string' || !allowed.has(key)) throw new TypeError('Invalid plugin LLM request');
+		if (typeof key !== 'string' || !allowed.has(key))
+			throw new TypeError('Invalid plugin LLM request');
 		const descriptor = descriptors[key]!;
-		if (!descriptor.enumerable || !('value' in descriptor)) throw new TypeError('Invalid plugin LLM request');
+		if (!descriptor.enumerable || !('value' in descriptor))
+			throw new TypeError('Invalid plugin LLM request');
 	}
 	return descriptors as Record<string, PropertyDescriptor>;
 }
@@ -92,9 +106,13 @@ function dataField(record: Record<string, PropertyDescriptor>, key: string): unk
 	return record[key]?.value;
 }
 
-function optionalStringField(record: Record<string, PropertyDescriptor>, key: string): string | undefined {
+function optionalStringField(
+	record: Record<string, PropertyDescriptor>,
+	key: string
+): string | undefined {
 	const value = dataField(record, key);
-	if (value !== undefined && typeof value !== 'string') throw new TypeError('Invalid plugin LLM request');
+	if (value !== undefined && typeof value !== 'string')
+		throw new TypeError('Invalid plugin LLM request');
 	return value;
 }
 
@@ -120,7 +138,8 @@ function readDenseArray(value: unknown): unknown[] {
 	}
 	for (let index = 0; index < length; index++) {
 		const descriptor = descriptors[String(index)];
-		if (!descriptor?.enumerable || !('value' in descriptor)) throw new TypeError('Invalid plugin LLM request');
+		if (!descriptor?.enumerable || !('value' in descriptor))
+			throw new TypeError('Invalid plugin LLM request');
 		result.push(descriptor.value);
 	}
 	return result;
@@ -131,5 +150,6 @@ function utf8Bytes(value: string): number {
 }
 
 function assertInputBytes(bytes: number): void {
-	if (bytes < 1 || bytes > PLUGIN_LLM_MAX_INPUT_BYTES) throw new TypeError('Invalid plugin LLM request');
+	if (bytes < 1 || bytes > PLUGIN_LLM_MAX_INPUT_BYTES)
+		throw new TypeError('Invalid plugin LLM request');
 }

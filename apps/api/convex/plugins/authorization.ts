@@ -1,4 +1,9 @@
-import { parsePluginId, type PluginCapability, type PluginId, type PluginManifest } from '@owlat/plugin-kit';
+import {
+	parsePluginId,
+	type PluginCapability,
+	type PluginId,
+	type PluginManifest,
+} from '@owlat/plugin-kit';
 import { resolveFlags } from '@owlat/shared/featureFlags';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
