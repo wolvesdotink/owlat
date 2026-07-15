@@ -2,11 +2,23 @@ import { describe, expect, it } from 'vitest';
 import {
 	definePlugin,
 	isPluginManifest,
+	isPluginId,
+	parsePluginId,
+	PluginIdError,
 	parsePluginManifest,
 	PLUGIN_CONTRIBUTION_KINDS,
 	PluginManifestError,
 	validatePluginManifest,
 } from '../index';
+
+describe('plugin identity', () => {
+	it('brands only ids that a manifest can own', () => {
+		expect(parsePluginId('policy-pack')).toBe('policy-pack');
+		expect(isPluginId('policy-pack')).toBe(true);
+		expect(isPluginId('Policy Pack')).toBe(false);
+		expect(() => parsePluginId('Policy Pack')).toThrow(PluginIdError);
+	});
+});
 
 const validManifest = () => ({
 	id: 'deliverability-lab',
