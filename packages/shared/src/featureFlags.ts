@@ -7,6 +7,16 @@
  * the toggle list stays in sync across the stack.
  */
 
+import {
+	capturePluginDefinitionArray,
+	INVALID_PLUGIN_FEATURE_FLAG_DEFINITION,
+	isPluginFeatureFlagDefinition,
+	MAX_PLUGIN_FEATURE_FLAGS,
+	snapshotPluginFeatureFlagDefinition,
+} from './pluginFeatureFlagDefinition';
+
+export { isPluginFeatureFlagDefinition };
+
 export type CoreFeatureFlagKey =
 	// Sending
 	| 'campaigns'
@@ -438,16 +448,6 @@ export const ALL_FEATURE_FLAG_KEYS = Object.keys(FEATURE_FLAGS) as CoreFeatureFl
 
 export type FeatureFlagRegistry = Readonly<Record<string, FeatureFlagDefinition>>;
 
-const MAX_PLUGIN_FEATURE_FLAGS = 128;
-const PLUGIN_FLAG_KEY = /^plugin\.[a-z][a-z0-9-]{0,63}$/;
-const INVALID_PLUGIN_FEATURE_FLAG_DEFINITION = 'Invalid plugin feature flag definition';
-const PLUGIN_OPTIONAL_STRING_ARRAY_FIELDS = [
-	'requires',
-	'cascadesOff',
-	'requiredEnvVars',
-	'dockerProfiles',
-] as const;
-
 /**
  * Merge build-time plugin definitions into the core registry. The generated
  * composition is already validated, but this shared boundary still rejects a
@@ -456,36 +456,29 @@ const PLUGIN_OPTIONAL_STRING_ARRAY_FIELDS = [
 export function createFeatureFlagRegistry(
 	pluginDefinitions: readonly PluginFeatureFlagDefinition[] = []
 ): FeatureFlagRegistry {
-	if (pluginDefinitions.length > MAX_PLUGIN_FEATURE_FLAGS) {
-		throw new TypeError(
-			`At most ${MAX_PLUGIN_FEATURE_FLAGS} plugin feature flags may be registered`
-		);
+	const definitions = capturePluginDefinitionArray(pluginDefinitions);
+	if (definitions.kind !== 'valid') {
+		if (definitions.kind === 'too_many') {
+			throw new TypeError(
+				`At most ${MAX_PLUGIN_FEATURE_FLAGS} plugin feature flags may be registered`
+			);
+		}
+		throw new TypeError(INVALID_PLUGIN_FEATURE_FLAG_DEFINITION);
 	}
 
 	const registry = Object.assign(
 		Object.create(null) as Record<string, FeatureFlagDefinition>,
 		FEATURE_FLAGS
 	);
-	for (const definition of pluginDefinitions) {
-		const untrustedDefinition: unknown = definition;
-		if (!isPluginFeatureFlagDefinition(untrustedDefinition)) {
+	for (const untrustedDefinition of definitions.value) {
+		const definition = snapshotPluginFeatureFlagDefinition(untrustedDefinition);
+		if (!definition) {
 			throw new TypeError(INVALID_PLUGIN_FEATURE_FLAG_DEFINITION);
 		}
 		if (hasFeatureFlagDefinition(registry, definition.key)) {
 			throw new TypeError(`Duplicate feature flag definition: ${definition.key}`);
 		}
-		registry[definition.key] = Object.freeze({
-			...definition,
-			requires: definition.requires ? Object.freeze([...definition.requires]) : undefined,
-			cascadesOff: definition.cascadesOff ? Object.freeze([...definition.cascadesOff]) : undefined,
-			requiredEnvVars: definition.requiredEnvVars
-				? Object.freeze([...definition.requiredEnvVars])
-				: undefined,
-			dockerProfiles: definition.dockerProfiles
-				? Object.freeze([...definition.dockerProfiles])
-				: undefined,
-			requiredCapabilities: Object.freeze([...definition.requiredCapabilities]),
-		});
+		registry[definition.key] = definition;
 	}
 
 	for (const definition of Object.values(registry)) {
@@ -502,61 +495,6 @@ export function createFeatureFlagRegistry(
 	}
 
 	return Object.freeze(registry);
-}
-
-export function isPluginFeatureFlagDefinition(
-	definition: unknown
-): definition is PluginFeatureFlagDefinition {
-	if (definition === null || typeof definition !== 'object' || Array.isArray(definition)) {
-		return false;
-	}
-	const candidate = definition as Record<string, unknown>;
-	return (
-		hasOwnDataProperty(candidate, 'category', (value) => value === 'plugins') &&
-		hasOwnDataProperty(
-			candidate,
-			'key',
-			(value) => typeof value === 'string' && PLUGIN_FLAG_KEY.test(value)
-		) &&
-		hasOwnDataProperty(candidate, 'label', (value) => typeof value === 'string') &&
-		hasOwnDataProperty(candidate, 'description', (value) => typeof value === 'string') &&
-		hasOwnDataProperty(candidate, 'default', (value) => typeof value === 'boolean') &&
-		hasOwnDataProperty(
-			candidate,
-			'pluginPackageName',
-			(value) => typeof value === 'string' && value.length > 0
-		) &&
-		hasOwnDataProperty(candidate, 'requiredCapabilities', isStringArray) &&
-		PLUGIN_OPTIONAL_STRING_ARRAY_FIELDS.every((field) =>
-			hasOptionalOwnDataProperty(candidate, field, isStringArray)
-		) &&
-		hasOptionalOwnDataProperty(candidate, 'hostedOnly', (value) => typeof value === 'boolean')
-	);
-}
-
-function isStringArray(value: unknown): value is readonly string[] {
-	return Array.isArray(value) && value.every((item) => typeof item === 'string');
-}
-
-function hasOwnDataProperty(
-	candidate: Record<string, unknown>,
-	key: string,
-	isValid: (value: unknown) => boolean
-): boolean {
-	const descriptor = Object.getOwnPropertyDescriptor(candidate, key);
-	return descriptor !== undefined && 'value' in descriptor && isValid(descriptor.value);
-}
-
-function hasOptionalOwnDataProperty(
-	candidate: Record<string, unknown>,
-	key: string,
-	isValid: (value: unknown) => boolean
-): boolean {
-	const descriptor = Object.getOwnPropertyDescriptor(candidate, key);
-	return (
-		descriptor === undefined ||
-		('value' in descriptor && (descriptor.value === undefined || isValid(descriptor.value)))
-	);
 }
 
 export function hasFeatureFlagDefinition(registry: FeatureFlagRegistry, key: string): boolean {
