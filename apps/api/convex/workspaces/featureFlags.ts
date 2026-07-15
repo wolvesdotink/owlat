@@ -33,6 +33,7 @@
 
 import { v } from 'convex/values';
 import { internalQuery, internalMutation, type MutationCtx } from '../_generated/server';
+import type { Id } from '../_generated/dataModel';
 import { publicQuery, authedQuery, authedMutation } from '../lib/authedFunctions';
 import { isDeliveryConfigured } from '../lib/sendProviders/capability';
 import { isEnvPresent } from '../lib/env';
@@ -43,22 +44,26 @@ import {
 	applyPackToggle,
 	resolveFlags,
 	SENDING_FLAGS_REQUIRING_DELIVERY,
-	type FeatureFlagKey,
 	type FeatureFlagState,
 	type FeaturePackKey,
-	FEATURE_FLAGS,
 	FEATURE_PACKS,
+	type FeatureFlagDefinition,
+	isPluginFeatureFlagDefinition,
 } from '@owlat/shared/featureFlags';
 import { getStoredFlags } from '../lib/featureFlags';
 import { recordAuditLog } from '../lib/auditLog';
 import { throwInvalidInput } from '../_utils/errors';
+import {
+	FEATURE_FLAG_REGISTRY,
+	validatePluginCapabilityApproval,
+} from '../plugins/featureFlagRegistry';
 
 // public: pre-auth setup/nav rendering needs flags before login
 export const getFeatureFlags = publicQuery({
 	args: {},
 	handler: async (ctx) => {
 		const stored = await getStoredFlags(ctx);
-		return resolveFlags(stored);
+		return resolveFlags(stored, { registry: FEATURE_FLAG_REGISTRY });
 	},
 });
 
@@ -80,7 +85,7 @@ export const getResolvedFlags = internalQuery({
 	args: {},
 	handler: async (ctx) => {
 		const stored = await getStoredFlags(ctx);
-		return resolveFlags(stored);
+		return resolveFlags(stored, { registry: FEATURE_FLAG_REGISTRY });
 	},
 });
 
@@ -103,8 +108,10 @@ export const getFlagsConfigStatus = authedQuery({
 		// same way `LLM_PROVIDER`/`LLM_API_KEY` in env do — env stays the fallback,
 		// a stored config also counts. Org-singleton ⇒ `first()` is bounded (≤1 row).
 		const aiConfigStored = (await ctx.db.query('aiProviderConfig').first()) !== null;
+		const settings = await ctx.db.query('instanceSettings').first();
+		const pluginCapabilityGrants = settings?.pluginCapabilityGrants ?? {};
 		const status: Record<string, string[]> = {};
-		for (const def of Object.values(FEATURE_FLAGS)) {
+		for (const def of Object.values(FEATURE_FLAG_REGISTRY)) {
 			const missing: string[] = [];
 			// The `ai` flag's env vars are considered met when either the env vars are
 			// present OR a provider config is stored — so "AI not configured" empty
@@ -119,6 +126,12 @@ export const getFlagsConfigStatus = authedQuery({
 				!deliveryConfigured
 			) {
 				missing.push('A configured delivery provider');
+			}
+			if (isPluginFeatureFlagDefinition(def)) {
+				const grants = pluginCapabilityGrants[def.key] ?? {};
+				for (const capability of def.requiredCapabilities ?? []) {
+					if (grants[capability] !== true) missing.push(`Grant: ${capability}`);
+				}
 			}
 			if (missing.length > 0) status[def.key] = missing;
 		}
@@ -136,28 +149,83 @@ export const setFeatureFlag = authedMutation({
 	args: {
 		flag: v.string(),
 		value: v.boolean(),
+		approvedCapabilities: v.optional(v.array(v.string())),
 	},
 	handler: async (ctx, args) => {
 		const session = await requireAdminContext(ctx);
 
-		if (!(args.flag in FEATURE_FLAGS)) {
+		const definition = FEATURE_FLAG_REGISTRY[args.flag];
+		if (!definition) {
 			throwInvalidInput(`Unknown feature flag: ${args.flag}`);
 		}
-		const flag = args.flag as FeatureFlagKey;
+		const flag = definition.key;
+		const pluginFlag = isPluginFeatureFlagDefinition(definition);
+		if (!pluginFlag && args.approvedCapabilities !== undefined) {
+			throwInvalidInput('Capability approvals are accepted only for plugin flags');
+		}
+
+		let approvedPluginGrants: Readonly<Record<string, boolean>> | undefined;
+		if (pluginFlag && args.value) {
+			const missingEnvironment = missingEnvironmentVariables(definition);
+			if (missingEnvironment.length > 0) {
+				throwInvalidInput(
+					`Plugin ${flag} is missing required environment variables: ${missingEnvironment.join(', ')}`
+				);
+			}
+			try {
+				approvedPluginGrants = validatePluginCapabilityApproval(
+					definition,
+					args.approvedCapabilities
+				);
+			} catch (error) {
+				throwInvalidInput(error instanceof Error ? error.message : 'Invalid capability approval');
+			}
+		} else if (pluginFlag && args.approvedCapabilities !== undefined) {
+			throwInvalidInput('Capability approvals cannot accompany a plugin disable');
+		}
 
 		const stored = await getStoredFlags(ctx);
-		const { next, cascaded } = applyToggle(stored, flag, args.value);
+		const { next, cascaded } = applyToggle(stored, flag, args.value, FEATURE_FLAG_REGISTRY);
 
 		const now = Date.now();
 		const existing = await ctx.db.query('instanceSettings').first();
-		const patch = { featureFlags: next, updatedAt: now };
+		const patch = pluginFlag
+			? {
+					featureFlags: next,
+					pluginCapabilityGrants: updatePluginCapabilityGrants(
+						existing?.pluginCapabilityGrants ?? {},
+						flag,
+						approvedPluginGrants
+					),
+					updatedAt: now,
+				}
+			: { featureFlags: next, updatedAt: now };
 
+		let settingsId: Id<'instanceSettings'>;
 		if (existing) {
 			await ctx.db.patch(existing._id, patch);
+			settingsId = existing._id;
 		} else {
-			await ctx.db.insert('instanceSettings', {
+			settingsId = await ctx.db.insert('instanceSettings', {
 				...patch,
 				createdAt: now,
+			});
+		}
+		if (pluginFlag) {
+			await recordAuditLog(ctx, {
+				userId: session.userId,
+				action: 'settings.updated',
+				resource: 'settings',
+				resourceId: settingsId,
+				detailsBlob: JSON.stringify({
+					changes: {
+						[flag]: {
+							from: stored[flag] ?? definition.default,
+							to: args.value,
+							approvedCapabilities: args.value ? (args.approvedCapabilities ?? []) : [],
+						},
+					},
+				}),
 			});
 		}
 
@@ -250,12 +318,16 @@ export const setFeaturePack = authedMutation({
  * setup-seed internal mutation so both stay the sole writer of the map. */
 async function writeAllFlags(ctx: MutationCtx, flags: FeatureFlagState) {
 	for (const key of Object.keys(flags)) {
-		if (!(key in FEATURE_FLAGS)) {
+		const definition = FEATURE_FLAG_REGISTRY[key];
+		if (!definition) {
 			throwInvalidInput(`Unknown feature flag: ${key}`);
+		}
+		if (isPluginFeatureFlagDefinition(definition)) {
+			throwInvalidInput(`Plugin feature flag ${key} must be toggled individually`);
 		}
 	}
 
-	const resolved = resolveFlags(flags);
+	const resolved = resolveFlags(flags, { registry: FEATURE_FLAG_REGISTRY });
 	const now = Date.now();
 	const existing = await ctx.db.query('instanceSettings').first();
 	const patch = {
@@ -279,6 +351,21 @@ export const setAllFeatureFlags = authedMutation({
 		return writeAllFlags(ctx, args.flags as FeatureFlagState);
 	},
 });
+
+function missingEnvironmentVariables(definition: FeatureFlagDefinition): string[] {
+	return (definition.requiredEnvVars ?? []).filter((variable) => !isEnvPresent(variable));
+}
+
+function updatePluginCapabilityGrants(
+	current: Record<string, Record<string, boolean>>,
+	flag: string,
+	approved: Readonly<Record<string, boolean>> | undefined
+): Record<string, Record<string, boolean>> {
+	const next = { ...current };
+	if (approved) next[flag] = { ...approved };
+	else delete next[flag];
+	return next;
+}
 
 /**
  * Persist the setup wizard's chosen flags during first-run seeding. Called by

@@ -443,7 +443,7 @@ export function createFeatureFlagRegistry(
 		if (!isPluginFeatureFlagDefinition(definition)) {
 			throw new TypeError(`Invalid plugin feature flag definition: ${definition.key}`);
 		}
-		if (Object.hasOwn(registry, definition.key)) {
+		if (hasOwnDefinition(registry, definition.key)) {
 			throw new TypeError(`Duplicate feature flag definition: ${definition.key}`);
 		}
 		registry[definition.key] = Object.freeze({
@@ -464,12 +464,12 @@ export function createFeatureFlagRegistry(
 
 	for (const definition of Object.values(registry)) {
 		for (const dependency of definition.requires ?? []) {
-			if (!Object.hasOwn(registry, dependency)) {
+			if (!hasOwnDefinition(registry, dependency)) {
 				throw new TypeError(`${definition.key} requires unknown feature flag ${dependency}`);
 			}
 		}
 		for (const cascadeTarget of definition.cascadesOff ?? []) {
-			if (!Object.hasOwn(registry, cascadeTarget)) {
+			if (!hasOwnDefinition(registry, cascadeTarget)) {
 				throw new TypeError(`${definition.key} cascades to unknown feature flag ${cascadeTarget}`);
 			}
 		}
@@ -507,7 +507,8 @@ export const SENDING_FLAGS_REQUIRING_DELIVERY = [
 	'automations',
 ] as const satisfies readonly FeatureFlagKey[];
 
-export type FeatureFlagState = Partial<Record<FeatureFlagKey, boolean>>;
+export type FeatureFlagState = Partial<Record<CoreFeatureFlagKey, boolean>> &
+	Record<PluginFeatureFlagKey, boolean>;
 
 /**
  * Default flag state for a fresh self-host install.

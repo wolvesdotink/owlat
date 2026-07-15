@@ -503,6 +503,7 @@ import type * as mtaWebhook from "../mtaWebhook.js";
 import type * as platformAdmin_mutations from "../platformAdmin/mutations.js";
 import type * as platformAdmin_platformAdmin from "../platformAdmin/platformAdmin.js";
 import type * as platformAdmin_queries from "../platformAdmin/queries.js";
+import type * as plugins_featureFlagRegistry from "../plugins/featureFlagRegistry.js";
 import type * as providerRoutes from "../providerRoutes.js";
 import type * as publicRateLimit from "../publicRateLimit.js";
 import type * as quickQuery from "../quickQuery.js";
@@ -1123,6 +1124,7 @@ declare const fullApi: ApiFromModules<{
   "platformAdmin/mutations": typeof platformAdmin_mutations;
   "platformAdmin/platformAdmin": typeof platformAdmin_platformAdmin;
   "platformAdmin/queries": typeof platformAdmin_queries;
+  "plugins/featureFlagRegistry": typeof plugins_featureFlagRegistry;
   providerRoutes: typeof providerRoutes;
   publicRateLimit: typeof publicRateLimit;
   quickQuery: typeof quickQuery;
