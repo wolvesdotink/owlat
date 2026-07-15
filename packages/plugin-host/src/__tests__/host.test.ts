@@ -12,6 +12,7 @@ function createHost(overrides: Partial<Parameters<typeof createPluginHost>[0]> =
 		manifest: manifest(),
 		capabilityGrants: [{ capability: 'mail:read', granted: true }],
 		featureFlags: { isEnabled: () => true },
+		environment: { isPresent: () => true },
 		untrustedText: {
 			maximumCodePoints: 100,
 			scrubPromptInjection: (text) => text.replace(/ignore previous/gi, '[omitted]'),
@@ -40,6 +41,48 @@ describe('central plugin host', () => {
 			code: 'capability_not_granted',
 		});
 		expect(deniedOperation).not.toHaveBeenCalled();
+	});
+
+	it('requires every manifest environment variable before checking a capability', async () => {
+		const operation = vi.fn();
+		const isPresent = vi.fn((name: string) => name !== 'POLICY_TOKEN');
+		const host = createHost({
+			manifest: {
+				...manifest(),
+				flag: { default: false, requiredEnvVars: ['POLICY_TOKEN'] },
+			},
+			environment: { isPresent },
+		});
+
+		await expect(host.run('mail:read', operation)).rejects.toMatchObject({
+			code: 'required_environment_missing',
+			pluginId: 'policy-pack',
+			environmentVariable: 'POLICY_TOKEN',
+		});
+		expect(isPresent).toHaveBeenCalledWith('POLICY_TOKEN');
+		expect(operation).not.toHaveBeenCalled();
+	});
+
+	it('fails closed when environment presence cannot be verified', async () => {
+		const operation = vi.fn();
+		const cause = new Error('environment unavailable');
+		const host = createHost({
+			manifest: {
+				...manifest(),
+				flag: { default: false, requiredEnvVars: ['POLICY_TOKEN'] },
+			},
+			environment: {
+				isPresent() {
+					throw cause;
+				},
+			},
+		});
+
+		await expect(host.run('mail:read', operation)).rejects.toMatchObject({
+			code: 'environment_check_failed',
+			cause,
+		});
+		expect(operation).not.toHaveBeenCalled();
 	});
 
 	it('automatically protects text returned through the untrusted-text path', async () => {
