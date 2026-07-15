@@ -2,10 +2,15 @@
 	"extends": "../../tsconfig.base.json",
 	"compilerOptions": {
 		"importHelpers": true,
-		"lib": ["ESNext"],
+		"types": ["node"],
+		"lib": ["ES2022"],
 		"declaration": true,
-		"declarationMap": true
+		"declarationMap": true,
+		"noEmit": true,
+		"outDir": "./dist",
+		"rootDir": ".",
+		"ignoreDeprecations": "6.0"
 	},
-	"include": ["src/**/*.ts"],
+	"include": ["src/**/*.ts", "scripts/**/*.ts"],
 	"exclude": ["node_modules", "dist"]
 }
