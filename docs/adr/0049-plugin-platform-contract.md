@@ -50,6 +50,9 @@ accessor properties, malformed identifiers, duplicate capabilities and env
 requirements, invalid budgets, and unknown contribution buckets. It validates
 only the contribution container in this ADR; the host and each consumer seam
 validate the concrete contribution definitions when those seams open.
+To keep validation bounded at the public unknown-input boundary, a manifest may
+declare at most 64 capabilities, 64 required environment variables, and 256
+entries in each contribution bucket.
 
 Validation inspects component and contribution references but never invokes
 them. Build-time composition remains the only path that imports bundled code.
