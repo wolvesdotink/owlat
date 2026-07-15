@@ -440,6 +440,13 @@ export type FeatureFlagRegistry = Readonly<Record<string, FeatureFlagDefinition>
 
 const MAX_PLUGIN_FEATURE_FLAGS = 128;
 const PLUGIN_FLAG_KEY = /^plugin\.[a-z][a-z0-9-]{0,63}$/;
+const INVALID_PLUGIN_FEATURE_FLAG_DEFINITION = 'Invalid plugin feature flag definition';
+const PLUGIN_OPTIONAL_STRING_ARRAY_FIELDS = [
+	'requires',
+	'cascadesOff',
+	'requiredEnvVars',
+	'dockerProfiles',
+] as const;
 
 /**
  * Merge build-time plugin definitions into the core registry. The generated
@@ -462,7 +469,7 @@ export function createFeatureFlagRegistry(
 	for (const definition of pluginDefinitions) {
 		const untrustedDefinition: unknown = definition;
 		if (!isPluginFeatureFlagDefinition(untrustedDefinition)) {
-			throw new TypeError(`Invalid plugin feature flag definition: ${definition.key}`);
+			throw new TypeError(INVALID_PLUGIN_FEATURE_FLAG_DEFINITION);
 		}
 		if (hasFeatureFlagDefinition(registry, definition.key)) {
 			throw new TypeError(`Duplicate feature flag definition: ${definition.key}`);
@@ -500,16 +507,55 @@ export function createFeatureFlagRegistry(
 export function isPluginFeatureFlagDefinition(
 	definition: unknown
 ): definition is PluginFeatureFlagDefinition {
-	if (!definition || typeof definition !== 'object') return false;
+	if (definition === null || typeof definition !== 'object' || Array.isArray(definition)) {
+		return false;
+	}
 	const candidate = definition as Record<string, unknown>;
 	return (
-		candidate['category'] === 'plugins' &&
-		typeof candidate['key'] === 'string' &&
-		PLUGIN_FLAG_KEY.test(candidate['key']) &&
-		typeof candidate['pluginPackageName'] === 'string' &&
-		candidate['pluginPackageName'].length > 0 &&
-		Array.isArray(candidate['requiredCapabilities']) &&
-		candidate['requiredCapabilities'].every((capability) => typeof capability === 'string')
+		hasOwnDataProperty(candidate, 'category', (value) => value === 'plugins') &&
+		hasOwnDataProperty(
+			candidate,
+			'key',
+			(value) => typeof value === 'string' && PLUGIN_FLAG_KEY.test(value)
+		) &&
+		hasOwnDataProperty(candidate, 'label', (value) => typeof value === 'string') &&
+		hasOwnDataProperty(candidate, 'description', (value) => typeof value === 'string') &&
+		hasOwnDataProperty(candidate, 'default', (value) => typeof value === 'boolean') &&
+		hasOwnDataProperty(
+			candidate,
+			'pluginPackageName',
+			(value) => typeof value === 'string' && value.length > 0
+		) &&
+		hasOwnDataProperty(candidate, 'requiredCapabilities', isStringArray) &&
+		PLUGIN_OPTIONAL_STRING_ARRAY_FIELDS.every((field) =>
+			hasOptionalOwnDataProperty(candidate, field, isStringArray)
+		) &&
+		hasOptionalOwnDataProperty(candidate, 'hostedOnly', (value) => typeof value === 'boolean')
+	);
+}
+
+function isStringArray(value: unknown): value is readonly string[] {
+	return Array.isArray(value) && value.every((item) => typeof item === 'string');
+}
+
+function hasOwnDataProperty(
+	candidate: Record<string, unknown>,
+	key: string,
+	isValid: (value: unknown) => boolean
+): boolean {
+	const descriptor = Object.getOwnPropertyDescriptor(candidate, key);
+	return descriptor !== undefined && 'value' in descriptor && isValid(descriptor.value);
+}
+
+function hasOptionalOwnDataProperty(
+	candidate: Record<string, unknown>,
+	key: string,
+	isValid: (value: unknown) => boolean
+): boolean {
+	const descriptor = Object.getOwnPropertyDescriptor(candidate, key);
+	return (
+		descriptor === undefined ||
+		('value' in descriptor && (descriptor.value === undefined || isValid(descriptor.value)))
 	);
 }
 
