@@ -212,6 +212,20 @@ describe('plugin package boundary lint', () => {
 		await expect(checkDirectPluginImports(root, configuredPackages)).resolves.toBeUndefined();
 	});
 
+	it('accepts a canonical ESM dirname derived directly from import.meta.url', async () => {
+		const root = await createRepository({
+			'apps/api/core.ts': `import 'safe-alias';`,
+			'apps/api/vite.config.ts': `import { resolve } from 'node:path';
+				import { fileURLToPath } from 'node:url';
+				const __dirname = fileURLToPath(new URL('.', import.meta.url));
+				export default { resolve: { alias: {
+					'safe-alias': resolve(__dirname, 'src/index.ts'),
+				} } };`,
+		});
+
+		await expect(checkDirectPluginImports(root, configuredPackages)).resolves.toBeUndefined();
+	});
+
 	it.each([
 		[
 			'shadowing constant',
@@ -237,6 +251,51 @@ describe('plugin package boundary lint', () => {
 			'mutation of the unbound value',
 			`__dirname = '/attacker-controlled';
 				export default { resolve: { alias: { safe: resolve(__dirname, 'src') } } };`,
+		],
+		[
+			'object destructuring assignment',
+			`({ __dirname } = { __dirname: '/tmp/node_modules/@acme/mail-plugin' });
+				export default { resolve: { alias: { safe: resolve(__dirname, 'index.js') } } };`,
+		],
+		[
+			'array destructuring assignment',
+			`[__dirname] = ['/tmp/node_modules/@acme/mail-plugin'];
+				export default { resolve: { alias: { safe: resolve(__dirname, 'index.js') } } };`,
+		],
+		[
+			'renamed object property assignment',
+			`({ pluginRoot: __dirname } = { pluginRoot: '/tmp/node_modules/@acme/mail-plugin' });
+				export default { resolve: { alias: { safe: resolve(__dirname, 'index.js') } } };`,
+		],
+		[
+			'for-of assignment',
+			`for (__dirname of ['/tmp/node_modules/@acme/mail-plugin']) {}
+				export default { resolve: { alias: { safe: resolve(__dirname, 'index.js') } } };`,
+		],
+		[
+			'destructured for-of assignment',
+			`for ({ pluginRoot: __dirname } of [{ pluginRoot: '/tmp/node_modules/@acme/mail-plugin' }]) {}
+				export default { resolve: { alias: { safe: resolve(__dirname, 'index.js') } } };`,
+		],
+		[
+			'nested default assignment pattern',
+			`({ nested: { __dirname = '/tmp/node_modules/@acme/mail-plugin' } } = { nested: {} });
+				export default { resolve: { alias: { safe: resolve(__dirname, 'index.js') } } };`,
+		],
+		[
+			'object rest assignment',
+			`({ ...__dirname } = { injected: true });
+				export default { resolve: { alias: { safe: resolve(__dirname, 'index.js') } } };`,
+		],
+		[
+			'array rest assignment',
+			`[...__dirname] = ['/tmp/node_modules/@acme/mail-plugin'];
+				export default { resolve: { alias: { safe: resolve(__dirname, 'index.js') } } };`,
+		],
+		[
+			'for-in assignment',
+			`for (__dirname in { '/tmp/node_modules/@acme/mail-plugin': true }) {}
+				export default { resolve: { alias: { safe: resolve(__dirname, 'index.js') } } };`,
 		],
 	] as const)(
 		'fails closed when %s replaces the legacy dirname binding',
