@@ -33,6 +33,7 @@ import {
 	getDefaultFlags,
 	getFlagsByCategory,
 	resolveFlags,
+	type CoreFeatureFlagKey,
 	type FeatureFlagKey,
 	type FeatureFlagState,
 } from '@owlat/shared/featureFlags';
@@ -265,7 +266,7 @@ async function pickFeatures(hosted: boolean): Promise<FeatureFlagState | null> {
 			`The following flags were turned off because a dependency was disabled:\n` +
 				droppedByCascade
 					.map(([key]) => {
-						const def = FEATURE_FLAGS[key as FeatureFlagKey];
+						const def = FEATURE_FLAGS[key as CoreFeatureFlagKey];
 						return `  • ${def.label} (${key}) — needs ${def.requires?.join(', ')}`;
 					})
 					.join('\n')
