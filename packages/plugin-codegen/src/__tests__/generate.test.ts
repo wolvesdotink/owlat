@@ -34,6 +34,56 @@ async function createZeroPluginWorkspace(): Promise<string> {
 	return root;
 }
 
+async function createComponentPluginWorkspace(): Promise<string> {
+	const root = await createZeroPluginWorkspace();
+	const packageName = 'component-plugin';
+	const packageRoot = join(root, 'node_modules', packageName);
+	await mkdir(join(packageRoot, 'convex'), { recursive: true });
+	await writeFile(
+		join(root, 'package.json'),
+		JSON.stringify({ type: 'module', dependencies: { [packageName]: '1.0.0' } })
+	);
+	await writeFile(
+		join(root, 'bun.lock'),
+		JSON.stringify({
+			workspaces: { '': { dependencies: { [packageName]: '1.0.0' } } },
+			packages: {
+				[packageName]: [
+					`${packageName}@1.0.0`,
+					'',
+					{},
+					`sha512-${Buffer.alloc(64, 0xa5).toString('base64')}`,
+				],
+			},
+		})
+	);
+	await writeFile(
+		join(root, 'plugins.config.ts'),
+		`export default { bundledPluginPackages: [${JSON.stringify(packageName)}] };\n`
+	);
+	await writeFile(
+		join(packageRoot, 'package.json'),
+		JSON.stringify({
+			name: packageName,
+			version: '1.0.0',
+			type: 'module',
+			exports: {
+				'.': './index.js',
+				'./convex/convex.config': './convex/convex.config.js',
+			},
+		})
+	);
+	await writeFile(
+		join(packageRoot, 'index.js'),
+		`export default { id: 'component-test', version: '1.0.0', capabilities: [], component: { exportPath: './convex/convex.config' } };\n`
+	);
+	await writeFile(
+		join(packageRoot, 'convex/convex.config.js'),
+		"import { defineComponent } from 'convex/server';\nexport default defineComponent('component_test');\n"
+	);
+	return root;
+}
+
 afterEach(async () => {
 	await Promise.all(
 		temporaryRoots.splice(0).map((root) => rm(root, { recursive: true, force: true }))
@@ -51,9 +101,33 @@ describe('generated composition freshness', () => {
 
 		await generatePluginComposition(root);
 		const convexPath = join(root, 'apps/api/convex/plugins/plugins.generated.ts');
+		const componentPath = join(root, 'apps/api/convex/plugins/components.generated.ts');
 		const nuxtPath = join(root, 'apps/web/app/plugins/plugin-composition.generated.ts');
 		expect(await readFile(convexPath, 'utf8')).toContain('composeBundledPlugins([]);');
+		expect(await readFile(componentPath, 'utf8')).toContain('void app;');
 		expect(await readFile(nuxtPath, 'utf8')).toContain('defineNuxtPlugin');
+		await expect(generatePluginComposition(root, { check: true })).resolves.toBeUndefined();
+	});
+
+	it('generates component install/remove deterministically from one config source', async () => {
+		const root = await createComponentPluginWorkspace();
+		const componentPath = join(root, 'apps/api/convex/plugins/components.generated.ts');
+
+		await generatePluginComposition(root);
+		const installed = await readFile(componentPath, 'utf8');
+		expect(installed).toContain('from "component-plugin/convex/convex.config"');
+		expect(installed).toContain('{ name: "plugin_component_test" }');
+		await generatePluginComposition(root);
+		expect(await readFile(componentPath, 'utf8')).toBe(installed);
+
+		await writeFile(
+			join(root, 'plugins.config.ts'),
+			'export default { bundledPluginPackages: [] };\n'
+		);
+		await generatePluginComposition(root);
+		const removed = await readFile(componentPath, 'utf8');
+		expect(removed).toContain('void app;');
+		expect(removed).not.toContain('component-plugin');
 		await expect(generatePluginComposition(root, { check: true })).resolves.toBeUndefined();
 	});
 
@@ -81,6 +155,7 @@ describe('generated composition freshness', () => {
 			code: 'generated_files_stale',
 			details: [
 				'apps/api/convex/plugins/plugins.generated.ts',
+				'apps/api/convex/plugins/components.generated.ts',
 				'apps/web/app/plugins/plugin-composition.generated.ts',
 			],
 		});

@@ -23,6 +23,8 @@ export function snapshotManifestInput(value: unknown, issues: PluginManifestIssu
 				return snapshotFlag(propertyValue, issues);
 			case 'llmBudget':
 				return snapshotRecord(propertyValue);
+			case 'component':
+				return snapshotRecord(propertyValue);
 			default:
 				return propertyValue;
 		}

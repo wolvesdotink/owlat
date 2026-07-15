@@ -3,8 +3,10 @@ import betterAuth from './betterAuth/convex.config';
 import rateLimiter from '@convex-dev/rate-limiter/convex.config';
 import workpool from '@convex-dev/workpool/convex.config';
 import './plugins/plugins.generated';
+import { installBundledPluginComponents } from './plugins/components.generated';
 
 const app = defineApp();
+installBundledPluginComponents(app);
 app.use(betterAuth);
 app.use(rateLimiter);
 

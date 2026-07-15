@@ -40,8 +40,8 @@ declares:
 - a semantic `version`;
 - requested `capabilities`;
 - contribution buckets from the platform catalog;
-- optional flag prerequisites, daily LLM budget, and bundled Convex component
-  loader.
+- optional flag prerequisites, daily LLM budget, and a bundled Convex component
+  package export.
 
 `definePlugin` preserves literal TypeScript inference and validates at runtime.
 The non-throwing `validatePluginManifest` and throwing `parsePluginManifest`
@@ -54,8 +54,11 @@ To keep validation bounded at the public unknown-input boundary, a manifest may
 declare at most 64 capabilities, 64 required environment variables, and 256
 entries in each contribution bucket.
 
-Validation inspects component and contribution references but never invokes
-them. Build-time composition remains the only path that imports bundled code.
+Validation inspects component and contribution references as data and never
+invokes them. Component exports are imported statically by generated Convex
+composition, so the framework can discover their isolated namespaces during
+bundling. Build-time composition remains the only path that imports bundled
+code.
 
 ### One static composition config
 
@@ -73,10 +76,12 @@ rejects duplicate package names and manifest ids, and orders the result by
 manifest id using code-point order.
 
 The generator emits checked-in Convex and Nuxt composition modules that both
-pass manifests through the host composition contract. CI and the build graph
-run the generator in non-writing check mode, and a package-boundary lint rejects
-core imports of configured plugin packages outside the generated composition
-files, including Node/Bun loaders and repository aliases. The zero-plugin
+pass manifests through the host composition contract, plus a Convex-only
+installer that statically imports each declared component export and installs
+it under an injective `plugin_<id>` namespace. CI and the build graph run the
+generator in non-writing check mode, and a package-boundary lint rejects core
+imports of configured plugin packages outside the generated composition files,
+including Node/Bun loaders and repository aliases. The zero-plugin
 composition remains a valid no-op deployment. Generated module specifiers are
 branded and revalidated package names encoded as JavaScript strings. Output is
 written through adjacent random exclusive temporary files before atomic rename;
@@ -112,6 +117,27 @@ variables, raw model objects, or arbitrary scheduler function references. This
 keeps the contract usable across the three execution tiers and leaves tenant
 isolation, spend attribution, scrubbing, quotas, and audit enforcement with the
 host.
+
+### Component and storage isolation
+
+A bundled manifest declares a condition-independent Convex component package
+export as data. Codegen verifies that installed export and emits a static
+`app.use` registration under an injective `plugin_<id>` namespace. Installing
+or removing a component therefore changes the checked-in composition and
+requires a rebuild; no backend module is loaded dynamically.
+
+The host-mediated JSON KV service is a separate boundary for connected code.
+Its methods accept keys and values, never tenant or plugin scope. The host binds
+the service to the authenticated organization and validated registered plugin,
+then rechecks the plugin flag and exact `plugin-storage:read` or
+`plugin-storage:write` grant for every operation. Entries are indexed by
+organization, plugin, and key; canonical versioned JSON and UTF-8 keys are
+bounded, paginated cursors are authenticated-encrypted and scope-bound, and
+exact entry/byte quota counters update in the same Convex transaction as each
+write. Because access cannot be enabled or revoked honestly without a flag,
+manifest validation requires an explicit flag whenever either plugin-storage
+capability is declared; flags remain optional without storage. Tier-2 API key
+and HTTP surfaces remain deferred to their dedicated changes.
 
 ### Three execution tiers
 

@@ -86,7 +86,7 @@
 		"plugins:check": "bun run plugins:prepare && bun packages/plugin-codegen/src/cli.ts --check",
 		"plugins:test-clean": "bun packages/plugin-codegen/scripts/cleanCheckoutSmoke.ts",
 		"plugins:test-api-graph": "bun packages/plugin-codegen/scripts/apiTestGraphSmoke.ts",
-		"plugins:test-convex-bundle": "node packages/plugin-codegen/scripts/convexBundleSmoke.ts",
+		"plugins:test-convex-bundle": "bun run plugins:prepare && node packages/plugin-codegen/scripts/convexBundleSmoke.ts",
 		"plugins:test-deploy-graph": "bun packages/plugin-codegen/scripts/deployGraphSmoke.ts",
 		"deploy:api": "turbo deploy --filter=@owlat/api",
 		"ox:lint": "oxlint --config oxlintrc.json",

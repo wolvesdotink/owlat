@@ -6,5 +6,5 @@ export { generatePluginComposition } from './generate';
 export { checkDirectPluginImports } from './packageBoundaries';
 export { loadBundledPlugins } from './packageLoader';
 export type { PackageLoadingOptions } from './packageLoader';
-export { renderPluginComposition } from './render';
+export { convexComponentNamespace, renderPluginComposition } from './render';
 export type { GeneratedPluginComposition } from './render';
