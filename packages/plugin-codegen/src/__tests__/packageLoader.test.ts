@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { loadBundledPlugins } from '../packageLoader';
 
 const temporaryRoots: string[] = [];
+const TEST_INTEGRITY = `sha512-${Buffer.alloc(64, 0xa5).toString('base64')}`;
 
 interface TestPackage {
 	readonly source?: string;
@@ -41,13 +42,18 @@ async function createWorkspace(
 			await writeFile(join(packageRoot, path), source);
 		}
 	}
-	const lockEntries = lockedPackages.map(
-		(packageName) =>
-			`    ${JSON.stringify(packageName)}: [${JSON.stringify(`${packageName}@1.0.0`)}, "", {}, "sha512-test"],`
+	const lockEntries = Object.fromEntries(
+		lockedPackages.map((packageName) => [
+			packageName,
+			[`${packageName}@1.0.0`, '', {}, TEST_INTEGRITY],
+		])
 	);
 	await writeFile(
 		join(root, 'bun.lock'),
-		`{\n  "packages": {\n${lockEntries.join('\n')}\n  }\n}\n`
+		JSON.stringify({
+			workspaces: { '': { dependencies } },
+			packages: lockEntries,
+		})
 	);
 	return root;
 }
@@ -202,6 +208,42 @@ describe('installed plugin loading', () => {
 			[]
 		);
 		await expect(loadBundledPlugins(unlocked, ['mail-plugin'])).rejects.toMatchObject({
+			code: 'dependency_provenance',
+		});
+	});
+
+	it('rejects lock comments, neighboring entries, duplicate keys, and malformed integrity', async () => {
+		const root = await createWorkspace(
+			{ 'mail-plugin': '1.0.0' },
+			{
+				'mail-plugin': `export default { id: 'mail', version: '1.0.0', capabilities: [] };`,
+			}
+		);
+		const rootResolution = `"workspaces":{"":{"dependencies":{"mail-plugin":"1.0.0"}}}`;
+		const spoof = `"mail-plugin": ["mail-plugin@1.0.0", "", {}, "${TEST_INTEGRITY}"]`;
+
+		for (const lockSource of [
+			`{${rootResolution},"packages":{/* ${spoof} */"mail-plugin-nearby":["mail-plugin@1.0.0","",{},"${TEST_INTEGRITY}"]}}`,
+			`{${rootResolution},"packages":{${spoof},${spoof}}}`,
+			`{${rootResolution},"packages":{"mail-plugin":["mail-plugin@1.0.0","",{},"sha512-not-a-digest"]}}`,
+		]) {
+			await writeFile(join(root, 'bun.lock'), lockSource);
+			await expect(loadBundledPlugins(root, ['mail-plugin'])).rejects.toMatchObject({
+				code: 'dependency_provenance',
+			});
+		}
+	});
+
+	it('rejects an oversized lock before parsing it', async () => {
+		const root = await createWorkspace(
+			{ 'mail-plugin': '1.0.0' },
+			{
+				'mail-plugin': `export default { id: 'mail', version: '1.0.0', capabilities: [] };`,
+			}
+		);
+		await writeFile(join(root, 'bun.lock'), ' '.repeat(8 * 1024 * 1024 + 1));
+
+		await expect(loadBundledPlugins(root, ['mail-plugin'])).rejects.toMatchObject({
 			code: 'dependency_provenance',
 		});
 	});

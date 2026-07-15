@@ -1,7 +1,10 @@
-import { readFile, realpath, stat } from 'node:fs/promises';
+import { open, readFile, realpath, stat } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { PluginPackageName } from '@owlat/plugin-host';
+import ts from 'typescript';
 import { PluginCodegenError } from './errors';
+
+const MAX_BUN_LOCK_BYTES = 8 * 1024 * 1024;
 
 interface WorkspacePackageJson {
 	readonly dependencies?: Record<string, unknown>;
@@ -81,7 +84,7 @@ export async function resolveVerifiedPluginEntry(
 			`Bundled plugin ${packageName} must declare an installed package version`
 		);
 	}
-	await verifyRegistryLock(workspaceRoot, packageName, packageJson.version);
+	await verifyRegistryLock(workspaceRoot, packageName, packageJson.version, dependencySpec);
 
 	const exportPath = readConditionIndependentRootExport(packageJson.exports, packageName);
 	const declaredEntryPath = resolve(packageRoot, exportPath);
@@ -155,29 +158,154 @@ function readConditionIndependentRootExport(
 async function verifyRegistryLock(
 	workspaceRoot: string,
 	packageName: PluginPackageName,
-	version: string
+	version: string,
+	dependencySpec: string
 ): Promise<void> {
+	const lockPath = join(workspaceRoot, 'bun.lock');
 	let lockSource: string;
 	try {
-		lockSource = await readFile(join(workspaceRoot, 'bun.lock'), 'utf8');
+		lockSource = await readBoundedUtf8File(lockPath, MAX_BUN_LOCK_BYTES);
 	} catch (cause) {
 		throw new PluginCodegenError(
 			'dependency_provenance',
-			`Bundled plugin ${packageName} must have a frozen bun.lock resolution`,
+			`Bundled plugin ${packageName} must have a readable, bounded bun.lock resolution`,
 			[],
 			{ cause }
 		);
 	}
-	const lockedPackage = `${JSON.stringify(packageName)}: [${JSON.stringify(`${packageName}@${version}`)},`;
-	const entryStart = lockSource.indexOf(lockedPackage);
-	const entryEnd = entryStart < 0 ? -1 : lockSource.indexOf('\n', entryStart);
-	const lockEntry =
-		entryStart < 0 ? '' : lockSource.slice(entryStart, entryEnd < 0 ? undefined : entryEnd);
-	if (!lockEntry.includes('"sha512-')) {
+
+	try {
+		const lock = parseLockObject(lockPath, lockSource);
+		verifyRootLockResolution(lock, packageName, dependencySpec);
+		verifyPackageArtifact(lock, packageName, version);
+	} catch (cause) {
+		if (cause instanceof PluginCodegenError) throw cause;
 		throw new PluginCodegenError(
 			'dependency_provenance',
-			`Bundled plugin ${packageName}@${version} is not pinned to a registry artifact in bun.lock`
+			`Bundled plugin ${packageName}@${version} is not structurally pinned to a registry artifact in bun.lock`,
+			[],
+			{ cause }
 		);
+	}
+}
+
+function verifyRootLockResolution(
+	lock: ts.ObjectLiteralExpression,
+	packageName: PluginPackageName,
+	dependencySpec: string
+): void {
+	const workspaces = requireObjectProperty(lock, 'workspaces');
+	const rootWorkspace = requireObjectProperty(workspaces, '');
+	const dependencyValues = ['dependencies', 'optionalDependencies'].flatMap((field) => {
+		const collection = readUniqueProperty(rootWorkspace, field);
+		if (!collection) return [];
+		if (!ts.isObjectLiteralExpression(collection.initializer)) throw invalidLockStructure();
+		const dependency = readUniqueProperty(collection.initializer, packageName);
+		return dependency ? [readStringInitializer(dependency)] : [];
+	});
+	if (dependencyValues.length !== 1 || dependencyValues[0] !== dependencySpec) {
+		throw invalidLockStructure();
+	}
+}
+
+function verifyPackageArtifact(
+	lock: ts.ObjectLiteralExpression,
+	packageName: PluginPackageName,
+	version: string
+): void {
+	const packages = requireObjectProperty(lock, 'packages');
+	const entry = readUniqueProperty(packages, packageName);
+	if (!entry || !ts.isArrayLiteralExpression(entry.initializer)) throw invalidLockStructure();
+	const elements = entry.initializer.elements;
+	if (
+		elements.length !== 4 ||
+		!ts.isStringLiteral(elements[0]!) ||
+		elements[0].text !== `${packageName}@${version}` ||
+		!ts.isStringLiteral(elements[1]!) ||
+		!ts.isObjectLiteralExpression(elements[2]!) ||
+		!ts.isStringLiteral(elements[3]!) ||
+		!isCanonicalSha512Integrity(elements[3].text)
+	) {
+		throw invalidLockStructure();
+	}
+}
+
+function parseLockObject(path: string, source: string): ts.ObjectLiteralExpression {
+	const sourceFile = ts.parseJsonText(path, source);
+	const diagnostics =
+		(sourceFile as ts.SourceFile & { readonly parseDiagnostics?: readonly ts.Diagnostic[] })
+			.parseDiagnostics ?? [];
+	const statement = sourceFile.statements[0];
+	if (
+		diagnostics.length > 0 ||
+		sourceFile.statements.length !== 1 ||
+		!statement ||
+		!ts.isExpressionStatement(statement) ||
+		!ts.isObjectLiteralExpression(statement.expression)
+	) {
+		throw invalidLockStructure();
+	}
+	return statement.expression;
+}
+
+function requireObjectProperty(
+	object: ts.ObjectLiteralExpression,
+	name: string
+): ts.ObjectLiteralExpression {
+	const property = readUniqueProperty(object, name);
+	if (!property || !ts.isObjectLiteralExpression(property.initializer)) {
+		throw invalidLockStructure();
+	}
+	return property.initializer;
+}
+
+function readUniqueProperty(
+	object: ts.ObjectLiteralExpression,
+	name: string
+): ts.PropertyAssignment | undefined {
+	const matches = object.properties.filter(
+		(property): property is ts.PropertyAssignment =>
+			ts.isPropertyAssignment(property) && readPropertyName(property.name) === name
+	);
+	if (matches.length > 1) throw invalidLockStructure();
+	return matches[0];
+}
+
+function readPropertyName(name: ts.PropertyName): string | undefined {
+	return ts.isStringLiteral(name) || ts.isNumericLiteral(name) || ts.isIdentifier(name)
+		? name.text
+		: undefined;
+}
+
+function readStringInitializer(property: ts.PropertyAssignment): string | undefined {
+	return ts.isStringLiteral(property.initializer) ? property.initializer.text : undefined;
+}
+
+function isCanonicalSha512Integrity(integrity: string): boolean {
+	if (!/^sha512-[A-Za-z0-9+/]{86}==$/.test(integrity)) return false;
+	const encoded = integrity.slice('sha512-'.length);
+	const digest = Buffer.from(encoded, 'base64');
+	return digest.length === 64 && digest.toString('base64') === encoded;
+}
+
+function invalidLockStructure(): PluginCodegenError {
+	return new PluginCodegenError(
+		'dependency_provenance',
+		'bun.lock does not contain one exact root registry resolution and verified package artifact'
+	);
+}
+
+async function readBoundedUtf8File(path: string, maxBytes: number): Promise<string> {
+	const file = await open(path, 'r');
+	try {
+		const initialSize = (await file.stat()).size;
+		if (initialSize > maxBytes) throw new Error(`File exceeds ${maxBytes} bytes`);
+		const buffer = Buffer.allocUnsafe(Math.min(initialSize + 1, maxBytes + 1));
+		const { bytesRead } = await file.read(buffer, 0, buffer.length, 0);
+		if (bytesRead > maxBytes) throw new Error(`File exceeds ${maxBytes} bytes`);
+		return new TextDecoder('utf-8', { fatal: true }).decode(buffer.subarray(0, bytesRead));
+	} finally {
+		await file.close();
 	}
 }
 
