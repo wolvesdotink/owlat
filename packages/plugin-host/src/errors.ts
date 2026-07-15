@@ -24,10 +24,16 @@ export class PluginHostError extends Error {
 	readonly capability?: PluginCapability;
 
 	constructor(code: PluginHostErrorCode, message: string, details: PluginHostErrorDetails) {
-		super(message, details.cause === undefined ? undefined : { cause: details.cause });
+		super(message);
 		this.name = 'PluginHostError';
 		this.code = code;
 		this.pluginId = details.pluginId;
 		this.capability = details.capability;
+		if (details.cause !== undefined) {
+			Object.defineProperty(this, 'cause', {
+				configurable: true,
+				value: details.cause,
+			});
+		}
 	}
 }
