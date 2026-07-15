@@ -255,6 +255,8 @@ describe('featureFlags — plugin namespace', () => {
 		const registry = createFeatureFlagRegistry([pluginFlag]);
 		expect(registry[pluginFlag.key]).toMatchObject(pluginFlag);
 		expect(isPluginFeatureFlagDefinition(registry[pluginFlag.key])).toBe(true);
+		expect(Object.hasOwn(registry[pluginFlag.key]!, 'requires')).toBe(true);
+		expect(registry[pluginFlag.key]?.requires).toBeUndefined();
 		expect(FEATURE_FLAGS).not.toHaveProperty(pluginFlag.key);
 		expect(getFlagsByCategory({ registry }).plugins).toEqual([registry[pluginFlag.key]]);
 	});
@@ -297,6 +299,13 @@ describe('featureFlags — plugin namespace', () => {
 			return 'Inherited behavior';
 		},
 	};
+	function expectInvalidDefinition(value: unknown) {
+		expect(isPluginFeatureFlagDefinition(value)).toBe(false);
+		expect(() =>
+			createFeatureFlagRegistry([value as unknown as PluginFeatureFlagDefinition])
+		).toThrowError(/^Invalid plugin feature flag definition$/);
+	}
+
 	const malformedDefinitions: readonly (readonly [string, unknown])[] = [
 		['null', null],
 		['undefined', undefined],
@@ -333,15 +342,134 @@ describe('featureFlags — plugin namespace', () => {
 		['non-string capabilities', { ...pluginFlag, requiredCapabilities: ['mail:read', 1] }],
 	];
 
-	it.each(malformedDefinitions)(
-		'rejects %s with a deterministic runtime error',
-		(_label, value) => {
-			expect(isPluginFeatureFlagDefinition(value)).toBe(false);
-			expect(() =>
-				createFeatureFlagRegistry([value as unknown as PluginFeatureFlagDefinition])
-			).toThrowError(/^Invalid plugin feature flag definition$/);
+	it.each(malformedDefinitions)('rejects %s with a deterministic runtime error', (_label, value) =>
+		expectInvalidDefinition(value)
+	);
+
+	it.each([
+		['required', 'label'],
+		['optional', 'requires'],
+		['unknown', 'extra'],
+		['symbol', Symbol('extra')],
+	] as const)('rejects a %s own getter without invoking it', (_label, property) => {
+		let getterCalls = 0;
+		const definition = { ...pluginFlag } as Record<PropertyKey, unknown>;
+		Object.defineProperty(definition, property, {
+			enumerable: true,
+			get() {
+				getterCalls += 1;
+				throw new Error('definition getter ran');
+			},
+		});
+
+		expectInvalidDefinition(definition);
+		expect(getterCalls).toBe(0);
+	});
+
+	it.each([
+		['requiredCapabilities', 'mail:read'],
+		['requiredEnvVars', 'POLICY_TOKEN'],
+	] as const)('rejects an accessor-backed %s item without invoking it', (field, initialValue) => {
+		let getterCalls = 0;
+		const items = [initialValue];
+		Object.defineProperty(items, '0', {
+			enumerable: true,
+			get() {
+				getterCalls += 1;
+				throw new Error('array getter ran');
+			},
+		});
+		const definition = { ...pluginFlag, [field]: items };
+
+		expectInvalidDefinition(definition);
+		expect(getterCalls).toBe(0);
+	});
+
+	it.each(['requiredCapabilities', 'requiredEnvVars'] as const)(
+		'rejects a sparse %s array',
+		(field) => {
+			const sparse: string[] = [];
+			sparse.length = 1;
+			const definition = { ...pluginFlag, [field]: sparse };
+			expectInvalidDefinition(definition);
 		}
 	);
+
+	it.each(['requiredCapabilities', 'requiredEnvVars'] as const)(
+		'rejects an oversized %s array',
+		(field) => {
+			const definition = {
+				...pluginFlag,
+				[field]: Array.from({ length: 65 }, (_, index) => `item-${index}`),
+			};
+			expectInvalidDefinition(definition);
+		}
+	);
+
+	it('rejects unknown own data and symbol fields', () => {
+		expectInvalidDefinition({ ...pluginFlag, extra: true });
+		const definition = { ...pluginFlag } as Record<PropertyKey, unknown>;
+		definition[Symbol('extra')] = true;
+		expectInvalidDefinition(definition);
+	});
+
+	it('rejects sparse and accessor-backed definition arrays without reading an item', () => {
+		const sparse: PluginFeatureFlagDefinition[] = [];
+		sparse.length = 1;
+		expect(() =>
+			createFeatureFlagRegistry(sparse as readonly PluginFeatureFlagDefinition[])
+		).toThrowError(/^Invalid plugin feature flag definition$/);
+
+		let getterCalls = 0;
+		const definitions = [pluginFlag];
+		Object.defineProperty(definitions, '0', {
+			enumerable: true,
+			get() {
+				getterCalls += 1;
+				throw new Error('definition array getter ran');
+			},
+		});
+		expect(() => createFeatureFlagRegistry(definitions)).toThrowError(
+			/^Invalid plugin feature flag definition$/
+		);
+		expect(getterCalls).toBe(0);
+	});
+
+	it.each(['ownKeys', 'getOwnPropertyDescriptor'] as const)(
+		'converts a proxy %s inspection failure to the domain error',
+		(trap) => {
+			const definition = new Proxy(
+				{ ...pluginFlag },
+				{
+					[trap]() {
+						throw new Error(`proxy ${trap} failure`);
+					},
+				}
+			);
+
+			expectInvalidDefinition(definition);
+		}
+	);
+
+	it('converts definition-array proxy inspection failures to the domain error', () => {
+		const definitions = new Proxy([pluginFlag], {
+			getOwnPropertyDescriptor() {
+				throw new Error('definition array proxy failure');
+			},
+		});
+		expect(() => createFeatureFlagRegistry(definitions)).toThrowError(
+			/^Invalid plugin feature flag definition$/
+		);
+	});
+
+	it('converts nested array proxy inspection failures to the domain error', () => {
+		const requiredCapabilities = new Proxy(['mail:read'], {
+			ownKeys() {
+				throw new Error('capability proxy failure');
+			},
+		});
+		expectInvalidDefinition({ ...pluginFlag, requiredCapabilities });
+	});
 
 	it('ignores stale and malformed stored plugin keys during resolution', () => {
 		const registry = createFeatureFlagRegistry([pluginFlag]);
