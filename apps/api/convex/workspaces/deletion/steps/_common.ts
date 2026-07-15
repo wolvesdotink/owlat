@@ -139,6 +139,8 @@ export type OrganizationDeletionTable =
 	| 'coalesceBatches'
 	| 'visualizations'
 	| 'dashboardLayouts'
+	| 'pluginStorageEntries'
+	| 'pluginStorageUsage'
 	| 'shareLinks'
 	| 'integrationImports'
 	| 'codeWorkTasks';
@@ -277,6 +279,8 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('coalesceBatches'),
 	v.literal('visualizations'),
 	v.literal('dashboardLayouts'),
+	v.literal('pluginStorageEntries'),
+	v.literal('pluginStorageUsage'),
 	v.literal('shareLinks'),
 	v.literal('integrationImports'),
 	v.literal('codeWorkTasks')
