@@ -1,4 +1,4 @@
-import { basename, relative, sep } from 'node:path';
+import { basename, dirname, relative, resolve, sep } from 'node:path';
 import ts from 'typescript';
 import { readBoundedRepositoryUtf8File } from './boundedRepository';
 import { PluginCodegenError } from './errors';
@@ -145,45 +145,92 @@ function collectFrameworkAliases(
 	sourceFile: ts.SourceFile,
 	aliases: RepositoryModuleAlias[]
 ): void {
+	const staticValues = readFrameworkStaticValues(sourceFile);
 	const visit = (node: ts.Node): void => {
 		if (ts.isPropertyAssignment(node) && readPropertyName(node.name) === 'alias') {
-			collectFrameworkAliasValue(node.initializer, aliases);
+			collectFrameworkAliasValue(node.initializer, aliases, staticValues);
 		}
 		ts.forEachChild(node, visit);
 	};
 	visit(sourceFile);
 }
 
-function collectFrameworkAliasValue(value: ts.Expression, aliases: RepositoryModuleAlias[]): void {
+interface FrameworkStaticValues {
+	readonly configDirectory: string;
+	readonly constants: ReadonlyMap<string, ts.Expression>;
+	readonly pathResolveBindings: ReadonlySet<string>;
+}
+
+function collectFrameworkAliasValue(
+	value: ts.Expression,
+	aliases: RepositoryModuleAlias[],
+	staticValues: FrameworkStaticValues
+): void {
 	if (ts.isObjectLiteralExpression(value)) {
 		for (const property of value.properties) {
-			if (!ts.isPropertyAssignment(property)) continue;
-			const specifierPattern = readPropertyName(property.name);
-			const targetPattern = readStaticString(property.initializer);
-			if (specifierPattern !== undefined && targetPattern !== undefined) {
-				aliases.push({ specifierPattern, targetPattern });
+			if (!ts.isPropertyAssignment(property)) {
+				throw new Error('Framework object aliases must contain only data properties');
 			}
+			const specifierPattern = readPropertyName(property.name);
+			if (specifierPattern === undefined) {
+				throw new Error('Framework object alias names must be static property names');
+			}
+			const targetPattern = readFrameworkStaticString(property.initializer, staticValues);
+			aliases.push({ specifierPattern, targetPattern });
 		}
 		return;
 	}
-	if (!ts.isArrayLiteralExpression(value)) return;
+	if (!ts.isArrayLiteralExpression(value)) {
+		throw new Error('Framework aliases must be an object or an array of alias rules');
+	}
 	for (const element of value.elements) {
-		if (!ts.isObjectLiteralExpression(element)) continue;
-		const find = readUniqueObjectProperty(element, 'find');
-		const replacement = readUniqueObjectProperty(element, 'replacement');
-		const targetPattern = replacement && readStaticString(replacement.initializer);
-		if (targetPattern === undefined) continue;
-		const specifierPattern = find && readFrameworkAliasFind(find.initializer);
-		if (specifierPattern !== undefined) {
-			aliases.push({ specifierPattern, targetPattern });
+		if (!ts.isObjectLiteralExpression(element)) {
+			throw new Error('Framework alias arrays must contain only object rules');
 		}
+		const properties = readFrameworkAliasRule(element);
+		const specifierPattern = readFrameworkAliasFind(properties.find.initializer, staticValues);
+		const targetPattern = readFrameworkStaticString(
+			properties.replacement.initializer,
+			staticValues
+		);
+		aliases.push({ specifierPattern, targetPattern });
 	}
 }
 
-function readFrameworkAliasFind(value: ts.Expression): string | undefined {
-	const staticString = readStaticString(value);
-	if (staticString !== undefined) return staticString;
-	if (!ts.isRegularExpressionLiteral(value)) return undefined;
+function readFrameworkAliasRule(object: ts.ObjectLiteralExpression): {
+	readonly find: ts.PropertyAssignment;
+	readonly replacement: ts.PropertyAssignment;
+} {
+	let find: ts.PropertyAssignment | undefined;
+	let replacement: ts.PropertyAssignment | undefined;
+	for (const property of object.properties) {
+		if (!ts.isPropertyAssignment(property)) {
+			throw new Error('Framework alias rules must contain only data properties');
+		}
+		const name = readPropertyName(property.name);
+		if (name !== 'find' && name !== 'replacement') {
+			throw new Error('Framework alias rules may contain only find and replacement');
+		}
+		if (name === 'find') {
+			if (find) throw new Error('Framework alias rules must define find exactly once');
+			find = property;
+		} else {
+			if (replacement) {
+				throw new Error('Framework alias rules must define replacement exactly once');
+			}
+			replacement = property;
+		}
+	}
+	if (!find || !replacement) {
+		throw new Error('Framework alias rules require one find and one replacement');
+	}
+	return { find, replacement };
+}
+
+function readFrameworkAliasFind(value: ts.Expression, staticValues: FrameworkStaticValues): string {
+	if (!ts.isRegularExpressionLiteral(value)) {
+		return readFrameworkStaticString(value, staticValues);
+	}
 	const match = /^\/(.*)\/([a-z]*)$/.exec(value.text);
 	if (!match || match[2] !== '') {
 		throw new Error('Framework RegExp aliases must be exact and case-sensitive');
@@ -193,6 +240,123 @@ function readFrameworkAliasFind(value: ts.Expression): string | undefined {
 		throw new Error('Framework RegExp aliases must anchor one exact module specifier');
 	}
 	return decodeExactRegExpLiteral(body.slice(1, -1));
+}
+
+function readFrameworkStaticValues(sourceFile: ts.SourceFile): FrameworkStaticValues {
+	const bindingCounts = new Map<string, number>();
+	const constants = new Map<string, ts.Expression>();
+	const pathResolveCandidates = new Set<string>();
+	const countBinding = (name: string): void => {
+		bindingCounts.set(name, (bindingCounts.get(name) ?? 0) + 1);
+	};
+	const countBindingName = (name: ts.BindingName): void => {
+		if (ts.isIdentifier(name)) {
+			countBinding(name.text);
+			return;
+		}
+		for (const element of name.elements) {
+			if (!ts.isOmittedExpression(element)) countBindingName(element.name);
+		}
+	};
+
+	const visitBindings = (node: ts.Node): void => {
+		if (ts.isVariableDeclaration(node)) countBindingName(node.name);
+		else if (ts.isParameter(node)) countBindingName(node.name);
+		else if (
+			(ts.isFunctionDeclaration(node) ||
+				ts.isClassDeclaration(node) ||
+				ts.isEnumDeclaration(node)) &&
+			node.name
+		) {
+			countBinding(node.name.text);
+		} else if (ts.isImportClause(node)) {
+			if (node.name) countBinding(node.name.text);
+		} else if (ts.isNamespaceImport(node)) {
+			countBinding(node.name.text);
+		} else if (ts.isImportSpecifier(node)) {
+			countBinding(node.name.text);
+		}
+		ts.forEachChild(node, visitBindings);
+	};
+	visitBindings(sourceFile);
+
+	for (const statement of sourceFile.statements) {
+		if (
+			ts.isVariableStatement(statement) &&
+			(statement.declarationList.flags & ts.NodeFlags.Const) !== 0
+		) {
+			for (const declaration of statement.declarationList.declarations) {
+				if (ts.isIdentifier(declaration.name) && declaration.initializer) {
+					constants.set(declaration.name.text, declaration.initializer);
+				}
+			}
+		}
+		if (
+			ts.isImportDeclaration(statement) &&
+			ts.isStringLiteral(statement.moduleSpecifier) &&
+			['node:path', 'path'].includes(statement.moduleSpecifier.text) &&
+			statement.importClause?.namedBindings &&
+			ts.isNamedImports(statement.importClause.namedBindings)
+		) {
+			for (const element of statement.importClause.namedBindings.elements) {
+				if ((element.propertyName ?? element.name).text === 'resolve') {
+					pathResolveCandidates.add(element.name.text);
+				}
+			}
+		}
+	}
+
+	return {
+		configDirectory: dirname(sourceFile.fileName),
+		constants: new Map([...constants].filter(([name]) => bindingCounts.get(name) === 1)),
+		pathResolveBindings: new Set(
+			[...pathResolveCandidates].filter((name) => bindingCounts.get(name) === 1)
+		),
+	};
+}
+
+function readFrameworkStaticString(
+	value: ts.Expression,
+	staticValues: FrameworkStaticValues,
+	resolving = new Set<string>()
+): string {
+	const expression = unwrapTypeOnlyExpression(value);
+	const literal = readStaticString(expression);
+	if (literal !== undefined) return literal;
+	if (ts.isIdentifier(expression)) {
+		const initializer = staticValues.constants.get(expression.text);
+		if (!initializer || resolving.has(expression.text)) {
+			throw new Error('Framework alias values must be statically resolvable constants');
+		}
+		const nextResolving = new Set(resolving).add(expression.text);
+		return readFrameworkStaticString(initializer, staticValues, nextResolving);
+	}
+	if (
+		ts.isCallExpression(expression) &&
+		ts.isIdentifier(expression.expression) &&
+		staticValues.pathResolveBindings.has(expression.expression.text) &&
+		expression.arguments.length >= 1 &&
+		ts.isIdentifier(unwrapTypeOnlyExpression(expression.arguments[0]!)) &&
+		unwrapTypeOnlyExpression(expression.arguments[0]!).getText() === '__dirname'
+	) {
+		const parts = expression.arguments
+			.slice(1)
+			.map((argument) => readFrameworkStaticString(argument, staticValues, resolving));
+		return resolve(staticValues.configDirectory, ...parts);
+	}
+	throw new Error('Framework alias values must be static strings or safe path.resolve calls');
+}
+
+function unwrapTypeOnlyExpression(value: ts.Expression): ts.Expression {
+	let expression = value;
+	while (
+		ts.isParenthesizedExpression(expression) ||
+		ts.isAsExpression(expression) ||
+		ts.isSatisfiesExpression(expression)
+	) {
+		expression = expression.expression;
+	}
+	return expression;
 }
 
 function decodeExactRegExpLiteral(source: string): string {
@@ -213,17 +377,6 @@ function decodeExactRegExpLiteral(source: string): string {
 		}
 	}
 	return literal;
-}
-
-function readUniqueObjectProperty(
-	object: ts.ObjectLiteralExpression,
-	name: string
-): ts.PropertyAssignment | undefined {
-	const properties = object.properties.filter(
-		(property): property is ts.PropertyAssignment =>
-			ts.isPropertyAssignment(property) && readPropertyName(property.name) === name
-	);
-	return properties.length === 1 ? properties[0] : undefined;
 }
 
 function readPropertyName(name: ts.PropertyName): string | undefined {
