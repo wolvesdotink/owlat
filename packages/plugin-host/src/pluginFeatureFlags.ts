@@ -1,19 +1,18 @@
 import type { PluginCapability, PluginId } from '@owlat/plugin-kit';
+import type { PluginFeatureFlagDefinition, PluginFeatureFlagKey } from '@owlat/shared/featureFlags';
 import type { BundledPlugin } from './composition';
 import { PluginHostError } from './errors';
+import type { PluginPackageName } from './packageName';
 
-export type BundledPluginFeatureFlagKey = `plugin.${string}`;
+export type BundledPluginFeatureFlagKey = PluginFeatureFlagKey;
 
 /** Framework-neutral definition consumed by the shared feature-flag registry. */
-export interface BundledPluginFeatureFlagDefinition {
-	readonly key: BundledPluginFeatureFlagKey;
-	readonly category: 'plugins';
-	readonly label: string;
-	readonly description: string;
-	readonly default: boolean;
-	readonly requiredEnvVars: readonly string[];
+export interface BundledPluginFeatureFlagDefinition extends Omit<
+	PluginFeatureFlagDefinition,
+	'requiredCapabilities' | 'pluginPackageName'
+> {
 	readonly requiredCapabilities: readonly PluginCapability[];
-	readonly pluginPackageName: string;
+	readonly pluginPackageName: PluginPackageName;
 }
 
 /** Derive the runtime flag catalog from the one validated build composition. */
