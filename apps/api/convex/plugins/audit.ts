@@ -1,18 +1,15 @@
-import type { PluginId } from '@owlat/plugin-kit';
 import type { MutationCtx } from '../_generated/server';
+import {
+	HOSTED_PLUGIN_OPERATION_LITERALS,
+	type HostedPluginOperationLiteral,
+} from '../auditActions/catalog';
 import { recordAuditLog } from '../lib/auditLog';
+import type { HostedPluginActorScope } from './authorization';
 
 export type HostedPluginAuditOutcome = 'completed' | 'denied' | 'failed';
-export const HOSTED_PLUGIN_OPERATIONS = [
-	'llm.generate',
-	'storage.delete',
-	'storage.get',
-	'storage.list',
-	'storage.set',
-] as const;
-export type HostedPluginOperation = (typeof HOSTED_PLUGIN_OPERATIONS)[number];
+export type HostedPluginOperation = HostedPluginOperationLiteral;
 const HOSTED_PLUGIN_OPERATION_SET: ReadonlySet<HostedPluginOperation> = new Set(
-	HOSTED_PLUGIN_OPERATIONS
+	HOSTED_PLUGIN_OPERATION_LITERALS
 );
 
 export interface HostedPluginAuditMetadata {
@@ -21,12 +18,6 @@ export interface HostedPluginAuditMetadata {
 	readonly chargedMicrousd?: number;
 	readonly actualMicrousd?: number;
 	readonly reasonCode?: 'access_or_budget_denied' | 'provider_dispatch_failed';
-}
-
-export interface HostedPluginAuditScope {
-	readonly organizationId: string;
-	readonly pluginId: PluginId;
-	readonly userId: string;
 }
 
 const AUDIT_METADATA_FIELDS = new Set([
@@ -44,7 +35,7 @@ const AUDIT_METADATA_FIELDS = new Set([
  */
 export async function recordHostedPluginAudit(
 	ctx: MutationCtx,
-	scope: HostedPluginAuditScope,
+	scope: HostedPluginActorScope,
 	operation: HostedPluginOperation,
 	outcome: HostedPluginAuditOutcome,
 	metadata: HostedPluginAuditMetadata = {}
