@@ -353,9 +353,11 @@
     },
     "packages/plugin-kit": {
       "name": "@owlat/plugin-kit",
-      "version": "0.1.0",
+      "version": "0.2.1",
       "devDependencies": {
+        "@types/node": "catalog:",
         "@vitest/coverage-v8": "catalog:",
+        "tsup": "^8.5.1",
         "typescript": "catalog:",
         "vitest": "catalog:",
       },
