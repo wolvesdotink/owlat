@@ -72,17 +72,17 @@ export interface FeatureFlagDefinition {
 	description: string;
 	default: boolean;
 	/** Other flags that must be ON for this flag to be ON. */
-	requires?: FeatureFlagKey[];
+	requires?: readonly FeatureFlagKey[];
 	/** When this flag turns OFF, these flags are also turned OFF. */
-	cascadesOff?: FeatureFlagKey[];
+	cascadesOff?: readonly FeatureFlagKey[];
 	/** Env vars required when this flag is ON (collected by setup CLI/UI). */
-	requiredEnvVars?: string[];
+	requiredEnvVars?: readonly string[];
 	/** Docker compose profile names to enable when this flag is ON. */
-	dockerProfiles?: string[];
+	dockerProfiles?: readonly string[];
 	/** Hosted-mode-only flag — hidden from the self-host wizard. */
 	hostedOnly?: boolean;
 	/** Capabilities an operator must explicitly grant before enabling a plugin. */
-	requiredCapabilities?: string[];
+	requiredCapabilities?: readonly string[];
 	/** Installed package that supplied a plugin flag; absent for core flags. */
 	pluginPackageName?: string;
 }
@@ -459,7 +459,7 @@ export function createFeatureFlagRegistry(
 			requiredCapabilities: definition.requiredCapabilities
 				? Object.freeze([...definition.requiredCapabilities])
 				: undefined,
-		}) as FeatureFlagDefinition;
+		});
 	}
 
 	for (const definition of Object.values(registry)) {
@@ -753,7 +753,7 @@ export interface FeaturePack {
 	key: FeaturePackKey;
 	label: string;
 	description: string;
-	flags: CoreFeatureFlagKey[];
+	flags: readonly CoreFeatureFlagKey[];
 }
 
 export const FEATURE_PACKS: Record<FeaturePackKey, FeaturePack> = {

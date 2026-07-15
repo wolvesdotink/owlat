@@ -8,6 +8,10 @@ import {
 import type { PluginFeatureFlagService } from './featureFlags';
 import { runWithPluginFeatureFlag } from './featureFlags';
 import { createPluginPermissionService } from './permissions';
+import {
+	assertPluginEnvironmentRequirements,
+	type PluginEnvironmentService,
+} from './pluginFeatureFlags';
 import type { PluginUntrustedTextPolicy } from './untrustedText';
 import { applyPluginUntrustedTextPolicy, validateUntrustedTextPolicy } from './untrustedText';
 
@@ -15,6 +19,7 @@ export interface CreatePluginHostOptions {
 	readonly manifest: unknown;
 	readonly capabilityGrants: readonly PluginCapabilityGrant[];
 	readonly featureFlags: PluginFeatureFlagService;
+	readonly environment: PluginEnvironmentService;
 	readonly untrustedText: PluginUntrustedTextPolicy;
 }
 
@@ -37,6 +42,7 @@ export function createPluginHost(options: CreatePluginHostOptions): PluginHost {
 	const manifest = parsePluginManifest(options.manifest);
 	const pluginId = manifest.id;
 	const featureFlags = options.featureFlags;
+	const environment = options.environment;
 	const untrustedText = Object.freeze({ ...options.untrustedText });
 	validateUntrustedTextPolicy(pluginId, untrustedText);
 	const permissions = createPluginPermissionService({
@@ -49,7 +55,12 @@ export function createPluginHost(options: CreatePluginHostOptions): PluginHost {
 		requiredCapability: PluginCapability,
 		operation: () => Result | Promise<Result>
 	): Promise<Result> {
-		return runWithPluginFeatureFlag(featureFlags, pluginId, () => {
+		return runWithPluginFeatureFlag(featureFlags, pluginId, async () => {
+			await assertPluginEnvironmentRequirements(
+				environment,
+				pluginId,
+				manifest.flag?.requiredEnvVars ?? []
+			);
 			permissions.require(requiredCapability);
 			return operation();
 		});
