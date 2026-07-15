@@ -160,6 +160,67 @@ describe('plugin package boundary lint', () => {
 		});
 	});
 
+	it('resolves constant-backed Vite object and array alias replacements', async () => {
+		const root = await createRepository({
+			'apps/api/object-alias.ts': `import 'mail-plugin-object';`,
+			'apps/api/array-alias.ts': `import 'mail-plugin-array';`,
+			'apps/api/vite.config.ts': `const pluginPackage = '@acme/mail-plugin';
+				const pluginRuntime = pluginPackage;
+				export default { resolve: { alias: {
+					'mail-plugin-object': pluginPackage,
+				} }, test: { alias: [
+					{ find: 'mail-plugin-array', replacement: pluginRuntime as string },
+				] } };`,
+		});
+
+		await expect(checkDirectPluginImports(root, configuredPackages)).rejects.toMatchObject({
+			code: 'direct_plugin_import',
+			details: [
+				'apps/api/array-alias.ts: imports mail-plugin-array',
+				'apps/api/object-alias.ts: imports mail-plugin-object',
+			],
+		});
+	});
+
+	it('accepts safely resolvable path aliases that do not target a plugin', async () => {
+		const root = await createRepository({
+			'apps/api/core.ts': `import 'safe-alias';`,
+			'apps/api/vite.config.ts': `import { resolve as pathResolve } from 'node:path';
+				const safeTarget = pathResolve(__dirname, 'src/index.ts');
+				export default { resolve: { alias: {
+					'safe-alias': safeTarget,
+				} } };`,
+		});
+
+		await expect(checkDirectPluginImports(root, configuredPackages)).resolves.toBeUndefined();
+	});
+
+	it.each([
+		[`{ 'mail-plugin-alias': process.env.PLUGIN_PACKAGE }`, 'dynamic object replacement'],
+		[
+			`[{ find: process.env.PLUGIN_ALIAS, replacement: '@acme/mail-plugin' }]`,
+			'dynamic array find',
+		],
+		[
+			`[{ find: 'mail-plugin-alias', replacement: process.env.PLUGIN_PACKAGE }]`,
+			'dynamic array replacement',
+		],
+		[
+			`[{ find: 'mail-plugin-alias', replacement: '@acme/mail-plugin', customResolver: {} }]`,
+			'unsupported array property',
+		],
+	] as const)('fails closed for %s', async (alias, _description) => {
+		const root = await createRepository({
+			'apps/api/core.ts': `import 'mail-plugin-alias';`,
+			'apps/api/vite.config.ts': `export default { resolve: { alias: ${alias} } };`,
+		});
+
+		await expect(checkDirectPluginImports(root, configuredPackages)).rejects.toMatchObject({
+			code: 'repository_config_invalid',
+			details: ['apps/api/vite.config.ts'],
+		});
+	});
+
 	it('resolves exact Vite RegExp aliases without executing configuration', async () => {
 		const root = await createRepository({
 			'apps/api/regex-alias.ts': `import 'mail-plugin-alias';`,
