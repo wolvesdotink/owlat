@@ -16,7 +16,7 @@ GEN="convex/_generated/api.d.ts"
 # Special files Convex codegen intentionally omits from the module registry
 # (the schema, the instance auth config, and Convex-component definitions,
 # incl. the betterAuth component).
-EXCLUDE_RE='^convex/(schema|auth\.config|convex\.config|betterAuth/(schema|convex\.config|adapter))\.ts$'
+EXCLUDE_RE='^convex/(schema|auth\.config|convex\.config|plugins/plugins\.generated|betterAuth/(schema|convex\.config|adapter))\.ts$'
 
 missing=0
 while IFS= read -r file; do

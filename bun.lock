@@ -28,6 +28,7 @@
         "@owlat/channels": "workspace:*",
         "@owlat/email-renderer": "workspace:*",
         "@owlat/email-scanner": "workspace:*",
+        "@owlat/plugin-host": "workspace:*",
         "@owlat/shared": "workspace:*",
         "ai": "catalog:ai",
         "better-auth": "catalog:convex",
@@ -234,6 +235,7 @@
         "@owlat/email-builder": "workspace:*",
         "@owlat/email-previewer": "workspace:*",
         "@owlat/email-renderer": "workspace:*",
+        "@owlat/plugin-host": "workspace:*",
         "@owlat/shared": "workspace:*",
         "@tailwindcss/vite": "catalog:vue",
         "better-auth": "catalog:convex",
@@ -348,6 +350,20 @@
         "@types/node": "catalog:",
         "@vitest/coverage-v8": "catalog:",
         "typescript": "catalog:",
+        "vitest": "catalog:",
+      },
+    },
+    "packages/plugin-codegen": {
+      "name": "@owlat/plugin-codegen",
+      "version": "0.2.1",
+      "dependencies": {
+        "@owlat/plugin-host": "workspace:*",
+        "@owlat/plugin-kit": "workspace:*",
+        "typescript": "catalog:",
+      },
+      "devDependencies": {
+        "@types/node": "catalog:",
+        "@vitest/coverage-v8": "catalog:",
         "vitest": "catalog:",
       },
     },
@@ -993,6 +1009,8 @@
     "@owlat/marketing": ["@owlat/marketing@workspace:apps/marketing"],
 
     "@owlat/mta": ["@owlat/mta@workspace:apps/mta"],
+
+    "@owlat/plugin-codegen": ["@owlat/plugin-codegen@workspace:packages/plugin-codegen"],
 
     "@owlat/plugin-host": ["@owlat/plugin-host@workspace:packages/plugin-host"],
 

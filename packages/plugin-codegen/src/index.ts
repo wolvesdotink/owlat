@@ -1,0 +1,10 @@
+export { parsePluginsConfig } from './config';
+export type { PluginsConfig } from './config';
+export { PluginCodegenError } from './errors';
+export type { PluginCodegenErrorCode } from './errors';
+export { generatePluginComposition } from './generate';
+export { checkDirectPluginImports } from './packageBoundaries';
+export { loadBundledPlugins, resolvePackageWithBun } from './packageLoader';
+export type { PackageLoadingOptions } from './packageLoader';
+export { renderPluginComposition } from './render';
+export type { GeneratedPluginComposition } from './render';
