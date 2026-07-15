@@ -1,5 +1,6 @@
 import type { JsonObject, JsonValue } from './json';
 import type { PluginPermissionService } from './capabilities';
+import type { PluginId } from './pluginId';
 
 export type PluginLogFields = Readonly<Record<string, JsonValue>>;
 
@@ -76,7 +77,7 @@ export interface PluginSchedulerService {
 
 /** Services supplied by the host. Plugins never receive a raw Convex context. */
 export interface PluginContext {
-	readonly pluginId: string;
+	readonly pluginId: PluginId;
 	readonly permissions: PluginPermissionService;
 	readonly storage: PluginStorageService;
 	readonly llm: PluginLlmService;

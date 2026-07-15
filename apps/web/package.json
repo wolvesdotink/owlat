@@ -31,6 +31,7 @@
 		"@owlat/email-builder": "workspace:*",
 		"@owlat/email-previewer": "workspace:*",
 		"@owlat/email-renderer": "workspace:*",
+		"@owlat/plugin-host": "workspace:*",
 		"@owlat/shared": "workspace:*",
 		"@tailwindcss/vite": "catalog:vue",
 		"better-auth": "catalog:convex",

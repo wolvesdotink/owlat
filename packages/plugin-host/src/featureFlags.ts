@@ -1,14 +1,15 @@
+import type { PluginId } from '@owlat/plugin-kit';
 import { PluginHostError } from './errors';
 
 export interface PluginFeatureFlagService {
 	/** Only the literal boolean `true` enables a plugin. */
-	isEnabled(pluginId: string): boolean | Promise<boolean>;
+	isEnabled(pluginId: PluginId): boolean | Promise<boolean>;
 }
 
 /** Run statically composed code only while its plugin flag is explicitly on. */
 export async function runWithPluginFeatureFlag<Result>(
 	featureFlags: PluginFeatureFlagService,
-	pluginId: string,
+	pluginId: PluginId,
 	operation: () => Result | Promise<Result>
 ): Promise<Result> {
 	let enabled: boolean;
