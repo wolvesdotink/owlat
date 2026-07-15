@@ -1,0 +1,62 @@
+{
+	"name": "@owlat/plugin-kit",
+	"version": "0.2.1",
+	"description": "Public contracts for building Owlat plugins",
+	"keywords": [
+		"extensions",
+		"owlat",
+		"plugins"
+	],
+	"homepage": "https://owlat.app",
+	"bugs": {
+		"url": "https://github.com/wolvesdotink/owlat/issues"
+	},
+	"license": "Apache-2.0",
+	"author": "wolves <npm@wolves.ink>",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/wolvesdotink/owlat.git",
+		"directory": "packages/plugin-kit"
+	},
+	"files": [
+		"dist",
+		"README.md",
+		"LICENSE",
+		"NOTICE"
+	],
+	"type": "module",
+	"main": "./dist/index.js",
+	"module": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		}
+	},
+	"publishConfig": {
+		"access": "public"
+	},
+	"scripts": {
+		"build": "tsup src/index.ts --format esm --dts --sourcemap --target node20 --clean",
+		"prepack": "bun run build && bun scripts/packageLegalFiles.ts stage",
+		"postpack": "bun scripts/packageLegalFiles.ts clean",
+		"test": "vitest run",
+		"test:watch": "vitest watch",
+		"test:coverage": "vitest run --coverage && bun run test:package",
+		"test:package": "bun run build && bun scripts/packageSmoke.ts",
+		"lint": "oxlint --config ../../oxlintrc.json src scripts",
+		"lint:fix": "oxlint --config ../../oxlintrc.json src scripts --fix",
+		"typecheck": "tsc --noEmit"
+	},
+	"devDependencies": {
+		"@types/node": "catalog:",
+		"@vitest/coverage-v8": "catalog:",
+		"tsup": "^8.5.1",
+		"typescript": "catalog:",
+		"vitest": "catalog:"
+	},
+	"engines": {
+		"node": ">=20.0.0"
+	}
+}
