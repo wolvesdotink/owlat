@@ -7,6 +7,10 @@ import {
 	findDirectPluginImports,
 	isPluginBoundarySourceFile,
 } from '../packageBoundaries';
+import {
+	specifierTargetsConfiguredPackage,
+	type RepositoryModuleAlias,
+} from '../repositoryAliases';
 
 const configuredPackages = ['@acme/mail-plugin'];
 const temporaryRoots: string[] = [];
@@ -268,6 +272,60 @@ describe('plugin package boundary lint', () => {
 			code: 'repository_config_invalid',
 			details: ['apps/api/tsconfig.json'],
 		});
+	});
+
+	it('bounds aggregate repository alias configuration bytes at the exact boundary', async () => {
+		const root = await createRepository({
+			'apps/api/core.ts': `export const safe = true;`,
+			'tsconfig.json': '{}'.padEnd(1024 * 1024, ' '),
+			'tsconfig.test.json': '{}'.padEnd(1024 * 1024 - 2, ' '),
+		});
+		await expect(checkDirectPluginImports(root, configuredPackages)).resolves.toBeUndefined();
+
+		await writeFile(join(root, 'tsconfig.test.json'), '{}'.padEnd(1024 * 1024 - 1, ' '));
+		await expect(checkDirectPluginImports(root, configuredPackages)).rejects.toMatchObject({
+			code: 'repository_config_invalid',
+			details: ['tsconfig.test.json'],
+		});
+	});
+
+	it('bounds produced aliases and attributes the config that exceeds the limit', async () => {
+		const imports = Object.fromEntries(
+			Array.from({ length: 1024 }, (_, index) => [`#alias-${index}`, `safe-${index}`])
+		);
+		const root = await createRepository(
+			{ 'apps/api/core.ts': `export const safe = true;` },
+			{ imports }
+		);
+		await expect(checkDirectPluginImports(root, configuredPackages)).resolves.toBeUndefined();
+
+		await writeFile(
+			join(root, 'package.json'),
+			JSON.stringify({ imports: { ...imports, '#alias-overflow': 'safe-overflow' } })
+		);
+		await expect(checkDirectPluginImports(root, configuredPackages)).rejects.toMatchObject({
+			code: 'repository_config_invalid',
+			details: ['package.json'],
+		});
+	});
+
+	it('allows the exact alias matcher work budget and fails closed one comparison later', () => {
+		const aliases: RepositoryModuleAlias[] = Array.from({ length: 1024 }, (_, index) => ({
+			specifierPattern: `unused-${index}`,
+			targetPattern: `still-unused-${index}`,
+		}));
+		for (let stage = 0; stage < 7; stage += 1) {
+			aliases[stage] = {
+				specifierPattern: `chain-${stage}`,
+				targetPattern: `chain-${stage + 1}`,
+			};
+		}
+		expect(specifierTargetsConfiguredPackage('chain-0', configuredPackages, aliases)).toBe(false);
+
+		aliases[7] = { specifierPattern: 'chain-7', targetPattern: 'chain-8' };
+		expect(() => specifierTargetsConfiguredPackage('chain-0', configuredPackages, aliases)).toThrow(
+			expect.objectContaining({ code: 'repository_config_invalid' })
+		);
 	});
 
 	it('rejects oversized source before parsing it', async () => {

@@ -57,6 +57,20 @@ describe('generated composition freshness', () => {
 		await expect(generatePluginComposition(root, { check: true })).resolves.toBeUndefined();
 	});
 
+	it('reads plugins.config.ts at its byte boundary and rejects one byte more', async () => {
+		const root = await createZeroPluginWorkspace();
+		const configPath = join(root, 'plugins.config.ts');
+		const config = 'export default { bundledPluginPackages: [] };\n';
+		await writeFile(configPath, config.padEnd(64 * 1024, ' '));
+		await expect(generatePluginComposition(root)).resolves.toBeUndefined();
+
+		await writeFile(configPath, config.padEnd(64 * 1024 + 1, ' '));
+		await expect(generatePluginComposition(root)).rejects.toMatchObject({
+			code: 'config_invalid',
+			message: expect.stringContaining('65536 bytes'),
+		});
+	});
+
 	it('reports every stale or missing generated target without rewriting it', async () => {
 		const root = await createZeroPluginWorkspace();
 		const convexPath = join(root, 'apps/api/convex/plugins/plugins.generated.ts');
@@ -71,6 +85,24 @@ describe('generated composition freshness', () => {
 			],
 		});
 		expect(await readFile(convexPath, 'utf8')).toBe('// stale and must remain unchanged\n');
+	});
+
+	it('bounds existing generated files before freshness comparison', async () => {
+		const root = await createZeroPluginWorkspace();
+		const convexPath = join(root, 'apps/api/convex/plugins/plugins.generated.ts');
+		await mkdir(dirname(convexPath), { recursive: true });
+		await writeFile(convexPath, ' '.repeat(4 * 1024 * 1024));
+		await expect(generatePluginComposition(root, { check: true })).rejects.toMatchObject({
+			code: 'generated_files_stale',
+			message: 'Bundled plugin composition is stale; run bun run plugins:codegen',
+		});
+
+		await writeFile(convexPath, ' '.repeat(4 * 1024 * 1024 + 1));
+		await expect(generatePluginComposition(root, { check: true })).rejects.toMatchObject({
+			code: 'generated_files_stale',
+			message: expect.stringContaining('4194304 bytes'),
+			details: ['apps/api/convex/plugins/plugins.generated.ts'],
+		});
 	});
 
 	it('supports concurrent generation in one process without temporary-file collisions', async () => {

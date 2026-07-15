@@ -18,6 +18,42 @@ const SKIPPED_FALLBACK_DIRECTORIES = new Set([
 	'target',
 ]);
 
+export type BoundedRepositoryFileErrorReason =
+	| 'changed'
+	| 'invalid_utf8'
+	| 'not_regular'
+	| 'outside_workspace'
+	| 'too_large';
+
+export class BoundedRepositoryFileError extends Error {
+	readonly reason: BoundedRepositoryFileErrorReason;
+
+	constructor(reason: BoundedRepositoryFileErrorReason, message: string, options?: ErrorOptions) {
+		super(message, options);
+		this.name = 'BoundedRepositoryFileError';
+		this.reason = reason;
+	}
+}
+
+export class Utf8ByteBudget {
+	readonly maxBytes: number;
+	#usedBytes = 0;
+
+	constructor(maxBytes: number) {
+		if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) {
+			throw new TypeError('UTF-8 byte budget must be a non-negative safe integer');
+		}
+		this.maxBytes = maxBytes;
+	}
+
+	consume(source: string): boolean {
+		const byteLength = Buffer.byteLength(source, 'utf8');
+		if (byteLength > this.maxBytes - this.#usedBytes) return false;
+		this.#usedBytes += byteLength;
+		return true;
+	}
+}
+
 /** Build one deterministic, bounded inventory for every repository security scan. */
 export async function listRepositoryFiles(workspaceRoot: string): Promise<readonly string[]> {
 	const gitMetadata = await readPathEntry(join(workspaceRoot, '.git'));
@@ -41,13 +77,25 @@ export async function readBoundedRepositoryUtf8File(
 ): Promise<string> {
 	const resolvedRoot = resolve(workspaceRoot);
 	const resolvedPath = resolve(path);
-	assertPathInside(resolvedRoot, resolvedPath);
+	try {
+		assertPathInside(resolvedRoot, resolvedPath);
+	} catch (cause) {
+		throw new BoundedRepositoryFileError(
+			'outside_workspace',
+			`Path ${resolvedPath} is outside the workspace`,
+			{ cause }
+		);
+	}
 	const realRoot = await realpath(resolvedRoot);
 	const file = await open(resolvedPath, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
 	try {
 		const opened = await file.stat();
-		if (!opened.isFile()) throw new Error('Path is not a regular file');
-		if (opened.size > maxBytes) throw new Error(`File exceeds ${maxBytes} bytes`);
+		if (!opened.isFile()) {
+			throw new BoundedRepositoryFileError('not_regular', 'Path is not a regular file');
+		}
+		if (opened.size > maxBytes) {
+			throw new BoundedRepositoryFileError('too_large', `File exceeds ${maxBytes} bytes`);
+		}
 
 		const current = await lstat(resolvedPath);
 		if (
@@ -56,9 +104,17 @@ export async function readBoundedRepositoryUtf8File(
 			current.dev !== opened.dev ||
 			current.ino !== opened.ino
 		) {
-			throw new Error('File changed identity while it was opened');
+			throw new BoundedRepositoryFileError('changed', 'File changed identity while it was opened');
 		}
-		assertPathInside(realRoot, await realpath(resolvedPath));
+		try {
+			assertPathInside(realRoot, await realpath(resolvedPath));
+		} catch (cause) {
+			throw new BoundedRepositoryFileError(
+				'outside_workspace',
+				'File resolves outside the workspace',
+				{ cause }
+			);
+		}
 
 		const buffer = Buffer.allocUnsafe(maxBytes + 1);
 		let offset = 0;
@@ -66,9 +122,15 @@ export async function readBoundedRepositoryUtf8File(
 			const { bytesRead } = await file.read(buffer, offset, buffer.length - offset, offset);
 			if (bytesRead === 0) break;
 			offset += bytesRead;
-			if (offset > maxBytes) throw new Error(`File exceeds ${maxBytes} bytes`);
+			if (offset > maxBytes) {
+				throw new BoundedRepositoryFileError('too_large', `File exceeds ${maxBytes} bytes`);
+			}
 		}
-		return new TextDecoder('utf-8', { fatal: true }).decode(buffer.subarray(0, offset));
+		try {
+			return new TextDecoder('utf-8', { fatal: true }).decode(buffer.subarray(0, offset));
+		} catch (cause) {
+			throw new BoundedRepositoryFileError('invalid_utf8', 'File is not valid UTF-8', { cause });
+		}
 	} finally {
 		await file.close();
 	}

@@ -1,7 +1,11 @@
 import { extname, relative, sep } from 'node:path';
 import { parse as parseVueSfc } from '@vue/compiler-sfc';
 import ts from 'typescript';
-import { listRepositoryFiles, readBoundedRepositoryUtf8File } from './boundedRepository';
+import {
+	listRepositoryFiles,
+	readBoundedRepositoryUtf8File,
+	Utf8ByteBudget,
+} from './boundedRepository';
 import { PluginCodegenError } from './errors';
 import {
 	readRepositoryModuleAliases,
@@ -51,7 +55,7 @@ export async function checkDirectPluginImports(
 		);
 	});
 	const findings: DirectPluginImport[] = [];
-	let totalSourceBytes = 0;
+	const sourceBudget = new Utf8ByteBudget(MAX_TOTAL_SOURCE_BYTES);
 	for (const file of files) {
 		const relativeFile = normalizePath(relative(workspaceRoot, file));
 		if (GENERATED_COMPOSITION_FILES.has(relativeFile)) continue;
@@ -61,8 +65,7 @@ export async function checkDirectPluginImports(
 		} catch (cause) {
 			throw sourceInvalid(relativeFile, cause);
 		}
-		totalSourceBytes += Buffer.byteLength(source, 'utf8');
-		if (totalSourceBytes > MAX_TOTAL_SOURCE_BYTES) {
+		if (!sourceBudget.consume(source)) {
 			throw new PluginCodegenError(
 				'repository_inventory_invalid',
 				`Repository source scan exceeds the ${MAX_TOTAL_SOURCE_BYTES}-byte safety limit`

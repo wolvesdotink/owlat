@@ -2,7 +2,7 @@ import ts from 'typescript';
 import { parsePluginPackageName, type PluginPackageName } from '@owlat/plugin-host';
 import { PluginCodegenError } from './errors';
 
-const MAX_CONFIG_BYTES = 64 * 1024;
+export const MAX_PLUGIN_CONFIG_BYTES = 64 * 1024;
 const MAX_BUNDLED_PLUGINS = 128;
 
 export interface PluginsConfig {
@@ -18,8 +18,8 @@ export function parsePluginsConfig(
 	source: string,
 	fileName = 'plugins.config.ts'
 ): ParsedPluginsConfig {
-	if (Buffer.byteLength(source, 'utf8') > MAX_CONFIG_BYTES) {
-		throw configError(`must be no larger than ${MAX_CONFIG_BYTES} bytes`);
+	if (Buffer.byteLength(source, 'utf8') > MAX_PLUGIN_CONFIG_BYTES) {
+		throw configError(`must be no larger than ${MAX_PLUGIN_CONFIG_BYTES} bytes`);
 	}
 
 	const sourceFile = ts.createSourceFile(
