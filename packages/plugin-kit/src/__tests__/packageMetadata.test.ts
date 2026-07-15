@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 interface PackageMetadata {
 	readonly version: string;
+	readonly license?: string;
 	readonly files?: readonly string[];
 	readonly main?: string;
 	readonly module?: string;
@@ -25,10 +26,22 @@ describe('published package metadata', () => {
 		const pluginKitPackage = readPackage(new URL('../../package.json', import.meta.url));
 
 		expect(pluginKitPackage).toMatchObject({
-			files: ['dist', 'README.md'],
+			license: 'Apache-2.0',
+			files: ['dist', 'README.md', 'LICENSE', 'NOTICE'],
 			main: './dist/index.js',
 			module: './dist/index.js',
 			types: './dist/index.d.ts',
 		});
+	});
+
+	it('uses the repository Apache license and Owlat notice as package legal files', () => {
+		const license = readFileSync(new URL('../../../../LICENSE', import.meta.url), 'utf8');
+		const notice = readFileSync(new URL('../../../../NOTICE', import.meta.url), 'utf8');
+
+		expect(license).toContain('Apache License');
+		expect(license).toContain('Version 2.0, January 2004');
+		expect(notice).toBe(
+			'Owlat\nCopyright 2026 Wolves\n\nLicensed under the Apache License, Version 2.0.\n'
+		);
 	});
 });

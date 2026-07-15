@@ -1,10 +1,12 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { cleanPackageLegalFiles, PACKAGE_LEGAL_FILES } from './packageLegalFiles';
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const repositoryRoot = resolve(packageRoot, '../..');
 const temporaryRoot = mkdtempSync(join(tmpdir(), 'owlat-plugin-kit-'));
 const packageMetadata = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')) as {
 	name: string;
@@ -22,8 +24,20 @@ function run(command: string, args: string[], cwd: string): string {
 	});
 }
 
+function runBytes(command: string, args: string[], cwd: string): Buffer {
+	return execFileSync(command, args, {
+		cwd,
+		stdio: ['ignore', 'pipe', 'pipe'],
+	});
+}
+
 try {
-	run('bun', ['pm', 'pack', '--ignore-scripts', '--destination', temporaryRoot], packageRoot);
+	run('bun', ['pm', 'pack', '--destination', temporaryRoot], packageRoot);
+	for (const file of PACKAGE_LEGAL_FILES) {
+		if (existsSync(join(packageRoot, file))) {
+			throw new Error(`Postpack did not remove staged ${file}`);
+		}
+	}
 
 	const archiveFiles = run('tar', ['-tzf', archivePath], packageRoot).trim().split('\n');
 	const requiredFiles = [
@@ -32,12 +46,20 @@ try {
 		'package/dist/index.js',
 		'package/dist/index.js.map',
 		'package/dist/index.d.ts',
+		...PACKAGE_LEGAL_FILES.map((file) => `package/${file}`),
 	];
 	for (const file of requiredFiles) {
 		if (!archiveFiles.includes(file)) throw new Error(`Package archive is missing ${file}`);
 	}
 	if (archiveFiles.some((file) => file.includes('__tests__') || file.startsWith('package/src/'))) {
 		throw new Error('Package archive contains source tests or unbuilt source files');
+	}
+	for (const file of PACKAGE_LEGAL_FILES) {
+		const packedContents = runBytes('tar', ['-xOzf', archivePath, `package/${file}`], packageRoot);
+		const canonicalContents = readFileSync(join(repositoryRoot, file));
+		if (!packedContents.equals(canonicalContents)) {
+			throw new Error(`Packed ${file} differs from the repository canonical file`);
+		}
 	}
 
 	mkdirSync(consumerRoot);
@@ -132,5 +154,6 @@ void manifest;
 	) as { exports?: Record<string, unknown> };
 	if (!installedManifest.exports?.['.']) throw new Error('Installed package has no root export');
 } finally {
+	cleanPackageLegalFiles();
 	rmSync(temporaryRoot, { recursive: true, force: true });
 }
