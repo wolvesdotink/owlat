@@ -9,9 +9,10 @@
 		".": "./src/index.ts"
 	},
 	"scripts": {
-		"test": "vitest run",
-		"test:watch": "vitest watch",
-		"test:coverage": "vitest run --coverage",
+		"prepare:contracts": "bun run --cwd ../plugin-kit build",
+		"test": "bun run prepare:contracts && vitest run",
+		"test:watch": "bun run prepare:contracts && vitest watch",
+		"test:coverage": "bun run prepare:contracts && vitest run --coverage",
 		"lint": "oxlint --config ../../oxlintrc.json src scripts",
 		"lint:fix": "oxlint --config ../../oxlintrc.json src scripts --fix",
 		"typecheck": "tsc --noEmit"
