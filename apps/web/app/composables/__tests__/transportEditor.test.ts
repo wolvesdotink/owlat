@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { seedOutboundTlsMode } from '../setupOutboundTls';
 import {
 	PROVIDER_ENV_KEYS,
 	SMTP_RELAY_PRESETS,
@@ -128,6 +129,68 @@ describe('transport editor — validation gating', () => {
 			},
 		});
 		expect(emailStepIsValid(d)).toBe(true);
+	});
+});
+
+describe('transport editor — outbound TLS mode (OUTBOUND_TLS_MODE)', () => {
+	it('emits the chosen outbound TLS mode for the built-in MTA transport', () => {
+		const env = buildProviderEnv(
+			{},
+			draft({ provider: 'mta', outboundTlsMode: 'require-verified' })
+		);
+		expect(env['EMAIL_PROVIDER']).toBe('mta');
+		expect(env['OUTBOUND_TLS_MODE']).toBe('require-verified');
+	});
+
+	it('defaults an omitted mode to opportunistic (byte-identical to historic behaviour)', () => {
+		const env = buildProviderEnv({}, draft({ provider: 'mta' }));
+		expect(env['OUTBOUND_TLS_MODE']).toBe('opportunistic');
+	});
+
+	it('never emits OUTBOUND_TLS_MODE for a relay/API transport (their TLS is the provider’s concern)', () => {
+		for (const env of [
+			buildProviderEnv({}, draft({ provider: 'resend', resendKey: 'k' })),
+			buildProviderEnv(
+				{},
+				draft({
+					provider: 'smtp',
+					smtp: {
+						preset: 'custom',
+						host: 'h',
+						port: '587',
+						secure: false,
+						username: 'u',
+						password: 'p',
+					},
+					outboundTlsMode: 'require-verified',
+				})
+			),
+		]) {
+			expect(env['OUTBOUND_TLS_MODE']).toBeUndefined();
+		}
+	});
+
+	it('OUTBOUND_TLS_MODE is inside the server allowlist so the patch is accepted', () => {
+		expect(PROVIDER_ENV_KEYS).toContain('OUTBOUND_TLS_MODE');
+	});
+
+	// Regression: an admin who set `require-verified` and later re-applies any
+	// transport edit must NOT have the floor silently reset to `opportunistic`.
+	// The editor seeds its mode from the active value (status query) via
+	// `seedOutboundTlsMode`; re-applying then re-emits the SAME floor.
+	it('re-apply preserves a previously-set mode (no silent downgrade)', () => {
+		// Seeded from the active OUTBOUND_TLS_MODE, exactly as the editor does.
+		const seeded = seedOutboundTlsMode('require-verified');
+		expect(seeded).toBe('require-verified');
+		const env = buildProviderEnv({}, draft({ provider: 'mta', outboundTlsMode: seeded }));
+		expect(env['OUTBOUND_TLS_MODE']).toBe('require-verified');
+	});
+
+	it('seedOutboundTlsMode falls back to opportunistic for an unset/unknown active value', () => {
+		expect(seedOutboundTlsMode(null)).toBe('opportunistic');
+		expect(seedOutboundTlsMode(undefined)).toBe('opportunistic');
+		expect(seedOutboundTlsMode('bogus')).toBe('opportunistic');
+		expect(seedOutboundTlsMode('require')).toBe('require');
 	});
 });
 

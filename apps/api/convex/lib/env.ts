@@ -12,6 +12,13 @@ export type EnvKey =
 	// Auth & instance
 	| 'BETTER_AUTH_SECRET'
 	| 'INSTANCE_SECRET'
+	// The PREVIOUS INSTANCE_SECRET, set ONLY during a secret rotation window
+	// (Sealed Mail key lifecycle, E6). While set, the E2EE key box opens a sealed
+	// private key under the current secret and, on failure, falls back to this one
+	// — so the vault keeps reading correctly mid-migration while
+	// `e2ee/lifecycleNode.ts:reSealVault` re-seals every row under the new secret.
+	// Remove it once the re-seal migration has completed. Unset ⇒ no fallback.
+	| 'INSTANCE_SECRET_PREVIOUS'
 	| 'OWLAT_VERSION'
 	// When set to 'true' / '1' / 'yes' / 'on', enables dev-only endpoints
 	// (`/seed/demo`, `/dev/reset`, `forceVerifyDomain`). Fail-closed default:
@@ -50,6 +57,14 @@ export type EnvKey =
 	// the pool IPs, so the bounce envelope passes SPF at receivers that check
 	// MAIL FROM. Unset ⇒ no return-path SPF record is generated.
 	| 'MTA_RETURN_PATH_DOMAIN'
+	// The DKIM signing domain (`d=` tag) the ACTIVE transport stamps on outbound
+	// mail, when it isn't the per-message From-domain. The built-in MTA signs
+	// per-From-domain, so it leaves this unset (and aligns by construction); a
+	// generic SMTP relay that re-signs as its OWN domain (e.g. `sendgrid.net`)
+	// sets this so the outbound DMARC-alignment guard can detect that the relay's
+	// signature won't align with the operator's sending domains. Unset ⇒ the guard
+	// treats DKIM as per-From-domain (MTA) or undeclared (relay).
+	| 'OUTBOUND_DKIM_DOMAIN'
 	// Comma-separated list of the IP-pool addresses the MTA sends from. Used to
 	// generate the return-path SPF record (each IP authorized via `ip4:`).
 	| 'MTA_IP_POOLS'
@@ -64,6 +79,12 @@ export type EnvKey =
 	// Unset ⇒ no `_smtp._tls` record (Owlat does not provision a per-customer
 	// `tls-reports@<domain>` mailbox, so reports would otherwise go unread).
 	| 'MTA_TLSRPT_RUA'
+	// Outbound TLS posture for the built-in MTA's direct-MX delivery
+	// (`opportunistic` | `require` | `require-verified`). Written by the delivery
+	// transport editor and surfaced read-only to that editor via
+	// `delivery/status.ts:getStatus` so re-applying an edit preserves the chosen
+	// floor. The MTA itself reads this from its own config; unset ⇒ `opportunistic`.
+	| 'OUTBOUND_TLS_MODE'
 	| 'MTA_WEBHOOK_SECRET'
 	// Mail sync worker (external IMAP/SMTP accounts)
 	| 'MAIL_SYNC_API_URL'

@@ -19,12 +19,16 @@ import { internalAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { logError, logInfo } from '../lib/runtimeLog';
+import { storeSealedBlob, sealedBlobUrl } from '../lib/sealedBlob';
 import { renderEmailHtml, renderPlainText, renderAmpEmail } from '@owlat/email-renderer';
 import type { EditorBlock } from '@owlat/shared/types';
 import { getMailSyncConfig, getMtaConfig, scanAttachmentBytes } from './mtaClient';
 import type { TransitionOutcome as DraftTransitionOutcome } from './draftLifecycle';
 import { buildMessageId, buildRfc822, stripHtml, type DraftRow } from './rfc822';
 import { rewriteInlineImageCids, isInlineImageReferenced } from '@owlat/shared/inlineImages';
+import { decideSeal, type OutboundEncryptionInfo } from './sealPolicy';
+import { sealMime, type SealedMime } from '../e2ee/seal';
+import { openPrivateKey } from '../e2ee/sealing';
 
 /**
  * Resolve the final HTML + plain-text (+ optional AMP) bodies for an outbound
@@ -161,7 +165,10 @@ async function dispatchViaExternalWorker(
 		});
 		return;
 	}
-	const rawEmlUrl = await ctx.storage.getUrl(params.rawStorageId);
+	// E8b: the stored `.eml` is sealed at rest, so hand the worker a
+	// decrypt-serving proxy URL — it fetches back the PLAINTEXT bytes to APPEND
+	// the sent copy remotely, exactly as it did with the bare storage URL.
+	const rawEmlUrl = await sealedBlobUrl(ctx.storage, params.rawStorageId, 'message/rfc822');
 	if (!rawEmlUrl) {
 		logError(`[Outbound] Missing raw .eml for external send of ${params.mailMessageId}`);
 		await transitionAll({
@@ -348,7 +355,7 @@ export const dispatchDraft = internalAction({
 		draft.bodyText = rendered.text;
 		draft.bodyAmp = rendered.amp;
 
-		const { raw, size } = buildRfc822(
+		const { raw } = buildRfc822(
 			draft,
 			attachmentBuffers,
 			rfc822MessageId,
@@ -356,15 +363,104 @@ export const dispatchDraft = internalAction({
 			referencesHeaderValue
 		);
 
-		// Store the raw .eml in Convex storage. Convert to Uint8Array first
-		// because Blob's BlobPart type doesn't accept the Node Buffer<Shared|
-		// ArrayBuffer> union directly under newer @types/node.
-		const rawBytes = new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength);
-		const rawStorageId = await ctx.storage.store(
-			// `BlobPart` typings reject Uint8Array<ArrayBufferLike> under newer
-			// @types/node; the runtime accepts it. Cast through unknown.
-			new Blob([rawBytes as unknown as BlobPart], { type: 'message/rfc822' })
+		// ── Sealed Mail (E3): seal the built message into signed+encrypted PGP/MIME
+		// when the org policy allows AND EVERY recipient has a usable pinned key
+		// (locked decisions D1/D2/D4). One keyless recipient => plaintext with the
+		// reason recorded — NEVER a mixed send (D2). The agent-reply path flows
+		// through this exact code (agent drafts dispatch via `dispatchDraft` too),
+		// so it seals identically with no special-casing. When sealed, the stored
+		// `.eml` and the on-wire body are ciphertext; the real subject travels
+		// inside and the outer subject is the literal placeholder "..." (D4).
+		const sealRecipients = [...draft.toAddresses, ...draft.ccAddresses, ...draft.bccAddresses];
+		let sealInputs = await ctx.runQuery(internal.mail.outboundQueries.getOutboundSealInputs, {
+			fromAddress: draft.fromAddress,
+			recipients: sealRecipients,
+		});
+		// First contact must get the same chance to seal as a previously-seen peer.
+		// Refresh only absent/expired cache rows, only when auto-sealing could
+		// actually proceed. Discovery is fail-soft and cache-aware; one peer's
+		// network failure becomes an honest plaintext decision, never a stuck send.
+		if (
+			sealInputs.flagEnabled &&
+			sealInputs.policy === 'auto' &&
+			sealInputs.hasSigningKey &&
+			sealInputs.discoveryAddresses.length > 0
+		) {
+			await Promise.all(
+				sealInputs.discoveryAddresses.map((address: string) =>
+					ctx.runAction(internal.e2ee.discovery.discoverRecipientKey, { address })
+				)
+			);
+			sealInputs = await ctx.runQuery(internal.mail.outboundQueries.getOutboundSealInputs, {
+				fromAddress: draft.fromAddress,
+				recipients: sealRecipients,
+			});
+		}
+		const sealDecision = decideSeal(sealInputs);
+
+		let storedBytes: Buffer = raw;
+		let sealed: SealedMime | null = null;
+		let encryptionInfo: OutboundEncryptionInfo;
+		if (sealDecision.seal) {
+			// Open the sender's private signing key from the vault (Node plane only).
+			const signingRow = await ctx.runQuery(internal.e2ee.keys.getAddressKeyInternal, {
+				address: draft.fromAddress,
+			});
+			if (!signingRow) {
+				// The key vanished between the readiness check and here — fail SOFT to
+				// plaintext with the reason recorded rather than blocking the send.
+				encryptionInfo = { isSealed: false, reason: 'no_signing_key' };
+			} else {
+				const signingKeyArmored = openPrivateKey(signingRow.sealedPrivateKey);
+				sealed = await sealMime(raw.toString('utf-8'), {
+					recipientPublicKeysArmored: sealDecision.recipientPublicKeysArmored,
+					signingKeyArmored,
+					protectSubject: true,
+				});
+				storedBytes = Buffer.from(sealed.mime, 'utf-8');
+				encryptionInfo = {
+					isSealed: true,
+					algorithm: sealed.encryptionInfo.algorithm,
+					recipientFingerprints: sealed.encryptionInfo.recipientFingerprints,
+					signingFingerprint: sealed.encryptionInfo.signingFingerprint,
+				};
+			}
+		} else {
+			encryptionInfo = { isSealed: false, reason: sealDecision.reason };
+		}
+		// Consent is checked again after discovery and crypto because either can
+		// change during the undo window. Never silently downgrade a normal Send to
+		// plaintext; return the draft to the composer for an explicit choice.
+		if (sealInputs.flagEnabled && !encryptionInfo.isSealed && !draft.isUnsealedSendAllowed) {
+			logError(
+				`[Outbound] Refusing unsealed dispatch for draft ${args.draftId}: explicit consent missing`
+			);
+			await ctx.runMutation(internal.mail.draftLifecycle.transition, {
+				draftId: args.draftId,
+				input: {
+					to: 'draft',
+					at: Date.now(),
+					reason: 'seal_consent_required',
+				},
+			});
+			return;
+		}
+		const storedSize = storedBytes.length;
+
+		// Store the raw .eml in Convex storage — `storedBytes` is the E2EE-SEALED
+		// wire bytes when Sealed Mail applied. Convert to Uint8Array first because
+		// Blob's BlobPart type doesn't accept the Node Buffer<Shared|ArrayBuffer>
+		// union directly under newer @types/node.
+		const rawBytes = new Uint8Array(
+			storedBytes.buffer,
+			storedBytes.byteOffset,
+			storedBytes.byteLength
 		);
+		// E8b: wrap the bytes in the AT-REST byte cipher so the stored sent copy is
+		// ciphertext on disk. The outbound MTA / external-SMTP worker fetch the
+		// `.eml` back through the `/sealed-blob` decrypt-serving proxy (see the
+		// `rawEmlUrl` mint below), so what goes on the wire is the plaintext .eml.
+		const rawStorageId = await storeSealedBlob(ctx.storage, rawBytes, 'message/rfc822');
 
 		// Hand off to the lifecycle module — atomic with the six-table
 		// cascade, draft row delete, attachment-blob cleanup, address-book
@@ -380,7 +476,10 @@ export const dispatchDraft = internalAction({
 					at: Date.now(),
 					context: {
 						rawStorageId,
-						rawSize: size,
+						rawSize: storedSize,
+						// Only stamp the row when Sealed Mail is live — a flag-off
+						// deployment writes no `encryptionInfo`, byte-identical to today.
+						...(sealInputs.flagEnabled ? { encryptionInfo } : {}),
 						rfc822MessageId: rfc822MessageId.replace(/^<|>$/g, ''),
 						inReplyToHeaderValue: inReplyToHeaderValue?.replace(/^<|>$/g, ''),
 						references:
@@ -480,6 +579,29 @@ export const dispatchDraft = internalAction({
 			return;
 		}
 
+		// When sealing applied, pass the complete PGP/MIME bytes through the MTA
+		// unchanged; the placeholder Subject and ciphertext body are already inside
+		// that envelope. When not sealed, the classic structured fields ride exactly
+		// as before. The external worker fetches the same stored `.eml` directly.
+		const wireContent: {
+			subject: string;
+			html: string;
+			text?: string;
+			amp?: string;
+			sealedMimeBase64?: string;
+		} = sealed
+			? {
+					subject: sealed.outerSubject,
+					html: ' ',
+					sealedMimeBase64: Buffer.from(sealed.mime, 'utf-8').toString('base64'),
+				}
+			: {
+					subject: draft.subject || '(no subject)',
+					html: draft.bodyHtml || stripHtml(draft.bodyHtml ?? '') || ' ',
+					text: draft.bodyText,
+					...(draft.bodyAmp ? { amp: draft.bodyAmp } : {}),
+				};
+
 		if (mta) {
 			for (let i = 0; i < recipients.length; i++) {
 				const to = recipients[i];
@@ -499,10 +621,7 @@ export const dispatchDraft = internalAction({
 							messageId: mtaMessageId,
 							from: draft.fromAddress,
 							to,
-							subject: draft.subject || '(no subject)',
-							html: draft.bodyHtml || stripHtml(draft.bodyHtml ?? '') || ' ',
-							text: draft.bodyText,
-							...(draft.bodyAmp ? { amp: draft.bodyAmp } : {}),
+							...wireContent,
 							headers: {
 								'Message-ID': rfc822MessageId,
 								...(inReplyToHeaderValue ? { 'In-Reply-To': inReplyToHeaderValue } : {}),

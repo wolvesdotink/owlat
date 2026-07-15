@@ -1,4 +1,7 @@
 <script lang="ts">
+import type { SenderHeuristics } from '~/utils/senderAuth';
+import type { InboundEncryptionInfo } from '~/utils/sealedMessage';
+
 /**
  * The full message row the reader renders (the list-row shape plus body /
  * verdict fields). Exported for hosts that pass rows through — the folder
@@ -26,7 +29,34 @@ export type PostboxReaderMessage = {
 		contentId?: string;
 	}>;
 	spamVerdict?: string;
+	// Inbound sender-authentication verdicts + DMARC alignment inputs, persisted
+	// at ingest (Sealed Mail A1) and threaded through the reader queries here so
+	// A3 can render an honest sender badge. All optional: a message delivered by
+	// an older MTA (or a legacy row from before A1) carries them absent, and the
+	// reader must surface that as "unknown" rather than assert a verdict we never
+	// computed.
+	spfResult?: string;
+	dkimResult?: string;
 	dmarcResult?: string;
+	dmarcPolicy?: string;
+	envelopeFromDomain?: string;
+	dkimSigningDomain?: string;
+	// Inbound-auth override the backend applied (Sealed Mail A5): `'arc'` when a
+	// trusted forwarder's validated ARC chain rescued a DMARC fail; `arcSealer`
+	// names the honoured sealer so the badge can render "verified via forwarder".
+	dmarcOverride?: string;
+	arcSealer?: string;
+	// Ingest-computed sender-impersonation heuristics (Sealed Mail A4), threaded
+	// through so the sender badge can render secondary detail lines (first-time
+	// sender, look-alike of a known contact's domain). Whole object absent when
+	// nothing fired — the badge shows no extra lines rather than a false "clear".
+	senderHeuristics?: SenderHeuristics;
+	// Sealed Mail (E5): the honest inbound sealing record from decrypt-on-ingest
+	// (D3, `mailMessages.inboundEncryptionInfo`). Present only on a message that
+	// arrived sealed between Owlat instances; absent for ordinary mail, where the
+	// structural PGP/S-MIME badge (`secureClass`) takes over. Drives the reader's
+	// "Sealed — sender verified / not verified" / "can't decrypt" badge.
+	inboundEncryptionInfo?: InboundEncryptionInfo;
 	flagSeen?: boolean;
 	unsubscribe?: { httpUrl?: string; mailtoUrl?: string; oneClick: boolean };
 };
@@ -37,6 +67,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { extractAttachmentAt } from '@owlat/shared/mailMime';
 import { extractEmailAddress } from '~/utils/emailAddress';
+import { deriveSenderAuth, type SenderAuthInput, type SenderAuthState } from '~/utils/senderAuth';
 import { formatCompactRelativeTime, formatDateTime } from '~/utils/formatters';
 import { isLongThreadForSummary } from '~/utils/postboxAutoSummary';
 import { shouldShowSchedulingChip } from '~/utils/postboxSchedulingChip';
@@ -361,7 +392,8 @@ const {
 	inlineSpec,
 	inlineReplyEl,
 	expandInline,
-	expandPrimaryReply,
+	guardedExpandReply,
+	guardedExpandReplyAll,
 	collapseInline,
 	inlineSenderLabel,
 } = usePostboxReaderComposer({
@@ -369,7 +401,98 @@ const {
 	latestMessage,
 	ownAddresses,
 	replyDefault,
+	// Route every in-composer reply/reply-all path (keyboard, inline box, list
+	// hand-off) through the sender-auth reply guard against the latest message.
+	guardReply: (run) => guardLatestReply(run),
 });
+
+// Sender-authentication badge (Sealed Mail A3, flag `senderAuthBadges`). The
+// derivation is honest — absent verdicts yield no badge — so this is safe to
+// compute for every message; the flag only decides whether it renders.
+const authBadgesEnabled = computed(() => isFeatureEnabled('senderAuthBadges'));
+
+// Sealed-Mail reader badge (E5, flag `sealedMail`). Gates the honest "Sealed —
+// sender verified / not verified" / "can't decrypt" chip driven by the inbound
+// sealing record. When off, sealed messages fall back to the structural badge.
+const sealedMailEnabled = computed(() => isFeatureEnabled('sealedMail'));
+
+// The thread's correspondent (Sealed Mail 1:1 plane, D5): the first party in the
+// conversation who isn't us. Prefer an inbound sender; fall back to a recipient
+// on an all-outbound thread. Drives the thread-level key-change banner + contact
+// key panel. Empty when we can't identify a single counterpart (the container
+// then renders nothing).
+const threadCounterpart = computed(() => {
+	const own = ownAddresses.value;
+	for (const m of allMessages.value) {
+		const from = extractEmailAddress(m.fromAddress).toLowerCase();
+		if (from && !own.has(from)) return from;
+	}
+	for (const m of allMessages.value) {
+		for (const to of m.toAddresses) {
+			const addr = extractEmailAddress(to).toLowerCase();
+			if (addr && !own.has(addr)) return addr;
+		}
+	}
+	return '';
+});
+
+function senderAuthInput(msg: PostboxReaderMessage): SenderAuthInput {
+	return {
+		fromDomain: extractEmailAddress(msg.fromAddress).split('@')[1],
+		spfResult: msg.spfResult,
+		dkimResult: msg.dkimResult,
+		dmarcResult: msg.dmarcResult,
+		dmarcPolicy: msg.dmarcPolicy,
+		envelopeFromDomain: msg.envelopeFromDomain,
+		dkimSigningDomain: msg.dkimSigningDomain,
+		dmarcOverride: msg.dmarcOverride,
+		arcSealer: msg.arcSealer,
+	};
+}
+
+function senderAuthState(msg: PostboxReaderMessage): SenderAuthState | null {
+	if (!authBadgesEnabled.value) return null;
+	return deriveSenderAuth(senderAuthInput(msg))?.state ?? null;
+}
+
+// Reply guard: intercept reply / reply-all on a message that FAILED sender
+// authentication with a one-time-per-thread confirm. Non-failed senders (and a
+// flag-off state) pass straight through — DMARC→Spam routing is untouched.
+const replyGuardEl = ref<{
+	guard: (threadId: string, state: SenderAuthState | null, action: () => void) => void;
+} | null>(null);
+
+/**
+ * Run `action` behind the reply guard for `msg`: a one-time-per-thread confirm
+ * when `msg` failed sender authentication, else straight through. Shared by
+ * every reply/reply-all entry point (per-message buttons, keyboard, inline box,
+ * list hand-off) so none of them can bypass the interstitial.
+ */
+function runGuarded(msg: PostboxReaderMessage | undefined, action: () => void) {
+	if (!msg) {
+		action();
+		return;
+	}
+	const threadId = msg.threadId ?? msg._id;
+	replyGuardEl.value?.guard(threadId, senderAuthState(msg), action);
+}
+
+function guardedOpen(msg: PostboxReaderMessage, open: (m: PostboxReaderMessage) => void) {
+	runGuarded(msg, () => open(msg));
+}
+
+function guardedReply(msg: PostboxReaderMessage) {
+	guardedOpen(msg, openPrimaryReply);
+}
+
+function guardedReplyAll(msg: PostboxReaderMessage) {
+	guardedOpen(msg, openReplyAll);
+}
+
+/** Guard a reply/reply-all against the LATEST message (keyboard/inline paths). */
+function guardLatestReply(run: () => void) {
+	runGuarded(latestMessage.value, run);
+}
 
 async function runAndAdvance(run: () => Promise<unknown>) {
 	// Capture the target before the mutation — the live list drops the
@@ -467,10 +590,10 @@ function runReaderAction(action: string) {
 			readerBulk.toggle(messageId.value);
 			break;
 		case 'reply':
-			void expandPrimaryReply();
+			guardedExpandReply();
 			break;
 		case 'replyAll':
-			void expandInline('replyAll');
+			guardedExpandReplyAll();
 			break;
 		case 'forward':
 			void expandInline('forward');
@@ -691,6 +814,15 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 			</div>
 		</header>
 
+		<!-- Sealed Mail (E5): thread-level trust surfaces for the correspondent —
+		     the Signal-style key-change banner (explicit re-pin) + the contact key
+		     panel. Flag-gated; renders nothing without a key on file. -->
+		<PostboxThreadSealSurfaces
+			v-if="sealedMailEnabled && threadCounterpart"
+			:correspondent="threadCounterpart"
+			class="mb-3"
+		/>
+
 		<!-- Layout-matching skeleton while the thread loads (header is already
 		     rendered above from the list row, so only the message card shimmers). -->
 		<PostboxReaderSkeleton v-if="isLoading" />
@@ -818,6 +950,11 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 								:mailbox-id="message.mailboxId"
 								:unsubscribe="msg.unsubscribe"
 							/>
+							<PostboxAuthBadge
+								:enabled="authBadgesEnabled"
+								:auth="senderAuthInput(msg)"
+								:heuristics="msg.senderHeuristics"
+							/>
 						</div>
 					</header>
 
@@ -829,19 +966,24 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 						@dismiss="dismissScheduling(msg._id)"
 					/>
 
+					<!-- The ad-hoc DMARC-fail line moved into PostboxAuthBadge (in the
+					     sender header) behind `senderAuthBadges`. When the flag is off
+					     the legacy banner still surfaces a DMARC failure so behavior is
+					     unchanged; the spam line always shows. -->
 					<div
-						v-if="msg.spamVerdict === 'spam' || msg.dmarcResult === 'fail'"
+						v-if="msg.spamVerdict === 'spam' || (!authBadgesEnabled && msg.dmarcResult === 'fail')"
 						class="my-3 px-3 py-2 rounded bg-warning/10 text-warning text-xs flex items-center gap-2"
 					>
 						<Icon name="lucide:shield-alert" class="w-4 h-4" />
 						<span v-if="msg.spamVerdict === 'spam'">Marked as spam</span>
-						<span v-else-if="msg.dmarcResult === 'fail'">Failed DMARC verification</span>
+						<span v-else>Failed DMARC verification</span>
 					</div>
 
 					<PostboxSecurityBadge
-						v-if="secureClass(msg) !== 'none'"
+						v-if="secureClass(msg) !== 'none' || (sealedMailEnabled && msg.inboundEncryptionInfo)"
 						:klass="secureClass(msg)"
 						:message="msg"
+						:sealed="sealedMailEnabled ? msg.inboundEncryptionInfo : undefined"
 					/>
 					<PostboxMessageBody
 						v-if="!hideRawBody(msg)"
@@ -927,7 +1069,7 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 								:class="{ 'fill-current': isMessageStarred(msg) }"
 							/>
 						</button>
-						<button type="button" class="btn btn-ghost" @click="openPrimaryReply(msg)">
+						<button type="button" class="btn btn-ghost" @click="guardedReply(msg)">
 							<Icon name="lucide:reply" class="w-4 h-4 mr-1.5" />
 							Reply
 						</button>
@@ -935,7 +1077,7 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 							v-if="hasOtherRecipients(msg)"
 							type="button"
 							class="btn btn-ghost hidden group-hover:inline-flex"
-							@click="openReplyAll(msg)"
+							@click="guardedReplyAll(msg)"
 						>
 							<Icon name="lucide:reply-all" class="w-4 h-4 mr-1.5" />
 							Reply all
@@ -957,7 +1099,7 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 									role="menuitem"
 									class="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface"
 									@click="
-										openReplyAll(msg);
+										guardedReplyAll(msg);
 										close();
 									"
 								>
@@ -1014,10 +1156,21 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 				:sender-label="inlineSenderLabel"
 				:show-reply-all="hasOtherRecipients(latestMessage)"
 				:spec="inlineSpec"
-				@expand="(kind) => void (kind === 'reply' ? expandPrimaryReply() : expandInline(kind))"
+				@expand="
+					(kind) =>
+						kind === 'reply'
+							? guardedExpandReply()
+							: kind === 'replyAll'
+								? guardedExpandReplyAll()
+								: void expandInline(kind)
+				"
 				@collapse="collapseInline"
 			/>
 		</div>
+
+		<!-- One-time-per-thread confirm before replying to a message that failed
+		     sender authentication (flag `senderAuthBadges`). -->
+		<PostboxReplyGuard ref="replyGuardEl" />
 
 		<!-- Keyboard-flow pickers for the open message (h / l / v). -->
 		<PostboxSnoozeDialog

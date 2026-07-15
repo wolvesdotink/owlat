@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { OutboundTransportFacts } from '@owlat/shared';
 import {
 	deriveDeliveryReadiness,
 	readinessInputFromSources,
@@ -142,6 +143,153 @@ describe('deriveDeliveryReadiness — summary', () => {
 	});
 });
 
+describe('deriveDeliveryReadiness — MTA-STS enforce gate', () => {
+	it('leaves a ready instance untouched when the flag is unset (default)', () => {
+		const r = deriveDeliveryReadiness(input());
+		expect(r.level).toBe('ready');
+		expect(r.gates.find((g) => g.key === 'mta-sts')).toBeUndefined();
+	});
+
+	it('warns (incomplete) when enforce is published without the record, even if sending is otherwise ready', () => {
+		const r = deriveDeliveryReadiness(input({ mtaStsEnforceWithoutRecord: true }));
+		expect(r.canSend).toBe(true);
+		expect(r.level).toBe('incomplete');
+		expect(r.tone).toBe('warning');
+		const g = gate(r, 'mta-sts');
+		expect(g.status).toBe('attention');
+		expect(g.tone).toBe('warning');
+		expect(g.actionHref).toBe('/dashboard/delivery/domains');
+		// The summary leads with the unfinished MTA-STS step.
+		expect(r.summary).toContain('MTA-STS');
+	});
+
+	it('stays blocked (not merely incomplete) when the transport is also missing', () => {
+		const r = deriveDeliveryReadiness(
+			input({ transportConfigured: false, mtaStsEnforceWithoutRecord: true })
+		);
+		expect(r.level).toBe('blocked');
+	});
+});
+
+describe('deriveDeliveryReadiness — sender-alignment gate', () => {
+	it('leaves a ready instance untouched when the transport is aligned (default)', () => {
+		const r = deriveDeliveryReadiness(input());
+		expect(r.level).toBe('ready');
+		expect(r.gates.find((g) => g.key === 'alignment')).toBeUndefined();
+	});
+
+	it('warns (incomplete) when the transport is misaligned, even if sending is otherwise ready', () => {
+		const r = deriveDeliveryReadiness(
+			input({
+				transportMisaligned: true,
+				misalignedDomains: ['acme.com'],
+				alignmentReason: 'This relay signs as “sendgrid.net”, which isn’t part of “acme.com”.',
+			})
+		);
+		expect(r.canSend).toBe(true);
+		expect(r.level).toBe('incomplete');
+		expect(r.tone).toBe('warning');
+		const g = gate(r, 'alignment');
+		expect(g.status).toBe('attention');
+		expect(g.tone).toBe('warning');
+		expect(g.actionHref).toBe('/dashboard/delivery/config');
+		expect(g.detail).toContain('sendgrid.net');
+		// The summary leads with the unfinished alignment step.
+		expect(r.summary).toContain('sendgrid.net');
+	});
+
+	it('names the misaligned domains when no explicit reason is supplied', () => {
+		const g = gate(
+			deriveDeliveryReadiness(
+				input({ transportMisaligned: true, misalignedDomains: ['acme.com', 'widgets.io'] })
+			),
+			'alignment'
+		);
+		expect(g.detail).toContain('acme.com, widgets.io');
+	});
+
+	it('stays blocked (not merely incomplete) when the transport is also missing', () => {
+		const r = deriveDeliveryReadiness(
+			input({ transportConfigured: false, transportMisaligned: true })
+		);
+		expect(r.level).toBe('blocked');
+	});
+});
+
+describe('readinessInputFromSources — outbound alignment', () => {
+	const verifiedRow: ReadinessDomainRow = { status: 'verified', missing: [] };
+	const relayFacts = (over: Partial<OutboundTransportFacts> = {}): OutboundTransportFacts => ({
+		kind: 'smtp',
+		returnPathDomain: null,
+		dkimDomain: null,
+		...over,
+	});
+
+	it('warns for a relay that signs and bounces as its own foreign domain', () => {
+		const result = readinessInputFromSources({ canSend: true }, [verifiedRow], null, {
+			facts: relayFacts({ dkimDomain: 'sendgrid.net', returnPathDomain: 'sendgrid.net' }),
+			fromDomains: ['acme.com'],
+		});
+		expect(result.transportMisaligned).toBe(true);
+		expect(result.misalignedDomains).toEqual(['acme.com']);
+		expect(result.alignmentReason).toContain('sendgrid.net');
+	});
+
+	it('passes for the built-in MTA (signs per From-domain)', () => {
+		const result = readinessInputFromSources({ canSend: true }, [verifiedRow], null, {
+			facts: { kind: 'mta', returnPathDomain: 'bounces.owlat.com', dkimDomain: null },
+			fromDomains: ['acme.com'],
+		});
+		expect(result.transportMisaligned).toBe(false);
+		expect(result.misalignedDomains).toEqual([]);
+	});
+
+	it('passes for a relay configured to sign as the sending domain', () => {
+		const result = readinessInputFromSources({ canSend: true }, [verifiedRow], null, {
+			facts: relayFacts({ dkimDomain: 'acme.com', returnPathDomain: 'bounce.acme.com' }),
+			fromDomains: ['mail.acme.com'],
+		});
+		expect(result.transportMisaligned).toBe(false);
+	});
+
+	it('passes for SES with a domain (Easy DKIM) identity signing as the sending domain', () => {
+		// SES isn't the built-in MTA, so it has no per-From-domain default: it aligns
+		// only when the operator has declared its DKIM `d=` as their sending domain.
+		const result = readinessInputFromSources({ canSend: true }, [verifiedRow], null, {
+			facts: { kind: 'ses', returnPathDomain: null, dkimDomain: 'acme.com' },
+			fromDomains: ['acme.com'],
+		});
+		expect(result.transportMisaligned).toBe(false);
+	});
+
+	it('leaves SES with undeclared identities as unknown (no warning, never a claimed failure)', () => {
+		const result = readinessInputFromSources({ canSend: true }, [verifiedRow], null, {
+			facts: { kind: 'ses', returnPathDomain: null, dkimDomain: null },
+			fromDomains: ['acme.com'],
+		});
+		expect(result.transportMisaligned).toBe(false);
+		expect(result.misalignedDomains).toEqual([]);
+		expect(result.alignmentReason).toBeNull();
+	});
+
+	it('warns for SES configured to sign and bounce as a foreign domain', () => {
+		const result = readinessInputFromSources({ canSend: true }, [verifiedRow], null, {
+			facts: { kind: 'ses', returnPathDomain: 'amazonses.com', dkimDomain: 'amazonses.com' },
+			fromDomains: ['acme.com'],
+		});
+		expect(result.transportMisaligned).toBe(true);
+		expect(result.misalignedDomains).toEqual(['acme.com']);
+		expect(result.alignmentReason).toContain('amazonses.com');
+	});
+
+	it('leaves alignment unset (no warning) when no alignment source is provided', () => {
+		const result = readinessInputFromSources({ canSend: true }, [verifiedRow]);
+		expect(result.transportMisaligned).toBe(false);
+		expect(result.misalignedDomains).toEqual([]);
+		expect(result.alignmentReason).toBeNull();
+	});
+});
+
 describe('readinessInputFromSources — folding the two live sources', () => {
 	function row(overrides: Partial<ReadinessDomainRow> = {}): ReadinessDomainRow {
 		return { status: 'verified', missing: [], ...overrides };
@@ -181,6 +329,10 @@ describe('readinessInputFromSources — folding the two live sources', () => {
 			domainVerified: false,
 			authComplete: false,
 			authMissing: [],
+			mtaStsEnforceWithoutRecord: false,
+			transportMisaligned: false,
+			misalignedDomains: [],
+			alignmentReason: null,
 		});
 	});
 
@@ -193,5 +345,37 @@ describe('readinessInputFromSources — folding the two live sources', () => {
 	it('carries transport canSend straight through', () => {
 		expect(readinessInputFromSources({ canSend: true }, []).transportConfigured).toBe(true);
 		expect(readinessInputFromSources({ canSend: false }, [row()]).transportConfigured).toBe(false);
+	});
+
+	it('warns only when MTA-STS enforce is published WITHOUT the record verified', () => {
+		const enforceUnverified = readinessInputFromSources({ canSend: true }, [row()], {
+			mode: 'enforce',
+			recordVerified: false,
+		});
+		expect(enforceUnverified.mtaStsEnforceWithoutRecord).toBe(true);
+
+		const enforceVerified = readinessInputFromSources({ canSend: true }, [row()], {
+			mode: 'enforce',
+			recordVerified: true,
+		});
+		expect(enforceVerified.mtaStsEnforceWithoutRecord).toBe(false);
+	});
+
+	it('never warns for testing/none modes or a missing (non-admin) source', () => {
+		expect(
+			readinessInputFromSources({ canSend: true }, [row()], {
+				mode: 'testing',
+				recordVerified: false,
+			}).mtaStsEnforceWithoutRecord
+		).toBe(false);
+		expect(
+			readinessInputFromSources({ canSend: true }, [row()], {
+				mode: 'none',
+				recordVerified: false,
+			}).mtaStsEnforceWithoutRecord
+		).toBe(false);
+		expect(
+			readinessInputFromSources({ canSend: true }, [row()], null).mtaStsEnforceWithoutRecord
+		).toBe(false);
 	});
 });

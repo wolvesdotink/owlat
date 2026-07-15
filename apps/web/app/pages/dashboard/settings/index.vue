@@ -330,6 +330,19 @@ const settingsSections = computed(() => {
 					},
 				]
 			: []),
+		// Sealed Mail sealing policy (E5) — shown when a personal-mail surface is on
+		// (the page itself carries an admins-only gate and works even before the
+		// sealedMail flag is enabled, so the policy can be set ahead of turning it on).
+		...(isEnabled('postbox')
+			? [
+					{
+						name: 'Sealed Mail',
+						description: 'Choose when Owlat encrypts personal mail between Owlat workspaces',
+						href: '/dashboard/settings/sealed-mail',
+						icon: 'lucide:lock',
+					},
+				]
+			: []),
 		{
 			name: 'Audit Log',
 			description: 'Track team member actions and changes',

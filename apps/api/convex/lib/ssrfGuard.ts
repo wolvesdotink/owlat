@@ -20,6 +20,7 @@ import { promises as dns, lookup as dnsLookup } from 'dns';
 import { isIP } from 'net';
 import type { LookupAddress, LookupAllOptions } from 'dns';
 import { Agent } from 'undici';
+import { readStreamBytes, StreamByteLimitExceeded } from '@owlat/shared';
 
 // The literal-IP classification lives in the runtime-agnostic lib/ipBlocklist so
 // the v8-runtime webhook-host check can share it. Re-exported for existing
@@ -39,7 +40,7 @@ export type ValidatedUrl = { ok: true; url: URL } | { ok: false; error: string }
  */
 export async function validatePublicUrl(
 	urlStr: string,
-	opts: { protocols?: string[] } = {},
+	opts: { protocols?: string[] } = {}
 ): Promise<ValidatedUrl> {
 	const protocols = opts.protocols ?? ['http:', 'https:'];
 
@@ -94,7 +95,7 @@ export async function validatePublicUrl(
 export type LookupFn = (
 	hostname: string,
 	options: LookupAllOptions,
-	callback: (err: NodeJS.ErrnoException | null, addresses: LookupAddress[]) => void,
+	callback: (err: NodeJS.ErrnoException | null, addresses: LookupAddress[]) => void
 ) => void;
 
 /**
@@ -114,7 +115,7 @@ export function ssrfLookup(
 	hostname: string,
 	options: LookupAllOptions,
 	callback: (err: NodeJS.ErrnoException | null, addresses: LookupAddress[]) => void,
-	resolver: LookupFn = dnsLookup as unknown as LookupFn,
+	resolver: LookupFn = dnsLookup as unknown as LookupFn
 ): void {
 	resolver(hostname, { ...options, all: true }, (err, addresses) => {
 		if (err) {
@@ -126,9 +127,9 @@ export function ssrfLookup(
 			if (isDisallowedIpAddress(record.address)) {
 				callback(
 					new Error(
-						`Blocked connect to "${hostname}": resolves to a disallowed (private/internal) IP address ${record.address}`,
+						`Blocked connect to "${hostname}": resolves to a disallowed (private/internal) IP address ${record.address}`
 					),
-					[],
+					[]
 				);
 				return;
 			}
@@ -155,6 +156,32 @@ export function guardedDispatcher(): Agent {
 	});
 }
 
+/** Thrown by {@link readCappedBytes} when a response body exceeds the cap. */
+export class CappedReadOverflow extends Error {}
+
+/**
+ * Read a response body stream up to `maxBytes` real octets, returning the
+ * collected bytes (or `null` when there is no body). Throws
+ * {@link CappedReadOverflow} the moment the stream exceeds the cap — the caller
+ * decides whether that is a hard rejection (discovery treats an over-cap key
+ * fetch as an SSRF violation) or a soft "too big, ignore" (MTA-STS returns
+ * null). Counts actual octets (not UTF-16 code units) so multibyte bodies are
+ * bounded correctly.
+ */
+export async function readCappedBytes(
+	body: ReadableStream<Uint8Array> | null,
+	maxBytes: number
+): Promise<Uint8Array | null> {
+	try {
+		return await readStreamBytes(body, maxBytes);
+	} catch (error) {
+		if (error instanceof StreamByteLimitExceeded) {
+			throw new CappedReadOverflow(error.message);
+		}
+		throw error;
+	}
+}
+
 /**
  * Fetch a user-supplied URL with SSRF protection:
  *   1. validate the destination against the private/internal blocklist;
@@ -170,7 +197,7 @@ export function guardedDispatcher(): Agent {
  */
 export async function fetchGuarded(
 	urlStr: string,
-	init: RequestInit & { protocols?: string[] } = {},
+	init: RequestInit & { protocols?: string[] } = {}
 ): Promise<Response> {
 	const { protocols, ...requestInit } = init;
 	const check = await validatePublicUrl(urlStr, { protocols });
@@ -186,7 +213,7 @@ export async function fetchGuarded(
 	});
 	if (res.status >= 300 && res.status < 400) {
 		throw new Error(
-			`Blocked fetch of "${urlStr}": refusing to follow redirect (to ${res.headers.get('location') ?? 'unknown'}) — possible SSRF`,
+			`Blocked fetch of "${urlStr}": refusing to follow redirect (to ${res.headers.get('location') ?? 'unknown'}) — possible SSRF`
 		);
 	}
 	return res;

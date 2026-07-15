@@ -10,6 +10,7 @@
  */
 
 import { v } from 'convex/values';
+import { mailMessageInlineBody } from '../lib/messageBody';
 import { splitQuotedHtml, splitQuotedText } from '@owlat/shared/quotedText';
 
 // ── Tuning ────────────────────────────────────────────────────────────────
@@ -98,13 +99,20 @@ export interface RawSentBody {
  * The user's own "fresh" prose for one sent message: the quoted reply-chain
  * (other people's words) is stripped with the same heuristics the composer
  * uses, HTML is flattened to text, and the result is bounded.
+ *
+ * E8b: this consumes an ALREADY-UNSEALED `RawSentBody` — the caller
+ * (`voiceProfile.ts`) unseals each row's inline body through the async
+ * `openMailMessageInlineBody` choke point before building the sample rows, so
+ * this pure helper stays synchronous and only reshapes plaintext. The sync
+ * `mailMessageInlineBody` accessor therefore reads plaintext verbatim here.
  */
 export function extractSampleText(raw: RawSentBody): string {
+	const { text: inlineText, html: inlineHtml } = mailMessageInlineBody(raw);
 	let text: string;
-	if (raw.textBodyInline && raw.textBodyInline.trim()) {
-		text = splitQuotedText(raw.textBodyInline).fresh;
-	} else if (raw.htmlBodyInline && raw.htmlBodyInline.trim()) {
-		text = htmlToPlainText(splitQuotedHtml(raw.htmlBodyInline).fresh);
+	if (inlineText && inlineText.trim()) {
+		text = splitQuotedText(inlineText).fresh;
+	} else if (inlineHtml && inlineHtml.trim()) {
+		text = htmlToPlainText(splitQuotedHtml(inlineHtml).fresh);
 	} else {
 		text = raw.snippet ?? '';
 	}

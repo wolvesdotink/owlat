@@ -38,6 +38,13 @@ export interface DkimVerifyOutcome {
 	readonly result: DkimVerdict;
 	/** The signing domain (`d=`) of the verdict-deciding signature, if any. */
 	readonly domain?: string;
+	/**
+	 * The parsed ARC chain mailauth threaded onto its result (`dkimResult.arc`),
+	 * passed opaquely so the inbound path can verify the ARC seals via
+	 * `verifyArcChain` WITHOUT re-parsing the raw bytes. `undefined` when the
+	 * message carries no ARC headers or DKIM verification crashed.
+	 */
+	readonly arcSeed?: unknown;
 }
 
 /**
@@ -45,10 +52,7 @@ export interface DkimVerifyOutcome {
  * mocked DNS TXT resolver. Mirrors `mailauth`'s `DNSResolver` shape:
  * `(name, rrtype) => Promise<string[][] | string[]>`.
  */
-export type DkimDnsResolver = (
-	name: string,
-	rrtype: string,
-) => Promise<string[][] | string[]>;
+export type DkimDnsResolver = (name: string, rrtype: string) => Promise<string[][] | string[]>;
 
 export interface VerifyDkimOptions {
 	readonly resolver?: DkimDnsResolver;
@@ -72,21 +76,24 @@ interface MailauthDkimResult {
  */
 export async function verifyDkim(
 	rawBuffer: Buffer,
-	options: VerifyDkimOptions = {},
+	options: VerifyDkimOptions = {}
 ): Promise<DkimVerifyOutcome> {
 	try {
 		const verifyResult = await dkimVerify(
 			rawBuffer,
-			options.resolver ? { resolver: options.resolver } : undefined,
+			options.resolver ? { resolver: options.resolver } : undefined
 		);
 
+		// mailauth threads the parsed ARC chain here; carry it opaquely so the
+		// inbound path can verify the ARC seals without a second parse.
+		const arcSeed = (verifyResult as { arc?: unknown } | undefined)?.arc;
 		const results = (verifyResult?.results ?? []) as MailauthDkimResult[];
 		if (results.length === 0) {
 			// No DKIM-Signature header present.
-			return { result: 'none' };
+			return { result: 'none', arcSeed };
 		}
 
-		return pickVerdict(results);
+		return { ...pickVerdict(results), arcSeed };
 	} catch (err) {
 		logger.warn({ err }, 'Inbound DKIM verification failed — recording temperror');
 		return { result: 'temperror' };

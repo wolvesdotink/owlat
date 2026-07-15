@@ -19,6 +19,7 @@
 
 import { z } from 'zod';
 import type { Infer } from 'convex/values';
+import { openInboundMessageBody } from '../../../lib/messageBody';
 import {
 	checkUrlReputation,
 	type CachedVerdict,
@@ -287,18 +288,19 @@ export const securityScanStep: AgentStepModule<
 			inboundMessageId: input.inboundMessageId,
 		});
 		if (!message) throw new Error('Inbound message not found');
+		const { text: bodyText, html: bodyHtml } = await openInboundMessageBody(message);
 
 		// ── Layer 1: Prompt injection detection on text body ──
-		const textContent = message.textBody ?? message.subject ?? '';
+		const textContent = bodyText ?? message.subject ?? '';
 		const injectionResult = detectInjection(textContent);
 
 		// Also check HTML body for injection
-		const htmlInjection = message.htmlBody
-			? detectInjection(message.htmlBody)
+		const htmlInjection = bodyHtml
+			? detectInjection(bodyHtml)
 			: { detected: false, confidence: 0, pattern: undefined };
 
 		// ── Layer 2: Instruction smuggling in HTML ──
-		const smugglingResult = detectSmuggling(message.htmlBody ?? undefined);
+		const smugglingResult = detectSmuggling(bodyHtml);
 
 		// ── Layer 3: Basic spam heuristics ──
 		const spamScore = calculateSpamScore(textContent, message.subject);
@@ -321,8 +323,8 @@ export const securityScanStep: AgentStepModule<
 		// human-visible text so its verdict reflects what a model would act on.
 		const guardSample = [
 			message.subject ? stripHiddenContent(message.subject) : undefined,
-			message.textBody ? stripHiddenContent(message.textBody) : undefined,
-			message.htmlBody ? stripHtmlTags(stripHiddenContent(message.htmlBody)) : undefined,
+			bodyText ? stripHiddenContent(bodyText) : undefined,
+			bodyHtml ? stripHtmlTags(stripHiddenContent(bodyHtml)) : undefined,
 		]
 			.filter((part): part is string => typeof part === 'string' && part.trim().length > 0)
 			.join('\n\n');
@@ -330,7 +332,7 @@ export const securityScanStep: AgentStepModule<
 		const llmVerdict = guardScan.verdict;
 
 		// ── Layer 5: URL reputation (Google Safe Browsing, key-gated, fails open) ──
-		const phishingDetected = await detectPhishingUrls(ctx, message.htmlBody);
+		const phishingDetected = await detectPhishingUrls(ctx, bodyHtml);
 		const llmFlagged =
 			llmVerdict?.isInjection === true &&
 			llmVerdict.confidence >= LLM_INJECTION_CONFIDENCE_THRESHOLD;

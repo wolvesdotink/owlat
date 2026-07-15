@@ -31,7 +31,7 @@
 
 import { v } from 'convex/values';
 import { mailMessageAttachmentValidator } from '../lib/convexValidators';
-import { internalMutation, type MutationCtx } from '../_generated/server';
+import { internalMutation, internalQuery, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { recordAuditLog } from '../lib/auditLog';
@@ -39,6 +39,15 @@ import { isSanctionedSendAsForUser } from './identities';
 import { followUpWaitingOn } from './followUps';
 import { logError } from '../lib/runtimeLog';
 import { normalizeSubject } from '../lib/emailAddress';
+import { isFeatureEnabled } from '../lib/featureFlags';
+import { hasActiveSigningKey, loadRecipientKeyStates } from './outboundQueries';
+import {
+	deriveSealState,
+	mailEncryptionInfoValidator,
+	type OutboundEncryptionInfo,
+	type SealState,
+} from './sealPolicy';
+import { sealBodyAtWriteMaybe } from '../lib/messageBody';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -48,11 +57,18 @@ export const DEFAULT_UNDO_SEND_DELAY_MS = 30_000;
 
 export type DraftState = 'draft' | 'pending_send' | 'scheduled';
 
-export type RevertReason = 'user_cancel' | 'from_revoked' | 'scan_blocked';
+export type RevertReason =
+	| 'user_cancel'
+	| 'from_revoked'
+	| 'scan_blocked'
+	| 'seal_consent_required';
 
 export interface SentInputContext {
 	rawStorageId: Id<'_storage'>;
 	rawSize: number;
+	// Sealed Mail (E3): the outbound sealing outcome. Present on the personal-mail
+	// send path; the raw `.eml` at `rawStorageId` is ciphertext when `sealed`.
+	encryptionInfo?: OutboundEncryptionInfo;
 	rfc822MessageId: string;
 	inReplyToHeaderValue?: string;
 	references: string[];
@@ -108,6 +124,7 @@ export type TransitionOutcome =
 const sentInputContextValidator = v.object({
 	rawStorageId: v.id('_storage'),
 	rawSize: v.number(),
+	encryptionInfo: v.optional(mailEncryptionInfoValidator),
 	rfc822MessageId: v.string(),
 	inReplyToHeaderValue: v.optional(v.string()),
 	references: v.array(v.string()),
@@ -130,7 +147,12 @@ const transitionInputValidator = v.union(
 	v.object({
 		to: v.literal('draft'),
 		at: v.number(),
-		reason: v.union(v.literal('user_cancel'), v.literal('from_revoked'), v.literal('scan_blocked')),
+		reason: v.union(
+			v.literal('user_cancel'),
+			v.literal('from_revoked'),
+			v.literal('scan_blocked'),
+			v.literal('seal_consent_required')
+		),
 	}),
 	v.object({
 		to: v.literal('sent'),
@@ -185,7 +207,8 @@ type AuditLogEffect = {
 		| 'postbox_draft.sent'
 		| 'postbox_draft.cancelled'
 		| 'postbox_draft.from_revoked'
-		| 'postbox_draft.scan_blocked';
+		| 'postbox_draft.scan_blocked'
+		| 'postbox_draft.seal_consent_required';
 	draftId: Id<'mailDrafts'>;
 	mailboxId: Id<'mailboxes'>;
 	details: Record<string, string | number | boolean>;
@@ -322,6 +345,7 @@ const REVERT_AUDIT_ACTION: Record<RevertReason, AuditLogEffect['action']> = {
 	user_cancel: 'postbox_draft.cancelled',
 	from_revoked: 'postbox_draft.from_revoked',
 	scan_blocked: 'postbox_draft.scan_blocked',
+	seal_consent_required: 'postbox_draft.seal_consent_required',
 };
 
 function reduceDraftRevert(
@@ -333,6 +357,7 @@ function reduceDraftRevert(
 			state: 'draft',
 			scheduledSendAt: undefined,
 			undoToken: undefined,
+			isUnsealedSendAllowed: undefined,
 			lastEditedAt: args.at,
 		},
 		effects: [
@@ -512,9 +537,12 @@ async function runSentEffects(
 		snippet,
 		rawStorageId: context.rawStorageId,
 		rawSize: context.rawSize,
-		textBodyInline:
-			context.bodyText && context.bodyText.length <= 64 * 1024 ? context.bodyText : undefined,
-		htmlBodyInline: context.bodyHtml.length <= 64 * 1024 ? context.bodyHtml : undefined,
+		textBodyInline: await sealBodyAtWriteMaybe(
+			context.bodyText && context.bodyText.length <= 64 * 1024 ? context.bodyText : undefined
+		),
+		htmlBodyInline: await sealBodyAtWriteMaybe(
+			context.bodyHtml.length <= 64 * 1024 ? context.bodyHtml : undefined
+		),
 		attachments: context.attachmentsMeta,
 		hasAttachments: context.attachmentsMeta.length > 0,
 		// Team-inbox attribution: WHO fired this send (captured by drafts.send).
@@ -532,6 +560,8 @@ async function runSentEffects(
 			state: 'queued' as const,
 			recipients: [],
 		},
+		// Sealed Mail (E3): honest record of whether this send was sealed and why.
+		...(context.encryptionInfo ? { encryptionInfo: context.encryptionInfo } : {}),
 		createdAt: now,
 		updatedAt: now,
 	});
@@ -946,5 +976,42 @@ export const transitionByUndoToken = internalMutation({
 			};
 		}
 		return await dispatch(ctx, draft, args.input);
+	},
+});
+
+// ─── Sealed Mail: per-draft seal state ────────────────────────────────────────
+
+/**
+ * The composer-facing seal readiness for a draft (Sealed Mail E3 → consumed by
+ * the E5 compose surface): would sending NOW seal (`willSeal`), which recipients'
+ * keys rotated without a signed statement (`keyChanged`), or why it cannot seal
+ * (`cannotSeal`). Reads only PUBLIC trust state (recipient outcomes, the sender's
+ * signing-key presence, and the org policy) — never any private key material.
+ * The `sealedMail` flag gates it.
+ * Internal: E5 wraps it in an authed compose query that already scopes the draft
+ * to the caller's mailbox.
+ */
+export const getSealState = internalQuery({
+	args: { draftId: v.id('mailDrafts') },
+	handler: async (ctx, args): Promise<SealState> => {
+		const draft = await ctx.db.get(args.draftId);
+		// A missing draft is a genuine not-found — NOT "no recipients". Throw rather
+		// than return a mislabelled `cannotSeal` state the E5 composer would render
+		// as a wrong explanation (the caller already scopes the draft to the mailbox
+		// before asking, so a miss here means the row was deleted mid-compose).
+		if (!draft) throw new Error(`getSealState: draft ${args.draftId} not found`);
+		if (!(await isFeatureEnabled(ctx, 'sealedMail'))) {
+			return { kind: 'cannotSeal', reason: 'flag_off' };
+		}
+		const settings = await ctx.db.query('instanceSettings').first();
+		const policy = settings?.sealPolicy ?? 'auto';
+
+		const recipients = await loadRecipientKeyStates(ctx, [
+			...draft.toAddresses,
+			...draft.ccAddresses,
+			...draft.bccAddresses,
+		]);
+		const hasSigningKey = await hasActiveSigningKey(ctx, draft.fromAddress);
+		return deriveSealState(policy, recipients, hasSigningKey);
 	},
 });

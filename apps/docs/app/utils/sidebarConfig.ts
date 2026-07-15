@@ -95,6 +95,8 @@ export const sidebarConfig: SidebarGroup[] = [
 			{ label: 'Smart Inbox', to: '/guide/smart-inbox' },
 			{ label: 'Calendar Availability', to: '/guide/calendar-availability' },
 			{ label: 'Postbox Settings', to: '/guide/postbox-settings' },
+			{ label: 'Sealed Mail', to: '/guide/sealed-mail' },
+			{ label: 'Sealed Mail Recovery Kit', to: '/guide/sealed-mail-recovery-kit' },
 			{ label: 'Migrate from Google', to: '/guide/migrate-from-google' },
 			{ label: 'Connect External Mailbox', to: '/guide/postbox#connect-an-external-mailbox' },
 		],
@@ -197,6 +199,8 @@ export const sidebarConfig: SidebarGroup[] = [
 			{ label: 'Email Renderer', to: '/developer/email-renderer' },
 			{ label: 'How Email Works', to: '/developer/how-email-works' },
 			{ label: 'Email Security', to: '/developer/email-security' },
+			{ label: 'Sealed Mail at Rest', to: '/developer/sealed-mail-at-rest' },
+			{ label: 'Transport Security', to: '/developer/transport-security' },
 			{ label: 'MTA System', to: '/developer/mta-system' },
 			{ label: 'Providers', to: '/developer/providers' },
 			{

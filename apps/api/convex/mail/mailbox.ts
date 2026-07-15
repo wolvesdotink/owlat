@@ -11,6 +11,8 @@
  */
 
 import { v } from 'convex/values';
+import { openMailMessageInlineBody } from '../lib/messageBody';
+import { sealedBlobUrl } from '../lib/sealedBlob';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { authedMutation, publicQuery } from '../lib/authedFunctions';
 import type { Id, Doc } from '../_generated/dataModel';
@@ -29,6 +31,7 @@ import {
 	loadAccessibleMailboxes,
 } from './permissions';
 import { isMessageSnoozed } from '../lib/mailSnooze';
+import { isFeatureEnabled } from '../lib/featureFlags';
 import { normalizeEmail, parseAddress } from '@owlat/shared';
 
 /**
@@ -175,6 +178,19 @@ export async function provisionMailbox(
 		addedBy: args.userId, // self — the implicit owner predates member management
 		createdAt: now,
 	});
+
+	// Sealed Mail (E1): mint + publish an E2EE keypair for the new address so
+	// other instances can seal mail to it. Flag-gated (`sealedMail`, default OFF)
+	// and offloaded to the Node keygen plane; a no-op when the flag is off.
+	if (await isFeatureEnabled(ctx, 'sealedMail')) {
+		// Mint the singleton instance signing identity on first use (idempotent),
+		// so `/.well-known/owlat.json` can be signed as soon as any address key is
+		// published — otherwise the manifest would 404 until an admin ran backfill.
+		await ctx.scheduler.runAfter(0, internal.e2ee.keysNode.ensureInstanceIdentity, {});
+		await ctx.scheduler.runAfter(0, internal.e2ee.keysNode.mintForAddress, {
+			address: args.address,
+		});
+	}
 
 	for (const role of SYSTEM_FOLDER_ROLES) {
 		await ctx.db.insert('mailFolders', {
@@ -360,6 +376,14 @@ export const remove = authedMutation({
 			await ctx.scheduler.runAfter(0, internal.mail.mailboxActions.removeFromCache, {
 				address: mailbox.address,
 			});
+			// Sealed Mail (E6): revoke the mailbox address's E2EE key on deletion — stop
+			// publishing it for sealing while retaining the row decrypt-only so historical
+			// sealed mail still opens. Flag-gated the same way the mint on create is.
+			if (await isFeatureEnabled(ctx, 'sealedMail')) {
+				await ctx.scheduler.runAfter(0, internal.e2ee.lifecycle.deactivateAddressKeys, {
+					address: mailbox.address,
+				});
+			}
 		}
 		return { success: true };
 	},
@@ -915,14 +939,19 @@ export const getMessageBody = publicQuery({
 	handler: async (ctx, args) => {
 		const message = await loadReadableMessage(ctx, args.messageId);
 		if (!message) return null;
+		const { text, html } = await openMailMessageInlineBody(message);
+		// E8b: the over-threshold body blobs are sealed at rest, so hand the reader
+		// a decrypt-serving proxy URL (falls back to the direct signed URL when the
+		// instance has no key, i.e. the blob is plaintext). `fetch(url).text()` on
+		// the web side yields the same plaintext body it did before.
 		return {
-			htmlInline: message.htmlBodyInline ?? null,
-			textInline: message.textBodyInline ?? null,
+			htmlInline: html ?? null,
+			textInline: text ?? null,
 			htmlUrl: message.htmlBodyStorageId
-				? await ctx.storage.getUrl(message.htmlBodyStorageId)
+				? await sealedBlobUrl(ctx.storage, message.htmlBodyStorageId, 'text/html; charset=utf-8')
 				: null,
 			textUrl: message.textBodyStorageId
-				? await ctx.storage.getUrl(message.textBodyStorageId)
+				? await sealedBlobUrl(ctx.storage, message.textBodyStorageId, 'text/plain; charset=utf-8')
 				: null,
 		};
 	},
@@ -939,7 +968,10 @@ export const getMessageRawUrl = publicQuery({
 	handler: async (ctx, args) => {
 		const message = await loadReadableMessage(ctx, args.messageId);
 		if (!message) return null;
-		return await ctx.storage.getUrl(message.rawStorageId);
+		// E8b: the raw `.eml` is sealed at rest; serve it through the decrypt proxy
+		// so the reader's client-side attachment extraction / "download original"
+		// receives the plaintext RFC822 bytes.
+		return await sealedBlobUrl(ctx.storage, message.rawStorageId, 'message/rfc822');
 	},
 });
 

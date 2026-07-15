@@ -5,71 +5,37 @@
  * connecting via SMTP port 25, and sending with DKIM signing.
  */
 
-import { randomBytes } from 'node:crypto';
+import type { TLSSocket } from 'node:tls';
 import type Redis from 'ioredis';
 import type { EmailJob, EmailJobResult } from '../types.js';
 import type { MtaConfig } from '../config.js';
 import { resolveEhloForIp } from '../config.js';
 import { getMxHostnames } from './mxResolver.js';
+import { resolveDaneMxDestinations, type DaneMxDestination } from './daneMxResolver.js';
 import { getDkimOptions } from './dkim.js';
 import { getStsTlsOptions, isMxAllowed } from './mtaSts.js';
+import { resolveTlsRequirements } from './tlsPolicy.js';
+import { resolveOutboundTlsMode } from './outboundTlsOverrides.js';
 import { buildVerpAddress } from '../bounce/verp.js';
 import { extractDomain } from '../queue/groups.js';
 import { extractDomainOrNull } from '@owlat/shared';
 import { logger } from '../monitoring/logger.js';
 import { pool, PoolOverCapError } from './connectionPool.js';
-import { recordTlsResult, buildStsPolicyString, type TlsPolicyContext, type TlsResultType } from './tlsRpt.js';
+import { prepareDaneAttempt } from './daneVerify.js';
+import { buildMessageId, buildSendMailPayload } from './messageBuild.js';
+import { buildAllMxFailedResult } from './mxBounce.js';
+import {
+	recordTlsResult,
+	buildStsPolicyString,
+	type TlsPolicyContext,
+	type TlsResultType,
+} from './tlsRpt.js';
+import {
+	classifyTlsFailure,
+	parseEnhancedCode,
+	stsAttributedResultType,
+} from './tlsFailureClassification.js';
 import { withSecuredCapture } from './tlsSecuredCapture.js';
-
-/**
- * Strip HTML tags and decode entities to produce a plain text fallback.
- * Used when the caller doesn't provide an explicit text part.
- */
-function stripHtml(html: string): string {
-	return html
-		.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-		.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-		.replace(/<br\s*\/?>/gi, '\n')
-		.replace(/<\/p>/gi, '\n\n')
-		.replace(/<\/div>/gi, '\n')
-		.replace(/<\/h[1-6]>/gi, '\n\n')
-		.replace(/<\/li>/gi, '\n')
-		.replace(/<\/tr>/gi, '\n')
-		.replace(/<[^>]+>/g, '')
-		.replace(/&nbsp;/gi, ' ')
-		.replace(/&amp;/gi, '&')
-		.replace(/&lt;/gi, '<')
-		.replace(/&gt;/gi, '>')
-		.replace(/&quot;/gi, '"')
-		.replace(/&#039;/gi, "'")
-		.replace(/\n{3,}/g, '\n\n')
-		.trim();
-}
-
-/**
- * Build an RFC 5322 §3.6.4 Message-ID `<unique@domain>` whose right-hand-side
- * domain is the From sending domain. Mirrors `apps/api/convex/mail/rfc822.ts`
- * `buildMessageId` (ms timestamp + 48 random bits = collision-resistant).
- *
- * The bulk/campaign/transactional path never sets Message-ID, so nodemailer
- * auto-derives it from `envelope.from` — which is the VERP return-path
- * (`bounces.<domain>`), NOT the From domain. Stamping it explicitly here
- * From-aligns the Message-ID for brand/deliverability consistency with the
- * postbox path and short-circuits nodemailer's `getHeader('Message-ID')`
- * default (mime-node:922-929).
- */
-function buildMessageId(domain: string): string {
-	return `<${Date.now().toString(36)}.${randomBytes(6).toString('hex')}@${domain}>`;
-}
-
-/**
- * Parse SMTP enhanced status code from error response
- * e.g., "550 5.1.1 User unknown" → "5.1.1"
- */
-function parseEnhancedCode(response: string): string | undefined {
-	const match = response.match(/\b([245]\.\d{1,3}\.\d{1,3})\b/);
-	return match?.[1];
-}
 
 /**
  * Send an email directly to the recipient's MX server
@@ -85,7 +51,40 @@ export async function sendToMx(
 	bindIp: string
 ): Promise<EmailJobResult> {
 	const recipientDomain = extractDomain(job.to);
-	const mxHosts = await getMxHostnames(redis, recipientDomain);
+	let mxHosts: string[];
+	let daneDestinations = new Map<string, DaneMxDestination>();
+	let daneDiscoveryAuthenticated = true;
+	if ((config.daneMode ?? 'off') !== 'off' && config.daneResolverUrl) {
+		const discovery = await resolveDaneMxDestinations(
+			redis,
+			recipientDomain,
+			config.daneResolverUrl
+		);
+		if (discovery.status === 'lookup-failed') {
+			if (config.daneMode === 'enforce') {
+				return {
+					success: false,
+					error: `DANE MX discovery failed for ${recipientDomain}: ${discovery.reason}`,
+					bounceType: 'soft',
+				};
+			}
+			logger.warn(
+				{ recipientDomain, reason: discovery.reason },
+				'DANE report-only MX discovery failed; using normal MX resolution'
+			);
+			daneDiscoveryAuthenticated = false;
+			mxHosts = await getMxHostnames(redis, recipientDomain);
+		} else if (discovery.status === 'not-found') {
+			mxHosts = [];
+		} else {
+			mxHosts = discovery.destinations.map((destination) => destination.mxHostname);
+			daneDestinations = new Map(
+				discovery.destinations.map((destination) => [destination.mxHostname, destination])
+			);
+		}
+	} else {
+		mxHosts = await getMxHostnames(redis, recipientDomain);
+	}
 
 	if (mxHosts.length === 0) {
 		return {
@@ -124,6 +123,31 @@ export async function sendToMx(
 		logger.debug({ recipientDomain, mx: stsOptions.allowedMxHosts }, 'MTA-STS enforce mode active');
 	}
 
+	// Resolve the operator's outbound TLS floor for this recipient (per-domain
+	// override, else the global OUTBOUND_TLS_MODE) and combine it with the
+	// recipient's MTA-STS state via strictest-wins. `opportunistic` + no policy
+	// yields requireTLS:false / verify:false — byte-identical to the historic
+	// behaviour; `require` / `require-verified` raise the handshake demand. This
+	// non-DANE floor passes `daneResult: null`; the per-MX DANE outcome is resolved
+	// through the SAME resolver inside the MX loop below, so one module owns the
+	// TLS floor rather than DANE precedence being re-encoded here by hand.
+	const localTlsMode = await resolveOutboundTlsMode(
+		redis,
+		recipientDomain,
+		config.outboundTlsMode ?? 'opportunistic'
+	);
+	const tlsRequirements = resolveTlsRequirements({
+		localMode: localTlsMode,
+		stsPolicy: { policyMode: stsOptions.policyMode },
+		daneResult: null,
+	});
+	if (localTlsMode !== 'opportunistic') {
+		logger.debug(
+			{ recipientDomain, localTlsMode, reason: tlsRequirements.reason },
+			'Outbound TLS floor raised'
+		);
+	}
+
 	// TLS-RPT policy context: when an MTA-STS policy applies, every recorded TLS
 	// result is attributed to policy-type 'sts' with the policy body + MX
 	// patterns (RFC 8460 §3). Without a policy, results stay 'no-policy-found'.
@@ -146,7 +170,15 @@ export async function sendToMx(
 	async function attemptSend(
 		mxHost: string,
 		requireTLS: boolean,
-		rejectUnauthorized: boolean
+		rejectUnauthorized: boolean,
+		opts: {
+			/** DANE post-handshake verifier; runs before SMTP resumes. */
+			verifyPeerCertificate?: (socket: TLSSocket) => Error | undefined;
+			/** Exact DANE policy identity used to isolate reusable transports. */
+			policyFingerprint?: string;
+			/** Override the recorded TLS-RPT policy context (e.g. the tlsa policy). */
+			policyContext?: TlsPolicyContext;
+		} = {}
 	): Promise<
 		| { kind: 'sent'; result: EmailJobResult }
 		| { kind: 'smtp'; result: EmailJobResult }
@@ -154,6 +186,8 @@ export async function sendToMx(
 		| { kind: 'connection'; response: string }
 		| { kind: 'over-cap' }
 	> {
+		const ctx = opts.policyContext ?? policyContext;
+		const daneRequired = opts.verifyPeerCertificate !== undefined;
 		let acquired: Awaited<ReturnType<typeof pool.acquire>>;
 		try {
 			acquired = await pool.acquire(mxHost, bindIp, {
@@ -163,7 +197,18 @@ export async function sendToMx(
 				// Pin a TLSv1.2 floor: RFC 8996 deprecates TLS 1.0/1.1 and RFC 9325
 				// mandates 1.2+. Inbound submission/bounce servers already pin this;
 				// without it the outbound floor is Node's env-fragile process default.
-				tls: { rejectUnauthorized, minVersion: 'TLSv1.2' },
+				tls: {
+					rejectUnauthorized,
+					minVersion: 'TLSv1.2',
+					// DANE (RFC 7672): authenticate the MX certificate against its TLSA
+					// RRset during the handshake. A mismatch returns an Error and aborts
+					// the connection (caught below as a validation-failure — never a
+					// cleartext fallback). Absent for non-DANE sends.
+					...(opts.verifyPeerCertificate
+						? { verifyPeerCertificate: opts.verifyPeerCertificate }
+						: {}),
+					...(opts.policyFingerprint ? { danePolicyFingerprint: opts.policyFingerprint } : {}),
+				},
 				name: ehloHostname,
 				connectionTimeout: 30_000,
 				greetingTimeout: 30_000,
@@ -175,7 +220,10 @@ export async function sendToMx(
 			// failure: try the next MX, and if all are capped the loop falls through
 			// to a soft bounce so the job is re-queued with backoff.
 			if (err instanceof PoolOverCapError) {
-				logger.warn({ mxHost, recipientDomain }, 'Global connection cap reached, trying next MX host');
+				logger.warn(
+					{ mxHost, recipientDomain },
+					'Global connection cap reached, trying next MX host'
+				);
 				return { kind: 'over-cap' };
 			}
 			throw err;
@@ -188,38 +236,7 @@ export async function sendToMx(
 			// a per-call capture scope (see tlsSecuredCapture.ts) and read it back to
 			// record the right TLS-RPT result type below.
 			const { result: info, secured } = await withSecuredCapture(false, () =>
-				transport.sendMail({
-					from: job.from,
-					to: job.to,
-					subject: job.subject,
-					html: job.html,
-					text: job.text || stripHtml(job.html),
-					// nodemailer emits AMP as a `text/x-amp-html` alternative part,
-					// ordered so non-AMP clients fall through to the HTML part.
-					...(job.amp ? { amp: job.amp } : {}),
-					// Internally-generated mail (e.g. TLS-RPT reports) may carry binary
-					// attachments. base64-encoded on the job so they survive Redis JSON.
-					...(job.attachments && job.attachments.length > 0
-						? {
-								attachments: job.attachments.map((a) => ({
-									filename: a.filename,
-									contentType: a.contentType,
-									content: Buffer.from(a.contentBase64, 'base64'),
-								})),
-							}
-						: {}),
-					replyTo: job.replyTo,
-					headers: {
-						...job.headers,
-						...(messageIdHeader ? { 'Message-ID': messageIdHeader } : {}),
-						'X-Owlat-Message-Id': job.messageId,
-						'X-Owlat-Org-Id': job.organizationId,
-					},
-					envelope: {
-						from: verpAddress,
-						to: job.to,
-					},
-				}),
+				transport.sendMail(buildSendMailPayload(job, verpAddress, messageIdHeader))
 			);
 
 			// Record the TLS-RPT result for this successful delivery (RFC 8460 §4.3).
@@ -235,7 +252,9 @@ export async function sendToMx(
 			const successResultType: TlsResultType = secured
 				? 'success'
 				: stsAttributedResultType('starttls-not-supported', stsOptions.policyMode);
-			recordTlsResult(redis, recipientDomain, successResultType, mxHost, bindIp, policyContext).catch(() => {});
+			recordTlsResult(redis, recipientDomain, successResultType, mxHost, bindIp, ctx).catch(
+				() => {}
+			);
 
 			// Parse remote message ID from SMTP response
 			// Gmail: "250 2.0.0 OK 1234567890 abc123.google.com"
@@ -253,7 +272,12 @@ export async function sendToMx(
 				},
 			};
 		} catch (err: unknown) {
-			const error = err as { responseCode?: number; response?: string; message?: string; code?: string };
+			const error = err as {
+				responseCode?: number;
+				response?: string;
+				message?: string;
+				code?: string;
+			};
 			const smtpCode = error.responseCode;
 			const response = error.response ?? error.message ?? 'Unknown error';
 			const enhancedCode = parseEnhancedCode(response);
@@ -263,10 +287,49 @@ export async function sendToMx(
 			// a cert/WebPKI problem becomes 'sts-webpki-invalid', a STARTTLS-
 			// stripping/other TLS failure becomes 'sts-policy-invalid'.
 			const baseType = classifyTlsFailure(error);
+
+			// DANE (RFC 7672): a TLS/handshake failure on a DANE-authenticated attempt
+			// — a TLSA mismatch (our peer-verifier Error), a STARTTLS strip, or
+			// a cert error — is an RFC 8460 'validation-failure' attributed to the tlsa
+			// policy, and never downgrades to cleartext. A pure connection failure (no
+			// TLS reached) is left to the normal connection path so the next MX is tried.
+			if (daneRequired) {
+				const daneTlsFailure =
+					Boolean(baseType) ||
+					error.code === 'ETLS' ||
+					(typeof error.message === 'string' && error.message.includes('DANE'));
+				if (daneTlsFailure) {
+					recordTlsResult(redis, recipientDomain, 'validation-failure', mxHost, bindIp, ctx).catch(
+						() => {}
+					);
+					return { kind: 'tls-failure', resultType: 'validation-failure', response };
+				}
+			}
+
 			let stsResultType: TlsResultType | null = null;
 			if (baseType) {
 				stsResultType = stsAttributedResultType(baseType, stsOptions.policyMode);
-				recordTlsResult(redis, recipientDomain, stsResultType, mxHost, bindIp, policyContext).catch(() => {});
+				recordTlsResult(redis, recipientDomain, stsResultType, mxHost, bindIp, ctx).catch(() => {});
+			}
+
+			// A TLS-negotiation failure UNDER A REQUIRED TLS FLOOR must be classified
+			// as a TLS failure BEFORE the SMTP-code branches below. When we demand
+			// STARTTLS (`require` / `require-verified`) against a receiver that does
+			// not advertise it, nodemailer sends STARTTLS anyway; the server replies
+			// 5xx to that command and nodemailer raises `code: 'ETLS'` with a
+			// `responseCode` parsed from the 5xx reply ("Error upgrading connection
+			// with STARTTLS: 5xx …"). That 5xx is a verdict on the STARTTLS command,
+			// NOT a permanent verdict on the recipient — so it must NOT fall into the
+			// `smtpCode >= 500` hard-bounce branch. Instead surface it as a TLS
+			// failure so the caller takes the soft/deferred retry path (we never fall
+			// back to cleartext under a required floor). Only applies when a floor was
+			// actually required, so the historic opportunistic behaviour is unchanged.
+			if (requireTLS && (stsResultType || error.code === 'ETLS')) {
+				return {
+					kind: 'tls-failure',
+					resultType: stsResultType ?? 'starttls-not-supported',
+					response,
+				};
 			}
 
 			// 5xx = permanent failure (hard bounce) — don't try next MX
@@ -317,8 +380,117 @@ export async function sendToMx(
 		}
 	}
 
+	// Remember the last TLS-negotiation failure (no SMTP status) so that, when a
+	// TLS-required floor (`require` / `require-verified`, or MTA-STS enforce) makes
+	// every MX fail its handshake, the bounce names the TLS failure instead of the
+	// generic "all MX failed". Captured ONLY when a TLS floor was actually required
+	// — under the default `opportunistic` path a mid-handshake TLS error is not a
+	// required-TLS failure and must not change the historic bounce string. It stays
+	// a soft/deferred bounce (retried until the receiver fixes its TLS or the
+	// message expires): we never fall back to cleartext under a TLS-required policy.
+	let lastTlsFailureResponse: string | null = null;
+
+	// Remember a DANE TLSA lookup failure (SERVFAIL / timeout / transport error).
+	// Such a failure is NOT a denial of existence, so we must not downgrade to the
+	// non-DANE path — we defer this MX. If every MX defers on a lookup failure the
+	// bounce names that (soft/deferred) rather than delivering without DANE.
+	let lastDaneDeferResponse: string | null = null;
+
 	// Try each MX host in priority order
 	for (const mxHost of mxHosts) {
+		// DANE (RFC 7672) takes precedence over MTA-STS. When enabled and the MX
+		// publishes a usable, DNSSEC-authenticated TLSA RRset, authenticate the MX
+		// certificate against it via a TLS floor resolved by the SAME strictest-wins
+		// module the non-DANE path uses (so DANE precedence lives in one place). A
+		// `none` decision (flag off / no usable TLSA) leaves the MTA-STS / local-floor
+		// path below byte-identical to T1; a `defer` decision (lookup failed) skips
+		// this MX without ever falling back to cleartext.
+		const daneDecision = daneDiscoveryAuthenticated
+			? await prepareDaneAttempt(
+					redis,
+					mxHost,
+					recipientDomain,
+					config,
+					daneDestinations.get(mxHost)
+				)
+			: ({ kind: 'none' } as const);
+		if (daneDecision.kind === 'defer') {
+			lastDaneDeferResponse = daneDecision.reason;
+			continue;
+		}
+		if (daneDecision.kind === 'proceed') {
+			// Enforce mode: resolve the TLS floor with a usable DANE result —
+			// requireTLS + verified TLS (RFC 7672 §2, supersedes MTA-STS).
+			// resolveTlsRequirements owns the precedence; the DanePlan supplies the
+			// TLSA cert-authentication hook.
+			const daneTls = resolveTlsRequirements({
+				localMode: localTlsMode,
+				stsPolicy: { policyMode: stsOptions.policyMode },
+				daneResult: { usable: true },
+			});
+			const outcome = await attemptSend(
+				mxHost,
+				daneTls.requireTLS,
+				daneTls.rejectUnauthorized,
+				daneDecision.plan
+			);
+			if (outcome.kind === 'sent' || outcome.kind === 'smtp') {
+				return outcome.result;
+			}
+			if (outcome.kind === 'tls-failure') {
+				lastTlsFailureResponse = outcome.response;
+			}
+			// over-cap / connection / tls-failure → try the next MX (never cleartext).
+			continue;
+		}
+		if (daneDecision.kind === 'report') {
+			// Report-only DANE (RFC 7672 report mode) — the DANE analogue of MTA-STS
+			// testing mode. Make ONE probe attempt at the DANE floor (requireTLS +
+			// verify + the TLSA hook) purely to OBSERVE the certificate authentication
+			// and emit the TLS-RPT result (success, or a `validation-failure` under the
+			// `tlsa` policy on a mismatch). DANE never requires TLS or bounces here: on
+			// any probe failure we retry the SAME MX at the normal opportunistic/MTA-STS
+			// floor so delivery is unaffected. Report-only is observability only and
+			// honours D6 (DANE never bounces mail by default).
+			const daneTls = resolveTlsRequirements({
+				localMode: localTlsMode,
+				stsPolicy: { policyMode: stsOptions.policyMode },
+				daneResult: { usable: true },
+			});
+			const probe = await attemptSend(
+				mxHost,
+				daneTls.requireTLS,
+				daneTls.rejectUnauthorized,
+				daneDecision.plan
+			);
+			if (probe.kind === 'sent' || probe.kind === 'smtp') {
+				return probe.result;
+			}
+			if (probe.kind === 'tls-failure') {
+				// The validation-failure (tlsa policy) has already been recorded inside
+				// attemptSend. Deliver anyway at the normal floor — report-only never
+				// blocks mail on a DANE outcome.
+				logger.debug(
+					{ mxHost, recipientDomain, resultType: probe.resultType },
+					'DANE report-only: TLSA result recorded; delivering at the normal TLS floor'
+				);
+				const retry = await attemptSend(
+					mxHost,
+					tlsRequirements.requireTLS,
+					tlsRequirements.rejectUnauthorized
+				);
+				if (retry.kind === 'sent' || retry.kind === 'smtp') {
+					return retry.result;
+				}
+				if (retry.kind === 'tls-failure' && tlsRequirements.requireTLS) {
+					lastTlsFailureResponse = retry.response;
+				}
+				continue; // retry failed too — try the next MX
+			}
+			// over-cap / connection → try the next MX (same as the non-DANE path).
+			continue;
+		}
+
 		// MTA-STS enforcement: skip MX hosts not listed in the policy
 		if (stsOptions.policyMode === 'enforce' && !isMxAllowed(mxHost, stsOptions.allowedMxHosts)) {
 			logger.warn(
@@ -328,7 +500,14 @@ export async function sendToMx(
 			// RFC 8460 §4.3: an MX that is not in the enforce policy is a policy
 			// failure — record it (previously this skip recorded nothing, so STS
 			// MX-mismatch was invisible in our TLS-RPT reports).
-			recordTlsResult(redis, recipientDomain, 'sts-policy-invalid', mxHost, bindIp, policyContext).catch(() => {});
+			recordTlsResult(
+				redis,
+				recipientDomain,
+				'sts-policy-invalid',
+				mxHost,
+				bindIp,
+				policyContext
+			).catch(() => {});
 			continue;
 		}
 
@@ -347,13 +526,23 @@ export async function sendToMx(
 			if (probe.kind === 'tls-failure') {
 				logger.warn(
 					{ mxHost, recipientDomain, resultType: probe.resultType },
-					'MTA-STS testing-mode TLS failure recorded; retrying opportunistically'
+					'MTA-STS testing-mode TLS failure recorded; retrying at the local TLS floor'
 				);
-				// Retry the same MX opportunistically (no requireTLS / no verify) so
-				// the report-only policy never blocks delivery.
-				const retry = await attemptSend(mxHost, false, false);
+				// Retry the same MX at the operator's local TLS floor so the report-only
+				// STS policy never blocks delivery. With the default `opportunistic`
+				// mode this is (no requireTLS / no verify) — historic behaviour. Under a
+				// `require` / `require-verified` local mode the floor is preserved and
+				// the retry never downgrades below it.
+				const retry = await attemptSend(
+					mxHost,
+					tlsRequirements.requireTLS,
+					tlsRequirements.rejectUnauthorized
+				);
 				if (retry.kind === 'sent' || retry.kind === 'smtp') {
 					return retry.result;
+				}
+				if (retry.kind === 'tls-failure' && tlsRequirements.requireTLS) {
+					lastTlsFailureResponse = retry.response;
 				}
 				continue; // retry failed too — try the next MX
 			}
@@ -361,100 +550,32 @@ export async function sendToMx(
 			continue;
 		}
 
-		// Enforce / no-policy path: a single attempt with the policy's TLS profile.
-		const outcome = await attemptSend(mxHost, stsOptions.requireTLS, stsOptions.rejectUnauthorized);
+		// Enforce / no-policy path: a single attempt at the resolved TLS floor
+		// (strictest of the local mode and the recipient's MTA-STS state).
+		const outcome = await attemptSend(
+			mxHost,
+			tlsRequirements.requireTLS,
+			tlsRequirements.rejectUnauthorized
+		);
 		if (outcome.kind === 'sent' || outcome.kind === 'smtp') {
 			return outcome.result;
+		}
+		if (outcome.kind === 'tls-failure' && tlsRequirements.requireTLS) {
+			lastTlsFailureResponse = outcome.response;
 		}
 		// over-cap / connection / tls-failure (no SMTP code) → try the next MX
 		continue;
 	}
 
-	// All MX hosts failed at connection level
-	return {
-		success: false,
-		error: `All MX hosts failed for ${recipientDomain}: ${mxHosts.join(', ')}`,
-		bounceType: 'soft',
-	};
-}
-
-/**
- * Classify an SMTP error as a TLS failure type for TLS-RPT.
- * Returns null if the error is not TLS-related (RFC 8460 §4 — only genuine
- * TLS negotiation problems belong in a report; transport/network errors and
- * application-level SMTP failures must be excluded).
- *
- * Exported for regression testing of the classification table.
- */
-export function classifyTlsFailure(error: { code?: string; message?: string; response?: string }): import('./tlsRpt.js').TlsResultType | null {
-	const msg = (error.message ?? '') + (error.response ?? '');
-	const code = error.code ?? '';
-
-	// Inspect the message for a TLS/certificate signature FIRST — BEFORE bailing
-	// on transport error codes. nodemailer surfaces a STARTTLS certificate
-	// verification failure (self-signed / untrusted / hostname-mismatch /
-	// expired, e.g. under MTA-STS enforce with rejectUnauthorized:true) as a
-	// generic `code: 'ESOCKET'` error whose MESSAGE carries the real reason
-	// ("self-signed certificate", "Hostname/IP does not match certificate's
-	// altnames: ..."). Bailing on ESOCKET before reading the message would
-	// silently drop exactly these cert failures from TLS-RPT (RFC 8460 §4) —
-	// the very negotiation failures a report exists to surface.
-	if (msg.includes('STARTTLS') || msg.includes('starttls')) {
-		return 'starttls-not-supported';
-	}
-
-	if (msg.includes('certificate') || msg.includes('CERT_') || msg.includes('altname')) {
-		if (msg.includes('expired')) return 'certificate-expired';
-		if (msg.includes('hostname') || msg.includes('Hostname') || msg.includes('mismatch') || msg.includes('altname')) return 'certificate-host-mismatch';
-		// Match both the legacy spaced form and Node's hyphenated "self-signed".
-		if (msg.includes('self signed') || msg.includes('self-signed') || msg.includes('untrusted') || msg.includes('UNABLE_TO_VERIFY')) return 'certificate-not-trusted';
-		return 'validation-failure';
-	}
-
-	if (msg.includes('SSL') || msg.includes('TLS') || msg.includes('tls')) {
-		return 'validation-failure';
-	}
-
-	// Pure transport/network failures (no TLS/cert signature in the message) are
-	// not TLS negotiation failures. ESOCKET covers low-level socket errors raised
-	// by nodemailer when the connection drops before/around the TLS handshake
-	// (e.g. "socket hang up"); those carry no certificate/SSL/TLS marker and so
-	// fall through to here.
-	if (
-		code === 'ECONNREFUSED' ||
-		code === 'ECONNRESET' ||
-		code === 'ETIMEDOUT' ||
-		code === 'ESOCKET'
-	) {
-		return null; // Network error, not TLS
-	}
-
-	return null; // Not a TLS error
-}
-
-/**
- * Escalate a generic TLS failure to its MTA-STS-specific TLS-RPT result type
- * when an STS policy is in force (RFC 8460 §4.4).
- *
- * - No STS policy ('none'): keep the generic result type.
- * - STS in force ('enforce' or 'testing'): a certificate/WebPKI verification
- *   failure under STS is `sts-webpki-invalid`; any other TLS failure (e.g.
- *   STARTTLS stripping, protocol/validation failure) is `sts-policy-invalid`.
- *
- * Testing mode still attributes the STS type so report-only days surface the
- * same failures an enforce policy would have caught (RFC 8460 §4.3).
- */
-export function stsAttributedResultType(
-	baseType: TlsResultType,
-	policyMode: 'enforce' | 'testing' | 'none'
-): TlsResultType {
-	if (policyMode === 'none') return baseType;
-
-	const isWebPkiFailure =
-		baseType === 'certificate-host-mismatch' ||
-		baseType === 'certificate-expired' ||
-		baseType === 'certificate-not-trusted' ||
-		baseType === 'validation-failure';
-
-	return isWebPkiFailure ? 'sts-webpki-invalid' : 'sts-policy-invalid';
+	// Every MX has been tried (or skipped). Classify the terminal bounce from the
+	// strictest reason recorded along the way — a TLS-required handshake failure,
+	// then a DANE TLSA lookup that could not be completed, else a plain
+	// connection-level failure. All soft/deferred: a TLS-required or DANE floor
+	// never falls back to cleartext (RFC 7672 §2.1).
+	return buildAllMxFailedResult(
+		recipientDomain,
+		mxHosts,
+		lastTlsFailureResponse,
+		lastDaneDeferResponse
+	);
 }

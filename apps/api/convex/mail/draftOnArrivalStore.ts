@@ -11,6 +11,7 @@
  */
 
 import { v } from 'convex/values';
+import { openMailMessageInlineBody } from '../lib/messageBody';
 import { internalQuery, internalMutation } from '../_generated/server';
 import { draftQualityValidator } from '../lib/convexValidators';
 import { NEEDS_REPLY_CONTEXT_MESSAGES } from './needsReply';
@@ -51,11 +52,17 @@ export const loadForDraft = internalQuery({
 			.take(NEEDS_REPLY_CONTEXT_MESSAGES);
 		const newest = newestDesc.sort((a, b) => a.receivedAt - b.receivedAt);
 
-		const transcript = newest
-			.map((m) => {
-				const body = (m.textBodyInline ?? m.snippet ?? '').slice(0, EXCERPT_CHARS);
-				return `From: ${m.fromName || m.fromAddress}\nSubject: ${m.subject}\n${body}`;
-			})
+		const transcript = (
+			await Promise.all(
+				newest.map(async (m) => {
+					const body = ((await openMailMessageInlineBody(m)).text ?? m.snippet ?? '').slice(
+						0,
+						EXCERPT_CHARS
+					);
+					return `From: ${m.fromName || m.fromAddress}\nSubject: ${m.subject}\n${body}`;
+				})
+			)
+		)
 			.join('\n\n---\n\n')
 			.slice(0, CONTEXT_CHARS);
 

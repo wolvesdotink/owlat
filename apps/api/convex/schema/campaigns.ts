@@ -172,6 +172,10 @@ export const campaignTables = {
 		.index('by_status_and_scheduled_at', ['status', 'scheduledAt'])
 		.index('by_status_sent_at', ['status', 'sentAt'])
 		.index('by_archive_token', ['archiveToken'])
+		// SEALED-AT-REST NOTE (Sealed Mail E8b): `searchableText` indexes campaign
+		// METADATA (name, subject), not a sealed 1:1 message body — campaigns are the
+		// plaintext broadcast plane (D5) and are out of E8b's at-rest sealing scope.
+		// See lib/atRestBodies.ts and apps/docs/content/3.developer/21.sealed-mail-at-rest.md.
 		.searchIndex('search_campaigns', {
 			searchField: 'searchableText',
 			filterFields: ['status'],

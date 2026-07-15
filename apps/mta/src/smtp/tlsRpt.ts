@@ -19,6 +19,7 @@ import { logger } from '../monitoring/logger.js';
 import { Counter } from 'prom-client';
 import { registry } from '../monitoring/collector.js';
 import type { EmailJob } from '../types.js';
+import { formatTlsaRecord, type TlsaRecord } from '@owlat/shared/dane';
 import { buildGroupKey, extractDomain } from '../queue/groups.js';
 
 const TLS_RPT_PREFIX = 'mta:tls-rpt:';
@@ -41,9 +42,16 @@ export const tlsReportsSent = new Counter({
 
 // ─── Types ──────────────────────────────────────────────────────────
 
-export type TlsResultType = 'success' | 'starttls-not-supported' | 'certificate-host-mismatch' |
-	'certificate-expired' | 'certificate-not-trusted' | 'validation-failure' |
-	'sts-policy-invalid' | 'sts-webpki-invalid' | 'sts-policy-fetch-error';
+export type TlsResultType =
+	| 'success'
+	| 'starttls-not-supported'
+	| 'certificate-host-mismatch'
+	| 'certificate-expired'
+	| 'certificate-not-trusted'
+	| 'validation-failure'
+	| 'sts-policy-invalid'
+	| 'sts-webpki-invalid'
+	| 'sts-policy-fetch-error';
 
 export type TlsPolicyType = 'sts' | 'no-policy-found' | 'tlsa';
 
@@ -186,11 +194,18 @@ export function buildStsPolicyString(
 	mode: 'enforce' | 'testing',
 	mxHostPatterns: string[]
 ): string[] {
-	return [
-		'version: STSv1',
-		`mode: ${mode}`,
-		...mxHostPatterns.map((mx) => `mx: ${mx}`),
-	];
+	return ['version: STSv1', `mode: ${mode}`, ...mxHostPatterns.map((mx) => `mx: ${mx}`)];
+}
+
+/**
+ * Build the `policy-string` for a DANE (TLSA) TLS-RPT report block (RFC 8460 §3,
+ * policy-type `tlsa`). Each line is the TLSA record in presentation form
+ * `"<usage> <selector> <matching-type> <hex>"` (RFC 6698 §2.2) — the applied
+ * policy a report consumer sees so a DANE validation failure is attributable to
+ * the exact RRset we authenticated against.
+ */
+export function buildTlsaPolicyString(records: readonly TlsaRecord[]): string[] {
+	return records.map(formatTlsaRecord);
 }
 
 // ─── Report Generation ──────────────────────────────────────────────
@@ -243,7 +258,10 @@ export async function generateReport(
 	const rawFailures = await redis.lrange(failureKey, 0, -1);
 
 	// Aggregate failures by type+mxHost
-	const failureMap = new Map<string, { type: string; mxHost: string; sendingIp: string; count: number }>();
+	const failureMap = new Map<
+		string,
+		{ type: string; mxHost: string; sendingIp: string; count: number }
+	>();
 	for (const raw of rawFailures) {
 		try {
 			const f = JSON.parse(raw) as { type: string; mxHost: string; sendingIp: string };
@@ -259,7 +277,7 @@ export async function generateReport(
 		}
 	}
 
-	const failureDetails: TlsReportFailureDetail[] = Array.from(failureMap.values()).map(f => ({
+	const failureDetails: TlsReportFailureDetail[] = Array.from(failureMap.values()).map((f) => ({
 		'result-type': f.type,
 		'sending-mta-ip': f.sendingIp,
 		'receiving-mx-hostname': f.mxHost,
@@ -282,14 +300,16 @@ export async function generateReport(
 		},
 		'contact-info': `mailto:${contactEmail}`,
 		'report-id': `${organizationName}-${recipientDomain}-${date}`,
-		policies: [{
-			policy: reportPolicy,
-			summary: {
-				'total-successful-session-count': successes,
-				'total-failure-session-count': failures,
+		policies: [
+			{
+				policy: reportPolicy,
+				summary: {
+					'total-successful-session-count': successes,
+					'total-failure-session-count': failures,
+				},
+				...(failureDetails.length > 0 ? { 'failure-details': failureDetails } : {}),
 			},
-			...(failureDetails.length > 0 ? { 'failure-details': failureDetails } : {}),
-		}],
+		],
 	};
 }
 
@@ -355,7 +375,13 @@ export async function generateAndSendReports(
 	const domainsWithData: string[] = [];
 
 	do {
-		const [nextCursor, keys] = await redis.scan(cursor, 'MATCH', `${TLS_RPT_PREFIX}*:${yesterday}`, 'COUNT', 100);
+		const [nextCursor, keys] = await redis.scan(
+			cursor,
+			'MATCH',
+			`${TLS_RPT_PREFIX}*:${yesterday}`,
+			'COUNT',
+			100
+		);
 		cursor = nextCursor;
 
 		for (const key of keys) {
@@ -374,8 +400,8 @@ export async function generateAndSendReports(
 			// would make our reports indistinguishable from "no data sent", which
 			// the spec explicitly discourages.
 			const key = `${TLS_RPT_PREFIX}${domain}:${yesterday}`;
-			const successCount = parseInt(await redis.hget(key, 'successes') ?? '0', 10);
-			const failureCount = parseInt(await redis.hget(key, 'failures') ?? '0', 10);
+			const successCount = parseInt((await redis.hget(key, 'successes')) ?? '0', 10);
+			const failureCount = parseInt((await redis.hget(key, 'failures')) ?? '0', 10);
 			if (successCount === 0 && failureCount === 0) {
 				stats.skipped++;
 				continue;
@@ -448,7 +474,9 @@ export async function generateAndSendReports(
 						`Report Domain: ${domain} Submitter: ${submitterDomain} ` +
 						`Report-ID: <${report['report-id']}>`;
 					// RFC 8460 §5.1 filename: sender!policy-domain!start!end.json.gz
-					const startTs = Math.floor(new Date(report['date-range']['start-datetime']).getTime() / 1000);
+					const startTs = Math.floor(
+						new Date(report['date-range']['start-datetime']).getTime() / 1000
+					);
 					const endTs = Math.floor(new Date(report['date-range']['end-datetime']).getTime() / 1000);
 					const filename = `${submitterDomain}!${domain}!${startTs}!${endTs}.json.gz`;
 

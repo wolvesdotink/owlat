@@ -18,6 +18,7 @@ import { createCredentialRoutes } from './routes/credentials.js';
 import { createOrgLimitsRoutes } from './routes/orgLimits.js';
 import { createSuppressionRoutes } from './routes/suppression.js';
 import { createDkimRoutes } from './routes/dkim.js';
+import { createOutboundTlsRoutes } from './routes/outboundTls.js';
 import { createPoolRulesRoutes } from './routes/poolRules.js';
 import { createInboundRoutes } from './routes/inboundRoutes.js';
 import { createMailboxRoutes } from './routes/mailboxes.js';
@@ -92,6 +93,9 @@ export function createApp(queue: Queue<EmailJob>, redis: Redis, config: MtaConfi
 	// DKIM key management (master-key protected internally)
 	app.route('/dkim', createDkimRoutes(redis, config));
 
+	// Per-domain outbound TLS mode overrides (master-key protected internally)
+	app.route('/outbound-tls', createOutboundTlsRoutes(redis, config));
+
 	// Pool routing rules (master-key protected internally)
 	app.route('/pool-rules', createPoolRulesRoutes(redis, config));
 
@@ -124,7 +128,7 @@ export function createApp(queue: Queue<EmailJob>, redis: Redis, config: MtaConfi
 		c.json({
 			service: 'owlat-mta',
 			version: '0.2.1', // x-release-version (kept in sync by scripts/release.ts)
-			docs: 'POST /send, GET /health, GET /metrics, /credentials, /org-limits, /suppression, /dkim, /pool-rules, /inbound/routes, /delivery-logs, /queue, /dlq, /isp-profiles, /ip-reputation, /scan',
+			docs: 'POST /send, GET /health, GET /metrics, /credentials, /org-limits, /suppression, /dkim, /outbound-tls, /pool-rules, /inbound/routes, /delivery-logs, /queue, /dlq, /isp-profiles, /ip-reputation, /scan',
 		})
 	);
 

@@ -23,6 +23,7 @@
  */
 
 import { v, type Infer } from 'convex/values';
+import { openMailMessageInlineBody } from '../lib/messageBody';
 import { internalMutation, internalQuery, type MutationCtx } from '../_generated/server';
 import { authedMutation, publicQuery } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
@@ -200,23 +201,25 @@ export const getThreadContext = internalQuery({
 		return {
 			ownerAddress,
 			latestMessageId: thread.latestMessageId,
-			messages: newest.map((m) => ({
-				messageId: m._id,
-				fromAddress: m.fromAddress,
-				fromName: m.fromName,
-				toAddresses: m.toAddresses,
-				ccAddresses: m.ccAddresses,
-				hasListUnsubscribe: m.unsubscribe !== undefined,
-				// A real calendar invite (.ics) is handled by PostboxInviteCard —
-				// the scheduling chip must never double up on it.
-				hasCalendarInvite: (m.attachments ?? []).some(isCalendarAttachment),
-				isFromOwner: m.outbound !== undefined || m.fromAddress.toLowerCase() === ownerAddress,
-				receivedAt: m.receivedAt,
-				subject: m.subject,
-				// Short bounded body excerpt — the refinement prompt does not need
-				// the full message, and snippet is always present.
-				excerpt: (m.textBodyInline ?? m.snippet ?? '').slice(0, 2000),
-			})),
+			messages: await Promise.all(
+				newest.map(async (m) => ({
+					messageId: m._id,
+					fromAddress: m.fromAddress,
+					fromName: m.fromName,
+					toAddresses: m.toAddresses,
+					ccAddresses: m.ccAddresses,
+					hasListUnsubscribe: m.unsubscribe !== undefined,
+					// A real calendar invite (.ics) is handled by PostboxInviteCard —
+					// the scheduling chip must never double up on it.
+					hasCalendarInvite: (m.attachments ?? []).some(isCalendarAttachment),
+					isFromOwner: m.outbound !== undefined || m.fromAddress.toLowerCase() === ownerAddress,
+					receivedAt: m.receivedAt,
+					subject: m.subject,
+					// Short bounded body excerpt — the refinement prompt does not need
+					// the full message, and snippet is always present.
+					excerpt: ((await openMailMessageInlineBody(m)).text ?? m.snippet ?? '').slice(0, 2000),
+				}))
+			),
 		};
 	},
 });

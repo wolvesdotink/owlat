@@ -55,10 +55,10 @@ export const inboxTables = {
 		// Denormalized at create time by the thread module so the list never has to
 		// join to the newest message to know the channel.
 		channel: v.optional(v.string()),
-		// Newest message's plaintext preview — denormalized by the thread module on
+		// Newest message's sealed-at-rest preview — denormalized by the thread module on
 		// each inbound_activity so the team-inbox row can show a snippet line
 		// without an N+1 read of the latest inboundMessages/unifiedMessages row.
-		// Read-side hint only; never gates a query.
+		// Read-side hint only; opened by inbox queries and never gates a query.
 		lastPreview: v.optional(v.string()),
 		// Thread metadata
 		messageCount: v.number(),
@@ -110,6 +110,34 @@ export const inboxTables = {
 		headers: v.optional(v.string()),
 		// Attachment metadata (JSON array: [{filename, contentType, size}], content stored separately)
 		attachmentMeta: v.optional(v.string()),
+		// RFC 8601 inbound authentication verdicts, computed by the MTA over the
+		// raw bytes at ingest (SPF on MAIL FROM, DKIM on the d= signature, DMARC
+		// binding the two to the From domain via alignment). The AI-inbox path
+		// used to DROP these — the personal-mailbox path (`mailMessages`) has
+		// carried them since inbound auth landed. Persisted here so the reader can
+		// render an honest sender-authenticity badge. ALL optional: an older MTA
+		// (or a disabled check) sends the field absent, which renders as "unknown"
+		// downstream — NEVER as "pass". RFC 8601 keyword strings
+		// (`pass`/`fail`/`softfail`/`neutral`/`none`/`temperror`/`permerror`).
+		spfResult: v.optional(v.string()),
+		dkimResult: v.optional(v.string()),
+		dmarcResult: v.optional(v.string()),
+		// The published DMARC policy (`none`/`quarantine`/`reject`) that applied to
+		// the From domain, captured alongside `dmarcResult` so the reader can tell a
+		// monitor-only `p=none` fail from one the domain owner asked us to act on.
+		dmarcPolicy: v.optional(v.string()),
+		// Sealed Mail (E4): mirrored flags of the inbound unsealing outcome on the
+		// AI-inbox path (decrypt-on-ingest, D3). The full record lives on the
+		// mailMessages side; here only what the reader's badge needs. `isSealed` is
+		// true when the message arrived as PGP/MIME ciphertext; `isSignatureValid`
+		// is present ONLY when we decrypted it AND checked the signature (true iff
+		// it verified against the pinned sender key — an undecryptable message
+		// carries `isSealed:true` with no signature claim). All optional: plaintext
+		// mail and pre-E4 rows omit them entirely.
+		isSealed: v.optional(v.boolean()),
+		isSignatureValid: v.optional(v.boolean()),
+		signerFingerprint: v.optional(v.string()),
+		signerInstance: v.optional(v.string()),
 		// Relationships
 		threadId: v.optional(v.id('conversationThreads')),
 		contactId: v.optional(v.id('contacts')),

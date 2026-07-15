@@ -27,11 +27,30 @@ vi.mock('../inboundSecurity.js', async (importOriginal) => {
 	return { ...actual, checkSpf: vi.fn() };
 });
 
+// Personal-mailbox lookup is a Redis cache read; stub it to "no mailbox" so the
+// RCPT path falls through to the inbound route table (where the TLS-RPT system
+// route lives). `findRoute` itself stays real.
+vi.mock('../../inbound/mailboxResolver.js', () => ({
+	findMailboxRoute: vi.fn(async () => null),
+}));
+
+vi.mock('../../inbound/inboundTlsPolicy.js', () => ({
+	isInboundTlsRequired: vi.fn(async () => true),
+	inboundTlsRequiredError: () => {
+		const error = new Error('5.7.10 Encryption needed: STARTTLS required') as Error & {
+			responseCode: number;
+		};
+		error.responseCode = 550;
+		return error;
+	},
+}));
+
 import type Redis from 'ioredis';
 import type { SMTPServerAddress, SMTPServerSession } from 'smtp-server';
 import { createBounceServer } from '../server.js';
 import { checkSpf } from '../inboundSecurity.js';
 import type { MtaConfig } from '../../config.js';
+import { isInboundTlsRequired } from '../../inbound/inboundTlsPolicy.js';
 
 /** Minimal MtaConfig — only the fields `createBounceServer`/`onMailFrom` read. */
 function makeConfig(overrides: Partial<MtaConfig> = {}): MtaConfig {
@@ -54,14 +73,15 @@ function getOnMailFrom(config: MtaConfig) {
 	return handler as (
 		address: SMTPServerAddress,
 		session: SMTPServerSession,
-		callback: (err?: Error | null) => void,
+		callback: (err?: Error | null) => void
 	) => void;
 }
 
-function makeSession(): SMTPServerSession {
+function makeSession(secure = true): SMTPServerSession {
 	return {
 		remoteAddress: '203.0.113.10',
 		hostNameAppearsAs: 'sender.example.com',
+		secure,
 	} as unknown as SMTPServerSession;
 }
 
@@ -69,20 +89,52 @@ function makeSession(): SMTPServerSession {
 function runMailFrom(
 	config: MtaConfig,
 	envelopeFrom: string,
+	secure = true
 ): Promise<Error | null | undefined> {
 	const onMailFrom = getOnMailFrom(config);
 	return new Promise((resolve) => {
-		onMailFrom(
-			{ address: envelopeFrom } as SMTPServerAddress,
-			makeSession(),
-			(err) => resolve(err),
+		onMailFrom({ address: envelopeFrom } as SMTPServerAddress, makeSession(secure), (err) =>
+			resolve(err)
 		);
 	});
 }
 
+describe('bounce server onMailFrom inbound TLS gate', () => {
+	beforeEach(() => {
+		vi.mocked(isInboundTlsRequired).mockReset().mockResolvedValue(true);
+	});
+
+	it('rejects plaintext before accepting the SMTP transaction', async () => {
+		const error = await runMailFrom(
+			makeConfig({ inboundSpfEnabled: false }),
+			'sender@example.com',
+			false
+		);
+		expect(error).toBeInstanceOf(Error);
+		expect((error as Error & { responseCode?: number }).responseCode).toBe(550);
+		expect((error as Error).message).toContain('5.7.10 Encryption needed');
+	});
+
+	it('accepts a TLS-upgraded transaction when the policy is enabled', async () => {
+		const error = await runMailFrom(makeConfig({ inboundSpfEnabled: false }), 'sender@example.com');
+		expect(error == null).toBe(true);
+	});
+
+	it('accepts plaintext only after the policy is explicitly disabled', async () => {
+		vi.mocked(isInboundTlsRequired).mockResolvedValue(false);
+		const error = await runMailFrom(
+			makeConfig({ inboundSpfEnabled: false }),
+			'sender@example.com',
+			false
+		);
+		expect(error == null).toBe(true);
+	});
+});
+
 describe('bounce server onMailFrom SPF gate (PR-74)', () => {
 	beforeEach(() => {
 		vi.mocked(checkSpf).mockReset();
+		vi.mocked(isInboundTlsRequired).mockReset().mockResolvedValue(true);
 	});
 
 	it('accepts an empty MAIL FROM ("") without consulting SPF (null sender)', async () => {
@@ -114,8 +166,60 @@ describe('bounce server onMailFrom SPF gate (PR-74)', () => {
 	});
 
 	it('skips SPF entirely (even for a real sender) when inboundSpfEnabled is false', async () => {
-		const err = await runMailFrom(makeConfig({ inboundSpfEnabled: false }), 'whoever@anywhere.test');
+		const err = await runMailFrom(
+			makeConfig({ inboundSpfEnabled: false }),
+			'whoever@anywhere.test'
+		);
 		expect(err == null).toBe(true);
 		expect(checkSpf).not.toHaveBeenCalled();
+	});
+});
+
+// ─── RCPT gate — TLS-RPT rua system route (blocking #3) ────────────────────
+
+// Minimal Redis stub: every route-table lookup misses (returns null), so the
+// only route that can match is the in-memory TLS-RPT system route.
+const fakeRedis = { get: async () => null } as unknown as Redis;
+
+/** Pull the (typed) `onRcptTo` handler out of the constructed server. */
+function getOnRcptTo(config: MtaConfig) {
+	const server = createBounceServer(config, fakeRedis);
+	const handler = (server.options as { onRcptTo?: unknown }).onRcptTo;
+	if (typeof handler !== 'function') throw new Error('onRcptTo not registered');
+	return handler as (
+		address: SMTPServerAddress,
+		session: SMTPServerSession,
+		callback: (err?: Error | null) => void
+	) => void;
+}
+
+/** Run `onRcptTo` and resolve with the error (if any) passed to its callback. */
+function runRcptTo(config: MtaConfig, rcptTo: string): Promise<Error | null | undefined> {
+	const onRcptTo = getOnRcptTo(config);
+	return new Promise((resolve) => {
+		onRcptTo({ address: rcptTo } as SMTPServerAddress, makeSession(), (err) => resolve(err));
+	});
+}
+
+describe('bounce server onRcptTo — TLS-RPT rua system route', () => {
+	const RUA = 'tls-reports@owlat.test';
+	const tlsRptConfig = makeConfig({
+		tlsRptRua: `mailto:${RUA}`,
+		convexSiteUrl: 'https://acme.convex.site',
+		webhookSecret: 'mta-test-secret',
+	});
+
+	it('accepts RCPT TO the configured rua address (delivers to the system webhook)', async () => {
+		// Without threading the system-route config into the RCPT gate, findRoute
+		// returns null here and the address is rejected "Mailbox not found" before
+		// onData/resolveRoutePhase ever runs — so inbound TLS reports never arrive.
+		const err = await runRcptTo(tlsRptConfig, RUA);
+		expect(err == null).toBe(true);
+	});
+
+	it('still rejects an unrelated, unrouted recipient with "Mailbox not found"', async () => {
+		const err = await runRcptTo(tlsRptConfig, 'nobody@nowhere.test');
+		expect(err).toBeInstanceOf(Error);
+		expect((err as Error).message).toMatch(/Mailbox not found/i);
 	});
 });

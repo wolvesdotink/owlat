@@ -13,6 +13,7 @@
  */
 
 import { v } from 'convex/values';
+import { openInboundMessageBody } from '../lib/messageBody';
 import { internalQuery } from '../_generated/server';
 import { adminQuery, authedMutation } from '../lib/authedFunctions';
 import { requireOrgPermission } from '../lib/sessionOrganization';
@@ -187,7 +188,8 @@ export const evaluateForMessage = internalQuery({
 			.take(MAX_HANDLING_RULES);
 		if (rules.length === 0) return inert;
 
-		const body = message.textBody ?? (message.htmlBody ? stripTags(message.htmlBody) : '');
+		const { text: bodyText, html: bodyHtml } = await openInboundMessageBody(message);
+		const body = bodyText ?? (bodyHtml ? stripTags(bodyHtml) : '');
 		return evaluateHandlingRules(rules as HandlingRuleLike[], {
 			from: message.from ?? '',
 			subject: message.subject ?? '',

@@ -5,6 +5,7 @@ FROM oven/bun:1-alpine AS builder
 WORKDIR /app
 
 COPY package.json bun.lock ./
+COPY patches/ patches/
 COPY --parents apps/mail-sync/package.json ./
 
 RUN cd apps/mail-sync && bun install

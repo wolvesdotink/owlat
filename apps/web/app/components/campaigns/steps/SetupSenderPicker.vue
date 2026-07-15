@@ -2,6 +2,7 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { isValidEmail } from '~/utils/validation';
+import { senderAuthDisplay } from '~/utils/senderAlignment';
 import {
 	CUSTOM_SENDER_VALUE,
 	buildSenderOptions,
@@ -51,6 +52,24 @@ const senderErrorField = ref<'name' | 'email' | null>(null);
 
 const senderOptions = computed(() => buildSenderOptions(senders.value, isCustomAllowed.value));
 const isCustomSelected = computed(() => isCustomSender(selectedSenderId.value));
+
+// The curated sender currently chosen (null on the custom branch or before a
+// pick) and its live authenticity verdict — domain verification + whether the
+// active transport signs/bounces this address in a DMARC-aligned way. Drives the
+// chip AND the disable-with-reason send-gate below, from one source of truth.
+const selectedCuratedSender = computed(() => {
+	if (isCustomSelected.value || !selectedSenderId.value) return null;
+	return senders.value.find((s) => s._id === selectedSenderId.value) ?? null;
+});
+const selectedSenderAuth = computed(() => {
+	const sender = selectedCuratedSender.value;
+	if (!sender) return null;
+	return senderAuthDisplay({
+		verified: sender.domainVerified,
+		alignment: sender.alignment,
+		reason: sender.alignmentReason,
+	});
+});
 
 // No curated senders AND no custom escape hatch: nothing is selectable, so show
 // an empty-state (admin deep link vs. "ask your admin") instead of a picker.
@@ -155,6 +174,13 @@ function validate(): string | null {
 		senderErrorField.value = 'email';
 		return senderError.value;
 	}
+	// A broken curated identity (unverified domain or a misaligned transport) can't
+	// be sent from — surface the same reason the chip shows and block advancing.
+	const auth = selectedSenderAuth.value;
+	if (auth?.blocked) {
+		senderError.value = auth.detail ?? 'This sender can’t be used right now.';
+		return senderError.value;
+	}
 	return null;
 }
 
@@ -163,7 +189,7 @@ const isReady = computed(
 		senderSelectionProblem(selectedSenderId.value, {
 			fromName: fromName.value,
 			fromEmail: fromEmail.value,
-		}) === null
+		}) === null && !selectedSenderAuth.value?.blocked
 );
 
 defineExpose({ validate, isReady });
@@ -221,6 +247,16 @@ defineExpose({ validate, isReady });
 			<p v-if="!isCustomSelected && !senderError" class="mt-1.5 text-sm text-text-tertiary">
 				Recipients see this name and address. Manage the list in Settings → Campaign senders.
 			</p>
+
+			<!-- Live authenticity of the chosen curated sender: domain verification +
+				     transport alignment. A broken identity is disabled-with-reason. -->
+			<CampaignsSenderAuthChip
+				v-if="selectedCuratedSender"
+				class="mt-2"
+				:verified="selectedCuratedSender.domainVerified"
+				:alignment="selectedCuratedSender.alignment"
+				:reason="selectedCuratedSender.alignmentReason"
+			/>
 
 			<!-- Custom address (only reachable when the instance allows custom senders) -->
 			<div v-if="isCustomSelected" class="mt-4 space-y-4">

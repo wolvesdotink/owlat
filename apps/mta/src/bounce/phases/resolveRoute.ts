@@ -21,6 +21,7 @@ export const resolveRoutePhase: Phase<BasePhaseCtx, CtxWithAcceptRoute> = {
 	name: 'resolve_route',
 	async run(deps, ctx) {
 		const { parsed, rcptTo, dkimResult, dmarcResult, dmarcPolicy } = ctx;
+		const { arcCv, arcSealerDomain, arcAttestsOriginalPass } = ctx;
 
 		if (!rcptTo) {
 			return {
@@ -40,11 +41,11 @@ export const resolveRoutePhase: Phase<BasePhaseCtx, CtxWithAcceptRoute> = {
 					size: att.size ?? 0,
 					contentId: att.contentId ?? undefined,
 					partIndex: String(attIdx),
-				}),
+				})
 			);
 			const referencesString = Array.isArray(parsed.references)
 				? parsed.references.join(' ')
-				: parsed.references ?? undefined;
+				: (parsed.references ?? undefined);
 			return {
 				kind: 'bounceTo',
 				attempt: {
@@ -59,12 +60,21 @@ export const resolveRoutePhase: Phase<BasePhaseCtx, CtxWithAcceptRoute> = {
 					dkimResult,
 					dmarcResult,
 					dmarcPolicy,
+					arcCv,
+					arcSealerDomain,
+					arcAttestsOriginalPass,
 				},
 			};
 		}
 
-		// 2. Generic inbound route table.
-		const route = await findRoute(deps.redis, rcptTo);
+		// 2. Generic inbound route table — plus the TLS-RPT system route for the
+		//    operator's `_smtp._tls` rua address (RFC 8460), which delivers to a
+		//    dedicated Convex webhook rather than a user mailbox.
+		const route = await findRoute(deps.redis, rcptTo, {
+			ruaAddress: deps.config.tlsRptRua,
+			convexSiteUrl: deps.config.convexSiteUrl,
+			webhookSecret: deps.config.webhookSecret,
+		});
 		if (!route) {
 			return {
 				kind: 'bounceTo',
@@ -103,7 +113,7 @@ export const resolveRoutePhase: Phase<BasePhaseCtx, CtxWithAcceptRoute> = {
 };
 
 function extractAddrs(
-	field: import('mailparser').ParsedMail['to'] | import('mailparser').ParsedMail['cc'],
+	field: import('mailparser').ParsedMail['to'] | import('mailparser').ParsedMail['cc']
 ): string[] {
 	if (!field) return [];
 	const objects = Array.isArray(field) ? field : [field];

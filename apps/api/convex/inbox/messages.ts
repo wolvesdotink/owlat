@@ -26,6 +26,7 @@ import { rateLimiter } from '../rateLimiter';
 import { extractEmail, normalizeSubject } from '../lib/emailAddress';
 import { isAutomatedMail } from '../lib/inboundClassification';
 import { isSuppressed } from '../lib/suppression';
+import { sealBodyAtWriteMaybe } from '../lib/messageBody';
 
 // Re-exported for existing importers of this module.
 export { extractEmail, normalizeSubject };
@@ -52,6 +53,24 @@ export const receiveMessage = internalMutation({
 		references: v.optional(v.string()),
 		attachmentMeta: v.optional(v.string()),
 		timestamp: v.number(),
+		// RFC 8601 inbound auth verdicts, forwarded by the MTA. All optional so an
+		// older MTA (or a disabled check) stores them absent — absent renders as
+		// "unknown" downstream, NEVER as "pass".
+		spfResult: v.optional(v.string()),
+		dkimResult: v.optional(v.string()),
+		dmarcResult: v.optional(v.string()),
+		dmarcPolicy: v.optional(v.string()),
+		// Sealed Mail (E4, D3): mirrored unsealing flags from the decrypt-on-ingest
+		// action on the AI-inbox path. `textBody`/`htmlBody` above are ALREADY the
+		// decrypted plaintext when `sealed` is set (the action opened the message
+		// before calling this mutation), so the agent pipeline + the unified mirror
+		// consume real text. `isSignatureValid` is present only when we decrypted
+		// and checked the signature — absent ⇒ undecryptable (no claim). All
+		// optional so the plaintext path is byte-identical.
+		isSealed: v.optional(v.boolean()),
+		isSignatureValid: v.optional(v.boolean()),
+		signerFingerprint: v.optional(v.string()),
+		signerInstance: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		const senderEmail = extractEmail(args.from);
@@ -83,13 +102,18 @@ export const receiveMessage = internalMutation({
 		});
 
 		// ── 3. Store the inbound message ──
+		// E8b: seal the inline bodies at rest before they land in the row (the
+		// preview derived above is sealed by the thread module too. Readers unseal
+		// both through the accessor plane.
+		const sealedTextBody = await sealBodyAtWriteMaybe(args.textBody);
+		const sealedHtmlBody = await sealBodyAtWriteMaybe(args.htmlBody);
 		const inboundMessageId = await ctx.db.insert('inboundMessages', {
 			messageId: args.messageId,
 			from: args.from,
 			to: args.to,
 			subject: args.subject,
-			textBody: args.textBody,
-			htmlBody: args.htmlBody,
+			textBody: sealedTextBody,
+			htmlBody: sealedHtmlBody,
 			inReplyTo: args.inReplyTo,
 			references: args.references,
 			headers: args.headers,
@@ -98,6 +122,14 @@ export const receiveMessage = internalMutation({
 			contactId,
 			processingStatus: 'received',
 			receivedAt: args.timestamp,
+			spfResult: args.spfResult,
+			dkimResult: args.dkimResult,
+			dmarcResult: args.dmarcResult,
+			dmarcPolicy: args.dmarcPolicy,
+			isSealed: args.isSealed,
+			isSignatureValid: args.isSignatureValid,
+			signerFingerprint: args.signerFingerprint,
+			signerInstance: args.signerInstance,
 		});
 		await applyInboxStatsDelta(ctx, null, 'received');
 
@@ -143,9 +175,12 @@ export const receiveMessage = internalMutation({
 				channel: 'email',
 				contactId,
 				content: JSON.stringify({
+					// `text`/`html` are the DECRYPTED plaintext when `sealed` (D3): the
+					// unified timeline + agent pipeline read real content, not ciphertext.
 					text: args.textBody,
 					html: args.htmlBody,
 					subject: args.subject,
+					...(args.isSealed ? { isSealed: true, isSignatureValid: args.isSignatureValid } : {}),
 				}),
 				externalMessageId: args.messageId,
 			});

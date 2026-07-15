@@ -13,6 +13,9 @@ import {
 	spamVerdictValidator,
 	draftQualityValidator,
 } from '../lib/convexValidators';
+import { mailEncryptionInfoValidator } from '../mail/sealPolicy';
+import { inboundEncryptionInfoValidator } from '../e2ee/inboundSeal';
+import { senderHeuristicsValidator } from '../lib/senderHeuristicsValidator';
 import { editAdjustmentValidator } from '../mail/editLearningValidators';
 
 /**
@@ -462,6 +465,34 @@ export const mailTables = {
 		// (a quarantine/reject fail → Spam) and the UI banner can distinguish a
 		// monitor-only `p=none` fail from one the domain owner asked us to act on.
 		dmarcPolicy: v.optional(v.string()),
+		// DMARC alignment inputs captured alongside the verdicts above: the SMTP
+		// envelope MAIL FROM domain (the SPF-authenticated identity) and the d=
+		// domain of the passing DKIM signature. Kept so a later impersonation
+		// heuristic can compare them against the visible From domain without
+		// re-parsing the raw .eml. ALL optional — an older MTA sends them absent,
+		// which renders as "unknown" (never asserts alignment we did not verify).
+		envelopeFromDomain: v.optional(v.string()),
+		dkimSigningDomain: v.optional(v.string()),
+		// Inbound-authentication OVERRIDE applied at delivery (Sealed Mail A5). Set
+		// to `'arc'` when a DMARC fail was RESCUED because a TRUSTED forwarder's
+		// validated ARC chain (RFC 8617) attested the original passed — the message
+		// then skipped Spam-routing. `arcSealer` records which forwarder's seal was
+		// honoured (its `d=`), so the reader's badge can say "verified via forwarder"
+		// and name it. Both absent on the overwhelmingly common non-forwarded path —
+		// their presence is the ONLY thing that unlocks the badge's forwarder state,
+		// so an ordinary message can never render it.
+		dmarcOverride: v.optional(v.string()),
+		arcSealer: v.optional(v.string()),
+		// Sender-impersonation heuristics computed at ingest (Sealed Mail A4).
+		// Two content-visible signals derived from the scanner rule (a From domain
+		// that homoglyph/punycode-spoofs a real one, a Reply-To on a different
+		// domain) plus two that need data the scanner cannot see (is this a
+		// first-time sender to this mailbox, does the From domain look like a KNOWN
+		// contact's). Surfaced by the reader's sender badge as secondary detail
+		// lines — never a second badge. ALL optional and the whole object is
+		// absent when nothing fired, so a legacy row / an unremarkable sender
+		// renders no extra lines rather than a false "all clear".
+		senderHeuristics: v.optional(senderHeuristicsValidator),
 
 		// Team-inbox attribution: on an outbound message, the BetterAuth user id of
 		// the teammate who fired the send (copied from the draft at dispatch). Lets
@@ -510,6 +541,26 @@ export const mailTables = {
 			})
 		),
 
+		// Sealed Mail (E3): the outbound sealing outcome for a SENT copy. When
+		// `isSealed` is true the raw `.eml` is PGP/MIME ciphertext (real subject
+		// inside, `...` outside) and the fingerprints used are recorded; when
+		// false a `reason` explains why the message went plaintext (e.g. a
+		// recipient without a usable key — never a mixed send, per D2). Absent on
+		// inbound rows and on outbound rows written before this field existed.
+		encryptionInfo: v.optional(mailEncryptionInfoValidator),
+
+		// Sealed Mail (E4): the INBOUND unsealing outcome for a DELIVERED message
+		// (decrypt-on-ingest, D3). When present the message arrived as PGP/MIME
+		// ciphertext; `isDecrypted:true` means we opened it (the row's body columns
+		// hold the restored plaintext, the raw `.eml` at `rawStorageId` is the
+		// retained sealed original) and `isSignatureValid` records whether the body's
+		// signature verified against the pinned sender key; `isDecrypted:false` is the
+		// "Encrypted — can't decrypt" path (we hold no usable key). Distinct from the
+		// outbound `encryptionInfo` above — an inbound record describes what WE
+		// verified on receipt, not what WE sealed. Absent on plaintext mail and on
+		// rows written before this field existed.
+		inboundEncryptionInfo: v.optional(inboundEncryptionInfoValidator),
+
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	})
@@ -531,6 +582,24 @@ export const mailTables = {
 		.index('by_mailbox_and_unseen', ['mailboxId', 'flagSeen'])
 		// Backs the 1-minute snooze sweep cron — range scan on snoozedUntil <= now.
 		.index('by_snoozed_until', ['snoozedUntil'])
+		// SHARING-AWARE SEAL (Sealed Mail E8b): IMAP COPY shares a storage blob
+		// between rows (`mail/imap.ts` copyMessages spreads the same `rawStorageId`/
+		// `*BodyStorageId` into the new row). The at-rest reseal must repoint EVERY
+		// row that references an old plaintext blob before it deletes that blob, or a
+		// sibling copy is left pointing at a deleted id (unreadable forever). These
+		// indexes let the reseal find those siblings in O(matches) instead of a table
+		// scan. `textBodyStorageId`/`htmlBodyStorageId` are optional; rows without
+		// them index as `undefined` and are never matched by a concrete-id lookup.
+		.index('by_raw_storage', ['rawStorageId'])
+		.index('by_text_body_storage', ['textBodyStorageId'])
+		.index('by_html_body_storage', ['htmlBodyStorageId'])
+		// SEALED-AT-REST EXCEPTION (Sealed Mail E8b): the message BODY columns
+		// (`textBodyInline`/`htmlBodyInline` and the `*BodyStorageId` blobs) are
+		// sealed with the instance data key, but `snippet` stays PLAINTEXT because
+		// Convex full-text search indexes the plaintext of `searchField`. This is
+		// the documented, deliberate exception — `snippet` is a short excerpt, never
+		// the full body, and losing it would break server-side mail search. See
+		// lib/atRestBodies.ts and apps/docs/content/3.developer/21.sealed-mail-at-rest.md.
 		.searchIndex('search_messages', {
 			searchField: 'snippet',
 			filterFields: ['mailboxId', 'folderId', 'fromAddress', 'flagSeen', 'flagFlagged'],
@@ -884,6 +953,9 @@ export const mailTables = {
 		// the resulting sent message + the thread's `latestReply` so a shared inbox
 		// can attribute the reply. Undefined until send (and on legacy rows).
 		sentByUserId: v.optional(v.string()),
+		// Per-send explicit plaintext consent. Dispatch checks this again after
+		// discovery/crypto so a trust change during the undo window fails closed.
+		isUnsealedSendAllowed: v.optional(v.boolean()),
 
 		// Scheduled send / undo-send window
 		scheduledSendAt: v.optional(v.number()),

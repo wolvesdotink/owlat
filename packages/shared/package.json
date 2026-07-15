@@ -45,6 +45,22 @@
 			"types": "./src/setupSendingPresets.ts",
 			"import": "./src/setupSendingPresets.ts"
 		},
+		"./outboundTlsMode": {
+			"types": "./src/outboundTlsMode.ts",
+			"import": "./src/outboundTlsMode.ts"
+		},
+		"./dane": {
+			"types": "./src/dane.ts",
+			"import": "./src/dane.ts"
+		},
+		"./tlsReport": {
+			"types": "./src/tlsReport.ts",
+			"import": "./src/tlsReport.ts"
+		},
+		"./mtaStsPolicy": {
+			"types": "./src/mtaStsPolicy.ts",
+			"import": "./src/mtaStsPolicy.ts"
+		},
 		"./setupEnv": {
 			"types": "./src/setupEnv.ts",
 			"import": "./src/setupEnv.ts"
@@ -52,6 +68,14 @@
 		"./convexRuntimeEnv": {
 			"types": "./src/convexRuntimeEnv.ts",
 			"import": "./src/convexRuntimeEnv.ts"
+		},
+		"./secretBox": {
+			"types": "./src/secretBox.ts",
+			"import": "./src/secretBox.ts"
+		},
+		"./envBackupBox": {
+			"types": "./src/envBackupBox.ts",
+			"import": "./src/envBackupBox.ts"
 		},
 		"./setupSecrets": {
 			"types": "./src/setupSecrets.ts",
@@ -136,6 +160,10 @@
 		"./spfAlignment": {
 			"types": "./src/spfAlignment.ts",
 			"import": "./src/spfAlignment.ts"
+		},
+		"./arcTrust": {
+			"types": "./src/arcTrust.ts",
+			"import": "./src/arcTrust.ts"
 		},
 		"./spf": {
 			"types": "./src/spf.ts",

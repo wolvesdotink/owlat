@@ -18,6 +18,7 @@ import {
 	throwInvalidInput,
 	throwAlreadyExists,
 } from '../_utils/errors';
+import { isFeatureEnabled } from '../lib/featureFlags';
 import { normalizeEmail } from '@owlat/shared';
 
 // public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
@@ -83,6 +84,15 @@ export const create = authedMutation({
 			mailboxId: args.mailboxId,
 		});
 
+		// Sealed Mail (E1): mint + publish an E2EE keypair for the new alias
+		// address (flag-gated `sealedMail`, default OFF; no-op when off).
+		if (await isFeatureEnabled(ctx, 'sealedMail')) {
+			// Mint the singleton instance signing identity on first use (idempotent)
+			// so the signed manifest is publishable as soon as any key exists.
+			await ctx.scheduler.runAfter(0, internal.e2ee.keysNode.ensureInstanceIdentity, {});
+			await ctx.scheduler.runAfter(0, internal.e2ee.keysNode.mintForAddress, { address: alias });
+		}
+
 		return id;
 	},
 });
@@ -99,5 +109,14 @@ export const remove = authedMutation({
 		await ctx.scheduler.runAfter(0, internal.mail.aliasesActions.removeAliasFromCache, {
 			alias: row.alias,
 		});
+
+		// Sealed Mail (E6): revoke the alias's E2EE key on deletion — stop publishing
+		// it for sealing while retaining the row decrypt-only so historical sealed
+		// mail still opens. Flag-gated the same way the `create` counterpart mints.
+		if (await isFeatureEnabled(ctx, 'sealedMail')) {
+			await ctx.scheduler.runAfter(0, internal.e2ee.lifecycle.deactivateAddressKeys, {
+				address: row.alias,
+			});
+		}
 	},
 });

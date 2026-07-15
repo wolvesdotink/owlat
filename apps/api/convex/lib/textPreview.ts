@@ -1,7 +1,8 @@
 /**
  * Build a short, single-line plaintext preview for a message.
  *
- * Used to denormalize `conversationThreads.lastPreview` at intake so the
+ * Used to derive `conversationThreads.lastPreview` at intake; the thread module
+ * seals the result before storage so the
  * team-inbox row can render a snippet line without joining to the newest
  * message. Prefers a plaintext body; falls back to a crude tag-strip of HTML.
  * Collapses whitespace, trims, and truncates with an ellipsis — the row already

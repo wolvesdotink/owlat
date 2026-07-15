@@ -3,7 +3,10 @@
  */
 
 import { hostname } from 'os';
+import { isOutboundTlsMode, OUTBOUND_TLS_MODES, type OutboundTlsMode } from '@owlat/shared';
 import type { IpPoolConfig, DkimKeyConfig, DomainProfile } from './types.js';
+import { assertMtaSecretStrength } from './lib/secretBox.js';
+import { loadDaneConfig, type DaneMode } from './daneConfig.js';
 
 export interface MtaConfig {
 	/** HTTP server port */
@@ -14,6 +17,12 @@ export interface MtaConfig {
 	redisUrl: string;
 	/** Shared secret for HTTP API authentication */
 	apiKey: string;
+	/**
+	 * Secret that seals transport secrets at rest (DKIM private keys, relay
+	 * credentials) via the MTA secret box. Boot-validated to be >= 32 bytes; the
+	 * installer generates it. Distinct from MTA_API_KEY/MTA_WEBHOOK_SECRET.
+	 */
+	mtaSecret: string;
 	/** EHLO hostname (must match rDNS PTR record); the per-IP map falls back to this */
 	ehloHostname: string;
 	/**
@@ -31,6 +40,11 @@ export interface MtaConfig {
 	convexSiteUrl: string;
 	/** Shared secret for Convex webhook authentication */
 	webhookSecret: string;
+	/**
+	 * TLS-RPT (RFC 8460) reporting address published in `_smtp._tls` rua=.
+	 * Inbound reports to it are routed to the TLS-RPT system webhook. Optional.
+	 */
+	tlsRptRua?: string;
 	/** IP pool configuration */
 	ipPools: IpPoolConfig;
 	/** Per-domain DKIM keys */
@@ -96,6 +110,8 @@ export interface MtaConfig {
 	inboundDkimEnabled: boolean;
 	/** Enable DMARC evaluation (RFC 7489) for inbound email */
 	inboundDmarcEnabled: boolean;
+	/** Enable ARC chain verification (RFC 8617) for inbound email (Sealed Mail A5) */
+	inboundArcEnabled: boolean;
 	/** Optional rspamd HTTP URL for content spam scoring */
 	rspamdUrl?: string;
 	/** Rspamd reject threshold (score above this rejects the email) */
@@ -111,6 +127,36 @@ export interface MtaConfig {
 	 * defer re-queues (greylist/rate-limit/warming-cap/breaker).
 	 */
 	maxMessageAgeMs: number;
+	/**
+	 * Global outbound TLS posture for direct-MX delivery (RFC 7435/8461/9325).
+	 * `opportunistic` (default) is byte-identical to the historic behaviour:
+	 * encrypt when STARTTLS is offered, never fail delivery on a missing or
+	 * unverifiable certificate. `require` mandates the STARTTLS upgrade;
+	 * `require-verified` additionally verifies the certificate (can bounce mail
+	 * to receivers with broken TLS). Per-domain overrides live in Redis.
+	 *
+	 * `loadConfig` always populates this; optional only so partial test-double
+	 * configs and `as MtaConfig` casts need not restate it (read sites fall back
+	 * to `opportunistic`, the historic default).
+	 */
+	outboundTlsMode?: OutboundTlsMode;
+	/**
+	 * DANE (RFC 7672) at send time: `off` (no TLSA lookups, historic path),
+	 * `report` (evaluate each MX's DNSSEC-authenticated TLSA and emit the TLS-RPT
+	 * result but never require TLS or bounce — observability only), or `enforce`
+	 * (also authenticate the MX cert against the RRset, a require-TLS floor that
+	 * supersedes MTA-STS and defers a mismatch). Default `report`, which honours
+	 * D6 (zero enforcement/delivery impact). Inert in every mode without a resolver
+	 * URL. Optional only for test doubles; read sites treat an absent value as `off`.
+	 */
+	daneMode?: DaneMode;
+	/**
+	 * DoH resolver URL used for DANE TLSA lookups (RFC 8484 JSON). Needed for
+	 * `report`/`enforce` to run; when absent DANE is inert in every mode. The AD
+	 * (DNSSEC Authenticated Data) bit is trusted, so this MUST be a validating
+	 * resolver — a local validating resolver is the recommended production setup.
+	 */
+	daneResolverUrl?: string;
 }
 
 /**
@@ -126,7 +172,7 @@ export interface MtaConfig {
  */
 export function assertSubmissionTlsConfigured(
 	cert: string | undefined,
-	key: string | undefined,
+	key: string | undefined
 ): void {
 	const missing: string[] = [];
 	if (!cert) missing.push('SUBMISSION_TLS_CERT');
@@ -134,7 +180,7 @@ export function assertSubmissionTlsConfigured(
 	if (missing.length > 0) {
 		throw new Error(
 			`SUBMISSION_ENABLED=true requires TLS material — missing ${missing.join(' and ')}. ` +
-				'Refusing to start an insecure submission listener (RFC 8314 §3.3).',
+				'Refusing to start an insecure submission listener (RFC 8314 §3.3).'
 		);
 	}
 }
@@ -143,15 +189,57 @@ export function assertSubmissionTlsConfigured(
  * ISP-specific sending profiles with adaptive rate limiting parameters
  */
 export const ISP_PROFILES: Record<string, DomainProfile> = {
-	'gmail.com': { defaultRate: 100, ceiling: 300, floor: 5, backoffFactor: 0.5, recoveryFactor: 1.1 },
-	'googlemail.com': { defaultRate: 100, ceiling: 300, floor: 5, backoffFactor: 0.5, recoveryFactor: 1.1 },
-	'outlook.com': { defaultRate: 80, ceiling: 200, floor: 5, backoffFactor: 0.5, recoveryFactor: 1.1 },
-	'hotmail.com': { defaultRate: 80, ceiling: 200, floor: 5, backoffFactor: 0.5, recoveryFactor: 1.1 },
+	'gmail.com': {
+		defaultRate: 100,
+		ceiling: 300,
+		floor: 5,
+		backoffFactor: 0.5,
+		recoveryFactor: 1.1,
+	},
+	'googlemail.com': {
+		defaultRate: 100,
+		ceiling: 300,
+		floor: 5,
+		backoffFactor: 0.5,
+		recoveryFactor: 1.1,
+	},
+	'outlook.com': {
+		defaultRate: 80,
+		ceiling: 200,
+		floor: 5,
+		backoffFactor: 0.5,
+		recoveryFactor: 1.1,
+	},
+	'hotmail.com': {
+		defaultRate: 80,
+		ceiling: 200,
+		floor: 5,
+		backoffFactor: 0.5,
+		recoveryFactor: 1.1,
+	},
 	'live.com': { defaultRate: 80, ceiling: 200, floor: 5, backoffFactor: 0.5, recoveryFactor: 1.1 },
-	'yahoo.com': { defaultRate: 50, ceiling: 150, floor: 3, backoffFactor: 0.4, recoveryFactor: 1.05 },
+	'yahoo.com': {
+		defaultRate: 50,
+		ceiling: 150,
+		floor: 3,
+		backoffFactor: 0.4,
+		recoveryFactor: 1.05,
+	},
 	'aol.com': { defaultRate: 50, ceiling: 150, floor: 3, backoffFactor: 0.4, recoveryFactor: 1.05 },
-	'ymail.com': { defaultRate: 50, ceiling: 150, floor: 3, backoffFactor: 0.4, recoveryFactor: 1.05 },
-	'icloud.com': { defaultRate: 60, ceiling: 150, floor: 5, backoffFactor: 0.5, recoveryFactor: 1.1 },
+	'ymail.com': {
+		defaultRate: 50,
+		ceiling: 150,
+		floor: 3,
+		backoffFactor: 0.4,
+		recoveryFactor: 1.05,
+	},
+	'icloud.com': {
+		defaultRate: 60,
+		ceiling: 150,
+		floor: 5,
+		backoffFactor: 0.5,
+		recoveryFactor: 1.1,
+	},
 	'me.com': { defaultRate: 60, ceiling: 150, floor: 5, backoffFactor: 0.5, recoveryFactor: 1.1 },
 	'mac.com': { defaultRate: 60, ceiling: 150, floor: 5, backoffFactor: 0.5, recoveryFactor: 1.1 },
 	__default__: { defaultRate: 30, ceiling: 100, floor: 2, backoffFactor: 0.5, recoveryFactor: 1.1 },
@@ -184,18 +272,24 @@ export function assertValidEhloHostname(value: string, source: string): void {
 	const trimmed = value.trim();
 
 	if (trimmed.length === 0 || /\s/.test(value)) {
-		throw new Error(`${source} must be a hostname with no whitespace, got: ${JSON.stringify(value)}`);
+		throw new Error(
+			`${source} must be a hostname with no whitespace, got: ${JSON.stringify(value)}`
+		);
 	}
 	if (trimmed === 'localhost') {
 		throw new Error(`${source} must be a public FQDN, not 'localhost'`);
 	}
 	// Reject IPv4/IPv6 literals — EHLO must be a name, not an address.
 	if (/^[0-9.]+$/.test(trimmed) || trimmed.includes(':')) {
-		throw new Error(`${source} must be a hostname, not an IP address, got: ${JSON.stringify(value)}`);
+		throw new Error(
+			`${source} must be a hostname, not an IP address, got: ${JSON.stringify(value)}`
+		);
 	}
 	// Require at least two labels (a dot) — bare hostnames like 'mta1' are not FQDNs.
 	if (!trimmed.includes('.')) {
-		throw new Error(`${source} must be a fully qualified domain name with a dot, got: ${JSON.stringify(value)}`);
+		throw new Error(
+			`${source} must be a fully qualified domain name with a dot, got: ${JSON.stringify(value)}`
+		);
 	}
 	// Each label: alphanumeric + hyphens, 1-63 chars, no leading/trailing hyphen.
 	const labelOk = trimmed
@@ -216,7 +310,7 @@ export function assertValidEhloHostname(value: string, source: string): void {
  */
 export function resolveEhloForIp(
 	config: Pick<MtaConfig, 'ehloHostname' | 'ehloHostnames'>,
-	bindIp: string,
+	bindIp: string
 ): string {
 	return config.ehloHostnames[bindIp] ?? config.ehloHostname;
 }
@@ -236,11 +330,23 @@ export function loadConfig(): MtaConfig {
 	};
 
 	// Parse IP pools from comma-separated env vars
-	const transactionalIps = requiredEnv('IP_POOLS_TRANSACTIONAL').split(',').map((s) => s.trim()).filter(Boolean);
-	const campaignIps = requiredEnv('IP_POOLS_CAMPAIGN').split(',').map((s) => s.trim()).filter(Boolean);
+	const transactionalIps = requiredEnv('IP_POOLS_TRANSACTIONAL')
+		.split(',')
+		.map((s) => s.trim())
+		.filter(Boolean);
+	const campaignIps = requiredEnv('IP_POOLS_CAMPAIGN')
+		.split(',')
+		.map((s) => s.trim())
+		.filter(Boolean);
 
-	if (transactionalIps.length === 0) throw new Error('IP_POOLS_TRANSACTIONAL must contain at least one IP');
+	if (transactionalIps.length === 0)
+		throw new Error('IP_POOLS_TRANSACTIONAL must contain at least one IP');
 	if (campaignIps.length === 0) throw new Error('IP_POOLS_CAMPAIGN must contain at least one IP');
+
+	// MTA_SECRET seals DKIM keys + relay credentials at rest. Fail the boot fast
+	// if it is absent or too weak rather than sealing under a guessable key.
+	const mtaSecret = requiredEnv('MTA_SECRET');
+	assertMtaSecretStrength(mtaSecret);
 
 	// EHLO hostname must be a real FQDN that can match a PTR record.
 	const ehloHostname = requiredEnv('EHLO_HOSTNAME');
@@ -276,7 +382,9 @@ export function loadConfig(): MtaConfig {
 		try {
 			dkimKeys = JSON.parse(dkimKeysRaw);
 		} catch {
-			throw new Error('DKIM_KEYS must be valid JSON: {"domain.com":{"selector":"s1","privateKey":"..."}}');
+			throw new Error(
+				'DKIM_KEYS must be valid JSON: {"domain.com":{"selector":"s1","privateKey":"..."}}'
+			);
 		}
 	}
 
@@ -297,16 +405,39 @@ export function loadConfig(): MtaConfig {
 		assertSubmissionTlsConfigured(submissionTlsCert, submissionTlsKey);
 	}
 
+	// Global outbound TLS posture. Defaults to `opportunistic` (historic
+	// behaviour). Reject an unknown value at boot rather than silently falling
+	// back — a typo like `require_verified` must not degrade to opportunistic.
+	const outboundTlsModeRaw = optionalEnv('OUTBOUND_TLS_MODE', 'opportunistic');
+	if (!isOutboundTlsMode(outboundTlsModeRaw)) {
+		throw new Error(
+			`OUTBOUND_TLS_MODE must be one of: ${OUTBOUND_TLS_MODES.join(', ')} — got ${JSON.stringify(outboundTlsModeRaw)}`
+		);
+	}
+	const outboundTlsMode: OutboundTlsMode = outboundTlsModeRaw;
+
+	// DANE (RFC 7672) at send time — `report` by default (honours D6: report-only
+	// has zero delivery impact). Parsing and validation (mode enum, https-only
+	// channel, inert-without-resolver) lives in daneConfig.ts to keep this module
+	// under the file-size gate.
+	const { daneMode, daneResolverUrl } = loadDaneConfig(optionalEnv);
+
 	return {
 		port: parseInt(optionalEnv('PORT', '3100'), 10),
 		bouncePort: parseInt(optionalEnv('BOUNCE_PORT', '25'), 10),
 		redisUrl: optionalEnv('REDIS_URL', 'redis://localhost:6379'),
 		apiKey: requiredEnv('MTA_API_KEY'),
+		mtaSecret,
 		ehloHostname,
 		ehloHostnames,
 		returnPathDomain: requiredEnv('RETURN_PATH_DOMAIN'),
 		convexSiteUrl: requiredEnv('CONVEX_SITE_URL'),
 		webhookSecret: requiredEnv('MTA_WEBHOOK_SECRET'),
+		// TLS-RPT (RFC 8460) reporting address we publish in `_smtp._tls` rua=.
+		// When set (mailto: URI or bare address), inbound reports to it are
+		// caught by the TLS-RPT system route and forwarded to Convex. Optional —
+		// omitted when the operator does not collect TLS reports.
+		tlsRptRua: process.env['MTA_TLSRPT_RUA'],
 		ipPools: { transactional: transactionalIps, campaign: campaignIps },
 		dkimKeys,
 		workerConcurrency: parseInt(optionalEnv('WORKER_CONCURRENCY', '50'), 10),
@@ -326,9 +457,15 @@ export function loadConfig(): MtaConfig {
 		submissionImplicitTlsEnabled,
 		submissionTlsCert,
 		submissionTlsKey,
-		submissionMaxConnectionsPerIp: parseInt(optionalEnv('SUBMISSION_MAX_CONNECTIONS_PER_IP', '10'), 10),
+		submissionMaxConnectionsPerIp: parseInt(
+			optionalEnv('SUBMISSION_MAX_CONNECTIONS_PER_IP', '10'),
+			10
+		),
 		submissionMaxClients: parseInt(optionalEnv('SUBMISSION_MAX_CLIENTS', '200'), 10),
-		submissionMaxAuthFailuresPerIp: parseInt(optionalEnv('SUBMISSION_MAX_AUTH_FAILURES_PER_IP', '10'), 10),
+		submissionMaxAuthFailuresPerIp: parseInt(
+			optionalEnv('SUBMISSION_MAX_AUTH_FAILURES_PER_IP', '10'),
+			10
+		),
 		contentScreeningEnabled: optionalEnv('CONTENT_SCREENING_ENABLED', 'true') === 'true',
 		contentMaxSizeKb: parseInt(optionalEnv('CONTENT_MAX_SIZE_KB', '500'), 10),
 		deliveryLogMaxLen: parseInt(optionalEnv('DELIVERY_LOG_MAX_LEN', '100000'), 10),
@@ -343,11 +480,18 @@ export function loadConfig(): MtaConfig {
 		inboundSpfEnabled: optionalEnv('INBOUND_SPF_ENABLED', 'true') === 'true',
 		inboundDkimEnabled: optionalEnv('INBOUND_DKIM_ENABLED', 'true') === 'true',
 		inboundDmarcEnabled: optionalEnv('INBOUND_DMARC_ENABLED', 'true') === 'true',
+		inboundArcEnabled: optionalEnv('INBOUND_ARC_ENABLED', 'true') === 'true',
 		rspamdUrl: process.env['RSPAMD_URL'],
 		rspamdRejectThreshold: parseFloat(optionalEnv('RSPAMD_REJECT_THRESHOLD', '15')),
 		googlePostmasterCredentials: process.env['GOOGLE_POSTMASTER_CREDENTIALS'],
 		smtpPoolGlobalMaxPerHost: parseInt(optionalEnv('SMTP_POOL_GLOBAL_MAX_PER_HOST', '10'), 10),
 		// Default: 4 days (RFC 5321 §4.5.4.1 recommends 4–5 days before giving up).
-		maxMessageAgeMs: parseInt(optionalEnv('MAX_MESSAGE_AGE_MS', String(4 * 24 * 60 * 60 * 1000)), 10),
+		maxMessageAgeMs: parseInt(
+			optionalEnv('MAX_MESSAGE_AGE_MS', String(4 * 24 * 60 * 60 * 1000)),
+			10
+		),
+		outboundTlsMode,
+		daneMode,
+		daneResolverUrl,
 	};
 }

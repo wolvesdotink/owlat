@@ -12,6 +12,7 @@ import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 import { assertFeatureEnabled } from '../lib/featureFlags';
 import { PRESENCE_ACTIVE_WINDOW_MS } from './presence';
 import { compareNeedsAttention } from './threadSort';
+import { openConversationThreadPreview } from '../lib/messageBody';
 
 /**
  * Team Inbox filter pills. Each value is one focused slice of the shared inbox:
@@ -187,7 +188,12 @@ export const listThreads = publicQuery({
 						.unique();
 					assigneePresent = !!presence && presence.heartbeatAt > presenceCutoff;
 				}
-				return { ...thread, unread, assignee, assigneePresent };
+				return {
+					...(await openConversationThreadPreview(thread)),
+					unread,
+					assignee,
+					assigneePresent,
+				};
 			})
 		);
 
@@ -268,7 +274,7 @@ export const getThread = publicQuery({
 		}
 
 		return {
-			thread,
+			thread: await openConversationThreadPreview(thread),
 			messages,
 			contact,
 		};
@@ -301,7 +307,11 @@ export const getReviewQueue = publicQuery({
 			pendingMessages.map(async (msg) => {
 				const thread = msg.threadId ? await ctx.db.get(msg.threadId) : null;
 				const contact = msg.contactId ? await ctx.db.get(msg.contactId) : null;
-				return { message: msg, thread, contact };
+				return {
+					message: msg,
+					thread: thread ? await openConversationThreadPreview(thread) : null,
+					contact,
+				};
 			})
 		);
 

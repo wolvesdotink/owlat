@@ -1,6 +1,7 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { jsonPrimitiveRecord, updateStepResultValidator } from '../lib/convexValidators';
+import { sealPolicyValidator } from '../mail/sealPolicy';
 import { auditActionValidator, auditResourceValidator } from '../auditActions/catalog';
 import {
 	embeddingProviderKindValidator,
@@ -59,6 +60,30 @@ export const authTables = {
 		// mail import; when false the welcome flow is a pure fresh-start and exposes
 		// no import surface. Admin-gated write, member-readable via `settings.get`.
 		isMigrationMode: v.optional(v.boolean()),
+		// MTA-STS publishing posture (RFC 8461) for INBOUND mail to this
+		// deployment. `none` (or unset) publishes no policy — byte-identical to
+		// today. `testing` publishes a policy whose failures are only reported;
+		// `enforce` requires senders to use verified TLS to a listed MX. The MX
+		// host is the deployment's own EHLO_HOSTNAME; the policy body + id are
+		// derived by `@owlat/shared/mtaStsPolicy`. Admin-gated write via
+		// `settings.update`, served publicly by the `getMtaStsPolicy` query.
+		mtaStsMode: v.optional(v.union(v.literal('none'), v.literal('testing'), v.literal('enforce'))),
+		// Sealed Mail (E3) org-level sealing policy (locked decision D2): `auto`
+		// seals whenever every recipient has a usable pinned key, `ask` defers to
+		// the composer opt-in (E5), `off` never seals. Unset ⇒ `auto`. Admin-gated
+		// write via `workspaces/settings.update`.
+		sealPolicy: v.optional(sealPolicyValidator),
+		// Plaintext SMTP is rejected by default with 550 5.7.10. Owners/admins
+		// may explicitly disable the floor for compatibility with legacy senders.
+		isInboundTlsRequired: v.optional(v.boolean()),
+		// Trusted ARC forwarders (Sealed Mail A5): domains whose validated ARC seal
+		// (RFC 8617) we honour to RESCUE a DMARC fail on inbound forwarded mail —
+		// a mailing-list / forwarding message that broke DKIM but whose sealer
+		// attests the original passed skips Spam-routing instead of false-failing.
+		// Unset ⇒ the code falls back to `DEFAULT_TRUSTED_ARC_FORWARDERS` from
+		// `@owlat/shared/arcTrust`; an explicit `[]` disables the override entirely.
+		// Admin-gated write via `settings.update`, editable in Settings → Delivery.
+		trustedArcForwarders: v.optional(v.array(v.string())),
 		// Feature toggles (see packages/shared/src/featureFlags.ts for the schema).
 		// Unset keys fall back to FEATURE_FLAGS[key].default at resolution time.
 		// Includes `campaigns.archive` — there is no separate `archiveEnabled` column.

@@ -10,12 +10,15 @@
 
 import { v } from 'convex/values';
 import { internalQuery, internalMutation } from '../_generated/server';
+import { internal } from '../_generated/api';
 import type { Id, Doc } from '../_generated/dataModel';
 import { resolveAllowedFromAddressesForCtx } from './identities';
 import { rebuildThreadAggregates } from './messageActions';
 import { bumpFolderModseq } from './folders';
 import { normalizeSubject } from '../lib/emailAddress';
 import { normalizeEmail } from '@owlat/shared';
+import { sealBodyAtWriteMaybe } from '../lib/messageBody';
+import { sealedBlobUrl } from '../lib/sealedBlob';
 
 /**
  * Error string used by APPEND to signal a from-address violation. The
@@ -188,7 +191,10 @@ export const fetchRawStorageId = internalQuery({
  *  client-addressable `_storage` module to call from ConvexHttpClient). */
 export const getRawStorageUrl = internalQuery({
 	args: { storageId: v.id('_storage') },
-	handler: async (ctx, args) => ctx.storage.getUrl(args.storageId),
+	// E8b: the raw `.eml` is sealed at rest, so hand the IMAP server a
+	// decrypt-serving proxy URL — its `FETCH RFC822` stream then receives the
+	// plaintext RFC822 bytes, unchanged from the bare storage URL it used before.
+	handler: async (ctx, args) => sealedBlobUrl(ctx.storage, args.storageId, 'message/rfc822'),
 });
 
 /** Mint an upload URL for APPEND so the IMAP server can store a raw message
@@ -718,8 +724,8 @@ export const appendMessage = internalMutation({
 			snippet: args.snippet,
 			rawStorageId: args.rawStorageId,
 			rawSize: args.rawSize,
-			textBodyInline: args.textBodyInline,
-			htmlBodyInline: args.htmlBodyInline,
+			textBodyInline: await sealBodyAtWriteMaybe(args.textBodyInline),
+			htmlBodyInline: await sealBodyAtWriteMaybe(args.htmlBodyInline),
 			attachments: [],
 			hasAttachments: false,
 			flagSeen: flagSet.has('\\seen'),
@@ -738,6 +744,16 @@ export const appendMessage = internalMutation({
 		// The conversation list links to latestMessageId; set it now that the
 		// appended message exists.
 		await ctx.db.patch(threadId, { latestMessageId: messageId });
+
+		// E8b: the IMAP server uploads the raw `.eml` straight to storage
+		// (plaintext), so seal it at rest out-of-band — a mutation can't read/re-store
+		// a blob's bytes. Idempotent + resumable; the accessor + `/sealed-blob` proxy
+		// serve it correctly in the meantime (mixed-state tolerance).
+		await ctx.scheduler.runAfter(
+			0,
+			internal.migrations['0035_seal_bodies_at_rest'].resealMessageBlobs,
+			{ id: messageId }
+		);
 
 		await ctx.db.patch(folder._id, {
 			uidNext: uid + 1,

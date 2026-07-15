@@ -14,6 +14,7 @@ WORKDIR /app
 
 # Copy workspace root files
 COPY package.json bun.lock bunfig.toml ./
+COPY patches/ patches/
 
 # Copy all workspace package.json files for dependency resolution.
 # Bun's `--frozen-lockfile` reconciliation walks the entire workspace graph

@@ -116,6 +116,9 @@
 		"ws": "^8.21.0"
 	},
 	"packageManager": "bun@1.3.11",
+	"patchedDependencies": {
+		"nodemailer@9.0.3": "patches/nodemailer@9.0.3.patch"
+	},
 	"trustedDependencies": [
 		"@owlat/ui",
 		"better-sqlite3"

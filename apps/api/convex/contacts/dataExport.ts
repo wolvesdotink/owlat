@@ -13,6 +13,11 @@ import { v } from 'convex/values';
 import { authedQuery } from '../lib/authedFunctions';
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import { getOrThrow } from '../_utils/errors';
+import {
+	openConversationThreadPreviewForExport,
+	openInboundMessageBodyForExport,
+	openMessageBodyForExport,
+} from '../lib/messageBody';
 
 const CAP = 1000;
 
@@ -106,6 +111,33 @@ export const exportContactData = authedQuery({
 				createdAt: e.createdAt,
 			}));
 
+		// A data-subject access request must be READABLE: the message bodies are
+		// sealed at rest (E8b), so DECRYPT them for the export bundle (a documented
+		// E8b exception — the owner's own GDPR package is the one place plaintext
+		// leaves the store). Decrypt only up to the cap we actually return.
+		//
+		// Use the FAIL-SAFE openers: a single row that looks sealed but fails to
+		// decrypt (genuine tamper, or an attacker-crafted plaintext that happens
+		// to be a structurally valid envelope during the pre-back-fill mixed-state
+		// window) exports its stored value verbatim instead of throwing — one
+		// crafted inbound message must not DoS the whole GDPR export. No plaintext
+		// leaks either way (a real ciphertext exports as ciphertext).
+		const decryptedInbound = await Promise.all(
+			inboundMessages.slice(0, CAP).map(async (row) => {
+				const body = await openInboundMessageBodyForExport(row);
+				return { ...row, textBody: body.text, htmlBody: body.html };
+			})
+		);
+		const decryptedUnified = await Promise.all(
+			unifiedMessages.slice(0, CAP).map(async (row) => ({
+				...row,
+				content: await openMessageBodyForExport(row.content),
+			}))
+		);
+		const decryptedThreads = await Promise.all(
+			threads.slice(0, CAP).map(openConversationThreadPreviewForExport)
+		);
+
 		return {
 			exportedAt: Date.now(),
 			contact,
@@ -117,9 +149,12 @@ export const exportContactData = authedQuery({
 			transactionalSends: await capped(transactionalSends),
 			automationRuns: await capped(automationRuns),
 			formSubmissions: await capped(formSubmissions),
-			inboundMessages: await capped(inboundMessages),
-			unifiedMessages: await capped(unifiedMessages),
-			conversationThreads: await capped(threads),
+			inboundMessages: { rows: decryptedInbound, truncated: inboundMessages.length > CAP },
+			unifiedMessages: { rows: decryptedUnified, truncated: unifiedMessages.length > CAP },
+			conversationThreads: {
+				rows: decryptedThreads,
+				truncated: threads.length > CAP,
+			},
 			knowledgeEntries: { rows: knowledgeEntries, truncated: entryLinks.length > CAP },
 		};
 	},

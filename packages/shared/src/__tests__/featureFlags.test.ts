@@ -554,3 +554,42 @@ describe('featureFlags — infra templates stay in sync', () => {
 		expect(missing).toEqual([]);
 	});
 });
+
+describe('featureFlags — sealed-mail flags', () => {
+	it('registers senderAuthBadges and sealedMail, both default ON', () => {
+		expect(FEATURE_FLAGS.senderAuthBadges).toBeDefined();
+		expect(FEATURE_FLAGS.sealedMail).toBeDefined();
+		expect(FEATURE_FLAGS.senderAuthBadges.default).toBe(true);
+		expect(FEATURE_FLAGS.sealedMail.default).toBe(true);
+	});
+
+	it('carries both flags ON in the raw default flag set', () => {
+		const flags = getDefaultFlags();
+		expect(flags.senderAuthBadges).toBe(true);
+		expect(flags.sealedMail).toBe(true);
+	});
+
+	it('gates both flags off on a deployment without the Postbox plane', () => {
+		// The raw defaults are ON, but they require the Postbox plane; a
+		// deployment with postbox off resolves them back off (no personal mail).
+		const resolved = resolveFlags({ postbox: false });
+		expect(resolved.senderAuthBadges).toBe(false);
+		expect(resolved.sealedMail).toBe(false);
+	});
+
+	it('keeps sealedMail off unless its dependencies are on', () => {
+		const stored: FeatureFlagState = { sealedMail: true };
+		const resolved = resolveFlags(stored);
+		expect(resolved.sealedMail).toBe(false);
+	});
+
+	it('resolves sealedMail on only when postbox and senderAuthBadges are on', () => {
+		const stored: FeatureFlagState = {
+			postbox: true,
+			senderAuthBadges: true,
+			sealedMail: true,
+		};
+		const resolved = resolveFlags(stored);
+		expect(resolved.sealedMail).toBe(true);
+	});
+});

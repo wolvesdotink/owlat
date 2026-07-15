@@ -9,6 +9,7 @@ WORKDIR /app
 
 # Copy workspace root files (catalogs live in root package.json)
 COPY package.json bun.lock bunfig.toml ./
+COPY patches/ patches/
 
 # Copy all workspace package.json files for dependency resolution
 COPY --parents apps/*/package.json packages/*/package.json ./

@@ -1,7 +1,8 @@
 /**
  * Organization settings (module) — sole writer of the singleton
  * `instanceSettings` row's *settings columns* (`emailTheme`, `timezone`,
- * `defaultFromName`, `defaultFromEmail`, `isMigrationMode`, `updatedAt`). Sibling of
+ * `defaultFromName`, `defaultFromEmail`, `isMigrationMode`,
+ * `isInboundTlsRequired`, `updatedAt`). Sibling of
  * **Feature flags (module)** (which owns the `featureFlags` map),
  * **Abuse status (module)** (which owns the abuse-status columns), and
  * the **Organization deletion (module)** walker scheduled by `remove`.
@@ -21,9 +22,13 @@
  */
 
 import { v } from 'convex/values';
-import { internalMutation } from '../_generated/server';
+import { MAX_TRUSTED_ARC_FORWARDERS, sanitizeTrustedForwarders } from '@owlat/shared/arcTrust';
+import { sealPolicyValidator } from '../mail/sealPolicy';
+import { internalMutation, internalQuery } from '../_generated/server';
+import type { Id } from '../_generated/dataModel';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
+import { recordAuditLog } from '../lib/auditLog';
 import {
 	getUserIdFromSession,
 	getMutationContext,
@@ -48,6 +53,19 @@ export const update = authedMutation({
 		// When on, campaign sends may use any from-address on a verified sending
 		// domain, not just the curated `campaignSenders` list. Defaults OFF.
 		isCustomCampaignSendersAllowed: v.optional(v.boolean()),
+		// MTA-STS publishing posture for inbound mail (RFC 8461). Defaults to
+		// `none` (nothing published) — step through `testing` before `enforce`.
+		mtaStsMode: v.optional(v.union(v.literal('none'), v.literal('testing'), v.literal('enforce'))),
+		// Trusted ARC forwarders (Sealed Mail A5) — domains whose validated ARC seal
+		// rescues an inbound DMARC fail. Unset keeps the seeded default list; an
+		// explicit `[]` turns the override off.
+		trustedArcForwarders: v.optional(v.array(v.string())),
+		// Sealed Mail (E3) org sealing policy (locked decision D2): `auto` / `ask` /
+		// `off`. Unset ⇒ `auto` at resolution time.
+		sealPolicy: v.optional(sealPolicyValidator),
+		// Require STARTTLS before accepting MAIL FROM. Defaults ON; owners/admins
+		// can disable it for legacy senders that cannot negotiate TLS.
+		isInboundTlsRequired: v.optional(v.boolean()),
 		emailTheme: v.optional(
 			v.object({
 				primaryColor: v.string(),
@@ -58,22 +76,70 @@ export const update = authedMutation({
 		),
 	},
 	handler: async (ctx, args) => {
-		await requireOrgPermission(
+		const session = await requireOrgPermission(
 			ctx,
 			'settings:manage',
 			'Only owners and admins can update organization settings'
 		);
 		const now = Date.now();
-		const existing = await ctx.db.query('instanceSettings').first();
-		if (existing) {
-			await ctx.db.patch(existing._id, { ...args, updatedAt: now });
-			return existing._id;
+		if (
+			args.trustedArcForwarders !== undefined &&
+			args.trustedArcForwarders.length > MAX_TRUSTED_ARC_FORWARDERS
+		) {
+			throw new Error(`At most ${MAX_TRUSTED_ARC_FORWARDERS} trusted ARC forwarders are allowed`);
 		}
-		return await ctx.db.insert('instanceSettings', {
+		// Validate the trusted-forwarder list server-side: normalize, drop
+		// single-label / whitespace entries, and de-duplicate so the persisted
+		// list can never contain an entry the ARC trust predicate would misread as
+		// a TLD wildcard. The UI enforces the same rule; this is the floor.
+		const patch = {
 			...args,
-			createdAt: now,
-			updatedAt: now,
-		});
+			...(args.trustedArcForwarders !== undefined
+				? { trustedArcForwarders: sanitizeTrustedForwarders(args.trustedArcForwarders) }
+				: {}),
+		};
+		const existing = await ctx.db.query('instanceSettings').first();
+		const changes: Record<string, { from: unknown; to: unknown }> = {};
+		for (const key of Object.keys(patch) as Array<keyof typeof patch>) {
+			const to = patch[key];
+			if (to === undefined) continue;
+			const from = existing?.[key] ?? null;
+			if (JSON.stringify(from) !== JSON.stringify(to)) changes[key] = { from, to };
+		}
+
+		let settingsId: Id<'instanceSettings'>;
+		if (existing) {
+			await ctx.db.patch(existing._id, { ...patch, updatedAt: now });
+			settingsId = existing._id;
+		} else {
+			settingsId = await ctx.db.insert('instanceSettings', {
+				...patch,
+				createdAt: now,
+				updatedAt: now,
+			});
+		}
+		if (Object.keys(changes).length > 0) {
+			await recordAuditLog(ctx, {
+				userId: session.userId,
+				action: 'settings.updated',
+				resource: 'settings',
+				resourceId: settingsId,
+				detailsBlob: JSON.stringify({ changes }),
+			});
+		}
+		if (args.isInboundTlsRequired !== undefined) {
+			await ctx.scheduler.runAfter(0, internal.mail.mailboxActions.pushInboundTlsPolicy, {});
+		}
+		return settingsId;
+	},
+});
+
+/** Read-side policy for the Node action that synchronizes the MTA Redis gate. */
+export const getInboundTlsPolicy = internalQuery({
+	args: {},
+	handler: async (ctx): Promise<boolean> => {
+		const settings = await ctx.db.query('instanceSettings').first();
+		return settings?.isInboundTlsRequired !== false;
 	},
 });
 

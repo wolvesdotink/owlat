@@ -32,7 +32,13 @@ export const contactTables = {
 		email: v.optional(v.string()),
 		firstName: v.optional(v.string()),
 		lastName: v.optional(v.string()),
-		source: v.union(v.literal('api'), v.literal('import'), v.literal('form'), v.literal('transactional'), v.literal('inbound')),
+		source: v.union(
+			v.literal('api'),
+			v.literal('import'),
+			v.literal('form'),
+			v.literal('transactional'),
+			v.literal('inbound')
+		),
 		// Timezone for scheduling emails in recipient's local time (e.g., "America/New_York")
 		timezone: v.optional(v.string()),
 		// Preferred language for email content (e.g., "en", "de", "fr")
@@ -99,6 +105,10 @@ export const contactTables = {
 		// leads so `deletedAt === undefined` rides the index range and createdAt
 		// orders within it — the page is never thinned by a post-filter.
 		.index('by_deleted_at_and_created_at', ['deletedAt', 'createdAt'])
+		// SEALED-AT-REST NOTE (Sealed Mail E8b): `searchableText` here indexes contact
+		// METADATA (name, email, company), not a sealed message body, so E8b at-rest
+		// body sealing does not apply to it — it is intentionally plaintext for search.
+		// See lib/atRestBodies.ts and apps/docs/content/3.developer/21.sealed-mail-at-rest.md.
 		.searchIndex('search_contacts', {
 			searchField: 'searchableText',
 			// deletedAt is a filterField so the search path can drop soft-deleted
@@ -123,8 +133,7 @@ export const contactTables = {
 		autoRegistered: v.optional(v.boolean()),
 		autoRegisteredSource: v.optional(v.string()),
 		createdAt: v.number(),
-	})
-		.index('by_key', ['key']),
+	}).index('by_key', ['key']),
 
 	// Contact Property Values - stores the actual values for custom properties per contact
 	contactPropertyValues: defineTable({
@@ -181,8 +190,8 @@ export const contactTables = {
 	// Contact Identities - multi-channel identity for contact unification
 	contactIdentities: defineTable({
 		contactId: v.id('contacts'),
-		channel: v.string(),          // 'email', 'phone', 'whatsapp', 'twitter', etc.
-		identifier: v.string(),       // email address, phone number, handle
+		channel: v.string(), // 'email', 'phone', 'whatsapp', 'twitter', etc.
+		identifier: v.string(), // email address, phone number, handle
 		isPrimary: v.boolean(),
 		verifiedAt: v.optional(v.number()),
 		// Marks rows inserted by /seed/demo so they can be wiped on reset.
@@ -196,8 +205,8 @@ export const contactTables = {
 	contactRelationships: defineTable({
 		fromContactId: v.id('contacts'),
 		toContactId: v.id('contacts'),
-		relationship: v.string(),     // "manager_of", "colleague", "reports_to", etc.
-		confidence: v.number(),       // 0-1
+		relationship: v.string(), // "manager_of", "colleague", "reports_to", etc.
+		confidence: v.number(), // 0-1
 		// Relationships are authored by hand from the contact's Relationships tab.
 		// Kept as a literal (not a bare string) so a future extraction source can
 		// be added back as an explicit branch of a union.

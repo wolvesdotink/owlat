@@ -46,7 +46,7 @@ describe('ingestMessage', () => {
 		expect(payload.remoteUid).toBe(42);
 		expect(payload.remoteUidValidity).toBe(7);
 		expect(payload.subject).toBe('Hello there');
-		expect(payload.from).toContain('alice@example.com');
+		expect(payload.from).toBe('alice@example.com');
 		expect(payload.to).toEqual(['bob@example.com', 'carol@example.com']);
 		expect(payload.cc).toEqual(['dave@example.com']);
 		expect(payload.messageId).toBe('<msg-123@example.com>');
@@ -54,7 +54,9 @@ describe('ingestMessage', () => {
 		expect(payload.textBodyInline).toContain('This is the body text.');
 		// Raw bytes are shipped base64-encoded.
 		expect(typeof payload.rawBytesBase64).toBe('string');
-		expect(Buffer.from(payload.rawBytesBase64 as string, 'base64').toString()).toContain('Hello there');
+		expect(Buffer.from(payload.rawBytesBase64 as string, 'base64').toString()).toContain(
+			'Hello there'
+		);
 	});
 
 	it('reflects IMAP flags into flagSeen / flagFlagged', async () => {
@@ -117,7 +119,7 @@ describe('ingestMessage', () => {
 
 	it('sanitises the folder name so the synthetic id stays a valid token', () => {
 		expect(
-			syntheticMessageId({ remoteUidValidity: 1, remoteUid: 2, remoteName: 'Sent Items/2026' }),
+			syntheticMessageId({ remoteUidValidity: 1, remoteUid: 2, remoteName: 'Sent Items/2026' })
 		).toBe('<1.2.Sent_Items_2026@owlat-mail-sync>');
 	});
 });
