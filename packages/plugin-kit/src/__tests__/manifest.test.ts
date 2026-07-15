@@ -342,6 +342,180 @@ describe('plugin manifest validation', () => {
 		expectInvalidAt(makeManifest(), path);
 	});
 
+	it.each([-1, 1.5, Number.MAX_SAFE_INTEGER])(
+		'returns one structured issue for a proxy-reported invalid array length %s',
+		(reportedLength) => {
+			let descriptorReads = 0;
+			let ownKeyReads = 0;
+			let propertyReads = 0;
+			const capabilities = new Proxy([], {
+				get(target, key, receiver) {
+					propertyReads += 1;
+					return Reflect.get(target, key, receiver);
+				},
+				getOwnPropertyDescriptor(target, key) {
+					const descriptor = Reflect.getOwnPropertyDescriptor(target, key);
+					if (key !== 'length' || !descriptor || !('value' in descriptor)) return descriptor;
+					descriptorReads += 1;
+					return { ...descriptor, value: reportedLength };
+				},
+				ownKeys() {
+					ownKeyReads += 1;
+					return ['length'];
+				},
+			});
+
+			const result = validatePluginManifest({ ...validManifest(), capabilities });
+
+			expect(result).toEqual({
+				ok: false,
+				issues: [
+					{
+						code: 'invalid_type',
+						path: '$.capabilities.length',
+						message: 'must be an unsigned 32-bit integer',
+					},
+				],
+			});
+			expect(descriptorReads).toBe(1);
+			expect(ownKeyReads).toBe(0);
+			expect(propertyReads).toBe(0);
+		}
+	);
+
+	it.each([
+		['maximum legal JavaScript array length', 0xffff_ffff],
+		['large sparse array length', 100_000],
+	] as const)('bounds work and issues for %s', (_label, reportedLength) => {
+		const capabilities: unknown[] = [];
+		capabilities.length = reportedLength;
+
+		const result = validatePluginManifest({ ...validManifest(), capabilities });
+
+		expect(result).toEqual({
+			ok: false,
+			issues: [
+				{
+					code: 'too_many_items',
+					path: '$.capabilities',
+					message: 'must contain at most 64 items',
+				},
+			],
+		});
+	});
+
+	it('rejects an over-limit proxy before requesting keys or property values', () => {
+		let descriptorReads = 0;
+		const capabilities = new Proxy([], {
+			get() {
+				throw new Error('property get trap must not run');
+			},
+			getOwnPropertyDescriptor(target, key) {
+				const descriptor = Reflect.getOwnPropertyDescriptor(target, key);
+				if (key !== 'length' || !descriptor || !('value' in descriptor)) return descriptor;
+				descriptorReads += 1;
+				return { ...descriptor, value: 100_000 };
+			},
+			ownKeys() {
+				throw new Error('ownKeys trap must not run for an over-limit array');
+			},
+		});
+
+		const result = validatePluginManifest({ ...validManifest(), capabilities });
+
+		expect(result).toMatchObject({
+			ok: false,
+			issues: [{ code: 'too_many_items', path: '$.capabilities' }],
+		});
+		if (!result.ok) expect(result.issues).toHaveLength(1);
+		expect(descriptorReads).toBe(1);
+	});
+
+	it.each([
+		[
+			'capabilities',
+			64,
+			(count: number) => ({
+				...validManifest(),
+				capabilities: Array.from({ length: count }, (_, index) => `domain-${index}:read`),
+			}),
+			'$.capabilities',
+		],
+		[
+			'required environment variables',
+			64,
+			(count: number) => ({
+				...validManifest(),
+				flag: {
+					default: false,
+					requiredEnvVars: Array.from({ length: count }, (_, index) => `TOKEN_${index}`),
+				},
+			}),
+			'$.flag.requiredEnvVars',
+		],
+		[
+			'contribution bucket entries',
+			256,
+			(count: number) => ({
+				...validManifest(),
+				contributes: { sendGates: Array.from({ length: count }, () => undefined) },
+			}),
+			'$.contributes.sendGates',
+		],
+	] as const)(
+		'accepts the %s limit and rejects limit plus one with one issue',
+		(_label, maximum, makeManifest, path) => {
+			expect(validatePluginManifest(makeManifest(maximum)).ok).toBe(true);
+			const overLimit = validatePluginManifest(makeManifest(maximum + 1));
+			expect(overLimit).toMatchObject({
+				ok: false,
+				issues: [{ code: 'too_many_items', path }],
+			});
+			if (!overLimit.ok) expect(overLimit.issues).toHaveLength(1);
+		}
+	);
+
+	it('stops after the first hole even at the item-count boundary', () => {
+		const capabilities: unknown[] = [];
+		capabilities.length = 64;
+
+		const result = validatePluginManifest({ ...validManifest(), capabilities });
+
+		expect(result).toMatchObject({
+			ok: false,
+			issues: [{ code: 'missing', path: '$.capabilities[0]' }],
+		});
+		if (!result.ok) expect(result.issues).toHaveLength(1);
+	});
+
+	it('does not allocate from an out-of-range proxy index', () => {
+		let propertyReads = 0;
+		const capabilities = new Proxy([], {
+			get(target, key, receiver) {
+				propertyReads += 1;
+				return Reflect.get(target, key, receiver);
+			},
+			getOwnPropertyDescriptor(target, key) {
+				if (key === '4294967294') {
+					return { configurable: true, enumerable: true, value: 'mail:read', writable: true };
+				}
+				return Reflect.getOwnPropertyDescriptor(target, key);
+			},
+			ownKeys() {
+				return ['length', '4294967294'];
+			},
+		});
+
+		const result = validatePluginManifest({ ...validManifest(), capabilities });
+
+		expect(result).toMatchObject({
+			ok: false,
+			issues: [{ code: 'unknown_field', path: '$.capabilities[4294967294]' }],
+		});
+		if (!result.ok) expect(result.issues).toHaveLength(1);
+		expect(propertyReads).toBe(0);
+	});
+
 	it('throws one typed error from the parsing API', () => {
 		expect(() => parsePluginManifest({ id: 'invalid' })).toThrow(PluginManifestError);
 		try {
