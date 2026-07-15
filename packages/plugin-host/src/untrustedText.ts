@@ -1,8 +1,10 @@
 import { PluginHostError } from './errors';
 
 export interface PluginUntrustedTextPolicy {
-	readonly maximumCharacters: number;
-	readonly scrubPromptInjection: (boundedText: string) => string;
+	/** Maximum Unicode code points in accepted output, including a truncation ellipsis. */
+	readonly maximumCodePoints: number;
+	/** Inspect the complete, original plugin text before the host truncates it. */
+	readonly scrubPromptInjection: (untrustedText: string) => string;
 }
 
 /**
@@ -23,11 +25,9 @@ export function applyPluginUntrustedTextPolicy(
 			{ pluginId }
 		);
 	}
-	const boundedText = clampText(text, policy.maximumCharacters);
-
 	let scrubbedText: unknown;
 	try {
-		scrubbedText = policy.scrubPromptInjection(boundedText);
+		scrubbedText = policy.scrubPromptInjection(text);
 	} catch (cause) {
 		throw new PluginHostError(
 			'untrusted_output_rejected',
@@ -43,7 +43,7 @@ export function applyPluginUntrustedTextPolicy(
 			{ pluginId }
 		);
 	}
-	return clampText(scrubbedText, policy.maximumCharacters);
+	return clampCodePoints(scrubbedText, policy.maximumCodePoints);
 }
 
 export function validateUntrustedTextPolicy(
@@ -53,8 +53,8 @@ export function validateUntrustedTextPolicy(
 	if (
 		policy === null ||
 		typeof policy !== 'object' ||
-		!Number.isSafeInteger(policy.maximumCharacters) ||
-		policy.maximumCharacters <= 0 ||
+		!Number.isSafeInteger(policy.maximumCodePoints) ||
+		policy.maximumCodePoints <= 0 ||
 		typeof policy.scrubPromptInjection !== 'function'
 	) {
 		throw new PluginHostError(
@@ -65,8 +65,13 @@ export function validateUntrustedTextPolicy(
 	}
 }
 
-function clampText(text: string, maximumCharacters: number): string {
-	if (text.length <= maximumCharacters) return text;
-	if (maximumCharacters === 1) return '…';
-	return `${text.slice(0, maximumCharacters - 1)}…`;
+function clampCodePoints(text: string, maximumCodePoints: number): string {
+	const prefix: string[] = [];
+	for (const codePoint of text) {
+		if (prefix.length === maximumCodePoints) {
+			return `${prefix.slice(0, -1).join('')}…`;
+		}
+		prefix.push(codePoint);
+	}
+	return text;
 }
