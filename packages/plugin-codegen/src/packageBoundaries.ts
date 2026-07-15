@@ -8,9 +8,10 @@ import {
 } from './boundedRepository';
 import { PluginCodegenError } from './errors';
 import {
+	createRepositoryPackageMatcher,
 	readRepositoryModuleAliases,
-	specifierTargetsConfiguredPackage,
 	type RepositoryModuleAlias,
+	type RepositoryPackageMatcher,
 } from './repositoryAliases';
 
 const SOURCE_EXTENSIONS = new Set([
@@ -47,6 +48,7 @@ export async function checkDirectPluginImports(
 	if (packageNames.length === 0) return;
 	const repositoryFiles = await listRepositoryFiles(workspaceRoot);
 	const aliases = await readRepositoryModuleAliases(workspaceRoot, repositoryFiles);
+	const scan = createBoundaryScan(packageNames, aliases);
 	const files = repositoryFiles.filter((file) => {
 		const relativeFile = normalizePath(relative(workspaceRoot, file));
 		return (
@@ -71,7 +73,7 @@ export async function checkDirectPluginImports(
 				`Repository source scan exceeds the ${MAX_TOTAL_SOURCE_BYTES}-byte safety limit`
 			);
 		}
-		findings.push(...findDirectPluginImports(source, relativeFile, packageNames, aliases));
+		findings.push(...findDirectPluginImportsWithScan(source, relativeFile, scan));
 	}
 
 	if (findings.length > 0) {
@@ -92,15 +94,39 @@ export function findDirectPluginImports(
 	packageNames: readonly string[],
 	aliases: readonly RepositoryModuleAlias[] = []
 ): readonly DirectPluginImport[] {
+	return findDirectPluginImportsWithScan(source, file, createBoundaryScan(packageNames, aliases));
+}
+
+const MAX_BOUNDARY_FINDINGS = 1024;
+
+interface BoundaryScan {
+	readonly packageMatcher: RepositoryPackageMatcher;
+	findingCount: number;
+}
+
+function createBoundaryScan(
+	packageNames: readonly string[],
+	aliases: readonly RepositoryModuleAlias[]
+): BoundaryScan {
+	return {
+		packageMatcher: createRepositoryPackageMatcher(packageNames, aliases),
+		findingCount: 0,
+	};
+}
+
+function findDirectPluginImportsWithScan(
+	source: string,
+	file: string,
+	scan: BoundaryScan
+): readonly DirectPluginImport[] {
 	const extracted =
 		extname(file) === '.vue'
 			? extractVueDependencies(source, file)
 			: { scripts: [source], externalSpecifiers: [] };
 	const findings: DirectPluginImport[] = [];
 	for (const packageSpecifier of extracted.externalSpecifiers) {
-		if (specifierTargetsConfiguredPackage(packageSpecifier, packageNames, aliases)) {
-			findings.push({ file, packageSpecifier });
-		}
+		if (scan.packageMatcher(packageSpecifier, file))
+			addFinding(scan, findings, file, packageSpecifier);
 	}
 	for (const scriptSource of extracted.scripts) {
 		const sourceFile = ts.createSourceFile(file, scriptSource, ts.ScriptTarget.Latest, true);
@@ -109,17 +135,31 @@ export function findDirectPluginImports(
 		const moduleLoaders = findModuleLoaderBindings(sourceFile);
 		const visit = (node: ts.Node): void => {
 			const packageSpecifier = readModuleSpecifier(node, moduleLoaders);
-			if (
-				packageSpecifier &&
-				specifierTargetsConfiguredPackage(packageSpecifier, packageNames, aliases)
-			) {
-				findings.push({ file, packageSpecifier });
+			if (packageSpecifier && scan.packageMatcher(packageSpecifier, file)) {
+				addFinding(scan, findings, file, packageSpecifier);
 			}
 			ts.forEachChild(node, visit);
 		};
 		visit(sourceFile);
 	}
 	return findings;
+}
+
+function addFinding(
+	scan: BoundaryScan,
+	findings: DirectPluginImport[],
+	file: string,
+	packageSpecifier: string
+): void {
+	if (scan.findingCount >= MAX_BOUNDARY_FINDINGS) {
+		throw new PluginCodegenError(
+			'repository_inventory_invalid',
+			`Plugin boundary scan exceeds the ${MAX_BOUNDARY_FINDINGS}-finding safety limit`,
+			[file]
+		);
+	}
+	scan.findingCount += 1;
+	findings.push({ file, packageSpecifier });
 }
 
 interface ModuleLoaderBindings {

@@ -4,9 +4,9 @@ import { readBoundedRepositoryUtf8File, Utf8ByteBudget } from './boundedReposito
 import { PluginCodegenError } from './errors';
 
 export interface RepositoryModuleAlias {
+	readonly matchKind: 'exact' | 'prefix' | 'wildcard';
 	readonly specifierPattern: string;
 	readonly targetPattern: string;
-	readonly matchSubpaths?: boolean;
 }
 
 const MAX_CONFIG_FILES = 512;
@@ -53,32 +53,37 @@ export async function readRepositoryModuleAliases(
 	return Object.freeze(aliases);
 }
 
-export function specifierTargetsConfiguredPackage(
-	specifier: string,
+export type RepositoryPackageMatcher = (specifier: string, sourceFile?: string) => boolean;
+
+export function createRepositoryPackageMatcher(
 	packageNames: readonly string[],
 	aliases: readonly RepositoryModuleAlias[]
-): boolean {
-	const pending = [specifier];
-	const visited = new Set<string>();
+): RepositoryPackageMatcher {
 	let matcherWork = 0;
-	while (pending.length > 0) {
-		const candidate = pending.pop();
-		if (!candidate || visited.has(candidate)) continue;
-		if (visited.size >= MAX_ALIAS_CHAIN_CANDIDATES) {
-			throw aliasMatcherLimitExceeded();
+	return (specifier: string, sourceFile?: string): boolean => {
+		const pending = [specifier];
+		const visited = new Set<string>();
+		while (pending.length > 0) {
+			const candidate = pending.pop();
+			if (!candidate || visited.has(candidate)) continue;
+			if (visited.size >= MAX_ALIAS_CHAIN_CANDIDATES) {
+				throw aliasMatcherLimitExceeded(sourceFile);
+			}
+			visited.add(candidate);
+			if (packageNames.some((packageName) => targetReferencesPackage(candidate, packageName))) {
+				return true;
+			}
+			for (const alias of aliases) {
+				matcherWork += 1;
+				if (matcherWork > MAX_ALIAS_MATCHER_WORK) {
+					throw aliasMatcherLimitExceeded(sourceFile);
+				}
+				const target = resolveAlias(alias, candidate);
+				if (target !== undefined) pending.push(target);
+			}
 		}
-		visited.add(candidate);
-		if (packageNames.some((packageName) => targetReferencesPackage(candidate, packageName))) {
-			return true;
-		}
-		for (const alias of aliases) {
-			matcherWork += 1;
-			if (matcherWork > MAX_ALIAS_MATCHER_WORK) throw aliasMatcherLimitExceeded();
-			const target = resolveAlias(alias, candidate);
-			if (target !== undefined) pending.push(target);
-		}
-	}
-	return false;
+		return false;
+	};
 }
 
 function findConfigFiles(
@@ -129,7 +134,11 @@ function collectPackageAliases(value: unknown, aliases: RepositoryModuleAlias[])
 	if (isRecord(value['imports'])) {
 		for (const [specifierPattern, target] of Object.entries(value['imports'])) {
 			for (const targetPattern of collectStringLeaves(target)) {
-				addAlias(aliases, { specifierPattern, targetPattern });
+				addAlias(aliases, {
+					matchKind: specifierPattern.includes('*') ? 'wildcard' : 'exact',
+					specifierPattern,
+					targetPattern,
+				});
 			}
 		}
 	}
@@ -139,9 +148,9 @@ function collectPackageAliases(value: unknown, aliases: RepositoryModuleAlias[])
 		for (const [specifierPattern, target] of Object.entries(dependencies)) {
 			if (typeof target === 'string' && target.startsWith('npm:')) {
 				addAlias(aliases, {
+					matchKind: 'prefix',
 					specifierPattern,
 					targetPattern: target.slice('npm:'.length),
-					matchSubpaths: true,
 				});
 			}
 		}
@@ -156,7 +165,11 @@ function collectTypeScriptAliases(value: unknown, aliases: RepositoryModuleAlias
 		if (!Array.isArray(targets)) continue;
 		for (const targetPattern of targets) {
 			if (typeof targetPattern === 'string') {
-				addAlias(aliases, { specifierPattern, targetPattern });
+				addAlias(aliases, {
+					matchKind: specifierPattern.includes('*') ? 'wildcard' : 'exact',
+					specifierPattern,
+					targetPattern,
+				});
 			}
 		}
 	}
@@ -201,7 +214,7 @@ function collectFrameworkAliasValue(
 				throw new Error('Framework object alias names must be static property names');
 			}
 			const targetPattern = readFrameworkStaticString(property.initializer, staticValues);
-			addAlias(aliases, { specifierPattern, targetPattern, matchSubpaths: true });
+			addAlias(aliases, { matchKind: 'prefix', specifierPattern, targetPattern });
 		}
 		return;
 	}
@@ -255,11 +268,11 @@ function readFrameworkAliasRule(object: ts.ObjectLiteralExpression): {
 function readFrameworkAliasFind(
 	value: ts.Expression,
 	staticValues: FrameworkStaticValues
-): Pick<RepositoryModuleAlias, 'specifierPattern' | 'matchSubpaths'> {
+): Pick<RepositoryModuleAlias, 'matchKind' | 'specifierPattern'> {
 	if (!ts.isRegularExpressionLiteral(value)) {
 		return {
+			matchKind: 'prefix',
 			specifierPattern: readFrameworkStaticString(value, staticValues),
-			matchSubpaths: true,
 		};
 	}
 	const match = /^\/(.*)\/([a-z]*)$/.exec(value.text);
@@ -270,7 +283,10 @@ function readFrameworkAliasFind(
 	if (!body.startsWith('^') || !body.endsWith('$')) {
 		throw new Error('Framework RegExp aliases must anchor one exact module specifier');
 	}
-	return { specifierPattern: decodeExactRegExpLiteral(body.slice(1, -1)) };
+	return {
+		matchKind: 'exact',
+		specifierPattern: decodeExactRegExpLiteral(body.slice(1, -1)),
+	};
 }
 
 function readFrameworkStaticValues(sourceFile: ts.SourceFile): FrameworkStaticValues {
@@ -545,15 +561,15 @@ function collectStringLeaves(value: unknown): readonly string[] {
 
 function resolveAlias(alias: RepositoryModuleAlias, specifier: string): string | undefined {
 	const { specifierPattern: pattern, targetPattern } = alias;
-	const wildcardIndex = pattern.indexOf('*');
-	if (wildcardIndex < 0) {
+	if (alias.matchKind === 'exact') return pattern === specifier ? targetPattern : undefined;
+	if (alias.matchKind === 'prefix') {
 		if (pattern === specifier) return targetPattern;
-		if (!alias.matchSubpaths) return undefined;
 		const subpathStart = pattern.endsWith('/') ? pattern : `${pattern}/`;
 		return specifier.startsWith(subpathStart)
 			? `${targetPattern}${specifier.slice(pattern.length)}`
 			: undefined;
 	}
+	const wildcardIndex = pattern.indexOf('*');
 	const prefix = pattern.slice(0, wildcardIndex);
 	const suffix = pattern.slice(wildcardIndex + 1);
 	if (!specifier.startsWith(prefix) || !specifier.endsWith(suffix)) return undefined;
@@ -565,13 +581,17 @@ function addAlias(aliases: RepositoryModuleAlias[], alias: RepositoryModuleAlias
 	if (aliases.length >= MAX_ALIASES) {
 		throw new Error(`Repository alias discovery exceeds the ${MAX_ALIASES}-alias safety limit`);
 	}
+	if (alias.matchKind === 'wildcard' && alias.specifierPattern.split('*').length - 1 !== 1) {
+		throw new Error('Repository wildcard aliases must contain exactly one wildcard');
+	}
 	aliases.push(alias);
 }
 
-function aliasMatcherLimitExceeded(): PluginCodegenError {
+function aliasMatcherLimitExceeded(sourceFile?: string): PluginCodegenError {
 	return new PluginCodegenError(
 		'repository_config_invalid',
-		`Repository alias matching exceeds its ${MAX_ALIAS_MATCHER_WORK}-comparison or ${MAX_ALIAS_CHAIN_CANDIDATES}-candidate safety limit`
+		`Repository alias scan exceeds its ${MAX_ALIAS_MATCHER_WORK}-comparison or ${MAX_ALIAS_CHAIN_CANDIDATES}-candidate safety limit`,
+		sourceFile ? [sourceFile] : []
 	);
 }
 
