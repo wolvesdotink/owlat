@@ -1,4 +1,4 @@
-import { readFile, realpath, stat } from 'node:fs/promises';
+import { realpath, stat } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { PluginPackageName } from '@owlat/plugin-host';
 import ts from 'typescript';
@@ -6,6 +6,7 @@ import { readBoundedRepositoryUtf8File } from './boundedRepository';
 import { PluginCodegenError } from './errors';
 
 const MAX_BUN_LOCK_BYTES = 8 * 1024 * 1024;
+const MAX_PACKAGE_JSON_BYTES = 1024 * 1024;
 
 interface WorkspacePackageJson {
 	readonly dependencies?: Record<string, unknown>;
@@ -23,6 +24,7 @@ export async function resolveVerifiedPluginEntry(
 	packageName: PluginPackageName
 ): Promise<string> {
 	const workspacePackageJson = await readJsonFile<WorkspacePackageJson>(
+		workspaceRoot,
 		join(workspaceRoot, 'package.json'),
 		'Cannot read the workspace package.json'
 	);
@@ -64,6 +66,7 @@ export async function resolveVerifiedPluginEntry(
 	}
 
 	const packageJson = await readJsonFile<InstalledPackageJson>(
+		workspaceRoot,
 		packageJsonPath,
 		`Bundled plugin ${packageName} has unreadable package metadata`,
 		'dependency_provenance'
@@ -315,12 +318,13 @@ function isPathInside(parent: string, child: string): boolean {
 }
 
 async function readJsonFile<T>(
+	workspaceRoot: string,
 	path: string,
 	message: string,
 	code: 'dependency_provenance' | 'workspace_not_found' = 'workspace_not_found'
 ): Promise<T> {
 	try {
-		const source = await readFile(path, 'utf8');
+		const source = await readBoundedRepositoryUtf8File(workspaceRoot, path, MAX_PACKAGE_JSON_BYTES);
 		const value: unknown = JSON.parse(source);
 		if (!isRecord(value)) throw new Error('JSON root must be an object');
 		return value as T;

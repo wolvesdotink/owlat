@@ -79,6 +79,49 @@ describe('installed plugin loading', () => {
 		expect(plugins.map((plugin) => plugin.manifest.id)).toEqual(['alpha', 'zebra']);
 	});
 
+	it('bounds the workspace package.json before parsing with workspace error taxonomy', async () => {
+		const root = await createWorkspace(
+			{ 'mail-plugin': '1.0.0' },
+			{
+				'mail-plugin': `export default { id: 'mail', version: '1.0.0', capabilities: [] };`,
+			}
+		);
+		const packagePath = join(root, 'package.json');
+		const packageSource = JSON.stringify({ dependencies: { 'mail-plugin': '1.0.0' } });
+		await writeFile(packagePath, packageSource.padEnd(1024 * 1024, ' '));
+		await expect(loadBundledPlugins(root, ['mail-plugin'])).resolves.toHaveLength(1);
+
+		await writeFile(packagePath, packageSource.padEnd(1024 * 1024 + 1, ' '));
+		await expect(loadBundledPlugins(root, ['mail-plugin'])).rejects.toMatchObject({
+			code: 'workspace_not_found',
+			message: 'Cannot read the workspace package.json',
+		});
+	});
+
+	it('bounds installed package.json before parsing with provenance taxonomy', async () => {
+		const root = await createWorkspace(
+			{ 'mail-plugin': '1.0.0' },
+			{
+				'mail-plugin': `export default { id: 'mail', version: '1.0.0', capabilities: [] };`,
+			}
+		);
+		const packagePath = join(root, 'node_modules/mail-plugin/package.json');
+		const packageSource = JSON.stringify({
+			name: 'mail-plugin',
+			version: '1.0.0',
+			type: 'module',
+			exports: './index.js',
+		});
+		await writeFile(packagePath, packageSource.padEnd(1024 * 1024, ' '));
+		await expect(loadBundledPlugins(root, ['mail-plugin'])).resolves.toHaveLength(1);
+
+		await writeFile(packagePath, packageSource.padEnd(1024 * 1024 + 1, ' '));
+		await expect(loadBundledPlugins(root, ['mail-plugin'])).rejects.toMatchObject({
+			code: 'dependency_provenance',
+			message: 'Bundled plugin mail-plugin has unreadable package metadata',
+		});
+	});
+
 	it('rejects a package that is installed transitively but not declared directly', async () => {
 		const root = await createWorkspace(
 			{},
