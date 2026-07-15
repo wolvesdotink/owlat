@@ -351,6 +351,15 @@
         "vitest": "catalog:",
       },
     },
+    "packages/plugin-kit": {
+      "name": "@owlat/plugin-kit",
+      "version": "0.1.0",
+      "devDependencies": {
+        "@vitest/coverage-v8": "catalog:",
+        "typescript": "catalog:",
+        "vitest": "catalog:",
+      },
+    },
     "packages/sdk-js": {
       "name": "@owlat/sdk-js",
       "version": "0.2.1",
@@ -969,6 +978,8 @@
     "@owlat/marketing": ["@owlat/marketing@workspace:apps/marketing"],
 
     "@owlat/mta": ["@owlat/mta@workspace:apps/mta"],
+
+    "@owlat/plugin-kit": ["@owlat/plugin-kit@workspace:packages/plugin-kit"],
 
     "@owlat/sdk-js": ["@owlat/sdk-js@workspace:packages/sdk-js"],
 
