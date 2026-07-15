@@ -1,4 +1,6 @@
 export type { JsonObject, JsonPrimitive, JsonValue } from './json';
+export { isPluginId, parsePluginId, PluginIdError } from './pluginId';
+export type { PluginId } from './pluginId';
 export type {
 	PluginCapability,
 	PluginCapabilityGrant,

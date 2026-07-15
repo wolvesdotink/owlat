@@ -6,7 +6,7 @@
 ARG RUNTIME_BASE=platformatic/node-caged:26-slim
 
 # ── Stage 1: Install dependencies ──
-FROM oven/bun:1.3-alpine AS deps
+FROM oven/bun:1.3.11-alpine AS deps
 
 RUN apk add --no-cache python3 make g++
 
@@ -20,6 +20,13 @@ COPY patches/ patches/
 COPY --parents apps/*/package.json packages/*/package.json ./
 
 RUN bun install --frozen-lockfile
+
+# Nuxt resolves plugin-host's public plugin-kit dependency during both SSR and
+# client builds. Materialize the published dist contract in the clean deps
+# stage instead of relying on a developer's ignored build output.
+COPY tsconfig.base.json ./
+COPY packages/plugin-kit/ packages/plugin-kit/
+RUN bun run --cwd packages/plugin-kit build
 
 # ── Stage 2: Build ──
 # node, not bun: the heavy JS (nuxt/vite build) runs on V8 here. Bun's JIT
@@ -35,6 +42,7 @@ COPY --from=deps /app/packages/ui/node_modules ./packages/ui/node_modules
 
 # Copy full source (filtered by .dockerignore)
 COPY . .
+COPY --from=deps /app/packages/plugin-kit/dist/ packages/plugin-kit/dist/
 
 ARG NITRO_PRESET=node-server
 ENV NITRO_PRESET=${NITRO_PRESET}

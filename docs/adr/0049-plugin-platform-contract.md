@@ -57,6 +57,31 @@ entries in each contribution bucket.
 Validation inspects component and contribution references but never invokes
 them. Build-time composition remains the only path that imports bundled code.
 
+### One static composition config
+
+The checked-in root `plugins.config.ts` is the single source of bundled plugin
+membership. It contains only a literal package-name list and is parsed as data;
+codegen never evaluates the config module. Each entry must be a safe exact npm
+package name installed directly as a production or optional root registry
+dependency. Codegen verifies the installed package identity, Bun lock integrity,
+and realpath containment; aliases, git/URL/file/workspace sources, and external
+symlinks fail closed. A plugin's default manifest must use one
+condition-independent root package export string, so Bun, Convex, Nuxt SSR, and
+the Nuxt browser build cannot select different manifests. Codegen imports those
+explicitly installed packages, validates one immutable manifest snapshot,
+rejects duplicate package names and manifest ids, and orders the result by
+manifest id using code-point order.
+
+The generator emits checked-in Convex and Nuxt composition modules that both
+pass manifests through the host composition contract. CI and the build graph
+run the generator in non-writing check mode, and a package-boundary lint rejects
+core imports of configured plugin packages outside the generated composition
+files, including Node/Bun loaders and repository aliases. The zero-plugin
+composition remains a valid no-op deployment. Generated module specifiers are
+branded and revalidated package names encoded as JavaScript strings. Output is
+written through adjacent random exclusive temporary files before atomic rename;
+generated targets and parent directories may not be symbolic links.
+
 ### Capabilities are requests; grants are permissions
 
 A manifest's `PluginCapability[]` states which host operations the plugin may

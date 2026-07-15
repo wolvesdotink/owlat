@@ -1,4 +1,4 @@
-import type { PluginCapability } from '@owlat/plugin-kit';
+import type { PluginCapability, PluginId } from '@owlat/plugin-kit';
 
 export type PluginHostErrorCode =
 	| 'capability_not_declared'
@@ -12,7 +12,7 @@ export type PluginHostErrorCode =
 	| 'untrusted_output_rejected';
 
 export interface PluginHostErrorDetails {
-	readonly pluginId: string;
+	readonly pluginId?: PluginId;
 	readonly capability?: PluginCapability;
 	readonly cause?: unknown;
 }
@@ -20,14 +20,20 @@ export interface PluginHostErrorDetails {
 /** A policy denial or invalid host configuration at the plugin boundary. */
 export class PluginHostError extends Error {
 	readonly code: PluginHostErrorCode;
-	readonly pluginId: string;
+	readonly pluginId?: PluginId;
 	readonly capability?: PluginCapability;
 
 	constructor(code: PluginHostErrorCode, message: string, details: PluginHostErrorDetails) {
-		super(message, details.cause === undefined ? undefined : { cause: details.cause });
+		super(message);
 		this.name = 'PluginHostError';
 		this.code = code;
 		this.pluginId = details.pluginId;
 		this.capability = details.capability;
+		if (details.cause !== undefined) {
+			Object.defineProperty(this, 'cause', {
+				configurable: true,
+				value: details.cause,
+			});
+		}
 	}
 }

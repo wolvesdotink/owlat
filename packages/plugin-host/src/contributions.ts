@@ -1,7 +1,9 @@
+import { isPluginId, type PluginId } from '@owlat/plugin-kit';
+import { compareCodePoints } from './compareCodePoints';
 import { PluginHostError } from './errors';
 
 export interface HostedContribution<Value> {
-	readonly pluginId: string;
+	readonly pluginId: PluginId;
 	readonly contributionId: string;
 	readonly value: Value;
 }
@@ -53,9 +55,7 @@ function readContribution<Value>(
 		keys.length !== 3 ||
 		!pluginId ||
 		!('value' in pluginId) ||
-		typeof pluginId.value !== 'string' ||
-		pluginId.value.trim().length === 0 ||
-		pluginId.value.trim() !== pluginId.value ||
+		!isPluginId(pluginId.value) ||
 		!contributionId ||
 		!('value' in contributionId) ||
 		typeof contributionId.value !== 'string' ||
@@ -77,15 +77,11 @@ function readContribution<Value>(
 	});
 }
 
-function invalidContribution(pluginId = '<unknown>'): never {
+function invalidContribution(pluginId?: string): never {
+	const validPluginId = isPluginId(pluginId) ? pluginId : undefined;
 	throw new PluginHostError(
 		'invalid_contribution',
-		`Plugin ${pluginId} has a contribution without a stable identity`,
-		{ pluginId }
+		`Plugin ${pluginId ?? '<unknown>'} has a contribution without a stable identity`,
+		{ pluginId: validPluginId }
 	);
-}
-
-function compareCodePoints(left: string, right: string): number {
-	if (left === right) return 0;
-	return left < right ? -1 : 1;
 }
