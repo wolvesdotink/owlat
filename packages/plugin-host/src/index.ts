@@ -1,5 +1,7 @@
 export { orderHostedContributions } from './contributions';
 export type { HostedContribution } from './contributions';
+export { composeBundledPlugins, PluginCompositionError } from './composition';
+export type { BundledPlugin, BundledPluginSource, PluginCompositionErrorCode } from './composition';
 export { PluginHostError } from './errors';
 export type { PluginHostErrorCode, PluginHostErrorDetails } from './errors';
 export { runWithPluginFeatureFlag } from './featureFlags';
