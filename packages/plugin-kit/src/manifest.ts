@@ -75,9 +75,8 @@ export type PluginManifestValidation =
 
 const PLUGIN_ID = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 const SEMVER =
-	/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
-const CAPABILITY =
-	/^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)*:[a-z*][a-z0-9*-]*(?:\.[a-z][a-z0-9-]*)*$/;
+	/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/;
+const CAPABILITY = /^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)*:[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)*$/;
 const ENV_VAR = /^[A-Z][A-Z0-9_]*$/;
 const TOP_LEVEL_FIELDS = new Set([
 	'id',
@@ -126,14 +125,11 @@ export function validatePluginManifest(value: unknown): PluginManifestValidation
 		return { ok: false, issues };
 	}
 
-	for (const key of Object.keys(value)) {
-		if (!TOP_LEVEL_FIELDS.has(key))
-			addIssue(issues, 'unknown_field', `$.${key}`, 'is not supported');
-	}
+	validateKnownFields(value, '$', TOP_LEVEL_FIELDS, issues);
 
 	const id = readDataProperty(value, 'id', issues, true);
-	if (typeof id === 'string') {
-		if (id.length > 64 || !PLUGIN_ID.test(id)) {
+	if (id.kind === 'value' && typeof id.value === 'string') {
+		if (id.value.length > 64 || !PLUGIN_ID.test(id.value)) {
 			addIssue(
 				issues,
 				'invalid_format',
@@ -141,25 +137,33 @@ export function validatePluginManifest(value: unknown): PluginManifestValidation
 				'must be a lowercase kebab-case id of at most 64 characters'
 			);
 		}
-	} else if (id !== undefined) {
+	} else if (id.kind === 'value') {
 		addIssue(issues, 'invalid_type', '$.id', 'must be a string');
 	}
 
 	const version = readDataProperty(value, 'version', issues, true);
-	if (typeof version === 'string') {
-		if (!SEMVER.test(version))
+	if (version.kind === 'value' && typeof version.value === 'string') {
+		if (!SEMVER.test(version.value))
 			addIssue(issues, 'invalid_format', '$.version', 'must be a semantic version');
-	} else if (version !== undefined) {
+	} else if (version.kind === 'value') {
 		addIssue(issues, 'invalid_type', '$.version', 'must be a string');
 	}
 
-	validateCapabilities(readDataProperty(value, 'capabilities', issues, true), issues);
-	validateContributions(readDataProperty(value, 'contributes', issues), issues);
-	validateFlag(readDataProperty(value, 'flag', issues), issues);
-	validateLlmBudget(readDataProperty(value, 'llmBudget', issues), issues);
+	const capabilities = readDataProperty(value, 'capabilities', issues, true);
+	if (capabilities.kind === 'value') validateCapabilities(capabilities.value, issues);
+	const contributions = readDataProperty(value, 'contributes', issues);
+	if (contributions.kind === 'value') validateContributions(contributions.value, issues);
+	const flag = readDataProperty(value, 'flag', issues);
+	if (flag.kind === 'value') validateFlag(flag.value, issues);
+	const llmBudget = readDataProperty(value, 'llmBudget', issues);
+	if (llmBudget.kind === 'value') validateLlmBudget(llmBudget.value, issues);
 
 	const component = readDataProperty(value, 'component', issues);
-	if (component !== undefined && typeof component !== 'function') {
+	if (
+		component.kind === 'value' &&
+		component.value !== undefined &&
+		typeof component.value !== 'function'
+	) {
 		addIssue(issues, 'invalid_type', '$.component', 'must be an async component loader');
 	}
 
@@ -169,23 +173,12 @@ export function validatePluginManifest(value: unknown): PluginManifestValidation
 }
 
 function validateCapabilities(value: unknown, issues: PluginManifestIssue[]): void {
-	if (!Array.isArray(value)) {
-		if (value !== undefined) addIssue(issues, 'invalid_type', '$.capabilities', 'must be an array');
-		return;
-	}
-	const seen = new Set<string>();
-	for (const [index, capability] of value.entries()) {
-		const path = `$.capabilities[${index}]`;
-		if (typeof capability !== 'string') {
-			addIssue(issues, 'invalid_type', path, 'must be a string');
-		} else if (!CAPABILITY.test(capability)) {
-			addIssue(issues, 'invalid_format', path, 'must use the lowercase domain:action form');
-		} else if (seen.has(capability)) {
-			addIssue(issues, 'duplicate', path, `duplicates capability ${capability}`);
-		} else {
-			seen.add(capability);
-		}
-	}
+	validateUniqueFormattedStringArray(value, issues, {
+		path: '$.capabilities',
+		format: CAPABILITY,
+		formatMessage: 'must use the lowercase domain:action form',
+		duplicateLabel: 'capability',
+	});
 }
 
 function validateContributions(value: unknown, issues: PluginManifestIssue[]): void {
@@ -194,14 +187,25 @@ function validateContributions(value: unknown, issues: PluginManifestIssue[]): v
 		addIssue(issues, 'invalid_type', '$.contributes', 'must be a plain object');
 		return;
 	}
-	for (const key of Object.keys(value)) {
+	for (const key of Reflect.ownKeys(value)) {
+		if (typeof key !== 'string') {
+			addIssue(
+				issues,
+				'unknown_field',
+				`$.contributes[${String(key)}]`,
+				'symbol fields are not supported'
+			);
+			continue;
+		}
 		const path = `$.contributes.${key}`;
 		if (!CONTRIBUTION_KINDS.has(key)) {
 			addIssue(issues, 'unknown_field', path, 'is not a known contribution kind');
 			continue;
 		}
 		const contribution = readDataProperty(value, key, issues);
-		if (!Array.isArray(contribution)) addIssue(issues, 'invalid_type', path, 'must be an array');
+		if (contribution.kind === 'value') {
+			validateDescriptorSafeArray(contribution.value, path, issues);
+		}
 	}
 }
 
@@ -213,24 +217,17 @@ function validateFlag(value: unknown, issues: PluginManifestIssue[]): void {
 	}
 	validateKnownFields(value, '$.flag', new Set(['default', 'requiredEnvVars']), issues);
 	const defaultValue = readDataProperty(value, 'default', issues, true, '$.flag');
-	if (defaultValue !== undefined && typeof defaultValue !== 'boolean') {
+	if (defaultValue.kind === 'value' && typeof defaultValue.value !== 'boolean') {
 		addIssue(issues, 'invalid_type', '$.flag.default', 'must be a boolean');
 	}
 	const requiredEnvVars = readDataProperty(value, 'requiredEnvVars', issues, false, '$.flag');
-	if (requiredEnvVars === undefined) return;
-	if (!Array.isArray(requiredEnvVars)) {
-		addIssue(issues, 'invalid_type', '$.flag.requiredEnvVars', 'must be an array');
-		return;
-	}
-	const seen = new Set<string>();
-	for (const [index, envVar] of requiredEnvVars.entries()) {
-		const path = `$.flag.requiredEnvVars[${index}]`;
-		if (typeof envVar !== 'string') addIssue(issues, 'invalid_type', path, 'must be a string');
-		else if (!ENV_VAR.test(envVar))
-			addIssue(issues, 'invalid_format', path, 'must be an uppercase environment variable name');
-		else if (seen.has(envVar))
-			addIssue(issues, 'duplicate', path, `duplicates environment variable ${envVar}`);
-		else seen.add(envVar);
+	if (requiredEnvVars.kind === 'value') {
+		validateUniqueFormattedStringArray(requiredEnvVars.value, issues, {
+			path: '$.flag.requiredEnvVars',
+			format: ENV_VAR,
+			formatMessage: 'must be an uppercase environment variable name',
+			duplicateLabel: 'environment variable',
+		});
 	}
 }
 
@@ -243,8 +240,8 @@ function validateLlmBudget(value: unknown, issues: PluginManifestIssue[]): void 
 	validateKnownFields(value, '$.llmBudget', new Set(['dailyUsd']), issues);
 	const dailyUsd = readDataProperty(value, 'dailyUsd', issues, true, '$.llmBudget');
 	if (
-		dailyUsd !== undefined &&
-		(typeof dailyUsd !== 'number' || !Number.isFinite(dailyUsd) || dailyUsd <= 0)
+		dailyUsd.kind === 'value' &&
+		(typeof dailyUsd.value !== 'number' || !Number.isFinite(dailyUsd.value) || dailyUsd.value <= 0)
 	) {
 		addIssue(
 			issues,
@@ -261,11 +258,23 @@ function validateKnownFields(
 	knownFields: ReadonlySet<string>,
 	issues: PluginManifestIssue[]
 ): void {
-	for (const key of Object.keys(value)) {
-		if (!knownFields.has(key))
+	for (const key of Reflect.ownKeys(value)) {
+		if (typeof key !== 'string') {
+			addIssue(
+				issues,
+				'unknown_field',
+				`${path}[${String(key)}]`,
+				'symbol fields are not supported'
+			);
+		} else if (!knownFields.has(key)) {
 			addIssue(issues, 'unknown_field', `${path}.${key}`, 'is not supported');
+		}
 	}
 }
+
+type DataProperty =
+	| { readonly kind: 'missing' | 'accessor' }
+	| { readonly kind: 'value'; readonly value: unknown };
 
 function readDataProperty(
 	value: Record<string, unknown>,
@@ -273,18 +282,78 @@ function readDataProperty(
 	issues: PluginManifestIssue[],
 	required = false,
 	parentPath = '$'
-): unknown {
-	const path = `${parentPath}.${key}`;
+): DataProperty {
+	const path = /^(0|[1-9]\d*)$/.test(key) ? `${parentPath}[${key}]` : `${parentPath}.${key}`;
 	const descriptor = Object.getOwnPropertyDescriptor(value, key);
 	if (!descriptor) {
 		if (required) addIssue(issues, 'missing', path, 'is required');
-		return undefined;
+		return { kind: 'missing' };
 	}
 	if (!('value' in descriptor)) {
 		addIssue(issues, 'accessor_not_allowed', path, 'must be a data property');
+		return { kind: 'accessor' };
+	}
+	return { kind: 'value', value: descriptor.value };
+}
+
+interface FormattedStringArrayOptions {
+	readonly path: string;
+	readonly format: RegExp;
+	readonly formatMessage: string;
+	readonly duplicateLabel: string;
+}
+
+function validateUniqueFormattedStringArray(
+	value: unknown,
+	issues: PluginManifestIssue[],
+	options: FormattedStringArrayOptions
+): void {
+	const items = validateDescriptorSafeArray(value, options.path, issues);
+	if (!items) return;
+
+	const seen = new Set<string>();
+	for (const [index, item] of items.entries()) {
+		if (item.kind !== 'value') continue;
+		const path = `${options.path}[${index}]`;
+		if (typeof item.value !== 'string') {
+			addIssue(issues, 'invalid_type', path, 'must be a string');
+		} else if (!options.format.test(item.value)) {
+			addIssue(issues, 'invalid_format', path, options.formatMessage);
+		} else if (seen.has(item.value)) {
+			addIssue(issues, 'duplicate', path, `duplicates ${options.duplicateLabel} ${item.value}`);
+		} else {
+			seen.add(item.value);
+		}
+	}
+}
+
+function validateDescriptorSafeArray(
+	value: unknown,
+	path: string,
+	issues: PluginManifestIssue[]
+): readonly DataProperty[] | undefined {
+	if (!Array.isArray(value)) {
+		addIssue(issues, 'invalid_type', path, 'must be an array');
 		return undefined;
 	}
-	return descriptor.value;
+
+	const allowedKeys = new Set<string>(['length']);
+	for (let index = 0; index < value.length; index += 1) allowedKeys.add(String(index));
+	validateKnownFields(value as unknown as Record<string, unknown>, path, allowedKeys, issues);
+
+	const items: DataProperty[] = [];
+	for (let index = 0; index < value.length; index += 1) {
+		items.push(
+			readDataProperty(
+				value as unknown as Record<string, unknown>,
+				String(index),
+				issues,
+				true,
+				path
+			)
+		);
+	}
+	return items;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
