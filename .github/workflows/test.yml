@@ -58,6 +58,8 @@ jobs:
             name: plugin-kit
           - workspace: packages/plugin-host
             name: plugin-host
+          - workspace: packages/plugin-codegen
+            name: plugin-codegen
 
     steps:
       - uses: step-security/harden-runner@v2

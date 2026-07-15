@@ -1,0 +1,29 @@
+{
+	"name": "@owlat/plugin-codegen",
+	"version": "0.2.1",
+	"private": true,
+	"description": "Validated build-time composition for bundled Owlat plugins",
+	"license": "Apache-2.0",
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"scripts": {
+		"test": "vitest run",
+		"test:watch": "vitest watch",
+		"test:coverage": "vitest run --coverage",
+		"lint": "oxlint --config ../../oxlintrc.json src",
+		"lint:fix": "oxlint --config ../../oxlintrc.json src --fix",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@owlat/plugin-host": "workspace:*",
+		"@owlat/plugin-kit": "workspace:*",
+		"typescript": "catalog:"
+	},
+	"devDependencies": {
+		"@types/node": "catalog:",
+		"@vitest/coverage-v8": "catalog:",
+		"vitest": "catalog:"
+	}
+}
