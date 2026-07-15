@@ -17,7 +17,11 @@ export interface PluginLlmBudget {
 	readonly dailyUsd: number;
 }
 
-export type PluginComponentLoader = () => Promise<unknown>;
+/** A statically importable Convex component package export. */
+export interface PluginComponentDefinition {
+	/** Exact condition-independent package export, for example `./convex/convex.config`. */
+	readonly exportPath: string;
+}
 
 export interface PluginManifest {
 	readonly id: PluginId;
@@ -26,7 +30,7 @@ export interface PluginManifest {
 	readonly contributes?: PluginContributions;
 	readonly flag?: PluginFeatureFlagDefinition;
 	readonly llmBudget?: PluginLlmBudget;
-	readonly component?: PluginComponentLoader;
+	readonly component?: PluginComponentDefinition;
 }
 
 export type PluginManifestValidation =
@@ -111,35 +115,94 @@ export function validatePluginManifest(value: unknown): PluginManifestValidation
 	}
 
 	const capabilities = readDataProperty(manifest, 'capabilities', issues, true);
-	if (capabilities.kind === 'value') validateCapabilities(capabilities.value, issues);
+	const capabilityItems =
+		capabilities.kind === 'value' ? validateCapabilities(capabilities.value, issues) : undefined;
 	const contributions = readDataProperty(manifest, 'contributes', issues);
 	if (contributions.kind === 'value') validateContributions(contributions.value, issues);
 	const flag = readDataProperty(manifest, 'flag', issues);
+	const flagIssueCount = issues.length;
 	if (flag.kind === 'value') validateFlag(flag.value, issues);
+	const hasValidFlag =
+		flag.kind === 'value' && isRecord(flag.value) && issues.length === flagIssueCount;
+	if (declaresPluginStorage(capabilityItems) && !hasValidFlag) {
+		if (flag.kind === 'missing') {
+			addManifestIssue(
+				issues,
+				'missing',
+				'$.flag',
+				'is required when plugin storage capabilities are declared'
+			);
+		} else if (flag.kind === 'value' && flag.value === undefined) {
+			addManifestIssue(
+				issues,
+				'invalid_type',
+				'$.flag',
+				'must be a plain object when plugin storage capabilities are declared'
+			);
+		}
+	}
 	const llmBudget = readDataProperty(manifest, 'llmBudget', issues);
 	if (llmBudget.kind === 'value') validateLlmBudget(llmBudget.value, issues);
 
 	const component = readDataProperty(manifest, 'component', issues);
-	if (
-		component.kind === 'value' &&
-		component.value !== undefined &&
-		typeof component.value !== 'function'
-	) {
-		addManifestIssue(issues, 'invalid_type', '$.component', 'must be an async component loader');
-	}
+	if (component.kind === 'value') validateComponent(component.value, issues);
 
 	return issues.length === 0
 		? { ok: true, manifest: manifest as unknown as PluginManifest }
 		: { ok: false, issues };
 }
 
-function validateCapabilities(value: unknown, issues: PluginManifestIssue[]): void {
-	validateUniqueFormattedStringArray(value, issues, {
+const COMPONENT_EXPORT_PATH = /^\.\/[A-Za-z0-9][A-Za-z0-9._/-]*$/;
+
+function validateComponent(value: unknown, issues: PluginManifestIssue[]): void {
+	if (value === undefined) return;
+	if (!isRecord(value)) {
+		addManifestIssue(issues, 'invalid_type', '$.component', 'must be a plain object');
+		return;
+	}
+	validateKnownFields(value, '$.component', new Set(['exportPath']), issues);
+	const exportPath = readDataProperty(value, 'exportPath', issues, true, '$.component');
+	if (exportPath.kind !== 'value') return;
+	if (
+		typeof exportPath.value !== 'string' ||
+		exportPath.value.length > 256 ||
+		!COMPONENT_EXPORT_PATH.test(exportPath.value) ||
+		exportPath.value.endsWith('/') ||
+		exportPath.value.includes('//') ||
+		exportPath.value
+			.slice(2)
+			.split('/')
+			.some((segment) => segment === '.' || segment === '..')
+	) {
+		addManifestIssue(
+			issues,
+			'invalid_format',
+			'$.component.exportPath',
+			'must be a safe relative package export path'
+		);
+	}
+}
+
+function validateCapabilities(
+	value: unknown,
+	issues: PluginManifestIssue[]
+): readonly DataProperty[] | undefined {
+	return validateUniqueFormattedStringArray(value, issues, {
 		path: '$.capabilities',
 		format: CAPABILITY,
 		formatMessage: 'must use the lowercase domain:action form',
 		duplicateLabel: 'capability',
 	});
+}
+
+function declaresPluginStorage(items: readonly DataProperty[] | undefined): boolean {
+	return (
+		items?.some(
+			(item) =>
+				item.kind === 'value' &&
+				(item.value === 'plugin-storage:read' || item.value === 'plugin-storage:write')
+		) ?? false
+	);
 }
 
 function validateContributions(value: unknown, issues: PluginManifestIssue[]): void {
@@ -268,9 +331,9 @@ function validateUniqueFormattedStringArray(
 	value: unknown,
 	issues: PluginManifestIssue[],
 	options: FormattedStringArrayOptions
-): void {
+): readonly DataProperty[] | undefined {
 	const items = validateDescriptorSafeArray(value, options.path, issues);
-	if (!items) return;
+	if (!items) return undefined;
 
 	const seen = new Set<string>();
 	for (const [index, item] of items.entries()) {
@@ -291,6 +354,7 @@ function validateUniqueFormattedStringArray(
 			seen.add(item.value);
 		}
 	}
+	return items;
 }
 
 function validateDescriptorSafeArray(

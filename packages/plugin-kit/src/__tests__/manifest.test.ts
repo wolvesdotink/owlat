@@ -30,7 +30,7 @@ const validManifest = () => ({
 		sendGates: [{ id: 'seed-list-preflight' }],
 		agentSteps: [{ id: 'spam-score', after: 'security_scan' }],
 	},
-	component: async () => ({ name: 'deliverabilityLab' }),
+	component: { exportPath: './convex/convex.config' },
 });
 
 describe('plugin manifest validation', () => {
@@ -42,13 +42,8 @@ describe('plugin manifest validation', () => {
 		expect(() => parsePluginManifest(manifest)).toThrow(PluginManifestError);
 	}
 
-	it('accepts the public manifest shape without invoking plugin code', () => {
-		let componentLoads = 0;
+	it('accepts the public manifest shape as immutable data', () => {
 		const manifest = validManifest();
-		manifest.component = async () => {
-			componentLoads += 1;
-			return { name: 'deliverabilityLab' };
-		};
 
 		const result = validatePluginManifest(manifest);
 
@@ -60,10 +55,10 @@ describe('plugin manifest validation', () => {
 			expect(Object.isFrozen(result.manifest.flag)).toBe(true);
 			expect(Object.isFrozen(result.manifest.flag?.requiredEnvVars)).toBe(true);
 			expect(Object.isFrozen(result.manifest.llmBudget)).toBe(true);
+			expect(Object.isFrozen(result.manifest.component)).toBe(true);
 			expect(Object.isFrozen(result.manifest.contributes)).toBe(true);
 			expect(Object.isFrozen(result.manifest.contributes?.sendGates)).toBe(true);
 		}
-		expect(componentLoads).toBe(0);
 		expect(isPluginManifest(manifest)).toBe(true);
 	});
 
@@ -82,6 +77,21 @@ describe('plugin manifest validation', () => {
 		['plugin id', { ...validManifest(), id: 'Deliverability Lab' }, '$.id'],
 		['semantic version', { ...validManifest(), version: 'v1' }, '$.version'],
 		['daily budget', { ...validManifest(), llmBudget: { dailyUsd: 0 } }, '$.llmBudget.dailyUsd'],
+		[
+			'component export path',
+			{ ...validManifest(), component: { exportPath: '../convex.config' } },
+			'$.component.exportPath',
+		],
+		[
+			'component directory export path',
+			{ ...validManifest(), component: { exportPath: './convex/' } },
+			'$.component.exportPath',
+		],
+		[
+			'component loader function',
+			{ ...validManifest(), component: async () => ({}) },
+			'$.component',
+		],
 		[
 			'contribution kind',
 			{ ...validManifest(), contributes: { mysteriousThings: [] } },
@@ -110,6 +120,61 @@ describe('plugin manifest validation', () => {
 				kind
 			).toBe(true);
 		}
+	});
+
+	it('requires an explicit flag only for plugins that declare host storage', () => {
+		const withoutFlag = validManifest();
+		delete (withoutFlag as { flag?: unknown }).flag;
+		expect(validatePluginManifest(withoutFlag).ok).toBe(true);
+
+		const result = validatePluginManifest({
+			...withoutFlag,
+			capabilities: ['plugin-storage:read'],
+		});
+		expect(result).toMatchObject({
+			ok: false,
+			issues: [
+				expect.objectContaining({
+					code: 'missing',
+					path: '$.flag',
+				}),
+			],
+		});
+
+		for (const [flag, expectedPath] of [
+			[undefined, '$.flag'],
+			[null, '$.flag'],
+			[{}, '$.flag.default'],
+		] as const) {
+			const invalid = validatePluginManifest({
+				...withoutFlag,
+				capabilities: ['plugin-storage:write'],
+				flag,
+			});
+			expect(invalid.ok, String(flag)).toBe(false);
+			if (!invalid.ok) {
+				expect(invalid.issues).toEqual([expect.objectContaining({ path: expectedPath })]);
+			}
+		}
+
+		let accessorReads = 0;
+		const accessorFlag = Object.defineProperty(
+			{ ...withoutFlag, capabilities: ['plugin-storage:read'] },
+			'flag',
+			{
+				enumerable: true,
+				get() {
+					accessorReads += 1;
+					return { default: false };
+				},
+			}
+		);
+		const accessorResult = validatePluginManifest(accessorFlag);
+		expect(accessorResult).toMatchObject({
+			ok: false,
+			issues: [expect.objectContaining({ code: 'accessor_not_allowed', path: '$.flag' })],
+		});
+		expect(accessorReads).toBe(0);
 	});
 
 	it.each([

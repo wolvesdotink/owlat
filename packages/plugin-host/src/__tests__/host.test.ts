@@ -126,7 +126,7 @@ describe('central plugin host', () => {
 		const requiredEnvVars = ['POLICY_TOKEN'];
 		const flag = { default: false, requiredEnvVars };
 		const llmBudget = { dailyUsd: 2 };
-		const component = async () => ({ name: 'original-component' });
+		const component = { exportPath: './convex/original.config' };
 		const source = {
 			id: 'policy-pack',
 			version: '1.0.0',
@@ -142,7 +142,8 @@ describe('central plugin host', () => {
 		flag.default = true;
 		requiredEnvVars.push('LATE_SECRET');
 		llmBudget.dailyUsd = 999;
-		source.component = async () => ({ name: 'replacement-component' });
+		component.exportPath = './convex/mutated.config';
+		source.component = { exportPath: './convex/replacement.config' };
 
 		expect(host.manifest).toMatchObject({
 			id: 'policy-pack',
@@ -150,11 +151,13 @@ describe('central plugin host', () => {
 			flag: { default: false, requiredEnvVars: ['POLICY_TOKEN'] },
 			llmBudget: { dailyUsd: 2 },
 		});
-		expect(host.manifest.component).toBe(component);
+		expect(host.manifest.component).toEqual({ exportPath: './convex/original.config' });
+		expect(host.manifest.component).not.toBe(component);
 		expect(Object.isFrozen(host.manifest.capabilities)).toBe(true);
 		expect(Object.isFrozen(host.manifest.flag)).toBe(true);
 		expect(Object.isFrozen(host.manifest.flag?.requiredEnvVars)).toBe(true);
 		expect(Object.isFrozen(host.manifest.llmBudget)).toBe(true);
+		expect(Object.isFrozen(host.manifest.component)).toBe(true);
 	});
 
 	it('snapshots and freezes contribution membership while preserving opaque values', () => {
@@ -275,8 +278,8 @@ describe('central plugin host', () => {
 				},
 			});
 
-		const originalComponent = async () => ({ id: 'original' });
-		const replacementComponent = async () => ({ id: 'replacement' });
+		const originalComponent = { exportPath: './convex/original.config' };
+		const replacementComponent = { exportPath: './convex/replacement.config' };
 		const requiredEnvVars = unstable('requiredEnvVars', ['POLICY_TOKEN'], {
 			0: 'ATTACKER_TOKEN',
 		});
@@ -331,7 +334,8 @@ describe('central plugin host', () => {
 			llmBudget: { dailyUsd: 2 },
 		});
 		expect(host.manifest.contributes?.sendGates).toEqual([firstGate]);
-		expect(host.manifest.component).toBe(originalComponent);
+		expect(host.manifest.component).toEqual(originalComponent);
+		expect(host.manifest.component).not.toBe(originalComponent);
 		expect([...descriptorReads.values()]).toEqual(
 			Array.from({ length: descriptorReads.size }, () => 1)
 		);
