@@ -103,7 +103,7 @@ if (!(new PluginManifestError([]) instanceof Error)) throw new Error('error expo
   type JsonValue,
   type PluginCapability,
   type PluginCapabilityGrant,
-  type PluginComponentLoader,
+  type PluginComponentDefinition,
   type PluginContext,
   type PluginContributionKind,
   type PluginContributions,

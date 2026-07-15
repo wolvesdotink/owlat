@@ -40,8 +40,8 @@ declares:
 - a semantic `version`;
 - requested `capabilities`;
 - contribution buckets from the platform catalog;
-- optional flag prerequisites, daily LLM budget, and bundled Convex component
-  loader.
+- optional flag prerequisites, daily LLM budget, and a bundled Convex component
+  package export.
 
 `definePlugin` preserves literal TypeScript inference and validates at runtime.
 The non-throwing `validatePluginManifest` and throwing `parsePluginManifest`
@@ -54,8 +54,11 @@ To keep validation bounded at the public unknown-input boundary, a manifest may
 declare at most 64 capabilities, 64 required environment variables, and 256
 entries in each contribution bucket.
 
-Validation inspects component and contribution references but never invokes
-them. Build-time composition remains the only path that imports bundled code.
+Validation inspects component and contribution references as data and never
+invokes them. Component exports are imported statically by generated Convex
+composition, so the framework can discover their isolated namespaces during
+bundling. Build-time composition remains the only path that imports bundled
+code.
 
 ### One static composition config
 
