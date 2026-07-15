@@ -8,10 +8,7 @@ import { tokenUsageValidator } from '../lib/convexValidators';
 import { MAX_LLM_ATTEMPTS } from '../lib/llm/retryPolicy';
 import { estimateKnownCostMicrousd } from '../lib/llm/pricing';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
-import {
-	getBundledPluginManifest,
-	requireAuthenticatedBundledPlugin,
-} from './authorization';
+import { getBundledPluginManifest, requireAuthenticatedBundledPlugin } from './authorization';
 import { recordHostedPluginAudit, type HostedPluginAuditScope } from './audit';
 
 const LLM_INVOKE = 'llm:invoke' as const;
@@ -112,7 +109,11 @@ export const settleSuccess = internalMutation({
 		const reservation = await pendingActorReservation(ctx, args.reservationId);
 		if (reservation.status === 'completed') return settlementResult(reservation);
 		if (reservation.status !== 'pending') throw new Error('Plugin LLM settlement denied');
-		if (!Number.isSafeInteger(args.attempts) || args.attempts < 1 || args.attempts > MAX_LLM_ATTEMPTS) {
+		if (
+			!Number.isSafeInteger(args.attempts) ||
+			args.attempts < 1 ||
+			args.attempts > MAX_LLM_ATTEMPTS
+		) {
 			throw new Error('Plugin LLM settlement denied');
 		}
 
@@ -137,26 +138,17 @@ export const settleSuccess = internalMutation({
 			completedAt: now,
 		});
 		if (acceptedUsage && cost.isUsageAccounted) {
-			await insertLlmUsage(
-				ctx,
-				`plugin:${reservation.pluginId}`,
-				acceptedUsage,
-				args.modelUsed,
-				{ organizationId: reservation.organizationId, pluginId: reservation.pluginId }
-			);
+			await insertLlmUsage(ctx, `plugin:${reservation.pluginId}`, acceptedUsage, args.modelUsed, {
+				organizationId: reservation.organizationId,
+				pluginId: reservation.pluginId,
+			});
 		}
-		await recordHostedPluginAudit(
-			ctx,
-			auditScope(reservation),
-			'llm.generate',
-			'completed',
-			{
-				attempts: args.attempts,
-				usageAvailable: acceptedUsage !== undefined && cost.isUsageAccounted,
-				chargedMicrousd: cost.charged,
-				actualMicrousd: cost.actual,
-			}
-		);
+		await recordHostedPluginAudit(ctx, auditScope(reservation), 'llm.generate', 'completed', {
+			attempts: args.attempts,
+			usageAvailable: acceptedUsage !== undefined && cost.isUsageAccounted,
+			chargedMicrousd: cost.charged,
+			actualMicrousd: cost.actual,
+		});
 		return { chargedMicrousd: cost.charged, actualMicrousd: cost.actual };
 	},
 });
@@ -232,11 +224,18 @@ async function pendingActorReservation(ctx: MutationCtx, reservationId: string) 
 }
 
 function auditScope(row: Doc<'pluginLlmReservations'>): HostedPluginAuditScope {
-	return { organizationId: row.organizationId, pluginId: parsePluginId(row.pluginId), userId: row.actorUserId };
+	return {
+		organizationId: row.organizationId,
+		pluginId: parsePluginId(row.pluginId),
+		userId: row.actorUserId,
+	};
 }
 
 function settlementResult(row: Doc<'pluginLlmReservations'>) {
-	return { chargedMicrousd: row.chargedMicrousd ?? row.reservedMicrousd, actualMicrousd: row.actualMicrousd ?? 0 };
+	return {
+		chargedMicrousd: row.chargedMicrousd ?? row.reservedMicrousd,
+		actualMicrousd: row.actualMicrousd ?? 0,
+	};
 }
 
 function manifestBudgetMicrousd(dailyUsd: number | undefined): number {
@@ -246,7 +245,12 @@ function manifestBudgetMicrousd(dailyUsd: number | undefined): number {
 }
 
 function assertReservationInput(id: string, amount: number): void {
-	if (!RESERVATION_ID.test(id) || !isMoney(amount) || amount < MAX_LLM_ATTEMPTS || amount % MAX_LLM_ATTEMPTS !== 0) {
+	if (
+		!RESERVATION_ID.test(id) ||
+		!isMoney(amount) ||
+		amount < MAX_LLM_ATTEMPTS ||
+		amount % MAX_LLM_ATTEMPTS !== 0
+	) {
 		throw new Error('Plugin LLM denied');
 	}
 }

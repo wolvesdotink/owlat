@@ -46,7 +46,8 @@ vi.mock('../../lib/sessionOrganization', async () => {
 
 vi.mock('../plugins.generated', () => ({ bundledPluginComposition: registry.plugins }));
 
-const reservationId = (suffix: number) => `00000000-0000-4000-8000-${suffix.toString().padStart(12, '0')}`;
+const reservationId = (suffix: number) =>
+	`00000000-0000-4000-8000-${suffix.toString().padStart(12, '0')}`;
 
 beforeEach(() => {
 	auth.organizationId = 'tenant-a';
@@ -177,7 +178,9 @@ describe('plugin LLM accounting', () => {
 			});
 			const audits = await ctx.db.query('auditLogs').take(3);
 			expect(audits).toHaveLength(2);
-			expect(audits.every((row) => row.organizationId === 'tenant-a' && row.pluginId === 'alpha')).toBe(true);
+			expect(
+				audits.every((row) => row.organizationId === 'tenant-a' && row.pluginId === 'alpha')
+			).toBe(true);
 			expect(JSON.stringify(audits)).not.toContain('provider error');
 		});
 	});

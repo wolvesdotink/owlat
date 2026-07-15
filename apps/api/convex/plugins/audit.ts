@@ -20,9 +20,7 @@ export interface HostedPluginAuditMetadata {
 	readonly usageAvailable?: boolean;
 	readonly chargedMicrousd?: number;
 	readonly actualMicrousd?: number;
-	readonly reasonCode?:
-		| 'access_or_budget_denied'
-		| 'provider_dispatch_failed';
+	readonly reasonCode?: 'access_or_budget_denied' | 'provider_dispatch_failed';
 }
 
 export interface HostedPluginAuditScope {
@@ -106,8 +104,7 @@ function readMetadataValue(key: string, value: unknown): boolean | number | stri
 	}
 	if (
 		key === 'reasonCode' &&
-		(value === 'access_or_budget_denied' ||
-			value === 'provider_dispatch_failed')
+		(value === 'access_or_budget_denied' || value === 'provider_dispatch_failed')
 	) {
 		return value;
 	}

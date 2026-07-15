@@ -16,13 +16,18 @@ const pluginGlob = Object.fromEntries(
 const modules = { ...rootGlob, ...pluginGlob };
 const auth = vi.hoisted(() => ({ organizationId: 'tenant', isMember: true }));
 const registry = vi.hoisted(() => ({
-	plugins: [{
-		packageName: 'test-alpha',
-		manifest: {
-			id: 'alpha', version: '1.0.0', capabilities: ['llm:invoke'],
-			flag: { default: false }, llmBudget: { dailyUsd: 1 },
+	plugins: [
+		{
+			packageName: 'test-alpha',
+			manifest: {
+				id: 'alpha',
+				version: '1.0.0',
+				capabilities: ['llm:invoke'],
+				flag: { default: false },
+				llmBudget: { dailyUsd: 1 },
+			},
 		},
-	}],
+	],
 }));
 
 vi.mock('../../lib/sessionOrganization', async () => ({
@@ -44,15 +49,19 @@ beforeEach(() => {
 	auth.organizationId = 'tenant';
 	auth.isMember = true;
 	registry.plugins[0]!.manifest.capabilities = ['llm:invoke'];
-	vi.mocked(resolveLanguageModel).mockReset().mockResolvedValue('gpt-4o-mini' as never);
-	vi.mocked(runLlmTextWithAttemptMetadata).mockReset().mockResolvedValue({
-		attempts: 1,
-		result: {
-			text: 'safe result',
-			modelUsed: 'gpt-4o-mini',
-			tokenUsage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
-		},
-	});
+	vi.mocked(resolveLanguageModel)
+		.mockReset()
+		.mockResolvedValue('gpt-4o-mini' as never);
+	vi.mocked(runLlmTextWithAttemptMetadata)
+		.mockReset()
+		.mockResolvedValue({
+			attempts: 1,
+			result: {
+				text: 'safe result',
+				modelUsed: 'gpt-4o-mini',
+				tokenUsage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
+			},
+		});
 });
 
 async function setup() {
@@ -87,7 +96,9 @@ describe('hosted plugin LLM service', () => {
 		);
 		await t.run(async (ctx) => {
 			expect(await ctx.db.query('pluginLlmReservations').unique()).toMatchObject({
-				pluginId: 'alpha', status: 'completed', tier: 'fast',
+				pluginId: 'alpha',
+				status: 'completed',
+				tier: 'fast',
 			});
 			expect(await ctx.db.query('llmUsageEvents').unique()).toMatchObject({ pluginId: 'alpha' });
 		});
@@ -134,7 +145,9 @@ describe('hosted plugin LLM service', () => {
 		vi.mocked(runLlmTextWithAttemptMetadata).mockRejectedValueOnce(
 			new Error('provider leaked TOP_SECRET')
 		);
-		const error = await service.generate({ tier: 'capable', prompt: 'PROMPT_SECRET' }).catch((cause) => cause);
+		const error = await service
+			.generate({ tier: 'capable', prompt: 'PROMPT_SECRET' })
+			.catch((cause) => cause);
 		expect(error).toBeInstanceOf(PluginLlmError);
 		expect(error).toMatchObject({ code: 'provider_failure' });
 		expect(error.message).not.toContain('SECRET');
