@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { estimateCost, estimateCostUsd, providerLabelForModel } from '../pricing';
+import {
+	estimateCost,
+	estimateCostUsd,
+	estimateKnownCostMicrousd,
+	providerLabelForModel,
+} from '../pricing';
 
 const oneMillionEach = {
 	promptTokens: 1_000_000,
@@ -63,6 +68,25 @@ describe('estimateCost', () => {
 	it('scales linearly with token counts', () => {
 		const half = { promptTokens: 500_000, completionTokens: 500_000, totalTokens: 1_000_000 };
 		expect(estimateCostUsd('gpt-4o-mini', half)).toBeCloseTo(0.75 / 2);
+	});
+});
+
+describe('known-model fixed-point admission pricing', () => {
+	it('ceil-prices known models in integer micro-USD and rejects unknown models', () => {
+		expect(
+			estimateKnownCostMicrousd('gpt-4o-mini', {
+				promptTokens: 100,
+				completionTokens: 100,
+				totalTokens: 200,
+			})
+		).toBe(75);
+		expect(
+			estimateKnownCostMicrousd('some-future-model', {
+				promptTokens: 100,
+				completionTokens: 100,
+				totalTokens: 200,
+			})
+		).toBeUndefined();
 	});
 });
 

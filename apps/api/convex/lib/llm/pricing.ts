@@ -73,6 +73,13 @@ const PRICING: Price[] = [
 const DEFAULT_INPUT_PER_M = 3;
 const DEFAULT_OUTPUT_PER_M = 12;
 
+function priceForModel(modelUsed: string | undefined): Price | undefined {
+	const id = (modelUsed ?? '').toLowerCase();
+	return id
+		? PRICING.find((price) => id.startsWith(price.prefix) || id.includes(price.prefix))
+		: undefined;
+}
+
 export interface CostEstimate {
 	costUsd: number;
 	/** True when the model id didn't match the table (priced with the default). */
@@ -84,16 +91,30 @@ export function estimateCost(
 	usage: TokenUsage | undefined
 ): CostEstimate {
 	if (!usage) return { costUsd: 0, estimated: modelUsed === undefined };
-	const id = (modelUsed ?? '').toLowerCase();
-	const match = id
-		? PRICING.find((p) => id.startsWith(p.prefix) || id.includes(p.prefix))
-		: undefined;
+	const match = priceForModel(modelUsed);
 	const inputPerM = match?.inputPerM ?? DEFAULT_INPUT_PER_M;
 	const outputPerM = match?.outputPerM ?? DEFAULT_OUTPUT_PER_M;
 	const costUsd =
 		(usage.promptTokens / 1_000_000) * inputPerM +
 		(usage.completionTokens / 1_000_000) * outputPerM;
 	return { costUsd, estimated: match === undefined };
+}
+
+/**
+ * Price a bounded request in integer micro-USD using the same model catalog as
+ * dashboard estimates. Unlike reporting, admission control must fail closed:
+ * unknown models return undefined instead of using the fallback price.
+ */
+export function estimateKnownCostMicrousd(
+	modelUsed: string | undefined,
+	usage: TokenUsage
+): number | undefined {
+	const price = priceForModel(modelUsed);
+	if (!price) return undefined;
+	const input = usage.promptTokens * price.inputPerM;
+	const output = usage.completionTokens * price.outputPerM;
+	const microusd = Math.ceil(input + output);
+	return Number.isSafeInteger(microusd) && microusd >= 0 ? microusd : undefined;
 }
 
 /** Convenience: just the dollar figure. */

@@ -23,9 +23,17 @@ vi.mock('ai', () => ({
 	generateObject: (args: unknown) => generateObjectMock(args),
 }));
 
-import { normalizeUsage, runLlmText, runLlmObject, isRetriableLlmError } from '../dispatch';
+import {
+	normalizeUsage,
+	runLlmText,
+	runLlmObject,
+	runLlmTextWithAttemptMetadata,
+	isRetriableLlmError,
+} from '../dispatch';
 
-const fakeModel = { modelId: 'fake-model-id' } as unknown as Parameters<typeof runLlmText>[0]['model'];
+const fakeModel = { modelId: 'fake-model-id' } as unknown as Parameters<
+	typeof runLlmText
+>[0]['model'];
 
 beforeEach(() => {
 	generateTextMock.mockReset();
@@ -38,9 +46,11 @@ describe('normalizeUsage', () => {
 	});
 
 	it('maps a full SDK usage triple', () => {
-		expect(
-			normalizeUsage({ inputTokens: 100, outputTokens: 50, totalTokens: 150 }),
-		).toEqual({ promptTokens: 100, completionTokens: 50, totalTokens: 150 });
+		expect(normalizeUsage({ inputTokens: 100, outputTokens: 50, totalTokens: 150 })).toEqual({
+			promptTokens: 100,
+			completionTokens: 50,
+			totalTokens: 150,
+		});
 	});
 
 	it('zero-fills missing fields', () => {
@@ -219,16 +229,37 @@ describe('runLlmText retry behavior', () => {
 	it('retries a transient failure then succeeds', async () => {
 		generateTextMock
 			.mockRejectedValueOnce({ statusCode: 429, message: 'rate limited' })
-			.mockResolvedValueOnce({ text: 'ok', usage: { inputTokens: 1, outputTokens: 2, totalTokens: 3 } });
+			.mockResolvedValueOnce({
+				text: 'ok',
+				usage: { inputTokens: 1, outputTokens: 2, totalTokens: 3 },
+			});
 
 		const result = await runLlmText({ model: fakeModel, prompt: 'hi' });
 		expect(result.text).toBe('ok');
 		expect(generateTextMock).toHaveBeenCalledTimes(2);
 	}, 10_000);
 
+	it('reports attempts and forwards a host-owned output ceiling through the metadata seam', async () => {
+		generateTextMock
+			.mockRejectedValueOnce({ statusCode: 429, message: 'rate limited' })
+			.mockResolvedValueOnce({
+				text: 'ok',
+				usage: { inputTokens: 1, outputTokens: 2, totalTokens: 3 },
+			});
+		const result = await runLlmTextWithAttemptMetadata({
+			model: fakeModel,
+			prompt: 'hi',
+			maxOutputTokens: 2048,
+		});
+		expect(result.attempts).toBe(2);
+		expect(generateTextMock.mock.calls[1]?.[0]).toMatchObject({ maxOutputTokens: 2048 });
+	}, 10_000);
+
 	it('bails immediately on a non-retriable auth error (no wasted retries)', async () => {
 		generateTextMock.mockRejectedValue({ statusCode: 401, message: 'invalid api key' });
-		await expect(runLlmText({ model: fakeModel, prompt: 'hi' })).rejects.toMatchObject({ statusCode: 401 });
+		await expect(runLlmText({ model: fakeModel, prompt: 'hi' })).rejects.toMatchObject({
+			statusCode: 401,
+		});
 		expect(generateTextMock).toHaveBeenCalledTimes(1);
 	});
 });
