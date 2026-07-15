@@ -47,6 +47,17 @@ describe('public plugin-kit types', () => {
 
 		expectTypeOf(promptRequest.prompt).toEqualTypeOf<'Draft a reply'>();
 		expectTypeOf(messageRequest.messages[0].role).toEqualTypeOf<'user'>();
+
+		// @ts-expect-error prompt and messages are mutually exclusive
+		const bothInputs: PluginLlmGenerateRequest = {
+			tier: 'fast',
+			prompt: 'Classify this',
+			messages: [],
+		};
+		// @ts-expect-error one input form is required
+		const neitherInput: PluginLlmGenerateRequest = { tier: 'fast' };
+		void bothInputs;
+		void neitherInput;
 	});
 
 	it('uses JSON-safe values at storage and scheduling boundaries', () => {
