@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { constants, createReadStream } from 'node:fs';
 import { lstat, open, rename, rm, stat } from 'node:fs/promises';
 import { basename } from 'node:path';
+import { writeFully } from './writeFully.mjs';
 
 const [expectedDevice, expectedInode, targetName] = process.argv.slice(2);
 if (
@@ -31,7 +32,10 @@ try {
 	temporaryIdentity = await temporaryFile.stat();
 	if (!temporaryIdentity.isFile()) throw new Error('Temporary output is not a regular file');
 
-	for await (const chunk of process.stdin) await temporaryFile.write(chunk);
+	let outputOffset = 0;
+	for await (const chunk of process.stdin) {
+		outputOffset = await writeFully(temporaryFile, chunk, outputOffset);
+	}
 	await temporaryFile.chmod(0o644);
 	await temporaryFile.sync();
 	await temporaryFile.close();
