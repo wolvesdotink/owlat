@@ -57,6 +57,44 @@ export const LANGUAGE_ENDPOINT_PROVENANCES = [
 ] as const;
 export type LanguageEndpointProvenance = (typeof LANGUAGE_ENDPOINT_PROVENANCES)[number];
 
+/** Model plus the secret-free endpoint identity required for hard-budget pricing. */
+export interface ResolvedLanguageModel {
+	readonly model: LanguageModel;
+	readonly modelId: string;
+	readonly endpointProvenance: LanguageEndpointProvenance;
+}
+
+/** Classify the endpoint selected by the deployment-level compatibility config. */
+export function classifyEnvLanguageEndpoint(
+	provider: string | undefined,
+	hasExplicitBaseUrl: boolean
+): LanguageEndpointProvenance {
+	if (hasExplicitBaseUrl) return 'custom';
+	if (provider === undefined || provider === 'openai') return 'openai-native';
+	return provider === 'openrouter' ? 'openrouter' : 'custom';
+}
+
+/** Classify the endpoint selected by a validated stored provider config. */
+export function classifyStoredLanguageEndpoint(
+	kind: LanguageProviderKind,
+	hasExplicitBaseUrl: boolean
+): LanguageEndpointProvenance {
+	if (hasExplicitBaseUrl) return 'custom';
+	switch (kind) {
+		case 'openai':
+			return 'openai-native';
+		case 'anthropic':
+			return 'anthropic-native';
+		case 'google':
+			return 'google-native';
+		case 'openrouter':
+			return 'openrouter';
+		case 'azure':
+		case 'openaiCompatible':
+			return 'custom';
+	}
+}
+
 /**
  * The embedding provider kinds. The embedding plane is LOCAL BY DEFAULT so
  * retrieval works under ANY language choice (incl. Anthropic, which has no

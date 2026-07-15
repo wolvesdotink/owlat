@@ -14,14 +14,11 @@
  *
  * The resolved config is memoized in-process for a short TTL so a burst of LLM
  * calls reads (and decrypts) at most once per window rather than per call. Both
- * paths resolve THROUGH the provider-adapter registry (`./llmProviders`): a
- * `kind` selects the adapter and the adapter builds the client — so adding a
- * provider is one adapter file and this module stays dumb about provider
- * specifics.
+ * paths resolve through the provider-adapter registry (`./llmProviders`), where
+ * a `kind` selects the adapter that builds the client.
  *
- * `resolveLanguageModel(ctx, task)` (async) replaces the former sync, env-only
- * per-task resolver. Embeddings resolve through the SAME `resolveAiConfig(ctx)`
- * point via `resolveEmbeddingModel(ctx)` — the two planes are DECOUPLED:
+ * Language models and embeddings resolve through the same `resolveAiConfig(ctx)`
+ * point, while the two planes remain decoupled:
  *
  *   • The embedding plane is LOCAL BY DEFAULT (an OpenAI-compatible sidecar via
  *     `LOCAL_EMBEDDING_BASE_URL`) so retrieval works under ANY language choice,
@@ -57,11 +54,14 @@ import {
 } from './llm/complexity';
 import { CURRENT_EMBEDDING_MODEL, EMBEDDING_DIMENSIONS } from './constants';
 import {
+	classifyEnvLanguageEndpoint,
+	classifyStoredLanguageEndpoint,
 	embeddingProviderFor,
 	languageProviderFor,
 	type LanguageEndpointProvenance,
 	type LanguageProviderKind,
 	type ProviderClientConfig,
+	type ResolvedLanguageModel,
 } from './llmProviders';
 import type { StoredEmbeddingProviderKind } from './aiProviderConfigValidators';
 
@@ -108,13 +108,6 @@ export interface ResolvedProviderConfig {
 	readonly updatedAt?: number;
 }
 
-/** Model plus the secret-free endpoint identity required for hard-budget pricing. */
-export interface ResolvedLanguageModel {
-	readonly model: LanguageModel;
-	readonly modelId: string;
-	readonly endpointProvenance: LanguageEndpointProvenance;
-}
-
 // The default embedding model is the one stamped on rows as provenance
 // (CURRENT_EMBEDDING_MODEL). Single-sourcing it here keeps the resolved model
 // and the stamped model from drifting, preserving the schema's "re-embed when
@@ -141,39 +134,6 @@ function resolveBaseURL(): string | undefined {
 			return 'http://ollama:11434/v1';
 		default:
 			return undefined;
-	}
-}
-
-function envLanguageEndpointProvenance(): LanguageEndpointProvenance {
-	if (getOptional('LLM_BASE_URL')) return 'custom';
-	switch (getOptional('LLM_PROVIDER')) {
-		case undefined:
-		case 'openai':
-			return 'openai-native';
-		case 'openrouter':
-			return 'openrouter';
-		default:
-			return 'custom';
-	}
-}
-
-function storedLanguageEndpointProvenance(
-	kind: LanguageProviderKind,
-	explicitBaseUrl: string | undefined
-): LanguageEndpointProvenance {
-	if (explicitBaseUrl !== undefined) return 'custom';
-	switch (kind) {
-		case 'openai':
-			return 'openai-native';
-		case 'anthropic':
-			return 'anthropic-native';
-		case 'google':
-			return 'google-native';
-		case 'openrouter':
-			return 'openrouter';
-		case 'azure':
-		case 'openaiCompatible':
-			return 'custom';
 	}
 }
 
@@ -241,7 +201,10 @@ export function resolveEnvProviderConfig(): ResolvedProviderConfig {
 		source: 'env',
 		language: {
 			kind: ENV_LANGUAGE_KIND,
-			endpointProvenance: envLanguageEndpointProvenance(),
+			endpointProvenance: classifyEnvLanguageEndpoint(
+				getOptional('LLM_PROVIDER'),
+				Boolean(getOptional('LLM_BASE_URL'))
+			),
 			clientConfig,
 			models: { fast: modelIdForTier('fast'), capable: modelIdForTier('capable') },
 		},
@@ -270,9 +233,9 @@ export function buildStoredProviderConfig(
 		updatedAt: row.updatedAt,
 		language: {
 			kind: row.languageProviderKind,
-			endpointProvenance: storedLanguageEndpointProvenance(
+			endpointProvenance: classifyStoredLanguageEndpoint(
 				row.languageProviderKind,
-				row.languageBaseUrl
+				row.languageBaseUrl !== undefined
 			),
 			clientConfig: { apiKey: languageKey, baseUrl: row.languageBaseUrl ?? adapter.defaultBaseUrl },
 			models: { fast: row.modelFast, capable: row.modelCapable },
