@@ -164,4 +164,135 @@ describe('central plugin host', () => {
 		expect(host.manifest.contributes?.sendGates).toEqual([{ id: 'safe-gate' }]);
 		expect(reads).toBe(0);
 	});
+
+	it.each(['a:b:c', 'contacts:write'])(
+		'never grants a capability substituted after validation: %s',
+		(substitutedCapability) => {
+			let descriptorReads = 0;
+			let propertyReads = 0;
+			const capabilities = new Proxy(['mail:read'], {
+				get(target, key, receiver) {
+					propertyReads += 1;
+					return Reflect.get(target, key, receiver);
+				},
+				getOwnPropertyDescriptor(target, key) {
+					const descriptor = Reflect.getOwnPropertyDescriptor(target, key);
+					if (key !== '0' || !descriptor || !('value' in descriptor)) return descriptor;
+					descriptorReads += 1;
+					return {
+						...descriptor,
+						value: descriptorReads === 1 ? 'mail:read' : substitutedCapability,
+					};
+				},
+			});
+
+			expect(() =>
+				createHost({
+					manifest: { ...manifest(), capabilities },
+					capabilityGrants: [{ capability: substitutedCapability, granted: true }] as Parameters<
+						typeof createPluginHost
+					>[0]['capabilityGrants'],
+				})
+			).toThrowError(expect.objectContaining({ code: 'invalid_capability_grant' }));
+			expect(descriptorReads).toBe(1);
+			expect(propertyReads).toBe(0);
+		}
+	);
+
+	it('uses one canonical descriptor snapshot across all structured manifest metadata', () => {
+		const descriptorReads = new Map<string, number>();
+		let propertyReads = 0;
+		const unstable = <Value extends object>(
+			label: string,
+			target: Value,
+			replacements: Readonly<Record<string, unknown>>
+		): Value =>
+			new Proxy(target, {
+				get(innerTarget, key, receiver) {
+					propertyReads += 1;
+					return Reflect.get(innerTarget, key, receiver);
+				},
+				getOwnPropertyDescriptor(innerTarget, key) {
+					const descriptor = Reflect.getOwnPropertyDescriptor(innerTarget, key);
+					const countKey = `${label}.${String(key)}`;
+					const count = (descriptorReads.get(countKey) ?? 0) + 1;
+					descriptorReads.set(countKey, count);
+					if (
+						typeof key !== 'string' ||
+						!Object.hasOwn(replacements, key) ||
+						!descriptor ||
+						!('value' in descriptor)
+					) {
+						return descriptor;
+					}
+					return {
+						...descriptor,
+						value: count === 1 ? descriptor.value : replacements[key],
+					};
+				},
+			});
+
+		const originalComponent = async () => ({ id: 'original' });
+		const replacementComponent = async () => ({ id: 'replacement' });
+		const requiredEnvVars = unstable('requiredEnvVars', ['POLICY_TOKEN'], {
+			0: 'ATTACKER_TOKEN',
+		});
+		const flag = unstable(
+			'flag',
+			{ default: false, requiredEnvVars },
+			{
+				default: true,
+				requiredEnvVars: ['ATTACKER_TOKEN'],
+			}
+		);
+		const llmBudget = unstable('llmBudget', { dailyUsd: 2 }, { dailyUsd: 999 });
+		const firstGate = { id: 'first-gate' };
+		const sendGates = unstable('sendGates', [firstGate], { 0: { id: 'attacker-gate' } });
+		const contributes = unstable(
+			'contributes',
+			{ sendGates },
+			{
+				sendGates: [{ id: 'replacement-gate' }],
+			}
+		);
+		const capabilities = unstable('capabilities', ['mail:read'], { 0: 'contacts:write' });
+		const source = unstable(
+			'manifest',
+			{
+				id: 'policy-pack',
+				version: '1.0.0',
+				capabilities,
+				flag,
+				llmBudget,
+				contributes,
+				component: originalComponent,
+			},
+			{
+				id: 'attacker-plugin',
+				version: '9.9.9',
+				capabilities: ['contacts:write'],
+				flag: { default: true, requiredEnvVars: ['ATTACKER_TOKEN'] },
+				llmBudget: { dailyUsd: 999 },
+				contributes: { sendGates: [{ id: 'replacement-gate' }] },
+				component: replacementComponent,
+			}
+		);
+
+		const host = createHost({ manifest: source });
+
+		expect(host.manifest).toMatchObject({
+			id: 'policy-pack',
+			version: '1.0.0',
+			capabilities: ['mail:read'],
+			flag: { default: false, requiredEnvVars: ['POLICY_TOKEN'] },
+			llmBudget: { dailyUsd: 2 },
+		});
+		expect(host.manifest.contributes?.sendGates).toEqual([firstGate]);
+		expect(host.manifest.component).toBe(originalComponent);
+		expect([...descriptorReads.values()]).toEqual(
+			Array.from({ length: descriptorReads.size }, () => 1)
+		);
+		expect(descriptorReads.size).toBe(17);
+		expect(propertyReads).toBe(0);
+	});
 });
