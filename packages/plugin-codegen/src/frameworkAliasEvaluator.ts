@@ -55,23 +55,68 @@ export function readFrameworkStaticValues(sourceFile: ts.SourceFile): FrameworkS
 			if (!ts.isOmittedExpression(element)) countBindingName(element.name);
 		}
 	};
+	const recordMutationTarget = (target: ts.Node): void => {
+		const node = unwrapMutationTarget(target);
+		if (ts.isIdentifier(node)) {
+			mutatedBindings.add(node.text);
+			return;
+		}
+		if (ts.isObjectLiteralExpression(node)) {
+			for (const property of node.properties) {
+				if (ts.isShorthandPropertyAssignment(property)) {
+					mutatedBindings.add(property.name.text);
+				} else if (ts.isPropertyAssignment(property)) {
+					recordMutationTarget(property.initializer);
+				} else if (ts.isSpreadAssignment(property)) {
+					recordMutationTarget(property.expression);
+				} else {
+					recordEveryIdentifier(property);
+				}
+			}
+			return;
+		}
+		if (ts.isArrayLiteralExpression(node)) {
+			for (const element of node.elements) {
+				if (!ts.isOmittedExpression(element)) recordMutationTarget(element);
+			}
+			return;
+		}
+		if (ts.isSpreadElement(node)) {
+			recordMutationTarget(node.expression);
+			return;
+		}
+		if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+			recordMutationTarget(node.left);
+			return;
+		}
+		if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) return;
+		recordEveryIdentifier(node);
+	};
+	const recordEveryIdentifier = (node: ts.Node): void => {
+		if (ts.isIdentifier(node)) mutatedBindings.add(node.text);
+		else ts.forEachChild(node, recordEveryIdentifier);
+	};
 
 	const visitBindings = (node: ts.Node): void => {
 		if (
 			ts.isBinaryExpression(node) &&
 			node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
-			node.operatorToken.kind <= ts.SyntaxKind.LastAssignment &&
-			ts.isIdentifier(node.left)
+			node.operatorToken.kind <= ts.SyntaxKind.LastAssignment
 		) {
-			mutatedBindings.add(node.left.text);
+			recordMutationTarget(node.left);
 		}
 		if (
 			(ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node)) &&
 			(node.operator === ts.SyntaxKind.PlusPlusToken ||
-				node.operator === ts.SyntaxKind.MinusMinusToken) &&
-			ts.isIdentifier(node.operand)
+				node.operator === ts.SyntaxKind.MinusMinusToken)
 		) {
-			mutatedBindings.add(node.operand.text);
+			recordMutationTarget(node.operand);
+		}
+		if (
+			(ts.isForInStatement(node) || ts.isForOfStatement(node)) &&
+			!ts.isVariableDeclarationList(node.initializer)
+		) {
+			recordMutationTarget(node.initializer);
 		}
 		if (ts.isVariableDeclaration(node)) countBindingName(node.name);
 		else if (ts.isParameter(node)) countBindingName(node.name);
@@ -265,6 +310,20 @@ function unwrapTypeOnlyExpression(value: ts.Expression): ts.Expression {
 		expression = expression.expression;
 	}
 	return expression;
+}
+
+function unwrapMutationTarget(value: ts.Node): ts.Node {
+	let target = value;
+	while (
+		ts.isParenthesizedExpression(target) ||
+		ts.isAsExpression(target) ||
+		ts.isSatisfiesExpression(target) ||
+		ts.isTypeAssertionExpression(target) ||
+		ts.isNonNullExpression(target)
+	) {
+		target = target.expression;
+	}
+	return target;
 }
 
 function decodeExactRegExpLiteral(source: string): string {
