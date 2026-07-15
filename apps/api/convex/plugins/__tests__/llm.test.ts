@@ -160,12 +160,15 @@ describe('hosted plugin LLM service', () => {
 		});
 	});
 
-	it('fails closed before dispatch when the resolved model has no known price', async () => {
-		const { service } = await setup();
-		vi.mocked(resolveLanguageModel).mockResolvedValueOnce('private-unpriced-model' as never);
+	it('fails closed before reservation when a custom model embeds a known cheap family', async () => {
+		const { t, service } = await setup();
+		vi.mocked(resolveLanguageModel).mockResolvedValueOnce('private/gpt-4o-mini-premium' as never);
 		await expect(service.generate({ tier: 'fast', prompt: 'hello' })).rejects.toMatchObject({
 			code: 'access_denied',
 		});
 		expect(runLlmTextWithAttemptMetadata).not.toHaveBeenCalled();
+		await t.run(async (ctx) => {
+			expect(await ctx.db.query('pluginLlmReservations').take(1)).toEqual([]);
+		});
 	});
 });

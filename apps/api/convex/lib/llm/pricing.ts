@@ -80,6 +80,56 @@ function priceForModel(modelUsed: string | undefined): Price | undefined {
 		: undefined;
 }
 
+const ADMISSION_NAMESPACE_FAMILIES = {
+	anthropic: ['claude-'],
+	deepseek: ['deepseek-'],
+	google: ['gemini-'],
+	minimax: ['minimax-'],
+	moonshotai: ['kimi-'],
+	openai: ['gpt-', 'o3-', 'o4-'],
+	xiaomi: ['mimo-'],
+} as const satisfies Record<string, readonly string[]>;
+
+/** Exact provider aliases whose non-numeric suffix is part of a curated model id. */
+const ADMISSION_ALIASES: Readonly<Record<string, string>> = {
+	'gemini-3.1-pro-preview': 'gemini-3.1-pro',
+};
+
+/**
+ * Admission pricing is intentionally stricter than dashboard reporting. Model
+ * ids are either bare native ids or one explicitly supported OpenRouter
+ * namespace plus a compatible family. Catalog families may only gain a numeric
+ * version/date suffix; custom names that merely contain a known family fail
+ * closed.
+ */
+function admissionPriceForModel(modelUsed: string | undefined): Price | undefined {
+	if (!modelUsed || modelUsed !== modelUsed.trim() || modelUsed !== modelUsed.toLowerCase()) {
+		return undefined;
+	}
+	const segments = modelUsed.split('/');
+	if (segments.length > 2 || segments.some((segment) => segment.length === 0)) return undefined;
+	const [namespaceOrModel, namespacedModel] = segments;
+	const modelId = namespacedModel ?? namespaceOrModel;
+	if (!modelId || !/^[a-z0-9][a-z0-9.-]*$/.test(modelId)) return undefined;
+
+	const aliasFamily = ADMISSION_ALIASES[modelId];
+	const match = aliasFamily
+		? PRICING.find((price) => price.prefix === aliasFamily)
+		: PRICING.find((price) => matchesAdmissionFamily(modelId, price.prefix));
+	if (!match) return undefined;
+	if (namespacedModel === undefined) return match;
+
+	const allowedFamilies =
+		ADMISSION_NAMESPACE_FAMILIES[namespaceOrModel as keyof typeof ADMISSION_NAMESPACE_FAMILIES];
+	return allowedFamilies?.some((family) => match.prefix.startsWith(family)) ? match : undefined;
+}
+
+function matchesAdmissionFamily(modelId: string, family: string): boolean {
+	if (modelId === family) return true;
+	if (!modelId.startsWith(`${family}-`)) return false;
+	return /^\d+(?:-\d+){0,2}$/.test(modelId.slice(family.length + 1));
+}
+
 export interface CostEstimate {
 	costUsd: number;
 	/** True when the model id didn't match the table (priced with the default). */
@@ -109,7 +159,7 @@ export function estimateKnownCostMicrousd(
 	modelUsed: string | undefined,
 	usage: TokenUsage
 ): number | undefined {
-	const price = priceForModel(modelUsed);
+	const price = admissionPriceForModel(modelUsed);
 	if (!price) return undefined;
 	const input = usage.promptTokens * price.inputPerM;
 	const output = usage.completionTokens * price.outputPerM;

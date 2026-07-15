@@ -72,7 +72,7 @@ describe('estimateCost', () => {
 });
 
 describe('known-model fixed-point admission pricing', () => {
-	it('ceil-prices known models in integer micro-USD and rejects unknown models', () => {
+	it('ceil-prices bare known models and anchored numeric version suffixes', () => {
 		expect(
 			estimateKnownCostMicrousd('gpt-4o-mini', {
 				promptTokens: 100,
@@ -80,13 +80,54 @@ describe('known-model fixed-point admission pricing', () => {
 				totalTokens: 200,
 			})
 		).toBe(75);
-		expect(
-			estimateKnownCostMicrousd('some-future-model', {
-				promptTokens: 100,
-				completionTokens: 100,
-				totalTokens: 200,
-			})
-		).toBeUndefined();
+		expect(estimateKnownCostMicrousd('gpt-4o-mini-2024-07-18', oneMillionEach)).toBe(750_000);
+		expect(estimateKnownCostMicrousd('claude-opus-4-1', oneMillionEach)).toBe(90_000_000);
+	});
+
+	it('admits only explicit provider namespace and model-family combinations', () => {
+		const knownProviderModels = [
+			'anthropic/claude-sonnet-5',
+			'deepseek/deepseek-v4-flash',
+			'google/gemini-3.5-flash',
+			'minimax/minimax-m3',
+			'moonshotai/kimi-k2.6',
+			'openai/gpt-5.6-sol',
+			'xiaomi/mimo-v2.5-pro',
+			// Explicit curated alias; alphabetic suffixes are not generally accepted.
+			'google/gemini-3.1-pro-preview',
+		] as const;
+		for (const modelId of knownProviderModels) {
+			expect(estimateKnownCostMicrousd(modelId, oneMillionEach), modelId).toBeTypeOf('number');
+		}
+	});
+
+	it('fails closed for custom namespaces, substring tricks, and malformed ids', () => {
+		const rejected = [
+			'private/gpt-4o-mini-premium',
+			'private/gpt-4o-mini',
+			'openai/private-gpt-4o-mini',
+			'openai/gpt-4o-mini-premium',
+			'openai/gpt-4o-mini-9999-premium',
+			'openai/gpt-4o-mini--2024',
+			'openai/gpt-4o-mini/extra',
+			'anthropic/gpt-4o-mini',
+			'gpt-4o-mini-premium',
+			'xgpt-4o-mini',
+			'gpt-4o-minix',
+			'gpt-4o-mini?variant=cheap',
+			'gpt-4o-mini#cheap',
+			' GPT-4O-MINI ',
+			'Gpt-4o-mini',
+			'openai/',
+			'/gpt-4o-mini',
+			'openai//gpt-4o-mini',
+			'some-future-model',
+			'',
+		] as const;
+		for (const modelId of rejected) {
+			expect(estimateKnownCostMicrousd(modelId, oneMillionEach), modelId).toBeUndefined();
+		}
+		expect(estimateKnownCostMicrousd(undefined, oneMillionEach)).toBeUndefined();
 	});
 });
 
