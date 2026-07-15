@@ -56,6 +56,8 @@ jobs:
             name: email-previewer
           - workspace: packages/plugin-kit
             name: plugin-kit
+          - workspace: packages/plugin-host
+            name: plugin-host
 
     steps:
       - uses: step-security/harden-runner@v2
