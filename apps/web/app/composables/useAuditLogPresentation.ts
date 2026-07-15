@@ -72,6 +72,7 @@ export const RESOURCE_FILTER_OPTIONS: ResourceFilterOption[] = [
 	{ value: 'blocklist', label: 'Blocklist' },
 	{ value: 'segment', label: 'Segments' },
 	{ value: 'ai_provider_config', label: 'AI Providers' },
+	{ value: 'plugin', label: 'Plugins' },
 ];
 
 /** A group of action literals shown as an `<optgroup>` in the action filter. */
@@ -114,6 +115,7 @@ const ACTION_GROUP_SPECS: readonly ActionGroupSpec[] = [
 	{ label: 'Platform Admin', prefixes: ['platform_admin'] },
 	{ label: 'Abuse', prefixes: ['abuse_status_changed'] },
 	{ label: 'AI Providers', prefixes: ['ai_provider_config'] },
+	{ label: 'Plugins', prefixes: ['plugin'] },
 ];
 
 /** The prefix of an action literal: everything before the first `.`, or the
@@ -172,6 +174,7 @@ const RESOURCE_ICONS: Record<string, string> = {
 	blocklist: 'lucide:ban',
 	segment: 'lucide:target',
 	ai_provider_config: 'lucide:sparkles',
+	plugin: 'lucide:blocks',
 };
 
 const RESOURCE_LABELS: Record<string, string> = {
@@ -188,6 +191,7 @@ const RESOURCE_LABELS: Record<string, string> = {
 	blocklist: 'Blocklist',
 	segment: 'Segment',
 	ai_provider_config: 'AI Provider',
+	plugin: 'Plugin',
 };
 
 const ACTION_VERB_LABELS: Record<string, string> = {
@@ -207,6 +211,9 @@ const ACTION_VERB_LABELS: Record<string, string> = {
 	revoked: 'Revoked',
 	added: 'Added',
 	verified: 'Verified',
+	completed: 'Completed',
+	failed: 'Failed',
+	denied: 'Denied',
 };
 
 const ACTION_VERB_ICONS: Record<string, string> = {
@@ -223,6 +230,9 @@ const ACTION_VERB_ICONS: Record<string, string> = {
 	imported: 'lucide:refresh-cw',
 	published: 'lucide:check',
 	verified: 'lucide:check',
+	completed: 'lucide:check',
+	failed: 'lucide:circle-x',
+	denied: 'lucide:ban',
 	activated: 'lucide:play',
 	paused: 'lucide:pause',
 	invited: 'lucide:mail',
@@ -234,10 +244,13 @@ const ACTION_VERB_COLORS: Record<string, string> = {
 	activated: 'text-success bg-success/10',
 	published: 'text-success bg-success/10',
 	verified: 'text-success bg-success/10',
+	completed: 'text-success bg-success/10',
 	deleted: 'text-error bg-error/10',
 	removed: 'text-error bg-error/10',
 	revoked: 'text-error bg-error/10',
 	cancelled: 'text-error bg-error/10',
+	failed: 'text-error bg-error/10',
+	denied: 'text-error bg-error/10',
 	updated: 'text-brand bg-brand/10',
 	role_changed: 'text-brand bg-brand/10',
 	sent: 'text-brand bg-brand/10',
