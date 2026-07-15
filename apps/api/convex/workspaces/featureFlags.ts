@@ -48,7 +48,9 @@ import {
 	type FeaturePackKey,
 	FEATURE_PACKS,
 	type FeatureFlagDefinition,
+	getFeatureFlagDefinition,
 	isPluginFeatureFlagDefinition,
+	registeredFeatureFlagOverrides,
 } from '@owlat/shared/featureFlags';
 import { getStoredFlags } from '../lib/featureFlags';
 import { recordAuditLog } from '../lib/auditLog';
@@ -154,7 +156,7 @@ export const setFeatureFlag = authedMutation({
 	handler: async (ctx, args) => {
 		const session = await requireAdminContext(ctx);
 
-		const definition = FEATURE_FLAG_REGISTRY[args.flag];
+		const definition = getFeatureFlagDefinition(FEATURE_FLAG_REGISTRY, args.flag);
 		if (!definition) {
 			throwInvalidInput(`Unknown feature flag: ${args.flag}`);
 		}
@@ -318,7 +320,7 @@ export const setFeaturePack = authedMutation({
  * setup-seed internal mutation so both stay the sole writer of the map. */
 async function writeAllFlags(ctx: MutationCtx, flags: FeatureFlagState) {
 	for (const key of Object.keys(flags)) {
-		const definition = FEATURE_FLAG_REGISTRY[key];
+		const definition = getFeatureFlagDefinition(FEATURE_FLAG_REGISTRY, key);
 		if (!definition) {
 			throwInvalidInput(`Unknown feature flag: ${key}`);
 		}
@@ -327,11 +329,28 @@ async function writeAllFlags(ctx: MutationCtx, flags: FeatureFlagState) {
 		}
 	}
 
-	const resolved = resolveFlags(flags, { registry: FEATURE_FLAG_REGISTRY });
 	const now = Date.now();
 	const existing = await ctx.db.query('instanceSettings').first();
+	const currentOverrides = registeredFeatureFlagOverrides(
+		(existing?.featureFlags ?? {}) as FeatureFlagState,
+		FEATURE_FLAG_REGISTRY
+	);
+	const pluginOverrides: FeatureFlagState = {};
+	for (const definition of Object.values(FEATURE_FLAG_REGISTRY)) {
+		if (
+			isPluginFeatureFlagDefinition(definition) &&
+			Object.prototype.hasOwnProperty.call(currentOverrides, definition.key)
+		) {
+			pluginOverrides[definition.key] = currentOverrides[definition.key] === true;
+		}
+	}
+	const resolvedCoreFlags = resolveFlags(flags);
 	const patch = {
-		featureFlags: resolved,
+		featureFlags: { ...resolvedCoreFlags, ...pluginOverrides },
+		pluginCapabilityGrants: preserveRegisteredPluginGrants(
+			existing?.pluginCapabilityGrants ?? {},
+			pluginOverrides
+		),
 		updatedAt: now,
 	};
 
@@ -365,6 +384,27 @@ function updatePluginCapabilityGrants(
 	if (approved) next[flag] = { ...approved };
 	else delete next[flag];
 	return next;
+}
+
+function preserveRegisteredPluginGrants(
+	current: Record<string, Record<string, boolean>>,
+	pluginOverrides: FeatureFlagState
+): Record<string, Record<string, boolean>> {
+	const preserved: Record<string, Record<string, boolean>> = {};
+	for (const definition of Object.values(FEATURE_FLAG_REGISTRY)) {
+		if (!isPluginFeatureFlagDefinition(definition)) continue;
+		const override = pluginOverrides[definition.key];
+		if ((override ?? definition.default) !== true) continue;
+		const currentGrants = current[definition.key];
+		if (!currentGrants) continue;
+		const grants = Object.fromEntries(
+			definition.requiredCapabilities
+				.filter((capability) => currentGrants[capability] === true)
+				.map((capability) => [capability, true])
+		);
+		if (Object.keys(grants).length > 0) preserved[definition.key] = grants;
+	}
+	return preserved;
 }
 
 /**

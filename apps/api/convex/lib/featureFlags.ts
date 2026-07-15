@@ -33,7 +33,14 @@ export async function isFeatureEnabled(
 	flag: FeatureFlagKey
 ): Promise<boolean> {
 	const stored = await getStoredFlags(ctx);
-	return resolveFlags(stored, { registry: FEATURE_FLAG_REGISTRY })[flag] === true;
+	return resolveStoredFeatureFlags(stored)[flag] === true;
+}
+
+/** Resolve storage through the composition registry, dropping stale plugin keys. */
+export function resolveStoredFeatureFlags(
+	stored: FeatureFlagState
+): Record<FeatureFlagKey, boolean> {
+	return resolveFlags(stored, { registry: FEATURE_FLAG_REGISTRY });
 }
 
 /**
