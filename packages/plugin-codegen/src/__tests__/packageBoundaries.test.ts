@@ -226,6 +226,41 @@ describe('plugin package boundary lint', () => {
 		await expect(checkDirectPluginImports(root, configuredPackages)).resolves.toBeUndefined();
 	});
 
+	it.each(['import', 'import type'])(
+		'fails closed when a TypeScript %s-equals declaration shadows legacy dirname',
+		async (importKind) => {
+			const root = await createRepository({
+				'apps/api/core.ts': `import 'safe';`,
+				'apps/api/plugin-directory.cjs': `module.exports = '/tmp/node_modules/@acme/mail-plugin';`,
+				'apps/api/vite.config.cts': `${importKind} __dirname = require('./plugin-directory.cjs');
+					import { resolve } from 'node:path';
+					export default { resolve: { alias: {
+						safe: resolve(__dirname, 'index.js'),
+					} } };`,
+			});
+
+			await expect(checkDirectPluginImports(root, configuredPackages)).rejects.toMatchObject({
+				code: 'repository_config_invalid',
+				details: ['apps/api/vite.config.cts'],
+			});
+		}
+	);
+
+	it('keeps legacy dirname safe when an ordinary import-equals name is present', async () => {
+		const root = await createRepository({
+			'apps/api/core.ts': `import 'safe';`,
+			'apps/api/helper.cjs': `module.exports = {};`,
+			'apps/api/vite.config.cts': `import helper = require('./helper.cjs');
+				import { resolve } from 'node:path';
+				void helper;
+				export default { resolve: { alias: {
+					safe: resolve(__dirname, 'src/index.js'),
+				} } };`,
+		});
+
+		await expect(checkDirectPluginImports(root, configuredPackages)).resolves.toBeUndefined();
+	});
+
 	it.each([
 		[
 			'shadowing constant',
