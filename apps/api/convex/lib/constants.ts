@@ -57,6 +57,9 @@ export const CURRENT_TRANSLATIONS_VERSION = 1;
 /** unifiedMessages.content JSON shape. */
 export const CURRENT_UNIFIED_MESSAGE_CONTENT_VERSION = 1;
 
+/** pluginStorageEntries.valueJson canonical JSON shape. */
+export const CURRENT_PLUGIN_STORAGE_VALUE_JSON_VERSION = 1;
+
 /** Embedding model identifier stored on knowledgeEntries / semanticFiles rows. */
 export const CURRENT_EMBEDDING_MODEL = 'text-embedding-3-small';
 
