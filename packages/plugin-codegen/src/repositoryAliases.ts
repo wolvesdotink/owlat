@@ -6,6 +6,7 @@ import { PluginCodegenError } from './errors';
 export interface RepositoryModuleAlias {
 	readonly specifierPattern: string;
 	readonly targetPattern: string;
+	readonly matchSubpaths?: boolean;
 }
 
 const MAX_CONFIG_FILES = 512;
@@ -73,10 +74,8 @@ export function specifierTargetsConfiguredPackage(
 		for (const alias of aliases) {
 			matcherWork += 1;
 			if (matcherWork > MAX_ALIAS_MATCHER_WORK) throw aliasMatcherLimitExceeded();
-			const wildcard = matchAlias(alias.specifierPattern, candidate);
-			if (wildcard !== undefined) {
-				pending.push(alias.targetPattern.replaceAll('*', wildcard));
-			}
+			const target = resolveAlias(alias, candidate);
+			if (target !== undefined) pending.push(target);
 		}
 	}
 	return false;
@@ -142,6 +141,7 @@ function collectPackageAliases(value: unknown, aliases: RepositoryModuleAlias[])
 				addAlias(aliases, {
 					specifierPattern,
 					targetPattern: target.slice('npm:'.length),
+					matchSubpaths: true,
 				});
 			}
 		}
@@ -197,7 +197,7 @@ function collectFrameworkAliasValue(
 				throw new Error('Framework object alias names must be static property names');
 			}
 			const targetPattern = readFrameworkStaticString(property.initializer, staticValues);
-			addAlias(aliases, { specifierPattern, targetPattern });
+			addAlias(aliases, { specifierPattern, targetPattern, matchSubpaths: true });
 		}
 		return;
 	}
@@ -209,12 +209,12 @@ function collectFrameworkAliasValue(
 			throw new Error('Framework alias arrays must contain only object rules');
 		}
 		const properties = readFrameworkAliasRule(element);
-		const specifierPattern = readFrameworkAliasFind(properties.find.initializer, staticValues);
+		const find = readFrameworkAliasFind(properties.find.initializer, staticValues);
 		const targetPattern = readFrameworkStaticString(
 			properties.replacement.initializer,
 			staticValues
 		);
-		addAlias(aliases, { specifierPattern, targetPattern });
+		addAlias(aliases, { ...find, targetPattern });
 	}
 }
 
@@ -248,9 +248,15 @@ function readFrameworkAliasRule(object: ts.ObjectLiteralExpression): {
 	return { find, replacement };
 }
 
-function readFrameworkAliasFind(value: ts.Expression, staticValues: FrameworkStaticValues): string {
+function readFrameworkAliasFind(
+	value: ts.Expression,
+	staticValues: FrameworkStaticValues
+): Pick<RepositoryModuleAlias, 'specifierPattern' | 'matchSubpaths'> {
 	if (!ts.isRegularExpressionLiteral(value)) {
-		return readFrameworkStaticString(value, staticValues);
+		return {
+			specifierPattern: readFrameworkStaticString(value, staticValues),
+			matchSubpaths: true,
+		};
 	}
 	const match = /^\/(.*)\/([a-z]*)$/.exec(value.text);
 	if (!match || match[2] !== '') {
@@ -260,7 +266,7 @@ function readFrameworkAliasFind(value: ts.Expression, staticValues: FrameworkSta
 	if (!body.startsWith('^') || !body.endsWith('$')) {
 		throw new Error('Framework RegExp aliases must anchor one exact module specifier');
 	}
-	return decodeExactRegExpLiteral(body.slice(1, -1));
+	return { specifierPattern: decodeExactRegExpLiteral(body.slice(1, -1)) };
 }
 
 function readFrameworkStaticValues(sourceFile: ts.SourceFile): FrameworkStaticValues {
@@ -419,14 +425,22 @@ function collectStringLeaves(value: unknown): readonly string[] {
 	return [];
 }
 
-function matchAlias(pattern: string, specifier: string): string | undefined {
+function resolveAlias(alias: RepositoryModuleAlias, specifier: string): string | undefined {
+	const { specifierPattern: pattern, targetPattern } = alias;
 	const wildcardIndex = pattern.indexOf('*');
-	if (wildcardIndex < 0) return pattern === specifier ? '' : undefined;
+	if (wildcardIndex < 0) {
+		if (pattern === specifier) return targetPattern;
+		if (!alias.matchSubpaths) return undefined;
+		const subpathStart = pattern.endsWith('/') ? pattern : `${pattern}/`;
+		return specifier.startsWith(subpathStart)
+			? `${targetPattern}${specifier.slice(pattern.length)}`
+			: undefined;
+	}
 	const prefix = pattern.slice(0, wildcardIndex);
 	const suffix = pattern.slice(wildcardIndex + 1);
-	return specifier.startsWith(prefix) && specifier.endsWith(suffix)
-		? specifier.slice(prefix.length, specifier.length - suffix.length)
-		: undefined;
+	if (!specifier.startsWith(prefix) || !specifier.endsWith(suffix)) return undefined;
+	const wildcard = specifier.slice(prefix.length, specifier.length - suffix.length);
+	return targetPattern.replaceAll('*', wildcard);
 }
 
 function addAlias(aliases: RepositoryModuleAlias[], alias: RepositoryModuleAlias): void {
