@@ -76,10 +76,12 @@ rejects duplicate package names and manifest ids, and orders the result by
 manifest id using code-point order.
 
 The generator emits checked-in Convex and Nuxt composition modules that both
-pass manifests through the host composition contract. CI and the build graph
-run the generator in non-writing check mode, and a package-boundary lint rejects
-core imports of configured plugin packages outside the generated composition
-files, including Node/Bun loaders and repository aliases. The zero-plugin
+pass manifests through the host composition contract, plus a Convex-only
+installer that statically imports each declared component export and installs
+it under an injective `plugin_<id>` namespace. CI and the build graph run the
+generator in non-writing check mode, and a package-boundary lint rejects core
+imports of configured plugin packages outside the generated composition files,
+including Node/Bun loaders and repository aliases. The zero-plugin
 composition remains a valid no-op deployment. Generated module specifiers are
 branded and revalidated package names encoded as JavaScript strings. Output is
 written through adjacent random exclusive temporary files before atomic rename;

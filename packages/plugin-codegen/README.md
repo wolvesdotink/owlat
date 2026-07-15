@@ -11,9 +11,12 @@ This private build tool owns Owlat's single composition point for bundled plugin
   manifests must have one condition-independent root export, are snapshotted and
   validated once with `@owlat/plugin-kit`, and are ordered by manifest id through
   `@owlat/plugin-host`.
-- The checked-in Convex and Nuxt composition files are generated together. `--check`
-  detects missing or stale output without writing.
-- Core source may not import configured plugin packages outside those two generated
+- The checked-in Convex manifest composition, static component installer, and
+  Nuxt composition files are generated together. Component subpaths must be
+  exact condition-independent package exports; the generated installer gives
+  every component an injective `plugin_<id>` namespace through `app.use`.
+  `--check` detects missing or stale output without writing.
+- Core source may not import configured plugin packages outside those generated
   files, including through Node/Bun loaders or repository aliases.
   `--boundaries-only` enforces that rule without importing plugin code.
 
