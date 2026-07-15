@@ -354,13 +354,22 @@ export const inboxTables = {
 	// by_creation_time index; retention prunes the tail.
 	llmUsageEvents: defineTable({
 		feature: v.string(),
+		organizationId: v.optional(v.string()),
+		pluginId: v.optional(v.string()),
 		modelUsed: v.optional(v.string()),
 		promptTokens: v.number(),
 		completionTokens: v.number(),
 		totalTokens: v.number(),
 		costUsd: v.number(),
 		createdAt: v.number(),
-	}).index('by_feature', ['feature']),
+	})
+		.index('by_feature', ['feature'])
+		.index('by_organization_id_and_created_at', ['organizationId', 'createdAt'])
+		.index('by_organization_id_and_plugin_id_and_created_at', [
+			'organizationId',
+			'pluginId',
+			'createdAt',
+		]),
 
 	// Thread Presence - ephemeral "who is here" rows for the shared-inbox thread
 	// view. One row per (thread, user); `mode` is `viewing` while the thread is
