@@ -21,6 +21,7 @@ const SOURCE_EXTENSIONS = new Set([
 	'.vue',
 ]);
 const MAX_SOURCE_BYTES = 2 * 1024 * 1024;
+const MAX_TOTAL_SOURCE_BYTES = 64 * 1024 * 1024;
 const GENERATED_COMPOSITION_FILES = new Set([
 	'apps/api/convex/plugins/plugins.generated.ts',
 	'apps/web/app/plugins/plugin-composition.generated.ts',
@@ -50,6 +51,7 @@ export async function checkDirectPluginImports(
 		);
 	});
 	const findings: DirectPluginImport[] = [];
+	let totalSourceBytes = 0;
 	for (const file of files) {
 		const relativeFile = normalizePath(relative(workspaceRoot, file));
 		if (GENERATED_COMPOSITION_FILES.has(relativeFile)) continue;
@@ -58,6 +60,13 @@ export async function checkDirectPluginImports(
 			source = await readBoundedRepositoryUtf8File(workspaceRoot, file, MAX_SOURCE_BYTES);
 		} catch (cause) {
 			throw sourceInvalid(relativeFile, cause);
+		}
+		totalSourceBytes += Buffer.byteLength(source, 'utf8');
+		if (totalSourceBytes > MAX_TOTAL_SOURCE_BYTES) {
+			throw new PluginCodegenError(
+				'repository_inventory_invalid',
+				`Repository source scan exceeds the ${MAX_TOTAL_SOURCE_BYTES}-byte safety limit`
+			);
 		}
 		findings.push(...findDirectPluginImports(source, relativeFile, packageNames, aliases));
 	}
