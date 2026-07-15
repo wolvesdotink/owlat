@@ -18,6 +18,15 @@ vi.mock('../../plugins/plugins.generated', () => ({
 				}),
 			}),
 		}),
+		Object.freeze({
+			packageName: '@example/default-on',
+			manifest: Object.freeze({
+				id: 'default-on',
+				version: '1.0.0',
+				capabilities: Object.freeze([]),
+				flag: Object.freeze({ default: true }),
+			}),
+		}),
 	]),
 }));
 
@@ -142,6 +151,25 @@ describe('organizations.featureFlags.getFeatureFlags', () => {
 		const flags = await t.query(api.workspaces.featureFlags.getFeatureFlags, {});
 		expect(flags['ai.agent']).toBe(true);
 	});
+
+	it('drops stale and malformed stored plugin keys from the public result', async () => {
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('instanceSettings', {
+				featureFlags: {
+					'plugin.policy-pack': true,
+					'plugin.removed': true,
+					'plugin.Bad_Id': true,
+				},
+				createdAt: Date.now(),
+			});
+		});
+
+		const flags = await t.query(api.workspaces.featureFlags.getFeatureFlags, {});
+		expect(flags['plugin.policy-pack']).toBe(true);
+		expect(Object.prototype.hasOwnProperty.call(flags, 'plugin.removed')).toBe(false);
+		expect(Object.prototype.hasOwnProperty.call(flags, 'plugin.Bad_Id')).toBe(false);
+	});
 });
 
 describe('organizations.featureFlags.getResolvedFlags (internal)', () => {
@@ -190,6 +218,20 @@ describe('organizations.featureFlags.setFeatureFlag', () => {
 			})
 		).rejects.toThrow(/Unknown feature flag/);
 	});
+
+	it.each(['toString', 'constructor', '__proto__'])(
+		'rejects inherited object key %s without writing settings',
+		async (flag) => {
+			const t = convexTest(schema, modules);
+
+			await expect(
+				t.mutation(api.workspaces.featureFlags.setFeatureFlag, { flag, value: true })
+			).rejects.toThrow(/Unknown feature flag/);
+			await t.run(async (ctx) => {
+				expect(await ctx.db.query('instanceSettings').first()).toBeNull();
+			});
+		}
+	);
 
 	it('cascades dependent flags off on disable', async () => {
 		const t = convexTest(schema, modules);
@@ -538,6 +580,48 @@ describe('organizations.featureFlags.setAllFeatureFlags', () => {
 				flags: { 'not.a.real.flag': true },
 			})
 		).rejects.toThrow(/Unknown feature flag/);
+	});
+});
+
+describe.each([
+	['public bulk write', api.workspaces.featureFlags.setAllFeatureFlags],
+	['internal bulk write', internal.workspaces.featureFlags.setAllInternal],
+] as const)('%s — plugin preservation', (_label, bulkMutation) => {
+	it('preserves registered overrides and grants while pruning removed plugins', async () => {
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('instanceSettings', {
+				featureFlags: {
+					campaigns: true,
+					'plugin.policy-pack': true,
+					'plugin.default-on': false,
+					'plugin.removed': true,
+				},
+				pluginCapabilityGrants: {
+					'plugin.policy-pack': { 'mail:read': true, 'send:gate': true },
+					'plugin.default-on': { obsolete: true },
+					'plugin.removed': { 'mail:read': true },
+				},
+				createdAt: Date.now(),
+			});
+		});
+
+		await t.mutation(bulkMutation, { flags: { campaigns: false, inbox: true } });
+
+		await t.run(async (ctx) => {
+			const row = await ctx.db.query('instanceSettings').first();
+			expect(row?.featureFlags?.['plugin.policy-pack']).toBe(true);
+			expect(row?.featureFlags?.['plugin.default-on']).toBe(false);
+			expect(row?.featureFlags?.['plugin.removed']).toBeUndefined();
+			expect(row?.pluginCapabilityGrants).toEqual({
+				'plugin.policy-pack': { 'mail:read': true, 'send:gate': true },
+			});
+		});
+
+		const resolved = await t.query(api.workspaces.featureFlags.getFeatureFlags, {});
+		expect(resolved['plugin.policy-pack']).toBe(true);
+		expect(resolved['plugin.default-on']).toBe(false);
+		expect(Object.prototype.hasOwnProperty.call(resolved, 'plugin.removed')).toBe(false);
 	});
 });
 

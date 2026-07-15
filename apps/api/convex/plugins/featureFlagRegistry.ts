@@ -1,5 +1,8 @@
 import { getBundledPluginFeatureFlagDefinitions } from '@owlat/plugin-host';
-import { createFeatureFlagRegistry, type FeatureFlagDefinition } from '@owlat/shared/featureFlags';
+import {
+	createFeatureFlagRegistry,
+	type PluginFeatureFlagDefinition,
+} from '@owlat/shared/featureFlags';
 import { bundledPluginComposition } from './plugins.generated';
 
 export const PLUGIN_FEATURE_FLAG_DEFINITIONS =
@@ -13,10 +16,10 @@ export const FEATURE_FLAG_REGISTRY = createFeatureFlagRegistry(PLUGIN_FEATURE_FL
  * exactly once; declaration alone never grants authority.
  */
 export function validatePluginCapabilityApproval(
-	definition: FeatureFlagDefinition,
+	definition: PluginFeatureFlagDefinition,
 	approvedCapabilities: readonly string[] | undefined
 ): Readonly<Record<string, boolean>> {
-	const required = definition.requiredCapabilities ?? [];
+	const required = definition.requiredCapabilities;
 	const approved = approvedCapabilities ?? [];
 	if (approved.length !== required.length) {
 		throw new TypeError(`Approve every capability requested by ${definition.key}`);

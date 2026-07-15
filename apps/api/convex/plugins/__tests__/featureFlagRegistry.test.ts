@@ -9,6 +9,7 @@ const definition = {
 	description: 'Bundled plugin from @example/policy-pack.',
 	default: false,
 	requiredCapabilities: ['mail:read', 'send:gate'],
+	pluginPackageName: '@example/policy-pack',
 } satisfies FeatureFlagDefinition;
 
 describe('plugin capability approval', () => {
