@@ -76,6 +76,7 @@ All inserts must go through `recordAuditLog(ctx, {...})` in
 | `knowledge.edge_backfill_started` / `edge_backfill_cancelled` | `knowledge_config` | `{ jobId }` |
 | `abuse_status_changed` | `instance_settings` | `{ previousStatus, newStatus, reason, changedBy }` (see ADR-0011) |
 | `postbox_outbound_transition` | `mail_message` | `{ mailboxId, recipientIdx, from, to, aggregateBefore, aggregateAfter, at, bounceMessage?, errorMessage?, errorCode? }` (see ADR-0012) |
+| `plugin.action_completed` / `plugin.action_failed` / `plugin.action_denied` | `plugin` | Dedicated `organizationId` + `pluginId`; allowlisted `{ operation, outcome, attempts?, usageAvailable?, chargedMicrousd?, actualMicrousd?, reasonCode? }`. Never storage keys/values/cursors, prompts/results, secrets, or raw errors. |
 
 ## Extending
 
