@@ -1,10 +1,10 @@
-import type { PluginCapabilityGrant } from '@owlat/plugin-kit';
+import { parsePluginId, type PluginCapabilityGrant } from '@owlat/plugin-kit';
 import { describe, expect, it } from 'vitest';
 import { createPluginPermissionService } from '../index';
 
 function createPermissions(grants: readonly PluginCapabilityGrant[]) {
 	return createPluginPermissionService({
-		pluginId: 'policy-pack',
+		pluginId: parsePluginId('policy-pack'),
 		declaredCapabilities: ['mail:read', 'send:gate'],
 		grants,
 	});

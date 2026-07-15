@@ -1,12 +1,15 @@
+import { parsePluginId } from '@owlat/plugin-kit';
 import { describe, expect, it, vi } from 'vitest';
 import { runWithPluginFeatureFlag } from '../index';
+
+const policyPackId = parsePluginId('policy-pack');
 
 describe('plugin feature-flag enforcement', () => {
 	it('runs statically composed code only for an explicit true result', async () => {
 		const operation = vi.fn(() => 'ran');
 
 		await expect(
-			runWithPluginFeatureFlag({ isEnabled: async () => true }, 'policy-pack', operation)
+			runWithPluginFeatureFlag({ isEnabled: async () => true }, policyPackId, operation)
 		).resolves.toBe('ran');
 		expect(operation).toHaveBeenCalledOnce();
 	});
@@ -19,7 +22,7 @@ describe('plugin feature-flag enforcement', () => {
 		const operation = vi.fn();
 
 		await expect(
-			runWithPluginFeatureFlag({ isEnabled: () => enabled as boolean }, 'policy-pack', operation)
+			runWithPluginFeatureFlag({ isEnabled: () => enabled as boolean }, policyPackId, operation)
 		).rejects.toMatchObject({
 			code: 'plugin_disabled',
 			pluginId: 'policy-pack',
@@ -38,7 +41,7 @@ describe('plugin feature-flag enforcement', () => {
 						throw resolutionError;
 					},
 				},
-				'policy-pack',
+				policyPackId,
 				operation
 			)
 		).rejects.toMatchObject({ code: 'feature_check_failed', cause: resolutionError });

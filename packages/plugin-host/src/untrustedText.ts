@@ -1,3 +1,4 @@
+import type { PluginId } from '@owlat/plugin-kit';
 import { PluginHostError } from './errors';
 
 export interface PluginUntrustedTextPolicy {
@@ -13,7 +14,7 @@ export interface PluginUntrustedTextPolicy {
  * policy appropriate for its runtime.
  */
 export function applyPluginUntrustedTextPolicy(
-	pluginId: string,
+	pluginId: PluginId,
 	text: string,
 	policy: PluginUntrustedTextPolicy
 ): string {
@@ -47,7 +48,7 @@ export function applyPluginUntrustedTextPolicy(
 }
 
 export function validateUntrustedTextPolicy(
-	pluginId: string,
+	pluginId: PluginId,
 	policy: PluginUntrustedTextPolicy
 ): void {
 	if (

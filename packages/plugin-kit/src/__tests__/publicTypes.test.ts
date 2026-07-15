@@ -5,6 +5,7 @@ import {
 	type PluginCapability,
 	type PluginContext,
 	type PluginLlmGenerateRequest,
+	type PluginId,
 	type PluginManifest,
 } from '../index';
 
@@ -20,7 +21,8 @@ describe('public plugin-kit types', () => {
 		} as const);
 
 		expectTypeOf(plugin).toMatchTypeOf<PluginManifest>();
-		expectTypeOf(plugin.id).toEqualTypeOf<'typed-plugin'>();
+		expectTypeOf(plugin.id).toMatchTypeOf<PluginId>();
+		expectTypeOf<PluginManifest['id']>().toEqualTypeOf<PluginId>();
 		expectTypeOf(plugin.capabilities[0]).toEqualTypeOf<'send:gate'>();
 		expectTypeOf(plugin.contributes.sendGates[0].id).toEqualTypeOf<'policy-gate'>();
 	});

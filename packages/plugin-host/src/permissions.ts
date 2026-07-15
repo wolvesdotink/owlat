@@ -1,12 +1,13 @@
 import type {
 	PluginCapability,
 	PluginCapabilityGrant,
+	PluginId,
 	PluginPermissionService,
 } from '@owlat/plugin-kit';
 import { PluginHostError } from './errors';
 
 export interface PluginPermissionPolicy {
-	readonly pluginId: string;
+	readonly pluginId: PluginId;
 	readonly declaredCapabilities: readonly PluginCapability[];
 	readonly grants: readonly PluginCapabilityGrant[];
 }
@@ -68,7 +69,7 @@ export function createPluginPermissionService(
 }
 
 function readCapabilityGrant(
-	pluginId: string,
+	pluginId: PluginId,
 	grant: PluginCapabilityGrant
 ): PluginCapabilityGrant {
 	if (grant === null || typeof grant !== 'object') return invalidCapabilityGrant(pluginId);
@@ -95,7 +96,7 @@ function isCapabilityShaped(value: string): value is PluginCapability {
 	return separator > 0 && separator < value.length - 1;
 }
 
-function invalidCapabilityGrant(pluginId: string): never {
+function invalidCapabilityGrant(pluginId: PluginId): never {
 	throw new PluginHostError(
 		'invalid_capability_grant',
 		`Plugin ${pluginId} has a malformed capability grant`,

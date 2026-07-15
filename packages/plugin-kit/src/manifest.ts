@@ -2,6 +2,7 @@ import type { PluginCapability } from './capabilities';
 import { isPluginContributionKind, type PluginContributions } from './contributions';
 import { addManifestIssue, type PluginManifestIssue } from './manifestIssues';
 import { INVALID_SCHEMA_ARRAY, snapshotManifestInput } from './manifestSnapshot';
+import { isPluginId, type PluginId } from './pluginId';
 
 export { PLUGIN_CONTRIBUTION_KINDS } from './contributions';
 export type { PluginContributionKind, PluginContributions } from './contributions';
@@ -19,7 +20,7 @@ export interface PluginLlmBudget {
 export type PluginComponentLoader = () => Promise<unknown>;
 
 export interface PluginManifest {
-	readonly id: string;
+	readonly id: PluginId;
 	readonly version: string;
 	readonly capabilities: readonly PluginCapability[];
 	readonly contributes?: PluginContributions;
@@ -32,7 +33,6 @@ export type PluginManifestValidation =
 	| { readonly ok: true; readonly manifest: PluginManifest }
 	| { readonly ok: false; readonly issues: readonly PluginManifestIssue[] };
 
-const PLUGIN_ID = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 const SEMVER =
 	/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/;
 const CAPABILITY = /^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)*:[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)*$/;
@@ -59,11 +59,13 @@ export class PluginManifestError extends Error {
 	}
 }
 
-export function definePlugin<const TManifest extends PluginManifest>(
+type PluginManifestDefinition = Omit<PluginManifest, 'id'> & { readonly id: string };
+
+export function definePlugin<const TManifest extends PluginManifestDefinition>(
 	manifest: TManifest
-): TManifest {
+): TManifest & PluginManifest {
 	parsePluginManifest(manifest);
-	return manifest;
+	return manifest as TManifest & PluginManifest;
 }
 
 export function parsePluginManifest(value: unknown): PluginManifest {
@@ -88,7 +90,7 @@ export function validatePluginManifest(value: unknown): PluginManifestValidation
 
 	const id = readDataProperty(manifest, 'id', issues, true);
 	if (id.kind === 'value' && typeof id.value === 'string') {
-		if (id.value.length > 64 || !PLUGIN_ID.test(id.value)) {
+		if (!isPluginId(id.value)) {
 			addManifestIssue(
 				issues,
 				'invalid_format',
