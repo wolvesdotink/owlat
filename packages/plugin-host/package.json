@@ -23,7 +23,8 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@owlat/plugin-kit": "workspace:*"
+		"@owlat/plugin-kit": "workspace:*",
+		"@owlat/shared": "workspace:*"
 	},
 	"devDependencies": {
 		"@types/node": "catalog:",

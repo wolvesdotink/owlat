@@ -21,8 +21,8 @@ import {
 	resolveFlags,
 	SENDING_FLAGS_REQUIRING_DELIVERY,
 	type FeatureFlagKey,
-	type FeatureFlagDefinition,
 	type FeatureFlagState,
+	type PluginFeatureFlagDefinition,
 	type PluginFeatureFlagKey,
 } from '../featureFlags';
 
@@ -242,7 +242,7 @@ describe('featureFlags — plugin namespace', () => {
 		requiredEnvVars: ['SEEDBOX_API_KEY'],
 		requiredCapabilities: ['campaigns:read', 'send:gate'],
 		pluginPackageName: '@example/deliverability-lab',
-	} satisfies FeatureFlagDefinition;
+	} satisfies PluginFeatureFlagDefinition;
 
 	it('types plugin flags in an open, namespaced key space', () => {
 		const key: PluginFeatureFlagKey = 'plugin.deliverability-lab';
@@ -258,7 +258,7 @@ describe('featureFlags — plugin namespace', () => {
 	});
 
 	it('honors a plugin default, explicit override, and disable', () => {
-		const defaultOn = { ...pluginFlag, default: true } satisfies FeatureFlagDefinition;
+		const defaultOn = { ...pluginFlag, default: true } satisfies PluginFeatureFlagDefinition;
 		const registry = createFeatureFlagRegistry([defaultOn]);
 
 		expect(resolveFlags({}, { registry })[defaultOn.key]).toBe(true);
@@ -283,10 +283,45 @@ describe('featureFlags — plugin namespace', () => {
 		['an invalid plugin id', { ...pluginFlag, key: 'plugin.Bad_Id' }],
 		['the wrong category', { ...pluginFlag, category: 'integrations' }],
 	] as const)('rejects %s', (_label, definition) => {
-		expect(() => createFeatureFlagRegistry([definition as FeatureFlagDefinition])).toThrow(
-			'Invalid plugin feature flag definition'
-		);
+		expect(() =>
+			createFeatureFlagRegistry([definition as unknown as PluginFeatureFlagDefinition])
+		).toThrow('Invalid plugin feature flag definition');
 	});
+
+	it.each([
+		['missing package metadata', { ...pluginFlag, pluginPackageName: undefined }],
+		['missing capability metadata', { ...pluginFlag, requiredCapabilities: undefined }],
+	] as const)('rejects %s at runtime', (_label, definition) => {
+		expect(() =>
+			createFeatureFlagRegistry([definition as unknown as PluginFeatureFlagDefinition])
+		).toThrow('Invalid plugin feature flag definition');
+	});
+
+	it('ignores stale and malformed stored plugin keys during resolution', () => {
+		const registry = createFeatureFlagRegistry([pluginFlag]);
+		const stored = {
+			[pluginFlag.key]: true,
+			'plugin.removed': true,
+			'plugin.Bad_Id': true,
+		} as FeatureFlagState;
+		const resolved = resolveFlags(stored, { registry });
+
+		expect(resolved[pluginFlag.key]).toBe(true);
+		expect(Object.hasOwn(resolved, 'plugin.removed')).toBe(false);
+		expect(Object.hasOwn(resolved, 'plugin.Bad_Id')).toBe(false);
+		expect(isFlagEnabled(stored, 'plugin.removed', { registry })).toBe(false);
+	});
+
+	it.each(['toString', 'constructor', '__proto__'])(
+		'rejects inherited object key %s without mutating the input',
+		(key) => {
+			const stored: FeatureFlagState = { inbox: true };
+			expect(() => applyToggle(stored, key as FeatureFlagKey, true)).toThrow(
+				`Unknown feature flag: ${key}`
+			);
+			expect(stored).toEqual({ inbox: true });
+		}
+	);
 
 	it('rejects duplicate definitions and dangling dependencies deterministically', () => {
 		expect(() => createFeatureFlagRegistry([pluginFlag, pluginFlag])).toThrow(

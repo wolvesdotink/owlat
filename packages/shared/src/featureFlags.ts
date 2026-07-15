@@ -55,39 +55,56 @@ export type PluginFeatureFlagKey = `plugin.${string}`;
 
 export type FeatureFlagKey = CoreFeatureFlagKey | PluginFeatureFlagKey;
 
-export type FeatureCategory =
+export type CoreFeatureCategory =
 	| 'sending'
 	| 'receiving'
 	| 'ai'
 	| 'integrations'
 	| 'security'
 	| 'deliverability'
-	| 'plugins'
 	| 'hosted';
 
-export interface FeatureFlagDefinition {
-	key: FeatureFlagKey;
-	category: FeatureCategory;
-	label: string;
-	description: string;
-	default: boolean;
+export type FeatureCategory = CoreFeatureCategory | 'plugins';
+
+interface FeatureFlagDefinitionBase<Key extends FeatureFlagKey, Category extends FeatureCategory> {
+	readonly key: Key;
+	readonly category: Category;
+	readonly label: string;
+	readonly description: string;
+	readonly default: boolean;
 	/** Other flags that must be ON for this flag to be ON. */
-	requires?: readonly FeatureFlagKey[];
+	readonly requires?: readonly FeatureFlagKey[];
 	/** When this flag turns OFF, these flags are also turned OFF. */
-	cascadesOff?: readonly FeatureFlagKey[];
+	readonly cascadesOff?: readonly FeatureFlagKey[];
 	/** Env vars required when this flag is ON (collected by setup CLI/UI). */
-	requiredEnvVars?: readonly string[];
+	readonly requiredEnvVars?: readonly string[];
 	/** Docker compose profile names to enable when this flag is ON. */
-	dockerProfiles?: readonly string[];
+	readonly dockerProfiles?: readonly string[];
 	/** Hosted-mode-only flag — hidden from the self-host wizard. */
-	hostedOnly?: boolean;
-	/** Capabilities an operator must explicitly grant before enabling a plugin. */
-	requiredCapabilities?: readonly string[];
-	/** Installed package that supplied a plugin flag; absent for core flags. */
-	pluginPackageName?: string;
+	readonly hostedOnly?: boolean;
 }
 
-export const FEATURE_FLAGS: Record<CoreFeatureFlagKey, FeatureFlagDefinition> = {
+export interface CoreFeatureFlagDefinition extends FeatureFlagDefinitionBase<
+	CoreFeatureFlagKey,
+	CoreFeatureCategory
+> {
+	readonly requiredCapabilities?: never;
+	readonly pluginPackageName?: never;
+}
+
+export interface PluginFeatureFlagDefinition extends FeatureFlagDefinitionBase<
+	PluginFeatureFlagKey,
+	'plugins'
+> {
+	/** Capabilities an operator must explicitly grant before enabling this plugin. */
+	readonly requiredCapabilities: readonly string[];
+	/** Validated package that supplied this plugin flag. */
+	readonly pluginPackageName: string;
+}
+
+export type FeatureFlagDefinition = CoreFeatureFlagDefinition | PluginFeatureFlagDefinition;
+
+export const FEATURE_FLAGS: Record<CoreFeatureFlagKey, CoreFeatureFlagDefinition> = {
 	campaigns: {
 		key: 'campaigns',
 		category: 'sending',
@@ -430,7 +447,7 @@ const PLUGIN_FLAG_KEY = /^plugin\.[a-z][a-z0-9-]{0,63}$/;
  * malformed, duplicate, or dangling definition before any runtime resolves it.
  */
 export function createFeatureFlagRegistry(
-	pluginDefinitions: readonly FeatureFlagDefinition[] = []
+	pluginDefinitions: readonly PluginFeatureFlagDefinition[] = []
 ): FeatureFlagRegistry {
 	if (pluginDefinitions.length > MAX_PLUGIN_FEATURE_FLAGS) {
 		throw new TypeError(
@@ -438,12 +455,16 @@ export function createFeatureFlagRegistry(
 		);
 	}
 
-	const registry: Record<string, FeatureFlagDefinition> = { ...FEATURE_FLAGS };
+	const registry = Object.assign(
+		Object.create(null) as Record<string, FeatureFlagDefinition>,
+		FEATURE_FLAGS
+	);
 	for (const definition of pluginDefinitions) {
-		if (!isPluginFeatureFlagDefinition(definition)) {
+		const untrustedDefinition: unknown = definition;
+		if (!isPluginFeatureFlagDefinition(untrustedDefinition)) {
 			throw new TypeError(`Invalid plugin feature flag definition: ${definition.key}`);
 		}
-		if (hasOwnDefinition(registry, definition.key)) {
+		if (hasFeatureFlagDefinition(registry, definition.key)) {
 			throw new TypeError(`Duplicate feature flag definition: ${definition.key}`);
 		}
 		registry[definition.key] = Object.freeze({
@@ -456,20 +477,18 @@ export function createFeatureFlagRegistry(
 			dockerProfiles: definition.dockerProfiles
 				? Object.freeze([...definition.dockerProfiles])
 				: undefined,
-			requiredCapabilities: definition.requiredCapabilities
-				? Object.freeze([...definition.requiredCapabilities])
-				: undefined,
+			requiredCapabilities: Object.freeze([...definition.requiredCapabilities]),
 		});
 	}
 
 	for (const definition of Object.values(registry)) {
 		for (const dependency of definition.requires ?? []) {
-			if (!hasOwnDefinition(registry, dependency)) {
+			if (!hasFeatureFlagDefinition(registry, dependency)) {
 				throw new TypeError(`${definition.key} requires unknown feature flag ${dependency}`);
 			}
 		}
 		for (const cascadeTarget of definition.cascadesOff ?? []) {
-			if (!hasOwnDefinition(registry, cascadeTarget)) {
+			if (!hasFeatureFlagDefinition(registry, cascadeTarget)) {
 				throw new TypeError(`${definition.key} cascades to unknown feature flag ${cascadeTarget}`);
 			}
 		}
@@ -479,13 +498,30 @@ export function createFeatureFlagRegistry(
 }
 
 export function isPluginFeatureFlagDefinition(
-	definition: FeatureFlagDefinition
-): definition is FeatureFlagDefinition & { readonly key: PluginFeatureFlagKey } {
-	return definition.category === 'plugins' && PLUGIN_FLAG_KEY.test(definition.key);
+	definition: unknown
+): definition is PluginFeatureFlagDefinition {
+	if (!definition || typeof definition !== 'object') return false;
+	const candidate = definition as Record<string, unknown>;
+	return (
+		candidate['category'] === 'plugins' &&
+		typeof candidate['key'] === 'string' &&
+		PLUGIN_FLAG_KEY.test(candidate['key']) &&
+		typeof candidate['pluginPackageName'] === 'string' &&
+		candidate['pluginPackageName'].length > 0 &&
+		Array.isArray(candidate['requiredCapabilities']) &&
+		candidate['requiredCapabilities'].every((capability) => typeof capability === 'string')
+	);
 }
 
-function hasOwnDefinition(registry: FeatureFlagRegistry, key: string): boolean {
-	return Object.prototype.hasOwnProperty.call(registry, key);
+export function hasFeatureFlagDefinition(registry: FeatureFlagRegistry, key: string): boolean {
+	return hasOwnKey(registry, key);
+}
+
+export function getFeatureFlagDefinition(
+	registry: FeatureFlagRegistry,
+	key: string
+): FeatureFlagDefinition | undefined {
+	return hasFeatureFlagDefinition(registry, key) ? registry[key] : undefined;
 }
 
 export interface FeatureFlagResolutionOptions {
@@ -532,8 +568,13 @@ export function resolveFlags(
 	stored: FeatureFlagState,
 	opts: FeatureFlagResolutionOptions = {}
 ): Record<FeatureFlagKey, boolean> {
-	const defaults = getDefaultFlags(opts);
-	const merged: Record<string, boolean> = { ...defaults, ...stored } as Record<string, boolean>;
+	const registry = opts.registry ?? FEATURE_FLAGS;
+	const merged: Record<string, boolean> = { ...getDefaultFlags(opts) };
+	for (const definition of Object.values(registry)) {
+		if (hasOwnKey(stored, definition.key)) {
+			merged[definition.key] = stored[definition.key] === true;
+		}
+	}
 
 	// Iterate to a fixed point: dependencies can chain (codeTasks → ai.agent → ai + inbox).
 	let changed = true;
@@ -541,7 +582,7 @@ export function resolveFlags(
 	while (changed && iterations < 10) {
 		changed = false;
 		iterations++;
-		for (const def of Object.values(opts.registry ?? FEATURE_FLAGS)) {
+		for (const def of Object.values(registry)) {
 			if (!merged[def.key]) continue;
 			for (const dep of def.requires ?? []) {
 				if (!merged[dep]) {
@@ -577,9 +618,12 @@ export function applyToggle(
 	value: boolean,
 	registry: FeatureFlagRegistry = FEATURE_FLAGS
 ): { next: FeatureFlagState; cascaded: FeatureFlagKey[] } {
-	const definition = registry[flag];
+	const definition = getFeatureFlagDefinition(registry, flag);
 	if (!definition) throw new TypeError(`Unknown feature flag: ${flag}`);
-	const next: FeatureFlagState = { ...stored, [flag]: value };
+	const next: FeatureFlagState = {
+		...registeredFeatureFlagOverrides(stored, registry),
+		[flag]: value,
+	};
 	const cascaded: FeatureFlagKey[] = [];
 
 	if (!value) {
@@ -615,6 +659,24 @@ export function applyToggle(
 	}
 
 	return { next, cascaded };
+}
+
+/** Copy only own boolean overrides for definitions present in this registry. */
+export function registeredFeatureFlagOverrides(
+	stored: FeatureFlagState,
+	registry: FeatureFlagRegistry
+): FeatureFlagState {
+	const registered: FeatureFlagState = {};
+	for (const definition of Object.values(registry)) {
+		if (hasOwnKey(stored, definition.key)) {
+			registered[definition.key] = stored[definition.key] === true;
+		}
+	}
+	return registered;
+}
+
+function hasOwnKey(value: object, key: PropertyKey): boolean {
+	return Object.prototype.hasOwnProperty.call(value, key);
 }
 
 /**
