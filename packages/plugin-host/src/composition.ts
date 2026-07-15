@@ -1,4 +1,5 @@
 import { parsePluginManifest, type PluginManifest } from '@owlat/plugin-kit';
+import { parsePluginPackageName, type PluginPackageName } from './packageName';
 
 const MAX_BUNDLED_PLUGINS = 128;
 
@@ -7,8 +8,13 @@ export interface BundledPluginSource {
 	readonly manifest: unknown;
 }
 
+export interface ValidatedBundledPluginSource {
+	readonly packageName: PluginPackageName;
+	readonly manifest: PluginManifest;
+}
+
 export interface BundledPlugin {
-	readonly packageName: string;
+	readonly packageName: PluginPackageName;
 	readonly manifest: PluginManifest;
 }
 
@@ -33,6 +39,17 @@ export class PluginCompositionError extends Error {
 export function composeBundledPlugins(
 	sources: readonly BundledPluginSource[]
 ): readonly BundledPlugin[] {
+	const validatedSources = sources.map(({ packageName, manifest }) => ({
+		packageName: parsePluginPackageName(packageName),
+		manifest: parsePluginManifest(manifest),
+	}));
+	return composeValidatedBundledPlugins(validatedSources);
+}
+
+/** Compose immutable manifest snapshots without reading their original inputs again. */
+export function composeValidatedBundledPlugins(
+	sources: readonly ValidatedBundledPluginSource[]
+): readonly BundledPlugin[] {
 	if (sources.length > MAX_BUNDLED_PLUGINS) {
 		throw new PluginCompositionError(
 			'too_many_plugins',
@@ -43,26 +60,26 @@ export function composeBundledPlugins(
 	const packageNames = new Set<string>();
 	const manifestIds = new Set<string>();
 	const plugins = sources.map(({ packageName, manifest }) => {
-		if (packageNames.has(packageName)) {
+		const validatedPackageName = parsePluginPackageName(packageName);
+		if (packageNames.has(validatedPackageName)) {
 			throw new PluginCompositionError(
 				'duplicate_package',
-				`Bundled plugin package ${packageName} is listed more than once`,
-				packageName
+				`Bundled plugin package ${validatedPackageName} is listed more than once`,
+				validatedPackageName
 			);
 		}
-		packageNames.add(packageName);
+		packageNames.add(validatedPackageName);
 
-		const parsedManifest = parsePluginManifest(manifest);
-		if (manifestIds.has(parsedManifest.id)) {
+		if (manifestIds.has(manifest.id)) {
 			throw new PluginCompositionError(
 				'duplicate_manifest_id',
-				`Bundled plugin manifest id ${parsedManifest.id} is declared more than once`,
-				parsedManifest.id
+				`Bundled plugin manifest id ${manifest.id} is declared more than once`,
+				manifest.id
 			);
 		}
-		manifestIds.add(parsedManifest.id);
+		manifestIds.add(manifest.id);
 
-		return Object.freeze({ packageName, manifest: parsedManifest });
+		return Object.freeze({ packageName: validatedPackageName, manifest });
 	});
 
 	plugins.sort((left, right) => compareCodePoints(left.manifest.id, right.manifest.id));
