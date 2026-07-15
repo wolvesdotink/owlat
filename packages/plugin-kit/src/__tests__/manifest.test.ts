@@ -192,6 +192,33 @@ describe('plugin manifest validation', () => {
 		});
 	});
 
+	it('validates proxy-wrapped arrays without invoking their get traps', () => {
+		let reads = 0;
+		const trackReads = <Value extends unknown[]>(value: Value): Value =>
+			new Proxy(value, {
+				get(target, key, receiver) {
+					reads += 1;
+					return Reflect.get(target, key, receiver);
+				},
+			});
+		const source = validManifest();
+		const manifest = {
+			...source,
+			capabilities: trackReads([...source.capabilities]),
+			flag: {
+				...source.flag,
+				requiredEnvVars: trackReads([...(source.flag.requiredEnvVars ?? [])]),
+			},
+			contributes: {
+				...source.contributes,
+				sendGates: trackReads([...source.contributes.sendGates]),
+			},
+		};
+
+		expect(validatePluginManifest(manifest).ok).toBe(true);
+		expect(reads).toBe(0);
+	});
+
 	it.each([
 		[
 			'flag.default',
