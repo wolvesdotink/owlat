@@ -34,6 +34,19 @@ describe('plugin package boundary lint', () => {
 			'@acme/mail-plugin',
 		],
 		[`const plugin = Bun.require('@acme/mail-plugin');`, '@acme/mail-plugin'],
+		[`const plugin = module.require('@acme/mail-plugin');`, '@acme/mail-plugin'],
+		[
+			`const plugin = require('node:module').createRequire(import.meta.url)('@acme/mail-plugin');`,
+			'@acme/mail-plugin',
+		],
+		[
+			`const moduleApi = require('module'); moduleApi.createRequire(__filename)('@acme/mail-plugin');`,
+			'@acme/mail-plugin',
+		],
+		[
+			`const { createRequire: makeRequire } = require('node:module'); makeRequire(__filename)('@acme/mail-plugin');`,
+			'@acme/mail-plugin',
+		],
 		[`type Plugin = import('@acme/mail-plugin').Plugin;`, '@acme/mail-plugin'],
 	] as const)('finds a configured package import in core source', (source, packageSpecifier) => {
 		expect(findDirectPluginImports(source, 'apps/api/core.ts', configuredPackages)).toEqual([
@@ -46,7 +59,7 @@ describe('plugin package boundary lint', () => {
 	});
 
 	it('finds imports inside Vue script blocks', () => {
-		const source = `<template><div /></template><script setup lang="ts">import plugin from '@acme/mail-plugin';</script>`;
+		const source = `<template><div /></template><script data-note=">" setup lang="ts">import plugin from '@acme/mail-plugin';</script>`;
 		expect(findDirectPluginImports(source, 'apps/web/app.vue', configuredPackages)).toHaveLength(1);
 	});
 
@@ -112,6 +125,47 @@ describe('plugin package boundary lint', () => {
 				'apps/api/npm-alias.ts: imports mail-alias',
 				'apps/api/ts-path.ts: imports @mail/runtime',
 			],
+		});
+	});
+
+	it('rejects Vite object and array aliases to configured plugins', async () => {
+		const root = await createRepository({
+			'apps/api/object-alias.ts': `import 'mail-plugin-alias';`,
+			'apps/api/array-alias.ts': `import 'mail-plugin-array';`,
+			'apps/api/vite.config.ts': `export default { resolve: { alias: { 'mail-plugin-alias': '@acme/mail-plugin', }, }, test: { alias: [{ find: 'mail-plugin-array', replacement: '@acme/mail-plugin/runtime' }] } };`,
+		});
+
+		await expect(checkDirectPluginImports(root, configuredPackages)).rejects.toMatchObject({
+			code: 'direct_plugin_import',
+			details: [
+				'apps/api/array-alias.ts: imports mail-plugin-array',
+				'apps/api/object-alias.ts: imports mail-plugin-alias',
+			],
+		});
+	});
+
+	it('ignores unrelated nested untracked configs and attributes malformed tracked config', async () => {
+		const root = await createRepository({
+			'apps/api/core.ts': `export const safe = true;`,
+			'apps/api/scratch/package.json': '{ invalid untracked json',
+		});
+		await expect(checkDirectPluginImports(root, configuredPackages)).resolves.toBeUndefined();
+
+		await writeFile(join(root, 'apps/api/vite.config.ts'), 'export default { resolve: { alias:');
+		await expect(checkDirectPluginImports(root, configuredPackages)).rejects.toMatchObject({
+			code: 'repository_config_invalid',
+			details: ['apps/api/vite.config.ts'],
+		});
+	});
+
+	it('rejects oversized repository alias configuration before parsing', async () => {
+		const root = await createRepository({
+			'apps/api/core.ts': `export const safe = true;`,
+			'apps/api/tsconfig.json': ' '.repeat(1024 * 1024 + 1),
+		});
+		await expect(checkDirectPluginImports(root, configuredPackages)).rejects.toMatchObject({
+			code: 'repository_config_invalid',
+			details: ['apps/api/tsconfig.json'],
 		});
 	});
 });
