@@ -1,4 +1,5 @@
 import { parsePluginManifest, type PluginManifest } from '@owlat/plugin-kit';
+import { compareCodePoints } from './compareCodePoints';
 import { parsePluginPackageName, type PluginPackageName } from './packageName';
 
 const MAX_BUNDLED_PLUGINS = 128;
@@ -84,10 +85,4 @@ export function composeValidatedBundledPlugins(
 
 	plugins.sort((left, right) => compareCodePoints(left.manifest.id, right.manifest.id));
 	return Object.freeze(plugins);
-}
-
-function compareCodePoints(left: string, right: string): number {
-	if (left < right) return -1;
-	if (left > right) return 1;
-	return 0;
 }

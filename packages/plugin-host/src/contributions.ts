@@ -1,4 +1,5 @@
 import { isPluginId, type PluginId } from '@owlat/plugin-kit';
+import { compareCodePoints } from './compareCodePoints';
 import { PluginHostError } from './errors';
 
 export interface HostedContribution<Value> {
@@ -83,9 +84,4 @@ function invalidContribution(pluginId?: string): never {
 		`Plugin ${pluginId ?? '<unknown>'} has a contribution without a stable identity`,
 		{ pluginId: validPluginId }
 	);
-}
-
-function compareCodePoints(left: string, right: string): number {
-	if (left === right) return 0;
-	return left < right ? -1 : 1;
 }
