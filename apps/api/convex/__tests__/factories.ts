@@ -1,7 +1,8 @@
 import { faker } from '@faker-js/faker';
-import { FEATURE_FLAGS, type FeatureFlagKey } from '@owlat/shared/featureFlags';
+import { type FeatureFlagKey } from '@owlat/shared/featureFlags';
 import type { GenericActionCtx, GenericMutationCtx } from 'convex/server';
 import type { DataModel, Id, TableNames } from '../_generated/dataModel';
+import { FEATURE_FLAG_REGISTRY } from '../plugins/featureFlagRegistry';
 
 /**
  * Enable a set of feature flags in a fresh convex-test instance, including
@@ -28,7 +29,8 @@ export async function enableFeatures(
 		const flag = queue.shift()!;
 		if (enabled.has(flag)) continue;
 		enabled.add(flag);
-		const def = FEATURE_FLAGS[flag];
+		const def = FEATURE_FLAG_REGISTRY[flag];
+		if (!def) throw new TypeError(`Unknown test feature flag: ${flag}`);
 		for (const dep of def.requires ?? []) {
 			if (!enabled.has(dep)) queue.push(dep);
 		}

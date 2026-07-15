@@ -4,6 +4,23 @@ import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import type { OrganizationRole } from '../../lib/sessionOrganization';
 
+vi.mock('../../plugins/plugins.generated', () => ({
+	bundledPluginComposition: Object.freeze([
+		Object.freeze({
+			packageName: '@example/policy-pack',
+			manifest: Object.freeze({
+				id: 'policy-pack',
+				version: '1.0.0',
+				capabilities: Object.freeze(['mail:read', 'send:gate']),
+				flag: Object.freeze({
+					default: false,
+					requiredEnvVars: Object.freeze(['POLICY_TOKEN']),
+				}),
+			}),
+		}),
+	]),
+}));
+
 /**
  * Unit tests for the Feature flags (module).
  *
@@ -195,6 +212,118 @@ describe('organizations.featureFlags.setFeatureFlag', () => {
 		});
 		expect(res.cascaded).toContain('ai.agent');
 		expect(res.cascaded).toContain('ai.autonomy');
+	});
+});
+
+describe('organizations.featureFlags.setFeatureFlag — bundled plugins', () => {
+	const flag = 'plugin.policy-pack';
+	const originalPolicyToken = process.env['POLICY_TOKEN'];
+
+	beforeEach(() => {
+		delete process.env['POLICY_TOKEN'];
+	});
+
+	afterEach(() => {
+		if (originalPolicyToken === undefined) delete process.env['POLICY_TOKEN'];
+		else process.env['POLICY_TOKEN'] = originalPolicyToken;
+	});
+
+	it('registers the manifest default in the resolved flag map', async () => {
+		const t = convexTest(schema, modules);
+		const flags = await t.query(api.workspaces.featureFlags.getFeatureFlags, {});
+		expect(flags[flag]).toBe(false);
+	});
+
+	it('refuses enablement until every environment requirement is present', async () => {
+		const t = convexTest(schema, modules);
+
+		await expect(
+			t.mutation(api.workspaces.featureFlags.setFeatureFlag, {
+				flag,
+				value: true,
+				approvedCapabilities: ['mail:read', 'send:gate'],
+			})
+		).rejects.toThrow(/missing required environment variables: POLICY_TOKEN/);
+
+		await t.run(async (ctx) => {
+			expect(await ctx.db.query('instanceSettings').first()).toBeNull();
+		});
+	});
+
+	it.each([
+		['omitted', undefined],
+		['incomplete', ['mail:read']],
+		['duplicated', ['mail:read', 'mail:read']],
+		['unknown', ['mail:read', 'contacts:write']],
+	] as const)('refuses %s capability approval', async (_label, approvedCapabilities) => {
+		process.env['POLICY_TOKEN'] = 'configured';
+		const t = convexTest(schema, modules);
+
+		await expect(
+			t.mutation(api.workspaces.featureFlags.setFeatureFlag, {
+				flag,
+				value: true,
+				...(approvedCapabilities === undefined
+					? {}
+					: { approvedCapabilities: [...approvedCapabilities] }),
+			})
+		).rejects.toThrow();
+	});
+
+	it('stores exact grants on enable and clears them on disable', async () => {
+		process.env['POLICY_TOKEN'] = 'configured';
+		const t = convexTest(schema, modules);
+		await t.mutation(api.workspaces.featureFlags.setFeatureFlag, {
+			flag,
+			value: true,
+			approvedCapabilities: ['send:gate', 'mail:read'],
+		});
+
+		await t.run(async (ctx) => {
+			const settings = await ctx.db.query('instanceSettings').first();
+			expect(settings?.featureFlags?.[flag]).toBe(true);
+			expect(settings?.pluginCapabilityGrants?.[flag]).toEqual({
+				'mail:read': true,
+				'send:gate': true,
+			});
+			const audit = await ctx.db
+				.query('auditLogs')
+				.withIndex('by_action', (query) => query.eq('action', 'settings.updated'))
+				.first();
+			expect(audit?.resourceId).toBe(settings?._id);
+			expect(audit?.detailsBlob).toContain('approvedCapabilities');
+		});
+
+		await t.mutation(api.workspaces.featureFlags.setFeatureFlag, { flag, value: false });
+		await t.run(async (ctx) => {
+			const settings = await ctx.db.query('instanceSettings').first();
+			expect(settings?.featureFlags?.[flag]).toBe(false);
+			expect(settings?.pluginCapabilityGrants?.[flag]).toBeUndefined();
+		});
+	});
+
+	it('reports missing env and grants until enablement requirements are satisfied', async () => {
+		const t = convexTest(schema, modules);
+		const missingStatus = await t.query(api.workspaces.featureFlags.getFlagsConfigStatus, {});
+		expect(missingStatus[flag]).toEqual(['POLICY_TOKEN', 'Grant: mail:read', 'Grant: send:gate']);
+
+		process.env['POLICY_TOKEN'] = 'configured';
+		await t.mutation(api.workspaces.featureFlags.setFeatureFlag, {
+			flag,
+			value: true,
+			approvedCapabilities: ['mail:read', 'send:gate'],
+		});
+		const configuredStatus = await t.query(api.workspaces.featureFlags.getFlagsConfigStatus, {});
+		expect(configuredStatus[flag]).toBeUndefined();
+	});
+
+	it('rejects plugin flags on the bulk replacement path', async () => {
+		const t = convexTest(schema, modules);
+		await expect(
+			t.mutation(api.workspaces.featureFlags.setAllFeatureFlags, {
+				flags: { [flag]: true },
+			})
+		).rejects.toThrow(/must be toggled individually/);
 	});
 });
 
