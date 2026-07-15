@@ -545,6 +545,55 @@ describe('organizations.featureFlags.setFeaturePack', () => {
 			})
 		).rejects.toThrow(/Unknown feature pack/);
 	});
+
+	it.each([
+		['default-off enabled', 'plugin.policy-pack', true],
+		['default-on disabled', 'plugin.default-on', false],
+	] as const)(
+		'preserves a %s plugin override and capability grants',
+		async (_label, key, value) => {
+			const t = convexTest(schema, modules);
+			const grants = {
+				'plugin.policy-pack': { 'mail:read': true, 'send:gate': true },
+			};
+			await t.run(async (ctx) => {
+				await ctx.db.insert('instanceSettings', {
+					featureFlags: { [key]: value },
+					pluginCapabilityGrants: grants,
+					createdAt: Date.now(),
+				});
+			});
+
+			await t.mutation(api.workspaces.featureFlags.setFeaturePack, {
+				pack: 'marketing',
+				value: true,
+			});
+
+			await t.run(async (ctx) => {
+				const row = await ctx.db.query('instanceSettings').first();
+				expect(row?.featureFlags?.[key]).toBe(value);
+				expect(row?.pluginCapabilityGrants).toEqual(grants);
+			});
+		}
+	);
+
+	it.each(['toString', 'constructor', '__proto__'])(
+		'rejects inherited pack key %s without writing settings',
+		async (pack) => {
+			const t = convexTest(schema, modules);
+
+			await expect(
+				t.mutation(api.workspaces.featureFlags.setFeaturePack, {
+					pack,
+					value: true,
+				})
+			).rejects.toThrow(`Unknown feature pack: ${pack}`);
+
+			await t.run(async (ctx) => {
+				expect(await ctx.db.query('instanceSettings').collect()).toEqual([]);
+			});
+		}
+	);
 });
 
 // ============================================================
