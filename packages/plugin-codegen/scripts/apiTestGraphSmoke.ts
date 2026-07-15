@@ -17,6 +17,9 @@ const test = spawnSync(
 		'test',
 		'--',
 		'convex/plugins/__tests__/featureFlagRegistry.test.ts',
+		'convex/plugins/__tests__/storage.test.ts',
+		'convex/plugins/__tests__/storageCursor.test.ts',
+		'convex/plugins/__tests__/storageJson.test.ts',
 	],
 	{ cwd: workspaceRoot, stdio: 'inherit' }
 );
