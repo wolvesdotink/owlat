@@ -83,7 +83,11 @@ try {
 const manifest = definePlugin({ id: 'node-smoke', version: '1.0.0', capabilities: [] });
 if (!isPluginManifest(manifest)) throw new Error('type guard rejected a valid manifest');
 if (!validatePluginManifest(manifest).ok) throw new Error('validator rejected a valid manifest');
-if (parsePluginManifest(manifest) !== manifest) throw new Error('parser did not preserve identity');
+const parsed = parsePluginManifest(manifest);
+if (parsed === manifest) throw new Error('parser did not return a canonical snapshot');
+if (!Object.isFrozen(parsed) || !Object.isFrozen(parsed.capabilities)) {
+  throw new Error('parser snapshot is not immutable');
+}
 if (!PLUGIN_CONTRIBUTION_KINDS.includes('sendGates')) throw new Error('catalog export missing');
 if (!(new PluginManifestError([]) instanceof Error)) throw new Error('error export missing');
 `
