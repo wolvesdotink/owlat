@@ -200,6 +200,54 @@ describe('plugin package boundary lint', () => {
 		await expect(checkDirectPluginImports(root, configuredPackages)).resolves.toBeUndefined();
 	});
 
+	it('accepts path aliases rooted in a canonical ESM dirname definition', async () => {
+		const root = await createRepository({
+			'apps/api/core.ts': `import 'safe-alias';`,
+			'apps/api/vite.config.ts': `import { dirname, resolve } from 'node:path';
+				import { fileURLToPath } from 'node:url';
+				const __filename = fileURLToPath(import.meta.url);
+				const __dirname = dirname(__filename);
+				export default { resolve: { alias: {
+					'safe-alias': resolve(__dirname, 'src/index.ts'),
+				} } };`,
+		});
+
+		await expect(checkDirectPluginImports(root, configuredPackages)).resolves.toBeUndefined();
+	});
+
+	it.each([
+		[
+			'shadowing constant',
+			`const __dirname = '/attacker-controlled';
+				export default { resolve: { alias: { safe: resolve(__dirname, 'src') } } };`,
+		],
+		[
+			'shadowing parameter',
+			`function makeConfig(__dirname: string) {
+					return { resolve: { alias: { safe: resolve(__dirname, 'src') } } };
+				}
+				export default makeConfig('/attacker-controlled');`,
+		],
+		[
+			'mutation of the unbound value',
+			`__dirname = '/attacker-controlled';
+				export default { resolve: { alias: { safe: resolve(__dirname, 'src') } } };`,
+		],
+	] as const)(
+		'fails closed when %s replaces the legacy dirname binding',
+		async (_description, body) => {
+			const root = await createRepository({
+				'apps/api/core.ts': `import 'safe';`,
+				'apps/api/vite.config.ts': `import { resolve } from 'node:path'; ${body}`,
+			});
+
+			await expect(checkDirectPluginImports(root, configuredPackages)).rejects.toMatchObject({
+				code: 'repository_config_invalid',
+				details: ['apps/api/vite.config.ts'],
+			});
+		}
+	);
+
 	it.each([
 		[`{ 'mail-plugin-alias': process.env.PLUGIN_PACKAGE }`, 'dynamic object replacement'],
 		[
