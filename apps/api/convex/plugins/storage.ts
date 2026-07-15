@@ -8,7 +8,7 @@ import type {
 } from '@owlat/plugin-kit';
 import { parsePluginId } from '@owlat/plugin-kit';
 import type { MutationCtx } from '../_generated/server';
-import { requireAuthenticatedBundledPlugin } from './authorization';
+import { requireAuthenticatedBundledPlugin, type HostedPluginActorScope } from './authorization';
 import { recordHostedPluginAudit, type HostedPluginOperation } from './audit';
 import {
 	decryptPluginStorageCursor,
@@ -28,12 +28,6 @@ export const PLUGIN_STORAGE_READ_CAPABILITY = 'plugin-storage:read' as PluginCap
 export const PLUGIN_STORAGE_WRITE_CAPABILITY = 'plugin-storage:write' as PluginCapability;
 
 type StorageAuthorization = (capability: PluginCapability) => Promise<void>;
-
-interface PluginStorageScope {
-	readonly organizationId: string;
-	readonly pluginId: PluginId;
-	readonly userId: string;
-}
 
 export type PluginStorageErrorCode =
 	| 'access_denied'
@@ -73,14 +67,8 @@ export async function bindAuthenticatedBundledPluginStorage(
 	if (!authorized) {
 		throw new PluginStorageError('access_denied');
 	}
-	return createScopedPluginStorageService(
-		ctx,
-		Object.freeze({
-			organizationId: authorized.organizationId,
-			pluginId,
-			userId: authorized.userId,
-		}),
-		(capability) => authorizeBundledStorage(ctx, pluginId, capability)
+	return createScopedPluginStorageService(ctx, authorized, (capability) =>
+		authorizeBundledStorage(ctx, pluginId, capability)
 	);
 }
 
@@ -90,7 +78,7 @@ export async function bindAuthenticatedBundledPluginStorage(
 // scope without first passing an authenticator owned by this module.
 function createScopedPluginStorageService(
 	ctx: MutationCtx,
-	scope: PluginStorageScope,
+	scope: HostedPluginActorScope,
 	authorize: StorageAuthorization
 ): PluginStorageService {
 	const organizationId = scope.organizationId;
@@ -234,16 +222,11 @@ function createScopedPluginStorageService(
 
 async function auditStorageOperation(
 	ctx: MutationCtx,
-	scope: PluginStorageScope,
+	scope: HostedPluginActorScope,
 	operation: Extract<HostedPluginOperation, `storage.${string}`>
 ): Promise<void> {
 	try {
-		await recordHostedPluginAudit(
-			ctx,
-			{ organizationId: scope.organizationId, pluginId: scope.pluginId, userId: scope.userId },
-			operation,
-			'completed'
-		);
+		await recordHostedPluginAudit(ctx, scope, operation, 'completed');
 	} catch {
 		throw new PluginStorageError('storage_unavailable');
 	}
@@ -390,7 +373,7 @@ function prefixUpperBound(prefix: string): string | undefined {
 }
 
 async function wrapCursor(
-	scope: PluginStorageScope,
+	scope: HostedPluginActorScope,
 	request: ListRequest,
 	nativeCursor: string
 ): Promise<string> {
@@ -402,7 +385,7 @@ async function wrapCursor(
 }
 
 async function unwrapCursor(
-	scope: PluginStorageScope,
+	scope: HostedPluginActorScope,
 	request: ListRequest
 ): Promise<string | null> {
 	if (request.cursor === undefined) return null;

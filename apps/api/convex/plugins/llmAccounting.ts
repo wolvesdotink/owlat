@@ -8,8 +8,12 @@ import { tokenUsageValidator } from '../lib/convexValidators';
 import { MAX_LLM_ATTEMPTS } from '../lib/llm/retryPolicy';
 import { estimateKnownCostMicrousd } from '../lib/llm/pricing';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
-import { getBundledPluginManifest, requireAuthenticatedBundledPlugin } from './authorization';
-import { recordHostedPluginAudit, type HostedPluginAuditScope } from './audit';
+import {
+	getBundledPluginManifest,
+	requireAuthenticatedBundledPlugin,
+	type HostedPluginActorScope,
+} from './authorization';
+import { recordHostedPluginAudit } from './audit';
 
 const LLM_INVOKE = 'llm:invoke' as const;
 const RESERVATION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -223,7 +227,7 @@ async function pendingActorReservation(ctx: MutationCtx, reservationId: string) 
 	return reservation;
 }
 
-function auditScope(row: Doc<'pluginLlmReservations'>): HostedPluginAuditScope {
+function auditScope(row: Doc<'pluginLlmReservations'>): HostedPluginActorScope {
 	return {
 		organizationId: row.organizationId,
 		pluginId: parsePluginId(row.pluginId),

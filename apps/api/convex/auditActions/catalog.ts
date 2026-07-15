@@ -195,6 +195,16 @@ export const AUDIT_ACTION_LITERALS = [
 
 export type AuditActionLiteral = (typeof AUDIT_ACTION_LITERALS)[number];
 
+/** Hosted operations safe to persist and display in plugin audit metadata. */
+export const HOSTED_PLUGIN_OPERATION_LITERALS = [
+	'llm.generate',
+	'storage.delete',
+	'storage.get',
+	'storage.list',
+	'storage.set',
+] as const;
+export type HostedPluginOperationLiteral = (typeof HOSTED_PLUGIN_OPERATION_LITERALS)[number];
+
 // ---------------------------------------------------------------------------
 // Resource catalog
 // ---------------------------------------------------------------------------

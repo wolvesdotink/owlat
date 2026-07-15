@@ -17,10 +17,13 @@ export class PluginAuthorizationError extends Error {
 	}
 }
 
-export interface AuthorizedPluginScope {
+export interface HostedPluginActorScope {
 	readonly organizationId: string;
 	readonly userId: string;
 	readonly pluginId: PluginId;
+}
+
+export interface AuthorizedPluginScope extends HostedPluginActorScope {
 	readonly manifest: PluginManifest;
 }
 
