@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, symlink, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -77,6 +77,77 @@ describe('installed plugin loading', () => {
 		const plugins = await loadBundledPlugins(root, ['zebra-plugin', '@acme/alpha-plugin']);
 
 		expect(plugins.map((plugin) => plugin.manifest.id)).toEqual(['alpha', 'zebra']);
+	});
+
+	it('accepts one exact static component export and rejects missing or conditional targets', async () => {
+		const valid = await createWorkspace(
+			{ 'component-plugin': '1.0.0' },
+			{
+				'component-plugin': {
+					source: `export default { id: 'component', version: '1.0.0', capabilities: [], component: { exportPath: './convex/convex.config' } };`,
+					packageJson: {
+						exports: {
+							'.': './index.js',
+							'./convex/convex.config': './convex/convex.config.js',
+						},
+					},
+					files: { 'convex/convex.config.js': 'export default {};' },
+				},
+			}
+		);
+		await expect(loadBundledPlugins(valid, ['component-plugin'])).resolves.toHaveLength(1);
+
+		for (const componentTarget of [undefined, { convex: './convex/convex.config.js' }]) {
+			const invalid = await createWorkspace(
+				{ 'component-plugin': '1.0.0' },
+				{
+					'component-plugin': {
+						source: `export default { id: 'component', version: '1.0.0', capabilities: [], component: { exportPath: './convex/convex.config' } };`,
+						packageJson: {
+							exports: {
+								'.': './index.js',
+								...(componentTarget === undefined
+									? {}
+									: { './convex/convex.config': componentTarget }),
+							},
+						},
+						files: { 'convex/convex.config.js': 'export default {};' },
+					},
+				}
+			);
+			await expect(loadBundledPlugins(invalid, ['component-plugin'])).rejects.toMatchObject({
+				code: 'component_export_invalid',
+			});
+		}
+	});
+
+	it('rejects a component export whose target symlink escapes the package', async () => {
+		const root = await createWorkspace(
+			{ 'component-plugin': '1.0.0' },
+			{
+				'component-plugin': {
+					source: `export default { id: 'component', version: '1.0.0', capabilities: [], component: { exportPath: './convex/convex.config' } };`,
+					packageJson: {
+						exports: {
+							'.': './index.js',
+							'./convex/convex.config': './convex/convex.config.js',
+						},
+					},
+					files: { 'convex/convex.config.js': 'export default {};' },
+				},
+			}
+		);
+		const outside = await mkdtemp(join(tmpdir(), 'owlat-component-outside-'));
+		temporaryRoots.push(outside);
+		const outsideTarget = join(outside, 'convex.config.js');
+		await writeFile(outsideTarget, 'export default {};');
+		const componentTarget = join(root, 'node_modules/component-plugin/convex/convex.config.js');
+		await unlink(componentTarget);
+		await symlink(outsideTarget, componentTarget);
+
+		await expect(loadBundledPlugins(root, ['component-plugin'])).rejects.toMatchObject({
+			code: 'component_export_invalid',
+		});
 	});
 
 	it('bounds the workspace package.json before parsing with workspace error taxonomy', async () => {

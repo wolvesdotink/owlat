@@ -29,6 +29,7 @@ const MAX_SOURCE_BYTES = 2 * 1024 * 1024;
 const MAX_TOTAL_SOURCE_BYTES = 64 * 1024 * 1024;
 const GENERATED_COMPOSITION_FILES = new Set([
 	'apps/api/convex/plugins/plugins.generated.ts',
+	'apps/api/convex/plugins/components.generated.ts',
 	'apps/web/app/plugins/plugin-composition.generated.ts',
 ]);
 
