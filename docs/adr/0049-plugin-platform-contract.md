@@ -26,7 +26,9 @@ ordering, and safety rules that its dedicated migration must preserve.
 
 Add `@owlat/plugin-kit` as the public compatibility boundary. Its package major
 version is the compatibility line; contribution interfaces do not carry their
-own versions. Before 1.0, contracts may break with the application.
+own versions. Before 1.0, contracts may break with the application. During that
+pre-1.0 period the package follows Owlat's unified repository version and is
+cut by the existing release command.
 
 ### One validated manifest
 
@@ -61,10 +63,11 @@ and must pass its checks at call time. Declaring a capability never grants it.
 The host will also reject contribution types whose required capability was not
 declared.
 
-Capability names use a lowercase `domain:action` namespace. The namespace is
-open so a new contribution seam does not require a plugin-kit major solely to
-add a capability literal; the host remains the authority that recognizes and
-enforces capabilities.
+Capability names use a lowercase `domain:action` namespace with exact-match
+semantics. Wildcards are not part of the contract. The namespace is open so a
+new contribution seam does not require a plugin-kit major solely to add a
+capability literal; the host remains the authority that recognizes and enforces
+capabilities.
 
 ### Plugins receive services, not framework contexts
 
