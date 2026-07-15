@@ -137,7 +137,7 @@ describe('generated composition freshness', () => {
 
 		const write = writeFileAtomically(root, target, 'x'.repeat(16 * 1024 * 1024));
 		for (;;) {
-			const entries = await readdir(parent);
+			const entries = await readdir(root);
 			if (entries.some((entry) => entry.endsWith('.tmp'))) break;
 			await new Promise((resolve) => setImmediate(resolve));
 		}
@@ -148,5 +148,7 @@ describe('generated composition freshness', () => {
 		await expect(readFile(join(outside, 'plugins.generated.ts'), 'utf8')).rejects.toMatchObject({
 			code: 'ENOENT',
 		});
+		expect((await readdir(root)).filter((entry) => entry.endsWith('.tmp'))).toEqual([]);
+		expect((await readdir(parkedParent)).filter((entry) => entry.endsWith('.tmp'))).toEqual([]);
 	});
 });
