@@ -6,6 +6,7 @@ export type PluginHostErrorCode =
 	| 'feature_check_failed'
 	| 'invalid_capability_grant'
 	| 'invalid_contribution'
+	| 'invalid_manifest_snapshot'
 	| 'invalid_untrusted_text_policy'
 	| 'plugin_disabled'
 	| 'untrusted_output_rejected';

@@ -336,13 +336,31 @@ function validateDescriptorSafeArray(
 		addIssue(issues, 'invalid_type', path, 'must be an array');
 		return undefined;
 	}
+	const length = readDataProperty(
+		value as unknown as Record<string, unknown>,
+		'length',
+		issues,
+		true,
+		path
+	);
+	if (
+		length.kind !== 'value' ||
+		typeof length.value !== 'number' ||
+		!Number.isSafeInteger(length.value) ||
+		length.value < 0
+	) {
+		if (length.kind === 'value') {
+			addIssue(issues, 'invalid_type', `${path}.length`, 'must be a valid array length');
+		}
+		return undefined;
+	}
 
 	const allowedKeys = new Set<string>(['length']);
-	for (let index = 0; index < value.length; index += 1) allowedKeys.add(String(index));
+	for (let index = 0; index < length.value; index += 1) allowedKeys.add(String(index));
 	validateKnownFields(value as unknown as Record<string, unknown>, path, allowedKeys, issues);
 
 	const items: DataProperty[] = [];
-	for (let index = 0; index < value.length; index += 1) {
+	for (let index = 0; index < length.value; index += 1) {
 		items.push(
 			readDataProperty(
 				value as unknown as Record<string, unknown>,
