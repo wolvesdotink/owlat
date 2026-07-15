@@ -74,4 +74,14 @@ describe('hosted contribution ordering', () => {
 		).toThrowError(expect.objectContaining({ code: 'invalid_contribution' }));
 		expect(reads).toBe(0);
 	});
+
+	it('rejects leading or trailing whitespace instead of silently normalizing identities', () => {
+		expect(() =>
+			orderHostedContributions([{ pluginId: 'alpha ', contributionId: 'item', value: 1 }])
+		).toThrowError(expect.objectContaining({ code: 'invalid_contribution' }));
+
+		expect(() =>
+			orderHostedContributions([{ pluginId: 'alpha', contributionId: ' item', value: 1 }])
+		).toThrowError(expect.objectContaining({ code: 'invalid_contribution' }));
+	});
 });

@@ -8,10 +8,17 @@ export interface GateObjection {
 /** A plugin gate can withhold approval, but has no result that grants approval. */
 export type RestrictOnlyGateResult = typeof NO_GATE_OBJECTION | GateObjection;
 
-export interface GateDecision {
-	readonly allowed: boolean;
+export interface AllowedGateDecision {
+	readonly allowed: true;
+	readonly objections: readonly [];
+}
+
+export interface BlockedGateDecision {
+	readonly allowed: false;
 	readonly objections: readonly string[];
 }
+
+export type GateDecision = AllowedGateDecision | BlockedGateDecision;
 
 export function createGateObjection(reason: string): GateObjection {
 	const normalizedReason = reason.trim();
@@ -60,8 +67,12 @@ function hasExactOutcome(
 }
 
 function freezeGateDecision(decision: GateDecision): GateDecision {
+	if (decision.allowed) {
+		const objections: readonly [] = Object.freeze([]);
+		return Object.freeze({ allowed: true, objections });
+	}
 	return Object.freeze({
-		allowed: decision.allowed === true,
+		allowed: false,
 		objections: Object.freeze([...decision.objections]),
 	});
 }

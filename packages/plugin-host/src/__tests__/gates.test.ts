@@ -17,7 +17,10 @@ describe('restrict-only gate results', () => {
 	});
 
 	it('never lets a plugin widen an existing blocked decision', () => {
-		const blocked = { allowed: false, objections: ['Core security scan failed'] };
+		const blocked: GateDecision = {
+			allowed: false,
+			objections: ['Core security scan failed'],
+		};
 
 		expect(applyRestrictOnlyGateResult(blocked, NO_GATE_OBJECTION)).toEqual(blocked);
 	});

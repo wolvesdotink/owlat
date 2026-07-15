@@ -5,7 +5,13 @@ export type { PluginHostErrorCode, PluginHostErrorDetails } from './errors';
 export { runWithPluginFeatureFlag } from './featureFlags';
 export type { PluginFeatureFlagService } from './featureFlags';
 export { applyRestrictOnlyGateResult, createGateObjection, NO_GATE_OBJECTION } from './gates';
-export type { GateDecision, GateObjection, RestrictOnlyGateResult } from './gates';
+export type {
+	AllowedGateDecision,
+	BlockedGateDecision,
+	GateDecision,
+	GateObjection,
+	RestrictOnlyGateResult,
+} from './gates';
 export { createPluginHost } from './host';
 export type { CreatePluginHostOptions, PluginHost } from './host';
 export { createPluginPermissionService } from './permissions';
