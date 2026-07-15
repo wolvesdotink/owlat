@@ -1,5 +1,6 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
+import { languageEndpointProvenanceValidator } from '../lib/aiProviderConfigValidators';
 
 /** Host-mediated plugin data; Tier-1 component tables remain component-local. */
 export const pluginTables = {
@@ -55,6 +56,8 @@ export const pluginTables = {
 		actorUserId: v.string(),
 		reservedMicrousd: v.number(),
 		tier: v.union(v.literal('fast'), v.literal('capable')),
+		modelId: v.string(),
+		endpointProvenance: languageEndpointProvenanceValidator,
 		chargedMicrousd: v.optional(v.number()),
 		actualMicrousd: v.optional(v.number()),
 		status: v.union(v.literal('pending'), v.literal('completed'), v.literal('failed')),

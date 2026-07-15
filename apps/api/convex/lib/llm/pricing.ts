@@ -10,6 +10,7 @@
  */
 
 import type { TokenUsage } from '../../agent/steps/types';
+import type { LanguageEndpointProvenance } from '../llmProviders/types';
 
 type Price = { prefix: string; inputPerM: number; outputPerM: number };
 
@@ -80,54 +81,87 @@ function priceForModel(modelUsed: string | undefined): Price | undefined {
 		: undefined;
 }
 
-const ADMISSION_NAMESPACE_FAMILIES = {
-	anthropic: ['claude-'],
-	deepseek: ['deepseek-'],
-	google: ['gemini-'],
-	minimax: ['minimax-'],
-	moonshotai: ['kimi-'],
-	openai: ['gpt-', 'o3-', 'o4-'],
-	xiaomi: ['mimo-'],
-} as const satisfies Record<string, readonly string[]>;
-
-/** Exact provider aliases whose non-numeric suffix is part of a curated model id. */
-const ADMISSION_ALIASES: Readonly<Record<string, string>> = {
-	'gemini-3.1-pro-preview': 'gemini-3.1-pro',
-};
-
-/**
- * Admission pricing is intentionally stricter than dashboard reporting. Model
- * ids are either bare native ids or one explicitly supported OpenRouter
- * namespace plus a compatible family. Catalog families may only gain a numeric
- * version/date suffix; custom names that merely contain a known family fail
- * closed.
- */
-function admissionPriceForModel(modelUsed: string | undefined): Price | undefined {
-	if (!modelUsed || modelUsed !== modelUsed.trim() || modelUsed !== modelUsed.toLowerCase()) {
-		return undefined;
-	}
-	const segments = modelUsed.split('/');
-	if (segments.length > 2 || segments.some((segment) => segment.length === 0)) return undefined;
-	const [namespaceOrModel, namespacedModel] = segments;
-	const modelId = namespacedModel ?? namespaceOrModel;
-	if (!modelId || !/^[a-z0-9][a-z0-9.-]*$/.test(modelId)) return undefined;
-
-	const aliasFamily = ADMISSION_ALIASES[modelId];
-	const match = aliasFamily
-		? PRICING.find((price) => price.prefix === aliasFamily)
-		: PRICING.find((price) => matchesAdmissionFamily(modelId, price.prefix));
-	if (!match) return undefined;
-	if (namespacedModel === undefined) return match;
-
-	const allowedFamilies =
-		ADMISSION_NAMESPACE_FAMILIES[namespaceOrModel as keyof typeof ADMISSION_NAMESPACE_FAMILIES];
-	return allowedFamilies?.some((family) => match.prefix.startsWith(family)) ? match : undefined;
+interface AdmissionModel {
+	readonly modelId: string;
+	readonly pricePrefix: string;
 }
 
-function matchesAdmissionFamily(modelId: string, family: string): boolean {
-	if (modelId === family) return true;
-	if (!modelId.startsWith(`${family}-`)) return false;
-	return /^\d+(?:-\d+){0,2}$/.test(modelId.slice(family.length + 1));
+function admissionModel(modelId: string, pricePrefix = modelId): AdmissionModel {
+	return { modelId, pricePrefix };
+}
+
+/**
+ * Exact model identities eligible for hard-budget admission. This deliberately
+ * excludes the reporting-only generic family rows and all inferred versions.
+ * Aliases reference a PRICING prefix, so list-price values remain single-source.
+ */
+const ADMISSION_MODELS = {
+	'openai-native': [
+		admissionModel('gpt-5.6-luna'),
+		admissionModel('gpt-5.6-terra'),
+		admissionModel('gpt-5.6-sol'),
+		admissionModel('gpt-5.5'),
+		admissionModel('gpt-4o-mini'),
+		admissionModel('gpt-4o'),
+		admissionModel('gpt-4.1-nano'),
+		admissionModel('gpt-4.1-mini'),
+		admissionModel('gpt-4.1'),
+		admissionModel('o4-mini'),
+		admissionModel('o3-mini'),
+	],
+	'anthropic-native': [
+		admissionModel('claude-fable-5'),
+		admissionModel('claude-opus-4-8'),
+		admissionModel('claude-sonnet-5'),
+		admissionModel('claude-sonnet-4-5'),
+		admissionModel('claude-haiku-4-5'),
+		admissionModel('claude-3-5-haiku'),
+		admissionModel('claude-3-haiku'),
+		admissionModel('claude-3-5-sonnet'),
+		admissionModel('claude-3-opus'),
+	],
+	'google-native': [
+		admissionModel('gemini-3.5-flash'),
+		admissionModel('gemini-3.1-flash-lite'),
+		admissionModel('gemini-3.1-pro'),
+		admissionModel('gemini-3.1-pro-preview', 'gemini-3.1-pro'),
+		admissionModel('gemini-2.5-flash-lite'),
+		admissionModel('gemini-2.5-flash'),
+		admissionModel('gemini-2.5-pro'),
+		admissionModel('gemini-2.0-flash-lite'),
+		admissionModel('gemini-2.0-flash'),
+		admissionModel('gemini-1.5-flash-8b'),
+		admissionModel('gemini-1.5-flash'),
+		admissionModel('gemini-1.5-pro'),
+	],
+	openrouter: [
+		admissionModel('anthropic/claude-sonnet-5', 'claude-sonnet-5'),
+		admissionModel('anthropic/claude-opus-4.8', 'claude-opus-4.8'),
+		admissionModel('deepseek/deepseek-v4-flash', 'deepseek-v4-flash'),
+		admissionModel('deepseek/deepseek-v4-pro', 'deepseek-v4-pro'),
+		admissionModel('openai/gpt-5.6-sol', 'gpt-5.6-sol'),
+		admissionModel('openai/gpt-5.6-luna', 'gpt-5.6-luna'),
+		admissionModel('google/gemini-3.5-flash', 'gemini-3.5-flash'),
+		admissionModel('minimax/minimax-m3', 'minimax-m3'),
+		admissionModel('xiaomi/mimo-v2.5-pro', 'mimo-v2.5-pro'),
+		admissionModel('moonshotai/kimi-k2.6', 'kimi-k2.6'),
+	],
+	custom: [],
+} as const satisfies Record<LanguageEndpointProvenance, readonly AdmissionModel[]>;
+
+/**
+ * Admission pricing is intentionally stricter than dashboard reporting. Both
+ * endpoint provenance and model id must exactly match the trusted catalog.
+ */
+function admissionPriceForModel(
+	endpointProvenance: LanguageEndpointProvenance,
+	modelUsed: string | undefined
+): Price | undefined {
+	if (!modelUsed) return undefined;
+	const catalog = ADMISSION_MODELS[endpointProvenance];
+	if (!catalog) return undefined;
+	const admission = catalog.find((candidate) => candidate.modelId === modelUsed);
+	return admission ? PRICING.find((price) => price.prefix === admission.pricePrefix) : undefined;
 }
 
 export interface CostEstimate {
@@ -156,10 +190,11 @@ export function estimateCost(
  * unknown models return undefined instead of using the fallback price.
  */
 export function estimateKnownCostMicrousd(
+	endpointProvenance: LanguageEndpointProvenance,
 	modelUsed: string | undefined,
 	usage: TokenUsage
 ): number | undefined {
-	const price = admissionPriceForModel(modelUsed);
+	const price = admissionPriceForModel(endpointProvenance, modelUsed);
 	if (!price) return undefined;
 	const input = usage.promptTokens * price.inputPerM;
 	const output = usage.completionTokens * price.outputPerM;

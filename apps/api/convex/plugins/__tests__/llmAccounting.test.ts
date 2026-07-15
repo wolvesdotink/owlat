@@ -84,12 +84,20 @@ async function grant(
 	});
 }
 
-async function reserve(t: ReturnType<typeof convexTest>, id: string, amount = 300) {
+async function reserve(
+	t: ReturnType<typeof convexTest>,
+	id: string,
+	amount = 300,
+	modelId = 'gpt-4o-mini',
+	endpointProvenance: 'openai-native' | 'anthropic-native' | 'custom' = 'openai-native'
+) {
 	return t.mutation(internal.plugins.llmAccounting.reserve, {
 		pluginId: 'alpha',
 		reservationId: id,
 		reservedMicrousd: amount,
 		tier: 'fast',
+		modelId,
+		endpointProvenance,
 	});
 }
 
@@ -131,6 +139,10 @@ describe('plugin LLM accounting', () => {
 		await reserve(t, id);
 		await reserve(t, id);
 		await expect(reserve(t, id, 303)).rejects.toThrow('Plugin LLM denied');
+		await expect(reserve(t, id, 300, 'gpt-4o')).rejects.toThrow('Plugin LLM denied');
+		await expect(reserve(t, id, 300, 'claude-opus-4-8', 'anthropic-native')).rejects.toThrow(
+			'Plugin LLM denied'
+		);
 		auth.organizationId = 'tenant-b';
 		await expect(reserve(t, id)).rejects.toThrow('Plugin LLM denied');
 		await t.run(async (ctx) => {
@@ -139,6 +151,23 @@ describe('plugin LLM accounting', () => {
 				chargedMicrousd: 300,
 				admittedCallCount: 1,
 			});
+		});
+	});
+
+	it('rejects untrusted endpoint provenance and provider/model mismatches', async () => {
+		const t = convexTest(schema, modules);
+		await grant(t);
+		await expect(reserve(t, reservationId(25), 300, 'gpt-4o-mini', 'custom')).rejects.toThrow(
+			'Plugin LLM denied'
+		);
+		await expect(
+			reserve(t, reservationId(26), 300, 'gpt-4o-mini', 'anthropic-native')
+		).rejects.toThrow('Plugin LLM denied');
+		await expect(
+			reserve(t, reservationId(27), 300, 'gpt-4o-mini-9999', 'openai-native')
+		).rejects.toThrow('Plugin LLM denied');
+		await t.run(async (ctx) => {
+			expect(await ctx.db.query('pluginLlmReservations').take(1)).toEqual([]);
 		});
 	});
 
@@ -194,6 +223,26 @@ describe('plugin LLM accounting', () => {
 			reservationId: id,
 			modelUsed: 'gpt-4o-mini',
 			tokenUsage: { promptTokens: 100, completionTokens: 100, totalTokens: 1 },
+			attempts: 1,
+		});
+		await t.run(async (ctx) => {
+			expect(await ctx.db.query('pluginLlmDailyUsage').unique()).toMatchObject({
+				chargedMicrousd: 300,
+				actualMicrousd: 0,
+			});
+			expect(await ctx.db.query('llmUsageEvents').take(1)).toEqual([]);
+		});
+	});
+
+	it('retains the full reservation when the provider reports a different model', async () => {
+		const t = convexTest(schema, modules);
+		await grant(t);
+		const id = reservationId(45);
+		await reserve(t, id);
+		await t.mutation(internal.plugins.llmAccounting.settleSuccess, {
+			reservationId: id,
+			modelUsed: 'gpt-4o-mini-9999',
+			tokenUsage: { promptTokens: 100, completionTokens: 100, totalTokens: 200 },
 			attempts: 1,
 		});
 		await t.run(async (ctx) => {

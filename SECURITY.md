@@ -61,7 +61,7 @@ their tests.
 | File-upload validation          | `packages/email-scanner/src/files/`                               | `validateFile`, `isExtensionAllowed`, `isMimeTypeAllowed`                         |
 | CSP / HSTS / cookie headers     | `apps/web/nuxt.config.ts`                                         | `security.headers`, `security.csrf`                                               |
 | Plugin authority + scope        | `apps/api/convex/plugins/authorization.ts`                        | `requireAuthenticatedBundledPlugin`                                               |
-| Plugin LLM spend boundary       | `apps/api/convex/plugins/llm.ts`, `llmAccounting.ts`              | bounded request, atomic fixed-point reservation, conservative settlement           |
+| Plugin LLM spend boundary       | `apps/api/convex/plugins/llm.ts`, `llmAccounting.ts`              | bounded request, exact model + endpoint admission, atomic reservation and conservative settlement  |
 | Plugin audit metadata           | `apps/api/convex/plugins/audit.ts`                                | `recordHostedPluginAudit` allowlist; no content, keys, cursors, secrets, or errors |
 
 ---

@@ -12,10 +12,17 @@
 import { v, type Validator } from 'convex/values';
 import {
 	EMBEDDING_PROVIDER_KINDS,
+	LANGUAGE_ENDPOINT_PROVENANCES,
 	LANGUAGE_PROVIDER_KINDS,
 	type EmbeddingProviderKind,
+	type LanguageEndpointProvenance,
 	type LanguageProviderKind,
 } from './llmProviders/types';
+
+/** Secret-free endpoint identity used by hard-budget admission accounting. */
+export const languageEndpointProvenanceValidator = v.union(
+	...LANGUAGE_ENDPOINT_PROVENANCES.map((provenance) => v.literal(provenance))
+) as unknown as Validator<LanguageEndpointProvenance>;
 
 /**
  * Stored language-provider kind — every registered language adapter (hosted

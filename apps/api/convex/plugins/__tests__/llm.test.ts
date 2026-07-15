@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ActionCtx } from '../../_generated/server';
 import schema from '../../schema';
 import { bindAuthenticatedBundledPluginLlm, PluginLlmError } from '../llm';
-import { resolveLanguageModel } from '../../lib/llmProvider';
+import { resolveLanguageModelWithProvenance } from '../../lib/llmProvider';
 import { runLlmTextWithAttemptMetadata } from '../../lib/llm/dispatch';
 
 const rootGlob = import.meta.glob('../../**/*.*s');
@@ -39,7 +39,7 @@ vi.mock('../../lib/sessionOrganization', async () => ({
 	),
 }));
 vi.mock('../plugins.generated', () => ({ bundledPluginComposition: registry.plugins }));
-vi.mock('../../lib/llmProvider', () => ({ resolveLanguageModel: vi.fn() }));
+vi.mock('../../lib/llmProvider', () => ({ resolveLanguageModelWithProvenance: vi.fn() }));
 vi.mock('../../lib/llm/dispatch', async () => ({
 	...(await vi.importActual('../../lib/llm/dispatch')),
 	runLlmTextWithAttemptMetadata: vi.fn(),
@@ -49,9 +49,13 @@ beforeEach(() => {
 	auth.organizationId = 'tenant';
 	auth.isMember = true;
 	registry.plugins[0]!.manifest.capabilities = ['llm:invoke'];
-	vi.mocked(resolveLanguageModel)
+	vi.mocked(resolveLanguageModelWithProvenance)
 		.mockReset()
-		.mockResolvedValue('gpt-4o-mini' as never);
+		.mockResolvedValue({
+			model: 'gpt-4o-mini' as never,
+			modelId: 'gpt-4o-mini',
+			endpointProvenance: 'openai-native',
+		});
 	vi.mocked(runLlmTextWithAttemptMetadata)
 		.mockReset()
 		.mockResolvedValue({
@@ -90,13 +94,15 @@ describe('hosted plugin LLM service', () => {
 			modelUsed: 'gpt-4o-mini',
 			usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
 		});
-		expect(resolveLanguageModel).toHaveBeenCalledWith(expect.anything(), 'summarize');
+		expect(resolveLanguageModelWithProvenance).toHaveBeenCalledWith(expect.anything(), 'summarize');
 		expect(runLlmTextWithAttemptMetadata).toHaveBeenCalledWith(
 			expect.objectContaining({ prompt: 'hello', maxOutputTokens: 2048 })
 		);
 		await t.run(async (ctx) => {
 			expect(await ctx.db.query('pluginLlmReservations').unique()).toMatchObject({
 				pluginId: 'alpha',
+				modelId: 'gpt-4o-mini',
+				endpointProvenance: 'openai-native',
 				status: 'completed',
 				tier: 'fast',
 			});
@@ -115,25 +121,29 @@ describe('hosted plugin LLM service', () => {
 		await expect(service.generate({ tier: 'capable', prompt: 'secret' })).rejects.toMatchObject({
 			code: 'access_denied',
 		});
-		expect(resolveLanguageModel).not.toHaveBeenCalled();
+		expect(resolveLanguageModelWithProvenance).not.toHaveBeenCalled();
 		expect(runLlmTextWithAttemptMetadata).not.toHaveBeenCalled();
 	});
 
 	it('denies a grant revoked after preflight but before the reservation transaction', async () => {
 		const { t, service } = await setup();
-		vi.mocked(resolveLanguageModel).mockImplementationOnce(async () => {
+		vi.mocked(resolveLanguageModelWithProvenance).mockImplementationOnce(async () => {
 			await t.run(async (ctx) => {
 				const settings = await ctx.db.query('instanceSettings').unique();
 				await ctx.db.patch(settings!._id, {
 					pluginCapabilityGrants: { 'plugin.alpha': { 'llm:invoke': false } },
 				});
 			});
-			return 'gpt-4o-mini' as never;
+			return {
+				model: 'gpt-4o-mini' as never,
+				modelId: 'gpt-4o-mini',
+				endpointProvenance: 'openai-native',
+			};
 		});
 		await expect(service.generate({ tier: 'fast', prompt: 'safe' })).rejects.toMatchObject({
 			code: 'access_denied',
 		});
-		expect(resolveLanguageModel).toHaveBeenCalledTimes(1);
+		expect(resolveLanguageModelWithProvenance).toHaveBeenCalledTimes(1);
 		expect(runLlmTextWithAttemptMetadata).not.toHaveBeenCalled();
 		await t.run(async (ctx) => {
 			expect(await ctx.db.query('pluginLlmReservations').take(1)).toEqual([]);
@@ -160,9 +170,13 @@ describe('hosted plugin LLM service', () => {
 		});
 	});
 
-	it('fails closed before reservation when a custom model embeds a known cheap family', async () => {
+	it('fails closed before reservation for an exact cheap model on a custom endpoint', async () => {
 		const { t, service } = await setup();
-		vi.mocked(resolveLanguageModel).mockResolvedValueOnce('private/gpt-4o-mini-premium' as never);
+		vi.mocked(resolveLanguageModelWithProvenance).mockResolvedValueOnce({
+			model: 'gpt-4o-mini' as never,
+			modelId: 'gpt-4o-mini',
+			endpointProvenance: 'custom',
+		});
 		await expect(service.generate({ tier: 'fast', prompt: 'hello' })).rejects.toMatchObject({
 			code: 'access_denied',
 		});

@@ -4,6 +4,7 @@ import type { Doc } from '../_generated/dataModel';
 import { internalMutation, internalQuery, type MutationCtx } from '../_generated/server';
 import { insertLlmUsage } from '../analytics/llmUsage';
 import type { TokenUsage } from '../agent/steps/types';
+import { languageEndpointProvenanceValidator } from '../lib/aiProviderConfigValidators';
 import { tokenUsageValidator } from '../lib/convexValidators';
 import { MAX_LLM_ATTEMPTS } from '../lib/llm/retryPolicy';
 import { estimateKnownCostMicrousd } from '../lib/llm/pricing';
@@ -33,9 +34,20 @@ export const reserve = internalMutation({
 		reservationId: v.string(),
 		reservedMicrousd: v.number(),
 		tier: v.union(v.literal('fast'), v.literal('capable')),
+		modelId: v.string(),
+		endpointProvenance: languageEndpointProvenanceValidator,
 	},
 	handler: async (ctx, args) => {
 		assertReservationInput(args.reservationId, args.reservedMicrousd);
+		if (
+			estimateKnownCostMicrousd(args.endpointProvenance, args.modelId, {
+				promptTokens: 1,
+				completionTokens: 1,
+				totalTokens: 2,
+			}) === undefined
+		) {
+			throw new Error('Plugin LLM denied');
+		}
 		const scope = await requireAuthenticatedBundledPlugin(ctx, args.pluginId, LLM_INVOKE);
 		const dailyBudgetMicrousd = manifestBudgetMicrousd(scope.manifest.llmBudget?.dailyUsd);
 		if (args.reservedMicrousd > dailyBudgetMicrousd) throw new Error('Plugin LLM denied');
@@ -49,6 +61,8 @@ export const reserve = internalMutation({
 				duplicate.actorUserId === scope.userId &&
 				duplicate.utcDay === utcDay &&
 				duplicate.tier === args.tier &&
+				duplicate.modelId === args.modelId &&
+				duplicate.endpointProvenance === args.endpointProvenance &&
 				duplicate.reservedMicrousd === args.reservedMicrousd
 			) {
 				return { reservationId: args.reservationId, utcDay };
@@ -78,6 +92,8 @@ export const reserve = internalMutation({
 			actorUserId: scope.userId,
 			reservedMicrousd: args.reservedMicrousd,
 			tier: args.tier,
+			modelId: args.modelId,
+			endpointProvenance: args.endpointProvenance,
 			status: 'pending',
 			createdAt: now,
 		});
@@ -142,10 +158,16 @@ export const settleSuccess = internalMutation({
 			completedAt: now,
 		});
 		if (acceptedUsage && cost.isUsageAccounted) {
-			await insertLlmUsage(ctx, `plugin:${reservation.pluginId}`, acceptedUsage, args.modelUsed, {
-				organizationId: reservation.organizationId,
-				pluginId: reservation.pluginId,
-			});
+			await insertLlmUsage(
+				ctx,
+				`plugin:${reservation.pluginId}`,
+				acceptedUsage,
+				reservation.modelId,
+				{
+					organizationId: reservation.organizationId,
+					pluginId: reservation.pluginId,
+				}
+			);
 		}
 		await recordHostedPluginAudit(ctx, auditScope(reservation), 'llm.generate', 'completed', {
 			attempts: args.attempts,
@@ -204,7 +226,14 @@ function successCost(
 	if (!Number.isSafeInteger(perAttempt) || perAttempt < 1 || !usage) {
 		return { charged: reservation.reservedMicrousd, actual: 0, isUsageAccounted: false };
 	}
-	const actual = estimateKnownCostMicrousd(modelUsed, usage);
+	if (modelUsed !== reservation.modelId) {
+		return { charged: reservation.reservedMicrousd, actual: 0, isUsageAccounted: false };
+	}
+	const actual = estimateKnownCostMicrousd(
+		reservation.endpointProvenance,
+		reservation.modelId,
+		usage
+	);
 	if (actual === undefined || actual > perAttempt) {
 		return { charged: reservation.reservedMicrousd, actual: 0, isUsageAccounted: false };
 	}

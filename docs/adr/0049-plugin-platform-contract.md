@@ -156,7 +156,11 @@ daily budget. The host authorizes before resolving tenant provider config, then
 rechecks registration, flag, declaration, operator grant, and budget in the
 same transaction that reserves spend immediately before dispatch. Requests are
 bounded to 64 KiB of UTF-8 input, 32 messages, and 2,048 output tokens. Only
-known models in the shared pricing catalog are admitted.
+exact model identities in a provider-specific admission catalog are accepted.
+The resolver also supplies a secret-free endpoint provenance: native catalog
+pricing is trusted only for the provider's built-in endpoint, while every
+explicit base URL, Azure deployment, compatible/local server, or unknown
+provider fails closed. OpenRouter has its own exact namespaced catalog.
 
 Money enforcement uses integer micro-USD. `chargedMicrousd` is consumed daily
 headroom: pending maximums, ambiguous-failure maximums, and settled successful
@@ -166,8 +170,10 @@ A reservation covers every retry allowed by the shared dispatch policy.
 Success releases unused headroom but retains a maximum for each failed attempt
 before the successful one. Missing or malformed usage, provider failure,
 action crash, or accounting failure retains the conservative reservation
-through that UTC day. This availability tradeoff never reopens spend the
-provider may have billed.
+through that UTC day. The reservation persists its admitted model and endpoint
+provenance; if a provider reports a different model, settlement retains the
+full reservation and records no priced usage. This availability tradeoff never
+reopens spend the provider may have billed.
 
 ### Three execution tiers
 
