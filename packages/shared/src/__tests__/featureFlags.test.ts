@@ -17,6 +17,7 @@ import {
 	isDeliveryProviderKind,
 	isFlagEnabled,
 	isPackEnabled,
+	isPluginFeatureFlagDefinition,
 	needsDeliveryProvider,
 	resolveFlags,
 	SENDING_FLAGS_REQUIRING_DELIVERY,
@@ -253,6 +254,7 @@ describe('featureFlags — plugin namespace', () => {
 	it('registers plugin definitions without changing the core registry', () => {
 		const registry = createFeatureFlagRegistry([pluginFlag]);
 		expect(registry[pluginFlag.key]).toMatchObject(pluginFlag);
+		expect(isPluginFeatureFlagDefinition(registry[pluginFlag.key])).toBe(true);
 		expect(FEATURE_FLAGS).not.toHaveProperty(pluginFlag.key);
 		expect(getFlagsByCategory({ registry }).plugins).toEqual([registry[pluginFlag.key]]);
 	});
@@ -288,14 +290,58 @@ describe('featureFlags — plugin namespace', () => {
 		).toThrow('Invalid plugin feature flag definition');
 	});
 
-	it.each([
-		['missing package metadata', { ...pluginFlag, pluginPackageName: undefined }],
-		['missing capability metadata', { ...pluginFlag, requiredCapabilities: undefined }],
-	] as const)('rejects %s at runtime', (_label, definition) => {
-		expect(() =>
-			createFeatureFlagRegistry([definition as unknown as PluginFeatureFlagDefinition])
-		).toThrow('Invalid plugin feature flag definition');
-	});
+	const inheritedDefinition = Object.create(pluginFlag) as unknown;
+	const accessorDefinition = {
+		...pluginFlag,
+		get label() {
+			return 'Inherited behavior';
+		},
+	};
+	const malformedDefinitions: readonly (readonly [string, unknown])[] = [
+		['null', null],
+		['undefined', undefined],
+		['a string', 'plugin.definition'],
+		['a number', 1],
+		['a boolean', true],
+		['an array', []],
+		['a function', () => pluginFlag],
+		['inherited fields', inheritedDefinition],
+		['an accessor field', accessorDefinition],
+		['a missing category', { ...pluginFlag, category: undefined }],
+		['a non-string category', { ...pluginFlag, category: 1 }],
+		['a missing key', { ...pluginFlag, key: undefined }],
+		['a non-string key', { ...pluginFlag, key: false }],
+		['a missing label', { ...pluginFlag, label: undefined }],
+		['a non-string label', { ...pluginFlag, label: 1 }],
+		['a missing description', { ...pluginFlag, description: undefined }],
+		['a non-string description', { ...pluginFlag, description: false }],
+		['a missing default', { ...pluginFlag, default: undefined }],
+		['a non-boolean default', { ...pluginFlag, default: 'false' }],
+		['a missing package name', { ...pluginFlag, pluginPackageName: undefined }],
+		['a non-string package name', { ...pluginFlag, pluginPackageName: 1 }],
+		['missing capabilities', { ...pluginFlag, requiredCapabilities: undefined }],
+		['non-array capabilities', { ...pluginFlag, requiredCapabilities: 'mail:read' }],
+		['non-array requires', { ...pluginFlag, requires: 'ai' }],
+		['non-string requires', { ...pluginFlag, requires: ['ai', 1] }],
+		['non-array cascadesOff', { ...pluginFlag, cascadesOff: false }],
+		['non-string cascadesOff', { ...pluginFlag, cascadesOff: [{}] }],
+		['non-array requiredEnvVars', { ...pluginFlag, requiredEnvVars: 'TOKEN' }],
+		['non-string requiredEnvVars', { ...pluginFlag, requiredEnvVars: [1] }],
+		['non-array dockerProfiles', { ...pluginFlag, dockerProfiles: true }],
+		['non-string dockerProfiles', { ...pluginFlag, dockerProfiles: [null] }],
+		['a non-boolean hostedOnly', { ...pluginFlag, hostedOnly: 'true' }],
+		['non-string capabilities', { ...pluginFlag, requiredCapabilities: ['mail:read', 1] }],
+	];
+
+	it.each(malformedDefinitions)(
+		'rejects %s with a deterministic runtime error',
+		(_label, value) => {
+			expect(isPluginFeatureFlagDefinition(value)).toBe(false);
+			expect(() =>
+				createFeatureFlagRegistry([value as unknown as PluginFeatureFlagDefinition])
+			).toThrowError(/^Invalid plugin feature flag definition$/);
+		}
+	);
 
 	it('ignores stale and malformed stored plugin keys during resolution', () => {
 		const registry = createFeatureFlagRegistry([pluginFlag]);
