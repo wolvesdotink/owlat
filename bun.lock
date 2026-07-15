@@ -351,6 +351,19 @@
         "vitest": "catalog:",
       },
     },
+    "packages/plugin-host": {
+      "name": "@owlat/plugin-host",
+      "version": "0.2.1",
+      "dependencies": {
+        "@owlat/plugin-kit": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/node": "catalog:",
+        "@vitest/coverage-v8": "catalog:",
+        "typescript": "catalog:",
+        "vitest": "catalog:",
+      },
+    },
     "packages/plugin-kit": {
       "name": "@owlat/plugin-kit",
       "version": "0.2.1",
@@ -980,6 +993,8 @@
     "@owlat/marketing": ["@owlat/marketing@workspace:apps/marketing"],
 
     "@owlat/mta": ["@owlat/mta@workspace:apps/mta"],
+
+    "@owlat/plugin-host": ["@owlat/plugin-host@workspace:packages/plugin-host"],
 
     "@owlat/plugin-kit": ["@owlat/plugin-kit@workspace:packages/plugin-kit"],
 
