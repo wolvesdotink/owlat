@@ -3,12 +3,13 @@ import { promisify } from 'node:util';
 import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { generatePluginComposition } from '../generate';
 
 const temporaryRoots: string[] = [];
 const execFileAsync = promisify(execFile);
-const cliPath = resolve(dirname(new URL(import.meta.url).pathname), '../cli.ts');
+const cliPath = resolve(dirname(fileURLToPath(import.meta.url)), '../cli.ts');
 
 async function createZeroPluginWorkspace(): Promise<string> {
 	const root = await mkdtemp(join(tmpdir(), 'owlat-plugin-generate-'));
@@ -29,6 +30,11 @@ afterEach(async () => {
 });
 
 describe('generated composition freshness', () => {
+	it('resolves encoded file URLs without treating URL paths as filesystem paths', () => {
+		const testPath = join(tmpdir(), 'plugin codegen', 'generate.test.ts');
+		expect(fileURLToPath(pathToFileURL(testPath))).toBe(testPath);
+	});
+
 	it('writes both targets and accepts them in non-writing check mode', async () => {
 		const root = await createZeroPluginWorkspace();
 
