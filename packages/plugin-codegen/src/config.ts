@@ -1,16 +1,23 @@
 import ts from 'typescript';
+import { parsePluginPackageName, type PluginPackageName } from '@owlat/plugin-host';
 import { PluginCodegenError } from './errors';
 
 const MAX_CONFIG_BYTES = 64 * 1024;
 const MAX_BUNDLED_PLUGINS = 128;
-const PACKAGE_NAME = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/;
 
 export interface PluginsConfig {
 	readonly bundledPluginPackages: readonly string[];
 }
 
+export interface ParsedPluginsConfig {
+	readonly bundledPluginPackages: readonly PluginPackageName[];
+}
+
 /** Parse the checked-in config as data, without evaluating arbitrary TypeScript. */
-export function parsePluginsConfig(source: string, fileName = 'plugins.config.ts'): PluginsConfig {
+export function parsePluginsConfig(
+	source: string,
+	fileName = 'plugins.config.ts'
+): ParsedPluginsConfig {
 	if (Buffer.byteLength(source, 'utf8') > MAX_CONFIG_BYTES) {
 		throw configError(`must be no larger than ${MAX_CONFIG_BYTES} bytes`);
 	}
@@ -22,6 +29,16 @@ export function parsePluginsConfig(source: string, fileName = 'plugins.config.ts
 		true,
 		ts.ScriptKind.TS
 	);
+	const [parseDiagnostic] =
+		(sourceFile as ts.SourceFile & { readonly parseDiagnostics?: readonly ts.Diagnostic[] })
+			.parseDiagnostics ?? [];
+	if (parseDiagnostic) {
+		const location = sourceFile.getLineAndCharacterOfPosition(parseDiagnostic.start ?? 0);
+		const detail = ts.flattenDiagnosticMessageText(parseDiagnostic.messageText, ' ');
+		throw configError(
+			`contains invalid TypeScript syntax at ${location.line + 1}:${location.character + 1}: ${detail}`
+		);
+	}
 	let exportExpression: ts.Expression | undefined;
 	for (const statement of sourceFile.statements) {
 		if (ts.isImportDeclaration(statement) && statement.importClause?.isTypeOnly) continue;
@@ -55,14 +72,16 @@ export function parsePluginsConfig(source: string, fileName = 'plugins.config.ts
 		throw configError(`bundledPluginPackages may contain at most ${MAX_BUNDLED_PLUGINS} entries`);
 	}
 
-	const packages: string[] = [];
+	const packages: PluginPackageName[] = [];
 	const seenPackages = new Set<string>();
 	for (const [index, element] of packageArray.elements.entries()) {
 		if (!ts.isStringLiteral(element)) {
 			throw configError(`bundledPluginPackages[${index}] must be a string literal`);
 		}
-		const packageName = element.text;
-		if (!isSafePackageName(packageName)) {
+		let packageName: PluginPackageName;
+		try {
+			packageName = parsePluginPackageName(element.text);
+		} catch {
 			throw configError(
 				`bundledPluginPackages[${index}] must be a lowercase npm package name without a subpath`
 			);
@@ -75,15 +94,6 @@ export function parsePluginsConfig(source: string, fileName = 'plugins.config.ts
 	}
 
 	return Object.freeze({ bundledPluginPackages: Object.freeze(packages) });
-}
-
-export function isSafePackageName(packageName: string): boolean {
-	return (
-		packageName.length <= 214 &&
-		packageName !== '.' &&
-		packageName !== '..' &&
-		PACKAGE_NAME.test(packageName)
-	);
 }
 
 function unwrapTypeOnlyExpressions(expression: ts.Expression): ts.Expression {

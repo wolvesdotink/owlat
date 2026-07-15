@@ -1,39 +1,54 @@
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { loadBundledPlugins, resolvePackageWithBun } from '../packageLoader';
+import { loadBundledPlugins } from '../packageLoader';
 
 const temporaryRoots: string[] = [];
-type TestBunGlobal = typeof globalThis & {
-	Bun?: { resolveSync(specifier: string, parent: string): string };
-};
 
-function resolveTestPackage(packageName: string, workspaceRoot: string): string {
-	return createRequire(join(workspaceRoot, 'package.json')).resolve(packageName);
-}
-
-function loadTestPlugins(workspaceRoot: string, packageNames: readonly string[]) {
-	return loadBundledPlugins(workspaceRoot, packageNames, { resolvePackage: resolveTestPackage });
+interface TestPackage {
+	readonly source?: string;
+	readonly packageJson?: Record<string, unknown>;
+	readonly files?: Readonly<Record<string, string>>;
 }
 
 async function createWorkspace(
 	dependencies: Record<string, string>,
-	modules: Record<string, string> = {}
+	modules: Record<string, string | TestPackage> = {},
+	lockedPackages: readonly string[] = Object.keys(modules)
 ): Promise<string> {
 	const root = await mkdtemp(join(tmpdir(), 'owlat-plugin-codegen-'));
 	temporaryRoots.push(root);
 	await writeFile(join(root, 'package.json'), JSON.stringify({ type: 'module', dependencies }));
-	for (const [packageName, source] of Object.entries(modules)) {
+	await mkdir(join(root, 'node_modules'), { recursive: true });
+	for (const [packageName, definition] of Object.entries(modules)) {
+		const plugin = typeof definition === 'string' ? { source: definition } : definition;
 		const packageRoot = join(root, 'node_modules', ...packageName.split('/'));
 		await mkdir(packageRoot, { recursive: true });
 		await writeFile(
 			join(packageRoot, 'package.json'),
-			JSON.stringify({ name: packageName, type: 'module', exports: './index.js' })
+			JSON.stringify({
+				name: packageName,
+				version: '1.0.0',
+				type: 'module',
+				exports: './index.js',
+				...plugin.packageJson,
+			})
 		);
-		await writeFile(join(packageRoot, 'index.js'), source);
+		await writeFile(join(packageRoot, 'index.js'), plugin.source ?? 'export default {};');
+		for (const [path, source] of Object.entries(plugin.files ?? {})) {
+			await mkdir(dirname(join(packageRoot, path)), { recursive: true });
+			await writeFile(join(packageRoot, path), source);
+		}
 	}
+	const lockEntries = lockedPackages.map(
+		(packageName) =>
+			`    ${JSON.stringify(packageName)}: [${JSON.stringify(`${packageName}@1.0.0`)}, "", {}, "sha512-test"],`
+	);
+	await writeFile(
+		join(root, 'bun.lock'),
+		`{\n  "packages": {\n${lockEntries.join('\n')}\n  }\n}\n`
+	);
 	return root;
 }
 
@@ -44,16 +59,16 @@ afterEach(async () => {
 });
 
 describe('installed plugin loading', () => {
-	it('loads only direct production dependencies and returns host-ordered manifests', async () => {
+	it('loads only direct locked registry dependencies and returns host-ordered manifests', async () => {
 		const root = await createWorkspace(
-			{ 'zebra-plugin': '1.0.0', '@acme/alpha-plugin': '1.0.0' },
+			{ 'zebra-plugin': '1.0.0', '@acme/alpha-plugin': '^1.0.0' },
 			{
 				'zebra-plugin': `export default { id: 'zebra', version: '1.0.0', capabilities: [] };`,
 				'@acme/alpha-plugin': `export default { id: 'alpha', version: '1.0.0', capabilities: ['mail:read'] };`,
 			}
 		);
 
-		const plugins = await loadTestPlugins(root, ['zebra-plugin', '@acme/alpha-plugin']);
+		const plugins = await loadBundledPlugins(root, ['zebra-plugin', '@acme/alpha-plugin']);
 
 		expect(plugins.map((plugin) => plugin.manifest.id)).toEqual(['alpha', 'zebra']);
 	});
@@ -66,32 +81,32 @@ describe('installed plugin loading', () => {
 			}
 		);
 
-		await expect(loadTestPlugins(root, ['mail-plugin'])).rejects.toMatchObject({
+		await expect(loadBundledPlugins(root, ['mail-plugin'])).rejects.toMatchObject({
 			code: 'dependency_missing',
 		});
 	});
 
 	it('rejects a declared package that is not installed', async () => {
 		const root = await createWorkspace({ 'missing-plugin': '1.0.0' });
-		await expect(loadTestPlugins(root, ['missing-plugin'])).rejects.toMatchObject({
+		await expect(loadBundledPlugins(root, ['missing-plugin'])).rejects.toMatchObject({
 			code: 'dependency_missing',
 		});
 	});
 
 	it('rejects invalid and missing default manifests without printing module internals', async () => {
 		const root = await createWorkspace(
-			{ 'invalid-plugin': '1.0.0', 'named-plugin': '1.0.0' },
+			{ 'invalid-plugin': '1.0.0', 'named-plugin': 'latest' },
 			{
 				'invalid-plugin': `export default { id: 'Invalid', secret: process.env.SECRET };`,
 				'named-plugin': `export const manifest = { id: 'named', version: '1.0.0', capabilities: [] };`,
 			}
 		);
 
-		await expect(loadTestPlugins(root, ['invalid-plugin'])).rejects.toMatchObject({
+		await expect(loadBundledPlugins(root, ['invalid-plugin'])).rejects.toMatchObject({
 			code: 'invalid_manifest',
 			message: 'Bundled plugin invalid-plugin does not export a valid default manifest',
 		});
-		await expect(loadTestPlugins(root, ['named-plugin'])).rejects.toMatchObject({
+		await expect(loadBundledPlugins(root, ['named-plugin'])).rejects.toMatchObject({
 			code: 'invalid_manifest',
 		});
 	});
@@ -105,28 +120,163 @@ describe('installed plugin loading', () => {
 			}
 		);
 
-		await expect(loadTestPlugins(root, ['one-plugin', 'two-plugin'])).rejects.toMatchObject({
+		await expect(loadBundledPlugins(root, ['one-plugin', 'two-plugin'])).rejects.toMatchObject({
 			code: 'composition_invalid',
 		});
 	});
 
-	it('uses Bun import-condition resolution from the requested workspace root', () => {
-		const runtime = globalThis as TestBunGlobal;
-		const originalBun = runtime.Bun;
-		const calls: string[][] = [];
-		runtime.Bun = {
-			resolveSync(specifier, parent) {
-				calls.push([specifier, parent]);
-				return '/workspace/node_modules/mail-plugin/import.js';
+	it('rejects runtime-conditional manifest exports before importing any target branch', async () => {
+		const root = await createWorkspace(
+			{ 'conditional-plugin': '1.0.0' },
+			{
+				'conditional-plugin': {
+					packageJson: {
+						exports: {
+							'.': {
+								browser: './browser.js',
+								node: './node.js',
+								bun: './bun.js',
+								import: './import.js',
+								default: './default.js',
+							},
+						},
+					},
+					files: Object.fromEntries(
+						['browser', 'node', 'bun', 'import', 'default'].map((id) => [
+							`${id}.js`,
+							`export default { id: '${id}', version: '1.0.0', capabilities: [] };`,
+						])
+					),
+				},
+			}
+		);
+		let imported = false;
+
+		await expect(
+			loadBundledPlugins(root, ['conditional-plugin'], {
+				loadModule: async () => {
+					imported = true;
+					return {};
+				},
+			})
+		).rejects.toMatchObject({ code: 'conditional_manifest_export' });
+		expect(imported).toBe(false);
+	});
+
+	it.each([
+		'npm:different-plugin@1.0.0',
+		'file:../outside',
+		'../outside',
+		'git+https://example.test/plugin.git',
+		'https://example.test/plugin.tgz',
+		'owner/repository',
+		'workspace:*',
+	])('rejects non-registry dependency provenance: %s', async (dependencySpec) => {
+		const root = await createWorkspace(
+			{ 'mail-plugin': dependencySpec },
+			{
+				'mail-plugin': `export default { id: 'mail', version: '1.0.0', capabilities: [] };`,
+			}
+		);
+		await expect(loadBundledPlugins(root, ['mail-plugin'])).rejects.toMatchObject({
+			code: 'dependency_provenance',
+		});
+	});
+
+	it('rejects mismatched package identity and missing registry integrity', async () => {
+		const mismatched = await createWorkspace(
+			{ 'mail-plugin': '1.0.0' },
+			{
+				'mail-plugin': { packageJson: { name: 'different-plugin' } },
+			}
+		);
+		await expect(loadBundledPlugins(mismatched, ['mail-plugin'])).rejects.toMatchObject({
+			code: 'dependency_provenance',
+		});
+
+		const unlocked = await createWorkspace(
+			{ 'mail-plugin': '1.0.0' },
+			{
+				'mail-plugin': `export default { id: 'mail', version: '1.0.0', capabilities: [] };`,
 			},
-		};
-		try {
-			expect(resolvePackageWithBun('mail-plugin', '/workspace')).toBe(
-				'/workspace/node_modules/mail-plugin/import.js'
-			);
-			expect(calls).toEqual([['mail-plugin', '/workspace']]);
-		} finally {
-			runtime.Bun = originalBun;
-		}
+			[]
+		);
+		await expect(loadBundledPlugins(unlocked, ['mail-plugin'])).rejects.toMatchObject({
+			code: 'dependency_provenance',
+		});
+	});
+
+	it('rejects a package symlink that escapes node_modules', async () => {
+		const outside = await createWorkspace(
+			{},
+			{
+				'outside-plugin': `export default { id: 'outside', version: '1.0.0', capabilities: [] };`,
+			}
+		);
+		const root = await createWorkspace({ 'safe-plugin': '1.0.0' }, {}, ['safe-plugin']);
+		await symlink(
+			join(outside, 'node_modules', 'outside-plugin'),
+			join(root, 'node_modules', 'safe-plugin'),
+			'dir'
+		);
+
+		await expect(loadBundledPlugins(root, ['safe-plugin'])).rejects.toMatchObject({
+			code: 'dependency_provenance',
+		});
+	});
+
+	it('reads a hostile manifest once and composes the immutable first snapshot', async () => {
+		const root = await createWorkspace(
+			{ 'proxy-plugin': '1.0.0' },
+			{
+				'proxy-plugin': `export default { id: 'unused', version: '1.0.0', capabilities: [] };`,
+			}
+		);
+		let ownKeyReads = 0;
+		const firstManifest = { id: 'first', version: '1.0.0', capabilities: [] };
+		const secondManifest = { id: 'second', version: '1.0.0', capabilities: [] };
+		const manifest = new Proxy(firstManifest, {
+			ownKeys() {
+				ownKeyReads += 1;
+				return Reflect.ownKeys(ownKeyReads === 1 ? firstManifest : secondManifest);
+			},
+			getOwnPropertyDescriptor(_target, key) {
+				return Object.getOwnPropertyDescriptor(
+					ownKeyReads === 1 ? firstManifest : secondManifest,
+					key
+				);
+			},
+		});
+
+		const plugins = await loadBundledPlugins(root, ['proxy-plugin'], {
+			loadModule: async () => ({ default: manifest }),
+		});
+
+		expect(plugins[0]?.manifest.id).toBe('first');
+		expect(ownKeyReads).toBe(1);
+	});
+
+	it('never invokes an accessor default export and keeps the error package-attributed', async () => {
+		const root = await createWorkspace(
+			{ 'accessor-plugin': '1.0.0' },
+			{
+				'accessor-plugin': `export default { id: 'unused', version: '1.0.0', capabilities: [] };`,
+			}
+		);
+		let getterCalls = 0;
+		const loadedModule = Object.defineProperty({}, 'default', {
+			get() {
+				getterCalls += 1;
+				return { id: 'unsafe', version: '1.0.0', capabilities: [] };
+			},
+		});
+
+		await expect(
+			loadBundledPlugins(root, ['accessor-plugin'], { loadModule: async () => loadedModule })
+		).rejects.toMatchObject({
+			code: 'invalid_manifest',
+			message: 'Bundled plugin accessor-plugin does not export a valid default manifest',
+		});
+		expect(getterCalls).toBe(0);
 	});
 });

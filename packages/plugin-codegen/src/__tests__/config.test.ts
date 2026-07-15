@@ -15,6 +15,17 @@ describe('plugins config parsing', () => {
 		});
 	});
 
+	it('allows comments, parentheses, satisfies, and valid string escapes', () => {
+		const source = `
+      import type { PluginsConfig } from '@owlat/plugin-codegen';
+      /* static membership only */
+      export default ({
+        bundledPluginPackages: ['\\u006dail-plugin'], // mail-plugin
+      } satisfies PluginsConfig);
+    `;
+		expect(parsePluginsConfig(source).bundledPluginPackages).toEqual(['mail-plugin']);
+	});
+
 	it.each([
 		[
 			'executable statements',
@@ -30,6 +41,18 @@ describe('plugins config parsing', () => {
 		['package subpaths', `export default { bundledPluginPackages: ['mail-plugin/manifest'] };`],
 		['path traversal', `export default { bundledPluginPackages: ['../mail-plugin'] };`],
 		['uppercase package names', `export default { bundledPluginPackages: ['MailPlugin'] };`],
+		['truncated config syntax', `export default { bundledPluginPackages: ['mail-plugin']`],
+		['unterminated package literals', `export default { bundledPluginPackages: ['mail-plugin] };`],
+		['truncated arrays', `export default { bundledPluginPackages: ['mail-plugin' };`],
+		['recovery semicolons', `export default { bundledPluginPackages: ['mail-plugin';] };`],
+		['recovery commas', `export default { bundledPluginPackages: ['mail-plugin',,] };`],
+		['unterminated comments', `export default { bundledPluginPackages: [] }; /*`],
+		['unterminated templates', 'export default { bundledPluginPackages: [`mail-plugin] };'],
+		['invalid escapes', `export default { bundledPluginPackages: ['\\u{110000}'] };`],
+		[
+			'multiple exports',
+			`export default { bundledPluginPackages: [] }; export default { bundledPluginPackages: [] };`,
+		],
 	] as const)('rejects %s', (_label, source) => {
 		expect(() => parsePluginsConfig(source)).toThrow('Invalid plugins.config.ts');
 	});

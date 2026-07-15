@@ -45,6 +45,17 @@ describe('bundled plugin composition', () => {
 		).toThrow('Invalid plugin manifest');
 	});
 
+	it('rejects unsafe primitive package names at the host boundary', () => {
+		expect(() =>
+			composeBundledPlugins([
+				{
+					packageName: `safe-package';\nconsole.error('INJECTED');//`,
+					manifest: manifest('safe'),
+				},
+			])
+		).toThrow('Invalid bundled plugin package name');
+	});
+
 	it('bounds composition work', () => {
 		const sources = Array.from({ length: 129 }, (_, index) => ({
 			packageName: `example-${index}`,

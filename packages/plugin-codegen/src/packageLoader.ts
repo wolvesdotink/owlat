@@ -1,24 +1,18 @@
-import { readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
-import { join } from 'node:path';
 import {
-	composeBundledPlugins,
+	composeValidatedBundledPlugins,
+	parsePluginPackageName,
 	PluginCompositionError,
 	type BundledPlugin,
+	type ValidatedBundledPluginSource,
 } from '@owlat/plugin-host';
 import { parsePluginManifest } from '@owlat/plugin-kit';
 import { PluginCodegenError } from './errors';
+import { resolveVerifiedPluginEntry } from './packageProvenance';
 
-interface WorkspacePackageJson {
-	readonly dependencies?: Record<string, unknown>;
-	readonly optionalDependencies?: Record<string, unknown>;
-}
-
-type ResolvePackage = (packageName: string, workspaceRoot: string) => string;
 type LoadModule = (resolvedEntry: string) => Promise<unknown>;
 
 export interface PackageLoadingOptions {
-	readonly resolvePackage?: ResolvePackage;
 	readonly loadModule?: LoadModule;
 }
 
@@ -27,30 +21,22 @@ export async function loadBundledPlugins(
 	packageNames: readonly string[],
 	options: PackageLoadingOptions = {}
 ): Promise<readonly BundledPlugin[]> {
-	const workspacePackageJson = await readWorkspacePackageJson(workspaceRoot);
-	const resolvePackage = options.resolvePackage ?? resolvePackageWithBun;
 	const loadModule = options.loadModule ?? importModule;
-	const sources = [];
+	const sources: ValidatedBundledPluginSource[] = [];
 
-	for (const packageName of packageNames) {
-		if (!isProductionDependency(workspacePackageJson, packageName)) {
-			throw new PluginCodegenError(
-				'dependency_missing',
-				`Bundled plugin ${packageName} must be installed as a root dependency or optionalDependency`
-			);
-		}
-
-		let resolvedEntry: string;
+	for (const packageNameInput of packageNames) {
+		let packageName;
 		try {
-			resolvedEntry = resolvePackage(packageName, workspaceRoot);
+			packageName = parsePluginPackageName(packageNameInput);
 		} catch (cause) {
 			throw new PluginCodegenError(
-				'dependency_missing',
-				`Bundled plugin ${packageName} is declared but not installed`,
+				'dependency_provenance',
+				'Bundled plugin configuration contains an invalid package name',
 				[],
 				{ cause }
 			);
 		}
+		const resolvedEntry = await resolveVerifiedPluginEntry(workspaceRoot, packageName);
 
 		let loadedModule: unknown;
 		try {
@@ -64,9 +50,9 @@ export async function loadBundledPlugins(
 			);
 		}
 
-		const manifest = readDefaultExport(loadedModule);
+		let manifest;
 		try {
-			parsePluginManifest(manifest);
+			manifest = parsePluginManifest(readDefaultExport(loadedModule));
 		} catch (cause) {
 			throw new PluginCodegenError(
 				'invalid_manifest',
@@ -79,7 +65,7 @@ export async function loadBundledPlugins(
 	}
 
 	try {
-		return composeBundledPlugins(sources);
+		return composeValidatedBundledPlugins(sources);
 	} catch (cause) {
 		if (cause instanceof PluginCompositionError) {
 			throw new PluginCodegenError('composition_invalid', cause.message, [], { cause });
@@ -88,45 +74,10 @@ export async function loadBundledPlugins(
 	}
 }
 
-/** Match the ESM import condition used by the generated Convex and Nuxt modules. */
-export function resolvePackageWithBun(packageName: string, workspaceRoot: string): string {
-	const bun = (
-		globalThis as typeof globalThis & {
-			Bun?: { resolveSync(specifier: string, parent: string): string };
-		}
-	).Bun;
-	if (!bun) {
-		throw new PluginCodegenError('workspace_not_found', 'Bundled plugin codegen must run with Bun');
-	}
-	return bun.resolveSync(packageName, workspaceRoot);
-}
-
-async function readWorkspacePackageJson(workspaceRoot: string): Promise<WorkspacePackageJson> {
-	try {
-		const source = await readFile(join(workspaceRoot, 'package.json'), 'utf8');
-		const value: unknown = JSON.parse(source);
-		if (!isRecord(value)) throw new Error('package.json must contain an object');
-		return value as WorkspacePackageJson;
-	} catch (cause) {
-		throw new PluginCodegenError(
-			'workspace_not_found',
-			'Cannot read the workspace package.json',
-			[],
-			{ cause }
-		);
-	}
-}
-
-function isProductionDependency(packageJson: WorkspacePackageJson, packageName: string): boolean {
-	return (
-		Object.hasOwn(packageJson.dependencies ?? {}, packageName) ||
-		Object.hasOwn(packageJson.optionalDependencies ?? {}, packageName)
-	);
-}
-
 function readDefaultExport(loadedModule: unknown): unknown {
-	if (!isRecord(loadedModule) || !Object.hasOwn(loadedModule, 'default')) return undefined;
-	return loadedModule['default'];
+	if (!isRecord(loadedModule)) return undefined;
+	const descriptor = Object.getOwnPropertyDescriptor(loadedModule, 'default');
+	return descriptor && 'value' in descriptor ? descriptor.value : undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

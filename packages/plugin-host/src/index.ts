@@ -1,7 +1,16 @@
 export { orderHostedContributions } from './contributions';
 export type { HostedContribution } from './contributions';
-export { composeBundledPlugins, PluginCompositionError } from './composition';
-export type { BundledPlugin, BundledPluginSource, PluginCompositionErrorCode } from './composition';
+export {
+	composeBundledPlugins,
+	composeValidatedBundledPlugins,
+	PluginCompositionError,
+} from './composition';
+export type {
+	BundledPlugin,
+	BundledPluginSource,
+	PluginCompositionErrorCode,
+	ValidatedBundledPluginSource,
+} from './composition';
 export { PluginHostError } from './errors';
 export type { PluginHostErrorCode, PluginHostErrorDetails } from './errors';
 export { runWithPluginFeatureFlag } from './featureFlags';
@@ -18,5 +27,7 @@ export { createPluginHost } from './host';
 export type { CreatePluginHostOptions, PluginHost } from './host';
 export { createPluginPermissionService } from './permissions';
 export type { PluginPermissionPolicy } from './permissions';
+export { isPluginPackageName, parsePluginPackageName, PluginPackageNameError } from './packageName';
+export type { PluginPackageName } from './packageName';
 export { applyPluginUntrustedTextPolicy } from './untrustedText';
 export type { PluginUntrustedTextPolicy } from './untrustedText';
