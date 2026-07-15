@@ -11,9 +11,10 @@
  * Model ids are free-text and provider-prefixed — e.g. `anthropic/claude-opus-4.8`,
  * `deepseek/deepseek-v4-flash` — so there is no fixed `defaultModels` catalog to price
  * deterministically. `listModels` hits OpenRouter's public `/models` endpoint so
- * a settings UI can populate a picker. Pricing for OpenRouter ids degrades
- * gracefully: the usage cost table matches on the embedded upstream id via its
- * `includes` fallback, and an unmatched id is flagged `estimated` — never a throw.
+ * a settings UI can populate a picker. Dashboard reporting degrades gracefully:
+ * the usage cost table matches on the embedded upstream id and flags an
+ * unmatched id as estimated. Hard-budget plugin calls are stricter and admit
+ * only exact ids from the curated OpenRouter catalog.
  *
  * The client is memoized per `(baseUrl, key-fingerprint)`; the cache key stores
  * only a non-reversible hash of the key, never a slice of the raw secret.

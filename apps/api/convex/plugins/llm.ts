@@ -7,12 +7,11 @@ import {
 	type PluginLlmGenerateResult,
 	type PluginLlmService,
 } from '@owlat/plugin-kit';
-import type { LanguageModel } from 'ai';
 import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
 import { MAX_LLM_ATTEMPTS, runLlmTextWithAttemptMetadata } from '../lib/llm/dispatch';
 import { estimateKnownCostMicrousd } from '../lib/llm/pricing';
-import { resolveLanguageModel } from '../lib/llmProvider';
+import { resolveLanguageModelWithProvenance } from '../lib/llmProvider';
 import { PLUGIN_LLM_MAX_OUTPUT_TOKENS, validatePluginLlmRequest } from './llmRequest';
 
 export type PluginLlmErrorCode =
@@ -64,14 +63,15 @@ export function bindAuthenticatedBundledPluginLlm(
 				throw new PluginLlmError('access_denied');
 			}
 
-			let model: LanguageModel;
-			let modelUsed: string | undefined;
+			let resolvedModel: Awaited<ReturnType<typeof resolveLanguageModelWithProvenance>>;
 			let perAttemptMicrousd: number;
 			try {
-				model = await resolveLanguageModel(ctx, request.tier === 'fast' ? 'summarize' : 'draft');
-				modelUsed = typeof model === 'string' ? model : model.modelId;
+				resolvedModel = await resolveLanguageModelWithProvenance(
+					ctx,
+					request.tier === 'fast' ? 'summarize' : 'draft'
+				);
 				perAttemptMicrousd =
-					estimateKnownCostMicrousd(modelUsed, {
+					estimateKnownCostMicrousd(resolvedModel.endpointProvenance, resolvedModel.modelId, {
 						promptTokens: request.inputTokensUpperBound,
 						completionTokens: PLUGIN_LLM_MAX_OUTPUT_TOKENS,
 						totalTokens: request.inputTokensUpperBound + PLUGIN_LLM_MAX_OUTPUT_TOKENS,
@@ -94,6 +94,8 @@ export function bindAuthenticatedBundledPluginLlm(
 					reservationId,
 					reservedMicrousd,
 					tier: request.tier,
+					modelId: resolvedModel.modelId,
+					endpointProvenance: resolvedModel.endpointProvenance,
 				});
 			} catch {
 				await recordDenied(ctx, pluginId);
@@ -103,7 +105,7 @@ export function bindAuthenticatedBundledPluginLlm(
 			let dispatched;
 			try {
 				dispatched = await runLlmTextWithAttemptMetadata({
-					model,
+					model: resolvedModel.model,
 					...request.dispatchInput,
 					maxOutputTokens: PLUGIN_LLM_MAX_OUTPUT_TOKENS,
 				});

@@ -59,6 +59,7 @@ import { CURRENT_EMBEDDING_MODEL, EMBEDDING_DIMENSIONS } from './constants';
 import {
 	embeddingProviderFor,
 	languageProviderFor,
+	type LanguageEndpointProvenance,
 	type LanguageProviderKind,
 	type ProviderClientConfig,
 } from './llmProviders';
@@ -76,6 +77,7 @@ export type LLMTier = 'fast' | 'capable';
 /** The resolved language plane — kind + secret-bearing client + per-tier models. */
 export interface ResolvedLanguagePlane {
 	readonly kind: LanguageProviderKind;
+	readonly endpointProvenance: LanguageEndpointProvenance;
 	/** Decrypted client config (apiKey present only for hosted providers). */
 	readonly clientConfig: ProviderClientConfig;
 	readonly models: { readonly fast: string; readonly capable: string };
@@ -106,6 +108,13 @@ export interface ResolvedProviderConfig {
 	readonly updatedAt?: number;
 }
 
+/** Model plus the secret-free endpoint identity required for hard-budget pricing. */
+export interface ResolvedLanguageModel {
+	readonly model: LanguageModel;
+	readonly modelId: string;
+	readonly endpointProvenance: LanguageEndpointProvenance;
+}
+
 // The default embedding model is the one stamped on rows as provenance
 // (CURRENT_EMBEDDING_MODEL). Single-sourcing it here keeps the resolved model
 // and the stamped model from drifting, preserving the schema's "re-embed when
@@ -132,6 +141,39 @@ function resolveBaseURL(): string | undefined {
 			return 'http://ollama:11434/v1';
 		default:
 			return undefined;
+	}
+}
+
+function envLanguageEndpointProvenance(): LanguageEndpointProvenance {
+	if (getOptional('LLM_BASE_URL')) return 'custom';
+	switch (getOptional('LLM_PROVIDER')) {
+		case undefined:
+		case 'openai':
+			return 'openai-native';
+		case 'openrouter':
+			return 'openrouter';
+		default:
+			return 'custom';
+	}
+}
+
+function storedLanguageEndpointProvenance(
+	kind: LanguageProviderKind,
+	explicitBaseUrl: string | undefined
+): LanguageEndpointProvenance {
+	if (explicitBaseUrl !== undefined) return 'custom';
+	switch (kind) {
+		case 'openai':
+			return 'openai-native';
+		case 'anthropic':
+			return 'anthropic-native';
+		case 'google':
+			return 'google-native';
+		case 'openrouter':
+			return 'openrouter';
+		case 'azure':
+		case 'openaiCompatible':
+			return 'custom';
 	}
 }
 
@@ -199,6 +241,7 @@ export function resolveEnvProviderConfig(): ResolvedProviderConfig {
 		source: 'env',
 		language: {
 			kind: ENV_LANGUAGE_KIND,
+			endpointProvenance: envLanguageEndpointProvenance(),
 			clientConfig,
 			models: { fast: modelIdForTier('fast'), capable: modelIdForTier('capable') },
 		},
@@ -227,6 +270,10 @@ export function buildStoredProviderConfig(
 		updatedAt: row.updatedAt,
 		language: {
 			kind: row.languageProviderKind,
+			endpointProvenance: storedLanguageEndpointProvenance(
+				row.languageProviderKind,
+				row.languageBaseUrl
+			),
 			clientConfig: { apiKey: languageKey, baseUrl: row.languageBaseUrl ?? adapter.defaultBaseUrl },
 			models: { fast: row.modelFast, capable: row.modelCapable },
 		},
@@ -341,10 +388,29 @@ export function __resetAiConfigCacheForTests(): void {
 	configCache = null;
 }
 
-/** Build the AI-SDK language model for a resolved config + tier via the registry. */
-function buildLanguageModelFromConfig(cfg: ResolvedProviderConfig, tier: LLMTier): LanguageModel {
+/** Build a model together with the trusted, secret-free resolution metadata. */
+function resolveLanguageModelFromConfig(
+	cfg: ResolvedProviderConfig,
+	tier: LLMTier
+): ResolvedLanguageModel {
 	const modelId = tier === 'fast' ? cfg.language.models.fast : cfg.language.models.capable;
-	return languageProviderFor(cfg.language.kind).buildChatModel(cfg.language.clientConfig, modelId);
+	return Object.freeze({
+		model: languageProviderFor(cfg.language.kind).buildChatModel(
+			cfg.language.clientConfig,
+			modelId
+		),
+		modelId,
+		endpointProvenance: cfg.language.endpointProvenance,
+	});
+}
+
+/** Resolve a language model with endpoint identity for hard-budget consumers. */
+export async function resolveLanguageModelWithProvenance(
+	ctx: ActionCtx,
+	task: LLMTask = 'draft'
+): Promise<ResolvedLanguageModel> {
+	const cfg = await resolveAiConfig(ctx);
+	return resolveLanguageModelFromConfig(cfg, taskTier(task));
 }
 
 /** Resolve the language model for a given task (plugs into the AI SDK helpers). */
@@ -352,8 +418,7 @@ export async function resolveLanguageModel(
 	ctx: ActionCtx,
 	task: LLMTask = 'draft'
 ): Promise<LanguageModel> {
-	const cfg = await resolveAiConfig(ctx);
-	return buildLanguageModelFromConfig(cfg, taskTier(task));
+	return (await resolveLanguageModelWithProvenance(ctx, task)).model;
 }
 
 /**
@@ -374,7 +439,7 @@ export async function resolveLanguageModelForUserText(
 		getOptional('LLM_COMPLEXITY_ROUTING') === '1' &&
 		taskTier(task) === 'capable' &&
 		isTrivialUserText(userText);
-	return buildLanguageModelFromConfig(cfg, downgrade ? 'fast' : taskTier(task));
+	return resolveLanguageModelFromConfig(cfg, downgrade ? 'fast' : taskTier(task)).model;
 }
 
 /**
@@ -395,7 +460,7 @@ export async function resolveLanguageModelForClassifiedDraft(
 	const cfg = await resolveAiConfig(ctx);
 	const downgrade =
 		getOptional('LLM_COMPLEXITY_ROUTING') === '1' && isTrivialClassifiedMessage(signals);
-	return buildLanguageModelFromConfig(cfg, downgrade ? 'fast' : 'capable');
+	return resolveLanguageModelFromConfig(cfg, downgrade ? 'fast' : 'capable').model;
 }
 
 // Known embedding models and their native output width. Used to fail fast when

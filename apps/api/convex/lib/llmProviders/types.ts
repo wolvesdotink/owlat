@@ -43,6 +43,21 @@ export const LANGUAGE_PROVIDER_KINDS = [
 export type LanguageProviderKind = (typeof LANGUAGE_PROVIDER_KINDS)[number];
 
 /**
+ * Secret-free identity of the endpoint that will receive a language request.
+ * Native identities are assigned only when the registered provider uses its
+ * built-in endpoint. Any explicit base URL, deployment alias, local server, or
+ * unrecognized env provider is `custom` and cannot use list-price admission.
+ */
+export const LANGUAGE_ENDPOINT_PROVENANCES = [
+	'openai-native',
+	'anthropic-native',
+	'google-native',
+	'openrouter',
+	'custom',
+] as const;
+export type LanguageEndpointProvenance = (typeof LANGUAGE_ENDPOINT_PROVENANCES)[number];
+
+/**
  * The embedding provider kinds. The embedding plane is LOCAL BY DEFAULT so
  * retrieval works under ANY language choice (incl. Anthropic, which has no
  * embeddings API):
