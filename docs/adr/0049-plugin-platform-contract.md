@@ -118,6 +118,27 @@ keeps the contract usable across the three execution tiers and leaves tenant
 isolation, spend attribution, scrubbing, quotas, and audit enforcement with the
 host.
 
+### Component and storage isolation
+
+A bundled manifest declares a condition-independent Convex component package
+export as data. Codegen verifies that installed export and emits a static
+`app.use` registration under an injective `plugin_<id>` namespace. Installing
+or removing a component therefore changes the checked-in composition and
+requires a rebuild; no backend module is loaded dynamically.
+
+The host-mediated JSON KV service is a separate boundary for connected code.
+Its methods accept keys and values, never tenant or plugin scope. The host binds
+the service to the authenticated organization and validated registered plugin,
+then rechecks the plugin flag and exact `plugin-storage:read` or
+`plugin-storage:write` grant for every operation. Entries are indexed by
+organization, plugin, and key; canonical versioned JSON and UTF-8 keys are
+bounded, paginated cursors are authenticated-encrypted and scope-bound, and
+exact entry/byte quota counters update in the same Convex transaction as each
+write. Because access cannot be enabled or revoked honestly without a flag,
+manifest validation requires an explicit flag whenever either plugin-storage
+capability is declared; flags remain optional without storage. Tier-2 API key
+and HTTP surfaces remain deferred to their dedicated changes.
+
 ### Three execution tiers
 
 1. **Bundled plugins** are operator-installed packages composed at build time.
