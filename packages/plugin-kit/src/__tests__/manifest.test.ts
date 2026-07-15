@@ -3,6 +3,7 @@ import {
 	definePlugin,
 	isPluginManifest,
 	parsePluginManifest,
+	PLUGIN_CONTRIBUTION_KINDS,
 	PluginManifestError,
 	validatePluginManifest,
 } from '../index';
@@ -85,6 +86,18 @@ describe('plugin manifest validation', () => {
 
 		expect(result.ok).toBe(false);
 		if (!result.ok) expect(result.issues.map((issue) => issue.path)).toContain(expectedPath);
+	});
+
+	it('accepts every contribution kind in the shared catalog', () => {
+		for (const kind of PLUGIN_CONTRIBUTION_KINDS) {
+			expect(
+				validatePluginManifest({
+					...validManifest(),
+					contributes: { [kind]: [] },
+				}).ok,
+				kind
+			).toBe(true);
+		}
 	});
 
 	it.each([

@@ -1,5 +1,5 @@
-import { PLUGIN_CONTRIBUTION_KINDS } from './contributions';
-import type { PluginManifestIssue } from './manifest';
+import { isPluginContributionKind } from './contributions';
+import { addManifestIssue, type PluginManifestIssue } from './manifestIssues';
 
 // Manifests are static declarations: these limits leave ample composition room
 // while bounding validation work at the public `unknown` input boundary.
@@ -9,7 +9,6 @@ const MAX_CONTRIBUTIONS_PER_KIND = 256;
 const MAX_ARRAY_LENGTH = 0xffff_ffff;
 export const INVALID_SCHEMA_ARRAY = Object.freeze({ invalidSchemaArray: true });
 
-const CONTRIBUTION_KINDS = new Set<string>(PLUGIN_CONTRIBUTION_KINDS);
 type SnapshotDataValue = (key: PropertyKey, value: unknown) => unknown;
 
 /** Capture every schema-owned input descriptor once before validating the immutable result. */
@@ -32,7 +31,7 @@ export function snapshotManifestInput(value: unknown, issues: PluginManifestIssu
 
 function snapshotContributions(value: unknown, issues: PluginManifestIssue[]): unknown {
 	return snapshotRecord(value, (key, propertyValue) =>
-		typeof key === 'string' && CONTRIBUTION_KINDS.has(key)
+		typeof key === 'string' && isPluginContributionKind(key)
 			? snapshotArray(propertyValue, `$.contributes.${key}`, MAX_CONTRIBUTIONS_PER_KIND, issues)
 			: propertyValue
 	);
@@ -73,11 +72,11 @@ function snapshotArray(
 
 	const lengthDescriptor = Object.getOwnPropertyDescriptor(value, 'length');
 	if (!lengthDescriptor) {
-		addIssue(issues, 'missing', `${path}.length`, 'is required');
+		addManifestIssue(issues, 'missing', `${path}.length`, 'is required');
 		return INVALID_SCHEMA_ARRAY;
 	}
 	if (!('value' in lengthDescriptor)) {
-		addIssue(issues, 'accessor_not_allowed', `${path}.length`, 'must be a data property');
+		addManifestIssue(issues, 'accessor_not_allowed', `${path}.length`, 'must be a data property');
 		return INVALID_SCHEMA_ARRAY;
 	}
 	const length = lengthDescriptor.value;
@@ -87,11 +86,16 @@ function snapshotArray(
 		length < 0 ||
 		length > MAX_ARRAY_LENGTH
 	) {
-		addIssue(issues, 'invalid_type', `${path}.length`, 'must be an unsigned 32-bit integer');
+		addManifestIssue(
+			issues,
+			'invalid_type',
+			`${path}.length`,
+			'must be an unsigned 32-bit integer'
+		);
 		return INVALID_SCHEMA_ARRAY;
 	}
 	if (length > maximumItems) {
-		addIssue(issues, 'too_many_items', path, `must contain at most ${maximumItems} items`);
+		addManifestIssue(issues, 'too_many_items', path, `must contain at most ${maximumItems} items`);
 		return INVALID_SCHEMA_ARRAY;
 	}
 
@@ -104,7 +108,7 @@ function snapshotArray(
 		if (!descriptor) continue;
 		if (typeof key === 'string' && isArrayIndexAtOrBeyondLength(key, length)) {
 			if (!reportedOutOfRangeIndex) {
-				addIssue(
+				addManifestIssue(
 					issues,
 					'unknown_field',
 					`${path}[${key}]`,
@@ -134,13 +138,4 @@ function captureOwnPropertyDescriptors(
 		if (descriptor) descriptors.push([key, descriptor]);
 	}
 	return descriptors;
-}
-
-function addIssue(
-	issues: PluginManifestIssue[],
-	code: PluginManifestIssue['code'],
-	path: string,
-	message: string
-): void {
-	issues.push({ code, path, message });
 }
