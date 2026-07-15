@@ -18,7 +18,8 @@ import { z } from 'zod';
 const generateTextMock = vi.fn();
 const generateObjectMock = vi.fn();
 
-vi.mock('ai', () => ({
+vi.mock('ai', async () => ({
+	...(await vi.importActual('ai')),
 	generateText: (args: unknown) => generateTextMock(args),
 	generateObject: (args: unknown) => generateObjectMock(args),
 }));
@@ -73,7 +74,7 @@ describe('normalizeUsage', () => {
 });
 
 describe('runLlmText input discriminator', () => {
-	it('passes `messages` through to the SDK and returns normalized usage + model', async () => {
+	it('passes `messages` through to the SDK and returns normalized usage', async () => {
 		generateTextMock.mockResolvedValueOnce({
 			text: 'hello',
 			usage: { inputTokens: 11, outputTokens: 22, totalTokens: 33 },
@@ -103,7 +104,7 @@ describe('runLlmText input discriminator', () => {
 		expect(result).toEqual({
 			text: 'hello',
 			tokenUsage: { promptTokens: 11, completionTokens: 22, totalTokens: 33 },
-			modelUsed: 'fake-model-id',
+			modelUsed: undefined,
 		});
 	});
 
@@ -128,11 +129,14 @@ describe('runLlmText input discriminator', () => {
 			completionTokens: 10,
 			totalTokens: 15,
 		});
-		expect(result.modelUsed).toBe('fake-model-id');
+		expect(result.modelUsed).toBeUndefined();
 	});
 
 	it('passes `{ prompt, system }` through to the SDK', async () => {
-		generateTextMock.mockResolvedValueOnce({ text: 'ok', usage: undefined });
+		generateTextMock.mockResolvedValueOnce({
+			text: 'ok',
+			usage: undefined,
+		});
 
 		const result = await runLlmText({
 			model: fakeModel,
@@ -146,18 +150,21 @@ describe('runLlmText input discriminator', () => {
 		expect(sdkArgs).not.toHaveProperty('messages');
 		expect(result.text).toBe('ok');
 		expect(result.tokenUsage).toBeUndefined();
-		expect(result.modelUsed).toBe('fake-model-id');
+		expect(result.modelUsed).toBeUndefined();
 	});
 
-	it('resolves modelUsed from a string model id', async () => {
-		generateTextMock.mockResolvedValueOnce({ text: '', usage: undefined });
+	it('does not invent provider identity for a string model reference', async () => {
+		generateTextMock.mockResolvedValueOnce({
+			text: '',
+			usage: undefined,
+		});
 
 		const result = await runLlmText({
 			model: 'string-model-id' as unknown as Parameters<typeof runLlmText>[0]['model'],
 			prompt: 'hi',
 		});
 
-		expect(result.modelUsed).toBe('string-model-id');
+		expect(result.modelUsed).toBeUndefined();
 	});
 });
 

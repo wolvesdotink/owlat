@@ -1,10 +1,11 @@
 import { convexTest } from 'convex-test';
+import { MockLanguageModelV3 } from 'ai/test';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ActionCtx } from '../../_generated/server';
 import schema from '../../schema';
 import { bindAuthenticatedBundledPluginLlm, PluginLlmError } from '../llm';
 import { resolveLanguageModelWithProvenance } from '../../lib/llmProvider';
-import { runLlmTextWithAttemptMetadata } from '../../lib/llm/dispatch';
+import { providerGenerationResult } from '../../lib/llm/__tests__/providerModel.testlib';
 
 const rootGlob = import.meta.glob('../../**/*.*s');
 const pluginGlob = Object.fromEntries(
@@ -15,6 +16,7 @@ const pluginGlob = Object.fromEntries(
 );
 const modules = { ...rootGlob, ...pluginGlob };
 const auth = vi.hoisted(() => ({ organizationId: 'tenant', isMember: true }));
+const providerGenerate = vi.fn();
 const registry = vi.hoisted(() => ({
 	plugins: [
 		{
@@ -40,10 +42,6 @@ vi.mock('../../lib/sessionOrganization', async () => ({
 }));
 vi.mock('../plugins.generated', () => ({ bundledPluginComposition: registry.plugins }));
 vi.mock('../../lib/llmProvider', () => ({ resolveLanguageModelWithProvenance: vi.fn() }));
-vi.mock('../../lib/llm/dispatch', async () => ({
-	...(await vi.importActual('../../lib/llm/dispatch')),
-	runLlmTextWithAttemptMetadata: vi.fn(),
-}));
 
 beforeEach(() => {
 	auth.organizationId = 'tenant';
@@ -52,20 +50,16 @@ beforeEach(() => {
 	vi.mocked(resolveLanguageModelWithProvenance)
 		.mockReset()
 		.mockResolvedValue({
-			model: 'gpt-4o-mini' as never,
+			model: new MockLanguageModelV3({
+				modelId: 'gpt-4o-mini',
+				doGenerate: providerGenerate,
+			}),
 			modelId: 'gpt-4o-mini',
 			endpointProvenance: 'openai-native',
 		});
-	vi.mocked(runLlmTextWithAttemptMetadata)
+	providerGenerate
 		.mockReset()
-		.mockResolvedValue({
-			attempts: 1,
-			result: {
-				text: 'safe result',
-				modelUsed: 'gpt-4o-mini',
-				tokenUsage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
-			},
-		});
+		.mockResolvedValue(providerGenerationResult({ modelId: 'gpt-4o-mini' }, 'safe result'));
 });
 
 async function setup() {
@@ -95,11 +89,12 @@ describe('hosted plugin LLM service', () => {
 			usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
 		});
 		expect(resolveLanguageModelWithProvenance).toHaveBeenCalledWith(expect.anything(), 'summarize');
-		expect(runLlmTextWithAttemptMetadata).toHaveBeenCalledWith(
-			expect.objectContaining({ prompt: 'hello', maxOutputTokens: 2048 })
+		expect(providerGenerate).toHaveBeenCalledWith(
+			expect.objectContaining({ maxOutputTokens: 2048 })
 		);
 		await t.run(async (ctx) => {
-			expect(await ctx.db.query('pluginLlmReservations').unique()).toMatchObject({
+			const reservation = await ctx.db.query('pluginLlmReservations').unique();
+			expect(reservation).toMatchObject({
 				pluginId: 'alpha',
 				modelId: 'gpt-4o-mini',
 				endpointProvenance: 'openai-native',
@@ -107,6 +102,64 @@ describe('hosted plugin LLM service', () => {
 				tier: 'fast',
 			});
 			expect(await ctx.db.query('llmUsageEvents').unique()).toMatchObject({ pluginId: 'alpha' });
+			expect(await ctx.db.query('pluginLlmDailyUsage').unique()).toMatchObject({
+				chargedMicrousd: reservation?.chargedMicrousd,
+				actualMicrousd: reservation?.actualMicrousd,
+			});
+			expect(reservation?.chargedMicrousd).toBeLessThan(reservation?.reservedMicrousd ?? 0);
+		});
+	});
+
+	it('retains conservative charge when the provider reports an alias or rerouted model', async () => {
+		const { t, service } = await setup();
+		providerGenerate.mockResolvedValueOnce(
+			providerGenerationResult({ modelId: 'gpt-4o-mini-provider-alias' }, 'rerouted result')
+		);
+
+		await expect(service.generate({ tier: 'fast', prompt: 'hello' })).resolves.toMatchObject({
+			text: 'rerouted result',
+			modelUsed: 'gpt-4o-mini-provider-alias',
+		});
+
+		await t.run(async (ctx) => {
+			const reservation = await ctx.db.query('pluginLlmReservations').unique();
+			expect(reservation).toMatchObject({ status: 'completed', actualMicrousd: 0 });
+			expect(reservation?.chargedMicrousd).toBe(reservation?.reservedMicrousd);
+			expect(await ctx.db.query('pluginLlmDailyUsage').unique()).toMatchObject({
+				chargedMicrousd: reservation?.reservedMicrousd,
+				actualMicrousd: 0,
+			});
+			expect(await ctx.db.query('llmUsageEvents').take(1)).toEqual([]);
+			const audits = await ctx.db.query('auditLogs').take(5);
+			expect(JSON.stringify(audits)).not.toContain('gpt-4o-mini-provider-alias');
+		});
+	});
+
+	it.each([
+		['absent', undefined],
+		['malformed', { modelId: ' provider-secret-alias ' }],
+	])('retains conservative charge when provider model metadata is %s', async (_label, response) => {
+		const { t, service } = await setup();
+		providerGenerate.mockResolvedValueOnce(
+			providerGenerationResult(response, 'unattributed result')
+		);
+
+		await expect(service.generate({ tier: 'fast', prompt: 'hello' })).resolves.toMatchObject({
+			text: 'unattributed result',
+			modelUsed: undefined,
+		});
+
+		await t.run(async (ctx) => {
+			const reservation = await ctx.db.query('pluginLlmReservations').unique();
+			expect(reservation?.chargedMicrousd).toBe(reservation?.reservedMicrousd);
+			expect(await ctx.db.query('pluginLlmDailyUsage').unique()).toMatchObject({
+				chargedMicrousd: reservation?.reservedMicrousd,
+				actualMicrousd: 0,
+			});
+			expect(await ctx.db.query('llmUsageEvents').take(1)).toEqual([]);
+			expect(JSON.stringify(await ctx.db.query('auditLogs').take(5))).not.toContain(
+				'provider-secret-alias'
+			);
 		});
 	});
 
@@ -122,7 +175,7 @@ describe('hosted plugin LLM service', () => {
 			code: 'access_denied',
 		});
 		expect(resolveLanguageModelWithProvenance).not.toHaveBeenCalled();
-		expect(runLlmTextWithAttemptMetadata).not.toHaveBeenCalled();
+		expect(providerGenerate).not.toHaveBeenCalled();
 	});
 
 	it('denies a grant revoked after preflight but before the reservation transaction', async () => {
@@ -144,17 +197,18 @@ describe('hosted plugin LLM service', () => {
 			code: 'access_denied',
 		});
 		expect(resolveLanguageModelWithProvenance).toHaveBeenCalledTimes(1);
-		expect(runLlmTextWithAttemptMetadata).not.toHaveBeenCalled();
+		expect(providerGenerate).not.toHaveBeenCalled();
 		await t.run(async (ctx) => {
 			expect(await ctx.db.query('pluginLlmReservations').take(1)).toEqual([]);
 		});
 	});
 
-	it('retains the full reservation on ambiguous provider failure without logging the error', async () => {
+	it('retains the full reservation on provider failure without logging the error', async () => {
 		const { t, service } = await setup();
-		vi.mocked(runLlmTextWithAttemptMetadata).mockRejectedValueOnce(
-			new Error('provider leaked TOP_SECRET')
-		);
+		providerGenerate.mockRejectedValue({
+			statusCode: 401,
+			message: 'provider leaked TOP_SECRET',
+		});
 		const error = await service
 			.generate({ tier: 'capable', prompt: 'PROMPT_SECRET' })
 			.catch((cause) => cause);
@@ -180,7 +234,7 @@ describe('hosted plugin LLM service', () => {
 		await expect(service.generate({ tier: 'fast', prompt: 'hello' })).rejects.toMatchObject({
 			code: 'access_denied',
 		});
-		expect(runLlmTextWithAttemptMetadata).not.toHaveBeenCalled();
+		expect(providerGenerate).not.toHaveBeenCalled();
 		await t.run(async (ctx) => {
 			expect(await ctx.db.query('pluginLlmReservations').take(1)).toEqual([]);
 		});

@@ -172,7 +172,9 @@ before the successful one. Missing or malformed usage, provider failure,
 action crash, or accounting failure retains the conservative reservation
 through that UTC day. The reservation persists its admitted model and endpoint
 provenance; if a provider reports a different model, settlement retains the
-full reservation and records no priced usage. This availability tradeoff never
+full reservation and records no priced usage. Missing or malformed raw provider
+identity is treated the same way; the dispatcher never substitutes the requested
+model or the AI SDK's requested-model fallback. This availability tradeoff never
 reopens spend the provider may have billed.
 
 ### Three execution tiers
