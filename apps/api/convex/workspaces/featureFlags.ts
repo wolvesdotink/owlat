@@ -290,13 +290,13 @@ export const setFeaturePack = authedMutation({
 	handler: async (ctx, args) => {
 		await requireAdminContext(ctx);
 
-		if (!(args.pack in FEATURE_PACKS)) {
+		if (!Object.prototype.hasOwnProperty.call(FEATURE_PACKS, args.pack)) {
 			throwInvalidInput(`Unknown feature pack: ${args.pack}`);
 		}
 		const packKey = args.pack as FeaturePackKey;
 
 		const stored = await getStoredFlags(ctx);
-		const { next, cascaded } = applyPackToggle(stored, packKey, args.value);
+		const { next, cascaded } = applyPackToggle(stored, packKey, args.value, FEATURE_FLAG_REGISTRY);
 
 		const now = Date.now();
 		const existing = await ctx.db.query('instanceSettings').first();

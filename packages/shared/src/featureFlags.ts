@@ -886,14 +886,15 @@ export function isPackEnabled(
 export function applyPackToggle(
 	stored: FeatureFlagState,
 	packKey: FeaturePackKey,
-	value: boolean
+	value: boolean,
+	registry: FeatureFlagRegistry = FEATURE_FLAGS
 ): { next: FeatureFlagState; cascaded: FeatureFlagKey[] } {
 	const pack = FEATURE_PACKS[packKey];
 	const packFlags = new Set<FeatureFlagKey>(pack.flags);
-	let next: FeatureFlagState = { ...stored };
+	let next: FeatureFlagState = registeredFeatureFlagOverrides(stored, registry);
 	const cascaded = new Set<FeatureFlagKey>();
 	for (const flag of pack.flags) {
-		const result = applyToggle(next, flag, value);
+		const result = applyToggle(next, flag, value, registry);
 		next = result.next;
 		for (const c of result.cascaded) {
 			if (!packFlags.has(c)) cascaded.add(c);
