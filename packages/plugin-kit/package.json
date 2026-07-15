@@ -20,7 +20,9 @@
 	},
 	"files": [
 		"dist",
-		"README.md"
+		"README.md",
+		"LICENSE",
+		"NOTICE"
 	],
 	"type": "module",
 	"main": "./dist/index.js",
@@ -37,13 +39,14 @@
 	},
 	"scripts": {
 		"build": "tsup src/index.ts --format esm --dts --sourcemap --target node20 --clean",
-		"prepack": "bun run build",
+		"prepack": "bun run build && bun scripts/packageLegalFiles.ts stage",
+		"postpack": "bun scripts/packageLegalFiles.ts clean",
 		"test": "vitest run",
 		"test:watch": "vitest watch",
 		"test:coverage": "vitest run --coverage && bun run test:package",
 		"test:package": "bun run build && bun scripts/packageSmoke.ts",
-		"lint": "oxlint --config ../../oxlintrc.json src",
-		"lint:fix": "oxlint --config ../../oxlintrc.json src --fix",
+		"lint": "oxlint --config ../../oxlintrc.json src scripts",
+		"lint:fix": "oxlint --config ../../oxlintrc.json src scripts --fix",
 		"typecheck": "tsc --noEmit"
 	},
 	"devDependencies": {
