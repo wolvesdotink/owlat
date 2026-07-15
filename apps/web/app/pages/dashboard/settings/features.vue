@@ -40,10 +40,12 @@ const { data: deliveryConfigured } = useConvexQuery(
 // Per-flag configuration gaps (missing env vars / no delivery provider). Joined
 // against the resolved on/off state to badge flags that are ENABLED but not yet
 // configured.
-const { data: flagsConfigStatus } = useConvexQuery(
-	api.workspaces.featureFlags.getFlagsConfigStatus,
-	{}
-);
+const {
+	data: flagsConfigStatus,
+	isLoading: isConfigStatusLoading,
+	error: configStatusError,
+	refetch: retryConfigStatus,
+} = useConvexQuery(api.workspaces.featureFlags.getFlagsConfigStatus, {});
 const { showToast } = useToast();
 
 // Writes go through the Operation module (ADR-0036): categorized failures are
@@ -65,6 +67,11 @@ const resolved = computed(() => resolveFlags(stored.value, { registry: featureFl
 
 // Flags that are enabled yet still missing configuration → badged "needs config".
 const needsConfig = computed(() => flagsNeedingConfig(resolved.value, flagsConfigStatus.value));
+const configStatusErrorMessage = computed(() =>
+	configStatusError.value instanceof Error
+		? configStatusError.value.message
+		: 'Plugin configuration could not be verified.'
+);
 
 const pendingCascade = ref<{
 	flag: FeatureFlagKey;
@@ -101,6 +108,10 @@ async function onToggle(flag: FeatureFlagKey, value: boolean) {
 	const def = featureFlagRegistry[flag];
 	if (!def) return;
 	if (value && isPluginFeatureFlagDefinition(def)) {
+		if (configStatusError.value) {
+			showToast('Could not verify plugin configuration. Retry the status check first.');
+			return;
+		}
 		if (flagsConfigStatus.value == null) {
 			showToast('Plugin configuration status is still loading. Try again in a moment.');
 			return;
@@ -110,7 +121,7 @@ async function onToggle(flag: FeatureFlagKey, value: boolean) {
 			missingEnv.value = { flag, vars: missingPluginEnv };
 			return;
 		}
-		const capabilities = def.requiredCapabilities ?? [];
+		const capabilities = def.requiredCapabilities;
 		if (capabilities.length > 0) {
 			pendingPluginApproval.value = { flag, capabilities };
 			return;
@@ -142,6 +153,25 @@ async function onToggle(flag: FeatureFlagKey, value: boolean) {
 	}
 
 	await commitToggle(flag, value);
+}
+
+function isPluginEnableBlocked(flag: FeatureFlagKey): boolean {
+	const definition = featureFlagRegistry[flag];
+	return (
+		definition !== undefined &&
+		isPluginFeatureFlagDefinition(definition) &&
+		resolved.value[flag] !== true &&
+		(isConfigStatusLoading.value ||
+			configStatusError.value !== null ||
+			flagsConfigStatus.value == null)
+	);
+}
+
+function pluginStatusTitle(flag: FeatureFlagKey): string | undefined {
+	if (!isPluginEnableBlocked(flag)) return undefined;
+	return configStatusError.value
+		? 'Retry the failed plugin configuration check before enabling'
+		: 'Plugin configuration status is still loading';
 }
 
 async function commitToggle(
@@ -298,6 +328,32 @@ async function togglePack(packKey: FeaturePackKey) {
 						</h2>
 					</template>
 
+					<div
+						v-if="cat === 'plugins' && isConfigStatusLoading"
+						data-testid="plugin-config-status-loading"
+						class="px-6 py-3 bg-bg-surface border-b border-border-subtle text-sm text-text-secondary"
+					>
+						Checking plugin environment and capability approvals… Disabling remains available.
+					</div>
+					<div
+						v-else-if="cat === 'plugins' && configStatusError"
+						data-testid="plugin-config-status-error"
+						class="px-6 py-3 bg-error/5 border-b border-border-subtle flex items-center justify-between gap-3"
+					>
+						<p class="text-sm text-error">
+							Plugin configuration check failed: {{ configStatusErrorMessage }} Disabling remains
+							available.
+						</p>
+						<UiButton
+							size="sm"
+							variant="secondary"
+							data-testid="retry-plugin-config"
+							@click="retryConfigStatus"
+						>
+							Retry
+						</UiButton>
+					</div>
+
 					<!-- Inbound DNS hint: receiving needs MX + inbound-port setup, the
 					     inbound mirror of pointing a sending flag at a delivery provider. -->
 					<div
@@ -365,19 +421,20 @@ async function togglePack(packKey: FeaturePackKey) {
 								role="switch"
 								:aria-checked="resolved[def.key]"
 								:aria-label="`Toggle ${def.label}`"
+								:data-testid="`feature-switch-${def.key}`"
 								class="relative inline-flex shrink-0 h-6 w-11 items-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-40 disabled:cursor-not-allowed"
 								:class="
 									resolved[def.key] ? 'bg-brand border-brand' : 'bg-bg-surface border-border-subtle'
 								"
 								:disabled="
 									isSavingFlag ||
-									(isPluginFeatureFlagDefinition(def) && flagsConfigStatus == null) ||
+									isPluginEnableBlocked(def.key) ||
 									def.requires?.some((dep) => !resolved[dep as FeatureFlagKey])
 								"
 								:title="
 									def.requires?.some((dep) => !resolved[dep as FeatureFlagKey])
 										? `Enable ${def.requires?.join(', ')} first`
-										: undefined
+										: pluginStatusTitle(def.key)
 								"
 								@click="onToggle(def.key, !resolved[def.key])"
 							>
