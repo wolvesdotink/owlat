@@ -29,18 +29,19 @@ describe('plugin feature-flag enforcement', () => {
 
 	it('denies execution when flag resolution fails', async () => {
 		const operation = vi.fn();
+		const resolutionError = new Error('database unavailable');
 
 		await expect(
 			runWithPluginFeatureFlag(
 				{
 					isEnabled() {
-						throw new Error('database unavailable');
+						throw resolutionError;
 					},
 				},
 				'policy-pack',
 				operation
 			)
-		).rejects.toMatchObject({ code: 'feature_check_failed' });
+		).rejects.toMatchObject({ code: 'feature_check_failed', cause: resolutionError });
 		expect(operation).not.toHaveBeenCalled();
 	});
 });
