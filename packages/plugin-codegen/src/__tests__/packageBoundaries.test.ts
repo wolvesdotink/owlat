@@ -226,6 +226,14 @@ describe('plugin package boundary lint', () => {
 				export default makeConfig('/attacker-controlled');`,
 		],
 		[
+			'function-local shadowing constant',
+			`function makeConfig() {
+					const __dirname = '/attacker-controlled';
+					return { resolve: { alias: { safe: resolve(__dirname, 'src') } } };
+				}
+				export default makeConfig();`,
+		],
+		[
 			'mutation of the unbound value',
 			`__dirname = '/attacker-controlled';
 				export default { resolve: { alias: { safe: resolve(__dirname, 'src') } } };`,
