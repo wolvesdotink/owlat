@@ -22,7 +22,7 @@ export async function writeFileAtomically(
 ): Promise<void> {
 	const snapshot = await snapshotGeneratedPath(workspaceRoot, path, true);
 	const temporaryPath = join(
-		dirname(path),
+		snapshot.realWorkspaceRoot,
 		`.${basename(path)}.${randomBytes(16).toString('hex')}.tmp`
 	);
 	let temporaryFile: FileHandle | undefined;
