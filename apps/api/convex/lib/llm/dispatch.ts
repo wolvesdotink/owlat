@@ -19,12 +19,16 @@ import {
 	generateText,
 	streamText,
 	stepCountIs,
+	wrapLanguageModel,
 	type LanguageModel,
 	type ModelMessage,
 	type ToolSet,
 } from 'ai';
 import type { z } from 'zod';
 import type { TokenUsage } from '../../agent/steps/types';
+import { MAX_LLM_ATTEMPTS } from './retryPolicy';
+
+export { MAX_LLM_ATTEMPTS } from './retryPolicy';
 
 type RawUsage =
 	| {
@@ -43,7 +47,65 @@ export function normalizeUsage(usage: RawUsage): TokenUsage | undefined {
 	};
 }
 
-const MAX_LLM_ATTEMPTS = 3;
+const MAX_PROVIDER_MODEL_ID_LENGTH = 256;
+
+function hasAsciiControlCharacter(value: string): boolean {
+	return Array.from(value).some((character) => {
+		const codePoint = character.codePointAt(0);
+		return codePoint !== undefined && (codePoint <= 0x1f || codePoint === 0x7f);
+	});
+}
+
+/**
+ * Read only a bounded, unambiguous model identity reported by the provider.
+ * Hard-budget callers must never substitute the requested model when this
+ * metadata is absent or malformed: doing so would hide provider-side reroutes.
+ */
+function validProviderReportedModelId(modelId: unknown): string | undefined {
+	if (
+		typeof modelId !== 'string' ||
+		modelId.length < 1 ||
+		modelId.length > MAX_PROVIDER_MODEL_ID_LENGTH ||
+		modelId.trim() !== modelId ||
+		hasAsciiControlCharacter(modelId)
+	) {
+		return undefined;
+	}
+	return modelId;
+}
+
+interface ProviderModelIdentityCapture {
+	readonly model: LanguageModel;
+	read(): string | undefined;
+}
+
+type LanguageModelV3 = Extract<LanguageModel, { specificationVersion: 'v3' }>;
+
+function isLanguageModelV3(model: LanguageModel): model is LanguageModelV3 {
+	return typeof model === 'object' && model !== null && model.specificationVersion === 'v3';
+}
+
+/** Capture raw provider metadata before AI SDK fills a missing ID from the request. */
+function captureProviderModelIdentity(model: LanguageModel): ProviderModelIdentityCapture {
+	if (!isLanguageModelV3(model)) return { model, read: () => undefined };
+	let rawModelId: unknown;
+	return {
+		model: wrapLanguageModel({
+			model,
+			middleware: {
+				specificationVersion: 'v3',
+				wrapGenerate: async ({ doGenerate }) => {
+					rawModelId = undefined;
+					const result = await doGenerate();
+					rawModelId = result.response?.modelId;
+					return result;
+				},
+			},
+		}),
+		read: () => validProviderReportedModelId(rawModelId),
+	};
+}
+
 const LLM_BACKOFF_BASE_MS = 500;
 
 /** Best-effort HTTP status off an AI-SDK / fetch error shape. */
@@ -91,11 +153,16 @@ function sleep(ms: number): Promise<void> {
  * Run an LLM call with bounded exponential backoff, retrying only transient
  * failures. The single retry choke point for every dispatch helper.
  */
-async function withLlmRetry<T>(run: () => Promise<T>): Promise<T> {
+interface LlmRetryResult<T> {
+	readonly value: T;
+	readonly attempts: number;
+}
+
+async function withLlmRetry<T>(run: () => Promise<T>): Promise<LlmRetryResult<T>> {
 	let lastError: unknown;
 	for (let attempt = 0; attempt < MAX_LLM_ATTEMPTS; attempt++) {
 		try {
-			return await run();
+			return { value: await run(), attempts: attempt + 1 };
 		} catch (error) {
 			lastError = error;
 			if (!isRetriableLlmError(error) || attempt === MAX_LLM_ATTEMPTS - 1) throw error;
@@ -110,6 +177,7 @@ export type LlmTextInput = { messages: ModelMessage[] } | { prompt: string; syst
 export type LlmTextOptions = LlmTextInput & {
 	model: LanguageModel;
 	temperature?: number;
+	maxOutputTokens?: number;
 };
 
 export interface LlmTextResult {
@@ -119,19 +187,38 @@ export interface LlmTextResult {
 }
 
 export async function runLlmText(opts: LlmTextOptions): Promise<LlmTextResult> {
+	const { result } = await runLlmTextWithAttemptMetadata(opts);
+	return result;
+}
+
+export interface LlmTextAttemptResult {
+	readonly result: LlmTextResult;
+	readonly attempts: number;
+}
+
+/** Dispatch metadata used by hard-budget callers without changing core results. */
+export async function runLlmTextWithAttemptMetadata(
+	opts: LlmTextOptions
+): Promise<LlmTextAttemptResult> {
 	const sdkArgs =
 		'messages' in opts ? { messages: opts.messages } : { prompt: opts.prompt, system: opts.system };
-	const { text, usage } = await withLlmRetry(() =>
+	const providerModelIdentity = captureProviderModelIdentity(opts.model);
+	const dispatched = await withLlmRetry(() =>
 		generateText({
-			model: opts.model,
+			model: providerModelIdentity.model,
 			temperature: opts.temperature,
+			...(opts.maxOutputTokens === undefined ? {} : { maxOutputTokens: opts.maxOutputTokens }),
 			...sdkArgs,
 		})
 	);
+	const { text, usage } = dispatched.value;
 	return {
-		text,
-		tokenUsage: normalizeUsage(usage),
-		modelUsed: typeof opts.model === 'string' ? opts.model : opts.model.modelId,
+		attempts: dispatched.attempts,
+		result: {
+			text,
+			tokenUsage: normalizeUsage(usage),
+			modelUsed: providerModelIdentity.read(),
+		},
 	};
 }
 
@@ -155,7 +242,7 @@ export type LlmTextWithToolsOptions = {
  * step's `recallKnowledge` loop.
  */
 export async function runLlmTextWithTools(opts: LlmTextWithToolsOptions): Promise<LlmTextResult> {
-	const { text, usage } = await withLlmRetry(() =>
+	const dispatched = await withLlmRetry(() =>
 		generateText({
 			model: opts.model,
 			messages: opts.messages,
@@ -164,6 +251,7 @@ export async function runLlmTextWithTools(opts: LlmTextWithToolsOptions): Promis
 			temperature: opts.temperature,
 		})
 	);
+	const { text, usage } = dispatched.value;
 	return {
 		text,
 		tokenUsage: normalizeUsage(usage),
@@ -187,7 +275,7 @@ export interface LlmObjectResult<S extends z.ZodTypeAny> {
 export async function runLlmObject<S extends z.ZodTypeAny>(
 	opts: LlmObjectOptions<S>
 ): Promise<LlmObjectResult<S>> {
-	const { object, usage } = await withLlmRetry(() =>
+	const dispatched = await withLlmRetry(() =>
 		generateObject({
 			model: opts.model,
 			schema: opts.schema,
@@ -195,6 +283,7 @@ export async function runLlmObject<S extends z.ZodTypeAny>(
 			temperature: opts.temperature,
 		})
 	);
+	const { object, usage } = dispatched.value;
 	return {
 		object: object as z.infer<S>,
 		tokenUsage: normalizeUsage(usage),

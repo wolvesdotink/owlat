@@ -196,6 +196,26 @@ Do **not** use `isAdminRole`/`isOwnerRole` inline (removed) — they obscure the
 capability being checked. See ADR-0039 (enforcement model) and ADR-0040
 (shared-inbox example).
 
+## Hosted plugin actions
+
+- Never give plugin code a raw Convex context. Bind host services to the
+  server-derived active organization and a validated bundled plugin id.
+- Recheck registration, enabled flag, manifest declaration, and the exact
+  operator grant on every operation. LLM admission performs that check in the
+  same mutation as its fixed-point daily reservation.
+- Successful hosted mutations record their plugin audit row in the same
+  transaction as the state change. Throwing rolls back both state and audit;
+  do not add a misleading best-effort post-commit entry.
+- Audit metadata is an allowlisted scalar snapshot. Never persist storage
+  keys/values/cursors, LLM prompts/messages/results, provider errors, secrets,
+  or caller-defined metadata.
+- Plugin LLM calls use `lib/llm/dispatch.ts`, host-owned input/output bounds,
+  the shared pricing catalog, and integer micro-USD reservations. Unknown
+  pricing and accounting uncertainty fail closed.
+- Plugin-attributed rows always carry both `organizationId` and `pluginId`.
+  Admin reads scope those rows to the active organization; only legacy core
+  rows may omit organization attribution under the singleton-org invariant.
+
 ## Environment variables
 
 All `process.env.X` reads must go through `lib/env.ts`. Add the key to the

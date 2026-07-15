@@ -186,9 +186,24 @@ export const AUDIT_ACTION_LITERALS = [
 	// false→true toggle of `ai.knowledge.autoLink`. See knowledge/edgeBackfill.ts.
 	action('knowledge.edge_backfill_started'),
 	action('knowledge.edge_backfill_cancelled'),
+	// Hosted plugin operations. The row's dedicated pluginId and organizationId
+	// columns provide attribution; details remain a redacted scalar summary.
+	action('plugin.action_completed'),
+	action('plugin.action_failed'),
+	action('plugin.action_denied'),
 ] as const;
 
 export type AuditActionLiteral = (typeof AUDIT_ACTION_LITERALS)[number];
+
+/** Hosted operations safe to persist and display in plugin audit metadata. */
+export const HOSTED_PLUGIN_OPERATION_LITERALS = [
+	'llm.generate',
+	'storage.delete',
+	'storage.get',
+	'storage.list',
+	'storage.set',
+] as const;
+export type HostedPluginOperationLiteral = (typeof HOSTED_PLUGIN_OPERATION_LITERALS)[number];
 
 // ---------------------------------------------------------------------------
 // Resource catalog
@@ -218,6 +233,7 @@ export const AUDIT_RESOURCE_LITERALS = [
 	'knowledge_config',
 	'mail_message',
 	'conversation_thread',
+	'plugin',
 ] as const;
 
 export type AuditResourceLiteral = (typeof AUDIT_RESOURCE_LITERALS)[number];

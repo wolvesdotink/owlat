@@ -175,6 +175,8 @@ export const TENANT_TABLES = [
 	// ── Misc tenant data ──
 	'pluginStorageEntries',
 	'pluginStorageUsage',
+	'pluginLlmReservations',
+	'pluginLlmDailyUsage',
 	'shareLinks',
 	'integrationImports',
 	'codeWorkTasks',

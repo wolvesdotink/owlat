@@ -139,6 +139,44 @@ manifest validation requires an explicit flag whenever either plugin-storage
 capability is declared; flags remain optional without storage. Tier-2 API key
 and HTTP surfaces remain deferred to their dedicated changes.
 
+### Hosted-action audit and LLM budgets
+
+Every successful host-service operation writes the existing tenant audit log
+with explicit `organizationId` and `pluginId` attribution. Storage audit rows
+record only a fixed operation name and outcome; keys, values, prefixes, and
+cursors never enter the audit boundary. Plugin LLM rows likewise allow only
+bounded counters and fixed reason codes. Prompts, messages, generated text,
+provider errors, credentials, and arbitrary caller metadata are forbidden.
+The operator surface remains admin-only and validates plugin filters. Legacy
+core rows without organization attribution remain instance-global under
+Owlat's enforced single-organization deployment invariant.
+
+`llm:invoke` requires both an explicit plugin flag and a validated manifest
+daily budget. The host authorizes before resolving tenant provider config, then
+rechecks registration, flag, declaration, operator grant, and budget in the
+same transaction that reserves spend immediately before dispatch. Requests are
+bounded to 64 KiB of UTF-8 input, 32 messages, and 2,048 output tokens. Only
+exact model identities in a provider-specific admission catalog are accepted.
+The resolver also supplies a secret-free endpoint provenance: native catalog
+pricing is trusted only for the provider's built-in endpoint, while every
+explicit base URL, Azure deployment, compatible/local server, or unknown
+provider fails closed. OpenRouter has its own exact namespaced catalog.
+
+Money enforcement uses integer micro-USD. `chargedMicrousd` is consumed daily
+headroom: pending maximums, ambiguous-failure maximums, and settled successful
+charges. `actualMicrousd` is known priced usage from valid successes;
+`admittedCallCount` counts atomic admissions, including calls that later fail.
+A reservation covers every retry allowed by the shared dispatch policy.
+Success releases unused headroom but retains a maximum for each failed attempt
+before the successful one. Missing or malformed usage, provider failure,
+action crash, or accounting failure retains the conservative reservation
+through that UTC day. The reservation persists its admitted model and endpoint
+provenance; if a provider reports a different model, settlement retains the
+full reservation and records no priced usage. Missing or malformed raw provider
+identity is treated the same way; the dispatcher never substitutes the requested
+model or the AI SDK's requested-model fallback. This availability tradeoff never
+reopens spend the provider may have billed.
+
 ### Three execution tiers
 
 1. **Bundled plugins** are operator-installed packages composed at build time.
@@ -169,7 +207,7 @@ execution-specific registration is implemented in later ADRs.
 
 - Runtime loading of arbitrary JavaScript into Convex or the browser.
 - A marketplace, separate signing system, or instant install for bundled code.
-- Concrete module definitions, ordering, registry wiring, component storage,
-  LLM spend enforcement, or conformance harnesses; each lands with its consumer
+- Concrete module definitions, ordering, registry wiring, or conformance
+  harnesses; each lands with its consumer
   seam in the plugin-platform sequence.
 - Native Tauri menus, shortcuts, or a generic IPC extension bridge.
