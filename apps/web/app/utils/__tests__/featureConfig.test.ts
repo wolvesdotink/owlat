@@ -50,6 +50,7 @@ describe('plugin feature configuration', () => {
 		default: false,
 		requiredEnvVars: ['POLICY_TOKEN', 'POLICY_URL'],
 		requiredCapabilities: ['mail:read'],
+		pluginPackageName: '@example/policy-pack',
 	} satisfies FeatureFlagDefinition;
 
 	it('separates missing env requirements from capability approval gaps', () => {
