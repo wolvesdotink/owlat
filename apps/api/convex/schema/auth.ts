@@ -306,6 +306,11 @@ export const authTables = {
 	// adding a new action is a one-place change there.
 	auditLogs: defineTable({
 		userId: v.string(), // BetterAuth user ID who performed the action
+		// Host-attributed plugin actions carry both fields. Legacy/core rows omit
+		// them; Owlat remains single-org, but explicit scope keeps plugin audit
+		// data safe if that deployment invariant changes later.
+		organizationId: v.optional(v.string()),
+		pluginId: v.optional(v.string()),
 		action: auditActionValidator,
 		resource: auditResourceValidator,
 		// Optional ID of the affected resource
@@ -328,6 +333,11 @@ export const authTables = {
 		.index('by_action', ['action'])
 		.index('by_resource', ['resource'])
 		.index('by_created_at', ['createdAt'])
+		.index('by_organization_id_and_plugin_id_and_created_at', [
+			'organizationId',
+			'pluginId',
+			'createdAt',
+		])
 		.index('by_user_and_created_at', ['userId', 'createdAt']),
 
 	// System updates — tracks upstream release checks and the history of

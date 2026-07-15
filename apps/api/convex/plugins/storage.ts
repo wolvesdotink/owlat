@@ -7,12 +7,9 @@ import type {
 	PluginStorageService,
 } from '@owlat/plugin-kit';
 import { parsePluginId } from '@owlat/plugin-kit';
-import { resolveFlags } from '@owlat/shared/featureFlags';
-import type { PluginFeatureFlagKey } from '@owlat/shared/featureFlags';
 import type { MutationCtx } from '../_generated/server';
-import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
-import { FEATURE_FLAG_REGISTRY } from './featureFlagRegistry';
-import { bundledPluginComposition } from './plugins.generated';
+import { requireAuthenticatedBundledPlugin } from './authorization';
+import { recordHostedPluginAudit, type HostedPluginOperation } from './audit';
 import {
 	decryptPluginStorageCursor,
 	encryptPluginStorageCursor,
@@ -35,6 +32,7 @@ type StorageAuthorization = (capability: PluginCapability) => Promise<void>;
 interface PluginStorageScope {
 	readonly organizationId: string;
 	readonly pluginId: PluginId;
+	readonly userId: string;
 }
 
 export type PluginStorageErrorCode =
@@ -71,14 +69,17 @@ export async function bindAuthenticatedBundledPluginStorage(
 	} catch {
 		throw new PluginStorageError('access_denied');
 	}
-	const session = await getBetterAuthSessionWithRole(ctx).catch(() => null);
-	if (!session?.activeOrganizationId || !session.role) {
+	const authorized = await requireAuthenticatedBundledPlugin(ctx, pluginId).catch(() => null);
+	if (!authorized) {
 		throw new PluginStorageError('access_denied');
 	}
-	await authorizeBundledStorage(ctx, pluginId);
 	return createScopedPluginStorageService(
 		ctx,
-		Object.freeze({ organizationId: session.activeOrganizationId, pluginId }),
+		Object.freeze({
+			organizationId: authorized.organizationId,
+			pluginId,
+			userId: authorized.userId,
+		}),
 		(capability) => authorizeBundledStorage(ctx, pluginId, capability)
 	);
 }
@@ -101,9 +102,14 @@ function createScopedPluginStorageService(
 			await requireStorageAuthorization(authorize, PLUGIN_STORAGE_READ_CAPABILITY);
 			const key = readKey(keyInput);
 			const entry = await findEntry(ctx, organizationId, pluginId, key);
-			if (!entry) return undefined;
+			if (!entry) {
+				await auditStorageOperation(ctx, scope, 'storage.get');
+				return undefined;
+			}
 			try {
-				return decodePluginStorageValue(entry.valueJson, entry.valueJsonVersion);
+				const value = decodePluginStorageValue(entry.valueJson, entry.valueJsonVersion);
+				await auditStorageOperation(ctx, scope, 'storage.get');
+				return value;
 			} catch {
 				throw new PluginStorageError('storage_unavailable');
 			}
@@ -166,13 +172,17 @@ function createScopedPluginStorageService(
 					updatedAt: now,
 				});
 			}
+			await auditStorageOperation(ctx, scope, 'storage.set');
 		},
 
 		async delete(keyInput: string): Promise<void> {
 			await requireStorageAuthorization(authorize, PLUGIN_STORAGE_WRITE_CAPABILITY);
 			const key = readKey(keyInput);
 			const entry = await findEntry(ctx, organizationId, pluginId, key);
-			if (!entry) return;
+			if (!entry) {
+				await auditStorageOperation(ctx, scope, 'storage.delete');
+				return;
+			}
 			const usage = await findUsage(ctx, organizationId, pluginId);
 			assertUsageConsistent(entry.storedBytes, usage);
 			const entryCount = usage!.entryCount - 1;
@@ -189,6 +199,7 @@ function createScopedPluginStorageService(
 					updatedAt: Date.now(),
 				});
 			}
+			await auditStorageOperation(ctx, scope, 'storage.delete');
 		},
 
 		async list(options?: PluginStorageListOptions): Promise<PluginStorageListResult> {
@@ -211,12 +222,31 @@ function createScopedPluginStorageService(
 			const cursor = page.isDone
 				? undefined
 				: await wrapCursor(scope, request, page.continueCursor);
-			return Object.freeze({
+			const result = Object.freeze({
 				keys: Object.freeze(page.page.map((entry) => entry.key)),
 				...(cursor === undefined ? {} : { cursor }),
 			});
+			await auditStorageOperation(ctx, scope, 'storage.list');
+			return result;
 		},
 	});
+}
+
+async function auditStorageOperation(
+	ctx: MutationCtx,
+	scope: PluginStorageScope,
+	operation: Extract<HostedPluginOperation, `storage.${string}`>
+): Promise<void> {
+	try {
+		await recordHostedPluginAudit(
+			ctx,
+			{ organizationId: scope.organizationId, pluginId: scope.pluginId, userId: scope.userId },
+			operation,
+			'completed'
+		);
+	} catch {
+		throw new PluginStorageError('storage_unavailable');
+	}
 }
 
 async function authorizeBundledStorage(
@@ -224,17 +254,9 @@ async function authorizeBundledStorage(
 	pluginId: PluginId,
 	capability?: PluginCapability
 ): Promise<void> {
-	const plugin = bundledPluginComposition.find((candidate) => candidate.manifest.id === pluginId);
-	if (!plugin?.manifest.flag) throw new PluginStorageError('access_denied');
-	const flagKey = `plugin.${pluginId}` as PluginFeatureFlagKey;
-	const settings = await ctx.db.query('instanceSettings').first();
-	const flags = resolveFlags(settings?.featureFlags ?? {}, { registry: FEATURE_FLAG_REGISTRY });
-	if (flags[flagKey] !== true) throw new PluginStorageError('access_denied');
-	if (capability === undefined) return;
-	if (
-		!plugin.manifest.capabilities.includes(capability) ||
-		settings?.pluginCapabilityGrants?.[flagKey]?.[capability] !== true
-	) {
+	try {
+		await requireAuthenticatedBundledPlugin(ctx, pluginId, capability);
+	} catch {
 		throw new PluginStorageError('access_denied');
 	}
 }
