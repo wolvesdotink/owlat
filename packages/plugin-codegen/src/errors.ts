@@ -10,6 +10,8 @@ export type PluginCodegenErrorCode =
 	| 'invalid_manifest'
 	| 'package_load_failed'
 	| 'repository_config_invalid'
+	| 'repository_inventory_invalid'
+	| 'source_invalid'
 	| 'workspace_not_found';
 
 export class PluginCodegenError extends Error {

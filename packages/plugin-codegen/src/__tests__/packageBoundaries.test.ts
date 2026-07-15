@@ -63,6 +63,22 @@ describe('plugin package boundary lint', () => {
 		expect(findDirectPluginImports(source, 'apps/web/app.vue', configuredPackages)).toHaveLength(1);
 	});
 
+	it('finds package dependencies declared by a Vue script src attribute', () => {
+		expect(
+			findDirectPluginImports(
+				'<template><div /></template><script src="@acme/mail-plugin"></script>',
+				'apps/web/app.vue',
+				configuredPackages
+			)
+		).toEqual([{ file: 'apps/web/app.vue', packageSpecifier: '@acme/mail-plugin' }]);
+	});
+
+	it('rejects malformed Vue sources with an attributed diagnostic', () => {
+		expect(() =>
+			findDirectPluginImports('<script setup lang="ts>', 'apps/web/app.vue', configuredPackages)
+		).toThrow(expect.objectContaining({ code: 'source_invalid', details: ['apps/web/app.vue'] }));
+	});
+
 	it('ignores comments, ordinary strings, and similarly named packages', () => {
 		const source = `
       // import '@acme/mail-plugin';
@@ -144,6 +160,30 @@ describe('plugin package boundary lint', () => {
 		});
 	});
 
+	it('resolves exact Vite RegExp aliases without executing configuration', async () => {
+		const root = await createRepository({
+			'apps/api/regex-alias.ts': `import 'mail-plugin-alias';`,
+			'apps/api/vite.config.ts': `export default { resolve: { alias: [{ find: /^mail-plugin-alias$/, replacement: '@acme/mail-plugin' }] } };`,
+		});
+
+		await expect(checkDirectPluginImports(root, configuredPackages)).rejects.toMatchObject({
+			code: 'direct_plugin_import',
+			details: ['apps/api/regex-alias.ts: imports mail-plugin-alias'],
+		});
+	});
+
+	it('fails closed on non-exact static RegExp alias rules', async () => {
+		const root = await createRepository({
+			'apps/api/core.ts': `export const safe = true;`,
+			'apps/api/vite.config.ts': `export default { resolve: { alias: [{ find: /^mail-(.+)$/, replacement: '@acme/mail-plugin' }] } };`,
+		});
+
+		await expect(checkDirectPluginImports(root, configuredPackages)).rejects.toMatchObject({
+			code: 'repository_config_invalid',
+			details: ['apps/api/vite.config.ts'],
+		});
+	});
+
 	it('ignores unrelated nested untracked configs and attributes malformed tracked config', async () => {
 		const root = await createRepository({
 			'apps/api/core.ts': `export const safe = true;`,
@@ -166,6 +206,27 @@ describe('plugin package boundary lint', () => {
 		await expect(checkDirectPluginImports(root, configuredPackages)).rejects.toMatchObject({
 			code: 'repository_config_invalid',
 			details: ['apps/api/tsconfig.json'],
+		});
+	});
+
+	it('rejects oversized source before parsing it', async () => {
+		const root = await createRepository({
+			'apps/api/core.ts': ' '.repeat(2 * 1024 * 1024 + 1),
+		});
+		await expect(checkDirectPluginImports(root, configuredPackages)).rejects.toMatchObject({
+			code: 'source_invalid',
+			details: ['apps/api/core.ts'],
+		});
+	});
+
+	it('reports Git inventory errors instead of scanning untracked filesystem state', async () => {
+		const root = await createRepository({
+			'apps/api/core.ts': `import '@acme/mail-plugin';`,
+		});
+		await mkdir(join(root, '.git'));
+
+		await expect(checkDirectPluginImports(root, configuredPackages)).rejects.toMatchObject({
+			code: 'repository_inventory_invalid',
 		});
 	});
 });

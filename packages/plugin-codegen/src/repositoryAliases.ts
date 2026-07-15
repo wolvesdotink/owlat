@@ -1,7 +1,6 @@
-import { execFileSync } from 'node:child_process';
-import { lstat, open, readdir } from 'node:fs/promises';
-import { basename, join, relative, resolve } from 'node:path';
+import { basename, relative, sep } from 'node:path';
 import ts from 'typescript';
+import { readBoundedRepositoryUtf8File } from './boundedRepository';
 import { PluginCodegenError } from './errors';
 
 export interface RepositoryModuleAlias {
@@ -11,18 +10,17 @@ export interface RepositoryModuleAlias {
 
 const MAX_CONFIG_FILES = 512;
 const MAX_CONFIG_BYTES = 1024 * 1024;
-const MAX_GIT_OUTPUT_BYTES = 2 * 1024 * 1024;
-const MAX_WORKSPACE_DIRECTORIES = 256;
 
 export async function readRepositoryModuleAliases(
-	workspaceRoot: string
+	workspaceRoot: string,
+	repositoryFiles: readonly string[]
 ): Promise<readonly RepositoryModuleAlias[]> {
 	const aliases: RepositoryModuleAlias[] = [];
-	const configFiles = await findConfigFiles(workspaceRoot);
+	const configFiles = findConfigFiles(workspaceRoot, repositoryFiles);
 	for (const path of configFiles) {
 		let source: string;
 		try {
-			source = await readBoundedUtf8File(path, MAX_CONFIG_BYTES);
+			source = await readBoundedRepositoryUtf8File(workspaceRoot, path, MAX_CONFIG_BYTES);
 			const filename = basename(path);
 			if (filename === 'package.json') {
 				collectPackageAliases(parseJsonConfig(path, source), aliases);
@@ -68,9 +66,11 @@ export function specifierTargetsConfiguredPackage(
 	return false;
 }
 
-async function findConfigFiles(workspaceRoot: string): Promise<readonly string[]> {
-	const tracked = await readTrackedConfigFiles(workspaceRoot);
-	const files = tracked ?? (await readWorkspaceConfigFilesWithoutGit(workspaceRoot));
+function findConfigFiles(
+	workspaceRoot: string,
+	repositoryFiles: readonly string[]
+): readonly string[] {
+	const files = repositoryFiles.filter((path) => isRelevantAliasConfig(workspaceRoot, path));
 	if (files.length > MAX_CONFIG_FILES) {
 		throw new PluginCodegenError(
 			'repository_config_invalid',
@@ -80,86 +80,15 @@ async function findConfigFiles(workspaceRoot: string): Promise<readonly string[]
 	return files.sort();
 }
 
-async function readTrackedConfigFiles(workspaceRoot: string): Promise<string[] | undefined> {
-	try {
-		await lstat(join(workspaceRoot, '.git'));
-	} catch (cause) {
-		if (isFileSystemError(cause, 'ENOENT')) return undefined;
-		throw cause;
-	}
-
-	let output: string;
-	try {
-		output = execFileSync(
-			'git',
-			[
-				'-C',
-				workspaceRoot,
-				'ls-files',
-				'-z',
-				'--',
-				'package.json',
-				'tsconfig*.json',
-				'apps',
-				'packages',
-			],
-			{
-				encoding: 'utf8',
-				maxBuffer: MAX_GIT_OUTPUT_BYTES,
-				stdio: ['ignore', 'pipe', 'ignore'],
-			}
-		);
-	} catch (cause) {
-		throw new PluginCodegenError(
-			'repository_config_invalid',
-			'Cannot build a bounded tracked repository configuration inventory',
-			[],
-			{ cause }
-		);
-	}
-	return output
-		.split('\0')
-		.filter((path) => path.length > 0 && isAliasConfig(path))
-		.map((path) => resolve(workspaceRoot, ...path.split('/')));
-}
-
-async function readWorkspaceConfigFilesWithoutGit(workspaceRoot: string): Promise<string[]> {
-	const workspaceDirectories = [workspaceRoot];
-	for (const group of ['apps', 'packages']) {
-		let entries;
-		try {
-			entries = await readdir(join(workspaceRoot, group), { withFileTypes: true });
-		} catch (cause) {
-			if (isFileSystemError(cause, 'ENOENT')) continue;
-			throw cause;
-		}
-		for (const entry of entries) {
-			if (entry.isDirectory()) workspaceDirectories.push(join(workspaceRoot, group, entry.name));
-		}
-	}
-	if (workspaceDirectories.length > MAX_WORKSPACE_DIRECTORIES) {
-		throw new PluginCodegenError(
-			'repository_config_invalid',
-			`Repository contains more than ${MAX_WORKSPACE_DIRECTORIES} workspace directories`
-		);
-	}
-
-	const files: string[] = [];
-	for (const directory of workspaceDirectories) {
-		for (const entry of await readdir(directory, { withFileTypes: true })) {
-			if (entry.isFile() && isAliasConfig(entry.name)) files.push(join(directory, entry.name));
-		}
-	}
-	return files;
-}
-
-function isAliasConfig(path: string): boolean {
+function isRelevantAliasConfig(workspaceRoot: string, path: string): boolean {
 	const filename = basename(path);
-	return (
+	const isConfig =
 		filename === 'package.json' ||
 		/^tsconfig(?:\.[^.]+)?\.json$/.test(filename) ||
-		/^(?:nuxt|vite|vitest)\.config\.(?:cjs|cts|js|mjs|mts|ts)$/.test(filename)
-	);
+		/^(?:nuxt|vite|vitest)\.config\.(?:cjs|cts|js|mjs|mts|ts)$/.test(filename);
+	if (!isConfig) return false;
+	const parts = relative(workspaceRoot, path).split(sep);
+	return parts.length === 1 || (parts.length === 3 && ['apps', 'packages'].includes(parts[0]!));
 }
 
 function parseJsonConfig(path: string, source: string): unknown {
@@ -242,12 +171,48 @@ function collectFrameworkAliasValue(value: ts.Expression, aliases: RepositoryMod
 		if (!ts.isObjectLiteralExpression(element)) continue;
 		const find = readUniqueObjectProperty(element, 'find');
 		const replacement = readUniqueObjectProperty(element, 'replacement');
-		const specifierPattern = find && readStaticString(find.initializer);
 		const targetPattern = replacement && readStaticString(replacement.initializer);
-		if (specifierPattern !== undefined && targetPattern !== undefined) {
+		if (targetPattern === undefined) continue;
+		const specifierPattern = find && readFrameworkAliasFind(find.initializer);
+		if (specifierPattern !== undefined) {
 			aliases.push({ specifierPattern, targetPattern });
 		}
 	}
+}
+
+function readFrameworkAliasFind(value: ts.Expression): string | undefined {
+	const staticString = readStaticString(value);
+	if (staticString !== undefined) return staticString;
+	if (!ts.isRegularExpressionLiteral(value)) return undefined;
+	const match = /^\/(.*)\/([a-z]*)$/.exec(value.text);
+	if (!match || match[2] !== '') {
+		throw new Error('Framework RegExp aliases must be exact and case-sensitive');
+	}
+	const body = match[1]!;
+	if (!body.startsWith('^') || !body.endsWith('$')) {
+		throw new Error('Framework RegExp aliases must anchor one exact module specifier');
+	}
+	return decodeExactRegExpLiteral(body.slice(1, -1));
+}
+
+function decodeExactRegExpLiteral(source: string): string {
+	let literal = '';
+	for (let index = 0; index < source.length; index += 1) {
+		const character = source[index]!;
+		if (character === '\\') {
+			const escaped = source[++index];
+			if (!escaped || !/[\\/\-.$^*+?()[\]{}|]/.test(escaped)) {
+				throw new Error('Framework RegExp alias contains a non-literal escape');
+			}
+			literal += escaped;
+		} else {
+			if (/[.$^*+?()[\]{}|]/.test(character)) {
+				throw new Error('Framework RegExp alias must not contain pattern operators');
+			}
+			literal += character;
+		}
+	}
+	return literal;
 }
 
 function readUniqueObjectProperty(
@@ -299,24 +264,6 @@ function targetReferencesPackage(target: string, packageName: string): boolean {
 		normalized.includes(`/node_modules/${packageName}/`) ||
 		normalized.endsWith(`/node_modules/${packageName}`)
 	);
-}
-
-async function readBoundedUtf8File(path: string, maxBytes: number): Promise<string> {
-	const file = await open(path, 'r');
-	try {
-		const size = (await file.stat()).size;
-		if (size > maxBytes) throw new Error(`File exceeds ${maxBytes} bytes`);
-		const buffer = Buffer.allocUnsafe(Math.min(size + 1, maxBytes + 1));
-		const { bytesRead } = await file.read(buffer, 0, buffer.length, 0);
-		if (bytesRead > maxBytes) throw new Error(`File exceeds ${maxBytes} bytes`);
-		return new TextDecoder('utf-8', { fatal: true }).decode(buffer.subarray(0, bytesRead));
-	} finally {
-		await file.close();
-	}
-}
-
-function isFileSystemError(error: unknown, code: string): error is NodeJS.ErrnoException {
-	return error instanceof Error && 'code' in error && error.code === code;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

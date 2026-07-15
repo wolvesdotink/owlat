@@ -1,7 +1,8 @@
-import { open, readFile, realpath, stat } from 'node:fs/promises';
+import { readFile, realpath, stat } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { PluginPackageName } from '@owlat/plugin-host';
 import ts from 'typescript';
+import { readBoundedRepositoryUtf8File } from './boundedRepository';
 import { PluginCodegenError } from './errors';
 
 const MAX_BUN_LOCK_BYTES = 8 * 1024 * 1024;
@@ -164,7 +165,7 @@ async function verifyRegistryLock(
 	const lockPath = join(workspaceRoot, 'bun.lock');
 	let lockSource: string;
 	try {
-		lockSource = await readBoundedUtf8File(lockPath, MAX_BUN_LOCK_BYTES);
+		lockSource = await readBoundedRepositoryUtf8File(workspaceRoot, lockPath, MAX_BUN_LOCK_BYTES);
 	} catch (cause) {
 		throw new PluginCodegenError(
 			'dependency_provenance',
@@ -293,20 +294,6 @@ function invalidLockStructure(): PluginCodegenError {
 		'dependency_provenance',
 		'bun.lock does not contain one exact root registry resolution and verified package artifact'
 	);
-}
-
-async function readBoundedUtf8File(path: string, maxBytes: number): Promise<string> {
-	const file = await open(path, 'r');
-	try {
-		const initialSize = (await file.stat()).size;
-		if (initialSize > maxBytes) throw new Error(`File exceeds ${maxBytes} bytes`);
-		const buffer = Buffer.allocUnsafe(Math.min(initialSize + 1, maxBytes + 1));
-		const { bytesRead } = await file.read(buffer, 0, buffer.length, 0);
-		if (bytesRead > maxBytes) throw new Error(`File exceeds ${maxBytes} bytes`);
-		return new TextDecoder('utf-8', { fatal: true }).decode(buffer.subarray(0, bytesRead));
-	} finally {
-		await file.close();
-	}
 }
 
 async function resolveRequiredPath(path: string, packageName: PluginPackageName): Promise<string> {
