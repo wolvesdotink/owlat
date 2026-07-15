@@ -1,10 +1,20 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import {
+	mkdtemp,
+	mkdir,
+	readFile,
+	readdir,
+	rename,
+	rm,
+	symlink,
+	writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
+import { writeFileAtomically } from '../atomicWrite';
 import { generatePluginComposition } from '../generate';
 
 const temporaryRoots: string[] = [];
@@ -113,6 +123,30 @@ describe('generated composition freshness', () => {
 		await symlink(outsideParent, join(parentRoot, 'apps/api/convex/plugins'), 'dir');
 		await expect(generatePluginComposition(parentRoot)).rejects.toMatchObject({
 			code: 'generated_path_unsafe',
+		});
+	});
+
+	it('fails closed when a generated parent is swapped for a symlink during the write', async () => {
+		const root = await createZeroPluginWorkspace();
+		const parent = join(root, 'apps/api/convex/plugins');
+		const parkedParent = join(root, 'parked-plugins');
+		const target = join(parent, 'plugins.generated.ts');
+		const outside = await mkdtemp(join(tmpdir(), 'owlat-plugin-race-outside-'));
+		temporaryRoots.push(outside);
+		await mkdir(parent, { recursive: true });
+
+		const write = writeFileAtomically(root, target, 'x'.repeat(16 * 1024 * 1024));
+		for (;;) {
+			const entries = await readdir(parent);
+			if (entries.some((entry) => entry.endsWith('.tmp'))) break;
+			await new Promise((resolve) => setImmediate(resolve));
+		}
+		await rename(parent, parkedParent);
+		await symlink(outside, parent, 'dir');
+
+		await expect(write).rejects.toMatchObject({ code: 'generated_path_unsafe' });
+		await expect(readFile(join(outside, 'plugins.generated.ts'), 'utf8')).rejects.toMatchObject({
+			code: 'ENOENT',
 		});
 	});
 });
