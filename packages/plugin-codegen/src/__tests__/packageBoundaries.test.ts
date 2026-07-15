@@ -7,10 +7,7 @@ import {
 	findDirectPluginImports,
 	isPluginBoundarySourceFile,
 } from '../packageBoundaries';
-import {
-	specifierTargetsConfiguredPackage,
-	type RepositoryModuleAlias,
-} from '../repositoryAliases';
+import { createRepositoryPackageMatcher, type RepositoryModuleAlias } from '../repositoryAliases';
 
 const configuredPackages = ['@acme/mail-plugin'];
 const temporaryRoots: string[] = [];
@@ -360,20 +357,73 @@ describe('plugin package boundary lint', () => {
 
 	it('allows the exact alias matcher work budget and fails closed one comparison later', () => {
 		const aliases: RepositoryModuleAlias[] = Array.from({ length: 1024 }, (_, index) => ({
+			matchKind: 'exact',
 			specifierPattern: `unused-${index}`,
 			targetPattern: `still-unused-${index}`,
 		}));
 		for (let stage = 0; stage < 7; stage += 1) {
 			aliases[stage] = {
+				matchKind: 'exact',
 				specifierPattern: `chain-${stage}`,
 				targetPattern: `chain-${stage + 1}`,
 			};
 		}
-		expect(specifierTargetsConfiguredPackage('chain-0', configuredPackages, aliases)).toBe(false);
+		expect(createRepositoryPackageMatcher(configuredPackages, aliases)('chain-0')).toBe(false);
 
-		aliases[7] = { specifierPattern: 'chain-7', targetPattern: 'chain-8' };
-		expect(() => specifierTargetsConfiguredPackage('chain-0', configuredPackages, aliases)).toThrow(
+		aliases[7] = {
+			matchKind: 'exact',
+			specifierPattern: 'chain-7',
+			targetPattern: 'chain-8',
+		};
+		expect(() => createRepositoryPackageMatcher(configuredPackages, aliases)('chain-0')).toThrow(
 			expect.objectContaining({ code: 'repository_config_invalid' })
+		);
+	});
+
+	it('shares the exact alias comparison budget across the repository scan', async () => {
+		const files = Object.fromEntries(
+			Array.from({ length: 8 }, (_, index) => [
+				`apps/api/safe-${index}.ts`,
+				`import 'unmatched-${index}';`,
+			])
+		);
+		const root = await createRepository(files);
+		await writeFile(
+			join(root, 'tsconfig.json'),
+			JSON.stringify({
+				compilerOptions: {
+					paths: Object.fromEntries(
+						Array.from({ length: 1024 }, (_, index) => [
+							`unused-${index}`,
+							[`still-unused-${index}`],
+						])
+					),
+				},
+			})
+		);
+		await expect(checkDirectPluginImports(root, configuredPackages)).resolves.toBeUndefined();
+
+		await writeFile(join(root, 'apps/api/safe-8.ts'), `import 'unmatched-8';`);
+		await expect(checkDirectPluginImports(root, configuredPackages)).rejects.toMatchObject({
+			code: 'repository_config_invalid',
+			details: ['apps/api/safe-8.ts'],
+		});
+	});
+
+	it('bounds accumulated findings at the exact scan-wide limit', () => {
+		const imports = (count: number): string =>
+			Array.from({ length: count }, () => `import '@acme/mail-plugin';`).join('\n');
+		expect(
+			findDirectPluginImports(imports(1024), 'apps/api/core.ts', configuredPackages)
+		).toHaveLength(1024);
+
+		expect(() =>
+			findDirectPluginImports(imports(1025), 'apps/api/core.ts', configuredPackages)
+		).toThrow(
+			expect.objectContaining({
+				code: 'repository_inventory_invalid',
+				details: ['apps/api/core.ts'],
+			})
 		);
 	});
 
