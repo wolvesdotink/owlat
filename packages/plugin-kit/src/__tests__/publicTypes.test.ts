@@ -15,6 +15,8 @@ describe('public plugin-kit types', () => {
 			id: 'typed-plugin',
 			version: '1.0.0',
 			capabilities: ['send:gate', 'llm:invoke'],
+			flag: { default: false },
+			llmBudget: { dailyUsd: 1 },
 			contributes: {
 				sendGates: [{ id: 'policy-gate' }],
 			},
