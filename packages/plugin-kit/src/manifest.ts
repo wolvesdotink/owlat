@@ -142,7 +142,30 @@ export function validatePluginManifest(value: unknown): PluginManifestValidation
 		}
 	}
 	const llmBudget = readDataProperty(manifest, 'llmBudget', issues);
+	const llmBudgetIssueCount = issues.length;
 	if (llmBudget.kind === 'value') validateLlmBudget(llmBudget.value, issues);
+	const hasValidLlmBudget =
+		llmBudget.kind === 'value' &&
+		isRecord(llmBudget.value) &&
+		issues.length === llmBudgetIssueCount;
+	if (declaresLlmInvoke(capabilityItems)) {
+		if (!hasValidFlag && !issues.some((issue) => issue.path.startsWith('$.flag'))) {
+			addManifestIssue(
+				issues,
+				flag.kind === 'missing' ? 'missing' : 'invalid_type',
+				'$.flag',
+				'must be a plain object when llm:invoke is declared'
+			);
+		}
+		if (!hasValidLlmBudget && !issues.some((issue) => issue.path.startsWith('$.llmBudget'))) {
+			addManifestIssue(
+				issues,
+				llmBudget.kind === 'missing' ? 'missing' : 'invalid_type',
+				'$.llmBudget',
+				'must be a valid daily budget when llm:invoke is declared'
+			);
+		}
+	}
 
 	const component = readDataProperty(manifest, 'component', issues);
 	if (component.kind === 'value') validateComponent(component.value, issues);
@@ -205,6 +228,10 @@ function declaresPluginStorage(items: readonly DataProperty[] | undefined): bool
 	);
 }
 
+function declaresLlmInvoke(items: readonly DataProperty[] | undefined): boolean {
+	return items?.some((item) => item.kind === 'value' && item.value === 'llm:invoke') ?? false;
+}
+
 function validateContributions(value: unknown, issues: PluginManifestIssue[]): void {
 	if (value === undefined) return;
 	if (!isRecord(value)) {
@@ -265,13 +292,17 @@ function validateLlmBudget(value: unknown, issues: PluginManifestIssue[]): void 
 	const dailyUsd = readDataProperty(value, 'dailyUsd', issues, true, '$.llmBudget');
 	if (
 		dailyUsd.kind === 'value' &&
-		(typeof dailyUsd.value !== 'number' || !Number.isFinite(dailyUsd.value) || dailyUsd.value <= 0)
+		(typeof dailyUsd.value !== 'number' ||
+			!Number.isFinite(dailyUsd.value) ||
+			dailyUsd.value <= 0 ||
+			dailyUsd.value > 1_000_000 ||
+			!Number.isSafeInteger(dailyUsd.value * 1_000_000))
 	) {
 		addManifestIssue(
 			issues,
 			'invalid_type',
 			'$.llmBudget.dailyUsd',
-			'must be a finite number greater than zero'
+			'must be between 0 and 1,000,000 USD with at most six decimal places'
 		);
 	}
 }

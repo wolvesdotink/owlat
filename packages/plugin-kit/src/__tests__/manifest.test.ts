@@ -123,7 +123,11 @@ describe('plugin manifest validation', () => {
 	});
 
 	it('requires an explicit flag only for plugins that declare host storage', () => {
-		const withoutFlag = validManifest();
+		const withoutFlag = {
+			...validManifest(),
+			capabilities: ['campaigns:read'],
+			llmBudget: undefined,
+		};
 		delete (withoutFlag as { flag?: unknown }).flag;
 		expect(validatePluginManifest(withoutFlag).ok).toBe(true);
 
@@ -175,6 +179,41 @@ describe('plugin manifest validation', () => {
 			issues: [expect.objectContaining({ code: 'accessor_not_allowed', path: '$.flag' })],
 		});
 		expect(accessorReads).toBe(0);
+	});
+
+	it('requires an explicit flag and valid budget for llm:invoke', () => {
+		const expectOnlyIssueAt = (manifest: unknown, path: string) => {
+			const result = validatePluginManifest(manifest);
+			expect(result.ok).toBe(false);
+			if (!result.ok) expect(result.issues.map((issue) => issue.path)).toEqual([path]);
+		};
+		for (const [field, value, expectedPath] of [
+			['flag', undefined, '$.flag'],
+			['flag', null, '$.flag'],
+			['flag', {}, '$.flag.default'],
+			['llmBudget', undefined, '$.llmBudget'],
+			['llmBudget', null, '$.llmBudget'],
+			['llmBudget', {}, '$.llmBudget.dailyUsd'],
+		] as const) {
+			const manifest = validManifest() as Record<string, unknown>;
+			manifest[field] = value;
+			expectOnlyIssueAt(manifest, expectedPath);
+		}
+
+		let reads = 0;
+		const accessor = Object.defineProperty(validManifest(), 'llmBudget', {
+			enumerable: true,
+			get() {
+				reads += 1;
+				return { dailyUsd: 10 };
+			},
+		});
+		expectOnlyIssueAt(accessor, '$.llmBudget');
+		expect(reads).toBe(0);
+
+		for (const dailyUsd of [0.0000001, 1_000_000.000001, Number.POSITIVE_INFINITY]) {
+			expectOnlyIssueAt({ ...validManifest(), llmBudget: { dailyUsd } }, '$.llmBudget.dailyUsd');
+		}
 	});
 
 	it.each([
