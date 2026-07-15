@@ -17,8 +17,13 @@
  * edited in lockstep. They now live here so the page holds only fetch wiring +
  * template.
  */
-import { AUDIT_ACTION_LITERALS } from '@owlat/api/auditActions';
+import {
+	AUDIT_ACTION_LITERALS,
+	HOSTED_PLUGIN_OPERATION_LITERALS,
+	type HostedPluginOperationLiteral,
+} from '@owlat/api/auditActions';
 import type { Id } from '@owlat/api/dataModel';
+import { isPluginId } from '@owlat/plugin-kit';
 import { capitalize } from '../utils/formatters';
 
 /**
@@ -34,6 +39,7 @@ export interface AuditLogEntry {
 	action: string;
 	resource: string;
 	resourceId?: string;
+	pluginId?: string;
 	details?: Record<string, unknown>;
 	ipAddress?: string;
 	userAgent?: string;
@@ -72,6 +78,7 @@ export const RESOURCE_FILTER_OPTIONS: ResourceFilterOption[] = [
 	{ value: 'blocklist', label: 'Blocklist' },
 	{ value: 'segment', label: 'Segments' },
 	{ value: 'ai_provider_config', label: 'AI Providers' },
+	{ value: 'plugin', label: 'Plugins' },
 ];
 
 /** A group of action literals shown as an `<optgroup>` in the action filter. */
@@ -114,6 +121,7 @@ const ACTION_GROUP_SPECS: readonly ActionGroupSpec[] = [
 	{ label: 'Platform Admin', prefixes: ['platform_admin'] },
 	{ label: 'Abuse', prefixes: ['abuse_status_changed'] },
 	{ label: 'AI Providers', prefixes: ['ai_provider_config'] },
+	{ label: 'Plugins', prefixes: ['plugin'] },
 ];
 
 /** The prefix of an action literal: everything before the first `.`, or the
@@ -172,6 +180,7 @@ const RESOURCE_ICONS: Record<string, string> = {
 	blocklist: 'lucide:ban',
 	segment: 'lucide:target',
 	ai_provider_config: 'lucide:sparkles',
+	plugin: 'lucide:blocks',
 };
 
 const RESOURCE_LABELS: Record<string, string> = {
@@ -188,6 +197,7 @@ const RESOURCE_LABELS: Record<string, string> = {
 	blocklist: 'Blocklist',
 	segment: 'Segment',
 	ai_provider_config: 'AI Provider',
+	plugin: 'Plugin',
 };
 
 const ACTION_VERB_LABELS: Record<string, string> = {
@@ -207,6 +217,9 @@ const ACTION_VERB_LABELS: Record<string, string> = {
 	revoked: 'Revoked',
 	added: 'Added',
 	verified: 'Verified',
+	completed: 'Completed',
+	failed: 'Failed',
+	denied: 'Denied',
 };
 
 const ACTION_VERB_ICONS: Record<string, string> = {
@@ -223,6 +236,9 @@ const ACTION_VERB_ICONS: Record<string, string> = {
 	imported: 'lucide:refresh-cw',
 	published: 'lucide:check',
 	verified: 'lucide:check',
+	completed: 'lucide:check',
+	failed: 'lucide:circle-x',
+	denied: 'lucide:ban',
 	activated: 'lucide:play',
 	paused: 'lucide:pause',
 	invited: 'lucide:mail',
@@ -234,10 +250,13 @@ const ACTION_VERB_COLORS: Record<string, string> = {
 	activated: 'text-success bg-success/10',
 	published: 'text-success bg-success/10',
 	verified: 'text-success bg-success/10',
+	completed: 'text-success bg-success/10',
 	deleted: 'text-error bg-error/10',
 	removed: 'text-error bg-error/10',
 	revoked: 'text-error bg-error/10',
 	cancelled: 'text-error bg-error/10',
+	failed: 'text-error bg-error/10',
+	denied: 'text-error bg-error/10',
 	updated: 'text-brand bg-brand/10',
 	role_changed: 'text-brand bg-brand/10',
 	sent: 'text-brand bg-brand/10',
@@ -246,6 +265,17 @@ const ACTION_VERB_COLORS: Record<string, string> = {
 	paused: 'text-warning bg-warning/10',
 	invited: 'text-warning bg-warning/10',
 };
+
+const HOSTED_PLUGIN_ACTIONS: ReadonlySet<string> = new Set(
+	AUDIT_ACTION_LITERALS.filter((action) => action.startsWith('plugin.'))
+);
+const HOSTED_PLUGIN_OPERATION_LABELS = {
+	'llm.generate': 'LLM generation',
+	'storage.delete': 'Storage delete',
+	'storage.get': 'Storage read',
+	'storage.list': 'Storage list',
+	'storage.set': 'Storage write',
+} as const satisfies Record<HostedPluginOperationLiteral, string>;
 
 /** The verb of an action literal: the segment after the first `.`, or the whole
  * literal for dotless actions. */
@@ -273,6 +303,38 @@ export function getActionIcon(action: string): string {
 
 export function getActionColorClass(action: string): string {
 	return ACTION_VERB_COLORS[actionVerb(action)] ?? 'text-text-secondary bg-bg-surface';
+}
+
+/**
+ * Render only the two hosted-action discriminators that are safe and useful in
+ * the audit list. Arbitrary details fields are deliberately ignored.
+ */
+export function getHostedPluginDetailText(log: AuditLogEntry): string | undefined {
+	if (log.resource !== 'plugin' || !HOSTED_PLUGIN_ACTIONS.has(log.action)) return undefined;
+	const pluginId = safePluginId(log.pluginId) ?? safePluginId(log.resourceId);
+	const operation = hostedPluginOperationLabel(log.details);
+	const parts = [pluginId, operation].filter((part): part is string => part !== undefined);
+	return parts.length > 0 ? parts.join(' · ') : 'Hosted plugin action';
+}
+
+function safePluginId(value: unknown): string | undefined {
+	return isPluginId(value) ? value : undefined;
+}
+
+function hostedPluginOperationLabel(details: Record<string, unknown> | undefined) {
+	if (!details) return undefined;
+	let descriptor: PropertyDescriptor | undefined;
+	try {
+		descriptor = Object.getOwnPropertyDescriptor(details, 'operation');
+	} catch {
+		return undefined;
+	}
+	if (!descriptor?.enumerable || !('value' in descriptor) || typeof descriptor.value !== 'string') {
+		return undefined;
+	}
+	return HOSTED_PLUGIN_OPERATION_LITERALS.includes(descriptor.value as HostedPluginOperationLiteral)
+		? HOSTED_PLUGIN_OPERATION_LABELS[descriptor.value as HostedPluginOperationLiteral]
+		: undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -361,6 +423,7 @@ export function useAuditLogPresentation() {
 		getActionLabel,
 		getActionIcon,
 		getActionColorClass,
+		getHostedPluginDetailText,
 		formatTimestamp,
 		formatFullDate,
 		parseDetails,

@@ -36,6 +36,7 @@ same PR.
 | MTA / IMAP / external → Convex | Per-channel HMAC or shared secret in a webhook header.      | Constant-time compared against the stored secret. **Fail-closed (503) if the secret env var is unset.**                       |
 | Email recipient ← MTA          | Outbound mail body has been sanitized + scanned.            | RFC 5322 headers built via `escapeHeader` (CRLF-stripped); attachments scanned via ClamAV; signature/forwarded HTML sanitized. |
 | Convex action → external HTTP  | Domain is hard-coded or shape-validated (e.g. Mailchimp DC).| Never paste user input into a URL host without an allowlist regex.                                                             |
+| Bundled plugin → host services | Statically composed manifest id and host-owned service implementations. | Derive tenant/actor server-side; recheck flag + declaration + exact grant; bound inputs; never expose Convex context or provider credentials. |
 
 ---
 
@@ -59,6 +60,9 @@ their tests.
 | Agent classification allowlist  | `apps/api/convex/agent/steps/draft/index.ts`                      | `safeEnum`, `ALLOWED_*`                                                           |
 | File-upload validation          | `packages/email-scanner/src/files/`                               | `validateFile`, `isExtensionAllowed`, `isMimeTypeAllowed`                         |
 | CSP / HSTS / cookie headers     | `apps/web/nuxt.config.ts`                                         | `security.headers`, `security.csrf`                                               |
+| Plugin authority + scope        | `apps/api/convex/plugins/authorization.ts`                        | `requireAuthenticatedBundledPlugin`                                               |
+| Plugin LLM spend boundary       | `apps/api/convex/plugins/llm.ts`, `llmAccounting.ts`              | bounded request, exact model + endpoint admission, atomic reservation and conservative settlement  |
+| Plugin audit metadata           | `apps/api/convex/plugins/audit.ts`                                | `recordHostedPluginAudit` allowlist; no content, keys, cursors, secrets, or errors |
 
 ---
 

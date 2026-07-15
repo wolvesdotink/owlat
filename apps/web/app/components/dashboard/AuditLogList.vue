@@ -7,7 +7,7 @@ import type { AuditLogEntry } from '../../composables/useAuditLogPresentation';
  * ratchet; the page keeps the fetch wiring, filters and empty states and hands
  * this component the already-filtered rows.
  */
-defineProps<{
+const props = defineProps<{
 	logs: AuditLogEntry[];
 	hasMore: boolean;
 }>();
@@ -22,18 +22,26 @@ const {
 	getActionLabel,
 	getActionIcon,
 	getActionColorClass,
+	getHostedPluginDetailText,
 	formatTimestamp,
 	formatFullDate,
 	parseDetails,
 	getUserInitials,
 } = useAuditLogPresentation();
+
+const presentedLogs = computed(() =>
+	props.logs.map((log) => ({
+		log,
+		hostedPluginDetailText: getHostedPluginDetailText(log),
+	}))
+);
 </script>
 
 <template>
 	<div class="space-y-4">
 		<div
-			v-for="log in logs"
-			:key="log._id"
+			v-for="entry in presentedLogs"
+			:key="entry.log._id"
 			class="card p-4 hover:bg-bg-surface/30 transition-colors"
 		>
 			<div class="flex items-start gap-4">
@@ -42,7 +50,7 @@ const {
 					<div
 						class="w-10 h-10 rounded-full bg-bg-surface flex items-center justify-center text-sm font-medium text-text-secondary"
 					>
-						{{ getUserInitials(log.userProfile?.name, log.userProfile?.email) }}
+						{{ getUserInitials(entry.log.userProfile?.name, entry.log.userProfile?.email) }}
 					</div>
 				</div>
 
@@ -51,52 +59,60 @@ const {
 					<div class="flex items-center flex-wrap gap-2 mb-1">
 						<!-- User Name -->
 						<span class="font-medium text-text-primary">
-							{{ log.userProfile?.name ?? log.userProfile?.email ?? 'Unknown User' }}
+							{{ entry.log.userProfile?.name ?? entry.log.userProfile?.email ?? 'Unknown User' }}
 						</span>
 
 						<!-- Action Badge -->
 						<span
 							:class="[
 								'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium',
-								getActionColorClass(log.action),
+								getActionColorClass(entry.log.action),
 							]"
 						>
-							<Icon :name="getActionIcon(log.action)" class="w-3 h-3" />
-							{{ getActionLabel(log.action) }}
+							<Icon :name="getActionIcon(entry.log.action)" class="w-3 h-3" />
+							{{ getActionLabel(entry.log.action) }}
 						</span>
 
 						<!-- Resource Badge -->
 						<span
 							class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-bg-surface text-text-secondary"
 						>
-							<Icon :name="getResourceIcon(log.resource)" class="w-3 h-3" />
-							{{ getResourceLabel(log.resource) }}
+							<Icon :name="getResourceIcon(entry.log.resource)" class="w-3 h-3" />
+							{{ getResourceLabel(entry.log.resource) }}
 						</span>
 					</div>
 
 					<!-- Details -->
-					<div v-if="log.details" class="text-sm text-text-secondary mt-1">
-						<template v-if="parseDetails(log.details)['name']">
-							<span class="font-medium">"{{ parseDetails(log.details)['name'] }}"</span>
+					<div
+						v-if="entry.hostedPluginDetailText || entry.log.details"
+						class="text-sm text-text-secondary mt-1"
+					>
+						<template v-if="entry.hostedPluginDetailText">
+							<span class="font-medium" data-testid="hosted-plugin-audit-details">{{
+								entry.hostedPluginDetailText
+							}}</span>
 						</template>
-						<template v-else-if="parseDetails(log.details)['email']">
-							<span class="font-medium">{{ parseDetails(log.details)['email'] }}</span>
+						<template v-else-if="parseDetails(entry.log.details)['name']">
+							<span class="font-medium">"{{ parseDetails(entry.log.details)['name'] }}"</span>
 						</template>
-						<template v-else-if="parseDetails(log.details)['count']">
-							<span class="font-medium">{{ parseDetails(log.details)['count'] }} items</span>
+						<template v-else-if="parseDetails(entry.log.details)['email']">
+							<span class="font-medium">{{ parseDetails(entry.log.details)['email'] }}</span>
+						</template>
+						<template v-else-if="parseDetails(entry.log.details)['count']">
+							<span class="font-medium">{{ parseDetails(entry.log.details)['count'] }} items</span>
 						</template>
 					</div>
 
 					<!-- Timestamp -->
-					<p class="text-xs text-text-tertiary mt-2" :title="formatFullDate(log.createdAt)">
-						{{ formatTimestamp(log.createdAt) }}
+					<p class="text-xs text-text-tertiary mt-2" :title="formatFullDate(entry.log.createdAt)">
+						{{ formatTimestamp(entry.log.createdAt) }}
 					</p>
 				</div>
 
 				<!-- Resource Icon -->
 				<div class="flex-shrink-0">
 					<div class="p-2 rounded-lg bg-bg-surface flex items-center justify-center">
-						<Icon :name="getResourceIcon(log.resource)" class="w-4 h-4 text-text-secondary" />
+						<Icon :name="getResourceIcon(entry.log.resource)" class="w-4 h-4 text-text-secondary" />
 					</div>
 				</div>
 			</div>

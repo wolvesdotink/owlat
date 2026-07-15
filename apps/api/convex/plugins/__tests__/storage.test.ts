@@ -101,6 +101,28 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllEnvs());
 
 describe('scoped plugin storage', () => {
+	it('audits every successful hosted storage operation without keys, values, or cursors', async () => {
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) => {
+			const service = await storage(ctx, 'tenant', 'sensitive-plugin');
+			await service.set('TOP_SECRET_KEY', { token: 'TOP_SECRET_VALUE' });
+			await service.get('TOP_SECRET_KEY');
+			await service.list({ prefix: 'TOP_SECRET' });
+			await service.delete('TOP_SECRET_KEY');
+			const rows = await ctx.db.query('auditLogs').take(5);
+			expect(rows.map((row) => row.details?.['operation']).sort()).toEqual([
+				'storage.delete',
+				'storage.get',
+				'storage.list',
+				'storage.set',
+			]);
+			expect(
+				rows.every((row) => row.organizationId === 'tenant' && row.pluginId === 'sensitive-plugin')
+			).toBe(true);
+			expect(JSON.stringify(rows)).not.toContain('TOP_SECRET');
+		});
+	});
+
 	it('isolates the same key across plugins and tenants without caller-selectable scope', async () => {
 		const t = convexTest(schema, modules);
 		await t.run(async (ctx) => {

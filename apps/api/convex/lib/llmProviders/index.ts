@@ -33,11 +33,19 @@ export type {
 	EmbeddingClientConfig,
 	EmbeddingProviderAdapter,
 	EmbeddingProviderKind,
+	LanguageEndpointProvenance,
 	LanguageProviderAdapter,
 	LanguageProviderKind,
 	ProviderClientConfig,
+	ResolvedLanguageModel,
 } from './types';
-export { EMBEDDING_PROVIDER_KINDS, LANGUAGE_PROVIDER_KINDS } from './types';
+export {
+	EMBEDDING_PROVIDER_KINDS,
+	LANGUAGE_ENDPOINT_PROVENANCES,
+	LANGUAGE_PROVIDER_KINDS,
+	classifyEnvLanguageEndpoint,
+	classifyStoredLanguageEndpoint,
+} from './types';
 
 // ─── Language registry ─────────────────────────────────────────────────────
 

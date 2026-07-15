@@ -100,6 +100,12 @@ crons.interval(
 	{}
 );
 crons.interval(
+	'retention: plugin llm accounting',
+	{ hours: 24 },
+	internal.maintenance.retention.sweepPluginLlmAccounting,
+	{}
+);
+crons.interval(
 	'retention: form submission metadata',
 	{ hours: 24 },
 	internal.maintenance.retention.scrubFormSubmissionMeta,

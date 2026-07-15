@@ -10,6 +10,7 @@
  */
 
 import type { TokenUsage } from '../../agent/steps/types';
+import type { LanguageEndpointProvenance } from '../llmProviders/types';
 
 type Price = { prefix: string; inputPerM: number; outputPerM: number };
 
@@ -73,6 +74,96 @@ const PRICING: Price[] = [
 const DEFAULT_INPUT_PER_M = 3;
 const DEFAULT_OUTPUT_PER_M = 12;
 
+function priceForModel(modelUsed: string | undefined): Price | undefined {
+	const id = (modelUsed ?? '').toLowerCase();
+	return id
+		? PRICING.find((price) => id.startsWith(price.prefix) || id.includes(price.prefix))
+		: undefined;
+}
+
+interface AdmissionModel {
+	readonly modelId: string;
+	readonly pricePrefix: string;
+}
+
+function admissionModel(modelId: string, pricePrefix = modelId): AdmissionModel {
+	return { modelId, pricePrefix };
+}
+
+/**
+ * Exact model identities eligible for hard-budget admission. This deliberately
+ * excludes the reporting-only generic family rows and all inferred versions.
+ * Aliases reference a PRICING prefix, so list-price values remain single-source.
+ */
+const ADMISSION_MODELS = {
+	'openai-native': [
+		admissionModel('gpt-5.6-luna'),
+		admissionModel('gpt-5.6-terra'),
+		admissionModel('gpt-5.6-sol'),
+		admissionModel('gpt-5.5'),
+		admissionModel('gpt-4o-mini'),
+		admissionModel('gpt-4o'),
+		admissionModel('gpt-4.1-nano'),
+		admissionModel('gpt-4.1-mini'),
+		admissionModel('gpt-4.1'),
+		admissionModel('o4-mini'),
+		admissionModel('o3-mini'),
+	],
+	'anthropic-native': [
+		admissionModel('claude-fable-5'),
+		admissionModel('claude-opus-4-8'),
+		admissionModel('claude-sonnet-5'),
+		admissionModel('claude-sonnet-4-5'),
+		admissionModel('claude-haiku-4-5'),
+		admissionModel('claude-3-5-haiku'),
+		admissionModel('claude-3-haiku'),
+		admissionModel('claude-3-5-sonnet'),
+		admissionModel('claude-3-opus'),
+	],
+	'google-native': [
+		admissionModel('gemini-3.5-flash'),
+		admissionModel('gemini-3.1-flash-lite'),
+		admissionModel('gemini-3.1-pro'),
+		admissionModel('gemini-3.1-pro-preview', 'gemini-3.1-pro'),
+		admissionModel('gemini-2.5-flash-lite'),
+		admissionModel('gemini-2.5-flash'),
+		admissionModel('gemini-2.5-pro'),
+		admissionModel('gemini-2.0-flash-lite'),
+		admissionModel('gemini-2.0-flash'),
+		admissionModel('gemini-1.5-flash-8b'),
+		admissionModel('gemini-1.5-flash'),
+		admissionModel('gemini-1.5-pro'),
+	],
+	openrouter: [
+		admissionModel('anthropic/claude-sonnet-5', 'claude-sonnet-5'),
+		admissionModel('anthropic/claude-opus-4.8', 'claude-opus-4.8'),
+		admissionModel('deepseek/deepseek-v4-flash', 'deepseek-v4-flash'),
+		admissionModel('deepseek/deepseek-v4-pro', 'deepseek-v4-pro'),
+		admissionModel('openai/gpt-5.6-sol', 'gpt-5.6-sol'),
+		admissionModel('openai/gpt-5.6-luna', 'gpt-5.6-luna'),
+		admissionModel('google/gemini-3.5-flash', 'gemini-3.5-flash'),
+		admissionModel('minimax/minimax-m3', 'minimax-m3'),
+		admissionModel('xiaomi/mimo-v2.5-pro', 'mimo-v2.5-pro'),
+		admissionModel('moonshotai/kimi-k2.6', 'kimi-k2.6'),
+	],
+	custom: [],
+} as const satisfies Record<LanguageEndpointProvenance, readonly AdmissionModel[]>;
+
+/**
+ * Admission pricing is intentionally stricter than dashboard reporting. Both
+ * endpoint provenance and model id must exactly match the trusted catalog.
+ */
+function admissionPriceForModel(
+	endpointProvenance: LanguageEndpointProvenance,
+	modelUsed: string | undefined
+): Price | undefined {
+	if (!modelUsed) return undefined;
+	const catalog = ADMISSION_MODELS[endpointProvenance];
+	if (!catalog) return undefined;
+	const admission = catalog.find((candidate) => candidate.modelId === modelUsed);
+	return admission ? PRICING.find((price) => price.prefix === admission.pricePrefix) : undefined;
+}
+
 export interface CostEstimate {
 	costUsd: number;
 	/** True when the model id didn't match the table (priced with the default). */
@@ -84,16 +175,31 @@ export function estimateCost(
 	usage: TokenUsage | undefined
 ): CostEstimate {
 	if (!usage) return { costUsd: 0, estimated: modelUsed === undefined };
-	const id = (modelUsed ?? '').toLowerCase();
-	const match = id
-		? PRICING.find((p) => id.startsWith(p.prefix) || id.includes(p.prefix))
-		: undefined;
+	const match = priceForModel(modelUsed);
 	const inputPerM = match?.inputPerM ?? DEFAULT_INPUT_PER_M;
 	const outputPerM = match?.outputPerM ?? DEFAULT_OUTPUT_PER_M;
 	const costUsd =
 		(usage.promptTokens / 1_000_000) * inputPerM +
 		(usage.completionTokens / 1_000_000) * outputPerM;
 	return { costUsd, estimated: match === undefined };
+}
+
+/**
+ * Price a bounded request in integer micro-USD using the same model catalog as
+ * dashboard estimates. Unlike reporting, admission control must fail closed:
+ * unknown models return undefined instead of using the fallback price.
+ */
+export function estimateKnownCostMicrousd(
+	endpointProvenance: LanguageEndpointProvenance,
+	modelUsed: string | undefined,
+	usage: TokenUsage
+): number | undefined {
+	const price = admissionPriceForModel(endpointProvenance, modelUsed);
+	if (!price) return undefined;
+	const input = usage.promptTokens * price.inputPerM;
+	const output = usage.completionTokens * price.outputPerM;
+	const microusd = Math.ceil(input + output);
+	return Number.isSafeInteger(microusd) && microusd >= 0 ? microusd : undefined;
 }
 
 /** Convenience: just the dollar figure. */
