@@ -18,6 +18,8 @@ import {
 import { flagsNeedingConfig, missingPluginEnvironmentVariables } from '~/utils/featureConfig';
 import { hasInboundFeature, INBOUND_FEATURE_FLAGS } from '~/utils/inboundDns';
 import { bundledPluginComposition } from '~/plugins/plugin-composition.generated';
+import FeatureFlagMetadata from '~/components/settings/FeatureFlagMetadata.vue';
+import PluginConfigStatusNotice from '~/components/settings/PluginConfigStatusNotice.vue';
 
 const pluginFeatureFlagDefinitions =
 	getBundledPluginFeatureFlagDefinitions(bundledPluginComposition);
@@ -31,15 +33,10 @@ const {
 	isLoading,
 	error: flagsError,
 } = useConvexQuery(api.workspaces.featureFlags.getFeatureFlags, {});
-// Whether a real delivery provider is configured — drives the "needs a provider"
-// hint for sending flags, which carry no requiredEnvVars of their own.
 const { data: deliveryConfigured } = useConvexQuery(
 	api.workspaces.featureFlags.deliveryConfigured,
 	{}
 );
-// Per-flag configuration gaps (missing env vars / no delivery provider). Joined
-// against the resolved on/off state to badge flags that are ENABLED but not yet
-// configured.
 const {
 	data: flagsConfigStatus,
 	isLoading: isConfigStatusLoading,
@@ -328,31 +325,12 @@ async function togglePack(packKey: FeaturePackKey) {
 						</h2>
 					</template>
 
-					<div
-						v-if="cat === 'plugins' && isConfigStatusLoading"
-						data-testid="plugin-config-status-loading"
-						class="px-6 py-3 bg-bg-surface border-b border-border-subtle text-sm text-text-secondary"
-					>
-						Checking plugin environment and capability approvals… Disabling remains available.
-					</div>
-					<div
-						v-else-if="cat === 'plugins' && configStatusError"
-						data-testid="plugin-config-status-error"
-						class="px-6 py-3 bg-error/5 border-b border-border-subtle flex items-center justify-between gap-3"
-					>
-						<p class="text-sm text-error">
-							Plugin configuration check failed: {{ configStatusErrorMessage }} Disabling remains
-							available.
-						</p>
-						<UiButton
-							size="sm"
-							variant="secondary"
-							data-testid="retry-plugin-config"
-							@click="retryConfigStatus"
-						>
-							Retry
-						</UiButton>
-					</div>
+					<PluginConfigStatusNotice
+						v-if="cat === 'plugins'"
+						:is-loading="isConfigStatusLoading"
+						:error-message="configStatusError ? configStatusErrorMessage : undefined"
+						@retry="retryConfigStatus"
+					/>
 
 					<!-- Inbound DNS hint: receiving needs MX + inbound-port setup, the
 					     inbound mirror of pointing a sending flag at a delivery provider. -->
@@ -394,27 +372,7 @@ async function togglePack(packKey: FeaturePackKey) {
 									</span>
 								</div>
 								<p class="text-sm text-text-secondary mt-0.5">{{ def.description }}</p>
-								<p v-if="def.pluginPackageName" class="text-xs text-text-tertiary mt-1 font-mono">
-									Package: {{ def.pluginPackageName }}
-								</p>
-								<p
-									v-if="def.requiredEnvVars?.length"
-									class="text-xs text-text-tertiary mt-1 font-mono"
-								>
-									Requires env: {{ def.requiredEnvVars.join(', ') }}
-								</p>
-								<p
-									v-if="def.requiredCapabilities?.length"
-									class="text-xs text-text-tertiary mt-1 font-mono"
-								>
-									Requests access: {{ def.requiredCapabilities.join(', ') }}
-								</p>
-								<p
-									v-if="def.dockerProfiles?.length"
-									class="text-xs text-text-tertiary mt-1 font-mono"
-								>
-									Docker profile: {{ def.dockerProfiles.join(', ') }}
-								</p>
+								<FeatureFlagMetadata :definition="def" />
 							</div>
 							<button
 								type="button"
