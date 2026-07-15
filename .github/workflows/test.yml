@@ -136,6 +136,15 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Verify plugin codegen from clean artifacts
+        run: bun run plugins:test-clean
+
+      - name: Verify plugin deploy graph
+        run: bun run plugins:test-deploy-graph
+
+      - name: Verify Convex plugin composition bundle
+        run: bun run plugins:test-convex-bundle
+
       - name: Lint
         run: bun run ci:lint
 

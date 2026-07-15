@@ -116,7 +116,7 @@
 		},
 		"packages/sdk-js": { "entry": ["src/index.ts", "test/**/*.ts"] },
 		"packages/plugin-codegen": {
-			"entry": ["src/index.ts", "src/cli.ts", "src/**/__tests__/**/*.ts"]
+			"entry": ["src/index.ts", "src/cli.ts", "scripts/*.ts", "src/**/__tests__/**/*.ts"]
 		},
 		"packages/plugin-host": {
 			"entry": ["src/index.ts", "src/**/__tests__/**/*.ts"]
