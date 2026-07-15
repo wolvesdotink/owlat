@@ -13,19 +13,20 @@ export interface HostedContribution<Value> {
 export function orderHostedContributions<Value>(
 	contributions: readonly HostedContribution<Value>[]
 ): readonly HostedContribution<Value>[] {
-	const identities = new Set<string>();
+	const contributionIdsByPlugin = new Map<string, Set<string>>();
 	const normalized: HostedContribution<Value>[] = [];
 	for (const contribution of contributions) {
 		const validated = readContribution(contribution);
-		const identity = `${validated.pluginId}\0${validated.contributionId}`;
-		if (identities.has(identity)) {
+		const contributionIds = contributionIdsByPlugin.get(validated.pluginId) ?? new Set<string>();
+		if (contributionIds.has(validated.contributionId)) {
 			throw new PluginHostError(
 				'invalid_contribution',
 				`Plugin ${validated.pluginId} has duplicate contribution ${validated.contributionId}`,
 				{ pluginId: validated.pluginId }
 			);
 		}
-		identities.add(identity);
+		contributionIds.add(validated.contributionId);
+		contributionIdsByPlugin.set(validated.pluginId, contributionIds);
 		normalized.push(validated);
 	}
 
@@ -54,10 +55,12 @@ function readContribution<Value>(
 		!('value' in pluginId) ||
 		typeof pluginId.value !== 'string' ||
 		pluginId.value.trim().length === 0 ||
+		pluginId.value.trim() !== pluginId.value ||
 		!contributionId ||
 		!('value' in contributionId) ||
 		typeof contributionId.value !== 'string' ||
 		contributionId.value.trim().length === 0 ||
+		contributionId.value.trim() !== contributionId.value ||
 		!value ||
 		!('value' in value)
 	) {
