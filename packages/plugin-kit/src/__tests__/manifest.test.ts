@@ -40,6 +40,16 @@ describe('plugin manifest validation', () => {
 		const result = validatePluginManifest(manifest);
 
 		expect(result).toEqual({ ok: true, manifest });
+		if (result.ok) {
+			expect(result.manifest).not.toBe(manifest);
+			expect(Object.isFrozen(result.manifest)).toBe(true);
+			expect(Object.isFrozen(result.manifest.capabilities)).toBe(true);
+			expect(Object.isFrozen(result.manifest.flag)).toBe(true);
+			expect(Object.isFrozen(result.manifest.flag?.requiredEnvVars)).toBe(true);
+			expect(Object.isFrozen(result.manifest.llmBudget)).toBe(true);
+			expect(Object.isFrozen(result.manifest.contributes)).toBe(true);
+			expect(Object.isFrozen(result.manifest.contributes?.sendGates)).toBe(true);
+		}
 		expect(componentLoads).toBe(0);
 		expect(isPluginManifest(manifest)).toBe(true);
 	});
@@ -217,6 +227,32 @@ describe('plugin manifest validation', () => {
 
 		expect(validatePluginManifest(manifest).ok).toBe(true);
 		expect(reads).toBe(0);
+	});
+
+	it('validates and returns the same one-pass capability snapshot', () => {
+		let descriptorReads = 0;
+		let propertyReads = 0;
+		const capabilities = new Proxy(['mail:read'], {
+			get(target, key, receiver) {
+				propertyReads += 1;
+				return Reflect.get(target, key, receiver);
+			},
+			getOwnPropertyDescriptor(target, key) {
+				const descriptor = Reflect.getOwnPropertyDescriptor(target, key);
+				if (key !== '0' || !descriptor || !('value' in descriptor)) return descriptor;
+				descriptorReads += 1;
+				return {
+					...descriptor,
+					value: descriptorReads === 1 ? 'mail:read' : 'contacts:write',
+				};
+			},
+		});
+
+		const parsed = parsePluginManifest({ ...validManifest(), capabilities });
+
+		expect(parsed.capabilities).toEqual(['mail:read']);
+		expect(descriptorReads).toBe(1);
+		expect(propertyReads).toBe(0);
 	});
 
 	it.each([

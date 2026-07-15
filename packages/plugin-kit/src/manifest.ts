@@ -120,14 +120,15 @@ export function isPluginManifest(value: unknown): value is PluginManifest {
 
 export function validatePluginManifest(value: unknown): PluginManifestValidation {
 	const issues: PluginManifestIssue[] = [];
-	if (!isRecord(value)) {
+	const manifest = snapshotManifestInput(value);
+	if (!isRecord(manifest)) {
 		addIssue(issues, 'invalid_type', '$', 'must be a plain object');
 		return { ok: false, issues };
 	}
 
-	validateKnownFields(value, '$', TOP_LEVEL_FIELDS, issues);
+	validateKnownFields(manifest, '$', TOP_LEVEL_FIELDS, issues);
 
-	const id = readDataProperty(value, 'id', issues, true);
+	const id = readDataProperty(manifest, 'id', issues, true);
 	if (id.kind === 'value' && typeof id.value === 'string') {
 		if (id.value.length > 64 || !PLUGIN_ID.test(id.value)) {
 			addIssue(
@@ -141,7 +142,7 @@ export function validatePluginManifest(value: unknown): PluginManifestValidation
 		addIssue(issues, 'invalid_type', '$.id', 'must be a string');
 	}
 
-	const version = readDataProperty(value, 'version', issues, true);
+	const version = readDataProperty(manifest, 'version', issues, true);
 	if (version.kind === 'value' && typeof version.value === 'string') {
 		if (!SEMVER.test(version.value))
 			addIssue(issues, 'invalid_format', '$.version', 'must be a semantic version');
@@ -149,16 +150,16 @@ export function validatePluginManifest(value: unknown): PluginManifestValidation
 		addIssue(issues, 'invalid_type', '$.version', 'must be a string');
 	}
 
-	const capabilities = readDataProperty(value, 'capabilities', issues, true);
+	const capabilities = readDataProperty(manifest, 'capabilities', issues, true);
 	if (capabilities.kind === 'value') validateCapabilities(capabilities.value, issues);
-	const contributions = readDataProperty(value, 'contributes', issues);
+	const contributions = readDataProperty(manifest, 'contributes', issues);
 	if (contributions.kind === 'value') validateContributions(contributions.value, issues);
-	const flag = readDataProperty(value, 'flag', issues);
+	const flag = readDataProperty(manifest, 'flag', issues);
 	if (flag.kind === 'value') validateFlag(flag.value, issues);
-	const llmBudget = readDataProperty(value, 'llmBudget', issues);
+	const llmBudget = readDataProperty(manifest, 'llmBudget', issues);
 	if (llmBudget.kind === 'value') validateLlmBudget(llmBudget.value, issues);
 
-	const component = readDataProperty(value, 'component', issues);
+	const component = readDataProperty(manifest, 'component', issues);
 	if (
 		component.kind === 'value' &&
 		component.value !== undefined &&
@@ -168,8 +169,87 @@ export function validatePluginManifest(value: unknown): PluginManifestValidation
 	}
 
 	return issues.length === 0
-		? { ok: true, manifest: value as unknown as PluginManifest }
+		? { ok: true, manifest: manifest as unknown as PluginManifest }
 		: { ok: false, issues };
+}
+
+type SnapshotDataValue = (key: PropertyKey, value: unknown) => unknown;
+
+/** Capture every schema-owned input descriptor once before validating the immutable result. */
+function snapshotManifestInput(value: unknown): unknown {
+	return snapshotRecord(value, (key, propertyValue) => {
+		switch (key) {
+			case 'capabilities':
+				return snapshotArray(propertyValue);
+			case 'contributes':
+				return snapshotContributions(propertyValue);
+			case 'flag':
+				return snapshotFlag(propertyValue);
+			case 'llmBudget':
+				return snapshotRecord(propertyValue);
+			default:
+				return propertyValue;
+		}
+	});
+}
+
+function snapshotContributions(value: unknown): unknown {
+	return snapshotRecord(value, (key, propertyValue) =>
+		typeof key === 'string' && CONTRIBUTION_KINDS.has(key)
+			? snapshotArray(propertyValue)
+			: propertyValue
+	);
+}
+
+function snapshotFlag(value: unknown): unknown {
+	return snapshotRecord(value, (key, propertyValue) =>
+		key === 'requiredEnvVars' ? snapshotArray(propertyValue) : propertyValue
+	);
+}
+
+function snapshotRecord(value: unknown, snapshotDataValue?: SnapshotDataValue): unknown {
+	if (value === null || typeof value !== 'object' || Array.isArray(value)) return value;
+
+	const descriptors = captureOwnPropertyDescriptors(value);
+	const snapshot = Object.create(Object.getPrototypeOf(value)) as Record<PropertyKey, unknown>;
+	for (const [key, descriptor] of descriptors) {
+		Object.defineProperty(
+			snapshot,
+			key,
+			'value' in descriptor && snapshotDataValue
+				? { ...descriptor, value: snapshotDataValue(key, descriptor.value) }
+				: descriptor
+		);
+	}
+	return Object.freeze(snapshot);
+}
+
+function snapshotArray(value: unknown): unknown {
+	if (!Array.isArray(value)) return value;
+
+	const descriptors = captureOwnPropertyDescriptors(value);
+	const snapshot: unknown[] = [];
+	let lengthDescriptor: PropertyDescriptor | undefined;
+	for (const [key, descriptor] of descriptors) {
+		if (key === 'length') {
+			lengthDescriptor = descriptor;
+		} else {
+			Object.defineProperty(snapshot, key, descriptor);
+		}
+	}
+	if (lengthDescriptor) Object.defineProperty(snapshot, 'length', lengthDescriptor);
+	return Object.freeze(snapshot);
+}
+
+function captureOwnPropertyDescriptors(
+	value: object
+): readonly (readonly [PropertyKey, PropertyDescriptor])[] {
+	const descriptors: Array<readonly [PropertyKey, PropertyDescriptor]> = [];
+	for (const key of Reflect.ownKeys(value)) {
+		const descriptor = Object.getOwnPropertyDescriptor(value, key);
+		if (descriptor) descriptors.push([key, descriptor]);
+	}
+	return descriptors;
 }
 
 function validateCapabilities(value: unknown, issues: PluginManifestIssue[]): void {
