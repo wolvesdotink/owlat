@@ -1,8 +1,11 @@
-import { constants } from 'node:fs';
-import { randomBytes } from 'node:crypto';
-import { lstat, mkdir, open, realpath, rename, rm, type FileHandle } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
+import { lstat, mkdir, realpath } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import type { Writable } from 'node:stream';
+import { fileURLToPath } from 'node:url';
 import { PluginCodegenError } from './errors';
+
+const ATOMIC_COMMIT_HELPER = fileURLToPath(new URL('./atomicCommit.mjs', import.meta.url));
 
 interface PathIdentity {
 	readonly path: string;
@@ -15,61 +18,105 @@ interface GeneratedPathSnapshot {
 	readonly parents: readonly PathIdentity[];
 }
 
+interface AtomicWriteHooks {
+	/** Test-only synchronization at the stable-directory worker's commit boundary. */
+	readonly beforeCommit?: () => void | Promise<void>;
+}
+
 export async function writeFileAtomically(
 	workspaceRoot: string,
 	path: string,
-	source: string
+	source: string,
+	hooks: AtomicWriteHooks = {}
 ): Promise<void> {
 	const snapshot = await snapshotGeneratedPath(workspaceRoot, path, true);
-	const temporaryPath = join(
-		snapshot.realWorkspaceRoot,
-		`.${basename(path)}.${randomBytes(16).toString('hex')}.tmp`
-	);
-	let temporaryFile: FileHandle | undefined;
-	let temporaryIdentity: PathIdentity | undefined;
-	let committedIdentity: PathIdentity | undefined;
-	let committedRealPath: string | undefined;
+	const targetParent = snapshot.parents.at(-1);
+	if (!targetParent) throw unsafeGeneratedPath(path, 'has no stable generated parent');
 	try {
 		await assertParentSnapshot(snapshot, path);
-		temporaryFile = await open(
-			temporaryPath,
-			constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW,
-			0o600
-		);
-		temporaryIdentity = await identifyOpenFile(temporaryFile, temporaryPath);
-		const temporaryRealPath = await realpath(temporaryPath);
-		assertPathInside(snapshot.realWorkspaceRoot, temporaryRealPath, path);
-		temporaryIdentity = { ...temporaryIdentity, path: temporaryRealPath };
-		await assertPathMatchesIdentity(temporaryRealPath, temporaryIdentity, path);
+		await commitFromStableParent(targetParent, basename(path), source, hooks);
 		await assertParentSnapshot(snapshot, path);
-
-		await temporaryFile.writeFile(source, 'utf8');
-		await temporaryFile.chmod(0o644);
-		await temporaryFile.sync();
-		await assertParentSnapshot(snapshot, path);
-		await temporaryFile.close();
-		temporaryFile = undefined;
-
-		await assertParentSnapshot(snapshot, path);
-		await rejectUnsafeTarget(path);
-		await rename(temporaryPath, path);
-		committedIdentity = temporaryIdentity;
-		committedRealPath = await realpath(path);
-		assertPathInside(snapshot.realWorkspaceRoot, committedRealPath, path);
-		await assertParentSnapshot(snapshot, path);
-		await rejectUnsafeTarget(committedRealPath);
 	} catch (cause) {
-		if (committedRealPath && committedIdentity) {
-			await removeExactFile(committedRealPath, committedIdentity);
-		}
 		if (cause instanceof PluginCodegenError) throw cause;
 		throw unsafeGeneratedPath(path, 'changed during the atomic write', cause);
-	} finally {
-		await temporaryFile?.close();
-		if (!committedIdentity && temporaryIdentity) {
-			await removeExactFile(temporaryIdentity.path, temporaryIdentity);
-		}
 	}
+}
+
+async function commitFromStableParent(
+	parent: PathIdentity,
+	targetName: string,
+	source: string,
+	hooks: AtomicWriteHooks
+): Promise<void> {
+	const child = spawn(
+		process.execPath,
+		[ATOMIC_COMMIT_HELPER, String(parent.device), String(parent.inode), targetName],
+		{ cwd: parent.path, stdio: ['pipe', 'pipe', 'pipe', 'pipe'] }
+	);
+	if (!child.stdin || !child.stdout || !child.stderr) {
+		child.kill();
+		throw new Error('Cannot open atomic commit worker streams');
+	}
+	const control = child.stdio[3];
+	if (!control || !('write' in control)) {
+		child.kill();
+		throw new Error('Cannot open atomic commit worker control stream');
+	}
+
+	let stdout = '';
+	let stderr = '';
+	let ready = false;
+	let resolveReady: (() => void) | undefined;
+	const readySignal = new Promise<void>((resolve) => {
+		resolveReady = resolve;
+	});
+	child.stdout.on('data', (chunk: Buffer) => {
+		stdout = appendBoundedOutput(stdout, chunk);
+		if (!ready && stdout.includes('READY\n')) {
+			ready = true;
+			resolveReady?.();
+		}
+	});
+	child.stderr.on('data', (chunk: Buffer) => {
+		stderr = appendBoundedOutput(stderr, chunk);
+	});
+	child.stdin.on('error', () => undefined);
+
+	const exit = new Promise<{
+		readonly code: number | null;
+		readonly signal: NodeJS.Signals | null;
+	}>((resolveExit, rejectExit) => {
+		child.once('error', rejectExit);
+		child.once('close', (code, signal) => resolveExit({ code, signal }));
+	});
+	child.stdin.end(source, 'utf8');
+	await Promise.race([
+		readySignal,
+		exit.then(({ code, signal }) => {
+			throw new Error(
+				`Atomic commit worker exited before commit (${code ?? signal ?? 'unknown'}): ${stderr}`
+			);
+		}),
+	]);
+
+	try {
+		await hooks.beforeCommit?.();
+		(control as Writable).end('COMMIT\n');
+	} catch (cause) {
+		(control as Writable).end();
+		await exit.catch(() => undefined);
+		throw cause;
+	}
+	const result = await exit;
+	if (result.code !== 0 || !stdout.includes('DONE\n')) {
+		throw new Error(
+			`Atomic commit worker failed (${result.code ?? result.signal ?? 'unknown'}): ${stderr}`
+		);
+	}
+}
+
+function appendBoundedOutput(output: string, chunk: Buffer): string {
+	return `${output}${chunk.toString('utf8')}`.slice(-4096);
 }
 
 export async function assertGeneratedPathSafety(
@@ -149,48 +196,11 @@ async function rejectUnsafeTarget(path: string): Promise<void> {
 	if (entry && !entry.isFile()) throw unsafeGeneratedPath(path, 'is not a regular file');
 }
 
-async function identifyOpenFile(file: FileHandle, path: string): Promise<PathIdentity> {
-	return identifyStats(path, await file.stat());
-}
-
 function identifyStats(
 	path: string,
 	stats: { readonly dev: number; readonly ino: number }
 ): PathIdentity {
 	return { path, device: stats.dev, inode: stats.ino };
-}
-
-async function assertPathMatchesIdentity(
-	path: string,
-	expected: PathIdentity,
-	generatedPath: string
-): Promise<void> {
-	const entry = await readPathEntry(path);
-	if (
-		!entry ||
-		!entry.isFile() ||
-		entry.isSymbolicLink() ||
-		entry.dev !== expected.device ||
-		entry.ino !== expected.inode
-	) {
-		throw unsafeGeneratedPath(generatedPath, 'changed identity during generation');
-	}
-}
-
-async function removeExactFile(path: string, expected: PathIdentity): Promise<void> {
-	try {
-		const entry = await lstat(path);
-		if (
-			entry.isFile() &&
-			!entry.isSymbolicLink() &&
-			entry.dev === expected.device &&
-			entry.ino === expected.inode
-		) {
-			await rm(path);
-		}
-	} catch (cause) {
-		if (!isFileSystemError(cause, 'ENOENT')) throw cause;
-	}
 }
 
 function assertPathInside(parent: string, child: string, generatedPath: string): void {

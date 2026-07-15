@@ -7,6 +7,7 @@ import {
 	readdir,
 	rename,
 	rm,
+	stat,
 	symlink,
 	writeFile,
 } from 'node:fs/promises';
@@ -126,7 +127,7 @@ describe('generated composition freshness', () => {
 		});
 	});
 
-	it('fails closed when a generated parent is swapped for a symlink during the write', async () => {
+	it('commits relative to the stable parent when its pathname is swapped at commit', async () => {
 		const root = await createZeroPluginWorkspace();
 		const parent = join(root, 'apps/api/convex/plugins');
 		const parkedParent = join(root, 'parked-plugins');
@@ -134,21 +135,43 @@ describe('generated composition freshness', () => {
 		const outside = await mkdtemp(join(tmpdir(), 'owlat-plugin-race-outside-'));
 		temporaryRoots.push(outside);
 		await mkdir(parent, { recursive: true });
+		await writeFile(join(outside, 'plugins.generated.ts'), 'outside victim\n');
 
-		const write = writeFileAtomically(root, target, 'x'.repeat(16 * 1024 * 1024));
-		for (;;) {
-			const entries = await readdir(root);
-			if (entries.some((entry) => entry.endsWith('.tmp'))) break;
-			await new Promise((resolve) => setImmediate(resolve));
-		}
-		await rename(parent, parkedParent);
-		await symlink(outside, parent, 'dir');
+		const write = writeFileAtomically(root, target, 'committed safely\n', {
+			beforeCommit: async () => {
+				expect((await readdir(parent)).filter((entry) => entry.endsWith('.tmp'))).toHaveLength(1);
+				expect((await readdir(root)).filter((entry) => entry.endsWith('.tmp'))).toEqual([]);
+				await rename(parent, parkedParent);
+				await symlink(outside, parent, 'dir');
+			},
+		});
 
 		await expect(write).rejects.toMatchObject({ code: 'generated_path_unsafe' });
-		await expect(readFile(join(outside, 'plugins.generated.ts'), 'utf8')).rejects.toMatchObject({
-			code: 'ENOENT',
-		});
+		expect(await readFile(join(outside, 'plugins.generated.ts'), 'utf8')).toBe('outside victim\n');
+		expect(await readFile(join(parkedParent, 'plugins.generated.ts'), 'utf8')).toBe(
+			'committed safely\n'
+		);
 		expect((await readdir(root)).filter((entry) => entry.endsWith('.tmp'))).toEqual([]);
 		expect((await readdir(parkedParent)).filter((entry) => entry.endsWith('.tmp'))).toEqual([]);
+	});
+
+	it('stages beside a target on a nested filesystem device', async () => {
+		if (process.platform !== 'linux') return;
+		let workspaceDevice;
+		let sharedMemoryDevice;
+		try {
+			[workspaceDevice, sharedMemoryDevice] = await Promise.all([stat('/'), stat('/dev/shm')]);
+		} catch {
+			return;
+		}
+		if (workspaceDevice.dev === sharedMemoryDevice.dev) return;
+
+		const parent = await mkdtemp('/dev/shm/owlat-plugin-atomic-');
+		temporaryRoots.push(parent);
+		const target = join(parent, 'generated.ts');
+		await writeFileAtomically('/', target, 'cross-device workspace\n');
+
+		expect(await readFile(target, 'utf8')).toBe('cross-device workspace\n');
+		expect((await readdir(parent)).filter((entry) => entry.endsWith('.tmp'))).toEqual([]);
 	});
 });
