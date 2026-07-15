@@ -1,8 +1,7 @@
-import { execFileSync } from 'node:child_process';
-import { readdir, readFile } from 'node:fs/promises';
-import { extname, relative, resolve, sep } from 'node:path';
+import { extname, relative, sep } from 'node:path';
 import { parse as parseVueSfc } from '@vue/compiler-sfc';
 import ts from 'typescript';
+import { listRepositoryFiles, readBoundedRepositoryUtf8File } from './boundedRepository';
 import { PluginCodegenError } from './errors';
 import {
 	readRepositoryModuleAliases,
@@ -21,15 +20,7 @@ const SOURCE_EXTENSIONS = new Set([
 	'.tsx',
 	'.vue',
 ]);
-const SKIPPED_SOURCE_DIRECTORIES = new Set([
-	'.nuxt',
-	'.output',
-	'.turbo',
-	'coverage',
-	'dist',
-	'node_modules',
-	'target',
-]);
+const MAX_SOURCE_BYTES = 2 * 1024 * 1024;
 const GENERATED_COMPOSITION_FILES = new Set([
 	'apps/api/convex/plugins/plugins.generated.ts',
 	'apps/web/app/plugins/plugin-composition.generated.ts',
@@ -49,15 +40,25 @@ export async function checkDirectPluginImports(
 	packageNames: readonly string[]
 ): Promise<void> {
 	if (packageNames.length === 0) return;
-	const [files, aliases] = await Promise.all([
-		listSourceFiles(workspaceRoot),
-		readRepositoryModuleAliases(workspaceRoot),
-	]);
+	const repositoryFiles = await listRepositoryFiles(workspaceRoot);
+	const aliases = await readRepositoryModuleAliases(workspaceRoot, repositoryFiles);
+	const files = repositoryFiles.filter((file) => {
+		const relativeFile = normalizePath(relative(workspaceRoot, file));
+		return (
+			(relativeFile.startsWith('apps/') || relativeFile.startsWith('packages/')) &&
+			isPluginBoundarySourceFile(file)
+		);
+	});
 	const findings: DirectPluginImport[] = [];
 	for (const file of files) {
 		const relativeFile = normalizePath(relative(workspaceRoot, file));
 		if (GENERATED_COMPOSITION_FILES.has(relativeFile)) continue;
-		const source = await readFile(file, 'utf8');
+		let source: string;
+		try {
+			source = await readBoundedRepositoryUtf8File(workspaceRoot, file, MAX_SOURCE_BYTES);
+		} catch (cause) {
+			throw sourceInvalid(relativeFile, cause);
+		}
 		findings.push(...findDirectPluginImports(source, relativeFile, packageNames, aliases));
 	}
 
@@ -79,10 +80,20 @@ export function findDirectPluginImports(
 	packageNames: readonly string[],
 	aliases: readonly RepositoryModuleAlias[] = []
 ): readonly DirectPluginImport[] {
-	const scriptSources = extname(file) === '.vue' ? extractVueScripts(source, file) : [source];
+	const extracted =
+		extname(file) === '.vue'
+			? extractVueDependencies(source, file)
+			: { scripts: [source], externalSpecifiers: [] };
 	const findings: DirectPluginImport[] = [];
-	for (const scriptSource of scriptSources) {
+	for (const packageSpecifier of extracted.externalSpecifiers) {
+		if (specifierTargetsConfiguredPackage(packageSpecifier, packageNames, aliases)) {
+			findings.push({ file, packageSpecifier });
+		}
+	}
+	for (const scriptSource of extracted.scripts) {
 		const sourceFile = ts.createSourceFile(file, scriptSource, ts.ScriptTarget.Latest, true);
+		const diagnostics = readParseDiagnostics(sourceFile);
+		if (diagnostics.length > 0) throw sourceInvalid(file);
 		const moduleLoaders = findModuleLoaderBindings(sourceFile);
 		const visit = (node: ts.Node): void => {
 			const packageSpecifier = readModuleSpecifier(node, moduleLoaders);
@@ -324,56 +335,36 @@ function readPropertyName(name: ts.PropertyName | ts.BindingName): string | unde
 		: undefined;
 }
 
-function extractVueScripts(source: string, file: string): readonly string[] {
-	const { descriptor } = parseVueSfc(source, { filename: file });
-	return [descriptor.script?.content, descriptor.scriptSetup?.content].filter(
-		(script): script is string => script !== undefined
+function extractVueDependencies(
+	source: string,
+	file: string
+): { readonly scripts: readonly string[]; readonly externalSpecifiers: readonly string[] } {
+	const { descriptor, errors } = parseVueSfc(source, { filename: file });
+	if (errors.length > 0) throw sourceInvalid(file);
+	return {
+		scripts: [descriptor.script?.content, descriptor.scriptSetup?.content].filter(
+			(script): script is string => script !== undefined
+		),
+		externalSpecifiers: [descriptor.script?.src, descriptor.scriptSetup?.src].filter(
+			(specifier): specifier is string => specifier !== undefined
+		),
+	};
+}
+
+function readParseDiagnostics(sourceFile: ts.SourceFile): readonly ts.Diagnostic[] {
+	return (
+		(sourceFile as ts.SourceFile & { readonly parseDiagnostics?: readonly ts.Diagnostic[] })
+			.parseDiagnostics ?? []
 	);
 }
 
-async function listSourceFiles(workspaceRoot: string): Promise<readonly string[]> {
-	try {
-		const output = execFileSync(
-			'git',
-			['-C', workspaceRoot, 'ls-files', '-z', '--', 'apps', 'packages'],
-			{
-				encoding: 'utf8',
-				stdio: ['ignore', 'pipe', 'ignore'],
-			}
-		);
-		return output
-			.split('\0')
-			.filter((file) => file.length > 0 && isPluginBoundarySourceFile(file))
-			.map((file) => resolve(workspaceRoot, ...file.split('/')));
-	} catch {
-		return listSourceFilesWithoutGit(workspaceRoot);
-	}
-}
-
-async function listSourceFilesWithoutGit(workspaceRoot: string): Promise<readonly string[]> {
-	const files: string[] = [];
-	const visit = async (directory: string): Promise<void> => {
-		for (const entry of await readdir(directory, { withFileTypes: true })) {
-			const path = resolve(directory, entry.name);
-			if (entry.isDirectory()) {
-				if (!SKIPPED_SOURCE_DIRECTORIES.has(entry.name)) await visit(path);
-			} else if (entry.isFile() && isPluginBoundarySourceFile(entry.name)) {
-				files.push(path);
-			}
-		}
-	};
-	for (const root of ['apps', 'packages']) {
-		try {
-			await visit(resolve(workspaceRoot, root));
-		} catch (cause) {
-			if (!isMissingDirectoryError(cause)) throw cause;
-		}
-	}
-	return files;
-}
-
-function isMissingDirectoryError(error: unknown): boolean {
-	return error instanceof Error && 'code' in error && error.code === 'ENOENT';
+function sourceInvalid(file: string, cause?: unknown): PluginCodegenError {
+	return new PluginCodegenError(
+		'source_invalid',
+		`Cannot safely scan repository source ${file}`,
+		[file],
+		cause === undefined ? undefined : { cause }
+	);
 }
 
 function normalizePath(path: string): string {
