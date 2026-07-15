@@ -88,6 +88,10 @@ export const authTables = {
 		// Unset keys fall back to FEATURE_FLAGS[key].default at resolution time.
 		// Includes `campaigns.archive` — there is no separate `archiveEnabled` column.
 		featureFlags: v.optional(v.record(v.string(), v.boolean())),
+		// Explicit operator approvals for capabilities requested by each bundled
+		// plugin flag. The host still checks each grant at call time; disabling a
+		// plugin clears its record so re-enabling always requires fresh approval.
+		pluginCapabilityGrants: v.optional(v.record(v.string(), v.record(v.string(), v.boolean()))),
 		// Timestamp of the last successful delivery test send (Settings → Delivery
 		// "Send test email"). Drives the send-path-verified signal on the status
 		// page and onboarding. Unset ⇒ no successful test recorded yet.

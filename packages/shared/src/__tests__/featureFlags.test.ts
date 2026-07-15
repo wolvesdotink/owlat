@@ -8,18 +8,23 @@ import {
 	FEATURE_PACKS,
 	applyPackToggle,
 	applyToggle,
+	createFeatureFlagRegistry,
 	getActiveProfiles,
 	getDefaultFlags,
+	getFlagsByCategory,
 	getRequiredEnvVars,
 	getSendPathRequiredEnv,
 	isDeliveryProviderKind,
 	isFlagEnabled,
 	isPackEnabled,
+	isPluginFeatureFlagDefinition,
 	needsDeliveryProvider,
 	resolveFlags,
 	SENDING_FLAGS_REQUIRING_DELIVERY,
 	type FeatureFlagKey,
 	type FeatureFlagState,
+	type PluginFeatureFlagDefinition,
+	type PluginFeatureFlagKey,
 } from '../featureFlags';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
@@ -208,13 +213,15 @@ describe('featureFlags — registry sanity', () => {
 	it('every requires target exists in the registry', () => {
 		for (const def of Object.values(FEATURE_FLAGS)) {
 			for (const dep of def.requires ?? []) {
-				expect(FEATURE_FLAGS[dep], `${def.key} requires unknown flag ${dep}`).toBeDefined();
+				expect(Object.hasOwn(FEATURE_FLAGS, dep), `${def.key} requires unknown flag ${dep}`).toBe(
+					true
+				);
 			}
 			for (const target of def.cascadesOff ?? []) {
 				expect(
-					FEATURE_FLAGS[target],
+					Object.hasOwn(FEATURE_FLAGS, target),
 					`${def.key} cascadesOff unknown flag ${target}`
-				).toBeDefined();
+				).toBe(true);
 			}
 		}
 	});
@@ -223,6 +230,312 @@ describe('featureFlags — registry sanity', () => {
 		const stored: FeatureFlagState = { campaigns: true, inbox: false };
 		expect(isFlagEnabled(stored, 'campaigns')).toBe(true);
 		expect(isFlagEnabled(stored, 'inbox')).toBe(false);
+	});
+});
+
+describe('featureFlags — plugin namespace', () => {
+	const pluginFlag = {
+		key: 'plugin.deliverability-lab',
+		category: 'plugins',
+		label: 'Deliverability Lab',
+		description: 'Bundled plugin from @example/deliverability-lab.',
+		default: false,
+		requiredEnvVars: ['SEEDBOX_API_KEY'],
+		requiredCapabilities: ['campaigns:read', 'send:gate'],
+		pluginPackageName: '@example/deliverability-lab',
+	} satisfies PluginFeatureFlagDefinition;
+
+	it('types plugin flags in an open, namespaced key space', () => {
+		const key: PluginFeatureFlagKey = 'plugin.deliverability-lab';
+		const featureKey: FeatureFlagKey = key;
+		expect(featureKey).toBe(pluginFlag.key);
+	});
+
+	it('registers plugin definitions without changing the core registry', () => {
+		const registry = createFeatureFlagRegistry([pluginFlag]);
+		expect(registry[pluginFlag.key]).toMatchObject(pluginFlag);
+		expect(isPluginFeatureFlagDefinition(registry[pluginFlag.key])).toBe(true);
+		expect(Object.hasOwn(registry[pluginFlag.key]!, 'requires')).toBe(true);
+		expect(registry[pluginFlag.key]?.requires).toBeUndefined();
+		expect(FEATURE_FLAGS).not.toHaveProperty(pluginFlag.key);
+		expect(getFlagsByCategory({ registry }).plugins).toEqual([registry[pluginFlag.key]]);
+	});
+
+	it('honors a plugin default, explicit override, and disable', () => {
+		const defaultOn = { ...pluginFlag, default: true } satisfies PluginFeatureFlagDefinition;
+		const registry = createFeatureFlagRegistry([defaultOn]);
+
+		expect(resolveFlags({}, { registry })[defaultOn.key]).toBe(true);
+		expect(resolveFlags({ [defaultOn.key]: false }, { registry })[defaultOn.key]).toBe(false);
+		const { next } = applyToggle({}, defaultOn.key, false, registry);
+		expect(next[defaultOn.key]).toBe(false);
+	});
+
+	it('includes plugin env requirements only while the plugin resolves on', () => {
+		const registry = createFeatureFlagRegistry([pluginFlag]);
+		expect(getRequiredEnvVars({ [pluginFlag.key]: true }, { registry })).toContain(
+			'SEEDBOX_API_KEY'
+		);
+		expect(getRequiredEnvVars({ [pluginFlag.key]: false }, { registry })).not.toContain(
+			'SEEDBOX_API_KEY'
+		);
+	});
+
+	it.each([
+		['an unnamespaced key', { ...pluginFlag, key: 'deliverability-lab' }],
+		['an empty plugin id', { ...pluginFlag, key: 'plugin.' }],
+		['an invalid plugin id', { ...pluginFlag, key: 'plugin.Bad_Id' }],
+		['the wrong category', { ...pluginFlag, category: 'integrations' }],
+	] as const)('rejects %s', (_label, definition) => {
+		expect(() =>
+			createFeatureFlagRegistry([definition as unknown as PluginFeatureFlagDefinition])
+		).toThrow('Invalid plugin feature flag definition');
+	});
+
+	const inheritedDefinition = Object.create(pluginFlag) as unknown;
+	const accessorDefinition = {
+		...pluginFlag,
+		get label() {
+			return 'Inherited behavior';
+		},
+	};
+	function expectInvalidDefinition(value: unknown) {
+		expect(isPluginFeatureFlagDefinition(value)).toBe(false);
+		expect(() =>
+			createFeatureFlagRegistry([value as unknown as PluginFeatureFlagDefinition])
+		).toThrowError(/^Invalid plugin feature flag definition$/);
+	}
+
+	const malformedDefinitions: readonly (readonly [string, unknown])[] = [
+		['null', null],
+		['undefined', undefined],
+		['a string', 'plugin.definition'],
+		['a number', 1],
+		['a boolean', true],
+		['an array', []],
+		['a function', () => pluginFlag],
+		['inherited fields', inheritedDefinition],
+		['an accessor field', accessorDefinition],
+		['a missing category', { ...pluginFlag, category: undefined }],
+		['a non-string category', { ...pluginFlag, category: 1 }],
+		['a missing key', { ...pluginFlag, key: undefined }],
+		['a non-string key', { ...pluginFlag, key: false }],
+		['a missing label', { ...pluginFlag, label: undefined }],
+		['a non-string label', { ...pluginFlag, label: 1 }],
+		['a missing description', { ...pluginFlag, description: undefined }],
+		['a non-string description', { ...pluginFlag, description: false }],
+		['a missing default', { ...pluginFlag, default: undefined }],
+		['a non-boolean default', { ...pluginFlag, default: 'false' }],
+		['a missing package name', { ...pluginFlag, pluginPackageName: undefined }],
+		['a non-string package name', { ...pluginFlag, pluginPackageName: 1 }],
+		['missing capabilities', { ...pluginFlag, requiredCapabilities: undefined }],
+		['non-array capabilities', { ...pluginFlag, requiredCapabilities: 'mail:read' }],
+		['non-array requires', { ...pluginFlag, requires: 'ai' }],
+		['non-string requires', { ...pluginFlag, requires: ['ai', 1] }],
+		['non-array cascadesOff', { ...pluginFlag, cascadesOff: false }],
+		['non-string cascadesOff', { ...pluginFlag, cascadesOff: [{}] }],
+		['non-array requiredEnvVars', { ...pluginFlag, requiredEnvVars: 'TOKEN' }],
+		['non-string requiredEnvVars', { ...pluginFlag, requiredEnvVars: [1] }],
+		['non-array dockerProfiles', { ...pluginFlag, dockerProfiles: true }],
+		['non-string dockerProfiles', { ...pluginFlag, dockerProfiles: [null] }],
+		['a non-boolean hostedOnly', { ...pluginFlag, hostedOnly: 'true' }],
+		['non-string capabilities', { ...pluginFlag, requiredCapabilities: ['mail:read', 1] }],
+	];
+
+	it.each(malformedDefinitions)('rejects %s with a deterministic runtime error', (_label, value) =>
+		expectInvalidDefinition(value)
+	);
+
+	it.each([
+		['required', 'label'],
+		['optional', 'requires'],
+		['unknown', 'extra'],
+		['symbol', Symbol('extra')],
+	] as const)('rejects a %s own getter without invoking it', (_label, property) => {
+		let getterCalls = 0;
+		const definition = { ...pluginFlag } as Record<PropertyKey, unknown>;
+		Object.defineProperty(definition, property, {
+			enumerable: true,
+			get() {
+				getterCalls += 1;
+				throw new Error('definition getter ran');
+			},
+		});
+
+		expectInvalidDefinition(definition);
+		expect(getterCalls).toBe(0);
+	});
+
+	it.each([
+		['requiredCapabilities', 'mail:read'],
+		['requiredEnvVars', 'POLICY_TOKEN'],
+	] as const)('rejects an accessor-backed %s item without invoking it', (field, initialValue) => {
+		let getterCalls = 0;
+		const items = [initialValue];
+		Object.defineProperty(items, '0', {
+			enumerable: true,
+			get() {
+				getterCalls += 1;
+				throw new Error('array getter ran');
+			},
+		});
+		const definition = { ...pluginFlag, [field]: items };
+
+		expectInvalidDefinition(definition);
+		expect(getterCalls).toBe(0);
+	});
+
+	it.each(['requiredCapabilities', 'requiredEnvVars'] as const)(
+		'rejects a sparse %s array',
+		(field) => {
+			const sparse: string[] = [];
+			sparse.length = 1;
+			const definition = { ...pluginFlag, [field]: sparse };
+			expectInvalidDefinition(definition);
+		}
+	);
+
+	it.each(['requiredCapabilities', 'requiredEnvVars'] as const)(
+		'rejects an oversized %s array',
+		(field) => {
+			const definition = {
+				...pluginFlag,
+				[field]: Array.from({ length: 65 }, (_, index) => `item-${index}`),
+			};
+			expectInvalidDefinition(definition);
+		}
+	);
+
+	it('rejects unknown own data and symbol fields', () => {
+		expectInvalidDefinition({ ...pluginFlag, extra: true });
+		const definition = { ...pluginFlag } as Record<PropertyKey, unknown>;
+		definition[Symbol('extra')] = true;
+		expectInvalidDefinition(definition);
+	});
+
+	it('rejects sparse and accessor-backed definition arrays without reading an item', () => {
+		const sparse: PluginFeatureFlagDefinition[] = [];
+		sparse.length = 1;
+		expect(() =>
+			createFeatureFlagRegistry(sparse as readonly PluginFeatureFlagDefinition[])
+		).toThrowError(/^Invalid plugin feature flag definition$/);
+
+		let getterCalls = 0;
+		const definitions = [pluginFlag];
+		Object.defineProperty(definitions, '0', {
+			enumerable: true,
+			get() {
+				getterCalls += 1;
+				throw new Error('definition array getter ran');
+			},
+		});
+		expect(() => createFeatureFlagRegistry(definitions)).toThrowError(
+			/^Invalid plugin feature flag definition$/
+		);
+		expect(getterCalls).toBe(0);
+	});
+
+	it.each(['ownKeys', 'getOwnPropertyDescriptor'] as const)(
+		'converts a proxy %s inspection failure to the domain error',
+		(trap) => {
+			const definition = new Proxy(
+				{ ...pluginFlag },
+				{
+					[trap]() {
+						throw new Error(`proxy ${trap} failure`);
+					},
+				}
+			);
+
+			expectInvalidDefinition(definition);
+		}
+	);
+
+	it('converts definition-array proxy inspection failures to the domain error', () => {
+		const definitions = new Proxy([pluginFlag], {
+			getOwnPropertyDescriptor() {
+				throw new Error('definition array proxy failure');
+			},
+		});
+		expect(() => createFeatureFlagRegistry(definitions)).toThrowError(
+			/^Invalid plugin feature flag definition$/
+		);
+	});
+
+	it('converts nested array proxy inspection failures to the domain error', () => {
+		const requiredCapabilities = new Proxy(['mail:read'], {
+			ownKeys() {
+				throw new Error('capability proxy failure');
+			},
+		});
+		expectInvalidDefinition({ ...pluginFlag, requiredCapabilities });
+	});
+
+	it('ignores stale and malformed stored plugin keys during resolution', () => {
+		const registry = createFeatureFlagRegistry([pluginFlag]);
+		const stored = {
+			[pluginFlag.key]: true,
+			'plugin.removed': true,
+			'plugin.Bad_Id': true,
+		} as FeatureFlagState;
+		const resolved = resolveFlags(stored, { registry });
+
+		expect(resolved[pluginFlag.key]).toBe(true);
+		expect(Object.hasOwn(resolved, 'plugin.removed')).toBe(false);
+		expect(Object.hasOwn(resolved, 'plugin.Bad_Id')).toBe(false);
+		expect(isFlagEnabled(stored, 'plugin.removed', { registry })).toBe(false);
+	});
+
+	it.each(['toString', 'constructor', '__proto__'])(
+		'rejects inherited object key %s without mutating the input',
+		(key) => {
+			const stored: FeatureFlagState = { inbox: true };
+			expect(() => applyToggle(stored, key as FeatureFlagKey, true)).toThrow(
+				`Unknown feature flag: ${key}`
+			);
+			expect(stored).toEqual({ inbox: true });
+		}
+	);
+
+	it('rejects duplicate definitions and dangling dependencies deterministically', () => {
+		expect(() => createFeatureFlagRegistry([pluginFlag, pluginFlag])).toThrow(
+			'Duplicate feature flag definition'
+		);
+		expect(() =>
+			createFeatureFlagRegistry([
+				{ ...pluginFlag, requires: ['plugin.not-installed'] as FeatureFlagKey[] },
+			])
+		).toThrow('requires unknown feature flag plugin.not-installed');
+		expect(() =>
+			createFeatureFlagRegistry([
+				{ ...pluginFlag, cascadesOff: ['plugin.not-installed'] as FeatureFlagKey[] },
+			])
+		).toThrow('cascades to unknown feature flag plugin.not-installed');
+	});
+
+	it('bounds the number of plugin definitions before iterating them', () => {
+		const definitions = Array.from({ length: 129 }, (_, index) => ({
+			...pluginFlag,
+			key: `plugin.policy-pack-${index}` as PluginFeatureFlagKey,
+		}));
+		expect(() => createFeatureFlagRegistry(definitions)).toThrow(
+			'At most 128 plugin feature flags may be registered'
+		);
+	});
+
+	it('snapshots and freezes plugin metadata', () => {
+		const requiredEnvVars = ['SEEDBOX_API_KEY'];
+		const requiredCapabilities = ['send:gate'];
+		const registry = createFeatureFlagRegistry([
+			{ ...pluginFlag, requiredEnvVars, requiredCapabilities },
+		]);
+		requiredEnvVars.push('LATE_SECRET');
+		requiredCapabilities.push('contacts:write');
+
+		expect(registry[pluginFlag.key]?.requiredEnvVars).toEqual(['SEEDBOX_API_KEY']);
+		expect(registry[pluginFlag.key]?.requiredCapabilities).toEqual(['send:gate']);
+		expect(Object.isFrozen(registry)).toBe(true);
+		expect(Object.isFrozen(registry[pluginFlag.key])).toBe(true);
 	});
 });
 

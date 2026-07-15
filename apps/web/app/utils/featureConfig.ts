@@ -8,6 +8,8 @@
  * yet configured ("needs config").
  */
 
+import type { FeatureFlagDefinition } from '@owlat/shared/featureFlags';
+
 /**
  * The set of flags that are enabled yet still missing configuration. A flag
  * only qualifies when it is resolved-on AND the config-status map lists at
@@ -16,7 +18,7 @@
  */
 export function flagsNeedingConfig(
 	resolved: Record<string, boolean>,
-	configStatus: Record<string, string[]> | undefined | null,
+	configStatus: Record<string, string[]> | undefined | null
 ): Set<string> {
 	const result = new Set<string>();
 	if (!configStatus) return result;
@@ -24,4 +26,13 @@ export function flagsNeedingConfig(
 		if (resolved[flag] && missing.length > 0) result.add(flag);
 	}
 	return result;
+}
+
+/** Missing env names only; capability gaps use a `Grant: ` status prefix. */
+export function missingPluginEnvironmentVariables(
+	definition: FeatureFlagDefinition,
+	configStatus: Record<string, string[]> | undefined | null
+): string[] {
+	const missing = new Set(configStatus?.[definition.key] ?? []);
+	return (definition.requiredEnvVars ?? []).filter((variable) => missing.has(variable));
 }

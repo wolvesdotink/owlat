@@ -34,6 +34,14 @@ export default defineConfig({
 				find: '@owlat/shared',
 				replacement: resolve(__dirname, '../../packages/shared/src/index.ts'),
 			},
+			{
+				find: '@owlat/plugin-host',
+				replacement: resolve(__dirname, '../../packages/plugin-host/src/index.ts'),
+			},
+			{
+				find: '@owlat/plugin-kit',
+				replacement: resolve(__dirname, '../../packages/plugin-kit/src/index.ts'),
+			},
 		],
 	},
 });
