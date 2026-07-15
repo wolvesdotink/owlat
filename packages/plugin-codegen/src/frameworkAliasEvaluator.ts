@@ -127,6 +127,8 @@ export function readFrameworkStaticValues(sourceFile: ts.SourceFile): FrameworkS
 			node.name
 		) {
 			countBinding(node.name.text);
+		} else if (ts.isImportEqualsDeclaration(node)) {
+			countBinding(node.name.text);
 		} else if (ts.isImportClause(node)) {
 			if (node.name) countBinding(node.name.text);
 		} else if (ts.isNamespaceImport(node)) {
