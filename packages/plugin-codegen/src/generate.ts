@@ -1,5 +1,7 @@
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
-import { dirname, join, relative } from 'node:path';
+import { constants } from 'node:fs';
+import { lstat, mkdir, open, readFile, rename, rm } from 'node:fs/promises';
+import { randomBytes } from 'node:crypto';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { parsePluginsConfig } from './config';
 import { PluginCodegenError } from './errors';
 import { checkDirectPluginImports } from './packageBoundaries';
@@ -34,6 +36,7 @@ export async function generatePluginComposition(
 	if (options.check) {
 		const staleFiles: string[] = [];
 		for (const target of targets) {
+			await assertGeneratedPathSafety(workspaceRoot, target.path, false);
 			if ((await readExistingFile(target.path)) !== target.source) {
 				staleFiles.push(relative(workspaceRoot, target.path));
 			}
@@ -48,7 +51,9 @@ export async function generatePluginComposition(
 		return;
 	}
 
-	for (const target of targets) await writeFileAtomically(target.path, target.source);
+	for (const target of targets) {
+		await writeFileAtomically(workspaceRoot, target.path, target.source);
+	}
 }
 
 async function readConfig(workspaceRoot: string): Promise<string> {
@@ -70,17 +75,99 @@ async function readExistingFile(path: string): Promise<string | undefined> {
 	}
 }
 
-async function writeFileAtomically(path: string, source: string): Promise<void> {
-	await mkdir(dirname(path), { recursive: true });
-	const temporaryPath = `${path}.${process.pid}.tmp`;
+async function writeFileAtomically(
+	workspaceRoot: string,
+	path: string,
+	source: string
+): Promise<void> {
+	await assertGeneratedPathSafety(workspaceRoot, path, true);
+	const temporaryPath = join(
+		dirname(path),
+		`.${basename(path)}.${randomBytes(16).toString('hex')}.tmp`
+	);
+	let temporaryFile;
 	try {
-		await writeFile(temporaryPath, source, { encoding: 'utf8', mode: 0o644 });
+		temporaryFile = await open(
+			temporaryPath,
+			constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW,
+			0o600
+		);
+		await temporaryFile.writeFile(source, 'utf8');
+		await temporaryFile.chmod(0o644);
+		await temporaryFile.sync();
+		await temporaryFile.close();
+		temporaryFile = undefined;
+		await rejectSymbolicLink(path);
 		await rename(temporaryPath, path);
 	} finally {
+		await temporaryFile?.close();
 		await rm(temporaryPath, { force: true });
 	}
 }
 
+async function assertGeneratedPathSafety(
+	workspaceRoot: string,
+	path: string,
+	createParents: boolean
+): Promise<void> {
+	const resolvedRoot = resolve(workspaceRoot);
+	const resolvedPath = resolve(path);
+	const relativePath = relative(resolvedRoot, resolvedPath);
+	if (relativePath === '..' || relativePath.startsWith(`..${sep}`) || isAbsolute(relativePath)) {
+		throw unsafeGeneratedPath(path, 'is outside the workspace');
+	}
+
+	let current = resolvedRoot;
+	const parentParts = relative(resolvedRoot, dirname(resolvedPath)).split(sep).filter(Boolean);
+	for (const part of parentParts) {
+		current = join(current, part);
+		let entry = await readPathEntry(current);
+		if (!entry && createParents) {
+			try {
+				await mkdir(current, { mode: 0o755 });
+			} catch (cause) {
+				if (!isFileSystemError(cause, 'EEXIST')) throw cause;
+			}
+			entry = await readPathEntry(current);
+		}
+		if (!entry) return;
+		if (entry.isSymbolicLink() || !entry.isDirectory()) {
+			throw unsafeGeneratedPath(path, 'has a symbolic-link or non-directory parent');
+		}
+	}
+	await rejectSymbolicLink(resolvedPath);
+}
+
+async function rejectSymbolicLink(path: string): Promise<void> {
+	const entry = await readPathEntry(path);
+	if (entry?.isSymbolicLink()) {
+		throw unsafeGeneratedPath(path, 'is a symbolic link');
+	}
+	if (entry && !entry.isFile()) {
+		throw unsafeGeneratedPath(path, 'is not a regular file');
+	}
+}
+
+async function readPathEntry(path: string) {
+	try {
+		return await lstat(path);
+	} catch (cause) {
+		if (isFileSystemError(cause, 'ENOENT')) return undefined;
+		throw cause;
+	}
+}
+
+function unsafeGeneratedPath(path: string, reason: string): PluginCodegenError {
+	return new PluginCodegenError(
+		'generated_path_unsafe',
+		`Refusing to write generated plugin composition because ${path} ${reason}`
+	);
+}
+
 function isMissingFileError(error: unknown): error is NodeJS.ErrnoException {
-	return error instanceof Error && 'code' in error && error.code === 'ENOENT';
+	return isFileSystemError(error, 'ENOENT');
+}
+
+function isFileSystemError(error: unknown, code: string): error is NodeJS.ErrnoException {
+	return error instanceof Error && 'code' in error && error.code === code;
 }

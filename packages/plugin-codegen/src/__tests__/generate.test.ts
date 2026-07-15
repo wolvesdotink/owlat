@@ -1,10 +1,14 @@
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { generatePluginComposition } from '../generate';
 
 const temporaryRoots: string[] = [];
+const execFileAsync = promisify(execFile);
+const cliPath = resolve(dirname(new URL(import.meta.url).pathname), '../cli.ts');
 
 async function createZeroPluginWorkspace(): Promise<string> {
 	const root = await mkdtemp(join(tmpdir(), 'owlat-plugin-generate-'));
@@ -50,5 +54,59 @@ describe('generated composition freshness', () => {
 			],
 		});
 		expect(await readFile(convexPath, 'utf8')).toBe('// stale and must remain unchanged\n');
+	});
+
+	it('supports concurrent generation in one process without temporary-file collisions', async () => {
+		const root = await createZeroPluginWorkspace();
+
+		await Promise.all(Array.from({ length: 20 }, () => generatePluginComposition(root)));
+
+		await expect(generatePluginComposition(root, { check: true })).resolves.toBeUndefined();
+	});
+
+	it('supports concurrent generation in separate Bun processes', async () => {
+		const root = await createZeroPluginWorkspace();
+
+		await Promise.all(
+			Array.from({ length: 4 }, () => execFileAsync('bun', [cliPath], { cwd: root }))
+		);
+
+		await expect(generatePluginComposition(root, { check: true })).resolves.toBeUndefined();
+	});
+
+	it('ignores a planted legacy temporary symlink and never overwrites its victim', async () => {
+		const root = await createZeroPluginWorkspace();
+		const convexPath = join(root, 'apps/api/convex/plugins/plugins.generated.ts');
+		const victimPath = join(root, 'victim.txt');
+		await mkdir(dirname(convexPath), { recursive: true });
+		await writeFile(victimPath, 'unchanged\n');
+		await symlink(victimPath, `${convexPath}.${process.pid}.tmp`);
+
+		await generatePluginComposition(root);
+
+		expect(await readFile(victimPath, 'utf8')).toBe('unchanged\n');
+		await expect(generatePluginComposition(root, { check: true })).resolves.toBeUndefined();
+	});
+
+	it('rejects generated targets and parents that are symbolic links', async () => {
+		const targetRoot = await createZeroPluginWorkspace();
+		const targetVictim = join(targetRoot, 'target-victim.ts');
+		const convexTarget = join(targetRoot, 'apps/api/convex/plugins/plugins.generated.ts');
+		await mkdir(dirname(convexTarget), { recursive: true });
+		await writeFile(targetVictim, '// victim\n');
+		await symlink(targetVictim, convexTarget);
+		await expect(generatePluginComposition(targetRoot)).rejects.toMatchObject({
+			code: 'generated_path_unsafe',
+		});
+		expect(await readFile(targetVictim, 'utf8')).toBe('// victim\n');
+
+		const parentRoot = await createZeroPluginWorkspace();
+		const outsideParent = await mkdtemp(join(tmpdir(), 'owlat-plugin-outside-'));
+		temporaryRoots.push(outsideParent);
+		await mkdir(join(parentRoot, 'apps/api/convex'), { recursive: true });
+		await symlink(outsideParent, join(parentRoot, 'apps/api/convex/plugins'), 'dir');
+		await expect(generatePluginComposition(parentRoot)).rejects.toMatchObject({
+			code: 'generated_path_unsafe',
+		});
 	});
 });
