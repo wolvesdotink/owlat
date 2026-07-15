@@ -7,7 +7,17 @@
  * the toggle list stays in sync across the stack.
  */
 
-export type FeatureFlagKey =
+import {
+	capturePluginDefinitionArray,
+	INVALID_PLUGIN_FEATURE_FLAG_DEFINITION,
+	isPluginFeatureFlagDefinition,
+	MAX_PLUGIN_FEATURE_FLAGS,
+	snapshotPluginFeatureFlagDefinition,
+} from './pluginFeatureFlagDefinition';
+
+export { isPluginFeatureFlagDefinition };
+
+export type CoreFeatureFlagKey =
 	// Sending
 	| 'campaigns'
 	| 'campaigns.archive'
@@ -50,7 +60,12 @@ export type FeatureFlagKey =
 	| 'multiTenancy'
 	| 'tier.autoProvision';
 
-export type FeatureCategory =
+/** Runtime flags contributed by statically composed plugins. */
+export type PluginFeatureFlagKey = `plugin.${string}`;
+
+export type FeatureFlagKey = CoreFeatureFlagKey | PluginFeatureFlagKey;
+
+export type CoreFeatureCategory =
 	| 'sending'
 	| 'receiving'
 	| 'ai'
@@ -59,25 +74,47 @@ export type FeatureCategory =
 	| 'deliverability'
 	| 'hosted';
 
-export interface FeatureFlagDefinition {
-	key: FeatureFlagKey;
-	category: FeatureCategory;
-	label: string;
-	description: string;
-	default: boolean;
+export type FeatureCategory = CoreFeatureCategory | 'plugins';
+
+interface FeatureFlagDefinitionBase<Key extends FeatureFlagKey, Category extends FeatureCategory> {
+	readonly key: Key;
+	readonly category: Category;
+	readonly label: string;
+	readonly description: string;
+	readonly default: boolean;
 	/** Other flags that must be ON for this flag to be ON. */
-	requires?: FeatureFlagKey[];
+	readonly requires?: readonly FeatureFlagKey[];
 	/** When this flag turns OFF, these flags are also turned OFF. */
-	cascadesOff?: FeatureFlagKey[];
+	readonly cascadesOff?: readonly FeatureFlagKey[];
 	/** Env vars required when this flag is ON (collected by setup CLI/UI). */
-	requiredEnvVars?: string[];
+	readonly requiredEnvVars?: readonly string[];
 	/** Docker compose profile names to enable when this flag is ON. */
-	dockerProfiles?: string[];
+	readonly dockerProfiles?: readonly string[];
 	/** Hosted-mode-only flag — hidden from the self-host wizard. */
-	hostedOnly?: boolean;
+	readonly hostedOnly?: boolean;
 }
 
-export const FEATURE_FLAGS: Record<FeatureFlagKey, FeatureFlagDefinition> = {
+export interface CoreFeatureFlagDefinition extends FeatureFlagDefinitionBase<
+	CoreFeatureFlagKey,
+	CoreFeatureCategory
+> {
+	readonly requiredCapabilities?: never;
+	readonly pluginPackageName?: never;
+}
+
+export interface PluginFeatureFlagDefinition extends FeatureFlagDefinitionBase<
+	PluginFeatureFlagKey,
+	'plugins'
+> {
+	/** Capabilities an operator must explicitly grant before enabling this plugin. */
+	readonly requiredCapabilities: readonly string[];
+	/** Validated package that supplied this plugin flag. */
+	readonly pluginPackageName: string;
+}
+
+export type FeatureFlagDefinition = CoreFeatureFlagDefinition | PluginFeatureFlagDefinition;
+
+export const FEATURE_FLAGS: Record<CoreFeatureFlagKey, CoreFeatureFlagDefinition> = {
 	campaigns: {
 		key: 'campaigns',
 		category: 'sending',
@@ -407,7 +444,74 @@ export const FEATURE_FLAGS: Record<FeatureFlagKey, FeatureFlagDefinition> = {
 	},
 };
 
-export const ALL_FEATURE_FLAG_KEYS = Object.keys(FEATURE_FLAGS) as FeatureFlagKey[];
+export const ALL_FEATURE_FLAG_KEYS = Object.keys(FEATURE_FLAGS) as CoreFeatureFlagKey[];
+
+export type FeatureFlagRegistry = Readonly<Record<string, FeatureFlagDefinition>>;
+
+/**
+ * Merge build-time plugin definitions into the core registry. The generated
+ * composition is already validated, but this shared boundary still rejects a
+ * malformed, duplicate, or dangling definition before any runtime resolves it.
+ */
+export function createFeatureFlagRegistry(
+	pluginDefinitions: readonly PluginFeatureFlagDefinition[] = []
+): FeatureFlagRegistry {
+	const definitions = capturePluginDefinitionArray(pluginDefinitions);
+	if (definitions.kind !== 'valid') {
+		if (definitions.kind === 'too_many') {
+			throw new TypeError(
+				`At most ${MAX_PLUGIN_FEATURE_FLAGS} plugin feature flags may be registered`
+			);
+		}
+		throw new TypeError(INVALID_PLUGIN_FEATURE_FLAG_DEFINITION);
+	}
+
+	const registry = Object.assign(
+		Object.create(null) as Record<string, FeatureFlagDefinition>,
+		FEATURE_FLAGS
+	);
+	for (const untrustedDefinition of definitions.value) {
+		const definition = snapshotPluginFeatureFlagDefinition(untrustedDefinition);
+		if (!definition) {
+			throw new TypeError(INVALID_PLUGIN_FEATURE_FLAG_DEFINITION);
+		}
+		if (hasFeatureFlagDefinition(registry, definition.key)) {
+			throw new TypeError(`Duplicate feature flag definition: ${definition.key}`);
+		}
+		registry[definition.key] = definition;
+	}
+
+	for (const definition of Object.values(registry)) {
+		for (const dependency of definition.requires ?? []) {
+			if (!hasFeatureFlagDefinition(registry, dependency)) {
+				throw new TypeError(`${definition.key} requires unknown feature flag ${dependency}`);
+			}
+		}
+		for (const cascadeTarget of definition.cascadesOff ?? []) {
+			if (!hasFeatureFlagDefinition(registry, cascadeTarget)) {
+				throw new TypeError(`${definition.key} cascades to unknown feature flag ${cascadeTarget}`);
+			}
+		}
+	}
+
+	return Object.freeze(registry);
+}
+
+export function hasFeatureFlagDefinition(registry: FeatureFlagRegistry, key: string): boolean {
+	return hasOwnKey(registry, key);
+}
+
+export function getFeatureFlagDefinition(
+	registry: FeatureFlagRegistry,
+	key: string
+): FeatureFlagDefinition | undefined {
+	return hasFeatureFlagDefinition(registry, key) ? registry[key] : undefined;
+}
+
+export interface FeatureFlagResolutionOptions {
+	readonly hosted?: boolean;
+	readonly registry?: FeatureFlagRegistry;
+}
 
 /**
  * Sending-category flags that can only function with a configured delivery
@@ -423,15 +527,16 @@ export const SENDING_FLAGS_REQUIRING_DELIVERY = [
 	'automations',
 ] as const satisfies readonly FeatureFlagKey[];
 
-export type FeatureFlagState = Partial<Record<FeatureFlagKey, boolean>>;
+export type FeatureFlagState = Partial<Record<CoreFeatureFlagKey, boolean>> &
+	Record<PluginFeatureFlagKey, boolean>;
 
 /**
  * Default flag state for a fresh self-host install.
  * Hosted-only flags are excluded.
  */
-export function getDefaultFlags(opts: { hosted?: boolean } = {}): FeatureFlagState {
+export function getDefaultFlags(opts: FeatureFlagResolutionOptions = {}): FeatureFlagState {
 	const result: FeatureFlagState = {};
-	for (const def of Object.values(FEATURE_FLAGS)) {
+	for (const def of Object.values(opts.registry ?? FEATURE_FLAGS)) {
 		if (def.hostedOnly && !opts.hosted) continue;
 		result[def.key] = def.default;
 	}
@@ -445,10 +550,15 @@ export function getDefaultFlags(opts: { hosted?: boolean } = {}): FeatureFlagSta
  */
 export function resolveFlags(
 	stored: FeatureFlagState,
-	opts: { hosted?: boolean } = {}
+	opts: FeatureFlagResolutionOptions = {}
 ): Record<FeatureFlagKey, boolean> {
-	const defaults = getDefaultFlags(opts);
-	const merged: Record<string, boolean> = { ...defaults, ...stored } as Record<string, boolean>;
+	const registry = opts.registry ?? FEATURE_FLAGS;
+	const merged: Record<string, boolean> = { ...getDefaultFlags(opts) };
+	for (const definition of Object.values(registry)) {
+		if (hasOwnKey(stored, definition.key)) {
+			merged[definition.key] = stored[definition.key] === true;
+		}
+	}
 
 	// Iterate to a fixed point: dependencies can chain (codeTasks → ai.agent → ai + inbox).
 	let changed = true;
@@ -456,7 +566,7 @@ export function resolveFlags(
 	while (changed && iterations < 10) {
 		changed = false;
 		iterations++;
-		for (const def of Object.values(FEATURE_FLAGS)) {
+		for (const def of Object.values(registry)) {
 			if (!merged[def.key]) continue;
 			for (const dep of def.requires ?? []) {
 				if (!merged[dep]) {
@@ -477,9 +587,9 @@ export function resolveFlags(
 export function isFlagEnabled(
 	stored: FeatureFlagState,
 	flag: FeatureFlagKey,
-	opts: { hosted?: boolean } = {}
+	opts: FeatureFlagResolutionOptions = {}
 ): boolean {
-	return resolveFlags(stored, opts)[flag];
+	return resolveFlags(stored, opts)[flag] === true;
 }
 
 /**
@@ -489,17 +599,23 @@ export function isFlagEnabled(
 export function applyToggle(
 	stored: FeatureFlagState,
 	flag: FeatureFlagKey,
-	value: boolean
+	value: boolean,
+	registry: FeatureFlagRegistry = FEATURE_FLAGS
 ): { next: FeatureFlagState; cascaded: FeatureFlagKey[] } {
-	const next: FeatureFlagState = { ...stored, [flag]: value };
+	const definition = getFeatureFlagDefinition(registry, flag);
+	if (!definition) throw new TypeError(`Unknown feature flag: ${flag}`);
+	const next: FeatureFlagState = {
+		...registeredFeatureFlagOverrides(stored, registry),
+		[flag]: value,
+	};
 	const cascaded: FeatureFlagKey[] = [];
 
 	if (!value) {
 		// Cascade off: any flag whose `requires` includes this flag must also be off.
 		// Plus any explicit `cascadesOff` list.
-		const def = FEATURE_FLAGS[flag];
+		const def = definition;
 		const queue = new Set<FeatureFlagKey>(def.cascadesOff ?? []);
-		for (const other of Object.values(FEATURE_FLAGS)) {
+		for (const other of Object.values(registry)) {
 			if (other.requires?.includes(flag)) queue.add(other.key);
 		}
 		for (const key of queue) {
@@ -507,19 +623,19 @@ export function applyToggle(
 				next[key] = false;
 				cascaded.push(key);
 				// Recurse: turning this one off may cascade further.
-				const more = applyToggle(next, key, false);
+				const more = applyToggle(next, key, false, registry);
 				Object.assign(next, more.next);
 				for (const c of more.cascaded) if (!cascaded.includes(c)) cascaded.push(c);
 			}
 		}
 	} else {
 		// Cascade on: any required flag must also be on.
-		const def = FEATURE_FLAGS[flag];
+		const def = definition;
 		for (const dep of def.requires ?? []) {
 			if (!next[dep]) {
 				next[dep] = true;
 				cascaded.push(dep);
-				const more = applyToggle(next, dep, true);
+				const more = applyToggle(next, dep, true, registry);
 				Object.assign(next, more.next);
 				for (const c of more.cascaded) if (!cascaded.includes(c)) cascaded.push(c);
 			}
@@ -529,17 +645,35 @@ export function applyToggle(
 	return { next, cascaded };
 }
 
+/** Copy only own boolean overrides for definitions present in this registry. */
+export function registeredFeatureFlagOverrides(
+	stored: FeatureFlagState,
+	registry: FeatureFlagRegistry
+): FeatureFlagState {
+	const registered: FeatureFlagState = {};
+	for (const definition of Object.values(registry)) {
+		if (hasOwnKey(stored, definition.key)) {
+			registered[definition.key] = stored[definition.key] === true;
+		}
+	}
+	return registered;
+}
+
+function hasOwnKey(value: object, key: PropertyKey): boolean {
+	return Object.prototype.hasOwnProperty.call(value, key);
+}
+
 /**
  * Compute the docker compose profiles to activate for the given flag state.
  * Used by the setup CLI to generate `docker-compose.override.yml`.
  */
 export function getActiveProfiles(
 	stored: FeatureFlagState,
-	opts: { hosted?: boolean; deliveryProvider?: string } = {}
+	opts: FeatureFlagResolutionOptions & { deliveryProvider?: string } = {}
 ): string[] {
 	const resolved = resolveFlags(stored, opts);
 	const profiles = new Set<string>();
-	for (const def of Object.values(FEATURE_FLAGS)) {
+	for (const def of Object.values(opts.registry ?? FEATURE_FLAGS)) {
 		if (!resolved[def.key]) continue;
 		for (const profile of def.dockerProfiles ?? []) profiles.add(profile);
 	}
@@ -557,11 +691,11 @@ export function getActiveProfiles(
  */
 export function getRequiredEnvVars(
 	stored: FeatureFlagState,
-	opts: { hosted?: boolean; deliveryProvider?: string } = {}
+	opts: FeatureFlagResolutionOptions & { deliveryProvider?: string } = {}
 ): string[] {
 	const resolved = resolveFlags(stored, opts);
 	const vars = new Set<string>();
-	for (const def of Object.values(FEATURE_FLAGS)) {
+	for (const def of Object.values(opts.registry ?? FEATURE_FLAGS)) {
 		if (!resolved[def.key]) continue;
 		for (const v of def.requiredEnvVars ?? []) vars.add(v);
 	}
@@ -586,7 +720,7 @@ export function getRequiredEnvVars(
  */
 export function needsDeliveryProvider(
 	stored: FeatureFlagState,
-	opts: { hosted?: boolean } = {}
+	opts: FeatureFlagResolutionOptions = {}
 ): boolean {
 	const resolved = resolveFlags(stored, opts);
 	return SENDING_FLAGS_REQUIRING_DELIVERY.some((flag) => resolved[flag]);
@@ -643,10 +777,10 @@ export function getSendPathRequiredEnv(provider: string | undefined): string[] {
  * Hosted-only categories are excluded unless `hosted: true`.
  */
 export function getFlagsByCategory(
-	opts: { hosted?: boolean } = {}
+	opts: FeatureFlagResolutionOptions = {}
 ): Record<FeatureCategory, FeatureFlagDefinition[]> {
 	const result: Record<string, FeatureFlagDefinition[]> = {};
-	for (const def of Object.values(FEATURE_FLAGS)) {
+	for (const def of Object.values(opts.registry ?? FEATURE_FLAGS)) {
 		if (def.hostedOnly && !opts.hosted) continue;
 		(result[def.category] ??= []).push(def);
 	}
@@ -666,7 +800,7 @@ export interface FeaturePack {
 	key: FeaturePackKey;
 	label: string;
 	description: string;
-	flags: FeatureFlagKey[];
+	flags: readonly CoreFeatureFlagKey[];
 }
 
 export const FEATURE_PACKS: Record<FeaturePackKey, FeaturePack> = {
@@ -736,16 +870,18 @@ export function isPackEnabled(
 export function applyPackToggle(
 	stored: FeatureFlagState,
 	packKey: FeaturePackKey,
-	value: boolean
+	value: boolean,
+	registry: FeatureFlagRegistry = FEATURE_FLAGS
 ): { next: FeatureFlagState; cascaded: FeatureFlagKey[] } {
 	const pack = FEATURE_PACKS[packKey];
-	let next: FeatureFlagState = { ...stored };
+	const packFlags = new Set<FeatureFlagKey>(pack.flags);
+	let next: FeatureFlagState = registeredFeatureFlagOverrides(stored, registry);
 	const cascaded = new Set<FeatureFlagKey>();
 	for (const flag of pack.flags) {
-		const result = applyToggle(next, flag, value);
+		const result = applyToggle(next, flag, value, registry);
 		next = result.next;
 		for (const c of result.cascaded) {
-			if (!pack.flags.includes(c)) cascaded.add(c);
+			if (!packFlags.has(c)) cascaded.add(c);
 		}
 	}
 	return { next, cascaded: Array.from(cascaded) };
