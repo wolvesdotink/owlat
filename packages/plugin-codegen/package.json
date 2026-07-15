@@ -20,6 +20,7 @@
 	"dependencies": {
 		"@owlat/plugin-host": "workspace:*",
 		"@owlat/plugin-kit": "workspace:*",
+		"@vue/compiler-sfc": "^3.5.33",
 		"typescript": "catalog:"
 	},
 	"devDependencies": {

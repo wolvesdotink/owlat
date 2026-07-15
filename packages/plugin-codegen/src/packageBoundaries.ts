@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { readdir, readFile } from 'node:fs/promises';
 import { extname, relative, resolve, sep } from 'node:path';
+import { parse as parseVueSfc } from '@vue/compiler-sfc';
 import ts from 'typescript';
 import { PluginCodegenError } from './errors';
 import {
@@ -78,7 +79,7 @@ export function findDirectPluginImports(
 	packageNames: readonly string[],
 	aliases: readonly RepositoryModuleAlias[] = []
 ): readonly DirectPluginImport[] {
-	const scriptSources = extname(file) === '.vue' ? extractVueScripts(source) : [source];
+	const scriptSources = extname(file) === '.vue' ? extractVueScripts(source, file) : [source];
 	const findings: DirectPluginImport[] = [];
 	for (const scriptSource of scriptSources) {
 		const sourceFile = ts.createSourceFile(file, scriptSource, ts.ScriptTarget.Latest, true);
@@ -161,6 +162,31 @@ function findModuleLoaderBindings(sourceFile: ts.SourceFile): ModuleLoaderBindin
 			}
 		}
 	}
+	const collectCommonJsBindings = (node: ts.Node): void => {
+		if (ts.isVariableDeclaration(node) && node.initializer) {
+			if (isNodeModuleLoadCall(node.initializer)) {
+				if (ts.isIdentifier(node.name)) moduleNamespaces.add(node.name.text);
+				if (ts.isObjectBindingPattern(node.name)) {
+					for (const element of node.name.elements) {
+						if (
+							ts.isIdentifier(element.name) &&
+							readPropertyName(element.propertyName ?? element.name) === 'createRequire'
+						) {
+							createRequireFactories.add(element.name.text);
+						}
+					}
+				}
+			}
+			if (
+				ts.isIdentifier(node.name) &&
+				isCreateRequireFactoryReference(node.initializer, moduleNamespaces)
+			) {
+				createRequireFactories.add(node.name.text);
+			}
+		}
+		ts.forEachChild(node, collectCommonJsBindings);
+	};
+	collectCommonJsBindings(sourceFile);
 
 	const requireFunctions = new Set(['require']);
 	const visit = (node: ts.Node): void => {
@@ -192,6 +218,7 @@ function isModuleLoaderCall(
 	bindings: ModuleLoaderBindings
 ): boolean {
 	if (ts.isIdentifier(expression) && bindings.requireFunctions.has(expression.text)) return true;
+	if (isCommonJsModuleRequire(expression)) return true;
 	if (
 		ts.isPropertyAccessExpression(expression) &&
 		ts.isIdentifier(expression.expression) &&
@@ -224,11 +251,57 @@ function isCreateRequireCall(
 	if (!ts.isCallExpression(expression)) return false;
 	const factory = expression.expression;
 	if (ts.isIdentifier(factory)) return createRequireFactories.has(factory.text);
+	return isCreateRequireFactoryReference(factory, moduleNamespaces);
+}
+
+function isCreateRequireFactoryReference(
+	expression: ts.Expression,
+	moduleNamespaces: ReadonlySet<string>
+): boolean {
+	if (ts.isPropertyAccessExpression(expression) && expression.name.text === 'createRequire') {
+		return (
+			(ts.isIdentifier(expression.expression) &&
+				moduleNamespaces.has(expression.expression.text)) ||
+			isNodeModuleLoadCall(expression.expression)
+		);
+	}
 	return (
-		ts.isPropertyAccessExpression(factory) &&
-		ts.isIdentifier(factory.expression) &&
-		moduleNamespaces.has(factory.expression.text) &&
-		factory.name.text === 'createRequire'
+		ts.isElementAccessExpression(expression) &&
+		expression.argumentExpression !== undefined &&
+		readStaticString(expression.argumentExpression) === 'createRequire' &&
+		((ts.isIdentifier(expression.expression) && moduleNamespaces.has(expression.expression.text)) ||
+			isNodeModuleLoadCall(expression.expression))
+	);
+}
+
+function isNodeModuleLoadCall(expression: ts.Expression): boolean {
+	return (
+		ts.isCallExpression(expression) &&
+		(isDirectRequire(expression.expression) || isCommonJsModuleRequire(expression.expression)) &&
+		expression.arguments.length === 1 &&
+		isNodeModuleSpecifier(expression.arguments[0]!)
+	);
+}
+
+function isDirectRequire(expression: ts.Expression): boolean {
+	return ts.isIdentifier(expression) && expression.text === 'require';
+}
+
+function isCommonJsModuleRequire(expression: ts.Expression): boolean {
+	if (
+		ts.isPropertyAccessExpression(expression) &&
+		ts.isIdentifier(expression.expression) &&
+		expression.expression.text === 'module' &&
+		expression.name.text === 'require'
+	) {
+		return true;
+	}
+	return (
+		ts.isElementAccessExpression(expression) &&
+		ts.isIdentifier(expression.expression) &&
+		expression.expression.text === 'module' &&
+		expression.argumentExpression !== undefined &&
+		readStaticString(expression.argumentExpression) === 'require'
 	);
 }
 
@@ -245,13 +318,17 @@ function readStaticString(expression: ts.Expression): string | undefined {
 		: undefined;
 }
 
-function extractVueScripts(source: string): readonly string[] {
-	const scripts: string[] = [];
-	const scriptPattern = /<script\b[^>]*>([\s\S]*?)<\/script>/gi;
-	for (const match of source.matchAll(scriptPattern)) {
-		if (match[1]) scripts.push(match[1]);
-	}
-	return scripts;
+function readPropertyName(name: ts.PropertyName | ts.BindingName): string | undefined {
+	return ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNumericLiteral(name)
+		? name.text
+		: undefined;
+}
+
+function extractVueScripts(source: string, file: string): readonly string[] {
+	const { descriptor } = parseVueSfc(source, { filename: file });
+	return [descriptor.script?.content, descriptor.scriptSetup?.content].filter(
+		(script): script is string => script !== undefined
+	);
 }
 
 async function listSourceFiles(workspaceRoot: string): Promise<readonly string[]> {
