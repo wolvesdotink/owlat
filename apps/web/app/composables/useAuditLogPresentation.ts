@@ -17,8 +17,13 @@
  * edited in lockstep. They now live here so the page holds only fetch wiring +
  * template.
  */
-import { AUDIT_ACTION_LITERALS } from '@owlat/api/auditActions';
+import {
+	AUDIT_ACTION_LITERALS,
+	HOSTED_PLUGIN_OPERATION_LITERALS,
+	type HostedPluginOperationLiteral,
+} from '@owlat/api/auditActions';
 import type { Id } from '@owlat/api/dataModel';
+import { isPluginId } from '@owlat/plugin-kit';
 import { capitalize } from '../utils/formatters';
 
 /**
@@ -34,6 +39,7 @@ export interface AuditLogEntry {
 	action: string;
 	resource: string;
 	resourceId?: string;
+	pluginId?: string;
 	details?: Record<string, unknown>;
 	ipAddress?: string;
 	userAgent?: string;
@@ -260,6 +266,17 @@ const ACTION_VERB_COLORS: Record<string, string> = {
 	invited: 'text-warning bg-warning/10',
 };
 
+const HOSTED_PLUGIN_ACTIONS: ReadonlySet<string> = new Set(
+	AUDIT_ACTION_LITERALS.filter((action) => action.startsWith('plugin.'))
+);
+const HOSTED_PLUGIN_OPERATION_LABELS = {
+	'llm.generate': 'LLM generation',
+	'storage.delete': 'Storage delete',
+	'storage.get': 'Storage read',
+	'storage.list': 'Storage list',
+	'storage.set': 'Storage write',
+} as const satisfies Record<HostedPluginOperationLiteral, string>;
+
 /** The verb of an action literal: the segment after the first `.`, or the whole
  * literal for dotless actions. */
 const actionVerb = (action: string): string => {
@@ -286,6 +303,38 @@ export function getActionIcon(action: string): string {
 
 export function getActionColorClass(action: string): string {
 	return ACTION_VERB_COLORS[actionVerb(action)] ?? 'text-text-secondary bg-bg-surface';
+}
+
+/**
+ * Render only the two hosted-action discriminators that are safe and useful in
+ * the audit list. Arbitrary details fields are deliberately ignored.
+ */
+export function getHostedPluginDetailText(log: AuditLogEntry): string | undefined {
+	if (log.resource !== 'plugin' || !HOSTED_PLUGIN_ACTIONS.has(log.action)) return undefined;
+	const pluginId = safePluginId(log.pluginId) ?? safePluginId(log.resourceId);
+	const operation = hostedPluginOperationLabel(log.details);
+	const parts = [pluginId, operation].filter((part): part is string => part !== undefined);
+	return parts.length > 0 ? parts.join(' · ') : 'Hosted plugin action';
+}
+
+function safePluginId(value: unknown): string | undefined {
+	return isPluginId(value) ? value : undefined;
+}
+
+function hostedPluginOperationLabel(details: Record<string, unknown> | undefined) {
+	if (!details) return undefined;
+	let descriptor: PropertyDescriptor | undefined;
+	try {
+		descriptor = Object.getOwnPropertyDescriptor(details, 'operation');
+	} catch {
+		return undefined;
+	}
+	if (!descriptor?.enumerable || !('value' in descriptor) || typeof descriptor.value !== 'string') {
+		return undefined;
+	}
+	return HOSTED_PLUGIN_OPERATION_LITERALS.includes(descriptor.value as HostedPluginOperationLiteral)
+		? HOSTED_PLUGIN_OPERATION_LABELS[descriptor.value as HostedPluginOperationLiteral]
+		: undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -374,6 +423,7 @@ export function useAuditLogPresentation() {
 		getActionLabel,
 		getActionIcon,
 		getActionColorClass,
+		getHostedPluginDetailText,
 		formatTimestamp,
 		formatFullDate,
 		parseDetails,
