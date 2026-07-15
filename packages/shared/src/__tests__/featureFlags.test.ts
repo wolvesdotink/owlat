@@ -8,8 +8,10 @@ import {
 	FEATURE_PACKS,
 	applyPackToggle,
 	applyToggle,
+	createFeatureFlagRegistry,
 	getActiveProfiles,
 	getDefaultFlags,
+	getFlagsByCategory,
 	getRequiredEnvVars,
 	getSendPathRequiredEnv,
 	isDeliveryProviderKind,
@@ -19,7 +21,9 @@ import {
 	resolveFlags,
 	SENDING_FLAGS_REQUIRING_DELIVERY,
 	type FeatureFlagKey,
+	type FeatureFlagDefinition,
 	type FeatureFlagState,
+	type PluginFeatureFlagKey,
 } from '../featureFlags';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
@@ -208,13 +212,15 @@ describe('featureFlags — registry sanity', () => {
 	it('every requires target exists in the registry', () => {
 		for (const def of Object.values(FEATURE_FLAGS)) {
 			for (const dep of def.requires ?? []) {
-				expect(FEATURE_FLAGS[dep], `${def.key} requires unknown flag ${dep}`).toBeDefined();
+				expect(Object.hasOwn(FEATURE_FLAGS, dep), `${def.key} requires unknown flag ${dep}`).toBe(
+					true
+				);
 			}
 			for (const target of def.cascadesOff ?? []) {
 				expect(
-					FEATURE_FLAGS[target],
+					Object.hasOwn(FEATURE_FLAGS, target),
 					`${def.key} cascadesOff unknown flag ${target}`
-				).toBeDefined();
+				).toBe(true);
 			}
 		}
 	});
@@ -223,6 +229,104 @@ describe('featureFlags — registry sanity', () => {
 		const stored: FeatureFlagState = { campaigns: true, inbox: false };
 		expect(isFlagEnabled(stored, 'campaigns')).toBe(true);
 		expect(isFlagEnabled(stored, 'inbox')).toBe(false);
+	});
+});
+
+describe('featureFlags — plugin namespace', () => {
+	const pluginFlag = {
+		key: 'plugin.deliverability-lab',
+		category: 'plugins',
+		label: 'Deliverability Lab',
+		description: 'Bundled plugin from @example/deliverability-lab.',
+		default: false,
+		requiredEnvVars: ['SEEDBOX_API_KEY'],
+		requiredCapabilities: ['campaigns:read', 'send:gate'],
+		pluginPackageName: '@example/deliverability-lab',
+	} satisfies FeatureFlagDefinition;
+
+	it('types plugin flags in an open, namespaced key space', () => {
+		const key: PluginFeatureFlagKey = 'plugin.deliverability-lab';
+		const featureKey: FeatureFlagKey = key;
+		expect(featureKey).toBe(pluginFlag.key);
+	});
+
+	it('registers plugin definitions without changing the core registry', () => {
+		const registry = createFeatureFlagRegistry([pluginFlag]);
+		expect(registry[pluginFlag.key]).toMatchObject(pluginFlag);
+		expect(FEATURE_FLAGS).not.toHaveProperty(pluginFlag.key);
+		expect(getFlagsByCategory({ registry }).plugins).toEqual([registry[pluginFlag.key]]);
+	});
+
+	it('honors a plugin default, explicit override, and disable', () => {
+		const defaultOn = { ...pluginFlag, default: true } satisfies FeatureFlagDefinition;
+		const registry = createFeatureFlagRegistry([defaultOn]);
+
+		expect(resolveFlags({}, { registry })[defaultOn.key]).toBe(true);
+		expect(resolveFlags({ [defaultOn.key]: false }, { registry })[defaultOn.key]).toBe(false);
+		const { next } = applyToggle({}, defaultOn.key, false, registry);
+		expect(next[defaultOn.key]).toBe(false);
+	});
+
+	it('includes plugin env requirements only while the plugin resolves on', () => {
+		const registry = createFeatureFlagRegistry([pluginFlag]);
+		expect(getRequiredEnvVars({ [pluginFlag.key]: true }, { registry })).toContain(
+			'SEEDBOX_API_KEY'
+		);
+		expect(getRequiredEnvVars({ [pluginFlag.key]: false }, { registry })).not.toContain(
+			'SEEDBOX_API_KEY'
+		);
+	});
+
+	it.each([
+		['an unnamespaced key', { ...pluginFlag, key: 'deliverability-lab' }],
+		['an empty plugin id', { ...pluginFlag, key: 'plugin.' }],
+		['an invalid plugin id', { ...pluginFlag, key: 'plugin.Bad_Id' }],
+		['the wrong category', { ...pluginFlag, category: 'integrations' }],
+	] as const)('rejects %s', (_label, definition) => {
+		expect(() => createFeatureFlagRegistry([definition as FeatureFlagDefinition])).toThrow(
+			'Invalid plugin feature flag definition'
+		);
+	});
+
+	it('rejects duplicate definitions and dangling dependencies deterministically', () => {
+		expect(() => createFeatureFlagRegistry([pluginFlag, pluginFlag])).toThrow(
+			'Duplicate feature flag definition'
+		);
+		expect(() =>
+			createFeatureFlagRegistry([
+				{ ...pluginFlag, requires: ['plugin.not-installed'] as FeatureFlagKey[] },
+			])
+		).toThrow('requires unknown feature flag plugin.not-installed');
+		expect(() =>
+			createFeatureFlagRegistry([
+				{ ...pluginFlag, cascadesOff: ['plugin.not-installed'] as FeatureFlagKey[] },
+			])
+		).toThrow('cascades to unknown feature flag plugin.not-installed');
+	});
+
+	it('bounds the number of plugin definitions before iterating them', () => {
+		const definitions = Array.from({ length: 129 }, (_, index) => ({
+			...pluginFlag,
+			key: `plugin.policy-pack-${index}` as PluginFeatureFlagKey,
+		}));
+		expect(() => createFeatureFlagRegistry(definitions)).toThrow(
+			'At most 128 plugin feature flags may be registered'
+		);
+	});
+
+	it('snapshots and freezes plugin metadata', () => {
+		const requiredEnvVars = ['SEEDBOX_API_KEY'];
+		const requiredCapabilities = ['send:gate'];
+		const registry = createFeatureFlagRegistry([
+			{ ...pluginFlag, requiredEnvVars, requiredCapabilities },
+		]);
+		requiredEnvVars.push('LATE_SECRET');
+		requiredCapabilities.push('contacts:write');
+
+		expect(registry[pluginFlag.key]?.requiredEnvVars).toEqual(['SEEDBOX_API_KEY']);
+		expect(registry[pluginFlag.key]?.requiredCapabilities).toEqual(['send:gate']);
+		expect(Object.isFrozen(registry)).toBe(true);
+		expect(Object.isFrozen(registry[pluginFlag.key])).toBe(true);
 	});
 });
 

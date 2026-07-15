@@ -20,6 +20,7 @@ import {
 	needsDeliveryProvider,
 	applyPackToggle,
 	ALL_FEATURE_FLAG_KEYS,
+	type CoreFeatureFlagKey,
 	ALL_FEATURE_PACK_KEYS,
 	type FeatureFlagKey,
 	type FeatureFlagState,
@@ -136,7 +137,7 @@ export function parseSetupConfig(raw: unknown): SetupConfig {
 	if (features['flags'] !== undefined) {
 		const flags = asObject(features['flags'], 'config.features.flags');
 		for (const [key, value] of Object.entries(flags)) {
-			if (!ALL_FEATURE_FLAG_KEYS.includes(key as FeatureFlagKey)) {
+			if (!ALL_FEATURE_FLAG_KEYS.includes(key as CoreFeatureFlagKey)) {
 				throw new SetupConfigError(`config.features.flags has unknown flag "${key}"`);
 			}
 			if (typeof value !== 'boolean') {
