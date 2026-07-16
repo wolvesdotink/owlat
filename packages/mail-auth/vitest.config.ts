@@ -13,6 +13,11 @@ export default defineConfig({
 			exclude: ['src/**/__tests__/**', 'src/index.ts'],
 			thresholds: {
 				lines: 90,
+				// Branch coverage is enforced (plan doctrine) — the DKIM verify core,
+				// canon, and key-record parsing all carry security-relevant branches
+				// (l= cap, x= expiry, key/alg mismatch, hash restriction, PERMFAIL
+				// paths) that must each be exercised, not just line-covered.
+				branches: 85,
 			},
 		},
 	},

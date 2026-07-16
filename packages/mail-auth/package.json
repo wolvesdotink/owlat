@@ -4,7 +4,7 @@
 	"private": true,
 	"license": "Apache-2.0",
 	"homepage": "https://owlat.app",
-	"description": "In-house email authentication — RFC 7208 SPF, RFC 7489 DMARC, and a cached injectable DNS resolver",
+	"description": "In-house email authentication — RFC 7208 SPF, RFC 7489 DMARC, RFC 6376 DKIM canonicalization + verification, and a cached injectable DNS resolver",
 	"type": "module",
 	"main": "./src/index.ts",
 	"module": "./src/index.ts",
@@ -27,6 +27,7 @@
 		"@types/node": "catalog:",
 		"@vitest/coverage-v8": "catalog:",
 		"ioredis-mock": "^8.9.0",
+		"mailauth": "^4.13.3",
 		"typescript": "catalog:",
 		"vitest": "catalog:"
 	},
