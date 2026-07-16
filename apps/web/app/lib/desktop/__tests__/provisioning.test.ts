@@ -5,6 +5,13 @@ import {
 	applyStepEvent,
 	setStepState,
 	PROVISION_TIMELINE,
+	deriveNetworkUrls,
+	deriveHostnames,
+	networkUrlsFromHosts,
+	isLoopbackHost,
+	isLoopbackUrl,
+	canOpenWorkspaceUrl,
+	describeHostKey,
 	systemCheckCommand,
 	installDockerCommand,
 	fetchOwlatCommand,
@@ -14,13 +21,6 @@ import {
 	installSource,
 	dockerPlatform,
 	setupConfigPath,
-	deriveNetworkUrls,
-	deriveHostnames,
-	networkUrlsFromHosts,
-	isLoopbackHost,
-	isLoopbackUrl,
-	canOpenWorkspaceUrl,
-	describeHostKey,
 	DEFAULT_REMOTE,
 	LOCAL_SETUP_IMAGE,
 } from '../provisioning';
@@ -78,8 +78,15 @@ describe('timeline', () => {
 });
 
 describe('applyStepEvent', () => {
-	const ev = (id: string, status: 'running' | 'ok' | 'failed' | 'skipped', extra = {}) =>
-		({ v: 1 as const, event: 'step' as const, id, title: id, status, ts: 1, ...extra });
+	const ev = (id: string, status: 'running' | 'ok' | 'failed' | 'skipped', extra = {}) => ({
+		v: 1 as const,
+		event: 'step' as const,
+		id,
+		title: id,
+		status,
+		ts: 1,
+		...extra,
+	});
 
 	it('maps each status to the timeline state', () => {
 		const steps = createTimeline();
@@ -122,7 +129,12 @@ describe('setStepState', () => {
 });
 
 describe('remote commands', () => {
-	const remote = { ...DEFAULT_REMOTE, installDir: '/opt/owlat', branch: 'main', repo: 'https://github.com/wolvesdotink/owlat.git' };
+	const remote = {
+		...DEFAULT_REMOTE,
+		installDir: '/opt/owlat',
+		branch: 'main',
+		repo: 'https://github.com/wolvesdotink/owlat.git',
+	};
 
 	it('system check probes docker + compose', () => {
 		const cmd = systemCheckCommand();
@@ -142,6 +154,14 @@ describe('remote commands', () => {
 		expect(cmd).toContain("git clone --depth 1 --branch 'main'");
 		expect(cmd).toContain("'/opt/owlat'");
 		expect(cmd).toContain('https://github.com/wolvesdotink/owlat.git');
+	});
+
+	it('fetch script is valid shell — no line starts with a dangling operator', () => {
+		// Regression: a line beginning with `&&`/`||` is a bash syntax error
+		// ("syntax error near unexpected token `&&'") that substring checks miss.
+		for (const line of fetchOwlatCommand(remote).split('\n')) {
+			expect(line.trim()).not.toMatch(/^(&&|\|\|)/);
+		}
 	});
 
 	it('installer runs quickstart non-interactively with JSON progress + the uploaded config', () => {
@@ -229,7 +249,7 @@ describe('deriveHostnames', () => {
 
 	it('builds network URLs from explicit (possibly overridden) hostnames', () => {
 		expect(
-			networkUrlsFromHosts({ site: 'app.x.com', convex: 'cx.x.com', convexSite: 'http.x.com' }),
+			networkUrlsFromHosts({ site: 'app.x.com', convex: 'cx.x.com', convexSite: 'http.x.com' })
 		).toEqual({
 			siteUrl: 'https://app.x.com',
 			convexUrl: 'https://cx.x.com',
@@ -240,7 +260,15 @@ describe('deriveHostnames', () => {
 
 describe('loopback detection', () => {
 	it('flags loopback hostnames (the desktop can never reach a remote box at these)', () => {
-		for (const h of ['localhost', 'LOCALHOST', '127.0.0.1', '127.1.2.3', '0.0.0.0', '::1', '[::1]']) {
+		for (const h of [
+			'localhost',
+			'LOCALHOST',
+			'127.0.0.1',
+			'127.1.2.3',
+			'0.0.0.0',
+			'::1',
+			'[::1]',
+		]) {
 			expect(isLoopbackHost(h)).toBe(true);
 		}
 	});
@@ -392,7 +420,9 @@ describe('server-IP resolution + DNS records', () => {
 
 	it('substitutes the real IP into every A record', () => {
 		const rows = buildDnsRecords({ hosts, withMta: false, serverIp: '203.0.113.5' });
-		expect(rows.every((r) => r.type !== 'A' || (r.value === '203.0.113.5' && !r.placeholder))).toBe(true);
+		expect(rows.every((r) => r.type !== 'A' || (r.value === '203.0.113.5' && !r.placeholder))).toBe(
+			true
+		);
 	});
 
 	it('flags A records as a placeholder (copy-disabled) when the IP is unknown', () => {
