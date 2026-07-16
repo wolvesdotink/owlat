@@ -83,7 +83,7 @@ describe('dot-stuffing round trip', () => {
 
 	it('handles a 5MB body (chunked, boundary-safe, still round-trips)', () => {
 		const unit = Buffer.from('.leading dot line that must be stuffed\r\n');
-		const repeats = Math.ceil((5 * 1024 * 1024) / unit.length);
+		const repeats = Math.ceil((5 * 1024 * 1024) / unit.length) + 1;
 		const big = Buffer.concat(Array.from({ length: repeats }, () => unit));
 		expect(big.length).toBeGreaterThan(5 * 1024 * 1024);
 

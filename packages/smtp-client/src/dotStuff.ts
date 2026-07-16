@@ -32,8 +32,9 @@ export class DotStuffEncoder {
 		if (this.finished) {
 			throw new Error('DotStuffEncoder.transform called after final()');
 		}
-		// Worst case: every byte becomes two (CR->CRLF, or a stuffed dot).
-		const out = Buffer.allocUnsafe(chunk.length * 2);
+		// Worst case: a CR held from the previous chunk flushes 2 bytes (CR LF)
+		// before the per-byte worst case of 2 bytes each, so the bound is 2n + 2.
+		const out = Buffer.allocUnsafe(chunk.length * 2 + 2);
 		let o = 0;
 		for (let i = 0; i < chunk.length; i++) {
 			const b = chunk[i] as number;
