@@ -16,6 +16,16 @@ const MAX_HEADER_LINE_OCTETS = 998;
 // Worst-case prefix for a value passed to encodeHeaderValue (`Subject: `).
 const HEADER_PREFIX_OCTETS = 'Subject: '.length;
 
+/**
+ * Soft fold width for an address-list header. A `To:`/`Cc:` list of many
+ * recipients rendered on one physical line trivially crosses the RFC 5322
+ * §2.1.1 998-octet hard cap, so the comma-separated list is folded across
+ * CRLF + SP continuation lines once a line approaches this width. Folding is
+ * transparent to a parser (the comma stays on the current line and the receiver
+ * drops the folding white space), so the list round-trips identically.
+ */
+const ADDRESS_FOLD_WIDTH = 76;
+
 export function escapeHeader(value: string): string {
 	// Strip CRLF to prevent header injection
 	return value.replace(/[\r\n]+/g, ' ');
@@ -112,7 +122,26 @@ export function encodeAddressHeader(addresses: string[]): string {
 		const one = encodeSingleAddress(escapeHeader(raw));
 		if (one.length > 0) encoded.push(one);
 	}
-	return encoded.join(', ');
+	const first = encoded[0];
+	if (first === undefined) return '';
+	// Join with ", " but fold the list onto CRLF + SP continuation lines before a
+	// physical line approaches the 998-octet hard cap. A short list stays on one
+	// line (byte-identical to the un-folded join); only a long recipient list
+	// wraps. The comma is kept on the current line so the folded value round-trips
+	// to the same address list after the receiver drops the folding white space.
+	let out = first;
+	let lineLen = first.length;
+	for (let i = 1; i < encoded.length; i++) {
+		const next = encoded[i]!;
+		if (lineLen + 2 + next.length > ADDRESS_FOLD_WIDTH) {
+			out += `,\r\n ${next}`;
+			lineLen = 1 + next.length; // leading SP + address on the continuation line
+		} else {
+			out += `, ${next}`;
+			lineLen += 2 + next.length;
+		}
+	}
+	return out;
 }
 
 function encodeSingleAddress(addr: string): string {
