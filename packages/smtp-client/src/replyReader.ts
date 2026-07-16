@@ -45,6 +45,17 @@ export class ReplyReader {
 	}
 
 	/**
+	 * `true` while a {@link ReplyReader.read} is outstanding. `command()` checks
+	 * this BEFORE serializing so a D5-violating second command is refused before
+	 * its bytes reach the wire — otherwise the line would be sent, its reply
+	 * would land in the queue with no waiter, and the next read would consume a
+	 * stale reply (silent desync).
+	 */
+	get busy(): boolean {
+		return this.waiter !== undefined;
+	}
+
+	/**
 	 * `true` when the reader is holding reply data the caller has not consumed —
 	 * a fully-parsed reply still queued, or bytes mid-line in the parser. The
 	 * STARTTLS upgrade asserts this is `false` after the 220 to prove the peer

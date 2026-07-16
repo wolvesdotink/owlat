@@ -89,6 +89,16 @@ export class SmtpConnection {
 	 * data-phase timeout instead of the per-command one.
 	 */
 	async command(line: string, phase: SmtpPhase, expectData = false): Promise<SmtpReply> {
+		if (this.reader.busy) {
+			// D5 is sequential command/reply. Refuse a second command BEFORE its
+			// bytes reach the wire — writing first (then letting reader.read reject)
+			// would leave an orphan line whose reply desyncs the next read.
+			throw new SmtpError({
+				phase,
+				message: 'concurrent SMTP command: a reply is already awaited',
+				secured: this.secured,
+			});
+		}
 		this.write(line, phase);
 		return this.reader.read(
 			phase,
