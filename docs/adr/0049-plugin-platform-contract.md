@@ -224,12 +224,17 @@ lifecycle edges. Codegen namespaces the kind as
 pure catalog plus a separate Node module registry, and rejects duplicate or
 unknown kinds, terminal anchors, insertion cycles, and unsafe edges.
 
-The six built-in placements, their continuation states, and the restrict-only
-edge policy are host-owned. A plugin chained after an anchor inherits that
-anchor's continuation state. From `classifying`, it may only archive or fail;
-from `drafting`, it may also force `draft_ready` for human review. It cannot
-request `approved` or `sent`, choose the next step, run before the security
-scan, or edit the core `LEGAL_EDGES` graph.
+The six built-in steps map to three host-owned plugin placements with
+restrict-only edge policies. Security scan, context retrieval, and classify
+form the `classification` placement; their descendants continue from
+`classifying` and may only archive or fail. Clarify forms the `before_draft`
+placement; its descendants continue from `drafting` but may only archive or
+fail because no draft is guaranteed to exist yet. Draft forms the `after_draft`
+placement; its descendants continue from `drafting` and may archive, fail, or
+request the `drafting` to `draft_ready` review edge. A plugin chained after
+another plugin inherits its placement. No plugin may request `approved` or
+`sent`, choose the next step, run before the security scan, or edit the core
+`LEGAL_EDGES` graph.
 
 Immediately before execution, the host rechecks singleton scope, bundled
 registration, enabled flag, manifest capability, exact operator grant, and
