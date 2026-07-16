@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { parseBody, parseMimeTree } from '../parse/body';
 import { extractAttachments } from '../parse/attachments';
+import { getRawParam } from '../parse/headers';
 
 /**
  * Hostile / malformed input must be BOUNDED and must NEVER throw: the walker is
@@ -194,5 +195,41 @@ describe('hostile MIME input', () => {
 			attachments = extractAttachments(raw);
 		}).not.toThrow();
 		expect(attachments.map((a) => a.filename)).toEqual(['x.pdf']);
+	});
+
+	it('a huge RFC 2231 continuation index is bounded, fast, and does not throw', () => {
+		// A sparse-array collector keyed by the raw continuation index would make
+		// V8 materialize/join a ~4-billion-slot array (measured at ~59s CPU for one
+		// header). The Map-based collector with an index ceiling must return
+		// immediately with no segment materialized.
+		const header = 'attachment; filename*4000000000=x';
+		let result: string | undefined;
+		const started = Date.now();
+		expect(() => {
+			result = getRawParam(header, 'filename');
+		}).not.toThrow();
+		expect(Date.now() - started).toBeLessThan(1000);
+		// The out-of-range segment is ignored, so no continuation value is built;
+		// the scanner falls through to the single-value branch, which does not
+		// match `filename*<idx>=`, leaving the param unresolved.
+		expect(result).toBeUndefined();
+
+		// The same hostile header carried on a real Content-Disposition must not
+		// stall the attachment extractor either.
+		const raw = [
+			'Content-Type: multipart/mixed; boundary="B"',
+			'',
+			'--B',
+			'Content-Type: application/octet-stream',
+			'Content-Disposition: attachment; filename*4000000000=x',
+			'',
+			'DATA',
+			'--B--',
+		].join('\r\n');
+		const startedExtract = Date.now();
+		expect(() => {
+			extractAttachments(raw);
+		}).not.toThrow();
+		expect(Date.now() - startedExtract).toBeLessThan(1000);
 	});
 });
