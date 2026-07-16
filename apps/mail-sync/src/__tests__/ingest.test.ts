@@ -205,4 +205,113 @@ describe('ingestMessage', () => {
 		expect(attachments[0]?.contentType).toBe('image/png');
 		expect(attachments[0]?.partIndex).toBe('0');
 	});
+
+	// I2 pin for the two enumerated attachment-metadata deltas of this cutover, on
+	// a single degenerate attachment leaf (Content-Disposition: attachment, no
+	// filename parameter, no Content-Type header):
+	//   (1) unnamed part -> the parse layer's `attachment` default, NOT the old
+	//       ingest-side `attachment-${i+1}` (avoids a duplicated fallback layer);
+	//   (2) type-less part -> the MIME `text/plain` default, NOT the old ingest-side
+	//       `application/octet-stream`.
+	// Both are display-only metadata on a degenerate part, deterministic, and
+	// signed off — pinned here so the divergence is never claim-only.
+	it('pins the unnamed/type-less attachment deltas (filename=attachment, contentType=text/plain)', async () => {
+		const { client, lastPayload } = mockConvex();
+		const boundary = 'b0undary';
+		const raw = [
+			'From: Alice <alice@example.com>',
+			'To: Bob <bob@example.com>',
+			'Subject: Degenerate attachment',
+			'Message-ID: <att-2@example.com>',
+			'MIME-Version: 1.0',
+			`Content-Type: multipart/mixed; boundary="${boundary}"`,
+			'',
+			`--${boundary}`,
+			'Content-Type: text/plain; charset=utf-8',
+			'',
+			'Body text.',
+			`--${boundary}`,
+			// No filename parameter, no Content-Type header — only the disposition
+			// marks this leaf as an attachment.
+			'Content-Disposition: attachment',
+			'Content-Transfer-Encoding: base64',
+			'',
+			'iVBORw0KGgo=',
+			`--${boundary}--`,
+			'',
+		].join('\r\n');
+
+		await ingestMessage(client, {
+			accountId: 'a',
+			folderRole: 'inbox',
+			remoteName: 'INBOX',
+			remoteUid: 7,
+			remoteUidValidity: 2,
+			raw: Buffer.from(raw),
+			flags: new Set(),
+		});
+
+		const attachments = lastPayload().attachments as Array<Record<string, unknown>>;
+		expect(attachments).toHaveLength(1);
+		// Delta (1): parse-layer default, not `attachment-1`.
+		expect(attachments[0]?.filename).toBe('attachment');
+		// Delta (2): MIME text/plain default, not application/octet-stream.
+		expect(attachments[0]?.contentType).toBe('text/plain');
+		expect(attachments[0]?.partIndex).toBe('0');
+	});
+
+	// The `replyTo` wire field is mailparser's merged `.text` for the Reply-To
+	// header. A single header reads `field.text`; a REPEATED header takes the array
+	// arm of `addrText`, joining each object's `.text` with ', ' — matching the
+	// merged text mailparser exposed. Exercises both the array arm and the shipped
+	// `replyTo` field, neither of which any other test/fixture covers.
+	it('joins a repeated Reply-To header into the merged replyTo text', async () => {
+		const { client, lastPayload } = mockConvex();
+		const raw = [
+			'From: Alice <alice@example.com>',
+			'To: Bob <bob@example.com>',
+			'Reply-To: Amy <amy@example.com>',
+			'Reply-To: ben@example.org',
+			'Subject: Repeated reply-to',
+			'Message-ID: <rt-1@example.com>',
+			'Date: Wed, 03 Jun 2026 10:00:00 +0000',
+			'Content-Type: text/plain; charset=utf-8',
+			'',
+			'Body text.',
+			'',
+		].join('\r\n');
+
+		await ingestMessage(client, {
+			accountId: 'a',
+			folderRole: 'inbox',
+			remoteName: 'INBOX',
+			remoteUid: 8,
+			remoteUidValidity: 2,
+			raw: Buffer.from(raw),
+			flags: new Set(),
+		});
+
+		expect(lastPayload().replyTo).toBe('Amy <amy@example.com>, ben@example.org');
+	});
+
+	// A single Reply-To reads the object's `.text` directly (the non-array arm).
+	it('exposes a single Reply-To header as its formatted text', async () => {
+		const { client, lastPayload } = mockConvex();
+		const raw = RAW.replace(
+			'Subject: Hello there\r\n',
+			'Reply-To: Amy <amy@example.com>\r\nSubject: Hello there\r\n'
+		);
+
+		await ingestMessage(client, {
+			accountId: 'a',
+			folderRole: 'inbox',
+			remoteName: 'INBOX',
+			remoteUid: 9,
+			remoteUidValidity: 2,
+			raw: Buffer.from(raw),
+			flags: new Set(),
+		});
+
+		expect(lastPayload().replyTo).toBe('Amy <amy@example.com>');
+	});
 });
