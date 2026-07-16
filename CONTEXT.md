@@ -3178,8 +3178,9 @@ draft-status).
 
 **Inbox processing status**:
 The current state of an inbound message in `inboundMessages.processingStatus`:
-`received | security_check | quarantined | classifying | planning | drafting
-| draft_ready | approved | sent | rejected | archived | failed`. Twelve states
+`received | security_check | quarantined | classifying | drafting |
+draft_ready | awaiting_clarification | approved | sent | rejected | archived |
+failed`. Twelve states
 covering the joined agent-pipeline progression and the human draft-review
 hand-off. Companion fields written atomically with the status: `errorMessage`
 (on `failed`), `processedAt` (on terminals), `securityFlags` (on
@@ -3191,9 +3192,15 @@ hand-off. Companion fields written atomically with the status: `errorMessage`
 - `security_check → classifying` (no security issue; classify step starts)
 - `security_check → archived` (spam caught during scan)
 - `classifying → drafting`
+- `classifying → draft_ready` (no draft generation is needed)
+- `classifying → awaiting_clarification`
+- `awaiting_clarification → drafting`
+- `awaiting_clarification → archived` (owner dismisses the message)
 - `drafting → draft_ready`
+- `drafting → approved` (auto-send policy approves the draft)
 - `draft_ready → approved` (human approve or auto-approve)
 - `approved → sent` (after dispatch)
+- `approved → draft_ready` (cancelled auto-send returns to review)
 - `draft_ready → rejected` (human reject)
 - `quarantined → received` (release from quarantine → restarts pipeline)
 - `failed → received` (cron retry → restarts pipeline)
@@ -3201,11 +3208,11 @@ hand-off. Companion fields written atomically with the status: `errorMessage`
 - `* → failed` (pipeline error from any non-terminal state)
 
 `sent`, `rejected`, `archived` are terminal — transitions out of them are
-refused as `illegal_edge`. The agent pipeline's `context_retrieval` and
-`route` step kinds create **Agent action** rows without changing the
-processing status — they are recorded as ancillary step effects rather
-than visible transitions (kept this way to preserve today's queue-filter
-indexes). The four-state `conversationThreads.latestDraftStatus` is a
+refused as `illegal_edge`. The agent pipeline's `context_retrieval`, `clarify`,
+and `route` step kinds create **Agent action** rows without changing the
+processing status — they are recorded as ancillary step effects rather than
+visible transitions (kept this way to preserve today's queue-filter indexes).
+The four-state `conversationThreads.latestDraftStatus` is a
 *projection* of the latest draft-bearing message's processing status —
 written by the lifecycle module as a `set_thread_draft_status` effect,
 never by callers directly.
@@ -3224,7 +3231,7 @@ per kind in the happy path, plus retries within a kind). The
 creation/completion are fired as effects of inbox-side transitions or as
 the **Agent walker**'s in-state `recordStepBegin` / `recordStepEnd` calls
 that flow through the lifecycle's primitives. The Agent action's own
-`status` (`pending | running | completed | failed | skipped`) is
+`status` (`pending | running | completed | failed | abandoned | skipped`) is
 maintained by those effects; it does not get its own lifecycle module
 because every transition is already gated by an inbox-side transition.
 The `actionType` enum matches the **Agent step (module)** kind union
@@ -3303,13 +3310,21 @@ in `awaiting_clarification` (open questions for the owner) or falls through to
 `plan` kind was
 dropped with this deepening — today's plan-record was a placeholder JSON
 construction inside `agentDrafter` (`agentDrafter.ts:75-86`), never a
-real planning step; if a real planner ships later it joins as a new kind
-(module + walker registry entry + actionType enum + lifecycle
-`LEGAL_EDGES` re-addition of the `planning` state). Modules own only the
-compute + routing surface — Agent action creation/completion,
+real planning step; if a real planner ships later it joins through a host-owned
+catalog addition, its core module registry entry, and any corresponding
+lifecycle decision. Modules own only the compute + routing surface — Agent
+action creation/completion,
 `processingStatus` transitions, scheduling, and retry all live in the
 **Agent walker** which calls into the **Inbox processing lifecycle
 (module)** primitives.
+
+Bundled hosted kinds use `plugin.<pluginId>.<localId>` and come from the same
+generated catalog that derives `AgentStepKind`, the walker validator, the
+lifecycle action validator, and the schema validator. Their public module is
+deliberately narrower than a core module: it receives a bounded message
+projection and returns `continue` or a declared restrict-only `caution`. The
+walker preserves the original core continuation; plugins cannot route to
+another step, approve, send, or change core lifecycle legality.
 
 Replaces the six open-coded `internalAction` handlers in
 `convex/agent/agent<Kind>.ts` plus the scheduler-hop chain between them
@@ -4715,8 +4730,8 @@ aggregate (collides with the Postbox `outbound.state` aggregate-derivation).
   the only creator/updater of `agentActions`, and the only writer of
   `conversationThreads.latestDraftStatus`. Two distinct producer
   populations of transition calls: the *agent pipeline* — the **Agent
-  walker** dispatching to five **Agent step (module)**s
-  (`security_scan → context_retrieval → classify → draft → route`) plus
+  walker** dispatching to six **Agent step (module)**s
+  (`security_scan → context_retrieval → classify → clarify → draft → route`) plus
   the cron-driven `Agent walker.retryStep` — drives the pipeline-phase
   transitions (`received → security_check → classifying → drafting →
   draft_ready`); the *human review path* (`inbox/mutations.ts:
