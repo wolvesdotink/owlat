@@ -7,7 +7,7 @@
  *    itself alone) on an ephemeral loopback port with caller-supplied handlers.
  *  - {@link converse}: run a scripted SMTP conversation over a raw TCP socket and
  *    return the ORDERED reply for every step, parsed into `{ code, enhanced?,
- *    line }`. The SAME runner drives both stacks, so a reply-sequence diff is a
+ *    lines }`. The SAME runner drives both stacks, so a reply-sequence diff is a
  *    true behavioural diff, never a harness artefact.
  *
  * A raw socket (not `@owlat/smtp-client`) is used deliberately: parity scripts
@@ -30,8 +30,6 @@ export interface WireReply {
 	code: number;
 	/** RFC 3463 enhanced status code, if the reply carried one. */
 	enhanced?: string;
-	/** The full final reply line (without CRLF). */
-	line: string;
 	/** Every line of the reply (continuation lines + final), e.g. the EHLO block. */
 	lines: string[];
 }
@@ -103,7 +101,7 @@ export interface Step {
 export function converse(
 	port: number,
 	steps: readonly (string | Step)[],
-	timeoutMs = 5000
+	timeoutMs = 3000
 ): Promise<WireReply[]> {
 	return new Promise<WireReply[]>((resolve, reject) => {
 		const replies: WireReply[] = [];
@@ -146,7 +144,7 @@ export function converse(
 				if (!parsed) continue; // ignore stray non-reply lines
 				lines.push(raw);
 				buffer = buffer.slice(idx);
-				return { code: parsed.code, enhanced: parsed.enhanced, line: raw, lines };
+				return { code: parsed.code, enhanced: parsed.enhanced, lines };
 			}
 		};
 
