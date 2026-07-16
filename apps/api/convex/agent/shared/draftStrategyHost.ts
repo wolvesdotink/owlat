@@ -47,17 +47,23 @@ export async function runHostedDraftStrategy(
 	try {
 		input = snapshotInput(source);
 	} catch {
-		await record(ctx, definition.pluginId, strategyKind, 'draft_strategy_invalid');
+		await recordStrategyFailure(ctx, definition.pluginId, strategyKind, 'draft_strategy_invalid');
 		return null;
 	}
+	const executionController = new AbortController();
 	try {
-		const result = await withTimeout(
+		const strategyWork = Promise.resolve().then(() =>
 			registration.module.generate(
 				input,
-				Object.freeze({ llm: bindSystemBundledPluginLlm(ctx, definition.pluginId) })
-			),
-			definition.timeoutMs
+				Object.freeze({
+					llm: bindSystemBundledPluginLlm(ctx, definition.pluginId, executionController.signal),
+				})
+			)
 		);
+		// Promise.race observes late rejection already; this explicit drain also
+		// documents that timed-out plugin work is never allowed to become unhandled.
+		void strategyWork.catch(() => undefined);
+		const result = await withTimeout(strategyWork, definition.timeoutMs, executionController);
 		const draftBody = validateResult(result);
 		await ctx.runMutation(internal.plugins.draftStrategyAuthorization.recordOutcome, {
 			pluginId: definition.pluginId,
@@ -66,7 +72,7 @@ export async function runHostedDraftStrategy(
 		});
 		return draftBody;
 	} catch (error) {
-		await record(
+		await recordStrategyFailure(
 			ctx,
 			definition.pluginId,
 			strategyKind,
@@ -77,6 +83,11 @@ export async function runHostedDraftStrategy(
 					: 'draft_strategy_failed'
 		);
 		return null;
+	} finally {
+		// A strategy gets a single host-owned lease. Completion, validation failure,
+		// audit failure, and timeout all revoke every exposed service capability.
+		// The timeout path aborts eagerly inside withTimeout as well.
+		executionController.abort();
 	}
 }
 
@@ -131,13 +142,20 @@ function assertBounded(value: string, maximum: number): void {
 	if (new TextEncoder().encode(value).byteLength > maximum) throw new InvalidStrategyResultError();
 }
 
-async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+async function withTimeout<T>(
+	promise: Promise<T>,
+	timeoutMs: number,
+	executionController: AbortController
+): Promise<T> {
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	try {
 		return await Promise.race([
 			promise,
 			new Promise<never>((_, reject) => {
-				timer = setTimeout(() => reject(new StrategyTimeoutError()), timeoutMs);
+				timer = setTimeout(() => {
+					executionController.abort();
+					reject(new StrategyTimeoutError());
+				}, timeoutMs);
 			}),
 		]);
 	} finally {
@@ -145,7 +163,7 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T
 	}
 }
 
-async function record(
+async function recordStrategyFailure(
 	ctx: ActionCtx,
 	pluginId: string,
 	strategyKind: string,

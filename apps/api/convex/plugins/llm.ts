@@ -54,15 +54,17 @@ export function bindAuthenticatedBundledPluginLlm(
 /** Background-host variant; authorization and settlement remain system-attributed. */
 export function bindSystemBundledPluginLlm(
 	ctx: ActionCtx,
-	pluginIdInput: unknown
+	pluginIdInput: unknown,
+	executionSignal?: AbortSignal
 ): PluginLlmService {
-	return bindBundledPluginLlm(ctx, pluginIdInput, SYSTEM_ACTOR_POLICY);
+	return bindBundledPluginLlm(ctx, pluginIdInput, SYSTEM_ACTOR_POLICY, executionSignal);
 }
 
 function bindBundledPluginLlm(
 	ctx: ActionCtx,
 	pluginIdInput: unknown,
-	actorPolicy: PluginLlmActorPolicy
+	actorPolicy: PluginLlmActorPolicy,
+	executionSignal?: AbortSignal
 ): PluginLlmService {
 	let pluginId;
 	try {
@@ -73,17 +75,21 @@ function bindBundledPluginLlm(
 
 	return Object.freeze({
 		async generate(requestInput: PluginLlmGenerateRequest): Promise<PluginLlmGenerateResult> {
+			assertExecutionActive(executionSignal);
 			let request;
 			try {
 				request = validatePluginLlmRequest(requestInput);
 			} catch {
+				assertExecutionActive(executionSignal);
 				await recordDenied(ctx, pluginId, actorPolicy);
 				throw new PluginLlmError('invalid_input');
 			}
 
 			try {
 				await authorizeActor(ctx, pluginId, actorPolicy);
+				assertExecutionActive(executionSignal);
 			} catch {
+				assertExecutionActive(executionSignal);
 				await recordDenied(ctx, pluginId, actorPolicy);
 				throw new PluginLlmError('access_denied');
 			}
@@ -102,7 +108,9 @@ function bindBundledPluginLlm(
 						totalTokens: request.inputTokensUpperBound + PLUGIN_LLM_MAX_OUTPUT_TOKENS,
 					}) ?? 0;
 				if (perAttemptMicrousd < 1) throw new Error('Unpriced model');
+				assertExecutionActive(executionSignal);
 			} catch {
+				assertExecutionActive(executionSignal);
 				await recordDenied(ctx, pluginId, actorPolicy);
 				throw new PluginLlmError('access_denied');
 			}
@@ -114,6 +122,7 @@ function bindBundledPluginLlm(
 				throw new PluginLlmError('access_denied');
 			}
 			try {
+				assertExecutionActive(executionSignal);
 				await ctx.runMutation(internal.plugins.llmAccounting.reserve, {
 					pluginId,
 					reservationId,
@@ -124,23 +133,33 @@ function bindBundledPluginLlm(
 					...accountingActorArgs(actorPolicy),
 				});
 			} catch {
+				assertExecutionActive(executionSignal);
 				await recordDenied(ctx, pluginId, actorPolicy);
+				throw new PluginLlmError('access_denied');
+			}
+			if (executionSignal?.aborted) {
+				await settleFailure(ctx, reservationId, actorPolicy);
 				throw new PluginLlmError('access_denied');
 			}
 
 			let dispatched;
 			try {
+				assertExecutionActive(executionSignal);
 				dispatched = await runLlmTextWithAttemptMetadata({
 					model: resolvedModel.model,
 					...request.dispatchInput,
 					maxOutputTokens: PLUGIN_LLM_MAX_OUTPUT_TOKENS,
+					...(executionSignal ? { abortSignal: executionSignal } : {}),
 				});
+				assertExecutionActive(executionSignal);
 			} catch {
 				const settled = await settleFailure(ctx, reservationId, actorPolicy);
 				if (!settled) throw new PluginLlmError('accounting_unavailable');
+				assertExecutionActive(executionSignal);
 				throw new PluginLlmError('provider_failure');
 			}
 			try {
+				assertExecutionActive(executionSignal);
 				await ctx.runMutation(internal.plugins.llmAccounting.settleSuccess, {
 					reservationId,
 					modelUsed: dispatched.result.modelUsed,
@@ -148,7 +167,9 @@ function bindBundledPluginLlm(
 					attempts: dispatched.attempts,
 					...accountingActorArgs(actorPolicy),
 				});
+				assertExecutionActive(executionSignal);
 			} catch {
+				assertExecutionActive(executionSignal);
 				// The reservation mutation already consumed headroom. A failed
 				// settlement leaves it pending and fully charged.
 				throw new PluginLlmError('accounting_unavailable');
@@ -160,6 +181,10 @@ function bindBundledPluginLlm(
 			});
 		},
 	});
+}
+
+function assertExecutionActive(executionSignal: AbortSignal | undefined): void {
+	if (executionSignal?.aborted) throw new PluginLlmError('access_denied');
 }
 
 async function authorizeActor(
