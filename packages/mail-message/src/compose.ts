@@ -84,9 +84,29 @@ function closeMultipart(boundary: string, parts: string[]): string {
 	return `${parts.join('\r\n')}\r\n--${boundary}--`;
 }
 
+/**
+ * Matches a string that is nothing but base64 alphabet characters — no
+ * whitespace, no CRLF, no padding mid-string. A caller who passes raw text by
+ * mistake (instead of a `Buffer` or an already-base64 string) hits this and
+ * fails loudly, rather than shipping a MIME part whose 76-char re-chunk regex
+ * has miscounted embedded CRLFs into its window.
+ */
+const BASE64_ONLY = /^[A-Za-z0-9+/]*={0,2}$/;
+
 /** A base64 attachment/inline entity (Content-Disposition + optional Content-ID). */
 function attachmentEntity(att: ComposeAttachment): MimeEntity {
-	const base64 = typeof att.data === 'string' ? att.data : att.data.toString('base64');
+	let base64: string;
+	if (typeof att.data === 'string') {
+		if (!BASE64_ONLY.test(att.data)) {
+			throw new Error(
+				`attachment "${att.filename}": string data must be base64 ` +
+					'(A-Za-z0-9+/=); pass a Buffer for raw bytes'
+			);
+		}
+		base64 = att.data;
+	} else {
+		base64 = att.data.toString('base64');
+	}
 	const b64 = base64.replace(/(.{76})/g, '$1\r\n');
 	const dispositionType = att.isInline ? 'inline' : 'attachment';
 	const headerLines = [
@@ -116,9 +136,7 @@ export function buildRfc822(
 	if (input.ccAddresses.length > 0) {
 		headers.push(`Cc: ${encodeAddressHeader(input.ccAddresses)}`);
 	}
-	if (input.bccAddresses.length > 0) {
-		// Bcc visible to envelope only; do NOT include in headers
-	}
+	// Bcc is visible to the envelope only; it is deliberately never emitted as a header.
 	headers.push(`Subject: ${encodeHeaderValue(input.subject || '(no subject)')}`);
 	if (inReplyToHeaderValue) headers.push(`In-Reply-To: ${inReplyToHeaderValue}`);
 	if (referencesHeaderValue) headers.push(`References: ${referencesHeaderValue}`);
