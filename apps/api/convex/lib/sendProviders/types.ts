@@ -18,11 +18,11 @@ import { SEND_TRANSPORT_KINDS } from '@owlat/shared';
  * lives in `@owlat/shared` (`SEND_TRANSPORT_KINDS`) — the SAME tuple the outbound
  * DMARC-alignment guard keys off — and is re-exported here so a new provider kind
  * can't be added on either side without the other seeing it. This re-export lives
- * in this pure, isolate-safe module (no `nodemailer`/`'use node'` deps) so the
- * isolate function modules that only need the guard — `delivery/enqueue.ts`,
+ * in this pure, isolate-safe module (no `'use node'` deps) so the isolate
+ * function modules that only need the guard — `delivery/enqueue.ts`,
  * `delivery/status.ts`, `routing.ts`, `capability.ts` — can import it without
- * pulling the `SEND_PROVIDERS` registry (and thus `nodemailer`) into a
- * non-`'use node'` bundle.
+ * pulling the `SEND_PROVIDERS` registry (and thus the node-only `@owlat/smtp-client`)
+ * into a non-`'use node'` bundle.
  */
 export const SEND_PROVIDER_KINDS = SEND_TRANSPORT_KINDS;
 
@@ -104,8 +104,8 @@ export interface ResendExtras {
 }
 
 /**
- * A generic SMTP relay (nodemailer transport) has no per-send provider knobs —
- * the connection (host/port/TLS/auth) is instance-level config, not per-message.
+ * A generic SMTP relay has no per-send provider knobs — the connection
+ * (host/port/TLS/auth) is instance-level config, not per-message.
  */
 export type SmtpExtras = Record<string, never>;
 
