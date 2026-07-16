@@ -8,7 +8,7 @@
  * the upgrade and that the negotiated cipher matches the hardened AEAD policy.
  */
 
-import { describe, it, expect, beforeAll, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
 import { createSmtpListener, type SmtpListener } from '../server.js';
 import { DEFAULT_SMTP_CIPHERS, resolveTlsConfig } from '../tls.js';
 import type { SmtpListenerOptions } from '../types.js';
@@ -161,6 +161,44 @@ describe('STARTTLS upgrade over a real socket', () => {
 		c.write('STARTTLS\r\n');
 		await c.waitCode(503);
 		c.end();
+	});
+});
+
+describe('STARTTLS handshake abandonment (hostile) is bounded', () => {
+	it('settles the upgrade and tears down when the peer FINs before the handshake', async () => {
+		// A peer that reads the 220 then FINs starts NO TLS handshake, so the
+		// TLSSocket fires neither 'secure' nor 'error' — only 'close'. Without the
+		// 'close' rejection in upgradeTls the promise never settles, the command
+		// loop stays suspended, and the FD + session leak until the ~5 min idle
+		// timer. This asserts the loop exits promptly instead.
+		const errors: Error[] = [];
+		const { port } = await start({ onError: (e) => void errors.push(e) });
+		const c = await Client.connect(port);
+		await c.waitCode(220);
+		c.write('STARTTLS\r\n');
+		await c.waitCode(220);
+		// Clean FIN immediately after the 220, before any ClientHello.
+		c.socket.end();
+		// The upgrade rejects on 'close' → handleConnection routes it to onError and
+		// destroys the socket. If this resolves quickly the leak is fixed (the idle
+		// timer default is far longer than this timeout).
+		await vi.waitFor(() => expect(errors.length).toBeGreaterThan(0), { timeout: 4000 });
+		expect(errors.some((e) => /closed while initiating TLS/i.test(e.message))).toBe(true);
+	});
+
+	it('rejects the upgrade and tears down when the peer sends non-TLS bytes', async () => {
+		// Garbage instead of a ClientHello makes the TLS handshake ERROR; the loop's
+		// upgrade catch must route it to onError and tear the connection down.
+		const errors: Error[] = [];
+		const { port } = await start({ onError: (e) => void errors.push(e) });
+		const c = await Client.connect(port);
+		await c.waitCode(220);
+		c.write('STARTTLS\r\n');
+		await c.waitCode(220);
+		c.write('this is definitely not a TLS ClientHello\r\n');
+		await vi.waitFor(() => expect(errors.length).toBeGreaterThan(0), { timeout: 4000 });
+		await c.waitClose();
+		expect(c.closed).toBe(true);
 	});
 });
 

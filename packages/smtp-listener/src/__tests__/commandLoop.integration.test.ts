@@ -152,6 +152,54 @@ describe('command loop over a raw socket', () => {
 		expect(c.closed).toBe(true);
 	});
 
+	it('assembles a DATA body delivered across multiple TCP segments', async () => {
+		// Each segment arrives as its own chunk with NO terminator, forcing the
+		// reader's no-terminator flush/keep path (partial-terminator carry) before
+		// the final `.<CRLF>` completes the body.
+		const h = await start();
+		const c = await Client.connect(h.port);
+		await c.waitCode(220);
+		c.write('MAIL FROM:<a@a.test>\r\nRCPT TO:<b@b.test>\r\nDATA\r\n');
+		await c.waitCode(354);
+		c.write('first line of the body\r\n');
+		await new Promise((r) => setTimeout(r, 50));
+		c.write('second line of the body\r\n');
+		await new Promise((r) => setTimeout(r, 50));
+		c.write('.\r\n');
+		await c.waitCode(250);
+		expect(h.messages[0]?.toString()).toBe('first line of the body\r\nsecond line of the body\r\n');
+		c.end();
+	});
+
+	it('returns cleanly when the peer hangs up mid-DATA (no delivery)', async () => {
+		// EOF before the `<CRLF>.<CRLF>` terminator: the DATA reader must report
+		// `closed`, the loop must exit, and nothing is delivered.
+		const h = await start();
+		const c = await Client.connect(h.port);
+		await c.waitCode(220);
+		c.write('MAIL FROM:<a@a.test>\r\nRCPT TO:<b@b.test>\r\nDATA\r\n');
+		await c.waitCode(354);
+		c.write('partial body with no terminator\r\n');
+		await new Promise((r) => setTimeout(r, 50));
+		c.socket.end(); // FIN mid-DATA
+		await c.waitClose();
+		expect(c.closed).toBe(true);
+		expect(h.messages).toHaveLength(0);
+	});
+
+	it('accepts a MAIL parameter supplied as a bare flag (no value)', async () => {
+		// A tail token with no `=` exercises the value-less parameter branch of the
+		// address-command parser (`params[TOKEN] = ''`).
+		const h = await start();
+		const c = await Client.connect(h.port);
+		await c.waitCode(220);
+		c.write('MAIL FROM:<a@a.test> BODY\r\n');
+		await c.waitFor((b) => /250 2\.1\.0/.test(b));
+		c.write('RCPT TO:<b@b.test>\r\n');
+		await c.waitFor((b) => /250 2\.1\.5/.test(b));
+		c.end();
+	});
+
 	it('refuses DATA before MAIL/RCPT and STARTTLS/AUTH are not implemented yet', async () => {
 		const h = await start();
 		const c = await Client.connect(h.port);

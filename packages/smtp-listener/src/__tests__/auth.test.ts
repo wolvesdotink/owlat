@@ -315,6 +315,25 @@ describe('performAuth unit — mechanism handling', () => {
 		expect(errors).toEqual([backendError]);
 	});
 
+	it('fails generically when a continuation read throws a non-close error', async () => {
+		// A collect-phase fault that is NOT a peer disconnect (e.g. the read side
+		// throws) must be swallowed into the same generic `fail` — never surfaced as
+		// a distinct outcome (no oracle) and never an unhandled rejection.
+		const authenticate = vi.fn(() => ({ ok: false }) as const);
+		const result = await performAuth({
+			mechanism: 'PLAIN',
+			initialResponse: null, // forces a 334 continuation read
+			session: makeSession(),
+			auth: { mechanisms: ['PLAIN', 'LOGIN'], requireTls: true, authenticate },
+			write: () => {},
+			readLine: async () => {
+				throw new Error('reader exploded');
+			},
+		});
+		expect(result).toBe('fail');
+		expect(authenticate).not.toHaveBeenCalled();
+	});
+
 	it('fails an unsupported mechanism without touching the backend', async () => {
 		const authenticate = vi.fn(() => ({ ok: false }) as const);
 		const result = await performAuth({
