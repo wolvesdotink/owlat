@@ -91,7 +91,7 @@ export function openPlainSocket(
 }
 
 /** Open an implicit-TLS socket (TLS from byte zero, e.g. submission on 465). */
-export function openTlsSocket(
+export async function openTlsSocket(
 	options: SmtpConnectOptions,
 	tlsOptions: SmtpTlsOptions,
 	servername: string,
@@ -99,7 +99,7 @@ export function openTlsSocket(
 ): Promise<tls.TLSSocket> {
 	const connectOptions = buildTlsConnectOptions(options, tlsOptions, servername);
 	const socket = tls.connect(connectOptions);
-	return awaitSocketReady(
+	const secured = await awaitSocketReady(
 		socket,
 		'secureConnect',
 		timeoutMs,
@@ -112,6 +112,37 @@ export function openTlsSocket(
 			}),
 		(err) => tlsError('connect', err, false)
 	);
+	runPeerVerifier('connect', secured, tlsOptions.verifyPeerCertificate);
+	return secured;
+}
+
+/**
+ * Run the caller's post-handshake peer verifier (RFC 7672 DANE) on a freshly
+ * secured socket. Runs regardless of `rejectUnauthorized` — that is the whole
+ * point (DANE-EE authenticates a certificate the WebPKI path ignores). A
+ * returned `Error` destroys the socket and throws a fail-closed
+ * `tlsCause: 'handshake'` {@link SmtpError} so SMTP never resumes over an
+ * unauthenticated channel.
+ */
+function runPeerVerifier(
+	phase: SmtpPhase,
+	socket: tls.TLSSocket,
+	verify: ((socket: tls.TLSSocket) => Error | undefined) | undefined
+): void {
+	if (verify === undefined) {
+		return;
+	}
+	const err = verify(socket);
+	if (err !== undefined) {
+		socket.destroy();
+		throw new SmtpError({
+			phase,
+			message: `peer certificate verification failed: ${err.message}`,
+			secured: false,
+			tlsCause: 'handshake',
+			cause: err,
+		});
+	}
 }
 
 /**
@@ -228,6 +259,11 @@ export async function startTlsUpgrade(
 			}),
 		(err) => tlsError('starttls', err, false)
 	);
+	// Authenticate the peer certificate (RFC 7672 DANE) on the secured socket
+	// BEFORE any post-TLS byte is read. Runs even under `rejectUnauthorized:false`
+	// (DANE-EE), and fails closed on a mismatch — SMTP never resumes over an
+	// unauthenticated channel.
+	runPeerVerifier('starttls', secureSocket, tlsOptions.verifyPeerCertificate);
 	// Safe to rebind AFTER the await: the secured socket does not flow until a
 	// `data` listener attaches, so no post-handshake byte is lost in the gap.
 	// Start the secured leg on a fresh parser (RFC 3207 §4.2): discard all
