@@ -11,14 +11,14 @@
  *   requireCallerMove         — auth + load the caller's own move, or throw
  *   buildMovePayload          — serialize a move row for the settings surface
  *
- * The account resolution deliberately uses `getLiveExternalAccountForUser`
+ * The account resolution deliberately uses `getLivePersonalExternalAccountForUser`
  * (state-based, not oldest-row): a completed move leaves a `disconnected`
  * archive row that coexists with a freshly-connected account, and `by_user` +
  * `.first()` would return the stale archive.
  */
 
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
-import { getLiveExternalAccountForUser } from './externalAccounts';
+import { getLivePersonalExternalAccountForUser } from './externalAccounts';
 import { throwNotFound, throwUnauthenticated } from '../_utils/errors';
 import type { QueryCtx, MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
@@ -31,7 +31,7 @@ export type MoverSession = SessionWithRole & { role: NonNullable<SessionWithRole
  * Resolve the caller's own movable external mailbox — the thing a move operates
  * on. Returns `null` when the caller is anonymous/role-less, has no LIVE external
  * account, or the account's mailbox isn't `active`. Resolves the account by
- * state (`getLiveExternalAccountForUser`) so a completed move's `disconnected`
+ * state (`getLivePersonalExternalAccountForUser`) so a completed move's `disconnected`
  * archive row never masks a freshly-connected account. Each caller picks its own
  * failure mode from the `null`.
  */
@@ -42,7 +42,7 @@ export async function getCallerExternalMailbox(ctx: QueryCtx | MutationCtx): Pro
 } | null> {
 	const session = await getBetterAuthSessionWithRole(ctx);
 	if (!session || !session.role) return null;
-	const account = await getLiveExternalAccountForUser(ctx, session.userId);
+	const account = await getLivePersonalExternalAccountForUser(ctx, session.userId);
 	// No live account ⇒ nothing to move (a disconnected archive is not movable).
 	if (!account) return null;
 	const mailbox = await ctx.db.get(account.mailboxId);

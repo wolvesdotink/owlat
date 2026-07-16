@@ -153,12 +153,16 @@ function makeMemberCtx(opts: {
 describe('requireOrgMember', () => {
 	beforeEach(() => _resetSingletonOrgCacheForTests());
 
-	it('returns { userId, role } for an active member', async () => {
+	it('returns { userId, role, activeOrganizationId } for an active member', async () => {
 		const ctx = makeMemberCtx({
 			identity: { subject: 'user_1', activeOrganizationId: 'org_singleton' },
 			member: { role: 'owner' },
 		});
-		await expect(requireOrgMember(ctx)).resolves.toEqual({ userId: 'user_1', role: 'owner' });
+		await expect(requireOrgMember(ctx)).resolves.toEqual({
+			userId: 'user_1',
+			role: 'owner',
+			activeOrganizationId: 'org_singleton',
+		});
 	});
 
 	it('throws for an authenticated NON-member (the open-signup leak)', async () => {
