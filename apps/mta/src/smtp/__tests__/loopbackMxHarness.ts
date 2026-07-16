@@ -3,7 +3,7 @@
  *
  * Both senderPlaintextTlsRpt.integration.test.ts (PR-24) and
  * senderOutboundTlsFloor.integration.test.ts (T1) drive the FULL {@link sendToMx}
- * through the REAL connection pool + real nodemailer + real tlsRpt against a
+ * through the REAL connection pool + real @owlat/smtp-client + real tlsRpt against a
  * loopback {@link SMTPServer}. Only the destination port is rewritten (sendToMx
  * hardcodes 25). This module factors out the server factory, the job/config
  * builders and the microtask flush so each suite carries only its own assertions.
