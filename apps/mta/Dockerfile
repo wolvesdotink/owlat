@@ -21,6 +21,7 @@ COPY packages/email-scanner/ packages/email-scanner/
 COPY packages/shared/ packages/shared/
 COPY packages/mail-auth/ packages/mail-auth/
 COPY packages/mail-canon/ packages/mail-canon/
+COPY packages/mail-message/ packages/mail-message/
 
 RUN cd apps/mta && bun run build
 

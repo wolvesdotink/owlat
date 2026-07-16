@@ -1,0 +1,17 @@
+From: "Sender Name" <sender@example.com>
+To: dest@example.org
+Subject: Alternative parts
+Date: Wed, 18 Jun 2026 09:30:00 +0000
+Message-ID: <alt-1@example.com>
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="b1"
+
+--b1
+Content-Type: text/plain; charset=utf-8
+
+Plain version of the message.
+--b1
+Content-Type: text/html; charset=utf-8
+
+<p>HTML version of the message.</p>
+--b1--

@@ -48,29 +48,65 @@ function splitHeadersAndBody(raw: string): { headerText: string; body: string } 
  * Split a multipart body into its parts on `--boundary` delimiter lines,
  * tolerating trailing whitespace on the delimiter and stopping at the closing
  * `--boundary--`. Preamble/epilogue outside the delimiters is discarded. Order
- * is preserved. This mirrors the current `mailMime` extractor byte-for-byte so
- * leaf document order matches the read side.
+ * is preserved.
+ *
+ * Each returned segment is the VERBATIM byte span between the delimiter lines —
+ * the CRLF that precedes a delimiter is (per MIME) part of the delimiter, not the
+ * part, and is excluded, but every interior line ending is kept exactly as it
+ * appeared on the wire. Line-ending normalization (CRLF -> LF) is applied later,
+ * per-leaf, only to the parts where the old `mailMime` extractor applied it (see
+ * {@link leafRawBody}); `message/*` payloads and the top-level body are kept
+ * verbatim so DSN scraping and message re-verification see the exact original
+ * bytes — byte-for-byte with mailparser.
  */
 function splitMultipart(body: string, boundary: string): string[] {
 	const open = `--${boundary}`;
 	const close = `${open}--`;
 	const parts: string[] = [];
-	let current: string[] | null = null;
-	for (const line of body.split(/\r?\n/)) {
-		const t = line.replace(/[ \t]+$/, '');
+	let partStart = -1; // offset where the current part's content begins, -1 = idle
+	let prevLineEnd = -1; // end offset (exclusive) of the last content line seen
+	const n = body.length;
+	let pos = 0;
+	while (pos <= n) {
+		const nl = body.indexOf('\n', pos);
+		const atEnd = nl === -1;
+		const lineEnd = atEnd ? n : nl > pos && body[nl - 1] === '\r' ? nl - 1 : nl;
+		const nextPos = atEnd ? n + 1 : nl + 1;
+		const t = body.slice(pos, lineEnd).replace(/[ \t]+$/, '');
 		if (t === open || t === close) {
-			if (current) parts.push(current.join('\n'));
+			if (partStart !== -1) {
+				parts.push(body.slice(partStart, prevLineEnd === -1 ? partStart : prevLineEnd));
+			}
 			if (t === close) {
-				current = null;
+				partStart = -1;
 				break;
 			}
-			current = [];
-			continue;
+			partStart = nextPos;
+			prevLineEnd = -1;
+		} else if (partStart !== -1) {
+			prevLineEnd = lineEnd;
 		}
-		if (current) current.push(line);
+		pos = nextPos;
+		if (atEnd) break;
 	}
-	if (current) parts.push(current.join('\n'));
+	if (partStart !== -1) {
+		parts.push(body.slice(partStart, prevLineEnd === -1 ? partStart : prevLineEnd));
+	}
 	return parts;
+}
+
+/**
+ * The raw (pre-transfer-decode) body of a leaf. `message/*` payloads and the
+ * top-level (non-`nested`) body are kept VERBATIM — mailparser preserves their
+ * exact CRLF bytes, and downstream DSN scraping / message re-verification depends
+ * on those bytes. Every other nested leaf is CRLF -> LF normalized, reproducing
+ * the byte-for-byte behavior of the old `mailMime` per-part `split(/\r?\n/).join('\n')`.
+ */
+function leafRawBody(contentType: ContentType, body: string, nested: boolean): string {
+	if (nested && !contentType.value.startsWith('message/')) {
+		return body.replace(/\r\n/g, '\n');
+	}
+	return body;
 }
 
 /**
@@ -79,7 +115,7 @@ function splitMultipart(body: string, boundary: string): string[] {
  * simply yields a childless node, so hostile input can never overflow the stack
  * or throw.
  */
-export function parseMimeTree(raw: string, depth = 0): MimeNode {
+export function parseMimeTree(raw: string, depth = 0, nested = false): MimeNode {
 	const { headerText, body } = splitHeadersAndBody(raw);
 	const headers = parseHeaders(headerText);
 	const contentType = headers.contentType;
@@ -102,12 +138,18 @@ export function parseMimeTree(raw: string, depth = 0): MimeNode {
 		if (boundary !== undefined && boundary !== '') {
 			isMultipart = true;
 			for (const part of splitMultipart(body, boundary)) {
-				children.push(parseMimeTree(part, depth + 1));
+				children.push(parseMimeTree(part, depth + 1, true));
 			}
 		}
 	}
 
-	return { headers, contentType, isMultipart, children, rawBody: isMultipart ? '' : body };
+	return {
+		headers,
+		contentType,
+		isMultipart,
+		children,
+		rawBody: isMultipart ? '' : leafRawBody(contentType, body, nested),
+	};
 }
 
 /**
