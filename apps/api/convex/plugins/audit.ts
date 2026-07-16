@@ -11,6 +11,7 @@ export type HostedPluginOperation = HostedPluginOperationLiteral;
 export const HOSTED_PLUGIN_AUDIT_REASON_CODES = Object.freeze([
 	'access_denied',
 	'access_or_budget_denied',
+	'agent_step_failed',
 	'provider_dispatch_failed',
 ] as const);
 export type HostedPluginAuditReasonCode = (typeof HOSTED_PLUGIN_AUDIT_REASON_CODES)[number];

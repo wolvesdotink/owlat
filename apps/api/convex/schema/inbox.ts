@@ -11,6 +11,7 @@ import {
 } from '../lib/convexValidators';
 import { pendingClarificationValidator } from '../inbox/clarificationValidators';
 import { attachmentSuggestionsValidator } from '../inbox/attachmentValidators';
+import { agentStepKindValidator } from '../agent/steps/catalog';
 
 /**
  * Inbox / Agent pipeline tables — AI-assisted shared inbox.
@@ -256,14 +257,7 @@ export const inboxTables = {
 		// Which pipeline step this action represents — matches the
 		// AgentStepKind union in convex/agent/steps/types.ts. The
 		// `plan` kind was dropped pre-prod with ADR-0014.
-		actionType: v.union(
-			v.literal('security_scan'),
-			v.literal('context_retrieval'),
-			v.literal('classify'),
-			v.literal('clarify'),
-			v.literal('draft'),
-			v.literal('route')
-		),
+		actionType: agentStepKindValidator,
 		// Execution status. `failed` is a RETRYABLE terminal-of-attempt state
 		// the retry cron (processingLifecycle.retryFailedActions) picks back up;
 		// `abandoned` is the TRUE terminal state, set once retries are exhausted
