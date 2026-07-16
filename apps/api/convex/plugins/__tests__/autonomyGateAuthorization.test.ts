@@ -12,6 +12,14 @@ vi.mock('../autonomyGateCatalog.generated', () => ({
 			requiredEnvVars: Object.freeze(['POLICY_KEY']),
 			requiredCapability: 'send:gate',
 		}),
+		Object.freeze({
+			kind: 'plugin.unregistered-pack.final-review',
+			pluginId: 'unregistered-pack',
+			label: 'Unregistered policy review',
+			timeoutMs: 500,
+			requiredEnvVars: Object.freeze([]),
+			requiredCapability: 'send:gate',
+		}),
 	]),
 }));
 
@@ -57,9 +65,13 @@ const outcomeHandler = (
 )._handler;
 const flagKey = 'plugin.policy-pack';
 
-function fakeContext(isEnabled: boolean, isGranted: boolean) {
+function fakeContext(
+	isEnabled: boolean,
+	isGranted: boolean,
+	organizations: readonly { id: string }[] = [{ id: 'organization-id' }]
+) {
 	return {
-		runQuery: vi.fn(async () => ({ page: [{ id: 'organization-id' }] })),
+		runQuery: vi.fn(async () => ({ page: organizations })),
 		db: {
 			query: vi.fn(() => ({
 				first: vi.fn(async () => ({
@@ -116,6 +128,35 @@ describe('hosted autonomy gate authorization', () => {
 		expect(audit).toHaveBeenCalledWith(
 			expect.anything(),
 			expect.objectContaining({ pluginId: 'policy-pack' }),
+			'autonomy.gate',
+			'denied',
+			{ reasonCode: 'access_denied' }
+		);
+	});
+
+	it.each([
+		['zero organizations', []],
+		['multiple organizations', [{ id: 'org-one' }, { id: 'org-two' }]],
+	] as const)('denies safely with %s', async (_label, organizations) => {
+		await expect(
+			authorizeHandler(fakeContext(true, true, organizations), {
+				pluginId: 'policy-pack',
+				gateKind: 'plugin.policy-pack.final-review',
+			})
+		).resolves.toBe(false);
+		expect(audit).not.toHaveBeenCalled();
+	});
+
+	it('denies a catalogued gate whose plugin is no longer registered', async () => {
+		await expect(
+			authorizeHandler(fakeContext(true, true), {
+				pluginId: 'unregistered-pack',
+				gateKind: 'plugin.unregistered-pack.final-review',
+			})
+		).resolves.toBe(false);
+		expect(audit).toHaveBeenCalledWith(
+			expect.anything(),
+			expect.objectContaining({ pluginId: 'unregistered-pack' }),
 			'autonomy.gate',
 			'denied',
 			{ reasonCode: 'access_denied' }
