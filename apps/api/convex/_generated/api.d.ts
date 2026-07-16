@@ -63,6 +63,7 @@ import type * as assistant_conversations from "../assistant/conversations.js";
 import type * as assistant_insights from "../assistant/insights.js";
 import type * as assistant_prompt from "../assistant/prompt.js";
 import type * as assistant_runner from "../assistant/runner.js";
+import type * as assistant_toolRegistry from "../assistant/toolRegistry.js";
 import type * as assistant_tools from "../assistant/tools.js";
 import type * as auditActions_catalog from "../auditActions/catalog.js";
 import type * as auditLogs from "../auditLogs.js";
@@ -718,6 +719,7 @@ declare const fullApi: ApiFromModules<{
   "assistant/insights": typeof assistant_insights;
   "assistant/prompt": typeof assistant_prompt;
   "assistant/runner": typeof assistant_runner;
+  "assistant/toolRegistry": typeof assistant_toolRegistry;
   "assistant/tools": typeof assistant_tools;
   "auditActions/catalog": typeof auditActions_catalog;
   auditLogs: typeof auditLogs;

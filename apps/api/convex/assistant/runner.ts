@@ -82,7 +82,7 @@ async function streamAssistantTurn(
 		finalize: (args: FinalizeArgs) => Promise<void>;
 	}
 ): Promise<void> {
-	const tools = buildAssistantTools(ctx);
+	const tools = await buildAssistantTools(ctx);
 	const controller = new AbortController();
 	let text = '';
 	const toolCalls: ToolCall[] = [];
