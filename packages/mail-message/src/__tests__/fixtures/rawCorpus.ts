@@ -417,3 +417,92 @@ export const RAW_FIXTURES: RawFixture[] = [
 		),
 	},
 ];
+
+/**
+ * The P2 hostile corpus, restricted to the subset whose CONSUMED-field contract
+ * is defined (so mailparser and `parseMessage` must agree byte-for-byte on the
+ * projection the differential compares):
+ *
+ *  - MIME boundary / header markers embedded in a `text/plain` body — a top-level
+ *    non-multipart body is verbatim, so stray `--boundary` / `Content-Type:` lines
+ *    must NOT trigger part splitting on either side.
+ *  - deep (well-formed) multipart nesting — both parsers recurse to the leaf and
+ *    surface the same `text` / `html`; exercises the recursion bound without
+ *    changing the consumed projection.
+ *  - a `References` thread bomb — the dual string|string[] shape must still yield
+ *    the same ordered id list under a large header.
+ *
+ * SIGNED-OFF EXCLUSION (differential scope, tied to the card's "P2 hostile
+ * corpus"): the hostile classes with NO shared consumed-field contract — part
+ * bombs (attachment-count divergence), boundary-in-base64 and NUL/control-byte
+ * mangling (decoder-dependent), and the message-part attachment classification
+ * (message/delivery-status, message/rfc822 — the P2-pinned mailMime-parity
+ * difference from mailparser, handled at cutover) — are exercised for
+ * no-throw + boundedness in `fuzz.test.ts`, NOT compared against the oracle,
+ * because there is no single "correct" projection both libraries share.
+ */
+export const HOSTILE_FIXTURES: RawFixture[] = [
+	{
+		name: 'hostile-mime-markers-in-plain-body',
+		raw: eml(
+			'From: a@example.com',
+			'To: b@example.com',
+			'Subject: Boundary markers in a plain body',
+			'Date: Wed, 03 Jun 2026 10:00:00 +0000',
+			'Content-Type: text/plain; charset=utf-8',
+			'',
+			'This body only LOOKS like MIME:',
+			'--FAKEBOUNDARY',
+			'Content-Type: text/html',
+			'',
+			'<p>not really html</p>',
+			'--FAKEBOUNDARY--',
+			'trailing plain text'
+		),
+	},
+	{
+		name: 'hostile-deeply-nested-multipart',
+		raw: eml(
+			'From: a@example.com',
+			'To: b@example.com',
+			'Subject: Deeply nested',
+			'Date: Wed, 03 Jun 2026 10:00:00 +0000',
+			'Content-Type: multipart/mixed; boundary="L1"',
+			'',
+			'--L1',
+			'Content-Type: multipart/mixed; boundary="L2"',
+			'',
+			'--L2',
+			'Content-Type: multipart/mixed; boundary="L3"',
+			'',
+			'--L3',
+			'Content-Type: multipart/alternative; boundary="L4"',
+			'',
+			'--L4',
+			'Content-Type: text/plain; charset=utf-8',
+			'',
+			'Deep hello',
+			'--L4',
+			'Content-Type: text/html; charset=utf-8',
+			'',
+			'<p>Deep hello</p>',
+			'--L4--',
+			'--L3--',
+			'--L2--',
+			'--L1--'
+		),
+	},
+	{
+		name: 'hostile-references-thread-bomb',
+		raw: eml(
+			'From: a@example.com',
+			'To: b@example.com',
+			'Subject: Re: long thread',
+			'In-Reply-To: <id-49@example.com>',
+			`References: ${Array.from({ length: 50 }, (_, i) => `<id-${i}@example.com>`).join(' ')}`,
+			'Date: Wed, 03 Jun 2026 10:00:00 +0000',
+			'',
+			'thread bomb body'
+		),
+	},
+];

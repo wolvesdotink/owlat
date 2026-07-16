@@ -22,7 +22,7 @@
 import { describe, it, expect } from 'vitest';
 import { simpleParser, type AddressObject, type ParsedMail } from 'mailparser';
 import { parseMessage, type ParsedMessage, type ParsedHeaderValue } from '../parse/index';
-import { RAW_FIXTURES } from './fixtures/rawCorpus';
+import { RAW_FIXTURES, HOSTILE_FIXTURES } from './fixtures/rawCorpus';
 
 /** A generic address entry both mailparser and our parser expose on `.value`. */
 interface AnyAddrEntry {
@@ -145,6 +145,29 @@ describe('parseMessage differential parity vs mailparser simpleParser', () => {
 });
 
 /**
+ * The P2 hostile corpus, restricted to the consumed-field subset with a defined
+ * contract (see `HOSTILE_FIXTURES`' header for the signed-off exclusion of the
+ * classes with no shared oracle projection). These MUST still match mailparser
+ * on every consumed field — the same equality bar as the well-formed corpus.
+ */
+describe('parseMessage differential parity vs mailparser on the P2 hostile corpus', () => {
+	for (const fixture of HOSTILE_FIXTURES) {
+		it(`matches mailparser on every consumed field: ${fixture.name}`, async () => {
+			const raw = Buffer.from(fixture.raw, 'binary');
+			const theirs = await simpleParser(raw);
+			const ours = parseMessage(raw);
+
+			const theirProjection = project(theirs, (name) => theirs.headers.get(name));
+			const ourProjection = project(ours, (name: string): ParsedHeaderValue | undefined =>
+				ours.headers.get(name)
+			);
+
+			expect(ourProjection).toEqual(theirProjection);
+		});
+	}
+});
+
+/**
  * Drop-in typecheck proof (gate (b)): the SAME partial-`ParsedMail` mock shapes
  * the bounce pipeline builds today must typecheck as `ParsedMessage`, and every
  * field the six consumers read must be readable with the exact access patterns
@@ -179,9 +202,16 @@ function createMockParsedMessage(overrides: Partial<ParsedMessage> = {}): Parsed
 
 describe('ParsedMessage is a drop-in for the bounce pipeline ParsedMail mocks', () => {
 	it('accepts the bounce/resolveRoute mock shapes and exposes every consumed field', () => {
-		// A partial mock (missing most fields) still casts to ParsedMessage — the
-		// comparability the `... as ParsedMessage` in createMockParsedMail relies on.
-		const partialMock = { subject: 'x', text: 't', attachments: [] } as ParsedMessage;
+		// The exact base shape the bounce pipeline's `createMockParsedMail` helper
+		// casts to `ParsedMail` (`{ text, subject, headers, attachments }`) casts to
+		// `ParsedMessage` too, with no `as unknown` escape hatch — proving the new
+		// type is a genuine structural drop-in for those partial mocks.
+		const partialMock = {
+			subject: 'x',
+			text: 't',
+			headers: new Map<string, ParsedHeaderValue>(),
+			attachments: [],
+		} as ParsedMessage;
 		expect(partialMock.subject).toBe('x');
 
 		// The resolveRoute.test mock shape (references array + attachment list),
