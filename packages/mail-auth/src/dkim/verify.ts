@@ -97,6 +97,22 @@ const VERDICT_RANK: Record<DkimVerdict, number> = {
 const PERMANENT_DNS_CODES = new Set(['ENOTFOUND', 'ENODATA', 'NXDOMAIN', 'NOTFOUND']);
 
 /**
+ * True when a DNS resolver rejection means "no such record" (NXDOMAIN / NODATA)
+ * rather than a transient failure (SERVFAIL, timeout). `dns/promises` rejects
+ * with these codes instead of resolving an empty array. Both the DKIM verifier
+ * (→ `permerror`) and the inbound-auth DNS cache layer (→ a negative-cached
+ * empty answer) key off the SAME set, so it is exported as a predicate to keep
+ * the two layers from drifting apart.
+ */
+export function isNoRecordDnsError(err: unknown): boolean {
+	const code =
+		typeof err === 'object' && err !== null && 'code' in err
+			? String((err as { code: unknown }).code)
+			: '';
+	return PERMANENT_DNS_CODES.has(code);
+}
+
+/**
  * Upper bound on the number of DKIM-Signature headers we evaluate. Legitimate
  * mail carries a handful; a hostile message can carry thousands to force a
  * key-lookup / hash storm (the "signature bomb"). We evaluate the first
@@ -466,11 +482,7 @@ function buildPublicKey(record: DkimKeyRecord, keyType: 'rsa' | 'ed25519'): KeyO
 
 /** Classify a resolver rejection into a permanent vs transient DKIM verdict. */
 function classifyDnsError(err: unknown): DkimVerdict {
-	const code =
-		typeof err === 'object' && err !== null && 'code' in err
-			? String((err as { code: unknown }).code)
-			: '';
-	return PERMANENT_DNS_CODES.has(code) ? 'permerror' : 'temperror';
+	return isNoRecordDnsError(err) ? 'permerror' : 'temperror';
 }
 
 /**
