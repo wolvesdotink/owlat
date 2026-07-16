@@ -38,8 +38,17 @@ interface HostedPluginAgentStepModule {
 	readonly module: PluginAgentStepModule;
 }
 
+interface GeneratedPluginAgentStepModule {
+	readonly kind: string;
+	readonly pluginId: string;
+	readonly module: unknown;
+}
+
+const GENERATED_PLUGIN_STEP_MODULES =
+	BUNDLED_PLUGIN_AGENT_STEP_MODULES as readonly GeneratedPluginAgentStepModule[];
+
 const PLUGIN_STEP_MODULES: readonly HostedPluginAgentStepModule[] =
-	BUNDLED_PLUGIN_AGENT_STEP_MODULES.map((registration) =>
+	GENERATED_PLUGIN_STEP_MODULES.map((registration) =>
 		Object.freeze({
 			kind: registration.kind,
 			pluginId: registration.pluginId,
