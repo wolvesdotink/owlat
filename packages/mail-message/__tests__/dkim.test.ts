@@ -197,7 +197,7 @@ const SELECTOR = 's2026';
 const SIGN_TIME_MS = 1_760_000_000_000; // fixed so t= is deterministic
 
 let signingKey: DkimSigningKey;
-let resolver: (name: string, rrtype: 'TXT') => Promise<string[][]>;
+let resolver: (name: string, rrtype: string) => Promise<string[][]>;
 
 beforeAll(() => {
 	const { publicKey, privateKey } = generateKeyPairSync('rsa', {
@@ -213,7 +213,7 @@ beforeAll(() => {
 		.replace(/\s/g, '');
 	const record = `v=DKIM1; k=rsa; p=${p}`;
 	const expectedName = `${SELECTOR}._domainkey.${DOMAIN}`;
-	resolver = async (name: string, rrtype: 'TXT'): Promise<string[][]> =>
+	resolver = async (name: string, rrtype: string): Promise<string[][]> =>
 		rrtype === 'TXT' && name === expectedName ? [[record]] : [];
 });
 
