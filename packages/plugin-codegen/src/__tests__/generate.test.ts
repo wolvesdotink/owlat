@@ -91,6 +91,7 @@ async function createAgentPluginWorkspace(): Promise<string> {
 	const packageName = 'agent-plugin';
 	const packageRoot = join(root, 'node_modules', packageName);
 	await mkdir(join(packageRoot, 'agent'), { recursive: true });
+	await mkdir(join(packageRoot, 'draft'), { recursive: true });
 	await mkdir(join(root, 'node_modules/@owlat/plugin-kit'), { recursive: true });
 	await writeFile(
 		join(root, 'package.json'),
@@ -120,16 +121,24 @@ async function createAgentPluginWorkspace(): Promise<string> {
 			name: packageName,
 			version: '1.0.0',
 			type: 'module',
-			exports: { '.': './index.js', './agent/check': './agent/check.ts' },
+			exports: {
+				'.': './index.js',
+				'./agent/check': './agent/check.ts',
+				'./draft/legal': './draft/legal.ts',
+			},
 		})
 	);
 	await writeFile(
 		join(packageRoot, 'index.js'),
-		`export default { id: 'fixture-agent', version: '1.0.0', capabilities: ['agent:step'], flag: { default: false }, contributes: { agentSteps: [{ id: 'check', after: 'security_scan', module: { exportPath: './agent/check' }, lifecycleEdges: [{ kind: 'caution', from: 'classifying', to: 'archived' }] }] } };\n`
+		`export default { id: 'fixture-agent', version: '1.0.0', capabilities: ['agent:step', 'draft:strategy'], flag: { default: false }, contributes: { agentSteps: [{ id: 'check', after: 'security_scan', module: { exportPath: './agent/check' }, lifecycleEdges: [{ kind: 'caution', from: 'classifying', to: 'archived' }] }], draftStrategies: [{ id: 'legal', label: 'Legal', module: { exportPath: './draft/legal' }, timeoutMs: 1000 }] } };\n`
 	);
 	await writeFile(
 		join(packageRoot, 'agent/check.ts'),
 		"export default { async execute() { return { kind: 'continue' as const }; } };\n"
+	);
+	await writeFile(
+		join(packageRoot, 'draft/legal.ts'),
+		"export default { async generate() { return { draftBody: 'legal' }; } };\n"
 	);
 	await writeFile(
 		join(root, 'node_modules/@owlat/plugin-kit/package.json'),
@@ -137,7 +146,7 @@ async function createAgentPluginWorkspace(): Promise<string> {
 	);
 	await writeFile(
 		join(root, 'node_modules/@owlat/plugin-kit/index.d.ts'),
-		'export interface PluginAgentStepModule { execute(input: unknown): Promise<unknown>; }\n'
+		'export interface PluginAgentStepModule { execute(input: unknown): Promise<unknown>; }\nexport interface PluginDraftStrategyModule { generate(input: unknown, services: unknown): Promise<{ draftBody: string }>; }\n'
 	);
 	return root;
 }
@@ -165,6 +174,14 @@ describe('generated composition freshness', () => {
 		const modulesPath = join(root, 'apps/api/convex/plugins/sendTransportModules.generated.ts');
 		const agentCatalogPath = join(root, 'apps/api/convex/plugins/agentStepCatalog.generated.ts');
 		const agentModulesPath = join(root, 'apps/api/convex/plugins/agentStepModules.generated.ts');
+		const draftCatalogPath = join(
+			root,
+			'apps/api/convex/plugins/draftStrategyCatalog.generated.ts'
+		);
+		const draftModulesPath = join(
+			root,
+			'apps/api/convex/plugins/draftStrategyModules.generated.ts'
+		);
 		expect(await readFile(convexPath, 'utf8')).toContain('composeBundledPlugins([]);');
 		expect(await readFile(componentPath, 'utf8')).toContain('void app;');
 		expect(await readFile(nuxtPath, 'utf8')).toContain('defineNuxtPlugin');
@@ -172,6 +189,8 @@ describe('generated composition freshness', () => {
 		expect(await readFile(modulesPath, 'utf8')).toContain("'use node';");
 		expect(await readFile(agentCatalogPath, 'utf8')).toContain('Object.freeze([] as const)');
 		expect(await readFile(agentModulesPath, 'utf8')).toContain("'use node';");
+		expect(await readFile(draftCatalogPath, 'utf8')).toContain('Object.freeze([] as const)');
+		expect(await readFile(draftModulesPath, 'utf8')).toContain('Object.freeze([] as const)');
 		await expect(generatePluginComposition(root, { check: true })).resolves.toBeUndefined();
 	});
 
@@ -197,15 +216,30 @@ describe('generated composition freshness', () => {
 		await expect(generatePluginComposition(root, { check: true })).resolves.toBeUndefined();
 	});
 
-	it('typechecks and bundles a nonempty generated agent catalog and module registry', async () => {
+	it('typechecks and bundles nonempty generated executable registries', async () => {
 		const root = await createAgentPluginWorkspace();
 		await generatePluginComposition(root);
 		const catalogPath = join(root, 'apps/api/convex/plugins/agentStepCatalog.generated.ts');
 		const modulesPath = join(root, 'apps/api/convex/plugins/agentStepModules.generated.ts');
 		const catalog = await readFile(catalogPath, 'utf8');
 		const modules = await readFile(modulesPath, 'utf8');
+		const draftCatalogPath = join(
+			root,
+			'apps/api/convex/plugins/draftStrategyCatalog.generated.ts'
+		);
+		const draftModulesPath = join(
+			root,
+			'apps/api/convex/plugins/draftStrategyModules.generated.ts'
+		);
+		const draftCatalog = await readFile(draftCatalogPath, 'utf8');
+		const draftModules = await readFile(draftModulesPath, 'utf8');
 		expect(catalog).toContain('Object.freeze({"kind":"caution"');
 		expect(modules).toContain('satisfies PluginAgentStepModule');
+		expect(draftCatalog).toContain('plugin.fixture-agent.legal');
+		expect(draftCatalog).not.toContain('agent-plugin/draft/legal');
+		expect(draftModules).toContain('from "agent-plugin/draft/legal"');
+		expect(draftModules).toContain('satisfies PluginDraftStrategyModule');
+		await expect(generatePluginComposition(root, { check: true })).resolves.toBeUndefined();
 
 		await writeFile(
 			join(root, 'tsconfig.json'),
@@ -217,7 +251,7 @@ describe('generated composition freshness', () => {
 					strict: true,
 					noEmit: true,
 				},
-				files: [catalogPath, modulesPath],
+				files: [catalogPath, modulesPath, draftCatalogPath, draftModulesPath],
 			})
 		);
 		await execFileAsync(
@@ -227,7 +261,7 @@ describe('generated composition freshness', () => {
 				cwd: root,
 			}
 		);
-		for (const entryPoint of [catalogPath, modulesPath]) {
+		for (const entryPoint of [catalogPath, modulesPath, draftCatalogPath, draftModulesPath]) {
 			await build({ absWorkingDir: root, entryPoints: [entryPoint], bundle: true, write: false });
 		}
 
@@ -269,6 +303,8 @@ describe('generated composition freshness', () => {
 				'apps/api/convex/plugins/sendTransportModules.generated.ts',
 				'apps/api/convex/plugins/agentStepCatalog.generated.ts',
 				'apps/api/convex/plugins/agentStepModules.generated.ts',
+				'apps/api/convex/plugins/draftStrategyCatalog.generated.ts',
+				'apps/api/convex/plugins/draftStrategyModules.generated.ts',
 			],
 		});
 		expect(await readFile(convexPath, 'utf8')).toBe('// stale and must remain unchanged\n');

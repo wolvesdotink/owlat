@@ -15,6 +15,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { getFunctionName } from 'convex/server';
 
 // LLM seam used by the shared draft service (resolved paths match its imports).
 const runLlmTextMock = vi.fn(async (_a: unknown) => ({
@@ -81,7 +82,10 @@ function makeCtx(opts: { aiOff?: boolean; loaded: unknown }) {
 		if (opts.aiOff) throw new Error('AI disabled');
 		return;
 	});
-	const runQuery = vi.fn(async () => opts.loaded);
+	const runQuery = vi.fn(async (ref: unknown) => {
+		const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
+		return name.includes('resolveForDraft') ? 'default' : opts.loaded;
+	});
 	return { ctx: { runMutation, runQuery } as never, persisted, runMutation, runQuery };
 }
 
@@ -119,6 +123,10 @@ describe('generateDraftOnArrival', () => {
 		expect(slot.quality).toEqual({ score: 0.72, complete: true, grounded: true, flags: [] });
 		// review-first (confidence 0.5, quality < 0.8) → alternatives offered.
 		expect(slot.options?.length).toBeGreaterThanOrEqual(2);
+		expect(h.runQuery).toHaveBeenCalledWith(expect.anything(), {
+			mailboxId: 'mbx1',
+			classification: 'other',
+		});
 	});
 
 	it('FAIL-SOFT: LLM generation error → no slot persisted (thread still shows for reply)', async () => {

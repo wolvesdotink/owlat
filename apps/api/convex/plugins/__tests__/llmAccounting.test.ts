@@ -98,6 +98,7 @@ async function reserve(
 		tier: 'fast',
 		modelId,
 		endpointProvenance,
+		actorMode: 'authenticated_actor',
 	});
 }
 
@@ -179,6 +180,7 @@ describe('plugin LLM accounting', () => {
 		await reserve(t, successId);
 		await t.mutation(internal.plugins.llmAccounting.settleSuccess, {
 			reservationId: successId,
+			actorMode: 'authenticated_actor',
 			modelUsed: 'gpt-4o-mini',
 			tokenUsage: { promptTokens: 100, completionTokens: 100, totalTokens: 200 },
 			attempts: 2,
@@ -186,12 +188,16 @@ describe('plugin LLM accounting', () => {
 		// Idempotent settlement must not double-count usage or audit.
 		await t.mutation(internal.plugins.llmAccounting.settleSuccess, {
 			reservationId: successId,
+			actorMode: 'authenticated_actor',
 			modelUsed: 'gpt-4o-mini',
 			tokenUsage: { promptTokens: 100, completionTokens: 100, totalTokens: 200 },
 			attempts: 2,
 		});
 		await reserve(t, failureId);
-		await t.mutation(internal.plugins.llmAccounting.settleFailure, { reservationId: failureId });
+		await t.mutation(internal.plugins.llmAccounting.settleFailure, {
+			reservationId: failureId,
+			actorMode: 'authenticated_actor',
+		});
 
 		await t.run(async (ctx) => {
 			const daily = await ctx.db.query('pluginLlmDailyUsage').unique();
@@ -221,6 +227,7 @@ describe('plugin LLM accounting', () => {
 		await reserve(t, id);
 		await t.mutation(internal.plugins.llmAccounting.settleSuccess, {
 			reservationId: id,
+			actorMode: 'authenticated_actor',
 			modelUsed: 'gpt-4o-mini',
 			tokenUsage: { promptTokens: 100, completionTokens: 100, totalTokens: 1 },
 			attempts: 1,
@@ -241,6 +248,7 @@ describe('plugin LLM accounting', () => {
 		await reserve(t, id);
 		await t.mutation(internal.plugins.llmAccounting.settleSuccess, {
 			reservationId: id,
+			actorMode: 'authenticated_actor',
 			modelUsed: 'gpt-4o-mini-9999',
 			tokenUsage: { promptTokens: 100, completionTokens: 100, totalTokens: 200 },
 			attempts: 1,

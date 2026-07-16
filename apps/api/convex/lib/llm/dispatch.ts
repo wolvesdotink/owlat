@@ -145,8 +145,20 @@ export function isRetriableLlmError(error: unknown): boolean {
 	return true;
 }
 
-function sleep(ms: number): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, ms));
+function sleep(ms: number, abortSignal?: AbortSignal): Promise<void> {
+	if (!abortSignal) return new Promise((resolve) => setTimeout(resolve, ms));
+	assertNotAborted(abortSignal);
+	return new Promise((resolve, reject) => {
+		const timer = setTimeout(() => {
+			abortSignal.removeEventListener('abort', onAbort);
+			resolve();
+		}, ms);
+		function onAbort() {
+			clearTimeout(timer);
+			reject(abortSignal?.reason ?? new Error('LLM dispatch aborted'));
+		}
+		abortSignal.addEventListener('abort', onAbort, { once: true });
+	});
 }
 
 /**
@@ -158,18 +170,27 @@ interface LlmRetryResult<T> {
 	readonly attempts: number;
 }
 
-async function withLlmRetry<T>(run: () => Promise<T>): Promise<LlmRetryResult<T>> {
+async function withLlmRetry<T>(
+	run: () => Promise<T>,
+	abortSignal?: AbortSignal
+): Promise<LlmRetryResult<T>> {
 	let lastError: unknown;
 	for (let attempt = 0; attempt < MAX_LLM_ATTEMPTS; attempt++) {
+		assertNotAborted(abortSignal);
 		try {
 			return { value: await run(), attempts: attempt + 1 };
 		} catch (error) {
+			assertNotAborted(abortSignal);
 			lastError = error;
 			if (!isRetriableLlmError(error) || attempt === MAX_LLM_ATTEMPTS - 1) throw error;
-			await sleep(LLM_BACKOFF_BASE_MS * 2 ** attempt);
+			await sleep(LLM_BACKOFF_BASE_MS * 2 ** attempt, abortSignal);
 		}
 	}
 	throw lastError;
+}
+
+function assertNotAborted(abortSignal: AbortSignal | undefined): void {
+	if (abortSignal?.aborted) throw abortSignal.reason ?? new Error('LLM dispatch aborted');
 }
 
 export type LlmTextInput = { messages: ModelMessage[] } | { prompt: string; system?: string };
@@ -178,6 +199,7 @@ export type LlmTextOptions = LlmTextInput & {
 	model: LanguageModel;
 	temperature?: number;
 	maxOutputTokens?: number;
+	abortSignal?: AbortSignal;
 };
 
 export interface LlmTextResult {
@@ -203,13 +225,16 @@ export async function runLlmTextWithAttemptMetadata(
 	const sdkArgs =
 		'messages' in opts ? { messages: opts.messages } : { prompt: opts.prompt, system: opts.system };
 	const providerModelIdentity = captureProviderModelIdentity(opts.model);
-	const dispatched = await withLlmRetry(() =>
-		generateText({
-			model: providerModelIdentity.model,
-			temperature: opts.temperature,
-			...(opts.maxOutputTokens === undefined ? {} : { maxOutputTokens: opts.maxOutputTokens }),
-			...sdkArgs,
-		})
+	const dispatched = await withLlmRetry(
+		() =>
+			generateText({
+				model: providerModelIdentity.model,
+				temperature: opts.temperature,
+				...(opts.maxOutputTokens === undefined ? {} : { maxOutputTokens: opts.maxOutputTokens }),
+				...(opts.abortSignal ? { abortSignal: opts.abortSignal } : {}),
+				...sdkArgs,
+			}),
+		opts.abortSignal
 	);
 	const { text, usage } = dispatched.value;
 	return {

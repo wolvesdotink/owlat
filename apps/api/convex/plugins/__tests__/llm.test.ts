@@ -3,7 +3,11 @@ import { MockLanguageModelV3 } from 'ai/test';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ActionCtx } from '../../_generated/server';
 import schema from '../../schema';
-import { bindAuthenticatedBundledPluginLlm, PluginLlmError } from '../llm';
+import {
+	bindAuthenticatedBundledPluginLlm,
+	bindSystemBundledPluginLlm,
+	PluginLlmError,
+} from '../llm';
 import { resolveLanguageModelWithProvenance } from '../../lib/llmProvider';
 import { providerGenerationResult } from '../../lib/llm/__tests__/providerModel.testlib';
 
@@ -25,7 +29,7 @@ const registry = vi.hoisted(() => ({
 				id: 'alpha',
 				version: '1.0.0',
 				capabilities: ['llm:invoke'],
-				flag: { default: false },
+				flag: { default: false, requiredEnvVars: [] as string[] },
 				llmBudget: { dailyUsd: 1 },
 			},
 		},
@@ -39,14 +43,18 @@ vi.mock('../../lib/sessionOrganization', async () => ({
 			? { activeOrganizationId: auth.organizationId, userId: 'actor', role: 'owner' }
 			: null
 	),
+	getSingletonOrganizationId: vi.fn(async () => auth.organizationId),
 }));
 vi.mock('../plugins.generated', () => ({ bundledPluginComposition: registry.plugins }));
 vi.mock('../../lib/llmProvider', () => ({ resolveLanguageModelWithProvenance: vi.fn() }));
 
 beforeEach(() => {
+	delete process.env['PP09_REQUIRED_KEY_NOT_PRESENT'];
 	auth.organizationId = 'tenant';
 	auth.isMember = true;
 	registry.plugins[0]!.manifest.capabilities = ['llm:invoke'];
+	registry.plugins[0]!.manifest.flag.requiredEnvVars = [];
+	registry.plugins[0]!.manifest.llmBudget.dailyUsd = 1;
 	vi.mocked(resolveLanguageModelWithProvenance)
 		.mockReset()
 		.mockResolvedValue({
@@ -76,10 +84,153 @@ async function setup() {
 		runQuery: t.query as unknown as ActionCtx['runQuery'],
 		runMutation: t.mutation as unknown as ActionCtx['runMutation'],
 	} as unknown as ActionCtx;
-	return { t, service: bindAuthenticatedBundledPluginLlm(actionCtx, 'alpha') };
+	return { t, actionCtx, service: bindAuthenticatedBundledPluginLlm(actionCtx, 'alpha') };
 }
 
 describe('hosted plugin LLM service', () => {
+	it('supports background strategy dispatch with system attribution and the same budget gate', async () => {
+		const { t, actionCtx } = await setup();
+		const result = await bindSystemBundledPluginLlm(actionCtx, 'alpha').generate({
+			tier: 'fast',
+			prompt: 'safe bounded strategy input',
+		});
+		expect(result.text).toBe('safe result');
+		await t.run(async (ctx) => {
+			expect(await ctx.db.query('pluginLlmReservations').unique()).toMatchObject({
+				actorUserId: 'system:bundled_plugin',
+				status: 'completed',
+			});
+			expect(
+				await ctx.db
+					.query('auditLogs')
+					.filter((q) => q.eq(q.field('pluginId'), 'alpha'))
+					.take(5)
+			).toEqual(
+				expect.arrayContaining([expect.objectContaining({ userId: 'system:bundled_plugin' })])
+			);
+		});
+	});
+
+	it('denies background dispatch when its execution lease is already revoked', async () => {
+		const { t, actionCtx } = await setup();
+		const controller = new AbortController();
+		controller.abort();
+		await expect(
+			bindSystemBundledPluginLlm(actionCtx, 'alpha', controller.signal).generate({
+				tier: 'fast',
+				prompt: 'must not spend after timeout',
+			})
+		).rejects.toMatchObject({ code: 'access_denied' });
+		expect(resolveLanguageModelWithProvenance).not.toHaveBeenCalled();
+		expect(providerGenerate).not.toHaveBeenCalled();
+		await t.run(async (ctx) => {
+			expect(await ctx.db.query('pluginLlmReservations').take(1)).toEqual([]);
+			expect(await ctx.db.query('pluginLlmDailyUsage').take(1)).toEqual([]);
+		});
+	});
+
+	it('aborts an admitted provider call when the host revokes its execution lease', async () => {
+		const { t, actionCtx } = await setup();
+		const controller = new AbortController();
+		providerGenerate.mockImplementationOnce(
+			async (options) =>
+				new Promise((_resolve, reject) => {
+					expect(options.abortSignal).toBe(controller.signal);
+					options.abortSignal?.addEventListener(
+						'abort',
+						() => reject(new Error('provider request aborted')),
+						{ once: true }
+					);
+				})
+		);
+		const pending = bindSystemBundledPluginLlm(actionCtx, 'alpha', controller.signal).generate({
+			tier: 'fast',
+			prompt: 'bounded request',
+		});
+		await vi.waitFor(() => expect(providerGenerate).toHaveBeenCalledTimes(1));
+		controller.abort();
+		await expect(pending).rejects.toMatchObject({ code: 'access_denied' });
+		await t.run(async (ctx) => {
+			expect(await ctx.db.query('pluginLlmReservations').unique()).toMatchObject({
+				status: 'failed',
+				actorUserId: 'system:bundled_plugin',
+			});
+			expect(await ctx.db.query('llmUsageEvents').take(1)).toEqual([]);
+		});
+	});
+
+	it('denies background dispatch when the operator grant is disabled', async () => {
+		const { t, actionCtx } = await setup();
+		await t.run(async (ctx) => {
+			const settings = await ctx.db.query('instanceSettings').unique();
+			await ctx.db.patch(settings!._id, {
+				pluginCapabilityGrants: { 'plugin.alpha': { 'llm:invoke': false } },
+			});
+		});
+		await expect(
+			bindSystemBundledPluginLlm(actionCtx, 'alpha').generate({
+				tier: 'fast',
+				prompt: 'must be denied',
+			})
+		).rejects.toMatchObject({ code: 'access_denied' });
+		expect(resolveLanguageModelWithProvenance).not.toHaveBeenCalled();
+		expect(providerGenerate).not.toHaveBeenCalled();
+		await t.run(async (ctx) => {
+			expect(await ctx.db.query('pluginLlmReservations').take(1)).toEqual([]);
+			const audit = await ctx.db.query('auditLogs').unique();
+			expect(audit).toMatchObject({
+				userId: 'system:bundled_plugin',
+				action: 'plugin.action_denied',
+			});
+			expect(audit?.details).toMatchObject({ outcome: 'denied' });
+		});
+	});
+
+	it('denies background dispatch when the plugin feature flag is disabled', async () => {
+		const { t, actionCtx } = await setup();
+		await t.run(async (ctx) => {
+			const settings = await ctx.db.query('instanceSettings').unique();
+			await ctx.db.patch(settings!._id, { featureFlags: { 'plugin.alpha': false } });
+		});
+		await expect(
+			bindSystemBundledPluginLlm(actionCtx, 'alpha').generate({
+				tier: 'fast',
+				prompt: 'FLAG_DENIAL_SECRET',
+			})
+		).rejects.toMatchObject({ code: 'access_denied' });
+		expect(resolveLanguageModelWithProvenance).not.toHaveBeenCalled();
+		expect(providerGenerate).not.toHaveBeenCalled();
+		await expectSystemDenialState(t, 'FLAG_DENIAL_SECRET');
+	});
+
+	it('denies background dispatch when a declared environment variable is missing', async () => {
+		const { t, actionCtx } = await setup();
+		registry.plugins[0]!.manifest.flag.requiredEnvVars = ['PP09_REQUIRED_KEY_NOT_PRESENT'];
+		await expect(
+			bindSystemBundledPluginLlm(actionCtx, 'alpha').generate({
+				tier: 'fast',
+				prompt: 'ENV_DENIAL_SECRET',
+			})
+		).rejects.toMatchObject({ code: 'access_denied' });
+		expect(resolveLanguageModelWithProvenance).not.toHaveBeenCalled();
+		expect(providerGenerate).not.toHaveBeenCalled();
+		await expectSystemDenialState(t, 'ENV_DENIAL_SECRET');
+	});
+
+	it('denies background dispatch when the hard daily budget cannot admit a call', async () => {
+		const { t, actionCtx } = await setup();
+		registry.plugins[0]!.manifest.llmBudget.dailyUsd = 0.000001;
+		await expect(
+			bindSystemBundledPluginLlm(actionCtx, 'alpha').generate({
+				tier: 'fast',
+				prompt: 'BUDGET_DENIAL_SECRET',
+			})
+		).rejects.toMatchObject({ code: 'access_denied' });
+		expect(resolveLanguageModelWithProvenance).toHaveBeenCalledTimes(1);
+		expect(providerGenerate).not.toHaveBeenCalled();
+		await expectSystemDenialState(t, 'BUDGET_DENIAL_SECRET');
+	});
+
 	it('routes bounded requests through dispatch and returns normalized attribution', async () => {
 		const { t, service } = await setup();
 		const result = await service.generate({ tier: 'fast', prompt: 'hello' });
@@ -240,3 +391,23 @@ describe('hosted plugin LLM service', () => {
 		});
 	});
 });
+
+async function expectSystemDenialState(
+	t: Awaited<ReturnType<typeof setup>>['t'],
+	forbiddenText: string
+): Promise<void> {
+	await t.run(async (ctx) => {
+		expect(await ctx.db.query('pluginLlmReservations').take(1)).toEqual([]);
+		expect(await ctx.db.query('pluginLlmDailyUsage').take(1)).toEqual([]);
+		const audits = await ctx.db.query('auditLogs').collect();
+		expect(audits).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					userId: 'system:bundled_plugin',
+					action: 'plugin.action_denied',
+				}),
+			])
+		);
+		expect(JSON.stringify(audits)).not.toContain(forbiddenText);
+	});
+}

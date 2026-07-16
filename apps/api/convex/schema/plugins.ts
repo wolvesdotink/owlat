@@ -4,6 +4,15 @@ import { languageEndpointProvenanceValidator } from '../lib/aiProviderConfigVali
 
 /** Host-mediated plugin data; Tier-1 component tables remain component-local. */
 export const pluginTables = {
+	draftStrategySelections: defineTable({
+		organizationId: v.string(),
+		scopeType: v.union(v.literal('mailbox'), v.literal('contact'), v.literal('classification')),
+		scopeId: v.string(),
+		strategyKind: v.string(),
+		createdAt: v.number(),
+		updatedAt: v.number(),
+	}).index('by_organization_scope', ['organizationId', 'scopeType', 'scopeId']),
+
 	pluginStorageEntries: defineTable({
 		organizationId: v.string(),
 		pluginId: v.string(),

@@ -57,6 +57,13 @@ persisted a draft. Plugin modules receive a bounded message projection, never a
 raw Convex context, and cannot choose the next step, approve, send, or redefine
 the core lifecycle graph.
 
+Draft strategies declare `draft:strategy`, a static module, and a bounded
+timeout. They receive a copied/frozen draft input plus host-mediated LLM access;
+LLM use separately requires `llm:invoke` and a budget. A strategy returns only a
+draft body. Owlat keeps injection scanning, self-check, review options,
+persistence, autonomy, and sending outside the plugin, and falls back to the
+built-in `default` strategy on denial, timeout, failure, or invalid output.
+
 The hosted input projection is truncated by Unicode code points: `from` 512,
 `to` 2,048, `subject` 1,024, and each decrypted body 65,536. A plugin's output
 and caution reason are validated at the boundary but never stored or returned;
