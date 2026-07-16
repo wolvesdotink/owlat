@@ -38,8 +38,30 @@ interface HostedPluginAgentStepModule {
 	readonly module: PluginAgentStepModule;
 }
 
-const PLUGIN_STEP_MODULES =
-	BUNDLED_PLUGIN_AGENT_STEP_MODULES as readonly HostedPluginAgentStepModule[];
+const PLUGIN_STEP_MODULES: readonly HostedPluginAgentStepModule[] =
+	BUNDLED_PLUGIN_AGENT_STEP_MODULES.map((registration) =>
+		Object.freeze({
+			kind: registration.kind,
+			pluginId: registration.pluginId,
+			module: snapshotPluginAgentStepModule(registration.module),
+		})
+	);
+
+function snapshotPluginAgentStepModule(value: unknown): PluginAgentStepModule {
+	if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+		throw new TypeError('Invalid hosted plugin agent step module');
+	}
+	const execute = Object.getOwnPropertyDescriptor(value, 'execute');
+	if (
+		!execute ||
+		!('value' in execute) ||
+		!execute.enumerable ||
+		typeof execute.value !== 'function'
+	) {
+		throw new TypeError('Invalid hosted plugin agent step module');
+	}
+	return Object.freeze({ execute: execute.value });
+}
 
 export function pluginStepModuleFor(kind: AgentStepKind): PluginAgentStepModule {
 	const registration = PLUGIN_STEP_MODULES.find((candidate) => candidate.kind === kind);

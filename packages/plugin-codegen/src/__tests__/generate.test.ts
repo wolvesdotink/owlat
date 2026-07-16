@@ -14,6 +14,7 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { build } from 'esbuild';
 import { afterEach, describe, expect, it } from 'vitest';
 import { writeFileAtomically } from '../atomicWrite';
 import { generatePluginComposition } from '../generate';
@@ -21,6 +22,7 @@ import { generatePluginComposition } from '../generate';
 const temporaryRoots: string[] = [];
 const execFileAsync = promisify(execFile);
 const cliPath = resolve(dirname(fileURLToPath(import.meta.url)), '../cli.ts');
+const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
 
 async function createZeroPluginWorkspace(): Promise<string> {
 	const root = await mkdtemp(join(tmpdir(), 'owlat-plugin-generate-'));
@@ -84,6 +86,62 @@ async function createComponentPluginWorkspace(): Promise<string> {
 	return root;
 }
 
+async function createAgentPluginWorkspace(): Promise<string> {
+	const root = await createZeroPluginWorkspace();
+	const packageName = 'agent-plugin';
+	const packageRoot = join(root, 'node_modules', packageName);
+	await mkdir(join(packageRoot, 'agent'), { recursive: true });
+	await mkdir(join(root, 'node_modules/@owlat/plugin-kit'), { recursive: true });
+	await writeFile(
+		join(root, 'package.json'),
+		JSON.stringify({ type: 'module', dependencies: { [packageName]: '1.0.0' } })
+	);
+	await writeFile(
+		join(root, 'bun.lock'),
+		JSON.stringify({
+			workspaces: { '': { dependencies: { [packageName]: '1.0.0' } } },
+			packages: {
+				[packageName]: [
+					`${packageName}@1.0.0`,
+					'',
+					{},
+					`sha512-${Buffer.alloc(64, 0xa5).toString('base64')}`,
+				],
+			},
+		})
+	);
+	await writeFile(
+		join(root, 'plugins.config.ts'),
+		`export default { bundledPluginPackages: [${JSON.stringify(packageName)}] };\n`
+	);
+	await writeFile(
+		join(packageRoot, 'package.json'),
+		JSON.stringify({
+			name: packageName,
+			version: '1.0.0',
+			type: 'module',
+			exports: { '.': './index.js', './agent/check': './agent/check.ts' },
+		})
+	);
+	await writeFile(
+		join(packageRoot, 'index.js'),
+		`export default { id: 'fixture-agent', version: '1.0.0', capabilities: ['agent:step'], flag: { default: false }, contributes: { agentSteps: [{ id: 'check', after: 'security_scan', module: { exportPath: './agent/check' }, lifecycleEdges: [{ kind: 'caution', from: 'classifying', to: 'archived' }] }] } };\n`
+	);
+	await writeFile(
+		join(packageRoot, 'agent/check.ts'),
+		"export default { async execute() { return { kind: 'continue' as const }; } };\n"
+	);
+	await writeFile(
+		join(root, 'node_modules/@owlat/plugin-kit/package.json'),
+		JSON.stringify({ name: '@owlat/plugin-kit', version: '1.0.0', types: './index.d.ts' })
+	);
+	await writeFile(
+		join(root, 'node_modules/@owlat/plugin-kit/index.d.ts'),
+		'export interface PluginAgentStepModule { execute(input: unknown): Promise<unknown>; }\n'
+	);
+	return root;
+}
+
 afterEach(async () => {
 	await Promise.all(
 		temporaryRoots.splice(0).map((root) => rm(root, { recursive: true, force: true }))
@@ -137,6 +195,48 @@ describe('generated composition freshness', () => {
 		expect(removed).toContain('void app;');
 		expect(removed).not.toContain('component-plugin');
 		await expect(generatePluginComposition(root, { check: true })).resolves.toBeUndefined();
+	});
+
+	it('typechecks and bundles a nonempty generated agent catalog and module registry', async () => {
+		const root = await createAgentPluginWorkspace();
+		await generatePluginComposition(root);
+		const catalogPath = join(root, 'apps/api/convex/plugins/agentStepCatalog.generated.ts');
+		const modulesPath = join(root, 'apps/api/convex/plugins/agentStepModules.generated.ts');
+		const catalog = await readFile(catalogPath, 'utf8');
+		const modules = await readFile(modulesPath, 'utf8');
+		expect(catalog).toContain('Object.freeze({"kind":"caution"');
+		expect(modules).toContain('satisfies PluginAgentStepModule');
+
+		await writeFile(
+			join(root, 'tsconfig.json'),
+			JSON.stringify({
+				compilerOptions: {
+					target: 'ESNext',
+					module: 'ESNext',
+					moduleResolution: 'Bundler',
+					strict: true,
+					noEmit: true,
+				},
+				files: [catalogPath, modulesPath],
+			})
+		);
+		await execFileAsync(
+			join(repositoryRoot, 'node_modules/.bin/tsc'),
+			['--project', 'tsconfig.json'],
+			{
+				cwd: root,
+			}
+		);
+		for (const entryPoint of [catalogPath, modulesPath]) {
+			await build({ absWorkingDir: root, entryPoints: [entryPoint], bundle: true, write: false });
+		}
+
+		await writeFile(join(root, 'node_modules/agent-plugin/agent/check.ts'), 'export default {};\n');
+		await expect(
+			execFileAsync(join(repositoryRoot, 'node_modules/.bin/tsc'), ['--project', 'tsconfig.json'], {
+				cwd: root,
+			})
+		).rejects.toThrow();
 	});
 
 	it('reads plugins.config.ts at its byte boundary and rejects one byte more', async () => {
