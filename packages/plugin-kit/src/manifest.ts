@@ -5,6 +5,7 @@ import { snapshotManifestInput } from './manifestSnapshot';
 import { isPluginId, type PluginId } from './pluginId';
 import { PLUGIN_SEND_TRANSPORT_CAPABILITY } from './sendTransport';
 import { validateSendTransportContributions } from './sendTransportManifest';
+import { isSafeStaticExportPath } from './staticExportPath';
 import {
 	isRecord,
 	readDataProperty,
@@ -202,8 +203,6 @@ export function validatePluginManifest(value: unknown): PluginManifestValidation
 		: { ok: false, issues };
 }
 
-const COMPONENT_EXPORT_PATH = /^\.\/[A-Za-z0-9][A-Za-z0-9._/-]*$/;
-
 function validateComponent(value: unknown, issues: PluginManifestIssue[]): void {
 	if (value === undefined) return;
 	if (!isRecord(value)) {
@@ -221,19 +220,6 @@ function validateComponent(value: unknown, issues: PluginManifestIssue[]): void 
 			'must be a safe relative package export path'
 		);
 	}
-}
-
-function isSafeStaticExportPath(value: string): boolean {
-	return (
-		value.length <= 256 &&
-		COMPONENT_EXPORT_PATH.test(value) &&
-		!value.endsWith('/') &&
-		!value.includes('//') &&
-		!value
-			.slice(2)
-			.split('/')
-			.some((segment) => segment === '.' || segment === '..')
-	);
 }
 
 function validateCapabilities(

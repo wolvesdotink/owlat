@@ -83,6 +83,23 @@ describe('send transport manifest contract', () => {
 		).toContain(path);
 	});
 
+	it.each([
+		['traversal', './transports/../postmark'],
+		['double slash', './transports//postmark'],
+		['trailing slash', './transports/'],
+		['over 256 characters', `./${'a'.repeat(255)}`],
+	] as const)('rejects a transport export path with %s', (_label, exportPath) => {
+		expect(
+			issuePaths(
+				transportManifest({
+					contributes: {
+						sendTransports: [transportDefinition({ module: { exportPath } })],
+					},
+				})
+			)
+		).toContain('$.contributes.sendTransports[0].module.exportPath');
+	});
+
 	it('rejects duplicate local ids before global namespacing', () => {
 		expect(
 			issuePaths(

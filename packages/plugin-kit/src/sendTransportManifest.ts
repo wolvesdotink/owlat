@@ -6,9 +6,9 @@ import {
 	validateDescriptorSafeArray,
 	validateKnownFields,
 } from './manifestValue';
+import { isSafeStaticExportPath } from './staticExportPath';
 
 const LOCAL_ID = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
-const STATIC_EXPORT_PATH = /^\.\/[A-Za-z0-9][A-Za-z0-9._/-]*$/;
 const RESERVED_LOCAL_IDS = new Set(['constructor', 'prototype', '__proto__']);
 const MAX_LABEL_LENGTH = 80;
 const MAX_RETRIES = 3;
@@ -161,17 +161,4 @@ function validateRetryDelays(
 			`must total at most ${MAX_TOTAL_DELAY_MS} milliseconds`
 		);
 	}
-}
-
-function isSafeStaticExportPath(value: string): boolean {
-	return (
-		value.length <= 256 &&
-		STATIC_EXPORT_PATH.test(value) &&
-		!value.endsWith('/') &&
-		!value.includes('//') &&
-		!value
-			.slice(2)
-			.split('/')
-			.some((segment) => segment === '.' || segment === '..')
-	);
 }
