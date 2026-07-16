@@ -172,7 +172,7 @@ export class SmtpConnection {
 			assertPositive(greetingReply, 'greeting', secured);
 
 			// 3) EHLO, with HELO fallback for pre-ESMTP servers.
-			let capabilities = await ehlo(reader, socket, options.ehloName, timeouts.command, secured);
+			let capabilities = await ehlo(reader, options.ehloName, timeouts.command, secured);
 
 			// 4) STARTTLS upgrade (only when starting in cleartext and asked to).
 			if (options.tlsMode === 'starttls') {
@@ -181,7 +181,7 @@ export class SmtpConnection {
 					secured = true;
 					tlsProtocol = (socket as tls.TLSSocket).getProtocol() ?? undefined;
 					// 5) Re-EHLO over the secured channel — capabilities can change.
-					capabilities = await ehlo(reader, socket, options.ehloName, timeouts.command, true);
+					capabilities = await ehlo(reader, options.ehloName, timeouts.command, true);
 				} else if (options.requireTls) {
 					// Fail closed: a required TLS floor was not offered.
 					throw new SmtpError({
@@ -213,19 +213,21 @@ export class SmtpConnection {
 
 async function ehlo(
 	reader: ReplyReader,
-	socket: net.Socket,
 	ehloName: string,
 	timeoutMs: number,
 	secured: boolean
 ): Promise<EhloCapabilities> {
-	socket.write(serializeEhlo(ehloName));
+	// Write through reader.socket so the writer and reader target the same socket
+	// by construction — after a STARTTLS upgrade rebind() has already repointed the
+	// reader, and any other socket reference would desync the two.
+	reader.socket.write(serializeEhlo(ehloName));
 	const reply = await reader.read('ehlo', timeoutMs, secured);
 	if (isPositiveCompletion(reply.code)) {
 		return parseEhloCapabilities(reply);
 	}
 	// Pre-ESMTP server (or EHLO refused): fall back to HELO. A HELO server
 	// advertises no capabilities, so the table is empty (no STARTTLS/AUTH).
-	socket.write(serializeHelo(ehloName));
+	reader.socket.write(serializeHelo(ehloName));
 	const heloReply = await reader.read('ehlo', timeoutMs, secured);
 	assertPositive(heloReply, 'ehlo', secured);
 	return parseEhloCapabilities({
