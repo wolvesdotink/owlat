@@ -92,11 +92,10 @@ export class SmtpCommandReader {
 				throw new LineTooLongError();
 			}
 			if (!(await this.pull())) {
-				if (this.buf.length > 0) {
-					const rest = this.buf;
-					this.buf = EMPTY;
-					return rest;
-				}
+				// EOF. Any residual bytes are an unterminated command fragment
+				// (SMTP commands require CRLF); drop it rather than executing a
+				// non-conformant partial line.
+				this.buf = EMPTY;
 				return null;
 			}
 		}
@@ -286,10 +285,12 @@ export async function runCommandLoop<S, T>(
 			return;
 		}
 		if (verb === 'NOOP') {
+			badCommands = 0;
 			write(Reply.ok());
 			continue;
 		}
 		if (verb === 'RSET') {
+			badCommands = 0;
 			resetTransaction();
 			write(Reply.ok());
 			continue;
@@ -302,12 +303,17 @@ export async function runCommandLoop<S, T>(
 			if (!hello.accept) {
 				write(hello.reply ?? Reply.paramError());
 				badCommands++;
-			} else if (hello.reply) {
-				write(hello.reply);
-			} else if (verb === 'EHLO') {
-				write(Reply.helloOk([`${config.hostname} greets ${rest || 'you'}`, ...ehloLines(config)]));
 			} else {
-				write(Reply.helloOk([`${config.hostname} at your service`]));
+				badCommands = 0;
+				if (hello.reply) {
+					write(hello.reply);
+				} else if (verb === 'EHLO') {
+					write(
+						Reply.helloOk([`${config.hostname} greets ${rest || 'you'}`, ...ehloLines(config)])
+					);
+				} else {
+					write(Reply.helloOk([`${config.hostname} at your service`]));
+				}
 			}
 			continue;
 		}
@@ -331,6 +337,7 @@ export async function runCommandLoop<S, T>(
 				write(res.reply ?? Reply.localError());
 				continue;
 			}
+			badCommands = 0;
 			session.mailFrom = parsed;
 			write(res.reply ?? Reply.senderOk());
 			continue;
@@ -355,6 +362,7 @@ export async function runCommandLoop<S, T>(
 				write(res.reply ?? Reply.localError());
 				continue;
 			}
+			badCommands = 0;
 			session.rcptTo.push(parsed);
 			write(res.reply ?? Reply.recipientOk());
 			continue;
@@ -379,6 +387,7 @@ export async function runCommandLoop<S, T>(
 				resetTransaction();
 				continue;
 			}
+			badCommands = 0;
 			const message = dotDecode(budget.result());
 			const res = await invokeHandler(opts.onData, message, session, opts.onError);
 			write(res.accept ? (res.reply ?? Reply.dataAccepted()) : (res.reply ?? Reply.localError()));
@@ -387,10 +396,12 @@ export async function runCommandLoop<S, T>(
 		}
 		if (verb === 'VRFY' || verb === 'EXPN') {
 			// Do not confirm or deny address existence (no enumeration oracle).
+			badCommands = 0;
 			write({ code: 252, enhanced: '2.5.2', text: 'Cannot VRFY user' });
 			continue;
 		}
 		if (verb === 'HELP') {
+			badCommands = 0;
 			write({ code: 214, enhanced: '2.0.0', text: 'See RFC 5321' });
 			continue;
 		}
