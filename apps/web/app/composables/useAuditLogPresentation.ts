@@ -270,6 +270,7 @@ const HOSTED_PLUGIN_ACTIONS: ReadonlySet<string> = new Set(
 	AUDIT_ACTION_LITERALS.filter((action) => action.startsWith('plugin.'))
 );
 const HOSTED_PLUGIN_OPERATION_LABELS = {
+	'agent.step': 'Agent pipeline step',
 	'llm.generate': 'LLM generation',
 	'storage.delete': 'Storage delete',
 	'storage.get': 'Storage read',
