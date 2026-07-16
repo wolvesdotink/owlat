@@ -349,7 +349,8 @@ function handleExternalConnected(result?: { mailboxId: string }) {
 						: 'Your mailbox is connected.'
 				}}
 				<template v-if="isExternalTeam">
-					We're syncing its mail now — this keeps running in the background.
+					New mail sent to this address will start appearing here shortly. Mail already in the
+					account isn't imported — only messages that arrive from now on.
 				</template>
 				<template v-else>
 					Make sure your domain's MX records point to this Owlat instance so mail starts flowing.
