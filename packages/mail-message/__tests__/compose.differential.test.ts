@@ -18,15 +18,17 @@
 import { describe, it, expect } from 'vitest';
 import { simpleParser, type AddressObject, type ParsedMail } from 'mailparser';
 import MailComposer from 'nodemailer/lib/mail-composer';
-import type Mail from 'nodemailer/lib/mailer';
 import { composeMessage } from '../src/index';
 import { parseMime } from './mimeWalk';
 import { CORPUS, toComposeInput, toNodemailerOptions, type CorpusCase } from './fixtures/corpus';
 
-/** Build the raw RFC822 bytes nodemailer's MailComposer would ship. */
-function buildWithNodemailer(options: Mail.Options): Promise<Buffer> {
+/** The compiled MimeNode nodemailer produces from a set of options. */
+type CompiledNode = ReturnType<InstanceType<typeof MailComposer>['compile']>;
+
+/** Build the raw RFC822 bytes a compiled nodemailer node would ship. */
+function buildFromNode(node: CompiledNode): Promise<Buffer> {
 	return new Promise((resolve, reject) => {
-		new MailComposer(options).compile().build((err, message) => {
+		node.build((err, message) => {
 			if (err) reject(err);
 			else resolve(message);
 		});
@@ -144,14 +146,24 @@ function ampBody(raw: Buffer): string {
 describe('composeMessage differential parity vs nodemailer MailComposer', () => {
 	for (const testCase of CORPUS) {
 		it(`matches nodemailer semantically: ${testCase.name}`, async () => {
-			const ours = composeMessage(toComposeInput(testCase)).raw;
-			const theirs = await buildWithNodemailer(toNodemailerOptions(testCase));
+			const composed = composeMessage(toComposeInput(testCase));
+			const ours = composed.raw;
+			// Compile the oracle once so the SMTP envelope is pinned against the same
+			// node that produced the wire bytes.
+			const node = new MailComposer(toNodemailerOptions(testCase)).compile();
+			const theirs = await buildFromNode(node);
 
 			const parsedOurs = await simpleParser(ours);
 			const parsedTheirs = await simpleParser(theirs);
 
 			// Same effective headers, decoded bodies, and attachment set.
 			expect(project(parsedOurs)).toEqual(project(parsedTheirs));
+
+			// The returned SMTP envelope matches nodemailer's getEnvelope() exactly
+			// (From addr-spec; To/Cc/Bcc unioned and first-seen deduped) — this is the
+			// contract that drives MAIL FROM / RCPT TO in the M4/M5 cutovers, proven
+			// against the library composeMessage replaces rather than by hand.
+			expect(composed.envelope).toEqual(node.getEnvelope());
 
 			// Same multipart part tree (ordering + nesting), including the
 			// plain -> amp -> html alternative order.
