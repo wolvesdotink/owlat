@@ -29,7 +29,7 @@ const registry = vi.hoisted(() => ({
 				id: 'alpha',
 				version: '1.0.0',
 				capabilities: ['llm:invoke'],
-				flag: { default: false },
+				flag: { default: false, requiredEnvVars: [] as string[] },
 				llmBudget: { dailyUsd: 1 },
 			},
 		},
@@ -49,9 +49,12 @@ vi.mock('../plugins.generated', () => ({ bundledPluginComposition: registry.plug
 vi.mock('../../lib/llmProvider', () => ({ resolveLanguageModelWithProvenance: vi.fn() }));
 
 beforeEach(() => {
+	delete process.env['PP09_REQUIRED_KEY_NOT_PRESENT'];
 	auth.organizationId = 'tenant';
 	auth.isMember = true;
 	registry.plugins[0]!.manifest.capabilities = ['llm:invoke'];
+	registry.plugins[0]!.manifest.flag.requiredEnvVars = [];
+	registry.plugins[0]!.manifest.llmBudget.dailyUsd = 1;
 	vi.mocked(resolveLanguageModelWithProvenance)
 		.mockReset()
 		.mockResolvedValue({
@@ -156,7 +159,7 @@ describe('hosted plugin LLM service', () => {
 		});
 	});
 
-	it('integrates background denial with feature and grant enforcement', async () => {
+	it('denies background dispatch when the operator grant is disabled', async () => {
 		const { t, actionCtx } = await setup();
 		await t.run(async (ctx) => {
 			const settings = await ctx.db.query('instanceSettings').unique();
@@ -181,6 +184,51 @@ describe('hosted plugin LLM service', () => {
 			});
 			expect(audit?.details).toMatchObject({ outcome: 'denied' });
 		});
+	});
+
+	it('denies background dispatch when the plugin feature flag is disabled', async () => {
+		const { t, actionCtx } = await setup();
+		await t.run(async (ctx) => {
+			const settings = await ctx.db.query('instanceSettings').unique();
+			await ctx.db.patch(settings!._id, { featureFlags: { 'plugin.alpha': false } });
+		});
+		await expect(
+			bindSystemBundledPluginLlm(actionCtx, 'alpha').generate({
+				tier: 'fast',
+				prompt: 'FLAG_DENIAL_SECRET',
+			})
+		).rejects.toMatchObject({ code: 'access_denied' });
+		expect(resolveLanguageModelWithProvenance).not.toHaveBeenCalled();
+		expect(providerGenerate).not.toHaveBeenCalled();
+		await expectSystemDenialState(t, 'FLAG_DENIAL_SECRET');
+	});
+
+	it('denies background dispatch when a declared environment variable is missing', async () => {
+		const { t, actionCtx } = await setup();
+		registry.plugins[0]!.manifest.flag.requiredEnvVars = ['PP09_REQUIRED_KEY_NOT_PRESENT'];
+		await expect(
+			bindSystemBundledPluginLlm(actionCtx, 'alpha').generate({
+				tier: 'fast',
+				prompt: 'ENV_DENIAL_SECRET',
+			})
+		).rejects.toMatchObject({ code: 'access_denied' });
+		expect(resolveLanguageModelWithProvenance).not.toHaveBeenCalled();
+		expect(providerGenerate).not.toHaveBeenCalled();
+		await expectSystemDenialState(t, 'ENV_DENIAL_SECRET');
+	});
+
+	it('denies background dispatch when the hard daily budget cannot admit a call', async () => {
+		const { t, actionCtx } = await setup();
+		registry.plugins[0]!.manifest.llmBudget.dailyUsd = 0.000001;
+		await expect(
+			bindSystemBundledPluginLlm(actionCtx, 'alpha').generate({
+				tier: 'fast',
+				prompt: 'BUDGET_DENIAL_SECRET',
+			})
+		).rejects.toMatchObject({ code: 'access_denied' });
+		expect(resolveLanguageModelWithProvenance).toHaveBeenCalledTimes(1);
+		expect(providerGenerate).not.toHaveBeenCalled();
+		await expectSystemDenialState(t, 'BUDGET_DENIAL_SECRET');
 	});
 
 	it('routes bounded requests through dispatch and returns normalized attribution', async () => {
@@ -343,3 +391,23 @@ describe('hosted plugin LLM service', () => {
 		});
 	});
 });
+
+async function expectSystemDenialState(
+	t: Awaited<ReturnType<typeof setup>>['t'],
+	forbiddenText: string
+): Promise<void> {
+	await t.run(async (ctx) => {
+		expect(await ctx.db.query('pluginLlmReservations').take(1)).toEqual([]);
+		expect(await ctx.db.query('pluginLlmDailyUsage').take(1)).toEqual([]);
+		const audits = await ctx.db.query('auditLogs').collect();
+		expect(audits).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					userId: 'system:bundled_plugin',
+					action: 'plugin.action_denied',
+				}),
+			])
+		);
+		expect(JSON.stringify(audits)).not.toContain(forbiddenText);
+	});
+}
