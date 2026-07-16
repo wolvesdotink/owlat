@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	buildTransportOptions,
 	isTransportAvailable,
+	routeProvidersForWrite,
 	seedRouteProviders,
 	transportLabel,
 } from '../providerRouting';
@@ -17,15 +18,21 @@ describe('provider routing catalog presentation', () => {
 			{ providerType: 'retired-provider', isEnabled: true },
 		]);
 		expect(options).toEqual([
-			...catalog,
-			{ kind: 'retired-provider', label: 'retired-provider', isAvailable: false },
+			...catalog.map((entry) => ({ ...entry, isRegistered: true })),
+			{
+				kind: 'retired-provider',
+				label: 'retired-provider',
+				isAvailable: false,
+				isRegistered: false,
+			},
 		]);
 		expect(transportLabel(options, 'plugin.mail-pack.postmark')).toBe('Postmark');
 		expect(isTransportAvailable(options, 'retired-provider')).toBe(false);
 	});
 
 	it('seeds the first available transport without enabling an unavailable plugin', () => {
-		expect(seedRouteProviders(catalog)).toEqual([
+		const options = buildTransportOptions(catalog, []);
+		expect(seedRouteProviders(options)).toEqual([
 			{ providerType: 'mta', weight: 100, isEnabled: true },
 			{ providerType: 'plugin.mail-pack.postmark', weight: 100, isEnabled: false },
 		]);
@@ -43,6 +50,22 @@ describe('provider routing catalog presentation', () => {
 			{ providerType: 'retired-provider', weight: 30, isEnabled: false },
 			{ providerType: 'mta', weight: 100, isEnabled: false },
 			{ providerType: 'plugin.mail-pack.postmark', weight: 100, isEnabled: false },
+		]);
+	});
+
+	it('omits retired entries on save without reordering or enabling surviving transports', () => {
+		const options = buildTransportOptions(catalog, [
+			{ providerType: 'retired-provider', weight: 30, isEnabled: true },
+		]);
+		const edited = seedRouteProviders(options, [
+			{ providerType: 'retired-provider', weight: 30, isEnabled: true },
+			{ providerType: 'plugin.mail-pack.postmark', weight: 20, isEnabled: false },
+			{ providerType: 'mta', weight: 50, isEnabled: true },
+		]);
+
+		expect(routeProvidersForWrite(options, edited, 'workload_split')).toEqual([
+			{ providerType: 'plugin.mail-pack.postmark', weight: 20, isEnabled: false },
+			{ providerType: 'mta', weight: 50, isEnabled: true },
 		]);
 	});
 });

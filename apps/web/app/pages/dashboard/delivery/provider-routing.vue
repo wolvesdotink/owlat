@@ -4,6 +4,7 @@ import { unknownIpPoolWarning } from '~/utils/ipPool';
 import {
 	buildTransportOptions,
 	isTransportAvailable,
+	routeProvidersForWrite,
 	seedRouteProviders,
 	transportLabel,
 } from '~/utils/providerRouting';
@@ -183,16 +184,13 @@ async function handleSave() {
 	const result = await setRoute({
 		messageType: editMessageType.value,
 		strategy: editStrategy.value,
-		// Persist the full ordered list (order matters for priority_failover);
-		// the backend keeps the disabled rows so the ordering survives edits.
-		providers: editProviders.value.map((p) => ({
-			providerType: p.providerType,
-			weight:
-				editStrategy.value === 'workload_split'
-					? Math.max(0, Math.round(p.weight ?? 0))
-					: undefined,
-			isEnabled: p.isEnabled,
-		})),
+		// Preserve registered-provider order while removing retired kinds that the
+		// fail-closed backend intentionally refuses to persist.
+		providers: routeProvidersForWrite(
+			transportOptions.value,
+			editProviders.value,
+			editStrategy.value
+		),
 		ipPool: editIpPool.value.trim() || undefined,
 	});
 	isSaving.value = false;
@@ -272,8 +270,8 @@ async function handleReset() {
 							<code class="px-1 py-0.5 rounded bg-bg-surface text-text-primary text-xs"
 								>EMAIL_PROVIDER</code
 							>
-							environment variable. Configure a route to enable
-							failover or to split traffic across multiple providers.
+							environment variable. Configure a route to enable failover or to split traffic across
+							multiple providers.
 						</p>
 					</div>
 				</div>
@@ -412,10 +410,7 @@ async function handleReset() {
 								<span class="text-sm font-medium text-text-primary">
 									{{ providerLabel(provider.providerType) }}
 								</span>
-								<span
-									v-if="!providerAvailable(provider.providerType)"
-									class="text-xs text-warning"
-								>
+								<span v-if="!providerAvailable(provider.providerType)" class="text-xs text-warning">
 									Unavailable
 								</span>
 							</label>
