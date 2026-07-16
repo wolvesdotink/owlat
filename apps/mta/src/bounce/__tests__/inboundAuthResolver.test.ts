@@ -65,21 +65,24 @@ function countingDns(): { dns: DnsResolveFn; calls: () => number } {
 	return { dns, calls: () => calls };
 }
 
-function freshRedis(): RedisLike {
+// `ioredis-mock` instances with default options share ONE backing store, so a
+// new `RedisMock()` is NOT a fresh keyspace — every handle points at the same
+// store. Isolation comes from the `flushall` in `beforeEach` below, not from
+// constructing a new instance; this helper only names that shared handle.
+function sharedRedisHandle(): RedisLike {
 	return new RedisMock() as unknown as RedisLike;
 }
 
-// `ioredis-mock` instances with default options share ONE backing store, so a
-// fresh `RedisMock()` does not give a fresh keyspace. Wipe it before each test
-// (the repo pattern, cf. `effects.test.ts`) so cache state cannot leak across
-// tests and make a lookup-count assertion order-dependent.
+// Wipe the shared backing store before each test (the repo pattern, cf.
+// `effects.test.ts`) so cache state cannot leak across tests and make a
+// lookup-count assertion order-dependent.
 beforeEach(async () => {
 	await (new RedisMock() as unknown as { flushall: () => Promise<unknown> }).flushall();
 });
 
 describe('createInboundAuthResolvers — DNS cache lookup reduction (CI3 gate)', () => {
 	it('a warm cache serves the SPF include chain with FEWER base calls than cold', async () => {
-		const redis = freshRedis();
+		const redis = sharedRedisHandle();
 		const counter = countingDns();
 		const resolvers = createInboundAuthResolvers(redis, makeNodeBaseResolver(counter.dns));
 
@@ -98,7 +101,7 @@ describe('createInboundAuthResolvers — DNS cache lookup reduction (CI3 gate)',
 	});
 
 	it('caching does not change the SPF verdict (pass survives a warm run)', async () => {
-		const redis = freshRedis();
+		const redis = sharedRedisHandle();
 		const counter = countingDns();
 		const resolvers = createInboundAuthResolvers(redis, makeNodeBaseResolver(counter.dns));
 		const first = await checkSpf('10.0.0.5', 'user@parent.com', 'helo.test', resolvers.spf);
@@ -108,11 +111,11 @@ describe('createInboundAuthResolvers — DNS cache lookup reduction (CI3 gate)',
 	});
 
 	it('a TXT name resolved once is served from the shared cache across DKIM / DMARC', async () => {
-		const redis = freshRedis();
+		const redis = sharedRedisHandle();
 		const counter = countingDns();
 		const resolvers = createInboundAuthResolvers(redis, makeNodeBaseResolver(counter.dns));
 
-		const dkimRecs = await resolvers.dkim('_spf1.parent.com');
+		const dkimRecs = await resolvers.dkim('_spf1.parent.com', 'TXT');
 		expect(dkimRecs).toEqual([['v=spf1 ip4:10.0.0.0/24 -all']]);
 		expect(counter.calls()).toBe(1);
 
@@ -125,24 +128,24 @@ describe('createInboundAuthResolvers — DNS cache lookup reduction (CI3 gate)',
 
 describe('makeNodeBaseResolver — NXDOMAIN / transient handling (verdict-equivalence)', () => {
 	it('NXDOMAIN surfaces as an empty answer, then is negative-cached', async () => {
-		const redis = freshRedis();
+		const redis = sharedRedisHandle();
 		const counter = countingDns();
 		const resolvers = createInboundAuthResolvers(redis, makeNodeBaseResolver(counter.dns));
 
 		// DKIM key lookup for an unpublished selector: an EMPTY array (never a
 		// throw), exactly what the verifier needs to record `permerror`.
-		const first = await resolvers.dkim('sel._domainkey.absent.test');
+		const first = await resolvers.dkim('sel._domainkey.absent.test', 'TXT');
 		expect(first).toEqual([]);
 		expect(counter.calls()).toBe(1);
 
 		// Second lookup is served from the negative cache — no base call.
-		const second = await resolvers.dkim('sel._domainkey.absent.test');
+		const second = await resolvers.dkim('sel._domainkey.absent.test', 'TXT');
 		expect(second).toEqual([]);
 		expect(counter.calls()).toBe(1);
 	});
 
 	it('a transient DNS error is re-thrown and never cached', async () => {
-		const redis = freshRedis();
+		const redis = sharedRedisHandle();
 		let calls = 0;
 		const dns: DnsResolveFn = async () => {
 			calls += 1;
@@ -151,16 +154,16 @@ describe('makeNodeBaseResolver — NXDOMAIN / transient handling (verdict-equiva
 			throw err;
 		};
 		const resolvers = createInboundAuthResolvers(redis, makeNodeBaseResolver(dns));
-		await expect(resolvers.dkim('sel._domainkey.flaky.test')).rejects.toThrow();
+		await expect(resolvers.dkim('sel._domainkey.flaky.test', 'TXT')).rejects.toThrow();
 		// A retry re-queries the base resolver (nothing was cached).
-		await expect(resolvers.dkim('sel._domainkey.flaky.test')).rejects.toThrow();
+		await expect(resolvers.dkim('sel._domainkey.flaky.test', 'TXT')).rejects.toThrow();
 		expect(calls).toBe(2);
 	});
 });
 
 describe('createInboundAuthResolvers.arc — mailauth throwing-resolver shape', () => {
 	it('re-throws ENOTFOUND for a "no record" answer (empty → rejection)', async () => {
-		const redis = freshRedis();
+		const redis = sharedRedisHandle();
 		const counter = countingDns();
 		const resolvers = createInboundAuthResolvers(redis, makeNodeBaseResolver(counter.dns));
 
@@ -174,13 +177,13 @@ describe('createInboundAuthResolvers.arc — mailauth throwing-resolver shape', 
 	});
 
 	it('returns the records verbatim for a published name, over the shared cache', async () => {
-		const redis = freshRedis();
+		const redis = sharedRedisHandle();
 		const counter = countingDns();
 		const resolvers = createInboundAuthResolvers(redis, makeNodeBaseResolver(counter.dns));
 
 		// Warm the shared cache via the DKIM resolver, then confirm the ARC adapter
 		// serves the same records from cache without a second base call.
-		await resolvers.dkim('_spf1.parent.com');
+		await resolvers.dkim('_spf1.parent.com', 'TXT');
 		expect(counter.calls()).toBe(1);
 		const arcRecs = await resolvers.arc('_spf1.parent.com', 'TXT');
 		expect(arcRecs).toEqual([['v=spf1 ip4:10.0.0.0/24 -all']]);
