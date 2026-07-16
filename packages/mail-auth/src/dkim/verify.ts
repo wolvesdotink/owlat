@@ -225,8 +225,11 @@ async function verifyOneSignature(
 	const domain = tags.get('d');
 	const selector = tags.get('s');
 	const algorithmRaw = tags.get('a');
-	const base: DkimSignatureResult = {
-		verdict: 'permerror',
+	// The caller always supplies the verdict via `withVerdict`, so `base` carries
+	// only the identifying fields — omitting `verdict` keeps the type honest (an
+	// unusable signature returns `none`, not the misleading `permerror` a dead
+	// default would imply).
+	const base: Omit<DkimSignatureResult, 'verdict'> = {
 		...(domain !== undefined ? { domain } : {}),
 		...(selector !== undefined ? { selector } : {}),
 		...(algorithmRaw !== undefined ? { algorithm: algorithmRaw } : {}),
@@ -373,20 +376,21 @@ async function verifyOneSignature(
 	// neither authenticates the message nor, as a `fail`, outranks a sibling
 	// neutral in strongest-wins. (mailauth: "signature expired" / "invalid
 	// expiration" -> neutral; the old path recorded neutral for both.)
-	const xTag = tags.get('x');
-	if (xTag !== undefined && xTag !== '') {
-		const expiry = Number.parseInt(xTag, 10);
-		if (Number.isFinite(expiry)) {
-			if (nowSeconds > expiry) {
-				return withVerdict('neutral');
-			}
-			const tTag = tags.get('t');
-			if (tTag !== undefined && tTag !== '') {
-				const timestamp = Number.parseInt(tTag, 10);
-				if (Number.isFinite(timestamp) && expiry < timestamp) {
-					return withVerdict('neutral');
-				}
-			}
+	// A numeric tag is only honoured when the WHOLE value is digits: mailauth
+	// parses `x=`/`t=` with `Number(...)` over the entire string, so trailing
+	// garbage (`x=500abc`) yields NaN and the tag is dropped (no expiry check).
+	// `Number.parseInt` would accept the `500` prefix and diverge — so we use the
+	// same full-string digit guard the `l=` path uses above.
+	const parseNumericTag = (value: string | undefined): number | undefined =>
+		value !== undefined && /^\d+$/.test(value) ? Number.parseInt(value, 10) : undefined;
+	const expiry = parseNumericTag(tags.get('x'));
+	if (expiry !== undefined) {
+		if (nowSeconds > expiry) {
+			return withVerdict('neutral');
+		}
+		const timestamp = parseNumericTag(tags.get('t'));
+		if (timestamp !== undefined && expiry < timestamp) {
+			return withVerdict('neutral');
 		}
 	}
 
