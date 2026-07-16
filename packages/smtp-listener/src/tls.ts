@@ -93,10 +93,20 @@ export function resolveTlsConfig(cfg: SmtpTlsConfig): ResolvedTlsConfig {
 /**
  * Upgrade a live plaintext socket to TLS in response to STARTTLS (RFC 3207).
  * Resolves with the negotiated {@link TLSSocket} once the handshake completes;
- * rejects if the handshake errors. The caller MUST perform a full SMTP state
- * reset and re-read only from the returned socket — any bytes buffered on the
- * plaintext socket are discarded by constructing a fresh reader, so a
- * plaintext-injection race cannot survive the upgrade.
+ * rejects if the handshake errors OR the peer closes the socket before it
+ * completes. The caller MUST perform a full SMTP state reset and re-read only
+ * from the returned socket — any bytes buffered on the plaintext socket are
+ * discarded by constructing a fresh reader, so a plaintext-injection race cannot
+ * survive the upgrade.
+ *
+ * The `'close'` rejection is load-bearing against a hostile peer: a client that
+ * sends STARTTLS, reads the `220`, then FINs (or goes silent) fires NEITHER
+ * `'secure'` NOR `'error'` — without settling on `'close'` the returned promise
+ * would never resolve, leaving the command loop suspended and the FD + session
+ * pinned until the idle timer expires (~5 min per connection under a
+ * connect→STARTTLS→FIN flood). This mirrors `smtp-server`, which registers
+ * `secureSocket.once('close', ...)` and synthesizes "Socket closed while
+ * initiating TLS" (`smtp-connection.js`).
  */
 export function upgradeTls(socket: Socket, resolved: ResolvedTlsConfig): Promise<TLSSocket> {
 	return new Promise<TLSSocket>((resolve, reject) => {
@@ -108,6 +118,7 @@ export function upgradeTls(socket: Socket, resolved: ResolvedTlsConfig): Promise
 		const cleanup = (): void => {
 			tlsSocket.removeListener('secure', onSecure);
 			tlsSocket.removeListener('error', onError);
+			tlsSocket.removeListener('close', onClose);
 		};
 		const onSecure = (): void => {
 			cleanup();
@@ -117,7 +128,12 @@ export function upgradeTls(socket: Socket, resolved: ResolvedTlsConfig): Promise
 			cleanup();
 			reject(err);
 		};
+		const onClose = (): void => {
+			cleanup();
+			reject(new Error('Socket closed while initiating TLS'));
+		};
 		tlsSocket.once('secure', onSecure);
 		tlsSocket.once('error', onError);
+		tlsSocket.once('close', onClose);
 	});
 }
