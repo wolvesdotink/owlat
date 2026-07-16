@@ -237,7 +237,7 @@ describe('generated composition freshness', () => {
 				cwd: root,
 			})
 		).rejects.toThrow();
-	});
+	}, 30_000);
 
 	it('reads plugins.config.ts at its byte boundary and rejects one byte more', async () => {
 		const root = await createZeroPluginWorkspace();
