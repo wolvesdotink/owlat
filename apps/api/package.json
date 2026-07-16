@@ -53,6 +53,7 @@
 		"@owlat/channels": "workspace:*",
 		"@owlat/email-renderer": "workspace:*",
 		"@owlat/email-scanner": "workspace:*",
+		"@owlat/mail-message": "workspace:*",
 		"@owlat/shared": "workspace:*",
 		"ai": "catalog:ai",
 		"better-auth": "catalog:convex",
