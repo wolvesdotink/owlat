@@ -6,56 +6,59 @@ const fixtureState = vi.hoisted(() => ({
 	results: new Map<string, unknown>(),
 }));
 
-const fixtureCatalog = vi.hoisted(() => [
-	{
-		kind: 'plugin.policy-pack.first',
-		pluginId: 'policy-pack',
-		after: 'security_scan',
-		continuationStatus: 'classifying',
-		placement: 'classification',
-		lifecycleEdges: [
-			{ kind: 'caution', from: 'classifying', to: 'archived' },
-			{ kind: 'caution', from: 'classifying', to: 'failed' },
-		],
-		requiredCapability: 'agent:step',
-	},
-	{
-		kind: 'plugin.policy-pack.first-child',
-		pluginId: 'policy-pack',
-		after: 'plugin.policy-pack.first',
-		continuationStatus: 'classifying',
-		placement: 'classification',
-		lifecycleEdges: [],
-		requiredCapability: 'agent:step',
-	},
-	{
-		kind: 'plugin.policy-pack.sibling',
-		pluginId: 'policy-pack',
-		after: 'security_scan',
-		continuationStatus: 'classifying',
-		placement: 'classification',
-		lifecycleEdges: [],
-		requiredCapability: 'agent:step',
-	},
-	{
-		kind: 'plugin.policy-pack.after-clarify',
-		pluginId: 'policy-pack',
-		after: 'clarify',
-		continuationStatus: 'drafting',
-		placement: 'before_draft',
-		lifecycleEdges: [{ kind: 'caution', from: 'drafting', to: 'failed' }],
-		requiredCapability: 'agent:step',
-	},
-	{
-		kind: 'plugin.policy-pack.after-draft',
-		pluginId: 'policy-pack',
-		after: 'draft',
-		continuationStatus: 'drafting',
-		placement: 'after_draft',
-		lifecycleEdges: [{ kind: 'draft_review', from: 'drafting', to: 'draft_ready' }],
-		requiredCapability: 'agent:step',
-	},
-] as const);
+const fixtureCatalog = vi.hoisted(
+	() =>
+		[
+			{
+				kind: 'plugin.policy-pack.first',
+				pluginId: 'policy-pack',
+				after: 'security_scan',
+				continuationStatus: 'classifying',
+				placement: 'classification',
+				lifecycleEdges: [
+					{ kind: 'caution', from: 'classifying', to: 'archived' },
+					{ kind: 'caution', from: 'classifying', to: 'failed' },
+				],
+				requiredCapability: 'agent:step',
+			},
+			{
+				kind: 'plugin.policy-pack.first-child',
+				pluginId: 'policy-pack',
+				after: 'plugin.policy-pack.first',
+				continuationStatus: 'classifying',
+				placement: 'classification',
+				lifecycleEdges: [],
+				requiredCapability: 'agent:step',
+			},
+			{
+				kind: 'plugin.policy-pack.sibling',
+				pluginId: 'policy-pack',
+				after: 'security_scan',
+				continuationStatus: 'classifying',
+				placement: 'classification',
+				lifecycleEdges: [],
+				requiredCapability: 'agent:step',
+			},
+			{
+				kind: 'plugin.policy-pack.after-clarify',
+				pluginId: 'policy-pack',
+				after: 'clarify',
+				continuationStatus: 'drafting',
+				placement: 'before_draft',
+				lifecycleEdges: [{ kind: 'caution', from: 'drafting', to: 'failed' }],
+				requiredCapability: 'agent:step',
+			},
+			{
+				kind: 'plugin.policy-pack.after-draft',
+				pluginId: 'policy-pack',
+				after: 'draft',
+				continuationStatus: 'drafting',
+				placement: 'after_draft',
+				lifecycleEdges: [{ kind: 'draft_review', from: 'drafting', to: 'draft_ready' }],
+				requiredCapability: 'agent:step',
+			},
+		] as const
+);
 
 vi.mock('../../plugins/agentStepCatalog.generated', () => ({
 	BUNDLED_PLUGIN_AGENT_STEP_CATALOG: Object.freeze(
